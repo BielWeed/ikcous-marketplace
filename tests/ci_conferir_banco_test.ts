@@ -12939,6 +12939,7 @@ const MIGRACAO_384 = `${MIGRATIONS_DIR}/20261384000000_o_pedido_pelo_app_exige_c
 const MIGRACAO_394 = `${MIGRATIONS_DIR}/20261394000000_o_pedido_de_visitante_na_entrega_tem_freio.sql`;
 const MIGRACAO_394200 = `${MIGRATIONS_DIR}/20261394200000_a_v23_recusa_o_pagamento_pelo_app.sql`;
 const MIGRACAO_397_CUPOM = `${MIGRATIONS_DIR}/20261397000000_o_desconto_do_cupom_e_arredondado_ao_centavo.sql`;
+const MIGRACAO_QUEM_RECEBE = `${MIGRATIONS_DIR}/20261399997000_o_pedido_guarda_quem_vai_receber.sql`;
 
 for (const [nome, linhasDoRol] of [
   [NOME_31A, 9],
@@ -13138,6 +13139,22 @@ Deno.test("31a/31b — a 31a aceita o corpo SUCESSOR da 20261236000000 (a compra
     "os corpos da v23 da 394200 e da 397 sao o mesmo",
   );
   assert(v24da397 !== v24da394, "os corpos da v24 da 394 e da 397 sao o mesmo");
+  // a 20261399997000 (o pedido guarda quem vai receber) redefine a v23 e a v24, uma chave a mais cada, em cima do corpo da 397
+  const mQuemRecebe = await Deno.readTextFile(MIGRACAO_QUEM_RECEBE);
+  const v23daQuemRecebe = md5(
+    corpoDe(mQuemRecebe, "create_marketplace_order_v23"),
+  );
+  const v24daQuemRecebe = md5(
+    corpoDe(mQuemRecebe, "create_marketplace_order_v24"),
+  );
+  assert(
+    v23daQuemRecebe !== v23da397,
+    "os corpos da v23 da 397 e da 3999970 sao o mesmo",
+  );
+  assert(
+    v24daQuemRecebe !== v24da397,
+    "os corpos da v24 da 397 e da 3999970 sao o mesmo",
+  );
   assert(v24da384 !== v24da350, "os corpos da v24 da 350 e da 384 sao o mesmo");
   assert(v24da394 !== v24da384, "os corpos da v24 da 384 e da 394 sao o mesmo");
   assert(v23da394 !== v23da350, "os corpos da v23 da 350 e da 394 sao o mesmo");
@@ -13150,15 +13167,15 @@ Deno.test("31a/31b — a 31a aceita o corpo SUCESSOR da 20261236000000 (a compra
   // a v24 aceita os SEIS hashes (229, 236, 244, 350, 384 e a sucessora 394) e responde sempre com o da 20261229000000 (o rol e os rotulos nao mudam)
   assertStringIncludes(
     sa,
-    `f.m IN ('${v24da229}', '${v24da236}', '${v24da244}', '${v24da350}', '${v24da384}', '${v24da394}', '${v24da397}')`,
-    "31a: a v24 aceita o corpo da 20261229000000, o da 20261236000000, o da 20261244000000, o da 20261350000000, o da 20261384000000, o da 20261394000000 OU o da 20261397000000",
+    `f.m IN ('${v24da229}', '${v24da236}', '${v24da244}', '${v24da350}', '${v24da384}', '${v24da394}', '${v24da397}', '${v24daQuemRecebe}')`,
+    "31a: a v24 aceita o corpo da 20261229000000, o da 20261236000000, o da 20261244000000, o da 20261350000000, o da 20261384000000, o da 20261394000000, o da 20261397000000 OU o da 20261399997000",
   );
   assertStringIncludes(sa, `THEN '${v24da229}'`);
   // a v23 aceita os CINCO (o da 229, o da 244, o da 350, a sucessora 394 e a 394200) e responde sempre com o da 20261229000000
   assertStringIncludes(
     sa,
-    `f.m IN ('${v23da229}', '${v23da244}', '${v23da350}', '${v23da394}', '${v23da394200}', '${v23da397}')`,
-    "31a: a v23 aceita o corpo da 20261229000000, o da 20261244000000, o da 20261350000000, o da 20261394000000, o da 20261394200000 OU o da 20261397000000",
+    `f.m IN ('${v23da229}', '${v23da244}', '${v23da350}', '${v23da394}', '${v23da394200}', '${v23da397}', '${v23daQuemRecebe}')`,
+    "31a: a v23 aceita o corpo da 20261229000000, o da 20261244000000, o da 20261350000000, o da 20261394000000, o da 20261394200000, o da 20261397000000 OU o da 20261399997000",
   );
   assertStringIncludes(sa, `THEN '${v23da229}'`);
   // o hash da 236 so entra na linha da v24 (uma vez); os da 244, uma vez em cada linha

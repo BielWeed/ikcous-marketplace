@@ -881,6 +881,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-viva.cjs",
     // Onda 150 (sem migration): o balcao recusa venda sem item e com itens demais (22023, frase exata, nada escrito; 200 entra; mutantes por MUTANTE_R150E).
     "tests/banco/o-balcao-recusa-venda-sem-item-e-com-itens-demais-viva.cjs",
+    // 20261399997000: o pedido guarda quem vai receber (v23 e v24 copiam o nome do endereco salvo para customer_data.address.recipient_name; so conta com endereco salvo, sem nome/retirada/
+    // visitante/endereco digitado como antes, pedido antigo intacto, controle com o corpo da 397, mutantes, rollback byte a byte, aplicar duas vezes, pre/pos-voo e consultas 150a/150b).
+    "tests/banco/o-pedido-guarda-quem-vai-receber-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(

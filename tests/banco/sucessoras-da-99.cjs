@@ -164,6 +164,10 @@ const NOMES = [
   // O lucro do ranking casa com o Financeiro, pedido a pedido: get_admin_analytics_v2 sucede o corpo da 3994 (a CADEIA 99 -> 214 -> 234 -> 242 -> 245 -> 250 -> 251 -> 3997 -> 3994 -> 3995:
   // o `hashVigente` da 3995 e o `hashDesta` da 3994). O rollback da 3994 recusa com o corpo novo no ar: ela cai antes (e, na ordem inversa, primeiro).
   "20261399995000_o_lucro_do_ranking_casa_com_o_financeiro_pedido_a_pedido.sql",
+  // O pedido guarda quem vai receber: create_marketplace_order_v23 e v24 sucedem o corpo da 397 (a CADEIA 394 -> 394200 -> 397 -> 3997 na v23 e 394 -> 397 -> 3997 na v24: o
+  // `hashVigente` da 3997 e o `hashDesta` da 397). Nenhuma e dos 42 da 99, mas o rollback da 397 recusa com o corpo novo no ar: ela cai antes (e, na ordem inversa, primeiro).
+  // O preflight dela traz o NOME antes da assinatura (quatro colunas); duas entradas, o rollback-manual dela desfaz as duas de uma vez.
+  "20261399997000_o_pedido_guarda_quem_vai_receber.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).
@@ -187,6 +191,7 @@ const PARES_POR_MIGRATION = new Map([
     "20261399993000_o_crm_e_a_lista_de_clientes_nao_contam_a_mesma_pessoa_duas_vezes.sql",
     2,
   ],
+  ["20261399997000_o_pedido_guarda_quem_vai_receber.sql", 2],
 ]);
 
 const ler = (nome) => fs.readFileSync(path.join(DIR_MIGRATIONS, nome), "utf8");

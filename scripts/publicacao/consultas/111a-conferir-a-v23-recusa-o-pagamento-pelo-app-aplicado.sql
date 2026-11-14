@@ -26,7 +26,8 @@ WITH fn AS (
   SELECT 'create_marketplace_order_v23: corpo exato (md5)', '86a30fe3502bbafd1a507ce03189bc2d',
          -- A 20261397000000 (o desconto do cupom e' arredondado ao centavo: o mesmo corpo com UMA linha trocada) sucede a v23: aceita os dois
          -- corpos EXATOS; normaliza ao esperado desta migration. O `vivo` mostra o esperado.
-         COALESCE((SELECT CASE WHEN h IN ('86a30fe3502bbafd1a507ce03189bc2d', '54b591dc09d67f1abbc9ab3ba5f62f5e') THEN '86a30fe3502bbafd1a507ce03189bc2d' ELSE h END
+         -- A 20261399997000 (o pedido guarda quem vai receber: o mesmo corpo com uma chave a mais na copia do endereco) sucede este corpo: aceita tambem o corpo dela.
+         COALESCE((SELECT CASE WHEN h IN ('86a30fe3502bbafd1a507ce03189bc2d', '54b591dc09d67f1abbc9ab3ba5f62f5e', 'a20220f6946409590654938f96b12a27') THEN '86a30fe3502bbafd1a507ce03189bc2d' ELSE h END
                      FROM fn LIMIT 1), 'AUSENTE')
   UNION ALL
   SELECT 'create_marketplace_order_v23: o corpo traz a recusa do pagamento pelo app (uma vez)', 'sim',

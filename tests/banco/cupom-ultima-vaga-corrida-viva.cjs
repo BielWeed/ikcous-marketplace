@@ -5,7 +5,7 @@
 
 /**
  * O ultimo uso do cupom pertence a UMA compra, nao a duas.
- * Prova o corpo VIVO da v23/v24 (ultima recriacao: 20261397000000), sem
+ * Prova o corpo VIVO da v23/v24 (ultima recriacao: 20261399997000), sem
  * desfazer sucessoras nem alterar arquivo de producao.
  *
  * A cria o pedido e segura a transacao aberta; B compra OUTRO produto com
@@ -30,8 +30,7 @@ assert.match(
   /^\/prova_[a-z0-9_]+$/,
   "a mutacao so pode ocorrer no clone prova_* do rodar-isolado.cjs",
 );
-const MIGRATION =
-  "20261397000000_o_desconto_do_cupom_e_arredondado_ao_centavo.sql";
+const MIGRATION = "20261399997000_o_pedido_guarda_quem_vai_receber.sql";
 const SQL_VIGENTE = fs
   .readFileSync(
     path.join(__dirname, "../../supabase/migrations", MIGRATION),

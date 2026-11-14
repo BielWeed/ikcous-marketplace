@@ -1442,6 +1442,15 @@ async function main() {
         "20261399995000_o_lucro_do_ranking_casa_com_o_financeiro_pedido_a_pedido.sql",
         "public.get_admin_analytics_v2(integer)",
       ],
+      // A 20261399997000 (o pedido guarda quem vai receber): UMA migration, duas funcoes de fora destas tres (as duas portas de compra, que ela SUCEDE a 397); a 17a nao as le.
+      [
+        "20261399997000_o_pedido_guarda_quem_vai_receber.sql",
+        "public.create_marketplace_order_v23(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)",
+      ],
+      [
+        "20261399997000_o_pedido_guarda_quem_vai_receber.sql",
+        "public.create_marketplace_order_v24(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

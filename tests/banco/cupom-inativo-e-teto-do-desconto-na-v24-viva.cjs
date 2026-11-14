@@ -6,7 +6,10 @@
 // MUTANTE_R100 instala UMA sabotagem no corpo vivo; ROLLBACK a desfaz.
 const { randomUUID } = require("node:crypto");
 const P = require("./prova-de-objeto-novo.cjs");
-const { DESCONTO_DO_CUPOM } = require("./o-desconto-do-cupom-posterior.cjs");
+const {
+  DESCONTO_DO_CUPOM,
+  hashesVivosDoDesconto,
+} = require("./o-desconto-do-cupom-posterior.cjs");
 const { assert, prova } = P;
 const CLIENTE = "c101c000-0000-4000-8000-000000000001";
 const PRODUTO = "c101c000-0000-4000-8000-000000000002";
@@ -226,15 +229,14 @@ prova(
 async function main() {
   await P.conectar();
   try {
-    // Nao reinstala corpos antigos: a prova exige a definicao VIVA da 20261397000000.
+    // Nao reinstala corpos antigos: a prova exige a definicao VIVA da 20261397000000 (ou a da 20261399997000, que so acrescenta uma chave a copia do endereco).
     for (const f of DESCONTO_DO_CUPOM.funcoes.slice(0, 2)) {
       const r = await P.conexao().query(
         "SELECT md5(replace(prosrc,chr(13),'')) AS h FROM pg_proc WHERE oid=to_regprocedure($1)",
         [f.assinatura],
       );
-      assert.equal(
-        r.rows[0]?.h,
-        f.hashDesta,
+      assert.ok(
+        hashesVivosDoDesconto(f).includes(r.rows[0]?.h),
         `corpo vivo inesperado: ${f.nome}`,
       );
     }

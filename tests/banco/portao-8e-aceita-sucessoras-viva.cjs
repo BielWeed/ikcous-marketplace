@@ -218,7 +218,10 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     // a 45a, a 48a, a 53a, a 54a, a 135a e a 146a fazem com ela em tests/banco/o-lucro-do-ranking-casa-com-o-financeiro-viva.cjs; `noEstado` a desfaz antes (lucro-do-estoque-posterior.cjs chama
     // o-ranking-de-lucro-posterior.cjs, que chama o-item-que-nao-veio-fica-com-a-cliente-posterior.cjs, que chama o-lucro-do-ranking-casa-com-o-financeiro-posterior.cjs primeiro).
     s.nome !==
-      "20261399995000_o_lucro_do_ranking_casa_com_o_financeiro_pedido_a_pedido.sql",
+      "20261399995000_o_lucro_do_ranking_casa_com_o_financeiro_pedido_a_pedido.sql" &&
+    // A 20261399997000 (o pedido guarda quem vai receber) so redefine a v23 e a v24, em cima da 397; nenhuma e funcao da 8e. Entra em sucessoras-da-99.cjs so para cair antes da 397
+    // (o-desconto-do-cupom-posterior.cjs chama o-pedido-guarda-quem-vai-receber-posterior.cjs primeiro); aqui sai do rol pela mesma razao da 397.
+    s.nome !== "20261399997000_o_pedido_guarda_quem_vai_receber.sql",
 );
 
 const REPO = path.resolve(__dirname, "..", "..");

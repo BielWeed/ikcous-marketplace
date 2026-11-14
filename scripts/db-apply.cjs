@@ -894,6 +894,31 @@ const VERIFICACOES = {
         { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
       ],
     },
+  // 20261399997000: o pedido guarda quem vai receber. create_marketplace_order_v23 e v24 ganham UMA chave na copia do endereco salvo para dentro do pedido (bloco 6-bis): o nome que a cliente
+  // digitou em "Quem vai receber" (user_addresses.recipient_name, aparado; vazio vira NULL e some). Cada marcador aparece UMA vez em cada corpo. A consulta 150a confere o corpo exato (md5), os
+  // atributos e a ACL; a prova viva faz o comportamento (com nome, sem nome, sem conta, retirada, endereco digitado, pedido antigo).
+  "20261399997000_o_pedido_guarda_quem_vai_receber.sql": [
+    {
+      funcao: "create_marketplace_order_v23",
+      esperado: [
+        {
+          texto: "'recipient_name', NULLIF(btrim(ua.recipient_name), '')",
+          vezes: 1,
+        },
+        { texto: "'reference', ua.reference,", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "create_marketplace_order_v24",
+      esperado: [
+        {
+          texto: "'recipient_name', NULLIF(btrim(ua.recipient_name), '')",
+          vezes: 1,
+        },
+        { texto: "'reference', ua.reference,", vezes: 1 },
+      ],
+    },
+  ],
   // 20261399996000: o painel de avaliacoes filtra o que esta sem resposta. get_admin_reviews_paged (a MESMA assinatura de 5 argumentos da 20261399700000) ganha o terceiro valor de p_status:
   // 'sem_resposta' liga SO o predicado merchant_reply IS NULL (a regra do sino), na contagem e na consulta paginada; o filtro de moderacao e o gate ficam como estao. Cada marcador aparece no corpo as
   // vezes abaixo. A consulta 148a confere o corpo exato (md5), os atributos e a ACL; a prova viva mede o comportamento.

@@ -28,7 +28,9 @@ WITH alvo(nome, assinatura, nargs, argumentos, retorno, marca) AS (
          CASE WHEN COALESCE((SELECT count(*) > 0 FROM pg_proc WHERE pronamespace = 'public'::regnamespace), false) THEN 'sim' ELSE 'nao' END
   UNION ALL
   SELECT 'create_marketplace_order_v23: corpo exato (md5)', '54b591dc09d67f1abbc9ab3ba5f62f5e',
-         COALESCE((SELECT m FROM fn WHERE nome = 'create_marketplace_order_v23'), 'AUSENTE')
+         -- A 20261399997000 (o pedido guarda quem vai receber: o mesmo corpo com uma chave a mais na copia do endereco) sucede este corpo: aceita os dois
+         -- corpos EXATOS; normaliza ao esperado desta migration. O `vivo` mostra o esperado.
+         COALESCE((SELECT CASE WHEN m IN ('54b591dc09d67f1abbc9ab3ba5f62f5e', 'a20220f6946409590654938f96b12a27') THEN '54b591dc09d67f1abbc9ab3ba5f62f5e' ELSE m END FROM fn WHERE nome = 'create_marketplace_order_v23'), 'AUSENTE')
   UNION ALL
   SELECT 'create_marketplace_order_v23: o corpo traz o desconto de porcentagem arredondado ao centavo (uma vez)', 'sim',
          CASE WHEN NOT EXISTS (SELECT 1 FROM fn WHERE nome = 'create_marketplace_order_v23') THEN 'AUSENTE'
@@ -45,7 +47,9 @@ WITH alvo(nome, assinatura, nargs, argumentos, retorno, marca) AS (
               WHEN (SELECT NOT public_exec AND anon_exec AND auth_exec AND svc_exec FROM fn WHERE nome = 'create_marketplace_order_v23') THEN 'sim' ELSE 'nao' END
   UNION ALL
   SELECT 'create_marketplace_order_v24: corpo exato (md5)', '541a210e52ea22fe67e35f2bdd9ef444',
-         COALESCE((SELECT m FROM fn WHERE nome = 'create_marketplace_order_v24'), 'AUSENTE')
+         -- A 20261399997000 (o pedido guarda quem vai receber: o mesmo corpo com uma chave a mais na copia do endereco) sucede este corpo: aceita os dois
+         -- corpos EXATOS; normaliza ao esperado desta migration. O `vivo` mostra o esperado.
+         COALESCE((SELECT CASE WHEN m IN ('541a210e52ea22fe67e35f2bdd9ef444', '3e711f7cc9c94894a21024b34d0ed3b4') THEN '541a210e52ea22fe67e35f2bdd9ef444' ELSE m END FROM fn WHERE nome = 'create_marketplace_order_v24'), 'AUSENTE')
   UNION ALL
   SELECT 'create_marketplace_order_v24: o corpo traz o desconto de porcentagem arredondado ao centavo (uma vez)', 'sim',
          CASE WHEN NOT EXISTS (SELECT 1 FROM fn WHERE nome = 'create_marketplace_order_v24') THEN 'AUSENTE'
