@@ -145,6 +145,9 @@ function corpoDoArquivo(texto, assinatura, tag) {
 }
 const M208 = lerLF(ARQUIVO);
 const M203 = lerLF(ARQ_203);
+// A 20261399997000 (o pedido guarda quem vai receber) sucede a 397 nas funcoes v23/v24 e nao toca a validate: sai da base `pre` JUNTO com a 397 (o pre-voo dela exige o
+// corpo da 397 ou o dela). A base `cheio` a desfaz PRIMEIRO, pela cascata de o-desconto-do-cupom-posterior.cjs.
+const ARQ_3997 = "20261399997000_o_pedido_guarda_quem_vai_receber.sql";
 const M397 = lerLF(ARQ_397);
 const CORPOS = {
   lista: corpoDoArquivo(
@@ -842,7 +845,10 @@ async function main() {
     await c.query("COMMIT");
   });
   const pre = `pv_${SUF}_pre`.slice(0, 60);
-  await montarBase(pre, (f) => f !== ARQUIVO && f !== ARQ_397);
+  await montarBase(
+    pre,
+    (f) => f !== ARQUIVO && f !== ARQ_397 && f !== ARQ_3997,
+  );
   {
     const sonda = await usar(pre, async (c) => ({
       gatilho: (
