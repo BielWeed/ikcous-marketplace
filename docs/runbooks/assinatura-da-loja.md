@@ -6,23 +6,37 @@ O card **Plano da loja** do Início do painel lê `public.assinatura_da_loja`
 pela RPC `assinatura_da_loja_ler()`. **O app nunca grava essa tabela** —
 cobrança de mensalidade não é escopo do app (AGENTS.md).
 
-Quem grava é o **hub de Gestão de Assinantes**, um projeto separado
-(repositório `BielWeed/ikcous-ecosystem-suite`, pasta `gestao-de-assinantes/`,
-contrato em `gestao-de-assinantes/docs/CONTRATO-DA-LOJA.md` daquele repositório),
-com a chave de serviço do Supabase desta loja, cifrada no hub.
+Quem grava é o **app de Gestão de Assinantes**, um projeto separado (Cloudflare
+Worker + banco D1, fora deste repositório). Ele manda o plano de cada assinante à
+loja pela **porta única** do banco dela (seção abaixo), protegida por uma **chave
+de envio própria da loja**. **Nenhuma chave de serviço do Supabase da loja mora
+nesse app** (nem cifrada): ele guarda só a chave de envio (cifrada) e a chave
+pública do projeto.
 
 ## O que a loja precisa ter
 
-1. A migration `20261177000000` aplicada (sem ela o hub marca a loja como
-   `desatualizada`).
-2. A chave de serviço deste projeto cadastrada no hub (Ficha do assinante →
-   Loja → Definir chave). Ao rotacionar a chave (ver
-   [rotação de credenciais](rotacao-credenciais-supabase.md)), cadastre a nova
-   no hub também — senão o hub marca `chave_invalida` e o card para de atualizar.
+1. As migrations `20261177000000` (a tabela do cartão) **e** `20261399998000` (a
+   porta única) aplicadas. Sem a segunda a função não existe e o envio falha.
+2. O **hash** da chave de envio instalado no banco da loja, pelo workflow
+   `instalar-chave-da-loja` (seção "Como o hash da chave entra no banco de cada
+   loja"). Sem o hash o teste do app dá "chave recusada" e nada é gravado.
+3. O envio real liberado pelo dono: o 1º envio de toda loja é **simulado**
+   (`p_simular = true`, não grava); só depois de o dono aprovar a prévia no app de
+   gestão ("Está certo, ativar envio") os envios passam a gravar de verdade.
 
-## O que o hub grava
+A chave de serviço da loja não entra nesse caminho: rotacioná-la (ver
+[rotação de credenciais](rotacao-credenciais-supabase.md)) não para o card. O que
+para o card é trocar a chave de envio sem instalar o hash novo (ver "Rotação de
+chave" abaixo).
 
-Upsert `POST /rest/v1/assinatura_da_loja?on_conflict=id` com
+## O caminho antigo: upsert direto com a chave de serviço
+
+Anterior à porta única, e **não é o que o app de gestão atual usa**. Segue
+funcionando no banco (a migration `20261399998000` não o fecha) até uma decisão
+posterior retirá-lo. A confirmar: se o hub antigo (repositório
+`BielWeed/ikcous-ecosystem-suite`, pasta `gestao-de-assinantes/`) ainda grava por
+aqui em alguma loja. Era um upsert
+`POST /rest/v1/assinatura_da_loja?on_conflict=id` com
 `Prefer: resolution=merge-duplicates`. Campos:
 
 | coluna | significado |
@@ -37,9 +51,12 @@ Upsert `POST /rest/v1/assinatura_da_loja?on_conflict=id` com
 
 ## A porta única (migration 20261399998000)
 
-O hub pode gravar o cartão por UMA porta protegida por uma **chave própria da
-loja**, em vez do upsert direto com a chave de serviço. A chave de serviço
-continua abrindo o upsert direto até uma decisão posterior retirá-lo.
+O app de gestão grava o cartão por UMA porta protegida por uma **chave própria da
+loja**, em vez do upsert direto com a chave de serviço (caminho antigo, acima). A
+chave de serviço continua abrindo o upsert direto até uma decisão posterior
+retirá-lo. Segundo o `ARQUITETURA.md` do app de gestão, a migration está aplicada
+nas duas lojas reais desde 14/11/2026 (conferir no banco de cada loja, a
+confirmar).
 
 - **Tabela** `assinatura_da_loja_chave` (linha única `id = 1`): guarda só o
   **SHA-256 da chave** (64 hex minúsculos), nunca a chave. Selada: RLS ligada
@@ -52,7 +69,10 @@ continua abrindo o upsert direto até uma decisão posterior retirá-lo.
 - **`assinatura_da_loja_gravar(p_chave, p_dados, p_simular default false)`**:
   `anon` e `authenticated` executam. A chave vai **sempre no corpo de um POST**
   (`/rest/v1/rpc/assinatura_da_loja_gravar`), **nunca na URL**: um GET chega a
-  rodar função volátil e a URL fica em log. Quem protege isso é o chamador.
+  rodar função volátil e a URL fica em log. Quem protege isso é o chamador. O app
+  de gestão chama com a **chave pública** do projeto, nunca a de serviço:
+  `sb_publishable_…` só em `apikey` (sem `Bearer`); o JWT anon antigo em `apikey`
+  **e** `Authorization: Bearer`.
   - Autentica ANTES de olhar `p_dados`; qualquer falha (sem chave, errada, loja
     sem chave definida) é o mesmo erro `nao_autorizado` (42501).
   - `p_dados` é um objeto com **exatamente** estas 10 chaves: `plano`, `status`,
@@ -85,6 +105,9 @@ para qualquer loja e o ledger recusa reaplicar), e nem `aplicar-migrations.yml` 
 teste `tests/ci_instalar_chave_da_loja_test.ts`). **A chave em texto puro nunca passa
 por ele**: o app de gestão gera a chave dentro dele e mostra só o **hash**
 (SHA-256, 64 hex minúsculos); é esse hash que se cola.
+
+**Estado em 14/11/2026:** o workflow ainda não foi disparado nenhuma vez; o primeiro
+uso é o ensaio em `ikcous-publicada`, antes da Savy.
 
 **Pré-condição:** a migration `20261399998000` já aplicada na loja (sem ela a função
 não existe e o run falha na leitura prévia, sem gravar nada).
@@ -142,9 +165,11 @@ pedido foi de substituição. Sem essa linha o run falhou — leia a mensagem.
   novo com `substituir=true`.
 
 **Rotação de chave** (a antiga **deixa de abrir a porta no mesmo instante** em que o
-hash novo é gravado): gere a chave nova no app de gestão, instale o hash novo aqui com
-`substituir=true` e só então troque a chave que o app usa. Entre uma coisa e outra o
-app de gestão falha com `nao_autorizado` — rode as duas coisas juntas.
+hash novo é gravado): no app de gestão, "Lojas" > "Gerar nova chave" (a chave antiga
+deixa de valer para o Worker na hora), copie o hash novo e instale aqui com
+`substituir=true`. Entre uma coisa e outra os envios daquela loja falham com "chave
+recusada" (o cartão já gravado fica como estava) — faça as duas coisas juntas. A loja
+volta ao envio simulado e pede nova aprovação do dono antes de gravar de novo.
 
 **Limites assumidos:** a gravação é uma instrução só (atômica); as três consultas são
 requisições separadas, então a leitura prévia pode ficar velha se duas pessoas
@@ -155,5 +180,6 @@ Action, não alguém que grave por outro caminho). O hash não abre a porta, mas
 ## Conferir na loja
 
 No SQL Editor do projeto da loja: `SELECT * FROM public.assinatura_da_loja;`
-— `atualizado_em` mostra a última sincronização. Se estiver velho, o hub
-mostra o erro em "Falhas de sincronização" no Painel.
+— `atualizado_em` mostra a última sincronização. Se estiver velho, o app de gestão
+avisa no topo quando o último envio real de uma loja ativa tem mais de 2 dias; em
+"Lojas" a frase da loja diz o motivo (por exemplo "chave recusada").
