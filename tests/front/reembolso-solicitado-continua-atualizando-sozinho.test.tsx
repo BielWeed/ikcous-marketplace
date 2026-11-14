@@ -102,6 +102,42 @@ describe("devolução do pedido na tela da cliente: atualiza sozinha enquanto es
     expect(atual.linhas.map((l) => l.status)).toEqual(["concluido"]);
   });
 
+  it("duas devoluções, uma `concluido` e outra em curso: segue relendo até a em curso terminar", async () => {
+    h.ler
+      .mockResolvedValueOnce({
+        data: [devolucao("concluido"), devolucao("solicitado")],
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: [devolucao("concluido"), devolucao("em_processamento")],
+        error: null,
+      })
+      .mockResolvedValue({
+        data: [devolucao("concluido"), devolucao("concluido")],
+        error: null,
+      });
+    await montar();
+    expect(h.ler).toHaveBeenCalledTimes(1);
+
+    await avancar(INTERVALO_DE_RECARGA_MS);
+    expect(h.ler).toHaveBeenCalledTimes(2);
+    expect(atual.linhas.map((l) => l.status)).toEqual([
+      "concluido",
+      "em_processamento",
+    ]);
+
+    await avancar(INTERVALO_DE_RECARGA_MS);
+    expect(h.ler).toHaveBeenCalledTimes(3);
+    expect(atual.linhas.map((l) => l.status)).toEqual([
+      "concluido",
+      "concluido",
+    ]);
+
+    // Tudo resolvido: aí sim para de reler.
+    await avancar(INTERVALO_DE_RECARGA_MS * 4);
+    expect(h.ler).toHaveBeenCalledTimes(3);
+  });
+
   it("CONTROLE: ao ficar `concluido` para de reler (nada em voo)", async () => {
     h.ler
       .mockResolvedValueOnce({ data: [devolucao("solicitado")], error: null })

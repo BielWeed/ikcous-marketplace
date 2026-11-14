@@ -20,6 +20,9 @@ type Chamada = {
   tabela: string;
   op: "insert" | "update";
   payload: any;
+  // Filtros encadeados depois do `update`/`insert` — sem eles, o UPDATE em
+  // `vw_produtos_admin` valeria para TODOS os produtos da loja.
+  filtros: { op: "eq" | "is"; coluna: string; valor: unknown }[];
 };
 
 // `vi.hoisted`: os factories de `vi.mock` rodam no topo do arquivo, antes de
@@ -58,16 +61,22 @@ vi.mock("sonner", () => ({
 
 const RESULTADO = { data: { id: "prod-1" }, error: null };
 
-function encadear() {
+function encadear(chamada: Chamada) {
   const chain = Promise.resolve(RESULTADO) as Promise<typeof RESULTADO> & {
-    eq: () => typeof chain;
-    is: () => typeof chain;
+    eq: (coluna: string, valor: unknown) => typeof chain;
+    is: (coluna: string, valor: unknown) => typeof chain;
     select: () => typeof chain;
     single: () => Promise<typeof RESULTADO>;
     maybeSingle: () => Promise<typeof RESULTADO>;
   };
-  chain.eq = () => chain;
-  chain.is = () => chain;
+  chain.eq = (coluna, valor) => {
+    chamada.filtros.push({ op: "eq", coluna, valor });
+    return chain;
+  };
+  chain.is = (coluna, valor) => {
+    chamada.filtros.push({ op: "is", coluna, valor });
+    return chain;
+  };
   chain.select = () => chain;
   chain.single = () => Promise.resolve(RESULTADO);
   chain.maybeSingle = () => Promise.resolve(RESULTADO);
@@ -75,8 +84,9 @@ function encadear() {
 }
 
 function registrar(tabela: string, op: Chamada["op"], payload: any) {
-  mock.chamadas.push({ tabela, op, payload });
-  return encadear();
+  const chamada: Chamada = { tabela, op, payload, filtros: [] };
+  mock.chamadas.push(chamada);
+  return encadear(chamada);
 }
 
 vi.mock("@/lib/supabase", () => ({
@@ -160,6 +170,41 @@ describe("useProducts — custo, preço de antes e ativo chegam ao banco como a 
     expect(chamada).toBeDefined();
     return chamada.payload;
   }
+
+  describe("updateProduct — o UPDATE mira só o produto editado", () => {
+    it("filtra por id do produto e por `deleted_at is null` (nunca a tabela inteira)", async () => {
+      await montar();
+      await act(async () => {
+        await apiRef!.updateProduct("prod-1", { name: "Novo nome" } as any);
+      });
+      const [chamada] = chamadasDe("vw_produtos_admin", "update");
+      expect(chamada).toBeDefined();
+      expect(chamada.filtros).toContainEqual({
+        op: "eq",
+        coluna: "id",
+        valor: "prod-1",
+      });
+      expect(chamada.filtros).toContainEqual({
+        op: "is",
+        coluna: "deleted_at",
+        valor: null,
+      });
+    });
+
+    it("o id filtrado é o do produto que foi editado, não um fixo", async () => {
+      await montar();
+      await act(async () => {
+        await apiRef!.updateProduct("prod-9", { name: "Outro" } as any);
+      });
+      const [chamada] = chamadasDe("vw_produtos_admin", "update");
+      expect(chamada).toBeDefined();
+      expect(chamada.filtros).toContainEqual({
+        op: "eq",
+        coluna: "id",
+        valor: "prod-9",
+      });
+    });
+  });
 
   describe("updateProduct — custo", () => {
     it("custo editado chega ao banco como `custo`", async () => {

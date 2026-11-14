@@ -190,6 +190,47 @@ describe("ShippingCalculator: contrato de hoje, preço da variação e carrinho 
     expect(texto).not.toContain("10,00");
   });
 
+  // As duas de cima deixam a variação escolhida em PRIMEIRO lugar da lista, então
+  // pegar "a primeira variação" no lugar da escolhida passaria calado. Aqui a
+  // escolhida é a SEGUNDA, e a primeira tem preço que decidiria o contrário.
+  it("frete grátis acima de R$ 100: escolhida é a SEGUNDA variação (R$ 80); a primeira (R$ 150) não vale — NÃO é grátis", async () => {
+    estado.freeShippingMin = 100;
+    const p = produto({
+      id: "p1",
+      price: 120,
+      variants: [
+        variante("v-primeira", "p1", 150),
+        variante("v-escolhida", "p1", 80),
+      ],
+    });
+    const texto = await montar([
+      { product: p, quantity: 1, variantId: "v-escolhida" },
+    ]);
+
+    // Subtotal = 80 (a escolhida) < 100: taxa cheia.
+    expect(texto).toContain("10,00");
+    expect(texto).not.toContain("GRÁTIS");
+  });
+
+  it("frete grátis acima de R$ 100: escolhida é a SEGUNDA variação (R$ 120); a primeira (R$ 60) não vale — É grátis", async () => {
+    estado.freeShippingMin = 100;
+    const p = produto({
+      id: "p1",
+      price: 80,
+      variants: [
+        variante("v-primeira", "p1", 60),
+        variante("v-escolhida", "p1", 120),
+      ],
+    });
+    const texto = await montar([
+      { product: p, quantity: 1, variantId: "v-escolhida" },
+    ]);
+
+    // Subtotal = 120 (a escolhida) >= 100: grátis.
+    expect(texto).toContain("GRÁTIS");
+    expect(texto).not.toContain("10,00");
+  });
+
   it("por produto, carrinho MISTO: um item marcado basta para o cartão sair grátis", async () => {
     // Sentinela -1 = preset "por_produto" (gratuidade LIGADA).
     estado.freeShippingMin = -1;
