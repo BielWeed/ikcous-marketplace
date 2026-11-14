@@ -1,0 +1,167 @@
+# Instala, no banco de UMA loja real, o HASH da chave de envio do app de gestao
+# (a chave com que o app grava o "Plano da loja" pela porta unica da loja).
+# Nasceu em 14/11/2026: a migration 20261399998000 criou a funcao
+# public.assinatura_da_loja_definir_chave(p_hash, p_substituir), mas nenhum
+# workflow do repositorio aceitava SQL com parametro (o hash e por loja e nao cabe
+# em migration). Este e o caminho fechado para isso.
+#
+# O QUE FAZ: UMA escrita, a funcao acima, com o hash que voce digitou:
+#   select public.assinatura_da_loja_definir_chave('<hash>', <true|false>)
+# precedida de uma leitura (ja existe chave?) e seguida de uma leitura de conferencia
+# (exatamente 1 linha na tabela da chave e o hash guardado e o enviado; so um
+# booleano volta). Nada alem disso e gravado. A logica mora em
+# scripts/publicacao/instalar-chave-da-loja.cjs (NAO em `node -e`); o cabecalho dele
+# diz cada trava.
+#
+# A CHAVE EM TEXTO PURO NUNCA PASSA POR AQUI: o app de gestao gera a chave dentro
+# dele e mostra so o HASH (SHA-256, 64 hex minusculos). Cole so o hash. Um hash nao
+# abre a porta (a porta compara o hash do que chega), mas o campo `hash` aparece no
+# painel do run (a pagina do run lista as entradas): se colar o valor errado, apague
+# o run. O titulo do run NAO leva o hash (as expressoes do Actions nao tem funcao de
+# recorte).
+#
+# O HASH NUNCA VAI EM `env:` NEM EM `run:`: o GitHub imprime o bloco env: de cada passo
+# no log (repositorio publico), entao um valor passado por la ficaria em claro no
+# cabecalho do passo, inclusive se alguem colasse a CHAVE por engano. O hash e lido do
+# arquivo do evento ($GITHUB_EVENT_PATH, campo inputs.hash) e MASCARADO
+# (`::add-mask::`) antes de qualquer outra coisa, ate da validacao: mascarado, o valor
+# aparece como *** no log dos passos seguintes. O resumo do run mostra so os 8
+# primeiros caracteres do hash.
+#
+# PROJETO: fechado em "ikcous-publicada" | "savy" (as duas lojas reais; nunca um ref
+# de texto livre, nunca Almeida, Brand Meliz nem Space). O ref e resolvido DENTRO do
+# script (`resolverRef`, o mesmo de conferir-banco-da-loja.yml).
+#
+# CREDENCIAL: nenhuma nova. ikcous-publicada usa SUPABASE_ACCESS_TOKEN_IKCOUS e savy
+# usa SUPABASE_ACCESS_TOKEN_SAVY (os mesmos de publicar-functions.yml). Cada alvo
+# enxerga SO o seu segredo (a expressao `&& ... || ''` nunca cai no vizinho), nunca o
+# legado, e 401/403 PARAM sem tentar outro segredo. O segredo so existe no ULTIMO
+# passo; os passos de validacao e o checkout nao o veem.
+#
+# GATILHO: so `workflow_dispatch` (nenhum codigo de PR roda aqui com o segredo).
+# `expected_sha` e OBRIGATORIO (40 hex, igual ao SHA do run) e e conferido no PRIMEIRO
+# passo, antes do checkout e de qualquer rede. O hash e validado (exatamente 64
+# caracteres hex, so minusculas) em passo PROPRIO, tambem antes do checkout e do segredo. Nenhuma
+# entrada e interpolada em `run:`: tudo vai por variavel de ambiente.
+#
+# SE RODAR DUAS VEZES: sem `substituir`, a segunda recusa com "ja existe chave nesta
+# loja" e nada muda. Com `substituir=true` e a mesma gravacao outra vez (o hash fica
+# igual). Para ROTACIONAR a chave: gere a nova no app de gestao, rode com o hash novo
+# e `substituir=true` (a chave antiga deixa de abrir a porta no mesmo instante).
+#
+# O run termina com a linha
+#   VEREDITO-INSTALAR-CHAVE projeto=<x> sha=<y> definida=<true|false> substituiu=<true|false>
+#
+# USO (gh):
+#   gh workflow run instalar-chave-da-loja.yml --repo BielWeed/ikcous-marketplace \
+#     --ref <ramo> -f projeto=savy -f hash=<64 hex minusculos> \
+#     -f expected_sha=<SHA completo do topo do ramo>
+#   (rotacao: acrescente -f substituir=true)
+#
+# Testado por tests/ci_instalar_chave_da_loja_test.ts.
+
+name: Instalar chave da loja
+# Titulo do run = evidencia localizavel: loja e modo, nunca o hash.
+run-name: "instalar chave em ${{ inputs.projeto }} (${{ inputs.substituir && 'rotacao' || 'nova' }})"
+
+on:
+  workflow_dispatch:
+    inputs:
+      projeto:
+        description: "Loja real: ikcous-publicada (a CAF explicita) ou savy (a loja cliente explicita); nunca texto livre"
+        required: true
+        type: choice
+        default: savy
+        options:
+          - ikcous-publicada
+          - savy
+      hash:
+        description: "SO o hash (SHA-256 da chave, 64 hex MINUSCULOS) que o app de gestao mostra; nunca a chave"
+        required: true
+        type: string
+      substituir:
+        description: "Marque so para ROTACIONAR (trocar a chave que ja existe); desmarcado, recusa se ja ha chave"
+        required: false
+        type: boolean
+        default: false
+      expected_sha:
+        description: "OBRIGATORIO: o SHA completo (40 hex) do commit deste run (igual ao GITHUB_SHA)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# Uma instalacao por loja de cada vez, e nenhuma se perde: o 2o pedido espera a vez
+# (queue: max), nunca cancela o que esta rodando nem some da fila.
+concurrency:
+  group: chave-da-loja-${{ inputs.projeto }}
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  instalar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # PRIMEIRO passo, antes de checkout e de qualquer requisicao: loja conhecida e
+      # expected_sha completo e igual ao GITHUB_SHA (mesmo padrao e mesma mensagem de
+      # conferir-banco-da-loja.yml). Nao ve segredo.
+      - name: Confere o alvo e o expected_sha antes de checkout e segredos
+        env:
+          PROJETO: ${{ inputs.projeto }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          set -euo pipefail
+          case "$PROJETO" in
+            ikcous-publicada|savy) ;;
+            *) echo "::error::projeto desconhecido"; exit 1 ;;
+          esac
+          if ! [[ "$EXPECTED_SHA" =~ ^[a-fA-F0-9]{40}$ ]] || [ "${EXPECTED_SHA,,}" != "${GITHUB_SHA,,}" ]; then
+            echo "::error::Loja cliente ($PROJETO) exige expected_sha completo e igual ao GITHUB_SHA do run"; exit 1
+          fi
+
+      # Passo PROPRIO: o hash (64 hex minusculos, nada alem) e o booleano, antes do
+      # checkout e do segredo. O hash vem do ARQUIVO DO EVENTO (nunca de env:) e e
+      # mascarado ANTES da validacao, linha a linha: quem errou o campo pode ter
+      # colado a chave em texto puro, e ela fica *** no log. A mensagem de erro nao
+      # repete o valor. O sufixo `x` preserva quebras de linha finais (a substituicao
+      # de comando as apagaria e um hash com quebra de linha no fim passaria). LC_ALL=C fecha o
+      # intervalo [0-9a-f] em ASCII (em alguns locales ele casaria maiusculas).
+      - name: Valida o hash antes de checkout e segredos
+        env:
+          SUBSTITUIR: ${{ inputs.substituir }}
+        run: |
+          set -euo pipefail
+          export LC_ALL=C
+          HASH="$(jq -j '.inputs.hash // ""' "$GITHUB_EVENT_PATH"; printf x)"
+          HASH="${HASH%x}"
+          while IFS= read -r linha || [ -n "$linha" ]; do
+            if [ -n "$linha" ]; then echo "::add-mask::$linha"; fi
+          done <<< "$HASH"
+          if ! [[ "$HASH" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::hash inválido: precisa ter exatamente 64 caracteres hexadecimais minúsculos (0-9 e a-f), sem espaço nem maiúsculas"; exit 1
+          fi
+          case "$SUBSTITUIR" in true|false) ;;
+            *) echo "::error::substituir precisa ser true ou false"; exit 1 ;;
+          esac
+
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+
+      # Cada alvo enxerga SO o seu segredo: segredo vazio da '', nunca o do vizinho.
+      # E o UNICO passo com segredo; o script PARA sem o do proprio alvo. O hash NAO
+      # vem em env: o script o le do arquivo do evento (GITHUB_EVENT_PATH).
+      - name: Instala o hash da chave (uma escrita, conferida por leitura)
+        env:
+          SUPABASE_ACCESS_TOKEN_IKCOUS: ${{ inputs.projeto == 'ikcous-publicada' && secrets.SUPABASE_ACCESS_TOKEN_IKCOUS || '' }}
+          SUPABASE_ACCESS_TOKEN_SAVY: ${{ inputs.projeto == 'savy' && secrets.SUPABASE_ACCESS_TOKEN_SAVY || '' }}
+          PROJETO: ${{ inputs.projeto }}
+          SUBSTITUIR: ${{ inputs.substituir }}
+        run: node scripts/publicacao/instalar-chave-da-loja.cjs
