@@ -150,4 +150,34 @@ describe("P36 — Favoritos sem recuo lateral duplicado no computador", () => {
       }
     },
   );
+
+  // Revisão P36: atalhos de categoria (3+ categorias) e avisos também ficavam
+  // 16 px à direita do título, porque continuavam com mx-4 sob a casca.
+  it("alinha os atalhos de categoria ao título, sem mudar o celular", () => {
+    const tres = ["Roupas", "Calçados", "Bolsas"].map((category, i) => ({
+      ...produto,
+      id: `produto-inventado-p36-${i}`,
+      category,
+    }));
+    loja.products = tres;
+    act(() =>
+      raiz.render(
+        <PaginaDoComputador>
+          <FavoritesView
+            loading={false}
+            favorites={tres}
+            onToggleFavorite={vi.fn()}
+            onProductClick={vi.fn()}
+            onNavigate={vi.fn()}
+          />
+        </PaginaDoComputador>,
+      ),
+    );
+    const atalhos = container.querySelector(".favorites-atalhos")!;
+    expect(atalhos).not.toBeNull();
+    expect(celular(atalhos)).toBe(
+      "favorites-atalhos mx-4 mb-1 flex min-w-0 gap-2 overflow-x-auto pb-1",
+    );
+    expect(atalhos.classList.contains("lg:mx-0")).toBe(true);
+  });
 });
