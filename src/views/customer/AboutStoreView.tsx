@@ -369,7 +369,7 @@ export function AboutStoreView() {
           <BotaoWhatsapp
             onClick={falarComALoja}
             aria-label="Falar com a loja no WhatsApp"
-            className="fixed left-1/2 z-[115] h-[52px] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 shadow-lg"
+            className="fixed left-1/2 z-[115] h-[52px] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 shadow-lg lg:!bottom-4"
             style={{
               bottom:
                 "calc(var(--nav-height, 56px) + 16px + var(--safe-area-bottom, 0px))",

@@ -2,6 +2,7 @@ import {
   IlhaDeAtualizacao,
   useIlhaDeAtualizacaoAtiva,
 } from "@/components/pwa/IlhaDeAtualizacao";
+import { HEADER_CENTER_SLOT_ID } from "@/constants/header";
 import { isViewTransitionSupported } from "@/hooks/useViewTransition";
 import { imagemRedimensionada } from "@/lib/imageUrl";
 import { primeiraLetra } from "@/lib/primeira-letra";
@@ -33,12 +34,7 @@ import { useNotificationCenter } from "@/contexts/NotificationContextCore";
 import { useStore } from "@/contexts/StoreContext";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 
-// Ponto de encaixe do centro da barra, usado quando não há busca (hoje:
-// "address-form" e "checkout"). ID ESTÁVEL de propósito — o CheckoutView
-// (D1, pedido do Gabriel 12/09/2026) porta ali o gatilho do resumo do
-// pedido via `createPortal`, sem o Header saber nada de carrinho, frete ou
-// total: ele só hospeda o espaço, o cálculo mora inteiro no CheckoutView.
-export const HEADER_CENTER_SLOT_ID = "checkout-header-center-slot";
+export { HEADER_CENTER_SLOT_ID } from "@/constants/header";
 
 interface HeaderProps {
   onNavigate: (view: View, id?: string) => void;

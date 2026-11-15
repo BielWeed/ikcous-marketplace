@@ -100,7 +100,7 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
   return (
     <div
       aria-live="polite"
-      className="pointer-events-none fixed inset-x-0 bottom-[calc(76px+var(--safe-area-bottom,0px))] z-40 flex justify-center px-4 md:bottom-24"
+      className="pointer-events-none fixed inset-x-0 bottom-[calc(76px+var(--safe-area-bottom,0px))] z-40 flex justify-center px-4 md:bottom-24 lg:bottom-6"
     >
       <AnimatePresence>
         {isVisible && (

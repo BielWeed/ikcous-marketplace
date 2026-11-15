@@ -6,6 +6,8 @@ import React, {
   useLayoutEffect,
 } from "react";
 
+import { CabecalhoCliente } from "@/components/desktop/CabecalhoCliente";
+import { PaginaDoComputador } from "@/components/desktop/PaginaDoComputador";
 import { AdminAreaGate } from "@/components/layouts/AdminAreaGate";
 import { TelaDeVerificacaoFalhou } from "@/components/layouts/TelaDeVerificacaoFalhou";
 import { MaintenanceView } from "@/components/pwa/MaintenanceView";
@@ -107,6 +109,7 @@ function DeferredTabContent({
 }
 
 interface TabWrapperProps {
+  readonly containerProprio?: boolean;
   readonly active: boolean;
   readonly children: React.ReactNode;
   readonly index?: number;
@@ -114,7 +117,13 @@ interface TabWrapperProps {
   readonly isTransitionSupported?: boolean;
 }
 
-function TabWrapper({ active, children, index, activeIndex }: TabWrapperProps) {
+function TabWrapper({
+  active,
+  children,
+  index,
+  activeIndex,
+  containerProprio,
+}: TabWrapperProps) {
   let positionClass = "";
   if (index !== undefined && activeIndex !== undefined && activeIndex !== -1) {
     if (index === activeIndex) {
@@ -138,7 +147,9 @@ function TabWrapper({ active, children, index, activeIndex }: TabWrapperProps) {
         active ? "active-scroll-container" : "",
       )}
     >
-      {children}
+      <PaginaDoComputador containerProprio={containerProprio}>
+        {children}
+      </PaginaDoComputador>
     </div>
   );
 }
@@ -3311,6 +3322,7 @@ const AppContent = () => {
 
             <TabWrapper
               active={currentView === "cart" || currentView === "orders"}
+              containerProprio
               isTransitionSupported={isTransitionSupported}
               index={2}
               activeIndex={activeTabIdx}
@@ -3430,6 +3442,7 @@ const AppContent = () => {
 
               <TabWrapper
                 active={currentView === "cart" || currentView === "orders"}
+                containerProprio
                 isTransitionSupported={isTransitionSupported}
                 index={2}
                 activeIndex={activeTabIdx}
@@ -3487,7 +3500,13 @@ const AppContent = () => {
               className="flex min-h-full w-full flex-1 flex-col !outline-none focus:!outline-none [&>*]:shrink-0"
               style={{ viewTransitionName: "main-content" }}
             >
-              {renderCustomerSecondaryView()}
+              <PaginaDoComputador
+                containerProprio={["product-detail", "search"].includes(
+                  currentView,
+                )}
+              >
+                {renderCustomerSecondaryView()}
+              </PaginaDoComputador>
             </div>
           )
         ) : (
@@ -3499,7 +3518,13 @@ const AppContent = () => {
               transitionScroll={transitionScroll}
               duration={getFramerMotionDuration()}
             >
-              {renderCustomerSecondaryView()}
+              <PaginaDoComputador
+                containerProprio={["product-detail", "search"].includes(
+                  currentView,
+                )}
+              >
+                {renderCustomerSecondaryView()}
+              </PaginaDoComputador>
             </SecondaryViewMotionShell>
           </React.Suspense>
         )}
@@ -3510,6 +3535,14 @@ const AppContent = () => {
   // Admin views rendering has been moved to src/components/layouts/AdminArea.tsx for strict code separation.
 
   // renderView has been extracted to AdminArea.tsx to ensure layouts are only parsed post-verification.
+  const mostrarVoltarCliente =
+    currentView !== "home" &&
+    currentView !== "favorites" &&
+    currentView !== "cart" &&
+    currentView !== "orders" &&
+    currentView !== "profile" &&
+    currentView !== "auth" &&
+    currentView !== "login";
 
   return (
     // Laterais da área segura: com o aparelho deitado o entalhe/ilha do iPhone
@@ -3575,29 +3608,38 @@ const AppContent = () => {
               </header>
             }
           >
-            <Header
-              onNavigate={handleNavigate}
-              showBackButton={
-                currentView !== "home" &&
-                currentView !== "favorites" &&
-                currentView !== "cart" &&
-                currentView !== "orders" &&
-                currentView !== "profile" &&
-                currentView !== "auth" &&
-                currentView !== "login"
-              }
+            <CabecalhoCliente
+              showBackButton={mostrarVoltarCliente}
               onBack={handleBack}
-              onOpenNotifications={handleOpenNotifications}
-              // "checkout" some daqui: a busca navega para product-detail
-              // (alçapão) e o formulário do checkout convidado só persiste o
-              // CEP — sair da tela apaga nome, WhatsApp, rua, número e
-              // complemento já digitados.
-              hideSearch={["address-form", "checkout"].includes(currentView)}
+              currentView={currentView}
+              onNavigate={handleNavigate}
               searchQuery={searchQuery}
               onSearch={handleSearch}
+              selectedCategory={selectedCategory}
               onCategorySelect={handleSearchCategorySelect}
-              scrollProgress={scrollProgress}
-            />
+              onCategoryChange={(category) => {
+                handleCategoryChange(category);
+                if (currentView !== "home") void handleNavigate("home");
+              }}
+              onOpenNotifications={handleOpenNotifications}
+              hideSearch={["address-form", "checkout"].includes(currentView)}
+            >
+              <Header
+                onNavigate={handleNavigate}
+                showBackButton={mostrarVoltarCliente}
+                onBack={handleBack}
+                onOpenNotifications={handleOpenNotifications}
+                // "checkout" some daqui: a busca navega para product-detail
+                // (alçapão) e o formulário do checkout convidado só persiste o
+                // CEP — sair da tela apaga nome, WhatsApp, rua, número e
+                // complemento já digitados.
+                hideSearch={["address-form", "checkout"].includes(currentView)}
+                searchQuery={searchQuery}
+                onSearch={handleSearch}
+                onCategorySelect={handleSearchCategorySelect}
+                scrollProgress={scrollProgress}
+              />
+            </CabecalhoCliente>
           </React.Suspense>
         </BarraSuperiorCliente>
       )}
@@ -3705,7 +3747,7 @@ const AppContent = () => {
               fallback={
                 <nav
                   aria-label="Navegação principal"
-                  className="pb-safe fixed inset-x-0 bottom-0 z-[120] flex-shrink-0 border-t border-zinc-100 bg-white/95 shadow-sm backdrop-blur-xl md:bottom-6 md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2 md:rounded-2xl md:border md:border-zinc-200 md:shadow-md"
+                  className="pb-safe fixed inset-x-0 bottom-0 z-[120] flex-shrink-0 border-t border-zinc-100 bg-white/95 shadow-sm backdrop-blur-xl md:bottom-6 md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2 md:rounded-2xl md:border md:border-zinc-200 md:shadow-md lg:hidden"
                 >
                   <div className="h-[64px]" />
                 </nav>

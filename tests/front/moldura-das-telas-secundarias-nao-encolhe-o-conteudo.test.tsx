@@ -27,7 +27,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 // dos outros testes de componente deste projeto.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
+import { PaginaDoComputador } from "@/components/desktop/PaginaDoComputador";
 import { SecondaryViewMotionShell } from "@/components/layouts/AppMotionFallbacks";
+import postcss from "postcss";
+import tailwindcss from "tailwindcss";
 
 const REGRA = "[&>*]:shrink-0";
 
@@ -76,6 +79,81 @@ describe("moldura das telas secundárias não deixa a tela encolher", () => {
     // ...e agora o filho direto não encolhe.
     expect(moldura?.className).toContain(REGRA);
   });
+
+  for (const caminho of ["com movimento", "com View Transitions"]) {
+    it(`a raiz da tela NÃO encolhe através da casca de PC: ${caminho}`, async () => {
+      const telaComCasca = (
+        <PaginaDoComputador>
+          <article data-testid="tela" className="pb-customer min-h-full">
+            <div style={{ height: 1300 }}>Fim da tela</div>
+          </article>
+        </PaginaDoComputador>
+      );
+      const fonte = FONTES["/src/App.tsx"] as string;
+      const classesDoApp = fonte.match(
+        /<div\s+className="([^"]+)"\s+style=\{\{\s*viewTransitionName:\s*"main-content"\s*\}\}/,
+      )?.[1];
+      expect(classesDoApp).toBeDefined();
+      act(() => {
+        root.render(
+          caminho === "com movimento" ? (
+            <SecondaryViewMotionShell
+              active
+              viewKey="about-store"
+              direction="none"
+              transitionScroll={{ oldScroll: 0, newScroll: 0 }}
+              duration={0}
+            >
+              {telaComCasca}
+            </SecondaryViewMotionShell>
+          ) : (
+            <div className={classesDoApp}>{telaComCasca}</div>
+          ),
+        );
+      });
+      // CSS REAL do Tailwind, gerado a partir do DOM real. Não basta a moldura
+      // ter a string: a regra precisa alcançar a RAIZ da tela através de contents.
+      const css = await postcss([
+        tailwindcss({
+          content: [
+            {
+              raw: [...container.querySelectorAll("[class]")]
+                .map((el) => el.className)
+                .join(" "),
+              extension: "html",
+            },
+          ],
+          corePlugins: ["flexShrink"],
+          plugins: [],
+        }),
+      ]).process("@tailwind utilities;", { from: undefined });
+      const estilo = document.createElement("style");
+      // O jsdom não reconhece seletores com ">" DENTRO do nome da classe,
+      // nem escapado nem em [class~=...]. Normaliza só esse nome para um alias
+      // simples: SOMENTE o elemento que tem a classe real recebe o alias.
+      // DOM, combinador de filho direto e declaração REAL do Tailwind ficam
+      // iguais. Assim tirar a regra da casca deixa a raiz em shrink:1.
+      for (const el of container.querySelectorAll("[class]")) {
+        if (el.classList.contains(REGRA))
+          el.classList.add("regra-nao-encolher");
+      }
+      const cssCompativel = css.css.replaceAll(
+        String.raw`.\[\&\>\*\]\:shrink-0`,
+        ".regra-nao-encolher",
+      );
+      estilo.textContent = `[data-testid="tela"] { flex-shrink: 1; }\n${cssCompativel}`;
+      document.head.append(estilo);
+      try {
+        const tela = container.querySelector(
+          '[data-testid="tela"]',
+        ) as HTMLElement;
+        expect(tela.parentElement?.classList.contains("contents")).toBe(true);
+        expect(getComputedStyle(tela).flexShrink).toBe("0");
+      } finally {
+        estilo.remove();
+      }
+    });
+  }
 
   it("caminho COM View Transitions: a moldura do App.tsx carrega a regra", () => {
     // Renderizar o App inteiro só para ler uma classe custaria o app todo; a
