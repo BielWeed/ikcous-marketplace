@@ -609,7 +609,7 @@ export const SearchView = React.memo(function SearchView({
             </div>
             <div
               className={cn(
-                "grid grid-cols-2 gap-6",
+                "grid grid-cols-2 gap-6 md:grid-cols-3",
                 GRADE_DE_PRODUTOS_NO_COMPUTADOR,
                 "lg:gap-x-6 lg:gap-y-10",
               )}
@@ -716,7 +716,7 @@ export const SearchView = React.memo(function SearchView({
                 </div>
                 <div
                   className={cn(
-                    "grid grid-cols-2 gap-6",
+                    "grid grid-cols-2 gap-6 md:grid-cols-3",
                     GRADE_DE_PRODUTOS_NO_COMPUTADOR,
                     "lg:gap-x-6 lg:gap-y-10",
                   )}

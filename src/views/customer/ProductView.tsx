@@ -1918,8 +1918,12 @@ export const ProductView = React.memo(function ProductView({
                 animate={{ y: 0, opacity: 1 }}
                 exit={{ y: 100, opacity: 0 }}
                 transition={{ type: "spring", stiffness: 260, damping: 24 }}
+                // De 768 a 1023 px a barra se centraliza por `mx-auto`, SEM
+                // transform: este elemento anima `y`, o framer-motion escreve
+                // `transform` inline e isso apagaria qualquer `-translate-x-1/2`
+                // (medido: a barra saía 64 px pela direita em 768 px).
                 className={cn(
-                  "bottom-docked-navigation fixed inset-x-4 z-50 mb-3 flex flex-wrap items-center gap-2 rounded-[40px] border border-border bg-background p-3 shadow-[0_10px_28px_rgba(11,11,12,0.15)] md:left-1/2 md:right-auto md:w-[calc(100%-32px)] md:max-w-md md:-translate-x-1/2",
+                  "bottom-docked-navigation fixed inset-x-4 z-50 mb-3 flex flex-wrap items-center gap-2 rounded-[40px] border border-border bg-background p-3 shadow-[0_10px_28px_rgba(11,11,12,0.15)] md:inset-x-0 md:mx-auto md:w-[calc(100%-32px)] md:max-w-md",
                   "lg:hidden",
                 )}
               >

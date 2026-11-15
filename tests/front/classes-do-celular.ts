@@ -18,3 +18,19 @@ export function classesDoCelular(className: string): string {
     .filter((token) => !PREFIXOS_DE_COMPUTADOR.has(token.split(":")[0]))
     .join(" ");
 }
+
+// P35 (tablet, 768–1023 px): `md:grid-cols-3` foi ACRESCENTADO de propósito às
+// grades de produtos da Busca e dos Favoritos (defeito medido: 2 colunas
+// deixavam o cartão com ~482x602). Os testes que congelam "tudo que vale abaixo
+// de 1024 px" por assinatura continuam valendo com as assinaturas antigas se
+// esse único token deliberado sair da conta; qualquer outra classe que mude,
+// em qualquer largura abaixo do computador, ainda quebra a assinatura. Quem
+// cobre o token novo é `tablet-grades-da-busca-e-favoritos.test.tsx`.
+const GRADE_DE_TABLET_ACRESCENTADA = "md:grid-cols-3";
+
+export function classesDoCelularSemGradeDeTablet(className: string): string {
+  return classesDoCelular(className)
+    .split(/\s+/)
+    .filter((token) => token !== GRADE_DE_TABLET_ACRESCENTADA)
+    .join(" ");
+}
