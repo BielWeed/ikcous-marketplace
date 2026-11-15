@@ -1067,6 +1067,7 @@ export function CheckoutViewDaConta({
     user,
     profile: perfilQueOAuthEntregou,
     loading: authLoading,
+    updateProfile,
   } = useAuth();
   // O PERFIL SÓ VALE SE FOR DA CONTA QUE ESTÁ LOGADA. O AuthContext entrega
   // `user` e `profile` em estados separados: na troca de conta, na saída com
@@ -1079,6 +1080,10 @@ export function CheckoutViewDaConta({
     user && perfilQueOAuthEntregou?.id === user.id
       ? perfilQueOAuthEntregou
       : null;
+  const perfilAtualRef = useRef(perfilDaConta);
+  useEffect(() => {
+    perfilAtualRef.current = perfilDaConta;
+  }, [perfilDaConta]);
   // CHECKOUT-070 (#197): sinal de rede para o cancelamento do pagamento
   // falho — mesmo hook já usado por ShippingCalculator, sem mecanismo novo.
   const isOffline = useOnlineStatus();
@@ -4981,6 +4986,32 @@ export function CheckoutViewDaConta({
       if (!montadoRef.current) return;
       // Pedido confirmado: a próxima compra terá outra chave e outro rascunho.
       limparCompraCriada();
+
+      // Conveniência pós-pedido, nunca condição do pagamento. Perfil ausente
+      // não é perfil vazio; relê a ref para não substituir número que chegou
+      // enquanto a criação esperava. A RPC preserva os demais campos via COALESCE.
+      const perfilAtual = perfilAtualRef.current;
+      const whatsappDoPedido = (orderData.customer as Customer).whatsapp;
+      if (
+        !pedido.semConta &&
+        pedido.contaEsperada &&
+        perfilAtual?.id === pedido.contaEsperada &&
+        !perfilAtual.whatsapp?.trim() &&
+        celularBrasileiroCompleto(whatsappDoPedido)
+      ) {
+        void Promise.resolve()
+          .then(() =>
+            updateProfile(
+              { whatsapp: whatsappDoPedido },
+              { silencioso: true, contaEsperada: pedido.contaEsperada! },
+            ),
+          )
+          .catch(() =>
+            console.error(
+              "[Checkout] Não foi possível salvar o WhatsApp no perfil.",
+            ),
+          );
+      }
 
       // O CPF MORA NA CONTA (23/09/2026): pedido JÁ criado com sucesso —
       // isto é conveniência para a PRÓXIMA compra, nunca condição deste
