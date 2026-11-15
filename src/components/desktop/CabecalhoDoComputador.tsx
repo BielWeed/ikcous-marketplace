@@ -120,7 +120,7 @@ export function CabecalhoDoComputador({
                 usarImagemOriginal(e.currentTarget, config.logoUrl ?? "")
               }
               alt=""
-              className="max-h-10 max-w-20 object-contain"
+              className="max-h-10 max-w-20 shrink-0 object-contain"
             />
           )}
           <span className="line-clamp-2 text-sm font-bold leading-tight">
