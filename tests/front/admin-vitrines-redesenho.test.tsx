@@ -230,7 +230,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("layout da vitrine de Ofertas", () => {
+describe("layout de todas as vitrines", () => {
   const ofertas: Secao = {
     id: "offers",
     title: "Ofertas Imperdíveis",
@@ -238,12 +238,15 @@ describe("layout da vitrine de Ofertas", () => {
     maxItems: 6,
   };
   const opcao = (nome: string) =>
-    porRotulo(`Layout ${nome}`) as HTMLButtonElement;
+    porRotulo(
+      `Layout ${nome}`,
+      cartaoDe("Ofertas Imperdíveis"),
+    ) as HTMLButtonElement;
 
-  it("só Ofertas mostra as quatro opções e grava a lista inteira pelo caminho confirmado", async () => {
+  it("todas mostram as quatro opções e Ofertas grava pelo caminho confirmado", async () => {
     configDaLoja.homeSections = [secaoLancamentos, ofertas, secaoKits];
     await montar();
-    expect(document.querySelectorAll("[aria-pressed]")).toHaveLength(4);
+    expect(document.querySelectorAll("[aria-pressed]")).toHaveLength(12);
     expect(opcao("Lateral em duas fileiras").getAttribute("aria-pressed")).toBe(
       "false",
     );
@@ -265,6 +268,95 @@ describe("layout da vitrine de Ofertas", () => {
     expect(opcao("Compacto").getAttribute("aria-pressed")).toBe("true");
     await clicar(opcao("Padrão"));
     expect(ultimaGravacao().homeSections[1].layout).toBe("padrao");
+  });
+
+  it("cada cartão ligado ou desligado tem quatro opções; Padrão representa carrossel fora de Ofertas", async () => {
+    configDaLoja.homeSections = [
+      secaoLancamentos,
+      ofertas,
+      secaoKits,
+      secaoDestaques,
+      {
+        ...secaoKits,
+        id: "custom_off",
+        title: "Personalizada oculta",
+        active: false,
+      },
+    ];
+    await montar();
+    const iconePadrao = (cartao: HTMLElement) =>
+      porRotulo("Layout Padrão", cartao)
+        .querySelector("path")
+        ?.getAttribute("d");
+    for (const cartao of cartoes()) {
+      const opcoes =
+        cartao.querySelectorAll<HTMLButtonElement>("[aria-pressed]");
+      expect(opcoes).toHaveLength(4);
+      expect(
+        porRotulo("Layout Padrão", cartao).getAttribute("aria-pressed"),
+      ).toBe("true");
+      for (const botao of opcoes) {
+        expect(botao.className).toContain("h-11");
+        expect(botao.disabled).toBe(false);
+      }
+      if (cartao.dataset.vitrineId !== "offers") {
+        expect(iconePadrao(cartao)).toBeTruthy();
+        expect(iconePadrao(cartao)).not.toBe(
+          iconePadrao(cartaoDe("Ofertas Imperdíveis")),
+        );
+        expect(iconePadrao(cartao)).toBe(
+          iconePadrao(cartaoDe("Últimos Lançamentos")),
+        );
+      }
+    }
+  });
+
+  it.each(["compacto", "lateral", "lateral-duplo"] as const)(
+    "grava %s só em Lançamentos e preserva todos os outros campos e seções",
+    async (layout) => {
+      const lancamentos = {
+        ...secaoLancamentos,
+        type: "new",
+        active: false,
+        productIds: ["p2", "p1"],
+        maxItems: 10,
+        layout: "padrao" as const,
+      };
+      configDaLoja.homeSections = [
+        ofertas,
+        lancamentos,
+        secaoKits,
+        secaoDestaques,
+      ];
+      await montar();
+      const nomes = new Map([
+        ["compacto", "Compacto"],
+        ["lateral", "Lateral"],
+        ["lateral-duplo", "Lateral em duas fileiras"],
+      ]);
+      await clicar(
+        porRotulo(`Layout ${nomes.get(layout)}`, cartaoDe(lancamentos.title)),
+      );
+      expect(ultimaGravacao().homeSections).toEqual([
+        ofertas,
+        { ...lancamentos, layout },
+        secaoKits,
+        secaoDestaques,
+      ]);
+      expect(painel()).toBeNull();
+    },
+  );
+
+  it("valor desconhecido fora de Ofertas marca somente Padrão", async () => {
+    configDaLoja.homeSections = [
+      { ...secaoKits, layout: "desconhecido" as "padrao" },
+    ];
+    await montar();
+    const cartao = cartaoDe(secaoKits.title);
+    expect(
+      porRotulo("Layout Padrão", cartao).getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(cartao.querySelectorAll('[aria-pressed="true"]')).toHaveLength(1);
   });
 
   it("escolher Lateral grava o valor lateral; valor desconhecido da config aparece como Padrão", async () => {
@@ -336,7 +428,12 @@ describe("layout da vitrine de Ofertas", () => {
   });
 
   it("restaurar avisa que volta ao Padrão e remove o layout compacto", async () => {
-    configDaLoja.homeSections = [{ ...ofertas, layout: "compacto" }];
+    configDaLoja.homeSections = [
+      { ...ofertas, layout: "compacto" },
+      { ...secaoLancamentos, layout: "lateral" },
+      { ...secaoDestaques, layout: "lateral-duplo" },
+      { ...secaoKits, layout: "compacto" },
+    ];
     await montar();
     await abrirMenuMaisAcoes();
     await clicar(
@@ -344,13 +441,16 @@ describe("layout da vitrine de Ofertas", () => {
         document.querySelectorAll<HTMLElement>('[role="menuitem"]'),
       ).find((el) => el.textContent?.includes("Restaurar padrão"))!,
     );
-    expect(confirmacao()?.textContent).toContain(
-      "layout de Ofertas volta a Padrão",
-    );
+    expect(confirmacao()?.textContent).toContain("layouts voltam a Padrão");
     await clicar(botaoComTexto("Restaurar", confirmacao()!));
+    expect(ultimaGravacao().homeSections.map((s) => s.id)).toEqual([
+      "new_arrivals",
+      "offers",
+      "bestsellers",
+    ]);
     expect(
-      ultimaGravacao().homeSections.find((s) => s.id === "offers")?.layout,
-    ).toBeUndefined();
+      ultimaGravacao().homeSections.every((s) => s.layout === undefined),
+    ).toBe(true);
   });
 });
 
