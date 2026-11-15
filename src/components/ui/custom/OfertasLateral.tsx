@@ -1,6 +1,7 @@
 import { LazyImage } from "@/components/LazyImage";
 import { BotaoDeFavorito } from "@/components/ui/custom/BotaoDeFavorito";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
+import { useTelaDeComputador } from "@/hooks/useTelaDeComputador";
 import { CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO } from "@/lib/cor-do-preco-promocional";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product } from "@/types";
@@ -12,6 +13,7 @@ import {
   ordenarOfertas,
   useAcoesDaOferta,
 } from "./PremiumOffers";
+import { SetasDaFaixaDeOfertas } from "./SetasDaFaixaDeOfertas";
 import {
   ALTURA_CARTAO_LATERAL,
   ALTURA_SECAO_LATERAL,
@@ -35,6 +37,7 @@ export default function OfertasLateral({
   const ofertas = ordenarOfertas(products, ordemDaLojista, vitrineDeOfertas);
   const rola = ofertas.length > 1;
   const [pagina, setPagina] = useState(0);
+  const computador = useTelaDeComputador();
   const [ref, api] = useEmblaCarousel({
     align: "start",
     containScroll: "trimSnaps",
@@ -59,7 +62,13 @@ export default function OfertasLateral({
       style={{ minHeight: ALTURA_SECAO_LATERAL }}
       className={cn("relative bg-white py-4", className)}
     >
-      <div className="mb-5 flex min-h-6 items-center justify-between gap-3 px-5 lg:px-0">
+      <div
+        className={cn(
+          "mb-5 flex min-h-6 items-center justify-between gap-3 px-5 lg:px-0",
+          // Reserva o canto das setas (só no computador) para o título não passar por baixo delas.
+          computador && rola && "lg:pr-28",
+        )}
+      >
         <h2 className="min-w-0 break-words text-xl font-extrabold leading-6 tracking-tight text-zinc-950">
           {title}
         </h2>
@@ -79,12 +88,7 @@ export default function OfertasLateral({
           !rola && "mr-3 min-[360px]:mr-5",
         )}
       >
-        <div
-          className={cn(
-            "flex gap-2.5 py-1",
-            ofertas.length <= 2 && "lg:justify-center",
-          )}
-        >
+        <div className="flex gap-2.5 py-1">
           {ofertas.map(({ product, discount }) => (
             <CartaoOfertaLateral
               key={product.id}
@@ -116,6 +120,10 @@ export default function OfertasLateral({
             />
           ))}
       </div>
+      <SetasDaFaixaDeOfertas
+        api={api}
+        itens={vitrineDeOfertas ? "ofertas" : "produtos"}
+      />
     </section>
   );
 }

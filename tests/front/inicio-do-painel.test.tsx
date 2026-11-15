@@ -402,7 +402,7 @@ describe("Início do painel", () => {
       "inicio-checklist-titulo",
     ]);
     expect(
-      hospedeiro.querySelector(".lg\\:grid-cols-3")?.children,
+      hospedeiro.querySelector(".xl\\:grid-cols-3")?.children,
     ).toHaveLength(3);
   });
 

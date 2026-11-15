@@ -90,6 +90,21 @@ describe("download do catálogo pela porta já usada no painel", () => {
     vi.advanceTimersByTime(30_000);
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:arquivo-de-teste");
   });
+  it("o XLSX recebe o nome cru e o CSV de reserva recebe o apóstrofo", async () => {
+    rpc.mockReturnValue(
+      resposta({ data: [{ ...linha("p1"), nome: "=1+1" }], total_count: 1 }),
+    );
+    const gerar = vi.spyOn(planilha, "gerarXlsx");
+    expect(await exportarProdutosPlanilha(opcoes)).toBe("xlsx");
+    const linhas = gerar.mock.calls[0][0];
+    expect(linhas[1][linhas[0].indexOf("Nome")]).toBe("=1+1");
+    gerar.mockImplementationOnce(() => {
+      throw new Error("não foi possível gerar");
+    });
+    expect(await exportarProdutosPlanilha(opcoes)).toBe("csv");
+    const reserva = vi.mocked(URL.createObjectURL).mock.calls[1][0] as Blob;
+    expect(await reserva.text()).toContain(`"'=1+1"`);
+  });
   it("falha do gerador baixa CSV automaticamente, com extensão e MIME próprios", async () => {
     rpc.mockReturnValue(resposta({ data: [linha("p1")], total_count: 1 }));
     vi.spyOn(planilha, "gerarXlsx").mockImplementationOnce(() => {

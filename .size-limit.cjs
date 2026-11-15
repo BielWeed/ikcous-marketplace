@@ -347,7 +347,8 @@ module.exports = [
     // 13/11/2026 (1.5.181): 534 -> 538 kB (a etiqueta gerada em outro aparelho aparece na ficha: o painel mediu 534,003 kB no CI, 3 B acima do teto; subo 4 kB, o mesmo passo de sempre). Regra do dono: o teto sobe.
     // 15/11/2026: XLSX mínimo sem biblioteca, só no clique. Painel 539900 B,
     // 1900 B acima de 538 kB; um degrau de 4 kB autorizado no brief do dono.
-    limit: "542 kB",
+    // 15/11/2026 (1.5.192): 542 -> 546 kB (planilha com datas do Excel e ajustes de classes de PC no painel; o painel mediu 542,08 kB, 84 B acima do teto; subo 4 kB, o mesmo passo de sempre). Regra do dono: o teto sobe.
+    limit: "546 kB",
     webpack: false,
   },
   { path: `${output}/assets/*.css`, limit: "100 kB", webpack: false },

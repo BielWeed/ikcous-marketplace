@@ -233,7 +233,7 @@ export function ShippingProgress({
             Atinja a Meta
           </h4>
 
-          <div className="no-scrollbar -mx-4 flex gap-3 overflow-x-auto scroll-smooth px-4 pb-1">
+          <div className="no-scrollbar -mx-4 flex gap-3 overflow-x-auto scroll-smooth px-4 pb-1 lg:flex-wrap lg:overflow-x-visible">
             {freeShippingProducts.map((p: Product) => {
               // Rede de segurança: a lista já vem filtrada em
               // getFreeShippingEligibleProducts (useProducts.ts), mas o

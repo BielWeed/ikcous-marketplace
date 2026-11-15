@@ -278,8 +278,21 @@ export function CanaisDoCrm({
   const falha = !esqueleto && !visao && (!!erro || offline);
   const totalFormas =
     visao?.formas.reduce((soma, f) => soma + f.receita, 0) ?? 0;
+  const semVendasNoPeriodo =
+    !!visao && totalPedidos <= 0 && totalReceita <= 0 && totalFormas <= 0;
   return (
-    <div className="space-y-4">
+    <div
+      className={cn(
+        "space-y-4",
+        // Computador: "Cada canal" e "Formas de pagamento" lado a lado; resumo
+        // e avisos em largura inteira. Com o estado vazio no meio a grade
+        // deixaria meia linha sozinha, então ali segue empilhado. Os seletores
+        // apontam para os dois blocos: o resumo também é <section>.
+        !falha &&
+          !semVendasNoPeriodo &&
+          "xl:grid xl:grid-cols-2 xl:items-start xl:gap-6 xl:space-y-0 xl:[&>*]:col-span-2 xl:[&>*]:min-w-0 xl:[&>section[aria-label^=Cada]]:col-span-1 xl:[&>section[aria-labelledby=crm-formas-titulo]]:col-span-1",
+      )}
+    >
       {!carregando && erro && visao && !offline && (
         <div
           role="alert"
@@ -397,24 +410,21 @@ export function CanaisDoCrm({
               </ul>
             )}
           </section>
-          {visao &&
-            totalPedidos <= 0 &&
-            totalReceita <= 0 &&
-            totalFormas <= 0 && (
-              <EstadoVazioDoCrm
-                titulo="Nenhuma venda paga neste período"
-                texto="Troque o período no topo ou registre uma venda do balcão."
-                acao={
-                  <button
-                    type="button"
-                    onClick={() => onNavigate("admin-pdv")}
-                    className="min-h-11 rounded-xl bg-foreground px-4 text-xs font-bold text-background"
-                  >
-                    Vender no balcão
-                  </button>
-                }
-              />
-            )}
+          {semVendasNoPeriodo && (
+            <EstadoVazioDoCrm
+              titulo="Nenhuma venda paga neste período"
+              texto="Troque o período no topo ou registre uma venda do balcão."
+              acao={
+                <button
+                  type="button"
+                  onClick={() => onNavigate("admin-pdv")}
+                  className="min-h-11 rounded-xl bg-foreground px-4 text-xs font-bold text-background"
+                >
+                  Vender no balcão
+                </button>
+              }
+            />
+          )}
           <CartaoDeFormas formas={visao?.formas ?? []} carregando={esqueleto} />
         </>
       )}

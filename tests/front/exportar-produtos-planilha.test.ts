@@ -113,6 +113,37 @@ describe("CSV para Excel em português", () => {
   });
 });
 
+describe("proteção contra fórmula depende do formato", () => {
+  it.each(["=1+1", "+55 11 99999", "-Camisa", "@SUM(A1)", " =x", "\t=x"])(
+    "texto %j: CSV leva apóstrofo, XLSX leva o dado cru",
+    (texto) => {
+      const p = produto({
+        name: texto,
+        description: texto,
+        variants: [variante({ sku: texto })],
+      });
+      const lido = (formato?: "csv" | "xlsx") => {
+        const linhas = linhasDosProdutos([p], true, formato);
+        return Object.fromEntries(
+          linhas[0].map((t, i) => [t, linhas[1].at(i)]),
+        );
+      };
+      for (const formato of [undefined, "csv"] as const) {
+        expect(lido(formato).Nome, String(formato)).toBe(`'${texto}`);
+        expect(lido(formato).Descrição, String(formato)).toBe(`'${texto}`);
+        expect(lido(formato)["SKU da variante"], String(formato)).toBe(
+          `'${texto}`,
+        );
+      }
+      expect(lido("xlsx").Nome).toBe(texto);
+      expect(lido("xlsx").Descrição).toBe(texto);
+      expect(lido("xlsx")["SKU da variante"]).toBe(texto);
+      // o arquivo CSV de reserva continua protegido.
+      expect(produtosEmCsv([p], true)).toContain(`"'${texto}"`);
+    },
+  );
+});
+
 describe("planilha de produtos", () => {
   it("produto sem foto vindo do mapeador não exporta o placeholder como foto real", () => {
     const p = mapProductFromDB({

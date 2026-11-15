@@ -1076,7 +1076,10 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                 }}
                 aria-label={`${review.merchantReply ? "Editar resposta" : "Responder"} a ${review.customerName}`}
                 onClick={() => abrirResposta(review.id, review.merchantReply)}
-                className={cn(BOTAO_NEUTRO, "min-w-0 flex-1")}
+                className={cn(
+                  BOTAO_NEUTRO,
+                  "min-w-0 flex-1 lg:min-w-48 lg:flex-none",
+                )}
               >
                 <MessageSquare aria-hidden="true" className="size-4" />
                 {review.merchantReply ? "Editar resposta" : "Responder"}
@@ -1376,7 +1379,9 @@ export const AdminReviewsView = memo(function AdminReviewsView({
         ) : adminReviews.length === 0 ? (
           !erroDaListagemAdmin && renderEmpty()
         ) : (
-          <ul className="space-y-3">{adminReviews.map(renderReview)}</ul>
+          <ul className="space-y-3 xl:grid xl:grid-cols-2 xl:items-start xl:gap-6 xl:space-y-0 xl:[&>li:last-child:nth-child(odd)]:col-span-2">
+            {adminReviews.map(renderReview)}
+          </ul>
         )}
 
         {totalPages > 1 && (

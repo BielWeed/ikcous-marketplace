@@ -1221,7 +1221,7 @@ function FormularioDoCupom({
               >
                 Validade (Opcional)
               </Label>
-              <div className="relative">
+              <div className="relative lg:max-w-sm">
                 <Calendar
                   aria-hidden="true"
                   className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-sky-300"

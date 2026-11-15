@@ -2526,7 +2526,7 @@ export const AdminBannersView = memo(function AdminBannersView({
               </div>
               <Input
                 id="banner-search-input"
-                className="mt-3 min-h-11 border-admin-border bg-admin-bg text-white"
+                className="mt-3 min-h-11 border-admin-border bg-admin-bg text-white lg:max-w-xl"
                 placeholder="Buscar campanhas..."
                 value={searchQueryList}
                 onChange={(e) => setSearchQueryList(e.target.value)}
@@ -2536,7 +2536,7 @@ export const AdminBannersView = memo(function AdminBannersView({
               </Label>
               <select
                 id="banner-status-filter"
-                className="mt-1 min-h-11 w-full rounded-xl border border-admin-border bg-admin-bg px-3 text-white"
+                className="mt-1 min-h-11 w-full rounded-xl border border-admin-border bg-admin-bg px-3 text-white lg:max-w-sm"
                 value={statusFilter}
                 onChange={(e) =>
                   setStatusFilter(e.target.value as typeof statusFilter)
@@ -2648,7 +2648,7 @@ export const AdminBannersView = memo(function AdminBannersView({
             onInputCapture={() => {
               revisaoDaDigitacao.current += 1;
             }}
-            className="space-y-6"
+            className="space-y-6 lg:mx-auto lg:w-full lg:max-w-2xl"
           >
             {/* Sem seta de voltar aqui: o "Voltar" da barra superior do painel
                 (backOverride, mais abaixo) é o único e já fecha este editor,

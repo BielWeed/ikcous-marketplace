@@ -4365,7 +4365,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           aponta para uma delas em vez de enviar arquivo novo.
                         </p>
                       ) : (
-                        <div className="custom-scrollbar-hidden flex w-full snap-x gap-3 overflow-x-auto p-1">
+                        <div className="custom-scrollbar-hidden flex w-full snap-x gap-3 overflow-x-auto p-1 lg:snap-none lg:flex-wrap lg:overflow-x-visible">
                           {/* Imagem gravada na variante que não pertence mais
                               ao produto (foi removida depois): segue visível
                               para poder ser mantida ou trocada. */}

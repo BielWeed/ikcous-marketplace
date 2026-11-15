@@ -264,7 +264,7 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
           </GrupoDeOpcoes>
 
           <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-            <div className="flex items-center gap-1.5 rounded-xl border border-admin-border bg-admin-surface px-4 py-2">
+            <div className="flex items-center gap-1.5 rounded-xl border border-admin-border bg-admin-surface px-4 py-2 lg:focus-within:ring-2 lg:focus-within:ring-sky-300">
               {tipoDesconto === "fixo" && (
                 <span className="text-xs font-semibold text-zinc-500">R$</span>
               )}
@@ -351,7 +351,7 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
       {/* Mínimo — "acima de X" obrigatório, mínimo do desconto opcional. */}
       {mostraMinimo && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-admin-border pb-1 pt-4 duration-200 animate-in fade-in">
-          <div className="flex items-center gap-1.5 rounded-xl border border-admin-border bg-admin-surface px-4 py-2">
+          <div className="flex items-center gap-1.5 rounded-xl border border-admin-border bg-admin-surface px-4 py-2 lg:focus-within:ring-2 lg:focus-within:ring-sky-300">
             <span className="text-xs font-semibold text-zinc-500">R$</span>
             <input
               aria-label={ehDesconto ? "Pedido mínimo" : "A partir de"}

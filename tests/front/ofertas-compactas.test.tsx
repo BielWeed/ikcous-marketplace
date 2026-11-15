@@ -164,7 +164,7 @@ describe("Ofertas Compactas", () => {
   });
 
   it.each([0, 1, 2, 3, 4, 5])(
-    "%i ofertas: vazio some, até quatro centralizam no computador",
+    "%i ofertas: vazio some, e poucas ofertas começam alinhadas ao título (sem centralizar)",
     async (quantidade) => {
       await montar(
         Array.from({ length: quantidade }, (_, i) => produto(String(i))),
@@ -174,9 +174,34 @@ describe("Ofertas Compactas", () => {
         expect(secao).toBeNull();
       } else {
         expect(cartoes()).toHaveLength(quantidade);
-        expect(
-          cartoes()[0]?.parentElement?.classList.contains("lg:justify-center"),
-        ).toBe(quantidade <= 4);
+        // Celular intacto: a fileira mantém exatamente as classes de antes.
+        // No computador, nada centraliza os cartões: o primeiro começa na
+        // mesma margem do título (decisão do sócio, 15/11/2026).
+        expect(cartoes()[0]?.parentElement?.className).toBe(
+          "flex gap-2.5 py-1",
+        );
+      }
+    },
+  );
+
+  // Os dois layouts laterais tiveram o `lg:justify-center` tirado da fileira
+  // pelo mesmo motivo do Compacto: a fileira é o pai do cartão (Lateral) ou da
+  // coluna de cartões (Lateral em duas fileiras) e fica byte a byte como no
+  // celular; nada centraliza no computador.
+  it.each([
+    ["lateral", "[data-oferta-lateral]"],
+    ["lateral-duplo", "[data-coluna-ofertas]"],
+  ])(
+    "%s: a fileira não centraliza no computador (classe fixa do celular)",
+    async (layout, filho) => {
+      await montar(
+        Array.from({ length: 3 }, (_, i) => produto(String(i))),
+        layout,
+      );
+      const itens = host.querySelectorAll<HTMLElement>(filho);
+      expect(itens.length).toBeGreaterThan(0);
+      for (const item of itens) {
+        expect(item.parentElement?.className).toBe("flex gap-2.5 py-1");
       }
     },
   );

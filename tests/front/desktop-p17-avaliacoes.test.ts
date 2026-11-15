@@ -246,6 +246,8 @@ describe("Avaliações no computador — P17", () => {
         classe.includes("grid"),
       ),
     ).toBe(false);
-    expect(fonte).toContain('<ul className="space-y-3">');
+    // P47: a lista ganhou as duas colunas de 1280 (acrescentadas depois da
+    // cópia do celular, `space-y-3`); ela continua fora da grade dos filtros.
+    expect(fonte).toContain('<ul className="space-y-3 xl:grid ');
   });
 });

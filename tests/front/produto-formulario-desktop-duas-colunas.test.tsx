@@ -556,6 +556,12 @@ const TOKENS_LG_DA_BASE = [
   "lg:col-span-8",
   "lg:col-span-4",
   "lg:pb-12",
+  // P57 (1.5.192): a faixa de fotos da variação passa a quebrar linha no
+  // computador. É outro elemento, fora do bloco de duas colunas; os tokens de
+  // cima seguem congelados.
+  "lg:snap-none",
+  "lg:flex-wrap",
+  "lg:overflow-x-visible",
 ];
 
 function literaisDoBloco(fonte: string) {

@@ -166,10 +166,15 @@ describe("P16 — perguntas no computador, só classes", () => {
     // O resumo continua sendo uma única section mesmo ao expandir seus cartões.
   });
 
-  it("mantém perguntas de altura variável em uma coluna e ações sem corte no PC", () => {
+  it("mantém as perguntas em uma coluna até 1279 (duas só em 1280, P47) e ações sem corte no PC", () => {
     const lista = classeCom("space-y-3 transition-opacity");
     expect(lista).toContain("lg:space-y-4");
-    expect(lista.some((c) => /grid|columns-/.test(c))).toBe(false);
+    // Em 1024 o painel tem ~720 px: duas colunas dariam ~358 px. A divisão é
+    // do `xl:` (P47, `items-start` para a altura variável não esticar o
+    // cartão); nenhuma classe de grade ou colunas vale a partir de `lg:`.
+    expect(lista.some((c) => /^lg:.*(grid|columns-)/.test(c))).toBe(false);
+    expect(lista).toContain("xl:grid-cols-2");
+    expect(lista).toContain("xl:items-start");
     const cartao = classeCom(
       "rounded-2xl border border-solid border-admin-border bg-admin-surface p-3.5",
     );

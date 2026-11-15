@@ -164,7 +164,7 @@ export function ProductQA({
   };
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
+    <div className="mx-auto max-w-2xl space-y-6 lg:mx-0">
       {/* Header */}
       <div className="flex flex-col gap-1">
         <h2
@@ -241,7 +241,7 @@ export function ProductQA({
           </p>
           <button
             onClick={handleNavigateToAuth}
-            className="rounded-full bg-primary px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-primary-foreground shadow-sm transition-all hover:opacity-90 active:scale-95"
+            className="rounded-full bg-primary px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-primary-foreground shadow-sm transition-all hover:opacity-90 active:scale-95 md:inline-flex md:min-h-10 md:items-center md:justify-center"
           >
             Entrar na Conta
           </button>
