@@ -37,6 +37,7 @@ import { fileirasDaFaixa } from "./ofertas-lateral-duplo-altura";
 
 export interface PremiumOffersProps {
   layout?: LayoutDeOfertas;
+  className?: string;
   products: Product[];
   favorites: string[];
   onToggleFavorite: (product: Product) => void;
@@ -47,6 +48,8 @@ export interface PremiumOffersProps {
   title?: string;
   /** Vitrine escolhida à mão: mantém a ordem da lojista, sem reordenar por desconto. */
   ordemDaLojista?: boolean;
+  /** Fora de Ofertas, mantém a sequência recebida e usa rótulos neutros. */
+  vitrineDeOfertas?: boolean;
 }
 
 const OfertasCompactas = React.lazy(() => import("./OfertasCompactas"));
@@ -56,15 +59,19 @@ const OfertasLateralDuplo = React.lazy(() => import("./OfertasLateralDuplo"));
 export const PremiumOffers = React.memo(function PremiumOffers(
   props: PremiumOffersProps,
 ) {
+  const testId =
+    props.vitrineDeOfertas === false
+      ? "esqueleto-vitrine"
+      : "esqueleto-ofertas";
   if (props.layout === "compacto")
     return (
-      <React.Suspense fallback={<OfertasCompactasEsqueleto />}>
+      <React.Suspense fallback={<OfertasCompactasEsqueleto testId={testId} />}>
         <OfertasCompactas {...props} />
       </React.Suspense>
     );
   if (props.layout === "lateral")
     return (
-      <React.Suspense fallback={<OfertasLateralEsqueleto />}>
+      <React.Suspense fallback={<OfertasLateralEsqueleto testId={testId} />}>
         <OfertasLateral {...props} />
       </React.Suspense>
     );
@@ -74,6 +81,7 @@ export const PremiumOffers = React.memo(function PremiumOffers(
       <React.Suspense
         fallback={
           <OfertasLateralDuploEsqueleto
+            testId={testId}
             fileiras={fileirasDaFaixa(props.products.length)}
           />
         }
@@ -344,7 +352,11 @@ const PremiumOffersPadrao = React.memo(function PremiumOffersPadrao({
 /* ==========================================================================
    SUB-COMPONENT: HEROOFFERCARD
    ========================================================================== */
-export function ordenarOfertas(products: Product[], ordemDaLojista = false) {
+export function ordenarOfertas(
+  products: Product[],
+  ordemDaLojista = false,
+  vitrineDeOfertas = true,
+) {
   // Determine the Hero Deal: product with the highest percentage discount
   // UI-191 (G3): o desconto sai do preço de VITRINE (o menor entre as opções à
   // venda), não do preço-base: uma variação esgotada ou com preço próprio não
@@ -353,6 +365,9 @@ export function ordenarOfertas(products: Product[], ordemDaLojista = false) {
     product: p,
     discount: precoDeVitrine(p).desconto,
   }));
+
+  // Lançamentos/Destaques/curadas já chegam na ordem certa: nem o estoque pode trocá-la.
+  if (!vitrineDeOfertas) return offerItems;
 
   // Disponível ANTES de esgotado (a Home já entrega assim, e a faixa não pode
   // desfazer: uma oferta esgotada com desconto maior abriria a faixa antes

@@ -1,4 +1,4 @@
-/** Desenhos da faixa "Ofertas" que a lojista pode escolher no painel. */
+/** Desenhos que a lojista pode escolher para cada vitrine da home. */
 export type LayoutDeOfertas =
   | "padrao"
   | "compacto"
@@ -13,3 +13,7 @@ export function normalizarLayoutDeOfertas(valor: unknown): LayoutDeOfertas {
     ? valor
     : "padrao";
 }
+
+// Nomes neutros para as demais vitrines; os importadores antigos continuam válidos.
+export type LayoutDeVitrine = LayoutDeOfertas;
+export const normalizarLayoutDeVitrine = normalizarLayoutDeOfertas;

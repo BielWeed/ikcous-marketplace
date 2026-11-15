@@ -4,10 +4,12 @@ import {
 } from "./ofertas-lateral-altura";
 
 /** Mesma moldura e mesma altura reservada do Lateral: a página não pula quando as ofertas chegam. */
-export function OfertasLateralEsqueleto() {
+export function OfertasLateralEsqueleto({
+  testId = "esqueleto-ofertas",
+}: { testId?: string }) {
   return (
     <div
-      data-testid="esqueleto-ofertas"
+      data-testid={testId}
       style={{ minHeight: ALTURA_SECAO_LATERAL }}
       className="overflow-hidden py-4"
     >

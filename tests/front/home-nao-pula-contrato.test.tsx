@@ -272,7 +272,7 @@ describe("seções da home: esqueleto durante o load (87% do salto)", () => {
       /if \(secProducts\.length === 0\) \{\s*\n\s*if \(!isLoading\) return null;/,
     );
     expect(home).toContain(
-      "<SecaoOfertasEsqueleto key={section.id} layout={layoutOfertas} />",
+      "<SecaoOfertasEsqueleto\n                key={section.id}\n                layout={layout}",
     );
     expect(home).toContain("<SecaoCarrosselEsqueleto key={section.id} />");
   });
@@ -301,7 +301,7 @@ describe("seções da home: esqueleto durante o load (87% do salto)", () => {
       "if (derivadaPorFiltro && ultimaVisitaTinhaConteuto === false)",
     );
     const idxEsqueletoOfertas = home.indexOf(
-      "<SecaoOfertasEsqueleto key={section.id} layout={layoutOfertas} />",
+      "<SecaoOfertasEsqueleto\n                key={section.id}\n                layout={layout}",
     );
     expect(idxIsLoading).toBeGreaterThan(-1);
     expect(idxGuarda).toBeGreaterThan(idxIsLoading);

@@ -1,10 +1,9 @@
 /** Mesma reserva mínima e fluxo do Compacto; nomes longos podem crescer. */
-export function OfertasCompactasEsqueleto() {
+export function OfertasCompactasEsqueleto({
+  testId = "esqueleto-ofertas",
+}: { testId?: string }) {
   return (
-    <div
-      data-testid="esqueleto-ofertas"
-      className="min-h-[392px] overflow-hidden py-4"
-    >
+    <div data-testid={testId} className="min-h-[392px] overflow-hidden py-4">
       <div className="mb-5 flex min-h-6 items-center justify-between gap-3 px-5">
         <span className="h-6 w-40 animate-pulse rounded bg-[#ECECEF]" />
         <span className="size-1.5 rounded-full bg-zinc-200" />

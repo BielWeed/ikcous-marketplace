@@ -105,7 +105,7 @@ function efeitosDeRestaurar(
   efeitos.push({
     chave: "voltam-ao-original",
     texto:
-      "Nomes, quantidades, ordem e visibilidade voltam ao original; layout de Ofertas volta a Padrão",
+      "Nomes, quantidades, ordem e visibilidade voltam ao original; layouts voltam a Padrão",
   });
   return efeitos;
 }

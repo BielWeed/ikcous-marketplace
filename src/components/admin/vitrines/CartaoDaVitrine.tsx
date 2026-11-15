@@ -27,7 +27,11 @@ import {
 /** Miniaturas que cabem na linha do cartão no celular; o resto vira "+N". */
 const MINIATURAS_VISIVEIS = 5;
 
-/** Os desenhos de Ofertas, na ordem do seletor; o ícone é a miniatura (viewBox 30x20). */
+/** Padrão fora de Ofertas: cartões do carrossel, cortados nas bordas (30x20). */
+const ICONE_DO_CARROSSEL =
+  "M0 1h6v18H0M9 1h12v18H9zM24 1h6M24 1v18h6M0 4h3v8H0M12 4h6v8h-6zM27 4h3v8h-3zM0 15h3m9 0h6m9 0h3";
+
+/** Os quatro layouts, na ordem do seletor; miniaturas com viewBox 30x20. */
 const OPCOES_DE_LAYOUT: readonly {
   layout: LayoutDeOfertas;
   nome: string;
@@ -328,48 +332,51 @@ export function CartaoDaVitrine({
             </button>
           </div>
         </div>
-        {secao.id === "offers" && (
-          <div className="relative -mb-1.5 ml-7 mt-1.5 flex flex-wrap items-center gap-1 text-xs font-semibold text-zinc-300">
-            Layout
-            {OPCOES_DE_LAYOUT.map(({ layout, nome, icone }) => {
-              const marcado =
-                normalizarLayoutDeOfertas(secao.layout) === layout;
-              return (
-                <button
-                  type="button"
-                  key={layout}
-                  aria-label={`Layout ${nome}`}
-                  aria-pressed={marcado}
-                  disabled={travado}
-                  onClick={() => aoAlterarLayout(secao.id, layout)}
-                  className="h-11 disabled:opacity-50"
+        <div className="relative -mb-1.5 ml-7 mt-1.5 flex flex-wrap items-center gap-1 text-xs font-semibold text-zinc-300">
+          Layout
+          {OPCOES_DE_LAYOUT.map(({ layout, nome, icone }) => {
+            const marcado = normalizarLayoutDeOfertas(secao.layout) === layout;
+            return (
+              <button
+                type="button"
+                key={layout}
+                aria-label={`Layout ${nome}`}
+                aria-pressed={marcado}
+                disabled={travado}
+                onClick={() => aoAlterarLayout(secao.id, layout)}
+                className="h-11 disabled:opacity-50"
+              >
+                <span
+                  className={cn(
+                    "flex h-8 items-center gap-1 rounded-[10px] border px-1.5",
+                    marcado
+                      ? "border-solid border-foreground bg-admin-hover text-foreground"
+                      : "border-admin-border bg-white/5",
+                  )}
                 >
-                  <span
-                    className={cn(
-                      "flex h-8 items-center gap-1 rounded-[10px] border px-1.5",
-                      marcado
-                        ? "border-solid border-foreground bg-admin-hover text-foreground"
-                        : "border-admin-border bg-white/5",
-                    )}
+                  <svg
+                    aria-hidden="true"
+                    width="30"
+                    height="20"
+                    viewBox="0 0 30 20"
+                    fill="none"
+                    stroke="currentColor"
                   >
-                    <svg
-                      aria-hidden="true"
-                      width="30"
-                      height="20"
-                      viewBox="0 0 30 20"
-                      fill="none"
-                      stroke="currentColor"
-                    >
-                      <path d={icone} />
-                    </svg>
-                    {nome}
-                    {marcado && " ✓"}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        )}
+                    <path
+                      d={
+                        layout === "padrao" && secao.id !== "offers"
+                          ? ICONE_DO_CARROSSEL
+                          : icone
+                      }
+                    />
+                  </svg>
+                  {nome}
+                  {marcado && " ✓"}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
     </Reorder.Item>
   );

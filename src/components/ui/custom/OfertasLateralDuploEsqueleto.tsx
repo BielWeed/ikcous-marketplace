@@ -12,13 +12,14 @@ import {
  */
 export function OfertasLateralDuploEsqueleto({
   fileiras = 2,
-}: { fileiras?: FileirasDoDuplo }) {
+  testId = "esqueleto-ofertas",
+}: { fileiras?: FileirasDoDuplo; testId?: string }) {
   const umaSo = fileiras === 1;
   // Uma oferta: uma coluna na largura toda. Várias: duas colunas, a segunda aparecendo só a ponta.
   const colunas = umaSo ? [0] : [0, 1];
   return (
     <div
-      data-testid="esqueleto-ofertas"
+      data-testid={testId}
       style={{ minHeight: alturaDaSecaoDuplo(fileiras) }}
       className="overflow-hidden py-4"
     >
