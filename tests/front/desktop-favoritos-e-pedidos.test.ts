@@ -54,11 +54,11 @@ describe("Favoritos e pedidos no computador", () => {
     );
   });
 
-  it("mantém favoritos em linhas por categoria e reparte as categorias em duas colunas só no PC (P64)", () => {
+  it("mantém favoritos em linhas por categoria e dá duas colunas só no PC", () => {
     const fonte = ler(arquivos.favoritos);
     expect(fonte).toContain('layout="linha"');
     expect(fonte).toMatch(
-      /<ul id={idLista} className="lg:grid lg:grid-cols-1 lg:gap-4">/,
+      /<ul id={idLista} className="lg:grid lg:grid-cols-2 lg:gap-4">/,
     );
     // O contêiner centralizado vem UMA vez, da casca (`PaginaDoComputador`, no
     // App): Favoritos não é isento (`containerProprio`), então a tela não pode
