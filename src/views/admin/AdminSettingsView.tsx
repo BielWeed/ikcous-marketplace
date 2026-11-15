@@ -979,7 +979,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
         </button>
       </header>
 
-      <div className="mx-auto max-w-2xl space-y-3 px-5 pb-8 lg:max-w-7xl lg:px-6 2xl:grid 2xl:grid-cols-2 2xl:items-start 2xl:gap-6 2xl:space-y-0 2xl:[&>#grupo-de-ajustes-entrega]:col-span-2 2xl:[&>#grupo-de-ajustes-pagamentos]:col-span-2 2xl:[&>[data-aviso-loja-sem-dados]]:col-span-2">
+      <div className="mx-auto max-w-2xl space-y-3 px-5 pb-8 lg:max-w-7xl lg:px-6 2xl:grid 2xl:grid-cols-2 2xl:items-start 2xl:gap-6 2xl:space-y-0 2xl:[&>#grupo-de-ajustes-devolucao]:col-span-2 2xl:[&>#grupo-de-ajustes-entrega]:col-span-2 2xl:[&>#grupo-de-ajustes-ferramentas]:col-span-2 2xl:[&>#grupo-de-ajustes-pagamentos]:col-span-2 2xl:[&>[data-aviso-loja-sem-dados]]:col-span-2">
         {isOffline && (
           <div className="flex select-none items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-xs font-bold uppercase tracking-wider text-red-400 duration-300 animate-in fade-in slide-in-from-top-2 2xl:col-span-2">
             <AlertTriangle className="size-5 shrink-0 animate-pulse text-red-500" />

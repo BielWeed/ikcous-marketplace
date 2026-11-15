@@ -114,6 +114,16 @@ describe("P11 — Ajustes no computador", () => {
     // A porta de Entrega ocupa uma linha: preserva o fluxo sem buraco
     // antes de Pagamentos, sem dense/order ou mudança da ordem do DOM.
     expect(conteudo).toContain("2xl:[&>#grupo-de-ajustes-entrega]:col-span-2");
+    // Trocas e devoluções abre um formulário de ~2500 px: ao lado de
+    // Ferramentas (70 px) deixava 604 × 2513 px vazios em 1536/1920 px.
+    // Os dois ocupam a linha inteira, e os ids casam com os grupos reais.
+    for (const chave of ["devolucao", "ferramentas"]) {
+      expect(conteudo).toContain(
+        `2xl:[&>#grupo-de-ajustes-${chave}]:col-span-2`,
+      );
+      expect(fonte).toContain(`chave="${chave}"`);
+    }
+    expect(fonte).toContain("id={`grupo-de-ajustes-${chave}`}");
     for (const trecho of [
       "slide-in-from-top-2 2xl:col-span-2",
       "mt-4 animate-pulse space-y-6 2xl:col-span-2",
