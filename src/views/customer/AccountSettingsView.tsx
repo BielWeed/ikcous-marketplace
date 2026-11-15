@@ -1026,7 +1026,7 @@ export function AccountSettingsView() {
                   aria-controls={`painel-conta-${aba}`}
                   aria-selected={activeTab === aba}
                   onClick={() => setActiveTab(aba)}
-                  className={`flex h-11 flex-1 items-center justify-center rounded-[10px] text-[15px] font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-zinc-900/50 ${
+                  className={`flex h-11 flex-1 items-center justify-center rounded-[10px] text-[15px] font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-zinc-900/50 lg:flex-none ${
                     activeTab === aba
                       ? "bg-foreground text-background"
                       : "text-foreground/70 hover:text-foreground"
