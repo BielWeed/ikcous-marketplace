@@ -122,7 +122,7 @@ export function AddressFormView({ addressId, onBack }: AddressFormViewProps) {
 
   return (
     <div className="pb-customer flex min-h-full flex-col bg-background">
-      <div className="mx-auto flex w-full max-w-md flex-1 flex-col px-5 pt-5">
+      <div className="mx-auto flex w-full max-w-md flex-1 flex-col px-5 pt-5 lg:max-w-2xl lg:pb-8">
         <AddressForm
           initialData={editingAddress}
           onSubmit={handleSubmit}

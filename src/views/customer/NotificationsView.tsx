@@ -304,7 +304,7 @@ export function NotificationsView({
   return (
     <div className="pb-customer flex min-h-full flex-col bg-background">
       {/* Cabeçalho fixo: título, "marcar como lidas" e abas (Tinta) */}
-      <div className="sticky top-[-2px] z-50 border-b border-border bg-background/90 px-4 pb-3 pt-4 backdrop-blur-xl">
+      <div className="sticky top-[-2px] z-50 border-b border-border bg-background/90 px-4 pb-3 pt-4 backdrop-blur-xl lg:mx-auto lg:w-full lg:max-w-2xl">
         <div className="flex items-end justify-between gap-3">
           <div className="min-w-0">
             {counts.todas > 0 && (
@@ -374,7 +374,7 @@ export function NotificationsView({
       </div>
 
       {/* Lista */}
-      <div className="flex flex-1 flex-col px-4 pt-2">
+      <div className="flex flex-1 flex-col px-4 pt-2 lg:mx-auto lg:w-full lg:max-w-2xl">
         {/* Estado dos avisos NESTE aparelho: só aparece quando bloqueado ou
          * desligado (caça r21, achado 5). */}
         <AvisosDoAparelhoDaCliente />

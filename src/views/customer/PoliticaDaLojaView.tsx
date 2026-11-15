@@ -38,7 +38,7 @@ export function PoliticaDaLojaView({
 
   return (
     <div className="pb-customer min-h-full bg-background">
-      <div className="mx-auto max-w-md space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+      <div className="mx-auto max-w-md space-y-6 px-4 py-6 sm:px-6 sm:py-8 lg:max-w-2xl">
         <h1 className="text-2xl font-black tracking-tight text-foreground">
           {nomeDaPolitica(tipo)}
         </h1>

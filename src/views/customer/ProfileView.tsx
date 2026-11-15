@@ -534,7 +534,7 @@ export function ProfileView({
 
   return (
     <div className="pb-customer min-h-full bg-background text-foreground">
-      <div className="relative h-[120px] w-full overflow-hidden bg-muted">
+      <div className="relative h-[120px] w-full overflow-hidden bg-muted lg:rounded-3xl">
         <img
           src={profile?.cover_url || CAPA_PADRAO_URL}
           alt="Capa de Perfil"
@@ -561,10 +561,13 @@ export function ProfileView({
         variants={containerVariants}
         initial="hidden"
         animate="visible"
-        className="mx-auto max-w-md space-y-7 px-4"
+        className="mx-auto max-w-md space-y-7 px-4 lg:grid lg:max-w-none lg:grid-cols-[280px_1fr] lg:gap-8 lg:space-y-0 lg:pb-8"
       >
         {/* Cabeçalho: avatar sobreposto à capa, nome e e-mail legíveis */}
-        <motion.div variants={itemVariants} className="relative z-10 -mt-11">
+        <motion.div
+          variants={itemVariants}
+          className="relative z-10 -mt-11 lg:col-span-2"
+        >
           <div className="flex items-end gap-4">
             <button
               type="button"
@@ -645,7 +648,10 @@ export function ProfileView({
 
         {/* Pedidos em andamento: o que o cliente mais quer ver vem primeiro */}
         {activeOrders.length > 0 && (
-          <motion.section variants={itemVariants}>
+          <motion.section
+            variants={itemVariants}
+            className="lg:col-start-2 lg:min-w-0 lg:rounded-3xl lg:border lg:border-border lg:p-6"
+          >
             <div className={CABECALHO}>
               <h2 className={`${ROTULO} flex items-center gap-2`}>
                 Pedidos em andamento
@@ -786,7 +792,10 @@ export function ProfileView({
         )}
 
         {/* Meus dados: o que a conta já tem; Editar abre Segurança e conta */}
-        <motion.section variants={itemVariants}>
+        <motion.section
+          variants={itemVariants}
+          className="lg:col-start-2 lg:min-w-0 lg:rounded-3xl lg:border lg:border-border lg:p-6"
+        >
           <div className={CABECALHO}>
             <h2 className={ROTULO}>Meus dados</h2>
             <button
@@ -840,7 +849,10 @@ export function ProfileView({
         </motion.section>
 
         {/* Endereços de entrega: carregando, erro, vazio ou lista */}
-        <motion.section variants={itemVariants}>
+        <motion.section
+          variants={itemVariants}
+          className="lg:col-start-2 lg:min-w-0 lg:rounded-3xl lg:border lg:border-border lg:p-6"
+        >
           <div className={CABECALHO}>
             <h2 className={ROTULO}>Endereços de entrega</h2>
             <Button
@@ -930,7 +942,10 @@ export function ProfileView({
             ordem do dono, 14/09): logo ABAIXO de Segurança e conta, no mesmo
             cartão, visível a TODOS os usuários (não mora em isAdmin nem em
             outro ramo condicional). */}
-        <motion.section variants={itemVariants}>
+        <motion.section
+          variants={itemVariants}
+          className="lg:sticky lg:top-24 lg:col-start-1 lg:row-span-4 lg:row-start-2 lg:self-start"
+        >
           <div className={CABECALHO}>
             <h2 className={ROTULO}>Conta</h2>
           </div>
@@ -962,7 +977,10 @@ export function ProfileView({
 
         {/* Encerrar sessão — botão PRÓPRIO no fim do perfil (ordem do dono,
             14/09): a ação destrutiva fica separada das navegações. */}
-        <motion.div variants={itemVariants}>
+        <motion.div
+          variants={itemVariants}
+          className="lg:col-start-2 lg:min-w-0"
+        >
           <button
             type="button"
             onClick={() => setConfirmandoSaida(true)}

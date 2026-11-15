@@ -346,7 +346,7 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
         {/* Banner Skeleton */}
         <div className="relative h-44 w-full animate-pulse bg-zinc-100" />
 
-        <div className="relative z-10 mx-auto -mt-12 max-w-md space-y-6 px-4">
+        <div className="relative z-10 mx-auto -mt-12 max-w-md space-y-6 px-4 lg:max-w-2xl">
           {/* Header Skeleton */}
           <div className="flex flex-col items-center">
             <Skeleton className="size-24 rounded-[28px] border-[6px] border-white bg-zinc-200 shadow-premium" />
@@ -431,7 +431,7 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
   return (
     <div className="pb-customer min-h-full bg-gradient-to-b from-white to-zinc-50/50">
       {/* Header Cover Banner */}
-      <div className="group relative h-44 w-full overflow-hidden bg-zinc-100 shadow-inner">
+      <div className="group relative h-44 w-full overflow-hidden bg-zinc-100 shadow-inner lg:mx-auto lg:max-w-2xl lg:rounded-3xl">
         <img
           src={profile.cover_url || CAPA_PADRAO_URL}
           alt="Capa de Perfil"
@@ -444,7 +444,7 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
         variants={containerVariants}
         initial="hidden"
         animate="visible"
-        className="mx-auto max-w-md space-y-6 px-4"
+        className="mx-auto max-w-md space-y-6 px-4 lg:max-w-2xl"
       >
         {/* Avatar and Main Info - Overlapping Cover */}
         <motion.div
