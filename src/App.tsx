@@ -7,8 +7,8 @@ import React, {
 } from "react";
 
 import { CabecalhoCliente } from "@/components/desktop/CabecalhoCliente";
-import { CONTAINER_DO_COMPUTADOR } from "@/components/desktop/medidas";
 import { PaginaDoComputador } from "@/components/desktop/PaginaDoComputador";
+import { CONTAINER_DO_COMPUTADOR } from "@/components/desktop/medidas";
 import { AdminAreaGate } from "@/components/layouts/AdminAreaGate";
 import { TelaDeVerificacaoFalhou } from "@/components/layouts/TelaDeVerificacaoFalhou";
 import { MaintenanceView } from "@/components/pwa/MaintenanceView";
