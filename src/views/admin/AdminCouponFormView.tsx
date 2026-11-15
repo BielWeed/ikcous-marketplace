@@ -776,7 +776,7 @@ function FormularioDoCupom({
   return (
     <div className="pb-admin relative min-h-screen bg-admin-bg font-sans text-zinc-400 lg:pb-12">
       <div className="sticky top-0 z-20 bg-admin-bg/95 px-5 py-4 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-xl flex-wrap items-center justify-between gap-3 [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:normal-case [&_h1]:tracking-tight">
+        <div className="mx-auto flex max-w-xl flex-wrap items-center justify-between gap-3 lg:max-w-none [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:normal-case [&_h1]:tracking-tight">
           <AdminPageHeader
             titulo={`${isEditing ? "Editar" : "Novo"} ${NOMES_DO_PAINEL["admin-coupon-form"].toLowerCase()}`}
           />
@@ -790,7 +790,7 @@ function FormularioDoCupom({
           </button>
         </div>
       </div>
-      <div className="mx-auto max-w-xl space-y-7 px-5 py-4">
+      <div className="mx-auto max-w-xl space-y-7 px-5 py-4 lg:max-w-none">
         {isOffline && (
           <div
             role="status"
@@ -924,7 +924,7 @@ function FormularioDoCupom({
             )}
           </div>
 
-          <div className="space-y-7">
+          <div className="space-y-7 xl:grid xl:grid-cols-2 xl:items-start xl:gap-6 xl:space-y-0">
             <section
               aria-labelledby="coupon-identification"
               className="space-y-3"
@@ -1088,7 +1088,10 @@ function FormularioDoCupom({
               </div>
             </section>
 
-            <section aria-labelledby="coupon-limits" className="space-y-3">
+            <section
+              aria-labelledby="coupon-limits"
+              className="space-y-3 xl:col-span-2"
+            >
               <h2
                 id="coupon-limits"
                 className="flex items-center gap-2.5 text-lg font-bold text-zinc-50"
@@ -1186,7 +1189,7 @@ function FormularioDoCupom({
               <div
                 role="note"
                 data-testid="aviso-cupom-cobre-a-compra"
-                className="flex items-start gap-3 rounded-[20px] border border-orange-300/20 bg-orange-300/5 p-4"
+                className="flex items-start gap-3 rounded-[20px] border border-orange-300/20 bg-orange-300/5 p-4 xl:col-span-2"
               >
                 <AlertTriangle
                   aria-hidden="true"
@@ -1201,7 +1204,10 @@ function FormularioDoCupom({
             )}
 
             {/* Validity date */}
-            <section aria-labelledby="coupon-validity" className="space-y-3">
+            <section
+              aria-labelledby="coupon-validity"
+              className="space-y-3 xl:col-span-2"
+            >
               <h2
                 id="coupon-validity"
                 className="flex items-center gap-2.5 text-lg font-bold text-zinc-50"
@@ -1301,7 +1307,7 @@ function FormularioDoCupom({
             {alcanceSondado && !alcanceSuportado && (
               <p
                 role="note"
-                className="rounded-[20px] border border-sky-300/20 bg-sky-300/5 p-4 text-sm leading-relaxed text-zinc-300"
+                className="rounded-[20px] border border-sky-300/20 bg-sky-300/5 p-4 text-sm leading-relaxed text-zinc-300 xl:col-span-2"
               >
                 <strong className="block text-zinc-50">
                   Somente os campos básicos
@@ -1311,7 +1317,7 @@ function FormularioDoCupom({
               </p>
             )}
             {alcanceSuportado && (
-              <div className="sm:col-span-2">
+              <div className="sm:col-span-2 xl:col-span-2">
                 <QuemPodeUsarOCupom
                   alcance={formData.alcance ?? "codigo"}
                   onAlcance={(alcance) => {
