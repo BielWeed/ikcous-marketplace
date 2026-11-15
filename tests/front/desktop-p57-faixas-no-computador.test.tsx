@@ -12,8 +12,11 @@
 //   C) público do push: 4 cartões de 220 px = 932 px numa faixa de ~712 px;
 //   D) categorias do cabeçalho: a faixa tem `h-12` e `overflow-x-auto`, que
 //      vira `overflow-y: auto` também e CORTA o anel de foco (2 px + 2 px de
-//      afastamento = 56 px de altura precisados) 4 px acima e abaixo.
-// A correção é só de computador (`lg:`): A, B e C quebram em linhas em vez de
+//      afastamento = 56 px de altura precisados) 4 px acima e abaixo;
+//   E) modelos de campanha do push (P61, mesma classe de defeito do C, outra
+//      faixa da mesma tela): 3 pílulas lado a lado que, em coluna estreita,
+//      passam da borda e ficam sem rolagem para chegar nelas.
+// A correção é só de computador (`lg:`): A, B, C e E quebram em linhas em vez de
 // rolar; D passa o anel de foco para DENTRO do botão. Abaixo de 1024 px o
 // className de cada peça fica byte a byte o de antes.
 //
@@ -59,6 +62,8 @@ const CELULAR_PUBLICO_DO_PUSH =
   "relative -m-1 flex snap-x snap-mandatory scroll-pl-1 gap-2 overflow-x-auto p-1 pb-2 pr-6";
 const CELULAR_GRADIENTE_DO_PUSH =
   "pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-admin-bg to-transparent";
+const CELULAR_MODELOS_DO_PUSH =
+  "relative -m-1 flex gap-2 overflow-x-auto p-1 pb-2 pr-6";
 const CELULAR_CATEGORIA_DO_CABECALHO =
   "min-h-11 shrink-0 border-b-2 px-1 text-sm hover:text-foreground border-foreground font-bold border-transparent text-muted-foreground";
 
@@ -103,6 +108,22 @@ const PECAS: Peca[] = [
     fonte: FONTE_PUSH,
     celular: CELULAR_GRADIENTE_DO_PUSH,
     ancora: CELULAR_PUBLICO_DO_PUSH,
+    novas: ["lg:hidden"],
+  },
+  {
+    // Sem `snap-*` no celular, então não há `lg:snap-none` a acrescentar. O
+    // degradê é o IRMÃO logo depois da faixa dos modelos (o literal de celular
+    // dele é idêntico ao do degradê do público, por isso o achado é pelo vizinho).
+    nome: "E modelos de campanha do push",
+    fonte: FONTE_PUSH,
+    celular: CELULAR_MODELOS_DO_PUSH,
+    novas: [...FAIXA_QUEBRA_LINHA, "lg:pr-1"],
+  },
+  {
+    nome: "E degradê dos modelos de campanha do push",
+    fonte: FONTE_PUSH,
+    celular: CELULAR_GRADIENTE_DO_PUSH,
+    ancora: CELULAR_MODELOS_DO_PUSH,
     novas: ["lg:hidden"],
   },
   {
