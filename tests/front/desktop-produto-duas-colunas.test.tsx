@@ -209,6 +209,8 @@ describe("F3 — produto no computador e celular preservado", () => {
       ),
     ).toBe(true);
     expect(caixa.classList.contains("lg:h-[70vh]")).toBe(false);
+    // P52: a moldura cinza ocupa a coluna inteira; a foto segue centralizada.
+    expect(caixa.classList.contains("lg:w-full")).toBe(true);
     expect(foto.getAttribute("sizes")).toBe("(min-width: 1024px) 720px, 100vw");
     expect(
       elemento(

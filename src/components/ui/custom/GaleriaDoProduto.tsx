@@ -284,7 +284,7 @@ export function GaleriaDoProduto({
       <div
         className={cn(
           "group relative aspect-[4/3] overflow-hidden rounded-b-[2rem] bg-[#F8F9FA] sm:aspect-[4/3]",
-          "lg:aspect-square lg:max-h-[calc(100dvh-var(--header-height)-220px)] lg:rounded-3xl",
+          "lg:aspect-square lg:w-full lg:max-h-[calc(100dvh-var(--header-height)-220px)] lg:rounded-3xl",
           // Ring sutil de definição: a caixa #F8F9FA sobre página branca
           // "sumia" no desktop (achado da prévia de 29/09) -- o traço
           // quase invisível separa a galeria do fundo sem virar cartão.
