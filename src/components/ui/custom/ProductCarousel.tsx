@@ -5,6 +5,7 @@ import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { cn } from "@/lib/utils";
 import type { Product } from "@/types";
 import { haptic } from "@/utils/haptic";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import React, {
   useRef,
   useState,
@@ -84,6 +85,24 @@ export const ProductCarousel = React.memo(function ProductCarousel({
     };
   }, [products.length]);
 
+  const rolarPagina = (direcao: number) => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const reduzirMovimento = window.matchMedia?.(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    // "auto" herda o scroll-smooth do CSS; a preferência precisa vencê-lo.
+    const comportamentoAnterior = container.style.scrollBehavior;
+    if (reduzirMovimento) container.style.scrollBehavior = "auto";
+    container.scrollBy({
+      left: direcao * (container.clientWidth - 2 * 24),
+      behavior: reduzirMovimento ? "auto" : "smooth",
+    });
+    if (reduzirMovimento) {
+      container.style.scrollBehavior = comportamentoAnterior;
+    }
+  };
+
   const handleToggleFavorite = useCallback(
     (product: Product) => {
       haptic.medium();
@@ -159,6 +178,27 @@ export const ProductCarousel = React.memo(function ProductCarousel({
       </div>
 
       <div className="relative -mx-6">
+        {/* Fotos 4:5 de 260px + 8px de respiro: centro em ~170px. */}
+        {showLeftVignette && (
+          <button
+            type="button"
+            aria-label="Ver produtos anteriores"
+            onClick={() => rolarPagina(-1)}
+            className="absolute left-2 top-[170px] z-20 hidden size-11 -translate-y-1/2 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-900 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2 lg:flex"
+          >
+            <ChevronLeft className="size-5" aria-hidden="true" />
+          </button>
+        )}
+        {showRightVignette && (
+          <button
+            type="button"
+            aria-label="Ver próximos produtos"
+            onClick={() => rolarPagina(1)}
+            className="absolute right-2 top-[170px] z-20 hidden size-11 -translate-y-1/2 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-900 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2 lg:flex"
+          >
+            <ChevronRight className="size-5" aria-hidden="true" />
+          </button>
+        )}
         {/* Dynamic Vignettes - Improved White Gradient */}
         <div
           className={cn(
