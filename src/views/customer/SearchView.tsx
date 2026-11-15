@@ -1,3 +1,4 @@
+import { GRADE_DE_PRODUTOS_NO_COMPUTADOR } from "@/components/desktop/medidas";
 import { Button } from "@/components/ui/button";
 import { ProductCard } from "@/components/ui/custom/ProductCard";
 import { Input } from "@/components/ui/input";
@@ -559,7 +560,7 @@ export const SearchView = React.memo(function SearchView({
       </div>
 
       {/* Content Area */}
-      <div ref={resultadosRef} className="mx-auto max-w-7xl px-4 py-8">
+      <div ref={resultadosRef} className="mx-auto max-w-7xl px-4 py-8 lg:py-10">
         {/* Região viva SEMPRE montada: só o texto muda, então o leitor de tela
             anuncia o "nada encontrado" sem tirar o foco do campo. */}
         <p role="status" className="sr-only">
@@ -603,7 +604,13 @@ export const SearchView = React.memo(function SearchView({
                 </h2>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-6 lg:grid-cols-4">
+            <div
+              className={cn(
+                "grid grid-cols-2 gap-6",
+                GRADE_DE_PRODUTOS_NO_COMPUTADOR,
+                "lg:gap-x-6 lg:gap-y-10",
+              )}
+            >
               {filteredProducts.slice(0, visibleCount).map((product, index) => (
                 <div
                   key={product.id}
@@ -704,7 +711,13 @@ export const SearchView = React.memo(function SearchView({
                     {config.storeName?.trim() || branding.appName}
                   </h3>
                 </div>
-                <div className="grid grid-cols-2 gap-6 lg:grid-cols-4">
+                <div
+                  className={cn(
+                    "grid grid-cols-2 gap-6",
+                    GRADE_DE_PRODUTOS_NO_COMPUTADOR,
+                    "lg:gap-x-6 lg:gap-y-10",
+                  )}
+                >
                   {trendingProducts.map((product) => (
                     <ProductCard
                       key={product.id}
