@@ -41,7 +41,7 @@ export function OrderSuccessView({ onNavigate }: OrderSuccessViewProps) {
           prometia autoatendimento que não existe — a busca de pedido exige
           e-mail, que o convidado não informou. Agora o convidado lê o que é
           real: guardar o código e falar com a loja pelo WhatsApp. */}
-      <p className="mb-12 max-w-xs leading-relaxed text-zinc-500">
+      <p className="mb-12 max-w-xs leading-relaxed text-zinc-500 lg:max-w-2xl">
         Seu pedido foi recebido com sucesso e já está sendo processado.{" "}
         {user
           ? "A cada atualização — preparo, envio, entrega — você recebe um aviso aqui no app."
@@ -50,7 +50,7 @@ export function OrderSuccessView({ onNavigate }: OrderSuccessViewProps) {
             : "Guarde o código do comprovante: é por ele que a loja localiza o seu pedido. Guarde também o contato da loja — é por lá que você acompanha."}
       </p>
 
-      <div className="grid w-full max-w-xs gap-4">
+      <div className="grid w-full max-w-xs gap-4 lg:max-w-2xl lg:grid-cols-2">
         {/* CheckoutView-3301 (16/09/2026): mesmo defeito do SuccessView do
             CheckoutView — este botão levava QUALQUER pessoa a "orders"
             (OrderSearch), que exige e-mail (OrderSearch.tsx:63-66); o

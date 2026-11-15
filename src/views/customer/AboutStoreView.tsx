@@ -194,7 +194,7 @@ export function AboutStoreView() {
   return (
     <div className="pb-customer min-h-full bg-background text-foreground">
       <div
-        className={`mx-auto max-w-md space-y-6 px-4 pt-6 sm:px-6 sm:pt-8 ${temWhatsapp ? "pb-28" : "pb-6"}`}
+        className={`mx-auto max-w-md space-y-6 px-4 pt-6 sm:px-6 sm:pt-8 lg:max-w-2xl ${temWhatsapp ? "pb-28" : "pb-6"}`}
       >
         {/* Cabeçalho Tinta: logo à esquerda; rótulo mono, nome (h1) e cidade à
             direita. `min-w-0` + `break-words` deixam o nome longo quebrar sem
@@ -369,7 +369,7 @@ export function AboutStoreView() {
           <BotaoWhatsapp
             onClick={falarComALoja}
             aria-label="Falar com a loja no WhatsApp"
-            className="fixed left-1/2 z-[115] h-[52px] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 shadow-lg lg:!bottom-4"
+            className="fixed left-1/2 z-[115] h-[52px] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 shadow-lg lg:!bottom-6"
             style={{
               bottom:
                 "calc(var(--nav-height, 56px) + 16px + var(--safe-area-bottom, 0px))",
