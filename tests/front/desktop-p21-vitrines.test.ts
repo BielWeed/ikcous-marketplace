@@ -68,8 +68,14 @@ describe("P21 — Vitrines no computador", () => {
   ] as const)(
     "preserva todas as classes de celular e tablet (%#)",
     (analise, quantidade, assinatura) => {
+      // P43 acrescentou ao interruptor da vitrine só a área de toque invisível
+      // do tablet (`md:relative` + `md:after:*`); quem trava essas classes
+      // uma a uma é tests/front/alvo-de-toque-p43-*.test.tsx.
       const classesMoveis = analise.classes.map((c) =>
-        c.replace(/\s+(?:lg|xl|2xl):[^\s"'`]+/g, "").replace(/\s+/g, " "),
+        c
+          .replace(/\s+(?:lg|xl|2xl):[^\s"'`]+/g, "")
+          .replace(/\s+md:(?:relative|after:[^\s"`]+)/g, "")
+          .replace(/\s+/g, " "),
       );
       expect(classesMoveis).toHaveLength(quantidade);
       expect(

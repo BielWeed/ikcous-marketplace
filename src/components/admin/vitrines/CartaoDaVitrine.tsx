@@ -223,7 +223,11 @@ export function CartaoDaVitrine({
             onCheckedChange={() => aoAlternarAtiva(secao.id)}
             aria-label={`Exibir na loja: ${titulo}`}
             disabled={travado}
-            className="pointer-events-auto h-[26px] w-11 data-[state=checked]:bg-foreground data-[state=unchecked]:bg-zinc-700 [&>span]:ml-0.5 [&>span]:size-5 [&>span]:data-[state=checked]:translate-x-[18px]"
+            // Tablet (768 px+): 1 px fora dos 26 px do desenho o toque caía no
+            // "Editar vitrine" que fica atrás. A área invisível sobe e desce
+            // 8 px (26+16 = 42) e NÃO se alarga: o resto do cartão segue
+            // clicável para editar. O celular não muda.
+            className="pointer-events-auto h-[26px] w-11 data-[state=checked]:bg-foreground data-[state=unchecked]:bg-zinc-700 md:relative md:after:absolute md:after:-inset-y-2 md:after:inset-x-0 md:after:content-[''] [&>span]:ml-0.5 [&>span]:size-5 [&>span]:data-[state=checked]:translate-x-[18px]"
           />
         </div>
 
