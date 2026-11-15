@@ -481,7 +481,7 @@ export function AbaCaixa({
   }, [ativo, atual.dados, atual.carregando, atual.erro, aoSessaoAtual]);
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 xl:grid xl:grid-cols-2 xl:items-start xl:gap-6 xl:[&>#fin-composicao-do-caixa]:col-span-1 xl:[&>*]:col-span-2 xl:[&>[data-estado-do-caixa=aberto]]:col-span-1">
       {atual.erro && !atual.dados ? (
         <EstadoDeErro mensagem={atual.erro} aoTentarDeNovo={atual.recarregar} />
       ) : !atual.dados ? (
