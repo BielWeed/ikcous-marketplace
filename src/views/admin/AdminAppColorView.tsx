@@ -52,7 +52,7 @@ function Aviso({
   return (
     <div
       role={erro ? "alert" : "status"}
-      className={`flex gap-2 rounded-xl border p-3 text-xs leading-relaxed lg:col-span-2 ${erro ? "border-red-500/20 bg-red-500/10 text-red-400" : sucesso ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-300" : "border-amber-400/30 bg-amber-400/10 text-amber-300"}`}
+      className={`flex gap-2 rounded-xl border p-3 text-xs leading-relaxed xl:col-span-2 ${erro ? "border-red-500/20 bg-red-500/10 text-red-400" : sucesso ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-300" : "border-amber-400/30 bg-amber-400/10 text-amber-300"}`}
     >
       {sucesso ? (
         <Check aria-hidden="true" className="size-5 shrink-0" />
@@ -315,7 +315,7 @@ function EscolhaDaCor({
       {conflito && editor.current ? (
         <>
           <Button
-            className="h-12 w-full rounded-2xl bg-foreground text-background hover:opacity-90 lg:col-span-2"
+            className="h-12 w-full rounded-2xl bg-foreground text-background hover:opacity-90 xl:col-span-2"
             disabled={editor.busy || !editor.active}
             onClick={() => editor.resolveConflict(true)}
           >
@@ -323,7 +323,7 @@ function EscolhaDaCor({
           </Button>
           <Button
             variant="outline"
-            className={`${ACAO} w-full border-admin-border-strong bg-admin-bg text-zinc-50 lg:col-span-2`}
+            className={`${ACAO} w-full border-admin-border-strong bg-admin-bg text-zinc-50 xl:col-span-2`}
             disabled={editor.busy || !editor.active}
             onClick={() => editor.resolveConflict(false)}
           >
@@ -332,7 +332,7 @@ function EscolhaDaCor({
         </>
       ) : pendente || conflito ? (
         <Button
-          className="h-12 w-full rounded-2xl bg-foreground text-background hover:opacity-90 lg:col-span-2"
+          className="h-12 w-full rounded-2xl bg-foreground text-background hover:opacity-90 xl:col-span-2"
           disabled={offline || editor.busy || !editor.active}
           onClick={() => void editor.read()}
         >
@@ -341,7 +341,7 @@ function EscolhaDaCor({
       ) : (
         <>
           <Button
-            className="h-12 w-full rounded-2xl bg-foreground font-bold text-background hover:opacity-90 lg:col-span-2"
+            className="h-12 w-full rounded-2xl bg-foreground font-bold text-background hover:opacity-90 xl:col-span-2"
             disabled={
               offline || editor.locked || !editor.dirty || !validacao.ok
             }
@@ -357,7 +357,7 @@ function EscolhaDaCor({
           {editor.dirty && (
             <Button
               variant="outline"
-              className={`${ACAO} w-full border-admin-border-strong bg-admin-bg text-zinc-50 lg:col-span-2`}
+              className={`${ACAO} w-full border-admin-border-strong bg-admin-bg text-zinc-50 xl:col-span-2`}
               disabled={editor.locked}
               onClick={editor.discard}
             >
@@ -381,8 +381,8 @@ export function AdminAppColorView({
     onSetDirty?.(editor.dirty);
   }, [editor.dirty, onSetDirty]);
   return (
-    <div className="pb-admin mx-auto max-w-lg space-y-3 px-4 pt-4 text-zinc-50 lg:grid lg:max-w-5xl lg:grid-cols-2 lg:items-start lg:gap-5 lg:space-y-0">
-      <header className="lg:col-span-2">
+    <div className="pb-admin mx-auto max-w-lg space-y-3 px-4 pt-4 text-zinc-50 xl:grid xl:max-w-5xl xl:grid-cols-2 xl:items-start xl:gap-5 xl:space-y-0">
+      <header className="xl:col-span-2">
         <div className="flex items-center justify-between">
           <h1 className="text-[22px] font-bold leading-7">
             {NOMES_DO_PAINEL["admin-app-color"]}
@@ -400,7 +400,7 @@ export function AdminAppColorView({
           Escolha a cor da sua marca no app.
         </p>
       </header>
-      <section className={`${CARTAO} lg:col-span-2`}>
+      <section className={`${CARTAO} xl:col-span-2`}>
         <h2 className="flex items-center gap-3 text-[15px] font-bold">
           <span className="flex size-9 items-center justify-center rounded-xl border border-amber-400/30 bg-amber-400/15 text-amber-300">
             <Droplet aria-hidden="true" className="size-5" />
@@ -413,18 +413,18 @@ export function AdminAppColorView({
         </p>
       </section>
       {!editor.allowed ? (
-        <p role="alert" className="lg:col-span-2">
+        <p role="alert" className="xl:col-span-2">
           Entre com uma sessão de administrador para editar a cor do app.
         </p>
       ) : !editor.origin ? (
-        <p role="alert" className="lg:col-span-2">
+        <p role="alert" className="xl:col-span-2">
           Não foi possível identificar a loja. Confira a configuração do
           aplicativo.
         </p>
       ) : editor.draft ? (
         <EscolhaDaCor key={editor.scope} editor={editor} offline={offline} />
       ) : (
-        <div className={`${CARTAO} lg:col-span-2`} role="status">
+        <div className={`${CARTAO} xl:col-span-2`} role="status">
           <p>
             {editor.phase === "error"
               ? "Não foi possível carregar a cor do app."

@@ -4,10 +4,7 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { classesDoCelular } from "./classes-do-celular";
 
-const fonte = readFileSync(
-  new URL("../../src/views/customer/OrderDetailsView.tsx", import.meta.url),
-  "utf8",
-);
+const fonte = readFileSync("src/views/customer/OrderDetailsView.tsx", "utf8");
 
 function classeDepoisDoMarcador(marcador: string) {
   const inicio = fonte.indexOf(marcador);

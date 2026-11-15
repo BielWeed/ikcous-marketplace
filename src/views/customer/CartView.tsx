@@ -916,7 +916,7 @@ export function CartView({
       </h1>
       {/* Abas Carrinho / Meus pedidos: o indicador de tinta desliza sob o
           texto da aba ativa (estilo Tinta, 24/10/2026). */}
-      <div className="sticky top-[-2px] z-50 bg-background/95 px-4 py-3 backdrop-blur-md min-[380px]:px-5">
+      <div className="sticky top-[-2px] z-50 bg-background/95 px-4 py-3 backdrop-blur-md min-[380px]:px-5 lg:mx-auto lg:w-full lg:px-8 lg:has-[#tab-cart[aria-selected=true]]:max-w-7xl lg:has-[#tab-orders[aria-selected=true]]:max-w-[1216px]">
         <div
           className="relative flex overflow-hidden rounded-2xl bg-muted/60 p-1"
           role="tablist"
