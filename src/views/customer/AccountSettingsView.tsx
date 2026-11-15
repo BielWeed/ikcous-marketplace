@@ -1119,7 +1119,7 @@ export function AccountSettingsView() {
                 <form
                   id="form-perfil"
                   noValidate
-                  className="space-y-4"
+                  className="space-y-4 lg:max-w-lg"
                   onSubmit={(evento) => {
                     evento.preventDefault();
                     void handleUpdateProfile();
