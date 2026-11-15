@@ -959,7 +959,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
 
   return (
     <div className="ajustes pb-admin h-auto duration-200 animate-in fade-in lg:pb-12">
-      <header className="admin-topo-cabecalho mx-auto flex h-[76px] w-full max-w-2xl items-center justify-between gap-3 px-5">
+      <header className="admin-topo-cabecalho mx-auto flex h-[76px] w-full max-w-2xl items-center justify-between gap-3 px-5 lg:max-w-7xl lg:px-6">
         <div className="min-w-0 [&_h1]:normal-case [&_h1]:tracking-tight [&_h1_span]:not-italic">
           <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-settings"]} />
         </div>
@@ -979,9 +979,9 @@ export const AdminSettingsView = memo(function AdminSettingsView({
         </button>
       </header>
 
-      <div className="mx-auto max-w-2xl space-y-3 px-5 pb-8">
+      <div className="mx-auto max-w-2xl space-y-3 px-5 pb-8 lg:max-w-7xl lg:px-6 2xl:grid 2xl:grid-cols-2 2xl:items-start 2xl:gap-6 2xl:space-y-0 2xl:[&>#grupo-de-ajustes-entrega]:col-span-2 2xl:[&>#grupo-de-ajustes-pagamentos]:col-span-2 2xl:[&>[data-aviso-loja-sem-dados]]:col-span-2">
         {isOffline && (
-          <div className="flex select-none items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-xs font-bold uppercase tracking-wider text-red-400 duration-300 animate-in fade-in slide-in-from-top-2">
+          <div className="flex select-none items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-xs font-bold uppercase tracking-wider text-red-400 duration-300 animate-in fade-in slide-in-from-top-2 2xl:col-span-2">
             <AlertTriangle className="size-5 shrink-0 animate-pulse text-red-500" />
             <span>
               Você está offline. Algumas operações de diagnóstico podem ser
@@ -1000,7 +1000,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
           <div
             role="status"
             aria-label="Carregando ajustes"
-            className="mt-4 animate-pulse space-y-6"
+            className="mt-4 animate-pulse space-y-6 2xl:col-span-2"
           >
             <span className="sr-only">Carregando ajustes…</span>
             {[1, 2].map((i) => (
@@ -1031,7 +1031,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                 <section
                   aria-label="Recebimentos"
                   aria-busy={estadoDoCartao === "carregando"}
-                  className={`${CARTAO_AJUSTES} mb-7 space-y-3 !p-3`}
+                  className={`${CARTAO_AJUSTES} mb-7 space-y-3 !p-3 2xl:col-span-2 2xl:mb-0`}
                 >
                   <div className="flex items-center justify-between gap-3">
                     <h3 className="text-base font-bold">Recebimentos</h3>
@@ -1105,7 +1105,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                     </button>
                   )}
                 </section>
-                <p className="py-1 text-[11px] font-bold tracking-wider text-zinc-400">
+                <p className="py-1 text-[11px] font-bold tracking-wider text-zinc-400 2xl:col-span-2">
                   CONFIGURAÇÕES · 6 GRUPOS
                 </p>
                 {/* ── Os grupos com o que o lojista edita. O cartão "Como está
@@ -1405,7 +1405,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                 <button
                   type="button"
                   onClick={() => setShowHelpModal(true)}
-                  className="flex min-h-11 w-full min-w-11 items-center justify-between gap-3 py-4 text-left text-xs text-zinc-300"
+                  className="flex min-h-11 w-full min-w-11 items-center justify-between gap-3 py-4 text-left text-xs text-zinc-300 2xl:col-span-2"
                 >
                   Guia de Configurações e Ajuda{" "}
                   <HelpCircle aria-hidden="true" className="size-5 shrink-0" />
