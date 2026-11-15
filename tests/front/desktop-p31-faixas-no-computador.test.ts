@@ -2,7 +2,10 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { classesDoCelular } from "./classes-do-celular";
+import {
+  classesDoCelular,
+  classesDoCelularSemGradeDeTablet,
+} from "./classes-do-celular";
 
 const home = readFileSync("src/views/customer/HomeView.tsx", "utf8");
 const busca = readFileSync("src/views/customer/SearchView.tsx", "utf8");
@@ -151,7 +154,7 @@ describe("P31 — faixas no fluxo e busca alinhada no computador", () => {
     (nome, texto, assinatura) => {
       const fonte = analisar(texto);
       const celular = literais(fonte, fonte)
-        .map(classesDoCelular)
+        .map(classesDoCelularSemGradeDeTablet)
         .filter(Boolean);
       expect(
         createHash("sha256").update(JSON.stringify(celular)).digest("hex"),

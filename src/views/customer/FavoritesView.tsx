@@ -541,7 +541,7 @@ export const FavoritesView = React.memo(function FavoritesView({
 
     return (
       <div className="pb-customer min-h-full min-w-0 overflow-x-hidden bg-background text-foreground">
-        <header className="px-4 pb-4 pt-5">
+        <header className="px-4 pb-4 pt-5 lg:px-0">
           <h1 className="text-3xl font-bold tracking-tight">Favoritos</h1>
           <p className="mt-1 text-xs text-muted-foreground">
             {indisponiveis > 0
@@ -559,7 +559,7 @@ export const FavoritesView = React.memo(function FavoritesView({
           onTentarAgora={() => retentarPendentes({ avisarFalha: true })}
         />
 
-        <div className="flex flex-col items-center px-6 pb-6 pt-10 text-center lg:items-start lg:px-4 lg:py-12 lg:text-left">
+        <div className="flex flex-col items-center px-6 pb-6 pt-10 text-center lg:items-center lg:px-0 lg:py-12 lg:text-center">
           <div className="mb-6 grid size-28 place-items-center rounded-full bg-muted">
             <Heart
               aria-hidden="true"
@@ -589,7 +589,7 @@ export const FavoritesView = React.memo(function FavoritesView({
 
         {/* Quick Suggestions Block */}
         {suggestedProducts.length > 0 && (
-          <div className="mx-4 mt-4 border-t border-border pt-6">
+          <div className="mx-4 mt-4 border-t border-border pt-6 lg:mx-0">
             <div className="mb-4">
               {/* UI-191 (G7): são só os 4 primeiros produtos ativos -- "Mais
                   Amados" afirmava um ranking que a loja não mede. */}
@@ -601,7 +601,7 @@ export const FavoritesView = React.memo(function FavoritesView({
 
             <div
               className={cn(
-                "grid grid-cols-2 gap-3 sm:gap-4",
+                "grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3",
                 GRADE_DE_PRODUTOS_NO_COMPUTADOR,
                 "lg:gap-x-6 lg:gap-y-10",
               )}

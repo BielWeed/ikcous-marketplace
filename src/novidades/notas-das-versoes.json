@@ -1,4 +1,16 @@
 {
+  "1.5.188": {
+    "titulo": "A loja e o painel ganham um desenho próprio para computador",
+    "novidades": [
+      "Loja, no computador (tela de 1024 px ou mais): cabeçalho fixo com logo, busca, categorias e carrinho, páginas centralizadas, checkout em duas colunas com o Total e o botão de finalizar sempre à vista, produto em duas colunas e grades de produtos com mais colunas. A barra inferior do celular não aparece no computador.",
+      "Painel, no computador: Push, Notificações, Frete, Sobre a loja, Avaliações, Perguntas, Ajustes, Banners, Carrosséis, Cupom, Cor do app, Frete grátis, Vitrines, Categorias, Financeiro (Caixa), CRM, a ficha do pedido e o cadastro de produto passam a usar a largura da tela, com duas colunas onde cabem."
+    ],
+    "correcoes": [
+      "Loja, no tablet: a barra de adicionar do produto deixa de sair da tela ao rolar, e a Busca e os Favoritos passam a mostrar três colunas de produtos em vez de duas com fotos enormes.",
+      "Loja, no computador: o botão do WhatsApp do produto fica ao lado da quantidade e a tela de entrada tem uma só barra de rolagem."
+    ],
+    "melhorias": []
+  },
   "1.5.187": {
     "titulo": "Baixe o catálogo em planilha e escolha o layout de cada vitrine",
     "novidades": [

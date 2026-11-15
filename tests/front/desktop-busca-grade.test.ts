@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { classesDoCelular } from "./classes-do-celular";
+import { classesDoCelularSemGradeDeTablet } from "./classes-do-celular";
 
 const arquivo = "src/views/customer/SearchView.tsx";
 const ler = () => readFileSync(arquivo, "utf8");
@@ -20,7 +20,7 @@ function assinaturaDoCelular() {
     if (ts.isJsxAttribute(no) && no.name.getText(fonte) === "className") {
       function coletar(filho: ts.Node) {
         if (ts.isStringLiteral(filho)) {
-          const celular = classesDoCelular(filho.text);
+          const celular = classesDoCelularSemGradeDeTablet(filho.text);
           if (celular) valores.push(celular);
         } else ts.forEachChild(filho, coletar);
       }
@@ -45,7 +45,7 @@ describe("Busca — grade no computador", () => {
       'import { GRADE_DE_PRODUTOS_NO_COMPUTADOR } from "@/components/desktop/medidas"',
     );
     const grades = fonte.match(
-      /className={cn\(\s*"grid grid-cols-2 gap-6",\s*GRADE_DE_PRODUTOS_NO_COMPUTADOR,\s*"lg:gap-x-6 lg:gap-y-10",?\s*\)}/g,
+      /className={cn\(\s*"grid grid-cols-2 gap-6 md:grid-cols-3",\s*GRADE_DE_PRODUTOS_NO_COMPUTADOR,\s*"lg:gap-x-6 lg:gap-y-10",?\s*\)}/g,
     );
     expect(grades).toHaveLength(2);
   });

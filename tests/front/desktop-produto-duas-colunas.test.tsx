@@ -45,7 +45,10 @@ vi.mock("@/hooks/useQuestions", () => ({
   }),
 }));
 vi.mock("@/contexts/StoreContext", () => ({
-  useStore: () => ({ config: { enableReviews: true }, isLoaded: true }),
+  useStore: () => ({
+    config: { enableReviews: true, whatsappNumber: "11999999999" },
+    isLoaded: true,
+  }),
 }));
 
 // @ts-expect-error flag de teste do React
@@ -237,6 +240,19 @@ describe("F3 — produto no computador e celular preservado", () => {
       expect(linhaDeAcao.classList.contains("lg:flex-wrap")).toBe(true);
     },
   );
+
+  it("P33 mantém WhatsApp ao lado da quantidade antes da compra só no PC", async () => {
+    await montar();
+    const whatsapp = elemento("button[aria-label='Dúvidas no WhatsApp']");
+    const comprar = elemento("button[aria-label='Adicionar ao carrinho']");
+    expect(whatsapp.parentElement).toBe(comprar.parentElement);
+    expect(classesDoCelular(whatsapp.className)).toBe(
+      "flex items-center justify-center whitespace-nowrap bg-[#25D366] font-semibold text-[#0B141A] shadow-sm transition-[background-color,transform] duration-150 hover:bg-[#20C25E] active:scale-[0.98] active:bg-[#1DAE55] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 shrink-0 rounded-full order-3 size-[52px]",
+    );
+    expect(whatsapp.classList.contains("lg:order-none")).toBe(true);
+    expect(whatsapp.classList.contains("lg:size-12")).toBe(true);
+    expect(comprar.classList.contains("lg:basis-full")).toBe(true);
+  });
 
   it("F3.5 esconde a barra dockada e sua reserva só no desktop", async () => {
     await montar();
