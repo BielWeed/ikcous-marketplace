@@ -2,6 +2,7 @@ import * as SheetPrimitive from "@radix-ui/react-dialog";
 import { XIcon } from "lucide-react";
 import * as React from "react";
 
+import { GAVETA_NO_COMPUTADOR } from "@/components/desktop/medidas";
 import { cn } from "@/lib/utils";
 
 // O onOpenChange do consumidor, publicado para o SheetContent: é por ele
@@ -100,11 +101,14 @@ function SheetContent({
   className,
   children,
   side = "right",
+  gavetaNoComputador = true,
   showCloseButton = true,
   overlayClassName,
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Content> & {
   side?: "top" | "right" | "bottom" | "left";
+  // Janelas já centralizadas em sm: mantêm o desenho próprio.
+  gavetaNoComputador?: boolean;
   // Peça 09 (14/09): folhas que têm caminho de fechar próprio (ex.: a folha
   // de opções do card, fechável pela alça) passam false para não herdar o X
   // embutido. O default mantém o X em todo consumidor que não decidir nada
@@ -248,7 +252,12 @@ function SheetContent({
 
   return (
     <SheetPortal>
-      <SheetOverlay className={overlayClassName} />
+      <SheetOverlay
+        className={cn(
+          overlayClassName,
+          side === "bottom" && gavetaNoComputador && "lg:bottom-0",
+        )}
+      />
       <SheetPrimitive.Content
         ref={setNoConteudo}
         data-slot="sheet-content"
@@ -262,6 +271,11 @@ function SheetContent({
             "data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top inset-x-0 top-0 h-auto border-b",
           side === "bottom" &&
             "data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom inset-x-0 bottom-0 h-auto border-t",
+          // Zera também o eixo Y: somar só a entrada pela direita faria diagonal.
+          side === "bottom" && gavetaNoComputador && GAVETA_NO_COMPUTADOR,
+          side === "bottom" &&
+            gavetaNoComputador &&
+            "lg:inset-y-0 lg:right-0 lg:left-auto lg:bottom-auto lg:h-full lg:max-h-none lg:rounded-tr-none lg:overflow-hidden lg:border-t-0 lg:border-l lg:data-[state=closed]:slide-out-to-bottom-0 lg:data-[state=open]:slide-in-from-bottom-0 lg:data-[state=closed]:slide-out-to-right lg:data-[state=open]:slide-in-from-right",
           className,
         )}
         {...props}
@@ -285,7 +299,7 @@ function SheetHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="sheet-header"
-      className={cn("flex flex-col gap-1.5 p-4", className)}
+      className={cn("flex flex-col gap-1.5 p-4", "lg:shrink-0", className)}
       {...props}
     />
   );
@@ -295,7 +309,11 @@ function SheetFooter({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="sheet-footer"
-      className={cn("mt-auto flex flex-col gap-2 p-4", className)}
+      className={cn(
+        "mt-auto flex flex-col gap-2 p-4",
+        "lg:shrink-0",
+        className,
+      )}
       {...props}
     />
   );
