@@ -290,6 +290,7 @@ async function conferirEstados(texto: string) {
     paymentMethod: "cash",
     paymentStatus: null,
     status: "pending",
+    cancelledAfterShipping: false,
     createdAt: "2026-11-01T12:00:00.000Z",
     updatedAt: "2026-11-01T12:00:00.000Z",
   };
