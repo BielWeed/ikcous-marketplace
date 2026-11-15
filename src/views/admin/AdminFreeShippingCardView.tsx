@@ -124,7 +124,7 @@ export function AdminFreeShippingCardView({
   }
 
   return (
-    <div className="pb-admin mx-auto max-w-lg space-y-4 px-4 pt-4 text-zinc-50">
+    <div className="pb-admin mx-auto max-w-lg space-y-4 px-4 pt-4 text-zinc-50 lg:max-w-4xl">
       <header>
         <h1 className="text-[22px] font-bold leading-7">
           Card de frete grátis
@@ -141,7 +141,7 @@ export function AdminFreeShippingCardView({
         />
       )}
       <fieldset
-        className="space-y-3"
+        className="space-y-3 lg:grid lg:grid-cols-2 lg:items-start lg:gap-4 lg:space-y-0"
         disabled={!active || !configLoaded || configFalhou || salvando}
       >
         <legend className="sr-only">Estilo do card de frete grátis</legend>
