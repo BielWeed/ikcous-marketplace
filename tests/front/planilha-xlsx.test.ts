@@ -590,6 +590,8 @@ describe("o XLSX entrega o dado como ele é", () => {
       const celula = celulaDa(doc, titulo, 2)!;
       expect(celula.getAttribute("t")).toBe("inlineStr");
       expect(celula.querySelector("t")?.textContent).toBe(texto);
+      // estilo do fallback: texto sem quebra de linha (indice 5), nao o de data (6)
+      expect(celula.getAttribute("s")).toBe("5");
     }
   });
 });
