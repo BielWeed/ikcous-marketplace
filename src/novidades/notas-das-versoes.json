@@ -1,7 +1,9 @@
 {
   "1.5.192": {
-    "titulo": "Banners, avaliações e financeiro aproveitam melhor a tela do computador",
-    "novidades": [],
+    "titulo": "Balcão em duas colunas e painel que aproveita melhor a tela do computador",
+    "novidades": [
+      "Painel, Balcão: em telas de 1280 px ou mais, a tela de vender usa duas colunas — de um lado câmera, digitar ou buscar; do outro a venda atual, o total e o botão Fechar venda."
+    ],
     "correcoes": [
       "Painel, Banners: no computador, o editor de banner fica numa coluna centrada, a prévia deixa de ocupar a tela inteira, e a busca e o filtro da lista não atravessam mais a janela.",
       "Painel, CRM, Canais: a partir de 1280 px, \"Cada canal\" e \"Formas de pagamento\" ficam lado a lado.",
