@@ -159,7 +159,7 @@ export function CartaoDaVitrine({
         data-vitrine-id={secao.id}
         data-ativa={secao.active ? "true" : "false"}
         className={cn(
-          "relative rounded-2xl border p-3 pl-2 transition-colors",
+          "relative rounded-2xl border p-3 pl-2 transition-colors lg:p-5 lg:pl-4 xl:grid xl:grid-cols-2 xl:gap-x-6",
           secao.active
             ? "border-admin-border bg-zinc-900/40"
             : "border-dashed border-admin-border bg-transparent",
@@ -173,7 +173,7 @@ export function CartaoDaVitrine({
           className="absolute inset-0 rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/60"
         />
 
-        <div className="pointer-events-none relative flex items-center gap-1.5">
+        <div className="pointer-events-none relative flex items-center gap-1.5 xl:col-span-2">
           <button
             type="button"
             tabIndex={-1}
@@ -230,7 +230,7 @@ export function CartaoDaVitrine({
         <div
           data-miniaturas
           className={cn(
-            "pointer-events-none relative ml-7 mt-3 flex flex-wrap items-center gap-1.5",
+            "pointer-events-none relative ml-7 mt-3 flex flex-wrap items-center gap-1.5 xl:col-start-1 xl:row-start-2",
             !secao.active && "opacity-40 grayscale",
           )}
         >
@@ -259,7 +259,7 @@ export function CartaoDaVitrine({
           <p
             data-testid="vitrine-fora-da-faixa"
             className={cn(
-              "pointer-events-none relative ml-7 mt-1.5 text-xs font-medium text-zinc-400",
+              "pointer-events-none relative ml-7 mt-1.5 text-xs font-medium text-zinc-400 xl:col-span-2 xl:row-start-3",
               !secao.active && "opacity-60",
             )}
           >
@@ -267,7 +267,7 @@ export function CartaoDaVitrine({
           </p>
         ) : null}
 
-        <div className="pointer-events-none relative ml-7 mt-3 flex flex-wrap items-center gap-1.5">
+        <div className="pointer-events-none relative ml-7 mt-3 flex flex-wrap items-center gap-1.5 xl:col-start-2 xl:row-start-2 xl:ml-0">
           <span
             className={cn(
               "flex h-[30px] items-center whitespace-nowrap rounded-[10px] border border-admin-border bg-white/5 px-2.5 text-xs font-semibold text-zinc-300",
@@ -332,7 +332,7 @@ export function CartaoDaVitrine({
             </button>
           </div>
         </div>
-        <div className="relative -mb-1.5 ml-7 mt-1.5 flex flex-wrap items-center gap-1 text-xs font-semibold text-zinc-300">
+        <div className="relative -mb-1.5 ml-7 mt-1.5 flex flex-wrap items-center gap-1 text-xs font-semibold text-zinc-300 xl:col-span-2 xl:row-start-4">
           Layout
           {OPCOES_DE_LAYOUT.map(({ layout, nome, icone }) => {
             const marcado = normalizarLayoutDeOfertas(secao.layout) === layout;
