@@ -748,7 +748,7 @@ export const FavoritesView = React.memo(function FavoritesView({
         </div>
       )}
 
-      <div ref={listaRef} className="px-4 lg:px-0">
+      <div ref={listaRef} className="px-4 lg:columns-2 lg:gap-x-10 lg:px-0">
         {secoes.map((secao, indice) => {
           const aberta = expandidas.has(secao.nome);
           const temMais = secao.itens.length > ITENS_POR_CATEGORIA;
@@ -764,7 +764,7 @@ export const FavoritesView = React.memo(function FavoritesView({
               id={idDaSecao(indice)}
               data-secao={secao.nome}
               aria-labelledby={idTitulo}
-              className="scroll-mt-4 pt-5"
+              className="scroll-mt-4 pt-5 lg:break-inside-avoid"
             >
               <div className="flex items-baseline justify-between gap-3">
                 <h2
@@ -777,7 +777,7 @@ export const FavoritesView = React.memo(function FavoritesView({
                   {textoDeProdutos(secao.itens.length)}
                 </span>
               </div>
-              <ul id={idLista} className="lg:grid lg:grid-cols-2 lg:gap-4">
+              <ul id={idLista} className="lg:grid lg:grid-cols-1 lg:gap-4">
                 {itens.map((product) => (
                   <li key={product.id} className="lg:min-w-0 lg:max-w-full">
                     <ProductCard
