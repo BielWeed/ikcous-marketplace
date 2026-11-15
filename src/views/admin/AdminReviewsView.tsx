@@ -923,7 +923,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
     return (
       <li
         key={review.id}
-        className="rounded-2xl border border-solid border-admin-border bg-admin-surface p-3.5"
+        className="rounded-2xl border border-solid border-admin-border bg-admin-surface p-3.5 lg:p-6"
       >
         <div className="flex items-start gap-3">
           <Avatar nome={review.customerName} />
@@ -1119,7 +1119,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
         </h2>
       </div>
 
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 px-4 pt-3">
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 px-4 pt-3 lg:max-w-none lg:gap-4 lg:px-6 lg:pt-6 xl:grid xl:grid-cols-2 xl:gap-x-6 xl:[&>*]:col-span-2 xl:[&>*]:min-w-0 xl:[&>:nth-child(3)]:col-span-1 xl:[&>:nth-child(4)]:col-span-1">
         {/* Perguntas e Avaliações dividem uma porta só (Clientes): o
             alternador leva de uma à outra, e a ajuda mora ao lado. */}
         <div className="flex items-center gap-2">
@@ -1321,7 +1321,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
         )}
       </div>
 
-      <main className="mx-auto mt-4 w-full max-w-3xl px-4">
+      <main className="mx-auto mt-4 w-full max-w-3xl px-4 lg:mt-6 lg:max-w-none lg:px-6">
         {isOffline && (
           <div className="mb-3">
             <AvisoDeProblema>
