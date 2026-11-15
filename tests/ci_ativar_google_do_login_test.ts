@@ -53,12 +53,12 @@ function cenario(op = {}) {
     politica_futura: { qualquer: [1, 2] },
     ...op.config,
   };
-  const chamadas = [],
-    logs = [],
-    erros = [],
-    resumos = [],
-    mascaras = [],
-    eventos = [];
+  const chamadas = [];
+  const logs = [];
+  const erros = [];
+  const resumos = [];
+  const mascaras = [];
+  const eventos = [];
   let leituras = 0;
   const fetchImpl = async (url, init) => {
     assertEquals(
@@ -92,7 +92,7 @@ function cenario(op = {}) {
       }
       if (op.politicaAlterada) config.site_url = "https://mudou.invalid";
       if (op.campoNovo) config.novo_campo_inesperado = SECRET;
-      if (op.campoRemovido) delete config.mailer_autoconfirm;
+      if (op.campoRemovido) config.mailer_autoconfirm = undefined;
     }
     return {
       status: op.status ?? 200,
@@ -478,9 +478,9 @@ Deno.test("main real: nenhum segredo em stdout comum, stderr, argumento; máscar
     write: process.stdout.write,
     exit: process.exitCode,
   };
-  const stdout = [],
-    stderr = [],
-    argv = [...process.argv];
+  const stdout = [];
+  const stderr = [];
+  const argv = [...process.argv];
   try {
     Object.assign(process.env, env);
     globalThis.fetch = async (...args) => {

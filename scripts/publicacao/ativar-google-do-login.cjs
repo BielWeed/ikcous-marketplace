@@ -85,7 +85,7 @@ function validarOrigens(valor) {
       ) ||
       /^[0-9.]+$/.test(host) ||
       ["localhost", "localdomain", "local", "internal"].some(
-        (v) => host === v || host.endsWith("." + v),
+        (v) => host === v || host.endsWith(`.${v}`),
       )
     )
       parar("origem inválida ou local; localhost não é permitido");
