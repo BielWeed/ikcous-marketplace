@@ -389,7 +389,7 @@ export const AdminDashboardView = memo(function AdminDashboardView({
         ) : null}
 
         {/* A ordem de leitura do celular também ordena as três colunas do computador. */}
-        <div className="space-y-6 lg:grid lg:grid-cols-3 lg:items-start lg:gap-6 lg:space-y-0">
+        <div className="space-y-6 xl:grid xl:grid-cols-3 xl:items-start xl:gap-6 xl:space-y-0">
           <div className="min-w-0 space-y-6">
             {painel &&
             lojaSemVendasAinda(painel) &&

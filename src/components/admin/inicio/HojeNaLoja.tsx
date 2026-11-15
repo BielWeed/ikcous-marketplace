@@ -84,7 +84,7 @@ export function HojeNaLoja({
         <div className="mt-2 space-y-4">
           <div className="space-y-3">
             <p
-              className={`text-[clamp(1.875rem,9.5vw,3rem)] leading-none ${tomDoValor(hoje?.receita) === "neutro" ? valorNaCor("neutro") : VALOR_INICIO}`}
+              className={`text-[clamp(1.875rem,9.5vw,3rem)] leading-none xl:text-[2.25rem] ${tomDoValor(hoje?.receita) === "neutro" ? valorNaCor("neutro") : VALOR_INICIO}`}
             >
               {formatarMoeda(hoje?.receita)}
             </p>
