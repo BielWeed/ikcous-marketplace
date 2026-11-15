@@ -1336,10 +1336,10 @@ function OrderLogisticsCard({
           value={trackingValue}
           onChange={(e) => setTrackingValue(e.target.value.toUpperCase())}
           placeholder="EX: BR123456789BR"
-          className="h-11 rounded-xl border-admin-border bg-zinc-950 font-mono text-sm text-white focus:border-admin-gold/30"
+          className="h-11 rounded-xl border-admin-border bg-zinc-950 font-mono text-sm text-white focus:border-admin-gold/30 lg:max-w-lg"
           disabled={isSavingTracking}
         />
-        <div className="flex justify-end gap-2">
+        <div className="flex justify-end gap-2 lg:max-w-lg">
           <Button
             size="sm"
             variant="ghost"
