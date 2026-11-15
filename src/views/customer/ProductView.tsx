@@ -329,7 +329,16 @@ export const ProductView = React.memo(function ProductView({
 
       const headerHeight = 52;
       const tabBarHeight = 48;
+      // Distância ao topo do <main> (a área que rola) em que a seção "chegou":
+      // 90 px do pouso do clique (`scrollToSection`: totalOffset - 10) + 30 de
+      // folga para os dois lados. Medido num Chromium de verdade: o <main>
+      // começa em y=121 no computador (cabeçalho de 121 px) e y=53 no celular,
+      // e o pouso do clique deixa a seção a 90 px DO TOPO DO <main> (211 px da
+      // janela no PC, 143 no celular). Comparar a posição da janela com este
+      // limite deixava uma zona morta de 91 px no PC (23 no celular): clicar
+      // em "Avaliações" e rolar 8 px devolvia o destaque para "Detalhes".
       const offsetThreshold = headerHeight + tabBarHeight + 20;
+      const mainTop = mainElement.getBoundingClientRect().top;
 
       const detailsEl = detailsSectionRef.current;
       const reviewsEl = reviewsSectionRef.current;
@@ -341,15 +350,15 @@ export const ProductView = React.memo(function ProductView({
       // montada, não para uma seção que sumiu por decisão de produto.
       if (!detailsEl || !chatEl) return;
 
-      const chatRect = chatEl.getBoundingClientRect();
+      const chatTop = chatEl.getBoundingClientRect().top - mainTop;
       const reviewsTop = reviewsEl
-        ? reviewsEl.getBoundingClientRect().top
+        ? reviewsEl.getBoundingClientRect().top - mainTop
         : null;
 
       let currentActive: "description" | "reviews" | "questions" =
         "description";
 
-      if (chatRect.top <= offsetThreshold) {
+      if (chatTop <= offsetThreshold) {
         currentActive = "questions";
       } else if (reviewsTop !== null && reviewsTop <= offsetThreshold) {
         currentActive = "reviews";
