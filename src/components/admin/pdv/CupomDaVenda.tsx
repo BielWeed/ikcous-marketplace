@@ -327,7 +327,7 @@ export function CupomDaVenda({
                   <li
                     key={item.chave}
                     data-destacado={destacado ? "true" : "false"}
-                    className="pdv-item"
+                    className="pdv-item lg:shrink-0"
                   >
                     {item.imagem ? (
                       <img

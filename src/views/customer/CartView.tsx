@@ -916,7 +916,7 @@ export function CartView({
       </h1>
       {/* Abas Carrinho / Meus pedidos: o indicador de tinta desliza sob o
           texto da aba ativa (estilo Tinta, 24/10/2026). */}
-      <div className="sticky top-[-2px] z-50 bg-background/95 px-4 py-3 backdrop-blur-md min-[380px]:px-5 lg:mx-auto lg:w-full lg:px-8 lg:has-[#tab-cart[aria-selected=true]]:max-w-7xl lg:has-[#tab-orders[aria-selected=true]]:max-w-[1216px]">
+      <div className="sticky top-[-2px] z-50 bg-background/95 px-4 py-3 backdrop-blur-md min-[380px]:px-5 lg:mx-auto lg:w-full lg:px-8 lg:has-[#tab-cart[aria-selected=true]]:max-w-7xl lg:has-[#tab-orders[aria-selected=true]]:max-w-[1216px] 2xl:has-[#tab-cart[aria-selected=true]]:max-w-[1440px] 2xl:has-[#tab-orders[aria-selected=true]]:max-w-[1440px]">
         <div
           className="relative flex overflow-hidden rounded-2xl bg-muted/60 p-1"
           role="tablist"
@@ -1026,7 +1026,7 @@ export function CartView({
                   )}
                 </div>
               ) : (
-                <div className="mx-auto flex w-full max-w-7xl flex-col items-stretch gap-6 px-4 pb-6 pt-1 min-[380px]:px-5 lg:flex-row lg:items-start lg:gap-8 lg:px-8 lg:py-6">
+                <div className="mx-auto flex w-full max-w-7xl flex-col items-stretch gap-6 px-4 pb-6 pt-1 min-[380px]:px-5 lg:flex-row lg:items-start lg:gap-8 lg:px-8 lg:py-6 2xl:max-w-[1440px]">
                   {/* Coluna Esquerda: Itens, Frete Grátis e Checkout Convidado */}
                   <div className="w-full min-w-0 flex-1 space-y-6">
                     <CartItemsList
@@ -1549,7 +1549,7 @@ export function CartView({
                 x: { ease: [0.16, 1, 0.3, 1], duration: 0.38 },
                 opacity: { duration: 0.2 },
               }}
-              className="flex w-full flex-1 flex-col px-4 pb-6 pt-0 focus:outline-none min-[380px]:px-5 lg:mx-auto lg:max-w-[1216px] lg:px-8 lg:pt-6"
+              className="flex w-full flex-1 flex-col px-4 pb-6 pt-0 focus:outline-none min-[380px]:px-5 lg:mx-auto lg:max-w-[1216px] lg:px-8 lg:pt-6 2xl:max-w-[1440px]"
             >
               {!user && retratoSaiuDaTela && orders.length === 0 && (
                 <div

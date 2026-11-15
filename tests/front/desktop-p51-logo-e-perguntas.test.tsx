@@ -219,15 +219,10 @@ describe("P51 -- Perguntas ao vendedor alinha com a página do produto", () => {
     );
   });
 
-  it("a aritmética: com lg:mx-0 a borda esquerda cai na da coluna (1280 e 1536)", () => {
-    // Coluna de conteúdo = contêiner - px-8 (64) - coluna de compra - gap 48.
-    // 1280: min(1280,1280) - 64 - 440 - 48 = 728 ; 1536: 1440 - 64 - 440 - 48 = 888.
-    const coluna = (janela: number) =>
-      Math.min(janela, janela >= 1536 ? 1440 : 1280) - 64 - 440 - 48;
-    const sobraAntes = (janela: number) => (coluna(janela) - 672) / 2;
-    expect(sobraAntes(1280)).toBe(28);
-    expect(sobraAntes(1536)).toBe(108);
-    // Depois do conserto o recuo à esquerda é 0 (mx-0): igual às vizinhas.
+  it("com lg:mx-0 a borda esquerda cai na da coluna (1280 e 1536)", () => {
+    // Antes, max-w-2xl (672) centralizado numa coluna de conteúdo = contêiner - px-8 (64) - coluna
+    // de compra (440) - gap 48 deixava sobra à esquerda: 28 px em 1280 (coluna 728) e 108 px em
+    // 1536 (coluna 888). Depois do conserto o recuo à esquerda é 0 (mx-0): igual às vizinhas.
     expect(tokens(classesDoQaNaFonte(FONTE_QA))).toContain("lg:mx-0");
   });
 
@@ -281,9 +276,11 @@ describe("P51 -- botão Entrar na Conta tem alvo de toque no tablet", () => {
     );
   });
 
-  it("a aritmética: 36 px hoje (py-2.5 + linha do text-xs), 40 px com md:min-h-10", () => {
-    const hoje = 10 + 16 + 10; // py-2.5 em cima e embaixo + leading-4 do text-xs
-    expect(hoje).toBe(36);
-    expect(Math.max(hoje, 40)).toBe(40);
+  it("a conta 36 px -> 40 px: a fonte do botão tem py-2.5 e text-xs, e md:min-h-10 completa o resto", () => {
+    // py-2.5 (10 + 10) + linha do text-xs (16) = 36 px; md:min-h-10 sobe para 40 px no tablet.
+    const classes = tokens(classesDoEntrarNaFonte(FONTE_QA));
+    expect(classes).toContain("py-2.5");
+    expect(classes).toContain("text-xs");
+    expect(classes).toContain("md:min-h-10");
   });
 });

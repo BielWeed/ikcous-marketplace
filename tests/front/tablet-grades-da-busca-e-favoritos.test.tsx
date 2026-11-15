@@ -158,7 +158,7 @@ describe("Tablet — grades de produtos da Busca e dos Favoritos", () => {
     expect(t).toContain("xl:grid-cols-5");
   });
 
-  it("Favoritos, sugestões: 2 colunas no celular, 3 no tablet, 4/5 no PC", async () => {
+  it("Favoritos, sugestões: 2 colunas no celular, 3 no tablet, 4 no PC", async () => {
     const { FavoritesView } = await import("@/views/customer/FavoritesView");
     await act(async () => {
       root.render(
@@ -178,6 +178,8 @@ describe("Tablet — grades de produtos da Busca e dos Favoritos", () => {
     );
     expect(t).toContain("md:grid-cols-3");
     expect(t).toContain("lg:grid-cols-4");
-    expect(t).toContain("xl:grid-cols-5");
+    // P64: são só 4 sugestões; em xl a grade fica em 4 colunas (sem furo à direita).
+    expect(t).toContain("xl:grid-cols-4");
+    expect(t).not.toContain("xl:grid-cols-5");
   });
 });

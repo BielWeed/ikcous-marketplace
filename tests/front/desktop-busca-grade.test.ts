@@ -45,9 +45,12 @@ describe("Busca — grade no computador", () => {
       'import { GRADE_DE_PRODUTOS_NO_COMPUTADOR } from "@/components/desktop/medidas"',
     );
     const grades = fonte.match(
-      /className={cn\(\s*"grid grid-cols-2 gap-6 md:grid-cols-3",\s*GRADE_DE_PRODUTOS_NO_COMPUTADOR,\s*"lg:gap-x-6 lg:gap-y-10",?\s*\)}/g,
+      /className={cn\(\s*"grid grid-cols-2 gap-6 md:grid-cols-3",\s*GRADE_DE_PRODUTOS_NO_COMPUTADOR,\s*"lg:gap-x-6 lg:gap-y-10",/g,
     );
     expect(grades).toHaveLength(2);
+    // P64: só as sugestões (4 produtos) trocam o xl:grid-cols-5 da constante por
+    // 4 colunas; a grade dos resultados segue com a grade compartilhada pura.
+    expect(fonte.match(/"xl:grid-cols-4"/g)).toHaveLength(1);
   });
 
   it("preserva o contêiner próprio da Busca com largura limitada e margens no PC", () => {

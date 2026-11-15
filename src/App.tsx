@@ -8,6 +8,7 @@ import React, {
 
 import { CabecalhoCliente } from "@/components/desktop/CabecalhoCliente";
 import { PaginaDoComputador } from "@/components/desktop/PaginaDoComputador";
+import { CONTAINER_DO_COMPUTADOR } from "@/components/desktop/medidas";
 import { AdminAreaGate } from "@/components/layouts/AdminAreaGate";
 import { TelaDeVerificacaoFalhou } from "@/components/layouts/TelaDeVerificacaoFalhou";
 import { MaintenanceView } from "@/components/pwa/MaintenanceView";
@@ -2971,12 +2972,21 @@ const AppContent = () => {
             <div
               aria-busy="true"
               aria-live="polite"
-              className="flex min-h-[60vh] flex-col gap-4 px-4 pt-4"
+              className={cn(
+                "flex min-h-[60vh] flex-col gap-4 px-4 pt-4",
+                // No computador o esqueleto espelha a página carregada
+                // (ProductView): mesma moldura, grade de 2 colunas e teto de
+                // altura da galeria -- sem isso o quadrado media a largura
+                // inteira e a página pulava ao carregar. A 3ª linha (1fr) só
+                // absorve a altura do quadrado, para as 2 barras ficarem juntas.
+                CONTAINER_DO_COMPUTADOR,
+                "lg:grid lg:grid-cols-[minmax(0,1fr)_420px] lg:grid-rows-[auto_auto_1fr] lg:gap-x-12 lg:gap-y-4 lg:pt-8 xl:grid-cols-[minmax(0,1fr)_440px]",
+              )}
             >
               <span className="sr-only">Carregando produto…</span>
-              <div className="aspect-square w-full animate-pulse rounded-2xl bg-zinc-100" />
-              <div className="h-6 w-2/3 animate-pulse rounded bg-zinc-100" />
-              <div className="h-4 w-1/3 animate-pulse rounded bg-zinc-100" />
+              <div className="aspect-square w-full animate-pulse rounded-2xl bg-zinc-100 lg:col-start-1 lg:row-span-3 lg:row-start-1 lg:max-h-[calc(100dvh-var(--header-height)-220px)] lg:self-start lg:rounded-3xl" />
+              <div className="h-6 w-2/3 animate-pulse rounded bg-zinc-100 lg:col-start-2 lg:row-start-1" />
+              <div className="h-4 w-1/3 animate-pulse rounded bg-zinc-100 lg:col-start-2 lg:row-start-2" />
             </div>
           );
         }

@@ -3070,6 +3070,30 @@ export function CheckoutViewDaConta({
     }
   }, [isAddressModalOpen, showSuccess]);
 
+  // A tela de pagamento (Pix ou cartão) e a que a substitui (a confirmação)
+  // abrem NO TOPO (15/11/2026). Elas trocam o formulário DENTRO da mesma rota,
+  // então a restauração de rolagem do App (só roda ao trocar de rota) não as
+  // alcança, e o <main> — a área que rola — ficava no `scrollTop` que a tela
+  // anterior deixou: medido a 1280x720, 121 px, com o título e o aviso de
+  // reserva do pedido escondidos sob o cabeçalho do computador. Origem medida
+  // (15/11, log do `main`): ao trocar para o Pix o conteúdo cai por um instante
+  // a 720 px (`min-h-dvh`) e o navegador prende o `scrollTop` herdado em 720 −
+  // 599 (altura do <main>) = 121; a 390 px o mesmo mecanismo deixa 53 e esconde
+  // 37 px do título. Depois o conteúdo cresce, mas a rolagem fica onde ficou.
+  // Layout effect: zera ANTES da pintura, sem piscar a tela rolada.
+  // Só reage à TROCA de tela (pedido que passou a existir, ou Pix que virou
+  // "confirmado"/outro estado) — nunca a redesenho — para não puxar de volta ao
+  // topo quem rola a tela para copiar o código.
+  const telaDePagamentoAberta = aguardandoPagamento && orderId !== "";
+  useLayoutEffect(() => {
+    if (!telaDePagamentoAberta) return;
+    const mainContainer = document.querySelector("main");
+    if (mainContainer) {
+      mainContainer.scrollTop = 0;
+    }
+    globalThis.scrollTo(0, 0);
+  }, [telaDePagamentoAberta, orderId, statusPagamentoPix]);
+
   // Fechou a tela do endereço (Cancelar, Voltar ou salvar: todos desligam
   // `isAddressModalOpen`) depois de aberta por "Novo": o foco volta ao "Novo".
   // O botão sumiu junto com o formulário e voltou como elemento novo, então a

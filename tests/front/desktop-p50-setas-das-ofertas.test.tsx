@@ -426,6 +426,34 @@ describe.each(FAIXAS)("%s no celular: nem consulta o Embla", (_nome, Faixa) => {
   });
 });
 
+describe("OfertasCompactas como vitrine de produtos (nao de ofertas)", () => {
+  it("as setas falam em produtos, nao em ofertas", async () => {
+    telaDe(true);
+    embla.estado.voltar = true;
+    embla.estado.avancar = true;
+    const Faixa = comoFaixa(OfertasCompactas);
+    await act(async () => {
+      root.render(
+        <Faixa
+          products={SEIS}
+          favorites={[]}
+          onAddToCart={() => {}}
+          onProductClick={() => {}}
+          onToggleFavorite={() => {}}
+          vitrineDeOfertas={false}
+        />,
+      );
+    });
+    expect(
+      host.querySelector('button[aria-label="Ver produtos seguintes"]'),
+    ).not.toBeNull();
+    expect(
+      host.querySelector('button[aria-label="Ver produtos anteriores"]'),
+    ).not.toBeNull();
+    expect(seguinte()).toBeNull();
+  });
+});
+
 // --- Controle: o teste precisa derrubar versoes erradas da seta. ---------------------------------
 // Cada mutante e uma COPIA do componente real com uma unica troca; o mesmo conjunto de afirmacoes
 // roda contra a copia e tem de FALHAR (e contra o original e tem de passar).

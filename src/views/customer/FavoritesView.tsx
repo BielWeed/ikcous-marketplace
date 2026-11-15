@@ -608,6 +608,8 @@ export const FavoritesView = React.memo(function FavoritesView({
                 "grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3",
                 GRADE_DE_PRODUTOS_NO_COMPUTADOR,
                 "lg:gap-x-6 lg:gap-y-10",
+                // Só 4 sugestões: com 5 colunas sobrava um furo à direita.
+                "xl:grid-cols-4",
               )}
             >
               {suggestedProducts.map((product) => (

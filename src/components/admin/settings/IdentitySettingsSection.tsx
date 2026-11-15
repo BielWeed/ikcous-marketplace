@@ -163,7 +163,7 @@ export function IdentitySettingsSection({
           // eslint-disable-next-line security/detect-object-injection
           const value = draft.fields[key];
           return (
-            <div key={key} className="space-y-1.5">
+            <div key={key} className="space-y-1.5 xl:col-span-2">
               <Label
                 htmlFor={id}
                 className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400"

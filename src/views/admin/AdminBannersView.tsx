@@ -70,6 +70,7 @@ import {
 import {
   EVENTO_NOVO_BANNER,
   consumirPedidoDeNovoBanner,
+  pedirNovoBanner,
 } from "@/lib/novo-banner-pendente";
 import {
   ehConsultaSemResposta,
@@ -99,6 +100,8 @@ import {
   HelpCircle,
   Layout,
   Loader2,
+  Lock,
+  Plus,
   Sparkles,
   Trash,
 } from "lucide-react";
@@ -2449,6 +2452,7 @@ export const AdminBannersView = memo(function AdminBannersView({
       <div className="mx-auto w-full max-w-3xl space-y-6 p-4 sm:p-6 lg:max-w-7xl">
         {isOffline && (
           <p
+            id="aviso-offline-banners"
             role="status"
             className="rounded-xl border border-admin-border bg-admin-surface p-3 text-sm"
           >
@@ -2463,16 +2467,48 @@ export const AdminBannersView = memo(function AdminBannersView({
                   titulo={NOMES_DO_PAINEL["admin-banners"]}
                   propsDoTitulo={foco.propsDoTitulo}
                 />
-                <Button
-                  variant="ghost"
-                  className="min-h-11 min-w-11 text-zinc-400"
-                  title="Como usar os Banners"
-                  onClick={() => setShowHelpModal(true)}
-                >
-                  <span aria-hidden="true">
-                    <HelpCircle className="size-5" />
-                  </span>
-                </Button>
+                <div className="flex items-center gap-2">
+                  {/*
+                    A porta de "Novo banner" no COMPUTADOR. A do celular mora
+                    na barra de topo do AdminLayout, que e' `lg:hidden`: acima
+                    de 1024px ela tem 0x0 px, e quem ja tem banners em topo,
+                    meio e base ficava sem caminho para criar outro. Esta e'
+                    `hidden lg:flex` — as duas nunca aparecem juntas.
+                  */}
+                  <button
+                    type="button"
+                    disabled={isOffline}
+                    aria-describedby={
+                      isOffline ? "aviso-offline-banners" : undefined
+                    }
+                    onClick={pedirNovoBanner}
+                    className={cn(
+                      "hidden min-h-11 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-4 text-sm font-bold transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-admin-bg active:scale-95 lg:flex",
+                      isOffline
+                        ? "border border-solid border-admin-border-strong bg-admin-raised text-muted-foreground"
+                        : "bg-foreground text-background hover:opacity-90",
+                    )}
+                  >
+                    {isOffline ? (
+                      <Lock aria-hidden="true" className="size-4 shrink-0" />
+                    ) : (
+                      <Plus aria-hidden="true" className="size-4 shrink-0" />
+                    )}
+                    <span>
+                      {isOffline ? "Indisponível offline" : "Novo banner"}
+                    </span>
+                  </button>
+                  <Button
+                    variant="ghost"
+                    className="min-h-11 min-w-11 text-zinc-400"
+                    title="Como usar os Banners"
+                    onClick={() => setShowHelpModal(true)}
+                  >
+                    <span aria-hidden="true">
+                      <HelpCircle className="size-5" />
+                    </span>
+                  </Button>
+                </div>
               </div>
               <p className="text-sm">
                 O que aparece no topo, meio e base da sua loja.

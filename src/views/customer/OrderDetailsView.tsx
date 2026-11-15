@@ -1398,7 +1398,7 @@ export function OrderDetailsView({
           onRetomarPagamento && (
             <button
               onClick={() => onRetomarPagamento(order.id)}
-              className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-zinc-900 px-4 py-3.5 text-sm font-bold text-white shadow-sm transition-all active:scale-95"
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-zinc-900 px-4 py-3.5 text-sm font-bold text-white shadow-sm transition-all active:scale-95 lg:max-w-md"
             >
               <CreditCard className="size-4" aria-hidden="true" />
               Retomar pagamento

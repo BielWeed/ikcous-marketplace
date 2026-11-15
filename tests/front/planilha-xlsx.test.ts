@@ -4,7 +4,7 @@ import { crc32 } from "node:zlib";
 import { linhasDosProdutos } from "@/lib/exportar-produtos-planilha";
 import { gerarXlsx } from "@/lib/planilha-xlsx";
 import type { Product } from "@/types";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 const nomes = [
   "[Content_Types].xml",
@@ -575,6 +575,33 @@ describe("o XLSX entrega o dado como ele é", () => {
     ).toBeCloseTo(46024 + 245 / 86400, 8);
   });
 
+  it("com muitas linhas de data cria no máximo um formatador (por célula travava a tela)", () => {
+    // O espiao repassa ao construtor de verdade (o vitest exige `function` para poder usar `new`).
+    const Real = Intl.DateTimeFormat;
+    const construcoes = vi
+      .spyOn(Intl, "DateTimeFormat")
+      // biome-ignore lint/complexity/useArrowFunction: o vitest só aceita `new` em mock feito com function
+      .mockImplementation(function (
+        ...args: ConstructorParameters<typeof Intl.DateTimeFormat>
+      ) {
+        return new Real(...args);
+      } as unknown as typeof Intl.DateTimeFormat);
+    try {
+      const produtos = Array.from({ length: 50 }, (_, i) => ({
+        ...produto,
+        id: `p${i}`,
+        createdAt: "2026-01-02T03:04:05.000Z",
+        updatedAt: "2018-12-01T12:00:00+00:00",
+      }));
+      const doc = folha(linhasDosProdutos(produtos, true, "xlsx"));
+      // as datas foram convertidas de verdade (nao caiu no texto): o teste mede o caminho do formatador.
+      expect(celulaDa(doc, "Criado em", 51)?.getAttribute("t")).toBeNull();
+      expect(construcoes.mock.calls.length).toBeLessThanOrEqual(1);
+    } finally {
+      construcoes.mockRestore();
+    }
+  });
+
   it("data sem fuso ou ilegível fica como texto, sem inventar horário", () => {
     const doc = folha(
       linhasDosProdutos(
@@ -590,6 +617,8 @@ describe("o XLSX entrega o dado como ele é", () => {
       const celula = celulaDa(doc, titulo, 2)!;
       expect(celula.getAttribute("t")).toBe("inlineStr");
       expect(celula.querySelector("t")?.textContent).toBe(texto);
+      // estilo do fallback: texto sem quebra de linha (indice 5), nao o de data (6)
+      expect(celula.getAttribute("s")).toBe("5");
     }
   });
 });

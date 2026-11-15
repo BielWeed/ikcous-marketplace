@@ -1026,7 +1026,7 @@ export function AccountSettingsView() {
                   aria-controls={`painel-conta-${aba}`}
                   aria-selected={activeTab === aba}
                   onClick={() => setActiveTab(aba)}
-                  className={`flex h-11 flex-1 items-center justify-center rounded-[10px] text-[15px] font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-zinc-900/50 ${
+                  className={`flex h-11 flex-1 items-center justify-center rounded-[10px] text-[15px] font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-zinc-900/50 lg:flex-none ${
                     activeTab === aba
                       ? "bg-foreground text-background"
                       : "text-foreground/70 hover:text-foreground"
@@ -1119,7 +1119,7 @@ export function AccountSettingsView() {
                 <form
                   id="form-perfil"
                   noValidate
-                  className="space-y-4"
+                  className="space-y-4 lg:max-w-lg"
                   onSubmit={(evento) => {
                     evento.preventDefault();
                     void handleUpdateProfile();
@@ -1424,7 +1424,7 @@ export function AccountSettingsView() {
 
             {/* Botão principal, fixo acima da navegação inferior. Na aba
                 Segurança ele é o botão de envio do formulário de senha. */}
-            <div className="bottom-docked-navigation sticky z-20 -mx-4 border-t border-border bg-background/95 px-4 pb-2.5 pt-3 backdrop-blur sm:-mx-6 sm:px-6 md:bottom-[104px] lg:bottom-0 lg:col-start-2 lg:mx-0 lg:rounded-3xl">
+            <div className="bottom-docked-navigation sticky z-20 -mx-4 border-t border-border bg-background/95 px-4 pb-2.5 pt-3 backdrop-blur sm:-mx-6 sm:px-6 md:bottom-[104px] lg:bottom-0 lg:col-start-2 lg:mx-0 lg:rounded-3xl lg:border-0">
               {activeTab === "profile" ? (
                 <Button
                   type="submit"

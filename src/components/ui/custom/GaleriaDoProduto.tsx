@@ -224,6 +224,13 @@ export function GaleriaDoProduto({
   // rolagem do caminho são ignorados -- sem isso a bolinha ativa piscaria
   // por todas as fotos do meio e o efeito de baixo refaria o pedido.
   const destinoRef = useRef<number | null>(null);
+  // Foto que a cliente está vendo, para o observador de largura (abaixo) não
+  // depender do índice do render em que foi criado.
+  const indiceRef = useRef(indice);
+  // Última largura medida pelo observador (0 = ainda não mede, ex.: sem
+  // ResizeObserver): um scroll que chega com outra largura veio do reencaixe
+  // do navegador, não da cliente.
+  const larguraRef = useRef(0);
   const total = fotos.length;
 
   // `indice` mudou por fora (seta, bolinha, miniatura, variação): leva a
@@ -232,6 +239,7 @@ export function GaleriaDoProduto({
   // "estar" na foto pedida só porque o deslize anterior mal começou (Próxima e
   // logo Anterior): aí o pedido novo segue e cancela o antigo.
   useEffect(() => {
+    indiceRef.current = indice;
     const faixa = faixaRef.current;
     if (!faixa || faixa.clientWidth === 0) return;
     const atual = Math.round(faixa.scrollLeft / faixa.clientWidth);
@@ -258,9 +266,35 @@ export function GaleriaDoProduto({
     return () => faixa.removeEventListener("scrollend", assentou);
   }, []);
 
+  // A largura da faixa mudou (janela redimensionada, tablet ou celular
+  // girado): o navegador guarda o scrollLeft em PIXELS e reencaixa na foto
+  // mais próxima -- medido em 15/11, 1280 -> 1000 -> 1280 px na foto 3 mostrava
+  // a 4. Devolve a faixa à foto da cliente (rolagem instantânea) e marca o
+  // destino para o aviso de rolagem dessa troca não virar escolha dela.
+  useEffect(() => {
+    const faixa = faixaRef.current;
+    if (!faixa || typeof ResizeObserver === "undefined") return;
+    larguraRef.current = faixa.clientWidth;
+    const observador = new ResizeObserver(() => {
+      const largura = faixa.clientWidth;
+      if (largura === larguraRef.current) return;
+      larguraRef.current = largura;
+      if (largura === 0) return;
+      const alvo = indiceRef.current * largura;
+      if (faixa.scrollLeft === alvo) return;
+      destinoRef.current = indiceRef.current;
+      faixa.scrollTo?.({ left: alvo, behavior: "auto" });
+    });
+    observador.observe(faixa);
+    return () => observador.disconnect();
+  }, []);
+
   const aoRolar = () => {
     const faixa = faixaRef.current;
     if (!faixa || faixa.clientWidth === 0) return;
+    // O scroll do reencaixe pode chegar ANTES do observador: não o leia como
+    // escolha da cliente -- o observador já vai devolver a faixa à foto dela.
+    if (larguraRef.current && faixa.clientWidth !== larguraRef.current) return;
     const atual = Math.round(faixa.scrollLeft / faixa.clientWidth);
     if (destinoRef.current !== null) {
       if (atual === destinoRef.current) destinoRef.current = null;
