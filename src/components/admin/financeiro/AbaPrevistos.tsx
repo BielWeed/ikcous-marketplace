@@ -358,7 +358,7 @@ export function AbaPrevistos({
                 >
                   {secao.titulo} · {secao.itens.length}
                 </h2>
-                <ul className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                <ul className="grid grid-cols-1 gap-3 xl:grid-cols-2 xl:gap-6 xl:[&>li:last-child:nth-child(odd)]:col-span-2">
                   {secao.itens.map((item) => (
                     <CartaoDoPrevisto
                       key={item.id}

@@ -758,7 +758,7 @@ export const AdminQAView = memo(function AdminQAView({
     return (
       <ul
         className={cn(
-          "space-y-3 transition-opacity duration-300 lg:space-y-4",
+          "space-y-3 transition-opacity duration-300 lg:space-y-4 xl:grid xl:grid-cols-2 xl:items-start xl:gap-6 xl:space-y-0 xl:[&>li:last-child:nth-child(odd)]:col-span-2",
           loading && "pointer-events-none opacity-50",
         )}
       >

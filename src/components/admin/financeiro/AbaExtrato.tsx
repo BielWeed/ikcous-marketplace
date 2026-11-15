@@ -299,7 +299,7 @@ export function AbaExtrato({
   const houveSaida = paraCentavos(totais.saidas) > 0;
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 lg:max-w-4xl">
       {extrato.erro && !extrato.dados ? null : !extrato.dados ? (
         <EsqueletoDoTopo />
       ) : (
