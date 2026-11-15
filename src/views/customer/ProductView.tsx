@@ -1302,7 +1302,7 @@ export const ProductView = React.memo(function ProductView({
                     "order-3 size-[52px]",
                     // Altura do CTA no desktop: os dois botões da linha de
                     // cima ficam alinhados (48px) em vez de 44 vs 48.
-                    "lg:size-12",
+                    "lg:size-12 lg:order-none",
                   )}
                 />
               )}
