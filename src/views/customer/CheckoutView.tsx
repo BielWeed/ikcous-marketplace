@@ -7672,9 +7672,9 @@ export function CheckoutViewDaConta({
           className={cn(
             "hidden lg:flex lg:flex-col lg:rounded-3xl lg:border lg:border-zinc-200 lg:bg-white",
             COLUNA_FIXA_NO_COMPUTADOR,
-            // Cabeçalho P1 (121px) + top-24 (96px) + folga inferior (24px).
+            // Mantém o teto conservador do P6; o topo segue o primeiro cartão.
             // A recusa após Finalizar precisa continuar alcançável por rolagem.
-            "lg:top-24 lg:max-h-[calc(100dvh-241px)] lg:overflow-y-auto",
+            "lg:top-6 lg:max-h-[calc(100dvh-241px)] lg:overflow-y-auto",
           )}
         />
       </div>

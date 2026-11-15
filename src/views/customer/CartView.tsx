@@ -974,7 +974,7 @@ export function CartView({
         </div>
       </div>
 
-      <div className="relative flex w-full flex-1 flex-col overflow-hidden">
+      <div className="relative flex w-full flex-1 flex-col overflow-hidden lg:overflow-visible">
         <AnimatePresence mode="wait" initial={false} custom={tabDirection}>
           {activeTab === "cart" ? (
             <motion.div
@@ -1392,7 +1392,7 @@ export function CartView({
                   </div>
 
                   {/* Coluna Direita: Resumo do Pedido (Desktop Only) */}
-                  <div className="sticky top-24 hidden w-full shrink-0 space-y-5 rounded-[18px] border border-border bg-background p-6 lg:block lg:w-[380px]">
+                  <div className="sticky top-24 hidden w-full shrink-0 space-y-5 rounded-[18px] border border-border bg-background p-6 lg:top-[88px] lg:block lg:w-[380px]">
                     <div>
                       <h3 className="mb-1 text-lg font-bold tracking-tight text-foreground">
                         Resumo do Pedido
