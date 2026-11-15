@@ -2,7 +2,7 @@
   "1.5.192": {
     "titulo": "Balcão em duas colunas e painel que aproveita melhor a tela do computador",
     "novidades": [
-      "Painel, Balcão: em telas de 1280 px ou mais, a tela de vender usa duas colunas — de um lado câmera, digitar ou buscar; do outro a venda atual, o total e o botão Fechar venda.",
+      "Painel, Balcão: em telas de 1280 px ou mais, a tela de vender usa duas colunas — de um lado câmera, digitar ou buscar; do outro a venda atual, o total e o botão Fechar venda. Os avisos ficam no lugar e os botões de cada item não saem do cartão.",
       "Loja, no computador: as faixas de ofertas da página inicial ganham setas para rolar com o mouse."
     ],
     "correcoes": [
@@ -12,12 +12,11 @@
       "Painel, Financeiro: \"Pagar e receber\" usa uma coluna até 1279 px e duas a partir de 1280 px; o Extrato fica numa coluna de leitura mais estreita.",
       "Painel, Vitrines, tablet: o interruptor \"Exibir na loja\" ganha uma área de toque maior, sem abrir a edição da vitrine sem querer.",
       "Loja, no computador: na página inicial, as ofertas com poucos cartões começam alinhadas ao título, e não mais no meio da linha.",
-      "Painel, Balcão: com duas colunas, o aviso não invade mais a coluna ao lado, a busca acompanha a altura da coluna e os botões de cada item ficam dentro do cartão.",
       "Loja, no computador: a foto do produto preenche a coluna da galeria, o logo do cabeçalho não encolhe mais e a caixa de perguntas alinha com a coluna.",
       "Loja, no computador: as sugestões da busca abrem logo abaixo do campo, alinhadas com ele.",
       "Painel, Início: em telas de 1024 a 1279 px as três áreas ficam em uma coluna, e o valor de hoje não quebra mais no meio do número; as três colunas voltam a partir de 1280 px.",
       "Painel, Produtos: na lista detalhada, preços de cinco dígitos (como R$ 99.999,99) não invadem mais a coluna ao lado.",
-      "Painel, Produtos: a planilha Excel do catálogo mostra nomes e telefones como foram digitados (sem o apóstrofo na frente), deixa vazias as células sem valor, não estica a linha com descrições e fotos longas e traz as datas como data do Excel.",
+      "Painel, Produtos: a planilha Excel do catálogo mostra nomes e códigos que começam com +, - ou = como foram digitados (sem o apóstrofo na frente), deixa vazias as células sem valor, não estica a linha com descrições e fotos longas e traz as datas como data do Excel.",
       "Painel, Cupons e Pedidos: no computador, o campo de validade do cupom e o campo do código de rastreio deixam de se esticar pela tela inteira.",
       "Painel, Frete: os campos de valor, prazo e pedido mínimo mostram onde o teclado está, no computador.",
       "Loja e painel, no computador: as faixas de frete grátis, de fotos do produto e de destinos e modelos do Push passam a quebrar linha em vez de rolar para o lado, e as categorias do cabeçalho mostram o foco do teclado inteiro."
