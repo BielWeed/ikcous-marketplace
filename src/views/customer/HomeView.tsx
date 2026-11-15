@@ -12,10 +12,10 @@ import { categoriaValidaDaHome } from "@/lib/categoria-valida-da-home";
 import { semMetaDeFreteGratis } from "@/lib/estrategias-de-frete";
 import { identidadeLegalDaLoja } from "@/lib/identidade-legal-da-loja";
 import {
-  type LayoutDeOfertas,
-  normalizarLayoutDeOfertas,
+  type LayoutDeVitrine,
+  normalizarLayoutDeVitrine,
 } from "@/lib/layout-de-ofertas";
-import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
+import { nomeOuReserva, nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { ordenacaoValida } from "@/lib/ordenacao-da-home";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import { cn } from "@/lib/utils";
@@ -25,7 +25,7 @@ import {
   lancamentosDaVitrine,
   ofertasDaVitrine,
 } from "@/lib/vitrine-do-painel";
-import type { Product, SortOption, View } from "@/types";
+import type { Product, SortOption, StoreConfig, View } from "@/types";
 import {
   ArrowDown,
   ArrowUp,
@@ -56,6 +56,12 @@ import {
   useMemoriaDaHome,
 } from "@/hooks/useMemoriaDaHome";
 import { haptic } from "@/utils/haptic";
+
+const SECOES_PADRAO: NonNullable<StoreConfig["homeSections"]> = [
+  { id: "new_arrivals", title: "Últimos Lançamentos", active: true },
+  { id: "offers", title: "Ofertas Imperdíveis", active: true },
+  { id: "bestsellers", title: "Destaques em Alta", active: true },
+];
 
 interface HomeViewProps {
   products: Product[];
@@ -146,11 +152,18 @@ export const HomeView = React.memo(function HomeView({
   // NO PRIMEIRO RENDER (localStorage síncrono) — decide a reserva do banner
   // e das seções derivadas por filtro antes de qualquer paint.
   const memoriaDaUltimaVisita = useMemoriaDaHome();
-  const layoutOfertas = configLoaded
-    ? normalizarLayoutDeOfertas(
-        config.homeSections?.find((s) => s.id === "offers")?.layout,
-      )
-    : (memoriaDaUltimaVisita?.layoutOfertas ?? "padrao");
+  const secoesDaHome = config.homeSections ?? SECOES_PADRAO;
+  const layoutDaSecao = (section: (typeof secoesDaHome)[number]) =>
+    configLoaded
+      ? normalizarLayoutDeVitrine(section.layout)
+      : (memoriaDaUltimaVisita?.vitrines?.[section.id]?.layout ??
+        (section.id === "offers"
+          ? memoriaDaUltimaVisita?.layoutOfertas
+          : undefined) ??
+        "padrao");
+  const layoutOfertas = layoutDaSecao(
+    secoesDaHome.find((s) => s.id === "offers") ?? SECOES_PADRAO[1],
+  );
 
   React.useEffect(() => {
     if (!onHeaderDockChange) return;
@@ -345,27 +358,51 @@ export const HomeView = React.memo(function HomeView({
     [produtosAVenda],
   );
 
-  // Quantas ofertas a faixa de Ofertas MOSTRA (mesma conta do render: lista escolhida à mão ou derivada, cortada
-  // pelo maxItems). O "Lateral em duas fileiras" tem 1 fileira com 1 oferta e 2 com várias: a memória guarda
-  // este número para o esqueleto da próxima visita reservar a altura certa antes dos dados chegarem.
-  const qtdOfertasNaFaixa = useMemo(() => {
-    const secao = config.homeSections?.find((s) => s.id === "offers");
-    const max = secao?.maxItems ?? 6;
-    if (secao?.productIds && secao.productIds.length > 0) {
-      const aVenda = new Set(produtosAVenda.map((p) => p.id));
-      return Math.min(
-        max,
-        secao.productIds.filter((id) => aVenda.has(id)).length,
-      );
-    }
-    return Math.min(max, offerProducts.length);
-  }, [config.homeSections, produtosAVenda, offerProducts]);
-
   const bestsellerProducts = useMemo(
     () =>
       destaquesDaVitrine(produtosAVenda).slice(0, LIMITE_MAX_ITENS_CARROSSEL),
     [produtosAVenda],
   );
+
+  // Render e memória usam a MESMA lista, já cortada pelo máximo de cada vitrine.
+  const secoesComProdutos = useMemo(() => {
+    const productMap = new Map(produtosAVenda.map((p) => [p.id, p]));
+    return secoesDaHome.map((section) => {
+      const max = section.maxItems ?? 6;
+      const lista = section.productIds?.length
+        ? section.productIds
+            .map((id) => productMap.get(id))
+            .filter((p): p is Product => Boolean(p))
+        : section.id === "offers"
+          ? offerProducts
+          : section.id === "bestsellers"
+            ? bestsellerProducts
+            : newArrivals;
+      return { section, secProducts: lista.slice(0, max) };
+    });
+  }, [
+    secoesDaHome,
+    produtosAVenda,
+    offerProducts,
+    bestsellerProducts,
+    newArrivals,
+  ]);
+  const vitrinesDaVisita = useMemo(
+    () =>
+      Object.fromEntries(
+        secoesComProdutos.map(({ section, secProducts }) => [
+          section.id,
+          {
+            layout: normalizarLayoutDeVitrine(section.layout),
+            qtd: secProducts.length,
+          },
+        ]),
+      ),
+    [secoesComProdutos],
+  );
+  // Campos legados continuam sendo gravados para versões anteriores do app.
+  const qtdOfertasNaFaixa =
+    vitrinesDaVisita.offers?.qtd ?? Math.min(6, offerProducts.length);
 
   // Grava a memória desta visita (frente cls-ressalva1-0409): quando dados
   // E banners resolveram, os três booleanos da home viva viram o snapshot
@@ -383,6 +420,7 @@ export const HomeView = React.memo(function HomeView({
       temOfertas: offerProducts.length > 0,
       temBestsellers: bestsellerProducts.length > 0,
       temLancamentos: newArrivals.length > 0,
+      vitrines: vitrinesDaVisita,
       layoutOfertas,
       qtdOfertas: qtdOfertasNaFaixa,
     });
@@ -392,6 +430,7 @@ export const HomeView = React.memo(function HomeView({
     bannersLoaded,
     configLoaded,
     layoutOfertas,
+    vitrinesDaVisita,
     qtdOfertasNaFaixa,
     topBanners.length,
     middleBanners.length,
@@ -572,37 +611,17 @@ export const HomeView = React.memo(function HomeView({
 
       {/* Dynamic Showcases / Carousels */}
       {!termoDaBusca &&
-        (
-          config.homeSections ?? [
-            {
-              id: "new_arrivals",
-              title: "Últimos Lançamentos",
-              active: true,
-            },
-            { id: "offers", title: "Ofertas Imperdíveis", active: true },
-            { id: "bestsellers", title: "Destaques em Alta", active: true },
-          ]
-        ).map((section) => {
+        secoesComProdutos.map(({ section, secProducts }) => {
           if (!section.active) return null;
-          const max = section.maxItems ?? 6;
-
-          let secProducts: typeof products = [];
-          if (section.productIds && section.productIds.length > 0) {
-            // Um produto pausado escolhido para uma seção configurável também
-            // não pode aparecer -- por isso o mapa vem de `produtosAVenda`,
-            // não de `products`.
-            const productMap = new Map(produtosAVenda.map((p) => [p.id, p]));
-            secProducts = section.productIds
-              .map((id) => productMap.get(id))
-              .filter((p): p is (typeof products)[0] => Boolean(p))
-              .slice(0, max);
-          } else if (section.id === "offers") {
-            secProducts = offerProducts.slice(0, max);
-          } else if (section.id === "bestsellers") {
-            secProducts = bestsellerProducts.slice(0, max);
-          } else {
-            secProducts = newArrivals.slice(0, max);
-          }
+          const layout = layoutDaSecao(section);
+          // Padrão conserva o desenho de CADA seção: só Ofertas usa o herói.
+          const usaDesenhoDeOfertas =
+            section.id === "offers" || layout !== "padrao";
+          const titulo = nomeOuReserva(
+            section.title,
+            SECOES_PADRAO.find((s) => s.id === section.id)?.title ??
+              "Produtos selecionados",
+          );
 
           // CLS (frente cls-home-0409, dossiê 2148): enquanto os produtos
           // carregam, a seção não pode simplesmente NÃO existir — quando
@@ -645,21 +664,35 @@ export const HomeView = React.memo(function HomeView({
             if (!isLoading) return null;
             if (derivadaPorFiltro && ultimaVisitaTinhaConteuto === false)
               return null;
-            return section.id === "offers" ? (
-              <SecaoOfertasEsqueleto key={section.id} layout={layoutOfertas} />
+            return usaDesenhoDeOfertas ? (
+              <SecaoOfertasEsqueleto
+                key={section.id}
+                layout={layout}
+                quantidade={
+                  memoriaDaUltimaVisita?.vitrines?.[section.id]?.qtd ??
+                  (section.id === "offers"
+                    ? memoriaDaUltimaVisita?.qtdOfertas
+                    : undefined)
+                }
+                vitrineDeOfertas={section.id === "offers"}
+              />
             ) : (
               <SecaoCarrosselEsqueleto key={section.id} />
             );
           }
 
-          if (section.id === "offers") {
+          if (usaDesenhoDeOfertas) {
             return (
               <PremiumOffers
                 key={section.id}
-                layout={layoutOfertas}
-                title={section.title}
+                layout={layout}
+                title={section.id === "offers" ? section.title : titulo}
                 products={secProducts}
-                ordemDaLojista={secaoCurada}
+                ordemDaLojista={section.id !== "offers" || secaoCurada}
+                vitrineDeOfertas={section.id === "offers"}
+                className={
+                  section.id === "bestsellers" ? "bg-zinc-50/50" : undefined
+                }
                 favorites={favorites}
                 onToggleFavorite={onToggleFavorite}
                 onProductClick={onProductClick}
@@ -998,16 +1031,25 @@ function SecaoCarrosselEsqueleto() {
 }
 
 /** Espelho do PremiumOffers (seção offers): header compacto + card herói. */
-function SecaoOfertasEsqueleto({ layout }: { layout?: LayoutDeOfertas }) {
-  // Só o "Lateral em duas fileiras" usa: 1 oferta na última visita = 1 fileira, várias (ou sem informação) = 2.
-  const memoria = useMemoriaDaHome();
+function SecaoOfertasEsqueleto({
+  layout,
+  quantidade,
+  vitrineDeOfertas,
+}: {
+  layout: LayoutDeVitrine;
+  quantidade?: number;
+  vitrineDeOfertas: boolean;
+}) {
+  const testId = vitrineDeOfertas ? "esqueleto-ofertas" : "esqueleto-vitrine";
   // A reserva de 392px mínimos é a mesma do fallback lazy do Compacto.
-  if (layout === "compacto") return <OfertasCompactasEsqueleto />;
-  if (layout === "lateral") return <OfertasLateralEsqueleto />;
+  if (layout === "compacto")
+    return <OfertasCompactasEsqueleto testId={testId} />;
+  if (layout === "lateral") return <OfertasLateralEsqueleto testId={testId} />;
   if (layout === "lateral-duplo")
     return (
       <OfertasLateralDuploEsqueleto
-        fileiras={fileirasDaFaixa(memoria?.qtdOfertas)}
+        testId={testId}
+        fileiras={fileirasDaFaixa(quantidade)}
       />
     );
   return (

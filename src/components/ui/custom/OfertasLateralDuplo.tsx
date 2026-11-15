@@ -42,10 +42,14 @@ export default function OfertasLateralDuplo({
   onProductClick,
   onAddToCart,
   onQuickBuy,
-  title = "Super Descontos",
+  title: titulo,
   ordemDaLojista,
+  vitrineDeOfertas = true,
+  className,
 }: PremiumOffersProps) {
-  const ofertas = ordenarOfertas(products, ordemDaLojista);
+  const title =
+    titulo ?? (vitrineDeOfertas ? "Super Descontos" : "Produtos selecionados");
+  const ofertas = ordenarOfertas(products, ordemDaLojista, vitrineDeOfertas);
   const colunas = emColunas(ofertas);
   // Só rola com 3 ofertas ou mais (2 colunas); com 1 ou 2 a coluna ocupa a largura toda.
   const rola = ofertas.length > OFERTAS_POR_COLUNA;
@@ -74,7 +78,7 @@ export default function OfertasLateralDuplo({
       style={{
         minHeight: alturaDaSecaoDuplo(fileirasDaFaixa(ofertas.length)),
       }}
-      className="relative bg-white py-4"
+      className={cn("relative bg-white py-4", className)}
     >
       <div className="mb-5 flex min-h-6 items-center justify-between gap-3 px-5">
         <h2 className="min-w-0 break-words text-xl font-extrabold leading-6 tracking-tight text-zinc-950">

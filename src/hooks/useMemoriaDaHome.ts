@@ -1,6 +1,8 @@
 import {
   type LayoutDeOfertas,
+  type LayoutDeVitrine,
   normalizarLayoutDeOfertas,
+  normalizarLayoutDeVitrine,
 } from "@/lib/layout-de-ofertas";
 import { useState } from "react";
 
@@ -22,6 +24,11 @@ import { useState } from "react";
 // memória existe para matar). localStorage é síncrono: o primeiro render
 // já sabe. A gravação (best-effort, sem throw) acontece no HomeView quando
 // dados e banners da visita atual resolveram.
+export interface MemoriaDaVitrine {
+  layout: LayoutDeVitrine;
+  qtd?: number;
+}
+
 export interface MemoriaDaHome {
   temBanner: boolean;
   temBannerMeio?: boolean;
@@ -33,6 +40,8 @@ export interface MemoriaDaHome {
    * aposta de hoje: reserva o esqueleto.
    */
   temLancamentos?: boolean;
+  /** Layout e quantidade por id de seção; ausente nas memórias anteriores a este recurso. */
+  vitrines?: Record<string, MemoriaDaVitrine>;
   layoutOfertas?: LayoutDeOfertas;
   /**
    * Quantas ofertas a faixa mostrou na última visita. Só o "Lateral em duas fileiras" lê isto: com 1 oferta
@@ -55,6 +64,28 @@ const CHAVE = "ikcous_home_memoria";
 // que este desenho inventa). Mais de 7 dias sem visita: descarta e cai na
 // aposta de hoje (1ª visita), cortando o pior caso do estado divergente.
 const VALIDADE_MS = 7 * 24 * 60 * 60 * 1000;
+
+function lerVitrines(valor: unknown): MemoriaDaHome["vitrines"] {
+  if (!valor || typeof valor !== "object" || Array.isArray(valor))
+    return undefined;
+  return Object.fromEntries(
+    Object.entries(valor)
+      .filter(
+        ([, vitrine]) =>
+          vitrine && typeof vitrine === "object" && !Array.isArray(vitrine),
+      )
+      .map(([id, vitrine]) => [
+        id,
+        {
+          layout: normalizarLayoutDeVitrine(vitrine.layout),
+          qtd:
+            Number.isInteger(vitrine.qtd) && vitrine.qtd >= 0
+              ? vitrine.qtd
+              : undefined,
+        },
+      ]),
+  );
+}
 
 function parseMemoria(bruto: string | null): MemoriaDaHome | null {
   if (!bruto) return null;
@@ -81,6 +112,7 @@ function parseMemoria(bruto: string | null): MemoriaDaHome | null {
         typeof memo.temLancamentos === "boolean"
           ? memo.temLancamentos
           : undefined,
+      vitrines: lerVitrines(memo.vitrines),
       layoutOfertas: normalizarLayoutDeOfertas(memo.layoutOfertas),
       // Só inteiro >= 1 vale: lixo gravado à mão ou por outra versão vira "sem informação", nunca erro.
       qtdOfertas:

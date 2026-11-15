@@ -21,10 +21,14 @@ export default function OfertasCompactas({
   onProductClick,
   onAddToCart,
   onQuickBuy,
-  title = "Super Descontos",
+  title: titulo,
   ordemDaLojista,
+  vitrineDeOfertas = true,
+  className,
 }: PremiumOffersProps) {
-  const ofertas = ordenarOfertas(products, ordemDaLojista);
+  const title =
+    titulo ?? (vitrineDeOfertas ? "Super Descontos" : "Produtos selecionados");
+  const ofertas = ordenarOfertas(products, ordemDaLojista, vitrineDeOfertas);
   const rola = ofertas.length > 2;
   const [pagina, setPagina] = useState(0);
   const [ref, api] = useEmblaCarousel({
@@ -49,7 +53,7 @@ export default function OfertasCompactas({
   return (
     <section
       data-testid="ofertas-compactas"
-      className="relative min-h-[392px] bg-white py-4"
+      className={cn("relative min-h-[392px] bg-white py-4", className)}
     >
       <div className="mb-5 flex min-h-6 items-center justify-between gap-3 px-5">
         <h2 className="min-w-0 break-words text-xl font-extrabold leading-6 tracking-tight text-zinc-950">
@@ -80,6 +84,7 @@ export default function OfertasCompactas({
               largura={ofertas.length === 1 ? 350 : 165}
               largo={ofertas.length === 1}
               rola={rola}
+              vitrineDeOfertas={vitrineDeOfertas}
               isFavorite={favorites.includes(product.id)}
               onToggleFavorite={onToggleFavorite}
               onProductClick={onProductClick}
@@ -96,7 +101,11 @@ export default function OfertasCompactas({
               key={i}
               data-pagina-ofertas
               aria-current={pagina === i ? "true" : undefined}
-              aria-label={`Página ${i + 1} de ofertas`}
+              aria-label={
+                vitrineDeOfertas
+                  ? `Página ${i + 1} de ofertas`
+                  : `Página ${i + 1} de ${Math.ceil(ofertas.length / 2)}`
+              }
               className={cn(
                 "h-1.5 rounded-full",
                 pagina === i ? "w-6 bg-zinc-950" : "w-1.5 bg-zinc-200",
@@ -114,6 +123,7 @@ function CartaoOfertaCompacta({
   largura,
   largo,
   rola,
+  vitrineDeOfertas,
   isFavorite,
   onToggleFavorite,
   onProductClick,
@@ -128,6 +138,7 @@ function CartaoOfertaCompacta({
   largura: number;
   largo: boolean;
   rola: boolean;
+  vitrineDeOfertas: boolean;
   isFavorite: boolean;
 }) {
   const {
@@ -247,6 +258,8 @@ function CartaoOfertaCompacta({
           className={cn(
             "mb-1.5 min-h-8 break-words text-[13px] font-medium leading-4 text-zinc-950",
             largo && "mb-auto pb-3",
+            // Sem saber o nome antes dos dados, o esqueleto só pode reservar duas linhas fixas.
+            !vitrineDeOfertas && !largo && "line-clamp-2 h-8",
           )}
         >
           {product.name}

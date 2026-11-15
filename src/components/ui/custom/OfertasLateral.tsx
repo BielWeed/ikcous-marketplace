@@ -25,10 +25,14 @@ export default function OfertasLateral({
   onProductClick,
   onAddToCart,
   onQuickBuy,
-  title = "Super Descontos",
+  title: titulo,
   ordemDaLojista,
+  vitrineDeOfertas = true,
+  className,
 }: PremiumOffersProps) {
-  const ofertas = ordenarOfertas(products, ordemDaLojista);
+  const title =
+    titulo ?? (vitrineDeOfertas ? "Super Descontos" : "Produtos selecionados");
+  const ofertas = ordenarOfertas(products, ordemDaLojista, vitrineDeOfertas);
   const rola = ofertas.length > 1;
   const [pagina, setPagina] = useState(0);
   const [ref, api] = useEmblaCarousel({
@@ -53,7 +57,7 @@ export default function OfertasLateral({
     <section
       data-testid="ofertas-lateral"
       style={{ minHeight: ALTURA_SECAO_LATERAL }}
-      className="relative bg-white py-4"
+      className={cn("relative bg-white py-4", className)}
     >
       <div className="mb-5 flex min-h-6 items-center justify-between gap-3 px-5">
         <h2 className="min-w-0 break-words text-xl font-extrabold leading-6 tracking-tight text-zinc-950">
@@ -82,6 +86,7 @@ export default function OfertasLateral({
               product={product}
               discount={discount}
               rola={rola}
+              vitrineDeOfertas={vitrineDeOfertas}
               isFavorite={favorites.includes(product.id)}
               onToggleFavorite={onToggleFavorite}
               onProductClick={onProductClick}
@@ -98,7 +103,7 @@ export default function OfertasLateral({
               key={product.id}
               data-pagina-ofertas
               aria-current={pagina === i ? "true" : undefined}
-              aria-label={`Oferta ${i + 1} de ${ofertas.length}`}
+              aria-label={`${vitrineDeOfertas ? "Oferta" : "Item"} ${i + 1} de ${ofertas.length}`}
               className={cn(
                 "h-1.5 rounded-full",
                 pagina === i ? "w-6 bg-zinc-950" : "w-1.5 bg-zinc-200",
@@ -140,6 +145,7 @@ function CartaoOfertaLateral({
   product,
   discount,
   rola,
+  vitrineDeOfertas,
   isFavorite,
   onToggleFavorite,
   onProductClick,
@@ -152,6 +158,7 @@ function CartaoOfertaLateral({
   product: Product;
   discount: number;
   rola: boolean;
+  vitrineDeOfertas: boolean;
   isFavorite: boolean;
 }) {
   const {
@@ -299,6 +306,14 @@ function CartaoOfertaLateral({
               )}
             >
               {textoEconomia}
+            </span>
+          )}
+          {!vitrineDeOfertas && !textoEconomia && product.category && (
+            <span
+              data-categoria-vitrine
+              className="truncate pr-12 text-xs leading-4 text-zinc-500"
+            >
+              {product.category}
             </span>
           )}
         </div>
