@@ -1358,8 +1358,8 @@ export const AdminPushView = memo(function AdminPushView({
       {/* Cabeçalho enxuto: título, selo "No ar" e ajuda. `flex-wrap`
           (pedido do dono, 23/09/2026): em 320-390px o selo cai para a linha de
           baixo em vez de alargar a página. */}
-      <div className="sticky top-0 z-20 border-b border-admin-border bg-admin-bg/90 px-4 py-3 backdrop-blur-xl">
-        <div className="mx-auto w-full max-w-4xl">
+      <div className="sticky top-0 z-20 border-b border-admin-border bg-admin-bg/90 px-4 py-3 backdrop-blur-xl lg:px-0">
+        <div className="mx-auto w-full max-w-4xl lg:max-w-6xl lg:px-8">
           <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5">
             <AdminPageHeader
               titulo={NOMES_DO_PAINEL["admin-push"]}
@@ -1396,9 +1396,9 @@ export const AdminPushView = memo(function AdminPushView({
       </div>
 
       {/* Fluxo de composição v4; os controles e suas travas são os mesmos. */}
-      <div className="mx-auto w-full min-w-0 max-w-4xl space-y-5 px-5 pb-8 pt-4">
+      <div className="mx-auto w-full min-w-0 max-w-4xl space-y-5 px-5 pb-8 pt-4 lg:max-w-6xl lg:space-y-6 lg:px-8">
         <div className="min-w-0">
-          <div className="min-w-0 space-y-5">
+          <div className="min-w-0 space-y-5 xl:grid xl:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] xl:items-start xl:gap-6 xl:space-y-0">
             <section className="min-w-0 space-y-4" aria-label="Mensagem">
               <TituloDeSecao icone={Pencil}>Mensagem</TituloDeSecao>
               {/* Mensagens Prontas — pílulas (direção B). Os mesmos 3 arquétipos
@@ -1605,7 +1605,7 @@ export const AdminPushView = memo(function AdminPushView({
                 )}
               </div>
             </section>
-            <div className="min-w-0">
+            <div className="min-w-0 xl:sticky xl:top-24 xl:row-span-3">
               <PreviaNoCelular
                 title={notification.title}
                 body={notification.body}
