@@ -795,7 +795,7 @@ export function AdminPdvView({
     // A altura vem do painel (100dvh menos seu cabeçalho). A reserva medida
     // de AcaoDaBarra fica DENTRO dela; listas e corpos de etapa rolam por dentro.
     <div
-      className="pdv pdv-viewport"
+      className="pdv pdv-viewport xl:data-[etapa=fechamento]:max-w-none"
       data-etapa={estado.etapa}
       data-com-itens={estado.itens.length > 0}
       data-modo={modoDeProduto}

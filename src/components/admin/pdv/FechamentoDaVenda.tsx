@@ -249,7 +249,10 @@ export function FechamentoDaVenda({
 
   return (
     <section className="pdv-layer pdv-checkout" aria-label="Cobrança da venda">
-      <div ref={corpoRef} className="pdv-checkout-body">
+      <div
+        ref={corpoRef}
+        className="pdv-checkout-body xl:!grid xl:!grid-cols-2 xl:content-start xl:items-start xl:!gap-6 xl:[&>*]:col-span-2 xl:[&>*]:min-w-0 xl:[&>.pdv-discount]:col-span-1 xl:[&>.pdv-discount]:!grid-cols-1 xl:[&>.pdv-payments]:col-span-1"
+      >
         {estado.erro && (
           <div role="alert" className="pdv-notice">
             <p className="pdv-heading">
