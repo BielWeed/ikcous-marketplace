@@ -218,6 +218,7 @@
 :where(html.admin-mode[data-admin-tema]) .hover\:bg-\[\#BE123C\]:hover.text-white{color:#fff}
 :where(html.admin-mode[data-admin-tema]) .hover\:bg-red-700:hover.text-white{color:#fff}
 :where(html.admin-mode[data-admin-tema]) .hover\:bg-rose-500:hover.hover\:text-white:hover{color:#fff}
+@media (min-width:1024px){:where(html.admin-mode[data-admin-tema="claro"]) .lg\:focus-within\:ring-sky-300:focus-within:where(:not([data-tema-fixo], [data-tema-fixo] *)){--tw-ring-color:#0284c7}}
 @media (min-width:1024px){:where(html.admin-mode[data-admin-tema]) .lg\:text-zinc-500:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text-soft))}}
 @media (min-width:1024px){:where(html.admin-mode:not([data-admin-tema])) .lg\:text-zinc-500:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text-soft))}}
 @media (min-width:640px){:where(html.admin-mode[data-admin-tema]) .sm\:bg-zinc-950:where(:not([data-tema-fixo], [data-tema-fixo] *)){background-color:hsl(var(--admin-bg))}}
