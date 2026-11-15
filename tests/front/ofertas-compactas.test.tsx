@@ -164,7 +164,7 @@ describe("Ofertas Compactas", () => {
   });
 
   it.each([0, 1, 2, 3, 4, 5])(
-    "%i ofertas: vazio some, até quatro centralizam no computador",
+    "%i ofertas: vazio some, e poucas ofertas começam alinhadas ao título (sem centralizar)",
     async (quantidade) => {
       await montar(
         Array.from({ length: quantidade }, (_, i) => produto(String(i))),
@@ -174,9 +174,12 @@ describe("Ofertas Compactas", () => {
         expect(secao).toBeNull();
       } else {
         expect(cartoes()).toHaveLength(quantidade);
-        expect(
-          cartoes()[0]?.parentElement?.classList.contains("lg:justify-center"),
-        ).toBe(quantidade <= 4);
+        // Celular intacto: a fileira mantém exatamente as classes de antes.
+        // No computador, nada centraliza os cartões: o primeiro começa na
+        // mesma margem do título (decisão do sócio, 15/11/2026).
+        expect(cartoes()[0]?.parentElement?.className).toBe(
+          "flex gap-2.5 py-1",
+        );
       }
     },
   );

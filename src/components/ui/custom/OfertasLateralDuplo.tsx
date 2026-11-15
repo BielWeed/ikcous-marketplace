@@ -100,12 +100,7 @@ export default function OfertasLateralDuplo({
           !rola && "mr-3 min-[360px]:mr-5",
         )}
       >
-        <div
-          className={cn(
-            "flex gap-2.5 py-1",
-            colunas.length <= 2 && "lg:justify-center",
-          )}
-        >
+        <div className="flex gap-2.5 py-1">
           {colunas.map((coluna) => (
             <div
               key={coluna[0].product.id}
