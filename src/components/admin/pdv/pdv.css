@@ -1125,12 +1125,14 @@
   /* A busca preenche o resto da coluna e rola por dentro. Sem o piso de 11rem
      do celular: a linha pode ser menor que ele e a busca sobreporia a barra
      do total em janela baixa. (A linha 6 não tem piso para que, no modo
-     Câmera, o total e o "Fechar venda" caibam sem rolar em janela baixa.) */
+     Câmera, o total e o "Fechar venda" caibam sem rolar em janela baixa.)
+     Ela cobre também a linha 7, a do total (que é só da coluna direita): termina
+     junto com a barra, sem os ~124 px vazios que sobravam embaixo dela. */
   .pdv[data-etapa="cupom"] > #busca-do-balcao {
     grid-column: 1;
-    grid-row: 6;
+    grid-row: 6 / 8;
     min-height: 0;
-    margin-bottom: 10px;
+    margin-bottom: 0;
   }
   .pdv[data-etapa="cupom"] > .pdv-flow > .pdv-cupom {
     grid-column: 2;
@@ -1142,9 +1144,16 @@
     grid-row: 7;
   }
   /* Avisos e a pergunta "Descartar esta venda?" flutuam sobre a tela: na
-     largura toda ficavam com 1300 px de texto curto. Presos à direita. */
+     largura toda ficavam com 1300 px de texto curto. Presos à direita, e no
+     máximo na metade direita: com 36rem cheios invadiam a coluna da esquerda
+     em 1280 px (92 px) e em 1366 px (49 px). */
   .pdv[data-etapa="cupom"] > .pdv-flow > .pdv-notice {
     left: auto;
-    width: min(36rem, calc(100% - 32px));
+    width: min(36rem, calc(50% - 28px));
+  }
+  /* A lista de itens rola por dentro; sem isto o cartão encolhia (93 para 68 px)
+     e a lixeira, a quantidade e o "+" saíam dele ~8 px. */
+  .pdv[data-etapa="cupom"] .pdv-cupom > ul > li {
+    flex-shrink: 0;
   }
 }
