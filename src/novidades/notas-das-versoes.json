@@ -7,11 +7,11 @@
     ],
     "correcoes": [
       "Loja, pagamento: a tela de pagamento por Pix abre no topo, com o título à vista, tanto no celular quanto no computador.",
-      "Loja, no computador: na Conta, as abas ficam com a altura certa, os campos do perfil deixam de se esticar e a barra \"Salvar alterações\" perde a borda curva.",
+      "Loja, no computador: na Conta, as abas ficam com a altura certa, os campos do perfil deixam de se esticar e a barra \"Salvar alterações\" perde a linha cinza que aparecia só em cima.",
       "Loja, no computador: no pedido, o botão \"Retomar pagamento\" deixa de ocupar a largura inteira do cartão.",
       "Loja, no computador: em telas de 1536 px ou mais, o Carrinho e Meus pedidos ficam alinhados com o cabeçalho; os comentários das avaliações têm linhas mais curtas.",
       "Loja, no computador: ao abrir um produto por link ou ao recarregar a página, o desenho de carregamento já tem a mesma disposição da página pronta.",
-      "Loja, página do produto: ao clicar em Avaliações ou Perguntas, a aba acesa deixa de voltar para a anterior quando a tela rola um pouco, e a troca de aba acompanha a rolagem na hora certa, no computador e no celular.",
+      "Loja, página do produto: ao clicar em Avaliações ou Perguntas, a aba acesa acompanha a rolagem na hora certa, no computador e no celular, quando há conteúdo abaixo da seção.",
       "Loja, página do produto: ao mudar o tamanho da janela ou girar o aparelho, a galeria continua na foto que a cliente estava vendo, em vez de pular para outra.",
       "Painel, Marca: a partir de 1280 px, o campo \"Nome da loja\" ocupa a largura toda da seção.",
       "Painel, Clientes: no tablet e no computador, valores grandes cabem no cartão do cliente sem cobrir a data.",
