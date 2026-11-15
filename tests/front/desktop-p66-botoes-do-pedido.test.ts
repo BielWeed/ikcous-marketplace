@@ -88,7 +88,9 @@ function problemas(fonte: string, botao: (typeof BOTOES)[number]): string[] {
   const erros: string[] = [];
   const tem = classe.split(/\s+/).includes("lg:max-w-md");
   if (botao.limita && !tem) erros.push("falta lg:max-w-md");
-  if (!botao.limita && tem)
+  // A linha Cancelar Pedido não ganha NENHUMA classe de computador: qualquer
+  // `lg:max-w-*`, `xl:max-w-*` ou `lg:w-*` a estreitaria como o `lg:max-w-md`.
+  if (!botao.limita && classe !== botao.celular)
     erros.push("lg:max-w-md onde a linha deve ocupar o cartão");
   if (onClick !== botao.onClick) erros.push(`handler mudou: ${onClick}`);
   if (!filhos.includes(botao.texto)) erros.push("texto mudou");

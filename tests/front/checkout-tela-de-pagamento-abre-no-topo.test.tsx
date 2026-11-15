@@ -379,14 +379,14 @@ describe("CheckoutView — a tela de pagamento abre no topo, não no scrollTop d
     expect(rolagem).toBe(0);
   });
 
-  // Cobre só: preencher o formulário (sem mudar pedido nem Pix) não dispara o
-  // efeito nem o refaz a cada redesenho. NÃO prova a guarda de entrada do
-  // efeito (o mutante sem ela passa); a guarda é conferida por leitura na
-  // revisão.
+  // A rolagem já vale 180 ANTES de montar: se o efeito rodasse na montagem do
+  // formulário (guarda de entrada removida), zeraria aqui. Depois, preencher o
+  // formulário (sem mudar pedido nem Pix) também não pode levar ao topo.
   it("o formulário, antes de finalizar, não é levado ao topo", async () => {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
-    await montar(CheckoutView);
     rolagem = 180; // a cliente rolou até o botão
+    await montar(CheckoutView);
+    expect(rolagem).toBe(180);
     await prepararOFormulario();
 
     expect(hospedeiro.textContent).not.toContain("Finalize o pagamento");
