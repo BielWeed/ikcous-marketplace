@@ -1,4 +1,17 @@
 {
+  "1.5.192": {
+    "titulo": "Banners, avaliações e financeiro aproveitam melhor a tela do computador",
+    "novidades": [],
+    "correcoes": [
+      "Painel, Banners: no computador, o editor de banner fica numa coluna centrada, a prévia deixa de ocupar a tela inteira, e a busca e o filtro da lista não atravessam mais a janela.",
+      "Painel, CRM, Canais: a partir de 1280 px, \"Cada canal\" e \"Formas de pagamento\" ficam lado a lado.",
+      "Painel, Avaliações e Perguntas: a partir de 1280 px as conversas aparecem em duas colunas, e o botão Responder deixa de esticar a linha toda.",
+      "Painel, Financeiro: \"Pagar e receber\" usa uma coluna até 1279 px e duas a partir de 1280 px; o Extrato fica numa coluna de leitura mais estreita.",
+      "Painel, Vitrines, tablet: o interruptor \"Exibir na loja\" ganha uma área de toque maior, sem abrir a edição da vitrine sem querer.",
+      "Loja, no computador: na página inicial, as ofertas com poucos cartões começam alinhadas ao título, e não mais no meio da linha."
+    ],
+    "melhorias": []
+  },
   "1.5.191": {
     "titulo": "Compra do produto cabe na tela do notebook e frete mais fácil de tocar",
     "novidades": [],
@@ -21,7 +34,7 @@
   "1.5.189": {
     "titulo": "Balcão no computador e fotos sem corte",
     "novidades": [
-      "Painel, Balcão: no computador, o fechamento da venda mostra desconto e pagamento lado a lado."
+      "Painel, Balcão: em telas de 1280 px ou mais, o fechamento da venda mostra desconto e pagamento lado a lado."
     ],
     "correcoes": [
       "Loja, no computador: a foto do produto no layout Compacto das vitrines deixa de ser cortada, e Favoritos fica alinhado ao resto da loja nos três estados (carregando, vazio e com produtos)."
