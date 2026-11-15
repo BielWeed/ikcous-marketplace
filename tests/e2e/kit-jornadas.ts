@@ -852,6 +852,13 @@ export async function instalarSessaoClienteFixtura(
       await rota.fulfill({ status: 204, body: "" });
       return;
     }
+    // Depois do pedido confirmado, o checkout guarda o WhatsApp no perfil quando
+    // ele está vazio (e o perfil das jornadas nasce sem número). É conveniência
+    // silenciosa, nunca condição do pagamento; a RPC real devolve `void` (204).
+    if (chave === "POST /rest/v1/rpc/update_my_profile_secure") {
+      await rota.fulfill({ status: 204, body: "" });
+      return;
+    }
     if (chave === "POST /rest/v1/rpc/get_my_complete_profile") {
       await responderJson([
         {

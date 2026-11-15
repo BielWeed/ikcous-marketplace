@@ -28,11 +28,18 @@ import {
   enderecoTrazErroDeLink,
 } from "@/lib/erro-no-endereco-do-link";
 import {
+  esquecerDestinoGoogle,
+  guardarDestinoGoogle,
+  mensagemComDicaGoogle,
+  retomarDestinoGoogle,
+} from "@/lib/google-login";
+import {
   cancelarInscricaoDaConta,
   soltarInscricaoDoAparelho,
 } from "@/lib/inscricao-de-push-da-conta";
 import {
   type LoginAudience,
+  MENSAGEM_CREDENCIAIS_CLIENTE,
   MENSAGEM_ERRO_LOGIN_GENERICA,
   MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA,
 } from "@/lib/mensagens-auth";
@@ -53,6 +60,7 @@ import {
 import { supabase } from "@/lib/supabase";
 import { limparCachesDeAdmin } from "@/utils/admin_cache";
 import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
+import { AvisoWhatsappGoogle } from "@/views/shared/AvisoWhatsappGoogle";
 import {
   isAuthApiError,
   isAuthRetryableFetchError,
@@ -152,6 +160,9 @@ interface AuthContextType {
   loading: boolean;
   isAdmin: boolean;
   adminStatus: AdminStatus;
+  loginComGoogle: () => Promise<boolean>;
+  mensagemRetornoGoogle: string | null;
+  restaurarDestinoGoogle: () => void;
   login: (
     email: string,
     senha: string,
@@ -177,7 +188,9 @@ interface AuthContextType {
       avatar_url?: string | null;
       cover_url?: string | null;
     },
-    contaEsperada?: string,
+    contaEsperadaOuOpcoes?:
+      | string
+      | { silencioso?: boolean; contaEsperada?: string },
   ) => Promise<boolean>;
   isPasswordRecovery: boolean;
   setIsPasswordRecovery: (value: boolean) => void;
@@ -382,6 +395,19 @@ function apagarDadosLocaisDaConta() {
 }
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
+  // Antes de montar o roteador: a saída para o Google não preserva history.state.
+  const [retornoGoogle] = useState(retomarDestinoGoogle);
+  const restaurarDestinoGoogle = useCallback(() => {
+    // O SDK implícito limpa o hash e perde history.state ANTES de SIGNED_IN.
+    // Usa o retrato validado do sessionStorage, só enquanto ainda estamos no login.
+    if (
+      retornoGoogle.estado &&
+      history.state == null &&
+      location.pathname === "/auth"
+    ) {
+      history.replaceState(retornoGoogle.estado, "");
+    }
+  }, [retornoGoogle.estado]);
   // Synchronously recover session from localStorage to prevent screen flash/delay on boot
   const getCachedSession = () => {
     try {
@@ -454,7 +480,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   >(() => {
     if (typeof window === "undefined") return null;
     const { search, hash } = window.location;
-    if (!enderecoTrazErroDeLink(search, hash)) return null;
+    if (retornoGoogle.mensagem || !enderecoTrazErroDeLink(search, hash))
+      return null;
     return enderecoEhDeRecuperacao(search, hash)
       ? "recuperacao"
       : "confirmacao";
@@ -1418,6 +1445,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     [],
   );
 
+  const loginComGoogle = useCallback(async (): Promise<boolean> => {
+    try {
+      const redirectTo = guardarDestinoGoogle();
+      const { error } = await comPrazoDeAutenticacao(
+        supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: { redirectTo },
+        }),
+        MENSAGEM_LOGIN_SEM_RESPOSTA,
+      );
+      if (!error) return true;
+    } catch {
+      /* Mensagem fixa na tela; não registra dados do provedor. */
+    }
+    esquecerDestinoGoogle();
+    return false;
+  }, []);
+
   const login = useCallback(
     async (
       email: string,
@@ -1470,7 +1515,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         let message =
           audience === "admin"
             ? MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA
-            : MENSAGEM_ERRO_LOGIN_GENERICA;
+            : mensagemComDicaGoogle(MENSAGEM_ERRO_LOGIN_GENERICA);
         if (
           error.code === "email_not_confirmed" ||
           error.message?.includes("Email not confirmed")
@@ -1496,7 +1541,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           error.status === 400 ||
           error.message?.includes("Invalid login credentials")
         ) {
-          message = "E-mail ou senha incorretos. Verifique suas credenciais.";
+          message =
+            audience === "customer"
+              ? mensagemComDicaGoogle(MENSAGEM_CREDENCIAIS_CLIENTE)
+              : "E-mail ou senha incorretos. Verifique suas credenciais.";
         } else if (error.status === 429) {
           // Verificado na doc oficial: o limite de login (token grant) é POR
           // ENDEREÇO IP, não por usuário — não revela se a conta existe.
@@ -1828,10 +1876,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         avatar_url?: string | null;
         cover_url?: string | null;
       },
-      contaDoClique?: string,
+      contaEsperadaOuOpcoes?:
+        | string
+        | { silencioso?: boolean; contaEsperada?: string },
     ): Promise<boolean> => {
       // Quem inicia trabalho assíncrono antes de salvar (ler/comprimir imagem)
       // passa a conta do instante do clique; sem ela, vale a conta atual.
+      const opcoes =
+        typeof contaEsperadaOuOpcoes === "object"
+          ? contaEsperadaOuOpcoes
+          : undefined;
+      const contaDoClique =
+        typeof contaEsperadaOuOpcoes === "string"
+          ? contaEsperadaOuOpcoes
+          : opcoes?.contaEsperada;
       const contaEsperada = contaDoClique ?? activeUserIdRef.current ?? "";
       try {
         const resultado = await gravarPerfilDaConta(
@@ -1869,6 +1927,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // (rede, restrição do banco) mantêm a mensagem genérica, sem usar
         // `err.message`. A troca de conta reconhecida antes do envio tem
         // seu próprio aviso fixo.
+        if (opcoes?.silencioso) {
+          console.error("[Auth] Não foi possível atualizar o perfil.");
+          return false;
+        }
         console.error("[Auth] Error updating profile:", err);
         // Prazo esgotado: a gravação pode ter chegado ao banco depois, então
         // a frase manda CONFERIR antes de tentar de novo (a mesma de Ajustes
@@ -1905,6 +1967,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const value = useMemo(
     () => ({
+      loginComGoogle,
+      restaurarDestinoGoogle,
+      mensagemRetornoGoogle: retornoGoogle.mensagem,
       session,
       user,
       profile,
@@ -1930,6 +1995,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       tentarVerificarAdminDeNovo,
     }),
     [
+      loginComGoogle,
+      restaurarDestinoGoogle,
+      retornoGoogle.mensagem,
       session,
       user,
       profile,
@@ -1956,5 +2024,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     ],
   );
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+      <AvisoWhatsappGoogle
+        key={user?.id ?? "sem-conta"}
+        user={user}
+        profile={profile}
+        habilitado={
+          retornoGoogle.iniciado &&
+          !retornoGoogle.mensagem &&
+          !isPasswordRecovery
+        }
+        checkout={retornoGoogle.checkout}
+        updateProfile={updateProfile}
+      />
+    </AuthContext.Provider>
+  );
 };

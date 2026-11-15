@@ -46,6 +46,10 @@
 // vale só aqui. E uma segunda nuance: no `token.go`, `IsBanned()` é checado
 // ANTES de `Authenticate()` — uma conta banida devolve `user_banned` com a
 // senha CERTA **ou** ERRADA; a senha nunca chega a ser conferida.
+// Frases-base originais. O helper de Google acrescenta a dica só com sonda confirmada.
+export const MENSAGEM_CREDENCIAIS_CLIENTE =
+  "E-mail ou senha incorretos. Verifique suas credenciais.";
+
 export const MENSAGEM_ERRO_LOGIN_GENERICA =
   "Não foi possível entrar agora. Tente novamente em instantes ou fale com a loja.";
 
