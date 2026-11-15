@@ -341,7 +341,7 @@ function EscolhaDaCor({
       ) : (
         <>
           <Button
-            className="h-12 w-full rounded-2xl bg-foreground font-bold text-background hover:opacity-90 xl:col-span-2"
+            className="h-12 w-full rounded-2xl bg-foreground font-bold text-background hover:opacity-90 xl:col-span-2 2xl:ml-auto 2xl:w-72"
             disabled={
               offline || editor.locked || !editor.dirty || !validacao.ok
             }

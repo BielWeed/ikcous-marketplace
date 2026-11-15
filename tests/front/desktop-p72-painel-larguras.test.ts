@@ -14,7 +14,11 @@
 //   4.  Ficha cliente  = o `<div>` RAIZ (sem ancestral JSX) com `pb-admin`;
 //   5.  Frete grátis   = idem, em AdminFreeShippingCardView;
 //   6.  Cor do app     = idem, em AdminAppColorView;
-//   7.  Devoluções     = o `<div inert>` que envolve o campo de busca.
+//   7.  Devoluções     = o `<div inert>` que envolve o campo de busca;
+//   8.  Salvar do frete grátis = o `<Button>` com `void salvar()`, filho direto da
+//                        raiz (bloco, não flex: `2xl:flex` faz o `ml-auto` valer);
+//   9.  Salvar cor     = o `<Button>` com `savePrimaryColor()`, item da grade da
+//                        raiz (`xl:col-span-2`), que em 2xl:+ perde a faixa inteira.
 // Para cada um: (a) o className de CELULAR (tudo que não começa por
 // lg/xl/2xl, na ordem) é, byte a byte, o de antes da P72 (congelado abaixo a
 // partir de f9611bb9c, escrito à mão); (b) os tokens de computador são
@@ -232,6 +236,19 @@ const BUSCA = {
   celular: "group relative",
   novas: ["lg:max-w-xl"],
 };
+// Os dois Salvar da P72b: em 1536 px+ a faixa de 1120/1248 px vira 288 px à direita.
+const SALVAR_FRETE = {
+  celular:
+    "h-[52px] w-full rounded-full bg-zinc-50 font-bold text-zinc-950 hover:bg-zinc-200",
+  novas: ["2xl:flex", "2xl:ml-auto", "2xl:w-72"],
+};
+const SALVAR_COR = {
+  celular:
+    "h-12 w-full rounded-2xl bg-foreground font-bold text-background hover:opacity-90",
+  novas: ["2xl:ml-auto", "2xl:w-72"],
+  // `xl:col-span-2` já existia antes da P72.
+  computador: ["xl:col-span-2", "2xl:ml-auto", "2xl:w-72"],
+};
 
 // ── achar cada elemento pela estrutura ─────────────────────────────────────
 function salvarCupom(fonte: string): string[] {
@@ -387,6 +404,68 @@ function busca(fonte: string): string[] {
   return erros;
 }
 
+function salvarFrete(fonte: string): string[] {
+  const l = ler(fonte);
+  const botoes = l.elementos.filter(
+    (e) =>
+      l.tag(e) === "Button" &&
+      l.texto(e).includes("void salvar()") &&
+      l.texto(e).includes('"Salvando…" : "Salvar"'),
+  );
+  if (botoes.length !== 1) return [`achou ${botoes.length} botões Salvar`];
+  const erros: string[] = [];
+  // Filho direto da raiz, que é um bloco (não flex): `ml-auto` só vale com `2xl:flex`.
+  const pai = l.ancestrais(botoes[0])[0];
+  if (!pai || !l.pedacos(pai).includes("pb-admin"))
+    erros.push("o Salvar não é filho direto da raiz da tela");
+  erros.push(
+    ...confere(
+      "salvar frete",
+      l,
+      botoes[0],
+      SALVAR_FRETE.celular,
+      SALVAR_FRETE.novas,
+      SALVAR_FRETE.novas,
+    ),
+  );
+  return erros;
+}
+
+function salvarCor(fonte: string): string[] {
+  const l = ler(fonte);
+  const botoes = l.elementos.filter(
+    (e) =>
+      l.tag(e) === "Button" &&
+      l.texto(e).includes("editor.savePrimaryColor()") &&
+      l.texto(e).includes('"Salvar cor"'),
+  );
+  if (botoes.length !== 1) return [`achou ${botoes.length} botões Salvar cor`];
+  const erros: string[] = [];
+  // O botão mora em EscolhaDaCor, que a raiz (a GRADE) renderiza como filho direto:
+  // sem isso, `ml-auto` não teria grade nenhuma para empurrar.
+  const escolhas = l.elementos.filter((e) => l.tag(e) === "EscolhaDaCor");
+  if (escolhas.length !== 1)
+    erros.push(`achou ${escolhas.length} EscolhaDaCor`);
+  else {
+    const raiz = l.ancestrais(escolhas[0])[0];
+    if (!raiz || !l.pedacos(raiz).includes("pb-admin"))
+      erros.push("EscolhaDaCor não é filha direta da raiz da tela");
+    else if (!l.pedacos(raiz).includes("xl:grid"))
+      erros.push("a raiz da tela não é uma grade em xl");
+  }
+  erros.push(
+    ...confere(
+      "salvar cor",
+      l,
+      botoes[0],
+      SALVAR_COR.celular,
+      SALVAR_COR.computador,
+      SALVAR_COR.novas,
+    ),
+  );
+  return erros;
+}
+
 const PROVAS: [string, Chave, (f: string) => string[]][] = [
   ["1a. Salvar Cupom", "cupom", salvarCupom],
   ["1b. Quem pode usar", "quem", quemPodeUsar],
@@ -404,6 +483,8 @@ const PROVAS: [string, Chave, (f: string) => string[]][] = [
   ],
   ["6. Cor do app", "cor", (f) => raizDaTela("cor do app", f, COR)],
   ["7. Campo de busca das devoluções", "lista", busca],
+  ["8. Salvar do card de frete grátis", "frete", salvarFrete],
+  ["9. Salvar cor", "cor", salvarCor],
 ];
 
 describe("P72 — cada classe de largura está no elemento certo, com o celular intacto", () => {
@@ -553,6 +634,60 @@ describe("P72 — cada classe de largura está no elemento certo, com o celular 
     for (const [chave, de, para, fn] of casos) {
       expect(fn(mutar(chave, de, para)).join("\n")).toMatch(/celular mudou/);
     }
+  });
+
+  it("mutante: os dois Salvar (P72b) — classe some, vai para outro elemento, celular muda", () => {
+    const FRETE_NOVAS = " 2xl:ml-auto 2xl:flex 2xl:w-72";
+    const COR_NOVAS = " 2xl:ml-auto 2xl:w-72";
+
+    // a classe nova some (só um token, e todas)
+    expect(salvarFrete(mutar("frete", " 2xl:flex", "")).join("\n")).toMatch(
+      /classes de computador são/,
+    );
+    expect(salvarFrete(mutar("frete", FRETE_NOVAS, "")).join("\n")).toMatch(
+      /classes de computador são/,
+    );
+    expect(salvarCor(mutar("cor", " 2xl:ml-auto", "")).join("\n")).toMatch(
+      /classes de computador são/,
+    );
+    expect(salvarCor(mutar("cor", COR_NOVAS, "")).join("\n")).toMatch(
+      /classes de computador são/,
+    );
+
+    // a classe nova vai para OUTRO elemento
+    const f1 = mutar("frete", FRETE_NOVAS, "").replace(
+      '<p role="status" className="text-center text-xs text-zinc-400">',
+      '<p role="status" className="text-center text-xs text-zinc-400 2xl:flex 2xl:ml-auto 2xl:w-72">',
+    );
+    expect(salvarFrete(f1).join("\n")).toMatch(/2xl:w-72 está em/);
+    const c1 = mutar("cor", COR_NOVAS, "").replace(
+      "bg-admin-bg text-zinc-50 xl:col-span-2`}",
+      "bg-admin-bg text-zinc-50 xl:col-span-2 2xl:ml-auto 2xl:w-72`}",
+    );
+    expect(salvarCor(c1).join("\n")).toMatch(/2xl:w-72 está em/);
+
+    // uma classe de celular muda
+    expect(
+      salvarFrete(mutar("frete", "h-[52px] w-full", "h-[52px] w-1/2")).join(
+        "\n",
+      ),
+    ).toMatch(/celular mudou/);
+    expect(
+      salvarCor(
+        mutar(
+          "cor",
+          "h-12 w-full rounded-2xl bg-foreground font-bold",
+          "h-12 w-1/2 rounded-2xl bg-foreground font-bold",
+        ),
+      ).join("\n"),
+    ).toMatch(/celular mudou/);
+
+    // o Salvar cor deixa de estar dentro da grade
+    expect(
+      salvarCor(mutar("cor", " xl:grid xl:max-w-5xl", " xl:max-w-5xl")).join(
+        "\n",
+      ),
+    ).toMatch(/não é uma grade em xl/);
   });
 
   it("mutante: o botão Avançar sai do contêiner flex", () => {

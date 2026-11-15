@@ -196,7 +196,7 @@ export function AdminFreeShippingCardView({
           !dirty
         }
         onClick={() => void salvar()}
-        className="h-[52px] w-full rounded-full bg-zinc-50 font-bold text-zinc-950 hover:bg-zinc-200"
+        className="h-[52px] w-full rounded-full bg-zinc-50 font-bold text-zinc-950 hover:bg-zinc-200 2xl:ml-auto 2xl:flex 2xl:w-72"
       >
         <Truck aria-hidden="true" className="size-4" />
         {salvando ? "Salvando…" : "Salvar"}
