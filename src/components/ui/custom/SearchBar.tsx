@@ -344,7 +344,10 @@ export function SearchBar({
   return (
     <div
       ref={containerRef}
-      className={cn("relative z-[90] w-full overflow-hidden", className)}
+      className={cn(
+        "relative z-[90] w-full overflow-hidden lg:overflow-visible",
+        className,
+      )}
     >
       {/* Search Input Container */}
       <div
@@ -451,7 +454,7 @@ export function SearchBar({
                   }
                 : undefined
             }
-            className="fixed inset-x-0 top-[calc(var(--header-height)+6px)] z-[100] mx-auto max-h-[72vh] w-[calc(100vw-24px)] max-w-lg overflow-y-auto rounded-[28px] border border-zinc-200/90 bg-white p-4 shadow-[0_30px_70px_-15px_rgba(0,0,0,0.35)] duration-200 animate-in fade-in slide-in-from-top-2 sm:p-5"
+            className="fixed inset-x-0 top-[calc(var(--header-height)+6px)] z-[100] mx-auto max-h-[72vh] w-[calc(100vw-24px)] max-w-lg overflow-y-auto rounded-[28px] border border-zinc-200/90 bg-white p-4 shadow-[0_30px_70px_-15px_rgba(0,0,0,0.35)] duration-200 animate-in fade-in slide-in-from-top-2 sm:p-5 lg:absolute lg:inset-x-auto lg:left-0 lg:top-full lg:mx-0 lg:mt-2 lg:w-full lg:max-w-none"
           >
             {/* 1. PREDICTIVE AUTOCOMPLETE TERMS */}
             {predictedTerms.length > 0 && (
