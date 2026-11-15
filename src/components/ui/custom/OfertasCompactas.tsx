@@ -216,7 +216,7 @@ function CartaoOfertaCompacta({
           "relative shrink-0 overflow-hidden bg-zinc-100",
           largo
             ? "min-h-[264px] w-[44%] self-stretch rounded-[14px]"
-            : "h-[136px] w-full rounded-t-[19px]",
+            : "h-[136px] w-full rounded-t-[19px] lg:h-auto lg:aspect-[4/3]",
         )}
       >
         {product.images[0] ? (

@@ -90,7 +90,7 @@ function AvisoDeFavoritosRetidos({
   return (
     <div
       role="status"
-      className="mx-4 mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-100"
+      className="mx-4 mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-100 lg:mx-0"
     >
       <span>
         {quantidade}{" "}
@@ -134,7 +134,7 @@ function AvisoDeFavoritosIndisponiveis({
   return (
     <div
       role="status"
-      className="mx-4 mb-3 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-100"
+      className="mx-4 mb-3 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-100 lg:mx-0"
     >
       {quantidade === 1
         ? "1 favorito seu não está disponível na loja."
@@ -457,10 +457,14 @@ export const FavoritesView = React.memo(function FavoritesView({
   if (loading || (semCatalogo && (loadingProducts || tentandoCatalogo))) {
     return (
       <div className="pb-customer min-h-full overflow-x-hidden bg-background">
-        <header className="px-4 pb-4 pt-5">
+        <header className="px-4 pb-4 pt-5 lg:px-0">
           <h1 className="text-3xl font-bold tracking-tight">Favoritos</h1>
         </header>
-        <div role="status" aria-label="Carregando favoritos" className="px-4">
+        <div
+          role="status"
+          aria-label="Carregando favoritos"
+          className="px-4 lg:px-0"
+        >
           {Array.from({ length: 4 }).map((_, idx) => (
             <div
               key={idx}
@@ -633,7 +637,7 @@ export const FavoritesView = React.memo(function FavoritesView({
 
   return (
     <div className="pb-customer min-h-full min-w-0 overflow-x-hidden bg-background text-foreground">
-      <header className="flex flex-wrap items-center justify-between gap-3 px-4 pb-3 pt-5">
+      <header className="flex flex-wrap items-center justify-between gap-3 px-4 pb-3 pt-5 lg:px-0">
         <div className="min-w-0">
           <h1 className="text-3xl font-bold tracking-tight">Favoritos</h1>
           <p className="mt-1 text-xs text-muted-foreground">
@@ -691,7 +695,7 @@ export const FavoritesView = React.memo(function FavoritesView({
       {favoritosErro && (
         <div
           role="status"
-          className="mx-4 mb-2 flex items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 text-[13px] leading-5 text-amber-800 dark:text-amber-300"
+          className="mx-4 mb-2 flex items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 text-[13px] leading-5 text-amber-800 dark:text-amber-300 lg:mx-0"
         >
           <p className="py-2">
             Não conseguimos atualizar seus favoritos. A lista pode estar
@@ -710,7 +714,7 @@ export const FavoritesView = React.memo(function FavoritesView({
       {mostrarAtalhos && (
         <nav
           aria-label="Categorias"
-          className="favorites-atalhos mx-4 mb-1 flex min-w-0 gap-2 overflow-x-auto pb-1"
+          className="favorites-atalhos mx-4 mb-1 flex min-w-0 gap-2 overflow-x-auto pb-1 lg:mx-0"
         >
           {secoes.map((secao, indice) => (
             <button
@@ -744,7 +748,7 @@ export const FavoritesView = React.memo(function FavoritesView({
         </div>
       )}
 
-      <div ref={listaRef} className="px-4">
+      <div ref={listaRef} className="px-4 lg:px-0">
         {secoes.map((secao, indice) => {
           const aberta = expandidas.has(secao.nome);
           const temMais = secao.itens.length > ITENS_POR_CATEGORIA;

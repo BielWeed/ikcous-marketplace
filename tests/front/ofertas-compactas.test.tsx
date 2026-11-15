@@ -31,6 +31,9 @@ vi.mock("@/components/LazyImage", () => ({
 }));
 
 await import("@/components/ui/custom/OfertasCompactas");
+const { OfertasCompactasEsqueleto } = await import(
+  "@/components/ui/custom/OfertasCompactasEsqueleto"
+);
 await import("@/components/ui/custom/OfertasLateral");
 await import("@/components/ui/custom/OfertasLateralDuplo");
 
@@ -101,6 +104,65 @@ const clicar = async (el: Element) => {
 };
 
 describe("Ofertas Compactas", () => {
+  it("foto proporcional só no computador, inclusive sem foto, sem mudar celular", async () => {
+    await montar([
+      produto("com-foto", { images: ["/foto-ficticia.webp"] }),
+      produto("sem-foto"),
+      produto("nome longo ".repeat(8)),
+    ]);
+    for (const card of cartoes()) {
+      const foto = card.querySelector<HTMLElement>("[data-foto-oferta]")!;
+      expect(
+        foto.className
+          .split(" ")
+          .filter((classe) => !classe.startsWith("lg:"))
+          .join(" "),
+      ).toBe(
+        "relative shrink-0 overflow-hidden bg-zinc-100 h-[136px] w-full rounded-t-[19px]",
+      );
+      expect(foto.classList.contains("lg:h-auto")).toBe(true);
+      expect(foto.classList.contains("lg:aspect-[4/3]")).toBe(true);
+      expect(card.classList.contains("flex-col")).toBe(true);
+      expect(card.parentElement?.classList.contains("flex")).toBe(true);
+    }
+    expect(host.querySelector("[data-sem-foto]")?.className).toBe(
+      "flex size-full min-h-[136px] flex-col items-center justify-center gap-2 text-zinc-500",
+    );
+    expect(host.querySelector("[data-foto-oferta] img")?.className).toBe(
+      "size-full object-cover",
+    );
+  });
+
+  it("esqueleto reserva a mesma proporção da foto no computador", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const raiz = createRoot(container);
+    await act(async () => raiz.render(<OfertasCompactasEsqueleto />));
+    const fotos = container.querySelectorAll<HTMLElement>(
+      "[data-cartao-esqueleto] > div:first-child",
+    );
+    expect(fotos).toHaveLength(3);
+    for (const foto of fotos) {
+      expect(
+        foto.className
+          .split(" ")
+          .filter((classe) => !classe.startsWith("lg:"))
+          .join(" "),
+      ).toBe("h-[136px] w-full shrink-0 rounded-t-[19px] bg-[#ECECEF]");
+      expect(foto.classList.contains("lg:h-auto")).toBe(true);
+      expect(foto.classList.contains("lg:aspect-[4/3]")).toBe(true);
+    }
+    await act(async () => raiz.unmount());
+    container.remove();
+  });
+
+  it("foto lateral do cartão único fica byte a byte igual", async () => {
+    await montar([produto("única")]);
+    expect(host.querySelector("[data-foto-oferta]")?.className).toBe(
+      "relative shrink-0 overflow-hidden bg-zinc-100 min-h-[264px] w-[44%] self-stretch rounded-[14px]",
+    );
+  });
+
   it.each([0, 1, 2, 3, 4, 5])(
     "%i ofertas: vazio some, até quatro centralizam no computador",
     async (quantidade) => {
