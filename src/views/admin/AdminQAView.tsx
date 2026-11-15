@@ -606,7 +606,7 @@ export const AdminQAView = memo(function AdminQAView({
     return (
       <li
         key={q.id}
-        className="rounded-2xl border border-solid border-admin-border bg-admin-surface p-3.5"
+        className="rounded-2xl border border-solid border-admin-border bg-admin-surface p-3.5 lg:rounded-3xl lg:p-6"
       >
         <div className="flex items-start gap-3">
           <Avatar nome={q.customerName} />
@@ -700,7 +700,10 @@ export const AdminQAView = memo(function AdminQAView({
                 disabled={isOffline}
                 aria-label={`${isAnswered ? "Editar resposta" : "Responder"} a ${q.customerName}`}
                 onClick={() => setSelectedQuestion(q)}
-                className={cn(BOTAO_NEUTRO, "min-w-0 flex-1")}
+                className={cn(
+                  BOTAO_NEUTRO,
+                  "min-w-0 flex-1 lg:min-w-48 lg:flex-none",
+                )}
               >
                 <MessageSquare aria-hidden="true" className="size-4" />
                 {isAnswered ? "Editar resposta" : "Responder"}
@@ -755,7 +758,7 @@ export const AdminQAView = memo(function AdminQAView({
     return (
       <ul
         className={cn(
-          "space-y-3 transition-opacity duration-300",
+          "space-y-3 transition-opacity duration-300 lg:space-y-4",
           loading && "pointer-events-none opacity-50",
         )}
       >
@@ -778,7 +781,7 @@ export const AdminQAView = memo(function AdminQAView({
         </h2>
       </div>
 
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 px-4 pt-3">
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 px-4 pt-3 lg:max-w-none lg:gap-4 lg:px-6 lg:pt-6 xl:grid xl:grid-cols-2 xl:gap-6 xl:[&>div:first-child]:col-span-2 xl:[&>section]:col-span-2">
         {/* Perguntas e Avaliações dividem uma porta só (Clientes): o
             alternador leva de uma à outra, e a ajuda mora ao lado. */}
         <div className="flex items-center gap-2">
@@ -883,7 +886,7 @@ export const AdminQAView = memo(function AdminQAView({
             real (PAINEL-16 já o tinha deixado sem valor). */}
       </div>
 
-      <main className="mx-auto mt-4 w-full max-w-3xl px-4">
+      <main className="mx-auto mt-4 w-full max-w-3xl px-4 lg:mt-6 lg:max-w-none lg:px-6">
         {isOffline && (
           <div className="mb-3">
             <AvisoDeProblema>
