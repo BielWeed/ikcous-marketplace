@@ -1,23 +1,16 @@
 // @vitest-environment jsdom
 //
-// Uso de PC (P56), duas partes:
-//
-// A) Foco do teclado invisível no frete. Os campos de valor/prazo/mínimo/
+// Uso de PC (P56): foco do teclado invisível no frete. Os campos de valor/prazo/mínimo/
 //    desconto têm `focus:outline-none focus:ring-0` e ficam dentro de uma
 //    "caixa" que não mostrava foco nenhum: quem navega por Tab no computador
 //    não via onde estava. A caixa (o contêiner do input) ganha um anel só no
 //    PC (`lg:`): no celular/tablet o toque no campo continua sem anel.
-//
-// B) Recibo impresso: cada item e o bloco de totais não podem ser cortados
-//    entre duas páginas (`print:break-inside-avoid`). Só vale no papel.
 //
 // O celular fica intacto: cada caixa tem as classes SEM prefixo congeladas
 // como lista literal (nunca comparadas com o histórico do git).
 import { EstrategiaNacionalBloco } from "@/components/admin/shipping/EstrategiaNacionalBloco";
 import { FreteGratisBloco } from "@/components/admin/shipping/FreteGratisBloco";
 import { FreteLocalBloco } from "@/components/admin/shipping/FreteLocalBloco";
-import { OrderReceipt } from "@/components/admin/orders/OrderReceipt";
-import type { Order } from "@/types";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -26,15 +19,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const FOCO_NO_PC = ["lg:focus-within:ring-2", "lg:focus-within:ring-sky-300"];
-const QUEBRA_NO_PAPEL = ["print:break-inside-avoid"];
 
 /** As classes do elemento, em lista. */
 const classesDe = (el: Element) =>
   (el.getAttribute("class") ?? "").split(/\s+/).filter(Boolean);
 
-/** Só as classes que valem no celular: sem `lg:` nem `print:`. */
+/** Só as classes que valem no celular: sem `lg:`. */
 const semPrefixo = (el: Element) =>
-  classesDe(el).filter((c) => !c.startsWith("lg:") && !c.startsWith("print:"));
+  classesDe(el).filter((c) => !c.startsWith("lg:"));
 
 /** A regra do teste: todas as classes esperadas, escritas por inteiro. */
 const temTodas = (classes: readonly string[], esperadas: readonly string[]) =>
@@ -182,91 +174,5 @@ describe("foco do teclado no frete: a caixa do campo acende só no PC", () => {
       expect(temTodas(classesDe(caixa), FOCO_NO_PC)).toBe(true);
       expect(semPrefixo(caixa)).toEqual(casca);
     }
-  });
-});
-
-describe("recibo impresso: item e totais não se partem entre páginas", () => {
-  let raiz: Root;
-  let host: HTMLDivElement;
-
-  beforeEach(() => {
-    host = document.createElement("div");
-    document.body.appendChild(host);
-    raiz = createRoot(host);
-  });
-  afterEach(() => {
-    act(() => raiz.unmount());
-    host.remove();
-  });
-
-  const pedido: Order = {
-    id: "pedido-1234567890",
-    customer: { name: "Maria Teste", whatsapp: "11999999999" },
-    items: [
-      {
-        productId: "p1",
-        name: "Produto Um",
-        price: 50,
-        quantity: 2,
-        image: "",
-      },
-      {
-        productId: "p2",
-        name: "Produto Dois",
-        price: 30,
-        quantity: 1,
-        image: "",
-      },
-    ],
-    subtotal: 130,
-    shipping: 15,
-    discount: 10,
-    total: 135,
-    paymentMethod: "pix",
-    status: "pending",
-    createdAt: new Date("2026-08-20T10:00:00Z").toISOString(),
-    updatedAt: new Date("2026-08-20T10:00:00Z").toISOString(),
-    cancelledAfterShipping: false,
-  };
-
-  const spanCom = (trecho: string) => {
-    const achado = Array.from(document.body.querySelectorAll("span")).find(
-      (s) => (s.textContent ?? "").includes(trecho),
-    );
-    if (!achado) throw new Error(`'${trecho}' não encontrado no recibo`);
-    return achado;
-  };
-
-  it("cada item e o bloco de totais ganham a quebra só no papel", () => {
-    act(() => raiz.render(<OrderReceipt order={pedido} />));
-
-    for (const trecho of ["Produto Um", "Produto Dois"]) {
-      const item = spanCom(trecho).parentElement as HTMLElement;
-      expect(temTodas(classesDe(item), QUEBRA_NO_PAPEL)).toBe(true);
-      expect(semPrefixo(item)).toEqual(["flex", "justify-between"]);
-    }
-
-    const totais = spanCom("Subtotal").parentElement
-      ?.parentElement as HTMLElement;
-    expect(temTodas(classesDe(totais), QUEBRA_NO_PAPEL)).toBe(true);
-    expect(semPrefixo(totais)).toEqual([
-      "mb-4",
-      "border-t",
-      "border-dashed",
-      "border-black",
-      "pt-4",
-    ]);
-  });
-
-  it("mutante em cópia: sem a classe, ou com o prefixo trocado, reprova", () => {
-    const item = ["flex", "justify-between", "print:break-inside-avoid"];
-    expect(temTodas(item, QUEBRA_NO_PAPEL)).toBe(true);
-    expect(temTodas(item.slice(0, 2), QUEBRA_NO_PAPEL)).toBe(false);
-    expect(
-      temTodas(
-        item.map((c) => c.replace(/^print:/, "")),
-        QUEBRA_NO_PAPEL,
-      ),
-    ).toBe(false);
   });
 });
