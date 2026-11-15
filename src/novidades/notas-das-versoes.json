@@ -1,4 +1,13 @@
 {
+  "1.5.187": {
+    "titulo": "Baixe o catálogo em planilha e escolha o layout de cada vitrine",
+    "novidades": [
+      "Painel, Produtos: novo botão \"Baixar planilha\", ao lado de Cupons. Gera uma planilha Excel com todos os produtos do catálogo, uma linha por variação, com preço, estoque e, para o administrador, custo e lucro.",
+      "Painel, Ajustes, Vitrines: todas as vitrines (Últimos Lançamentos, Destaques e as que você criar) agora têm a escolha de layout: Padrão, Compacto, Lateral e Lateral em duas fileiras. Quem não mudar nada continua vendo a loja igual."
+    ],
+    "correcoes": [],
+    "melhorias": []
+  },
   "1.5.186": {
     "titulo": "Entrar e criar conta com o Google, em um clique",
     "novidades": [
