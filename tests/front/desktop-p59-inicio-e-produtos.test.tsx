@@ -195,6 +195,10 @@ function violacoesDoValorDeHoje(className: string): string[] {
     v.push("celular mudou");
   if (!tokens(className).includes("xl:text-[2.25rem]"))
     v.push("falta xl:text-[2.25rem]");
+  // Em 1536 px ou mais a coluna tem 397 px e os 48 px de antes cabiam: o valor
+  // volta ao MESMO tamanho do celular (a mesma classe, com prefixo `2xl:`).
+  if (!tokens(className).includes("2xl:text-[clamp(1.875rem,9.5vw,3rem)]"))
+    v.push("falta 2xl:text-[clamp(1.875rem,9.5vw,3rem)]");
   return v;
 }
 
@@ -362,6 +366,14 @@ describe("P59 Início do painel: três colunas só de 1280 px em diante", () => 
     const semTamanho = valor.className.replace("xl:text-[2.25rem]", "");
     expect(violacoesDoValorDeHoje(semTamanho)).toContain(
       "falta xl:text-[2.25rem]",
+    );
+    // Mutante 7: sem a volta ao tamanho grande em 1536 px ou mais.
+    const semVoltaEm2xl = valor.className.replace(
+      "2xl:text-[clamp(1.875rem,9.5vw,3rem)]",
+      "",
+    );
+    expect(violacoesDoValorDeHoje(semVoltaEm2xl)).toContain(
+      "falta 2xl:text-[clamp(1.875rem,9.5vw,3rem)]",
     );
     // Mutante 6: o tamanho entra editado DENTRO do literal do celular.
     const editadoNoCelular = valor.className.replace(
