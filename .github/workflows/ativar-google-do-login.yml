@@ -1,0 +1,110 @@
+# Uma loja por execução, depois da revisão de risco no expected_sha.
+# Desfazer: mesma loja/SHA, acao=desativar; só external_google_enabled=false.
+# Não apaga client id, segredo nem redirects. Não faz login real pelo Google.
+name: Google do login por loja
+run-name: "Google do login em ${{ inputs.projeto }}: ${{ inputs.acao }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      projeto:
+        description: "Loja explícita (nunca um ref livre)"
+        required: true
+        type: choice
+        default: ikcous-publicada
+        options:
+          - ikcous-publicada
+          - savy
+      acao:
+        description: "Medir; ativar com guardas; desativar para desfazer"
+        required: true
+        type: choice
+        default: medir
+        options:
+          - medir
+          - ativar
+          - desativar
+      expected_sha:
+        description: "SHA completo aprovado (40 hex), igual ao GITHUB_SHA deste run"
+        required: true
+        type: string
+      client_id:
+        description: "Client ID público do Google (obrigatório para ativar)"
+        required: false
+        type: string
+      origens:
+        description: "Até 5 origens https://host separadas por vírgula, sem caminho ou localhost (medir/ativar)"
+        required: false
+        type: string
+      turma:
+        description: "Turma do cliente OAuth; o segredo vem somente do GitHub"
+        required: true
+        type: choice
+        default: turma-1
+        options:
+          - turma-1
+          - turma-2
+          - turma-3
+          - turma-4
+
+permissions:
+  contents: read
+
+concurrency:
+  group: google-do-login-${{ inputs.projeto }}
+  cancel-in-progress: false
+
+jobs:
+  google:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Confere alvo, turma e SHA antes de checkout e segredos
+        env:
+          PROJETO: ${{ inputs.projeto }}
+          ACAO: ${{ inputs.acao }}
+          TURMA: ${{ inputs.turma }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          set -euo pipefail
+          case "$PROJETO" in
+            ikcous-publicada|savy) ;;
+            *) echo "::error::projeto desconhecido"; exit 1 ;;
+          esac
+          case "$ACAO" in
+            medir|ativar|desativar) ;;
+            *) echo "::error::ação desconhecida"; exit 1 ;;
+          esac
+          case "$TURMA" in
+            turma-1|turma-2|turma-3|turma-4) ;;
+            *) echo "::error::turma desconhecida"; exit 1 ;;
+          esac
+          if ! [[ "$EXPECTED_SHA" =~ ^[a-fA-F0-9]{40}$ ]] || [ "${EXPECTED_SHA,,}" != "${GITHUB_SHA,,}" ]; then
+            echo "::error::expected_sha completo e igual ao GITHUB_SHA é obrigatório"; exit 1
+          fi
+
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+
+      # Nunca fallback entre lojas ou turmas. Segredo só por env, nunca argumento.
+      - name: Mede ou configura só os campos do Google
+        env:
+          SUPABASE_ACCESS_TOKEN_IKCOUS: ${{ inputs.projeto == 'ikcous-publicada' && secrets.SUPABASE_ACCESS_TOKEN_IKCOUS || '' }}
+          SUPABASE_ACCESS_TOKEN_SAVY: ${{ inputs.projeto == 'savy' && secrets.SUPABASE_ACCESS_TOKEN_SAVY || '' }}
+          GOOGLE_OAUTH_SECRET_TURMA_1: ${{ inputs.turma == 'turma-1' && secrets.GOOGLE_OAUTH_SECRET_TURMA_1 || '' }}
+          GOOGLE_OAUTH_SECRET_TURMA_2: ${{ inputs.turma == 'turma-2' && secrets.GOOGLE_OAUTH_SECRET_TURMA_2 || '' }}
+          GOOGLE_OAUTH_SECRET_TURMA_3: ${{ inputs.turma == 'turma-3' && secrets.GOOGLE_OAUTH_SECRET_TURMA_3 || '' }}
+          GOOGLE_OAUTH_SECRET_TURMA_4: ${{ inputs.turma == 'turma-4' && secrets.GOOGLE_OAUTH_SECRET_TURMA_4 || '' }}
+          PROJETO: ${{ inputs.projeto }}
+          ACAO: ${{ inputs.acao }}
+          TURMA: ${{ inputs.turma }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          CLIENT_ID: ${{ inputs.client_id }}
+          ORIGENS: ${{ inputs.origens }}
+        run: node scripts/publicacao/ativar-google-do-login.cjs
