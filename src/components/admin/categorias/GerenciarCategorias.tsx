@@ -256,7 +256,7 @@ function ConteudoDaGestao() {
         </p>
       ) : null}
 
-      <ul className="space-y-3">
+      <ul className="space-y-3 lg:grid lg:grid-cols-2 lg:items-start lg:gap-4 lg:space-y-0">
         {(usos ?? []).map((c) => {
           const categoria = categories.find((item) => item.id === c.id) ?? {
             name: c.nome,
