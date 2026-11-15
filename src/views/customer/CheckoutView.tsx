@@ -15,6 +15,7 @@ import {
   type PontoDePartidaDaVerificacao,
   VerificacaoDoPagamento,
 } from "@/components/checkout/VerificacaoDoPagamento";
+import { COLUNA_FIXA_NO_COMPUTADOR } from "@/components/desktop/medidas";
 import {
   IconeCartao,
   IconeDinheiro,
@@ -56,6 +57,7 @@ import {
   useOrders,
 } from "@/hooks/useOrders";
 import { useReleituraDosEnderecosAoVoltar } from "@/hooks/useReleituraDosEnderecosAoVoltar";
+import { useTelaDeComputador } from "@/hooks/useTelaDeComputador";
 import {
   localStorageSeguro,
   sessionStorageSeguro,
@@ -789,7 +791,10 @@ function GatilhoDoResumoDoPedido({
       }}
       aria-expanded={isOpen}
       aria-label={compacto ? nomeAcessivelCompleto : undefined}
-      className="flex min-w-0 max-w-full items-center gap-1 rounded-full py-1 pl-1 pr-2 transition-colors hover:bg-zinc-50 active:scale-95"
+      className={cn(
+        "flex min-w-0 max-w-full items-center gap-1 rounded-full py-1 pl-1 pr-2 transition-colors hover:bg-zinc-50 active:scale-95",
+        "lg:hidden",
+      )}
     >
       <span className="flex shrink-0 items-center">
         {miniaturas.map((item, indice) => {
@@ -921,6 +926,16 @@ export function CheckoutViewDaConta({
   } = useStore();
   const [isPresent] = usePresence();
   const isReady = useDeferredRender(380);
+  // Só o destino do portal muda: lista, valores, avisos e Finalizar continuam
+  // sendo os mesmos nós e o mesmo handler. O formulário/Brick não se move.
+  const telaDeComputador = useTelaDeComputador();
+  const [colunaDoResumo, setColunaDoResumo] = useState<HTMLElement | null>(
+    null,
+  );
+  // Desmontar o aside na tela de pagamento não deve disparar outro render.
+  const definirColunaDoResumo = useCallback((el: HTMLElement | null) => {
+    if (el) setColunaDoResumo(el);
+  }, []);
   const {
     cart: ctxCart,
     isLoading: lendoOCarrinhoSalvo,
@@ -3009,6 +3024,11 @@ export function CheckoutViewDaConta({
   const [headerSlotEl, setHeaderSlotEl] = useState<HTMLElement | null>(null);
   useEffect(() => {
     if (typeof document === "undefined") return;
+    // A casca P1 desmonta o Header no PC; na volta, seu slot é outro nó.
+    if (telaDeComputador) {
+      setHeaderSlotEl(null);
+      return;
+    }
     const encontrar = () => document.getElementById(HEADER_CENTER_SLOT_ID);
     const existente = encontrar();
     if (existente) {
@@ -3024,7 +3044,7 @@ export function CheckoutViewDaConta({
     });
     observer.observe(document.body, { childList: true, subtree: true });
     return () => observer.disconnect();
-  }, []);
+  }, [telaDeComputador]);
 
   // Achado 3 do bloqueante (12/09/2026): quando a cápsula de aviso do sino
   // está ativa, o Header encolhe o slot central para caber só as
@@ -6448,7 +6468,7 @@ export function CheckoutViewDaConta({
   };
 
   return (
-    <div className="pb-customer-summary min-h-dvh bg-gray-50/10 pt-2">
+    <div className="pb-customer-summary min-h-dvh bg-gray-50/10 pt-2 lg:pb-8">
       {/* Título nível 1 só para leitor de tela: a tela principal do checkout
           não tinha nenhum h1. Fica FORA do bloco `space-y-4` abaixo para não
           somar margem ao primeiro cartão (sr-only não ocupa espaço). */}
@@ -6494,58 +6514,64 @@ export function CheckoutViewDaConta({
           de largura enquanto a barra do total ficava com 448px centralizada —
           formulário esticado de ponta a ponta e desalinhado com o próprio
           rodapé. */}
-      <div
-        className="mx-auto w-full max-w-md space-y-4 px-3.5"
-        // D1 refinado: o painel do resumo some quando a pessoa foca um
-        // campo do formulário (teclado do celular aberto + painel aberto =
-        // formulário sem espaço). `onFocusCapture` para pegar o foco de
-        // QUALQUER campo descendente, sem listener por input.
-        onFocusCapture={() => {
-          // Guarda de `fechandoPorFocoDoFormularioRef` (achado 2 do
-          // bloqueante): quando o fechamento já foi disparado pelo
-          // `pointerdown` de fora (efeito abaixo), o próprio toque também
-          // move o foco para o campo em seguida — sem este `if`, os dois
-          // caminhos chamariam `history.back()` na mesma interação e
-          // consumiriam DUAS entradas do histórico (uma a mais que a que o
-          // painel empurrou), jogando a pessoa para fora da tela de
-          // checkout. Fica só para o caso que o toque não cobre: foco por
-          // TECLADO (Tab), sem pointerdown nenhum.
-          if (isSummaryPanelOpen && !fechandoPorFocoDoFormularioRef.current) {
-            fechandoPorFocoDoFormularioRef.current = true;
-            globalThis.history.back();
-          }
-        }}
-      >
-        {/* Loja sem CEP de origem (caça 12-B #2): nenhuma cliente consegue fechar
+      {/* O container de PC vem da casca P1 (PaginaDoComputador). */}
+      <div className="lg:grid lg:grid-cols-[1fr_400px] lg:items-start lg:gap-8">
+        <div
+          data-testid="checkout-etapas"
+          className={cn(
+            "mx-auto w-full max-w-md space-y-4 px-3.5",
+            "lg:min-w-0 lg:max-w-none lg:px-0",
+          )}
+          // D1 refinado: o painel do resumo some quando a pessoa foca um
+          // campo do formulário (teclado do celular aberto + painel aberto =
+          // formulário sem espaço). `onFocusCapture` para pegar o foco de
+          // QUALQUER campo descendente, sem listener por input.
+          onFocusCapture={() => {
+            // Guarda de `fechandoPorFocoDoFormularioRef` (achado 2 do
+            // bloqueante): quando o fechamento já foi disparado pelo
+            // `pointerdown` de fora (efeito abaixo), o próprio toque também
+            // move o foco para o campo em seguida — sem este `if`, os dois
+            // caminhos chamariam `history.back()` na mesma interação e
+            // consumiriam DUAS entradas do histórico (uma a mais que a que o
+            // painel empurrou), jogando a pessoa para fora da tela de
+            // checkout. Fica só para o caso que o toque não cobre: foco por
+            // TECLADO (Tab), sem pointerdown nenhum.
+            if (isSummaryPanelOpen && !fechandoPorFocoDoFormularioRef.current) {
+              fechandoPorFocoDoFormularioRef.current = true;
+              globalThis.history.back();
+            }
+          }}
+        >
+          {/* Loja sem CEP de origem (caça 12-B #2): nenhuma cliente consegue fechar
             o frete aqui, então o aviso vem ANTES dos campos (não depois de ela
             preencher tudo), com o atalho de contato se a loja tem WhatsApp.
             Só apresentação: o Finalizar trava pelas mesmas condições de sempre.
             O motivo "escolha uma opção" (outro caso) fica junto da calculadora. */}
-        {cart.length > 0 && lojaConfigurandoOFrete && (
-          <div
-            data-testid="checkout-motivo-frete"
-            className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] font-medium leading-snug text-amber-900"
-          >
-            <p className="flex items-start gap-1.5">
-              <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-amber-600" />
-              {fraseDaLojaSemFrete}
-            </p>
-            {lojaTemWhatsappNoCheckout && (
-              <BotaoWhatsapp
-                onClick={falarComALojaSobreOFrete}
-                className="rounded-xl"
-              >
-                Falar com a loja no WhatsApp
-              </BotaoWhatsapp>
-            )}
-          </div>
-        )}
+          {cart.length > 0 && lojaConfigurandoOFrete && (
+            <div
+              data-testid="checkout-motivo-frete"
+              className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] font-medium leading-snug text-amber-900"
+            >
+              <p className="flex items-start gap-1.5">
+                <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-amber-600" />
+                {fraseDaLojaSemFrete}
+              </p>
+              {lojaTemWhatsappNoCheckout && (
+                <BotaoWhatsapp
+                  onClick={falarComALojaSobreOFrete}
+                  className="rounded-xl"
+                >
+                  Falar com a loja no WhatsApp
+                </BotaoWhatsapp>
+              )}
+            </div>
+          )}
 
-        <p role="status" className="sr-only">
-          {avisoDoEnderecoEscolhido}
-        </p>
+          <p role="status" className="sr-only">
+            {avisoDoEnderecoEscolhido}
+          </p>
 
-        {/* PASSO A1 (22/10/2026): recolhida, a seção vira DOIS resumos
+          {/* PASSO A1 (22/10/2026): recolhida, a seção vira DOIS resumos
             compactos — "Seus dados" e "Endereço de entrega" —, cada um com o
             selo de ok quando está completo e uma ação discreta ("Editar"/
             "Trocar") que abre os MESMOS formulários de sempre (logo abaixo,
@@ -6553,273 +6579,279 @@ export function CheckoutViewDaConta({
             Nunca os dois resumos ao mesmo tempo que o formulário aberto, que
             traz os mesmos dados editáveis. As pendências continuam apontadas
             uma a uma (mesmos `data-testid`). */}
-        {!identificacaoExpandida && (
-          <>
-            <CartaoDeResumo
-              rotulo="Seus dados"
-              icone={<User className="size-5" />}
-              ok={!faltaNome && !faltaWhatsapp && !faltaCpf}
-              acao={
-                <AcaoDeResumo
-                  id="resumo-editar-dados"
-                  controla="secao-dados-e-entrega"
-                  onClick={abrirPeloResumo}
-                >
-                  Editar
-                </AcaoDeResumo>
-              }
-            >
-              <div className="min-w-0 space-y-0.5">
-                {faltaNome ? (
-                  <p
-                    className="text-sm font-bold text-red-600"
-                    data-testid="checkout-resumo-falta-nome"
-                  >
-                    Informe seu nome
-                  </p>
-                ) : (
-                  <p className="truncate text-base font-bold text-zinc-900">
-                    {nomeAtual}
-                  </p>
-                )}
-                {faltaWhatsapp ? (
-                  <p
-                    className="text-sm font-bold text-red-600"
-                    data-testid="checkout-resumo-falta-whatsapp"
-                  >
-                    Informe seu WhatsApp
-                  </p>
-                ) : (
-                  <p className="text-sm font-medium text-zinc-600">
-                    {abreviarWhatsapp(whatsappAtual ?? "")}
-                  </p>
-                )}
-                {exigeCpfDoDestinatario &&
-                  (faltaCpf ? (
-                    <p
-                      className="text-sm font-bold text-red-600"
-                      data-testid="checkout-resumo-falta-cpf"
-                    >
-                      Informe o CPF de quem recebe
-                    </p>
-                  ) : (
-                    <p className="text-sm font-medium text-zinc-600">
-                      CPF {mascararCpfParaExibicao(cpfAtual ?? "")}
-                    </p>
-                  ))}
-              </div>
-            </CartaoDeResumo>
-
-            <CartaoDeResumo
-              rotulo="Endereço de entrega"
-              icone={<MapPin className="size-5" />}
-              ok={user ? !!enderecoEfetivo : enderecoConvidadoCompleto}
-              acao={
-                user && !enderecoEfetivo ? undefined : (
+          {!identificacaoExpandida && (
+            <>
+              <CartaoDeResumo
+                rotulo="Seus dados"
+                icone={<User className="size-5" />}
+                ok={!faltaNome && !faltaWhatsapp && !faltaCpf}
+                acao={
                   <AcaoDeResumo
-                    id={user ? "resumo-trocar-endereco" : undefined}
+                    id="resumo-editar-dados"
                     controla="secao-dados-e-entrega"
                     onClick={abrirPeloResumo}
                   >
-                    {user ? "Trocar" : "Editar"}
+                    Editar
                   </AcaoDeResumo>
-                )
-              }
-            >
-              {user && enderecoEfetivo ? (
+                }
+              >
                 <div className="min-w-0 space-y-0.5">
-                  <p className="truncate text-base font-bold text-zinc-900">
-                    {enderecoEfetivo.name}
-                  </p>
-                  <p className="break-words text-sm font-medium text-zinc-600">
-                    {resumoDoEndereco(enderecoEfetivo)}
-                  </p>
+                  {faltaNome ? (
+                    <p
+                      className="text-sm font-bold text-red-600"
+                      data-testid="checkout-resumo-falta-nome"
+                    >
+                      Informe seu nome
+                    </p>
+                  ) : (
+                    <p className="truncate text-base font-bold text-zinc-900">
+                      {nomeAtual}
+                    </p>
+                  )}
+                  {faltaWhatsapp ? (
+                    <p
+                      className="text-sm font-bold text-red-600"
+                      data-testid="checkout-resumo-falta-whatsapp"
+                    >
+                      Informe seu WhatsApp
+                    </p>
+                  ) : (
+                    <p className="text-sm font-medium text-zinc-600">
+                      {abreviarWhatsapp(whatsappAtual ?? "")}
+                    </p>
+                  )}
+                  {exigeCpfDoDestinatario &&
+                    (faltaCpf ? (
+                      <p
+                        className="text-sm font-bold text-red-600"
+                        data-testid="checkout-resumo-falta-cpf"
+                      >
+                        Informe o CPF de quem recebe
+                      </p>
+                    ) : (
+                      <p className="text-sm font-medium text-zinc-600">
+                        CPF {mascararCpfParaExibicao(cpfAtual ?? "")}
+                      </p>
+                    ))}
                 </div>
-              ) : user ? (
-                <button
-                  type="button"
-                  onClick={abrirPeloResumo}
-                  aria-expanded={false}
-                  aria-controls="secao-dados-e-entrega"
-                  className="flex min-h-11 w-full items-center gap-1.5 text-left text-sm font-bold text-amber-800"
-                  data-testid="checkout-resumo-falta-endereco"
-                >
-                  <AlertCircle aria-hidden="true" className="size-4 shrink-0" />
-                  <span className="min-w-0 flex-1">
-                    {enderecosNaoCarregaram
-                      ? "Não carregamos seus endereços"
-                      : "Cadastre um endereço de entrega"}
-                  </span>
-                  <ChevronRight
-                    aria-hidden="true"
-                    className="size-4 shrink-0 text-zinc-500"
-                  />
-                </button>
-              ) : enderecoConvidadoCompleto && ehRetirada ? (
-                <p className="break-words text-sm font-medium text-zinc-600">
-                  {FRASE_RETIRADA_SEM_ENDERECO}
-                </p>
-              ) : enderecoConvidadoCompleto ? (
-                <p className="break-words text-sm font-medium text-zinc-600">
-                  {resumoDoEndereco({
-                    street: ruaAtual ?? "",
-                    number: numeroAtual ?? "",
-                    neighborhood: bairroAtual ?? "",
-                    city: cidadeAtual ?? "",
-                    state: estadoAtual ?? "",
-                    cep: cepDigitadoNoFormulario ?? "",
-                  })}
-                </p>
-              ) : (
-                <p
-                  className="flex items-center gap-1.5 text-sm font-bold text-amber-800"
-                  data-testid="checkout-resumo-falta-endereco"
-                >
-                  <AlertCircle aria-hidden="true" className="size-4 shrink-0" />
-                  Informe o endereço de entrega
-                </p>
-              )}
-            </CartaoDeResumo>
-          </>
-        )}
+              </CartaoDeResumo>
 
-        {/* Formulários de "Seus dados e entrega": SEMPRE montados (escondidos
+              <CartaoDeResumo
+                rotulo="Endereço de entrega"
+                icone={<MapPin className="size-5" />}
+                ok={user ? !!enderecoEfetivo : enderecoConvidadoCompleto}
+                acao={
+                  user && !enderecoEfetivo ? undefined : (
+                    <AcaoDeResumo
+                      id={user ? "resumo-trocar-endereco" : undefined}
+                      controla="secao-dados-e-entrega"
+                      onClick={abrirPeloResumo}
+                    >
+                      {user ? "Trocar" : "Editar"}
+                    </AcaoDeResumo>
+                  )
+                }
+              >
+                {user && enderecoEfetivo ? (
+                  <div className="min-w-0 space-y-0.5">
+                    <p className="truncate text-base font-bold text-zinc-900">
+                      {enderecoEfetivo.name}
+                    </p>
+                    <p className="break-words text-sm font-medium text-zinc-600">
+                      {resumoDoEndereco(enderecoEfetivo)}
+                    </p>
+                  </div>
+                ) : user ? (
+                  <button
+                    type="button"
+                    onClick={abrirPeloResumo}
+                    aria-expanded={false}
+                    aria-controls="secao-dados-e-entrega"
+                    className="flex min-h-11 w-full items-center gap-1.5 text-left text-sm font-bold text-amber-800"
+                    data-testid="checkout-resumo-falta-endereco"
+                  >
+                    <AlertCircle
+                      aria-hidden="true"
+                      className="size-4 shrink-0"
+                    />
+                    <span className="min-w-0 flex-1">
+                      {enderecosNaoCarregaram
+                        ? "Não carregamos seus endereços"
+                        : "Cadastre um endereço de entrega"}
+                    </span>
+                    <ChevronRight
+                      aria-hidden="true"
+                      className="size-4 shrink-0 text-zinc-500"
+                    />
+                  </button>
+                ) : enderecoConvidadoCompleto && ehRetirada ? (
+                  <p className="break-words text-sm font-medium text-zinc-600">
+                    {FRASE_RETIRADA_SEM_ENDERECO}
+                  </p>
+                ) : enderecoConvidadoCompleto ? (
+                  <p className="break-words text-sm font-medium text-zinc-600">
+                    {resumoDoEndereco({
+                      street: ruaAtual ?? "",
+                      number: numeroAtual ?? "",
+                      neighborhood: bairroAtual ?? "",
+                      city: cidadeAtual ?? "",
+                      state: estadoAtual ?? "",
+                      cep: cepDigitadoNoFormulario ?? "",
+                    })}
+                  </p>
+                ) : (
+                  <p
+                    className="flex items-center gap-1.5 text-sm font-bold text-amber-800"
+                    data-testid="checkout-resumo-falta-endereco"
+                  >
+                    <AlertCircle
+                      aria-hidden="true"
+                      className="size-4 shrink-0"
+                    />
+                    Informe o endereço de entrega
+                  </p>
+                )}
+              </CartaoDeResumo>
+            </>
+          )}
+
+          {/* Formulários de "Seus dados e entrega": SEMPRE montados (escondidos
             quando recolhida) — o cabeçalho de recolher só existe com a seção
             aberta, e quem a abre é o "Editar"/"Trocar" dos resumos acima (ou
             o submit inválido / o aviso da barra, que também focam o campo). */}
-        <div
-          hidden={!identificacaoExpandida}
-          className="overflow-hidden rounded-2xl border border-zinc-100/80 bg-white shadow-sm"
-        >
-          {identificacaoExpandida && (
-            <button
-              type="button"
-              id="cabecalho-dados-e-entrega"
-              aria-expanded={true}
-              aria-controls="secao-dados-e-entrega"
-              onClick={recolherPeloCabecalho}
-              // `min-h-11` = 44px, o piso de alvo de toque do laudo de
-              // acessibilidade (03/09) — o cabeçalho inteiro é clicável, não
-              // só o texto.
-              className="flex min-h-11 w-full items-center justify-between gap-2 border-b border-zinc-100/55 bg-zinc-50/40 px-4 py-3 text-left transition-colors hover:bg-zinc-50"
-            >
-              <span className="flex items-center gap-2">
-                <QuadradinhoDoIcone>
-                  <User className="size-4" />
-                </QuadradinhoDoIcone>
-                <span className="text-base font-semibold text-zinc-900">
-                  Seus dados e entrega
-                </span>
-              </span>
-              <ChevronDown
-                aria-hidden="true"
-                className="size-4 shrink-0 rotate-180 text-zinc-500"
-              />
-            </button>
-          )}
-
           <div
-            id="secao-dados-e-entrega"
-            aria-labelledby={
-              identificacaoExpandida ? "cabecalho-dados-e-entrega" : undefined
-            }
-            aria-label={
-              identificacaoExpandida ? undefined : "Seus dados e entrega"
-            }
             hidden={!identificacaoExpandida}
-            // O blur sobe até aqui (React usa `focusout`): um gancho só para
-            // os nove campos da seção.
-            onBlur={(e) => sairDoCampo(e.target.id)}
-            className="space-y-4 p-4"
+            className="overflow-hidden rounded-2xl border border-zinc-100/80 bg-white shadow-sm"
           >
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div>
-                <label
-                  htmlFor="checkout-name"
-                  className="mb-1.5 ml-1 block text-[11px] font-bold uppercase tracking-wider text-zinc-500"
-                >
-                  Nome Completo
-                </label>
-                <input
-                  id="checkout-name"
-                  type="text"
-                  autoComplete="name"
-                  maxLength={TETO_NOME_DO_CHECKOUT}
-                  {...form.register("name")}
-                  placeholder="Como devemos te chamar?"
-                  // Laudo de acessibilidade 03/09, achado 1: o campo errado
-                  // precisa ser MARCADO (`aria-invalid`) e LIGADO à mensagem
-                  // (`aria-describedby`) — texto vermelho sozinho o leitor de
-                  // tela não anuncia.
-                  aria-invalid={erroDoCampo("name") ? true : undefined}
-                  aria-describedby={
-                    erroDoCampo("name") ? "erro-checkout-name" : undefined
-                  }
-                  className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
+            {identificacaoExpandida && (
+              <button
+                type="button"
+                id="cabecalho-dados-e-entrega"
+                aria-expanded={true}
+                aria-controls="secao-dados-e-entrega"
+                onClick={recolherPeloCabecalho}
+                // `min-h-11` = 44px, o piso de alvo de toque do laudo de
+                // acessibilidade (03/09) — o cabeçalho inteiro é clicável, não
+                // só o texto.
+                className="flex min-h-11 w-full items-center justify-between gap-2 border-b border-zinc-100/55 bg-zinc-50/40 px-4 py-3 text-left transition-colors hover:bg-zinc-50"
+              >
+                <span className="flex items-center gap-2">
+                  <QuadradinhoDoIcone>
+                    <User className="size-4" />
+                  </QuadradinhoDoIcone>
+                  <span className="text-base font-semibold text-zinc-900">
+                    Seus dados e entrega
+                  </span>
+                </span>
+                <ChevronDown
+                  aria-hidden="true"
+                  className="size-4 shrink-0 rotate-180 text-zinc-500"
                 />
-                {erroDoCampo("name") && (
-                  <p
-                    id="erro-checkout-name"
-                    className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
-                  >
-                    {erroDoCampo("name")?.message}
-                  </p>
-                )}
-              </div>
+              </button>
+            )}
 
-              <div>
-                <label
-                  htmlFor="checkout-tel"
-                  className="mb-1.5 ml-1 block text-[11px] font-bold uppercase tracking-wider text-zinc-500"
-                >
-                  WhatsApp para Contato
-                </label>
-                <div className="relative">
-                  <Phone
-                    className="absolute left-4 top-1/2 size-4.5 -translate-y-1/2 text-zinc-400"
-                    aria-hidden="true"
+            <div
+              id="secao-dados-e-entrega"
+              aria-labelledby={
+                identificacaoExpandida ? "cabecalho-dados-e-entrega" : undefined
+              }
+              aria-label={
+                identificacaoExpandida ? undefined : "Seus dados e entrega"
+              }
+              hidden={!identificacaoExpandida}
+              // O blur sobe até aqui (React usa `focusout`): um gancho só para
+              // os nove campos da seção.
+              onBlur={(e) => sairDoCampo(e.target.id)}
+              className="space-y-4 p-4"
+            >
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <label
+                    htmlFor="checkout-name"
+                    className="mb-1.5 ml-1 block text-[11px] font-bold uppercase tracking-wider text-zinc-500"
+                  >
+                    Nome Completo
+                  </label>
+                  <input
+                    id="checkout-name"
+                    type="text"
+                    autoComplete="name"
+                    maxLength={TETO_NOME_DO_CHECKOUT}
+                    {...form.register("name")}
+                    placeholder="Como devemos te chamar?"
+                    // Laudo de acessibilidade 03/09, achado 1: o campo errado
+                    // precisa ser MARCADO (`aria-invalid`) e LIGADO à mensagem
+                    // (`aria-describedby`) — texto vermelho sozinho o leitor de
+                    // tela não anuncia.
+                    aria-invalid={erroDoCampo("name") ? true : undefined}
+                    aria-describedby={
+                      erroDoCampo("name") ? "erro-checkout-name" : undefined
+                    }
+                    className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
                   />
-                  <Controller
-                    control={form.control}
-                    name="whatsapp"
-                    render={({ field }) => (
-                      <input
-                        id="checkout-tel"
-                        type="tel"
-                        autoComplete="tel"
-                        value={field.value}
-                        onChange={(e) =>
-                          field.onChange(
-                            formatWhatsApp(e.target.value, field.value),
-                          )
-                        }
-                        ref={field.ref}
-                        placeholder="(00) 00000-0000"
-                        aria-invalid={
-                          erroDoCampo("whatsapp") ? true : undefined
-                        }
-                        aria-describedby={
-                          erroDoCampo("whatsapp")
-                            ? "erro-checkout-tel"
-                            : undefined
-                        }
-                        className="w-full rounded-xl border-2 border-transparent bg-zinc-50 py-3 pl-12 pr-4 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
-                      />
-                    )}
-                  />
+                  {erroDoCampo("name") && (
+                    <p
+                      id="erro-checkout-name"
+                      className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
+                    >
+                      {erroDoCampo("name")?.message}
+                    </p>
+                  )}
                 </div>
-                {erroDoCampo("whatsapp") && (
-                  <p
-                    id="erro-checkout-tel"
-                    className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
-                  >
-                    {erroDoCampo("whatsapp")?.message}
-                  </p>
-                )}
-              </div>
-            </div>
 
-            {/* CPF DO DESTINATÁRIO (checkout compacto + CPF, 23/09/2026):
+                <div>
+                  <label
+                    htmlFor="checkout-tel"
+                    className="mb-1.5 ml-1 block text-[11px] font-bold uppercase tracking-wider text-zinc-500"
+                  >
+                    WhatsApp para Contato
+                  </label>
+                  <div className="relative">
+                    <Phone
+                      className="absolute left-4 top-1/2 size-4.5 -translate-y-1/2 text-zinc-400"
+                      aria-hidden="true"
+                    />
+                    <Controller
+                      control={form.control}
+                      name="whatsapp"
+                      render={({ field }) => (
+                        <input
+                          id="checkout-tel"
+                          type="tel"
+                          autoComplete="tel"
+                          value={field.value}
+                          onChange={(e) =>
+                            field.onChange(
+                              formatWhatsApp(e.target.value, field.value),
+                            )
+                          }
+                          ref={field.ref}
+                          placeholder="(00) 00000-0000"
+                          aria-invalid={
+                            erroDoCampo("whatsapp") ? true : undefined
+                          }
+                          aria-describedby={
+                            erroDoCampo("whatsapp")
+                              ? "erro-checkout-tel"
+                              : undefined
+                          }
+                          className="w-full rounded-xl border-2 border-transparent bg-zinc-50 py-3 pl-12 pr-4 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
+                        />
+                      )}
+                    />
+                  </div>
+                  {erroDoCampo("whatsapp") && (
+                    <p
+                      id="erro-checkout-tel"
+                      className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
+                    >
+                      {erroDoCampo("whatsapp")?.message}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* CPF DO DESTINATÁRIO (checkout compacto + CPF, 23/09/2026):
                 só aparece quando a modalidade escolhida É transportadora —
                 o Melhor Envio exige `to.document` para emitir a etiqueta
                 nacional; retirada/entrega local nunca pedem CPF. Sem HTML
@@ -6828,83 +6860,86 @@ export function CheckoutViewDaConta({
                 sugerir um valor de outro campo numérico (telefone, CEP) por
                 heurística errada — pior que não sugerir nada num campo de
                 documento. */}
-            {exigeCpfDoDestinatario && (
-              <div className="border-t border-zinc-100/50 pt-4">
-                <label
-                  htmlFor="checkout-cpf"
-                  className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-500"
-                >
-                  CPF do Destinatário
-                </label>
-                <Controller
-                  control={form.control}
-                  name="cpf"
-                  render={({ field }) => (
-                    <input
-                      id="checkout-cpf"
-                      type="text"
-                      inputMode="numeric"
-                      autoComplete="off"
-                      value={field.value ?? ""}
-                      onChange={(e) =>
-                        field.onChange(formatarCpf(e.target.value).formatado)
-                      }
-                      ref={field.ref}
-                      placeholder="000.000.000-00"
-                      aria-invalid={erroDoCampo("cpf") ? true : undefined}
-                      aria-describedby={
-                        erroDoCampo("cpf")
-                          ? "erro-checkout-cpf"
-                          : "ajuda-checkout-cpf"
-                      }
-                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
-                    />
-                  )}
-                />
-                {erroDoCampo("cpf") ? (
-                  <p
-                    id="erro-checkout-cpf"
-                    className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
-                  >
-                    {erroDoCampo("cpf")?.message}
-                  </p>
-                ) : (
-                  <p
-                    id="ajuda-checkout-cpf"
-                    className="ml-1 mt-1.5 text-[10px] font-medium text-zinc-600"
-                  >
-                    Exigido pela transportadora para emitir a etiqueta de envio.
-                  </p>
-                )}
-                {user && contaTemCpf === false && (
+              {exigeCpfDoDestinatario && (
+                <div className="border-t border-zinc-100/50 pt-4">
                   <label
-                    htmlFor="checkout-salvar-cpf-na-conta"
-                    className="ml-1 mt-3 flex cursor-pointer items-start gap-2 text-[11px] font-medium text-zinc-600"
+                    htmlFor="checkout-cpf"
+                    className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-500"
                   >
-                    <input
-                      id="checkout-salvar-cpf-na-conta"
-                      type="checkbox"
-                      checked={salvarCpfNaConta}
-                      onChange={(e) => setSalvarCpfNaConta(e.target.checked)}
-                      className="mt-0.5 size-4 shrink-0 accent-zinc-900"
-                    />
-                    <span>Este CPF é meu e quero salvá-lo na minha conta</span>
+                    CPF do Destinatário
                   </label>
-                )}
-              </div>
-            )}
-
-            {/* Guest Address Fields */}
-            {!user && (
-              <div className="space-y-4 border-t border-zinc-100/50 pt-4">
-                <div className="mb-1 flex items-center gap-2">
-                  <MapPin className="size-4 text-zinc-400" />
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-600">
-                    Endereço de Entrega
-                  </span>
+                  <Controller
+                    control={form.control}
+                    name="cpf"
+                    render={({ field }) => (
+                      <input
+                        id="checkout-cpf"
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        value={field.value ?? ""}
+                        onChange={(e) =>
+                          field.onChange(formatarCpf(e.target.value).formatado)
+                        }
+                        ref={field.ref}
+                        placeholder="000.000.000-00"
+                        aria-invalid={erroDoCampo("cpf") ? true : undefined}
+                        aria-describedby={
+                          erroDoCampo("cpf")
+                            ? "erro-checkout-cpf"
+                            : "ajuda-checkout-cpf"
+                        }
+                        className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
+                      />
+                    )}
+                  />
+                  {erroDoCampo("cpf") ? (
+                    <p
+                      id="erro-checkout-cpf"
+                      className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
+                    >
+                      {erroDoCampo("cpf")?.message}
+                    </p>
+                  ) : (
+                    <p
+                      id="ajuda-checkout-cpf"
+                      className="ml-1 mt-1.5 text-[10px] font-medium text-zinc-600"
+                    >
+                      Exigido pela transportadora para emitir a etiqueta de
+                      envio.
+                    </p>
+                  )}
+                  {user && contaTemCpf === false && (
+                    <label
+                      htmlFor="checkout-salvar-cpf-na-conta"
+                      className="ml-1 mt-3 flex cursor-pointer items-start gap-2 text-[11px] font-medium text-zinc-600"
+                    >
+                      <input
+                        id="checkout-salvar-cpf-na-conta"
+                        type="checkbox"
+                        checked={salvarCpfNaConta}
+                        onChange={(e) => setSalvarCpfNaConta(e.target.checked)}
+                        className="mt-0.5 size-4 shrink-0 accent-zinc-900"
+                      />
+                      <span>
+                        Este CPF é meu e quero salvá-lo na minha conta
+                      </span>
+                    </label>
+                  )}
                 </div>
+              )}
 
-                {/* GRADE DE 6 COLUNAS, e o número 6 é o conserto.
+              {/* Guest Address Fields */}
+              {!user && (
+                <div className="space-y-4 border-t border-zinc-100/50 pt-4">
+                  <div className="mb-1 flex items-center gap-2">
+                    <MapPin className="size-4 text-zinc-400" />
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-600">
+                      Endereço de Entrega
+                    </span>
+                  </div>
+
+                  {/* GRADE DE 6 COLUNAS, e o número 6 é o conserto.
                     Com `grid-cols-2` cada campo só podia ser metade (151px em
                     375px de tela) ou linha inteira (313px) — e nenhuma dessas
                     duas medidas serve para Cidade (nome médio) nem para Estado
@@ -6935,423 +6970,429 @@ export function CheckoutViewDaConta({
                     tela não dão mais que isso. Se isso virar problema, o
                     tratamento é outro (rótulo flutuante, quebra em duas linhas),
                     nunca uma quarta contagem de colunas. */}
-                <div className="grid grid-cols-6 gap-3">
-                  {/* Sem variante `md:` em nenhum campo daqui: o container do
+                  <div className="grid grid-cols-6 gap-3">
+                    {/* Sem variante `md:` em nenhum campo daqui: o container do
                       checkout tem `max-w-md` em toda largura, então não existe
                       mais o alargamento que o `md:` compensava — ele só
                       apertaria. */}
-                  <div className={ehRetirada ? "col-span-6" : "col-span-3"}>
-                    <label
-                      htmlFor="guest-cep"
-                      className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-600"
-                    >
-                      CEP
-                    </label>
-                    <div className="relative">
-                      <input
-                        id="guest-cep"
-                        {...form.register("cep")}
-                        inputMode="numeric"
-                        autoComplete="postal-code"
-                        placeholder="00000-000"
-                        readOnly={isSearchingCep}
-                        aria-busy={isSearchingCep}
-                        aria-invalid={erroDoCampo("cep") ? true : undefined}
-                        aria-describedby={
-                          erroDoCampo("cep") ? "erro-guest-cep" : undefined
-                        }
-                        className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
-                        onChange={async (e) => {
-                          const { limpo: digitos, formatado } = formatarCep(
-                            e.target.value,
-                          );
-                          // Sem o maxLength do campo, um 9º dígito colado não
-                          // pode deixar o CEP novo sem busca (rua e bairro do
-                          // CEP anterior ficariam com ele): vale o que o
-                          // campo mostra, os 8 primeiros. Mesmo corte do
-                          // AddressForm.tsx.
-                          const limpo = digitos.slice(0, 8);
-                          form.setValue("cep", formatado, {
-                            shouldValidate: true,
-                          });
-                          // Só um CEP COMPLETO vira "último CEP" do aparelho:
-                          // gravar a cada tecla deixava o pedaço ("0131")
-                          // como semente da próxima visita.
-                          if (limpo.length === 8)
-                            localStorageSeguro().setItem(
-                              "ikcous_last_shipping_cep",
-                              formatado,
-                            );
-
-                          // A busca vale em TODA loja (decisão do dono,
-                          // 03/10/2026): a cobertura de entrega decide para
-                          // onde a loja entrega, no `calculate-shipping`, e
-                          // nunca onde o cliente pode dizer que mora.
-                          // `limpo.length === 8` é portante, não só filtro
-                          // de busca — ver o comentário equivalente em
-                          // AddressForm.tsx.
-                          if (limpo.length === 8) {
-                            // Mesmo CEP da última busca (ou dono dos campos
-                            // atuais): apagar e redigitar o último dígito
-                            // não pode fazer a rua que o cliente corrigiu
-                            // virar "da busca". CEP DIFERENTE: o que ele
-                            // digitou à mão valia para o CEP anterior (ou
-                            // antes deste) — a busca que sai agora volta a
-                            // poder preencher tudo.
-                            const mesmoCep =
-                              limpo === cepEmBuscaRef.current ||
-                              limpo === cepAssociadoRef.current;
-                            cepEmBuscaRef.current = limpo;
-                            if (!mesmoCep)
-                              camposEditadosAMaoRef.current.clear();
-                            await buscarCep(limpo);
+                    <div className={ehRetirada ? "col-span-6" : "col-span-3"}>
+                      <label
+                        htmlFor="guest-cep"
+                        className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-600"
+                      >
+                        CEP
+                      </label>
+                      <div className="relative">
+                        <input
+                          id="guest-cep"
+                          {...form.register("cep")}
+                          inputMode="numeric"
+                          autoComplete="postal-code"
+                          placeholder="00000-000"
+                          readOnly={isSearchingCep}
+                          aria-busy={isSearchingCep}
+                          aria-invalid={erroDoCampo("cep") ? true : undefined}
+                          aria-describedby={
+                            erroDoCampo("cep") ? "erro-guest-cep" : undefined
                           }
-                        }}
-                      />
-                      {isSearchingCep && (
-                        <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                          <Loader2 className="size-4 animate-spin text-zinc-400" />
-                        </div>
+                          className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
+                          onChange={async (e) => {
+                            const { limpo: digitos, formatado } = formatarCep(
+                              e.target.value,
+                            );
+                            // Sem o maxLength do campo, um 9º dígito colado não
+                            // pode deixar o CEP novo sem busca (rua e bairro do
+                            // CEP anterior ficariam com ele): vale o que o
+                            // campo mostra, os 8 primeiros. Mesmo corte do
+                            // AddressForm.tsx.
+                            const limpo = digitos.slice(0, 8);
+                            form.setValue("cep", formatado, {
+                              shouldValidate: true,
+                            });
+                            // Só um CEP COMPLETO vira "último CEP" do aparelho:
+                            // gravar a cada tecla deixava o pedaço ("0131")
+                            // como semente da próxima visita.
+                            if (limpo.length === 8)
+                              localStorageSeguro().setItem(
+                                "ikcous_last_shipping_cep",
+                                formatado,
+                              );
+
+                            // A busca vale em TODA loja (decisão do dono,
+                            // 03/10/2026): a cobertura de entrega decide para
+                            // onde a loja entrega, no `calculate-shipping`, e
+                            // nunca onde o cliente pode dizer que mora.
+                            // `limpo.length === 8` é portante, não só filtro
+                            // de busca — ver o comentário equivalente em
+                            // AddressForm.tsx.
+                            if (limpo.length === 8) {
+                              // Mesmo CEP da última busca (ou dono dos campos
+                              // atuais): apagar e redigitar o último dígito
+                              // não pode fazer a rua que o cliente corrigiu
+                              // virar "da busca". CEP DIFERENTE: o que ele
+                              // digitou à mão valia para o CEP anterior (ou
+                              // antes deste) — a busca que sai agora volta a
+                              // poder preencher tudo.
+                              const mesmoCep =
+                                limpo === cepEmBuscaRef.current ||
+                                limpo === cepAssociadoRef.current;
+                              cepEmBuscaRef.current = limpo;
+                              if (!mesmoCep)
+                                camposEditadosAMaoRef.current.clear();
+                              await buscarCep(limpo);
+                            }
+                          }}
+                        />
+                        {isSearchingCep && (
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                            <Loader2 className="size-4 animate-spin text-zinc-400" />
+                          </div>
+                        )}
+                      </div>
+                      {erroDoCampo("cep") && (
+                        <p
+                          id="erro-guest-cep"
+                          className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
+                        >
+                          {erroDoCampo("cep")?.message}
+                        </p>
                       )}
                     </div>
-                    {erroDoCampo("cep") && (
-                      <p
-                        id="erro-guest-cep"
-                        className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
-                      >
-                        {erroDoCampo("cep")?.message}
-                      </p>
-                    )}
-                  </div>
-                  {/* RETIRADA NA LOJA (12/11/2026): o visitante que busca no
+                    {/* RETIRADA NA LOJA (12/11/2026): o visitante que busca no
                       balcão só informa o CEP — de onde nasce a opção "Retirar
                       na loja". Os demais campos SAEM da tela, mas seguem no
                       formulário (`shouldUnregister` é falso): voltar para a
                       entrega os traz de volta preenchidos e exigidos. */}
-                  {ehRetirada ? (
-                    <p
-                      data-testid="checkout-retirada-sem-endereco"
-                      className="col-span-6 text-sm font-medium text-zinc-600"
-                    >
-                      {FRASE_RETIRADA_SEM_ENDERECO}
-                    </p>
-                  ) : (
-                    <>
-                      <div className="col-span-3">
-                        <label
-                          htmlFor="guest-number"
-                          className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-600"
-                        >
-                          Número
-                        </label>
-                        <input
-                          id="guest-number"
-                          maxLength={TETO_NUMERO_DO_CHECKOUT}
-                          {...form.register("number")}
-                          placeholder="123"
-                          aria-invalid={
-                            erroDoCampo("number") ? true : undefined
-                          }
-                          aria-describedby={
-                            erroDoCampo("number")
-                              ? "erro-guest-number"
-                              : undefined
-                          }
-                          className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
-                        />
-                        {erroDoCampo("number") && (
-                          <p
-                            id="erro-guest-number"
-                            className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
+                    {ehRetirada ? (
+                      <p
+                        data-testid="checkout-retirada-sem-endereco"
+                        className="col-span-6 text-sm font-medium text-zinc-600"
+                      >
+                        {FRASE_RETIRADA_SEM_ENDERECO}
+                      </p>
+                    ) : (
+                      <>
+                        <div className="col-span-3">
+                          <label
+                            htmlFor="guest-number"
+                            className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-600"
                           >
-                            {erroDoCampo("number")?.message}
-                          </p>
-                        )}
-                      </div>
-                      <div className="col-span-6">
-                        <label
-                          htmlFor="guest-street"
-                          className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-600"
-                        >
-                          Rua
-                        </label>
-                        <input
-                          id="guest-street"
-                          maxLength={TETO_RUA_DO_CHECKOUT}
-                          {...registrarCampoDoEndereco("street")}
-                          autoComplete="address-line1"
-                          placeholder="Nome da rua"
-                          aria-invalid={
-                            erroDoCampo("street") ? true : undefined
-                          }
-                          aria-describedby={
-                            erroDoCampo("street")
-                              ? "erro-guest-street"
-                              : undefined
-                          }
-                          className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
-                        />
-                        {erroDoCampo("street") && (
-                          <p
-                            id="erro-guest-street"
-                            className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
+                            Número
+                          </label>
+                          <input
+                            id="guest-number"
+                            maxLength={TETO_NUMERO_DO_CHECKOUT}
+                            {...form.register("number")}
+                            placeholder="123"
+                            aria-invalid={
+                              erroDoCampo("number") ? true : undefined
+                            }
+                            aria-describedby={
+                              erroDoCampo("number")
+                                ? "erro-guest-number"
+                                : undefined
+                            }
+                            className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
+                          />
+                          {erroDoCampo("number") && (
+                            <p
+                              id="erro-guest-number"
+                              className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
+                            >
+                              {erroDoCampo("number")?.message}
+                            </p>
+                          )}
+                        </div>
+                        <div className="col-span-6">
+                          <label
+                            htmlFor="guest-street"
+                            className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-600"
                           >
-                            {erroDoCampo("street")?.message}
-                          </p>
-                        )}
-                      </div>
-                      <div className="col-span-6">
-                        <label
-                          htmlFor="guest-neighborhood"
-                          className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-600"
-                        >
-                          Bairro
-                        </label>
-                        <input
-                          id="guest-neighborhood"
-                          maxLength={TETO_BAIRRO_DO_CHECKOUT}
-                          {...registrarCampoDoEndereco("neighborhood")}
-                          autoComplete="address-level3"
-                          placeholder="Seu bairro"
-                          aria-invalid={
-                            erroDoCampo("neighborhood") ? true : undefined
-                          }
-                          aria-describedby={
-                            erroDoCampo("neighborhood")
-                              ? "erro-guest-neighborhood"
-                              : undefined
-                          }
-                          className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
-                        />
-                        {erroDoCampo("neighborhood") && (
-                          <p
-                            id="erro-guest-neighborhood"
-                            className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
+                            Rua
+                          </label>
+                          <input
+                            id="guest-street"
+                            maxLength={TETO_RUA_DO_CHECKOUT}
+                            {...registrarCampoDoEndereco("street")}
+                            autoComplete="address-line1"
+                            placeholder="Nome da rua"
+                            aria-invalid={
+                              erroDoCampo("street") ? true : undefined
+                            }
+                            aria-describedby={
+                              erroDoCampo("street")
+                                ? "erro-guest-street"
+                                : undefined
+                            }
+                            className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
+                          />
+                          {erroDoCampo("street") && (
+                            <p
+                              id="erro-guest-street"
+                              className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
+                            >
+                              {erroDoCampo("street")?.message}
+                            </p>
+                          )}
+                        </div>
+                        <div className="col-span-6">
+                          <label
+                            htmlFor="guest-neighborhood"
+                            className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-600"
                           >
-                            {erroDoCampo("neighborhood")?.message}
-                          </p>
-                        )}
-                      </div>
-                      <div className="col-span-3">
-                        <label
-                          htmlFor="guest-city"
-                          className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-600"
-                        >
-                          Cidade
-                        </label>
-                        <input
-                          id="guest-city"
-                          maxLength={TETO_CIDADE_DO_CHECKOUT}
-                          {...registrarCampoDoEndereco("city")}
-                          autoComplete="address-level2"
-                          placeholder="Cidade"
-                          aria-invalid={erroDoCampo("city") ? true : undefined}
-                          aria-describedby={
-                            erroDoCampo("city") ? "erro-guest-city" : undefined
-                          }
-                          className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
-                        />
-                        {erroDoCampo("city") && (
-                          <p
-                            id="erro-guest-city"
-                            className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
+                            Bairro
+                          </label>
+                          <input
+                            id="guest-neighborhood"
+                            maxLength={TETO_BAIRRO_DO_CHECKOUT}
+                            {...registrarCampoDoEndereco("neighborhood")}
+                            autoComplete="address-level3"
+                            placeholder="Seu bairro"
+                            aria-invalid={
+                              erroDoCampo("neighborhood") ? true : undefined
+                            }
+                            aria-describedby={
+                              erroDoCampo("neighborhood")
+                                ? "erro-guest-neighborhood"
+                                : undefined
+                            }
+                            className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
+                          />
+                          {erroDoCampo("neighborhood") && (
+                            <p
+                              id="erro-guest-neighborhood"
+                              className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
+                            >
+                              {erroDoCampo("neighborhood")?.message}
+                            </p>
+                          )}
+                        </div>
+                        <div className="col-span-3">
+                          <label
+                            htmlFor="guest-city"
+                            className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-600"
                           >
-                            {erroDoCampo("city")?.message}
-                          </p>
-                        )}
-                      </div>
-                      <div className="col-span-3">
-                        <label
-                          htmlFor="guest-state"
-                          className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-600"
-                        >
-                          Estado
-                        </label>
-                        <input
-                          id="guest-state"
-                          {...registrarCampoDoEndereco("state")}
-                          autoComplete="address-level1"
-                          maxLength={2}
-                          // O exemplo da loja vai como exemplo ("UF (ex.: SP)"):
-                          // um "SP" cinza sozinho parecia valor já preenchido, e a
-                          // pessoa passava direto pelo campo vazio.
-                          placeholder={(() => {
-                            const estadoDaLoja =
-                              config.shippingCoverage !== "national" &&
-                              config.storeState?.trim().toUpperCase();
-                            return estadoDaLoja
-                              ? `UF (ex.: ${estadoDaLoja})`
-                              : "UF";
-                          })()}
-                          aria-invalid={erroDoCampo("state") ? true : undefined}
-                          aria-describedby={
-                            erroDoCampo("state")
-                              ? "erro-guest-state"
-                              : undefined
-                          }
-                          className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
-                        />
-                        {erroDoCampo("state") && (
-                          <p
-                            id="erro-guest-state"
-                            className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
+                            Cidade
+                          </label>
+                          <input
+                            id="guest-city"
+                            maxLength={TETO_CIDADE_DO_CHECKOUT}
+                            {...registrarCampoDoEndereco("city")}
+                            autoComplete="address-level2"
+                            placeholder="Cidade"
+                            aria-invalid={
+                              erroDoCampo("city") ? true : undefined
+                            }
+                            aria-describedby={
+                              erroDoCampo("city")
+                                ? "erro-guest-city"
+                                : undefined
+                            }
+                            className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
+                          />
+                          {erroDoCampo("city") && (
+                            <p
+                              id="erro-guest-city"
+                              className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
+                            >
+                              {erroDoCampo("city")?.message}
+                            </p>
+                          )}
+                        </div>
+                        <div className="col-span-3">
+                          <label
+                            htmlFor="guest-state"
+                            className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-600"
                           >
-                            {erroDoCampo("state")?.message}
-                          </p>
-                        )}
-                      </div>
-                      <div className="col-span-6">
-                        <label
-                          htmlFor="guest-complement"
-                          className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-600"
-                        >
-                          Complemento (Opcional)
-                        </label>
-                        <input
-                          id="guest-complement"
-                          {...form.register("complement")}
-                          maxLength={100}
-                          autoComplete="address-line2"
-                          placeholder="Apto, Bloco, Fundos, etc."
-                          className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
-                        />
-                      </div>
-                    </>
-                  )}
+                            Estado
+                          </label>
+                          <input
+                            id="guest-state"
+                            {...registrarCampoDoEndereco("state")}
+                            autoComplete="address-level1"
+                            maxLength={2}
+                            // O exemplo da loja vai como exemplo ("UF (ex.: SP)"):
+                            // um "SP" cinza sozinho parecia valor já preenchido, e a
+                            // pessoa passava direto pelo campo vazio.
+                            placeholder={(() => {
+                              const estadoDaLoja =
+                                config.shippingCoverage !== "national" &&
+                                config.storeState?.trim().toUpperCase();
+                              return estadoDaLoja
+                                ? `UF (ex.: ${estadoDaLoja})`
+                                : "UF";
+                            })()}
+                            aria-invalid={
+                              erroDoCampo("state") ? true : undefined
+                            }
+                            aria-describedby={
+                              erroDoCampo("state")
+                                ? "erro-guest-state"
+                                : undefined
+                            }
+                            className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
+                          />
+                          {erroDoCampo("state") && (
+                            <p
+                              id="erro-guest-state"
+                              className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
+                            >
+                              {erroDoCampo("state")?.message}
+                            </p>
+                          )}
+                        </div>
+                        <div className="col-span-6">
+                          <label
+                            htmlFor="guest-complement"
+                            className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-600"
+                          >
+                            Complemento (Opcional)
+                          </label>
+                          <input
+                            id="guest-complement"
+                            {...form.register("complement")}
+                            maxLength={100}
+                            autoComplete="address-line2"
+                            placeholder="Apto, Bloco, Fundos, etc."
+                            className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
+                          />
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Saved Addresses (Logged In Only) — mesma seção "Seus dados e
+              {/* Saved Addresses (Logged In Only) — mesma seção "Seus dados e
                 entrega" (23/09/2026): era um segundo cartão alto e
                 independente; agora vive dentro do MESMO corpo, atrás do
                 mesmo resumo/cabeçalho. */}
-            {user && (
-              <div className="space-y-3 border-t border-zinc-100/50 pt-4">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <MapPin className="size-4 text-zinc-400" />
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-600">
-                      Endereço de Entrega
-                    </span>
-                  </div>
-                  <Button
-                    id="checkout-novo-endereco"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setEditingAddressId(null);
-                      focoDeVoltaAoNovoEnderecoRef.current = true;
-                      setIsAddressModalOpen(true);
-                    }}
-                    className="flex h-11 items-center gap-1 rounded-xl bg-zinc-900 px-3 text-[11px] font-bold uppercase tracking-wider text-white transition-all hover:bg-black"
-                  >
-                    <Plus className="size-3" /> Novo
-                  </Button>
-                </div>
-                {addressesLoading ? (
-                  // Laudo de acessibilidade 03/09, achado 12: o carregamento
-                  // dos endereços era silêncio para leitor de tela —
-                  // role="status" + sr-only anunciam sem mudar o visual.
-                  <div
-                    role="status"
-                    className="flex min-h-[112px] flex-col items-center justify-center py-8"
-                  >
-                    <span className="sr-only">Carregando endereços</span>
-                    <div className="mb-3 size-6 animate-spin rounded-full border-[3px] border-zinc-100 border-t-zinc-900" />
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
-                      Sincronizando endereços...
-                    </p>
-                  </div>
-                ) : enderecosNaoCarregaram && addresses.length === 0 ? (
-                  // A leitura FALHOU: lista vazia aqui não prova que a conta
-                  // não tem endereço, e o "Nenhum endereço cadastrado" fazia
-                  // a cliente digitar tudo de novo (endereço em duplicata).
-                  <div
-                    role="alert"
-                    className="rounded-2xl border border-red-300 p-4 text-sm text-red-600 dark:text-red-400"
-                  >
-                    <p>Não conseguimos carregar seus endereços agora.</p>
-                    <button
-                      type="button"
-                      onClick={() => void fetchAddresses()}
-                      className="mt-3 min-h-11 rounded-xl border border-solid border-red-300 bg-background px-4 font-semibold hover:bg-muted"
+              {user && (
+                <div className="space-y-3 border-t border-zinc-100/50 pt-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <MapPin className="size-4 text-zinc-400" />
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-600">
+                        Endereço de Entrega
+                      </span>
+                    </div>
+                    <Button
+                      id="checkout-novo-endereco"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setEditingAddressId(null);
+                        focoDeVoltaAoNovoEnderecoRef.current = true;
+                        setIsAddressModalOpen(true);
+                      }}
+                      className="flex h-11 items-center gap-1 rounded-xl bg-zinc-900 px-3 text-[11px] font-bold uppercase tracking-wider text-white transition-all hover:bg-black"
                     >
-                      Tentar de novo
-                    </button>
+                      <Plus className="size-3" /> Novo
+                    </Button>
                   </div>
-                ) : (
-                  <AddressList
-                    addresses={addresses}
-                    selectable
-                    selectedId={selectedAddressId || undefined}
-                    onSelect={(endereco) => {
-                      handleSelectAddress(endereco);
-                      // Escolheu um endereço da lista: recolhe de volta ao
-                      // resumo, já com o novo endereço — mesmo gesto de
-                      // "Trocar" da ShippingCalculator em `modoResumo`, logo
-                      // abaixo (consistência entre as duas seções que
-                      // aprenderam a resumir). REVISÃO DO DONO (23/09/2026):
-                      // recolhe SEMPRE, mesmo se o endereço novo for de
-                      // transportadora e o CPF ainda faltar — o resumo
-                      // recolhido avisa a pendência (data-testid
-                      // `checkout-resumo-falta-cpf`) em vez de forçar a
-                      // seção aberta; quem quer corrigir toca em "Editar".
-                      setAvisoDoEnderecoEscolhido(
-                        `Endereço escolhido: ${endereco.name}. ${resumoDoEndereco(endereco)}`,
-                      );
-                      focoAposAlternarRef.current = "endereco";
-                      setIdentificacaoAbertaManual(false);
-                    }}
-                    onEdit={handleEditAddress}
-                  />
-                )}
-              </div>
-            )}
+                  {addressesLoading ? (
+                    // Laudo de acessibilidade 03/09, achado 12: o carregamento
+                    // dos endereços era silêncio para leitor de tela —
+                    // role="status" + sr-only anunciam sem mudar o visual.
+                    <div
+                      role="status"
+                      className="flex min-h-[112px] flex-col items-center justify-center py-8"
+                    >
+                      <span className="sr-only">Carregando endereços</span>
+                      <div className="mb-3 size-6 animate-spin rounded-full border-[3px] border-zinc-100 border-t-zinc-900" />
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
+                        Sincronizando endereços...
+                      </p>
+                    </div>
+                  ) : enderecosNaoCarregaram && addresses.length === 0 ? (
+                    // A leitura FALHOU: lista vazia aqui não prova que a conta
+                    // não tem endereço, e o "Nenhum endereço cadastrado" fazia
+                    // a cliente digitar tudo de novo (endereço em duplicata).
+                    <div
+                      role="alert"
+                      className="rounded-2xl border border-red-300 p-4 text-sm text-red-600 dark:text-red-400"
+                    >
+                      <p>Não conseguimos carregar seus endereços agora.</p>
+                      <button
+                        type="button"
+                        onClick={() => void fetchAddresses()}
+                        className="mt-3 min-h-11 rounded-xl border border-solid border-red-300 bg-background px-4 font-semibold hover:bg-muted"
+                      >
+                        Tentar de novo
+                      </button>
+                    </div>
+                  ) : (
+                    <AddressList
+                      addresses={addresses}
+                      selectable
+                      selectedId={selectedAddressId || undefined}
+                      onSelect={(endereco) => {
+                        handleSelectAddress(endereco);
+                        // Escolheu um endereço da lista: recolhe de volta ao
+                        // resumo, já com o novo endereço — mesmo gesto de
+                        // "Trocar" da ShippingCalculator em `modoResumo`, logo
+                        // abaixo (consistência entre as duas seções que
+                        // aprenderam a resumir). REVISÃO DO DONO (23/09/2026):
+                        // recolhe SEMPRE, mesmo se o endereço novo for de
+                        // transportadora e o CPF ainda faltar — o resumo
+                        // recolhido avisa a pendência (data-testid
+                        // `checkout-resumo-falta-cpf`) em vez de forçar a
+                        // seção aberta; quem quer corrigir toca em "Editar".
+                        setAvisoDoEnderecoEscolhido(
+                          `Endereço escolhido: ${endereco.name}. ${resumoDoEndereco(endereco)}`,
+                        );
+                        focoAposAlternarRef.current = "endereco";
+                        setIdentificacaoAbertaManual(false);
+                      }}
+                      onEdit={handleEditAddress}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
 
-        {/* Frete do destino de entrega: cota sozinho pelo endereço
+          {/* Frete do destino de entrega: cota sozinho pelo endereço
             escolhido (logado) ou pelo CEP completo do formulário
             (convidado). Trocar/adicionar/editar endereço acima troca o
             destino — a cotação anterior cai na hora e a nova sai sozinha. */}
-        {cart.length > 0 && (
-          <ShippingCalculator
-            key={user?.id ?? "convidado"}
-            cart={cart}
-            selectedOption={selectedShippingOption}
-            selecaoEscolhidaPelaCliente={freteEscolhidoPelaCliente}
-            onSelectOption={setSelectedShippingOption}
-            onCepValidated={registrarCepCotado}
-            cepDestino={cepDoDestinoDaCotacao}
-            cepDaSelecao={shippingCep}
-            destino={
-              enderecoEfetivo
-                ? {
-                    apelido: enderecoEfetivo.name,
-                    resumo: resumoDoEndereco(enderecoEfetivo),
-                  }
-                : null
-            }
-            mensagemSemDestino={
-              user
-                ? "Cadastre ou escolha um endereço de entrega acima para calcular o frete."
-                : "Preencha o CEP de entrega acima para calcular o frete."
-            }
-            onStatusChange={setStatusDoFrete}
-            forcarNovaCotacaoEm={forcarNovaCotacaoEm}
-            // Pedido em envio: trocar modalidade/opção agora mudaria a tela,
-            // mas o pedido já leva o frete do clique (13/11/2026).
-            bloqueado={isSubmitting}
-            // CHECKOUT COMPACTO (23/09/2026): só o CHECKOUT resume a opção
-            // escolhida atrás de "Trocar" — o carrinho (outro consumidor
-            // deste MESMO componente) não passa a prop e continua mostrando
-            // a lista inteira, sem nenhuma mudança de comportamento.
-            modoResumo
-          />
-        )}
+          {cart.length > 0 && (
+            <ShippingCalculator
+              key={user?.id ?? "convidado"}
+              cart={cart}
+              selectedOption={selectedShippingOption}
+              selecaoEscolhidaPelaCliente={freteEscolhidoPelaCliente}
+              onSelectOption={setSelectedShippingOption}
+              onCepValidated={registrarCepCotado}
+              cepDestino={cepDoDestinoDaCotacao}
+              cepDaSelecao={shippingCep}
+              destino={
+                enderecoEfetivo
+                  ? {
+                      apelido: enderecoEfetivo.name,
+                      resumo: resumoDoEndereco(enderecoEfetivo),
+                    }
+                  : null
+              }
+              mensagemSemDestino={
+                user
+                  ? "Cadastre ou escolha um endereço de entrega acima para calcular o frete."
+                  : "Preencha o CEP de entrega acima para calcular o frete."
+              }
+              onStatusChange={setStatusDoFrete}
+              forcarNovaCotacaoEm={forcarNovaCotacaoEm}
+              // Pedido em envio: trocar modalidade/opção agora mudaria a tela,
+              // mas o pedido já leva o frete do clique (13/11/2026).
+              bloqueado={isSubmitting}
+              // CHECKOUT COMPACTO (23/09/2026): só o CHECKOUT resume a opção
+              // escolhida atrás de "Trocar" — o carrinho (outro consumidor
+              // deste MESMO componente) não passa a prop e continua mostrando
+              // a lista inteira, sem nenhuma mudança de comportamento.
+              modoResumo
+            />
+          )}
 
-        {/* Por que o Finalizar está apagado por causa do frete, quando é algo
+          {/* Por que o Finalizar está apagado por causa do frete, quando é algo
             que a cliente (ou a loja) resolve — fica aqui, perto das opções, e
             não na barra de baixo (22/10/2026: a barra não muda de altura com o
             frete). Texto neutro, sem vermelho: ainda não é falha. A falha real
@@ -7360,63 +7401,63 @@ export function CheckoutViewDaConta({
             `status` da barra. Caixa clara PRÓPRIA (a mesma do aviso de cupom
             logo abaixo): sem fundo, em loja de tema escuro ou vidro o texto
             herdava um fundo escuro e caía para ~2,1:1 de contraste. */}
-        {cart.length > 0 && escolhaDeFreteNaSecao && (
-          <p
-            data-testid="checkout-motivo-frete"
-            className="flex items-start gap-1.5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] font-medium leading-snug text-amber-900"
-          >
-            <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-amber-600" />
-            Escolha uma opção de frete para continuar
-          </p>
-        )}
+          {cart.length > 0 && escolhaDeFreteNaSecao && (
+            <p
+              data-testid="checkout-motivo-frete"
+              className="flex items-start gap-1.5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] font-medium leading-snug text-amber-900"
+            >
+              <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-amber-600" />
+              Escolha uma opção de frete para continuar
+            </p>
+          )}
 
-        {/* CUPONS DESLIGADOS (#645): o campo de cupom some com a chave
+          {/* CUPONS DESLIGADOS (#645): o campo de cupom some com a chave
             desligada, então o motivo de o desconto ter saído mora FORA dele.
             Fixo na tela (toast some antes de a pessoa ler). */}
-        {cuponsDesligados && cupomTiradoPelaLoja && (
-          <div
-            role="status"
-            className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] font-medium leading-snug text-amber-900"
-          >
-            A loja desativou os cupons de desconto. O desconto do cupom{" "}
-            {cupomTiradoPelaLoja} foi removido do seu pedido.
-          </div>
-        )}
+          {cuponsDesligados && cupomTiradoPelaLoja && (
+            <div
+              role="status"
+              className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] font-medium leading-snug text-amber-900"
+            >
+              A loja desativou os cupons de desconto. O desconto do cupom{" "}
+              {cupomTiradoPelaLoja} foi removido do seu pedido.
+            </div>
+          )}
 
-        {/* Cupons: os cartões que a cliente pode usar (vitrine + exclusivos
+          {/* Cupons: os cartões que a cliente pode usar (vitrine + exclusivos
             dela) e o campo de digitar. Some com a chave de cupons desligada;
             o aviso do desconto retirado fica acima, fora desta seção. */}
-        {config.enableCoupons && (
-          <CuponsDoCheckout
-            cupons={cuponsDoCheckout.cupons}
-            situacao={cuponsDoCheckout.situacao}
-            onTentarDeNovo={cuponsDoCheckout.tentarDeNovo}
-            appliedCoupon={appliedCoupon}
-            couponError={couponError}
-            aplicando={aplicandoCupom}
-            emEnvio={isSubmitting}
-            onApply={handleApplyCoupon}
-            onRemove={handleRemoveCoupon}
-          />
-        )}
+          {config.enableCoupons && (
+            <CuponsDoCheckout
+              cupons={cuponsDoCheckout.cupons}
+              situacao={cuponsDoCheckout.situacao}
+              onTentarDeNovo={cuponsDoCheckout.tentarDeNovo}
+              appliedCoupon={appliedCoupon}
+              couponError={couponError}
+              aplicando={aplicandoCupom}
+              emEnvio={isSubmitting}
+              onApply={handleApplyCoupon}
+              onRemove={handleRemoveCoupon}
+            />
+          )}
 
-        {/* Payment Method */}
-        <section
-          aria-labelledby="titulo-pagamento"
-          className="rounded-2xl border border-zinc-100/80 bg-white p-4 shadow-sm"
-        >
-          <div className="flex items-center gap-2">
-            <QuadradinhoDoIcone>
-              <CreditCard className="size-4" />
-            </QuadradinhoDoIcone>
-            <h2
-              id="titulo-pagamento"
-              className="text-base font-semibold text-zinc-900"
-            >
-              Meio de pagamento
-            </h2>
-          </div>
-          {/* Laudo de acessibilidade 03/09, achado 3: as opções de pagamento
+          {/* Payment Method */}
+          <section
+            aria-labelledby="titulo-pagamento"
+            className="rounded-2xl border border-zinc-100/80 bg-white p-4 shadow-sm"
+          >
+            <div className="flex items-center gap-2">
+              <QuadradinhoDoIcone>
+                <CreditCard className="size-4" />
+              </QuadradinhoDoIcone>
+              <h2
+                id="titulo-pagamento"
+                className="text-base font-semibold text-zinc-900"
+              >
+                Meio de pagamento
+              </h2>
+            </div>
+            {/* Laudo de acessibilidade 03/09, achado 3: as opções de pagamento
               são uma escolha ÚNICA, mas nada anunciava qual estava marcada —
               o "check" era só um desenho. `radiogroup` + `radio` com
               `aria-checked` dá o estado ao leitor de tela.
@@ -7424,52 +7465,52 @@ export function CheckoutViewDaConta({
               só, misturando "pagar agora" com "pagar na entrega" — dois
               subgrupos rotulados dentro do MESMO `radiogroup` (a escolha
               continua sendo uma só; só o agrupamento visual é novo). */}
-          <div
-            role="radiogroup"
-            aria-label="Meio de pagamento"
-            className="mt-3 space-y-4"
-          >
-            {opcoesNoApp.length > 0 && (
-              <div className="space-y-2.5">
-                <span className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600">
-                  No app
-                </span>
-                <div className="grid grid-cols-1 gap-2.5">
-                  {opcoesNoApp.map(renderOpcaoDePagamento)}
-                  {/* O cartão pelo app depende de uma leitura: enquanto ela
+            <div
+              role="radiogroup"
+              aria-label="Meio de pagamento"
+              className="mt-3 space-y-4"
+            >
+              {opcoesNoApp.length > 0 && (
+                <div className="space-y-2.5">
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600">
+                    No app
+                  </span>
+                  <div className="grid grid-cols-1 gap-2.5">
+                    {opcoesNoApp.map(renderOpcaoDePagamento)}
+                    {/* O cartão pelo app depende de uma leitura: enquanto ela
                       não responde, a opção aparece como "carregando" (em vez
                       de sumir, o que faria a lista parcial parecer final); se
                       falhou, diz isso e deixa tentar de novo — erro não é
                       "cartão desligado". Não é uma forma escolhível (não é
                       `radio`): só vira opção quando a config está pronta. */}
-                  {estadoDoCartao.estado === "carregando" && (
-                    <div
-                      role="status"
-                      aria-live="polite"
-                      className="flex w-full items-center gap-3 rounded-2xl border-2 border-dashed border-zinc-200 bg-zinc-50/60 p-3.5 text-xs font-bold uppercase tracking-wider text-zinc-600"
-                    >
-                      <Loader2 className="size-4 shrink-0 animate-spin" />
-                      Cartão: carregando…
-                    </div>
-                  )}
-                  {estadoDoCartao.estado === "erro" && (
-                    <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border-2 border-dashed border-zinc-200 bg-zinc-50/60 p-3.5 text-xs font-bold uppercase tracking-wider text-zinc-600">
-                      <span role="alert">
-                        Cartão: não foi possível conferir agora.
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => estadoDoCartao.tentarDeNovo()}
-                        className="rounded-lg border border-zinc-900 px-3 py-1.5 text-xs font-bold normal-case tracking-normal text-zinc-900 active:scale-[0.98]"
+                    {estadoDoCartao.estado === "carregando" && (
+                      <div
+                        role="status"
+                        aria-live="polite"
+                        className="flex w-full items-center gap-3 rounded-2xl border-2 border-dashed border-zinc-200 bg-zinc-50/60 p-3.5 text-xs font-bold uppercase tracking-wider text-zinc-600"
                       >
-                        Tentar de novo
-                      </button>
-                    </div>
-                  )}
+                        <Loader2 className="size-4 shrink-0 animate-spin" />
+                        Cartão: carregando…
+                      </div>
+                    )}
+                    {estadoDoCartao.estado === "erro" && (
+                      <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border-2 border-dashed border-zinc-200 bg-zinc-50/60 p-3.5 text-xs font-bold uppercase tracking-wider text-zinc-600">
+                        <span role="alert">
+                          Cartão: não foi possível conferir agora.
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => estadoDoCartao.tentarDeNovo()}
+                          className="rounded-lg border border-zinc-900 px-3 py-1.5 text-xs font-bold normal-case tracking-normal text-zinc-900 active:scale-[0.98]"
+                        >
+                          Tentar de novo
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
-            {/* REGRA DO FRETE × PAGAMENTO (dono, 21/09/2026): envio por
+              )}
+              {/* REGRA DO FRETE × PAGAMENTO (dono, 21/09/2026): envio por
                 transportadora exige pagamento antecipado — o grupo "Na
                 entrega" só some quando o frete escolhido É transportadora
                 (qualquer id ≠ "local-delivery"). Sem opção NENHUMA
@@ -7482,102 +7523,104 @@ export function CheckoutViewDaConta({
                 pagamento online ligado é o PIX no app (auto-selecionado
                 pelo efeito da transição); sem ele, NÃO existe fallback "na
                 entrega" — o bloqueio é a regra e o texto diz por quê. */}
-            {/* COMPRA QUE FECHA EM R$ 0,00 (dono, 14/10/2026): sem o grupo "No
+              {/* COMPRA QUE FECHA EM R$ 0,00 (dono, 14/10/2026): sem o grupo "No
                 app", a frase explica por que ele sumiu e o que a cliente faz.
                 Quando o Finalizar trava, a saída vem logo abaixo, junto do
                 botão (`totalZero.travaPor`). */}
-            {totalZero.zerado && (
-              <p
-                data-testid="checkout-pedido-sem-valor"
-                className="text-[11px] font-bold normal-case leading-normal tracking-normal text-zinc-700"
-              >
-                {textoDoPedidoSemValor({ decisao: totalZero, ehRetirada })}
-              </p>
-            )}
-            {selectedShippingOption && !ehEntregaLocal && !totalZero.zerado && (
-              <p className="text-[11px] font-medium normal-case leading-normal tracking-normal text-zinc-600">
-                {pagamentoOnlineLigado()
-                  ? estadoDoCartao.estado !== "pronto"
-                    ? // Config do cartão ainda carregando ou com leitura
-                      // falhada: o checkout NÃO sabe quais formas existem,
-                      // então não afirma "só PIX" nem que o cartão está lá.
-                      "Envio por transportadora exige pagamento antecipado — as formas de pagamento disponíveis aparecem abaixo."
-                    : cartaoDisponivel
-                      ? "Envio por transportadora exige pagamento antecipado — por isso só oferecemos o pagamento pelo app aqui."
-                      : "Envio por transportadora exige pagamento antecipado — por isso só oferecemos o PIX no app aqui."
-                  : "Envio por transportadora exige pagamento antecipado, e esta loja não recebe pagamento pelo app. Fale com a loja para combinar a entrega."}
-              </p>
-            )}
-            {/* FORMAS DE PAGAMENTO POR LOJA (25/09/2026): o grupo "Na
+              {totalZero.zerado && (
+                <p
+                  data-testid="checkout-pedido-sem-valor"
+                  className="text-[11px] font-bold normal-case leading-normal tracking-normal text-zinc-700"
+                >
+                  {textoDoPedidoSemValor({ decisao: totalZero, ehRetirada })}
+                </p>
+              )}
+              {selectedShippingOption &&
+                !ehEntregaLocal &&
+                !totalZero.zerado && (
+                  <p className="text-[11px] font-medium normal-case leading-normal tracking-normal text-zinc-600">
+                    {pagamentoOnlineLigado()
+                      ? estadoDoCartao.estado !== "pronto"
+                        ? // Config do cartão ainda carregando ou com leitura
+                          // falhada: o checkout NÃO sabe quais formas existem,
+                          // então não afirma "só PIX" nem que o cartão está lá.
+                          "Envio por transportadora exige pagamento antecipado — as formas de pagamento disponíveis aparecem abaixo."
+                        : cartaoDisponivel
+                          ? "Envio por transportadora exige pagamento antecipado — por isso só oferecemos o pagamento pelo app aqui."
+                          : "Envio por transportadora exige pagamento antecipado — por isso só oferecemos o PIX no app aqui."
+                      : "Envio por transportadora exige pagamento antecipado, e esta loja não recebe pagamento pelo app. Fale com a loja para combinar a entrega."}
+                  </p>
+                )}
+              {/* FORMAS DE PAGAMENTO POR LOJA (25/09/2026): o grupo "Na
                 entrega/retirada" some INTEIRO quando a loja desligou as
                 três — nunca um radiogroup vazio sem explicação. Convidado
                 (pagamento pelo app EXIGE conta, P6) vê o aviso de login no
                 lugar; cliente logado com o PIX ligado já vê o grupo "No
                 app" acima e não precisa de aviso extra. */}
-            {(!selectedShippingOption || ehEntregaLocal) &&
-              opcoesNaEntrega.length > 0 && (
-                <div className="space-y-2.5">
-                  <span className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600">
-                    {ehRetirada ? "Na retirada" : "Na entrega"}
-                  </span>
-                  <div className="grid grid-cols-1 gap-2.5">
-                    {opcoesNaEntrega.map(renderOpcaoDePagamento)}
+              {(!selectedShippingOption || ehEntregaLocal) &&
+                opcoesNaEntrega.length > 0 && (
+                  <div className="space-y-2.5">
+                    <span className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600">
+                      {ehRetirada ? "Na retirada" : "Na entrega"}
+                    </span>
+                    <div className="grid grid-cols-1 gap-2.5">
+                      {opcoesNaEntrega.map(renderOpcaoDePagamento)}
+                    </div>
                   </div>
-                </div>
-              )}
-            {(!selectedShippingOption || ehEntregaLocal) &&
-              opcoesNaEntrega.length === 0 &&
-              !user &&
-              !totalZero.zerado && (
-                <div className="flex flex-col items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
-                  <p className="text-[11px] font-bold leading-snug text-amber-700">
-                    Para comprar nesta loja, entre na sua conta — o pagamento é
-                    feito pelo app
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      haptic.light();
-                      onNavigate("auth");
-                    }}
-                    className="flex min-h-11 items-center rounded-lg bg-zinc-900 px-4 text-[11px] font-black uppercase tracking-widest text-white transition-colors hover:bg-black"
-                  >
-                    Entrar ou criar conta
-                  </button>
-                </div>
-              )}
-          </div>
-        </section>
+                )}
+              {(!selectedShippingOption || ehEntregaLocal) &&
+                opcoesNaEntrega.length === 0 &&
+                !user &&
+                !totalZero.zerado && (
+                  <div className="flex flex-col items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
+                    <p className="text-[11px] font-bold leading-snug text-amber-700">
+                      Para comprar nesta loja, entre na sua conta — o pagamento
+                      é feito pelo app
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        haptic.light();
+                        onNavigate("auth");
+                      }}
+                      className="flex min-h-11 items-center rounded-lg bg-zinc-900 px-4 text-[11px] font-black uppercase tracking-widest text-white transition-colors hover:bg-black"
+                    >
+                      Entrar ou criar conta
+                    </button>
+                  </div>
+                )}
+            </div>
+          </section>
 
-        {/* Notes */}
-        <section className="rounded-2xl border border-zinc-100/80 bg-white p-4 shadow-sm">
-          <div className="flex items-center gap-2">
-            <QuadradinhoDoIcone>
-              <FileText className="size-4" />
-            </QuadradinhoDoIcone>
-            <label
-              htmlFor="order-notes"
-              className="text-base font-semibold text-zinc-900"
-            >
-              Notas Adicionais (Opcional)
-            </label>
-          </div>
-          <div className="mt-3">
-            <textarea
-              id="order-notes"
-              name="order_notes"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              maxLength={500}
-              placeholder="Ex: Deixar na portaria, campainha estragada, etc..."
-              rows={2}
-              className="w-full resize-none rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
-              autoComplete="off"
-            />
-          </div>
-        </section>
+          {/* Notes */}
+          <section className="rounded-2xl border border-zinc-100/80 bg-white p-4 shadow-sm">
+            <div className="flex items-center gap-2">
+              <QuadradinhoDoIcone>
+                <FileText className="size-4" />
+              </QuadradinhoDoIcone>
+              <label
+                htmlFor="order-notes"
+                className="text-base font-semibold text-zinc-900"
+              >
+                Notas Adicionais (Opcional)
+              </label>
+            </div>
+            <div className="mt-3">
+              <textarea
+                id="order-notes"
+                name="order_notes"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                maxLength={500}
+                placeholder="Ex: Deixar na portaria, campainha estragada, etc..."
+                rows={2}
+                className="w-full resize-none rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
+                autoComplete="off"
+              />
+            </div>
+          </section>
 
-        {/* Location Notice — exige cobertura LOCAL porque a frase afirma
+          {/* Location Notice — exige cobertura LOCAL porque a frase afirma
             EXCLUSIVIDADE de entrega na cidade (#525): com cobertura
             nacional ela seria falsa — a loja entrega para o país, não só
             para a sede. Some por inteiro quando a loja não configurou
@@ -7585,44 +7628,57 @@ export function CheckoutViewDaConta({
             retirada" (entrega própria desligada) também não mostra: a frase
             prometeria entrega que ela não faz e sugeriria que quem é de outra
             cidade não pode comprar, quando pode retirar. */}
-        {config.storeCity &&
-          config.shippingCoverage === "local" &&
-          entregaPropriaLigada(config.localDeliveryEnabled) && (
-            <div className="group relative overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-slate-800 shadow-md">
-              <div className="absolute right-0 top-0 rotate-12 p-4 opacity-5 transition-transform duration-700 group-hover:rotate-0">
-                <MapPin className="size-16 text-zinc-500" />
-              </div>
-              <div className="relative z-10 flex items-start gap-3">
-                <div className="mt-0.5 shrink-0">
-                  <AlertCircle className="size-5 text-zinc-500" />
+          {config.storeCity &&
+            config.shippingCoverage === "local" &&
+            entregaPropriaLigada(config.localDeliveryEnabled) && (
+              <div className="group relative overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-slate-800 shadow-md">
+                <div className="absolute right-0 top-0 rotate-12 p-4 opacity-5 transition-transform duration-700 group-hover:rotate-0">
+                  <MapPin className="size-16 text-zinc-500" />
                 </div>
-                <div>
-                  <h4 className="mb-1 text-xs font-bold uppercase tracking-wider text-slate-900">
-                    Aviso de Região
-                  </h4>
-                  <p className="text-[10px] font-medium uppercase leading-relaxed tracking-tight text-slate-500">
-                    Nossos serviços de entrega estão ativos exclusivamente em{" "}
-                    <span className="font-black text-slate-900">
-                      {config.storeCity}
-                      {config.storeState ? `, ${config.storeState}` : ""}
-                    </span>
-                    .
-                  </p>
+                <div className="relative z-10 flex items-start gap-3">
+                  <div className="mt-0.5 shrink-0">
+                    <AlertCircle className="size-5 text-zinc-500" />
+                  </div>
+                  <div>
+                    <h4 className="mb-1 text-xs font-bold uppercase tracking-wider text-slate-900">
+                      Aviso de Região
+                    </h4>
+                    <p className="text-[10px] font-medium uppercase leading-relaxed tracking-tight text-slate-500">
+                      Nossos serviços de entrega estão ativos exclusivamente em{" "}
+                      <span className="font-black text-slate-900">
+                        {config.storeCity}
+                        {config.storeState ? `, ${config.storeState}` : ""}
+                      </span>
+                      .
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-        {/* Termos e Privacidade no FIM da tela, fora da barra do botão (a pedido
+          {/* Termos e Privacidade no FIM da tela, fora da barra do botão (a pedido
             do dono, 22/10/2026: dentro da barra ficava feio). Rola junto com o
             conteúdo. LGPD/CDC: só texto e dois links, NÃO é caixa de marcar e
             não entra em nenhuma condição do Finalizar. Os links abrem uma
             FOLHA por cima — o checkout segue montado, com frete, pagamento e
             dados como estavam (sair daqui apagaria o formulário). */}
-        <FraseDeAceite
-          acao="finalizar"
-          emLinha
-          className="mx-auto max-w-md pt-2 text-center"
+          <FraseDeAceite
+            acao="finalizar"
+            emLinha
+            className="mx-auto max-w-md pt-2 text-center"
+          />
+        </div>
+
+        <aside
+          ref={definirColunaDoResumo}
+          aria-label="Resumo e finalização do pedido"
+          className={cn(
+            "hidden lg:flex lg:flex-col lg:rounded-3xl lg:border lg:border-zinc-200 lg:bg-white",
+            COLUNA_FIXA_NO_COMPUTADOR,
+            // Cabeçalho P1 (121px) + top-24 (96px) + folga inferior (24px).
+            // A recusa após Finalizar precisa continuar alcançável por rolagem.
+            "lg:top-24 lg:max-h-[calc(100dvh-241px)] lg:overflow-y-auto",
+          )}
         />
       </div>
 
@@ -7631,7 +7687,7 @@ export function CheckoutViewDaConta({
       {/* Order Summary - Fixed Bottom Bar (+ painel do resumo, ancorado
           LOGO ABAIXO DA BARRA SUPERIOR — D1 refinado, 12/09/2026) */}
       {typeof document !== "undefined" &&
-        document.body &&
+        (telaDeComputador ? colunaDoResumo : document.body) &&
         createPortal(
           <>
             {/* Fundo SÓ VISUAL (escurece por trás do painel) — não fecha
@@ -7657,7 +7713,10 @@ export function CheckoutViewDaConta({
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.15 }}
-                  className="pointer-events-none fixed inset-x-0 bottom-0 z-[105] bg-black/40"
+                  className={cn(
+                    "pointer-events-none fixed inset-x-0 bottom-0 z-[105] bg-black/40",
+                    "lg:hidden",
+                  )}
                   style={{
                     top: "calc(var(--safe-area-top) + var(--header-height))",
                   }}
@@ -7677,13 +7736,16 @@ export function CheckoutViewDaConta({
                 horizontal fica inteira a cargo do flex do container de
                 fora — sem transform nenhum disputando o mesmo eixo. */}
             <div
-              className="pointer-events-none fixed inset-x-0 z-[106] flex justify-center px-3.5"
+              className={cn(
+                "pointer-events-none fixed inset-x-0 z-[106] flex justify-center px-3.5",
+                "lg:static lg:flex lg:min-h-32 lg:flex-1 lg:flex-col lg:overflow-hidden lg:px-0",
+              )}
               style={{
                 top: "calc(var(--safe-area-top) + var(--header-height))",
               }}
             >
               <AnimatePresence>
-                {isSummaryPanelOpen && (
+                {(telaDeComputador || isSummaryPanelOpen) && (
                   <motion.div
                     key="checkout-summary-panel"
                     initial={{ y: -12, opacity: 0 }}
@@ -7694,16 +7756,19 @@ export function CheckoutViewDaConta({
                     // `role="dialog"` SEM `aria-modal`, de propósito (mesmo
                     // motivo de sempre: o fundo não cobre nem o header nem a
                     // barra de baixo, que seguem clicáveis por toque).
-                    role="dialog"
+                    role={telaDeComputador ? "region" : "dialog"}
                     aria-label="Resumo do pedido"
                     tabIndex={-1}
                     // 50vh (herdado da versão anterior, ancorada embaixo): o
                     // bloco de totais é sticky no fundo do painel (SEMPRE
                     // visível — com carrinho grande ele não rola mais para
                     // fora).
-                    className="pointer-events-auto mt-2 max-h-[50vh] w-full max-w-md overflow-y-auto rounded-2xl border border-zinc-100 bg-white px-4 pt-3 shadow-[0_10px_30px_rgba(0,0,0,0.12)] outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/50"
+                    className={cn(
+                      "pointer-events-auto mt-2 max-h-[50vh] w-full max-w-md overflow-y-auto rounded-2xl border border-zinc-100 bg-white px-4 pt-3 shadow-[0_10px_30px_rgba(0,0,0,0.12)] outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/50",
+                      "lg:mt-0 lg:flex lg:min-h-0 lg:max-h-none lg:max-w-none lg:flex-1 lg:flex-col lg:overflow-hidden lg:rounded-none lg:border-0 lg:bg-transparent lg:p-6 lg:pb-0 lg:shadow-none",
+                    )}
                   >
-                    <div className="mb-3 flex items-center justify-between">
+                    <div className="mb-3 flex items-center justify-between lg:shrink-0">
                       <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
                         Resumo do Pedido
                       </span>
@@ -7717,7 +7782,10 @@ export function CheckoutViewDaConta({
                         // `after:-inset-2` amplia a área de toque para
                         // 44px (28px do ícone + 16px) sem mudar o visual
                         // discreto do chevron.
-                        className="relative flex size-7 items-center justify-center rounded-full text-zinc-400 transition-colors after:absolute after:-inset-2 after:content-[''] hover:bg-zinc-50 hover:text-zinc-600"
+                        className={cn(
+                          "relative flex size-7 items-center justify-center rounded-full text-zinc-400 transition-colors after:absolute after:-inset-2 after:content-[''] hover:bg-zinc-50 hover:text-zinc-600",
+                          "lg:hidden",
+                        )}
                       >
                         <ChevronUp className="size-4" />
                       </button>
@@ -7728,7 +7796,12 @@ export function CheckoutViewDaConta({
                         (ver AGENTS.md/comentários do checkout), e este
                         painel existe justamente para conferir sem sair
                         da tela. */}
-                    <ul className="space-y-3">
+                    <ul
+                      className={cn(
+                        "space-y-3",
+                        "lg:min-h-0 lg:flex-1 lg:space-y-4 lg:overflow-y-auto",
+                      )}
+                    >
                       {cart.map((item) => {
                         // Mesma fórmula de CartContext.tsx (cartTotal) —
                         // não uma conta nova. Laudo 31/08 (menor E): a
@@ -7777,13 +7850,24 @@ export function CheckoutViewDaConta({
                       })}
                     </ul>
 
+                    {appliedCoupon && (
+                      <p className="hidden lg:mt-4 lg:block lg:shrink-0 lg:break-words lg:border-t lg:border-zinc-100 lg:pt-4 lg:text-xs lg:text-zinc-600">
+                        Cupom: {appliedCoupon.code}
+                      </p>
+                    )}
+
                     {/* Sticky no fundo do painel (ponto de revisão de
                         02/09/2026): com carrinho grande a lista rola
                         DEBAIXO deste bloco e o Total nunca mais sai da
                         tela. O `-mx-4 px-4` estende o fundo branco por
                         toda a largura do painel (que agora só tem `px-4
                         pt-3`), para nada aparecer na fresta do padding. */}
-                    <div className="sticky bottom-0 -mx-4 mt-3 space-y-1.5 border-t border-zinc-100 bg-white px-4 py-3 text-xs">
+                    <div
+                      className={cn(
+                        "sticky bottom-0 -mx-4 mt-3 space-y-1.5 border-t border-zinc-100 bg-white px-4 py-3 text-xs",
+                        "lg:hidden",
+                      )}
+                    >
                       <div className="flex items-center justify-between text-zinc-500">
                         <span>Subtotal</span>
                         <span>{reais(subtotal)}</span>
@@ -7878,8 +7962,13 @@ export function CheckoutViewDaConta({
                 // uso, para ninguém reabrir a fresta escolhendo o nome que soa
                 // mais seguro.
                 <div
+                  // No PC, lg:static e lg:pb-8 dispensam a reserva; manter a
+                  // medição preserva o celular (só sobra scroll-padding no PC).
                   ref={medirRodapeCliente}
-                  className="bottom-docked-navigation fixed inset-x-0 z-[110] md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2"
+                  className={cn(
+                    "bottom-docked-navigation fixed inset-x-0 z-[110] md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2",
+                    "lg:static lg:w-full lg:max-w-none lg:shrink-0 lg:translate-x-0",
+                  )}
                 >
                   {/* O PAINEL DE RESUMO SAIU DAQUI (D1 refinado, 12/09/2026):
                       ele subia ACIMA desta barra; agora mora num container
@@ -7892,7 +7981,11 @@ export function CheckoutViewDaConta({
                     animate={{ y: 0, opacity: 1 }}
                     exit={{ y: "100%", opacity: 0 }}
                     transition={{ duration: 0.25, ease: "easeOut" }}
-                    className="w-full rounded-t-2xl border-t border-zinc-100 bg-white/95 p-3 px-4 shadow-[0_-10px_30px_rgba(0,0,0,0.08)] backdrop-blur-xl md:rounded-b-none md:rounded-t-2xl md:border-x md:border-b-0 md:border-t md:border-zinc-200/60"
+                    className={cn(
+                      "w-full rounded-t-2xl border-t border-zinc-100 bg-white/95 p-3 px-4 shadow-[0_-10px_30px_rgba(0,0,0,0.08)] backdrop-blur-xl md:rounded-b-none md:rounded-t-2xl md:border-x md:border-b-0 md:border-t md:border-zinc-200/60",
+                      "lg:rounded-none lg:border-0 lg:bg-transparent lg:p-6 lg:shadow-none lg:backdrop-blur-none",
+                      "lg:[&_.checkout-values]:grid-cols-1 lg:[&_.checkout-values]:gap-4 lg:[&_.checkout-values>div:last-child]:flex lg:[&_.checkout-values>div:last-child]:items-center lg:[&_.checkout-values>div:last-child]:justify-between lg:[&_.checkout-values>div:last-child]:border-l-0 lg:[&_.checkout-values>div:last-child]:border-t lg:[&_.checkout-values>div:last-child]:pl-0 lg:[&_.checkout-values>div:last-child]:pt-4",
+                    )}
                   >
                     {/* `max-w-md` (não `max-w-screen-md`) para o total e o botão
                         ficarem na mesma coluna dos cards do formulário. */}
@@ -8007,7 +8100,10 @@ export function CheckoutViewDaConta({
                         }}
                         disabled={botaoFinalizarDesabilitado}
                         aria-label="Finalizar pedido"
-                        className="checkout-finalizar w-full"
+                        className={cn(
+                          "checkout-finalizar w-full",
+                          "lg:rounded-full",
+                        )}
                       >
                         {isSubmitting ? (
                           <div className="size-4 animate-spin rounded-full border-2 border-primary-foreground/20 border-t-primary-foreground" />
@@ -8326,7 +8422,7 @@ export function CheckoutViewDaConta({
               )}
             </AnimatePresence>
           </>,
-          document.body,
+          telaDeComputador ? colunaDoResumo! : document.body,
         )}
     </div>
   );
