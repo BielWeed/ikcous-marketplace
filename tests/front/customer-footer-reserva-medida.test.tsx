@@ -72,8 +72,15 @@ it("uma conta única: navegação + área segura + rodapé medido + 16px, sem n�
   expect(css).toMatch(/\.checkout-values p:last-child \{\s*@apply text-left /);
   expect(css).toContain(".checkout-finalizar:disabled");
   expect(css).toContain("var(--customer-footer-height, 0px)");
-  expect(css.match(/--customer-pb:/g)).toHaveLength(1);
-  expect(css).toMatch(/--customer-pb:[\s\S]*?16px/);
+  // A conta móvel segue única; no PC a navegação fica escondida e sai da reserva.
+  const cssMovel = css.replace(
+    /@media \(min-width: 1024px\) \{\s*:root \{\s*--customer-pb: calc\([^;]*\);\s*\}\s*\}/g,
+    "",
+  );
+  expect(cssMovel.match(/--customer-pb:/g)).toHaveLength(1);
+  expect(cssMovel).toMatch(
+    /--customer-pb:\s*calc\(\s*var\(--nav-height\)\s*\+\s*var\(--safe-area-bottom, 0px\)\s*\+\s*var\(--visual-bottom-offset, 0px\)\s*\+\s*var\(--customer-nav-offset\)\s*\+\s*var\(--customer-footer-height, 0px\)\s*\+\s*16px\s*\);/,
+  );
   expect(css).toContain("--customer-pb-summary: var(--customer-pb)");
 });
 
