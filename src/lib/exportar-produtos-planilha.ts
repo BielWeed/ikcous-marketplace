@@ -100,7 +100,7 @@ export async function exportarProdutosPlanilha(
   try {
     const { gerarXlsx } = await import("./planilha-xlsx");
     blob = new Blob(
-      [gerarXlsx(linhasDosProdutos(produtos, opcoes.comCustos))],
+      [gerarXlsx(linhasDosProdutos(produtos, opcoes.comCustos, "xlsx"))],
       {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       },
@@ -160,16 +160,21 @@ export function produtosEmCsv(produtos: Product[], comCustos: boolean): string {
 
 const COLUNAS_DE_CUSTO = ["Custo (R$)", "Lucro por unidade (R$)", "Margem (%)"];
 
-/** Só texto recebe apóstrofo: valores numéricos negativos continuam números. */
+/**
+ * Só texto recebe apóstrofo: valores numéricos negativos continuam números.
+ * Defesa do CSV, onde o Excel interpreta o conteúdo; no XLSX o inlineStr já é texto puro.
+ */
 function textoSeguro(valor: CelulaDoProduto): CelulaDoProduto {
   return typeof valor === "string" && /^[\t\r\n]|^\s*[=+@-]/.test(valor)
     ? `'${valor}`
     : valor;
 }
 
+/** `formato` padrão é "csv" (protegido): só o XLSX, que não executa texto, pede o dado cru. */
 export function linhasDosProdutos(
   produtos: Product[],
   comCustos: boolean,
+  formato: "xlsx" | "csv" = "csv",
 ): CelulaDoProduto[][] {
   const cabecalho = [
     "Código/SKU",
@@ -253,7 +258,7 @@ export function linhasDosProdutos(
           v?.id ?? "",
           p.createdAt,
           p.updatedAt ?? "",
-        ].map(textoSeguro);
+        ].map((celula) => (formato === "csv" ? textoSeguro(celula) : celula));
       });
     }),
   ];

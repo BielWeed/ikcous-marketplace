@@ -105,7 +105,59 @@ function zipStore(arquivos: Record<string, string>): Uint8Array<ArrayBuffer> {
   return zip;
 }
 
-/** As linhas já vêm da função pura do catálogo, com sua proteção extra contra fórmulas. */
+const ISO_COM_FUSO =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[.\d]*(?:Z|[+-]\d{2}:\d{2})$/;
+
+/**
+ * Instante ISO com fuso -> número serial do Excel no horário de Brasília (o Excel não guarda fuso).
+ * Texto sem fuso ou ilegível devolve undefined e fica como texto: nunca se inventa horário.
+ */
+function serialDaData(texto: string): number | undefined {
+  if (!ISO_COM_FUSO.test(texto)) return undefined;
+  const instante = Date.parse(texto);
+  if (Number.isNaN(instante)) return undefined;
+  try {
+    const partes = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Sao_Paulo",
+      hourCycle: "h23",
+      year: "numeric",
+      month: "numeric",
+      day: "numeric",
+      hour: "numeric",
+      minute: "numeric",
+      second: "numeric",
+    }).formatToParts(instante);
+    const campo = (tipo: string) =>
+      Number(partes.find((parte) => parte.type === tipo)?.value);
+    const parede = Date.UTC(
+      campo("year"),
+      campo("month") - 1,
+      campo("day"),
+      campo("hour"),
+      campo("minute"),
+      campo("second"),
+    );
+    return parede / 86400000 + 25569; // 25569 = 1970-01-01 na contagem do Excel.
+  } catch {
+    return undefined;
+  }
+}
+
+// Índices de cellXfs: 0 texto, 1 cabeçalho, 2 moeda, 3 inteiro, 4 percentual,
+// 5 texto em uma linha só, 6 data e hora (numFmt 22 acompanha o idioma do Excel).
+const ESTILO_TEXTO_SEM_QUEBRA = 5;
+const ESTILO_DATA = 6;
+const ESTILOS: readonly (readonly [formato: number, quebra: boolean])[] = [
+  [0, true],
+  [0, true],
+  [4, true],
+  [1, true],
+  [10, true],
+  [0, false],
+  [22, false],
+];
+
+/** As linhas já vêm da função pura do catálogo; o inlineStr já impede texto de virar fórmula. */
 export function gerarXlsx(
   linhas: readonly (readonly CelulaDoProduto[])[],
 ): Uint8Array<ArrayBuffer> {
@@ -122,7 +174,12 @@ export function gerarXlsx(
         ? 4
         : ["Estoque", "Vendidos", "Estoque mínimo"].includes(String(titulo))
           ? 3
-          : 0,
+          : String(titulo).endsWith(" em")
+            ? ESTILO_DATA
+            : // Descrição e URLs de foto são longas: quebrar linha esticaria a linha inteira.
+              titulo === "Descrição" || String(titulo).includes("Foto")
+              ? ESTILO_TEXTO_SEM_QUEBRA
+              : 0,
   );
   const colunas = titulos
     .map((titulo, i) => {
@@ -146,16 +203,23 @@ export function gerarXlsx(
       if (linha.length !== titulos.length) throw new Error("Linha incompleta.");
       const celulas = linha
         .map((valor, i) => {
-          const estilo = r === 0 ? 1 : (formatos.at(i) ?? 0);
-          const atributos = `r="${coluna(i)}${r + 1}" s="${estilo}"`;
+          let estilo = r === 0 ? 1 : (formatos.at(i) ?? 0);
+          // Vazio não vira célula: nem texto "" (que o Excel trata como texto) nem número ausente.
+          if (valor === "") return "";
+          const atributos = () => `r="${coluna(i)}${r + 1}" s="${estilo}"`;
           if (typeof valor === "number") {
             if (!Number.isFinite(valor)) throw new Error("Número inválido.");
-            return `<c ${atributos}><v>${estilo === 4 ? valor / 100 : valor}</v></c>`;
+            return `<c ${atributos()}><v>${estilo === 4 ? valor / 100 : valor}</v></c>`;
           }
           if (valor.length > 32767)
             throw new Error("Texto maior que o limite do XLSX.");
-          // inlineStr nunca vira fórmula; a neutralização das linhas permanece por defesa extra.
-          return `<c ${atributos} t="inlineStr"><is><t xml:space="preserve">${escapar(valor)}</t></is></c>`;
+          if (estilo === ESTILO_DATA) {
+            const serial = serialDaData(valor);
+            if (serial !== undefined)
+              return `<c ${atributos()}><v>${serial}</v></c>`;
+            estilo = ESTILO_TEXTO_SEM_QUEBRA;
+          }
+          return `<c ${atributos()} t="inlineStr"><is><t xml:space="preserve">${escapar(valor)}</t></is></c>`;
         })
         .join("");
       return `<row r="${r + 1}"${r === 0 ? ' ht="30" customHeight="1"' : ""}>${celulas}</row>`;
@@ -167,7 +231,7 @@ export function gerarXlsx(
     "_rels/.rels": `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${REL}/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
     "xl/workbook.xml": `<workbook xmlns="${NS}" xmlns:r="${REL}"><bookViews><workbookView/></bookViews><sheets><sheet name="${escapar(nomeDaAba)}" sheetId="1" r:id="rId1"/></sheets><definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">${escapar(referenciaDoFiltro)}</definedName></definedNames></workbook>`,
     "xl/_rels/workbook.xml.rels": `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${REL}/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="${REL}/styles" Target="styles.xml"/></Relationships>`,
-    "xl/styles.xml": `<styleSheet xmlns="${NS}"><fonts count="2"><font><sz val="11"/><name val="Arial"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Arial"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF1E293B"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="5">${[0, 0, 4, 1, 10].map((formato, i) => `<xf numFmtId="${formato}" fontId="${i === 1 ? 1 : 0}" fillId="${i === 1 ? 2 : 0}" borderId="0" xfId="0" applyAlignment="1" applyNumberFormat="1"><alignment vertical="top" wrapText="1"/></xf>`).join("")}</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`,
+    "xl/styles.xml": `<styleSheet xmlns="${NS}"><fonts count="2"><font><sz val="11"/><name val="Arial"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Arial"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF1E293B"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="${ESTILOS.length}">${ESTILOS.map(([formato, quebra], i) => `<xf numFmtId="${formato}" fontId="${i === 1 ? 1 : 0}" fillId="${i === 1 ? 2 : 0}" borderId="0" xfId="0" applyAlignment="1" applyNumberFormat="1"><alignment vertical="top"${quebra ? ' wrapText="1"' : ""}/></xf>`).join("")}</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`,
     "xl/worksheets/sheet1.xml": `<worksheet xmlns="${NS}"><dimension ref="${area}"/><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A2" sqref="A2"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"/><cols>${colunas}</cols><sheetData>${dados}</sheetData><autoFilter ref="${area}"/></worksheet>`,
   });
 }

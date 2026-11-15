@@ -260,12 +260,16 @@ describe("XLSX mínimo, sem biblioteca e sem compressão", () => {
   it("mantém número, moeda em duas casas, fração percentual e texto sem fórmula", () => {
     const partes = abrir(
       gerarXlsx(
-        linhasDosProdutos([{ ...produto, name: "=1+1", weightKg: 0.5 }], true),
+        linhasDosProdutos(
+          [{ ...produto, name: "=1+1", weightKg: 0.5 }],
+          true,
+          "xlsx",
+        ),
       ),
     );
     const doc = partes.get("xl/worksheets/sheet1.xml")!;
     expect(doc.querySelector('c[r="A2"] t')?.textContent).toBe("000123");
-    expect(doc.querySelector('c[r="B2"] t')?.textContent).toBe("'=1+1");
+    expect(doc.querySelector('c[r="B2"] t')?.textContent).toBe("=1+1");
     expect(doc.querySelector("f")).toBeNull();
     for (const [ref, valor, estilo] of [
       ["E2", "80", "2"],
@@ -282,7 +286,7 @@ describe("XLSX mínimo, sem biblioteca e sem compressão", () => {
     const formatos = [
       ...partes.get("xl/styles.xml")!.querySelectorAll("cellXfs xf"),
     ].map((x) => x.getAttribute("numFmtId"));
-    expect(formatos).toEqual(["0", "0", "4", "1", "10"]);
+    expect(formatos).toEqual(["0", "0", "4", "1", "10", "0", "22"]);
   });
 
   it("usa uma linha por variante, inclusive inativa, e nunca inclui custo sem acesso", () => {
@@ -368,5 +372,224 @@ describe("XLSX mínimo, sem biblioteca e sem compressão", () => {
   it("recusa dados que não cabem no XLSX em vez de produzir arquivo corrompido", () => {
     expect(() => gerarXlsx([["Nome"], ["a".repeat(32768)]])).toThrow();
     expect(() => gerarXlsx([["Preço (R$)"], [Number.NaN]])).toThrow();
+  });
+});
+
+/** Célula pelo título do cabeçalho, para os testes não dependerem de letra fixa. */
+function celulaDa(doc: Document, titulo: string, linha: number) {
+  const cabecalho = [...doc.querySelectorAll('row[r="1"] c')].find(
+    (c) => c.querySelector("t")?.textContent === titulo,
+  );
+  const letras = cabecalho!.getAttribute("r")!.replace(/\d+/g, "");
+  return doc.querySelector(`c[r="${letras}${linha}"]`);
+}
+
+function estilosDe(partes: Map<string, Document>) {
+  return [...partes.get("xl/styles.xml")!.querySelectorAll("cellXfs xf")];
+}
+
+describe("o XLSX entrega o dado como ele é", () => {
+  it.each(["=1+1", "+55 11 99999", "-Camisa", "@SUM(A1)", " =x", "\t=x"])(
+    "texto %j sai cru, sem apóstrofo, e continua texto inline (nunca fórmula)",
+    (texto) => {
+      const doc = folha(
+        linhasDosProdutos(
+          [{ ...produto, name: texto, description: texto }],
+          true,
+          "xlsx",
+        ),
+      );
+      for (const titulo of ["Nome", "Descrição"]) {
+        const celula = celulaDa(doc, titulo, 2)!;
+        expect(celula.getAttribute("t"), titulo).toBe("inlineStr");
+        expect(celula.querySelector("t")?.textContent, titulo).toBe(texto);
+      }
+      expect(doc.querySelector("f")).toBeNull();
+    },
+  );
+
+  it("célula vazia não existe no XML, nem nas colunas numéricas, e a ordem segue crescente", () => {
+    const doc = folha(
+      linhasDosProdutos(
+        [
+          {
+            ...produto,
+            originalPrice: null,
+            costPrice: null,
+            category: "",
+            updatedAt: undefined,
+          },
+        ],
+        true,
+        "xlsx",
+      ),
+    );
+    for (const titulo of [
+      "Preço original (R$)",
+      "Custo (R$)",
+      "Lucro por unidade (R$)",
+      "Margem (%)",
+      "Peso (kg)",
+      "Largura (cm)",
+      "Altura (cm)",
+      "Comprimento (cm)",
+      "Estoque mínimo",
+      "Categoria",
+      "Atualizado em",
+    ])
+      expect(celulaDa(doc, titulo, 2), titulo).toBeNull();
+    expect(
+      [...doc.querySelectorAll("c")].filter(
+        (c) => c.querySelector("t")?.textContent === "",
+      ),
+    ).toHaveLength(0);
+    const colunas = [...doc.querySelectorAll('row[r="2"] c')].map((c) => {
+      let n = 0;
+      for (const letra of c.getAttribute("r")!.replace(/\d+/g, ""))
+        n = n * 26 + letra.charCodeAt(0) - 64;
+      return n;
+    });
+    expect(colunas).toEqual([...colunas].sort((a, b) => a - b));
+    expect(new Set(colunas).size).toBe(colunas.length);
+    expect(doc.querySelector("dimension")?.getAttribute("ref")).toBe("A1:AE2");
+    // o que existe continua lá: preço e id.
+    expect(
+      celulaDa(doc, "Preço (R$)", 2)?.querySelector("v")?.textContent,
+    ).toBe("80");
+    expect(celulaDa(doc, "ID do produto", 2)).not.toBeNull();
+  });
+
+  it("zero é dado, não vazio: preço, custo, estoque e peso zerados continuam na planilha", () => {
+    const doc = folha(
+      linhasDosProdutos(
+        [{ ...produto, price: 0, costPrice: 0, stock: 0, weightKg: 0 }],
+        true,
+        "xlsx",
+      ),
+    );
+    for (const titulo of ["Preço (R$)", "Custo (R$)", "Estoque", "Peso (kg)"])
+      expect(celulaDa(doc, titulo, 2)?.querySelector("v")?.textContent).toBe(
+        "0",
+      );
+  });
+
+  it("Descrição e fotos não quebram linha (linha gigante); Nome e cabeçalho continuam quebrando", () => {
+    const partes = abrir(
+      gerarXlsx(
+        linhasDosProdutos(
+          [
+            {
+              ...produto,
+              description: "x".repeat(5000),
+              images: [
+                "https://exemplo.test/a.jpg",
+                "https://exemplo.test/b.jpg",
+              ],
+              variants: [
+                {
+                  id: "v1",
+                  productId: "p1",
+                  name: "Tamanho",
+                  value: "M",
+                  stockIncrement: 1,
+                  active: true,
+                  imageUrl: "https://exemplo.test/v.jpg",
+                },
+              ],
+            },
+          ],
+          true,
+          "xlsx",
+        ),
+      ),
+    );
+    const doc = partes.get("xl/worksheets/sheet1.xml")!;
+    const xfs = estilosDe(partes);
+    const quebra = (titulo: string, linha: number) => {
+      const estilo = Number(celulaDa(doc, titulo, linha)!.getAttribute("s"));
+      return xfs
+        .at(estilo)
+        ?.querySelector("alignment")
+        ?.getAttribute("wrapText");
+    };
+    expect(quebra("Descrição", 2)).not.toBe("1");
+    expect(quebra("Fotos", 2)).not.toBe("1");
+    expect(quebra("Foto da variante", 2)).not.toBe("1");
+    expect(quebra("Nome", 2)).toBe("1");
+    expect(quebra("Nome", 1)).toBe("1");
+    // o texto em si não é cortado nem alterado.
+    expect(celulaDa(doc, "Descrição", 2)?.querySelector("t")?.textContent).toBe(
+      "x".repeat(5000),
+    );
+    expect(celulaDa(doc, "Fotos", 2)?.querySelector("t")?.textContent).toBe(
+      "https://exemplo.test/a.jpg\nhttps://exemplo.test/b.jpg",
+    );
+  });
+
+  it("Criado em e Atualizado em viram data do Excel no horário de Brasília", () => {
+    const partes = abrir(
+      gerarXlsx(
+        linhasDosProdutos(
+          [
+            {
+              ...produto,
+              createdAt: "2026-01-02T03:04:05.000Z",
+              updatedAt: "2018-12-01T12:00:00+00:00",
+            },
+          ],
+          true,
+          "xlsx",
+        ),
+      ),
+    );
+    const doc = partes.get("xl/worksheets/sheet1.xml")!;
+    const xfs = estilosDe(partes);
+    // 2026-01-02 00:04:05 em Brasília (UTC-3).
+    const criado = celulaDa(doc, "Criado em", 2)!;
+    expect(criado.getAttribute("t")).toBeNull();
+    expect(Number(criado.querySelector("v")?.textContent)).toBeCloseTo(
+      46024 + 245 / 86400,
+      8,
+    );
+    expect(xfs[Number(criado.getAttribute("s"))].getAttribute("numFmtId")).toBe(
+      "22",
+    );
+    // 2018-12-01 10:00 em Brasília (UTC-2: o horário de verão ainda existia).
+    const atualizado = celulaDa(doc, "Atualizado em", 2)!;
+    expect(Number(atualizado.querySelector("v")?.textContent)).toBeCloseTo(
+      43435 + 10 / 24,
+      8,
+    );
+  });
+
+  it("aceita o timestamp com microssegundos que o Postgres devolve", () => {
+    const doc = folha(
+      linhasDosProdutos(
+        [{ ...produto, createdAt: "2026-01-02T03:04:05.123456+00:00" }],
+        true,
+        "xlsx",
+      ),
+    );
+    expect(
+      Number(celulaDa(doc, "Criado em", 2)?.querySelector("v")?.textContent),
+    ).toBeCloseTo(46024 + 245 / 86400, 8);
+  });
+
+  it("data sem fuso ou ilegível fica como texto, sem inventar horário", () => {
+    const doc = folha(
+      linhasDosProdutos(
+        [{ ...produto, createdAt: "2026-11-15", updatedAt: "ontem" }],
+        true,
+        "xlsx",
+      ),
+    );
+    for (const [titulo, texto] of [
+      ["Criado em", "2026-11-15"],
+      ["Atualizado em", "ontem"],
+    ]) {
+      const celula = celulaDa(doc, titulo, 2)!;
+      expect(celula.getAttribute("t")).toBe("inlineStr");
+      expect(celula.querySelector("t")?.textContent).toBe(texto);
+    }
   });
 });
