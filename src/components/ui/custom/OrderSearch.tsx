@@ -295,7 +295,7 @@ export function OrderSearch({
   };
 
   return (
-    <div className="space-y-4 xs:space-y-6">
+    <div className="space-y-4 xs:space-y-6 lg:mb-6 lg:w-full lg:max-w-2xl">
       <div className="rounded-[18px] border border-border bg-background p-4 text-foreground xs:p-6">
         <div className="flex h-full flex-col">
           {/* Mode selector tab header */}

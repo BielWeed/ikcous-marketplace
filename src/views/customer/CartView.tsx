@@ -1549,7 +1549,7 @@ export function CartView({
                 x: { ease: [0.16, 1, 0.3, 1], duration: 0.38 },
                 opacity: { duration: 0.2 },
               }}
-              className="flex w-full flex-1 flex-col px-4 pb-6 pt-0 focus:outline-none min-[380px]:px-5"
+              className="flex w-full flex-1 flex-col px-4 pb-6 pt-0 focus:outline-none min-[380px]:px-5 lg:mx-auto lg:max-w-[1216px] lg:px-8 lg:pt-6"
             >
               {!user && retratoSaiuDaTela && orders.length === 0 && (
                 <div
