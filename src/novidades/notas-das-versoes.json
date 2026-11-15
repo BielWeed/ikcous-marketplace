@@ -1,4 +1,22 @@
 {
+  "1.5.193": {
+    "titulo": "Novo banner no computador e telas da loja e do painel mais bem encaixadas",
+    "novidades": [
+      "Painel, Banners: no computador, o botão \"Novo banner\" aparece no cabeçalho da tela, mesmo quando os três espaços já estão preenchidos.",
+      "Loja, no computador: as sugestões que aparecem quando não há resultado de busca ou favoritos ficam em quatro colunas."
+    ],
+    "correcoes": [
+      "Loja, pagamento: a tela de pagamento por Pix abre no topo, com o título à vista, tanto no celular quanto no computador.",
+      "Loja, no computador: na Conta, as abas ficam com a altura certa, os campos do perfil deixam de se esticar e a barra \"Salvar alterações\" perde a borda curva.",
+      "Loja, no computador: no pedido, o botão \"Retomar pagamento\" deixa de ocupar a largura inteira do cartão.",
+      "Loja, no computador: em telas de 1536 px ou mais, o Carrinho e Meus pedidos ficam alinhados com o cabeçalho; os comentários das avaliações têm linhas mais curtas.",
+      "Loja, no computador: ao abrir um produto por link ou ao recarregar a página, o desenho de carregamento já tem a mesma disposição da página pronta.",
+      "Painel, Marca: a partir de 1280 px, o campo \"Nome da loja\" ocupa a largura toda da seção.",
+      "Painel, Clientes: no tablet e no computador, valores grandes cabem no cartão do cliente sem cobrir a data.",
+      "Painel, Balcão: de 1024 a 1279 px, os botões de cada item da venda ficam dentro do cartão."
+    ],
+    "melhorias": []
+  },
   "1.5.192": {
     "titulo": "Balcão em duas colunas e painel que aproveita melhor a tela do computador",
     "novidades": [
