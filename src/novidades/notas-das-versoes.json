@@ -1,4 +1,13 @@
 {
+  "1.5.191": {
+    "titulo": "Compra do produto cabe na tela do notebook e frete mais fácil de tocar",
+    "novidades": [],
+    "correcoes": [
+      "Loja, no computador: em notebooks de 1024 a 1280 px de largura, o cartão de compra do produto deixa de ser cortado na parte de baixo da tela; o botão de adicionar e o preço ficam à vista.",
+      "Loja, tablet e computador: o botão \"Ver outras opções\" do frete ganha uma área de toque maior, mais fácil de acertar com o dedo."
+    ],
+    "melhorias": []
+  },
   "1.5.190": {
     "titulo": "Clientes do CRM, cadastro de produto e Ajustes mais certinhos no computador",
     "novidades": [],

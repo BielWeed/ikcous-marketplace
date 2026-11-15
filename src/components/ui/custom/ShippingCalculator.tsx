@@ -1582,7 +1582,7 @@ export function ShippingCalculator({
                   className={
                     modoResumo
                       ? "min-h-11 w-full select-none py-2 text-center text-xs font-semibold text-zinc-600 underline-offset-2 hover:text-zinc-900 hover:underline"
-                      : "w-full select-none py-1 text-center text-[10px] font-semibold text-zinc-400 underline-offset-2 hover:text-zinc-600 hover:underline"
+                      : "w-full select-none py-1 text-center text-[10px] font-semibold text-zinc-400 underline-offset-2 hover:text-zinc-600 hover:underline md:flex md:min-h-11 md:items-center md:justify-center"
                   }
                 >
                   {outrasExpandidas
