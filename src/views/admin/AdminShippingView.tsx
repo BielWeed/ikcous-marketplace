@@ -1172,7 +1172,7 @@ export const AdminShippingView = memo(function AdminShippingView({
   return (
     <div className="pb-admin min-h-screen bg-admin-bg text-zinc-100">
       <div className="sticky top-0 z-30 bg-admin-bg/90 px-4 py-3 backdrop-blur-md sm:px-6">
-        <header className="mx-auto max-w-4xl rounded-[20px] border border-admin-border bg-admin-surface p-4">
+        <header className="mx-auto max-w-4xl rounded-[20px] border border-admin-border bg-admin-surface p-4 lg:grid lg:max-w-none lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:gap-x-6">
           <div className="flex items-center gap-1">
             <h1 className="min-w-0 break-words text-2xl font-black uppercase italic tracking-tight">
               {NOMES_DO_PAINEL["admin-shipping"]}
@@ -1186,7 +1186,7 @@ export const AdminShippingView = memo(function AdminShippingView({
               <HelpCircle className="size-5" />
             </button>
           </div>
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 lg:mt-0 lg:gap-4">
             <span
               role="status"
               className={`rounded-full border border-admin-border px-2.5 py-1 text-xs font-bold ${pendencias || confirmarTransportadoras ? "text-amber-300" : "text-emerald-300"}`}
@@ -1196,13 +1196,13 @@ export const AdminShippingView = memo(function AdminShippingView({
             {botaoSalvar}
           </div>
           {(erroLocal || erroNacional) && (
-            <p className="mt-2 text-xs text-red-300">
+            <p className="mt-2 text-xs text-red-300 lg:col-span-2">
               Corrija o valor em Frete grátis para salvar.
             </p>
           )}
         </header>
       </div>
-      <main className="mx-auto max-w-4xl space-y-4 p-4 sm:px-6">
+      <main className="mx-auto max-w-4xl space-y-4 p-4 sm:px-6 lg:max-w-none xl:grid xl:grid-cols-2 xl:items-start xl:gap-6 xl:space-y-0 xl:[&>#painel-frete-local]:col-span-1 xl:[&>#painel-frete-nacional]:col-span-1 xl:[&>*]:col-span-2">
         {!isLoaded ? (
           <div aria-busy="true" className="animate-pulse space-y-4">
             <div className="h-72 rounded-[20px] bg-admin-raised" />
