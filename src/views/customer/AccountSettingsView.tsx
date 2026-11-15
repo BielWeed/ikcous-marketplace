@@ -1424,7 +1424,7 @@ export function AccountSettingsView() {
 
             {/* Botão principal, fixo acima da navegação inferior. Na aba
                 Segurança ele é o botão de envio do formulário de senha. */}
-            <div className="bottom-docked-navigation sticky z-20 -mx-4 border-t border-border bg-background/95 px-4 pb-2.5 pt-3 backdrop-blur sm:-mx-6 sm:px-6 md:bottom-[104px] lg:bottom-0 lg:col-start-2 lg:mx-0 lg:rounded-3xl">
+            <div className="bottom-docked-navigation sticky z-20 -mx-4 border-t border-border bg-background/95 px-4 pb-2.5 pt-3 backdrop-blur sm:-mx-6 sm:px-6 md:bottom-[104px] lg:bottom-0 lg:col-start-2 lg:mx-0 lg:rounded-3xl lg:border-0">
               {activeTab === "profile" ? (
                 <Button
                   type="submit"
