@@ -695,7 +695,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
   );
 
   return (
-    <div className="pb-admin mx-auto max-w-7xl space-y-6 px-4 duration-200 animate-in fade-in md:px-0 lg:pb-12">
+    <div className="pb-admin mx-auto max-w-7xl space-y-6 px-4 duration-200 animate-in fade-in md:px-0 lg:px-6 lg:pb-12">
       {/* Header / Actions */}
       <div className="mt-6 flex min-w-0 items-center gap-4">
         <div className="w-full min-w-0">

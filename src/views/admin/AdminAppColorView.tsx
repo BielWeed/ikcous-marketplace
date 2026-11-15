@@ -381,7 +381,7 @@ export function AdminAppColorView({
     onSetDirty?.(editor.dirty);
   }, [editor.dirty, onSetDirty]);
   return (
-    <div className="pb-admin mx-auto max-w-lg space-y-3 px-4 pt-4 text-zinc-50 xl:grid xl:max-w-5xl xl:grid-cols-2 xl:items-start xl:gap-5 xl:space-y-0">
+    <div className="pb-admin mx-auto max-w-lg space-y-3 px-4 pt-4 text-zinc-50 xl:grid xl:max-w-5xl xl:grid-cols-2 xl:items-start xl:gap-5 xl:space-y-0 2xl:max-w-7xl">
       <header className="xl:col-span-2">
         <div className="flex items-center justify-between">
           <h1 className="text-[22px] font-bold leading-7">

@@ -1353,7 +1353,7 @@ function FormularioDoCupom({
           <Button
             onClick={handleSubmit}
             disabled={isOffline || isSubmitting}
-            className={`${PRIMARIO} admin-barra-principal h-auto w-full`}
+            className={`${PRIMARIO} admin-barra-principal h-auto w-full lg:ml-auto lg:w-72`}
           >
             <Save aria-hidden="true" className="size-5" />
             {isSubmitting ? "Salvando..." : "Salvar Cupom"}
