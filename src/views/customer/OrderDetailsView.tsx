@@ -1398,7 +1398,7 @@ export function OrderDetailsView({
           onRetomarPagamento && (
             <button
               onClick={() => onRetomarPagamento(order.id)}
-              className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-zinc-900 px-4 py-3.5 text-sm font-bold text-white shadow-sm transition-all active:scale-95"
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-zinc-900 px-4 py-3.5 text-sm font-bold text-white shadow-sm transition-all active:scale-95 lg:max-w-md"
             >
               <CreditCard className="size-4" aria-hidden="true" />
               Retomar pagamento
@@ -2235,7 +2235,7 @@ export function OrderDetailsView({
             <button
               onClick={handleCancelOrder}
               disabled={isCancelling}
-              className="flex w-full items-center gap-3 border-b border-zinc-100 px-5 py-3.5 text-left text-sm font-semibold text-red-600 transition-colors last:border-b-0 hover:bg-red-50 active:bg-red-100 disabled:opacity-50"
+              className="flex w-full items-center gap-3 border-b border-zinc-100 px-5 py-3.5 text-left text-sm font-semibold text-red-600 transition-colors last:border-b-0 hover:bg-red-50 active:bg-red-100 disabled:opacity-50 lg:max-w-md"
             >
               <span className="flex size-8 flex-shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600">
                 {isCancelling ? (
