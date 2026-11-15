@@ -92,15 +92,15 @@ jobs:
         with:
           node-version: "24"
 
-      # Nunca fallback entre lojas ou turmas. Segredo só por env, nunca argumento.
+      # Nunca fallback entre lojas ou turmas. Segredo só ao ativar, por env.
       - name: Mede ou configura só os campos do Google
         env:
           SUPABASE_ACCESS_TOKEN_IKCOUS: ${{ inputs.projeto == 'ikcous-publicada' && secrets.SUPABASE_ACCESS_TOKEN_IKCOUS || '' }}
           SUPABASE_ACCESS_TOKEN_SAVY: ${{ inputs.projeto == 'savy' && secrets.SUPABASE_ACCESS_TOKEN_SAVY || '' }}
-          GOOGLE_OAUTH_SECRET_TURMA_1: ${{ inputs.turma == 'turma-1' && secrets.GOOGLE_OAUTH_SECRET_TURMA_1 || '' }}
-          GOOGLE_OAUTH_SECRET_TURMA_2: ${{ inputs.turma == 'turma-2' && secrets.GOOGLE_OAUTH_SECRET_TURMA_2 || '' }}
-          GOOGLE_OAUTH_SECRET_TURMA_3: ${{ inputs.turma == 'turma-3' && secrets.GOOGLE_OAUTH_SECRET_TURMA_3 || '' }}
-          GOOGLE_OAUTH_SECRET_TURMA_4: ${{ inputs.turma == 'turma-4' && secrets.GOOGLE_OAUTH_SECRET_TURMA_4 || '' }}
+          GOOGLE_OAUTH_SECRET_TURMA_1: ${{ inputs.acao == 'ativar' && inputs.turma == 'turma-1' && secrets.GOOGLE_OAUTH_SECRET_TURMA_1 || '' }}
+          GOOGLE_OAUTH_SECRET_TURMA_2: ${{ inputs.acao == 'ativar' && inputs.turma == 'turma-2' && secrets.GOOGLE_OAUTH_SECRET_TURMA_2 || '' }}
+          GOOGLE_OAUTH_SECRET_TURMA_3: ${{ inputs.acao == 'ativar' && inputs.turma == 'turma-3' && secrets.GOOGLE_OAUTH_SECRET_TURMA_3 || '' }}
+          GOOGLE_OAUTH_SECRET_TURMA_4: ${{ inputs.acao == 'ativar' && inputs.turma == 'turma-4' && secrets.GOOGLE_OAUTH_SECRET_TURMA_4 || '' }}
           PROJETO: ${{ inputs.projeto }}
           ACAO: ${{ inputs.acao }}
           TURMA: ${{ inputs.turma }}

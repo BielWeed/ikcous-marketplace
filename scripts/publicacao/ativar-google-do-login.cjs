@@ -18,10 +18,12 @@
  * desse contrato, falha fechado e NÃO declara a ativação confirmada.
  *
  * Snapshot COMPLETO em memória + releitura: só as chaves do PATCH podem mudar.
- * Ativar inclui origens sem remover entradas existentes (inclusive caminhos e
- * curingas antigos). Só a entrada NOVA é limitada a https://host público, até 5.
+ * Ativar inclui origem/** sem remover entradas existentes (inclusive caminhos e
+ * curingas antigos). A ORIGEM digitada é só https://host público, até 5.
+ * O molde /** libera a volta em caminhos da loja; a origem pelada não libera.
  * Não toca site_url. Desfazer: mesma loja/SHA, acao=desativar; altera só enabled.
- * Nenhuma escrita sem leitura inicial válida, inclusive ao desativar.
+ * Desativar tenta o PATCH de emergência mesmo sem leitura inicial válida;
+ * nesse caso a releitura prova só enabled=false, nunca as outras políticas.
  * A seleção da turma é explícita; não existe associação automática loja/turma.
  * Só a turma selecionada pode receber segredo; medir/desativar não o exigem.
  * Máscaras ::add-mask:: são a única passagem por stdout, antes de qualquer uso,
@@ -90,6 +92,7 @@ function validarOrigens(valor) {
   }
   return [...new Set(origens)];
 }
+const moldeDaOrigem = (origem) => `${origem}/**`;
 const listaDeUris = (config) =>
   (config.uri_allow_list ?? "")
     .split(",")
@@ -127,7 +130,7 @@ function relatar({ config, origens, acao, saida }) {
     `Google ligado: ${simNao(config.external_google_enabled === true)}`,
     `client id configurado: ${simNao(texto(config.external_google_client_id))}`,
     `client id últimos seis: ${valido ? config.external_google_client_id.slice(-6) : "indisponível"}`,
-    `origens permitidas: ${origens.length ? simNao(origens.every((v) => listaDeUris(config).includes(v))) : "não medido (desativação)"}`,
+    `redirecionamento da volta liberado: ${origens.length ? simNao(origens.every((v) => listaDeUris(config).includes(moldeDaOrigem(v)))) : "não medido (desativação)"}`,
     acao === "medir"
       ? "outras configurações: somente leitura; nenhum PATCH enviado (sem comparação temporal)"
       : "outras configurações: preservadas; snapshot completo comparado em memória",
@@ -154,9 +157,11 @@ async function executar({ projeto, acao, env, fetchImpl, saida }) {
     if (!texto(token)) parar(alvo.semAcesso);
     saida.mascarar(token);
     const nomeSegredo = Reflect.get(TURMAS, env.TURMA);
-    const segredo = Reflect.get(env, nomeSegredo);
+    const segredo =
+      acao === "ativar" ? Reflect.get(env, nomeSegredo) : undefined;
     if (texto(segredo)) saida.mascarar(segredo);
     if (
+      acao === "ativar" &&
       Object.values(TURMAS).some(
         (nome) => nome !== nomeSegredo && texto(Reflect.get(env, nome)),
       )
@@ -188,7 +193,16 @@ async function executar({ projeto, acao, env, fetchImpl, saida }) {
         parar("HTTP inesperado na Management API (corpo não impresso)");
       return conferirConfig(JSON.parse(await r.text()), saida);
     };
-    const antes = await chamar();
+    let antes;
+    if (acao === "desativar") {
+      try {
+        antes = await chamar();
+      } catch {
+        antes = null;
+      }
+    } else {
+      antes = await chamar();
+    }
     if (acao === "medir") {
       relatar({ config: antes, origens, acao, saida });
       return 0;
@@ -201,7 +215,10 @@ async function executar({ projeto, acao, env, fetchImpl, saida }) {
             external_google_client_id: env.CLIENT_ID,
             external_google_secret: segredo,
             uri_allow_list: [
-              ...new Set([...listaDeUris(antes), ...origens]),
+              ...new Set([
+                ...listaDeUris(antes),
+                ...origens.map(moldeDaOrigem),
+              ]),
             ].join(","),
           };
     const permitidos =
@@ -235,15 +252,19 @@ async function executar({ projeto, acao, env, fetchImpl, saida }) {
         Object.fromEntries(
           Object.entries(c).filter(([k]) => !Object.hasOwn(patch, k)),
         );
-      if (!isDeepStrictEqual(restantes(antes), restantes(depois)))
+      if (antes && !isDeepStrictEqual(restantes(antes), restantes(depois)))
         parar("outra configuração mudou durante a operação");
-      if (!origens.every((v) => listaDeUris(depois).includes(v)))
+      if (!origens.every((v) => listaDeUris(depois).includes(moldeDaOrigem(v))))
         parar("origens não confirmadas na releitura");
     } catch {
       parar(
         "conferência do PATCH não completou; estado do Google DESCONHECIDO; rode medir antes de tentar novamente",
       );
     }
+    if (!antes)
+      parar(
+        "Google desativado confirmado por releitura; verificação incompleta das outras políticas",
+      );
     relatar({ config: depois, origens, acao, saida });
     return 0;
   } catch (erro) {

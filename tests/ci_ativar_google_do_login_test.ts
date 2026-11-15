@@ -97,11 +97,17 @@ function cenario(op = {}) {
     return {
       status: op.status ?? 200,
       text: async () =>
-        op.jsonInvalido
+        op.jsonInvalido ||
+        (op.jsonInicialInvalido && leituras === 1 && init.method === "GET")
           ? SECRET
           : JSON.stringify(
               op.corpo ??
-                (op.depoisInvalido && leituras > 1 ? [] : clone(config)),
+                ((op.antesInvalido &&
+                  leituras === 1 &&
+                  init.method === "GET") ||
+                (op.depoisInvalido && leituras > 1)
+                  ? []
+                  : clone(config)),
             ),
     };
   };
@@ -164,7 +170,7 @@ Deno.test("ativar: preserva entradas antigas, inclui origens sem duplicar e prov
         external_google_enabled: true,
         external_google_client_id: CLIENT,
         external_google_secret: SECRET,
-        uri_allow_list: `https://antiga.invalid/callback,https://*.antiga.invalid/**,${ORIGEM},https://outra.invalid`,
+        uri_allow_list: `https://antiga.invalid/callback,https://*.antiga.invalid/**,${ORIGEM}/**,https://outra.invalid/**`,
       },
     ],
   );
@@ -175,12 +181,20 @@ Deno.test("ativar: preserva entradas antigas, inclui origens sem duplicar e prov
 });
 
 Deno.test("ativar: idempotente para origem que já está na lista, inclusive lista nula", async () => {
-  for (const lista of [null, "", `${ORIGEM},https://antiga.invalid/callback`]) {
+  for (const lista of [
+    null,
+    "",
+    `${ORIGEM}/**,https://antiga.invalid/callback`,
+    ORIGEM,
+  ]) {
     const c = cenario({ config: { uri_allow_list: lista } });
     assertEquals(await c.rodar(), 0);
     const entradas = patches(c)[0].body.uri_allow_list.split(",");
-    assertEquals(entradas.filter((v) => v === ORIGEM).length, 1);
-    if (lista) assertEquals(entradas, lista.split(","));
+    assertEquals(entradas.filter((v) => v === `${ORIGEM}/**`).length, 1);
+    if (lista)
+      for (const entrada of lista.split(","))
+        assert(entradas.includes(entrada));
+    if (lista?.includes("/**")) assertEquals(entradas, lista.split(","));
   }
 });
 Deno.test("desativar: apenas enabled=false, preserva id, segredo e lista sem exigir segredo novo", async () => {
@@ -204,7 +218,7 @@ Deno.test("medir: só GET, id booleano e seis caracteres, não mostra políticas
       external_google_enabled: true,
       external_google_client_id: CLIENT,
       external_google_secret: SECRET,
-      uri_allow_list: ORIGEM,
+      uri_allow_list: `${ORIGEM}/**`,
     },
   });
   assertEquals(await c.rodar("medir"), 0);
@@ -215,16 +229,33 @@ Deno.test("medir: só GET, id booleano e seis caracteres, não mostra políticas
   assertStringIncludes(c.tudo(), "Google ligado: sim");
   assertStringIncludes(c.tudo(), "client id configurado: sim");
   assertStringIncludes(c.tudo(), CLIENT.slice(-6));
-  assertStringIncludes(c.tudo(), "origens permitidas: sim");
+  assertStringIncludes(c.tudo(), "redirecionamento da volta liberado: sim");
   assertStringIncludes(c.tudo(), "somente leitura");
   for (const v of [CLIENT, SECRET, TOKEN, "site-original", "smtp-FALSO"])
     assert(!c.tudo().includes(v));
+});
+Deno.test("medir: origem pelada NÃO libera a volta; molde com /** libera", async () => {
+  for (const [lista, esperado] of [
+    [ORIGEM, "não"],
+    [`${ORIGEM}/**`, "sim"],
+  ]) {
+    const c = cenario({
+      config: { uri_allow_list: lista },
+      env: { GOOGLE_OAUTH_SECRET_TURMA_1: "" },
+    });
+    assertEquals(await c.rodar("medir"), 0);
+    assertStringIncludes(
+      c.tudo(),
+      `redirecionamento da volta liberado: ${esperado}`,
+    );
+    assertEquals(patches(c), []);
+  }
 });
 Deno.test("medir: ausente ou id ilegível não imprime valor; origem não cadastrada é não", async () => {
   for (const id of [null, "", "::warning::SEGREDO-NAO-IMPRIMIR"]) {
     const c = cenario({ config: { external_google_client_id: id } });
     assertEquals(await c.rodar("medir"), 0);
-    assertStringIncludes(c.tudo(), "origens permitidas: não");
+    assertStringIncludes(c.tudo(), "redirecionamento da volta liberado: não");
     assert(!c.tudo().includes("SEGREDO-NAO-IMPRIMIR"));
   }
 });
@@ -307,8 +338,8 @@ for (const op of [
   { config: { external_google_enabled: "false" } },
   { config: { uri_allow_list: [] } },
 ])
-  Deno.test(`leitura inicial inesperada impede TODA escrita: ${JSON.stringify(op)}`, async () => {
-    for (const acao of ["ativar", "desativar", "medir"]) {
+  Deno.test(`ativar/medir: leitura inicial inesperada impede TODA escrita: ${JSON.stringify(op)}`, async () => {
+    for (const acao of ["ativar", "medir"]) {
       const c = cenario(op);
       assertEquals(await c.rodar(acao), 1);
       assertEquals(patches(c), []);
@@ -362,6 +393,62 @@ Deno.test("ação inválida recusa antes da rede e SHA maiúsculo equivalente é
   assertEquals(c.chamadas, []);
   const valido = cenario({ env: { EXPECTED_SHA: SHA.toUpperCase() } });
   assertEquals(await valido.rodar(), 0);
+});
+Deno.test("desativar: leitura inicial inválida não bloqueia PATCH de emergência, mas não declara prova completa", async () => {
+  for (const op of [
+    { leituraFalha: 1 },
+    { antesInvalido: true },
+    { jsonInicialInvalido: true },
+  ]) {
+    const c = cenario({
+      ...op,
+      env: { GOOGLE_OAUTH_SECRET_TURMA_1: "", ORIGENS: "", CLIENT_ID: "" },
+    });
+    assertEquals(await c.rodar("desativar"), 1);
+    assertEquals(
+      c.chamadas.map((r) => r.init.method),
+      ["GET", "PATCH", "GET"],
+    );
+    assertEquals(
+      patches(c).map((r) => r.body),
+      [{ external_google_enabled: false }],
+    );
+    assertStringIncludes(
+      c.tudo(),
+      "Google desativado confirmado por releitura",
+    );
+    assertStringIncludes(
+      c.tudo(),
+      "verificação incompleta das outras políticas",
+    );
+    assert(!c.tudo().includes("preservadas"));
+    assert(!c.tudo().includes("DESCONHECIDO"));
+    assert(!c.tudo().includes("ok"));
+  }
+});
+Deno.test("desativar: falha também na releitura tenta PATCH sem declarar estado conhecido", async () => {
+  const c = cenario({ rede: true });
+  assertEquals(await c.rodar("desativar"), 1);
+  assertEquals(
+    patches(c).map((r) => r.body),
+    [{ external_google_enabled: false }],
+  );
+  assertStringIncludes(c.tudo(), "DESCONHECIDO");
+  assert(!c.tudo().includes("ok"));
+});
+Deno.test("medir/desativar não leem segredo de turma, mesmo ausente ou inacessível", async () => {
+  for (const acao of ["medir", "desativar"]) {
+    const c = cenario();
+    const env = new Proxy(c.env, {
+      get(alvo, nome) {
+        if (String(nome).startsWith("GOOGLE_OAUTH_SECRET_"))
+          throw new Error("segredo não deve ser lido fora de ativar");
+        return Reflect.get(alvo, nome);
+      },
+    });
+    assertEquals(await c.rodar(acao, { env }), 0);
+    assert(!c.mascaras.includes(SECRET));
+  }
 });
 Deno.test("medir/desativar não exigem segredo e desativação também confere snapshot", async () => {
   const medir = cenario({ env: { GOOGLE_OAUTH_SECRET_TURMA_1: "" } });
@@ -525,6 +612,6 @@ Deno.test("workflow: SHA antes dos segredos, alvos/turmas fechados, tokens condi
   for (const n of [1, 2, 3, 4])
     assertEquals(
       ultimo.env[`GOOGLE_OAUTH_SECRET_TURMA_${n}`],
-      `\${{ inputs.turma == 'turma-${n}' && secrets.GOOGLE_OAUTH_SECRET_TURMA_${n} || '' }}`,
+      `\${{ inputs.acao == 'ativar' && inputs.turma == 'turma-${n}' && secrets.GOOGLE_OAUTH_SECRET_TURMA_${n} || '' }}`,
     );
 });
