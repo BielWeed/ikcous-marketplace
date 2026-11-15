@@ -1,3 +1,4 @@
+/* eslint-disable security/detect-non-literal-fs-filename -- Lê só os caminhos fixos de fontes locais listados neste teste, nunca entrada de usuário. */
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import ts from "typescript";
