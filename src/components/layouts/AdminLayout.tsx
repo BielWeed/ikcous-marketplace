@@ -1307,7 +1307,7 @@ export function AdminLayout({
         {isOffline && (
           <div
             role="alert"
-            className="z-40 mx-5 my-2 flex shrink-0 items-start gap-3 rounded-2xl border border-rose-300/20 bg-[#2B151D] p-3 text-xs leading-relaxed text-[#F5C1CC]"
+            className="z-40 mx-5 my-2 flex shrink-0 items-start gap-3 rounded-2xl border border-rose-300/20 bg-[#2B151D] p-3 text-xs leading-relaxed text-[#F5C1CC] lg:mx-auto lg:w-[calc(100%-2.5rem)] lg:max-w-[77.5rem]"
           >
             <WifiOff
               aria-hidden="true"
@@ -1323,7 +1323,7 @@ export function AdminLayout({
           // Na venda em curso a faixa não empurra a tela (mesma regra da ilha de atualização).
           <div
             role="status"
-            className="mx-5 my-2 flex shrink-0 flex-wrap items-center gap-3 rounded-2xl border border-rose-300/20 bg-[#2B151D] p-3 text-xs text-[#F5C1CC]"
+            className="mx-5 my-2 flex shrink-0 flex-wrap items-center gap-3 rounded-2xl border border-rose-300/20 bg-[#2B151D] p-3 text-xs text-[#F5C1CC] lg:mx-auto lg:w-[calc(100%-2.5rem)] lg:max-w-[77.5rem]"
           >
             <TriangleAlert
               aria-hidden="true"

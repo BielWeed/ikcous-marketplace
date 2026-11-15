@@ -321,13 +321,13 @@ describe("linha do cliente: célula de dinheiro (mutante 'voltar a formatarMoeda
     const linhaEnxuta = Array.from(linha.querySelectorAll("p")).find((el) =>
       texto(el).startsWith("Cadastro em"),
     );
-    expect(linhaEnxuta?.parentElement?.classList.contains("lg:hidden")).toBe(
+    expect(linhaEnxuta?.parentElement?.classList.contains("xl:hidden")).toBe(
       true,
     );
     // Os 4 campos de sempre (Pedidos/Receita/Última compra/Canal) continuam
     // existindo para o desktop — só ficam escondidos no celular.
     const blocoDesktop = Array.from(linha.children).find((el) =>
-      el.className.includes("lg:contents"),
+      el.className.includes("xl:contents"),
     );
     expect(blocoDesktop?.className).toContain("hidden");
     expect(texto(blocoDesktop ?? null)).toContain("Nunca");
@@ -408,7 +408,7 @@ describe("linha do cliente: célula de dinheiro (mutante 'voltar a formatarMoeda
   });
 });
 
-describe("ações da linha (WhatsApp/Ver cliente) entre lg e xl: alvo de toque, ícone de ficha e title (ressalvas R1/R2 da re-revisão de front)", () => {
+describe("ações da linha (WhatsApp/Ver cliente): alvo de toque, texto e title no cartão e na tabela", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
@@ -423,7 +423,7 @@ describe("ações da linha (WhatsApp/Ver cliente) entre lg e xl: alvo de toque, 
     hospedeiro.remove();
   });
 
-  it("R1: os dois botões só-ícone (lg-xl) têm lg:min-w-11 — alvo de toque quadrado, não 36/38×44", async () => {
+  it("R1: os dois botões mantêm altura mínima de 44 px e largura mínima na tabela xl", async () => {
     h.lista = {
       total: 1,
       clientes: [
@@ -453,11 +453,13 @@ describe("ações da linha (WhatsApp/Ver cliente) entre lg e xl: alvo de toque, 
     const linha = linhaDoCliente(hospedeiro, "Marcos Andrade");
     const whatsappBtn = linha.querySelector("a");
     const verClienteBtn = linha.querySelector("button");
-    expect(whatsappBtn?.className).toContain("lg:min-w-11");
-    expect(verClienteBtn?.className).toContain("lg:min-w-11");
+    expect(whatsappBtn?.className).toContain("min-h-11");
+    expect(whatsappBtn?.className).toContain("xl:min-w-11");
+    expect(verClienteBtn?.className).toContain("min-h-11");
+    expect(verClienteBtn?.className).toContain("xl:min-w-11");
   });
 
-  it("R2: 'Ver cliente' usa um ícone de ficha (UserRound) entre lg e xl, não o chevron sozinho", async () => {
+  it("R2: 'Ver cliente' mantém texto e chevron também entre lg e xl, sem ação só-ícone", async () => {
     h.lista = {
       total: 1,
       clientes: [
@@ -487,20 +489,24 @@ describe("ações da linha (WhatsApp/Ver cliente) entre lg e xl: alvo de toque, 
     const linha = linhaDoCliente(hospedeiro, "Marcos Andrade");
     const verClienteBtn = linha.querySelector("button");
     const icones = Array.from(verClienteBtn?.querySelectorAll("svg") ?? []);
-    // Ícone de ficha: visível SÓ entre lg e xl (some fora dessa faixa).
+    // P38: o cartão continua até xl, com texto completo e chevron.
     const ficha = icones.find(
       (svg) =>
-        svg.classList.contains("lg:inline") &&
-        svg.classList.contains("xl:hidden"),
+        svg.classList.contains("hidden") && svg.classList.contains("xl:hidden"),
     );
-    // Chevron: o inverso — escondido só entre lg e xl.
+    // O chevron não fica mais escondido no computador estreito.
     const chevron = icones.find(
       (svg) =>
-        svg.classList.contains("lg:hidden") &&
-        svg.classList.contains("xl:inline"),
+        svg.classList.contains("size-4") && svg.classList.contains("xl:inline"),
     );
     expect(ficha).not.toBeUndefined();
     expect(chevron).not.toBeUndefined();
+    expect(chevron?.classList.contains("lg:hidden")).toBe(false);
+    const rotulo = Array.from(
+      verClienteBtn?.querySelectorAll("span") ?? [],
+    ).find((el) => texto(el) === "Ver cliente");
+    expect(rotulo).toBeDefined();
+    expect(rotulo?.classList.contains("lg:sr-only")).toBe(false);
   });
 
   it("R2: os dois botões só-ícone têm title (mouse/leitor não confiam só no ícone)", async () => {

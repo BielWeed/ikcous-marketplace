@@ -4054,7 +4054,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
   return (
     <div
-      className="produto-formulario pb-admin relative h-auto min-h-full overflow-x-clip text-white lg:pb-12 xl:grid xl:grid-cols-[minmax(0,1fr)_380px] xl:items-start xl:gap-6 xl:[&>*]:col-span-2 xl:[&>.admin-acao-inline]:sticky xl:[&>.admin-acao-inline]:bottom-auto xl:[&>.admin-acao-inline]:top-24 xl:[&>.admin-acao-inline]:col-span-1 xl:[&>.admin-acao-inline]:col-start-2 xl:[&>.admin-acao-inline]:row-start-3 xl:[&>.admin-acao-inline]:!m-0 xl:[&>.admin-acao-inline]:self-start xl:[&>.admin-acao-inline]:!rounded-3xl xl:[&>.admin-acao-inline]:!p-6 xl:[&>form]:col-span-1"
+      className="produto-formulario pb-admin relative h-auto min-h-full overflow-x-clip text-white lg:pb-12 xl:grid xl:grid-cols-[minmax(0,1fr)_380px] xl:items-start xl:gap-6 xl:[&>*]:col-span-2 xl:[&>.admin-acao-inline]:sticky xl:[&>.admin-acao-inline]:bottom-auto xl:[&>.admin-acao-inline]:top-24 xl:[&>.admin-acao-inline]:col-span-1 xl:[&>.admin-acao-inline]:col-start-2 xl:[&>.admin-acao-inline]:row-start-3 xl:[&>.admin-acao-inline]:!m-0 xl:[&>.admin-acao-inline]:!mr-5 xl:[&>.admin-acao-inline]:self-start xl:[&>.admin-acao-inline]:!rounded-3xl xl:[&>.admin-acao-inline]:!p-6 xl:[&>form]:col-span-1"
       onDragOver={(e) => {
         // Só ARQUIVO é tratado aqui: soltar um texto selecionado dentro de um
         // campo continua funcionando como o navegador faz.

@@ -59,7 +59,7 @@ const GRUPOS_PRIORITARIOS: readonly SegmentoCrm[] = [
 
 /** Colunas da lista, compartilhadas entre o cabeçalho e cada linha no desktop. */
 const COLUNAS_DA_LISTA =
-  "lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1.1fr)_minmax(0,0.5fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,0.95fr)_minmax(0,1.45fr)]";
+  "xl:grid-cols-[minmax(0,1.7fr)_minmax(0,1.1fr)_minmax(70px,0.5fr)_minmax(80px,0.8fr)_minmax(100px,0.8fr)_minmax(90px,0.95fr)_minmax(0,1.45fr)]";
 
 function CrachaDoSegmento({
   segmento,
@@ -336,8 +336,8 @@ function CamposDoPedidoEDaAtividade({
 
   return (
     <>
-      <div className="hidden min-w-0 lg:block">
-        <p className="text-[11px] uppercase tracking-wider text-zinc-400 lg:sr-only">
+      <div className="hidden min-w-0 xl:block">
+        <p className="text-[11px] uppercase tracking-wider text-zinc-400 xl:sr-only">
           Pedidos
         </p>
         <p className="font-bold tabular-nums text-white">
@@ -346,7 +346,7 @@ function CamposDoPedidoEDaAtividade({
       </div>
 
       <div className="min-w-0">
-        <p className="text-[11px] uppercase tracking-wider text-zinc-400 lg:sr-only">
+        <p className="text-[11px] uppercase tracking-wider text-zinc-400 xl:sr-only">
           {rotuloDaReceita(cliente.segmento)}
         </p>
         {/* Sem `truncate` (achado 2, revisão de risco): cortava "R$
@@ -365,7 +365,7 @@ function CamposDoPedidoEDaAtividade({
         <p
           title={receitaTexto}
           className={cn(
-            "font-bold tabular-nums lg:hidden",
+            "font-bold tabular-nums xl:hidden",
             receitaEhDestaque ? "text-white" : "text-zinc-400",
           )}
         >
@@ -374,7 +374,7 @@ function CamposDoPedidoEDaAtividade({
         <p
           title={receitaTexto}
           className={cn(
-            "hidden font-bold tabular-nums lg:block",
+            "hidden font-bold tabular-nums xl:block",
             receitaEhDestaque ? "text-white" : "text-zinc-400",
           )}
         >
@@ -383,7 +383,7 @@ function CamposDoPedidoEDaAtividade({
       </div>
 
       <div className="min-w-0">
-        <p className="text-[11px] uppercase tracking-wider text-zinc-400 lg:sr-only">
+        <p className="text-[11px] uppercase tracking-wider text-zinc-400 xl:sr-only">
           {rotuloDeUltimaAtividade(cliente.segmento)}
         </p>
         <p className="tabular-nums text-zinc-300">
@@ -391,8 +391,8 @@ function CamposDoPedidoEDaAtividade({
         </p>
       </div>
 
-      <div className="hidden min-w-0 lg:block">
-        <p className="text-[11px] uppercase tracking-wider text-zinc-400 lg:sr-only">
+      <div className="hidden min-w-0 xl:block">
+        <p className="text-[11px] uppercase tracking-wider text-zinc-400 xl:sr-only">
           Canal
         </p>
         <p className="text-zinc-300">
@@ -428,11 +428,11 @@ function LinhaDoCliente({
   return (
     <li
       className={cn(
-        "grid min-h-[166px] grid-cols-2 gap-x-3 gap-y-2 rounded-2xl border border-admin-border bg-admin-surface p-3 lg:items-center lg:gap-5",
+        "grid min-h-[166px] grid-cols-2 gap-x-3 gap-y-2 rounded-2xl border border-admin-border bg-admin-surface p-3 xl:items-center xl:gap-5",
         COLUNAS_DA_LISTA,
       )}
     >
-      <div className="col-span-2 flex min-w-0 items-center gap-2 lg:col-span-1">
+      <div className="col-span-2 flex min-w-0 items-center gap-2 xl:col-span-1">
         <span
           aria-hidden="true"
           className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-admin-border bg-admin-raised text-sm font-bold text-admin-gold"
@@ -443,12 +443,12 @@ function LinhaDoCliente({
           <p className="text-admin-text break-words text-sm font-bold">
             {nome}
           </p>
-          <div className="lg:hidden">
+          <div className="xl:hidden">
             <CrachaDoSegmento segmento={cliente.segmento} />
           </div>
         </div>
         {!semDadoDeCompra && (
-          <div className="text-admin-text-soft shrink-0 text-right text-[11px] lg:hidden">
+          <div className="text-admin-text-soft shrink-0 text-right text-[11px] xl:hidden">
             <p>
               {formatarInteiro(cliente.pedidos)}{" "}
               {cliente.pedidos === 1 ? "pedido" : "pedidos"}
@@ -462,8 +462,8 @@ function LinhaDoCliente({
         )}
       </div>
 
-      <div className="hidden min-w-0 lg:block">
-        <p className="lg:sr-only">Segmento</p>
+      <div className="hidden min-w-0 xl:block">
+        <p className="xl:sr-only">Segmento</p>
         <CrachaDoSegmento segmento={cliente.segmento} />
       </div>
 
@@ -473,14 +473,14 @@ function LinhaDoCliente({
               nada para mostrar nesse grupo (nunca houve pedido) — em vez
               de repetir "Pedidos 0 / Receita — / Última compra Nunca /
               Canal —" por pessoa, uma linha só com a data de cadastro. */}
-          <div className="col-span-2 lg:hidden">
+          <div className="col-span-2 xl:hidden">
             <p className="text-xs text-zinc-400">
               Cadastro em {formatarData(cliente.cadastradoEm)}
             </p>
           </div>
           {/* Desktop: as mesmas 4 colunas de sempre (a tabela tem espaço
               horizontal de sobra — "—"/"Nunca" ficam discretos ali). */}
-          <div className="hidden lg:contents">
+          <div className="hidden xl:contents">
             <CamposDoPedidoEDaAtividade cliente={cliente} />
           </div>
         </>
@@ -489,7 +489,7 @@ function LinhaDoCliente({
         // (`contents` some no desktop e devolve os 4 filhos direto pras
         // colunas deles, na mesma ordem do cabeçalho — sem sobrar "Canal"
         // sozinho numa linha).
-        <div className="col-span-2 grid grid-cols-2 gap-x-3 gap-y-2 lg:contents">
+        <div className="col-span-2 grid grid-cols-2 gap-x-3 gap-y-2 xl:contents">
           <CamposDoPedidoEDaAtividade cliente={cliente} />
         </div>
       )}
@@ -513,7 +513,7 @@ function LinhaDoCliente({
           sem ele a borda não aparece de jeito nenhum — ver o comentário de
           `CLICAVEL_DO_CRM` em PecasDoCrm.tsx para o porquê (o reset global
           de `<button>` zera `border-style`). */}
-      <div className="col-span-2 flex gap-2 lg:col-span-1 lg:justify-end lg:gap-1.5 lg:pl-2 xl:flex-wrap xl:gap-2">
+      <div className="col-span-2 flex gap-2 xl:col-span-1 xl:flex-wrap xl:justify-end xl:gap-2 xl:pl-2">
         {whatsapp ? (
           <a
             href={whatsapp}
@@ -521,16 +521,16 @@ function LinhaDoCliente({
             rel="noopener noreferrer"
             title={`WhatsApp — chamar ${nome}`}
             className={cn(
-              "flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 text-[11px] font-black uppercase tracking-widest text-emerald-300 transition-colors hover:bg-emerald-500/20 lg:min-w-11 lg:flex-none lg:px-2.5 xl:px-3",
+              "flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 text-[11px] font-black uppercase tracking-widest text-emerald-300 transition-colors hover:bg-emerald-500/20 xl:min-w-11 xl:flex-none xl:px-3",
               FOCO_DO_CRM,
             )}
           >
             <IconeWhatsapp className="size-4" aria-hidden="true" />
-            <span className="lg:sr-only xl:not-sr-only">WhatsApp</span>
+            <span className="xl:not-sr-only">WhatsApp</span>
             <span className="sr-only"> — chamar {nome} (abre em nova aba)</span>
           </a>
         ) : (
-          <span className="flex min-h-11 flex-1 items-center justify-center rounded-xl border border-dashed border-admin-border px-3 text-[11px] font-bold text-zinc-500 lg:flex-none">
+          <span className="flex min-h-11 flex-1 items-center justify-center rounded-xl border border-dashed border-admin-border px-3 text-[11px] font-bold text-zinc-500 xl:flex-none">
             Sem WhatsApp
           </span>
         )}
@@ -542,7 +542,7 @@ function LinhaDoCliente({
             }
             title={`Ver cliente — ${nome}`}
             className={cn(
-              "flex min-h-11 flex-1 items-center justify-center gap-1 rounded-xl border border-solid border-admin-border-strong px-3 text-[11px] font-black uppercase tracking-widest text-zinc-200 transition-colors hover:bg-white/5 lg:min-w-11 lg:flex-none lg:px-2.5 xl:px-3",
+              "flex min-h-11 flex-1 items-center justify-center gap-1 rounded-xl border border-solid border-admin-border-strong px-3 text-[11px] font-black uppercase tracking-widest text-zinc-200 transition-colors hover:bg-white/5 xl:min-w-11 xl:flex-none xl:px-3",
               FOCO_DO_CRM,
             )}
           >
@@ -550,15 +550,9 @@ function LinhaDoCliente({
                 "cliente") — troca por um ícone de ficha (UserRound) só
                 nessa faixa; fora dela (celular e xl+) o chevron de sempre
                 acompanha o texto "Ver cliente". */}
-            <UserRound
-              className="hidden size-4 lg:inline xl:hidden"
-              aria-hidden="true"
-            />
-            <span className="lg:sr-only xl:not-sr-only">Ver cliente</span>
-            <ChevronRight
-              className="size-4 lg:hidden xl:inline"
-              aria-hidden="true"
-            />
+            <UserRound className="hidden size-4 xl:hidden" aria-hidden="true" />
+            <span className="xl:not-sr-only">Ver cliente</span>
+            <ChevronRight className="size-4 xl:inline" aria-hidden="true" />
             <span className="sr-only"> {nome}</span>
           </button>
         ) : null}
@@ -953,7 +947,7 @@ export function ClientesDoCrm({
               {Array.from({ length: 4 }, (_, i) => (
                 <li
                   key={i}
-                  className="premium-shimmer h-[166px] rounded-2xl lg:h-[76px]"
+                  className="premium-shimmer h-[166px] rounded-2xl xl:h-[76px]"
                 />
               ))}
             </ul>
@@ -962,7 +956,7 @@ export function ClientesDoCrm({
               <div
                 aria-hidden="true"
                 className={cn(
-                  "hidden gap-5 px-4 text-[11px] font-black uppercase tracking-wider text-zinc-400 lg:grid",
+                  "hidden gap-5 px-4 text-[11px] font-black uppercase tracking-wider text-zinc-400 xl:grid",
                   COLUNAS_DA_LISTA,
                 )}
               >
