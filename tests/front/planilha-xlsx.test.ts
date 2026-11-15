@@ -580,6 +580,7 @@ describe("o XLSX entrega o dado como ele é", () => {
     const Real = Intl.DateTimeFormat;
     const construcoes = vi
       .spyOn(Intl, "DateTimeFormat")
+      // biome-ignore lint/complexity/useArrowFunction: o vitest só aceita `new` em mock feito com function
       .mockImplementation(function (
         ...args: ConstructorParameters<typeof Intl.DateTimeFormat>
       ) {
