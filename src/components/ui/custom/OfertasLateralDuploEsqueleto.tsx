@@ -23,13 +23,13 @@ export function OfertasLateralDuploEsqueleto({
       style={{ minHeight: alturaDaSecaoDuplo(fileiras) }}
       className="overflow-hidden py-4"
     >
-      <div className="mb-5 flex min-h-6 items-center justify-between gap-3 px-5">
+      <div className="mb-5 flex min-h-6 items-center justify-between gap-3 px-5 lg:px-0">
         <span className="h-6 w-40 animate-pulse rounded bg-[#ECECEF]" />
         <span className="size-1.5 rounded-full bg-zinc-200" />
       </div>
       <div
         className={cn(
-          "ml-3 flex gap-2.5 py-1 min-[360px]:ml-5",
+          "ml-3 flex gap-2.5 py-1 min-[360px]:ml-5 lg:ml-0 lg:mr-0",
           umaSo && "mr-3 min-[360px]:mr-5",
         )}
       >
