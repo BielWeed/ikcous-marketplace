@@ -1,10 +1,11 @@
 {
   "1.5.190": {
-    "titulo": "Lista de clientes do CRM e cadastro de produto mais certinhos no computador",
+    "titulo": "Clientes do CRM, cadastro de produto e Ajustes mais certinhos no computador",
     "novidades": [],
     "correcoes": [
       "Painel, CRM, Clientes: em telas de 1024 a 1279 px a lista de clientes usa o formato de cartão, com todas as informações legíveis (antes a coluna de pedidos ficava espremida e a data encostava no canal); a tabela volta a partir de 1280 px.",
-      "Painel, cadastro de produto: no computador, o cartão Salvar alterações deixa de encostar na borda da janela e as faixas vermelhas de aviso do topo acompanham a largura do conteúdo."
+      "Painel, cadastro de produto: no computador, o cartão Salvar alterações deixa de encostar na borda da janela e as faixas vermelhas de aviso do topo acompanham a largura do conteúdo.",
+      "Painel, Ajustes: em telas largas (1536 px ou mais), Trocas e devoluções e Ferramentas ocupam a linha inteira, sem deixar metade da tela vazia ao lado do formulário."
     ],
     "melhorias": []
   },
