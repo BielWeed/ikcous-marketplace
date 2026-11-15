@@ -601,7 +601,7 @@ export const FavoritesView = React.memo(function FavoritesView({
 
             <div
               className={cn(
-                "grid grid-cols-2 gap-3 sm:gap-4",
+                "grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3",
                 GRADE_DE_PRODUTOS_NO_COMPUTADOR,
                 "lg:gap-x-6 lg:gap-y-10",
               )}

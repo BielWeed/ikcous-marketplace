@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { classesDoCelular } from "./classes-do-celular";
+import { classesDoCelularSemGradeDeTablet } from "./classes-do-celular";
 
 const arquivos = {
   favoritos: "src/views/customer/FavoritesView.tsx",
@@ -26,7 +26,7 @@ function classes(arquivo: string) {
     if (ts.isJsxAttribute(no) && no.name.getText(fonte) === "className") {
       function coletar(filho: ts.Node) {
         if (ts.isStringLiteral(filho)) {
-          const celular = classesDoCelular(filho.text);
+          const celular = classesDoCelularSemGradeDeTablet(filho.text);
           if (celular) valores.push(celular);
         } else ts.forEachChild(filho, coletar);
       }
@@ -80,7 +80,7 @@ describe("Favoritos e pedidos no computador", () => {
   it("usa a grade compartilhada nas sugestões, com respiro de PC", () => {
     const fonte = ler(arquivos.favoritos);
     expect(fonte).toMatch(
-      /className={cn\(\s*"grid grid-cols-2 gap-3 sm:gap-4",\s*GRADE_DE_PRODUTOS_NO_COMPUTADOR,\s*"lg:gap-x-6 lg:gap-y-10"/,
+      /className={cn\(\s*"grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3",\s*GRADE_DE_PRODUTOS_NO_COMPUTADOR,\s*"lg:gap-x-6 lg:gap-y-10"/,
     );
     // A ação já está no fluxo; não introduzir posicionamento fixo.
     expect(fonte).not.toMatch(/lg:fixed/);

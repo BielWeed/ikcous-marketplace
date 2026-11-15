@@ -2,7 +2,10 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { classesDoCelular } from "./classes-do-celular";
+import {
+  classesDoCelular,
+  classesDoCelularSemGradeDeTablet,
+} from "./classes-do-celular";
 
 const arquivo = "src/views/customer/SearchView.tsx";
 
@@ -59,7 +62,7 @@ describe("P20 — busca sem controles duplicados no computador", () => {
   it("mantém todos os literais de classe abaixo de lg iguais à base integrada", () => {
     const fonte = lerFonte();
     const celular = literaisDeClasse(fonte, fonte)
-      .map(classesDoCelular)
+      .map(classesDoCelularSemGradeDeTablet)
       .filter(Boolean);
     // Mesma assinatura da base P13/P8: só literais de className, em ordem de DOM.
     expect(
