@@ -44,31 +44,33 @@ describe("P9 — painel no computador", () => {
 
   it("frete usa duas colunas apenas no computador", () => {
     const fonte = ler(arquivos[0]);
-    expect(fonte).toContain("text-zinc-50 lg:max-w-4xl");
+    expect(fonte).toContain("text-zinc-50 xl:max-w-4xl");
+    expect(fonte).not.toMatch(/\blg:/);
     expect(fonte).toContain(
-      'className="space-y-3 lg:grid lg:grid-cols-2 lg:items-start lg:gap-4 lg:space-y-0"',
+      'className="space-y-3 xl:grid xl:grid-cols-2 xl:items-start xl:gap-4 xl:space-y-0"',
     );
   });
 
   it("cores coloca escolha e prévia lado a lado e mensagens/ações em largura inteira", () => {
     const fonte = ler(arquivos[1]);
     expect(fonte).toContain(
-      "lg:grid lg:max-w-5xl lg:grid-cols-2 lg:items-start lg:gap-5 lg:space-y-0",
+      "xl:grid xl:max-w-5xl xl:grid-cols-2 xl:items-start xl:gap-5 xl:space-y-0",
     );
-    expect(fonte).toContain('<header className="lg:col-span-2">');
-    expect(fonte).toContain("className={`${CARTAO} lg:col-span-2`}");
-    expect(fonte).toContain("text-xs leading-relaxed lg:col-span-2");
+    expect(fonte).not.toMatch(/\blg:/);
+    expect(fonte).toContain('<header className="xl:col-span-2">');
+    expect(fonte).toContain("className={`${CARTAO} xl:col-span-2`}");
+    expect(fonte).toContain("text-xs leading-relaxed xl:col-span-2");
     expect(fonte.match(/className={CARTAO} aria-/g)).toHaveLength(2);
     expect(
-      fonte.match(/h-12 w-full rounded-2xl bg-foreground[^"\n]*lg:col-span-2/g),
+      fonte.match(/h-12 w-full rounded-2xl bg-foreground[^"\n]*xl:col-span-2/g),
     ).toHaveLength(3);
     expect(
       fonte.match(
-        /\$\{ACAO\} w-full border-admin-border-strong bg-admin-bg text-zinc-50 lg:col-span-2/g,
+        /\$\{ACAO\} w-full border-admin-border-strong bg-admin-bg text-zinc-50 xl:col-span-2/g,
       ),
     ).toHaveLength(2);
     expect(
-      fonte.match(/<p role="alert" className="lg:col-span-2">/g),
+      fonte.match(/<p role="alert" className="xl:col-span-2">/g),
     ).toHaveLength(2);
   });
 
@@ -80,6 +82,12 @@ describe("P9 — painel no computador", () => {
       'className="space-y-3 2xl:grid 2xl:grid-cols-2 2xl:items-start 2xl:gap-4 2xl:space-y-0"',
     );
     expect(fonte).toContain("uppercase tracking-wider 2xl:col-span-2");
+    expect(fonte).toMatch(
+      /<p className="[^"]*2xl:col-span-2">\s*Nenhum banner com este filtro/,
+    );
+    expect(fonte).toMatch(
+      /className="min-h-11 w-full border-admin-border bg-admin-surface text-white 2xl:col-span-2"[\s\S]*?Adicionar Primeiro Banner/,
+    );
   });
 
   it.each([
@@ -123,11 +131,9 @@ describe("P9 — painel no computador", () => {
     },
   );
 
-  it("categorias usa duas colunas sem arrastar vertical", () => {
+  it("categorias mantém uma coluna na folha estreita sem arrastar vertical", () => {
     const fonte = ler(arquivos[3]);
     expect(fonte).not.toMatch(/Reorder\.Group|axis="y"/);
-    expect(fonte).toContain(
-      '<ul className="space-y-3 lg:grid lg:grid-cols-2 lg:items-start lg:gap-4 lg:space-y-0">',
-    );
+    expect(fonte).toContain('<ul className="space-y-3">');
   });
 });

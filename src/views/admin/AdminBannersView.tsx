@@ -2623,13 +2623,13 @@ export const AdminBannersView = memo(function AdminBannersView({
                         />
                       ))
                     ) : todosNaPosicao.length ? (
-                      <p className="rounded-2xl border border-dashed border-admin-border p-4 text-center text-sm">
+                      <p className="rounded-2xl border border-dashed border-admin-border p-4 text-center text-sm 2xl:col-span-2">
                         Nenhum banner com este filtro
                       </p>
                     ) : (
                       <Button
                         variant="outline"
-                        className="min-h-11 w-full border-admin-border bg-admin-surface text-white"
+                        className="min-h-11 w-full border-admin-border bg-admin-surface text-white 2xl:col-span-2"
                         disabled={isOffline}
                         onClick={() =>
                           handleOpenDialog({ position: pos.value } as Banner)

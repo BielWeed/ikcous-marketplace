@@ -86,6 +86,39 @@ describe("Favoritos e pedidos no computador", () => {
     expect(fonte).not.toMatch(/lg:fixed/);
   });
 
+  it("alinha as abas à largura e ao padding do conteúdo da aba ativa", () => {
+    const fonte = ler(arquivos.carrinho);
+    const abas = fonte.match(
+      /className="([^"]*sticky top-\[-2px\][^"]*)"/,
+    )?.[1];
+    expect(abas).toBeDefined();
+    const carrinho = fonte.match(
+      /className="([^"]*mx-auto flex w-full max-w-7xl[^"]*)"/,
+    )?.[1];
+    const pedidos = fonte.match(
+      /className="([^"]*lg:max-w-\[1216px\][^"]*)"/,
+    )?.[1];
+    expect(carrinho).toBeDefined();
+    expect(pedidos).toBeDefined();
+    const tokens = abas!.split(/\s+/);
+    for (const token of ["lg:mx-auto", "lg:w-full", "lg:px-8"]) {
+      expect(tokens).toContain(token);
+    }
+    for (const [id, conteudo] of [
+      ["tab-cart", carrinho!],
+      ["tab-orders", pedidos!],
+    ]) {
+      const largura = conteudo
+        .split(/\s+/)
+        .find((token) => /^(?:lg:)?max-w-/.test(token));
+      expect(largura).toBeDefined();
+      expect(tokens).toContain(
+        `lg:has-[#${id}[aria-selected=true]]:${largura!.replace(/^lg:/, "")}`,
+      );
+      expect(conteudo.split(/\s+/)).toContain("lg:px-8");
+    }
+  });
+
   it("pedidos viram linhas largas sem esconder situação ou ações", () => {
     const fonte = ler(arquivos.pedidos);
     expect(fonte).toContain("lg:grid-cols-1");
