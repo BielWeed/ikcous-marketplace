@@ -719,6 +719,8 @@ export const SearchView = React.memo(function SearchView({
                     "grid grid-cols-2 gap-6 md:grid-cols-3",
                     GRADE_DE_PRODUTOS_NO_COMPUTADOR,
                     "lg:gap-x-6 lg:gap-y-10",
+                    // Só 4 sugestões: com 5 colunas sobrava um furo à direita.
+                    "xl:grid-cols-4",
                   )}
                 >
                   {trendingProducts.map((product) => (
