@@ -133,6 +133,92 @@ describe("XLSX mínimo, sem biblioteca e sem compressão", () => {
     ).toEqual(["worksheets/sheet1.xml", "styles.xml"]);
   });
 
+  it("ordena worksheet e estilos conforme OOXML, com fills e contagens coerentes", () => {
+    const partes = abrir(gerarXlsx(linhasDosProdutos([produto], true)));
+    const filhos = (elemento: Element) =>
+      [...elemento.children].map((filho) => filho.localName);
+    expect(
+      filhos(partes.get("xl/worksheets/sheet1.xml")!.documentElement),
+    ).toEqual([
+      "dimension",
+      "sheetViews",
+      "sheetFormatPr",
+      "cols",
+      "sheetData",
+      "autoFilter",
+    ]);
+    const estilos = partes.get("xl/styles.xml")!.documentElement;
+    expect(filhos(estilos)).toEqual([
+      "fonts",
+      "fills",
+      "borders",
+      "cellStyleXfs",
+      "cellXfs",
+      "cellStyles",
+    ]);
+    for (const bloco of estilos.children) {
+      expect(bloco.hasAttribute("count"), bloco.localName).toBe(true);
+      expect(Number(bloco.getAttribute("count")), bloco.localName).toBe(
+        bloco.children.length,
+      );
+    }
+    expect(
+      [...estilos.querySelectorAll("fills > fill > patternFill")].map((fill) =>
+        fill.getAttribute("patternType"),
+      ),
+    ).toEqual(["none", "gray125", "solid"]);
+  });
+
+  it.each([
+    {
+      custos: true,
+      produtos: [produto],
+      ref: "A1:AE2",
+      absoluto: "'Produtos'!$A$1:$AE$2",
+    },
+    {
+      custos: false,
+      produtos: [produto, { ...produto, id: "p2" }],
+      ref: "A1:AB3",
+      absoluto: "'Produtos'!$A$1:$AB$3",
+    },
+    {
+      custos: false,
+      produtos: [],
+      ref: "A1:AB1",
+      absoluto: "'Produtos'!$A$1:$AB$1",
+    },
+  ])(
+    "registra a vista e o filtro oculto do workbook na área $ref",
+    ({ custos, produtos, ref, absoluto }) => {
+      const partes = abrir(gerarXlsx(linhasDosProdutos(produtos, custos)));
+      const workbook = partes.get("xl/workbook.xml")!;
+      expect(
+        [...workbook.documentElement.children].map((filho) => filho.localName),
+      ).toEqual(["bookViews", "sheets", "definedNames"]);
+      expect(
+        workbook.querySelectorAll("bookViews > workbookView"),
+      ).toHaveLength(1);
+      expect(workbook.querySelector("sheet")?.getAttribute("name")).toBe(
+        "Produtos",
+      );
+      expect(
+        workbook.querySelectorAll("definedNames > definedName"),
+      ).toHaveLength(1);
+      const filtro = workbook.querySelector("definedName")!;
+      expect(filtro.getAttribute("name")).toBe("_xlnm._FilterDatabase");
+      expect(filtro.getAttribute("localSheetId")).toBe("0");
+      expect(filtro.getAttribute("hidden")).toBe("1");
+      expect(filtro.textContent).toBe(absoluto);
+      const relativo = filtro.textContent!.split("!")[1].replace(/\$/g, "");
+      const autoFilter = partes
+        .get("xl/worksheets/sheet1.xml")!
+        .querySelector("autoFilter")!;
+      expect(autoFilter.getAttribute("ref")).toBe(ref);
+      expect(relativo).toBe(autoFilter.getAttribute("ref"));
+    },
+  );
+
   it("congela cabeçalho, filtra a área completa e dá largura e estilo às colunas", () => {
     const partes = abrir(gerarXlsx(linhasDosProdutos([produto], true)));
     const doc = partes.get("xl/worksheets/sheet1.xml")!;
