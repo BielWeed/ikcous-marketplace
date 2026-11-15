@@ -240,6 +240,32 @@ export function extrairEnderecoDoPedido(
 }
 
 /**
+ * Quem recebe o pacote (13/11/2026). Em presente, na portaria ou com outra pessoa em casa, quem RECEBE não é quem
+ * COMPROU: a cliente digita "Quem vai receber" no endereço, e a RPC do pedido (migration 20261399997000) copia esse
+ * nome para `customer_data.address.recipient_name` junto com o resto do endereço. O destinatário da etiqueta passa a
+ * ser esse nome; sem ele (pedido anterior à migration, nome vazio ou só espaços, convidada, retirada) fica o nome de
+ * quem comprou, exatamente como antes — a function funciona COM ou SEM a migration no ar.
+ *
+ * Só o nome do RETRATO do pedido conta (`addressData` ou `address`, os mesmos objetos que `extrairEnderecoDoPedido`
+ * lê). O nome da linha ATUAL de `user_addresses` NÃO entra: no pedido sem retrato (anterior à 20261229000000) o
+ * endereço já vem da conta por `buscarEnderecoDaConta`, e a cliente pode ter editado a linha depois da compra — não
+ * há como saber que nome ela tinha digitado NA compra, e etiquetar com um nome inventado é pior que o do comprador.
+ *
+ * O documento (CPF) da etiqueta NÃO muda com o nome: segue o do comprador (`cpfDoDestinatario`). A documentação do
+ * Melhor Envio (inserir fretes no carrinho) lista `to.name` e `to.document` como obrigatórios e não diz que o nome
+ * tenha de ser o do titular do CPF, nem o contrário; por cautela só o `name` muda.
+ */
+export function nomeDeQuemRecebe(
+    customerName: unknown,
+    customerData: Record<string, any> | null | undefined,
+): string {
+    const cd = customerData || {}
+    const fonte = cd.addressData || (typeof cd.address === 'object' && cd.address !== null ? cd.address : null)
+    const recebe = typeof fonte?.recipient_name === 'string' ? fonte.recipient_name.replace(/\s+/g, ' ').trim() : ''
+    return recebe || (customerName as string) || 'Cliente'
+}
+
+/**
  * Fallback de conta (achado 26/09/2026): o endereço de quem tem conta mora
  * em `user_addresses`, referenciado por `marketplace_orders.address_id` —
  * NUNCA em `customer_data` (ver o aviso em `extrairEnderecoDoPedido` acima).
@@ -2782,7 +2808,7 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
         }
 
         const to = {
-            name: pedido.customer_name || 'Cliente',
+            name: nomeDeQuemRecebe(pedido.customer_name, customerData),
             phone: String(customerData.whatsapp || customerData.phone || '0000000000').replace(/\D/g, '') || '0000000000',
             email: customerData.email || null,
             document: cpfDestinatario,

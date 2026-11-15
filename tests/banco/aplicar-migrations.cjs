@@ -138,6 +138,38 @@ async function main() {
       }
     }
     console.log("[aplicar] sentinela de objetos pós-apply: OK");
+
+    // O gatilho de cadastro (20261399940000: on_auth_user_created, que cria o perfil
+    // quando nasce um usuário em auth.users) fica DESLIGADO no efêmero das provas: as
+    // ~110 provas daqui semeiam auth.users e depois INSERT em profiles à mão, e com o
+    // gatilho ligado a linha de profiles já existiria (profiles_pkey duplicada). Foi
+    // assim que a fábrica emulada sempre foi. Só a prova do próprio gatilho
+    // (o-cadastro-cria-o-perfil-em-toda-loja-viva.cjs) o LIGA, dentro do clone dela.
+    const gatilhoDeCadastro = await cliente.query(
+      "SELECT 1 FROM pg_trigger WHERE tgrelid = 'auth.users'::regclass AND tgname = 'on_auth_user_created' AND NOT tgisinternal",
+    );
+    // Várias provas aplicam só uma FAIXA da raiz (base "pre1192", "pre60"...), e nelas a
+    // 20261399940000 nem entrou: sem o gatilho é o esperado. Quando ELA foi aplicada e o
+    // gatilho não está lá, o desligamento seria pular em silêncio e a prova viva do
+    // gatilho mediria o nada: falha ALTA.
+    const aplicouAMigrationDoGatilho = aplicados.some((nome) =>
+      String(nome).includes("20261399940000"),
+    );
+    if (gatilhoDeCadastro.rowCount !== 1) {
+      if (aplicouAMigrationDoGatilho) {
+        falhar(
+          "FALHOU",
+          "on_auth_user_created ausente depois de aplicar a 20261399940000 (ela devia tê-lo criado em auth.users)",
+        );
+      }
+    } else {
+      await cliente.query(
+        "ALTER TABLE auth.users DISABLE TRIGGER on_auth_user_created",
+      );
+      console.log(
+        "[aplicar] gatilho on_auth_user_created de auth.users DESLIGADO no efêmero (as provas semeiam usuário e perfil à mão)",
+      );
+    }
   } finally {
     await cliente.end().catch(() => {});
   }

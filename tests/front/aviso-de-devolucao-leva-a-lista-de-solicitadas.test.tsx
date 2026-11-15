@@ -338,4 +338,53 @@ describe("recado do aviso de devolução (vale uma vez, com validade)", () => {
       false,
     );
   });
+
+  // A validade é de 30 s. As duas horas acima venceriam até com 1 hora de
+  // validade; a fronteira é que prende o número: 30 s exatos ainda valem, 30,001
+  // s não.
+  it("a fronteira da validade: 30 s exatos valem; 30,001 s já venceu", async () => {
+    vi.resetModules();
+    const lib = await import("@/lib/aviso-leva-a-devolucoes-solicitadas");
+    lib.pedirDevolucoesSolicitadas(1_000);
+    expect(lib.consumirPedidoDeDevolucoesSolicitadas(1_000 + 30_000)).toBe(
+      true,
+    );
+    lib.pedirDevolucoesSolicitadas(1_000);
+    expect(lib.consumirPedidoDeDevolucoesSolicitadas(1_000 + 30_001)).toBe(
+      false,
+    );
+  });
+
+  it("espiar (a tela que ainda vai abrir) respeita a mesma fronteira e não gasta o recado", async () => {
+    vi.resetModules();
+    const lib = await import("@/lib/aviso-leva-a-devolucoes-solicitadas");
+    lib.pedirDevolucoesSolicitadas(1_000);
+    expect(lib.haPedidoDeDevolucoesSolicitadas(1_000 + 30_000)).toBe(true);
+    expect(lib.haPedidoDeDevolucoesSolicitadas(1_000 + 30_001)).toBe(false);
+    // Espiar não consome: dentro da validade o recado ainda está lá.
+    expect(lib.haPedidoDeDevolucoesSolicitadas(1_000 + 5_000)).toBe(true);
+  });
+
+  describe("com o relógio de verdade (sem passar a hora na mão)", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("toque no aviso: a 29 s a tela ainda recebe o recado; a 31 s ele já venceu", async () => {
+      vi.resetModules();
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-11-13T12:00:00Z"));
+      const lib = await import("@/lib/aviso-leva-a-devolucoes-solicitadas");
+
+      lib.pedirDevolucoesSolicitadas();
+      vi.advanceTimersByTime(29_000);
+      expect(lib.haPedidoDeDevolucoesSolicitadas()).toBe(true);
+      expect(lib.consumirPedidoDeDevolucoesSolicitadas()).toBe(true);
+
+      lib.pedirDevolucoesSolicitadas();
+      vi.advanceTimersByTime(31_000);
+      expect(lib.haPedidoDeDevolucoesSolicitadas()).toBe(false);
+      expect(lib.consumirPedidoDeDevolucoesSolicitadas()).toBe(false);
+    });
+  });
 });

@@ -3049,6 +3049,22 @@ const ROL_DA_135 = [
   "get_admin_analytics_v2: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno json, um argumento)",
   "get_admin_analytics_v2: EXECUTE so de authenticated e service_role (PUBLIC e anon nao)",
 ];
+// Lote 149 (20261399940000, o cadastro cria o perfil em toda loja: o gatilho on_auth_user_created de auth.users, que a Savy clonada do baseline nunca teve, mais o reparo de quem se cadastrou sem perfil).
+// A 149a (6 linhas) prova o gatilho como desenhado (estrutura do catalogo), ligado, sem concorrente, a funcao SECURITY DEFINER e que nenhum usuario de cliente de tamanho valido esta sem perfil (so uma
+// CONTAGEM); a 149b (3 linhas) prova o estado de antes (gatilho ausente). Nenhuma devolve nome, telefone, CPF ou e-mail.
+const ROL_DA_149A_PERFIL = [
+  "controle: catalogo publico visivel",
+  "auth.users: gatilho on_auth_user_created existe, AFTER INSERT por linha, chama public.handle_new_user(), sem condicao nem lista de colunas",
+  "auth.users: o gatilho on_auth_user_created esta LIGADO (nao desabilitado)",
+  "public.handle_new_user() existe, devolve trigger e e SECURITY DEFINER",
+  "so existe UM gatilho em auth.users que chama handle_new_user: nenhum concorrente",
+  "nenhum usuario de cliente (papel customer ou sem papel, nome ate 120 e telefone ate 20) esta sem perfil",
+];
+const ROL_DA_149B_PERFIL = [
+  "controle: catalogo publico visivel",
+  "auth.users tem id, raw_user_meta_data e raw_app_meta_data; profiles tem id, full_name, whatsapp, cpf e role; handle_new_user() existe (trigger, SECURITY DEFINER)",
+  "nenhum gatilho on_auth_user_created existe ainda em auth.users",
+];
 // Lote 140 (20261399980000, as listas de Produtos, Pedidos e Cancelados do painel nao repetem nem escondem ninguem entre as paginas: get_admin_products_paged, get_admin_orders_paged e
 // get_admin_orders_cancelados_recentes redefinidas, sem objeto novo). A 140a e a 140b tem o MESMO rol de 10 linhas (controle e, para cada funcao, corpo exato (md5), atributos e ACL); a 140a espera os
 // corpos da migration nova e a 140b os vigentes de antes (os da 20261399200000, 20261399900000 e 20261380000000). So catalogo: nenhuma le produto, pedido ou cliente e nenhuma chama as funcoes.
@@ -3126,7 +3142,48 @@ const ROL_DA_147 = [...ROL_DA_135];
 // Lote 148 (20261399996000, o painel de avaliacoes filtra o que esta sem resposta: get_admin_reviews_paged, a MESMA assinatura de 5 argumentos, ganha o terceiro valor de p_status; sem objeto novo).
 // A 148a e a 148b tem o MESMO rol de 4 linhas da 123; a 148a espera o corpo desta migration e a 148b o vigente de antes (o da 20261399700000). So catalogo: nenhuma le avaliacao nem chama a funcao.
 const ROL_DA_148 = [...ROL_DA_123];
+// Lote 150 (20261399997000, o pedido guarda quem vai receber: create_marketplace_order_v23 e v24 ganham UMA chave na copia do endereco, user_addresses.recipient_name; sem objeto novo).
+// A 150a e a 150b tem o MESMO rol de 9 linhas (controle e, para cada funcao, corpo exato (md5), a chave nova uma vez, atributos e ACL); a 150a espera os corpos da migration nova e a 150b os vigentes de
+// antes (os da 20261397000000). So catalogo: nenhuma le pedido, endereco nem cliente e nenhuma chama as funcoes.
+const ROL_DA_150 = [
+  "controle: funcoes de public visiveis a este papel",
+  ...["create_marketplace_order_v23", "create_marketplace_order_v24"].flatMap(
+    (f) => [
+      `${f}: corpo exato (md5)`,
+      `${f}: o corpo copia o nome de quem vai receber (uma vez)`,
+      `${f}: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno uuid)`,
+      `${f}: EXECUTE para anon, authenticated e service_role, sem PUBLIC`,
+    ],
+  ),
+];
+// Lote 150c/150d (20261399998000, a loja recebe o plano por uma porta unica: a tabela da chave assinatura_da_loja_chave, a porta assinatura_da_loja_gravar e a guarda do hash assinatura_da_loja_definir_chave).
+// A 150c prova o que ficou (so catalogo: NENHUMA linha da chave nem do cartao e' lida e nenhuma funcao e' chamada); a 150d prova a ausencia e as premissas. A 150c negativa (antes do apply) responde "nao"
+// em tudo menos no controle, nunca erro.
+const ROL_DA_150C = [
+  "controle: catalogo publico visivel",
+  "assinatura_da_loja_definir_chave: uma so, com o corpo da 20261399998000 (md5)",
+  "assinatura_da_loja_definir_chave: atributos de sempre (SECURITY DEFINER, plpgsql, VOLATILE, search_path public e pg_temp, retorna void) e EXECUTE so para service_role (anon, authenticated e PUBLIC nada)",
+  "assinatura_da_loja_gravar: uma so, com o corpo da 20261399998000 (md5)",
+  "assinatura_da_loja_gravar: atributos de sempre (SECURITY DEFINER, plpgsql, VOLATILE, search_path public e pg_temp, retorna jsonb) e EXECUTE so para anon e authenticated (service_role e PUBLIC nada)",
+  "assinatura_da_loja_chave: tabela comum com RLS ligada sem FORCE e nenhuma politica",
+  "assinatura_da_loja_chave: nenhum privilegio para anon, authenticated, service_role e PUBLIC (tabela e coluna)",
+  "assinatura_da_loja_chave: as 3 colunas com o tipo certo, defaults, chave primaria (id) e os dois CHECK (id = 1 e hash de 64 hex minusculos)",
+];
+const ROL_DA_150D = [
+  "controle: catalogo publico visivel",
+  "assinatura_da_loja_chave, assinatura_da_loja_definir_chave e assinatura_da_loja_gravar: ainda NAO existem",
+  "assinatura_da_loja tem a forma da 20261177000000 (13 colunas) e store_config tem id bigint e store_name text",
+  "os papeis anon, authenticated e service_role existem",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "150c-conferir-a-loja-recebe-o-plano-por-porta-unica-aplicado": ROL_DA_150C,
+  "150d-antes-a-loja-recebe-o-plano-por-porta-unica-ausente": ROL_DA_150D,
+  "150a-conferir-o-pedido-guarda-quem-vai-receber-aplicado": ROL_DA_150,
+  "150b-antes-o-pedido-guarda-quem-vai-receber-base-vigente": ROL_DA_150,
+  "149a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado":
+    ROL_DA_149A_PERFIL,
+  "149b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente":
+    ROL_DA_149B_PERFIL,
   "148a-conferir-o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-aplicado":
     ROL_DA_148,
   "148b-antes-o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-base-vigente":

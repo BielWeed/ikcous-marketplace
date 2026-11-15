@@ -265,13 +265,25 @@ Deno.test("397: e' a ultima redefinicao das tres funcoes da arvore; db-apply exi
       .filter((n) => /^\d{14}_.*\.sql$/.test(n))
       .sort()
       .filter((n) => definicao(ler(`supabase/migrations/${n}`), a.fn, a.delim));
+    // A v23 e a v24 tem UMA sucessora legitima, a 20261399997000 (o pedido guarda quem vai receber: uma chave a mais na copia do endereco);
+    // a validacao do cupom segue sem sucessora. Qualquer outra redefinicao depois desta reprova.
+    const SUCESSORA_QUEM_RECEBE =
+      "20261399997000_o_pedido_guarda_quem_vai_receber.sql";
+    const ultima =
+      a.fn === "validate_coupon_secure_v2" ? nome : SUCESSORA_QUEM_RECEBE;
+    const sucessoras = a.fn === "validate_coupon_secure_v2" ? 0 : 1;
     assert.equal(
       fontes.at(-1),
-      nome,
+      ultima,
       `outra migration redefine ${a.fn} depois desta`,
     );
     assert.equal(
-      fontes.at(-2),
+      fontes.at(-1 - sucessoras),
+      nome,
+      `${a.fn}: esta migration nao e' a penultima/ultima redefinicao`,
+    );
+    assert.equal(
+      fontes.at(-2 - sucessoras),
       a.anterior,
       `${a.fn}: a anterior nao e' a conhecida`,
     );

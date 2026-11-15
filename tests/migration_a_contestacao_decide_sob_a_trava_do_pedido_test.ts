@@ -693,6 +693,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // recusados para todos e a vitrine nunca devolve nome acima de 120; a migration se recusa se ja houver perfil acima do teto (o CHECK travaria foto, CPF e cargo da conta);
     // mutantes, rollback byte a byte, pre/pos-voo, atomicidade e lock_timeout nas duas tabelas).
     "tests/banco/o-nome-do-perfil-tem-teto-no-banco-viva.cjs",
+    // 20261399940000: o cadastro cria o perfil em toda loja (gatilho on_auth_user_created so se ausente; reparo de quem ficou sem perfil sem rebaixar admin nem violar os tetos de nome e WhatsApp;
+    // controle sem o gatilho, papel sem EXECUTE, mutantes, rollback, pre-voo, atomicidade e consultas 149a/149b).
+    "tests/banco/o-cadastro-cria-o-perfil-em-toda-loja-viva.cjs",
     // 20261399200000: a busca de produtos do painel e do balcao acha por palavras (todas as palavras, qualquer ordem, nome/codigo/SKU/nome e valor das variacoes ativas; codigo de barras por
     // igualdade; % _ e barra valem como letras; controle com o corpo da 385; mutantes, rollback byte a byte, pre/pos-voo, atomicidade e consultas 119a/119b).
     "tests/banco/a-busca-do-painel-acha-por-palavras-viva.cjs",
@@ -878,6 +881,12 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-viva.cjs",
     // Onda 150 (sem migration): o balcao recusa venda sem item e com itens demais (22023, frase exata, nada escrito; 200 entra; mutantes por MUTANTE_R150E).
     "tests/banco/o-balcao-recusa-venda-sem-item-e-com-itens-demais-viva.cjs",
+    // 20261399997000: o pedido guarda quem vai receber (v23 e v24 copiam o nome do endereco salvo para customer_data.address.recipient_name; so conta com endereco salvo, sem nome/retirada/
+    // visitante/endereco digitado como antes, pedido antigo intacto, controle com o corpo da 397, mutantes, rollback byte a byte, aplicar duas vezes, pre/pos-voo e consultas 150a/150b).
+    "tests/banco/o-pedido-guarda-quem-vai-receber-viva.cjs",
+    // 20261399998000: a loja recebe o plano por uma porta unica (tabela assinatura_da_loja_chave selada com o hash da chave da loja, definir_chave so do service_role e a PORTA assinatura_da_loja_gravar para anon e
+    // authenticated: autentica pelo hash ANTES de olhar os dados, lista branca de 10 campos, recursos e observacao nunca, mais velho ignorado, simular sem gravar; corrida de duas conexoes, 18 mutantes, rollback, pre/pos-voo e consultas 150c/150d).
+    "tests/banco/a-loja-recebe-o-plano-por-porta-unica-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(

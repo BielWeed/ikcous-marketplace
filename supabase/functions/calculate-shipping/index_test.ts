@@ -195,6 +195,28 @@ Deno.test("isLocalCep - custom range", () => {
   assertEquals(isLocalCep("38500-000", "38506000", "38500000-38505000"), false);
 });
 
+Deno.test("isLocalCep - faixa explícita: o primeiro e o ÚLTIMO CEP entram, um abaixo e um acima ficam fora", () => {
+  // As bordas da faixa "38500000-38505000" passam pelo ramo de faixa explícita
+  // (dois blocos longos), não pelo da lista separada por vírgula testado acima.
+  const faixa = "38500000-38505000";
+  assertEquals(isLocalCep("38500-000", "38500000", faixa), true); // primeiro (start)
+  assertEquals(isLocalCep("38500-000", "38505000", faixa), true); // último (end)
+  assertEquals(isLocalCep("38500-000", "38499999", faixa), false); // um abaixo do primeiro
+  assertEquals(isLocalCep("38500-000", "38505001", faixa), false); // um acima do último
+  // Com máscara no CEP do cliente: o mesmo resultado.
+  assertEquals(isLocalCep("38500-000", "38505-000", faixa), true);
+  assertEquals(isLocalCep("38500-000", "38505-001", faixa), false);
+});
+
+Deno.test("isLocalCep - faixa explícita com blocos curtos: o fim completa com 9, então o último CEP do bloco entra", () => {
+  // "385000-385050" vira [38500000, 38505099]: o `end` é completado com '9'.
+  const faixa = "385000-385050";
+  assertEquals(isLocalCep("38500-000", "38500000", faixa), true);
+  assertEquals(isLocalCep("38500-000", "38505099", faixa), true);
+  assertEquals(isLocalCep("38500-000", "38499999", faixa), false);
+  assertEquals(isLocalCep("38500-000", "38505100", faixa), false);
+});
+
 Deno.test("isLocalCep - formato do placeholder do admin (dois CEPs formatados)", () => {
   // O placeholder do AdminShippingView ensina "Ex: 38500-000, 38500-999".
   // Antes, o hífen do CEP era lido como separador de faixa e nada casava.

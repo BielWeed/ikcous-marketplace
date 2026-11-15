@@ -1,4 +1,39 @@
 {
+  "1.5.185": {
+    "titulo": "Sua assinatura: o painel mostra desde quando a mensalidade está em aberto",
+    "novidades": [
+      "Painel, Sua assinatura: quando a mensalidade está atrasada, o cartão mostra \"Em aberto desde\" com a data da mensalidade mais antiga que ainda não foi paga."
+    ],
+    "correcoes": [
+      "Painel, Sua assinatura: um plano ativo cuja data de cobrança já passou deixa de mostrar essa data velha; a linha some até a próxima cobrança ser calculada."
+    ],
+    "melhorias": [
+      "Painel, Sua assinatura: enquanto o seu plano ainda não chegou ao painel, aparece \"Seu plano vai aparecer aqui\", sem nada mudar na sua loja."
+    ]
+  },
+  "1.5.184": {
+    "titulo": "Pedido para presente: o nome de quem vai receber chega à etiqueta e à ficha do pedido",
+    "novidades": [
+      "Painel, Pedidos: quando a cliente compra para outra pessoa e escreve \"Quem vai receber\" no endereço salvo, a ficha do pedido mostra \"Recebe: nome\" logo abaixo do comprador. Só aparece quando o nome é de outra pessoa."
+    ],
+    "correcoes": [
+      "Etiqueta de envio (Melhor Envio): o destinatário da etiqueta agora é o nome de quem vai receber, em vez do nome de quem comprou. Se a cliente não escreveu esse nome, a etiqueta sai no nome do comprador, como antes. O CPF continua sendo o de quem comprou."
+    ],
+    "melhorias": [
+      "Pedidos novos passam a guardar o nome de quem vai receber. Pedidos antigos, compras sem conta, retirada na loja e endereços digitados na hora continuam como antes."
+    ]
+  },
+  "1.5.183": {
+    "titulo": "Avaliações: filtro \"Sem resposta\" e explicação mais completa do lucro por produto",
+    "novidades": [
+      "Painel, Avaliações: a tela ganhou o filtro \"Sem resposta\", com a contagem ao lado de \"Em moderação\", para a lojista ver de uma vez as avaliações publicadas que ainda não receberam resposta."
+    ],
+    "correcoes": [],
+    "melhorias": [
+      "Painel, Avisos: o aviso \"avaliação publicada sem resposta\" agora abre a tela Avaliações já filtrada em \"Sem resposta\". Antes ele abria em \"Todas\" e, se tivessem chegado mais de 10 avaliações depois daquela, ela ficava em outra página e o aviso parecia errado.",
+      "Painel, Início: o \"?\" de \"Produtos que mais dão lucro\" agora explica que o valor já considera o cupom, que reembolso total não tira o pedido da lista e que só sai o pedido cancelado."
+    ]
+  },
   "1.5.182": {
     "titulo": "Lucro por produto que fecha com o Financeiro, balcão sem texto técnico e painel que abre com o armazenamento bloqueado",
     "novidades": [

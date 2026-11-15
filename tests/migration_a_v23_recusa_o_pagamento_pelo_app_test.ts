@@ -196,12 +196,17 @@ Deno.test("394200: so a 20261397000000 (o desconto do cupom e' arredondado ao ce
     .sort()
     .filter((n) => definicao(ler(`supabase/migrations/${n}`)));
   // A 397 e' a SUCESSORA da v23 desta migration (o mesmo corpo com UMA linha trocada); nenhuma outra vem depois.
+  // A 20261399997000 (o pedido guarda quem vai receber) sucede a 397 (uma chave a mais na copia do endereco); nenhuma outra vem depois.
   assert.deepEqual(
-    fontes.slice(-2),
-    [nome, "20261397000000_o_desconto_do_cupom_e_arredondado_ao_centavo.sql"],
-    "outra migration redefine create_marketplace_order_v23 depois desta (e da 397)",
+    fontes.slice(-3),
+    [
+      nome,
+      "20261397000000_o_desconto_do_cupom_e_arredondado_ao_centavo.sql",
+      "20261399997000_o_pedido_guarda_quem_vai_receber.sql",
+    ],
+    "outra migration redefine create_marketplace_order_v23 depois desta (e da 397 e da 3999970)",
   );
-  assert.equal(fontes.at(-3), nome394);
+  assert.equal(fontes.at(-4), nome394);
   const { VERIFICACOES, avaliarChecagem } = require("../scripts/db-apply.cjs");
   // eslint-disable-next-line security/detect-object-injection -- Nome literal desta migration, nunca entrada externa.
   const checagens = VERIFICACOES[nome];

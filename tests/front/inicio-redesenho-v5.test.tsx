@@ -114,7 +114,7 @@ it("distingue vazio, erro e carregamento sem inventar vendas", () => {
   expect(tela.textContent).not.toContain("Falha Operacional");
 });
 
-it("assinatura lida e sem registro explica que a cobrança é externa e não oferece botão inútil", () => {
+it("assinatura lida e sem registro diz que o plano vai aparecer e não oferece botão inútil", () => {
   act(() =>
     raiz.render(
       <CartaoDaAssinatura
@@ -126,7 +126,7 @@ it("assinatura lida e sem registro explica que a cobrança é externa e não ofe
       />,
     ),
   );
-  expect(tela.textContent).toContain("Plano ainda não sincronizado");
-  expect(tela.textContent).toContain("administrada fora do app");
+  expect(tela.textContent).toContain("Seu plano vai aparecer aqui");
+  expect(tela.textContent).toContain("Estamos ligando a sua assinatura");
   expect(tela.querySelector("button")).toBeNull();
 });

@@ -383,6 +383,9 @@ const SUCESSORA_394200 = "20261394200000_a_v23_recusa_o_pagamento_pelo_app.sql";
 // A SETIMA SUCESSORA (27/10/2026): a 20261397000000 (o desconto do cupom de porcentagem e' arredondado ao centavo) redefine a v23 e a v24 (uma linha cada).
 const SUCESSORA_397 =
   "20261397000000_o_desconto_do_cupom_e_arredondado_ao_centavo.sql";
+// A OITAVA SUCESSORA (13/11/2026): a 20261399997000 (o pedido guarda quem vai receber) redefine a v23 e a v24, uma chave a mais cada, em cima do corpo da 397.
+const SUCESSORA_QUEM_RECEBE =
+  "20261399997000_o_pedido_guarda_quem_vai_receber.sql";
 
 Deno.test("so a 20261174000000 define o corpo vivo de v23 e v24 antes deste par (nenhuma migration posterior a redefine); depois dele, so este par e a sucessora da v24 (20261236000000)", () => {
   const dir = new URL("supabase/migrations/", DIR);
@@ -414,6 +417,8 @@ Deno.test("so a 20261174000000 define o corpo vivo de v23 e v24 antes deste par 
       `${SUCESSORA_394200}:${V23}`,
       `${SUCESSORA_397}:${V23}`,
       `${SUCESSORA_397}:${V24}`,
+      `${SUCESSORA_QUEM_RECEBE}:${V23}`,
+      `${SUCESSORA_QUEM_RECEBE}:${V24}`,
     ].sort(),
   );
 });

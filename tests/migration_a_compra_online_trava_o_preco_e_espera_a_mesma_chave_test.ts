@@ -300,7 +300,7 @@ Deno.test("20261350 publicacao: lote unico de apply normal, DEPOIS da 244, vale 
     "a 81a entra uma vez",
   );
   assertEquals(
-    canais.provasDeObjetos.slice(-54).map((p) => p.consulta),
+    canais.provasDeObjetos.slice(-57).map((p) => p.consulta),
     [
       A81,
       "82a-conferir-ex-admin-sem-acesso-nas-demais-tabelas",
@@ -346,6 +346,9 @@ Deno.test("20261350 publicacao: lote unico de apply normal, DEPOIS da 244, vale 
       "126a-conferir-a-busca-de-devolucao-ignora-o-acento-aplicado",
       "127a-conferir-o-sino-do-pedido-vencido-fala-do-vencimento-aplicado",
       "128a-conferir-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-aplicado",
+      "150a-conferir-o-pedido-guarda-quem-vai-receber-aplicado",
+      "150c-conferir-a-loja-recebe-o-plano-por-porta-unica-aplicado",
+      "149a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado",
       "135a-conferir-o-ranking-de-lucro-desconta-a-devolucao-aplicado",
       "140a-conferir-as-listas-do-painel-nao-repetem-ninguem-aplicado",
       "141a-conferir-o-grafico-do-financeiro-soma-so-as-contas-ativas-aplicado",
@@ -357,7 +360,7 @@ Deno.test("20261350 publicacao: lote unico de apply normal, DEPOIS da 244, vale 
       "147a-conferir-o-lucro-do-ranking-casa-com-o-financeiro-pedido-a-pedido-aplicado",
       "148a-conferir-o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-aplicado",
     ],
-    "a 82a, a 83a, a 84a, a 85a, a 86a, a 87a, a 88a, a 89a, a 90a, a 91a, a 92a, a 95a, a 96a, a 97a, a 98a, a 100a, a 101a, a 102a, a 103a, a 104a, a 106a, a 107a, a 108a, a 109a, a 110a, a 111a, a 112a, a 113a, a 114a, a 115a, a 116a, a 117a, a 118a, a 119a, a 120a, a 121a, a 122a, a 123a, a 124a, a 125a, a 126a, a 127a, a 128a e a 135a (a 99 reservada para a migration de analytics_events, guardada no ramo fix-199-abuso-do-banco ate o dono aprovar) sucedem a 81a no fim, sem reordenar lotes anteriores",
+    "a 82a, a 83a, a 84a, a 85a, a 86a, a 87a, a 88a, a 89a, a 90a, a 91a, a 92a, a 95a, a 96a, a 97a, a 98a, a 100a, a 101a, a 102a, a 103a, a 104a, a 106a, a 107a, a 108a, a 109a, a 110a, a 111a, a 112a, a 113a, a 114a, a 115a, a 116a, a 117a, a 118a, a 119a, a 120a, a 121a, a 122a, a 123a, a 124a, a 125a, a 126a, a 127a, a 128a, a 149a e a 135a (a 99 reservada para a migration de analytics_events, guardada no ramo fix-199-abuso-do-banco ate o dono aprovar) sucedem a 81a no fim, sem reordenar lotes anteriores",
   );
   for (const loja of ["IKCOUS", "Savy"])
     assert(
@@ -402,12 +405,12 @@ Deno.test("20261350 publicacao: as consultas 81a/81b trazem o corpo certo de cad
   // 20261394200000 (a v23 recusa o pagamento pelo app)
   assertStringIncludes(
     a47,
-    `WHEN f.m IN ('${HASH_NOVO[V23]}', '89c99662346d47a4d6b3d13612ca4acb', '86a30fe3502bbafd1a507ce03189bc2d', '54b591dc09d67f1abbc9ab3ba5f62f5e')`,
+    `WHEN f.m IN ('${HASH_NOVO[V23]}', '89c99662346d47a4d6b3d13612ca4acb', '86a30fe3502bbafd1a507ce03189bc2d', '54b591dc09d67f1abbc9ab3ba5f62f5e', 'a20220f6946409590654938f96b12a27')`,
   );
   // a v24 aceita tambem o corpo sucessor da 20261384000000 (o pedido pelo app exige conta)
   assertStringIncludes(
     a47,
-    `f.m IN ('${HASH_NOVO[V24]}', 'f8d6ed0c3622ab41123bacb98911a98f', '36c80a107f3ed16853c1c5b2b0cbc911', '541a210e52ea22fe67e35f2bdd9ef444')`,
+    `f.m IN ('${HASH_NOVO[V24]}', 'f8d6ed0c3622ab41123bacb98911a98f', '36c80a107f3ed16853c1c5b2b0cbc911', '541a210e52ea22fe67e35f2bdd9ef444', '3e711f7cc9c94894a21024b34d0ed3b4')`,
   );
   // A 37a só tem a v24; a 31b/37b/47b (ANTES) não citam o corpo desta migration.
   assert(!a37.includes(HASH_NOVO[V23]));

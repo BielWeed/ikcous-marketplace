@@ -110,6 +110,9 @@ const ARQ08 = "20261208000000_o_checkout_mostra_os_cupons_da_cliente.sql";
 // `pre` (o pre-voo dela exige o corpo da 08 ou o dela). `cheio08` a desfaz (o corpo vivo da validate la e' o da 08); `cheio397` e' a arvore inteira.
 const ARQ397 =
   "20261397000000_o_desconto_do_cupom_e_arredondado_ao_centavo.sql";
+// A 20261399997000 (o pedido guarda quem vai receber) sucede a 397 nas funcoes v23/v24 (nao toca a validate): o pre-voo dela exige o corpo da 397 ou o dela, entao
+// sai de `t203` e de `pre` JUNTO com a 397 (nao ha corpo da 397 nessas bases). `cheio08` a desfaz PRIMEIRO, pela cascata de o-desconto-do-cupom-posterior.cjs.
+const ARQ3997 = "20261399997000_o_pedido_guarda_quem_vai_receber.sql";
 const REF_SAVY = "gnjsrucsmjkajijrakzr";
 const SHA40 = "d".repeat(40);
 const SQL = {
@@ -649,7 +652,7 @@ async function main() {
   // ----------------------------------------------------------- as bases
   // `cheio` = a arvore inteira ATE a 203 (sem a 08); `cheio08` = a arvore inteira.
   const t203 = `pv_${SUF}_t203`.slice(0, 60);
-  await montarBase(t203, (f) => f !== ARQ08 && f !== ARQ397);
+  await montarBase(t203, (f) => f !== ARQ08 && f !== ARQ397 && f !== ARQ3997);
   const cheio = await clonar("cheio", t203);
   const cheio08 = await clonar("cheio08");
   await usar(cheio08, async (c) => {
@@ -661,7 +664,10 @@ async function main() {
   });
   const cheio397 = await clonar("cheio397");
   const pre = `pv_${SUF}_pre`.slice(0, 60);
-  await montarBase(pre, (f) => f !== ARQUIVO && f !== ARQ08 && f !== ARQ397);
+  await montarBase(
+    pre,
+    (f) => f !== ARQUIVO && f !== ARQ08 && f !== ARQ397 && f !== ARQ3997,
+  );
   {
     const sonda = await usar(pre, async (c) => ({
       gatilho: (

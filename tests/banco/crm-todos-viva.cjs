@@ -1070,6 +1070,140 @@ PROVAS.push({
   },
 });
 
+// Fronteira ativos x novos de quem comprou na última semana (r = 5), na regra
+// de crm__clientes_rfm (20261178000000): `(f + m) / 2 >= 2` é 'ativos', abaixo
+// disso é 'novos'. Nenhuma outra prova olhava o lado 'ativos' nem a fronteira
+// (a do primeiro cenário tem UM comprador só, m = 1, e cai em 'novos' de longe).
+// A nota m é percentil de receita entre TODOS os compradores, então a prova
+// monta a amostra inteira (TRUNCATE antes, e é a última da fila): 7 compradores
+// de 1 pedido cada (f = 1, r = 5), receitas 10..70 — percent_rank = k/6, e
+// m = 1 + floor(5 * k/6) cai no MEIO de cada faixa (sem borda de ponto
+// flutuante): m = 1, 1, 2, 3, 4, 5, 5. Com f = 1, (f + m) / 2 = 1, 1, 1, 2, 2,
+// 3, 3 — o par k=2 (m=2, último 'novos') e k=3 (m=3, primeiro 'ativos') é o
+// degrau da fronteira. Dado sintético: nenhum cliente real.
+const U_FRONTEIRA = (k) => `6a111111-1111-1111-1111-00000000000${k}`;
+const FRONTEIRA_ATIVOS_NOVOS = [
+  // [k, receita, m esperado, segmento esperado]
+  [0, 10, 1, "novos"],
+  [1, 20, 1, "novos"],
+  [2, 30, 2, "novos"], // (1 + 2) / 2 = 1 — um degrau abaixo da fronteira
+  [3, 40, 3, "ativos"], // (1 + 3) / 2 = 2 — exatamente na fronteira
+  [4, 50, 4, "ativos"],
+  [5, 60, 5, "ativos"],
+  [6, 70, 5, "ativos"],
+];
+
+// A MESMA fronteira no espelho de quem comprou entre 31 e 60 dias atrás
+// (r = 4, linhas 123-124 da regra): 'ativos' com `(f + m) / 2 >= 2`, abaixo
+// disso 'promissores'. Mesma amostra de 7 (m = 1, 1, 2, 3, 4, 5, 5), comprando
+// há 40 dias. Com f = 1 o 'leais' (>= 4) não é alcançável, então só o degrau
+// k=2 (m=2, último 'promissores') -> k=3 (m=3, primeiro 'ativos') conta.
+const FRONTEIRA_ATIVOS_PROMISSORES = [
+  // [k, receita, m esperado, segmento esperado]
+  [0, 10, 1, "promissores"],
+  [1, 20, 1, "promissores"],
+  [2, 30, 2, "promissores"], // (1 + 2) / 2 = 1 — um degrau abaixo da fronteira
+  [3, 40, 3, "ativos"], // (1 + 3) / 2 = 2 — exatamente na fronteira
+  [4, 50, 4, "ativos"],
+  [5, 60, 5, "ativos"],
+  [6, 70, 5, "ativos"],
+];
+
+/**
+ * Monta a amostra inteira (TRUNCATE antes) com 1 pedido pago por comprador, há
+ * `diasAtras` dias, e confere r/f/receita/m ANTES do segmento de cada um.
+ */
+async function provarFronteira(
+  cliente,
+  { diasAtras, rEsperado, tabela, abaixo },
+) {
+  await cliente.query(
+    "TRUNCATE public.marketplace_orders, public.profiles, auth.users CASCADE",
+  );
+  await cliente.query(
+    `INSERT INTO auth.users (id, email, raw_app_meta_data)
+     VALUES ($1, 'admin@crmtodos.teste', '{"role":"admin"}'::jsonb)`,
+    [U_ADMIN],
+  );
+  await cliente.query(
+    `INSERT INTO public.profiles (id, full_name, role) VALUES ($1, 'Admin da Loja', 'admin')
+     ON CONFLICT (id) DO NOTHING`,
+    [U_ADMIN],
+  );
+  for (const [k, receita] of tabela) {
+    await cliente.query(
+      `INSERT INTO auth.users (id, email, raw_app_meta_data)
+       VALUES ($1, $2, '{}'::jsonb)`,
+      [U_FRONTEIRA(k), `fronteira${k}@crmtodos.teste`],
+    );
+    await pedido(cliente, {
+      userId: U_FRONTEIRA(k),
+      total: receita,
+      diasAtras,
+      status: "delivered",
+      paymentStatus: "pago",
+    });
+  }
+
+  await logar(cliente, U_ADMIN);
+  const lista = await rpc(
+    cliente,
+    "SELECT public.crm_clientes(NULL, NULL, 200, 0) AS r",
+  );
+  const porChave = new Map(lista.clientes.map((c) => [c.chave, c]));
+  assert.equal(
+    lista.clientes.length,
+    tabela.length,
+    "só os 7 compradores sintéticos estão na amostra (o percentil de m depende disso)",
+  );
+
+  for (const [k, receita, mEsperado, segmentoEsperado] of tabela) {
+    const c = porChave.get(U_FRONTEIRA(k));
+    assert.ok(c, `comprador k=${k} aparece na lista`);
+    // O cenário se confere antes da regra: se r/f/m não forem os planejados,
+    // o segmento abaixo não prova a fronteira e o erro tem de dizer isso.
+    assert.equal(
+      num(c.r),
+      rEsperado,
+      `k=${k}: comprou há ${diasAtras} dias — recência ${rEsperado}`,
+    );
+    assert.equal(num(c.f), 1, `k=${k}: um pedido só — f = 1`);
+    assert.equal(num(c.receita), receita, `k=${k}: receita do único pedido`);
+    assert.equal(
+      num(c.m),
+      mEsperado,
+      `k=${k}: nota m do percentil de receita (cenário fora do planejado)`,
+    );
+    assert.equal(
+      c.segmento,
+      segmentoEsperado,
+      `k=${k} (r=${rEsperado}, f=1, m=${mEsperado}, (f+m)/2=${Math.floor((1 + mEsperado) / 2)}): segmento errado — a fronteira ativos x ${abaixo} é (f+m)/2 >= 2`,
+    );
+  }
+}
+
+PROVAS.push({
+  nome: "quem comprou na última semana é 'novos' abaixo da fronteira e 'ativos' a partir dela ((f + m) / 2 >= 2)",
+  corpo: (cliente) =>
+    provarFronteira(cliente, {
+      diasAtras: 3,
+      rEsperado: 5,
+      tabela: FRONTEIRA_ATIVOS_NOVOS,
+      abaixo: "novos",
+    }),
+});
+
+PROVAS.push({
+  nome: "quem comprou há 31 a 60 dias é 'promissores' abaixo da fronteira e 'ativos' a partir dela ((f + m) / 2 >= 2)",
+  corpo: (cliente) =>
+    provarFronteira(cliente, {
+      diasAtras: 40,
+      rEsperado: 4,
+      tabela: FRONTEIRA_ATIVOS_PROMISSORES,
+      abaixo: "promissores",
+    }),
+});
+
 async function main() {
   const url = lerDatabaseUrlEfemera();
   const cliente = new Client({ connectionString: url });

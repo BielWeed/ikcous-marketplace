@@ -107,6 +107,12 @@ export interface Customer {
   state?: string;
   cep?: string;
   reference?: string | null;
+  /**
+   * Quem vai RECEBER o pedido, quando a cliente digitou um nome no endereço (`customer_data.address.recipient_name`,
+   * migration 20261399997000). Só o retrato do pedido conta; ausente em pedido antigo e quando o nome veio vazio.
+   * Quem decide se vale mostrar (só quando é outra pessoa) é `quemVaiReceberSeForOutro`.
+   */
+  recipientName?: string;
   total_spent?: number;
   order_count?: number;
   last_order?: string;

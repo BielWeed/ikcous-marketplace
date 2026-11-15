@@ -14,7 +14,7 @@
 // sobrevive entre testes do arquivo: cada caso usa hosts próprios.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { robotsTxt, sitemapXml } from "@/hospedagem/mapaDoSite";
+import { PRAZO_MAPA_MS, robotsTxt, sitemapXml } from "@/hospedagem/mapaDoSite";
 import {
   CACHE_MAPA_FRESCO_MS,
   CACHE_MAPA_STALE_MAX_MS,
@@ -454,17 +454,38 @@ describe("sitemap.xml — a leitura dos produtos falha: só as URLs estáticas D
         origem: origemDe("pendura"),
         produtos: { tipo: "pendura" },
       };
-      let terminou = false;
-      const promessa = pedir([loja], loja.host, "/sitemap.xml").finally(() => {
-        terminou = true;
+      let avisarConsulta!: () => void;
+      const consultaIniciada = new Promise<void>((resolve) => {
+        avisarConsulta = resolve;
       });
-      // O temporizador do prazo só nasce depois da ficha (várias esperas de
-      // microtarefa): avança o relógio aos poucos até a resposta sair. Se o
-      // prazo não existisse, o laço esgotaria as voltas e o teste falharia.
-      for (let volta = 0; volta < 30 && !terminou; volta++)
-        await vi.advanceTimersByTimeAsync(1_000);
+      const fetchDaLoja = criarFetchDeLojas([loja]);
+      const fetchComAviso: typeof fetch = (input, init) => {
+        if (requestUrl(input).pathname === "/rest/v1/vw_produtos_public")
+          avisarConsulta();
+        return fetchDaLoja(input, init);
+      };
+      let terminou = false;
+      const promessa = comProcessEnv(ENV_FROTA, () =>
+        comFetch(fetchComAviso, () =>
+          middleware(new Request(`https://${loja.host}/sitemap.xml`)).then(
+            (resp) => {
+              terminou = true;
+              return resp;
+            },
+          ),
+        ),
+      );
+      // A ficha lê corpos de Response com I/O real, fora do relógio falso.
+      // Só avançamos depois que a consulta pendurada começou: nessa altura
+      // o prazo do mapa já foi armado, sem depender de quantas voltas o I/O leva.
+      await consultaIniciada;
+      await vi.advanceTimersByTimeAsync(PRAZO_MAPA_MS - 1);
+      expect(terminou).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      // Sem a corrida contra o prazo, falha AQUI em vez de aguardar a promessa.
       expect(terminou).toBe(true);
-      const { resp, corpo } = await promessa;
+      const resp = await promessa;
+      const corpo = await resp.text();
       expect(resp.status).toBe(200);
       expect(resp.headers.get("x-ikcous-mapa")).toBe("estatico");
       expect(urlsDoSitemap(corpo)).toEqual([`https://${loja.host}/`]);

@@ -306,6 +306,9 @@ function buscarMeFalso(opcoes: { aoCriarCarrinho?: () => void } = {}) {
         ultimoProducts: null as any[] | null,
         ultimoVolumes: null as any[] | null,
         ultimoTo: null as Record<string, unknown> | null,
+        // O que o ME RECEBEU em cada passo que compra/gera: o corpo, não só "foi chamado".
+        corposDoCheckout: [] as any[],
+        corposDaGeracao: [] as any[],
     }
     const json = (corpo: unknown, status = 200) =>
         new Response(JSON.stringify(corpo), { status, headers: { 'Content-Type': 'application/json' } })
@@ -328,10 +331,12 @@ function buscarMeFalso(opcoes: { aoCriarCarrinho?: () => void } = {}) {
         }
         if (url.endsWith('/api/v2/me/shipment/checkout')) {
             registro.checkouts++
+            registro.corposDoCheckout.push(JSON.parse(String(init?.body || '{}')))
             return json({ purchase: { id: 'pur-1', status: 'paid' } })
         }
         if (url.endsWith('/api/v2/me/shipment/generate')) {
             registro.geracoes++
+            registro.corposDaGeracao.push(JSON.parse(String(init?.body || '{}')))
             return json({})
         }
         if (url.endsWith('/api/v2/me/shipment/print')) return json({ url: 'https://imprimir.teste/etiqueta' })
@@ -453,6 +458,27 @@ Deno.test('reivindicação e conclusão - CONTROLE com 2 pedidos na tabela: só 
         assertEquals(rastreios[0].idsAfetados, ['pedido-1'])
 
         assertEquals(supa.registro.atualizacoes.filter(ehLiberacao).length, 0)
+    })
+})
+
+// A compra paga o id da ETIQUETA que o /cart devolveu, nunca o id do pedido do
+// app. O dublê de cima responde `paid` a qualquer corpo; sem olhar o que chegou,
+// trocar `orders: [labelId]` por `orders: [orderId]` não deixava nada vermelho
+// (e na vida real o ME pagaria — ou recusaria — uma etiqueta que não é a do pedido).
+Deno.test('compra - o checkout e a geração recebem orders = [id da etiqueta devolvido pelo /cart], e não o id do pedido do app', async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteComTabelas({ pedidos: [PEDIDO_1, PEDIDO_2] })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        const corpo = await res.json()
+
+        assertEquals(res.status, 200)
+        assertEquals(corpo.success, true)
+        // Os dois ids do fixture são de fato diferentes: senão o teste não distingue nada.
+        assertEquals(LABEL_ID !== 'pedido-1', true)
+
+        assertEquals(me.registro.corposDoCheckout, [{ orders: [LABEL_ID] }])
+        assertEquals(me.registro.corposDaGeracao, [{ orders: [LABEL_ID] }])
     })
 })
 
@@ -609,3 +635,115 @@ for (
         })
     })
 }
+
+// ═══ QUEM VAI RECEBER — o nome do destinatário da etiqueta (13/11/2026) ═════
+// A cliente digita "Quem vai receber" no endereço; a migration 20261399997000 copia o nome para
+// `customer_data.address.recipient_name` do pedido. A etiqueta usa esse nome quando existe e o de quem
+// comprou quando não existe (pedido antigo, sem nome, só espaços, convidada). O CPF/documento NÃO muda:
+// segue o do comprador (a documentação do Melhor Envio não diz que o nome tenha de ser o do titular do CPF,
+// nem o contrário; ver o relatório da tarefa). Funciona COM ou SEM a migration no ar.
+const { nomeDeQuemRecebe } = await import('./index.ts')
+
+const ENDERECO_COPIADO_NO_PEDIDO = {
+    cep: '38500-100',
+    street: 'Rua da Prova',
+    number: '10',
+    neighborhood: 'Centro',
+    city: 'Monte Carmelo',
+    state: 'MG',
+}
+
+const pedidoComEndereco = (address: Record<string, unknown> | null, extra: Record<string, unknown> = {}) => ({
+    ...PEDIDO_1,
+    customer_data: { shipping_option_id: 'melhor-envio-1', cpf: CPF_VALIDO_DE_TESTE, address, ...extra },
+})
+
+Deno.test('nomeDeQuemRecebe - o nome do endereço do pedido vence; sem ele (ou só espaços) cai no comprador; aparado e sem espaço duplo', () => {
+    assertEquals(nomeDeQuemRecebe('Maria Souza', { address: { recipient_name: 'Ana Presente' } }), 'Ana Presente')
+    assertEquals(nomeDeQuemRecebe('Maria Souza', { address: { recipient_name: '  Ana   Presente  ' } }), 'Ana Presente')
+    assertEquals(nomeDeQuemRecebe('Maria Souza', { addressData: { recipient_name: 'Ana Presente' } }), 'Ana Presente')
+    assertEquals(nomeDeQuemRecebe('Maria Souza', { address: { recipient_name: '   ' } }), 'Maria Souza')
+    assertEquals(nomeDeQuemRecebe('Maria Souza', { address: { recipient_name: null } }), 'Maria Souza')
+    assertEquals(nomeDeQuemRecebe('Maria Souza', { address: { recipient_name: 42 } }), 'Maria Souza')
+    assertEquals(nomeDeQuemRecebe('Maria Souza', { address: { street: 'Rua A' } }), 'Maria Souza')
+    assertEquals(nomeDeQuemRecebe('Maria Souza', { address: null }), 'Maria Souza')
+    assertEquals(nomeDeQuemRecebe('Maria Souza', { address: 'Rua A, 10' }), 'Maria Souza')
+    assertEquals(nomeDeQuemRecebe('Maria Souza', null), 'Maria Souza')
+    assertEquals(nomeDeQuemRecebe('Maria Souza', undefined), 'Maria Souza')
+    // O nome solto na raiz do customer_data nao conta: so o do endereco.
+    assertEquals(nomeDeQuemRecebe('Maria Souza', { recipient_name: 'Ana Presente' }), 'Maria Souza')
+    // Sem nenhum nome, o texto de sempre.
+    assertEquals(nomeDeQuemRecebe(null, null), 'Cliente')
+    assertEquals(nomeDeQuemRecebe('', { address: { recipient_name: '' } }), 'Cliente')
+    assertEquals(nomeDeQuemRecebe(undefined, { address: { recipient_name: 'Ana Presente' } }), 'Ana Presente')
+})
+
+Deno.test('quem vai receber - o endereço do pedido traz o nome: o carrinho do ME leva o nome de quem recebe e o CPF de quem comprou', async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteComTabelas({
+            pedidos: [pedidoComEndereco({ ...ENDERECO_COPIADO_NO_PEDIDO, recipient_name: 'Ana Presente' })],
+        })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 200)
+        assertEquals(me.registro.carrinho, 1)
+        assertEquals(me.registro.ultimoTo?.name, 'Ana Presente')
+        // O documento segue o do comprador, nao muda com o nome.
+        assertEquals(me.registro.ultimoTo?.document, CPF_VALIDO_DE_TESTE)
+        // O resto do destino e' o mesmo de sempre.
+        assertEquals(me.registro.ultimoTo?.postal_code, '38500100')
+        assertEquals(me.registro.ultimoTo?.address, 'Rua da Prova')
+        assertEquals(me.registro.ultimoTo?.number, '10')
+    })
+})
+
+for (
+    const [rotulo, address] of [
+        ['sem recipient_name (pedido antigo ou sem nome)', { ...ENDERECO_COPIADO_NO_PEDIDO }],
+        ['recipient_name so de espacos', { ...ENDERECO_COPIADO_NO_PEDIDO, recipient_name: '   ' }],
+        ['recipient_name nulo', { ...ENDERECO_COPIADO_NO_PEDIDO, recipient_name: null }],
+    ] as const
+) {
+    Deno.test(`quem vai receber - ${rotulo}: a etiqueta sai com o nome de quem comprou`, async () => {
+        await comEnvAdmin(async () => {
+            const supa = clienteComTabelas({ pedidos: [pedidoComEndereco(address)] })
+            const me = buscarMeFalso()
+            const res = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+            assertEquals(res.status, 200)
+            assertEquals(me.registro.ultimoTo?.name, 'Maria Souza')
+            assertEquals(me.registro.ultimoTo?.document, CPF_VALIDO_DE_TESTE)
+        })
+    })
+}
+
+Deno.test('quem vai receber - pedido de conta SEM copia no pedido (antigo): o endereço vem da conta, o nome continua o de quem comprou (a linha da conta pode ter mudado depois da compra)', async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteComTabelas({
+            pedidos: [PEDIDO_LOGADO],
+            enderecos: [{ ...ENDERECO_DA_CONTA_COMPLETO, recipient_name: 'Nome Que A Cliente Digitou Depois' }],
+        })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 200)
+        assertEquals(me.registro.ultimoTo?.postal_code, '01310100')
+        assertEquals(me.registro.ultimoTo?.name, 'Maria Souza')
+    })
+})
+
+Deno.test('quem vai receber - o nome de quem recebe nao e usado em nenhum outro campo do destino nem some o do comprador no pedido: so o `to.name` muda', async () => {
+    await comEnvAdmin(async () => {
+        const comNome = clienteComTabelas({
+            pedidos: [pedidoComEndereco({ ...ENDERECO_COPIADO_NO_PEDIDO, recipient_name: 'Ana Presente' })],
+        })
+        const semNome = clienteComTabelas({ pedidos: [pedidoComEndereco({ ...ENDERECO_COPIADO_NO_PEDIDO })] })
+        const meA = buscarMeFalso()
+        const meB = buscarMeFalso()
+        assertEquals((await comAdminFalso(() => handler(requisicaoGerar(), { supabase: comNome.cliente, buscar: meA.buscar }))).status, 200)
+        assertEquals((await comAdminFalso(() => handler(requisicaoGerar(), { supabase: semNome.cliente, buscar: meB.buscar }))).status, 200)
+        const { name: nomeA, ...restoA } = meA.registro.ultimoTo as Record<string, unknown>
+        const { name: nomeB, ...restoB } = meB.registro.ultimoTo as Record<string, unknown>
+        assertEquals(nomeA, 'Ana Presente')
+        assertEquals(nomeB, 'Maria Souza')
+        assertEquals(restoA, restoB)
+    })
+})

@@ -4,6 +4,7 @@ import {
   formatarData,
   formatarMoeda,
   infoDoStatusDaAssinatura,
+  linhasDeDatasDaAssinatura,
   rotuloDoCiclo,
 } from "@/lib/crm";
 import type { TomDeEstado } from "@/lib/tons-de-estado";
@@ -100,12 +101,11 @@ export function CartaoDaAssinatura({
       >
         <Cabecalho />
         <p className="text-base font-bold text-white">
-          Plano ainda não sincronizado com a sua conta
+          Seu plano vai aparecer aqui
         </p>
         <p className="text-sm leading-relaxed text-zinc-400">
-          A assinatura é administrada fora do app. Assim que o sistema de
-          cobrança sincronizar o seu plano, ele aparece aqui — nada muda na sua
-          loja enquanto isso.
+          Estamos ligando a sua assinatura a este painel. Nada muda na sua loja
+          enquanto isso.
         </p>
       </section>
     );
@@ -139,23 +139,17 @@ export function CartaoDaAssinatura({
         </p>
       ) : null}
       <dl className="space-y-3 text-sm">
-        {[
-          ["Próxima cobrança", assinatura.proximaCobrancaEm],
-          ["Teste até", assinatura.testeAte],
-          ["Cliente desde", assinatura.inicioEm],
-        ].map(([rotulo, data]) =>
-          data ? (
-            <div
-              key={rotulo}
-              className="flex flex-wrap justify-between gap-x-3 gap-y-1"
-            >
-              <dt className="text-zinc-400">{rotulo}</dt>
-              <dd className="font-medium tabular-nums text-white">
-                {formatarData(data)}
-              </dd>
-            </div>
-          ) : null,
-        )}
+        {linhasDeDatasDaAssinatura(assinatura).map(({ rotulo, data }) => (
+          <div
+            key={rotulo}
+            className="flex flex-wrap justify-between gap-x-3 gap-y-1"
+          >
+            <dt className="text-zinc-400">{rotulo}</dt>
+            <dd className="font-medium tabular-nums text-white">
+              {formatarData(data)}
+            </dd>
+          </div>
+        ))}
       </dl>
       {precisaRegularizar ? (
         <p

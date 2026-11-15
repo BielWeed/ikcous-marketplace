@@ -121,6 +121,26 @@ it("a leitura segue status, identificação, cliente/produto, total/pagamento e 
   );
 });
 
+// Pedido PAGO: o botão de avançar do cartão manda a etapa SEGUINTE do fluxo
+// (e a atual como origem esperada), não repete a etapa em que o pedido já está.
+it.each([
+  { de: "pending", para: "processing" },
+  { de: "processing", para: "shipping" },
+  { de: "shipping", para: "delivered" },
+] as const)(
+  "pedido pago em $de: avançar pede $para, com $de como origem",
+  async ({ de, para }) => {
+    montar(pedido({ status: de, paymentStatus: "pago" }));
+    const principal = [...host.querySelectorAll("button")].find((b) =>
+      b.textContent?.trim().startsWith("Avançar →"),
+    );
+    expect(principal, "botão Avançar do cartão").toBeTruthy();
+    await act(async () => principal!.click());
+    expect(avancar).toHaveBeenCalledTimes(1);
+    expect(avancar).toHaveBeenCalledWith("pedido-abc123", para, de);
+  },
+);
+
 it.each(["aguardando", "recusado", "estornado"] as const)(
   "%s: avançar é secundário, não chama nada antes da confirmação e Voltar só fecha",
   async (paymentStatus) => {

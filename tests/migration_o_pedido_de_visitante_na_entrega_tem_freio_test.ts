@@ -265,10 +265,13 @@ Deno.test("394: a vigente e' a ultima redefinicao de v23 e v24 da arvore; db-app
       "20261394200000_a_v23_recusa_o_pagamento_pelo_app.sql";
     const SUCESSORA_DO_CUPOM =
       "20261397000000_o_desconto_do_cupom_e_arredondado_ao_centavo.sql";
+    // A 20261399997000 (o pedido guarda quem vai receber) sucede a 397 nas DUAS (uma chave a mais na copia do endereco).
+    const SUCESSORA_QUEM_RECEBE =
+      "20261399997000_o_pedido_guarda_quem_vai_receber.sql";
     const esperado =
       fn === V23
-        ? [nome, SUCESSORA_V23, SUCESSORA_DO_CUPOM]
-        : [nome, SUCESSORA_DO_CUPOM];
+        ? [nome, SUCESSORA_V23, SUCESSORA_DO_CUPOM, SUCESSORA_QUEM_RECEBE]
+        : [nome, SUCESSORA_DO_CUPOM, SUCESSORA_QUEM_RECEBE];
     assert.deepEqual(
       fontes.slice(-esperado.length),
       esperado,

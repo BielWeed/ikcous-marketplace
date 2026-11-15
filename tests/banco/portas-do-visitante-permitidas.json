@@ -131,6 +131,14 @@
       "porque": "Gestao de categorias do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL e so apaga categoria sem produto, banner nem regra de devolucao (migration 20261237000000); o visitante nao a executa."
     },
     {
+      "funcao": "public.assinatura_da_loja_gravar(p_chave text, p_dados jsonb, p_simular boolean)",
+      "executa": ["anon", "authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "necessaria",
+      "porque": "necessária: o app de gestão do dono grava o cartão da assinatura da loja com a chave pública da loja e a chave PRÓPRIA da loja (p_chave); anon e authenticated. Autentica ANTES de olhar os dados (SHA-256 da chave contra o hash guardado; sem chave definida, chave errada, nula ou vazia = a mesma exceção nao_autorizado), lista branca de 10 campos (recursos e observacao nunca), dados mais velhos ignorados, p_simular não grava; service_role e PUBLIC não executam. A tabela do hash (assinatura_da_loja_chave) é selada para todo papel de aplicação e definir_chave é só do service_role (classe fechada, fora desta lista)."
+    },
+    {
       "funcao": "public.assinatura_da_loja_ler()",
       "executa": ["authenticated"],
       "tipo": "leitura",

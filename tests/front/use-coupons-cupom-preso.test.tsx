@@ -276,6 +276,50 @@ describe("useCoupons.validateCoupon — cupom preso", () => {
       expect(getSession).not.toHaveBeenCalled();
     });
 
+    // O desconto é dinheiro: centavo não se arredonda no caminho (R$ 14,99 não
+    // vira R$ 15, 0,50 não vira 1). `toBe` exige o número EXATO que o banco devolveu.
+    it.each([14.99, 0.5])(
+      "cupom VÁLIDO com desconto %s devolve o valor exato, sem arredondar",
+      async (desconto) => {
+        programar({
+          data: {
+            is_valid: true,
+            discount_value: desconto,
+            error_message: "",
+          },
+          error: null,
+        });
+
+        const r = await validar("PROMO10", 100);
+
+        expect(r.valid).toBe(true);
+        expect(r.discount).toBe(desconto);
+      },
+    );
+
+    it.each([14.99, 0.5])(
+      "vaga presa com desconto %s no retorno: o valor também sai exato",
+      async (desconto) => {
+        programar(
+          {
+            data: {
+              is_valid: false,
+              discount_value: desconto,
+              error_message: FRASE_DE_HOJE,
+            },
+            error: null,
+          },
+          { data: { presa: true, volta_em_minutos: 42 }, error: null },
+        );
+
+        const r = await validar("PROMO10", 100);
+
+        expect(r.valid).toBe(false);
+        expect(r.message).toContain("Uma vaga dele está presa");
+        expect(r.discount).toBe(desconto);
+      },
+    );
+
     it("falha da PRÓPRIA validação continua sendo networkError, sem perguntar", async () => {
       rpc.mockRejectedValue(new TypeError("Failed to fetch"));
 

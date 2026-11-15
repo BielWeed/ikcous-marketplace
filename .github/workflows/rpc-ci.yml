@@ -260,6 +260,12 @@ on:
       - "scripts/publicacao/consultas/127b-antes-o-sino-do-pedido-vencido-fala-do-vencimento-base-vigente.sql"
       - "scripts/publicacao/consultas/128a-conferir-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-aplicado.sql"
       - "scripts/publicacao/consultas/128b-antes-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-base-vigente.sql"
+      - "scripts/publicacao/consultas/149a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado.sql"
+      - "scripts/publicacao/consultas/149b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente.sql"
+      - "scripts/publicacao/consultas/150a-conferir-o-pedido-guarda-quem-vai-receber-aplicado.sql"
+      - "scripts/publicacao/consultas/150b-antes-o-pedido-guarda-quem-vai-receber-base-vigente.sql"
+      - "scripts/publicacao/consultas/150c-conferir-a-loja-recebe-o-plano-por-porta-unica-aplicado.sql"
+      - "scripts/publicacao/consultas/150d-antes-a-loja-recebe-o-plano-por-porta-unica-ausente.sql"
       - "scripts/publicacao/consultas/135a-conferir-o-ranking-de-lucro-desconta-a-devolucao-aplicado.sql"
       - "scripts/publicacao/consultas/135b-antes-o-ranking-de-lucro-desconta-a-devolucao-base-vigente.sql"
       - "scripts/publicacao/consultas/140a-conferir-as-listas-do-painel-nao-repetem-ninguem-aplicado.sql"
@@ -511,6 +517,12 @@ on:
       - "scripts/publicacao/consultas/127b-antes-o-sino-do-pedido-vencido-fala-do-vencimento-base-vigente.sql"
       - "scripts/publicacao/consultas/128a-conferir-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-aplicado.sql"
       - "scripts/publicacao/consultas/128b-antes-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-base-vigente.sql"
+      - "scripts/publicacao/consultas/149a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado.sql"
+      - "scripts/publicacao/consultas/149b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente.sql"
+      - "scripts/publicacao/consultas/150a-conferir-o-pedido-guarda-quem-vai-receber-aplicado.sql"
+      - "scripts/publicacao/consultas/150b-antes-o-pedido-guarda-quem-vai-receber-base-vigente.sql"
+      - "scripts/publicacao/consultas/150c-conferir-a-loja-recebe-o-plano-por-porta-unica-aplicado.sql"
+      - "scripts/publicacao/consultas/150d-antes-a-loja-recebe-o-plano-por-porta-unica-ausente.sql"
       - "scripts/publicacao/consultas/135a-conferir-o-ranking-de-lucro-desconta-a-devolucao-aplicado.sql"
       - "scripts/publicacao/consultas/135b-antes-o-ranking-de-lucro-desconta-a-devolucao-base-vigente.sql"
       - "scripts/publicacao/consultas/140a-conferir-as-listas-do-painel-nao-repetem-ninguem-aplicado.sql"
@@ -1202,6 +1214,19 @@ jobs:
       - name: Prova viva do painel de avaliacoes que filtra o que esta sem resposta (20261399996000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-viva.cjs
+      # Migration 20261399997000 (o pedido guarda quem vai receber): create_marketplace_order_v23/v24 ganham UMA chave na copia do endereco salvo para dentro do pedido
+      # (customer_data.address.recipient_name, o "Quem vai receber" da cliente); o resto das duas funcoes e identico ao corpo da 20261397000000. Pedido com nome diferente do
+      # comprador grava o nome, sem nome/sem conta/retirada/endereco digitado continuam como antes, pedido antigo nao muda; mutantes, rollback byte a byte, pre-voo com
+      # estados estranhos, pos-voo atomico e consultas 150a/150b (mais as consultas vizinhas que aceitam o corpo novo). CLONE proprio.
+      - name: Prova viva do pedido que guarda quem vai receber (20261399997000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-pedido-guarda-quem-vai-receber-viva.cjs
+      # Migration 20261399998000 (a loja recebe o plano por uma porta unica): a tabela assinatura_da_loja_chave (hash da chave da loja; selada, sem politica), assinatura_da_loja_definir_chave (so service_role) e a PORTA
+      # assinatura_da_loja_gravar (anon e authenticated, com a chave da loja; lista branca de 10 campos, recursos e observacao nunca, mais velho ignorado, simular sem gravar, hash comparado e nao texto, nao_autorizado
+      # uniforme e ANTES de olhar os dados, corrida de duas conexoes reais); mutantes, rollback, pre/pos-voo com estados estranhos, reaplicar e consultas 150c/150d. CLONE proprio.
+      - name: Prova viva da porta unica que grava o plano da loja (20261399998000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-recebe-o-plano-por-porta-unica-viva.cjs
       # Migration 20261399993000 (o CRM e a lista de clientes nao contam a mesma pessoa duas vezes): crm__nunca_comprou tambem tira a conta cujo WhatsApp (com ou sem o 55) e o de um pedido do grupo "pediu e nao pagou"
       # (venda avulsa anulada, devolvida ou sem pagar) e get_admin_customers_paged toma UM endereco principal por cliente (o mais novo, desempate pelo menor id) antes de juntar os pedidos (a corrida dos dois
       # primeiros enderecos dobrava pedidos e total). Controle com os corpos da 20261183000000 e da 20261392000000 na MESMA fixture (o defeito), bordas (numero diferente, DDD 55, outra conta, sem WhatsApp, sem endereco,
@@ -1221,6 +1246,14 @@ jobs:
       - name: Prova viva do balcao que recusa venda sem item e com itens demais
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-balcao-recusa-venda-sem-item-e-com-itens-demais-viva.cjs
+      # Migration 20261399940000 (o cadastro cria o perfil em toda loja): o gatilho on_auth_user_created de auth.users (AFTER INSERT por linha, chama handle_new_user), que a loja clonada do baseline
+      # nunca teve, so se ausente, e o reparo de quem ja se cadastrou sem perfil (ganha a mesma linha que o gatilho criaria; quem ja tem perfil, quem tem papel admin/gerente/vendedor e quem tem nome
+      # ou telefone acima do teto NAO sao tocados). Este passo LIGA o gatilho no clone dele: o efemero das outras provas o deixa DESLIGADO (aplicar-migrations.cjs). Controle sem o gatilho (o defeito),
+      # cadastro com e sem metadado, teto de nome/telefone recusado, papel sem EXECUTE na funcao ainda cria o perfil, mutantes, reaplicar 2x e CRLF, rollback sem tocar dado, pre-voo, conferencia,
+      # atomicidade, lock_timeout em auth.users e consultas 149a/149b. CLONE proprio.
+      - name: Prova viva do cadastro que cria o perfil em toda loja (20261399940000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-cadastro-cria-o-perfil-em-toda-loja-viva.cjs
       - name: Prova viva do Financeiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/financeiro-viva.cjs
