@@ -1,6 +1,7 @@
 import { LazyImage } from "@/components/LazyImage";
 import { BotaoDeFavorito } from "@/components/ui/custom/BotaoDeFavorito";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
+import { useTelaDeComputador } from "@/hooks/useTelaDeComputador";
 import { CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO } from "@/lib/cor-do-preco-promocional";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product } from "@/types";
@@ -12,6 +13,7 @@ import {
   ordenarOfertas,
   useAcoesDaOferta,
 } from "./PremiumOffers";
+import { SetasDaFaixaDeOfertas } from "./SetasDaFaixaDeOfertas";
 
 /** O módulo só é baixado quando a vitrine de Ofertas escolheu Compacto. */
 export default function OfertasCompactas({
@@ -31,6 +33,7 @@ export default function OfertasCompactas({
   const ofertas = ordenarOfertas(products, ordemDaLojista, vitrineDeOfertas);
   const rola = ofertas.length > 2;
   const [pagina, setPagina] = useState(0);
+  const computador = useTelaDeComputador();
   const [ref, api] = useEmblaCarousel({
     align: "start",
     containScroll: "trimSnaps",
@@ -55,7 +58,13 @@ export default function OfertasCompactas({
       data-testid="ofertas-compactas"
       className={cn("relative min-h-[392px] bg-white py-4", className)}
     >
-      <div className="mb-5 flex min-h-6 items-center justify-between gap-3 px-5 lg:px-0">
+      <div
+        className={cn(
+          "mb-5 flex min-h-6 items-center justify-between gap-3 px-5 lg:px-0",
+          // Reserva o canto das setas (só no computador) para o título não passar por baixo delas.
+          computador && rola && "lg:pr-28",
+        )}
+      >
         <h2 className="min-w-0 break-words text-xl font-extrabold leading-6 tracking-tight text-zinc-950">
           {title}
         </h2>
@@ -113,6 +122,10 @@ export default function OfertasCompactas({
             />
           ))}
       </div>
+      <SetasDaFaixaDeOfertas
+        api={api}
+        itens={vitrineDeOfertas ? "ofertas" : "produtos"}
+      />
     </section>
   );
 }
