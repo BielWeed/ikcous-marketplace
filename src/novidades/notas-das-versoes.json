@@ -11,6 +11,8 @@
       "Loja, no computador: no pedido, o botão \"Retomar pagamento\" deixa de ocupar a largura inteira do cartão.",
       "Loja, no computador: em telas de 1536 px ou mais, o Carrinho e Meus pedidos ficam alinhados com o cabeçalho; os comentários das avaliações têm linhas mais curtas.",
       "Loja, no computador: ao abrir um produto por link ou ao recarregar a página, o desenho de carregamento já tem a mesma disposição da página pronta.",
+      "Loja, página do produto: ao clicar em Avaliações ou Perguntas, a aba acesa deixa de voltar para a anterior quando a tela rola um pouco, e a troca de aba acompanha a rolagem na hora certa, no computador e no celular.",
+      "Loja, página do produto: ao mudar o tamanho da janela ou girar o aparelho, a galeria continua na foto que a cliente estava vendo, em vez de pular para outra.",
       "Painel, Marca: a partir de 1280 px, o campo \"Nome da loja\" ocupa a largura toda da seção.",
       "Painel, Clientes: no tablet e no computador, valores grandes cabem no cartão do cliente sem cobrir a data.",
       "Painel, Balcão: de 1024 a 1279 px, os botões de cada item da venda ficam dentro do cartão."
