@@ -113,8 +113,7 @@ describe("carrossel — setas só no computador", () => {
       for (const classe of [
         "hidden",
         "lg:flex",
-        "h-11",
-        "w-11",
+        "size-11",
         "focus-visible:ring-2",
       ]) {
         expect(botao!.classList.contains(classe), classe).toBe(true);
