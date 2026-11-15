@@ -15,7 +15,7 @@ export function OfertasCompactasEsqueleto({
             data-cartao-esqueleto
             className="flex min-h-[290px] w-[165px] shrink-0 animate-pulse flex-col rounded-[20px] border border-zinc-200 bg-white max-[359px]:w-[145px] lg:w-[calc((100%-30px)/4)] lg:max-w-[280px] xl:w-[calc((100%-40px)/5)]"
           >
-            <div className="h-[136px] w-full shrink-0 rounded-t-[19px] bg-[#ECECEF]" />
+            <div className="h-[136px] w-full shrink-0 rounded-t-[19px] bg-[#ECECEF] lg:aspect-[4/3] lg:h-auto" />
             <div className="flex flex-1 flex-col p-2.5">
               <div className="mb-1.5 min-h-8 space-y-1">
                 <div className="h-3 w-full rounded bg-[#ECECEF]" />

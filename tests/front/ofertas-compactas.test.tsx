@@ -31,6 +31,9 @@ vi.mock("@/components/LazyImage", () => ({
 }));
 
 await import("@/components/ui/custom/OfertasCompactas");
+const { OfertasCompactasEsqueleto } = await import(
+  "@/components/ui/custom/OfertasCompactasEsqueleto"
+);
 await import("@/components/ui/custom/OfertasLateral");
 await import("@/components/ui/custom/OfertasLateralDuplo");
 
@@ -128,6 +131,29 @@ describe("Ofertas Compactas", () => {
     expect(host.querySelector("[data-foto-oferta] img")?.className).toBe(
       "size-full object-cover",
     );
+  });
+
+  it("esqueleto reserva a mesma proporção da foto no computador", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const raiz = createRoot(container);
+    await act(async () => raiz.render(<OfertasCompactasEsqueleto />));
+    const fotos = container.querySelectorAll<HTMLElement>(
+      "[data-cartao-esqueleto] > div:first-child",
+    );
+    expect(fotos).toHaveLength(3);
+    for (const foto of fotos) {
+      expect(
+        foto.className
+          .split(" ")
+          .filter((classe) => !classe.startsWith("lg:"))
+          .join(" "),
+      ).toBe("h-[136px] w-full shrink-0 rounded-t-[19px] bg-[#ECECEF]");
+      expect(foto.classList.contains("lg:h-auto")).toBe(true);
+      expect(foto.classList.contains("lg:aspect-[4/3]")).toBe(true);
+    }
+    await act(async () => raiz.unmount());
+    container.remove();
   });
 
   it("foto lateral do cartão único fica byte a byte igual", async () => {
