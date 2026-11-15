@@ -56,7 +56,7 @@ describe("a tela do PDV funciona deitada sem cortar conteúdo", () => {
 
   it("título e resumo do fechamento ficam dentro do corpo que rola", () => {
     const codigo = ler("src/components/admin/pdv/FechamentoDaVenda.tsx");
-    const inicio = codigo.indexOf('className="pdv-checkout-body"');
+    const inicio = codigo.search(/\bclassName="pdv-checkout-body(?=["\s])/);
     const barra = codigo.indexOf('<AcaoDaBarra aria-label="Registrar a venda"');
     const corpo = codigo.slice(inicio, barra);
     expect(inicio).toBeGreaterThan(-1);
