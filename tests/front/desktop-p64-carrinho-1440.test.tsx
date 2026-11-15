@@ -12,9 +12,9 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
+import postcss from "postcss";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
-import postcss from "postcss";
 import tailwindcss from "tailwindcss";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
