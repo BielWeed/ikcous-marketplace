@@ -115,7 +115,7 @@ function BlocoNumerado({
   return (
     <section
       aria-labelledby={idDoTitulo}
-      className="admin-glass rounded-2xl border border-admin-border p-4 shadow-2xl sm:p-6"
+      className="admin-glass rounded-2xl border border-admin-border p-4 shadow-2xl sm:p-6 lg:min-w-0 xl:self-start"
     >
       <div className="flex items-center gap-3">
         <span
@@ -469,7 +469,7 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
 
   return (
     <div className="pb-admin relative min-h-screen bg-admin-bg font-sans text-zinc-400 lg:pb-12">
-      <header className="admin-topo-cabecalho mx-auto flex h-[76px] w-full max-w-4xl items-center justify-between gap-3 px-5">
+      <header className="admin-topo-cabecalho mx-auto flex h-[76px] w-full max-w-4xl items-center justify-between gap-3 px-5 lg:max-w-none lg:px-6">
         <div className="min-w-0 [&_h1]:normal-case [&_h1]:tracking-tight [&_h1_span]:not-italic">
           <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-about-store"]} />
         </div>
@@ -478,7 +478,7 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
       {/* Fora do fieldset de propósito: ele fica travado com a leitura
           falha, e o "Tentar de novo" do aviso tem de seguir ativo. */}
       {isLoaded && configFalhou && (
-        <div className="mx-auto max-w-4xl px-4 pt-4">
+        <div className="mx-auto max-w-4xl px-4 pt-4 lg:max-w-none lg:px-6">
           <AvisoDaLojaSemDados
             onTentarDeNovo={() => void refresh({ onlyConfig: true })}
           />
@@ -492,10 +492,10 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
       <fieldset
         ref={formulario}
         disabled={salvandoTudo || !active || configFalhou}
-        className="mx-auto min-w-0 max-w-4xl space-y-4 px-4 pt-4"
+        className="mx-auto min-w-0 max-w-4xl space-y-4 px-4 pt-4 lg:max-w-none lg:px-6 xl:grid xl:grid-cols-2 xl:gap-6 xl:space-y-0"
       >
         {isOffline && (
-          <div className="flex select-none items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-xs font-bold uppercase tracking-wider text-red-400 duration-300 animate-in fade-in slide-in-from-top-2">
+          <div className="flex select-none items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-xs font-bold uppercase tracking-wider text-red-400 duration-300 animate-in fade-in slide-in-from-top-2 xl:col-span-2">
             <AlertTriangle className="size-5 shrink-0 animate-pulse text-red-500" />
             <span>
               Você está offline. O salvamento das configurações está
@@ -507,7 +507,7 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
         {passosAqui.length > 0 && (
           <div
             data-falta-preencher
-            className="flex flex-wrap items-center gap-2 rounded-2xl border border-admin-gold/20 bg-admin-gold/5 p-3"
+            className="flex flex-wrap items-center gap-2 rounded-2xl border border-admin-gold/20 bg-admin-gold/5 p-3 xl:col-span-2"
           >
             <span className="text-sm font-bold text-white">
               Falta preencher:
@@ -675,13 +675,13 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
           />
         </BlocoNumerado>
 
-        <p className="px-2 pb-2 text-[11px] leading-relaxed text-zinc-500">
+        <p className="px-2 pb-2 text-[11px] leading-relaxed text-zinc-500 xl:col-span-2">
           Quer ver o resultado? Abra o Perfil do app e toque em "Sobre a Loja" —
           a página mostra exatamente o que está salvo aqui.
         </p>
       </fieldset>
       <AcaoDaBarra ativa={active} aria-label="Ações de Minha loja">
-        <div className="w-full min-w-0">
+        <div className="w-full min-w-0 lg:px-6">
           <div
             role="status"
             aria-live="polite"
