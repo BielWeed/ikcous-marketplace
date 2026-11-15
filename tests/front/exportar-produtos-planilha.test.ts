@@ -3,6 +3,7 @@ import {
   linhasDosProdutos,
   produtosEmCsv,
 } from "@/lib/exportar-produtos-planilha";
+import { mapProductFromDB } from "@/lib/mappers";
 import type { Product, ProductVariant } from "@/types";
 import { describe, expect, it } from "vitest";
 
@@ -113,6 +114,20 @@ describe("CSV para Excel em português", () => {
 });
 
 describe("planilha de produtos", () => {
+  it("produto sem foto vindo do mapeador não exporta o placeholder como foto real", () => {
+    const p = mapProductFromDB({
+      id: "sem-foto",
+      nome: "Sem foto",
+      preco_venda: 10,
+      imagem_urls: [],
+    });
+    expect(p.images).toEqual(["https://placehold.co/600x400?text=Sem+Imagem"]);
+    expect(registro(p).Fotos).toBe("");
+    expect(
+      registro({ ...p, images: [...p.images, "https://example.org/foto.jpg"] })
+        .Fotos,
+    ).toBe("https://example.org/foto.jpg");
+  });
   it("organiza cabeçalho em português e preserva texto, promoção e números", () => {
     const r = registro(produto());
     expect(Object.keys(r).slice(0, 6)).toEqual([

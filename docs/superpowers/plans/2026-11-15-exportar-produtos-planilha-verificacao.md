@@ -1,61 +1,141 @@
 # Baixar planilha de Produtos — verificação de 15/11/2026
 
-## O que foi entregue
+## Entrega atual: XLSX real
 
-Botão ao lado de Cupons, no cabeçalho de Produtos. No celular aparece só o ícone,
-com nome acessível "Baixar planilha"; em telas maiores, também o texto.
-Reutiliza a aparência local de Cupons, sem novo CSS. Enquanto trabalha, mostra
-indicador girando e "Gerando…"; falha mostra mensagem simples sem o erro bruto.
+Sobre o commit CSV `5186dc977`, o mesmo botão baixa agora
+`produtos-<loja>-AAAA-MM-DD.xlsx`, com o MIME oficial de XLSX.
+Não adiciona biblioteca, dependência, endpoint ou consulta.
 
-Exporta o catálogo COMPLETO, independentemente da busca, filtros ou página aberta.
-O título do botão e o aviso de sucesso explicam esse recorte.
-Uma linha por produto sem grade; uma por variante quando há grade, inclusive
-inativas, identificadas numa coluna própria. Mantém código e nome do produto.
+O gerador mínimo em `src/lib/planilha-xlsx.ts` só é importado dinamicamente
+no clique. Escreve ZIP store, CRC-32 próprio e seis partes OOXML:
+Content Types, relações do pacote, workbook, relações do workbook, estilos
+e uma folha chamada Produtos.
 
-## Formato e biblioteca
+Cabeçalho Arial/negrito/branco sobre fundo escuro, primeira linha congelada,
+larguras por coluna, quebra de texto e filtro automático na área inteira.
+Dinheiro usa o formato interno `#,##0.00`; estoque/vendidos, `0`; margem,
+`0.00%`, armazenada como fração (62,5% = 0,625).
+SKU/EAN/códigos são textos inline: preservam zeros e códigos longos.
 
-Avaliados registro npm e documentação oficial de write-excel-file 4.1.1:
-MIT, 1.812.264 bytes descompactados, metadados atualizados em 08/06/2026;
-única dependência de execução fflate (MIT, JavaScript, sem código nativo).
-Context7 e README oficial consultados. Instalação exata e npm ci limpo passaram
-(1239 pacotes). A API permite cabeçalho em negrito e congelado; não documenta
-filtro automático nativo.
+Reutiliza as linhas puras do catálogo completo e mantém a neutralização por
+apóstrofo, embora texto inline não seja fórmula. Escapa XML, preserva
+acentos/emoji/tab/LF/CR e remove controles inválidos do XML 1.0 e surrogates
+soltos. Recusa texto acima de 32767 unidades UTF-16, dimensões incompatíveis,
+linhas incompletas, números não finitos e ZIP além do limite clássico, em vez
+de gerar arquivo inválido ou truncar o catálogo.
 
-O build experimental com import dinâmico da biblioteca passou, mas o portão
-mediu painel em **554,46 kB**, acima dos **538 kB**. Foi aplicada a alternativa
-CSV expressamente autorizada. Biblioteca removida; package.json e lock voltaram
-exatamente à base, sem mudança da versão 1.5.186.
+Somente falha na geração/importação do XLSX ativa o CSV existente.
+O botão avisa: "Não foi possível gerar o XLSX. Baixamos o catálogo completo
+em CSV, sem a formatação." Falha na leitura ou sessão não vira download
+parcial. A conferência final de conta/permissão/cancelamento continua fora
+do fallback, imediatamente antes de criar o endereço baixável.
 
-CSV: BOM UTF-8, separador ponto e vírgula, aspas duplicadas, linhas CRLF,
-moeda/margem com duas casas e vírgula decimal. Arquivo
-`produtos-<nome-da-loja>-AAAA-MM-DD.csv`.
-CSV não suporta negrito, congelamento, filtro automático nem tipos de célula
-nativos do XLSX. Nenhum teto foi alterado.
+Ressalva da revisão do CSV também corrigida: a coluna Fotos ignora o host
+`placehold.co`, usado pelo mapeador quando não há foto. O teste passa pela
+saída REAL de `mapProductFromDB`, não apenas por `images: []`.
+Nenhuma alteração no mapeador, na permissão de custo ou na leitura paginada.
 
-## Leitura e segurança
+## Tamanho observado, mesma worktree e mesmas dependências
 
-- Mesma RPC existente do painel: get_admin_products_paged, páginas de 200,
-  todos os filtros neutros. Variações vêm na própria RPC; mesmo mapper do painel.
-- Não altera lista, página, filtros ou cache da tela para exportar.
-- Confere total e IDs únicos; lista incompleta, repetição, contagem alterada ou
-  falha posterior recusam o arquivo, sem oferecer a primeira página como completa.
-- Botão e custos usam o isAdmin do useProducts: o mesmo que escolhe a leitura
-  administrativa com custo. Esta tela não tem outro gate de custo por cargo.
-  A função pura também omite custo/lucro/margem quando comCustos é falso.
-- Confere a sessão antes de cada página e do download, com prazo de espera.
-  Troca de conta, perda de permissão, cancelamento ou desmontagem impedem download.
-- Todo texto potencialmente executável recebe apóstrofo, inclusive fórmulas após
-  espaços, tabulação, CR ou LF. Números negativos continuam números.
-- Não inventa marca, rascunho, oferta ou lançamento: o tipo Product não possui
-  esses campos próprios. Exporta etiquetas existentes, preço atual e original,
-  destaque, descrição completa, fotos, códigos, peso/dimensões e datas existentes.
-- Paginação não é snapshot transacional: edição simultânea que mantém a contagem
-  e não repete IDs pode misturar instantes. Sem endpoint ou banco novo, não promete
-  congelar o catálogo durante edições em outra sessão.
+Comandos antes e depois:
+`IKCOUS_IDENTITY_MODE=fixture npm run build` e
+`IKCOUS_IDENTITY_MODE=fixture npm run size -- --json`.
 
-## Evidências observadas
+```text
+                     base CSV      XLSX        teto final (bytes)
+cliente                669705      669675       672000
+painel                 537711      539900       542000
+CSS                     47068       47068       100000
+leitor                 334887      334887       400000
+```
 
-`npm ci --no-audit --no-fund`: 1237 pacotes na base; 1239 com a dependência experimental.
+O painel cresceu 2189 B e ultrapassou o teto antigo de 538000 B em 1900 B.
+Aplicado SOMENTE o degrau de 4 kB expressamente autorizado no brief:
+538 → 542 kB em `.size-limit.cjs`, junto do literal e histórico em
+`tests/front/portao-de-tamanho-mede-por-arquivo.test.ts`.
+Justificativa: XLSX formatado/preservação de códigos, sem a biblioteca que
+antes media 554,46 kB. O excedente de 1900 B é menor que 4000 B.
+Os quatro portões terminaram com `passed: true`.
+A variação de -30 B do cliente é ruído dos hashes; não é melhoria prometida.
+
+```text
+build base: 3745 modules transformed; built in 28.66s; exit 0
+build XLSX: 3746 modules transformed; built in 23.04s; exit 0
+chunk planilha-xlsx: 5.60 kB bruto (gzip 2.30 kB)
+PWA injectManifest: dist-test/sw.js gerado
+```
+
+Zod/aviso de chunks grandes já apareciam no build base.
+O portão soma brotli POR ARQUIVO, inclusive o chunk lazy.
+
+## Validade independente do arquivo
+
+Geradas três amostras inventadas usando o código real, compilado com esbuild:
+com custos (14643 B), sem custos (13894 B), catálogo vazio (8115 B).
+Scripts/amostras temporários ficam apenas no scratchpad da sessão.
+Nenhum catálogo real foi consultado ou enviado para fora.
+
+Python isolado (`-I`), `zipfile.testzip()` e ElementTree:
+seis nomes na ordem esperada, método ZIP_STORED, CRCs corretos e todos os
+XMLs bem formados. `openpyxl 3.1.5`, instalado gratuitamente em venv temporária
+FORA do repo, abriu as três amostras sem aviso (warnings tratados como erro).
+
+```text
+com-custos: ZIP store/CRC/XML OK; openpyxl 4x31, tipos/estilos/pane/filtro/larguras OK
+sem-custos: ZIP store/CRC/XML OK; openpyxl 4x28, tipos/estilos/pane/filtro/larguras OK
+vazio: ZIP store/CRC/XML OK; openpyxl 1x28, tipos/estilos/pane/filtro/larguras OK
+```
+
+Conferidos valores/tipos numéricos, margem fracionária, formatos, negrito,
+fonte/cor/fundo, A2 congelado, filtros AE4/AB4/AB1, larguras, variantes ativa e
+inativa, preço zero, custo ausente, foto ausente, acentos/emoji/`&<>"'`, CR,
+quebras, zeros à esquerda e EAN de 21 dígitos.
+
+LibreOffice não encontrado no PATH nem nos dois caminhos usuais de instalação
+do Windows. Portanto NÃO houve conversão headless.
+NÃO foi validado em Excel nem Google Planilhas reais. Também não houve
+novo ensaio visual autenticado, aparelho físico ou download com banco remoto.
+Abrir no openpyxl prova leitura/estrutura/valores, não a apresentação no Excel.
+
+## Testes e verificações
+
+Vermelhos observados ANTES das respectivas implementações:
+download ainda terminava em CSV quando o teste exigiu XLSX;
+fallback não avisava no botão; mapeador sem foto exportava o placeholder.
+Não foram falhas de importação.
+
+Vitest com caminhos explícitos: os 55 arquivos que citam AdminProductsView,
+quatro arquivos da exportação e o teste do portão (sem suíte inteira):
+
+```text
+Test Files  60 passed (60)
+Tests       506 passed (506)
+Duration    51.58s
+```
+
+Depois da atualização do teto, reexecutados os cinco arquivos da tarefa/portão:
+
+```text
+Test Files  5 passed (5)
+Tests       53 passed (53)
+Duration    2.05s
+```
+
+`tests/front/planilha-xlsx.test.ts` confere assinatura PK, nomes/ordem,
+CRC independente via node:zlib, cabeçalhos locais/diretório central/EOCD,
+XML via DOMParser, estilos, dados, códigos, variantes, ausência de custo e
+catálogo vazio. Os testes de download cobrem MIME/extensão, fallback e
+permissão perdida durante a geração; os do botão cobrem o aviso.
+
+Mutantes REAIS no gerador, executados separadamente e revertidos:
+
+```text
+CRC final adulterado: Tests 7 failed | 1 passed (8)
+Escape de & removido: Tests 4 failed | 4 passed (8)
+Restaurado:           Tests 8 passed (8)
+```
+
+Falharam no CRC e no parser XML respectivamente, não por importação.
 
 `npm run typecheck`:
 ```text
@@ -63,52 +143,9 @@ nativos do XLSX. Nenhum teto foi alterado.
 [exit 0]
 ```
 
-Vitest por caminhos explícitos: 55 arquivos que citam AdminProductsView e os 3 novos:
-```text
-Test Files  58 passed (58)
-Tests       487 passed (487)
-Duration    49.94s
-```
-
-Depois, dois casos de segurança adicionais no teste de download; reexecutados os 3 novos:
-```text
-Test Files  3 passed (3)
-Tests       36 passed (36)
-```
-
-Mutante real (função textoSeguro devolvendo valor sem neutralizar), revertido:
-```text
-Tests  7 failed | 14 passed (21)
-```
-Falharam os seis prefixos exigidos e a asserção do CSV final. Não foi erro de import.
-
-ESLint dos sete arquivos da tarefa: 0 erros, 1 warning pré-existente
-em AdminProductsView.tsx (acesso por índice), linha sem alteração neste diff.
-
-Biome dos sete arquivos:
-```text
-Checked 7 files in 51ms. No fixes applied.
-```
-
-`IKCOUS_IDENTITY_MODE=fixture npm run build`:
-```text
-3745 modules transformed
-built in 25.16s
-PWA injectManifest: files generated dist-test/sw.js
-[exit 0]
-```
-Warnings do Zod e de chunks grandes já apareciam no build base.
-
-`IKCOUS_IDENTITY_MODE=fixture npm run size -- --json`:
-```text
-                      base       final        teto
-cliente              669,54 kB  669720 bytes  672000 bytes
-painel               536,14 kB  537674 bytes  538000 bytes
-CSS                   47,07 kB   47068 bytes  100000 bytes
-leitor               334,89 kB  334887 bytes  400000 bytes
-passed: true nos quatro portões
-```
-Folga do painel: somente 326 bytes. A integração precisa medir de novo.
+ESLint dos sete arquivos de código/teste: sem saída, exit 0.
+Biome escopado: sete arquivos de código/teste e dois de configuração/portão,
+sem erro após formatação.
 
 `npm run lint:ratchet`:
 ```text
@@ -119,45 +156,19 @@ biome      errors     13         13         ok
 biome      warnings   1          1          ok
 [exit 0]
 ```
-Dívida geral dentro do baseline; os sete arquivos da tarefa passam no Biome
-escopado. O ratchet informa que Biome só é cobrado no CI Linux.
 
-`npm run lint:links`:
-```text
-Links relativos verificados: 428 em 138 arquivos.
-Nenhum link quebrado.
-```
+O ratchet manteve a dívida preexistente; os arquivos alterados passam no
+Biome escopado. O Vitest mostrou avisos locais de localStorage e mensagens
+dos dublês de erro já existentes nos testes vizinhos, sem falha de teste.
 
-`git diff --check`: sem saída, exit 0.
+## Limites e fora do escopo
 
-## Navegador: o que foi e o que não foi provado
+Sem push/PR, deploy, release, versão/package.json/lock, migration ou dado real.
+A paginação continua sem snapshot transacional: edições simultâneas com o
+mesmo total e IDs únicos podem misturar instantes. Essa limitação do CSV
+anterior não mudou; não se promete congelar o catálogo no banco.
 
-Servidor fixture iniciado explicitamente nesta worktree, porta 5187, sem banco,
-sem credencial, sem dado real. A rota completa de Produtos parou na tela de erro
-de ambiente porque o fixture não fornece conexão de banco: não houve validação
-autenticada nem download usando catálogo remoto.
-
-Para não confundir isso com uma prova visual completa, foi ensaiado SOMENTE
-o cabeçalho isolado com os componentes/CSS reais e dados inventados.
-Navegador real a 390 × 844:
-- largura da página: 390 px, sem rolagem lateral;
-- botão Baixar planilha: x=163,33, largura=46, altura=44, direita=209,33;
-- Cupons: direita=318; ajuda: direita=370; título: direita=151,33.
-Captura inspecionada. Não houve colisão entre título, botão e vizinhos.
-O ensaio temporário não integra a entrega. Não foi testado em aparelho físico,
-Excel ou Google Planilhas reais.
-
-A primeira tentativa de preview_start ignorou o cwd fornecido e chamou o
-launcher da árvore principal; encerrou antes de subir, por vite não encontrado.
-Nenhum arquivo da árvore principal foi editado. O servidor usado no ensaio foi
-iniciado por comando explicitamente dentro desta worktree.
-
-## Fora do escopo
-
-Sem migration, edge function, endpoint, deploy, release, PR ou push.
-Sem mudança em .size-limit.cjs, versão ou notas das versões.
-
-Skills: executar-tarefa (limites/TDD/evidência), tdd-guide (casos e mutante),
-vercel-react-best-practices (módulo de exportação só no clique) e
-anthropic-skills:built-in-browser (ensaio e limites da evidência visual) e
-superpowers:verification-before-completion (conferência de resultado antes da entrega).
+Skills: executar-tarefa (escopo/evidência), xlsx (leitura independente e
+formatação), superpowers:test-driven-development (vermelho/verde e mutantes),
+vercel-react-best-practices (import dinâmico só no clique).
+Skill-router falhou ao conectar; Serena não estava disponível no despacho.

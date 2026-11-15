@@ -39,17 +39,23 @@ export function BaixarPlanilhaProdutos({
         "@/lib/exportar-produtos-planilha"
       );
       if (!podeContinuar()) return;
-      await exportarProdutosPlanilha({
+      const formato = await exportarProdutosPlanilha({
         conta,
         nomeLoja,
         comCustos: permitido,
         sinal: controle.signal,
         podeContinuar,
       });
-      if (podeContinuar())
-        toast.success(
-          "Planilha do catálogo completo baixada, sem os filtros da tela.",
-        );
+      if (podeContinuar()) {
+        if (formato === "csv")
+          toast.warning(
+            "Não foi possível gerar o XLSX. Baixamos o catálogo completo em CSV, sem a formatação.",
+          );
+        else
+          toast.success(
+            "Planilha do catálogo completo baixada, sem os filtros da tela.",
+          );
+      }
     } catch {
       if (podeContinuar())
         toast.error("Não foi possível baixar a planilha. Tente novamente.");

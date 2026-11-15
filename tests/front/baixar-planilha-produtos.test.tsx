@@ -4,15 +4,18 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { exportar, sucesso, erro } = vi.hoisted(() => ({
+const { exportar, sucesso, erro, aviso } = vi.hoisted(() => ({
   exportar: vi.fn(),
   sucesso: vi.fn(),
   erro: vi.fn(),
+  aviso: vi.fn(),
 }));
 vi.mock("@/lib/exportar-produtos-planilha", () => ({
   exportarProdutosPlanilha: exportar,
 }));
-vi.mock("sonner", () => ({ toast: { success: sucesso, error: erro } }));
+vi.mock("sonner", () => ({
+  toast: { success: sucesso, error: erro, warning: aviso },
+}));
 
 let root: Root;
 let host: HTMLDivElement;
@@ -83,6 +86,17 @@ describe("botão de planilha", () => {
     expect(sucesso).toHaveBeenCalledWith(
       expect.stringContaining("catálogo completo"),
     );
+  });
+  it("avisa que o CSV alternativo não tem formatação, sem anunciar sucesso de XLSX", async () => {
+    exportar.mockResolvedValue("csv");
+    await montar();
+    await clicar();
+    expect(aviso).toHaveBeenCalledWith(
+      "Não foi possível gerar o XLSX. Baixamos o catálogo completo em CSV, sem a formatação.",
+    );
+    expect(sucesso).not.toHaveBeenCalled();
+    expect(erro).not.toHaveBeenCalled();
+    expect(host.querySelector("button")!.disabled).toBe(false);
   });
   it("informa erro simples sem exibir o erro cru do servidor", async () => {
     exportar.mockRejectedValue(new Error("resposta privada"));

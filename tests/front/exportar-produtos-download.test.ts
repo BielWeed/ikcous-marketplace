@@ -1,4 +1,5 @@
 import { exportarProdutosPlanilha } from "@/lib/exportar-produtos-planilha";
+import * as planilha from "@/lib/planilha-xlsx";
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -62,7 +63,11 @@ describe("download do catálogo pela porta já usada no painel", () => {
         total_count: 2,
       }),
     );
-    await exportarProdutosPlanilha(opcoes);
+    expect(await exportarProdutosPlanilha(opcoes)).toBe("xlsx");
+    const blob = vi.mocked(URL.createObjectURL).mock.calls[0][0] as Blob;
+    expect(blob.type).toBe(
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
     expect(rpc).toHaveBeenNthCalledWith(1, "get_admin_products_paged", {
       p_search: "",
       p_category: "all",
@@ -79,11 +84,42 @@ describe("download do catálogo pela porta já usada no painel", () => {
     expect(sessao).toHaveBeenCalledWith("conta-teste");
     expect(links).toHaveLength(1);
     expect(links[0].download).toMatch(
-      /^produtos-loja-arvore-\d{4}-\d{2}-\d{2}\.csv$/,
+      /^produtos-loja-arvore-\d{4}-\d{2}-\d{2}\.xlsx$/,
     );
     expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
     vi.advanceTimersByTime(30_000);
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:arquivo-de-teste");
+  });
+  it("falha do gerador baixa CSV automaticamente, com extensão e MIME próprios", async () => {
+    rpc.mockReturnValue(resposta({ data: [linha("p1")], total_count: 1 }));
+    vi.spyOn(planilha, "gerarXlsx").mockImplementationOnce(() => {
+      throw new Error("não foi possível gerar");
+    });
+    expect(await exportarProdutosPlanilha(opcoes)).toBe("csv");
+    expect(links).toHaveLength(1);
+    expect(links[0].download).toMatch(/\.csv$/);
+    const blob = vi.mocked(URL.createObjectURL).mock.calls[0][0] as Blob;
+    expect(blob.type).toBe("text/csv;charset=utf-8");
+  });
+  it("texto acima do limite do Excel usa o CSV sem truncar o catálogo", async () => {
+    rpc.mockReturnValue(
+      resposta({
+        data: [{ ...linha("p1"), nome: "a".repeat(32768) }],
+        total_count: 1,
+      }),
+    );
+    expect(await exportarProdutosPlanilha(opcoes)).toBe("csv");
+    expect(links[0].download).toMatch(/\.csv$/);
+  });
+  it("permissão perdida na geração do XLSX impede também o fallback e o download", async () => {
+    rpc.mockReturnValue(resposta({ data: [linha("p1")], total_count: 1 }));
+    vi.spyOn(planilha, "gerarXlsx").mockImplementationOnce(() => {
+      opcoes.podeContinuar = () => false;
+      throw new Error("geração interrompida");
+    });
+    await expect(exportarProdutosPlanilha(opcoes)).rejects.toThrow();
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+    expect(links).toHaveLength(0);
   });
   it("sem sessão vigente não consulta nem baixa", async () => {
     sessao.mockResolvedValue(false);

@@ -42,7 +42,7 @@ interface OpcoesDaPlanilha {
 
 export async function exportarProdutosPlanilha(
   opcoes: OpcoesDaPlanilha,
-): Promise<void> {
+): Promise<"xlsx" | "csv"> {
   const [
     { supabase },
     { mapProductFromDB },
@@ -95,11 +95,22 @@ export async function exportarProdutosPlanilha(
       total: Number(resposta.total_count),
     };
   });
-  // XLSX mediu 554,46 kB no painel (teto 538). CSV não traz biblioteca
-  // adicional e abre com acentos e números decimais no Excel em português.
-  const blob = new Blob([produtosEmCsv(produtos, opcoes.comCustos)], {
-    type: "text/csv;charset=utf-8",
-  });
+  let formato: "xlsx" | "csv" = "xlsx";
+  let blob: Blob;
+  try {
+    const { gerarXlsx } = await import("./planilha-xlsx");
+    blob = new Blob(
+      [gerarXlsx(linhasDosProdutos(produtos, opcoes.comCustos))],
+      {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      },
+    );
+  } catch {
+    formato = "csv";
+    blob = new Blob([produtosEmCsv(produtos, opcoes.comCustos)], {
+      type: "text/csv;charset=utf-8",
+    });
+  }
   await conferir();
   const link = document.createElement("a");
   const url = URL.createObjectURL(blob);
@@ -112,7 +123,7 @@ export async function exportarProdutosPlanilha(
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "")
       .slice(0, 80) || "loja";
-  link.download = `produtos-${loja}-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.download = `produtos-${loja}-${new Date().toISOString().slice(0, 10)}.${formato}`;
   document.body.append(link);
   try {
     link.click();
@@ -120,6 +131,7 @@ export async function exportarProdutosPlanilha(
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 30_000);
   }
+  return formato;
 }
 
 export function produtosEmCsv(produtos: Product[], comCustos: boolean): string {
@@ -222,7 +234,15 @@ export function linhasDosProdutos(
           p.heightCm ?? "",
           p.lengthCm ?? "",
           p.description,
-          p.images.join("\n"),
+          p.images
+            .filter((url) => {
+              try {
+                return new URL(url).hostname !== "placehold.co";
+              } catch {
+                return true;
+              }
+            })
+            .join("\n"),
           v?.imageUrl ?? "",
           p.isBestseller ? "Sim" : "Não",
           p.freeShipping ? "Sim" : "Não",
