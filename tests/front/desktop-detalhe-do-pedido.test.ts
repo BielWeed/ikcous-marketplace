@@ -9,9 +9,13 @@ const fonte = readFileSync("src/views/customer/OrderDetailsView.tsx", "utf8");
 function classeDepoisDoMarcador(marcador: string) {
   const inicio = fonte.indexOf(marcador);
   expect(inicio).toBeGreaterThanOrEqual(0);
-  return (
-    fonte.slice(inicio).match(/className=(?:\{cn\(\s*)?"([^"]+)"/)?.[1] ?? ""
-  );
+  // Primeiro literal entre aspas depois de `className=` (com ou sem `{cn(`).
+  const depois = fonte.slice(inicio);
+  const atributo = depois.indexOf("className=");
+  if (atributo < 0) return "";
+  const abre = depois.indexOf('"', atributo);
+  const fecha = abre < 0 ? -1 : depois.indexOf('"', abre + 1);
+  return fecha < 0 ? "" : depois.slice(abre + 1, fecha);
 }
 
 describe("detalhe do pedido no computador — P10", () => {
