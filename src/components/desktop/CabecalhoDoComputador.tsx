@@ -248,6 +248,9 @@ export function CabecalhoDoComputador({
                 className={cn(
                   "min-h-11 shrink-0 border-b-2 px-1 text-sm hover:text-foreground",
                   FOCO,
+                  // A faixa tem h-12 e overflow-x-auto (que também corta na
+                  // vertical): o anel de fora perdia 4 px em cima e embaixo.
+                  "lg:focus-visible:ring-inset lg:focus-visible:ring-offset-0",
                   currentView === "home" && selecionada === nomeDaCategoria
                     ? "border-foreground font-bold"
                     : "border-transparent text-muted-foreground",

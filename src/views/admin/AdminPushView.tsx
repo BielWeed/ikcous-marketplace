@@ -1672,7 +1672,7 @@ export const AdminPushView = memo(function AdminPushView({
                     data-testid="carrossel-publico"
                     role="group"
                     aria-label="Escolha quem recebe a mensagem"
-                    className="relative -m-1 flex snap-x snap-mandatory scroll-pl-1 gap-2 overflow-x-auto p-1 pb-2 pr-6"
+                    className="relative -m-1 flex snap-x snap-mandatory scroll-pl-1 gap-2 overflow-x-auto p-1 pb-2 pr-6 lg:snap-none lg:flex-wrap lg:overflow-x-visible lg:pr-1"
                   >
                     {[
                       {
@@ -1772,7 +1772,7 @@ export const AdminPushView = memo(function AdminPushView({
                   </div>
                   <div
                     aria-hidden="true"
-                    className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-admin-bg to-transparent"
+                    className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-admin-bg to-transparent lg:hidden"
                   />
                 </div>
               )}
