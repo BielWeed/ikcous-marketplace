@@ -1,4 +1,15 @@
 {
+  "1.5.186": {
+    "titulo": "Entrar e criar conta com o Google, em um clique",
+    "novidades": [
+      "Tela de entrar e de criar conta da cliente: nova opção \"Continuar com Google\", que entra ou cria a conta com um clique. Ela aparece só nas lojas em que o Google estiver ligado e não aparece dentro do navegador interno do Instagram, Facebook, TikTok, Line e Snapchat, onde o Google não deixa entrar.",
+      "Depois do primeiro acesso pelo Google, um aviso que pode ser pulado pede o WhatsApp da cliente."
+    ],
+    "correcoes": [],
+    "melhorias": [
+      "Finalizar compra: quando a cliente ainda não tinha WhatsApp no perfil, o número digitado no pedido passa a ser guardado nele, sem atrasar nem barrar o pedido."
+    ]
+  },
   "1.5.185": {
     "titulo": "Sua assinatura: o painel mostra desde quando a mensalidade está em aberto",
     "novidades": [
