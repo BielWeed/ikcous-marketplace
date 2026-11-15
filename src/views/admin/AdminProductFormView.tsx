@@ -4054,7 +4054,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
   return (
     <div
-      className="produto-formulario pb-admin relative h-auto min-h-full overflow-x-clip text-white lg:pb-12"
+      className="produto-formulario pb-admin relative h-auto min-h-full overflow-x-clip text-white lg:pb-12 xl:grid xl:grid-cols-[minmax(0,1fr)_380px] xl:items-start xl:gap-6 xl:[&>*]:col-span-2 xl:[&>.admin-acao-inline]:sticky xl:[&>.admin-acao-inline]:bottom-auto xl:[&>.admin-acao-inline]:top-24 xl:[&>.admin-acao-inline]:col-span-1 xl:[&>.admin-acao-inline]:col-start-2 xl:[&>.admin-acao-inline]:row-start-3 xl:[&>.admin-acao-inline]:!m-0 xl:[&>.admin-acao-inline]:self-start xl:[&>.admin-acao-inline]:!rounded-3xl xl:[&>.admin-acao-inline]:!p-6 xl:[&>form]:col-span-1"
       onDragOver={(e) => {
         // Só ARQUIVO é tratado aqui: soltar um texto selecionado dentro de um
         // campo continua funcionando como o navegador faz.
@@ -4600,13 +4600,17 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       {/* O topo: a linha do título cola no alto e encolhe ao rolar (só o
           estilo muda, a altura da linha é a mesma). A conta "N de 5" e a barra
           fina ficam logo abaixo, no fluxo, e saem da tela rolando. */}
-      <div ref={marcaDoTopo} aria-hidden="true" className="h-0" />
+      <div
+        ref={marcaDoTopo}
+        aria-hidden="true"
+        className="h-0 xl:absolute xl:top-0"
+      />
       <header
         ref={topoRef}
         data-compacto={topoCompacto}
-        className="produto-topo sticky top-0 z-30 bg-admin-bg/95 px-5 backdrop-blur-md"
+        className="produto-topo sticky top-0 z-30 bg-admin-bg/95 px-5 backdrop-blur-md xl:col-span-2 xl:row-start-1"
       >
-        <div className="produto-topo-linha mx-auto flex max-w-3xl items-center gap-3">
+        <div className="produto-topo-linha mx-auto flex max-w-3xl items-center gap-3 xl:max-w-none">
           <div className="min-w-0 flex-1 [&_h1>span>span]:not-italic [&_h1>span]:whitespace-normal [&_h1]:normal-case [&_h1]:leading-tight">
             <AdminPageHeader
               titulo={`${productId ? "Editar" : "Novo"} ${NOMES_DO_PAINEL["admin-product-form"].toLowerCase()}`}
@@ -4624,7 +4628,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           </button>
         </div>
       </header>
-      <div className="mx-auto max-w-3xl px-5 py-1">
+      <div className="mx-auto max-w-3xl px-5 py-1 xl:col-span-2 xl:row-start-2 xl:mx-0 xl:max-w-none">
         <p data-testid="progresso-do-produto" className="text-xs text-zinc-400">
           {preenchidos} de 5 essenciais prontos
           {avisoDeCusto ||
@@ -4646,7 +4650,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         initial="hidden"
         animate="visible"
         onSubmit={handleSubmit}
-        className="gpu-accelerated mx-auto max-w-3xl space-y-4 p-4 sm:px-5"
+        className="gpu-accelerated mx-auto max-w-3xl space-y-4 p-4 sm:px-5 xl:col-start-1 xl:row-start-3 xl:mx-0 xl:w-full xl:min-w-0 xl:max-w-none"
       >
         {/* Enquanto salva ("Salvando…") e durante o "Salvo", o corpo do
             formulário fica travado: o salvar leva a cópia de quando o botão foi
@@ -4668,7 +4672,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           )}
           {/* Os mesmos controles de envio, agora à vista no cartão de fotos. */}
           <section
-            className="produto-fotos relative"
+            className="produto-fotos relative xl:space-y-4 xl:rounded-3xl xl:border xl:border-admin-border xl:p-6"
             aria-label="Fotos do produto"
           >
             <div className="group/fotos">
@@ -5107,7 +5111,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           </AnimatePresence>
 
           {/* Content Section */}
-          <section className="produto-dados space-y-2">
+          <section className="produto-dados space-y-2 xl:space-y-4 xl:rounded-3xl xl:border xl:border-admin-border xl:p-6">
             <div className="flex items-center gap-3">
               <h2 className="produto-rotulo-secao">Essencial</h2>
               <button
@@ -5225,7 +5229,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               )}
             </AnimatePresence>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-3 xl:gap-4">
               <div className="produto-campo col-span-2 space-y-1">
                 <label
                   htmlFor="product-name"
@@ -6139,7 +6143,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         <div className="space-y-1">
                           <label
                             htmlFor="product-length"
-                            className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-wider text-zinc-500"
+                            className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-wider text-zinc-500 xl:whitespace-normal xl:break-words"
                           >
                             Comprimento (cm)
                           </label>
