@@ -423,7 +423,7 @@ export const SearchView = React.memo(function SearchView({
         className="sticky top-[-2px] z-50 border-b border-zinc-100 bg-white/90 backdrop-blur-2xl"
       >
         <div className="mx-auto max-w-7xl space-y-4 p-4">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 lg:hidden">
             <button
               onClick={onBack}
               // Laudo 05/09, M5: botão de voltar só-ícone era "botão" para
