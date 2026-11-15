@@ -109,7 +109,11 @@ const PECAS: Peca[] = [
     nome: "D categoria do cabeçalho",
     fonte: FONTE_CABECALHO,
     celular: CELULAR_CATEGORIA_DO_CABECALHO,
-    novas: ["lg:focus-visible:ring-inset", "lg:focus-visible:ring-offset-0"],
+    novas: [
+      "lg:focus-visible:outline-none",
+      "lg:focus-visible:ring-inset",
+      "lg:focus-visible:ring-offset-0",
+    ],
   },
 ];
 
