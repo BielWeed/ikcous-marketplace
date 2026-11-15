@@ -60,8 +60,21 @@ describe("Favoritos e pedidos no computador", () => {
     expect(fonte).toMatch(
       /<ul id={idLista} className="lg:grid lg:grid-cols-2 lg:gap-4">/,
     );
-    expect(fonte).toContain("CONTAINER_DO_COMPUTADOR");
+    // O contêiner centralizado vem UMA vez, da casca (`PaginaDoComputador`, no
+    // App): Favoritos não é isento (`containerProprio`), então a tela não pode
+    // aplicar `CONTAINER_DO_COMPUTADOR` de novo (largura e padding em dobro).
+    expect(fonte).not.toContain("CONTAINER_DO_COMPUTADOR");
     expect(fonte).toContain("lg:max-w-full");
+    const app = ler("src/App.tsx");
+    const abaFavoritos = [
+      ...app.matchAll(
+        /<TabWrapper\s+active=\{currentView === "favorites"\}([^>]*)>/g,
+      ),
+    ];
+    expect(abaFavoritos.length).toBeGreaterThan(0);
+    for (const aba of abaFavoritos) {
+      expect(aba[1]).not.toContain("containerProprio");
+    }
   });
 
   it("usa a grade compartilhada nas sugestões, com respiro de PC", () => {
