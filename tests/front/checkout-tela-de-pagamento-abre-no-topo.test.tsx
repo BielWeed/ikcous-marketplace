@@ -16,7 +16,13 @@
 //  - borda 2: o Pix trocado pela confirmação ("Pagamento Confirmado!"), que é
 //    outra tela e mais curta, também abre no topo;
 //  - borda 3: o formulário, ANTES de finalizar, não é mexido (a cliente que
-//    rolou até o botão não volta ao topo no meio do preenchimento).
+//    rolou até o botão não volta ao topo no meio do preenchimento);
+//  - cada estado final do Pix (recusado, estornado, pago fora do prazo e o
+//    pago visto pela verificação periódica) também abre a nova tela no topo;
+//  - o MESMO estado repetido não zera de novo, nem um redesenho que só muda
+//    estado não relacionado (o pedido que venceu no servidor) ou local ("copiado");
+//  - pedido sem número (`orderId` vazio) com o pagamento ligado não é tela de
+//    pagamento: não zera.
 //
 // O jsdom não rola de verdade: o `scrollTop` do <main> vira uma propriedade
 // comum, que o teste lê e escreve (mesmo recurso de
@@ -24,7 +30,7 @@
 //
 // Andaime: o de checkout-view-pix-confirmacao.test.tsx (mesmos dublês, mesma
 // forma de chegar em "Finalize o pagamento").
-import { act } from "react";
+import { act, useState } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -156,8 +162,13 @@ vi.mock("@/hooks/useOrders", () => ({
 
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 
-// A verificação periódica (10 s) consulta o pedido: aqui ele segue aguardando.
+// A verificação periódica (10 s) consulta o pedido: por padrão ele segue
+// aguardando; um teste troca a resposta para provar o caminho do "pago".
 const consultasDoPedido = vi.fn();
+let respostaDaConsulta: Record<string, unknown> = {
+  payment_status: "aguardando",
+  expires_at: null,
+};
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: () => ({
@@ -166,7 +177,7 @@ vi.mock("@/lib/supabase", () => ({
           single: () => {
             consultasDoPedido();
             return Promise.resolve({
-              data: { payment_status: "aguardando", expires_at: null },
+              data: respostaDaConsulta,
               error: null,
             });
           },
@@ -188,7 +199,28 @@ vi.mock("@/components/checkout/PagamentoOnline", async (importOriginal) => {
     await importOriginal<
       typeof import("@/components/checkout/PagamentoOnline")
     >();
-  return { ...real, PagamentoOnline: () => null };
+  // Dublê com o estado LOCAL do "Copiar código" (`pixCopiado`, que no real mora
+  // dentro do PagamentoOnline e não sobe para a tela): o botão o liga sem
+  // tocar em nada do CheckoutView. `data-morto` espelha a prop que o
+  // CheckoutView repassa, para o teste ver que a tela foi redesenhada.
+  function PagamentoOnlineDuble({
+    pedidoMortoNoServidor,
+  }: {
+    pedidoMortoNoServidor?: boolean;
+  }) {
+    const [copiado, setCopiado] = useState(false);
+    return (
+      <button
+        type="button"
+        id="duble-copiar-pix"
+        data-morto={String(pedidoMortoNoServidor === true)}
+        onClick={() => setCopiado(true)}
+      >
+        {copiado ? "Copiado!" : "Copiar código"}
+      </button>
+    );
+  }
+  return { ...real, PagamentoOnline: PagamentoOnlineDuble };
 });
 
 vi.mock("@/hooks/useConfigDoCartao", async () => {
@@ -230,6 +262,7 @@ describe("CheckoutView — a tela de pagamento abre no topo, não no scrollTop d
   beforeEach(() => {
     createOrder.mockClear();
     consultasDoPedido.mockClear();
+    respostaDaConsulta = { payment_status: "aguardando", expires_at: null };
     onNavigate.mockClear();
     onRealtimeEventCapturado = null;
     mockCart = [
@@ -389,6 +422,134 @@ describe("CheckoutView — a tela de pagamento abre no topo, não no scrollTop d
     expect(rolagem).toBe(180);
     await prepararOFormulario();
 
+    expect(hospedeiro.textContent).not.toContain("Finalize o pagamento");
+    expect(rolagem).toBe(180);
+  });
+
+  // Cada estado final troca a tela do Pix por OUTRA (mais curta), e a lista de
+  // dependências do efeito tem de enxergar essa troca: se `statusPagamentoPix`
+  // saísse dela, a cliente que rolou o Pix ficaria no meio da tela nova.
+  it.each([
+    ["recusado", "Este pagamento não foi concluído"],
+    ["estornado", "Este pagamento não foi concluído"],
+    ["pago_apos_expirar", "prazo de reserva venceu"],
+  ])(
+    "do Pix para o estado final '%s' (realtime), a tela nova abre no topo",
+    async (statusDoPedido, textoDaTelaNova) => {
+      const { CheckoutView } = await import("@/views/customer/CheckoutView");
+      await montar(CheckoutView);
+      await prepararOFormulario();
+      await finalizar();
+      expect(hospedeiro.textContent).toContain("Finalize o pagamento");
+
+      rolagem = 250;
+      await act(async () => {
+        onRealtimeEventCapturado?.({
+          eventType: "UPDATE",
+          new: { id: "ped-999", payment_status: statusDoPedido },
+        });
+      });
+
+      expect(hospedeiro.textContent).toContain(textoDaTelaNova);
+      expect(hospedeiro.textContent).not.toContain("Finalize o pagamento");
+      expect(rolagem).toBe(0);
+    },
+  );
+
+  it("o 'pago' visto pela verificação periódica (outro caminho que o realtime) também abre no topo", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await montar(CheckoutView);
+    await prepararOFormulario();
+    await finalizar();
+
+    rolagem = 250;
+    respostaDaConsulta = { payment_status: "pago", expires_at: null };
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_500);
+    });
+
+    expect(consultasDoPedido).toHaveBeenCalled();
+    expect(hospedeiro.textContent).toContain("Pagamento Confirmado");
+    expect(rolagem).toBe(0);
+  });
+
+  // O MESMO estado de novo (o realtime e a verificação periódica podem avisar
+  // o mesmo "pago" duas vezes): o React descarta o `setState` igual, e mesmo um
+  // redesenho de verdade da tela depois (`montar` outra vez) não pode zerar.
+  it("o MESMO estado repetido não puxa a cliente ao topo de novo", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await montar(CheckoutView);
+    await prepararOFormulario();
+    await finalizar();
+
+    rolagem = 250;
+    await act(async () => {
+      onRealtimeEventCapturado?.({
+        eventType: "UPDATE",
+        new: { id: "ped-999", payment_status: "pago" },
+      });
+    });
+    expect(hospedeiro.textContent).toContain("Pagamento Confirmado");
+    expect(rolagem).toBe(0);
+
+    rolagem = 180; // a cliente rola a confirmação
+    await act(async () => {
+      onRealtimeEventCapturado?.({
+        eventType: "UPDATE",
+        new: { id: "ped-999", payment_status: "pago" },
+      });
+    });
+    await montar(CheckoutView);
+
+    expect(hospedeiro.textContent).toContain("Pagamento Confirmado");
+    expect(rolagem).toBe(180);
+  });
+
+  // Redesenho de VERDADE por estado que não é dependência do efeito: o pedido
+  // que venceu no servidor (`pedidoMortoNoServidorId`) refaz a tela do Pix
+  // (o dublê recebe a prop nova) e a rolagem fica. Junto, o estado local do
+  // "Copiar código" (no real, `pixCopiado` do PagamentoOnline) também não mexe.
+  it("redesenho por estado não relacionado (pedido vencido, 'copiado') mantém a rolagem", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await montar(CheckoutView);
+    await prepararOFormulario();
+    await finalizar();
+    expect(hospedeiro.textContent).toContain("Finalize o pagamento");
+    const botaoCopiar = () =>
+      hospedeiro.querySelector<HTMLButtonElement>("#duble-copiar-pix")!;
+    expect(botaoCopiar().dataset.morto).toBe("false");
+
+    rolagem = 300;
+    await act(async () => {
+      botaoCopiar().click();
+    });
+    expect(botaoCopiar().textContent).toBe("Copiado!");
+    expect(rolagem).toBe(300);
+
+    await act(async () => {
+      onRealtimeEventCapturado?.({
+        eventType: "UPDATE",
+        new: { id: "ped-999", payment_status: "expirado" },
+      });
+    });
+    // O CheckoutView redesenhou de fato: o dublê recebeu a prop nova.
+    expect(botaoCopiar().dataset.morto).toBe("true");
+    expect(rolagem).toBe(300);
+  });
+
+  // `aguardandoPagamento` ligado com o pedido SEM número (resposta sem id) não
+  // é tela de pagamento (o `if (aguardandoPagamento && orderId)` da renderização
+  // não entra): o efeito não pode zerar uma tela que não é a do pagamento.
+  it("pagamento ligado com `orderId` vazio não é tela de pagamento e não zera a rolagem", async () => {
+    createOrder.mockResolvedValueOnce({ id: "", totalAmount: 100 });
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await montar(CheckoutView);
+    await prepararOFormulario();
+
+    rolagem = 180;
+    await finalizar();
+
+    expect(createOrder).toHaveBeenCalledTimes(1);
     expect(hospedeiro.textContent).not.toContain("Finalize o pagamento");
     expect(rolagem).toBe(180);
   });
