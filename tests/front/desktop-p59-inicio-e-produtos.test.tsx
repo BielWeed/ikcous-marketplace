@@ -164,6 +164,9 @@ const COLUNA_DO_INICIO_NO_CELULAR = "min-w-0 space-y-6";
 // O valor grande de "Hoje" com receita positiva (tom que não é "neutro").
 const VALOR_DE_HOJE_NO_CELULAR =
   "text-[clamp(1.875rem,9.5vw,3rem)] leading-none break-words font-bold tabular-nums tracking-tight [overflow-wrap:anywhere] text-white";
+// O resumo do cartão detalhado de produto.
+const RESUMO_DO_PRODUTO_NO_CELULAR =
+  "produto-resumo mt-3 grid grid-cols-3 gap-2";
 
 function violacoesDaGradeDoInicio(className: string): string[] {
   const t = tokens(className);
@@ -192,6 +195,19 @@ function violacoesDoValorDeHoje(className: string): string[] {
     v.push("celular mudou");
   if (!tokens(className).includes("xl:text-[2.25rem]"))
     v.push("falta xl:text-[2.25rem]");
+  return v;
+}
+
+function violacoesDoResumoDoProduto(className: string): string[] {
+  const t = tokens(className);
+  const v: string[] = [];
+  if (classesDoCelular(className) !== RESUMO_DO_PRODUTO_NO_CELULAR)
+    v.push("celular mudou");
+  if (!t.includes("xl:grid-cols-[1.4fr_1fr_1fr]"))
+    v.push("falta xl:grid-cols-[1.4fr_1fr_1fr]");
+  // Uma única grade em cada faixa: `lg:` não pode redefinir as colunas.
+  if (t.some((c) => c.startsWith("lg:grid-cols")))
+    v.push("sobrou lg:grid-cols");
   return v;
 }
 
@@ -353,5 +369,141 @@ describe("P59 Início do painel: três colunas só de 1280 px em diante", () => 
       "text-[2.25rem]",
     );
     expect(violacoesDoValorDeHoje(editadoNoCelular)).toContain("celular mudou");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 2) Produtos, lista detalhada
+// ---------------------------------------------------------------------------
+
+describe("P59 Produtos detalhado: preço de cinco dígitos cabe na célula em 1280 px", () => {
+  let hospedeiro: HTMLDivElement;
+  let raiz: Root;
+
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    h.loadProducts.mockImplementation(async () => ({
+      products: h.produtos,
+      total: 1,
+    }));
+    h.fetchExecutiveSummary.mockResolvedValue(null);
+    vi.stubGlobal("IntersectionObserver", ObservadorMudo);
+    vi.stubGlobal("ResizeObserver", ObservadorMudo);
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+    const armazem = new Map<string, string>([
+      ["admin_products_view_mode", "detailed"],
+    ]);
+    vi.stubGlobal("localStorage", {
+      getItem: (c: string) => armazem.get(c) ?? null,
+      setItem: (c: string, v: string) => {
+        armazem.set(c, v);
+      },
+      removeItem: (c: string) => {
+        armazem.delete(c);
+      },
+    });
+    hospedeiro = document.createElement("div");
+    document.body.appendChild(hospedeiro);
+    raiz = createRoot(hospedeiro);
+  });
+
+  afterEach(() => {
+    act(() => raiz.unmount());
+    hospedeiro.remove();
+    vi.unstubAllGlobals();
+  });
+
+  async function montarProdutoComPreco(price: number) {
+    h.produtos = [
+      {
+        id: "prod-1",
+        name: "Conjunto de joias",
+        category: "Joias",
+        images: [],
+        isActive: true,
+        stock: 5,
+        price,
+        costPrice: 10,
+        estoqueMinimo: null,
+      },
+    ];
+    const { AdminProductsView } = await import(
+      "@/views/admin/AdminProductsView"
+    );
+    await act(async () => {
+      raiz.render(<AdminProductsView onNavigate={vi.fn()} active={true} />);
+    });
+    await esperarAte(
+      () => hospedeiro.querySelector(".produto-resumo") !== null,
+    );
+  }
+
+  it("`produto-resumo` ganha a grade `xl:grid-cols-[1.4fr_1fr_1fr]` e o celular segue igual", async () => {
+    await montarProdutoComPreco(99999.99);
+    const resumos = hospedeiro.querySelectorAll(".produto-resumo");
+    expect(resumos).toHaveLength(1);
+    const resumo = resumos[0] as HTMLElement;
+    expect(texto(resumo)).toContain("R$ 99.999,99");
+    expect(violacoesDoResumoDoProduto(resumo.className)).toEqual([]);
+    expect(classesDoCelular(resumo.className)).toBe(
+      RESUMO_DO_PRODUTO_NO_CELULAR,
+    );
+    // Só UMA classe de colunas sem prefixo: a do celular (`grid-cols-3`).
+    const semPrefixo = tokens(classesDoCelular(resumo.className)).filter((c) =>
+      c.startsWith("grid-cols"),
+    );
+    expect(semPrefixo).toEqual(["grid-cols-3"]);
+  });
+
+  it("o preço (célula 1) e o estoque (célula 2) seguem no mesmo resumo", async () => {
+    await montarProdutoComPreco(99999.99);
+    const resumo = hospedeiro.querySelector(".produto-resumo") as HTMLElement;
+    const celulas = Array.from(resumo.children);
+    expect(texto(celulas[0])).toContain("Preço de Venda");
+    expect(texto(celulas[0])).toContain("R$ 99.999,99");
+    expect(texto(celulas[1])).toContain("Estoque");
+    // A letra do preço não mudou (cinco dígitos ainda é o caminho `nowrap`).
+    const preco = celulas[0].querySelector("p.font-bold") as HTMLElement;
+    expect(preco.className).toContain("whitespace-nowrap");
+  });
+
+  it("controle: mutantes em cópia do className reprovam a regra", async () => {
+    await montarProdutoComPreco(99999.99);
+    const resumo = hospedeiro.querySelector(".produto-resumo") as HTMLElement;
+    const original = resumo.className;
+    // Mutante 1: sem o token novo.
+    expect(
+      violacoesDoResumoDoProduto(
+        original.replace("xl:grid-cols-[1.4fr_1fr_1fr]", ""),
+      ),
+    ).toContain("falta xl:grid-cols-[1.4fr_1fr_1fr]");
+    // Mutante 2: o token entra em `lg:` (mudaria 1024-1279, onde já cabia).
+    expect(
+      violacoesDoResumoDoProduto(
+        original.replace("xl:grid-cols", "lg:grid-cols"),
+      ).length,
+    ).toBeGreaterThan(0);
+    // Mutante 3: o celular troca de grade (`grid-cols-3` vira `grid-cols-2`).
+    expect(
+      violacoesDoResumoDoProduto(
+        original.replace("grid-cols-3", "grid-cols-2"),
+      ),
+    ).toContain("celular mudou");
+    // Mutante 4: a coluna nova entra no literal do celular, sem prefixo.
+    expect(
+      violacoesDoResumoDoProduto(
+        original.replace("grid-cols-3", "grid-cols-[1.4fr_1fr_1fr]"),
+      ),
+    ).toContain("celular mudou");
   });
 });

@@ -3005,7 +3005,7 @@ const AdminProductCard = memo(function AdminProductCard({
             </span>
           </MenuDoProduto>
           <h4 className="sr-only">{product.name}</h4>
-          <div className="produto-resumo mt-3 grid grid-cols-3 gap-2">
+          <div className="produto-resumo mt-3 grid grid-cols-3 gap-2 xl:grid-cols-[1.4fr_1fr_1fr]">
             <div className="min-w-0">
               <p className="text-[11px] text-zinc-400">Preço de Venda</p>
               <p
