@@ -148,6 +148,33 @@ describe("AdminBannersView — porta 'Novo banner' no computador", () => {
     expect(classes).toContain("min-h-11");
   });
 
+  // Contagem da tela INTEIRA, nao so do cabecalho: um segundo "Novo banner"
+  // no cabecalho (duplicata) ou a porta migrada para o corpo da lista tem que
+  // ficar vermelho aqui. O teste do corpo
+  // (admin-banners-corpo-sem-botao-novo) ignora o <header> de proposito.
+  const portasNaTela = () =>
+    [...hospedeiro.querySelectorAll("button")].filter((b) =>
+      /novo banner|indisponível offline/i.test(b.textContent ?? ""),
+    );
+
+  it.each([
+    ["online", false],
+    ["offline", true],
+  ])(
+    "%s: existe EXATAMENTE uma porta 'Novo banner' na tela, e ela mora no cabeçalho",
+    async (_rotulo, offline) => {
+      estado.offline = offline;
+      await montar();
+      const todas = portasNaTela();
+      expect(todas).toHaveLength(1);
+      const noCabecalho = [
+        ...(hospedeiro.querySelector("header")?.querySelectorAll("button") ??
+          []),
+      ].filter((b) => todas.includes(b));
+      expect(noCabecalho).toHaveLength(1);
+    },
+  );
+
   it("clicar pede um banner novo (o evento que abre o editor)", async () => {
     await montar();
     const ouvinte = vi.fn();
