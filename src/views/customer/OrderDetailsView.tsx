@@ -2235,7 +2235,7 @@ export function OrderDetailsView({
             <button
               onClick={handleCancelOrder}
               disabled={isCancelling}
-              className="flex w-full items-center gap-3 border-b border-zinc-100 px-5 py-3.5 text-left text-sm font-semibold text-red-600 transition-colors last:border-b-0 hover:bg-red-50 active:bg-red-100 disabled:opacity-50 lg:max-w-md"
+              className="flex w-full items-center gap-3 border-b border-zinc-100 px-5 py-3.5 text-left text-sm font-semibold text-red-600 transition-colors last:border-b-0 hover:bg-red-50 active:bg-red-100 disabled:opacity-50"
             >
               <span className="flex size-8 flex-shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600">
                 {isCancelling ? (

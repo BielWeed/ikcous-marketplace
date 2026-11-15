@@ -1,9 +1,11 @@
-// P66 (pedido no computador), defeito D3: "Retomar pagamento" e "Cancelar
-// Pedido" esticavam a largura da coluna inteira (1328x48 e 1326x60 a 1920 px),
-// com o texto numa ponta e o botão sem fim. A correção é só de computador:
-// `lg:max-w-md` (448 px) nos dois. É a tela de pagamento pendente: só classe, a
-// ordem, o texto e os handlers não mudam, e abaixo de 1024 px o className fica
-// byte a byte o de antes.
+// P66 (pedido no computador), defeito D3: o botão "Retomar pagamento" esticava
+// a largura da coluna inteira (1328 px a 1920), com o texto no meio de um
+// botão sem fim. A correção é só de computador: `lg:max-w-md` (448 px) nele.
+// "Cancelar Pedido" NÃO é botão solto: é uma linha de lista que ocupa o cartão
+// inteiro com a setinha na ponta; limitá-la deixava a seta no meio do cartão
+// (visto em captura a 1280 px), então ela fica como estava. É a tela de
+// pagamento pendente: só classe, a ordem, o texto e os handlers não mudam, e
+// abaixo de 1024 px o className fica byte a byte o de antes.
 //
 // O jsdom não calcula CSS: as larguras de fato (448 px) estão no relatório da
 // peça, medidas em Chromium. Aqui a prova é o código-fonte REAL lido por AST (o
@@ -24,6 +26,7 @@ const BOTOES = [
       "mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-zinc-900 px-4 py-3.5 text-sm font-bold text-white shadow-sm transition-all active:scale-95",
     onClick: "() => onRetomarPagamento(order.id)",
     texto: "Retomar pagamento",
+    limita: true,
   },
   {
     nome: "Cancelar Pedido",
@@ -31,6 +34,7 @@ const BOTOES = [
       "flex w-full items-center gap-3 border-b border-zinc-100 px-5 py-3.5 text-left text-sm font-semibold text-red-600 transition-colors last:border-b-0 hover:bg-red-50 active:bg-red-100 disabled:opacity-50",
     onClick: "handleCancelOrder",
     texto: '{isCancelling ? "Processando" : "Cancelar Pedido"}',
+    limita: false,
   },
 ] as const;
 
@@ -82,16 +86,18 @@ function problemas(fonte: string, botao: (typeof BOTOES)[number]): string[] {
   if (achados.length !== 1) return [`achou ${achados.length} botões`];
   const [{ classe, onClick, filhos }] = achados;
   const erros: string[] = [];
-  if (!classe.split(/\s+/).includes("lg:max-w-md"))
-    erros.push("falta lg:max-w-md");
+  const tem = classe.split(/\s+/).includes("lg:max-w-md");
+  if (botao.limita && !tem) erros.push("falta lg:max-w-md");
+  if (!botao.limita && tem)
+    erros.push("lg:max-w-md onde a linha deve ocupar o cartão");
   if (onClick !== botao.onClick) erros.push(`handler mudou: ${onClick}`);
   if (!filhos.includes(botao.texto)) erros.push("texto mudou");
   return erros;
 }
 
-describe("P66 D3 — botões do pedido com 448 px no computador", () => {
+describe("P66 D3 — Retomar pagamento com 448 px no computador; Cancelar Pedido segue largo", () => {
   for (const botao of BOTOES) {
-    it(`${botao.nome}: ganha lg:max-w-md e o resto fica como estava`, () => {
+    it(`${botao.nome}: ${botao.limita ? "ganha lg:max-w-md" : "não ganha lg:max-w-md"} e o resto fica como estava`, () => {
       expect(problemas(FONTE, botao)).toEqual([]);
     });
 
@@ -106,7 +112,7 @@ describe("P66 D3 — botões do pedido com 448 px no computador", () => {
   }
 
   it("cada mutante de lg:max-w-md derruba o botão certo", () => {
-    for (const botao of BOTOES) {
+    for (const botao of BOTOES.filter((b) => b.limita)) {
       // Tira a classe só do botão alvo: troca o literal dele pelo de celular puro.
       const mutante = FONTE.replace(
         `${botao.celular} lg:max-w-md`,
@@ -117,5 +123,17 @@ describe("P66 D3 — botões do pedido com 448 px no computador", () => {
       for (const outro of BOTOES.filter((b) => b !== botao))
         expect(problemas(mutante, outro)).toEqual([]);
     }
+  });
+
+  it("mutante: pôr lg:max-w-md na linha Cancelar Pedido fica vermelho", () => {
+    const cancelar = BOTOES[1];
+    const mutante = FONTE.replace(
+      cancelar.celular,
+      `${cancelar.celular} lg:max-w-md`,
+    );
+    expect(mutante).not.toBe(FONTE);
+    expect(problemas(mutante, cancelar)).toContain(
+      "lg:max-w-md onde a linha deve ocupar o cartão",
+    );
   });
 });
