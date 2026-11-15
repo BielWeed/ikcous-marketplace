@@ -108,6 +108,11 @@ describe("P64 -- Favoritos reparte as categorias em 2 colunas no computador", ()
     expect(tem(lista, "lg:px-0")).toBe(true);
     expect(tem(lista, "lg:columns-2")).toBe(true);
     expect(tem(lista, "lg:gap-x-10")).toBe(true);
+    // Todas as categorias dividem o MESMO pai de colunas: com so a primeira la
+    // dentro, as demais ficariam fora das 2 colunas e o teste nao notaria.
+    for (const secao of secoes()) {
+      expect(secao.parentElement).toBe(lista);
+    }
   });
 
   it("cada categoria fica inteira numa coluna só, sem mexer no celular", () => {

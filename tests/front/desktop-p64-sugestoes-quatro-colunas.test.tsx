@@ -131,7 +131,14 @@ describe("P64 -- sugestões com 4 produtos usam 4 colunas em xl", () => {
       );
     });
     const grade = gradeDeSugestoes(host);
-    expect(grade.querySelectorAll('[data-testid="cartao"]')).toHaveLength(4);
+    const cartoes = Array.from(
+      grade.querySelectorAll('[data-testid="cartao"]'),
+    );
+    expect(cartoes).toHaveLength(4);
+    // Filhos DIRETOS da grade: uma grade interna de 5 colunas nao passa.
+    for (const cartao of cartoes) {
+      expect(cartao.parentElement).toBe(grade);
+    }
     expect(classesDoCelular(grade.className)).toBe(
       "grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3",
     );
@@ -152,7 +159,14 @@ describe("P64 -- sugestões com 4 produtos usam 4 colunas em xl", () => {
       );
     });
     const grade = gradeDeSugestoes(host);
-    expect(grade.querySelectorAll('[data-testid="cartao"]')).toHaveLength(4);
+    const cartoes = Array.from(
+      grade.querySelectorAll('[data-testid="cartao"]'),
+    );
+    expect(cartoes).toHaveLength(4);
+    // Filhos DIRETOS da grade: uma grade interna de 5 colunas nao passa.
+    for (const cartao of cartoes) {
+      expect(cartao.parentElement).toBe(grade);
+    }
     expect(classesDoCelular(grade.className)).toBe(
       "grid grid-cols-2 gap-6 md:grid-cols-3",
     );
