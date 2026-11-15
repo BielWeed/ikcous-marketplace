@@ -3075,9 +3075,11 @@ export function CheckoutViewDaConta({
   // então a restauração de rolagem do App (só roda ao trocar de rota) não as
   // alcança, e o <main> — a área que rola — ficava no `scrollTop` que a tela
   // anterior deixou: medido a 1280x720, 121 px, com o título e o aviso de
-  // reserva do pedido escondidos sob o cabeçalho do computador. Os 121 batem
-  // com `min-h-dvh` (720) menos a altura do <main> (599): o conteúdo sempre
-  // transborda esse tanto, e o navegador prende ali o `scrollTop` herdado.
+  // reserva do pedido escondidos sob o cabeçalho do computador. HIPÓTESE, não
+  // medida: os 121 batem com `min-h-dvh` (720) menos a altura do <main> (599),
+  // isto é, o conteúdo transbordaria esse tanto e o navegador prenderia ali o
+  // `scrollTop` herdado. O reset vale de qualquer forma: a tela nova abre no
+  // topo, seja qual for a origem do 121.
   // Layout effect: zera ANTES da pintura, sem piscar a tela rolada.
   // Só reage à TROCA de tela (pedido que passou a existir, ou Pix que virou
   // "confirmado"/outro estado) — nunca a redesenho — para não puxar de volta ao
