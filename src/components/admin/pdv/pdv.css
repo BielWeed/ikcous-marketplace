@@ -1092,7 +1092,7 @@
   .pdv[data-etapa="cupom"] {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-rows: auto auto auto auto auto minmax(0, 1fr) auto;
+    grid-template-rows: auto auto auto auto auto 1fr auto;
     column-gap: 24px;
     row-gap: 0;
     max-width: 1440px;

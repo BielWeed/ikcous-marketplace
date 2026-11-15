@@ -456,6 +456,10 @@ function conferirBloco(css: string): void {
   const colunas = contarTrilhas(base["grid-template-columns"]);
   const linhas = contarTrilhas(base["grid-template-rows"]);
   expect(colunas).toBe(2);
+  // A linha da lista "Venda atual" é `1fr` (piso automático = altura mínima do
+  // conteúdo). Com `minmax(0, 1fr)` a lista passava por cima da barra do total
+  // em janela baixa com o aviso de venda antiga aberto (revisão Opus, 15/11).
+  expect(base["grid-template-rows"]).not.toContain("minmax(0");
   const absolutos = seletoresAbsolutosDoBase(css);
   expect(absolutos.length).toBeGreaterThan(0);
   for (const etapa of ETAPAS_DE_VENDER) {
