@@ -80,7 +80,7 @@ export default function OfertasLateralDuplo({
       }}
       className={cn("relative bg-white py-4", className)}
     >
-      <div className="mb-5 flex min-h-6 items-center justify-between gap-3 px-5">
+      <div className="mb-5 flex min-h-6 items-center justify-between gap-3 px-5 lg:px-0">
         <h2 className="min-w-0 break-words text-xl font-extrabold leading-6 tracking-tight text-zinc-950">
           {title}
         </h2>
@@ -96,11 +96,16 @@ export default function OfertasLateralDuplo({
       <div
         ref={rola ? ref : undefined}
         className={cn(
-          "ml-3 overflow-hidden min-[360px]:ml-5",
+          "ml-3 overflow-hidden min-[360px]:ml-5 lg:ml-0 lg:mr-0",
           !rola && "mr-3 min-[360px]:mr-5",
         )}
       >
-        <div className="flex gap-2.5 py-1">
+        <div
+          className={cn(
+            "flex gap-2.5 py-1",
+            colunas.length <= 2 && "lg:justify-center",
+          )}
+        >
           {colunas.map((coluna) => (
             <div
               key={coluna[0].product.id}
@@ -108,6 +113,7 @@ export default function OfertasLateralDuplo({
               className={cn(
                 "flex min-w-0 flex-col gap-2",
                 rola ? "shrink-0 basis-[88%]" : "w-full",
+                "lg:basis-[calc((100%-32px)/3)] lg:min-w-[300px] lg:max-w-[440px]",
               )}
             >
               {coluna.map(({ product, discount }) => (

@@ -54,7 +54,7 @@ export function InfoBlockCarousel({
   }, [autoPlay, emblaApi, interval, childrenArray.length]);
 
   return (
-    <div className="relative mt-2 w-full px-4">
+    <div className="relative mt-2 w-full px-4 lg:px-0">
       <div className="overflow-hidden rounded-[2rem]" ref={emblaRef}>
         <div className="flex">
           {childrenArray.map((child, index) => (

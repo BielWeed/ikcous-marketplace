@@ -536,7 +536,7 @@ export const HomeView = React.memo(function HomeView({
       <FreeShippingBlock onNavigate={onNavigate} />
     </InfoBlockCarousel>
   ) : (
-    <div className="relative mt-2 w-full px-4">
+    <div className="relative mt-2 w-full px-4 lg:px-0">
       <div
         className={`${config.freeShippingCardStyle === "compacto" ? "h-[66px] rounded-[18px]" : "h-[172px] rounded-[24px]"} w-full animate-pulse bg-zinc-100`}
       />
@@ -552,7 +552,7 @@ export const HomeView = React.memo(function HomeView({
     ) : null;
 
   return (
-    <div className="pb-customer min-h-full">
+    <div className="pb-customer min-h-full lg:[container-type:inline-size]">
       {/* Laudo de acessibilidade 05/09 (onda 3, item B1): a home começava em
           h2 — sem h1 nenhum na página, o leitor de tela nunca anuncia o
           nome da loja como título do documento. sr-only: zero pixel muda. */}
@@ -583,7 +583,7 @@ export const HomeView = React.memo(function HomeView({
             <div data-testid="esqueleto-banner" className="mb-2 w-full">
               <div
                 role="status"
-                className="flex aspect-[2/1] w-full animate-pulse items-center justify-center bg-zinc-100 md:mx-auto md:max-w-[1040px]"
+                className="flex aspect-[2/1] w-full animate-pulse items-center justify-center bg-zinc-100 md:mx-auto md:max-w-[1040px] lg:aspect-auto lg:h-[clamp(320px,30cqw,440px)] lg:max-w-none lg:rounded-3xl"
               >
                 <span className="sr-only">Carregando banners</span>
                 <div className="size-8 animate-spin rounded-full border-4 border-zinc-200 border-t-primary" />
@@ -690,9 +690,10 @@ export const HomeView = React.memo(function HomeView({
                 products={secProducts}
                 ordemDaLojista={section.id !== "offers" || secaoCurada}
                 vitrineDeOfertas={section.id === "offers"}
-                className={
-                  section.id === "bestsellers" ? "bg-zinc-50/50" : undefined
-                }
+                className={cn(
+                  "lg:px-0",
+                  section.id === "bestsellers" && "bg-zinc-50/50",
+                )}
                 favorites={favorites}
                 onToggleFavorite={onToggleFavorite}
                 onProductClick={onProductClick}
@@ -713,9 +714,12 @@ export const HomeView = React.memo(function HomeView({
               onAddToCart={onAddToCart}
               onAddToCartWithVariants={handleAddToCartWithVariants}
               onQuickBuy={onQuickBuy}
-              className={
-                section.id === "bestsellers" ? "bg-zinc-50/50" : undefined
-              }
+              className={cn(
+                "lg:px-0 lg:[&_.snap-mandatory>div]:w-[calc((100%-48px)/4)] xl:[&_.snap-mandatory>div]:w-[calc((100%-64px)/5)]",
+                secProducts.length <= 3 &&
+                  "lg:[&_.snap-mandatory]:justify-center",
+                section.id === "bestsellers" && "bg-zinc-50/50",
+              )}
               selectedProductId={selectedProductId}
             />
           );
@@ -728,7 +732,7 @@ export const HomeView = React.memo(function HomeView({
             <div className="w-full py-4">
               <div
                 data-testid="esqueleto-banner-meio"
-                className="aspect-[2/1] w-full animate-pulse bg-zinc-100 md:mx-auto md:max-w-[1040px]"
+                className="aspect-[2/1] w-full animate-pulse bg-zinc-100 md:mx-auto md:max-w-[1040px] lg:aspect-auto lg:h-[clamp(320px,30cqw,440px)] lg:max-w-none lg:rounded-3xl"
               />
             </div>
           )
@@ -739,7 +743,7 @@ export const HomeView = React.memo(function HomeView({
         ) : null)}
 
       {/* All Products */}
-      <div className="p-3 sm:p-4">
+      <div className="p-3 sm:p-4 lg:px-0 lg:py-6">
         <h2
           id="catalogo"
           className="mb-8 scroll-mt-16 text-3xl font-black leading-none tracking-tighter text-zinc-900"
@@ -757,6 +761,7 @@ export const HomeView = React.memo(function HomeView({
         <div
           className={cn(
             "sticky top-[-2px] z-40 -mx-3 px-3 sm:-mx-4 sm:px-4 pb-1.5 pt-0 bg-background/95 backdrop-blur flex flex-col transition-all duration-200 mb-1.5 gpu-accelerated",
+            "lg:mx-0 lg:px-0",
             scrollProgress > 20
               ? "shadow-sm border-b border-zinc-200/60"
               : "border-b border-transparent",
@@ -776,9 +781,9 @@ export const HomeView = React.memo(function HomeView({
           </p>
           <div
             data-testid="faixa-categorias-filtros"
-            className="flex h-[88px] items-start"
+            className="flex h-[88px] items-start lg:w-fit lg:max-w-full"
           >
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 lg:flex-initial">
               <CategoryFilter
                 categories={categories}
                 selectedCategory={selectedCategory}
@@ -1008,7 +1013,7 @@ function SecaoCarrosselEsqueleto() {
   return (
     <div
       data-testid="esqueleto-carrossel"
-      className="overflow-hidden px-5 py-4 sm:px-6"
+      className="overflow-hidden px-5 py-4 sm:px-6 lg:px-0"
     >
       {/* Mesmo header do real: mb-6 + h2 text-3xl leading-[0.9] = 27px. */}
       <div className="mb-6 flex flex-col">
@@ -1021,7 +1026,7 @@ function SecaoCarrosselEsqueleto() {
           className="flex pb-2"
           style={{ paddingLeft: "24px", paddingRight: "24px" }}
         >
-          <div className="w-[260px] flex-shrink-0 py-2">
+          <div className="w-[260px] flex-shrink-0 py-2 lg:w-[calc((100%-48px)/4)] xl:w-[calc((100%-64px)/5)]">
             <ProductCardSkeleton />
           </div>
         </div>
@@ -1055,7 +1060,7 @@ function SecaoOfertasEsqueleto({
   return (
     // data-testid: âncora do teste comportamental "sem ofertas → nenhum
     // esqueleto de ofertas montado" (laudo edj3ka, E2) — sem efeito visual.
-    <div data-testid="esqueleto-ofertas" className="px-5 py-4 sm:px-6">
+    <div data-testid="esqueleto-ofertas" className="px-5 py-4 sm:px-6 lg:px-0">
       {/* Header do real: mb-4 + dot size-2 + h2 text-xl leading-none = 20px. */}
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-1.5">
@@ -1065,7 +1070,7 @@ function SecaoOfertasEsqueleto({
       </div>
       <div className="flex flex-col gap-6">
         {/* Mesma moldura do embla real: -mx-1 -my-3 px-1 py-3 + p-1.5. */}
-        <div className="-mx-1 -my-3 w-full px-1 py-3">
+        <div className="-mx-1 -my-3 w-full px-1 py-3 lg:mx-auto lg:max-w-[800px]">
           <div className="flex">
             <div className="flex min-w-0 flex-[0_0_100%] flex-col p-1.5">
               <HeroOfertaEsqueleto />
