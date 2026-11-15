@@ -3,7 +3,10 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { classesDoCelular } from "./classes-do-celular";
+import {
+  classesDoCelular,
+  classesDoCelularSemGradeDeTablet,
+} from "./classes-do-celular";
 
 const caminhos = {
   carrinho: "src/views/customer/CartView.tsx",
@@ -163,6 +166,7 @@ describe("P32: alinhamento e resumo alcançável no computador", () => {
       ],
     ]) {
       // Extração independente dos atributos agrupados, para preservar condicionais.
+      // O `md:grid-cols-3` do tablet (P35) é a única classe de celular acrescentada de propósito.
       const fonte = ts.createSourceFile(
         caminho,
         readFileSync(caminho, "utf8"),
@@ -175,7 +179,7 @@ describe("P32: alinhamento e resumo alcançável no computador", () => {
         if (ts.isJsxAttribute(no) && no.name.getText(fonte) === "className") {
           function coletar(filho: ts.Node) {
             if (ts.isStringLiteral(filho)) {
-              const celular = classesDoCelular(filho.text);
+              const celular = classesDoCelularSemGradeDeTablet(filho.text);
               if (celular) valores.push(celular);
             } else ts.forEachChild(filho, coletar);
           }
