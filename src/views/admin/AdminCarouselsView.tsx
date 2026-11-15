@@ -760,7 +760,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
 
   return (
     <div className="pb-admin relative h-auto w-full max-w-full overflow-x-hidden bg-admin-bg font-sans text-zinc-400 selection:bg-admin-gold/30 selection:text-white">
-      <div className="relative z-10 mx-auto max-w-5xl space-y-4 p-4">
+      <div className="relative z-10 mx-auto max-w-5xl space-y-4 p-4 lg:max-w-7xl lg:space-y-6 lg:p-6">
         <div>
           <div className="flex items-center justify-between gap-3">
             <AdminPageHeader
@@ -894,7 +894,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
           aria-busy={salvandoVitrines}
           values={secoesNaLista}
           onReorder={handleReordenando}
-          className="flex flex-col gap-2.5"
+          className="flex flex-col gap-2.5 lg:gap-4"
         >
           {secoesNaLista.map((sec, index) => (
             <CartaoDaVitrine
