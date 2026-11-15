@@ -10,6 +10,7 @@ import { AtalhosDaAba } from "@/components/admin/primitivos/AtalhosDaAba";
 import { EstadoComPonto } from "@/components/admin/primitivos/EstadoComPonto";
 import { FolhaDoPainel } from "@/components/admin/primitivos/FolhaDoPainel";
 import { SeloDeStatus } from "@/components/admin/primitivos/SeloDeStatus";
+import { BaixarPlanilhaProdutos } from "@/components/admin/products/BaixarPlanilhaProdutos";
 import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import {
   AlertDialog,
@@ -155,6 +156,9 @@ export const AdminProductsView = memo(function AdminProductsView({
     loadProducts,
     loadProductsSemCusto,
     copiarImagemParaDuplicacao,
+    podeExportarProdutos,
+    nomeDaLoja,
+    idDaContaViva,
   } = useProducts({
     autoFetch: false,
     onSincronizado: () => {
@@ -1371,6 +1375,11 @@ export const AdminProductsView = memo(function AdminProductsView({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          <BaixarPlanilhaProdutos
+            permitido={podeExportarProdutos}
+            nomeLoja={nomeDaLoja}
+            idDaContaViva={idDaContaViva}
+          />
           <div className="produtos-cupons">
             <AtalhosDaAba aba="produtos" onNavigate={handleLocalNavigate} />
           </div>
