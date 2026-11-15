@@ -1,7 +1,4 @@
-import {
-  CONTAINER_DO_COMPUTADOR,
-  GRADE_DE_PRODUTOS_NO_COMPUTADOR,
-} from "@/components/desktop/medidas";
+import { GRADE_DE_PRODUTOS_NO_COMPUTADOR } from "@/components/desktop/medidas";
 import { ProductCard } from "@/components/ui/custom/ProductCard";
 import { useStore } from "@/contexts/StoreContext";
 import { useFavorites } from "@/hooks/useFavorites";
@@ -543,12 +540,7 @@ export const FavoritesView = React.memo(function FavoritesView({
       products?.filter((p) => p.isActive).slice(0, 4) || [];
 
     return (
-      <div
-        className={cn(
-          "pb-customer min-h-full min-w-0 overflow-x-hidden bg-background text-foreground",
-          CONTAINER_DO_COMPUTADOR,
-        )}
-      >
+      <div className="pb-customer min-h-full min-w-0 overflow-x-hidden bg-background text-foreground">
         <header className="px-4 pb-4 pt-5">
           <h1 className="text-3xl font-bold tracking-tight">Favoritos</h1>
           <p className="mt-1 text-xs text-muted-foreground">
@@ -640,12 +632,7 @@ export const FavoritesView = React.memo(function FavoritesView({
   }
 
   return (
-    <div
-      className={cn(
-        "pb-customer min-h-full min-w-0 overflow-x-hidden bg-background text-foreground",
-        CONTAINER_DO_COMPUTADOR,
-      )}
-    >
+    <div className="pb-customer min-h-full min-w-0 overflow-x-hidden bg-background text-foreground">
       <header className="flex flex-wrap items-center justify-between gap-3 px-4 pb-3 pt-5">
         <div className="min-w-0">
           <h1 className="text-3xl font-bold tracking-tight">Favoritos</h1>
