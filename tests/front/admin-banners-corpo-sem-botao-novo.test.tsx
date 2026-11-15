@@ -1,9 +1,12 @@
 // @vitest-environment jsdom
 //
-// CORPO DA LISTA DE BANNERS — o "Novo Banner" duplicado saiu: o único botão
-// de criar é o da barra ancorada (AdminLayout). A tela continua abrindo o
-// editor pelo evento `admin:open-new-banner-dialog`, e o estado vazio guia
-// por texto (a barra está sempre à vista).
+// CORPO DA LISTA DE BANNERS — o "Novo Banner" duplicado saiu: no celular o
+// único botão de criar é o da barra ancorada (AdminLayout). A tela continua
+// abrindo o editor pelo evento `admin:open-new-banner-dialog`, e o estado
+// vazio guia por texto (a barra está sempre à vista). No COMPUTADOR essa barra
+// é `lg:hidden`; a porta de lá mora no `<header>` da tela (P70,
+// desktop-p70-banners-novo-banner.test.tsx) e por isso não conta aqui: este
+// teste guarda o CORPO, abaixo do cabeçalho.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -153,8 +156,8 @@ describe("AdminBannersView — sem botão Novo Banner no corpo", () => {
   }
 
   const botoesNovo = () =>
-    [...hospedeiro.querySelectorAll("button")].filter((b) =>
-      /novo banner/i.test(b.textContent ?? ""),
+    [...hospedeiro.querySelectorAll("button")].filter(
+      (b) => !b.closest("header") && /novo banner/i.test(b.textContent ?? ""),
     );
 
   it("o corpo da lista não tem botão 'Novo Banner'", async () => {
