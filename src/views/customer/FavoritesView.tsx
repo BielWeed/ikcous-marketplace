@@ -90,7 +90,7 @@ function AvisoDeFavoritosRetidos({
   return (
     <div
       role="status"
-      className="mx-4 mb-3 lg:mx-0 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-100"
+      className="mx-4 mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-100 lg:mx-0"
     >
       <span>
         {quantidade}{" "}
@@ -134,7 +134,7 @@ function AvisoDeFavoritosIndisponiveis({
   return (
     <div
       role="status"
-      className="mx-4 mb-3 lg:mx-0 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-100"
+      className="mx-4 mb-3 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-100 lg:mx-0"
     >
       {quantidade === 1
         ? "1 favorito seu não está disponível na loja."
@@ -695,7 +695,7 @@ export const FavoritesView = React.memo(function FavoritesView({
       {favoritosErro && (
         <div
           role="status"
-          className="mx-4 mb-2 lg:mx-0 flex items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 text-[13px] leading-5 text-amber-800 dark:text-amber-300"
+          className="mx-4 mb-2 flex items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 text-[13px] leading-5 text-amber-800 dark:text-amber-300 lg:mx-0"
         >
           <p className="py-2">
             Não conseguimos atualizar seus favoritos. A lista pode estar
@@ -714,7 +714,7 @@ export const FavoritesView = React.memo(function FavoritesView({
       {mostrarAtalhos && (
         <nav
           aria-label="Categorias"
-          className="favorites-atalhos mx-4 mb-1 lg:mx-0 flex min-w-0 gap-2 overflow-x-auto pb-1"
+          className="favorites-atalhos mx-4 mb-1 flex min-w-0 gap-2 overflow-x-auto pb-1 lg:mx-0"
         >
           {secoes.map((secao, indice) => (
             <button

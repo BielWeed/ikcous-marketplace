@@ -1,13 +1,11 @@
 {
   "1.5.189": {
-    "titulo": "Balcão no computador, setas nos carrosséis e fotos sem corte",
+    "titulo": "Balcão no computador e fotos sem corte",
     "novidades": [
-      "Loja, no computador: os carrosséis de produtos da página inicial no layout Padrão ganham setas para rolar para os lados com o mouse.",
       "Painel, Balcão: no computador, o fechamento da venda mostra desconto e pagamento lado a lado."
     ],
     "correcoes": [
-      "Loja, no computador: a foto do produto no layout Compacto das vitrines deixa de ser cortada, e Favoritos fica alinhado ao resto da loja nos três estados (carregando, vazio e com produtos).",
-      "Loja, finalizar compra: some o balão de aviso da transportadora; as formas de pagamento seguem aparecendo na própria tela e nada mudou na regra do pedido."
+      "Loja, no computador: a foto do produto no layout Compacto das vitrines deixa de ser cortada, e Favoritos fica alinhado ao resto da loja nos três estados (carregando, vazio e com produtos)."
     ],
     "melhorias": []
   },
@@ -15,11 +13,13 @@
     "titulo": "A loja e o painel ganham um desenho próprio para computador",
     "novidades": [
       "Loja, no computador (tela de 1024 px ou mais): cabeçalho fixo com logo, busca, categorias e carrinho, páginas centralizadas, checkout em duas colunas com o Total e o botão de finalizar sempre à vista, produto em duas colunas e grades de produtos com mais colunas. A barra inferior do celular não aparece no computador.",
-      "Painel, no computador: Push, Notificações, Frete, Sobre a loja, Avaliações, Perguntas, Ajustes, Banners, Carrosséis, Cupom, Cor do app, Frete grátis, Vitrines, Financeiro (Caixa), CRM, a ficha do pedido e o cadastro de produto passam a usar a largura da tela, com duas colunas onde cabem."
+      "Painel, no computador: Push, Notificações, Frete, Sobre a loja, Avaliações, Perguntas, Ajustes, Banners, Carrosséis, Cupom, Cor do app, Frete grátis, Vitrines, Financeiro (Caixa), CRM, a ficha do pedido e o cadastro de produto passam a usar a largura da tela, com duas colunas onde cabem.",
+      "Loja, no computador: os carrosséis de produtos da página inicial no layout Padrão ganham setas para rolar para os lados com o mouse."
     ],
     "correcoes": [
       "Loja, no tablet: a barra de adicionar do produto deixa de sair da tela ao rolar, e a Busca e os Favoritos passam a mostrar três colunas de produtos em vez de duas com fotos enormes.",
-      "Loja, no computador: o botão do WhatsApp do produto fica ao lado da quantidade e a tela de entrada tem uma só barra de rolagem."
+      "Loja, no computador: o botão do WhatsApp do produto fica ao lado da quantidade e a tela de entrada tem uma só barra de rolagem.",
+      "Loja, finalizar compra: some o balão de aviso da transportadora; as formas de pagamento seguem aparecendo na própria tela e nada mudou na regra do pedido."
     ],
     "melhorias": []
   },
