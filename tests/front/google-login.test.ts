@@ -135,6 +135,14 @@ it("destino adulterado não abre painel nem endereço externo", async () => {
   retomarDestinoGoogle();
   expect(history.state.from).toBe("profile");
 });
+it.each(["https://fora.invalid/roubar", "/checkout", "javascript:alert(1)"])(
+  "endereço de volta nunca vem de next (%s)",
+  async (next) => {
+    history.replaceState({ view: "auth", from: "checkout", next }, "", "/auth");
+    const { guardarDestinoGoogle } = await import("@/lib/google-login");
+    expect(guardarDestinoGoogle()).toBe(`${location.origin}/auth`);
+  },
+);
 it("estado vencido ou armazenamento bloqueado não quebra a entrada", async () => {
   const { guardarDestinoGoogle, retomarDestinoGoogle } = await import(
     "@/lib/google-login"

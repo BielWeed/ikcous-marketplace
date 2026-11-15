@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { cpfValido, formatarCpf } from "@/lib/cpf";
 import {
   googleLigadoNestaLoja,
+  mensagemComDicaGoogle,
   navegadorInternoDaMeta,
 } from "@/lib/google-login";
 import {
@@ -105,6 +106,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
     login,
     loginComGoogle,
     mensagemRetornoGoogle,
+    restaurarDestinoGoogle,
     signUp,
     resetPassword,
     updatePassword,
@@ -245,6 +247,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
       viewMode !== "reset-prompt"
     ) {
       console.log("[AuthView] User session detected. Redirecting to success.");
+      restaurarDestinoGoogle?.();
       if (onSuccess) onSuccess();
       else onNavigate("profile");
     }
@@ -253,6 +256,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
     isPasswordRecovery,
     linkDeRecuperacaoVencido,
     viewMode,
+    restaurarDestinoGoogle,
     onSuccess,
     onNavigate,
   ]);
@@ -376,6 +380,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
         );
         if (success) {
           toast.success("Acesso concedido. Bem-vindo!");
+          restaurarDestinoGoogle?.();
           if (onSuccess) onSuccess();
           else onNavigate("profile");
         } else if (!error && message) {
@@ -385,7 +390,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
           mostrarErroDeEntrar(message);
         } else if (error) {
           // Tratamento de Erro - Localização de mensagens do Supabase
-          let message = MENSAGEM_ERRO_LOGIN_GENERICA;
+          let message = mensagemComDicaGoogle(MENSAGEM_ERRO_LOGIN_GENERICA);
 
           // #200 — o Supabase Auth devolve HTTP 400 tanto para "Invalid
           // login credentials" quanto para "Email not confirmed" (registro
@@ -463,7 +468,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
             error.status === 400 ||
             error.message?.includes("Invalid login credentials")
           ) {
-            message = MENSAGEM_CREDENCIAIS_CLIENTE;
+            message = mensagemComDicaGoogle(MENSAGEM_CREDENCIAIS_CLIENTE);
           } else if (error.status === 429) {
             message = "Muitas tentativas. Tente novamente em alguns minutos.";
           }

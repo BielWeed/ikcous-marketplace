@@ -46,12 +46,12 @@
 // vale só aqui. E uma segunda nuance: no `token.go`, `IsBanned()` é checado
 // ANTES de `Authenticate()` — uma conta banida devolve `user_banned` com a
 // senha CERTA **ou** ERRADA; a senha nunca chega a ser conferida.
-// Dica condicional e idêntica para qualquer e-mail: não consulta se há conta Google.
+// Frases-base originais. O helper de Google acrescenta a dica só com sonda confirmada.
 export const MENSAGEM_CREDENCIAIS_CLIENTE =
-  "E-mail ou senha incorretos. Verifique suas credenciais. Se você criou a conta com o Google, use o botão do Google.";
+  "E-mail ou senha incorretos. Verifique suas credenciais.";
 
 export const MENSAGEM_ERRO_LOGIN_GENERICA =
-  "Não foi possível entrar agora. Tente novamente em instantes ou fale com a loja. Se você criou a conta com o Google, use o botão do Google.";
+  "Não foi possível entrar agora. Tente novamente em instantes ou fale com a loja.";
 
 // A1-fix2 (achado BLOQUEANTE da revisão de contexto limpo do lote VITRINE) —
 // `login` também é chamado por AdminLoginView.tsx, a tela do LOJISTA, que é

@@ -13,6 +13,7 @@ vi.mock("@/lib/supabase", () => ({
         .fn()
         .mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } }),
       signInWithOAuth: mocks.oauth,
+      signInWithPassword: vi.fn(),
     },
     rpc: vi.fn().mockResolvedValue({ data: null, error: null }),
   },
@@ -45,6 +46,8 @@ afterEach(() => {
   sessionStorage.clear();
   localStorage.clear();
   history.replaceState(null, "", "/");
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 async function montar() {
@@ -66,6 +69,11 @@ async function montar() {
 }
 it("Google guarda o destino e usa somente origem + /auth no redirectTo", async () => {
   mocks.oauth.mockResolvedValue({ error: null });
+  history.replaceState(
+    { view: "auth", from: "checkout", next: "https://fora.invalid/roubar" },
+    "",
+    "/auth",
+  );
   await montar();
   expect(typeof contexto.loginComGoogle).toBe("function");
   let ok;
@@ -123,6 +131,68 @@ it.each([true, false])(
     } else expect(toast.error).toHaveBeenCalledOnce();
   },
 );
+it.each(
+  ["false", "pendente", "true"].flatMap((estado) =>
+    [400, 500].map((status) => ({ estado, status })),
+  ),
+)(
+  "retorno do login: sonda $estado e erro $status usam a mesma frase da tela",
+  async ({ estado, status }) => {
+    await montar();
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(() =>
+        estado === "pendente"
+          ? new Promise(() => {})
+          : Promise.resolve({
+              ok: true,
+              json: async () => ({ external: { google: estado === "true" } }),
+            }),
+      ),
+    );
+    const { googleLigadoNestaLoja } = await import("@/lib/google-login");
+    const sonda = googleLigadoNestaLoja();
+    if (estado !== "pendente") await sonda;
+    const { supabase } = await import("@/lib/supabase");
+    vi.mocked(supabase.auth.signInWithPassword).mockResolvedValue({
+      data: { user: null, session: null },
+      error: { status, message: "falha falsa" },
+    } as never);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const base =
+      status === 400
+        ? "E-mail ou senha incorretos. Verifique suas credenciais."
+        : "Não foi possível entrar agora. Tente novamente em instantes ou fale com a loja.";
+    const resultado = await contexto.login(
+      "qualquer@example.test",
+      "senha",
+      "customer",
+    );
+    expect(resultado.message).toBe(
+      estado === "true"
+        ? `${base} Se você criou a conta com o Google, use o botão do Google.`
+        : base,
+    );
+    const lojista = await contexto.login(
+      "qualquer@example.test",
+      "senha",
+      "admin",
+    );
+    expect(lojista.message).not.toContain("Google");
+  },
+);
+it("restaurar o retorno não sobrescreve navegação já feita ou outro state válido", async () => {
+  const { guardarDestinoGoogle } = await import("@/lib/google-login");
+  guardarDestinoGoogle();
+  await montar();
+  history.replaceState({ view: "auth", from: "cart" }, "", "/auth");
+  contexto.restaurarDestinoGoogle();
+  expect(history.state.from).toBe("cart");
+  history.replaceState(null, "", "/profile");
+  contexto.restaurarDestinoGoogle();
+  expect(history.state).toBeNull();
+});
 it("o segundo argumento antigo de conta esperada continua válido", async () => {
   mocks.gravar.mockResolvedValue({ ok: false, motivo: "conta_trocada" });
   vi.spyOn(console, "error").mockImplementation(() => {});

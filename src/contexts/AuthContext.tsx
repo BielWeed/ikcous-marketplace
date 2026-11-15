@@ -30,6 +30,7 @@ import {
 import {
   esquecerDestinoGoogle,
   guardarDestinoGoogle,
+  mensagemComDicaGoogle,
   retomarDestinoGoogle,
 } from "@/lib/google-login";
 import {
@@ -161,6 +162,7 @@ interface AuthContextType {
   adminStatus: AdminStatus;
   loginComGoogle: () => Promise<boolean>;
   mensagemRetornoGoogle: string | null;
+  restaurarDestinoGoogle: () => void;
   login: (
     email: string,
     senha: string,
@@ -395,6 +397,17 @@ function apagarDadosLocaisDaConta() {
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   // Antes de montar o roteador: a saída para o Google não preserva history.state.
   const [retornoGoogle] = useState(retomarDestinoGoogle);
+  const restaurarDestinoGoogle = useCallback(() => {
+    // O SDK implícito limpa o hash e perde history.state ANTES de SIGNED_IN.
+    // Usa o retrato validado do sessionStorage, só enquanto ainda estamos no login.
+    if (
+      retornoGoogle.estado &&
+      history.state == null &&
+      location.pathname === "/auth"
+    ) {
+      history.replaceState(retornoGoogle.estado, "");
+    }
+  }, [retornoGoogle.estado]);
   // Synchronously recover session from localStorage to prevent screen flash/delay on boot
   const getCachedSession = () => {
     try {
@@ -1502,7 +1515,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         let message =
           audience === "admin"
             ? MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA
-            : MENSAGEM_ERRO_LOGIN_GENERICA;
+            : mensagemComDicaGoogle(MENSAGEM_ERRO_LOGIN_GENERICA);
         if (
           error.code === "email_not_confirmed" ||
           error.message?.includes("Email not confirmed")
@@ -1530,7 +1543,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         ) {
           message =
             audience === "customer"
-              ? MENSAGEM_CREDENCIAIS_CLIENTE
+              ? mensagemComDicaGoogle(MENSAGEM_CREDENCIAIS_CLIENTE)
               : "E-mail ou senha incorretos. Verifique suas credenciais.";
         } else if (error.status === 429) {
           // Verificado na doc oficial: o limite de login (token grant) é POR
@@ -1955,6 +1968,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const value = useMemo(
     () => ({
       loginComGoogle,
+      restaurarDestinoGoogle,
       mensagemRetornoGoogle: retornoGoogle.mensagem,
       session,
       user,
@@ -1982,6 +1996,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }),
     [
       loginComGoogle,
+      restaurarDestinoGoogle,
       retornoGoogle.mensagem,
       session,
       user,

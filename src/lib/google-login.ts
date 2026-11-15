@@ -2,10 +2,14 @@ import { destinoPosLogin, idDoDestinoPosLogin } from "@/lib/destinoPosLogin";
 import { lerChaveSupabase, lerSupabaseUrl } from "@/lib/env-valores";
 
 let sonda: Promise<boolean> | undefined;
+let googleConfirmado = false;
 
 /** Cache só desta página: falha/timeout nunca liga um provedor. */
 export function googleLigadoNestaLoja(): Promise<boolean> {
-  sonda ??= consultarGoogle();
+  sonda ??= consultarGoogle().then((ligado) => {
+    googleConfirmado = ligado;
+    return ligado;
+  });
   return sonda;
 }
 
@@ -40,7 +44,16 @@ async function consultarGoogle(): Promise<boolean> {
 }
 
 export function navegadorInternoDaMeta(agente = navigator.userAgent): boolean {
-  return /Instagram|FBAN|FBAV|FB_IAB/i.test(agente);
+  return /Instagram|FBAN|FBAV|FB_IAB|BytedanceWebview|musical_ly|Line\/|Snapchat|; wv\)/i.test(
+    agente,
+  );
+}
+
+/** Só anuncia um botão disponível; não espera a rede nem olha o e-mail informado. */
+export function mensagemComDicaGoogle(mensagem: string): string {
+  return googleConfirmado && !navegadorInternoDaMeta()
+    ? `${mensagem} Se você criou a conta com o Google, use o botão do Google.`
+    : mensagem;
 }
 
 const CHAVE_RETORNO = "ikcous_google_retorno_v1";
@@ -79,6 +92,12 @@ export interface RetornoGoogle {
   iniciado: boolean;
   checkout: boolean;
   mensagem: string | null;
+  estado: {
+    view: string;
+    from?: string;
+    requested?: string;
+    id?: string;
+  } | null;
 }
 
 /** Chamado antes de montar o App: devolve o state que sobrevive à saída da loja. */
@@ -87,6 +106,7 @@ export function retomarDestinoGoogle(): RetornoGoogle {
     iniciado: false,
     checkout: false,
     mensagem: null,
+    estado: null,
   };
   if (typeof window === "undefined" || location.pathname !== "/auth")
     return vazio;
@@ -136,5 +156,10 @@ export function retomarDestinoGoogle(): RetornoGoogle {
   }
   // Preserva o hash de SUCESSO: quem lê os tokens é o SDK (detectSessionInUrl).
   history.replaceState(estado, "", url.pathname + url.search + url.hash);
-  return { iniciado: valido, checkout: destino === "checkout", mensagem };
+  return {
+    iniciado: valido,
+    checkout: destino === "checkout",
+    mensagem,
+    estado: valido ? estado : null,
+  };
 }
