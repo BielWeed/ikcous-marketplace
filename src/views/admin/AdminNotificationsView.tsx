@@ -500,8 +500,8 @@ export const AdminNotificationsView = memo(function AdminNotificationsView({
 
   return (
     <div className="pb-admin min-h-screen bg-background text-foreground duration-200 animate-in fade-in lg:pb-12">
-      <div className="sticky top-0 z-20 bg-background/95 px-5 pb-3 pt-4 backdrop-blur-xl">
-        <div className="mx-auto max-w-3xl">
+      <div className="sticky top-0 z-20 bg-background/95 px-5 pb-3 pt-4 backdrop-blur-xl lg:px-0">
+        <div className="mx-auto max-w-3xl lg:max-w-7xl lg:px-6">
           <p className={ROTULO_MONO}>Painel · Avisos</p>
           <div className="mt-1 flex items-start justify-between gap-3">
             <div className="min-w-0 [&_h1]:text-[28px] [&_h1]:font-bold [&_h1]:normal-case [&_h1]:leading-8 [&_h1]:tracking-tight [&_h1_span]:not-italic">
@@ -535,7 +535,7 @@ export const AdminNotificationsView = memo(function AdminNotificationsView({
         </div>
       </div>
 
-      <div className="mx-auto max-w-3xl space-y-7 px-5 pb-6 pt-2">
+      <div className="mx-auto max-w-3xl space-y-7 px-5 pb-6 pt-2 lg:max-w-7xl lg:px-6 xl:grid xl:grid-cols-2 xl:items-start xl:gap-6 xl:space-y-0 xl:[&:has(>[data-bloco]+[data-bloco])>[data-bloco]]:col-span-1 xl:[&>*]:col-span-2">
         {naoLidas > 0 && (
           <button
             type="button"
