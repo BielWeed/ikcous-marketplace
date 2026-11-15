@@ -220,12 +220,12 @@ export const CartaoCliente = memo(function CartaoCliente({
               "whitespace-nowrap text-lg font-bold leading-tight tabular-nums",
               classeDoTexto(tomDoValor(Number(customer.total_spent || 0))),
               detalhado && "text-xl",
-              // A 1024 px a coluna do valor é estreita e o `nowrap` deixava
+              // De 768 a 1279 px a coluna do valor é estreita e o `nowrap` deixava
               // R$ 123.456.789,89 vazar da caixa; quebra no "R$" em vez de
               // cortar (dinheiro cortado mostra número errado). De 1280 em
               // diante a coluna comporta e o tamanho de hoje volta.
               detalhado &&
-                "lg:whitespace-normal lg:break-words lg:text-base xl:text-xl",
+                "md:whitespace-normal md:break-words md:text-base xl:text-xl",
             )}
           >
             R${" "}

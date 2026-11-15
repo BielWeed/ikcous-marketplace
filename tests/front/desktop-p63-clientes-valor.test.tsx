@@ -1,28 +1,30 @@
 // @vitest-environment jsdom
 //
 // P63 (painel em computador) — o "Total já comprado" do cartão do cliente
-// (lista detalhada, `grid-cols-12`) é `whitespace-nowrap text-xl`. A 1024 px a
-// coluna do valor (`md:col-span-3`, menos o `p-3` da caixa) é estreita: um valor
-// grande como R$ 123.456.789,89 passa da caixa e empurra o que está ao lado.
+// (lista detalhada, `grid-cols-12` a partir de `md:`) é `whitespace-nowrap
+// text-xl`. De 768 a 1279 px a coluna do valor (`md:col-span-3`, menos o `p-3` da
+// caixa) é estreita: um valor grande como R$ 123.456.789,89 passa da caixa e
+// empurra/sobrepõe o que está ao lado (medido em Chromium: a 768 passava 33,4 px
+// da borda e cobria a data; a 900, 0,4 px; a 1024 já cabia com folga de 1,1 px
+// depois do conserto).
 //
-// Conserto SÓ de classes, SÓ no valor do cartão detalhado e SÓ a partir de 1024:
-// `lg:whitespace-normal lg:break-words` deixa o valor quebrar depois do "R$"
-// (e, em último caso, no meio, em vez de vazar), `lg:text-base` o faz caber na
-// coluna estreita de 1024 e `xl:text-xl` devolve o tamanho de hoje a partir de
-// 1280, onde a coluna comporta. NADA de `truncate`: um valor de dinheiro cortado
+// Conserto SÓ de classes, SÓ no valor do cartão detalhado e SÓ a partir de 768:
+// `md:whitespace-normal md:break-words` deixa o valor quebrar depois do "R$"
+// (e, em último caso, no meio, em vez de vazar), `md:text-base` o faz caber na
+// coluna estreita e `xl:text-xl` devolve o tamanho de hoje a partir de 1280, onde
+// a coluna comporta. NADA de `truncate`: um valor de dinheiro cortado
 // ("R$ 123.456.7…") mostra um número errado.
 //
-// O celular não muda: só entram classes `lg:`/`xl:`. O que o valor tem SEM esses
-// prefixos fica congelado como LISTA LITERAL (escrita à mão; nunca lida do
-// histórico do git). O jsdom não mede layout; aqui a prova é o className do
-// componente REAL e mutantes em CÓPIA do className, para as travas não serem
+// O celular (< 768) não muda: só entram classes `md:`/`xl:`. O que o valor tem
+// SEM prefixo de tela fica congelado como LISTA LITERAL (escrita à mão; nunca
+// lida do histórico do git). O jsdom não mede layout; aqui a prova é o className
+// do componente REAL e mutantes em CÓPIA do className, para as travas não serem
 // decorativas.
 import { CartaoCliente } from "@/components/admin/users/CartaoCliente";
 import type { Customer } from "@/utils/admin_cache";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { classesDoCelular } from "./classes-do-celular";
 
 vi.mock("@/lib/supabase", () => ({ supabase: { rpc: vi.fn() } }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -30,9 +32,16 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 const tokens = (className: string) => className.split(/\s+/).filter(Boolean);
+const PREFIXOS_DE_TELA = new Set(["md", "lg", "xl", "2xl"]);
+const classesDoCelular = (className: string) =>
+  tokens(className)
+    .filter((c) => !PREFIXOS_DE_TELA.has(c.split(":")[0]))
+    .join(" ");
 
 // ---------------------------------------------------------------------------
-// Lista literal do que o valor tem no celular (sem `lg:`/`xl:`/`2xl:`).
+// Lista literal do que o valor tem no celular (sem `md:`/`lg:`/`xl:`/`2xl:`).
+// `classesDoCelular` do projeto só tira lg/xl/2xl e aqui o token novo é `md:`,
+// então a regra de "abaixo de 768" é local.
 // ---------------------------------------------------------------------------
 
 const VALOR_DETALHADO_NO_CELULAR =
@@ -41,9 +50,9 @@ const VALOR_COMPACTO_NO_CELULAR =
   "whitespace-nowrap text-lg font-bold leading-tight tabular-nums text-emerald-400";
 
 const CLASSES_DO_COMPUTADOR = [
-  "lg:whitespace-normal",
-  "lg:break-words",
-  "lg:text-base",
+  "md:whitespace-normal",
+  "md:break-words",
+  "md:text-base",
   "xl:text-xl",
 ];
 
@@ -54,10 +63,7 @@ const CLASSES_DO_COMPUTADOR = [
 
 function violacoesDoValorDetalhado(className: string): string[] {
   const v: string[] = [];
-  if (
-    classesDoCelular(className).replace(/\s*xl:\S+/g, "") !==
-    VALOR_DETALHADO_NO_CELULAR
-  )
+  if (classesDoCelular(className) !== VALOR_DETALHADO_NO_CELULAR)
     v.push("celular mudou");
   for (const classe of CLASSES_DO_COMPUTADOR) {
     if (!tokens(className).includes(classe)) v.push(`falta ${classe}`);
@@ -74,7 +80,7 @@ const semOToken = (className: string, token: string) =>
     .join(" ");
 const semOPrefixo = (className: string, token: string) =>
   tokens(className)
-    .map((c) => (c === token ? token.replace(/^(lg|xl):/, "") : c))
+    .map((c) => (c === token ? token.replace(/^(md|xl):/, "") : c))
     .join(" ");
 
 function cliente(sobrescreve: Partial<Customer>): Customer {
@@ -91,7 +97,7 @@ function cliente(sobrescreve: Partial<Customer>): Customer {
   };
 }
 
-describe("P63 cartão do cliente: valor grande cabe na coluna a 1024 px", () => {
+describe("P63 cartão do cliente: valor grande cabe na coluna de 768 a 1279 px", () => {
   let hospedeiro: HTMLDivElement;
   let raiz: Root;
 
@@ -123,12 +129,10 @@ describe("P63 cartão do cliente: valor grande cabe na coluna a 1024 px", () => 
     return valor as HTMLElement;
   }
 
-  it("lista detalhada: o valor ganha as classes de 1024 e o celular continua igual", async () => {
+  it("lista detalhada: o valor ganha as classes de 768 a 1279 e o celular continua igual", async () => {
     const valor = await valorDoCartao(true);
     expect(violacoesDoValorDetalhado(valor.className)).toEqual([]);
-    expect(classesDoCelular(valor.className).replace(/\s*xl:\S+/g, "")).toBe(
-      VALOR_DETALHADO_NO_CELULAR,
-    );
+    expect(classesDoCelular(valor.className)).toBe(VALOR_DETALHADO_NO_CELULAR);
   });
 
   it("cartão compacto (grade): nenhuma classe de computador entra, nem a 1280", async () => {
@@ -144,9 +148,9 @@ describe("P63 cartão do cliente: valor grande cabe na coluna a 1024 px", () => 
       );
     }
     expect(
-      violacoesDoValorDetalhado(semOPrefixo(className, "lg:text-base")),
+      violacoesDoValorDetalhado(semOPrefixo(className, "md:text-base")),
     ).toContain("celular mudou");
-    expect(violacoesDoValorDetalhado(`${className} lg:truncate`)).toContain(
+    expect(violacoesDoValorDetalhado(`${className} md:truncate`)).toContain(
       "valor cortado",
     );
   });
