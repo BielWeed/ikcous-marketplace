@@ -217,6 +217,7 @@ export function SolicitarDevolucaoSheet(props: SolicitarDevolucaoSheetProps) {
     <Sheet open={aberto} onOpenChange={pedirParaMudar}>
       <SheetContent
         side="bottom"
+        gavetaNoComputador={false}
         data-testid="folha-devolucao"
         // Esc dentro da pergunta volta a preencher, em vez de pedir de novo.
         onEscapeKeyDown={(evento) => {

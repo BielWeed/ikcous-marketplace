@@ -13,8 +13,8 @@ import { X } from "lucide-react";
 
 /**
  * A folha das Vitrines: sobe de baixo (o polegar alcança), corpo que rola
- * sozinho e rodapé com a ação principal sempre à vista. No computador ela
- * continua embaixo, mas limitada a uma largura de leitura e centralizada.
+ * sozinho e rodapé com a ação principal sempre à vista. No computador o
+ * Sheet compartilhado a posiciona como gaveta à direita.
  *
  * Quem fecha é SEMPRE `aoFechar` (X, véu e Esc) — a folha não guarda estado.
  *
