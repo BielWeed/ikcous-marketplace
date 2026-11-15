@@ -108,11 +108,14 @@ const avisarEmbla = (evento: string) =>
   act(() => {
     for (const f of embla.ouvintes.get(evento) ?? []) f();
   });
-async function montar(Faixa: ComponentType<Record<string, unknown>>) {
+async function montar(
+  Faixa: ComponentType<Record<string, unknown>>,
+  produtos: Product[] = SEIS,
+) {
   await act(async () => {
     root.render(
       <Faixa
-        products={SEIS}
+        products={produtos}
         favorites={[]}
         onAddToCart={() => {}}
         onProductClick={() => {}}
@@ -303,6 +306,123 @@ describe("classes dos cartoes no celular (congeladas)", () => {
     expect(cartao?.className).toBe(
       "relative flex min-h-[290px] min-w-0 max-w-full rounded-[20px] border border-zinc-200 bg-white lg:!w-[calc((100%-30px)/4)] xl:!w-[calc((100%-40px)/5)] lg:max-w-[280px] flex-col shrink-0 max-[359px]:!w-[145px]",
     );
+  });
+});
+
+// --- Auditoria de mutantes (1.5.192): o que o teste acima deixava passar. ------------------------
+// Cada bloco abaixo mata um mutante que sobrevivia: classe da seta trocada, seta de voltar sem o
+// salto de "menos movimento", seta que fica quando a janela encolhe, titulo que reserva canto sem
+// haver seta, secao sem `relative` (a seta e `absolute`).
+const SETA_ANTERIOR =
+  "absolute top-2 z-20 hidden size-10 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-900 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2 lg:flex right-16";
+const SETA_SEGUINTE = SETA_ANTERIOR.replace("right-16", "right-4");
+
+function telaComPreferencias(computador: boolean, reduzirMovimento: boolean) {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn((consulta: string) => ({
+      matches: consulta.includes("min-width: 1024px")
+        ? computador
+        : consulta.includes("prefers-reduced-motion")
+          ? reduzirMovimento
+          : false,
+      media: consulta,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })),
+  );
+}
+
+describe.each(FAIXAS)("%s: as setas no desenho certo", (_nome, Faixa) => {
+  beforeEach(() => telaDe(true));
+
+  it("as duas setas: classes congeladas (so no PC, lado a lado), botao de verdade e icone escondido do leitor de tela", async () => {
+    embla.estado.voltar = true;
+    embla.estado.avancar = true;
+    await montar(Faixa);
+    expect(anterior()?.className).toBe(SETA_ANTERIOR);
+    expect(seguinte()?.className).toBe(SETA_SEGUINTE);
+    for (const seta of [anterior(), seguinte()]) {
+      expect(seta?.getAttribute("type")).toBe("button");
+      expect(seta?.querySelector("svg")?.getAttribute("aria-hidden")).toBe(
+        "true",
+      );
+    }
+  });
+
+  it("as setas ficam DENTRO da secao `relative` (a seta e absoluta: sem isso vai parar no canto da pagina)", async () => {
+    embla.estado.avancar = true;
+    await montar(Faixa);
+    const secao = host.querySelector("section");
+    expect(secao?.className.split(/\s+/)).toContain("relative");
+    expect(secao?.contains(seguinte())).toBe(true);
+  });
+
+  it("com uma oferta so nao ha o que rolar: o titulo nao reserva o canto das setas", async () => {
+    await montar(Faixa, [produto("unica")]);
+    const cabecalho = host.querySelector("h2")?.parentElement as HTMLElement;
+    expect(cabecalho.className).toBe(
+      "mb-5 flex min-h-6 items-center justify-between gap-3 px-5 lg:px-0",
+    );
+  });
+
+  it("quem pediu menos movimento: as DUAS setas pulam (jump) em vez de deslizar", async () => {
+    telaComPreferencias(true, true);
+    embla.estado.voltar = true;
+    embla.estado.avancar = true;
+    await montar(Faixa);
+    clicar(anterior());
+    clicar(seguinte());
+    expect(embla.scrollPrev).toHaveBeenCalledWith(true);
+    expect(embla.scrollNext).toHaveBeenCalledWith(true);
+  });
+
+  it("quem NAO pediu menos movimento: as duas setas deslizam (jump = false)", async () => {
+    telaComPreferencias(true, false);
+    embla.estado.voltar = true;
+    embla.estado.avancar = true;
+    await montar(Faixa);
+    clicar(anterior());
+    clicar(seguinte());
+    expect(embla.scrollPrev).toHaveBeenCalledWith(false);
+    expect(embla.scrollNext).toHaveBeenCalledWith(false);
+  });
+
+  it("ao encolher a janela para o celular, as setas somem na hora", async () => {
+    let computador = true;
+    const ouvintes: Array<() => void> = [];
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn((consulta: string) => ({
+        get matches() {
+          return consulta.includes("min-width: 1024px") ? computador : false;
+        },
+        media: consulta,
+        addEventListener: (_evento: string, f: () => void) => {
+          ouvintes.push(f);
+        },
+        removeEventListener: () => {},
+      })),
+    );
+    embla.estado.avancar = true;
+    await montar(Faixa);
+    expect(seguinte()).not.toBeNull();
+    computador = false;
+    act(() => {
+      for (const f of [...ouvintes]) f();
+    });
+    expect(seguinte()).toBeNull();
+  });
+});
+
+describe.each(FAIXAS)("%s no celular: nem consulta o Embla", (_nome, Faixa) => {
+  it("as setas nao perguntam ao Embla se ha conteudo escondido", async () => {
+    telaDe(false);
+    embla.estado.voltar = true;
+    embla.estado.avancar = true;
+    await montar(Faixa);
+    expect(embla.canScrollPrev).not.toHaveBeenCalled();
+    expect(embla.canScrollNext).not.toHaveBeenCalled();
   });
 });
 

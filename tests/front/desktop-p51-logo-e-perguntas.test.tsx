@@ -168,7 +168,17 @@ describe("P51 -- logo do cabeçalho do computador não encolhe", () => {
     // O botão que contém o logo e o nome já segura a própria largura: o
     // conjunto não cresce, só o nome cede espaço (line-clamp-2 + overflow).
     expect(tokens(botao?.className ?? "")).toEqual(
-      expect.arrayContaining(["shrink-0", "max-w-[180px]", "xl:max-w-[220px]"]),
+      expect.arrayContaining([
+        "shrink-0",
+        "max-w-[180px]",
+        "xl:max-w-[220px]",
+        // alvo de toque/clique de 44 px do botão do logo
+        "min-h-11",
+      ]),
+    );
+    // Quem cede espaço é o nome da loja: no máximo duas linhas, o resto some.
+    expect(tokens(botao?.querySelector("span")?.className ?? "")).toContain(
+      "line-clamp-2",
     );
   });
 
@@ -222,10 +232,16 @@ describe("P51 -- Perguntas ao vendedor alinha com a página do produto", () => {
   });
 
   it("o contêiner das três seções (Avaliações, Perguntas, Relacionados) é a mesma coluna cheia", () => {
+    // O `className` do PRÓPRIO elemento: o primeiro `className="..."` depois do
+    // marcador. (Antes eram 260 caracteres fixos: o `chat-section` tem handlers
+    // longos e a classe ficava fora da janela, então um `mx-auto max-w-2xl`
+    // nele passava.)
     const trecho = (inicio: string) => {
       const i = FONTE_PRODUTO.indexOf(inicio);
       expect(i).toBeGreaterThan(-1);
-      return FONTE_PRODUTO.slice(i, i + 260);
+      const classe = /className="([^"]*)"/.exec(FONTE_PRODUTO.slice(i));
+      expect(classe, `className do elemento ${inicio}`).not.toBeNull();
+      return classe?.[1] ?? "";
     };
     // Nenhum dos três limita largura nem centraliza: o QA era o único.
     for (const marcador of [

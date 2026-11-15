@@ -141,6 +141,8 @@ function trilhas(valor: string): string[] {
 function conferirMedidas(css: string): void {
   const aviso = regraUnica(css, SEL_AVISO);
   expect(aviso.width, "largura do aviso").toBe("min(36rem, calc(50% - 28px))");
+  // Preso à direita: sem `left: auto` o `left` do aviso de antes volta a valer.
+  expect(aviso.left, "aviso preso à direita").toBe("auto");
 
   const raiz = regraUnica(css, RAIZ);
   // A linha 6 é a `1fr`: a busca que cobre 6 / 8 termina junto da barra do total.
@@ -153,6 +155,27 @@ function conferirMedidas(css: string): void {
 
   const cartao = regraUnica(css, SEL_CARTAO);
   expect(cartao["flex-shrink"], "cartão do item não encolhe").toBe("0");
+}
+
+/**
+ * A grade de duas colunas do mesmo bloco: as medidas que o teste do P46 não
+ * conferia (auditoria de mutantes da 1.5.192: trocar qualquer uma delas
+ * sobrevivia). Lança no primeiro desvio.
+ */
+function conferirGradeDoBloco(css: string): void {
+  const raiz = regraUnica(css, RAIZ);
+  expect(raiz["max-width"], "largura máxima da tela de vender").toBe("1440px");
+  expect(raiz["column-gap"], "vão entre as colunas").toBe("24px");
+  const titulo = regraUnica(css, `${RAIZ} > .pdv-page-heading`);
+  expect(titulo["grid-column"], "título nas duas colunas").toBe("1 / -1");
+  const avisoDoTopo = regraUnica(css, `${RAIZ} > .pdv-notice`);
+  expect(avisoDoTopo["grid-column"], "aviso do topo nas duas colunas").toBe(
+    "1 / -1",
+  );
+  const cupom = regraUnica(css, `${RAIZ} > .pdv-flow > .pdv-cupom`);
+  expect(cupom["grid-row"], "a venda atual cobre as linhas 3 a 6").toBe(
+    "3 / 7",
+  );
 }
 
 /** Nada disso pode valer abaixo de 1280 px: fora do bloco, nenhum vestígio. */
@@ -317,6 +340,10 @@ describe("P54 — Balcão no computador: aviso, busca e cartões do item na medi
     conferirMedidas(cssReal);
   });
 
+  it("a grade do bloco: largura máxima, vão, título, aviso do topo e a venda atual na medida", () => {
+    conferirGradeDoBloco(cssReal);
+  });
+
   it("nada disso existe fora do bloco: celular e janela estreita ficam iguais", () => {
     conferirNadaForaDoBloco(cssReal);
   });
@@ -374,6 +401,52 @@ describe("P54 — Balcão no computador: aviso, busca e cartões do item na medi
           ),
         ),
       ).toThrow(/cartão do item/);
+    });
+
+    it("sem o aviso preso à direita (left: auto)", () => {
+      expect(() =>
+        conferirMedidas(
+          copiaComTroca(
+            "left: auto;\n    width: min(36rem",
+            "width: min(36rem",
+          ),
+        ),
+      ).toThrow(/preso à direita/);
+    });
+
+    it("grade: largura máxima, vão, título, aviso e venda atual", () => {
+      const casos: Array<[RegExp, string, RegExp]> = [
+        [
+          /(\.pdv\[data-etapa="cupom"\] \{[^}]*max-width:\s*)1440px/,
+          "$1 1280px",
+          /largura máxima/,
+        ],
+        [
+          /(\.pdv\[data-etapa="cupom"\] \{[^}]*column-gap:\s*)24px/,
+          "$1 0",
+          /vão entre as colunas/,
+        ],
+        [
+          /(> \.pdv-page-heading \{[^}]*grid-column:\s*)1 \/ -1/,
+          "$1 1",
+          /título nas duas colunas/,
+        ],
+        [
+          /(\.pdv\[data-etapa="cupom"\] > \.pdv-notice \{[^}]*grid-column:\s*)1 \/ -1/,
+          "$1 1",
+          /aviso do topo/,
+        ],
+        [
+          /(> \.pdv-flow > \.pdv-cupom \{[^}]*grid-row:\s*)3 \/ 7/,
+          "$1 3 / 6",
+          /linhas 3 a 6/,
+        ],
+      ];
+      for (const [de, por, mensagem] of casos) {
+        expect(() => conferirGradeDoBloco(copiaComTroca(de, por))).toThrow(
+          mensagem,
+        );
+      }
     });
 
     it("a medida vazada para fora do bloco derruba", () => {

@@ -343,6 +343,18 @@ describe("P47 — perguntas", () => {
     );
   });
 
+  it("o Responder deixa de crescer no PC e o resto do botão é o de hoje (auditoria 1.5.192: só as avaliações tinham este teste)", async () => {
+    const lista = await abrir(2);
+    const botao = lista.querySelector('button[aria-label^="Responder a"]');
+    expect(botao).not.toBeNull();
+    expect(listaDoCelular(botao as Element)).toBe(
+      "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-solid border-admin-border-strong bg-admin-raised px-4 text-sm font-semibold text-zinc-100 transition-colors hover:bg-admin-hover disabled:cursor-not-allowed disabled:opacity-40 min-w-0 flex-1",
+    );
+    expect(fichas(botao?.getAttribute("class") ?? "")).toEqual(
+      expect.arrayContaining(["lg:flex-none", "lg:min-w-48"]),
+    );
+  });
+
   it("CONTROLE: sem o col-span-2 do ímpar, a prova reprova", async () => {
     const lista = await abrir(3);
     const mutante = (lista.getAttribute("class") ?? "").replace(
