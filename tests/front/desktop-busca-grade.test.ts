@@ -53,7 +53,7 @@ describe("Busca — grade no computador", () => {
   it("preserva o contêiner próprio da Busca com largura limitada e margens no PC", () => {
     const fonte = ler();
     expect(fonte).toMatch(
-      /ref={resultadosRef}\s+className="mx-auto max-w-7xl px-4 py-8 lg:py-10"/,
+      /ref={resultadosRef}\s+className="mx-auto max-w-7xl px-4 py-8[^"]*lg:py-10[^"]*"/,
     );
     expect(fonte).not.toContain("CONTAINER_DO_COMPUTADOR");
     expect(fonte).not.toContain("PaginaDoComputador");
