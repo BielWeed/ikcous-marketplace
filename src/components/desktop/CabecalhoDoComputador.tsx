@@ -71,6 +71,16 @@ export function CabecalhoDoComputador({
     isLoading,
   );
   const nome = nomeDaLoja(config);
+  // O mesmo texto vai no nome para leitor de tela (`aria-label`) e no balão do
+  // mouse (`title`): um só lugar, para os dois não se separarem.
+  const rotuloDasNotificacoes =
+    unreadCount > 0
+      ? `Notificações, ${unreadCount} não ${unreadCount === 1 ? "lida" : "lidas"}`
+      : "Notificações";
+  const rotuloDoCarrinho =
+    cartCount > 0
+      ? `Carrinho, ${cartCount} ${cartCount === 1 ? "item" : "itens"}`
+      : "Carrinho";
   const navegar = (view: View, id?: string) => {
     haptic.light();
     onNavigate(view, id);
@@ -88,6 +98,7 @@ export function CabecalhoDoComputador({
           <button
             type="button"
             aria-label="Voltar"
+            title="Voltar"
             onClick={() => {
               haptic.light();
               if (onBack) onBack();
@@ -178,11 +189,8 @@ export function CabecalhoDoComputador({
               haptic.light();
               onOpenNotifications();
             }}
-            aria-label={
-              unreadCount > 0
-                ? `Notificações, ${unreadCount} não ${unreadCount === 1 ? "lida" : "lidas"}`
-                : "Notificações"
-            }
+            aria-label={rotuloDasNotificacoes}
+            title={rotuloDasNotificacoes}
             className={cn(
               "relative flex size-11 items-center justify-center rounded-full hover:bg-muted",
               FOCO,
@@ -199,11 +207,8 @@ export function CabecalhoDoComputador({
             id="header-cart"
             type="button"
             onClick={() => navegar("cart")}
-            aria-label={
-              cartCount > 0
-                ? `Carrinho, ${cartCount} ${cartCount === 1 ? "item" : "itens"}`
-                : "Carrinho"
-            }
+            aria-label={rotuloDoCarrinho}
+            title={rotuloDoCarrinho}
             aria-current={
               currentView === "cart" || currentView === "checkout"
                 ? "page"

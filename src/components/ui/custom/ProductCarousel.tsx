@@ -184,7 +184,7 @@ export const ProductCarousel = React.memo(function ProductCarousel({
             type="button"
             aria-label="Ver produtos anteriores"
             onClick={() => rolarPagina(-1)}
-            className="absolute left-2 top-[170px] z-20 hidden size-11 -translate-y-1/2 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-900 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2 lg:flex"
+            className="absolute left-2 top-[170px] z-20 hidden size-11 -translate-y-1/2 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-900 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2 lg:flex lg:hover:border-zinc-300 lg:hover:bg-zinc-100"
           >
             <ChevronLeft className="size-5" aria-hidden="true" />
           </button>
@@ -194,7 +194,7 @@ export const ProductCarousel = React.memo(function ProductCarousel({
             type="button"
             aria-label="Ver próximos produtos"
             onClick={() => rolarPagina(1)}
-            className="absolute right-2 top-[170px] z-20 hidden size-11 -translate-y-1/2 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-900 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2 lg:flex"
+            className="absolute right-2 top-[170px] z-20 hidden size-11 -translate-y-1/2 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-900 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2 lg:flex lg:hover:border-zinc-300 lg:hover:bg-zinc-100"
           >
             <ChevronRight className="size-5" aria-hidden="true" />
           </button>
