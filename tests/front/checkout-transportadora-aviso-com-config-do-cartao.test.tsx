@@ -14,6 +14,7 @@
 // pelo texto visível.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
+import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { EstadoDaConfigDoCartao } from "@/hooks/useConfigDoCartao";
@@ -202,6 +203,9 @@ async function montar() {
 describe("CheckoutView — aviso do frete por transportadora acompanha o estado da config do cartão", () => {
   beforeEach(() => {
     createOrder.mockReset();
+    vi.mocked(toast.info).mockClear();
+    vi.mocked(toast.error).mockClear();
+    vi.mocked(toast.success).mockClear();
     onNavigate.mockClear();
     mockUser = { id: "user-1", email: "cliente@exemplo.com" };
     mockCart = [item()];
@@ -232,6 +236,60 @@ describe("CheckoutView — aviso do frete por transportadora acompanha o estado 
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
+
+  it.each([
+    {
+      caso: "disponível",
+      estado: estadoPronto(CARTAO_LIGADO),
+      nota: COM_CARTAO,
+    },
+    {
+      caso: "indisponível",
+      estado: estadoPronto(null),
+      nota: SO_PIX,
+    },
+    {
+      caso: "carregando",
+      estado: ESTADO_CARREGANDO,
+      nota: NEUTRO,
+    },
+    {
+      caso: "em erro",
+      estado: ESTADO_ERRO,
+      nota: NEUTRO,
+    },
+  ])(
+    "sem balão com cartão $caso: mantém online + PIX e a nota fixa",
+    async ({ estado, nota }) => {
+      estadoDoCartao = estado;
+      mockSelectedShippingOption = {
+        ...TRANSPORTADORA,
+        id: "local-delivery",
+      };
+      await montar();
+      expect(toast.info).not.toHaveBeenCalled();
+
+      mockSelectedShippingOption = { ...TRANSPORTADORA };
+      await montar();
+
+      expect(
+        hospedeiro.querySelector('button[role="radio"][aria-checked="true"]')
+          ?.textContent,
+      ).toContain("Pagar agora com PIX");
+      expect(textoDoAviso()).toBe(nota);
+      expect(toast.info).not.toHaveBeenCalled();
+      expect(toast.error).not.toHaveBeenCalled();
+      expect(toast.success).not.toHaveBeenCalled();
+
+      await montar();
+      expect(toast.info).not.toHaveBeenCalled();
+      expect(
+        hospedeiro.querySelector('button[role="radio"][aria-checked="true"]')
+          ?.textContent,
+      ).toContain("Pagar agora com PIX");
+      expect(createOrder).not.toHaveBeenCalled();
+    },
+  );
 
   it("config CARREGANDO: redação neutra — não afirma 'só PIX' nem que o cartão existe", async () => {
     estadoDoCartao = ESTADO_CARREGANDO;

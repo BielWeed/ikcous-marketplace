@@ -3422,7 +3422,7 @@ export function CheckoutViewDaConta({
   // passos de frete e pagamento):
   //   - entrega local -> NÃO MEXE (modalidades da loja intactas);
   //   - transportadora + pagamento online ligado + conta -> AUTO-SELECIONA
-  //     "online" com orientação visível (toast + nota no grupo de pagamento);
+  //     "online" com orientação visível (nota no grupo de pagamento);
   //   - transportadora SEM pagamento online (ou sem conta, que o online
   //     exige — P6) -> NÃO cai em fallback "na entrega": o método fica como
   //     está e quem bloqueia é a guarda `pagamentoIncompativelComFrete` no
@@ -3442,11 +3442,8 @@ export function CheckoutViewDaConta({
     // Finalizar trava com a explicação própria (`totalZero.travaPor`).
     if (totalZero.zerado) return;
     setPaymentMethod("online");
-    // Auto-seleção é sempre o PIX (o texto do toast promete isso).
+    // Auto-seleção é sempre o PIX.
     setMetodoOnline("pix");
-    toast.info(
-      "Envio por transportadora exige pagamento antecipado: selecionamos o PIX no app para você.",
-    );
   }, [
     selectedShippingOption,
     ehEntregaLocal,
