@@ -52,6 +52,12 @@ test.afterEach(exigirRedeSemImprevistos);
 async function exigirAoAlcance(alvo: Locator, nome: string): Promise<void> {
   await expect(alvo, `${nome}: visível`).toBeVisible({ timeout: 30_000 });
   await alvo.scrollIntoViewIfNeeded();
+  // A barra do "Finalizar pedido" monta após 380 ms e entra deslizando por
+  // ~250 ms: medir no meio do deslize daria vermelho falso. O clique de
+  // ensaio (`trial`) só espera o botão ficar estável e receber eventos, sem
+  // clicar. Se algo o cobre de verdade, a espera estoura e a medida abaixo
+  // reporta o defeito com os números.
+  await alvo.click({ trial: true, timeout: 5_000 }).catch(() => undefined);
   const medida = await alvo.evaluate((elemento) => {
     const caixa = elemento.getBoundingClientRect();
     const noCentro = document.elementFromPoint(
