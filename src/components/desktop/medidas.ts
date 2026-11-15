@@ -21,9 +21,14 @@ export const CONTAINER_DO_COMPUTADOR =
 export const GRADE_DE_PRODUTOS_NO_COMPUTADOR =
   "lg:grid-cols-4 lg:gap-5 xl:grid-cols-5";
 
-/** Coluna grudada (compra, resumo do checkout, conta): sticky com rolagem interna. */
+/** Coluna grudada (compra, resumo do checkout, conta): sticky com rolagem interna.
+ * O teto desconta a altura REAL do cabeçalho do computador (121px, o valor de
+ * ALTURA_DO_CABECALHO_DO_COMPUTADOR, literal aqui para o Tailwind; `--header-height`
+ * é a variável do CELULAR e vale 52px) mais 48px
+ * (24 do topo grudado + 24 de folga embaixo). O cabeçalho fica FORA da área que
+ * rola, então `top-6` conta a partir do fim dele e o cartão nunca fica sob ele. */
 export const COLUNA_FIXA_NO_COMPUTADOR =
-  "lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100dvh-var(--header-height)-48px)] lg:overflow-y-auto";
+  "lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100dvh-121px-48px)] lg:overflow-y-auto";
 
 /** Folha que vira gaveta à direita no computador (contrato C9). */
 export const GAVETA_NO_COMPUTADOR =
