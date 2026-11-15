@@ -2267,9 +2267,19 @@ export function useOrders(
     }
   }, [user?.id, isAdmin]);
 
+  // A leitura DO CLIENTE que está valendo agora (a última a abrir, a que
+  // cancelou as anteriores desta instância). Serve a quem pediu para seguir a
+  // substituta (`aguardarSubstituta`, abaixo). `controlador` identifica a
+  // leitura dona do registro: ela nunca segue a si mesma.
+  const leituraVigenteDoClienteRef = useRef<{
+    promessa: Promise<Order[]>;
+    controlador: AbortController;
+    userId: string;
+  } | null>(null);
+
   // Fetch orders for the logged-in user
-  const fetchUserOrders = useCallback(
-    async (silent = false) => {
+  const lerPedidosDoCliente = useCallback(
+    async (silent = false, aguardarSubstituta = false): Promise<Order[]> => {
       if (!user || !enabled) return [];
       const cacheKey = `ikcous_orders_cache_${user.id}`;
       let hasCache = false;
@@ -2352,7 +2362,36 @@ export function useOrders(
           err?.message === "Fetch is aborted" ||
           err?.message?.includes("aborted")
         ) {
-          return [];
+          // Cancelada por OUTRA leitura da MESMA conta e desta instância (a
+          // recarga ao voltar ao app): o `[]` daqui NÃO é "o servidor disse
+          // que não há pedido", é "esta leitura saiu de cena". Quem pediu
+          // (a ficha do pedido) segue a substituta e devolve o que ELA trouxer
+          // -- a ficha não pode dizer "Pedido não encontrado" enquanto a
+          // substituta corre. Quem não pediu continua recebendo `[]` na hora.
+          // Fora disso (desmonte, troca de conta, nenhuma substituta viva) o
+          // `[]` fica como sempre foi.
+          //
+          // A substituta também pode ser cancelada (a cliente volta ao app de
+          // novo) por uma leitura que NÃO pediu para seguir ninguém, e esta
+          // devolve `[]` na hora: por isso o laço olha, a cada volta, se a
+          // leitura que acabou de terminar ainda era a vigente. Se não era,
+          // segue a que a trocou. Cada volta espera uma leitura mais nova que
+          // a anterior, e a própria (`controlador`) nunca entra: não há como
+          // esperar por si mesma.
+          let seguida = leituraVigenteDoClienteRef.current;
+          let resultado: Order[] = [];
+          while (
+            aguardarSubstituta &&
+            seguida &&
+            seguida.controlador !== controlador &&
+            seguida.userId === user.id
+          ) {
+            resultado = await seguida.promessa.catch((): Order[] => []);
+            const maisNova = leituraVigenteDoClienteRef.current;
+            if (maisNova === seguida) break;
+            seguida = maisNova;
+          }
+          return resultado;
         }
         // Falha que chegou depois da troca de conta é da conta ANTERIOR.
         if (userIdAtualRef.current !== (user.id ?? null)) return [];
@@ -2394,6 +2433,34 @@ export function useOrders(
       }
     },
     [user, enabled],
+  );
+
+  // A porta pública: a mesma leitura, mais o registro de qual é a vigente. O
+  // registro é gravado logo depois de `lerPedidosDoCliente` devolver a promessa
+  // -- isto é, depois do trecho síncrono em que ela cancelou a anterior e antes
+  // de qualquer resposta -- então, quando a anterior (cancelada) acordar, a
+  // vigente já está aqui. `aguardarSubstituta` é opt-in: só a ficha do pedido
+  // precisa distinguir "cancelada" de "confirmou que não existe".
+  const fetchUserOrders = useCallback(
+    (
+      silent = false,
+      opcoes?: { aguardarSubstituta?: boolean },
+    ): Promise<Order[]> => {
+      const promessa = lerPedidosDoCliente(
+        silent,
+        opcoes?.aguardarSubstituta === true,
+      );
+      const controlador = userOrdersAbortControllerRef.current;
+      if (user && enabled && controlador) {
+        leituraVigenteDoClienteRef.current = {
+          promessa,
+          controlador,
+          userId: user.id,
+        };
+      }
+      return promessa;
+    },
+    [lerPedidosDoCliente, user, enabled],
   );
 
   // Load orders with pagination (Admin) - Optimized

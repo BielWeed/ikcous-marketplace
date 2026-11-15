@@ -808,7 +808,15 @@ export function OrderDetailsView({
     // 2. Revalida no servidor SEMPRE, uma vez por abertura. Antes, ter cache
     //    fazia a tela pular esta busca e nunca mais conferir o status do
     //    pedido com o banco.
-    const doServidor = await fetchUserOrders();
+    //
+    //    `aguardarSubstituta`: se esta busca for CANCELADA por outra (a recarga
+    //    ao voltar ao app), o `[]` dela não prova que o pedido não existe. Com
+    //    a opção o hook devolve o que a busca substituta trouxer, e a tela
+    //    segue em "Sincronizando" até lá -- "Pedido não encontrado" só vem de
+    //    uma resposta que de fato chegou sem este pedido.
+    const doServidor = await fetchUserOrders(false, {
+      aguardarSubstituta: true,
+    });
     let encontrado = doServidor.find((o) => o.id === orderId);
 
     // 3. Convidado que rastreou pedido por OTP não tem linha em
