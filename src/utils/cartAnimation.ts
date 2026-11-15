@@ -1,3 +1,5 @@
+import { ehTelaDeComputador } from "@/hooks/useTelaDeComputador";
+
 /**
  * A bolinha so pode sair de um ponto que a cliente ENXERGA (14/10/2026).
  *
@@ -31,11 +33,9 @@ export function pontoDeSaidaVisivel(
 /**
  * Triggers a premium 60fps flying thumbnail animation towards the cart target in the UI.
  *
- * O alvo e' SEMPRE `#bottom-nav-cart`, em qualquer largura. Ate 24/08/2026 ela
- * mirava `#header-cart` acima de 768px, mas o carrinho do topo saiu do Header
- * naquele dia (em tela larga apareciam dois carrinhos ao mesmo tempo). Mirar o
- * elemento removido cairia no `if (!target)` abaixo: aviso no console e
- * NENHUMA animacao justamente nas telas grandes.
+ * A casca de computador (>=1024px, gancho único) tem o carrinho no topo.
+ * Abaixo disso continua mirando a navegação inferior, inclusive no tablet.
+ * O alvo escondido por CSS tem retângulo vazio: não pode receber o voo.
  */
 export function triggerFlyingCartAnimation(
   startElement: HTMLElement,
@@ -43,7 +43,7 @@ export function triggerFlyingCartAnimation(
 ) {
   if (typeof window === "undefined") return;
 
-  const targetId = "bottom-nav-cart";
+  const targetId = ehTelaDeComputador() ? "header-cart" : "bottom-nav-cart";
   const target = document.getElementById(targetId);
 
   if (!target) {
