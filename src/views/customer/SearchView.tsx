@@ -420,9 +420,9 @@ export const SearchView = React.memo(function SearchView({
       {/* Premium Sticky Search Header */}
       <div
         ref={cabecalhoRef}
-        className="sticky top-[-2px] z-50 border-b border-zinc-100 bg-white/90 backdrop-blur-2xl"
+        className="sticky top-[-2px] z-50 border-b border-zinc-100 bg-white/90 backdrop-blur-2xl lg:static"
       >
-        <div className="mx-auto max-w-7xl space-y-4 p-4">
+        <div className="mx-auto max-w-7xl space-y-4 p-4 lg:mx-auto lg:w-full lg:max-w-screen-xl lg:px-8 2xl:max-w-[1440px]">
           <div className="flex items-center gap-3 lg:hidden">
             <button
               onClick={onBack}
@@ -560,7 +560,10 @@ export const SearchView = React.memo(function SearchView({
       </div>
 
       {/* Content Area */}
-      <div ref={resultadosRef} className="mx-auto max-w-7xl px-4 py-8 lg:py-10">
+      <div
+        ref={resultadosRef}
+        className="mx-auto max-w-7xl px-4 py-8 lg:mx-auto lg:w-full lg:max-w-screen-xl lg:!scroll-mt-0 lg:px-8 lg:py-10 2xl:max-w-[1440px]"
+      >
         {/* Região viva SEMPRE montada: só o texto muda, então o leitor de tela
             anuncia o "nada encontrado" sem tirar o foco do campo. */}
         <p role="status" className="sr-only">
