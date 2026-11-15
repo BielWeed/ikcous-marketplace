@@ -460,6 +460,21 @@ function conferirBloco(css: string): void {
   // conteúdo). Com `minmax(0, 1fr)` a lista passava por cima da barra do total
   // em janela baixa com o aviso de venda antiga aberto (revisão Opus, 15/11).
   expect(base["grid-template-rows"]).not.toContain("minmax(0");
+  // A busca é item da grade: sem `min-height: 0` o piso automático da linha
+  // volta e ela passa por cima da barra do total em janela baixa. A regra tem
+  // de EXISTIR (o "seletor casa elemento" acima só vale para as que existem).
+  const regraDaBusca = regras.filter((r) =>
+    r.selectors.includes(`${RAIZ} > #busca-do-balcao`),
+  );
+  expect(regraDaBusca, "regra da busca do balcão").toHaveLength(1);
+  expect(declaracoes(regraDaBusca[0])["min-height"]).toBe("0");
+  // Avisos e a pergunta "Descartar esta venda?" flutuam: presos à direita
+  // (`left: auto`) em vez de atravessar a tela. A largura é livre para mudar.
+  const regraDosAvisos = regras.filter((r) =>
+    r.selectors.includes(`${RAIZ} > .pdv-flow > .pdv-notice`),
+  );
+  expect(regraDosAvisos, "regra dos avisos flutuantes").toHaveLength(1);
+  expect(declaracoes(regraDosAvisos[0]).left).toBe("auto");
   const absolutos = seletoresAbsolutosDoBase(css);
   expect(absolutos.length).toBeGreaterThan(0);
   for (const etapa of ETAPAS_DE_VENDER) {
@@ -583,6 +598,24 @@ describe("P46 — Balcão: vender no computador", () => {
       // Só vale se o bloco do arquivo tem esse seletor.
       expect(mutante).not.toBe(cssReal);
       expect(() => conferirBloco(mutante)).toThrow(/sem alvo na tela montada/);
+    });
+
+    it("sem `min-height: 0` na busca, a prova derruba", () => {
+      const mutante = cssReal.replace(
+        /(#busca-do-balcao\s*\{[^}]*?)\s*min-height:\s*0;/,
+        "$1",
+      );
+      expect(mutante).not.toBe(cssReal);
+      expect(() => conferirBloco(mutante)).toThrow();
+    });
+
+    it("sem a regra dos avisos presos à direita, a prova derruba", () => {
+      const mutante = cssReal.replace(
+        /\s*\.pdv\[data-etapa="cupom"\] > \.pdv-flow > \.pdv-notice \{[^}]*\}/,
+        "",
+      );
+      expect(mutante).not.toBe(cssReal);
+      expect(() => conferirBloco(mutante)).toThrow(/regra dos avisos/);
     });
 
     it("dois filhos na mesma célula derrubam", () => {

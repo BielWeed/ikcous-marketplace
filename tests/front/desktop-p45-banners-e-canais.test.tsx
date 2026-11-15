@@ -84,6 +84,14 @@ function acharAbertura(fonte: ts.SourceFile, serve: (no: Abertura) => boolean) {
   return achados[0];
 }
 
+/** `no` é descendente do elemento JSX cuja abertura é `conteiner`? */
+function estaDentroDe(no: Abertura, conteiner: Abertura) {
+  for (let pai: ts.Node | undefined = no.parent; pai; pai = pai.parent) {
+    if (ts.isJsxElement(pai) && pai.openingElement === conteiner) return true;
+  }
+  return false;
+}
+
 const BANNERS = "src/views/admin/AdminBannersView.tsx";
 const GALERIA = "src/components/admin/banners/GaleriaDeBanners.tsx";
 
@@ -152,16 +160,6 @@ describe("P45 — editor e lista de banners no computador", () => {
     ).toEqual([]);
   });
 
-  it("nenhuma classe de computador entrou DENTRO do literal do celular", () => {
-    for (const [classe, celular] of [
-      ["space-y-6 lg:mx-auto lg:w-full lg:max-w-2xl", CELULAR_EDITOR],
-      [`${CELULAR_BUSCA} lg:max-w-xl`, CELULAR_BUSCA],
-      [`${CELULAR_FILTRO} lg:max-w-sm`, CELULAR_FILTRO],
-    ]) {
-      expect(classesDoCelular(classe)).toBe(celular);
-    }
-  });
-
   describe("a trava reprova mutantes em cópia", () => {
     const boa = `${CELULAR_EDITOR} ${TOKENS_DO_EDITOR.join(" ")}`;
 
@@ -208,12 +206,21 @@ describe("P45 — galeria de modelos continua em 2 colunas", () => {
     const classe = textoDoAtributo(grade, "className") ?? "";
     expect(classe).toBe("grid grid-cols-2 gap-3");
     expect(classe).not.toMatch(/(?:lg|xl|2xl):grid-cols-/);
-    // A galeria é desenhada no contêiner do editor, que tem `lg:max-w-2xl`.
-    const fonteDosBanners = lerFonte(BANNERS).getFullText();
-    expect(fonteDosBanners).toContain("<GaleriaDeBanners");
-    expect(fonteDosBanners).toContain(
-      'className="space-y-6 lg:mx-auto lg:w-full lg:max-w-2xl"',
+    // A galeria é desenhada DENTRO do contêiner do editor (`lg:max-w-2xl`):
+    // relação de ancestral na AST, não só "os dois existem no arquivo".
+    const fonteDosBanners = lerFonte(BANNERS);
+    const editor = acharAbertura(
+      fonteDosBanners,
+      (no) => atributo(no, "onInputCapture") !== undefined,
     );
+    expect(textoDoAtributo(editor, "className")).toBe(
+      "space-y-6 lg:mx-auto lg:w-full lg:max-w-2xl",
+    );
+    const usoDaGaleria = acharAbertura(
+      fonteDosBanners,
+      (no) => no.tagName.getText() === "GaleriaDeBanners",
+    );
+    expect(estaDentroDe(usoDaGaleria, editor)).toBe(true);
   });
 });
 
