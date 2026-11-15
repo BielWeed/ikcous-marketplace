@@ -13,6 +13,7 @@ import {
   separarItensVencidos,
 } from "@/lib/fila-offline-por-usuario";
 import { mapProductFromDB } from "@/lib/mappers";
+import { nomeDaLoja } from "@/lib/nome-da-loja";
 import {
   MENSAGEM_PRODUTO_DUPLICAR_SEM_RESPOSTA,
   MENSAGEM_PRODUTO_EDICAO_SEM_RESPOSTA,
@@ -979,6 +980,7 @@ export function useProducts({
     onSincronizadoRef.current = onSincronizado;
   });
   const {
+    config,
     products: contextProducts,
     loadingProducts: contextLoading,
     catalogoDaRedeAplicado,
@@ -3188,5 +3190,7 @@ export function useProducts({
     getFreeShippingEligibleProducts,
     toggleProductStatus,
     idDaContaViva,
+    podeExportarProdutos: isAdmin,
+    nomeDaLoja: nomeDaLoja(config),
   };
 }
