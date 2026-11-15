@@ -1,5 +1,5 @@
 // Medidas de layout do computador (Onda 0 do app-cliente-desktop, F1.2,
-// contrato C2). Todo token de toda constante começa por `lg:`, `xl:` ou
+// contrato C2). Todo token das constantes de classes começa por `lg:`, `xl:` ou
 // `2xl:` -- R1 (spec §4.1): "só prefixo de desktop", nunca `md:`/`sm:`/sem
 // prefixo. As frentes que usam grade ou coluna de computador importam daqui,
 // em vez de escrever a classe solta em cada tela -- muda aqui, muda em
@@ -8,6 +8,10 @@
 // Valor = contrato. Mudar o VALOR de alguma constante aqui é mudar C2, não
 // ajuste solto de uma tarefa de frente; `tests/front/desktop-medidas.test.ts`
 // compara palavra por palavra.
+
+/** Altura mínima já usada em CabecalhoDoComputador (lg:min-h-[121px]).
+ * A classe fica literal para o Tailwind; P30 confere a equivalência. */
+export const ALTURA_DO_CABECALHO_DO_COMPUTADOR = 121;
 
 /** Container de página no computador: 1280px até 2xl, 1440px daí para cima. */
 export const CONTAINER_DO_COMPUTADOR =
