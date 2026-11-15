@@ -112,12 +112,15 @@ const ISO_COM_FUSO =
  * Instante ISO com fuso -> número serial do Excel no horário de Brasília (o Excel não guarda fuso).
  * Texto sem fuso ou ilegível devolve undefined e fica como texto: nunca se inventa horário.
  */
+// Criar o formatador custa ~0,1 ms; por célula travava a tela com milhares de linhas. Um só, sob demanda.
+let formatadorDeBrasilia: Intl.DateTimeFormat | undefined;
+
 function serialDaData(texto: string): number | undefined {
   if (!ISO_COM_FUSO.test(texto)) return undefined;
   const instante = Date.parse(texto);
   if (Number.isNaN(instante)) return undefined;
   try {
-    const partes = new Intl.DateTimeFormat("en-CA", {
+    formatadorDeBrasilia ??= new Intl.DateTimeFormat("en-CA", {
       timeZone: "America/Sao_Paulo",
       hourCycle: "h23",
       year: "numeric",
@@ -126,7 +129,8 @@ function serialDaData(texto: string): number | undefined {
       hour: "numeric",
       minute: "numeric",
       second: "numeric",
-    }).formatToParts(instante);
+    });
+    const partes = formatadorDeBrasilia.formatToParts(instante);
     const campo = (tipo: string) =>
       Number(partes.find((parte) => parte.type === tipo)?.value);
     const parede = Date.UTC(
