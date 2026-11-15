@@ -92,7 +92,7 @@ export const CategoryFilter = memo(function CategoryFilter({
               aria-label={`Selecionar categoria ${category.name}`}
               title={category.name}
               aria-pressed={isActive}
-              className="group flex h-[80px] w-[68px] shrink-0 flex-col items-center rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/50 dark:focus-visible:ring-white/70"
+              className="group flex h-[80px] w-[68px] shrink-0 flex-col items-center rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/50 dark:focus-visible:ring-white/70 lg:w-auto lg:min-w-[80px] lg:px-3"
             >
               <span
                 className={`flex size-12 shrink-0 items-center justify-center rounded-2xl border transition-colors ${
@@ -108,7 +108,7 @@ export const CategoryFilter = memo(function CategoryFilter({
                 />
               </span>
               <span
-                className={`mt-1.5 line-clamp-1 w-full px-0.5 text-xs ${isActive ? "font-extrabold text-foreground" : "font-medium text-muted-foreground"}`}
+                className={`mt-1.5 line-clamp-1 w-full px-0.5 text-xs lg:line-clamp-none lg:whitespace-nowrap ${isActive ? "font-extrabold text-foreground" : "font-medium text-muted-foreground"}`}
               >
                 {category.name}
               </span>

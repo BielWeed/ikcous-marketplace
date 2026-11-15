@@ -25,6 +25,11 @@ const RAIZ = path.resolve(import.meta.dirname, "../..");
 // vermelho é um achado, nunca ruído a absorver) e num projeto próprio.
 const JORNADAS_DE_PAGAMENTO = /jornada-pagamento-.*\.spec\.ts/;
 
+// As jornadas foram escritas para a barra inferior da loja, que some a partir
+// de 1024 px (desenho de computador, cabecalho fixo no topo). 1023 px mantem a
+// mesma tela de antes (largura de "tablet largo" com a barra em pilula).
+const LARGURA_DA_JORNADA = { width: 1023, height: 720 };
+
 export default defineConfig({
   testDir: import.meta.dirname,
   testMatch: /jornada-.*\.spec\.ts/,
@@ -57,13 +62,13 @@ export default defineConfig({
     {
       name: "chromium",
       testIgnore: JORNADAS_DE_PAGAMENTO,
-      use: { ...devices["Desktop Chrome"] },
+      use: { ...devices["Desktop Chrome"], viewport: LARGURA_DA_JORNADA },
     },
     {
       name: "pagamentos",
       testMatch: JORNADAS_DE_PAGAMENTO,
       retries: 0,
-      use: { ...devices["Desktop Chrome"] },
+      use: { ...devices["Desktop Chrome"], viewport: LARGURA_DA_JORNADA },
     },
   ],
   webServer: {

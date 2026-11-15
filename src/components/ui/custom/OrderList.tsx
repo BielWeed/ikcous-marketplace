@@ -461,7 +461,7 @@ export const OrderList = memo(function OrderList({
 
   return (
     <div
-      className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3"
+      className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-1"
       aria-busy={isLoadingOrders && orders.length === 0}
     >
       {avisoDeFalha && <div className="col-span-full">{avisoDeFalha}</div>}
@@ -526,12 +526,12 @@ export const OrderList = memo(function OrderList({
                 então teclado e leitor de tela seguem vendo UM botão só. O
                 botão do #id fica acima dele (`relative z-10`) para copiar
                 sem abrir. */}
-            <div className="relative flex h-full flex-col overflow-hidden rounded-[18px] border border-border bg-background p-4 transition-colors duration-300 hover:border-foreground/30 active:scale-[0.99]">
+            <div className="relative flex h-full flex-col overflow-hidden rounded-[18px] border border-border bg-background p-4 transition-colors duration-300 hover:border-foreground/30 active:scale-[0.99] lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-x-8 lg:rounded-3xl lg:p-6">
               {/* Topo: foto, nome e resumo, e o valor. Uma foto só, com o
                   "+N" no canto: fotos lado a lado espremiam o nome e
                   quebravam o resumo em 3 linhas a 375px. */}
               <div className="flex min-w-0 items-start gap-3">
-                <div className="relative size-14 flex-shrink-0">
+                <div className="relative size-14 flex-shrink-0 lg:size-20">
                   <div className="flex size-full items-center justify-center overflow-hidden rounded-xl bg-muted">
                     <FotoDaListaDePedidos item={order.items[0]} />
                   </div>
@@ -577,6 +577,7 @@ export const OrderList = memo(function OrderList({
                 aria-label="Situação do pedido"
                 className={cn(
                   "mt-3 border-t border-border py-3",
+                  "lg:mt-0 lg:min-h-0 lg:border-l lg:border-t-0 lg:py-0 lg:pl-8",
                   order.status === "delivered"
                     ? "min-h-[74px]"
                     : order.status === "cancelled"
@@ -651,7 +652,7 @@ export const OrderList = memo(function OrderList({
               </div>
 
               {/* Rodapé: número (toque copia) e data, e o botão */}
-              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-border pt-3">
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-border pt-3 lg:col-span-2 lg:mt-5">
                 <div className="flex min-w-0 items-center gap-1.5 font-mono text-xs text-muted-foreground">
                   <button
                     onClick={(e) => {

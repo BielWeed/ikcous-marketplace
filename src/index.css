@@ -1394,6 +1394,17 @@ body.admin-modal-open .active-scroll-container {
   }
 }
 
+@media (min-width: 1024px) {
+  :root {
+    --customer-pb: calc(
+      var(--safe-area-bottom, 0px) +
+      var(--visual-bottom-offset, 0px) +
+      var(--customer-footer-height, 0px) +
+      16px
+    );
+  }
+}
+
 @media (width >= 1024px) {
   :root {
     --admin-tab-pb: 3rem;

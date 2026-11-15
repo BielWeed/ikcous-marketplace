@@ -55,7 +55,7 @@ export default function OfertasCompactas({
       data-testid="ofertas-compactas"
       className={cn("relative min-h-[392px] bg-white py-4", className)}
     >
-      <div className="mb-5 flex min-h-6 items-center justify-between gap-3 px-5">
+      <div className="mb-5 flex min-h-6 items-center justify-between gap-3 px-5 lg:px-0">
         <h2 className="min-w-0 break-words text-xl font-extrabold leading-6 tracking-tight text-zinc-950">
           {title}
         </h2>
@@ -71,11 +71,16 @@ export default function OfertasCompactas({
       <div
         ref={rola ? ref : undefined}
         className={cn(
-          "ml-3 overflow-hidden min-[360px]:ml-5",
+          "ml-3 overflow-hidden min-[360px]:ml-5 lg:ml-0 lg:mr-0",
           !rola && "mr-3 min-[360px]:mr-5",
         )}
       >
-        <div className="flex gap-2.5 py-1">
+        <div
+          className={cn(
+            "flex gap-2.5 py-1",
+            ofertas.length <= 4 && "lg:justify-center",
+          )}
+        >
           {ofertas.map(({ product, discount }) => (
             <CartaoOfertaCompacta
               key={product.id}
@@ -198,6 +203,9 @@ function CartaoOfertaCompacta({
       onTouchStart={() => prefetchView("product-detail")}
       className={cn(
         "relative flex min-h-[290px] min-w-0 max-w-full rounded-[20px] border border-zinc-200 bg-white",
+        largo
+          ? "lg:!w-[440px]"
+          : "lg:!w-[calc((100%-30px)/4)] xl:!w-[calc((100%-40px)/5)] lg:max-w-[280px]",
         largo ? "flex-row gap-4 p-3" : "flex-col",
         rola && "shrink-0 max-[359px]:!w-[145px]",
       )}

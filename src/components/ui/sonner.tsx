@@ -1,3 +1,5 @@
+import { ALTURA_DO_CABECALHO_DO_COMPUTADOR } from "@/components/desktop/medidas";
+import { useTelaDeComputador } from "@/hooks/useTelaDeComputador";
 import {
   CircleCheckIcon,
   InfoIcon,
@@ -10,6 +12,7 @@ import { Toaster as Sonner, type ToasterProps } from "sonner";
 
 const Toaster = ({ position, ...props }: ToasterProps) => {
   const { theme = "system" } = useTheme();
+  const computador = useTelaDeComputador();
 
   return (
     <Sonner
@@ -17,9 +20,12 @@ const Toaster = ({ position, ...props }: ToasterProps) => {
       className="toaster group"
       position={position || "top-center"}
       duration={4500}
+      offset={
+        computador ? { top: ALTURA_DO_CABECALHO_DO_COMPUTADOR + 16 } : undefined
+      }
       // Sonner 2 ignora o `--offset` do style abaixo e, até 600 px de largura,
       // usa `mobileOffset` (padrão 16 px): o aviso do painel ficava em cima do
-      // cabeçalho. Só o celular muda; em tela maior o aviso fica onde já estava.
+      // cabeçalho. Este recuo do celular permanece intacto no computador.
       mobileOffset={{ top: "calc(var(--safe-area-top, 0px) + 64px)" }}
       icons={{
         success: <CircleCheckIcon className="size-4.5 text-emerald-400" />,

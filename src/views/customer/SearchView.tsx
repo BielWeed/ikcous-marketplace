@@ -1,3 +1,4 @@
+import { GRADE_DE_PRODUTOS_NO_COMPUTADOR } from "@/components/desktop/medidas";
 import { Button } from "@/components/ui/button";
 import { ProductCard } from "@/components/ui/custom/ProductCard";
 import { Input } from "@/components/ui/input";
@@ -21,6 +22,7 @@ import {
 } from "@/hooks/useSearch";
 import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import { promessasDeFrete } from "@/lib/estrategias-de-frete";
+import { cn } from "@/lib/utils";
 import { produtoDisponivel } from "@/lib/vitrine";
 import type { Product, View } from "@/types";
 import {
@@ -418,10 +420,10 @@ export const SearchView = React.memo(function SearchView({
       {/* Premium Sticky Search Header */}
       <div
         ref={cabecalhoRef}
-        className="sticky top-[-2px] z-50 border-b border-zinc-100 bg-white/90 backdrop-blur-2xl"
+        className="sticky top-[-2px] z-50 border-b border-zinc-100 bg-white/90 backdrop-blur-2xl lg:static"
       >
-        <div className="mx-auto max-w-7xl space-y-4 p-4">
-          <div className="flex items-center gap-3">
+        <div className="mx-auto max-w-7xl space-y-4 p-4 lg:mx-auto lg:w-full lg:max-w-screen-xl lg:px-8 2xl:max-w-[1440px]">
+          <div className="flex items-center gap-3 lg:hidden">
             <button
               onClick={onBack}
               // Laudo 05/09, M5: botão de voltar só-ícone era "botão" para
@@ -445,9 +447,12 @@ export const SearchView = React.memo(function SearchView({
               </SheetTrigger>
               <SheetContent
                 side="bottom"
-                className="max-h-[90vh] overflow-y-auto rounded-t-[3rem] p-8"
+                className={cn(
+                  "max-h-[90vh] overflow-y-auto rounded-t-[3rem] p-8",
+                  "lg:overflow-hidden",
+                )}
               >
-                <SheetHeader className="mb-8">
+                <SheetHeader className={cn("mb-8", "lg:px-8 lg:pt-8 lg:pr-14")}>
                   <div className="flex items-center justify-between">
                     <SheetTitle className="text-2xl font-black tracking-tighter">
                       Refinar Busca
@@ -463,7 +468,12 @@ export const SearchView = React.memo(function SearchView({
                   </div>
                 </SheetHeader>
 
-                <div className="space-y-8 pb-10">
+                <div
+                  className={cn(
+                    "space-y-8 pb-10",
+                    "lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:px-8 lg:pb-8",
+                  )}
+                >
                   <div>
                     <p className="mb-4 text-[10px] font-black uppercase tracking-widest text-zinc-600 dark:text-zinc-400">
                       Categorias
@@ -518,7 +528,10 @@ export const SearchView = React.memo(function SearchView({
 
                   <Button
                     onClick={() => setIsFilterOpen(false)}
-                    className="h-14 w-full rounded-2xl bg-primary text-xs font-black uppercase tracking-widest text-primary-foreground shadow-2xl shadow-black/10 transition-all hover:bg-primary/90"
+                    className={cn(
+                      "h-14 w-full rounded-2xl bg-primary text-xs font-black uppercase tracking-widest text-primary-foreground shadow-2xl shadow-black/10 transition-all hover:bg-primary/90",
+                      "lg:sticky lg:bottom-0 lg:z-10",
+                    )}
                   >
                     Aplicar Filtros
                   </Button>
@@ -547,7 +560,10 @@ export const SearchView = React.memo(function SearchView({
       </div>
 
       {/* Content Area */}
-      <div ref={resultadosRef} className="mx-auto max-w-7xl px-4 py-8">
+      <div
+        ref={resultadosRef}
+        className="mx-auto max-w-7xl px-4 py-8 lg:mx-auto lg:w-full lg:max-w-screen-xl lg:!scroll-mt-0 lg:px-8 lg:py-10 2xl:max-w-[1440px]"
+      >
         {/* Região viva SEMPRE montada: só o texto muda, então o leitor de tela
             anuncia o "nada encontrado" sem tirar o foco do campo. */}
         <p role="status" className="sr-only">
@@ -591,7 +607,13 @@ export const SearchView = React.memo(function SearchView({
                 </h2>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-6 lg:grid-cols-4">
+            <div
+              className={cn(
+                "grid grid-cols-2 gap-6",
+                GRADE_DE_PRODUTOS_NO_COMPUTADOR,
+                "lg:gap-x-6 lg:gap-y-10",
+              )}
+            >
               {filteredProducts.slice(0, visibleCount).map((product, index) => (
                 <div
                   key={product.id}
@@ -692,7 +714,13 @@ export const SearchView = React.memo(function SearchView({
                     {config.storeName?.trim() || branding.appName}
                   </h3>
                 </div>
-                <div className="grid grid-cols-2 gap-6 lg:grid-cols-4">
+                <div
+                  className={cn(
+                    "grid grid-cols-2 gap-6",
+                    GRADE_DE_PRODUTOS_NO_COMPUTADOR,
+                    "lg:gap-x-6 lg:gap-y-10",
+                  )}
+                >
                   {trendingProducts.map((product) => (
                     <ProductCard
                       key={product.id}

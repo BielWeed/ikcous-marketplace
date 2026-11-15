@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import type { CartItem, Product } from "@/types";
 // @vitest-environment jsdom
 //
@@ -21,6 +22,7 @@ import type { CartItem, Product } from "@/types";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { classesDoCelular } from "./classes-do-celular";
 
 const onNavigate = vi.fn();
 
@@ -281,6 +283,262 @@ describe("CheckoutView — gatilho do resumo no topo, painel e barra de baixo co
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
+
+  it("a coluna permite alcançar a recusa abaixo do Finalizar sem zerar a lista", () => {
+    const fonte = readFileSync("src/views/customer/CheckoutView.tsx", "utf8");
+    const aside = fonte.slice(
+      fonte.indexOf("<aside"),
+      fonte.indexOf("/>", fonte.indexOf("<aside")),
+    );
+    expect(aside).toContain("lg:overflow-y-auto");
+    expect(aside).not.toContain("lg:overflow-hidden");
+    // Reserva de 8rem para título, padding e ao menos uma linha de produto,
+    // mesmo quando a recusa ocupa mais que a altura disponível da coluna.
+    expect(fonte).toContain("lg:static lg:flex lg:min-h-32 lg:flex-1");
+    expect(fonte).toContain(
+      "lg:min-h-0 lg:flex-1 lg:space-y-4 lg:overflow-y-auto",
+    );
+  });
+
+  it.each([1024, 1280, 1920])(
+    "no computador de %s px o mesmo resumo e o único Finalizar ficam na coluna direita, sem abrir diálogo",
+    async (largura) => {
+      vi.stubGlobal("matchMedia", () => ({
+        matches: largura >= 1024,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }));
+      const { CheckoutView } = await import("@/views/customer/CheckoutView");
+      await act(async () => {
+        raiz.render(
+          <CheckoutView
+            cart={Array.from({ length: 20 }, (_, indice) => ({
+              product: produto({
+                id: `prod-${indice}`,
+                name: `Produto na coluna direita ${indice + 1}`,
+              }),
+              quantity: 2,
+            }))}
+            subtotal={400}
+            shipping={5}
+            total={405}
+            onNavigate={onNavigate}
+            onSetBackOverride={onSetBackOverride}
+          />,
+        );
+      });
+      await esperarBarraMontar();
+
+      const coluna = hospedeiro.querySelector<HTMLElement>(
+        '[aria-label="Resumo e finalização do pedido"]',
+      );
+      expect(coluna).not.toBeNull();
+      expect(coluna!.className).toContain("lg:sticky");
+      expect(coluna!.className).toContain("lg:self-start");
+      expect(coluna!.parentElement!.className).toContain(
+        "lg:grid-cols-[1fr_400px]",
+      );
+      expect(coluna!.parentElement!.className).toContain("lg:items-start");
+      expect(coluna!.parentElement!.className).not.toMatch(/lg:(px-8|max-w-)/);
+      expect(coluna!.className).toContain("lg:flex");
+      expect(coluna!.className).toContain("lg:flex-col");
+      expect(coluna!.className).toContain("lg:max-h-[calc(100dvh-241px)]");
+      expect(coluna!.className).toContain("lg:overflow-y-auto");
+      expect(coluna!.className).not.toContain("lg:overflow-hidden");
+      const painel = coluna!.querySelector<HTMLElement>(
+        '[aria-label="Resumo do pedido"]',
+      )!;
+      const lista = painel.querySelector("ul")!;
+      expect(lista.children).toHaveLength(20);
+      expect(lista.className).toContain("lg:min-h-0");
+      expect(lista.className).toContain("lg:overflow-y-auto");
+      expect(painel.className).toContain("lg:min-h-0");
+      expect(painel.className).toContain("lg:overflow-hidden");
+      expect(painel.parentElement!.className).toContain("lg:min-h-32");
+      expect(painel.parentElement!.className).toContain("lg:flex-1");
+      expect(
+        localizarBotaoFinalizar()!.closest(".bottom-docked-navigation")!
+          .className,
+      ).toContain("lg:shrink-0");
+      expect(coluna!.textContent).toContain("Produto na coluna direita");
+      expect(coluna!.textContent).toContain("R$ 405,00");
+      expect(coluna!.querySelector('[aria-label="Finalizar pedido"]')).toBe(
+        localizarBotaoFinalizar(),
+      );
+      expect(
+        document.querySelectorAll('[aria-label="Finalizar pedido"]'),
+      ).toHaveLength(1);
+      expect(
+        document.querySelector(
+          '[role="dialog"][aria-label="Resumo do pedido"]',
+        ),
+      ).toBeNull();
+      // A coluna permanente não abre uma janela nem empilha entrada de histórico.
+      expect(globalThis.history.state?.modal).not.toBe("checkout-summary");
+      expect(localizarBotaoFinalizar()!.disabled).toBe(true); // faltam os dados
+    },
+  );
+
+  it("o portal reencontra o slot B do cabeçalho após celular → computador → celular", async () => {
+    const notificar = new Set<() => void>();
+    const consulta = {
+      matches: false,
+      addEventListener: (_evento: string, fn: () => void) => notificar.add(fn),
+      removeEventListener: (_evento: string, fn: () => void) =>
+        notificar.delete(fn),
+    };
+    vi.stubGlobal("matchMedia", () => consulta);
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await act(async () => {
+      raiz.render(
+        <CheckoutView
+          cart={[{ product: produto(), quantity: 1 }]}
+          subtotal={10}
+          shipping={5}
+          total={15}
+          onNavigate={onNavigate}
+          onSetBackOverride={onSetBackOverride}
+        />,
+      );
+    });
+    const slotA = slotDoHeader;
+    expect(localizarGatilhoDoResumo()).toBeDefined();
+    await act(async () => {
+      consulta.matches = true;
+      for (const fn of notificar) fn();
+      slotA.remove();
+    });
+    expect(slotA.isConnected).toBe(false);
+    await act(async () => {
+      consulta.matches = false;
+      for (const fn of notificar) fn();
+    });
+    // O Header é lazy: o slot B pode nascer DEPOIS do efeito do checkout.
+    await act(async () => {
+      slotDoHeader = document.createElement("div");
+      slotDoHeader.id = slotA.id;
+      document.body.appendChild(slotDoHeader);
+    });
+    const gatilho = localizarGatilhoDoResumo();
+    expect(gatilho).toBeDefined();
+    expect(slotA.querySelector("button")).toBeNull();
+    await act(async () => gatilho!.click());
+    expect(gatilho!.getAttribute("aria-expanded")).toBe("true");
+    expect(
+      document.querySelector('[role="dialog"][aria-label="Resumo do pedido"]'),
+    ).not.toBeNull();
+  });
+
+  it("mudar entre computador e celular move só o resumo e preserva o que foi digitado", async () => {
+    const notificar = new Set<() => void>();
+    const consulta = {
+      matches: true,
+      addEventListener: (_evento: string, fn: () => void) => notificar.add(fn),
+      removeEventListener: (_evento: string, fn: () => void) =>
+        notificar.delete(fn),
+    };
+    vi.stubGlobal("matchMedia", () => consulta);
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await act(async () => {
+      raiz.render(
+        <CheckoutView
+          cart={[{ product: produto(), quantity: 1 }]}
+          subtotal={10}
+          shipping={5}
+          total={15}
+          onNavigate={onNavigate}
+          onSetBackOverride={onSetBackOverride}
+        />,
+      );
+    });
+    await esperarBarraMontar();
+    await act(async () => digitar("checkout-name", "Cliente da fixture"));
+    const campo = document.getElementById("checkout-name");
+    const coluna = hospedeiro.querySelector(
+      '[aria-label="Resumo e finalização do pedido"]',
+    )!;
+    expect(coluna.contains(localizarBotaoFinalizar()!)).toBe(true);
+
+    await act(async () => {
+      consulta.matches = false;
+      for (const fn of notificar) fn();
+    });
+    expect(hospedeiro.contains(localizarBotaoFinalizar()!)).toBe(false);
+    expect(document.getElementById("checkout-name")).toBe(campo);
+    expect((campo as HTMLInputElement).value).toBe("Cliente da fixture");
+
+    await act(async () => {
+      consulta.matches = true;
+      for (const fn of notificar) fn();
+    });
+    expect(coluna.contains(localizarBotaoFinalizar()!)).toBe(true);
+    expect(document.getElementById("checkout-name")).toBe(campo);
+    expect((campo as HTMLInputElement).value).toBe("Cliente da fixture");
+    expect(
+      document.querySelectorAll('[aria-label="Finalizar pedido"]'),
+    ).toHaveLength(1);
+  });
+
+  it.each([390, 768, 1023])(
+    "celular/tablet de %s px preservam classes, gatilho, portal e barra originais",
+    async (largura) => {
+      vi.stubGlobal("matchMedia", () => ({
+        matches: largura >= 1024,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }));
+      const { CheckoutView } = await import("@/views/customer/CheckoutView");
+      await act(async () => {
+        raiz.render(
+          <CheckoutView
+            cart={[{ product: produto(), quantity: 1 }]}
+            subtotal={10}
+            shipping={5}
+            total={15}
+            onNavigate={onNavigate}
+            onSetBackOverride={onSetBackOverride}
+          />,
+        );
+      });
+      await esperarBarraMontar();
+      const gatilho = localizarGatilhoDoResumo()!;
+      expect(classesDoCelular(gatilho.className)).toBe(
+        "flex min-w-0 max-w-full items-center gap-1 rounded-full py-1 pl-1 pr-2 transition-colors hover:bg-zinc-50 active:scale-95",
+      );
+      expect(gatilho.className).toContain("lg:hidden");
+      const formulario = hospedeiro.querySelector<HTMLElement>(
+        '[data-testid="checkout-etapas"]',
+      )!;
+      expect(classesDoCelular(formulario.className)).toBe(
+        "mx-auto w-full max-w-md space-y-4 px-3.5",
+      );
+      const barra = localizarBotaoFinalizar()!.closest(
+        ".bottom-docked-navigation",
+      )!;
+      expect(classesDoCelular(barra.className)).toBe(
+        "bottom-docked-navigation fixed inset-x-0 z-[110] md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2",
+      );
+      expect(barra.parentElement).toBe(document.body);
+      expect(hospedeiro.contains(localizarBotaoFinalizar()!)).toBe(false);
+      expect(gatilho.getAttribute("aria-expanded")).toBe("false");
+      expect(classesDoCelular(hospedeiro.firstElementChild!.className)).toBe(
+        "pb-customer-summary min-h-dvh bg-gray-50/10 pt-2",
+      );
+      expect(classesDoCelular(barra.firstElementChild!.className)).toBe(
+        "w-full rounded-t-2xl border-t border-zinc-100 bg-white/95 p-3 px-4 shadow-[0_-10px_30px_rgba(0,0,0,0.08)] backdrop-blur-xl md:rounded-b-none md:rounded-t-2xl md:border-x md:border-b-0 md:border-t md:border-zinc-200/60",
+      );
+      expect(classesDoCelular(localizarBotaoFinalizar()!.className)).toBe(
+        "checkout-finalizar w-full",
+      );
+      await act(async () => gatilho.click());
+      const painel = document.querySelector<HTMLElement>(
+        '[role="dialog"][aria-label="Resumo do pedido"]',
+      )!;
+      expect(classesDoCelular(painel.className)).toBe(
+        "pointer-events-auto mt-2 max-h-[50vh] w-full max-w-md overflow-y-auto rounded-2xl border border-zinc-100 bg-white px-4 pt-3 shadow-[0_10px_30px_rgba(0,0,0,0.12)] outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/50",
+      );
+    },
+  );
 
   it("carrinho vazio: o gatilho do topo não aparece", async () => {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");

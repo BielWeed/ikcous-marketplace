@@ -968,12 +968,12 @@ export function AccountSettingsView() {
 
   return (
     <div ref={raizRef} className="pb-customer min-h-full bg-background">
-      <div className="mx-auto max-w-md space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+      <div className="mx-auto max-w-md space-y-6 px-4 py-6 sm:px-6 sm:py-8 lg:grid lg:max-w-none lg:grid-cols-[280px_1fr] lg:items-start lg:gap-8 lg:space-y-0">
         {secao === "privacidade" ? (
           <div
             ref={secaoPrivacidadeRef}
             tabIndex={-1}
-            className="space-y-4 outline-none"
+            className="space-y-4 outline-none lg:col-span-2 lg:mx-auto lg:w-full lg:max-w-2xl"
           >
             <button
               type="button"
@@ -994,7 +994,7 @@ export function AccountSettingsView() {
         ) : (
           <>
             {/* Cabeçalho */}
-            <header className="space-y-1">
+            <header className="space-y-1 lg:col-start-1 lg:row-start-1">
               <p className={ROTULO_MONO}>
                 Conta · {activeTab === "profile" ? "Perfil" : "Segurança"}
               </p>
@@ -1010,7 +1010,7 @@ export function AccountSettingsView() {
             <div
               role="tablist"
               aria-label="Seções da conta"
-              className="flex w-full rounded-[14px] bg-muted p-1"
+              className="flex w-full rounded-[14px] bg-muted p-1 lg:sticky lg:top-24 lg:col-start-1 lg:row-start-2 lg:flex-col lg:self-start"
             >
               {(
                 [
@@ -1046,7 +1046,7 @@ export function AccountSettingsView() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.15 }}
-                className="space-y-5"
+                className="space-y-5 lg:col-start-2 lg:row-span-3 lg:row-start-1 lg:min-w-0 lg:rounded-3xl lg:border lg:border-border lg:p-6"
               >
                 {/* Cartão de identidade: foto e capa se trocam pelos links */}
                 <div className="flex items-center gap-4 rounded-[18px] border border-border bg-muted/30 p-4">
@@ -1313,7 +1313,7 @@ export function AccountSettingsView() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.15 }}
-                className="space-y-5"
+                className="space-y-5 lg:col-start-2 lg:row-span-3 lg:row-start-1 lg:min-w-0 lg:rounded-3xl lg:border lg:border-border lg:p-6"
               >
                 {/* Dica de segurança: atenção em âmbar, sem fundo pintado */}
                 <div className="flex items-start gap-3 rounded-[14px] border border-border p-3.5">
@@ -1409,7 +1409,7 @@ export function AccountSettingsView() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.2 }}
-              className="text-center"
+              className="text-center lg:col-start-2"
             >
               <div className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1">
                 <CheckCircle2
@@ -1424,7 +1424,7 @@ export function AccountSettingsView() {
 
             {/* Botão principal, fixo acima da navegação inferior. Na aba
                 Segurança ele é o botão de envio do formulário de senha. */}
-            <div className="bottom-docked-navigation sticky z-20 -mx-4 border-t border-border bg-background/95 px-4 pb-2.5 pt-3 backdrop-blur sm:-mx-6 sm:px-6 md:bottom-[104px]">
+            <div className="bottom-docked-navigation sticky z-20 -mx-4 border-t border-border bg-background/95 px-4 pb-2.5 pt-3 backdrop-blur sm:-mx-6 sm:px-6 md:bottom-[104px] lg:bottom-0 lg:col-start-2 lg:mx-0 lg:rounded-3xl">
               {activeTab === "profile" ? (
                 <Button
                   type="submit"

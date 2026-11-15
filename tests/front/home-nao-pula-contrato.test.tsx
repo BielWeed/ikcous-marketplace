@@ -35,6 +35,7 @@ import {
   ALTURA_SECAO_DUPLO_UMA_FILEIRA,
 } from "@/components/ui/custom/ofertas-lateral-duplo-altura";
 import { describe, expect, it } from "vitest";
+import { classesDoCelular } from "./classes-do-celular";
 
 // ── Caso comportamental (laudo edj3ka, E2): montar o HomeView DE VERDADE ──
 // O teste de fonte acima é catraca contra deletar a guarda; este aqui prova
@@ -139,7 +140,9 @@ vi.mock("@/components/ui/custom/FreeShippingBlock", () => ({
 }));
 
 vi.mock("@/components/ui/custom/ProductCarousel", () => ({
-  ProductCarousel: () => null,
+  ProductCarousel: ({ className }: { className?: string }) => (
+    <div data-testid="carrossel-real" className={className} />
+  ),
 }));
 
 const FONTES_HOME = import.meta.glob<string>("/src/views/customer/*.tsx", {
@@ -256,8 +259,8 @@ describe("bloco de frete: altura estável da primeira pintura ao config", () => 
     // O esqueleto do frete espelha o wrapper do InfoBlockCarousel real
     // (mt-2 + px-4) para a troca não mudar nem margem.
     const info = fonte(INFO_BLOCK);
-    expect(info).toContain('className="relative mt-2 w-full px-4"');
-    expect(home).toContain('className="relative mt-2 w-full px-4"');
+    expect(info).toContain('className="relative mt-2 w-full px-4 lg:px-0"');
+    expect(home).toContain('className="relative mt-2 w-full px-4 lg:px-0"');
   });
 });
 
@@ -350,13 +353,15 @@ describe("seções da home: esqueleto durante o load (87% do salto)", () => {
     // Container real: px-5 sm:px-6 py-4; header: mb-6; faixa: pb-2;
     // card: w-[260px] com py-2 — tudo presente no esqueleto.
     expect(real).toContain('"px-5 sm:px-6 py-4 overflow-hidden"');
-    expect(home).toContain('"overflow-hidden px-5 py-4 sm:px-6"');
+    expect(home).toContain('"overflow-hidden px-5 py-4 sm:px-6 lg:px-0"');
     expect(real).toContain('"mb-6 flex flex-col"');
     expect(home).toContain('"mb-6 flex flex-col"');
     expect(real).toContain("scroll-smooth pb-2");
     expect(home).toContain('"flex pb-2"');
     expect(real).toContain('"flex-shrink-0 w-[260px] py-2 flex flex-col"');
-    expect(home).toContain('"w-[260px] flex-shrink-0 py-2"');
+    expect(home).toContain(
+      '"w-[260px] flex-shrink-0 py-2 lg:w-[calc((100%-48px)/4)] xl:w-[calc((100%-64px)/5)]"',
+    );
   });
 
   it("esqueleto de ofertas espelha a moldura do PremiumOffers real", () => {
@@ -365,13 +370,15 @@ describe("seções da home: esqueleto durante o load (87% do salto)", () => {
     // O container real carrega as classes de padding no meio de um
     // bg-gradient (string maior); o esqueleto as replica literal.
     expect(real).toContain("px-5 py-4 sm:px-6");
-    expect(home).toContain('"px-5 py-4 sm:px-6"');
+    expect(home).toContain('"px-5 py-4 sm:px-6 lg:px-0"');
     // Header compacto (mb-4 + text-xl leading-none = 20px → h-5) e a
     // moldura do embla (-mx-1 -my-3 px-1 py-3 + p-1.5).
     expect(real).toContain('"relative z-10 mb-4 flex items-center');
     expect(home).toContain('"mb-4 flex items-center justify-between gap-3"');
     expect(real).toContain('"-mx-1 -my-3 w-full cursor-grab');
-    expect(home).toContain('"-mx-1 -my-3 w-full px-1 py-3"');
+    expect(home).toContain(
+      '"-mx-1 -my-3 w-full px-1 py-3 lg:mx-auto lg:max-w-[800px]"',
+    );
     expect(real).toContain('"flex min-w-0 flex-[0_0_100%] flex-col p-1.5"');
     expect(home).toContain('"flex min-w-0 flex-[0_0_100%] flex-col p-1.5"');
     // Dots: cada bolinha dentro de um alvo de toque de 44 px (size-11) + mb-1;
@@ -407,7 +414,7 @@ describe("catálogo: o esqueleto do card reserva a mesma proporção do real", (
     // A grade de esqueleto e a grade real compartilham a MESMA classe de
     // grid (2 colunas no mobile) — mesma largura de card, mesma coluna.
     expect(src).toContain(
-      'className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4"',
+      '"grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4"',
     );
   });
 
@@ -531,6 +538,35 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
     ...overrides,
   });
 
+  it.each([0, 1, 2, 3, 4])(
+    "%i produtos: carrossel vazio some, até três centralizam no computador",
+    async (quantidade) => {
+      configDaLoja = {
+        homeSections: [
+          { id: "new_arrivals", title: "Novidades", active: true },
+        ],
+      };
+      await montar(
+        Array.from({ length: quantidade }, (_, i) =>
+          criarProduto({ id: String(i) }),
+        ),
+      );
+      const carrossel = hospedeiro.querySelector<HTMLElement>(
+        '[data-testid="carrossel-real"]',
+      );
+      if (quantidade === 0) {
+        expect(carrossel).toBeNull();
+      } else {
+        expect(carrossel).not.toBeNull();
+        expect(
+          carrossel?.className.includes(
+            "lg:[&_.snap-mandatory]:justify-center",
+          ),
+        ).toBe(quantidade <= 3);
+      }
+    },
+  );
+
   const esqueletoDeOfertas = () =>
     hospedeiro.querySelector<HTMLElement>('[data-testid="esqueleto-ofertas"]');
   const esqueletoDeCarrossel = () =>
@@ -562,7 +598,9 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
         expect(esqueleto?.className).toContain("aspect-[2/1]");
         expect(esqueleto?.className).toContain("w-full");
         expect(esqueleto?.className).toContain("md:max-w-[1040px]");
-        expect(esqueleto?.className).not.toContain("rounded-");
+        expect(classesDoCelular(esqueleto?.className ?? "")).not.toContain(
+          "rounded-",
+        );
         expect(esqueleto?.parentElement?.className).toBe("w-full py-4");
       }
     },

@@ -1438,14 +1438,14 @@ export function OrderDetailsView({
         </div>
       </div>
 
-      <div className="mx-auto max-w-2xl space-y-4 px-6 py-4">
+      <div className="mx-auto max-w-2xl space-y-4 px-6 py-4 lg:grid lg:max-w-none lg:grid-cols-2 lg:items-start lg:gap-6 lg:space-y-0">
         {/* Pedido achado pelo rastreio sem conta: o status é o RETRATO de quando
             a pessoa consultou e não atualiza sozinho. Diz de que hora é e leva
             de volta ao rastreio por código, que apaga o retrato. */}
         {retratoDoConvidado && (
           <div
             data-testid="aviso-retrato-do-convidado"
-            className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-amber-200/60 bg-amber-50 px-4 py-3"
+            className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-amber-200/60 bg-amber-50 px-4 py-3 lg:col-span-2"
           >
             <p className="min-w-0 flex-1 text-[13px] font-medium text-amber-900">
               {textoDoRetrato(retratoDoConvidado.consultadoEm)}
@@ -1467,7 +1467,7 @@ export function OrderDetailsView({
         {ordersLoadError && !retratoDoConvidado && (
           <div
             role="status"
-            className="flex items-center justify-between gap-3 rounded-[14px] border border-border px-3 py-2 text-left text-xs font-medium text-amber-700 dark:text-amber-400"
+            className="flex items-center justify-between gap-3 rounded-[14px] border border-border px-3 py-2 text-left text-xs font-medium text-amber-700 dark:text-amber-400 lg:col-span-2"
           >
             <span>
               Não conseguimos atualizar este pedido agora. O que aparece pode
@@ -1499,7 +1499,7 @@ export function OrderDetailsView({
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className={cn(
-            "relative overflow-hidden rounded-3xl p-5 shadow-sm",
+            "relative overflow-hidden rounded-3xl p-5 shadow-sm lg:col-span-2",
             order.status === "delivered"
               ? // BLOQUEIA B2 (revisor Opus, rodada 2, 25/09/2026): o
                 // degradê antigo (emerald-400→600→700) reprovava AA — o
@@ -1736,7 +1736,7 @@ export function OrderDetailsView({
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.05 }}
-            className="rounded-3xl border border-amber-200/60 bg-gradient-to-b from-amber-50 to-white p-5 shadow-sm"
+            className="rounded-3xl border border-amber-200/60 bg-gradient-to-b from-amber-50 to-white p-5 shadow-sm lg:col-span-2"
           >
             <div className="mb-4 flex items-center justify-between gap-2">
               <h4
@@ -1863,6 +1863,7 @@ export function OrderDetailsView({
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.08 }}
+              className="lg:col-span-2"
             >
               <DevolucaoDoPedidoCard
                 atual={devolucaoDoProduto.atual}
@@ -2018,7 +2019,7 @@ export function OrderDetailsView({
           initial={{ opacity: 0, scale: 0.98 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.3 }}
-          className="rounded-3xl border border-zinc-100 bg-white p-5 shadow-sm"
+          className="rounded-3xl border border-zinc-100 bg-white p-5 shadow-sm lg:col-span-2"
         >
           {/* Destino */}
           <div className="flex items-start gap-3">
@@ -2112,7 +2113,7 @@ export function OrderDetailsView({
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.35 }}
-          className="overflow-hidden rounded-3xl border border-zinc-100 bg-white shadow-sm"
+          className="overflow-hidden rounded-3xl border border-zinc-100 bg-white shadow-sm lg:col-span-2"
         >
           {lojaTemWhatsappAgora && (
             <div className="border-b border-zinc-100 p-3 last:border-b-0">
@@ -2277,7 +2278,7 @@ export function OrderDetailsView({
           // botão Publicar avaliação sumia atrás dela. Ficar acima da barra,
           // e não por cima, mantém o aviso de descarte (AlertDialog, z-50)
           // na frente da folha.
-          <div className="fixed inset-x-0 bottom-[var(--folha-acima-da-barra)] top-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm duration-300 animate-in fade-in">
+          <div className="fixed inset-x-0 bottom-[var(--folha-acima-da-barra)] top-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm duration-300 animate-in fade-in lg:bottom-0 lg:z-[130] lg:items-center">
             <div
               className="fixed inset-0"
               onClick={fecharAvaliacaoPerguntando}
@@ -2294,7 +2295,7 @@ export function OrderDetailsView({
             <div
               ref={avaliacaoFolhaRef}
               tabIndex={-1}
-              className="relative z-10 max-h-[calc(100dvh-var(--folha-acima-da-barra)-72px)] w-full max-w-md overflow-y-auto rounded-t-[2.5rem] bg-zinc-50 p-6 shadow-2xl duration-300 animate-in slide-in-from-bottom"
+              className="relative z-10 max-h-[calc(100dvh-var(--folha-acima-da-barra)-72px)] w-full max-w-md overflow-y-auto rounded-t-[2.5rem] bg-zinc-50 p-6 shadow-2xl duration-300 animate-in slide-in-from-bottom lg:max-h-[85dvh] lg:rounded-3xl"
               role="dialog"
               aria-modal="true"
               aria-labelledby="titulo-avaliacao"

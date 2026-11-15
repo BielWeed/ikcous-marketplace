@@ -604,7 +604,7 @@ function OrderActionBar({
   // Fundo OPACO: o conteúdo rola por baixo e não pode aparecer através.
   return (
     <div className="sticky top-0 z-40 border-b border-admin-border bg-admin-bg">
-      <div className="mx-auto flex w-full max-w-[600px] items-center gap-2 px-4 py-3">
+      <div className="mx-auto flex w-full max-w-[600px] items-center gap-2 px-4 py-3 xl:max-w-none xl:px-6">
         {podeCancelar && (
           <Button
             onClick={() => onCancel(orderId)}
@@ -2556,7 +2556,7 @@ export const OrderDetail = memo(function OrderDetail({
           cabeçalho → trilha → dinheiro (+ devolução do produto e do
           dinheiro, coladas nele) → entrega → itens (com a conta) → envio
           (etiqueta, rastreio e anotações em linhas). O grid de 2 colunas saiu. */}
-      <div className="mx-auto w-full max-w-[600px] space-y-4 px-4 pt-5 md:px-6 md:pt-6">
+      <div className="mx-auto w-full max-w-[600px] space-y-4 px-4 pt-5 md:px-6 md:pt-6 xl:grid xl:max-w-none xl:grid-cols-2 xl:items-start xl:gap-6 xl:space-y-0 xl:[&>*]:col-span-2 xl:[&>*]:min-w-0 xl:[&>[data-testid=bloco-dinheiro]+[data-testid=bloco-entrega]]:col-span-1 xl:[&>[data-testid=bloco-dinheiro]:has(+[data-testid=bloco-entrega])]:col-span-1">
         <OrderHeader
           order={order}
           devolucaoConcluida={devolucaoConcluida}

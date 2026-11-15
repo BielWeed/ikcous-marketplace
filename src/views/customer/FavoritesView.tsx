@@ -1,9 +1,11 @@
+import { GRADE_DE_PRODUTOS_NO_COMPUTADOR } from "@/components/desktop/medidas";
 import { ProductCard } from "@/components/ui/custom/ProductCard";
 import { useStore } from "@/contexts/StoreContext";
 import { useFavorites } from "@/hooks/useFavorites";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { promessasDeFrete } from "@/lib/estrategias-de-frete";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
+import { cn } from "@/lib/utils";
 import "./FavoritesView.css";
 import type { Product, View } from "@/types";
 import { haptic } from "@/utils/haptic";
@@ -557,7 +559,7 @@ export const FavoritesView = React.memo(function FavoritesView({
           onTentarAgora={() => retentarPendentes({ avisarFalha: true })}
         />
 
-        <div className="flex flex-col items-center px-6 pb-6 pt-10 text-center">
+        <div className="flex flex-col items-center px-6 pb-6 pt-10 text-center lg:items-start lg:px-4 lg:py-12 lg:text-left">
           <div className="mb-6 grid size-28 place-items-center rounded-full bg-muted">
             <Heart
               aria-hidden="true"
@@ -597,7 +599,13 @@ export const FavoritesView = React.memo(function FavoritesView({
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 sm:gap-4">
+            <div
+              className={cn(
+                "grid grid-cols-2 gap-3 sm:gap-4",
+                GRADE_DE_PRODUTOS_NO_COMPUTADOR,
+                "lg:gap-x-6 lg:gap-y-10",
+              )}
+            >
               {suggestedProducts.map((product) => (
                 <ProductCard
                   key={product.id}
@@ -765,9 +773,9 @@ export const FavoritesView = React.memo(function FavoritesView({
                   {textoDeProdutos(secao.itens.length)}
                 </span>
               </div>
-              <ul id={idLista}>
+              <ul id={idLista} className="lg:grid lg:grid-cols-2 lg:gap-4">
                 {itens.map((product) => (
-                  <li key={product.id}>
+                  <li key={product.id} className="lg:min-w-0 lg:max-w-full">
                     <ProductCard
                       layout="linha"
                       className="favorites-product-card"

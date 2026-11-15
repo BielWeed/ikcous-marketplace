@@ -1261,7 +1261,7 @@ export function AddressForm({
       )}
 
       {/* Barra de salvar: fixa embaixo, acima da navegação inferior */}
-      <div className="bottom-docked-navigation sticky z-20 -mx-1 mt-auto border-t border-border bg-background/95 px-1 pb-2.5 pt-3 backdrop-blur md:bottom-[104px]">
+      <div className="bottom-docked-navigation sticky z-20 -mx-1 mt-auto border-t border-border bg-background/95 px-1 pb-2.5 pt-3 backdrop-blur md:bottom-[104px] lg:bottom-0">
         <Button
           type="submit"
           disabled={loading || buscandoCep}

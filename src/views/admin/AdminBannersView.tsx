@@ -2446,7 +2446,7 @@ export const AdminBannersView = memo(function AdminBannersView({
       <p role="status" aria-live="polite" className="sr-only">
         {anuncioDaOrdem}
       </p>
-      <div className="mx-auto w-full max-w-3xl space-y-6 p-4 sm:p-6">
+      <div className="mx-auto w-full max-w-3xl space-y-6 p-4 sm:p-6 lg:max-w-7xl">
         {isOffline && (
           <p
             role="status"
@@ -2584,8 +2584,11 @@ export const AdminBannersView = memo(function AdminBannersView({
                   .filter((b) => b.position === pos.value)
                   .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
                 return (
-                  <section key={pos.value} className="space-y-3">
-                    <h2 className="flex justify-between text-xs font-semibold uppercase tracking-wider">
+                  <section
+                    key={pos.value}
+                    className="space-y-3 2xl:grid 2xl:grid-cols-2 2xl:items-start 2xl:gap-4 2xl:space-y-0"
+                  >
+                    <h2 className="flex justify-between text-xs font-semibold uppercase tracking-wider 2xl:col-span-2">
                       <span>{pos.label}</span>
                       <span>
                         {lista.length}{" "}
@@ -2620,13 +2623,13 @@ export const AdminBannersView = memo(function AdminBannersView({
                         />
                       ))
                     ) : todosNaPosicao.length ? (
-                      <p className="rounded-2xl border border-dashed border-admin-border p-4 text-center text-sm">
+                      <p className="rounded-2xl border border-dashed border-admin-border p-4 text-center text-sm 2xl:col-span-2">
                         Nenhum banner com este filtro
                       </p>
                     ) : (
                       <Button
                         variant="outline"
-                        className="min-h-11 w-full border-admin-border bg-admin-surface text-white"
+                        className="min-h-11 w-full border-admin-border bg-admin-surface text-white 2xl:col-span-2"
                         disabled={isOffline}
                         onClick={() =>
                           handleOpenDialog({ position: pos.value } as Banner)

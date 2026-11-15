@@ -18,6 +18,7 @@ import type { Product } from "@/types";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { classesDoCelular } from "./classes-do-celular";
 
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -231,7 +232,7 @@ describe("Ofertas Lateral em duas fileiras", () => {
       await montar(Array.from({ length: n }, (_, i) => produto(`p${i}`)));
       expect(colunas(), `n=${n}`).toHaveLength(1);
       expect(colunas()[0].className).toContain("w-full");
-      expect(colunas()[0].className).not.toContain("basis-");
+      expect(classesDoCelular(colunas()[0].className)).not.toContain("basis-");
       expect(colunas()[0].querySelectorAll("article")).toHaveLength(n);
       expect(host.querySelectorAll("[data-pagina-ofertas]")).toHaveLength(0);
       expect(useEmblaCarousel).toHaveBeenLastCalledWith(

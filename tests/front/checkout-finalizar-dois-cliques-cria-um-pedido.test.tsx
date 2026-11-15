@@ -171,59 +171,74 @@ describe("CheckoutView — dois cliques no Finalizar antes do próximo render", 
     vi.restoreAllMocks();
   });
 
-  it("envia um único pedido mesmo com dois cliques no mesmo instante", async () => {
-    // Toda chamada fica pendente até a contagem, inclusive a segunda que
-    // apareceria sem a trava. Nenhuma resposta limpa o carrinho no meio.
-    let responder!: (pedido: { id: string; totalAmount: number }) => void;
-    const pedidoPendente = new Promise<{ id: string; totalAmount: number }>(
-      (resolve) => {
-        responder = resolve;
-      },
-    );
-    createOrder.mockReturnValue(pedidoPendente);
-
-    const { CheckoutView } = await import("@/views/customer/CheckoutView");
-    await act(async () => {
-      raiz.render(
-        <CheckoutView
-          onNavigate={onNavigate}
-          onSetBackOverride={onSetBackOverride}
-        />,
+  it.each([false, true])(
+    "envia um único pedido mesmo com dois cliques no mesmo instante (computador: %s)",
+    async (computador) => {
+      vi.stubGlobal("matchMedia", () => ({
+        matches: computador,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }));
+      // Toda chamada fica pendente até a contagem, inclusive a segunda que
+      // apareceria sem a trava. Nenhuma resposta limpa o carrinho no meio.
+      let responder!: (pedido: { id: string; totalAmount: number }) => void;
+      const pedidoPendente = new Promise<{ id: string; totalAmount: number }>(
+        (resolve) => {
+          responder = resolve;
+        },
       );
-    });
-    await act(async () => {
-      digitar("checkout-name", "Cliente Teste");
-      digitar("checkout-tel", "34999999999");
-      await esperarMicrotarefas();
-    });
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 420));
-    });
+      createOrder.mockReturnValue(pedidoPendente);
 
-    const botao = [...document.body.querySelectorAll("button")].find((el) =>
-      el.textContent?.includes("Finalizar Pedido"),
-    ) as HTMLButtonElement;
-    expect(botao.disabled).toBe(false);
-    expect(createOrder).not.toHaveBeenCalled();
+      const { CheckoutView } = await import("@/views/customer/CheckoutView");
+      await act(async () => {
+        raiz.render(
+          <CheckoutView
+            onNavigate={onNavigate}
+            onSetBackOverride={onSetBackOverride}
+          />,
+        );
+      });
+      await act(async () => {
+        digitar("checkout-name", "Cliente Teste");
+        digitar("checkout-tel", "34999999999");
+        await esperarMicrotarefas();
+      });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 420));
+      });
 
-    try {
-      await act(async () => {
-        // Sem await entre os cliques: disabled ainda não recebeu o estado
-        // do próximo render. Ambos usam o botão e o handler reais.
-        botao.click();
-        botao.click();
-        await esperarMicrotarefas();
-        await esperarMicrotarefas();
-      });
-      expect(createOrder).toHaveBeenCalledTimes(1);
-      expect(createOrder.mock.calls[0][0]).toMatchObject({
-        totalAmount: 120,
-      });
-    } finally {
-      await act(async () => {
-        responder({ id: "ped-777", totalAmount: 120 });
-        await esperarMicrotarefas();
-      });
-    }
-  });
+      const botao = [...document.body.querySelectorAll("button")].find((el) =>
+        el.textContent?.includes("Finalizar Pedido"),
+      ) as HTMLButtonElement;
+      if (computador) {
+        expect(
+          botao.closest('[aria-label="Resumo e finalização do pedido"]'),
+        ).not.toBeNull();
+      } else {
+        expect(hospedeiro.contains(botao)).toBe(false);
+      }
+      expect(botao.disabled).toBe(false);
+      expect(createOrder).not.toHaveBeenCalled();
+
+      try {
+        await act(async () => {
+          // Sem await entre os cliques: disabled ainda não recebeu o estado
+          // do próximo render. Ambos usam o botão e o handler reais.
+          botao.click();
+          botao.click();
+          await esperarMicrotarefas();
+          await esperarMicrotarefas();
+        });
+        expect(createOrder).toHaveBeenCalledTimes(1);
+        expect(createOrder.mock.calls[0][0]).toMatchObject({
+          totalAmount: 120,
+        });
+      } finally {
+        await act(async () => {
+          responder({ id: "ped-777", totalAmount: 120 });
+          await esperarMicrotarefas();
+        });
+      }
+    },
+  );
 });

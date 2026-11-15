@@ -380,7 +380,7 @@ export function FunilEPedidosDoCrm({
         ];
   });
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 xl:grid xl:grid-cols-2 xl:items-start xl:gap-6 xl:space-y-0 xl:[&:has(>[aria-hidden=true])>*]:col-span-2 xl:[&>*]:min-w-0 xl:[&>.metricas-painel]:col-span-2 xl:[&>[role=alert]]:col-span-2">
       {!carregando && erro && visao && !offline && (
         <div
           role="alert"

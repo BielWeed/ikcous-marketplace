@@ -306,7 +306,7 @@ export function VisaoGeralDoCrm({
       )}
       <section
         aria-label="Histórico completo da loja"
-        className="space-y-4 pt-2"
+        className="space-y-4 pt-2 xl:grid xl:grid-cols-2 xl:items-start xl:gap-6 xl:space-y-0 xl:[&:has(#crm-categorias-titulo):has(#crm-produtos-lucro-titulo)>:has(#crm-categorias-titulo)]:col-span-1 xl:[&:has(#crm-categorias-titulo):has(#crm-produtos-lucro-titulo)>:has(#crm-produtos-lucro-titulo)]:col-span-1 xl:[&>*]:col-span-2 xl:[&>*]:min-w-0"
       >
         {erro && !classico.carregando ? (
           <div

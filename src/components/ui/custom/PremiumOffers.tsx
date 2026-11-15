@@ -254,7 +254,7 @@ const PremiumOffersPadrao = React.memo(function PremiumOffersPadrao({
 
   return (
     <div
-      className="relative overflow-hidden bg-gradient-to-b from-zinc-50/20 via-zinc-50/10 to-transparent px-5 py-4 sm:px-6"
+      className="relative overflow-hidden bg-gradient-to-b from-zinc-50/20 via-zinc-50/10 to-transparent px-5 py-4 sm:px-6 lg:px-0"
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onFocus={handleFocus}
@@ -294,7 +294,7 @@ const PremiumOffersPadrao = React.memo(function PremiumOffersPadrao({
       <div className="relative z-10 flex flex-col gap-6">
         {/* HERO OFFER CAROUSEL */}
         <div
-          className="-mx-1 -my-3 w-full cursor-grab overflow-hidden px-1 py-3 active:cursor-grabbing"
+          className="-mx-1 -my-3 w-full cursor-grab overflow-hidden px-1 py-3 active:cursor-grabbing lg:mx-auto lg:max-w-[800px]"
           ref={emblaRef}
         >
           <div className="flex">

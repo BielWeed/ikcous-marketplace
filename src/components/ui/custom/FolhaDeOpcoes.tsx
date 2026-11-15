@@ -140,7 +140,10 @@ export function CorpoDaFolhaDeOpcoes({
   return (
     <div
       id={id}
-      className="flex min-h-0 flex-col gap-3 px-4 pb-[calc(12px+var(--folha-folga-segura))] pt-3 text-zinc-900"
+      className={cn(
+        "flex min-h-0 flex-col gap-3 px-4 pb-[calc(12px+var(--folha-folga-segura))] pt-3 text-zinc-900",
+        "lg:flex-1 lg:w-full lg:overflow-hidden",
+      )}
     >
       <SheetDescription className="sr-only">
         Escolha as opções para adicionar ao carrinho.
@@ -219,7 +222,10 @@ export function CorpoDaFolhaDeOpcoes({
 
       <div
         data-testid="product-card-options-scroll"
-        className="min-h-0 overflow-y-auto overscroll-contain rounded-2xl border border-zinc-200"
+        className={cn(
+          "min-h-0 overflow-y-auto overscroll-contain rounded-2xl border border-zinc-200",
+          "lg:flex-1",
+        )}
       >
         {indisponivel ? (
           <p className="bg-zinc-50 px-3 py-4 text-center text-xs text-zinc-700">

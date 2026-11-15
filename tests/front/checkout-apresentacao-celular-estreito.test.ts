@@ -103,6 +103,15 @@ describe("finalizar em celular estreito — apresentação", () => {
 
     const reservas: string[] = [];
     css.walkDecls("--customer-pb", (declaracao) => {
+      // Esta prova é do celular: a exceção de PC não participa da cascata móvel.
+      const contexto = declaracao.parent?.parent;
+      if (
+        contexto?.type === "atrule" &&
+        contexto.name === "media" &&
+        contexto.params === "(min-width: 1024px)"
+      ) {
+        return;
+      }
       reservas.push(declaracao.value);
     });
     expect(reservas).toHaveLength(1);

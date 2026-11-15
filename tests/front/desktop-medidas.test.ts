@@ -21,7 +21,7 @@ const CONTRATO_C2: Record<string, string> = {
 };
 
 describe("medidas do computador — contrato C2", () => {
-  it("exporta exatamente as seis constantes do contrato, com o valor literal", () => {
+  it("preserva as seis classes do contrato e exporta a altura do cabeçalho", () => {
     for (const [nome, valorEsperado] of Object.entries(CONTRATO_C2)) {
       // Chave vem do literal CONTRATO_C2 acima, fixo neste arquivo -- nunca
       // de entrada externa; mesmo padrão de
@@ -33,12 +33,16 @@ describe("medidas do computador — contrato C2", () => {
       );
     }
     expect(Object.keys(medidas).sort()).toEqual(
-      Object.keys(CONTRATO_C2).sort(),
+      [...Object.keys(CONTRATO_C2), "ALTURA_DO_CABECALHO_DO_COMPUTADOR"].sort(),
     );
   });
 
-  it("todo token de toda constante começa por lg:, xl: ou 2xl:", () => {
+  it("todo token das constantes de classes começa por lg:, xl: ou 2xl:", () => {
     for (const [nome, valor] of Object.entries(medidas)) {
+      if (nome === "ALTURA_DO_CABECALHO_DO_COMPUTADOR") {
+        expect(valor).toBe(121);
+        continue;
+      }
       const tokens = (valor as string).split(" ").filter(Boolean);
       expect(tokens.length, `${nome} não pode ficar vazio`).toBeGreaterThan(0);
       for (const token of tokens) {

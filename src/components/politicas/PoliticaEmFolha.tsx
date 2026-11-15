@@ -48,6 +48,7 @@ export function PoliticaEmFolha({ tipo, onFechar }: PoliticaEmFolhaProps) {
     >
       <SheetContent
         side="bottom"
+        gavetaNoComputador={false}
         data-testid="folha-politica"
         // Botão de fechar PRÓPRIO (em português, com alvo de 44px): o X
         // embutido do Sheet anuncia "Close" ao leitor de tela.

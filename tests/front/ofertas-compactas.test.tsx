@@ -101,6 +101,24 @@ const clicar = async (el: Element) => {
 };
 
 describe("Ofertas Compactas", () => {
+  it.each([0, 1, 2, 3, 4, 5])(
+    "%i ofertas: vazio some, até quatro centralizam no computador",
+    async (quantidade) => {
+      await montar(
+        Array.from({ length: quantidade }, (_, i) => produto(String(i))),
+      );
+      const secao = host.querySelector('[data-testid="ofertas-compactas"]');
+      if (quantidade === 0) {
+        expect(secao).toBeNull();
+      } else {
+        expect(cartoes()).toHaveLength(quantidade);
+        expect(
+          cartoes()[0]?.parentElement?.classList.contains("lg:justify-center"),
+        ).toBe(quantidade <= 4);
+      }
+    },
+  );
+
   it.each(["compacto", "lateral", "lateral-duplo", "padrao"])(
     "%s: confirmação mantém foco e bloqueia repetição sem desativar o botão",
     async (layout) => {
