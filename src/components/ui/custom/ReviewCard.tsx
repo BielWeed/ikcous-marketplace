@@ -165,7 +165,7 @@ export function ReviewCard({
         <p
           className={cn(
             "mb-4 mt-3 whitespace-pre-wrap break-words text-xs font-normal leading-relaxed text-zinc-600 md:text-sm",
-            "lg:text-sm",
+            "lg:max-w-prose lg:text-sm",
           )}
         >
           {review.comment}
