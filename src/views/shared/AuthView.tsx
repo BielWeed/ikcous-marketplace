@@ -5,7 +5,14 @@ import { branding } from "@/config/branding";
 import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { cpfValido, formatarCpf } from "@/lib/cpf";
-import { MENSAGEM_ERRO_LOGIN_GENERICA } from "@/lib/mensagens-auth";
+import {
+  googleLigadoNestaLoja,
+  navegadorInternoDaMeta,
+} from "@/lib/google-login";
+import {
+  MENSAGEM_CREDENCIAIS_CLIENTE,
+  MENSAGEM_ERRO_LOGIN_GENERICA,
+} from "@/lib/mensagens-auth";
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import {
   celularBrasileiroCompleto,
@@ -96,6 +103,8 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
   const {
     user,
     login,
+    loginComGoogle,
+    mensagemRetornoGoogle,
     signUp,
     resetPassword,
     updatePassword,
@@ -181,6 +190,36 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
     setViewMode,
   ]);
 
+  const [googleLigado, setGoogleLigado] = useState(false);
+  const [entrandoGoogle, setEntrandoGoogle] = useState(false);
+  const [erroGoogle, setErroGoogle] = useState<string | null>(null);
+  const googleEmCurso = useRef(false);
+  useEffect(() => {
+    if (navegadorInternoDaMeta()) return;
+    let ativa = true;
+    void googleLigadoNestaLoja().then((ligado) => {
+      if (ativa) setGoogleLigado(ligado);
+    });
+    return () => {
+      ativa = false;
+    };
+  }, []);
+  const entrarComGoogle = async () => {
+    if (googleEmCurso.current) return;
+    googleEmCurso.current = true;
+    setEntrandoGoogle(true);
+    setErroGoogle(null);
+    try {
+      if (await loginComGoogle()) return; // Vai sair da loja: não libera outro clique.
+    } catch {
+      /* Nunca ecoa texto do provedor. */
+    }
+    googleEmCurso.current = false;
+    setEntrandoGoogle(false);
+    setErroGoogle(
+      "Não foi possível entrar com o Google. Você pode usar e-mail e senha ou tentar de novo.",
+    );
+  };
   const isLogin = viewMode === "login";
   // O aviso do link de recuperação vive na tela "Recuperar"; o do link de
   // confirmação vencido vive na tela de entrar.
@@ -424,7 +463,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
             error.status === 400 ||
             error.message?.includes("Invalid login credentials")
           ) {
-            message = "E-mail ou senha incorretos. Verifique suas credenciais.";
+            message = MENSAGEM_CREDENCIAIS_CLIENTE;
           } else if (error.status === 429) {
             message = "Muitas tentativas. Tente novamente em alguns minutos.";
           }
@@ -879,6 +918,57 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
               <Sparkles className="size-32 text-zinc-900" />
             </div>
 
+            {(viewMode === "login" || viewMode === "signup") && (
+              <>
+                {(erroGoogle || mensagemRetornoGoogle) && (
+                  <p role="status" className="mb-4 text-sm text-zinc-700">
+                    {erroGoogle || mensagemRetornoGoogle}
+                  </p>
+                )}
+                {googleLigado && (
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={entrandoGoogle || isLoading}
+                      onClick={entrarComGoogle}
+                      className="h-14 w-full gap-3 rounded-2xl border-zinc-300 bg-white font-bold text-zinc-900 focus-visible:ring-2 focus-visible:ring-zinc-900"
+                    >
+                      <svg
+                        aria-hidden="true"
+                        viewBox="0 0 24 24"
+                        className="size-5"
+                      >
+                        <path
+                          fill="#4285F4"
+                          d="M21.6 12.23c0-.71-.06-1.39-.18-2.05H12v3.88h5.38a4.6 4.6 0 0 1-2 3.02v2.51h3.24c1.9-1.75 2.98-4.33 2.98-7.36Z"
+                        />
+                        <path
+                          fill="#34A853"
+                          d="M12 22c2.7 0 4.96-.9 6.62-2.41l-3.24-2.51c-.9.6-2.05.96-3.38.96-2.6 0-4.8-1.76-5.59-4.12H3.06v2.59A10 10 0 0 0 12 22Z"
+                        />
+                        <path
+                          fill="#FBBC05"
+                          d="M6.41 13.92a6 6 0 0 1 0-3.84V7.49H3.06a10 10 0 0 0 0 9.02l3.35-2.59Z"
+                        />
+                        <path
+                          fill="#EA4335"
+                          d="M12 5.96c1.47 0 2.79.51 3.82 1.51l2.87-2.87A9.6 9.6 0 0 0 12 2a10 10 0 0 0-8.94 5.49l3.35 2.59C7.2 7.72 9.4 5.96 12 5.96Z"
+                        />
+                      </svg>
+                      {entrandoGoogle
+                        ? "Abrindo Google…"
+                        : "Continuar com Google"}
+                    </Button>
+                    <div className="my-4 flex items-center gap-3 text-sm text-zinc-500">
+                      <span className="h-px flex-1 bg-zinc-200" />
+                      ou
+                      <span className="h-px flex-1 bg-zinc-200" />
+                    </div>
+                  </>
+                )}
+              </>
+            )}
             <form
               onSubmit={handleSubmit}
               action="#"

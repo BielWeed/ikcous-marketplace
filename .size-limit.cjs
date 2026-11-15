@@ -193,7 +193,8 @@ module.exports = [
     // 12/11/2026 (1.5.174): 656 -> 660 kB (a base fechou em 655,96 kB, ~0,04 kB de folga, e cada PR novo voltaria a reprovar; subo 4 kB, o mesmo passo do 1.5.173). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
     // 13/11/2026 (1.5.178): 660 -> 664 kB (o PR de produtos mediu 660,14 kB no CI, 139 B acima de 660 kB, e a base ja fechava colada no teto; subo 4 kB, o mesmo passo de 12/11). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
     // 13/11/2026 (1.5.180): 664 -> 668 kB (a release mediu 664,10 kB no CI, 100 B acima de 664 kB: a nota da versao e as correcoes do lote somaram o que restava da folga; subo 4 kB, o mesmo passo da 1.5.178). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
-    limit: "668 kB",
+    // 15/11/2026 (login com Google): 668 -> 672 kB (o botao Google, a sonda, a volta do OAuth e o aviso de WhatsApp mediram 668,47 kB, 471 B acima de 668 kB; subo 4 kB, o mesmo passo da 1.5.180). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
+    limit: "672 kB",
     webpack: false,
     // Sem medida de TEMPO: o plugin `@size-limit/time` (que rodava o bundle em
     // Chrome headless e puxava o `extract-zip`) saiu das dependencias, entao
