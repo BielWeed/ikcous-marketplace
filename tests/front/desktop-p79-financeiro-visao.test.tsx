@@ -338,8 +338,8 @@ describe("P79 -- celular byte a byte igual, só tokens de computador acrescentad
 
   it("controle: mudar UMA classe de celular derruba a prova (a prova não está cega)", () => {
     const mutante = FONTE_VISAO.replace(
-      '"flex flex-col gap-4"',
-      '"flex flex-col gap-5"',
+      '"flex flex-col gap-4 xl:grid ',
+      '"flex flex-col gap-5 xl:grid ',
     );
     expect(mutante).not.toBe(FONTE_VISAO);
     expect(celularDoArquivo(mutante)).not.toEqual(CELULAR_ABA_VISAO);
@@ -581,21 +581,30 @@ describe("P79 -- o Tailwind real gera cada regra, na largura certa", () => {
 // ---------------------------------------------------------------------------
 // O DOM de verdade: os seletores dos dois blocos acertam UM filho da raiz cada.
 // ---------------------------------------------------------------------------
+const cenarioDoResumo = vi.hoisted(() => ({
+  semDados: false,
+  semContas: false,
+  erro: null as string | null,
+}));
 vi.mock("@/hooks/useFinanceiro", () => ({
   useResumoFinanceiro: () => ({
-    dados: parseResumo({
-      saldo_total: 5230.4,
-      entradas: 18450.9,
-      saidas: 9120.5,
-      resultado: 9330.4,
-      contas: [
-        { id: "c1", nome: "Caixa da loja", tipo: "caixa", saldo: 600 },
-        { id: "c2", nome: "Banco", tipo: "banco", saldo: 4630.4 },
-      ],
-      por_canal: { online: 100, presencial: 50 },
-    }),
-    erro: null,
-    carregando: false,
+    dados: cenarioDoResumo.semDados
+      ? null
+      : parseResumo({
+          saldo_total: 5230.4,
+          entradas: 18450.9,
+          saidas: 9120.5,
+          resultado: 9330.4,
+          contas: cenarioDoResumo.semContas
+            ? []
+            : [
+                { id: "c1", nome: "Caixa da loja", tipo: "caixa", saldo: 600 },
+                { id: "c2", nome: "Banco", tipo: "banco", saldo: 4630.4 },
+              ],
+          por_canal: { online: 100, presencial: 50 },
+        }),
+    erro: cenarioDoResumo.erro,
+    carregando: cenarioDoResumo.semDados && !cenarioDoResumo.erro,
     recarregar: vi.fn(),
   }),
 }));
@@ -608,6 +617,9 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 let host: HTMLDivElement;
 let root: Root;
 beforeEach(() => {
+  cenarioDoResumo.semDados = false;
+  cenarioDoResumo.semContas = false;
+  cenarioDoResumo.erro = null;
   host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
@@ -685,5 +697,166 @@ describe("P79 -- os seletores de coluna acertam o filho certo da raiz", () => {
       "div", // Recebimentos por forma / App x loja
       "p",
     ]);
+  });
+});
+
+const CAIXA_ABERTO_DA_VISAO: Parameters<typeof AbaVisao>[0]["caixa"] = {
+  ...CAIXA_FECHADO_DA_VISAO,
+  dados: {
+    sessao: {
+      id: "caixa-ficticio",
+      contaId: "c1",
+      contaNome: "Caixa de teste",
+      abertoEm: "2026-11-15T12:00:00Z",
+      valorAbertura: 80,
+      vendasDinheiro: 0,
+      devolucoesDinheiro: 0,
+      estornosExternosDinheiro: 0,
+      entradasManuais: 0,
+      saidasManuais: 0,
+      esperado: 80,
+      movimentos: [],
+    },
+  },
+};
+
+/**
+ * Liga as provas de CSS acima à raiz REAL, não a um literal parecido.
+ * Retirar a grade desta raiz ou transferi-la ao esqueleto deve falhar aqui.
+ * Isto verifica classes e parentesco; jsdom não mede largura nem altura.
+ */
+function conferirGradeCarregada(raizDaVisao: HTMLElement) {
+  expect(raizDaVisao.parentElement).toBe(host);
+  expect(raizDaVisao.hasAttribute("aria-busy")).toBe(false);
+  for (const token of NA_RAIZ) {
+    expect(raizDaVisao.classList.contains(token), token).toBe(true);
+  }
+  // Localiza os blocos sem depender do seletor que está sob teste.
+  const saldo = raizDaVisao.querySelector("section[aria-label='Saldo total']");
+  const movimentos = raizDaVisao.querySelector(
+    "section[aria-label='Movimentos do período']",
+  );
+  expect(saldo).not.toBeNull();
+  expect(movimentos).not.toBeNull();
+  expect(saldo?.parentElement).toBe(raizDaVisao);
+  expect(movimentos?.parentElement).toBe(raizDaVisao);
+  expect([...raizDaVisao.querySelectorAll(seletorDoToken(SALDO))]).toEqual([
+    saldo,
+  ]);
+  expect([...raizDaVisao.querySelectorAll(seletorDoToken(MOVIMENTOS))]).toEqual(
+    [movimentos],
+  );
+  expect(saldo?.nextElementSibling).toBe(movimentos);
+  const lista = movimentos?.querySelector("dl");
+  for (const token of NA_LISTA_DE_MOVIMENTOS) {
+    expect(lista?.classList.contains(token), token).toBe(true);
+  }
+  expect(lista?.children).toHaveLength(2);
+  return [...raizDaVisao.children].map(
+    (filho) => filho.getAttribute("aria-label") ?? filho.tagName.toLowerCase(),
+  );
+}
+
+const BLOCOS_CARREGADOS = [
+  "Caixa",
+  "Saldo total",
+  "Movimentos do período",
+  "div",
+  "Saldo por conta",
+  "Fluxo de caixa · últimos 30 dias",
+  "div",
+  "p",
+];
+
+describe("P79 -- a grade pertence à raiz carregada, em cada estado", () => {
+  it.each([
+    ["aberto", CAIXA_ABERTO_DA_VISAO, "Fechar caixa"],
+    ["fechado", CAIXA_FECHADO_DA_VISAO, "Abrir caixa"],
+  ] as const)(
+    "caixa %s: raiz, filhos e botão reais mantêm os tokens",
+    async (estado, caixa, textoDoBotao) => {
+      const raizDaVisao = await montar(caixa);
+      expect(conferirGradeCarregada(raizDaVisao)).toEqual(BLOCOS_CARREGADOS);
+      const cartao = raizDaVisao.querySelector(
+        `:scope > section[data-faixa-do-caixa='${estado}']`,
+      );
+      expect(cartao).not.toBeNull();
+      const botao = [...(cartao?.querySelectorAll("button") ?? [])].find(
+        (elemento) => elemento.textContent === textoDoBotao,
+      );
+      expect(botao).toBeDefined();
+      for (const token of NO_BOTAO_FECHAR) {
+        expect(botao?.classList.contains(token), token).toBe(true);
+      }
+    },
+  );
+
+  it("sem resumo: mostra o esqueleto sem atribuir a ele a grade carregada", async () => {
+    cenarioDoResumo.semDados = true;
+    const esqueleto = await montar(CAIXA_FECHADO_DA_VISAO);
+    expect(esqueleto.getAttribute("aria-busy")).toBe("true");
+    expect(esqueleto.textContent).toContain("Carregando");
+    for (const token of NA_RAIZ) {
+      expect(esqueleto.classList.contains(token), token).toBe(false);
+    }
+    expect(
+      esqueleto.querySelector("section[aria-label='Saldo total']"),
+    ).toBeNull();
+  });
+
+  it("erro sem resumo: mostra o erro, sem montar grade nem saldo", async () => {
+    cenarioDoResumo.semDados = true;
+    cenarioDoResumo.erro = "Falha fictícia ao ler resumo";
+    const erro = await montar(CAIXA_FECHADO_DA_VISAO);
+    expect(erro.textContent).toContain(cenarioDoResumo.erro);
+    for (const token of NA_RAIZ) {
+      expect(erro.classList.contains(token), token).toBe(false);
+    }
+    expect(host.querySelector("section[aria-label='Saldo total']")).toBeNull();
+  });
+
+  it("erro com resumo anterior: o aviso é filho direto e não desloca os dois blocos de meia linha", async () => {
+    cenarioDoResumo.erro = "Falha fictícia ao atualizar resumo";
+    const raizDaVisao = await montar(CAIXA_ABERTO_DA_VISAO);
+    expect(conferirGradeCarregada(raizDaVisao)).toEqual([
+      "div",
+      ...BLOCOS_CARREGADOS,
+    ]);
+    expect(raizDaVisao.firstElementChild?.textContent).toContain(
+      cenarioDoResumo.erro,
+    );
+  });
+
+  it("caixa com dados antigos e erro: o invólucro do aviso continua filho direto de largura inteira", async () => {
+    const raizDaVisao = await montar({
+      ...CAIXA_ABERTO_DA_VISAO,
+      erro: "Falha fictícia ao atualizar caixa",
+    });
+    expect(conferirGradeCarregada(raizDaVisao)).toEqual([
+      "div",
+      ...BLOCOS_CARREGADOS.slice(1),
+    ]);
+    const avisoECaixa = raizDaVisao.firstElementChild;
+    expect(avisoECaixa?.textContent).toContain(
+      "Falha fictícia ao atualizar caixa",
+    );
+    expect(
+      avisoECaixa?.querySelector("section[data-faixa-do-caixa='aberto']"),
+    ).not.toBeNull();
+  });
+
+  it("sem contas: o estado vazio substitui só o bloco de contas, não a raiz da grade", async () => {
+    cenarioDoResumo.semContas = true;
+    const raizDaVisao = await montar(CAIXA_FECHADO_DA_VISAO);
+    const blocos = conferirGradeCarregada(raizDaVisao);
+    expect(blocos).toHaveLength(BLOCOS_CARREGADOS.length);
+    expect(blocos.slice(0, 4)).toEqual(BLOCOS_CARREGADOS.slice(0, 4));
+    expect(blocos.slice(5)).toEqual(BLOCOS_CARREGADOS.slice(5));
+    expect(raizDaVisao.children[4].textContent).toContain(
+      "Nenhuma conta ainda",
+    );
+    expect(
+      raizDaVisao.querySelector("[aria-label='Saldo por conta']"),
+    ).toBeNull();
   });
 });
