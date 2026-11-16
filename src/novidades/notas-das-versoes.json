@@ -1,4 +1,14 @@
 {
+  "1.5.196": {
+    "titulo": "Financeiro, carregamento e endereço ajustados no computador",
+    "novidades": [],
+    "correcoes": [
+      "Painel, Financeiro: Saldo e Movimentos ficam lado a lado a partir de 1280 px; Fechar caixa fica mais compacto a partir de 1024 px.",
+      "Loja, no computador: Favoritos e Meus pedidos ganham desenhos de carregamento ajustados; o espaço das abas dos pedidos só é reservado enquanto a lista carrega sem erro.",
+      "Conta, endereço: no computador, o campo CEP fica mais curto; esse ajuste não se aplica ao formulário da compra."
+    ],
+    "melhorias": []
+  },
   "1.5.195": {
     "titulo": "Categorias sem repetição no computador e Pix lado a lado",
     "novidades": [],
