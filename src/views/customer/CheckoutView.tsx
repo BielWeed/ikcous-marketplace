@@ -5722,7 +5722,12 @@ export function CheckoutViewDaConta({
       // Mesma coluna do formulário (`mx-auto max-w-md`): sem ela, o cliente
       // saía de uma tela de 448px de largura e caía numa que esticava o texto
       // "Seu pedido está reservado…" de ponta a ponta em tela larga.
-      <div className="pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
+      //
+      // P77 (computador): SÓ quando a tela do Pix tem o QR (`has-[figure]`) a
+      // coluna alarga para 768 px, onde o PagamentoOnline vira duas colunas. O
+      // cartão, o aviso de Pix encerrado, os erros e o "carregando" não têm
+      // figura: seguem na coluna estreita.
+      <div className="pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4 lg:has-[figure]:max-w-3xl">
         {!pedidoMortoNaTela && (
           <TituloQueRecebeOFoco
             nivel={1}
