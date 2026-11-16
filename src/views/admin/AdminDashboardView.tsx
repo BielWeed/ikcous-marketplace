@@ -1,3 +1,4 @@
+import "@/components/admin/inicio/inicio-desktop.css";
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { LojaProntaEEstoqueBaixo } from "@/components/admin/dashboard/LojaProntaEEstoqueBaixo";
@@ -308,14 +309,14 @@ export const AdminDashboardView = memo(function AdminDashboardView({
   return (
     <div
       ref={viewRef}
-      className="pb-admin h-auto bg-admin-bg text-white selection:bg-emerald-500/30 lg:pb-12"
+      className="inicio-desktop pb-admin h-auto bg-admin-bg text-white selection:bg-emerald-500/30 lg:pb-12"
     >
-      <div className="flex items-start justify-between gap-3 px-5 pt-6">
-        <div className="min-w-0 [&_h1]:text-[2rem] [&_h1]:font-bold [&_h1]:normal-case [&_h1]:tracking-tight [&_h1_span]:not-italic">
+      <div className="inicio-cabecalho flex items-start justify-between gap-3 px-5 pt-6">
+        <div className="inicio-titulo min-w-0 [&_h1]:text-[2rem] [&_h1]:font-bold [&_h1]:normal-case [&_h1]:tracking-tight [&_h1_span]:not-italic">
           <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-dashboard"]} />
           <DataDeHoje className="mt-1.5 text-sm text-zinc-400" />
         </div>
-        <div className="flex shrink-0 flex-col items-end gap-1">
+        <div className="inicio-estado flex shrink-0 flex-col items-end gap-1">
           <div className="flex items-center gap-1">
             <button
               type="button"
@@ -360,9 +361,12 @@ export const AdminDashboardView = memo(function AdminDashboardView({
         </div>
       </div>
 
-      <div className="space-y-6 px-5 pt-6">
+      <div className="inicio-conteudo space-y-6 px-5 pt-6">
         {erro && !carregando ? (
-          <div role="alert" className={`${CARTAO_INICIO} space-y-3`}>
+          <div
+            role="alert"
+            className={`inicio-falha ${CARTAO_INICIO} space-y-3`}
+          >
             <div className="flex items-start gap-3">
               <AlertCircle
                 className="mt-1 size-5 shrink-0 text-red-400"
@@ -388,75 +392,87 @@ export const AdminDashboardView = memo(function AdminDashboardView({
           </div>
         ) : null}
 
-        {/* A ordem de leitura do celular também ordena as três colunas do computador. */}
-        <div className="space-y-6 xl:grid xl:grid-cols-3 xl:items-start xl:gap-6 xl:space-y-0">
-          <div className="min-w-0 space-y-6">
+        {/* Uma árvore só: as pilhas continuam no celular; a grade local organiza o desktop. */}
+        <div className="inicio-colunas space-y-6">
+          <div className="inicio-coluna min-w-0 space-y-6">
             {painel &&
             lojaSemVendasAinda(painel) &&
             painel.pendencias.pedidosParaPreparar === 0 ? (
+              <div className="inicio-boas-vindas">
+                <LocalErrorBoundary>
+                  <SecaoLojaProntaEEstoqueBaixo
+                    estoqueBaixo={painel.pendencias.estoqueBaixo}
+                    estoqueCarregando={semNumeros}
+                    onNavigate={irPara}
+                    onTentarDeNovo={() => void atualizar()}
+                    somenteBoasVindas
+                  />
+                </LocalErrorBoundary>
+              </div>
+            ) : null}
+            <div className="inicio-hoje">
               <LocalErrorBoundary>
-                <SecaoLojaProntaEEstoqueBaixo
-                  estoqueBaixo={painel.pendencias.estoqueBaixo}
-                  estoqueCarregando={semNumeros}
-                  onNavigate={irPara}
-                  onTentarDeNovo={() => void atualizar()}
-                  somenteBoasVindas
+                <HojeNaLoja
+                  hoje={painel?.hoje ?? null}
+                  carregando={semNumeros}
+                  paraPreparar={painel?.pendencias.pedidosParaPreparar ?? null}
+                  onPreparar={() => irPara("admin-orders")}
                 />
               </LocalErrorBoundary>
-            ) : null}
-            <LocalErrorBoundary>
-              <HojeNaLoja
-                hoje={painel?.hoje ?? null}
-                carregando={semNumeros}
-                paraPreparar={painel?.pendencias.pedidosParaPreparar ?? null}
-                onPreparar={() => irPara("admin-orders")}
-              />
-            </LocalErrorBoundary>
-            <LocalErrorBoundary>
-              <ParaFazerComProdutos
-                painel={painel}
-                carregando={semNumeros}
-                onNavigate={irPara}
-                preparoEmDestaque
-              />
-            </LocalErrorBoundary>
+            </div>
+            <div className="inicio-tarefas">
+              <LocalErrorBoundary>
+                <ParaFazerComProdutos
+                  painel={painel}
+                  carregando={semNumeros}
+                  onNavigate={irPara}
+                  preparoEmDestaque
+                />
+              </LocalErrorBoundary>
+            </div>
           </div>
-          <div className="min-w-0 space-y-6">
+          <div className="inicio-coluna min-w-0 space-y-6">
             <AtalhosDoInicio
               ativa={ativo}
               onNavigate={irPara}
               aoPrepararDestino={prefetchView}
             />
-            <LocalErrorBoundary>
-              <NumerosDoMes painel={painel} carregando={semNumeros}>
-                <LocalErrorBoundary>
-                  <SerieDe14Dias
-                    serie={painel?.serie14d ?? []}
-                    carregando={semNumeros}
-                    falhou={painel === null && erro !== null}
-                    onTentarDeNovo={() => void atualizar()}
-                  />
-                </LocalErrorBoundary>
-              </NumerosDoMes>
-            </LocalErrorBoundary>
+            <div className="inicio-resultados">
+              <LocalErrorBoundary>
+                <NumerosDoMes painel={painel} carregando={semNumeros}>
+                  <div className="inicio-serie">
+                    <LocalErrorBoundary>
+                      <SerieDe14Dias
+                        serie={painel?.serie14d ?? []}
+                        carregando={semNumeros}
+                        falhou={painel === null && erro !== null}
+                        onTentarDeNovo={() => void atualizar()}
+                      />
+                    </LocalErrorBoundary>
+                  </div>
+                </NumerosDoMes>
+              </LocalErrorBoundary>
+            </div>
           </div>
-          <div className="min-w-0 space-y-6">
-            <LocalErrorBoundary>
-              <DinheiroNasContas
-                painel={painel}
-                carregando={semNumeros}
-                onNavigate={irPara}
-              />
-            </LocalErrorBoundary>
+          <div className="inicio-coluna min-w-0 space-y-6">
+            <div className="inicio-contas">
+              <LocalErrorBoundary>
+                <DinheiroNasContas
+                  painel={painel}
+                  carregando={semNumeros}
+                  onNavigate={irPara}
+                />
+              </LocalErrorBoundary>
+            </div>
             <section
               aria-labelledby="inicio-sua-loja-titulo"
-              className="min-w-0"
+              className="inicio-sua-loja min-w-0"
             >
               <TituloDoInicio id="inicio-sua-loja-titulo">
                 Sua loja
               </TituloDoInicio>
               <div
-                className={`${CARTAO_LISTA_INICIO} divide-y divide-admin-border`}
+                className={`inicio-loja-conteudo ${CARTAO_LISTA_INICIO} divide-y divide-admin-border`}
               >
                 <LocalErrorBoundary
                   fallback={
@@ -480,21 +496,23 @@ export const AdminDashboardView = memo(function AdminDashboardView({
                     onTentarDeNovo={() => void atualizar()}
                   />
                 </LocalErrorBoundary>
-                {/* Montar só à vista preserva a releitura da permissão do aparelho. */}
-                {ativo ? (
+                <div className="inicio-loja-preparo divide-y divide-admin-border">
+                  {/* Montar só à vista preserva a releitura da permissão do aparelho. */}
+                  {ativo ? (
+                    <LocalErrorBoundary>
+                      <CartaoDeAvisosDoAparelho aoFechar={focarNoTitulo} />
+                    </LocalErrorBoundary>
+                  ) : null}
                   <LocalErrorBoundary>
-                    <CartaoDeAvisosDoAparelho aoFechar={focarNoTitulo} />
+                    <SecaoLojaProntaEEstoqueBaixo
+                      estoqueBaixo={painel?.pendencias.estoqueBaixo ?? null}
+                      estoqueCarregando={semNumeros}
+                      onNavigate={irPara}
+                      onTentarDeNovo={() => void atualizar()}
+                      active={active}
+                    />
                   </LocalErrorBoundary>
-                ) : null}
-                <LocalErrorBoundary>
-                  <SecaoLojaProntaEEstoqueBaixo
-                    estoqueBaixo={painel?.pendencias.estoqueBaixo ?? null}
-                    estoqueCarregando={semNumeros}
-                    onNavigate={irPara}
-                    onTentarDeNovo={() => void atualizar()}
-                    active={active}
-                  />
-                </LocalErrorBoundary>
+                </div>
               </div>
             </section>
           </div>
