@@ -1,4 +1,15 @@
 {
+  "1.5.197": {
+    "titulo": "Correções em fotos, perguntas, carrinho e avaliações",
+    "novidades": [],
+    "correcoes": [
+      "Fotos dos produtos: ao trocar uma foto que não carregou, a nova volta a mostrar o carregamento até ficar pronta.",
+      "Perguntas do produto: uma consulta cancelada não faz aparecer uma lista vazia enquanto a nova resposta ainda está pendente.",
+      "Carrinho sem conta: ao receber um aviso de outra aba, consulta o que está salvo agora, evitando recuperar uma lista antiga.",
+      "Avaliações: ao sair e voltar a um produto, uma resposta antiga não substitui as avaliações obtidas pela busca mais recente."
+    ],
+    "melhorias": []
+  },
   "1.5.196": {
     "titulo": "Financeiro, carregamento e endereço ajustados no computador",
     "novidades": [],

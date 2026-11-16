@@ -36,6 +36,11 @@ export interface AdminReview extends Review {
 // `AuthContext` o esvazia no logout sem importar este hook).
 const bc = criarCanalDeAbas("ikcous_reviews_sync");
 
+// O cache é compartilhado entre montagens: só a última consulta de cada
+// produto pode gravá-lo. Isso não invalida a tela de outra instância nem
+// impede uma releitura silenciosa de terminar depois de fechar o formulário.
+const ultimaConsultaDoCachePorProduto = new Map<string, symbol>();
+
 /**
  * Traduz a recusa crua do Postgres/PostgREST numa mensagem que o comprador
  * entende. Toda saída é string ESTÁTICA: nenhum trecho de error.message pode
@@ -162,6 +167,8 @@ export function useReviews() {
     // queria a lista fresca, e o que importava (a gravação) já deu certo.
     async (productId: string, opcoes?: { silencioso?: boolean }) => {
       if (usuarioAtualRef.current !== user?.id) return;
+      const tokenDoCache = Symbol();
+      ultimaConsultaDoCachePorProduto.set(productId, tokenDoCache);
       if (latestProductIdRef.current !== productId) setVotosUteis(new Set());
       latestProductIdRef.current = productId;
       const consulta = ++consultaDoProdutoRef.current;
@@ -251,7 +258,13 @@ export function useReviews() {
           setErroDaListagemProduto(null);
           setProdutoRespondido(productId);
         }
-        updateReviewsCacheSeMesmaGeracao(productId, formattedReviews, geracao);
+        if (ultimaConsultaDoCachePorProduto.get(productId) === tokenDoCache) {
+          updateReviewsCacheSeMesmaGeracao(
+            productId,
+            formattedReviews,
+            geracao,
+          );
+        }
         // A lista já chegou: o "Carregando" não espera a leitura dos votos.
         if (latestProductIdRef.current === productId) setLoading(false);
 
@@ -307,6 +320,11 @@ export function useReviews() {
           toast.error("Erro ao carregar avaliações.");
         }
       } finally {
+        // Não restaura o token anterior: mesmo uma sucessora que falhou
+        // impede a consulta antiga de devolver seu resultado ao cache.
+        if (ultimaConsultaDoCachePorProduto.get(productId) === tokenDoCache) {
+          ultimaConsultaDoCachePorProduto.delete(productId);
+        }
         if (atual() && latestProductIdRef.current === productId) {
           setLoading(false);
         }
