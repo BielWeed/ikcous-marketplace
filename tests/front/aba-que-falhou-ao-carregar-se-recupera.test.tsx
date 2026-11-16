@@ -26,6 +26,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const CHAVE_RECUPERACAO_CHUNK = "pwa_chunk_recovery";
+const CHAVE_ATIVA = `${CHAVE_RECUPERACAO_CHUNK}:0.0.0-dev`;
 const FALHA_DE_CHUNK =
   "Failed to fetch dynamically imported module: http://x/assets/Favoritos-abc.js";
 
@@ -273,6 +274,7 @@ describe("aba principal que falhou ao carregar - a cliente consegue se recuperar
 
     expect(reloadEspiao).toHaveBeenCalledTimes(1);
     expect(localStorage.getItem(CHAVE_RECUPERACAO_CHUNK)).toBeNull();
+    expect(localStorage.getItem(CHAVE_ATIVA)).toBeNull();
     expect(localStorage.getItem("pwa_reload_reason")).toBe(
       "recuperacao-erro-modulo",
     );
@@ -295,6 +297,7 @@ describe("aba principal que falhou ao carregar - a cliente consegue se recuperar
     expect(reloadEspiao).not.toHaveBeenCalled();
     expect(recargasGastas()).toBe(0);
     expect(localStorage.getItem(CHAVE_RECUPERACAO_CHUNK)).toBeNull();
+    expect(localStorage.getItem(CHAVE_ATIVA)).toBeNull();
     expect(hospedeiro.textContent).toContain(TELA_NAO_BAIXOU);
     expect(hospedeiro.textContent).toContain(FRASE_DE_REDE);
     expect(botaoPorTexto("Tentar de novo")?.disabled).toBe(false);
@@ -331,6 +334,7 @@ describe("aba principal que falhou ao carregar - a cliente consegue se recuperar
     expect(hospedeiro.textContent).not.toContain(FRASE_DE_REDE);
     expect(botaoPorTexto("Tentar de novo")).toBeUndefined();
     expect(localStorage.getItem(CHAVE_RECUPERACAO_CHUNK)).toBeNull();
+    expect(localStorage.getItem(CHAVE_ATIVA)).toBeNull();
   });
 
   it("quando o botao some ('feche e abra'), o foco vai para o proprio aviso", async () => {
@@ -458,6 +462,7 @@ describe("aba principal que falhou ao carregar - a cliente consegue se recuperar
     expect(botaoPorTexto("Tentar de novo")).toBeUndefined();
     expect(reloadEspiao).not.toHaveBeenCalled();
     expect(localStorage.getItem(CHAVE_RECUPERACAO_CHUNK)).toBeNull();
+    expect(localStorage.getItem(CHAVE_ATIVA)).toBeNull();
   });
 
   // UI-191 (G5): as abas da LOJA (Início, Favoritos, Carrinho, Perfil) usavam o

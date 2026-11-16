@@ -24,6 +24,7 @@ import { recuperarPulsoPerdido } from "@/pwa-sentinel";
 
 // Mesmo literal da VERSÃO de fallback do módulo, duplicado de propósito.
 const VERSAO_FALLBACK_DO_APP = "0.0.0-dev";
+const CHAVE_ATIVA = `${CHAVE_RECUPERACAO_CHUNK}:0.0.0-dev`;
 
 const reloadEspiao = vi.fn();
 const replaceEspiao = vi.fn();
@@ -142,9 +143,7 @@ describe("instalarCanaisDeErroChunk — dois canais globais, uma chave", () => {
 
     expect(reloadEspiao).toHaveBeenCalledTimes(1);
     expect(
-      JSON.parse(
-        localStorage.getItem(CHAVE_RECUPERACAO_CHUNK) ?? "null",
-      ) as unknown,
+      JSON.parse(localStorage.getItem(CHAVE_ATIVA) ?? "null") as unknown,
     ).toEqual({
       versao: VERSAO_FALLBACK_DO_APP,
       count: 1,
@@ -208,6 +207,7 @@ describe("instalarCanaisDeErroChunk — dois canais globais, uma chave", () => {
 
     expect(reloadEspiao).not.toHaveBeenCalled();
     expect(localStorage.getItem(CHAVE_RECUPERACAO_CHUNK)).toBeNull();
+    expect(localStorage.getItem(CHAVE_ATIVA)).toBeNull();
     desinstalar();
   });
 
@@ -219,6 +219,7 @@ describe("instalarCanaisDeErroChunk — dois canais globais, uma chave", () => {
 
     expect(reloadEspiao).not.toHaveBeenCalled();
     expect(localStorage.getItem(CHAVE_RECUPERACAO_CHUNK)).toBeNull();
+    expect(localStorage.getItem(CHAVE_ATIVA)).toBeNull();
   });
 });
 

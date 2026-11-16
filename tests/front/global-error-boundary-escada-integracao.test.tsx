@@ -31,6 +31,7 @@ const VERSAO_FALLBACK_DO_APP = "0.0.0-dev";
 const PRAZO_SAIDA_CHUNK_MS = 4000;
 
 const CHAVE_RECUPERACAO_CHUNK = "pwa_chunk_recovery";
+const CHAVE_ATIVA = `${CHAVE_RECUPERACAO_CHUNK}:${VERSAO_FALLBACK_DO_APP}`;
 
 function BombaChunk(): never {
   throw new Error(
@@ -226,9 +227,9 @@ describe("GlobalErrorBoundary — a escada do mecanismo único, ponta a ponta", 
 
     expect(reloadEspiao).toHaveBeenCalledTimes(1);
     expect(replaceEspiao).not.toHaveBeenCalled();
-    const estado = JSON.parse(
-      localStorage.getItem(CHAVE_RECUPERACAO_CHUNK) ?? "null",
-    ) as { count: number } | null;
+    const estado = JSON.parse(localStorage.getItem(CHAVE_ATIVA) ?? "null") as {
+      count: number;
+    } | null;
     expect(estado?.count).toBe(1);
   });
 

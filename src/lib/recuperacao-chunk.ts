@@ -18,10 +18,10 @@
  * silent-guardian.js NUNCA é dono (é estático e sem hash na URL: seria a
  * peça mais velha do navegador decidindo sobre código mais novo).
  *
- * A DECISÃO É SÍNCRONA (check-and-set antes de qualquer await): localStorage
- * é sequencial, então o primeiro canal a chegar engaja e é o dono; o segundo
- * lê o estado já gravado e vira espectador (boundary mostra UI) ou no-op
- * (listeners). Fim da corrida boundary-vs-listener.
+ * A DECISÃO É SÍNCRONA (check-and-set antes de qualquer await): no mesmo
+ * contexto, o primeiro canal a chegar engaja e é o dono; o segundo lê o estado
+ * já gravado e vira espectador (boundary mostra UI) ou no-op (listeners).
+ * Não há transação atômica entre processos/abas.
  *
  * A ESCADA (o purge é o ÚLTIMO degrau, não o primeiro):
  *   1º engajamento por versão · ciclo NATURAL do service worker
@@ -61,6 +61,7 @@ const VERSAO_DO_APP =
 // Prefixo `pwa_` de propósito: está na whitelist do purge
 // (localStoragePurgeWhitelist.ts) e sobrevive a ele e ao handleReset.
 export const CHAVE_RECUPERACAO_CHUNK = "pwa_chunk_recovery";
+const CHAVE_RECUPERACAO_DA_VERSAO = `${CHAVE_RECUPERACAO_CHUNK}:${VERSAO_DO_APP}`;
 
 /** Segundo evento dentro desta janela é espectador, não novo engajamento.
  * Mesma janela que a guarda antiga do hook (`pwa_chunk_error_reload`). */
@@ -131,7 +132,7 @@ export function ehErroDeChunk(mensagem: string | null | undefined): boolean {
 
 // ─── A chave única ───────────────────────────────────────────────────────────
 
-function lerEstado(): EstadoRecuperacao | null {
+function lerEstadoLegado(): EstadoRecuperacao | null {
   const cru = localStorage.getItem(CHAVE_RECUPERACAO_CHUNK);
   if (!cru) return null;
   try {
@@ -155,8 +156,61 @@ function lerEstado(): EstadoRecuperacao | null {
   return null;
 }
 
+function lerEstadoDaVersao(): EstadoRecuperacao | null {
+  const cru = localStorage.getItem(CHAVE_RECUPERACAO_DA_VERSAO);
+  if (cru === null) return null;
+  const parsed = JSON.parse(cru) as Partial<EstadoRecuperacao> | null;
+  if (
+    !parsed ||
+    typeof parsed !== "object" ||
+    Array.isArray(parsed) ||
+    parsed.versao !== VERSAO_DO_APP ||
+    typeof parsed.count !== "number" ||
+    !Number.isInteger(parsed.count) ||
+    parsed.count < 0 ||
+    typeof parsed.lastAt !== "number" ||
+    !Number.isFinite(parsed.lastAt)
+  ) {
+    throw new Error("Estado de recuperação da versão inválido");
+  }
+  return {
+    versao: parsed.versao,
+    count: parsed.count,
+    lastAt: parsed.lastAt,
+  };
+}
+
 function gravarEstado(estado: EstadoRecuperacao): void {
-  localStorage.setItem(CHAVE_RECUPERACAO_CHUNK, JSON.stringify(estado));
+  localStorage.setItem(CHAVE_RECUPERACAO_DA_VERSAO, JSON.stringify(estado));
+}
+
+/** Relê as duas fontes em CADA decisão: um escritor antigo pode ter avançado.
+ * O legado nunca é alterado. Máximos independentes preservam tanto o teto como
+ * a janela, mesmo quando a maior contagem e o último instante vêm de fontes
+ * diferentes. Isto não é transação entre abas; o escritor antigo não lê a
+ * chave nova e não há teto conjunto retroativo entre antigo e novo. */
+function reservarEngajamento(agora: number): number | null {
+  const novo = lerEstadoDaVersao();
+  const legado = lerEstadoLegado();
+  const compativel = legado?.versao === VERSAO_DO_APP ? legado : null;
+  const vigente = {
+    versao: VERSAO_DO_APP,
+    count: Math.max(novo?.count ?? 0, compativel?.count ?? 0),
+    lastAt: Math.max(novo?.lastAt ?? 0, compativel?.lastAt ?? 0),
+  };
+
+  if (
+    (vigente.count > 0 &&
+      agora - vigente.lastAt < JANELA_RECUPERACAO_CHUNK_MS) ||
+    vigente.count + 1 > MAX_ENGAJAMENTOS_POR_VERSAO
+  ) {
+    // Importar também ao recusar: B pode sobrescrever o legado depois.
+    gravarEstado(vigente);
+    return null;
+  }
+  const count = vigente.count + 1;
+  gravarEstado({ ...vigente, count, lastAt: agora });
+  return count;
 }
 
 function leOnLine(): boolean {
@@ -182,28 +236,8 @@ export function reportarErroChunk(
   }
 
   try {
-    const estado = lerEstado();
-    const vigente =
-      estado?.versao === VERSAO_DO_APP
-        ? estado
-        : { versao: VERSAO_DO_APP, count: 0, lastAt: 0 };
-
-    // Alguém já está cuidando (mesma janela): espectador.
-    if (
-      vigente.count > 0 &&
-      agora - vigente.lastAt < JANELA_RECUPERACAO_CHUNK_MS
-    ) {
-      return { dono: false, acao: "recusar" };
-    }
-
-    const count = vigente.count + 1;
-    if (count > MAX_ENGAJAMENTOS_POR_VERSAO) {
-      // A versão atual já gastou os dois degraus automáticos: recarregar de
-      // novo não conserta — daqui em diante quem decide é o usuário.
-      return { dono: false, acao: "recusar" };
-    }
-
-    gravarEstado({ versao: VERSAO_DO_APP, count, lastAt: agora });
+    const count = reservarEngajamento(agora);
+    if (count === null) return { dono: false, acao: "recusar" };
 
     return count === 1
       ? { dono: true, acao: "ciclo-sw" }
@@ -219,21 +253,7 @@ export function reportarErroChunk(
  * (sentinela): cada autorização consome uma tentativa, inclusive a primeira. */
 export function pedirRecargaSubordinada(agora: number = Date.now()): boolean {
   try {
-    const estado = lerEstado();
-    const vigente =
-      estado?.versao === VERSAO_DO_APP
-        ? estado
-        : { versao: VERSAO_DO_APP, count: 0, lastAt: 0 };
-    if (
-      vigente.count > 0 &&
-      agora - vigente.lastAt < JANELA_RECUPERACAO_CHUNK_MS
-    ) {
-      return false;
-    }
-    const count = vigente.count + 1;
-    if (count > MAX_ENGAJAMENTOS_POR_VERSAO) return false;
-    gravarEstado({ ...vigente, count, lastAt: agora });
-    return true;
+    return reservarEngajamento(agora) !== null;
   } catch {
     return false;
   }
