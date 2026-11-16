@@ -426,7 +426,7 @@ export function VerificacaoDoPagamento({
         : null;
 
   return (
-    <div className="pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
+    <div className="pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4 lg:min-h-0">
       <h1 className="text-lg font-bold text-foreground">
         Situação do pagamento
       </h1>
