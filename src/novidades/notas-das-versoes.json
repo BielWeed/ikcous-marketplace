@@ -1,4 +1,12 @@
 {
+  "1.5.198": {
+    "titulo": "Altura da situação do pagamento ajustada no computador",
+    "novidades": [],
+    "correcoes": [
+      "Ajustamos a altura da tela Situação do pagamento para evitar uma rolagem desnecessária no computador."
+    ],
+    "melhorias": []
+  },
   "1.5.197": {
     "titulo": "Correções em fotos, perguntas, carrinho e avaliações",
     "novidades": [],

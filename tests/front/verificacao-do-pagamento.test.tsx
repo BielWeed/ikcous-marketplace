@@ -135,6 +135,25 @@ function semSaidaQueCobraOuCancela() {
   expect(hospedeiro.querySelector("iframe")).toBeNull();
 }
 
+describe("VerificacaoDoPagamento — altura só no computador", () => {
+  it("retira o mínimo de viewport só no desktop e preserva as classes do celular", async () => {
+    criarPagamento.mockReturnValue(new Promise(() => {}));
+    await montar();
+
+    const painel = hospedeiro.firstElementChild as HTMLElement;
+    expect(painel.tagName).toBe("DIV");
+    expect(painel.querySelector("h1")?.textContent).toBe(
+      "Situação do pagamento",
+    );
+    expect(
+      Array.from(painel.classList).filter((classe) => classe.includes(":")),
+    ).toEqual(["lg:min-h-0"]);
+    expect(painel.className.replace(" lg:min-h-0", "")).toBe(
+      "pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4",
+    );
+  });
+});
+
 describe("VerificacaoDoPagamento — a consulta que abre sozinha", () => {
   it("ao montar chama criarPagamento UMA vez, com exatamente { orderId, metodo: 'verificar' } (nada de cartão, nada de PIX)", async () => {
     criarPagamento.mockReturnValue(new Promise(() => {}));
