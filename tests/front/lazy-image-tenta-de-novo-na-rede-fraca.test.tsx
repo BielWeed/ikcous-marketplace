@@ -336,8 +336,47 @@ describe("LazyImage — rede fraca", () => {
 
     montar({ src: `${URL_FOTO}?outra=1` });
     expect(botaoDeNovaTentativa()).toBeNull();
+    expect(imagem()?.getAttribute("src")).toBe(`${URL_FOTO}?outra=1`);
+    // B ainda nao emitiu load: nao pode herdar o carregamento concluido de A.
+    await avancar(149);
+    expect(hospedeiro.querySelector(".animate-pulse")).toBeNull();
+    await avancar(1);
+    expect(hospedeiro.querySelector(".animate-pulse")).not.toBeNull();
+    expect(imagem()?.className).toContain("opacity-0");
+
     falhar(imagem());
     // folego novo: continua tentando, nao mostra o botao de cara
     expect(botaoDeNovaTentativa()).toBeNull();
+    await avancar(1_500);
+    expect(imagem()?.getAttribute("src")).toContain("_r=1");
+    carregar(imagem());
+    expect(imagem()?.className).toContain("opacity-100");
+    expect(hospedeiro.querySelector(".animate-pulse")).toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("trocar uma foto carregada por outra pendente espera o load da nova foto", async () => {
+    montar();
+    carregar(imagem());
+    expect(imagem()?.className).toContain("opacity-100");
+
+    const outraFoto = `${URL_FOTO}?outra=1`;
+    montar({ src: outraFoto });
+    expect(imagem()?.getAttribute("src")).toBe(outraFoto);
+    expect(imagem()?.className).toContain("opacity-0");
+    await avancar(149);
+    expect(hospedeiro.querySelector(".animate-pulse")).toBeNull();
+    await avancar(1);
+    expect(hospedeiro.querySelector(".animate-pulse")).not.toBeNull();
+
+    carregar(imagem());
+    expect(imagem()?.className).toContain("opacity-100");
+    expect(hospedeiro.querySelector(".animate-pulse")).toBeNull();
+    // Renderizar de novo a MESMA foto nao reinicia o carregamento.
+    const carregada = imagem();
+    montar({ src: outraFoto });
+    expect(imagem()).toBe(carregada);
+    expect(imagem()?.className).toContain("opacity-100");
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

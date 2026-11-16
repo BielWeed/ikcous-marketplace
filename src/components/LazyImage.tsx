@@ -105,6 +105,7 @@ export function LazyImage({
   if (src !== srcVisto) {
     setSrcVisto(src);
     setHasError(false);
+    setIsLoaded(false);
     setCiclo(0);
   }
   // Tira o relógio pendente ao trocar de foto e ao sair da tela.
