@@ -89,6 +89,13 @@ test("aba velha com chunk sumido se recupera sozinha pelo ciclo do service worke
     alvo,
   );
   expect(alvoEmCache, "o chunk antigo não está em nenhum cache").toBe(false);
+  // Contexto novo: nenhum engajamento pode anteceder o import que falha.
+  const guardasAntes = await page.evaluate(() =>
+    Object.keys(localStorage).filter((chave) =>
+      chave.startsWith("pwa_chunk_recovery:"),
+    ),
+  );
+  expect(guardasAntes, "não havia recuperação antes do incidente").toEqual([]);
   const respostaDoChunk = page.waitForResponse(
     (resposta) => resposta.url() === `${URL_DO_SERVIDOR}${alvo}`,
   );
@@ -125,15 +132,29 @@ test("aba velha com chunk sumido se recupera sozinha pelo ciclo do service worke
   await esperarBootLimpo(page);
   await expect(page.getByText("Atualizando o Aplicativo")).toHaveCount(0);
 
-  // Estado da escada: a chave única gravou o engajamento (1 = ciclo do SW,
-  // 2 = purge seletivo — ambos se recuperam; o que não pode é estourar).
-  const guardado = await page.evaluate(() =>
-    localStorage.getItem("pwa_chunk_recovery"),
+  // Estado da escada: os registros por versão nasceram após o incidente
+  // (1 = ciclo do SW, 2 = purge seletivo). O legado não é gravado nem usado aqui.
+  const guardados = await page.evaluate(() =>
+    Object.keys(localStorage)
+      .filter((chave) => chave.startsWith("pwa_chunk_recovery:"))
+      .map((chave) => ({ chave, guardado: localStorage.getItem(chave) })),
   );
-  expect(guardado, "a escada de recuperação engajou").toBeTruthy();
-  const estado = JSON.parse(guardado ?? "{}") as { count?: number };
-  expect(estado.count ?? 0).toBeGreaterThanOrEqual(1);
-  expect(estado.count ?? 0).toBeLessThanOrEqual(2);
+  expect(guardados.length, "a escada de recuperação engajou").toBeGreaterThan(
+    0,
+  );
+  for (const { chave, guardado } of guardados) {
+    expect(guardado, "o registro da recuperação não está vazio").toBeTruthy();
+    const estado = JSON.parse(guardado ?? "{}") as {
+      versao?: string;
+      count?: number;
+    };
+    expect(typeof estado.versao).toBe("string");
+    expect(estado.versao).toBeTruthy();
+    expect(chave).toBe(`pwa_chunk_recovery:${estado.versao}`);
+    expect(Number.isInteger(estado.count)).toBe(true);
+    expect(estado.count ?? 0).toBeGreaterThanOrEqual(1);
+    expect(estado.count ?? 0).toBeLessThanOrEqual(2);
+  }
 
   // controllerchange pode anteceder o fim do activate (claim e purga são
   // concorrentes). Aguarda o ativo concluir antes de conferir a limpeza.
