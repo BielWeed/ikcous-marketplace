@@ -1,24 +1,23 @@
 // @vitest-environment jsdom
 //
-// P82 (B), parte da tela: no computador, "Meus pedidos" mostra a faixa "Em
-// andamento / Histórico" (44 px + 16 px de respiro) só depois que a lista
-// chega. Enquanto o esqueleto aparece ela não existe, e o invólucro da lista
-// descia 60 px quando ela entrava (o nó que o navegador contou no deslocamento
-// de layout). A reserva é um espaço vazio ACIMA do invólucro: sem altura no
-// celular (só `lg:`), escondido do leitor de tela, e só enquanto a lista
-// carrega sem nenhum pedido.
-//
-// Harness copiado de cart-view-lote-208-pedidos-e-frete.test.tsx.
-import { act } from "react";
+// P82 (B): a reserva só acompanha o esqueleto, nunca o erro prioritário.
+// As transições usam a mesma montagem de CartView e respostas controladas.
+// O jsdom prova a estrutura e as classes mobile, não posições ou CLS.
+import { type ReactNode, act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { classesDoCelular } from "./classes-do-celular";
 
+interface RespostaDaConsulta {
+  pedidos: import("@/types").Order[];
+  erro: string | null;
+}
+
 const { duble } = vi.hoisted(() => ({
   duble: {
     usuario: null as null | { id: string },
-    pedidosDaVez: [] as any[],
-    segurarBusca: false,
+    pedidosDaVez: [] as import("@/types").Order[],
+    consultas: [] as ((resposta: RespostaDaConsulta) => void)[],
   },
 }));
 
@@ -26,13 +25,34 @@ vi.mock("@/hooks/useOrders", async () => {
   const { useState } = await import("react");
   return {
     useOrders: () => {
-      const [orders] = useState(duble.pedidosDaVez);
+      const [orders, setOrders] = useState(duble.pedidosDaVez);
+      const [ordersLoadError, setOrdersLoadError] = useState<string | null>(
+        null,
+      );
+      const [loading, setLoading] = useState(false);
       const [fetchUserOrders] = useState(() => () => {
-        if (!duble.segurarBusca) return Promise.resolve([] as any[]);
-        return new Promise<any[]>(() => {});
+        setLoading(true);
+        return new Promise<import("@/types").Order[]>((resolve) => {
+          duble.consultas.push((resposta) => {
+            // Como o hook real: falha preserva pedidos e erro só sai no sucesso.
+            if (!resposta.erro) setOrders(resposta.pedidos);
+            setOrdersLoadError(resposta.erro);
+            setLoading(false);
+            resolve(resposta.erro ? [] : resposta.pedidos);
+          });
+        });
       });
-      return { orders, ordersLoadError: null, fetchUserOrders };
+      return { orders, ordersLoadError, loading, fetchUserOrders };
     },
+  };
+});
+// A saída animada da aba anterior não é objeto desta prova de estrutura.
+// Sem esperar frames de animação no jsdom, a troca de chave segue o React.
+vi.mock("framer-motion", async (importOriginal) => {
+  const real = await importOriginal<typeof import("framer-motion")>();
+  return {
+    ...real,
+    AnimatePresence: ({ children }: { children: ReactNode }) => children,
   };
 });
 vi.mock("@/contexts/StoreContext", () => ({
@@ -57,6 +77,15 @@ vi.mock("@/hooks/useCart", () => ({
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({ user: duble.usuario }),
 }));
+vi.mock("@/hooks/useAddresses", () => {
+  const resultado = {
+    addresses: [],
+    fetchAddresses: vi.fn(async () => []),
+    loading: false,
+    erroAoCarregar: false,
+  };
+  return { useAddresses: () => resultado };
+});
 vi.mock("@/hooks/useDeferredRender", () => ({
   useDeferredRender: () => true,
 }));
@@ -108,7 +137,7 @@ describe("P82 B — a faixa de abas de Meus pedidos tem o lugar reservado enquan
     vi.stubGlobal("sessionStorage", { ...dubleDeArmazem });
     duble.usuario = { id: "cliente-1" };
     duble.pedidosDaVez = [];
-    duble.segurarBusca = true;
+    duble.consultas = [];
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -140,55 +169,148 @@ describe("P82 B — a faixa de abas de Meus pedidos tem o lugar reservado enquan
       '#painel-orders > [aria-hidden="true"]',
     );
 
-  it("carregando sem pedidos: o espaço vazio de 44 px + 16 px existe, só no computador, logo acima do invólucro da lista", async () => {
+  const involucro = () =>
+    hospedeiro.querySelector<HTMLElement>("#painel-orders > .overflow-hidden");
+  const esqueletos = () =>
+    hospedeiro.querySelectorAll('[data-testid="order-card-skeleton"]');
+  const pedido = (status: "pending" | "delivered") =>
+    ({
+      id: "11111111-2222-3333-4444-555555555555",
+      customer: { name: "Cliente Teste", whatsapp: "34999999999" },
+      items: [
+        { productId: "p", name: "Blusa", price: 100, quantity: 1, image: "" },
+      ],
+      subtotal: 100,
+      shipping: 0,
+      discount: 0,
+      total: 100,
+      paymentMethod: "pix",
+      status,
+      createdAt: new Date(0).toISOString(),
+      updatedAt: new Date(0).toISOString(),
+      cancelledAfterShipping: false,
+    }) as import("@/types").Order;
+
+  async function responder(resposta: RespostaDaConsulta) {
+    expect(duble.consultas).toHaveLength(1);
+    const resolver = duble.consultas.shift()!;
+    await act(async () => {
+      resolver(resposta);
+      await Promise.resolve();
+    });
+  }
+
+  it("carregando sem pedidos: reserva irmã antes do invólucro, sem altura no celular", async () => {
     await montar();
     expect(hospedeiro.textContent).toContain("Carregando pedidos");
     const espaco = reserva();
     expect(espaco).not.toBeNull();
     expect(espaco!.children).toHaveLength(0);
     expect(espaco!.textContent).toBe("");
-    // Celular: nenhuma classe (sem altura, sem margem). Computador: 44 + 16.
     expect(classesDoCelular(espaco!.className)).toBe("");
     expect(espaco!.className.split(/\s+/).sort()).toEqual([
       "lg:h-11",
       "lg:mb-4",
     ]);
-    const invólucro = espaco!.nextElementSibling!;
-    expect(invólucro.className).toContain("overflow-hidden");
-    expect(
-      invólucro.querySelector('[data-testid="order-card-skeleton"]'),
-    ).not.toBeNull();
+    expect(espaco!.nextElementSibling).toBe(involucro());
+    expect(involucro()!.contains(espaco)).toBe(false);
+    expect(esqueletos()).toHaveLength(2);
+    await responder({ pedidos: [], erro: null });
   });
 
-  it("com pedidos na tela a reserva some (a faixa de verdade ocupa o lugar)", async () => {
-    duble.segurarBusca = false;
-    duble.pedidosDaVez = [
-      {
-        id: "11111111-2222-3333-4444-555555555555",
-        customer: { name: "Cliente Teste", whatsapp: "34999999999" },
-        items: [
-          { productId: "p", name: "Blusa", price: 100, quantity: 1, image: "" },
-        ],
-        subtotal: 100,
-        shipping: 0,
-        discount: 0,
-        total: 100,
-        paymentMethod: "pix",
-        status: "pending",
-        createdAt: new Date(0).toISOString(),
-        updatedAt: new Date(0).toISOString(),
-        cancelledAfterShipping: false,
-      },
-    ];
+  it.each([
+    ["pending", "Em andamento (1)", "Histórico (0)"],
+    ["delivered", "Histórico (1)", "Em andamento (0)"],
+  ] as const)(
+    "resposta %s troca reserva por abas antes do mesmo invólucro",
+    async (status, abaAtiva, outraAba) => {
+      await montar();
+      const listaAntes = involucro();
+      expect(reserva()!.nextElementSibling).toBe(listaAntes);
+      await responder({ pedidos: [pedido(status)], erro: null });
+      expect(reserva()).toBeNull();
+      expect(involucro()).toBe(listaAntes);
+      const faixa = listaAntes!.previousElementSibling!;
+      const botoes = [...faixa.querySelectorAll("button")];
+      expect(botoes).toHaveLength(2);
+      expect(
+        botoes
+          .find((b) => b.textContent === abaAtiva)
+          ?.getAttribute("aria-pressed"),
+      ).toBe("true");
+      expect(
+        botoes
+          .find((b) => b.textContent === outraAba)
+          ?.getAttribute("aria-pressed"),
+      ).toBe("false");
+      expect(esqueletos()).toHaveLength(0);
+      expect(hospedeiro.textContent).not.toContain(
+        "Nenhum pedido em andamento",
+      );
+    },
+  );
+
+  it("resposta vazia remove reserva e esqueleto sem criar abas na mesma montagem", async () => {
     await montar();
+    const listaAntes = involucro();
+    expect(reserva()).not.toBeNull();
+    await responder({ pedidos: [], erro: null });
+    expect(involucro()).toBe(listaAntes);
     expect(reserva()).toBeNull();
-    expect(hospedeiro.textContent).toContain("Em andamento");
+    expect(esqueletos()).toHaveLength(0);
+    expect(hospedeiro.textContent).toContain("Nenhum pedido");
+    expect(hospedeiro.textContent).not.toContain("Em andamento (");
+    expect(hospedeiro.textContent).not.toContain("Histórico (");
   });
 
-  it("depois da primeira resposta vazia a reserva some (sem esqueleto, sem espaço)", async () => {
-    duble.segurarBusca = false;
+  it("pedidos em memória mantêm abas e lista sem reserva durante releitura", async () => {
+    duble.pedidosDaVez = [pedido("pending")];
     await montar();
-    expect(hospedeiro.textContent).not.toContain("Carregando pedidos");
+    const listaAntes = involucro();
     expect(reserva()).toBeNull();
+    expect(esqueletos()).toHaveLength(0);
+    expect(hospedeiro.textContent).toContain("Em andamento (1)");
+    await responder({ pedidos: [], erro: "Falha inventada" });
+    expect(involucro()).toBe(listaAntes);
+    expect(reserva()).toBeNull();
+    expect(hospedeiro.textContent).toContain("Mostrando o que já tínhamos.");
+    expect(hospedeiro.textContent).toContain("Em andamento (1)");
   });
+
+  it.each([false, true])(
+    "retry com erro ativo não insere reserva nem esqueleto (sucesso depois: %s)",
+    async (sucesso) => {
+      await montar();
+      const listaAntes = involucro();
+      await responder({ pedidos: [], erro: "Falha inventada" });
+      const aviso = hospedeiro.querySelector('[role="alert"]');
+      const botao = aviso!.querySelector("button")!;
+      expect(botao.textContent).toBe("Tentar de novo");
+      expect(reserva()).toBeNull();
+      await act(async () => {
+        botao.focus();
+        botao.click();
+      });
+      expect(hospedeiro.querySelector('[role="alert"]')).toBe(aviso);
+      expect(aviso!.querySelector("button")).toBe(botao);
+      expect(botao.textContent).toBe("Carregando…");
+      expect(botao.getAttribute("aria-disabled")).toBe("true");
+      expect(involucro()).toBe(listaAntes);
+      expect(esqueletos()).toHaveLength(0);
+      expect(reserva()).toBeNull();
+      await responder({
+        pedidos: [],
+        erro: sucesso ? null : "Falha inventada",
+      });
+      expect(reserva()).toBeNull();
+      expect(esqueletos()).toHaveLength(0);
+      if (sucesso) {
+        expect(hospedeiro.querySelector('[role="alert"]')).toBeNull();
+        expect(hospedeiro.textContent).toContain("Nenhum pedido");
+      } else {
+        expect(hospedeiro.querySelector('[role="alert"]')).toBe(aviso);
+        expect(botao.textContent).toBe("Tentar de novo");
+      }
+    },
+  );
 });

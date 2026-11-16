@@ -1656,6 +1656,7 @@ export function CartView({
                   quando a faixa entra. */}
               {user &&
                 orders.length === 0 &&
+                !erroDosPedidos &&
                 (isLoadingOrders || carregandoPrimeiraVez) && (
                   <div aria-hidden="true" className="lg:mb-4 lg:h-11" />
                 )}
