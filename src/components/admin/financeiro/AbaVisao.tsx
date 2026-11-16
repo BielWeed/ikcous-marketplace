@@ -421,8 +421,13 @@ export function AbaVisao({
   // NEGATIVO ganha vermelho, porque aí a cor significa algo.
   const saldoNegativo = paraCentavos(dados.saldoTotal) < 0;
 
+  // No computador (xl) a raiz vira grade de 2 colunas (mesma técnica da aba
+  // Caixa): todo bloco segue na linha inteira e só "Saldo total" e "Movimentos
+  // do período" dividem a linha, na MESMA ordem do DOM. As colunas são
+  // `minmax(0, …)` para que nenhum bloco largo alargue a grade. O atributo no
+  // seletor desempata a regra "todo filho ocupa 2" (mesma especificidade).
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 xl:grid xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] xl:[&>*]:col-span-2 xl:[&>section[aria-label='Saldo_total']]:col-span-1 xl:[&>section[aria-label^=Movimentos]]:col-span-1">
       {resumo.erro ? (
         <EstadoDeErro
           mensagem={resumo.erro}
@@ -453,7 +458,7 @@ export function AbaVisao({
       </section>
 
       <section aria-label="Movimentos do período">
-        <dl className="grid grid-cols-2 gap-3">
+        <dl className="grid grid-cols-2 gap-3 xl:h-full xl:grid-cols-1">
           <div className={CLASSE_CARTAO}>
             <dt className={CLASSE_ROTULO_CAIXA_ALTA}>Entradas</dt>
             <dd className="mt-2">

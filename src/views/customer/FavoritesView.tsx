@@ -463,7 +463,7 @@ export const FavoritesView = React.memo(function FavoritesView({
         <div
           role="status"
           aria-label="Carregando favoritos"
-          className="px-4 lg:px-0"
+          className="px-4 lg:grid lg:grid-cols-2 lg:gap-4 lg:px-0"
         >
           {Array.from({ length: 4 }).map((_, idx) => (
             <div

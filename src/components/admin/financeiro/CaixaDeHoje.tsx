@@ -37,6 +37,9 @@ const CLASSE_FOCO =
 const CLASSE_BOTAO_PRINCIPAL = cn(
   "inline-flex h-[52px] min-w-0 flex-1 items-center justify-center rounded-2xl bg-background px-4 text-[15px] font-semibold text-foreground transition-opacity hover:opacity-90",
   CLASSE_FOCO,
+  // No computador o botão não vira uma faixa de 800 a 1100 px: `flex-1` é quem
+  // o estica (um `w-auto` sozinho não o seguraria), então ele para de crescer.
+  "lg:flex-none lg:min-w-[16rem]",
 );
 const CLASSE_BOTAO_SECUNDARIO = cn(
   "inline-flex h-[52px] shrink-0 items-center justify-center rounded-2xl border border-solid border-background/40 px-4 text-[15px] font-semibold text-background transition-colors hover:bg-background/10",

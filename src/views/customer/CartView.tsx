@@ -1649,6 +1649,18 @@ export function CartView({
                 </div>
               )}
 
+              {/* No computador a faixa "Em andamento / Histórico" (44 px + 16
+                  px de respiro) só aparece depois que a lista chega. Enquanto
+                  ela carrega, este espaço (vazio, sem altura no celular)
+                  reserva o lugar: o invólucro da lista não desce 60 px
+                  quando a faixa entra. */}
+              {user &&
+                orders.length === 0 &&
+                !erroDosPedidos &&
+                (isLoadingOrders || carregandoPrimeiraVez) && (
+                  <div aria-hidden="true" className="lg:mb-4 lg:h-11" />
+                )}
+
               <div className="relative flex w-full flex-1 flex-col overflow-hidden">
                 <AnimatePresence
                   mode="wait"
