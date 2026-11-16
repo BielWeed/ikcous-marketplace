@@ -2,9 +2,10 @@
 //
 // P82 (computador, a partir de 1024 px): três defeitos medidos no build 1.5.193.
 //
-// A) O esqueleto de Favoritos era uma coluna única de 1216-1280 px, sem o
-//    espaço do subtítulo/filtros/título de seção; a página pronta é uma grade de
-//    2 colunas e a primeira linha descia de y=193 para y=309 (salto de 116 px).
+// A) O esqueleto de Favoritos mantém a grade de 2 colunas, mas não reserva
+//    altura para categorias e avisos ainda desconhecidos. A margem fixa de
+//    116 px não garantia alinhamento: atalhos só aparecem com 3 categorias.
+//    Os controles abaixo verificam a árvore e as classes, não posições/CLS.
 // B) O esqueleto de Meus pedidos era um cartão empilhado de 307 px e não tinha a
 //    faixa "Em andamento / Histórico" (44 px + respiro de 16; reservada em
 //    CartView, ver desktop-p82-faixa-de-pedidos-reservada); o cartão pronto é
@@ -40,12 +41,17 @@ vi.mock("@/contexts/StoreContext", () => ({
     isLoaded: true,
   }),
 }));
+const favoritos = vi.hoisted(() => ({
+  erro: null as string | null,
+  pendingCount: 0,
+  favoritosIndisponiveis: 0,
+}));
 vi.mock("@/hooks/useFavorites", () => ({
   useFavorites: () => ({
-    erro: null,
+    ...favoritos,
     refresh: vi.fn(),
-    pendingCount: 0,
-    favoritosIndisponiveis: 0,
+    retentarPendentes: vi.fn(),
+    limparIndisponiveis: vi.fn(),
   }),
 }));
 vi.mock("@/hooks/useDeferredRender", () => ({
@@ -88,6 +94,9 @@ let raiz: Root;
 let container: HTMLDivElement;
 beforeEach(() => {
   loja.products = [produto];
+  favoritos.erro = null;
+  favoritos.pendingCount = 0;
+  favoritos.favoritosIndisponiveis = 0;
   vi.stubGlobal(
     "IntersectionObserver",
     class {
@@ -118,7 +127,23 @@ const tokens = (el: Element) => el.className.split(/\s+/).filter(Boolean);
 const dePc = (el: Element) => tokens(el).filter((t) => /^(lg|xl|2xl):/.test(t));
 const celular = (el: Element) => classesDoCelular(el.className);
 
-describe("P82 A — esqueleto de Favoritos imita a página pronta no computador", () => {
+describe("P82 A — esqueleto de Favoritos sem reserva de altura desconhecida", () => {
+  function montar(favorites: Product[], loading: boolean) {
+    act(() =>
+      raiz.render(
+        <PaginaDoComputador>
+          <FavoritesView
+            loading={loading}
+            favorites={favorites}
+            onToggleFavorite={vi.fn()}
+            onProductClick={vi.fn()}
+            onNavigate={vi.fn()}
+          />
+        </PaginaDoComputador>,
+      ),
+    );
+  }
+
   function montarCarregando() {
     act(() =>
       raiz.render(
@@ -155,30 +180,78 @@ describe("P82 A — esqueleto de Favoritos imita a página pronta no computador"
     }
   });
 
-  it("a margem de cima reserva os 116 px do subtítulo, dos filtros e do título da seção (sem elemento novo)", () => {
+  it("carregando sem favoritos não reserva altura para elementos ainda desconhecidos", () => {
     const lista = montarCarregando();
-    expect(dePc(lista)).toContain("lg:mt-[116px]");
+    expect(dePc(lista)).toEqual([
+      "lg:grid",
+      "lg:grid-cols-2",
+      "lg:gap-4",
+      "lg:px-0",
+    ]);
     expect(celular(lista)).toBe("px-4");
     // Nenhum elemento novo: a lista segue logo depois do cabeçalho.
     expect(lista.previousElementSibling?.tagName).toBe("HEADER");
     expect(container.querySelector("[aria-hidden=true]")).toBeNull();
   });
 
-  it("depois de carregar, a margem some (só o esqueleto a tem)", () => {
-    act(() =>
-      raiz.render(
-        <PaginaDoComputador>
-          <FavoritesView
-            loading={false}
-            favorites={[produto]}
-            onToggleFavorite={vi.fn()}
-            onProductClick={vi.fn()}
-            onNavigate={vi.fn()}
-          />
-        </PaginaDoComputador>,
-      ),
-    );
-    expect(container.querySelector("[class*='lg:mt-[116px]']")).toBeNull();
+  it.each([
+    [1, false],
+    [2, false],
+    [3, true],
+  ] as const)(
+    "do carregamento para %i categoria(s), atalhos presentes: %s",
+    (quantidade, temAtalhos) => {
+      const lista = montarCarregando();
+      expect(dePc(lista)).not.toContain("lg:mt-[116px]");
+      const produtos = Array.from({ length: quantidade }, (_, indice) => ({
+        ...produto,
+        id: `produto-inventado-p82-${indice}`,
+        category: `Categoria ${indice + 1}`,
+      }));
+      montar(produtos, false);
+      expect(
+        container.querySelector('[aria-label="Carregando favoritos"]'),
+      ).toBeNull();
+      expect(
+        container.querySelector('nav[aria-label="Categorias"]') !== null,
+      ).toBe(temAtalhos);
+      expect(container.querySelectorAll("section[data-secao]")).toHaveLength(
+        quantidade,
+      );
+    },
+  );
+
+  it.each([
+    ["pendentes", "2 favoritos ainda estão sendo salvos"],
+    ["indisponíveis", "1 favorito seu não está disponível na loja."],
+    ["erro", "A lista pode estar desatualizada."],
+  ] as const)(
+    "avisos de %s não viram reserva fixa durante o carregamento",
+    (tipo, texto) => {
+      if (tipo === "pendentes") favoritos.pendingCount = 2;
+      if (tipo === "indisponíveis") favoritos.favoritosIndisponiveis = 1;
+      if (tipo === "erro") favoritos.erro = "Falha inventada";
+      const lista = montarCarregando();
+      expect(dePc(lista)).not.toContain("lg:mt-[116px]");
+      montar([produto], false);
+      expect(container.textContent).toContain(texto);
+      expect(
+        container.querySelector('nav[aria-label="Categorias"]'),
+      ).toBeNull();
+    },
+  );
+
+  it("sem catálogo nem favoritos, mantém o esqueleto até terminar de carregar", () => {
+    loja.products = [];
+    const lista = montarCarregando();
+    expect(lista.children).toHaveLength(4);
+    expect(dePc(lista)).not.toContain("lg:mt-[116px]");
+    expect(container.textContent).not.toContain("Você ainda não tem favoritos");
+    montar([], false);
+    expect(
+      container.querySelector('[aria-label="Carregando favoritos"]'),
+    ).toBeNull();
+    expect(container.textContent).toContain("Você ainda não tem favoritos");
   });
 });
 
