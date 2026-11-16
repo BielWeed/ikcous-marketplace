@@ -10,14 +10,13 @@
 //   B) fotos da variação (modal do produto): até 10 fotos de 64 px num modal de
 //      ~436 px;
 //   C) público do push: 4 cartões de 220 px = 932 px numa faixa de ~712 px;
-//   D) categorias do cabeçalho: a faixa tem `h-12` e `overflow-x-auto`, que
-//      vira `overflow-y: auto` também e CORTA o anel de foco (2 px + 2 px de
-//      afastamento = 56 px de altura precisados) 4 px acima e abaixo;
+//   D) (saiu na P80, 1.5.195) categorias do cabeçalho: a faixa de texto foi
+//      removida do cabeçalho do computador, e com ela a peça D desta trava;
 //   E) modelos de campanha do push (P61, mesma classe de defeito do C, outra
 //      faixa da mesma tela): 3 pílulas lado a lado que, em coluna estreita,
 //      passam da borda e ficam sem rolagem para chegar nelas.
 // A correção é só de computador (`lg:`): A, B, C e E quebram em linhas em vez de
-// rolar; D passa o anel de foco para DENTRO do botão. Abaixo de 1024 px o
+// rolar. Abaixo de 1024 px o
 // className de cada peça fica byte a byte o de antes.
 //
 // Congelado como literal (o CI clona só o último commit: nada de ler
@@ -48,10 +47,6 @@ const FONTE_PRODUTO = readFileSync(
   "utf8",
 );
 const FONTE_PUSH = readFileSync("src/views/admin/AdminPushView.tsx", "utf8");
-const FONTE_CABECALHO = readFileSync(
-  "src/components/desktop/CabecalhoDoComputador.tsx",
-  "utf8",
-);
 
 // Como cada peça era no celular (o que vale abaixo de 1024 px).
 const CELULAR_SUGESTOES_DO_FRETE =
@@ -64,8 +59,6 @@ const CELULAR_GRADIENTE_DO_PUSH =
   "pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-admin-bg to-transparent";
 const CELULAR_MODELOS_DO_PUSH =
   "relative -m-1 flex gap-2 overflow-x-auto p-1 pb-2 pr-6";
-const CELULAR_CATEGORIA_DO_CABECALHO =
-  "min-h-11 shrink-0 border-b-2 px-1 text-sm hover:text-foreground border-foreground font-bold border-transparent text-muted-foreground";
 
 // O que o computador ganha. Sem `overflow-x-visible` a faixa continuaria
 // cortando; sem `flex-wrap` o que passa da borda continuaria inalcançável.
@@ -125,16 +118,6 @@ const PECAS: Peca[] = [
     celular: CELULAR_GRADIENTE_DO_PUSH,
     ancora: CELULAR_MODELOS_DO_PUSH,
     novas: ["lg:hidden"],
-  },
-  {
-    nome: "D categoria do cabeçalho",
-    fonte: FONTE_CABECALHO,
-    celular: CELULAR_CATEGORIA_DO_CABECALHO,
-    novas: [
-      "lg:focus-visible:outline-none",
-      "lg:focus-visible:ring-inset",
-      "lg:focus-visible:ring-offset-0",
-    ],
   },
 ];
 
@@ -342,12 +325,6 @@ describe("P57 — faixas que quebram em linhas no computador", () => {
         expect(problemas(peca, peca.fonte)).toEqual([]);
       },
     );
-
-    it("a faixa de categorias continua com h-12 e overflow-x-auto (o anel é que vai para dentro)", () => {
-      expect(FONTE_CABECALHO).toContain(
-        '"no-scrollbar flex h-12 items-stretch gap-6 overflow-x-auto"',
-      );
-    });
   });
 
   // Mutantes em CÓPIA do código-fonte real: a trava precisa reprovar, senão é

@@ -180,13 +180,14 @@ describe("F3 — produto no computador e celular preservado", () => {
     expect(indices).toEqual([...indices].sort((a, b) => a - b));
   });
 
-  it("F3.1b o cartão de compra cabe abaixo do cabeçalho de 121px e não usa a variável do celular", async () => {
+  it("F3.1b o cartão de compra cabe abaixo do cabeçalho de 73px e não usa a variável do celular", async () => {
     await montar();
     const compra = elemento("h1").parentElement!.parentElement!;
     const tokens = [...compra.classList];
     // P41: a 1024x768 o cartão passava 53px da janela porque o teto descontava
-    // `--header-height` (52px do celular) em vez dos 121px do cabeçalho do PC.
-    expect(tokens).toContain("lg:max-h-[calc(100dvh-121px-48px)]");
+    // `--header-height` (52px do celular) em vez dos 121px do cabeçalho do PC
+    // (P80, 1.5.195: sem a faixa de categorias de texto, são 73px).
+    expect(tokens).toContain("lg:max-h-[calc(100dvh-73px-48px)]");
     expect(tokens).toContain("lg:top-6");
     expect(tokens).toContain("lg:overflow-y-auto");
     expect(compra.className).not.toContain("--header-height");

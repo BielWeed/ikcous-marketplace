@@ -4,8 +4,6 @@ import { HEADER_CENTER_SLOT_ID } from "@/constants/header";
 import { useNotificationCenter } from "@/contexts/NotificationContextCore";
 import { useStore } from "@/contexts/StoreContext";
 import { useCartState } from "@/hooks/useCart";
-import { useCategories } from "@/hooks/useCategories";
-import { categoriaValidaDaHome } from "@/lib/categoria-valida-da-home";
 import { imagemRedimensionada, usarImagemOriginal } from "@/lib/imageUrl";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { cn } from "@/lib/utils";
@@ -40,9 +38,7 @@ export function CabecalhoDoComputador({
   onNavigate,
   searchQuery,
   onSearch,
-  selectedCategory,
   onCategorySelect,
-  onCategoryChange,
   onOpenNotifications,
   hideSearch,
   showBackButton,
@@ -63,13 +59,6 @@ export function CabecalhoDoComputador({
   const { config } = useStore();
   const { unreadCount } = useNotificationCenter();
   const { cartCount } = useCartState();
-  const { categories, isLoading } = useCategories();
-  const ativas = categories.filter((category) => category.isActive);
-  const selecionada = categoriaValidaDaHome(
-    selectedCategory,
-    categories,
-    isLoading,
-  );
   const nome = nomeDaLoja(config);
   // O mesmo texto vai no nome para leitor de tela (`aria-label`) e no balão do
   // mouse (`title`): um só lugar, para os dois não se separarem.
@@ -87,7 +76,7 @@ export function CabecalhoDoComputador({
   };
 
   return (
-    <header className="hidden lg:sticky lg:top-0 lg:z-[100] lg:block lg:min-h-[121px] lg:shrink-0 lg:border-b lg:border-border lg:bg-white">
+    <header className="hidden lg:sticky lg:top-0 lg:z-[100] lg:block lg:min-h-[73px] lg:shrink-0 lg:border-b lg:border-border lg:bg-white">
       <div
         className={cn(
           CONTAINER_DO_COMPUTADOR,
@@ -228,47 +217,6 @@ export function CabecalhoDoComputador({
           </button>
         </div>
       </div>
-      {ativas.length > 0 && (
-        <nav
-          aria-label="Categorias da loja"
-          className={cn(
-            CONTAINER_DO_COMPUTADOR,
-            "no-scrollbar flex h-12 items-stretch gap-6 overflow-x-auto",
-          )}
-        >
-          {["Todas", ...ativas.map((category) => category.name)].map(
-            (nomeDaCategoria) => (
-              <button
-                type="button"
-                key={nomeDaCategoria}
-                aria-current={
-                  currentView === "home" && selecionada === nomeDaCategoria
-                    ? "true"
-                    : undefined
-                }
-                onClick={() => {
-                  haptic.light();
-                  onCategoryChange(nomeDaCategoria);
-                }}
-                className={cn(
-                  "min-h-11 shrink-0 border-b-2 px-1 text-sm hover:text-foreground",
-                  FOCO,
-                  // A faixa tem h-12 e overflow-x-auto (que também corta na
-                  // vertical): o anel de fora perdia 4 px em cima e embaixo. O
-                  // contorno global de :focus-visible (index.css) vence o
-                  // outline-none de FOCO e sobraria como duas barras soltas.
-                  "lg:focus-visible:outline-none lg:focus-visible:ring-inset lg:focus-visible:ring-offset-0",
-                  currentView === "home" && selecionada === nomeDaCategoria
-                    ? "border-foreground font-bold"
-                    : "border-transparent text-muted-foreground",
-                )}
-              >
-                {nomeDaCategoria}
-              </button>
-            ),
-          )}
-        </nav>
-      )}
       <div
         role="status"
         className="pointer-events-none absolute inset-x-0 top-full"
