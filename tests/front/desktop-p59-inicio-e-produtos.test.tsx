@@ -158,6 +158,7 @@ async function esperarAte(condicao: () => boolean, timeoutMs = 3000) {
 // ---------------------------------------------------------------------------
 
 // Lista literal do que o contêiner das três colunas do Início tem no celular.
+// O redesenho aprovado de 16/11 usa CSS local só >=1280; inicio-* é a âncora sem estilo mobile.
 const GRADE_DO_INICIO_NO_CELULAR = "space-y-6";
 // Idem, cada uma das três colunas (nenhuma tem classe de computador).
 const COLUNA_DO_INICIO_NO_CELULAR = "min-w-0 space-y-6";
@@ -171,17 +172,15 @@ const RESUMO_DO_PRODUTO_NO_CELULAR =
 function violacoesDaGradeDoInicio(className: string): string[] {
   const t = tokens(className);
   const v: string[] = [];
-  if (classesDoCelular(className) !== GRADE_DO_INICIO_NO_CELULAR)
+  if (
+    classesDoCelular(className.replace("inicio-colunas ", "")) !==
+    GRADE_DO_INICIO_NO_CELULAR
+  )
     v.push("celular mudou");
-  for (const esperado of [
-    "xl:grid",
-    "xl:grid-cols-3",
-    "xl:items-start",
-    "xl:gap-6",
-    "xl:space-y-0",
-  ]) {
-    if (!t.includes(esperado)) v.push(`falta ${esperado}`);
-  }
+  // A grade agora pertence à raiz (coberta com CSS real em inicio-do-painel).
+  // Estas pilhas não podem voltar a abrir colunas nem perder espaçamento.
+  if (t.some((c) => /^(?:lg:|xl:|2xl:)(?:grid|space-y-0)/.test(c)))
+    v.push("grade antiga nas pilhas");
   // Nada de grade em `lg:` (1024-1279): é onde a coluna ficava com 227 px. O
   // `space-y-0` também sai de `lg:`, senão as três pilhas se colam em 1024.
   const deLg = t.filter((c) => c.startsWith("lg:"));
@@ -305,7 +304,7 @@ describe("P59 Início do painel: três colunas só de 1280 px em diante", () => 
     const secao = hospedeiro.querySelector(
       '[aria-labelledby="inicio-hoje-titulo"]',
     ) as HTMLElement;
-    const coluna = secao.parentElement as HTMLElement;
+    const coluna = secao.closest(".inicio-coluna") as HTMLElement;
     const grade = coluna.parentElement as HTMLElement;
     const valor = [...secao.querySelectorAll("p")].find((p) =>
       texto(p).includes("R$ 1.234.567,89"),
@@ -313,24 +312,25 @@ describe("P59 Início do painel: três colunas só de 1280 px em diante", () => 
     return { secao, coluna, grade, valor };
   }
 
-  it("a grade das três colunas é `xl:` e não existe mais `lg:grid-cols-3`", async () => {
+  it("as pilhas móveis não recriam a grade antiga em 1024 nem no desktop", async () => {
     await montarInicio();
     const { grade } = elementosDoInicio();
-    const classes = tokens(grade.className);
-    expect(classes).toContain("xl:grid-cols-3");
-    expect(classes).not.toContain("lg:grid-cols-3");
-    expect(classes.some((c) => c.startsWith("lg:"))).toBe(false);
     expect(violacoesDaGradeDoInicio(grade.className)).toEqual([]);
+    expect(grade.closest(".inicio-desktop")).not.toBeNull();
   });
 
   it("o celular da grade e das três colunas continua byte a byte (lista literal)", async () => {
     await montarInicio();
     const { grade, coluna } = elementosDoInicio();
-    expect(classesDoCelular(grade.className)).toBe(GRADE_DO_INICIO_NO_CELULAR);
+    expect(
+      classesDoCelular(grade.className.replace("inicio-colunas ", "")),
+    ).toBe(GRADE_DO_INICIO_NO_CELULAR);
     expect(grade.children).toHaveLength(3);
     for (const filha of Array.from(grade.children)) {
       // As colunas não têm classe de computador: nada nelas depende da grade.
-      expect(filha.className).toBe(COLUNA_DO_INICIO_NO_CELULAR);
+      expect(filha.className.replace("inicio-coluna ", "")).toBe(
+        COLUNA_DO_INICIO_NO_CELULAR,
+      );
     }
     expect(grade.children[0]).toBe(coluna);
   });
@@ -345,20 +345,17 @@ describe("P59 Início do painel: três colunas só de 1280 px em diante", () => 
   it("controle: mutantes em cópia do className reprovam as regras", async () => {
     await montarInicio();
     const { grade, valor } = elementosDoInicio();
-    // Mutante 1: volta a grade para `lg:` (a regra de antes do conserto).
-    const gradeEmLg = grade.className.replace(/\bxl:/g, "lg:");
-    expect(violacoesDaGradeDoInicio(gradeEmLg).length).toBeGreaterThan(0);
-    // Mutante 2: troca só `grid-cols-3` para `lg:`, mantendo o resto em `xl:`.
-    const soColunasEmLg = grade.className.replace(
-      "xl:grid-cols-3",
-      "lg:grid-cols-3",
-    );
-    expect(violacoesDaGradeDoInicio(soColunasEmLg)).toContain(
-      "falta xl:grid-cols-3",
-    );
-    // Mutante 3: esquece de mover o `space-y-0` (as pilhas se colariam em 1024).
-    const espacoEmLg = grade.className.replace("xl:space-y-0", "lg:space-y-0");
-    expect(violacoesDaGradeDoInicio(espacoEmLg).length).toBeGreaterThan(0);
+    // Voltar as colunas/retirar o respiro destas pilhas conflita com a
+    // grade local da raiz. A composição nova é provada em inicio-do-painel.
+    expect(
+      violacoesDaGradeDoInicio(`${grade.className} lg:grid-cols-3`),
+    ).toContain("grade antiga nas pilhas");
+    expect(
+      violacoesDaGradeDoInicio(`${grade.className} xl:grid-cols-3`),
+    ).toContain("grade antiga nas pilhas");
+    expect(
+      violacoesDaGradeDoInicio(`${grade.className} lg:space-y-0`).length,
+    ).toBeGreaterThan(0);
     // Mutante 4: mexe no celular (tira o `space-y-6`).
     const semEspaco = grade.className.replace("space-y-6", "");
     expect(violacoesDaGradeDoInicio(semEspaco)).toContain("celular mudou");

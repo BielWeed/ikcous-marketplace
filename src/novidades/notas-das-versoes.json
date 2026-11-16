@@ -1,4 +1,12 @@
 {
+  "1.5.200": {
+    "titulo": "Início do painel reorganizado no computador",
+    "novidades": [],
+    "correcoes": [],
+    "melhorias": [
+      "No computador, o Início do painel organiza pedidos, tarefas, contas e resultados em uma grade, com atalhos no cabeçalho."
+    ]
+  },
   "1.5.199": {
     "titulo": "Recuperação automática ajustada",
     "novidades": [],

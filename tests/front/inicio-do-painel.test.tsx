@@ -9,6 +9,8 @@
 //   - sem linha de assinatura, o card diz que o plano vai aparecer ali;
 //   - os botões grandes e o "Para fazer" levam às telas certas;
 //   - o tempo real escuta `marketplace_orders` e é desligado ao desmontar.
+import { existsSync, readFileSync } from "node:fs";
+import postcss from "postcss";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -18,6 +20,7 @@ const h = vi.hoisted(() => ({
   rpc: vi.fn(),
   canais: [] as { nome: string; tabelas: string[] }[],
   removidos: [] as string[],
+  lojaCarregada: true,
 }));
 
 vi.mock("@/lib/supabase", () => ({
@@ -65,7 +68,7 @@ vi.mock("@/contexts/StoreContext", () => ({
       logoUrl: "https://exemplo.test/logo-larga.png",
       originCep: "69000-000",
     },
-    isLoaded: true,
+    isLoaded: h.lojaCarregada,
     products: [{ isActive: true }],
     loadingProducts: false,
   }),
@@ -153,6 +156,7 @@ describe("Início do painel", () => {
     h.canais.length = 0;
     h.removidos.length = 0;
     onNavigate.mockClear();
+    h.lojaCarregada = true;
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -161,6 +165,9 @@ describe("Início do painel", () => {
   afterEach(() => {
     act(() => raiz.unmount());
     hospedeiro.remove();
+    document.head
+      .querySelectorAll("[data-inicio-teste]")
+      .forEach((no) => no.remove());
   });
 
   async function montar() {
@@ -382,7 +389,7 @@ describe("Início do painel", () => {
     expect(paraFazer?.textContent).not.toContain("pedidos para preparar");
   });
 
-  it("segue a ordem aprovada e separa as três colunas no computador", async () => {
+  it("preserva a ordem móvel e as três pilhas originais", async () => {
     h.respostas.set("painel_inicio", { data: PAINEL, error: null });
     await montar();
     const ids = Array.from(
@@ -401,9 +408,276 @@ describe("Início do painel", () => {
       "inicio-assinatura-titulo",
       "inicio-checklist-titulo",
     ]);
+    expect(hospedeiro.querySelector(".inicio-colunas")?.children).toHaveLength(
+      3,
+    );
+  });
+
+  // jsdom não resolve @media nem geometria: aplica só as regras de desktop
+  // do CSS REAL à árvore REAL. Isto prova a fiação da grade, não pixels.
+  function aplicarCssDoInicio(largura: number) {
+    const css = existsSync("src/components/admin/inicio/inicio-desktop.css")
+      ? readFileSync("src/components/admin/inicio/inicio-desktop.css", "utf8")
+      : "";
+    const folha = postcss.parse(css);
+    const estilo = document.createElement("style");
+    estilo.dataset.inicioTeste = "true";
+    // Utilitários de base que jsdom não recebe do Tailwind. Vêm DEPOIS do
+    // CSS real, para exigir especificidade suficiente, sem depender da ordem.
+    const base = `
+      .whitespace-nowrap { white-space: nowrap; }
+      .space-y-6 > :not([hidden]) ~ :not([hidden]) { margin-top: 24px; }
+      .space-y-4 > :not([hidden]) ~ :not([hidden]) { margin-top: 16px; }
+    `;
+    estilo.textContent =
+      folha.nodes
+        .map((no) => {
+          if (no.type === "rule") return no.toString();
+          if (no.type !== "atrule" || no.name !== "media") return "";
+          expect(no.params).toBe("(width >= 1280px)");
+          return largura >= 1280 ? no.nodes?.map(String).join("\n") : "";
+        })
+        .join("\n") + base;
+    document.head
+      .querySelectorAll("[data-inicio-teste]")
+      .forEach((no) => no.remove());
+    document.head.appendChild(estilo);
+    return estilo;
+  }
+
+  it("zera o espaço das pilhas ao compor a grade, mesmo com Tailwind depois", async () => {
+    h.respostas.set("painel_inicio", { data: PAINEL, error: null });
+    await montar();
+    for (const largura of [1280, 1440, 1920]) {
+      const estilo = aplicarCssDoInicio(largura);
+      for (const seletor of [
+        ".inicio-tarefas",
+        ".inicio-resultados",
+        ".inicio-sua-loja",
+      ]) {
+        const elemento = hospedeiro.querySelector<HTMLElement>(seletor)!;
+        expect(getComputedStyle(elemento).marginTop, seletor).toBe("0px");
+      }
+      estilo.remove();
+    }
+    const estilo = aplicarCssDoInicio(390);
     expect(
-      hospedeiro.querySelector(".xl\\:grid-cols-3")?.children,
-    ).toHaveLength(3);
+      getComputedStyle(hospedeiro.querySelector(".inicio-tarefas")!).marginTop,
+    ).toBe("24px");
+    estilo.remove();
+  });
+
+  it("alinha o gráfico no topo e conserva as margens internas do resumo mensal", async () => {
+    h.respostas.set("painel_inicio", { data: PAINEL, error: null });
+    await montar();
+    for (const largura of [1280, 1440, 1920]) {
+      const estilo = aplicarCssDoInicio(largura);
+      expect(
+        getComputedStyle(hospedeiro.querySelector(".inicio-serie")!).marginTop,
+      ).toBe("0px");
+      for (const seletor of [".inicio-mes-volume", ".inicio-mes-explicacao"]) {
+        expect(
+          getComputedStyle(hospedeiro.querySelector(seletor)!).marginTop,
+          seletor,
+        ).toBe("20px");
+      }
+      expect(
+        getComputedStyle(hospedeiro.querySelector(".inicio-mes-explicacao")!)
+          .marginBottom,
+      ).toBe("20px");
+      estilo.remove();
+    }
+    const estilo = aplicarCssDoInicio(390);
+    expect(
+      getComputedStyle(hospedeiro.querySelector(".inicio-serie")!).marginTop,
+    ).toBe("16px");
+    estilo.remove();
+  });
+
+  it("compõe operação primeiro e série 2/3 + resumo 1/3 só no desktop, sem perder as pontes", async () => {
+    h.respostas.set("painel_inicio", { data: PAINEL, error: null });
+    await montar();
+    const pagina = hospedeiro.firstElementChild as HTMLElement;
+    const porTitulo = (id: string) =>
+      hospedeiro.querySelector<HTMLElement>(`[aria-labelledby="${id}"]`)!;
+    const hoje = porTitulo("inicio-hoje-titulo");
+    const tarefas = porTitulo("inicio-para-fazer-titulo");
+    const contas = porTitulo("inicio-contas-titulo");
+    const mes = porTitulo("inicio-mes-titulo");
+    const serie = porTitulo("inicio-serie-titulo");
+    const loja = porTitulo("inicio-sua-loja-titulo");
+    const atalhos = hospedeiro.querySelector<HTMLElement>(
+      '[aria-label="Atalhos do painel"]',
+    )!;
+
+    let estilo = aplicarCssDoInicio(1279);
+    expect(getComputedStyle(pagina).display).not.toBe("grid");
+    estilo.remove();
+    for (const largura of [1280, 1440, 1920]) {
+      estilo = aplicarCssDoInicio(largura);
+      expect(estilo.textContent).toContain(".inicio-desktop");
+      expect(pagina.classList.contains("inicio-desktop")).toBe(true);
+      expect(getComputedStyle(pagina).display).toBe("grid");
+      expect(getComputedStyle(pagina).gridTemplateColumns).toBe(
+        "repeat(6, minmax(0, 1fr))",
+      );
+      for (const [secao, coluna] of [
+        [hoje, "1 / 3"],
+        [tarefas, "3 / 5"],
+        [contas, "5 / 7"],
+      ] as const) {
+        const vaga = secao.parentElement!;
+        expect(getComputedStyle(vaga).gridColumn).toBe(coluna);
+        expect(getComputedStyle(vaga).order).toBe("2");
+        // Não basta ter uma classe: cada ponte até a grade precisa se achatar.
+        let ponte = vaga.parentElement!;
+        while (ponte !== pagina) {
+          expect(getComputedStyle(ponte).display).toBe("contents");
+          ponte = ponte.parentElement!;
+        }
+      }
+      expect(getComputedStyle(atalhos).gridColumn).toBe("3 / 6");
+      expect(getComputedStyle(atalhos).order).toBe("0");
+      expect(getComputedStyle(atalhos).gridRow).toBe("1");
+      expect(
+        getComputedStyle(hospedeiro.querySelector(".inicio-titulo")!).gridRow,
+      ).toBe("1");
+      expect(
+        getComputedStyle(hospedeiro.querySelector(".inicio-estado")!).gridRow,
+      ).toBe("1");
+      expect(getComputedStyle(atalhos).position).toBe("static");
+      expect(getComputedStyle(atalhos).backgroundColor).toBe(
+        "rgba(0, 0, 0, 0)",
+      );
+      expect(getComputedStyle(mes.parentElement!).order).toBe("3");
+      expect(getComputedStyle(serie.parentElement!).gridColumn).toBe("1 / 5");
+      expect(getComputedStyle(mes.firstElementChild!).gridColumn).toBe("5 / 7");
+      expect(getComputedStyle(loja).order).toBe("4");
+      expect(getComputedStyle(loja).gridColumn).toBe("1 / -1");
+      expect(getComputedStyle(loja.lastElementChild!).display).toBe("grid");
+      estilo.remove();
+    }
+  });
+
+  it("boas-vindas que retorna null não reserva faixa nem respiro antes de Hoje", async () => {
+    h.lojaCarregada = false;
+    h.respostas.set("painel_inicio", {
+      data: {
+        ...PAINEL,
+        hoje: { ...PAINEL.hoje, pedidos: 0 },
+        mes: { ...PAINEL.mes, pedidos: 0, receita_mes_anterior: 0 },
+        pendencias: { ...PAINEL.pendencias, pedidos_para_preparar: 0 },
+        serie_14d: [],
+      },
+      error: null,
+    });
+    await montar();
+    const boasVindas = hospedeiro.querySelector<HTMLElement>(
+      ".inicio-boas-vindas",
+    )!;
+    const hoje = hospedeiro.querySelector<HTMLElement>(".inicio-hoje")!;
+    // O componente real está conferindo o cadastro e devolve null.
+    expect(boasVindas).not.toBeNull();
+    expect(boasVindas.childNodes).toHaveLength(0);
+    expect(boasVindas.nextElementSibling).toBe(hoje);
+    for (const largura of [390, 1279, 1280, 1920]) {
+      const estilo = aplicarCssDoInicio(largura);
+      expect(getComputedStyle(boasVindas).display).toBe("none");
+      expect(getComputedStyle(hoje).marginTop).toBe("0px");
+      estilo.remove();
+    }
+  });
+
+  it("moedas grandes do mês podem quebrar por inteiro só no desktop", async () => {
+    h.respostas.set("painel_inicio", {
+      data: {
+        ...PAINEL,
+        mes: {
+          ...PAINEL.mes,
+          receita: 999999999.99,
+          lucro_estimado: -999999999.99,
+        },
+      },
+      error: null,
+    });
+    await montar();
+    const vendas = hospedeiro.querySelector<HTMLElement>(
+      ".inicio-mes-vendas > p.whitespace-nowrap",
+    )!;
+    const lucro = hospedeiro.querySelector<HTMLElement>(
+      ".inicio-mes-lucro > p.whitespace-nowrap",
+    )!;
+    expect(texto(vendas)).toBe("R$ 999.999.999,99");
+    expect(texto(lucro)).toBe("-R$ 999.999.999,99");
+    for (const largura of [390, 1279, 1280, 1920]) {
+      const estilo = aplicarCssDoInicio(largura);
+      for (const valor of [vendas, lucro]) {
+        expect(getComputedStyle(valor).whiteSpace).toBe(
+          largura < 1280 ? "nowrap" : "normal",
+        );
+        if (largura >= 1280) {
+          expect(getComputedStyle(valor).overflowWrap).toBe("anywhere");
+        }
+      }
+      estilo.remove();
+    }
+  });
+
+  it("mantém série, tabela, lucro e atalhos únicos ao mudar a largura", async () => {
+    h.respostas.set("painel_inicio", { data: PAINEL, error: null });
+    await montar();
+    const serie = hospedeiro.querySelector<HTMLElement>(
+      '[aria-labelledby="inicio-serie-titulo"]',
+    )!;
+    const anterior = serie.querySelector<HTMLButtonElement>(
+      '[aria-label="Dia anterior"]',
+    )!;
+    act(() => anterior.click());
+    act(() => botaoPorTexto(serie, "Ver os 14 dias em tabela").click());
+    act(() => botaoPorTexto(hospedeiro, "Como é calculado o lucro").click());
+    const tabela = serie.querySelector("table");
+    const selecionado = serie.querySelector(
+      '[aria-live="polite"]',
+    )?.textContent;
+    const explicacao = hospedeiro.querySelector(
+      '[aria-expanded="true"][aria-controls]',
+    )!;
+
+    for (const largura of [390, 1280, 1920, 390]) {
+      const estilo = aplicarCssDoInicio(largura);
+      act(() => window.dispatchEvent(new Event("resize")));
+      expect(
+        hospedeiro.querySelectorAll('[aria-labelledby="inicio-serie-titulo"]'),
+      ).toHaveLength(1);
+      expect(
+        hospedeiro.querySelector('[aria-labelledby="inicio-serie-titulo"]'),
+      ).toBe(serie);
+      expect(serie.querySelector("table")).toBe(tabela);
+      expect(serie.querySelector('[aria-live="polite"]')?.textContent).toBe(
+        selecionado,
+      );
+      expect(
+        hospedeiro.querySelectorAll('[aria-label="Atalhos do painel"]'),
+      ).toHaveLength(1);
+      expect(
+        hospedeiro.querySelectorAll('[aria-labelledby="inicio-mes-titulo"]'),
+      ).toHaveLength(1);
+      expect(hospedeiro.contains(explicacao)).toBe(true);
+      const ids = [...hospedeiro.querySelectorAll("[id]")].map((no) => no.id);
+      expect(new Set(ids).size).toBe(ids.length);
+      estilo.remove();
+    }
+    expect(h.rpc.mock.calls.map(([nome]) => nome).sort()).toEqual([
+      "assinatura_da_loja_ler",
+      "painel_inicio",
+    ]);
+    const mes = hospedeiro.querySelector(
+      '[aria-labelledby="inicio-mes-titulo"]',
+    )!;
+    expect(texto(mes)).toContain("R$ 4.321,09");
+    expect(texto(mes)).toContain(
+      "Desconta estornos, devoluções, custos e despesas, mesmo não pagas.",
+    );
   });
 
   it("o cartão da loja mostra o ícone do app (quadrado), não a logo larga", async () => {
@@ -448,6 +722,14 @@ describe("Início do painel", () => {
     expect(proximo?.className).toContain("min-h-11");
     expect(proximo?.classList.contains("bg-white")).toBe(false);
     expect(texto(boasVindas)).toContain("Próximo passo");
+    // Controle positivo: esconder o wrapper inteiro apagaria uma ação válida.
+    for (const largura of [390, 1280]) {
+      const estilo = aplicarCssDoInicio(largura);
+      expect(getComputedStyle(boasVindas!.parentElement!).display).not.toBe(
+        "none",
+      );
+      estilo.remove();
+    }
     act(() => proximo?.click());
     expect(onNavigate).toHaveBeenLastCalledWith("admin-about-store");
     expect(texto(hospedeiro)).not.toContain("Preparar 0 pedidos");

@@ -69,7 +69,7 @@ export function NumerosDoMes({
     <section
       aria-labelledby="inicio-mes-titulo"
       aria-busy={esqueleto}
-      className="min-w-0"
+      className="inicio-mes min-w-0"
     >
       <TituloDoInicio
         id="inicio-mes-titulo"
@@ -82,15 +82,15 @@ export function NumerosDoMes({
         Este mês
       </TituloDoInicio>
       <div
-        className={`${CARTAO_INICIO} space-y-4 [container-type:inline-size]`}
+        className={`inicio-mes-conteudo ${CARTAO_INICIO} space-y-4 [container-type:inline-size]`}
       >
         <div
-          className="grid gap-4 text-[clamp(1.125rem,5.6cqi,1.5rem)]"
+          className="inicio-mes-valores grid gap-4 text-[clamp(1.125rem,5.6cqi,1.5rem)]"
           style={{
             gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${larguraDoValor}ch), 1fr))`,
           }}
         >
-          <div className="min-w-0">
+          <div className="inicio-mes-vendas min-w-0">
             <p className={ROTULO_INICIO}>
               Vendas pagas<span className="sr-only"> no mês</span>
             </p>
@@ -104,7 +104,7 @@ export function NumerosDoMes({
               referencia="que nos mesmos dias do mês anterior"
             />
           </div>
-          <div className="min-w-0 border-l border-admin-border pl-3">
+          <div className="inicio-mes-lucro min-w-0 border-l border-admin-border pl-3">
             <p className={ROTULO_INICIO}>Lucro estimado</p>
             <p
               className={`mt-1 whitespace-nowrap ${valorNaCor(tomDoValor(mes?.lucroEstimado))}`}
@@ -120,7 +120,7 @@ export function NumerosDoMes({
             ) : null}
           </div>
         </div>
-        <p className="border-t border-admin-border pt-3 text-sm text-zinc-400">
+        <p className="inicio-mes-volume border-t border-admin-border pt-3 text-sm text-zinc-400">
           <strong
             className={`font-bold tabular-nums ${tomDoValor(mes?.pedidos) === "neutro" ? classeDoTexto("neutro") : "text-white"}`}
           >
@@ -134,7 +134,7 @@ export function NumerosDoMes({
           </strong>
         </p>
         {children}
-        <div>
+        <div className="inicio-mes-explicacao">
           <button
             type="button"
             aria-expanded={explicando}
@@ -158,7 +158,10 @@ export function NumerosDoMes({
           ) : null}
         </div>
         {esqueleto ? (
-          <div className="premium-shimmer h-4 rounded-lg" aria-hidden="true" />
+          <div
+            className="inicio-mes-esqueleto premium-shimmer h-4 rounded-lg"
+            aria-hidden="true"
+          />
         ) : null}
       </div>
     </section>
