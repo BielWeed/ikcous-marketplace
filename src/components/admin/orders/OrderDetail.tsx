@@ -801,7 +801,7 @@ function OrderDeliveryCard({
   return (
     <section
       data-testid="bloco-entrega"
-      className={cn(blocoDaFicha, "space-y-4 p-5")}
+      className={cn(blocoDaFicha, "space-y-4 p-5 xl:self-stretch")}
     >
       <h3 className={tituloDoBloco}>{ehBalcao ? "Cliente" : "Entrega"}</h3>
 

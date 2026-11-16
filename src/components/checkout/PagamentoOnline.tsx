@@ -868,10 +868,19 @@ function PagamentoComPix({
     // não consegue escanear a própria tela — o caminho dele é copiar e colar
     // no app do banco. Por isso valor → prazo → botão de copiar vêm antes do
     // QR; o QR fica logo abaixo para quem paga lendo com outro aparelho.
+    //
+    // Computador (P77, `lg:` = 1024 px ou mais): a coluna de 420 px empilhava o
+    // QR por último e ele ficava CORTADO na primeira tela (1280x720, 1366x768).
+    // Quando a tela tem o QR (`has-[figure]`), a seção vira duas colunas: tudo
+    // o que o celular já mostra (valor, prazo, copiar, código, passos) na da
+    // esquerda; o QR sozinho na da direita, no topo. A figura continua DEPOIS
+    // do botão no DOM — a ordem de leitura e de foco é a do celular — e só a
+    // posição na grade a leva para a direita; ela não tem nada focável.
+    // A coluna do checkout (CheckoutView) alarga com a MESMA condição.
     return (
       <section
         aria-labelledby={idTitulo}
-        className="mx-auto w-full max-w-md space-y-4 rounded-2xl border border-zinc-100 bg-white p-4 sm:p-6"
+        className="mx-auto w-full max-w-md space-y-4 rounded-2xl border border-zinc-100 bg-white p-4 sm:p-6 lg:max-w-3xl lg:has-[figure]:grid lg:has-[figure]:grid-cols-[minmax(0,1fr)_15rem] lg:has-[figure]:items-start lg:has-[figure]:gap-x-8"
       >
         <header className="space-y-1 text-center">
           <h2
@@ -1023,7 +1032,9 @@ function PagamentoComPix({
         )}
 
         {pix.qrCodeBase64 ? (
-          <figure className="space-y-2">
+          // `lg:!mt-0`: o `space-y-4` da seção põe margem de cima em todo filho
+          // menos o primeiro, e a figura, no topo da 2ª coluna, não a quer.
+          <figure className="space-y-2 lg:col-start-2 lg:row-span-6 lg:row-start-1 lg:!mt-0">
             {pix.qrCode && (
               <figcaption className="text-center text-xs text-zinc-500">
                 Pagando por outro aparelho? Escaneie o QR code.

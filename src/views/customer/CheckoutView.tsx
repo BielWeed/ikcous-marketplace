@@ -3078,8 +3078,9 @@ export function CheckoutViewDaConta({
   // reserva do pedido escondidos sob o cabeçalho do computador. Origem medida
   // (15/11, log do `main`): ao trocar para o Pix o conteúdo cai por um instante
   // a 720 px (`min-h-dvh`) e o navegador prende o `scrollTop` herdado em 720 −
-  // 599 (altura do <main>) = 121; a 390 px o mesmo mecanismo deixa 53 e esconde
-  // 37 px do título. Depois o conteúdo cresce, mas a rolagem fica onde ficou.
+  // 599 (altura do <main>) = 121 (medição da 1.5.194, cabeçalho de 121 px; desde
+  // a 1.5.195 o cabeçalho tem 73 e a conta dá 73); a 390 px o mesmo mecanismo
+  // deixa 53 e esconde 37 px do título. Depois o conteúdo cresce, mas a rolagem fica onde ficou.
   // Layout effect: zera ANTES da pintura, sem piscar a tela rolada.
   // Só reage à TROCA de tela (pedido que passou a existir, ou Pix que virou
   // "confirmado"/outro estado) — nunca a redesenho — para não puxar de volta ao
@@ -5721,7 +5722,12 @@ export function CheckoutViewDaConta({
       // Mesma coluna do formulário (`mx-auto max-w-md`): sem ela, o cliente
       // saía de uma tela de 448px de largura e caía numa que esticava o texto
       // "Seu pedido está reservado…" de ponta a ponta em tela larga.
-      <div className="pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
+      //
+      // P77 (computador): SÓ quando a tela do Pix tem o QR (`has-[figure]`) a
+      // coluna alarga para 768 px, onde o PagamentoOnline vira duas colunas. O
+      // cartão, o aviso de Pix encerrado, os erros e o "carregando" não têm
+      // figura: seguem na coluna estreita.
+      <div className="pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4 lg:has-[figure]:max-w-3xl">
         {!pedidoMortoNaTela && (
           <TituloQueRecebeOFoco
             nivel={1}

@@ -17,7 +17,7 @@ import {
  * JORNADA DO CHECKOUT NO COMPUTADOR (1280 x 720), até a tela do Pix.
  *
  * POR QUE EXISTE: desde a 1.5.188 o app tem desenho de computador (>= 1024 px:
- * cabeçalho fixo de 121 px no topo, resumo na coluna lateral, barra inferior do
+ * cabeçalho fixo de 73 px no topo (121 até a 1.5.194), resumo na coluna lateral, barra inferior do
  * celular escondida). O config das jornadas fixa 1023 px (a tela de "tablet
  * largo") para as jornadas antigas seguirem iguais — então NENHUMA jornada de
  * compra rodava a 1280 px, e um checkout quebrado no computador passaria em

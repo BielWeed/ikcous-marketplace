@@ -13,11 +13,12 @@ const CONTRATO_C2: Record<string, string> = {
     "lg:mx-auto lg:w-full lg:max-w-[1280px] lg:px-8 2xl:max-w-[1440px]",
   GRADE_DE_PRODUTOS_NO_COMPUTADOR: "lg:grid-cols-4 lg:gap-5 xl:grid-cols-5",
   // P41: o teto descontava `--header-height` (52px, variável do CELULAR), mas o
-  // cabeçalho do computador tem 121px -- o cartão de compra passava 53px da
-  // janela a 1024x768. O valor agora é a altura real (121) + 48 (24 de topo
-  // grudado + 24 de folga embaixo).
+  // cabeçalho do computador tinha 121px -- o cartão de compra passava 53px da
+  // janela a 1024x768. O valor é a altura real do cabeçalho + 48 (24 de topo
+  // grudado + 24 de folga embaixo). P80 (1.5.195): a faixa de categorias de
+  // texto saiu do cabeçalho, que passou de 121 para 73px.
   COLUNA_FIXA_NO_COMPUTADOR:
-    "lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100dvh-121px-48px)] lg:overflow-y-auto",
+    "lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100dvh-73px-48px)] lg:overflow-y-auto",
   GAVETA_NO_COMPUTADOR:
     "lg:w-full lg:max-w-[440px] lg:gap-0 lg:rounded-l-3xl lg:p-0",
   TITULO_DE_PAGINA_NO_COMPUTADOR:
@@ -45,7 +46,7 @@ describe("medidas do computador — contrato C2", () => {
   it("todo token das constantes de classes começa por lg:, xl: ou 2xl:", () => {
     for (const [nome, valor] of Object.entries(medidas)) {
       if (nome === "ALTURA_DO_CABECALHO_DO_COMPUTADOR") {
-        expect(valor).toBe(121);
+        expect(valor).toBe(73);
         continue;
       }
       const tokens = (valor as string).split(" ").filter(Boolean);
@@ -62,7 +63,7 @@ describe("medidas do computador — contrato C2", () => {
   it("a coluna fixa desconta o cabeçalho REAL do computador, nunca a variável do celular", () => {
     const tokens = medidas.COLUNA_FIXA_NO_COMPUTADOR.split(" ");
     const teto = tokens.find((t) => t.startsWith("lg:max-h-"));
-    // `--header-height` vale 52px (celular); o cabeçalho do computador tem 121px.
+    // `--header-height` vale 52px (celular); o cabeçalho do computador tem 73px.
     expect(medidas.COLUNA_FIXA_NO_COMPUTADOR).not.toContain("--header-height");
     expect(teto).toBe(
       `lg:max-h-[calc(100dvh-${medidas.ALTURA_DO_CABECALHO_DO_COMPUTADOR}px-48px)]`,

@@ -108,7 +108,7 @@ describe("casca de computador sem alterar o celular", () => {
     expect(estado.baixou).toBe(0);
   });
 
-  it("PC oferece busca real, destinos, categoria ativa e contadores", async () => {
+  it("PC oferece busca real, destinos e contadores, sem faixa de categorias", async () => {
     estado.computador = true;
     act(() =>
       root.render(
@@ -120,7 +120,7 @@ describe("casca de computador sem alterar o celular", () => {
     expect(
       host
         .querySelector('[aria-hidden="true"]')
-        ?.classList.contains("lg:h-[121px]"),
+        ?.classList.contains("lg:h-[73px]"),
     ).toBe(true);
     await desenhar(
       <CabecalhoCliente {...props}>
@@ -154,12 +154,10 @@ describe("casca de computador sem alterar o celular", () => {
     expect(
       host.querySelector('[aria-label="Notificações, 2 não lidas"]'),
     ).not.toBeNull();
-    const categorias = host.querySelector('[aria-label="Categorias da loja"]');
-    expect(categorias?.textContent).toContain("Anéis");
-    expect(categorias?.textContent).not.toContain("Oculta");
-    expect(
-      categorias?.querySelector('[aria-current="true"]')?.textContent,
-    ).toBe("Anéis");
+    // P80 (1.5.195): a faixa de categorias de texto saiu do cabeçalho; as
+    // categorias ficam só na faixa com ícones da página inicial.
+    expect(host.querySelector('[aria-label="Categorias da loja"]')).toBeNull();
+    expect(host.textContent).not.toContain("Anéis");
     for (const [rotulo, destino] of [
       ["Início", "home"],
       ["Favoritos", "favorites"],
@@ -177,12 +175,8 @@ describe("casca de computador sem alterar o celular", () => {
       (host.querySelector("#header-cart") as HTMLButtonElement)?.click(),
     );
     expect(destinos.at(-1)).toBe("cart");
-    act(() =>
-      (
-        categorias?.querySelector('[aria-current="true"]') as HTMLButtonElement
-      )?.click(),
-    );
-    expect(categoria).toBe("Anéis");
+    // Nada no cabeçalho do PC muda a categoria da página inicial.
+    expect(categoria).toBe("");
     const input = host.querySelector("input") as HTMLInputElement;
     act(() => {
       Object.getOwnPropertyDescriptor(
@@ -314,7 +308,7 @@ describe("casca de computador sem alterar o celular", () => {
     );
   });
 
-  it("Home tem uma página atual; o filtro de categoria não se anuncia como outra página", async () => {
+  it("Home tem uma página atual e o cabeçalho não anuncia filtro de categoria", async () => {
     estado.computador = true;
     await desenhar(
       <CabecalhoCliente {...props} selectedCategory="Todas">
@@ -322,11 +316,7 @@ describe("casca de computador sem alterar o celular", () => {
       </CabecalhoCliente>,
     );
     expect(host.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
-    expect(
-      host.querySelector(
-        '[aria-label="Categorias da loja"] [aria-current="true"]',
-      )?.textContent,
-    ).toBe("Todas");
+    expect(host.querySelector('[aria-current="true"]')).toBeNull();
   });
 
   it("preserva o encaixe do resumo quando a busca está proibida", async () => {

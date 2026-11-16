@@ -1,4 +1,14 @@
 {
+  "1.5.195": {
+    "titulo": "Categorias sem repetição no computador e Pix lado a lado",
+    "novidades": [],
+    "correcoes": [
+      "Loja, no computador: sai a faixa de categorias repetida na barra superior. A faixa original com ícones continua na página inicial.",
+      "Loja, pagamento no computador: o QR do Pix fica ao lado das informações e do botão de copiar.",
+      "Painel, detalhe do pedido: a partir de 1280 px, a ficha do cliente aproveita o espaço da linha, sem deixar um buraco abaixo dela."
+    ],
+    "melhorias": []
+  },
   "1.5.194": {
     "titulo": "Painel mais bem encaixado em telas grandes e pedidos mais firmes no computador",
     "novidades": [],

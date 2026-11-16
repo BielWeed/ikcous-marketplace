@@ -53,7 +53,7 @@ describe("P32: alinhamento e resumo alcançável no computador", () => {
     expect(invólucro.split(/\s+/)).toContain("lg:overflow-visible");
     const resumo = encontrar(caminhos.carrinho, "sticky top-24 hidden");
     expect(resumo.split(/\s+/)).toContain("lg:top-[88px]");
-    // 76px de abas + 12px de respiro; não repetir os 121px do cabeçalho externo.
+    // 76px de abas + 12px de respiro; não repetir os 73px do cabeçalho externo (121px até a 1.5.194).
     expect(resumo).not.toMatch(/lg:top-(?:24|0)(?:\s|$)/);
   });
 

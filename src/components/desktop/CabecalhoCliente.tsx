@@ -35,7 +35,7 @@ export function CabecalhoCliente({
       fallback={
         <div
           aria-hidden="true"
-          className="hidden lg:block lg:h-[121px] lg:shrink-0 lg:bg-white"
+          className="hidden lg:block lg:h-[73px] lg:shrink-0 lg:bg-white"
         />
       }
     >

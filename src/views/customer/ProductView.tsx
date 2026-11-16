@@ -334,7 +334,9 @@ export const ProductView = React.memo(function ProductView({
       // folga para os dois lados. Medido num Chromium de verdade: o <main>
       // começa em y=121 no computador (cabeçalho de 121 px) e y=53 no celular,
       // e o pouso do clique deixa a seção a 90 px DO TOPO DO <main> (211 px da
-      // janela no PC, 143 no celular). Comparar a posição da janela com este
+      // janela no PC, 143 no celular). (Antes da 1.5.195: 121 e 211; hoje o
+      // cabeçalho do PC tem 73 e o <main> começa em y=73, seção a 163 px da
+      // janela. A conta abaixo é relativa ao <main>, então não muda.) Comparar a posição da janela com este
       // limite deixava uma zona morta de 91 px no PC (23 no celular): clicar
       // em "Avaliações" e rolar 8 px devolvia o destaque para "Detalhes".
       const offsetThreshold = headerHeight + tabBarHeight + 20;

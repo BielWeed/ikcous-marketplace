@@ -9,9 +9,11 @@
 // ajuste solto de uma tarefa de frente; `tests/front/desktop-medidas.test.ts`
 // compara palavra por palavra.
 
-/** Altura mínima já usada em CabecalhoDoComputador (lg:min-h-[121px]).
+/** Altura mínima já usada em CabecalhoDoComputador (lg:min-h-[73px]): 72 da
+ * linha do logo/busca/menu + 1 de borda. Era 121 até a 1.5.194, quando havia
+ * uma segunda faixa de categorias de 48 px (removida na 1.5.195).
  * A classe fica literal para o Tailwind; P30 confere a equivalência. */
-export const ALTURA_DO_CABECALHO_DO_COMPUTADOR = 121;
+export const ALTURA_DO_CABECALHO_DO_COMPUTADOR = 73;
 
 /** Container de página no computador: 1280px até 2xl, 1440px daí para cima. */
 export const CONTAINER_DO_COMPUTADOR =
@@ -22,13 +24,13 @@ export const GRADE_DE_PRODUTOS_NO_COMPUTADOR =
   "lg:grid-cols-4 lg:gap-5 xl:grid-cols-5";
 
 /** Coluna grudada (compra, resumo do checkout, conta): sticky com rolagem interna.
- * O teto desconta a altura REAL do cabeçalho do computador (121px, o valor de
+ * O teto desconta a altura REAL do cabeçalho do computador (73px, o valor de
  * ALTURA_DO_CABECALHO_DO_COMPUTADOR, literal aqui para o Tailwind; `--header-height`
  * é a variável do CELULAR e vale 52px) mais 48px
  * (24 do topo grudado + 24 de folga embaixo). O cabeçalho fica FORA da área que
  * rola, então `top-6` conta a partir do fim dele e o cartão nunca fica sob ele. */
 export const COLUNA_FIXA_NO_COMPUTADOR =
-  "lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100dvh-121px-48px)] lg:overflow-y-auto";
+  "lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100dvh-73px-48px)] lg:overflow-y-auto";
 
 /** Folha que vira gaveta à direita no computador (contrato C9). */
 export const GAVETA_NO_COMPUTADOR =
