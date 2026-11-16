@@ -18,6 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { adiar } from "./apoio";
 
 const reload = vi.fn();
+const CHAVE_ATIVA = `${CHAVE_RECUPERACAO_CHUNK}:0.0.0-dev`;
 const replace = vi.fn();
 let desmarcar: (() => void) | undefined;
 function instalarSW(comWaiting = true) {
@@ -83,6 +84,7 @@ describe("sentinela e ciclo do worker respeitam o veto compartilhado", () => {
       expect(registro.unregister).not.toHaveBeenCalled();
       expect(reload).not.toHaveBeenCalled();
       expect(localStorage.getItem(CHAVE_RECUPERACAO_CHUNK)).toBeNull();
+      expect(localStorage.getItem(CHAVE_ATIVA)).toBeNull();
     },
   );
 
@@ -193,16 +195,16 @@ describe("sentinela e ciclo do worker respeitam o veto compartilhado", () => {
 describe("recarga subordinada consome a mesma trava anti-repetição", () => {
   it("a primeira conta, a repetição imediata recusa e a terceira fora da janela também", () => {
     expect(pedirRecargaSubordinada(1000)).toBe(true);
-    expect(
-      JSON.parse(localStorage.getItem(CHAVE_RECUPERACAO_CHUNK) ?? "null").count,
-    ).toBe(1);
+    expect(JSON.parse(localStorage.getItem(CHAVE_ATIVA) ?? "null").count).toBe(
+      1,
+    );
     expect(pedirRecargaSubordinada(1001)).toBe(false);
     expect(pedirRecargaSubordinada(1000 + JANELA_RECUPERACAO_CHUNK_MS)).toBe(
       true,
     );
-    expect(
-      JSON.parse(localStorage.getItem(CHAVE_RECUPERACAO_CHUNK) ?? "null").count,
-    ).toBe(2);
+    expect(JSON.parse(localStorage.getItem(CHAVE_ATIVA) ?? "null").count).toBe(
+      2,
+    );
     expect(
       pedirRecargaSubordinada(1000 + 2 * JANELA_RECUPERACAO_CHUNK_MS),
     ).toBe(false);

@@ -32,6 +32,7 @@ import {
 // testes do boundary): se a chave ou a versão de fallback mudarem no fonte,
 // este teste quebra e avisa.
 const VERSAO_FALLBACK_DO_APP = "0.0.0-dev";
+const CHAVE_ATIVA = `${CHAVE_RECUPERACAO_CHUNK}:${VERSAO_FALLBACK_DO_APP}`;
 
 function gravarEstadoDireto(estado: {
   versao: string;
@@ -46,7 +47,7 @@ function lerEstadoGravado(): {
   count: number;
   lastAt: number;
 } | null {
-  const cru = localStorage.getItem(CHAVE_RECUPERACAO_CHUNK);
+  const cru = localStorage.getItem(CHAVE_ATIVA);
   return cru
     ? (JSON.parse(cru) as { versao: string; count: number; lastAt: number })
     : null;
@@ -58,10 +59,10 @@ beforeEach(() => {
     (() => {
       const armazem = new Map<string, string>();
       return {
-        getItem: (chave: string) => armazem.get(chave) ?? null,
-        setItem: (chave: string, valor: string) => {
+        getItem: vi.fn((chave: string) => armazem.get(chave) ?? null),
+        setItem: vi.fn((chave: string, valor: string) => {
           armazem.set(chave, String(valor));
-        },
+        }),
         removeItem: (chave: string) => {
           armazem.delete(chave);
         },
@@ -173,7 +174,10 @@ describe("reportarErroChunk — a decisão sincrona (check-and-set) da chave ún
     const decisao = reportarErroChunk(1000, false);
 
     expect(decisao).toEqual({ dono: true, acao: "offline" });
+    expect(localStorage.getItem).not.toHaveBeenCalled();
+    expect(localStorage.setItem).not.toHaveBeenCalled();
     expect(localStorage.getItem(CHAVE_RECUPERACAO_CHUNK)).toBeNull();
+    expect(localStorage.getItem(CHAVE_ATIVA)).toBeNull();
   });
 
   it("storage indisponível falha FECHADO: recusa e não engaja recarga automática", () => {
