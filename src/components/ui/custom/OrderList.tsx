@@ -194,16 +194,16 @@ function OrderCardSkeleton() {
     <div
       data-testid="order-card-skeleton"
       aria-hidden="true"
-      className="min-h-[278px] rounded-[18px] border border-border bg-background p-4"
+      className="min-h-[278px] rounded-[18px] border border-border bg-background p-4 lg:grid lg:min-h-[251px] lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-x-8 lg:rounded-3xl lg:p-6"
     >
-      <div className="flex h-14 items-center gap-3">
-        <div className="size-14 shrink-0 rounded-xl bg-muted" />
+      <div className="flex h-14 items-center gap-3 lg:h-20">
+        <div className="size-14 shrink-0 rounded-xl bg-muted lg:size-20" />
         <div className="flex-1 space-y-2">
           <div className="h-3 w-3/4 rounded bg-muted" />
           <div className="h-3 w-1/2 rounded bg-muted" />
         </div>
       </div>
-      <div className="mt-3 min-h-[136px] border-t border-border pt-3">
+      <div className="mt-3 min-h-[136px] border-t border-border pt-3 lg:mt-0 lg:min-h-[124px] lg:border-l lg:border-t-0 lg:py-0 lg:pl-8">
         <div className="h-[18px] w-3/4 rounded bg-muted" />
         <div className="mt-2 h-6 w-40 rounded-full bg-muted" />
         <div className="mt-3 flex h-7 items-center justify-between">
@@ -214,7 +214,7 @@ function OrderCardSkeleton() {
         </div>
         <div className="mt-2 h-3.5 w-1/2 rounded bg-muted" />
       </div>
-      <div className="mt-3 flex items-center justify-between border-t border-border pt-3">
+      <div className="mt-3 flex items-center justify-between border-t border-border pt-3 lg:col-span-2 lg:mt-5">
         <div className="h-3 w-24 rounded bg-muted" />
         <div className="h-11 w-28 rounded-2xl bg-muted" />
       </div>

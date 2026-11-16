@@ -128,6 +128,7 @@ export function AddressFormView({ addressId, onBack }: AddressFormViewProps) {
           onSubmit={handleSubmit}
           onCancel={onBack}
           nomeDaConta={nomeDaConta}
+          cepCompacto
           cabecalho={(passos) => (
             <div className="mb-1">
               {/* Barra de 3 passos (redesenho "Tinta"): decorativa, o texto

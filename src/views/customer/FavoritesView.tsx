@@ -460,10 +460,14 @@ export const FavoritesView = React.memo(function FavoritesView({
         <header className="px-4 pb-4 pt-5 lg:px-0">
           <h1 className="text-3xl font-bold tracking-tight">Favoritos</h1>
         </header>
+        {/* No computador a página pronta tem, antes da primeira linha, o
+            subtítulo, os filtros por categoria e o título da seção (116 px):
+            a margem de cima (`lg:mt-[116px]`) reserva esse espaço e evita o
+            salto. As linhas ficam em 2 colunas, como na página pronta. */}
         <div
           role="status"
           aria-label="Carregando favoritos"
-          className="px-4 lg:px-0"
+          className="px-4 lg:mt-[116px] lg:grid lg:grid-cols-2 lg:gap-4 lg:px-0"
         >
           {Array.from({ length: 4 }).map((_, idx) => (
             <div

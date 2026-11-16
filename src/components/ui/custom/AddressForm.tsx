@@ -174,6 +174,12 @@ interface AddressFormProps {
    * é por aqui que a tela de fora acompanha. Opcional: o checkout não passa.
    */
   cabecalho?: (passos: PassosDoEndereco) => React.ReactNode;
+  /**
+   * No computador o campo CEP deixa de esticar a coluna inteira (632 px para 9
+   * caracteres). Só a tela de endereço da conta liga: a coluna do checkout já
+   * é estreita, e ele não passa isto. Abaixo de 1024 px não muda nada.
+   */
+  cepCompacto?: boolean;
 }
 
 // Apelidos que viram botão. O valor gravado é o MESMO texto que a pessoa
@@ -246,6 +252,7 @@ export function AddressForm({
   onCancel,
   nomeDaConta,
   cabecalho,
+  cepCompacto,
 }: Readonly<AddressFormProps>) {
   // `config` não decide mais a busca de CEP (vale para toda loja): a cobertura
   // de entrega decide para onde a loja entrega, nunca onde o cliente mora.
@@ -721,7 +728,7 @@ export function AddressForm({
             };
 
             return (
-              <div className="relative">
+              <div className={cn("relative", cepCompacto && "lg:max-w-xs")}>
                 <input
                   id="cep"
                   name="cep"
