@@ -482,7 +482,9 @@ export function useQuestions() {
             setError("Não conseguimos carregar as perguntas deste produto.");
         }
       } finally {
-        if (latestProductIdRef.current === productId) {
+        // A recarga do mesmo produto também cancela a consulta anterior.
+        // Só a consulta ainda ativa pode encerrar o carregamento.
+        if (!signal.aborted && latestProductIdRef.current === productId) {
           setLoading(false);
         }
       }
