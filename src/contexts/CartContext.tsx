@@ -645,10 +645,16 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       if (userIdAtualRef.current) return;
       if (isInitialLoad.current || syncLocked.current) return;
       if (haChaveDoPedidoVigente(null)) return;
-      const novo =
-        e.key === null || e.newValue === null
-          ? []
-          : carrinhoDoTextoSalvo(e.newValue);
+      // O evento pode ser anterior à última edição daqui: ele só avisa.
+      // Quem manda é o carrinho que continua salvo agora, não o retrato dele.
+      let novo: CartItem[] | null;
+      try {
+        const atual = localStorage.getItem(CART_STORAGE_KEY);
+        novo = atual === null ? [] : carrinhoDoTextoSalvo(atual);
+      } catch {
+        // Falha de leitura não significa carrinho vazio: preserva a memória.
+        return;
+      }
       if (!novo) return;
       if (JSON.stringify(novo) === JSON.stringify(cartRef.current)) return;
       setCart(novo);
