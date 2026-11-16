@@ -1,4 +1,12 @@
 {
+  "1.5.199": {
+    "titulo": "Recuperação automática ajustada",
+    "novidades": [],
+    "correcoes": [
+      "Corrigimos tentativas automáticas de recuperação que podiam se repetir após a troca de versão."
+    ],
+    "melhorias": []
+  },
   "1.5.198": {
     "titulo": "Altura da situação do pagamento ajustada no computador",
     "novidades": [],
