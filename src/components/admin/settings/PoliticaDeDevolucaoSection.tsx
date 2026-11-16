@@ -462,7 +462,7 @@ export function PoliticaDeDevolucaoSection({
   return (
     <fieldset
       disabled={salvando}
-      className="min-w-0 space-y-7"
+      className="min-w-0 space-y-7 lg:max-w-3xl"
       data-testid="politica-devolucao"
     >
       <p className="text-[11px] leading-relaxed text-zinc-400">

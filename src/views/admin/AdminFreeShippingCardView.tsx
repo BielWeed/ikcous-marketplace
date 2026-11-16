@@ -124,7 +124,7 @@ export function AdminFreeShippingCardView({
   }
 
   return (
-    <div className="pb-admin mx-auto max-w-lg space-y-4 px-4 pt-4 text-zinc-50 xl:max-w-4xl">
+    <div className="pb-admin mx-auto max-w-lg space-y-4 px-4 pt-4 text-zinc-50 xl:max-w-4xl 2xl:max-w-6xl">
       <header>
         <h1 className="text-[22px] font-bold leading-7">
           Card de frete grátis
@@ -196,7 +196,7 @@ export function AdminFreeShippingCardView({
           !dirty
         }
         onClick={() => void salvar()}
-        className="h-[52px] w-full rounded-full bg-zinc-50 font-bold text-zinc-950 hover:bg-zinc-200"
+        className="h-[52px] w-full rounded-full bg-zinc-50 font-bold text-zinc-950 hover:bg-zinc-200 2xl:ml-auto 2xl:flex 2xl:w-72"
       >
         <Truck aria-hidden="true" className="size-4" />
         {salvando ? "Salvando…" : "Salvar"}

@@ -78,6 +78,13 @@ html.splash-shown #silent-guardian-loader {
   display: none !important;
 }
 
+/* Cartaz (hospedagem/cartaz.ts): so < 1024 px; !important vence o style dele. */
+@media (min-width: 1024px) {
+  #cartaz-da-loja {
+    display: none !important;
+  }
+}
+
 /* Fluid Mesh Gradient Aura */
 .aura-mesh {
   position: absolute;

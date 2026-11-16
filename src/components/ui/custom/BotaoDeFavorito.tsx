@@ -46,7 +46,7 @@ export function BotaoDeFavorito({
       aria-label={rotulo}
       title={rotulo}
       className={cn(
-        "grid size-11 shrink-0 place-items-center rounded-full border border-zinc-200 bg-white shadow-sm outline-none transition-transform active:scale-90 focus-visible:ring-2 focus-visible:ring-zinc-950 focus-visible:ring-offset-2 dark:border-zinc-700 dark:bg-zinc-900 dark:focus-visible:ring-white",
+        "grid size-11 shrink-0 place-items-center rounded-full border border-zinc-200 bg-white shadow-sm outline-none transition-transform active:scale-90 focus-visible:ring-2 focus-visible:ring-zinc-950 focus-visible:ring-offset-2 dark:border-zinc-700 dark:bg-zinc-900 dark:focus-visible:ring-white lg:hover:bg-muted",
         // Marca neutra: o estado vem do PREENCHIMENTO do coração, não de cor.
         "text-zinc-950 dark:text-white",
         className,

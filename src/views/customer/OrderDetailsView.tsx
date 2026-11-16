@@ -808,7 +808,15 @@ export function OrderDetailsView({
     // 2. Revalida no servidor SEMPRE, uma vez por abertura. Antes, ter cache
     //    fazia a tela pular esta busca e nunca mais conferir o status do
     //    pedido com o banco.
-    const doServidor = await fetchUserOrders();
+    //
+    //    `aguardarSubstituta`: se esta busca for CANCELADA por outra (a recarga
+    //    ao voltar ao app), o `[]` dela não prova que o pedido não existe. Com
+    //    a opção o hook devolve o que a busca substituta trouxer, e a tela
+    //    segue em "Sincronizando" até lá -- "Pedido não encontrado" só vem de
+    //    uma resposta que de fato chegou sem este pedido.
+    const doServidor = await fetchUserOrders(false, {
+      aguardarSubstituta: true,
+    });
     let encontrado = doServidor.find((o) => o.id === orderId);
 
     // 3. Convidado que rastreou pedido por OTP não tem linha em
@@ -1354,7 +1362,7 @@ export function OrderDetailsView({
   return (
     <div className="pb-customer min-h-full bg-zinc-50/50">
       {/* Cabeçalho */}
-      <div className="px-6 pb-2 pt-6">
+      <div className="px-6 pb-2 pt-6 lg:px-0">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-xs font-semibold text-zinc-500">Meu pedido</p>
@@ -1438,7 +1446,7 @@ export function OrderDetailsView({
         </div>
       </div>
 
-      <div className="mx-auto max-w-2xl space-y-4 px-6 py-4 lg:grid lg:max-w-none lg:grid-cols-2 lg:items-start lg:gap-6 lg:space-y-0">
+      <div className="mx-auto max-w-2xl space-y-4 px-6 py-4 lg:grid lg:max-w-none lg:grid-cols-2 lg:items-start lg:gap-6 lg:space-y-0 lg:px-0">
         {/* Pedido achado pelo rastreio sem conta: o status é o RETRATO de quando
             a pessoa consultou e não atualiza sozinho. Diz de que hora é e leva
             de volta ao rastreio por código, que apaga o retrato. */}

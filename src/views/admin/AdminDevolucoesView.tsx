@@ -306,7 +306,7 @@ export function AdminDevolucoesView({
           })}
         </div>
 
-        <div inert={janela} className="group relative">
+        <div inert={janela} className="group relative lg:max-w-xl">
           <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
             {digitando ? (
               <Loader2 className="size-4 animate-spin text-admin-gold" />

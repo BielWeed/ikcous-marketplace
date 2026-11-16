@@ -1,4 +1,17 @@
 {
+  "1.5.194": {
+    "titulo": "Painel mais bem encaixado em telas grandes e pedidos mais firmes no computador",
+    "novidades": [],
+    "correcoes": [
+      "Loja, pedido: ao sair do aplicativo e voltar com o detalhe do pedido aberto, a tela espera a busca nova em vez de mostrar \"Pedido não encontrado\" por engano.",
+      "Loja, no computador: \"Meus pedidos\" e o detalhe do pedido ficam alinhados com o cabeçalho da loja.",
+      "Loja, no computador: a foto de abertura deixa de aparecer num lugar e pular para outro quando a loja termina de abrir.",
+      "Loja, no computador: o coração, o botão de compartilhar e as setas dos produtos reagem ao passar o mouse, e os ícones do cabeçalho mostram a dica com o nome.",
+      "Painel, em telas largas: o botão \"Salvar cupom\" deixa de ocupar a linha toda, \"Quem pode usar\" fica em três colunas a partir de 1280 px, e as regras de devolução, a busca de devoluções, o botão \"Avançar\" e a ficha do cliente usam melhor a largura da tela.",
+      "Painel, Frete grátis e Cor do app: em telas muito largas, o botão Salvar fica com tamanho normal, encostado à direita."
+    ],
+    "melhorias": []
+  },
   "1.5.193": {
     "titulo": "Novo banner no computador e telas da loja e do painel mais bem encaixadas",
     "novidades": [

@@ -629,7 +629,7 @@ function OrderActionBar({
           <Button
             onClick={() => onAdvance(orderId, nextStatus)}
             disabled={isOffline || isUpdatingStatus}
-            className="flex h-11 min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-normal rounded-xl bg-foreground px-2.5 text-sm font-semibold leading-tight text-background transition-colors hover:opacity-90 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+            className="flex h-11 min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-normal rounded-xl bg-foreground px-2.5 text-sm font-semibold leading-tight text-background transition-colors hover:opacity-90 active:scale-95 disabled:pointer-events-none disabled:opacity-40 lg:ml-auto lg:min-w-72 lg:flex-none lg:px-8"
           >
             {isUpdatingStatus ? (
               <>

@@ -185,7 +185,10 @@ export function QuemPodeUsarOCupom({
         <Selo icone={Users} matiz="#73BFFF" />
         Quem pode usar
       </legend>
-      <GrupoDeOpcoes aria-label="Quem pode usar" className="space-y-3">
+      <GrupoDeOpcoes
+        aria-label="Quem pode usar"
+        className="space-y-3 xl:grid xl:grid-cols-3 xl:gap-3 xl:space-y-0"
+      >
         {OPCOES.map(({ valor, titulo, explicacao, Icone, matiz }) => {
           const marcado = alcance === valor;
           return (
