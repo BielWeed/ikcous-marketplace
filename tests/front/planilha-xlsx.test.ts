@@ -257,6 +257,33 @@ describe("XLSX mínimo, sem biblioteca e sem compressão", () => {
     expect(doc.querySelector('c[r="A2"]')?.getAttribute("t")).toBe("inlineStr");
   });
 
+  // ST_Xstring: o Excel decodifica _xHHHH_ dentro de <t>. O DOMParser não faz isso, então lê-se o XML bruto.
+  describe("texto que parece _xHHHH_ (ST_Xstring)", () => {
+    const textoBruto = (texto: string) => {
+      const xml = Buffer.from(gerarXlsx([["Nome"], [texto]])).toString("utf8");
+      return /<c r="A2"[^>]*><is><t[^>]*>(.*?)<\/t><\/is><\/c>/s.exec(xml)?.[1];
+    };
+
+    it("protege o sublinhado que abriria uma sequência _xHHHH_", () => {
+      expect(textoBruto("Kit _x0041_")).toBe("Kit _x005F_x0041_");
+    });
+
+    it("protege a sequência já escapada, sem sobrepor: _x005F_x0041_ vira três escapes", () => {
+      expect(textoBruto("a_x005F_x0041_")).toBe("a_x005F_x005F_x005F_x0041_");
+    });
+
+    it("protege também hexadecimal em minúsculas e dentro de outros textos", () => {
+      expect(textoBruto("SKU_x00ab_9")).toBe("SKU_x005F_x00ab_9");
+    });
+
+    it("controle: sublinhado comum e texto sem o padrão ficam como antes", () => {
+      expect(textoBruto("Kit A_B")).toBe("Kit A_B");
+      expect(textoBruto("_x41_ e _xZZZZ_ e x0041_")).toBe(
+        "_x41_ e _xZZZZ_ e x0041_",
+      );
+    });
+  });
+
   it("mantém número, moeda em duas casas, fração percentual e texto sem fórmula", () => {
     const partes = abrir(
       gerarXlsx(

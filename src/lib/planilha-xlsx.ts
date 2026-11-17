@@ -223,7 +223,13 @@ export function gerarXlsx(
               return `<c ${atributos()}><v>${serial}</v></c>`;
             estilo = ESTILO_TEXTO_SEM_QUEBRA;
           }
-          return `<c ${atributos()} t="inlineStr"><is><t xml:space="preserve">${escapar(valor)}</t></is></c>`;
+          // ST_Xstring: o Excel lê _xHHHH_ dentro de <t> como caractere ("Kit _x0041_" viraria "Kit A").
+          // Escapar o sublinhado inicial (_x005F_) devolve o texto literal, numa passagem só.
+          const texto = escapar(valor).replace(
+            /_(?=x[0-9A-Fa-f]{4}_)/g,
+            "_x005F_",
+          );
+          return `<c ${atributos()} t="inlineStr"><is><t xml:space="preserve">${texto}</t></is></c>`;
         })
         .join("");
       return `<row r="${r + 1}"${r === 0 ? ' ht="30" customHeight="1"' : ""}>${celulas}</row>`;
