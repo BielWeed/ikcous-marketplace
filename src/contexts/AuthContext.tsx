@@ -45,6 +45,7 @@ import {
   MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA,
 } from "@/lib/mensagens-auth";
 import { esquecerTodosOsPedidosPendentesDoCheckout } from "@/lib/pedido-pendente-do-checkout";
+import { limparPedidoSemResposta } from "@/lib/pedido-sem-resposta";
 import {
   aguardarComPrazo,
   ehConsultaSemResposta,
@@ -329,6 +330,7 @@ function clearLocalUserData() {
   // sessão de quem saiu: só caía no sucesso da compra, e a próxima pessoa da
   // aba lia o que a anterior digitou. `sessionStorageSeguro` nunca lança.
   limparRascunhoDoCheckout(sessionStorageSeguro());
+  limparPedidoSemResposta();
   esquecerRastreioDeConvidado();
   esquecerDadosLocaisDaConta();
 }

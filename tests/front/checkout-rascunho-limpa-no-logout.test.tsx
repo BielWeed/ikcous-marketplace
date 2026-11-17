@@ -14,6 +14,10 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  guardarPedidoSemResposta,
+  lerPedidoSemResposta,
+} from "@/lib/pedido-sem-resposta";
+import {
   lerRascunhoDoCheckout,
   rascunhoVazio,
   salvarRascunhoDoCheckout,
@@ -21,6 +25,7 @@ import {
 
 const CHAVE_DO_RASCUNHO = "ikcous-rascunho-do-checkout-v1";
 const CHAVE_DO_TEMA = "theme";
+const CHAVE_DO_PEDIDO_SEM_RESPOSTA = "ikcous-pedido-sem-resposta-v1";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
@@ -152,6 +157,24 @@ describe("rascunho do checkout — limpo no logout", () => {
       notas: "deixar com o porteiro",
       contaDosDados: "user-a",
     });
+    guardarPedidoSemResposta({
+      orderData: {
+        idempotencyKey: "compra-convidado-teste",
+        items: [],
+        customer: { name: "Cliente Teste" },
+        addressData: { street: "Rua de Teste", number: "10" },
+      },
+      ehOnline: false,
+      metodoOnline: "pix",
+      itens: [],
+      valor: 200,
+      cpfParaRpc: undefined,
+      contaEsperada: null,
+      semConta: true,
+    });
+    expect(lerPedidoSemResposta()?.orderData.customer).toEqual({
+      name: "Cliente Teste",
+    });
     globalThis.localStorage.setItem(CHAVE_DO_TEMA, "dark");
     expect(lerRascunhoDoCheckout(globalThis.sessionStorage)?.nome).toBe(
       "Cliente Teste",
@@ -212,6 +235,9 @@ describe("rascunho do checkout — limpo no logout", () => {
     });
 
     expect(globalThis.sessionStorage.getItem(CHAVE_DO_RASCUNHO)).toBeNull();
+    expect(
+      globalThis.sessionStorage.getItem(CHAVE_DO_PEDIDO_SEM_RESPOSTA),
+    ).toBeNull();
     expect(globalThis.localStorage.getItem(CHAVE_DO_TEMA)).toBe("dark");
   });
 
@@ -230,6 +256,9 @@ describe("rascunho do checkout — limpo no logout", () => {
     });
 
     expect(globalThis.sessionStorage.getItem(CHAVE_DO_RASCUNHO)).toBeNull();
+    expect(
+      globalThis.sessionStorage.getItem(CHAVE_DO_PEDIDO_SEM_RESPOSTA),
+    ).toBeNull();
     expect(globalThis.localStorage.getItem(CHAVE_DO_TEMA)).toBe("dark");
   });
 });
