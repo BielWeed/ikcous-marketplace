@@ -28,7 +28,9 @@ const h = vi.hoisted(() => {
   };
   const aprovarReview = vi.fn(async (..._a: unknown[]) => {});
   const addMerchantReply = vi.fn(async (..._a: unknown[]) => true);
-  const deleteReview = vi.fn(async (..._a: unknown[]) => true);
+  const deleteReview = vi.fn(
+    async (..._a: unknown[]): Promise<boolean | null> => true,
+  );
   const updateConfig = vi.fn(async (..._a: unknown[]) => true);
   const getAllReviews = vi.fn(async (..._a: unknown[]) => ({
     total: estado.adminReviews.length,
@@ -306,6 +308,40 @@ describe("AdminReviewsView — redesenho", () => {
         '[aria-label="Excluir avaliação de Isadora Bernardes"]',
       ),
     ).toBeNull();
+  });
+
+  // Avaliação que já tinha sumido (exclusão devolve null): a lista recarrega sem
+  // ela, o botão Excluir some e o foco caía no corpo da página.
+  it("avaliação já ausente devolve o foco ao título da lista, não ao corpo da página", async () => {
+    h.deleteReview.mockImplementationOnce(async () => {
+      h.estado.adminReviews = h.estado.adminReviews.filter(
+        (r) => r.id !== PUBLICADA.id,
+      );
+      return null;
+    });
+    await montar();
+    await tocar(
+      hospedeiro.querySelector<HTMLButtonElement>(
+        '[title="Excluir avaliação"]',
+      )!,
+    );
+    await tocar(botaoPorTexto("Excluir"));
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement?.textContent).toBe("Lista de avaliações");
+  });
+
+  it("controle: exclusão que falha de verdade mantém o foco no botão Excluir da avaliação", async () => {
+    h.deleteReview.mockImplementationOnce(async () => false);
+    await montar();
+    await tocar(
+      hospedeiro.querySelector<HTMLButtonElement>(
+        '[title="Excluir avaliação"]',
+      )!,
+    );
+    await tocar(botaoPorTexto("Excluir"));
+    expect(document.activeElement?.getAttribute("aria-label")).toBe(
+      "Excluir avaliação de Isadora Bernardes",
+    );
   });
 
   it("r66 ver mais abre só o cartão longo, inclusive a resposta, e ver menos recolhe", async () => {
