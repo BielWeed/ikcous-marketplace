@@ -227,6 +227,46 @@ describe("ProductView — a quantidade acompanha o estoque da variação", () =>
     expect(await quantidadeQueVaiAoCarrinho()).toBe(1);
   });
 
+  it.each([1, 3])(
+    "o mais da página respeita a combinação com estoque %i, mesmo com 10 no produto",
+    async (estoque) => {
+      await montar({
+        ...produtoCom([
+          cor("v-azul", "Azul", 10),
+          tamanho("v-p", "P", estoque),
+          tamanho("v-m", "M", 5),
+        ]),
+        stock: 10,
+      });
+      await tocar(opcao("Azul"));
+      await tocar(opcao("P"));
+
+      const mais = hospedeiro.querySelector<HTMLButtonElement>(
+        "button[aria-label='Aumentar quantidade']",
+      );
+      expect(mais).toBeTruthy();
+      const seletor = mais?.closest("[role='group']");
+      function quantidadeExibida() {
+        // AnimatePresence mantém números de saída no DOM: o último é o atual.
+        return seletor?.querySelector("[aria-live='polite']")?.lastElementChild
+          ?.textContent;
+      }
+
+      expect(quantidadeExibida()).toBe("1");
+      for (let quantidade = 2; quantidade <= estoque; quantidade++) {
+        expect(mais?.disabled).toBe(false);
+        await tocar(mais);
+        expect(quantidadeExibida()).toBe(String(quantidade));
+      }
+      // Insistir no mais da PÁGINA, sem abrir a folha da barra fixa.
+      await aumentar(2);
+      expect(quantidadeExibida()).toBe(String(estoque));
+      expect(mais?.disabled).toBe(true);
+      expect(await quantidadeQueVaiAoCarrinho()).toBe(estoque);
+      expect(adicionarAoCarrinho.mock.calls[0][1]).toBe("v-azul~v-p");
+    },
+  );
+
   it("trocar para uma variação com estoque de sobra NÃO mexe na quantidade nem avisa", async () => {
     await montar(
       produtoCom([cor("v-verm", "Vermelho", 10), cor("v-azul", "Azul", 8)]),
