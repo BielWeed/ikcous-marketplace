@@ -130,6 +130,8 @@ no preview por loja antes de promover.
 
 ## 6.1 GATE MATERIAL: conclusão da migração do banco (partes f/h/i/j) — PRÉ-REQUISITO de qualquer publicação financeira na loja viva
 
+> Histórico de 09/2026 — o destino atual do webhook está em [producao-unica-fonte.md](producao-unica-fonte.md#edge-functions-por-loja); `dekxab…` é o projeto antigo.
+
 Auditoria de 29/09 (somente leitura, evidências no comentário da PR): o front de
 produção JÁ aponta para o projeto novo (`dekxabvqdsuukijblazl` — bundle público);
 o projeto antigo (`cafkrminfnokvgjqtkle`) está **INACTIVE**; o token Supabase da

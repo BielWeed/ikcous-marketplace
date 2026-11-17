@@ -243,15 +243,17 @@ sandbox, em vez de silenciosamente comparar o código com o banco errado.
 
 **O que o workflow faz**, arquivo por arquivo
 ([`.github/workflows/aplicar-migrations.yml`](../../.github/workflows/aplicar-migrations.yml)):
-1. Recusa nome fora do padrão `^[0-9]{14}_[a-z0-9_-]+\.sql$`. Por isso ele não aceita os
-   `rollback-manual-*`.
+1. Aceita nomes de migrations e `rollback-manual-<14 dígitos>_<nome>.sql`, mas recusa
+   misturar os dois tipos na mesma execução.
 2. Roda a **prova** `BEGIN; <arquivo>; ROLLBACK;`.
 3. Faz o **apply**.
 
-Ele para na primeira falha, e os arquivos já aplicados **ficam** aplicados. As 4 migrations são
-idempotentes: `IF NOT EXISTS`, `CREATE OR REPLACE` e `ON CONFLICT DO NOTHING`. A dupla aplicação
-é provada no CI ("Migrations do zero"). Por isso, depois de entender o erro, dá para repetir a
-mesma lista inteira.
+Ele para na primeira falha, e os arquivos já aplicados **ficam** aplicados. Antes de tentar
+novamente, confira no ledger (registro de versões aplicadas) quais foram concluídos, inclusive
+se houve falha de rede e o resultado ficou desconhecido. Depois de entender o erro, envie **só
+os arquivos das versões que faltam**, na ordem original. Qualquer versão já registrada faz o
+workflow recusar **a lista inteira**, sem aplicar nada. `permitir_reaplicar=true` é só para
+reaplicação deliberada, não para retomar uma aplicação parcial.
 
 **O que o workflow NÃO faz:**
 - **A verificação do fim não é destas migrations.** Ela confere só grants e colunas antigos: as
@@ -583,22 +585,30 @@ Não precisa mexer em banco.
    aplicada em produção em 26/09/2026 19:34) é INDEPENDENTE de 75–80** — não referencia nem
    depende de nenhum objeto que elas criam (só `get_orders_by_otp_v1` e o ACL de
    `get_orders_by_whatsapp_v3`) — então revertê-la, se precisar, não tem posição fixa nesta
-   fila; ver o aviso sobre reabrir o vazamento de LGPD antes de rodar o rollback dela. Execute
-   pelo `psql` com a string de conexão do projeto da loja. **Confira o host antes**, porque o
-   workflow não aceita `rollback-manual-*` e o `db-apply` gravaria o rollback no ledger.
+   fila; ver o aviso sobre reabrir o vazamento de LGPD antes de rodar o rollback dela.
 
-   ```bash
-   # 83, se aplicada — SEMPRE antes da 78 (ver acima):
-   psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261183000000_o_crm_ve_todo_mundo.sql
-   psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261180000000_cliente_nao_cancela_com_cartao_vivo.sql
-   # 79, se aplicada: arquivo e comando exatos no §7.5 (mesmo runbook)
-   # 81, se precisar reverter (LGPD — reabre o vazamento; ver acima): arquivo
-   # rollback-manual-20261181000000_pedido_por_whatsapp_fecha_para_anon.sql, independente da ordem abaixo
-   psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261178000000_o_crm_e_o_inicio_leem_a_loja.sql
-   psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261177000000_o_financeiro_da_loja_nasce.sql
-   psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261176000000_o_cartao_online_nasce.sql
-   psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261175000000_a_devolucao_nasce_no_pedido.sql
-   ```
+   Execute por **Actions → Aplicar migrations (Supabase) → Run workflow**, no branch do commit
+   conferido que contém os arquivos de desfazer. Em `projeto`, escolha a loja certa; para
+   `ikcous-publicada` ou `savy`, preencha também `expected_sha` com os 40 caracteres do commit
+   dessa execução. Em `migracoes`, informe o nome do arquivo de desfazer (sem a pasta), **um
+   por execução**, seguindo a ordem acima e esperando o resultado antes do próximo. Deixe
+   `permitir_reaplicar=false`: desfazer não precisa dessa liberação. Não misture migrations
+   e arquivos de desfazer na mesma execução.
+
+   O workflow prova com `BEGIN`/`ROLLBACK` e depois desfaz o banco e apaga a versão do ledger
+   **na mesma transação**. **Não substitua por `psql` direto**: os arquivos abaixo não limpam
+   esse registro sozinhos; ele continuaria dizendo que uma versão desfeita está aplicada.
+
+   Nomes para o campo `migracoes` (use só os necessários):
+   - 83, se aplicada, sempre antes da 78: `rollback-manual-20261183000000_o_crm_ve_todo_mundo.sql`.
+   - 80, se aplicada: `rollback-manual-20261180000000_cliente_nao_cancela_com_cartao_vivo.sql`.
+   - 79, se aplicada: arquivo e guardas no §7.5 deste runbook, pelo mesmo workflow.
+   - 81, se precisar (LGPD — reabre o vazamento; independente da fila):
+     `rollback-manual-20261181000000_pedido_por_whatsapp_fecha_para_anon.sql`.
+   - 78: `rollback-manual-20261178000000_o_crm_e_o_inicio_leem_a_loja.sql`.
+   - 77: `rollback-manual-20261177000000_o_financeiro_da_loja_nasce.sql`.
+   - 76: `rollback-manual-20261176000000_o_cartao_online_nasce.sql`.
+   - 75: `rollback-manual-20261175000000_a_devolucao_nasce_no_pedido.sql`.
 
 **Guardas que recusam a ordem errada** (um `DO` com `RAISE EXCEPTION`, antes de qualquer
 `DROP`) — 75, 76, 77 e 80 (a guarda da 79 é descrita no §7.5, não repetida aqui; a 81 não tem
@@ -1166,8 +1176,13 @@ scripts/db-apply.cjs <arquivo>` só vale local/dev, contra um `DATABASE_URL` que
 **Conferir** (SQL Editor, só leitura, ou `consulta = 7a-conferir-83` no workflow "Conferir banco da
 loja" — todas as linhas devem vir `ok = true`):
 
-```bash
-node scripts/publicacao/conferir-banco.cjs   # CONSULTA=7a-conferir-83 PROJETO=loja
+Para rodar localmente no PowerShell, `SUPABASE_ACCESS_TOKEN` precisa estar disponível no
+ambiente; não escreva seu valor neste roteiro nem em mensagens. Limpe `LEDGER`, se estiver
+definido, para não gravar registros em vez de consultar:
+
+```powershell
+Remove-Item Env:LEDGER -ErrorAction SilentlyContinue
+$env:CONSULTA = '7a-conferir-83'; $env:PROJETO = 'loja'; node scripts/publicacao/conferir-banco.cjs
 ```
 
 ou cole `scripts/publicacao/consultas/7a-conferir-83.sql` direto no SQL Editor: confere que
