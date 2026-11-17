@@ -1970,6 +1970,31 @@ BLOQUEIA com o nome dela. O cadastro de UMA vez, na entrada do cliente:
    `instalar-chave-da-loja.yml` (script `scripts/publicacao/instalar-chave-da-loja.cjs`). Hoje o
    script aceita so IKCOUS e Savy: para a loja nova, acrescente o alvo dela ali e no workflow (mesmas
    travas) antes de rodar.
+7. **Chaves de push (VAPID):** antes do teste de ponta a ponta, configure nas functions da loja
+   (Supabase → Secrets) `VAPID_PUBLIC_KEY` e `VAPID_PRIVATE_KEY`, sempre do MESMO par. O procedimento
+   de [DEPLOYMENT.md](../../DEPLOYMENT.md) usa `web-push generate-vapid-keys` e guarda o par em
+   `vapid_keys.json`: guarde-o em local seguro, fora do versionamento; nunca cole os valores em
+   documentacao, logs ou conversa. A publica tem de ser a mesma usada pelo front em
+   `VITE_VAPID_PUBLIC_KEY`; nao gere outro par se o front ja usa uma chave. As duas chaves precisam
+   estar no mesmo formato (base64url cru ou JWK). Configure tambem `VAPID_SUBJECT` com o contato
+   da loja (`mailto:...` ou `https://...`): o aviso ao lojista le essa variavel; sem ela usa um
+   contato de exemplo. Para conferir, entre como admin, permita os avisos no proprio aparelho e
+   envie uma campanha de teste so para o proprio usuario pela tela de push do painel: confira
+   `enviados`/`falharam` e VEJA o aviso chegar. No teste de pagamento, confira tambem o aviso ao
+   lojista. **Se esquecer as chaves, o aviso de pagamento ao lojista nao sai; o erro fica so no
+   log da function, sem erro visivel na compra.**
+8. **Remetente de e-mail do comprovante:** antes do teste de ponta a ponta, deixe pelo menos UMA
+   origem pronta: `SMTP_USER` e `SMTP_PASSWORD` nos Secrets das functions da loja, OU o Gmail da
+   loja cadastrado no painel (Ajustes → Minha loja → E-mail da loja). No painel, siga o passo a
+   passo da verificacao em duas etapas e da senha de app, salve e use **Enviar e-mail de teste**
+   ([roteiro do e-mail](email-da-loja-no-painel.md)); a chave de cifra do item 5 precisa existir.
+   O remetente do painel tem prioridade; o servidor e a alternativa. Nunca registre senha aqui.
+   Para conferir o fluxo real, peca o reenvio do comprovante de um pedido de teste pago e VEJA
+   o e-mail chegar na conta de teste (confira Spam; se remetente e destinatario forem o mesmo
+   Gmail, confira Enviados). O Inicio do painel avisa quando o envio de e-mails pela conta do
+   servidor esta falhando; a ausencia desse aviso NAO substitui conferir a entrega.
+   **Sem `SMTP_USER`/`SMTP_PASSWORD` E sem remetente cadastrado no painel, o comprovante do
+   pagamento nao e enviado; a compra segue sem erro visivel e a falha fica so no log.**
 
 ## Medicoes antes de escrever a migration (so leitura, nao e portao)
 
