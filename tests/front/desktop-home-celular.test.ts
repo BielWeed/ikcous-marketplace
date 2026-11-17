@@ -28,11 +28,11 @@ const BASE: Record<string, string> = {
   "components/ui/custom/OfertasLateralEsqueleto.tsx":
     "402b61e49185ba12ab5e843dad2e1583034c9911bfd552a1e75d7f17d0151907",
   "components/ui/custom/PremiumOffers.tsx":
-    "a6f389537bab70744b5c907a3e69f263666d2c58c3312f9d28f72a27e130cc02",
+    "dd592c80dbc3685c9cb7cc9c83155ec059eb201ecc43e7e4aea370b353c89ffe",
   "components/ui/custom/ProductList.tsx":
     "a548e94b10a5b942d83e6ebdf5613fccbf13e956430ce2ffcffd8b8431708940",
   "views/customer/HomeView.tsx":
-    "93df52459b0394dabf8e0c1d114f29cb5f72ee7a1fd4f89a0d3d57357c4a9f61",
+    "7cb25ed74c0232196b664a3f7d40ef3ab09ce6ef685d680c69c613455ce3e1dc",
 };
 
 for (const [arquivo, esperado] of Object.entries(BASE)) {

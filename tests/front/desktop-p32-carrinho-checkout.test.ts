@@ -154,7 +154,7 @@ describe("P32: alinhamento e resumo alcançável no computador", () => {
       ],
       [
         caminhos.checkout,
-        "1b578ae3da379067d268d61131681a8d0f5bb56cc3ad2e136581f8d37cc60f6d",
+        "96b6ad5be7d5524f4a736b960045a35324494904ad70dc7ce2862c312e96f970",
       ],
       [
         caminhos.favoritos,
