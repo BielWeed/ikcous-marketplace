@@ -747,6 +747,49 @@ prova(
   },
 );
 
+// (s3) A QUARTA sucessora de get_admin_customers_paged (20261403000000: a lista soma o balcao do mesmo WhatsApp, como o CRM): a 32a segue POSITIVA com ela no ar (o `vivo`
+// mostra o `esperado`) e a 32b a reprova como corpo novo. O corpo estranho por cima continua reprovando SO a linha do md5.
+const ARQ4030 =
+  "20261403000000_o_total_comprado_do_cliente_e_o_mesmo_no_crm_na_lista_e_na_ficha.sql";
+const MIG4030 = lerMig(ARQ4030);
+const sucessoras4030 = async (c) => {
+  await sucessoras3993(c);
+  await c.query(MIG4030);
+};
+prova(
+  "(s3) SUCESSORA 4030: com a 20261403000000 por cima da 3993, a 32a segue POSITIVA e mostra o esperado; a 32b reprova como corpo novo; 1 byte a mais reprova SO o md5",
+  async () => {
+    const h4030 = md5(corpoDe(MIG4030, "get_admin_customers_paged"));
+    assert.equal(h4030, "309bbd903420f146423c7cf0512b91b3");
+    assert.ok(SQL[A].includes(`'${h4030}'`));
+    assert.ok(!SQL[B].includes(h4030));
+    const s = await noEstado(sucessoras4030, [A, B]);
+    confereRol(A, s[A]);
+    confereRol(B, s[B]);
+    assert.deepEqual(reprovadas(s[A]), [], "32a positiva com a 4030 no ar");
+    assert.equal(s[A].find((l) => l.item === A_CLI_MD5).vivo, H.cliNovo);
+    assert.equal(s[A].find((l) => l.item === A_CRM_MD5).vivo, H.crmNovo);
+    assert.deepEqual(
+      reprovadas(s[B]),
+      [B_CLI_MD5, B_CLI_MARC, B_CRM_MD5, B_CRM_MARC].sort(),
+    );
+    const corpo = corpoDe(MIG4030, "get_admin_customers_paged");
+    const x = await noEstado(
+      async (c) => {
+        await sucessoras4030(c);
+        await c.query(FUNCOES.cli.cria(`${corpo} `, FUNCOES.cli.attrs));
+      },
+      [A],
+    );
+    assert.deepEqual(reprovadas(x[A]), [A_CLI_MD5]);
+    assert.equal(
+      x[A].find((l) => l.item === A_CLI_MD5).vivo,
+      md5(`${corpo} `),
+      "o vivo mostra o md5 do corpo estranho",
+    );
+  },
+);
+
 prova(
   "PORTAO: o veredito do conferir-banco.cjs sobre as linhas reais (rol=ok; ok_false 0 e 4)",
   async () => {

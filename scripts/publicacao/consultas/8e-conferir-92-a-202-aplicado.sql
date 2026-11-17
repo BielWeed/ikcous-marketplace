@@ -45,7 +45,9 @@
 --                                e, DEPOIS dela, 20261232000000 (a grade do CRM mede a recência do mesmo instante da lista);
 --   * `get_admin_customers_paged` → 20261230000000 (a busca de clientes acha pelo número do WhatsApp)
 --                                e, DEPOIS dela, 20261392000000 (a lista de clientes não repete ninguém entre as páginas)
---                                e, DEPOIS dela, 20261399993000 (a lista toma UM endereço principal por cliente: o pedido não conta em dobro);
+--                                e, DEPOIS dela, 20261399993000 (a lista toma UM endereço principal por cliente: o pedido não conta em dobro)
+--                                e, DEPOIS dela, 20261403000000 (a lista soma o balcão do mesmo WhatsApp, como o CRM);
+--   * `get_admin_user_detail`   → 20261403000000 (a ficha ganha o campo balcao_mesmo_whatsapp; o total comprado é o mesmo do CRM);
 --   * `get_admin_orders_paged`  → 20261387000000 (a busca de pedido pelo número não vira busca de telefone)
 --                                e, DEPOIS dela, 20261399900000 (a busca de Pedidos acha o telefone colado com o +55)
 --                                e, DEPOIS dela, 20261399980000 (as listas do painel desempatam por id);
@@ -178,6 +180,8 @@ WITH corpos AS (
     ('crm_clientes', '9c4268178a50729b5f7b256b77882585', '20261231000000'),
     ('get_admin_customers_paged', '1c71829d75e3d8f17bf7fb01019c05ec', '20261392000000'),
     ('get_admin_customers_paged', '35212d373895b2a9ede613198fc4c794', '20261399993000'),
+    ('get_admin_customers_paged', '309bbd903420f146423c7cf0512b91b3', '20261403000000'),
+    ('get_admin_user_detail', 'e7977d4d60b6114bb8247097b8ae3d4b', '20261403000000'),
     ('crm_clientes', '39a2a6de59041e09b6f1e466a6782dca', '20261392100000'),
     ('crm_visao', '0dfda3ea5129c6f8aabfcf0052fd2936', '20261232000000'),
     ('get_admin_analytics_v2', '05eac70f6bd4360c1f71fd373747ad0e', '20261234000000'),

@@ -1,7 +1,8 @@
 "use strict";
 /* eslint-disable security/detect-non-literal-fs-filename -- Caminho literal de migration do repositório. */
 /**
- * A 20261399993000 sucede o get_admin_customers_paged da 20261392000000 (UM endereço principal por cliente) e troca também o
+ * A 20261403000000 sucede o get_admin_customers_paged da 20261399993000 (soma o balcão do mesmo WhatsApp, como o CRM) e troca também o
+ * get_admin_user_detail da 20261199000000. A 20261399993000 sucede o get_admin_customers_paged da 20261392000000 (UM endereço principal por cliente) e troca também o
  * crm__nunca_comprou. A 20261392000000 sucede o get_admin_customers_paged da 20261230000000 (só o desempate pelo id no ORDER BY) e a
  * 20261392100000 sucede o crm_clientes da 20261231000000 (só o corte do +55 nos dígitos da busca). O rollback da 230 e o
  * da 231 exigem o corpo DELAS: toda prova que desfaz ou mede a 230/231 isolada tem de desfazer estas PRIMEIRO, na
@@ -11,6 +12,14 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const BUSCA_DE_CLIENTES_POSTERIOR = Object.freeze([
+  // 20261403000000: a lista de clientes e a ficha somam o balcao do mesmo WhatsApp, como o CRM (get_admin_customers_paged e get_admin_user_detail; o mesmo arquivo
+  // troca as DUAS, e o rollback dela devolve as duas juntas). Sucede o corpo da 20261399993000: o rollback da 3993 recusa com este no ar.
+  Object.freeze({
+    nome: "20261403000000_o_total_comprado_do_cliente_e_o_mesmo_no_crm_na_lista_e_na_ficha.sql",
+    assinatura:
+      "public.get_admin_customers_paged(text,text,text,integer,integer)",
+    hashDesta: "309bbd903420f146423c7cf0512b91b3",
+  }),
   // 20261399993000: a lista de clientes toma UM endereco principal por cliente (get_admin_customers_paged; o mesmo arquivo troca tambem o
   // crm__nunca_comprou, que o rollback dela devolve junto). Sucede o corpo da 20261392000000: o rollback da 392 recusa com este no ar.
   Object.freeze({
@@ -59,7 +68,29 @@ async function desfazerBuscaDeClientesPosteriorNaTransacao(c) {
  * a prova da 20261392000000, que mede o corpo da 392 como TOPO: a 392 e a 3921 ficam. O rollback da 3993 devolve os DOIS corpos (get_admin_customers_paged e crm__nunca_comprou).
  */
 async function desfazerListaDeEnderecoPrincipalNaTransacao(c) {
-  const m = BUSCA_DE_CLIENTES_POSTERIOR[0];
+  // A 20261403000000 sucede a 3993 na mesma funcao: sai antes (o rollback da 3993 recusa com o corpo dela no ar).
+  await desfazerTotalDoClienteNaTransacao(c);
+  const m = BUSCA_DE_CLIENTES_POSTERIOR.find((x) =>
+    x.nome.startsWith("20261399993000_"),
+  );
+  const r = await c.query(
+    `SELECT COALESCE((SELECT md5(replace(prosrc, chr(13), '')) FROM pg_proc
+                       WHERE oid = to_regprocedure($1)) = $2, false) AS sim`,
+    [m.assinatura, m.hashDesta],
+  );
+  if (r.rows[0]?.sim !== true) return [];
+  await c.query(ler(`rollback-manual-${m.nome}`));
+  return [m.nome];
+}
+
+/**
+ * Desfaz SO a 20261403000000 (a mais nova: a lista de clientes e a ficha somam o balcao do mesmo WhatsApp, como o CRM), se o corpo dela estiver no ar. Para as
+ * provas da 20261399993000 e da 20261392000000, que medem o corpo delas como TOPO. O rollback devolve os DOIS corpos (get_admin_customers_paged e get_admin_user_detail).
+ */
+async function desfazerTotalDoClienteNaTransacao(c) {
+  const m = BUSCA_DE_CLIENTES_POSTERIOR.find((x) =>
+    x.nome.startsWith("20261403000000_"),
+  );
   const r = await c.query(
     `SELECT COALESCE((SELECT md5(replace(prosrc, chr(13), '')) FROM pg_proc
                        WHERE oid = to_regprocedure($1)) = $2, false) AS sim`,
@@ -72,6 +103,7 @@ async function desfazerListaDeEnderecoPrincipalNaTransacao(c) {
 
 module.exports = {
   BUSCA_DE_CLIENTES_POSTERIOR,
+  desfazerTotalDoClienteNaTransacao,
   desfazerBuscaDeClientesPosteriorNaTransacao,
   desfazerListaDeEnderecoPrincipalNaTransacao,
 };

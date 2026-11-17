@@ -3190,6 +3190,7 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "148a-conferir-o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-aplicado",
     "151a-conferir-o-banner-tem-imagem-propria-no-computador-aplicado",
     "154a-conferir-o-inicio-mostra-o-dinheiro-a-devolver-aplicado",
+    "155a-conferir-o-total-comprado-do-cliente-e-o-mesmo-no-crm-na-lista-e-na-ficha-aplicado",
   ]);
 });
 

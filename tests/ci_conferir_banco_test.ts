@@ -2452,6 +2452,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "35212d373895b2a9ede613198fc4c794",
           versao: "20261399993000",
         },
+        // 17/11/2026: o total comprado do cliente e o mesmo no CRM, na lista e na ficha (a lista soma o balcao do mesmo WhatsApp: 99 -> 230 -> 392 -> 3993 -> 4030; a ficha: 99 -> 4030).
+        {
+          fn: "get_admin_customers_paged",
+          h: "309bbd903420f146423c7cf0512b91b3",
+          versao: "20261403000000",
+        },
         // 22/10/2026: o aviso de cancelados antigos conta só pendência real (só o bloco do fora_da_janela muda).
         {
           fn: "get_admin_orders_cancelados_recentes",
@@ -2481,6 +2487,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           fn: "get_admin_orders_paged",
           h: "b404a8397a6490c86fb192d85fd5b6c9",
           versao: "20261399980000",
+        },
+        // 17/11/2026: a ficha do cliente mostra o balcao do mesmo WhatsApp em campo separado (99 -> 4030).
+        {
+          fn: "get_admin_user_detail",
+          h: "e7977d4d60b6114bb8247097b8ae3d4b",
+          versao: "20261403000000",
         },
         {
           fn: "painel_inicio",

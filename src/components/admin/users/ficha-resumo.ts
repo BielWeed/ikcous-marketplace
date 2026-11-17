@@ -74,7 +74,52 @@ import type { Order } from "@/types";
  *   cobrança confirmada faria a ficha dizer "última compra em março" sobre
  *   alguém que comprou ontem. Sem pedido que conta, é `null` — a view mostra
  *   "—" e não inventa data.
+ *
+ *   6. BALCÃO DO MESMO WHATSAPP (17/11/2026, migration 20261403000000).
+ *   O CRM atribui à conta as vendas de balcão (pedido SEM conta) feitas com o
+ *   mesmo WhatsApp: R$ 100 na conta + R$ 100 no balcão = 2 pedidos / R$ 200.
+ *   A lista de Clientes passou a somar a mesma coisa no servidor, e a ficha
+ *   recebe o balcão num campo SEPARADO (`balcao_mesmo_whatsapp`: pedidos e
+ *   total, já com a regra de identidade do CRM aplicada no servidor — a tela
+ *   nunca decide quem é a mesma pessoa). Aqui ele entra assim:
+ *     - total gasto = dinheiro da conta (regra 3) + total do balcão;
+ *     - pedidos feitos = pedidos da conta que contam (regra 1) + pedidos do balcão;
+ *     - valor médio = total gasto ÷ (pedidos pagos da conta + pedidos do balcão):
+ *       o balcão do CRM já é só venda paga, então entra nos dois lados;
+ *     - a ÚLTIMA COMPRA continua a da conta (o campo do balcão não traz data);
+ *     - a ABA de pedidos continua só com os pedidos da conta.
+ *   Servidor antigo (sem o campo), campo nulo, zero ou lixo: nada muda, a
+ *   ficha fica exatamente como era. A view mostra a divisão ("R$ 100 pela
+ *   conta + R$ 100 no balcão com o mesmo WhatsApp") só quando o balcão é > 0.
  */
+
+/** O balcão que o CRM atribui à conta (campo `balcao_mesmo_whatsapp` da ficha). */
+export interface BalcaoDoMesmoWhatsapp {
+  pedidos: number;
+  total: number;
+}
+
+const SEM_BALCAO: BalcaoDoMesmoWhatsapp = Object.freeze({
+  pedidos: 0,
+  total: 0,
+});
+
+/**
+ * Lê o campo `balcao_mesmo_whatsapp` do retorno de `get_admin_user_detail`.
+ * Ausente (servidor antigo), nulo, negativo, não numérico ou sem pedido: sem
+ * balcão — a ficha segue como era, nunca quebra e nunca inventa dinheiro.
+ */
+export function lerBalcaoDoMesmoWhatsapp(
+  valor: unknown,
+): BalcaoDoMesmoWhatsapp {
+  if (typeof valor !== "object" || valor === null) return SEM_BALCAO;
+  const bruto = valor as { pedidos?: unknown; total?: unknown };
+  const pedidos = Number(bruto.pedidos);
+  const total = Number(bruto.total);
+  if (!Number.isFinite(pedidos) || !Number.isFinite(total)) return SEM_BALCAO;
+  if (Math.trunc(pedidos) < 1 || total <= 0) return SEM_BALCAO;
+  return { pedidos: Math.trunc(pedidos), total };
+}
 
 /** Cobranças que significam dinheiro que entrou de verdade (regra 3). */
 const DINHEIRO_RECONHECIDO: readonly string[] = [
@@ -94,11 +139,21 @@ export interface ResumoFichaCliente {
   totalGasto: number;
   /** Total gasto ÷ pedidos pagos; 0 quando não há pedido pago (regra 4). */
   ticketMedio: number;
+  /** Dinheiro reconhecido SÓ da conta (regra 3), sem o balcão (regra 6). */
+  totalDaConta: number;
+  /** O balcão do mesmo WhatsApp que entrou no total (regra 6); 0 e 0 sem balcão. */
+  balcao: BalcaoDoMesmoWhatsapp;
+  /** Pedidos da conta que contam + pedidos do balcão (regras 1 e 6). */
+  totalDePedidos: number;
   /** Data do pedido que conta mais recente; null se nunca comprou (regra 5). */
   ultimaCompra: Date | null;
 }
 
-export function calcularResumoFicha(orders: Order[]): ResumoFichaCliente {
+export function calcularResumoFicha(
+  orders: Order[],
+  balcaoDoMesmoWhatsapp: BalcaoDoMesmoWhatsapp = SEM_BALCAO,
+): ResumoFichaCliente {
+  const balcao = lerBalcaoDoMesmoWhatsapp(balcaoDoMesmoWhatsapp);
   const pedidosQueContam = orders.filter(
     (o) => o.status !== "cancelled" && (o.status as string) !== "returned",
   );
@@ -107,10 +162,11 @@ export function calcularResumoFicha(orders: Order[]): ResumoFichaCliente {
     DINHEIRO_RECONHECIDO.includes(o.paymentStatus ?? ""),
   );
 
-  const totalGasto = pedidosPagos.reduce((sum, o) => sum + o.total, 0);
+  const totalDaConta = pedidosPagos.reduce((sum, o) => sum + o.total, 0);
+  const totalGasto = totalDaConta + balcao.total;
 
-  const ticketMedio =
-    pedidosPagos.length > 0 ? totalGasto / pedidosPagos.length : 0;
+  const pagosNoTotal = pedidosPagos.length + balcao.pedidos;
+  const ticketMedio = pagosNoTotal > 0 ? totalGasto / pagosNoTotal : 0;
 
   const ultimaCompra = pedidosQueContam.reduce<Date | null>(
     (maisRecente, o) => {
@@ -128,6 +184,9 @@ export function calcularResumoFicha(orders: Order[]): ResumoFichaCliente {
     pedidosDescartados: orders.length - pedidosQueContam.length,
     totalGasto,
     ticketMedio,
+    totalDaConta,
+    balcao,
+    totalDePedidos: pedidosQueContam.length + balcao.pedidos,
     ultimaCompra,
   };
 }

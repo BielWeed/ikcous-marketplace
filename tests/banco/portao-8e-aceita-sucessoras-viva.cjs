@@ -150,6 +150,11 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     // tests/banco/o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-viva.cjs; `noEstado` a desfaz antes (a-busca-de-clientes-posterior.cjs, o rollback dela devolve as duas).
     s.nome !==
       "20261399993000_o_crm_e_a_lista_de_clientes_nao_contam_a_mesma_pessoa_duas_vezes.sql" &&
+    // A 20261403000000 (o total comprado do cliente e o mesmo no CRM, na lista e na ficha) e a QUARTA sucessora de get_admin_customers_paged (99 -> 230 -> 392 -> 3993 -> 4030) e a PRIMEIRA de
+    // get_admin_user_detail (99 -> 4030): UMA migration, duas funcoes da 8e, com a PROVA PROPRIA em tests/banco/o-total-do-cliente-e-o-mesmo-nas-tres-telas-viva.cjs; `noEstado` a desfaz
+    // antes (a-busca-de-clientes-posterior.cjs, o rollback dela devolve as duas de uma vez), como faz com a 3993.
+    s.nome !==
+      "20261403000000_o_total_comprado_do_cliente_e_o_mesmo_no_crm_na_lista_e_na_ficha.sql" &&
     // A 20261394000000 (o pedido de visitante na entrega tem freio) so redefine a v23 e a v24, em cima da 350 e da 384; nenhuma das duas e' funcao
     // da 8e. Entra em sucessoras-da-99.cjs so para cair antes da 384 (pedido-pelo-app-exige-conta-posterior.cjs chama
     // o-pedido-de-visitante-na-entrega-posterior.cjs); aqui sai do rol pela mesma razao da 384 e da 350.

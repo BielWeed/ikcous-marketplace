@@ -3133,6 +3133,15 @@ const ROL_DA_145 = [
   "crm__nunca_comprou: uma so, atributos conhecidos (sql, STABLE, SECURITY INVOKER, search_path=public) e sem EXECUTE para PUBLIC, anon ou authenticated",
   "get_admin_customers_paged: uma so, atributos conhecidos (plpgsql, SECURITY DEFINER, VOLATILE, search_path=public, extensions) e EXECUTE so de authenticated e service_role (nem PUBLIC nem anon)",
 ];
+// Lote 155 (20261403000000, o total comprado do cliente e o mesmo no CRM, na lista e na ficha: o corpo de DUAS funcoes muda, nenhuma ACL, nenhuma tabela). A 155a prova o estado novo (o md5 exato dos
+// dois corpos e atributos/ACL conhecidos); a 155b prova a base vigente (o corpo da lista da 20261399993000 e o da ficha da 20261199000000). So catalogo: nenhuma le perfil, endereco, pedido ou cliente e nenhuma chama as funcoes.
+const ROL_DA_155 = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_admin_customers_paged: corpo exato (md5)",
+  "get_admin_user_detail: corpo exato (md5)",
+  "get_admin_customers_paged: uma so, atributos conhecidos (plpgsql, SECURITY DEFINER, VOLATILE, search_path=public, extensions) e EXECUTE so de authenticated e service_role (nem PUBLIC nem anon)",
+  "get_admin_user_detail: uma so, atributos conhecidos (plpgsql, SECURITY DEFINER, VOLATILE, search_path=public) e EXECUTE so de authenticated e service_role (nem PUBLIC nem anon)",
+];
 // Lote 146 (20261399994000, o item "Nao veio" fica com a cliente no ranking de lucro: get_admin_analytics_v2 redefinida pela segunda vez, sem objeto novo). A 146a e a 146b tem o MESMO rol de 4 linhas
 // da 135 (controle, corpo exato (md5), atributos e ACL); a 146a espera o corpo desta migration e a 146b o vigente de antes (o da 20261399970000). So catalogo: nenhuma le pedido, devolucao ou estorno e nenhuma chama a funcao.
 const ROL_DA_146 = [...ROL_DA_135];
@@ -3192,6 +3201,10 @@ const ROL_DA_154 = [
 const ROL_FECHADO_POR_CONSULTA = {
   "154a-conferir-o-inicio-mostra-o-dinheiro-a-devolver-aplicado": ROL_DA_154,
   "154b-antes-o-inicio-mostra-o-dinheiro-a-devolver-base-vigente": ROL_DA_154,
+  "155a-conferir-o-total-comprado-do-cliente-e-o-mesmo-no-crm-na-lista-e-na-ficha-aplicado":
+    ROL_DA_155,
+  "155b-antes-o-total-comprado-do-cliente-e-o-mesmo-no-crm-na-lista-e-na-ficha-base-vigente":
+    ROL_DA_155,
   "151a-conferir-o-banner-tem-imagem-propria-no-computador-aplicado": [
     ...ROL_DA_151_BASE,
     "banners: desktop_image_url text opcional, sem default nem privilegio proprio",

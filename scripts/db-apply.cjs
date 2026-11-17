@@ -428,6 +428,53 @@ const VERIFICACOES = {
         ],
       },
     ],
+  // 20261403000000: o total comprado do cliente e o mesmo no CRM, na lista e na ficha. DUAS funcoes, uma checagem cada. get_admin_customers_paged ganha SO a CTE balcao_da_conta (le crm__vendas(now()), so o pedido SEM conta),
+  // o LEFT JOIN dela e a soma em orders_count e total_spent (o GROUP BY ganha as duas colunas); get_admin_user_detail ganha SO a variavel v_balcao, o passo 5 e a chave balcao_mesmo_whatsapp. As travas de admin, a busca,
+  // o ORDER BY e a lista de pedidos da ficha seguem como estavam. A consulta 155a confere o corpo exato (md5), os atributos e a ACL das duas.
+  "20261403000000_o_total_comprado_do_cliente_e_o_mesmo_no_crm_na_lista_e_na_ficha.sql":
+    [
+      {
+        funcao: "get_admin_customers_paged",
+        esperado: [
+          { texto: "WITH balcao_da_conta AS MATERIALIZED (", vezes: 1 },
+          { texto: "FROM public.crm__vendas(now()) v", vezes: 1 },
+          { texto: "AND bo.user_id IS NULL", vezes: 1 },
+          {
+            texto: "LEFT JOIN balcao_da_conta bal ON bal.user_id = p.id",
+            vezes: 1,
+          },
+          {
+            texto: "COUNT(o.id) + COALESCE(bal.pedidos, 0) as orders_count",
+            vezes: 1,
+          },
+          {
+            texto: "), 0) + COALESCE(bal.total, 0) as total_spent",
+            vezes: 1,
+          },
+          {
+            texto:
+              "GROUP BY p.id, u.email, u.phone, p.whatsapp, addr.city, addr.state, bal.pedidos, bal.total",
+            vezes: 1,
+          },
+          { texto: "END DESC,", vezes: 3 },
+          { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+          { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        ],
+      },
+      {
+        funcao: "get_admin_user_detail",
+        esperado: [
+          { texto: "v_balcao JSONB;", vezes: 1 },
+          { texto: "FROM public.crm__vendas(now()) v", vezes: 1 },
+          { texto: "AND bo.user_id IS NULL", vezes: 1 },
+          { texto: "WHERE v.user_id = p_user_id;", vezes: 1 },
+          { texto: "'balcao_mesmo_whatsapp', v_balcao", vezes: 1 },
+          { texto: "WHERE mo.user_id = p_user_id", vezes: 1 },
+          { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+          { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        ],
+      },
+    ],
   // 20261386: o preco do produto deixa historico. A tabela, a politica, o ACL e o gatilho nao sao conferiveis aqui (so corpo de funcao): a
   // consulta 91a e a prova viva fazem isso. Aqui: a funcao do gatilho grava 'cadastro' no INSERT e 'mudanca' so quando o preco muda.
   "20261386000000_o_preco_do_produto_deixa_historico.sql": {

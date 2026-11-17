@@ -894,6 +894,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261402000000: o Inicio mostra o dinheiro a devolver e a margem do Financeiro (painel_inicio ganha dinheiro_a_devolver {valor, pedidos} e mes.receita_liquida; a conta da lista "Devolver agora" em
     // centavos, cenarios compartilhados com o teste do front, JSON igual fora das duas chaves, 10 mutantes na rodada padrao, controle com o corpo anterior, rollback byte a byte, pre-voo, conferencia sabotada e consultas 154a/154b).
     "tests/banco/o-inicio-dinheiro-a-devolver-viva.cjs",
+    // 20261403000000: o total comprado do cliente e o mesmo no CRM, na lista e na ficha (get_admin_customers_paged soma o balcao do mesmo WhatsApp e get_admin_user_detail ganha balcao_mesmo_whatsapp, ambos lidos de crm__vendas;
+    // com e sem o 55, balcao cancelado e sem pagar fora, WhatsApp em duas contas conta uma vez, ordenacao estavel, controle com os corpos antigos, 13 mutantes, rollback byte a byte, conexao sem BEGIN, pre/pos-voo e consultas 155a/155b).
+    "tests/banco/o-total-do-cliente-e-o-mesmo-nas-tres-telas-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(

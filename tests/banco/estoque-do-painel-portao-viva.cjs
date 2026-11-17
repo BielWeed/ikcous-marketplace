@@ -1457,6 +1457,16 @@ async function main() {
         "20261402000000_o_inicio_mostra_o_dinheiro_a_devolver_e_a_margem_do_financeiro.sql",
         "public.painel_inicio()",
       ],
+      // A 20261403000000 (o total comprado do cliente e o mesmo no CRM, na lista e na ficha): UMA migration, DUAS entradas (get_admin_customers_paged sobre o corpo da 3993 e get_admin_user_detail
+      // sobre o da 99), funcoes de fora destas tres, o mesmo caso da 3993 acima. O rollback dela devolve os dois corpos de uma vez (o molde, abaixo, desfaz e mede; a segunda entrada ja o encontra devolvido).
+      [
+        "20261403000000_o_total_comprado_do_cliente_e_o_mesmo_no_crm_na_lista_e_na_ficha.sql",
+        "public.get_admin_customers_paged(text,text,text,integer,integer)",
+      ],
+      [
+        "20261403000000_o_total_comprado_do_cliente_e_o_mesmo_no_crm_na_lista_e_na_ficha.sql",
+        "public.get_admin_user_detail(uuid)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

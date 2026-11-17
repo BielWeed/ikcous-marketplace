@@ -287,6 +287,8 @@ on:
       - "scripts/publicacao/consultas/148b-antes-o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-base-vigente.sql"
       - "scripts/publicacao/consultas/145a-conferir-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-aplicado.sql"
       - "scripts/publicacao/consultas/145b-antes-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-base-vigente.sql"
+      - "scripts/publicacao/consultas/155a-conferir-o-total-comprado-do-cliente-e-o-mesmo-no-crm-na-lista-e-na-ficha-aplicado.sql"
+      - "scripts/publicacao/consultas/155b-antes-o-total-comprado-do-cliente-e-o-mesmo-no-crm-na-lista-e-na-ficha-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -547,6 +549,8 @@ on:
       - "scripts/publicacao/consultas/148b-antes-o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-base-vigente.sql"
       - "scripts/publicacao/consultas/145a-conferir-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-aplicado.sql"
       - "scripts/publicacao/consultas/145b-antes-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-base-vigente.sql"
+      - "scripts/publicacao/consultas/155a-conferir-o-total-comprado-do-cliente-e-o-mesmo-no-crm-na-lista-e-na-ficha-aplicado.sql"
+      - "scripts/publicacao/consultas/155b-antes-o-total-comprado-do-cliente-e-o-mesmo-no-crm-na-lista-e-na-ficha-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -1246,6 +1250,13 @@ jobs:
       - name: Prova viva do CRM e da lista de clientes que nao contam a mesma pessoa duas vezes (20261399993000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-viva.cjs
+      # Migration 20261403000000 (o total comprado do cliente e o mesmo no CRM, na lista e na ficha): get_admin_customers_paged soma o balcao (pedido pago SEM conta) do mesmo WhatsApp que o CRM atribui a conta, em orders_count e total_spent,
+      # e get_admin_user_detail ganha o campo separado balcao_mesmo_whatsapp. Controle com os corpos da 20261399993000 e da 20261199000000 na MESMA fixture (o defeito) e a pessoa que ja existia passando de R$ 100 para R$ 200 sem mexer em dado,
+      # bordas (com e sem o 55, DDD 55, balcao cancelado ou sem pagar, varias vendas, pedido proprio sem pagar, WhatsApp em duas contas, perfil so com WhatsApp), ordenacao estavel com e sem a mudanca, permissao, 13 mutantes que morrem por valor,
+      # ACL/atributos/dono iguais, reaplicar, rollback byte a byte, pre-voo, conexao sem BEGIN com conferencia sabotada (as duas trocas caem juntas). CLONE proprio.
+      - name: Prova viva do total comprado do cliente igual no CRM, na lista e na ficha (20261403000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-total-do-cliente-e-o-mesmo-nas-tres-telas-viva.cjs
       # Migration 20261399991000 (repetir a devolucao que falhou nao paga duas vezes): solicitar_estorno_repetindo(p_refund_id, p_motivo) repete UMA linha falhada (o valor sai da linha, a 2a chamada devolve a MESMA
       # repeticao com ja_repetida em vez de criar outra) e a tabela order_refund_repeticao (PK + UNIQUE) e a marca do servidor. Controle com o caminho antigo (duas linhas de R$ 30), DUAS conexoes reais na mesma falhada,
       # bordas (17 recusas sem escrever nada), permissao (anon, service_role, cliente, admin rebaixado), 15 mutantes, reaplicar, pre-voo, rollback que recusa com marca, conexao sem BEGIN com conferencia sabotada e

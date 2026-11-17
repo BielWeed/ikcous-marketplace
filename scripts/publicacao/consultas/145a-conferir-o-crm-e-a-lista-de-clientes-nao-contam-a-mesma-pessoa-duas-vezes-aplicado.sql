@@ -33,7 +33,10 @@ WITH nu AS (
   UNION ALL
   SELECT 'crm__nunca_comprou: corpo exato (md5)', '3aa94ac8dc4ce19db958e6d93cbea7a8', COALESCE((SELECT h FROM nu), 'AUSENTE')
   UNION ALL
-  SELECT 'get_admin_customers_paged: corpo exato (md5)', '35212d373895b2a9ede613198fc4c794', COALESCE((SELECT h FROM cl), 'AUSENTE')
+  -- A 20261403000000 (o total comprado do cliente soma o balcao do mesmo WhatsApp) e a SUCESSORA deste corpo: o md5 dela tambem e aceito e o `vivo` mostra o `esperado`
+  -- (quem distingue os dois e a consulta da propria 20261403000000). Corpo estranho segue mostrando o md5.
+  SELECT 'get_admin_customers_paged: corpo exato (md5)', '35212d373895b2a9ede613198fc4c794',
+         COALESCE((SELECT CASE WHEN h = '309bbd903420f146423c7cf0512b91b3' THEN '35212d373895b2a9ede613198fc4c794' ELSE h END FROM cl), 'AUSENTE')
   UNION ALL
   SELECT 'crm__nunca_comprou: uma so, atributos conhecidos (sql, STABLE, SECURITY INVOKER, search_path=public) e sem EXECUTE para PUBLIC, anon ou authenticated', 'sim',
          CASE WHEN COALESCE((SELECT ok FROM nu), false) THEN 'sim' ELSE 'nao' END

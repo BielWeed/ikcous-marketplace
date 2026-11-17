@@ -171,6 +171,10 @@ const NOMES = [
   // O Inicio mostra o dinheiro a devolver e a margem do Financeiro: painel_inicio sucede o corpo da 3993 (a CADEIA 99 -> 12 -> 28 -> 390 -> 398 -> 3993 -> 1402: o `hashVigente` da 1402 e o
   // `hashDesta` da 3993). O rollback da 3993 recusa com o corpo novo no ar: ela cai antes (e, na ordem inversa, primeiro). Fica por ULTIMO: NOMES e em ordem de aplicacao (ordem do nome do arquivo).
   "20261402000000_o_inicio_mostra_o_dinheiro_a_devolver_e_a_margem_do_financeiro.sql",
+  // O total comprado do cliente e o mesmo no CRM, na lista e na ficha: UMA migration, DUAS funcoes das 42. get_admin_customers_paged sucede o corpo da 3993 (a CADEIA 99 -> 230 -> 392 ->
+  // 3993 -> 4030: o `hashVigente` da 4030 e o `hashDesta` da 3993); get_admin_user_detail sucede o corpo da 99 (`hashVigente` = o da 99). O rollback-manual dela desfaz as duas de uma vez;
+  // o da 3993 recusa com o corpo novo no ar: ela cai antes (e, na ordem inversa, primeiro).
+  "20261403000000_o_total_comprado_do_cliente_e_o_mesmo_no_crm_na_lista_e_na_ficha.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).
@@ -195,6 +199,10 @@ const PARES_POR_MIGRATION = new Map([
     2,
   ],
   ["20261399997000_o_pedido_guarda_quem_vai_receber.sql", 2],
+  [
+    "20261403000000_o_total_comprado_do_cliente_e_o_mesmo_no_crm_na_lista_e_na_ficha.sql",
+    2,
+  ],
 ]);
 
 const ler = (nome) => fs.readFileSync(path.join(DIR_MIGRATIONS, nome), "utf8");

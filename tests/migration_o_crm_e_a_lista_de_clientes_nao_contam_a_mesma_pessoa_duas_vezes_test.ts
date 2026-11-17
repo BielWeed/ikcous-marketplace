@@ -457,8 +457,14 @@ Deno.test("depois da 20261183000000 so este par redefine crm__nunca_comprou; dep
     NOME,
     `rollback-manual-${NOME}`,
   ]);
+  // A 20261403000000 (a lista soma o balcao do mesmo WhatsApp, como o CRM) sucede este par: tem o proprio teste
+  // (tests/migration_o_total_comprado_do_cliente_e_o_mesmo_no_crm_na_lista_e_na_ficha_test.ts).
+  const SUCESSORA_4030 =
+    "20261403000000_o_total_comprado_do_cliente_e_o_mesmo_no_crm_na_lista_e_na_ficha.sql";
   assert.deepEqual(redefinem("get_admin_customers_paged", V_CLIENTES), [
     NOME,
+    SUCESSORA_4030,
     `rollback-manual-${NOME}`,
+    `rollback-manual-${SUCESSORA_4030}`,
   ]);
 });
