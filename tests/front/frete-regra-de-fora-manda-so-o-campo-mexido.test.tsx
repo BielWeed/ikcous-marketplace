@@ -368,7 +368,7 @@ describe("Frete — regra de fora da cidade manda só o campo mexido", () => {
         "nationalDiscountValue",
         "nationalBenefitScope",
       ]) {
-        delete semARegra[chave];
+        Reflect.deleteProperty(semARegra, chave);
       }
       loja.atual = semARegra as unknown as StoreConfig;
       await desenhar();
