@@ -3,7 +3,7 @@
 // página ampliada não volta sozinha.
 //
 // O conserto é UMA regra em `src/index.css`, só para iOS/iPadOS
-// (`@supports (-webkit-touch-callout: none)`), que fixa 16px nos campos de
+// (`@supports (-webkit-touch-callout: none)`), que mantém o piso de 16px nos campos de
 // texto. jsdom não mede CSS, então o teste lê o texto do arquivo e afirma a
 // regra. Se alguém apagar a regra, tirar o `@supports` (o que mudaria o visual
 // no Android e no computador) ou deixar de fora um tipo de campo de texto, cai.
@@ -38,9 +38,20 @@ function blocoDoIos(css: string): string | null {
 describe("campo de texto no iPhone não amplia a página", () => {
   const bloco = blocoDoIos(CSS);
 
-  it("existe uma regra só para iOS que fixa 16px", () => {
+  it("existe uma regra só para iOS com piso de 16px", () => {
     expect(bloco).not.toBeNull();
-    expect(bloco).toMatch(/font-size:\s*16px\s*!important/);
+    expect(bloco).toMatch(/font-size:\s*max\(16px,\s*1rem\)\s*!important/);
+  });
+
+  it("cresce com a fonte-base sem perder o piso contra zoom", () => {
+    const regra = bloco?.match(
+      /font-size:\s*max\((\d+)px,\s*(\d+)rem\)\s*!important/,
+    );
+    expect(regra).not.toBeNull();
+    const piso = Number(regra?.at(1));
+    const escala = Number(regra?.at(2));
+    expect(Math.max(piso, escala * 12)).toBe(16);
+    expect(Math.max(piso, escala * 32)).toBe(32);
   });
 
   it("cobre campo de texto, área de texto e lista de escolha", () => {

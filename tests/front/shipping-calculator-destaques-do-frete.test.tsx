@@ -175,6 +175,33 @@ describe("ShippingCalculator — destaques na tela (release 1.5.7)", () => {
     expect(botaoDe("Ver outras opções")).toBeUndefined();
   });
 
+  it("prazo e orientação de retirada não selecionados crescem com a fonte e têm contraste", async () => {
+    await montar([
+      PAC,
+      {
+        id: "store-pickup",
+        name: "Retirar na loja",
+        price: 0,
+        deliveryDays: 0,
+        provider: "pickup",
+      },
+    ]);
+    const prazo = [...hospedeiro.querySelectorAll("span")].find(
+      (span) => span.textContent === "Entrega em até 8 dias úteis",
+    );
+    const orientacao = [...hospedeiro.querySelectorAll("span")].find(
+      (span) =>
+        span.textContent === "Aguarde a confirmação da loja para retirar",
+    );
+    for (const aviso of [prazo, orientacao]) {
+      expect(aviso).toBeDefined();
+      expect(aviso?.classList.contains("text-[9px]")).toBe(false);
+      expect(aviso?.classList.contains("text-zinc-400")).toBe(false);
+      expect(aviso?.classList.contains("text-xs")).toBe(true);
+      expect(aviso?.classList.contains("text-zinc-600")).toBe(true);
+    }
+  });
+
   // Pedido do dono (23/09/2026): nada de repetir transportadora/serviço
   // entre título e subtítulo — o subtítulo só aparece quando acrescenta
   // (Correios · PAC atrás de "Entrega econômica") e o "via <Provedor>" é

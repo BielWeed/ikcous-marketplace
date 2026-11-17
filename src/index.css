@@ -1659,6 +1659,6 @@ body.admin-modal-open .active-scroll-container {
     ),
   textarea,
   select {
-    font-size: 16px !important;
+    font-size: max(16px, 1rem) !important;
   }
 }
