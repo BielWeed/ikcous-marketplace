@@ -290,6 +290,36 @@ describe("banners da vitrine — pedido no boot", () => {
   });
 
   describe("a FOTO do topo só é antecipada na Home e quando redimensiona", () => {
+    it.each([false, true])(
+      "boot no PC com versão própria=%s não substitui por celular",
+      async (comVersao) => {
+        vi.stubGlobal("matchMedia", () => ({ matches: true }));
+        h.consultar.mockResolvedValue({
+          data: [
+            linha("so-celular"),
+            linha("desktop", FOTO_REDIMENSIONAVEL, {
+              desktop_image_url: comVersao
+                ? FOTO_REDIMENSIONAVEL.replace("topo", "desktop")
+                : null,
+            }),
+          ],
+          error: null,
+        });
+        modulo.pedirBannersNoBoot();
+        await act(async () => {
+          await Promise.resolve();
+        });
+        expect(ImagemRegistrada.instancias).toHaveLength(comVersao ? 1 : 0);
+        if (comVersao) {
+          expect(ImagemRegistrada.instancias[0].src).toContain(
+            "/banners/desktop.png?",
+          );
+          expect(ImagemRegistrada.instancias[0].src).not.toContain(
+            "/banners/topo.png?",
+          );
+        }
+      },
+    );
     it.each(["/", "/home", "/home/"])(
       "rota %s com foto redimensionável pré-carrega a foto",
       async (rota) => {

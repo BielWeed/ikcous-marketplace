@@ -5,6 +5,7 @@ import { classeDoScrimDoBanner } from "@/lib/banner-scrim";
 import { carrosselPodeGirar } from "@/lib/carrossel-visivel";
 import { destinoDoBanner } from "@/lib/destino-do-banner";
 import { IMAGEM_DO_BANNER } from "@/lib/imagem-do-banner";
+import { imagemDoBannerParaTela } from "@/lib/imagens-do-banner";
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { rolarAoCatalogo } from "@/lib/rolar-ao-catalogo";
 import { cn } from "@/lib/utils";
@@ -39,6 +40,9 @@ export const BannerCarousel = memo(function BannerCarousel({
   primeiraSemFade = false,
 }: BannerCarouselProps) {
   const computador = useTelaDeComputador();
+  const validBanners = banners.filter(
+    (b) => imagemDoBannerParaTela(b, computador) !== null,
+  );
   const [emblaRef, emblaApi] = useEmblaCarousel({
     loop: true,
     duration: 30,
@@ -156,7 +160,7 @@ export const BannerCarousel = memo(function BannerCarousel({
       pausado ||
       menosMovimento ||
       !emblaApi ||
-      banners.length <= 1
+      validBanners.length <= 1
     )
       return;
 
@@ -167,7 +171,14 @@ export const BannerCarousel = memo(function BannerCarousel({
     }, interval);
 
     return () => clearInterval(timer);
-  }, [autoPlay, pausado, menosMovimento, emblaApi, interval, banners.length]);
+  }, [
+    autoPlay,
+    pausado,
+    menosMovimento,
+    emblaApi,
+    interval,
+    validBanners.length,
+  ]);
 
   // `link` já passou por `destinoDoBanner`: só chega aqui um caminho do app
   // ou um endereço http/https (nunca `javascript:`, `data:`, `//outro-site`).
@@ -215,10 +226,6 @@ export const BannerCarousel = memo(function BannerCarousel({
     }
   }, []);
 
-  const validBanners = banners.filter(
-    (b) => b.imageUrl && b.imageUrl.trim() !== "",
-  );
-
   if (validBanners.length === 0) return null;
 
   // Banner antigo: `/produtos` (não existe) e categoria com nome cru.
@@ -235,13 +242,10 @@ export const BannerCarousel = memo(function BannerCarousel({
   return (
     <div
       // Até o tablet, mantém a arte 2:1 e a largura máxima original.
-      // No PC a largura vem da casca e a altura espelha as reservas da Home.
-      // A arte inteira permanece visível no PC, com faixas neutras nas laterais.
+      // No PC só entram artes próprias 4:1, nunca a reserva de celular.
       className={cn(
         "premium-shadow relative aspect-[2/1] w-full touch-pan-y overflow-hidden bg-zinc-100 md:mx-auto md:max-w-[1040px] lg:aspect-auto lg:h-[clamp(320px,30cqw,440px)] lg:max-w-none lg:rounded-3xl",
-        computador &&
-          validBanners.at(currentIndex)?.desktopImageUrl &&
-          "lg:aspect-[4/1] lg:h-auto",
+        computador && "lg:aspect-[4/1] lg:h-auto",
       )}
       role="region"
       aria-roledescription="carousel"

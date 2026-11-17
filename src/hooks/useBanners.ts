@@ -1,5 +1,6 @@
 import { useAuth } from "@/hooks/useAuth";
 import { useSyncListener } from "@/hooks/useDataVault";
+import { useTelaDeComputador } from "@/hooks/useTelaDeComputador";
 import {
   acompanharBannersDoRealtime,
   bannersEmCache,
@@ -12,7 +13,11 @@ import {
 } from "@/lib/banners-da-vitrine";
 import { DataVault } from "@/lib/dataVault";
 import { imagemAbre } from "@/lib/imagem-abre";
-import { imagemDoBannerEmUso, imagensDoBanner } from "@/lib/imagens-do-banner";
+import {
+  imagemDoBannerEmUso,
+  imagemDoBannerParaTela,
+  imagensDoBanner,
+} from "@/lib/imagens-do-banner";
 import {
   aguardarComPrazo,
   ehConsultaSemResposta,
@@ -136,6 +141,7 @@ function cofreFechado(vault: DataVault): boolean {
 }
 
 export function useBanners(adminMode = false) {
+  const computador = useTelaDeComputador();
   const { isAdmin } = useAuth();
   const vaultRef = useRef<DataVault | null>(null);
   const [banners, setBanners] = useState<Banner[]>(bannersEmCache() || []);
@@ -369,6 +375,7 @@ export function useBanners(adminMode = false) {
         .filter((b) => {
           if (b.position !== position) return false;
           if (adminMode) return true;
+          if (!imagemDoBannerParaTela(b, computador)) return false;
           if (!b.active) return false;
 
           if (b.startDate) {
@@ -384,7 +391,7 @@ export function useBanners(adminMode = false) {
         })
         .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     },
-    [banners, adminMode, agoraNaTela],
+    [banners, adminMode, agoraNaTela, computador],
   );
 
   const uploadBannerImage = async (file: File): Promise<string> => {

@@ -302,9 +302,12 @@ describe("configurar uma versão sem substituir a outra", () => {
       "https://example.com/desktop-rascunho.webp",
     );
   });
-  it("remover versão de computador volta ao celular sem editar a imagem de celular", async () => {
+  it("remover versão de computador avisa que ficará oculto no PC e preserva celular", async () => {
     await clicar("Computador (4:1)");
-    await clicar("Usar imagem do celular");
+    await clicar("Remover versão de computador");
+    expect(document.body.textContent).toContain(
+      "Este banner não aparece no computador",
+    );
     await clicar("Salvar Banner");
     expect(h.update.mock.calls[0][1]).toMatchObject({ desktopImageUrl: null });
     expect(h.update.mock.calls[0][1]).not.toHaveProperty("imageUrl");

@@ -20,11 +20,14 @@ vi.mock("@/lib/supabase", () => ({
       select: () => ({
         order: () =>
           Promise.resolve({
-            data: dados.rede?.map(({ imageUrl, ...banner }) => ({
-              ...banner,
-              image_url: imageUrl,
-            })),
-            error: null,
+            data: dados.rede?.map(
+              ({ imageUrl, desktopImageUrl, ...banner }) => ({
+                ...banner,
+                image_url: imageUrl,
+                desktop_image_url: desktopImageUrl,
+              }),
+            ),
+            error: dados.rede === null ? new Error("Offline de teste") : null,
           }),
       }),
     }),
@@ -207,6 +210,60 @@ describe("preload do topo e carrossel pedem a mesma foto", () => {
     { caso: "sem URL", banners: [criarBanner({ imageUrl: "" })] },
   ])("não cria preload para $caso", async ({ banners }) => {
     dados.rede = banners;
+    await montarHome();
+    expect(ImagemRegistrada.instancias).toHaveLength(0);
+    expect(hospedeiro.querySelector("img")).toBeNull();
+  });
+});
+
+describe("computador não pede arte exclusiva de celular", () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        private callback: (entries: { isIntersecting: boolean }[]) => void;
+        constructor(
+          callback: (entries: { isIntersecting: boolean }[]) => void,
+        ) {
+          this.callback = callback;
+        }
+        observe() {
+          this.callback([{ isIntersecting: true }]);
+        }
+        disconnect() {}
+      },
+    );
+    vi.stubGlobal("matchMedia", (media: string) => ({
+      matches: media === "(min-width: 1024px)",
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }));
+  });
+  it.each(["rede", "vault"] as const)(
+    "primeiro banner elegível da %s coincide com a tela",
+    async (fonte) => {
+      const lista = [
+        criarBanner({ id: "so-celular" }),
+        criarBanner({
+          id: "proprio",
+          desktopImageUrl: URL_BANNER.replace("topo", "desktop"),
+        }),
+      ];
+      dados.rede = fonte === "rede" ? lista : null;
+      dados.vault = fonte === "vault" ? lista : [];
+      await montarHome();
+      expect(imagemDoPreload().src).toBe(
+        imagemRedimensionada(URL_BANNER.replace("topo", "desktop"), {
+          width: 640,
+          quality: 70,
+        }),
+      );
+      expect(imagemDaTela().getAttribute("src")).toBe(imagemDoPreload().src);
+      expect(hospedeiro.querySelectorAll("img")).toHaveLength(1);
+    },
+  );
+  it("sem imagem de computador não antecipa nem renderiza celular", async () => {
+    dados.rede = [criarBanner()];
     await montarHome();
     expect(ImagemRegistrada.instancias).toHaveLength(0);
     expect(hospedeiro.querySelector("img")).toBeNull();

@@ -40,7 +40,7 @@ function banner(id: string): Banner {
   return {
     id,
     title: `Banner ${id}`,
-    image: `https://x.test/${id}.jpg`,
+    imageUrl: `https://x.test/${id}.jpg`,
     link: "",
   } as unknown as Banner;
 }
