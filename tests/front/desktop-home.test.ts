@@ -91,7 +91,7 @@ describe("Home no computador", () => {
 
   it("preserva as classes do celular no banner e nas duas grades", () => {
     const banner = fonte("components/ui/custom/BannerCarousel.tsx");
-    const classe = banner.match(/className="(premium-shadow[^"]+)"/)?.[1] ?? "";
+    const classe = banner.match(/"(premium-shadow[^"]+)"/)?.[1] ?? "";
     expect(classesDoCelular(classe)).toBe(
       "premium-shadow relative aspect-[2/1] w-full touch-pan-y overflow-hidden bg-zinc-100 md:mx-auto md:max-w-[1040px]",
     );

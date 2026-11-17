@@ -12,6 +12,7 @@ import {
 } from "@/lib/banners-da-vitrine";
 import { DataVault } from "@/lib/dataVault";
 import { imagemAbre } from "@/lib/imagem-abre";
+import { imagemDoBannerEmUso, imagensDoBanner } from "@/lib/imagens-do-banner";
 import {
   aguardarComPrazo,
   ehConsultaSemResposta,
@@ -438,6 +439,9 @@ export function useBanners(adminMode = false) {
             .insert([
               {
                 image_url: banner.imageUrl,
+                ...(banner.desktopImageUrl !== undefined
+                  ? { desktop_image_url: banner.desktopImageUrl || null }
+                  : {}),
                 title: banner.title,
                 link: banner.link,
                 position: banner.position,
@@ -472,6 +476,7 @@ export function useBanners(adminMode = false) {
       const newBanner: Banner = {
         id: data.id,
         imageUrl: data.image_url,
+        desktopImageUrl: data.desktop_image_url || null,
         title: data.title || "",
         link: data.link || undefined,
         position: data.position as "home_top" | "home_middle" | "home_bottom",
@@ -558,6 +563,8 @@ export function useBanners(adminMode = false) {
       const dbUpdates: any = {};
       if (updates.imageUrl !== undefined)
         dbUpdates.image_url = updates.imageUrl;
+      if (updates.desktopImageUrl !== undefined)
+        dbUpdates.desktop_image_url = updates.desktopImageUrl || null;
       if (updates.title !== undefined) dbUpdates.title = updates.title;
       if (updates.link !== undefined) dbUpdates.link = updates.link;
       if (updates.position !== undefined) dbUpdates.position = updates.position;
@@ -610,13 +617,13 @@ export function useBanners(adminMode = false) {
         throw indisponivel;
       }
 
-      // If image changed, clean up old file from storage
-      if (
-        updates.imageUrl &&
-        oldBanner &&
-        oldBanner.imageUrl !== updates.imageUrl
-      ) {
-        deleteStorageFileByUrl(oldBanner.imageUrl).catch(() => {});
+      // Uma versão (ou outra campanha) ainda pode usar a imagem substituída.
+      if (oldBanner) {
+        for (const url of imagensDoBanner(oldBanner)) {
+          if (!imagemDoBannerEmUso(url, updated)) {
+            deleteStorageFileByUrl(url).catch(() => {});
+          }
+        }
       }
 
       // Run DB order normalization if position or order changed
@@ -771,11 +778,12 @@ export function useBanners(adminMode = false) {
 
       const deletedBanner = banners.find((b) => b.id === id);
 
-      if (imageUrl) {
-        deleteStorageFileByUrl(imageUrl).catch(() => {});
-      }
-
       let updated = banners.filter((b) => b.id !== id);
+      for (const url of imagensDoBanner(deletedBanner ?? { imageUrl })) {
+        if (!imagemDoBannerEmUso(url, updated)) {
+          deleteStorageFileByUrl(url).catch(() => {});
+        }
+      }
       if (deletedBanner) {
         updated = normalizeLocalBannersOrder(deletedBanner.position, updated);
         normalizeBannersOrder(deletedBanner.position).catch(() => {});

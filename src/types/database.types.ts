@@ -274,6 +274,7 @@ export type Database = {
       };
       banners: {
         Row: {
+          desktop_image_url: string | null;
           active: boolean | null;
           badge_text: string | null;
           button_bg_color: string | null;
@@ -299,6 +300,7 @@ export type Database = {
           title_color: string | null;
         };
         Insert: {
+          desktop_image_url?: string | null;
           active?: boolean | null;
           badge_text?: string | null;
           button_bg_color?: string | null;
@@ -324,6 +326,7 @@ export type Database = {
           title_color?: string | null;
         };
         Update: {
+          desktop_image_url?: string | null;
           active?: boolean | null;
           badge_text?: string | null;
           button_bg_color?: string | null;

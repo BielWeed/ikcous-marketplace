@@ -445,7 +445,7 @@ describe("novo editor de banners prontos", () => {
     }
     esperarEditorFechadoPorSalvar();
   });
-  it("recuperar e cancelar rascunho limpa apenas seu upload ainda não publicado", async () => {
+  it("recuperar e cancelar rascunho não presume que o arquivo ainda está sem publicação", async () => {
     localStorage.setItem(
       "admin_banner_form_draft:lojista-1",
       JSON.stringify({
@@ -465,7 +465,7 @@ describe("novo editor de banners prontos", () => {
     await clicar("Usar minha imagem");
     await clicar("Recuperar");
     await clicar("Cancelar");
-    expect(deleteStorageFile).toHaveBeenCalledExactlyOnceWith(
+    expect(deleteStorageFile).not.toHaveBeenCalledWith(
       "https://loja.test/rascunho.webp",
     );
   });

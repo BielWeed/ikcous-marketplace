@@ -1,4 +1,5 @@
 import { LazyImage } from "@/components/LazyImage";
+import { useTelaDeComputador } from "@/hooks/useTelaDeComputador";
 import { modeloDoBanner } from "@/lib/banner-modelos";
 import { classeDoScrimDoBanner } from "@/lib/banner-scrim";
 import { carrosselPodeGirar } from "@/lib/carrossel-visivel";
@@ -37,6 +38,7 @@ export const BannerCarousel = memo(function BannerCarousel({
   interval = 5000,
   primeiraSemFade = false,
 }: BannerCarouselProps) {
+  const computador = useTelaDeComputador();
   const [emblaRef, emblaApi] = useEmblaCarousel({
     loop: true,
     duration: 30,
@@ -235,7 +237,12 @@ export const BannerCarousel = memo(function BannerCarousel({
       // Até o tablet, mantém a arte 2:1 e a largura máxima original.
       // No PC a largura vem da casca e a altura espelha as reservas da Home.
       // A arte inteira permanece visível no PC, com faixas neutras nas laterais.
-      className="premium-shadow relative aspect-[2/1] w-full touch-pan-y overflow-hidden bg-zinc-100 md:mx-auto md:max-w-[1040px] lg:aspect-auto lg:h-[clamp(320px,30cqw,440px)] lg:max-w-none lg:rounded-3xl"
+      className={cn(
+        "premium-shadow relative aspect-[2/1] w-full touch-pan-y overflow-hidden bg-zinc-100 md:mx-auto md:max-w-[1040px] lg:aspect-auto lg:h-[clamp(320px,30cqw,440px)] lg:max-w-none lg:rounded-3xl",
+        computador &&
+          validBanners.at(currentIndex)?.desktopImageUrl &&
+          "lg:aspect-[4/1] lg:h-auto",
+      )}
       role="region"
       aria-roledescription="carousel"
       aria-label="Destaques e Promoções"
@@ -284,7 +291,11 @@ export const BannerCarousel = memo(function BannerCarousel({
             >
               {modeloDoBanner(banner.templateType) ? (
                 <BannerPronto
-                  banner={banner}
+                  banner={
+                    computador && banner.desktopImageUrl
+                      ? { ...banner, imageUrl: banner.desktopImageUrl }
+                      : banner
+                  }
                   prioridade={primeiraSemFade && index === 0}
                   semFade={primeiraSemFade && index === 0}
                   carregarCedo={index > 0 && primeiraCarregou}
@@ -295,7 +306,11 @@ export const BannerCarousel = memo(function BannerCarousel({
               ) : (
                 <>
                   <LazyImage
-                    src={banner.imageUrl}
+                    src={
+                      computador && banner.desktopImageUrl
+                        ? banner.desktopImageUrl
+                        : banner.imageUrl
+                    }
                     alt={descricao}
                     className="size-full transition-transform [transition-duration:2000ms] [transition-timing-function:cubic-bezier(0.4,0,0.2,1)] group-hover:scale-105 lg:group-hover:scale-100 lg:[&_img]:!object-contain"
                     priority={primeiraSemFade && index === 0}

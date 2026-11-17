@@ -5,9 +5,15 @@ import type { Banner } from "@/types";
 export function PreviaImagemPropria({
   formData,
   comTexto,
-}: { formData: Partial<Banner>; comTexto: boolean }) {
+  computador = false,
+}: { formData: Partial<Banner>; comTexto: boolean; computador?: boolean }) {
   return (
-    <div className="relative aspect-[2/1] w-full select-none overflow-hidden rounded-xl border border-admin-border bg-zinc-900 shadow-inner motion-reduce:transition-none">
+    <div
+      className={cn(
+        "relative w-full select-none overflow-hidden rounded-xl border border-admin-border bg-zinc-900 shadow-inner motion-reduce:transition-none",
+        computador ? "aspect-[4/1]" : "aspect-[2/1]",
+      )}
+    >
       {formData.imageUrl ? (
         <img
           src={formData.imageUrl}

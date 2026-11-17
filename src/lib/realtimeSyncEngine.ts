@@ -109,6 +109,7 @@ export const TABLE_CONFIGS: TableConfig[] = [
     mapRecord: (raw: any) => ({
       id: raw.id,
       imageUrl: raw.image_url || raw.imagem_url,
+      desktopImageUrl: raw.desktop_image_url || null,
       title: raw.title || "",
       link: raw.link || undefined,
       position: raw.position,

@@ -25,6 +25,7 @@ export const AVISO_BANNER_ALTERADO_DEPOIS =
 const CAMPOS = [
   "title",
   "imageUrl",
+  "desktopImageUrl",
   "link",
   "position",
   "active",
@@ -102,6 +103,7 @@ export interface RascunhoDoBanner {
   /** O banner como estava ao abrir o editor (ausente: rascunho anterior a esta regra). */
   base?: Partial<Banner>;
   imagemEnviadaNaoSalva?: string | null;
+  imagemDesktopEnviadaNaoSalva?: string | null;
   savedAt: string;
 }
 
