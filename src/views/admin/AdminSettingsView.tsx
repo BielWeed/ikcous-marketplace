@@ -41,6 +41,10 @@ import {
   CartaoPeloAppBloco,
   FormasDePagamentoSection,
 } from "@/components/admin/settings/FormasDePagamentoCard";
+import {
+  NavegacaoDeAjustes,
+  useAjustesDesktop,
+} from "@/components/admin/settings/NavegacaoDeAjustes";
 import { PoliticaDeDevolucaoSection } from "@/components/admin/settings/PoliticaDeDevolucaoSection";
 import {
   type ConfigDoProvedor,
@@ -616,7 +620,11 @@ function GrupoDeAjustes({
   comPendencia = false,
   abrirGatilho,
   subtituloExtra,
+  desktop = false,
+  selecionada = false,
 }: {
+  readonly desktop?: boolean;
+  readonly selecionada?: boolean;
   readonly chave: ChaveDoGrupoDeAjustes;
   readonly onNavigate: (view: View) => void;
   readonly subtitulos: ReadonlyMap<ChaveDoGrupoDeAjustes, string>;
@@ -641,88 +649,95 @@ function GrupoDeAjustes({
         ? "Prazos, formas de devolver e política"
         : undefined);
   const direta = chave === "entrega";
+  const expandida = aberta || (desktop && selecionada);
   return (
     <section
       id={`grupo-de-ajustes-${chave}`}
       aria-label={grupo.titulo}
+      hidden={desktop && !selecionada}
+      tabIndex={desktop ? -1 : undefined}
       className={`${CARTAO_AJUSTES} scroll-mt-4 !p-0`}
     >
-      <h2>
-        <button
-          type="button"
-          onKeyDown={(evento) => {
-            if (direta && (evento.key === "Enter" || evento.key === " ")) {
-              evento.preventDefault();
-              onNavigate("admin-shipping");
+      {desktop ? (
+        <h2 className="ajustes-titulo-do-grupo">{grupo.titulo}</h2>
+      ) : (
+        <h2>
+          <button
+            type="button"
+            onKeyDown={(evento) => {
+              if (direta && (evento.key === "Enter" || evento.key === " ")) {
+                evento.preventDefault();
+                onNavigate("admin-shipping");
+              }
+            }}
+            data-cabecalho-grupo=""
+            data-porta-ajustes={direta ? "admin-shipping" : undefined}
+            aria-label={grupo.titulo}
+            aria-describedby={
+              [
+                subtitulo ? `subtitulo-${chave}` : null,
+                aberta && comPendencia ? `pendencia-${chave}` : null,
+              ]
+                .filter(Boolean)
+                .join(" ") || undefined
             }
-          }}
-          data-cabecalho-grupo=""
-          data-porta-ajustes={direta ? "admin-shipping" : undefined}
-          aria-label={grupo.titulo}
-          aria-describedby={
-            [
-              subtitulo ? `subtitulo-${chave}` : null,
-              aberta && comPendencia ? `pendencia-${chave}` : null,
-            ]
-              .filter(Boolean)
-              .join(" ") || undefined
-          }
-          aria-expanded={direta ? undefined : aberta}
-          aria-controls={direta ? undefined : `conteudo-${chave}`}
-          onClick={() => {
-            if (direta) {
-              onNavigate("admin-shipping");
-              return;
-            }
-            if (aberta && comPendencia) return;
-            setAberta((antes) => !antes);
-          }}
-          className="flex min-h-11 w-full items-center gap-3 rounded-3xl p-3 text-left focus-visible:ring-2 focus-visible:ring-violet-300"
-        >
-          <IconeDeAjustes icone={visual.icone} matiz={visual.matiz} />
-          <span className="min-w-0 flex-1">
-            <span
-              data-grupo-titulo=""
-              className="block text-[15px] font-bold leading-snug text-white"
-            >
-              {grupo.titulo}
+            aria-expanded={direta ? undefined : aberta}
+            aria-controls={direta ? undefined : `conteudo-${chave}`}
+            onClick={() => {
+              if (direta) {
+                onNavigate("admin-shipping");
+                return;
+              }
+              if (aberta && comPendencia) return;
+              setAberta((antes) => !antes);
+            }}
+            className="flex min-h-11 w-full items-center gap-3 rounded-3xl p-3 text-left focus-visible:ring-2 focus-visible:ring-violet-300"
+          >
+            <IconeDeAjustes icone={visual.icone} matiz={visual.matiz} />
+            <span className="min-w-0 flex-1">
+              <span
+                data-grupo-titulo=""
+                className="block text-[15px] font-bold leading-snug text-white"
+              >
+                {grupo.titulo}
+              </span>
+              {subtitulo && (
+                <span
+                  data-grupo-subtitulo=""
+                  id={`subtitulo-${chave}`}
+                  className={`mt-1 block text-xs font-normal leading-relaxed ${subtitulo.startsWith("Falta:") ? classeDoTexto("atencao") : classeDoTexto("neutro")}`}
+                >
+                  {subtitulo}
+                </span>
+              )}
+              {aberta && comPendencia && (
+                <span
+                  id={`pendencia-${chave}`}
+                  className={`mt-1 block text-xs font-normal ${classeDoTexto("atencao")}`}
+                >
+                  Salve antes de fechar
+                </span>
+              )}
             </span>
-            {subtitulo && (
-              <span
-                data-grupo-subtitulo=""
-                id={`subtitulo-${chave}`}
-                className={`mt-1 block text-xs font-normal leading-relaxed ${subtitulo.startsWith("Falta:") ? classeDoTexto("atencao") : classeDoTexto("neutro")}`}
-              >
-                {subtitulo}
-              </span>
+            {direta ? (
+              <ChevronRight
+                aria-hidden="true"
+                className="size-5 shrink-0 text-zinc-400"
+              />
+            ) : (
+              <ChevronDown
+                aria-hidden="true"
+                className={`size-5 shrink-0 text-zinc-400 ${aberta ? "rotate-180" : ""}`}
+              />
             )}
-            {aberta && comPendencia && (
-              <span
-                id={`pendencia-${chave}`}
-                className={`mt-1 block text-xs font-normal ${classeDoTexto("atencao")}`}
-              >
-                Salve antes de fechar
-              </span>
-            )}
-          </span>
-          {direta ? (
-            <ChevronRight
-              aria-hidden="true"
-              className="size-5 shrink-0 text-zinc-400"
-            />
-          ) : (
-            <ChevronDown
-              aria-hidden="true"
-              className={`size-5 shrink-0 text-zinc-400 ${aberta ? "rotate-180" : ""}`}
-            />
-          )}
-        </button>
-      </h2>
+          </button>
+        </h2>
+      )}
       {!direta && (
         <div
           id={`conteudo-${chave}`}
           data-conteudo-grupo=""
-          hidden={!aberta}
+          hidden={!expandida}
           className="space-y-3 border-t border-admin-border p-3"
         >
           {grupo.portas.map((porta) => (
@@ -732,7 +747,7 @@ function GrupoDeAjustes({
               onNavigate={onNavigate}
             />
           ))}
-          {typeof children === "function" ? children(aberta) : children}
+          {typeof children === "function" ? children(expandida) : children}
         </div>
       )}
     </section>
@@ -764,6 +779,16 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   const configFalhou = configIndisponivel === true;
   const isOffline = useOnlineStatus();
   const [showHelpModal, setShowHelpModal] = useState(false);
+  const desktop = useAjustesDesktop();
+  const [grupoSelecionado, setGrupoSelecionado] =
+    useState<ChaveDoGrupoDeAjustes>("minha-loja");
+  const selecionarGrupo = (chave: ChaveDoGrupoDeAjustes) => {
+    if (chave === "entrega") {
+      onNavigate("admin-shipping");
+      return;
+    }
+    setGrupoSelecionado(chave);
+  };
 
   // Peça 20: mesma trava das demais — chave digitada e não salva não pode
   // sumir num clique no cabeçalho da seção.
@@ -867,12 +892,13 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   // Mercado Pago (o mesmo gatilho de "Configurar credenciais") e rola até o
   // termômetro, no topo do grupo.
   const irParaOPixEmPagamentos = () => {
+    setGrupoSelecionado("pagamentos");
     setAbrirPagamentosGatilho((n) => n + 1);
     setAbrirMercadoPagoGatilho((n) => n + 1);
     setTimeout(() => {
-      document
-        .getElementById("grupo-de-ajustes-pagamentos")
-        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      const destino = document.getElementById("grupo-de-ajustes-pagamentos");
+      destino?.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (desktop) destino?.focus({ preventScroll: true });
     }, 0);
   };
 
@@ -962,6 +988,9 @@ export const AdminSettingsView = memo(function AdminSettingsView({
       <header className="admin-topo-cabecalho mx-auto flex h-[76px] w-full max-w-2xl items-center justify-between gap-3 px-5 lg:max-w-7xl lg:px-6">
         <div className="min-w-0 [&_h1]:normal-case [&_h1]:tracking-tight [&_h1_span]:not-italic">
           <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-settings"]} />
+          <p className="ajustes-subtitulo-desktop">
+            Organize sua loja, personalize o app e configure como vender.
+          </p>
         </div>
         <button
           type="button"
@@ -979,7 +1008,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
         </button>
       </header>
 
-      <div className="mx-auto max-w-2xl space-y-3 px-5 pb-8 lg:max-w-7xl lg:px-6 2xl:grid 2xl:grid-cols-2 2xl:items-start 2xl:gap-6 2xl:space-y-0 2xl:[&>#grupo-de-ajustes-devolucao]:col-span-2 2xl:[&>#grupo-de-ajustes-entrega]:col-span-2 2xl:[&>#grupo-de-ajustes-ferramentas]:col-span-2 2xl:[&>#grupo-de-ajustes-pagamentos]:col-span-2 2xl:[&>[data-aviso-loja-sem-dados]]:col-span-2">
+      <div className="mx-auto max-w-2xl space-y-3 px-5 pb-8 lg:max-w-7xl lg:px-6">
         {isOffline && (
           <div className="flex select-none items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-xs font-bold uppercase tracking-wider text-red-400 duration-300 animate-in fade-in slide-in-from-top-2 2xl:col-span-2">
             <AlertTriangle className="size-5 shrink-0 animate-pulse text-red-500" />
@@ -1031,7 +1060,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                 <section
                   aria-label="Recebimentos"
                   aria-busy={estadoDoCartao === "carregando"}
-                  className={`${CARTAO_AJUSTES} mb-7 space-y-3 !p-3 2xl:col-span-2 2xl:mb-0`}
+                  className={`${CARTAO_AJUSTES} ajustes-recebimentos mb-7 space-y-3 !p-3`}
                 >
                   <div className="flex items-center justify-between gap-3">
                     <h3 className="text-base font-bold">Recebimentos</h3>
@@ -1039,6 +1068,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                       type="button"
                       aria-label="Gerenciar recebimentos"
                       onClick={() => {
+                        setGrupoSelecionado("pagamentos");
                         setAbrirPagamentosGatilho((n) => n + 1);
                         setTimeout(
                           () =>
@@ -1122,89 +1152,119 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                 (IdentitySettingsSection, BusinessHoursSection) com o mesmo
                 contrato de salvamento. A edição existe só lá; o atalho para
                 lá é o cartão deste grupo. */}
-                <GrupoDeAjustes
-                  chave="minha-loja"
-                  comPendencia={emailPendente || privacidadePendente}
-                  onNavigate={onNavigate}
-                  subtitulos={subtitulos}
-                >
-                  {/* E-mail da loja (14/10/2026): o Gmail que envia o e-mail do
+                <div className="ajustes-area-de-trabalho">
+                  {desktop && (
+                    <NavegacaoDeAjustes
+                      selecionado={grupoSelecionado}
+                      onSelecionar={selecionarGrupo}
+                      subtitulos={subtitulos}
+                      visuais={VISUAL_DO_GRUPO}
+                      pendencias={
+                        new Map<ChaveDoGrupoDeAjustes, boolean>([
+                          ["minha-loja", emailPendente || privacidadePendente],
+                          [
+                            "pagamentos",
+                            pagamentosPendente || formasPagamentoPendente,
+                          ],
+                          ["devolucao", politicaDevolucaoPendente],
+                        ])
+                      }
+                    />
+                  )}
+                  <div className="ajustes-grupos">
+                    <GrupoDeAjustes
+                      desktop={desktop}
+                      selecionada={grupoSelecionado === "minha-loja"}
+                      chave="minha-loja"
+                      comPendencia={emailPendente || privacidadePendente}
+                      onNavigate={onNavigate}
+                      subtitulos={subtitulos}
+                    >
+                      {/* E-mail da loja (14/10/2026): o Gmail que envia o e-mail do
                   pedido e o código de login. Nascida FECHADA como as demais;
                   com algo digitado e não salvo, o cabeçalho não fecha. */}
-                  <SecaoColapsavel
-                    titulo="E-mail da loja"
-                    subtitulo="O Gmail que envia os e-mails do pedido aos seus clientes"
-                    icone={Mail}
-                    comPendencia={emailPendente}
-                  >
-                    <LimiteDePedaco pedacos={[EmailDaLojaSection]}>
-                      <Suspense
-                        fallback={
-                          <p className="text-sm text-zinc-400">
-                            Carregando E-mail da loja…
-                          </p>
-                        }
+                      <SecaoColapsavel
+                        titulo="E-mail da loja"
+                        subtitulo="O Gmail que envia os e-mails do pedido aos seus clientes"
+                        icone={Mail}
+                        comPendencia={emailPendente}
                       >
-                        <EmailDaLojaSection onDirtyMudou={setEmailPendente} />
-                      </Suspense>
-                    </LimiteDePedaco>
-                  </SecaoColapsavel>
-                  {/* Pedidos de privacidade dos clientes (14/10/2026, LGPD): a
+                        <LimiteDePedaco pedacos={[EmailDaLojaSection]}>
+                          <Suspense
+                            fallback={
+                              <p className="text-sm text-zinc-400">
+                                Carregando E-mail da loja…
+                              </p>
+                            }
+                          >
+                            <EmailDaLojaSection
+                              onDirtyMudou={setEmailPendente}
+                            />
+                          </Suspense>
+                        </LimiteDePedaco>
+                      </SecaoColapsavel>
+                      {/* Pedidos de privacidade dos clientes (14/10/2026, LGPD): a
                   cliente pede, pelo app, a exclusão da conta ou a correção do
                   e-mail; a loja atende à mão e marca aqui. SEM botão de apagar.
                   Nascida FECHADA; com nota digitada e não salva, não fecha. */}
-                  <SecaoColapsavel
-                    titulo="Pedidos de privacidade dos clientes"
-                    subtitulo="Exclusão de conta e correção de e-mail pedidas pelo app"
-                    icone={ShieldCheck}
-                    comPendencia={privacidadePendente}
-                  >
-                    <LimiteDePedaco pedacos={[PrivacidadeDosClientesSection]}>
-                      <Suspense
-                        fallback={
-                          <p className="text-sm text-zinc-400">
-                            Carregando os pedidos…
-                          </p>
-                        }
+                      <SecaoColapsavel
+                        titulo="Pedidos de privacidade dos clientes"
+                        subtitulo="Exclusão de conta e correção de e-mail pedidas pelo app"
+                        icone={ShieldCheck}
+                        comPendencia={privacidadePendente}
                       >
-                        <PrivacidadeDosClientesSection
-                          onNavigate={onNavigate}
-                          onDirtyMudou={setPrivacidadePendente}
-                        />
-                      </Suspense>
-                    </LimiteDePedaco>
-                  </SecaoColapsavel>
-                </GrupoDeAjustes>
+                        <LimiteDePedaco
+                          pedacos={[PrivacidadeDosClientesSection]}
+                        >
+                          <Suspense
+                            fallback={
+                              <p className="text-sm text-zinc-400">
+                                Carregando os pedidos…
+                              </p>
+                            }
+                          >
+                            <PrivacidadeDosClientesSection
+                              onNavigate={onNavigate}
+                              onDirtyMudou={setPrivacidadePendente}
+                            />
+                          </Suspense>
+                        </LimiteDePedaco>
+                      </SecaoColapsavel>
+                    </GrupoDeAjustes>
 
-                {/* Aparência do app: Banners e Vitrines — só portas. */}
-                <GrupoDeAjustes
-                  chave="aparencia"
-                  onNavigate={onNavigate}
-                  subtitulos={subtitulos}
-                >
-                  {/* Cores do PRÓPRIO painel (Escuro, Claro, Confortável), só
+                    {/* Aparência do app: Banners e Vitrines — só portas. */}
+                    <GrupoDeAjustes
+                      desktop={desktop}
+                      selecionada={grupoSelecionado === "aparencia"}
+                      chave="aparencia"
+                      onNavigate={onNavigate}
+                      subtitulos={subtitulos}
+                    >
+                      {/* Cores do PRÓPRIO painel (Escuro, Claro, Confortável), só
                   neste aparelho: não mexe na vitrine dos clientes. */}
-                  <SecaoColapsavel
-                    titulo="Aparência do painel"
-                    subtitulo="Escuro, claro ou confortável, só neste aparelho"
-                    icone={Palette}
-                  >
-                    <AparenciaDoPainel />
-                  </SecaoColapsavel>
-                </GrupoDeAjustes>
+                      <SecaoColapsavel
+                        titulo="Aparência do painel"
+                        subtitulo="Escuro, claro ou confortável, só neste aparelho"
+                        icone={Palette}
+                      >
+                        <AparenciaDoPainel />
+                      </SecaoColapsavel>
+                    </GrupoDeAjustes>
 
-                {/* Entrega e frete: só a PORTA para a tela de Frete e o
+                    {/* Entrega e frete: só a PORTA para a tela de Frete e o
                 subtítulo do grupo (H5, painel simples, 09/10/2026). As
                 Transportadoras e as Consultas de frete, que moravam aqui em
                 acordeões, foram para a tela de Frete — o frete mora num lugar
                 só. */}
-                <GrupoDeAjustes
-                  chave="entrega"
-                  onNavigate={onNavigate}
-                  subtitulos={subtitulos}
-                />
+                    <GrupoDeAjustes
+                      desktop={desktop}
+                      selecionada={grupoSelecionado === "entrega"}
+                      chave="entrega"
+                      onNavigate={onNavigate}
+                      subtitulos={subtitulos}
+                    />
 
-                {/* ── Pagamentos (peça 20, pedido do dono 14/09 por voz): o
+                    {/* ── Pagamentos (peça 20, pedido do dono 14/09 por voz): o
                 lojista cadastra as chaves do Mercado Pago dele — guia com
                 prompt pronto para o agente de IA do app do MP, salvar e
                 testar conexão ali mesmo. Desde a mp-9 o que Salvar, Testar,
@@ -1212,141 +1272,150 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                 subtítulo deste grupo e para o termômetro — era a mesma tela
                 contando dois estados do dinheiro. Nascida FECHADA como as
                 demais: ajuste feito uma vez. */}
-                <GrupoDeAjustes
-                  chave="pagamentos"
-                  comPendencia={pagamentosPendente || formasPagamentoPendente}
-                  abrirGatilho={
-                    abrirPagamentosGatilho + abrirMercadoPagoGatilho
-                  }
-                  onNavigate={onNavigate}
-                  subtitulos={subtitulos}
-                >
-                  {/* Mesmos sinais dos controles, só leitura. O cartão depende
+                    <GrupoDeAjustes
+                      desktop={desktop}
+                      selecionada={grupoSelecionado === "pagamentos"}
+                      chave="pagamentos"
+                      comPendencia={
+                        pagamentosPendente || formasPagamentoPendente
+                      }
+                      abrirGatilho={
+                        abrirPagamentosGatilho + abrirMercadoPagoGatilho
+                      }
+                      onNavigate={onNavigate}
+                      subtitulos={subtitulos}
+                    >
+                      {/* Mesmos sinais dos controles, só leitura. O cartão depende
                   também da liberação do pagamento pelo app, como no checkout. */}
-                  <StatusPagamentoPix ligado={pixLigado} chaveOk={pixChaveOk} />
-                  <StatusPagamentoCartao
-                    ligado={pixLigado && cartaoLigado}
-                    chaveOk={pixChaveOk}
-                    estado={estadoDoCartao}
-                  />
+                      <StatusPagamentoPix
+                        ligado={pixLigado}
+                        chaveOk={pixChaveOk}
+                      />
+                      <StatusPagamentoCartao
+                        ligado={pixLigado && cartaoLigado}
+                        chaveOk={pixChaveOk}
+                        estado={estadoDoCartao}
+                      />
 
-                  {/* FORMAS DE PAGAMENTO POR LOJA (25/09/2026, migration
+                      {/* FORMAS DE PAGAMENTO POR LOJA (25/09/2026, migration
                   20261174000000): ANTES do Mercado Pago (pedido explícito do
                   brief) — a lojista decide primeiro O QUE aceita na
                   entrega/retirada, e só depois mexe nas credenciais do
                   pagamento pelo app. Nascida FECHADA como as demais. */}
-                  <SecaoColapsavel
-                    titulo="Formas de pagamento"
-                    aoAbrir={relerCartao}
-                    abrirGatilho={abrirPagamentosGatilho}
-                    subtitulo={`${formasNaEntrega.length} na entrega`}
-                    icone={Banknote}
-                    comPendencia={formasPagamentoPendente}
-                  >
-                    <FormasDePagamentoSection
-                      cartaoPeloApp={controlesDoCartao}
-                      formasNaEntrega={formasNaEntrega}
-                      pixLigado={pixLigado}
-                      pixChaveOk={pixChaveOk}
-                      isOffline={isOffline}
-                      updateConfig={updateConfig}
-                      onDirtyMudou={setFormasPagamentoPendente}
-                      somenteLeitura={configFalhou}
-                      onAbrirMercadoPago={() => {
-                        setAbrirMercadoPagoGatilho((n) => n + 1);
-                        // "Configurar credenciais" cai direto nos campos das
-                        // chaves (Avançado + Suas chaves abertos).
-                        setAbrirChavesGatilho((n) => n + 1);
-                      }}
-                    />
-                  </SecaoColapsavel>
-
-                  <SecaoColapsavel
-                    titulo="Mercado Pago"
-                    subtitulo="Chaves do seu Mercado Pago no app"
-                    icone={IconeMercadoPago}
-                    comPendencia={pagamentosPendente}
-                    abrirGatilho={abrirMercadoPagoGatilho}
-                  >
-                    <LimiteDePedaco pedacos={[MercadoPagoSection]}>
-                      <Suspense
-                        fallback={
-                          <p className="text-sm text-zinc-400">
-                            Carregando Mercado Pago…
-                          </p>
-                        }
+                      <SecaoColapsavel
+                        titulo="Formas de pagamento"
+                        aoAbrir={relerCartao}
+                        abrirGatilho={abrirPagamentosGatilho}
+                        subtitulo={`${formasNaEntrega.length} na entrega`}
+                        icone={Banknote}
+                        comPendencia={formasPagamentoPendente}
                       >
-                        <MercadoPagoSection
-                          onDirtyMudou={setPagamentosPendente}
-                          abrirChavesGatilho={abrirChavesGatilho}
-                          transportadoraVende={transportadoraVende}
-                          onPixAlternado={(ligado, chaveNaLoja) => {
-                            setPixLigado(ligado);
-                            // A tela de Frete é OUTRA aba (as duas ficam montadas):
-                            // o mesmo eco do servidor vai para ela, que o usa para
-                            // avisar da transportadora sem aviso falso.
-                            // O Início lê o mesmo eco, inclusive o da chave pública:
-                            // a mesma regra do `setPixChaveOk` logo abaixo.
-                            publicarPagamentoPeloApp(
-                              ligado,
-                              chaveNaLoja !== undefined
-                                ? chaveNaLoja
-                                : ligado
-                                  ? true
-                                  : undefined,
-                            );
-                            // `chaveNaLoja` só vem preenchido no eco do `ler`
-                            // (mp-10): é o único dos quatro que NÃO garante chave
-                            // publicada quando `ligado` é `true` — `ler` devolve o
-                            // retrato cru da ficha (`pagamento_online`), que pode
-                            // estar ligada com a Public Key ausente (teste X6).
-                            // Com o dado do servidor em mãos, usamos ELE; sem ele
-                            // (eco de `ligar_pix`/`salvar`, que a edge só acende
-                            // com a chave publicada JUNTO — mp-8), a inferência
-                            // antiga continua válida: ligado -> chave OK. Sem esta
-                            // distinção o painel acendia "Funcionando" com o PIX
-                            // quebrado assim que o lojista abria esta seção
-                            // (achado BLOQUEIA da revisão de mp-10).
-                            if (chaveNaLoja !== undefined) {
-                              setPixChaveOk(chaveNaLoja);
-                            } else if (ligado) {
-                              setPixChaveOk(true);
-                            }
+                        <FormasDePagamentoSection
+                          cartaoPeloApp={controlesDoCartao}
+                          formasNaEntrega={formasNaEntrega}
+                          pixLigado={pixLigado}
+                          pixChaveOk={pixChaveOk}
+                          isOffline={isOffline}
+                          updateConfig={updateConfig}
+                          onDirtyMudou={setFormasPagamentoPendente}
+                          somenteLeitura={configFalhou}
+                          onAbrirMercadoPago={() => {
+                            setAbrirMercadoPagoGatilho((n) => n + 1);
+                            // "Configurar credenciais" cai direto nos campos das
+                            // chaves (Avançado + Suas chaves abertos).
+                            setAbrirChavesGatilho((n) => n + 1);
                           }}
                         />
-                      </Suspense>
-                    </LimiteDePedaco>
-                  </SecaoColapsavel>
-                </GrupoDeAjustes>
+                      </SecaoColapsavel>
 
-                {/* ── Regras de troca e devolução (antes "Pós-venda"; plano 2026-09-26, seção "Devoluções"; P3 do
+                      <SecaoColapsavel
+                        titulo="Mercado Pago"
+                        subtitulo="Chaves do seu Mercado Pago no app"
+                        icone={IconeMercadoPago}
+                        comPendencia={pagamentosPendente}
+                        abrirGatilho={abrirMercadoPagoGatilho}
+                      >
+                        <LimiteDePedaco pedacos={[MercadoPagoSection]}>
+                          <Suspense
+                            fallback={
+                              <p className="text-sm text-zinc-400">
+                                Carregando Mercado Pago…
+                              </p>
+                            }
+                          >
+                            <MercadoPagoSection
+                              onDirtyMudou={setPagamentosPendente}
+                              abrirChavesGatilho={abrirChavesGatilho}
+                              transportadoraVende={transportadoraVende}
+                              onPixAlternado={(ligado, chaveNaLoja) => {
+                                setPixLigado(ligado);
+                                // A tela de Frete é OUTRA aba (as duas ficam montadas):
+                                // o mesmo eco do servidor vai para ela, que o usa para
+                                // avisar da transportadora sem aviso falso.
+                                // O Início lê o mesmo eco, inclusive o da chave pública:
+                                // a mesma regra do `setPixChaveOk` logo abaixo.
+                                publicarPagamentoPeloApp(
+                                  ligado,
+                                  chaveNaLoja !== undefined
+                                    ? chaveNaLoja
+                                    : ligado
+                                      ? true
+                                      : undefined,
+                                );
+                                // `chaveNaLoja` só vem preenchido no eco do `ler`
+                                // (mp-10): é o único dos quatro que NÃO garante chave
+                                // publicada quando `ligado` é `true` — `ler` devolve o
+                                // retrato cru da ficha (`pagamento_online`), que pode
+                                // estar ligada com a Public Key ausente (teste X6).
+                                // Com o dado do servidor em mãos, usamos ELE; sem ele
+                                // (eco de `ligar_pix`/`salvar`, que a edge só acende
+                                // com a chave publicada JUNTO — mp-8), a inferência
+                                // antiga continua válida: ligado -> chave OK. Sem esta
+                                // distinção o painel acendia "Funcionando" com o PIX
+                                // quebrado assim que o lojista abria esta seção
+                                // (achado BLOQUEIA da revisão de mp-10).
+                                if (chaveNaLoja !== undefined) {
+                                  setPixChaveOk(chaveNaLoja);
+                                } else if (ligado) {
+                                  setPixChaveOk(true);
+                                }
+                              }}
+                            />
+                          </Suspense>
+                        </LimiteDePedaco>
+                      </SecaoColapsavel>
+                    </GrupoDeAjustes>
+
+                    {/* ── Regras de troca e devolução (antes "Pós-venda"; plano 2026-09-26, seção "Devoluções"; P3 do
                 AGENTS.md): a política de trocas e devoluções de CADA loja —
                 prazos (com os mínimos da lei), formas de devolver e o texto
                 que o cliente lê. Nascida FECHADA como as demais. */}
-                <GrupoDeAjustes
-                  chave="devolucao"
-                  comPendencia={politicaDevolucaoPendente}
-                  onNavigate={onNavigate}
-                  subtitulos={subtitulos}
-                >
-                  {(aberta) => (
-                    <SecaoColapsavel
-                      abrirGatilho={aberta ? 1 : 0}
-                      titulo="Trocas e devoluções"
-                      subtitulo="Prazos, formas de devolver e a política da loja"
-                      icone={RotateCcw}
+                    <GrupoDeAjustes
+                      desktop={desktop}
+                      selecionada={grupoSelecionado === "devolucao"}
+                      chave="devolucao"
                       comPendencia={politicaDevolucaoPendente}
+                      onNavigate={onNavigate}
+                      subtitulos={subtitulos}
                     >
-                      <PoliticaDeDevolucaoSection
-                        ativa={active !== false && aberta}
-                        isOffline={isOffline}
-                        onDirtyMudou={setPoliticaDevolucaoPendente}
-                      />
-                    </SecaoColapsavel>
-                  )}
-                </GrupoDeAjustes>
+                      {(aberta) => (
+                        <SecaoColapsavel
+                          abrirGatilho={aberta ? 1 : 0}
+                          titulo="Trocas e devoluções"
+                          subtitulo="Prazos, formas de devolver e a política da loja"
+                          icone={RotateCcw}
+                          comPendencia={politicaDevolucaoPendente}
+                        >
+                          <PoliticaDeDevolucaoSection
+                            ativa={active !== false && aberta}
+                            isOffline={isOffline}
+                            onDirtyMudou={setPoliticaDevolucaoPendente}
+                          />
+                        </SecaoColapsavel>
+                      )}
+                    </GrupoDeAjustes>
 
-                {/*
+                    {/*
               A porta "Avisar clientes" morou AQUI de 24/08 a 30/08/2026 e
               SAIU por decisão do Gabriel: o lugar dela é a tela de Clientes
               (hoje o `AtalhosDaAba` de Clientes). O motivo que a trouxe para cá em 24/08 (zero
@@ -1355,53 +1424,57 @@ export const AdminSettingsView = memo(function AdminSettingsView({
               continua sensível à origem (pai-da-tela-do-admin).
             */}
 
-                {/* ── PORÃO: consulta rara e técnica, no pé da tela ── */}
-                <GrupoDeAjustes
-                  chave="ferramentas"
-                  subtituloExtra={`Conexão · ${isOffline ? "Offline" : "Online"}`}
-                  onNavigate={onNavigate}
-                  subtitulos={subtitulos}
-                >
-                  {(aberta) => (
-                    <>
-                      <p className="text-xs text-zinc-400">
-                        Conexão · {isOffline ? "Offline" : "Online"}
-                      </p>
-                      {/* Status de funcionamento — COLAPSADA por padrão (pedido do
+                    {/* ── PORÃO: consulta rara e técnica, no pé da tela ── */}
+                    <GrupoDeAjustes
+                      desktop={desktop}
+                      selecionada={grupoSelecionado === "ferramentas"}
+                      chave="ferramentas"
+                      subtituloExtra={`Conexão · ${isOffline ? "Offline" : "Online"}`}
+                      onNavigate={onNavigate}
+                      subtitulos={subtitulos}
+                    >
+                      {(aberta) => (
+                        <>
+                          <p className="text-xs text-zinc-400">
+                            Conexão · {isOffline ? "Offline" : "Online"}
+                          </p>
+                          {/* Status de funcionamento — COLAPSADA por padrão (pedido do
                   Gabriel, 02/09: status é consulta rara, não porta de
                   trabalho; a tela abre mostrando o que o lojista edita).
                   Desde H6 mostra só a conexão; o PIX é um atalho para o
                   termômetro de Pagamentos (um status do PIX só). */}
-                      <SecaoColapsavel
-                        titulo="Minha loja está no ar?"
-                        abrirGatilho={aberta ? 1 : 0}
-                        subtitulo="A conexão deste aparelho com a loja"
-                        icone={Activity}
-                      >
-                        <div className="space-y-3">
-                          <ConnectionDiagnosticsSection />
-                          <button
-                            type="button"
-                            onClick={irParaOPixEmPagamentos}
-                            className="flex min-h-11 w-full flex-wrap items-center justify-between gap-3 rounded-2xl border border-admin-border bg-admin-raised p-3 text-left text-xs text-zinc-300"
+                          <SecaoColapsavel
+                            titulo="Minha loja está no ar?"
+                            abrirGatilho={aberta ? 1 : 0}
+                            subtitulo="A conexão deste aparelho com a loja"
+                            icone={Activity}
                           >
-                            <span>
-                              O estado do PIX pelo app fica no topo de
-                              Pagamentos.
-                            </span>
-                            <span className="flex shrink-0 items-center gap-1 text-sky-300">
-                              Ver o PIX em Pagamentos
-                              <ChevronRight
-                                aria-hidden="true"
-                                className="size-3.5"
-                              />
-                            </span>
-                          </button>
-                        </div>
-                      </SecaoColapsavel>
-                    </>
-                  )}
-                </GrupoDeAjustes>
+                            <div className="space-y-3">
+                              <ConnectionDiagnosticsSection />
+                              <button
+                                type="button"
+                                onClick={irParaOPixEmPagamentos}
+                                className="flex min-h-11 w-full flex-wrap items-center justify-between gap-3 rounded-2xl border border-admin-border bg-admin-raised p-3 text-left text-xs text-zinc-300"
+                              >
+                                <span>
+                                  O estado do PIX pelo app fica no topo de
+                                  Pagamentos.
+                                </span>
+                                <span className="flex shrink-0 items-center gap-1 text-sky-300">
+                                  Ver o PIX em Pagamentos
+                                  <ChevronRight
+                                    aria-hidden="true"
+                                    className="size-3.5"
+                                  />
+                                </span>
+                              </button>
+                            </div>
+                          </SecaoColapsavel>
+                        </>
+                      )}
+                    </GrupoDeAjustes>
+                  </div>
+                </div>
                 <button
                   type="button"
                   onClick={() => setShowHelpModal(true)}

@@ -1,4 +1,12 @@
 {
+  "1.5.201": {
+    "titulo": "Ajustes organizados para o computador",
+    "novidades": [],
+    "correcoes": [],
+    "melhorias": [
+      "No computador, Ajustes ganha um menu de grupos ao lado do conteúdo, sem os espaços vazios entre seções. Os recebimentos ficam em três cartões e o celular mantém os grupos recolhíveis."
+    ]
+  },
   "1.5.200": {
     "titulo": "Início do painel reorganizado no computador",
     "novidades": [],
