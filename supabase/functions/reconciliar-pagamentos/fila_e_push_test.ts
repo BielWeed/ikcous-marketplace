@@ -340,6 +340,30 @@ Deno.test("EST-EDGE-DIN-2 - lote que cabe no orçamento: nada é adiado e todos 
   assertEquals(r.avisos.some((a) => a.includes("orçamento de tempo")), false);
 });
 
+// Sem sobrescrever o orçamento: protege o padrão usado pelo cron e seu limite inclusivo.
+for (const [msPorConsulta, consultados] of [[99_999, 2], [100_000, 1]]) {
+  Deno.test(`EST-EDGE-DIN-2 - orçamento PADRÃO: após ${msPorConsulta} ms começa ${consultados === 2 ? "a segunda consulta" : "nenhuma consulta nova"}`, async () => {
+    // Início não nulo: o limite é o tempo decorrido, não o valor absoluto do relógio.
+    const relogio = relogioQueAvancaComOMp(msPorConsulta, 500_000);
+    const r = await rodar({
+      candidatos: candidatosDoLote().slice(0, 2),
+      orders: {},
+      fetchImpl: relogio.fetchImpl,
+      deps: { agora: relogio.agora },
+      confirmar: () => "pago",
+    });
+    assertEquals(r.status, 200);
+    assertEquals(
+      relogio.estado.consultas.map((url) => url.split("/").pop()),
+      ORDERS_DO_LOTE.slice(0, consultados),
+    );
+    assertEquals([r.corpo.verificados, r.corpo.confirmados, r.corpo.falhas], [consultados, consultados, 0]);
+    assertEquals(r.corpo.adiadosPorTempo, 2 - consultados);
+    assertEquals(marcar(r.chamadas).map((c) => c.args.p_visitados), [PEDIDOS_DO_LOTE.slice(0, consultados)]);
+    assertEquals(r.chamadas.some((c) => c.nome === "fila_de_reembolsos"), true);
+  });
+}
+
 Deno.test("EST-EDGE-DIN-2 - orçamento JÁ estourado antes da 1ª cobrança: consulta ao menos UMA (o rodízio nunca fica parado) e adia o resto", async () => {
   const relogio = relogioQueAvancaComOMp(1_000, 500_000);
   const r = await rodar({
