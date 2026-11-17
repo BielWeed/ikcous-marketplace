@@ -15,6 +15,7 @@ const { banco, toastErro, toastSucesso } = vi.hoisted(() => ({
   banco: {
     linha: { credito: true, debito: false, parcelas_max: 6 } as unknown,
     erroDeLeitura: null as { message: string } | null,
+    leituraPendurada: false,
     rpc: vi.fn(),
   },
   toastErro: vi.fn(),
@@ -26,10 +27,13 @@ vi.mock("@/lib/supabase", () => ({
     from: () => ({
       select: () => ({
         eq: () => ({
-          maybeSingle: async () => ({
-            data: banco.erroDeLeitura ? null : banco.linha,
-            error: banco.erroDeLeitura,
-          }),
+          maybeSingle: async () => {
+            if (banco.leituraPendurada) return new Promise<never>(() => {});
+            return {
+              data: banco.erroDeLeitura ? null : banco.linha,
+              error: banco.erroDeLeitura,
+            };
+          },
         }),
       }),
     }),
@@ -54,6 +58,7 @@ describe("Cartão pelo app — grava só o que a lojista tocou, sobre a linha de
   beforeEach(() => {
     banco.linha = { credito: true, debito: false, parcelas_max: 6 };
     banco.erroDeLeitura = null;
+    banco.leituraPendurada = false;
     banco.rpc.mockReset();
     banco.rpc.mockImplementation(async (_nome: string, p: any) => ({
       data: {
@@ -78,12 +83,14 @@ describe("Cartão pelo app — grava só o que a lojista tocou, sobre a linha de
       raiz.unmount();
     });
     hospedeiro.remove();
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
   async function esperar() {
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 10));
+      if (vi.isFakeTimers()) await vi.advanceTimersByTimeAsync(10);
+      else await new Promise((r) => setTimeout(r, 10));
     });
   }
 
@@ -134,6 +141,40 @@ describe("Cartão pelo app — grava só o que a lojista tocou, sobre a linha de
     });
     await esperar();
   }
+
+  it("leitura inicial pendurada sai da espera e avisa como tentar de novo", async () => {
+    vi.useFakeTimers();
+    banco.leituraPendurada = true;
+    await montar();
+    expect(hospedeiro.textContent).toContain("Lendo a configuração...");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20_000);
+    });
+    expect(hospedeiro.textContent).not.toContain("Lendo a configuração...");
+    expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toContain(
+      "Recarregue a página para tentar de novo.",
+    );
+    expect(banco.rpc).not.toHaveBeenCalled();
+  });
+
+  it("conferência pendurada antes de salvar avisa, não grava e libera nova tentativa", async () => {
+    vi.useFakeTimers();
+    await montar();
+    banco.leituraPendurada = true;
+    await clicar(debito());
+    expect(debito().disabled).toBe(true);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20_000);
+    });
+    expect(toastErro).toHaveBeenCalledWith(
+      "Não foi possível conferir o que está salvo agora. Nada foi alterado. Tente de novo.",
+    );
+    expect(banco.rpc).not.toHaveBeenCalled();
+    expect(debito().disabled).toBe(false);
+    banco.leituraPendurada = false;
+    await clicar(debito());
+    expect(banco.rpc).toHaveBeenCalledTimes(1);
+  });
 
   it("ligar o débito não desfaz o 3x que o celular escolheu depois que a tela abriu", async () => {
     await montar();

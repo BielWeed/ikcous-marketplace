@@ -165,13 +165,13 @@ interface CamposNacionaisMexidos {
 }
 
 /**
- * Cada campo da regra de fora da cidade vale sozinho (o banco guarda uma coluna
- * por campo e confere a linha FINAL), então o Salvar manda só os que ela mexeu.
- * "Mexeu" = o que ela deixou na tela difere da base (o retrato). Uma exceção: se
- * ela trocou a ESTRATÉGIA, mínimo, tipo e valor do desconto vão se o que será
- * gravado difere da base, mesmo sem ela ter tocado neles (trocar para uma sem
- * desconto grava tipo e valor zerados, senão o desconto antigo ficaria guardado
- * para voltar). Com a estratégia intacta, só vale o que ela mexeu: comparar o
+ * O Salvar manda só os campos que ela mexeu, exceto os que são uma resposta só:
+ * tipo e valor do desconto viajam juntos, inclusive na mesclagem com config novo.
+ * "Mexeu" = o que ela deixou na tela difere da base (o retrato). Ao trocar a
+ * ESTRATÉGIA, vão também os campos que ela exige (mínimo no "acima de valor";
+ * tipo e valor no desconto), mesmo iguais à base: outro aparelho pode tê-los
+ * mudado. Os valores ajustados que diferem da base também vão, para limpar o
+ * mínimo/desconto ao sair da estratégia. Com a estratégia intacta, comparar o
  * valor ajustado com a base acusaria diferença falsa (ex.: config sem o campo)
  * e regravaria valor que ela nunca viu.
  * `gravar` é o formulário já ajustado (centavos, zeros fora da estratégia); a
@@ -193,17 +193,22 @@ function camposNacionaisMexidos(
     };
   }
   const trocouEstrategia = atual.estrategia !== base.estrategia;
+  const mexeuDesconto =
+    atual.tipoDesconto !== base.tipoDesconto ||
+    atual.valorDesconto !== base.valorDesconto ||
+    (trocouEstrategia &&
+      (atual.estrategia === "desconto_na_mais_barata" ||
+        gravar.tipoDesconto !== base.tipoDesconto ||
+        gravar.valorDesconto !== base.valorDesconto));
   return {
     estrategia: trocouEstrategia,
     minimo:
       atual.minimo !== base.minimo ||
-      (trocouEstrategia && gravar.minimo !== base.minimo),
-    tipoDesconto:
-      atual.tipoDesconto !== base.tipoDesconto ||
-      (trocouEstrategia && gravar.tipoDesconto !== base.tipoDesconto),
-    valorDesconto:
-      atual.valorDesconto !== base.valorDesconto ||
-      (trocouEstrategia && gravar.valorDesconto !== base.valorDesconto),
+      (trocouEstrategia &&
+        (atual.estrategia === "acima_de_valor" ||
+          gravar.minimo !== base.minimo)),
+    tipoDesconto: mexeuDesconto,
+    valorDesconto: mexeuDesconto,
     alcance: atual.alcance !== base.alcance,
   };
 }

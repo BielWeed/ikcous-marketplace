@@ -583,7 +583,7 @@ export const HomeView = React.memo(function HomeView({
             <div data-testid="esqueleto-banner" className="mb-2 w-full">
               <div
                 role="status"
-                className="flex aspect-[2/1] w-full animate-pulse items-center justify-center bg-zinc-100 md:mx-auto md:max-w-[1040px] lg:aspect-auto lg:h-[clamp(320px,30cqw,440px)] lg:max-w-none lg:rounded-3xl"
+                className="flex aspect-[2/1] w-full animate-pulse items-center justify-center bg-zinc-100 md:mx-auto md:max-w-[1040px] lg:aspect-[4/1] lg:h-auto lg:max-w-none lg:rounded-3xl"
               >
                 <span className="sr-only">Carregando banners</span>
                 <div className="size-8 animate-spin rounded-full border-4 border-zinc-200 border-t-primary" />
@@ -716,8 +716,6 @@ export const HomeView = React.memo(function HomeView({
               onQuickBuy={onQuickBuy}
               className={cn(
                 "lg:px-0 lg:[&_.snap-mandatory>div]:w-[calc((100%-48px)/4)] xl:[&_.snap-mandatory>div]:w-[calc((100%-64px)/5)]",
-                secProducts.length <= 3 &&
-                  "lg:[&_.snap-mandatory]:justify-center",
                 section.id === "bestsellers" && "bg-zinc-50/50",
               )}
               selectedProductId={selectedProductId}
@@ -732,7 +730,7 @@ export const HomeView = React.memo(function HomeView({
             <div className="w-full py-4">
               <div
                 data-testid="esqueleto-banner-meio"
-                className="aspect-[2/1] w-full animate-pulse bg-zinc-100 md:mx-auto md:max-w-[1040px] lg:aspect-auto lg:h-[clamp(320px,30cqw,440px)] lg:max-w-none lg:rounded-3xl"
+                className="aspect-[2/1] w-full animate-pulse bg-zinc-100 md:mx-auto md:max-w-[1040px] lg:aspect-[4/1] lg:h-auto lg:max-w-none lg:rounded-3xl"
               />
             </div>
           )

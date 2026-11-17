@@ -4017,7 +4017,7 @@ export function CheckoutViewDaConta({
       // `min-h-dvh` (era min-h-screen): mesma altura de tela cheia, mas
       // estável no celular — o 100vh sobe/desce quando a barra do navegador
       // aparece e some, e o spinner pulava de lugar durante o carregamento.
-      <div className="flex min-h-dvh items-center justify-center bg-white">
+      <div className="flex min-h-dvh items-center justify-center bg-white lg:min-h-0">
         <div className="size-12 animate-spin rounded-full border-4 border-zinc-100 border-t-zinc-900" />
       </div>
     );
@@ -5484,7 +5484,7 @@ export function CheckoutViewDaConta({
     retomarPedidoId
   ) {
     return (
-      <div className="pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
+      <div className="pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4 lg:min-h-0">
         <h1 className="text-lg font-bold text-foreground">
           Retomar o pagamento do pedido
         </h1>
@@ -5550,7 +5550,7 @@ export function CheckoutViewDaConta({
 
   if (retomadaSemPagamentoPendente) {
     return (
-      <div className="pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
+      <div className="pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4 lg:min-h-0">
         <h1 className="text-lg font-bold text-foreground">
           Este pedido não está aguardando pagamento
         </h1>
@@ -5571,7 +5571,7 @@ export function CheckoutViewDaConta({
 
   if (retomadaEscolhendoForma) {
     return (
-      <div className="pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
+      <div className="pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4 lg:min-h-0">
         <h1 className="text-lg font-bold text-foreground">
           Como você quer pagar este pedido?
         </h1>
@@ -5727,7 +5727,7 @@ export function CheckoutViewDaConta({
       // coluna alarga para 768 px, onde o PagamentoOnline vira duas colunas. O
       // cartão, o aviso de Pix encerrado, os erros e o "carregando" não têm
       // figura: seguem na coluna estreita.
-      <div className="pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4 lg:has-[figure]:max-w-3xl">
+      <div className="pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4 lg:min-h-0 lg:has-[figure]:max-w-3xl">
         {!pedidoMortoNaTela && (
           <TituloQueRecebeOFoco
             nivel={1}
@@ -6254,7 +6254,7 @@ export function CheckoutViewDaConta({
       ? null
       : lerReciboDoCheckout(user?.id);
     return (
-      <div className="pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
+      <div className="pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4 lg:min-h-0">
         {lendoOCarrinho ? (
           <p
             role="status"
@@ -6495,7 +6495,7 @@ export function CheckoutViewDaConta({
   };
 
   return (
-    <div className="pb-customer-summary min-h-dvh bg-gray-50/10 pt-2 lg:pb-8">
+    <div className="pb-customer-summary min-h-dvh bg-gray-50/10 pt-2 lg:min-h-0 lg:pb-8">
       {/* Título nível 1 só para leitor de tela: a tela principal do checkout
           não tinha nenhum h1. Fica FORA do bloco `space-y-4` abaixo para não
           somar margem ao primeiro cartão (sr-only não ocupa espaço). */}

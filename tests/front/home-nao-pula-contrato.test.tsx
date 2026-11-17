@@ -539,7 +539,7 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
   });
 
   it.each([0, 1, 2, 3, 4])(
-    "%i produtos: carrossel vazio some, até três centralizam no computador",
+    "%i produtos: carrossel vazio some, poucos produtos começam alinhados ao título",
     async (quantidade) => {
       configDaLoja = {
         homeSections: [
@@ -562,7 +562,7 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
           carrossel?.className.includes(
             "lg:[&_.snap-mandatory]:justify-center",
           ),
-        ).toBe(quantidade <= 3);
+        ).toBe(false);
       }
     },
   );

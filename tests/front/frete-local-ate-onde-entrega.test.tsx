@@ -401,6 +401,34 @@ describe("FreteLocalBloco: até onde você entrega", () => {
   });
 
   describe("o texto livre continua para quem já o usa", () => {
+    it("o campo da faixa anuncia CEPs da entrega para leitores de tela", () => {
+      montar("38500-000, 38509-999");
+      const campo =
+        hospedeiro.querySelector<HTMLInputElement>("#local-cep-range");
+      if (!campo) throw new Error("campo da faixa não existe");
+      expect(campo.type).toBe("text");
+      // Para este input de texto: referências válidas têm precedência sobre
+      // aria-label, que por sua vez tem precedência sobre os labels nativos.
+      const rotulosReferenciados = (campo.getAttribute("aria-labelledby") ?? "")
+        .trim()
+        .split(/\s+/)
+        .map((id) => document.getElementById(id))
+        .filter((rotulo) => rotulo !== null);
+      const nomeAcessivel = (
+        rotulosReferenciados.length > 0
+          ? rotulosReferenciados.map((rotulo) => rotulo.textContent).join(" ")
+          : campo.getAttribute("aria-label") ||
+            Array.from(campo.labels ?? [])
+              .map((rotulo) => rotulo.textContent)
+              .join(" ")
+      )
+        .replace(/\s+/g, " ")
+        .trim();
+      expect(nomeAcessivel).toBe("CEPs da entrega");
+      // Nenhuma referência de maior prioridade pode substituir o aria-label.
+      expect(campo.hasAttribute("aria-labelledby")).toBe(false);
+    });
+
     it("fica recolhido em 'Escrever a faixa de CEP à mão' quando não há nada escrito", () => {
       montar("");
       const detalhes = hospedeiro.querySelector("details");

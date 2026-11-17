@@ -689,7 +689,7 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
                   type="button"
                   disabled={emAndamento || isOffline}
                   onClick={aoRemover}
-                  className="ajustes-secundario min-h-11 !text-red-300"
+                  className="ajustes-secundario min-h-11 !text-[color:var(--lit-t-ff9999,#fca5a5)]"
                 >
                   Sim, remover
                 </button>
@@ -702,7 +702,7 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
               onClick={() => setConfirmandoRemocao(true)}
               className={cn(
                 CLASSE_BOTAO_NEUTRO,
-                "!justify-between !text-red-300",
+                "!justify-between !text-[color:var(--lit-t-ff9999,#fca5a5)]",
               )}
             >
               {ocupado === "removendo" ? (

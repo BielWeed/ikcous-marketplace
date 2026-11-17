@@ -278,6 +278,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
   const campoDaFaixa = (
     <input
       id="local-cep-range"
+      aria-label="CEPs da entrega"
       type="text"
       value={faixa}
       onChange={(e) => onFaixa(e.target.value)}

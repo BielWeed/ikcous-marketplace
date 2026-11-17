@@ -1,7 +1,12 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
+import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  abrirNovoBannerPelaBarra,
+  escolherImagemPropria,
+} from "./helpers/editor-de-banner";
 const h = vi.hoisted(() => ({
   upload: vi.fn(),
   update: vi.fn(),
@@ -100,6 +105,8 @@ async function enviar(url: string) {
 }
 beforeEach(async () => {
   vi.clearAllMocks();
+  banner.desktopImageUrl = computador;
+  banner.active = true;
   localStorage.clear();
   h.upload.mockReset();
   h.update.mockResolvedValue(undefined);
@@ -137,6 +144,60 @@ afterEach(() => {
 });
 
 describe("configurar uma versão sem substituir a outra", () => {
+  async function mostrarListaSemComputador(ativo = true) {
+    await clicar("Cancelar");
+    banner.desktopImageUrl = "";
+    banner.active = ativo;
+    const { AdminBannersView } = await import("@/views/admin/AdminBannersView");
+    await act(async () =>
+      root.render(<AdminBannersView active onNavigate={vi.fn()} />),
+    );
+  }
+  it("computador sem imagem não mostra foto do celular em nenhuma prévia", async () => {
+    await mostrarListaSemComputador();
+    const editar = document.querySelector<HTMLButtonElement>(
+      'button[title="Editar Banner"], button[title="Editar"]',
+    )!;
+    await act(async () => editar.click());
+    expect(
+      document.querySelector('img[alt="Banner Preview"]')?.getAttribute("src"),
+    ).toBe(celular);
+    await clicar("Computador (4:1)");
+    const editor = document.body;
+    expect(editor.querySelector('img[alt="Banner Preview"]')).toBeNull();
+    expect(editor.querySelector('img[alt="Imagem do computador"]')).toBeNull();
+    expect(editor.textContent).toContain(
+      "Este banner não aparece no computador",
+    );
+    await clicar("Celular (2:1)");
+    expect(
+      document.querySelector('img[alt="Banner Preview"]')?.getAttribute("src"),
+    ).toBe(celular);
+  });
+  it("lista avisa quando banner ativo não tem imagem para computador", async () => {
+    await mostrarListaSemComputador();
+    expect(host.textContent).toContain("Sem imagem para o computador");
+  });
+  it("lista não avisa quando banner está pausado ou tem imagem de computador", async () => {
+    await clicar("Cancelar");
+    expect(host.textContent).not.toContain("Sem imagem para o computador");
+    const editar = document.querySelector<HTMLButtonElement>(
+      'button[title="Editar Banner"], button[title="Editar"]',
+    )!;
+    await act(async () => editar.click());
+    await mostrarListaSemComputador(false);
+    expect(host.textContent).not.toContain("Sem imagem para o computador");
+  });
+  it("novo banner só com computador informa que falta a imagem do celular", async () => {
+    await clicar("Cancelar");
+    await abrirNovoBannerPelaBarra();
+    await escolherImagemPropria();
+    await clicar("Computador (4:1)");
+    await enviar("https://example.com/nova-desktop.webp");
+    await clicar("Salvar Banner");
+    expect(toast.error).toHaveBeenCalledWith("Falta a imagem do celular");
+    expect(h.update).not.toHaveBeenCalled();
+  });
   it("enviar computador salva somente desktopImageUrl", async () => {
     await clicar("Computador (4:1)");
     await enviar("https://example.com/nova-desktop.webp");

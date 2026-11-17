@@ -77,6 +77,8 @@ mais conservador) — a publicação da #711 acompanha a promoção da linha cla
 
 ## 3. Sequência de publicação segura (ordem final, sem etapas implícitas)
 
+> Histórico de 09/2026 — o destino atual do webhook está em [producao-unica-fonte.md](producao-unica-fonte.md#edge-functions-por-loja); `dekxab…` é o projeto antigo.
+
 1. **(j)** `SUPABASE_ACCESS_TOKEN` da org nova no GitHub + check "Código x banco".
    **Estado (29/09, marco de CI)**: token novo JÁ salvo e provado (run #715
    SUCCESS). **PR #717 MESCLADA em develop** (merge `26543922`) após revisão
