@@ -97,6 +97,66 @@ describe("OrderReceipt — a observação vai no papel", () => {
     expect(texto?.classList.contains("break-words")).toBe(true);
   });
 
+  it("só frete automático não gera observação", async () => {
+    const papel = await imprimir(
+      pedidoBase({ notes: "Frete Escolhido: PAC (Prazo: 5 dias)" }),
+    );
+    expect(papel.textContent).not.toContain("OBSERVAÇÃO:");
+  });
+
+  it("separa a instrução da cliente da linha automática de frete", async () => {
+    const papel = await imprimir(
+      pedidoBase({
+        notes: "Não tocar a campainha\n\nFrete Escolhido: PAC (Prazo: 5 dias)",
+      }),
+    );
+    const rotulo = Array.from(papel.querySelectorAll("p")).find(
+      (p) => p.textContent === "OBSERVAÇÃO:",
+    );
+    expect(rotulo?.nextElementSibling?.textContent).toBe(
+      "Não tocar a campainha",
+    );
+    expect(papel.textContent).not.toContain("Frete Escolhido:");
+  });
+
+  it.each(["Retirada na loja", "Retirada na loja: Rua X, 10"])(
+    "retirada automática (%s) não duplica endereço na observação",
+    async (notes) => {
+      const papel = await imprimir(
+        pedidoBase({
+          notes,
+          retiradaNaLoja: true,
+          enderecoDeRetirada: "Rua X, 10",
+        }),
+      );
+      expect(papel.textContent).not.toContain("OBSERVAÇÃO:");
+      expect(papel.textContent?.split("Rua X, 10")).toHaveLength(2);
+      expect(papel.textContent).toContain("RETIRADA NA LOJA:");
+    },
+  );
+
+  it("mantém linhas da cliente e variação legada, sem espaços vazios excessivos", async () => {
+    const papel = await imprimir(
+      pedidoBase({
+        notes:
+          "  Não tocar a campainha\r\nEntregar após 18h\r\n\r\n\r\n  Frete Escolhido: PAC (Prazo: 5 dias)\r\n\r\nProduto: azul · M  ",
+      }),
+    );
+    const rotulo = Array.from(papel.querySelectorAll("p")).find(
+      (p) => p.textContent === "OBSERVAÇÃO:",
+    );
+    expect(rotulo?.nextElementSibling?.textContent).toBe(
+      "Não tocar a campainha\nEntregar após 18h\n\nProduto: azul · M",
+    );
+  });
+
+  it("preserva frases livres sobre retirada que não são a nota automática", async () => {
+    const notes =
+      "Retirada na loja somente após me ligar\nPrefiro Frete Escolhido: PAC";
+    const papel = await imprimir(pedidoBase({ notes }));
+    expect(papel.textContent).toContain(notes);
+  });
+
   it("balcão antigo com nota interna não imprime a observação nem seu texto", async () => {
     const notes = "Desconto autorizado por peça de mostruário";
     const papel = await imprimir(

@@ -2,6 +2,7 @@ import { branding } from "@/config/branding";
 import { rotuloDaFormaDoPedido } from "@/lib/forma-de-pagamento";
 import { linhasDoEndereco } from "@/lib/linhas-do-endereco-do-pedido";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
+import { observacaoDaClienteNoRecibo } from "@/lib/observacao-da-cliente-no-recibo";
 import type { Order } from "@/types";
 import { memo } from "react";
 import { createPortal } from "react-dom";
@@ -58,6 +59,7 @@ export const OrderReceipt = memo(function OrderReceipt({
   const storeName = storeNameProp ?? branding.appName;
   // Venda de balcão: não tem frete, e o papel diz como a cliente pagou.
   const presencial = order.canal === "presencial";
+  const observacao = observacaoDaClienteNoRecibo(order.notes);
   // O banco grava este texto em `customer_name` quando a venda de balcão nasce
   // sem cliente (e quando a cliente cadastrada não tem nome no perfil). Ele não
   // é nome de gente: sem conta vinculada o papel não leva o bloco CLIENTE; com
@@ -110,11 +112,11 @@ export const OrderReceipt = memo(function OrderReceipt({
           </div>
         )}
 
-        {!presencial && order.notes?.trim() && (
+        {!presencial && order.notes?.trim() && observacao && (
           <div className="mb-4">
             <p className="mb-1 border-b border-black font-bold">OBSERVAÇÃO:</p>
             <p className="whitespace-pre-line break-words text-xs">
-              {order.notes}
+              {observacao}
             </p>
           </div>
         )}
