@@ -7,7 +7,7 @@
 // Paulo, `v_dias <= prazo`, migration 20261175000000) e a leitura do prazo,
 // com a regra de ouro: se a configuração não chegou, o prazo é 90 — o aviso
 // tem de SOBRAR, nunca sumir.
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   JANELA_DE_RECEBIMENTO_DIAS,
@@ -90,8 +90,14 @@ describe("a data de corte do sino", () => {
 
 describe("a leitura do prazo da loja", () => {
   beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-17T15:00:00-03:00"));
     maybeSingleMock.mockReset();
     fromMock.mockClear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   /** Quantos dias o corte devolvido está para trás de hoje (calendário SP). */

@@ -202,6 +202,8 @@ describe("AdminLayout — o sino abre as Notificações do lojista", () => {
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-17T15:00:00-03:00"));
     PEDIDOS_PENDENTES = 0;
     PERGUNTAS_PENDENTES = 0;
     AVALIACOES_SEM_RESPOSTA = 0;
@@ -244,6 +246,7 @@ describe("AdminLayout — o sino abre as Notificações do lojista", () => {
     });
     hospedeiro.remove();
     vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 
   /** Monta o painel e devolve o `onNavigate` espiao e o botao do sino. */
