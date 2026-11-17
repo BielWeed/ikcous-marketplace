@@ -57,7 +57,8 @@ function stubClipboard() {
 // @ts-expect-error flag interna do React, sem tipo público
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const QR_CODE_TESTE = "00020126-codigo-pix-de-teste-god-senior";
+const QR_CODE_TESTE = "00020126COPIAECOLAABC";
+const QR_IMAGEM_BASE64_TESTE = "QRIMAGEMBASE64XYZ";
 const TICKET_URL = "https://www.mercadopago.com.br/payments/checkout?id=abc";
 const EXPIRA_EM = "2026-09-24T15:30:00.000Z";
 const ORDER_ID = "a1b2c3d4-e5f6-4000-8000-000000000001";
@@ -116,7 +117,7 @@ describe("PagamentoOnline — tela do Pix com prazo dinâmico e aviso estimado",
       statusPagamento: "aguardando",
       expiraEm: EXPIRA_EM,
       qrCode: QR_CODE_TESTE,
-      qrCodeBase64: "abc123",
+      qrCodeBase64: QR_IMAGEM_BASE64_TESTE,
       ticketUrl: TICKET_URL,
       ...resposta,
     });
@@ -172,6 +173,10 @@ describe("PagamentoOnline — tela do Pix com prazo dinâmico e aviso estimado",
     const img = imagemQr();
     expect(img).not.toBeNull();
     expect(img!.className).not.toContain("blur");
+    expect(img!.getAttribute("src")).toBe(
+      `data:image/png;base64,${QR_IMAGEM_BASE64_TESTE}`,
+    );
+    expect(img!.getAttribute("src")).not.toContain(QR_CODE_TESTE);
     expect(hospedeiro.textContent).toContain(QR_CODE_TESTE);
 
     const link = linkMercadoPago();
@@ -183,6 +188,7 @@ describe("PagamentoOnline — tela do Pix com prazo dinâmico e aviso estimado",
     expect(botao!.disabled).toBe(false);
     await clicarCopiar();
     expect(clipboardWriteText).toHaveBeenCalledWith(QR_CODE_TESTE);
+    expect(clipboardWriteText).not.toHaveBeenCalledWith(QR_IMAGEM_BASE64_TESTE);
     expect(botaoCopiar()!.textContent).toContain("Copiado!");
   }
 
