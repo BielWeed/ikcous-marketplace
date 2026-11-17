@@ -41,6 +41,7 @@ on:
       - "tests/ci_tipos_efemeros_test.ts"
       - "supabase/functions/send-order-whatsapp/**"
       - ".github/workflows/rpc-ci.yml"
+      - ".github/workflows/aplicar-migrations.yml"
       # O ensaio da anonimizacao le o SQL direto deste roteiro: mudar o roteiro dispara a prova.
       - "docs/runbooks/atender-pedido-de-privacidade.md"
       # A prova viva do lote 60-66 (abaixo) roda estes três: mudar a consulta
@@ -301,6 +302,7 @@ on:
       - "tests/ci_tipos_efemeros_test.ts"
       - "supabase/functions/send-order-whatsapp/**"
       - ".github/workflows/rpc-ci.yml"
+      - ".github/workflows/aplicar-migrations.yml"
       - "docs/runbooks/atender-pedido-de-privacidade.md"
       - "scripts/publicacao/conferir-banco.cjs"
       - "scripts/publicacao/consultas/9a-conferir-60-a-66-aplicado.sql"

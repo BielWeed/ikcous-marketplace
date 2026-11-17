@@ -662,5 +662,6 @@ Deno.test("RPC-CI: geração e upload dependem dos passos certos e gatilhos", ()
   for (const gatilho of gatilhos.split(/(?=^ {2}push:)/m)) {
     assert(gatilho.includes('"tests/banco/gerar-tipos-efemeros.cjs"'));
     assert(gatilho.includes('"tests/ci_tipos_efemeros_test.ts"'));
+    assert(gatilho.includes('".github/workflows/aplicar-migrations.yml"'));
   }
 });
