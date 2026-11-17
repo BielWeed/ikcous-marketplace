@@ -1045,12 +1045,13 @@ describe("'Devolver agora' desconta o que o Mercado Pago já está devolvendo (L
       [
         "conferindo (lista pendente, leitura fresca falhou)",
         () => {
-          // A leitura da montagem fica pendente; abrir o painel reutiliza
-          // esse voo. A leitura FRESCA do "Já estornei" (2ª) falha.
+          // Leitura da montagem e a releitura de abrir o painel ficam
+          // pendentes (a lista segue "conferindo"); a leitura FRESCA do
+          // "Já estornei" (3ª) falha.
           let chamadas = 0;
           RESPONDER = () => {
             chamadas += 1;
-            return chamadas <= 1
+            return chamadas <= 2
               ? new Promise<RespostaFake>(() => {})
               : Promise.resolve({ data: null, error: { message: "rede" } });
           };
@@ -1407,6 +1408,100 @@ describe("useEstornosEmCursoDosPedidos — o hook", () => {
         emCurso: 0,
         concluido: 100,
       });
+    } finally {
+      sonda.desmontar();
+    }
+  });
+
+  it.each([
+    ["a leitura antiga volta ANTES da nova", true],
+    ["a leitura antiga volta DEPOIS da nova", false],
+  ])(
+    "recarregar com leitura pendente da mesma lista: lança outra e vale a resposta dela (%s)",
+    async (_caso, antigaPrimeiro) => {
+      vi.useFakeTimers();
+      // Rede lenta: a 1ª leitura sai ANTES de o lojista tocar "Devolver" e
+      // volta com o retrato velho (nenhum estorno em curso). Abrir o painel
+      // (`recarregar`) tem de lançar outra — descartar o pedido deixava a
+      // tela com "devolva R$ 100" para sempre quando nenhum outro pedido
+      // tinha estorno em curso (sem intervalo para consertar).
+      const resolvers: Array<(r: RespostaFake) => void> = [];
+      RESPONDER = () =>
+        new Promise<RespostaFake>((resolve) => {
+          resolvers.push(resolve);
+        });
+      const sonda = await montarSonda(["ped-dobro"]);
+      try {
+        expect(resolvers).toHaveLength(1);
+        expect(sonda.ultimo("ped-dobro")).toEqual({ tipo: "conferindo" });
+        await act(async () => {
+          sonda.api().recarregar();
+        });
+        expect(resolvers).toHaveLength(2);
+        const antiga: RespostaFake = { data: [], error: null };
+        const nova: RespostaFake = {
+          data: [{ order_id: "ped-dobro", amount: 30, status: "solicitado" }],
+          error: null,
+        };
+        if (antigaPrimeiro) {
+          await act(async () => {
+            resolvers[0](antiga);
+          });
+          // O retrato velho não pode virar "nada em curso".
+          expect(sonda.ultimo("ped-dobro")).toEqual({ tipo: "conferindo" });
+          await act(async () => {
+            resolvers[1](nova);
+          });
+        } else {
+          await act(async () => {
+            resolvers[1](nova);
+          });
+          await act(async () => {
+            resolvers[0](antiga);
+          });
+        }
+        expect(sonda.ultimo("ped-dobro")).toMatchObject({
+          tipo: "conferido",
+          emCurso: 30,
+        });
+      } finally {
+        sonda.desmontar();
+      }
+    },
+  );
+
+  it("lista A→B→A com a 1ª leitura pendente: a resposta velha não destrava a guarda da leitura nova", async () => {
+    vi.useFakeTimers();
+    let chamadas = 0;
+    const pendentes: Array<(r: RespostaFake) => void> = [];
+    RESPONDER = () => {
+      chamadas += 1;
+      // A 1ª leitura volta já com estorno em curso (o intervalo passa a
+      // existir); as seguintes ficam pendentes.
+      if (chamadas === 1) {
+        return Promise.resolve({
+          data: [{ order_id: "ped-a", amount: 100, status: "solicitado" }],
+          error: null,
+        });
+      }
+      return new Promise<RespostaFake>((resolve) => {
+        pendentes.push(resolve);
+      });
+    };
+    const sonda = await montarSonda(["ped-a"]);
+    try {
+      await avancar(0);
+      expect(sonda.ultimo("ped-a")).toMatchObject({ emCurso: 100 });
+      await sonda.render(["ped-b"]); // leitura 2 (lista B), pendente
+      await sonda.render(["ped-a"]); // leitura 3 (lista A de novo), pendente
+      expect(consultasOrderRefunds).toHaveLength(3);
+      // A leitura 2 é de uma lista que já não está na tela: sua resposta é
+      // descartada e NÃO pode liberar a guarda da leitura 3, que segue em voo.
+      await act(async () => {
+        pendentes[0]({ data: [], error: null });
+      });
+      await avancar(15_001);
+      expect(consultasOrderRefunds).toHaveLength(3);
     } finally {
       sonda.desmontar();
     }
