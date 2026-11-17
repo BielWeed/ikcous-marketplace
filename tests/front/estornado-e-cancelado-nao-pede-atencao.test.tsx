@@ -377,32 +377,50 @@ describe("pedido ENTREGUE e estornado — neutro só com a devolução concluíd
     expect(hospedeiro.textContent).toContain("precisa de atenção");
   });
 
-  it("a lista: o cartão segue com o aviso e o selo de atenção (a lista não prova nada)", async () => {
-    const { AdminOrderCard } = await import(
-      "@/components/admin/orders/AdminOrderCard"
-    );
-    await act(async () => {
-      raiz.render(
-        <AdminOrderCard
-          order={entregue}
-          viewMode="compact"
-          onSelect={vi.fn()}
-          onWhatsApp={vi.fn()}
-          onRegistrarPagamento={vi.fn()}
-          registrandoPagamento={false}
-          onStatusChange={vi.fn()}
-          onReceberAntesDeAvancar={vi.fn()}
-          onAnularVenda={vi.fn()}
-          isOffline={false}
-          destaquePrimario
-        />,
+  it.each([
+    ["delivered", "Pagamento estornado · pedido finalizado"],
+    ["pending", "Pagamento estornado · pedido aberto"],
+    ["processing", "Pagamento estornado · pedido aberto"],
+    ["shipping", "Pagamento estornado · pedido aberto"],
+    ["cancelled", "Pedido cancelado"],
+  ] as const)(
+    "a lista: estornado em %s mostra '%s' sem mudar a atenção",
+    async (status, aviso) => {
+      const { AdminOrderCard } = await import(
+        "@/components/admin/orders/AdminOrderCard"
       );
-    });
-    expect(hospedeiro.textContent).toContain(
-      "Pagamento estornado · pedido aberto",
-    );
-    expect(hospedeiro.innerHTML).toContain("Estornado — precisa de atenção");
-  });
+      await act(async () => {
+        raiz.render(
+          <AdminOrderCard
+            order={{ ...entregue, status }}
+            viewMode="compact"
+            onSelect={vi.fn()}
+            onWhatsApp={vi.fn()}
+            onRegistrarPagamento={vi.fn()}
+            registrandoPagamento={false}
+            onStatusChange={vi.fn()}
+            onReceberAntesDeAvancar={vi.fn()}
+            onAnularVenda={vi.fn()}
+            isOffline={false}
+            destaquePrimario
+          />,
+        );
+      });
+      expect(hospedeiro.textContent).toContain(aviso);
+      if (status === "delivered" || status === "cancelled") {
+        expect(hospedeiro.textContent).not.toContain("pedido aberto");
+      }
+      if (status === "cancelled") {
+        expect(hospedeiro.innerHTML).not.toContain(
+          "Estornado — precisa de atenção",
+        );
+      } else {
+        expect(hospedeiro.innerHTML).toContain(
+          "Estornado — precisa de atenção",
+        );
+      }
+    },
+  );
 
   it("a planilha: entregue + estornado segue com 'precisa de atenção'", () => {
     const [, linha] = pedidosParaCsv([entregue]).split(/\r?\n/);

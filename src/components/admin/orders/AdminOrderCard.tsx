@@ -191,7 +191,9 @@ export const AdminOrderCard = memo(function AdminOrderCard({
         : order.paymentStatus === "recusado"
           ? "Pagamento recusado · pedido aberto"
           : order.paymentStatus === "estornado"
-            ? "Pagamento estornado · pedido aberto"
+            ? order.status === "delivered"
+              ? "Pagamento estornado · pedido finalizado"
+              : "Pagamento estornado · pedido aberto"
             : order.paymentStatus === "expirado"
               ? "Pagamento expirado · pagamento não recebido"
               : avisoDeEspera;
