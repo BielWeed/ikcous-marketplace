@@ -18,6 +18,11 @@
  * oferecido por engano manda o cliente para um formulário que a loja não
  * pediu.
  */
+import {
+  PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+  aguardarComPrazo,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 
 /** Os dois tipos que o Brick entende em `paymentMethods.types.included`. */
@@ -102,11 +107,19 @@ export type LeituraDaConfigDoCartao =
  */
 export async function buscarConfigDoCartao(): Promise<LeituraDaConfigDoCartao> {
   try {
-    const { data, error } = await supabase
-      .from("config_pagamento_cartao")
-      .select("credito,debito,parcelas_max")
-      .eq("id", 1)
-      .maybeSingle();
+    // Só limita a espera da leitura: o painel sai do carregando ou destrava
+    // a conferência antes de salvar; resposta tardia não muda o resultado.
+    const { data, error } = await aguardarComPrazo(
+      Promise.resolve(
+        supabase
+          .from("config_pagamento_cartao")
+          .select("credito,debito,parcelas_max")
+          .eq("id", 1)
+          .maybeSingle(),
+      ),
+      PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+      () => erroDeConsultaSemResposta(),
+    );
     if (error) {
       console.warn("[config-do-cartao] leitura falhou:", error.message);
       return { ok: false };

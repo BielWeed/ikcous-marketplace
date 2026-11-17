@@ -1,4 +1,9 @@
 import { normalizarNumeroMototaxi } from "@/components/admin/minha-loja/contato";
+import {
+  PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+  aguardarComPrazo,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import { useCallback, useEffect, useState } from "react";
 
@@ -18,11 +23,19 @@ export function useMototaxi(sinalDeReleitura?: boolean) {
     let atual = true;
     async function ler() {
       try {
-        const { data, error } = await supabase
-          .from("config_mototaxi")
-          .select("whatsapp,nome")
-          .eq("id", 1)
-          .maybeSingle();
+        // Rede pendurada vira o erro com nova tentativa já usado no painel;
+        // a resposta tardia desta leitura não sobrescreve a tentativa seguinte.
+        const { data, error } = await aguardarComPrazo(
+          Promise.resolve(
+            supabase
+              .from("config_mototaxi")
+              .select("whatsapp,nome")
+              .eq("id", 1)
+              .maybeSingle(),
+          ),
+          PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+          () => erroDeConsultaSemResposta(),
+        );
         if (!atual) return;
         if (error) throw error;
         setConfig(data ?? { whatsapp: null, nome: null });

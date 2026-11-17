@@ -8,6 +8,7 @@ const s = vi.hoisted(() => ({
   update: vi.fn(async (_updates: Record<string, unknown>) => true),
   rpc: vi.fn(),
   erroLeitura: false,
+  leituraPendurada: false,
   config: {
     freeShippingMin: 0,
     shippingCoverage: "national",
@@ -52,10 +53,13 @@ vi.mock("@/lib/supabase", () => ({
     from: () => ({
       select: () => ({
         eq: () => ({
-          maybeSingle: async () => ({
-            data: s.erroLeitura ? null : { whatsapp: null, nome: null },
-            error: s.erroLeitura ? { message: "erro" } : null,
-          }),
+          maybeSingle: async () => {
+            if (s.leituraPendurada) return new Promise<never>(() => {});
+            return {
+              data: s.erroLeitura ? null : { whatsapp: null, nome: null },
+              error: s.erroLeitura ? { message: "erro" } : null,
+            };
+          },
         }),
       }),
     }),
@@ -69,6 +73,7 @@ let host: HTMLDivElement;
 beforeEach(() => {
   vi.clearAllMocks();
   s.erroLeitura = false;
+  s.leituraPendurada = false;
   s.update.mockResolvedValue(true);
   s.config.localDeliveryFee = 10;
   s.config.nationalShippingStrategy = "desligado";
@@ -87,6 +92,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount());
   host.remove();
+  vi.useRealTimers();
 });
 async function abrir() {
   await act(async () =>
@@ -212,6 +218,25 @@ it("falha de gravação não vira salvo", async () => {
   await act(async () => botao()?.click());
   expect(botao()?.textContent).toContain("Tentar de novo");
 });
+it("leitura pendurada do contato deixa de esperar e mostra o aviso equivalente", async () => {
+  vi.useFakeTimers();
+  s.leituraPendurada = true;
+  await abrir();
+  expect(host.textContent).not.toContain(
+    "Não foi possível carregar o mototáxi",
+  );
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(20_000);
+  });
+  expect(host.textContent).toContain("Não foi possível carregar o mototáxi");
+  expect(
+    host
+      .querySelector<HTMLInputElement>("#mototaxi-whatsapp")
+      ?.matches(":disabled"),
+  ).toBe(true);
+  expect(s.rpc).not.toHaveBeenCalled();
+});
+
 it("falha na leitura deixa contato protegido e oferece nova tentativa", async () => {
   s.erroLeitura = true;
   await abrir();

@@ -9,6 +9,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const estado = vi.hoisted(() => ({
   numero: "5511987654321" as string | null,
   erroLeitura: false,
+  leituraPendurada: false,
 }));
 vi.mock("@/lib/supabase", () => ({
   supabase: {
@@ -16,16 +17,19 @@ vi.mock("@/lib/supabase", () => ({
     from: (tabela: string) => ({
       select: () => ({
         eq: () => ({
-          maybeSingle: async () => ({
-            data:
-              tabela === "config_mototaxi"
-                ? { whatsapp: estado.numero, nome: "Zé" }
-                : null,
-            error:
-              tabela === "config_mototaxi" && estado.erroLeitura
-                ? { message: "falha de leitura" }
-                : null,
-          }),
+          maybeSingle: async () => {
+            if (estado.leituraPendurada) return new Promise<never>(() => {});
+            return {
+              data:
+                tabela === "config_mototaxi"
+                  ? { whatsapp: estado.numero, nome: "Zé" }
+                  : null,
+              error:
+                tabela === "config_mototaxi" && estado.erroLeitura
+                  ? { message: "falha de leitura" }
+                  : null,
+            };
+          },
         }),
       }),
     }),
@@ -181,6 +185,7 @@ let host: HTMLDivElement;
 beforeEach(() => {
   estado.numero = "5511987654321";
   estado.erroLeitura = false;
+  estado.leituraPendurada = false;
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
@@ -188,6 +193,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount());
   host.remove();
+  vi.useRealTimers();
 });
 async function abrir(order = pedido) {
   const { OrderDetail } = await import("@/components/admin/orders/OrderDetail");
@@ -310,6 +316,29 @@ async function abrirMototaxi(order = pedido) {
     root.render(<EnviarAoMototaxi order={order} loja="Loja fictícia" />);
   });
 }
+it("leitura pendurada avisa depois do prazo e permite reler o contato", async () => {
+  vi.useFakeTimers();
+  estado.leituraPendurada = true;
+  await abrirMototaxi();
+  expect(host.querySelector('[role="alert"]')).toBeNull();
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(20_000);
+  });
+  expect(host.querySelector('[role="alert"]')?.textContent).toContain(
+    "Não consegui ler o número do mototáxi agora.",
+  );
+  const tentar = [...host.querySelectorAll("button")].find(
+    (b) => b.textContent?.trim() === "Tentar de novo",
+  );
+  expect(tentar).toBeDefined();
+  estado.leituraPendurada = false;
+  await act(async () => tentar!.click());
+  expect(host.querySelector('[role="alert"]')).toBeNull();
+  expect(
+    host.querySelector('a[aria-label="Enviar ao mototáxi"]'),
+  ).not.toBeNull();
+});
+
 it("avisa quando a leitura falha e relê o contato ao tentar de novo", async () => {
   estado.erroLeitura = true;
   await abrirMototaxi();
