@@ -33,23 +33,38 @@ vi.hoisted(() => {
 
 const h = vi.hoisted(() => ({
   chamadasFrom: [] as string[],
+  ordenacoes: [] as [string, string, { ascending: boolean }][],
   linhaAnon: [] as unknown[],
   linhaLogado: [] as unknown[],
   respostas: [] as unknown[],
   usuarioLogado: null as { id: string } | null,
 }));
 
-function builderSimples(resultado: () => unknown) {
+function builderSimples(resultado: () => unknown, tabela?: string) {
+  let ordem: { coluna: string; ascending: boolean } | undefined;
   const builder: any = {};
   builder.select = () => builder;
   builder.eq = () => builder;
   builder.in = () => builder;
-  builder.order = () => builder;
+  builder.order = (coluna: string, opcoes: { ascending: boolean }) => {
+    if (tabela) h.ordenacoes.push([tabela, coluna, { ...opcoes }]);
+    ordem = { coluna, ascending: opcoes.ascending };
+    return builder;
+  };
   builder.maybeSingle = () => builder;
   builder.abortSignal = () => builder;
   // biome-ignore lint/suspicious/noThenProperty: mock do query builder thenable do Supabase
-  builder.then = (resolve: any, reject?: any) =>
-    Promise.resolve(resultado()).then(resolve, reject);
+  builder.then = (resolve: any, reject?: any) => {
+    const resposta = resultado() as { data: unknown; error: unknown };
+    if (ordem?.coluna === "created_at" && Array.isArray(resposta.data)) {
+      const direcao = ordem.ascending ? 1 : -1;
+      resposta.data = [...resposta.data].sort(
+        (a, b) =>
+          direcao * (Date.parse(a.created_at) - Date.parse(b.created_at)),
+      );
+    }
+    return Promise.resolve(resposta).then(resolve, reject);
+  };
   return builder;
 }
 
@@ -58,10 +73,16 @@ vi.mock("@/lib/supabase", () => ({
     from: (tabela: string) => {
       h.chamadasFrom.push(tabela);
       if (tabela === "vw_questions_public") {
-        return builderSimples(() => ({ data: h.linhaAnon, error: null }));
+        return builderSimples(
+          () => ({ data: h.linhaAnon, error: null }),
+          tabela,
+        );
       }
       if (tabela === "questions") {
-        return builderSimples(() => ({ data: h.linhaLogado, error: null }));
+        return builderSimples(
+          () => ({ data: h.linhaLogado, error: null }),
+          tabela,
+        );
       }
       if (tabela === "answers") {
         return builderSimples(() => ({ data: h.respostas, error: null }));
@@ -130,6 +151,7 @@ describe("getQuestionsByProduct — o visitante anônimo lê a vitrine pública,
 
   beforeEach(() => {
     h.chamadasFrom = [];
+    h.ordenacoes = [];
     h.linhaAnon = [];
     h.linhaLogado = [];
     h.respostas = [];
@@ -185,6 +207,58 @@ describe("getQuestionsByProduct — o visitante anônimo lê a vitrine pública,
     if (!ultima) throw new Error("A sonda não recebeu a lista de perguntas");
     return ultima;
   };
+
+  it.each([
+    { sessao: "SEM", usuario: null, tabela: "vw_questions_public" },
+    { sessao: "COM", usuario: { id: "cliente-1" }, tabela: "questions" },
+  ])(
+    "visitante $sessao sessão: perguntas da mais recente para a mais antiga",
+    async ({ usuario, tabela }) => {
+      h.usuarioLogado = usuario;
+      // A origem vem antiga primeiro: devolver sem ordenar também falha.
+      const linhas = [
+        {
+          id: "antiga",
+          product_id: "prod-bolsa",
+          user_id: "cliente-9",
+          question: "Qual o material?",
+          created_at: "2026-08-20T12:00:00.000Z",
+          user: { full_name: "Cliente de Prova", avatar_url: null },
+          answers: [],
+        },
+        {
+          id: "recente",
+          product_id: "prod-bolsa",
+          user_id: "cliente-9",
+          question: "Tem em outra cor?",
+          created_at: "2026-08-21T12:00:00.000Z",
+          user: { full_name: "Cliente de Prova", avatar_url: null },
+          answers: [],
+        },
+      ];
+      if (usuario) {
+        h.linhaLogado = linhas;
+      } else {
+        h.linhaAnon = linhas.map(
+          ({ user_id: _autor, user, answers: _respostas, ...linha }) => ({
+            ...linha,
+            author_name: user.full_name,
+            author_avatar_url: user.avatar_url,
+          }),
+        );
+      }
+
+      const perguntas = await buscarPerguntasDoProduto("prod-bolsa");
+
+      expect(h.ordenacoes).toEqual([
+        [tabela, "created_at", { ascending: false }],
+      ]);
+      expect(perguntas.map((pergunta) => pergunta.id)).toEqual([
+        "recente",
+        "antiga",
+      ]);
+    },
+  );
 
   it("visitante SEM sessão: pede vw_questions_public, nunca questions, e o objeto não carrega userId", async () => {
     h.usuarioLogado = null;
