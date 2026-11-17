@@ -23,6 +23,7 @@
 // arquivo reaproveita.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
+import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Order, PaymentMethod, PaymentStatus } from "@/types";
@@ -53,6 +54,14 @@ const pedidoBase: Order = {
 let pedidoAtual: Order = pedidoBase;
 
 const reenviarComprovante = vi.fn();
+
+vi.mock("sonner", () => ({
+  toast: Object.assign(vi.fn(), {
+    success: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+  }),
+}));
 
 vi.mock("@/hooks/useOrders", () => ({
   useOrders: () => ({
@@ -180,6 +189,8 @@ describe("OrderDetailsView — 'Reenviar comprovante' só aparece quando reenvia
   beforeEach(() => {
     pedidoAtual = pedidoBase;
     reenviarComprovante.mockReset();
+    vi.mocked(toast.error).mockClear();
+    vi.mocked(toast.info).mockClear();
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -230,6 +241,25 @@ describe("OrderDetailsView — 'Reenviar comprovante' só aparece quando reenvia
       expect(botaoDoComprovante() !== undefined).toBe(aparece);
     },
   );
+
+  it("limite diário avisa para tentar mais tarde, sem afirmar que o e-mail saiu", async () => {
+    pedidoAtual = {
+      ...pedidoBase,
+      paymentMethod: "online",
+      paymentStatus: "pago",
+    };
+    reenviarComprovante.mockResolvedValue({ ok: false, motivo: "teto_diario" });
+
+    await renderizar();
+    await act(async () => {
+      botaoDoComprovante()?.click();
+    });
+
+    expect(toast.error).toHaveBeenCalledWith(
+      "A loja atingiu o limite de e-mails de hoje. Tente de novo mais tarde.",
+    );
+    expect(toast.info).not.toHaveBeenCalled();
+  });
 
   it("o botão que aparece continua funcionando: toca e pede o reenvio do pedido certo", async () => {
     pedidoAtual = {

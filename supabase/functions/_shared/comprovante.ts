@@ -435,6 +435,7 @@ export type DesfechoComprovante =
         | "sem_pedido"
         | "sem_destinatario"
         | "ja_enviado"
+        | "teto_diario"
         | "pagamento_nao_confirmado";
     };
 
@@ -600,8 +601,27 @@ export async function enviarComprovantePedido(args: {
     return { ok: false, motivo: "envio_falhou" };
   }
   if (reservou !== true) {
-    // Caminho NORMAL, nao erro: o e-mail deste pedido ja saiu.
-    return { ok: false, motivo: "ja_enviado" };
+    // A RPC tambem nega pelo teto diario, sem marcar o pedido como enviado.
+    // Rele a marca DEPOIS da reserva: outra chamada pode te-la preenchido.
+    try {
+      const { data: marca, error: erroMarca } = await supabase
+        .from("marketplace_orders")
+        .select("confirmation_email_sent_at")
+        .eq("id", orderId)
+        .maybeSingle();
+      if (erroMarca || !marca) {
+        console.error("comprovante: releitura da marca de envio falhou");
+        return { ok: false, motivo: "envio_falhou" };
+      }
+      if (marca.confirmation_email_sent_at) {
+        return { ok: false, motivo: "ja_enviado" };
+      }
+      console.error("comprovante: teto diario de e-mails atingido");
+      return { ok: false, motivo: "teto_diario" };
+    } catch {
+      console.error("comprovante: releitura da marca de envio falhou");
+      return { ok: false, motivo: "envio_falhou" };
+    }
   }
 
   const { data: itens, error: erroItens } = await supabase
@@ -669,8 +689,8 @@ export async function enviarComprovantePedido(args: {
       }),
     }, remetente, { prazoFinalMs });
   } catch (e) {
-    // Devolve a reserva: o SMTP RECUSOU a mensagem (ou estourou o prazo), entao
-    // ninguem recebeu nada e uma tentativa posterior tem de ser possivel.
+    // Devolve a reserva para permitir nova tentativa. No timeout o SMTP pode
+    // ter aceitado a mensagem: arriscar duplicata e melhor que deixar sem comprovante.
     await devolverReserva(supabase, orderId);
     console.error(
       `comprovante: envio falhou para ${mascarar(destinatario)}: ${e?.message}`,
