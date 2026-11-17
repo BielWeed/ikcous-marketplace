@@ -110,6 +110,15 @@ export const OrderReceipt = memo(function OrderReceipt({
           </div>
         )}
 
+        {order.notes?.trim() && (
+          <div className="mb-4">
+            <p className="mb-1 border-b border-black font-bold">OBSERVAÇÃO:</p>
+            <p className="text-xs whitespace-pre-line break-words">
+              {order.notes}
+            </p>
+          </div>
+        )}
+
         <div className="mb-4">
           <p className="mb-1 border-b border-black font-bold">ITENS:</p>
           <div className="space-y-1">
