@@ -97,6 +97,7 @@ import { camposQueMudaram } from "@/utils/campos-mexidos-do-produto";
 import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
 import { AnimatePresence } from "framer-motion";
 import {
+  AlertCircle,
   ArrowDown,
   ArrowUp,
   Edit,
@@ -837,7 +838,19 @@ export const AdminBannersView = memo(function AdminBannersView({
     deleteStorageFile,
     reorderBanners,
     refreshBanners,
+    erroDeLeitura,
   } = useBanners(true);
+  // "Tentar de novo" na lista que não carregou: segura o botão enquanto a
+  // releitura roda, para a lojista não disparar várias seguidas.
+  const [relendoBanners, setRelendoBanners] = useState(false);
+  const tentarLerBannersDeNovo = async () => {
+    setRelendoBanners(true);
+    try {
+      await refreshBanners(false, true);
+    } finally {
+      setRelendoBanners(false);
+    }
+  };
   const { products } = useProducts();
   // L10 — o rascunho do formulário é do USUÁRIO (`admin_banner_form_draft:<uid>`):
   // cada admin só lê, grava e apaga o dele. Sem uid não há chave, e a tela
@@ -2686,6 +2699,25 @@ export const AdminBannersView = memo(function AdminBannersView({
               <div aria-label="Carregando banners" className="space-y-3">
                 <Skeleton className="h-44 w-full rounded-2xl" />
                 <Skeleton className="h-44 w-full rounded-2xl" />
+              </div>
+            ) : banners.length === 0 && erroDeLeitura ? (
+              <div
+                role="alert"
+                className="flex flex-wrap items-center gap-3 rounded-3xl border border-admin-border bg-admin-surface p-4 text-red-300"
+              >
+                <AlertCircle aria-hidden="true" className="size-5 shrink-0" />
+                <p className="min-w-0 flex-1 text-sm leading-relaxed">
+                  Não foi possível carregar os banners. Verifique a internet e
+                  tente de novo.
+                </p>
+                <Button
+                  variant="outline"
+                  className="min-h-11"
+                  disabled={relendoBanners}
+                  onClick={() => void tentarLerBannersDeNovo()}
+                >
+                  {relendoBanners ? "Tentando…" : "Tentar de novo"}
+                </Button>
               </div>
             ) : filteredBannersList.length === 0 ? (
               <div className="rounded-3xl border border-dashed border-admin-border bg-admin-surface p-6 text-center">

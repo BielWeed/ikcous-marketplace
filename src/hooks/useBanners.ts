@@ -146,6 +146,11 @@ export function useBanners(adminMode = false) {
   const vaultRef = useRef<DataVault | null>(null);
   const [banners, setBanners] = useState<Banner[]>(bannersEmCache() || []);
   const [isLoaded, setIsLoaded] = useState(!!bannersEmCache());
+  // A ÚLTIMA leitura na rede falhou. Sem isto a tela não distinguia "a loja
+  // não tem banner" de "não deu para ler": com a leitura marcada como
+  // concluída, a lista vazia sugeria criar o primeiro e saíam duplicados.
+  // Volta a false assim que uma leitura funciona.
+  const [erroDeLeitura, setErroDeLeitura] = useState(false);
   const isFetchingRef = useRef(false);
 
   // Persist to DataVault (non-blocking helper)
@@ -269,11 +274,13 @@ export function useBanners(adminMode = false) {
               ? data
               : bannersEmCache() || [],
           );
+          setErroDeLeitura(false);
           setIsLoaded(true);
         } catch {
           /* fallback */
           // A consulta que esta tela pegou carona falhou: sem isto a loja
           // sem banner ficava com o esqueleto ligado para sempre.
+          setErroDeLeitura(true);
           setIsLoaded(true);
         }
         return;
@@ -291,8 +298,10 @@ export function useBanners(adminMode = false) {
             ? mappedBanners
             : bannersEmCache() || [],
         );
+        setErroDeLeitura(false);
       } catch (error: any) {
         console.error("[Banners] Error fetching banners:", error.message);
+        setErroDeLeitura(true);
       } finally {
         setIsLoaded(true);
         isFetchingRef.current = false;
@@ -842,6 +851,7 @@ export function useBanners(adminMode = false) {
   return {
     banners,
     isLoaded,
+    erroDeLeitura,
     getBannersByPosition,
     uploadBannerImage,
     addBanner,

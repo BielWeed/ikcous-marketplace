@@ -523,7 +523,11 @@ export const AdminPushView = memo(function AdminPushView({
   const [predictedReach, setPredictedReach] = useState<ContagemMedida>(null);
   const rodadaDoAlcanceRef = useRef(0);
   const rodadaDosAparelhosRef = useRef(0);
+  // `history` é `null` ENQUANTO carrega e também quando a consulta falha: quem
+  // diferencia é `historyFalhou`. Sem ele a tela dizia "Não foi possível
+  // carregar o histórico" antes mesmo de a resposta chegar.
   const [history, setHistory] = useState<any[] | null>(null);
+  const [historyFalhou, setHistoryFalhou] = useState(false);
   const [targetUserName, setTargetUserName] = useState<{
     id: string;
     nome: string | null;
@@ -693,6 +697,8 @@ export const AdminPushView = memo(function AdminPushView({
   }, []);
 
   const fetchHistory = useCallback(async () => {
+    // Nova tentativa: a falha anterior sai da tela e volta "Carregando…".
+    setHistoryFalhou(false);
     const { data, error } = await supabase
       .from("push_notifications_log")
       .select("*")
@@ -707,6 +713,7 @@ export const AdminPushView = memo(function AdminPushView({
     // RPCs de resposta da loja gravam neste log não são envio nenhum — a
     // busca traz mais linhas do que a tela mostra para que elas não ocupem os
     // 20 lugares das campanhas (src/lib/historico-de-campanhas.ts).
+    setHistoryFalhou(!!error || !data);
     setHistory(error || !data ? null : somenteCampanhasReais(data));
   }, []);
 
@@ -2010,11 +2017,32 @@ export const AdminPushView = memo(function AdminPushView({
           icone={History}
         >
           <div className="max-h-[350px] overflow-y-auto pr-1 space-y-2 scrollbar-thin scrollbar-thumb-zinc-700">
-            {history === null ? (
-              <div className="py-6 text-center italic text-zinc-400">
-                <p className="text-[11px] font-bold uppercase tracking-widest">
+            {history === null && !historyFalhou ? (
+              <p
+                role="status"
+                className="py-6 text-center text-sm text-zinc-400"
+              >
+                Carregando o histórico…
+              </p>
+            ) : history === null ? (
+              <div
+                role="alert"
+                className="flex flex-wrap items-center gap-3 rounded-2xl border border-admin-border bg-admin-card px-3.5 py-3 text-sm text-zinc-200"
+              >
+                <AlertCircle
+                  aria-hidden="true"
+                  className="size-4 shrink-0 text-zinc-300"
+                />
+                <span className="min-w-0 flex-1">
                   Não foi possível carregar o histórico
-                </p>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void fetchHistory()}
+                  className="inline-flex min-h-12 items-center rounded-full bg-white/[0.06] px-4 text-sm font-bold text-zinc-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
+                >
+                  Tentar de novo
+                </button>
               </div>
             ) : history.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-admin-border py-7 text-center">
