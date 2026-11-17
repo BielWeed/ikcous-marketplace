@@ -3175,7 +3175,19 @@ const ROL_DA_150D = [
   "assinatura_da_loja tem a forma da 20261177000000 (13 colunas) e store_config tem id bigint e store_name text",
   "os papeis anon, authenticated e service_role existem",
 ];
+const ROL_DA_151_BASE = [
+  "banners: tabela comum com RLS ligada",
+  "banners: image_url text preservada",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "151a-conferir-o-banner-tem-imagem-propria-no-computador-aplicado": [
+    ...ROL_DA_151_BASE,
+    "banners: desktop_image_url text opcional, sem default nem privilegio proprio",
+  ],
+  "151b-antes-o-banner-tem-imagem-propria-no-computador-ausente": [
+    ...ROL_DA_151_BASE,
+    "banners: desktop_image_url ainda ausente",
+  ],
   "150c-conferir-a-loja-recebe-o-plano-por-porta-unica-aplicado": ROL_DA_150C,
   "150d-antes-a-loja-recebe-o-plano-por-porta-unica-ausente": ROL_DA_150D,
   "150a-conferir-o-pedido-guarda-quem-vai-receber-aplicado": ROL_DA_150,
