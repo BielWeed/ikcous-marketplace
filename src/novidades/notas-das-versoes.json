@@ -1,4 +1,21 @@
 {
+  "1.5.206": {
+    "titulo": "Mais cuidado com teclado, frete, e-mail e login",
+    "novidades": [],
+    "correcoes": [
+      "Entrar com Google: dentro do Instagram, Facebook e similares o app avisa que é preciso abrir no navegador do celular.",
+      "WhatsApp: números antigos que começam com 0 ou 0055 passam a ser reconhecidos, copiar o telefone funciona em mais aparelhos e e-mails com o sinal de por cento abrem certo.",
+      "Painel, teclado: a janela de Nova variação prende o Tab e fecha com Esc; as janelas laterais devolvem o foco; a ficha de devolução no celular não deixa o Tab escapar.",
+      "Quem usa reduzir movimento no aparelho deixa de ver animações no carrinho, no checkout e nas bolinhas dos carrosséis.",
+      "Ajustes, Frete: o histórico de consultas mostra o motivo quando só uma transportadora falha.",
+      "Comprovante por e-mail: quando a loja atinge o limite de e-mails do dia, a tela avisa isso em vez de dizer que já foi enviado.",
+      "Frete: se a leitura dos produtos falhar por um instante, a loja pede para tentar de novo em vez de calcular como se fosse um pacote pequeno."
+    ],
+    "melhorias": [
+      "Início do painel: avisa quando o envio de e-mails pela conta do servidor está falhando.",
+      "Mais testes protegem os centavos do Balcão, do saldo e do carrinho."
+    ]
+  },
   "1.5.205": {
     "titulo": "Banners, recibo, checkout e frete mais certos",
     "novidades": [],
