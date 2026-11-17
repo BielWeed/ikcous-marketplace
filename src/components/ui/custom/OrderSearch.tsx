@@ -152,8 +152,9 @@ export function OrderSearch({
     if (!lojaAtendePorWhatsapp) return;
     let numero = limparTelefoneBrasileiro(whatsappDaLoja);
     if (numero.length === 10 || numero.length === 11) numero = `55${numero}`;
-    const mensagem =
-      "Olá! Fiz um pedido sem criar conta e quero acompanhar. O identificador do pedido é: ";
+    const mensagem = fragmentoValido(orderFragment)
+      ? `Olá! Fiz um pedido sem criar conta e quero acompanhar. O identificador do pedido é: ${limparFragmentoDoPedido(orderFragment)}`
+      : "Olá! Fiz um pedido sem criar conta e quero acompanhar. Podem me ajudar a localizar o pedido?";
     globalThis.open(
       `https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`,
       "_blank",

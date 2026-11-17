@@ -112,6 +112,53 @@ describe("OrderSearch — aviso para quem comprou sem conta", () => {
     expect(recursos).toBe("noopener,noreferrer");
   });
 
+  it.each([
+    ["3884BE", "3884BE"],
+    ["  3884BE  ", "3884BE"],
+    ["# 3884 BE ", "3884BE"],
+    ["", null],
+    ["123", null],
+    ["3884ZZ", null],
+    ["3884BE&#", null],
+    ["Olá", null],
+  ])(
+    "leva ao WhatsApp o identificador válido normalizado: %j",
+    async (digitado, esperado) => {
+      await abrirRastrearSemConta("34999998888");
+      const campo = host.querySelector<HTMLInputElement>(
+        '[placeholder="6 FINAIS DO ID DO PEDIDO"]',
+      );
+      if (!campo) throw new Error("campo do identificador não encontrado");
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(
+          window.HTMLInputElement.prototype,
+          "value",
+        )?.set?.call(campo, digitado);
+        campo.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      const abrir = vi.fn();
+      vi.stubGlobal("open", abrir);
+      await act(async () => {
+        botaoPorTexto(host, BOTAO)?.click();
+      });
+
+      expect(abrir).toHaveBeenCalledTimes(1);
+      const url = new URL(abrir.mock.calls.at(0)?.at(0) as string);
+      const mensagem = esperado
+        ? `Olá! Fiz um pedido sem criar conta e quero acompanhar. O identificador do pedido é: ${esperado}`
+        : "Olá! Fiz um pedido sem criar conta e quero acompanhar. Podem me ajudar a localizar o pedido?";
+      expect(url.searchParams.get("text")).toBe(mensagem);
+      expect(url.search).toBe(`?text=${encodeURIComponent(mensagem)}`);
+      expect(url.hash).toBe("");
+      expect([...url.searchParams.keys()]).toEqual(["text"]);
+      if (!esperado) {
+        expect(url.searchParams.get("text")).not.toContain(
+          "identificador do pedido é:",
+        );
+      }
+    },
+  );
+
   it("o botão do WhatsApp tem área de toque de pelo menos 44px (min-h-12 = 48px)", async () => {
     await abrirRastrearSemConta("34999998888");
 
