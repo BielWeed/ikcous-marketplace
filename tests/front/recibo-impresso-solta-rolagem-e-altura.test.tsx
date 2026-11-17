@@ -92,6 +92,39 @@ describe("recibo impresso — fora do painel, que some na impressão", () => {
     return document.querySelector("style")?.textContent ?? "";
   }
 
+  it("palavras sem espaços quebram no papel sem empurrar o preço do item", async () => {
+    const nome = "P".repeat(160);
+    const loja = "L".repeat(160);
+    const cliente = "C".repeat(160);
+    const endereco = "E".repeat(160);
+    const ordem = pedido();
+    ordem.customer = { ...ordem.customer, name: cliente, address: endereco };
+    ordem.items = [{ ...ordem.items[0], name: nome }];
+    await act(async () => {
+      raiz.render(<OrderReceipt order={ordem} storeName={loja} />);
+    });
+    const titulo = [...document.querySelectorAll("h2")].find(
+      (el) => el.textContent === loja,
+    )!;
+    const papel = titulo.closest("[data-tema-fixo]")!;
+    expect(papel.classList.contains("[overflow-wrap:anywhere]")).toBe(true);
+    for (const texto of [cliente, endereco]) {
+      const linha = [...papel.querySelectorAll("p")].find(
+        (el) => el.textContent?.includes(texto),
+      )!;
+      expect(linha.closest("[data-tema-fixo]")).toBe(papel);
+    }
+    const item = [...papel.querySelectorAll("span")].find(
+      (el) => el.textContent?.trim() === `1x ${nome}`,
+    )!;
+    expect(item.classList.contains("min-w-0")).toBe(true);
+    expect(item.classList.contains("flex-1")).toBe(true);
+    const preco = item.nextElementSibling!;
+    expect(preco.textContent).toContain("R$ 10,00");
+    expect(preco.classList.contains("shrink-0")).toBe(true);
+    expect(preco.classList.contains("whitespace-nowrap")).toBe(true);
+  });
+
   it("o papel é montado no body, fora do #root (o painel que some na impressão não o leva junto)", async () => {
     await montar();
     const papel = document.querySelector("[data-tema-fixo]");

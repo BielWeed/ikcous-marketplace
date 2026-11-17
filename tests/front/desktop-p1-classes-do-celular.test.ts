@@ -9,7 +9,8 @@ import { classesDoCelular } from "./classes-do-celular";
 
 // Snapshot criado na base 1.5.187, ANTES da implementação. Captura TODOS os
 // literais de className, inclusive cn(), ternários e partes de templates.
-// Só tokens que COMEÇAM por lg/xl/2xl podem ser acrescentados.
+// No redesenho só tokens lg/xl/2xl mudam. A referência do Header inclui a
+// correção de nome sem espaços (17/11/2026), coberta também por teste de DOM.
 function classes(fonte: string) {
   const arquivo = ts.createSourceFile(
     "peca.tsx",

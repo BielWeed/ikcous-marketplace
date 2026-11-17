@@ -546,7 +546,7 @@ export const OrderList = memo(function OrderList({
                   <h4 className="line-clamp-2 break-words text-base font-semibold leading-5 text-foreground">
                     {order.items[0]?.name || "Pedido"}
                   </h4>
-                  <p className="mt-1 text-[13px] leading-[18px] text-muted-foreground">
+                  <p className="mt-1 text-[13px] leading-[18px] text-muted-foreground [overflow-wrap:anywhere]">
                     {unidades} {unidades === 1 ? "item" : "itens"} ·{" "}
                     {formaDePagamento}
                     {order.customer.neighborhood

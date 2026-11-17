@@ -82,6 +82,32 @@ describe("Header — nome da loja com hífen sem espaço e com emoji", () => {
     };
   }
 
+  it("nome e legenda sem espaços encolhem sem empurrar busca e sino", async () => {
+    const nome = "N".repeat(75);
+    const legenda = "S".repeat(75);
+    await nomeEscrito(`${nome} | ${legenda}`);
+    const principal = [...hospedeiro.querySelectorAll("span")].find(
+      (el) => el.textContent === nome,
+    )!;
+    const subtitulo = [...hospedeiro.querySelectorAll("span")].find(
+      (el) => el.textContent === legenda,
+    )!;
+    expect(principal.classList.contains("truncate")).toBe(true);
+    expect(subtitulo.classList.contains("truncate")).toBe(true);
+    const coluna = principal.parentElement!;
+    expect(coluna.classList.contains("min-w-0")).toBe(true);
+    const miniatura = coluna.parentElement!;
+    expect(miniatura.classList.contains("w-[100px]")).toBe(true);
+    expect(miniatura.classList.contains("xs:w-[120px]")).toBe(true);
+    expect(miniatura.classList.contains("min-w-0")).toBe(true);
+    expect(miniatura.firstElementChild?.classList.contains("shrink-0")).toBe(true);
+    const botao = hospedeiro.querySelector('[aria-label="Ir para o Início"]')!;
+    expect(botao.classList.contains("shrink-0")).toBe(false);
+    expect(botao.classList.contains("min-w-0")).toBe(true);
+    expect(botao.parentElement?.classList.contains("shrink-0")).toBe(false);
+    expect(botao.parentElement?.classList.contains("min-w-0")).toBe(true);
+  });
+
   it("hífen sem espaço não divide o nome", async () => {
     const { principal, subtitulo } = await nomeEscrito("Guarda-Roupa da Lu");
     expect(principal).toBe("Guarda-Roupa da Lu");

@@ -80,6 +80,23 @@ describe("OrderList — card do pedido redesenhado", () => {
     });
   }
 
+  it("bairro sem espaços quebra dentro do resumo sem comprimir o total", async () => {
+    const bairro = "B".repeat(120);
+    await renderizar({
+      ...pedidoBase,
+      customer: { ...pedidoBase.customer, neighborhood: bairro },
+    });
+    const resumo = [...hospedeiro.querySelectorAll("p")].find(
+      (el) => el.textContent?.includes(bairro),
+    )!;
+    expect(resumo.classList.contains("[overflow-wrap:anywhere]")).toBe(true);
+    expect(resumo.parentElement?.classList.contains("min-w-0")).toBe(true);
+    const total = [...hospedeiro.querySelectorAll("span")].find(
+      (el) => el.textContent === "Total",
+    )!;
+    expect(total.parentElement?.classList.contains("flex-shrink-0")).toBe(true);
+  });
+
   it("os detalhes de dois pedidos têm nomes distintos para o leitor de tela", async () => {
     const { OrderList } = await import("@/components/ui/custom/OrderList");
     const pedidos = [

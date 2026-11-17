@@ -287,7 +287,7 @@ export const Header = memo(function Header({
     >
       <div className="relative flex h-[var(--header-height)] items-center justify-between gap-2.5 px-3 xs:px-4 md:grid md:grid-cols-[180px,1fr,auto]">
         {/* LEFT: Logo and optional Back Button */}
-        <div className="z-[70] flex shrink-0 items-center gap-2 xs:gap-3 md:w-[180px]">
+        <div className="z-[70] flex min-w-0 items-center gap-2 xs:gap-3 md:w-[180px]">
           {showBackButton && (
             <button
               onClick={() => {
@@ -305,7 +305,7 @@ export const Header = memo(function Header({
           <button
             // Laudo 05/09, M3: `outline-none` apagava o anel de foco sem
             // repor — anel só para teclado, padrão do BottomNav (onda 1).
-            className="relative flex shrink-0 cursor-pointer appearance-none items-center gap-2 border-none bg-transparent p-0 text-left outline-none transition-all duration-150 after:absolute after:-inset-x-1 after:-inset-y-2 after:content-[''] hover:opacity-80 focus-visible:ring-2 focus-visible:ring-zinc-900/50 active:scale-95"
+            className="relative flex min-w-0 cursor-pointer appearance-none items-center gap-2 border-none bg-transparent p-0 text-left outline-none transition-all duration-150 after:absolute after:-inset-x-1 after:-inset-y-2 after:content-[''] hover:opacity-80 focus-visible:ring-2 focus-visible:ring-zinc-900/50 active:scale-95"
             onClick={() => {
               haptic.light();
               onNavigate("home");
@@ -339,8 +339,8 @@ export const Header = memo(function Header({
                 />
               </div>
             ) : (
-              <div className="flex items-center gap-2">
-                <div className="relative flex size-8 items-center justify-center rounded-[8px] bg-primary shadow-lg">
+              <div className="flex w-[100px] min-w-0 items-center gap-2 xs:w-[120px]">
+                <div className="relative flex size-8 shrink-0 items-center justify-center rounded-[8px] bg-primary shadow-lg">
                   <span className="font-black italic text-primary-foreground">
                     {storeLetter}
                   </span>
@@ -362,12 +362,12 @@ export const Header = memo(function Header({
                     );
                   })()}
                 </div>
-                <div className="-gap-1 flex flex-col">
-                  <span className="text-lg font-black leading-none tracking-tighter text-zinc-900 xs:text-xl">
+                <div className="-gap-1 flex min-w-0 flex-col">
+                  <span className="truncate text-lg font-black leading-none tracking-tighter text-zinc-900 xs:text-xl">
                     {mainName}
                   </span>
                   {subName && (
-                    <span className="mt-0.5 text-[8px] font-black uppercase leading-none tracking-[0.2em] text-zinc-600 xs:text-[9px]">
+                    <span className="mt-0.5 truncate text-[8px] font-black uppercase leading-none tracking-[0.2em] text-zinc-600 xs:text-[9px]">
                       {subName}
                     </span>
                   )}
