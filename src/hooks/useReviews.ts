@@ -1,6 +1,7 @@
 import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
+import { aoVoltarAAba } from "@/lib/atualizar-ao-voltar-a-aba";
 import {
   geracaoAtualDoCache,
   getReviewsCache,
@@ -120,6 +121,7 @@ const mensagemAmigavelErroAvaliacao = (error: unknown): string => {
 
 export function useReviews() {
   const { user, isAdmin } = useAuth();
+  const temSessao = !!user;
   const { isLeader } = useLeaderElection();
   const [reviews, setReviews] = useState<Review[]>([]);
   // Voto é da pessoa, não do produto: não vai para o cache compartilhado.
@@ -1004,6 +1006,22 @@ export function useReviews() {
     (onChange?: () => void, productId?: string) => {
       const channelId = productId ? `reviews_prod_${productId}` : "reviews_all";
 
+      // Visitante SEM LOGIN não abre canal de tempo real (teto de conexões do
+      // plano na Black Friday): vê a avaliação nova ao voltar à aba, com
+      // intervalo mínimo entre leituras. Vale para toda aba, líder ou não: sem
+      // canal, a líder não tem o que repassar às outras.
+      if (!temSessao) {
+        return aoVoltarAAba(() => {
+          if (onChange) {
+            return onChange();
+          }
+          if (productId) {
+            return getReviewsByProduct(productId);
+          }
+          return getAllReviews(0, 20, { silent: true });
+        });
+      }
+
       let channel: any = null;
       let listener: any = null;
 
@@ -1121,7 +1139,7 @@ export function useReviews() {
         }
       };
     },
-    [isLeader, getReviewsByProduct, getAllReviews],
+    [temSessao, isLeader, getReviewsByProduct, getAllReviews],
   );
 
   return {

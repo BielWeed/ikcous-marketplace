@@ -1,6 +1,7 @@
 import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
+import { aoVoltarAAba } from "@/lib/atualizar-ao-voltar-a-aba";
 import { criarCanalDeAbas } from "@/lib/canal-de-abas";
 import {
   PREFIXO_DE_PERGUNTAS,
@@ -158,6 +159,7 @@ const contarPerguntas = (soPendentes: boolean) => {
 
 export function useQuestions() {
   const { user, isAdmin, profile } = useAuth();
+  const temSessao = !!user;
   const { isLeader } = useLeaderElection();
   const exclusoesEmVooRef = useRef(new Map<string, Promise<boolean | null>>());
   const [questions, setQuestions] = useState<Question[]>(() => {
@@ -954,6 +956,22 @@ export function useQuestions() {
         ? `questions_prod_${productId}`
         : "questions_all";
 
+      // Visitante SEM LOGIN não abre canal de tempo real (teto de conexões do
+      // plano na Black Friday): vê a pergunta nova ao voltar à aba, com
+      // intervalo mínimo entre leituras. Vale para toda aba, líder ou não: sem
+      // canal, a líder não tem o que repassar às outras.
+      if (!temSessao) {
+        return aoVoltarAAba(() => {
+          if (onChange) {
+            return onChange();
+          }
+          if (productId) {
+            return getQuestionsByProduct(productId);
+          }
+          return getAllQuestions();
+        });
+      }
+
       let channel: any = null;
       let listener: any = null;
 
@@ -1133,7 +1151,7 @@ export function useQuestions() {
         }
       };
     },
-    [isLeader, getQuestionsByProduct, getAllQuestions],
+    [temSessao, isLeader, getQuestionsByProduct, getAllQuestions],
   );
 
   useEffect(() => {

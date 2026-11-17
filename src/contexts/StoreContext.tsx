@@ -488,7 +488,13 @@ const PRAZO_DA_LEITURA_DA_CONFIG_MS = 20_000;
 export function StoreProvider({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  const { isAdmin, loading } = useAuth();
+  const { isAdmin, loading, user } = useAuth();
+  // Tempo real só com sessão (painel e cliente logada): visitante sem login
+  // não abre canal (teto de conexões do plano na Black Friday) e vê o dado
+  // novo ao voltar à aba.
+  // `isAdmin` entra por garantia: o painel nunca fica sem canal, mesmo que o
+  // `user` chegue um render depois do atalho de lojista.
+  const temSessao = !!user || isAdmin;
   const { isLeader } = useLeaderElection();
   const vaultRef = useRef<DataVault | null>(null);
   // O motor de tempo real precisa do cofre, e `ref` NÃO é dependência de
@@ -1709,18 +1715,19 @@ export function StoreProvider({
     if (!isLoaded || !cofrePronto || !vaultRef.current) return;
 
     console.log(
-      `[StoreContext] Starting RealtimeSyncEngine (isLeader: ${isLeader}, isAdmin: ${isAdmin})`,
+      `[StoreContext] Starting RealtimeSyncEngine (isLeader: ${isLeader}, isAdmin: ${isAdmin}, temSessao: ${temSessao})`,
     );
     const cleanup = RealtimeSyncEngine.start(
       vaultRef.current,
       isLeader,
       isAdmin,
+      temSessao,
     );
 
     return () => {
       cleanup();
     };
-  }, [isLoaded, cofrePronto, isLeader, isAdmin]);
+  }, [isLoaded, cofrePronto, isLeader, isAdmin, temSessao]);
 
   // ── Realtime Sync: Listen for changes applied by RealtimeSyncEngine ──
   useSyncListener(

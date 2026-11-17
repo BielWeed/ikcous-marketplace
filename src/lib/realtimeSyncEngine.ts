@@ -331,10 +331,21 @@ export const RealtimeSyncEngine = {
    * @param vault — The DataVault instance to apply changes to
    * @param isLeader — Whether this tab is the leader tab
    * @param isAdmin — Whether this user is an admin
+   * @param comSessao — Whether there is a logged-in session (painel or cliente).
+   *   Without one the leader tab opens NO realtime channel (connection cap of
+   *   the Supabase plan) and the catalog refreshes via catchUp rounds instead.
+   *   Default `true` keeps every older caller opening the channel as before.
    * @returns cleanup function to unsubscribe
    */
-  start(vault: DataVault, isLeader: boolean, isAdmin = false): () => void {
-    if (_channel || _bcListener) {
+  start(
+    vault: DataVault,
+    isLeader: boolean,
+    isAdmin = false,
+    comSessao = true,
+  ): () => void {
+    // `_connectivityListeners` entra no guarda: sem canal (visitante) o líder
+    // não tem `_channel`, e sem isto um segundo start empilharia ouvintes.
+    if (_channel || _bcListener || _connectivityListeners) {
       console.warn("[RealtimeSyncEngine] Already running. Call stop() first.");
       return () => this.stop();
     }
@@ -344,88 +355,107 @@ export const RealtimeSyncEngine = {
     );
 
     if (isLeader) {
-      // Build a single channel with all table subscriptions
-      let channel = supabase.channel("datavault-sync");
+      // Visitante SEM LOGIN não abre canal de tempo real (Black Friday
+      // 27/11/2026): o plano do Supabase limita as conexões simultâneas e o
+      // painel do lojista divide esse teto com a vitrine. Sem sessão a vitrine
+      // se atualiza pelas rodadas de catchUp (subida, volta à aba, `online`),
+      // que já passam pela janela mínima abaixo; com sessão (painel e cliente
+      // logada) o canal abre como sempre.
+      if (comSessao) {
+        // Build a single channel with all table subscriptions
+        let channel = supabase.channel("datavault-sync");
 
-      for (const config of TABLE_CONFIGS) {
-        channel = channel.on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: config.table,
-          },
-          async (payload: RealtimePostgresChangesPayload<any>) => {
-            const eventType = payload.eventType as RealtimeEventType;
-            const raw = payload.new as any;
-            const old = payload.old as any;
+        for (const config of TABLE_CONFIGS) {
+          channel = channel.on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema: "public",
+              table: config.table,
+            },
+            async (payload: RealtimePostgresChangesPayload<any>) => {
+              const eventType = payload.eventType as RealtimeEventType;
+              const raw = payload.new as any;
+              const old = payload.old as any;
 
-            // 1. Process locally on leader tab
-            await this._applyChangeAndNotify(
-              vault,
-              config,
-              eventType,
-              raw,
-              old,
-            );
-
-            // 2. Broadcast to secondary tabs
-            if (bc) {
-              bc.postMessage({
-                type: "db_change",
-                table: config.table,
+              // 1. Process locally on leader tab
+              await this._applyChangeAndNotify(
+                vault,
+                config,
                 eventType,
                 raw,
                 old,
-              });
-            }
-          },
-        );
-      }
+              );
 
-      channel.subscribe((status, err) => {
-        if (status === "SUBSCRIBED") {
-          console.log(
-            "[RealtimeSyncEngine] ✅ Subscribed to all tables:",
-            TABLE_CONFIGS.map((c) => c.table).join(", "),
-          );
-          // Perform catch-up on successful subscription (handles reconnects!)
-          this.catchUp(vault, isAdmin).catch((err) => {
-            console.error(
-              "[RealtimeSyncEngine] Catch-up failed after subscription/reconnect:",
-              err,
-            );
-          });
-        } else if (status === "CHANNEL_ERROR") {
-          const errMessage =
-            (err as any)?.message ||
-            (typeof (err as any) === "string" ? (err as any) : "");
-          const isNormalClose =
-            errMessage.includes("1000") || errMessage.includes("normal");
-          const isAbnormalClose =
-            errMessage.includes("1006") || errMessage.includes("abnormal");
-          if (isNormalClose) {
-            console.log(
-              "[RealtimeSyncEngine] Channel closed normally (socket closed: 1000)",
-            );
-          } else if (isAbnormalClose) {
-            console.warn(
-              "[RealtimeSyncEngine] Channel closed abnormally (socket closed: 1006). SDK will auto-reconnect.",
-            );
-          } else {
-            console.error(
-              "[RealtimeSyncEngine] Channel error:",
-              err?.message || "Unknown",
-            );
-          }
-        } else if (status === "TIMED_OUT") {
-          console.warn(
-            "[RealtimeSyncEngine] Subscription timed out. Supabase Realtime may be unavailable.",
+              // 2. Broadcast to secondary tabs
+              if (bc) {
+                bc.postMessage({
+                  type: "db_change",
+                  table: config.table,
+                  eventType,
+                  raw,
+                  old,
+                });
+              }
+            },
           );
         }
-      });
 
-      _channel = channel;
+        channel.subscribe((status, err) => {
+          if (status === "SUBSCRIBED") {
+            console.log(
+              "[RealtimeSyncEngine] ✅ Subscribed to all tables:",
+              TABLE_CONFIGS.map((c) => c.table).join(", "),
+            );
+            // Perform catch-up on successful subscription (handles reconnects!)
+            this.catchUp(vault, isAdmin).catch((err) => {
+              console.error(
+                "[RealtimeSyncEngine] Catch-up failed after subscription/reconnect:",
+                err,
+              );
+            });
+          } else if (status === "CHANNEL_ERROR") {
+            const errMessage =
+              (err as any)?.message ||
+              (typeof (err as any) === "string" ? (err as any) : "");
+            const isNormalClose =
+              errMessage.includes("1000") || errMessage.includes("normal");
+            const isAbnormalClose =
+              errMessage.includes("1006") || errMessage.includes("abnormal");
+            if (isNormalClose) {
+              console.log(
+                "[RealtimeSyncEngine] Channel closed normally (socket closed: 1000)",
+              );
+            } else if (isAbnormalClose) {
+              console.warn(
+                "[RealtimeSyncEngine] Channel closed abnormally (socket closed: 1006). SDK will auto-reconnect.",
+              );
+            } else {
+              console.error(
+                "[RealtimeSyncEngine] Channel error:",
+                err?.message || "Unknown",
+              );
+            }
+          } else if (status === "TIMED_OUT") {
+            console.warn(
+              "[RealtimeSyncEngine] Subscription timed out. Supabase Realtime may be unavailable.",
+            );
+          }
+        });
+
+        _channel = channel;
+      } else {
+        console.log(
+          "[RealtimeSyncEngine] Sem sessão: sem canal de tempo real; a vitrine atualiza ao voltar à aba.",
+        );
+        // Quem disparava a primeira rodada era o SUBSCRIBED do canal.
+        this.catchUp(vault, isAdmin).catch((err) => {
+          console.error(
+            "[RealtimeSyncEngine] Catch-up inicial (sem canal) falhou:",
+            err,
+          );
+        });
+      }
 
       // Register connectivity/visibility change listeners
       if (typeof window !== "undefined") {
