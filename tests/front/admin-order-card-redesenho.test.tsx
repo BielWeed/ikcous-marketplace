@@ -97,6 +97,21 @@ describe("AdminOrderCard — rodapé e leitura do pedido", () => {
     expect(texto).toContain("#ECA2D5");
   });
 
+  describe.each(["compact", "detailed"] as const)("modo %s", (modo) => {
+    it.each([
+      ["ausente", undefined],
+      ["nulo", null],
+      ["com nome vazio", { name: "", whatsapp: "" }],
+    ])("mostra Cliente quando o cliente está %s", (_caso, customer) => {
+      desenhar(pedido({ customer } as Partial<Order>), modo);
+      expect(
+        Array.from(hospedeiro.querySelectorAll("*")).some(
+          (elemento) => elemento.textContent === "Cliente",
+        ),
+      ).toBe(true);
+    });
+  });
+
   it("pedido a receber: o botão de recebimento convive com o WhatsApp e só ele chama a RPC", () => {
     desenhar(pedido());
     const zap = hospedeiro.querySelector('button[title="WhatsApp"]');
