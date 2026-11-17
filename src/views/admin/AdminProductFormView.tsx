@@ -6,6 +6,10 @@ import {
   LocalBufferedTextarea,
 } from "@/components/admin/LocalBufferedInput";
 import { PhoneSimulator } from "@/components/admin/PhoneSimulator";
+import {
+  conterTabNoDialogo,
+  controlesDoDialogo,
+} from "@/components/admin/primitivos/conterTabNoDialogo";
 import { CampoDeCategoria } from "@/components/admin/products/CampoDeCategoria";
 import { CodigoDoProduto } from "@/components/admin/products/CodigoDoProduto";
 import { DicaExpansivel } from "@/components/admin/products/DicaExpansivel";
@@ -1139,6 +1143,16 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     setShowVariantForm(false);
     setEditingVariant(null);
   }, []);
+  const dialogoDaVariacaoRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!showVariantForm) return;
+    const origem = document.activeElement;
+    const dialogo = dialogoDaVariacaoRef.current;
+    if (dialogo) (controlesDoDialogo(dialogo)[0] ?? dialogo).focus();
+    return () => {
+      if (origem instanceof HTMLElement && origem.isConnected) origem.focus();
+    };
+  }, [showVariantForm]);
   const entradaDaCamadaRef = useRef(false);
   // Fechar pelo botão da camada devolve a entrada com `history.back()`, e o
   // `popstate` dele chega DEPOIS. Se o desvio do Voltar já tivesse sido zerado,
@@ -4123,6 +4137,18 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   role="dialog"
                   aria-modal="true"
                   aria-labelledby="titulo-da-variacao"
+                  ref={dialogoDaVariacaoRef}
+                  tabIndex={-1}
+                  onKeyDown={(evento) => {
+                    // O leitor é uma camada acima: só ele recebe suas teclas.
+                    if (leitorAberto !== null || evento.defaultPrevented)
+                      return;
+                    if (evento.key === "Escape") {
+                      evento.preventDefault();
+                      evento.stopPropagation();
+                      cancelarVariacao();
+                    } else conterTabNoDialogo(evento, evento.currentTarget);
+                  }}
                   className="produto-modal gpu-accelerated flex h-dvh max-h-dvh w-full max-w-lg flex-col overflow-hidden rounded-none border border-admin-border shadow-2xl sm:h-auto sm:max-h-[90dvh] sm:rounded-3xl"
                 >
                   <div className="relative z-10 flex shrink-0 items-center gap-4 border-b border-admin-border bg-admin-bg p-5 pt-[calc(1.25rem+var(--safe-area-top,0px))]">

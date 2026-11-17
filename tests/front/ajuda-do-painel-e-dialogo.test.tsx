@@ -54,6 +54,28 @@ describe("AdminHelpModal — diálogo acessível sobre a FolhaDoPainel", () => {
     });
   }
 
+  it("devolve o foco ao botão que abriu a ajuda sem Dialog.Trigger", async () => {
+    const origem = document.createElement("button");
+    document.body.prepend(origem);
+    origem.focus();
+    await abrir();
+    expect(document.activeElement).not.toBe(origem);
+    const { AdminHelpModal } = await import(
+      "@/components/admin/AdminHelpModal"
+    );
+    await act(async () => {
+      raiz.render(
+        <AdminHelpModal isOpen={false} onClose={() => {}} title="Guia">
+          <p>x</p>
+        </AdminHelpModal>,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(document.activeElement).toBe(origem);
+    origem.remove();
+  });
+
   it("aberta, é um role=dialog nomeado pelo título", async () => {
     await abrir();
 
