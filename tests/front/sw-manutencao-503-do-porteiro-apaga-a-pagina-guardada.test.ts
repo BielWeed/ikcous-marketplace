@@ -16,13 +16,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  *
  * O MARCADOR REAL do 503 do porteiro: status 503 + cabeçalho
  * `x-ikcous-porteiro` com o motivo (`sem-loja`, `discorda`,
- * `banco-indisponivel`, `html-indisponivel`). 502/504 de falha da hospedagem e
- * 503 sem o cabeçalho NÃO são do porteiro e NÃO apagam a página guardada.
+ * `banco-indisponivel`, `html-indisponivel`).
+ * Só `sem-loja` e `discorda` apagam a página guardada. Os outros dois são
+ * falhas passageiras; 503 sem cabeçalho e falhas da hospedagem também mantêm
+ * o app guardado.
  *
  * O QUE ESTE TESTE FIXA (e o limite): a abertura que viu o 503 ainda entrega a
  * página guardada (o ramo é cache-primeiro de propósito: rede fora do ar não
- * pode dar tela branca) — a PRÓXIMA abertura já recebe o 503. Rede que FALHA
- * (offline) nunca apaga nada.
+ * pode dar tela branca) — com recusa duradoura, a PRÓXIMA abertura recebe o
+ * 503. Falha passageira do porteiro e rede que FALHA (offline) não apagam nada.
  *
  * Mesmo molde de `sw-revalidacao-espera-a-atualizacao-que-esta-instalando`:
  * `sw.ts` registra os listeners ao ser importado, então o self é falso e a
@@ -35,12 +37,12 @@ type Listener = (event: unknown) => void;
 const ORIGEM = "https://loja.exemplo.com";
 const ROTA = `${ORIGEM}/produtos`;
 const VITRINE_ANTIGA = "<html>vitrine antiga</html>";
-const MOTIVOS_DO_PORTEIRO: readonly MotivoManutencao[] = [
-  "sem-loja",
-  "discorda",
-  "banco-indisponivel",
-  "html-indisponivel",
-];
+const COMPORTAMENTO: Record<MotivoManutencao, boolean> = {
+  "sem-loja": true,
+  discorda: true,
+  "banco-indisponivel": false,
+  "html-indisponivel": false,
+};
 
 const chave = (alvo: Request | string) =>
   new URL(typeof alvo === "string" ? alvo : alvo.url, ORIGEM).href;
@@ -115,6 +117,7 @@ async function abrir(listeners: Map<string, Listener[]>, url = ROTA) {
     waitUntil: (p: Promise<unknown>) => esperas.push(p),
   });
   const resposta = (await respondWith.mock.calls[0][0]) as Response;
+  expect(esperas).toHaveLength(1);
   await Promise.all(esperas);
   // O put/delete são encadeados em promessas soltas: deixa a fila esvaziar.
   await new Promise((resolve) => setTimeout(resolve, 0));
@@ -131,27 +134,36 @@ describe("sw.ts — 503 do porteiro nao fica escondido atras da pagina guardada"
     vi.restoreAllMocks();
   });
 
-  it.each(MOTIVOS_DO_PORTEIRO)(
-    "503 do porteiro (%s): a pagina antiga sai do cache e a proxima abertura mostra o 503",
-    async (motivo) => {
-      const { listeners, guardadas, put } = montar(async () =>
-        respostaDoPorteiro(motivo),
+  it.each(Object.entries(COMPORTAMENTO))(
+    "503 do porteiro (%s): apaga a pagina guardada somente se duradouro (%s)",
+    async (motivo, deveApagar) => {
+      const { listeners, guardadas, put, apagar } = montar(async () =>
+        respostaDoPorteiro(motivo as MotivoManutencao),
       );
       await import("@/sw/sw");
 
       // 1ª abertura: cache-primeiro (de propósito), mas já descobre o 503.
       const primeira = await abrir(listeners);
       expect(await primeira.text()).toBe(VITRINE_ANTIGA);
-      expect(guardadas.has(ROTA)).toBe(false);
+      expect(guardadas.has(ROTA)).toBe(!deveApagar);
 
-      // 2ª abertura: nada guardado, a rede responde 503 e ele passa como veio.
       const segunda = await abrir(listeners);
-      expect(segunda.status).toBe(503);
-      expect(segunda.headers.get("x-ikcous-porteiro")).toBe(motivo);
-      expect(await segunda.text()).toContain("manutenção");
+      if (deveApagar) {
+        // Nada guardado: a recusa duradoura passa como veio na próxima visita.
+        expect(apagar).toHaveBeenCalledTimes(1);
+        expect(chave(apagar.mock.calls[0][0])).toBe(ROTA);
+        expect(segunda.status).toBe(503);
+        expect(segunda.headers.get("x-ikcous-porteiro")).toBe(motivo);
+        expect(await segunda.text()).toContain("manutenção");
+      } else {
+        // Falha passageira: preserva o app guardado também na próxima visita.
+        expect(apagar).not.toHaveBeenCalled();
+        expect(segunda.status).toBe(200);
+        expect(await segunda.text()).toBe(VITRINE_ANTIGA);
+      }
       // E o 503 nunca é gravado como se fosse a página da loja.
       expect(put).not.toHaveBeenCalled();
-      expect(guardadas.has(ROTA)).toBe(false);
+      expect(guardadas.has(ROTA)).toBe(!deveApagar);
     },
   );
 

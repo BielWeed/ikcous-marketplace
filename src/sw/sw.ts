@@ -408,25 +408,24 @@ async function respostaTemFichaDaLoja(resposta: any): Promise<boolean> {
 }
 
 /**
- * Os motivos com que o porteiro recusa um documento (`MotivoManutencao` em
- * `src/hospedagem/porteiro.ts`; o SW não importa o porteiro, a lista é
- * copiada e um teste compara com a resposta REAL dele). Fora daqui fica o
- * `sem-ficha-no-cache` — esse é do próprio SW (`respostaEmManutencao`) e
- * nunca chega da rede.
+ * Só recusas DURADOURAS do porteiro apagam a página guardada: `sem-loja`
+ * e `discorda`. `banco-indisponivel` e `html-indisponivel` são falhas
+ * passageiras: preservamos o app, como o porteiro preserva a última ficha
+ * boa quando o banco falha. Apagar a raiz também tiraria o fallback offline.
+ * O SW não importa o porteiro; o teste cobre todos os `MotivoManutencao`
+ * com respostas REAIS dele. `sem-ficha-no-cache` é do próprio SW e nunca
+ * chega da rede.
  */
 const MOTIVOS_DO_503_DO_PORTEIRO: ReadonlySet<string> = new Set([
   "sem-loja",
   "discorda",
-  "banco-indisponivel",
-  "html-indisponivel",
 ]);
 
 /**
- * A resposta de REDE é a recusa do porteiro (a tela "loja em manutenção")?
- * O marcador é o par 503 + `x-ikcous-porteiro: <motivo>`. 502/504 da
- * hospedagem, 500 e um 503 sem o cabeçalho NÃO são do porteiro: a página
- * guardada continua valendo (uma pane da hospedagem não pode apagar o app
- * que a cliente usa offline).
+ * A resposta de REDE é uma recusa DURADOURA do porteiro?
+ * O marcador é o par 503 + `x-ikcous-porteiro: <motivo duradouro>`.
+ * Falhas passageiras, 502/504 da hospedagem, 500 e 503 sem o cabeçalho
+ * preservam a página guardada: uma pane não pode apagar o app offline.
  */
 function ehRecusaDoPorteiro(response: Response): boolean {
   return (
@@ -595,7 +594,7 @@ sw.addEventListener("fetch", (event: any) => {
           event.waitUntil(
             fetch(event.request)
               .then((response) => {
-                // O porteiro recusou (a loja está em manutenção): a página
+                // O porteiro recusou por motivo duradouro: a página
                 // guardada é de ANTES e esconderia a tela de manutenção até
                 // o cache sumir. Apaga só esta rota, para a próxima abertura
                 // ir à rede e mostrar o 503. A abertura de agora já foi
