@@ -32,7 +32,7 @@ const BASE: Record<string, string> = {
   "components/ui/custom/ProductList.tsx":
     "a548e94b10a5b942d83e6ebdf5613fccbf13e956430ce2ffcffd8b8431708940",
   "views/customer/HomeView.tsx":
-    "5a6c6b958ce7263ecbfd7e048b0991c655f9866620ac25056af85fe6efb22204",
+    "93df52459b0394dabf8e0c1d114f29cb5f72ee7a1fd4f89a0d3d57357c4a9f61",
 };
 
 for (const [arquivo, esperado] of Object.entries(BASE)) {

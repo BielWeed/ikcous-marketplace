@@ -744,7 +744,7 @@ export const HomeView = React.memo(function HomeView({
       <div className="p-3 sm:p-4 lg:px-0 lg:py-6">
         <h2
           id="catalogo"
-          className="mb-8 scroll-mt-16 text-3xl font-black leading-none tracking-tighter text-zinc-900"
+          className="mb-8 scroll-mt-16 text-3xl font-black leading-none tracking-tighter text-zinc-900 dark:text-zinc-100"
         >
           {termoDaBusca ? "Resultados da busca" : "Catálogo"}
         </h2>

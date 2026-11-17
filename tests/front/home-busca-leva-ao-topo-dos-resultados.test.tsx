@@ -150,6 +150,22 @@ describe("HomeView — buscar leva ao topo dos resultados", () => {
     });
   };
 
+  it.each([false, true])(
+    "preserva a cor clara e adapta o título ao escuro (dark=%s)",
+    async (escuro) => {
+      hospedeiro.classList.toggle("dark", escuro);
+      for (const searchQuery of ["", "bolsa"]) {
+        await render({ searchQuery });
+        const titulo = hospedeiro.querySelector("#catalogo");
+        expect(titulo?.textContent).toBe(
+          searchQuery ? "Resultados da busca" : "Catálogo",
+        );
+        expect(titulo?.classList.contains("text-zinc-900")).toBe(true);
+        expect(titulo?.classList.contains("dark:text-zinc-100")).toBe(true);
+      }
+    },
+  );
+
   it("começar a buscar leva ao título dos resultados, sem animação", async () => {
     await render();
     expect(rolagens).toEqual([]);

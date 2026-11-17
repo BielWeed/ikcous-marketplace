@@ -6290,10 +6290,10 @@ export function CheckoutViewDaConta({
           />
         ) : (
           <>
-            <h1 className="text-lg font-bold text-zinc-900">
+            <h1 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">
               Seu carrinho está vazio
             </h1>
-            <p className="text-sm text-zinc-600">
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">
               Não há nenhum produto para finalizar. Volte ao carrinho para
               escolher o que você quer comprar.
             </p>

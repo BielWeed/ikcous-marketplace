@@ -247,6 +247,23 @@ describe("CheckoutView — carrinho vazio e nada a retomar", () => {
     expect(onNavigate).toHaveBeenCalledWith("cart");
   });
 
+  it.each([false, true])(
+    "preserva as cores claras e adapta a explicação ao escuro (dark=%s)",
+    async (escuro) => {
+      hospedeiro.classList.toggle("dark", escuro);
+      await renderizar();
+
+      const titulo = hospedeiro.querySelector("h1");
+      const explicacao = hospedeiro.querySelector("p");
+      expect(titulo?.textContent).toBe(FRASE_DO_CARRINHO_VAZIO);
+      expect(titulo?.classList.contains("text-zinc-900")).toBe(true);
+      expect(titulo?.classList.contains("dark:text-zinc-100")).toBe(true);
+      expect(explicacao?.textContent).toContain("Não há nenhum produto");
+      expect(explicacao?.classList.contains("text-zinc-600")).toBe(true);
+      expect(explicacao?.classList.contains("dark:text-zinc-400")).toBe(true);
+    },
+  );
+
   it("convidado (sem conta) com carrinho vazio também recebe a explicação", async () => {
     estado.user = null;
     await renderizar();
