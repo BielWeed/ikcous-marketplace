@@ -19,6 +19,7 @@ import { instalarConsumidorDoAtalhoDoIcone } from "@/lib/atalho-do-icone";
 import { esquecerChaveDoPedidoDe } from "@/lib/chave-do-pedido";
 import {
   destinoPosLogin,
+  idDePedidoDoPainel,
   idDoDestinoPosLogin,
   painelSemContaPedeEntrada,
 } from "@/lib/destinoPosLogin";
@@ -1881,7 +1882,9 @@ const AppContent = () => {
       // "user-profile" sem o repasse montaria a view sem `userId` — skeleton
       // eterno; "product-detail" e "order-details" sem id idem. O repasse é
       // SÓ para elas (`idDoDestinoPosLogin`): id nas outras views criaria `?id`
-      // fantasma em URL que nunca o teve.
+      // fantasma em URL que nunca o teve. `admin-orders` entra na lista com
+      // validação própria (uuid de pedido): é a ficha que o aviso de "Pedido
+      // novo" abre.
       handleNavigate(
         destino,
         idDoDestinoPosLogin(destino, estadoNoLogin),
@@ -2210,10 +2213,23 @@ const AppContent = () => {
         // logada e não é admin cai na guarda logo abaixo, como sempre caiu.
         if (painelSemContaPedeEntrada(targetView, { authLoading, user })) {
           const pedida = targetView;
+          // O `?id=` do aviso some com a troca da URL por `/auth` logo abaixo
+          // (os parâmetros só são lidos mais adiante): lê AQUI, antes. Só a
+          // ficha de pedido o usa, e só se for um uuid (`idDePedidoDoPainel`);
+          // `handleAuthSuccess` o devolve a `admin-orders` e a entrada de login
+          // é substituída pelo destino, então o id não fica guardado.
+          const pedidoDoAviso =
+            pedida === "admin-orders"
+              ? idDePedidoDoPainel(
+                  new URLSearchParams(globalThis.location.search).get("id"),
+                )
+              : undefined;
           targetView = "auth";
           if (globalThis.location.pathname !== "/auth") {
             globalThis.history.replaceState(
-              { view: "auth", requested: pedida },
+              pedidoDoAviso === undefined
+                ? { view: "auth", requested: pedida }
+                : { view: "auth", requested: pedida, id: pedidoDoAviso },
               "",
               "/auth",
             );
