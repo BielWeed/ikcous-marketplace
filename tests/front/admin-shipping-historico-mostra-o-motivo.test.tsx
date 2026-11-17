@@ -10,8 +10,7 @@
 // "o Melhor Envio está fora do ar". Este arquivo prende:
 //
 //   1. o motivo aparece na tela para uma linha de erro;
-//   2. sucesso nunca mostra "Motivo" (não há o que explicar, e o texto do
-//      provedor não pode vazar como se fosse diagnóstico);
+//   2. sucesso sem motivo não mostra diagnóstico; cotação parcial explica a falha;
 //   3. dez linhas seguidas com o MESMO motivo viram UMA linha com contador
 //      (×N) — sem isso, a mesma credencial ausente citada dez vezes rolando
 //      a tela não ensina nada de novo na segunda repetição.
@@ -155,6 +154,54 @@ describe("HistoricoCotacoesSection — o selo vermelho passa a dizer o motivo", 
 
     expect(textoDoHistorico()).not.toMatch(/Motivo:/);
   });
+
+  it.each([
+    [
+      "chave recusada",
+      "melhor_envio: Melhor Envio API retornou 401: x",
+      ["Melhor Envio: A transportadora recusou a chave"],
+    ],
+    [
+      "duas transportadoras com falha",
+      "melhor_envio: Melhor Envio API retornou 401: x | frenet: Frenet API retornou 500: x",
+      [
+        "Melhor Envio: A transportadora recusou a chave",
+        "Frenet: A transportadora não respondeu direito (erro 500)",
+      ],
+    ],
+    [
+      "tempo esgotado",
+      "melhor_envio: tempo esgotado: The signal has been aborted",
+      ["Melhor Envio: A transportadora demorou demais para responder"],
+    ],
+  ])(
+    "cotação parcial mostra o motivo traduzido: %s",
+    async (_caso, falha, frases) => {
+      const motivo = `Cotação parcial: ${falha}`;
+      logsState.data = [
+        {
+          id: "parcial",
+          created_at: new Date().toISOString(),
+          destination_cep: "38400000",
+          provider: "melhor_envio, frenet",
+          response_time_ms: 320,
+          status: "success",
+          error_message: motivo,
+        },
+      ];
+      await abrirSecao();
+
+      expect(textoDoHistorico()).toContain("Motivo:");
+      const celula = [...hospedeiro.querySelectorAll("[title]")].find(
+        (el) => el.getAttribute("title") === motivo,
+      );
+      expect(celula).toBeTruthy();
+      expect(celula!.textContent).toContain("Cotação parcial — ");
+      for (const frase of frases) expect(celula!.textContent).toContain(frase);
+      expect(celula!.textContent).not.toContain("The signal");
+      expect(celula!.textContent).not.toContain("melhor_envio");
+    },
+  );
 
   it("dez erros seguidos com o MESMO motivo viram uma linha só, com contador", async () => {
     logsState.data = Array.from({ length: 10 }, (_, i) => ({

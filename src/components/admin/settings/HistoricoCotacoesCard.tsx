@@ -347,7 +347,7 @@ export const HistoricoCotacoesSection = memo(
                         texto EXIBIDO é cortado em
                         `LIMITE_MOTIVO_EXIBIDO` caracteres para não empurrar
                         o resto da tabela para fora da tela no celular. */}
-                    {log.status !== "success" && log.error_message ? (
+                    {log.error_message ? (
                       <tr
                         {...papel("row")}
                         className="block bg-white/[0.02] px-3 pb-3 sm:table-row sm:p-0"
