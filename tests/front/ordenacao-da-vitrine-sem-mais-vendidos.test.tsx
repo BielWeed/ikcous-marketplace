@@ -117,11 +117,12 @@ describe("ordenação da vitrine sem Mais Vendidos", () => {
     sortBy: SortOption | string,
     aoMudar: (ordem: SortOption) => void = () => {},
     isLoading = false,
+    produtos: Product[] = PRODUTOS,
   ) => {
     await act(async () => {
       raiz.render(
         <HomeView
-          products={PRODUTOS}
+          products={produtos}
           isLoading={isLoading}
           favorites={[]}
           onToggleFavorite={() => {}}
@@ -285,6 +286,86 @@ describe("ordenação da vitrine sem Mais Vendidos", () => {
     await montar(ordem);
     expect(ordemNaTela()).toEqual(esperado);
   });
+
+  it.each<{ ordem: SortOption; esperado: string[] }>([
+    { ordem: "price-asc", esperado: ["com-opcao", "simples"] },
+    { ordem: "price-desc", esperado: ["simples", "com-opcao"] },
+  ])(
+    "$ordem usa o preço anunciado da variação disponível",
+    async ({ ordem, esperado }) => {
+      const comOpcao: Product = {
+        ...produto("com-opcao", 300, 5, 0),
+        variants: [
+          {
+            id: "opcao-disponivel",
+            productId: "com-opcao",
+            name: "Tamanho",
+            value: "P",
+            active: true,
+            stockIncrement: 5,
+            priceOverride: 120,
+          },
+        ],
+      };
+      await montar(ordem, undefined, false, [
+        produto("simples", 200, 5, 0),
+        comOpcao,
+      ]);
+      expect(ordemNaTela()).toEqual(esperado);
+    },
+  );
+
+  it.each<{ ordem: SortOption; esperado: string[] }>([
+    { ordem: "price-asc", esperado: ["simples", "com-opcoes"] },
+    { ordem: "price-desc", esperado: ["com-opcoes", "simples"] },
+  ])(
+    "$ordem ignora a variação mais barata esgotada",
+    async ({ ordem, esperado }) => {
+      const comOpcoes: Product = {
+        ...produto("com-opcoes", 100, 5, 0),
+        variants: [
+          {
+            id: "opcao-esgotada",
+            productId: "com-opcoes",
+            name: "Tamanho",
+            value: "P",
+            active: true,
+            stockIncrement: 0,
+            priceOverride: 50,
+          },
+          {
+            id: "opcao-disponivel",
+            productId: "com-opcoes",
+            name: "Tamanho",
+            value: "G",
+            active: true,
+            stockIncrement: 5,
+            priceOverride: 250,
+          },
+        ],
+      };
+      await montar(ordem, undefined, false, [
+        comOpcoes,
+        produto("simples", 200, 5, 0),
+      ]);
+      expect(ordemNaTela()).toEqual(esperado);
+    },
+  );
+
+  // Sem variação, `price` já é o preço promocional; `originalPrice` é só o "De".
+  it.each<{ ordem: SortOption; esperado: string[] }>([
+    { ordem: "price-asc", esperado: ["promocao", "simples"] },
+    { ordem: "price-desc", esperado: ["simples", "promocao"] },
+  ])(
+    "$ordem usa o preço promocional, não o preço riscado",
+    async ({ ordem, esperado }) => {
+      await montar(ordem, undefined, false, [
+        produto("simples", 200, 5, 0),
+        { ...produto("promocao", 120, 5, 0), originalPrice: 300 },
+      ]);
+      expect(ordemNaTela()).toEqual(esperado);
+    },
+  );
 
   it("valor antigo 'sold' cai em Relevância: mesma ordem, vitrine cheia", async () => {
     await montar("sold");
