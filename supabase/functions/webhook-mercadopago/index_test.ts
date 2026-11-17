@@ -7685,6 +7685,126 @@ Deno.test("cartão — Achado S5 (W4): a ADOÇÃO perde a corrida para um PIX gr
   assertEquals(chamadasPush.length, 1, "o admin precisa ser avisado — a vaga tem OUTRA cobrança real, não um sentinela");
 });
 
+// Achado (17/11/2026, confirmado por cético): a releitura do pedido DEPOIS de
+// perder a corrida da adoção ignorava o `error` do PostgREST. Timeout/5xx nessa
+// releitura = `data` nulo = nenhum aviso de "cobrança de cartão duplicada",
+// `confirmar_pagamento` devolve 'divergente' e o webhook respondia 200: o MP não
+// reenvia e a reconciliação não olha esse id — cartão cobrado em dobro sem aviso.
+// O 500 mantém o evento na fila do MP; nada foi escrito antes (a adoção CAS não
+// casou, as leituras e a consulta ao MP são idempotentes), então não há o que
+// desfazer, e a reentrega já encontra o id do vencedor na vaga e cai no ramo
+// "divergente", que avisa com a MESMA chave idempotente.
+async function entregarOrderQuePerdeuACorrida(opts: {
+  // quantas releituras pós-corrida (`select("gateway_payment_id")`) falham
+  falharReleitura?: number;
+  // reaproveita o MESMO banco entre entregas (reentrega do MP)
+  banco?: {
+    pedido: Record<string, unknown>;
+    avisos: Map<string, { enviado: boolean }>;
+    supabase: ReturnType<typeof clienteFalso>;
+    registro: ReturnType<typeof novoRegistroDaCorrida>;
+  };
+}) {
+  ambienteDoWebhook();
+  const banco = opts.banco ?? (() => {
+    const registro = novoRegistroDaCorrida();
+    const pedido: Record<string, unknown> = {
+      id: UUID_PEDIDO,
+      customer_name: "Maria",
+      total: 149.9,
+      total_amount: null,
+      gateway_payment_id: null,
+    };
+    const avisos = new Map<string, { enviado: boolean }>();
+    const supabase = clienteFalso({
+      rpcResultado: "divergente",
+      pedido,
+      registro,
+      avisos,
+      falharLeituraGatewayPaymentId: opts.falharReleitura,
+      // A corrida: o PIX concorrente grava a vaga ENTRE a leitura e o UPDATE.
+      aposLeituraDoPedido: (p) => {
+        p.gateway_payment_id = "ORDTST01PIXCONCORRENTE000000";
+      },
+    });
+    return { pedido, avisos, supabase, registro };
+  })();
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const pushes: Array<{ title: string; url: string }> = [];
+  const logs: string[] = [];
+  const [erroReal, avisoReal] = [console.error, console.warn];
+  console.error = (...a: unknown[]) => logs.push(a.map((x) => (typeof x === "string" ? x : JSON.stringify(x))).join(" "));
+  console.warn = () => {};
+  let resposta: Response;
+  try {
+    resposta = await handler(req, {
+      supabase: banco.supabase,
+      fetchImpl: fetchConsulta(200, orderDoMp("processed", "accredited", "credit_card")),
+      enviarPushContado: ({ aviso }: { aviso: { title: string; url: string } }) => {
+        pushes.push(aviso);
+        return Promise.resolve(1);
+      },
+      dormir: () => Promise.resolve(),
+      enviarComprovante: async () => {},
+    });
+  } finally {
+    console.error = erroReal;
+    console.warn = avisoReal;
+  }
+  return { resposta, corpo: await resposta.json(), pushes, logs, banco };
+}
+
+function novoRegistroDaCorrida() {
+  return {
+    chamadasRpc: [] as Array<{ args: Record<string, unknown> }>,
+    chamadasLiberar: [],
+    chamadasUpdateMarketplaceOrders: [],
+    chamadasReservar: [] as Array<{ args: Record<string, unknown> }>,
+    chamadasAviso: [] as Array<{ nome: string; args: Record<string, unknown> }>,
+    chamadasFrom: [] as Array<{ tabela: string; colunas: string; coluna: string; valor: unknown }>,
+  };
+}
+
+Deno.test("cartão — S5, releitura pós-corrida FALHA (timeout do PostgREST): 500, evento fica na fila do MP, nem aviso nem confirmar_pagamento (antes: 200 sem aviso)", async () => {
+  const r = await entregarOrderQuePerdeuACorrida({ falharReleitura: 1 });
+  assertEquals(r.resposta.status, 500);
+  assertEquals(r.corpo, { error: "Erro ao reler o pedido após a corrida." });
+  assertEquals(r.pushes.length, 0, "sem releitura não há o que avisar ainda — a reentrega avisa");
+  assertEquals(r.banco.registro.chamadasRpc.length, 0, "500 antes de confirmar_pagamento");
+  assertEquals(r.banco.registro.chamadasReservar.length, 0, "nenhuma reserva de aviso gravada");
+  assertEquals(r.banco.avisos.size, 0, "nada gravado que a reentrega tenha de desfazer");
+  assertEquals(r.banco.pedido.gateway_payment_id, "ORDTST01PIXCONCORRENTE000000", "a vaga do vencedor intacta");
+  const logDoErro = r.logs.find((l) => l.includes("releitura"));
+  assert(logDoErro, "a falha tem de ficar no log, com contexto");
+  assert(logDoErro.includes(UUID_PEDIDO), "o log leva o id do pedido");
+  assert(!logDoErro.includes("Maria"), "o log não leva dado pessoal do cliente");
+});
+
+Deno.test("cartão — S5, a REENTREGA depois do 500 avisa 1 vez (ramo 'divergente', mesma chave) e a RPC decide; o 500 não perdeu o aviso", async () => {
+  const primeira = await entregarOrderQuePerdeuACorrida({ falharReleitura: 1 });
+  assertEquals(primeira.resposta.status, 500);
+  const reentrega = await entregarOrderQuePerdeuACorrida({ banco: primeira.banco });
+  assertEquals(reentrega.resposta.status, 200);
+  assertEquals(reentrega.pushes.length, 1, "a reentrega cria o aviso");
+  assertEquals(reentrega.banco.registro.chamadasReservar.map((c) => c.args.p_chave), [CHAVE_DIVERGENTE]);
+  assertEquals(reentrega.banco.registro.chamadasRpc.length, 1, "e só agora chama confirmar_pagamento ('divergente')");
+  assert(
+    reentrega.logs.some((l) => l.includes("a vaga já tem OUTRA cobrança gravada")),
+    "a reentrega cai no ramo divergente (vaga já com o id do vencedor), não no S5",
+  );
+});
+
+Deno.test("cartão — S5, CONTROLE: releitura funciona -> aviso criado, 200 e confirmar_pagamento decide (comportamento de sempre)", async () => {
+  const r = await entregarOrderQuePerdeuACorrida({});
+  assertEquals(r.resposta.status, 200);
+  assertEquals(r.pushes.length, 1);
+  assertEquals(r.pushes[0].url, `/admin-orders?id=${UUID_PEDIDO}`);
+  assertEquals(r.banco.registro.chamadasReservar.map((c) => c.args.p_chave), [CHAVE_DIVERGENTE]);
+  assertEquals(r.banco.registro.chamadasRpc.length, 1);
+  assert(r.logs.some((l) => l.includes("perdeu a corrida da adoção")), "passa pelo ramo S5");
+  assert(!r.logs.some((l) => l.includes("releitura")), "sem falha, sem log de falha");
+});
+
 // C-P (02/10/2026, W7 do harness PGlite): o push "Cobrança de cartão
 // duplicada?" saía a cada ENTREGA do MP (uma notificação por atualização da
 // order + reenvios; o handler relê o estado ATUAL). Agora reserva
