@@ -93,7 +93,7 @@ describe("Home no computador", () => {
     expect(
       home.includes("lg:w-[calc((100%-48px)/4)] xl:w-[calc((100%-64px)/5)]"),
     ).toBe(true);
-    expect(home.includes("lg:[&_.snap-mandatory]:justify-center")).toBe(true);
+    expect(home.includes("lg:[&_.snap-mandatory]:justify-center")).toBe(false);
   });
 
   it("preserva as classes do celular no banner e nas duas grades", () => {
