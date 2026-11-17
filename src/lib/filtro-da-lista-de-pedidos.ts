@@ -24,6 +24,8 @@
  * banco, que lê o deslocamento embutido nele.
  */
 
+import { prepararTextoDeBuscaDoPainel } from "@/lib/texto-de-busca-do-painel";
+
 const DESLOCAMENTO_DA_LOJA = "-03:00";
 
 /**
@@ -69,11 +71,13 @@ export function fimDoDiaDaLoja(dia: string | undefined): string | undefined {
 }
 
 /**
- * O termo da busca como o banco precisa: sem espaço nas pontas e sem o "#"
- * que o app mostra antes do número do pedido (só UM, só no começo).
+ * Sem o "#" do número do pedido (só UM, só no começo), com espaços
+ * normalizados e curingas literais para o ILIKE da RPC.
  */
 export function termoDeBuscaDoPedido(termo: string | undefined): string {
-  return (termo ?? "").trim().replace(/^#\s*/, "");
+  return prepararTextoDeBuscaDoPainel(
+    (termo ?? "").trim().replace(/^#\s*/, ""),
+  );
 }
 
 function emMilissegundos(valor: string | undefined): number | undefined {

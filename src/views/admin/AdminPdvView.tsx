@@ -69,6 +69,7 @@ import {
 } from "@/lib/prazo-da-requisicao";
 import { rotuloDaVariacao } from "@/lib/rotulo-da-variacao";
 import { supabase } from "@/lib/supabase";
+import { prepararTextoDeBuscaDoPainel } from "@/lib/texto-de-busca-do-painel";
 import type { View } from "@/types";
 import { Keyboard, ScanBarcode, Search } from "lucide-react";
 import {
@@ -391,7 +392,7 @@ export function AdminPdvView({
     const { data, error } = await aguardarComPrazo(
       Promise.resolve(
         supabase.rpc("get_admin_customers_paged", {
-          p_search: termo,
+          p_search: prepararTextoDeBuscaDoPainel(termo),
           p_sort_field: "created_at",
           p_sort_direction: "desc",
           p_page: 0,

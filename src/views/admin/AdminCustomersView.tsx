@@ -26,6 +26,7 @@ import {
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
+import { prepararTextoDeBuscaDoPainel } from "@/lib/texto-de-busca-do-painel";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import {
@@ -244,7 +245,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
         const { data, error } = await aguardarComPrazo<any>(
           Promise.resolve(
             (supabase.rpc as any)("get_admin_customers_paged", {
-              p_search: searchTerm,
+              p_search: prepararTextoDeBuscaDoPainel(searchTerm),
               p_sort_field: sortField,
               p_sort_direction: sortDirection,
               p_page: pageToFetch,
