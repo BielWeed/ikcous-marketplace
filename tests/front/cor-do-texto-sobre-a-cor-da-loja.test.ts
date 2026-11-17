@@ -130,6 +130,11 @@ describe("aplicarCorDaLoja — as variáveis do tema", () => {
     aplicarCorDaLoja("#ffd400");
 
     const nomes = Array.from(document.documentElement.style).sort();
-    expect(nomes).toEqual(["--primary", "--primary-foreground"]);
+    // A terceira é a cor da marca legível sobre branco (cor-da-loja.ts).
+    expect(nomes).toEqual([
+      "--primary",
+      "--primary-foreground",
+      "--primary-legivel",
+    ]);
   });
 });

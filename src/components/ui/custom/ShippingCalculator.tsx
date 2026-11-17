@@ -1163,7 +1163,7 @@ export function ShippingCalculator({
                 className="w-12 border border-zinc-100"
               />
               {comCorDaMarca && (
-                <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-white text-primary shadow-sm">
+                <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-white text-primary-legivel shadow-sm">
                   <Check className="size-3" aria-hidden="true" />
                 </span>
               )}

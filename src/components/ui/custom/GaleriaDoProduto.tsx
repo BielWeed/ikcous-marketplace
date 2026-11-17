@@ -465,9 +465,9 @@ export function GaleriaDoProduto({
               aria-current={posicao === indice ? "true" : undefined}
               onClick={() => onMudarIndice(posicao)}
               className={cn(
-                "lg:size-[72px] lg:overflow-hidden lg:rounded-xl lg:border-2 lg:bg-zinc-50 lg:p-1 lg:transition-colors lg:focus-visible:outline-none lg:focus-visible:ring-2 lg:focus-visible:ring-primary lg:focus-visible:ring-offset-2 lg:shadow-sm",
+                "lg:size-[72px] lg:overflow-hidden lg:rounded-xl lg:border-2 lg:bg-zinc-50 lg:p-1 lg:transition-colors lg:focus-visible:outline-none lg:focus-visible:ring-2 lg:focus-visible:ring-primary-legivel lg:focus-visible:ring-offset-2 lg:shadow-sm",
                 posicao === indice
-                  ? "lg:border-primary"
+                  ? "lg:border-primary-legivel"
                   : "lg:border-zinc-200 lg:hover:border-zinc-400",
               )}
             >
