@@ -109,7 +109,7 @@ const FIGURA_COMPUTADOR = [
   "lg:row-span-6",
   "lg:!mt-0",
 ];
-const COLUNA_COMPUTADOR = ["lg:has-[figure]:max-w-3xl"];
+const COLUNA_COMPUTADOR = ["lg:min-h-0", "lg:has-[figure]:max-w-3xl"];
 
 const PREFIXOS = new Set(["lg", "xl", "2xl"]);
 const tokensDeComputador = (literal: string) =>
@@ -294,7 +294,7 @@ function violacoes(pix: string, checkout: string): string[] {
   if (semPix.length !== 4)
     v.push(`colunas irmãs sem o Pix: ${semPix.length} (esperava 4)`);
   for (const outra of semPix) {
-    if (outra.classe !== COLUNA_CELULAR)
+    if (outra.classe !== `${COLUNA_CELULAR} lg:min-h-0`)
       v.push("uma coluna irmã (cartão, erro, carregando) ganhou classe");
   }
 
@@ -333,6 +333,7 @@ describe("P77 -- Pix em duas colunas no computador: só classes lg:, celular int
         d.tags.includes("PagamentoOnline"),
     );
     expect(tokensDeComputador(coluna?.classe ?? "")).toEqual([
+      "lg:min-h-0",
       "lg:has-[figure]:max-w-3xl",
     ]);
   });
@@ -368,8 +369,8 @@ describe("P77 -- Pix em duas colunas no computador: só classes lg:, celular int
 
     it("M3: alargar também as colunas irmãs (cartão, erro, carregando)", () => {
       const m = CHECKOUT.replaceAll(
-        'px-3.5 pt-4">',
-        'px-3.5 pt-4 lg:has-[figure]:max-w-3xl">',
+        'px-3.5 pt-4 lg:min-h-0">',
+        'px-3.5 pt-4 lg:min-h-0 lg:has-[figure]:max-w-3xl">',
       );
       expect(violacoes(PIX, m).join(" | ")).toContain("irmã");
     });
