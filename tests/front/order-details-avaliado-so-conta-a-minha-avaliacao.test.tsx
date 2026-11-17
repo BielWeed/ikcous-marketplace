@@ -142,12 +142,35 @@ describe("Avaliado no pedido só conta a avaliação da pessoa logada", () => {
   it("avaliação publicada de outra conta não esconde estrelas nem o botão de escrever", async () => {
     const cartao = await renderizar();
 
-    expect(cartao.textContent).toContain("0 de 1 avaliados");
+    expect(cartao.querySelector("span")?.textContent).toBe("0 de 1 avaliado");
     expect(cartao.textContent).toContain("Escrever avaliação");
     expect(
       cartao.querySelectorAll('[aria-label*="para Kit canetas"]').length,
     ).toBe(5);
     expect(cartao.textContent).not.toContain("Avaliado");
+  });
+
+  it("mantém o plural quando há dois produtos e só um foi avaliado", async () => {
+    const itensOriginais = pedido.items;
+    pedido.items = [
+      ...itensOriginais,
+      { ...itensOriginais[0], productId: "produto-q", name: "Caderno" },
+    ];
+    avaliacoes.push({
+      product_id: "produto-p",
+      user_id: "conta-a",
+      status: "published",
+    });
+
+    try {
+      const cartao = await renderizar();
+
+      expect(cartao.querySelector("span")?.textContent).toBe(
+        "1 de 2 avaliados",
+      );
+    } finally {
+      pedido.items = itensOriginais;
+    }
   });
 
   it("ao existir também avaliação da própria conta, conta o produto e esconde o botão de escrever", async () => {
@@ -159,7 +182,7 @@ describe("Avaliado no pedido só conta a avaliação da pessoa logada", () => {
 
     const cartao = await renderizar();
 
-    expect(cartao.textContent).toContain("1 de 1 avaliados");
+    expect(cartao.querySelector("span")?.textContent).toBe("1 de 1 avaliado");
     expect(cartao.textContent).toContain("Avaliado");
     expect(cartao.textContent).not.toContain("Escrever avaliação");
     expect(

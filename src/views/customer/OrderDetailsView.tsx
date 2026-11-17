@@ -1762,7 +1762,7 @@ export function OrderDetailsView({
               {!conferenciaFalhou && !conferindoAvaliacoes && (
                 <span className="flex-shrink-0 text-xs font-semibold text-zinc-500">
                   {totalProdutosAvaliados} de {produtosParaAvaliar.length}{" "}
-                  avaliados
+                  {produtosParaAvaliar.length === 1 ? "avaliado" : "avaliados"}
                 </span>
               )}
             </div>
