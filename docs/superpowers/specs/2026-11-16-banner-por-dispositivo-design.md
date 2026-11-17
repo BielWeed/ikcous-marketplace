@@ -8,7 +8,7 @@ Cada banner permite configurar uma imagem para celular (2:1) e outra para comput
 
 ## Compatibilidade e segurança
 
-O campo atual `imageUrl` continua sendo a imagem de celular e a reserva para banners existentes. Uma imagem opcional `desktopImageUrl` guarda a versão de computador. Sem versão de computador, a vitrine mantém o comportamento anterior e o painel explica que está usando a imagem de celular. A troca de imagem só descarta arquivos que não sejam usados pela outra versão; cancelar, recuperar rascunho e uploads atrasados preservam o mesmo isolamento.
+**Correção solicitada por Gabriel em 2026-11-17:** não existe substituição entre dispositivos. O campo atual `imageUrl` é a imagem de celular; `desktopImageUrl` guarda a versão de computador. Sem imagem de computador, esse banner não entra na vitrine do computador, mas continua no celular e no painel. As listas, indicadores e pré-carregamento seguem a mesma seleção. A troca de imagem só descarta arquivos que não sejam usados pela outra versão; cancelar, recuperar rascunho e uploads atrasados preservam o mesmo isolamento.
 
 O recorte é iniciado para uma versão explícita e não pode trocar de destino ao mudar a seleção do editor. As proporções e a prévia devem corresponder ao dispositivo. Nenhuma imagem existente é convertida, apagada ou sobrescrita automaticamente.
 

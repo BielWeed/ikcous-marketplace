@@ -2,6 +2,7 @@ import { ehTelaDeComputador } from "@/hooks/useTelaDeComputador";
 import { DataVault } from "@/lib/dataVault";
 import { atributosDeImagem } from "@/lib/imageUrl";
 import { IMAGEM_DO_BANNER } from "@/lib/imagem-do-banner";
+import { imagemDoBannerParaTela } from "@/lib/imagens-do-banner";
 import {
   PRAZO_DA_CONSULTA_DOS_BANNERS_MS,
   aguardarComPrazo,
@@ -87,11 +88,14 @@ export function semearBannersDoCofre(items: Banner[]): boolean {
 }
 
 export function preCarregarFotoDoTopo(items: Banner[]): void {
-  const topBanner = items.find((b) => b.position === "home_top" && b.active);
-  const imagem =
-    ehTelaDeComputador() && topBanner?.desktopImageUrl
-      ? topBanner.desktopImageUrl
-      : topBanner?.imageUrl;
+  const computador = ehTelaDeComputador();
+  const topBanner = items.find(
+    (b) =>
+      b.position === "home_top" &&
+      b.active &&
+      imagemDoBannerParaTela(b, computador),
+  );
+  const imagem = topBanner && imagemDoBannerParaTela(topBanner, computador);
   if (imagem && typeof window !== "undefined") {
     const atributos = atributosDeImagem(imagem, IMAGEM_DO_BANNER);
     const img = new Image();
@@ -117,11 +121,14 @@ export function preCarregarFotoDoTopo(items: Banner[]): void {
 function preCarregarFotoNoBoot(items: Banner[]): void {
   const caminho = globalThis.location?.pathname.replace(/\/+$/, "");
   if (caminho !== "" && caminho !== "/home") return;
-  const topBanner = items.find((b) => b.position === "home_top" && b.active);
-  const imagem =
-    ehTelaDeComputador() && topBanner?.desktopImageUrl
-      ? topBanner.desktopImageUrl
-      : topBanner?.imageUrl;
+  const computador = ehTelaDeComputador();
+  const topBanner = items.find(
+    (b) =>
+      b.position === "home_top" &&
+      b.active &&
+      imagemDoBannerParaTela(b, computador),
+  );
+  const imagem = topBanner && imagemDoBannerParaTela(topBanner, computador);
   if (!imagem) return;
   const { srcSet } = atributosDeImagem(imagem, IMAGEM_DO_BANNER);
   if (!srcSet) return;

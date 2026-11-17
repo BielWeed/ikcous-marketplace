@@ -1,4 +1,14 @@
 {
+  "1.5.203": {
+    "titulo": "Banners separados de verdade por tela",
+    "novidades": [],
+    "correcoes": [
+      "No computador, aparecem somente banners com imagem de computador configurada. Imagens de celular não entram mais como substitutas."
+    ],
+    "melhorias": [
+      "Os banners de celular foram preservados. O painel avisa quando uma versão ainda não está configurada."
+    ]
+  },
   "1.5.202": {
     "titulo": "Um banner para cada tela",
     "novidades": [

@@ -16,7 +16,13 @@ vi.mock("embla-carousel-react", () => ({
 // @ts-expect-error flag de testes do React
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 class Observer {
-  observe() {}
+  private callback: (entries: { isIntersecting: boolean }[]) => void;
+  constructor(callback: (entries: { isIntersecting: boolean }[]) => void) {
+    this.callback = callback;
+  }
+  observe() {
+    this.callback([{ isIntersecting: true }]);
+  }
   disconnect() {}
 }
 let root: Root;
@@ -55,13 +61,13 @@ afterEach(() => {
   host.remove();
   vi.unstubAllGlobals();
 });
-async function mostrar(b = banner) {
+async function mostrar(b = banner, lista = [b]) {
   const { BannerCarousel } = await import(
     "@/components/ui/custom/BannerCarousel"
   );
   await act(async () =>
     root.render(
-      <BannerCarousel banners={[b]} autoPlay={false} primeiraSemFade />,
+      <BannerCarousel banners={lista} autoPlay={false} primeiraSemFade />,
     ),
   );
 }
@@ -82,8 +88,49 @@ it("celular pede a arte de celular e computador pede somente a arte própria", a
   });
   expect(host.querySelector("img")?.getAttribute("src")).toBe(banner.imageUrl);
 });
-it("computador sem versão própria mantém imagem legada", async () => {
+it.each([null, undefined, "", "   "])(
+  "computador não exibe banner sem imagem própria (%s), nem reserva espaço",
+  async (desktopImageUrl) => {
+    h.desktop = true;
+    await mostrar({ ...banner, desktopImageUrl });
+    expect(host.querySelector("img")).toBeNull();
+    expect(host.querySelector('[role="region"]')).toBeNull();
+    await act(async () => {
+      h.desktop = false;
+      h.listeners.forEach((cb) => cb());
+    });
+    expect(host.querySelector("img")?.getAttribute("src")).toBe(
+      banner.imageUrl,
+    );
+  },
+);
+it("lista mista mostra só computador no PC, sem pontos extras; celular mantém todas", async () => {
+  const lista = [
+    { ...banner, id: "celular-antes", desktopImageUrl: null },
+    banner,
+    { ...banner, id: "celular-depois", desktopImageUrl: null },
+  ];
   h.desktop = true;
-  await mostrar({ ...banner, desktopImageUrl: null });
-  expect(host.querySelector("img")?.getAttribute("src")).toBe(banner.imageUrl);
+  await mostrar(banner, lista);
+  expect(
+    [...host.querySelectorAll("img")].map((img) => img.getAttribute("src")),
+  ).toEqual(["https://example.com/computador.webp"]);
+  expect(
+    host.querySelectorAll('button[aria-label^="Ir para slide"]'),
+  ).toHaveLength(0);
+  expect(
+    host
+      .querySelector('[aria-roledescription="slide"]')
+      ?.getAttribute("aria-label"),
+  ).toBe("1 de 1: Campanha");
+  await act(async () => {
+    h.desktop = false;
+    h.listeners.forEach((cb) => cb());
+  });
+  expect(
+    [...host.querySelectorAll("img")].map((img) => img.getAttribute("src")),
+  ).toEqual([banner.imageUrl, banner.imageUrl, banner.imageUrl]);
+  expect(
+    host.querySelectorAll('button[aria-label^="Ir para slide"]'),
+  ).toHaveLength(3);
 });

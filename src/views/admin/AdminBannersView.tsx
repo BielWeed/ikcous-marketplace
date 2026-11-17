@@ -2453,7 +2453,7 @@ export const AdminBannersView = memo(function AdminBannersView({
     ? formData.desktopImageUrl || formData.imageUrl
     : formData.imageUrl;
   const dadosDaPrevia = { ...formData, imageUrl: imagemSelecionada || "" };
-  const usarImagemDoCelular = () => {
+  const removerImagemDoComputador = () => {
     const orfa = imagemDesktopEnviadaNaoSalvaRef.current;
     imagemDesktopEnviadaNaoSalvaRef.current = null;
     if (
@@ -3093,15 +3093,15 @@ export const AdminBannersView = memo(function AdminBannersView({
                         type="button"
                         variant="ghost"
                         disabled={ocupadoComImagem}
-                        onClick={usarImagemDoCelular}
+                        onClick={removerImagemDoComputador}
                         className="min-h-11"
                       >
-                        Usar imagem do celular
+                        Remover versão de computador
                       </Button>
                     ) : (
                       <p role="status" className="text-xs">
-                        Sem imagem de computador configurada. A loja usa a
-                        imagem de celular por enquanto.
+                        Este banner não aparece no computador enquanto você não
+                        configurar esta versão.
                       </p>
                     ))}
                   {imagemSelecionada && !modelo && (

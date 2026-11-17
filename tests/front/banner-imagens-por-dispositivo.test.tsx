@@ -59,11 +59,11 @@ const linha = {
 let root: Root;
 let host: HTMLDivElement;
 let atual: ReturnType<typeof import("@/hooks/useBanners").useBanners>;
-async function montar(linhas = [linha]) {
+async function montar(linhas = [linha], adminMode = true) {
   h.consultar.mockResolvedValue({ data: linhas, error: null });
   const { useBanners } = await import("@/hooks/useBanners");
   function Sonda() {
-    const valor = useBanners(true);
+    const valor = useBanners(adminMode);
     useEffect(() => {
       atual = valor;
     });
@@ -99,6 +99,43 @@ afterEach(() => {
 });
 
 describe("imagens de banner independentes", () => {
+  it("a Home recebe só banners com imagem de computador, mas painel mantém todos", async () => {
+    const ouvir = new Set<() => void>();
+    let pc = true;
+    vi.stubGlobal("matchMedia", () => ({
+      get matches() {
+        return pc;
+      },
+      addEventListener: (_: string, cb: () => void) => ouvir.add(cb),
+      removeEventListener: (_: string, cb: () => void) => ouvir.delete(cb),
+    }));
+    const soCelular = { ...linha, id: "celular", desktop_image_url: "" };
+    try {
+      await montar([soCelular, linha], false);
+      expect(atual.getBannersByPosition("home_top").map((b) => b.id)).toEqual([
+        "b1",
+      ]);
+      await act(async () => {
+        pc = false;
+        ouvir.forEach((cb) => cb());
+      });
+      expect(atual.getBannersByPosition("home_top").map((b) => b.id)).toEqual([
+        "celular",
+        "b1",
+      ]);
+      await act(async () => {
+        pc = true;
+        ouvir.forEach((cb) => cb());
+      });
+      await montar([soCelular, linha], true);
+      expect(atual.getBannersByPosition("home_top").map((b) => b.id)).toEqual([
+        "celular",
+        "b1",
+      ]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
   it("a consulta preserva as duas imagens no estado e no cofre", async () => {
     await montar();
     expect(atual.banners[0]).toMatchObject({
