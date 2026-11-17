@@ -61,6 +61,35 @@ describe("seloDoEmail — o selo de estado do topo", () => {
     expect(selo.titulo).toBe("Configurado no servidor");
   });
 
+  it("falha do remetente do servidor: mostra problema, não só configuração", () => {
+    const selo = seloDoEmail(
+      status({
+        origem: "ambiente",
+        saude: {
+          codigo_falha: "limite_diario",
+          ultima_falha_em: "2026-10-13T15:00:00Z",
+          ultima_falha_origem: "ambiente",
+        },
+      }),
+    );
+    expect(selo.tipo).toBe("problema");
+    expect(selo.detalhe).toContain("servidor");
+  });
+
+  it("falha antiga do painel não acusa problema no remetente do servidor", () => {
+    const selo = seloDoEmail(
+      status({
+        origem: "ambiente",
+        saude: {
+          codigo_falha: "limite_diario",
+          ultima_falha_em: "2026-10-13T15:00:00Z",
+          ultima_falha_origem: "painel",
+        },
+      }),
+    );
+    expect(selo.tipo).toBe("servidor");
+  });
+
   it("salvo sem teste gravado: 'Salvo, ainda não testado' (NUNCA 'Funcionando')", () => {
     const selo = seloDoEmail(status({ ...SALVO, ultimo_teste: null }));
     expect(selo.tipo).toBe("salvo_sem_teste");

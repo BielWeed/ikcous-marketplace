@@ -189,6 +189,14 @@ export function seloDoEmail(status: StatusDoEmail): SeloDoEmail {
     };
   }
   if (status.origem === "ambiente") {
+    if (falhaQueAindaVale(status)) {
+      return {
+        tipo: "problema",
+        titulo: "Com problema",
+        detalhe:
+          "O último envio pela conta do servidor falhou. Veja o aviso abaixo.",
+      };
+    }
     return {
       tipo: "servidor",
       titulo: "Configurado no servidor",
