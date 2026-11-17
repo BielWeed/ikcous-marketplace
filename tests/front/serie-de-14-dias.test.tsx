@@ -351,7 +351,10 @@ describe("SerieDe14Dias — relógio fixo: 'Hoje' e a virada de mês", () => {
   it("às 23:59 de 31/12 em Brasília, Hoje ainda é 31/12, não 01/01 UTC", () => {
     vi.setSystemTime(new Date("2027-01-01T02:59:00Z"));
     const tela = montar(
-      <SerieDe14Dias serie={[{ dia: HOJE, receita: 350 }]} carregando={false} />,
+      <SerieDe14Dias
+        serie={[{ dia: HOJE, receita: 350 }]}
+        carregando={false}
+      />,
     );
     const hoje = colunas(tela).filter((c) => c.dataset.hoje === "true");
     expect(hoje).toHaveLength(1);
