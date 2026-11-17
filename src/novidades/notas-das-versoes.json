@@ -1,4 +1,19 @@
 {
+  "1.5.207": {
+    "titulo": "Pedidos em tempo real, avisos e comprovantes mais confiáveis",
+    "novidades": [],
+    "correcoes": [
+      "Painel, pedidos: quando só a conexão em tempo real cai e volta, a lista e os números do topo se atualizam sozinhos e nenhum pedido novo fica de fora.",
+      "Sair da conta (também quando a sessão acaba ou a conta é trocada) fecha os avisos que ficaram na bandeja do aparelho, para que quem pegar o celular emprestado não leia nome e valor de pedidos.",
+      "Aviso de pagamento ao lojista: se a leitura do pedido falhar por um instante, o aviso deixa de sair com R$ 0,00 e passa a sair sem o valor.",
+      "Comprovante por e-mail: se a leitura do endereço falhar por um instante, o e-mail não sai mais sem o endereço de entrega; o comprovante fica como não enviado e o lojista pode reenviar pelo botão do pedido.",
+      "Painel, pedidos: com uma só alteração guardada offline, o aviso de sincronização fala no singular.",
+      "Ajustes, política de devolução: o texto da troca por gosto diz \"0 dias desliga\"."
+    ],
+    "melhorias": [
+      "Mais testes protegem os centavos do desconto fixo do frete nacional, a proteção do estorno e o aviso de cobrança duplicada ao lojista; dois testes deixaram de depender do relógio."
+    ]
+  },
   "1.5.206": {
     "titulo": "Mais cuidado com teclado, frete, e-mail e login",
     "novidades": [],
