@@ -111,6 +111,37 @@ it("trava dois cliques e, na falha, solta Google sem travar e-mail", async () =>
   expect(button("ENTRAR AGORA")?.disabled).toBe(false);
   expect(host.textContent).toContain("Não foi possível entrar com o Google");
 });
+const pageshow = (persisted: boolean) =>
+  window.dispatchEvent(Object.assign(new Event("pageshow"), { persisted }));
+it("voltar do Google (página restaurada do histórico) solta o botão preso", async () => {
+  // true = a janela inteira foi para o Google: o clique fica travado de propósito.
+  auth.loginComGoogle.mockResolvedValue(true);
+  await montar();
+  await act(async () => button("Continuar com Google")!.click());
+  expect(button("Abrindo Google")?.disabled).toBe(true);
+  await act(async () => pageshow(true));
+  const google = button("Continuar com Google");
+  expect(google?.disabled).toBe(false);
+  expect(button("Abrindo Google")).toBeUndefined();
+  // A trava síncrona também foi solta: dá para tentar de novo.
+  await act(async () => google!.click());
+  expect(auth.loginComGoogle).toHaveBeenCalledTimes(2);
+});
+it("pageshow sem restauração do histórico não solta o clique do Google", async () => {
+  auth.loginComGoogle.mockResolvedValue(true);
+  await montar();
+  await act(async () => button("Continuar com Google")!.click());
+  await act(async () => pageshow(false));
+  expect(button("Abrindo Google")?.disabled).toBe(true);
+  await act(async () => button("Abrindo Google")!.click());
+  expect(auth.loginComGoogle).toHaveBeenCalledTimes(1);
+});
+it("sem tentativa em curso, pageshow restaurado não muda nada", async () => {
+  await montar();
+  await act(async () => pageshow(true));
+  expect(button("Continuar com Google")?.disabled).toBe(false);
+  expect(auth.loginComGoogle).not.toHaveBeenCalled();
+});
 it.each(["email-a@example.test", "email-b@example.test"])(
   "falha por senha tem a mesma dica, sem indicar se %s tem conta",
   async (email) => {
