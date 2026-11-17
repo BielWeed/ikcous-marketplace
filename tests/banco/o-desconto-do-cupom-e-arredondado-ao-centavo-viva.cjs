@@ -35,7 +35,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { Client } = require("pg");
 const { lerDatabaseUrlEfemera } = require("./efemero.cjs");
-const { DESCONTO_DO_CUPOM } = require("./o-desconto-do-cupom-posterior.cjs");
+const {
+  DESCONTO_DO_CUPOM,
+  hashesVivosDoDesconto,
+} = require("./o-desconto-do-cupom-posterior.cjs");
 
 const PASTA = path.join(__dirname, "..", "..", "supabase", "migrations");
 const ARQ = DESCONTO_DO_CUPOM.nome;
@@ -192,8 +195,17 @@ const P = {
   p4995: "7e7e2397-2000-4000-8000-0000000000f2",
   p9990: "7e7e2397-2000-4000-8000-0000000000f3",
   p1000: "7e7e2397-2000-4000-8000-0000000000f4",
+  p2991: "7e7e2397-2000-4000-8000-0000000000f5",
+  p2996: "7e7e2397-2000-4000-8000-0000000000f6",
 };
-const PRECOS = { p2995: 29.95, p4995: 49.95, p9990: 99.9, p1000: 10 };
+const PRECOS = {
+  p2995: 29.95,
+  p4995: 49.95,
+  p9990: 99.9,
+  p1000: 10,
+  p2991: 29.91,
+  p2996: 29.96,
+};
 const CUPONS = [
   ["PCT10", "percentage", 10],
   ["PCT15", "percentage", 15],
@@ -325,6 +337,24 @@ const descontoDaValidacao = async (codigo, subtotalCentavos) =>
 // ---------------------------------------------------------------------------
 const CASOS = [
   {
+    r: "29,91 x 10% (0,1 centavo: para baixo, nao ceil)",
+    prod: "p2991",
+    qtd: 1,
+    cupom: "PCT10",
+    sub: 2991,
+    desc: 299,
+    total: 2692,
+  },
+  {
+    r: "29,96 x 10% (0,6 centavo: para cima)",
+    prod: "p2996",
+    qtd: 1,
+    cupom: "PCT10",
+    sub: 2996,
+    desc: 300,
+    total: 2696,
+  },
+  {
     r: "29,95 x 10%",
     prod: "p2995",
     qtd: 1,
@@ -414,6 +444,8 @@ const CASOS = [
 async function verificarContas() {
   const f = [];
   for (const c of CASOS) {
+    // Cada conta e independente: nao acumula pedidos pendentes no freio de visitante.
+    await C.query("SAVEPOINT conta");
     // A validacao: o mesmo desconto que o pedido vai gravar.
     const dv = await descontoDaValidacao(c.cupom, c.sub);
     if (Number(dv) !== c.desc / 100)
@@ -448,6 +480,8 @@ async function verificarContas() {
           `${porta}(${c.r}): a ficha NAO fecha (subtotal ${o.subtotal} - desconto ${o.discount} + frete ${o.shipping} != total ${o.total})`,
         );
     }
+    await C.query("ROLLBACK TO SAVEPOINT conta");
+    await C.query("RELEASE SAVEPOINT conta");
   }
   return f;
 }
@@ -474,6 +508,64 @@ const prova = (nome, corpo) => PROVAS.push({ nome, corpo });
 // ---------------------------------------------------------------------------
 // As provas
 // ---------------------------------------------------------------------------
+// Nao reinstala o corpo historico: mede tambem a ULTIMA definicao das tres funcoes.
+// MUTANTE_CUPOM_CEIL=v23|v24|validacao sabota uma funcao viva; o ROLLBACK a devolve.
+prova(
+  "VIVO: fracao abaixo/acima de meio centavo arredonda, nunca usa ceil",
+  () =>
+    emTransacao(
+      async () => {
+        const alvo = process.env.MUTANTE_CUPOM_CEIL;
+        const alvos = new Map([
+          ["v23", F23],
+          ["v24", F24],
+          ["validacao", FVAL],
+        ]);
+        assert.ok(!alvo || alvos.has(alvo), "MUTANTE_CUPOM_CEIL desconhecido");
+        const h = await hashes();
+        for (const f of FUNCOES()) {
+          assert.ok(
+            hashesVivosDoDesconto(f).includes(h[f.nome]),
+            `corpo vivo inesperado: ${f.nome}`,
+          );
+          if (alvos.get(alvo) !== f) continue;
+          const original = (
+            await C.query("SELECT pg_get_functiondef($1::regprocedure) AS d", [
+              f.assinatura,
+            ])
+          ).rows[0].d;
+          const conta =
+            f === FVAL
+              ? "(p_subtotal * v_coupon.value) / 100"
+              : "(v_calculated_subtotal * v_coupon_val) / 100";
+          const trecho = `round(${conta}, 2)`;
+          assert.equal(
+            original.split(trecho).length - 1,
+            1,
+            "alvo ceil deve ocorrer uma vez",
+          );
+          const alterado = original.replace(
+            trecho,
+            () => `ceil((${conta}) * 100) / 100`,
+          );
+          await C.query(alterado);
+          assert.equal(
+            (
+              await C.query(
+                "SELECT pg_get_functiondef($1::regprocedure) AS d",
+                [f.assinatura],
+              )
+            ).rows[0].d,
+            alterado,
+          );
+          console.log(`MUTANTE aplicado: ceil ${alvo}`);
+        }
+        assert.deepEqual(await verificarContas(), []);
+      },
+      { estado: "nenhum", semente: true },
+    ),
+);
+
 prova(
   "CONTAS (DEPOIS): v23, v24 e a validacao arredondam o desconto ao centavo e a ficha fecha nos casos medidos; fixo, teto e 100% corretos",
   () =>

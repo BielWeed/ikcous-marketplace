@@ -53,8 +53,8 @@ async function pedido(status = "processing") {
   const oid = id();
   await C.query(
     `INSERT INTO public.marketplace_orders
-    (id,user_id,customer_name,customer_data,total,subtotal,shipping,status,payment_method,payment_status,paid_at)
-    VALUES($1,$2,'Fixture CAS','{}',100,100,0,$3,'online','pago',now())`,
+    (id,user_id,customer_name,customer_data,total,subtotal,shipping,status,payment_method,payment_status,paid_at,updated_at)
+    VALUES($1,$2,'Fixture CAS','{}',100,100,0,$3,'online','pago',now(),now() - interval '1 day')`,
     [oid, CLIENTE, status],
   );
   return oid;
@@ -181,9 +181,47 @@ async function main() {
       (await tentar(SQL, [oid, "processing", "cancelled", null])).codigo,
       "22023",
     );
+    // Fixture antiga, nao um timestamp que nasceu nesta mesma transacao.
+    const horarioAntigo = (await foto(oid)).pedido.updated_at;
+    const agora = (await C.query("SELECT now() AS agora")).rows[0].agora;
+    assert.ok(
+      new Date(horarioAntigo) < agora,
+      "fixture precisa ter updated_at antigo",
+    );
+    if (process.env.MUTANTE_STATUS_SEM_UPDATED_AT) {
+      assert.equal(process.env.MUTANTE_STATUS_SEM_UPDATED_AT, "1");
+      const assinatura =
+        "public.pedido__mudar_status(uuid,text,text,uuid,boolean,boolean)";
+      const lerCorpo = async () =>
+        (
+          await C.query("SELECT pg_get_functiondef($1::regprocedure) AS d", [
+            assinatura,
+          ])
+        ).rows[0].d;
+      const original = await lerCorpo();
+      const trecho = "SET status = p_new_status, updated_at = NOW()";
+      assert.equal(
+        original.split(trecho).length - 1,
+        1,
+        "alvo updated_at deve ocorrer uma vez",
+      );
+      const alterado = original.replace(trecho, "SET status = p_new_status");
+      await C.query(alterado);
+      assert.equal(
+        await lerCorpo(),
+        alterado,
+        "mutante updated_at nao instalado",
+      );
+      console.log("MUTANTE aplicado: status sem updated_at");
+    }
     const ok = await tentar(SQL, [oid, "processing", "shipping", "fixture"]);
     assert.equal(ok.linhas?.[0].r.status, "shipping");
     assert.equal((await foto(oid)).historico, antes.historico + 1);
+    assert.ok(
+      new Date((await foto(oid)).pedido.updated_at) > new Date(horarioAntigo),
+      "mudar status deve renovar updated_at, nao preservar o dia anterior",
+    );
+    console.log("  ok updated_at renovado pela RPC");
     assert.match(
       (await tentar(SQL, [oid, "processing", "shipping", null])).erro,
       /pedido_status_mudou/,

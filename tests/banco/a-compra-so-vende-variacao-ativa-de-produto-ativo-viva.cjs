@@ -53,6 +53,23 @@ const MUTANTES = {
     substituto: "AND v.active = true",
   },
 };
+for (const porta of ["v23", "v24"]) {
+  for (const [fase, colunas] of [
+    ["subtotal", ", v.stock_increment, p.nome, p.frete_gratis"],
+    ["item", ", p.nome\n"],
+  ]) {
+    MUTANTES[`${porta}-zero-vira-preco-base-${fase}`] = {
+      porta,
+      trecho: `SELECT COALESCE(v.price_override, p.preco_venda)${colunas}`,
+      substituto: `SELECT COALESCE(NULLIF(v.price_override, 0), p.preco_venda)${colunas}`,
+    };
+  }
+  MUTANTES[`${porta}-sem-guarda-do-estoque-repetido`] = {
+    porta,
+    trecho: "WHERE id = v_product_id AND estoque >= v_quantity;",
+    substituto: "WHERE id = v_product_id;",
+  };
+}
 const MUTANTE = process.env.MUTANTE_R112B || "";
 if (MUTANTE && !Object.hasOwn(MUTANTES, MUTANTE)) {
   console.error(
@@ -144,18 +161,18 @@ async function mutar(porta) {
 
 // O total esperado de uma venda que passasse: assim o mutante vende de verdade
 // e cai na asserção de recusa, nao num "valores do pedido mudaram" por acaso.
-function comprar(porta, produto, variante, total) {
+function comprar(porta, produto, variante, total, { frete = 20, itens } = {}) {
   const online = porta === "v24";
   return P.tentar(
     online ? "authenticated" : "anon",
     `SELECT public.create_marketplace_order_${porta}(
-      $1::jsonb,$2::numeric,20::numeric,$3::text,NULL::uuid,NULL::text,
+      $1::jsonb,$2::numeric,$6::numeric,$3::text,NULL::uuid,NULL::text,
       'Pessoa ficticia R112B','5534000000000',NULL::text,$4::jsonb,
       '38500-100','local-delivery',$5::uuid) AS id`,
     [
-      JSON.stringify([
-        { product_id: produto, variant_id: variante, quantity: 1 },
-      ]),
+      JSON.stringify(
+        itens ?? [{ product_id: produto, variant_id: variante, quantity: 1 }],
+      ),
       total,
       online ? "online" : "cash",
       online
@@ -169,6 +186,7 @@ function comprar(porta, produto, variante, total) {
             state: "MG",
           }),
       randomUUID(),
+      frete,
     ],
     { uid: online ? CLIENTE : "" },
   );
@@ -224,7 +242,7 @@ async function vendida(rotulo, porta, r, esperado) {
     user_id: porta === "v24" ? CLIENTE : null,
     subtotal: esperado.subtotal,
     discount: "0.00",
-    shipping: "20.00",
+    shipping: esperado.frete ?? "20.00",
     total: esperado.total,
   });
   const itens = (
@@ -371,6 +389,106 @@ for (const porta of ["v23", "v24"]) {
             preco: "80.00",
             estoques: { produto: 50, variacao: 6 },
           },
+        );
+      }),
+  );
+}
+
+// Os mesmos corpos VIVOS, sem reinstalar versoes historicas.
+for (const porta of ["v23", "v24"]) {
+  prova(
+    `${porta}: variacao gratuita guarda subtotal e item zero, cobrando so o frete`,
+    () =>
+      P.emTransacao(async () => {
+        await semear();
+        await P.conexao().query(
+          "UPDATE public.product_variants SET price_override=0 WHERE id=$1",
+          [V_A],
+        );
+        await mutar(porta);
+        await vendida(
+          "VARIACAO_GRATUITA",
+          porta,
+          await comprar(porta, P_A, V_A, 20),
+          {
+            produto: P_A,
+            variante: V_A,
+            subtotal: "0.00",
+            total: "20.00",
+            preco: "0.00",
+            estoques: { produto: 50, variacao: 6 },
+          },
+        );
+      }),
+  );
+
+  prova(
+    `${porta}: total zero na entrega nasce; pelo app recusa sem gravar`,
+    () =>
+      P.emTransacao(async () => {
+        await semear();
+        await P.conexao().query(
+          "UPDATE public.product_variants SET price_override=0 WHERE id=$1",
+          [V_A],
+        );
+        await P.conexao().query(
+          "UPDATE public.store_config SET local_delivery_fee=0 WHERE id=1",
+        );
+        await mutar(porta);
+        const antes = await foto();
+        const r = await comprar(porta, P_A, V_A, 0, { frete: 0 });
+        if (porta === "v24") {
+          await recusada(
+            "TOTAL_ZERO",
+            porta,
+            r,
+            /^Este pedido não tem valor a pagar pelo app\. Escolha pagar na retirada ou na entrega, ou fale com a loja\.$/,
+            antes,
+          );
+          assert.match(r.detalhe, /^pedido_sem_valor_a_pagar_pelo_app:/);
+        } else {
+          await vendida("TOTAL_ZERO", porta, r, {
+            produto: P_A,
+            variante: V_A,
+            subtotal: "0.00",
+            total: "0.00",
+            preco: "0.00",
+            frete: "0.00",
+            estoques: { produto: 50, variacao: 6 },
+          });
+        }
+      }),
+  );
+
+  prova(
+    `${porta}: duas linhas do mesmo produto disputam a ultima unidade e recusam por estoque`,
+    () =>
+      P.emTransacao(async () => {
+        await semear();
+        // P_B so tem variacao INATIVA: a venda usa o estoque do produto.
+        await P.conexao().query(
+          "UPDATE public.produtos SET estoque=1 WHERE id=$1",
+          [P_B],
+        );
+        await mutar(porta);
+        const antes = await foto();
+        const item = { product_id: P_B, variant_id: null, quantity: 1 };
+        const r = await comprar(porta, P_B, null, 220, { itens: [item, item] });
+        await recusada(
+          "ULTIMA_UNIDADE_REPETIDA",
+          porta,
+          r,
+          /^Estoque insuficiente para o produto Produto ficticio R112B B$/,
+          antes,
+        );
+        assert.equal(
+          (
+            await P.conexao().query(
+              "SELECT estoque FROM public.produtos WHERE id=$1",
+              [P_B],
+            )
+          ).rows[0].estoque,
+          1,
         );
       }),
   );
