@@ -270,6 +270,48 @@ describe("AdminOrdersView — o filtro que abre a tela filtra de verdade", () =>
     expect(ultimoStatusFilterEnviado()).toBe("cancelled");
   });
 
+  it("trocar status na terceira página válida consulta e mostra a primeira página", async () => {
+    mockTotalOrders = 1000;
+    const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
+
+    await act(async () => {
+      raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={true} />);
+    });
+    await esperarAte(() => mockLoadOrders.mock.calls.length > 0);
+    const paginacao = () =>
+      hospedeiro.querySelector('[data-testid="paginacao-admin"]')!;
+    const proximo = () =>
+      Array.from(paginacao().querySelectorAll("button")).find((b) =>
+        b.textContent?.includes("Próximo"),
+      )!;
+    await act(async () => proximo().click());
+    await act(async () => proximo().click());
+
+    await esperarAte(() => mockLoadOrders.mock.calls.at(-1)?.[0] === 2);
+    expect(armazem.get("admin_orders_current_page")).toBe("2");
+    expect(mockLoadOrders.mock.calls.at(-1)?.[0]).toBe(2);
+    const tamanhoDaPagina = mockLoadOrders.mock.calls.at(-1)?.[1] as number;
+    expect(paginacao().textContent).toContain(
+      `Exibindo ${2 * tamanhoDaPagina + 1} - ${3 * tamanhoDaPagina}`,
+    );
+
+    await abrirFiltros(hospedeiro);
+    mockLoadOrders.mockClear();
+    await act(async () => botaoComTexto(hospedeiro, "Cancelado")!.click());
+    await esperarAte(() => mockLoadOrders.mock.calls.length > 0);
+
+    expect(mockLoadOrders.mock.calls[0][0]).toBe(0);
+    expect(mockLoadOrders.mock.calls[0][2]).toBe("cancelled");
+    expect(paginacao().textContent).toContain(
+      `Exibindo 1 - ${tamanhoDaPagina}`,
+    );
+    expect(
+      Array.from(paginacao().querySelectorAll("button")).find((b) =>
+        b.textContent?.includes("Anterior"),
+      )?.disabled,
+    ).toBe(true);
+  });
+
   it("trocar de filtro volta para a página 0", async () => {
     armazem.set("admin_orders_current_page", JSON.stringify(3));
 
