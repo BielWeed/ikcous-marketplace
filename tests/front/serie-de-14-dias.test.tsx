@@ -14,7 +14,7 @@ import { diaEmSaoPaulo } from "@/lib/crm";
 import type { PontoDaSerieDiaria } from "@/types/painel";
 import { type ReactNode, act } from "react";
 import { type Root, createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // @ts-expect-error flag interna do React, sem tipo público — mesmo padrão
 // dos outros testes de componente deste projeto.
@@ -39,15 +39,21 @@ function montar(ui: ReactNode) {
   return container;
 }
 
+// Meio-dia em Brasília: fixture e componente enxergam o mesmo instante,
+// mesmo se a execução real atravessar meia-noite, mês ou ano.
+const INSTANTE = new Date("2026-12-31T15:00:00Z");
+const HOJE = diaEmSaoPaulo(INSTANTE);
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(INSTANTE);
+});
+
 afterEach(() => {
   act(() => root.unmount());
   container.remove();
+  vi.useRealTimers();
 });
-
-// O componente marca "hoje" comparando com `diaEmSaoPaulo(new Date())" — o
-// mesmo cálculo usado aqui, para o teste não depender da data real do
-// relógio do sistema que roda a suíte.
-const HOJE = diaEmSaoPaulo(new Date());
 
 function colunas(tela: HTMLElement) {
   return Array.from(
@@ -342,8 +348,15 @@ describe("SerieDe14Dias — marcar uma coluna a distingue das outras (seleção 
 });
 
 describe("SerieDe14Dias — relógio fixo: 'Hoje' e a virada de mês", () => {
-  afterEach(() => {
-    vi.useRealTimers();
+  it("às 23:59 de 31/12 em Brasília, Hoje ainda é 31/12, não 01/01 UTC", () => {
+    vi.setSystemTime(new Date("2027-01-01T02:59:00Z"));
+    const tela = montar(
+      <SerieDe14Dias serie={[{ dia: HOJE, receita: 350 }]} carregando={false} />,
+    );
+    const hoje = colunas(tela).filter((c) => c.dataset.hoje === "true");
+    expect(hoje).toHaveLength(1);
+    expect(hoje[0].dataset.dia).toBe(HOJE);
+    expect(HOJE).toBe("2026-12-31");
   });
 
   it("com o relógio em 2026-10-02T02:30:00Z (hoje = 01/10 em São Paulo), 'Hoje' cai no dia 01 e o mês 'out' aparece na coluna da virada", () => {

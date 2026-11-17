@@ -21,6 +21,7 @@
  */
 import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import { handler, htmlDoAvisoDePagamentoAtrasado } from "./index.ts";
+import { FakeTime } from "jsr:@std/testing@1.0.21/time";
 import {
   MOTIVO_LINHA_INCERTA,
   MOTIVO_REENVIO_SEM_CONSULTA,
@@ -2777,6 +2778,7 @@ Deno.test("PEÇA 5 - resultado 'pago' via reconciliação -> dispara o comprovan
 });
 
 Deno.test("r59-f: e-mail do comprovante que demora NÃO prende a fila: o próximo pagamento é confirmado dentro do teto", async () => {
+  using relogio = new FakeTime(AGORA_MS);
   const registro = { chamadasConfirmar: [], chamouCandidatos: false };
   const idOrder = "ORDTST01KZZ4D94WC79335A68CZ5NZ7X";
   const candidatos = [
@@ -2787,21 +2789,41 @@ Deno.test("r59-f: e-mail do comprovante que demora NÃO prende a fila: o próxim
   const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", total_amount: "149.90", status_detail: "accredited" });
   const req = requisicaoComSegredo(SEGREDO);
   const comprovantes: string[] = [];
+  const concluidos: string[] = [];
   const demorado = async (args: { orderId: string }) => {
     comprovantes.push(args.orderId);
     await new Promise((r) => setTimeout(r, 300));
+    concluidos.push(args.orderId);
   };
 
-  const inicio = performance.now();
-  const resposta = await handler(req, { supabase, fetchImpl, enviarComprovante: demorado, tetoDoEmailMs: 30 });
-  const decorrido = performance.now() - inicio;
-  const corpo = await resposta.json();
+  let terminou = false;
+  const andamento = handler(req, { supabase, fetchImpl, enviarComprovante: demorado, tetoDoEmailMs: 30 })
+    .then((resposta) => { terminou = true; return resposta; });
+  try {
+    await relogio.runMicrotasks();
+    assertEquals(comprovantes, [UUID_PEDIDO_1]);
+    assertEquals(terminou, false);
+    await relogio.tickAsync(30);
+    await relogio.runMicrotasks();
+    assertEquals(comprovantes, [UUID_PEDIDO_1, UUID_PEDIDO_2], "o limite libera o segundo pagamento antes de o primeiro envio terminar");
+    await relogio.tickAsync(30);
+    await relogio.runMicrotasks();
+    assertEquals(terminou, true, "a fila termina pelos limites, sem esperar os envios");
+    assertEquals(concluidos, []);
 
-  assertEquals(resposta.status, 200);
-  assertEquals(corpo.confirmados, 2);
-  assertEquals(comprovantes.length, 2, "o segundo pagamento tem de chegar ao seu comprovante");
-  assertEquals(decorrido < 500, true, `a fila esperou os dois e-mails por inteiro (${Math.round(decorrido)} ms)`);
-  await new Promise((r) => setTimeout(r, 350)); // deixa os envios lentos terminarem sozinhos
+    const resposta = await andamento;
+    const corpo = await resposta.json();
+    assertEquals(resposta.status, 200);
+    assertEquals(corpo.confirmados, 2);
+  } finally {
+    // Também encerra os envios se uma asserção falhar (inclusive no mutante sem limite).
+    await relogio.tickAsync(300);
+    await relogio.runMicrotasks();
+    await relogio.tickAsync(300);
+    await relogio.runMicrotasks();
+    await andamento;
+  }
+  assertEquals(concluidos, [UUID_PEDIDO_1, UUID_PEDIDO_2]);
 });
 
 Deno.test("PEÇA 5 - resultado 'pago_apos_expirar' via reconciliação -> dispara o aviso HONESTO, NUNCA o comprovante padrão", async () => {
