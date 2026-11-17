@@ -1027,6 +1027,25 @@ describe("a pagar / a receber", () => {
     });
   });
 
+  it("soma centavos sem truncar no total, nos vencidos e nos próximos sete dias", () => {
+    const itens = parsePrevistos([
+      { id: "1", valor: 1.15, vencimento: "2026-09-01" },
+      { id: "2", valor: 0.29, vencimento: "2026-09-25" },
+      { id: "3", valor: 4.35, vencimento: "2026-09-20" },
+      { id: "4", valor: 1.15, vencimento: hoje },
+      { id: "5", valor: 0.29, vencimento: "2026-09-27" },
+      { id: "6", valor: 4.35, vencimento: "2026-10-03" },
+      { id: "7", valor: 4.35, vencimento: "2026-10-04" },
+      { id: "8", valor: 1.15, vencimento: null },
+    ]);
+    // Cada grupo: 115 + 29 + 435 = 579; fora deles: 435 + 115 = 550.
+    expect(totaisDosPrevistos(itens, hoje)).toEqual({
+      total: 1708 / 100,
+      vencido: 579 / 100,
+      proximos7Dias: 579 / 100,
+    });
+  });
+
   it("estorno em andamento com vencimento no passado não é conta vencida (como a Visão)", () => {
     const itens = parsePrevistos([
       { id: "1", valor: 10, vencimento: "2026-09-01", origem: "manual" },

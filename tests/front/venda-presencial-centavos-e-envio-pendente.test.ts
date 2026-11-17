@@ -27,6 +27,35 @@ function item(over: Partial<ItemDoCupom> = {}): ItemDoCupom {
 }
 
 describe("balcão — a conta fecha em centavos", () => {
+  // Totais conferidos em centavos: 115, 29 e 435 por unidade.
+  it.each([
+    { preco: 1.15, quantidade: 3, centavos: 345 },
+    { preco: 1.15, quantidade: 7, centavos: 805 },
+    { preco: 0.29, quantidade: 3, centavos: 87 },
+    { preco: 0.29, quantidade: 7, centavos: 203 },
+    { preco: 4.35, quantidade: 3, centavos: 1305 },
+    { preco: 4.35, quantidade: 7, centavos: 3045 },
+  ])(
+    "$quantidade × R$ $preco preserva os $centavos centavos",
+    ({ preco, quantidade, centavos }) => {
+      const estado = {
+        ...estadoInicialDaVenda(() => "k1"),
+        itens: [item({ preco, quantidade })],
+      };
+      expect(subtotalDaVenda(estado.itens)).toBe(centavos / 100);
+      expect(totalDaVenda(estado)).toBe(centavos / 100);
+    },
+  );
+
+  it("desconto de R$ 1,15 sobre R$ 4,35 deixa exatamente 320 centavos", () => {
+    const estado = {
+      ...estadoInicialDaVenda(() => "k1"),
+      itens: [item({ preco: 4.35, quantidade: 1 })],
+      desconto: 1.15,
+    };
+    expect(totalDaVenda(estado)).toBe(320 / 100);
+  });
+
   it("3 × R$ 19,90 é exatamente R$ 59,70 e aceita desconto integral", () => {
     const base = estadoInicialDaVenda(() => "k1");
     const estado = {
