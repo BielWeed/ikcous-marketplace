@@ -96,6 +96,35 @@ it("erro ou rejeição do OAuth devolve false sem mensagem bruta", async () => {
   expect(typeof contexto.loginComGoogle).toBe("function");
   expect(await contexto.loginComGoogle()).toBe(false);
 });
+it("falha DEVOLVIDA pelo SDK (resolve com error) é false e esquece o destino", async () => {
+  mocks.oauth.mockResolvedValue({
+    data: null,
+    error: { name: "AuthApiError", message: "segredo não deve sair" },
+  });
+  await montar();
+  let ok: unknown;
+  await act(async () => {
+    ok = await contexto.loginComGoogle();
+  });
+  expect(ok).toBe(false);
+  expect(mocks.oauth).toHaveBeenCalledOnce();
+  const { retomarDestinoGoogle } = await import("@/lib/google-login");
+  expect(retomarDestinoGoogle().checkout).toBe(false);
+});
+it("controle: resposta do SDK com url e sem error é true e guarda o destino", async () => {
+  mocks.oauth.mockResolvedValue({
+    data: { provider: "google", url: "https://accounts.example.test/auth" },
+    error: null,
+  });
+  await montar();
+  let ok: unknown;
+  await act(async () => {
+    ok = await contexto.loginComGoogle();
+  });
+  expect(ok).toBe(true);
+  const { retomarDestinoGoogle } = await import("@/lib/google-login");
+  expect(retomarDestinoGoogle().checkout).toBe(true);
+});
 it.each([true, false])(
   "updateProfile silencioso=%s mantém a guarda e não ecoa dado privado",
   async (silencioso) => {
