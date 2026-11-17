@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { PRAZO_DA_CONSULTA_DO_PAINEL_MS } from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
+import { comPrazo } from "@/utils/com-prazo";
 
 /**
  * L3e' (lacunas de pagamento, 02/10/2026): o balde "Devolver agora" pedia ao
@@ -248,17 +250,32 @@ export function useEstornosEmCursoDosPedidos(
   // Só a resposta do voo MAIS RECENTE vale: uma releitura lenta da lista
   // antiga não pode sobrescrever a da lista nova.
   const vooRef = useRef(0);
+  const emVooRef = useRef<{ chave: string; voo: number } | null>(null);
 
   const carregar = useCallback(async () => {
     const chaves = chave === "" ? [] : chave.split(",");
     if (chaves.length === 0) return;
+    // Um ciclo não invalida a leitura ainda pendente da MESMA lista.
+    // Lista nova continua podendo sair sem esperar a antiga.
+    if (emVooRef.current?.chave === chave) return;
     const voo = ++vooRef.current;
-    const ids = [...new Set(chaves.map((c) => c.slice(0, c.lastIndexOf(":"))))];
-    const porPedido = await lerLedger(ids);
-    if (!ativoRef.current || voo !== vooRef.current) return;
-    const nova: Leitura = { chaves: new Set(chaves), porPedido };
-    // Releitura igual à anterior não re-renderiza a tela de pedidos.
-    setLeitura((antes) => (mesmaLeitura(antes, nova) ? antes : nova));
+    emVooRef.current = { chave, voo };
+    try {
+      const ids = [
+        ...new Set(chaves.map((c) => c.slice(0, c.lastIndexOf(":")))),
+      ];
+      const porPedido = await comPrazo(
+        lerLedger(ids),
+        PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+      ).catch(() => null);
+      if (!ativoRef.current || voo !== vooRef.current) return;
+      const nova: Leitura = { chaves: new Set(chaves), porPedido };
+      // Releitura igual à anterior não re-renderiza a tela de pedidos.
+      setLeitura((antes) => (mesmaLeitura(antes, nova) ? antes : nova));
+    } finally {
+      // Uma resposta da lista antiga não destrava o voo da lista nova.
+      if (emVooRef.current?.voo === voo) emVooRef.current = null;
+    }
   }, [chave]);
 
   useEffect(() => {
@@ -312,10 +329,16 @@ export function useEstornosEmCursoDosPedidos(
 
   useEffect(() => {
     if (!precisaReler) return;
-    const id = setInterval(() => {
+    const relerSeVisivel = () => {
+      if (document.visibilityState === "hidden") return;
       void carregar();
-    }, INTERVALO_DE_RECARGA_MS);
-    return () => clearInterval(id);
+    };
+    const id = setInterval(relerSeVisivel, INTERVALO_DE_RECARGA_MS);
+    document.addEventListener("visibilitychange", relerSeVisivel);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", relerSeVisivel);
+    };
   }, [precisaReler, carregar]);
 
   const porPedido = useMemo(() => {

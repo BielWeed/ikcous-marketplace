@@ -1045,13 +1045,12 @@ describe("'Devolver agora' desconta o que o Mercado Pago já está devolvendo (L
       [
         "conferindo (lista pendente, leitura fresca falhou)",
         () => {
-          // Leitura da montagem e a releitura de abrir o painel ficam
-          // pendentes (a lista segue "conferindo"); a leitura FRESCA do
-          // "Já estornei" (3ª) falha.
+          // A leitura da montagem fica pendente; abrir o painel reutiliza
+          // esse voo. A leitura FRESCA do "Já estornei" (2ª) falha.
           let chamadas = 0;
           RESPONDER = () => {
             chamadas += 1;
-            return chamadas <= 2
+            return chamadas <= 1
               ? new Promise<RespostaFake>(() => {})
               : Promise.resolve({ data: null, error: { message: "rede" } });
           };
@@ -1378,6 +1377,97 @@ describe("useEstornosEmCursoDosPedidos — o hook", () => {
     await avancar(60_000);
     expect(consultasOrderRefunds.length).toBe(leiturasAteAqui);
     sonda.desmontar();
+  });
+
+  it("rede lenta: não sobrepõe ciclos e aceita a resposta que demora mais de 15s", async () => {
+    vi.useFakeTimers();
+    RESPOSTA_ORDER_REFUNDS = {
+      data: [{ order_id: "ped-lento", amount: 100, status: "solicitado" }],
+      error: null,
+    };
+    const sonda = await montarSonda(["ped-lento"]);
+    try {
+      let resolver!: (r: RespostaFake) => void;
+      RESPONDER = () =>
+        new Promise<RespostaFake>((resolve) => {
+          resolver = resolve;
+        });
+      await avancar(15_000);
+      expect(consultasOrderRefunds).toHaveLength(2);
+      await avancar(15_001);
+      expect(consultasOrderRefunds).toHaveLength(2);
+      await act(async () => {
+        resolver({
+          data: [{ order_id: "ped-lento", amount: 100, status: "concluido" }],
+          error: null,
+        });
+      });
+      expect(sonda.ultimo("ped-lento")).toMatchObject({
+        tipo: "conferido",
+        emCurso: 0,
+        concluido: 100,
+      });
+    } finally {
+      sonda.desmontar();
+    }
+  });
+
+  it("aba escondida: pula ciclos e relê assim que volta", async () => {
+    vi.useFakeTimers();
+    RESPOSTA_ORDER_REFUNDS = {
+      data: [{ order_id: "ped-aba", amount: 100, status: "solicitado" }],
+      error: null,
+    };
+    const sonda = await montarSonda(["ped-aba"]);
+    const visibilidade = vi.spyOn(document, "visibilityState", "get");
+    try {
+      visibilidade.mockReturnValue("hidden");
+      await avancar(45_000);
+      expect(consultasOrderRefunds).toHaveLength(1);
+      RESPOSTA_ORDER_REFUNDS = { data: [], error: null };
+      visibilidade.mockReturnValue("visible");
+      await act(async () => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      expect(consultasOrderRefunds).toHaveLength(2);
+      expect(sonda.ultimo("ped-aba")).toMatchObject({ emCurso: 0 });
+    } finally {
+      visibilidade.mockRestore();
+      sonda.desmontar();
+    }
+  });
+
+  it("leitura sem resposta: prazo de 20s vira erro e o próximo ciclo tenta novamente", async () => {
+    vi.useFakeTimers();
+    let resolver!: (r: RespostaFake) => void;
+    RESPONDER = () =>
+      new Promise<RespostaFake>((resolve) => {
+        resolver = resolve;
+      });
+    const sonda = await montarSonda(["ped-prazo"]);
+    try {
+      await avancar(19_999);
+      expect(sonda.ultimo("ped-prazo")).toEqual({ tipo: "conferindo" });
+      await avancar(1);
+      expect(sonda.ultimo("ped-prazo")).toEqual({ tipo: "nao_conferido" });
+      RESPONDER = null;
+      await avancar(15_000);
+      expect(consultasOrderRefunds).toHaveLength(2);
+      expect(sonda.ultimo("ped-prazo")).toMatchObject({
+        tipo: "conferido",
+        emCurso: 0,
+      });
+      // Nem uma resposta tardia pode apagar o resultado do retry.
+      await act(async () => {
+        resolver({
+          data: [{ order_id: "ped-prazo", amount: 99, status: "solicitado" }],
+          error: null,
+        });
+      });
+      expect(sonda.ultimo("ped-prazo")).toMatchObject({ emCurso: 0 });
+    } finally {
+      sonda.desmontar();
+    }
   });
 
   it("T3: depois de uma leitura que FALHOU, relê sozinho em 15s", async () => {
