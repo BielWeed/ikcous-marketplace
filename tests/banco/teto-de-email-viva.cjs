@@ -9,7 +9,8 @@
  * inteira migrada, com a 20261217000000 aplicada.
  *
  *  FLUXO      o caminho legitimo continua igual: trio -> codigo -> codigo certo -> o pedido (pela v2
- *             com o trio, e pela v1 com e-mail + codigo); o comprovante sai uma vez por pedido.
+ *             com o trio, e pela v1 com e-mail + codigo); o comprovante sai uma vez por pedido; o codigo vale
+ *             15 min (gravado e devolvido) e sai de um sorteio de 1.000.000 de valores (mesma semente, mesmo codigo).
  *  CODIGO     teto por PEDIDO (5), por DESTINATARIO (10, normalizado: +apelido, pontos do Gmail,
  *             googlemail) e da LOJA (40) em 24 h que andam; estourou = ERRO generico sem e-mail na
  *             mensagem e nada gravado; a janela de 60 s continua respondendo muito_recente; pedido que
@@ -255,6 +256,90 @@ prova(
         await como("anon", SQL_V2, [email, fone, fragmento(id), g.otp_code])
       ).r;
       assert.equal(deNovo.ok, false, "o mesmo codigo nao serve duas vezes");
+    }),
+);
+
+prova(
+  "FLUXO: o codigo vale 15 minutos (a linha gravada e o `expira_em` devolvido), nem mais nem menos",
+  () =>
+    emTransacao(async () => {
+      const email = "prazo15@teste.invalid";
+      const fone = "11988880006";
+      const id = await pedido({ email, fone });
+      const g = (await gerar(email, fone, id)).r;
+      assert.equal(g.ok, true, JSON.stringify(g));
+      // created_at e o `NOW()` da funcao sao o mesmo instante (a transacao do caso): a conta e EXATA, e a
+      // faixa larga de 14 a 16 min so existiria para tolerar um relogio que ande -- aqui ele nao anda.
+      const linha = (
+        await C.query(
+          `SELECT round(extract(epoch FROM (expires_at - created_at)))::int AS gravado,
+                  round(extract(epoch FROM ($2::timestamptz - created_at)))::int AS devolvido
+             FROM public.otp_verifications WHERE order_id = $1`,
+          [id, g.expira_em],
+        )
+      ).rows;
+      assert.equal(linha.length, 1, "esperava UM codigo gravado para o pedido");
+      assert.ok(
+        linha[0].gravado >= 14 * 60 && linha[0].gravado <= 16 * 60,
+        `PRAZO: expires_at - created_at = ${linha[0].gravado}s, fora de 14 a 16 min`,
+      );
+      assert.equal(linha[0].gravado, 15 * 60, "PRAZO gravado: 15 min exatos");
+      assert.equal(
+        linha[0].devolvido,
+        15 * 60,
+        "PRAZO devolvido (expira_em): 15 min exatos, o mesmo que ficou gravado",
+      );
+    }),
+);
+
+/** O que `lpad(floor(random()*1000000)::text,6,'0')` devolve com esta semente, NA MESMA sessao (setseed e' da
+ * sessao, e esta prova usa uma conexao so, a `C`). Se um dia houver pool, o setseed e a chamada deixam de
+ * cair na mesma conexao e esta prova tem de ser revista -- por isso a igualdade da prova abaixo falha alto. */
+async function sorteioDaSemente(semente) {
+  await C.query("SELECT setseed($1)", [semente]);
+  return (
+    await C.query("SELECT lpad(floor(random() * 1000000)::text, 6, '0') AS c")
+  ).rows[0].c;
+}
+
+prova(
+  "FLUXO: o codigo sorteia em 1.000.000 de valores (mesma semente = o codigo que o sorteio de 6 digitos da)",
+  () =>
+    emTransacao(async () => {
+      // Deterministico: nada estatistico (o teto de 40 codigos/dia da loja tornaria uma amostra instavel). Com
+      // a mesma semente na mesma sessao, o random() da funcao tem de cair no MESMO numero que o sorteio de
+      // referencia -- o que tambem prende a formula (`* 1000` daria um codigo 000xxx e nao este).
+      const sementes = [0.5, 0.123456, 0.987654];
+      const esperados = new Set();
+      for (const [i, semente] of sementes.entries()) {
+        const email = `sorteio${i}@teste.invalid`;
+        const fone = `1198888010${i}`;
+        const id = await pedido({ email, fone });
+        const esperado = await sorteioDaSemente(semente);
+        esperados.add(esperado);
+        await C.query("SELECT setseed($1)", [semente]);
+        const g = (await gerar(email, fone, id)).r;
+        assert.equal(g.ok, true, JSON.stringify(g));
+        assert.equal(
+          g.otp_code,
+          esperado,
+          `SORTEIO: com a semente ${semente} o codigo devia ser ${esperado} e veio ${g.otp_code}`,
+        );
+        const gravado = (
+          await C.query(
+            "SELECT otp_code FROM public.otp_verifications WHERE order_id = $1",
+            [id],
+          )
+        ).rows[0].otp_code;
+        assert.equal(gravado, esperado, "o codigo gravado nao e o devolvido");
+      }
+      // As referencias nao colapsam num valor so (senao a igualdade acima provaria menos do que parece), e ao
+      // menos uma passa de 999: um espaco de 1.000 valores nao a produziria sem zeros a esquerda.
+      assert.equal(esperados.size, sementes.length);
+      assert.ok(
+        [...esperados].some((c) => Number(c) > 999),
+        "nenhuma referencia passa de 999",
+      );
     }),
 );
 
