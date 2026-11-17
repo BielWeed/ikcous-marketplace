@@ -560,11 +560,13 @@ export function NotificationProvider({
           )
           .subscribe((status: string) => {
             // A primeira conexão não relê (o efeito já buscou); só o
-            // SUBSCRIBED que vem DEPOIS de uma queda.
+            // SUBSCRIBED que vem DEPOIS de uma queda. Avisa as outras abas:
+            // só a líder tem canal, e quando só o socket cai nenhuma outra
+            // janela recebe visibilidade nem "online" para reler sozinha.
             if (status === "SUBSCRIBED") {
               if (canalJaCaiu) {
                 canalJaCaiu = false;
-                releituraAoVoltar();
+                if (ativo) releituraAposRajada(true);
               }
             } else if (
               status === "CHANNEL_ERROR" ||
