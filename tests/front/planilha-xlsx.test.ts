@@ -633,6 +633,33 @@ describe("o XLSX entrega o dado como ele é", () => {
     );
   });
 
+  it("preserva o ISO para o XLSX e converte a virada de dia só uma vez", () => {
+    const linhas = linhasDosProdutos(
+      [
+        {
+          ...produto,
+          createdAt: "2026-11-17T02:30:00Z",
+          updatedAt: "2026-11-17T12:00:00Z",
+        },
+      ],
+      false,
+      "xlsx",
+    );
+    expect(linhas.at(1)?.slice(-2)).toEqual([
+      "2026-11-17T02:30:00Z",
+      "2026-11-17T12:00:00Z",
+    ]);
+    const doc = folha(linhas);
+    expect(
+      Number(celulaDa(doc, "Criado em", 2)?.querySelector("v")?.textContent),
+    ).toBeCloseTo(Date.UTC(2026, 10, 16, 23, 30) / 86400000 + 25569, 8);
+    expect(
+      Number(
+        celulaDa(doc, "Atualizado em", 2)?.querySelector("v")?.textContent,
+      ),
+    ).toBeCloseTo(Date.UTC(2026, 10, 17, 9) / 86400000 + 25569, 8);
+  });
+
   it("aceita o timestamp com microssegundos que o Postgres devolve", () => {
     const doc = folha(
       linhasDosProdutos(
