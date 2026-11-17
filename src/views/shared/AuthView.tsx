@@ -943,6 +943,14 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                     {erroGoogle || mensagemRetornoGoogle}
                   </p>
                 )}
+                {navegadorInternoDaMeta() && (
+                  <p className="mb-4 rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    Criou sua conta com o Google? Este navegador não permite
+                    entrar com o Google. Toque nos três pontinhos e escolha
+                    “Abrir no navegador” (Chrome ou Safari) para entrar com o
+                    Google. Ou entre com e-mail e senha.
+                  </p>
+                )}
                 {googleLigado && (
                   <>
                     <Button
