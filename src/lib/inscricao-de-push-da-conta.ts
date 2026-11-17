@@ -66,11 +66,6 @@ async function inscricaoDoRegistro(
   }
 }
 
-async function inscricaoDoNavegador(): Promise<PushSubscription | null> {
-  const registro = await registroDoNavegador();
-  return registro ? inscricaoDoRegistro(registro) : null;
-}
-
 // `getNotifications` não existe em todo navegador (iOS e navegadores antigos),
 // por isso a detecção antes de chamar. Cada aviso é fechado no seu próprio
 // try: um que não fecha (já foi dispensado, o sistema recusou) não deixa os
@@ -130,8 +125,21 @@ async function apagarLinhaDaConta(
 export async function soltarInscricaoDoAparelho(): Promise<void> {
   // Soltar é de propósito: ninguém deste aparelho é religado sozinho depois.
   esquecerTodosOsAvisosLigados();
-  const inscricao = await inscricaoDoNavegador();
-  if (inscricao) await desinscreverNoNavegador(inscricao);
+  const registro = await registroDoNavegador();
+  if (!registro) return;
+  // Os avisos da conta anterior que ficaram na bandeja saem junto, com ou sem
+  // inscrição. Nos dois caminhos que passam por aqui (a sessão acabou em
+  // outra aba ou venceu; a conta mudou direto) o chamador não espera: é
+  // disparar-e-esquecer, e nada daqui lança. No "Sair" feito neste aparelho a
+  // bandeja já foi esvaziada por `cancelarInscricaoDaConta`; fechar de novo é
+  // inofensivo (a bandeja volta vazia).
+  await Promise.allSettled([
+    fecharAvisosDaBandeja(registro),
+    (async () => {
+      const inscricao = await inscricaoDoRegistro(registro);
+      if (inscricao) await desinscreverNoNavegador(inscricao);
+    })(),
+  ]);
 }
 
 /**

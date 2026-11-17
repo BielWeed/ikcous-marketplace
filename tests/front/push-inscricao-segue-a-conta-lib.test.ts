@@ -390,6 +390,58 @@ describe("inscrição de push — o Sair fecha os avisos que ficaram na bandeja"
     expect(unsubscribe).toHaveBeenCalledTimes(1);
   });
 
+  it("soltarInscricaoDoAparelho (sessão que acabou/troca de conta) fecha a bandeja e desinscreve, sem servidor", async () => {
+    const { soltarInscricaoDoAparelho } = await import(
+      "@/lib/inscricao-de-push-da-conta"
+    );
+    const unsubscribe = vi.fn(async () => true);
+    const avisos = [aviso(), aviso()];
+    instalarPush({
+      inscricao: { endpoint: ENDPOINT, unsubscribe },
+      getNotifications: async () => avisos,
+    });
+
+    await soltarInscricaoDoAparelho();
+
+    for (const a of avisos) expect(a.close).toHaveBeenCalledTimes(1);
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+    expect(desde).not.toHaveBeenCalled();
+  });
+
+  it("soltarInscricaoDoAparelho fecha a bandeja mesmo sem inscrição", async () => {
+    const { soltarInscricaoDoAparelho } = await import(
+      "@/lib/inscricao-de-push-da-conta"
+    );
+    const avisos = [aviso()];
+    instalarPush({ inscricao: null, getNotifications: async () => avisos });
+
+    await soltarInscricaoDoAparelho();
+
+    expect(avisos[0].close).toHaveBeenCalledTimes(1);
+  });
+
+  it("soltarInscricaoDoAparelho: getNotifications falhando ou ausente não impede desinscrever nem lança", async () => {
+    const { soltarInscricaoDoAparelho } = await import(
+      "@/lib/inscricao-de-push-da-conta"
+    );
+    const unsubscribe = vi.fn(async () => true);
+    instalarPush({
+      inscricao: { endpoint: ENDPOINT, unsubscribe },
+      getNotifications: async () => {
+        throw new Error("bandeja indisponível");
+      },
+    });
+    await expect(soltarInscricaoDoAparelho()).resolves.toBeUndefined();
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+
+    const unsubscribe2 = vi.fn(async () => true);
+    instalarPush({
+      inscricao: { endpoint: ENDPOINT, unsubscribe: unsubscribe2 },
+    });
+    await expect(soltarInscricaoDoAparelho()).resolves.toBeUndefined();
+    expect(unsubscribe2).toHaveBeenCalledTimes(1);
+  });
+
   it("sem service worker/Push: nada lança e getNotifications nem é procurado", async () => {
     const { cancelarInscricaoDaConta } = await import(
       "@/lib/inscricao-de-push-da-conta"
