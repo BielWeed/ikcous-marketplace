@@ -12,12 +12,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Product } from "@/types";
 
 const scrollNext = vi.fn();
+const scrollTo = vi.fn();
 vi.mock("embla-carousel-react", () => ({
   default: () => [
     () => {},
     {
       scrollNext,
-      scrollTo: () => {},
+      scrollTo,
       selectedScrollSnap: () => 0,
       on: () => {},
       off: () => {},
@@ -100,6 +101,7 @@ describe("vitrine de ofertas pausa a rotacao automatica", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     scrollNext.mockClear();
+    scrollTo.mockClear();
     menosMovimento = false;
     ouvintesDeMovimento = [];
     vi.stubGlobal("ResizeObserver", ObservadorFalso);
@@ -130,6 +132,18 @@ describe("vitrine de ofertas pausa a rotacao automatica", () => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
   });
+
+  it.each([true, false])(
+    "bolinha com reduzir movimento = %s",
+    async (reduzir) => {
+      menosMovimento = reduzir;
+      await montar();
+      const bolinha = hospedeiro.querySelector('[aria-label="Ver oferta 2"]');
+      expect(bolinha).not.toBeNull();
+      await disparar(bolinha!, "click");
+      expect(scrollTo).toHaveBeenCalledWith(1, reduzir);
+    },
+  );
 
   it("sem interacao, troca de slide a cada 6 s", async () => {
     await montar();

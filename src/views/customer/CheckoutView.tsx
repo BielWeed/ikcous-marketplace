@@ -192,7 +192,12 @@ import { haptic } from "@/utils/haptic";
 import { useToastDoHeader } from "@/utils/headerToast";
 import { zodResolver } from "@hookform/resolvers/zod";
 import confetti from "canvas-confetti";
-import { AnimatePresence, motion, usePresence } from "framer-motion";
+import {
+  AnimatePresence,
+  MotionConfig,
+  motion,
+  usePresence,
+} from "framer-motion";
 import {
   AlertCircle,
   ArrowLeft,
@@ -903,7 +908,14 @@ interface CheckoutViewProps {
  */
 export function CheckoutView(props: CheckoutViewProps) {
   const { user } = useAuth();
-  return <CheckoutViewDaConta key={user?.id ?? "convidado"} {...props} />;
+  // `reducedMotion="user"`: quem pediu "Reduzir movimento" não vê a barra de
+  // finalização deslizar. Aqui e não na raiz do app: o Framer é carregado sob
+  // demanda (`perf-entrada-sem-animacao-no-1o-paint`).
+  return (
+    <MotionConfig reducedMotion="user">
+      <CheckoutViewDaConta key={user?.id ?? "convidado"} {...props} />
+    </MotionConfig>
+  );
 }
 
 // Exportada SÓ para os testes que provam o comportamento de UMA instância
