@@ -369,6 +369,17 @@ async function semear(c) {
     "deixar na portaria",
     null,
   );
+  // Dois itens reais do pedido entregue: quantidade/preço distintos e subtotal de R$ 100.
+  await c.query(
+    `INSERT INTO public.produtos (id, nome, custo, preco_venda) VALUES
+       ('9b1c9999-0000-4000-8000-000000000002', 'Produto do pedido A', 10, 30),
+       ('9b1c9999-0000-4000-8000-000000000003', 'Produto do pedido B', 20, 40)`,
+  );
+  await c.query(
+    `INSERT INTO public.marketplace_order_items (order_id, product_id, product_name, quantity, price) VALUES
+       ('9b1caaaa-0000-4000-8000-000000000001', '9b1c9999-0000-4000-8000-000000000002', 'Produto do pedido A', 2, 30),
+       ('9b1caaaa-0000-4000-8000-000000000001', '9b1c9999-0000-4000-8000-000000000003', 'Produto do pedido B', 1, 40)`,
+  );
   // Anotação interna da lojista (20261247): texto livre que cita a cliente. Duas dela, uma da vizinha.
   await c.query(
     `INSERT INTO public.marketplace_order_internal_notes (order_id, note) VALUES
@@ -816,7 +827,17 @@ PROVAS.push({
   corpo: async (c) => {
     await emTransacao(c, async () => {
       await apagarFotosDoStorage(c);
+      const carrinhoDaVizinha = async () => {
+        const { rowCount, rows } = await c.query(
+          "SELECT * FROM public.cart_items WHERE user_id = $1 ORDER BY id",
+          [VIZINHA],
+        );
+        return { quantidade: rowCount, itens: rows };
+      };
+      const carrinhoDaVizinhaAntes = await carrinhoDaVizinha();
+      assert.strictEqual(carrinhoDaVizinhaAntes.quantidade, 1);
       const vizinhaAntes = JSON.stringify([
+        carrinhoDaVizinhaAntes,
         (
           await c.query("SELECT * FROM public.profiles WHERE id = $1", [
             VIZINHA,
@@ -918,6 +939,21 @@ PROVAS.push({
             [ALVO],
           )
         ).rows,
+      );
+      const itensDoPedido = async () =>
+        (
+          await c.query(
+            `SELECT i.* FROM public.marketplace_order_items i
+               JOIN public.marketplace_orders o ON o.id = i.order_id
+              WHERE o.user_id = $1 ORDER BY i.id`,
+            [ALVO],
+          )
+        ).rows;
+      const itensAntes = await itensDoPedido();
+      assert.strictEqual(
+        itensAntes.length,
+        2,
+        "a prova exige dois itens no pedido",
       );
 
       const r = await tentar(c, anonimizar(ALVO, true));
@@ -1066,7 +1102,12 @@ PROVAS.push({
           ).rows,
         ),
         valoresAntes,
-        "valores/itens/datas do pedido mudaram",
+        "valores/estado/datas do pedido mudaram",
+      );
+      assert.deepStrictEqual(
+        await itensDoPedido(),
+        itensAntes,
+        "itens do pedido mudaram (produto, quantidade, preço ou demais campos)",
       );
       // devolução: o texto e a lista de fotos saem; o dinheiro e o estado ficam
       const d = await um(
@@ -1175,6 +1216,7 @@ PROVAS.push({
       // a vizinha e o registro do pedido de privacidade, intocados
       assert.strictEqual(
         JSON.stringify([
+          await carrinhoDaVizinha(),
           (
             await c.query("SELECT * FROM public.profiles WHERE id = $1", [
               VIZINHA,
