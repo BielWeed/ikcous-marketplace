@@ -238,6 +238,71 @@ describe("SearchView: voltar do produto mantém a lista já carregada", () => {
     expect(exibidos()).toBe(12);
   });
 
+  it("mostra o último resultado quando sobra só um e encerra o carregamento", async () => {
+    const produtos = catalogo.slice(0, 13);
+    const anteriores = [...catalogo];
+    catalogo.splice(0, catalogo.length, ...produtos);
+    try {
+      await montar("camisa");
+      expect(exibidos()).toBe(12);
+
+      await carregarMais();
+
+      const ids = Array.from(
+        host.querySelectorAll('[data-testid="resultado"]'),
+        (card) => card.textContent,
+      );
+      expect(ids).toHaveLength(13);
+      expect(new Set(ids)).toEqual(new Set(produtos.map((p) => p.id)));
+      expect(observadores.filter((o) => o.ativo)).toHaveLength(0);
+      expect(host.querySelector(".animate-spin")).toBeNull();
+    } finally {
+      catalogo.splice(0, catalogo.length, ...anteriores);
+    }
+  });
+
+  it("trocar só a categoria volta a lista expandida ao início", async () => {
+    const rolar = vi.fn();
+    const anterior = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "scrollIntoView",
+    );
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: rolar,
+    });
+    try {
+      await montar("camisa");
+      await carregarMais();
+      expect(exibidos()).toBe(24);
+      rolar.mockClear();
+
+      const categoria = Array.from(host.querySelectorAll("button")).find(
+        (botao) => botao.textContent === "Geral",
+      );
+      expect(categoria).toBeDefined();
+      await act(async () => {
+        categoria?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+
+      expect(exibidos()).toBe(12);
+      expect(rolar).toHaveBeenCalledWith({
+        block: "start",
+        behavior: "instant",
+      });
+    } finally {
+      if (anterior) {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          "scrollIntoView",
+          anterior,
+        );
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
+      }
+    }
+  });
+
   it("mudar a ordem volta ao padrão de 12", async () => {
     await montar("camisa");
     await carregarMais();
