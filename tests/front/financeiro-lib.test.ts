@@ -732,6 +732,20 @@ describe("extrato por dia e saldo corrente", () => {
     });
   });
 
+  it.each([
+    [0.29, 99.71],
+    [1.15, 98.85],
+    [4.35, 95.65],
+  ])(
+    "saldo retroativo preserva os centavos da entrada posterior de R$ %s",
+    (entrada, saldoAnterior) => {
+      expect(saldoCorrenteRetroativo(100, [0, entrada])).toEqual([
+        saldoAnterior,
+        100,
+      ]);
+    },
+  );
+
   it("saldo retroativo e série de 30 dias com os buracos preenchidos", () => {
     expect(saldoCorrenteRetroativo(1000, [100, -50, 200])).toEqual([
       850, 800, 1000,

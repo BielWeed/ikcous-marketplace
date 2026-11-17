@@ -288,6 +288,26 @@ describe("carrinho: pôr de novo apaga a lápide da própria linha", () => {
     expect(atual.cart.map((i) => i.product.id)).not.toContain("p2");
   });
 
+  it("updateQuantity com quantidade negativa tira a linha e marca a lápide sem descontar do total", async () => {
+    await montar();
+    await act(async () => {
+      atual.addToCart(produto("p2"), 1);
+      atual.addToCart(produto("p3"), 1);
+    });
+    expect(atual.cartTotal).toBe(50);
+
+    await act(async () => atual.updateQuantity("p2", -1));
+
+    expect(chavesDasLapides()).toEqual(["p2-"]);
+    expect(atual.cart.map((i) => [i.product.id, i.quantity])).toEqual([
+      ["p3", 1],
+    ]);
+    expect(atual.cartTotal).toBe(20);
+    expect(atual.getCartTotal()).toBe(20);
+    await sincronizar();
+    expect(linhasGravadasNaUltimaChamada()).toEqual(["p3-"]);
+  });
+
   it("controle: lápide NO PASSADO continua escondendo a linha velha que o banco devolve", async () => {
     semearLapide("p2-", Date.now() - 500);
     mundo.itens = [
