@@ -22,6 +22,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NotificationProvider } from "@/contexts/NotificationContext";
 import { useNotificationCenter } from "@/contexts/NotificationContextCore";
 import type { Notification } from "@/types";
+import { NotificationsView } from "@/views/customer/NotificationsView";
+
+vi.mock("@/hooks/usePushNotifications", () => ({
+  usePushNotifications: () => ({
+    isSupported: false,
+    permission: "default",
+    subscription: null,
+    semConta: false,
+    sondado: true,
+    subscribe: vi.fn(),
+  }),
+}));
 
 vi.mock("sonner", () => ({
   toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }),
@@ -145,6 +157,56 @@ describe("sino da cliente — campanha fora do limite dos avisos próprios", () 
 
     act(() => root.unmount());
     container.remove();
+  });
+
+  it("a lista visivel intercala avisos proprios e campanha do mais novo ao mais antigo", async () => {
+    const agora = Date.now();
+    const linha = (
+      id: string,
+      minutos: number,
+      usuario: string | null,
+    ): Linha => ({
+      ...avisoProprio(0),
+      id,
+      titulo: id,
+      usuario_id: usuario,
+      created_at: new Date(agora - minutos * 60000).toISOString(),
+    });
+    // Cada consulta já vem descendente; só a mescla exige ordenar de novo.
+    filaDeConsultas = [
+      {
+        builder: builderDeConsulta([
+          linha("Mais nova", 1, "cliente-sino-50"),
+          linha("Mais antiga", 3, "cliente-sino-50"),
+        ]),
+      },
+      {
+        builder: builderDeConsulta([linha("Campanha intermediaria", 2, null)]),
+      },
+    ];
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    try {
+      await act(async () => {
+        root.render(
+          <NotificationProvider>
+            <NotificationsView />
+          </NotificationProvider>,
+        );
+      });
+      const titulos = [
+        ...container.querySelectorAll('[role="listitem"] h4'),
+      ].map((titulo) => titulo.textContent);
+      expect(titulos).toEqual([
+        "Mais nova",
+        "Campanha intermediaria",
+        "Mais antiga",
+      ]);
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+    }
   });
 
   it("as duas pontas consultam com filtros próprios — não mais o `.or` único", async () => {
