@@ -716,8 +716,6 @@ export const HomeView = React.memo(function HomeView({
               onQuickBuy={onQuickBuy}
               className={cn(
                 "lg:px-0 lg:[&_.snap-mandatory>div]:w-[calc((100%-48px)/4)] xl:[&_.snap-mandatory>div]:w-[calc((100%-64px)/5)]",
-                secProducts.length <= 3 &&
-                  "lg:[&_.snap-mandatory]:justify-center",
                 section.id === "bestsellers" && "bg-zinc-50/50",
               )}
               selectedProductId={selectedProductId}
