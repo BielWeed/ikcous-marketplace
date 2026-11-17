@@ -157,9 +157,15 @@ describe("AdminCouponFormView: recusa do Salvar marca o campo e leva o foco", ()
     expect(campo("coupon-code").getAttribute("aria-invalid")).toBeNull();
   });
 
-  it.each(["novo", "edição"])(
-    "porcentagem acima de 100: foco, marca e não salva (%s)",
-    async (modo) => {
+  it.each([
+    ["novo", "101"],
+    ["novo", "100.5"],
+    ["novo", "100.01"],
+    ["novo", "150"],
+    ["edição", "150"],
+  ])(
+    "porcentagem acima de 100: foco, marca e não salva (%s, %s)",
+    async (modo, digitado) => {
       if (modo === "edição") {
         estadoCoupons.coupons = [
           {
@@ -175,7 +181,8 @@ describe("AdminCouponFormView: recusa do Salvar marca o campo e leva o foco", ()
       }
       await abrirTela(modo === "edição" ? "c1" : undefined);
       await digitar("coupon-code", "PROMO10");
-      await digitar("coupon-value", "150");
+      await digitar("coupon-value", digitado);
+      expect(campo("coupon-value").valueAsNumber).toBe(Number(digitado));
       await clicar("Salvar Cupom");
 
       const valor = campo("coupon-value");
