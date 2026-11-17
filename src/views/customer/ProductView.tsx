@@ -186,15 +186,6 @@ export const ProductView = React.memo(function ProductView({
   } = useReviews();
   const { trackRecommendationClick, fetchRecommendations, fetchProducts } =
     useProducts({ autoFetch: false });
-  // A lojista pode pausar o produto em outro aparelho com a ficha aberta: ao
-  // voltar a ela, relê o catálogo (produto pausado/removido sai da tela).
-  useEffect(() => {
-    const aoVoltar = () => {
-      if (document.visibilityState === "visible") void fetchProducts();
-    };
-    document.addEventListener("visibilitychange", aoVoltar);
-    return () => document.removeEventListener("visibilitychange", aoVoltar);
-  }, [fetchProducts]);
   const { isFavorite: checkFavorite, toggleFavorite } = useFavorites();
   // Laudo 0109 (C1): o preload das recomendações passa pelo prefetchImage,
   // que tem a guarda de rede lenta — 4 imagens pesadas sem o cliente pedir
@@ -392,7 +383,23 @@ export const ProductView = React.memo(function ProductView({
     recomendacoes: recommendations,
     carregando: loadingRecs,
     consultado: recsConsultado,
+    recarregar: recarregarRecomendacoes,
   } = useRecomendacoesDeProduto(product.id, recsVisible, fetchRecommendations);
+
+  // A lojista pode pausar o produto, ou mudar preço/estoque, em outro aparelho
+  // com a ficha aberta: ao voltar a ela, relê o catálogo (produto pausado/
+  // removido sai da tela) E as recomendações — elas moram em estado próprio do
+  // hook e, sem isto, os cards seguiam com o preço de antes, inclusive para
+  // comprar. `recarregarRecomendacoes` é estável (ref no hook): não reinscreve.
+  useEffect(() => {
+    const aoVoltar = () => {
+      if (document.visibilityState !== "visible") return;
+      void fetchProducts();
+      recarregarRecomendacoes();
+    };
+    document.addEventListener("visibilitychange", aoVoltar);
+    return () => document.removeEventListener("visibilitychange", aoVoltar);
+  }, [fetchProducts, recarregarRecomendacoes]);
 
   useEffect(() => {
     setRecsVisible(false);
