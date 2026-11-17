@@ -407,6 +407,36 @@ async function respostaTemFichaDaLoja(resposta: any): Promise<boolean> {
   }
 }
 
+/**
+ * Os motivos com que o porteiro recusa um documento (`MotivoManutencao` em
+ * `src/hospedagem/porteiro.ts`; o SW não importa o porteiro, a lista é
+ * copiada e um teste compara com a resposta REAL dele). Fora daqui fica o
+ * `sem-ficha-no-cache` — esse é do próprio SW (`respostaEmManutencao`) e
+ * nunca chega da rede.
+ */
+const MOTIVOS_DO_503_DO_PORTEIRO: ReadonlySet<string> = new Set([
+  "sem-loja",
+  "discorda",
+  "banco-indisponivel",
+  "html-indisponivel",
+]);
+
+/**
+ * A resposta de REDE é a recusa do porteiro (a tela "loja em manutenção")?
+ * O marcador é o par 503 + `x-ikcous-porteiro: <motivo>`. 502/504 da
+ * hospedagem, 500 e um 503 sem o cabeçalho NÃO são do porteiro: a página
+ * guardada continua valendo (uma pane da hospedagem não pode apagar o app
+ * que a cliente usa offline).
+ */
+function ehRecusaDoPorteiro(response: Response): boolean {
+  return (
+    response.status === 503 &&
+    MOTIVOS_DO_503_DO_PORTEIRO.has(
+      response.headers.get("x-ikcous-porteiro") ?? "",
+    )
+  );
+}
+
 /** Página curta de "em manutenção" — mesma decisão de falha fechada do
  * porteiro (T3), reproduzida aqui porque o SW não pode importar código de
  * outra tarefa: nenhum byte de marca ou conexão sai quando não há ficha. */
@@ -565,6 +595,18 @@ sw.addEventListener("fetch", (event: any) => {
           event.waitUntil(
             fetch(event.request)
               .then((response) => {
+                // O porteiro recusou (a loja está em manutenção): a página
+                // guardada é de ANTES e esconderia a tela de manutenção até
+                // o cache sumir. Apaga só esta rota, para a próxima abertura
+                // ir à rede e mostrar o 503. A abertura de agora já foi
+                // respondida (cache-primeiro, de propósito: rede fora do ar
+                // não pode virar tela branca). Só uma RESPOSTA do porteiro
+                // chega aqui — rede que falha cai no `.catch` e não apaga.
+                if (ehRecusaDoPorteiro(response))
+                  return caches
+                    .open(CACHE_NAME)
+                    .then((cache) => cache.delete(event.request))
+                    .then(() => undefined);
                 if (response.ok && response.status === 200) {
                   // Pílula da revisão do PR #375 (ressalva 1a): com um
                   // update PENDENTE (waiting), NÃO gravar HTML novo no
