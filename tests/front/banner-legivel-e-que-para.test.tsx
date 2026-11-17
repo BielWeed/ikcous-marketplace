@@ -36,18 +36,22 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 // O embla real não roda em jsdom (mede layout de verdade). Nenhum teste do
 // repo mockava isto antes — a forma abaixo é a mínima que o BannerCarousel
 // precisa: um ref qualquer e uma API com os métodos que o componente chama.
-const { emblaApi } = vi.hoisted(() => ({
+const { emblaApi, usarEmbla } = vi.hoisted(() => ({
+  usarEmbla: vi.fn(),
   emblaApi: {
     scrollNext: vi.fn(),
     scrollTo: vi.fn(),
     on: vi.fn(),
     off: vi.fn(),
-    selectedScrollSnap: () => 0,
+    selectedScrollSnap: vi.fn(() => 0),
   },
 }));
 
 vi.mock("embla-carousel-react", () => ({
-  default: () => [vi.fn(), emblaApi],
+  default: (opcoes: unknown) => {
+    usarEmbla(opcoes);
+    return [vi.fn(), emblaApi];
+  },
 }));
 
 class IntersectionObserverStub {
@@ -107,6 +111,7 @@ afterEach(() => {
   });
   hospedeiro.remove();
   vi.unstubAllGlobals();
+  emblaApi.selectedScrollSnap.mockReturnValue(0);
   vi.clearAllMocks();
   vi.useRealTimers();
   vi.restoreAllMocks();
@@ -126,6 +131,67 @@ describe("classeDoScrimDoBanner: a fonte única do escurecimento", () => {
     expect(classeDoScrimDoBanner(undefined)).toBe(
       classeDoScrimDoBanner("default"),
     );
+  });
+});
+
+describe("BannerCarousel: opcoes do loop", () => {
+  it("configura o Embla para voltar ao primeiro slide", async () => {
+    const { BannerCarousel } = await import(
+      "@/components/ui/custom/BannerCarousel"
+    );
+    act(() => {
+      raiz.render(
+        <BannerCarousel
+          banners={[criarBanner({ id: "b1" }), criarBanner({ id: "b2" })]}
+        />,
+      );
+    });
+    // O substituto não move slides: esta prova cobre a opção, não o motor.
+    expect(usarEmbla).toHaveBeenCalledWith(
+      expect.objectContaining({ loop: true }),
+    );
+  });
+});
+
+describe("BannerCarousel: ponto ativo acompanha o slide", () => {
+  it("acompanha select e reInit depois que a lista encolhe", async () => {
+    const { BannerCarousel } = await import(
+      "@/components/ui/custom/BannerCarousel"
+    );
+    const banners = ["b1", "b2", "b3"].map((id) => criarBanner({ id }));
+    act(() => {
+      raiz.render(<BannerCarousel banners={banners} autoPlay={false} />);
+    });
+    const disparar = (evento: string) => {
+      const registro = emblaApi.on.mock.calls.find(([nome]) => nome === evento);
+      expect(registro).toBeDefined();
+      act(() => registro![1]());
+    };
+    const ativos = () =>
+      [...hospedeiro.querySelectorAll('button[aria-current="true"]')].map(
+        (botao) => botao.getAttribute("aria-label"),
+      );
+
+    emblaApi.selectedScrollSnap.mockReturnValue(2);
+    disparar("select");
+    expect(ativos()).toEqual(["Ir para slide 3"]);
+    expect(
+      hospedeiro
+        .querySelector('[aria-label="Ir para slide 1"]')
+        ?.getAttribute("aria-current"),
+    ).not.toBe("true");
+
+    act(() => {
+      raiz.render(
+        <BannerCarousel banners={banners.slice(0, 2)} autoPlay={false} />,
+      );
+    });
+    emblaApi.selectedScrollSnap.mockReturnValue(0);
+    disparar("reInit");
+    expect(ativos()).toEqual(["Ir para slide 1"]);
+    expect(
+      hospedeiro.querySelectorAll('button[aria-label^="Ir para slide "]'),
+    ).toHaveLength(2);
   });
 });
 
