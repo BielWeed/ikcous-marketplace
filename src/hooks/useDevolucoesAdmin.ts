@@ -24,6 +24,7 @@ import {
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
+import { prepararTextoDeBuscaDoPainel } from "@/lib/texto-de-busca-do-painel";
 import type {
   ContagemPorStatus,
   DevolucaoDetalhe,
@@ -169,7 +170,7 @@ export function useDevolucoesAdmin(args: {
           Promise.resolve(
             supabase.rpc("admin_devolucoes_listar", {
               p_status: status,
-              p_busca: busca.trim() || null,
+              p_busca: prepararTextoDeBuscaDoPainel(busca) || null,
               p_limite: limite,
               p_offset: offset,
             }),

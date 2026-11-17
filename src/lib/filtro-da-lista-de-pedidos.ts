@@ -24,7 +24,7 @@
  * banco, que lê o deslocamento embutido nele.
  */
 
-import { prepararTextoDeBuscaDoPainel } from "@/lib/texto-de-busca-do-painel";
+import { normalizarTextoDeBuscaDoPainel } from "@/lib/texto-de-busca-do-painel";
 
 const DESLOCAMENTO_DA_LOJA = "-03:00";
 
@@ -72,10 +72,10 @@ export function fimDoDiaDaLoja(dia: string | undefined): string | undefined {
 
 /**
  * Sem o "#" do número do pedido (só UM, só no começo), com espaços
- * normalizados e curingas literais para o ILIKE da RPC.
+ * normalizados. Continua literal em memória; só a chamada da RPC escapa LIKE.
  */
 export function termoDeBuscaDoPedido(termo: string | undefined): string {
-  return prepararTextoDeBuscaDoPainel(
+  return normalizarTextoDeBuscaDoPainel(
     (termo ?? "").trim().replace(/^#\s*/, ""),
   );
 }

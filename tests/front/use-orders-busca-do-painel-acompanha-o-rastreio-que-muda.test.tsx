@@ -9,6 +9,7 @@
 //
 // Harness no molde de pedidos-pago-em-tempo-real-aparece-com-filtro-todos.
 import { useOrders } from "@/hooks/useOrders";
+import { recorteDaListaDePedidos } from "@/lib/filtro-da-lista-de-pedidos";
 import { act, useEffect } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -107,13 +108,11 @@ describe("Pedidos do painel — a busca acompanha o rastreio que muda", () => {
       if (nome !== "get_admin_orders_paged") {
         throw new Error(`RPC inesperada: ${nome}`);
       }
-      return {
-        abortSignal: () =>
-          Promise.resolve({
-            data: { data: linhas, total_count: linhas.length },
-            error: null,
-          }),
-      };
+      const resposta = Promise.resolve({
+        data: { data: linhas, total_count: linhas.length },
+        error: null,
+      });
+      return Object.assign(resposta, { abortSignal: () => resposta });
     });
     const armazem = new Map<string, string>();
     vi.stubGlobal("localStorage", {
@@ -202,6 +201,60 @@ describe("Pedidos do painel — a busca acompanha o rastreio que muda", () => {
     await avancar(400);
     expect(rpc).toHaveBeenCalledTimes(1);
     expect(atuais.orders.map((pedido) => pedido.id)).toEqual(["pedido-a"]);
+  });
+
+  it("cupom com underscore: o recorte fica literal em memória e a RPC recebe escape em toda releitura", async () => {
+    const recorte = recorteDaListaDePedidos({
+      searchQuery: "  BF_10  ",
+      dateRange: {},
+    });
+    await carregar(recorte.searchQuery);
+    const comCupom = linha("pedido-fora-da-lista", { coupon_code: "BF_10" });
+    linhas = [comCupom];
+    await emitir(comCupom);
+    await avancar(400);
+    expect(rpc).toHaveBeenCalledExactlyOnceWith(
+      "get_admin_orders_paged",
+      expect.objectContaining({ p_search: "BF\\_10" }),
+    );
+    expect(atuais.orders.map((pedido) => pedido.id)).toEqual([
+      "pedido-fora-da-lista",
+    ]);
+
+    // O pedido deixa a busca quando o mesmo cupom muda em outro aparelho.
+    linhas = [];
+    rpc.mockClear();
+    await emitir(linha("pedido-fora-da-lista", { coupon_code: "OUTRO" }));
+    await avancar(400);
+    expect(rpc).toHaveBeenCalledExactlyOnceWith(
+      "get_admin_orders_paged",
+      expect.objectContaining({ p_search: "BF\\_10" }),
+    );
+    expect(atuais.orders).toHaveLength(0);
+  });
+
+  it("chamada direta do hook também escapa só a RPC e normaliza espaços", async () => {
+    await carregar("");
+    await act(async () => {
+      await atuais.loadOrders(0, 12, "all", "  BF_10  50%  ");
+    });
+    expect(rpc).toHaveBeenLastCalledWith(
+      "get_admin_orders_paged",
+      expect.objectContaining({ p_search: "BF\\_10 50\\%" }),
+    );
+  });
+
+  it("CSV também escapa o termo só ao enviar a RPC", async () => {
+    await carregar("");
+    await act(async () => {
+      await atuais.buscarPedidosDoFiltroParaExportar({
+        searchQuery: "  BF_10  50%  ",
+      });
+    });
+    expect(rpc).toHaveBeenLastCalledWith(
+      "get_admin_orders_paged",
+      expect.objectContaining({ p_search: "BF\\_10 50\\%" }),
+    );
   });
 
   it("rajada de gravações de rastreio paga uma leitura só", async () => {

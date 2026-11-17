@@ -1,7 +1,16 @@
-import { prepararTextoDeBuscaDoPainel } from "@/lib/texto-de-busca-do-painel";
+import {
+  normalizarTextoDeBuscaDoPainel,
+  prepararTextoDeBuscaDoPainel,
+} from "@/lib/texto-de-busca-do-painel";
 import { describe, expect, it } from "vitest";
 
 describe("texto de busca enviado ao ILIKE das RPCs do painel", () => {
+  it("em memória o texto é normalizado, mas underscore, porcentagem e barra continuam literais", () => {
+    expect(normalizarTextoDeBuscaDoPainel("  BF_10  50% \\ ")).toBe(
+      "BF_10 50% \\",
+    );
+  });
+
   it("tira as pontas e colapsa espaços internos de texto colado", () => {
     expect(prepararTextoDeBuscaDoPainel("  Maria  Silva  ")).toBe(
       "Maria Silva",
