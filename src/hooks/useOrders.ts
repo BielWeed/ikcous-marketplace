@@ -51,6 +51,13 @@ interface SharedSubscription {
   channel: any;
   refCount: number;
   callbacks: Set<(payload: any) => void>;
+  // Quem está VIVO e precisa saber do status do canal. O callback que o SDK
+  // chama (`channel.subscribe`) nasce na montagem que CRIOU o canal, mas o canal
+  // sobrevive a ela (remount em menos de 4 s o reaproveita): sem esta lista o
+  // status só chegava à montagem já encerrada e a montagem viva nunca soube da
+  // queda nem da volta do socket. Cada montagem entra aqui junto com o callback
+  // de eventos e sai no desmonte.
+  statusHandlers: Set<(status: string, err?: any) => void>;
   cleanupTimeout?: ReturnType<typeof setTimeout>;
 }
 const globalOrderSubscriptions = new Map<string, SharedSubscription>();
@@ -2157,7 +2164,16 @@ function consultarPedidosDoCliente(
 export function useOrders(
   enabled = true,
   isAdmin = false,
-  options?: { onRealtimeEvent?: (payload: any) => void },
+  options?: {
+    onRealtimeEvent?: (payload: any) => void;
+    /**
+     * A lista acabou de ser relida porque o canal ao vivo (re)confirmou e podia
+     * ter perdido pedidos. NÃO é um evento do banco (nunca vira INSERT falso):
+     * serve a quem mostra números que o realtime também alimenta (os cartões
+     * do topo de Pedidos) pedir a própria recontagem.
+     */
+    onReconciliar?: () => void;
+  },
 ) {
   const { user, isAdmin: isUserAdmin } = useAuth();
   const { isLeader } = useLeaderElection();
@@ -2211,6 +2227,14 @@ export function useOrders(
   // iniciar ≠ este (o transporte pode ignorar o cancelamento). Vale só para
   // a leitura DO CLIENTE; o painel (`loadOrders`) tem o próprio controlador.
   const userIdAtualRef = useRef<string | null>(user?.id ?? null);
+  // De que conta é a última leitura da LISTA que TERMINOU (a mais nova desta
+  // instância, deu certo ou falhou). O primeiro `SUBSCRIBED` do canal só relê a
+  // lista se esta leitura já terminou: a leitura sai antes de a assinatura
+  // confirmar, e o pedido que entra entre as duas não chega por nenhum dos
+  // dois caminhos. Confirmando ANTES de ela terminar, a leitura em andamento já
+  // é a que vale (reler seria em dobro). Guarda a CONTA, e não um booleano,
+  // para a leitura da conta anterior não contar para a que entrou depois.
+  const listaLidaPorContaRef = useRef<string | null>(null);
   // Pedidos (trio do código) cujo ÚLTIMO envio de código falhou, com a hora da
   // falha. Some na troca de conta e ao desmontar (a limpeza do efeito abaixo).
   const falhasDoOtpRef = useRef(new Map<string, number>());
@@ -2431,6 +2455,7 @@ export function useOrders(
         // A recarga silenciosa pode ter assumido a espera da tela.
         if (userOrdersAbortControllerRef.current === controlador) {
           setLoading(false);
+          listaLidaPorContaRef.current = user.id;
         }
       }
     },
@@ -2614,6 +2639,7 @@ export function useOrders(
         if (adminOrdersAbortControllerRef.current?.signal === signal) {
           adminOrdersAbortControllerRef.current = null;
           setLoading(false);
+          listaLidaPorContaRef.current = userIdAtualRef.current;
           const precisaRecarregar = recarregarAdminDepoisDoVooRef.current;
           recarregarAdminDepoisDoVooRef.current = false;
           // O pedido ausente pode vir no retrato antigo. Relê só DEPOIS dele,
@@ -3569,6 +3595,7 @@ export function useOrders(
   const handleRealtimeUpdateRef = useRef(handleRealtimeUpdate);
   const handleRealtimeDeleteRef = useRef(handleRealtimeDelete);
   const onRealtimeEventRef = useRef(options?.onRealtimeEvent);
+  const onReconciliarRef = useRef(options?.onReconciliar);
 
   useEffect(() => {
     fetchUserOrdersRef.current = fetchUserOrders;
@@ -3582,6 +3609,7 @@ export function useOrders(
     handleRealtimeUpdateRef.current = handleRealtimeUpdate;
     handleRealtimeDeleteRef.current = handleRealtimeDelete;
     onRealtimeEventRef.current = options?.onRealtimeEvent;
+    onReconciliarRef.current = options?.onReconciliar;
   });
 
   // Realtime subscription for orders
@@ -3615,9 +3643,16 @@ export function useOrders(
     // O canal caiu e ainda não voltou a SUBSCRIBED. A recarga do
     // `handleReconnect` roda ANTES de o SDK reabrir o socket (setupRealtime só
     // reaproveita o canal), então o pedido emitido no intervalo só chega por
-    // uma recarga feita quando o SUBSCRIBED volta. O primeiro SUBSCRIBED de um
-    // canal novo não passa por aqui: a lista já foi carregada.
+    // uma recarga feita quando o SUBSCRIBED volta.
     let precisaReconciliar = false;
+    // Ainda não vi a PRIMEIRA confirmação do canal nesta montagem. A leitura da
+    // lista sai antes de a assinatura confirmar; um pedido que entra entre as
+    // duas não chega por nenhum dos caminhos (mesma janela que o contador do
+    // menu cobre em `aoMudarOStatusDoCanal`, AdminLayout). Por isso esta
+    // confirmação também relê — mas só se a leitura inicial já terminou (ver
+    // `listaLidaPorContaRef`). Montagem que entra num canal JÁ confirmado
+    // começa em `false`: a leitura dela veio depois da confirmação.
+    let confirmacaoInicialPendente = true;
     let reconnectTimeout: ReturnType<typeof setTimeout> | undefined;
     let onlineTimeout: ReturnType<typeof setTimeout> | undefined;
 
@@ -3748,12 +3783,71 @@ export function useOrders(
       }
     };
 
+    // O que ESTA montagem faz com o status do canal. Quem chama é o callback do
+    // `channel.subscribe` (que pode ter nascido em outra montagem), através de
+    // `SharedSubscription.statusHandlers` — nunca direto: a guarda por instância
+    // abaixo continua valendo para uma montagem já encerrada.
+    const aoMudarOStatus = (status: string, err?: any) => {
+      if (isUnmounting) return;
+
+      if (status === "SUBSCRIBED") {
+        retryCount = 0;
+        const primeiraConfirmacao = confirmacaoInicialPendente;
+        confirmacaoInicialPendente = false;
+        // Uma releitura por SUBSCRIBED, no máximo: as duas razões se somam numa
+        // chamada só, e a releitura não gera status nenhum que a repita.
+        if (
+          precisaReconciliar ||
+          (primeiraConfirmacao && listaLidaPorContaRef.current === user.id)
+        ) {
+          precisaReconciliar = false;
+          recarregarAposReconexaoRef
+            .current({ silencioso: true })
+            .catch(() => {});
+          // Os cartões do topo também ficaram sem os eventos da janela.
+          onReconciliarRef.current?.();
+        }
+        console.log(`[Realtime] Active shared channel: ${channelId}`);
+      } else if (status === "CHANNEL_ERROR") {
+        const errMessage = err?.message || (typeof err === "string" ? err : "");
+        const isNormalClose =
+          errMessage.includes("1000") || errMessage.includes("normal");
+        const isAbnormalClose =
+          errMessage.includes("1006") || errMessage.includes("abnormal");
+        if (isNormalClose) {
+          console.log(
+            "[Realtime] Order channel closed normally (socket closed: 1000)",
+          );
+        } else if (isAbnormalClose) {
+          console.warn(
+            "[Realtime] Order channel closed abnormally (socket closed: 1006). SDK will auto-reconnect.",
+          );
+        } else {
+          console.error("[Realtime] Order channel error:", err?.message || err);
+        }
+        handleReconnect();
+      } else if (status === "TIMED_OUT" || status === "CLOSED") {
+        handleReconnect();
+      }
+    };
+
+    // Põe esta montagem num canal que já existe: eventos E status. Os dois
+    // juntos, sempre — só o primeiro deixava o status preso na montagem que
+    // criou o canal.
+    const entrarNoCanal = (sub: SharedSubscription) => {
+      sub.callbacks.add(onEvent);
+      sub.statusHandlers.add(aoMudarOStatus);
+      if (globalConnectionStatus.get(channelId)?.status === "conectado") {
+        confirmacaoInicialPendente = false;
+      }
+    };
+
     const setupRealtime = async () => {
       if (isUnmounting || isConnecting) return;
 
       const existing = globalOrderSubscriptions.get(channelId);
       if (existing) {
-        existing.callbacks.add(onEvent);
+        entrarNoCanal(existing);
         return;
       }
 
@@ -3795,6 +3889,7 @@ export function useOrders(
           channel,
           refCount: 1,
           callbacks: new Set([onEvent]),
+          statusHandlers: new Set([aoMudarOStatus]),
         };
         globalOrderSubscriptions.set(channelId, subObj);
 
@@ -3827,43 +3922,17 @@ export function useOrders(
             });
           }
 
-          // Guarda por INSTÂNCIA, inalterada: só governa `handleReconnect`
-          // e `retryCount`, que continuam fora do escopo desta correção.
-          if (isUnmounting) return;
-
-          if (status === "SUBSCRIBED") {
-            retryCount = 0;
-            if (precisaReconciliar) {
-              precisaReconciliar = false;
-              recarregarAposReconexaoRef
-                .current({ silencioso: true })
-                .catch(() => {});
+          // O tratamento (reconexão, recarga ao confirmar) é de quem está VIVO
+          // no canal, não de quem o criou: este callback nasceu na montagem
+          // criadora, que pode já ter saído. Cada montagem viva responde por
+          // si (`aoMudarOStatus`, que mantém a guarda por instância); a
+          // encerrada já saiu da lista e não volta a trabalhar.
+          for (const tratar of Array.from(subObj.statusHandlers)) {
+            try {
+              tratar(status, err);
+            } catch (e) {
+              console.error("[Realtime] Order status handler error:", e);
             }
-            console.log(`[Realtime] Active shared channel: ${channelId}`);
-          } else if (status === "CHANNEL_ERROR") {
-            const errMessage =
-              err?.message || (typeof err === "string" ? err : "");
-            const isNormalClose =
-              errMessage.includes("1000") || errMessage.includes("normal");
-            const isAbnormalClose =
-              errMessage.includes("1006") || errMessage.includes("abnormal");
-            if (isNormalClose) {
-              console.log(
-                "[Realtime] Order channel closed normally (socket closed: 1000)",
-              );
-            } else if (isAbnormalClose) {
-              console.warn(
-                "[Realtime] Order channel closed abnormally (socket closed: 1006). SDK will auto-reconnect.",
-              );
-            } else {
-              console.error(
-                "[Realtime] Order channel error:",
-                err?.message || err,
-              );
-            }
-            handleReconnect();
-          } else if (status === "TIMED_OUT" || status === "CLOSED") {
-            handleReconnect();
           }
         });
       } catch (err) {
@@ -3915,7 +3984,7 @@ export function useOrders(
           );
         }
         existing.refCount++;
-        existing.callbacks.add(onEvent);
+        entrarNoCanal(existing);
       } else {
         setupRealtime();
       }
@@ -3995,6 +4064,7 @@ export function useOrders(
         const sub = globalOrderSubscriptions.get(channelId);
         if (sub) {
           sub.callbacks.delete(onEvent);
+          sub.statusHandlers.delete(aoMudarOStatus);
           sub.refCount--;
           if (sub.refCount <= 0) {
             if (sub.cleanupTimeout) {

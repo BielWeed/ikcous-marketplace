@@ -393,6 +393,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     Record<string, "INSERT" | "UPDATE">
   >({});
   const onRealtimeEventRef = useRef<(payload: any) => void>(() => {});
+  // A conexão ao vivo reconfirmou e a lista foi relida (`onReconciliar`, em
+  // useOrders): os cartões do topo perderam os mesmos eventos. Ref pelo mesmo
+  // motivo do acima — `pedirRecargaDosNumeros` só existe depois deste hook.
+  const aoReconciliarRef = useRef<() => void>(() => {});
   const {
     orders,
     loadOrders,
@@ -421,6 +425,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     buscarTambemCanceladosAntigos = async () => [],
   } = useOrders(active ?? false, true, {
     onRealtimeEvent: (payload) => onRealtimeEventRef.current(payload),
+    onReconciliar: () => aoReconciliarRef.current(),
   });
   const { stats: analyticsStats, fetchExecutiveSummary } = useAnalytics();
   // Os três números do fluxo no topo (onda F, F3); `null` = "—". O hook
@@ -1419,6 +1424,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     }
     wasOfflineRef.current = isOffline;
   }, [isOffline, active, currentPage, loadAllData, pedirRecargaDosNumeros]);
+
+  useEffect(() => {
+    aoReconciliarRef.current = pedirRecargaDosNumeros;
+  }, [pedirRecargaDosNumeros]);
 
   useEffect(() => {
     onRealtimeEventRef.current = (payload) => {

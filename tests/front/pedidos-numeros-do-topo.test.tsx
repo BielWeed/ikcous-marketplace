@@ -134,14 +134,21 @@ const mockOrders: Order[] = [];
 // é o `onRealtimeEvent` que a view entrega ao `useOrders`.
 const { loadOrdersEspiao } = vi.hoisted(() => ({ loadOrdersEspiao: vi.fn() }));
 let eventoDeTempoReal: ((payload: unknown) => void) | null = null;
+// `onReconciliar` que a view entrega ao `useOrders`: o aviso "a conexão ao vivo
+// reconfirmou e a lista foi relida" (NÃO é um evento do banco).
+let reconciliarDoTempoReal: (() => void) | null = null;
 
 vi.mock("@/hooks/useOrders", () => ({
   useOrders: (
     _ativo: boolean,
     _admin: boolean,
-    opcoes?: { onRealtimeEvent?: (payload: unknown) => void },
+    opcoes?: {
+      onRealtimeEvent?: (payload: unknown) => void;
+      onReconciliar?: () => void;
+    },
   ) => {
     eventoDeTempoReal = opcoes?.onRealtimeEvent ?? null;
+    reconciliarDoTempoReal = opcoes?.onReconciliar ?? null;
     return {
       orders: mockOrders,
       loadOrders: loadOrdersEspiao,
@@ -226,6 +233,7 @@ describe("AdminOrdersView — o topo diz um número por conceito", () => {
     cadeias = [];
     loadOrdersEspiao.mockClear();
     eventoDeTempoReal = null;
+    reconciliarDoTempoReal = null;
     contagensFalham = false;
     construcaoLanca = false;
     abertosAConferir = 0;
@@ -455,6 +463,24 @@ describe("AdminOrdersView — o topo diz um número por conceito", () => {
 
     await act(async () => {
       eventoDeTempoReal!({ eventType: "DELETE", new: {}, old: { id: "p1" } });
+    });
+    await esperarAte(
+      () => contagensFeitas() === contagensAntes + CONTAGENS_POR_RODADA,
+    );
+    expect(contagensFeitas()).toBe(contagensAntes + CONTAGENS_POR_RODADA);
+  });
+
+  it("a conexão ao vivo reconfirmar (reconciliação) recarrega as contagens do topo, sem evento de pedido", async () => {
+    await montar();
+    await esperarAte(
+      () => valorDoCartao("Para preparar") === String(PARA_PREPARAR),
+    );
+    await deixarALista();
+    expect(reconciliarDoTempoReal).toBeTruthy();
+    const contagensAntes = contagensFeitas();
+
+    await act(async () => {
+      reconciliarDoTempoReal!();
     });
     await esperarAte(
       () => contagensFeitas() === contagensAntes + CONTAGENS_POR_RODADA,
