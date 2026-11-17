@@ -531,7 +531,9 @@ export function useBanners(adminMode = false) {
         [...banners, newBanner],
         data.id,
       );
-      applyLocalBanners(updatedBanners, true);
+      // Criar um banner não prova que a leitura funciona: o aviso de leitura
+      // que falhou continua até uma leitura bem-sucedida.
+      applyLocalBanners(updatedBanners);
 
       // Async normalization of position order in DB
       normalizeBannersOrder(
