@@ -174,8 +174,8 @@ describe("AdminReviewsView — excluir e leitura que falha", () => {
       // Gravando: o botão avisa e não aceita outro toque, nem o Cancelar.
       const gravando = botao("Excluindo…") as HTMLButtonElement;
       expect(gravando.disabled).toBe(true);
-      // Cancelar nunca trava: com a rede pendurada é a saída da confirmação.
-      expect((botao("Cancelar") as HTMLButtonElement).disabled).toBe(false);
+      // Cancelar não pode prometer interromper uma exclusão já enviada.
+      expect((botao("Cancelar") as HTMLButtonElement).disabled).toBe(true);
       await act(async () => {
         gravando.click();
       });
@@ -189,7 +189,7 @@ describe("AdminReviewsView — excluir e leitura que falha", () => {
       expect(botao("Excluir")).toBeUndefined();
     });
 
-    it("Cancelar durante a exclusão em voo fecha a confirmação; a exclusão termina sozinha", async () => {
+    it("Cancelar durante a exclusão em voo não fecha nem permite reabrir", async () => {
       let terminar!: (ok: boolean) => void;
       h.deleteReview.mockImplementation(
         () =>
@@ -210,9 +210,13 @@ describe("AdminReviewsView — excluir e leitura que falha", () => {
       });
       await act(async () => {
         botao("Cancelar")?.click();
+        document.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+        );
+        document.body.click();
       });
-      // Saiu da confirmação sem esperar a rede; nenhuma 2ª exclusão.
-      expect(botao("Excluindo…")).toBeUndefined();
+      // A confirmação continua aberta até a resposta da rede.
+      expect(botao("Excluindo…")).toBeTruthy();
       expect(h.deleteReview).toHaveBeenCalledTimes(1);
       await act(async () => {
         terminar(true);

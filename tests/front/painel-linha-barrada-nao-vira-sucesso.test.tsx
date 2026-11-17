@@ -256,14 +256,17 @@ describe("painel: UPDATE/DELETE que não mexeu em linha nenhuma não vira sucess
       expect(toast.success).not.toHaveBeenCalled();
     });
 
-    it("apagar com 0 linhas: devolve false e avisa erro, sem 'Avaliação removida'", async () => {
+    it("apagar com 0 linhas: aviso neutro, sem afirmar sucesso nem erro", async () => {
       const reviews = await montar(() => useReviews());
-      let resposta: boolean | undefined;
+      let resposta: boolean | null | undefined;
       await act(async () => {
         resposta = await reviews().deleteReview("rev-1");
       });
-      expect(resposta).toBe(false);
-      expect(toast.error).toHaveBeenCalledWith("Erro ao remover avaliação.");
+      expect(resposta).toBeNull();
+      expect(toast.info).toHaveBeenCalledWith(
+        "A avaliação já foi excluída ou não está mais acessível.",
+      );
+      expect(toast.error).not.toHaveBeenCalled();
       expect(toast.success).not.toHaveBeenCalled();
     });
 

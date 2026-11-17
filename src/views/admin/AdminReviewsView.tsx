@@ -635,7 +635,8 @@ export const AdminReviewsView = memo(function AdminReviewsView({
     focoPendente.current = () =>
       ok ? tituloListaRef.current : (botoesExcluir.current.get(id) ?? null);
     setConfirmDeleteId(null);
-    if (!ok) return; // o toast de erro já foi dado no hook (useReviews)
+    if (ok === null) triggerRefresh(); // ausente ou sem acesso: conferir a lista
+    if (!ok) return; // o aviso já foi dado no hook (useReviews)
     // A avaliação saiu: o rascunho dela não pode manter a tela "com alterações".
     setRascunhos((anteriores) => {
       if (!(id in anteriores)) return anteriores;

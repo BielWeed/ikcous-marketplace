@@ -107,7 +107,7 @@ describe("useReviews — o sino do painel recontar ao responder ou excluir", () 
   it("responder com sucesso avisa o painel uma vez", async () => {
     h.resultadoRpc = { data: null, error: null };
     await montarHook();
-    let ok: boolean | undefined;
+    let ok: boolean | null | undefined;
     await act(async () => {
       ok = await acoes!.addMerchantReply("rev-1", "Obrigada!");
     });
@@ -127,7 +127,7 @@ describe("useReviews — o sino do painel recontar ao responder ou excluir", () 
   it("excluir com sucesso avisa o painel uma vez", async () => {
     h.resultadoDelete = { data: [{ id: "rev-1" }], error: null };
     await montarHook();
-    let ok: boolean | undefined;
+    let ok: boolean | null | undefined;
     await act(async () => {
       ok = await acoes!.deleteReview("rev-1");
     });

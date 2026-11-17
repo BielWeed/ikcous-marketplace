@@ -125,6 +125,7 @@ export function useReviews() {
   // Voto é da pessoa, não do produto: não vai para o cache compartilhado.
   const [votosUteis, setVotosUteis] = useState<Set<string>>(() => new Set());
   const votosEmVooRef = useRef(new Set<string>());
+  const exclusoesEmVooRef = useRef(new Map<string, Promise<boolean | null>>());
   const [adminReviews, setAdminReviews] = useState<AdminReview[]>(() => {
     return isAdmin && cachedReviewsData ? cachedReviewsData : [];
   });
@@ -787,44 +788,59 @@ export function useReviews() {
   );
 
   const deleteReview = useCallback(
-    async (reviewId: string): Promise<boolean> => {
+    async (reviewId: string): Promise<boolean | null> => {
       // Laudo 0109 (A-10): devolve booleano — true só quando o banco
-      // confirmou; false em falha (o toast de erro continua saindo daqui).
+      // confirmou; false em falha; null se ausente ou sem acesso (aviso neutro).
       // Sem o retorno, o chamador vibrava "sucesso" em falha igual.
       if (!isAdmin) {
         toast.error("Permissão negada");
         return false;
       }
+      const emVoo = exclusoesEmVooRef.current.get(reviewId);
+      if (emVoo) return emVoo;
+      const operacao = (async () => {
+        try {
+          // A ausência sem erro também encerra a exclusão: outra chamada pode ter apagado.
+          const { data: apagadas, error } = await aguardarComPrazo(
+            Promise.resolve(
+              supabase
+                .from("reviews" as any)
+                .delete()
+                .eq("id", reviewId)
+                .select("id"),
+            ),
+            PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+            () => erroDeConsultaSemResposta(),
+          );
+
+          if (error) throw error;
+          if (!apagadas?.length) {
+            toast.info(
+              "A avaliação já foi excluída ou não está mais acessível.",
+            );
+            return null;
+          }
+
+          setAdminReviews((prev) => prev.filter((r) => r.id !== reviewId));
+          // O sino do painel conta avaliações sem resposta e não tem canal.
+          window.dispatchEvent(new Event("admin:recontar-avisos"));
+          toast.success("Avaliação removida.");
+          return true;
+        } catch (error) {
+          console.error("Error deleting review:", error);
+          toast.error(
+            ehConsultaSemResposta(error)
+              ? "Sem resposta da rede. Confira na lista antes de tentar de novo."
+              : "Erro ao remover avaliação.",
+          );
+          return false;
+        }
+      })();
+      exclusoesEmVooRef.current.set(reviewId, operacao);
       try {
-        // `.select("id")`: 0 linhas apagadas (política de acesso) vem como sucesso.
-        const { data: apagadas, error } = await aguardarComPrazo(
-          Promise.resolve(
-            supabase
-              .from("reviews" as any)
-              .delete()
-              .eq("id", reviewId)
-              .select("id"),
-          ),
-          PRAZO_DAS_ACOES_DO_PEDIDO_MS,
-          () => erroDeConsultaSemResposta(),
-        );
-
-        if (error) throw error;
-        if (!apagadas?.length) throw new Error("Nenhuma avaliação apagada.");
-
-        setAdminReviews((prev) => prev.filter((r) => r.id !== reviewId));
-        // O sino do painel conta avaliações sem resposta e não tem canal.
-        window.dispatchEvent(new Event("admin:recontar-avisos"));
-        toast.success("Avaliação removida.");
-        return true;
-      } catch (error) {
-        console.error("Error deleting review:", error);
-        toast.error(
-          ehConsultaSemResposta(error)
-            ? "Sem resposta da rede. Confira na lista antes de tentar de novo."
-            : "Erro ao remover avaliação.",
-        );
-        return false;
+        return await operacao;
+      } finally {
+        exclusoesEmVooRef.current.delete(reviewId);
       }
     },
     [isAdmin],
