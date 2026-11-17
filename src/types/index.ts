@@ -319,6 +319,8 @@ export interface Coupon {
 export interface Banner {
   id: string;
   imageUrl: string;
+  /** Arte de computador; ausente usa a imagem de celular, inclusive em banners antigos. */
+  desktopImageUrl?: string | null;
   title: string | null;
   link?: string;
   position: "home_top" | "home_middle" | "home_bottom";

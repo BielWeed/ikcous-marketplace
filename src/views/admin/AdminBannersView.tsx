@@ -22,6 +22,10 @@ import { BannerPronto } from "@/components/ui/custom/BannerPronto";
 import { ImageAdjuster } from "@/components/ui/custom/ImageAdjuster";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { modeloDoBanner } from "@/lib/banner-modelos";
+import {
+  type CampoDeImagemDoBanner,
+  imagemDoBannerEmUso,
+} from "@/lib/imagens-do-banner";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -109,6 +113,7 @@ import {
   type ChangeEvent,
   type ComponentProps,
   memo,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -116,6 +121,11 @@ import {
   useState,
 } from "react";
 import { toast } from "sonner";
+
+type ContextoDoRecorteDoBanner = {
+  campo: CampoDeImagemDoBanner;
+  geracao: number;
+};
 
 const ORDEM_MAXIMA_DO_BANNER = 9999;
 const AVISO_DE_ORDEM_RECUSADA = `A ordem de exibição precisa ser um número inteiro de 1 a ${ORDEM_MAXIMA_DO_BANNER}.`;
@@ -750,6 +760,7 @@ export const defaultBannerFor = (
 ): Omit<Banner, "id"> => ({
   title: "",
   imageUrl: "",
+  desktopImageUrl: null,
   link: "",
   position,
   active: true,
@@ -781,6 +792,7 @@ export const isBannerFormDirty = (
 ): boolean =>
   (formData.title || "") !== (initial.title || "") ||
   (formData.imageUrl || "") !== (initial.imageUrl || "") ||
+  (formData.desktopImageUrl || "") !== (initial.desktopImageUrl || "") ||
   (formData.link || "") !== (initial.link || "") ||
   formData.position !== initial.position ||
   formData.active !== initial.active ||
@@ -851,6 +863,12 @@ export const AdminBannersView = memo(function AdminBannersView({
   const geracaoDoUploadPendente = useRef<number | null>(null);
   const geracaoDoEditor = useRef(0);
   const imagemEnviadaNaoSalvaRef = useRef<string | null>(null);
+  const imagemDesktopEnviadaNaoSalvaRef = useRef<string | null>(null);
+  const [campoDeImagem, setCampoDeImagem] =
+    useState<CampoDeImagemDoBanner>("imageUrl");
+  const contextoDoRecorteAtual = useRef<ContextoDoRecorteDoBanner | null>(null);
+  const [contextoDoRecorte, setContextoDoRecorte] =
+    useState<ContextoDoRecorteDoBanner | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedTab, setSelectedTab] = useLocalStorage<
     "all" | "home_top" | "home_middle" | "home_bottom"
@@ -1130,7 +1148,11 @@ export const AdminBannersView = memo(function AdminBannersView({
   }, [isOffline, active, refreshBanners]);
 
   // Image Adjuster integration
-  const [isAdjusterOpen, setIsAdjusterOpen] = useState(false);
+  const [isAdjusterOpen, setAjustadorAberto] = useState(false);
+  const setIsAdjusterOpen = useCallback((aberto: boolean) => {
+    if (!aberto) contextoDoRecorteAtual.current = null;
+    setAjustadorAberto(aberto);
+  }, []);
   const [adjustingImgUrl, setAdjustingImgUrl] = useState("");
   const [isUploadingAdjusted, setIsUploadingAdjusted] = useState(false);
   // O bloqueio síncrono pertence à geração: uma resposta antiga não libera a nova.
@@ -1138,6 +1160,9 @@ export const AdminBannersView = memo(function AdminBannersView({
 
   const openAdjuster = (url: string) => {
     if (isSubmittingRef.current) return;
+    const contexto = { campo: campoDeImagem, geracao: geracaoDoEditor.current };
+    contextoDoRecorteAtual.current = contexto;
+    setContextoDoRecorte(contexto);
     setAdjustingImgUrl(url);
     setIsAdjusterOpen(true);
   };
@@ -1148,23 +1173,34 @@ export const AdminBannersView = memo(function AdminBannersView({
     deleteStorageFile(url).catch(() => {});
   };
 
-  const adotarImagemEnviada = (url: string) => {
-    // Recorte e upload podem responder antes do próximo render. Compartilham
-    // a imagem substituível, sem depender do formData capturado por cada envio.
-    const imagemAnterior = imagemEnviadaNaoSalvaRef.current;
-    imagemEnviadaNaoSalvaRef.current = url;
+  const adotarImagemEnviada = (url: string, campo: CampoDeImagemDoBanner) => {
+    const envio =
+      campo === "imageUrl"
+        ? imagemEnviadaNaoSalvaRef
+        : imagemDesktopEnviadaNaoSalvaRef;
+    const imagemAnterior = envio.current;
+    envio.current = url;
+    const proximo = { ...formularioAtual.current.formData, [campo]: url };
     if (
       imagemAnterior &&
       imagemAnterior !== url &&
-      imagemAnterior !== editingBanner?.imageUrl
+      !imagemDoBannerEmUso(imagemAnterior, [...banners, proximo])
     ) {
       deleteStorageFile(imagemAnterior).catch(() => {});
     }
-    setFormData((prev) => ({ ...prev, imageUrl: url }));
+    setFormData((prev) => ({ ...prev, [campo]: url }));
   };
 
-  const handleAdjustConfirm = async (croppedBlob: Blob) => {
+  const handleAdjustConfirm = async (
+    croppedBlob: Blob,
+    contexto: ContextoDoRecorteDoBanner | null,
+  ) => {
+    // O processamento do canvas pode terminar depois de o ajuste ser fechado.
+    // A identidade nasceu ao ABRIR o ajuste, não na entrega tardia do blob.
     if (
+      !contexto ||
+      contextoDoRecorteAtual.current !== contexto ||
+      contexto.geracao !== geracaoDoEditor.current ||
       isSubmittingRef.current ||
       geracaoDoRecortePendente.current === geracaoDoEditor.current
     ) {
@@ -1176,7 +1212,7 @@ export const AdminBannersView = memo(function AdminBannersView({
       });
       return;
     }
-    const geracaoDoRecorte = geracaoDoEditor.current;
+    const { geracao: geracaoDoRecorte, campo } = contexto;
     geracaoDoRecortePendente.current = geracaoDoRecorte;
     setIsUploadingAdjusted(true);
     // Mesmo achado do produto (AdminProductFormView-499): o ImageAdjuster
@@ -1199,7 +1235,7 @@ export const AdminBannersView = memo(function AdminBannersView({
         toast.dismiss(loadingToast);
         return;
       }
-      adotarImagemEnviada(url);
+      adotarImagemEnviada(url, campo);
       toast.success("Imagem ajustada com sucesso!", { id: loadingToast });
       setIsAdjusterOpen(false);
     } catch (error) {
@@ -1462,7 +1498,13 @@ export const AdminBannersView = memo(function AdminBannersView({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isDialogOpen, showHelpModal, isAdjusterOpen, confirmarFimVencido]);
+  }, [
+    isDialogOpen,
+    showHelpModal,
+    isAdjusterOpen,
+    confirmarFimVencido,
+    setIsAdjusterOpen,
+  ]);
 
   // Reset modal and adjuster states when active is false to prevent focus traps and scroll lock
   useEffect(() => {
@@ -1480,7 +1522,7 @@ export const AdminBannersView = memo(function AdminBannersView({
       setTela("jeito");
       setExtractedColors([]);
     }
-  }, [active]);
+  }, [active, setIsAdjusterOpen]);
 
   // Empurra uma entrada de histórico virtual quando o diálogo abre e a
   // consome (history.back()) quando ele fecha — por QUALQUER caminho
@@ -1695,6 +1737,7 @@ export const AdminBannersView = memo(function AdminBannersView({
         // campos a lojista de fato editou.
         base: baseDoRascunho(initial),
         imagemEnviadaNaoSalva: imagemEnviadaNaoSalvaRef.current,
+        imagemDesktopEnviadaNaoSalva: imagemDesktopEnviadaNaoSalvaRef.current,
         savedAt: new Date().toISOString(),
       };
       // Armazenamento cheio ou bloqueado não pode estourar do temporizador:
@@ -1730,6 +1773,8 @@ export const AdminBannersView = memo(function AdminBannersView({
   const handleOpenDialog = (banner?: Banner) => {
     geracaoDoEditor.current += 1;
     imagemEnviadaNaoSalvaRef.current = null;
+    imagemDesktopEnviadaNaoSalvaRef.current = null;
+    setCampoDeImagem("imageUrl");
     setUploading(false);
     setIsUploadingAdjusted(false);
     setIsAdjusterOpen(false);
@@ -1763,6 +1808,7 @@ export const AdminBannersView = memo(function AdminBannersView({
       setFormData({
         title: banner.title || defaultsParaEdicao.title,
         imageUrl: banner.imageUrl || defaultsParaEdicao.imageUrl,
+        desktopImageUrl: banner.desktopImageUrl || null,
         link: banner.link || defaultsParaEdicao.link,
         position: banner.position || defaultsParaEdicao.position,
         active: banner.active ?? defaultsParaEdicao.active,
@@ -1843,29 +1889,38 @@ export const AdminBannersView = memo(function AdminBannersView({
       setUploading(false);
       setProductSearch("");
       if (!isSavedRef.current) {
-        if (
-          imagemEnviadaNaoSalvaRef.current &&
-          formData.imageUrl === imagemEnviadaNaoSalvaRef.current &&
-          formData.imageUrl !== editingBanner?.imageUrl
-        ) {
-          deleteStorageFile(formData.imageUrl).catch(() => {});
-          // O rascunho pode apontar para a URL recém-apagada — limpa o
-          // campo para a recuperação não restaurar uma imagem morta.
-          try {
-            const bruto = chaveDoRascunho
-              ? localStorage.getItem(chaveDoRascunho)
-              : null;
-            if (chaveDoRascunho && bruto) {
-              const rascunho = JSON.parse(bruto);
-              if (rascunho?.formData?.imageUrl === formData.imageUrl) {
-                rascunho.formData.imageUrl = "";
-                localStorage.setItem(chaveDoRascunho, JSON.stringify(rascunho));
-              }
+        const orfas = [
+          ...new Set([
+            imagemEnviadaNaoSalvaRef.current,
+            imagemDesktopEnviadaNaoSalvaRef.current,
+          ]),
+        ].filter(
+          (url): url is string =>
+            Boolean(url) &&
+            !imagemDoBannerEmUso(url!, banners) &&
+            !products.some((p) => p.images?.includes(url!)),
+        );
+        for (const url of orfas) deleteStorageFile(url).catch(() => {});
+        // Rascunho não pode recuperar um arquivo que este cancelamento apagou.
+        try {
+          const bruto = chaveDoRascunho
+            ? localStorage.getItem(chaveDoRascunho)
+            : null;
+          if (chaveDoRascunho && bruto && orfas.length) {
+            const rascunho = JSON.parse(bruto);
+            if (orfas.includes(rascunho?.formData?.imageUrl)) {
+              rascunho.formData.imageUrl = "";
             }
-          } catch {
-            // rascunho ausente ou corrompido: a recuperação já tolera.
+            if (orfas.includes(rascunho?.formData?.desktopImageUrl)) {
+              rascunho.formData.desktopImageUrl = null;
+            }
+            localStorage.setItem(chaveDoRascunho, JSON.stringify(rascunho));
           }
+        } catch {
+          // Rascunho ausente/corrompido ou armazenamento bloqueado.
         }
+        imagemEnviadaNaoSalvaRef.current = null;
+        imagemDesktopEnviadaNaoSalvaRef.current = null;
       }
     }
     setIsDialogOpen(open);
@@ -2045,6 +2100,7 @@ export const AdminBannersView = memo(function AdminBannersView({
     }
 
     const geracaoDoUpload = geracaoDoEditor.current;
+    const campo = campoDeImagem;
     geracaoDoUploadPendente.current = geracaoDoUpload;
     setUploading(true);
     const loadingToast = toast.loading("Enviando imagem do banner...");
@@ -2062,7 +2118,7 @@ export const AdminBannersView = memo(function AdminBannersView({
         toast.dismiss(loadingToast);
         return;
       }
-      adotarImagemEnviada(url);
+      adotarImagemEnviada(url, campo);
       toast.success("Imagem enviada com sucesso", { id: loadingToast });
     } catch (error) {
       if (geracaoDoUpload !== geracaoDoEditor.current) {
@@ -2215,6 +2271,7 @@ export const AdminBannersView = memo(function AdminBannersView({
       }
       // O envio agora pertence ao banner publicado, mesmo se o editor continuar aberto.
       imagemEnviadaNaoSalvaRef.current = null;
+      imagemDesktopEnviadaNaoSalvaRef.current = null;
       const mudouDuranteEnvio =
         JSON.stringify(formularioAtual.current.formData) !==
           JSON.stringify(formData) ||
@@ -2243,6 +2300,7 @@ export const AdminBannersView = memo(function AdminBannersView({
         // provada", então fechar o editor não pode apagá-la (apagar deixaria
         // um banner publicado sem imagem). O rascunho segue no editor.
         imagemEnviadaNaoSalvaRef.current = null;
+        imagemDesktopEnviadaNaoSalvaRef.current = null;
       }
       if (
         !ehConsultaSemResposta(error) &&
@@ -2390,6 +2448,22 @@ export const AdminBannersView = memo(function AdminBannersView({
 
   const modelo = modeloDoBanner(formData.templateType);
   const ocupadoComImagem = uploading || isUploadingAdjusted || isSubmitting;
+  const computadorSelecionado = campoDeImagem === "desktopImageUrl";
+  const imagemSelecionada = computadorSelecionado
+    ? formData.desktopImageUrl || formData.imageUrl
+    : formData.imageUrl;
+  const dadosDaPrevia = { ...formData, imageUrl: imagemSelecionada || "" };
+  const usarImagemDoCelular = () => {
+    const orfa = imagemDesktopEnviadaNaoSalvaRef.current;
+    imagemDesktopEnviadaNaoSalvaRef.current = null;
+    if (
+      orfa &&
+      !imagemDoBannerEmUso(orfa, [...banners, { imageUrl: formData.imageUrl }])
+    ) {
+      deleteStorageFile(orfa).catch(() => {});
+    }
+    setFormData((prev) => ({ ...prev, desktopImageUrl: null }));
+  };
   const escolherProduto = (produto: (typeof products)[number]) => {
     if (
       isSubmittingRef.current ||
@@ -2407,7 +2481,14 @@ export const AdminBannersView = memo(function AdminBannersView({
     );
     if (modelo) {
       const orfa = imagemEnviadaNaoSalvaRef.current;
-      if (orfa) deleteStorageFile(orfa).catch(() => {});
+      if (
+        orfa &&
+        !imagemDoBannerEmUso(orfa, [
+          ...banners,
+          { desktopImageUrl: formData.desktopImageUrl },
+        ])
+      )
+        deleteStorageFile(orfa).catch(() => {});
       imagemEnviadaNaoSalvaRef.current = null;
     }
     setFormData((prev) => ({
@@ -2735,23 +2816,18 @@ export const AdminBannersView = memo(function AdminBannersView({
                           ...formData,
                         },
                       );
-                      const imagem = recuperado.imageUrl;
-                      const arquivoDoRascunho =
-                        imagem &&
-                        (draftToRecover.imagemEnviadaNaoSalva === imagem ||
-                          imagem.includes(
-                            "/storage/v1/object/public/banners/",
-                          ));
-                      // Foto que a recuperação não troca (o rascunho não mexeu
-                      // nela) segue com o dono que já tinha, inclusive o envio
-                      // desta sessão que ainda não virou banner.
-                      if (imagem !== formData.imageUrl) {
-                        imagemEnviadaNaoSalvaRef.current =
-                          arquivoDoRascunho &&
-                          !banners.some((b) => b.imageUrl === imagem) &&
-                          !products.some((p) => p.images?.includes(imagem))
-                            ? imagem
-                            : null;
+                      // O marcador de upload no rascunho não prova que o arquivo
+                      // CONTINUA órfão: uma gravação pode ter sido aceita sem
+                      // resposta. Recuperar nunca concede permissão de apagá-lo.
+                      // Só conserva propriedade de um envio desta abertura que
+                      // a recuperação não substituiu.
+                      if (recuperado.imageUrl !== formData.imageUrl) {
+                        imagemEnviadaNaoSalvaRef.current = null;
+                      }
+                      if (
+                        recuperado.desktopImageUrl !== formData.desktopImageUrl
+                      ) {
+                        imagemDesktopEnviadaNaoSalvaRef.current = null;
                       }
                       setFormData(recuperado);
                       setBannerMode((m) =>
@@ -2820,19 +2896,25 @@ export const AdminBannersView = memo(function AdminBannersView({
                     (modelo ? (
                       <div
                         data-tema-fixo=""
-                        className="aspect-[2/1] overflow-hidden rounded-2xl"
+                        className={cn(
+                          "overflow-hidden rounded-2xl",
+                          computadorSelecionado
+                            ? "aspect-[4/1]"
+                            : "aspect-[2/1]",
+                        )}
                       >
                         <BannerPronto
                           banner={{
                             ...defaultBannerFor("home_top", 1),
-                            ...formData,
+                            ...dadosDaPrevia,
                             id: "previa",
                           }}
                         />
                       </div>
                     ) : (
                       <PreviaImagemPropria
-                        formData={formData}
+                        formData={dadosDaPrevia}
+                        computador={computadorSelecionado}
                         comTexto={bannerMode === "complete"}
                       />
                     ))}
@@ -2947,7 +3029,42 @@ export const AdminBannersView = memo(function AdminBannersView({
                     )}
                   </section>
                 )}
-                <section className="space-y-3">
+                <section
+                  className="space-y-3"
+                  aria-label="Imagem por dispositivo"
+                >
+                  <div
+                    className="flex flex-wrap gap-2"
+                    role="group"
+                    aria-label="Versão da imagem"
+                  >
+                    {(["imageUrl", "desktopImageUrl"] as const).map((campo) => (
+                      <Button
+                        key={campo}
+                        type="button"
+                        variant="outline"
+                        className="min-h-11 border-admin-border bg-admin-surface text-white"
+                        disabled={ocupadoComImagem}
+                        aria-pressed={campoDeImagem === campo}
+                        style={
+                          campoDeImagem === campo
+                            ? {
+                                outline: "2px solid currentColor",
+                                outlineOffset: "-2px",
+                              }
+                            : undefined
+                        }
+                        onClick={() => setCampoDeImagem(campo)}
+                      >
+                        {campo === "imageUrl"
+                          ? "Celular (2:1)"
+                          : "Computador (4:1)"}
+                      </Button>
+                    ))}
+                  </div>
+                  <p className="text-xs">
+                    Cada versão tem sua própria imagem e seu próprio recorte.
+                  </p>
                   <div className="flex flex-wrap gap-2">
                     <Button
                       variant="outline"
@@ -2959,22 +3076,46 @@ export const AdminBannersView = memo(function AdminBannersView({
                     >
                       {modelo ? "Usar outra foto" : "Enviar imagem"}
                     </Button>
-                    {formData.imageUrl && (
+                    {imagemSelecionada && (
                       <Button
                         variant="outline"
                         className="min-h-11 border-admin-border bg-admin-surface text-white"
                         disabled={ocupadoComImagem}
-                        onClick={() => openAdjuster(formData.imageUrl!)}
+                        onClick={() => openAdjuster(imagemSelecionada!)}
                       >
                         Ajustar
                       </Button>
                     )}
                   </div>
-                  {formData.imageUrl && !modelo && (
+                  {computadorSelecionado &&
+                    (formData.desktopImageUrl ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        disabled={ocupadoComImagem}
+                        onClick={usarImagemDoCelular}
+                        className="min-h-11"
+                      >
+                        Usar imagem do celular
+                      </Button>
+                    ) : (
+                      <p role="status" className="text-xs">
+                        Sem imagem de computador configurada. A loja usa a
+                        imagem de celular por enquanto.
+                      </p>
+                    ))}
+                  {imagemSelecionada && !modelo && (
                     <img
-                      src={formData.imageUrl}
-                      alt="Preview Thumbnail"
-                      className="h-16 w-32 rounded-xl object-cover"
+                      src={imagemSelecionada}
+                      alt={
+                        computadorSelecionado
+                          ? "Imagem do computador"
+                          : "Preview Thumbnail"
+                      }
+                      className={cn(
+                        "h-16 rounded-xl object-cover",
+                        computadorSelecionado ? "w-64" : "w-32",
+                      )}
                     />
                   )}
                   <Input
@@ -2987,7 +3128,9 @@ export const AdminBannersView = memo(function AdminBannersView({
                     onChange={handleFileUpload}
                   />
                   <p className="text-xs">
-                    Imagem horizontal · recomendado 1200 × 600 px.
+                    {computadorSelecionado
+                      ? "Computador · recomendado 1920 × 480 px (4:1)."
+                      : "Celular · recomendado 1200 × 600 px (2:1)."}
                   </p>
                 </section>
                 {modelo && (
@@ -3712,10 +3855,14 @@ export const AdminBannersView = memo(function AdminBannersView({
             isOpen={isAdjusterOpen}
             onClose={() => setIsAdjusterOpen(false)}
             imageUrl={adjustingImgUrl}
-            onConfirm={handleAdjustConfirm}
+            onConfirm={(blob) => handleAdjustConfirm(blob, contextoDoRecorte)}
             isSubmitting={isUploadingAdjusted}
-            allowedPresets={["2:1", "4:1"]}
-            defaultPreset="2:1"
+            allowedPresets={
+              contextoDoRecorte?.campo === "desktopImageUrl" ? ["4:1"] : ["2:1"]
+            }
+            defaultPreset={
+              contextoDoRecorte?.campo === "desktopImageUrl" ? "4:1" : "2:1"
+            }
             bannerPreview={{
               title: formData.title ?? undefined,
               subtitle: formData.subtitle ?? undefined,

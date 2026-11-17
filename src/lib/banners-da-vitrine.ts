@@ -1,3 +1,4 @@
+import { ehTelaDeComputador } from "@/hooks/useTelaDeComputador";
 import { DataVault } from "@/lib/dataVault";
 import { atributosDeImagem } from "@/lib/imageUrl";
 import { IMAGEM_DO_BANNER } from "@/lib/imagem-do-banner";
@@ -87,14 +88,18 @@ export function semearBannersDoCofre(items: Banner[]): boolean {
 
 export function preCarregarFotoDoTopo(items: Banner[]): void {
   const topBanner = items.find((b) => b.position === "home_top" && b.active);
-  if (topBanner?.imageUrl && typeof window !== "undefined") {
-    const atributos = atributosDeImagem(topBanner.imageUrl, IMAGEM_DO_BANNER);
+  const imagem =
+    ehTelaDeComputador() && topBanner?.desktopImageUrl
+      ? topBanner.desktopImageUrl
+      : topBanner?.imageUrl;
+  if (imagem && typeof window !== "undefined") {
+    const atributos = atributosDeImagem(imagem, IMAGEM_DO_BANNER);
     const img = new Image();
-    if (atributos.src !== topBanner.imageUrl) {
+    if (atributos.src !== imagem) {
       img.onerror = () => {
         img.onerror = null;
         const original = new Image();
-        original.src = topBanner.imageUrl;
+        original.src = imagem;
       };
     }
     img.sizes = atributos.sizes ?? "";
@@ -113,8 +118,12 @@ function preCarregarFotoNoBoot(items: Banner[]): void {
   const caminho = globalThis.location?.pathname.replace(/\/+$/, "");
   if (caminho !== "" && caminho !== "/home") return;
   const topBanner = items.find((b) => b.position === "home_top" && b.active);
-  if (!topBanner?.imageUrl) return;
-  const { srcSet } = atributosDeImagem(topBanner.imageUrl, IMAGEM_DO_BANNER);
+  const imagem =
+    ehTelaDeComputador() && topBanner?.desktopImageUrl
+      ? topBanner.desktopImageUrl
+      : topBanner?.imageUrl;
+  if (!imagem) return;
+  const { srcSet } = atributosDeImagem(imagem, IMAGEM_DO_BANNER);
   if (!srcSet) return;
   preCarregarFotoDoTopo(items);
 }
@@ -123,6 +132,7 @@ function mapearBanner(b: any): Banner {
   return {
     id: b.id,
     imageUrl: b.image_url || b.imagem_url,
+    desktopImageUrl: b.desktop_image_url || null,
     title: b.title || "",
     link: b.link || undefined,
     position: b.position as "home_top" | "home_middle" | "home_bottom",

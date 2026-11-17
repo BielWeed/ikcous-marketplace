@@ -64,6 +64,7 @@ describe("defaultBannerFor — fonte única do banner vazio", () => {
     expect(defaultBannerFor("home_middle", 4)).toEqual({
       title: "",
       imageUrl: "",
+      desktopImageUrl: null,
       link: "",
       position: "home_middle",
       active: true,

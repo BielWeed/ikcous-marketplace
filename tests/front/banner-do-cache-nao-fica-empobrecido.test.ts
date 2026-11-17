@@ -30,6 +30,7 @@ const { TABLE_CONFIGS } = await import("@/lib/realtimeSyncEngine");
 const LINHA_CRUA = {
   id: "b-1",
   image_url: "https://exemplo/img.png",
+  desktop_image_url: "https://exemplo/desktop.png",
   title: "Título",
   link: "/promo",
   position: "home",
@@ -64,6 +65,7 @@ describe("mapRecord de banners (realtimeSyncEngine) não empobrece o cache", () 
 
     // As 8 antigas continuam.
     expect(mapeado.id).toBe("b-1");
+    expect(mapeado.desktopImageUrl).toBe("https://exemplo/desktop.png");
     expect(mapeado.title).toBe("Título");
     expect(mapeado.order).toBe(3);
 

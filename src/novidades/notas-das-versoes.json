@@ -1,4 +1,14 @@
 {
+  "1.5.202": {
+    "titulo": "Um banner para cada tela",
+    "novidades": [
+      "Agora cada banner pode ter uma imagem e um recorte próprios para celular e computador, sem substituir a outra versão."
+    ],
+    "correcoes": [],
+    "melhorias": [
+      "Banners antigos continuam usando a imagem atual até você configurar a versão de computador."
+    ]
+  },
   "1.5.201": {
     "titulo": "Ajustes organizados para o computador",
     "novidades": [],

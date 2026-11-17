@@ -287,6 +287,13 @@ describe("AdminBannersView — recorte confirmado chega ao upload com o tipo REA
 
     let confirmsFeitos = 0;
     for (const caso of casos) {
+      if (confirmsFeitos > 0) {
+        // Confirmar fecha o recorte: cada formato precisa de uma abertura nova.
+        // Reutilizar o callback anterior agora simula um recorte atrasado.
+        await act(async () => {
+          localizarBotaoPorTexto(hospedeiro, "Ajustar")!.click();
+        });
+      }
       await confirmarRecorte(caso.blob);
       confirmsFeitos += 1;
 
