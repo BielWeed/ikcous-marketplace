@@ -130,6 +130,28 @@ describe("busca do topo — categoria escondida não é sugerida", () => {
     ]);
   });
 
+  it("mostra so as tres primeiras categorias compativeis na ordem do catalogo", async () => {
+    estado.produtos = [
+      produto("Camisa Azul", "Vestidos"),
+      produto("Blusa Verde", "Vestuário"),
+      produto("Saia Longa", "Vestes"),
+      produto("Calca Preta", "Vestimentas"),
+    ];
+    estado.categorias = [
+      categoria("Vestimentas", true),
+      categoria("Vestes", true),
+      categoria("Vestuário", true),
+      categoria("Vestidos", true),
+    ];
+    await buscarPorVest();
+
+    expect(botoesDoBloco("Categorias Encontradas")).toEqual([
+      "Vestidos",
+      "Vestuário",
+      "Vestes",
+    ]);
+  });
+
   it("a categoria escondida some de 'Categorias Encontradas' e das sugestões; a outra fica", async () => {
     estado.categorias = [
       categoria("Vestidos", false),
