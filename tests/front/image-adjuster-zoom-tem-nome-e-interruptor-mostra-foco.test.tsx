@@ -56,6 +56,33 @@ function montar() {
 }
 
 describe("ImageAdjuster — acessibilidade do zoom e do interruptor", () => {
+  it("reserva o gesto à foto sem bloquear a rolagem fora dela", () => {
+    montar();
+    const recorte = document.body.querySelector(
+      '[role="application"][aria-label="Ajustador de imagem: clique e arraste para posicionar"]',
+    );
+    expect(recorte).not.toBeNull();
+    expect(recorte?.classList.contains("touch-none")).toBe(true);
+    const rolavel = recorte?.closest(".overflow-y-auto");
+    expect(rolavel).not.toBeNull();
+    expect(rolavel?.classList.contains("touch-none")).toBe(false);
+  });
+
+  it.each(["Voltar", "Diminuir zoom", "Aumentar zoom"])(
+    "o botão %s garante uma área de toque de pelo menos 44 por 44",
+    (nome) => {
+      montar();
+      const botao = Array.from(document.body.querySelectorAll("button")).find(
+        (elemento) =>
+          (elemento.getAttribute("aria-label") ??
+            elemento.textContent?.trim()) === nome,
+      );
+      expect(botao).toBeDefined();
+      expect(botao?.classList.contains("min-h-11")).toBe(true);
+      expect(botao?.classList.contains("min-w-11")).toBe(true);
+    },
+  );
+
   it("o controle deslizante do zoom é achado pelo nome 'zoom'", () => {
     montar();
     const slider = document.body.querySelector<HTMLInputElement>(
