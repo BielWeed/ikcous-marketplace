@@ -284,6 +284,21 @@ Deno.test("paridade: o e-mail de pagamento atrasado (assunto e HTML) é BYTE A B
   }
 });
 
+// Literais independentes: o webhook reexporta a mesma função, então paridade não basta.
+for (const [caso, orderId, nomeDaLoja, esperado] of [
+  ["com loja", PEDIDO, "Loja da Ana", "Pedido #4F5A6B · Loja da Ana"],
+  ["sem loja", PEDIDO, "", "Pedido #4F5A6B"],
+  ["loja só com espaços", PEDIDO, "   ", "Pedido #4F5A6B"],
+  ["loja com HTML e espaços", PEDIDO, "  <b>Loja & Cia</b>  ", "Pedido #4F5A6B · <b>Loja & Cia</b>"],
+  ["pedido vazio com loja", "", "Loja da Ana", "Pedido # · Loja da Ana"],
+  ["pedido vazio sem loja", "", "", "Pedido #"],
+] as const) {
+  Deno.test(`aviso atrasado: assunto literal — ${caso}`, () => {
+    assertEquals(assuntoDoAvisoDePagamentoAtrasado(orderId, nomeDaLoja), esperado);
+    assertEquals(assuntoDoWebhook(orderId, nomeDaLoja), esperado);
+  });
+}
+
 Deno.test("aviso atrasado: escapa o nome da loja e o número do pedido; sem nome, omite o parágrafo da loja", () => {
   const nomeDaLoja = "  <b>Loja & Cia</b>  ";
   const html = htmlDoAvisoDePagamentoAtrasado({ orderId: PEDIDO, nomeDaLoja });
