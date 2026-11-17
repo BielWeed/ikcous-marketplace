@@ -232,6 +232,27 @@ export const CuponsDoCheckout = memo(function CuponsDoCheckout({
   onApply,
   onRemove,
 }: CuponsDoCheckoutProps) {
+  const secaoRef = useRef<HTMLElement>(null);
+  const origemRef = useRef<Element | null>(null);
+  const aplicar = (...args: Parameters<typeof onApply>) => {
+    origemRef.current = document.activeElement;
+    onApply(...args);
+  };
+  useEffect(() => {
+    const origem = origemRef.current;
+    if (
+      appliedCoupon &&
+      origem &&
+      !origem.isConnected &&
+      (document.activeElement === origem ||
+        document.activeElement === document.body)
+    ) {
+      secaoRef.current
+        ?.querySelector<HTMLButtonElement>('[aria-label="Remover cupom"]')
+        ?.focus();
+    }
+    origemRef.current = null;
+  }, [appliedCoupon]);
   const [verTodos, setVerTodos] = useState(false);
   // "Tenho um código de cupom": o campo de digitar fica atrás do link. Uma
   // recusa do código abre o campo sozinho — o erro nunca fica escondido — mas
@@ -284,6 +305,7 @@ export const CuponsDoCheckout = memo(function CuponsDoCheckout({
 
   return (
     <section
+      ref={secaoRef}
       aria-labelledby="titulo-cupons"
       className="rounded-2xl border border-zinc-100/80 bg-white p-4 shadow-sm"
     >
@@ -302,7 +324,7 @@ export const CuponsDoCheckout = memo(function CuponsDoCheckout({
       <div className="mt-3 space-y-3">
         {appliedCoupon && (
           <CouponInput
-            onApply={onApply}
+            onApply={aplicar}
             onRemove={onRemove}
             appliedCoupon={appliedCoupon}
             travado={emEnvio}
@@ -368,7 +390,7 @@ export const CuponsDoCheckout = memo(function CuponsDoCheckout({
                   melhor={cupom.codigo === melhor}
                   aplicandoEste={aplicando === cupom.codigo}
                   travado={aplicando !== null || emEnvio}
-                  onAplicar={onApply}
+                  onAplicar={aplicar}
                 />
               ))}
             </ul>
@@ -418,7 +440,7 @@ export const CuponsDoCheckout = memo(function CuponsDoCheckout({
                 escondido. */}
             <div id="campo-de-cupom" hidden={!campoVisivel} className="pt-1">
               <CouponInput
-                onApply={onApply}
+                onApply={aplicar}
                 onRemove={onRemove}
                 appliedCoupon={null}
                 error={couponError}

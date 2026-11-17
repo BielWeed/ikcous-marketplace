@@ -112,6 +112,27 @@ describe("Perfil — campos de foto e de capa alcançáveis pelo teclado", () =>
   const FOTO = "button[aria-label='Trocar foto de perfil']";
   const CAPA = "[title='Alterar capa de fundo']";
 
+  it.each([FOTO, CAPA])(
+    "Esc devolve o foco ao botão que abriu %s",
+    async (seletor) => {
+      const { ProfileView } = await import("@/views/customer/ProfileView");
+      await act(async () => raiz.render(<ProfileView onNavigate={vi.fn()} />));
+      const origem = hospedeiro.querySelector<HTMLButtonElement>(seletor)!;
+      origem.focus();
+      await act(async () => origem.click());
+      expect(document.querySelector("[role=dialog]")).not.toBeNull();
+      expect(document.activeElement).not.toBe(origem);
+      await act(async () => {
+        document.activeElement!.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+        );
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      expect(document.querySelector("[role=dialog]")).toBeNull();
+      expect(document.activeElement === origem).toBe(true);
+    },
+  );
+
   function esperaFocavelComAnel(id: string) {
     const input = document.getElementById(id) as HTMLInputElement | null;
     expect(input, `#${id} existe`).not.toBeNull();
