@@ -137,7 +137,7 @@ UNION ALL SELECT 'fotos de devolução guardadas', count(*)::text FROM storage.o
 ```
 
 **Anote** o e-mail de entrada, o nome, o whatsapp, o CPF e o **endereço** (rua,
-complemento, bairro e CEP) que aparecerem: o passo 6 precisa deles (depois do
+complemento, bairro e CEP) que aparecerem: o passo 7 precisa deles (depois do
 passo 4 eles deixam de existir no banco).
 
 Mostre o resultado ao dono. Se houver **pedido ou devolução em andamento**, pare:
@@ -395,7 +395,8 @@ $anonimizar$;
 **[CONFERIR EM LOJA DE TESTE]** (só um Supabase de verdade prova):
 
 - depois de rodar valendo, **tente entrar** na conta de teste (senha antiga): tem de
-  ser recusado; e um celular já logado deve perder a sessão (no máximo em 1 hora);
+  ser recusado; e um celular já logado deve perder a sessão (no máximo em 1 hora).
+  Nesse intervalo ainda pode gravar dados: faça a reconferência do passo 5;
 - os nomes das colunas do esquema `auth` na versão do Supabase da loja
   (`banned_until`, `raw_user_meta_data`, `identities.provider_id`,
   `identities.identity_data`, `sessions`, as colunas de troca e de código de
@@ -409,21 +410,50 @@ $anonimizar$;
   do login escreve ali: o bloco para inteiro com "permission denied" e nada muda);
 - se algum gatilho do Supabase (fora das migrations do projeto) reage a mudança
   no `auth.users`;
-- se o passo 6, rodado de novo depois, não lista nenhuma tabela `auth.`.
+- se o passo 7, rodado de novo depois, não lista nenhuma tabela `auth.`.
 
 Ficam de fora, de propósito (não são dado pessoal legível, mas diga ao dono):
 `auth.refresh_tokens` e `auth.flow_state` (códigos técnicos de acesso, sem nome
 nem e-mail; o ensaio não os cobre). O acesso já está bloqueado pela conta banida;
 se o dono quiser limpar também, é um passo novo a pedir a quem programa.
 
-## Passo 5 — Marcar o pedido no painel
+## Passo 5 — Reconferir depois de 1 hora
 
-Só depois do passo 4 valendo. Volte à seção "Pedidos de privacidade dos
-clientes", escreva a nota (regra 4) e toque em "Marcar como atendido" (ou "Não
+1. Anote a data, o horário e o fuso em que terminou o passo 4 valendo. Espere
+   **mais de 1 hora**: esse é o prazo máximo do token de acesso já emitido (o
+   código que um aparelho já logado usa para acessar a conta), mesmo com a conta
+   bloqueada e as sessões apagadas.
+2. Rode de novo o **mesmo bloco de leitura do passo 2**, com o mesmo
+   identificador. Confira o perfil: nome "Cliente removido", whatsapp e CPF
+   vazios; em `user_addresses`, a contagem de endereços tem de ser 0.
+3. Confira também os pedidos criados depois do horário anotado. O bloco do
+   passo 2 conta todos os pedidos; para ver só os novos, use esta leitura
+   (colunas conferidas em `supabase/migrations/20260806000000_baseline_do_schema_vivo.sql`).
+   Troque o identificador e a data/hora de exemplo pelo horário do passo 4,
+   incluindo o fuso (`-03:00` no exemplo):
+
+   ```sql
+   SELECT id, created_at, customer_name, customer_phone, customer_data, notes, observation
+     FROM public.marketplace_orders
+    WHERE user_id = 'COLE-O-ID-AQUI'::uuid
+      AND created_at > timestamptz '2026-11-17 10:00:00-03:00';
+   ```
+
+4. Se apareceu dado pessoal novo no perfil, endereço ou pedido, **repita o
+   passo 4**, respeitando as mesmas travas, e refaça este passo 5 (inclusive a
+   espera, contada da nova execução). Se o bloco parar, o pedido de privacidade
+   continua aberto: não marque como atendido.
+5. Só depois de reconferir sem dado pessoal novo, siga para o passo 6.
+
+## Passo 6 — Marcar o pedido no painel
+
+Só depois do passo 4 valendo e da reconferência do passo 5. Volte à seção
+"Pedidos de privacidade dos clientes", escreva a nota (regra 4) e toque em
+"Marcar como atendido" (ou "Não
 posso atender", com o motivo na nota) e confirme na pergunta. O painel grava quem
 decidiu e quando; a cliente passa a ver a resposta na tela dela.
 
-## Passo 6 — Caçar o que sobrou (texto livre)
+## Passo 7 — Caçar o que sobrou (texto livre)
 
 O que o bloco do passo 4 não consegue saber: texto livre onde o **nome** ou o
 **telefone** dela foi escrito à mão (resposta da loja numa avaliação, nota de
@@ -531,7 +561,7 @@ alguém pedir a troca para o e-mail dele e ficar com a conta):
 ## O que NÃO fazer
 
 - Não apagar o login da cliente nem pedido nenhum.
-- Não marcar "atendido" antes de terminar os passos 3 e 4 (a decisão é final).
+- Não marcar "atendido" antes de terminar os passos 3, 4 e 5 (a decisão é final).
 - Não pedir a senha da cliente, nem por e-mail.
 - Não copiar dados da cliente para planilha, e-mail ou conversa.
 
