@@ -331,6 +331,31 @@ Deno.test("valorDoCaso: só valor positivo em BRL; outra moeda, ausente ou não 
   assertEquals(valorDoCaso({ amount: null, currency: "BRL" }), null);
 });
 
+// Dinheiro: o valor contestado vai para o registro financeiro. Centavos NÃO redondos (37,27) não podem
+// ser arredondados para uma casa (37,30) nem truncados — o resultado é o valor exato, com 2 casas.
+Deno.test("valorDoCaso: preserva os centavos (2 casas) em número e em texto — 37,27 nunca vira 37,3", () => {
+  assertEquals(valorDoCaso({ amount: 37.27, currency: "BRL" }), 37.27);
+  assertEquals(valorDoCaso({ amount: "37.27", currency: "BRL" }), 37.27);
+  assertEquals(valorDoCaso({ amount: 0.01, currency: "BRL" }), 0.01);
+  assertEquals(valorDoCaso({ amount: "0.99", currency: "BRL" }), 0.99);
+  assertEquals(valorDoCaso({ amount: 149.95, currency: "BRL" }), 149.95);
+  assertEquals(valorDoCaso({ amount: "1234.56", currency: "BRL" }), 1234.56);
+});
+
+Deno.test("valorDoCaso: arredonda na 2ª casa (não mais) e recusa o que não é número legível", () => {
+  assertEquals(valorDoCaso({ amount: 37.274, currency: "BRL" }), 37.27);
+  assertEquals(valorDoCaso({ amount: "37.276", currency: "BRL" }), 37.28);
+  // vírgula decimal não é o formato do MP (Number("37,27") é NaN): "não sei", nunca um palpite
+  assertEquals(valorDoCaso({ amount: "37,27", currency: "BRL" }), null);
+  assertEquals(valorDoCaso({ amount: -37.27, currency: "BRL" }), null);
+  assertEquals(valorDoCaso({ amount: "-37.27", currency: "BRL" }), null);
+  assertEquals(valorDoCaso({ amount: Number.NaN, currency: "BRL" }), null);
+  assertEquals(valorDoCaso({ amount: "abc", currency: "BRL" }), null);
+  assertEquals(valorDoCaso({ amount: Infinity, currency: "BRL" }), null);
+  assertEquals(valorDoCaso({ amount: "", currency: "BRL" }), null);
+  assertEquals(valorDoCaso({ amount: undefined, currency: "BRL" }), null);
+});
+
 const PAY = "PAY01J67CQQH5904WDBVZEM4JMEP3";
 function order(chargebacks: unknown, payments: unknown = [{ id: PAY, status: "charged_back", status_detail: "in_process" }]) {
   return { id: "ORDTST1", transactions: { payments, chargebacks } };
