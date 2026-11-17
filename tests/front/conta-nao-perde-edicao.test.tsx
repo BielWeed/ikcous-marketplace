@@ -268,6 +268,19 @@ describe("Conta — preserva a edição", () => {
     expect(podeAtualizarEmSegundoPlano()).toBe(true);
   });
 
+  it("falha ao salvar o perfil avisa erro e não sucesso", async () => {
+    const { toast } = await import("sonner");
+    await montar();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    rpc.mockResolvedValueOnce({ error: { message: "Falha de teste" } });
+    digitar("full_name", "Nome novo");
+    await salvar();
+
+    expect(toast.error).toHaveBeenCalledTimes(1);
+    expect(toast.error).toHaveBeenCalledWith("Erro ao atualizar perfil");
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
   it("falha só do CPF mantém a pendência sem desfazer o nome já salvo", async () => {
     await montar();
     rpc.mockResolvedValueOnce({ error: null });
