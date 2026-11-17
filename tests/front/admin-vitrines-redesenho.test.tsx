@@ -1138,6 +1138,25 @@ describe("ao soltar, grava sobre o estado ATUAL das vitrines (por id)", () => {
     expect(cartoes()).toHaveLength(3);
   });
 
+  it("lista do mesmo tamanho com vitrine repetida não grava e restaura a ordem salva", async () => {
+    configDaLoja = {
+      homeSections: [secaoKits, secaoDestaques, secaoLancamentos],
+    };
+    await montar();
+    await act(async () => {
+      arrastar.onReorder?.([secaoKits, secaoKits, secaoDestaques]);
+    });
+    await act(async () => {
+      arrastar.aoSoltar.get("custom_1")?.();
+    });
+    expect(updateConfig).not.toHaveBeenCalled();
+    expect(cartoes().map((c) => c.getAttribute("data-vitrine-id"))).toEqual([
+      "custom_1",
+      "bestsellers",
+      "new_arrivals",
+    ]);
+  });
+
   it("vitrine que sumiu do estado atual durante o arrasto não grava", async () => {
     await montar();
     await act(async () => {
