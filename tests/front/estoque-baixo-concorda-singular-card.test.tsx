@@ -68,6 +68,18 @@ describe("ProductCard — aviso de estoque baixo concorda em número", () => {
     expect(hospedeiro.textContent).not.toContain("restam!");
   });
 
+  it("5 unidades ainda mostram o aviso de estoque baixo", async () => {
+    await montar(5);
+    expect(hospedeiro.textContent).toContain("Restam apenas 5!");
+    expect(hospedeiro.textContent).not.toContain("Estoque: 5");
+  });
+
+  it("6 unidades mostram o estoque saudável, sem aviso de estoque baixo", async () => {
+    await montar(6);
+    expect(hospedeiro.textContent).toContain("Estoque: 6");
+    expect(hospedeiro.textContent).not.toContain("Restam apenas");
+  });
+
   it("3 unidades: 'Restam apenas 3!'", async () => {
     await montar(3);
     expect(hospedeiro.textContent).toContain("Restam apenas 3!");
