@@ -237,6 +237,128 @@ describe("AuthContext — limpeza local de sessão (issue #122)", () => {
     expect(restantes.some((k) => k.includes("-code-verifier"))).toBe(false);
   });
 
+  // Aparelho cheio: `setItem` lança e o armazenamento seguro guarda numa cópia
+  // em memória. O Sair apagava só o `localStorage` cru e a cópia sobrevivia.
+  describe("com o aparelho cheio (cópia em memória do armazenamento seguro)", () => {
+    function encherOAparelho() {
+      vi.spyOn(localStorage, "setItem").mockImplementation(() => {
+        throw new DOMException(
+          "The quota has been exceeded.",
+          "QuotaExceededError",
+        );
+      });
+    }
+
+    // O `signOut` do supabase-js que dá certo emite SIGNED_OUT (é o listener
+    // que limpa os dados locais); o dublê precisa fazer o mesmo.
+    function sairComSucessoComoOSdk(
+      supabase: Awaited<ReturnType<typeof montarLogado>>["supabase"],
+      callback: () => AuthChangeCallback,
+    ) {
+      vi.mocked(supabase.auth.signOut).mockImplementation(async () => {
+        await callback()("SIGNED_OUT", null);
+        return { error: null };
+      });
+    }
+
+    it("1c. Sair apaga o CEP da conta que saiu mesmo quando ele só existe na memória", async () => {
+      const { supabase, callback, aoAtualizar } = await montarLogado();
+      const { localStorageSeguro } = await import("@/lib/armazenamento-seguro");
+      sairComSucessoComoOSdk(supabase, callback);
+      encherOAparelho();
+      localStorageSeguro().setItem("ikcous_last_shipping_cep", "01310-100");
+      expect(localStorage.getItem("ikcous_last_shipping_cep")).toBeNull();
+      expect(localStorageSeguro().getItem("ikcous_last_shipping_cep")).toBe(
+        "01310-100",
+      );
+
+      await act(async () => {
+        await ultimoEstado(aoAtualizar)!.logout();
+        await esperarMicrotarefas();
+      });
+
+      // Para a próxima pessoa na aba (o checkout lê por aqui) o CEP não existe.
+      expect(
+        localStorageSeguro().getItem("ikcous_last_shipping_cep"),
+      ).toBeNull();
+    });
+
+    it("1d. o SIGNED_OUT de outra aba também apaga o CEP que só está na memória", async () => {
+      const { callback } = await montarLogado();
+      const { localStorageSeguro } = await import("@/lib/armazenamento-seguro");
+      encherOAparelho();
+      localStorageSeguro().setItem("ikcous_last_shipping_cep", "01310-100");
+
+      await act(async () => {
+        callback()("SIGNED_OUT", null);
+        await esperarMicrotarefas();
+      });
+
+      expect(
+        localStorageSeguro().getItem("ikcous_last_shipping_cep"),
+      ).toBeNull();
+    });
+
+    it("1e. limite: com o ACESSO ao localStorage bloqueado, o Sair ainda apaga o CEP da memória", async () => {
+      const { supabase, callback, aoAtualizar } = await montarLogado();
+      const { localStorageSeguro } = await import("@/lib/armazenamento-seguro");
+      sairComSucessoComoOSdk(supabase, callback);
+      const original = Object.getOwnPropertyDescriptor(
+        globalThis,
+        "localStorage",
+      );
+      Object.defineProperty(globalThis, "localStorage", {
+        configurable: true,
+        get() {
+          throw new DOMException("The operation is insecure.", "SecurityError");
+        },
+      });
+      try {
+        localStorageSeguro().setItem("ikcous_last_shipping_cep", "01310-100");
+        expect(localStorageSeguro().getItem("ikcous_last_shipping_cep")).toBe(
+          "01310-100",
+        );
+
+        await act(async () => {
+          await ultimoEstado(aoAtualizar)!.logout();
+          await esperarMicrotarefas();
+        });
+
+        expect(
+          localStorageSeguro().getItem("ikcous_last_shipping_cep"),
+        ).toBeNull();
+      } finally {
+        if (original)
+          Object.defineProperty(globalThis, "localStorage", original);
+      }
+    });
+
+    it("1f. signOut com erro e a sessão só na memória: o ramo de erro a esquece (nada a renova depois)", async () => {
+      const { supabase, aoAtualizar } = await montarLogado();
+      const { localStorageSeguro } = await import("@/lib/armazenamento-seguro");
+      (
+        supabase.auth.signOut as unknown as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({ error: { message: "Failed to fetch" } });
+      encherOAparelho();
+      const seguro = localStorageSeguro();
+      seguro.setItem("sb-teste-auth-token", '{"access_token":"tok-user-a"}');
+      seguro.setItem("sb-teste-auth-token-code-verifier", "verificador-pkce");
+      seguro.setItem("sb-teste-auth-token-user", '{"user":{"id":"user-a"}}');
+      // Não é de sessão: o que não casa com as chaves do login não é tocado.
+      seguro.setItem("chave-de-outro-assunto", "fica");
+
+      await act(async () => {
+        await ultimoEstado(aoAtualizar)!.logout();
+        await esperarMicrotarefas();
+      });
+
+      expect(seguro.getItem("sb-teste-auth-token")).toBeNull();
+      expect(seguro.getItem("sb-teste-auth-token-code-verifier")).toBeNull();
+      expect(seguro.getItem("sb-teste-auth-token-user")).toBeNull();
+      expect(seguro.getItem("chave-de-outro-assunto")).toBe("fica");
+    });
+  });
+
   it.each(["sucesso", "erro"] as const)(
     "signOut pendurado libera o Sair e limpa a sessão em 10 s; %s atrasado não a restaura",
     async (respostaTardia) => {

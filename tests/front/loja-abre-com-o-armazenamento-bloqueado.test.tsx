@@ -292,6 +292,8 @@ vi.mock("@/lib/supabase", () => {
 });
 
 import App from "@/App";
+import { sessionStorageSeguro } from "@/lib/armazenamento-seguro";
+import { ArmazenamentoComCota } from "./helpers/armazenamento-com-cota";
 
 // --- Buracos do jsdom -------------------------------------------------
 class ObservadorDeInterseccao {
@@ -434,6 +436,50 @@ describe("App — a loja abre com o armazenamento do navegador bloqueado", () =>
     } finally {
       for (const f of desfazer) f();
       loader.remove();
+    }
+  });
+
+  // Aparelho antigo / cota estourada: o ACESSO funciona, mas os MÉTODOS lançam.
+  // A cópia em memória do util sobrevive entre testes deste arquivo (o módulo é
+  // carregado uma vez): cada teste a esvazia no fim, pelo próprio util.
+  it("armazenamento cheio (setItem lança): a loja abre e o loader sai", async () => {
+    const loader = pintarOLoader();
+    vi.stubGlobal("localStorage", new ArmazenamentoComCota(0));
+    vi.stubGlobal("sessionStorage", new ArmazenamentoComCota(0));
+    try {
+      await carregarEm("/");
+
+      expect(naTela("home")).not.toBeNull();
+      expect(document.body.contains(loader)).toBe(false);
+    } finally {
+      loader.remove();
+      sessionStorageSeguro().removeItem("splash_shown");
+    }
+  });
+
+  it("getItem e setItem lançando: a loja abre e o loader sai", async () => {
+    const loader = pintarOLoader();
+    const recusar = () => {
+      throw new DOMException("The operation is insecure.", "SecurityError");
+    };
+    const quebrado = {
+      getItem: recusar,
+      setItem: recusar,
+      removeItem: recusar,
+      clear: recusar,
+      key: recusar,
+      length: 0,
+    };
+    vi.stubGlobal("localStorage", quebrado);
+    vi.stubGlobal("sessionStorage", quebrado);
+    try {
+      await carregarEm("/");
+
+      expect(naTela("home")).not.toBeNull();
+      expect(document.body.contains(loader)).toBe(false);
+    } finally {
+      loader.remove();
+      sessionStorageSeguro().removeItem("splash_shown");
     }
   });
 

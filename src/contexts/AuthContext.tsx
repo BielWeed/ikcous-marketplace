@@ -1,4 +1,8 @@
-import { sessionStorageSeguro } from "@/lib/armazenamento-seguro";
+import {
+  esquecerDaMemoriaDoLocal,
+  localStorageSeguro,
+  sessionStorageSeguro,
+} from "@/lib/armazenamento-seguro";
 import { pedirAoSwPurgarArquivosPrivados } from "@/lib/arquivo-publico-do-storage";
 import { esquecerAdiamentoDosAvisos } from "@/lib/avisos-do-aparelho";
 import {
@@ -282,6 +286,10 @@ function gravarAtalhoDeLojista(chave: string, valor: string): void {
   }
 }
 
+// `sb-<ref>-auth-token` (+ `-user`) e `sb-<ref>-auth-token-code-verifier`.
+const ehChaveDaSessaoDoSupabase = (chave: string) =>
+  chave.includes("-auth-token") || chave.includes("-code-verifier");
+
 function clearLocalUserData() {
   // admin_cache-17 — os quatro caches de admin (customers/coupons/reviews/
   // questions) são variáveis de módulo em src/utils/admin_cache.ts, fora do
@@ -354,6 +362,11 @@ function esquecerDadosLocaisDaConta() {
 
 function apagarDadosLocaisDaConta() {
   if (typeof window === "undefined") return;
+  // O CEP é PII (o checkout o pré-preenche) e é gravado pelo armazenamento
+  // seguro: aparelho cheio ou bloqueado o deixa só numa cópia em memória, que o
+  // `localStorage.removeItem` cru não alcança. Vem ANTES dos acessos crus
+  // abaixo, que lançam com o armazenamento bloqueado e abortariam a limpeza.
+  localStorageSeguro().removeItem("ikcous_last_shipping_cep");
   // L10 — as FILAS offline (`orders_`/`products_offline_updates_queue:<uid>`)
   // e os RASCUNHOS do admin (`admin_banner_form_draft:<uid>`,
   // `admin_pdv_venda_draft:<uid>`, `ikcous_product_form_draft…:<uid>`) são
@@ -373,12 +386,11 @@ function apagarDadosLocaisDaConta() {
   localStorage.removeItem("ikcous_recently_viewed");
   localStorage.removeItem("ikcous_is_admin");
   // Revisão de contexto limpo do diff (achado 2) — o CEP também é PII do
-  // usuário logado: `ikcous_last_shipping_cep` é lido na montagem do
-  // checkout e do calculador de frete, e `ikcous_shipping_cache_<cep>`
-  // carrega o CEP no PRÓPRIO NOME da chave (visível no DevTools sem abrir
-  // valor nenhum). Sem isto, cliente B via o CEP de cliente A pré-preenchido
-  // num dispositivo compartilhado.
-  localStorage.removeItem("ikcous_last_shipping_cep");
+  // usuário logado: `ikcous_last_shipping_cep` (apagado no topo desta função) é
+  // lido na montagem do checkout e do calculador de frete, e
+  // `ikcous_shipping_cache_<cep>` carrega o CEP no PRÓPRIO NOME da chave
+  // (visível no DevTools sem abrir valor nenhum). Sem isto, cliente B via o CEP
+  // de cliente A pré-preenchido num dispositivo compartilhado.
   for (let i = localStorage.length - 1; i >= 0; i--) {
     const key = localStorage.key(i);
     if (
@@ -1624,14 +1636,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setAdminVerificacaoFalhou(false);
       setIsPasswordRecovery(false);
       clearLocalUserData();
+      // A sessão que só existe na cópia em memória (aparelho cheio) não aparece
+      // na varredura abaixo; `getSession` a leria e RENOVARIA a conta que saiu.
+      esquecerDaMemoriaDoLocal(ehChaveDaSessaoDoSupabase);
       if (typeof window !== "undefined") {
         try {
           for (let i = localStorage.length - 1; i >= 0; i--) {
             const key = localStorage.key(i);
-            if (
-              key?.includes("-auth-token") ||
-              key?.includes("-code-verifier")
-            ) {
+            if (key && ehChaveDaSessaoDoSupabase(key)) {
               localStorage.removeItem(key);
             }
           }
