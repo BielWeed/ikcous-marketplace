@@ -13,7 +13,18 @@
       "Painel, buscas de pedidos, clientes, devoluções e balcão: % e _ digitados na busca passam a valer como caracteres comuns (como o _ de um cupom BF_10), em vez de casar com qualquer coisa, e espaços repetidos são ignorados.",
       "Texto comprido: o nome muito grande da loja no topo deixa de empurrar a busca e os botões para fora da tela (se não couber, termina em reticências), e palavras compridas no bairro da lista de pedidos e no recibo impresso quebram a linha em vez de estourar a tela.",
       "Loja com cor principal clara (branco, amarelo): o nome do produto ao passar o mouse, o \"Faltam R$\" do lembrete do carrinho, o botão Útil, o check do frete e a borda e o foco das miniaturas da galeria deixam de sumir sobre o fundo branco. Cores que já eram legíveis não mudam.",
-      "App da loja: quando a loja entra em manutenção ou o endereço fica sem loja, a página de manutenção volta a aparecer na abertura seguinte, em vez de ficar escondida pela cópia guardada do app. Falhas passageiras do servidor não apagam essa cópia."
+      "App da loja: quando a loja entra em manutenção ou o endereço fica sem loja, a página de manutenção volta a aparecer na abertura seguinte, em vez de ficar escondida pela cópia guardada do app. Falhas passageiras do servidor não apagam essa cópia.",
+      "Entrar com e-mail ou Google, fechar o pedido e digitar o CEP funcionam em aparelho com o armazenamento cheio ou bloqueado pelo navegador: o que ele recusa fica guardado só enquanto a página está aberta. \"Sair\" e a troca direta de conta apagam também essa cópia, então o CEP da conta anterior não aparece mais no pagamento de quem entra na mesma aba.",
+      "Pedido entregue e estornado: o cartão do pedido no painel diz \"pedido finalizado\" em vez de \"pedido aberto\".",
+      "Foco do teclado: ao aplicar um cupom no pagamento, o foco segue para \"Remover cupom\"; ao fechar a janela da foto ou da capa com Esc, o foco volta ao botão que a abriu.",
+      "Ajuste da foto no painel: o gesto de toque fica só na área da foto, sem travar a rolagem do resto do editor, e o botão Voltar e os de zoom têm área de toque de 44 por 44 pixels.",
+      "Busca de pedido: o botão de falar com a loja pelo WhatsApp já leva o identificador digitado; sem identificador válido, a mensagem só pede ajuda.",
+      "Fonte ampliada: os campos do iPhone mantêm o mínimo de 16 px e acompanham a fonte ampliada, e o prazo do frete e o aviso de aguardar a retirada crescem junto, com cinza mais escuro quando a opção não está marcada.",
+      "CSV de produtos: a criação e a atualização saem no horário de Brasília; datas ausentes ou inválidas ficam vazias.",
+      "Pedido com um único item avaliado: o texto diz \"1 de 1 avaliado\", no singular.",
+      "Nomes compridos sem espaço nas opções, nos grupos de variação e no horário de atendimento da loja quebram a linha em vez de estourar a tela.",
+      "Botão principal e resumo do pedido: o texto do botão passa a ter sempre o contraste mínimo de leitura sobre a cor da loja, e o título \"Resumo do Pedido\" ficou mais escuro. No painel, o aviso de cor clara aparece em mais cores.",
+      "Perfil e avisos: a data do pedido, o \"Hoje\" e \"Ontem\" e a data completa dos avisos mostram o horário de Brasília em qualquer aparelho."
     ],
     "melhorias": [
       "O texto \"Sem foto\" ficou mais escuro para passar do contraste mínimo de leitura.",
