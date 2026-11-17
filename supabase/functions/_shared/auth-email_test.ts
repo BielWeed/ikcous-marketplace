@@ -29,6 +29,8 @@ for (
     assertStringIncludes(email.texto, "Loja da Praça");
     assertEquals(email.texto.includes("123456"), mostraCodigo);
     if (!mostraCodigo) {
+      assertEquals(email.assunto, `${assunto} — Loja da Praça`);
+      assertEquals(email.assunto.includes("123456"), false);
       assertEquals(email.html.includes("Código:"), false);
       assertEquals(email.texto.includes("Código:"), false);
       assertEquals(email.texto.includes("digite o código"), false);
@@ -130,11 +132,38 @@ for (
   });
 }
 
-for (const antigo of [undefined, "", "invalido", "a@example.com,b@example.com"]) {
+for (
+  const antigo of [undefined, "", "invalido", "a@example.com,b@example.com"]
+) {
   Deno.test(`Auth aviso de troca recusa old_email inválido: ${String(antigo)}`, () => {
     const corpo = payload("email_changed_notification");
-    if (antigo === undefined) Reflect.deleteProperty(corpo.email_data, "old_email");
-    else corpo.email_data.old_email = antigo;
+    if (antigo === undefined) {
+      Reflect.deleteProperty(corpo.email_data, "old_email");
+    } else corpo.email_data.old_email = antigo;
+    assertThrows(
+      () => montarEmailsAuth(corpo, PROJETO, "Loja"),
+      Error,
+      "payload_invalido",
+    );
+  });
+}
+
+for (
+  const email of [
+    "a@example.com;b@example.com",
+    "a;b@example.com",
+    "Nome <a@example.com>",
+    '"a"@example.com',
+    "a\\b@example.com",
+    "a b@example.com",
+    "a@example.com\r\nBcc: x@y.com",
+    "a@b@example.com",
+    `${"a".repeat(243)}@example.com`,
+  ]
+) {
+  Deno.test(`Auth recusa destinatário inválido: ${JSON.stringify(email)}`, () => {
+    const corpo = payload();
+    corpo.user.email = email;
     assertThrows(
       () => montarEmailsAuth(corpo, PROJETO, "Loja"),
       Error,
