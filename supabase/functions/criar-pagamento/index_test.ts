@@ -9,6 +9,7 @@
  * A chamada ao MP em si já é coberta pelos testes de _shared/mercadopago.ts.
  */
 import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.177.0/testing/asserts.ts";
+import { FakeTime } from "jsr:@std/testing@1.0.21/time";
 import {
   chaveDeIdempotencia,
   descricaoDoPedido,
@@ -6447,6 +6448,9 @@ Deno.test("handler cartão: recusa (402) + liberar_cobranca falhando PERSISTENTE
 // classe de erro que uma indisponibilidade real do MP), e mesmo um sentinela
 // bem velho continua bloqueando o PIX.
 Deno.test("handler cartão (Achado S1 + Ponto 1): recusa com resposta perdida vira sentinela; PIX sobre o sentinela FRESCO recebe 409 explícito (nunca 200 sem QR); sentinela VELHO com busca que FALHA continua bloqueando (nunca libera só pelo relógio)", async () => {
+  // Congela o agora: a duração das chamadas no CI não envelhece o carimbo.
+  const agora = Date.parse("2026-11-17T12:00:00.000Z");
+  using _relogio = new FakeTime(agora);
   const db = bancoComEstado(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }));
   const porChave = new Map<string, { corpo: string; order: Record<string, unknown> | null }>();
   let perderPrimeira = true;
@@ -6522,8 +6526,8 @@ Deno.test("handler cartão (Achado S1 + Ponto 1): recusa com resposta perdida vi
   assertEquals(c2.verificacao, "indisponivel");
   assertEquals(db.linha.gateway_payment_id?.startsWith("verificando:"), true);
   assertEquals(
-    (Date.now() - new Date(db.linha.updated_at as string).getTime()) < 1000,
-    true,
+    db.linha.updated_at,
+    new Date(agora).toISOString(),
     "sentinela recém-gravado — o carimbo é de agora",
   );
 
