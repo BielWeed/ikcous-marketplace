@@ -1014,9 +1014,25 @@ export function useQuestions() {
             },
           );
 
+        // Só o socket cai e volta (a rede segue): a resposta que entrou no
+        // intervalo não chega por evento. Voltando de uma queda, relê UMA vez
+        // e avisa as outras abas; a 1ª confirmação não relê (já foi lida).
+        let caiu = false;
         channel.subscribe((status: any, err?: any) => {
+          if (status !== "SUBSCRIBED") caiu = true;
           if (status === "SUBSCRIBED") {
             console.log("[Realtime-Questions] Active: %s", channelId);
+            if (caiu) {
+              caiu = false;
+              bc?.postMessage({ type: "questions_change", productId });
+              if (onChange) {
+                onChange();
+              } else if (productId) {
+                getQuestionsByProduct(productId);
+              } else {
+                getAllQuestions();
+              }
+            }
           } else if (status === "CHANNEL_ERROR") {
             const errMessage =
               err?.message || (typeof err === "string" ? err : "");
