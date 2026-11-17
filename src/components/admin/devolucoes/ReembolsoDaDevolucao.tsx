@@ -56,7 +56,10 @@ const SEM_RESPOSTA =
 const AVISOS = new Map<string, () => unknown>([
   [
     "reemitido",
-    () => toast.success("Reembolso pedido de novo ao Mercado Pago."),
+    () =>
+      toast.success(
+        "Nova tentativa de reembolso registrada. Confira o andamento nesta ficha.",
+      ),
   ],
   [
     "use_por_fora",

@@ -321,15 +321,21 @@ export function useDevolucoesDoPedidoAdmin(
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState(false);
   const ativoRef = useRef(true);
+  // "Tentar de novo" pode ser tocado com a consulta anterior ainda em voo: só
+  // a rodada mais recente escreve (sucesso, erro e o fim do "carregando"), e a
+  // limpeza do efeito invalida a que ficou para trás.
+  const rodadaRef = useRef(0);
 
   const carregar = useCallback(async () => {
     if (!habilitado) return;
+    const rodada = ++rodadaRef.current;
+    const valeAinda = () => ativoRef.current && rodada === rodadaRef.current;
     setCarregando(true);
     try {
       const { data, error } = await supabase.rpc("devolucoes_do_pedido", {
         p_order_id: orderId,
       });
-      if (!ativoRef.current) return;
+      if (!valeAinda()) return;
       const lista = error ? null : lerDevolucoesDoPedido(data);
       if (!lista) {
         setErro(true);
@@ -338,9 +344,9 @@ export function useDevolucoesDoPedidoAdmin(
       setDevolucoes(lista);
       setErro(false);
     } catch {
-      if (ativoRef.current) setErro(true);
+      if (valeAinda()) setErro(true);
     } finally {
-      if (ativoRef.current) setCarregando(false);
+      if (valeAinda()) setCarregando(false);
     }
   }, [orderId, habilitado]);
 
@@ -349,6 +355,7 @@ export function useDevolucoesDoPedidoAdmin(
     if (habilitado) void carregar();
     return () => {
       ativoRef.current = false;
+      rodadaRef.current += 1;
     };
   }, [habilitado, carregar]);
 
@@ -627,7 +634,7 @@ export function useDevolucaoAdmin(
           }),
         lerResultadoDeStatus,
       );
-      if (r) toast.success("Devolução aprovada. O cliente foi avisado.");
+      if (r) toast.success("Devolução aprovada.");
       return r !== null;
     },
     [id, executar],

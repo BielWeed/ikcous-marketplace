@@ -28,10 +28,8 @@ export function DevolucaoDoPedidoAdminCard({
   /** Navega para `admin-devolucoes` (sem ele, o card só informa). */
   onAbrirDevolucoes?: (id: string) => void;
 }>) {
-  const { devolucoes, erro, recarregar } = useDevolucoesDoPedidoAdmin(
-    orderId,
-    true,
-  );
+  const { devolucoes, carregando, erro, recarregar } =
+    useDevolucoesDoPedidoAdmin(orderId, true);
 
   if (erro) {
     return (
@@ -42,9 +40,10 @@ export function DevolucaoDoPedidoAdminCard({
         <button
           type="button"
           onClick={recarregar}
-          className="min-h-11 shrink-0 rounded-xl border border-admin-border bg-white/5 px-3 text-xs font-medium text-zinc-200"
+          disabled={carregando}
+          className="min-h-11 shrink-0 rounded-xl border border-admin-border bg-white/5 px-3 text-xs font-medium text-zinc-200 disabled:opacity-60"
         >
-          Tentar de novo
+          {carregando ? "Tentando…" : "Tentar de novo"}
         </button>
       </div>
     );

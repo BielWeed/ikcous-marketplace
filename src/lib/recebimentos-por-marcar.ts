@@ -30,10 +30,15 @@ import { supabase } from "@/lib/supabase";
  * pedido antigo nunca marcado ficaria na lista para sempre e o sino nunca
  * zeraria.
  *
- * `JANELA_DE_RECEBIMENTO_DIAS` (90) é o PADRÃO: vale quando a configuração da
- * loja ainda não carregou ou falhou — o aviso precisa SOBRAR, nunca sumir. O
- * prazo da loja entra por `janelaDeRecebimentoDias` e vira o segundo
- * argumento de `inicioDaJanelaDeRecebimento`.
+ * `JANELA_DE_RECEBIMENTO_DIAS` (90) é o PADRÃO COMERCIAL da loja (o prazo que
+ * a política de devolução nasce com), usado como valor default de
+ * `inicioDaJanelaDeRecebimento`. O prazo da loja entra pelo segundo argumento
+ * dela. Já quando a leitura da política FALHA (ou ainda não carregou) o
+ * fallback é `JANELA_DE_RECEBIMENTO_SEM_CONFIGURACAO_DIAS` (365): o banco
+ * permite prazo de até 365 dias, e com 90 de fallback uma falha de rede
+ * esconderia do sino o pedido de uma loja com prazo de 180 ou 365 que ainda
+ * está no prazo da cliente. O erro do fallback tem de ser só para o lado do
+ * excesso: pode trazer aviso antigo a mais, nunca esconder pedido no prazo.
  *
  * A data é `updated_at` (a coluna que a tela já lê), e é só uma APROXIMAÇÃO
  * da data da entrega, com duas ressalvas honestas:
@@ -45,7 +50,7 @@ import { supabase } from "@/lib/supabase";
  *     recebimento marcado não tem mais pagamento em branco e sai da lista;
  *     desfazer a marcação o devolve à lista, com a data renovada.
  *   - A janela é o MAIOR prazo de devolução da loja (defeito, arrependimento
- *     e, se aceita troca, troca; 90 dias se a leitura falhar, ver
+ *     e, se aceita troca, troca; 365 dias se a leitura falhar, ver
  *     `inicioDaJanelaDoSino`), medido a partir de `updated_at`
  *     e não da entrega: um pedido mexido depois da entrega parece mais novo do
  *     que é, e o prazo da cliente (contado da entrega) pode acabar antes de o
@@ -53,6 +58,13 @@ import { supabase } from "@/lib/supabase";
  *     cliente.
  */
 export const JANELA_DE_RECEBIMENTO_DIAS = 90;
+
+/**
+ * O fallback quando a política de devolução não pôde ser lida: o MAIOR prazo
+ * que o banco aceita (365). Separado do padrão comercial (90) de propósito —
+ * ver o comentário acima.
+ */
+export const JANELA_DE_RECEBIMENTO_SEM_CONFIGURACAO_DIAS = 365;
 
 /** Teto da lista do sino: a tela é "o que falta fazer", não um relatório. */
 export const TETO_DE_RECEBIMENTOS = 100;
@@ -83,12 +95,12 @@ export function inicioDaJanelaDeRecebimento(
  * prazo que a loja configurou em `politica_devolucao` (linha única): defeito
  * (`prazo_vicio_dias`), arrependimento e, se aceita troca, `prazo_troca_dias`. NUNCA
  * lança e nunca devolve menos que o padrão por falha: erro, linha ausente,
- * número torto ou rede caída viram 90 dias — o aviso precisa SOBRAR, e ler a
+ * número torto ou rede caída viram 365 dias (o teto do banco) — o aviso precisa SOBRAR, e ler a
  * configuração não é uma fonte de aviso (a falha dela não acende o "não
  * consegui conferir" do sino).
  */
 export async function inicioDaJanelaDoSino(): Promise<string> {
-  let dias = JANELA_DE_RECEBIMENTO_DIAS;
+  let dias = JANELA_DE_RECEBIMENTO_SEM_CONFIGURACAO_DIAS;
   try {
     const { data } = await supabase
       .from("politica_devolucao")
@@ -109,7 +121,7 @@ export async function inicioDaJanelaDoSino(): Promise<string> {
       );
     }
   } catch {
-    // Sem configuração: o padrão (90) — o aviso sobra, nunca some.
+    // Sem configuração: 365 (o teto do banco) — o aviso sobra, nunca some.
   }
   return inicioDaJanelaDeRecebimento(Date.now(), dias);
 }

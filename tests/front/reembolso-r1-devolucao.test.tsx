@@ -461,6 +461,11 @@ describe("ReembolsoDaDevolucao — o painel ganha os botões que o servidor já 
       },
     ]);
     expect(aoMudar).toHaveBeenCalled();
+    // O aviso sai antes da execução da linha nova (e há reenvio pelo cron):
+    // diz que a tentativa foi REGISTRADA, nunca que o MP já recebeu o pedido.
+    expect(toastMock.success).toHaveBeenCalledWith(
+      "Nova tentativa de reembolso registrada. Confira o andamento nesta ficha.",
+    );
   });
 
   it("D2: falhou e nada saiu — 'Já devolvi por fora' chama a RPC normal com a linha esperada", async () => {
