@@ -229,6 +229,13 @@ prova(
   () =>
     P.emTransacao(async () => {
       await pessoas();
+      await mutar(
+        "devolucao-envia-sem-estado",
+        "public.admin_devolucao_registrar(uuid,text,text,text)",
+        "    IF v_d.status <> 'aprovada' THEN\n" +
+          "      RAISE EXCEPTION 'Só uma devolução aprovada pode ser marcada como enviada.' USING ERRCODE = '22023';\n" +
+          "    END IF;\n",
+      );
       for (const [estado, n] of [
         ["concluida", 400],
         ["recusada", 410],
