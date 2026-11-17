@@ -1,3 +1,4 @@
+import { sessionStorageSeguro } from "@/lib/armazenamento-seguro";
 import { pedirAoSwPurgarArquivosPrivados } from "@/lib/arquivo-publico-do-storage";
 import { esquecerAdiamentoDosAvisos } from "@/lib/avisos-do-aparelho";
 import {
@@ -49,6 +50,7 @@ import {
   ehConsultaSemResposta,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
+import { limparRascunhoDoCheckout } from "@/lib/rascunho-do-checkout";
 import { esquecerReciboDoCheckout } from "@/lib/recibo-do-checkout";
 import {
   esquecerRecuperacao,
@@ -323,6 +325,10 @@ function clearLocalUserData() {
   // O recibo ("Seu pedido já foi feito" no F5) é da sessão de quem saiu:
   // numa aba compartilhada, a próxima pessoa nunca lê o pedido da anterior.
   esquecerReciboDoCheckout();
+  // O rascunho do checkout (nome, WhatsApp, endereço, observações) também é da
+  // sessão de quem saiu: só caía no sucesso da compra, e a próxima pessoa da
+  // aba lia o que a anterior digitou. `sessionStorageSeguro` nunca lança.
+  limparRascunhoDoCheckout(sessionStorageSeguro());
   esquecerRastreioDeConvidado();
   esquecerDadosLocaisDaConta();
 }
