@@ -494,7 +494,7 @@ describe("AdminShippingNationalView — CONTRATO (casca da tela unificada)", () 
     expect(onSetDirty).toHaveBeenCalledWith(true);
   });
 
-  it("salvar grava os 5 campos nacionais corretos, dentro do payload único da tela — acima_de_valor", async () => {
+  it("salvar grava só os campos nacionais que mudaram, dentro do payload único da tela — acima_de_valor", async () => {
     await abrirTela();
     await clicar(pill(/Grátis acima de um valor/i)!);
     const minimo = hospedeiro.querySelector(
@@ -510,12 +510,11 @@ describe("AdminShippingNationalView — CONTRATO (casca da tela unificada)", () 
 
     expect(updateConfig).toHaveBeenCalledTimes(1);
     const payload = updateConfig.mock.calls[0][0];
-    expect(payload).toMatchObject({
+    // Só estratégia e mínimo mudaram; tipo, valor do desconto e alcance já
+    // eram o salvo e não são regravados (o outro aparelho pode tê-los mudado).
+    expect(payload).toEqual({
       nationalShippingStrategy: "acima_de_valor",
       nationalShippingMin: 250,
-      nationalDiscountType: null,
-      nationalDiscountValue: 0,
-      nationalBenefitScope: "mais_barata",
     });
     // A tela unificada grava os dois lados na MESMA ação QUANDO os dois foram
     // mexidos; o lado que não foi tocado não é regravado (nada de
@@ -527,7 +526,7 @@ describe("AdminShippingNationalView — CONTRATO (casca da tela unificada)", () 
     expect(payload).not.toHaveProperty("shippingProvider");
   });
 
-  it("salvar desconto: grava tipo/valor e zera o mínimo quando o campo ficou vazio (sem mínimo)", async () => {
+  it("salvar desconto: grava estratégia, tipo e valor; o mínimo vazio (sem mínimo) já era o salvo e não é regravado", async () => {
     await abrirTela();
     await clicar(pill(/Desconto no frete/i)!);
     await clicar(pill(/^Valor em R\$$/i)!);
@@ -542,12 +541,10 @@ describe("AdminShippingNationalView — CONTRATO (casca da tela unificada)", () 
       await esperarMicrotarefas();
     });
 
-    expect(updateConfig.mock.calls[0][0]).toMatchObject({
+    expect(updateConfig.mock.calls[0][0]).toEqual({
       nationalShippingStrategy: "desconto_na_mais_barata",
-      nationalShippingMin: 0,
       nationalDiscountType: "fixo",
       nationalDiscountValue: 5,
-      nationalBenefitScope: "mais_barata",
     });
   });
 

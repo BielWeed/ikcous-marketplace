@@ -155,6 +155,82 @@ function nacionalMudou(a: FormularioNacional, b: FormularioNacional): boolean {
   );
 }
 
+/** Quais dos cinco campos da regra de fora da cidade diferem da base. */
+interface CamposNacionaisMexidos {
+  estrategia: boolean;
+  minimo: boolean;
+  tipoDesconto: boolean;
+  valorDesconto: boolean;
+  alcance: boolean;
+}
+
+/**
+ * Cada campo da regra de fora da cidade vale sozinho (o banco guarda uma coluna
+ * por campo e confere a linha FINAL), então o Salvar manda só os que ela mexeu.
+ * "Mexeu" = o que ela deixou na tela difere da base (o retrato). Uma exceção: se
+ * ela trocou a ESTRATÉGIA, mínimo, tipo e valor do desconto vão se o que será
+ * gravado difere da base, mesmo sem ela ter tocado neles (trocar para uma sem
+ * desconto grava tipo e valor zerados, senão o desconto antigo ficaria guardado
+ * para voltar). Com a estratégia intacta, só vale o que ela mexeu: comparar o
+ * valor ajustado com a base acusaria diferença falsa (ex.: config sem o campo)
+ * e regravaria valor que ela nunca viu.
+ * `gravar` é o formulário já ajustado (centavos, zeros fora da estratégia); a
+ * mesclagem passa o próprio formulário, pois ali só vale o que ela digitou.
+ * Sem base (a tela nunca sincronizou) vale tudo, como sempre foi.
+ */
+function camposNacionaisMexidos(
+  atual: FormularioNacional,
+  base: FormularioNacional | null,
+  gravar: FormularioNacional = atual,
+): CamposNacionaisMexidos {
+  if (!base) {
+    return {
+      estrategia: true,
+      minimo: true,
+      tipoDesconto: true,
+      valorDesconto: true,
+      alcance: true,
+    };
+  }
+  const trocouEstrategia = atual.estrategia !== base.estrategia;
+  return {
+    estrategia: trocouEstrategia,
+    minimo:
+      atual.minimo !== base.minimo ||
+      (trocouEstrategia && gravar.minimo !== base.minimo),
+    tipoDesconto:
+      atual.tipoDesconto !== base.tipoDesconto ||
+      (trocouEstrategia && gravar.tipoDesconto !== base.tipoDesconto),
+    valorDesconto:
+      atual.valorDesconto !== base.valorDesconto ||
+      (trocouEstrategia && gravar.valorDesconto !== base.valorDesconto),
+    alcance: atual.alcance !== base.alcance,
+  };
+}
+
+/**
+ * Chegou um config novo (o outro aparelho gravou) com a regra de fora da cidade
+ * em edição: cada campo que ela NÃO mexeu acompanha o config novo; o que ela
+ * mexeu fica (mesma régua da mesclagem local). Sem isto a tela seguiria
+ * mostrando, e o Salvar mandando, o valor velho dos campos que ela nunca tocou.
+ */
+function mesclarFormularioNacional(
+  atual: FormularioNacional,
+  retrato: FormularioNacional,
+  novo: FormularioNacional,
+): FormularioNacional {
+  const mexeu = camposNacionaisMexidos(atual, retrato);
+  return {
+    estrategia: mexeu.estrategia ? atual.estrategia : novo.estrategia,
+    minimo: mexeu.minimo ? atual.minimo : novo.minimo,
+    tipoDesconto: mexeu.tipoDesconto ? atual.tipoDesconto : novo.tipoDesconto,
+    valorDesconto: mexeu.valorDesconto
+      ? atual.valorDesconto
+      : novo.valorDesconto,
+    alcance: mexeu.alcance ? atual.alcance : novo.alcance,
+  };
+}
+
 function mesmoFormularioLocal(a: FormularioLocal, b: FormularioLocal): boolean {
   return (
     a.preset === b.preset &&
@@ -508,16 +584,19 @@ export const AdminShippingView = memo(function AdminShippingView({
         isFormDirtyNacionalRef.current &&
         retrato
       ) {
-        // A regra de fora da cidade é UMA resposta só (o banco confere os cinco
-        // campos juntos): mexida, fica inteira; intocada, acompanha o config.
-        // O retrato vira o config novo nos dois casos (mesma regra do local).
-        const mexida = nacionalMudou(formDataNacionalRef.current, retrato);
+        // Campo a campo, como no local: o que ela não mexeu acompanha o config
+        // (que pode ter vindo do outro aparelho); o que ela digitou fica. O
+        // retrato vira o config novo em TODOS os campos: o que sobrar diferente
+        // na tela é edição dela e vai no Salvar.
+        const mesclado = mesclarFormularioNacional(
+          formDataNacionalRef.current,
+          retrato,
+          novo,
+        );
         retratoNacionalRef.current = novo;
-        if (!mexida) {
-          setFormDataNacional((prev) =>
-            nacionalMudou(prev, novo) ? novo : prev,
-          );
-        }
+        setFormDataNacional((prev) =>
+          nacionalMudou(prev, mesclado) ? mesclado : prev,
+        );
         return;
       }
       jaSincronizouNacionalRef.current = true;
@@ -841,8 +920,9 @@ export const AdminShippingView = memo(function AdminShippingView({
     };
 
     // O que ela mexeu NESTE aparelho (difere do retrato). Sem retrato (nunca
-    // sincronizou) vale tudo, como sempre foi. A regra de fora da cidade vai
-    // inteira ou não vai (o banco confere os cinco campos juntos).
+    // sincronizou) vale tudo, como sempre foi. A regra de fora da cidade também
+    // vai campo a campo: o valor que a tela ainda tem de um campo que ela não
+    // mexeu pode já ser velho (o outro aparelho o mudou) e não pode ser regravado.
     const retratoLocal = retratoLocalRef.current;
     const retratoNacional = retratoNacionalRef.current;
     const mexeu = {
@@ -851,8 +931,11 @@ export const AdminShippingView = memo(function AdminShippingView({
         { ...formData, localCepRange: alcance },
         retratoLocal,
       ),
-      nacional:
-        !retratoNacional || nacionalMudou(formDataNacional, retratoNacional),
+      nacional: camposNacionaisMexidos(
+        formDataNacional,
+        retratoNacional,
+        nacionalAjustado,
+      ),
     };
     // Só chega aqui com valor inválido se o campo está ESCONDIDO ("Só
     // retirada": as duas travas acima não valem). Virar R$ 0 seria entrega
@@ -896,14 +979,20 @@ export const AdminShippingView = memo(function AdminShippingView({
       ...(mexeu.dias
         ? { localDeliveryDays: diasDoTexto(formData.diasDaEntrega) }
         : {}),
-      ...(mexeu.nacional
-        ? {
-            nationalShippingStrategy: nacionalAjustado.estrategia,
-            nationalShippingMin: nacionalAjustado.minimo,
-            nationalDiscountType: nacionalAjustado.tipoDesconto,
-            nationalDiscountValue: nacionalAjustado.valorDesconto,
-            nationalBenefitScope: nacionalAjustado.alcance,
-          }
+      ...(mexeu.nacional.estrategia
+        ? { nationalShippingStrategy: nacionalAjustado.estrategia }
+        : {}),
+      ...(mexeu.nacional.minimo
+        ? { nationalShippingMin: nacionalAjustado.minimo }
+        : {}),
+      ...(mexeu.nacional.tipoDesconto
+        ? { nationalDiscountType: nacionalAjustado.tipoDesconto }
+        : {}),
+      ...(mexeu.nacional.valorDesconto
+        ? { nationalDiscountValue: nacionalAjustado.valorDesconto }
+        : {}),
+      ...(mexeu.nacional.alcance
+        ? { nationalBenefitScope: nacionalAjustado.alcance }
         : {}),
     };
     // Nada mexido além do que já está no config (o formulário só "difere" por
@@ -957,8 +1046,28 @@ export const AdminShippingView = memo(function AdminShippingView({
           ...(mexeu.dias ? { diasDaEntrega: formData.diasDaEntrega } : {}),
         };
       }
-      if (gravaRegras && mexeu.nacional) {
-        retratoNacionalRef.current = nacionalAjustado;
+      if (gravaRegras) {
+        // Só os campos enviados viram o salvo; os outros seguem como o retrato
+        // (a tela não sabe o que o banco tem neles além disso).
+        retratoNacionalRef.current = retratoNacional
+          ? {
+              estrategia: mexeu.nacional.estrategia
+                ? nacionalAjustado.estrategia
+                : retratoNacional.estrategia,
+              minimo: mexeu.nacional.minimo
+                ? nacionalAjustado.minimo
+                : retratoNacional.minimo,
+              tipoDesconto: mexeu.nacional.tipoDesconto
+                ? nacionalAjustado.tipoDesconto
+                : retratoNacional.tipoDesconto,
+              valorDesconto: mexeu.nacional.valorDesconto
+                ? nacionalAjustado.valorDesconto
+                : retratoNacional.valorDesconto,
+              alcance: mexeu.nacional.alcance
+                ? nacionalAjustado.alcance
+                : retratoNacional.alcance,
+            }
+          : nacionalAjustado;
       }
       if (taxaDescartada) {
         // O valor inválido não foi gravado: o campo (escondido) volta ao que

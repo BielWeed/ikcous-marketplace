@@ -211,13 +211,9 @@ describe("Entrega e frete — escolhas novas, valores antigos", () => {
       // foi mexido neste aparelho, cada resposta que continuou igual ao config
       // (cobertura "local", sem frete grátis local, "Eu entrego", regra de
       // fora desligada) não sai — e o alcance e o prazo, que este teste nunca
-      // toca, também não.
-      const nacionalMexido =
-        nacional[1] !== "desligado" ||
-        nacional[2] !== 0 ||
-        nacional[3] !== null ||
-        nacional[4] !== 0 ||
-        nacional[5] !== "mais_barata";
+      // toca, também não. A regra de fora da cidade vai campo a campo: cada uma
+      // das cinco chaves só sai se difere do config de partida (desligado, 0,
+      // sem tipo, 0, "mais_barata").
       expect(updateConfig).toHaveBeenLastCalledWith(
         {
           ...(local[1] === 0 ? {} : { freeShippingMin: local[1] }),
@@ -229,14 +225,16 @@ describe("Entrega e frete — escolhas novas, valores antigos", () => {
           ...(modo[2]
             ? { enabledShippingMethods: ["pac", "sedex", "store-pickup"] }
             : {}),
-          ...(nacionalMexido
-            ? {
-                nationalShippingStrategy: nacional[1],
-                nationalShippingMin: nacional[2],
-                nationalDiscountType: nacional[3],
-                nationalDiscountValue: nacional[4],
-                nationalBenefitScope: nacional[5],
-              }
+          ...(nacional[1] !== "desligado"
+            ? { nationalShippingStrategy: nacional[1] }
+            : {}),
+          ...(nacional[2] !== 0 ? { nationalShippingMin: nacional[2] } : {}),
+          ...(nacional[3] !== null
+            ? { nationalDiscountType: nacional[3] }
+            : {}),
+          ...(nacional[4] !== 0 ? { nationalDiscountValue: nacional[4] } : {}),
+          ...(nacional[5] !== "mais_barata"
+            ? { nationalBenefitScope: nacional[5] }
             : {}),
         },
         { silentSuccess: true },
