@@ -475,6 +475,35 @@ describe("Produtos: tocar no selo 'sem custo' leva aos produtos sem custo", () =
     expect(h.loadProductsSemCusto).toHaveBeenCalledTimes(1);
   });
 
+  it("na segunda página, cadastrar custos até sobrar uma página mostra os produtos restantes", async () => {
+    const muitos = Array.from({ length: 14 }, (_, i) =>
+      produto(`m${String(i).padStart(2, "0")}`),
+    );
+    h.catalogo = muitos;
+    h.stats = estatisticas(muitos);
+    await montar();
+    await act(async () => botaoDoSelo()!.click());
+    await esperar(360);
+    const proximo = [
+      ...hospedeiro.querySelectorAll<HTMLButtonElement>("button"),
+    ].find((b) => b.textContent?.includes("Próximo") && !b.disabled);
+    expect(proximo).toBeDefined();
+    await act(async () => proximo!.click());
+    expect(nomesNaLista()).toEqual(["Produto m12", "Produto m13"]);
+
+    // Voltar da edição mantém a instância e a página, mas atualiza os custos.
+    h.catalogo = muitos.map((p, i) => (i >= 12 ? { ...p, costPrice: 5 } : p));
+    h.stats = estatisticas(h.catalogo);
+    await reabrir();
+
+    expect(nomesNaLista()).toEqual(muitos.slice(0, 12).map((p) => p.name));
+    expect(hospedeiro.textContent).not.toContain("Nenhum produto sem custo");
+    expect(faixa()?.querySelector('[role="status"]')?.textContent).toBe(
+      "Mostrando só produtos sem custo · 12",
+    );
+    expect(hospedeiro.textContent).toContain("1 de 1");
+  });
+
   it("cadastrar um produto novo tira da visão: o novo tem de aparecer na lista normal", async () => {
     await montar();
     await act(async () => botaoDoSelo()!.click());
