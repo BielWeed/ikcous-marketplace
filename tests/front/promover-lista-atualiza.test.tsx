@@ -278,6 +278,48 @@ describe("promover: a lista reflete o novo cargo na hora", () => {
     );
   });
 
+  it("remover recusado pelo banco: quem continua administrador continua com o selo Administrador e o cache não é tocado", async () => {
+    // O servidor recusou a retirada: a pessoa SEGUE administradora. Se a lista
+    // mostrasse "Cliente", o dono acharia que o acesso acabou e ele não acabou.
+    h.rpc.mockResolvedValue({
+      data: null,
+      error: {
+        code: "42501",
+        message: "Acesso negado: só o dono da loja define cargos.",
+      },
+    });
+    await abrirLista();
+    expect(selo("Rita Gomes")).toBe("Administrador");
+    await abrirFolhaDe("Rita Gomes");
+    await clicar(botao("Remover acesso de administrador"));
+    // o cache de módulo já recebeu a lista da leitura inicial: só conta o que
+    // entra DEPOIS de o dono confirmar
+    const gravacoesAntes = cache.gravar.mock.calls.length;
+    await clicar(botao("Tirar acesso"));
+
+    expect(h.rpc).toHaveBeenCalledWith("definir_cargo", {
+      p_user_id: "a2",
+      p_cargo: "customer",
+    });
+    expect(toast.error).toHaveBeenCalledWith(
+      "Acesso negado: só o dono da loja define cargos.",
+    );
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(selo("Rita Gomes")).toBe("Administrador");
+    expect(selo("Paulo Lima")).toBe("Cliente");
+    expect(selo("Caio Alves")).toBe("Gerente");
+    expect(cache.gravar).toHaveBeenCalledTimes(gravacoesAntes);
+    expect(cache.gravar).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        customers: expect.arrayContaining([
+          expect.objectContaining({ id: "a2", role: "customer" }),
+        ]),
+      }),
+    );
+    // sem releitura: erro comum do banco não é "sem resposta"
+    expect(h.leituras).toHaveBeenCalledTimes(1);
+  });
+
   it("rede sem resposta ao mudar o cargo: a lista RELÊ o banco e mostra o cargo de verdade (não o palpite)", async () => {
     // A chamada nunca volta, mas o banco chegou a gravar: na releitura o
     // Paulo já é administrador. O selo nasce do banco, não da tela.
