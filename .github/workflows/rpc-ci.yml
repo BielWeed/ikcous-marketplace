@@ -1319,6 +1319,14 @@ jobs:
       - name: Prova viva de que tipo invalido de cupom e recusado no banco
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/cupom-tipo-invalido-e-recusado-no-banco-viva.cjs
+      # Migration 20261400000000 (valores negativos nao entram no banco): taxa de entrega local, preco do produto, preco
+      # proprio da variacao e valor do cupom ganham CHECK >= 0 (e <> NaN) NOT VALID. Negativo e NaN recusam com 23514 pela
+      # restricao certa em todas as portas (RLS, upsert_store_config, salvar_produto_com_grade, sessao direta); zero e NULL de
+      # variacao seguem; linha antiga negativa nao impede a migration; 12 mutantes; reaplicar, rollback, pre-voo, falha no meio
+      # e lock_timeout sem deixar restricao pela metade. CLONE proprio.
+      - name: Prova viva de que valores negativos nao entram no banco (migration 20261400000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/valores-negativos-prova.cjs
       - name: Prova viva da disputa pelo ultimo uso do cupom com compras distintas
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/cupom-ultima-vaga-corrida-viva.cjs
