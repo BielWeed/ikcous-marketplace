@@ -572,6 +572,10 @@ export function StoreProvider({
   const configResolvidaRef = useRef(false);
   const configFalhouRef = useRef(false);
   const geracaoDaConfigRef = useRef(0);
+  // Ordem de largada das leituras da mesma geração e a última que aplicou:
+  // a leitura que larga antes mas responde depois de uma mais nova é velha.
+  const leiturasDaConfigRef = useRef(0);
+  const leituraAplicadaDaConfigRef = useRef(0);
   const consultasDaConfigEmVooRef = useRef(0);
   const ultimaConsultaDaConfigEmRef = useRef(0);
   const buscarConfigRef = useRef<() => Promise<void>>(async () => {});
@@ -971,6 +975,7 @@ export function StoreProvider({
 
   const fetchConfig = useCallback(async () => {
     const geracao = geracaoDaConfigRef.current;
+    const ordem = ++leiturasDaConfigRef.current;
     // Esta leitura foi ultrapassada por uma escrita confirmada: o que ela
     // trouxe é velho, mas os campos que a escrita NÃO tocou (endereço, formas
     // de pagamento...) só se corrigem relendo — uma releitura por geração.
@@ -1085,7 +1090,8 @@ export function StoreProvider({
             applyBranding(corPrimariaEfetiva(mapped));
           }
         }
-      } else if (data) {
+      } else if (data && ordem >= leituraAplicadaDaConfigRef.current) {
+        leituraAplicadaDaConfigRef.current = ordem;
         const mapped = mapConfig(data);
         setConfig((prev) => {
           if (geracao !== geracaoDaConfigRef.current) return prev;
@@ -1746,7 +1752,10 @@ export function StoreProvider({
           }
           // Laudo 0109 (P-5): mesma guarda do fetchConfig — eco do realtime
           // com config IDÊNTICA não troca o objeto (cada eco re-renderizava
-          // a casa inteira de graça).
+          // a casa inteira de graça). O ao vivo é mais novo que toda leitura
+          // em voo: sobe a geração (antes de aplicar) para a resposta velha
+          // ser descartada e relida, em vez de restaurar o valor antigo.
+          geracaoDaConfigRef.current += 1;
           setConfig((prev) => (configIgual(mapped, prev) ? prev : mapped));
           applyBranding(corPrimariaEfetiva(mapped));
           // Configuração de verdade chegou pelo tempo real (evento ao vivo ou
