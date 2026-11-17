@@ -87,7 +87,7 @@ for (
 
 // ── aplicarEfeitosDoPagamentoConfirmado ───────────────────────────────────
 
-function bancoDoPedido(opts: { falha?: boolean; linha?: Record<string, unknown> } = {}) {
+function bancoDoPedido(opts: { falha?: boolean; erro?: boolean; linha?: Record<string, unknown> } = {}) {
   const leituras: string[] = [];
   return {
     leituras,
@@ -99,6 +99,7 @@ function bancoDoPedido(opts: { falha?: boolean; linha?: Record<string, unknown> 
             eq: () => ({
               maybeSingle: async () => {
                 if (opts.falha) throw new Error("banco caiu");
+                if (opts.erro) return { data: opts.linha ?? null, error: { code: "57014" } };
                 return { data: opts.linha ?? { id: PEDIDO, customer_name: "Fulana", total: 100 }, error: null };
               },
             }),
@@ -210,7 +211,7 @@ Deno.test("efeitos: a leitura do valor FALHA -> o push sai assim mesmo (sem o va
   await emSilencio(() =>
     aplicarEfeitosDoPagamentoConfirmado({ supabase: db as never, orderId: PEDIDO, resultado: "pago", ...c.deps })
   );
-  assertEquals(c.pushes, [{ title: "Pedido pago", body: "#4F5A6B · R$ 0,00", url: `/admin-orders?id=${PEDIDO}` }]);
+  assertEquals(c.pushes, [{ title: "Pedido pago", body: "#4F5A6B", url: `/admin-orders?id=${PEDIDO}` }]);
   assertEquals(c.comprovantes, [PEDIDO]);
 });
 
@@ -220,6 +221,50 @@ Deno.test("efeitos: valor cai em total_amount quando total não vem (mesma ordem
   await aplicarEfeitosDoPagamentoConfirmado({ supabase: db as never, orderId: PEDIDO, resultado: "pago", ...c.deps });
   assertEquals(c.pushes, [{ title: "Pedido pago", body: "#4F5A6B · R$ 1.234,50", url: `/admin-orders?id=${PEDIDO}` }]);
 });
+
+for (const resultado of ["pago", "pago_apos_expirar"]) {
+  for (const caso of [
+    { nome: "error sem data", opts: { erro: true } },
+    { nome: "error mesmo com data", opts: { erro: true, linha: { total: 150 } } },
+    { nome: "exceção", opts: { falha: true } },
+    ...[undefined, null, "", "ilegível", Number.NaN, Infinity].map((total) => ({
+      nome: `total ilegível: ${String(total)}`,
+      opts: { linha: { total } },
+    })),
+  ]) {
+    Deno.test(`push sem valor: ${resultado}, ${caso.nome} -> não inventa R$ 0,00`, async () => {
+      const db = bancoDoPedido(caso.opts);
+      const c = coletores();
+      await emSilencio(() =>
+        aplicarEfeitosDoPagamentoConfirmado({ supabase: db as never, orderId: PEDIDO, resultado, ...c.deps })
+      );
+      assertEquals(c.pushes, [{
+        title: resultado === "pago" ? "Pedido pago" : "Pagamento fora do fluxo",
+        body: resultado === "pago" ? "#4F5A6B" : "#4F5A6B · estoque já devolvido",
+        url: `/admin-orders?id=${PEDIDO}`,
+      }]);
+      assertEquals(c.comprovantes, resultado === "pago" ? [PEDIDO] : []);
+      assertEquals(c.atrasados, resultado === "pago_apos_expirar" ? [PEDIDO] : []);
+    });
+  }
+
+  for (const [total, valor] of [[150, "R$ 150,00"], [0, "R$ 0,00"], ["150.00", "R$ 150,00"]] as const) {
+    Deno.test(`push com valor: ${resultado}, total ${total} preserva o valor lido`, async () => {
+      const c = coletores();
+      await aplicarEfeitosDoPagamentoConfirmado({
+        supabase: bancoDoPedido({ linha: { total } }) as never,
+        orderId: PEDIDO,
+        resultado,
+        ...c.deps,
+      });
+      assertEquals(c.pushes, [{
+        title: resultado === "pago" ? "Pedido pago" : "Pagamento fora do fluxo",
+        body: resultado === "pago" ? `#4F5A6B · ${valor}` : `#4F5A6B · ${valor} · estoque já devolvido`,
+        url: `/admin-orders?id=${PEDIDO}`,
+      }]);
+    });
+  }
+}
 
 // ── Paridade com o webhook ────────────────────────────────────────────────
 

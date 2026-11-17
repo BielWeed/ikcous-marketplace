@@ -135,17 +135,20 @@ export async function confirmarPagamentoProvado(args: {
  * devolvido" é verdade nas duas rotas.
  */
 export function avisoAoLojista(orderId: string, resultado: string, valor: unknown): Aviso | null {
+  const temValor = (typeof valor === "number" || (typeof valor === "string" && valor.trim() !== "")) &&
+    Number.isFinite(Number(valor));
+  const trechoDoValor = temValor ? ` · ${formatarBRL(valor)}` : "";
   if (resultado === "pago_apos_expirar") {
     return {
       title: "Pagamento fora do fluxo",
-      body: `${numeroDoPedido(orderId)} · ${formatarBRL(valor)} · estoque já devolvido`,
+      body: `${numeroDoPedido(orderId)}${trechoDoValor} · estoque já devolvido`,
       url: `/admin-orders?id=${encodeURIComponent(orderId)}`,
     };
   }
   if (resultado === "pago") {
     return {
       title: "Pedido pago",
-      body: `${numeroDoPedido(orderId)} · ${formatarBRL(valor)}`,
+      body: `${numeroDoPedido(orderId)}${trechoDoValor}`,
       url: `/admin-orders?id=${encodeURIComponent(orderId)}`,
     };
   }
@@ -176,11 +179,12 @@ export async function aplicarEfeitosDoPagamentoConfirmado(args: {
     // lojista sem aviso é pior).
     let pedido: Record<string, unknown> | null = null;
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("marketplace_orders")
         .select("id, customer_name, total, total_amount")
         .eq("id", orderId)
         .maybeSingle();
+      if (error) throw error;
       pedido = (data as Record<string, unknown> | null) ?? null;
     } catch (_erro) {
       console.error("efeitos-do-pagamento: leitura do pedido para o push falhou", { orderId });

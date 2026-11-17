@@ -60,6 +60,7 @@ function clienteFalso(opts: {
   erroLeituraPedido?: unknown;
   erroReleituraPedido?: unknown;
   erroLeituraItens?: unknown;
+  erroLeituraEndereco?: unknown;
   itens?: Array<Record<string, unknown>>;
   storeConfig?: Record<string, unknown> | null;
   endereco?: Record<string, unknown> | null;
@@ -90,7 +91,7 @@ function clienteFalso(opts: {
           ? { data: null, error: opts.erroLeituraItens }
           : { data: opts.itens ?? [], error: null };
       case "user_addresses":
-        return { data: opts.endereco ?? null, error: null };
+        return { data: opts.endereco ?? null, error: opts.erroLeituraEndereco ?? null };
       case "store_config":
         return { data: opts.storeConfig ?? null, error: null };
       default:
@@ -1229,6 +1230,7 @@ async function htmlComEndereco(args: {
   customerData: Record<string, unknown>;
   addressId?: string | null;
   linhaDaConta?: Record<string, unknown> | null;
+  erroLeituraEndereco?: unknown;
   chamadas?: Chamada[];
 }): Promise<string> {
   const chamadasEnvio: Array<{ para: string; assunto: string; html: string }> = [];
@@ -1246,6 +1248,7 @@ async function htmlComEndereco(args: {
     itens: [{ product_name: "Blusa", quantity: 1, price: 100 }],
     storeConfig: { store_name: "Loja Teste" },
     endereco: args.linhaDaConta ?? null,
+    erroLeituraEndereco: args.erroLeituraEndereco,
     chamadas: args.chamadas,
     reservou: true,
   });
@@ -1262,6 +1265,82 @@ async function htmlComEndereco(args: {
   assertEquals(desfecho, { ok: true });
   return chamadasEnvio[0].html;
 }
+
+Deno.test("leitura do endereço falha sem cópia -> não envia, devolve a reserva e a nova tentativa inclui o endereço", async () => {
+  const chamadas: Chamada[] = [];
+  const opcoes = {
+    pedido: {
+      id: UUID_PEDIDO,
+      customer_data: { email: "cliente@exemplo.com" },
+      address_id: "addr-1",
+    },
+    endereco: null as Record<string, unknown> | null,
+    erroLeituraEndereco: { message: "connection reset" } as unknown,
+    chamadas,
+  };
+  const cliente = clienteFalso(opcoes);
+  let reservado = false;
+  const enviados: Array<{ html: string }> = [];
+  const supabase = {
+    ...cliente,
+    rpc: async (nome: string, args: Record<string, unknown>) => {
+      const resultado = await cliente.rpc(nome, args);
+      if (nome === "reivindicar_email_de_confirmacao") {
+        const ganhou = !reservado;
+        reservado = true;
+        return { data: ganhou, error: null };
+      }
+      if (nome === "liberar_email_de_confirmacao") reservado = false;
+      return resultado;
+    },
+  };
+  const enviar = () => enviarComprovantePedido({
+    supabase: supabase as never,
+    orderId: UUID_PEDIDO,
+    deps: {
+      resolverRemetente: async () => REMETENTE_DE_TESTE,
+      enviarEmail: async (args) => { enviados.push(args); },
+    },
+  });
+
+  assertEquals(await enviar(), { ok: false, motivo: "envio_falhou" });
+  assertEquals(enviados.length, 0);
+  assertEquals(reservado, false);
+  assertEquals(chamadas.at(-1), {
+    tipo: "rpc", nome: "liberar_email_de_confirmacao", args: { p_order_id: UUID_PEDIDO },
+  });
+
+  opcoes.erroLeituraEndereco = null;
+  opcoes.endereco = LINHA_EDITADA_DEPOIS;
+  assertEquals(await enviar(), { ok: true });
+  assertEquals(enviados.length, 1);
+  assertStringIncludes(enviados[0].html, "Avenida Nova Demais, 999");
+  assertEquals(reservado, true);
+});
+
+Deno.test("leitura do endereço falha COM cópia -> envia com o endereço da compra, sem devolver a reserva", async () => {
+  const chamadas: Chamada[] = [];
+  const html = await htmlComEndereco({
+    customerData: { address: COPIA_DA_COMPRA },
+    addressId: "addr-1",
+    erroLeituraEndereco: { message: "connection reset" },
+    chamadas,
+  });
+  assertStringIncludes(html, "Rua das Acácias, 120");
+  assertEquals(chamadas.some((c) => c.nome === "user_addresses"), true);
+  assertEquals(chamadas.some((c) => c.nome === "liberar_email_de_confirmacao"), false);
+});
+
+Deno.test("sem address_id -> não consulta endereço da conta nem bloqueia o envio", async () => {
+  const chamadas: Chamada[] = [];
+  await htmlComEndereco({
+    customerData: {},
+    erroLeituraEndereco: { message: "connection reset" },
+    chamadas,
+  });
+  assertEquals(chamadas.some((c) => c.nome === "user_addresses"), false);
+  assertEquals(chamadas.some((c) => c.nome === "liberar_email_de_confirmacao"), false);
+});
 
 Deno.test("endereço da conta APAGADO depois da compra + cópia no pedido -> o e-mail mostra rua, número e bairro certos (nunca '[object Object]')", async () => {
   const html = await htmlComEndereco({

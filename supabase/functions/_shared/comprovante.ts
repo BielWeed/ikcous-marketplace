@@ -650,19 +650,27 @@ export async function enviarComprovantePedido(args: {
   // address`); so se o pedido nao a tem (pedido antigo, anterior a migration
   // 20261229000000) a linha ATUAL de `user_addresses`; por ultimo o formato
   // antigo da raiz de `customer_data`. Ver `fonteDoEnderecoDoComprovante`.
+  const customerData = (pedido.customer_data as Record<string, unknown> | null) ?? null;
   let linhaDaConta: Record<string, unknown> | null = null;
   if (pedido.address_id) {
-    const { data: endereco } = await supabase
+    const { data: endereco, error: erroEndereco } = await supabase
       .from("user_addresses")
       .select("street, number, complement, neighborhood, city, state, cep")
       .eq("id", String(pedido.address_id))
       .maybeSingle();
+    if (erroEndereco) {
+      // A fonte pode ser a raiz (ate so o e-mail), nao necessariamente uma copia.
+      // O resolvedor devolve o proprio objeto da copia quando ela serve.
+      const fonteSemConta = fonteDoEnderecoDoComprovante(customerData, null);
+      if (!fonteSemConta || fonteSemConta !== customerData?.address) {
+        await devolverReserva(supabase, orderId);
+        console.error("comprovante: leitura do endereco falhou");
+        return { ok: false, motivo: "envio_falhou" };
+      }
+    }
     linhaDaConta = endereco ?? null;
   }
-  const fonteDoEndereco = fonteDoEnderecoDoComprovante(
-    (pedido.customer_data as Record<string, unknown> | null) ?? null,
-    linhaDaConta,
-  );
+  const fonteDoEndereco = fonteDoEnderecoDoComprovante(customerData, linhaDaConta);
 
   const { data: config } = await supabase
     .from("store_config")
