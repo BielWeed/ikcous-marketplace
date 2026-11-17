@@ -16,6 +16,26 @@ describe("idadeDoPedidoPendente — o fantasma da 'na entrega' mostra a idade (l
     expect(idadeDoPedidoPendente(diasAtras(0), "pending", AGORA)).toBe(0);
   });
 
+  it.each([
+    ["2 dias e 12 horas", 2.5 * 86_400_000, 2, null],
+    ["1 ms antes de 3 dias", 3 * 86_400_000 - 1, 2, null],
+    [
+      "exatamente 3 dias",
+      3 * 86_400_000,
+      3,
+      "Este pedido espera você há 3 dias.",
+    ],
+  ])(
+    "%s: conta dias completos e respeita o início do aviso",
+    (_, idadeMs, dias, frase) => {
+      const criadoEm = new Date(AGORA - idadeMs).toISOString();
+      const idade = idadeDoPedidoPendente(criadoEm, "pending", AGORA);
+
+      expect(idade).toBe(dias);
+      expect(fraseDeEsperaDoPedido(idade)).toBe(frase);
+    },
+  );
+
   it("status avançado NUNCA tem idade de espera (o lojista já agiu)", () => {
     for (const status of ["processing", "shipped", "delivered", "cancelled"]) {
       expect(idadeDoPedidoPendente(diasAtras(30), status, AGORA)).toBeNull();
