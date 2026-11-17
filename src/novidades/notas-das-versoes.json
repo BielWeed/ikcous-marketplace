@@ -1,4 +1,21 @@
 {
+  "1.5.205": {
+    "titulo": "Banners, recibo, checkout e frete mais certos",
+    "novidades": [],
+    "correcoes": [
+      "Banners: não sobra mais uma faixa vazia entre o celular e o computador.",
+      "Banners: o painel avisa com clareza quando o banner não tem imagem para o computador.",
+      "Recibo: agora mostra a observação que a cliente escreveu no pedido.",
+      "Painel: as leituras do cartão e do mototáxi não ficam esperando para sempre quando a rede está ruim.",
+      "Checkout no computador: sumiu a barra de rolagem que sobrava nas telas.",
+      "Loja no computador: a vitrine com poucos produtos fica alinhada à esquerda, junto do título.",
+      "Ajustes, Frete: o tipo e o valor do desconto agora são salvos sempre juntos."
+    ],
+    "melhorias": [
+      "Ajustes, Frete: o campo de CEPs da entrega agora tem nome para leitores de tela.",
+      "Ajustes: os avisos em vermelho ficaram legíveis no tema claro."
+    ]
+  },
   "1.5.204": {
     "titulo": "Correções no login com Google, na planilha e nas trocas e devoluções",
     "novidades": [],
