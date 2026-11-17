@@ -453,7 +453,7 @@ describe("estoque mínimo na planilha de produtos", () => {
     const [cabecalho, linha] = csv.replace(/^\uFEFF/, "").split("\r\n");
     const coluna = cabecalho.split(";").indexOf('"Estoque mínimo"');
     expect(coluna).toBeGreaterThanOrEqual(0);
-    expect(linha.split(";")[coluna]).toBe(
+    expect(linha.split(";").at(coluna)).toBe(
       estoqueMinimo == null ? '""' : String(estoqueMinimo),
     );
   });
