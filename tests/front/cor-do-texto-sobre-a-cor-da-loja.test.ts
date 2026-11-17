@@ -20,6 +20,26 @@ import {
 // A cor de fábrica do tema (index.css: --primary: 240 5.9% 10%) em hexadecimal.
 const COR_PADRAO_DA_LOJA = "#18181b";
 
+afterEach(() => {
+  document.documentElement.style.removeProperty("--primary");
+  document.documentElement.style.removeProperty("--primary-foreground");
+});
+
+function hexDoTexto(token: string): string {
+  switch (token) {
+    case TEXTO_CLARO_SOBRE_A_COR_DA_LOJA:
+      return "#fafafa";
+    case TEXTO_ESCURO_SOBRE_A_COR_DA_LOJA:
+      return "#18181b";
+    case "0 0% 0%":
+      return "#000000";
+    case "0 0% 100%":
+      return "#ffffff";
+    default:
+      throw new Error(`Token de texto inesperado: ${token}`);
+  }
+}
+
 describe("razaoDeContraste — a conta do WCAG", () => {
   it("preto sobre branco é 21:1 e a mesma cor sobre ela mesma é 1:1", () => {
     expect(razaoDeContraste("#000000", "#ffffff")).toBeCloseTo(21, 5);
@@ -60,6 +80,26 @@ describe("textoSobreACorDaLoja — branco ou escuro pelo contraste", () => {
     );
   });
 
+  it.each(["#767676", "#808080", "#777777", "#7a7a7a"])(
+    "a cor intermediária %s mantém pelo menos 4,5:1 no texto aplicado ao tema",
+    (cor) => {
+      aplicarCorDaLoja(cor);
+      const token = document.documentElement.style.getPropertyValue(
+        "--primary-foreground",
+      );
+      expect(razaoDeContraste(hexDoTexto(token), cor)).toBeGreaterThanOrEqual(
+        4.5,
+      );
+    },
+  );
+
+  it.each(["#ffd400", "#ffffff", "#f5f5dc", "#bfff00", "#ffb6c1"])(
+    "preserva o texto escuro do tema para a cor clara comum %s",
+    (cor) => {
+      expect(textoSobreACorDaLoja(cor)).toBe(TEXTO_ESCURO_SOBRE_A_COR_DA_LOJA);
+    },
+  );
+
   it("o branco do tema é o MESMO branco que o index.css já usa", () => {
     expect(TEXTO_CLARO_SOBRE_A_COR_DA_LOJA).toBe("0 0% 98%");
   });
@@ -73,8 +113,7 @@ describe("textoSobreACorDaLoja — branco ou escuro pelo contraste", () => {
       if (claro >= 4.5) {
         expect(escolhido).toBe(TEXTO_CLARO_SOBRE_A_COR_DA_LOJA);
       } else {
-        const contrasteEscolhido =
-          escolhido === TEXTO_CLARO_SOBRE_A_COR_DA_LOJA ? claro : escuro;
+        const contrasteEscolhido = razaoDeContraste(hexDoTexto(escolhido), cor);
         expect(contrasteEscolhido).toBeGreaterThanOrEqual(
           Math.max(claro, escuro) - 1e-9,
         );
@@ -90,11 +129,6 @@ describe("textoSobreACorDaLoja — branco ou escuro pelo contraste", () => {
 });
 
 describe("aplicarCorDaLoja — as variáveis do tema", () => {
-  afterEach(() => {
-    document.documentElement.style.removeProperty("--primary");
-    document.documentElement.style.removeProperty("--primary-foreground");
-  });
-
   it("cor escura: --primary é exatamente o de antes e o texto é branco", () => {
     aplicarCorDaLoja(COR_PADRAO_DA_LOJA);
 

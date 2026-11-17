@@ -188,13 +188,21 @@ export function razaoDeContraste(corA: string, corB: string): number {
 // Devolve o token HSL (formato Tailwind) do texto que fica sobre `corDaLoja`:
 // o branco de sempre quando ele chega a 4,5:1 — por isso toda loja de cor
 // escura fica idêntica —, senão o escuro. Na faixa do meio, onde nenhum dos
-// dois chega a 4,5:1, vence o de maior contraste.
+// dois chega a 4,5:1, usa preto ou branco puro, o de maior contraste.
 export function textoSobreACorDaLoja(corDaLoja: string): string {
   const contrasteDoClaro = razaoDeContraste(HEX_DO_TEXTO_CLARO, corDaLoja);
   if (contrasteDoClaro >= CONTRASTE_MINIMO_DO_TEXTO) {
     return TEXTO_CLARO_SOBRE_A_COR_DA_LOJA;
   }
   const contrasteDoEscuro = razaoDeContraste(HEX_DO_TEXTO_ESCURO, corDaLoja);
+  if (
+    Math.max(contrasteDoClaro, contrasteDoEscuro) < CONTRASTE_MINIMO_DO_TEXTO
+  ) {
+    return razaoDeContraste("#000000", corDaLoja) >=
+      razaoDeContraste("#ffffff", corDaLoja)
+      ? "0 0% 0%"
+      : "0 0% 100%";
+  }
   return contrasteDoClaro >= contrasteDoEscuro
     ? TEXTO_CLARO_SOBRE_A_COR_DA_LOJA
     : TEXTO_ESCURO_SOBRE_A_COR_DA_LOJA;

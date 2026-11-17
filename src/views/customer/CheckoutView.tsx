@@ -7808,7 +7808,7 @@ export function CheckoutViewDaConta({
                     )}
                   >
                     <div className="mb-3 flex items-center justify-between lg:shrink-0">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-600">
                         Resumo do Pedido
                       </span>
                       <button
