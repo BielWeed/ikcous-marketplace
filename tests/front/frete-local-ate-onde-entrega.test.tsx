@@ -401,6 +401,16 @@ describe("FreteLocalBloco: até onde você entrega", () => {
   });
 
   describe("o texto livre continua para quem já o usa", () => {
+    it("o campo da faixa anuncia CEPs da entrega para leitores de tela", () => {
+      montar("38500-000, 38509-999");
+      // Consulta DOM nativa: o projeto não usa Testing Library.
+      const campo = hospedeiro.querySelector<HTMLInputElement>(
+        'input[type="text"][aria-label="CEPs da entrega"]',
+      );
+      expect(campo).not.toBeNull();
+      expect(campo?.id).toBe("local-cep-range");
+    });
+
     it("fica recolhido em 'Escrever a faixa de CEP à mão' quando não há nada escrito", () => {
       montar("");
       const detalhes = hospedeiro.querySelector("details");
