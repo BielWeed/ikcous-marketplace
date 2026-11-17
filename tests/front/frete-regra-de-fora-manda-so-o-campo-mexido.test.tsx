@@ -10,8 +10,9 @@
 // bancar o frete com o valor antigo, sem aviso. Mesma coisa com o mínimo do
 // "grátis acima de" quando o aparelho velho só trocava o alcance.
 //
-// O banco guarda cada coluna separada e confere a linha FINAL (CHECKs entre as
-// colunas), então mandar só o que mudou é seguro; o que não vem é preservado.
+// O banco preserva colunas ausentes, mas tipo e valor do desconto são uma
+// resposta só: sempre viajam juntos. Trocar a estratégia também leva os campos
+// que ela exige, mesmo quando já tinham o mesmo valor na tela.
 import type { StoreConfig } from "@/types";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -270,7 +271,7 @@ describe("Frete — regra de fora da cidade manda só o campo mexido", () => {
       await salvar();
 
       expect(updateConfig).toHaveBeenCalledWith(
-        { nationalDiscountValue: 8 },
+        { nationalDiscountType: "fixo", nationalDiscountValue: 8 },
         { silentSuccess: true },
       );
       expect(banco.nationalDiscountValue).toBe(8);
@@ -278,16 +279,148 @@ describe("Frete — regra de fora da cidade manda só o campo mexido", () => {
   });
 
   describe("o que vai quando ela mexe", () => {
-    it("só o valor do desconto: só ele", async () => {
-      await abrirComRegra(COM_DESCONTO_DE_20);
+    it("só o valor do desconto: leva também o tipo que a tela mostra", async () => {
+      await abrirComRegra({
+        ...COM_DESCONTO_DE_20,
+        nationalDiscountType: "percentual",
+      });
+      outroAparelhoGravaSemAvisar({
+        nationalDiscountType: "fixo",
+        nationalDiscountValue: 7,
+      });
       await digitar("frete-nacional-valor-desconto", "5");
       await salvar();
 
       expect(updateConfig).toHaveBeenCalledTimes(1);
       expect(updateConfig).toHaveBeenCalledWith(
-        { nationalDiscountValue: 5 },
+        { nationalDiscountType: "percentual", nationalDiscountValue: 5 },
         { silentSuccess: true },
       );
+      expect(banco).toMatchObject({
+        nationalDiscountType: "percentual",
+        nationalDiscountValue: 5,
+      });
+    });
+
+    it("só o tipo do desconto: leva também o valor que a tela mostra", async () => {
+      await abrirComRegra(COM_DESCONTO_DE_20);
+      outroAparelhoGravaSemAvisar({ nationalDiscountValue: 50 });
+      await escolher("Porcentagem");
+      await salvar();
+
+      expect(updateConfig).toHaveBeenCalledWith(
+        { nationalDiscountType: "percentual", nationalDiscountValue: 20 },
+        { silentSuccess: true },
+      );
+      expect(banco).toMatchObject({
+        nationalDiscountType: "percentual",
+        nationalDiscountValue: 20,
+      });
+    });
+
+    it("só o mínimo do frete grátis: não leva estratégia nem desconto", async () => {
+      await abrirComRegra(GRATIS_ACIMA_DE_100);
+      await digitar("frete-nacional-minimo", "150");
+      await salvar();
+
+      expect(updateConfig).toHaveBeenCalledWith(
+        { nationalShippingMin: 150 },
+        { silentSuccess: true },
+      );
+    });
+
+    it("só a taxa local muda: não envia desconto nacional intacto", async () => {
+      await abrirComRegra(COM_DESCONTO_DE_20);
+      await digitar("local-delivery-fee", "9");
+      await salvar();
+
+      expect(updateConfig).toHaveBeenCalledWith(
+        { localDeliveryFee: 9 },
+        { silentSuccess: true },
+      );
+    });
+
+    it("o config chega durante a edição do valor: preserva também o tipo visto ao editar", async () => {
+      await abrirComRegra({
+        ...COM_DESCONTO_DE_20,
+        nationalDiscountType: "percentual",
+      });
+      await digitar("frete-nacional-valor-desconto", "8");
+      outroAparelhoGravaSemAvisar({
+        nationalDiscountType: "fixo",
+        nationalDiscountValue: 5,
+      });
+      await configNovoChegaATela();
+      expect(radio("Porcentagem").getAttribute("aria-checked")).toBe("true");
+      expect(campo("frete-nacional-valor-desconto").value).toBe("8");
+      await salvar();
+
+      expect(updateConfig).toHaveBeenCalledWith(
+        { nationalDiscountType: "percentual", nationalDiscountValue: 8 },
+        { silentSuccess: true },
+      );
+    });
+
+    it("o config chega durante a edição do tipo: preserva também o valor visto ao editar", async () => {
+      await abrirComRegra(COM_DESCONTO_DE_20);
+      await escolher("Porcentagem");
+      outroAparelhoGravaSemAvisar({ nationalDiscountValue: 50 });
+      await configNovoChegaATela();
+      expect(campo("frete-nacional-valor-desconto").value).toBe("20");
+      await salvar();
+
+      expect(updateConfig).toHaveBeenCalledWith(
+        { nationalDiscountType: "percentual", nationalDiscountValue: 20 },
+        { silentSuccess: true },
+      );
+    });
+
+    it("troca para grátis acima de um valor: leva o mínimo mesmo sem editá-lo", async () => {
+      await abrirComRegra({
+        ...COM_DESCONTO_DE_20,
+        nationalShippingMin: 100,
+      });
+      outroAparelhoGravaSemAvisar({ nationalShippingMin: 0 });
+      await escolher("Grátis acima de um valor");
+      await salvar();
+
+      expect(updateConfig).toHaveBeenCalledWith(
+        {
+          nationalShippingStrategy: "acima_de_valor",
+          nationalShippingMin: 100,
+          nationalDiscountType: null,
+          nationalDiscountValue: 0,
+        },
+        { silentSuccess: true },
+      );
+      expect(banco.nationalShippingMin).toBe(100);
+    });
+
+    it("troca para desconto: leva tipo e valor já presentes no formulário", async () => {
+      await abrirComRegra({
+        ...COM_DESCONTO_DE_20,
+        nationalShippingStrategy: "acima_de_valor",
+        nationalShippingMin: 100,
+      });
+      outroAparelhoGravaSemAvisar({
+        nationalDiscountType: null,
+        nationalDiscountValue: 0,
+      });
+      await escolher("Desconto no frete");
+      await salvar();
+
+      expect(updateConfig).toHaveBeenCalledWith(
+        {
+          nationalShippingStrategy: "desconto_na_mais_barata",
+          nationalDiscountType: "fixo",
+          nationalDiscountValue: 20,
+        },
+        { silentSuccess: true },
+      );
+      expect(banco).toMatchObject({
+        nationalDiscountType: "fixo",
+        nationalDiscountValue: 20,
+      });
     });
 
     it("só o alcance: só ele", async () => {
@@ -425,7 +558,7 @@ describe("Frete — regra de fora da cidade manda só o campo mexido", () => {
       await digitar("frete-nacional-valor-desconto", "5");
       await salvar();
       expect(updateConfig).toHaveBeenLastCalledWith(
-        { nationalDiscountValue: 5 },
+        { nationalDiscountType: "fixo", nationalDiscountValue: 5 },
         { silentSuccess: true },
       );
 

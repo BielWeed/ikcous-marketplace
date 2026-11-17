@@ -219,9 +219,9 @@ describe("Frete nacional — valores em reais com ponto e vírgula", () => {
           campo("frete-nacional-valor-desconto").getAttribute("aria-invalid"),
         ).toBe("false");
         await act(async () => salvar().click());
-        // Só o valor mudou (o tipo "fixo" já era o salvo): só ele é enviado.
+        // Tipo e valor são uma resposta só, mesmo se só o valor mudou.
         expect(updateConfig).toHaveBeenCalledWith(
-          { nationalDiscountValue: esperado },
+          { nationalDiscountType: "fixo", nationalDiscountValue: esperado },
           { silentSuccess: true },
         );
       },
@@ -271,9 +271,9 @@ describe("Frete nacional — valores em reais com ponto e vírgula", () => {
       expect(el.type).toBe("number");
       await digitar("frete-nacional-valor-desconto", "15");
       await act(async () => salvar().click());
-      // Só o valor mudou (o tipo "percentual" já era o salvo): só ele é enviado.
+      // Tipo e valor são uma resposta só, mesmo se só o valor mudou.
       expect(updateConfig).toHaveBeenCalledWith(
-        { nationalDiscountValue: 15 },
+        { nationalDiscountType: "percentual", nationalDiscountValue: 15 },
         { silentSuccess: true },
       );
     });
