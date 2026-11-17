@@ -13,6 +13,7 @@
 import { CartProvider, useCartContext } from "@/contexts/CartContext";
 import {
   aplicarCatalogoAoCarrinho,
+  avisosDoCarrinho,
   montarCatalogo,
 } from "@/lib/catalogo-do-carrinho";
 import {
@@ -689,6 +690,33 @@ describe("escolhas do item: chave, estoque, assinatura e observação do pedido"
       ].join("\n"),
     );
     expect(notaDasEscolhas([])).toBe("");
+  });
+
+  it("avisa qual combinação perdeu quantidade ao dividir o estoque azul", async () => {
+    const itens: CartItem[] = [
+      {
+        product: produto(),
+        quantity: 2,
+        variantId: AZUL,
+        outrasVariantIds: [M],
+        variantNames: NOME_AZUL_M,
+      },
+      {
+        product: produto(),
+        quantity: 4,
+        variantId: AZUL,
+        outrasVariantIds: [P],
+        variantNames: NOME_AZUL_P,
+      },
+    ];
+    const catalogo = montarCatalogo(["p1"], [linha], variantes);
+
+    expect(
+      aplicarCatalogoAoCarrinho(itens, catalogo).map((i) => i.quantity),
+    ).toEqual([2, 3]);
+    expect(await avisosDoCarrinho(itens, catalogo)).toEqual([
+      'Só restam 3 unidades de "Camiseta (Cor: Azul, Tamanho: P)". Ajustamos a quantidade no seu carrinho.',
+    ]);
   });
 
   it("o catálogo relido confere a combinação: tamanho que zerou tira a linha, estoque baixo corta", () => {
