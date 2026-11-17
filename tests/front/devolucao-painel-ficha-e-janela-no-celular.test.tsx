@@ -216,6 +216,43 @@ async function esc() {
 }
 
 describe("Ficha da devolução — tela estreita vira janela de verdade", () => {
+  it("Tab e Shift+Tab não escapam para a navegação externa à view", async () => {
+    tela(false);
+    const navegacao = document.createElement("button");
+    document.body.prepend(navegacao);
+    await abrirFicha();
+    const controles = [
+      ...janela()!.querySelectorAll<HTMLElement>(
+        "button, input, select, textarea, a[href], [tabindex]",
+      ),
+    ].filter(
+      (el) =>
+        el.tabIndex >= 0 &&
+        !el.matches(":disabled") &&
+        !el.closest("[hidden], [inert]"),
+    );
+    const primeiro = controles[0];
+    const ultimo = controles[controles.length - 1];
+    for (const [alvo, shiftKey, destino] of [
+      [ultimo, false, primeiro],
+      [primeiro, true, ultimo],
+    ] as const) {
+      alvo.focus();
+      const evento = new KeyboardEvent("keydown", {
+        key: "Tab",
+        shiftKey,
+        bubbles: true,
+        cancelable: true,
+      });
+      await act(async () => {
+        alvo.dispatchEvent(evento);
+      });
+      expect(evento.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(destino);
+    }
+    navegacao.remove();
+  });
+
   it("tem papel de janela, é modal e tem nome", async () => {
     tela(false);
     await abrirFicha();

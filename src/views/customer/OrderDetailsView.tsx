@@ -59,6 +59,7 @@ import {
   ROTULO_RETIRADA_PRONTA,
 } from "@/lib/rotulos-das-etapas";
 import { supabase } from "@/lib/supabase";
+import { limparTelefoneBrasileiro } from "@/lib/telefone-br";
 import { motivoDaDevolucaoIndisponivel } from "@/lib/texto-devolucao-indisponivel";
 import {
   type LinhaDevolucaoDoCliente,
@@ -1065,7 +1066,7 @@ export function OrderDetailsView({
 
   const handleWhatsAppSupport = () => {
     const message = `Olá! Tenho uma dúvida sobre meu pedido #${numeroDoPedido(orderId)}.`;
-    let phone = (config.whatsappNumber || "").replace(/\D/g, "");
+    let phone = limparTelefoneBrasileiro(config.whatsappNumber);
     if (phone.length === 11 || phone.length === 10) {
       phone = `55${phone}`;
     }
@@ -1098,6 +1099,10 @@ export function OrderDetailsView({
         );
       } else if (desfecho.motivo === "ja_enviado") {
         toast.info("O comprovante deste pedido já foi enviado por e-mail.");
+      } else if (desfecho.motivo === "teto_diario") {
+        toast.error(
+          "A loja atingiu o limite de e-mails de hoje. Tente de novo mais tarde.",
+        );
       } else if (desfecho.motivo === "sem_remetente") {
         toast.error(
           "A loja ainda não configurou o envio de e-mails. Fale com o lojista.",

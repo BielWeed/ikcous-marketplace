@@ -29,7 +29,12 @@ import {
 import { cn, formatCurrency } from "@/lib/utils";
 import type { CartItem, Order, Product, View } from "@/types";
 import { haptic } from "@/utils/haptic";
-import { AnimatePresence, motion, usePresence } from "framer-motion";
+import {
+  AnimatePresence,
+  MotionConfig,
+  motion,
+  usePresence,
+} from "framer-motion";
 import { ArrowRight, ShieldCheck, Sparkles, Truck } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -234,7 +239,27 @@ export function estadoDaBarraDeFrete(args: {
   return "meta";
 }
 
-export function CartView({
+/**
+ * Quem ativa "Reduzir movimento" no aparelho não vê o deslize entre Carrinho e
+ * Meus pedidos (0,38 s). `reducedMotion="user"` faz o Framer trocar só as
+ * animações de posição por salto; fica AQUI, e não na raiz do app, porque o
+ * Framer é carregado sob demanda e a raiz não pode puxá-lo na abertura
+ * (`perf-entrada-sem-animacao-no-1o-paint`). Preso por
+ * `app-respeita-movimento-reduzido.test.ts`.
+ */
+export function CartView(
+  props: CartViewProps & {
+    onAddToCart?: (product: Product, quantity?: number) => void;
+  },
+) {
+  return (
+    <MotionConfig reducedMotion="user">
+      <ConteudoDoCarrinho {...props} />
+    </MotionConfig>
+  );
+}
+
+function ConteudoDoCarrinho({
   cart: propCart,
   onUpdateQuantity: propOnUpdateQuantity,
   onRemove: propOnRemove,

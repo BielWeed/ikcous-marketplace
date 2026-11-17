@@ -235,6 +235,18 @@ describe("identidade legal nas políticas", () => {
       },
     );
 
+    it("preserva o percentual literal no destinatário, sem mudar o texto", async () => {
+      configAtual.valor = {
+        storeSupportEmail: "vendas%2Bvip+loja@exemplo.com",
+      };
+      await montarPagina("termos");
+      const link = hospedeiro.querySelector('a[href^="mailto:"]');
+      expect(link?.getAttribute("href")).toBe(
+        "mailto:vendas%252Bvip+loja@exemplo.com",
+      );
+      expect(link?.textContent).toContain("vendas%2Bvip+loja@exemplo.com");
+    });
+
     it("o e-mail sozinho já é um contato (não aparece o aviso de 'sem contato')", async () => {
       configAtual.valor = {
         storeName: "Loja da Ana",
@@ -444,6 +456,15 @@ describe("identidade legal nas políticas", () => {
         );
       });
     }
+
+    it("o rodapé preserva o percentual literal do e-mail", async () => {
+      await montarRodape({ email: "vendas%2Bvip+loja@exemplo.com" });
+      const link = hospedeiro.querySelector('a[href^="mailto:"]');
+      expect(link?.getAttribute("href")).toBe(
+        "mailto:vendas%252Bvip+loja@exemplo.com",
+      );
+      expect(link?.textContent).toBe("vendas%2Bvip+loja@exemplo.com");
+    });
 
     it("sem identidade: o rodapé é só os links (três políticas e o Sobre a loja), como sempre", async () => {
       await montarRodape(undefined);

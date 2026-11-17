@@ -7,6 +7,7 @@
 //   - o motivo que veio como corpo bruto da API da transportadora vira frase,
 //     e o texto INTEIRO continua no `title` para quem precisar do detalhe;
 //   - o cabeçalho não usa texto menor que 11px.
+import { motivoDaCotacao } from "@/lib/motivo-da-cotacao";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -61,6 +62,40 @@ function log(sobrescreve: Record<string, unknown>) {
     ...sobrescreve,
   };
 }
+
+describe("motivo de cotação parcial", () => {
+  const nomes = new Map([
+    ["melhor_envio", "Melhor Envio"],
+    ["frenet", "Frenet"],
+  ]);
+  const nomeDe = (id: string) => nomes.get(id);
+
+  it("preserva os nomes e traduz duas falhas depois do prefixo", () => {
+    expect(
+      motivoDaCotacao(
+        "Cotação parcial: melhor_envio: Melhor Envio API retornou 401: x | frenet: Frenet API retornou 500: x",
+        nomeDe,
+      ),
+    ).toBe(
+      "Cotação parcial — Melhor Envio: A transportadora recusou a chave de acesso. Confira a chave em Transportadoras e toque em Testar. | Frenet: A transportadora não respondeu direito (erro 500). Tente de novo mais tarde.",
+    );
+  });
+
+  it.each([
+    [
+      "tempo esgotado: The signal has been aborted",
+      "A transportadora demorou demais para responder. Tente de novo mais tarde.",
+    ],
+    [
+      "melhor_envio: tempo esgotado: The signal has been aborted",
+      "Melhor Envio: A transportadora demorou demais para responder. Tente de novo mais tarde.",
+    ],
+  ])("traduz timeout parcial: %s", (falha, esperada) => {
+    expect(motivoDaCotacao(`Cotação parcial: ${falha}`, nomeDe)).toBe(
+      `Cotação parcial — ${esperada}`,
+    );
+  });
+});
 
 describe("HistoricoCotacoesSection — leitura de lojista", () => {
   let raiz: Root;

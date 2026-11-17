@@ -376,6 +376,25 @@ Deno.test("montarCorpoPixOrders arredonda para duas casas mesmo com valor quebra
   assertEquals(pagamentos[0].amount, "149.90");
 });
 
+for (const { valor, esperado } of [
+  { valor: 10.006, esperado: "10.01" },
+  { valor: 0.005, esperado: "0.01" },
+]) {
+  Deno.test(`montarCorpoPixOrders arredonda a terceira casa sem truncar centavos: ${valor}`, () => {
+    const corpo = montarCorpoPixOrders({
+      valor,
+      email: "cliente@exemplo.com",
+      orderId: "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b",
+      expiracao: "PT30M",
+    });
+
+    assertEquals(corpo.total_amount, esperado);
+    const transacoes = corpo.transactions as Record<string, unknown>;
+    const pagamentos = transacoes.payments as Record<string, unknown>[];
+    assertEquals(pagamentos[0].amount, esperado);
+  });
+}
+
 Deno.test("montarCorpoPixOrders leva o external_reference — é o que a reconciliação usa para achar a cobrança", () => {
   const corpo = montarCorpoPixOrders({
     valor: 50,
@@ -1859,8 +1878,10 @@ Deno.test("montarCorpoCartaoOrders: documento com máscara vira só dígitos; CN
 });
 
 Deno.test("montarCorpoCartaoOrders arredonda o valor para duas casas (string), igual ao PIX", () => {
-  const corpo = montarCorpoCartaoOrders(argsCartao({ valor: 10.005 + 0.001 }));
+  const corpo = montarCorpoCartaoOrders(argsCartao({ valor: 10.006 }));
   assertEquals(corpo.total_amount, "10.01");
+  const pagamento = (corpo.transactions as { payments: Array<Record<string, unknown>> }).payments[0];
+  assertEquals(pagamento.amount, "10.01");
 });
 
 for (

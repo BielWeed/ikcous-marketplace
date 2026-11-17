@@ -13,7 +13,10 @@ import {
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import type { TipoDePolitica } from "@/lib/nomes-das-politicas";
-import { telefoneDaLojaParaExibicao } from "@/lib/telefone-br";
+import {
+  limparTelefoneBrasileiro,
+  telefoneDaLojaParaExibicao,
+} from "@/lib/telefone-br";
 import {
   type DocumentoDePolitica,
   montarPolitica,
@@ -131,7 +134,7 @@ function ContatoDaLoja() {
   const email = identidadeLegalDaLoja(config)?.email ?? null;
 
   function falarComALoja() {
-    let fone = (config.whatsappNumber || "").replace(/\D/g, "");
+    let fone = limparTelefoneBrasileiro(config.whatsappNumber);
     if (fone.length === 10 || fone.length === 11) fone = `55${fone}`;
     abrirWhatsapp(
       `https://wa.me/${fone}?text=${encodeURIComponent("Olá! Vim pelo app da loja.")}`,
@@ -156,7 +159,7 @@ function ContatoDaLoja() {
       )}
       {email && (
         <a
-          href={`mailto:${email}`}
+          href={`mailto:${email.replaceAll("%", "%25")}`}
           className="flex min-h-11 w-full items-center gap-2 break-all text-sm font-semibold text-foreground underline underline-offset-2"
         >
           <Mail className="size-4 shrink-0" aria-hidden="true" />

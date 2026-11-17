@@ -732,6 +732,20 @@ describe("extrato por dia e saldo corrente", () => {
     });
   });
 
+  it.each([
+    [0.29, 99.71],
+    [1.15, 98.85],
+    [4.35, 95.65],
+  ])(
+    "saldo retroativo preserva os centavos da entrada posterior de R$ %s",
+    (entrada, saldoAnterior) => {
+      expect(saldoCorrenteRetroativo(100, [0, entrada])).toEqual([
+        saldoAnterior,
+        100,
+      ]);
+    },
+  );
+
   it("saldo retroativo e série de 30 dias com os buracos preenchidos", () => {
     expect(saldoCorrenteRetroativo(1000, [100, -50, 200])).toEqual([
       850, 800, 1000,
@@ -1024,6 +1038,25 @@ describe("a pagar / a receber", () => {
       total: 36.1,
       vencido: 10.1,
       proximos7Dias: 20,
+    });
+  });
+
+  it("soma centavos sem truncar no total, nos vencidos e nos próximos sete dias", () => {
+    const itens = parsePrevistos([
+      { id: "1", valor: 1.15, vencimento: "2026-09-01" },
+      { id: "2", valor: 0.29, vencimento: "2026-09-25" },
+      { id: "3", valor: 4.35, vencimento: "2026-09-20" },
+      { id: "4", valor: 1.15, vencimento: hoje },
+      { id: "5", valor: 0.29, vencimento: "2026-09-27" },
+      { id: "6", valor: 4.35, vencimento: "2026-10-03" },
+      { id: "7", valor: 4.35, vencimento: "2026-10-04" },
+      { id: "8", valor: 1.15, vencimento: null },
+    ]);
+    // Cada grupo: 115 + 29 + 435 = 579; fora deles: 435 + 115 = 550.
+    expect(totaisDosPrevistos(itens, hoje)).toEqual({
+      total: 1708 / 100,
+      vencido: 579 / 100,
+      proximos7Dias: 579 / 100,
     });
   });
 

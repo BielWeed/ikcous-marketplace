@@ -180,6 +180,62 @@ describe("AdminProductFormView — Voltar do celular fecha só a camada aberta",
     await esperar();
   }
 
+  it("variação recebe o foco, contém Tab e fecha por Escape devolvendo o foco", async () => {
+    await montar();
+    const origem = botaoPorTexto("+ Novo");
+    expect(origem).toBeTruthy();
+    origem!.focus();
+    await act(async () => origem!.click());
+    await esperar();
+    const dialogo = document.querySelector<HTMLElement>(
+      '[aria-labelledby="titulo-da-variacao"]',
+    )!;
+    expect(dialogo.contains(document.activeElement)).toBe(true);
+    const controles = [
+      ...dialogo.querySelectorAll<HTMLElement>(
+        "button, input, select, textarea, a[href], [tabindex]",
+      ),
+    ].filter(
+      (el) =>
+        el.tabIndex >= 0 &&
+        !el.matches(":disabled") &&
+        !el.closest("[hidden], [inert]"),
+    );
+    const primeiro = controles[0];
+    const ultimo = controles[controles.length - 1];
+    for (const [alvo, shiftKey, destino] of [
+      [ultimo, false, primeiro],
+      [primeiro, true, ultimo],
+    ] as const) {
+      alvo.focus();
+      const evento = new KeyboardEvent("keydown", {
+        key: "Tab",
+        shiftKey,
+        bubbles: true,
+        cancelable: true,
+      });
+      await act(async () => {
+        alvo.dispatchEvent(evento);
+      });
+      expect(evento.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(destino);
+    }
+    await act(async () => {
+      primeiro.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Escape",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+    await esperar(400);
+    expect(
+      document.querySelector('[aria-labelledby="titulo-da-variacao"]'),
+    ).toBeNull();
+    expect(document.activeElement).toBe(origem);
+  });
+
   const FOTO = "https://fotos.fixture.invalid/original.webp";
   const RECORTADA = "https://fotos.fixture.invalid/recortada.webp";
   const recorte = () => document.querySelector('[data-testid="recorte"]');

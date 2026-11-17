@@ -78,7 +78,7 @@ export function RodapeDasPoliticas({
           {quem && <p className="break-words">{quem}</p>}
           {email && (
             <a
-              href={`mailto:${email}`}
+              href={`mailto:${email.replaceAll("%", "%25")}`}
               className="flex min-h-11 items-center break-all font-semibold underline underline-offset-2"
             >
               {email}

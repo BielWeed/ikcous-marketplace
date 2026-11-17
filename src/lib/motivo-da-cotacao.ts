@@ -25,6 +25,7 @@ export type NomeDoProvedor = (id: string) => string | null | undefined;
 // "<id>: " no começo de uma parte — a edge usa `${provedor}: ${texto}` quando
 // há mais de uma transportadora ligada.
 const PREFIXO_DE_PROVEDOR = /^([a-z][a-z_]*): ([\s\S]*)$/;
+const PREFIXO_PARCIAL = /^Cotação parcial: /;
 // "<Nome> API retornou <status>: <corpo>" (provedores.ts).
 const API_RETORNOU = /\bAPI retornou (\d{3})\b/;
 // Corpo que é JSON ou HTML, não frase.
@@ -101,7 +102,8 @@ export function motivoDaCotacao(
   nomeDe?: NomeDoProvedor,
 ): string {
   if (!texto) return "";
-  return partesDaMensagem(texto)
+  const parcial = PREFIXO_PARCIAL.test(texto);
+  const resultado = partesDaMensagem(texto.replace(PREFIXO_PARCIAL, ""))
     .map((parte) => {
       const comPrefixo = PREFIXO_DE_PROVEDOR.exec(parte);
       const nome = comPrefixo?.[1] ? nomeDe?.(comPrefixo[1]) : null;
@@ -114,6 +116,7 @@ export function motivoDaCotacao(
       return traduzirCorpo(parte);
     })
     .join(" | ");
+  return parcial ? `Cotação parcial — ${resultado}` : resultado;
 }
 
 /**

@@ -141,6 +141,49 @@ describe("AdminUserDetailView — o extrato traduz 'pending', igual aos outros s
 
   const texto = () => (hospedeiro.textContent ?? "").replace(/\s+/g, " ");
 
+  it.each(["ausente", "recusada", "sucesso"])(
+    "copiar telefone: API %s",
+    async (cenario) => {
+      const escrever = vi
+        .fn()
+        .mockImplementation(() =>
+          cenario === "recusada"
+            ? Promise.reject(new Error("sem permissão"))
+            : Promise.resolve(),
+        );
+      const original = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: cenario === "ausente" ? undefined : { writeText: escrever },
+      });
+      try {
+        await abrirFicha();
+        await act(async () => {
+          hospedeiro
+            .querySelector<HTMLButtonElement>(
+              'button[aria-label="Copiar telefone"]',
+            )
+            ?.click();
+        });
+        const { toast } = await import("sonner");
+        if (cenario === "sucesso") {
+          expect(escrever).toHaveBeenCalledWith("34999999999");
+          expect(toast.success).toHaveBeenCalledWith(
+            "Telefone copiado com sucesso!",
+          );
+        } else {
+          expect(toast.error).toHaveBeenCalledWith(
+            "Não foi possível copiar. Copie manualmente.",
+          );
+          expect(toast.success).not.toHaveBeenCalled();
+        }
+      } finally {
+        if (original) Object.defineProperty(navigator, "clipboard", original);
+        else Reflect.deleteProperty(navigator, "clipboard");
+      }
+    },
+  );
+
   it("o pedido 'pending' aparece traduzido, não com o valor cru em inglês", async () => {
     await abrirFicha();
 

@@ -12,6 +12,7 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
 import { CartaoDaDevolucao } from "@/components/admin/devolucoes/CartaoDaDevolucao";
 import { DetalheDaDevolucao } from "@/components/admin/devolucoes/DetalheDaDevolucao";
+import { conterTabNoDialogo } from "@/components/admin/primitivos/conterTabNoDialogo";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useDevolucoesAdmin } from "@/hooks/useDevolucoesAdmin";
 import { instanteDoDia, useDiaDeSaoPaulo } from "@/hooks/useDiaDeSaoPaulo";
@@ -425,6 +426,11 @@ export function AdminDevolucoesView({
           {selecionada ? (
             <div
               ref={fichaRef}
+              tabIndex={janela ? -1 : undefined}
+              onKeyDown={(evento) => {
+                if (janela && active !== false)
+                  conterTabNoDialogo(evento, evento.currentTarget);
+              }}
               role={janela ? "dialog" : undefined}
               aria-modal={janela ? true : undefined}
               aria-label={janela ? "Detalhe da devolução" : undefined}

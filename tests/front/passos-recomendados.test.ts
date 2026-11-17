@@ -185,6 +185,40 @@ describe("fatoDoEmail — a leitura do e-mail com a régua do selo de Ajustes", 
     ).toBe("configurado");
   });
 
+  it("falha no remetente do servidor pede correção do e-mail no Início", () => {
+    const email = fatoDoEmail(
+      "pronto",
+      lido({
+        origem: "ambiente",
+        saude: {
+          codigo_falha: "limite_diario",
+          ultima_falha_em: "2026-10-13T15:00:00Z",
+          ultima_falha_origem: "ambiente",
+        },
+      }),
+    );
+    expect(email).toBe("com_problema");
+    expect(pendentesRecomendados(fatos({ email })).map((p) => p.chave)).toEqual(
+      ["email"],
+    );
+  });
+
+  it("falha do painel não vira pendência quando o servidor envia agora", () => {
+    const email = fatoDoEmail(
+      "pronto",
+      lido({
+        origem: "ambiente",
+        saude: {
+          codigo_falha: "limite_diario",
+          ultima_falha_em: "2026-10-13T15:00:00Z",
+          ultima_falha_origem: "painel",
+        },
+      }),
+    );
+    expect(email).toBe("configurado");
+    expect(pendentesRecomendados(fatos({ email }))).toEqual([]);
+  });
+
   it("painel com o último teste falho: com problema", () => {
     expect(
       fatoDoEmail(

@@ -75,6 +75,13 @@ it.each([
   vi.spyOn(navigator, "userAgent", "get").mockReturnValue(ua);
   await montar();
   expect(button("Continuar com Google")).toBeUndefined();
+  expect(host.textContent).toContain("Criou sua conta com o Google?");
+  expect(host.textContent).toContain(
+    "Este navegador não permite entrar com o Google.",
+  );
+  expect(host.textContent).toContain("Abrir no navegador");
+  expect(host.textContent).toContain("Chrome ou Safari");
+  expect(host.textContent).toContain("Ou entre com e-mail e senha.");
 });
 it.each([
   "Mozilla/5.0 (Linux; Android 13; Pixel) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36",
@@ -84,6 +91,7 @@ it.each([
   vi.spyOn(navigator, "userAgent", "get").mockReturnValue(ua);
   await montar();
   expect(button("Continuar com Google")).toBeDefined();
+  expect(host.textContent).not.toContain("Criou sua conta com o Google?");
 });
 it("esconde Google se a sonda falhar e mantém o formulário", async () => {
   vi.mocked(fetch).mockRejectedValue(new Error("rede"));

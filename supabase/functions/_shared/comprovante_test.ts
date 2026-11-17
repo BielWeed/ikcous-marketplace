@@ -58,6 +58,7 @@ type Chamada = { tipo: "rpc" | "from"; nome: string; args?: unknown };
 function clienteFalso(opts: {
   pedido?: Record<string, unknown> | null;
   erroLeituraPedido?: unknown;
+  erroReleituraPedido?: unknown;
   erroLeituraItens?: unknown;
   itens?: Array<Record<string, unknown>>;
   storeConfig?: Record<string, unknown> | null;
@@ -132,7 +133,11 @@ function clienteFalso(opts: {
               return Promise.resolve(resultado);
             },
             eq(_coluna: string, _valor: unknown) {
-              const resultado = resultadoPara(tabela);
+              const resultado =
+                tabela === "marketplace_orders" &&
+                  colunas === "confirmation_email_sent_at" && opts.erroReleituraPedido
+                  ? { data: null, error: opts.erroReleituraPedido }
+                  : resultadoPara(tabela);
               return {
                 maybeSingle: async () => resultado,
                 then: (resolve: (v: unknown) => void) => resolve(resultado),
@@ -238,7 +243,11 @@ Deno.test("reserva falha (erro de banco) -> envio_falhou", async () => {
 });
 
 Deno.test("reserva devolve false ('já enviado') -> ja_enviado, e o e-mail NUNCA é tentado", async () => {
-  const pedido = { id: UUID_PEDIDO, customer_data: { email: "cliente@exemplo.com" } };
+  const pedido = {
+    id: UUID_PEDIDO,
+    customer_data: { email: "cliente@exemplo.com" },
+    confirmation_email_sent_at: "2026-11-17T10:00:00Z",
+  };
   const supabase = clienteFalso({ pedido, reservou: false });
   let enviarEmailChamado = false;
 
@@ -255,6 +264,51 @@ Deno.test("reserva devolve false ('já enviado') -> ja_enviado, e o e-mail NUNCA
 
   assertEquals(desfecho, { ok: false, motivo: "ja_enviado" });
   assertEquals(enviarEmailChamado, false, "a trava é a reserva, e ela venceu ANTES de qualquer tentativa de envio");
+});
+
+Deno.test("reserva negada sem marca de envio -> teto_diario, sem enviar nem liberar reserva", async () => {
+  const chamadas: Chamada[] = [];
+  const supabase = clienteFalso({
+    pedido: {
+      id: UUID_PEDIDO,
+      customer_data: { email: "cliente@exemplo.com" },
+      confirmation_email_sent_at: null,
+    },
+    reservou: false,
+    chamadas,
+  });
+  let envios = 0;
+
+  const desfecho = await enviarComprovantePedido({
+    supabase: supabase as never,
+    orderId: UUID_PEDIDO,
+    deps: {
+      resolverRemetente: () => Promise.resolve(REMETENTE_DE_TESTE),
+      enviarEmail: () => { envios++; return Promise.resolve(); },
+    },
+  });
+
+  assertEquals(desfecho, { ok: false, motivo: "teto_diario" });
+  assertEquals(envios, 0);
+  assertEquals(chamadas.filter((c) => c.tipo === "rpc").map((c) => c.nome), [
+    "reivindicar_email_de_confirmacao",
+  ]);
+});
+
+Deno.test("reserva negada e releitura da marca falha -> envio_falhou, sem afirmar entrega ou teto", async () => {
+  const supabase = clienteFalso({
+    pedido: { id: UUID_PEDIDO, customer_data: { email: "cliente@exemplo.com" } },
+    reservou: false,
+    erroReleituraPedido: { message: "connection reset" },
+  });
+
+  const desfecho = await enviarComprovantePedido({
+    supabase: supabase as never,
+    orderId: UUID_PEDIDO,
+    deps: { resolverRemetente: () => Promise.resolve(REMETENTE_DE_TESTE) },
+  });
+
+  assertEquals(desfecho, { ok: false, motivo: "envio_falhou" });
 });
 
 Deno.test("reserva concedida -> a RPC 'reivindicar_email_de_confirmacao' é chamada com p_order_id certo, e o desfecho é ok:true", async () => {
@@ -928,8 +982,13 @@ function clienteComLiberacao(
   opcoes: { erroLeituraItens?: unknown } = {},
 ) {
   const chamadas: Chamada[] = [];
+  const pedido = {
+    id: UUID_PEDIDO,
+    customer_data: { email: "cliente@exemplo.com" },
+    confirmation_email_sent_at: null as string | null,
+  };
   const base = clienteFalso({
-    pedido: { id: UUID_PEDIDO, customer_data: { email: "cliente@exemplo.com" } },
+    pedido,
     erroLeituraItens: opcoes.erroLeituraItens,
     itens: [{ product_name: "Produto", quantity: 1, price: 10 }],
     storeConfig: { store_name: "Loja Teste" },
@@ -943,13 +1002,17 @@ function clienteComLiberacao(
       if (nome === "reivindicar_email_de_confirmacao") {
         const ganhou = !estado.reservado;
         estado.reservado = true;
+        if (ganhou) pedido.confirmation_email_sent_at = "2026-11-17T10:00:00Z";
         return { data: ganhou, error: null };
       }
       if (nome === "liberar_email_de_confirmacao") {
         const resposta = respostasDaLiberacao[estado.liberacoes] ?? { error: null };
         estado.liberacoes++;
         if (resposta === "rejeita") throw new Error("fake: rede caiu");
-        if (!resposta.error) estado.reservado = false;
+        if (!resposta.error) {
+          estado.reservado = false;
+          pedido.confirmation_email_sent_at = null;
+        }
         return { data: null, error: resposta.error };
       }
       return { data: null, error: null };

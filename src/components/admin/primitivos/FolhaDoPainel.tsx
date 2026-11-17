@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { HelpCircle, type LucideIcon, X } from "lucide-react";
-import { type ReactNode, useEffect } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 
 /**
  * Folha do painel: diálogo acessível do admin (painel simples, B5).
@@ -37,6 +37,7 @@ export function FolhaDoPainel({
   readonly rodape?: ReactNode;
   readonly children: ReactNode;
 }) {
+  const origemRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
     if (!aberta) return;
     document.body.classList.add("admin-modal-open");
@@ -55,6 +56,17 @@ export function FolhaDoPainel({
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
         <DialogPrimitive.Content
+          onOpenAutoFocus={() => {
+            origemRef.current =
+              document.activeElement instanceof HTMLElement
+                ? document.activeElement
+                : null;
+          }}
+          onCloseAutoFocus={(evento) => {
+            if (!origemRef.current?.isConnected) return;
+            evento.preventDefault();
+            origemRef.current.focus();
+          }}
           // Sem descrição própria: o título já nomeia a folha. `undefined`
           // cala o aviso do Radix sem inventar um texto que ninguém leria.
           aria-describedby={undefined}

@@ -243,6 +243,20 @@ Deno.test("desconto_na_mais_barata fixo: desconto menor que o preço -> subtrai 
     assertEquals(resultado[0].price, 17.5)
 })
 
+// R$ 30,00 = 3000 centavos; resultados conferidos por subtração inteira,
+// sem repetir a conversão do desconto feita pela implementação.
+for (const { desconto, esperadoCentavos } of [
+    { desconto: 1.15, esperadoCentavos: 2885 },
+    { desconto: 0.29, esperadoCentavos: 2971 },
+    { desconto: 4.35, esperadoCentavos: 2565 },
+]) {
+    Deno.test(`desconto_na_mais_barata fixo: R$ ${desconto} não perde centavo na conversão`, () => {
+        const e = estrategia({ estrategia: "desconto_na_mais_barata", minimo: 0, tipoDesconto: "fixo", valorDesconto: desconto, alcance: "mais_barata" })
+        const resultado = aplicarEstrategiaNacional([opcao("a", 30)], e, 500)
+        assertEquals(resultado[0].price, esperadoCentavos / 100)
+    })
+}
+
 Deno.test("desconto_na_mais_barata + alcance mais_barata, EMPATE: todas as empatadas descontam; as outras ficam cheias", () => {
     const opcoes = [opcao("a", 20), opcao("b", 20), opcao("c", 40)]
     const e = estrategia({ estrategia: "desconto_na_mais_barata", minimo: 0, tipoDesconto: "fixo", valorDesconto: 5, alcance: "mais_barata" })

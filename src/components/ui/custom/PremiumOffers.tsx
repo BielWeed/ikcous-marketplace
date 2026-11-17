@@ -242,10 +242,10 @@ const PremiumOffersPadrao = React.memo(function PremiumOffersPadrao({
       haptic.light();
       setActiveHeroIndex(index);
       if (emblaApi) {
-        emblaApi.scrollTo(index);
+        emblaApi.scrollTo(index, menosMovimento);
       }
     },
-    [emblaApi],
+    [emblaApi, menosMovimento],
   );
 
   if (products.length === 0) return null;

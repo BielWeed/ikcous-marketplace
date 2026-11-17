@@ -966,13 +966,16 @@ async function cotarUmaVez(
     // devolve — sem isto o produto "sumia" e a cotação saía de pacote de 0,3 kg.
     const productIds = itensDoCarrinho.map((item: any) => idCanonico(item?.product?.id || item?.productId)).filter(Boolean)
     let dbProducts: any[] = []
+    let produtosIlegiveis = false
     if (productIds.length > 0) {
         const { data: prods, error: prodsError } = await supabaseClient
             .from('produtos')
             .select('id, nome, preco_venda, peso_kg, largura_cm, altura_cm, comprimento_cm, frete_gratis')
             .in('id', productIds)
-        if (prodsError) console.error('[calculate-shipping] Error querying database products:', prodsError?.code ?? prodsError)
-        else dbProducts = prods || []
+        if (prodsError) {
+            produtosIlegiveis = true
+            console.error('[calculate-shipping] Error querying database products:', prodsError?.code ?? prodsError)
+        } else dbProducts = prods || []
     }
     const dbProductsMap = new Map(dbProducts.map((p) => [idCanonico(p.id), p]))
     const variantIds = itensDoCarrinho.map((item: any) => idCanonico(item?.variantId)).filter(Boolean)
@@ -1070,6 +1073,23 @@ async function cotarUmaVez(
             options: await opcoesDaClienteLocal(supabaseClient, enabledMethods, allFree ? 0 : localDeliveryFee, aceitaRetirada, entrega, pedido.contratoCliente),
             cotacaoIncompleta: false,
         }))
+    }
+
+    // Leitura que falhou não é produto sem cadastro: não inventa peso nem
+    // aceita o grátis do navegador. Entrega local e retirada já foram tratadas.
+    if (produtosIlegiveis) {
+        await gravarHistorico(supabaseClient, {
+            origin_cep: originCep,
+            destination_cep: cleanCep,
+            provider: storeConfig.shipping_provider || 'flat_fee',
+            cart_items: carrinhoParaOHistorico(cart),
+            response_time_ms: 0,
+            status: 'error',
+            error_message: 'Não foi possível ler os produtos do carrinho; a cotação de fora da cidade não foi feita.',
+        })
+        const retirada = await retiradaDeFora()
+        if (retirada) return respostaJson(comRevisao({ options: [retirada], cotacaoIncompleta: true }))
+        return respostaJson({ error: 'Não foi possível calcular o frete agora. Tente novamente em instantes.' }, 503)
     }
 
     // O atalho de grátis por produto (`free-shipping-promo`) é NACIONAL — o

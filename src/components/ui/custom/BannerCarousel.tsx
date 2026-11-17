@@ -477,7 +477,7 @@ export const BannerCarousel = memo(function BannerCarousel({
           {validBanners.map((_, index) => (
             <button
               key={index}
-              onClick={() => emblaApi?.scrollTo(index)}
+              onClick={() => emblaApi?.scrollTo(index, menosMovimento)}
               className="group flex size-11 items-end justify-center"
               aria-label={`Ir para slide ${index + 1}`}
               aria-current={index === currentIndex}

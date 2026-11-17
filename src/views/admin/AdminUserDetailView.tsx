@@ -36,6 +36,7 @@ import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useAuth } from "@/hooks/useAuth";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
+import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { formatarData } from "@/lib/crm";
 import { chaveDaLinha, separarChave } from "@/lib/escolhas-do-item";
 import { mapOrderFromDB, mapProductFromDB } from "@/lib/mappers";
@@ -233,20 +234,20 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
     };
   }, [carregarVoz]);
 
-  const handleCopy = (text: string, field: "id" | "email" | "whatsapp") => {
+  const handleCopy = async (
+    text: string,
+    field: "id" | "email" | "whatsapp",
+  ) => {
     haptic.light();
     const label =
       field === "id" ? "ID" : field === "email" ? "E-mail" : "Telefone";
-    navigator.clipboard
-      .writeText(text)
-      .then(() => {
-        setCopiedField(field);
-        toast.success(`${label} copiado com sucesso!`);
-        setTimeout(() => setCopiedField(null), 2000);
-      })
-      .catch(() => {
-        toast.error("Não foi possível copiar. Copie manualmente.");
-      });
+    if (await copiarParaClipboard(text)) {
+      setCopiedField(field);
+      toast.success(`${label} copiado com sucesso!`);
+      setTimeout(() => setCopiedField(null), 2000);
+    } else {
+      toast.error("Não foi possível copiar. Copie manualmente.");
+    }
   };
 
   useEffect(() => {

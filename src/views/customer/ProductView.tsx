@@ -50,6 +50,7 @@ import { montarMensagemDeCompartilhar } from "@/lib/mensagem-de-compartilhar";
 import { percentualDeDesconto } from "@/lib/percentual-de-desconto";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import { resumoParaPrevia } from "@/lib/resumo-para-previa";
+import { limparTelefoneBrasileiro } from "@/lib/telefone-br";
 import { textoEstoqueBaixo, textoSoRestam } from "@/lib/texto-estoque-baixo";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product, ProductVariant, View } from "@/types";
@@ -933,7 +934,7 @@ export const ProductView = React.memo(function ProductView({
       .map((v) => `${v.name}: ${v.value}`)
       .join(", ");
     const message = `Olá! Tenho interesse no produto: ${product.name}${variantInfo ? ` (${variantInfo})` : ""} - ${reais(currentPrice)}`;
-    let phone = (config.whatsappNumber || "").replace(/\D/g, "");
+    let phone = limparTelefoneBrasileiro(config.whatsappNumber);
     if (phone.length === 11 || phone.length === 10) {
       phone = `55${phone}`;
     }

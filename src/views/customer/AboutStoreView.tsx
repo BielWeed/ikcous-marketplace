@@ -7,6 +7,7 @@ import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { primeiraLetra } from "@/lib/primeira-letra";
+import { limparTelefoneBrasileiro } from "@/lib/telefone-br";
 import { haptic } from "@/utils/haptic";
 import DOMPurify from "dompurify";
 import { motion, useIsPresent } from "framer-motion";
@@ -181,7 +182,7 @@ export function AboutStoreView() {
   // número é nacional (10 ou 11 dígitos). A régua de existência é o
   // lojaTemWhatsapp — sem número, este bloco nem renderiza.
   const falarComALoja = () => {
-    let phone = (config.whatsappNumber || "").replace(/\D/g, "");
+    let phone = limparTelefoneBrasileiro(config.whatsappNumber);
     if (phone.length === 10 || phone.length === 11) {
       phone = `55${phone}`;
     }

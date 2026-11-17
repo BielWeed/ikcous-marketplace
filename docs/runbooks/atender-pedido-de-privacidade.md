@@ -140,6 +140,16 @@ UNION ALL SELECT 'fotos de devolução guardadas', count(*)::text FROM storage.o
 complemento, bairro e CEP) que aparecerem: o passo 7 precisa deles (depois do
 passo 4 eles deixam de existir no banco).
 
+Anote também os telefones distintos guardados nos pedidos da cliente, antes que
+o passo 4 os apague:
+
+```sql
+SELECT DISTINCT customer_phone FROM public.marketplace_orders WHERE user_id = 'COLE-O-ID-AQUI'::uuid;
+```
+
+Leve esses números ao passo 7 e repita a busca de sobras para cada telefone,
+além do whatsapp atual.
+
 Mostre o resultado ao dono. Se houver **pedido ou devolução em andamento**, pare:
 anonimizar o endereço de um pedido que ainda não foi entregue estraga a entrega.
 O bloco do passo 4 recusa rodar nesse caso. Espere o pedido terminar (ou combine
@@ -460,7 +470,23 @@ O que o bloco do passo 4 não consegue saber: texto livre onde o **nome** ou o
 devolução, pedido feito sem login com o mesmo e-mail…). Este bloco só LÊ e lista
 "tabela, coluna, quantas linhas" que ainda contêm os dados antigos que você
 anotou no passo 2. Troque os quatro valores entre aspas (se não tiver um deles,
-deixe `''`):
+deixe `''`).
+
+Antes de rodar o bloco abaixo, **leia à mão o que a própria cliente escreveu em
+público**: a busca por número só acha o telefone que está HOJE no perfil; um
+número antigo, ou o nome só pelo primeiro nome, passa batido.
+
+```sql
+SELECT 'pergunta' AS tipo, q.id, q.question AS texto FROM public.questions q WHERE q.user_id = 'COLE-O-ID-AQUI'::uuid
+UNION ALL
+SELECT 'avaliação', r.id, r.comment FROM public.reviews r WHERE r.user_id = 'COLE-O-ID-AQUI'::uuid;
+```
+
+Se algum texto tiver telefone, endereço ou outro dado pessoal dela, troque só o
+trecho por `[removido]`. A política continua a da tela: a pergunta/avaliação
+**fica**, sem o nome.
+
+Agora rode a busca de sobras com os valores anotados no passo 2:
 
 ```sql
 -- BLOCO: sobras

@@ -129,6 +129,29 @@ describe("classeDoScrimDoBanner: a fonte única do escurecimento", () => {
   });
 });
 
+describe("BannerCarousel: bolinhas respeitam menos movimento", () => {
+  it.each([true, false])("reduzir movimento = %s", async (reduzir) => {
+    vi.stubGlobal("matchMedia", matchMediaStub(reduzir));
+    const { BannerCarousel } = await import(
+      "@/components/ui/custom/BannerCarousel"
+    );
+    act(() => {
+      raiz.render(
+        <BannerCarousel
+          banners={[criarBanner({ id: "b1" }), criarBanner({ id: "b2" })]}
+          autoPlay={false}
+        />,
+      );
+    });
+    const bolinha = hospedeiro.querySelector('[aria-label="Ir para slide 2"]');
+    expect(bolinha).not.toBeNull();
+    act(() =>
+      bolinha!.dispatchEvent(new MouseEvent("click", { bubbles: true })),
+    );
+    expect(emblaApi.scrollTo).toHaveBeenCalledWith(1, reduzir);
+  });
+});
+
 describe("BannerCarousel: o texto sempre tem escurecimento atrás", () => {
   async function montar(banners: Banner[]) {
     const { BannerCarousel } = await import(
