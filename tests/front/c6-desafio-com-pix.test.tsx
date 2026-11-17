@@ -245,7 +245,19 @@ describe("C6/P2 — verificação em desafio3ds (order confirmada) oferece 'Paga
     expect(montagensDoPagamento).toBe(0);
   });
 
-  it("CONTROLE: desafio3ds com o prazo do pedido VENCIDO não oferece PIX (o servidor responderia 409 terminal)", async () => {
+  it("CONTROLE: desafio3ds com expiraEm ILEGÍVEL (falta de dado, não de relógio) não oferece PIX", async () => {
+    criarPagamento.mockResolvedValue({
+      verificacao: "desafio3ds",
+      paymentId: "ORD-3DS-ADOTADA",
+      desafio3ds: { url: URL_DO_DESAFIO },
+      expiraEm: "nao-e-data",
+    });
+    await retomar(LINHA_COM_SENTINELA);
+    expect(botao("Pagar com PIX")).toBeUndefined();
+    expect(montagensDoPagamento).toBe(0);
+  });
+
+  it("desafio3ds com o prazo JÁ vencido no aparelho: o botão aparece (quem recusa é o servidor, ao toque); nada cobra antes do toque", async () => {
     criarPagamento.mockResolvedValue({
       verificacao: "desafio3ds",
       paymentId: "ORD-3DS-ADOTADA",
@@ -253,8 +265,9 @@ describe("C6/P2 — verificação em desafio3ds (order confirmada) oferece 'Paga
       expiraEm: PRAZO_VENCIDO,
     });
     await retomar(LINHA_COM_SENTINELA);
-    expect(botao("Pagar com PIX")).toBeUndefined();
+    expect(botao("Pagar com PIX")).toBeDefined();
     expect(montagensDoPagamento).toBe(0);
+    expect(chamadasPix()).toBe(0);
   });
 
   for (const resposta of [
@@ -301,34 +314,41 @@ describe("C6/P2 — verificação em desafio3ds (order confirmada) oferece 'Paga
     expect(chamadasPix()).toBe(0);
   });
 
-  it("VERMELHO (relógio): o botão existe antes do prazo e SOME quando o prazo do pedido passa — o desafio continua", async () => {
-    // Relógio FALSO (só Date e setTimeout): o prazo de 400 ms não disputa com
-    // o custo do primeiro `import()` da tela, que numa máquina fria passa de
-    // 2 s e vencia o prazo ANTES da resposta chegar (falso vermelho ao rodar
-    // o teste sozinho). Com o tempo parado, só o `advanceTimersByTimeAsync`
-    // o move — e o import pré-aquecido fica fora da conta.
+  it("VERMELHO (relógio adiantado 40 min): pedido no prazo segundo o servidor — o botão aparece, o desafio fica, e o toque troca para PIX no MESMO pedido", async () => {
+    // Só o `Date` é falso (o aparelho 40 min à frente); o prazo do servidor
+    // está a 20 min do relógio REAL. Pré-aquece o import da tela.
     await import("@/views/customer/CheckoutView");
-    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    const prazoDoServidor = new Date(Date.now() + 20 * 60_000).toISOString();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(Date.now() + 40 * 60_000));
     try {
       criarPagamento.mockResolvedValue({
         verificacao: "desafio3ds",
         paymentId: "ORD-3DS-ADOTADA",
         desafio3ds: { url: URL_DO_DESAFIO },
-        expiraEm: new Date(Date.now() + 400).toISOString(),
+        expiraEm: prazoDoServidor,
       });
       await retomar(LINHA_COM_SENTINELA);
-      expect(botao("Pagar com PIX")).toBeDefined();
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(600);
-      });
-
-      expect(botao("Pagar com PIX")).toBeUndefined();
       expect(hospedeiro.querySelector("iframe")?.getAttribute("src")).toBe(
         URL_DO_DESAFIO,
       );
-      expect(criarPagamento).toHaveBeenCalledTimes(1);
+      expect(botao("Pagar com PIX")).toBeDefined();
       expect(montagensDoPagamento).toBe(0);
+
+      await act(async () => {
+        botao("Pagar com PIX")?.click();
+      });
+      for (let i = 0; i < 4; i++) {
+        await act(async () => {
+          await Promise.resolve();
+        });
+      }
+      expect(propsDoPagamento?.metodo).toBe("pix");
+      expect(propsDoPagamento?.orderId).toBe(PEDIDO);
+      expect(propsDoPagamento?.cobrancaIncerta).toBe(true);
+      // Só o pai troca a tela; a verificação não faz POST de PIX.
+      expect(chamadasPix()).toBe(0);
+      expect(criarPagamento).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
     }

@@ -172,8 +172,8 @@ describe("C6/P2 — 'Pagar com PIX' do desafio adotado, contra cada resposta do 
   }
 
   /** Retomada → `verificar` adota o 3DS → o desafio com "Pagar com PIX". */
-  async function abrirDesafioAdotado() {
-    criarPagamento.mockResolvedValueOnce(DESAFIO_ADOTADO);
+  async function abrirDesafioAdotado(resposta = DESAFIO_ADOTADO) {
+    criarPagamento.mockResolvedValueOnce(resposta);
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await act(async () => {
       raiz.render(
@@ -301,6 +301,31 @@ describe("C6/P2 — 'Pagar com PIX' do desafio adotado, contra cada resposta do 
       erroDaEdge("O prazo para pagar este pedido acabou.", {
         terminal: true,
         cartaoEmAnalise: false,
+      }),
+    );
+    await tocarPix();
+    umPostDePixDoPedido();
+    expect(hospedeiro.textContent).toContain(
+      "O prazo para pagar este pedido acabou.",
+    );
+    expect(botao("Tentar de novo")).toBeUndefined();
+    nuncaCancelarNemOutroPix();
+    expect(botao("Ver meus pedidos")).toBeDefined();
+  });
+
+  it("CONTROLE (prazo vencido de verdade): o desafio mostra 'Pagar com PIX', o toque faz UM POST e o servidor recusa com 409 terminal — a frase da edge, sem QR, sem 'Tentar de novo', sem cancelar", async () => {
+    // O `verificar` vale depois de `expires_at` (dentro das 24 h): devolve o
+    // desafio com um prazo no passado. A tela não decide: o servidor, ao
+    // toque, antes de qualquer cobrança.
+    await abrirDesafioAdotado({
+      ...DESAFIO_ADOTADO,
+      expiraEm: "2001-01-01T00:00:00.000Z",
+    });
+    criarPagamento.mockRejectedValueOnce(
+      erroDaEdge("O prazo para pagar este pedido acabou.", {
+        terminal: true,
+        cartaoEmAnalise: false,
+        httpStatus: 409,
       }),
     );
     await tocarPix();

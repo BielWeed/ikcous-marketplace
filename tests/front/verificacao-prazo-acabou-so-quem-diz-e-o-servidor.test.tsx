@@ -85,17 +85,31 @@ const botoes = () =>
 describe("situacaoDaResposta — o prazo da resposta não é comparado com o relógio do aparelho", () => {
   for (const verificacao of VERIFICACOES) {
     it(`${verificacao} com expiraEm já passado NO APARELHO: libera a retomada (quem encerra por prazo é o 409 do servidor)`, () => {
-      const situacao = situacaoDaResposta(
-        {
-          verificacao,
-          paymentId: verificacao === "pix" ? "123456789" : null,
-          expiraEm: PRAZO_DO_SERVIDOR,
-        },
-        Date.parse(RELOGIO_ADIANTADO_DO_APARELHO),
-      );
+      const situacao = situacaoDaResposta({
+        verificacao,
+        paymentId: verificacao === "pix" ? "123456789" : null,
+        expiraEm: PRAZO_DO_SERVIDOR,
+      });
       expect(situacao).toEqual({ tipo: "liberada", verificacao });
     });
   }
+
+  // Mesma regra no desafio 3DS: `situacaoDaResposta` não recebe relógio
+  // nenhum, então o prazo do servidor sempre oferece o PIX (o 409 do servidor,
+  // ao toque, é quem encerra).
+  it("desafio3ds com expiraEm do servidor: oferece o PIX sem relógio do aparelho; prazo ilegível não", () => {
+    const base = {
+      verificacao: "desafio3ds",
+      paymentId: "ORD-3DS-1",
+      desafio3ds: { url: "https://www.mercadopago.com.br/3ds/desafio?x=1" },
+    };
+    expect(
+      situacaoDaResposta({ ...base, expiraEm: PRAZO_DO_SERVIDOR }),
+    ).toMatchObject({ tipo: "desafio", pix: true });
+    expect(
+      situacaoDaResposta({ ...base, expiraEm: "nao-e-data" }),
+    ).toMatchObject({ tipo: "desafio", pix: false });
+  });
 });
 
 describe("VerificacaoDoPagamento — relógio adiantado não encerra nada", () => {

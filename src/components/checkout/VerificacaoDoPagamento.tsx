@@ -26,8 +26,10 @@ import { comTempoLimite } from "./PagamentoOnline";
  *   pedido novo — decisão do dono); "Falar com a loja" e a data REAL do
  *   cancelamento automático.
  * - `desafio3ds`: abre o desafio do banco (mesma validação de URL do cartão).
- *   C6 (P2, 02/10/2026): com a order CONFIRMADA pelo GET (`paymentId`) e
- *   antes do prazo do pedido, "Pagar com PIX" — a mesma saída da tela do
+ *   C6 (P2, 02/10/2026): com a order CONFIRMADA pelo GET (`paymentId`) e o
+ *   prazo do pedido legível na resposta, "Pagar com PIX" (o relógio do
+ *   aparelho nunca o esconde; o prazo vencido o servidor recusa ao toque,
+ *   com a frase terminal da edge) — a mesma saída da tela do
  *   cartão da sessão: o pai troca para o PIX, e o servidor (ramo f de
  *   `criar-pagamento`) cancela o 3DS confirmado no MP ANTES de criar o PIX,
  *   ou responde 409 `cartaoEmAnalise`. Esta tela nunca faz o POST.
@@ -47,9 +49,7 @@ import { comTempoLimite } from "./PagamentoOnline";
  * `INTERVALO_ENTRE_VERIFICACOES_MS` entre consultas e no máximo
  * `MAXIMO_DE_VERIFICACOES_PELO_BOTAO` toques por tela. Sem `setInterval`, sem
  * repetição automática — nem quando o desafio 3DS termina (o cliente toca em
- * "Verificar de novo"). Nada vai para `localStorage`/`sessionStorage`. O
- * único outro relógio (C6) só ESCONDE o "Pagar com PIX" no prazo do pedido —
- * nunca consulta nada.
+ * "Verificar de novo"). Nada vai para `localStorage`/`sessionStorage`.
  */
 
 /** Espera mínima entre o início de duas consultas. */
@@ -97,17 +97,13 @@ type Situacao =
   | { readonly tipo: "terminal"; readonly mensagem: string }
   | { readonly tipo: "pago" }
   | { readonly tipo: "em_analise" }
-  // C6 (P2): `pixAteMs` é até quando "Pagar com PIX" vale — o prazo do pedido
-  // (`expiraEm`) em ms, ou `null` (prazo ausente, ilegível ou já vencido).
-  // Só os três estados do desafio o carregam: todos nascem de um
-  // `desafio3ds` COM `paymentId` (sem ele, a resposta é "indisponível").
-  | {
-      readonly tipo: "desafio";
-      readonly url: string;
-      readonly pixAteMs: number | null;
-    }
-  | { readonly tipo: "desafio-sem-pagina"; readonly pixAteMs: number | null }
-  | { readonly tipo: "desafio-concluido"; readonly pixAteMs: number | null }
+  // C6 (P2): `pix` diz se "Pagar com PIX" aparece — só com o prazo do pedido
+  // (`expiraEm`) presente e legível. Só os três estados do desafio o
+  // carregam: todos nascem de um `desafio3ds` COM `paymentId` (sem ele, a
+  // resposta é "indisponível").
+  | { readonly tipo: "desafio"; readonly url: string; readonly pix: boolean }
+  | { readonly tipo: "desafio-sem-pagina"; readonly pix: boolean }
+  | { readonly tipo: "desafio-concluido"; readonly pix: boolean }
   | {
       readonly tipo: "liberada";
       readonly verificacao: DesfechoQueLiberaARetomada;
@@ -137,47 +133,31 @@ function dataEHora(iso: unknown): string | null {
 }
 
 /**
- * C6 (P2): até quando o PIX vale no desafio — falha FECHADA: prazo ausente,
- * ilegível ou já vencido dá `null` (sem botão; o servidor responderia 409
- * terminal pelo `podeCobrar`).
+ * C6 (P2): o desafio oferece o PIX? Falha FECHADA em DADO: prazo ausente ou
+ * ilegível dá `false` (o servidor recusaria: "não tem prazo"). O prazo NÃO é
+ * comparado com o relógio do aparelho — celular adiantado escondia a saída de
+ * um pedido que o servidor deu como vivo (mesma ressalva B2/F5). Quem diz que
+ * o prazo acabou é o 409 terminal de `criar-pagamento`, ao toque.
  */
-function pixValeAte(expiraEm: unknown, agoraMs: number): number | null {
-  if (!textoNaoVazio(expiraEm)) return null;
-  const prazoMs = Date.parse(expiraEm);
-  return Number.isFinite(prazoMs) && prazoMs > agoraMs ? prazoMs : null;
+function pixOferecido(expiraEm: unknown): boolean {
+  return textoNaoVazio(expiraEm) && Number.isFinite(Date.parse(expiraEm));
 }
 
-/** O `pixAteMs` da situação — `null` fora dos três estados do desafio. */
-function pixAteDaSituacao(situacao: Situacao): number | null {
-  return situacao.tipo === "desafio" ||
-    situacao.tipo === "desafio-sem-pagina" ||
-    situacao.tipo === "desafio-concluido"
-    ? situacao.pixAteMs
-    : null;
+/** O `pix` da situação — `false` fora dos três estados do desafio. */
+function pixDaSituacao(situacao: Situacao): boolean {
+  return (
+    (situacao.tipo === "desafio" ||
+      situacao.tipo === "desafio-sem-pagina" ||
+      situacao.tipo === "desafio-concluido") &&
+    situacao.pix
+  );
 }
-
-/** A mesma situação, com o PIX vencido (o desafio continua). */
-function semPix(situacao: Situacao): Situacao {
-  return pixAteDaSituacao(situacao) === null
-    ? situacao
-    : ({ ...situacao, pixAteMs: null } as Situacao);
-}
-
-/**
- * O maior atraso que um `setTimeout` respeita (2^31 - 1 ms, ~24,8 dias):
- * acima disso o navegador dispara NA HORA. Um prazo tão longe nunca acontece
- * (a reserva é de 30 min), mas sem esta trava o botão sumiria no instante.
- */
-const MAIOR_ATRASO_DE_TIMER_MS = 2_147_483_647;
 
 /**
  * Traduz o 200 da consulta. O corpo é tratado como DESCONHECIDO — campo a
  * campo, falha fechada no indisponível (nunca num estado que promete algo).
  */
-export function situacaoDaResposta(
-  resposta: unknown,
-  agoraMs: number,
-): Situacao {
+export function situacaoDaResposta(resposta: unknown): Situacao {
   if (typeof resposta !== "object" || resposta === null) {
     return { tipo: "indisponivel" };
   }
@@ -196,10 +176,10 @@ export function situacaoDaResposta(
     case "desafio3ds": {
       if (!temOrder) return { tipo: "indisponivel" };
       const url = (r.desafio3ds as { url?: unknown } | null | undefined)?.url;
-      const pixAteMs = pixValeAte(r.expiraEm, agoraMs);
+      const pix = pixOferecido(r.expiraEm);
       return urlDoDesafioValida(url)
-        ? { tipo: "desafio", url, pixAteMs }
-        : { tipo: "desafio-sem-pagina", pixAteMs };
+        ? { tipo: "desafio", url, pix }
+        : { tipo: "desafio-sem-pagina", pix };
     }
     case "livre":
     case "recusado":
@@ -316,10 +296,7 @@ export function VerificacaoDoPagamento({
       criarPagamento({ orderId, metodo: "verificar" }),
       TEMPO_LIMITE_DA_VERIFICACAO_MS,
     )
-      .then(
-        (resposta) => situacaoDaResposta(resposta, Date.now()),
-        situacaoDoErro,
-      )
+      .then(situacaoDaResposta, situacaoDoErro)
       .then((nova) => {
         if (!montadoRef.current || numero !== sequenciaRef.current) return;
         setSituacao(nova);
@@ -371,7 +348,7 @@ export function VerificacaoDoPagamento({
       if (!desafioConcluido(evento.data)) return;
       setSituacao((atual) =>
         atual.tipo === "desafio"
-          ? { tipo: "desafio-concluido", pixAteMs: atual.pixAteMs }
+          ? { tipo: "desafio-concluido", pix: atual.pix }
           : atual,
       );
     };
@@ -379,31 +356,15 @@ export function VerificacaoDoPagamento({
     return () => globalThis.removeEventListener("message", aoReceberMensagem);
   }, [emDesafio]);
 
-  // C6 (P2): o relógio do PIX só ESCONDE o botão no prazo do pedido — nunca
-  // consulta nem cobra. O desafio continua na tela.
-  const pixAteMs = pixAteDaSituacao(situacao);
-  useEffect(() => {
-    if (pixAteMs === null) return;
-    const espera = pixAteMs - Date.now();
-    if (espera > MAIOR_ATRASO_DE_TIMER_MS) return;
-    const id = setTimeout(
-      () => setSituacao((atual) => semPix(atual)),
-      Math.max(0, espera),
-    );
-    return () => clearTimeout(id);
-  }, [pixAteMs]);
-
   // Um toque só por tela: o pai desmonta esta tela ao trocar, mas dois toques
-  // na mesma tarefa chegariam antes disso.
+  // na mesma tarefa chegariam antes disso. Nenhum relógio do aparelho decide
+  // aqui: o prazo é checado pelo servidor quando o PIX é pedido (409 terminal,
+  // que a tela do PIX já mostra).
   const pixPedidoRef = useRef(false);
-  const podePagarComPix = onPagarComPix !== undefined && pixAteMs !== null;
+  const podePagarComPix =
+    onPagarComPix !== undefined && pixDaSituacao(situacao);
   const pagarComPix = () => {
     if (!onPagarComPix || pixPedidoRef.current) return;
-    // Relógio atrasado (aba em segundo plano): o prazo decide no toque.
-    if (pixAteMs === null || Date.now() >= pixAteMs) {
-      setSituacao((atual) => semPix(atual));
-      return;
-    }
     pixPedidoRef.current = true;
     onPagarComPix();
   };

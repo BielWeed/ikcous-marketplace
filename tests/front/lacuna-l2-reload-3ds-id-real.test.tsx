@@ -446,7 +446,12 @@ describe("Lacuna L2 — reload no meio do 3DS com o id real da order na vaga", (
     });
   }
 
-  it("DESEJADO VERMELHO (depois do prazo, dentro das 24 h): o desafio vivo continua na tela, SEM 'Pagar com PIX' (o servidor recusaria) e sem formulário", async () => {
+  // Mudou (17/11/2026): o botão não depende mais do relógio do aparelho —
+  // celular adiantado escondia a saída de um pedido que o servidor dava como
+  // vivo. Depois do prazo o botão aparece e é o servidor, ao toque, quem
+  // recusa (409 terminal, antes de qualquer cobrança; ver
+  // c6-desafio-pix-respostas.test.tsx).
+  it("DESEJADO VERMELHO (depois do prazo, dentro das 24 h): o desafio vivo continua na tela, sem formulário; 'Pagar com PIX' aparece e o servidor recusa ao toque", async () => {
     criarPagamento.mockResolvedValueOnce({
       verificacao: "desafio3ds",
       paymentId: ORDER,
@@ -461,7 +466,7 @@ describe("Lacuna L2 — reload no meio do 3DS com o id real da order na vaga", (
     expect(hospedeiro.querySelector("iframe")?.getAttribute("src")).toBe(
       URL_DO_DESAFIO,
     );
-    expect(botaoExato("Pagar com PIX")).toBeUndefined();
+    expect(botaoExato("Pagar com PIX")).toBeDefined();
   });
 
   it("DESEJADO VERMELHO: cartão em análise (com order) — 'Pagamento em análise pelo banco', sem formulário e sem nada que cobra", async () => {

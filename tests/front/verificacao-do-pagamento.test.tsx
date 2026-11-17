@@ -513,8 +513,10 @@ describe("VerificacaoDoPagamento — um estado do contrato, um texto verdadeiro"
     expect(botoes()).toEqual(["Ver meus pedidos"]);
   });
 
-  for (const expiraEm of [PRAZO_VENCIDO, null, "", "nao-e-data"]) {
-    it(`CONTROLE: desafio3ds com expiraEm ${JSON.stringify(expiraEm)} (vencido ou ilegível) — o desafio fica, o PIX não aparece`, async () => {
+  // Prazo AUSENTE ou ilegível é falta de DADO (nada a ver com o relógio): o
+  // servidor recusaria o PIX ("não tem prazo"), então a tela nem o oferece.
+  for (const expiraEm of [null, "", "nao-e-data"]) {
+    it(`CONTROLE: desafio3ds com expiraEm ${JSON.stringify(expiraEm)} (ilegível) — o desafio fica, o PIX não aparece`, async () => {
       criarPagamento.mockResolvedValue({
         verificacao: "desafio3ds",
         paymentId: "ORD-3DS-1",
@@ -544,7 +546,38 @@ describe("VerificacaoDoPagamento — um estado do contrato, um texto verdadeiro"
     expect(criarPagamento).toHaveBeenCalledTimes(1);
   });
 
-  it("desafio3ds: o botão SOME no instante do prazo (um timer que só esconde, nunca consulta) e o quadro fica", async () => {
+  // Relógio do aparelho 40 min ADIANTADO (a mesma ressalva B2 do cartão e o
+  // F5 de `livre`/`recusado`/`pix`): para o SERVIDOR o prazo está a 20 min,
+  // mas o `Date.now()` do celular já o passou. Quem diz que o prazo acabou é
+  // o 409 terminal de `criar-pagamento` AO TOQUE — a tela nunca esconde a
+  // saída pelo relógio local.
+  it("VERMELHO (relógio adiantado): desafio3ds no prazo segundo o servidor, aparelho 40 min à frente — 'Pagar com PIX' aparece, habilitado, e o toque chama o pai UMA vez", async () => {
+    const prazoDoServidor = new Date(Date.now() + 20 * 60_000).toISOString();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(Date.now() + 40 * 60_000));
+    criarPagamento.mockResolvedValue({
+      verificacao: "desafio3ds",
+      paymentId: "ORD-3DS-1",
+      desafio3ds: { url: URL_DO_DESAFIO },
+      expiraEm: prazoDoServidor,
+    });
+    await montar({ comPix: true });
+    expect(hospedeiro.querySelector("iframe")?.getAttribute("src")).toBe(
+      URL_DO_DESAFIO,
+    );
+    const alvo = botao("Pagar com PIX");
+    expect(alvo).toBeDefined();
+    expect(alvo?.disabled).toBe(false);
+    await act(async () => {
+      alvo?.click();
+      alvo?.click();
+    });
+    expect(onPagarComPix).toHaveBeenCalledTimes(1);
+    // A verificação nunca cobra: só o pai troca a tela, e o servidor decide.
+    expect(criarPagamento).toHaveBeenCalledTimes(1);
+  });
+
+  it("VERMELHO (relógio): o tempo passando no aparelho, além do prazo, NÃO esconde o botão nem o quadro — nenhum timer decide; o toque ainda chama o pai", async () => {
     vi.useFakeTimers();
     criarPagamento.mockResolvedValue({
       verificacao: "desafio3ds",
@@ -554,35 +587,29 @@ describe("VerificacaoDoPagamento — um estado do contrato, um texto verdadeiro"
     });
     await montar({ comPix: true });
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(59_000);
+      await vi.advanceTimersByTimeAsync(2 * 60 * 60_000);
     });
-    expect(botao("Pagar com PIX")).toBeDefined();
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1_500);
-    });
-    expect(botao("Pagar com PIX")).toBeUndefined();
+    expect(botao("Pagar com PIX")?.disabled).toBe(false);
     expect(hospedeiro.querySelector("iframe")?.getAttribute("src")).toBe(
       URL_DO_DESAFIO,
     );
+    await act(async () => {
+      botao("Pagar com PIX")?.click();
+    });
+    expect(onPagarComPix).toHaveBeenCalledTimes(1);
+    // Nenhuma consulta nova sozinha: o desafio segue e só o toque age.
     expect(criarPagamento).toHaveBeenCalledTimes(1);
   });
 
-  it("desafio3ds: toque DEPOIS do prazo com o timer atrasado (aba em segundo plano) não chama o pai", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
+  it("desafio3ds com expiraEm JÁ vencido (no relógio do aparelho): o botão aparece do mesmo jeito — a recusa é do servidor, ao toque (coberta em c6-desafio-pix-respostas)", async () => {
     criarPagamento.mockResolvedValue({
       verificacao: "desafio3ds",
       paymentId: "ORD-3DS-1",
       desafio3ds: { url: URL_DO_DESAFIO },
-      expiraEm: new Date(Date.now() + 60 * 60_000).toISOString(),
+      expiraEm: PRAZO_VENCIDO,
     });
     await montar({ comPix: true });
-    const alvo = botao("Pagar com PIX");
-    expect(alvo).toBeDefined();
-    vi.setSystemTime(Date.now() + 2 * 60 * 60_000);
-    await act(async () => {
-      alvo?.click();
-    });
-    expect(onPagarComPix).not.toHaveBeenCalled();
+    expect(botao("Pagar com PIX")?.disabled).toBe(false);
   });
 
   it("desafio3ds: passados os 30 s com o quadro do banco aberto, 'Verificar de novo' continua escondido (tocar remontaria o quadro); depois do 'concluído' ele aparece já liberado e consulta", async () => {
