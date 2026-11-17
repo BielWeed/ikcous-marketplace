@@ -303,6 +303,52 @@ describe("SearchView: voltar do produto mantém a lista já carregada", () => {
     }
   });
 
+  it("voltar da categoria para Todas reinicia os 24 resultados e rola ao início", async () => {
+    const rolar = vi.fn();
+    const anterior = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "scrollIntoView",
+    );
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: rolar,
+    });
+    try {
+      await montar("camisa");
+      const escolherCategoria = async (nome: string) => {
+        const categoria = Array.from(host.querySelectorAll("button")).find(
+          (botao) => botao.textContent === nome,
+        );
+        expect(categoria).toBeDefined();
+        await act(async () => {
+          categoria?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+      };
+      await escolherCategoria("Geral");
+      await carregarMais();
+      expect(exibidos()).toBe(24);
+      rolar.mockClear();
+
+      await escolherCategoria("Todas");
+
+      expect(exibidos()).toBe(12);
+      expect(rolar).toHaveBeenCalledWith({
+        block: "start",
+        behavior: "instant",
+      });
+    } finally {
+      if (anterior) {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          "scrollIntoView",
+          anterior,
+        );
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
+      }
+    }
+  });
+
   it("mudar a ordem volta ao padrão de 12", async () => {
     await montar("camisa");
     await carregarMais();
