@@ -1548,6 +1548,7 @@ export function ImageAdjuster({
                       <input
                         id="zoom-slider"
                         name="zoom-slider"
+                        aria-label="Zoom da imagem"
                         type="range"
                         min="1"
                         max="3"
@@ -1635,7 +1636,7 @@ export function ImageAdjuster({
                             setShowBannerSimulation((prev) => !prev)
                           }
                           className={cn(
-                            "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none items-center",
+                            "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background items-center",
                             showBannerSimulation
                               ? "bg-emerald-500"
                               : "bg-zinc-700",
