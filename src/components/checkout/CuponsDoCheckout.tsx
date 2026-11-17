@@ -3,7 +3,6 @@ import { CouponInput } from "@/components/ui/custom/CouponInput";
 import type { SituacaoDosCupons } from "@/hooks/useCuponsDoCheckout";
 import {
   type CupomDisponivel,
-  cupomJaVenceu,
   descricaoDoCupom,
   destaqueDoCupom,
   emReais,
@@ -183,29 +182,6 @@ const CartaoDeCupom = memo(function CartaoDeCupom({
   );
 });
 
-/**
- * O "agora" da lista: a tela do checkout pode ficar aberta por horas e um
- * cupom vence nesse meio-tempo. Reavalia quando a cliente volta para a aba ou
- * a janela ganha foco (sem relógio rodando) e a cada render; o toque em
- * "Aplicar" continua validado no servidor.
- */
-function useAgoraDaLista(): Date {
-  const [, setVolta] = useState(0);
-  useEffect(() => {
-    const reavaliar = () => setVolta((n) => n + 1);
-    const aoMudarAVisibilidade = () => {
-      if (document.visibilityState !== "hidden") reavaliar();
-    };
-    document.addEventListener("visibilitychange", aoMudarAVisibilidade);
-    window.addEventListener("focus", reavaliar);
-    return () => {
-      document.removeEventListener("visibilitychange", aoMudarAVisibilidade);
-      window.removeEventListener("focus", reavaliar);
-    };
-  }, []);
-  return new Date();
-}
-
 export interface CuponsDoCheckoutProps {
   readonly cupons: readonly CupomDisponivel[];
   readonly situacao: SituacaoDosCupons;
@@ -275,12 +251,11 @@ export const CuponsDoCheckout = memo(function CuponsDoCheckout({
 
   // O aplicado aparece em cima (bloco verde) — não se repete na lista.
   const codigoAplicado = appliedCoupon?.code.toUpperCase() ?? null;
-  const agora = useAgoraDaLista();
-  // Cupom com prazo vencido não é oferecido (o servidor o recusaria no toque).
+  // O prazo é do servidor: ele já tira o vencido ao montar a lista e o recusa
+  // ao aplicar. O relógio do aparelho não decide (adiantado, escondia cupom
+  // válido); o que vence com a tela aberta fica até a próxima busca.
   const outros = cupons.filter(
-    (c) =>
-      c.codigo.toUpperCase() !== codigoAplicado &&
-      !cupomJaVenceu(c.validoAte, agora),
+    (c) => c.codigo.toUpperCase() !== codigoAplicado,
   );
   // "Melhor opção" só quando economiza MAIS que o cupom já aplicado.
   const candidatoAMelhor = melhorCupom(outros);
