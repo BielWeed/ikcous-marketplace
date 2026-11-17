@@ -1,4 +1,25 @@
 {
+  "1.5.208": {
+    "titulo": "Cartão com mais cuidado, busca por código e telas mais legíveis",
+    "novidades": [],
+    "correcoes": [
+      "Pagamento com cartão: se a resposta do Mercado Pago chegar sem poder ser lida, o pagamento fica \"em análise\" em vez de liberar uma nova tentativa que poderia cobrar duas vezes.",
+      "Avisos: com o app aberto em mais de uma janela, quando só a conexão em tempo real da janela principal cai e volta, as outras janelas também recebem os avisos novos e atualizam o contador.",
+      "Perguntas e avaliações: quando só a conexão em tempo real cai e volta, as listas de perguntas e de avaliações se atualizam sozinhas, na loja e no painel, sem recarregar a página.",
+      "Foto que não carrega deixa de aparecer como imagem quebrada e mostra \"Sem foto\" (ou um ícone, na edição de vitrines): no resumo do pedido, na barra de compra do produto, nas sugestões \"Atinja a Meta\" do carrinho, no balcão e no cadastro de produto.",
+      "Busca da loja: agora também encontra produtos pelo código (SKU) do produto ou de uma variação ativa.",
+      "Modo escuro da loja: o título \"Catálogo\" (ou \"Resultados da busca\") na tela inicial e o aviso \"Seu carrinho está vazio\" no pagamento voltam a ser legíveis.",
+      "Cadastro (nome) e criação de nova senha (senha curta ou senhas diferentes): o erro aparece junto do campo, o foco vai para ele e o leitor de tela o anuncia. No pagamento, o erro do nome também é anunciado.",
+      "Painel, buscas de pedidos, clientes, devoluções e balcão: % e _ digitados na busca passam a valer como caracteres comuns (como o _ de um cupom BF_10), em vez de casar com qualquer coisa, e espaços repetidos são ignorados.",
+      "Texto comprido: o nome muito grande da loja no topo deixa de empurrar a busca e os botões para fora da tela (se não couber, termina em reticências), e palavras compridas no bairro da lista de pedidos e no recibo impresso quebram a linha em vez de estourar a tela.",
+      "Loja com cor principal clara (branco, amarelo): o nome do produto ao passar o mouse, o \"Faltam R$\" do lembrete do carrinho, o botão Útil, o check do frete e a borda e o foco das miniaturas da galeria deixam de sumir sobre o fundo branco. Cores que já eram legíveis não mudam.",
+      "App da loja: quando a loja entra em manutenção ou o endereço fica sem loja, a página de manutenção volta a aparecer na abertura seguinte, em vez de ficar escondida pela cópia guardada do app. Falhas passageiras do servidor não apagam essa cópia."
+    ],
+    "melhorias": [
+      "O texto \"Sem foto\" ficou mais escuro para passar do contraste mínimo de leitura.",
+      "Não mudam o comportamento: mais testes (cobrança, e-mail de login, avisos de celular, provas do banco), relógio fixo em testes, ações de terceiros fixas nos fluxos de publicação, roteiros de publicação e de loja nova corrigidos e a nota da 1.5.204 mais clara sobre os limites do salvamento."
+    ]
+  },
   "1.5.207": {
     "titulo": "Pedidos em tempo real, avisos e comprovantes mais confiáveis",
     "novidades": [],
