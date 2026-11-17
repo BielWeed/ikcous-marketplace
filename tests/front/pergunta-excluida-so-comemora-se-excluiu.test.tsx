@@ -279,6 +279,24 @@ describe("AdminQAView — 'Pergunta excluída' só comemora se excluiu de verdad
     expect(hospedeiro.querySelector('[role="alertdialog"]')).toBeNull();
   });
 
+  // Quem usa teclado estava no botão da confirmação, que sumiu: sem devolver
+  // o foco, ele caía no corpo da página e perdia a posição na lista.
+  it("pergunta já ausente devolve o foco ao título da lista, não ao corpo da página", async () => {
+    montarPergunta();
+    h.estado.deleteQuestionResultado = null;
+    await montar();
+    await act(async () => {
+      clicarExcluirEConfirmar();
+    });
+    await act(async () => {
+      clicarSim();
+      await esperarMicrotarefas();
+    });
+    expect(hospedeiro.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement?.textContent).toBe("Lista de perguntas");
+  });
+
   it("controle positivo: exclusão que dá certo CONTINUA mostrando 'Pergunta excluída'", async () => {
     montarPergunta();
     h.estado.deleteQuestionResultado = true;

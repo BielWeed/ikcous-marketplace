@@ -457,6 +457,7 @@ export const AdminQAView = memo(function AdminQAView({
 
     if (success === null) {
       toast.info("A pergunta já foi excluída ou não está mais acessível.");
+      focoPendente.current = () => tituloListaRef.current;
       setConfirmDeleteId(null);
       setRefreshTrigger((prev) => prev + 1);
       loadQuestions(page);
