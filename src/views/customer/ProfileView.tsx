@@ -26,6 +26,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useOrders } from "@/hooks/useOrders";
 import { useReleituraDosEnderecosAoVoltar } from "@/hooks/useReleituraDosEnderecosAoVoltar";
 import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
+import { dataNoFusoDaLoja } from "@/lib/data-da-loja";
 import {
   TIPOS_DE_POLITICA,
   type TipoDePolitica,
@@ -705,9 +706,7 @@ export function ProfileView({
                           </h3>
                           <p className="text-sm text-muted-foreground">
                             #{numeroDoPedido(order.id)} ·{" "}
-                            {new Date(order.createdAt).toLocaleDateString(
-                              "pt-BR",
-                            )}
+                            {dataNoFusoDaLoja(new Date(order.createdAt))}
                             {order.items.length > 1 && (
                               <>
                                 {" "}

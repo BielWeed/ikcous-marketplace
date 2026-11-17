@@ -162,6 +162,16 @@ describe("ProfileView — o cartão do pedido pronto para retirar não diz 'Em r
     expect(texto).not.toContain("A caminho");
   });
 
+  it("a data do pedido segue Brasília mesmo em aparelho de outro fuso", async () => {
+    estado.linhas = [
+      { ...linhaDoPedido(false), created_at: "2026-11-18T02:30:00Z" },
+    ];
+    const texto = await renderizar();
+    expect(texto).toContain("Pedidos em andamento");
+    expect(texto).toContain("17/11/2026");
+    expect(texto).not.toContain("18/11/2026");
+  });
+
   it("entrega a caminho (shipping): o cartão continua 'A caminho' (controle)", async () => {
     estado.linhas = [linhaDoPedido(false)];
     const texto = await renderizar();

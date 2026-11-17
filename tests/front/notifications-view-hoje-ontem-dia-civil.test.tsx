@@ -7,7 +7,7 @@
 // 00:10 de hoje, tinha diffDays = 0 e aparecia como "Hoje às 23:50" — data
 // mentirosa na tela. O Math.abs ainda mascarava created_at no futuro (clock
 // skew) como "Hoje". Este teste prende a comparação por DIA CIVIL: ontem é
-// ontem mesmo com 20 minutos de distância; data no futuro cai no formato
+// ontem mesmo com poucos minutos de distância; data no futuro cai no formato
 // completo em vez de "Hoje".
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Notification } from "@/types";
 
-const agoraFixo = new Date(2026, 7, 25, 0, 10, 0); // 25/08/2026 00:10 local
+const agoraFixo = new Date("2026-11-18T03:10:00Z"); // 18/11 00:10 em Brasília
 
 function notificacaoCriadaEm(data: Date): Notification {
   return {
@@ -91,29 +91,38 @@ describe("NotificationsView — 'Hoje'/'Ontem' por dia civil, não por 24h", () 
     return hospedeiro.textContent ?? "";
   }
 
-  it("criada ontem às 23:50, lida hoje às 00:10: é ONTEM", async () => {
-    notificacaoDaVez = notificacaoCriadaEm(new Date(2026, 7, 24, 23, 50, 0));
+  it("criada ontem às 23:30 de Brasília, lida hoje às 00:10: é ONTEM", async () => {
+    notificacaoDaVez = notificacaoCriadaEm(new Date("2026-11-18T02:30:00Z"));
     const texto = await renderizar();
 
     // Âncora: a notificação renderizou de verdade.
     expect(texto).toContain("Aviso da loja");
-    expect(texto).toContain("Ontem às 23:50");
+    expect(texto).toContain("Ontem às 23:30");
     expect(texto).not.toContain("Hoje às");
   });
 
   it("criada hoje às 09:00, lida hoje às 21:00: é HOJE", async () => {
-    vi.setSystemTime(new Date(2026, 7, 25, 21, 0, 0).getTime());
-    notificacaoDaVez = notificacaoCriadaEm(new Date(2026, 7, 25, 9, 0, 0));
+    vi.setSystemTime(new Date("2026-11-19T00:00:00Z").getTime());
+    notificacaoDaVez = notificacaoCriadaEm(new Date("2026-11-18T12:00:00Z"));
     const texto = await renderizar();
 
     expect(texto).toContain("Hoje às 09:00");
   });
 
   it("criada há dois dias: formato completo, sem 'Hoje' nem 'Ontem'", async () => {
-    notificacaoDaVez = notificacaoCriadaEm(new Date(2026, 7, 23, 12, 0, 0));
+    notificacaoDaVez = notificacaoCriadaEm(new Date("2026-11-16T15:00:00Z"));
     const texto = await renderizar();
 
     expect(texto).toContain("Aviso da loja");
+    expect(texto).not.toContain("Hoje às");
+    expect(texto).not.toContain("Ontem às");
+    expect(texto).toContain("16 de nov., 12:00");
+  });
+
+  it("amanhã não é Hoje nem Ontem", async () => {
+    notificacaoDaVez = notificacaoCriadaEm(new Date("2026-11-19T03:05:00Z"));
+    const texto = await renderizar();
+    expect(texto).toContain("19 de nov., 00:05");
     expect(texto).not.toContain("Hoje às");
     expect(texto).not.toContain("Ontem às");
   });
