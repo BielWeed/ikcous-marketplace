@@ -23,6 +23,9 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const SEM_NBSP = (t: string | null) =>
   (t ?? "").split(String.fromCharCode(160)).join(" ").replace(/\s+/g, " ");
 
+// Escopo local: lê apenas o conteúdo da linha, sem dependência de Testing Library.
+const within = (linha: Element) => SEM_NBSP(linha.textContent);
+
 describe("TopProductsList — o lucro desconta devolução e estorno", () => {
   let hospedeiro: HTMLDivElement;
   let raiz: Root;
@@ -74,6 +77,55 @@ describe("TopProductsList — o lucro desconta devolução e estorno", () => {
       "O valor é o lucro (preço menos custo). Produto",
     );
     expect(texto).not.toContain("descontadas as devoluções e os estornos");
+  });
+
+  it("cada linha reúne o nome, a quantidade e o lucro do próprio produto", () => {
+    const produtos = [
+      { id: "p1", name: "Vestido", quantity: 7, total: 60, image: "" },
+      { id: "p2", name: "Blusa", quantity: 2, total: 0, image: "" },
+      { id: "p3", name: "Saia", quantity: 1, total: -20, image: "" },
+    ];
+    montar(produtos);
+    const linhas = [...hospedeiro.querySelectorAll("li")];
+    expect(linhas).toHaveLength(3);
+    for (const [indice, produto] of produtos.entries()) {
+      const linha = within(linhas[indice]);
+      expect(linha).toContain(produto.name);
+      expect(linha).toContain(
+        `${produto.quantity} ${produto.quantity === 1 ? "unidade vendida" : "unidades vendidas"}`,
+      );
+      expect(linha).toContain(["R$ 60,00", "R$ 0,00", "-R$ 20,00"][indice]);
+    }
+  });
+
+  it("o ranking mantém a ordem recebida recolhido e expandido", () => {
+    const produtos = [
+      { id: "p1", name: "Vestido", quantity: 7, total: 100, image: "" },
+      { id: "p2", name: "Blusa", quantity: 6, total: 80, image: "" },
+      { id: "p3", name: "Saia", quantity: 5, total: 60, image: "" },
+      { id: "p4", name: "Calça", quantity: 4, total: 40, image: "" },
+      { id: "p5", name: "Casaco", quantity: 3, total: 20, image: "" },
+    ];
+    montar(produtos);
+    function conferirRanking(quantidade: number) {
+      const linhas = [...hospedeiro.querySelectorAll("li")];
+      expect(linhas).toHaveLength(quantidade);
+      for (const [indice, linha] of linhas.entries()) {
+        expect(within(linha)).toContain(produtos[indice].name);
+        expect(linha.querySelector("button > span")?.textContent?.trim()).toBe(
+          String(indice + 1),
+        );
+      }
+    }
+    conferirRanking(3);
+    expect(within(hospedeiro)).not.toContain("Calça");
+    expect(within(hospedeiro)).not.toContain("Casaco");
+    const expandir = hospedeiro.querySelector(
+      "button[aria-expanded]",
+    ) as HTMLButtonElement;
+    expect(expandir.textContent).toBe("Ver os 5 produtos");
+    act(() => expandir.click());
+    conferirRanking(5);
   });
 
   it("produto devolvido por inteiro aparece com 0 unidades e R$ 0,00; peça perdida aparece com o menos antes do R$", () => {
