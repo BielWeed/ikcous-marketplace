@@ -36,7 +36,7 @@ function TentativaDeImagem({
       fallback ?? (
         <span
           className={cn(
-            "flex items-center justify-center bg-muted text-center text-[10px] text-muted-foreground",
+            "flex items-center justify-center bg-muted text-center text-[10px] text-foreground/70",
             className,
           )}
           style={{ width, height, ...style }}
