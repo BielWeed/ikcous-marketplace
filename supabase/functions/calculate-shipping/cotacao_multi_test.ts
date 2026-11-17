@@ -37,6 +37,101 @@ const ids = (corpo: any) => corpo.options.map((o: any) => o.id)
 const multi = (ligados: string[], extra: any[] = [], outras: any = {}) =>
     bancoFalso({ credenciais: [LINHA_ME, LINHA_SF, LINHA_FRENET, linhaLigados(ligados), ...extra], ...outras })
 
+// ── Falha de leitura não é produto sem cadastro ─────────────────────────────
+
+for (const provedor of ["superfrete", "melhor_envio"]) {
+    Deno.test(`leitura dos produtos: falha com ${provedor} sem seguro -> 503, sem provedor nem cache`, async () => {
+        const banco = multi([provedor], [], { falhaAoLerProdutos: true })
+        banco.credenciais.find((l) => l.provider === provedor).credentials.seguro = "sem_seguro"
+        const { resposta, corpo, chamadas, registro } = await rodar(cotacao(), { banco })
+        assertEquals(resposta.status, 503)
+        assertEquals(corpo.options, undefined)
+        assertEquals(corpo.error, "Não foi possível calcular o frete agora. Tente novamente em instantes.")
+        assertEquals(chamadas.length, 0)
+        assertEquals(registro.upsertsCache.length, 0)
+        assertEquals(registro.eventos.includes("select:shipping_quotes_cache"), false)
+        assertEquals(registro.logs.at(-1)?.status, "error")
+    })
+}
+
+Deno.test("leitura dos produtos: falha não aceita frete grátis marcado pelo navegador", async () => {
+    const banco = multi(["superfrete"], [], {
+        falhaAoLerProdutos: true,
+        config: { free_shipping_min: -1 },
+    })
+    const { resposta, corpo, chamadas, registro } = await rodar(cotacao({
+        cart: [{ product: { id: "p1", freeShipping: true }, quantity: 1 }],
+    }), { banco })
+    assertEquals(resposta.status, 503)
+    assertEquals(corpo.options, undefined)
+    assertEquals(chamadas.length, 0)
+    assertEquals(registro.upsertsCache.length, 0)
+})
+
+Deno.test("leitura dos produtos: falha nacional em 'só retiro' -> apenas retirada, cotação incompleta e nenhum cache", async () => {
+    const banco = multi(["superfrete"], [], {
+        falhaAoLerProdutos: true,
+        config: {
+            local_delivery_enabled: false,
+            local_delivery_days: 1,
+            enabled_shipping_methods: ["sedex", "pac", "store-pickup"],
+        },
+        enderecoDaLoja: "Rua Fictícia, 1",
+    })
+    const { resposta, corpo, chamadas, registro } = await rodar(cotacao({ aceitaRetirada: true }), { banco })
+    assertEquals(resposta.status, 200)
+    assertEquals(ids(corpo), ["store-pickup"])
+    assertEquals(corpo.options[0].price, 0)
+    assertEquals(corpo.cotacaoIncompleta, true)
+    assertEquals(typeof corpo.revisaoConfig, "string")
+    assertEquals(chamadas.length, 0)
+    assertEquals(registro.upsertsCache.length, 0)
+    assertEquals(registro.logs.at(-1)?.status, "error")
+})
+
+for (const cobertura of ["national", "local"]) {
+    for (const entregaAtiva of [true, false]) {
+        Deno.test(`leitura dos produtos: falha preserva opções locais (cobertura ${cobertura}, entrega ${entregaAtiva})`, async () => {
+            const banco = multi(["superfrete"], [], {
+                falhaAoLerProdutos: true,
+                config: {
+                    shipping_coverage: cobertura,
+                    local_delivery_enabled: entregaAtiva,
+                    local_delivery_days: 2,
+                    enabled_shipping_methods: ["sedex", "pac", "store-pickup"],
+                },
+                enderecoDaLoja: "Rua Fictícia, 1",
+            })
+            const { resposta, corpo, chamadas, registro } = await rodar(cotacao({ cep: "38500-120", aceitaRetirada: true }), { banco })
+            assertEquals(resposta.status, 200)
+            assertEquals(ids(corpo), entregaAtiva ? ["local-delivery", "store-pickup"] : ["store-pickup"])
+            assertEquals(corpo.options.map((o: any) => o.price), entregaAtiva ? [10, 0] : [0])
+            assertEquals(corpo.cotacaoIncompleta, false)
+            assertEquals(chamadas.length, 0)
+            assertEquals(registro.upsertsCache.length, 0)
+        })
+    }
+}
+
+Deno.test("leitura dos produtos: falha preserva retirada de fora na cobertura só local", async () => {
+    const banco = multi(["superfrete"], [], {
+        falhaAoLerProdutos: true,
+        config: {
+            shipping_coverage: "local",
+            local_delivery_enabled: false,
+            local_delivery_days: 1,
+            enabled_shipping_methods: ["store-pickup"],
+        },
+        enderecoDaLoja: "Rua Fictícia, 1",
+    })
+    const { resposta, corpo, chamadas, registro } = await rodar(cotacao({ aceitaRetirada: true }), { banco })
+    assertEquals(resposta.status, 200)
+    assertEquals(ids(corpo), ["store-pickup"])
+    assertEquals(corpo.cotacaoIncompleta, false)
+    assertEquals(chamadas.length, 0)
+    assertEquals(registro.upsertsCache.length, 0)
+})
+
 // ── Régua comum (pura) ──────────────────────────────────────────────────────
 
 Deno.test("régua: preço aceita ponto ou vírgula, arredonda ao centavo; ausente/vazio/negativo/não numérico = null", () => {
@@ -756,8 +851,11 @@ Deno.test("nacional: item SEM cadastro no carrinho (produtosSemCadastro > 0) —
     // `cotacao()` manda o carrinho padrão (produto 'p1'); sem NENHUM produto
     // cadastrado no banco falso, todo item vira "sem cadastro".
     const banco = nacional(colunasNacionais({ national_shipping_strategy: "sempre" }), { produtos: [] })
-    const { resposta, corpo } = await rodar(cotacao(), { banco })
+    const { resposta, corpo, chamadas } = await rodar(cotacao(), { banco })
     assertEquals(resposta.status, 200)
+    assertEquals(corpoDe(chamadasPara(chamadas, SF)[0]).products, [
+        { quantity: 1, weight: 0.3, height: 15, width: 15, length: 15 },
+    ])
     assert(corpo.options.length > 0, JSON.stringify(corpo))
     assert(corpo.options.every((o: any) => o.price > 0), JSON.stringify(corpo.options))
     assert(corpo.options.every((o: any) => !("estrategiaNacional" in o)))

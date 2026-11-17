@@ -158,6 +158,7 @@ export function bancoFalso(opts: {
     config?: Record<string, unknown>
     credenciais?: any[]
     produtos?: any[]
+    falhaAoLerProdutos?: boolean
     variantes?: any[]
     cache?: Array<{ options: unknown }>
     enderecoDaLoja?: string | null
@@ -270,7 +271,10 @@ export function bancoFalso(opts: {
                 }
                 return { data: unico ? { ...config } : [{ ...config }], error: null }
             }
-            if (tabela === "produtos") return { data: opts.produtos ?? [PRODUTO_P1], error: null }
+            if (tabela === "produtos") {
+                if (opts.falhaAoLerProdutos) return { data: null, error: { code: "57014" } }
+                return { data: opts.produtos ?? [PRODUTO_P1], error: null }
+            }
             if (tabela === "product_variants") return { data: opts.variantes ?? [], error: null }
             if (tabela === "store_shipping_credentials") {
                 if (operacao === "upsert") {
