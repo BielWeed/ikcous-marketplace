@@ -274,8 +274,10 @@ escrita serial (salvo a exceção do `/paralelizar`, acima); quem escreveu não 
   `admin_devolucao_liberar_vinculo_reverso`, achados A1/R1/R2 da etiqueta reversa de devolução) e
   a `20261180` (achado de risco do cliente não cancelar com cartão vivo) sobem por ele, cada uma
   no seu run — a 79 e a 80 sempre como passo À PARTE, só depois de 75–78 estarem no ar e
-  conferidas —, com ordem, conferência e rollback no
-  [runbook de publicação](docs/runbooks/publicar-painel-cartao-devolucoes.md) (seção 7 cobre a 79).
+  conferidas —, conforme o registro
+  [histórico do PR #666](docs/runbooks/publicar-painel-cartao-devolucoes.md) (seção 7 cobre a 79).
+  Para o procedimento vigente de publicação, conferência e rollback, use
+  [produção — fonte única](docs/runbooks/producao-unica-fonte.md).
 - **Migration não leva `BEGIN`/`COMMIT`.** Com eles, o `ROLLBACK` do script de prova vira
   no-op e a mudança fica gravada.
 - **Backup é diário e não há PITR.** Nunca `--no-verify` no commit — o `secretlint` do
@@ -405,8 +407,10 @@ consentimento do usuário (`registerType: "prompt"`).
 **Publicação que cruza banco e edge (26/09/2026).** Ordem fixa: migrations pelo
 `aplicar-migrations.yml` → functions pelo `publicar-functions.yml` → front. O preview da
 Vercel fala com o banco da loja (ADR 0001), então tela nova que chama RPC nova só funciona no
-preview depois das migrations. Passo a passo, conferência e rollback do PR #666:
-[`docs/runbooks/publicar-painel-cartao-devolucoes.md`](docs/runbooks/publicar-painel-cartao-devolucoes.md).
+preview depois das migrations. O
+[roteiro do PR #666](docs/runbooks/publicar-painel-cartao-devolucoes.md) é histórico.
+O procedimento vigente de publicação, conferência e rollback está em
+[`docs/runbooks/producao-unica-fonte.md`](docs/runbooks/producao-unica-fonte.md).
 
 **Versão por release (22/09/2026).** Cada release pública nova recebe incremento de
 patch no `package.json` e nas duas raízes do `package-lock.json` (`1.5.1`, depois

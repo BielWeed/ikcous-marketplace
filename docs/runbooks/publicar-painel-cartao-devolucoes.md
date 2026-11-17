@@ -387,7 +387,10 @@ frente — ver o runbook `fix/devolucao-pos-revisao`, §7.0).
    20261180000000_cliente_nao_cancela_com_cartao_vivo.sql
    ```
 
-3. Deixe `projeto` em `loja` (default).
+3. **Histórico — não siga este passo como procedimento vigente.** Use os alvos explícitos
+   `ikcous-publicada` ou `savy`, com `expected_sha`, conforme o
+   [runbook vigente](producao-unica-fonte.md). `loja` das migrations cai na CAF sem as travas
+   da CAF explícita; `loja` das functions é o projeto ANTIGO.
 
 Esta migration tem um **preflight** (`B1_BASELINE_DIVERGENT`, `DO $preflight_20261180$` no topo
 do arquivo) que recusa ANTES de qualquer `CREATE` se `marketplace_orders.metodo_online` ou
@@ -1175,7 +1178,10 @@ nenhuma delas, só da própria 78).
 
 **Aplicar** (NA LOJA, sempre pelo workflow — nunca `db-apply.cjs` direto contra produção; ver §1 e
 §1.4 acima): Actions → **Aplicar migrations (Supabase)** → `migracoes =
-20261183000000_o_crm_ve_todo_mundo.sql`, `projeto = loja`. O workflow faz a prova
+20261183000000_o_crm_ve_todo_mundo.sql`. **Histórico — não siga este passo como procedimento
+vigente.** Use `ikcous-publicada` ou `savy`, com `expected_sha`, conforme o
+[runbook vigente](producao-unica-fonte.md). `loja` das migrations cai na CAF sem as travas da
+CAF explícita; `loja` das functions é o projeto ANTIGO. O workflow faz a prova
 `BEGIN`/`ROLLBACK` antes de aplicar de verdade; a conferência da 83 é a consulta 7a (o ledger
 exige). (`node
 scripts/db-apply.cjs <arquivo>` só vale local/dev, contra um `DATABASE_URL` que não é o da loja —

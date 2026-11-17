@@ -105,6 +105,9 @@ gh pr merge release/1.2.0 --merge   # merge commit, NÃO squash: squash cria com
 
 ## Hotfix (loja parada)
 
+Merge na `main` + tag não publica nada; publique pelo
+[runbook de produção](../runbooks/producao-unica-fonte.md).
+
 ```bash
 git switch main && git pull
 git switch -c hotfix/frete-zerado

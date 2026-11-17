@@ -370,7 +370,7 @@ Não. A tabela existe porque a dúvida aparece de qualquer jeito.
 | "A loja está parada, é urgente" | Não | `hotfix/<assunto>` a partir da `main` → PR. Leva 40s a mais |
 | "O outro dev está dormindo" | Não | Abra o PR e escreva no Discord. Merge de PR sem revisão é decisão do autor, mas o PR fica registrado |
 | "Estou só testando" | Não | Branch descartável. Não precisa nem abrir PR |
-| "Sou o dono do repositório" | Não | Especialmente não. É a `main` que está no ar |
+| "Sou o dono do repositório" | Não | Especialmente não. A `main` não indica o que está no ar; `production` registra a versão publicada |
 
 ---
 
