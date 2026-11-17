@@ -89,12 +89,14 @@ describe("TopProductsList — o lucro desconta devolução e estorno", () => {
     const linhas = [...hospedeiro.querySelectorAll("li")];
     expect(linhas).toHaveLength(3);
     for (const [indice, produto] of produtos.entries()) {
-      const linha = within(linhas[indice]);
+      const linha = within(linhas.at(indice) as HTMLElement);
       expect(linha).toContain(produto.name);
       expect(linha).toContain(
         `${produto.quantity} ${produto.quantity === 1 ? "unidade vendida" : "unidades vendidas"}`,
       );
-      expect(linha).toContain(["R$ 60,00", "R$ 0,00", "-R$ 20,00"][indice]);
+      expect(linha).toContain(
+        ["R$ 60,00", "R$ 0,00", "-R$ 20,00"].at(indice) as string,
+      );
     }
   });
 
@@ -111,7 +113,9 @@ describe("TopProductsList — o lucro desconta devolução e estorno", () => {
       const linhas = [...hospedeiro.querySelectorAll("li")];
       expect(linhas).toHaveLength(quantidade);
       for (const [indice, linha] of linhas.entries()) {
-        expect(within(linha)).toContain(produtos[indice].name);
+        expect(within(linha)).toContain(
+          (produtos.at(indice) as { name: string }).name,
+        );
         expect(linha.querySelector("button > span")?.textContent?.trim()).toBe(
           String(indice + 1),
         );
