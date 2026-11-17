@@ -352,7 +352,7 @@ export const PrivacidadeDosClientesSection = memo(
                               situacao: "recusado",
                             });
                           }}
-                          className={`${CLASSE_DO_BOTAO_NEUTRO} !text-red-300`}
+                          className={`${CLASSE_DO_BOTAO_NEUTRO} !text-[color:var(--lit-t-ff9999,#fca5a5)]`}
                         >
                           {TEXTOS_DA_LOJA.marcarRecusado}
                         </button>
