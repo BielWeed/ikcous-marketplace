@@ -22,6 +22,7 @@
  * uma linha alterada — era essa a condição para mexer num arquivo que funciona.
  */
 import * as webpush from "jsr:@negrel/webpush@0.3.0";
+import { endpointDePushPermitido } from "./endpoint-de-push.ts";
 
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -371,10 +372,23 @@ async function esperarComLimite<T>(
 }
 
 /**
+ * Motivo (e texto que o admin vê no resumo) de uma inscrição cujo endereço de
+ * push foi recusado ANTES de qualquer requisição. Não é "inscrição morta": a
+ * linha não é apagada, só contada como falha.
+ */
+export const MOTIVO_ENDPOINT_INVALIDO =
+  "endpoint_invalido: o endereço do aparelho não é de um serviço de push público (https)";
+
+/**
  * Envia em lotes de 100 e devolve UM item por inscrição, na ordem de entrada.
  *
  * `aoDetectarMorta` é injetado para o teste conseguir observar a remoção sem
  * banco. Em produção é o DELETE em push_subscriptions.
+ *
+ * Inscrição cujo `endpoint` não passa em `endpointDePushPermitido` (http,
+ * IP literal, host interno, porta fora da padrão, credencial na URL) vira item
+ * `ok: false` com `MOTIVO_ENDPOINT_INVALIDO`, SEM `subscribe`/`fetch` e SEM
+ * remoção da linha.
  *
  * `opcoesDeEnvio` ({ urgency, ttl, topic }) vai direto para `pushTextMessage`.
  * Ausente, o envio é byte a byte o de antes (`{}`: urgência normal, TTL de 28
@@ -408,6 +422,12 @@ export async function enviarParaInscritos({
     // envio começa a ser contado no dispositivo errado.
     const respostas = await Promise.all(
       lote.map(async (sub: any) => {
+        // Trava de SSRF: o endereço vem do navegador de quem se inscreveu, e a
+        // biblioteca faz `fetch` direto nele. Recusa ANTES de `subscribe`, sem
+        // rede e sem derrubar o lote; a linha fica no banco (não é "morta").
+        if (!endpointDePushPermitido(sub.endpoint)) {
+          return { sub, erro: null, recusado: true };
+        }
         try {
           await esperarComLimite(
             () => servidor
@@ -427,7 +447,17 @@ export async function enviarParaInscritos({
 
     // A remoção da inscrição morta acontece aqui fora, em série: são DELETEs no
     // banco, e disparar 100 de uma vez no meio do envio não ajuda ninguém.
-    for (const { sub, erro } of respostas) {
+    for (const { sub, erro, recusado } of respostas) {
+      if (recusado) {
+        itens.push({
+          endpoint: sub.endpoint,
+          ok: false,
+          motivo: MOTIVO_ENDPOINT_INVALIDO,
+          status: null,
+          removida: false,
+        });
+        continue;
+      }
       if (!erro) {
         itens.push({ endpoint: sub.endpoint, ok: true });
         continue;

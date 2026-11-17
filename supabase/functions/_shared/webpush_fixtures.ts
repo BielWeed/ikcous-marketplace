@@ -10,6 +10,7 @@
  * Não termina em `_test.ts`, então o runner não o trata como suíte.
  */
 import * as webpush from "jsr:@negrel/webpush@0.3.0";
+import { aceitarPushServiceLocalSoNosTestes } from "./endpoint-de-push.ts";
 import { bytesParaBase64Url } from "./webpush.ts";
 
 /** Par VAPID novo, nos dois formatos que as variáveis de ambiente aceitam. */
@@ -39,6 +40,9 @@ export async function inscricaoDeTeste(endpoint: string) {
 export function pushServiceFalso(statusPorCaminho: Record<string, number>) {
   const status = new Map(Object.entries(statusPorCaminho));
   const recebidas: { caminho: string; headers: Headers }[] = [];
+  // O push service é `http://localhost:porta`, que a trava de endereço de
+  // `enviarParaInscritos` recusa em produção; a brecha vale só até `encerrar`.
+  const desfazerBrecha = aceitarPushServiceLocalSoNosTestes();
   const servidor = Deno.serve({ port: 0, onListen: () => {} }, async (req) => {
     const caminho = new URL(req.url).pathname;
     await req.arrayBuffer();
@@ -48,6 +52,9 @@ export function pushServiceFalso(statusPorCaminho: Record<string, number>) {
   return {
     recebidas,
     base: `http://localhost:${servidor.addr.port}`,
-    encerrar: () => servidor.shutdown(),
+    encerrar: () => {
+      desfazerBrecha();
+      return servidor.shutdown();
+    },
   };
 }

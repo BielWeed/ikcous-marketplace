@@ -11,13 +11,17 @@
  * sobreviver ao FIM do teste) e o `EdgeRuntime.waitUntil` sendo chamado
  * quando o ambiente o expõe.
  */
+import * as webpush from "jsr:@negrel/webpush@0.3.0";
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
+  carregarChavesVapid,
   comTempoLimite,
   dispararSemEsperarCliente,
   enviarParaInscritos,
+  MOTIVO_ENDPOINT_INVALIDO,
   resumir,
 } from "./webpush.ts";
+import { inscricaoDeTeste, parVapidDeTeste } from "./webpush_fixtures.ts";
 
 Deno.test("comTempoLimite: promessa rápida vence a corrida e devolve o valor, sem vazar o setTimeout (sanitizeResources padrão do Deno.test)", async () => {
   const resultado = await comTempoLimite(Promise.resolve("ok"), 50);
@@ -165,5 +169,119 @@ Deno.test("enviarParaInscritos: DELETE resolvido com error não conta como inscr
     assertEquals(logs[0][2], erroDoBanco);
   } finally {
     console.error = consoleError;
+  }
+});
+
+// --- Endereço do aparelho: nunca se faz fetch para destino interno (SSRF cego) ---
+//
+// Qualquer conta autenticada grava em `push_subscriptions` uma linha com o
+// próprio `user_id` e um `endpoint` ARBITRÁRIO (a policy só olha o dono), e a
+// campanha sem alvo ou o aviso de status do pedido dava `fetch(endpoint)` direto.
+// ATENÇÃO: este arquivo NÃO liga `aceitarPushServiceLocalSoNosTestes` (a brecha
+// que os testes ponta a ponta da `send-push` usam para falar com um push service
+// em localhost) — se ligasse, o teste abaixo deixaria de provar a trava.
+
+// Montada em tempo de execução: dado de teste, não credencial (o secretlint
+// leria o literal `esquema://usuario:senha@host` como BasicAuth).
+const URL_COM_USUARIO_E_SENHA = ["https://", "user", ":", "senha", "@fcm.googleapis.com/x"].join("");
+
+const ENDPOINTS_INTERNOS = [
+  "http://127.0.0.1:8080/x",
+  "https://127.0.0.1/x",
+  "https://[::1]/x",
+  "https://10.0.0.5/x",
+  "https://169.254.169.254/latest/meta-data",
+  "https://localhost/x",
+  "https://servico.internal/x",
+  "https://fcm.googleapis.com:8443/x",
+  URL_COM_USUARIO_E_SENHA,
+  "",
+  "não é url",
+];
+const ENDPOINT_LEGITIMO = "https://fcm.googleapis.com/fcm/send/legitimo-1";
+
+Deno.test("enviarParaInscritos: endpoint interno ou sem https NÃO chega ao subscribe, vira falha tratada, e o inscrito legítimo da mesma lista é enviado", async () => {
+  const chamadasDeSubscribe: string[] = [];
+  const mortasChamadas: string[] = [];
+  const inscricoes = [
+    ...ENDPOINTS_INTERNOS.slice(0, 5),
+    ENDPOINT_LEGITIMO,
+    ...ENDPOINTS_INTERNOS.slice(5),
+  ].map((endpoint) => ({ endpoint, p256dh: "x", auth: "y" }));
+
+  const itens = await enviarParaInscritos({
+    servidor: {
+      subscribe: ({ endpoint }: { endpoint: string }) => {
+        chamadasDeSubscribe.push(endpoint);
+        return { pushTextMessage: () => Promise.resolve() };
+      },
+    },
+    inscricoes,
+    mensagem: "{}",
+    // Lote pequeno de propósito: provar também que a ordem e a contagem
+    // sobrevivem a lotes que misturam endereço bom e ruim.
+    tamanhoDoLote: 4,
+    aoDetectarMorta: (endpoint: string) => {
+      mortasChamadas.push(endpoint);
+      return Promise.resolve({ error: null });
+    },
+  });
+
+  assertEquals(chamadasDeSubscribe, [ENDPOINT_LEGITIMO], "só o legítimo chega ao subscribe");
+  assertEquals(itens.length, inscricoes.length, "o lote não perde nem derruba ninguém");
+  assertEquals(
+    itens.map((i: { endpoint: string }) => i.endpoint),
+    inscricoes.map((i) => i.endpoint),
+    "um item por inscrição, na ordem de entrada",
+  );
+  for (const item of itens) {
+    if (item.endpoint === ENDPOINT_LEGITIMO) {
+      assertEquals(item.ok, true);
+      continue;
+    }
+    assertEquals(item.ok, false, `recusado: ${JSON.stringify(item.endpoint)}`);
+    assertEquals(item.motivo, MOTIVO_ENDPOINT_INVALIDO);
+    assertEquals(item.status, null);
+    assertEquals(item.removida, false, "endereço inválido não apaga a linha, só conta");
+  }
+  assertEquals(mortasChamadas, [], "recusa de endereço não é inscrição morta: nada é apagado");
+
+  const resumo = resumir(itens);
+  assertEquals(resumo.enviados, 1);
+  assertEquals(resumo.falharam, ENDPOINTS_INTERNOS.length);
+  assertEquals(resumo.removidas, 0);
+  assertEquals(resumo.falhas.length, 1, "agrupado num motivo só");
+  assertEquals(resumo.falhas[0].motivo, MOTIVO_ENDPOINT_INVALIDO);
+  assertEquals(resumo.falhas[0].quantidade, ENDPOINTS_INTERNOS.length);
+});
+
+Deno.test("enviarParaInscritos com a biblioteca de verdade: nenhum fetch sai para destino interno; o endereço legítimo faz exatamente um fetch", async () => {
+  const { publica, privada } = await parVapidDeTeste();
+  const servidor = await webpush.ApplicationServer.new({
+    contactInformation: "mailto:teste@ikcous.local",
+    vapidKeys: await carregarChavesVapid(publica, privada),
+  });
+  const internos = await Promise.all(
+    ENDPOINTS_INTERNOS.filter((e) => e !== "").map((e) => inscricaoDeTeste(e)),
+  );
+  const legitimo = await inscricaoDeTeste(ENDPOINT_LEGITIMO);
+
+  const fetchOriginal = globalThis.fetch;
+  const destinos: string[] = [];
+  globalThis.fetch = ((entrada: Request | URL | string) => {
+    destinos.push(String(entrada instanceof Request ? entrada.url : entrada));
+    return Promise.resolve(new Response(null, { status: 201 }));
+  }) as typeof fetch;
+  try {
+    const itens = await enviarParaInscritos({
+      servidor,
+      inscricoes: [...internos, legitimo],
+      mensagem: "{}",
+    });
+    assertEquals(destinos, [ENDPOINT_LEGITIMO], "o único fetch é o do push service legítimo");
+    assertEquals(itens.filter((i: { ok: boolean }) => i.ok).length, 1);
+    assertEquals(itens.filter((i: { ok: boolean }) => !i.ok).length, internos.length);
+  } finally {
+    globalThis.fetch = fetchOriginal;
   }
 });

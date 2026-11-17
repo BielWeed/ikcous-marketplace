@@ -17,6 +17,7 @@ import {
   assertStringIncludes,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import * as webpush from "jsr:@negrel/webpush@0.3.0";
+import { aceitarPushServiceLocalSoNosTestes } from "../_shared/endpoint-de-push.ts";
 import { comTempoLimite } from "../_shared/webpush.ts";
 import {
   base64UrlParaBytes,
@@ -299,6 +300,9 @@ function pushServiceFalso(statusPorCaminho: Record<string, number>) {
   const status = new Map(Object.entries(statusPorCaminho));
   const recebidas: { caminho: string; headers: Headers; corpo: Uint8Array }[] =
     [];
+  // O push service é `http://localhost:porta`, que a trava de endereço de
+  // `enviarParaInscritos` recusa em produção; a brecha vale só até `encerrar`.
+  const desfazerBrecha = aceitarPushServiceLocalSoNosTestes();
   const servidor = Deno.serve({ port: 0, onListen: () => {} }, async (req) => {
     const caminho = new URL(req.url).pathname;
     recebidas.push({
@@ -311,7 +315,10 @@ function pushServiceFalso(statusPorCaminho: Record<string, number>) {
   return {
     recebidas,
     base: `http://localhost:${servidor.addr.port}`,
-    encerrar: () => servidor.shutdown(),
+    encerrar: () => {
+      desfazerBrecha();
+      return servidor.shutdown();
+    },
   };
 }
 
