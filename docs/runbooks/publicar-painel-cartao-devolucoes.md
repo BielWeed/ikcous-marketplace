@@ -1,5 +1,9 @@
 # Publicar o painel, o cartão e as devoluções (PR #666) — passo a passo
 
+> **ROTEIRO HISTÓRICO — NÃO SIGA ESTES COMANDOS.** Use
+> [`docs/runbooks/producao-unica-fonte.md`](producao-unica-fonte.md) para publicar.
+> Este arquivo preserva as conferências e decisões do PR #666, não o procedimento vigente.
+
 O PR #666 traz quatro migrations
 ([`20261175`](../../supabase/migrations/20261175000000_a_devolucao_nasce_no_pedido.sql) devoluções,
 [`20261176`](../../supabase/migrations/20261176000000_o_cartao_online_nasce.sql) cartão,
@@ -230,10 +234,12 @@ sandbox, em vez de silenciosamente comparar o código com o banco errado.
       20261175000000_a_devolucao_nasce_no_pedido.sql,20261176000000_o_cartao_online_nasce.sql,20261177000000_o_financeiro_da_loja_nasce.sql,20261178000000_o_crm_e_o_inicio_leem_a_loja.sql
       ```
 
-   3. Deixe `projeto` em `loja` (default). **Desde a rodada 2 da revisão de risco (26/09/2026)
-      o input mudou de `projeto_ref` (texto livre) para `projeto` (`loja`/`sandbox`, fechado)** —
-      disparar pela API do GitHub passando `projeto_ref` depois desse merge dá `422` (o input não
-      existe mais neste workflow).
+   3. **Instrução histórica retirada: não use o default `loja` como roteiro de publicação.**
+      Em `aplicar-migrations.yml`, `loja` aponta para a CAF; em `publicar-functions.yml`,
+      o mesmo nome aponta para a DEK antiga. O procedimento vigente usa os alvos explícitos
+      `ikcous-publicada` (CAF) e `savy`, com `expected_sha` e conferências por loja, conforme
+      [`producao-unica-fonte.md`](producao-unica-fonte.md). Não reaplique estas migrations
+      históricas seguindo este arquivo.
 
    A ordem importa porque cada migration lê a anterior:
    - `registrar_estorno_manual` (76) lê `devolucoes` (75);
@@ -436,7 +442,9 @@ ON CONFLICT (version) DO NOTHING;
 
 1. Abra GitHub → Actions → **"Publicar edge functions (Supabase)"** → *Run workflow*, no branch
    do SHA anotado.
-2. Preencha `projeto`: `loja`.
+2. **Instrução histórica retirada: não publique functions com `projeto=loja`.** Esse alvo
+   é a DEK antiga, não a CAF do §1. Para os destinos atuais (`ikcous-publicada` e `savy`),
+   siga [`producao-unica-fonte.md`](producao-unica-fonte.md), incluindo `expected_sha`.
 3. Preencha `functions` com:
 
 ```text

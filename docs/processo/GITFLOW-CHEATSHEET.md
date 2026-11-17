@@ -3,7 +3,9 @@
 Uma página, na ordem em que as coisas acontecem. O porquê está no
 [`CONTRIBUTING.md`](../../CONTRIBUTING.md).
 
-Ponto de partida: `develop`. A `main` é só o que está no ar.
+Ponto de partida deste fluxo Git: `develop`. A `main` **não indica o que está no ar**:
+`vercel.json` pula o build desse ramo. Merge e tag registram código, não publicam a loja.
+A publicação vigente está no [runbook de produção](../runbooks/producao-unica-fonte.md).
 
 ---
 
@@ -71,6 +73,13 @@ na janela #541–#564. Porquê completo no [`CONTRIBUTING.md`](../../CONTRIBUTIN
 ---
 
 ## Release
+
+A sequência Git abaixo **não publica em produção**. Para colocar a versão no ar, siga
+[Publicar uma release — a sequência inteira](../runbooks/producao-unica-fonte.md#publicar-uma-release-a-sequencia-inteira):
+prepare o candidato e suas provas, rode o ensaio
+`node scripts/frota/publicar-release.mjs --sha <sha40> --deployment <dpl_...>` e, só com o
+portão aprovado, repita com `--promover`. Esse passo promove o front e confere a frota;
+merge na `main` e tag não o substituem. O runbook também define o ramo e a ordem vigentes.
 
 ```bash
 git switch develop && git pull
