@@ -1,4 +1,5 @@
 import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
+import { ImagemComFallback } from "@/components/ui/custom/ImagemComFallback";
 import { OPCOES_MAX_ITENS_CARROSSEL } from "@/config/carrossel";
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { cn, formatCurrency, normalizeText } from "@/lib/utils";
@@ -345,7 +346,8 @@ export function FolhaEditarVitrine({
               >
                 <span className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-[12px] border border-admin-border bg-zinc-800">
                   {produto.images?.[0] ? (
-                    <img
+                    <ImagemComFallback
+                      fallback={<Tag className="size-4 text-zinc-600" />}
                       src={produto.images[0]}
                       alt=""
                       loading="lazy"

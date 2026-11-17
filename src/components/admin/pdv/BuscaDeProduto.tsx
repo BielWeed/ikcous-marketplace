@@ -1,6 +1,7 @@
 // Busca do modo Buscar: mesmos handlers e paginação antes presentes no cupom.
 import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
 import { Button } from "@/components/ui/button";
+import { ImagemComFallback } from "@/components/ui/custom/ImagemComFallback";
 import type { AcaoDaVenda, ItemDoCupom } from "@/hooks/useVendaPresencial";
 import { chaveDoItemDoCupom } from "@/hooks/useVendaPresencial";
 import { cn } from "@/lib/utils";
@@ -389,10 +390,16 @@ export function BuscaDeProduto({
                     aria-expanded={ativas.length > 0 ? expandido : undefined}
                   >
                     {imagemDoProduto(produto) ? (
-                      <img
+                      <ImagemComFallback
                         src={imagemDoProduto(produto)}
                         alt=""
                         className="pdv-item-image"
+                        fallback={
+                          <PackagePlus
+                            aria-hidden="true"
+                            className="pdv-item-image pdv-pink"
+                          />
+                        }
                       />
                     ) : (
                       <PackagePlus

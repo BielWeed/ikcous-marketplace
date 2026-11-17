@@ -21,6 +21,7 @@ import {
 import { SecaoDoProduto } from "@/components/admin/products/SecaoDoProduto";
 import { useTopoCompacto } from "@/components/admin/products/useTopoCompacto";
 import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
+import { ImagemComFallback } from "@/components/ui/custom/ImagemComFallback";
 import "@/components/admin/products/formulario-produto.css";
 import {
   type LinhaProntaDaGrade,
@@ -5589,10 +5590,16 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   className="col-span-2 mt-4 flex items-center gap-4 rounded-[20px] border border-admin-border bg-admin-raised p-3"
                 >
                   {formData.images[0] ? (
-                    <img
+                    <ImagemComFallback
                       src={formData.images[0]}
                       alt="Foto principal do produto"
                       className="h-20 w-16 shrink-0 rounded-xl object-cover"
+                      fallback={
+                        <span className="flex h-20 w-16 shrink-0 flex-col items-center justify-center gap-1 rounded-xl bg-zinc-800 text-[11px] text-zinc-300">
+                          <ImageIcon className="size-6" />
+                          Sem foto
+                        </span>
+                      }
                     />
                   ) : (
                     <span className="flex h-20 w-16 shrink-0 flex-col items-center justify-center gap-1 rounded-xl bg-zinc-800 text-[11px] text-zinc-300">

@@ -11,6 +11,7 @@
 
 import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import { Button } from "@/components/ui/button";
+import { ImagemComFallback } from "@/components/ui/custom/ImagemComFallback";
 import type { AcaoDaVenda, EstadoDaVenda } from "@/hooks/useVendaPresencial";
 import { guardarCodigoParaCadastro } from "@/lib/codigo-para-cadastro";
 import {
@@ -330,10 +331,18 @@ export function CupomDaVenda({
                     className="pdv-item lg:shrink-0"
                   >
                     {item.imagem ? (
-                      <img
+                      <ImagemComFallback
                         src={item.imagem}
                         alt={item.nome}
                         className="pdv-item-image"
+                        fallback={
+                          <div className="pdv-item-image flex items-center justify-center bg-admin-raised">
+                            <PackagePlus
+                              aria-hidden="true"
+                              className="pdv-purple size-5"
+                            />
+                          </div>
+                        }
                       />
                     ) : (
                       <div className="pdv-item-image flex items-center justify-center bg-admin-raised">

@@ -32,6 +32,7 @@ import { AddressList } from "@/components/ui/custom/AddressList";
 import { BotaoWhatsapp } from "@/components/ui/custom/BotaoWhatsapp";
 import { CarrinhoSalvoNaoLido } from "@/components/ui/custom/CarrinhoSalvoNaoLido";
 import { HEADER_CENTER_SLOT_ID } from "@/components/ui/custom/Header";
+import { ImagemComFallback } from "@/components/ui/custom/ImagemComFallback";
 import { SaidaDaRecusa } from "@/components/ui/custom/SaidaDaRecusa";
 import {
   ShippingCalculator,
@@ -7861,11 +7862,9 @@ export function CheckoutViewDaConta({
                             key={`${item.product.id}-${chaveDaLinha(item)}`}
                             className="flex items-center gap-3"
                           >
-                            <img
+                            <ImagemComFallback
                               src={miniaturaDoResumo(fotoDaLinha, 144)}
-                              onError={(e) =>
-                                usarImagemOriginal(e.currentTarget, fotoDaLinha)
-                              }
+                              original={fotoDaLinha}
                               alt=""
                               className="size-12 shrink-0 rounded-xl border border-zinc-100 bg-zinc-50 object-cover"
                             />

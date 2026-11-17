@@ -234,5 +234,10 @@ describe("fotos pequenas nas telas de compra", () => {
       />,
     );
     exigirPequena(img);
+    await act(async () => img.dispatchEvent(new Event("error")));
+    expect(img.getAttribute("src")).toBe(ORIGINAL);
+    await act(async () => img.dispatchEvent(new Event("error")));
+    expect(host.querySelector("img")).toBeNull();
+    expect(host.textContent).toContain("Sem foto");
   });
 });

@@ -1,5 +1,5 @@
+import { ImagemComFallback } from "@/components/ui/custom/ImagemComFallback";
 import { ehMarcadorDeFoto } from "@/lib/foto-do-produto";
-import { usarImagemOriginal } from "@/lib/imageUrl";
 import { miniaturaDeCompra } from "@/lib/miniatura-de-compra";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product } from "@/types";
@@ -277,11 +277,9 @@ export function ShippingProgress({
                         Sem foto
                       </div>
                     ) : (
-                      <img
+                      <ImagemComFallback
                         src={miniaturaDeCompra(p.images[0])}
-                        onError={(e) =>
-                          usarImagemOriginal(e.currentTarget, p.images[0])
-                        }
+                        original={p.images[0]}
                         alt={p.name}
                         className="size-full object-cover"
                       />
