@@ -201,9 +201,9 @@ jobs:
             echo "::error::segredo SUPABASE_ACCESS_TOKEN_SAVY ausente no repositório"; exit 1
           fi
 
-      - uses: supabase/setup-cli@v3
+      - uses: supabase/setup-cli@689adcfb80d947100a1eab127289b97d1fb07b13 # v3
         with:
-          version: latest
+          version: 3.0.0
 
       - name: Publica, uma function por vez, sempre pelo nome
         if: inputs.projeto != 'savy' && inputs.projeto != 'ikcous-publicada'
