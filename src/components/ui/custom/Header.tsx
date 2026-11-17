@@ -339,7 +339,7 @@ export const Header = memo(function Header({
                 />
               </div>
             ) : (
-              <div className="flex w-[100px] min-w-0 items-center gap-2 xs:w-[120px]">
+              <div className="flex min-w-0 max-w-[170px] items-center gap-2 xs:max-w-[190px]">
                 <div className="relative flex size-8 shrink-0 items-center justify-center rounded-[8px] bg-primary shadow-lg">
                   <span className="font-black italic text-primary-foreground">
                     {storeLetter}

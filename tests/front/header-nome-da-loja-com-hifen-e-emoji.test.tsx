@@ -97,8 +97,10 @@ describe("Header — nome da loja com hífen sem espaço e com emoji", () => {
     const coluna = principal.parentElement!;
     expect(coluna.classList.contains("min-w-0")).toBe(true);
     const miniatura = coluna.parentElement!;
-    expect(miniatura.classList.contains("w-[100px]")).toBe(true);
-    expect(miniatura.classList.contains("xs:w-[120px]")).toBe(true);
+    expect(miniatura.classList.contains("max-w-[170px]")).toBe(true);
+    expect(miniatura.classList.contains("xs:max-w-[190px]")).toBe(true);
+    expect(miniatura.classList.contains("w-[100px]")).toBe(false);
+    expect(miniatura.classList.contains("xs:w-[120px]")).toBe(false);
     expect(miniatura.classList.contains("min-w-0")).toBe(true);
     expect(miniatura.firstElementChild?.classList.contains("shrink-0")).toBe(true);
     const botao = hospedeiro.querySelector('[aria-label="Ir para o Início"]')!;
@@ -107,6 +109,23 @@ describe("Header — nome da loja com hífen sem espaço e com emoji", () => {
     expect(botao.parentElement?.classList.contains("shrink-0")).toBe(false);
     expect(botao.parentElement?.classList.contains("min-w-0")).toBe(true);
   });
+
+  it.each(["Du Nenem", "Guarda-Roupa da Lu"])(
+    "nome normal %s conserva largura natural, limitada apenas pelo teto",
+    async (nome) => {
+      await nomeEscrito(nome);
+      const principal = [...hospedeiro.querySelectorAll("span")].find(
+        (el) => el.textContent === nome,
+      )!;
+      const miniatura = principal.parentElement!.parentElement!;
+      expect(miniatura.classList.contains("max-w-[170px]")).toBe(true);
+      expect(miniatura.classList.contains("xs:max-w-[190px]")).toBe(true);
+      expect(
+        [...miniatura.classList].some((classe) => /(^|:)w-/.test(classe)),
+      ).toBe(false);
+      expect(principal.textContent).toBe(nome);
+    },
+  );
 
   it("hífen sem espaço não divide o nome", async () => {
     const { principal, subtitulo } = await nomeEscrito("Guarda-Roupa da Lu");

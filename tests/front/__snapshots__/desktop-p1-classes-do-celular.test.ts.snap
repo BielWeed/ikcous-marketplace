@@ -94,7 +94,7 @@ exports[`P1 preserva cada classe de celular da base > header 1`] = `
   "relative flex min-w-0 cursor-pointer appearance-none items-center gap-2 border-none bg-transparent p-0 text-left outline-none transition-all duration-150 after:absolute after:-inset-x-1 after:-inset-y-2 after:content-[''] hover:opacity-80 focus-visible:ring-2 focus-visible:ring-zinc-900/50 active:scale-95",
   "flex h-8 w-[100px] items-center overflow-hidden rounded-[8px] xs:w-[120px]",
   "size-full object-contain object-left",
-  "flex w-[100px] min-w-0 items-center gap-2 xs:w-[120px]",
+  "flex min-w-0 max-w-[170px] items-center gap-2 xs:max-w-[190px]",
   "relative flex size-8 shrink-0 items-center justify-center rounded-[8px] bg-primary shadow-lg",
   "font-black italic text-primary-foreground",
   "absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full border-2 border-white transition-all duration-500",
