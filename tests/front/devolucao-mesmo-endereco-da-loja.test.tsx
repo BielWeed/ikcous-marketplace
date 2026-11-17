@@ -5,8 +5,8 @@
 // loja (`config.storeAddress`). Só ficou visível: vazio → a caixa vem marcada
 // mostrando o endereço, sem campo; desmarcar mostra o campo; remarcar e salvar
 // envia `endereco_devolucao: ""`. O payload da RPC `salvar_politica_de_devolucao`
-// NÃO muda: os três casos (marcada / desmarcada com valor / desmarcada vazia)
-// mandam o mesmo que o campo de texto mandava antes.
+// leva só o que mudou: o endereço só vai quando difere do salvo (digitado, ou
+// vazio ao remarcar a caixa); sem mexer nele, a chave nem vai e o banco guarda o dele.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -143,7 +143,7 @@ async function salvar() {
   await esperar();
 }
 
-/** O `endereco_devolucao` que foi para a RPC na última chamada. */
+/** O `endereco_devolucao` que foi para a RPC na última chamada (`undefined` = chave ausente). */
 function enderecoEnviado(): unknown {
   expect(rpc).toHaveBeenCalledWith(
     "salvar_politica_de_devolucao",
@@ -185,19 +185,19 @@ describe("Mesmo endereço da loja (D8)", () => {
     expect(enderecoEnviado()).toBe("Galpão, Rua B 50");
   });
 
-  it("desmarcada e vazia: envia vazio (o endereço da loja, como hoje)", async () => {
+  it("desmarcada e vazia: não envia o endereço (continua o da loja, como no banco)", async () => {
     await montar();
     await clicar(caixa());
     await digitar("politica-troca", "15");
     await salvar();
-    expect(enderecoEnviado()).toBe("");
+    expect(enderecoEnviado()).toBeUndefined();
   });
 
-  it("marcada sem mexer: envia vazio", async () => {
+  it("marcada sem mexer: não envia o endereço", async () => {
     await montar();
     await digitar("politica-troca", "15");
     await salvar();
-    expect(enderecoEnviado()).toBe("");
+    expect(enderecoEnviado()).toBeUndefined();
   });
 
   it("endereço próprio salvo: vem desmarcada com o campo; remarcar e salvar envia vazio", async () => {

@@ -44,6 +44,7 @@ import {
 } from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
+import type { Json } from "@/types/database.types";
 import type { MetodoDevolucao, PoliticaDevolucao } from "@/types/devolucao";
 import { haptic } from "@/utils/haptic";
 
@@ -385,39 +386,39 @@ export function PoliticaDeDevolucaoSection({
       toast.error("Você está offline");
       return;
     }
-    // A lista "sem troca" só vai no pedido se a lojista MEXEU nela. A cópia
-    // desta tela pode estar velha (a renomeação feita em outro aparelho não
-    // chega aqui ao vivo); regravá-la desfaria a troca de nome em silêncio. A
-    // RPC deixa como está o campo que não vem. A resposta do salvamento traz a
-    // lista do banco e a tela passa a mostrá-la.
-    const listaMexida =
-      JSON.stringify(form.categorias_sem_troca) !==
-      JSON.stringify(salva ? salva.categorias_sem_troca : []);
+    // Só vai no pedido o campo que a lojista MEXEU (comparado com o que esta tela
+    // leu). A cópia desta tela pode estar velha: com o painel aberto em dois
+    // aparelhos, regravar o que ela não tocou desfaria, em silêncio, a mudança
+    // feita no outro (um prazo, uma renomeação de categoria). A RPC deixa como
+    // está o campo que não vem. A resposta do salvamento traz a política do
+    // banco e a tela passa a mostrá-la.
+    const atuais = new Map(Object.entries(form));
+    const lidos = new Map(Object.entries(formDe(salva ?? PADRAO)));
+    const mexido = (chave: string) =>
+      JSON.stringify(atuais.get(chave)) !== JSON.stringify(lidos.get(chave));
+    const pedido: Record<string, Json> = {
+      prazo_arrependimento_dias: Number(form.prazo_arrependimento_dias),
+      prazo_troca_dias: Number(form.prazo_troca_dias),
+      prazo_vicio_dias: Number(form.prazo_vicio_dias),
+      aceita_troca: form.aceita_troca,
+      aceita_vale: form.aceita_vale,
+      exige_fotos_vicio: form.exige_fotos_vicio,
+      metodos_locais: form.metodos_locais,
+      metodos_nacionais: form.metodos_nacionais,
+      reembolso_momento: form.reembolso_momento,
+      frete_troca_pago_por: form.frete_troca_pago_por,
+      categorias_sem_troca: form.categorias_sem_troca,
+      texto_politica: form.texto_politica.trim(),
+      endereco_devolucao: form.endereco_devolucao,
+    };
+    const p = Object.fromEntries(
+      Object.entries(pedido).filter(([chave]) => mexido(chave)),
+    );
     setSalvando(true);
     haptic.light();
     try {
       const { data, error } = await aguardarComPrazo(
-        Promise.resolve(
-          supabase.rpc("salvar_politica_de_devolucao", {
-            p: {
-              prazo_arrependimento_dias: Number(form.prazo_arrependimento_dias),
-              prazo_troca_dias: Number(form.prazo_troca_dias),
-              prazo_vicio_dias: Number(form.prazo_vicio_dias),
-              aceita_troca: form.aceita_troca,
-              aceita_vale: form.aceita_vale,
-              exige_fotos_vicio: form.exige_fotos_vicio,
-              metodos_locais: form.metodos_locais,
-              metodos_nacionais: form.metodos_nacionais,
-              reembolso_momento: form.reembolso_momento,
-              frete_troca_pago_por: form.frete_troca_pago_por,
-              ...(listaMexida
-                ? { categorias_sem_troca: form.categorias_sem_troca }
-                : {}),
-              texto_politica: form.texto_politica.trim(),
-              endereco_devolucao: form.endereco_devolucao,
-            },
-          }),
-        ),
+        Promise.resolve(supabase.rpc("salvar_politica_de_devolucao", { p })),
         PRAZO_DAS_ACOES_DO_PEDIDO_MS,
         () => erroDeConsultaSemResposta(),
       );

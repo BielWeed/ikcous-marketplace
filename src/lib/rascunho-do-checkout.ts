@@ -168,7 +168,7 @@ export function lerRascunhoDoCheckout(
   }
 }
 
-/** Chamado NO SUCESSO do pedido (e só lá): compra fechada não tem rascunho. */
+/** Chamado no sucesso do pedido e no Sair: não deixa rascunho da compra anterior. */
 export function limparRascunhoDoCheckout(
   armazenamento: ArmazenamentoSimples,
 ): void {

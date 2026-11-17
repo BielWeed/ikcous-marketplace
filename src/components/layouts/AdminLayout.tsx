@@ -499,6 +499,7 @@ export function AdminLayout({
           assinaturasAtivas &&
           document.visibilityState === "visible"
         ) {
+          relerListaNaProximaConferencia = true;
           pedirConferenciaDeAvisos();
         }
       };

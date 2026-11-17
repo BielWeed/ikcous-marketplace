@@ -213,7 +213,7 @@ describe("Frete — o Salvar manda só o que foi mexido neste aparelho", () => {
       expect(onSetDirty).toHaveBeenLastCalledWith(false);
     });
 
-    it("mexeu na regra de fora da cidade: manda a regra inteira, e não a taxa que o outro aparelho mudou", async () => {
+    it("mexeu na regra de fora da cidade: manda só o campo que mexeu, e não a taxa que o outro aparelho mudou", async () => {
       await desenhar();
       await escolherRadio("#bloco-estrategia-nacional", "Sempre grátis");
 
@@ -221,14 +221,11 @@ describe("Frete — o Salvar manda só o que foi mexido neste aparelho", () => {
       await salvar();
 
       expect(updateConfig).toHaveBeenCalledTimes(1);
+      // Cada campo da regra vale sozinho: só a estratégia mudou (mínimo, desconto
+      // e alcance já eram o salvo). O detalhe campo a campo está em
+      // frete-regra-de-fora-manda-so-o-campo-mexido.test.tsx.
       expect(updateConfig).toHaveBeenCalledWith(
-        {
-          nationalShippingStrategy: "sempre",
-          nationalShippingMin: 0,
-          nationalDiscountType: null,
-          nationalDiscountValue: 0,
-          nationalBenefitScope: "mais_barata",
-        },
+        { nationalShippingStrategy: "sempre" },
         { silentSuccess: true },
       );
       expect(loja.atual.localDeliveryFee).toBe(12);
@@ -262,7 +259,7 @@ describe("Frete — o Salvar manda só o que foi mexido neste aparelho", () => {
       );
     });
 
-    it("mexeu em tudo: continua mandando todos os campos (comportamento de antes)", async () => {
+    it("mexeu em tudo: manda todos os campos que mexeu (a regra de fora só a estratégia)", async () => {
       await desenhar();
       await digitar("local-delivery-fee", "15");
       await digitar("local-delivery-days", "2");
@@ -290,10 +287,6 @@ describe("Frete — o Salvar manda só o que foi mexido neste aparelho", () => {
           "localDeliveryDays",
           "enabledShippingMethods",
           "nationalShippingStrategy",
-          "nationalShippingMin",
-          "nationalDiscountType",
-          "nationalDiscountValue",
-          "nationalBenefitScope",
         ].sort(),
       );
       expect(enviado).toMatchObject({

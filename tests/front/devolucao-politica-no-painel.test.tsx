@@ -218,13 +218,11 @@ describe("PoliticaDeDevolucaoSection", () => {
     expect(rpc).toHaveBeenCalledWith(
       "salvar_politica_de_devolucao",
       expect.objectContaining({
-        p: expect.objectContaining({
+        // Só o que a lojista mexeu: o resto o banco já tem.
+        p: {
           prazo_arrependimento_dias: 10,
-          prazo_vicio_dias: 90,
           categorias_sem_troca: ["Moda íntima"],
-          metodos_locais: ["entrega_na_loja", "coleta"],
-          endereco_devolucao: "",
-        }),
+        },
       }),
     );
     expect(toast.success).toHaveBeenCalled();
@@ -278,11 +276,10 @@ describe("PoliticaDeDevolucaoSection", () => {
       for (let i = 0; i < 6; i++) await Promise.resolve();
     });
 
+    // O reembolso não foi mexido: a chave nem vai, o banco guarda o valor que tem.
     expect(rpc).toHaveBeenCalledWith(
       "salvar_politica_de_devolucao",
-      expect.objectContaining({
-        p: expect.objectContaining({ reembolso_momento: "apos_inspecao" }),
-      }),
+      expect.objectContaining({ p: { prazo_arrependimento_dias: 10 } }),
     );
   });
 

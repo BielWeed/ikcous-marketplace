@@ -206,6 +206,19 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
       ativa = false;
     };
   }, []);
+  useEffect(() => {
+    // Voltar do Google com o botão do navegador restaura ESTA página do
+    // histórico (bfcache) com o botão ainda em "Abrindo Google…", e a
+    // saída para o Google nunca solta a trava. Só `persisted` indica essa
+    // restauração; foco e visibilidade também ocorrem numa tentativa legítima.
+    const aoRestaurarDoHistorico = (evento: PageTransitionEvent) => {
+      if (!evento.persisted) return;
+      googleEmCurso.current = false;
+      setEntrandoGoogle(false);
+    };
+    window.addEventListener("pageshow", aoRestaurarDoHistorico);
+    return () => window.removeEventListener("pageshow", aoRestaurarDoHistorico);
+  }, []);
   const entrarComGoogle = async () => {
     if (googleEmCurso.current) return;
     googleEmCurso.current = true;

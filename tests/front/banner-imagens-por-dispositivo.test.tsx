@@ -149,7 +149,21 @@ describe("imagens de banner independentes", () => {
       ]),
     );
   });
-  it("criar grava e devolve a versão de computador", async () => {
+  // Dublê fiel ao banco: a linha devolvida nasce com id NOVO e só traz a
+  // imagem de computador se o INSERT a gravou. Com o id repetido de "b1", o
+  // teste olharia o banner antigo (de imagem já certa) e não o recém-criado.
+  function bancoCriaBannerNovo() {
+    h.inserir.mockImplementation((rows) => ({
+      select: () => ({
+        single: async () => ({
+          data: { ...linha, id: "novo", desktop_image_url: null, ...rows[0] },
+          error: null,
+        }),
+      }),
+    }));
+  }
+  it("criar grava e devolve a versão de computador no banner recém-criado", async () => {
+    bancoCriaBannerNovo();
     await montar();
     await act(async () => {
       await atual.addBanner({
@@ -165,9 +179,31 @@ describe("imagens de banner independentes", () => {
       image_url: celular,
       desktop_image_url: desktop,
     });
-    expect(atual.banners.find((b) => b.id === "b1")?.desktopImageUrl).toBe(
-      desktop,
-    );
+    expect(atual.banners.map((b) => b.id).sort()).toEqual(["b1", "novo"]);
+    const novo = atual.banners.find((b) => b.id === "novo");
+    expect(novo?.imageUrl).toBe(celular);
+    expect(novo?.desktopImageUrl).toBe(desktop);
+  });
+  it("criar só com imagem de celular deixa o computador null no banner recém-criado", async () => {
+    bancoCriaBannerNovo();
+    await montar();
+    await act(async () => {
+      await atual.addBanner({
+        imageUrl: celular,
+        desktopImageUrl: "",
+        title: "Só celular",
+        position: "home_top",
+        order: 2,
+        active: true,
+      });
+    });
+    expect(h.inserir.mock.calls[0][0][0]).toMatchObject({
+      image_url: celular,
+      desktop_image_url: null,
+    });
+    const novo = atual.banners.find((b) => b.id === "novo");
+    expect(novo?.imageUrl).toBe(celular);
+    expect(novo?.desktopImageUrl).toBeNull();
   });
   it("trocar só computador não envia nem apaga a imagem de celular", async () => {
     await montar();

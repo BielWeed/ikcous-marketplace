@@ -28,6 +28,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 let PEDIDOS_PENDENTES = 0;
 const handlersDoTempoReal = new Map<string, (payload?: unknown) => void>();
+const statusPorCanal = new Map<string, (status: string) => void>();
 
 function criarContagemBuilder(tabela: string) {
   const builder: Record<string, unknown> = {};
@@ -78,7 +79,10 @@ vi.mock("@/lib/supabase", () => ({
           return canal;
         },
       );
-      canal.subscribe = vi.fn();
+      canal.subscribe = vi.fn((handler: (status: string) => void) => {
+        statusPorCanal.set(nome, handler);
+        return canal;
+      });
       return canal;
     }),
     removeChannel: vi.fn(),
@@ -144,6 +148,7 @@ describe("AdminLayout — o sino avisa a lista quando o numero muda", () => {
     PEDIDOS_PENDENTES = 0;
     avisos = 0;
     handlersDoTempoReal.clear();
+    statusPorCanal.clear();
     vi.stubGlobal(
       "BroadcastChannel",
       class {
@@ -231,6 +236,30 @@ describe("AdminLayout — o sino avisa a lista quando o numero muda", () => {
         handlersDoTempoReal.get(`admin-layout-questions-badge#${tabela}`)?.();
       });
       await esperarAte(() => avisos > 0);
+      await passarAJanelaDeAgrupamento();
+
+      expect(avisos).toBe(1);
+    },
+  );
+
+  it.each(["admin-layout-orders-badge", "admin-layout-questions-badge"])(
+    "reconexao de %s com a mesma contagem avisa a lista UMA vez",
+    async (nome) => {
+      PEDIDOS_PENDENTES = 1;
+      await pulsoDePedidos();
+      await esperarAte(() => avisos > 0);
+      await act(async () => {
+        statusPorCanal.get(nome)?.("SUBSCRIBED");
+      });
+      await passarAJanelaDeAgrupamento();
+      avisos = 0;
+
+      // A saiu e B entrou durante a queda: continua 1, sem pulso nem foco.
+      await act(async () => {
+        statusPorCanal.get(nome)?.("CLOSED");
+        statusPorCanal.get(nome)?.("SUBSCRIBED");
+        statusPorCanal.get(nome)?.("SUBSCRIBED");
+      });
       await passarAJanelaDeAgrupamento();
 
       expect(avisos).toBe(1);

@@ -107,6 +107,25 @@ export function mensagemMototaxi(order: Order, loja: string): string {
     .join("\n");
 }
 
+/** Valida o número nacional tanto no campo quanto antes de gravar. */
+export function validarWhatsappDaLoja(digitado: string): string | null {
+  const digitos = soDigitos(digitado);
+  if (!digitos) return null;
+  if (digitos.length === 10 && digitos[2] === "9") {
+    return "Confira o WhatsApp: faltou um número (DDD + 9 + 8 dígitos)";
+  }
+  if (digitos.length < 10 || digitos.length > 11) {
+    return "Informe DDD + número (10 ou 11 dígitos)";
+  }
+  if (!dddBrasileiroValido(digitos.slice(0, 2))) {
+    return "Confira o DDD: esse DDD não existe.";
+  }
+  if (digitos.length === 11 && digitos[2] !== "9") {
+    return "Confira o WhatsApp: celular precisa começar com 9 depois do DDD.";
+  }
+  return null;
+}
+
 export type WhatsappParaGravar =
   | { readonly valido: true; readonly valor: string | null }
   | { readonly valido: false };
@@ -123,13 +142,6 @@ export function whatsappParaGravar(
   // 55 sem "+" esconderia o excesso digitado tecla a tecla. A carga legada
   // continua aceitando o país sem "+" antes de entregar o número ao campo.
   const digitos = limparTelefoneBrasileiro(digitado, { colagem: !jaNacional });
-  if (
-    digitos.length > 11 ||
-    (digitos.length > 0 && digitos.length < 10) ||
-    (digitos.length === 10 && digitos[2] === "9") ||
-    // DDD que não existe: o número gravado seria impossível de atender.
-    (digitos.length > 0 && !dddBrasileiroValido(digitos.slice(0, 2)))
-  )
-    return { valido: false };
+  if (validarWhatsappDaLoja(digitos)) return { valido: false };
   return { valido: true, valor: numeroComPais(digitos) || null };
 }

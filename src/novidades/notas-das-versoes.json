@@ -1,4 +1,20 @@
 {
+  "1.5.204": {
+    "titulo": "Correções no login com Google, na planilha e nas trocas e devoluções",
+    "novidades": [],
+    "correcoes": [
+      "Entrar com Google: ao voltar do navegador sem concluir, o botão não fica mais preso em Abrindo Google e dá para tentar de novo.",
+      "Planilha do catálogo: nomes que têm trechos como _x0041_ agora saem iguais ao cadastro, sem serem trocados por outras letras.",
+      "Ajustes, Trocas e devoluções: ao salvar, vai só o que você mudou. Assim, duas pessoas ou dois aparelhos editando ao mesmo tempo não desfazem a mudança um do outro.",
+      "Ajustes, Frete: o desconto e a regra de frete para fora da cidade agora salvam só o campo que você mexeu. Assim, dois aparelhos editando juntos não sobrescrevem um ao outro.",
+      "Sair da conta: agora apaga do aparelho o rascunho do checkout e o pedido que ainda estava sem resposta.",
+      "WhatsApp da loja: o celular precisa ter o 9 depois do DDD. Número de celular sem o 9 é recusado ao salvar.",
+      "Sino de avisos: a lista é atualizada depois que a conexão cai e volta, sem precisar recarregar a tela."
+    ],
+    "melhorias": [
+      "Editor de imagem: o controle de zoom agora tem nome para leitores de tela e o interruptor mostra o foco ao navegar pelo teclado."
+    ]
+  },
   "1.5.203": {
     "titulo": "Banners separados de verdade por tela",
     "novidades": [],

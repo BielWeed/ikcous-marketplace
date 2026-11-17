@@ -7,7 +7,7 @@
 // Agora a lista so vai no pedido quando a lojista MEXEU nela; a RPC aceita chave ausente
 // ("campo ausente fica como esta"), entao o banco guarda o que tem.
 //
-// Prazos, regras e valores nao mudam: so o que e' enviado.
+// Os OUTROS campos tambem so vao quando mexidos: ver devolucao-politica-so-envia-o-que-mudou.test.tsx.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -149,18 +149,8 @@ describe("salvar a política só reenvia a lista 'sem troca' quando a lojista me
     expect(pedido).toBeDefined();
     expect(pedido?.prazo_troca_dias).toBe(20);
     expect(Object.keys(pedido ?? {})).not.toContain("categorias_sem_troca");
-    // O resto do pedido continua completo e com os mesmos valores.
-    expect(pedido).toMatchObject({
-      prazo_arrependimento_dias: 7,
-      prazo_vicio_dias: 90,
-      aceita_troca: true,
-      aceita_vale: true,
-      exige_fotos_vicio: true,
-      metodos_locais: ["entrega_na_loja", "coleta"],
-      metodos_nacionais: ["etiqueta_reversa", "envio_proprio"],
-      reembolso_momento: "ao_receber",
-      frete_troca_pago_por: "cliente",
-    });
+    // O pedido leva so o prazo mexido (antes exigia o resto completo: era o defeito).
+    expect(pedido).toEqual({ prazo_troca_dias: 20 });
   });
 
   it("marcar uma categoria MANDA a lista inteira", async () => {
