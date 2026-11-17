@@ -182,11 +182,19 @@ export function useBanners(adminMode = false) {
   // confia que ele reflete a última verdade conhecida. Sem isto, um banner
   // criado agora não aparecia na Home por até 1 minuto — e um excluído
   // ressuscitaria nela no mesmo intervalo.
+  //
+  // `gravacaoConfirmada`: o servidor acabou de aceitar a gravação (criar e
+  // excluir). Aí a lista local é a verdade conhecida e o erro de leitura
+  // anterior deixa de valer -- sem isto, excluir o último banner depois de uma
+  // leitura falha mostrava "Não foi possível carregar" em vez de "Nenhum
+  // Banner". Atualização otimista e reversão NÃO passam por aqui: nada foi
+  // confirmado (e a reversão de uma gravação que falhou não prova leitura).
   const applyLocalBanners = useCallback(
-    (items: Banner[]) => {
+    (items: Banner[], gravacaoConfirmada = false) => {
       gravarBannersLocais(items);
       persistToVault(items);
       setBanners(items);
+      if (gravacaoConfirmada) setErroDeLeitura(false);
     },
     [persistToVault],
   );
@@ -523,7 +531,7 @@ export function useBanners(adminMode = false) {
         [...banners, newBanner],
         data.id,
       );
-      applyLocalBanners(updatedBanners);
+      applyLocalBanners(updatedBanners, true);
 
       // Async normalization of position order in DB
       normalizeBannersOrder(
@@ -805,7 +813,7 @@ export function useBanners(adminMode = false) {
         normalizeBannersOrder(deletedBanner.position).catch(() => {});
       }
 
-      applyLocalBanners(updated);
+      applyLocalBanners(updated, true);
       toast.success("Banner excluído com sucesso!");
     } catch (error) {
       console.error("Error deleting banner:", error);

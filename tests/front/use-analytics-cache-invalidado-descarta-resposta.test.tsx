@@ -63,8 +63,10 @@ describe("useAnalytics — invalidação com consulta em andamento", () => {
     vi.restoreAllMocks();
   });
 
+  // "resumo" sem cache em segundo plano (consulta bloqueante) não está aqui: a
+  // resposta descartada pela limpeza agora provoca UMA releitura, coberta em
+  // use-analytics-limpeza-nao-deixa-a-tela-sem-leitura.test.tsx.
   it.each([
-    ["resumo", false],
     ["resumo", true],
     ["categorias", false],
     ["categorias", true],

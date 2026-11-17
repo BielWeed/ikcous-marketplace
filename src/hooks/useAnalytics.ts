@@ -8,7 +8,7 @@ import {
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 // A RPC `get_admin_analytics_v2` tem `p_limit_days DEFAULT 90`: chamada sem
 // argumento, ela devolve só 90 dias de `revenueHistory` — e o botão "Tudo"
@@ -169,6 +169,9 @@ let lastCategoryFetchTime = 0;
 // (mesmo espírito de OrderDetailsView.tsx:303-306).
 let ultimaChamadaExecutiva = 0;
 let ultimaChamadaDeCategorias = 0;
+// A numeração logo depois da última limpeza: enquanto `ultimaChamadaExecutiva`
+// ainda for igual a ela, NENHUMA consulta nova saiu depois da limpeza.
+let ultimaChamadaExecutivaNaLimpeza = 0;
 const REVALIDATION_THROTTLE_MS = 30000; // 30 seconds
 
 const STATS_EVENT = "ikcous-admin-stats-updated";
@@ -188,7 +191,7 @@ function broadcastCategory(data: any) {
 
 export function clearAnalyticsCache() {
   // Consultas anteriores à limpeza não podem repor o retrato invalidado.
-  ultimaChamadaExecutiva++;
+  ultimaChamadaExecutivaNaLimpeza = ++ultimaChamadaExecutiva;
   ultimaChamadaDeCategorias++;
   invalidarVisaoDoCrm();
   cachedStats = null;
@@ -266,6 +269,11 @@ export function useAnalytics() {
   const [categoryError, setCategoryError] = useState<string | null>(null);
   const [stats, setStats] = useState<DashboardStats | null>(cachedStats);
   const [categoryData, setCategoryData] = useState<any>(cachedCategoryData);
+  // Consultas de categorias desta instância em andamento: o "carregando" só
+  // desliga quando NENHUMA resta. Depender de "esta ficou atrasada" não basta --
+  // a limpeza do cache atrasa a consulta sem haver outra mais nova, e o
+  // carregando ficava ligado para sempre.
+  const categoriasEmVoo = useRef(0);
 
   useEffect(() => {
     // Load from DataVault if memory cache is empty
@@ -326,7 +334,11 @@ export function useAnalytics() {
   }, []);
 
   const fetchExecutiveSummary = useCallback(
-    async (forceRefresh = false): Promise<DashboardStats | null> => {
+    // `releituraAposLimpeza` é interno: marca a leitura refeita (no máximo uma).
+    async function buscarResumo(
+      forceRefresh = false,
+      releituraAposLimpeza = false,
+    ): Promise<DashboardStats | null> {
       if (!isAdmin) {
         console.warn(
           "[useAnalytics] fetchExecutiveSummary bypassed: user is not admin",
@@ -439,7 +451,19 @@ export function useAnalytics() {
         // Resposta atrasada de uma chamada antiga: devolve o dado a quem
         // chamou, mas NÃO grava cache/estado/broadcast — a chamada mais
         // recente é a dona do retrato agora.
-        if (chamadaFicouAtrasada()) return data as any as DashboardStats;
+        if (chamadaFicouAtrasada()) {
+          // Descartada pela LIMPEZA (nenhuma consulta nova saiu depois dela) e
+          // sem dado em cache: ninguém mais leria, `stats` seguiria nulo e os
+          // efeitos que dependem dele não rodariam de novo. Lê UMA vez.
+          if (
+            !releituraAposLimpeza &&
+            !cachedStats &&
+            ultimaChamadaExecutiva === ultimaChamadaExecutivaNaLimpeza
+          ) {
+            return await buscarResumo(forceRefresh, true);
+          }
+          return data as any as DashboardStats;
+        }
         cachedStats = data as any as DashboardStats;
         lastStatsFetchTime = Date.now();
         setStats(cachedStats);
@@ -584,6 +608,7 @@ export function useAnalytics() {
         return cachedCategoryData;
       }
 
+      categoriasEmVoo.current++;
       try {
         setCategoryLoading(true);
         const { data, error } = await callRpcComPrazo<any>(() =>
@@ -622,7 +647,8 @@ export function useAnalytics() {
         );
         return null;
       } finally {
-        if (!chamadaFicouAtrasada()) setCategoryLoading(false);
+        categoriasEmVoo.current--;
+        if (categoriasEmVoo.current === 0) setCategoryLoading(false);
       }
     },
     [],
