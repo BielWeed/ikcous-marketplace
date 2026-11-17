@@ -195,6 +195,30 @@ describe("banners: gravação que nunca responde", () => {
     expect(h.consultar).toHaveBeenCalled();
   });
 
+  it("ativar: erro do servidor devolve o banner a inativo sem reler a lista", async () => {
+    h.linhas = [{ ...linha("a", 1), active: false }];
+    await act(async () => hook().refreshBanners(false, true));
+    expect(hook().banners.find((b) => b.id === "a")?.active).toBe(false);
+    h.consultar.mockClear();
+    const erro = { message: "O servidor recusou a alteração." };
+    h.atualizar.mockResolvedValue({ error: erro });
+
+    await act(async () => {
+      await expect(hook().updateBanner("a", { active: true })).rejects.toBe(
+        erro,
+      );
+    });
+
+    expect(h.atualizar).toHaveBeenCalledWith({ active: true }, "a");
+    expect(h.toastError).toHaveBeenCalledExactlyOnceWith(
+      "Erro ao atualizar banner.",
+    );
+    expect(h.toastSuccess).not.toHaveBeenCalled();
+    expect(h.toastWarning).not.toHaveBeenCalled();
+    expect(hook().banners.find((b) => b.id === "a")?.active).toBe(false);
+    expect(h.consultar).not.toHaveBeenCalled();
+  });
+
   it("reordenar: solta a tela, devolve a ordem e relê o que o servidor tem", async () => {
     const r = await esperarOPrazo(() => hook().reorderBanners("a", "b"));
 
