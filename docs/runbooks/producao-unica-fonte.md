@@ -1974,14 +1974,21 @@ BLOQUEIA com o nome dela. O cadastro de UMA vez, na entrada do cliente:
    (Supabase → Secrets) `VAPID_PUBLIC_KEY` e `VAPID_PRIVATE_KEY`, sempre do MESMO par. O procedimento
    de [DEPLOYMENT.md](../../DEPLOYMENT.md) usa `web-push generate-vapid-keys` e guarda o par em
    `vapid_keys.json`: guarde-o em local seguro, fora do versionamento; nunca cole os valores em
-   documentacao, logs ou conversa. A publica tem de ser a mesma usada pelo front em
-   `VITE_VAPID_PUBLIC_KEY`; nao gere outro par se o front ja usa uma chave. As duas chaves precisam
-   estar no mesmo formato (base64url cru ou JWK). Configure tambem `VAPID_SUBJECT` com o contato
-   da loja (`mailto:...` ou `https://...`): o aviso ao lojista le essa variavel; sem ela usa um
-   contato de exemplo. Para conferir, entre como admin, permita os avisos no proprio aparelho e
-   envie uma campanha de teste so para o proprio usuario pela tela de push do painel: confira
-   `enviados`/`falharam` e VEJA o aviso chegar. No teste de pagamento, confira tambem o aviso ao
-   lojista. **Se esquecer as chaves, o aviso de pagamento ao lojista nao sai; o erro fica so no
+   documentacao, logs ou conversa. Em producao, cadastre a MESMA chave publica na coluna
+   `vapid_public_key` de `public.store_config`, linha `id = 1`, no banco DESSA loja: pelo SQL
+   Editor do projeto Supabase, com acesso administrativo, atualize somente essa coluna com a
+   chave publica do par (NUNCA a privada). O painel do lojista nao grava esse campo: a escrita
+   exige conexao administrativa ou `service_role`. Confira a leitura em `public.v_store_config`:
+   e dali que o porteiro injeta a chave no front. `VITE_VAPID_PUBLIC_KEY` so vale no desenvolvimento
+   local, sem porteiro; nao configura a loja em producao. Nao gere outro par se a loja ja usa uma
+   chave. As duas chaves das functions precisam estar no mesmo formato (base64url cru ou JWK).
+   Configure tambem `VAPID_SUBJECT` com o contato da loja (`mailto:...` ou `https://...`): o aviso
+   ao lojista le essa variavel; sem ela usa um contato de exemplo. Para conferir, entre como
+   admin e, no Inicio do painel, use **Ligar avisos neste aparelho** no cartao de avisos e aceite
+   a permissao. Quando aparecer **Avisos ligados neste aparelho**, toque em **Mandar um aviso de
+   teste** e VEJA o aviso chegar nesse aparelho. Esse botao envia so para a inscricao do proprio
+   aparelho; NAO use a tela de campanhas para esse teste (ela abre com publico todos).
+   No teste de pagamento, confira tambem o aviso ao lojista. **Se esquecer as chaves, o aviso de pagamento ao lojista nao sai; o erro fica so no
    log da function, sem erro visivel na compra.**
 8. **Remetente de e-mail do comprovante:** antes do teste de ponta a ponta, deixe pelo menos UMA
    origem pronta: `SMTP_USER` e `SMTP_PASSWORD` nos Secrets das functions da loja, OU o Gmail da
