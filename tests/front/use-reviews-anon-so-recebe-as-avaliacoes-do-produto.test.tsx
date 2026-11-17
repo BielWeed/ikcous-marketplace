@@ -25,6 +25,7 @@ vi.hoisted(() => {
 });
 
 const h = vi.hoisted(() => ({
+  ordenacoes: [] as [string, { ascending: boolean }][],
   linhas: [
     {
       id: "avaliacao-a",
@@ -69,7 +70,17 @@ vi.mock("@/lib/supabase", () => ({
           );
           return builder;
         },
-        order: () => Promise.resolve({ data: linhas, error: null }),
+        order: (coluna: string, opcoes: { ascending: boolean }) => {
+          h.ordenacoes.push([coluna, opcoes]);
+          if (coluna === "created_at") {
+            linhas.sort((a, b) =>
+              opcoes.ascending
+                ? a.created_at.localeCompare(b.created_at)
+                : b.created_at.localeCompare(a.created_at),
+            );
+          }
+          return Promise.resolve({ data: linhas, error: null });
+        },
       };
       return builder;
     },
@@ -127,6 +138,7 @@ describe("visitante recebe somente as avaliações do produto consultado", () =>
     vi.stubGlobal("localStorage", criarLocalStorageFake());
     esquecerAvaliacoesGuardadas();
     atual = undefined;
+    h.ordenacoes = [];
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -141,6 +153,28 @@ describe("visitante recebe somente as avaliações do produto consultado", () =>
     esquecerAvaliacoesGuardadas();
     localStorage.clear();
     vi.unstubAllGlobals();
+  });
+
+  it("pede as avaliações da mais recente para a mais antiga", async () => {
+    const antiga = {
+      ...h.linhas[0],
+      id: "avaliacao-antiga",
+      created_at: "2026-11-01T12:00:00.000Z",
+    };
+    h.linhas.unshift(antiga);
+    try {
+      await act(async () => {
+        await atual?.getReviewsByProduct("produto-a");
+      });
+
+      expect(h.ordenacoes).toEqual([["created_at", { ascending: false }]]);
+      expect(atual?.reviews.map((avaliacao) => avaliacao.id)).toEqual([
+        "avaliacao-a",
+        "avaliacao-antiga",
+      ]);
+    } finally {
+      h.linhas.shift();
+    }
   });
 
   it("mantém A e B separados no estado, no cache em memória e na cópia do aparelho", async () => {
