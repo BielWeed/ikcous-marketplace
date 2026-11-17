@@ -124,6 +124,106 @@ describe("AuthView — Nova senha informa a conta ao gerenciador de senhas", () 
     expect(updatePassword).toHaveBeenCalledWith("senha-nova-123");
   });
 
+  async function preencherEEnviar(senha: string, confirmacao: string) {
+    await abrir();
+    await digitar(
+      document.getElementById("password") as HTMLInputElement,
+      senha,
+    );
+    await digitar(
+      document.getElementById("password-confirmacao") as HTMLInputElement,
+      confirmacao,
+    );
+    const botao = hospedeiro.querySelector(
+      'button[type="submit"]',
+    ) as HTMLButtonElement;
+    await act(async () => {
+      botao.focus();
+      botao.click();
+    });
+  }
+
+  it.each([
+    [
+      "senha curta",
+      "1234567",
+      "1234567",
+      "password",
+      "A senha precisa ter pelo menos 8 caracteres",
+    ],
+    [
+      "senha só de espaços",
+      "        ",
+      "        ",
+      "password",
+      "A senha precisa ter pelo menos 8 caracteres",
+    ],
+    [
+      "confirmação diferente",
+      "12345678",
+      "87654321",
+      "password-confirmacao",
+      "As senhas não conferem",
+    ],
+    [
+      "os dois inválidos: foca a senha primeiro",
+      "123",
+      "outra",
+      "password",
+      "A senha precisa ter pelo menos 8 caracteres",
+    ],
+  ])(
+    "%s: erro persistente, anunciado e ligado ao campo que recebe foco",
+    async (_d, senha, confirmacao, id, frase) => {
+      await preencherEEnviar(senha, confirmacao);
+
+      const campo = document.getElementById(id) as HTMLInputElement;
+      expect(campo.getAttribute("aria-invalid")).toBe("true");
+      const idDoErro = campo.getAttribute("aria-describedby");
+      expect(idDoErro).toBeTruthy();
+      const mensagem = document.getElementById(idDoErro!);
+      expect(mensagem?.textContent).toBe(frase);
+      expect(mensagem?.getAttribute("role")).toBe("alert");
+      expect(mensagem?.parentElement?.contains(campo)).toBe(true);
+      expect(document.activeElement).toBe(campo);
+      expect(updatePassword).not.toHaveBeenCalled();
+
+      await act(async () => {
+        campo.blur();
+      });
+      expect(document.getElementById(idDoErro!)).toBe(mensagem);
+      await digitar(campo, "12345678");
+      expect(campo.getAttribute("aria-invalid")).not.toBe("true");
+      expect(campo.getAttribute("aria-describedby")).toBeNull();
+      expect(document.getElementById(idDoErro!)).toBeNull();
+    },
+  );
+
+  it("limite real: oito caracteres iguais permitem salvar sem erro nos campos", async () => {
+    await preencherEEnviar("12345678", "12345678");
+
+    expect(updatePassword).toHaveBeenCalledExactlyOnceWith("12345678");
+    expect(hospedeiro.querySelector('[aria-invalid="true"]')).toBeNull();
+  });
+
+  it("corrigir a confirmação e reenviar limpa o erro e permite salvar", async () => {
+    await preencherEEnviar("12345678", "87654321");
+    const campo = document.getElementById(
+      "password-confirmacao",
+    ) as HTMLInputElement;
+    expect(campo.getAttribute("aria-invalid")).toBe("true");
+
+    await digitar(campo, "12345678");
+    await act(async () => {
+      (
+        hospedeiro.querySelector('button[type="submit"]') as HTMLButtonElement
+      ).click();
+    });
+
+    expect(updatePassword).toHaveBeenCalledExactlyOnceWith("12345678");
+    expect(hospedeiro.querySelector('[aria-invalid="true"]')).toBeNull();
+  });
+
   it("sessão sem e-mail: nenhum campo escondido é desenhado", async () => {
     usuario = { email: null };
     await abrir();

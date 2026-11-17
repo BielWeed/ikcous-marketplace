@@ -402,6 +402,38 @@ describe("CheckoutView (convidado) — o erro de um campo só aparece depois que
     expect(marcadoInvalido("guest-number")).toBe(false);
   });
 
+  it("Nome só de espaços: só anuncia ao sair, ligado ao campo, sem roubar o foco seguinte", async () => {
+    cotacoesControladas({ "01001000": [PAC_SP] });
+    await montarEAbrirASecao();
+    await digitarSoOCep("01001000");
+
+    const campo = document.getElementById("checkout-name") as HTMLInputElement;
+    const proximo = document.getElementById("checkout-tel") as HTMLInputElement;
+    await act(async () => {
+      campo.focus();
+      digitar("checkout-name", "     ");
+    });
+    expect(document.getElementById("erro-checkout-name")).toBeNull();
+    expect(marcadoInvalido("checkout-name")).toBe(false);
+
+    await act(async () => proximo.focus());
+    await drenar();
+
+    const mensagem = document.getElementById("erro-checkout-name");
+    expect(mensagem?.textContent).toBe("Nome é obrigatório");
+    expect(mensagem?.getAttribute("role")).toBe("alert");
+    expect(campo.getAttribute("aria-invalid")).toBe("true");
+    expect(campo.getAttribute("aria-describedby")).toBe(mensagem?.id);
+    expect(mensagem?.parentElement?.contains(campo)).toBe(true);
+    expect(document.activeElement).toBe(proximo);
+
+    await act(async () => digitar("checkout-name", "Pessoa Teste"));
+    await drenar();
+    expect(document.getElementById("erro-checkout-name")).toBeNull();
+    expect(marcadoInvalido("checkout-name")).toBe(false);
+    expect(campo.getAttribute("aria-describedby")).toBeNull();
+  });
+
   it("campo já tocado revalida enquanto digita: o erro some quando o dado fica certo", async () => {
     cotacoesControladas({ "01001000": [PAC_SP] });
     await montarEAbrirASecao();

@@ -6830,6 +6830,7 @@ export function CheckoutViewDaConta({
                   {erroDoCampo("name") && (
                     <p
                       id="erro-checkout-name"
+                      role="alert"
                       className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
                     >
                       {erroDoCampo("name")?.message}

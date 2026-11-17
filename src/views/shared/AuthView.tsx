@@ -287,6 +287,9 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
   // dígito ou mais).
   const [whatsappErro, setWhatsappErro] = useState<string | null>(null);
   const [senhaErro, setSenhaErro] = useState(false);
+  const [nomeErro, setNomeErro] = useState(false);
+  const [novaSenhaErro, setNovaSenhaErro] = useState(false);
+  const [confirmacaoErro, setConfirmacaoErro] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const envioEmCurso = useRef(false);
@@ -514,6 +517,10 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
           !email.trim() ||
           !password.trim()
         ) {
+          if (!nomeTemConteudoVisivel(fullName)) {
+            setNomeErro(true);
+            document.getElementById("fullName")?.focus();
+          }
           toast.error("Preencha todos os campos para o cadastro.");
           setIsLoading(false);
           return;
@@ -600,12 +607,16 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
         // "at least 8 characters"). A tela precisa cobrar a MESMA regra que
         // o servidor, senão o cliente confia no app e leva recusa em inglês.
         if (!password.trim() || password.length < 8) {
+          setNovaSenhaErro(true);
+          document.getElementById("password")?.focus();
           toast.error("A senha deve ter pelo menos 8 caracteres.");
           setIsLoading(false);
           return;
         }
         // eslint-disable-next-line security/detect-possible-timing-attacks -- as duas são o que a própria pessoa digitou, não é segredo comparado no servidor
         if (password !== confirmaSenha) {
+          setConfirmacaoErro(true);
+          document.getElementById("password-confirmacao")?.focus();
           toast.error("As senhas não são iguais.");
           setIsLoading(false);
           return;
@@ -1026,12 +1037,26 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                         value={fullName}
                         onChange={(e) => {
                           setFullName(e.target.value);
+                          if (nomeErro) setNomeErro(false);
                           if (loginError) setLoginError(null);
                         }}
                         className="h-14 rounded-2xl border-zinc-100 bg-zinc-50/50 pl-14 font-bold text-zinc-900 shadow-none transition-all placeholder:text-zinc-500 focus-visible:border-zinc-200 focus-visible:ring-1 focus-visible:ring-zinc-900/10 sm:h-16 sm:rounded-[2rem]"
+                        aria-invalid={nomeErro ? true : undefined}
+                        aria-describedby={
+                          nomeErro ? "fullName-erro" : undefined
+                        }
                         required={viewMode === "signup"}
                       />
                     </div>
+                    {nomeErro && (
+                      <p
+                        id="fullName-erro"
+                        role="alert"
+                        className="ml-1 text-xs font-bold text-red-600"
+                      >
+                        Informe seu nome
+                      </p>
+                    )}
                   </motion.div>
 
                   <motion.div
@@ -1210,13 +1235,18 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                     <Input
                       id="password"
                       name="password"
-                      aria-invalid={viewMode === "signup" && senhaErro}
+                      aria-invalid={
+                        (viewMode === "signup" && senhaErro) ||
+                        (viewMode === "new-password" && novaSenhaErro)
+                      }
                       aria-describedby={
                         viewMode === "signup"
                           ? senhaErro
                             ? "password-dica password-erro"
                             : "password-dica"
-                          : undefined
+                          : viewMode === "new-password" && novaSenhaErro
+                            ? "password-erro"
+                            : undefined
                       }
                       type={showPassword ? "text" : "password"}
                       autoComplete={
@@ -1236,6 +1266,8 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                       onChange={(e) => {
                         setPassword(e.target.value);
                         if (senhaErro) setSenhaErro(false);
+                        if (novaSenhaErro) setNovaSenhaErro(false);
+                        if (confirmacaoErro) setConfirmacaoErro(false);
                         if (loginError) setLoginError(null);
                         if (emailNaoConfirmado) setEmailNaoConfirmado(false);
                       }}
@@ -1258,6 +1290,15 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                       )}
                     </button>
                   </div>
+                  {viewMode === "new-password" && novaSenhaErro && (
+                    <p
+                      id="password-erro"
+                      role="alert"
+                      className="ml-1 text-xs font-bold text-red-600"
+                    >
+                      A senha precisa ter pelo menos 8 caracteres
+                    </p>
+                  )}
                   {viewMode === "new-password" && (
                     <div className="space-y-2 pt-2">
                       <label
@@ -1278,11 +1319,29 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                           spellCheck={false}
                           placeholder="Repita a nova senha"
                           value={confirmaSenha}
-                          onChange={(e) => setConfirmaSenha(e.target.value)}
+                          onChange={(e) => {
+                            setConfirmaSenha(e.target.value);
+                            if (confirmacaoErro) setConfirmacaoErro(false);
+                          }}
+                          aria-invalid={confirmacaoErro ? true : undefined}
+                          aria-describedby={
+                            confirmacaoErro
+                              ? "password-confirmacao-erro"
+                              : undefined
+                          }
                           className="h-14 rounded-2xl border-zinc-100 bg-zinc-50/50 px-14 font-bold text-zinc-900 shadow-none transition-all placeholder:text-zinc-500 focus-visible:border-zinc-200 focus-visible:ring-1 focus-visible:ring-zinc-900/10 sm:h-16 sm:rounded-[2rem]"
                           required
                         />
                       </div>
+                      {confirmacaoErro && (
+                        <p
+                          id="password-confirmacao-erro"
+                          role="alert"
+                          className="ml-1 text-xs font-bold text-red-600"
+                        >
+                          As senhas não conferem
+                        </p>
+                      )}
                     </div>
                   )}
                   {viewMode === "signup" && (
