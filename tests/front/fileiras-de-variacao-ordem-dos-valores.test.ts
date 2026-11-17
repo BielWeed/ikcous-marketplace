@@ -67,6 +67,30 @@ describe("ordem dos valores dentro de cada fileira", () => {
     ).toEqual(["36", "40", "Azul"]);
   });
 
+  it.each([
+    [
+      ["2,5 L", "2,15 L"],
+      ["2,15 L", "2,5 L"],
+    ],
+    [
+      ["2,15 L", "2,5 L"],
+      ["2,15 L", "2,5 L"],
+    ],
+    [
+      ["10 L", "2,5 L", "2,15 L"],
+      ["2,15 L", "2,5 L", "10 L"],
+    ],
+  ])(
+    "capacidades decimais com vírgula saem por valor: %j",
+    (entrada, esperado) => {
+      expect(
+        valoresDe(
+          entrada.map((valor, i) => linha(`l${i}`, valor, "Capacidade")),
+        ),
+      ).toEqual(esperado);
+    },
+  );
+
   it("o resto sai em ordem alfabética de português, com acento no lugar certo", () => {
     const esperado = ["Âmbar", "Azul", "Branco", "Cinza", "Preto", "Verde"];
     for (const ordem of permutacoes(
