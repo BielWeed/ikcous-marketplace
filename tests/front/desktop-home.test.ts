@@ -10,12 +10,19 @@ describe("Home no computador", () => {
   it("banner e as duas reservas usam a mesma altura de computador", () => {
     const banner = fonte("components/ui/custom/BannerCarousel.tsx");
     const home = fonte("views/customer/HomeView.tsx");
-    const altura = "lg:h-[clamp(320px,30cqw,440px)]";
+    const geometria = "lg:aspect-[4/1] lg:h-auto";
     expect(home).toContain("lg:[container-type:inline-size]");
-    expect(banner).toContain(altura);
-    expect(home.split(altura)).toHaveLength(3);
+    expect(banner).toContain(`computador && "${geometria}"`);
+    const reservas =
+      home.match(/className="[^"]*aspect-\[2\/1\][^"]*animate-pulse[^"]*"/g) ??
+      [];
+    expect(reservas).toHaveLength(2);
+    for (const reserva of reservas) {
+      expect(reserva).toContain(geometria);
+      expect(reserva).not.toContain("lg:h-[clamp(");
+      expect(reserva).not.toContain("lg:aspect-auto");
+    }
     for (const texto of [banner, home]) {
-      expect(texto).toContain("lg:aspect-auto");
       expect(texto).toContain("lg:max-w-none");
       expect(texto).toContain("lg:rounded-3xl");
     }
