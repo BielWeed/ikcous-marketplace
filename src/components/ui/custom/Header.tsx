@@ -285,9 +285,12 @@ export const Header = memo(function Header({
         } as React.CSSProperties
       }
     >
-      <div className="relative flex h-[var(--header-height)] items-center justify-between gap-2.5 px-3 xs:px-4 md:grid md:grid-cols-[180px,1fr,auto]">
+      {/* Com Voltar: nome = tela - padding - gaps - sino - busca - Voltar/gap - selo/gap.
+          320/360/390: W-24-8-36-56-44-40 = 112/152/182px; 480: W-32-20-40-56-52-40 = 240px.
+          Sem Voltar sobram +44/+52px. Busca tem piso; nome usa largura natural, sem teto. */}
+      <div className="relative flex h-[var(--header-height)] items-center justify-between gap-1 px-3 xs:gap-2.5 xs:px-4 md:grid md:grid-cols-[minmax(0,max-content)_minmax(56px,1fr)_auto]">
         {/* LEFT: Logo and optional Back Button */}
-        <div className="z-[70] flex min-w-0 items-center gap-2 xs:gap-3 md:w-[180px]">
+        <div className="z-[70] flex min-w-0 shrink basis-auto items-center gap-2 xs:gap-3">
           {showBackButton && (
             <button
               onClick={() => {
@@ -295,7 +298,7 @@ export const Header = memo(function Header({
                 if (onBack) onBack();
                 else onNavigate("home");
               }}
-              className="relative flex size-9 items-center justify-center rounded-full border border-zinc-100 bg-white/50 shadow-sm transition-all after:absolute after:-inset-1 after:content-[''] hover:bg-white active:scale-90 xs:size-10"
+              className="relative flex size-9 shrink-0 items-center justify-center rounded-full border border-zinc-100 bg-white/50 shadow-sm transition-all after:absolute after:-inset-1 after:content-[''] hover:bg-white active:scale-90 xs:size-10"
               aria-label="Voltar"
             >
               <ArrowLeft className="size-4.5 text-zinc-900 xs:size-5" />
@@ -305,7 +308,7 @@ export const Header = memo(function Header({
           <button
             // Laudo 05/09, M3: `outline-none` apagava o anel de foco sem
             // repor — anel só para teclado, padrão do BottomNav (onda 1).
-            className="relative flex min-w-0 cursor-pointer appearance-none items-center gap-2 border-none bg-transparent p-0 text-left outline-none transition-all duration-150 after:absolute after:-inset-x-1 after:-inset-y-2 after:content-[''] hover:opacity-80 focus-visible:ring-2 focus-visible:ring-zinc-900/50 active:scale-95"
+            className="relative flex min-w-0 shrink cursor-pointer appearance-none items-center gap-2 border-none bg-transparent p-0 text-left outline-none transition-all duration-150 after:absolute after:-inset-x-1 after:-inset-y-2 after:content-[''] hover:opacity-80 focus-visible:ring-2 focus-visible:ring-zinc-900/50 active:scale-95"
             onClick={() => {
               haptic.light();
               onNavigate("home");
@@ -339,7 +342,7 @@ export const Header = memo(function Header({
                 />
               </div>
             ) : (
-              <div className="flex min-w-0 max-w-[170px] items-center gap-2 xs:max-w-[190px]">
+              <div className="flex min-w-0 items-center gap-2">
                 <div className="relative flex size-8 shrink-0 items-center justify-center rounded-[8px] bg-primary shadow-lg">
                   <span className="font-black italic text-primary-foreground">
                     {storeLetter}
@@ -413,7 +416,7 @@ export const Header = memo(function Header({
               mass: 0.8,
             }}
             className={cn(
-              "mx-auto flex min-w-0 flex-1 justify-center px-1 sm:px-4 md:w-full overflow-hidden",
+              "mx-auto flex min-w-[56px] flex-1 justify-center px-1 sm:px-4 md:w-full overflow-hidden",
               activeToast
                 ? "max-w-[110px] xs:max-w-[145px] sm:max-w-[220px]"
                 : "max-w-lg",

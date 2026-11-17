@@ -86,8 +86,8 @@ describe("OrderList — card do pedido redesenhado", () => {
       ...pedidoBase,
       customer: { ...pedidoBase.customer, neighborhood: bairro },
     });
-    const resumo = [...hospedeiro.querySelectorAll("p")].find(
-      (el) => el.textContent?.includes(bairro),
+    const resumo = [...hospedeiro.querySelectorAll("p")].find((el) =>
+      el.textContent?.includes(bairro),
     )!;
     expect(resumo.classList.contains("[overflow-wrap:anywhere]")).toBe(true);
     expect(resumo.parentElement?.classList.contains("min-w-0")).toBe(true);

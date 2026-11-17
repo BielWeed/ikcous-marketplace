@@ -109,8 +109,8 @@ describe("recibo impresso — fora do painel, que some na impressão", () => {
     const papel = titulo.closest("[data-tema-fixo]")!;
     expect(papel.classList.contains("[overflow-wrap:anywhere]")).toBe(true);
     for (const texto of [cliente, endereco]) {
-      const linha = [...papel.querySelectorAll("p")].find(
-        (el) => el.textContent?.includes(texto),
+      const linha = [...papel.querySelectorAll("p")].find((el) =>
+        el.textContent?.includes(texto),
       )!;
       expect(linha.closest("[data-tema-fixo]")).toBe(papel);
     }
