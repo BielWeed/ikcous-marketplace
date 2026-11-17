@@ -209,6 +209,23 @@ describe("planilha de produtos", () => {
     });
   });
 
+  it("preserva preço próprio não zero da variante e calcula lucro e margem sobre ele", () => {
+    const base = produto({ price: 80, costPrice: 30 });
+    expect(
+      registro({ ...base, variants: [variante({ priceOverride: 120 })] }),
+    ).toMatchObject({
+      "Preço (R$)": 120,
+      "Custo (R$)": 30,
+      "Lucro por unidade (R$)": 90,
+      "Margem (%)": 75,
+    });
+    expect(registro(base)).toMatchObject({
+      "Preço (R$)": 80,
+      "Lucro por unidade (R$)": 50,
+      "Margem (%)": 62.5,
+    });
+  });
+
   it("não inclui qualquer coluna financeira quando não há permissão", () => {
     const linhas = linhasDosProdutos([produto({ costPrice: 123456 })], false);
     expect(linhas[0]).not.toContain("Custo (R$)");
