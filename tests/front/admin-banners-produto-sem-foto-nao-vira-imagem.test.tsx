@@ -132,7 +132,7 @@ describe("banner de modelo pronto com produto sem foto", () => {
     await modelo();
     await clicar("Produto sem foto");
     await clicar("Salvar Banner");
-    expect(toast.error).toHaveBeenCalledWith("Imagem é obrigatória");
+    expect(toast.error).toHaveBeenCalledWith("Falta a imagem do celular");
     expect(addBanner).not.toHaveBeenCalled();
   });
 

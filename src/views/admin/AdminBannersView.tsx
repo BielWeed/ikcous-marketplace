@@ -576,6 +576,12 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
               </span>
             </div>
 
+            {banner.active && !banner.desktopImageUrl && (
+              <p className="text-[11px] font-medium text-amber-400">
+                Sem imagem para o computador
+              </p>
+            )}
+
             {banner.link && (
               <div className="flex min-w-0 items-center gap-1 font-mono text-[11px] text-zinc-400">
                 <ExternalLink className="size-2.5 shrink-0" />
@@ -2168,7 +2174,7 @@ export const AdminBannersView = memo(function AdminBannersView({
     const fim = marcarOperacaoSensivel("upload-de-banner");
     try {
       if (!formData.imageUrl) {
-        toast.error("Imagem é obrigatória");
+        toast.error("Falta a imagem do celular");
         setIsSubmitting(false);
         return;
       }
@@ -2450,7 +2456,7 @@ export const AdminBannersView = memo(function AdminBannersView({
   const ocupadoComImagem = uploading || isUploadingAdjusted || isSubmitting;
   const computadorSelecionado = campoDeImagem === "desktopImageUrl";
   const imagemSelecionada = computadorSelecionado
-    ? formData.desktopImageUrl || formData.imageUrl
+    ? formData.desktopImageUrl
     : formData.imageUrl;
   const dadosDaPrevia = { ...formData, imageUrl: imagemSelecionada || "" };
   const removerImagemDoComputador = () => {
