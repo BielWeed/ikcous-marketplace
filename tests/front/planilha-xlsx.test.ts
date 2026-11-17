@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
 import { Buffer } from "node:buffer";
 import { crc32 } from "node:zlib";
-import { linhasDosProdutos } from "@/lib/exportar-produtos-planilha";
+import {
+  linhasDosProdutos,
+  produtosEmCsv,
+} from "@/lib/exportar-produtos-planilha";
 import { gerarXlsx } from "@/lib/planilha-xlsx";
 import type { Product } from "@/types";
 import { describe, expect, it, vi } from "vitest";
@@ -414,6 +417,47 @@ function celulaDa(doc: Document, titulo: string, linha: number) {
 function estilosDe(partes: Map<string, Document>) {
   return [...partes.get("xl/styles.xml")!.querySelectorAll("cellXfs xf")];
 }
+
+describe("estoque mínimo na planilha de produtos", () => {
+  it.each([
+    ["zero", 0],
+    ["positivo", 7],
+    ["nulo", null],
+    ["ausente", undefined],
+  ] as const)("XLSX preserva estoque mínimo %s", (_cenario, estoqueMinimo) => {
+    const doc = folha(
+      linhasDosProdutos([{ ...produto, estoqueMinimo }], true, "xlsx"),
+    );
+    const celula = celulaDa(doc, "Estoque mínimo", 2);
+    if (estoqueMinimo == null) {
+      expect(celula).toBeNull();
+    } else {
+      expect(celula).not.toBeNull();
+      expect(celula!.getAttribute("t")).not.toBe("inlineStr");
+      expect(celula!.querySelector("v")?.textContent).toBe(
+        String(estoqueMinimo),
+      );
+    }
+  });
+
+  it.each([
+    ["zero", 0],
+    ["positivo", 7],
+    ["nulo", null],
+    ["ausente", undefined],
+  ] as const)("CSV preserva estoque mínimo %s", (_cenario, estoqueMinimo) => {
+    const csv = produtosEmCsv(
+      [{ ...produto, description: "", estoqueMinimo }],
+      true,
+    );
+    const [cabecalho, linha] = csv.replace(/^\uFEFF/, "").split("\r\n");
+    const coluna = cabecalho.split(";").indexOf('"Estoque mínimo"');
+    expect(coluna).toBeGreaterThanOrEqual(0);
+    expect(linha.split(";")[coluna]).toBe(
+      estoqueMinimo == null ? '""' : String(estoqueMinimo),
+    );
+  });
+});
 
 describe("o XLSX entrega o dado como ele é", () => {
   it.each(["=1+1", "+55 11 99999", "-Camisa", "@SUM(A1)", " =x", "\t=x"])(
