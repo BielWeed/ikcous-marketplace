@@ -147,6 +147,9 @@ describe("motor da vitrine — visitante sem login não abre canal", () => {
     const { engine, espiao } = await carregarMotor();
     const parar = engine.start(dubleDeCofreVazio() as any, true, true);
 
+    // Sem o 4o argumento `comSessao` vale `true`: o canal abre, como antes.
+    expect(canaisCriados).toEqual(["datavault-sync"]);
+
     parar();
     espiao.mockRestore();
   });

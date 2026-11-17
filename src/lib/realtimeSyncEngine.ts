@@ -262,6 +262,10 @@ const _produtosParaReconciliar = new Set<string>();
 // `start`). Rodadas por outros caminhos (inscrição no canal, chamada direta)
 // não passam pela janela.
 const JANELA_MINIMA_ENTRE_GATILHOS_MS = 60_000;
+// Visitante sem login: a aba secundária não lê o banco nem tem canal; ao
+// voltar à aba ela manda este aviso pelo BroadcastChannel e a líder faz a
+// rodada (pela janela acima). Mensagem sem corpo: nenhum dado trafega.
+const PEDIDO_DE_RODADA_ENTRE_ABAS = "pede_rodada";
 let _ultimoGatilhoDeRodada = 0;
 let _connectivityListeners: (() => void) | null = null;
 const _listeners = new Set<SyncCallback>();
@@ -471,7 +475,13 @@ export const RealtimeSyncEngine = {
         // janela, cobre o resto (a rede que volta dentro da janela não
         // fica sem rodada). Um só timer: gatilhos seguintes não o empilham.
         let rodadaFinal: ReturnType<typeof setTimeout> | null = null;
-        const rodadaPorGatilho = (motivo: string) => {
+        // Visitante sem login: a rodada final pode ter sido pedida por uma aba
+        // IRMÃ (a secundária que o visitante está olhando). Aí a aba da líder
+        // costuma estar escondida e o "só se visível" abaixo engoliria o
+        // pedido: quem precisa do dado está visível, em outra aba.
+        let pedidoDeAbaIrma = false;
+        const rodadaPorGatilho = (motivo: string, deAbaIrma = false) => {
+          if (deAbaIrma) pedidoDeAbaIrma = true;
           const agora = Date.now();
           const falta =
             JANELA_MINIMA_ENTRE_GATILHOS_MS - (agora - _ultimoGatilhoDeRodada);
@@ -481,8 +491,11 @@ export const RealtimeSyncEngine = {
             );
             rodadaFinal ??= setTimeout(() => {
               rodadaFinal = null;
-              // Aba escondida: o visibilitychange seguinte cuida da rodada.
-              if (document.visibilityState === "visible") {
+              const pedida = pedidoDeAbaIrma;
+              pedidoDeAbaIrma = false;
+              // Aba escondida: o visibilitychange seguinte cuida da rodada
+              // (a não ser que uma aba irmã a tenha pedido).
+              if (pedida || document.visibilityState === "visible") {
                 _ultimoGatilhoDeRodada = Date.now();
                 this.catchUp(vault, isAdmin).catch(() => {});
               }
@@ -491,6 +504,7 @@ export const RealtimeSyncEngine = {
           }
           if (rodadaFinal) clearTimeout(rodadaFinal);
           rodadaFinal = null;
+          pedidoDeAbaIrma = false;
           _ultimoGatilhoDeRodada = agora;
           this.catchUp(vault, isAdmin).catch(() => {});
         };
@@ -514,14 +528,34 @@ export const RealtimeSyncEngine = {
         window.addEventListener("online", handleOnline);
         document.addEventListener("visibilitychange", handleVisibilityChange);
 
+        // Sem sessão não há canal para repassar às abas secundárias: elas
+        // pedem a rodada por aqui (ver o ramo secundário) e a líder atende
+        // pela MESMA janela e pelo MESMO timer de rodada final, de modo que
+        // várias abas pedindo juntas viram uma leitura só. Com sessão o canal
+        // abre e a secundária recebe ao vivo: pedido nenhum é atendido.
+        const atenderPedidoDeAbaIrma =
+          !comSessao && bc
+            ? (evento: MessageEvent) => {
+                if (evento.data?.type !== PEDIDO_DE_RODADA_ENTRE_ABAS) return;
+                rodadaPorGatilho("Pedido de aba secundária", true);
+              }
+            : null;
+        if (atenderPedidoDeAbaIrma) {
+          bc?.addEventListener("message", atenderPedidoDeAbaIrma);
+        }
+
         _connectivityListeners = () => {
           if (rodadaFinal) clearTimeout(rodadaFinal);
           rodadaFinal = null;
+          pedidoDeAbaIrma = false;
           window.removeEventListener("online", handleOnline);
           document.removeEventListener(
             "visibilitychange",
             handleVisibilityChange,
           );
+          if (atenderPedidoDeAbaIrma) {
+            bc?.removeEventListener("message", atenderPedidoDeAbaIrma);
+          }
         };
       }
     } else {
@@ -604,6 +638,40 @@ export const RealtimeSyncEngine = {
         console.log(
           "[RealtimeSyncEngine] Secondary tab listening via BroadcastChannel.",
         );
+
+        // Visitante SEM LOGIN: a líder não tem canal e só refaz o catálogo
+        // quando ELA volta à aba; a secundária que o visitante está olhando
+        // ficaria com preço, estoque e banner velhos. Ao voltar à aba (ou à
+        // rede) ela NÃO lê o banco: avisa a líder, que roda a rodada pela
+        // janela mínima dela e repassa o resultado por este mesmo canal.
+        // Com sessão a líder tem canal e repassa ao vivo: nada disto liga.
+        if (!comSessao && typeof window !== "undefined") {
+          const pedirRodadaALider = (motivo: string) => {
+            console.log(
+              `[RealtimeSyncEngine] ${motivo} (sem sessão): pedindo a rodada à aba líder.`,
+            );
+            try {
+              bc.postMessage({ type: PEDIDO_DE_RODADA_ENTRE_ABAS });
+            } catch {
+              // Canal já fechado (aba em descarte): não há a quem pedir.
+            }
+          };
+          const handleOnline = () => pedirRodadaALider("Conexão restabelecida");
+          const handleVisibilityChange = () => {
+            if (document.visibilityState === "visible") {
+              pedirRodadaALider("Aba ativa");
+            }
+          };
+          window.addEventListener("online", handleOnline);
+          document.addEventListener("visibilitychange", handleVisibilityChange);
+          _connectivityListeners = () => {
+            window.removeEventListener("online", handleOnline);
+            document.removeEventListener(
+              "visibilitychange",
+              handleVisibilityChange,
+            );
+          };
+        }
       }
     }
 
