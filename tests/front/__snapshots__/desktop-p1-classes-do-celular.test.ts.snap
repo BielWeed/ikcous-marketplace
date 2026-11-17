@@ -152,7 +152,7 @@ exports[`P1 preserva cada classe de celular da base > lembrete 1`] = `
   "flex items-center gap-1 text-xs font-bold uppercase tracking-tight text-emerald-700",
   "size-3",
   "text-xs font-semibold leading-tight text-slate-600",
-  "font-extrabold text-primary",
+  "font-extrabold text-primary-legivel",
   "italic text-emerald-700",
   "group/btn relative flex h-8 flex-shrink-0 items-center gap-1 rounded-lg bg-primary px-3.5 text-xs font-black uppercase tracking-wider text-primary-foreground shadow-md transition-all after:absolute after:-inset-x-1 after:-inset-y-1.5 after:content-[''] hover:bg-primary/90 active:scale-95",
   "size-2.5 transition-transform group-hover:translate-x-0.5",
