@@ -195,7 +195,7 @@ describe("PoliticaDeDevolucaoSection — prazos em palavras", () => {
     ]);
   });
 
-  it("o pacote do salvar é idêntico, chave por chave", async () => {
+  it("o pacote do salvar leva só o que mudou, chave por chave", async () => {
     await montar();
     await digitar("politica-arrependimento", "10");
     await act(async () => {
@@ -210,18 +210,7 @@ describe("PoliticaDeDevolucaoSection — prazos em palavras", () => {
     expect(rpc).toHaveBeenCalledWith("salvar_politica_de_devolucao", {
       p: {
         prazo_arrependimento_dias: 10,
-        prazo_troca_dias: 30,
-        prazo_vicio_dias: 90,
-        aceita_troca: true,
-        aceita_vale: true,
-        exige_fotos_vicio: true,
-        metodos_locais: ["entrega_na_loja", "coleta"],
-        metodos_nacionais: ["etiqueta_reversa", "envio_proprio"],
-        reembolso_momento: "ao_receber",
-        frete_troca_pago_por: "cliente",
         categorias_sem_troca: ["Moda íntima"],
-        texto_politica: "",
-        endereco_devolucao: "",
       },
     });
     expect(toast.success).toHaveBeenCalled();

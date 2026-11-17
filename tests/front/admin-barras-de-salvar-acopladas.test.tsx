@@ -312,23 +312,10 @@ it("política leva status, data e o mesmo Salvar para a pílula, inclusive duran
   );
   await act(async () => grupo().querySelector("button")!.click());
   expect(grupo().querySelector("button")!.disabled).toBe(true);
+  // Só o prazo que a lojista mexeu vai: o resto pode ter mudado em outro
+  // aparelho, e enviá-lo desfaria essa mudança em silêncio.
   expect(h.rpc).toHaveBeenCalledWith("salvar_politica_de_devolucao", {
-    p: {
-      prazo_arrependimento_dias: 7,
-      prazo_troca_dias: 15,
-      prazo_vicio_dias: 90,
-      aceita_troca: true,
-      aceita_vale: true,
-      exige_fotos_vicio: true,
-      metodos_locais: ["entrega_na_loja", "coleta"],
-      metodos_nacionais: ["etiqueta_reversa", "envio_proprio"],
-      reembolso_momento: "ao_receber",
-      frete_troca_pago_por: "cliente",
-      // categorias_sem_troca não vai: a lista não mudou neste aparelho, e
-      // enviá-la desfaria em silêncio a de outro aparelho.
-      texto_politica: "",
-      endereco_devolucao: "",
-    },
+    p: { prazo_troca_dias: 15 },
   });
   await act(async () =>
     terminar({ data: null, error: { message: "Acesso negado." } }),
