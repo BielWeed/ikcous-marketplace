@@ -296,6 +296,23 @@ describe("mapProductFromDB", () => {
     expect(produto.variants).toHaveLength(3);
   });
 
+  it("soma estoques em texto das variantes ativas sem concatenar nem incluir a inativa", () => {
+    const produto = mapProductFromDB({
+      ...LINHA_VIEW_PUBLICA,
+      estoque: 12,
+      product_variants: [
+        { ...variante({ id: "var-1" }), stock_increment: "3" },
+        { ...variante({ id: "var-2" }), stock_increment: "5" },
+        {
+          ...variante({ id: "var-3", active: false }),
+          stock_increment: "99",
+        },
+      ],
+    });
+    expect(produto.stock).toBe(8);
+    expect(typeof produto.stock).toBe("number");
+  });
+
   it("sem nenhuma variante ativa, o estoque volta a ser o da linha", () => {
     const produto = mapProductFromDB({
       ...LINHA_VIEW_PUBLICA,
@@ -595,6 +612,16 @@ describe("mapOrderFromDB", () => {
       pedido({ total: null as unknown as number, total_amount: 250 }),
     );
     expect(o.total).toBe(250);
+  });
+
+  it.each([
+    { total: "1299.90", total_amount: null },
+    { total: null, total_amount: "1299.90" },
+  ])("converte total em texto para número: %j", (colunas) => {
+    // O tipo gerado só aceita número; a linha recebida pode trazer numeric em texto.
+    const o = mapOrderFromDB(pedido(colunas as unknown as Partial<OrderRow>));
+    expect(o.total).toBe(1299.9);
+    expect(typeof o.total).toBe("number");
   });
 
   it("total 0 (pedido gratuito) não cai para total_amount", () => {
