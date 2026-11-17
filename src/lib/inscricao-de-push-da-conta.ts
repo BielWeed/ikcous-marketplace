@@ -20,6 +20,13 @@ import { supabase } from "@/lib/supabase";
 // (`soltarInscricaoDoAparelho`): o endpoint morre, o provedor de push passa a
 // responder 404/410 e o `send-push` apaga a linha órfã sozinho.
 //
+// Cancelar a inscrição só impede o que AINDA vai chegar: os avisos que já foram
+// exibidos continuam na bandeja do aparelho, com o número, o valor e o nome do
+// cliente ("Pedido novo", "Cliente cancelou o pedido"), à vista de quem pegar o
+// celular emprestado sem entrar em conta nenhuma. Por isso o "Sair" também
+// fecha todos eles (`fecharAvisosDaBandeja`), mesmo quando o navegador já não
+// tem inscrição: a inscrição pode ter ido embora e o aviso, não.
+//
 // Nada daqui lança. Sair da conta nunca pode falhar nem demorar por causa de
 // push.
 
@@ -38,16 +45,51 @@ function temPush(): boolean {
 // `getRegistration()` e não `ready`: `ready` NUNCA resolve quando não há
 // service worker ativo (aba nova, navegador que bloqueou), e o logout
 // esperaria o prazo inteiro à toa. `getRegistration()` responde na hora.
-async function inscricaoDoNavegador(): Promise<PushSubscription | null> {
+async function registroDoNavegador(): Promise<ServiceWorkerRegistration | null> {
   try {
     if (!temPush()) return null;
     const container = navigator.serviceWorker;
     if (typeof container.getRegistration !== "function") return null;
-    const registro = await container.getRegistration();
-    if (!registro) return null;
+    return (await container.getRegistration()) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function inscricaoDoRegistro(
+  registro: ServiceWorkerRegistration,
+): Promise<PushSubscription | null> {
+  try {
     return (await registro.pushManager.getSubscription()) ?? null;
   } catch {
     return null;
+  }
+}
+
+async function inscricaoDoNavegador(): Promise<PushSubscription | null> {
+  const registro = await registroDoNavegador();
+  return registro ? inscricaoDoRegistro(registro) : null;
+}
+
+// `getNotifications` não existe em todo navegador (iOS e navegadores antigos),
+// por isso a detecção antes de chamar. Cada aviso é fechado no seu próprio
+// try: um que não fecha (já foi dispensado, o sistema recusou) não deixa os
+// outros abertos. Nunca lança.
+async function fecharAvisosDaBandeja(
+  registro: ServiceWorkerRegistration,
+): Promise<void> {
+  try {
+    if (typeof registro.getNotifications !== "function") return;
+    const avisos = await registro.getNotifications();
+    for (const aviso of avisos) {
+      try {
+        aviso.close();
+      } catch {
+        // Um aviso rebelde não segura o Sair nem os demais.
+      }
+    }
+  } catch (erro) {
+    console.warn("[push] Não foi possível fechar os avisos da bandeja:", erro);
   }
 }
 
@@ -97,7 +139,8 @@ export async function soltarInscricaoDoAparelho(): Promise<void> {
  * linha dela no servidor (a sessão ainda vale — chame ANTES do `signOut`) e
  * desinscreve o navegador. As duas coisas andam em paralelo e uma não depende
  * da outra: o servidor com rede ruim não segura o navegador, e o navegador
- * desinscrito já basta para o push parar de chegar.
+ * desinscrito já basta para o push parar de chegar. Fecha também os avisos que
+ * já estão na bandeja do aparelho, com ou sem inscrição.
  *
  * Volta em, no máximo, `prazoMs`. Passado o prazo o trabalho que ficou no ar
  * segue sozinho e ninguém o espera.
@@ -114,11 +157,20 @@ export async function cancelarInscricaoDaConta(
     relogio = setTimeout(resolve, prazoMs);
   });
   const trabalho = (async () => {
-    const inscricao = await inscricaoDoNavegador();
-    if (!inscricao) return;
+    const registro = await registroDoNavegador();
+    if (!registro) return;
+    // A bandeja e a inscrição andam em paralelo: uma que demore não segura a
+    // outra, e os avisos saem da tela mesmo sem inscrição nenhuma.
     await Promise.allSettled([
-      apagarLinhaDaConta(inscricao.endpoint, userId),
-      desinscreverNoNavegador(inscricao),
+      fecharAvisosDaBandeja(registro),
+      (async () => {
+        const inscricao = await inscricaoDoRegistro(registro);
+        if (!inscricao) return;
+        await Promise.allSettled([
+          apagarLinhaDaConta(inscricao.endpoint, userId),
+          desinscreverNoNavegador(inscricao),
+        ]);
+      })(),
     ]);
   })().catch(() => {});
   try {
