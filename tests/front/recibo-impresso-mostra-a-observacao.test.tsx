@@ -97,6 +97,15 @@ describe("OrderReceipt — a observação vai no papel", () => {
     expect(texto?.classList.contains("break-words")).toBe(true);
   });
 
+  it("balcão antigo com nota interna não imprime a observação nem seu texto", async () => {
+    const notes = "Desconto autorizado por peça de mostruário";
+    const papel = await imprimir(
+      pedidoBase({ canal: "presencial", notes, shipping: 0, total: 100 }),
+    );
+    expect(papel.textContent).not.toContain("OBSERVAÇÃO:");
+    expect(papel.textContent).not.toContain(notes);
+  });
+
   it("balcão sem observação continua sem bloco novo, sem frete e com pagamento", async () => {
     const papel = await imprimir(
       pedidoBase({ canal: "presencial", shipping: 0, total: 100 }),
