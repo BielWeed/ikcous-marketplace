@@ -264,6 +264,24 @@ describe("AdminProductFormView — variação e botão Publicar dizem o que est�
       expect(motivo).not.toMatch(/estoque/i);
     });
 
+    it("só falta a categoria: Publicar fica desligado até escolher uma", async () => {
+      await montar();
+      await preencher({
+        nome: "Camiseta",
+        descricao: "Algodão",
+        preco: "5000",
+        estoque: "3",
+      });
+
+      expect(botaoPorTexto(document.body, "Publicar")!.disabled).toBe(true);
+      expect(motivoDoBloqueio()).toMatch(/categoria/i);
+
+      await preencher({ categoria: "Geral" });
+
+      expect(motivoDoBloqueio()).toBeNull();
+      expect(botaoPorTexto(document.body, "Publicar")!.disabled).toBe(false);
+    });
+
     it("tudo preenchido: o aviso some e o botão liga", async () => {
       await montar();
       await preencher({
