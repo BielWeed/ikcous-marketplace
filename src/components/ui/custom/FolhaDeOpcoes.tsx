@@ -346,7 +346,7 @@ export function CorpoDaFolhaDeOpcoes({
                             }
                             onClick={() => onEscolher(eixo.chave, valor)}
                             className={cn(
-                              "flex min-h-11 min-w-11 items-center justify-center gap-2 border px-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-zinc-900 min-[360px]:min-w-[52px]",
+                              "flex min-h-11 min-w-11 max-w-full items-center justify-center gap-2 border px-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-zinc-900 min-[360px]:min-w-[52px]",
                               eixoEhCor(eixo) ? "rounded-full" : "rounded-xl",
                               escolhido === valor
                                 ? "border-zinc-900 bg-zinc-900 text-white"
@@ -357,7 +357,7 @@ export function CorpoDaFolhaDeOpcoes({
                             )}
                           >
                             <BolinhaDaCor eixo={eixo} valor={valor} />
-                            {valor}
+                            <span className="min-w-0 break-words">{valor}</span>
                             {ultima && (
                               <span
                                 aria-hidden="true"

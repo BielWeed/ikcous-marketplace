@@ -982,7 +982,7 @@ export const HomeView = React.memo(function HomeView({
             <Clock className="size-4 text-admin-gold" />
             Horário de atendimento
           </p>
-          <p className="mt-1 text-sm leading-relaxed text-zinc-500">
+          <p className="mt-1 break-words text-sm leading-relaxed text-zinc-500">
             {config.businessHours}
           </p>
         </div>

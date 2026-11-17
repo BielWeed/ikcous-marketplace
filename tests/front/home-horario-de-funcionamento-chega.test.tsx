@@ -117,6 +117,18 @@ describe("HomeView — o Horário de Funcionamento chega ao cliente", () => {
     expect(hospedeiro.textContent).toContain("Seg a Sáb, 8h às 18h");
   });
 
+  it("horário de 150 caracteres sem espaços permite quebrar palavras", async () => {
+    const horario = "H".repeat(150);
+    configAtual = { businessHours: horario };
+    await montar();
+
+    const paragrafo = [...hospedeiro.querySelectorAll("p")].find(
+      (p) => p.textContent === horario,
+    );
+    expect(paragrafo).toBeDefined();
+    expect(paragrafo?.classList.contains("break-words")).toBe(true);
+  });
+
   it("lojista NÃO preencheu: nenhum bloco de horário vazio na tela", async () => {
     configAtual = { businessHours: "" };
     await montar();

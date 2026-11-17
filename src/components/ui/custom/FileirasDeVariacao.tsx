@@ -53,7 +53,7 @@ export function FileirasDeVariacao({
             <div className="mb-2 flex items-baseline justify-between gap-3">
               <span
                 id={idNome}
-                className="break-words font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground"
+                className="min-w-0 break-words font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground"
               >
                 {nome}
               </span>
@@ -61,6 +61,7 @@ export function FileirasDeVariacao({
                 id={idEscolha}
                 className={cn(
                   "min-w-0 break-words text-right text-[13px] font-semibold",
+                  !selecionada && "shrink-0",
                   selecionada && "text-foreground",
                   !selecionada &&
                     (faltaEscolher
