@@ -1056,6 +1056,15 @@ describe("useAvisosDoLojista — cancelamento do cliente", () => {
 describe("useAvisosDoLojista — pedido entregue sem recebimento marcado", () => {
   const PEDIDO = "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b";
 
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-17T15:00:00Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   function entregueSemRecebimento(extra: Record<string, unknown> = {}) {
     return {
       id: PEDIDO,

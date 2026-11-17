@@ -350,4 +350,194 @@ describe("AuthContext — o Sair cancela a inscrição de push da conta que sai"
     expect(push.soltarInscricaoDoAparelho).not.toHaveBeenCalled();
     expect(push.cancelarInscricaoDaConta).not.toHaveBeenCalled();
   });
+
+  // Os avisos JÁ exibidos ("Pedido novo / #número · valor · nome") ficam na
+  // bandeja do aparelho depois que a inscrição é cancelada: quem pegasse o
+  // celular emprestado os lia sem entrar em conta nenhuma.
+  function instalarBandeja({
+    avisos,
+    inscricao,
+    getNotifications,
+  }: {
+    avisos?: { close: () => void }[];
+    inscricao: { endpoint: string; unsubscribe: () => Promise<boolean> } | null;
+    getNotifications?: () => Promise<unknown>;
+  }) {
+    const lerBandeja =
+      getNotifications ??
+      (async () => avisos ?? ([] as { close: () => void }[]));
+    Object.defineProperty(globalThis.navigator, "serviceWorker", {
+      value: {
+        getRegistration: async () => ({
+          pushManager: { getSubscription: async () => inscricao },
+          getNotifications: lerBandeja,
+        }),
+      },
+      configurable: true,
+      writable: true,
+    });
+    Object.defineProperty(globalThis, "PushManager", {
+      value: class {},
+      configurable: true,
+      writable: true,
+    });
+  }
+
+  it("8. o Sair fecha os avisos da bandeja ANTES de encerrar a sessão, uma vez só", async () => {
+    const { aoAtualizar, supabase } = await montarLogado();
+    const fechar = vi.fn((nome: string) => ordem.push(`fechar:${nome}`));
+    const getNotifications = vi.fn(async () => [
+      { close: () => fechar("pedido-novo") },
+      { close: () => fechar("cancelado") },
+    ]);
+    instalarBandeja({
+      inscricao: {
+        endpoint: "https://push.exemplo/a",
+        unsubscribe: async () => true,
+      },
+      getNotifications,
+    });
+    apagarLinha.mockResolvedValue({ error: null });
+
+    await act(async () => {
+      await ultimoEstado(aoAtualizar).logout();
+    });
+
+    expect(getNotifications).toHaveBeenCalledTimes(1);
+    expect(ordem).toEqual([
+      "fechar:pedido-novo",
+      "fechar:cancelado",
+      "signOut",
+    ]);
+    expect(supabase.auth.signOut).toHaveBeenCalledTimes(1);
+  });
+
+  it("9. aparelho SEM inscrição também tem a bandeja esvaziada no Sair", async () => {
+    const { aoAtualizar, supabase } = await montarLogado();
+    const aviso = { close: vi.fn() };
+    instalarBandeja({ inscricao: null, avisos: [aviso] });
+
+    await act(async () => {
+      await ultimoEstado(aoAtualizar).logout();
+    });
+
+    expect(aviso.close).toHaveBeenCalledTimes(1);
+    expect(apagarLinha).not.toHaveBeenCalled();
+    expect(supabase.auth.signOut).toHaveBeenCalledTimes(1);
+  });
+
+  it("10. a bandeja falhar ao ler não impede o Sair", async () => {
+    const { aoAtualizar, supabase } = await montarLogado();
+    instalarBandeja({
+      inscricao: null,
+      getNotifications: async () => {
+        throw new Error("bandeja indisponível");
+      },
+    });
+
+    await act(async () => {
+      await ultimoEstado(aoAtualizar).logout();
+    });
+
+    expect(supabase.auth.signOut).toHaveBeenCalledTimes(1);
+    expect(ultimoEstado(aoAtualizar).userId).toBeNull();
+  });
+
+  // Os dois caminhos que NÃO passam pelo `cancelarInscricaoDaConta` (a sessão
+  // acabou em outra aba ou venceu; a conta mudou direto de A para B) passam
+  // pelo `soltarInscricaoDoAparelho`, e os avisos da conta anterior também
+  // tinham de sair da bandeja. A bandeja do navegador de verdade se esvazia ao
+  // fechar: `getNotifications` devolve o que resta.
+  function bandejaQueEsvazia(
+    avisos: { close: ReturnType<typeof vi.fn> }[],
+  ): () => Promise<unknown> {
+    const restantes = [...avisos];
+    return async () => restantes.splice(0);
+  }
+  const INSCRICAO_A = {
+    endpoint: "https://push.exemplo/a",
+    unsubscribe: vi.fn(async () => true),
+  };
+
+  it("11. o fim da sessão vindo de fora (SIGNED_OUT) também fecha os avisos da bandeja, e sem servidor", async () => {
+    const { callback } = await montarLogado();
+    const avisos = [{ close: vi.fn() }, { close: vi.fn() }];
+    const unsubscribe = vi.fn(async () => true);
+    instalarBandeja({
+      inscricao: { endpoint: INSCRICAO_A.endpoint, unsubscribe },
+      getNotifications: bandejaQueEsvazia(avisos),
+    });
+
+    await act(async () => {
+      callback()("SIGNED_OUT", null);
+      await esperarMicrotarefas();
+    });
+
+    for (const aviso of avisos) expect(aviso.close).toHaveBeenCalledTimes(1);
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+    expect(apagarLinha).not.toHaveBeenCalled();
+  });
+
+  it("12. a troca direta de conta (A -> B) fecha os avisos de A que estavam na bandeja", async () => {
+    const { callback } = await montarLogado();
+    const avisos = [{ close: vi.fn() }, { close: vi.fn() }];
+    instalarBandeja({
+      inscricao: null,
+      getNotifications: bandejaQueEsvazia(avisos),
+    });
+
+    await act(async () => {
+      callback()("SIGNED_IN", sessaoDe("user-b"));
+      await esperarMicrotarefas();
+    });
+
+    for (const aviso of avisos) expect(aviso.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("13. a bandeja falhar ao ler não atrapalha o fim da sessão nem a troca de conta", async () => {
+    const { callback, aoAtualizar } = await montarLogado();
+    instalarBandeja({
+      inscricao: null,
+      getNotifications: async () => {
+        throw new Error("bandeja indisponível");
+      },
+    });
+
+    await act(async () => {
+      callback()("SIGNED_IN", sessaoDe("user-b"));
+      await esperarMicrotarefas();
+    });
+    expect(ultimoEstado(aoAtualizar).userId).toBe("user-b");
+
+    await act(async () => {
+      callback()("SIGNED_OUT", null);
+      await esperarMicrotarefas();
+    });
+    expect(ultimoEstado(aoAtualizar).userId).toBeNull();
+  });
+
+  it("14. Sair local seguido do SIGNED_OUT que o supabase emite: a bandeja é fechada, cada aviso uma vez, sem erro", async () => {
+    const { aoAtualizar, callback, supabase } = await montarLogado();
+    const avisos = [{ close: vi.fn() }, { close: vi.fn() }];
+    instalarBandeja({
+      inscricao: {
+        endpoint: INSCRICAO_A.endpoint,
+        unsubscribe: async () => true,
+      },
+      getNotifications: bandejaQueEsvazia(avisos),
+    });
+    apagarLinha.mockResolvedValue({ error: null });
+
+    await act(async () => {
+      await ultimoEstado(aoAtualizar).logout();
+    });
+    await act(async () => {
+      callback()("SIGNED_OUT", null);
+      await esperarMicrotarefas();
+    });
+
+    for (const aviso of avisos) expect(aviso.close).toHaveBeenCalledTimes(1);
+    expect(supabase.auth.signOut).toHaveBeenCalledTimes(1);
+    expect(ultimoEstado(aoAtualizar).userId).toBeNull();
+  });
 });

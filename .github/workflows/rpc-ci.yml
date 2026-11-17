@@ -636,6 +636,9 @@ jobs:
       - name: Prova viva do favorito repetido na mesma conta recusado no banco
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/favorito-repetido-na-mesma-conta-e-recusado-no-banco-viva.cjs
+      - name: Prova viva do ciclo de reserva do aviso de cobranca duplicada
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/aviso-de-cobranca-duplicada-ciclo-de-reserva.cjs
       - name: Prova viva da avaliacao em nome da propria conta
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-avaliacao-so-nasce-em-nome-da-propria-conta-viva.cjs

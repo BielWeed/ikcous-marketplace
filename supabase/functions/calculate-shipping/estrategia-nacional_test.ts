@@ -257,6 +257,21 @@ for (const { desconto, esperadoCentavos } of [
     })
 }
 
+// Subtração em centavos: 4130 - 29 = 4101; 2000 - 115 = 1885.
+// Quando o desconto supera o frete (15 - 29), o piso da regra é zero.
+for (const { frete, desconto, esperado } of [
+    { frete: 41.3, desconto: 0.29, esperado: 41.01 },
+    { frete: 20, desconto: 1.15, esperado: 18.85 },
+    { frete: 0.15, desconto: 0.29, esperado: 0 },
+]) {
+    Deno.test(`desconto_na_mais_barata fixo: frete R$ ${frete} com desconto R$ ${desconto} -> R$ ${esperado}`, () => {
+        const e = estrategia({ estrategia: "desconto_na_mais_barata", minimo: 0, tipoDesconto: "fixo", valorDesconto: desconto, alcance: "mais_barata" })
+        const resultado = aplicarEstrategiaNacional([opcao("a", frete)], e, 500)
+        assertEquals(resultado[0].price, esperado)
+        assertEquals(resultado[0].precoCheio, frete)
+    })
+}
+
 Deno.test("desconto_na_mais_barata + alcance mais_barata, EMPATE: todas as empatadas descontam; as outras ficam cheias", () => {
     const opcoes = [opcao("a", 20), opcao("b", 20), opcao("c", 40)]
     const e = estrategia({ estrategia: "desconto_na_mais_barata", minimo: 0, tipoDesconto: "fixo", valorDesconto: 5, alcance: "mais_barata" })

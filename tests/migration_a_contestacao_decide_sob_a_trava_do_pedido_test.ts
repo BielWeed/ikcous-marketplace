@@ -887,6 +887,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261399998000: a loja recebe o plano por uma porta unica (tabela assinatura_da_loja_chave selada com o hash da chave da loja, definir_chave so do service_role e a PORTA assinatura_da_loja_gravar para anon e
     // authenticated: autentica pelo hash ANTES de olhar os dados, lista branca de 10 campos, recursos e observacao nunca, mais velho ignorado, simular sem gravar; corrida de duas conexoes, 18 mutantes, rollback, pre/pos-voo e consultas 150c/150d).
     "tests/banco/a-loja-recebe-o-plano-por-porta-unica-viva.cjs",
+    // Onda 1.5.207 (sem migration): o aviso de cobranca duplicada respeita o ciclo da reserva (7 provas, 2 mutantes).
+    "tests/banco/aviso-de-cobranca-duplicada-ciclo-de-reserva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(

@@ -381,6 +381,7 @@ describe("App: o relógio do Voltar é cancelado ao desmontar (popstate de verda
   let container: HTMLDivElement | null = null;
 
   beforeEach(() => {
+    vi.useFakeTimers();
     prova.dialogoAberto = 0;
     prova.viewTransitions = 0;
     vi.stubGlobal("localStorage", dubleDeArmazem());
@@ -429,6 +430,7 @@ describe("App: o relógio do Voltar é cancelado ao desmontar (popstate de verda
     raiz = null;
     container = null;
     vi.restoreAllMocks();
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -436,7 +438,7 @@ describe("App: o relógio do Voltar é cancelado ao desmontar (popstate de verda
     for (let i = 0; i < voltas; i++) {
       await act(async () => {
         await Promise.resolve();
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        await vi.advanceTimersByTimeAsync(1);
       });
     }
   };
@@ -450,12 +452,20 @@ describe("App: o relógio do Voltar é cancelado ao desmontar (popstate de verda
     // Só os relógios de 150 ms criados a partir do Voltar entram na conta.
     const criados = new Set<unknown>();
     const cancelados = new Set<unknown>();
+    const disparos = vi.fn();
     const setTimeoutReal = globalThis.setTimeout;
     const clearTimeoutReal = globalThis.clearTimeout;
     let registrando = false;
     vi.spyOn(globalThis, "setTimeout").mockImplementation(((
       ...args: Parameters<typeof setTimeout>
     ) => {
+      if (registrando && args[1] === 150) {
+        const original = args[0];
+        args[0] = ((...valores: unknown[]) => {
+          disparos();
+          Reflect.apply(original, globalThis, valores);
+        }) as typeof original;
+      }
       const id = setTimeoutReal(...args);
       if (registrando && args[1] === 150) criados.add(id);
       return id;
@@ -471,14 +481,10 @@ describe("App: o relógio do Voltar é cancelado ao desmontar (popstate de verda
     await act(async () => {
       globalThis.history.back();
     });
-    // O jsdom entrega o popstate numa macrotask: espera até o App armar o
-    // relógio (bem antes dos 150 ms) e desmonta na sequência.
-    const inicio = Date.now();
-    while (criados.size === 0 && Date.now() - inicio < 100) {
-      await act(async () => {
-        await new Promise((resolve) => setTimeoutReal(resolve, 1));
-      });
-    }
+    // Entrega as macrotasks do popstate sem chegar aos 150 ms do Voltar.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10);
+    });
     expect(criados.size).toBeGreaterThan(0);
 
     const paraDesmontar = raiz;
@@ -492,6 +498,9 @@ describe("App: o relógio do Voltar é cancelado ao desmontar (popstate de verda
     expect(pendentes).toEqual([]);
 
     // Passados os 150 ms, nada dispara e nada quebra.
-    await new Promise((resolve) => setTimeoutReal(resolve, 250));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    expect(disparos).not.toHaveBeenCalled();
   });
 });

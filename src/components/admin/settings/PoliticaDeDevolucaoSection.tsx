@@ -540,7 +540,7 @@ export function PoliticaDeDevolucaoSection({
           devolvendo o que o cliente pagou pelos itens devolvidos; o frete de
           ida também volta quando o pedido volta inteiro. Defeito: mínimo 30
           dias, e nunca menos que o de arrependimento; produto durável tem 90
-          pela lei. Troca por gosto é cortesia da loja — 0 dia desliga.
+          pela lei. Troca por gosto é cortesia da loja — 0 dias desliga.
         </p>
       </div>
 

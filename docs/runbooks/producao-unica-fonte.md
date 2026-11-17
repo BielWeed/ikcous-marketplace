@@ -1956,6 +1956,20 @@ BLOQUEIA com o nome dela. O cadastro de UMA vez, na entrada do cliente:
    travas do alvo `savy`: ref fixo, segredo proprio, `expected_sha`);
 3. uma linha em `scripts/frota/canais-de-backend.json`. Se for loja de TESTE, a linha vai em
    `scripts/frota/politica.json` (`lojasSemBackendGerenciado`).
+4. **Reconciliacao de pagamentos (sem isto o pagamento cujo aviso se perdeu nao e achado):** no Vault
+   do banco da loja crie `reconciliacao_url` (endereco da function `reconciliar-pagamentos` DESSA loja)
+   e `reconciliacao_secret`; instale o MESMO valor do segredo como `RECONCILIACAO_SECRET` nas
+   functions da loja (Supabase → Secrets). O cron "succeeded" NAO prova nada (so enfileirou a
+   chamada): comprove UM ciclo com resposta HTTP 200 da function (`DEPLOYMENT.md`, §5.2; `401` =
+   segredos diferentes).
+5. **Chave de cifra das credenciais:** instale `MP_CHAVES_ENCRYPTION_KEY` (32 bytes em base64) nas
+   functions da loja ANTES de cadastrar credenciais de pagamento ou do Gmail. Sem ela o cadastro
+   fica `indisponivel` (falha fechada: ninguem cobra). Nunca substitua uma chave que ja cifrou
+   credenciais: as cifradas viram ilegiveis.
+6. **Chave do plano (assinatura da loja):** gere o hash pelo app de gestao e instale-o pelo workflow
+   `instalar-chave-da-loja.yml` (script `scripts/publicacao/instalar-chave-da-loja.cjs`). Hoje o
+   script aceita so IKCOUS e Savy: para a loja nova, acrescente o alvo dela ali e no workflow (mesmas
+   travas) antes de rodar.
 
 ## Medicoes antes de escrever a migration (so leitura, nao e portao)
 

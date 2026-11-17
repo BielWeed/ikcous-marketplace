@@ -20,31 +20,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // dos outros testes de componente deste projeto.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-/** Espera até `condicao()` ficar verdadeira, testando a cada `passoMs` em
- * vez de dormir um tempo fixo — mesmo helper de
- * admin-orders-total-concluido-e-aviso-pago-cancelado.test.tsx. */
-async function esperarAte(
-  condicao: () => boolean,
-  { timeoutMs = 2000, passoMs = 10 } = {},
-) {
-  await act(async () => {
-    const inicio = Date.now();
-    while (!condicao()) {
-      if (Date.now() - inicio > timeoutMs) {
-        throw new Error(
-          `esperarAte: condição não ficou verdadeira em ${timeoutMs}ms`,
-        );
-      }
-      await new Promise((resolve) => setTimeout(resolve, passoMs));
-    }
-  });
-}
-
 describe("DebouncedSearchInput — ciclo de digitação", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
+    vi.useFakeTimers();
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -55,6 +36,7 @@ describe("DebouncedSearchInput — ciclo de digitação", () => {
       raiz.unmount();
     });
     hospedeiro.remove();
+    vi.useRealTimers();
   });
 
   it("digitar liga onTyping(true) e, depois do atraso, dispara onChange e desliga onTyping — sem ligar à toa na montagem", async () => {
@@ -112,7 +94,13 @@ describe("DebouncedSearchInput — ciclo de digitação", () => {
     expect(onTyping).toHaveBeenLastCalledWith(true);
     expect(onChange).not.toHaveBeenCalled();
 
-    await esperarAte(() => onChange.mock.calls.length > 0);
+    await act(async () => {
+      vi.advanceTimersByTime(39);
+    });
+    expect(onChange).not.toHaveBeenCalled();
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+    });
 
     // Depois do atraso: a busca dispara com o texto digitado, e a lupa
     // volta ao normal.
@@ -160,7 +148,11 @@ describe("DebouncedSearchInput — ciclo de digitação", () => {
       setter?.call(campo, "marian");
       campo.dispatchEvent(new Event("input", { bubbles: true }));
     });
+    await act(async () => {
+      vi.advanceTimersByTime(39);
+    });
     expect(onTyping).toHaveBeenLastCalledWith(true);
+    expect(onChange).not.toHaveBeenCalled();
 
     // E ANTES do atraso terminar, a busca e zerada de fora. O `onChange`
     // nunca chega a disparar, entao o unico lugar que pode desligar o
@@ -198,7 +190,13 @@ describe("DebouncedSearchInput — ciclo de digitação", () => {
     expect(campo.value).toBe("");
     expect(document.activeElement).toBe(campo);
     expect(onChange).not.toHaveBeenCalled();
-    await esperarAte(() => onChange.mock.calls.length > 0);
+    await act(async () => {
+      vi.advanceTimersByTime(39);
+    });
+    expect(onChange).not.toHaveBeenCalled();
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+    });
     expect(onChange).toHaveBeenCalledExactlyOnceWith("");
     expect(hospedeiro.querySelector('[aria-label="Limpar busca"]')).toBeNull();
   });

@@ -30,14 +30,20 @@ const ENDPOINT = "https://push.exemplo/aparelho-1";
 function instalarPush({
   inscricao,
   registro = "com-registro",
+  getNotifications,
 }: {
   inscricao: { endpoint: string; unsubscribe: () => Promise<boolean> } | null;
   registro?: "com-registro" | "sem-registro" | "lanca";
+  /** Ausente = navegador sem `getNotifications` (iOS antigo, navegador velho). */
+  getNotifications?: () => Promise<unknown>;
 }) {
   const getRegistration = vi.fn(async () => {
     if (registro === "lanca") throw new Error("SW indisponível");
     if (registro === "sem-registro") return undefined;
-    return { pushManager: { getSubscription: async () => inscricao } };
+    return {
+      pushManager: { getSubscription: async () => inscricao },
+      ...(getNotifications ? { getNotifications } : {}),
+    };
   });
   Object.defineProperty(globalThis.navigator, "serviceWorker", {
     value: { getRegistration },
@@ -239,6 +245,211 @@ describe("inscrição de push — cancelar a do aparelho para a conta que sai", 
     await soltarInscricaoDoAparelho();
 
     expect(unsubscribe).toHaveBeenCalledTimes(1);
+    expect(desde).not.toHaveBeenCalled();
+  });
+});
+
+// Cancelar a inscrição não tira da bandeja do aparelho os avisos que JÁ foram
+// exibidos: o lojista via "Pedido novo / #número · valor · nome do cliente" e o
+// cliente via o aviso do pedido dele, sem entrar em conta nenhuma, na mão de
+// quem pegasse o aparelho emprestado. O "Sair" fecha todos.
+describe("inscrição de push — o Sair fecha os avisos que ficaram na bandeja", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  function aviso() {
+    return { close: vi.fn() };
+  }
+
+  it("fecha TODOS os avisos exibidos, e ainda apaga a linha e desinscreve", async () => {
+    const { cancelarInscricaoDaConta } = await import(
+      "@/lib/inscricao-de-push-da-conta"
+    );
+    const unsubscribe = vi.fn(async () => true);
+    const avisos = [aviso(), aviso(), aviso()];
+    instalarPush({
+      inscricao: { endpoint: ENDPOINT, unsubscribe },
+      getNotifications: async () => avisos,
+    });
+    prepararApagar(async () => ({ error: null }));
+
+    await cancelarInscricaoDaConta("conta-a");
+
+    for (const a of avisos) expect(a.close).toHaveBeenCalledTimes(1);
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+    expect(eqUser).toHaveBeenCalledWith("user_id", "conta-a");
+  });
+
+  it("fecha mesmo SEM inscrição (a inscrição já tinha ido, o aviso não)", async () => {
+    const { cancelarInscricaoDaConta } = await import(
+      "@/lib/inscricao-de-push-da-conta"
+    );
+    const avisos = [aviso(), aviso()];
+    instalarPush({ inscricao: null, getNotifications: async () => avisos });
+
+    await cancelarInscricaoDaConta("conta-a");
+
+    for (const a of avisos) expect(a.close).toHaveBeenCalledTimes(1);
+    expect(desde).not.toHaveBeenCalled();
+  });
+
+  it("bandeja vazia: nada a fechar e nada lança", async () => {
+    const { cancelarInscricaoDaConta } = await import(
+      "@/lib/inscricao-de-push-da-conta"
+    );
+    const getNotifications = vi.fn(async () => []);
+    instalarPush({ inscricao: null, getNotifications });
+
+    await expect(cancelarInscricaoDaConta("conta-a")).resolves.toBeUndefined();
+
+    expect(getNotifications).toHaveBeenCalledTimes(1);
+  });
+
+  it("getNotifications LANÇANDO (rejeitando) não impede apagar a linha nem desinscrever", async () => {
+    const { cancelarInscricaoDaConta } = await import(
+      "@/lib/inscricao-de-push-da-conta"
+    );
+    const unsubscribe = vi.fn(async () => true);
+    instalarPush({
+      inscricao: { endpoint: ENDPOINT, unsubscribe },
+      getNotifications: async () => {
+        throw new Error("bandeja indisponível");
+      },
+    });
+    prepararApagar(async () => ({ error: null }));
+
+    await expect(cancelarInscricaoDaConta("conta-a")).resolves.toBeUndefined();
+
+    expect(apagar).toHaveBeenCalled();
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it("um aviso que não fecha (close lança) não deixa os outros abertos", async () => {
+    const { cancelarInscricaoDaConta } = await import(
+      "@/lib/inscricao-de-push-da-conta"
+    );
+    const quebrado = {
+      close: vi.fn(() => {
+        throw new Error("já foi fechado");
+      }),
+    };
+    const depois = aviso();
+    instalarPush({
+      inscricao: null,
+      getNotifications: async () => [quebrado, depois],
+    });
+
+    await expect(cancelarInscricaoDaConta("conta-a")).resolves.toBeUndefined();
+
+    expect(quebrado.close).toHaveBeenCalledTimes(1);
+    expect(depois.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("navegador SEM getNotifications (iOS/antigo): não quebra, e o resto do cancelamento segue", async () => {
+    const { cancelarInscricaoDaConta } = await import(
+      "@/lib/inscricao-de-push-da-conta"
+    );
+    const unsubscribe = vi.fn(async () => true);
+    instalarPush({ inscricao: { endpoint: ENDPOINT, unsubscribe } });
+    prepararApagar(async () => ({ error: null }));
+
+    await expect(cancelarInscricaoDaConta("conta-a")).resolves.toBeUndefined();
+
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+    expect(apagar).toHaveBeenCalled();
+  });
+
+  it("getNotifications pendurado (nunca responde): o Sair volta no prazo e o navegador já foi desinscrito", async () => {
+    vi.useFakeTimers();
+    const { cancelarInscricaoDaConta, PRAZO_DO_PUSH_NO_LOGOUT_MS } =
+      await import("@/lib/inscricao-de-push-da-conta");
+    const unsubscribe = vi.fn(async () => true);
+    instalarPush({
+      inscricao: { endpoint: ENDPOINT, unsubscribe },
+      getNotifications: () => new Promise(() => {}),
+    });
+    prepararApagar(async () => ({ error: null }));
+
+    let terminou = false;
+    const espera = cancelarInscricaoDaConta("conta-a").then(() => {
+      terminou = true;
+    });
+    await vi.advanceTimersByTimeAsync(PRAZO_DO_PUSH_NO_LOGOUT_MS - 1);
+    expect(terminou).toBe(false);
+    await vi.advanceTimersByTimeAsync(2);
+    await espera;
+
+    expect(terminou).toBe(true);
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it("soltarInscricaoDoAparelho (sessão que acabou/troca de conta) fecha a bandeja e desinscreve, sem servidor", async () => {
+    const { soltarInscricaoDoAparelho } = await import(
+      "@/lib/inscricao-de-push-da-conta"
+    );
+    const unsubscribe = vi.fn(async () => true);
+    const avisos = [aviso(), aviso()];
+    instalarPush({
+      inscricao: { endpoint: ENDPOINT, unsubscribe },
+      getNotifications: async () => avisos,
+    });
+
+    await soltarInscricaoDoAparelho();
+
+    for (const a of avisos) expect(a.close).toHaveBeenCalledTimes(1);
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+    expect(desde).not.toHaveBeenCalled();
+  });
+
+  it("soltarInscricaoDoAparelho fecha a bandeja mesmo sem inscrição", async () => {
+    const { soltarInscricaoDoAparelho } = await import(
+      "@/lib/inscricao-de-push-da-conta"
+    );
+    const avisos = [aviso()];
+    instalarPush({ inscricao: null, getNotifications: async () => avisos });
+
+    await soltarInscricaoDoAparelho();
+
+    expect(avisos[0].close).toHaveBeenCalledTimes(1);
+  });
+
+  it("soltarInscricaoDoAparelho: getNotifications falhando ou ausente não impede desinscrever nem lança", async () => {
+    const { soltarInscricaoDoAparelho } = await import(
+      "@/lib/inscricao-de-push-da-conta"
+    );
+    const unsubscribe = vi.fn(async () => true);
+    instalarPush({
+      inscricao: { endpoint: ENDPOINT, unsubscribe },
+      getNotifications: async () => {
+        throw new Error("bandeja indisponível");
+      },
+    });
+    await expect(soltarInscricaoDoAparelho()).resolves.toBeUndefined();
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+
+    const unsubscribe2 = vi.fn(async () => true);
+    instalarPush({
+      inscricao: { endpoint: ENDPOINT, unsubscribe: unsubscribe2 },
+    });
+    await expect(soltarInscricaoDoAparelho()).resolves.toBeUndefined();
+    expect(unsubscribe2).toHaveBeenCalledTimes(1);
+  });
+
+  it("sem service worker/Push: nada lança e getNotifications nem é procurado", async () => {
+    const { cancelarInscricaoDaConta } = await import(
+      "@/lib/inscricao-de-push-da-conta"
+    );
+    instalarSemPush();
+
+    await expect(cancelarInscricaoDaConta("conta-a")).resolves.toBeUndefined();
+
     expect(desde).not.toHaveBeenCalled();
   });
 });
