@@ -29,20 +29,27 @@
 -- Nenhum corpo de funcao muda (os corpos tem hash pinado): a recusa vem do proprio INSERT/UPDATE, qualquer que seja a porta
 -- (RLS do admin, RPC, service_role, sessao direta), e chega como 23514 com o nome da restricao.
 --
--- 3. DADOS QUE JA EXISTIAM - LEIA ANTES DE APLICAR
+-- 3. DADOS QUE JA EXISTIAM - A MIGRATION SE RECUSA A APLICAR SE HOUVER (leia antes de aplicar)
 --
--- NOT VALID NAO varre as linhas antigas: a migration NUNCA falha por dado existente e nao le nem reescreve linha nenhuma.
--- Mas o Postgres reavalia o CHECK em TODO INSERT e em TODO UPDATE da linha, mesmo que a coluna nao mude. Logo, uma linha
--- antiga NEGATIVA (so nasce por chamada direta; as telas barram) fica "travada para UPDATE" ate alguem corrigi-la:
---   * produto com preco negativo: nao se vende (a baixa de estoque da compra e' um UPDATE) nem se edita outro campo, e,
---     pelo gatilho sync_produto_ultima_atualizacao, tambem nao se edita/estoca nenhuma VARIACAO dele;
---   * variacao com price_override negativo: idem para a propria variacao;
---   * cupom com valor negativo: nao se usa (o contador usage_count e' um UPDATE) nem se edita;
---   * taxa de entrega local negativa: qualquer salvamento de configuracao da loja recusa ate a taxa ser corrigida.
--- Corrigir a linha (decisao da lojista: o valor certo so ela sabe) destrava tudo na hora. Um UPDATE em MASSA recusa inteiro se
--- uma das linhas for antiga negativa. Diferente da 20261396200000 (que ABORTA se achar linha ruim), esta migration NAO aborta
--- por dado existente (decisao do plano: "nao pode falhar por dado existente"); a guarda e' a MEDICAO PREVIA, so leitura, em
--- cada loja (esperado: tudo 0):
+-- NOT VALID so dispensa a conferencia das linhas existentes NO MOMENTO do ADD. O Postgres reavalia o CHECK em TODO INSERT e em
+-- TODO UPDATE da linha, mesmo que a coluna nao mude. Logo, uma linha antiga NEGATIVA (ou NaN; so nasce por chamada direta, as
+-- telas barram) ficaria "travada para UPDATE" ate alguem corrigi-la - e o pior caso e' a EXPIRACAO DE PEDIDOS:
+--   * expirar_pedidos_vencidos (20261393000000) percorre os pedidos pendentes vencidos NUMA transacao so e, para cada um, chama
+--     devolver_estoque (UPDATE em produtos/product_variants) e devolve o uso do cupom (UPDATE em coupons), sem tratamento de
+--     erro por pedido. UM produto, variacao ou cupom negativo num pedido pendente faria a varredura inteira desfazer a cada
+--     rodada do agendador: NENHUM pedido da loja expiraria mais e o estoque de todos ficaria preso;
+--   * produto com preco negativo: nao se vende (a baixa de estoque da compra e' um UPDATE) nem se edita outro campo, e, pelo
+--     gatilho sync_produto_ultima_atualizacao, tambem nao se edita/estoca nenhuma VARIACAO dele; variacao com price_override
+--     negativo: idem; cupom negativo: nao se usa (usage_count e' um UPDATE); taxa local negativa: qualquer salvamento da
+--     configuracao da loja recusa.
+--
+-- Por isso a migration TEM UMA GUARDA (mesmo padrao da 20261396200000): logo depois dos quatro ADD CONSTRAINT (as tabelas ja
+-- estao trancadas, entao nenhuma linha nova entra no meio), conta as linhas ruins das quatro colunas (a mesma expressao das
+-- restricoes; NULL e zero nao contam; a sentinela -1 de free_shipping_min e' outra coluna e nao entra) e, se houver alguma,
+-- ABORTA com B1_BASELINE_DIVERGENT dizendo QUAL coluna e QUANTAS linhas. A transacao inteira desfaz: nenhuma restricao fica,
+-- nenhuma linha muda. Nesse caso NAO aplicar nessa loja antes de corrigir o valor dessas linhas (decisao da lojista: so ela
+-- sabe o valor certo; esta migration nao corrige nem apaga). Corrigido o dado, aplicar de novo. A guarda roda em TODA execucao,
+-- tambem na reaplicacao (loja limpa: no-op). Medicao previa, so leitura, em cada loja (esperado: tudo 0):
 --
 --   SELECT
 --     (SELECT count(*) FROM public.store_config WHERE NOT (local_delivery_fee >= 0 AND local_delivery_fee <> 'NaN'::numeric)) AS taxa,
@@ -50,8 +57,8 @@
 --     (SELECT count(*) FROM public.product_variants WHERE NOT (price_override IS NULL OR (price_override >= 0 AND price_override <> 'NaN'::numeric))) AS price_override,
 --     (SELECT count(*) FROM public.coupons WHERE NOT (value >= 0 AND value <> 'NaN'::numeric)) AS cupom;
 --
--- Se algum numero vier acima de 0, corrija essas linhas ANTES (ou aplique sabendo o que fica travado). O VALIDATE CONSTRAINT
--- fica de fora de proposito: esta migration nao o roda (ele varreria as quatro tabelas e reprovaria com linha antiga negativa).
+-- Custo da guarda: uma varredura de cada uma das quatro tabelas (pequenas numa loja), com as tabelas trancadas, dentro do
+-- statement_timeout de 30 s. O VALIDATE CONSTRAINT fica de fora de proposito: esta migration nao o roda.
 --
 -- 4. FORA DO ESCOPO (conferido, nao tocado)
 --   * store_config.free_shipping_min: a sentinela legada NEGATIVA (por produto, -1) e' intencional e nao ganha restricao.
@@ -59,7 +66,7 @@
 --   * cupom percentual acima de 100: outra frente (a tela barra e o servidor limita o desconto ao subtotal).
 --   * Nenhuma funcao, politica, gatilho, GRANT ou front muda; nenhuma tabela nova.
 --
--- 5. PRE-VOO (B1_BASELINE_DIVERGENT, ANTES de qualquer escrita)
+-- 5. PRE-VOO (B1_BASELINE_DIVERGENT, ANTES de qualquer escrita; a guarda da secao 3 e' a 2a recusa, DEPOIS dos ADD e desfeita junto)
 --
 -- As quatro colunas tem de existir como numeric; cada restricao, se ja existir, tem de ser exatamente a desenhada (NOT VALID
 -- ou ja validada). Estados aceitos por restricao: ausente (cria) ou como desenhada (reaplicar e' no-op).
@@ -68,8 +75,8 @@
 --
 -- Sem BEGIN/COMMIT de nivel superior neste arquivo (AGENTS.md: "Migration nao leva BEGIN/COMMIT"; com eles o ROLLBACK da prova
 -- vira no-op e a mudanca fica gravada): o aplicador (db-apply.cjs, aplicar-migrations.yml, o job do rpc-ci) abre UMA transacao
--- para o arquivo inteiro, entao pre-voo, as quatro restricoes e a conferencia caem juntas ou nao caem (provado numa conexao
--- SEM BEGIN: falha na 3a restricao ou na conferencia deixa NENHUMA das quatro). Cada restricao so e' criada se ainda nao
+-- para o arquivo inteiro, entao pre-voo, as quatro restricoes, a guarda e a conferencia caem juntas ou nao caem (provado numa conexao
+-- SEM BEGIN: falha na 3a restricao, a guarda recusando ou a conferencia deixa NENHUMA das quatro). Cada restricao so e' criada se ainda nao
 -- existe: rodar duas vezes deixa o mesmo estado (mesmo OID); restricao ja validada a mao tambem e' aceita.
 -- ADD CONSTRAINT ... CHECK tranca a tabela (ACCESS EXCLUSIVE) por um instante, sem varrer (NOT VALID). Com lock_timeout = 5s,
 -- loja com gravacao em voo falha LIMPO em vez de travar a compra - repetir depois. As travas sao pedidas na ordem em que a
@@ -138,6 +145,32 @@ BEGIN
     ALTER TABLE public.coupons ADD CONSTRAINT coupons_value_nao_negativo CHECK (value >= 0 AND value <> 'NaN'::numeric) NOT VALID;
   END IF;
 END $restricoes_20261400000000$;
+
+-- A GUARDA (cabecalho, secao 3): com as restricoes ativas, linha antiga NEGATIVA (ou NaN) trava qualquer UPDATE dela. As quatro
+-- tabelas ja foram trancadas pelos ADD CONSTRAINT acima (a trava dura ate o fim da transacao), entao nenhuma linha nova entra
+-- entre esta contagem e o fim. Mesma expressao das restricoes: NOT (col >= 0 AND col <> 'NaN'); NULL nao conta (nao e' ruim).
+DO $guarda_20261400000000$
+DECLARE
+  v_taxa bigint;
+  v_variacao bigint;
+  v_preco bigint;
+  v_cupom bigint;
+  v_ruins text;
+BEGIN
+  SELECT count(*) INTO v_taxa FROM public.store_config WHERE NOT (local_delivery_fee >= 0 AND local_delivery_fee <> 'NaN'::numeric);
+  SELECT count(*) INTO v_variacao FROM public.product_variants WHERE NOT (price_override IS NULL OR (price_override >= 0 AND price_override <> 'NaN'::numeric));
+  SELECT count(*) INTO v_preco FROM public.produtos WHERE NOT (preco_venda >= 0 AND preco_venda <> 'NaN'::numeric);
+  SELECT count(*) INTO v_cupom FROM public.coupons WHERE NOT (value >= 0 AND value <> 'NaN'::numeric);
+  IF v_taxa + v_variacao + v_preco + v_cupom > 0 THEN
+    SELECT string_agg(x.rotulo || ' (' || x.n || ' linha(s))', ', ' ORDER BY x.ordem) INTO v_ruins
+      FROM (VALUES (1, 'store_config.local_delivery_fee', v_taxa),
+                   (2, 'product_variants.price_override', v_variacao),
+                   (3, 'produtos.preco_venda', v_preco),
+                   (4, 'coupons.value', v_cupom)) AS x(ordem, rotulo, n)
+     WHERE x.n > 0;
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: ha valor negativo ou NaN que ja existia em: % - a migration NAO foi aplicada (a transacao desfaz tudo e nenhuma restricao fica). Com a restricao ativa cada uma dessas linhas travaria qualquer UPDATE dela, inclusive a baixa e a devolucao de estoque e do uso do cupom feitas pela expiracao de pedidos vencidos: UM item assim impediria a varredura inteira de expirar QUALQUER pedido da loja. Corrija o valor dessas linhas (decisao da lojista: so ela sabe o valor certo) e aplique de novo.', v_ruins;
+  END IF;
+END $guarda_20261400000000$;
 
 -- CONFERENCIA no instante do apply: as quatro existem, na tabela certa, com a regra desenhada.
 DO $conferencia_20261400000000$

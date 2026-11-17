@@ -15,14 +15,17 @@
  *              direta, para o admin pela RLS e pelas RPCs reais (upsert_store_config, salvar_produto_com_grade); ZERO (brinde,
  *              retirada gratis), positivo e price_override NULL (herda o preco do produto) seguem aceitos; a sentinela legada
  *              `free_shipping_min = -1` (outro campo) segue aceita; a recusa nao muda nenhuma linha.
- *  LINHA ANTIGA  dado negativo que ja existia ANTES da migration NAO a impede (NOT VALID nao varre) e fica como estava; a
- *              recusa vale para o novo; a consequencia declarada: qualquer UPDATE da linha antiga recusa (23514) ate ela ser
- *              corrigida, e o VALIDATE so passa depois disso.
+ *  LINHA ANTIGA  dado negativo ou NaN que ja existia ANTES da migration a faz se RECUSAR (B1_BASELINE_DIVERGENT, dizendo a
+ *              coluna e quantas linhas), em cada uma das 4 colunas, nao deixa nenhuma restricao nem muda dado; corrigida a
+ *              linha, aplica. Motivo: com o CHECK ativo a linha antiga trava todo UPDATE dela, e a expiracao de pedidos
+ *              (expirar_pedidos_vencidos, uma transacao so) deixaria de expirar QUALQUER pedido da loja. Zero, NULL de
+ *              variacao e a sentinela free_shipping_min = -1 NAO contam; loja limpa aplica e reaplica. Mutantes da guarda
+ *              (removida, cega a uma coluna, cega a NaN) APLICAM sobre o dado ruim: a prova da recusa enxerga.
  *  SO NOVO     o apply cria so as 4 restricoes: nenhuma funcao (corpo/OID/ACL), tabela, politica, gatilho ou outra restricao muda.
  *  MUTANTES    sem a regra, sem o NaN e com `> 0` (zero recusado), em cada coluna: o roteiro fica VERMELHO nas chaves certas e so nelas.
  *  MIGRATION   reaplicar (2x, CRLF, ja validada) e no-op (mesmo OID); rollback sem tocar dado, 2x no-op; pre-voo recusa SEM
  *              escrever; conferencia final recusa cada estrago; pre-voo do rollback recusa o que nao e' dele.
- *  ATOMICIDADE conexao SEM BEGIN: a falha no meio (3a restricao) e a conferencia sabotada deixam NENHUMA das 4; gravacao em
+ *  ATOMICIDADE conexao SEM BEGIN: a falha no meio (3a restricao), a guarda recusando e a conferencia sabotada deixam NENHUMA das 4; gravacao em
  *              voo faz a migration FALHAR LIMPA no lock_timeout e depois aplicar.
  *
  * USO: CI_BANCO_EFEMERO=1 DATABASE_URL=postgres://postgres@127.0.0.1:<porta>/postgres \
@@ -79,7 +82,6 @@ const U = {
   admin: "b1400000-0000-4000-8000-0000000000ad",
 };
 const PROD = "b1400000-0000-4000-8000-0000000000f1";
-const PROD2 = "b1400000-0000-4000-8000-0000000000f3";
 const VARIACAO = "b1400000-0000-4000-8000-0000000000f2";
 const CUPOM = "b1400000-0000-4000-8000-0000000000c1";
 const JWT_ADMIN = JSON.stringify({
@@ -506,115 +508,219 @@ prova(
 );
 
 // ---- (d) LINHA ANTIGA ------------------------------------------------------------------------------------------------------
+// Dado ruim que ja existia ANTES da migration: com o CHECK (mesmo NOT VALID) ativo ele travaria todo UPDATE da linha, e a
+// varredura de pedidos vencidos (expirar_pedidos_vencidos -> devolver_estoque/cupom, uma transacao so) desfaria a cada
+// rodada e NENHUM pedido da loja expiraria mais. Por isso a migration se RECUSA (B1_BASELINE_DIVERGENT) e nada fica gravado.
+const RUIM = {
+  taxa: "UPDATE public.store_config SET local_delivery_fee = $1::numeric WHERE id = 1",
+  preco:
+    "UPDATE public.produtos SET preco_venda = $1::numeric WHERE id = $2::uuid",
+  variacao:
+    "UPDATE public.product_variants SET price_override = $1::numeric WHERE id = $2::uuid",
+  cupom: "UPDATE public.coupons SET value = $1::numeric WHERE id = $2::uuid",
+};
+const IDS_RUIM = { taxa: null, preco: PROD, variacao: VARIACAO, cupom: CUPOM };
+/** Grava, no estado ANTES (sem restricao), o valor ruim na linha do alvo. */
+const plantar = (n, valor) =>
+  P.conexao().query(
+    RUIM[n],
+    IDS_RUIM[n] === null ? [valor] : [valor, IDS_RUIM[n]],
+  );
+const rotulo = (n) => `${ALVOS[n].tabela}.${ALVOS[n].coluna}`;
+const BLOCO_GUARDA = "guarda_20261400000000";
+// UPDATE de uma coluna que NAO e' a do CHECK, na linha ruim: o que a baixa/devolucao de estoque e o uso do cupom fazem
+const MEXER = {
+  taxa: "UPDATE public.store_config SET store_name = store_name WHERE id = 1 RETURNING id",
+  preco:
+    "UPDATE public.produtos SET estoque = estoque WHERE id = $1::uuid RETURNING id",
+  variacao:
+    "UPDATE public.product_variants SET stock_increment = stock_increment WHERE id = $1::uuid RETURNING id",
+  cupom:
+    "UPDATE public.coupons SET usage_count = usage_count WHERE id = $1::uuid RETURNING id",
+};
+
+for (const n of NOMES) {
+  for (const [descricao, valor] of [
+    ["negativo", "-0.01"],
+    ["NaN", "NaN"],
+  ]) {
+    prova(
+      `LINHA ANTIGA (${n}, ${descricao}): a migration se RECUSA com B1_BASELINE_DIVERGENT dizendo a coluna; nenhuma das 4 restricoes fica e o dado nao muda; corrigida a linha, a migration aplica`,
+      async () => {
+        await P.emTransacao(async () => {
+          await semear();
+          await antes();
+          await plantar(n, valor);
+          const d0 = await dados();
+          const r0 = await P.retrato(NOVOS);
+          const r = await P.recusa(MIGRATION, /B1_BASELINE_DIVERGENT/);
+          assert.ok(r.erro.includes(`${rotulo(n)} (1 linha`), r.erro);
+          for (const outro of NOMES.filter((x) => x !== n))
+            assert.ok(
+              !r.erro.includes(rotulo(outro)),
+              `a mensagem acusou ${outro}, que esta limpo: ${r.erro}`,
+            );
+          assert.equal(
+            await aplicado(),
+            false,
+            "ficou restricao depois da recusa",
+          );
+          assert.deepEqual(await dados(), d0, "a recusa mexeu em dado");
+          assert.deepEqual(await P.retrato(NOVOS), r0, "a recusa escreveu");
+          // a lojista corrige o valor (decisao dela) e a migration aplica
+          await plantar(n, "10");
+          assert.equal(await P.aplicar(MIGRATION), null);
+          assert.equal(await aplicado(), true);
+        });
+      },
+    );
+  }
+}
+
 prova(
-  "LINHA ANTIGA: dado negativo que ja existia NAO impede a migration (NOT VALID nao varre); fica como estava; o novo e recusado; a linha antiga trava UPDATE ate ser corrigida",
+  "LINHA ANTIGA (varias): a mensagem conta as linhas de CADA coluna ruim e so delas; zero, NULL de variacao e a sentinela -1 do frete gratis NAO contam",
   async () => {
     await P.emTransacao(async () => {
       await semear();
       await antes();
       const c = P.conexao();
+      await plantar("taxa", "-50");
+      await plantar("cupom", "-20");
       await c.query(
-        "UPDATE public.store_config SET local_delivery_fee = -50 WHERE id = 1",
+        "INSERT INTO public.coupons (code, type, value, active) VALUES ('B14RUIM2', 'fixed', 'NaN', true)",
       );
+      // limites que NAO sao defeito: preco zero, price_override NULL e a sentinela legada free_shipping_min = -1
+      await plantar("preco", "0");
       await c.query(
-        "UPDATE public.produtos SET preco_venda = -90 WHERE id = $1",
-        [PROD],
-      );
-      await c.query(
-        "UPDATE public.product_variants SET price_override = -5 WHERE id = $1",
+        "UPDATE public.product_variants SET price_override = NULL WHERE id = $1",
         [VARIACAO],
       );
-      await c.query("UPDATE public.coupons SET value = -20 WHERE id = $1", [
-        CUPOM,
-      ]);
-      // um produto sem defeito para receber variacao nova (o gatilho da variacao atualiza o produto-pai, que aqui e' o antigo)
       await c.query(
-        "INSERT INTO public.produtos (id, nome, preco_venda, estoque, ativo, custo) VALUES ($1, 'Limpo 1400000', 30, 1, true, 10)",
-        [PROD2],
+        "UPDATE public.store_config SET free_shipping_min = -1 WHERE id = 1",
       );
-      const d0 = await dados();
-      const r0 = await P.retrato(NOVOS);
-      // 1. a migration aplica por cima de dado ruim (nao falha por dado existente)
-      assert.equal(
-        await P.aplicar(MIGRATION),
-        null,
-        "a migration devia aplicar sobre dado antigo negativo",
-      );
+      const r = await P.recusa(MIGRATION, /B1_BASELINE_DIVERGENT/);
+      assert.ok(r.erro.includes(`${rotulo("taxa")} (1 linha`), r.erro);
+      assert.ok(r.erro.includes(`${rotulo("cupom")} (2 linha`), r.erro);
+      assert.ok(!r.erro.includes(rotulo("preco")), r.erro);
+      assert.ok(!r.erro.includes(rotulo("variacao")), r.erro);
+      assert.equal(await aplicado(), false);
+    });
+  },
+);
+
+prova(
+  "LINHA ANTIGA (restricao ja existia): reaplicar com uma restricao faltando e dado negativo na tabela dela tambem se RECUSA e nao deixa a restricao",
+  async () => {
+    await P.emTransacao(async () => {
+      await semear();
+      await depois();
       assert.equal(await aplicado(), true);
-      for (const l of await restricoes())
-        assert.equal(l.convalidated, false, `${l.conname} varreu a tabela`);
-      // 2. nenhuma linha foi lida/reescrita: o dado antigo e' o mesmo, byte a byte
-      assert.deepEqual(await dados(), d0, "a migration mexeu em dado antigo");
-      assert.deepEqual(await estadoAtual(), {
-        taxa: "-50",
-        preco: "-90.00",
-        variacao: "-5",
-        cupom: "-20",
-      });
-      // 3. o novo valor negativo e' recusado, o valido entra, mesmo com a linha antiga ao lado
-      assert.ok(recusada(await direto(SQL.precoIns, ["-1"]), "preco"));
-      assert.ok(aceita(await direto(SQL.precoIns, ["5"])));
-      assert.ok(
-        recusada(await direto(SQL.cupIns, ["-1", "B14L1", "fixed"]), "cupom"),
+      // alguem tirou a restricao dos cupons a mao e entrou valor negativo: reaplicar nao pode "consertar" criando-a por cima
+      await P.conexao().query(tirar("cupom"));
+      await plantar("cupom", "-20");
+      await P.recusa(
+        MIGRATION,
+        /B1_BASELINE_DIVERGENT.*coupons\.value \(1 linha/s,
       );
-      assert.ok(aceita(await direto(SQL.cupIns, ["5", "B14L2", "fixed"])));
-      assert.ok(
-        recusada(await direto(SQL.varIns, ["-1", PROD2, "L1"]), "variacao"),
-      );
-      assert.ok(aceita(await direto(SQL.varIns, ["5", PROD2, "L2"])));
-      // 4. A CONSEQUENCIA DECLARADA: o CHECK e' reavaliado em todo UPDATE da linha, mesmo de outra coluna
-      const mexer = {
-        taxa: "UPDATE public.store_config SET store_name = store_name WHERE id = 1 RETURNING id",
-        preco:
-          "UPDATE public.produtos SET estoque = estoque WHERE id = $1::uuid RETURNING id",
-        variacao:
-          "UPDATE public.product_variants SET stock_increment = stock_increment WHERE id = $1::uuid RETURNING id",
-        cupom:
-          "UPDATE public.coupons SET usage_count = usage_count WHERE id = $1::uuid RETURNING id",
-      };
-      const ids = {
-        taxa: [],
-        preco: [PROD],
-        variacao: [VARIACAO],
-        cupom: [CUPOM],
-      };
-      for (const n of NOMES)
-        assert.ok(
-          recusada(await direto(mexer[n], ids[n]), n),
-          `UPDATE de outra coluna na linha antiga (${n}) devia recusar ate ela ser corrigida`,
-        );
-      // 5. o VALIDATE so passa depois da correcao (e' o que NOT VALID adiou)
-      for (const n of NOMES) {
-        await c.query("SAVEPOINT validar");
-        await assert.rejects(
-          () =>
-            c.query(
-              `ALTER TABLE public.${ALVOS[n].tabela} VALIDATE CONSTRAINT ${ALVOS[n].ck}`,
-            ),
-          (e) => e.code === "23514",
-          `VALIDATE de ${n} devia falhar com a linha antiga`,
-        );
-        await c.query("ROLLBACK TO SAVEPOINT validar");
-      }
-      // 6. corrigida a linha (decisao da lojista), o UPDATE volta e o VALIDATE passa
-      assert.ok(aceita(await direto(SQL.taxaUpd, ["10"])));
-      assert.ok(aceita(await direto(SQL.precoUpd, ["100", PROD])));
-      assert.ok(aceita(await direto(SQL.varUpd, ["50", VARIACAO])));
-      assert.ok(aceita(await direto(SQL.cupUpd, ["10", CUPOM])));
-      for (const n of NOMES)
-        await c.query(
-          `ALTER TABLE public.${ALVOS[n].tabela} VALIDATE CONSTRAINT ${ALVOS[n].ck}`,
-        );
-      assert.ok((await restricoes()).every((l) => l.convalidated === true));
-      // 7. a migration nao deixou nada alem das 4 restricoes
-      assert.deepEqual(
-        await P.retrato(NOVOS),
-        r0,
-        "o apply mexeu em objeto que nao era dele",
+      assert.equal(
+        (await restricoes()).some((l) => l.conname === ALVOS.cupom.ck),
+        false,
+        "a restricao dos cupons ficou depois da recusa",
       );
     });
   },
 );
+
+prova(
+  "LOJA LIMPA com os limites validos (zero, NULL de variacao, sentinela -1): aplica, e reaplicar e' no-op sem recusar",
+  async () => {
+    await P.emTransacao(async () => {
+      await semear();
+      await antes();
+      await plantar("taxa", "0");
+      await plantar("preco", "0");
+      await plantar("cupom", "0");
+      await P.conexao().query(
+        "UPDATE public.product_variants SET price_override = NULL WHERE id = $1",
+        [VARIACAO],
+      );
+      await P.conexao().query(
+        "UPDATE public.store_config SET free_shipping_min = -1 WHERE id = 1",
+      );
+      const d0 = await dados();
+      assert.equal(await P.aplicar(MIGRATION), null);
+      assert.equal(await aplicado(), true);
+      const e1 = await restricoes();
+      assert.equal(await P.aplicar(MIGRATION), null);
+      assert.deepEqual(await restricoes(), e1, "reaplicar mudou o estado");
+      assert.deepEqual(await dados(), d0, "a migration mexeu em dado");
+    });
+  },
+);
+
+// MUTANTES DA GUARDA: sem ela (inteira, ou cega a uma coluna, ou cega a NaN) a migration APLICA sobre o dado ruim - e os testes
+// acima derrubam isso. Aqui a prova de que a prova enxerga: cada mutante tem de ser ACEITO onde o real e' recusado.
+const MUTANTES_DA_GUARDA = [
+  {
+    nome: "sem a contagem (guarda removida)",
+    valor: "-20",
+    alvos: NOMES,
+    sabotar: (m, guarda) => m.replace(guarda, ""),
+  },
+  ...NOMES.map((n) => ({
+    nome: `cega a ${n} (WHERE false)`,
+    valor: "-20",
+    alvos: [n],
+    sabotar: (m, guarda) =>
+      m.replace(
+        guarda,
+        guarda.replace(
+          `FROM public.${ALVOS[n].tabela} WHERE NOT (`,
+          `FROM public.${ALVOS[n].tabela} WHERE false AND (`,
+        ),
+      ),
+  })),
+  ...NOMES.map((n) => ({
+    nome: `cega a NaN em ${n} (so < 0)`,
+    valor: "NaN",
+    alvos: [n],
+    sabotar: (m, guarda) =>
+      m.replace(
+        guarda,
+        guarda.replace(`${ALVOS[n].coluna} <> 'NaN'::numeric`, "true"),
+      ),
+  })),
+];
+for (const { nome, valor, alvos, sabotar } of MUTANTES_DA_GUARDA) {
+  prova(
+    `MUTANTE da guarda - ${nome}: a migration sabotada APLICA sobre a linha antiga (a prova da recusa enxerga)`,
+    async () => {
+      const sql = sabotar(MIGRATION, P.blocoDe(MIGRATION, BLOCO_GUARDA));
+      assert.notEqual(sql, MIGRATION, "a sabotagem da guarda nao pegou");
+      for (const n of alvos)
+        await P.emTransacao(async () => {
+          await semear();
+          await antes();
+          await plantar(n, valor);
+          assert.equal(
+            await P.aplicar(sql),
+            null,
+            `o mutante '${nome}' devia deixar passar ${n}=${valor}`,
+          );
+          assert.equal(await aplicado(), true);
+          // e e' ESTE o estrago que a guarda evita: aplicada sobre a linha ruim, a restricao recusa (23514) o UPDATE de OUTRA
+          // coluna da mesma linha - a baixa/devolucao de estoque e do uso do cupom da expiracao de pedidos seriam desse tipo
+          assert.ok(
+            recusada(
+              await direto(MEXER[n], IDS_RUIM[n] ? [IDS_RUIM[n]] : []),
+              n,
+            ),
+            `sem a guarda, o UPDATE de outra coluna da linha antiga (${n}) devia recusar`,
+          );
+        });
+    },
+  );
+}
 
 // ---- (e) reaplicar --------------------------------------------------------------------------------------------------------------
 prova(
@@ -946,6 +1052,32 @@ prova(
         false,
         "ficaram restricoes depois da conferencia reprovar",
       );
+      // (2b) a GUARDA recusa (cupom antigo negativo) depois das 4 restricoes criadas: tambem nao fica nenhuma (a migration nao
+      // abre BEGIN/COMMIT proprio; o arquivo inteiro e' uma transacao so), e o dado ruim segue como estava
+      await c3.query(
+        "INSERT INTO public.coupons (code, type, value, active) VALUES ('B14ATOM', 'fixed', -20, true)",
+      );
+      try {
+        await assert.rejects(
+          () => c3.query(MIGRATION),
+          /B1_BASELINE_DIVERGENT.*coupons\.value \(1 linha/s,
+        );
+        assert.equal(
+          await aplicado(c3),
+          false,
+          "ficaram restricoes depois da guarda recusar",
+        );
+        assert.equal(
+          (
+            await c3.query(
+              "SELECT value::text AS v FROM public.coupons WHERE code = 'B14ATOM'",
+            )
+          ).rows[0].v,
+          "-20",
+        );
+      } finally {
+        await c3.query("DELETE FROM public.coupons WHERE code = 'B14ATOM'");
+      }
       // (3) sem sabotagem, a mesma conexao aplica as 4 de uma vez
       await c3.query(MIGRATION);
       assert.equal(await aplicado(c3), true);
