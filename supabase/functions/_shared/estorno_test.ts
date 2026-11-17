@@ -1045,6 +1045,54 @@ Deno.test("E20 - executar NUNCA chama o fetch quando a guarda recusa", async () 
   assertEquals(consultas, 0);
 });
 
+Deno.test("E20a - pagamento sem id do gateway (vazio) recusa sem chamar o MP", async () => {
+  const duble = fetchDuble([]);
+  let consultas = 0;
+  const resultado = await executarEstorno({
+    linha: linhaCom(),
+    pedido: pedidoPagoCom({ gateway_payment_id: "" }),
+    token: TOKEN,
+    buscar: duble.f,
+    consultarTransacaoDaOrder: (orderId) => {
+      consultas++;
+      return consultaTransacaoFalsa(orderId);
+    },
+  });
+  assertEquals(resultado, {
+    tipo: "recusado",
+    motivo: "pedido sem identificação do pagamento no Mercado Pago",
+  });
+  assertEquals(duble.chamadas.length, 0);
+  assertEquals(consultas, 0);
+});
+
+Deno.test("E20b - pedido gratuito por cupom sem id do gateway (null) recusa sem chamar o MP", async () => {
+  const duble = fetchDuble([]);
+  let consultas = 0;
+  // Simula o campo nulo vindo do banco, apesar do tipo estático exigir string.
+  const pedido = {
+    ...pedidoPagoCom({ total: 0 }),
+    gateway_payment_id: null,
+  } as unknown as PedidoParaEstorno;
+  const resultado = await executarEstorno({
+    // Saldo compatível: sem a guarda do id, a guarda de saldo não mascara a lacuna.
+    linha: linhaCom({ amount: 0 }),
+    pedido,
+    token: TOKEN,
+    buscar: duble.f,
+    consultarTransacaoDaOrder: (orderId) => {
+      consultas++;
+      return consultaTransacaoFalsa(orderId);
+    },
+  });
+  assertEquals(resultado, {
+    tipo: "recusado",
+    motivo: "pedido sem identificação do pagamento no Mercado Pago",
+  });
+  assertEquals(duble.chamadas.length, 0);
+  assertEquals(consultas, 0);
+});
+
 // ---------------------------------------------------------------------------
 // E21–E25 — correções do laudo Opus do PR #438 (07/09)
 // ---------------------------------------------------------------------------
