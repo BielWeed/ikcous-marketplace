@@ -103,6 +103,20 @@ describe("prévia do frete: desconto no frete de fora respeita o pedido mínimo"
     },
   );
 
+  it("frete grátis inclui o mínimo exato, mas não um centavo abaixo", async () => {
+    montar({
+      ...configComDesconto(150),
+      nationalShippingStrategy: "acima_de_valor",
+    } as StoreConfig);
+    await escolherPedido(150);
+    expect(linhaDeFora()).toContain("Grátis");
+    montar({
+      ...configComDesconto(150.01),
+      nationalShippingStrategy: "acima_de_valor",
+    } as StoreConfig);
+    expect(linhaDeFora()).not.toContain("Grátis");
+  });
+
   it("controle: grátis acima de valor segue respeitando o mínimo (sem regressão)", async () => {
     montar({
       ...configComDesconto(200),

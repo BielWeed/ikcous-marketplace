@@ -256,6 +256,30 @@ describe("Conta: rede lenta e envio pelo formulário", () => {
     expect(cpfNoBanco).toBe(cpfNovo);
     expect(campo("cpf").value.replace(/\D/g, "")).toBe(cpfNovo);
   });
+  it("botão Salvar fica desabilitado durante o envio e habilita após a resposta", async () => {
+    let concluir!: (resposta: { error: null }) => void;
+    const escrita = new Promise<{ error: null }>((resolve) => {
+      concluir = resolve;
+    });
+    await montar();
+    digitar("full_name", "Nome Alterado");
+    const normal = rpc.getMockImplementation()!;
+    rpc.mockImplementation((nome: string) =>
+      nome === "update_my_profile_secure" ? escrita : normal(nome),
+    );
+    const salvar = host.querySelector<HTMLButtonElement>(
+      'button[form="form-perfil"]',
+    )!;
+    expect(salvar.disabled).toBe(false);
+    await act(async () => salvar.click());
+    expect(rpc).toHaveBeenCalledWith("update_my_profile_secure", {
+      p_full_name: "Nome Alterado",
+      p_whatsapp: null,
+    });
+    expect(salvar.disabled).toBe(true);
+    await act(async () => concluir({ error: null }));
+    expect(salvar.disabled).toBe(false);
+  });
   it("dois envios no mesmo instante fazem uma única gravação do perfil", async () => {
     await montar();
     digitar("full_name", "Nome Alterado");
