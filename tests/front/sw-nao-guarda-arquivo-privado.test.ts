@@ -374,6 +374,7 @@ describe("src/sw/sw.ts — a gaveta de imagens só guarda arquivo público (R12)
 
       um("activate")({ waitUntil });
 
+      expect(waitUntil.mock.calls).toHaveLength(1);
       await expect(
         Promise.all(waitUntil.mock.calls.map((c) => c[0])),
       ).resolves.toBeDefined();
