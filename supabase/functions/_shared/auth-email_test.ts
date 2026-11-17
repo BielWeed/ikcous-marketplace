@@ -160,6 +160,35 @@ Deno.test("Auth HTML: nome, código e link escapados; assunto sem quebra de cabe
 });
 
 for (
+  const [nome, endereco] of [
+    ["espaço no local", "cli ente@example.com"],
+    ["espaço no domínio", "cliente@exam ple.com"],
+    ["espaço antes", " cliente@example.com"],
+    ["espaço depois", "cliente@example.com "],
+    ["quebra de linha no meio", "cliente\n@example.com"],
+    ["cabeçalho injetado após CRLF", "cliente@example.com\r\nBcc: x@y.com"],
+    ["tabulação no meio", "cliente\t@example.com"],
+  ] as const
+) {
+  Deno.test(`Auth recusa destinatário com ${nome}`, () => {
+    const corpo = payload();
+    corpo.user.email = endereco;
+    assertThrows(
+      () => montarEmailsAuth(corpo, PROJETO, "Loja"),
+      Error,
+      "payload_invalido",
+    );
+  });
+}
+
+Deno.test("Auth aceita destinatário válido sem espaços", () => {
+  const corpo = payload();
+  corpo.user.email = "cliente@example.com";
+  const [email] = montarEmailsAuth(corpo, PROJETO, "Loja");
+  assertEquals(email?.para, "cliente@example.com");
+});
+
+for (
   const [nome, alterar] of [
     [
       "tipo desconhecido",
