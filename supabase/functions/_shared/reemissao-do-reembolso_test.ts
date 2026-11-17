@@ -196,3 +196,9 @@ Deno.test("resposta do banco sem 'resultado' legível: 500 (não inventa sucesso
   const r = reemitir({ ...completo, rpc: { data: { coisa: 1 } } }, mp(200, orderSemReembolso).f);
   assertEquals((await r.resposta).http, 500);
 });
+
+Deno.test("resposta do banco VAZIA (data null, sem erro): 500 com a mensagem de resposta inesperada, não lança nem inventa sucesso", async () => {
+  const r = reemitir({ ...completo, rpc: { data: null } }, mp(200, orderSemReembolso).f);
+  assertEquals(await r.resposta, { http: 500, corpo: { erro: "Resposta inesperada ao reemitir o reembolso." } });
+  assertEquals(r.rpcs.length, 1, "o banco foi chamado uma vez; a resposta dele é que veio ilegível");
+});

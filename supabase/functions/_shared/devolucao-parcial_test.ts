@@ -227,6 +227,22 @@ Deno.test("formato: duas devoluções parciais (20 + 30) somam 50 e ambas voltam
   assertEquals(decisao.devolucoes, [{ id: "REF01", valor: 20 }, { id: "REF02", valor: 30 }]);
 });
 
+Deno.test("centavos: duas devoluções de 0,29 com agregado 0,58 PROVAM (a conversão para centavos arredonda, não trunca)", () => {
+  // 0,29 * 100 = 28.999999999999996 e 0,58 * 100 = 57.99999999999999: truncar
+  // soma 28 + 28 = 56 da lista contra 57 do agregado e recusava, como "parte
+  // do dinheiro sem registro", uma venda que o app tem de confirmar.
+  const order = orderParcial();
+  order.transactions.refunds = [
+    { id: "REF01", amount: "0.29", status: "processed" },
+    { id: "REF02", amount: "0.29", status: "processed" },
+  ];
+  order.transactions.payments[0].refunded_amount = "0.58";
+  const decisao = devolucaoParcialProvaPagamento({ order, pedido: pedido() });
+  assertEquals(decisao.provado, true);
+  assertEquals(decisao.devolvido, 0.58);
+  assertEquals(decisao.devolucoes, [{ id: "REF01", valor: 0.29 }, { id: "REF02", valor: 0.29 }]);
+});
+
 Deno.test("formato: devolução em andamento (`processing`) NÃO é dinheiro devolvido -> recusa", () => {
   const order = orderParcial();
   order.transactions.refunds = [{ id: "REF01", amount: "20.00", status: "processing" }];

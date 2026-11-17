@@ -250,6 +250,18 @@ Deno.test("E2 - guarda do saldo: amount acima do disponivel recusa, igual ao sal
   );
 });
 
+Deno.test("E2b - guarda do saldo em centavos: 1 centavo acima do saldo (49,72 de 50,00 com 0,29 ja devolvido) recusa; o saldo exato (49,71) aceita", () => {
+  // 49,72 * 100 = 4972.000000000001 e 0,29 * 100 = 28.999999999999996: so o
+  // arredondamento (Math.round) fecha a conta em centavos inteiros; truncar
+  // (Math.floor) trata 0,29 como 28 centavos, "acha" 1 centavo de saldo que
+  // nao existe e deixa a guarda aceitar um estorno maior que o disponivel.
+  const pedido = pedidoPagoCom({ total: 50, valor_estornado: 0.29 });
+  const acima = guardaAntesDeChamar(linhaCom({ amount: 49.72 }), pedido, AGORA) as { ok: false; motivo: string };
+  assertEquals(acima.ok, false);
+  assertStringIncludes(acima.motivo, "dispon");
+  assertEquals(guardaAntesDeChamar(linhaCom({ amount: 49.71 }), pedido, AGORA).ok, true);
+});
+
 Deno.test("E3 - montar: id numerico vai para a Payments classica, com chave de idempotencia da linha e header de contingencia PIX", () => {
   const linha = linhaCom();
   const pedido = pedidoPagoCom({ gateway_payment_id: "123456789" });

@@ -318,3 +318,16 @@ Deno.test("aplicarEstrategiaNacional: subtotalCotacao vai em TODA opção (benef
     assertEquals(semBeneficio[0].subtotalCotacao, 150)
     assertEquals(semBeneficio[0].price, 20)
 })
+
+// O preço do frete vira centavos inteiros e volta (`centavosDoPreco`). Em ponto
+// flutuante 4,35 * 100 = 434.99999999999994: só o arredondamento (Math.round)
+// devolve 435, e truncar faria o cliente ver R$ 4,34 de frete onde a
+// transportadora cobrou R$ 4,35 — com a estratégia DESLIGADA, ou seja, sem
+// nenhum desconto que justificasse mexer no preço.
+for (const preco of [4.35, 1.15, 0.29, 0.57]) {
+    Deno.test(`aplicarEstrategiaNacional: desligado mantém o frete cheio de R$ ${preco} sem perder centavo`, () => {
+        const [resultado] = aplicarEstrategiaNacional([opcao("a", preco)], estrategia({}), 100)
+        assertEquals(resultado.price, preco)
+        assertEquals(resultado.precoCheio, preco)
+    })
+}
