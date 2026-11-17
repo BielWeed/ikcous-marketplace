@@ -157,6 +157,27 @@ describe("useOrders — a fila offline sincroniza uma vez", () => {
     });
   }
 
+  it.each([
+    [1, "Sincronizando 1 atualização de status de pedido offline..."],
+    [2, "Sincronizando 2 atualizações de status de pedidos offline..."],
+  ])(
+    "aviso de sincronização concorda com %i alteração(ões)",
+    async (quantidade, mensagem) => {
+      localStorage.setItem(
+        chave,
+        JSON.stringify(
+          Array.from({ length: quantidade }, (_, indice) => ({
+            ...item,
+            orderId: `pedido-offline-${indice}`,
+          })),
+        ),
+      );
+      await montar();
+      await reconectar();
+      expect(toast.loading).toHaveBeenCalledWith(mensagem);
+    },
+  );
+
   it.each([2, 6])(
     "%i instâncias compartilham a RPC pendente por item",
     async (instancias) => {

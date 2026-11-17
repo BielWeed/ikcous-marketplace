@@ -573,7 +573,9 @@ async function processarFilaOfflineDePedidos(
     let conflitosDeStatus = 0;
     let interrompida = false;
     toastId = toast.loading(
-      `Sincronizando ${queue.length} atualizações de status de pedidos offline...`,
+      queue.length === 1
+        ? "Sincronizando 1 atualização de status de pedido offline..."
+        : `Sincronizando ${queue.length} atualizações de status de pedidos offline...`,
     );
 
     for (const [indice, item] of queue.entries()) {
