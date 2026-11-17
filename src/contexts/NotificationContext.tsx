@@ -512,12 +512,18 @@ export function NotificationProvider({
       // "Marcar todas como lidas" vira uma rajada de eventos (um por aviso):
       // junta a rajada numa só releitura, e num só aviso às outras abas.
       let esperaDaRajada: ReturnType<typeof setTimeout> | null = null;
+      // O aviso às outras abas acumula dentro da janela: um pedido `false`
+      // que chegue depois de um `true` não o apaga.
+      let avisarNaRajada = false;
       const releituraAposRajada = (avisarAsOutrasAbas: boolean) => {
+        avisarNaRajada = avisarNaRajada || avisarAsOutrasAbas;
         if (esperaDaRajada) clearTimeout(esperaDaRajada);
         esperaDaRajada = setTimeout(() => {
           esperaDaRajada = null;
+          const avisar = avisarNaRajada;
+          avisarNaRajada = false;
           fetchNotifications(true);
-          if (avisarAsOutrasAbas) {
+          if (avisar) {
             bc?.postMessage({ type: "notification_update" });
           }
         }, 500);

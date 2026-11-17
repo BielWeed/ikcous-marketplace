@@ -21,6 +21,7 @@ const h = await vi.hoisted(async () => {
     consultas: 0,
     dados: [] as Record<string, unknown>[],
     statusDoCanal: null as ((status: string) => void) | null,
+    aoHaverEvento: null as (() => void) | null,
     pings: 0,
     // Os "canais entre abas" vivos (uma instância por janela).
     abertos: new Set<{
@@ -61,7 +62,10 @@ vi.mock("@/lib/supabase", () => ({
     },
     channel: () => {
       const canal: Record<string, unknown> = {};
-      canal.on = () => canal;
+      canal.on = (_tipo: string, _filtro: unknown, aoEvento: () => void) => {
+        h.aoHaverEvento = aoEvento;
+        return canal;
+      };
       canal.subscribe = (aoMudarStatus?: (status: string) => void) => {
         h.statusDoCanal = aoMudarStatus ?? null;
         return canal;
@@ -177,6 +181,7 @@ describe("notificações — só o socket da líder cai: a secundária também r
     h.pings = 0;
     h.dados = [aviso("aviso-1")];
     h.statusDoCanal = null;
+    h.aoHaverEvento = null;
     h.abertos.clear();
     tela.lider = [];
     tela.secundaria = [];
@@ -243,5 +248,43 @@ describe("notificações — só o socket da líder cai: a secundária também r
 
     expect(h.consultas).toBe(4);
     expect(h.pings).toBe(1);
+  });
+
+  // Dentro da junção de 500 ms, dois pedidos de releitura viram um só; o aviso
+  // às outras abas é pedido por quem for `true` e não pode ser apagado por um
+  // pedido `false` que chegue depois (online / voltar ao app).
+  describe("junção de 500 ms: o aviso às outras abas não se perde", () => {
+    const pedidoComAviso = () => h.aoHaverEvento!(); // evento do banco: true
+    const pedidoSemAviso = () => window.dispatchEvent(new Event("online")); // false
+
+    it("com aviso e depois sem aviso: o aviso sai", async () => {
+      pedidoComAviso();
+      pedidoSemAviso();
+      await passarOTempo();
+      expect(h.pings).toBe(1);
+    });
+
+    it("sem aviso e depois com aviso: o aviso sai", async () => {
+      pedidoSemAviso();
+      pedidoComAviso();
+      await passarOTempo();
+      expect(h.pings).toBe(1);
+    });
+
+    it("só sem aviso: não avisa ninguém", async () => {
+      pedidoSemAviso();
+      await passarOTempo();
+      expect(h.pings).toBe(0);
+    });
+
+    it("o aviso pedido numa junção não vaza para a seguinte", async () => {
+      pedidoComAviso();
+      await passarOTempo();
+      expect(h.pings).toBe(1);
+
+      pedidoSemAviso();
+      await passarOTempo();
+      expect(h.pings).toBe(1);
+    });
   });
 });
