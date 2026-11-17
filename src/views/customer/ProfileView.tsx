@@ -95,6 +95,7 @@ import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { podeRetomarPagamento } from "@/lib/pode-retomar-pagamento";
 import { primeiraLetra } from "@/lib/primeira-letra";
+import { limparTelefoneBrasileiro } from "@/lib/telefone-br";
 import { comPrazo } from "@/utils/com-prazo";
 import { haptic } from "@/utils/haptic";
 import { formatarWhatsAppParaExibicao } from "@/utils/telefone";
@@ -449,7 +450,7 @@ export function ProfileView({
 
   const handleWhatsAppSupport = (orderId: string) => {
     const message = `Olá! Tenho uma dúvida sobre meu pedido #${numeroDoPedido(orderId)}.`;
-    let phone = (config.whatsappNumber || "").replace(/\D/g, "");
+    let phone = limparTelefoneBrasileiro(config.whatsappNumber);
     if (phone.length === 11 || phone.length === 10) {
       phone = `55${phone}`;
     }

@@ -45,9 +45,11 @@ vi.mock("@/hooks/useFavorites", () => ({
   useFavorites: () => ({ isFavorite: () => false, toggleFavorite: vi.fn() }),
 }));
 vi.mock("@/components/ui/custom/ProductQA", () => ({ ProductQA: () => null }));
+const contato = vi.hoisted(() => ({ numero: "34999999999" }));
+
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
-    config: { enableReviews: false, whatsappNumber: "34999999999" },
+    config: { enableReviews: false, whatsappNumber: contato.numero },
     isLoaded: true,
   }),
 }));
@@ -105,6 +107,7 @@ describe("ProductView — 'Dúvidas no WhatsApp': variação, preço e endereço
   let abrir: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
+    contato.numero = "34999999999";
     abrir = vi.fn();
     vi.stubGlobal("open", abrir);
     vi.stubGlobal("IntersectionObserver", ObserverStub);
@@ -177,6 +180,18 @@ describe("ProductView — 'Dúvidas no WhatsApp': variação, preço e endereço
   function textoDaMensagem(url: string): string {
     return decodeURIComponent(url.split("?text=")[1] ?? "");
   }
+
+  it.each(["034 99999-1234", "0055 34 99999-1234", "5534999991234"])(
+    "normaliza o contato legado %s sem trocar o destinatário",
+    async (numero) => {
+      contato.numero = numero;
+      await renderizar(criarProduto());
+      await tocarWhatsapp();
+      expect(abrir.mock.calls[0][0]).toMatch(
+        /^https:\/\/wa.me\/5534999991234\?text=/,
+      );
+    },
+  );
 
   it("variação por escolher: avisa qual grupo falta e NÃO abre o WhatsApp", async () => {
     await renderizar(criarProduto({ variants: variantes }));

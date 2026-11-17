@@ -173,6 +173,7 @@ import { sessaoAindaEhDoDono } from "@/lib/sessao-ainda-e-do-dono";
 import { supabase } from "@/lib/supabase";
 import {
   celularBrasileiroCompleto,
+  limparTelefoneBrasileiro,
   mascaraWhatsappBr,
   mensagemDeWhatsappIncompleto,
 } from "@/lib/telefone-br";
@@ -5408,10 +5409,7 @@ export function CheckoutViewDaConta({
   // para número de 10 ou 11 dígitos), não um novo. Ainda NÃO oferece "Ver
   // meus pedidos": aquela tela ainda deixa cancelar um pedido com cartão
   // incerto até a correção do lado dela (outra frente, `OrderDetailsView`).
-  const numeroLimpoDoCheckout = (config.whatsappNumber || "").replace(
-    /\D/g,
-    "",
-  );
+  const numeroLimpoDoCheckout = limparTelefoneBrasileiro(config.whatsappNumber);
   const lojaTemWhatsappNoCheckout = lojaTemWhatsapp(config.whatsappNumber);
   // Quem compra SEM CONTA e não recebeu resposta do servidor: o mesmo canal
   // da tela de sucesso, mas SEM prometer um número de pedido que ela nunca
@@ -8543,7 +8541,7 @@ function AcompanharPedidoSemConta({
 
   const handleFalarComALoja = () => {
     if (!lojaTemWhatsappAgora) return;
-    let numeroLimpo = (config.whatsappNumber || "").replace(/\D/g, "");
+    let numeroLimpo = limparTelefoneBrasileiro(config.whatsappNumber);
     if (numeroLimpo.length === 11 || numeroLimpo.length === 10) {
       numeroLimpo = `55${numeroLimpo}`;
     }
@@ -8831,7 +8829,7 @@ function PagamentoForaDoPrazoView({
   // ProfileView (wa.me com DDI 55 prefixado para número de 10 ou 11
   // dígitos) — não um novo. `numeroLimpo` vazio (config.whatsappNumber não
   // configurado) desliga o botão em vez de abrir um link quebrado.
-  const numeroLimpo = (config.whatsappNumber || "").replace(/\D/g, "");
+  const numeroLimpo = limparTelefoneBrasileiro(config.whatsappNumber);
   // Laudo 31/08 (C1, ressalva 1 da revisão do PR #367): a régua deste ponto
   // era mais fraca (`!numeroLimpo` aceitava até 1 dígito) e abria
   // `wa.me/` quebrado. Mesma régua única dos outros 4 pontos.

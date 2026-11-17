@@ -59,6 +59,7 @@ import {
   ROTULO_RETIRADA_PRONTA,
 } from "@/lib/rotulos-das-etapas";
 import { supabase } from "@/lib/supabase";
+import { limparTelefoneBrasileiro } from "@/lib/telefone-br";
 import { motivoDaDevolucaoIndisponivel } from "@/lib/texto-devolucao-indisponivel";
 import {
   type LinhaDevolucaoDoCliente,
@@ -1065,7 +1066,7 @@ export function OrderDetailsView({
 
   const handleWhatsAppSupport = () => {
     const message = `Olá! Tenho uma dúvida sobre meu pedido #${numeroDoPedido(orderId)}.`;
-    let phone = (config.whatsappNumber || "").replace(/\D/g, "");
+    let phone = limparTelefoneBrasileiro(config.whatsappNumber);
     if (phone.length === 11 || phone.length === 10) {
       phone = `55${phone}`;
     }

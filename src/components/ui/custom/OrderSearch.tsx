@@ -2,7 +2,7 @@ import { BotaoWhatsapp } from "@/components/ui/custom/BotaoWhatsapp";
 import { useOrders } from "@/hooks/useOrders";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { gravarRetratoDoConvidado } from "@/lib/retrato-do-convidado";
-import { mascaraWhatsappBr } from "@/lib/telefone-br";
+import { limparTelefoneBrasileiro, mascaraWhatsappBr } from "@/lib/telefone-br";
 import { cn } from "@/lib/utils";
 import type { Order, View } from "@/types";
 import { haptic } from "@/utils/haptic";
@@ -150,7 +150,7 @@ export function OrderSearch({
   // mecanismo de CheckoutView/SuccessView (wa.me com DDI 55, sem opener).
   const handleFalarComALoja = () => {
     if (!lojaAtendePorWhatsapp) return;
-    let numero = (whatsappDaLoja || "").replaceAll(/\D/g, "");
+    let numero = limparTelefoneBrasileiro(whatsappDaLoja);
     if (numero.length === 10 || numero.length === 11) numero = `55${numero}`;
     const mensagem =
       "Olá! Fiz um pedido sem criar conta e quero acompanhar. O identificador do pedido é: ";

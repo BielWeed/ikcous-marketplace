@@ -32,6 +32,7 @@ import {
 import { precoVendido } from "@/lib/preco-vendido";
 import { buscarRevisaoConfigFrete } from "@/lib/revisao-do-frete";
 import { supabase } from "@/lib/supabase";
+import { limparTelefoneBrasileiro } from "@/lib/telefone-br";
 import { formatCurrency } from "@/lib/utils";
 import type { CartItem, ShippingOption } from "@/types";
 import { haptic } from "@/utils/haptic";
@@ -956,7 +957,7 @@ export function ShippingCalculator({
   // para número de 10/11 dígitos, mesmo mecanismo do checkout).
   const combinarEntregaPeloWhatsapp = () => {
     const cep = soDigitosDoCep(cepDestino);
-    let fone = (config.whatsappNumber || "").replace(/\D/g, "");
+    let fone = limparTelefoneBrasileiro(config.whatsappNumber);
     if (fone.length === 10 || fone.length === 11) fone = `55${fone}`;
     const mensagem = `Olá! Quero combinar a entrega para o CEP ${cep.slice(0, 5)}-${cep.slice(5)}.`;
     abrirWhatsapp(`https://wa.me/${fone}?text=${encodeURIComponent(mensagem)}`);
