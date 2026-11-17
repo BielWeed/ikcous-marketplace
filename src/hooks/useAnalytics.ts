@@ -187,6 +187,9 @@ function broadcastCategory(data: any) {
 }
 
 export function clearAnalyticsCache() {
+  // Consultas anteriores à limpeza não podem repor o retrato invalidado.
+  ultimaChamadaExecutiva++;
+  ultimaChamadaDeCategorias++;
   invalidarVisaoDoCrm();
   cachedStats = null;
   cachedCategoryData = null;
