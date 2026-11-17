@@ -157,19 +157,74 @@ describe("AdminCouponFormView: recusa do Salvar marca o campo e leva o foco", ()
     expect(campo("coupon-code").getAttribute("aria-invalid")).toBeNull();
   });
 
-  it("porcentagem acima de 100: foco e marca no valor", async () => {
-    await abrirTela();
-    await digitar("coupon-code", "PROMO10");
-    await digitar("coupon-value", "150");
-    await clicar("Salvar Cupom");
+  it.each(["novo", "edição"])(
+    "porcentagem acima de 100: foco, marca e não salva (%s)",
+    async (modo) => {
+      if (modo === "edição") {
+        estadoCoupons.coupons = [
+          {
+            id: "c1",
+            code: "PROMO10",
+            type: "percentage",
+            value: 10,
+            usageCount: 0,
+            active: true,
+            alcance: "geral",
+          },
+        ];
+      }
+      await abrirTela(modo === "edição" ? "c1" : undefined);
+      await digitar("coupon-code", "PROMO10");
+      await digitar("coupon-value", "150");
+      await clicar("Salvar Cupom");
 
-    const valor = campo("coupon-value");
-    expect(erroDoCampo(valor)).toBe(
-      "O valor do desconto em porcentagem não pode ser maior que 100%.",
-    );
-    expect(valor.getAttribute("aria-invalid")).toBe("true");
-    expect(document.activeElement).toBe(valor);
-  });
+      const valor = campo("coupon-value");
+      expect(erroDoCampo(valor)).toBe(
+        "O valor do desconto em porcentagem não pode ser maior que 100%.",
+      );
+      expect(valor.getAttribute("aria-invalid")).toBe("true");
+      expect(document.activeElement).toBe(valor);
+      expect(addCoupon).not.toHaveBeenCalled();
+      expect(updateCoupon).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["novo", "edição"])(
+    "porcentagem de 100 exatos salva (%s)",
+    async (modo) => {
+      if (modo === "edição") {
+        estadoCoupons.coupons = [
+          {
+            id: "c1",
+            code: "PROMO10",
+            type: "percentage",
+            value: 10,
+            usageCount: 0,
+            active: true,
+            alcance: "geral",
+          },
+        ];
+      }
+      await abrirTela(modo === "edição" ? "c1" : undefined);
+      await digitar("coupon-code", "PROMO10");
+      await digitar("coupon-value", "100");
+      await clicar("Salvar Cupom");
+
+      expect(toastError).not.toHaveBeenCalled();
+      if (modo === "edição") {
+        expect(updateCoupon).toHaveBeenCalledExactlyOnceWith(
+          "c1",
+          expect.objectContaining({ value: 100 }),
+        );
+        expect(addCoupon).not.toHaveBeenCalled();
+      } else {
+        expect(addCoupon).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({ value: 100 }),
+        );
+        expect(updateCoupon).not.toHaveBeenCalled();
+      }
+    },
+  );
 
   it("desconto fixo com 3 casas: foco e marca no valor", async () => {
     await abrirTela();
