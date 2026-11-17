@@ -45,19 +45,32 @@ const updateConfig = vi.fn();
 
 const { mockConfig } = vi.hoisted(() => ({
   mockConfig: {
-    storeCity: "Monte Carmelo",
-    storeState: "MG",
-    businessHours: "Seg-Sáb: 9h às 18h",
+    listeners: new Set<() => void>(),
+    current: {
+      storeCity: "Monte Carmelo",
+      storeState: "MG",
+      businessHours: "Seg-Sáb: 9h às 18h",
+    },
   },
 }));
 
-vi.mock("@/contexts/StoreContext", () => ({
-  useStore: () => ({
-    config: mockConfig,
-    isLoaded: true,
-    updateConfig,
-  }),
-}));
+vi.mock("@/contexts/StoreContext", async () => {
+  const { useSyncExternalStore } = await import("react");
+  return {
+    useStore: () => {
+      const config = useSyncExternalStore(
+        (callback) => {
+          mockConfig.listeners.add(callback);
+          return () => {
+            mockConfig.listeners.delete(callback);
+          };
+        },
+        () => mockConfig.current,
+      );
+      return { config, isLoaded: true, updateConfig };
+    },
+  };
+});
 
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 vi.mock("@/lib/supabase", () => ({ supabase: {} }));
@@ -81,6 +94,11 @@ describe("Sobre a Loja — Horário de atendimento", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockConfig.current = {
+      storeCity: "Monte Carmelo",
+      storeState: "MG",
+      businessHours: "Seg-Sáb: 9h às 18h",
+    };
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -153,6 +171,86 @@ describe("Sobre a Loja — Horário de atendimento", () => {
       { isCurrent: expect.any(Function), silent: true },
     );
     expect(toastSuccess).toHaveBeenCalled();
+  });
+
+  it("preserva e salva o horário digitado quando chega uma configuração externa", async () => {
+    updateConfig.mockResolvedValue(true);
+    await abrirTela();
+
+    await act(async () =>
+      digitar(pegarCampo("store-business-hours"), "Ter-Sáb: 8h às 17h"),
+    );
+    await act(async () => {
+      mockConfig.current = {
+        ...mockConfig.current,
+        businessHours: "Seg-Sex: 10h às 16h",
+      };
+      for (const callback of mockConfig.listeners) callback();
+    });
+
+    expect(pegarCampo("store-business-hours").value).toBe("Ter-Sáb: 8h às 17h");
+    expect(updateConfig).not.toHaveBeenCalled();
+    await act(async () => {
+      pegarBotaoSalvar().click();
+    });
+
+    expect(updateConfig).toHaveBeenCalledWith(
+      { businessHours: "Ter-Sáb: 8h às 17h" },
+      { isCurrent: expect.any(Function), silent: true },
+    );
+  });
+
+  it("atualiza o horário sem rascunho quando chega uma configuração externa", async () => {
+    await abrirTela();
+    await act(async () => {
+      mockConfig.current = {
+        ...mockConfig.current,
+        businessHours: "Seg-Sex: 10h às 16h",
+      };
+      for (const callback of mockConfig.listeners) callback();
+    });
+
+    expect(pegarCampo("store-business-hours").value).toBe(
+      "Seg-Sex: 10h às 16h",
+    );
+    expect(updateConfig).not.toHaveBeenCalled();
+  });
+
+  it("preserva o horário enquanto salva mesmo chegando uma configuração externa", async () => {
+    let concluir!: (salvo: boolean) => void;
+    updateConfig.mockReturnValue(
+      new Promise<boolean>((resolve) => {
+        concluir = resolve;
+      }),
+    );
+    await abrirTela();
+    await act(async () =>
+      digitar(pegarCampo("store-business-hours"), "Ter-Sáb: 8h às 17h"),
+    );
+    await act(async () => {
+      pegarBotaoSalvar().click();
+    });
+    expect(pegarCampo("store-business-hours").disabled).toBe(true);
+
+    await act(async () => {
+      mockConfig.current = {
+        ...mockConfig.current,
+        businessHours: "Seg-Sex: 10h às 16h",
+      };
+      for (const callback of mockConfig.listeners) callback();
+    });
+
+    expect(pegarCampo("store-business-hours").value).toBe("Ter-Sáb: 8h às 17h");
+    expect(pegarCampo("store-business-hours").disabled).toBe(true);
+    expect(updateConfig).toHaveBeenCalledTimes(1);
+    expect(updateConfig).toHaveBeenCalledWith(
+      { businessHours: "Ter-Sáb: 8h às 17h" },
+      { isCurrent: expect.any(Function), silent: true },
+    );
+
+    await act(async () => concluir(true));
+    expect(pegarCampo("store-business-hours").value).toBe("Ter-Sáb: 8h às 17h");
+    expect(pegarCampo("store-business-hours").disabled).toBe(false);
   });
 
   it("campo apagado grava NULL (a loja não disse — a vitrine omite)", async () => {
