@@ -2,7 +2,7 @@ import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
 import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import { Label } from "@/components/ui/label";
 
-import { dddBrasileiroValido } from "./contato";
+import { validarWhatsappDaLoja } from "./contato";
 
 // Bloco "WhatsApp da loja" de Minha loja › Contato (painel simples, D9):
 // extraído do bloco 1 da antiga tela "Atendimento", com o mesmo
@@ -17,24 +17,6 @@ interface WhatsAppDaLojaProps {
   readonly valor: string;
   readonly onMudar: (digitos: string) => void;
   readonly desabilitado?: boolean;
-}
-
-// Fora do componente: o `LocalBufferedInput` re-valida quando a função muda.
-function validarWhatsapp(digitado: string): string | null {
-  // Campo OPCIONAL (decisão do Gabriel, 30/08): vazio é estado legítimo — o
-  // botão de WhatsApp some da loja. Erro só quando digitar errado.
-  if (!digitado) return null;
-  const digitos = digitado.replace(/\D/g, "");
-  if (digitos.length === 10 && digitos[2] === "9") {
-    return "Confira o WhatsApp: faltou um número (DDD + 9 + 8 dígitos)";
-  }
-  if (digitos.length < 10 || digitos.length > 11) {
-    return "Informe DDD + número (10 ou 11 dígitos)";
-  }
-  if (!dddBrasileiroValido(digitos.slice(0, 2))) {
-    return "Confira o DDD: esse DDD não existe.";
-  }
-  return null;
 }
 
 export function WhatsAppDaLoja({
@@ -85,7 +67,7 @@ export function WhatsAppDaLoja({
           className="h-11 rounded-xl border-admin-border bg-black/40 pl-[4.5rem] text-sm font-bold text-white transition-all placeholder:text-zinc-500 focus:bg-black/60 focus:ring-admin-gold/50"
           autoComplete="tel"
           disabled={desabilitado}
-          validate={validarWhatsapp}
+          validate={validarWhatsappDaLoja}
         />
       </div>
     </div>
