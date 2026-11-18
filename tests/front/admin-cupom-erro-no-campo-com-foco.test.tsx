@@ -157,6 +157,26 @@ describe("AdminCouponFormView: recusa do Salvar marca o campo e leva o foco", ()
     expect(campo("coupon-code").getAttribute("aria-invalid")).toBeNull();
   });
 
+  it("desconto negativo (-10): foco e marca no valor, e nada é gravado", async () => {
+    await abrirTela();
+    await digitar("coupon-code", "PROMO10");
+    await digitar("coupon-value", "-10");
+    await clicar("Salvar Cupom");
+
+    const valor = campo("coupon-value");
+    expect(valor.value).toBe("-10");
+    expect(toastError).toHaveBeenCalledWith(
+      "O valor do desconto deve ser maior que zero.",
+    );
+    expect(valor.getAttribute("aria-invalid")).toBe("true");
+    expect(erroDoCampo(valor)).toBe(
+      "O valor do desconto deve ser maior que zero.",
+    );
+    expect(document.activeElement).toBe(valor);
+    expect(campo("coupon-code").getAttribute("aria-invalid")).toBeNull();
+    expect(addCoupon).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["novo", "101"],
     ["novo", "100.5"],
