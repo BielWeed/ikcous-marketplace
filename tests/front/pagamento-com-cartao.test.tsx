@@ -926,6 +926,42 @@ describe("PagamentoOnline em modo cartão (render de verdade)", () => {
     expect(unmounts[0]).toHaveBeenCalledTimes(1);
   });
 
+  it("crédito aceita exatamente 6 parcelas com teto 6 e envia esse valor ao pagamento", async () => {
+    const { create } = instalarSdkFalso();
+    criarPagamento.mockResolvedValue({
+      paymentId: "pay-1",
+      statusPagamento: "pago",
+      expiraEm: "x",
+    });
+    const { onErro } = await renderCartao({ config: SO_CREDITO });
+    await act(async () => {
+      ultimaConfig(create).callbacks.onReady();
+    });
+    await act(async () => {
+      await ultimaConfig(create).callbacks.onSubmit(
+        dadosDoBrick({ installments: 6 }),
+        { paymentTypeId: "credit_card" },
+      );
+    });
+
+    expect(criarPagamento).toHaveBeenCalledTimes(1);
+    expect(criarPagamento).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderId: "ped-12345678",
+        metodo: "cartao",
+        paymentTypeId: "credit_card",
+        parcelas: 6,
+      }),
+    );
+    expect(onErro).not.toHaveBeenCalled();
+    expect(hospedeiro.textContent).not.toContain(
+      "Escolha o número de parcelas de novo e tente outra vez.",
+    );
+    expect(hospedeiro.textContent).toContain(
+      "Pagamento aprovado! Confirmando seu pedido…",
+    );
+  });
+
   it("em análise: avisa que o banco está analisando", async () => {
     const { create } = instalarSdkFalso();
     criarPagamento.mockResolvedValue({
