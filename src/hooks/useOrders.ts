@@ -40,6 +40,7 @@ import {
 import {
   CODIGO_PEDIDO_PASSA_DO_MAXIMO,
   FRASE_PEDIDO_PASSA_DO_MAXIMO,
+  classificarRecusaDoPedido,
 } from "@/lib/recusaDoPedido";
 import {
   criarReligadorDaFila,
@@ -1231,7 +1232,7 @@ export const mensagemAmigavelErroPedido = (error: unknown): string => {
     typeof detalhes.message === "string" ? detalhes.message : "";
 
   if (codigo === "P0001" && textoOriginal) {
-    return textoOriginal;
+    return classificarRecusaDoPedido(error).mensagem;
   }
 
   // Total acima do que o banco guarda (numeric(10,2)): o retry nunca caberia.

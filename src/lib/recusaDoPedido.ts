@@ -80,7 +80,7 @@ export type AcaoDeRecusa =
 
 export interface RecusaDoPedido {
   acao: AcaoDeRecusa;
-  /** A frase que a pessoa lê. Vem do banco quando o banco escreveu uma. */
+  /** A frase que a pessoa lê, normalmente vinda do banco. */
   mensagem: string;
   /** Nome do produto, quando a mensagem o nomeia. */
   produto?: string;
@@ -387,6 +387,13 @@ export const classificarRecusaDoPedido = (error: unknown): RecusaDoPedido => {
   const texto = typeof detalhes.message === "string" ? detalhes.message : "";
 
   if (codigo === "P0001" && texto) {
+    if (texto === "Produto não encontrado não disponível.") {
+      return {
+        acao: "remover_item",
+        mensagem:
+          "Um item ou uma opção do seu carrinho não está mais disponível. Confira seu carrinho.",
+      };
+    }
     for (const { padrao, acao } of REGRAS) {
       const casou = padrao.exec(texto);
       if (!casou) continue;
