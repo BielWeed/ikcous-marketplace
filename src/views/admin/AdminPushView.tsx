@@ -1025,7 +1025,7 @@ export const AdminPushView = memo(function AdminPushView({
       const confirmado = await confirmar({
         titulo: "Enviar para todos os clientes?",
         valor: textoDeAlcanceEmAparelhos(subCount),
-        texto: `O aviso "${notification.title.trim()}" vai agora para todos os aparelhos inscritos nos avisos, inclusive de visitantes sem conta.\n\nDepois de enviar, não dá para desfazer.`,
+        texto: `O aviso "${notification.title.trim()}" vai agora para todos os aparelhos inscritos nos avisos.\n\nDepois de enviar, não dá para desfazer.`,
         verbo: "Enviar agora",
       });
       if (!confirmado) return;

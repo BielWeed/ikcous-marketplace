@@ -51,12 +51,10 @@ describe("textos sem garantia de atualização, meio de reembolso ou entrega de 
     expect(/explicacao=\{explicacaoResolucao\(r\)\}/.test(codigo)).toBe(true);
   });
 
-  it("AdminPushView descreve todos os aparelhos inscritos, inclusive sem conta", () => {
+  it("AdminPushView descreve todos os aparelhos inscritos, sem prometer quem são", () => {
     const codigo = fonte("/src/views/admin/AdminPushView.tsx");
     expect(
-      /vai agora para todos os aparelhos inscritos nos avisos, inclusive de visitantes sem conta\./.test(
-        codigo,
-      ),
+      /vai agora para todos os aparelhos inscritos nos avisos\./.test(codigo),
     ).toBe(true);
     expect(
       codigo.includes(
