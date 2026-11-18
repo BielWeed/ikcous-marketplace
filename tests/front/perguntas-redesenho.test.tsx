@@ -441,7 +441,7 @@ describe("AdminQAView — redesenho", () => {
     await tocar(publicar as HTMLElement);
     expect(h.addAnswer).toHaveBeenCalledWith(
       { questionId: "q-1", answer: "Oi, Isadora! Que bom que gostou." },
-      { silent: true },
+      { silent: true, onError: expect.any(Function) },
     );
   });
 
@@ -496,7 +496,7 @@ describe("AdminQAView — redesenho", () => {
     await tocar(publicar);
     expect(h.addAnswer).toHaveBeenCalledWith(
       { questionId: "q-1", answer: "Obrigado" },
-      { silent: true },
+      { silent: true, onError: expect.any(Function) },
     );
   });
 

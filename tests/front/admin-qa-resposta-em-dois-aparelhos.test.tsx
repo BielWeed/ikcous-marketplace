@@ -192,7 +192,7 @@ describe("AdminQAView — resposta em dois aparelhos", () => {
     await clicar(botao(/Publicar resposta/));
     expect(h.addAnswer).toHaveBeenCalledWith(
       { questionId: "q-1", answer: "Meu texto do celular" },
-      { silent: true },
+      { silent: true, onError: expect.any(Function) },
     );
   });
 

@@ -251,7 +251,7 @@ describe("AdminQAView — protege o texto durante o envio", () => {
     expect(campo.disabled).toBe(false);
     expect(h.addAnswer).toHaveBeenCalledWith(
       { questionId: "q-1", answer: "Resposta A" },
-      { silent: true },
+      { silent: true, onError: expect.any(Function) },
     );
   });
 

@@ -102,7 +102,7 @@ describe("contraste no tema escuro sem alterar o tema claro", () => {
       fontes["/src/views/customer/CheckoutView.tsx"],
     );
     expect(fonte).toMatch(
-      /role="alert" className="text-sm font-medium text-red-700 dark:text-red-400"/,
+      /role="alert"\s+className="text-sm font-medium text-red-700 dark:text-red-400"/,
     );
   });
 });

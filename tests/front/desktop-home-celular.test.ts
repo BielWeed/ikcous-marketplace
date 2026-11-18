@@ -28,7 +28,7 @@ const BASE: Record<string, string> = {
   "components/ui/custom/OfertasLateralEsqueleto.tsx":
     "402b61e49185ba12ab5e843dad2e1583034c9911bfd552a1e75d7f17d0151907",
   "components/ui/custom/PremiumOffers.tsx":
-    "dd592c80dbc3685c9cb7cc9c83155ec059eb201ecc43e7e4aea370b353c89ffe",
+    "2690b37164e472b758fcff2bd36cefab24b48d2a5952f4f348a5fb057a053155",
   "components/ui/custom/ProductList.tsx":
     "a548e94b10a5b942d83e6ebdf5613fccbf13e956430ce2ffcffd8b8431708940",
   "views/customer/HomeView.tsx":

@@ -289,7 +289,10 @@ const CLASSES_CELULAR_DO_BLOCO_BASE = [
   "produto-foto-foco",
   "produto-foto-foco-coluna",
   "produto-foto-foco-imagem",
+  "flex size-full items-center justify-center bg-zinc-100 text-zinc-600",
+  "size-6",
   "produto-foto-selo text-[11px] font-bold",
+  "mt-2 text-xs text-zinc-400",
   "warning_aspect",
   "warning_res",
   "text-orange-300",
@@ -552,7 +555,7 @@ const CLASSES_CELULAR_DO_BLOCO_BASE = [
   "produto-prever flex min-h-11 min-w-11 items-center justify-center rounded-full border border-solid border-admin-border-strong bg-admin-surface px-4 text-sm font-bold",
 ];
 const SHA256_CLASSES_CELULAR_BASE =
-  "f22f5e1f01a9fd3fc108ae4c1165aca26cca15bec6b76ca50ee4207b7638fc58";
+  "71dbb98df9142226a03303b99cfc85ce1b5784609793c0c4617cf7f2623006b9";
 const TOKENS_LG_DA_BASE = [
   "lg:grid-cols-12",
   "lg:col-span-8",
