@@ -55,6 +55,8 @@
 -- hora) o redefine depois da 390. A mesma linha aceita tambem o corpo da 398 (LF e CRLF).
 -- JA DECIDIDO PARA `painel_inicio` (04/11/2026): a 20261399300000 (o estorno em andamento nao e conta vencida) o
 -- redefine depois da 398, so tirando o estorno de contas_vencidas. A mesma linha aceita tambem o corpo da 3993 (LF e CRLF).
+-- JA DECIDIDO PARA `painel_inicio` (17/11/2026): a 20261402000000 (o Inicio mostra o dinheiro a devolver e a margem do Financeiro) o
+-- redefine depois da 3993, so acrescentando as chaves dinheiro_a_devolver e mes.receita_liquida. A mesma linha aceita tambem o corpo dela (LF e CRLF).
 -- JA DECIDIDO PARA `get_admin_analytics_v2` (14/10/2026): a 20261234000000 (o lucro so conta produto com
 -- custo) o redefine depois deste lote. A linha `get_admin_analytics_v2: corpo e o da 20261214000000` aceita
 -- o corpo da 14 OU o da 34 OU o da 42 (a 20261242000000, o lucro usa o custo do dia da venda: o corpo da 34 com
@@ -220,11 +222,12 @@ WITH alvo(nome, assinatura) AS (
   UNION ALL
   SELECT 'painel_inicio: corpo e o da 20261212000000 (sha256)',
          '5b26c34030a7de32033b53894f8da19d850bf116b31208bb5b1195dcec0925db',
-         -- 10 hashes aceitos: o corpo da 20261212000000 (LF e CRLF) OU o da SUCESSORA dele, a
+         -- 12 hashes aceitos: o corpo da 20261212000000 (LF e CRLF) OU o da SUCESSORA dele, a
          -- 20261228000000 (o Inicio compara ate a mesma hora; LF e CRLF) OU o da sucessora desta, a
          -- 20261390000000 (o lucro do Inicio conta o mes inteiro; LF e CRLF) OU o da sucessora desta, a
          -- 20261398000000 (o Inicio compara o mes anterior ate a mesma hora; LF e CRLF) OU o da sucessora desta, a 20261399300000
-         -- (o estorno em andamento nao e conta vencida; LF e CRLF). O `vivo` mostra o esperado.
+         -- (o estorno em andamento nao e conta vencida; LF e CRLF) OU o da sucessora desta, a 20261402000000 (o Inicio mostra o dinheiro a devolver e a margem
+         -- do Financeiro; LF e CRLF). O `vivo` mostra o esperado.
          COALESCE((SELECT CASE WHEN f.h IN ('5b26c34030a7de32033b53894f8da19d850bf116b31208bb5b1195dcec0925db',
                                             '77cc91fbe8e03fbd89ee163046101804abf6dbf7fc1c2b4bc9ee5a1d97df64cf',
                                             '31ba1c96a0af9c647b722ddec813e3f0105bee88bad64fed58d2b905335d12c8',
@@ -234,7 +237,9 @@ WITH alvo(nome, assinatura) AS (
                                             'c25ad7104f7e20537a55c7ca3cea6638f433ff6cce254a834a8713b48212198f',
                                             '61dbafff4086be102bdf968f34b21f092c1f3b44341138dc1fc6d446c895da20',
                                             '60d9e2583832d870bf46499a492b5a878ae44a92dca695b671fc00e5771fac1d',
-                                            'cb689ddbbb831de580d5e7623fce078ef904076a28c64f88fc17c473c399d594')
+                                            'cb689ddbbb831de580d5e7623fce078ef904076a28c64f88fc17c473c399d594',
+                                            'dc5fde1c048194a95af381d6d86a5289b4192841eef427a83b26013823a54da6',
+                                            '10381de46edbb2d2acec3fab29aa4367b0dab94207da1357f269189e97312e49')
                                THEN '5b26c34030a7de32033b53894f8da19d850bf116b31208bb5b1195dcec0925db'
                                ELSE f.h END
                      FROM fn f WHERE f.nome = 'painel_inicio'), 'AUSENTE')

@@ -823,6 +823,10 @@ async function main() {
       await c.query("ROLLBACK TO SAVEPOINT rb2");
       // O rollback da 20261399300000 aceita o estado que o nosso deixa e leva fin_resumo ao da 20261199.
       await isolado(c, async () => {
+        // A 20261402000000 (o Inicio mostra o dinheiro a devolver) sucede o painel_inicio da 3993: sai ANTES dela (so se no ar).
+        await require("./o-inicio-dinheiro-a-devolver-posterior.cjs").desfazerInicioDinheiroADevolverNaTransacao(
+          c,
+        );
         await c.query(rollback3993);
         assert.equal(md5((await funcao(c)).prosrc), H.h199);
       });

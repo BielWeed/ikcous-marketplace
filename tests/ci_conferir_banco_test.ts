@@ -2510,6 +2510,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "8d58e15e7410afe0d254f37f38251df4",
           versao: "20261399300000",
         },
+        // 17/11/2026 (lote 142): o Inicio mostra o dinheiro a devolver e a margem do Financeiro (so acrescenta dinheiro_a_devolver e mes.receita_liquida; cadeia 99 -> 12 -> 28 -> 390 -> 398 -> 3993 -> 1402).
+        {
+          fn: "painel_inicio",
+          h: "b4c3665bd806ae8fe8960e5f6d9dde29",
+          versao: "20261402000000",
+        },
         {
           fn: "pedido__saldo_a_estornar",
           h: "99741b4cdbf1e8d8340f80440e6da094",
@@ -8182,6 +8188,25 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
       .update(corpo3993.replace(/\n/g, "\r\n"), "utf8")
       .digest("hex"),
   };
+  // A sucessora da 3993 em painel_inicio (a 20261402000000, o Início mostra o dinheiro a devolver e a margem do Financeiro): a 17a a aceita também (LF e CRLF); a 17b (o ANTES) nunca.
+  const texto1402 = (
+    await Deno.readTextFile(
+      `${MIGRATIONS_DIR}/20261402000000_o_inicio_mostra_o_dinheiro_a_devolver_e_a_margem_do_financeiro.sql`,
+    )
+  ).replace(/\r\n/g, "\n");
+  const ini1402 = texto1402.indexOf(cabecalhoDepois17("painel_inicio"));
+  assert(ini1402 >= 0, "a 20261402000000 não define painel_inicio");
+  const abre1402 = texto1402.indexOf("AS $$", ini1402) + "AS $$".length;
+  const corpo1402 = texto1402.slice(
+    abre1402,
+    texto1402.indexOf("$$;", abre1402),
+  );
+  const shaSucessora1402 = {
+    lf: criarHash("sha256").update(corpo1402, "utf8").digest("hex"),
+    crlf: criarHash("sha256")
+      .update(corpo1402.replace(/\n/g, "\r\n"), "utf8")
+      .digest("hex"),
+  };
   // O corpo da sucessora de get_admin_analytics_v2 (a 20261234, o lucro só conta produto com custo):
   // a 17a o aceita ao lado do da 14 (LF e CRLF); a 17b (o ANTES) nunca.
   const textoSucessoraAn = (await Deno.readTextFile(MIGRACAO_234)).replace(
@@ -8423,7 +8448,7 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
     [NOME_17B, sql17b, "antes", "depois", "do ANTES"],
   ] as Array<[string, string, "antes" | "depois", "antes" | "depois", string]>)
     await t.step(
-      `${nome}: só os 6 sha256 ${rotulo} (LF e CRLF)${lado === "depois" ? " mais os 8 da sucessora de painel_inicio (a 20261228, a 20261390, a 20261398 e a 20261399300000) e os 6 da de get_admin_analytics_v2 (a 20261234, a 20261242 e a 20261245) e os 8 da de get_admin_products_paged (a 20261381, a 20261385, a 20261399200000 e a 20261399980000)" : ""}, distintos, cada linha [LF esperado, LF e CRLF aceitos, LF no vivo]; nenhum do outro lado`,
+      `${nome}: só os 6 sha256 ${rotulo} (LF e CRLF)${lado === "depois" ? " mais os 10 da sucessora de painel_inicio (a 20261228, a 20261390, a 20261398, a 20261399300000 e a 20261402000000) e os 6 da de get_admin_analytics_v2 (a 20261234, a 20261242 e a 20261245) e os 8 da de get_admin_products_paged (a 20261381, a 20261385, a 20261399200000 e a 20261399980000)" : ""}, distintos, cada linha [LF esperado, LF e CRLF aceitos, LF no vivo]; nenhum do outro lado`,
       () => {
         const todos = FUNCOES_17.flatMap((f) => {
           const x = doLado(h.get(f.nome)!, lado);
@@ -8440,6 +8465,8 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
                 shaSucessora398.crlf,
                 shaSucessora3993.lf,
                 shaSucessora3993.crlf,
+                shaSucessora1402.lf,
+                shaSucessora1402.crlf,
                 shaSucessoraAn.lf,
                 shaSucessoraAn.crlf,
                 shaSucessora42.lf,
@@ -8494,6 +8521,8 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
                   shaSucessora398.crlf,
                   shaSucessora3993.lf,
                   shaSucessora3993.crlf,
+                  shaSucessora1402.lf,
+                  shaSucessora1402.crlf,
                   x.lf,
                 ]
               : lado === "depois" && f.nome === "get_admin_analytics_v2"
@@ -8555,6 +8584,8 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
               shaSucessora398.crlf,
               shaSucessora3993.lf,
               shaSucessora3993.crlf,
+              shaSucessora1402.lf,
+              shaSucessora1402.crlf,
               shaSucessoraAn.lf,
               shaSucessoraAn.crlf,
               shaSucessora42.lf,

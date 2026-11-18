@@ -891,6 +891,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/a-loja-recebe-o-plano-por-porta-unica-viva.cjs",
     // Onda 1.5.207 (sem migration): o aviso de cobranca duplicada respeita o ciclo da reserva (7 provas, 2 mutantes).
     "tests/banco/aviso-de-cobranca-duplicada-ciclo-de-reserva.cjs",
+    // 20261402000000: o Inicio mostra o dinheiro a devolver e a margem do Financeiro (painel_inicio ganha dinheiro_a_devolver {valor, pedidos} e mes.receita_liquida; a conta da lista "Devolver agora" em
+    // centavos, cenarios compartilhados com o teste do front, JSON igual fora das duas chaves, 10 mutantes na rodada padrao, controle com o corpo anterior, rollback byte a byte, pre-voo, conferencia sabotada e consultas 154a/154b).
+    "tests/banco/o-inicio-dinheiro-a-devolver-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(

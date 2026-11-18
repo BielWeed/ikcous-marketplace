@@ -204,6 +204,10 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     // tests/banco/o-grafico-do-financeiro-soma-so-as-contas-ativas-viva.cjs; `noEstado` a desfaz antes (o-grafico-do-financeiro-posterior.cjs), como a 3993.
     s.nome !==
       "20261399985000_o_grafico_do_financeiro_soma_so_as_contas_ativas.sql" &&
+    // A 20261402000000 (o Inicio mostra o dinheiro a devolver e a margem do Financeiro) e a sucessora de painel_inicio da 3993 (99 -> 12 -> 28 -> 390 -> 398 -> 3993 -> 1402): tem a PROVA PROPRIA em
+    // tests/banco/o-inicio-dinheiro-a-devolver-viva.cjs; `noEstado` a desfaz antes (o-inicio-dinheiro-a-devolver-posterior.cjs), como a 3993.
+    s.nome !==
+      "20261402000000_o_inicio_mostra_o_dinheiro_a_devolver_e_a_margem_do_financeiro.sql" &&
     // A 20261399992000 (o item que a lojista marcou "Nao veio" pode ser devolvido de novo) e a SEGUNDA sucessora de devolucao_elegibilidade e de devolucao_detalhe
     // (99 -> 39992) e a de solicitar_devolucao (175 -> 39992): UMA migration, duas funcoes da 8e (a terceira, solicitar_devolucao, nao e' da 8e). A 8e ja a aceita
     // (consulta 8e, CTE sucessoras); `noEstado` a desfaz antes (o-item-que-nao-veio-posterior.cjs, o rollback dela devolve as tres de uma vez), como a 3980.
@@ -397,6 +401,10 @@ async function noEstado(montar, textos = [SQL_8E]) {
     );
     // A 20261399985000 (o grafico do Financeiro soma so as contas ativas) sucede o fin_resumo da 3993: sai PRIMEIRO (so se no ar).
     await require("./o-grafico-do-financeiro-posterior.cjs").desfazerGraficoDoFinanceiroNaTransacao(
+      C,
+    );
+    // A 20261402000000 (o Inicio mostra o dinheiro a devolver) sucede o painel_inicio da 3993: sai PRIMEIRO (so se no ar).
+    await require("./o-inicio-dinheiro-a-devolver-posterior.cjs").desfazerInicioDinheiroADevolverNaTransacao(
       C,
     );
     // A 20261399930000 (o caixa e a conta recusam valor que nao e numero) sucede a 370 em fin_caixa_abrir e a 99 em fin_conta_salvar: sai PRIMEIRO (ordem inversa da aplicacao; so se no ar).

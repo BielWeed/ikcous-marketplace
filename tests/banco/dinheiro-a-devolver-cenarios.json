@@ -1,0 +1,219 @@
+{
+  "_comentario": "Cenarios COMPARTILHADOS entre a prova de banco (tests/banco/o-inicio-dinheiro-a-devolver-viva.cjs, que semeia cada um no Postgres efemero e le painel_inicio().dinheiro_a_devolver) e o teste do front (tests/front/inicio-dinheiro-a-devolver-bate-com-devolver-agora.test.tsx, que passa cada um por baldeDeEstorno + valorDevolverAgoraDescontandoLedger + useEstornosEmCursoDosPedidos, a lista 'Devolver agora' da tela de Pedidos). 'esperado' e escrito a MAO (centavos inteiros), nunca calculado pelo SQL nem pelo front. Fixture inventada: nenhum dado de cliente.",
+  "cenarios": [
+    {
+      "id": "pago-cancelado-sem-devolucao",
+      "descricao": "pedido pago e cancelado, nada devolvido: entra com o total",
+      "pedido": { "total": 100, "payment_status": "pago" },
+      "esperado": { "pedidos": 1, "centavos": 10000 }
+    },
+    {
+      "id": "pago-apos-expirar-cancelado",
+      "descricao": "pago depois de expirar tambem e dinheiro que entrou",
+      "pedido": { "total": 80, "payment_status": "pago_apos_expirar" },
+      "esperado": { "pedidos": 1, "centavos": 8000 }
+    },
+    {
+      "id": "recebido-na-entrega-cancelado",
+      "descricao": "dinheiro recebido na entrega e depois cancelado",
+      "pedido": { "total": 60, "payment_status": "recebido_na_entrega" },
+      "esperado": { "pedidos": 1, "centavos": 6000 }
+    },
+    {
+      "id": "pedido-pago-normal",
+      "descricao": "pedido pago que NAO foi cancelado nao tem o que devolver",
+      "pedido": { "total": 100, "payment_status": "pago", "status": "processing" },
+      "esperado": { "pedidos": 0, "centavos": 0 }
+    },
+    {
+      "id": "cancelado-que-nunca-pagou",
+      "descricao": "cancelado sem pagamento: nada entrou, nada a devolver",
+      "pedido": { "total": 100, "payment_status": "aguardando" },
+      "esperado": { "pedidos": 0, "centavos": 0 }
+    },
+    {
+      "id": "cancelado-expirado-ou-recusado",
+      "descricao": "pagamento expirado: nada entrou",
+      "pedido": { "total": 100, "payment_status": "expirado" },
+      "esperado": { "pedidos": 0, "centavos": 0 }
+    },
+    {
+      "id": "cancelado-ja-estornado",
+      "descricao": "payment_status estornado: a lojista ja resolveu pelo painel do Mercado Pago",
+      "pedido": { "total": 100, "payment_status": "estornado" },
+      "esperado": { "pedidos": 0, "centavos": 0 }
+    },
+    {
+      "id": "cancelado-depois-de-enviado-sem-retorno",
+      "descricao": "saiu para a entrega e o produto nao voltou: o dinheiro espera o produto, fora de 'Devolver agora'",
+      "pedido": {
+        "total": 100,
+        "payment_status": "pago",
+        "cancelled_after_shipping": true,
+        "voltou_ao_vendedor": false
+      },
+      "esperado": { "pedidos": 0, "centavos": 0 }
+    },
+    {
+      "id": "cancelado-depois-de-enviado-produto-voltou",
+      "descricao": "enviado, mas o produto ja voltou: o dinheiro pode ser devolvido",
+      "pedido": {
+        "total": 100,
+        "payment_status": "pago",
+        "cancelled_after_shipping": true,
+        "voltou_ao_vendedor": true
+      },
+      "esperado": { "pedidos": 1, "centavos": 10000 }
+    },
+    {
+      "id": "devolucao-manual-parcial",
+      "descricao": "uma devolucao concluida com reembolso manual de 30: faltam 70",
+      "pedido": { "total": 100, "payment_status": "pago" },
+      "devolucoes": [
+        { "status": "concluida", "reembolso_manual": true, "valor_reembolso": 30 }
+      ],
+      "esperado": { "pedidos": 1, "centavos": 7000 }
+    },
+    {
+      "id": "devolucao-manual-total",
+      "descricao": "devolucao manual concluida de tudo: nada resta",
+      "pedido": { "total": 100, "payment_status": "pago" },
+      "devolucoes": [
+        { "status": "concluida", "reembolso_manual": true, "valor_reembolso": 100 }
+      ],
+      "esperado": { "pedidos": 0, "centavos": 0 }
+    },
+    {
+      "id": "devolucao-que-nao-conta",
+      "descricao": "devolucao ainda aberta e devolucao concluida SEM reembolso manual nao descontam nada",
+      "pedido": { "total": 100, "payment_status": "pago" },
+      "devolucoes": [
+        { "status": "aprovada", "reembolso_manual": true, "valor_reembolso": 50 },
+        { "status": "concluida", "reembolso_manual": false, "valor_reembolso": 40 }
+      ],
+      "esperado": { "pedidos": 1, "centavos": 10000 }
+    },
+    {
+      "id": "valor-estornado-parcial",
+      "descricao": "o Mercado Pago ja devolveu 40 (valor_estornado): faltam 60",
+      "pedido": { "total": 100, "payment_status": "pago", "valor_estornado": 40 },
+      "esperado": { "pedidos": 1, "centavos": 6000 }
+    },
+    {
+      "id": "estorno-em-andamento-total",
+      "descricao": "o app ja pediu ao Mercado Pago a devolucao inteira: FORA, a lojista nao tem gesto a fazer",
+      "pedido": { "total": 100, "payment_status": "pago" },
+      "reembolsos": [
+        { "status": "solicitado", "amount": 100, "solicitado_por": "lojista", "tentativas": 0 }
+      ],
+      "esperado": { "pedidos": 0, "centavos": 0 }
+    },
+    {
+      "id": "estorno-em-processamento-parcial",
+      "descricao": "40 em processamento: ainda faltam 60 para a lojista",
+      "pedido": { "total": 100, "payment_status": "pago" },
+      "reembolsos": [
+        { "status": "em_processamento", "amount": 40, "solicitado_por": "cliente", "tentativas": 1 }
+      ],
+      "esperado": { "pedidos": 1, "centavos": 6000 }
+    },
+    {
+      "id": "estorno-do-proprio-mercado-pago",
+      "descricao": "disputa aberta pelo Mercado Pago (solicitado_por sistema) de 100: tambem e dinheiro em curso",
+      "pedido": { "total": 100, "payment_status": "pago" },
+      "reembolsos": [
+        { "status": "solicitado", "amount": 100, "solicitado_por": "sistema", "tentativas": 0 }
+      ],
+      "esperado": { "pedidos": 0, "centavos": 0 }
+    },
+    {
+      "id": "estorno-travado-sem-confirmacao",
+      "descricao": "em_processamento com 5+ tentativas continua sendo dinheiro em curso (o aviso pede conferir no painel do MP)",
+      "pedido": { "total": 100, "payment_status": "pago" },
+      "reembolsos": [
+        { "status": "em_processamento", "amount": 100, "solicitado_por": "sistema", "tentativas": 6 }
+      ],
+      "esperado": { "pedidos": 0, "centavos": 0 }
+    },
+    {
+      "id": "estorno-concluido-e-lista-em-dia",
+      "descricao": "estorno concluido de 100 e valor_estornado 100: nada resta",
+      "pedido": { "total": 100, "payment_status": "pago", "valor_estornado": 100 },
+      "reembolsos": [
+        { "status": "concluido", "amount": 100, "solicitado_por": "lojista", "tentativas": 1 }
+      ],
+      "esperado": { "pedidos": 0, "centavos": 0 }
+    },
+    {
+      "id": "estorno-concluido-que-a-lista-ainda-nao-viu",
+      "descricao": "concluido 100 mas valor_estornado ainda 0 (retrato velho da lista): desconta 100, nada resta",
+      "pedido": { "total": 100, "payment_status": "pago", "valor_estornado": 0 },
+      "reembolsos": [
+        { "status": "concluido", "amount": 100, "solicitado_por": "lojista", "tentativas": 1 }
+      ],
+      "esperado": { "pedidos": 0, "centavos": 0 }
+    },
+    {
+      "id": "estorno-concluido-parcial-em-dia",
+      "descricao": "concluido 30 ja somado em valor_estornado 30: NAO desconta duas vezes, faltam 70",
+      "pedido": { "total": 100, "payment_status": "pago", "valor_estornado": 30 },
+      "reembolsos": [
+        { "status": "concluido", "amount": 30, "solicitado_por": "lojista", "tentativas": 1 }
+      ],
+      "esperado": { "pedidos": 1, "centavos": 7000 }
+    },
+    {
+      "id": "estorno-concluido-maior-que-o-retrato",
+      "descricao": "concluido 100, valor_estornado 40: o excesso (60) tambem sai; resta 0",
+      "pedido": { "total": 100, "payment_status": "pago", "valor_estornado": 40 },
+      "reembolsos": [
+        { "status": "concluido", "amount": 100, "solicitado_por": "lojista", "tentativas": 1 }
+      ],
+      "esperado": { "pedidos": 0, "centavos": 0 }
+    },
+    {
+      "id": "linha-morta-do-ledger",
+      "descricao": "estorno que falhou ou foi recusado nao e dinheiro em curso: o total continua a devolver",
+      "pedido": { "total": 100, "payment_status": "pago" },
+      "reembolsos": [
+        { "status": "falhou", "amount": 100, "solicitado_por": "lojista", "tentativas": 5 },
+        { "status": "recusado", "amount": 100, "solicitado_por": "sistema", "tentativas": 1 }
+      ],
+      "esperado": { "pedidos": 1, "centavos": 10000 }
+    },
+    {
+      "id": "tudo-junto",
+      "descricao": "devolucao manual 10 + valor_estornado 30 + 20 em curso: 100 - 10 - 30 - 20 = 40",
+      "pedido": { "total": 100, "payment_status": "pago", "valor_estornado": 30 },
+      "devolucoes": [
+        { "status": "concluida", "reembolso_manual": true, "valor_reembolso": 10 }
+      ],
+      "reembolsos": [
+        { "status": "concluido", "amount": 30, "solicitado_por": "lojista", "tentativas": 1 },
+        { "status": "solicitado", "amount": 20, "solicitado_por": "lojista", "tentativas": 0 }
+      ],
+      "esperado": { "pedidos": 1, "centavos": 4000 }
+    },
+    {
+      "id": "centavos-quebrados",
+      "descricao": "99,90 com 33,30 em curso e 0,10 de devolucao manual: 6650 centavos, sem erro de ponto flutuante",
+      "pedido": { "total": 99.9, "payment_status": "pago" },
+      "devolucoes": [
+        { "status": "concluida", "reembolso_manual": true, "valor_reembolso": 0.1 }
+      ],
+      "reembolsos": [
+        { "status": "solicitado", "amount": 33.3, "solicitado_por": "lojista", "tentativas": 0 }
+      ],
+      "esperado": { "pedidos": 1, "centavos": 6650 }
+    },
+    {
+      "id": "em-curso-maior-que-o-que-falta",
+      "descricao": "mais em curso do que falta (dado inconsistente): nunca negativo, fora da conta",
+      "pedido": { "total": 100, "payment_status": "pago", "valor_estornado": 60 },
+      "reembolsos": [
+        { "status": "solicitado", "amount": 70, "solicitado_por": "lojista", "tentativas": 0 }
+      ],
+      "esperado": { "pedidos": 0, "centavos": 0 }
+    }
+  ]
+}

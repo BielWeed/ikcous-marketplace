@@ -28,7 +28,8 @@
 --                                e, DEPOIS dela, 20261228000000 (o início compara até a mesma hora)
 --                                e, DEPOIS dela, 20261390000000 (o lucro do início conta o mês inteiro)
 --                                e, DEPOIS dela, 20261398000000 (o início compara o mês anterior até a mesma hora)
---                                e, DEPOIS dela, 20261399300000 (o estorno em andamento não é conta vencida);
+--                                e, DEPOIS dela, 20261399300000 (o estorno em andamento não é conta vencida)
+--                                e, DEPOIS dela, 20261402000000 (o Início mostra o dinheiro a devolver e a margem do Financeiro);
 --   * `get_admin_analytics_v2` → 20261214000000 (o lucro do estoque só conta produto com custo)
 --                                e, DEPOIS dela, 20261234000000 (o lucro só conta produto com custo)
 --                                e, DEPOIS dela, 20261242000000 (o lucro usa o custo do dia da venda)
@@ -170,6 +171,7 @@ WITH corpos AS (
     ('painel_inicio', 'b4aa318b777824bd49aab4175d9133f8', '20261390000000'),
     ('painel_inicio', '01d29aedf98b7f95851c1a1001b5c7ca', '20261398000000'),
     ('painel_inicio', '8d58e15e7410afe0d254f37f38251df4', '20261399300000'),
+    ('painel_inicio', 'b4c3665bd806ae8fe8960e5f6d9dde29', '20261402000000'),
     ('fin_resumo', 'a10e7f301eaf6b3edfac50bc87ff74bc', '20261399300000'),
     ('fin_resumo', '9e711b03cc63f610461915b850f2eb70', '20261399985000'),
     ('get_admin_customers_paged', 'd6c092c3e0d8069891af795147d65e9e', '20261230000000'),

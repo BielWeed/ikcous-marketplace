@@ -355,6 +355,8 @@ on:
           - 9a-conferir-60-a-66-aplicado
           - 151a-conferir-o-banner-tem-imagem-propria-no-computador-aplicado
           - 151b-antes-o-banner-tem-imagem-propria-no-computador-ausente
+          - 154a-conferir-o-inicio-mostra-o-dinheiro-a-devolver-aplicado
+          - 154b-antes-o-inicio-mostra-o-dinheiro-a-devolver-base-vigente
           - backups
       projeto:
         description: "Projeto de destino: loja, sandbox, ikcous-publicada (a CAF explicita) ou savy (a loja cliente explicita, mesmas travas): as duas exigem expected_sha; nunca texto livre — achado da rodada 2"

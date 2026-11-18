@@ -458,6 +458,10 @@ async function main() {
     await require("./o-grafico-do-financeiro-posterior.cjs").desfazerGraficoDoFinanceiroNaTransacao(
       c,
     );
+    // A 20261402000000 (o Inicio mostra o dinheiro a devolver) sucede o painel_inicio desta migration: sai PRIMEIRO (so se no ar).
+    await require("./o-inicio-dinheiro-a-devolver-posterior.cjs").desfazerInicioDinheiroADevolverNaTransacao(
+      c,
+    );
     // ---- 0. O topo instalado pelo CI e o desta migration; os anteriores sao os conhecidos. ----
     const topo = await ambas(c);
     assert.equal(
@@ -1250,6 +1254,10 @@ async function main() {
   try {
     // A 20261399985000 sucede o fin_resumo desta migration (commitada no clone): sai PRIMEIRO, e volta no fim.
     await require("./o-grafico-do-financeiro-posterior.cjs").desfazerGraficoDoFinanceiroNaTransacao(
+      d,
+    );
+    // A 20261402000000 sucede o painel_inicio desta migration (commitada no clone): sai PRIMEIRO tambem.
+    await require("./o-inicio-dinheiro-a-devolver-posterior.cjs").desfazerInicioDinheiroADevolverNaTransacao(
       d,
     );
     assert.deepEqual(await hashes(), NOVO);

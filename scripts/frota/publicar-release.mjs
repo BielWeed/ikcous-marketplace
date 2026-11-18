@@ -721,6 +721,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente",
   "151a-conferir-o-banner-tem-imagem-propria-no-computador-aplicado",
   "151b-antes-o-banner-tem-imagem-propria-no-computador-ausente",
+  "154a-conferir-o-inicio-mostra-o-dinheiro-a-devolver-aplicado",
+  "154b-antes-o-inicio-mostra-o-dinheiro-a-devolver-base-vigente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

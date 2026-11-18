@@ -3179,7 +3179,19 @@ const ROL_DA_151_BASE = [
   "banners: tabela comum com RLS ligada",
   "banners: image_url text preservada",
 ];
+// Lote 154 (20261402000000, o Inicio mostra o dinheiro a devolver e a margem do Financeiro: painel_inicio redefinida, sem objeto novo). A 154a e a 154b tem o MESMO rol de 5 linhas (controle; de painel_inicio,
+// corpo exato (md5), atributos e ACL; e o fin_dre vivo, que o corpo novo le e tem de devolver lucro_liquido e receita_liquida); a 154a espera o corpo da migration nova e a 154b o vigente de antes (o da
+// 20261399300000). So catalogo: nenhuma le pedido, devolucao, estorno ou lancamento e nenhuma chama as funcoes.
+const ROL_DA_154 = [
+  "controle: funcoes de public visiveis a este papel",
+  "painel_inicio: corpo exato (md5)",
+  "painel_inicio: assinatura e atributos conhecidos (plpgsql, SECURITY DEFINER, STABLE, search_path=public, uma so)",
+  "painel_inicio: EXECUTE authenticated e service_role, sem PUBLIC ou anon",
+  "fin_dre: devolve lucro_liquido e receita_liquida",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "154a-conferir-o-inicio-mostra-o-dinheiro-a-devolver-aplicado": ROL_DA_154,
+  "154b-antes-o-inicio-mostra-o-dinheiro-a-devolver-base-vigente": ROL_DA_154,
   "151a-conferir-o-banner-tem-imagem-propria-no-computador-aplicado": [
     ...ROL_DA_151_BASE,
     "banners: desktop_image_url text opcional, sem default nem privilegio proprio",

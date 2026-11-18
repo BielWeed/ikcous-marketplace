@@ -1451,6 +1451,12 @@ async function main() {
         "20261399997000_o_pedido_guarda_quem_vai_receber.sql",
         "public.create_marketplace_order_v24(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)",
       ],
+      // A 20261402000000 (o Inicio mostra o dinheiro a devolver e a margem do Financeiro): painel_inicio sobre o corpo da 3993 (a mesma funcao da 12/28/390/398/3993 acima). A 17a aceita o corpo
+      // dela (LF e CRLF) ao lado dos de antes; o rollback dela devolve o corpo da 3993 (o molde, abaixo, desfaz e mede).
+      [
+        "20261402000000_o_inicio_mostra_o_dinheiro_a_devolver_e_a_margem_do_financeiro.sql",
+        "public.painel_inicio()",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );
