@@ -23,6 +23,8 @@ export interface FormaDoPedido {
   readonly metodoOnline?: string | null;
   /** Ramifica por `presencial`, nunca por `online` — ausente é site. */
   readonly canal?: string | null;
+  /** Retirada na loja: quem paga na hora de buscar não paga "na entrega". */
+  readonly retiradaNaLoja?: boolean | null;
   /** `marketplace_orders.total`. Só decide o caso "sem valor a pagar"
    * (`pedidoSemValorAPagar`); ausente = "não sei", e o rótulo é o de sempre. */
   readonly total?: number | null;
@@ -62,6 +64,17 @@ export function pedidoSemValorAPagar(pedido: {
   return subtotal - desconto + frete === 0;
 }
 
+/**
+ * O momento em que o dinheiro troca de mão nos pedidos que não pagam pelo app:
+ * "entrega" ou, quando a cliente vai buscar na loja, "retirada". Só TEXTO — o
+ * valor gravado (`recebido_na_entrega`, `payment_method`) é o mesmo nos dois.
+ */
+export function momentoDoPagamentoNaMao(
+  retiradaNaLoja?: boolean | null,
+): "entrega" | "retirada" {
+  return retiradaNaLoja ? "retirada" : "entrega";
+}
+
 function rotuloDoPagamentoPeloSite(metodoOnline: string | null | undefined) {
   switch (metodoOnline) {
     case "pix":
@@ -87,7 +100,9 @@ export function rotuloDaFormaDoPedido(pedido: FormaDoPedido): string {
     case "pix":
       return "PIX Instantâneo";
     case "card":
-      return noBalcao ? "Cartão na maquininha" : "Cartão na entrega";
+      return noBalcao
+        ? "Cartão na maquininha"
+        : `Cartão na ${momentoDoPagamentoNaMao(pedido.retiradaNaLoja)}`;
     case "online":
       return rotuloDoPagamentoPeloSite(pedido.metodoOnline);
     default:

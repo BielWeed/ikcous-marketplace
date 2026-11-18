@@ -1,4 +1,34 @@
 {
+  "1.5.210": {
+    "titulo": "Retirada com os textos certos, CPF e WhatsApp mais seguros e o Voltar do celular que fecha só a folha",
+    "novidades": [],
+    "correcoes": [
+      "Retirada na loja: o fechamento do pedido não fala mais em \"Endereço de Entrega\". Sem conta, aparece \"Seu CEP\"; com conta, \"Seu endereço\".",
+      "Retirada na loja: o pagamento diz \"na retirada\" em vez de \"na entrega\". Vale para \"Cartão na retirada\", \"Recebido na retirada\", \"Falta receber na retirada\" e para a pergunta \"Pedido de pagamento na retirada\", no painel, no recibo, na planilha de pedidos e na tela da cliente.",
+      "Retirada na loja: quem cancela um pedido de retirada pago na loja lê \"Você pagou este pedido na retirada\".",
+      "Painel, Financeiro: a venda recebida fora do app aparece no extrato como \"Venda na entrega ou retirada\".",
+      "Compra para outra pessoa: o e-mail de confirmação e o detalhe do pedido da cliente mostram \"Recebe: nome\". A linha só aparece quando o nome é de outra pessoa.",
+      "Meu pedido: nome do comprador muito comprido quebra a linha no celular pequeno. Na ficha da lojista, o endereço de retirada muito comprido também quebra a linha.",
+      "Meus pedidos: o pedido recém-recebido, com o status antigo \"new\", fica em \"Em andamento\" e não mais em \"Histórico\".",
+      "Catálogo: marcar só uma parte das opções mostra o preço das combinações que ainda cabem na escolha. O \"a partir de\" só aparece se esses preços forem diferentes.",
+      "Catálogo: o selo \"Esgotado\" só aparece quando o produto inteiro está sem estoque. Uma opção antiga que acabou não esgota mais o card.",
+      "CPF e WhatsApp colados com dígito a mais não viram outro número válido. Os dígitos de sobra ficam na tela e o campo reprova, no pagamento, na etiqueta de envio e no telefone do cadastro.",
+      "Conta: durante o envio da nova senha, os dois campos de senha ficam travados, para o que a pessoa digitar no meio não ser apagado.",
+      "Avisos: se a loja ainda não tem os avisos configurados, a tela diz \"Esta loja ainda não tem os avisos configurados. Avise a loja.\", em vez de mandar usar um navegador atualizado.",
+      "Painel, balcão: com um código de barras ainda sendo consultado, \"Fechar venda\" mostra \"Consultando...\" e o botão \"Cliente\" fica desligado, até a consulta terminar. Assim a peça lida não fica de fora da venda.",
+      "Painel: quando a sessão vence na edição de um produto ou nos Ajustes, depois de entrar a lojista volta para a mesma tela. No produto, volta para o mesmo produto.",
+      "Painel, pedidos e produtos feitos sem internet: se o servidor falhar com a rede boa, o envio tenta de novo sozinho, depois de 30 segundos, 2 minutos e 10 minutos. O que o banco recusa de vez sai da fila e não é reenviado.",
+      "Painel, banner com IA: o nome da loja no texto não parte mais um emoji ao meio, e uma foto PNG sem tipo é aceita, como no envio normal de foto.",
+      "Loja: o app não baixa mais uma tela em segundo plano se a economia de dados ligou, ou a conexão ficou lenta, nesse meio tempo.",
+      "Painel, pedidos em tempo real: se o relógio do aparelho voltar, ou se o navegador bloquear o armazenamento do site, as abas abertas ainda escolhem uma que recebe os pedidos novos, e eles continuam aparecendo sozinhos.",
+      "Painel, devolução de dinheiro: o duplo clique em devolver, ou o clique em duas abas ao mesmo tempo, pede o reembolso ao Mercado Pago uma vez só.",
+      "Painel: quando um pagamento chega depois de o pedido ser cancelado ou vencer e o aviso não chega à lojista, o aviso é enviado de novo na próxima tentativa do Mercado Pago. Depois de entregue, não se repete.",
+      "Painel, celular: o botão Voltar fecha só a folha \"Gestão de Cliente\", o guia de clientes e a folha \"Responder pergunta\", em vez de sair da tela. Com texto digitado na resposta, o Voltar pergunta se a lojista quer descartar, e a folha continua aberta."
+    ],
+    "melhorias": [
+      "O registro de recusas do carrinho do Melhor Envio deixa de guardar nome, endereço e CEP do destinatário. Guarda só o status, o pedido e os campos recusados."
+    ]
+  },
   "1.5.209": {
     "titulo": "Início com o dinheiro a devolver, total do cliente igual em toda tela e avisos mais fiéis",
     "novidades": [],

@@ -60,18 +60,29 @@ export function mascararCpf(valor: unknown): string {
   return `${mascarados.slice(0, 3)}.${mascarados.slice(3, 6)}.${mascarados.slice(6, 9)}-${mascarados.slice(9, 11)}`;
 }
 
+/** Teto de dígitos que o campo guarda: 11 do CPF + o excedente visível. */
+const MAX_DIGITOS_NO_CAMPO = 14;
+
 /**
  * Máscara de DIGITAÇÃO (formata enquanto a lojista digita no campo — não
- * confundir com `mascararCpf`, que ESCONDE o CPF depois de salvo). Corta em
- * 11 dígitos; formato completo só aparece quando os 11 chegam.
+ * confundir com `mascararCpf`, que ESCONDE o CPF depois de salvo). Formato
+ * completo só aparece quando os 11 dígitos chegam.
+ *
+ * O que passa do 11º dígito NÃO é cortado: "12345678909000" colado virava
+ * "123.456.789-09", um CPF válido DIFERENTE do colado, e a etiqueta saía com
+ * o CPF errado sem aviso. Os dígitos a mais ficam na tela depois da máscara
+ * ("123.456.789-09000") e `cpfValido` reprova — o "CPF inválido" que já
+ * existe aparece, e apagar o excedente devolve o CPF. Só a colagem gigante é
+ * limitada (14 dígitos), o que continua reprovando. Mesma regra de `formatarCpf`
+ * em `cpf.ts`.
  */
 export function formatarCpfEnquantoDigita(valor: unknown): string {
-  const digitos = somenteDigitos(valor).slice(0, 11);
+  const digitos = somenteDigitos(valor).slice(0, MAX_DIGITOS_NO_CAMPO);
   const partes = [
     digitos.slice(0, 3),
     digitos.slice(3, 6),
     digitos.slice(6, 9),
-    digitos.slice(9, 11),
+    digitos.slice(9),
   ].filter(Boolean);
   if (partes.length <= 1) return partes[0] ?? "";
   if (partes.length === 2) return `${partes[0]}.${partes[1]}`;

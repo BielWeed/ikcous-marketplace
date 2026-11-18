@@ -10,9 +10,11 @@ const css = readFileSync("src/index.css", "utf8");
 
 // Base 251753360 + parágrafo do horário de retirada (17/11/2026).
 // Conferido: a única adição é "text-xs text-zinc-500"; nenhuma classe antiga mudou.
+// + linha "Recebe: X" do cartão de endereço (18/11/2026): só entra "mt-0.5 break-words text-sm font-medium text-zinc-700".
+// + nome do comprador com `break-words` (18/11/2026): só essa classe entra no literal existente.
 // Ordem dos literais dentro de TODOS os className, inclusive cn/condicionais.
 const assinaturaDoCelular =
-  "d5fbf7b13af807cd9c78cd7e791bda9beeca96708ac8fa7a781abaee14dadf15";
+  "2f44298d91f1c25fcefdc69f4ed926400701c17eca08d6c6bc354f1e359300a5";
 const classesOriginais = [
   "fixed inset-x-0 bottom-[var(--folha-acima-da-barra)] top-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm duration-300 animate-in fade-in",
   "relative z-10 max-h-[calc(100dvh-var(--folha-acima-da-barra)-72px)] w-full max-w-md overflow-y-auto rounded-t-[2.5rem] bg-zinc-50 p-6 shadow-2xl duration-300 animate-in slide-in-from-bottom",
@@ -93,9 +95,9 @@ describe("P30 — avisos e avaliação no computador", () => {
     ).toBeGreaterThan(fonte.indexOf("ref={avaliacaoFolhaRef}"));
   });
 
-  it("preserva os 209 literais de celular, inclusive os dois elementos tocados", () => {
+  it("preserva os 210 literais de celular, inclusive os dois elementos tocados", () => {
     const lista = literaisDasClasses(fonte).map(classesDoCelular);
-    expect(lista).toHaveLength(209);
+    expect(lista).toHaveLength(210);
     expect(
       createHash("sha256").update(JSON.stringify(lista)).digest("hex"),
       "classes do celular divergiram da base 251753360; confira a lista de className, não atualize o hash sem investigar",

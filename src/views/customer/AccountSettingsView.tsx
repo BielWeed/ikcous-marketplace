@@ -1367,6 +1367,10 @@ export function AccountSettingsView() {
                       type="password"
                       autoComplete="new-password"
                       value={passwordData.newPassword}
+                      // Travado durante o envio: o que vale é a senha que JÁ
+                      // foi enviada; editar agora seria limpo no fim e o
+                      // aviso de sucesso falaria de outra senha.
+                      disabled={updatingPassword}
                       onChange={(e) =>
                         setPasswordData((d) => ({
                           ...d,
@@ -1389,6 +1393,7 @@ export function AccountSettingsView() {
                       type="password"
                       autoComplete="new-password"
                       value={passwordData.confirmPassword}
+                      disabled={updatingPassword}
                       onChange={(e) =>
                         setPasswordData((d) => ({
                           ...d,

@@ -67,7 +67,7 @@ describe("destinoPosLogin", () => {
       destinoPosLogin({
         view: "auth",
         from: "checkout",
-        requested: "admin-settings",
+        requested: "admin-dashboard",
       }),
     ).toBe("checkout");
   });

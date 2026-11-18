@@ -30,6 +30,7 @@ import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { formaDeEntregaDaNota } from "@/lib/forma-de-entrega-da-nota";
 import {
   ROTULO_SEM_VALOR_A_PAGAR,
+  momentoDoPagamentoNaMao,
   pedidoSemValorAPagar,
   rotuloDaFormaDoPedido,
 } from "@/lib/forma-de-pagamento";
@@ -181,6 +182,7 @@ function fraseSituacaoDoPagamento(
     order.status,
     order.canal,
     devolucaoConcluida,
+    !!order.retiradaNaLoja,
   );
   if (rotuloDoSelo.includes("precisa de atenção")) {
     return `${rotuloDoSelo} · R$ ${valor}`;
@@ -220,9 +222,11 @@ function fraseSituacaoDoPagamento(
         ? `Recebido no balcão · R$ ${valor}`
         : `Falta receber no balcão · R$ ${valor}`;
     }
+    // Retirada na loja: a cliente vem buscar, ninguém entrega — "na retirada".
+    const momento = momentoDoPagamentoNaMao(order.retiradaNaLoja);
     return order.pagamentoRecebidoEm
-      ? `Recebido na entrega · R$ ${valor}`
-      : `Falta receber na entrega · R$ ${valor}`;
+      ? `Recebido na ${momento} · R$ ${valor}`
+      : `Falta receber na ${momento} · R$ ${valor}`;
   }
   // Cobrança pelo site, sem atenção pendente.
   if (order.paymentStatus === "pago") {
@@ -839,7 +843,7 @@ function OrderDeliveryCard({
           <p className="text-sm font-medium text-emerald-400">
             Retirada na loja
           </p>
-          <p className="text-sm leading-relaxed text-zinc-200">
+          <p className="break-words text-sm leading-relaxed text-zinc-200">
             A cliente busca o pedido em: {order.enderecoDeRetirada}
           </p>
         </div>
@@ -1177,6 +1181,7 @@ function OrderFinanceCard({
     (situacao.startsWith("Pago no site") ||
       situacao === ROTULO_SEM_VALOR_A_PAGAR ||
       situacao.startsWith("Recebido na entrega") ||
+      situacao.startsWith("Recebido na retirada") ||
       situacao.startsWith("Recebido no balcão"));
   // Cancelado e já devolvido: nada pendente, então nem verde nem âmbar.
   const situacaoResolvida = situacao.startsWith("Estornado ·");
@@ -1214,6 +1219,7 @@ function OrderFinanceCard({
           orderStatus={order.status}
           canal={order.canal}
           devolucaoConcluida={devolucaoConcluida}
+          retiradaNaLoja={order.retiradaNaLoja}
           className={seloDaFicha}
         />
       </div>
@@ -1250,6 +1256,7 @@ function OrderFinanceCard({
               key={order.id}
               total={order.total}
               disabled={registrandoPagamento}
+              retiradaNaLoja={order.retiradaNaLoja}
               aoConfirmar={() => onRegistrarPagamento(order.id, true)}
             />
           )}
@@ -2748,8 +2755,10 @@ export const OrderDetail = memo(function OrderDetail({
                   deste pedido?
                 </AlertDialogTitle>
                 <AlertDialogDescription className="text-xs text-zinc-400">
-                  Pedido de pagamento na entrega. Se você já recebeu o dinheiro
-                  na mão, confirme abaixo — o registro fica salvo no pedido.
+                  Pedido de pagamento na{" "}
+                  {momentoDoPagamentoNaMao(order.retiradaNaLoja)}. Se você já
+                  recebeu o dinheiro na mão, confirme abaixo — o registro fica
+                  salvo no pedido.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter className="mt-4 gap-2">

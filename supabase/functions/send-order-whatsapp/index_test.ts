@@ -90,6 +90,27 @@ Deno.test("pagamento na entrega mantém o rótulo comum (cartão e dinheiro)", (
   );
 });
 
+Deno.test("pedido de RETIRADA na loja: a mensagem diz 'na retirada', nunca 'na entrega'", () => {
+  const base = {
+    orderId: ID_DO_PEDIDO,
+    customerName: "Maria",
+    itemsList: "- Sanduíche (2x)",
+    totalPrice: 24.9,
+    retirada: true,
+  };
+  for (
+    const [paymentMethod, rotulo] of [
+      ["card", "Cartão na retirada"],
+      ["cash", "Dinheiro na retirada"],
+      ["pix", "PIX na retirada"],
+    ]
+  ) {
+    const texto = montarMensagem({ ...base, paymentMethod });
+    assertStringIncludes(texto, `*Pagamento:* ${rotulo}`);
+    assertEquals(texto.includes("na entrega"), false);
+  }
+});
+
 Deno.test("forma desconhecida ou ausente sai como 'Não informado', nunca como um rótulo falso", () => {
   const base = {
     orderId: ID_DO_PEDIDO,
@@ -383,6 +404,42 @@ Deno.test("servidor legítimo: a mensagem sai com telefone, nome, total e forma 
   assertEquals(corpoEnviado.includes("Vítima"), false);
   assertEquals(corpoEnviado.includes(TELEFONE_DE_OUTRA_PESSOA), false);
 });
+
+// O pedido de RETIRADA é reconhecido pelo id que a RPC gravou em
+// `customer_data.shipping_option_id` (o mesmo contrato do e-mail).
+for (
+  const [opcao, esperado, proibido] of [
+    ["store-pickup", "*Pagamento:* Dinheiro na retirada", "na entrega"],
+    ["local-delivery", "*Pagamento:* Dinheiro na entrega", "na retirada"],
+    [undefined, "*Pagamento:* Dinheiro na entrega", "na retirada"],
+    ["STORE-PICKUP", "*Pagamento:* Dinheiro na entrega", "na retirada"],
+  ] as const
+) {
+  Deno.test(`servidor legítimo: pedido com opção de envio '${opcao}' sai com '${esperado}'`, async () => {
+    const evolution = evolutionFalsa();
+    const resposta = await processar(
+      requisicao(`Bearer ${CHAVE_DE_SERVICO}`, { order_id: ID_REAL }),
+      {
+        supabase: bancoFalso({
+          ...PEDIDO_DO_BANCO,
+          payment_method: "cash",
+          metodo_online: null,
+          customer_data: {
+            whatsapp: TELEFONE_DO_BANCO,
+            shipping_option_id: opcao,
+          },
+        }),
+        fetchImpl: evolution.fetchImpl,
+        chavesDeServico: [CHAVE_DE_SERVICO],
+        configDaEvolution: configInjetada,
+      },
+    );
+    assertEquals(resposta.status, 200);
+    const { text } = JSON.parse(String(evolution.chamadas[0].init.body));
+    assertStringIncludes(text, esperado);
+    assertEquals(text.includes(proibido), false);
+  });
+}
 
 Deno.test("a resposta ao chamador não devolve o retorno da Evolution (que pode ecoar o telefone)", async () => {
   const { resposta } = await rodar(`Bearer ${CHAVE_DE_SERVICO}`, {

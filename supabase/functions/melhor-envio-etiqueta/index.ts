@@ -69,7 +69,7 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { adminAtualDaSessao } from "../_shared/admin-atual.ts"
 import { ehRetiradaNaLoja } from "../_shared/retirada-na-loja.ts"
-import { cpfDoDestinatario, cpfValido, sanitizarDadosPessoaisDoTexto } from "./cpf.ts"
+import { camposRecusadosDoProvedor, cpfDoDestinatario, cpfValido, sanitizarDadosPessoaisDoTexto } from "./cpf.ts"
 import { MEDIDA_PADRAO_CM, medidaPositivaDoBanco, PESO_PADRAO_KG } from "../calculate-shipping/regua.ts"
 
 const corsHeaders = {
@@ -2848,11 +2848,20 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
         })
         if (!cartResponse.ok) {
             const detalhe = await cartResponse.text()
-            // Item 1 (3ª rodada): ver o comentário no log do `/me HTTP` acima
-            // — um 4xx do cart pode ecoar o `to` inteiro (nome, rua, número,
-            // CEP do destinatário) num campo qualquer do corpo de validação.
+            // O cart é a única chamada ao ME que manda o `to` (nome, rua,
+            // número, bairro, cidade, CEP do destinatário), e uma recusa de
+            // validação pode ecoar esses dados DENTRO de `errors`/`message`
+            // — `motivoDoProvedor` só tira CPF, e-mail e telefone. Por isso o
+            // LOG leva só status, pedido e os NOMES dos campos recusados; o
+            // texto (`motivoDoCarrinho`) segue só para a frase do lojista.
             const motivoDoCarrinho = motivoDoProvedor(detalhe)
-            console.error('[melhor-envio-etiqueta] cart HTTP', cartResponse.status, motivoDoCarrinho)
+            const camposRecusados = camposRecusadosDoProvedor(detalhe)
+            console.error(
+                '[melhor-envio-etiqueta] cart HTTP',
+                cartResponse.status,
+                `pedido=${orderId}`,
+                `campos=${camposRecusados.length > 0 ? camposRecusados.join(',') : '(nenhum identificado)'}`,
+            )
             return new Response(
                 JSON.stringify({ error: mensagemDoErroHttp(cartResponse.status, 'criação da etiqueta', motivoDoCarrinho) }),
                 { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },

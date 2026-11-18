@@ -936,6 +936,7 @@ export function AdminPdvView({
           subtotal={subtotal}
           onNavigate={onNavigate}
           limparCupom={limparCupom}
+          consultandoCodigo={consultasDeCodigoNoAr > 0}
         />
       )}
 

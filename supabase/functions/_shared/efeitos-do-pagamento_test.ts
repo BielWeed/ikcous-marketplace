@@ -19,6 +19,7 @@ import {
   confirmarPagamentoProvado,
   dispararAvisoDePagamentoAtrasadoReal,
   htmlDoAvisoDePagamentoAtrasado,
+  reavisarPagamentoForaDoFluxo,
   reenviarEmailPendenteDoPagamento,
 } from "./efeitos-do-pagamento.ts";
 import { ORCAMENTO_DO_ENVIO_MS } from "./comprovante.ts";
@@ -1006,4 +1007,276 @@ Deno.test("r200-a - o e-mail de pagamento atrasado NÃO afirma que a loja 'já f
     assertEquals(html.includes("A loja vai entrar em contato para resolver"), true);
     assertEquals(html.includes("reenvio, se ainda houver estoque, ou devolução do valor pago"), true);
   }
+});
+
+// ── r210-h: o aviso "Pagamento fora do fluxo" era de tiro ÚNICO — não é mais ──
+// Antes: 'pago_apos_expirar' usava o envio simples e IGNORAVA a contagem de
+// entregas. Sem admin inscrito (iOS sem o app) ou com a chave VAPID falhando, o
+// push entregava a 0, ia só ao log, e a reentrega do MP ('ja_pago') não avisava
+// de novo: dinheiro do cliente parado no lojista sem alerta. Agora o ramo usa
+// `avisarAdminUmaVez` (reserva com prazo, como `valor_divergente`): libera a
+// reserva quando a entrega foi 0 e a reentrega 'ja_pago' tenta de novo; depois
+// de entregue, NUNCA repete.
+
+const CHAVE_FORA_DO_FLUXO = `pago_fora_do_fluxo:${PEDIDO}`;
+const AVISO_FORA_DO_FLUXO = {
+  title: "Pagamento fora do fluxo",
+  body: "#4F5A6B · R$ 100,00 · estoque já devolvido",
+  url: `/admin-orders?id=${PEDIDO}`,
+};
+
+/** O banco do aviso: a leitura do pedido + as três RPCs da reserva (espelho SEM o
+ * prazo de 2 minutos, que é SQL e foi provado em Postgres de verdade à parte). */
+function bancoDoAvisoFora(opts: {
+  linha?: Record<string, unknown> | null;
+  avisos?: Map<string, { enviado: boolean }>;
+  reservaFalha?: boolean;
+  leituraLanca?: boolean;
+} = {}) {
+  const avisos = opts.avisos ?? new Map<string, { enviado: boolean }>();
+  const rpcs: Array<{ nome: string; chave: unknown }> = [];
+  const leituras: string[] = [];
+  return {
+    avisos,
+    rpcs,
+    leituras,
+    from(tabela: string) {
+      return {
+        select(colunas: string) {
+          leituras.push(`${tabela}:${colunas}`);
+          return {
+            eq: () => ({
+              maybeSingle: async () => {
+                if (opts.leituraLanca) throw new Error("banco caiu");
+                return {
+                  data: opts.linha === undefined
+                    ? { id: PEDIDO, customer_name: "Fulana", total: 100, payment_status: "pago_apos_expirar" }
+                    : opts.linha,
+                  error: null,
+                };
+              },
+            }),
+          };
+        },
+      };
+    },
+    rpc: async (nome: string, args: Record<string, unknown>) => {
+      rpcs.push({ nome, chave: args.p_chave });
+      const chave = String(args.p_chave);
+      if (nome === "reservar_aviso_ao_lojista") {
+        if (opts.reservaFalha) return { data: null, error: { message: "statement timeout" } };
+        const linha = avisos.get(chave);
+        if (linha) return { data: linha.enviado ? "enviado" : "em_envio", error: null };
+        avisos.set(chave, { enviado: false });
+        return { data: "reservado", error: null };
+      }
+      if (nome === "confirmar_aviso_ao_lojista") {
+        const linha = avisos.get(chave);
+        if (linha) linha.enviado = true;
+        return { data: Boolean(linha), error: null };
+      }
+      if (nome === "liberar_aviso_ao_lojista") {
+        const apaga = Boolean(avisos.get(chave) && !avisos.get(chave)!.enviado);
+        if (apaga) avisos.delete(chave);
+        return { data: apaga, error: null };
+      }
+      throw new Error(`rpc inesperada: ${nome}`);
+    },
+  };
+}
+
+/** Um push que entrega a `quantos` inscrições e anota o aviso recebido. */
+function pushContado(quantos: number) {
+  const avisos: unknown[] = [];
+  return {
+    avisos,
+    enviarPushContado: async (a: { aviso: unknown }) => {
+      avisos.push(a.aviso);
+      return quantos;
+    },
+  };
+}
+
+function transicaoAposExpirar(banco: unknown, push: { enviarPushContado: unknown }, extras: Record<string, unknown> = {}) {
+  return emSilencio(() =>
+    aplicarEfeitosDoPagamentoConfirmado({
+      supabase: banco as never,
+      orderId: PEDIDO,
+      resultado: "pago_apos_expirar",
+      enviarPushContado: push.enviarPushContado,
+      enviarAvisoAtrasado: async () => {},
+      ...extras,
+    })
+  );
+}
+
+function reentregaJaPago(banco: unknown, push: { enviarPushContado: unknown }, extras: Record<string, unknown> = {}) {
+  return emSilencio(() =>
+    reavisarPagamentoForaDoFluxo({
+      supabase: banco as never,
+      orderId: PEDIDO,
+      enviarPushContado: push.enviarPushContado,
+      ...extras,
+    })
+  );
+}
+
+Deno.test("r210-h - 'pago_apos_expirar' entregue a 1+ inscrição: reserva e CONFIRMA a chave pago_fora_do_fluxo:<pedido>, com o texto de sempre", async () => {
+  const banco = bancoDoAvisoFora();
+  const push = pushContado(2);
+  await transicaoAposExpirar(banco, push);
+  assertEquals(push.avisos, [AVISO_FORA_DO_FLUXO]);
+  assertEquals(banco.rpcs, [
+    { nome: "reservar_aviso_ao_lojista", chave: CHAVE_FORA_DO_FLUXO },
+    { nome: "confirmar_aviso_ao_lojista", chave: CHAVE_FORA_DO_FLUXO },
+  ]);
+  assertEquals(banco.avisos.get(CHAVE_FORA_DO_FLUXO), { enviado: true });
+});
+
+Deno.test("r210-h - 'pago_apos_expirar' com entrega ZERO (ninguém inscrito, VAPID falhou): LIBERA a reserva, para a reentrega poder tentar de novo", async () => {
+  const banco = bancoDoAvisoFora();
+  const push = pushContado(0);
+  await transicaoAposExpirar(banco, push);
+  assertEquals(banco.rpcs.map((r) => r.nome), ["reservar_aviso_ao_lojista", "liberar_aviso_ao_lojista"]);
+  assertEquals(banco.avisos.size, 0, "reserva presa: a reentrega não conseguiria tentar de novo");
+});
+
+Deno.test("r210-h - o push que LANÇA conta como entrega zero: libera a reserva e nada sobe; o aviso ao cliente sai assim mesmo", async () => {
+  const banco = bancoDoAvisoFora();
+  const atrasados: unknown[] = [];
+  await emSilencio(() =>
+    aplicarEfeitosDoPagamentoConfirmado({
+      supabase: banco as never,
+      orderId: PEDIDO,
+      resultado: "pago_apos_expirar",
+      enviarPushContado: () => Promise.reject(new Error("push service fora")),
+      enviarAvisoAtrasado: async (a) => void atrasados.push(a.orderId),
+    })
+  );
+  assertEquals(banco.rpcs.map((r) => r.nome), ["reservar_aviso_ao_lojista", "liberar_aviso_ao_lojista"]);
+  assertEquals(atrasados, [PEDIDO]);
+});
+
+Deno.test("r210-h - a CADEIA inteira: entrega 0 na transição -> a 1ª reentrega 'ja_pago' avisa -> a 2ª e a 3ª NÃO repetem (sem spam)", async () => {
+  const banco = bancoDoAvisoFora();
+  const semInscrito = pushContado(0);
+  await transicaoAposExpirar(banco, semInscrito);
+  assertEquals(semInscrito.avisos.length, 1);
+
+  const depois = pushContado(1);
+  await reentregaJaPago(banco, depois);
+  assertEquals(depois.avisos, [AVISO_FORA_DO_FLUXO], "a reentrega não tentou de novo");
+  assertEquals(banco.avisos.get(CHAVE_FORA_DO_FLUXO), { enviado: true });
+
+  const spam = pushContado(1);
+  await reentregaJaPago(banco, spam);
+  await reentregaJaPago(banco, spam);
+  assertEquals(spam.avisos, [], "avisou DE NOVO depois de entregue");
+});
+
+Deno.test("r210-h - a reentrega que também entrega ZERO segue tentando na próxima (a reserva volta)", async () => {
+  const banco = bancoDoAvisoFora();
+  const push = pushContado(0);
+  await reentregaJaPago(banco, push);
+  await reentregaJaPago(banco, push);
+  assertEquals(push.avisos.length, 2);
+  assertEquals(banco.avisos.size, 0);
+});
+
+Deno.test("r210-h - transição entregue + reentrega 'ja_pago': a reentrega NÃO repete o aviso que já chegou", async () => {
+  const banco = bancoDoAvisoFora();
+  await transicaoAposExpirar(banco, pushContado(1));
+  const reentrega = pushContado(1);
+  await reentregaJaPago(banco, reentrega);
+  assertEquals(reentrega.avisos, []);
+});
+
+Deno.test("r210-h - reentrega 'ja_pago' só vale para pedido 'pago_apos_expirar': nos outros estados não reserva nem avisa", async () => {
+  for (const payment_status of ["pago", "aguardando", "recusado", "estornado", "expirado", "pago_parcial", null, undefined]) {
+    const banco = bancoDoAvisoFora({ linha: { id: PEDIDO, total: 100, payment_status } });
+    const push = pushContado(1);
+    await reentregaJaPago(banco, push);
+    assertEquals(push.avisos, [], String(payment_status));
+    assertEquals(banco.rpcs, [], String(payment_status));
+  }
+});
+
+Deno.test("r210-h - reentrega 'ja_pago': pedido sumido, leitura com erro ou leitura que LANÇA -> nada é avisado e nada sobe", async () => {
+  for (const opts of [{ linha: null }, { leituraLanca: true }]) {
+    const banco = bancoDoAvisoFora(opts);
+    const push = pushContado(1);
+    await reentregaJaPago(banco, push);
+    assertEquals(push.avisos, []);
+    assertEquals(banco.rpcs, []);
+  }
+  const comErro = {
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({ data: { payment_status: "pago_apos_expirar" }, error: { code: "57014" } }),
+        }),
+      }),
+    }),
+    rpc: async () => {
+      throw new Error("não devia chegar à reserva");
+    },
+  };
+  const push = pushContado(1);
+  await reentregaJaPago(comErro, push);
+  assertEquals(push.avisos, []);
+});
+
+Deno.test("r210-h - outra entrega está enviando ('em_envio'): quem chega junto NÃO avisa", async () => {
+  const avisos = new Map([[CHAVE_FORA_DO_FLUXO, { enviado: false }]]);
+  const banco = bancoDoAvisoFora({ avisos });
+  const push = pushContado(1);
+  await transicaoAposExpirar(banco, push);
+  await reentregaJaPago(banco, push);
+  assertEquals(push.avisos, []);
+  assertEquals(banco.rpcs.map((r) => r.nome), ["reservar_aviso_ao_lojista", "reservar_aviso_ao_lojista"]);
+});
+
+Deno.test("r210-h - transição e reentregas CONCORRENTES do mesmo pedido: UM push só", async () => {
+  const banco = bancoDoAvisoFora();
+  const push = pushContado(1);
+  await Promise.all([transicaoAposExpirar(banco, push), reentregaJaPago(banco, push), reentregaJaPago(banco, push)]);
+  assertEquals(push.avisos.length, 1);
+});
+
+Deno.test("r210-h - a RESERVA falha (RPC fora do ar): avisa mesmo assim (falha aberta), sem confirmar nem liberar", async () => {
+  const banco = bancoDoAvisoFora({ reservaFalha: true });
+  const push = pushContado(1);
+  await transicaoAposExpirar(banco, push);
+  assertEquals(push.avisos, [AVISO_FORA_DO_FLUXO]);
+  assertEquals(banco.rpcs.map((r) => r.nome), ["reservar_aviso_ao_lojista"]);
+});
+
+Deno.test("r210-h - o seam antigo `enviarPush` (sem contagem) segue valendo para 'pago_apos_expirar': o aviso sai com o MESMO texto", async () => {
+  const banco = bancoDoAvisoFora();
+  const c = coletores();
+  await emSilencio(() =>
+    aplicarEfeitosDoPagamentoConfirmado({ supabase: banco as never, orderId: PEDIDO, resultado: "pago_apos_expirar", ...c.deps })
+  );
+  assertEquals(c.pushes, [AVISO_FORA_DO_FLUXO]);
+  assertEquals(c.atrasados, [PEDIDO]);
+});
+
+Deno.test("r210-h - 'pago' NÃO ganhou reserva: continua sendo o push simples (sem RPC de aviso), que só sai na transição", async () => {
+  const banco = bancoDoAvisoFora();
+  const c = coletores();
+  await aplicarEfeitosDoPagamentoConfirmado({ supabase: banco as never, orderId: PEDIDO, resultado: "pago", ...c.deps });
+  assertEquals(c.pushes.length, 1);
+  assertEquals(banco.rpcs, []);
+});
+
+Deno.test("r210-h - o teto do push (cron) vale também para o aviso com reserva: um push lento não prende o laço", async () => {
+  const banco = bancoDoAvisoFora();
+  const inicio = performance.now();
+  await transicaoAposExpirar(
+    banco,
+    { enviarPushContado: () => new Promise<number>((r) => setTimeout(() => r(1), 200)) },
+    { tetoDoPushMs: 30 },
+  );
+  assertEquals(performance.now() - inicio < 150, true, "esperou o push sem teto");
+  await new Promise((r) => setTimeout(r, 250)); // deixa o envio lento terminar sozinho
 });

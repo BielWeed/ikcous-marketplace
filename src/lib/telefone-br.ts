@@ -73,17 +73,51 @@ export function digitosDoTelefoneDoCampo(
   return limparTelefoneBrasileiro(novo, { colagem });
 }
 
+/** Dígitos de um celular completo (DDD + 9 + 8). */
+const DIGITOS_DO_CELULAR = 11;
+/** Teto de dígitos que o campo guarda quando passa do celular (excedente visível). */
+const MAX_DIGITOS_COM_EXCEDENTE = 15;
+
 /**
- * Máscara do WhatsApp do checkout e da busca de pedido: "(DD) NNNNN-NNNN",
- * no máximo 11 dígitos (o excedente da digitação é cortado).
+ * O que fazer com dígitos além do 11º. NUNCA cortar em silêncio: "1198765432199"
+ * colado virava "(11) 98765-4321", um celular válido, e a cliente não via que o
+ * número mudou. O excedente fica na tela, `celularBrasileiroCompleto` reprova e
+ * a mensagem de erro que já existe aparece. Única exceção: a tecla extra
+ * digitada NO FIM de um número já completo é ignorada, porque o número na tela
+ * continua exatamente o de antes (quem tem DDD 55 e erra um dígito não perde
+ * nada). Colagem enorme é limitada a 15 dígitos, o que continua reprovando.
+ */
+function digitosComExcedenteVisivel(
+  digitos: string,
+  anterior: string | undefined,
+): string {
+  if (digitos.length <= DIGITOS_DO_CELULAR) return digitos;
+  const antes = (anterior ?? "").replace(/\D/g, "");
+  if (
+    antes.length === DIGITOS_DO_CELULAR &&
+    digitos.length === DIGITOS_DO_CELULAR + 1 &&
+    digitos.startsWith(antes)
+  ) {
+    return antes;
+  }
+  return digitos.slice(0, MAX_DIGITOS_COM_EXCEDENTE);
+}
+
+/**
+ * Máscara do WhatsApp do checkout e da busca de pedido: "(DD) NNNNN-NNNN".
+ * Dígitos além do 11º ficam depois do hífen (ver `digitosComExcedenteVisivel`),
+ * para a validação reprovar em vez de a máscara trocar o número.
  */
 export function mascaraWhatsappBr(novo: string, anterior?: string): string {
   if (/^\+5{0,2}$/.test(novo.trim())) return novo.trim();
-  const numbers = digitosDoTelefoneDoCampo(novo, anterior);
+  const numbers = digitosComExcedenteVisivel(
+    digitosDoTelefoneDoCampo(novo, anterior),
+    anterior,
+  );
   if (numbers.length <= 2) return numbers;
   if (numbers.length <= 7)
     return `(${numbers.slice(0, 2)}) ${numbers.slice(2)}`;
-  return `(${numbers.slice(0, 2)}) ${numbers.slice(2, 7)}-${numbers.slice(7, 11)}`;
+  return `(${numbers.slice(0, 2)}) ${numbers.slice(2, 7)}-${numbers.slice(7)}`;
 }
 
 /**
@@ -131,14 +165,21 @@ export function telefoneDaLojaParaExibicao(
 /**
  * Máscara do telefone do cadastro. Até 11 dígitos formata; acima disso
  * (número estrangeiro ou excedente da digitação) mantém o texto, cortado em
- * 15 caracteres, como sempre foi.
+ * 15 caracteres, como sempre foi — desde que o corte não leve dígito embora.
+ * Se levaria ("(11) 98765-4321 99" tem 18 caracteres), o corte deixaria um
+ * celular válido no lugar do que foi colado: ficam os dígitos (até 15), e a
+ * validação reprova. A tecla extra no fim de um número completo é ignorada
+ * (ver `digitosComExcedenteVisivel`).
  */
 export function mascaraTelefoneDoCadastro(
   novo: string,
   anterior?: string,
 ): string {
   if (/^\+5{0,2}$/.test(novo.trim())) return novo.trim();
-  const numbers = digitosDoTelefoneDoCampo(novo, anterior);
+  const numbers = digitosComExcedenteVisivel(
+    digitosDoTelefoneDoCampo(novo, anterior),
+    anterior,
+  );
   if (numbers.length <= 11) {
     let formatted = numbers;
     if (numbers.length > 2)
@@ -147,5 +188,8 @@ export function mascaraTelefoneDoCadastro(
       formatted = `(${numbers.slice(0, 2)}) ${numbers.slice(2, 7)}-${numbers.slice(7, 11)}`;
     return formatted;
   }
-  return novo.slice(0, 15);
+  const corte = novo.slice(0, 15);
+  return corte.replace(/\D/g, "").length === novo.replace(/\D/g, "").length
+    ? corte
+    : numbers;
 }

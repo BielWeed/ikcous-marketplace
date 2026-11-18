@@ -3,6 +3,27 @@ import { useCallback, useEffect, useRef, useState } from "react";
 const LEADER_KEY = "pwa_leader_tab";
 const LEADER_TTL = 5000; // 5s heartbeat
 const TAB_ID = Math.random().toString(36).slice(2, 8);
+// Sem armazenamento utilizável a eleição se faz só pelo canal entre abas: a
+// líder é dada por morta depois de tantos batimentos (LEADER_TTL / 2 cada) sem
+// resposta ao PING — o mesmo prazo, em batimentos, do TTL do armazenamento.
+const BATIMENTOS_SEM_SINAL_PARA_REIVINDICAR = 2;
+
+/**
+ * O batimento guardado vale? `0 <= idade <= TTL`. Idade NEGATIVA é batimento
+ * "do futuro": o relógio da máquina recuou (ajuste de hora, sincronização) e o
+ * valor gravado antes do recuo não prova mais nada — contá-lo como válido
+ * preservava por horas uma líder morta (aba fechada sem `beforeunload`).
+ * A líder viva não é prejudicada: ela regrava o batimento com a hora nova a
+ * cada LEADER_TTL / 2.
+ */
+function batimentoVigente(
+  existente: { ts?: unknown } | null,
+  agora: number,
+): boolean {
+  if (!existente) return false;
+  const idade = agora - (existente.ts as number);
+  return idade >= 0 && idade <= LEADER_TTL;
+}
 
 // Shared BroadcastChannel singleton to prevent multiple instances and closure errors on HMR/re-renders
 const bc =
@@ -95,6 +116,14 @@ export function useLeaderElection() {
   const isLeaderRef = useRef(bc === null);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const claimTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Armazenamento do site bloqueado/cheio (leitura ou gravação lançou): a
+  // liderança passa a valer só pelo canal entre abas. Sai do modo quando a
+  // líder consegue guardar o batimento de novo.
+  const modoCanalRef = useRef(false);
+  // Quantas respostas LEADER_ALIVE de OUTRA aba já chegaram, e quantos
+  // batimentos seguidos esta aba passou sem nenhuma (só no modo canal).
+  const alivesRecebidosRef = useRef(0);
+  const batimentosSemSinalRef = useRef(0);
 
   const updateLeadership = useCallback((val: boolean) => {
     if (isLeaderRef.current !== val) {
@@ -108,79 +137,140 @@ export function useLeaderElection() {
     }
   }, []);
 
-  const claimLeadership = useCallback(() => {
-    if (
-      typeof document !== "undefined" &&
-      document.visibilityState === "hidden"
-    ) {
-      if (!isLeaderRef.current) {
-        updateLeadership(false);
-        return false;
+  const anunciarVida = useCallback(() => {
+    bc?.postMessage({ type: "LEADER_ALIVE", tabId: TAB_ID });
+  }, []);
+
+  // Reivindicação SEM armazenamento: só o canal decide. `imediato` = já se sabe
+  // que ninguém serve (PING do mount sem resposta, ou LEADER_RESIGNED); sem ele
+  // (batimento de seguidora) a aba pergunta de novo (PING) e só reivindica
+  // depois de BATIMENTOS_SEM_SINAL_PARA_REIVINDICAR batimentos sem resposta.
+  // O sorteio de atraso e a checagem "ninguém respondeu nesse meio-tempo" são
+  // os mesmos da reivindicação pelo armazenamento; duas que ainda assim cheguem
+  // juntas se resolvem no desempate por tabId (ver handleMessage). Melhor duas
+  // líderes por um instante que nenhuma: sem líder o painel não recebe pedido
+  // novo sozinho.
+  const reivindicarPeloCanal = useCallback(
+    (imediato: boolean) => {
+      if (isLeaderRef.current) return true;
+      if (!imediato) {
+        bc?.postMessage({ type: "LEADER_PING", tabId: TAB_ID });
+        batimentosSemSinalRef.current += 1;
+        if (
+          batimentosSemSinalRef.current < BATIMENTOS_SEM_SINAL_PARA_REIVINDICAR
+        ) {
+          return false;
+        }
       }
-    }
-    try {
-      const existing = JSON.parse(localStorage.getItem(LEADER_KEY) || "null");
-      const now = Date.now();
-      if (existing && now - existing.ts <= LEADER_TTL) {
-        const active = existing.tabId === TAB_ID;
-        updateLeadership(active);
-        return active;
-      }
-      // Vacant or TTL expired: don't write immediately. That immediate
-      // write is exactly the unlocked read-check-write that let two
-      // follower tabs both read "no leader" and both declare themselves
-      // leader. Instead, wait a fresh random delay (see computeClaimDelayMs
-      // above) and only then re-check-and-write — see the comment on
-      // CLAIM_DELAY_WINDOW_MS for what this does and does not guarantee
-      // (it's race-reducing, not race-free). A claim already scheduled is
-      // left alone: it will re-read the current state when it fires — this
-      // guard is also what stops a second claimLeadership() call from
-      // overwriting the ref and orphaning the first timer's handle.
       if (claimTimeoutRef.current === null) {
+        const vistos = alivesRecebidosRef.current;
         claimTimeoutRef.current = setTimeout(() => {
           claimTimeoutRef.current = null;
-          try {
-            const stillExisting = JSON.parse(
-              localStorage.getItem(LEADER_KEY) || "null",
-            );
-            const stillNow = Date.now();
-            if (stillExisting && stillNow - stillExisting.ts <= LEADER_TTL) {
-              updateLeadership(stillExisting.tabId === TAB_ID);
-              return;
-            }
-            localStorage.setItem(
-              LEADER_KEY,
-              JSON.stringify({ tabId: TAB_ID, ts: Date.now() }),
-            );
-            updateLeadership(true);
-          } catch {
-            updateLeadership(false);
-          }
+          // Alguém se anunciou durante a espera: essa aba serve.
+          if (alivesRecebidosRef.current !== vistos) return;
+          updateLeadership(true);
+          anunciarVida();
         }, computeClaimDelayMs());
       }
-      return isLeaderRef.current;
-    } catch {
-      updateLeadership(false);
       return false;
-    }
-  }, [updateLeadership]);
+    },
+    [updateLeadership, anunciarVida],
+  );
+
+  const claimLeadership = useCallback(
+    (imediato = true) => {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState === "hidden"
+      ) {
+        if (!isLeaderRef.current) {
+          updateLeadership(false);
+          return false;
+        }
+      }
+      try {
+        const existing = JSON.parse(localStorage.getItem(LEADER_KEY) || "null");
+        const now = Date.now();
+        if (batimentoVigente(existing, now)) {
+          const active = existing.tabId === TAB_ID;
+          updateLeadership(active);
+          return active;
+        }
+        // O armazenamento já falhou antes (não grava): reivindicar por ele de
+        // novo só repetiria a falha — vale o canal.
+        if (modoCanalRef.current) return reivindicarPeloCanal(imediato);
+        // Vacant or TTL expired: don't write immediately. That immediate
+        // write is exactly the unlocked read-check-write that let two
+        // follower tabs both read "no leader" and both declare themselves
+        // leader. Instead, wait a fresh random delay (see computeClaimDelayMs
+        // above) and only then re-check-and-write — see the comment on
+        // CLAIM_DELAY_WINDOW_MS for what this does and does not guarantee
+        // (it's race-reducing, not race-free). A claim already scheduled is
+        // left alone: it will re-read the current state when it fires — this
+        // guard is also what stops a second claimLeadership() call from
+        // overwriting the ref and orphaning the first timer's handle.
+        if (claimTimeoutRef.current === null) {
+          claimTimeoutRef.current = setTimeout(() => {
+            claimTimeoutRef.current = null;
+            try {
+              const stillExisting = JSON.parse(
+                localStorage.getItem(LEADER_KEY) || "null",
+              );
+              const stillNow = Date.now();
+              if (batimentoVigente(stillExisting, stillNow)) {
+                updateLeadership(stillExisting.tabId === TAB_ID);
+                return;
+              }
+              localStorage.setItem(
+                LEADER_KEY,
+                JSON.stringify({ tabId: TAB_ID, ts: Date.now() }),
+              );
+              updateLeadership(true);
+            } catch {
+              // Não grava (cheio/bloqueado): sem líder nenhuma aba traria
+              // pedido novo, então o canal decide.
+              modoCanalRef.current = true;
+              reivindicarPeloCanal(imediato);
+            }
+          }, computeClaimDelayMs());
+        }
+        return isLeaderRef.current;
+      } catch {
+        // Não lê (bloqueado) ou valor ilegível: o canal decide.
+        modoCanalRef.current = true;
+        return reivindicarPeloCanal(imediato);
+      }
+    },
+    [updateLeadership, reivindicarPeloCanal],
+  );
 
   const refreshLeadership = useCallback(() => {
     if (!isLeaderRef.current) return;
     try {
       const existing = JSON.parse(localStorage.getItem(LEADER_KEY) || "null");
-      if (existing && existing.tabId === TAB_ID) {
+      const minha = existing && existing.tabId === TAB_ID;
+      // Líder pelo canal e o armazenamento voltou a responder: se nenhuma
+      // outra aba o ocupa, ela volta a guardar o batimento nele.
+      const deOutra =
+        existing &&
+        existing.tabId !== TAB_ID &&
+        batimentoVigente(existing, Date.now());
+      if (minha || (modoCanalRef.current && !deOutra)) {
         localStorage.setItem(
           LEADER_KEY,
           JSON.stringify({ tabId: TAB_ID, ts: Date.now() }),
         );
+        modoCanalRef.current = false;
       } else {
         updateLeadership(false);
       }
     } catch {
-      updateLeadership(false);
+      // Não lê/grava o batimento: segue líder e prova que está viva pelo
+      // canal (falha do armazenamento nunca demove a líder).
+      modoCanalRef.current = true;
+      anunciarVida();
     }
-  }, [updateLeadership]);
+  }, [updateLeadership, anunciarVida]);
 
   const resignLeadership = useCallback(() => {
     if (!isLeaderRef.current) return;
@@ -205,7 +295,16 @@ export function useLeaderElection() {
       } else if (type === "LEADER_ALIVE") {
         if (tabId !== TAB_ID) {
           leaderAliveReceived = true;
-          updateLeadership(false);
+          alivesRecebidosRef.current += 1;
+          batimentosSemSinalRef.current = 0;
+          if (modoCanalRef.current && isLeaderRef.current && TAB_ID < tabId) {
+            // Duas líderes pelo canal (sem armazenamento para arbitrar): a de
+            // tabId MENOR fica e reafirma, para a outra ceder já. Sem regra
+            // simétrica as duas se demoveriam e ficaria zero líderes.
+            anunciarVida();
+          } else {
+            updateLeadership(false);
+          }
         }
       } else if (type === "LEADER_RESIGNED") {
         if (tabId !== TAB_ID) {
@@ -233,7 +332,7 @@ export function useLeaderElection() {
         refreshLeadership();
       } else {
         // Try to claim leadership if it expired
-        claimLeadership();
+        claimLeadership(false);
       }
     }, LEADER_TTL / 2);
 
@@ -269,7 +368,13 @@ export function useLeaderElection() {
       }
       window.removeEventListener("beforeunload", onUnload);
     };
-  }, [claimLeadership, refreshLeadership, resignLeadership, updateLeadership]);
+  }, [
+    claimLeadership,
+    refreshLeadership,
+    resignLeadership,
+    updateLeadership,
+    anunciarVida,
+  ]);
 
   return {
     isLeader,

@@ -467,7 +467,8 @@ export function rotuloDaOrigem(origem: string): string {
     case "venda_balcao":
       return "Venda no balcão";
     case "venda_entrega":
-      return "Venda na entrega";
+      // A origem junta o que se recebe na entrega E na retirada na loja.
+      return "Venda na entrega ou retirada";
     case "estorno":
       return "Estorno";
     case "estorno_externo":

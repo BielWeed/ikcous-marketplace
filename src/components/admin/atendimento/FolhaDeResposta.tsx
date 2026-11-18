@@ -12,6 +12,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { useAlturaDoTeclado } from "@/hooks/useAlturaDoTeclado";
+import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { pluralizar } from "@/lib/pluralizar";
 import { cn } from "@/lib/utils";
@@ -28,8 +29,9 @@ import { PerguntaDeDescarte } from "./PerguntaDeDescarte";
  * folha "Abrir caixa" do Financeiro) e, ao focar o campo, ele é trazido à
  * vista — o campo de resposta nunca fica atrás do teclado.
  *
- * Quem decide fechar é SEMPRE `aoFechar` (X, véu, Esc, Descartar): ele
- * pergunta antes de jogar fora um texto digitado.
+ * Quem decide fechar é SEMPRE `aoFechar` (X, véu, Esc, Descartar, Voltar do
+ * celular): ele pergunta antes de jogar fora um texto digitado e devolve
+ * `false` quando a folha continua aberta (a pergunta, o envio em andamento).
  */
 export function FolhaDeResposta({
   aberta,
@@ -47,7 +49,7 @@ export function FolhaDeResposta({
   aoDescartar,
 }: {
   readonly aberta: boolean;
-  readonly aoFechar: () => void;
+  readonly aoFechar: () => unknown;
   readonly cliente: string;
   readonly produto: string | undefined;
   readonly pergunta: string;
@@ -97,6 +99,18 @@ export function FolhaDeResposta({
     if (!ativo.closest("[data-folha-de-resposta]")) return;
     ativo.scrollIntoView?.({ block: "nearest" });
   }, [aberta, teclado]);
+
+  // O Voltar do aparelho faz o mesmo que o X: fecha a folha, ou pergunta antes
+  // de descartar o texto (uma pergunta só, a daqui de dentro). Com a pergunta
+  // já na tela, vale "continuar editando". Em ambos a folha segue aberta e o
+  // hook devolve a entrada de histórico que o Voltar consumiu.
+  useVoltarFechaAFolha(aberta, () => {
+    if (perguntando) {
+      aoContinuarEditando?.();
+      return false;
+    }
+    return aoFechar();
+  });
 
   const comTeclado = teclado > 0;
   const legenda = [cliente, produto].filter(Boolean).join(" · ");

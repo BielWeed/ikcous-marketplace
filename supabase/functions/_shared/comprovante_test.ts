@@ -1736,3 +1736,143 @@ Deno.test("prazo: SMTP que trava estoura no prazo -> envio_falhou, a reserva VOL
   assertEquals(await reenviar(), { ok: false, motivo: "ja_enviado" });
   assertEquals(entregues.length, 1, "dois e-mails para a mesma compra");
 });
+
+// --- "Quem vai receber": o e-mail diz para quem a entrega vai ---------------
+//
+// A cliente que compra para outra pessoa digita "Quem vai receber" no endereco;
+// o pedido guarda o nome em `customer_data.address.recipient_name` (migration
+// 20261399997000). A ficha, o recibo e a etiqueta ja o mostravam; o e-mail de
+// confirmacao nao, e quem comprou nao conseguia conferir para quem a entrega
+// vai. A linha "Recebe: X" so entra quando o nome diz algo que o comprador
+// ainda nao disse (a mesma regra de `quemVaiReceberSeForOutro` no front).
+
+const ENDERECO_COM_QUEM_RECEBE = (recebe: unknown) => ({
+  street: "Rua das Acácias",
+  number: "120",
+  city: "Paracatu",
+  state: "MG",
+  cep: "38600-123",
+  recipient_name: recebe,
+});
+
+Deno.test("e-mail de ENTREGA para outra pessoa -> o bloco 'Entrega em' traz 'Recebe: <nome>'", async () => {
+  const html = await htmlDoComprovante("cash", "online", {
+    customer_name: "Maria Souza",
+    customer_data: {
+      email: "cliente@exemplo.com",
+      address: ENDERECO_COM_QUEM_RECEBE("Ana Presente"),
+    },
+  });
+  assertStringIncludes(html, "Entrega em");
+  assertStringIncludes(html, "Recebe: Ana Presente");
+  assertStringIncludes(html, "Rua das Acácias, 120");
+});
+
+Deno.test("e-mail de entrega: o mesmo nome do comprador (sem caixa/acento/espaço repetido) NÃO ganha a linha", async () => {
+  for (const recebe of ["Maria Souza", "  maria   SOUZA ", "MÁRIA souza", "", "   ", null, 42]) {
+    const html = await htmlDoComprovante("cash", "online", {
+      customer_name: "Maria Souza",
+      customer_data: {
+        email: "cliente@exemplo.com",
+        address: ENDERECO_COM_QUEM_RECEBE(recebe),
+      },
+    });
+    assertEquals(html.includes("Recebe:"), false, `recebe=${JSON.stringify(recebe)}`);
+    assertStringIncludes(html, "Entrega em");
+  }
+});
+
+Deno.test("e-mail de entrega: 'Souza' e 'Sousa' são pessoas diferentes -> ganha a linha", async () => {
+  const html = await htmlDoComprovante("cash", "online", {
+    customer_name: "Maria Souza",
+    customer_data: {
+      email: "cliente@exemplo.com",
+      address: ENDERECO_COM_QUEM_RECEBE("Maria Sousa"),
+    },
+  });
+  assertStringIncludes(html, "Recebe: Maria Sousa");
+});
+
+Deno.test("e-mail de entrega: o nome de quem recebe é texto digitado e entra ESCAPADO", async () => {
+  const html = await htmlDoComprovante("cash", "online", {
+    customer_name: "Maria Souza",
+    customer_data: {
+      email: "cliente@exemplo.com",
+      address: ENDERECO_COM_QUEM_RECEBE("<b>Ana</b> & Cia"),
+    },
+  });
+  assertStringIncludes(html, "Recebe: &lt;b&gt;Ana&lt;/b&gt; &amp; Cia");
+  assertEquals(html.includes("<b>Ana</b>"), false);
+});
+
+Deno.test("e-mail de RETIRADA na loja e de BALCÃO nunca ganham 'Recebe:' (ninguém recebe em casa)", async () => {
+  const retirada = await htmlDoComprovante("cash", "online", {
+    customer_name: "Maria Souza",
+    customer_data: {
+      email: "cliente@exemplo.com",
+      shipping_option_id: "store-pickup",
+      address: ENDERECO_COM_QUEM_RECEBE("Ana Presente"),
+    },
+  });
+  assertStringIncludes(retirada, "Retirada na loja");
+  assertEquals(retirada.includes("Recebe:"), false);
+
+  const balcao = await htmlDoComprovante("cash", "presencial", {
+    customer_name: "Maria Souza",
+    customer_data: {
+      email: "cliente@exemplo.com",
+      address: ENDERECO_COM_QUEM_RECEBE("Ana Presente"),
+    },
+  });
+  assertStringIncludes(balcao, "Compra na loja");
+  assertEquals(balcao.includes("Recebe:"), false);
+});
+
+Deno.test("e-mail de entrega para outra pessoa sem nome do comprador no pedido -> ainda diz quem recebe", async () => {
+  const html = await htmlDoComprovante("cash", "online", {
+    customer_data: {
+      email: "cliente@exemplo.com",
+      address: ENDERECO_COM_QUEM_RECEBE("Ana Presente"),
+    },
+  });
+  assertStringIncludes(html, "Recebe: Ana Presente");
+});
+
+// O front compara o destinatario com `customer_name || customer_data.name ||
+// "Cliente"` (mappers.ts); o e-mail usa o mesmo nome, senao pedido com
+// `customer_name` vazio mostraria "Recebe:" com o proprio comprador.
+Deno.test("e-mail de entrega: customer_name vazio e customer_data.name igual ao destinatário -> NÃO ganha a linha", async () => {
+  const html = await htmlDoComprovante("cash", "online", {
+    customer_name: "",
+    customer_data: {
+      email: "cliente@exemplo.com",
+      name: "Ana Presente",
+      address: ENDERECO_COM_QUEM_RECEBE("ana  PRESENTE"),
+    },
+  });
+  assertEquals(html.includes("Recebe:"), false);
+  assertStringIncludes(html, "Entrega em");
+});
+
+Deno.test("e-mail de entrega: customer_name vazio e customer_data.name DIFERENTE do destinatário -> ganha a linha", async () => {
+  const html = await htmlDoComprovante("cash", "online", {
+    customer_name: null,
+    customer_data: {
+      email: "cliente@exemplo.com",
+      name: "Maria Souza",
+      address: ENDERECO_COM_QUEM_RECEBE("Ana Presente"),
+    },
+  });
+  assertStringIncludes(html, "Recebe: Ana Presente");
+});
+
+Deno.test("e-mail de entrega: espaço duplo no nome do COMPRADOR não vira pessoa diferente", async () => {
+  const html = await htmlDoComprovante("cash", "online", {
+    customer_name: "Maria  Souza",
+    customer_data: {
+      email: "cliente@exemplo.com",
+      address: ENDERECO_COM_QUEM_RECEBE("maria souza"),
+    },
+  });
+  assertEquals(html.includes("Recebe:"), false);
+});

@@ -5,6 +5,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
+import { momentoDoPagamentoNaMao } from "@/lib/forma-de-pagamento";
 import { Check } from "lucide-react";
 import { useRef, useState } from "react";
 
@@ -19,6 +20,8 @@ const PRINCIPAL = `${BASE_DO_BOTAO} min-h-14 border-[#F6D365]/50 bg-gradient-to-
 interface PerguntaProps {
   total: number;
   disabled?: boolean;
+  /** Retirada na loja: a pergunta fala em "retirada", não em "entrega". */
+  retiradaNaLoja?: boolean | null;
   aoCancelar: () => void;
   aoConfirmar: () => void;
 }
@@ -27,6 +30,7 @@ interface PerguntaProps {
 export function PerguntaDoRecebimento({
   total,
   disabled,
+  retiradaNaLoja,
   aoCancelar,
   aoConfirmar,
 }: Readonly<PerguntaProps>) {
@@ -38,8 +42,9 @@ export function PerguntaDoRecebimento({
         pedido?
       </h3>
       <p className="rounded-2xl border border-emerald-300/15 bg-emerald-300/10 p-4 text-sm leading-relaxed text-emerald-200">
-        Pedido de pagamento na entrega. Se você já recebeu o dinheiro na mão,
-        confirme abaixo — o registro fica salvo no pedido.
+        Pedido de pagamento na {momentoDoPagamentoNaMao(retiradaNaLoja)}. Se
+        você já recebeu o dinheiro na mão, confirme abaixo — o registro fica
+        salvo no pedido.
       </p>
       <div className="flex flex-col gap-3">
         <button type="button" onClick={aoCancelar} className={SECUNDARIO}>
@@ -62,10 +67,12 @@ export function PerguntaDoRecebimento({
 export function ConfirmarRecebimento({
   total,
   disabled,
+  retiradaNaLoja,
   aoConfirmar,
 }: Readonly<{
   total: number;
   disabled?: boolean;
+  retiradaNaLoja?: boolean | null;
   aoConfirmar: () => Promise<void>;
 }>) {
   const [aberto, setAberto] = useState(false);
@@ -101,6 +108,7 @@ export function ConfirmarRecebimento({
         <PerguntaDoRecebimento
           total={total}
           disabled={disabled}
+          retiradaNaLoja={retiradaNaLoja}
           aoCancelar={() => setAberto(false)}
           aoConfirmar={() => void confirmar()}
         />

@@ -57,6 +57,7 @@ import {
   formatarBRL,
   montarEndereco,
   numeroDoPedido,
+  quemRecebeSeForOutro,
   rotuloDoPagamento,
 } from "./pedido.ts";
 import { ehRetiradaNaLoja } from "./retirada-na-loja.ts";
@@ -281,6 +282,10 @@ export function htmlDoPedido(dados: {
   // pedido nao o trouxe: o e-mail nao inventa endereco, so manda esperar a
   // loja. Ausente = entrega de sempre.
   retirada?: { endereco: string } | null;
+  // Para quem a ENTREGA vai, quando nao e' a propria cliente (ela digitou "Quem
+  // vai receber"). Vazio/ausente = nada a dizer. So' aparece no bloco "Entrega
+  // em": quem retira ou compra no balcao nao tem ninguem recebendo em casa.
+  quemRecebe?: string;
 }): string {
   const {
     pedido,
@@ -290,6 +295,7 @@ export function htmlDoPedido(dados: {
     aguardandoPagamento,
     canal,
     retirada,
+    quemRecebe,
   } = dados;
   const total = pedido?.total ?? pedido?.total_amount;
   const frete = pedido?.shipping ?? pedido?.shipping_cost;
@@ -315,11 +321,20 @@ export function htmlDoPedido(dados: {
         ? "Recebemos seu pedido e ele está aguardando a confirmação do pagamento. Assim que o pagamento for confirmado, ele entra na fila de separação."
         : "Recebemos seu pedido. Guarde este e-mail: ele é o resumo do que você comprou.";
 
-  const bloco = (rotulo: string, conteudo: string): string =>
-    conteudo
+  const bloco = (rotulo: string, conteudo: string, recebe = ""): string =>
+    conteudo || recebe
       ? `
-      <p style="margin: 0 0 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #a1a1aa;">${escaparHtml(rotulo)}</p>
+      <p style="margin: 0 0 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #a1a1aa;">${escaparHtml(rotulo)}</p>${
+        recebe
+          ? `
+      <p style="margin: 0 0 ${conteudo ? "4px" : "20px"}; font-size: 14px; font-weight: 600; color: #3f3f46; line-height: 20px;">${escaparHtml(`Recebe: ${recebe}`)}</p>`
+          : ""
+      }${
+        conteudo
+          ? `
       <p style="margin: 0 0 20px; font-size: 14px; color: #3f3f46; line-height: 20px;">${escaparHtml(conteudo)}</p>`
+          : ""
+      }`
       : "";
 
   return `
@@ -352,7 +367,11 @@ export function htmlDoPedido(dados: {
                 ? `${retirada.endereco}. ${AVISO_DA_RETIRADA}`
                 : AVISO_DA_RETIRADA,
             ) + bloco("Endereço do cliente", endereco)
-          : bloco("Entrega em", endereco)
+          : bloco(
+              "Entrega em",
+              endereco,
+              canal === "presencial" ? "" : String(quemRecebe ?? "").trim(),
+            )
       }
 
       <p style="margin: 24px 0 0; font-size: 11px; line-height: 16px; color: #a1a1aa;">
@@ -695,6 +714,7 @@ export async function enviarComprovantePedido(args: {
         aguardandoPagamento: false,
         canal: String(pedido.canal ?? "online"),
         retirada: retiradaDoPedido(pedido.customer_data),
+        quemRecebe: quemRecebeSeForOutro(pedido.customer_name, customerData),
       }),
     }, remetente, { prazoFinalMs });
   } catch (e) {

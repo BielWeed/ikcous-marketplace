@@ -120,6 +120,45 @@ Deno.test("rotuloDoPagamento: pedido do SITE nao muda de texto (nao-regressao do
   assertEquals(rotuloDoPagamento(null, null, "presencial"), "");
 });
 
+Deno.test("rotuloDoPagamento: pedido de RETIRADA diz 'na retirada', nunca 'na entrega'", () => {
+  assertEquals(rotuloDoPagamento("pix", null, undefined, null, true), "PIX na retirada");
+  assertEquals(rotuloDoPagamento("card", null, undefined, null, true), "Cartão na retirada");
+  assertEquals(rotuloDoPagamento("cash", null, undefined, null, true), "Dinheiro na retirada");
+  // A forma continua a que a cliente escolheu: so a palavra do lugar muda.
+  assertEquals(rotuloDoPagamento("CASH", "pix", undefined, null, true), "Dinheiro na retirada");
+});
+
+Deno.test("rotuloDoPagamento: retirada nao mexe no que nao e' 'na entrega'", () => {
+  // Pago pelo site: o rotulo e' o de sempre.
+  assertEquals(rotuloDoPagamento("online", "pix", undefined, null, true), "PIX pelo site");
+  assertEquals(
+    rotuloDoPagamento("online", "credito", undefined, null, true),
+    "Cartão de crédito pelo site",
+  );
+  // Cupom de 100% e' decidido antes de tudo.
+  assertEquals(
+    rotuloDoPagamento("cash", null, undefined, { total: 0 }, true),
+    "Sem valor a pagar",
+  );
+  // O balcao diz o que de fato aconteceu no caixa, mesmo se a bandeira vier ligada.
+  assertEquals(rotuloDoPagamento("cash", null, "presencial", null, true), "Dinheiro");
+  // Forma desconhecida continua sem palpite.
+  assertEquals(rotuloDoPagamento("cripto", null, undefined, null, true), "");
+});
+
+Deno.test("rotuloDoPagamento: so a bandeira EXATA true troca a palavra (entrega segue 'na entrega')", () => {
+  for (const retirada of [undefined, null, false, 0, "", "true", 1]) {
+    assertEquals(
+      rotuloDoPagamento("cash", null, undefined, null, retirada as never),
+      "Dinheiro na entrega",
+    );
+    assertEquals(
+      rotuloDoPagamento("card", null, undefined, null, retirada as never),
+      "Cartão na entrega",
+    );
+  }
+});
+
 Deno.test("montarEndereco monta a partir do customer_data do convidado", () => {
   const saida = montarEndereco({
     address: "Rua das Flores",

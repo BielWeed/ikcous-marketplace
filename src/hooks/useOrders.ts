@@ -34,6 +34,10 @@ import {
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import {
+  criarRecuoDaFila,
+  falhasPassageirasDaFila,
+} from "@/lib/recuo-da-fila-offline";
+import {
   CODIGO_PEDIDO_PASSA_DO_MAXIMO,
   FRASE_PEDIDO_PASSA_DO_MAXIMO,
 } from "@/lib/recusaDoPedido";
@@ -423,6 +427,16 @@ export function erroDeSincronizacaoEhTerminal(err: unknown): boolean {
   if ("code" in err && err.code === "23514") return true;
   if (!("message" in err) || typeof err.message !== "string") return false;
   const mensagem = err.message.toLowerCase();
+  // `avancar_status_do_pedido` recusa quem não é admin com 42501 + "Acesso
+  // negado." (20261345000000): permanente, retentar só repete a recusa. O 42501
+  // genérico ("permission denied") segue fora: a mensagem é que o identifica.
+  if (
+    "code" in err &&
+    err.code === "42501" &&
+    mensagem.includes("acesso negado")
+  ) {
+    return true;
+  }
   return (
     mensagem.includes("pedido_status_mudou") ||
     mensagem.includes("apenas pedidos pendentes") ||
@@ -555,6 +569,9 @@ async function processarFilaOfflineDePedidos(
 ): Promise<boolean> {
   const chaveDaFila = chaveDoUsuario(CHAVE_BASE_DA_FILA_DE_PEDIDOS, userId);
   if (!segundaPassada) paradasPelaRede.delete(chaveDaFila);
+  // Vale a ÚLTIMA passada (a segunda também apaga): se ela esvaziou a fila, a
+  // falha passageira da primeira já não conta.
+  falhasPassageirasDaFila.delete(chaveDaFila);
   if (typeof window === "undefined" || !navigator.onLine) return false;
   // Declarado fora do try: se o storage falhar na ESCRITA, depois das RPCs, o
   // catch precisa resolver ESTE toast em vez de deixá-lo "Sincronizando…".
@@ -765,6 +782,15 @@ async function processarFilaOfflineDePedidos(
     } else {
       localStorage.removeItem(chaveDaFila);
       clearAnalyticsCache();
+    }
+    // Item devolvido por falha PASSAGEIRA (servidor 500, estouro de tempo,
+    // releitura que falhou): o hook marca nova passada (`criarRecuoDaFila`).
+    // Só DEPOIS de a fila final estar gravada -- se a gravação falhar, o catch
+    // de baixo não marca nada (a fila antiga continua no armazenamento e
+    // reenviar por cima dela não é decisão de um relógio). Passada interrompida
+    // (conta trocada, rede ao ler a sessão) tem os seus próprios caminhos.
+    if (!interrompida && falhasTransitorias > 0) {
+      falhasPassageirasDaFila.add(chaveDaFila);
     }
 
     if (interrompida) {
@@ -5698,6 +5724,11 @@ export function useOrders(
     // uma passada silenciosa -- só quando a passada parou por rede.
     const chaveDaFila = chaveDoUsuario(CHAVE_BASE_DA_FILA_DE_PEDIDOS, userId);
     const religador = criarReligadorDaFila(userId, () => agendarPassada(true));
+    // Servidor 500/estouro de tempo com a rede estável: nenhum `online` novo
+    // viria, e o item ficava na fila até recarregar a página. O recuo marca a
+    // nova passada (30 s, 2 min, 10 min) enquanto houver item devolvido por
+    // falha passageira.
+    const recuo = criarRecuoDaFila(() => agendarPassada(true));
     const agendarPassada = (silenciosa: boolean) => {
       const timer = setTimeout(async () => {
         timersPendentes.delete(timer);
@@ -5716,6 +5747,7 @@ export function useOrders(
           console.error("[Offline Sync] Failed to sync offline orders:", err);
         } finally {
           religador.aoFimDaPassada(paradasPelaRede.has(chaveDaFila));
+          recuo.aoFimDaPassada(falhasPassageirasDaFila.has(chaveDaFila));
           fim();
         }
       }, 1000);
@@ -5730,6 +5762,7 @@ export function useOrders(
     return () => {
       window.removeEventListener("online", handleOnlineSync);
       religador.encerrar();
+      recuo.encerrar();
       for (const timer of timersPendentes) clearTimeout(timer);
       timersPendentes.clear();
     };

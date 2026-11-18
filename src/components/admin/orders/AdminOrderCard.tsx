@@ -20,7 +20,10 @@ import { useAgoraDoPainel } from "@/hooks/useAgoraDoPainel";
 import type { ResultadoDaAnulacao } from "@/hooks/useAnularVendaDoBalcao";
 import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import { podeAnularVendaDoBalcao } from "@/lib/anulacao-do-balcao";
-import { pedidoSemValorAPagar } from "@/lib/forma-de-pagamento";
+import {
+  momentoDoPagamentoNaMao,
+  pedidoSemValorAPagar,
+} from "@/lib/forma-de-pagamento";
 import { horarioRelativo } from "@/lib/horario-relativo";
 import {
   fraseDeEsperaDoPedido,
@@ -443,6 +446,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
             paymentStatus={order.paymentStatus}
             orderStatus={order.status}
             canal={order.canal}
+            retiradaNaLoja={order.retiradaNaLoja}
             tamanho="cartao"
             compact={!grande}
           />
@@ -750,6 +754,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
             <PerguntaDoRecebimento
               total={order.total || 0}
               disabled={bloqueado || !faltaReceber}
+              retiradaNaLoja={order.retiradaNaLoja}
               aoCancelar={() => setPainel(null)}
               aoConfirmar={() => void executar(undefined, true)}
             />
@@ -782,7 +787,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                   ? textoCancelamento
                   : painel === "avancar"
                     ? "O dinheiro deste pedido não entrou. Se você avançar, a mercadoria caminha para sair mesmo assim — e, depois de finalizado, não dá mais para cancelar e devolver ao estoque. Se a cliente pagou na loja, feche este aviso, cancele o pedido (botão Cancelar pedido) e registre a venda em Vender."
-                    : "Pedido de pagamento na entrega. Se você já recebeu o dinheiro na mão, confirme abaixo — o registro fica salvo no pedido."}
+                    : `Pedido de pagamento na ${momentoDoPagamentoNaMao(order.retiradaNaLoja)}. Se você já recebeu o dinheiro na mão, confirme abaixo — o registro fica salvo no pedido.`}
               </p>
               <div className="flex flex-col gap-3">
                 <button

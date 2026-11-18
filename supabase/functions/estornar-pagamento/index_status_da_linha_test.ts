@@ -326,6 +326,10 @@ for (const terminal of ["concluido", "falhou", "recusado"]) {
   });
 }
 
+// ATENÇÃO (CAS de `tentativas`, 18/11/2026): este cenário só vira a STATUS e
+// deixa `tentativas` quieta — por isso a marca ainda casa. Uma marca REAL
+// (cron ou outro clique) sempre soma 1 em `tentativas` junto: nesse caso o
+// clique que leu antes PERDE o CAS e recebe 409 (index_test.ts, CAS-1 e CAS-2).
 Deno.test("marca: linha lida solicitado que virou em_processamento no meio (ainda viva) é remarcada e executa UMA vez", async () => {
   const { resposta, banco: b, chamadasAoMp } = await clicar("solicitado", {
     aoLerOPedido: (linhas) => {

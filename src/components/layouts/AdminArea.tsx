@@ -788,6 +788,7 @@ export function AdminArea({
                             onNavigate: onNavigate,
                             active: true,
                             onSetDirty: setIsAdminDirty,
+                            onSetBackOverride: setBackOverride,
                           }}
                         />
                       </LocalErrorBoundary>

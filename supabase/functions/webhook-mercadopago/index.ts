@@ -125,8 +125,10 @@ import {
   aplicarEfeitosDoPagamentoConfirmado,
   type DepsDosEfeitos,
   desfechoComEfeito,
+  reavisarPagamentoForaDoFluxo,
   reenviarEmailPendenteDoPagamento,
   TETO_DO_EMAIL_MS,
+  TETO_DO_PUSH_MS,
 } from "../_shared/efeitos-do-pagamento.ts";
 // Os testes e o contrato antigo importam estes dois DAQUI: a definição é uma só.
 export {
@@ -2365,7 +2367,9 @@ async function handler(
   // transição sob o `FOR UPDATE` da RPC. `ja_pago`/`ja_estornado`/`ignorado`
   // são reenvio do MP (ou o outro caminho) encontrando um estado que já foi
   // tratado — 200, sem efeito, é o que impede o reenvio de virar spam para o
-  // lojista. Exceção única: `ja_pago` cujo e-mail ao cliente ficou pendente
+  // lojista. Exceções: `ja_pago` de 'pago_apos_expirar' cujo push ao lojista
+  // entregou a 0 (reaviso, com a reserva `pago_fora_do_fluxo:<pedido>`); e
+  // `ja_pago` cujo e-mail ao cliente ficou pendente
   // (aviso de `pago_apos_expirar`, ou comprovante de `pago` recente) reenvia só
   // esse e-mail (reserva atômica). `divergente`/`inexistente` NÃO são esse caso benigno: significam
   // que a confirmação (já aprovada pelo MP) não bate com o pedido, e por isso
@@ -2377,11 +2381,26 @@ async function handler(
       orderId,
       resultado,
       enviarPush: deps.enviarPush,
+      // 'pago_apos_expirar' avisa o lojista com reserva e nova tentativa: conta as
+      // entregas (a MESMA forma contada dos avisos irmãos deste arquivo).
+      enviarPushContado: deps.enviarPushContado ?? disparoPushContadoReal,
       enviarComprovante: deps.enviarComprovante,
       enviarAvisoAtrasado: deps.enviarAvisoAtrasado,
       tetoDoEmailMs: deps.tetoDoEmailMs ?? TETO_DO_EMAIL_MS,
     });
   } else if (resultado === "ja_pago") {
+    // r210-h: o aviso "Pagamento fora do fluxo" da TRANSIÇÃO é um tiro; se ele
+    // entregou a 0 (ninguém com push inscrito, VAPID falhou), a reentrega é a
+    // próxima chance. Só pedido 'pago_apos_expirar' e só enquanto a chave
+    // `pago_fora_do_fluxo:<pedido>` não estiver 'enviado' (reserva atômica): entregue
+    // uma vez, nunca repete. Nunca lança.
+    await reavisarPagamentoForaDoFluxo({
+      supabase,
+      orderId,
+      enviarPush: deps.enviarPush,
+      enviarPushContado: deps.enviarPushContado ?? disparoPushContadoReal,
+      tetoDoPushMs: TETO_DO_PUSH_MS,
+    });
     // EST-EDGE-DIN-3 (16/10/2026): 'ja_pago' continua sem push (a transição
     // já o disparou), MAS o e-mail ao cliente pode não ter saído (SMTP fora do
     // ar: a reserva do e-mail foi devolvida e o pedido, com `paid_at`, sai da

@@ -84,7 +84,7 @@ const {
     normalizarCodigoDePostagem,
     servicoDaDevolucaoReversa,
 } = await import('./index.ts')
-const { cpfValido, cpfDoDestinatario, sanitizarCpfDoTexto, sanitizarDadosPessoaisDoTexto } = await import('./cpf.ts')
+const { cpfValido, cpfDoDestinatario, sanitizarCpfDoTexto, sanitizarDadosPessoaisDoTexto, camposRecusadosDoProvedor } = await import('./cpf.ts')
 globalThis.fetch = fetchNativo
 
 /** Instala o fetch admin falso SÓ durante a chamada ao handler. */
@@ -2911,10 +2911,160 @@ Deno.test("handler - cart HTTP (4xx) ecoando o `to` num campo irmão de `errors`
         assertEquals(linha.includes('Maria Souza'), false)
         assertEquals(linha.includes('Rua Antiga'), false)
         assertEquals(linha.includes('38500000'), false)
-        // O motivo de verdade (a única coisa que importa pro lojista)
-        // continua saindo — o log não fica mudo.
-        assertEquals(linha.includes('telefone'), true)
+        // O log não fica mudo: o NOME do campo recusado sai (o texto da
+        // recusa, não — vai só ao lojista, na resposta).
+        assertEquals(linha.includes('to.phone'), true)
+        assertEquals(linha.includes('telefone'), false)
     })
+})
+
+// ── cart HTTP: o TEXTO livre do ME nunca vai pro log (nome/endereço) ──────────
+// `motivoDoProvedor` só tira CPF, e-mail e telefone. Uma recusa de validação
+// pode ecoar, DENTRO de `errors`/`message`, o nome, a rua, o número, o bairro,
+// a cidade e o CEP do destinatário — e nada disso é removido. O log do cart (a
+// única chamada ao ME que manda o `to`) registra só status, pedido e os NOMES
+// dos campos recusados; o texto continua indo ao lojista na resposta.
+
+const ECO_DO_DESTINATARIO = [
+    'Maria Souza', 'Rua Antiga', 'Monte Carmelo', '38500-000', '38500000', 'Centro',
+]
+
+function buscarCartRecusado(corpoDaRecusa: (enviado: any) => unknown, status = 422) {
+    const base = buscarMeFalso()
+    const buscar = (async (input: any, init?: any) => {
+        const url = String(input instanceof Request ? input.url : input)
+        if (url.endsWith('/api/v2/me/cart') && String(init?.method) === 'POST') {
+            const enviado = JSON.parse(String(init?.body || '{}'))
+            const corpo = corpoDaRecusa(enviado)
+            return new Response(typeof corpo === 'string' ? corpo : JSON.stringify(corpo), {
+                status,
+                headers: { 'Content-Type': 'application/json' },
+            })
+        }
+        return base.buscar(input, init)
+    }) as any
+    return buscar
+}
+
+Deno.test("handler - cart HTTP (4xx) com o destinatário ecoado DENTRO de errors/message: o log não leva nome, rua, cidade nem CEP — só status, pedido e campos", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+        const buscar = buscarCartRecusado(() => ({
+            message: 'Dados inválidos para Maria Souza (Rua Antiga, 42, Centro, Monte Carmelo).',
+            errors: {
+                'to.address': ['O endereço "Rua Antiga" de Maria Souza não existe em Monte Carmelo.'],
+                'to.postal_code': ['O CEP 38500-000 / 38500000 não atende ao serviço.'],
+                'Maria Souza': ['chave que é dado pessoal'],
+            },
+        }))
+        const linhas = await comConsoleErrorCapturado(async () => {
+            const res = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar }))
+            assertEquals(res.status, 502)
+        })
+        const linha = linhas.find((l) => l.includes('cart HTTP')) ?? ''
+        assertEquals(linha !== '', true)
+        for (const dado of ECO_DO_DESTINATARIO) {
+            assertEquals(linha.includes(dado), false, `dado pessoal vazou no log do cart: ${dado}`)
+        }
+        // Nenhuma outra linha do console carrega o eco (a resposta ao lojista
+        // é o único canal do texto).
+        for (const l of linhas) {
+            for (const dado of ECO_DO_DESTINATARIO) {
+                assertEquals(l.includes(dado), false, `dado pessoal vazou em outra linha: ${dado}`)
+            }
+        }
+        // O log não fica mudo: status, pedido e os campos recusados saem.
+        assertEquals(linha.includes('422'), true)
+        assertEquals(linha.includes('pedido-1'), true)
+        assertEquals(linha.includes('to.address'), true)
+        assertEquals(linha.includes('to.postal_code'), true)
+    })
+})
+
+Deno.test("handler - cart HTTP recusado: a resposta ao lojista NÃO muda (volume vira a mensagem de volume, o resto a de 422)", async () => {
+    await comEnvAdmin(async () => {
+        // Recusa de volume: o motivo (texto) ainda decide a frase do lojista,
+        // mesmo sem ir pro log.
+        const comVolume = clienteFalso({ pedido: PEDIDO_FELIZ })
+        const resVolume = await comAdminFalso(() =>
+            handler(requisicaoGerar(), {
+                supabase: comVolume.cliente,
+                buscar: buscarCartRecusado(() => ({ errors: { 'volumes.0.weight': ['O peso do volume é inválido.'] } })),
+            }))
+        assertEquals(resVolume.status, 502)
+        assertEquals(
+            (await resVolume.json()).error,
+            'O Melhor Envio recusou o peso ou as medidas do pacote desta etiqueta. Confira o peso e as medidas dos produtos deste pedido no cadastro e tente de novo.',
+        )
+
+        // Recusa comum: a frase de 422 (mesma de antes da correção).
+        const comum = clienteFalso({ pedido: PEDIDO_FELIZ })
+        const resComum = await comAdminFalso(() =>
+            handler(requisicaoGerar(), {
+                supabase: comum.cliente,
+                buscar: buscarCartRecusado(() => ({ errors: { 'to.address': ['Endereço inválido.'] } })),
+            }))
+        assertEquals(resComum.status, 502)
+        assertEquals(
+            (await resComum.json()).error,
+            'O Melhor Envio recusou os dados da etiqueta (criação da etiqueta). Confira o cadastro do remetente e o endereço do pedido.',
+        )
+    })
+})
+
+Deno.test("handler - cart HTTP sem JSON de campos (HTML de gateway, texto solto com nome): o log sai só com status e pedido", async () => {
+    await comEnvAdmin(async () => {
+        for (const corpo of [
+            '<html>Bad Gateway para Maria Souza em Rua Antiga</html>',
+            'Falha ao enviar para Maria Souza, Rua Antiga, 42',
+            JSON.stringify({ errors: 'Maria Souza em Rua Antiga' }),
+            JSON.stringify({ errors: ['Maria Souza', 'Rua Antiga'] }),
+            JSON.stringify({ message: 'Maria Souza' }),
+            '',
+        ]) {
+            const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+            const linhas = await comConsoleErrorCapturado(async () => {
+                const res = await comAdminFalso(() =>
+                    handler(requisicaoGerar(), { supabase: supa.cliente, buscar: buscarCartRecusado(() => corpo, 502) }))
+                assertEquals(res.status, 502)
+            })
+            const linha = linhas.find((l) => l.includes('cart HTTP')) ?? ''
+            assertEquals(linha.includes('502'), true)
+            assertEquals(linha.includes('pedido-1'), true)
+            for (const dado of ['Maria Souza', 'Rua Antiga']) {
+                assertEquals(linha.includes(dado), false, `vazou "${dado}" com o corpo: ${corpo}`)
+            }
+        }
+    })
+})
+
+Deno.test("camposRecusadosDoProvedor - só nomes de campo conhecidos do carrinho sobrevivem; texto, chave estranha e formato inesperado somem", () => {
+    // Caminho feliz: formato Laravel, com índice numérico.
+    assertEquals(
+        camposRecusadosDoProvedor(JSON.stringify({
+            message: 'The given data was invalid.',
+            errors: { 'to.postal_code': ['x'], 'products.0.name': ['y'], 'volumes.1.weight': ['z'] },
+        })),
+        ['to.postal_code', 'products.0.name', 'volumes.1.weight'],
+    )
+    // Chave que é valor (nome, rua, mistura com campo) NÃO passa.
+    assertEquals(
+        camposRecusadosDoProvedor(JSON.stringify({
+            errors: { 'Maria Souza': ['a'], 'to.Maria': ['b'], 'to.address.Rua Antiga': ['c'], maria: ['d'], 'to.name': ['e'] },
+        })),
+        ['to.name'],
+    )
+    // Limite: no máximo 6, sem repetir.
+    const muitos: Record<string, string[]> = {}
+    for (let i = 0; i < 20; i++) muitos[`volumes.${i}.weight`] = ['x']
+    assertEquals(camposRecusadosDoProvedor(JSON.stringify({ errors: muitos })).length, 6)
+    // Formatos inesperados: lista vazia, nunca exceção.
+    for (const texto of ['', 'null', '[]', '"texto"', '123', '<html>', '{', JSON.stringify({ errors: 'Maria' }), JSON.stringify({ errors: ['to.name'] }), JSON.stringify({ message: 'to.name' }), JSON.stringify({ errors: null })]) {
+        assertEquals(camposRecusadosDoProvedor(texto), [], `texto: ${texto}`)
+    }
+    // Não-string de entrada (a rede devolve o que quiser).
+    assertEquals(camposRecusadosDoProvedor(undefined as any), [])
+    assertEquals(camposRecusadosDoProvedor(null as any), [])
 })
 
 Deno.test("handler - /me HTTP (4xx) com campo irmão de `message`: o log usa motivoDoProvedor — só a mensagem, nunca o corpo cru", async () => {

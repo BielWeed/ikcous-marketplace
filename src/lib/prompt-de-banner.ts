@@ -35,12 +35,44 @@ const CENAS: Record<ObjetivoDoBanner, string> = {
   colecao: "Mostre vários itens harmonizados, formando uma coleção.",
 };
 
+const MAX_DO_NOME = 100;
+
+/**
+ * Corta em `MAX_DO_NOME` unidades de texto sem partir uma letra: `slice` corta em
+ * unidades UTF-16 e deixava metade de um emoji (ou de uma familia de emojis) no
+ * fim do nome. O corte anda de letra inteira em letra inteira.
+ */
+function cortarSemPartirLetra(texto: string): string {
+  if (texto.length <= MAX_DO_NOME) return texto;
+  const letras =
+    typeof Intl !== "undefined" && "Segmenter" in Intl
+      ? Array.from(
+          new Intl.Segmenter("pt-BR", { granularity: "grapheme" }).segment(
+            texto,
+          ),
+          (parte) => parte.segment,
+        )
+      : Array.from(texto);
+  let corte = "";
+  for (const letra of letras) {
+    if (corte.length + letra.length > MAX_DO_NOME) break;
+    corte += letra;
+  }
+  return corte;
+}
+
 function limparNome(nome?: string): string {
-  return (nome ?? "")
-    .replace(/\p{C}/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 100);
+  return cortarSemPartirLetra(
+    (nome ?? "")
+      // O conector invisivel (U+200D) que cola um emoji no outro e o unico
+      // "controle" que fica; solto, entre letras, vira espaco como os demais.
+      .replace(
+        /(\p{Extended_Pictographic}\uFE0F?\p{Emoji_Modifier}?)\u200D(?=\p{Extended_Pictographic})|\p{C}/gu,
+        (achado, emoji?: string) => (emoji === undefined ? " " : achado),
+      )
+      .replace(/\s+/g, " ")
+      .trim(),
+  ).trim();
 }
 
 export function gerarPromptDeBanner(entrada: EntradaDoPrompt): string {

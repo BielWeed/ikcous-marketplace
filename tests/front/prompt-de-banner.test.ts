@@ -5,6 +5,9 @@ import {
 } from "@/lib/prompt-de-banner";
 import { describe, expect, it } from "vitest";
 
+// Conector invisivel que cola um emoji no outro (U+200D).
+const ZWJ = String.fromCodePoint(0x200d);
+
 describe("texto para criar a imagem do banner", () => {
   it.each([
     ["promocao", "energia"],
@@ -68,6 +71,43 @@ describe("texto para criar a imagem do banner", () => {
     });
     expect(texto).not.toMatch(/\p{Cc}/u);
     expect(texto.length).toBeLessThan(900);
+  });
+
+  it("nao parte um emoji ao meio quando o nome passa do limite", () => {
+    const texto = gerarPromptDeBanner({
+      objetivo: "promocao",
+      nomeDaLoja: `${"a".repeat(99)}😀 resto`,
+    });
+    expect(texto).not.toMatch(/[\ud800-\udbff](?![\udc00-\udfff])/);
+    expect(texto).not.toMatch(/(?<![\ud800-\udbff])[\udc00-\udfff]/);
+    expect(texto).toContain(`Loja: ${"a".repeat(99)}.`);
+  });
+
+  it("mantem a familia de emojis inteira, com o conector invisivel", () => {
+    const familia = ["👩", "👩", "👧", "👦"].join(ZWJ);
+    const texto = gerarPromptDeBanner({
+      objetivo: "promocao",
+      nomeDaLoja: `Loja ${familia}`,
+    });
+    expect(texto).toContain(`Loja: Loja ${familia}.`);
+  });
+
+  it("nao parte a familia de emojis no corte dos 100", () => {
+    const familia = ["👩", "👩", "👧", "👦"].join(ZWJ);
+    const texto = gerarPromptDeBanner({
+      objetivo: "promocao",
+      nomeDaLoja: `${"a".repeat(95)}${familia}`,
+    });
+    expect(texto).toContain(`Loja: ${"a".repeat(95)}.`);
+    expect(texto).not.toContain(ZWJ);
+  });
+
+  it("ainda troca o conector invisivel solto por espaco", () => {
+    const texto = gerarPromptDeBanner({
+      objetivo: "promocao",
+      nomeDoProduto: `Azul${ZWJ}Claro ${ZWJ}`,
+    });
+    expect(texto).toContain("Produto: Azul Claro.");
   });
 
   it("explica o caminho completo sem prometer gerar a imagem no app", () => {

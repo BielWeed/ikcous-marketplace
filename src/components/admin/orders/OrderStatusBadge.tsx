@@ -292,6 +292,11 @@ interface PaymentStatusBadgeProps {
    * (`useDevolucaoConcluidaDoPedido`); lista e planilha não passam.
    */
   devolucaoConcluida?: boolean;
+  /**
+   * Retirada na loja: "Recebido na entrega" se lê "Recebido na retirada".
+   * Opcional, padrão `false`: sem ela o selo é o de sempre.
+   */
+  retiradaNaLoja?: boolean | null;
   className?: string;
   /**
    * Rótulo CURTO (`shortLabel`) para grades de cards: "Pago fora do fluxo —
@@ -384,11 +389,24 @@ const RECEBIDO_NO_BALCAO: PaymentStatusEntry = {
   borderColor: paymentStatusConfig.recebido_na_entrega.borderColor,
 };
 
+/**
+ * Mesmo fato de `recebido_na_entrega`, dito do ponto de vista de quem foi
+ * BUSCAR na loja (retirada): ninguém entregou nada. Só o rótulo muda, e a cor
+ * é a mesma de propósito.
+ */
+const RECEBIDO_NA_RETIRADA: PaymentStatusEntry = {
+  label: "Recebido na retirada",
+  color: paymentStatusConfig.recebido_na_entrega.color,
+  bgColor: paymentStatusConfig.recebido_na_entrega.bgColor,
+  borderColor: paymentStatusConfig.recebido_na_entrega.borderColor,
+};
+
 function configDoPagamento(
   paymentStatus: PaymentStatus | null | undefined,
   orderStatus?: OrderStatus | null,
   canal?: CanalDaVenda,
   devolucaoConcluida = false,
+  retiradaNaLoja = false,
 ): PaymentStatusEntry {
   const key = paymentStatusKey(paymentStatus);
   // O cruzamento com `cancelled` VENCE o canal: venda de balcão cancelada
@@ -415,6 +433,9 @@ function configDoPagamento(
   if (key === "recebido_na_entrega" && canal === "presencial") {
     return RECEBIDO_NO_BALCAO;
   }
+  if (key === "recebido_na_entrega" && retiradaNaLoja) {
+    return RECEBIDO_NA_RETIRADA;
+  }
   return getPaymentStatusConfig(key);
 }
 
@@ -423,12 +444,14 @@ export function rotuloDoPagamento(
   orderStatus?: OrderStatus | null,
   canal?: CanalDaVenda,
   devolucaoConcluida = false,
+  retiradaNaLoja = false,
 ): string {
   return configDoPagamento(
     paymentStatus,
     orderStatus,
     canal,
     devolucaoConcluida,
+    retiradaNaLoja,
   ).label;
 }
 
@@ -449,6 +472,7 @@ export const PaymentStatusBadge = memo(function PaymentStatusBadge({
   orderStatus,
   canal,
   devolucaoConcluida = false,
+  retiradaNaLoja,
   className,
   compact = false,
   tamanho = "padrao",
@@ -462,12 +486,14 @@ export const PaymentStatusBadge = memo(function PaymentStatusBadge({
     orderStatus,
     canal,
     devolucaoConcluida,
+    !!retiradaNaLoja,
   );
   const label = rotuloDoPagamento(
     paymentStatus,
     orderStatus,
     canal,
     devolucaoConcluida,
+    !!retiradaNaLoja,
   );
 
   return (

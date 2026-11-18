@@ -5,6 +5,10 @@
 // o `?id=`, e o retorno do login não repassava o id a `admin-orders`. Agora o
 // id (só se for um uuid de pedido) viaja no state do login e chega à ficha.
 //
+// O mesmo caminho vale para `/admin-settings` e `/admin-product-form?id=<produto>`
+// (18/11/2026): a lojista que perde a sessão com um produto em edição, ou nos
+// Ajustes, entra de novo e volta para a MESMA tela, não para o Perfil de cliente.
+//
 // A segurança é o que se prova aqui junto: id malformado/script/URL é
 // descartado, só `admin-orders` recebe o id, conta de cliente não ganha acesso
 // ao painel por causa disto, e nada fica guardado no aparelho.
@@ -64,8 +68,9 @@ vi.mock("framer-motion", async () => {
 });
 
 // Mutável de propósito: cada teste escolhe visitante, logada ou admin no ato.
-const { estadoAuth, avisoErro, PEDIDO } = vi.hoisted(() => ({
+const { estadoAuth, avisoErro, PEDIDO, PRODUTO } = vi.hoisted(() => ({
   PEDIDO: "3f2b8c1e-5a47-4d9e-9b1a-7c6d2e4f8a90",
+  PRODUTO: "9a1c4e7b-2d3f-4a56-8b90-1c2d3e4f5a6b",
   // `toast.error` espiado: é o aviso "Acesso restrito" que a logada que não é
   // admin lê ao ser mandada para a vitrine.
   avisoErro: vi.fn(),
@@ -91,6 +96,13 @@ vi.mock("@/views/customer/HomeView", () => ({
         onClick={() => onNavigate("admin-orders", PEDIDO)}
       >
         Pedido do painel
+      </button>
+      <button
+        type="button"
+        data-testid="ir-para-produto-do-painel"
+        onClick={() => onNavigate("admin-product-form", PRODUTO)}
+      >
+        Produto do painel
       </button>
       <button
         type="button"
@@ -617,14 +629,28 @@ describe("o pedido do aviso atravessa o login até a ficha", () => {
     expect(idDaFicha()).toBe(PEDIDO);
   });
 
-  it("(d) o id de pedido não vaza para outra tela do painel: /admin-settings?id=… e /admin?id=… não carregam id", async () => {
+  it("(d) o id de pedido não vaza para outra tela do painel: /admin-settings?id=… volta aos Ajustes SEM id", async () => {
     await abrirEm(`/admin-settings?id=${PEDIDO}`);
+    expect(globalThis.location.pathname).toBe("/auth");
+    expect(globalThis.history.state?.requested).toBe("admin-settings");
+    expect(globalThis.history.state?.id ?? null).toBeNull();
+
+    await entrarEmDoisPassos(true);
+
+    expect(tela("painel")?.getAttribute("data-tela")).toBe("admin-settings");
+    expect(idDaFicha()).toBe("");
+    expect(globalThis.location.pathname).toBe("/admin-settings");
+    expect(globalThis.location.search).toBe("");
+    expect(globalThis.history.state?.id ?? null).toBeNull();
+  });
+
+  it("(d) outra tela do painel (/admin-dashboard?id=…) segue FORA da lista: depois de entrar vai ao perfil, sem id", async () => {
+    await abrirEm(`/admin-dashboard?id=${PEDIDO}`);
     expect(globalThis.location.pathname).toBe("/auth");
     expect(globalThis.history.state?.id ?? null).toBeNull();
 
     await entrarEmDoisPassos(true);
 
-    // `admin-settings` não é destino aceito: o perfil, sem `?id`.
     expect(tela("painel")).toBeNull();
     expect(globalThis.location.pathname).toBe("/profile");
     expect(globalThis.location.search).toBe("");
@@ -659,6 +685,187 @@ describe("o pedido do aviso atravessa o login até a ficha", () => {
     expect(idDaFicha()).toBe("");
     expect(globalThis.history.state?.id ?? null).toBeNull();
     expect(globalThis.location.search).toBe("");
+  });
+
+  it("(e) sessão vencida em /admin-settings: a lojista entra e volta aos Ajustes, não ao Perfil de cliente", async () => {
+    await abrirEm("/admin-settings");
+
+    expect(globalThis.location.pathname).toBe("/auth");
+    expect(globalThis.history.state?.requested).toBe("admin-settings");
+    expect(tela("painel")).toBeNull();
+
+    await entrarEmDoisPassos(true);
+
+    expect(tela("painel")?.getAttribute("data-tela")).toBe("admin-settings");
+    expect(globalThis.location.pathname).toBe("/admin-settings");
+    expect(globalThis.history.state?.view).toBe("admin-settings");
+    expect(tela("tela-perfil-proprio")).toBeNull();
+    expect(tela("tela-login")).toBeNull();
+  });
+
+  it("(e) sessão vencida editando um produto: a lojista entra e volta ao MESMO produto (id preservado na ficha e na URL)", async () => {
+    await abrirEm(`/admin-product-form?id=${PRODUTO}`);
+
+    // Entrada: o produto fica guardado no state (a URL de login não o carrega).
+    expect(globalThis.location.pathname).toBe("/auth");
+    expect(globalThis.location.search).toBe("");
+    expect(globalThis.history.state?.requested).toBe("admin-product-form");
+    expect(globalThis.history.state?.id).toBe(PRODUTO);
+    expect(tela("painel")).toBeNull();
+
+    await entrarEmDoisPassos(true);
+
+    expect(tela("painel")?.getAttribute("data-tela")).toBe(
+      "admin-product-form",
+    );
+    expect(idDaFicha()).toBe(PRODUTO);
+    expect(globalThis.location.pathname).toBe("/admin-product-form");
+    expect(globalThis.location.search).toBe(`?id=${PRODUTO}`);
+    expect(globalThis.history.state?.view).toBe("admin-product-form");
+    expect(globalThis.history.state?.id).toBe(PRODUTO);
+    expect(globalThis.history.state?.requested).toBeUndefined();
+    expect(tela("tela-perfil-proprio")).toBeNull();
+    expect(tela("tela-login")).toBeNull();
+  });
+
+  it("(e) produto NOVO (sem id) que perde a sessão volta ao formulário de produto novo, sem `?id` fantasma", async () => {
+    await abrirEm("/admin-product-form");
+    expect(globalThis.history.state?.requested).toBe("admin-product-form");
+
+    await entrarEmDoisPassos(true);
+
+    expect(tela("painel")?.getAttribute("data-tela")).toBe(
+      "admin-product-form",
+    );
+    expect(idDaFicha()).toBe("");
+    expect(globalThis.location.search).toBe("");
+  });
+
+  it("(e) a navegação interna sem sessão para o produto (handleNavigate com id) também volta ao mesmo produto", async () => {
+    await abrirNaVitrine();
+    await clicar("ir-para-produto-do-painel");
+    expect(globalThis.location.pathname).toBe("/auth");
+    expect(globalThis.history.state?.requested).toBe("admin-product-form");
+
+    await entrarEmDoisPassos(true);
+
+    expect(tela("painel")?.getAttribute("data-tela")).toBe(
+      "admin-product-form",
+    );
+    expect(idDaFicha()).toBe(PRODUTO);
+    expect(globalThis.location.search).toBe(`?id=${PRODUTO}`);
+  });
+
+  it("(e) CLIENTE que entra com o produto guardado nunca vê o painel nem o produto: vai à vitrine, sem o id, com o aviso", async () => {
+    await abrirEm(`/admin-product-form?id=${PRODUTO}`);
+    expect(globalThis.history.state?.id).toBe(PRODUTO);
+
+    await entrarEmDoisPassos(false);
+
+    expect(tela("painel")).toBeNull();
+    expect(tela("home")).not.toBeNull();
+    expect(globalThis.history.state?.view).toBe("home");
+    expect(globalThis.location.pathname).not.toContain("admin");
+    expect(globalThis.location.href).not.toContain(PRODUTO);
+    expect(globalThis.history.state?.id ?? null).toBeNull();
+    expect(avisoErro).toHaveBeenCalledWith(
+      "Acesso restrito a administradores.",
+    );
+  });
+
+  it("(e) CLIENTE que entra com /admin-settings guardado nunca vê o painel: vai à vitrine, com o aviso", async () => {
+    await abrirEm("/admin-settings");
+
+    await entrarEmDoisPassos(false);
+
+    expect(tela("painel")).toBeNull();
+    expect(tela("home")).not.toBeNull();
+    expect(globalThis.history.state?.view).toBe("home");
+    expect(globalThis.location.pathname).not.toContain("admin");
+    expect(avisoErro).toHaveBeenCalledWith(
+      "Acesso restrito a administradores.",
+    );
+  });
+
+  it.each([
+    ["script", "javascript:alert(1)"],
+    ["URL sem protocolo", "//evil.com"],
+    ["subida de pasta", "../"],
+    ["texto longo", "a".repeat(5000)],
+    ["uuid com sobra", `${PRODUTO}x`],
+    ["código curto", "produto-A"],
+    ["vazio", ""],
+  ])(
+    "(e) id de produto malformado (%s) é descartado: o formulário abre sem `?id`, nada de lixo na URL",
+    async (_nome, lixo) => {
+      await abrirEm(`/admin-product-form?id=${encodeURIComponent(lixo)}`);
+
+      expect(globalThis.location.pathname).toBe("/auth");
+      expect(globalThis.history.state?.requested).toBe("admin-product-form");
+      expect(globalThis.history.state?.id ?? null).toBeNull();
+
+      await entrarEmDoisPassos(true);
+
+      expect(tela("painel")?.getAttribute("data-tela")).toBe(
+        "admin-product-form",
+      );
+      expect(idDaFicha()).toBe("");
+      expect(globalThis.location.search).toBe("");
+      expect(globalThis.location.href).not.toContain("evil");
+    },
+  );
+
+  it("(e) state FORJADO no /auth com id que não é uuid: não é repassado ao formulário de produto", async () => {
+    await abrirNaVitrine();
+    await act(async () => {
+      const estado = {
+        view: "auth",
+        requested: "admin-product-form",
+        id: "javascript:alert(1)",
+      };
+      globalThis.history.pushState(estado, "", "/auth");
+      globalThis.dispatchEvent(
+        new PopStateEvent("popstate", { state: estado }),
+      );
+    });
+    await assentar();
+    expect(tela("tela-login")).not.toBeNull();
+
+    await entrarEmDoisPassos(true);
+
+    expect(tela("painel")?.getAttribute("data-tela")).toBe(
+      "admin-product-form",
+    );
+    expect(idDaFicha()).toBe("");
+    expect(globalThis.location.search).toBe("");
+  });
+
+  it("(e) o id de PRODUTO não vaza para os Ajustes: state forjado só leva o id a admin-product-form", async () => {
+    await abrirNaVitrine();
+    await act(async () => {
+      const estado = { view: "auth", requested: "admin-settings", id: PRODUTO };
+      globalThis.history.pushState(estado, "", "/auth");
+      globalThis.dispatchEvent(
+        new PopStateEvent("popstate", { state: estado }),
+      );
+    });
+    await assentar();
+
+    await entrarEmDoisPassos(true);
+
+    expect(tela("painel")?.getAttribute("data-tela")).toBe("admin-settings");
+    expect(idDaFicha()).toBe("");
+    expect(globalThis.location.search).toBe("");
+  });
+
+  it("(e) o produto em edição não fica guardado no aparelho (só no state do login, que o destino substitui)", async () => {
+    await abrirEm(`/admin-product-form?id=${PRODUTO}`);
+    expect(guardadoNoAparelho()).not.toContain(PRODUTO);
+
+    await entrarEmDoisPassos(true);
+
+    expect(idDaFicha()).toBe(PRODUTO);
+    expect(guardadoNoAparelho()).not.toContain(PRODUTO);
   });
 
   it("(d) depois do uso o pedido não fica guardado: a entrada de login some, `requested` some, nada vai ao armazenamento do aparelho", async () => {

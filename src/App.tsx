@@ -20,6 +20,7 @@ import { esquecerChaveDoPedidoDe } from "@/lib/chave-do-pedido";
 import {
   destinoPosLogin,
   idDePedidoDoPainel,
+  idDeProdutoDoPainel,
   idDoDestinoPosLogin,
   painelSemContaPedeEntrada,
 } from "@/lib/destinoPosLogin";
@@ -2215,21 +2216,25 @@ const AppContent = () => {
           const pedida = targetView;
           // O `?id=` do aviso some com a troca da URL por `/auth` logo abaixo
           // (os parâmetros só são lidos mais adiante): lê AQUI, antes. Só a
-          // ficha de pedido o usa, e só se for um uuid (`idDePedidoDoPainel`);
-          // `handleAuthSuccess` o devolve a `admin-orders` e a entrada de login
+          // ficha de pedido (só se for um uuid, `idDePedidoDoPainel`) e o
+          // produto em edição (idem, `idDeProdutoDoPainel`) o usam;
+          // `handleAuthSuccess` o devolve à mesma tela e a entrada de login
           // é substituída pelo destino, então o id não fica guardado.
-          const pedidoDoAviso =
-            pedida === "admin-orders"
-              ? idDePedidoDoPainel(
-                  new URLSearchParams(globalThis.location.search).get("id"),
-                )
-              : undefined;
+          const idDaUrl = new URLSearchParams(globalThis.location.search).get(
+            "id",
+          );
+          let idDaTela: string | undefined;
+          if (pedida === "admin-orders") {
+            idDaTela = idDePedidoDoPainel(idDaUrl);
+          } else if (pedida === "admin-product-form") {
+            idDaTela = idDeProdutoDoPainel(idDaUrl);
+          }
           targetView = "auth";
           if (globalThis.location.pathname !== "/auth") {
             globalThis.history.replaceState(
-              pedidoDoAviso === undefined
+              idDaTela === undefined
                 ? { view: "auth", requested: pedida }
-                : { view: "auth", requested: pedida, id: pedidoDoAviso },
+                : { view: "auth", requested: pedida, id: idDaTela },
               "",
               "/auth",
             );

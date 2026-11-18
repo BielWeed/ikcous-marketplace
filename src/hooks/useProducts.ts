@@ -32,6 +32,10 @@ import {
   ehConsultaSemResposta,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
+import {
+  criarRecuoDaFila,
+  falhasPassageirasDaFila,
+} from "@/lib/recuo-da-fila-offline";
 import { redimensionarImagem } from "@/lib/redimensiona-imagem";
 import {
   criarReligadorDaFila,
@@ -261,6 +265,35 @@ async function syncOfflineUpdates(
   }
 }
 
+/**
+ * Recusa PERMANENTE do banco: classe 23 do Postgres (dado recusado: unicidade
+ * 23505, não-nulo 23502, chave estrangeira 23503, check 23514) ou 42501 (sem
+ * permissão / política de linha). O mesmo envio repetido recebe a mesma
+ * resposta; só rede, 5xx e estouro de tempo valem nova tentativa.
+ */
+function codigoDoBanco(err: unknown): string | undefined {
+  if (typeof err !== "object" || err === null || !("code" in err)) {
+    return undefined;
+  }
+  return typeof err.code === "string" ? err.code : undefined;
+}
+
+function erroDoBancoEhPermanente(err: unknown): boolean {
+  const codigo = codigoDoBanco(err);
+  return (
+    codigo !== undefined && (codigo.startsWith("23") || codigo === "42501")
+  );
+}
+
+function motivoDaRecusaDoBanco(err: unknown): string {
+  const codigo = codigoDoBanco(err);
+  if (codigo === "23505") {
+    return "esse valor já existe em outro produto, como o código de barras";
+  }
+  if (codigo === "42501") return "sem permissão para alterar este produto";
+  return "o banco não aceitou esses valores";
+}
+
 async function sincronizarFilaDoUsuario(
   userId: string,
   // Retentativa por renovação do token (`criarReligadorDaFila`): não pisca o
@@ -269,6 +302,7 @@ async function sincronizarFilaDoUsuario(
 ): Promise<boolean> {
   const chaveDaFila = chaveDoUsuario(CHAVE_BASE_DA_FILA_DE_PRODUTOS, userId);
   paradasPelaRede.delete(chaveDaFila);
+  falhasPassageirasDaFila.delete(chaveDaFila);
   if (typeof window === "undefined" || !navigator.onLine) return false;
   const queueStr = localStorage.getItem(chaveDaFila);
   if (!queueStr) return false;
@@ -443,6 +477,17 @@ async function sincronizarFilaDoUsuario(
         }
       } catch (err) {
         console.error("[Offline Sync] Failed to sync product %s:", id, err);
+        if (erroDoBancoEhPermanente(err)) {
+          // O banco recusou o VALOR (unicidade, nulo, check, chave) ou a
+          // PERMISSÃO: tentar de novo repete a recusa até as 72 h. Sai da fila
+          // com aviso, igual ao conflito acima (`conflitos` também impede o
+          // "sincronizado com sucesso" falso) e não marca nova tentativa.
+          conflitos += 1;
+          toast.warning(
+            `A edição offline do produto ${item.productName || updates?.name || id} foi descartada: o servidor a recusou e tentar de novo não resolve (${motivoDaRecusaDoBanco(err)}). Confira o produto e edite novamente.`,
+          );
+          continue;
+        }
         remainingQueue.push(item);
       }
     }
@@ -486,6 +531,14 @@ async function sincronizarFilaDoUsuario(
 
     if (filaFinal.length > 0) {
       localStorage.setItem(chaveDaFila, JSON.stringify(filaFinal));
+    }
+    // Item devolvido por falha (servidor 500, estouro de tempo): o hook marca
+    // nova passada (`criarRecuoDaFila`) -- com a rede estável nenhum `online`
+    // novo viria. Só DEPOIS de a fila final estar gravada; passada
+    // interrompida (conta trocada, rede ao ler a sessão) tem os seus próprios
+    // caminhos. A versão-base (`baseUpdatedAt`) segue valendo em cada envio.
+    if (!interrompida && remainingQueue.length > 0) {
+      falhasPassageirasDaFila.add(chaveDaFila);
     }
     if (interrompida) {
       // A sessão trocou no meio: sem toast de sucesso nem de falha — a
@@ -1547,11 +1600,16 @@ export function useProducts({
     // uma passada silenciosa -- só quando a passada parou por rede.
     const chaveDaFila = chaveDoUsuario(CHAVE_BASE_DA_FILA_DE_PRODUTOS, userId);
     const religador = criarReligadorDaFila(userId, () => agendarPassada(true));
+    // Servidor 500/estouro de tempo com a rede estável: nenhum `online` novo
+    // viria, e a edição ficava na fila até recarregar a página. O recuo marca a
+    // nova passada (30 s, 2 min, 10 min) enquanto houver item devolvido.
+    const recuo = criarRecuoDaFila(() => agendarPassada(true));
     const agendarPassada = (silenciosa: boolean) => {
       const timer = setTimeout(() => {
         timersPendentes.delete(timer);
         syncOfflineUpdates(userId, silenciosa).then((synced) => {
           religador.aoFimDaPassada(paradasPelaRede.has(chaveDaFila));
+          recuo.aoFimDaPassada(falhasPassageirasDaFila.has(chaveDaFila));
           if (synced) {
             const versoes = new Map(versoesAposSincronizar);
             versoesAposSincronizar.clear();
@@ -1584,6 +1642,7 @@ export function useProducts({
     return () => {
       window.removeEventListener("online", handleOnlineSync);
       religador.encerrar();
+      recuo.encerrar();
       for (const timer of timersPendentes) clearTimeout(timer);
       timersPendentes.clear();
     };

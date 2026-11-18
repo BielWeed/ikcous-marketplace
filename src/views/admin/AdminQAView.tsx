@@ -49,6 +49,7 @@ interface AdminQAViewProps {
   readonly onNavigate: (view: View) => void;
   readonly active?: boolean;
   readonly onSetDirty?: (dirty: boolean) => void;
+  readonly onSetBackOverride?: (fn: (() => void) | null) => void;
 }
 
 let cachedQAStats: {
@@ -64,6 +65,7 @@ export const AdminQAView = memo(function AdminQAView({
   active = true,
   onNavigate,
   onSetDirty,
+  onSetBackOverride,
 }: AdminQAViewProps) {
   const {
     questions,
@@ -432,15 +434,31 @@ export const AdminQAView = memo(function AdminQAView({
 
   const [confirmandoDescarte, setConfirmandoDescarte] = useState(false);
 
+  // `false` quando a folha continua aberta (a pergunta de descarte, o envio em
+  // andamento): é o que o Voltar do aparelho precisa saber para devolver a
+  // entrada de histórico que consumiu.
   const handleCloseDialog = useCallback(() => {
-    if (isSubmitting) return;
+    if (isSubmitting) return false;
     const isDirty = answer.trim() !== initialAnswerRef.current.trim();
     if (isDirty) {
       setConfirmandoDescarte(true);
-    } else {
-      setSelectedQuestion(null);
+      return false;
     }
+    setSelectedQuestion(null);
   }, [answer, isSubmitting]);
+
+  // Com texto digitado o roteador tem o aviso dele de "alterações não salvas"
+  // no Voltar do aparelho. Ele não pode abrir POR CIMA da pergunta de descarte
+  // da folha (que já faz esse papel, via `useVoltarFechaAFolha`): um desvio do
+  // Voltar, que o App chama no lugar do aviso, deixa só a pergunta da folha.
+  // O desvio em si não faz nada: quem trata o Voltar é a folha.
+  const folhaComTexto =
+    !!selectedQuestion && answer.trim() !== initialAnswerRef.current.trim();
+  useEffect(() => {
+    if (!onSetBackOverride || !folhaComTexto) return;
+    onSetBackOverride(() => () => {});
+    return () => onSetBackOverride(null);
+  }, [folhaComTexto, onSetBackOverride]);
 
   const handleDelete = async (id: string) => {
     if (isOffline) {

@@ -119,6 +119,18 @@ const ROTULO_PAGAMENTO_NO_BALCAO = new Map<string, string>([
 ]);
 
 /**
+ * RETIRADA NA LOJA: a cliente paga quando busca, nao quando "recebe em casa" —
+ * "Cartao na entrega" num aviso de retirada manda ela esperar alguem que nao
+ * vai vir. Mesmas tres formas, so' a palavra do lugar muda (o painel e o
+ * checkout ja dizem "na retirada"). Mesmo `Map`, pelo mesmo motivo.
+ */
+const ROTULO_PAGAMENTO_NA_RETIRADA = new Map<string, string>([
+  ["pix", "PIX na retirada"],
+  ["card", "Cartão na retirada"],
+  ["cash", "Dinheiro na retirada"],
+]);
+
+/**
  * O que o comprovante diz no lugar da forma de pagamento quando a compra
  * fechou em R$ 0,00 (cupom de 100%). Mesmo texto das telas
  * (`ROTULO_SEM_VALOR_A_PAGAR`, `src/lib/forma-de-pagamento.ts`). So' texto: o
@@ -165,6 +177,12 @@ export function pedidoSemValorAPagar(
  * `valores` (opcional) e' o dinheiro do pedido: so' ele decide o caso "sem
  * valor a pagar". Ausente = "nao sei", e o rotulo e' o de sempre, byte a byte.
  * Esse caso vem ANTES de tudo, ate' do metodo desconhecido — igual as telas.
+ *
+ * `retirada` (opcional): so' a bandeira EXATA `true` troca "na entrega" por
+ * "na retirada". Quem decide se o pedido e' de retirada e' o chamador, pelo id
+ * gravado em `customer_data.shipping_option_id` (`ehRetiradaNaLoja`). O balcao
+ * (`canal` presencial) e o pago pelo site nao mudam: nenhum dos dois diz
+ * "na entrega".
  */
 export function rotuloDoPagamento(
   metodo: unknown,
@@ -176,6 +194,7 @@ export function rotuloDoPagamento(
     discount?: unknown;
     shipping?: unknown;
   } | null,
+  retirada?: boolean,
 ): string {
   if (pedidoSemValorAPagar(valores)) return ROTULO_SEM_VALOR_A_PAGAR;
   const chave = String(metodo ?? "").toLowerCase();
@@ -185,6 +204,10 @@ export function rotuloDoPagamento(
   }
   if (chave === "online" && metodoOnline !== undefined && metodoOnline !== null && metodoOnline !== "") {
     return ROTULO_DO_ONLINE.get(String(metodoOnline).toLowerCase()) ?? "Pagamento pelo site";
+  }
+  if (retirada === true) {
+    const naRetirada = ROTULO_PAGAMENTO_NA_RETIRADA.get(chave);
+    if (naRetirada !== undefined) return naRetirada;
   }
   // Metodo desconhecido nao vira palpite: some a linha inteira, e quem
   // chama decide. Inventar "Outro" seria informar o que ninguem sabe.
@@ -235,4 +258,43 @@ export function montarEndereco(
   return [linha1, complemento, bairro, cidadeEstado, cep]
     .filter(Boolean)
     .join(" · ");
+}
+
+/** Nome sem acento, sem caixa e com um espaco so entre as palavras: a regua para dizer "e' a mesma pessoa". */
+const chaveDoNome = (nome: unknown): string =>
+  String(nome ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+
+/**
+ * O nome de quem vai RECEBER o pedido, SE for outra pessoa; "" quando nao ha
+ * nome ou quando e' a propria cliente.
+ *
+ * A cliente que compra para outra pessoa digita "Quem vai receber" no endereco
+ * e o pedido guarda o nome em `customer_data.address.recipient_name` (migration
+ * 20261399997000). Mesma regra de `quemVaiReceberSeForOutro` do front
+ * (`src/lib/quem-vai-receber.ts`, que a edge nao importa): o endereco traz o
+ * nome da propria cliente por padrao, e repeti-lo em todo e-mail seria ruido. A
+ * comparacao ignora acento, caixa e espaco sobrando; "Souza" e "Sousa" nao sao
+ * a mesma pessoa. Le o mesmo RETRATO do pedido que a etiqueta
+ * (`nomeDeQuemRecebe`): `addressData` ou `address` — nunca a linha atual da
+ * conta, que a cliente pode ter editado depois da compra.
+ */
+export function quemRecebeSeForOutro(
+  comprador: unknown,
+  customerData: Record<string, unknown> | null | undefined,
+): string {
+  const cd = customerData || {};
+  const fonte = cd.addressData ||
+    (typeof cd.address === "object" && cd.address !== null ? cd.address : null);
+  const bruto = typeof fonte?.recipient_name === "string" ? fonte.recipient_name : "";
+  const nome = bruto.replace(/\s+/g, " ").trim();
+  if (!nome) return "";
+  // Mesmo nome que o front mostra como comprador (mappers.ts): `customer_name`,
+  // senao `customer_data.name`, senao "Cliente".
+  const quemComprou = comprador || cd.name || "Cliente";
+  return chaveDoNome(nome) === chaveDoNome(quemComprou) ? "" : nome;
 }

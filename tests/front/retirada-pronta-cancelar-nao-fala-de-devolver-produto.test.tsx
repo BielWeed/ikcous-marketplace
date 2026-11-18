@@ -92,8 +92,38 @@ describe("textoConfirmarCancelamento — entrega x retirada x pagamento", () => 
       retiradaPronta: true,
       pagamentoNaEntrega: true,
     });
-    expect(texto).toContain("pagou este pedido na entrega");
+    // Quem retira na loja nao recebe entrega: a frase diz "na retirada".
+    expect(texto).toContain("pagou este pedido na retirada");
+    expect(texto).not.toMatch(/entrega/i);
+    expect(texto).toContain(
+      "combine a devolução do dinheiro diretamente com a loja",
+    );
     expect(texto).not.toMatch(FALA_DE_DEVOLVER_PRODUTO);
+  });
+
+  it('retirada AINDA em separacao + pago na mao: diz "na retirada", nao "na entrega"', () => {
+    const texto = textoConfirmarCancelamento({
+      pagamentoJaEntrou: true,
+      jaFoiEnviado: false,
+      pagamentoNaEntrega: true,
+      retiradaNaLoja: true,
+    });
+    expect(texto).toContain("pagou este pedido na retirada");
+    expect(texto).not.toMatch(/entrega/i);
+    expect(texto).toContain(
+      "combine a devolução do dinheiro diretamente com a loja",
+    );
+  });
+
+  it('ENTREGA + pago na mao: continua dizendo "na entrega" (controle)', () => {
+    const texto = textoConfirmarCancelamento({
+      pagamentoJaEntrou: true,
+      jaFoiEnviado: false,
+      pagamentoNaEntrega: true,
+      retiradaNaLoja: false,
+    });
+    expect(texto).toContain("pagou este pedido na entrega");
+    expect(texto).not.toMatch(/retirada/i);
   });
 
   it("retirada AINDA em separação + pago: segue o texto de 'não enviado' (a retirada ainda não está pronta)", () => {
@@ -352,8 +382,28 @@ describe("OrderDetailsView — retirada pronta: cancelar e ficha do pedido cance
       retiradaNaLoja: true,
     });
     const texto = await textoDoConfirmAoCancelar();
-    expect(texto).toContain("pagou este pedido na entrega");
+    // Quem retira na loja nao recebe entrega: a frase diz "na retirada".
+    expect(texto).toContain("pagou este pedido na retirada");
+    expect(texto).not.toMatch(/entrega/i);
+    expect(texto).toContain(
+      "combine a devolução do dinheiro diretamente com a loja",
+    );
     expect(texto).not.toMatch(FALA_DE_DEVOLVER_PRODUTO);
+  });
+
+  it('retirada em separacao (processing) e paga na mao: o aviso diz "na retirada"', async () => {
+    pedidoAtual = pedido("processing", "recebido_na_entrega", {
+      retiradaNaLoja: true,
+    });
+    const texto = await textoDoConfirmAoCancelar();
+    expect(texto).toContain("pagou este pedido na retirada");
+    expect(texto).not.toMatch(/entrega/i);
+  });
+
+  it('ENTREGA em separacao (processing) e paga na mao: segue "na entrega" (controle)', async () => {
+    pedidoAtual = pedido("processing", "recebido_na_entrega");
+    const texto = await textoDoConfirmAoCancelar();
+    expect(texto).toContain("pagou este pedido na entrega");
   });
 
   it("retirada em separação (processing) e paga: segue 'volta sozinho' (ainda não está pronta)", async () => {

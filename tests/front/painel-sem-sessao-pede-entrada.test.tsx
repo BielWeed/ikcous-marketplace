@@ -472,13 +472,13 @@ describe("painel sem sessão pede entrada (aviso de pedido novo)", () => {
   });
 
   it("(a) outra tela do painel sem sessão também pede entrada, mas NÃO vira destino (lista fechada: depois de entrar vai ao perfil)", async () => {
-    await abrirEm("/admin-settings");
+    await abrirEm("/admin-dashboard");
     expect(globalThis.location.pathname).toBe("/auth");
     expect(tela("tela-login")).not.toBeNull();
     expect(tela("painel")).toBeNull();
 
     await entrar(true);
-    // `admin-settings` foi pedido, mas só `admin-orders` é destino aceito.
+    // `admin-dashboard` foi pedido, mas não está na lista fechada de destinos.
     expect(tela("painel")).toBeNull();
     expect(globalThis.location.pathname).toBe("/profile");
   });
@@ -623,7 +623,7 @@ describe("painel sem sessão pede entrada (aviso de pedido novo)", () => {
   it("(d) `requested` de fonte insegura: um history.state forjado com outra tela do painel não vira destino", async () => {
     await abrirNaVitrine();
     await act(async () => {
-      const estado = { view: "auth", requested: "admin-settings" };
+      const estado = { view: "auth", requested: "admin-dashboard" };
       globalThis.history.pushState(estado, "", "/auth");
       globalThis.dispatchEvent(
         new PopStateEvent("popstate", { state: estado }),

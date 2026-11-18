@@ -15,10 +15,12 @@
 //     não lê NADA.
 //   * A MARCA ANTES DO MP: `UPDATE order_refunds SET
 //     status='em_processamento', tentativas=tentativas+1 WHERE id=$1 AND
-//     status IN ('solicitado','em_processamento')`. Se 0 linhas voltaram,
-//     outro executor (cron/webhook/clique paralelo) mudou a linha no meio —
-//     409 sem chamar o MP. E' o mesmo update condicional do cron (Task 4) —
-//     UM desenho, dois chamadores.
+//     status IN ('solicitado','em_processamento') AND tentativas=<lido>`.
+//     Se 0 linhas voltaram, outro executor (cron/webhook/clique paralelo)
+//     mudou a linha no meio — 409 sem chamar o MP. O `tentativas=<lido>` é
+//     o que dá ao clique paralelo o 409 (o status sozinho não dá: a marca
+//     do primeiro já deixa em_processamento). A fila do cron (Task 4) marca
+//     só linhas `solicitado`, onde o status já é o CAS.
 //   * A CHAVE DE IDEMPOTÊNCIA é o order_refunds.id (linha.id), SEMPRE —
 //     quem monta o header é o executor (Task 2); esta function só garante
 //     que a linha certa (o id certo) chega a ele.
@@ -342,9 +344,19 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
 
         // 5. A MARCA — antes do MP, update CONDICIONAL. `tentativas` usa o
         //    valor lido +1 (a API de update não exprime `tentativas+1` em
-        //    SQL): numa corrida de duas execuções a contagem pode perder 1
-        //    ponto — `tentativas` é MÉTRICA de fila (teto do cron na T4), o
-        //    dinheiro é protegido pela chave de idempotência, não por ela.
+        //    SQL).
+        //    O `.eq('tentativas', lido)` é um COMPARE-AND-SWAP (18/11/2026): o
+        //    `.in` de status SOZINHO não fecha a corrida, porque a própria marca
+        //    grava em_processamento — a segunda requisição simultânea (duplo
+        //    clique, duas abas) também casava e chamava o MP outra vez, com
+        //    tentativas 1 nas duas (então a consulta antes do reenvio era
+        //    pulada). Com o CAS, de duas requisições que leram o MESMO valor o
+        //    banco deixa passar UMA; a outra volta 0 linhas = o 409 abaixo. A
+        //    chave de idempotência continua sendo a segunda barreira, não a
+        //    única. Clique que chega DEPOIS da marca já lê o valor novo e segue
+        //    como o reenvio de sempre (linha em_processamento é reenviável),
+        //    passando pela consulta antes do reenvio. O desfazer lá embaixo
+        //    (`.eq('tentativas', anterior+1)`) casa com o valor gravado aqui.
         //    O `.neq('solicitado_por', 'sistema')` é DEFESA EM PROFUNDIDADE
         //    (achado da revisão de 29/09): o MESMO filtro que o cron usa na
         //    própria fila — se uma refatura futura pular o gate 2b, a marca
@@ -360,6 +372,7 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
             })
             .eq('id', refundId)
             .in('status', ['solicitado', 'em_processamento'])
+            .eq('tentativas', Number(linha.tentativas ?? 0))
             .neq('solicitado_por', 'sistema')
             .select()
         if (erroMarca) {
@@ -368,7 +381,8 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
         }
         if (!Array.isArray(marcada) || marcada.length === 0) {
             // 0 linhas: entre o carregamento e a marca, outro executor mudou
-            // o estado (cron, webhook, clique paralelo) — NÃO chama o MP.
+            // o estado OU a contagem (cron, webhook, clique paralelo — que
+            // vence o CAS de `tentativas` e deixa este perder) — NÃO chama o MP.
             return json({ erro: 'estorno_em_execucao' }, 409)
         }
 

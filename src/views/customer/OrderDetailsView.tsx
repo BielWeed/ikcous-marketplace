@@ -47,6 +47,7 @@ import {
   aguardarComPrazo,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
+import { quemVaiReceberSeForOutro } from "@/lib/quem-vai-receber";
 import {
   PRAZO_DO_RETRATO_MS,
   lerRetratoDoConvidado,
@@ -1245,6 +1246,14 @@ export function OrderDetailsView({
   const jaRetirado =
     order.retiradaNaLoja === true && order.status === "delivered";
   const noBalcao = order.canal === "presencial";
+  // Compra para outra pessoa ("Quem vai receber"): só entrega em casa tem quem receba.
+  const quemRecebe =
+    noBalcao || order.retiradaNaLoja
+      ? ""
+      : quemVaiReceberSeForOutro(
+          order.customer.name,
+          order.customer.recipientName,
+        );
   const compraNaLoja = noBalcao && order.status === "delivered";
   const currentStatus = prontoParaRetirar
     ? PRONTO_PARA_RETIRAR
@@ -2095,8 +2104,16 @@ export function OrderDetailsView({
               {/* Retirada sem endereco de quem comprou: nada de rotulo
                   "Seu endereco" sobre um nome solto. */}
               {(temEnderecoDoPedido || !order.retiradaNaLoja) && (
-                <p className="mt-1 text-sm font-bold text-zinc-900">
+                <p className="mt-1 break-words text-sm font-bold text-zinc-900">
                   {order.customer.name}
+                </p>
+              )}
+              {/* Compra para outra pessoa ("Quem vai receber"): quem comprou
+                  confere para quem a entrega vai. Mesma regra do recibo e da
+                  ficha da loja. */}
+              {quemRecebe && (
+                <p className="mt-0.5 break-words text-sm font-medium text-zinc-700">
+                  Recebe: {quemRecebe}
                 </p>
               )}
               {/* As mesmas linhas do recibo e da ficha da loja: rua, número e

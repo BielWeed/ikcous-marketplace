@@ -25,9 +25,16 @@ import type { View } from "@/types";
  * `admin` (26/10/2026) é a porta do painel: a lojista cuja sessão venceu e
  * abriu `/admin` entrava de novo e caía no Perfil de cliente, com o pedido
  * guardado e ignorado. É tela sem `id` nem formulário, e a permissão continua
- * sendo do portão do App e do servidor. A lista continua FECHADA: as demais
- * telas do painel pedem entrada, mas não viram destino (cairiam em telas que
- * dependem de `id` ou de formulário).
+ * sendo do portão do App e do servidor.
+ * `admin-settings` e `admin-product-form` (18/11/2026) entraram pelo mesmo
+ * motivo: são as telas em que a lojista fica com a sessão aberta enquanto
+ * trabalha (os Ajustes, e o produto em edição, que tem rascunho por conta), e a
+ * que perdia a sessão ali entrava de novo e caía no Perfil de cliente, tendo de
+ * reencontrar a edição. O produto leva o `id` (uuid, validado por
+ * `idDeProdutoDoPainel`); os Ajustes não têm id. A permissão segue sendo do
+ * portão do App (`isAdmin`) e do servidor: quem entra e não é admin vai à
+ * vitrine com "Acesso restrito", como com `admin-orders`. A lista continua
+ * FECHADA: as demais telas do painel pedem entrada, mas não viram destino.
  */
 const VIEWS_REDIRECIONAVEIS = new Set<string>([
   "user-profile",
@@ -36,6 +43,8 @@ const VIEWS_REDIRECIONAVEIS = new Set<string>([
   "address-form",
   "admin-orders",
   "admin",
+  "admin-settings",
+  "admin-product-form",
   // Quem pediu login pelas "Perguntas ao vendedor" volta ao produto. Como o
   // "user-profile", só vale COM o id do produto no state (ver abaixo).
   "product-detail",
@@ -100,11 +109,23 @@ const DESTINOS_QUE_RECEBEM_ID = new Set<string>([
  * Maiúsculas passam (o banco aceita o uuid do link em maiúsculas); a âncora
  * `$` do JS só casa no fim da entrada, então `uuid\n` NÃO passa.
  */
-const UUID_DE_PEDIDO =
+const UUID_DO_PAINEL =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function idDePedidoDoPainel(valor: unknown): string | undefined {
-  return typeof valor === "string" && UUID_DE_PEDIDO.test(valor)
+  return typeof valor === "string" && UUID_DO_PAINEL.test(valor)
+    ? valor
+    : undefined;
+}
+
+/**
+ * O id do produto em edição (`/admin-product-form?id=<uuid>`) que atravessa o
+ * login. `produtos.id` também é `uuid`, então vale o MESMO formato do pedido —
+ * e a mesma regra: o resto vira `undefined` e a tela abre sem `?id`. Mesmas
+ * duas portas de entrada que o pedido (`syncWithUrl` e `idDoDestinoPosLogin`).
+ */
+export function idDeProdutoDoPainel(valor: unknown): string | undefined {
+  return typeof valor === "string" && UUID_DO_PAINEL.test(valor)
     ? valor
     : undefined;
 }
@@ -112,13 +133,15 @@ export function idDePedidoDoPainel(valor: unknown): string | undefined {
 /**
  * O `id` que `handleAuthSuccess` (App.tsx) repassa a `handleNavigate` junto do
  * destino. Lê o state do login (precisa ser chamado ANTES de navegar, que o
- * sobrescreve). `undefined` para toda view fora de `DESTINOS_QUE_RECEBEM_ID` e
- * `admin-orders`, e para id ausente, vazio ou que não é string.
+ * sobrescreve). `undefined` para toda view fora de `DESTINOS_QUE_RECEBEM_ID`,
+ * `admin-orders` e `admin-product-form`, e para id ausente, vazio ou que não é string.
  *
  * `admin-orders` (17/11/2026) é a exceção que valida: o aviso de "Pedido novo"
  * abre a ficha pelo id, e a lojista que entra depois de a sessão vencer tem de
  * chegar nela, não na lista. Aqui o id só passa se for um uuid de pedido
- * (`idDePedidoDoPainel`) — e nenhuma outra tela do painel recebe id.
+ * (`idDePedidoDoPainel`). `admin-product-form` (18/11/2026) idem, com
+ * `idDeProdutoDoPainel`: a lojista volta ao produto que editava. Nenhuma outra
+ * tela do painel recebe id.
  */
 export function idDoDestinoPosLogin(
   destino: View,
@@ -127,6 +150,9 @@ export function idDoDestinoPosLogin(
   const registro = comoRegistro(state);
   if (destino === "admin-orders") {
     return idDePedidoDoPainel(registro?.id);
+  }
+  if (destino === "admin-product-form") {
+    return idDeProdutoDoPainel(registro?.id);
   }
   if (!DESTINOS_QUE_RECEBEM_ID.has(destino) || !idUtilizavel(registro)) {
     return undefined;

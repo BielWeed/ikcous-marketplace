@@ -1,3 +1,4 @@
+import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import * as Dialog from "@radix-ui/react-dialog";
 import { HelpCircle } from "lucide-react";
 import { type ReactElement, type ReactNode, useEffect } from "react";
@@ -27,6 +28,10 @@ export function FolhaClientes({
     document.body.classList.add("admin-modal-open");
     return () => document.body.classList.remove("admin-modal-open");
   }, [aberta]);
+
+  // O Voltar do aparelho fecha só a folha, em vez de tirar a lojista da tela de
+  // Clientes (a folha não tinha entrada no histórico).
+  useVoltarFechaAFolha(aberta, () => aoMudar(false));
 
   return (
     <Dialog.Root open={aberta} onOpenChange={aoMudar}>

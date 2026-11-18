@@ -241,7 +241,7 @@ Deno.test("contrato com o cron e a edge: as marcas antes do MP são UPDATE CONDI
   );
   assertStringIncludes(
     edge,
-    ".eq('id', refundId) .in('status', ['solicitado', 'em_processamento']) .neq('solicitado_por', 'sistema') .select()",
+    ".eq('id', refundId) .in('status', ['solicitado', 'em_processamento']) .eq('tentativas', Number(linha.tentativas ?? 0)) .neq('solicitado_por', 'sistema') .select()",
   );
   assertStringIncludes(
     edge,

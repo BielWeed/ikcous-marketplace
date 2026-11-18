@@ -80,8 +80,9 @@ const fonte = readFileSync(caminho, "utf8");
 // Base 251753360, gerada antes da implementação: 180 literais.
 // O CI não precisa do histórico. O hash é só da lista de classes móveis,
 // não do arquivo; as caixas relevantes também ficam legíveis abaixo.
+// + `break-words` no endereço de retirada do cartão "Retirada na loja" (18/11/2026): só essa classe entra.
 const HASH_DAS_CLASSES_MOVEIS =
-  "866ed79a3c7bfb1764d41281c5d15d1a4757708ca338b7f48d3bd6b836638f4f";
+  "a9a857ff22b987766e20006b416b14d8f027e3e23956706e69e9dcb005bad302";
 const CLASSES_DAS_CAIXAS_NA_BASE = [
   "mx-auto w-full max-w-[600px] space-y-4 px-4 pt-5 md:px-6 md:pt-6",
   "space-y-2",
