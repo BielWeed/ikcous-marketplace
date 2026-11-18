@@ -45,6 +45,10 @@ export interface PropsDoCupomDaVenda {
    * desconto, cliente, forma de pagamento e rascunho). Ausente = sem o botão
    * "Cancelar venda" (testes que montam só a lista). */
   readonly limparCupom?: () => void;
+  /** Há consulta de código de barras no ar (a view conta). A resposta de um
+   * bipe só entra enquanto a etapa é "cupom": sair daqui (Fechar venda ou
+   * Cliente) antes dela chegar descartaria a peça que o leitor já apitou. */
+  readonly consultandoCodigo?: boolean;
   /** Injeção de teste — padrão `criarFeedbackDoLeitor()`. `null` desliga
    * bip/vibração (mesmo padrão de `useLeitorDeCodigo`, opções). */
   readonly feedback?: FeedbackDoLeitor | null;
@@ -65,6 +69,7 @@ export function CupomDaVenda({
   subtotal,
   onNavigate,
   limparCupom,
+  consultandoCodigo = false,
   feedback: feedbackProp,
   agora = () => Date.now(),
 }: PropsDoCupomDaVenda): ReactElement {
@@ -485,6 +490,7 @@ export function CupomDaVenda({
             type="button"
             variant="outline"
             className="pdv-secondary pdv-client-chip"
+            disabled={consultandoCodigo}
             onClick={() =>
               despachar({ tipo: "etapa_pedida", etapa: "cliente" })
             }
@@ -507,19 +513,25 @@ export function CupomDaVenda({
           <Button
             type="button"
             className="pdv-primary pdv-sale-action bg-green-600 text-white"
-            disabled={estado.itens.length === 0}
+            disabled={estado.itens.length === 0 || consultandoCodigo}
             onClick={() =>
               despachar({ tipo: "etapa_pedida", etapa: "fechamento" })
             }
           >
-            {estado.itens.length === 0 ? (
+            {estado.itens.length === 0 || consultandoCodigo ? (
               <LockKeyhole aria-hidden="true" className="size-5" />
             ) : (
               <ChevronRight aria-hidden="true" className="size-5" />
             )}
-            Fechar venda
+            {/* Cupom vazio: o motivo de sempre (texto abaixo). Com peça e
+                consulta no ar: "Consultando…" até a última resposta chegar. */}
+            {consultandoCodigo && estado.itens.length > 0
+              ? "Consultando…"
+              : "Fechar venda"}
             <span className="sr-only">
-              {estado.itens.length > 0 && ` · R$ ${reais(subtotal)}`}
+              {estado.itens.length > 0 &&
+                !consultandoCodigo &&
+                ` · R$ ${reais(subtotal)}`}
             </span>
           </Button>
           {estado.itens.length === 0 && (
