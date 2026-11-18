@@ -39,4 +39,27 @@ describe("lojaTemWhatsapp — a régua dos 10 dígitos, em um lugar só", () => 
   it("letras sozinhas não enganam a régua", () => {
     expect(lojaTemWhatsapp("whatsapp da loja")).toBe(false);
   });
+
+  // A régua conta os dígitos DEPOIS de normalizar (a mesma função que monta o
+  // link). Dez zeros tinham 10 dígitos crus, mas a normalização tira os zeros
+  // da frente: sobrava um destinatário vazio e o botão abria `wa.me/?text=`.
+  it("dez zeros (ou zeros na frente que deixam menos de 10 dígitos) NÃO têm WhatsApp", () => {
+    expect(lojaTemWhatsapp("0000000000")).toBe(false);
+    expect(lojaTemWhatsapp("(00) 00000-0000")).toBe(false);
+    expect(lojaTemWhatsapp("0123456789")).toBe(false);
+  });
+
+  it("controles: número válido com e sem o 55 do país continua tendo WhatsApp", () => {
+    expect(lojaTemWhatsapp("(11) 98888-7777")).toBe(true);
+    expect(lojaTemWhatsapp("+55 11 98888-7777")).toBe(true);
+    expect(lojaTemWhatsapp("551188887777")).toBe(true);
+    expect(lojaTemWhatsapp("5511988887777")).toBe(true);
+    expect(lojaTemWhatsapp("1188887777")).toBe(true);
+    expect(lojaTemWhatsapp("11988887777")).toBe(true);
+  });
+
+  it("controle: o zero de tronco na frente não esconde um número que fica com 10 ou 11 dígitos", () => {
+    expect(lojaTemWhatsapp("011 98888-7777")).toBe(true);
+    expect(lojaTemWhatsapp("0 11 8888-7777")).toBe(true);
+  });
 });
