@@ -178,6 +178,24 @@ Deno.test("cliente cancelou pedido JA ENVIADO (estava em shipping) -> aviso diz 
   assertEquals(r.avisos[0].aviso.body.includes("automático"), false);
 });
 
+Deno.test("flag de envio sozinha prova que o produto já saiu, mesmo com histórico em processing", () => {
+  const aviso = montarAvisoDeCancelamento(
+    pedido({ payment_status: "pago", cancelled_after_shipping: true }),
+    { old_status: "processing" },
+  );
+  assertStringIncludes(aviso.body, "o produto já saiu");
+  assertEquals(aviso.body.includes("automático"), false);
+});
+
+Deno.test("histórico em shipping sozinho prova que o produto já saiu, mesmo com flag falsa", () => {
+  const aviso = montarAvisoDeCancelamento(
+    pedido({ payment_status: "pago", cancelled_after_shipping: false }),
+    { old_status: "shipping" },
+  );
+  assertStringIncludes(aviso.body, "o produto já saiu");
+  assertEquals(aviso.body.includes("automático"), false);
+});
+
 Deno.test("pagamento que entrou DEPOIS do cancelamento (pago_apos_expirar) -> aviso sem prometer reembolso automatico", async () => {
   const r = await rodar({
     historico: [hist("h1")],

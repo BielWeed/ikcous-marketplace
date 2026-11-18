@@ -222,6 +222,15 @@ it("mostra o botão na ficha local com link exclusivamente wa.me e mensagem codi
     "Abre o WhatsApp do Zé com a mensagem pronta",
   );
 });
+it.each(["pending", "processing", "shipping"] as const)(
+  "oferece envio ao mototáxi para entrega local em dinheiro: %s",
+  async (status) => {
+    await abrir({ ...pedido, status, paymentMethod: "cash" });
+    expect(
+      host.querySelector('a[aria-label="Enviar ao mototáxi"]'),
+    ).not.toBeNull();
+  },
+);
 it.each([
   {
     caso: "cancelado em dinheiro",
