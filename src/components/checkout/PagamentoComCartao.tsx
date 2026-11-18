@@ -1883,6 +1883,7 @@ export function PagamentoComCartao({
             tom="info"
             titulo={TEXTOS_DO_CARTAO.confirmacaoDoBanco}
             detalhe="Siga as instruções abaixo para concluir o pagamento."
+            focarNoTitulo
           />
           {/* credentialless: mantido depois que o COEP saiu do app (26/09/2026,
               decisão do dono — travava o Card Payment Brick), mas NÃO provado

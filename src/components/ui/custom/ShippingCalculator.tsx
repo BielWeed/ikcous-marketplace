@@ -468,6 +468,25 @@ export function ShippingCalculator({
   // A lista some ao escolher (o botão focado some junto): o foco vai para o
   // "Trocar" que reaparece — só quando a escolha veio da lista aberta.
   const focarTrocarRef = useRef(false);
+  const listaDeOpcoesRef = useRef<HTMLDivElement>(null);
+
+  // "Trocar" também some ao abrir: leva o foco à escolha atual (ou à
+  // primeira disponível) depois que a lista montar, nunca na carga inicial.
+  useEffect(() => {
+    if (!detalhesAbertosNoResumo) return;
+    const quadro = requestAnimationFrame(() => {
+      const lista = listaDeOpcoesRef.current;
+      const opcao =
+        lista?.querySelector<HTMLButtonElement>(
+          'button[aria-pressed="true"]:not(:disabled)',
+        ) ??
+        lista?.querySelector<HTMLButtonElement>(
+          "button[aria-pressed]:not(:disabled)",
+        );
+      opcao?.focus();
+    });
+    return () => cancelAnimationFrame(quadro);
+  }, [detalhesAbertosNoResumo]);
 
   // Lacre de sequência: cada `calculateShipping` tira um número; só quem tem
   // o número MAIS RECENTE pode escrever o resultado na tela. Sem isso, duas
@@ -1567,6 +1586,7 @@ export function ShippingCalculator({
               opções do destino ANTERIOR na tela — e clicáveis — durante o fade. */}
           {destinoValido && options.length > 0 && (
             <motion.div
+              ref={listaDeOpcoesRef}
               initial={{ opacity: 0, y: -5 }}
               animate={{ opacity: 1, y: 0 }}
               className="space-y-2"
