@@ -43,6 +43,18 @@ const LIMITE_DE_TENTATIVAS =
 // ramos (e-mail não confirmado, 429, credenciais inválidas) continuam com
 // literal PRÓPRIO desta tela ("administrativos"), de propósito — a
 // divergência ali é deliberada, não o defeito que este comentário descreve.
+// A conta bloqueada responde `user_banned` com qualquer senha, então a
+// resposta é sobre o E-MAIL enviado. Se a lojista trocou o e-mail enquanto
+// esperava, o aviso falaria de outra conta e é descartado.
+function respostaDeContaBloqueada(error: unknown): boolean {
+  const detalhes = (error ?? {}) as { code?: unknown; message?: unknown };
+  return (
+    detalhes.code === "user_banned" ||
+    (typeof detalhes.message === "string" &&
+      detalhes.message.includes("User is banned"))
+  );
+}
+
 export function mensagemDeErroAdminLogin(error: unknown): string {
   const detalhes = (error ?? {}) as {
     code?: unknown;
@@ -114,16 +126,6 @@ export function AdminLoginView({
     setIsLoading(true);
     const editado = { email: false, senha: false };
     camposEditados.current = editado;
-    const mostrarErro = (mensagem: string) => {
-      if (
-        mensagem === LIMITE_DE_TENTATIVAS ||
-        (!editado.email &&
-          (mensagem === EMAIL_NAO_CONFIRMADO || !editado.senha))
-      ) {
-        setError(mensagem);
-      }
-    };
-
     try {
       // A1-fix2 — "admin" faz `login` (AuthContext) disparar o toast global
       // com `MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA` no ramo genérico, em vez
@@ -140,16 +142,25 @@ export function AdminLoginView({
         // Sem `error` o servidor não respondeu no prazo (rede pendurada, ver
         // `PRAZO_DA_AUTENTICACAO_MS` em AuthContext.tsx): `message` já é a
         // frase de conexão lenta, não há causa para traduzir.
-        mostrarErro(message);
+        setError(message);
       } else {
-        mostrarErro(mensagemDeErroAdminLogin(loginError));
+        const mensagem = mensagemDeErroAdminLogin(loginError);
+        if (
+          mensagem === CREDENCIAIS_INCORRETAS &&
+          (editado.email || editado.senha)
+        ) {
+          return;
+        }
+        if (mensagem === EMAIL_NAO_CONFIRMADO && editado.email) return;
+        if (respostaDeContaBloqueada(loginError) && editado.email) return;
+        setError(mensagem);
       }
     } catch (err) {
       // Só roda se `login` LANÇAR (não devolver `{ error }`) — não gera um
       // toast divergente (não há toast neste caminho), mas ainda assim não
       // pode inventar uma TERCEIRA frase para uma causa que é a mesma
       // família "não distinguível" do ramo genérico de `mensagemDeErroAdminLogin`.
-      mostrarErro(MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA);
+      setError(MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA);
       console.error(err);
     } finally {
       setIsLoading(false);

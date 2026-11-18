@@ -162,6 +162,60 @@ describe("AdminLoginView — campos de entrada pedem ao teclado que não mexa", 
     expect(aviso()).toBeNull();
   });
 
+  it("a resposta de conta bloqueada não aparece sobre outro e-mail digitado durante a espera", async () => {
+    const bloqueada = {
+      success: false,
+      error: { status: 400, code: "user_banned" },
+    };
+    let responder!: (resultado: typeof bloqueada) => void;
+    login.mockReturnValueOnce(
+      new Promise<typeof bloqueada>((resolve) => {
+        responder = resolve;
+      }),
+    );
+    const botao = await preencher();
+    await act(async () => botao.click());
+    await act(async () => digitar("admin-email", "outro@example.com"));
+    await act(async () => responder(bloqueada));
+    expect(aviso()).toBeNull();
+  });
+
+  it("a resposta de conta bloqueada aparece quando o e-mail não mudou", async () => {
+    login.mockResolvedValue({
+      success: false,
+      error: { status: 400, code: "user_banned" },
+    });
+    const botao = await preencher();
+    await act(async () => botao.click());
+    expect(aviso()?.textContent).toContain("Não foi possível entrar");
+  });
+
+  it("mostra o aviso de conexão lenta mesmo quando a lojista edita os campos durante a espera", async () => {
+    const semResposta = {
+      success: false,
+      message:
+        "A conexão está lenta e a entrada não foi confirmada. Tente de novo em instantes.",
+    };
+    let responder!: (resultado: typeof semResposta) => void;
+    login.mockReturnValueOnce(
+      new Promise<typeof semResposta>((resolve) => {
+        responder = resolve;
+      }),
+    );
+    const botao = await preencher();
+    await act(async () => botao.click());
+    expect(botao.disabled).toBe(true);
+
+    await act(async () => {
+      digitar("admin-email", "outro@example.com");
+      digitar("admin-password", "outra-senha");
+    });
+    await act(async () => responder(semResposta));
+
+    expect(botao.disabled).toBe(false);
+    expect(aviso()?.textContent).toBe(semResposta.message);
+  });
+
   it("o e-mail do lojista não ganha maiúscula automática", async () => {
     await abrir();
     const campo = document.getElementById("admin-email") as HTMLInputElement;

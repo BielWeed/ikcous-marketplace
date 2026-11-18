@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const resetPassword = vi.fn();
+const recuperacao = { ativa: false };
 
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({
@@ -25,7 +26,7 @@ vi.mock("@/hooks/useAuth", () => ({
     resetPassword,
     updatePassword: vi.fn(),
     resendConfirmationEmail: vi.fn(),
-    isPasswordRecovery: false,
+    isPasswordRecovery: recuperacao.ativa,
     setIsPasswordRecovery: vi.fn(),
   }),
 }));
@@ -123,6 +124,51 @@ describe("AuthView — recuperação: reenviar, spam e corrigir o e-mail", () =>
     expect(botaoQueComeca("Reenviar link")).toBeDefined();
     expect(botaoQueComeca("Corrigir e-mail")).toBeDefined();
     expect(botaoQueComeca("Voltar para o Login")).toBeDefined();
+  });
+
+  it("sai da recuperação pelo login do painel, sem passar pelo cadastro de cliente", async () => {
+    const { AuthView } = await import("@/views/shared/AuthView");
+    const urlAnterior = globalThis.location.href;
+    const estadoAnterior = globalThis.history.state;
+    const navegar = vi.fn();
+    const abrir = async (chave: string, url: string) => {
+      navegar.mockClear();
+      globalThis.history.replaceState(null, "", url);
+      await act(async () =>
+        raiz.render(<AuthView key={chave} onNavigate={navegar} />),
+      );
+    };
+    const voltarAoPainel = async (texto: string) => {
+      await act(async () => botaoQueComeca(texto)!.click());
+      expect.soft(navegar).toHaveBeenLastCalledWith("admin-login");
+      expect.soft(botaoQueComeca("CADASTRO")).toBeUndefined();
+    };
+
+    try {
+      const pedido = "/auth?modo=recuperar&origem=painel";
+      await abrir("pedido", pedido);
+      await voltarAoPainel("Entrar");
+
+      await abrir("confirmacao", pedido);
+      await act(async () => digitar("email", "maria@example.com"));
+      await act(async () => botaoQueComeca("SOLICITAR LINK")!.click());
+      await voltarAoPainel("Voltar para o Login");
+
+      recuperacao.ativa = true;
+      await abrir("nova-senha", "/auth?origem=painel");
+      expect(hospedeiro.textContent).toContain("Nova Senha");
+      await voltarAoPainel("Entrar");
+
+      recuperacao.ativa = false;
+      await abrir("vitrine", "/auth");
+      await act(async () => botaoQueComeca("Esqueceu?")!.click());
+      await act(async () => botaoQueComeca("Entrar")!.click());
+      expect(navegar).not.toHaveBeenCalled();
+      expect(botaoQueComeca("CADASTRO")).toBeDefined();
+    } finally {
+      recuperacao.ativa = false;
+      globalThis.history.replaceState(estadoAnterior, "", urlAnterior);
+    }
   });
 
   it("logo depois do primeiro envio o reenvio espera o intervalo e depois libera", async () => {

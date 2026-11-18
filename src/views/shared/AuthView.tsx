@@ -204,6 +204,17 @@ export function AuthView({
     setViewModeAtual(modo);
   }, []);
 
+  const voltarDaRecuperacao = () => {
+    const origem = new URLSearchParams(globalThis.location.search).get(
+      "origem",
+    );
+    if (origem === "painel") {
+      onNavigate("admin-login");
+    } else {
+      setViewMode("login");
+    }
+  };
+
   useEffect(() => {
     if (linkDeRecuperacaoVencido) limparLinkDeRecuperacaoVencido();
   }, [linkDeRecuperacaoVencido, limparLinkDeRecuperacaoVencido]);
@@ -926,7 +937,7 @@ export function AuthView({
               className="w-full space-y-3 sm:space-y-4"
             >
               <Button
-                onClick={() => setViewMode("login")}
+                onClick={voltarDaRecuperacao}
                 className="h-14 w-full rounded-2xl bg-zinc-900 text-[10px] font-black uppercase tracking-[0.2em] text-white shadow-xl shadow-zinc-200 transition-all hover:bg-black active:scale-95 sm:h-16 sm:rounded-3xl sm:text-xs"
               >
                 Voltar para o Login
@@ -1547,7 +1558,7 @@ export function AuthView({
                 if (emailNaoConfirmado) setEmailNaoConfirmado(false);
                 setAvisoDoLink(null);
                 if (viewMode === "forgot" || viewMode === "new-password") {
-                  setViewMode("login");
+                  voltarDaRecuperacao();
                   setIsPasswordRecovery(false);
                 } else setViewMode(isLogin ? "signup" : "login");
               }}
