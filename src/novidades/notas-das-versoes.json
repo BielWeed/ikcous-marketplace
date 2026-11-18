@@ -1,4 +1,36 @@
 {
+  "1.5.209": {
+    "titulo": "Início com o dinheiro a devolver, total do cliente igual em toda tela e avisos mais fiéis",
+    "novidades": [],
+    "correcoes": [
+      "Painel, Início: quando há pedidos cancelados que já foram pagos e ainda não foram reembolsados, aparece \"Dinheiro a devolver\" com o valor e a quantidade de pedidos, e o toque leva para Pedidos. A margem do mês passa a ser a mesma do Financeiro: o lucro dividido pela receita líquida do mês.",
+      "Painel, Clientes: a lista, o CRM e a ficha da pessoa passam a mostrar o mesmo total comprado. A compra feita no balcão (ou por quem não tem conta) com o mesmo WhatsApp entra no total, e a ficha mostra a divisão entre o que veio pela conta e o que foi no balcão ou sem conta.",
+      "Devoluções: a \"Observação da inspeção\" que a loja escreve ao conferir o produto devolvido passa a ser só da loja. A cliente deixa de vê-la, e o campo avisa isso.",
+      "Painel, pedidos: com a internet lenta, a conferência dos estornos em andamento deixa de se acumular e de descartar a própria resposta, e a lista \"Devolver agora\" volta a refletir o estorno que acabou de ser pedido.",
+      "Painel, banners e histórico de avisos: quando a leitura falha, a tela diz que não foi possível carregar e oferece \"Tentar de novo\", em vez de dizer que não há nenhum banner ou nenhum aviso.",
+      "Painel, números: atualizar os números não deixa mais uma resposta antiga voltar a mostrar o valor velho, e o indicador de carregando não fica ligado para sempre.",
+      "Painel: quando a sessão venceu e a lojista toca no aviso de \"Pedido novo\", depois de entrar o app abre a ficha daquele pedido, em vez da lista de pedidos.",
+      "Painel: ao salvar cupom, banner, configurações da loja ou o status de um pedido com a sessão vencida, a mensagem diz para sair, entrar de novo e tentar outra vez, em vez de um erro genérico.",
+      "Painel, sino de recebimentos por marcar: se o app não conseguir ler o prazo de devolução da loja, ele passa a olhar 365 dias para trás (antes eram 90), para não esconder pedido que ainda está no prazo.",
+      "Painel, devoluções: as mensagens de aprovar a devolução, de nova tentativa de reembolso e de reembolso combinado por fora dizem só o que foi registrado, sem prometer que a cliente foi avisada.",
+      "Painel, frete do mototáxi e aviso a cliente sem aparelho: quando a rede conecta e não responde, o Salvar e o envio não ficam presos para sempre, e a mensagem diz que o registro pode ter sido feito (no aviso, manda conferir o histórico antes de repetir).",
+      "Painel, ranking de lucro: a explicação do cartão passa a dizer também que produto excluído não aparece. A ajuda de \"Em destaque\" diz que a vitrine escolhida à mão não muda. No CRM, apagar a busca ou trocar o filtro volta para a primeira página.",
+      "Recibo impresso: nome, endereço, retirada, produto e variação muito compridos quebram a linha em vez de sair cortados da folha.",
+      "Loja: quem visita sem entrar na conta deixa de manter uma conexão em tempo real aberta (ela fica para o painel e para quem está logado), para não ocupar a vaga do painel em dias de muito movimento. Ao voltar para a aba, o catálogo, o preço e o estoque se atualizam.",
+      "Página do produto: \"Você também pode gostar\" mostra o preço e o estoque atuais ao voltar para a aba, e o produto que a loja pausou deixa de aparecer. A nota média arredonda como no catálogo (4,85 aparece como 4,9 nos dois lugares).",
+      "Pagamento: a lista de cupons e o botão \"Pagar com PIX\" da confirmação do cartão não dependem mais do relógio do celular; quem decide se o cupom ou o pedido venceu é o servidor, no toque.",
+      "Pagamento: os avisos do prazo do pedido não prometem mais cancelamento em 30 minutos exatos. Dizem que o pedido é cancelado automaticamente após o prazo de pagamento e a conferência do banco, e a tela de verificação diz \"a partir de\" em vez de \"até\".",
+      "Loja: quando a lojista muda o valor do frete em outro aparelho, uma leitura lenta que estava em andamento não volta mais a mostrar o valor antigo.",
+      "Avisos da cliente: o texto de várias linhas escrito no painel chega com as quebras de linha. O botão de WhatsApp some quando o número não vira um telefone de verdade (por exemplo, só zeros), em vez de abrir uma conversa sem destinatário.",
+      "Textos: \"E-mail\" e \"Ex.:\" aparecem escritos do mesmo jeito na entrada, no login do painel, no exemplo da observação do pedido e no cadastro de produto, e o exemplo da observação do pedido cabe em duas linhas no celular pequeno.",
+      "Avisos no celular: o servidor confere o endereço de cada aparelho antes de enviar e recusa endereço interno, sem https ou que não seja de um serviço público de aviso; os demais aparelhos da lista recebem normalmente.",
+      "Cartão: se duas cobranças aprovadas disputarem o mesmo pedido e a releitura do pedido falhar, o Mercado Pago passa a reenviar o aviso e a lojista fica sabendo da possível cobrança em dobro (antes o aviso se perdia)."
+    ],
+    "melhorias": [
+      "Mais testes protegem os centavos dos estornos e do frete nacional, os textos dos avisos de pedido e de pagamento atrasado, o preço que cai no carrinho e o limite das parcelas.",
+      "O app da loja embarca só as 20 novidades de versão mais novas (o aparelho guarda no máximo 20), e os roteiros de publicação foram corrigidos."
+    ]
+  },
   "1.5.208": {
     "titulo": "Cartão com mais cuidado, busca por código e telas mais legíveis",
     "novidades": [],
