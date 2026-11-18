@@ -105,6 +105,24 @@ export function disponibilidadeDoValor(
   };
 }
 
+// O que ainda cabe no que já foi marcado (escolha parcial incluída): só para
+// ANUNCIAR preço na vitrine. Sem escolha, são todas as variações ativas.
+export function variantesCompativeis(
+  modelo: ModeloDeEixos,
+  escolhas: Map<string, string>,
+) {
+  return modelo.grupos.flatMap((g) =>
+    g.linhas
+      .filter((l) =>
+        g.eixos.every((e) => {
+          const v = escolhas.get(e.chave);
+          return v === undefined || l.valores.at(e.indice) === v;
+        }),
+      )
+      .map((l) => l.variante),
+  );
+}
+
 export function eixoEhCor(eixo: EixoDaVariacao) {
   return /^(cor|cores|color|estampa)$/i.test(eixo.nome);
 }

@@ -37,6 +37,7 @@ import {
   preselecionarCor,
   preselecionarOpcaoUnica,
   resolverSelecaoDosEixos,
+  variantesCompativeis,
 } from "@/utils/eixos-da-variacao";
 import { Check, Flame, Loader2, ShoppingCart, Truck } from "lucide-react";
 import { memo, useEffect, useId, useMemo, useRef, useState } from "react";
@@ -481,7 +482,15 @@ export const ProductCard = memo(function ProductCard({
   // escolha (Caça 4/V1: o "% OFF" sai do MESMO preço que o card mostra).
   // O riscado, o "% OFF" e a economia só existem se o preço mostrado for menor
   // que o "De". Só exibição: o que se cobra segue o servidor, por variação.
-  const vitrine = useMemo(() => precoDeVitrine(product), [product]);
+  // Escolha parcial (tamanho sem a cor): só as combinações que ainda cabem.
+  const vitrine = useMemo(
+    () =>
+      precoDeVitrine({
+        ...product,
+        variants: variantesCompativeis(modeloDeEixos, escolhasDosEixos),
+      }),
+    [product, modeloDeEixos, escolhasDosEixos],
+  );
   const escolhendo = selecionadasObjs.length > 0;
   const precoMostrado = escolhendo ? precoAtual : vitrine.preco;
   const aPartirDe = !escolhendo && vitrine.aPartirDe;

@@ -1,3 +1,4 @@
+import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import type { ProductVariant } from "@/types";
 import {
   criarEixosDaVariacao,
@@ -6,6 +7,7 @@ import {
   preselecionarCor,
   preselecionarOpcaoUnica,
   resolverSelecaoDosEixos,
+  variantesCompativeis,
 } from "@/utils/eixos-da-variacao";
 import { fileirasDeVariacao } from "@/utils/fileiras-de-variacao";
 import { describe, expect, it } from "vitest";
@@ -407,5 +409,65 @@ describe("card da vitrine e página do produto resolvem a MESMA linha", () => {
     expect(modelo().eixos.map((e) => e.nome)).toEqual(
       fileirasDeVariacao(variantes).fileiras.map((f) => f.nome),
     );
+  });
+});
+
+// Escolha PARCIAL: o preço anunciado só pode ser de uma combinação que ainda
+// cabe no que a cliente já marcou. Produto "De 100": todas as cores do M a 50,
+// todas as do P a 90. Com o P marcado e a cor pendente, anunciar 50 (menor do
+// produto inteiro) é preço que nenhuma combinação P tem.
+describe("variantesCompativeis — o que ainda cabe na escolha parcial", () => {
+  const grade = [
+    variante("Azul / M", 3, { priceOverride: 50 }),
+    variante("Verde / M", 3, { priceOverride: 50 }),
+    variante("Azul / P", 3, { priceOverride: 90 }),
+    variante("Verde / P", 3, { priceOverride: 90 }),
+  ];
+  const m = criarEixosDaVariacao(grade);
+  const chave = (nome: string) => eixoDe(m, nome).chave;
+  const anunciado = (esc: Map<string, string>) =>
+    precoDeVitrine({
+      price: 100,
+      originalPrice: 100,
+      variants: variantesCompativeis(m, esc),
+    });
+
+  it("sem nenhuma escolha: todas as variações, o menor do produto (50)", () => {
+    expect(variantesCompativeis(m, new Map())).toHaveLength(4);
+    const v = anunciado(new Map());
+    expect([v.preco, v.aPartirDe, v.desconto]).toEqual([50, true, 50]);
+  });
+
+  it("só o tamanho P marcado: 90, -10% e sem 'a partir de'", () => {
+    const v = anunciado(new Map([[chave("Tamanho"), "P"]]));
+    expect([v.preco, v.aPartirDe, v.desconto]).toEqual([90, false, 10]);
+  });
+
+  it("só o tamanho M marcado: continua 50 e -50%", () => {
+    const v = anunciado(new Map([[chave("Tamanho"), "M"]]));
+    expect([v.preco, v.aPartirDe, v.desconto]).toEqual([50, false, 50]);
+  });
+
+  it("só a cor marcada restringe pela cor (preços diferentes: a partir de)", () => {
+    const v = anunciado(new Map([[chave("Cor"), "Azul"]]));
+    expect([v.preco, v.aPartirDe]).toEqual([50, true]);
+  });
+
+  it("escolha completa: só a combinação marcada", () => {
+    const esc = new Map([
+      [chave("Tamanho"), "P"],
+      [chave("Cor"), "Verde"],
+    ]);
+    expect(variantesCompativeis(m, esc).map((x) => x.value)).toEqual([
+      "Verde / P",
+    ]);
+  });
+
+  it("variação inativa não entra", () => {
+    const comInativa = criarEixosDaVariacao([
+      ...grade,
+      variante("Rosa / P", 3, { priceOverride: 10, active: false }),
+    ]);
+    expect(variantesCompativeis(comInativa, new Map())).toHaveLength(4);
   });
 });
