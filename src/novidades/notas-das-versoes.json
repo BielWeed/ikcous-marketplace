@@ -5,7 +5,7 @@
     "correcoes": [
       "Retirada na loja: o fechamento do pedido não fala mais em \"Endereço de Entrega\". Sem conta, aparece \"Seu CEP\"; com conta, \"Seu endereço\".",
       "Retirada na loja: o pagamento diz \"na retirada\" em vez de \"na entrega\". Vale para \"Cartão na retirada\", \"Recebido na retirada\", \"Falta receber na retirada\" e para a pergunta \"Pedido de pagamento na retirada\", no painel, no recibo, na planilha de pedidos e na tela da cliente.",
-      "Retirada na loja: o WhatsApp do pedido diz \"na retirada\", e quem cancela um pedido de retirada pago na loja lê \"Você pagou este pedido na retirada\".",
+      "Retirada na loja: quem cancela um pedido de retirada pago na loja lê \"Você pagou este pedido na retirada\".",
       "Painel, Financeiro: a venda recebida fora do app aparece no extrato como \"Venda na entrega ou retirada\".",
       "Compra para outra pessoa: o e-mail de confirmação e o detalhe do pedido da cliente mostram \"Recebe: nome\". A linha só aparece quando o nome é de outra pessoa.",
       "Meu pedido: nome do comprador muito comprido quebra a linha no celular pequeno. Na ficha da lojista, o endereço de retirada muito comprido também quebra a linha.",
