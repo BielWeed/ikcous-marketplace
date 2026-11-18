@@ -12,3 +12,17 @@
 export function numeroDoPedido(id: string | null | undefined): string {
   return (id ?? "").slice(-6).toUpperCase();
 }
+
+/**
+ * Os dois ids são do mesmo pedido? Compara sem diferença de maiúsculas: o
+ * link `/order-details?id=AAAAAAAA-...` preserva a caixa que a pessoa colou, e
+ * o banco devolve o uuid em minúsculas. Comparar com `===` fazia um link
+ * certo dizer "Pedido não encontrado". Só para COMPARAR — o que vai ao banco
+ * segue como veio.
+ */
+export function mesmoIdDePedido(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): boolean {
+  return !!a && !!b && a.toLowerCase() === b.toLowerCase();
+}

@@ -179,7 +179,7 @@ import {
   mensagemDeWhatsappIncompleto,
 } from "@/lib/telefone-br";
 import { criarTravaDeEnvio } from "@/lib/travaDeEnvio";
-import { ufBrasileiraValida } from "@/lib/uf-brasileira";
+import { normalizarUf, ufBrasileiraValida } from "@/lib/uf-brasileira";
 import { arredondarParaCentavos, cn, formatCurrency } from "@/lib/utils";
 import type {
   Address,
@@ -7265,8 +7265,17 @@ export function CheckoutViewDaConta({
                           <input
                             id="guest-state"
                             {...registrarCampoDoEndereco("state")}
+                            // O corte em 2 letras é feito aqui, depois de tirar
+                            // os espaços (e não por `maxLength`): o navegador
+                            // cortaria " SP " colado em " S" e a cliente leria
+                            // "Estado inválido" por uma UF copiada certa.
+                            onChange={(e) => {
+                              e.target.value = normalizarUf(e.target.value);
+                              return registrarCampoDoEndereco("state").onChange(
+                                e,
+                              );
+                            }}
                             autoComplete="address-level1"
-                            maxLength={2}
                             // O exemplo da loja vai como exemplo ("UF (ex.: SP)"):
                             // um "SP" cinza sozinho parecia valor já preenchido, e a
                             // pessoa passava direto pelo campo vazio.
