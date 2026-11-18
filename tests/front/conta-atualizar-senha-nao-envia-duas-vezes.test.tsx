@@ -142,4 +142,37 @@ describe("Conta — não envia duas trocas de senha enquanto aguarda resposta", 
       expect((document.getElementById(id) as HTMLInputElement).value).toBe("");
     }
   });
+
+  // Quem editava os campos ENQUANTO a troca ia ao servidor via o fim do envio
+  // limpar o que acabara de digitar e anunciar "Senha atualizada", quando o
+  // que valeu foi a PRIMEIRA senha enviada. Os campos ficam travados durante o
+  // envio e voltam a valer quando ele termina.
+  it("trava os dois campos de senha durante o envio e os libera ao terminar", async () => {
+    let concluir!: (sucesso: boolean) => void;
+    const pendente = new Promise<boolean>((resolve) => {
+      concluir = resolve;
+    });
+    updatePassword.mockReturnValueOnce(pendente);
+    const nova = document.getElementById("new_password") as HTMLInputElement;
+    const confirmacao = document.getElementById(
+      "confirm_password",
+    ) as HTMLInputElement;
+    expect(nova.disabled).toBe(false);
+    expect(confirmacao.disabled).toBe(false);
+
+    await act(async () => {
+      hospedeiro
+        .querySelector<HTMLButtonElement>('button[form="form-senha"]')!
+        .click();
+    });
+    expect(nova.disabled).toBe(true);
+    expect(confirmacao.disabled).toBe(true);
+
+    await act(async () => {
+      concluir(false);
+      await pendente;
+    });
+    expect(nova.disabled).toBe(false);
+    expect(confirmacao.disabled).toBe(false);
+  });
 });
