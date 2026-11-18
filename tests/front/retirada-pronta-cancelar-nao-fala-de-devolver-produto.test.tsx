@@ -92,7 +92,12 @@ describe("textoConfirmarCancelamento — entrega x retirada x pagamento", () => 
       retiradaPronta: true,
       pagamentoNaEntrega: true,
     });
-    expect(texto).toContain("pagou este pedido na entrega");
+    // Quem retira na loja nao recebe entrega: a frase diz "na retirada".
+    expect(texto).toContain("pagou este pedido na retirada");
+    expect(texto).not.toMatch(/entrega/i);
+    expect(texto).toContain(
+      "combine a devolução do dinheiro diretamente com a loja",
+    );
     expect(texto).not.toMatch(FALA_DE_DEVOLVER_PRODUTO);
   });
 
@@ -352,7 +357,12 @@ describe("OrderDetailsView — retirada pronta: cancelar e ficha do pedido cance
       retiradaNaLoja: true,
     });
     const texto = await textoDoConfirmAoCancelar();
-    expect(texto).toContain("pagou este pedido na entrega");
+    // Quem retira na loja nao recebe entrega: a frase diz "na retirada".
+    expect(texto).toContain("pagou este pedido na retirada");
+    expect(texto).not.toMatch(/entrega/i);
+    expect(texto).toContain(
+      "combine a devolução do dinheiro diretamente com a loja",
+    );
     expect(texto).not.toMatch(FALA_DE_DEVOLVER_PRODUTO);
   });
 

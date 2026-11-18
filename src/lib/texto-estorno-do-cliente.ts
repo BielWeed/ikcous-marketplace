@@ -44,6 +44,11 @@ const TEXTO_PAGO_JA_ENVIADO =
 const TEXTO_PAGO_NA_ENTREGA =
   "Você pagou este pedido na entrega. Se cancelar, combine a devolução do dinheiro diretamente com a loja. Tem certeza?";
 
+// Mesma frase, para quem retira na loja: ela não recebe entrega, então o texto
+// diz "na retirada" (só a palavra muda; o resto é idêntico).
+const TEXTO_PAGO_NA_RETIRADA =
+  "Você pagou este pedido na retirada. Se cancelar, combine a devolução do dinheiro diretamente com a loja. Tem certeza?";
+
 // Retirada na loja, já "Pronto para retirar" (gravado como `shipping`): a
 // cliente nunca levou produto nenhum, então não há o que "devolver". O banco
 // também não estorna sozinho nesse estado (cancelar em `shipping` não grava
@@ -114,10 +119,10 @@ export function textoConfirmarCancelamento({
   if (!pagamentoJaEntrou) return TEXTO_NAO_PAGO;
   // Retirada pronta vem ANTES de `jaFoiEnviado` (e, portanto, também antes do
   // texto de "já enviado" que mandaria devolver um produto que a cliente
-  // nunca levou). Pago na entrega mantém o texto de combinar com a loja.
+  // nunca levou). Pago na loja mantém o texto de combinar com a loja.
   if (retiradaPronta) {
     return pagamentoNaEntrega
-      ? TEXTO_PAGO_NA_ENTREGA
+      ? TEXTO_PAGO_NA_RETIRADA
       : TEXTO_PAGO_RETIRADA_PRONTA;
   }
   // Rodada 2 (laudo Opus PR#457, BLOQUEIA 2): `jaFoiEnviado` vem ANTES de
