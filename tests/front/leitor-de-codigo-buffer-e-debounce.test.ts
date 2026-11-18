@@ -4,6 +4,7 @@
 // porque é assim que os módulos foram desenhados (tarefa C2.2).
 import { criarFeedbackDoLeitor } from "@/lib/feedback-do-leitor";
 import {
+  INTERVALO_MAXIMO_ENTRE_TECLAS_MS,
   type TeclaDoLeitor,
   criarBufferDoLeitorFisico,
   focoEstaEmCampoEditavel,
@@ -156,6 +157,70 @@ describe("buffer do leitor físico (USB/Bluetooth)", () => {
     buffer.aoPressionarTecla(tecla("Enter", { preventDefault }));
     expect(lidos).toEqual(["7891"]);
     expect(preventDefault).toHaveBeenCalledTimes(1);
+  });
+
+  it("Tab descarta a sequência sem confirmar nem impedir a navegação", () => {
+    const buffer = criarBufferDoLeitorFisico({
+      aoLer: (codigo) => lidos.push(codigo),
+      agora,
+    });
+    digitarRapido(buffer, [..."0012345"]);
+    const preventDefault = vi.fn();
+    buffer.aoPressionarTecla(tecla("Tab", { preventDefault }));
+    expect(lidos).toEqual([]);
+    buffer.aoPressionarTecla(tecla("Enter", { preventDefault }));
+    expect(lidos).toEqual([]);
+    expect(preventDefault).not.toHaveBeenCalled();
+  });
+
+  it("Enter após 5 s descarta o código vencido e segue a ação normal", () => {
+    const buffer = criarBufferDoLeitorFisico({
+      aoLer: (codigo) => lidos.push(codigo),
+      agora,
+    });
+    digitarRapido(buffer, [..."0012345"]);
+    t += 5000;
+    const preventDefault = vi.fn();
+    buffer.aoPressionarTecla(tecla("Enter", { preventDefault }));
+    expect(lidos).toEqual([]);
+    expect(preventDefault).not.toHaveBeenCalled();
+    digitarRapido(buffer, ["8", "9"]);
+    buffer.aoPressionarTecla(tecla("Enter", { preventDefault }));
+    expect(lidos).toEqual([]);
+    expect(preventDefault).not.toHaveBeenCalled();
+  });
+
+  it.each([INTERVALO_MAXIMO_ENTRE_TECLAS_MS, 25])(
+    "Enter respeita a janela configurada de %i ms, inclusive a borda",
+    (intervaloMaximoMs) => {
+      const buffer = criarBufferDoLeitorFisico({
+        aoLer: (codigo) => lidos.push(codigo),
+        agora,
+        intervaloMaximoMs,
+      });
+      digitarRapido(buffer, [..."0012345"]);
+      t = 60 + intervaloMaximoMs;
+      const preventDefault = vi.fn();
+      buffer.aoPressionarTecla(tecla("Enter", { preventDefault }));
+      expect(lidos).toEqual(["0012345"]);
+      expect(preventDefault).toHaveBeenCalledTimes(1);
+
+      digitarRapido(buffer, [..."0012345"]);
+      t += intervaloMaximoMs - 10 + 1;
+      buffer.aoPressionarTecla(tecla("Enter", { preventDefault }));
+      expect(lidos).toEqual(["0012345"]);
+      expect(preventDefault).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("duas leituras rápidas iguais preservam zeros à esquerda e contam duas vezes", () => {
+    const buffer = criarBufferDoLeitorFisico({
+      aoLer: (codigo) => lidos.push(codigo),
+      agora,
+    });
+    digitarRapido(buffer, [..."0012345", "Enter"]);
+    digitarRapido(buffer, [..."0012345", "Enter"]);
+    expect(lidos).toEqual(["0012345", "0012345"]);
   });
 
   it("11. focoEstaEmCampoEditavel(null | undefined) é false", () => {
