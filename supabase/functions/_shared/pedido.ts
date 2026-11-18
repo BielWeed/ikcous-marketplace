@@ -119,6 +119,18 @@ const ROTULO_PAGAMENTO_NO_BALCAO = new Map<string, string>([
 ]);
 
 /**
+ * RETIRADA NA LOJA: a cliente paga quando busca, nao quando "recebe em casa" —
+ * "Cartao na entrega" num aviso de retirada manda ela esperar alguem que nao
+ * vai vir. Mesmas tres formas, so' a palavra do lugar muda (o painel e o
+ * checkout ja dizem "na retirada"). Mesmo `Map`, pelo mesmo motivo.
+ */
+const ROTULO_PAGAMENTO_NA_RETIRADA = new Map<string, string>([
+  ["pix", "PIX na retirada"],
+  ["card", "Cartão na retirada"],
+  ["cash", "Dinheiro na retirada"],
+]);
+
+/**
  * O que o comprovante diz no lugar da forma de pagamento quando a compra
  * fechou em R$ 0,00 (cupom de 100%). Mesmo texto das telas
  * (`ROTULO_SEM_VALOR_A_PAGAR`, `src/lib/forma-de-pagamento.ts`). So' texto: o
@@ -165,6 +177,12 @@ export function pedidoSemValorAPagar(
  * `valores` (opcional) e' o dinheiro do pedido: so' ele decide o caso "sem
  * valor a pagar". Ausente = "nao sei", e o rotulo e' o de sempre, byte a byte.
  * Esse caso vem ANTES de tudo, ate' do metodo desconhecido — igual as telas.
+ *
+ * `retirada` (opcional): so' a bandeira EXATA `true` troca "na entrega" por
+ * "na retirada". Quem decide se o pedido e' de retirada e' o chamador, pelo id
+ * gravado em `customer_data.shipping_option_id` (`ehRetiradaNaLoja`). O balcao
+ * (`canal` presencial) e o pago pelo site nao mudam: nenhum dos dois diz
+ * "na entrega".
  */
 export function rotuloDoPagamento(
   metodo: unknown,
@@ -176,6 +194,7 @@ export function rotuloDoPagamento(
     discount?: unknown;
     shipping?: unknown;
   } | null,
+  retirada?: boolean,
 ): string {
   if (pedidoSemValorAPagar(valores)) return ROTULO_SEM_VALOR_A_PAGAR;
   const chave = String(metodo ?? "").toLowerCase();
@@ -185,6 +204,10 @@ export function rotuloDoPagamento(
   }
   if (chave === "online" && metodoOnline !== undefined && metodoOnline !== null && metodoOnline !== "") {
     return ROTULO_DO_ONLINE.get(String(metodoOnline).toLowerCase()) ?? "Pagamento pelo site";
+  }
+  if (retirada === true) {
+    const naRetirada = ROTULO_PAGAMENTO_NA_RETIRADA.get(chave);
+    if (naRetirada !== undefined) return naRetirada;
   }
   // Metodo desconhecido nao vira palpite: some a linha inteira, e quem
   // chama decide. Inventar "Outro" seria informar o que ninguem sabe.

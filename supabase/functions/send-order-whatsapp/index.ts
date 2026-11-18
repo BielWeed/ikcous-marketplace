@@ -2,6 +2,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { numeroDoPedido, rotuloDoPagamento } from "../_shared/pedido.ts"
+import { ehRetiradaNaLoja } from "../_shared/retirada-na-loja.ts"
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -15,6 +16,8 @@ interface DadosDaMensagem {
     totalPrice: number | string
     paymentMethod?: string | null
     metodoOnline?: string | null
+    // Pedido de RETIRADA na loja: a forma de pagamento diz "na retirada".
+    retirada?: boolean
 }
 
 // Texto que o cliente recebe no WhatsApp. Separado do handler para o teste
@@ -23,8 +26,8 @@ interface DadosDaMensagem {
 // A forma de pagamento sai pelo rótulo comum da casa (`rotuloDoPagamento`, o
 // mesmo do comprovante por e-mail): `online` diz a forma de verdade em
 // `metodo_online`. Forma desconhecida vira "Não informado" — nunca um palpite.
-export function montarMensagem({ orderId, customerName, itemsList, totalPrice, paymentMethod, metodoOnline }: DadosDaMensagem): string {
-    const paymentLabel = rotuloDoPagamento(paymentMethod, metodoOnline) || 'Não informado'
+export function montarMensagem({ orderId, customerName, itemsList, totalPrice, paymentMethod, metodoOnline, retirada }: DadosDaMensagem): string {
+    const paymentLabel = rotuloDoPagamento(paymentMethod, metodoOnline, undefined, null, retirada) || 'Não informado'
 
     return `*Pedido Confirmado!* 🛍️\n\n` +
         `Olá *${customerName}*, recebemos seu pedido *${numeroDoPedido(orderId)}* com sucesso!\n\n` +
@@ -171,6 +174,8 @@ export async function processar(req: Request, deps: Dependencias): Promise<Respo
             totalPrice: pedido.total,
             paymentMethod: pedido.payment_method,
             metodoOnline: pedido.metodo_online,
+            // O id que a RPC gravou decide (comparação exata), como no e-mail.
+            retirada: ehRetiradaNaLoja(pedido.customer_data?.shipping_option_id),
         })
 
         // 6. Enviar para a Evolution API
