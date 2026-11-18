@@ -31,7 +31,7 @@
  *  PORTA        (18/11/2026) as três portas do painel (as duas saídas por fora e o painel de reembolsos) recusam,
  *               42501 'Acesso negado.' e sem escrever: cliente comum, anon, logado sem sessão, service_role, conta
  *               apagada e o ex-admin (papel tirado de só profiles, só auth.users ou das duas, com o JWT velho ainda
- *               dizendo admin; cada um provado admin ANTES). O admin de verdade passa. Mutantes: a guarda
+ *               dizendo admin; só cada forma do ex-admin é provada admin ANTES). O admin de verdade passa. Mutantes: a guarda
  *               is_admin_atual() e a guarda auth.uid() IS NULL trocadas por `false`, uma função por vez.
  *  MIGRATION    reaplicar (2x) e CRLF = mesmo estado; o rollback devolve os corpos de antes e recusa com marca; o
  *               pré-voo recusa corpo divergente SEM escrever.
@@ -1197,8 +1197,9 @@ prova(
 //
 // Cada porta, na mesma transação desfeita: cliente comum, anon, logado sem sessão com JWT que diz admin,
 // service_role, conta apagada com JWT admin, e o ex-admin nas três formas em que o papel sai (só profiles, só
-// auth.users, as duas fontes) — cada um PRIMEIRO provado admin de verdade (a chamada passa; o efeito é desfeito
-// por SAVEPOINT) e SÓ DEPOIS rebaixado por UPDATE, com o MESMO JWT velho. A recusa é 42501 'Acesso negado.' e
+// auth.users, as duas fontes) — cada forma do ex-admin PRIMEIRO provada admin de verdade (a chamada passa; o
+// efeito é desfeito por SAVEPOINT) e SÓ DEPOIS rebaixada por UPDATE, com o MESMO JWT velho. A conta apagada
+// nunca foi admin aqui: a prova dela é só que o JWT que diz admin não basta sem a pessoa existir. A recusa é 42501 'Acesso negado.' e
 // o estado (linhas de reembolso, marcas, devolução, pedido, eventos) fica igual byte a byte. No fim, o admin
 // de verdade tem o resultado normal da porta.
 // ---------------------------------------------------------------------------
