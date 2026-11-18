@@ -108,6 +108,37 @@ afterEach(() => {
 });
 
 describe("Favoritos — remover oferece Desfazer", () => {
+  it("Desfazer devolve o primeiro favorito ao começo", async () => {
+    const { FavoritesProvider, FavoritesContext } = await import(
+      "@/contexts/FavoritesContext"
+    );
+    await act(async () => {
+      raiz.render(
+        <FavoritesProvider>
+          <Sonda contexto={FavoritesContext} />
+        </FavoritesProvider>,
+      );
+    });
+    expect(ultimo?.favorites.map((p) => p.id)).toEqual(["p1", "p2", "p3"]);
+
+    await act(async () => {
+      ultimo?.toggleFavorite(catalogo[0]);
+    });
+    expect(ultimo?.favorites.map((p) => p.id)).toEqual(["p2", "p3"]);
+
+    const chamada = toastSuccess.mock.calls.find(
+      (c) => c[0] === "Removido dos favoritos",
+    );
+    const opcoes = chamada?.[1] as {
+      action: { label: string; onClick: () => void };
+    };
+    expect(opcoes.action.label).toBe("Desfazer");
+    await act(async () => {
+      opcoes.action.onClick();
+    });
+    expect(ultimo?.favorites.map((p) => p.id)).toEqual(["p1", "p2", "p3"]);
+  });
+
   it("o aviso traz Desfazer e ele devolve o item na mesma posição", async () => {
     const { FavoritesProvider, FavoritesContext } = await import(
       "@/contexts/FavoritesContext"

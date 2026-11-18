@@ -107,6 +107,31 @@ afterEach(() => {
 });
 
 describe("sino da cliente nova — campanha velha", () => {
+  it("campanha respeita exatamente os 30 dias", async () => {
+    const agora = new Date("2026-11-18T12:00:00.000Z").getTime();
+    vi.spyOn(Date, "now").mockReturnValue(agora);
+    try {
+      usuario.user = { id: "cliente-nova", created_at: atras(90) };
+      fila = [
+        [],
+        [
+          campanha("no-limite", atras(30)),
+          campanha(
+            "fora-do-limite",
+            new Date(agora - 30 * DIA - 1).toISOString(),
+          ),
+        ],
+      ];
+
+      const r = await montar();
+
+      expect(r.ids).toEqual(["no-limite"]);
+      expect(r.naoLidas).toBe(1);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
   it("campanha de 40 dias atrás não aparece na lista nem no contador", async () => {
     usuario.user = { id: "cliente-nova", created_at: atras(90) };
     fila = [[], [campanha("velha", atras(40))]];

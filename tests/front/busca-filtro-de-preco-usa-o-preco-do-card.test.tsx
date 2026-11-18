@@ -44,8 +44,8 @@ describe("useSearch — faixa de preço usa o preço que o card anuncia", () => 
   let host: HTMLElement;
   let ultimo: ReturnType<typeof useSearch>;
 
-  function Sonda() {
-    const retorno = useSearch([produto]);
+  function Sonda({ produtos = [produto] }: { produtos?: Product[] }) {
+    const retorno = useSearch(produtos);
     useEffect(() => {
       ultimo = retorno;
     });
@@ -75,6 +75,19 @@ describe("useSearch — faixa de preço usa o preço que o card anuncia", () => 
       await vi.advanceTimersByTimeAsync(600);
     });
   }
+
+  it("faixa inclui as duas pontas", async () => {
+    const produtos = [89, 90, 91].map((preco) => ({
+      ...produto,
+      id: `p${preco}`,
+      variants: [{ ...produto.variants![0], priceOverride: preco }],
+    }));
+    act(() => raiz.render(<Sonda produtos={produtos} />));
+
+    await definir(90, 90);
+
+    expect(ultimo.filteredProducts.map((p) => p.id)).toEqual(["p90"]);
+  });
 
   it("máximo R$ 60: o produto de R$ 90 não aparece", async () => {
     await definir("", 60);
