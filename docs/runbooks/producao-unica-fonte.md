@@ -1957,7 +1957,7 @@ BLOQUEIA com o nome dela. O cadastro de UMA vez, na entrada do cliente:
    **Lista fechada do script de conferencia (sem isto o alvo novo nao roda ou, pior, usa o token
    errado):** `scripts/publicacao/conferir-banco.cjs` mantem lista PROPRIA de projetos aceitos
    (`REFS_POR_PROJETO`: `loja`, `sandbox`, `ikcous-publicada`, `savy`; linhas 232-246) e so escolhe
-   token proprio para a CAF e para a Savy (`main()`, linhas 4001-4008): qualquer outro alvo cairia
+   token proprio para a CAF e para a Savy (`main()`, linhas 3997-4008): qualquer outro alvo cairia
    no `SUPABASE_ACCESS_TOKEN` legado. A loja nova entra ali com (a) ref fixo de 20 letras minusculas
    (nunca texto livre) e um ramo proprio na `main()` com o segredo PROPRIO dela e a mensagem de
    parada propria, sem fallback para o legado nem para o de outra loja; esse mesmo ramo tem de
@@ -2054,11 +2054,15 @@ BLOQUEIA com o nome dela. O cadastro de UMA vez, na entrada do cliente:
    `postgres`) e, em seguida, a Tela 3 dela (so leitura). Aqui o resultado certo e' **`1, 0, 0`**
    (a conta existe e ainda nao e admin em nenhuma fonte). `0, 0, 0` = e-mail errado ou loja errada;
    primeiro numero 2 ou mais = **pare e avise "deu 2 na Tela P1"**; `1, 1, 1` = ela ja e admin, pule
-   para a Tela P3.
+   para a Tela P3; `1, 1, 0` ou `1, 0, 1` = **pare e avise "Tela P1"** (as duas fontes do cargo
+   discordam; decisao do dono do produto, nao se mexe aqui).
 
    **Tela P2. Tornar administradora.**
-   1. Apague o texto da caixa, cole o texto abaixo, troque `<e-mail-da-administradora>` (mantendo as
-      aspas simples) e clique em **Run**.
+   1. Apague o texto da caixa, cole o texto abaixo e troque `<e-mail-da-administradora>` (mantendo
+      as aspas simples). **Ele aparece DUAS vezes (no `UPDATE` e no `SELECT` final): troque nas duas,
+      pelo MESMO e-mail da Tela P1.** Trocar so no `UPDATE` da `0, 0, 0` no `SELECT`; trocar so no
+      `SELECT` da `1, 0, 0`. Clique em **Run**. (Aqui o marcador e' `<e-mail-da-administradora>`,
+      nao o `<e-mail-do-dono>` das Telas 3 e 4 do outro roteiro.)
 
       ```sql
       BEGIN;
@@ -2078,17 +2082,22 @@ BLOQUEIA com o nome dela. O cadastro de UMA vez, na entrada do cliente:
       ```
 
       - Vai aparecer: uma tabelinha com tres numeros.
-      - **Deu certo se** forem `1, 1, 1`. Rodar de novo e' inofensivo (grava o mesmo valor).
-      - Se aparecer diferente: `1, 0, 0` = nada mudou; um erro em vermelho com a frase
-        **`You cannot change your own role`** = o editor nao rodou como `postgres` e a execucao
-        inteira foi desfeita, nada mudou; qualquer outro erro, ou `1, 1, 0` / `1, 0, 1`: **pare e avise
-        "Tela P2"**. Antes de tentar outra coisa, clique em **New query** para comecar numa consulta
-        limpa.
+      - **Deu certo se** forem `1, 1, 1`. Nao rode de novo sem falar com o programador (ver a Tela P3).
+      - Se aparecer diferente, **pare e avise "Tela P2"**, sem rodar de novo:
+        - `1, 0, 0`: nada mudou. Causa provavel: a conta nao tem linha em `profiles` (o `UPDATE` casa
+          0 linhas e nao da erro); outra possibilidade e' um dos dois e-mails digitado diferente.
+        - um erro em vermelho com a frase **`You cannot change your own role`**: o editor nao rodou
+          como `postgres` e a execucao inteira foi desfeita, nada mudou;
+        - qualquer outro erro, `0, 0, 0`, `1, 1, 0` ou `1, 0, 1`.
+        Antes de tentar outra coisa, clique em **New query** para comecar numa consulta limpa.
 
    **Tela P3. Limpar o rastro e fechar.** Apague a consulta salva e feche a aba (Tela 5 da secao 3.3,
    passo 1). Ela **sai da conta e entra de novo**, para o login ler o cargo novo (o cargo
-   guardado no login dura ate cerca de 1 hora, `20261383000000...:73`), e abre o painel: se aparecer "Acesso restrito a administradores",
-   a Tela P2 nao valeu. Diga ao programador apenas "cadastrei a primeira administradora na loja X".
+   guardado no login dura ate cerca de 1 hora, `20261383000000...:73`), e abre o painel. Se ela nao
+   entrar mesmo com `1, 1, 1` na Tela P2 (aparece "Acesso restrito a administradores"), **pare e
+   avise "Tela P3"**: pode ter sido promovida OUTRA conta (e-mail de outra pessoa da loja digitado
+   igual nas duas telas); **NAO repita a Tela P2**, senao uma conta alheia fica como administradora.
+   Diga ao programador apenas "cadastrei a primeira administradora na loja X".
    Depois disto a conta cumpre o que o cadastro do dono pede: siga as Telas 3 a 5 de
    `definir-o-dono-da-loja.md` (secao 3.3) e a consulta 88c.
 9. **Chaves de push (VAPID):** antes do teste de ponta a ponta, configure nas functions da loja
