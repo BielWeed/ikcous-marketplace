@@ -82,7 +82,17 @@ describe("vitrine — texto legível sobre os fundos reais de cada tema", () => 
         /"text-zinc-500 hover:text-zinc-900 dark:text-muted-foreground dark:hover:text-foreground"/g,
       ),
     ).toHaveLength(2);
-    expect(abas?.match(/bg-white shadow-sm dark:bg-card/g)).toHaveLength(2);
+    const fundos = Array.from(
+      abas?.matchAll(/layoutId="modalTabBackground"\s+className="([^"]*)"/g) ??
+        [],
+      ([, classes]) => classes.split(/\s+/),
+    );
+    expect(fundos).toHaveLength(2);
+    for (const classes of fundos) {
+      expect(classes).toEqual(
+        expect.arrayContaining(["bg-white", "shadow-sm", "dark:bg-card"]),
+      );
+    }
   });
 
   it("o rótulo A partir de mantém o cinza do claro e acompanha o fundo do cartão no escuro", () => {
@@ -129,12 +139,16 @@ describe("vitrine — texto legível sobre os fundos reais de cada tema", () => 
   it("a tinta cheia passa de 4,5:1 sobre os fundos opacos do campo no Escuro/Glass", () => {
     const css = readFileSync("src/index.css", "utf8");
     const escuro = css.match(/\.dark\s*{([^}]+)}/)?.[1] ?? "";
+    const cores = new Map(
+      Array.from(
+        escuro.matchAll(/^\s*--([\w-]+):\s*([\d.]+)\s+([\d.]+)%\s+([\d.]+)%\s*;/gm),
+        ([, nome, h, s, l]) => [nome, [Number(h), Number(s), Number(l)]] as const,
+      ),
+    );
     function rgb(nome: string): number[] {
-      const cor = escuro.match(
-        new RegExp(`--${nome}:\\s*([\\d.]+)\\s+([\\d.]+)%\\s+([\\d.]+)%`),
-      );
-      expect(cor).not.toBeNull();
-      const [h, s, l] = cor!.slice(1).map(Number);
+      const cor = cores.get(nome);
+      expect(cor, nome).toBeDefined();
+      const [h, s, l] = cor!;
       const lum = l / 100;
       const a = (s / 100) * Math.min(lum, 1 - lum);
       return [0, 8, 4].map((n) => {
@@ -142,12 +156,12 @@ describe("vitrine — texto legível sobre os fundos reais de cada tema", () => 
         return lum - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
       });
     }
-    const luminancia = (cor: number[]) =>
-      cor.reduce((soma, canal, i) => {
-        const linear =
-          canal <= 0.04045 ? canal / 12.92 : ((canal + 0.055) / 1.055) ** 2.4;
-        return soma + linear * [0.2126, 0.7152, 0.0722][i];
-      }, 0);
+    const luminancia = (cor: number[]) => {
+      const [r, g, b] = cor.map((canal) =>
+        canal <= 0.04045 ? canal / 12.92 : ((canal + 0.055) / 1.055) ** 2.4,
+      );
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
     const tinta = luminancia(rgb("muted-foreground"));
     for (const fundo of ["muted", "card"]) {
       const contraste = (tinta + 0.05) / (luminancia(rgb(fundo)) + 0.05);

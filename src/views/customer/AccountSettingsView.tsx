@@ -1503,7 +1503,7 @@ export function AccountSettingsView() {
       <Dialog open={isAvatarModalOpen} onOpenChange={setIsAvatarModalOpen}>
         <DialogContent
           overlayClassName="z-[130]"
-          className="z-[130] max-h-[85dvh] max-w-xs overflow-y-auto overflow-x-hidden rounded-[2.5rem] border border-zinc-100 bg-white p-6 shadow-premium sm:max-w-md dark:border-border dark:bg-card dark:text-foreground dark:[&>button[data-slot=dialog-close]]:text-foreground dark:[&>button[data-slot=dialog-close]]:opacity-100"
+          className="z-[130] max-h-[85dvh] max-w-xs overflow-y-auto overflow-x-hidden rounded-[2.5rem] border border-zinc-100 bg-white p-6 shadow-premium dark:border-border dark:bg-card dark:text-foreground sm:max-w-md dark:[&>button[data-slot=dialog-close]]:text-foreground dark:[&>button[data-slot=dialog-close]]:opacity-100"
         >
           <DialogHeader>
             <DialogTitle className="text-center text-[11px] font-black uppercase tracking-wider text-zinc-900 dark:text-foreground">
@@ -1533,7 +1533,7 @@ export function AccountSettingsView() {
               {modalTab === "avatars" && (
                 <motion.div
                   layoutId="modalTabBackground"
-                  className="absolute inset-0 rounded-lg border border-zinc-200/40 bg-white shadow-sm dark:bg-card dark:border-border"
+                  className="absolute inset-0 rounded-lg border border-zinc-200/40 bg-white shadow-sm dark:border-border dark:bg-card"
                   transition={{ type: "spring", stiffness: 380, damping: 30 }}
                 />
               )}
@@ -1558,7 +1558,7 @@ export function AccountSettingsView() {
               {modalTab === "upload" && (
                 <motion.div
                   layoutId="modalTabBackground"
-                  className="absolute inset-0 rounded-lg border border-zinc-200/40 bg-white shadow-sm dark:bg-card dark:border-border"
+                  className="absolute inset-0 rounded-lg border border-zinc-200/40 bg-white shadow-sm dark:border-border dark:bg-card"
                   transition={{ type: "spring", stiffness: 380, damping: 30 }}
                 />
               )}
