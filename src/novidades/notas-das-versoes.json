@@ -24,7 +24,12 @@
       "Avisos da cliente: o texto de várias linhas escrito no painel chega com as quebras de linha. O botão de WhatsApp some quando o número não vira um telefone de verdade (por exemplo, só zeros), em vez de abrir uma conversa sem destinatário.",
       "Textos: \"E-mail\" e \"Ex.:\" aparecem escritos do mesmo jeito na entrada, no login do painel, no exemplo da observação do pedido e no cadastro de produto, e o exemplo da observação do pedido cabe em duas linhas no celular pequeno.",
       "Avisos no celular: o servidor confere o endereço de cada aparelho antes de enviar e recusa endereço interno, sem https ou que não seja de um serviço público de aviso; os demais aparelhos da lista recebem normalmente.",
-      "Cartão: se duas cobranças aprovadas disputarem o mesmo pedido e a releitura do pedido falhar, o Mercado Pago passa a reenviar o aviso e a lojista fica sabendo da possível cobrança em dobro (antes o aviso se perdia)."
+      "Cartão: se duas cobranças aprovadas disputarem o mesmo pedido e a releitura do pedido falhar, o Mercado Pago passa a reenviar o aviso e a lojista fica sabendo da possível cobrança em dobro (antes o aviso se perdia).",
+      "Pedido de retirada: quando está pronto para retirar, a tela do pedido mostra o horário de atendimento da loja junto do endereço (se a loja cadastrou o horário). Se o pedido de retirada é cancelado, o aviso fala em retirada, e não em entrega. No e-mail do comprovante, o pagamento na loja diz \"na retirada\" em vez de \"na entrega\".",
+      "Meu pedido, cartão parcelado: a tela diz \"Total do pedido\" em vez de \"Total pago\" e explica que os juros do parcelamento, se houver, vêm na fatura do cartão. Antes mostrava o valor sem os juros como se fosse o total pago.",
+      "Ordem por nome: \"Camiseta 2\" passa a vir antes de \"Camiseta 10\" na lista de categorias, na busca ordenada por nome e nos favoritos ordenados por nome (antes a ordem era letra por letra).",
+      "Busca da loja: se a foto de uma sugestão não carrega, aparece \"Sem foto\" em vez de uma imagem quebrada.",
+      "Painel, cadastro de produto: o lucro e a margem passam a usar o menor preço que a cliente realmente paga (o menor entre as variações à venda), e não só o preço-base. Quando os preços das variações diferem, o rótulo diz \"Menor lucro\"."
     ],
     "melhorias": [
       "Mais testes protegem os centavos dos estornos e do frete nacional, os textos dos avisos de pedido e de pagamento atrasado, o preço que cai no carrinho e o limite das parcelas.",
