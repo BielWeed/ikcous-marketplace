@@ -118,7 +118,7 @@ describe("recibo da venda de balcão — papel e título", () => {
     expect(papel().textContent).toContain("Cartão na maquininha");
   });
 
-  it("papel de pedido ONLINE não muda: continua com Frete, sem linha de Pagamento", async () => {
+  it("papel de pedido ONLINE continua com Frete e informa o pagamento", async () => {
     await act(async () => {
       raiz.render(
         <OrderReceipt
@@ -129,7 +129,10 @@ describe("recibo da venda de balcão — papel e título", () => {
     });
     expect(papel().textContent).toContain("Frete");
     expect(papel().textContent).toContain("R$ 15,00");
-    expect(papel().textContent).not.toContain("Pagamento");
+    expect(papel().textContent).toContain("Pagamento: PIX Instantâneo");
+    expect(papel().textContent).toContain(
+      "Cobrar na entrega: R$ 115,00 (PIX Instantâneo)",
+    );
     expect(papel().textContent).toContain("CLIENTE:");
     expect(papel().textContent).toContain("Maria Teste");
   });

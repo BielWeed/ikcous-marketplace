@@ -7,6 +7,7 @@
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { observacaoDaClienteNoRecibo } from "@/lib/observacao-da-cliente-no-recibo";
 import { quemVaiReceberSeForOutro } from "@/lib/quem-vai-receber";
+import { situacaoDoPagamentoNaEntrega } from "@/lib/situacao-do-pagamento-na-entrega";
 import { limparTelefoneBrasileiro } from "@/lib/telefone-br";
 import type { Order } from "@/types";
 
@@ -83,28 +84,15 @@ export function mensagemMototaxi(order: Order, loja: string): string {
     caracteres.length > 300
       ? `${caracteres.slice(0, 299).join("").trimEnd()}…`
       : notaLimpa;
-  const pago =
-    ["pago", "pago_apos_expirar", "recebido_na_entrega"].includes(
-      order.paymentStatus ?? "",
-    ) || !!order.pagamentoRecebidoEm;
-  const formas = new Map([
-    ["pix", "Pix"],
-    ["card", "Cartão"],
-    ["cash", "Dinheiro"],
-  ]);
-  const forma = formas.get(order.paymentMethod);
-  const valor = order.total.toLocaleString("pt-BR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  const { situacao, forma, valor } = situacaoDoPagamentoNaEntrega(order);
   const pagamento =
-    order.paymentStatus === "estornado"
+    situacao === "estornado"
       ? "Pagamento estornado — conferir antes de enviar"
-      : order.total === 0
+      : situacao === "sem_valor"
         ? "Sem valor a cobrar"
-        : pago
+        : situacao === "pago"
           ? "Já pago — não cobrar"
-          : forma
+          : situacao === "cobrar"
             ? `Cobrar na entrega: R$ ${valor} (${forma})`
             : "Pagamento pelo app pendente — não cobrar na entrega";
   return [
