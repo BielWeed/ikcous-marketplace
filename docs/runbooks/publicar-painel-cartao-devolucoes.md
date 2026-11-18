@@ -142,9 +142,8 @@ antes de abrir o estorno automático do cancelamento. As functions novas continu
     `assinatura_da_loja_ler`, `crm_visao`, `crm_clientes` e `painel_inicio`. **Se aparecer
     qualquer outro nome, pare.**
   - Os jobs marcados "(informacional)" não bloqueiam.
-- [ ] **"Build e tamanho" verde.** O portão de tamanho é dividido (cliente e painel, cada um com
-  o seu teto): vale o limite vigente em `.size-limit.cjs` (o portão de tamanho do CI), que muda a
-  cada release — não confie em número copiado neste roteiro.
+- [ ] **"Build e tamanho" verde.** O portão de tamanho é dividido: cliente ≤ 550 kB, painel
+  ≤ 466 kB ([AGENTS.md](../../AGENTS.md), Verificação).
 - [ ] **Todas as revisões de risco independentes deram PASSA**, no commit que vai ser publicado:
   - migrations 75–78;
   - edges do cartão;
