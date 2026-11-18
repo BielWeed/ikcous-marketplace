@@ -1467,6 +1467,12 @@ async function main() {
         "20261403000000_o_total_comprado_do_cliente_e_o_mesmo_no_crm_na_lista_e_na_ficha.sql",
         "public.get_admin_user_detail(uuid)",
       ],
+      // A 20261404000000 (a observacao da inspecao da devolucao e so da loja): devolucao_detalhe sobre o corpo da 20261399992000 (a mesma funcao da 3992 acima) + o SELECT por coluna de public.devolucoes.
+      // Nao mexe no estoque do painel; a 17a nao a le. O rollback dela devolve o corpo da 3992 e o GRANT de tabela inteira (a 3992 so cai depois dela, pela cadeia de posteriores).
+      [
+        "20261404000000_a_observacao_da_inspecao_so_a_loja_ve.sql",
+        "public.devolucao_detalhe(uuid)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

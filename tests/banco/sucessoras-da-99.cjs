@@ -175,6 +175,9 @@ const NOMES = [
   // 3993 -> 4030: o `hashVigente` da 4030 e o `hashDesta` da 3993); get_admin_user_detail sucede o corpo da 99 (`hashVigente` = o da 99). O rollback-manual dela desfaz as duas de uma vez;
   // o da 3993 recusa com o corpo novo no ar: ela cai antes (e, na ordem inversa, primeiro).
   "20261403000000_o_total_comprado_do_cliente_e_o_mesmo_no_crm_na_lista_e_na_ficha.sql",
+  // A observacao da inspecao e so da loja: devolucao_detalhe sucede o corpo da 3992 (a CADEIA 99 -> 3992 -> 404: o `hashVigente` da 404 e o `hashDesta` da 3992). A 404 tambem tira o SELECT
+  // da tabela devolucoes de authenticated (grant por coluna) e o rollback-manual dela devolve os dois. O rollback da 3992 recusa com o corpo novo no ar: ela cai antes (e, na ordem inversa, primeiro).
+  "20261404000000_a_observacao_da_inspecao_so_a_loja_ve.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).

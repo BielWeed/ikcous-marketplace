@@ -865,7 +865,7 @@ export function AcoesDaDevolucao({
 
               <div>
                 <label htmlFor="devolucao-observacao" className={ROTULO}>
-                  Observação da inspeção (opcional)
+                  Observação da inspeção (só a loja vê, opcional)
                 </label>
                 <LocalBufferedTextarea
                   id="devolucao-observacao"

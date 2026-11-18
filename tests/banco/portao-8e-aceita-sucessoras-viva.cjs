@@ -230,7 +230,10 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
       "20261399995000_o_lucro_do_ranking_casa_com_o_financeiro_pedido_a_pedido.sql" &&
     // A 20261399997000 (o pedido guarda quem vai receber) so redefine a v23 e a v24, em cima da 397; nenhuma e funcao da 8e. Entra em sucessoras-da-99.cjs so para cair antes da 397
     // (o-desconto-do-cupom-posterior.cjs chama o-pedido-guarda-quem-vai-receber-posterior.cjs primeiro); aqui sai do rol pela mesma razao da 397.
-    s.nome !== "20261399997000_o_pedido_guarda_quem_vai_receber.sql",
+    s.nome !== "20261399997000_o_pedido_guarda_quem_vai_receber.sql" &&
+    // A 20261404000000 (a observacao da inspecao da devolucao e so da loja) e a TERCEIRA sucessora de devolucao_detalhe (99 -> 3992 -> 404): tem a PROVA PROPRIA em
+    // tests/banco/a-observacao-da-inspecao-so-a-loja-ve-viva.cjs; `noEstado` a desfaz antes (a-observacao-da-inspecao-posterior.cjs, o rollback dela devolve o corpo da 3992 e o GRANT de tabela inteira), como a 3992.
+    s.nome !== "20261404000000_a_observacao_da_inspecao_so_a_loja_ve.sql",
 );
 
 const REPO = path.resolve(__dirname, "..", "..");
@@ -396,6 +399,10 @@ let C; // a conexão única com o clone do rodar-isolado
 async function noEstado(montar, textos = [SQL_8E]) {
   await C.query("BEGIN");
   try {
+    // A 20261404000000 (a observacao da inspecao e so da loja) sucede o corpo da 3992 (devolucao_detalhe) e o GRANT de public.devolucoes: sai ANTES da 3992 (so se no ar).
+    await require("./a-observacao-da-inspecao-posterior.cjs").desfazerAObservacaoDaInspecaoNaTransacao(
+      C,
+    );
     // A 20261399992000 (o item que nao veio pode ser devolvido de novo) sucede os corpos da 99 (devolucao_elegibilidade, devolucao_detalhe) e da 175 (solicitar_devolucao): sai PRIMEIRO (so se no ar).
     await require("./o-item-que-nao-veio-posterior.cjs").desfazerOItemQueNaoVeioNaTransacao(
       C,
