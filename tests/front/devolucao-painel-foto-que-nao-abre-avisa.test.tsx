@@ -141,6 +141,64 @@ async function abrirFicha() {
   });
 }
 
+describe("DetalheDaDevolucao — texto do reembolso manual", () => {
+  it.each([
+    "Reembolso resolvido manualmente (fora do app) após a falha pelo Mercado Pago.",
+    "Reembolso resolvido manualmente (fora do app) depois de 7 dias sem resposta do Mercado Pago.",
+  ])("não manda pagar novamente após o registro: %s", async (nota) => {
+    const detalhe = detalheComFotos([]);
+    detalhe.status = "concluida";
+    detalhe.reembolso_manual = true;
+    detalhe.valor_reembolso = 100;
+    detalhe.resolucao_final = "reembolso";
+    detalhe.eventos = [
+      {
+        id: 1,
+        de_status: "concluida",
+        para_status: "concluida",
+        ator: "loja",
+        nota,
+        created_at: "2026-11-02T12:00:00Z",
+      },
+    ];
+    estado.detalhe = detalhe;
+
+    await abrirFicha();
+
+    expect(hospedeiro.textContent).toContain(
+      "Você registrou que já devolveu este valor por fora. Não pague novamente.",
+    );
+    expect(hospedeiro.textContent).not.toContain(
+      "combine a devolução com o cliente",
+    );
+    expect(hospedeiro.textContent).not.toContain(
+      "devolva ao cliente em mãos ou por PIX",
+    );
+  });
+
+  it.each(["online", "dinheiro"])(
+    "sem registro por fora mantém a orientação para pagamento %s",
+    async (paymentMethod) => {
+      const detalhe = detalheComFotos([]);
+      detalhe.status = "concluida";
+      detalhe.reembolso_manual = true;
+      detalhe.valor_reembolso = 100;
+      detalhe.resolucao_final = "reembolso";
+      detalhe.pedido!.payment_method = paymentMethod;
+      estado.detalhe = detalhe;
+
+      await abrirFicha();
+
+      expect(hospedeiro.textContent).toContain(
+        paymentMethod === "online"
+          ? "combine a devolução com o cliente, em mãos ou por PIX."
+          : "devolva ao cliente em mãos ou por PIX.",
+      );
+      expect(hospedeiro.textContent).not.toContain("Não pague novamente.");
+    },
+  );
+});
+
 const imagens = () => Array.from(document.querySelectorAll("img"));
 
 async function falhar(img: HTMLImageElement) {

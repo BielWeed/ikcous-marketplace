@@ -1414,7 +1414,8 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                   falhou. */}
           {ecoDaVitrine && (
             <p className="text-[11px] leading-relaxed text-zinc-400">
-              Pronto. A vitrine passa a refletir em até 1 minuto.
+              Pronto. A mudança vale para novas compras em até 1 minuto; telas
+              já abertas só mudam ao recarregar.
             </p>
           )}
 

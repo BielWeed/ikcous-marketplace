@@ -13,6 +13,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
+class ObserverStub {
+  private callback: IntersectionObserverCallback;
+  constructor(callback: IntersectionObserverCallback) {
+    this.callback = callback;
+  }
+  observe(target: Element) {
+    this.callback(
+      [{ isIntersecting: true, target } as IntersectionObserverEntry],
+      this as unknown as IntersectionObserver,
+    );
+  }
+  disconnect() {}
+  unobserve() {}
+}
+
 function pedido(sobre: Partial<Order> = {}): Order {
   return {
     id: "aaaaaaaa-0000-0000-0000-000000eca2d5",
@@ -49,6 +64,7 @@ describe("AdminOrderCard — rodapé e leitura do pedido", () => {
   const aoRegistrar = vi.fn();
 
   beforeEach(() => {
+    vi.stubGlobal("IntersectionObserver", ObserverStub);
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -85,6 +101,27 @@ describe("AdminOrderCard — rodapé e leitura do pedido", () => {
     Array.from(hospedeiro.querySelectorAll("button")).find(
       (b) => b.textContent?.trim() === texto,
     );
+
+  it("miniatura de 44px informa o tamanho e carrega sem bloquear", () => {
+    desenhar(
+      pedido({
+        items: [
+          {
+            productId: "p1",
+            name: "Foto",
+            price: 10,
+            quantity: 1,
+            image: "https://example.test/foto.jpg",
+          },
+        ],
+      }),
+    );
+    const imagem = hospedeiro.querySelector("[data-abrir-pedido] img");
+    expect(imagem).not.toBeNull();
+    expect(imagem?.getAttribute("sizes")).toBe("44px");
+    expect(imagem?.getAttribute("loading")).toBe("lazy");
+    expect(imagem?.getAttribute("decoding")).toBe("async");
+  });
 
   it("mostra quem comprou, o produto, o valor em reais e a conta de unidades (não de linhas)", () => {
     desenhar(pedido());

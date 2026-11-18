@@ -335,7 +335,7 @@ describe("MercadoPagoSection — liberação automática do pagamento pelo app",
     expect(temBotao("Retomar")).toBe(true);
     expect(temBotao("Pausar")).toBe(false);
     expect(document.body.textContent).toContain(
-      "A vitrine passa a refletir em até 1 minuto",
+      "A mudança vale para novas compras em até 1 minuto; telas já abertas só mudam ao recarregar.",
     );
     expect(onPixAlternado).toHaveBeenCalledWith(false, true);
   });
@@ -361,7 +361,7 @@ describe("MercadoPagoSection — liberação automática do pagamento pelo app",
       "Chave de TESTE: o PIX não vai receber dinheiro de verdade",
     );
     expect(document.body.textContent).toContain(
-      "A vitrine passa a refletir em até 1 minuto",
+      "A mudança vale para novas compras em até 1 minuto; telas já abertas só mudam ao recarregar.",
     );
   });
 
@@ -380,7 +380,7 @@ describe("MercadoPagoSection — liberação automática do pagamento pelo app",
     expect(toastError).toHaveBeenCalledWith(RECADO);
     expect(estadoDoRecebimento().textContent).toContain("Pausado por você");
     expect(document.body.textContent).not.toContain(
-      "A vitrine passa a refletir em até 1 minuto",
+      "A mudança vale para novas compras em até 1 minuto; telas já abertas só mudam ao recarregar.",
     );
   });
 

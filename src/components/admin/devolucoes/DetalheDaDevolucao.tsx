@@ -219,9 +219,19 @@ export function DetalheDaDevolucao({
               <p className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs font-bold leading-relaxed text-amber-200">
                 Reembolso manual de{" "}
                 {formatarReais(detalhe.valor_reembolso ?? 0)}.{" "}
-                {pagoPeloApp(detalhe)
-                  ? "O reembolso não saiu pelo Mercado Pago — combine a devolução com o cliente, em mãos ou por PIX."
-                  : "Este pedido não foi pago pelo app — devolva ao cliente em mãos ou por PIX."}
+                {detalhe.eventos.some(
+                  (evento) =>
+                    evento.ator === "loja" &&
+                    evento.de_status === "concluida" &&
+                    evento.para_status === "concluida" &&
+                    evento.nota?.startsWith(
+                      "Reembolso resolvido manualmente (fora do app)",
+                    ),
+                )
+                  ? "Você registrou que já devolveu este valor por fora. Não pague novamente."
+                  : pagoPeloApp(detalhe)
+                    ? "O reembolso não saiu pelo Mercado Pago — combine a devolução com o cliente, em mãos ou por PIX."
+                    : "Este pedido não foi pago pelo app — devolva ao cliente em mãos ou por PIX."}
               </p>
             )}
 

@@ -146,6 +146,7 @@ describe("AddressForm — CEP de 7 dígitos é recusado", () => {
     const texto = await renderizarEEnviar("1234567", "CEP inválido");
 
     expect(texto).toContain("CEP inválido");
+    expect(document.activeElement).toBe(document.getElementById("cep"));
   });
 
   it("8 dígitos: sem erro de CEP — e a validação rodou (âncora nos outros campos)", async () => {

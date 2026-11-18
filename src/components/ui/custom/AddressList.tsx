@@ -13,7 +13,7 @@ import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import { queryMapsDoEndereco } from "@/lib/query-maps-do-endereco";
 import type { Address } from "@/types";
 import { CheckCircle2, Edit, MapPin, Plus, Trash2 } from "lucide-react";
-import { memo, useState } from "react";
+import { memo, useRef, useState } from "react";
 
 interface AddressListProps {
   addresses: Address[];
@@ -48,6 +48,7 @@ function ConfirmaApagarEndereco({
   onConfirmar: (id: string) => void;
   excluindo: boolean;
 }) {
+  const origemRef = useRef<HTMLElement | null>(null);
   return (
     <AlertDialog
       open={endereco !== null}
@@ -55,7 +56,21 @@ function ConfirmaApagarEndereco({
         if (!aberto && !excluindo) onCancelar();
       }}
     >
-      <AlertDialogContent overlayClassName="z-[130]" className="z-[130]">
+      <AlertDialogContent
+        overlayClassName="z-[130]"
+        className="z-[130]"
+        onOpenAutoFocus={() => {
+          origemRef.current =
+            document.activeElement instanceof HTMLElement
+              ? document.activeElement
+              : null;
+        }}
+        onCloseAutoFocus={(evento) => {
+          if (!origemRef.current?.isConnected) return;
+          evento.preventDefault();
+          origemRef.current.focus();
+        }}
+      >
         <AlertDialogHeader>
           <AlertDialogTitle>Apagar este endereço?</AlertDialogTitle>
           <AlertDialogDescription>

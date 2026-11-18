@@ -1025,7 +1025,7 @@ export const AdminPushView = memo(function AdminPushView({
       const confirmado = await confirmar({
         titulo: "Enviar para todos os clientes?",
         valor: textoDeAlcanceEmAparelhos(subCount),
-        texto: `O aviso "${notification.title.trim()}" vai agora para todos os clientes que ativaram os avisos.\n\nDepois de enviar, não dá para desfazer.`,
+        texto: `O aviso "${notification.title.trim()}" vai agora para todos os aparelhos inscritos nos avisos, inclusive de visitantes sem conta.\n\nDepois de enviar, não dá para desfazer.`,
         verbo: "Enviar agora",
       });
       if (!confirmado) return;
@@ -2138,7 +2138,7 @@ export const AdminPushView = memo(function AdminPushView({
                 </p>
                 <span className="mt-1 block text-sm leading-relaxed text-zinc-400">
                   Quando você enviar, cada mensagem aparece aqui — com quantos
-                  aparelhos receberam de verdade.
+                  avisos foram aceitos para envio.
                 </span>
               </div>
             ) : (
@@ -2182,7 +2182,7 @@ export const AdminPushView = memo(function AdminPushView({
                             afirmar sucesso sem olhar o número. */}
                     {item.recipient_count > 0 ? (
                       <span className="shrink-0 pl-2 font-bold uppercase text-zinc-300">
-                        Entregue
+                        Aceitos para envio
                       </span>
                     ) : (
                       <span className="shrink-0 pl-2 font-bold uppercase text-zinc-300">

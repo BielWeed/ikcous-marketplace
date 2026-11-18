@@ -326,6 +326,26 @@ describe("AdminBannersView: datas sem sentido", () => {
     expect(textoDaTela()).toMatch(/Termina amanhã às \d{2}:\d{2}\./);
   });
 
+  it("sem imagem: leva ao envio da foto e não salva", async () => {
+    await montarPainel();
+    await abrirNovoBannerPelaBarra();
+    await escolherImagemPropria();
+    await configurarTextos(true);
+    const campo = [...document.querySelectorAll("button")].find(
+      (botao) => botao.textContent?.trim() === "Enviar imagem",
+    )!;
+    const rolar = vi.fn();
+    campo.scrollIntoView = rolar;
+    await salvar();
+    await act(async () => {
+      await esperar(50);
+    });
+    expect(document.activeElement).toBe(campo);
+    expect(rolar).toHaveBeenCalledWith({ block: "center" });
+    expect(h.toastError).toHaveBeenCalledWith("Falta a imagem do celular");
+    expect(addBanner).not.toHaveBeenCalled();
+  });
+
   it("fim antes do início: mostra o motivo no campo e NÃO salva", async () => {
     await abrirBannerNovoNoPasso3();
     await ligarProgramacao();
@@ -333,7 +353,19 @@ describe("AdminBannersView: datas sem sentido", () => {
     await escolherDatas(new Date(agora + 5 * dia), new Date(agora + 3 * dia));
 
     expect(textoDaTela()).toContain(MENSAGEM_FIM_ANTES_DO_INICIO);
+    const rolar = vi.fn();
+    const campo = document.getElementById("banner-end-date")!;
+    campo.scrollIntoView = rolar;
+    const opcoes = campo.closest("details")!;
+    opcoes.open = false;
     await salvar();
+
+    await act(async () => {
+      await esperar(50);
+    });
+    expect(opcoes.open).toBe(true);
+    expect(document.activeElement).toBe(campo);
+    expect(rolar).toHaveBeenCalledWith({ block: "center" });
 
     expect(addBanner).not.toHaveBeenCalled();
     expect(h.toastError).toHaveBeenCalledWith(MENSAGEM_FIM_ANTES_DO_INICIO);

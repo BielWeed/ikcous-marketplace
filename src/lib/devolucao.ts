@@ -206,7 +206,10 @@ const ROTULO_RESOLUCAO = new Map<ResolucaoDevolucao, string>([
 ]);
 
 const EXPLICACAO_RESOLUCAO = new Map<ResolucaoDevolucao, string>([
-  ["reembolso", "O dinheiro volta para você pelo mesmo meio do pagamento."],
+  [
+    "reembolso",
+    "A loja devolve o valor a você; a forma depende do pagamento e pode ser combinada com a loja.",
+  ],
   ["troca", "A loja entrega outro tamanho, cor ou produto equivalente."],
   ["vale", "A loja combina com você um vale para usar em outra compra nela."],
 ]);

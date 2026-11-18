@@ -393,6 +393,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
           <LazyImage
             src={itens[0].image}
             alt={itens[0].name}
+            sizes="44px"
             className="size-11 shrink-0 rounded-2xl border border-admin-border object-cover"
           />
         ) : (

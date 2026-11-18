@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { AddressList } from "@/components/ui/custom/AddressList";
 import { BotaoWhatsapp } from "@/components/ui/custom/BotaoWhatsapp";
 import { CustomerPaymentBadge } from "@/components/ui/custom/CustomerPaymentBadge";
+import { ImagemComFallback } from "@/components/ui/custom/ImagemComFallback";
 import { OrderTimeline } from "@/components/ui/custom/OrderTimeline";
 import { ProfileSkeleton } from "@/components/ui/custom/Skeletons";
 import {
@@ -587,10 +588,18 @@ export function ProfileView({
             >
               <span className="flex size-full items-center justify-center overflow-hidden rounded-[28px] border-4 border-solid border-background bg-muted">
                 {profile?.avatar_url ? (
-                  <img
+                  <ImagemComFallback
                     src={profile.avatar_url}
                     alt="Sua foto de perfil"
                     className="size-full object-cover duration-300 animate-in fade-in"
+                    fallback={
+                      <span
+                        aria-hidden="true"
+                        className="text-4xl font-bold text-muted-foreground"
+                      >
+                        {primeiraLetra(String(profileName))}
+                      </span>
+                    }
                   />
                 ) : (
                   <span
@@ -1201,10 +1210,18 @@ export function ProfileView({
                       <div className="flex flex-col items-center justify-center space-y-4 py-2">
                         <div className="relative">
                           <div className="flex size-28 items-center justify-center overflow-hidden rounded-full border-4 border-solid border-background bg-muted">
-                            <img
+                            <ImagemComFallback
                               src={profile.avatar_url}
                               alt="Foto customizada"
                               className="size-full object-cover duration-300 animate-in fade-in"
+                              fallback={
+                                <span
+                                  aria-hidden="true"
+                                  className="text-4xl font-bold text-muted-foreground"
+                                >
+                                  {primeiraLetra(String(profileName))}
+                                </span>
+                              }
                             />
                           </div>
                           <div className="absolute -bottom-2 -right-2 flex size-11 cursor-pointer items-center justify-center rounded-full bg-foreground text-background transition-colors hover:bg-foreground/90">
@@ -1353,10 +1370,16 @@ export function ProfileView({
               <div className="mt-auto flex items-center gap-2 self-start">
                 <div className="flex size-6 items-center justify-center overflow-hidden rounded-lg border border-white/20 bg-white/10 backdrop-blur-sm">
                   {profile?.avatar_url ? (
-                    <img
+                    <ImagemComFallback
                       src={profile.avatar_url}
                       alt="Avatar"
                       className="size-full object-cover"
+                      fallback={
+                        <User
+                          aria-hidden="true"
+                          className="size-3 text-white/85"
+                        />
+                      }
                     />
                   ) : (
                     <User className="size-3 text-white/85" />

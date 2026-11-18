@@ -120,6 +120,72 @@ describe("ProfileView — inicial do avatar sem foto", () => {
       ?.textContent;
   }
 
+  it("foto quebrada vira inicial e uma foto nova ganha outra tentativa", async () => {
+    estado.profile = {
+      full_name: "Maria Teste",
+      avatar_url: "/foto-quebrada.jpg",
+    };
+    const { ProfileView } = await import("@/views/customer/ProfileView");
+    await act(async () => raiz.render(<ProfileView onNavigate={vi.fn()} />));
+    const avatar = hospedeiro.querySelector<HTMLImageElement>(
+      'img[alt="Sua foto de perfil"]',
+    );
+    expect(avatar).not.toBeNull();
+    act(() => avatar?.dispatchEvent(new Event("error")));
+    expect(
+      hospedeiro.querySelector('img[alt="Sua foto de perfil"]'),
+    ).toBeNull();
+    expect(
+      hospedeiro.querySelector('span[aria-hidden="true"].text-4xl')
+        ?.textContent,
+    ).toBe("M");
+    estado.profile = { ...estado.profile, avatar_url: "/foto-nova.jpg" };
+    await act(async () => raiz.render(<ProfileView onNavigate={vi.fn()} />));
+    expect(
+      hospedeiro
+        .querySelector('img[alt="Sua foto de perfil"]')
+        ?.getAttribute("src"),
+    ).toBe("/foto-nova.jpg");
+  });
+
+  it.each([
+    ["Trocar foto de perfil", "Foto customizada"],
+    ["Alterar capa de fundo", "Avatar"],
+  ])("a prévia em %s também substitui a foto quebrada", async (rotulo, alt) => {
+    estado.profile = {
+      full_name: "Maria Teste",
+      avatar_url: "/foto-quebrada.jpg",
+    };
+    const { ProfileView } = await import("@/views/customer/ProfileView");
+    await act(async () => raiz.render(<ProfileView onNavigate={vi.fn()} />));
+    await act(async () => {
+      hospedeiro
+        .querySelector<HTMLButtonElement>(`[aria-label="${rotulo}"]`)
+        ?.click();
+    });
+    if (alt === "Foto customizada") {
+      await act(async () => {
+        [...document.querySelectorAll<HTMLButtonElement>("button")]
+          .find((b) => b.textContent?.trim() === "Foto Própria")
+          ?.click();
+      });
+    }
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    });
+    const imagem = document.querySelector<HTMLImageElement>(
+      `img[alt="${alt}"]`,
+    );
+    expect(imagem).not.toBeNull();
+    const pai = imagem?.parentElement;
+    act(() => imagem?.dispatchEvent(new Event("error")));
+    expect(document.querySelector(`img[alt="${alt}"]`)).toBeNull();
+    expect(pai).not.toBeNull();
+    expect(pai?.textContent === "M" || Boolean(pai?.querySelector("svg"))).toBe(
+      true,
+    );
+  });
+
   it("nome que começa com emoji mostra o emoji inteiro, não metade dele", async () => {
     expect(await inicialDoAvatarPara("😀 Ana")).toBe("😀");
   });
