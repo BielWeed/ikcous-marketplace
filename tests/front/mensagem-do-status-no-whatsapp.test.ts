@@ -122,4 +122,18 @@ describe("mensagemDoStatusNoWhatsapp", () => {
     expect(msg.startsWith("Olá Cliente!")).toBe(true);
     expect(msg.endsWith("Obrigado por comprar na Loja & Cia!")).toBe(true);
   });
+
+  // Pedido antigo com o nome só de espaços: o `||` do chamador tomava "   "
+  // por nome e a mensagem abria "Olá    !". O nome é tratado aqui, na fonte.
+  it.each([
+    ["só espaços", "   ", "Olá Cliente!"],
+    ["vazio", "", "Olá Cliente!"],
+    ["com espaços nas pontas", "  Maria  ", "Olá Maria!"],
+    ["com espaços sobrando no meio", "  Maria   Silva ", "Olá Maria Silva!"],
+  ])("nome do cliente %s", (_descricao, nomeDoCliente, abertura) => {
+    const msg = mensagemDoStatusNoWhatsapp({ ...base, nomeDoCliente });
+    expect(msg.startsWith(`${abertura}
+
+`)).toBe(true);
+  });
 });

@@ -417,7 +417,7 @@ Deno.test("reserva concedida + SMTP configurado -> envia com o texto certo e dev
 // O pedido de retirada nasce (migration 20261169000000) com
 // customer_data.shipping_option_id = 'store-pickup' e o RETRATO do endereço
 // da loja em customer_data.pickup_address. O comprovante tem de mostrar
-// "Retirada na loja" + esse endereço + o aviso neutro de esperar a loja (sem
+// "Retirada na loja" + esse endereço + o aviso neutro de consultar a loja (sem
 // prazo inventado), e o endereço da CLIENTE continua lá, rotulado como dela
 // — nunca "Entrega em", que prometeria uma entrega que não existe.
 
@@ -465,7 +465,7 @@ Deno.test("retirada na loja -> e-mail mostra 'Retirada na loja' + endereço da l
   });
   assertStringIncludes(html, "Retirada na loja");
   assertStringIncludes(html, "Rua Ficticia da Loja, 100 - Centro");
-  assertStringIncludes(html, "Aguarde a confirmação da loja para retirar");
+  assertStringIncludes(html, "Para informações sobre a retirada, consulte seu pedido ou fale com a loja.");
   assertStringIncludes(html, "Endereço do cliente");
   assertStringIncludes(html, "Rua da Cliente");
   assertEquals(html.includes("Entrega em"), false);
@@ -535,7 +535,7 @@ Deno.test("id de retirada SEM o retrato do endereço (pedido forjado/antigo) -> 
     number: "7",
   });
   assertStringIncludes(html, "Retirada na loja");
-  assertStringIncludes(html, "Aguarde a confirmação da loja para retirar");
+  assertStringIncludes(html, "Para informações sobre a retirada, consulte seu pedido ou fale com a loja.");
   assertStringIncludes(html, "Endereço do cliente");
 });
 

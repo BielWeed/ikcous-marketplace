@@ -48,6 +48,7 @@ import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useAoMudarCategoria } from "@/hooks/useAoMudarCategoria";
 import { useCategories } from "@/hooks/useCategories";
+import { useConfirmarAcao } from "@/hooks/useConfirmarAcao";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
 // Só o TIPO da resposta da RPC do PDV — import "type" some da build, então
@@ -91,6 +92,7 @@ import {
 } from "@/lib/rascunho-do-produto";
 import { recusaDeFoto } from "@/lib/recusa-de-foto";
 import { ehAnimada } from "@/lib/redimensiona-imagem";
+import { textoVariacoesNaoExcluidas } from "@/lib/texto-variacoes-nao-excluidas";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product, ProductVariant, View } from "@/types";
 import {
@@ -2197,6 +2199,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     // Validar Estoque
     const stock = Number(formData.stock);
     if (
+      productId &&
+      formData.variants.length === 0 &&
+      formData.stock.trim() === ""
+    ) {
+      setStockError("Informe o estoque: digite 0 ou mais.");
+    } else if (
       formData.stock &&
       (!/^\d+$/.test(formData.stock) ||
         !Number.isSafeInteger(stock) ||
@@ -2550,20 +2558,38 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
   // Pela foto, não pela posição: no 2º toque rápido o cartão que está saindo
   // ainda existe na tela, e a posição dele já é de outra foto.
-  const removeImage = useCallback((imagem: string) => {
-    focarNasAcoesRef.current = true;
-    setFormData((prev) => ({
-      ...prev,
-      images: prev.images.filter((u) => u !== imagem),
-      // A variação que usava esta foto volta a usar a galeria normal, em vez
-      // de apontar para uma imagem que o produto não tem mais.
-      variants: prev.variants.some((v) => v.imageUrl === imagem)
-        ? prev.variants.map((v) =>
-            v.imageUrl === imagem ? { ...v, imageUrl: undefined } : v,
-          )
-        : prev.variants,
-    }));
-  }, []);
+  const { confirmar: confirmarExclusaoDeFoto, dialogo: dialogoDeExcluirFoto } =
+    useConfirmarAcao();
+  const removeImage = useCallback(
+    async (imagem: string) => {
+      const quantidade = formData.variants.filter(
+        (v) => v.imageUrl === imagem,
+      ).length;
+      if (
+        quantidade > 0 &&
+        !(await confirmarExclusaoDeFoto({
+          titulo: "Excluir foto?",
+          texto: `Esta foto é usada em ${quantidade} ${quantidade === 1 ? "variação" : "variações"}. Ao excluir, elas ficam sem foto. Excluir mesmo assim?`,
+          verbo: "Excluir foto",
+        }))
+      ) {
+        return;
+      }
+      focarNasAcoesRef.current = true;
+      setFormData((prev) => ({
+        ...prev,
+        images: prev.images.filter((u) => u !== imagem),
+        // A variação que usava esta foto volta a usar a galeria normal, em vez
+        // de apontar para uma imagem que o produto não tem mais.
+        variants: prev.variants.some((v) => v.imageUrl === imagem)
+          ? prev.variants.map((v) =>
+              v.imageUrl === imagem ? { ...v, imageUrl: undefined } : v,
+            )
+          : prev.variants,
+      }));
+    },
+    [formData.variants, confirmarExclusaoDeFoto],
+  );
 
   // `images[0]` é a foto do cartão da vitrine (e vira `imagem_url` ao salvar),
   // então "principal" é só "primeira do array". A foto sai do lugar e vai para
@@ -2770,7 +2796,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     // aparecia a mais). Estoque é número inteiro, zero ou mais: o que não for
     // isso avisa e não cria a variação.
     const textoDoEstoque = variantFormData.stockIncrement.trim();
-    const erroDoEstoque = erroDoEstoqueDaVariacao(textoDoEstoque);
+    const erroDoEstoque = erroDoEstoqueDaVariacao(
+      textoDoEstoque,
+      editingVariant !== null,
+    );
     if (erroDoEstoque) {
       toast.error(erroDoEstoque);
       return;
@@ -3526,7 +3555,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               ? devolvidas.map((v) => `${v.name}: ${v.value}`).join(", ")
               : "uma variação";
           toast.error(
-            `O produto e as outras variações foram salvos, mas não consegui excluir ${quais}. Se ela já tem vendas, desligue-a no botão de ligar/desligar da linha em vez de excluir.`,
+            textoVariacoesNaoExcluidas(quais, devolvidas.length),
             { duration: 15000 },
           );
           setIsSubmitting(false);
@@ -4106,6 +4135,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         await processAndUploadImages(Array.from(e.dataTransfer.files || []));
       }}
     >
+      {dialogoDeExcluirFoto}
       {gerenciandoCategorias && (
         <LimiteDePedaco
           pedacos={[GerenciarCategorias]}
@@ -4872,7 +4902,33 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             <React.Fragment key={image}>
                               <div className="produto-foto-foco-coluna">
                                 <div className="produto-foto-foco-imagem">
-                                  <img src={image} alt="" />
+                                  {meta?.status === "erro" ? (
+                                    <div
+                                      role="img"
+                                      aria-label="Foto indisponível"
+                                      className="flex size-full items-center justify-center bg-zinc-100 text-zinc-600"
+                                    >
+                                      <ImageIcon
+                                        className="size-6"
+                                        aria-hidden="true"
+                                      />
+                                    </div>
+                                  ) : (
+                                    <img
+                                      src={image}
+                                      alt=""
+                                      onError={() =>
+                                        setImageMetadata((prev) => ({
+                                          ...prev,
+                                          [image]: {
+                                            width: 0,
+                                            height: 0,
+                                            status: "erro",
+                                          },
+                                        }))
+                                      }
+                                    />
+                                  )}
                                   <div
                                     data-tema-fixo=""
                                     className="produto-foto-selo text-[11px] font-bold"
@@ -4882,6 +4938,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                       : `Foto ${indiceEmFoco + 1}`}
                                   </div>
                                 </div>
+                                {meta?.status === "erro" && (
+                                  <p className="mt-2 text-xs text-zinc-400">
+                                    Não foi possível carregar esta foto
+                                  </p>
+                                )}
                                 {meta &&
                                   meta.status !== "loading" &&
                                   meta.status !== "erro" && (

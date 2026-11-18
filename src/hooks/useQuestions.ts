@@ -7,6 +7,7 @@ import {
   PREFIXO_DE_PERGUNTAS,
   gravarCopiaPorProduto,
 } from "@/lib/copias-por-produto";
+import { mensagemDeErroDeSessaoDoPainel } from "@/lib/erro-de-sessao-do-painel";
 import {
   PRAZO_DAS_ACOES_DO_PEDIDO_MS,
   PRAZO_DA_CONSULTA_DO_PAINEL_MS,
@@ -571,7 +572,9 @@ export function useQuestions() {
         toast.error(
           ehConsultaSemResposta(error)
             ? "A conexão está lenta. Sua pergunta pode ter sido recebida. Confira antes de tentar de novo."
-            : "Erro ao enviar pergunta.",
+            : mensagemDeErroDeSessaoDoPainel(error)
+              ? "Sua sessão expirou. Entre de novo para enviar a pergunta — o texto continua aqui."
+              : "Erro ao enviar pergunta.",
         );
         if (ehConsultaSemResposta(error)) {
           await getQuestionsByProduct(question.productId, {
@@ -599,7 +602,7 @@ export function useQuestions() {
   const addAnswer = useCallback(
     async (
       answer: { questionId: string; answer: string },
-      options?: { silent?: boolean },
+      options?: { silent?: boolean; onError?: (error: unknown) => void },
     ) => {
       if (!isAdmin) {
         if (!options?.silent) toast.error("Permissão negada");
@@ -645,6 +648,7 @@ export function useQuestions() {
         return true;
       } catch (err: any) {
         console.error(err);
+        options?.onError?.(err);
         // Mesmo no modo silencioso, o prazo exige avisar que a gravação
         // pode ter ocorrido; não é seguro oferecer apenas "tente de novo".
         if (ehConsultaSemResposta(err))

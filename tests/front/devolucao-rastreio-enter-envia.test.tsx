@@ -7,6 +7,8 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { decidirMomentoSeguro } from "@/lib/atualizacao/momento-seguro";
+import { haOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import type { DevolucaoDetalhe } from "@/types/devolucao";
 
 vi.mock("sonner", () => ({
@@ -90,6 +92,7 @@ afterEach(() => {
 
 async function montar(
   onInformarEnvio = vi.fn().mockResolvedValue({ ok: true }),
+  onCancelar = vi.fn().mockResolvedValue({ ok: true }),
 ) {
   const { DevolucaoDoPedidoCard } = await import(
     "@/components/devolucao/DevolucaoDoPedidoCard"
@@ -101,7 +104,7 @@ async function montar(
         anteriores={[]}
         enderecoDaLoja={null}
         horarioDaLoja={null}
-        onCancelar={vi.fn()}
+        onCancelar={onCancelar}
         onInformarEnvio={onInformarEnvio}
       />,
     );
@@ -130,6 +133,64 @@ const esvaziar = async () => {
 };
 
 describe("cartão da devolução — Enter no campo do código de rastreio", () => {
+  it("o rastreio digitado impede recarga em segundo plano e limpar libera", async () => {
+    await montar();
+    expect(haOperacaoSensivel()).toBe(false);
+    await digitar("AB123");
+    expect(decidirMomentoSeguro({
+      view: "order-detail",
+      adminDirty: false,
+      pedidoPendenteDoCheckout: false,
+      documentoOculto: true,
+      trocouDeTela: false,
+    }).instalarAgora).toBe(false);
+    await digitar("");
+    expect(haOperacaoSensivel()).toBe(false);
+  });
+
+  it("mantém a marca no envio e na falha, libera no sucesso e ao desmontar", async () => {
+    let terminar: (r: { ok: boolean; erro?: string }) => void = () => {};
+    const enviar = vi.fn(() => new Promise<{ ok: boolean; erro?: string }>((r) => {
+      terminar = r;
+    }));
+    await montar(enviar);
+    const campo = await digitar("AB123");
+    const submeter = () => campo.closest("form")!.dispatchEvent(
+      new Event("submit", { bubbles: true, cancelable: true }),
+    );
+    await act(async () => { submeter(); });
+    expect(haOperacaoSensivel()).toBe(true);
+    await act(async () => { terminar({ ok: false, erro: "Falhou" }); });
+    expect(haOperacaoSensivel()).toBe(true);
+    await act(async () => { submeter(); });
+    await act(async () => { terminar({ ok: true }); });
+    expect(haOperacaoSensivel()).toBe(false);
+    await digitar("CD456");
+    expect(haOperacaoSensivel()).toBe(true);
+    act(() => raiz.unmount());
+    expect(haOperacaoSensivel()).toBe(false);
+    raiz = createRoot(hospedeiro);
+  });
+
+  it("cancelar a devolução com sucesso descarta o rascunho e libera a marca", async () => {
+    const cancelar = vi.fn().mockResolvedValue({ ok: true });
+    await montar(undefined, cancelar);
+    await digitar("AB123");
+    expect(haOperacaoSensivel()).toBe(true);
+    await act(async () => {
+      Array.from(document.querySelectorAll("button")).find(
+        (b) => b.textContent?.trim() === "Cancelar devolução",
+      )!.click();
+    });
+    await act(async () => {
+      Array.from(document.querySelectorAll("button")).find(
+        (b) => b.textContent?.trim() === "Sim, cancelar",
+      )!.click();
+    });
+    expect(cancelar).toHaveBeenCalledWith("d-1");
+    expect(haOperacaoSensivel()).toBe(false);
+  });
+
   it("o campo e o botão 'Enviar' moram no mesmo <form>, e o botão é o submit", async () => {
     await montar();
     const campo = document.querySelector("#rastreio-devolucao-d-1");

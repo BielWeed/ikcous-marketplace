@@ -705,6 +705,16 @@ const MOTIVOS_DE_RECUSA = new Map<string, string>([
   ["invalid_card_token", "Os dados do cartão expiraram. Digite de novo."],
 ]);
 
+// Só estes dois motivos ganham a forma com prefixo: normalizar o mapa inteiro
+// mudaria também as frases das demais recusas já tratadas pelo checkout.
+function motivoConhecidoDaRecusa(detalhe: unknown): string | undefined {
+  if (typeof detalhe !== "string") return undefined;
+  const codigo = detalhe === "cc_rejected_invalid_installments" || detalhe === "cc_rejected_card_disabled"
+    ? detalhe.slice("cc_rejected_".length)
+    : detalhe;
+  return MOTIVOS_DE_RECUSA.get(codigo);
+}
+
 /**
  * O motivo da recusa em português de gente, a partir do `status_detail` do
  * PAGAMENTO (`transactions.payments[0]` — onde o MP põe o motivo; a raiz
@@ -718,9 +728,8 @@ export function motivoDaRecusa(order: Record<string, unknown> | null | undefined
     order && typeof order === "object" ? order.status_detail : undefined,
   ];
   for (const detalhe of detalhes) {
-    if (typeof detalhe === "string" && MOTIVOS_DE_RECUSA.has(detalhe)) {
-      return MOTIVOS_DE_RECUSA.get(detalhe) as string;
-    }
+    const motivo = motivoConhecidoDaRecusa(detalhe);
+    if (motivo !== undefined) return motivo;
   }
   return MOTIVO_RECUSA_PADRAO;
 }
@@ -750,7 +759,8 @@ export function motivoDaRecusaDoErro(corpoDoErro: unknown): string {
     for (const detalhe of detalhes) {
       if (typeof detalhe !== "string") continue;
       const sufixo = detalhe.slice(detalhe.lastIndexOf(":") + 1).trim();
-      if (MOTIVOS_DE_RECUSA.has(sufixo)) return MOTIVOS_DE_RECUSA.get(sufixo) as string;
+      const motivo = motivoConhecidoDaRecusa(sufixo);
+      if (motivo !== undefined) return motivo;
     }
   }
   return MOTIVO_RECUSA_PADRAO;

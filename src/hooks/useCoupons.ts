@@ -8,6 +8,7 @@ import {
 import { mensagemDeErroDoCupom } from "@/lib/erro-do-cupom";
 import {
   PRAZO_DA_CONSULTA_DO_CHECKOUT_MS,
+  PRAZO_DA_CONSULTA_DO_PAINEL_MS,
   aguardarComPrazo,
   ehConsultaSemResposta,
   erroDeConsultaSemResposta,
@@ -87,7 +88,11 @@ async function minutosDaVagaPresaDoCliente(
  */
 async function bancoTemAlcanceDoCupom(): Promise<boolean> {
   try {
-    const { error } = await supabase.from("coupons").select("alcance").limit(0);
+    const { error } = await aguardarComPrazo(
+      Promise.resolve(supabase.from("coupons").select("alcance").limit(0)),
+      PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+      () => erroDeConsultaSemResposta(),
+    );
     return !error;
   } catch {
     return false;
@@ -498,9 +503,15 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
   /** Contas que podem usar um cupom exclusivo (RPC do painel, sem CPF). */
   const listarClientesDoCupom = useCallback(
     async (couponId: string): Promise<ClienteDoCupom[]> => {
-      const { data, error } = await supabase.rpc("admin_cupom_clientes", {
-        p_coupon_id: couponId,
-      });
+      const { data, error } = await aguardarComPrazo(
+        Promise.resolve(
+          supabase.rpc("admin_cupom_clientes", {
+            p_coupon_id: couponId,
+          }),
+        ),
+        PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+        () => erroDeConsultaSemResposta(),
+      );
       if (error) throw error;
       return (data ?? []).map((l) => ({
         id: l.user_id,

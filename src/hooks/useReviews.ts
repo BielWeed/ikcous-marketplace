@@ -8,6 +8,10 @@ import {
   updateReviewsCacheSeMesmaGeracao,
 } from "@/lib/cache-de-avaliacoes";
 import { criarCanalDeAbas } from "@/lib/canal-de-abas";
+import {
+  MENSAGEM_SESSAO_OU_PERMISSAO,
+  mensagemDeErroDeSessaoDoPainel,
+} from "@/lib/erro-de-sessao-do-painel";
 import { EVENTO_AVALIACAO_EXCLUIDA } from "@/lib/evento-avaliacao-excluida";
 import {
   PRAZO_DAS_ACOES_DO_PEDIDO_MS,
@@ -991,10 +995,15 @@ export function useReviews() {
         return true;
       } catch (error) {
         console.error("Error adding merchant reply:", error);
+        const erro = error as { code?: unknown; status?: unknown } | null;
         toast.error(
-          ehConsultaSemResposta(error)
-            ? "Sem resposta da rede. Confira na lista antes de tentar de novo."
-            : "Erro ao enviar resposta.",
+          erro?.code === "42501" || erro?.status === 403
+            ? MENSAGEM_SESSAO_OU_PERMISSAO
+            : mensagemDeErroDeSessaoDoPainel(error)
+              ? "Sua sessão expirou. Entre de novo para enviar a resposta — o texto continua aqui."
+              : ehConsultaSemResposta(error)
+                ? "Sem resposta da rede. Confira na lista antes de tentar de novo."
+                : "Erro ao enviar resposta.",
         );
         return false;
       }

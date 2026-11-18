@@ -13,6 +13,7 @@ const produto = {
   id: "bola",
   name: "Bola",
   price: 50,
+  stock: 10,
   images: [],
 } as unknown as Product;
 

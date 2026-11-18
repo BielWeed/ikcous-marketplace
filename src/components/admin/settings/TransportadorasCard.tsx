@@ -10,6 +10,11 @@ import { Switch } from "@/components/ui/switch";
 import { logoDoAgregador, marcaDoFrete } from "@/lib/marca-do-frete";
 import { mensagemAmigavelErroEdgeFunction } from "@/lib/mensagens-erro";
 import { pluralizar } from "@/lib/pluralizar";
+import {
+  PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+  aguardarComPrazo,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import { haptic } from "@/utils/haptic";
 import {
@@ -138,9 +143,19 @@ const AVISO_ID_EXIGE_AGENCIA =
 async function chamarEdgeDeFrete(
   body: Record<string, unknown>,
 ): Promise<{ data: any; error: unknown }> {
-  const resposta = await supabase.functions.invoke("calculate-shipping", {
-    body,
-  });
+  const requisicao = supabase.functions.invoke("calculate-shipping", { body });
+  // Só leituras: as outras ações deste helper podem gravar no servidor.
+  const resposta =
+    body.action === "ler_configuracao_frete" || body.action === "list_services"
+      ? await aguardarComPrazo(
+          requisicao,
+          PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+          () =>
+            erroDeConsultaSemResposta(
+              "Não houve resposta do servidor. Confira sua conexão e tente de novo.",
+            ),
+        )
+      : await requisicao;
   return { data: resposta?.data, error: resposta?.error };
 }
 

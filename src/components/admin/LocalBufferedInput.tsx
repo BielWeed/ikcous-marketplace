@@ -106,11 +106,18 @@ const parseCurrencyToFloatString = (val: string, permiteNegativo = false) => {
 };
 
 // Colagem: lê o texto como número brasileiro (vírgula decimal, ponto de milhar;
-// "R$", espaços e sinal ignorados) e devolve os centavos, ou "" se não for número.
+// prefixo "R$" e espaços nas pontas aceitos) e devolve os centavos, ou "" se inválido.
 // Ponto sem vírgula: 1-2 dígitos depois é decimal ("12.5"), 3 é milhar ("1.234").
-const centavosDaColagem = (texto: string) => {
-  const t = texto.replace(/[^\d.,]/g, "");
-  if (!/\d/.test(t)) return "";
+const centavosDaColagem = (texto: string, permiteNegativo: boolean) => {
+  let t = texto.trim().replace(/^R\$/i, "").trimStart();
+  // Só retira um sinal reconhecido para ler a magnitude. O sinal original
+  // continua na exibição/onFlush, para o formulário recusar sem virar positivo.
+  if (permiteNegativo) {
+    if (/^[-−]/.test(t)) t = t.slice(1).trimStart();
+    else if (/[-−]$/.test(t)) t = t.slice(0, -1).trimEnd();
+    else if (t.startsWith("(") && t.endsWith(")")) t = t.slice(1, -1).trim();
+  }
+  if (/[^\d.,]/.test(t) || !/\d/.test(t)) return "";
   const [inteira, decimal = "", ...resto] = t.split(",");
   const grupos = inteira.split(".");
   const milhar =
@@ -223,8 +230,11 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
         // substitui o campo. `data` é só o trecho inserido (o campo já vem
         // misturado com o que havia); sem ele, vale o campo inteiro.
         const colado = data ?? val;
-        const centavos = centavosDaColagem(colado);
-        if (!centavos) return; // não é número: ignora, o campo volta ao que era
+        const centavos = centavosDaColagem(colado, permiteNegativo);
+        if (!centavos) {
+          setError(validate?.(colado) ?? "Valor inválido");
+          return; // ignora sem alterar o valor nem agendar sua gravação
+        }
         val = sinalDaMoeda(colado, permiteNegativo) + centavos;
       }
       const textoBruto = val;
@@ -242,10 +252,7 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
     }
 
     setLocalVal(val);
-
-    if (validate) {
-      setError(validate(rawVal));
-    }
+    setError(validate?.(rawVal) ?? null);
 
     if (timerRef.current) {
       clearTimeout(timerRef.current);
@@ -283,6 +290,7 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
   const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
     isFocusedRef.current = false;
     flushBufferedValue();
+    if (!validate) setError(null);
     if (normalizarAoSair) setLocalVal(normalizarAoSair(String(localVal)));
     if (props.onBlur) {
       props.onBlur(e);

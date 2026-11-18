@@ -121,9 +121,9 @@ for (const tipo of ["bank_transfer", "credit_card", "debit_card"]) {
       pagamento(o).payment_method = { type: tipo, installments: 1 };
       const prova = provarPagamentoPelaConsulta(base(o, { totalRelido: 50.02 }));
       assertEquals(prova.provado, esperado);
-      // Cartão recusa já na conferência de valor compartilhada (a mesma do webhook
-      // e do cron); o PIX só na captura da prova completa.
-      if (!esperado) assertEquals(prova.motivo, tipo === "bank_transfer" ? "valor_pago" : "valor_divergente");
+      // Captura menor recusa já na conferência compartilhada para qualquer tipo,
+      // a mesma que protege webhook e cron.
+      if (!esperado) assertEquals(prova.motivo, "valor_divergente");
     });
   }
 }

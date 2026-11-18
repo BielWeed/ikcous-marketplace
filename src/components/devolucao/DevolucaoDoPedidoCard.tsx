@@ -24,6 +24,8 @@ import {
 
 import type { Desfecho } from "@/hooks/useDevolucaoCliente";
 import { useRotulosDasVariacoes } from "@/hooks/useRotulosDasVariacoes";
+import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
+import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import {
   acoesDoCliente,
@@ -135,6 +137,7 @@ export function DevolucaoDoPedidoCard({
   const [enviando, setEnviando] = useState<"cancelar" | "envio" | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [confirmandoCancelar, setConfirmandoCancelar] = useState(false);
+  useVoltarFechaAFolha(confirmandoCancelar, () => setConfirmandoCancelar(false));
 
   // Qual cor/tamanho cada linha devolvida é (duas linhas do mesmo produto
   // não podem aparecer idênticas): o item só guarda o id da variação.
@@ -195,14 +198,26 @@ export function DevolucaoDoPedidoCard({
     setErro(null);
     const r = await onCancelar(atual.id);
     setEnviando(null);
-    if (r.ok) toast.success("Devolução cancelada.");
-    else setErro(r.erro);
+    if (r.ok) {
+      setCodigo("");
+      toast.success("Devolução cancelada.");
+    } else setErro(r.erro);
   }
 
   // Na etiqueta reversa o código de postagem JÁ É o rastreio: "Já postei"
   // manda ele mesmo. No envio próprio, o cliente digita o do comprovante.
   const codigoDaEtiqueta =
     atual.metodo_retorno === "etiqueta_reversa" ? atual.codigo_postagem : null;
+
+  const recargaBloqueada =
+    (codigo !== "" && acoes.includes("informar_envio") && !codigoDaEtiqueta) ||
+    enviando !== null;
+
+  // O rascunho ainda não chegou ao hook de envio: ele também precisa segurar a atualização.
+  useEffect(() => {
+    if (!recargaBloqueada) return;
+    return marcarOperacaoSensivel("rastreio-de-devolucao-digitado");
+  }, [recargaBloqueada]);
 
   async function informarEnvio() {
     if (enviando) return;

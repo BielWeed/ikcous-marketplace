@@ -157,8 +157,8 @@ function FotoDaFaixa({ foto, nome, posicao, comTransicao }: FotoDaFaixaProps) {
 
 /** A miniatura do computador: tenta de novo sozinha (o aviso fica na foto grande). */
 function Miniatura({ foto }: { foto: string }) {
-  const { ciclo, aoFalhar } = useFotoQueTentaDeNovo(foto);
-  if (!foto || ehMarcadorDeFoto(foto)) {
+  const { ciclo, desistiu, aoFalhar } = useFotoQueTentaDeNovo(foto);
+  if (!foto || ehMarcadorDeFoto(foto) || desistiu) {
     return (
       <span
         aria-hidden="true"

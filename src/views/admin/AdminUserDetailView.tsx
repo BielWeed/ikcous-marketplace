@@ -419,6 +419,19 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
     setCartItemToRemove({ productId, variantId });
   };
 
+  const itemASerRemovido = cartItems.find(
+    (item) =>
+      item.product.id === cartItemToRemove?.productId &&
+      (chaveDaLinha(item) || undefined) === cartItemToRemove?.variantId,
+  );
+  const escolhasDoItemASerRemovido = itemASerRemovido
+    ? [itemASerRemovido.variantId, ...(itemASerRemovido.outrasVariantIds ?? [])]
+        .map((id) => itemASerRemovido.product.variants?.find((v) => v.id === id))
+        .filter((v) => !!v)
+        .map((v) => `${v.name}: ${v.value}`)
+        .join(", ")
+    : "";
+
   const confirmRemoveCartItem = async () => {
     if (!cartItemToRemove || !fichaCarregada || !idCarregado) return;
     const consulta = consultaFicha.current;
@@ -1707,7 +1720,12 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
               Remover Item?
             </AlertDialogTitle>
             <AlertDialogDescription className="text-xs text-zinc-400">
-              Tem certeza que deseja remover este item do carrinho do cliente?
+              Tem certeza que deseja remover{" "}
+              {itemASerRemovido?.product.name ?? "este item"}
+              {escolhasDoItemASerRemovido
+                ? ` (${escolhasDoItemASerRemovido})`
+                : ""}{" "}
+              do carrinho do cliente?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="mt-4 gap-2">

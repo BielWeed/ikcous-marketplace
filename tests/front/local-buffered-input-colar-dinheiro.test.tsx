@@ -39,7 +39,11 @@ describe("LocalBufferedInput — colar valor em campo de dinheiro", () => {
   const campo = () => hospedeiro.querySelector("input") as HTMLInputElement;
 
   async function montar(
-    props: { value?: string; permiteNegativo?: boolean } = {},
+    props: {
+      value?: string;
+      permiteNegativo?: boolean;
+      validate?: (val: string) => string | null;
+    } = {},
   ) {
     await act(async () => {
       raiz.render(
@@ -47,6 +51,7 @@ describe("LocalBufferedInput — colar valor em campo de dinheiro", () => {
           value={props.value ?? ""}
           mask="currency"
           permiteNegativo={props.permiteNegativo}
+          validate={props.validate}
           onFlush={aoSalvar}
         />,
       );
@@ -83,6 +88,10 @@ describe("LocalBufferedInput — colar valor em campo de dinheiro", () => {
     ["R$ 10", "10,00", "10.00"],
     ["R$ 1.500,5", "1.500,50", "1500.50"],
     ["  7  ", "7,00", "7.00"],
+    [" 10 ", "10,00", "10.00"],
+    ["10", "10,00", "10.00"],
+    ["1234.56", "1.234,56", "1234.56"],
+    ["1,5", "1,50", "1.50"],
     ["12.5", "12,50", "12.50"],
     ["12.50", "12,50", "12.50"],
     ["1.234", "1.234,00", "1234.00"],
@@ -140,18 +149,122 @@ describe("LocalBufferedInput — colar valor em campo de dinheiro", () => {
     expect(aoSalvar).toHaveBeenLastCalledWith("12.50");
   });
 
-  it("com permiteNegativo: o sinal colado é mantido", async () => {
-    await montar({ permiteNegativo: true });
-    await colar("-12,5");
-    expect(campo().value).toBe("-12,50");
-    expect(aoSalvar).toHaveBeenLastCalledWith("-12.50");
+  it.each([
+    "1e3",
+    "-5",
+    "-12,5",
+    "−10",
+    "10-",
+    "(10)",
+    "R$ -10",
+    "1 0",
+    "10abc",
+    "10R$",
+  ])(
+    "colar %j não altera o valor nem agenda gravação e mostra erro acessível",
+    async (colado) => {
+      await montar({ value: "49.9" });
+      await colar(colado);
+      expect(campo().value).toBe("49,90");
+      expect(aoSalvar).not.toHaveBeenCalled();
+      expect(campo().getAttribute("aria-invalid")).toBe("true");
+      const alerta = hospedeiro.querySelector('[role="alert"]');
+      expect(alerta?.textContent).toContain("Valor inválido");
+      expect(campo().getAttribute("aria-describedby")).toBe(alerta?.id);
+      await act(async () => {
+        campo().dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+      });
+      expect(aoSalvar).toHaveBeenLastCalledWith("49.90");
+    },
+  );
+
+  it.each(["-12,5", "−12,5", "R$ -12,5"])(
+    "com permiteNegativo: o sinal colado em %j é mantido",
+    async (colado) => {
+      await montar({ value: "49.9", permiteNegativo: true });
+      await colar(colado);
+      expect(campo().value).toBe("-12,50");
+      expect(aoSalvar).toHaveBeenLastCalledWith("-12.50");
+    },
+  );
+
+  it.each(["12,5-", "12,5−", "(12,5)", "R$ (12,5)"])(
+    "com permiteNegativo: o sinal contábil colado em %j é mantido",
+    async (colado) => {
+      await montar({ permiteNegativo: true });
+      await colar(colado);
+      expect(campo().value).toBe("-12,50");
+      expect(aoSalvar).toHaveBeenLastCalledWith("-12.50");
+    },
+  );
+
+  it.each(["-10abc", "(10abc)", "--10", "10--", "(-10)", "-(10)", "1 0"])(
+    "com permiteNegativo: %j continua sendo lixo, não número com sinal",
+    async (colado) => {
+      await montar({ value: "49.9", permiteNegativo: true });
+      await colar(colado);
+      expect(campo().value).toBe("49,90");
+      expect(aoSalvar).not.toHaveBeenCalled();
+      expect(campo().getAttribute("aria-invalid")).toBe("true");
+    },
+  );
+
+  it("sem validate: sair após recusar colagem limpa o aviso do valor anterior válido", async () => {
+    await montar({ value: "49.9" });
+    await act(async () => {
+      campo().dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    });
+    await colar("10abc");
+    expect(campo().value).toBe("49,90");
+    expect(campo().getAttribute("aria-invalid")).toBe("true");
+    expect(hospedeiro.querySelector('[role="alert"]')).not.toBeNull();
+
+    await act(async () => {
+      campo().dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+    });
+
+    expect(campo().value).toBe("49,90");
+    expect(aoSalvar).toHaveBeenLastCalledWith("49.90");
+    expect(campo().hasAttribute("aria-invalid")).toBe(false);
+    expect(campo().hasAttribute("aria-describedby")).toBe(false);
+    expect(hospedeiro.querySelector('[role="alert"]')).toBeNull();
   });
 
-  it("sem permiteNegativo: o sinal colado é descartado, como ao digitar", async () => {
-    await montar();
-    await colar("-12,5");
-    expect(campo().value).toBe("12,50");
-    expect(aoSalvar).toHaveBeenLastCalledWith("12.50");
+  it("sem validate: digitar depois da colagem recusada limpa o aviso", async () => {
+    await montar({ value: "49.9" });
+    await colar("10abc");
+    expect(campo().getAttribute("aria-invalid")).toBe("true");
+
+    await evento("49,901", "insertText", "1");
+
+    expect(campo().value).toBe("499,01");
+    expect(aoSalvar).toHaveBeenLastCalledWith("499.01");
+    expect(campo().hasAttribute("aria-invalid")).toBe(false);
+    expect(hospedeiro.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it("usa o aviso do validador sem passar o texto colado já alterado", async () => {
+    await montar({
+      value: "49.9",
+      validate: (val) =>
+        /^\d+(\.\d+)?$/.test(val) ? null : "Informe um valor válido",
+    });
+    await colar("1e3");
+    expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toContain(
+      "Informe um valor válido",
+    );
+    expect(aoSalvar).not.toHaveBeenCalled();
+  });
+
+  it("colar um valor válido depois da rejeição limpa o aviso", async () => {
+    await montar({ value: "49.9" });
+    await colar("1e3");
+    expect(campo().getAttribute("aria-invalid")).toBe("true");
+    await colar("R$ 10");
+    expect(campo().value).toBe("10,00");
+    expect(aoSalvar).toHaveBeenLastCalledWith("10.00");
+    expect(campo().hasAttribute("aria-invalid")).toBe(false);
+    expect(hospedeiro.querySelector('[role="alert"]')).toBeNull();
   });
 
   it("depois de colar dá para continuar digitando em centavos", async () => {

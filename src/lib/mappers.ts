@@ -1,3 +1,4 @@
+import { nomeOuReserva, nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import type {
   Address,
   Order,
@@ -276,7 +277,16 @@ export function mapOrderFromDB(
       // CPF nunca entra em storage do navegador — por isso ele é retirado
       // do espalhamento. Nenhuma tela lê `customer.cpf`.
       ...semCpf(customerData),
-      name: row.customer_name || customerData?.name || "Cliente",
+      // Nome só de espaços (pedido antigo) é nome em branco: o `||` o
+      // tomava por nome e a mensagem de WhatsApp abria "Olá    !".
+      name: nomeOuReserva(
+        nomeTemConteudoVisivel(row.customer_name)
+          ? row.customer_name
+          : typeof customerData?.name === "string"
+            ? customerData.name
+            : "",
+        "Cliente",
+      ),
       whatsapp: customerData?.whatsapp || customerData?.phone || "",
       address:
         addressSource.street ||

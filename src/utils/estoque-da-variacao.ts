@@ -3,10 +3,16 @@
  * avisa e não grava: antes o sinal de menos e a vírgula eram arrancados em
  * silêncio ("-5" virava 5 e "2,5" virava 25). Vale para o formulário comum de
  * variação e para a grade de combinações (linhas e "Aplicar para todas").
- * Campo vazio não é erro: quem chama decide (fica como está ou vira 0).
+ * Campo vazio vale 0 ao criar; ao editar uma variação existente, pede um número.
  */
-export function erroDoEstoqueDaVariacao(texto: string): string | null {
+export function erroDoEstoqueDaVariacao(
+  texto: string,
+  variacaoExistente = false,
+): string | null {
   const limpo = texto.trim();
+  if (variacaoExistente && limpo === "") {
+    return "Informe o estoque da variação: digite 0 ou mais.";
+  }
   if (limpo.startsWith("-")) {
     return "O estoque da variação não pode ser negativo. Digite 0 ou mais.";
   }

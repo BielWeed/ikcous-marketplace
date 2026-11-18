@@ -825,9 +825,10 @@ const TEXTO_REEMBOLSO_CONFIRMANDO_CLIENTE =
  *
  * `statusDoReembolso` (lote R1, 15/10/2026): o status da linha de
  * `order_refunds` desta devolução. Só `"concluido"` deixa dizer "liberado";
- * qualquer outra coisa — em andamento, falhou, ou ainda não lido (`null`) —
- * diz que a loja está confirmando. Antes a frase afirmava "liberado" assim
- * que a devolução concluía, mesmo com o dinheiro ainda sem sair.
+ * "falhou" e "recusado" avisam que não foi concluído e orientam falar com a
+ * loja; em andamento ou ainda não lido (`null`) diz que a loja está
+ * confirmando. Antes a frase afirmava "liberado" assim que a devolução
+ * concluía, mesmo com o dinheiro ainda sem sair.
  */
 export function instrucaoParaOCliente(
   d: Pick<
@@ -895,6 +896,9 @@ export function instrucaoParaOCliente(
         const valor = formatarReais(d.valor_reembolso ?? 0);
         if (d.reembolso_manual) {
           return `Reembolso de ${valor} combinado com a loja (em mãos ou por PIX).`;
+        }
+        if (statusDoReembolso === "falhou" || statusDoReembolso === "recusado") {
+          return "O reembolso não foi concluído. Fale com a loja para resolver — o pedido de devolução continua registrado.";
         }
         return statusDoReembolso === "concluido"
           ? `Reembolso de ${valor} liberado pelo Mercado Pago: PIX cai na sua conta; cartão aparece como crédito na fatura (o prazo é do seu banco).`

@@ -14,7 +14,14 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { confirmarEnvioSePerguntar } from "./confirma-envio-para-todos";
 
-type Etapa = "registro" | "aviso" | "avisoRecusado" | "envio" | "ajuste" | null;
+type Etapa =
+  | "registro"
+  | "aviso"
+  | "avisoRecusado"
+  | "envio"
+  | "ajuste"
+  | "ajusteRecusado"
+  | null;
 
 const { estado, invokeSendPush, toastError, toastSuccess, toastWarning } =
   vi.hoisted(() => ({
@@ -99,6 +106,9 @@ vi.mock("@/lib/supabase", () => ({
           update: () => ({
             eq: () => {
               estado.chamadasDoAjuste += 1;
+              if (estado.pendurar === "ajusteRecusado") {
+                return Promise.resolve({ error: new Error("Falha no histórico") });
+              }
               return estado.pendurar === "ajuste"
                 ? pendurada()
                 : Promise.resolve({ error: null });
@@ -125,7 +135,9 @@ vi.mock("@/lib/supabase", () => ({
         select: () => ({
           eq: () => ({
             order: () => ({
-              range: () => Promise.resolve({ data: [], error: null }),
+              order: () => ({
+                range: () => Promise.resolve({ data: [], error: null }),
+              }),
             }),
           }),
         }),
@@ -357,6 +369,10 @@ describe("Avisar clientes: gravacoes do envio sem resposta", () => {
     botaoVoltou();
     expect(toastSuccess).toHaveBeenCalledWith(
       "Notificação entregue em 3 dispositivos",
+      {
+        description:
+          "O envio foi feito, mas não foi possível atualizar o histórico (mostra 0 entregas).",
+      },
     );
     expect(toastError).not.toHaveBeenCalled();
   });
@@ -410,6 +426,21 @@ describe("Avisar clientes: gravacoes do envio sem resposta", () => {
     expect(toastError).not.toHaveBeenCalledWith(
       expect.stringContaining("pode ter sido registrado"),
     );
+  });
+
+  it("ajuste recusado: confirma o envio e avisa que o histórico ficou em zero", async () => {
+    await prepararEEnviar("ajusteRecusado");
+
+    botaoVoltou();
+    expect(invokeSendPush).toHaveBeenCalledTimes(1);
+    expect(toastSuccess).toHaveBeenCalledWith(
+      "Notificação entregue em 3 dispositivos",
+      {
+        description:
+          "O envio foi feito, mas não foi possível atualizar o histórico (mostra 0 entregas).",
+      },
+    );
+    expect(toastError).not.toHaveBeenCalled();
   });
 
   it("tudo respondendo: envia como sempre, sem erro", async () => {

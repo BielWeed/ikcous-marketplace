@@ -26,9 +26,10 @@ import {
   ultimoPedidoDoTipo,
   validarEmailNovo,
 } from "@/lib/pedidos-de-privacidade";
+import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { cn } from "@/lib/utils";
 import { ChevronDown, Loader2 } from "lucide-react";
-import { type ReactNode, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 
 // ⚠️ Os TEXTOS desta área moram em src/config/textos-de-privacidade.ts e
 // PRECISAM de revisão do dono (e de quem entende de LGPD) antes de valerem
@@ -221,6 +222,13 @@ export function PrivacidadeEMeusDados({
   const pedidoDeEmail = ultimoPedidoDoTipo(pedidos, "corrigir_email");
   const pronta = carga === "pronta";
   const ocupada = enviando !== null;
+  const emailPendente = dialogo === "corrigir_email" && emailDigitado !== "";
+
+  // A atualização espera o rascunho e o envio; fechar a pergunta ou sair libera.
+  useEffect(() => {
+    if (!emailPendente) return;
+    return marcarOperacaoSensivel("email-de-privacidade-digitado");
+  }, [emailPendente]);
 
   // Pode pedir de novo se nunca pediu, ou se o último foi recusado. Pedido
   // aberto já espera resposta; exclusão atendida encerra a conta.

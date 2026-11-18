@@ -157,6 +157,31 @@ describe("Conta — o botão 'Atualizar Senha' do rodapé envia o formulário de
     );
   });
 
+  it("senha só de espaços: o clique não chama updatePassword e mostra o motivo", async () => {
+    const { toast } = await import("sonner");
+    digitar("new_password", "        ");
+    digitar("confirm_password", "        ");
+
+    await clicarAtualizarSenha();
+
+    expect(updatePassword).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith(
+      "A senha não pode ser só espaços. Use letras ou números.",
+    );
+  });
+
+  it("preserva espaços de uma senha legítima ao enviá-la", async () => {
+    updatePassword.mockResolvedValue(true);
+    const senha = " senha forte123 ";
+    digitar("new_password", senha);
+    digitar("confirm_password", senha);
+
+    await clicarAtualizarSenha();
+
+    expect(updatePassword).toHaveBeenCalledTimes(1);
+    expect(updatePassword).toHaveBeenCalledWith(senha);
+  });
+
   it("campos vazios: o clique não chama updatePassword (validação nativa do form)", async () => {
     await clicarAtualizarSenha();
     expect(updatePassword).not.toHaveBeenCalled();

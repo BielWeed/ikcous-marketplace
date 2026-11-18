@@ -1045,7 +1045,7 @@ export const ProductCard = memo(function ProductCard({
                     e.stopPropagation();
                     abrirProduto();
                   }}
-                  className="line-clamp-2 w-full break-words text-left text-[13px] font-black leading-tight text-slate-900 transition-colors duration-300 group-hover:text-primary-legivel sm:text-[14px]"
+                  className="line-clamp-2 w-full break-words text-left text-[13px] font-black leading-tight text-slate-900 dark:text-foreground transition-colors duration-300 group-hover:text-primary-legivel dark:group-hover:text-primary-legivel sm:text-[14px]"
                 >
                   {product.name}
                 </button>
@@ -1144,7 +1144,7 @@ export const ProductCard = memo(function ProductCard({
                     "whitespace-nowrap text-[15px] font-black leading-none tracking-tight max-[359px]:text-sm",
                     promocional
                       ? CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO
-                      : "text-slate-900",
+                      : "text-slate-900 dark:text-foreground dark:group-hover:text-slate-900",
                     (promocional || aPartirDe) && "mt-1",
                   )}
                 >

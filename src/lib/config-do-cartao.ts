@@ -103,14 +103,21 @@ export type LeituraDaConfigDoCartao =
 /**
  * Lê a linha AGORA, sem cache — é o que o painel usa para mostrar os
  * interruptores. `ok: false` quando a leitura falhou (o painel diz que não
- * conseguiu ler em vez de fingir "desligado").
+ * conseguiu ler em vez de fingir "desligado"). Antes de compor uma mudança,
+ * `aguardarGravacao` espera a requisição anterior terminar, sob o mesmo prazo.
+ * A conferência após estouro lê direto: a gravação ainda pode estar pendurada.
  */
-export async function buscarConfigDoCartao(): Promise<LeituraDaConfigDoCartao> {
+export async function buscarConfigDoCartao(
+  aguardarGravacao = false,
+): Promise<LeituraDaConfigDoCartao> {
   try {
     // Só limita a espera da leitura: o painel sai do carregando ou destrava
     // a conferência antes de salvar; resposta tardia não muda o resultado.
     const { data, error } = await aguardarComPrazo(
-      Promise.resolve(
+      (aguardarGravacao
+        ? ultimaGravacao.catch(() => {})
+        : Promise.resolve()
+      ).then(() =>
         supabase
           .from("config_pagamento_cartao")
           .select("credito,debito,parcelas_max")
@@ -172,6 +179,10 @@ export function esquecerConfigDoCartao(): void {
   cache = null;
 }
 
+// A fila acompanha a requisição REAL, não o prazo da tela. Antes de outro
+// toque compor os três campos, a leitura espera esta fila (também com prazo).
+let ultimaGravacao: Promise<unknown> = Promise.resolve();
+
 /**
  * Grava pela RPC de admin (`salvar_config_pagamento_cartao`, SECURITY
  * DEFINER com gate `is_admin()`) e devolve a linha GRAVADA — o painel mostra
@@ -181,19 +192,33 @@ export function esquecerConfigDoCartao(): void {
 export async function salvarConfigDoCartao(
   desejada: ConfigDoCartao,
 ): Promise<ConfigDoCartao> {
-  const { data, error } = await supabase.rpc("salvar_config_pagamento_cartao", {
-    p_credito: desejada.credito,
-    p_debito: desejada.debito,
-    p_parcelas_max: desejada.parcelasMax,
-  });
-  if (error) {
-    console.error("[config-do-cartao] salvar falhou:", error);
-    throw new Error(
-      error.code === "42501"
-        ? "Só o administrador da loja pode mudar o cartão pelo app."
-        : "Não foi possível salvar o cartão pelo app. Tente de novo.",
-    );
-  }
-  esquecerConfigDoCartao();
-  return normalizarConfigDoCartao(data);
+  const gravacao = ultimaGravacao
+    .catch(() => {})
+    .then(async () => {
+      const { data, error } = await supabase.rpc(
+        "salvar_config_pagamento_cartao",
+        {
+          p_credito: desejada.credito,
+          p_debito: desejada.debito,
+          p_parcelas_max: desejada.parcelasMax,
+        },
+      );
+      if (error) {
+        console.error("[config-do-cartao] salvar falhou:", error);
+        throw new Error(
+          error.code === "42501"
+            ? "Só o administrador da loja pode mudar o cartão pelo app."
+            : "Não foi possível salvar o cartão pelo app. Tente de novo.",
+        );
+      }
+      // Mesmo resposta tardia invalida o cache; nunca solta a fila antes dela.
+      esquecerConfigDoCartao();
+      return normalizarConfigDoCartao(data);
+    });
+  ultimaGravacao = gravacao;
+  return aguardarComPrazo(gravacao, PRAZO_DA_CONSULTA_DO_PAINEL_MS, () =>
+    erroDeConsultaSemResposta(
+      "Não deu para confirmar se salvou o cartão pelo app. Confira o estado abaixo.",
+    ),
+  );
 }

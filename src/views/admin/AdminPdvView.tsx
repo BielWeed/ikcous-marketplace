@@ -309,6 +309,17 @@ export function AdminPdvView({
   const [modoDeProduto, setModoDeProduto] = useState<
     "bipar" | "digitar" | "buscar"
   >("bipar");
+  const [devolverFocoDaBusca, setDevolverFocoDaBusca] = useState(false);
+  useEffect(() => {
+    if (!devolverFocoDaBusca || estado.etapa !== "cupom") return;
+    document.getElementById("busca-manual-de-produto")?.focus();
+    setDevolverFocoDaBusca(false);
+  }, [devolverFocoDaBusca, estado.etapa]);
+
+  function retomarBusca(): void {
+    setModoDeProduto("buscar");
+    setDevolverFocoDaBusca(true);
+  }
 
   function limparCupom(): void {
     limparCupomDaVenda();
@@ -931,6 +942,7 @@ export function AdminPdvView({
 
       {estado.etapa !== "recibo" && (
         <CupomDaVenda
+          aoRetomarBusca={retomarBusca}
           estado={estado}
           despachar={despachar}
           subtotal={subtotal}

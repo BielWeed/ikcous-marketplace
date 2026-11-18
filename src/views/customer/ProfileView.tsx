@@ -188,7 +188,7 @@ export function ProfileView({
     loading: addressesLoading,
     erroAoCarregar,
   } = useAddresses();
-  const { orders, fetchUserOrders } = useOrders(true, false);
+  const { orders, fetchUserOrders, ordersLoadError } = useOrders(true, false);
   // "Encerrar sessão" espera a limpeza do aviso (push) da conta, até 3 s: sem
   // reação na tela a pessoa tocava de novo e a saída rodava duas vezes. O ref
   // barra o segundo toque no mesmo instante (o estado só muda no render).
@@ -655,6 +655,20 @@ export function ProfileView({
             </div>
           )}
         </motion.div>
+
+        {ordersLoadError && orders.length === 0 && (
+          <motion.section
+            variants={itemVariants}
+            className="space-y-3 rounded-3xl border border-border p-6 lg:col-start-2 lg:min-w-0"
+          >
+            <p role="status" className="text-sm text-muted-foreground">
+              Não conseguimos carregar seus pedidos agora.
+            </p>
+            <Button variant="outline" onClick={() => void fetchUserOrders(true)}>
+              Tentar de novo
+            </Button>
+          </motion.section>
+        )}
 
         {/* Pedidos em andamento: o que o cliente mais quer ver vem primeiro */}
         {activeOrders.length > 0 && (

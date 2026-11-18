@@ -1,4 +1,5 @@
 import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
+import { MarkdownRenderer } from "@/components/ui/custom/MarkdownRenderer";
 import { useStore } from "@/contexts/StoreContext";
 import { useCamadaDeTelaCheia } from "@/hooks/useCamadaDeTelaCheia";
 import {
@@ -737,9 +738,7 @@ export const PhoneSimulator = memo(function PhoneSimulator({
                     <div className="shrink-0 pb-4">
                       <div className="mt-1 text-[9px] font-medium leading-relaxed text-zinc-600">
                         {formData.description ? (
-                          <div className="whitespace-pre-line">
-                            {formData.description}
-                          </div>
+                          <MarkdownRenderer content={formData.description} />
                         ) : (
                           <p className="italic text-zinc-400">
                             Nenhuma descrição informada.

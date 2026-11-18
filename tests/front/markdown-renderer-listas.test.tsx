@@ -73,10 +73,23 @@ describe("MarkdownRenderer — listas, separador e parágrafo", () => {
     );
   });
 
-  it("linha de lista solta no meio de texto comum segue parágrafo", async () => {
-    const alvo = await renderizar("Texto normal\n* começa no meio do bloco");
+  it.each(["-", "*", "•"])(
+    "frase seguida de itens %s vira parágrafo e lista",
+    async (marcador) => {
+      const alvo = await renderizar(
+        `Características:\n${marcador} Algodão\n${marcador} Lavável`,
+      );
+      expect(alvo.querySelector("p")!.textContent).toBe("Características:");
+      expect(
+        Array.from(alvo.querySelectorAll("ul li"), (li) => li.textContent),
+      ).toEqual(["Algodão", "Lavável"]);
+    },
+  );
+
+  it("item no meio de duas linhas de texto continua parágrafo", async () => {
+    const alvo = await renderizar("Antes\n* item\nDepois");
     expect(alvo.querySelector("ul")).toBeNull();
-    expect(alvo.querySelector("p")!.textContent).toContain("* começa no meio");
+    expect(alvo.querySelectorAll("br")).toHaveLength(2);
   });
 
   it("lista logo depois de uma linha em negrito vira <ul>, sem asterisco literal", async () => {

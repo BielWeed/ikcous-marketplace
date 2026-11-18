@@ -136,18 +136,14 @@ export function QuemPodeUsarOCupom({
     setTermo(valor);
     if (esperaRef.current) clearTimeout(esperaRef.current);
     const limpo = valor.trim();
-    if (limpo.length < 2) {
-      rodadaRef.current++;
-      setResultados([]);
-      setTotalDaBusca(0);
-      setBuscando(false);
-      setErroDaBusca(false);
-      return;
-    }
+    // Invalida a busca anterior já na digitação, antes dos 300 ms de espera.
+    const rodada = ++rodadaRef.current;
+    setResultados([]);
+    setTotalDaBusca(0);
+    setErroDaBusca(false);
+    setBuscando(limpo.length >= 2);
+    if (limpo.length < 2) return;
     esperaRef.current = setTimeout(async () => {
-      const rodada = ++rodadaRef.current;
-      setBuscando(true);
-      setErroDaBusca(false);
       try {
         const pagina = await buscarClientes(limpo);
         if (rodada !== rodadaRef.current) return;

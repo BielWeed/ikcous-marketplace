@@ -2062,6 +2062,48 @@ Deno.test("motivoDaRecusa traduz cada status_detail conhecido do pagamento para 
   assertEquals(MOTIVO_RECUSA_DADOS_DO_CARTAO, "Confira os dados do cartão e tente de novo.");
 });
 
+for (const [codigo, frase] of [
+  ["invalid_installments", "Esse parcelamento não está disponível para este cartão."],
+  ["card_disabled", "Cartão desabilitado. Fale com o seu banco."],
+] as const) {
+  for (const detalhe of [codigo, `cc_rejected_${codigo}`]) {
+    Deno.test(`recusa específica: ${detalhe} mantém a orientação no pagamento, raiz e erro 402`, () => {
+      const order = { transactions: { payments: [{ status_detail: detalhe }] } };
+      assertEquals(motivoDaRecusa(order), frase);
+      assertEquals(motivoDaRecusa({ status_detail: detalhe }), frase);
+      assertEquals(motivoDaRecusaDoErro({ data: order }), frase);
+      assertEquals(motivoDaRecusaDoErro({ errors: [{ details: [`PAY01: ${detalhe}`] }] }), frase);
+    });
+  }
+}
+
+Deno.test("motivoDaRecusa: os demais códigos com prefixo preservam o resultado anterior", () => {
+  const casos: Array<[unknown, string]> = [
+    ...[
+      "bad_filled_card_data", "insufficient_amount", "card_insufficient_amount",
+      "amount_limit_exceeded", "rejected_by_issuer", "high_risk",
+      "required_call_for_authorize", "max_attempts_exceeded",
+      "3ds_challenge_expired", "invalid_card_token", "other_reason",
+      "call_for_authorize", "blacklist", "novo_motivo",
+      "cc_rejected_card_disabled", "cc_rejected_invalid_installments",
+    ].map((codigo): [string, string] => [`cc_rejected_${codigo}`, MOTIVO_RECUSA_PADRAO]),
+    ["cc_rejected_3ds_challenge", "A autenticação do banco não foi concluída."],
+    [null, MOTIVO_RECUSA_PADRAO],
+    [undefined, MOTIVO_RECUSA_PADRAO],
+    [42, MOTIVO_RECUSA_PADRAO],
+    ["", MOTIVO_RECUSA_PADRAO],
+  ];
+  for (const [detalhe, frase] of casos) {
+    const order = { transactions: { payments: [{ status_detail: detalhe }] } };
+    assertEquals(motivoDaRecusa(order), frase, String(detalhe));
+    assertEquals(motivoDaRecusa({ status_detail: detalhe }), frase, String(detalhe));
+    assertEquals(motivoDaRecusaDoErro({ data: order }), frase, String(detalhe));
+    if (typeof detalhe === "string") {
+      assertEquals(motivoDaRecusaDoErro({ errors: [{ details: [`PAY01: ${detalhe}`] }] }), frase, detalhe);
+    }
+  }
+});
+
 Deno.test("motivoDaRecusa: detalhe do PAGAMENTO vence o da raiz; raiz é o fallback; desconhecido vira a frase padrão (nunca o código cru)", () => {
   assertEquals(
     motivoDaRecusa({

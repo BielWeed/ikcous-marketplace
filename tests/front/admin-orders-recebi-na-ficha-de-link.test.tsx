@@ -300,7 +300,7 @@ describe("AdminOrdersView — Recebi na ficha aberta por link", () => {
 
     await act(async () => botao("Cancelar pedido")?.click());
     await assentar();
-    expect(document.body.textContent).toContain("Cancelar este pedido?");
+    expect(document.body.textContent).toContain("Cancelar o pedido #RECEBI de Cliente Teste?");
     expect(document.body.textContent).not.toContain("PAGO");
   });
 });

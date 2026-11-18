@@ -137,6 +137,22 @@ describe("AdminQAView — o que a caixa de resposta promete é o que acontece", 
     expect(document.body.querySelector("#merchant-answer")).toBeTruthy();
   }
 
+  it("antes de excluir, avisa que as respostas também serão apagadas", async () => {
+    const { AdminQAView } = await import("@/views/admin/AdminQAView");
+    await act(async () => {
+      raiz.render(<AdminQAView onNavigate={() => {}} active={true} />);
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await act(async () => {
+      (document.querySelector('button[title="Excluir pergunta"]') as HTMLButtonElement).click();
+    });
+    expect(document.body.textContent).toContain(
+      "Excluir esta pergunta? As respostas dela também serão apagadas. Não dá para desfazer.",
+    );
+  });
+
   it("a caixa de resposta não promete 'Notificar Cliente' (push que nunca saiu)", async () => {
     await abrirADialogoDeResposta();
     expect(document.body.textContent).not.toContain("Notificar Cliente");

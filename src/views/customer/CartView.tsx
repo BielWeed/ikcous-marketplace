@@ -1,7 +1,9 @@
+import { branding } from "@/config/branding";
 import { useStore } from "@/contexts/StoreContext";
 import { useAddresses } from "@/hooks/useAddresses";
 import { useAuth } from "@/hooks/useAuth";
 import { useCart } from "@/hooks/useCart";
+import { useDocumentMeta } from "@/hooks/useDocumentMeta";
 import { useIrAoCarrinhoRelido } from "@/hooks/useIrAoCarrinhoRelido";
 import { useOrders } from "@/hooks/useOrders";
 import { useProducts } from "@/hooks/useProducts";
@@ -13,6 +15,7 @@ import {
   enderecoDeEntregaEfetivo,
   resumoDoEndereco,
 } from "@/lib/endereco-de-entrega";
+import { chaveDaLinha } from "@/lib/escolhas-do-item";
 import type { PromessaDeCanal } from "@/lib/estrategias-de-frete";
 import { promessasDeFrete } from "@/lib/estrategias-de-frete";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
@@ -441,6 +444,13 @@ function ConteudoDoCarrinho({
   const isSummaryReady = useDeferredRender(380);
 
   const [activeTab, setActiveTab] = useState<"cart" | "orders">(initialTab);
+  const nomeDaLoja = config.storeName?.trim() || branding.appName;
+  // A tela fica montada ao sair: retirar o título da pilha restaura o da Home.
+  useDocumentMeta({
+    title: isActive
+      ? `${activeTab === "orders" ? "Meus pedidos" : "Carrinho"} — ${nomeDaLoja}`
+      : undefined,
+  });
 
   // A aba só acompanha o `initialTab` com a tela VISÍVEL. Esta tela fica
   // montada por baixo do detalhe do pedido (o App passa `initialTab="cart"` e
@@ -921,9 +931,60 @@ function ConteudoDoCarrinho({
     setConfirmandoEsvaziar(true);
   };
 
+  const regiaoDoCarrinhoRef = useRef<HTMLDivElement>(null);
+  const focoAoRemoverRef = useRef<{
+    origem: HTMLElement;
+    chave: string;
+    indice: number;
+  } | null>(null);
+  useEffect(() => {
+    const pendente = focoAoRemoverRef.current;
+    if (!pendente) return;
+    const linhas = cart.filter((item) => item?.product?.id);
+    if (
+      linhas.some(
+        (item) =>
+          `${item.product.id}-${chaveDaLinha(item) || "default"}` === pendente.chave,
+      )
+    ) return;
+    focoAoRemoverRef.current = null;
+    // A remoção espera 300ms: se a pessoa já foi a outro controle, não puxar de volta.
+    if (
+      document.activeElement !== pendente.origem &&
+      document.activeElement !== document.body
+    ) return;
+    const proxima = linhas[Math.min(pendente.indice, linhas.length - 1)];
+    const chave = proxima
+      ? `${proxima.product.id}-${chaveDaLinha(proxima) || "default"}`
+      : null;
+    const destino = chave
+      ? [
+          ...(regiaoDoCarrinhoRef.current?.querySelectorAll<HTMLButtonElement>(
+            "[data-remover-item]",
+          ) ?? []),
+        ].find((botao) => botao.dataset.removerItem === chave)
+      : regiaoDoCarrinhoRef.current?.querySelector<HTMLElement>(
+          "[data-carrinho-vazio]",
+        );
+    destino?.focus();
+  }, [cart]);
+
   const handleRemove = useCallback(
     (productId: string, variantId?: string) => {
       const key = `${productId}-${variantId || "default"}`;
+      const ativo = document.activeElement;
+      if (ativo instanceof HTMLElement && ativo.dataset.removerItem === key) {
+        focoAoRemoverRef.current = {
+          origem: ativo,
+          chave: key,
+          indice: cart
+            .filter((item) => item?.product?.id)
+            .findIndex(
+              (item) =>
+                `${item.product.id}-${chaveDaLinha(item) || "default"}` === key,
+            ),
+        };
+      }
       setRemovingId(key);
       setTimeout(() => {
         // A lixeira é o fluxo que pede o aviso com "Desfazer" (UI-170): quem
@@ -933,14 +994,17 @@ function ConteudoDoCarrinho({
         setRemovingId(null);
       }, 300);
     },
-    [propOnRemove, removeFromCart],
+    [cart, propOnRemove, removeFromCart],
   );
   // Caça 4 (C5): a retirada na loja chega com preço 0 por natureza -- os dois
   // resumos (computador e rodapé do celular) dizem "Retirada na loja" e não
   // anunciam "frete grátis", que seria promessa que a loja pode não ter.
   const retiradaEscolhida = ehRetiradaNaLoja(selectedShippingOption?.id);
   return (
-    <div className="pb-customer-summary flex min-h-full flex-col bg-background text-foreground">
+    <div
+      ref={regiaoDoCarrinhoRef}
+      className="pb-customer-summary flex min-h-full flex-col bg-background text-foreground"
+    >
       {/* Laudo de acessibilidade 05/09 (onda 3, item B1): o carrinho não
           tinha NENHUM heading — leitor de tela sem título de página.
           sr-only: zero pixel muda. Rodada 2 (Codex, 08/09, item 4): com
@@ -1029,7 +1093,13 @@ function ConteudoDoCarrinho({
               className="flex w-full flex-1 flex-col"
             >
               {cart.length === 0 ? (
-                <div className="flex flex-1 items-center justify-center">
+                <div
+                  data-carrinho-vazio
+                  role="region"
+                  aria-label="Carrinho"
+                  tabIndex={-1}
+                  className="flex flex-1 items-center justify-center"
+                >
                   {/* Lendo o carrinho salvo da conta: ainda não dá para dizer
                       "vazio" (caça 11-D #6). `isLoading` termina sempre — o
                       `finally` da leitura e o tempo-limite de 8 s. */}

@@ -784,3 +784,17 @@ describe("mapProductFromDB — sem grampo de produto no codigo (#44)", () => {
     ]);
   });
 });
+
+describe("mapOrderFromDB: nome do cliente", () => {
+  it.each([
+    ["só espaços e sem nome no retrato", "   ", {}, "Cliente"],
+    ["só espaços, cai no nome do retrato", "   ", { name: " Ana  Lima " }, "Ana Lima"],
+    ["com espaços nas pontas", "  Maria  ", {}, "Maria"],
+    ["com espaços sobrando no meio", " Maria   Silva", {}, "Maria Silva"],
+    ["vazio e sem nome no retrato", "", {}, "Cliente"],
+  ])("%s", (_descricao, customer_name, customer_data, esperado) => {
+    expect(
+      mapOrderFromDB(pedido({ customer_name, customer_data })).customer.name,
+    ).toBe(esperado);
+  });
+});

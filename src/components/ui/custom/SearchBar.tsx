@@ -503,7 +503,7 @@ export function SearchBar({
                         setLocalValue("");
                         setIsOpen(false);
                       }}
-                      className="shadow-2xs flex min-h-11 items-center gap-1.5 rounded-xl border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs font-bold text-primary transition-all hover:bg-primary hover:text-primary-foreground active:scale-95"
+                      className="shadow-2xs flex min-h-11 items-center gap-1.5 rounded-xl border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs font-bold text-primary-legivel transition-all hover:bg-primary hover:text-primary-foreground active:scale-95"
                     >
                       {/* Se o arquivo do desenho não baixa, fica a mesma
                           etiqueta do carregamento: um ícone nunca derruba a

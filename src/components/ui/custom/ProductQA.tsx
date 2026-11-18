@@ -299,8 +299,8 @@ export function ProductQA({
               style={{ animationDelay: `${index * 50}ms` }}
             >
               {/* Question Header */}
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex min-w-0 flex-1 items-center gap-3">
                   <div
                     onClick={() =>
                       onNavigate &&
@@ -321,8 +321,8 @@ export function ProductQA({
                     }}
                     className={
                       onNavigate && q.userId
-                        ? "cursor-pointer select-none transition-transform duration-200 active:scale-95"
-                        : ""
+                        ? "shrink-0 cursor-pointer select-none transition-transform duration-200 active:scale-95"
+                        : "shrink-0"
                     }
                   >
                     <Avatar className="size-9 border border-zinc-200/50 shadow-sm transition-transform duration-300 hover:scale-105">
@@ -336,8 +336,8 @@ export function ProductQA({
                       </AvatarFallback>
                     </Avatar>
                   </div>
-                  <div>
-                    <div className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span
                         onClick={() =>
                           onNavigate &&
@@ -356,12 +356,12 @@ export function ProductQA({
                             onNavigate("user-profile", q.userId);
                           }
                         }}
-                        className={`text-sm font-bold tracking-tight text-zinc-900 ${onNavigate && q.userId ? "cursor-pointer hover:underline" : ""}`}
+                        className={`min-w-0 truncate text-sm font-bold tracking-tight text-zinc-900 ${onNavigate && q.userId ? "cursor-pointer hover:underline" : ""}`}
                       >
                         {q.customerName}
                       </span>
                       {q.isVerified && (
-                        <span className="flex items-center gap-0.5 rounded-md border border-emerald-100/50 bg-emerald-50/70 px-1.5 py-0.5 text-xs font-bold uppercase tracking-wider text-emerald-700">
+                        <span className="flex shrink-0 items-center gap-0.5 rounded-md border border-emerald-100/50 bg-emerald-50/70 px-1.5 py-0.5 text-xs font-bold uppercase tracking-wider text-emerald-700">
                           <Check className="size-2.5" />
                           Comprador
                         </span>
@@ -371,7 +371,7 @@ export function ProductQA({
                 </div>
                 <span
                   className={cn(
-                    "text-xs font-medium uppercase tracking-wider text-zinc-600",
+                    "shrink-0 text-xs font-medium uppercase tracking-wider text-zinc-600",
                     "lg:text-[11px] lg:text-zinc-500",
                   )}
                 >

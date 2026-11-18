@@ -72,13 +72,13 @@ import { ehRetiradaNaLoja } from "./retirada-na-loja.ts";
  */
 export const ORCAMENTO_DO_ENVIO_MS = 10_000;
 
-// RETIRADA NA LOJA (release 1.5.3): texto NEUTRO — a loja nao promete prazo
-// nem "pronto agora"; quem avisa quando buscar e a propria loja.
+// O comprovante nao consulta a etapa do pedido. Texto neutro tambem no
+// reenvio: nao manda esperar se ja estiver pronto ou tiver sido retirado.
 //
 // ACENTOS (14/10/2026): o texto que o CLIENTE le tem acento. O comentario
 // continua sem acento por convencao do arquivo; a string visivel, nao. O
 // e-mail ja usa "×" e "·", entao nao ha problema de codificacao a evitar.
-const AVISO_DA_RETIRADA = "Aguarde a confirmação da loja para retirar.";
+const AVISO_DA_RETIRADA = "Para informações sobre a retirada, consulte seu pedido ou fale com a loja.";
 
 // Sinal de menos TIPOGRAFICO (U+2212), nao hifen: some do olho quando o
 // cliente de e-mail quebra a linha, e o hifen colado em "R$" parece traco de
@@ -279,8 +279,8 @@ export function htmlDoPedido(dados: {
   // RETIRADA NA LOJA (release 1.5.3): presente quando o pedido e de
   // retirada (`store-pickup`). `endereco` e o RETRATO do endereco da loja
   // gravado no pedido (customer_data.pickup_address) — vazio quando o
-  // pedido nao o trouxe: o e-mail nao inventa endereco, so manda esperar a
-  // loja. Ausente = entrega de sempre.
+  // pedido nao o trouxe: o e-mail nao inventa endereco, so orienta consultar
+  // o pedido ou a loja. Ausente = entrega de sempre.
   retirada?: { endereco: string } | null;
   // Para quem a ENTREGA vai, quando nao e' a propria cliente (ela digitou "Quem
   // vai receber"). Vazio/ausente = nada a dizer. So' aparece no bloco "Entrega

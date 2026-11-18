@@ -26,6 +26,7 @@ import { useQuestions } from "@/hooks/useQuestions";
 import type { Question } from "@/hooks/useQuestions";
 import { useRevalidarAoVoltar } from "@/hooks/useRevalidarAoVoltar";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
+import { mensagemDeErroDeSessaoDoPainel } from "@/lib/erro-de-sessao-do-painel";
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { classeDoTexto } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
@@ -393,12 +394,18 @@ export const AdminQAView = memo(function AdminQAView({
 
     setIsSubmitting(true);
     try {
+      let erroDoEnvio: unknown;
       const success = await addAnswer(
         {
           questionId: selectedQuestion.id,
           answer: cleanAnswer,
         },
-        { silent: true },
+        {
+          silent: true,
+          onError: (error) => {
+            erroDoEnvio = error;
+          },
+        },
       );
 
       // Laudo 0109 (A-1): o hook com `silent` não toast e não lança — sem
@@ -408,7 +415,9 @@ export const AdminQAView = memo(function AdminQAView({
         // Sem "tente de novo" seco: se o aviso de rede sem resposta (do hook)
         // aparecer junto, os dois dizem a mesma coisa — conferir a lista.
         toast.error(
-          "Não foi possível confirmar o envio da resposta. Confira na lista antes de tentar de novo.",
+          mensagemDeErroDeSessaoDoPainel(erroDoEnvio)
+            ? "Sua sessão expirou. Entre de novo para enviar a resposta — o texto continua aqui."
+            : "Não foi possível confirmar o envio da resposta. Confira na lista antes de tentar de novo.",
         );
         return;
       }
@@ -708,7 +717,7 @@ export const AdminQAView = memo(function AdminQAView({
         <div className="mt-3">
           {isConfirmingDelete ? (
             <ConfirmarExclusao
-              frase="Excluir esta pergunta? Não dá para desfazer."
+              frase="Excluir esta pergunta? As respostas dela também serão apagadas. Não dá para desfazer."
               aoCancelar={() => {
                 focoPendente.current = () =>
                   botoesExcluir.current.get(q.id) ?? null;

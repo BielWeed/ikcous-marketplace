@@ -21,6 +21,7 @@ const h = vi.hoisted(() => {
   return {
     perguntas,
     addAnswer: vi.fn(),
+    toastError: vi.fn(),
     getAllQuestions: async () => ({ questions: perguntas, total: 1 }),
     getQAStats: async () => ({
       status: "ok",
@@ -43,7 +44,7 @@ vi.mock("@/hooks/useQuestions", () => ({
   }),
 }));
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: h.toastError } }));
 let raiz: Root;
 let hospedeiro: HTMLDivElement;
 afterEach(() => {
@@ -60,7 +61,8 @@ function botao(texto: string) {
   expect(b).toBeTruthy();
   return b!;
 }
-it("bloqueia Descartar, X e Escape durante o envio e libera após falha", async () => {
+it.each([null, { message: "JWT expired", status: 401 }, { message: "Falha de rede" }])("preserva a resposta durante o envio e explica a falha %j", async (causa) => {
+  h.toastError.mockClear();
   class Observador {
     observe() {}
     unobserve() {}
@@ -82,9 +84,12 @@ it("bloqueia Descartar, X e Escape durante o envio e libera após falha", async 
   });
   let concluir!: (valor: boolean) => void;
   h.addAnswer.mockImplementation(
-    () =>
+    (_answer, options) =>
       new Promise<boolean>((resolve) => {
-        concluir = resolve;
+        concluir = (valor) => {
+          if (causa) options?.onError?.(causa);
+          resolve(valor);
+        };
       }),
   );
   hospedeiro = document.createElement("div");
@@ -121,4 +126,10 @@ it("bloqueia Descartar, X e Escape durante o envio e libera após falha", async 
   expect(botao("Descartar").disabled).toBe(false);
   expect(botao("Fechar").disabled).toBe(false);
   expect(campo.value).toBe("Sim, temos.");
+  expect(h.toastError).toHaveBeenCalledWith(
+    causa && "status" in causa
+      ? "Sua sessão expirou. Entre de novo para enviar a resposta — o texto continua aqui."
+      : "Não foi possível confirmar o envio da resposta. Confira na lista antes de tentar de novo.",
+  );
+  expect(h.toastError).toHaveBeenCalledTimes(1);
 });

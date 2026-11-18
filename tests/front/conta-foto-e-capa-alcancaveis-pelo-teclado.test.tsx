@@ -53,6 +53,7 @@ class Stub {
 }
 
 describe("Conta — campos de foto e de capa alcançáveis pelo teclado", () => {
+  const estiloOriginal = document.documentElement.style.cssText;
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
@@ -71,6 +72,7 @@ describe("Conta — campos de foto e de capa alcançáveis pelo teclado", () => 
   afterEach(() => {
     act(() => raiz.unmount());
     hospedeiro.remove();
+    document.documentElement.style.cssText = estiloOriginal;
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
@@ -123,6 +125,28 @@ describe("Conta — campos de foto e de capa alcançáveis pelo teclado", () => 
     await abrirAba(abrirFoto, "Foto Própria");
     esperaFocavelComAnel("avatar_file_input");
   });
+
+  it.each(["#FFFFFF", "#FFFF00"])(
+    "ícone de enviar capa usa cor legível com marca %s",
+    async (cor) => {
+      const { aplicarCorDaLoja } = await import("@/config/branding");
+      aplicarCorDaLoja(cor);
+      estado.profile = { avatar_url: "/avatar-a.png", cover_url: null };
+      await abrirAba(abrirCapa, "Enviar Foto");
+
+      const label = document
+        .getElementById("cover_file_input")!
+        .closest("label")!;
+      const icone = label.querySelector("svg")!;
+      expect(icone.classList.contains("text-primary-legivel")).toBe(true);
+      expect(icone.classList.contains("text-primary")).toBe(false);
+      expect(
+        icone.parentElement!.classList.contains("text-primary-legivel"),
+      ).toBe(true);
+      expect(icone.parentElement!.classList.contains("text-primary")).toBe(false);
+      expect(icone.parentElement!.classList.contains("bg-zinc-50")).toBe(true);
+    },
+  );
 
   it("capa: o campo de envio recebe foco", async () => {
     estado.profile = { avatar_url: "/avatar-a.png", cover_url: null };

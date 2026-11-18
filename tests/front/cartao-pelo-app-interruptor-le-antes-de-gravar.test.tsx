@@ -45,6 +45,7 @@ vi.mock("sonner", () => ({
 }));
 
 import { FormasDePagamentoSection } from "@/components/admin/settings/FormasDePagamentoCard";
+import { PRAZO_DA_CONSULTA_DO_PAINEL_MS } from "@/lib/prazo-da-requisicao";
 
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -175,6 +176,209 @@ describe("Cartão pelo app — grava só o que a lojista tocou, sobre a linha de
     await clicar(debito());
     expect(banco.rpc).toHaveBeenCalledTimes(1);
   });
+
+  it("prazo esgotado avisa a dúvida e relê o crédito que o servidor já gravou", async () => {
+    vi.useFakeTimers();
+    banco.linha = { credito: false, debito: false, parcelas_max: 6 };
+    await montar();
+    let responder!: () => void;
+    banco.rpc.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          responder = () => resolve({ data: banco.linha, error: null });
+        }),
+    );
+    await clicar(credito());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(19_000);
+    });
+    // O banco grava tarde, sem devolver a resposta à tela.
+    banco.linha = { credito: true, debito: false, parcelas_max: 6 };
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    try {
+      expect(toastErro).toHaveBeenCalledWith(
+        "Não deu para confirmar se salvou o cartão pelo app. Confira o estado abaixo.",
+      );
+      expect(credito().getAttribute("data-state")).toBe("checked");
+      expect(hospedeiro.textContent).toContain(
+        "Não deu para confirmar se salvou",
+      );
+      expect(hospedeiro.querySelector(".animate-spin")).toBeNull();
+      expect(toastSucesso).not.toHaveBeenCalled();
+    } finally {
+      await act(async () => responder());
+    }
+  });
+
+  it.each(["resolve", "rejeita"])(
+    "débito aguarda a gravação pendurada do crédito que %s e preserva os dois no servidor",
+    async (desfecho) => {
+      vi.useFakeTimers();
+      banco.linha = { credito: false, debito: false, parcelas_max: 6 };
+      await montar();
+      let concluirPrimeira!: () => void;
+      banco.rpc.mockImplementation((_nome: string, p: any) => {
+        const gravar = () => {
+          banco.linha = {
+            credito: p.p_credito,
+            debito: p.p_debito,
+            parcelas_max: p.p_parcelas_max,
+          };
+          return { data: banco.linha, error: null };
+        };
+        if (banco.rpc.mock.calls.length === 1) {
+          return new Promise((resolve, reject) => {
+            concluirPrimeira = () => {
+              const resposta = gravar();
+              if (desfecho === "rejeita")
+                reject(new TypeError("resposta perdida"));
+              else resolve(resposta);
+            };
+          });
+        }
+        return Promise.resolve(gravar());
+      });
+
+      await clicar(credito());
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(PRAZO_DA_CONSULTA_DO_PAINEL_MS);
+      });
+      await clicar(debito());
+      try {
+        expect(banco.rpc).toHaveBeenCalledTimes(1);
+      } finally {
+        await act(async () => concluirPrimeira());
+      }
+      await esperar();
+      expect(banco.rpc).toHaveBeenCalledTimes(2);
+      expect(banco.linha).toEqual({
+        credito: true,
+        debito: true,
+        parcelas_max: 6,
+      });
+      expect(credito().getAttribute("data-state")).toBe("checked");
+      expect(debito().getAttribute("data-state")).toBe("checked");
+    },
+  );
+
+  it("releitura também pendurada solta o giro e não apresenta um estado como confirmado", async () => {
+    vi.useFakeTimers();
+    await montar();
+    let responder!: () => void;
+    banco.rpc.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          responder = () => resolve({ data: banco.linha, error: null });
+        }),
+    );
+    await clicar(debito());
+    banco.leituraPendurada = true;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(PRAZO_DA_CONSULTA_DO_PAINEL_MS);
+    });
+    try {
+      expect(hospedeiro.querySelector(".animate-spin")).toBeNull();
+      expect(hospedeiro.textContent).toContain(
+        "Não deu para confirmar se salvou",
+      );
+      expect(
+        hospedeiro.querySelector('[aria-label="Cartão de crédito pelo app"]'),
+      ).toBeNull();
+      expect(
+        hospedeiro.querySelector('[aria-label="Cartão de débito pelo app"]'),
+      ).toBeNull();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(PRAZO_DA_CONSULTA_DO_PAINEL_MS);
+      });
+      expect(hospedeiro.textContent).toContain(
+        "Não deu para confirmar se salvou",
+      );
+      expect(hospedeiro.querySelector(".animate-spin")).toBeNull();
+      expect(toastSucesso).not.toHaveBeenCalled();
+    } finally {
+      await act(async () => responder());
+    }
+  });
+
+  it("nova conferência não espera a gravação pendurada para sempre nem envia outra gravação depois do prazo", async () => {
+    vi.useFakeTimers();
+    await montar();
+    let responder!: () => void;
+    banco.rpc.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          responder = () => resolve({ data: banco.linha, error: null });
+        }),
+    );
+    await clicar(debito());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(PRAZO_DA_CONSULTA_DO_PAINEL_MS);
+    });
+    await clicar(debito());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(PRAZO_DA_CONSULTA_DO_PAINEL_MS);
+    });
+    try {
+      expect(hospedeiro.querySelector(".animate-spin")).toBeNull();
+      expect(debito().disabled).toBe(false);
+      expect(banco.rpc).toHaveBeenCalledTimes(1);
+    } finally {
+      await act(async () => responder());
+    }
+    await esperar();
+    expect(banco.rpc).toHaveBeenCalledTimes(1);
+    expect(toastSucesso).not.toHaveBeenCalled();
+  });
+
+  it.each(["crédito", "débito", "parcelas"])(
+    "gravação de %s sem resposta avisa, relê o confirmado e libera nova tentativa",
+    async (campo) => {
+      vi.useFakeTimers();
+      await montar();
+      let responder!: () => void;
+      banco.rpc.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            responder = () => resolve({ data: banco.linha, error: null });
+          }),
+      );
+
+      if (campo === "parcelas") await escolherParcelas("2");
+      else await clicar(campo === "crédito" ? credito() : debito());
+
+      expect(credito().disabled).toBe(true);
+      expect(debito().disabled).toBe(true);
+      expect(seletorDeParcelas()!.disabled).toBe(true);
+      expect(hospedeiro.querySelector(".animate-spin")).not.toBeNull();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(PRAZO_DA_CONSULTA_DO_PAINEL_MS);
+      });
+
+      expect(credito().disabled).toBe(false);
+      expect(debito().disabled).toBe(false);
+      expect(seletorDeParcelas()!.disabled).toBe(false);
+      expect(hospedeiro.querySelector(".animate-spin")).toBeNull();
+      expect(credito().getAttribute("data-state")).toBe("checked");
+      expect(debito().getAttribute("data-state")).toBe("unchecked");
+      expect(seletorDeParcelas()!.value).toBe("6");
+      expect(toastErro).toHaveBeenCalledWith(
+        "Não deu para confirmar se salvou o cartão pelo app. Confira o estado abaixo.",
+      );
+      expect(toastSucesso).not.toHaveBeenCalled();
+      expect(banco.rpc).toHaveBeenCalledTimes(1);
+
+      // A requisição real termina antes de a próxima tentativa gravar.
+      await act(async () => responder());
+      await clicar(debito());
+      expect(banco.rpc).toHaveBeenCalledTimes(2);
+      expect(debito().getAttribute("data-state")).toBe("checked");
+      expect(toastSucesso).toHaveBeenCalledWith(
+        "Cartão de débito pelo app ligado",
+      );
+    },
+  );
 
   it("ligar o débito não desfaz o 3x que o celular escolheu depois que a tela abriu", async () => {
     await montar();

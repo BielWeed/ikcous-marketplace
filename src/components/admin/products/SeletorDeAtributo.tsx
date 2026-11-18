@@ -324,7 +324,7 @@ const CHAMADA = new Map<TipoDoAtributo, [string, string]>([
   ["Material", ["Escolha o material", "Escolha os materiais"]],
 ]);
 
-/** "3 selecionadas" (cores e capacidades, feminino) · "3 selecionados" (o resto) · "nenhum selecionado". */
+/** "3 selecionadas" (cores, capacidades e voltagens, feminino) · "3 selecionados" (o resto) · "nenhum selecionado". */
 function contagemDosSelecionados(n: number, feminino: boolean): string {
   if (n === 0) return feminino ? "nenhuma selecionada" : "nenhum selecionado";
   const palavra = feminino ? "selecionada" : "selecionado";
@@ -644,7 +644,7 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
             >
               {contagemDosSelecionados(
                 props.selecionados.length,
-                tipo === "Cor" || tipo === "Capacidade",
+                tipo === "Cor" || tipo === "Capacidade" || tipo === "Voltagem",
               )}
             </span>
           )}

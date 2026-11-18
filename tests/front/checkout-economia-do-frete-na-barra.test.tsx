@@ -567,6 +567,13 @@ describe("CheckoutView — economia do frete e conta visível na barra de baixo"
         d.children.length === 2 &&
         d.children[0].textContent?.trim() === "Entrega",
     )!;
+    expect(linhaEntrega.querySelector(".line-through .sr-only")?.textContent).toBe(
+      "Frete original: ",
+    );
+    expect([...linhaEntrega.querySelectorAll(".sr-only")].map((el) => el.textContent)).toEqual([
+      "Frete original: ",
+      "Frete com desconto: ",
+    ]);
     // NÃO grátis: mostra o preço FINAL (R$ 20,00), riscando o CHEIO
     // (R$ 35,00) — nunca "Grátis" (o desconto não é grátis).
     expect(linhaEntrega.textContent).not.toContain("Grátis");

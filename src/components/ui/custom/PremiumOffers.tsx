@@ -211,9 +211,9 @@ const PremiumOffersPadrao = React.memo(function PremiumOffersPadrao({
     setToqueAtivo(true);
   }, []);
 
-  const handleTouchEnd = useCallback(() => {
+  const handleTouchEnd = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
     ultimoToqueEm.current = Date.now();
-    setToqueAtivo(false);
+    if (e.touches.length === 0) setToqueAtivo(false);
   }, []);
 
   const handleFocus = useCallback((e: React.FocusEvent<HTMLDivElement>) => {
@@ -601,7 +601,7 @@ function HeroOfferCard({
         <div className="flex flex-1 flex-col justify-between py-0.5">
           <div>
             <div className="mb-1.5 flex flex-wrap items-center gap-2">
-              <span className="rounded-md border border-secondary/20 bg-secondary/10 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-primary">
+              <span className="rounded-md border border-secondary/20 bg-secondary/10 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-primary-legivel">
                 {product.category}
               </span>
               {/* O selo só pode afirmar o que é verdade PARA ESTE produto
@@ -777,7 +777,7 @@ function HeroOfferCard({
                   "flex-grow-1 flex-[1] min-h-11 py-2.5 px-4 rounded-full text-[10px] font-black uppercase tracking-wider transition-all active:scale-[0.97] border shadow-sm",
                   esgotado
                     ? "bg-zinc-50 text-zinc-300 border-zinc-100 cursor-not-allowed shadow-none"
-                    : "bg-secondary/10 hover:bg-secondary/20 text-primary border-secondary/20",
+                    : "bg-secondary/10 hover:bg-secondary/20 text-primary-legivel border-secondary/20",
                 )}
               >
                 Comprar

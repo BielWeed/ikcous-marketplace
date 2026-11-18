@@ -85,6 +85,22 @@ describe("PhoneSimulator — a prévia não inventa nada", () => {
     });
   }
 
+  it("descrição da prévia usa a mesma formatação da loja", async () => {
+    await montar("page", {
+      ...base,
+      description: "**Características**\n- Algodão\n- Lavável",
+    });
+    expect(document.body.querySelector("strong")?.textContent).toBe(
+      "Características",
+    );
+    expect(
+      Array.from(
+        document.body.querySelectorAll("ul li"),
+        (li) => li.textContent,
+      ),
+    ).toEqual(["Algodão", "Lavável"]);
+  });
+
   const texto = () => document.body.textContent ?? "";
 
   it.each(["card", "page"] as const)(

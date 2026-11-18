@@ -22,6 +22,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 type Pendente = {
   usuario: string | null;
   sinal: AbortSignal | null;
+  ordenacoes: Array<[string, { ascending: boolean }]>;
   resolve: (corpo: unknown) => void;
   reject: (erro: unknown) => void;
 };
@@ -49,13 +50,17 @@ vi.mock("@/lib/supabase", () => {
   const builder = (tabela: string) => {
     let usuario: string | null = null;
     let sinal: AbortSignal | null = null;
+    const ordenacoes: Array<[string, { ascending: boolean }]> = [];
     const alvo: Record<string, unknown> = {
       select: () => alvo,
       eq: (coluna: string, valor: string) => {
         if (coluna === "user_id") usuario = valor;
         return alvo;
       },
-      order: () => alvo,
+      order: (coluna: string, opcoes: { ascending: boolean }) => {
+        ordenacoes.push([coluna, opcoes]);
+        return alvo;
+      },
       range: () => alvo,
       limit: () => alvo,
       or: () => alvo,
@@ -73,7 +78,7 @@ vi.mock("@/lib/supabase", () => {
       value: (res: (v: unknown) => unknown, rej: (r: unknown) => unknown) =>
         new Promise((resolve, reject) => {
           if (tabela === "marketplace_orders") {
-            rede.pedidos.push({ usuario, sinal, resolve, reject });
+            rede.pedidos.push({ usuario, sinal, ordenacoes, resolve, reject });
           } else {
             resolve({ data: [], error: null, count: 0 });
           }
@@ -229,6 +234,10 @@ describe("useOrders — a leitura dos pedidos da cliente é compartilhada entre 
 
     expect(rede.pedidos).toHaveLength(1);
     expect(rede.pedidos[0].usuario).toBe("cliente-A");
+    expect(rede.pedidos[0].ordenacoes).toEqual([
+      ["created_at", { ascending: false }],
+      ["id", { ascending: false }],
+    ]);
 
     await act(async () => {
       rede.pedidos[0].resolve({

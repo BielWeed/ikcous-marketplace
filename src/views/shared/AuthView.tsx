@@ -98,6 +98,39 @@ const INTERVALO_REENVIO_RECUPERACAO_S = 60;
 const AVISO_DO_LINK_DE_RECUPERACAO =
   "Este link expirou ou já foi usado. Se você pediu mais de um, só vale o do e-mail mais recente. Se precisar, peça um novo abaixo (pode ser preciso esperar 1 minuto entre um pedido e outro).";
 
+// A confirmação e a recuperação compartilham o relógio e sua limpeza.
+function useEsperaDoReenvio(intervalo: number) {
+  const [espera, setEspera] = useState(0);
+  const emEspera = espera > 0;
+  const fimDaEspera = useRef(0);
+  const comecarEspera = () => {
+    fimDaEspera.current = Date.now() + intervalo * 1000;
+    setEspera(intervalo);
+  };
+
+  useEffect(() => {
+    if (!emEspera) return;
+    // Usa a hora real: o navegador pode congelar os tiques em segundo plano.
+    const atualizar = () =>
+      setEspera(
+        Math.min(
+          intervalo,
+          Math.max(0, Math.ceil((fimDaEspera.current - Date.now()) / 1000)),
+        ),
+      );
+    const relogio = setInterval(atualizar, 1000);
+    document.addEventListener("visibilitychange", atualizar);
+    window.addEventListener("pageshow", atualizar);
+    return () => {
+      clearInterval(relogio);
+      document.removeEventListener("visibilitychange", atualizar);
+      window.removeEventListener("pageshow", atualizar);
+    };
+  }, [emEspera, intervalo]);
+
+  return { espera, emEspera, comecarEspera };
+}
+
 export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
   const reduzirMovimento = useReducedMotion();
   const { config } = useStore();
@@ -308,43 +341,16 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
   // envios, que começa a contar já no primeiro envio.
   const [reenviandoRecuperacao, setReenviandoRecuperacao] = useState(false);
   const reenvioRecuperacaoEmCurso = useRef(false);
-  const [esperaReenvioRecuperacao, setEsperaReenvioRecuperacao] = useState(0);
-  const emEsperaDeReenvio = esperaReenvioRecuperacao > 0;
-  // Hora (ms) em que a espera acaba. A contagem NÃO desconta 1 por tique: com a
-  // tela bloqueada ou o app em segundo plano o navegador congela os tiques, e a
-  // tela dizia "em 52 s" 3 minutos depois. O que falta sai sempre da hora real.
-  const fimDaEsperaDoReenvio = useRef(0);
-  const comecarEsperaDoReenvio = () => {
-    fimDaEsperaDoReenvio.current =
-      Date.now() + INTERVALO_REENVIO_RECUPERACAO_S * 1000;
-    setEsperaReenvioRecuperacao(INTERVALO_REENVIO_RECUPERACAO_S);
-  };
-
-  useEffect(() => {
-    if (!emEsperaDeReenvio) return;
-    // Nunca mais que o intervalo (relógio do aparelho que voltou no tempo não
-    // pode alongar a trava) e nunca negativo.
-    const atualizar = () =>
-      setEsperaReenvioRecuperacao(
-        Math.min(
-          INTERVALO_REENVIO_RECUPERACAO_S,
-          Math.max(
-            0,
-            Math.ceil((fimDaEsperaDoReenvio.current - Date.now()) / 1000),
-          ),
-        ),
-      );
-    const relogio = setInterval(atualizar, 1000);
-    // Ao voltar à frente (app reaberto, aba trazida de volta, página restaurada
-    // do histórico) a conta é refeita na hora, sem esperar o próximo tique.
-    document.addEventListener("visibilitychange", atualizar);
-    window.addEventListener("pageshow", atualizar);
-    return () => {
-      clearInterval(relogio);
-      document.removeEventListener("visibilitychange", atualizar);
-      window.removeEventListener("pageshow", atualizar);
-    };
-  }, [emEsperaDeReenvio]);
+  const {
+    espera: esperaReenvioRecuperacao,
+    emEspera: emEsperaDeReenvio,
+    comecarEspera: comecarEsperaDoReenvio,
+  } = useEsperaDoReenvio(INTERVALO_REENVIO_RECUPERACAO_S);
+  const {
+    espera: esperaReenvioConfirmacao,
+    emEspera: emEsperaDeConfirmacao,
+    comecarEspera: comecarEsperaDeConfirmacao,
+  } = useEsperaDoReenvio(30);
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setPhone(mascaraTelefoneDoCadastro(e.target.value, phone));
@@ -648,14 +654,20 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
   // AuthContext já mostra o toast no caminho normal. Na rejeição, mantém
   // o banner do login e usa toast na confirmação, que não tem esse banner.
   const handleResendConfirmation = async () => {
-    if (reenvioConfirmacaoEmCurso.current) return;
+    if (
+      reenvioConfirmacaoEmCurso.current ||
+      (showConfirmation && emEsperaDeConfirmacao)
+    ) {
+      return;
+    }
     reenvioConfirmacaoEmCurso.current = true;
     setReenviandoConfirmacao(true);
     const fluxoEnviado = fluxoDaTela.current;
     try {
-      await resendConfirmationEmail(
+      const sucesso = await resendConfirmationEmail(
         showConfirmation ? emailDaConfirmacao : email.trim(),
       );
+      if (sucesso && showConfirmation) comecarEsperaDeConfirmacao();
     } catch (err) {
       console.error(err);
       const message =
@@ -772,10 +784,14 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                 <button
                   type="button"
                   onClick={handleResendConfirmation}
-                  disabled={reenviandoConfirmacao}
+                  disabled={reenviandoConfirmacao || emEsperaDeConfirmacao}
                   className="relative text-amber-800 after:absolute after:-inset-x-2 after:-inset-y-3.5 after:content-[''] hover:underline"
                 >
-                  {reenviandoConfirmacao ? "Reenviando..." : "Reenviar link"}
+                  {reenviandoConfirmacao
+                    ? "Reenviando..."
+                    : emEsperaDeConfirmacao
+                      ? `Reenviar em ${esperaReenvioConfirmacao}s`
+                      : "Reenviar link"}
                 </button>
               </p>
             </motion.div>

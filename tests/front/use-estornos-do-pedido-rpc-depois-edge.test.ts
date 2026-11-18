@@ -176,6 +176,62 @@ afterEach(() => {
 });
 
 describe("useEstornosDoPedido — a linha nasce no ledger, o clique só executa", () => {
+  it.each(["solicitado", "em_processamento"])(
+    "pausa a leitura de %s na aba escondida e consulta uma vez ao voltar",
+    async (status) => {
+      vi.useFakeTimers();
+      const visibilidade = vi
+        .spyOn(document, "visibilityState", "get")
+        .mockReturnValue("visible");
+      const consultasDaRodada = ["order_refunds", "pedido_reembolsos_e_saldo"];
+      const avancar = (ms: number) =>
+        act(async () => {
+          await vi.advanceTimersByTimeAsync(ms);
+        });
+      const voltarAba = () =>
+        act(async () => document.dispatchEvent(new Event("visibilitychange")));
+      try {
+        RESPOSTA_LINHAS = {
+          data: [
+            {
+              order_id: "pedido-1",
+              id: "r1",
+              amount: 10,
+              status,
+              solicitado_por: "cliente",
+            },
+          ],
+          error: null,
+        };
+        await montarSonda();
+        expect(tabelasConsultadas).toEqual(consultasDaRodada);
+        tabelasConsultadas = [];
+
+        visibilidade.mockReturnValue("hidden");
+        await voltarAba();
+        await avancar(60_000);
+        expect(tabelasConsultadas).toEqual([]);
+
+        visibilidade.mockReturnValue("visible");
+        await voltarAba();
+        expect(tabelasConsultadas).toEqual(consultasDaRodada);
+        tabelasConsultadas = [];
+        await avancar(15_000);
+        expect(tabelasConsultadas).toEqual(consultasDaRodada);
+
+        RESPOSTA_LINHAS.data![0].status = "concluido";
+        await avancar(15_000);
+        tabelasConsultadas = [];
+        await avancar(60_000);
+        await voltarAba();
+        expect(tabelasConsultadas).toEqual([]);
+      } finally {
+        visibilidade.mockRestore();
+        vi.useRealTimers();
+      }
+    },
+  );
+
   it("H1: solicitarEstorno chama a RPC e SÓ DEPOIS o invoke, com o refund_id devolvido", async () => {
     const { atual } = await montarSonda();
 

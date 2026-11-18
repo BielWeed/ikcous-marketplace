@@ -72,6 +72,26 @@ const rotulos = (seletor: string) =>
   );
 
 describe("CartItemsList: rótulos únicos por linha", () => {
+  it("identifica os dois preços só para leitor de tela quando há promoção", async () => {
+    await montar([{ product: { ...camiseta(), originalPrice: 70 }, quantity: 1 }]);
+    const original = hospedeiro.querySelector(".line-through")!;
+    expect(original.querySelector(".sr-only")?.textContent).toBe("Preço original: ");
+    expect(original.textContent?.replace(/\u00A0/g, " ")).toBe("Preço original: R$ 70,00");
+    const atual = [...hospedeiro.querySelectorAll("p")].find((p) =>
+      p.textContent?.includes("Preço com desconto: "),
+    )!;
+    expect(atual.querySelector(".sr-only")?.textContent).toBe("Preço com desconto: ");
+    expect(atual.textContent?.replace(/\u00A0/g, " ")).toBe("Preço com desconto: R$ 50,00");
+  });
+
+  it("sem promoção não anuncia preço original nem desconto", async () => {
+    await montar([{ product: camiseta(), quantity: 1 }]);
+    expect(hospedeiro.textContent).not.toContain("Preço original");
+    expect(hospedeiro.textContent).not.toContain("Preço com desconto");
+    expect(hospedeiro.querySelector(".line-through")).toBeNull();
+    expect(hospedeiro.textContent?.replace(/\u00A0/g, " ")).toContain("R$ 50,00");
+  });
+
   it("duas variações do mesmo produto têm 'Remover' e 'Quantidade de' distintos", async () => {
     await montar([
       {

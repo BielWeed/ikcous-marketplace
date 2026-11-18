@@ -243,6 +243,45 @@ describe("SearchView — caixa da página e categorias dos filtros", () => {
   });
 
   describe("filtros de categoria", () => {
+    it("mostra só a primeira grafia de categorias equivalentes e filtra todas elas", async () => {
+      mockedProducts = [
+        produto("p1", "Vestido Floral", "Roupas"),
+        produto("p2", "Camiseta", "roupas"),
+        produto("p3", "Calça", " ROUPAS "),
+        produto("p4", "Sandália Rasa", "Sandálias"),
+      ];
+      await abrir();
+      const opcoes = () =>
+        botoes().filter((b) => b.hasAttribute("aria-pressed"));
+      expect(opcoes().map((b) => b.textContent)).toEqual([
+        "Todas",
+        "Roupas",
+        "Sandálias",
+      ]);
+      await abrirFiltros();
+      expect(opcoes().filter((b) => b.textContent === "Roupas")).toHaveLength(2);
+      expect(
+        opcoes().some((b) =>
+          ["roupas", " ROUPAS "].includes(b.textContent ?? ""),
+        ),
+      ).toBe(false);
+      await clicar(botaoDaCategoria("Roupas"));
+      expect(hospedeiro.textContent).toContain("Encontramos 3 resultados");
+    });
+
+    it("não junta nomes com acentos diferentes, pois o filtro também os distingue", async () => {
+      mockedProducts = [
+        produto("p1", "Calça", "Calças"),
+        produto("p2", "Outra", "Calcas"),
+      ];
+      await abrir();
+      expect(
+        botoes()
+          .filter((b) => b.hasAttribute("aria-pressed"))
+          .map((b) => b.textContent),
+      ).toEqual(["Todas", "Calças", "Calcas"]);
+    });
+
     it("categoria que a lojista escondeu não aparece nos filtros", async () => {
       mockedCategories = [
         categoria("Vestidos", true),

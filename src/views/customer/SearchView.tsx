@@ -340,11 +340,19 @@ export const SearchView = React.memo(function SearchView({
       .filter((c) => !c.isActive)
       .map((c) => c.name.toLowerCase().trim()),
   );
+  // A mesma comparação do filtro em useSearch: mantém a primeira grafia,
+  // sem oferecer dois botões que escolheriam exatamente os mesmos produtos.
+  const vistas = new Set<string>();
   const categoriesSet = [
     "Todas",
-    ...Array.from(new Set(produtosAVenda.map((p) => p.category))).filter(
-      (nome) => !escondidas.has(nome.toLowerCase().trim()),
-    ),
+    ...produtosAVenda
+      .map((p) => p.category)
+      .filter((nome) => {
+        const chave = nome.toLowerCase().trim();
+        if (escondidas.has(chave) || vistas.has(chave)) return false;
+        vistas.add(chave);
+        return true;
+      }),
   ];
 
   // Só filtros — categoria, preço e ordenação. É o handler do "Limpar Tudo"

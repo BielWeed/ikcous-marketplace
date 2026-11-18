@@ -148,6 +148,7 @@ const CartItemCard = memo(function CartItemCard({
               {item.product.name}
             </h2>
             <button
+              data-remover-item={`${item.product.id}-${chaveDaVariacao || "default"}`}
               onClick={() => {
                 haptic.medium();
                 onRemove(item.product.id, chaveDaVariacao);
@@ -197,6 +198,7 @@ const CartItemCard = memo(function CartItemCard({
               {hasDiscount && (
                 <div className="mb-0.5 flex items-center gap-1.5 text-xs leading-none">
                   <span className="text-muted-foreground line-through">
+                    <span className="sr-only">Preço original: </span>
                     {formatCurrency(item.product.originalPrice ?? 0)}
                   </span>
                   {pctOff > 0 && (
@@ -207,6 +209,9 @@ const CartItemCard = memo(function CartItemCard({
                 </div>
               )}
               <p className="text-lg font-bold leading-none tracking-tight text-foreground">
+                {hasDiscount && (
+                  <span className="sr-only">Preço com desconto: </span>
+                )}
                 {formatCurrency(price)}
                 {item.quantity > 1 && (
                   <span

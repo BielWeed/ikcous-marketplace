@@ -148,10 +148,26 @@ describe("CouponInput", () => {
       onApply: vi.fn(),
       onRemove: vi.fn(),
       appliedCoupon: { code: "PROMO10", discount: 0 },
+      conferindo: true,
     });
     expect(hospedeiro.textContent).toContain("PROMO10");
     expect(hospedeiro.textContent).toContain("Conferindo o desconto");
     expect(hospedeiro.textContent).not.toContain("0,00");
+  });
+
+  it("cupom válido com desconto arredondado a zero termina a conferência", async () => {
+    const props = {
+      onApply: vi.fn(),
+      onRemove: vi.fn(),
+      appliedCoupon: { code: "UM1", discount: 0 },
+    };
+    await render({ ...props, conferindo: true });
+    expect(hospedeiro.textContent).toContain("Conferindo o desconto");
+
+    await render({ ...props, conferindo: false });
+    expect(hospedeiro.textContent).toContain("Cupom aplicado");
+    expect(hospedeiro.textContent).not.toContain("Conferindo o desconto");
+    expect(hospedeiro.textContent).not.toContain("Você economiza");
   });
 
   it("cupom aplicado mostra a economia e o botão Remover chama onRemove", async () => {

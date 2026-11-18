@@ -137,7 +137,7 @@ const statusConfig: Record<
       "Aguardando confirmação de pagamento para iniciar a separação.",
   },
   processing: {
-    label: "Em separação",
+    label: ROTULOS_DAS_ETAPAS.separado,
     icon: Clock,
     description: "Seu pedido está sendo preparado com todo cuidado e atenção.",
   },

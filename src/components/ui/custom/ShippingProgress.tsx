@@ -1,5 +1,6 @@
 import { ImagemComFallback } from "@/components/ui/custom/ImagemComFallback";
 import { ehMarcadorDeFoto } from "@/lib/foto-do-produto";
+import { MAX_ITEM_QUANTITY } from "@/lib/limite-de-quantidade";
 import { miniaturaDeCompra } from "@/lib/miniatura-de-compra";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product } from "@/types";
@@ -55,12 +56,18 @@ export function ShippingProgress({
 }: ShippingProgressProps) {
   const [quantities, setQuantities] = useState<Record<string, number>>({});
 
-  const getQuantity = (productId: string) => quantities[productId] || 1;
-  const updateQuantity = (productId: string, delta: number) => {
+  const maxQuantity = (product: Product) =>
+    Math.max(0, Math.min(product.stock, MAX_ITEM_QUANTITY));
+  const getQuantity = (product: Product) =>
+    Math.min(quantities[product.id] || 1, maxQuantity(product));
+  const updateQuantity = (product: Product, delta: number) => {
     haptic.light();
     setQuantities((prev) => ({
       ...prev,
-      [productId]: Math.max(1, (prev[productId] || 1) + delta),
+      [product.id]: Math.min(
+        maxQuantity(product),
+        Math.max(1, (prev[product.id] || 1) + delta),
+      ),
     }));
   };
 
@@ -296,7 +303,7 @@ export function ShippingProgress({
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        updateQuantity(p.id, -1);
+                        updateQuantity(p, -1);
                       }}
                       aria-label={`Diminuir quantidade de ${p.name}`}
                       className="flex size-11 items-center justify-center rounded-full text-foreground active:scale-90"
@@ -304,13 +311,14 @@ export function ShippingProgress({
                       <Minus className="size-4" />
                     </button>
                     <span className="text-sm font-bold text-foreground">
-                      {getQuantity(p.id)}
+                      {getQuantity(p)}
                     </span>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        updateQuantity(p.id, 1);
+                        updateQuantity(p, 1);
                       }}
+                      disabled={getQuantity(p) >= maxQuantity(p)}
                       aria-label={`Aumentar quantidade de ${p.name}`}
                       className="flex size-11 items-center justify-center rounded-full text-foreground active:scale-90"
                     >
@@ -325,7 +333,7 @@ export function ShippingProgress({
                         return;
                       }
                       haptic.medium();
-                      onAddToCart?.(p, getQuantity(p.id));
+                      onAddToCart?.(p, getQuantity(p));
                     }}
                     className="flex h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-foreground text-[13px] font-semibold text-background transition-colors hover:bg-foreground/90 active:scale-95"
                   >

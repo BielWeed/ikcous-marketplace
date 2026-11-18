@@ -112,13 +112,16 @@ export function CabecalhoDoComputador({
         >
           {config.logoUrl && (
             <img
+              key={config.logoUrl}
               src={imagemRedimensionada(config.logoUrl, {
                 width: 160,
                 quality: 80,
               })}
-              onError={(e) =>
-                usarImagemOriginal(e.currentTarget, config.logoUrl ?? "")
-              }
+              onError={(e) => {
+                if (!usarImagemOriginal(e.currentTarget, config.logoUrl)) {
+                  e.currentTarget.hidden = true;
+                }
+              }}
               alt=""
               className="max-h-10 max-w-20 shrink-0 object-contain"
             />

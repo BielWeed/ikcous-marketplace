@@ -24,6 +24,7 @@ import {
 } from "@/lib/cpf-da-conta";
 import {
   lerPendente,
+  removerPendente,
   retomarCpfPendente,
   salvarPendente,
 } from "@/lib/cpf-pendente-do-cadastro";
@@ -291,6 +292,8 @@ const ehChaveDaSessaoDoSupabase = (chave: string) =>
   chave.includes("-auth-token") || chave.includes("-code-verifier");
 
 function clearLocalUserData() {
+  // CPF e e-mail do cadastro não ficam no aparelho depois da sessão encerrada.
+  removerPendente();
   // admin_cache-17 — os quatro caches de admin (customers/coupons/reviews/
   // questions) são variáveis de módulo em src/utils/admin_cache.ts, fora do
   // localStorage: sem esta chamada, sobreviviam ao logout e o próximo login
@@ -589,6 +592,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const activeUserIdRef = useRef<string | null>(
     cachedSession?.user?.id || null,
   );
+  // Uma resposta de cadastro iniciada antes de Sair não pode guardar CPF depois.
+  const encerramentosDaSessaoRef = useRef(0);
 
   // A marca do modo "nova senha" acompanha o estado: nasce com ele e sai
   // quando ele acaba (troca concluída, saída, outra conta). Ver
@@ -1146,6 +1151,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const previousUserId = activeUserIdRef.current;
       const currentUserId = session?.user?.id || null;
       activeUserIdRef.current = currentUserId;
+      if (event === "SIGNED_OUT") encerramentosDaSessaoRef.current++;
       // Outra pessoa (ou ninguém) no lugar: a confirmação de admin era da
       // anterior. Quem voltar depois entra como primeiro login.
       if (previousUserId !== currentUserId) {
@@ -1360,6 +1366,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // como PENDENTE (`salvarPendente`) quando a confirmação por e-mail
       // ainda vai acontecer — ver `src/lib/cpf-pendente-do-cadastro.ts`
       // para o porquê (link de confirmação abre aba nova no Android).
+      const encerramentosNoInicio = encerramentosDaSessaoRef.current;
       let resposta: Awaited<ReturnType<typeof supabase.auth.signUp>>;
       try {
         resposta = await comPrazoDeAutenticacao(
@@ -1442,7 +1449,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 : "Cadastro concluído, mas não foi possível salvar o CPF agora. Você pode informá-lo depois em Perfil > Segurança e conta.",
             );
           }
-        } else if (data.user) {
+        } else if (
+          data.user &&
+          encerramentosNoInicio === encerramentosDaSessaoRef.current
+        ) {
           // SEM sessão (caso normal: confirmação por e-mail pendente) —
           // guarda o pendente; a retomada acontece no listener de
           // `onAuthStateChange` abaixo, em QUALQUER aba que a pessoa
@@ -1578,6 +1588,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   );
 
   const logout = useCallback(async () => {
+    // Apaga e invalida ANTES de esperar a rede, mesmo se signOut não emitir evento.
+    encerramentosDaSessaoRef.current++;
+    removerPendente();
     // A inscrição de push deste aparelho está no nome de quem sai. Só a
     // PRÓPRIA conta pode apagar a linha dela (RLS), então isto vem ANTES do
     // `signOut`, com prazo curto: rede ruim ou erro aqui nunca seguram o Sair.
