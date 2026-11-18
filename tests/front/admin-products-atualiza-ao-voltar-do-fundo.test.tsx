@@ -284,7 +284,7 @@ describe("Produtos — voltar do fundo", () => {
     [undefined, 30_000],
     ["sem-custo", 300_000],
   ] as const)(
-    "falha silenciosa na visão %s mantém a lista sem avisos e permite tentar após %i ms",
+    "falha silenciosa na visão %s mantém a lista com aviso até atualizar após %i ms",
     async (visaoInicial, intervalo) => {
       await abrir(visaoInicial);
       consultar.mockResolvedValueOnce(null);
@@ -293,13 +293,54 @@ describe("Produtos — voltar do fundo", () => {
       await voltar("pageshow");
       expect(consultar).toHaveBeenCalledTimes(2);
       expect(host.textContent).toContain("Produto fictício");
-      expect(host.textContent).not.toContain("Erro ao Carregar Produtos");
+      expect(host.querySelector('[role="alert"]')?.textContent).toContain(
+        "Não foi possível atualizar; mostrando os dados anteriores",
+      );
+      expect(host.textContent).not.toContain("Sincronizado");
       expect(toast.error).not.toHaveBeenCalled();
       await esperar(intervalo);
       await voltar();
       expect(consultar).toHaveBeenCalledTimes(3);
+      expect(host.querySelector('[role="alert"]')).toBeNull();
+      expect(host.textContent).toContain("Sincronizado");
     },
   );
+
+  it("Tentar de novo atualiza sem perder os filtros e remove o aviso", async () => {
+    await abrir();
+    host.scrollTop = 123;
+    consultar.mockResolvedValueOnce(null);
+    await esperar(30_000);
+    await voltar();
+    const aviso = host.querySelector('[role="alert"]');
+    expect(aviso).not.toBeNull();
+    expect(host.textContent).toContain("Produto fictício");
+    expect(host.scrollTop).toBe(123);
+    const tentar = [...aviso!.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Tentar de novo"),
+    );
+    expect(tentar).toBeDefined();
+    consultar.mockResolvedValueOnce({ products: [produto(0)], total: 30 });
+    await act(async () => tentar!.click());
+    expect(consultar).toHaveBeenLastCalledWith(1, 12, {
+      search: "fictício",
+      category: "Geral",
+      silent: true,
+    });
+    expect(host.querySelector('[role="alert"]')).toBeNull();
+    expect(host.textContent).toContain("Esgotado");
+    expect(host.textContent).toContain("Sincronizado");
+    expect(host.scrollTop).toBe(123);
+  });
+
+  it("leitura silenciosa bem-sucedida não mostra aviso", async () => {
+    await abrir();
+    await esperar(30_000);
+    await voltar();
+    expect(consultar).toHaveBeenCalledTimes(2);
+    expect(host.querySelector('[role="alert"]')).toBeNull();
+    expect(host.textContent).toContain("Sincronizado");
+  });
 
   it("a confirmação de exclusão avisa para revisar banners com link para o produto", async () => {
     await abrir();

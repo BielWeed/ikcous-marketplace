@@ -344,6 +344,7 @@ export const AdminProductsView = memo(function AdminProductsView({
   // diferente, mesma gravidade.
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  const [erroSilencioso, setErroSilencioso] = useState(false);
   const buscandoSemCusto = modoSemCusto && semCusto === null && !loadError;
   const buscandoEstoqueBaixo =
     modoEstoqueBaixo && !estoqueBaixoPronto && !loadError;
@@ -430,6 +431,7 @@ export const AdminProductsView = memo(function AdminProductsView({
         if (modoSemCusto) {
           const achados = await loadProductsSemCusto(filtros);
           if (leituraSuperada()) return;
+          setErroSilencioso(silenciosa && !achados);
           if (achados || !silenciosa) setLoadError(!achados);
           if (achados) {
             setSemCusto(achados.products);
@@ -442,6 +444,7 @@ export const AdminProductsView = memo(function AdminProductsView({
         if (result) {
           ultimaCargaBemSucedida.current = Date.now();
           setLoadError(false);
+          setErroSilencioso(false);
           setTotalProducts(result.total);
           // O total filtrado por estoque não é o do catálogo guardado.
           if (!modoEstoqueBaixo) cachedProductsTotal = result.total;
@@ -462,6 +465,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                 setTotalProducts(ultima.total);
                 if (!modoEstoqueBaixo) cachedProductsTotal = ultima.total;
               } else {
+                setErroSilencioso(silenciosa);
                 if (!silenciosa) setLoadError(true);
               }
             }
@@ -469,6 +473,7 @@ export const AdminProductsView = memo(function AdminProductsView({
         } else {
           // O null da tentativa atual continua sendo falha; o de uma busca
           // superada já foi ignorado pela geração, sem alterar o estado atual.
+          setErroSilencioso(silenciosa);
           if (!silenciosa) setLoadError(true);
         }
       } finally {
@@ -1346,7 +1351,7 @@ export const AdminProductsView = memo(function AdminProductsView({
             propsDoTitulo={foco.propsDoTitulo}
           />
           <div className="mt-1 flex items-center gap-2 text-xs text-zinc-400">
-            {loadError ? (
+            {loadError || erroSilencioso ? (
               <AlertTriangle
                 aria-hidden="true"
                 className="size-3.5 text-red-300"
@@ -1357,12 +1362,12 @@ export const AdminProductsView = memo(function AdminProductsView({
             <span
               className={cn(
                 "min-w-0 truncate",
-                (isOffline || loadError) && "text-red-300",
+                (isOffline || loadError || erroSilencioso) && "text-red-300",
               )}
             >
               {isOffline
                 ? "Sem conexão com o servidor"
-                : loadError
+                : loadError || erroSilencioso
                   ? "Não sincronizou"
                   : effectiveLoading
                     ? "Recarregando..."
@@ -1925,29 +1930,40 @@ export const AdminProductsView = memo(function AdminProductsView({
           {/* Erro ao carregar — estado distinto do vazio real e do
             carregamento: achado 11 avisava que trocar a mentira "vazio" por
             um esqueleto eterno na falha seria trocar uma mentira por outra. */}
-          {!effectiveLoading && loadError && (
+          {!effectiveLoading && (loadError || erroSilencioso) && (
             <div
               role="alert"
-              className="rounded-3xl border border-admin-border bg-admin-surface p-6 text-center"
+              className={cn(
+                "rounded-3xl border border-admin-border bg-admin-surface text-center",
+                erroSilencioso ? "p-3" : "p-6",
+              )}
             >
-              <AlertTriangle
-                aria-hidden="true"
-                className="mx-auto mb-4 size-11 rounded-2xl bg-red-300/10 p-2 text-red-300"
-              />
-              <h3 className="text-lg font-bold">Erro ao Carregar Produtos</h3>
+              {!erroSilencioso && (
+                <>
+                  <AlertTriangle
+                    aria-hidden="true"
+                    className="mx-auto mb-4 size-11 rounded-2xl bg-red-300/10 p-2 text-red-300"
+                  />
+                  <h3 className="text-lg font-bold">
+                    Erro ao Carregar Produtos
+                  </h3>
+                </>
+              )}
               <p className="my-4 text-sm text-zinc-400">
-                {lista.length > 0
-                  ? "A lista na tela é de antes do que você pediu. Confira a internet e tente de novo."
-                  : "A lista não chegou. Confira a internet e tente de novo."}
+                {erroSilencioso
+                  ? "Não foi possível atualizar; mostrando os dados anteriores"
+                  : lista.length > 0
+                    ? "A lista na tela é de antes do que você pediu. Confira a internet e tente de novo."
+                    : "A lista não chegou. Confira a internet e tente de novo."}
               </p>
               <button
                 type="button"
-                onClick={() => loadData(currentPage)}
+                onClick={() => loadData(currentPage, erroSilencioso)}
                 disabled={loading}
                 className="produto-secundario w-full"
               >
-                <RefreshCw aria-hidden="true" className="size-4" /> Tentar
-                Novamente
+                <RefreshCw aria-hidden="true" className="size-4" />{" "}
+                {erroSilencioso ? "Tentar de novo" : "Tentar Novamente"}
               </button>
             </div>
           )}
