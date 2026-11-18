@@ -4266,7 +4266,9 @@ export function CheckoutViewDaConta({
         : faltaCpf
           ? "Informe o CPF de quem recebe para finalizar"
           : !user && !enderecoConvidadoCompleto
-            ? "Complete o endereço de entrega para finalizar"
+            ? ehRetirada
+              ? "Informe o CEP para finalizar"
+              : "Complete o endereço de entrega para finalizar"
             : "Confira seus dados e entrega para finalizar"
     : null;
 
@@ -4590,7 +4592,11 @@ export function CheckoutViewDaConta({
     }
 
     if (user && !selectedAddressId) {
-      toast.error("Por favor, adicione ou selecione um endereço de entrega.");
+      toast.error(
+        ehRetirada
+          ? "Por favor, adicione ou selecione um endereço."
+          : "Por favor, adicione ou selecione um endereço de entrega.",
+      );
       setIsSubmitting(false);
       travaDeEnvioRef.current.liberar();
       return;
@@ -4650,7 +4656,7 @@ export function CheckoutViewDaConta({
       toast.error(
         onlineStale
           ? ehEntregaLocal
-            ? "O pagamento pelo app saiu do ar nesta loja. Escolha um meio de pagamento na entrega para finalizar."
+            ? `O pagamento pelo app saiu do ar nesta loja. Escolha um meio de pagamento na ${ehRetirada ? "retirada" : "entrega"} para finalizar.`
             : "O pagamento pelo app saiu do ar nesta loja, e o envio por transportadora exige pagamento antecipado. Fale com a loja para combinar a entrega."
           : pagamentoOnlineLigado()
             ? cartaoDisponivel
@@ -6676,7 +6682,13 @@ export function CheckoutViewDaConta({
               </CartaoDeResumo>
 
               <CartaoDeResumo
-                rotulo="Endereço de entrega"
+                rotulo={
+                  ehRetirada
+                    ? user
+                      ? "Seu endereço"
+                      : "Seu CEP"
+                    : "Endereço de entrega"
+                }
                 icone={<MapPin className="size-5" />}
                 ok={user ? !!enderecoEfetivo : enderecoConvidadoCompleto}
                 acao={
@@ -6716,7 +6728,9 @@ export function CheckoutViewDaConta({
                     <span className="min-w-0 flex-1">
                       {enderecosNaoCarregaram
                         ? "Não carregamos seus endereços"
-                        : "Cadastre um endereço de entrega"}
+                        : ehRetirada
+                          ? "Cadastre um endereço"
+                          : "Cadastre um endereço de entrega"}
                     </span>
                     <ChevronRight
                       aria-hidden="true"
@@ -6747,7 +6761,9 @@ export function CheckoutViewDaConta({
                       aria-hidden="true"
                       className="size-4 shrink-0"
                     />
-                    Informe o endereço de entrega
+                    {ehRetirada
+                      ? "Informe o CEP"
+                      : "Informe o endereço de entrega"}
                   </p>
                 )}
               </CartaoDeResumo>
@@ -6975,7 +6991,7 @@ export function CheckoutViewDaConta({
                   <div className="mb-1 flex items-center gap-2">
                     <MapPin className="size-4 text-zinc-400" />
                     <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-600">
-                      Endereço de Entrega
+                      {ehRetirada ? "Seu CEP" : "Endereço de Entrega"}
                     </span>
                   </div>
 
@@ -7313,7 +7329,7 @@ export function CheckoutViewDaConta({
                     <div className="flex items-center gap-2">
                       <MapPin className="size-4 text-zinc-400" />
                       <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-600">
-                        Endereço de Entrega
+                        {ehRetirada ? "Seu endereço" : "Endereço de Entrega"}
                       </span>
                     </div>
                     <Button
@@ -8279,7 +8295,7 @@ export function CheckoutViewDaConta({
                         >
                           <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
                           Pagamento pelo app indisponível — escolha um meio de
-                          pagamento na entrega
+                          pagamento na {ehRetirada ? "retirada" : "entrega"}
                         </p>
                       )}
                     {!semFreteSelecionado &&
