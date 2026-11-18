@@ -18,7 +18,9 @@
  *  (3) O que NAO muda: a_pagar_7d, a_receber_7d, a_pagar.total, a_pagar.proximos_7_dias e o resto do JSON dos dois: iguais ao corpo
  *      anterior, menos os dois campos.
  *  (4) As duas telas concordam entre si e com a aba "Pagar e receber" (fin_previstos): contagem e soma do que e vencido e nao e estorno.
- *  (5) MUTANTES dos dois corpos (sem a exclusao, exclusao a mais, so 'manual', vence-hoje conta...) reprovam a bateria.
+ *  (5) MUTANTES dos dois corpos (sem a exclusao, exclusao a mais, so 'manual', vence-hoje conta...) reprovam a bateria. Os de
+ *      fin_resumo partem do corpo VIVO (o da 20261399985000, lido com pg_get_functiondef antes de a prova o desfazer), com controle
+ *      verde do corpo vivo sem mutacao; a restauracao de cada um e conferida contra a linha inteira do pg_proc.
  *  (6) Dados que ja existiam: aplicar e reaplicar (LF e CRLF) nao muda nenhum estorno, pedido nem lancamento.
  *  (7) Rollback devolve OS DOIS corpos byte a byte (md5 e sha256) com os mesmos atributos; o segundo rollback recusa; o rollback da
  *      20261398000000 roda sobre o estado devolvido.
@@ -504,10 +506,23 @@ async function main() {
       "os atores nasceram como o teste declara (o ex-admin e admin so em auth.users)",
     );
 
-    // A 20261399985000 (o grafico do Financeiro soma so as contas ativas) sucede o fin_resumo desta migration: sai PRIMEIRO (so se no ar).
-    await require("./o-grafico-do-financeiro-posterior.cjs").desfazerGraficoDoFinanceiroNaTransacao(
-      c,
+    // O corpo VIVO de fin_resumo (o da 20261399985000, que sucede o desta migration) e lido do banco ANTES de a prova o desfazer: os
+    // mutantes de fin_resumo (passo 6) partem DELE, nunca do texto da 3993, para provar que a bateria derruba defeito no corpo que
+    // roda hoje. Com a definicao completa (pg_get_functiondef), o mutante reinstala a funcao inteira, atributos e search_path juntos.
+    const graficoDoFinanceiro = require("./o-grafico-do-financeiro-posterior.cjs");
+    const resumoVivo = await funcao(c, RESUMO);
+    assert.equal(
+      md5(resumoVivo.prosrc),
+      graficoDoFinanceiro.GRAFICO_DO_FINANCEIRO.hashDesta,
+      "o corpo vivo de fin_resumo nao e o da 20261399985000: os mutantes dele partem do corpo vivo, atualize esta origem",
     );
+    const RESUMO_VIVO_DEF = (
+      await c.query("SELECT pg_get_functiondef($1::regprocedure) AS d", [
+        RESUMO,
+      ])
+    ).rows[0].d.replace(/\r/g, "");
+    // A 20261399985000 (o grafico do Financeiro soma so as contas ativas) sucede o fin_resumo desta migration: sai PRIMEIRO (so se no ar).
+    await graficoDoFinanceiro.desfazerGraficoDoFinanceiroNaTransacao(c);
     // A 20261402000000 (o Inicio mostra o dinheiro a devolver) sucede o painel_inicio desta migration: sai PRIMEIRO (so se no ar).
     await require("./o-inicio-dinheiro-a-devolver-posterior.cjs").desfazerInicioDinheiroADevolverNaTransacao(
       c,
@@ -844,14 +859,12 @@ async function main() {
           ],
         ];
       }),
-      [
-        "resumo sem a exclusao",
-        (b) => b.replace(" AND origem <> 'estorno'", ""),
-      ],
+      ["resumo sem a exclusao", (b) => uma(b, " AND origem <> 'estorno'", "")],
       [
         "resumo exclui tambem de a_pagar.total",
         (b) =>
-          b.replace(
+          uma(
+            b,
             "'total', COALESCE((SELECT sum(valor) FROM previstos WHERE tipo = 'saida'), 0)",
             "'total', COALESCE((SELECT sum(valor) FROM previstos WHERE tipo = 'saida' AND origem <> 'estorno'), 0)",
           ),
@@ -859,19 +872,19 @@ async function main() {
       [
         "resumo exclui tambem de proximos_7_dias",
         (b) =>
-          b.replace(
+          uma(
+            b,
             "WHERE tipo = 'saida' AND venc BETWEEN v_hoje AND v_hoje + 7)",
             "WHERE tipo = 'saida' AND venc BETWEEN v_hoje AND v_hoje + 7 AND origem <> 'estorno')",
           ),
       ],
       [
         "resumo conta so a origem manual",
-        (b) => b.replace("origem <> 'estorno'", "origem = 'manual'"),
+        (b) => uma(b, "origem <> 'estorno'", "origem = 'manual'"),
       ],
       [
         "resumo: vence hoje ja e vencida",
-        (b) =>
-          b.replace("venc < v_hoje AND origem", "venc <= v_hoje AND origem"),
+        (b) => uma(b, "venc < v_hoje AND origem", "venc <= v_hoje AND origem"),
       ],
     ];
     for (const [rotulo, mutar] of MUT_PAINEL)
@@ -889,23 +902,52 @@ async function main() {
           `o mutante "${rotulo}" passou na bateria`,
         );
       });
-    for (const [rotulo, mutar] of MUT_RESUMO)
+    // Os mutantes de fin_resumo partem do corpo VIVO (a definicao completa lida no inicio, com o grafico da 20261399985000), nao do
+    // texto da 3993. CONTROLE VERDE: o corpo vivo, sem mutacao, passa a mesma bateria; depois cada mutante reprova. O que esta no ar
+    // neste ponto (o corpo da 3993) volta byte a byte a cada savepoint, e a conferencia e feita contra a linha inteira do pg_proc.
+    const resumoNoAr = await funcao(c, RESUMO);
+    await isolado(c, async () => {
+      await c.query(RESUMO_VIVO_DEF);
+      assert.equal(
+        (await funcao(c, RESUMO)).prosrc,
+        resumoVivo.prosrc,
+        "o corpo vivo reinstalado nao e o que estava no ar",
+      );
+      await verificar(c, baseNovo);
+    });
+    assert.deepEqual(
+      await funcao(c, RESUMO),
+      resumoNoAr,
+      "o controle verde do corpo vivo nao restaurou fin_resumo byte a byte",
+    );
+    for (const [rotulo, mutar] of MUT_RESUMO) {
       await isolado(c, async () => {
-        const mutado = mutar(RESUMO_NOVO);
+        const mutado = mutar(RESUMO_VIVO_DEF);
         assert.notEqual(
           mutado,
-          RESUMO_NOVO,
+          RESUMO_VIVO_DEF,
           `mutante "${rotulo}" nao mudou nada`,
         );
-        await instalarResumo(c, mutado);
+        await c.query(mutado);
+        assert.notEqual(
+          (await funcao(c, RESUMO)).prosrc,
+          resumoVivo.prosrc,
+          `o mutante "${rotulo}" nao entrou no banco`,
+        );
         await assert.rejects(
           () => verificar(c, baseNovo),
           morreuNaBateria(rotulo),
           `o mutante "${rotulo}" passou na bateria`,
         );
       });
+      assert.deepEqual(
+        await funcao(c, RESUMO),
+        resumoNoAr,
+        `o mutante "${rotulo}" nao restaurou fin_resumo byte a byte`,
+      );
+    }
     console.log(
-      `  PASSOU ${MUT_PAINEL.length + MUT_RESUMO.length} mutantes reprovam a bateria (sem a exclusao nos dois, exclusao a mais em a_pagar_7d / total / proximos_7_dias, so 'manual', vence-hoje conta, soma no lugar de contagem, e a janela de 7 dias dos dois: hoje+7 entra, hoje+8 e hoje+6 pegam a borda, hoje entra)`,
+      `  PASSOU ${MUT_PAINEL.length + MUT_RESUMO.length} mutantes reprovam a bateria (${MUT_RESUMO.length} de fin_resumo partem do corpo VIVO da 20261399985000, com controle verde; sem a exclusao nos dois, exclusao a mais em a_pagar_7d / total / proximos_7_dias, so 'manual', vence-hoje conta, soma no lugar de contagem, e a janela de 7 dias dos dois: hoje+7 entra, hoje+8 e hoje+6 pegam a borda, hoje entra)`,
     );
 
     // ---- 7. Reaplicar (LF e CRLF) e idempotencia; dados intactos. ----

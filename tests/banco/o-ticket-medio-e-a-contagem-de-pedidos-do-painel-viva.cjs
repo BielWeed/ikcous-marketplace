@@ -12,9 +12,17 @@
  *
  * Semente (loja LIMPA, uma transação que sempre desfaz): 6 pedidos que contam
  * (130, 100, 20, 30, 45 e 10 = R$ 335) => ticket 335 / 6 = 55,8333 => 55,83. Com 5
- * (sem o de R$ 10) seria 65 exato: a diferença entre 55,83 e 56 e entre 55,83 e
- * 47,86 (divisão por 7) é o que mata os mutantes. Fora da conta: cancelado pago
- * (500), aguardando (300), estornado (200), sem forma de pagamento (150).
+ * (sem o de R$ 10) seria 65 exato: a diferença entre 55,83 e 56 (arredondar em
+ * reais inteiros) é o que mata os mutantes de arredondamento; o mutante que divide
+ * por pedidos + 1 já morre antes, com 5 pedidos (325 / 6 = 54,17, não 65). Fora da
+ * conta: cancelado pago (500), devolvido pago (77), aguardando (300), estornado
+ * (200), sem forma de pagamento (150). O devolvido tem valor distinto (77) e
+ * pagamento aprovado de propósito: só o `status` o deixa de fora, então tirar
+ * 'returned' da lista do corpo vivo muda receita, contagem e ticket. ATENÇÃO: a
+ * CHECK marketplace_orders_status_check (pending, processing, shipping, delivered,
+ * cancelled, new) hoje recusa 'returned'; a prova a derruba SÓ dentro da transação
+ * que sempre desfaz, para exercitar a guarda do corpo vivo, e confere no fim que a
+ * CHECK voltou byte a byte.
  * Loja sem nenhum pedido: totalOrders 0 e avgTicket 0 (nunca divisão por zero).
  *
  * Só TESTE: o corpo vivo é trocado (mutante) no clone prova_* e restaurado no finally.
@@ -42,6 +50,15 @@ async function definicao() {
   );
   assert.equal(typeof r.rows[0].d, "string", "RPC viva não encontrada");
   return r.rows[0].d;
+}
+
+async function checkDoStatus() {
+  const r = await C.query(
+    `SELECT pg_get_constraintdef(oid) AS d FROM pg_constraint
+      WHERE conrelid = 'public.marketplace_orders'::regclass
+        AND conname = 'marketplace_orders_status_check'`,
+  );
+  return r.rows[0]?.d;
 }
 
 async function semearAdmin() {
@@ -122,6 +139,16 @@ async function oTicketEAContagem() {
 
     // Os que NÃO contam (se contassem, mudariam a receita, a contagem e a divisão).
     await pedido(500, "cancelled", "pago");
+    // Devolvido com pagamento aprovado: só o status o tira da conta (o mutante que
+    // tira 'returned' da lista passaria a contá-lo: 6 pedidos, R$ 402). Hoje a CHECK
+    // marketplace_orders_status_check NÃO deixa nascer pedido 'returned' (a lista do
+    // corpo vivo é defesa para o dia em que ela aceitar), então a CHECK sai só aqui,
+    // dentro desta transação, que sempre desfaz (DDL do Postgres é transacional;
+    // main() confere que a CHECK voltou idêntica).
+    await C.query(
+      "ALTER TABLE public.marketplace_orders DROP CONSTRAINT marketplace_orders_status_check",
+    );
+    await pedido(77, "returned", "pago");
     await pedido(300, "pending", "aguardando");
     await pedido(200, "delivered", "estornado");
     await pedido(150, "delivered", null);
@@ -190,6 +217,11 @@ const MUTANTES = [
     "a conta conta o pedido cancelado",
     "INTO total_rev, total_ord\n    FROM public.marketplace_orders\n    WHERE status NOT IN ('cancelled', 'returned')\n    AND (payment_status IN",
     "INTO total_rev, total_ord\n    FROM public.marketplace_orders\n    WHERE true\n    AND (payment_status IN",
+  ],
+  [
+    "a conta conta o pedido devolvido (returned some da lista de exclusão)",
+    "INTO total_rev, total_ord\n    FROM public.marketplace_orders\n    WHERE status NOT IN ('cancelled', 'returned')\n    AND (payment_status IN",
+    "INTO total_rev, total_ord\n    FROM public.marketplace_orders\n    WHERE status NOT IN ('cancelled')\n    AND (payment_status IN",
   ],
   [
     "totalOrders com um pedido a mais",
@@ -269,7 +301,18 @@ async function main() {
       [SIG],
     );
     console.log(`Corpo VIVO de get_admin_analytics_v2: ${hash.rows[0].h}`);
+    const checkAntes = await checkDoStatus();
+    assert.match(
+      checkAntes,
+      /cancelled/,
+      "a CHECK de status do pedido não foi encontrada",
+    );
     await provar(original);
+    assert.equal(
+      await checkDoStatus(),
+      checkAntes,
+      "a CHECK de status do pedido não voltou idêntica (a prova a derruba só dentro da transação)",
+    );
     console.log(
       `\no-ticket-medio-e-a-contagem-de-pedidos-do-painel-viva: ${MUTANTES.length}/${MUTANTES.length} mutantes mortos; verde/vermelho/verde`,
     );
