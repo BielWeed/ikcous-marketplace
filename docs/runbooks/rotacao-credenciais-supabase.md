@@ -211,8 +211,9 @@ O detalhe que importa: as duas chaves antigas são assinadas pela mesma chave-me
 >    ```
 >
 >    Confira também a variável `IKCOUS_FROTA_APIKEY` (a chave pública que o porteiro usa para
->    perguntar à caderneta quem é a loja) **em CADA projeto da Vercel de loja** (principal, Savy e
->    as demais — ela está em Production em todos os que servem pelo porteiro). Se ela for a
+>    perguntar à caderneta quem é a loja) **no projeto da Vercel que serve pelo porteiro (hoje um; o
+>    CHANGELOG de 11/09 fala em dois: confira na lista da Vercel)** e, se houver mais de um, em
+>    cada um deles. Se ela for a
 >    `anon` legada (`eyJ...`), troque pela mesma publishable **antes** de desligar a chave antiga
 >    (e refaça o Redeploy daquele projeto): com a `anon` desligada, a pergunta do porteiro leva
 >    401; instância já quente do porteiro segue até 1 hora com a última ficha boa, mas instância
@@ -282,8 +283,8 @@ produção (porteiro), a loja só cai se a `anon` ainda for a chave da ficha ou 
 consulta do porteiro, que atende todas as lojas) cai por alguns minutos. Faça na ordem exata:
 
 0. **Antes de tudo:** faça o passo **2b da §2.2** — a `publishable_key` da linha deste
-   `project_ref` em `frota_lojas` e a variável `IKCOUS_FROTA_APIKEY` **em cada projeto da Vercel
-   de loja** têm de estar na `sb_publishable_...` (com Redeploy), e a conferência do Console da
+   `project_ref` em `frota_lojas` e a variável `IKCOUS_FROTA_APIKEY` **no projeto da Vercel que
+   serve pelo porteiro (e em cada um, se houver mais de um)** têm de estar na `sb_publishable_...` (com Redeploy), e a conferência do Console da
    §2.2 passo 4 tem de responder `sb_publishable_`.
 1. Rotacione o JWT secret no painel do Supabase
 2. **Copie a `anon` key nova** (vai aparecer na mesma tela) pro bloco de notas

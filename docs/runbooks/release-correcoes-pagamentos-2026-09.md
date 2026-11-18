@@ -281,14 +281,19 @@ de notificações por último (ou pausando por HTTP antes, se já houver as trê
   caminho que funciona:
   1. **Pela tela (parada de emergência com a loja recebendo):** Ajustes →
      Pagamentos → Mercado Pago → bloco "Receber pelo app (Pix e cartão)" →
-     botão **Pausar**. Ele só aparece com a loja em "Recebendo pelo app" (com
-     transportadora vendendo abre um aviso; confirme em "Pausar mesmo assim").
-  2. **Pela chamada HTTP (se a tela não oferecer o botão ou não abrir):** `POST` em
-     `<URL do Supabase da loja>/functions/v1/credenciais-mercado-pago`, com o
-     cabeçalho `Authorization: Bearer <token da sessão de um admin logado>` e
-     corpo JSON `{ "acao": "desligar_pix" }`. A function é só de admin (chave
-     pública da loja ou `service_role` NÃO servem); pegue o token da sessão do
-     admin na própria tela, sem colar em chat nem em arquivo.
+     botão **Pausar**. Ele só aparece com o pagamento pelo app já ligado (o
+     texto da tela é "Para parar de receber Pix e cartão pelo app por um tempo,
+     toque em Pausar."; com transportadora vendendo abre um aviso, confirme em
+     "Pausar mesmo assim").
+  2. **Pela chamada HTTP (se a tela não oferecer o botão ou não abrir) —
+     QUEM EXECUTA É O PROGRAMADOR, não o dono:** este roteiro **não traz receita
+     de leigo** para obter o token (não foi provado passo a passo na tela).
+     `POST` em `<URL do Supabase da loja>/functions/v1/credenciais-mercado-pago`,
+     com o cabeçalho `Authorization: Bearer <token da sessão de um admin logado>`
+     e corpo JSON `{ "acao": "desligar_pix" }`. A function é só de admin (chave
+     pública da loja ou `service_role` NÃO servem); o token vem da sessão do
+     admin logado, sem colar em chat nem em arquivo. Se não houver sessão de
+     admin à mão, pare e avise o dono em vez de improvisar.
   3. **Como confirmar que pausou:** a resposta traz `"pix_ligado": false` e
      `"pausado": true`, e a tela passa a dizer "Pausado por você". Se vier
      `pix_ligado: false` mas `pausado: false`, a loja não tem cadastro de
@@ -297,7 +302,9 @@ de notificações por último (ou pausando por HTTP antes, se já houver as trê
      erro 500 "não consegui registrar a pausa" = o Pix JÁ foi desligado, mas
      pode religar sozinho no próximo teste: **repita a pausa**. Erro 500 "Não
      consegui desligar o PIX na ficha da loja" = **NÃO pausou** (a ficha
-     recusou; nada foi gravado): repita até confirmar. Erro 401 = o token não é
+     recusou; nada foi gravado): repita até confirmar — **exceto** se a mensagem
+     disser que a ficha da loja (`store_config id=1`) não existe: isso não se
+     resolve tentando de novo, pare e chame o suporte. Erro 401 = o token não é
      de um admin atual (ou expirou): pegue um novo da sessão do admin.
 - **Antídoto contra "cobrança confirmada sem pedido"**: reconciliador
   (pg_cron 10 min, provado ativo com 8 runs succeeded) + política P1
@@ -422,30 +429,38 @@ rate-limit externo — não é mais bloqueio de arquivo/código.**
    de PRODUÇÃO, já podem ligar cobrança real na hora.** (`testar` reconcilia a
    ficha: `credenciais-mercado-pago/index.ts`, `estadoDesejado` e
    `camposDaFicha`.) `ligar_pix` virou **Retomar**: só tira a pausa. **Na
-   tela, o botão Pausar só existe com a loja já "Recebendo pelo app"** (parada
-   de emergência); antes disso a tela só mostra "Falta para receber pelo app"
-   (ou "Pausado por você", com Retomar). Por isso o controle da PRIMEIRA
-   ativação é a ordem das chaves: **a Chave de notificações é a última, e o
-   Salvar dela é o que liga** (Ajustes → Pagamentos → Mercado Pago):
-   1. Salve a Public Key e o Access Token de produção **sem** a Chave de
-      notificações. Falta uma chave, então nada liga (a tela mostra "Falta
-      para receber pelo app").
+   tela, o botão Pausar só aparece com o pagamento pelo app já ligado**
+   (parada de emergência); antes disso a tela só mostra "Falta para receber
+   pelo app" (ou "Pausado por você", com Retomar). Por isso o controle da
+   PRIMEIRA ativação é a ordem das chaves: **a Chave de notificações é a
+   última, e o Salvar dela é o que liga**. Em Ajustes → Pagamentos → Mercado
+   Pago, abra o bloco **"Suas chaves"**:
+   1. Preencha **Chave pública (Public Key)** e **Chave secreta (Access
+      Token)** de produção, deixe vazio **Senha dos avisos (Chave de
+      notificações)** e toque em **Salvar chaves**. Falta uma chave, então
+      nada liga (a tela mostra "Falta para receber pelo app").
    2. Cadastre o webhook produtivo no Mercado Pago e deixe a Chave de
       notificações à mão — **NÃO cole no app ainda**.
-   3. Quando o dono mandar: cole a MESMA Chave de notificações e salve. Esse
-      Salvar roda o teste e, se der verde, **liga a cobrança na hora**; a tela
-      passa a "Recebendo pelo app" e o botão **Pausar** aparece (parada de
-      emergência, §6.3 Fase 3).
-   - **Se a loja já tinha a Chave de notificações salva (ou as três chaves
-     estão salvas e você quer segurar):** **PAUSE PRIMEIRO, e salve/teste
-     depois.** Sem botão na tela nesse estado, a pausa sai pela chamada HTTP
-     `desligar_pix` (§6.3 Fase 3, item 2), que grava a pausa em qualquer estado
-     desde que a loja já tenha cadastro de credenciais. A pausa vence Salvar e
-     Testar (a tela mostra "Pausado por você" + Retomar). Só então salve e teste.
-     Credenciais de TESTE não ligam cobrança real, mas não use isso como
-     controle de produção.
-   4. Para ligar de verdade com a pausa de pé: **Retomar** (`ligar_pix`; recusa
-      409, sem gravar nada, se faltar chave ou o teste).
+   3. Quando o dono mandar: cole a MESMA Chave de notificações no campo
+      **Senha dos avisos (Chave de notificações)** e toque em **Salvar
+      chaves**. Esse Salvar roda o teste e, se der verde, **liga a cobrança na
+      hora**; aparece o botão **Pausar** (parada de emergência, §6.3 Fase 3).
+
+   **Ramo "a loja já tem as três chaves salvas" (ou já tinha a Chave de
+   notificações):** nesse estado a tela diz "Tudo preenchido. Toque em Testar
+   conexão (em Avançado) para liberar o pagamento pelo app" — esse toque **LIGA
+   a cobrança**. Então: **NÃO toque em Testar conexão nem em Salvar chaves.**
+   Para segurar o momento, **PAUSE PRIMEIRO, e só depois salve/teste**:
+   - a. A tela não tem botão Pausar nesse estado: a pausa sai pela chamada HTTP
+     `desligar_pix` (§6.3 Fase 3, item 2, **executada pelo programador**), que
+     grava a pausa em qualquer estado desde que a loja já tenha cadastro de
+     credenciais. A pausa vence Salvar e Testar. Confirme que a tela mostra
+     "Pausado por você" + Retomar antes de seguir.
+   - b. Salve/teste o que for preciso (nada liga com a pausa de pé).
+   - c. Quando o dono mandar: **Retomar** (botão da tela; é a ação `ligar_pix`,
+     que recusa com 409, sem gravar nada, se faltar chave ou o teste).
+   Credenciais de TESTE não ligam cobrança real, mas não use isso como
+   controle de produção.
 6. **Rollback exato**:
    - Functions: reverta o código para o estado de **`ec930dd3`** e publique pelo
      `publicar-functions.yml`, com `functions=cobranca`, a loja correta e o SHA completo
