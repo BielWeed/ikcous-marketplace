@@ -28,6 +28,11 @@
  *  CORRIDA B    linha nova nasce enquanto a saída do pedido cancelado espera o pedido: a re-trava das linhas faz
  *               a marca da edge esperar e achar 0 linha (sem ela, um em_processamento fantasma num estornado).
  *  ACL          o painel e as saídas: anon sem EXECUTE, logado comum recusado (42501); as duas regras só do servidor.
+ *  PORTA        (18/11/2026) as três portas do painel (as duas saídas por fora e o painel de reembolsos) recusam,
+ *               42501 'Acesso negado.' e sem escrever: cliente comum, anon, logado sem sessão, service_role, conta
+ *               apagada e o ex-admin (papel tirado de só profiles, só auth.users ou das duas, com o JWT velho ainda
+ *               dizendo admin; cada um provado admin ANTES). O admin de verdade passa. Mutantes: a guarda
+ *               is_admin_atual() e a guarda auth.uid() IS NULL trocadas por `false`, uma função por vez.
  *  MIGRATION    reaplicar (2x) e CRLF = mesmo estado; o rollback devolve os corpos de antes e recusa com marca; o
  *               pré-voo recusa corpo divergente SEM escrever.
  *  MUTANTES     o mesmo comportamento esperado, rodado sobre corpos sabotados, FICA VERMELHO: sem a regra do legado,
@@ -1183,6 +1188,266 @@ prova(
     }),
 );
 
+// ---------------------------------------------------------------------------
+// PORTA DE ADMIN das três portas do painel (lacuna achada por um caçador, 18/11/2026): a prova de ACL acima só
+// confere que o logado comum e o anon são recusados; NINGUÉM provava que quem JÁ FOI admin (o papel saiu do
+// banco, mas o JWT do aparelho ainda diz admin por ~1 h) é recusado, nem que o servidor sem sessão
+// (service_role: a chave de serviço passa em is_admin() e em is_admin_atual()) é recusado só pela guarda
+// `auth.uid() IS NULL`. Sem isso, trocar a guarda por `IF false` deixava toda a suíte verde.
+//
+// Cada porta, na mesma transação desfeita: cliente comum, anon, logado sem sessão com JWT que diz admin,
+// service_role, conta apagada com JWT admin, e o ex-admin nas três formas em que o papel sai (só profiles, só
+// auth.users, as duas fontes) — cada um PRIMEIRO provado admin de verdade (a chamada passa; o efeito é desfeito
+// por SAVEPOINT) e SÓ DEPOIS rebaixado por UPDATE, com o MESMO JWT velho. A recusa é 42501 'Acesso negado.' e
+// o estado (linhas de reembolso, marcas, devolução, pedido, eventos) fica igual byte a byte. No fim, o admin
+// de verdade tem o resultado normal da porta.
+// ---------------------------------------------------------------------------
+const REBAIXAVEL = {
+  perfil: "7e7e2410-0000-4000-8000-0000000000d1", // sai só do profiles (auth.users segue admin)
+  auth: "7e7e2410-0000-4000-8000-0000000000d2", // sai só do auth.users (profiles segue admin)
+  ambos: "7e7e2410-0000-4000-8000-0000000000d3", // sai das duas fontes
+};
+const U_APAGADO = "7e7e2410-0000-4000-8000-0000000000d4"; // nunca existiu em auth.users nem em profiles
+const JWT_NOVO_CLIENTE = JSON.stringify({
+  role: "authenticated",
+  app_metadata: { role: "customer" },
+});
+const ACESSO_NEGADO = /Acesso negado\./;
+
+async function semearRebaixaveis() {
+  for (const id of Object.values(REBAIXAVEL)) {
+    await C.query(
+      `INSERT INTO auth.users (id, email, raw_app_meta_data)
+       VALUES ($1::uuid, $1::text || '@41.teste', '{"role":"admin"}'::jsonb)`,
+      [id],
+    );
+    await C.query(
+      "INSERT INTO public.profiles (id, full_name, role) VALUES ($1::uuid, 'Rebaixável 41', 'admin')",
+      [id],
+    );
+  }
+}
+/**
+ * Tira o papel de admin numa fonte só (o painel do Supabase mexe em auth.users; o banco, em profiles). Os
+ * gatilhos de papel (`tr_papel_so_pelo_definir_cargo`, a sincronia profiles -> auth.users) ficam de fora com
+ * session_replication_role = replica: eles empurrariam a mudança para a OUTRA fonte e não haveria "só profiles".
+ */
+async function tirarOPapel(id, { perfil = false, auth = false }) {
+  await C.query("SET LOCAL session_replication_role = replica");
+  // sem sessão pendurada da chamada anterior (o GUC do uid vive até o fim da transação)
+  await C.query(
+    "SELECT set_config('app.rpc.user_id', '', true), set_config('request.jwt.claims', '', true)",
+  );
+  if (perfil)
+    await C.query(
+      "UPDATE public.profiles SET role = 'customer' WHERE id = $1::uuid",
+      [id],
+    );
+  if (auth)
+    await C.query(
+      "UPDATE auth.users SET raw_app_meta_data = '{}'::jsonb WHERE id = $1::uuid",
+      [id],
+    );
+  await C.query("SET LOCAL session_replication_role = origin");
+  const f = (
+    await C.query(
+      `SELECT (SELECT p.role FROM public.profiles p WHERE p.id = $1::uuid) AS perfil,
+              (SELECT u.raw_app_meta_data ->> 'role' FROM auth.users u WHERE u.id = $1::uuid) AS fonte_auth`,
+      [id],
+    )
+  ).rows[0];
+  // o rebaixamento foi gravado de verdade (e só nas fontes pedidas): a prova não depende de um UPDATE que não pegou
+  assert.equal(f.perfil, perfil ? "customer" : "admin", "profiles.role");
+  assert.equal(f.fonte_auth, auth ? null : "admin", "auth.users");
+}
+
+/** Tudo que as três portas poderiam gravar, lido como o dono do banco (sem RLS): a prova de "nada foi escrito". */
+const retratoDaPorta = async (orderId) =>
+  (
+    await C.query(
+      `SELECT
+         (SELECT coalesce(jsonb_agg(to_jsonb(r) ORDER BY r.id), '[]'::jsonb)
+            FROM public.order_refunds r WHERE r.order_id = $1) AS linhas,
+         (SELECT coalesce(jsonb_agg(to_jsonb(pv) ORDER BY pv.refund_id), '[]'::jsonb)
+            FROM public.order_refund_prova pv JOIN public.order_refunds r ON r.id = pv.refund_id
+           WHERE r.order_id = $1) AS marcas,
+         (SELECT coalesce(jsonb_agg(to_jsonb(d) ORDER BY d.id), '[]'::jsonb)
+            FROM public.devolucoes d WHERE d.order_id = $1) AS devolucoes,
+         (SELECT count(*)::int FROM public.devolucao_eventos e JOIN public.devolucoes d ON d.id = e.devolucao_id
+           WHERE d.order_id = $1) AS eventos,
+         (SELECT to_jsonb(o) FROM public.marketplace_orders o WHERE o.id = $1) AS pedido`,
+      [orderId],
+    )
+  ).rows[0];
+
+/**
+ * A bateria de recusas de UMA porta. `chamar(papel, identidade)` roda a porta como o ator; `retrato()` lê o estado.
+ * Devolve sem tocar no admin de verdade: quem chama prova o resultado normal DEPOIS (a saída não se usa duas vezes).
+ */
+async function recusadosDaPorta(rotulo, chamar, retrato) {
+  const antes = await retrato();
+  const recusada = (r, quem, { corpo = true } = {}) => {
+    assert.ok(
+      r.erro !== undefined,
+      `${rotulo}: ${quem} PASSOU pela porta e recebeu ${JSON.stringify(r.linhas)}`,
+    );
+    assert.equal(r.codigo, "42501", `${rotulo}: ${quem} — ${r.erro}`);
+    if (corpo)
+      assert.match(r.erro, ACESSO_NEGADO, `${rotulo}: ${quem} — a mensagem`);
+  };
+  const intacto = async (quem) =>
+    assert.deepEqual(
+      await retrato(),
+      antes,
+      `${rotulo}: ${quem} recusado, mas o estado mudou`,
+    );
+
+  // (b) logado comum: a guarda do corpo (o EXECUTE do authenticated existe, é por ele que o admin entra).
+  recusada(
+    await chamar("authenticated", { uid: U.cliente, claims: JWT_CLIENTE }),
+    "cliente comum",
+  );
+  await intacto("cliente comum");
+  // (c) anon: o EXECUTE é revogado — a recusa vem da ACL, não do corpo (o texto da mensagem muda de língua).
+  const anon = await chamar("anon", {});
+  recusada(anon, "anon", { corpo: false });
+  await intacto("anon");
+  // logado SEM sessão (auth.uid() nulo) com o JWT dizendo admin: nada do papel vale sem a pessoa.
+  recusada(
+    await chamar("authenticated", { uid: "", claims: JWT_ADMIN }),
+    "logado sem sessão com JWT admin",
+  );
+  await intacto("logado sem sessão com JWT admin");
+  // O servidor com a chave de serviço passa em is_admin() e em is_admin_atual(): só `auth.uid() IS NULL` o barra.
+  recusada(
+    await chamar("service_role", {
+      uid: "",
+      claims: JSON.stringify({ role: "service_role" }),
+    }),
+    "service_role sem sessão",
+  );
+  await intacto("service_role sem sessão");
+  // (d) ex-admin: primeiro admin de verdade (a chamada passa; o efeito é desfeito), depois o papel sai do banco.
+  await semearRebaixaveis();
+  for (const [forma, id, tirar] of [
+    ["só no profiles", REBAIXAVEL.perfil, { perfil: true }],
+    ["só no auth.users", REBAIXAVEL.auth, { auth: true }],
+    ["nas duas fontes", REBAIXAVEL.ambos, { perfil: true, auth: true }],
+  ]) {
+    const quem = `ex-admin (${forma}), JWT velho`;
+    const jwtVelho = { uid: id, claims: JWT_ADMIN };
+    await C.query("SAVEPOINT era_admin");
+    const eraAdmin = await chamar("authenticated", jwtVelho);
+    assert.ok(
+      eraAdmin.linhas,
+      `${rotulo}: antes de perder o papel ${id} devia passar (${eraAdmin.erro}) — a prova não mede o rebaixamento`,
+    );
+    await C.query("ROLLBACK TO SAVEPOINT era_admin");
+    await C.query("RELEASE SAVEPOINT era_admin");
+    await intacto(`${quem}, antes de perder o papel`);
+
+    await tirarOPapel(id, tirar);
+    recusada(await chamar("authenticated", jwtVelho), quem);
+    await intacto(quem);
+  }
+  // o mesmo ex-admin das duas fontes, agora com o JWT NOVO (já diz customer): recusado pela outra guarda.
+  recusada(
+    await chamar("authenticated", {
+      uid: REBAIXAVEL.ambos,
+      claims: JWT_NOVO_CLIENTE,
+    }),
+    "ex-admin com o JWT novo",
+  );
+  await intacto("ex-admin com o JWT novo");
+  // conta apagada: o JWT do aparelho ainda diz admin, mas a pessoa não existe mais em nenhuma fonte.
+  recusada(
+    await chamar("authenticated", { uid: U_APAGADO, claims: JWT_ADMIN }),
+    "conta apagada com JWT admin",
+  );
+  await intacto("conta apagada com JWT admin");
+}
+
+/** admin_devolucao_reembolso_por_fora_apos_espera: a saída por fora da devolução (7 dias). */
+async function portaDaSaidaDaDevolucao() {
+  const { orderId, dev, refund } = await devolucaoConcluida({
+    total: 300,
+    valor: 100,
+  });
+  await C.query(
+    "UPDATE public.order_refunds SET status = 'em_processamento', post_autorizado_em = now() - interval '8 days' WHERE id = $1",
+    [refund],
+  );
+  const chamar = (papel, id) =>
+    tentar(
+      papel,
+      "SELECT public.admin_devolucao_reembolso_por_fora_apos_espera($1, $2, $3) AS r",
+      [dev, refund, FRASE],
+      id,
+    );
+  await recusadosDaPorta("saída da devolução", chamar, () =>
+    retratoDaPorta(orderId),
+  );
+  // (a) o admin de verdade: a saída passa e marca a linha (nada disso aconteceu nas recusas)
+  assert.equal(await marcas(refund), null, "as recusas deixaram marca");
+  const ok = await chamar("authenticated", ADMIN);
+  assert.equal(ok.erro, undefined, `o admin foi recusado: ${ok.erro}`);
+  assert.equal(ok.linhas[0].r.resultado, "combinado");
+  assert.ok((await marcas(refund))?.por_fora_liberado_em, "o admin não marcou");
+}
+
+/** registrar_estorno_manual_apos_espera: a saída por fora do pedido cancelado (7 dias). */
+async function portaDaSaidaDoPedido() {
+  await semearPessoas();
+  const o = await pedido({ total: 100, status: "cancelled" });
+  const l = await linha(o, {
+    status: "em_processamento",
+    valor: 100,
+    postEm: new Date(Date.now() - 8 * 864e5),
+  });
+  const chamar = (papel, id) =>
+    tentar(
+      papel,
+      "SELECT public.registrar_estorno_manual_apos_espera($1, $2, $3) AS r",
+      [o, l, FRASE],
+      id,
+    );
+  await recusadosDaPorta("saída do pedido", chamar, () => retratoDaPorta(o));
+  assert.equal(await marcas(l), null, "as recusas deixaram marca");
+  const ok = await chamar("authenticated", ADMIN);
+  assert.equal(ok.erro, undefined, `o admin foi recusado: ${ok.erro}`);
+  assert.equal(ok.linhas[0].r.resultado, "registrado");
+  assert.ok((await marcas(l))?.por_fora_liberado_em, "o admin não marcou");
+}
+
+/** pedido_reembolsos_e_saldo: o painel de reembolsos (só leitura, mas mostra dinheiro e a linha do cliente). */
+async function portaDoPainel() {
+  await semearPessoas();
+  const o = await pedido({ total: 200 });
+  await linha(o, { status: "solicitado", valor: 50 });
+  const chamar = (papel, id) =>
+    tentar(papel, "SELECT public.pedido_reembolsos_e_saldo($1) AS r", [o], id);
+  await recusadosDaPorta("painel de reembolsos", chamar, () =>
+    retratoDaPorta(o),
+  );
+  const ok = await chamar("authenticated", ADMIN);
+  assert.equal(ok.erro, undefined, `o admin foi recusado: ${ok.erro}`);
+  assert.equal(Number(ok.linhas[0].r.disponivel), 150, "200 − 50 em voo");
+  assert.equal(ok.linhas[0].r.linhas.length, 1);
+}
+
+prova(
+  "PORTA (saída da devolução): cliente, anon, sem sessão, service_role, conta apagada e ex-admin (3 formas, JWT velho e novo) recusados 42501 'Acesso negado.' sem escrever; o admin passa",
+  () => emTransacao(portaDaSaidaDaDevolucao),
+);
+prova(
+  "PORTA (saída do pedido cancelado): cliente, anon, sem sessão, service_role, conta apagada e ex-admin (3 formas, JWT velho e novo) recusados 42501 sem escrever; o admin passa",
+  () => emTransacao(portaDaSaidaDoPedido),
+);
+prova(
+  "PORTA (painel de reembolsos): cliente, anon, sem sessão, service_role, conta apagada e ex-admin (3 formas, JWT velho e novo) recusados 42501 sem escrever; o admin lê o saldo",
+  () => emTransacao(portaDoPainel),
+);
+
 prova(
   "MIGRATION: reaplicar 2x e em CRLF = mesmos corpos; rollback devolve os de antes e é idempotente; recusa com marca; pré-voo recusa corpo divergente SEM escrever",
   () =>
@@ -1702,6 +1967,58 @@ const MUTANTES = [
         ],
       ]),
     morre: [reemissaoPelaRegraUnica],
+  },
+  // PORTA DE ADMIN: a guarda do papel ATUAL trocada por `false` (o ex-admin, com o JWT velho, passa por is_admin())
+  {
+    nome: "a saída da devolução SEM a guarda is_admin_atual() (IF false)",
+    sabotar: () =>
+      sabotar(SIG.saidaDev, [
+        ["IF NOT public.is_admin_atual() THEN", "IF false THEN"],
+      ]),
+    morre: [portaDaSaidaDaDevolucao],
+  },
+  {
+    nome: "a saída do pedido cancelado SEM a guarda is_admin_atual() (IF false)",
+    sabotar: () =>
+      sabotar(SIG.saidaPed, [
+        ["IF NOT public.is_admin_atual() THEN", "IF false THEN"],
+      ]),
+    morre: [portaDaSaidaDoPedido],
+  },
+  {
+    nome: "o painel SEM a guarda is_admin_atual() (a de auth.uid() fica)",
+    sabotar: () =>
+      sabotar(SIG.painel, [
+        [
+          "IF auth.uid() IS NULL OR NOT public.is_admin_atual() THEN",
+          "IF auth.uid() IS NULL OR false THEN",
+        ],
+      ]),
+    morre: [portaDoPainel],
+  },
+  // PORTA DE ADMIN: a guarda da sessão (service_role passa nas duas do papel; só `auth.uid() IS NULL` o barra)
+  {
+    nome: "a saída da devolução SEM a guarda auth.uid() IS NULL (service_role entra)",
+    sabotar: () =>
+      sabotar(SIG.saidaDev, [["IF auth.uid() IS NULL THEN", "IF false THEN"]]),
+    morre: [portaDaSaidaDaDevolucao],
+  },
+  {
+    nome: "a saída do pedido cancelado SEM a guarda auth.uid() IS NULL (service_role entra)",
+    sabotar: () =>
+      sabotar(SIG.saidaPed, [["IF auth.uid() IS NULL THEN", "IF false THEN"]]),
+    morre: [portaDaSaidaDoPedido],
+  },
+  {
+    nome: "o painel SEM a guarda auth.uid() IS NULL (service_role entra)",
+    sabotar: () =>
+      sabotar(SIG.painel, [
+        [
+          "IF auth.uid() IS NULL OR NOT public.is_admin_atual() THEN",
+          "IF NOT public.is_admin_atual() THEN",
+        ],
+      ]),
+    morre: [portaDoPainel],
   },
 ];
 for (const m of MUTANTES) {

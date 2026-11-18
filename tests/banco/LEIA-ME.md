@@ -779,7 +779,16 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   divergente sem escrever. Doze mutantes ficam VERMELHOS (sem a regra do legado, sem o filtro da substituída nos dois
   lugares e só na regra, o autorizar sem a marca, a espera sem os 7 dias, a espera sem a marca, a saída sem a re-trava,
   a parcial que estorna o pedido inteiro, o saldo sem o por fora parcial, o painel sem o GREATEST, o painel sem o campo
-  da substituída, a reemissão com a regra invertida). **Não prova** a IKCOUS nem a Savy.
+  da substituída, a reemissão com a regra invertida). **Porta de admin (18/11/2026, só teste, nenhuma migration):** as
+  três portas do painel (`admin_devolucao_reembolso_por_fora_apos_espera`, `registrar_estorno_manual_apos_espera` e
+  `pedido_reembolsos_e_saldo`) recusam com 42501 `Acesso negado.` e sem escrever o cliente comum, o anon (pela ACL), o
+  logado sem sessão com JWT admin, o `service_role` (só `auth.uid() IS NULL` o barra), a conta apagada com JWT admin e o
+  ex-admin que perdeu o papel só no `profiles`, só no `auth.users` ou nas duas fontes com o JWT velho ainda dizendo admin
+  (cada um provado admin ANTES, com o efeito desfeito por SAVEPOINT); o admin de verdade passa. Seis mutantes ficam
+  VERMELHOS: a guarda `is_admin_atual()` e a guarda `auth.uid() IS NULL` trocadas por `false`, uma função por vez.
+  A guarda `is_admin()` das duas saídas é redundante com a `is_admin_atual()` (quem passa na segunda passa na primeira):
+  trocá-la por `false` não muda nenhum comportamento observável, por isso não há mutante dela.
+  **Não prova** a IKCOUS nem a Savy.
 - **portão do reembolso em dúvida (`reembolso-em-duvida-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as consultas
   `43a-conferir-reembolso-em-duvida-aplicado` (DEPOIS, 21 linhas) e `43b-antes-reembolso-em-duvida-base-vigente`
   (ANTES, 14 linhas) do lote `20261241000000`. Rol exato nos dois estados, um negativo por linha (cada um dos doze
