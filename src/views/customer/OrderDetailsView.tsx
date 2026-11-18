@@ -1359,8 +1359,16 @@ export function OrderDetailsView({
     chaveDoPagamento === "pago" ||
     chaveDoPagamento === "pago_apos_expirar" ||
     chaveDoPagamento === "recebido_na_entrega";
-  const rotuloDoTotal =
-    order.status !== "cancelled" && dinheiroConfirmado ? "Total pago" : "Total";
+  const creditoParcelado =
+    order.status !== "cancelled" &&
+    dinheiroConfirmado &&
+    order.metodoOnline === "credito" &&
+    (order.parcelas ?? 0) > 1;
+  const rotuloDoTotal = creditoParcelado
+    ? "Total do pedido"
+    : order.status !== "cancelled" && dinheiroConfirmado
+      ? "Total pago"
+      : "Total";
 
   // Unidades, como o carrinho e o painel contam: 1 produto x 3 = "3 itens".
   const unidades = order.items.reduce(
@@ -2028,6 +2036,14 @@ export function OrderDetailsView({
                 {formatCurrency(order.total)}
               </span>
             </div>
+            {creditoParcelado && (
+              <p>
+                <small>
+                  Parcelado em {order.parcelas}x no cartão. Juros do
+                  parcelamento, se houver, vêm na fatura.
+                </small>
+              </p>
+            )}
           </div>
         </motion.div>
 
