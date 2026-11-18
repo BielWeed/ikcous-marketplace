@@ -6059,11 +6059,32 @@ function bancoComEstado(
   } = {},
 ) {
   const chamadasRpc: Array<{ nome: string; args: Record<string, unknown> }> = [];
+  // r210-h: o aviso "Pagamento fora do fluxo" tem reserva (as três RPCs da migration
+  // 20261191000000, espelho SEM o prazo de 2 minutos): uma chave por pedido, que o
+  // banco de verdade guarda entre a transição e a reentrega 'ja_pago' do webhook.
+  const avisosDoLojista = new Map<string, { enviado: boolean }>();
   return {
     linha,
     chamadasRpc,
     rpc: async (nome: string, a: Record<string, unknown>) => {
       chamadasRpc.push({ nome, args: a });
+      if (nome === "reservar_aviso_ao_lojista") {
+        const reserva = avisosDoLojista.get(String(a.p_chave));
+        if (reserva) return { data: reserva.enviado ? "enviado" : "em_envio", error: null };
+        avisosDoLojista.set(String(a.p_chave), { enviado: false });
+        return { data: "reservado", error: null };
+      }
+      if (nome === "confirmar_aviso_ao_lojista") {
+        const reserva = avisosDoLojista.get(String(a.p_chave));
+        if (reserva) reserva.enviado = true;
+        return { data: Boolean(reserva), error: null };
+      }
+      if (nome === "liberar_aviso_ao_lojista") {
+        const reserva = avisosDoLojista.get(String(a.p_chave));
+        const apaga = Boolean(reserva && !reserva.enviado);
+        if (apaga) avisosDoLojista.delete(String(a.p_chave));
+        return { data: apaga, error: null };
+      }
       if (nome === "confirmar_pagamento") {
         const forcado = opts.antesDeConfirmar?.(linha);
         if (forcado !== undefined) return forcado;

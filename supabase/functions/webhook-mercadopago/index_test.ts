@@ -8868,12 +8868,35 @@ Deno.test("cartão parcelado 3x — CONTROLE: o MESMO parcelado com total_amount
 // aviso para sempre. Agora a reentrega repete SÓ o aviso pendente, e só com a
 // reserva livre; push ao lojista nunca (já foi avisado na transição).
 
-function webhookComJaPago(pedidoNoBanco: Record<string, unknown>, resultadoDaRpc = "ja_pago") {
+function webhookComJaPago(
+  pedidoNoBanco: Record<string, unknown>,
+  resultadoDaRpc = "ja_pago",
+  avisos: Map<string, { enviado: boolean }> = new Map(),
+) {
   const chamadasRpc: string[] = [];
   const supabase = {
-    rpc: async (nome: string) => {
+    rpc: async (nome: string, args?: Record<string, unknown>) => {
       chamadasRpc.push(nome);
       if (nome === "confirmar_pagamento") return { data: resultadoDaRpc, error: null };
+      // r210-h: as três RPCs da reserva do aviso ao lojista (espelho sem o prazo de
+      // 2 minutos, que é SQL). Estado em `avisos`, como o banco guardaria.
+      const chave = String(args?.p_chave);
+      if (nome === "reservar_aviso_ao_lojista") {
+        const linha = avisos.get(chave);
+        if (linha) return { data: linha.enviado ? "enviado" : "em_envio", error: null };
+        avisos.set(chave, { enviado: false });
+        return { data: "reservado", error: null };
+      }
+      if (nome === "confirmar_aviso_ao_lojista") {
+        const linha = avisos.get(chave);
+        if (linha) linha.enviado = true;
+        return { data: Boolean(linha), error: null };
+      }
+      if (nome === "liberar_aviso_ao_lojista") {
+        const apaga = Boolean(avisos.get(chave) && !avisos.get(chave)!.enviado);
+        if (apaga) avisos.delete(chave);
+        return { data: apaga, error: null };
+      }
       return { data: null, error: null };
     },
     from(tabela: string) {
@@ -8891,8 +8914,16 @@ function webhookComJaPago(pedidoNoBanco: Record<string, unknown>, resultadoDaRpc
   return { supabase, chamadasRpc };
 }
 
-async function entregarJaPago(pedidoNoBanco: Record<string, unknown>, resultadoDaRpc = "ja_pago") {
-  const { supabase, chamadasRpc } = webhookComJaPago(pedidoNoBanco, resultadoDaRpc);
+async function entregarJaPago(
+  pedidoNoBanco: Record<string, unknown>,
+  resultadoDaRpc = "ja_pago",
+  extras: {
+    avisos?: Map<string, { enviado: boolean }>;
+    /** Sem o seam `enviarPush`: só o push CONTADO (diz quantas inscrições receberam). */
+    entregues?: () => number;
+  } = {},
+) {
+  const { supabase, chamadasRpc } = webhookComJaPago(pedidoNoBanco, resultadoDaRpc, extras.avisos);
   const avisosAtrasados: unknown[] = [];
   const comprovantes: unknown[] = [];
   const pushes: unknown[] = [];
@@ -8906,7 +8937,14 @@ async function entregarJaPago(pedidoNoBanco: Record<string, unknown>, resultadoD
   const resposta = await handler(req, {
     supabase,
     fetchImpl,
-    enviarPush: async (a: unknown) => void pushes.push(a),
+    ...(extras.entregues
+      ? {
+        enviarPushContado: async (a: { aviso: unknown }) => {
+          pushes.push(a);
+          return extras.entregues!();
+        },
+      }
+      : { enviarPush: async (a: unknown) => void pushes.push(a) }),
     enviarComprovante: async (a: unknown) => void comprovantes.push(a),
     enviarAvisoAtrasado: async (a: unknown) => void avisosAtrasados.push(a),
   });
@@ -8923,8 +8961,13 @@ const PEDIDO_PAGO_APOS_EXPIRAR = {
   confirmation_email_sent_at: null,
 };
 
-Deno.test("EST-EDGE-DIN-3 - 'ja_pago' num pedido 'pago_apos_expirar' com a reserva LIVRE reenvia o aviso atrasado UMA vez, sem push e sem comprovante", async () => {
-  const r = await entregarJaPago(PEDIDO_PAGO_APOS_EXPIRAR);
+// r210-h: o push ao lojista da transição já CHEGOU (a chave está 'enviado'): a
+// reentrega não o repete. Era o que estes dois testes provavam sem saber a razão.
+const CHAVE_FORA_DO_FLUXO = `pago_fora_do_fluxo:${UUID_PEDIDO}`;
+const avisoJaEntregue = () => new Map([[CHAVE_FORA_DO_FLUXO, { enviado: true }]]);
+
+Deno.test("EST-EDGE-DIN-3 - 'ja_pago' num pedido 'pago_apos_expirar' com a reserva LIVRE reenvia o aviso atrasado UMA vez, sem comprovante e sem repetir o push que já chegou", async () => {
+  const r = await entregarJaPago(PEDIDO_PAGO_APOS_EXPIRAR, "ja_pago", { avisos: avisoJaEntregue() });
   assertEquals(r.resposta.status, 200);
   assertEquals((await r.resposta.json()).resultado, "ja_pago");
   assertEquals(r.avisosAtrasados.length, 1);
@@ -8933,10 +8976,83 @@ Deno.test("EST-EDGE-DIN-3 - 'ja_pago' num pedido 'pago_apos_expirar' com a reser
 });
 
 Deno.test("EST-EDGE-DIN-3 - 'ja_pago' com o e-mail JÁ enviado (reserva presa) não reenvia nada", async () => {
-  const r = await entregarJaPago({ ...PEDIDO_PAGO_APOS_EXPIRAR, confirmation_email_sent_at: "2026-10-16T10:00:00Z" });
+  const r = await entregarJaPago(
+    { ...PEDIDO_PAGO_APOS_EXPIRAR, confirmation_email_sent_at: "2026-10-16T10:00:00Z" },
+    "ja_pago",
+    { avisos: avisoJaEntregue() },
+  );
   assertEquals(r.resposta.status, 200);
   assertEquals(r.avisosAtrasados.length, 0);
   assertEquals(r.pushes.length, 0);
+});
+
+// r210-h: o buraco do aviso "Pagamento fora do fluxo". A transição ('pago_apos_expirar')
+// manda UM push; se entregou a 0 (ninguém com push inscrito, VAPID falhou) só foi ao
+// log, e a reentrega 'ja_pago' não avisava de novo: dinheiro do cliente no lojista sem
+// alerta. Agora a reentrega retoma o aviso pela MESMA chave, e para quando ele chega.
+
+Deno.test("r210-h - 'ja_pago' de 'pago_apos_expirar' cujo push da transição NÃO chegou: a reentrega AVISA o lojista (texto de sempre) e confirma a chave", async () => {
+  const avisos = new Map<string, { enviado: boolean }>();
+  const r = await entregarJaPago(PEDIDO_PAGO_APOS_EXPIRAR, "ja_pago", { avisos, entregues: () => 1 });
+  assertEquals(r.resposta.status, 200);
+  assertEquals((await r.resposta.json()).resultado, "ja_pago");
+  assertEquals(r.pushes.length, 1);
+  assertEquals((r.pushes[0] as { aviso: unknown }).aviso, {
+    title: "Pagamento fora do fluxo",
+    body: `${numeroDoPedidoEsperado(UUID_PEDIDO)} · R$ 149,90 · estoque já devolvido`,
+    url: `/admin-orders?id=${UUID_PEDIDO}`,
+  });
+  assertEquals(avisos.get(CHAVE_FORA_DO_FLUXO), { enviado: true });
+  assertEquals(
+    r.chamadasRpc.filter((n) => n.endsWith("_aviso_ao_lojista")),
+    ["reservar_aviso_ao_lojista", "confirmar_aviso_ao_lojista"],
+  );
+  assertEquals(r.avisosAtrasados.length, 1, "o e-mail ao cliente continua sendo reenviado como antes");
+});
+
+Deno.test("r210-h - reentregas seguidas: entrega 0 segue tentando, a primeira que CHEGA fecha a chave, e as seguintes NÃO repetem (sem spam)", async () => {
+  const avisos = new Map<string, { enviado: boolean }>();
+  const respostasDoPush = [0, 0, 1];
+  const feitas: number[] = [];
+  for (let i = 0; i < 5; i++) {
+    const r = await entregarJaPago(PEDIDO_PAGO_APOS_EXPIRAR, "ja_pago", {
+      avisos,
+      entregues: () => respostasDoPush.shift() ?? 99,
+    });
+    feitas.push(r.pushes.length);
+  }
+  assertEquals(feitas, [1, 1, 1, 0, 0], "1 tentativa por reentrega até chegar; depois, silêncio");
+  assertEquals(avisos.get(CHAVE_FORA_DO_FLUXO), { enviado: true });
+});
+
+Deno.test("r210-h - 'ja_pago' de 'pago_apos_expirar' com o e-mail já enviado, mas o push NUNCA chegou: avisa o lojista e não reenvia o e-mail", async () => {
+  const r = await entregarJaPago(
+    { ...PEDIDO_PAGO_APOS_EXPIRAR, confirmation_email_sent_at: "2026-10-16T10:00:00Z" },
+    "ja_pago",
+    { entregues: () => 1 },
+  );
+  assertEquals(r.pushes.length, 1);
+  assertEquals(r.avisosAtrasados.length, 0);
+});
+
+Deno.test("r210-h - a PRIMEIRA confirmação ('pago_apos_expirar') avisa UMA vez pela chave e o ramo da reentrega não roda por cima", async () => {
+  const avisos = new Map<string, { enviado: boolean }>();
+  const r = await entregarJaPago(PEDIDO_PAGO_APOS_EXPIRAR, "pago_apos_expirar", { avisos, entregues: () => 1 });
+  assertEquals((await r.resposta.json()).resultado, "pago_apos_expirar");
+  assertEquals(r.pushes.length, 1);
+  assertEquals(avisos.get(CHAVE_FORA_DO_FLUXO), { enviado: true });
+  assertEquals(
+    r.chamadasRpc.filter((n) => n.endsWith("_aviso_ao_lojista")),
+    ["reservar_aviso_ao_lojista", "confirmar_aviso_ao_lojista"],
+  );
+});
+
+Deno.test("r210-h - 'ja_pago' de pedido que NÃO é 'pago_apos_expirar' nunca toca a reserva do aviso nem avisa o lojista", async () => {
+  for (const payment_status of ["pago", "aguardando", "recusado", "estornado", "expirado"]) {
+    const r = await entregarJaPago({ ...pedidoPagoOnlineRecente(), payment_status }, "ja_pago", { entregues: () => 1 });
+    assertEquals(r.pushes.length, 0, payment_status);
+    assertEquals(r.chamadasRpc.filter((n) => n.endsWith("_aviso_ao_lojista")), [], payment_status);
+  }
 });
 
 // r200-a (12/11/2026): o mesmo buraco para o pedido 'pago' comum. O comprovante

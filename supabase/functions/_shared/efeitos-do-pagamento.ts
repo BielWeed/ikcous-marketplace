@@ -52,7 +52,7 @@
  * próprio `try/catch` — um push que lança não impede o comprovante.
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { dispararPushContadoReal } from "./aviso-ao-lojista.ts";
+import { avisarAdminUmaVez, dispararPushContadoReal } from "./aviso-ao-lojista.ts";
 import {
   devolverReserva,
   enviarComprovantePedido,
@@ -81,6 +81,11 @@ export const TETO_DO_EMAIL_MS = ORCAMENTO_DO_ENVIO_MS + 5000;
 
 export type DepsDosEfeitos = {
   enviarPush?: (args: { supabase: Supabase; aviso: Aviso }) => Promise<void>;
+  /** Como `enviarPush`, mas DIZ quantas inscrições receberam (0 = ninguém). É o que o
+   * aviso de 'pago_apos_expirar' usa para reservar/liberar (`avisarAdminUmaVez`).
+   * `enviarPush`, quando injetado, tem precedência (o seam antigo, sem contagem: um
+   * envio que não lançou conta como entregue). Sem nenhum dos dois: o push real. */
+  enviarPushContado?: (args: { supabase: Supabase; aviso: Aviso }) => Promise<number>;
   enviarComprovante?: (args: { supabase: Supabase; orderId: string }) => Promise<void>;
   enviarAvisoAtrasado?: (args: { supabase: Supabase; orderId: string }) => Promise<void>;
 };
@@ -155,6 +160,55 @@ export function avisoAoLojista(orderId: string, resultado: string, valor: unknow
   return null;
 }
 
+/** A chave da reserva do aviso "Pagamento fora do fluxo": uma por pedido. Mora na
+ * MESMA tabela e nas MESMAS RPCs dos irmãos (`valor_divergente`, `cartao_duplicado`). */
+export function chaveDoAvisoForaDoFluxo(orderId: string): string {
+  return `pago_fora_do_fluxo:${orderId}`;
+}
+
+/**
+ * O push "Pagamento fora do fluxo" com reserva e nova tentativa
+ * (`avisarAdminUmaVez`): entregue a 1+ inscrição → a chave fica 'enviado' e NUNCA
+ * se repete; entrega 0 (sem admin inscrito, VAPID falhou, push lançou) → a reserva
+ * é liberada e a próxima entrega do MP ('ja_pago', `reavisarPagamentoForaDoFluxo`)
+ * tenta de novo. Nunca lança.
+ */
+async function avisarPagamentoForaDoFluxo(args: {
+  supabase: Supabase;
+  orderId: string;
+  aviso: Aviso;
+  enviarPush?: DepsDosEfeitos["enviarPush"];
+  enviarPushContado?: DepsDosEfeitos["enviarPushContado"];
+}): Promise<void> {
+  const { supabase, orderId, aviso } = args;
+  const injetado = args.enviarPush;
+  const empurrar = injetado
+    ? async (a: { supabase: Supabase; aviso: Aviso }) => {
+      await injetado(a);
+      return 1;
+    }
+    : args.enviarPushContado ??
+      ((a: { supabase: Supabase; aviso: Aviso }) =>
+        dispararPushContadoReal({ supabase: a.supabase, aviso: a.aviso, rotulo: "efeitos-do-pagamento" }));
+  const enviarPushContado = async (a: { supabase: Supabase; aviso: Aviso }): Promise<number> => {
+    try {
+      return await empurrar(a);
+    } catch (_erro) {
+      // Push que lança = entrega zero (a reserva é liberada). O MESMO registro de
+      // antes, para quem vigia o log: o aviso de dinheiro que não saiu.
+      console.error("efeitos-do-pagamento: push ao lojista falhou", { orderId, resultado: "pago_apos_expirar" });
+      return 0;
+    }
+  };
+  await avisarAdminUmaVez({
+    supabase,
+    enviarPushContado,
+    chave: chaveDoAvisoForaDoFluxo(orderId),
+    aviso,
+    rotulo: "efeitos-do-pagamento",
+  });
+}
+
 export async function aplicarEfeitosDoPagamentoConfirmado(args: {
   supabase: Supabase;
   orderId: string;
@@ -197,7 +251,12 @@ export async function aplicarEfeitosDoPagamentoConfirmado(args: {
       // qualquer efeito. Com teto (o cron: um push service lento não pode
       // prender o laço de candidatos), a espera é limitada por `comTempoLimite`.
       if (aviso) {
-        const emVoo = enviarPush({ supabase, aviso });
+        // 'pago_apos_expirar' é dinheiro do cliente parado no lojista: o aviso tem
+        // reserva e nova tentativa (a entrega a 0 libera a chave e a reentrega
+        // 'ja_pago' do webhook tenta de novo). 'pago' segue no envio simples.
+        const emVoo = resultado === "pago_apos_expirar"
+          ? avisarPagamentoForaDoFluxo({ supabase, orderId, aviso, enviarPush: args.enviarPush, enviarPushContado: args.enviarPushContado })
+          : enviarPush({ supabase, aviso });
         await (args.tetoDoPushMs ? comTempoLimite(emVoo, args.tetoDoPushMs) : emVoo);
       }
     } catch (_erro) {
@@ -393,6 +452,58 @@ export async function dispararAvisoDePagamentoAtrasadoReal(args: {
     console.log(`efeitos-do-pagamento: aviso de pagamento atrasado enviado para ${orderId}`);
   } catch (_erro) {
     console.error("efeitos-do-pagamento: falha ao enviar aviso de pagamento atrasado ao cliente", orderId);
+  }
+}
+
+/**
+ * r210-h — a REENTREGA do aviso "Pagamento fora do fluxo". O push da transição
+ * ('pago_apos_expirar') é um tiro: se ele entregou a 0 (nenhum admin com push
+ * inscrito, VAPID falhou), a reentrega do MP chega como 'ja_pago' e, pela regra
+ * "efeito só para quem fez a transição", não avisava de novo — o dinheiro do
+ * cliente ficava no lojista sem alerta. Agora o webhook chama isto no 'ja_pago':
+ * só para pedido que ESTÁ 'pago_apos_expirar', pede a MESMA reserva da transição
+ * (`pago_fora_do_fluxo:<pedido>`) e: 'enviado' → não repete (sem spam);
+ * 'em_envio' → quem está enviando é a outra entrega; 'reservado' (a transição
+ * entregou a 0 e liberou) → tenta o push de novo. O texto é o de sempre.
+ *
+ * Pedidos que viraram 'pago_apos_expirar' ANTES desta versão não têm linha de
+ * reserva: a primeira reentrega do MP que chegar depois da publicação avisa UMA
+ * vez a mais (e confirma a chave); daí em diante, nunca mais.
+ *
+ * Nada de e-mail, estoque, status ou dinheiro (o e-mail ao cliente é de
+ * `reenviarEmailPendenteDoPagamento`). Nunca lança.
+ */
+export async function reavisarPagamentoForaDoFluxo(args: {
+  supabase: Supabase;
+  orderId: string;
+  enviarPush?: DepsDosEfeitos["enviarPush"];
+  enviarPushContado?: DepsDosEfeitos["enviarPushContado"];
+  /** Teto de espera pelo push (o webhook passa o dele); ausente = sem teto. */
+  tetoDoPushMs?: number;
+}): Promise<void> {
+  const { supabase, orderId } = args;
+  try {
+    const { data, error } = await supabase
+      .from("marketplace_orders")
+      .select("payment_status, total, total_amount")
+      .eq("id", orderId)
+      .maybeSingle();
+    if (error) throw error;
+    const pedido = data as Record<string, unknown> | null;
+    // Falha FECHADA: só o estado lido 'pago_apos_expirar' reavisa.
+    if (pedido?.payment_status !== "pago_apos_expirar") return;
+    const aviso = avisoAoLojista(orderId, "pago_apos_expirar", pedido.total ?? pedido.total_amount);
+    if (!aviso) return;
+    const emVoo = avisarPagamentoForaDoFluxo({
+      supabase,
+      orderId,
+      aviso,
+      enviarPush: args.enviarPush,
+      enviarPushContado: args.enviarPushContado,
+    });
+    await (args.tetoDoPushMs ? comTempoLimite(emVoo, args.tetoDoPushMs) : emVoo);
+  } catch (_erro) {
+    console.error("efeitos-do-pagamento: reaviso do pagamento fora do fluxo falhou", { orderId });
   }
 }
 
