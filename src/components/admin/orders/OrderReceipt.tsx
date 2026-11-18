@@ -3,6 +3,7 @@ import { rotuloDaFormaDoPedido } from "@/lib/forma-de-pagamento";
 import { linhasDoEndereco } from "@/lib/linhas-do-endereco-do-pedido";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { observacaoDaClienteNoRecibo } from "@/lib/observacao-da-cliente-no-recibo";
+import { quemVaiReceberSeForOutro } from "@/lib/quem-vai-receber";
 import type { Order } from "@/types";
 import { memo } from "react";
 import { createPortal } from "react-dom";
@@ -70,6 +71,14 @@ export const OrderReceipt = memo(function OrderReceipt({
         ? "Cliente"
         : ""
       : order.customer.name;
+  // Compra para presente ou entrega na portaria: a ficha mostra "Recebe: X" e o
+  // papel que vai com o entregador tambem precisa do nome de quem esta na porta.
+  const quemRecebe = presencial
+    ? ""
+    : quemVaiReceberSeForOutro(
+        order.customer.name,
+        order.customer.recipientName,
+      );
   const papel = (
     <>
       <div
@@ -96,6 +105,9 @@ export const OrderReceipt = memo(function OrderReceipt({
           <div className="mb-4">
             <p className="mb-1 border-b border-black font-bold">CLIENTE:</p>
             <p className="break-words">{nomeNoPapel}</p>
+            {quemRecebe && (
+              <p className="break-words text-xs">Recebe: {quemRecebe}</p>
+            )}
             {order.customer.whatsapp && (
               <p className="break-words">{order.customer.whatsapp}</p>
             )}
