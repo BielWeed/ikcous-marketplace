@@ -260,6 +260,30 @@ describe("AdminOrderCard — retirada", () => {
     const entrega = await abrirPerguntaDeRecebimentoNoCard({});
     expect(entrega).toContain("Pedido de pagamento na entrega.");
   });
+
+  async function marcarComoRecebidoNoCard(sobre: Partial<Order>) {
+    montarCard(sobre);
+    const marcar = [...hospedeiro.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Marcar como recebido"),
+    );
+    expect(marcar, "botão Marcar como recebido do card").toBeDefined();
+    await act(async () => {
+      marcar!.click();
+    });
+    return document.body.textContent ?? "";
+  }
+
+  it("'Marcar como recebido' no card pergunta 'na retirada' (controle: 'na entrega')", async () => {
+    const retirada = await marcarComoRecebidoNoCard({ ...RETIRADA });
+    expect(retirada).toContain("Recebeu os R$");
+    expect(retirada).toContain("Pedido de pagamento na retirada.");
+    expect(retirada).not.toContain("Pedido de pagamento na entrega.");
+
+    act(() => raiz.unmount());
+    raiz = createRoot(hospedeiro);
+    const entrega = await marcarComoRecebidoNoCard({});
+    expect(entrega).toContain("Pedido de pagamento na entrega.");
+  });
 });
 
 describe("OrderDetail (ficha) — retirada", () => {
@@ -336,6 +360,30 @@ describe("OrderDetail (ficha) — retirada", () => {
     });
     return hospedeiro.textContent ?? "";
   }
+
+  async function marcarComoRecebidoNaFicha(sobre: Partial<Order>) {
+    await montarFicha(sobre);
+    const marcar = [...hospedeiro.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Marcar como recebido"),
+    );
+    expect(marcar, "botão Marcar como recebido da ficha").toBeDefined();
+    await act(async () => {
+      marcar!.click();
+    });
+    return document.body.textContent ?? "";
+  }
+
+  it("'Marcar como recebido' na ficha pergunta 'na retirada' (controle: 'na entrega')", async () => {
+    const retirada = await marcarComoRecebidoNaFicha({ ...RETIRADA });
+    expect(retirada).toContain("Recebeu os R$");
+    expect(retirada).toContain("Pedido de pagamento na retirada.");
+    expect(retirada).not.toContain("Pedido de pagamento na entrega.");
+
+    act(() => raiz.unmount());
+    raiz = createRoot(hospedeiro);
+    const entrega = await marcarComoRecebidoNaFicha({});
+    expect(entrega).toContain("Pedido de pagamento na entrega.");
+  });
 
   it("a pergunta 'Recebeu os R$…?' fala em 'retirada' (controle: 'entrega')", async () => {
     const retirada = await avancarNaFicha({ ...RETIRADA });

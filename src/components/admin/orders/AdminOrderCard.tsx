@@ -754,6 +754,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
             <PerguntaDoRecebimento
               total={order.total || 0}
               disabled={bloqueado || !faltaReceber}
+              retiradaNaLoja={order.retiradaNaLoja}
               aoCancelar={() => setPainel(null)}
               aoConfirmar={() => void executar(undefined, true)}
             />

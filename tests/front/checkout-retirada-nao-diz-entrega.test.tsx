@@ -314,6 +314,37 @@ describe("CheckoutView — a retirada na loja não fala em entrega de endereço"
     expect(texto()).toContain("Seu endereço");
   });
 
+  // O rótulo do cartão de resumo é o `aria-label` da região (não entra no
+  // texto da tela), por isso o caso (a)/(c) acima não o enxerga.
+  const regioes = () =>
+    [...document.querySelectorAll("section[aria-label]")].map((r) =>
+      r.getAttribute("aria-label"),
+    );
+
+  it("(h) o cartão de resumo do endereço se chama 'Seu CEP' (visitante) ou 'Seu endereço' (conta) na retirada, e 'Endereço de entrega' na entrega", async () => {
+    estado.opcao = OPCAO.entregaLocal;
+    await renderizar();
+    expect(regioes()).toContain("Endereço de entrega");
+
+    estado.opcao = OPCAO.retirada;
+    await renderizar();
+    expect(regioes()).toContain("Seu CEP");
+    expect(regioes()).not.toContain("Endereço de entrega");
+  });
+
+  it("(i) o mesmo cartão, para quem tem conta, se chama 'Seu endereço' na retirada", async () => {
+    estado.user = { id: "user-1" };
+    estado.enderecos = [ENDERECO_SALVO];
+    estado.opcao = OPCAO.entregaLocal;
+    await renderizar();
+    expect(regioes()).toContain("Endereço de entrega");
+
+    estado.opcao = OPCAO.retirada;
+    await renderizar();
+    expect(regioes()).toContain("Seu endereço");
+    expect(regioes()).not.toContain("Endereço de entrega");
+  });
+
   it("(d) quem tem conta e ainda não cadastrou endereço: o convite não diz 'de entrega' na retirada", async () => {
     estado.user = { id: "user-1" };
     estado.opcao = OPCAO.entregaLocal;

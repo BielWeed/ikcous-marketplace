@@ -1256,6 +1256,7 @@ function OrderFinanceCard({
               key={order.id}
               total={order.total}
               disabled={registrandoPagamento}
+              retiradaNaLoja={order.retiradaNaLoja}
               aoConfirmar={() => onRegistrarPagamento(order.id, true)}
             />
           )}
