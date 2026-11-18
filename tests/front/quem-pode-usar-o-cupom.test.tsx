@@ -93,6 +93,91 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+it("não dispara a busca se sair antes dos 300 ms", async () => {
+  buscarClientes.mockResolvedValue({ clientes: [ANA], total: 1 });
+  await montar();
+  await digitar("Ana", 299);
+  await act(async () => raiz.render(null));
+  const timersAoSair = vi.getTimerCount();
+
+  await act(async () => vi.advanceTimersByTimeAsync(1));
+  expect(buscarClientes).not.toHaveBeenCalled();
+  expect(timersAoSair).toBe(0);
+});
+
+it("limpa o prazo da busca em andamento ao desmontar", async () => {
+  buscarClientes.mockReturnValueOnce(new Promise(() => {}));
+  await montar();
+  await digitar("Ana", 300);
+  expect(buscarClientes).toHaveBeenCalledOnce();
+  expect(vi.getTimerCount()).toBe(1);
+
+  await act(async () => raiz.render(null));
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+it("aborta a busca pendente ao repetir e ao desmontar", async () => {
+  buscarClientes.mockImplementation(() => new Promise(() => {}));
+  await montar();
+  await digitar("Ana");
+  await act(async () => vi.advanceTimersByTimeAsync(20_000));
+  const primeiro = buscarClientes.mock.calls[0]?.[1];
+  expect(primeiro?.aborted).toBe(false);
+
+  await act(async () => botao("Tentar de novo").click());
+  expect(primeiro?.aborted).toBe(true);
+  await act(async () => vi.advanceTimersByTimeAsync(300));
+  const segundo = buscarClientes.mock.calls[1]?.[1];
+  expect(segundo?.aborted).toBe(false);
+
+  await act(async () => raiz.render(null));
+  expect(segundo?.aborted).toBe(true);
+});
+
+it("descarta o resultado se sair de Clientes escolhidos enquanto a busca roda", async () => {
+  let resolver!: (pagina: { clientes: (typeof ANA)[]; total: number }) => void;
+  buscarClientes.mockReturnValueOnce(
+    new Promise((resolve) => {
+      resolver = resolve;
+    }),
+  );
+  await montar();
+  await digitar("Ana", 300);
+
+  await montar({ alcance: "codigo" });
+  await act(async () => resolver({ clientes: [ANA], total: 1 }));
+  await montar();
+
+  expect(hospedeiro.textContent).not.toContain("Ana Prova");
+  expect(hospedeiro.textContent).not.toContain("Buscando…");
+});
+
+it("permite repetir o mesmo termo se a busca não responde, sem mexer na lista escolhida", async () => {
+  buscarClientes
+    .mockReturnValueOnce(new Promise(() => {}))
+    .mockResolvedValueOnce({ clientes: [ANA], total: 1 });
+  await montar({
+    clientes: [{ id: "escolhido", nome: "Cliente escolhido", email: null }],
+  });
+  await digitar("Ana");
+  expect(hospedeiro.textContent).toContain("Buscando…");
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(20_000);
+  });
+  expect(hospedeiro.textContent).toContain("A busca demorou.");
+  await act(async () => botao("Tentar de novo").click());
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(350);
+  });
+  expect(buscarClientes.mock.calls.map(([termo]) => termo)).toEqual([
+    "Ana",
+    "Ana",
+  ]);
+  expect(hospedeiro.textContent).toContain("Ana Prova");
+  expect(hospedeiro.textContent).toContain("Cliente escolhido");
+  expect(onClientes).not.toHaveBeenCalled();
+});
+
 describe("QuemPodeUsarOCupom — as três opções", () => {
   it("marca só a opção do alcance atual e avisa a escolha da lojista", async () => {
     await montar({ alcance: "vitrine" });
@@ -185,7 +270,7 @@ describe("QuemPodeUsarOCupom — buscar e montar a lista", () => {
       await vi.advanceTimersByTimeAsync(250);
     });
     expect(buscarClientes).toHaveBeenCalledTimes(1);
-    expect(buscarClientes).toHaveBeenCalledWith("an");
+    expect(buscarClientes).toHaveBeenCalledWith("an", expect.any(AbortSignal));
     expect(hospedeiro.textContent).toContain("Ana Prova");
   });
 

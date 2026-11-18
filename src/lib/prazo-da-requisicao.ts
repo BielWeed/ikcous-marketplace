@@ -111,6 +111,23 @@ export const MENSAGEM_PRODUTO_DUPLICAR_SEM_RESPOSTA =
 // com "Tentar de novo"; só encerra a ESPERA da tela, a consulta não grava nada.
 export const PRAZO_DA_CONSULTA_DO_PAINEL_MS = 20_000;
 
+/** Avisa sobre a demora sem encerrar a consulta. O retorno cancela só o aviso. */
+export function programarAvisoDeConsultaDoPainel(
+  avisar: () => void,
+): () => void {
+  let temporizador: ReturnType<typeof setTimeout> | undefined = setTimeout(
+    () => {
+      temporizador = undefined;
+      avisar();
+    },
+    PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+  );
+  return () => {
+    if (temporizador !== undefined) clearTimeout(temporizador);
+    temporizador = undefined;
+  };
+}
+
 // PRAZO DA GRAVAÇÃO DO CARRINHO NO SERVIDOR (12/11/2026): a RPC que sincroniza
 // o carrinho (uma por vez) numa rede que conecta e não responde deixava a trava
 // de "gravação em andamento" ligada para sempre — a tela mostrava a quantidade

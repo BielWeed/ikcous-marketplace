@@ -12,9 +12,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DevolucaoDoPedidoAdminCard } from "@/components/admin/orders/DevolucaoDoPedidoAdminCard";
 import { useDevolucoesDoPedidoAdmin } from "@/hooks/useDevolucoesAdmin";
 
-const { rpc } = vi.hoisted(() => ({ rpc: vi.fn() }));
+const { rpc, sinais } = vi.hoisted(() => ({
+  rpc: vi.fn(),
+  sinais: [] as AbortSignal[],
+}));
 vi.mock("@/lib/supabase", () => ({
-  supabase: { rpc, storage: { from: () => ({}) } },
+  supabase: {
+    rpc: (...args: unknown[]) => {
+      const resposta = rpc(...args);
+      return Object.assign(resposta, {
+        abortSignal: (sinal: AbortSignal) => {
+          sinais.push(sinal);
+          return resposta;
+        },
+      });
+    },
+    storage: { from: () => ({}) },
+  },
 }));
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
@@ -59,6 +73,7 @@ beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.clearAllMocks();
   rpc.mockReset();
+  sinais.length = 0;
   hospedeiro = document.createElement("div");
   document.body.appendChild(hospedeiro);
   raiz = createRoot(hospedeiro);
@@ -70,6 +85,100 @@ afterEach(() => {
 });
 
 describe("devoluções do pedido — só a leitura mais recente vale", () => {
+  it("mostra que está consultando e solta o botão se a nova tentativa também pendurar", async () => {
+    vi.useFakeTimers();
+    try {
+      rpc.mockImplementation(() => new Promise(() => {}));
+      await act(async () =>
+        raiz.render(<DevolucaoDoPedidoAdminCard orderId="pedido-1" />),
+      );
+      const avancar = () =>
+        act(async () => {
+          await vi.advanceTimersByTimeAsync(20_000);
+        });
+      const botao = () => hospedeiro.querySelector("button");
+      expect(hospedeiro.textContent).toBe("");
+      await avancar();
+      expect(botao()?.textContent).toBe("Tentar de novo");
+      await act(async () => botao()?.click());
+      expect(botao()?.disabled).toBe(true);
+      expect(hospedeiro.textContent).toContain("Consultando devoluções…");
+      await avancar();
+      expect(botao()?.disabled).toBe(false);
+      rpc.mockResolvedValueOnce({ data: [], error: null });
+      await act(async () => botao()?.click());
+      expect(hospedeiro.textContent).toBe("");
+      expect(rpc.mock.calls).toEqual(
+        Array.from({ length: 3 }, () => [
+          "devolucoes_do_pedido",
+          { p_order_id: "pedido-1" },
+        ]),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("aborta a consulta pendente ao tentar de novo e ao desmontar", async () => {
+    vi.useFakeTimers();
+    try {
+      rpc.mockImplementation(() => pendente().promessa);
+      await act(async () =>
+        raiz.render(<DevolucaoDoPedidoAdminCard orderId="pedido-1" />),
+      );
+      await act(async () => vi.advanceTimersByTimeAsync(20_000));
+      expect(sinais[0]?.aborted).toBe(false);
+
+      await act(async () => hospedeiro.querySelector("button")?.click());
+      expect(sinais[0]?.aborted).toBe(true);
+      expect(sinais[1]?.aborted).toBe(false);
+
+      await act(async () => raiz.render(null));
+      expect(sinais[1]?.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("aproveita a devolução aos 21 s sem precisar tentar de novo", async () => {
+    vi.useFakeTimers();
+    try {
+      const consulta = pendente();
+      rpc.mockReturnValueOnce(consulta.promessa);
+      await act(async () =>
+        raiz.render(<DevolucaoDoPedidoAdminCard orderId="pedido-1" />),
+      );
+      await act(async () => vi.advanceTimersByTimeAsync(20_000));
+      expect(hospedeiro.textContent).toContain("Tentar de novo");
+
+      await act(async () => vi.advanceTimersByTimeAsync(1_000));
+      await act(async () =>
+        consulta.resolver({
+          data: [linha("dev-tardia", "DV-TARDIA")],
+          error: null,
+        }),
+      );
+      expect(hospedeiro.textContent).toContain("DV-TARDIA");
+      expect(hospedeiro.textContent).not.toContain("Tentar de novo");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("limpa o prazo da consulta ao desmontar a devolução", async () => {
+    vi.useFakeTimers();
+    try {
+      rpc.mockReturnValueOnce(pendente().promessa);
+      await act(async () => raiz.render(<Sonda />));
+      expect(vi.getTimerCount()).toBe(1);
+
+      await act(async () => raiz.render(null));
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("a resposta velha que chega DEPOIS da nova não sobrescreve a lista", async () => {
     const primeira = pendente();
     const segunda = pendente();

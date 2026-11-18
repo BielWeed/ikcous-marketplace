@@ -5,6 +5,7 @@ import {
   SECUNDARIO,
   Selo,
 } from "@/components/admin/coupons/apresentacao";
+import { programarAvisoDeConsultaDoPainel } from "@/lib/prazo-da-requisicao";
 import { cn } from "@/lib/utils";
 import type { AlcanceDoCupom, ClienteDoCupom } from "@/types";
 import {
@@ -17,7 +18,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { type ReactElement, useRef, useState } from "react";
+import { type ReactElement, useEffect, useRef, useState } from "react";
 
 /**
  * "Quem pode usar" do formulário de cupom (frente B, 28/09/2026). Três
@@ -80,7 +81,10 @@ export interface QuemPodeUsarOCupomProps {
   readonly onCarregarDeNovo?: () => void;
   /** `total` é quantas contas o termo acha no banco inteiro (a página traz só
    * as primeiras): é o que deixa a tela avisar que há mais. */
-  readonly buscarClientes: (termo: string) => Promise<{
+  readonly buscarClientes: (
+    termo: string,
+    sinal: AbortSignal,
+  ) => Promise<{
     readonly clientes: readonly ClienteEncontrado[];
     readonly total: number;
   }>;
@@ -125,39 +129,70 @@ export function QuemPodeUsarOCupom({
   );
   const [totalDaBusca, setTotalDaBusca] = useState(0);
   const [buscando, setBuscando] = useState(false);
-  const [erroDaBusca, setErroDaBusca] = useState(false);
+  const [erroDaBusca, setErroDaBusca] = useState<string | null>(null);
   const rodadaRef = useRef(0);
-  const esperaRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelarBuscaRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    if (alcance !== "exclusivo") {
+      setTermo("");
+      setResultados([]);
+      setTotalDaBusca(0);
+      setBuscando(false);
+      setErroDaBusca(null);
+    }
+    return () => {
+      rodadaRef.current += 1;
+      cancelarBuscaRef.current?.();
+    };
+  }, [alcance]);
 
   // Lista gravada ainda carregando (ou que falhou): não se mexe nela.
   const listaTravada = carregandoClientes || falhaAoCarregar;
 
   function aoDigitar(valor: string): void {
     setTermo(valor);
-    if (esperaRef.current) clearTimeout(esperaRef.current);
     const limpo = valor.trim();
     // Invalida a busca anterior já na digitação, antes dos 300 ms de espera.
     const rodada = ++rodadaRef.current;
+    cancelarBuscaRef.current?.();
     setResultados([]);
     setTotalDaBusca(0);
-    setErroDaBusca(false);
+    setErroDaBusca(null);
     setBuscando(limpo.length >= 2);
     if (limpo.length < 2) return;
-    esperaRef.current = setTimeout(async () => {
+    const espera = setTimeout(async () => {
+      const cancelarAviso = programarAvisoDeConsultaDoPainel(() => {
+        if (rodada !== rodadaRef.current) return;
+        // Depois do prazo, não repõe a lista com a busca antiga.
+        rodadaRef.current += 1;
+        setErroDaBusca("A busca demorou.");
+        setBuscando(false);
+      });
+      const controle = new AbortController();
+      const cancelar = () => {
+        cancelarAviso();
+        controle.abort();
+      };
+      cancelarBuscaRef.current = cancelar;
       try {
-        const pagina = await buscarClientes(limpo);
+        const pagina = await buscarClientes(limpo, controle.signal);
         if (rodada !== rodadaRef.current) return;
         setResultados(pagina.clientes);
         setTotalDaBusca(pagina.total);
       } catch {
-        if (rodada !== rodadaRef.current) return;
-        setResultados([]);
-        setTotalDaBusca(0);
-        setErroDaBusca(true);
+        if (rodada === rodadaRef.current) {
+          setErroDaBusca("Não foi possível buscar clientes.");
+        }
       } finally {
+        cancelarAviso();
+        if (cancelarBuscaRef.current === cancelar) {
+          cancelarBuscaRef.current = null;
+        }
         if (rodada === rodadaRef.current) setBuscando(false);
       }
     }, 300);
+    cancelarBuscaRef.current = () => clearTimeout(espera);
   }
 
   function adicionar(c: ClienteEncontrado): void {
@@ -303,9 +338,19 @@ export function QuemPodeUsarOCupom({
             </p>
           )}
           {erroDaBusca && (
-            <p role="alert" className="text-sm leading-relaxed text-red-300">
-              Não foi possível buscar clientes. Tente de novo.
-            </p>
+            <div className="space-y-1">
+              <p role="alert" className="text-sm leading-relaxed text-red-300">
+                {erroDaBusca}
+              </p>
+              <button
+                type="button"
+                onClick={() => aoDigitar(termo)}
+                disabled={listaTravada}
+                className={`min-h-11 text-sm font-semibold text-zinc-200 underline ${FOCO}`}
+              >
+                Tentar de novo
+              </button>
+            </div>
           )}
           {!buscando &&
             termo.trim().length >= 2 &&

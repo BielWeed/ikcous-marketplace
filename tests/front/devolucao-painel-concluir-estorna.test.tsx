@@ -27,7 +27,12 @@ const { rpc, invoke, createSignedUrl, toast, respostas } = vi.hoisted(() => ({
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
-    rpc,
+    rpc: (...args: unknown[]) => {
+      const resposta = rpc(...args);
+      return args[0] === "devolucoes_do_pedido"
+        ? { abortSignal: () => resposta }
+        : resposta;
+    },
     functions: { invoke },
     storage: { from: () => ({ createSignedUrl }) },
   },
