@@ -196,7 +196,7 @@ Deno.test("o pre-voo cita (vigente, desta), recusa por conteudo, atributos e ACL
 
 Deno.test("scripts/db-apply.cjs tem entrada NOVA para a 20261402000000, e cada marcador aparece UMA vez no corpo novo", () => {
   const { VERIFICACOES } = require("../scripts/db-apply.cjs");
-  const entrada = VERIFICACOES[NOME];
+  const entrada = new Map(Object.entries(VERIFICACOES)).get(NOME);
   assert.ok(
     entrada,
     "sem entrada em VERIFICACOES o apply da migration nao confere o corpo",
@@ -241,7 +241,7 @@ Deno.test("publicacao: lote de apply normal 154a/154b, rol fechado de 5 linhas, 
     ROL_FECHADO_POR_CONSULTA,
   } = require("../scripts/publicacao/conferir-banco.cjs");
   for (const nome of [A, B]) {
-    const rol = ROL_FECHADO_POR_CONSULTA[nome];
+    const rol = new Map(Object.entries(ROL_FECHADO_POR_CONSULTA)).get(nome);
     assert.equal(rol.length, 5, `${nome}: rol fechado de 5 linhas`);
     for (const item of rol)
       assert.ok(

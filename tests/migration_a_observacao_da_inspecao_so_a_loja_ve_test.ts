@@ -133,10 +133,18 @@ Deno.test("404: aditiva, sem BEGIN/COMMIT de nivel superior, com pre/pos-voo, se
       !/^\s*(BEGIN|COMMIT|ROLLBACK)\s*;/im.test(cod),
       `${nome}: transacao de topo`,
     );
+    // A mesma lista de antes, uma expressao por forma (cada uma simples, sem grupo opcional repetido).
+    const escreveOuApaga = [
+      /\bINSERT\s+INTO\b/i,
+      /\bUPDATE\s+public\b/i,
+      /\bDELETE\s+FROM\b/i,
+      /\bDROP\s+(?:TABLE|COLUMN|FUNCTION)\b/i,
+      /\bTRUNCATE\s+public\b/i,
+      /\bTRUNCATE\s+TABLE\s+public\b/i,
+      /\bALTER\s+TABLE\b/i,
+    ];
     assert.ok(
-      !/\b(INSERT\s+INTO|UPDATE\s+public|DELETE\s+FROM|DROP\s+(TABLE|COLUMN|FUNCTION)|TRUNCATE\s+(TABLE\s+)?public|ALTER\s+TABLE)\b/i.test(
-        cod,
-      ),
+      !escreveOuApaga.some((re) => re.test(cod)),
       `${nome}: escreve dado ou apaga objeto`,
     );
     assert.ok(
@@ -210,7 +218,7 @@ Deno.test("404: lote de apply normal 156a/156b, rol fechado de 8 linhas, so cata
     ROL_FECHADO_POR_CONSULTA,
   } = require("../scripts/publicacao/conferir-banco.cjs");
   for (const nome of [A, B]) {
-    const rol = ROL_FECHADO_POR_CONSULTA[nome];
+    const rol = new Map(Object.entries(ROL_FECHADO_POR_CONSULTA)).get(nome);
     assert.equal(rol.length, 8, `${nome}: rol fechado de 8 linhas`);
     for (const item of rol)
       assert.ok(
@@ -246,7 +254,7 @@ Deno.test("404: registrada nos dois workflows, na lista de rol fechado da releas
 
 Deno.test("404: scripts/db-apply.cjs tem entrada NOVA, cada marcador aparece UMA vez no corpo novo e o de antes nao tem a troca", () => {
   const { VERIFICACOES } = require("../scripts/db-apply.cjs");
-  const entrada = VERIFICACOES[NOME];
+  const entrada = new Map(Object.entries(VERIFICACOES)).get(NOME);
   assert.ok(
     entrada,
     "sem entrada em VERIFICACOES o apply da migration nao confere o corpo",
