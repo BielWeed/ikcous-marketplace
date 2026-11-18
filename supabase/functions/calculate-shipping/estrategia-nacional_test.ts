@@ -137,10 +137,11 @@ Deno.test("subtotalDoCarrinho: carrinho vazio → 0; produto desconhecido não e
 })
 
 // Preço ZERO no banco é preço de verdade (variação grátis, produto brinde): a
-// régua do subtotal não pode tratá-lo como "ausente". Mutações que estes casos
+// régua do subtotal não pode tratá-lo como "ausente". Mutação que estes casos
 // derrubam em `regua.ts`: `if (variante.price_override)` (0 é falso e a variação
-// grátis cairia no preco_venda do produto) e `numero >= 0` -> `numero > 0` (0
-// viraria `null`).
+// grátis cairia no preco_venda do produto). A mutação `numero >= 0` -> `numero > 0`
+// (0 viraria `null`) NÃO cai aqui: `null` e 0 somam igual no subtotal. Quem a
+// prova é só o teste direto de `valorUnitarioDoBanco`, mais abaixo.
 Deno.test("subtotalDoCarrinho: price_override 0 (variação grátis) VENCE o preco_venda e conta 0, não o preço do produto", () => {
     const variantes = new Map([["vg", { id: "vg", product_id: "p1", price_override: 0 }]])
     // p1 custa 59,9; a variação grátis conta 0; o p2 (10) segue somando.

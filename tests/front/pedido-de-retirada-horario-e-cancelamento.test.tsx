@@ -112,6 +112,17 @@ describe("retirada — horário e aviso de cancelamento", () => {
     expect(await renderizar()).not.toContain("Horário:");
   });
 
+  // O horário só vale enquanto o pedido está pronto para retirar ("shipping"):
+  // separando o pedido ainda não há o que retirar, e depois de entregue não há
+  // mais o que anunciar. A loja tem horário preenchido nos dois casos.
+  it.each(["processing", "delivered"] as const)(
+    "retirada com pedido %s não anuncia o horário",
+    async (status) => {
+      estado.pedido.status = status;
+      expect(await renderizar()).not.toContain("Horário:");
+    },
+  );
+
   it.each([null, "recusado"] as const)(
     "retirada cancelada sem pagamento (%s) não fala em entrega",
     async (pagamento: PaymentStatus | null) => {

@@ -462,9 +462,9 @@ function cancelledDescription(
   // `status='cancelled'` + `payment_status='expirado'` (migration
   // 20261186000000, `expirar_pedidos_vencidos`). A frase genérica de baixo
   // ("não seguirá para entrega") não dizia POR QUÊ: quem só demorou para pagar
-  // achava que a loja cancelou. A tela não sabe se a cobrança era PIX ou
-  // cartão (`metodo_online` não chega ao app), então o texto não nomeia o
-  // meio — "pagamento", que vale para os dois.
+  // achava que a loja cancelou. O texto não nomeia o meio por escolha
+  // (`metodo_online` já chega ao app, mas o mesmo texto serve a PIX e a
+  // cartão) — "pagamento" vale para os dois.
   if (key === "expirado") {
     // Pagou no fim do prazo e o vencimento passou antes da confirmação do
     // Mercado Pago: o pedido fica minutos como `expirado` e só depois vira

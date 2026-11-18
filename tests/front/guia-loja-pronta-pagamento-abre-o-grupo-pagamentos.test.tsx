@@ -49,6 +49,7 @@ import { AdminSettingsView } from "@/views/admin/AdminSettingsView";
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 let host: HTMLDivElement;
 let root: Root;
+let rolagem: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   estado.desktop = true;
   vi.stubGlobal("matchMedia", () => ({
@@ -56,7 +57,8 @@ beforeEach(() => {
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
   }));
-  Element.prototype.scrollIntoView = vi.fn();
+  rolagem = vi.fn();
+  Element.prototype.scrollIntoView = rolagem;
   host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
@@ -139,6 +141,10 @@ it.each([
       host.querySelector<HTMLElement>("#conteudo-pagamentos")!.hidden,
     ).toBe(false);
     if (desktop) expect(grupo("minha-loja").hidden).toBe(true);
+    // A rolagem corre num setTimeout(0) depois de trocar de grupo: espera ela e
+    // exige que tenha sido pedida NO grupo de Pagamentos, não em outro elemento.
+    await vi.waitFor(() => expect(rolagem).toHaveBeenCalled());
+    expect(rolagem.mock.contexts).toContain(grupo("pagamentos"));
   },
 );
 
