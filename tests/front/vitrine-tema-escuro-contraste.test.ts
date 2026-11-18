@@ -141,8 +141,11 @@ describe("vitrine — texto legível sobre os fundos reais de cada tema", () => 
     const escuro = css.match(/\.dark\s*{([^}]+)}/)?.[1] ?? "";
     const cores = new Map(
       Array.from(
-        escuro.matchAll(/^\s*--([\w-]+):\s*([\d.]+)\s+([\d.]+)%\s+([\d.]+)%\s*;/gm),
-        ([, nome, h, s, l]) => [nome, [Number(h), Number(s), Number(l)]] as const,
+        escuro.matchAll(
+          /^\s*--([\w-]+):\s*([\d.]+)\s+([\d.]+)%\s+([\d.]+)%\s*;/gm,
+        ),
+        ([, nome, h, s, l]) =>
+          [nome, [Number(h), Number(s), Number(l)]] as const,
       ),
     );
     function rgb(nome: string): number[] {
