@@ -90,7 +90,7 @@ import type { Order } from "@/types";
  *     - a ABA de pedidos continua só com os pedidos da conta.
  *   Servidor antigo (sem o campo), campo nulo, zero ou lixo: nada muda, a
  *   ficha fica exatamente como era. A view mostra a divisão ("R$ 100 pela
- *   conta + R$ 100 no balcão com o mesmo WhatsApp") só quando o balcão é > 0.
+ *   conta + R$ 100 no balcão ou sem conta, com o mesmo WhatsApp") só quando o balcão é > 0.
  */
 
 /** O balcão que o CRM atribui à conta (campo `balcao_mesmo_whatsapp` da ficha). */

@@ -921,8 +921,8 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                       data-testid="ficha-total-dividido"
                     >
                       ({formatCurrency(resumo.totalDaConta)} pela conta +{" "}
-                      {formatCurrency(resumo.balcao.total)} no balcão com o
-                      mesmo WhatsApp)
+                      {formatCurrency(resumo.balcao.total)} no balcão ou sem
+                      conta, com o mesmo WhatsApp)
                     </span>
                   )}
                 </div>

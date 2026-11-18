@@ -5,7 +5,7 @@
 // O CRM atribui à conta as vendas de balcão (pedido sem conta) feitas com o mesmo WhatsApp: R$ 100 na conta mais R$ 100 no
 // balcão é 2 pedidos e R$ 200. A lista de Clientes e a ficha só contavam o que estava ligado à conta (1 pedido, R$ 100).
 // A ficha agora recebe o balcão num campo SEPARADO (`balcao_mesmo_whatsapp`, {pedidos, total}) e mostra
-// "R$ 200,00 (R$ 100,00 pela conta + R$ 100,00 no balcão com o mesmo WhatsApp)".
+// "R$ 200,00 (R$ 100,00 pela conta + R$ 100,00 no balcão ou sem conta, com o mesmo WhatsApp)".
 //
 // O que este arquivo prova:
 //   - a função pura (`calcularResumoFicha` e `lerBalcaoDoMesmoWhatsapp`): total, pedidos e valor médio com balcão;
@@ -303,7 +303,7 @@ describe("AdminUserDetailView — o total com o balcão do mesmo WhatsApp, no ar
     expect(pedidosFeitos()).toBe("2");
     expect(valorDoCard("Valor médio por venda")).toBe("R$ 100,00");
     expect((divisao()?.textContent ?? "").replace(/\s+/g, " ").trim()).toBe(
-      "(R$ 100,00 pela conta + R$ 100,00 no balcão com o mesmo WhatsApp)",
+      "(R$ 100,00 pela conta + R$ 100,00 no balcão ou sem conta, com o mesmo WhatsApp)",
     );
   });
 
@@ -362,7 +362,7 @@ describe("AdminUserDetailView — o total com o balcão do mesmo WhatsApp, no ar
     expect(valorDoCard("Total já comprado")).toBe("R$ 100,00");
     expect(pedidosFeitos()).toBe("1");
     expect((divisao()?.textContent ?? "").replace(/\s+/g, " ").trim()).toBe(
-      "(R$ 0,00 pela conta + R$ 100,00 no balcão com o mesmo WhatsApp)",
+      "(R$ 0,00 pela conta + R$ 100,00 no balcão ou sem conta, com o mesmo WhatsApp)",
     );
   });
 });
