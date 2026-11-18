@@ -935,10 +935,10 @@ export const ProductView = React.memo(function ProductView({
     const variantInfo = selectedVariantObjects
       .map((v) => `${v.name}: ${v.value}`)
       .join(", ");
-    const precoNaMensagem =
-      fileiras.length > 0 && selectedVariantObjects.length === 0
-        ? ""
-        : ` - ${reais(currentPrice)}`;
+    // Escolha incompleta: o preço da tela é "a partir de", que nenhuma
+    // combinação paga. Por escrito à lojista só vai o preço de uma escolha
+    // completa; antes disso a conversa é uma dúvida, sem preço.
+    const precoNaMensagem = faltaAlgo ? "" : ` - ${reais(currentPrice)}`;
     const message = `Olá! Tenho interesse no produto: ${product.name}${variantInfo ? ` (${variantInfo})` : ""}${precoNaMensagem}`;
     let phone = limparTelefoneBrasileiro(config.whatsappNumber);
     if (phone.length === 11 || phone.length === 10) {

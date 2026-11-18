@@ -267,6 +267,30 @@ describe("ProductView — 'Dúvidas no WhatsApp': variação, preço e endereço
     expect(recursos).toBe("noopener,noreferrer");
   });
 
+  it("escolha incompleta em cadastro de dois grupos: a mensagem sai sem preço nenhum", async () => {
+    const cor = (valor: string, id: string): ProductVariant => ({
+      id,
+      productId: "prod-pb",
+      name: "Cor",
+      value: valor,
+      stockIncrement: 5,
+      active: true,
+    });
+    await renderizar(
+      criarProduto({
+        variants: [cor("Azul", "v-az"), cor("Preto", "v-pr"), ...variantes],
+      }),
+    );
+    await escolherTamanho("G");
+
+    await tocarWhatsapp();
+
+    expect(abrir).toHaveBeenCalledTimes(1);
+    const mensagem = textoDaMensagem(abrir.mock.calls[0][0]);
+    expect(mensagem).not.toContain("R$");
+    expect(mensagem).toContain("Camisa P&B Acao");
+  });
+
   it("sem variações no produto: abre direto, sem '(…)' na mensagem, com o preço do produto", async () => {
     await renderizar(criarProduto());
 

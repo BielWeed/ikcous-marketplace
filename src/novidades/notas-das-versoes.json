@@ -20,7 +20,7 @@
     ],
     "melhorias": [
       "Atualizações do app esperam enquanto há um novo e-mail digitado em Privacidade ou um código de rastreio de devolução sendo preenchido ou enviado.",
-      "Descrições de produto reconhecem listas com marcadores também na prévia do painel, e falar com a loja pelo WhatsApp não exige escolher todas as opções do produto."
+      "Descrições de produto reconhecem listas com marcadores também na prévia do painel, e falar com a loja pelo WhatsApp não exige escolher todas as opções do produto (sem a escolha completa, a mensagem sai sem preço)."
     ]
   },
   "1.5.210": {
