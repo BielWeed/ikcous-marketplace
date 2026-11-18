@@ -47,6 +47,7 @@ import {
   PRAZO_DA_TRAVA_DA_FILA_MS,
   comTravaEntreAbas,
 } from "@/lib/trava-entre-abas";
+import { gerarUuidV4 } from "@/lib/uuid-v4";
 import type { Product, ProductVariant } from "@/types";
 import type { Database } from "@/types/database.types";
 import { LIMIAR_PADRAO_DE_ESTOQUE } from "@/utils/avisos-do-lojista";
@@ -2720,7 +2721,7 @@ export function useProducts({
           // é fail-open: na falha volta o próprio arquivo, o upload segue.
           const pronto = await redimensionarImagem(file);
           const fileExt = pronto.name.split(".").pop();
-          const fileName = `${crypto.randomUUID()}.${fileExt}`;
+          const fileName = `${gerarUuidV4()}.${fileExt}`;
           const filePath = `${fileName}`;
 
           const { error: uploadError } = await supabase.storage

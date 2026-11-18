@@ -197,6 +197,32 @@ describe("CartContext — a lixeira do carrinho oferece Desfazer", () => {
     expect(toastInfo).not.toHaveBeenCalled();
   });
 
+  it("a lixeira oferece Desfazer e devolve a linha sem Array.prototype.at", async () => {
+    await act(async () => {
+      const descriptor = Object.getOwnPropertyDescriptor(
+        Array.prototype,
+        "at",
+      )!;
+      try {
+        Reflect.deleteProperty(Array.prototype, "at");
+        atual.removeFromCart("p2", undefined, { comDesfazer: true });
+      } finally {
+        Object.defineProperty(Array.prototype, "at", descriptor);
+      }
+    });
+    expect(atual.cart.map((i) => i.product.id)).toEqual(["p1", "p3"]);
+
+    await act(async () => {
+      acaoDesfazer().onClick();
+    });
+
+    expect(atual.cart.map((i) => i.product.id)).toEqual(["p1", "p2", "p3"]);
+    expect(atual.cart[1]).toMatchObject({
+      quantity: 8,
+      variantNames: "Cor: Azul",
+    });
+  });
+
   it("Desfazer devolve a linha como estava: 8 unidades, variação e a mesma posição", async () => {
     await act(async () => {
       atual.removeFromCart("p2", undefined, { comDesfazer: true });

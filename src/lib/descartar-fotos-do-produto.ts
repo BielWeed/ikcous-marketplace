@@ -3,7 +3,7 @@ import { lerSupabaseUrl } from "@/lib/env-valores";
 const PREFIXO_PUBLICO = "/storage/v1/object/public/products/";
 
 // O nome que `uploadProductImages` (useProducts) dá ao objeto:
-// `${crypto.randomUUID()}.${nomeDoArquivo.split(".").pop()}`. O UUID sai em
+// `${gerarUuidV4()}.${nomeDoArquivo.split(".").pop()}`. O UUID sai em
 // minúsculas; a extensão é a do arquivo do aparelho (jpg, jpeg, png, webp,
 // heic... e MAIÚSCULA se a câmera assim a nomeou, ex. IMG_1.JPG), por isso
 // letras dos dois tamanhos. De 2 a 5 caracteres cobre todas as reais; uma

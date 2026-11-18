@@ -44,7 +44,7 @@ export function criarEixosDaVariacao(
       pares.every(
         (ps) =>
           ps.length === primeiro.length &&
-          ps.every((p, i) => p.name === primeiro.at(i)?.name),
+          ps.every((p, i) => p.name === primeiro[i]?.name),
       );
     const eixos = (decompor ? primeiro.map((p) => p.name) : [nome]).map(
       (n, indice) => ({
@@ -54,9 +54,7 @@ export function criarEixosDaVariacao(
         indice,
         valores: valoresDoEixo(
           n,
-          linhas.map((v, i) =>
-            decompor ? pares.at(i)!.at(indice)!.value : v.value,
-          ),
+          linhas.map((v, i) => (decompor ? pares[i]![indice]!.value : v.value)),
         ),
       }),
     );
@@ -65,7 +63,7 @@ export function criarEixosDaVariacao(
       eixos,
       linhas: linhas.map((variante, i) => ({
         variante,
-        valores: decompor ? pares.at(i)!.map((p) => p.value) : [variante.value],
+        valores: decompor ? pares[i]!.map((p) => p.value) : [variante.value],
       })),
     };
   });
@@ -90,7 +88,7 @@ export function disponibilidadeDoValor(
     grupo?.linhas.filter((l) =>
       grupo.eixos.every((e) => {
         const escolhido = e.chave === chave ? valor : escolhas.get(e.chave);
-        return escolhido === undefined || l.valores.at(e.indice) === escolhido;
+        return escolhido === undefined || l.valores[e.indice] === escolhido;
       }),
     ) ?? [];
   const disponivel = linhas.some((l) => l.variante.stockIncrement > 0);
@@ -116,7 +114,7 @@ export function variantesCompativeis(
       .filter((l) =>
         g.eixos.every((e) => {
           const v = escolhas.get(e.chave);
-          return v === undefined || l.valores.at(e.indice) === v;
+          return v === undefined || l.valores[e.indice] === v;
         }),
       )
       .map((l) => l.variante),
@@ -181,9 +179,7 @@ export function resolverSelecaoDosEixos(
     const linha = grupo.linhas.find(
       (l) =>
         l.variante.stockIncrement > 0 &&
-        grupo.eixos.every(
-          (e) => escolhas.get(e.chave) === l.valores.at(e.indice),
-        ),
+        grupo.eixos.every((e) => escolhas.get(e.chave) === l.valores[e.indice]),
     );
     if (linha) resolvidas.set(grupo.nome, linha.variante.value);
   }
