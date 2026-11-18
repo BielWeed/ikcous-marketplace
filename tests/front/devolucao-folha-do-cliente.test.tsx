@@ -226,6 +226,32 @@ describe("SolicitarDevolucaoSheet — pedido de devolução do cliente", () => {
     expect(folha()?.textContent).toContain("Peça o endereço de envio à loja");
   });
 
+  it("devolução parcial mostra somente o valor selecionado", async () => {
+    await ateOPassoDoMetodo();
+    await clicar(radio("reembolso"));
+    await clicar(radio("envio_proprio"));
+    await clicar(botao("Continuar"));
+
+    const revisao = folha()?.querySelector('[data-testid="passo-revisao"]');
+    const linhaDoItem = [...(revisao?.querySelectorAll("span") ?? [])].find(
+      (el) => el.textContent === "1× Tênis",
+    )?.parentElement;
+    expect(linhaDoItem).toBeTruthy();
+    expect(
+      linhaDoItem?.lastElementChild?.textContent?.replace(/\s/g, " "),
+    ).toBe("R$ 100,00");
+    const linhaDoValor = [...(revisao?.querySelectorAll("span") ?? [])].find(
+      (el) => el.textContent === "Valor dos itens",
+    )?.parentElement;
+    expect(linhaDoValor).toBeTruthy();
+    expect(
+      linhaDoValor?.lastElementChild?.textContent?.replace(/\s/g, " "),
+    ).toBe("R$ 100,00");
+    expect(revisao?.textContent?.replace(/\s/g, " ")).not.toContain(
+      "R$ 200,00",
+    );
+  });
+
   it("caminho feliz: item, motivo, resolução e método viram o payload da RPC e o protocolo aparece", async () => {
     await montar();
     expect(folha()?.textContent).toContain("O que vai voltar?");
