@@ -134,7 +134,11 @@ export function textoConfirmarCancelamento({
   // some o dever de devolver a mercadoria. Ordem antiga (pagamentoNaEntrega
   // primeiro) perdia esse aviso.
   if (jaFoiEnviado) return TEXTO_PAGO_JA_ENVIADO;
-  if (pagamentoNaEntrega) return TEXTO_PAGO_NA_ENTREGA;
+  // Retirada ainda em separação, paga na mão: a cliente retira, não recebe
+  // entrega — a frase diz "na retirada".
+  if (pagamentoNaEntrega) {
+    return retiradaNaLoja ? TEXTO_PAGO_NA_RETIRADA : TEXTO_PAGO_NA_ENTREGA;
+  }
   // Enviado, cancelado e reativado (status voltou a pending/processing): sem
   // linha de devolução automática. O que a cliente precisa saber depende de
   // onde o produto está.
