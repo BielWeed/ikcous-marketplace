@@ -54,23 +54,37 @@ const SEM_RESPOSTA =
  */
 const CONFIRME_PENDENTE =
   "Confirme que o valor continua pendente antes de devolver por fora.";
-const TEXTO_DO_USE_POR_FORA: Record<string, string> = {
-  devolvido_pelo_painel_do_mp:
+const TEXTO_DO_USE_POR_FORA = new Map<string, string>([
+  [
+    "devolvido_pelo_painel_do_mp",
     "Já existe um reembolso concluído pelo painel do Mercado Pago. Não repita esse valor; confira lá se falta alguma diferença.",
-  sem_prova_de_que_nao_saiu:
+  ],
+  [
+    "sem_prova_de_que_nao_saiu",
     "Não foi possível confirmar se o dinheiro saiu. Confira no Mercado Pago antes de devolver por fora.",
-  pedido_nao_entregue: `O pedido ainda não foi entregue. ${CONFIRME_PENDENTE}`,
-  sem_pagamento_pelo_app: `O pagamento não foi feito pelo app. ${CONFIRME_PENDENTE}`,
-  fora_do_prazo_ou_da_forma: `O reembolso está fora do prazo ou da forma aceita pelo Mercado Pago. ${CONFIRME_PENDENTE}`,
-};
+  ],
+  [
+    "pedido_nao_entregue",
+    `O pedido ainda não foi entregue. ${CONFIRME_PENDENTE}`,
+  ],
+  [
+    "sem_pagamento_pelo_app",
+    `O pagamento não foi feito pelo app. ${CONFIRME_PENDENTE}`,
+  ],
+  [
+    "fora_do_prazo_ou_da_forma",
+    `O reembolso está fora do prazo ou da forma aceita pelo Mercado Pago. ${CONFIRME_PENDENTE}`,
+  ],
+]);
 const USE_POR_FORA_CONSERVADOR =
   "O Mercado Pago não refez o reembolso. Confira o valor no Mercado Pago antes de devolver por fora.";
 
 export function textoDoUsePorFora(detalhe: unknown): string {
-  return typeof detalhe === "string" &&
-    Object.hasOwn(TEXTO_DO_USE_POR_FORA, detalhe)
-    ? TEXTO_DO_USE_POR_FORA[detalhe]
-    : USE_POR_FORA_CONSERVADOR;
+  return (
+    (typeof detalhe === "string"
+      ? TEXTO_DO_USE_POR_FORA.get(detalhe)
+      : undefined) ?? USE_POR_FORA_CONSERVADOR
+  );
 }
 
 /**
