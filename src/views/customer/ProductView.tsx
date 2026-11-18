@@ -9,6 +9,7 @@ import { BotaoWhatsapp } from "@/components/ui/custom/BotaoWhatsapp";
 import { FileirasDeVariacao } from "@/components/ui/custom/FileirasDeVariacao";
 import { FolhaDeOpcoes } from "@/components/ui/custom/FolhaDeOpcoes";
 import { GaleriaDoProduto } from "@/components/ui/custom/GaleriaDoProduto";
+import { ImagemComFallback } from "@/components/ui/custom/ImagemComFallback";
 import { MarkdownRenderer } from "@/components/ui/custom/MarkdownRenderer";
 import { ProductCard } from "@/components/ui/custom/ProductCard";
 import { ProductCardSkeleton } from "@/components/ui/custom/ProductCardSkeleton";
@@ -43,7 +44,7 @@ import {
 } from "@/lib/estrategias-de-frete";
 import { soFotosReais } from "@/lib/foto-do-produto";
 import { entregaPropriaLigada } from "@/lib/guarda-de-frete";
-import { imagemRedimensionada, usarImagemOriginal } from "@/lib/imageUrl";
+import { imagemRedimensionada } from "@/lib/imageUrl";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { medirRodapeCliente } from "@/lib/medir-rodape-cliente";
 import { montarMensagemDeCompartilhar } from "@/lib/mensagem-de-compartilhar";
@@ -1940,11 +1941,9 @@ export const ProductView = React.memo(function ProductView({
                 )}
               >
                 {fotoDaMiniatura ? (
-                  <img
+                  <ImagemComFallback
                     src={miniaturaReduzida}
-                    onError={(e) =>
-                      usarImagemOriginal(e.currentTarget, fotoDaMiniatura)
-                    }
+                    original={fotoDaMiniatura}
                     alt={product.name}
                     className="size-[52px] shrink-0 rounded-full border border-border object-cover"
                   />

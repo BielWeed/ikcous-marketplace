@@ -104,8 +104,13 @@ describe("ProductView — o menu de compartilhar do celular recebe a URL uma vez
   let hospedeiro: HTMLDivElement;
   let share: ReturnType<typeof vi.fn>;
   let textoCopiado: string;
+  let enderecoAnterior: string;
+  const caminhoDoProduto = `/product-detail?id=${produto.id}`;
+  const enderecoDoProduto = `${globalThis.location.origin}${caminhoDoProduto}`;
 
   beforeEach(() => {
+    enderecoAnterior = globalThis.location.href;
+    globalThis.history.pushState({}, "", caminhoDoProduto);
     shareTextDaLoja = "Olha que achei na Loja X!";
     textoCopiado = "";
     share = vi.fn().mockResolvedValue(undefined);
@@ -144,6 +149,7 @@ describe("ProductView — o menu de compartilhar do celular recebe a URL uma vez
     // biome-ignore lint/performance/noDelete: o jsdom não tem `share`; o teste apaga o que ele mesmo criou.
     delete (globalThis.navigator as { share?: unknown }).share;
     vi.unstubAllGlobals();
+    globalThis.history.replaceState({}, "", enderecoAnterior);
   });
 
   async function compartilhar(comMenuDoCelular: boolean) {
@@ -193,7 +199,7 @@ describe("ProductView — o menu de compartilhar do celular recebe a URL uma vez
     const dados = share.mock.calls[0][0] as DadosDoShare;
     expect(ocorrenciasDaUrl(dados)).toBe(1);
     // O formato do modelo da lojista é preservado: o link fica onde ela pôs.
-    expect(dados.text).toContain(`Acesse: ${globalThis.location.href}`);
+    expect(dados.text).toContain(`Acesse: ${enderecoDoProduto}`);
     expect(dados.text).toContain("Produto Compartilhavel");
   });
 
@@ -204,7 +210,7 @@ describe("ProductView — o menu de compartilhar do celular recebe a URL uma vez
     expect(share).toHaveBeenCalledTimes(1);
     const dados = share.mock.calls[0][0] as DadosDoShare;
     expect(ocorrenciasDaUrl(dados)).toBe(1);
-    expect(dados.url).toBe(globalThis.location.href);
+    expect(dados.url).toBe(enderecoDoProduto);
   });
 
   it("modelo com [nome]/[preco] mas sem [link]: a URL ainda vai, uma vez só", async () => {
@@ -216,14 +222,14 @@ describe("ProductView — o menu de compartilhar do celular recebe a URL uma vez
     expect(ocorrenciasDaUrl(dados)).toBe(1);
   });
 
-  it("sem menu do celular: o texto copiado continua igual ao de sempre", async () => {
+  it("sem menu do celular: o texto copiado leva ao produto, nao a pagina inicial", async () => {
     shareTextDaLoja =
       "Confira este produto incrível: [nome] por apenas [preco]! Acesse: [link]";
     await compartilhar(false);
 
     expect(share).not.toHaveBeenCalled();
     expect(textoCopiado).toBe(
-      `Confira este produto incrível: Produto Compartilhavel por apenas R$ 49,90! Acesse: ${globalThis.location.href}`,
+      `Confira este produto incrível: Produto Compartilhavel por apenas R$ 49,90! Acesse: ${enderecoDoProduto}`,
     );
   });
 });

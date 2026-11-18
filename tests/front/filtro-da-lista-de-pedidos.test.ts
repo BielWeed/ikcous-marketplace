@@ -182,6 +182,14 @@ describe("pedido dentro do período escolhido (conferência ao vivo e filtro)", 
 });
 
 describe("termo de busca do pedido", () => {
+  it("normaliza espaços depois de tirar o #, mantendo curingas literais e telefone", () => {
+    expect(termoDeBuscaDoPedido("# Maria  Silva_%")).toBe("Maria Silva_%");
+    expect(termoDeBuscaDoPedido("(11) 99999-1234")).toBe("(11) 99999-1234");
+    expect(termoDeBuscaDoPedido("+55 (11) 99999-1234")).toBe(
+      "+55 (11) 99999-1234",
+    );
+  });
+
   it("tira o '#' do começo: o número aparece com '#' em toda parte do app", () => {
     expect(termoDeBuscaDoPedido("#3884BE")).toBe("3884BE");
     expect(termoDeBuscaDoPedido("  #3884BE  ")).toBe("3884BE");

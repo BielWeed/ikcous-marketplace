@@ -130,6 +130,71 @@ describe("PushNotificationBanner — 'granted' sem inscrição não esconde o co
     expect(container.textContent).toContain("Quero Receber!");
   });
 
+  it("armazenamento bloqueado: o convite aparece e pode ser fechado sem memória", () => {
+    const bloquear = vi.fn(() => {
+      throw new DOMException("Armazenamento bloqueado", "SecurityError");
+    });
+    vi.stubGlobal("localStorage", {
+      ...criarLocalStorageFake(),
+      getItem: bloquear,
+      setItem: bloquear,
+    });
+    usePushNotificationsMock.mockReturnValue(estadoPadrao({}));
+
+    expect(() => montar()).not.toThrow();
+    avancarDelayDeExibicao();
+    expect(bloquear).toHaveBeenCalledWith(DISMISS_KEY);
+    expect(container.textContent).toContain("Quero Receber!");
+
+    const fechar = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Fechar"]',
+    );
+    expect(fechar).not.toBeNull();
+    expect(() => act(() => fechar!.click())).not.toThrow();
+    expect(bloquear).toHaveBeenCalledTimes(2);
+    expect(container.textContent).not.toContain("Quero Receber!");
+
+    act(() => root.unmount());
+    root = createRoot(container);
+    montar();
+    avancarDelayDeExibicao();
+    expect(container.textContent).toContain("Quero Receber!");
+  });
+
+  it("fechar adia exatamente sete dias: oculto antes do prazo e visível no vencimento", () => {
+    const agora = 1_800_000_000_000;
+    const seteDiasEmMs = 604_800_000;
+    vi.setSystemTime(agora);
+    usePushNotificationsMock.mockReturnValue(estadoPadrao({}));
+    montar();
+    avancarDelayDeExibicao();
+    // O prazo começa no clique, não na montagem nem no fim do atraso visual.
+    vi.setSystemTime(agora);
+    const fechar = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Fechar"]',
+    );
+    expect(fechar).not.toBeNull();
+    act(() => fechar!.click());
+    expect(localStorage.getItem(DISMISS_KEY)).toBe(
+      String(agora + seteDiasEmMs),
+    );
+    expect(container.textContent).not.toContain("Quero Receber!");
+
+    act(() => root.unmount());
+    root = createRoot(container);
+    vi.setSystemTime(agora + seteDiasEmMs - 3_600_000);
+    montar();
+    avancarDelayDeExibicao();
+    expect(container.textContent).not.toContain("Quero Receber!");
+
+    act(() => root.unmount());
+    root = createRoot(container);
+    vi.setSystemTime(agora + seteDiasEmMs);
+    montar();
+    avancarDelayDeExibicao();
+    expect(container.textContent).toContain("Quero Receber!");
+  });
+
   // Controle negativo 1: quem JÁ tem inscrição continua sem ver o banner,
   // mesmo com a mesma permissão "granted" do cenário acima. Sem este teste,
   // um banner que aparecesse sempre passaria no teste de cima.

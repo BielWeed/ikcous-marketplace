@@ -276,6 +276,46 @@ describe("src/sw/sw.ts — a gaveta de imagens só guarda arquivo público (R12)
 
       expect(evento.respondWith).not.toHaveBeenCalled();
     });
+
+    // O DEFEITO QUE ESTA GUARDA IMPEDE: o ramo do Supabase, sem o
+    // `!ehArquivoPublicoDoStorage(url) -> return`, tratava a API inteira como
+    // foto: guardava o GET de `/rest/v1/...` e `/functions/v1/...` na gaveta de
+    // imagens e, na visita seguinte, respondia DE LÁ — a consulta de um pedido
+    // pelo identificador mostraria o estado de pagamento de antes. Nenhum teste
+    // acima pedia API pelo evento `fetch` (o REST só aparece no WARM_CACHE).
+    //
+    // Estas URLs não têm "auth" no caminho de propósito: o filtro de
+    // `pathname.includes("auth")` do topo do listener é OUTRA barreira e não
+    // pode mascarar a que se mede aqui. Sem header Authorization pelo mesmo
+    // motivo: com ele, a linha seguinte do ramo também barraria.
+    const APIS_DO_SUPABASE: ReadonlyArray<readonly [string, string]> = [
+      ["REST (tabela)", `${SUPA}/rest/v1/orders?select=*&id=eq.42`],
+      ["REST (RPC)", `${SUPA}/rest/v1/rpc/consultar_pedido?p_id=42`],
+      ["edge function", `${SUPA}/functions/v1/consultar-pedido?id=42`],
+    ];
+
+    it.each(APIS_DO_SUPABASE)(
+      "%s com cópia velha na gaveta: NÃO intercepta, NÃO serve da gaveta, NÃO busca pelo SW e NÃO grava",
+      async (_nome, url) => {
+        const { um, fetchMock, urlsEm, abertos, gravacoes } = await importarSw({
+          [IMAGE_CACHE_NAME]: [url],
+        });
+        const evento = eventoDeFetch(new Request(url));
+
+        um("fetch")(evento);
+        await esvaziarFila();
+
+        // Quem decide é o navegador, direto na rede: sem respondWith não há
+        // como a cópia velha ser entregue no lugar do estado atual.
+        expect(evento.respondWith).not.toHaveBeenCalled();
+        expect(fetchMock).not.toHaveBeenCalled();
+        expect(abertos).not.toContain(IMAGE_CACHE_NAME);
+        expect(gravacoes).toEqual([]);
+        // A cópia que já estava lá (gravada por um SW de antes) não foi
+        // sobrescrita com a resposta nova nem apagada por este ramo.
+        expect(urlsEm(IMAGE_CACHE_NAME)).toEqual([new URL(url).href]);
+      },
+    );
   });
 
   describe("activate", () => {
@@ -334,6 +374,7 @@ describe("src/sw/sw.ts — a gaveta de imagens só guarda arquivo público (R12)
 
       um("activate")({ waitUntil });
 
+      expect(waitUntil.mock.calls).toHaveLength(1);
       await expect(
         Promise.all(waitUntil.mock.calls.map((c) => c[0])),
       ).resolves.toBeDefined();

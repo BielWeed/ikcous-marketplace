@@ -69,6 +69,12 @@ describe("cpfValido", () => {
     expect(cpfValido("111.444.777-30")).toBe(false);
   });
 
+  it("rejeita primeiro dígito verificador errado mesmo com o segundo coerente", () => {
+    // Base fictícia: soma 162, d1 = 3; com d1 trocado para 4, soma 206 e d2 = 3.
+    expect(cpfValido("111.444.777-43")).toBe(false);
+    expect(cpfValido("11144477743")).toBe(false);
+  });
+
   it("rejeita sequência de dígito repetido, mesmo que a conta feche", () => {
     expect(cpfValido("111.111.111-11")).toBe(false);
     expect(cpfValido("000.000.000-00")).toBe(false);

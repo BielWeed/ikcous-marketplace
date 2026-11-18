@@ -284,6 +284,34 @@ describe("AdminProductsView — a lista não mente quando há busca ou filtro", 
       expect(botao("Limpar busca e filtros")).toBeDefined();
     });
 
+    it("limpar busca e filtros na terceira página carrega a primeira mesmo com outras páginas válidas", async () => {
+      guardarFiltro({ busca: "camisa", categoria: "Calçados" });
+      armazem.set("admin_products_current_page", JSON.stringify(2));
+      // A página vazia oferece limpar; o total mantém a terceira página válida,
+      // para uma correção automática de página fora do limite não mascarar a prova.
+      loadProducts.mockResolvedValue({ products: [], total: 48 });
+      await montarEEsperarPrimeiraBusca();
+      expect(loadProducts).toHaveBeenLastCalledWith(2, 12, {
+        search: "camisa",
+        category: "Calçados",
+      });
+      expect(armazem.get("admin_products_current_page")).toBe("2");
+      loadProducts.mockClear();
+
+      await act(async () => {
+        botao("Limpar busca e filtros")!.click();
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(320);
+      });
+
+      expect(loadProducts).toHaveBeenLastCalledWith(0, 12, {
+        search: undefined,
+        category: undefined,
+      });
+      expect(armazem.get("admin_products_current_page")).toBe("0");
+    });
+
     it("tocar em 'Limpar busca e filtros' volta para todas as categorias, sem busca, na página 1", async () => {
       guardarFiltro({ busca: "camisa", categoria: "Calçados" });
       loadProducts.mockResolvedValue({ products: [], total: 0 });

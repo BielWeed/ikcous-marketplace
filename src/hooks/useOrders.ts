@@ -39,6 +39,10 @@ import {
 import { sessaoAindaEhDoDono } from "@/lib/sessao-ainda-e-do-dono";
 import { supabase } from "@/lib/supabase";
 import {
+  normalizarTextoDeBuscaDoPainel,
+  prepararTextoDeBuscaDoPainel,
+} from "@/lib/texto-de-busca-do-painel";
+import {
   PRAZO_DA_TRAVA_DA_FILA_MS,
   comTravaEntreAbas,
 } from "@/lib/trava-entre-abas";
@@ -2505,13 +2509,16 @@ export function useOrders(
     ) => {
       if (!enabled) return { orders: [], total: 0 };
 
+      // Texto literal em memória: o realtime compara cupom/rastreio aqui.
+      // Escape de LIKE só na RPC, inclusive quando esta consulta é repetida.
+      const busca = normalizarTextoDeBuscaDoPainel(searchQuery || "");
       // Guarda a consulta para a reconexao poder repetir ESTA pagina e ESTE
       // filtro em vez de jogar a lojista para a pagina 1 (PEDIDO-030, #83).
       ultimaConsultaAdminRef.current = [
         page,
         pageSize,
         statusFilter,
-        searchQuery,
+        busca,
         startDate,
         endDate,
         silent,
@@ -2538,7 +2545,7 @@ export function useOrders(
         }
 
         const query = (supabase.rpc as any)("get_admin_orders_paged", {
-          p_search: searchQuery || "",
+          p_search: prepararTextoDeBuscaDoPainel(searchQuery || ""),
           p_status: statusFilter || "all",
           p_start_date: startDate || "",
           p_end_date: endDate || "",
@@ -2694,7 +2701,7 @@ export function useOrders(
           // do retorno vira `unknown`.
           Promise.resolve(
             (supabase.rpc as any)("get_admin_orders_paged", {
-              p_search: searchQuery || "",
+              p_search: prepararTextoDeBuscaDoPainel(searchQuery || ""),
               p_status: statusFilter || "all",
               p_start_date: startDate || "",
               p_end_date: endDate || "",

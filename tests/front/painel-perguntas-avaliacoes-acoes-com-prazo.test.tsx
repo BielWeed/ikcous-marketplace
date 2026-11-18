@@ -92,7 +92,7 @@ for (const [nome, executar] of acoes) {
         concluir = resolve;
       }),
     );
-    let resultado: boolean | undefined;
+    let resultado: boolean | null | undefined;
     await act(async () => {
       void executar().then((valor) => {
         resultado = valor;

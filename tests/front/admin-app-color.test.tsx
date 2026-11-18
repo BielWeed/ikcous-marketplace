@@ -187,7 +187,7 @@ describe("Cor do app — tela com editor real e fotografia completa", () => {
     await type("#FACC15");
     expect(rows[0].textContent).toContain("Texto escuro · fácil de ler");
     await type("#8B5CF6");
-    expect(rows[0].textContent).toContain("Texto escuro · difícil de ler");
+    expect(rows[0].textContent).toContain("Texto escuro · fácil de ler");
     expect(h.save).not.toHaveBeenCalled();
   });
 
@@ -289,18 +289,43 @@ describe("Cor do app — tela com editor real e fotografia completa", () => {
     expect(input().value.toLowerCase()).toBe("#234567");
     expect(button("Salvar cor").disabled).toBe(true);
   });
-  it("a cor clara usa texto escuro e o meio-termo só avisa, sem bloquear", async () => {
+  it("a cor clara e o meio-termo usam texto escuro legível, sem bloquear", async () => {
     await render();
     await type("#FACC15");
     expect(host.textContent).toContain("Texto escuro");
     expect(host.textContent).toContain("fácil de ler");
     await type("#8B5CF6");
-    expect(host.textContent).toContain("O texto pode ficar difícil de ler");
-    expect(host.textContent).toContain("4,2 para 1");
+    expect(host.textContent).not.toContain("O texto pode ficar difícil de ler");
+    expect(
+      host.querySelector<HTMLElement>("[data-previa-cor]")!.style.color,
+    ).toBe("rgb(0, 0, 0)");
     expect(button("Salvar cor").disabled).toBe(false);
   });
   const AVISO_COR_CLARA = "Esta cor é clara: em botões e textos";
-  it.each(["#FACC15", "#FFC0CB", "#FFFFFF"])(
+  it("avisa com #888888 (3,54:1), mas não com #767676 (4,54:1), sem bloquear salvar", async () => {
+    await render();
+    await type("#888888");
+    expect(host.textContent).toContain(AVISO_COR_CLARA);
+    expect(button("Salvar cor").disabled).toBe(false);
+    await type("#767676");
+    expect(host.textContent).not.toContain(AVISO_COR_CLARA);
+    expect(button("Salvar cor").disabled).toBe(false);
+  });
+
+  it.each(["#767676", "#808080", "#777777", "#7a7a7a"])(
+    "a prévia usa o texto preto legível escolhido para %s",
+    async (cor) => {
+      await render();
+      await type(cor);
+      const amostra = host.querySelector<HTMLElement>("[data-previa-cor]")!;
+      expect(amostra.style.color).toBe("rgb(0, 0, 0)");
+      expect(host.textContent).toContain("Texto escuro · fácil de ler");
+      expect(host.textContent).not.toContain(
+        "O texto pode ficar difícil de ler",
+      );
+    },
+  );
+  it.each(["#FACC15", "#FFC0CB", "#FFFFFF", "#8B5CF6"])(
     "cor clara %s avisa que texto e botão sobre fundo branco podem sumir, sem bloquear",
     async (cor) => {
       await render();
@@ -310,8 +335,8 @@ describe("Cor do app — tela com editor real e fotografia completa", () => {
       expect(button("Salvar cor").disabled).toBe(false);
     },
   );
-  it.each(["#1F2937", "#234567", "#8B5CF6"])(
-    "cor %s (contraste com o branco de 3:1 ou mais) não ganha o aviso de cor clara",
+  it.each(["#1F2937", "#234567", "#767676"])(
+    "cor %s (contraste com o branco de 4,5:1 ou mais) não ganha o aviso de cor clara",
     async (cor) => {
       await render();
       await type(cor);

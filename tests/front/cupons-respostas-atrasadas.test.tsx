@@ -5,6 +5,7 @@ import { act, useEffect } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const ordenacoes: [string, { ascending: boolean }][] = [];
 const consultar = vi.fn();
 const gravar = vi.fn();
 const avisarErro = vi.fn();
@@ -13,7 +14,12 @@ vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ isAdmin: true }) }));
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: () => ({
-      select: () => ({ order: () => consultar() }),
+      select: () => ({
+        order: (coluna: string, opcoes: { ascending: boolean }) => {
+          ordenacoes.push([coluna, opcoes]);
+          return consultar();
+        },
+      }),
       update: () => ({
         eq: (_coluna: string, id: string) => ({
           select: async () => ({ data: [{ id }], ...(await gravar(id)) }),
@@ -75,6 +81,7 @@ describe("cupons com respostas fora de ordem", () => {
 
   beforeEach(() => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    ordenacoes.length = 0;
     consultar
       .mockReset()
       .mockResolvedValue({ data: linhas(true, true), error: null });
@@ -101,6 +108,11 @@ describe("cupons com respostas fora de ordem", () => {
     expect(estado.coupons.map((c) => c.active)).toEqual([true, true]);
     expect(estado.loading).toBe(false);
   }
+
+  it("pede os cupons do mais recente para o mais antigo", async () => {
+    await montar();
+    expect(ordenacoes).toEqual([["created_at", { ascending: false }]]);
+  });
 
   it("falha mantém o valor confirmado do cupom alterado", async () => {
     await montar();

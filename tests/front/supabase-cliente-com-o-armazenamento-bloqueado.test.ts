@@ -12,6 +12,7 @@
 // deve nascer e guardar a sessão só na memória (padrão do supabase-js quando
 // não recebe `storage`).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ArmazenamentoComCota } from "./helpers/armazenamento-com-cota";
 
 vi.mock("@/lib/env", () => ({
   SUPABASE_URL: "https://loja-de-teste.supabase.co",
@@ -36,8 +37,14 @@ function bloquearOAcesso(nome: NomeDoArmazenamento): () => void {
 
 // Campo interno do GoTrueClient (sem API pública para ler): é o que prova ONDE
 // a sessão é guardada.
-function armazenamentoDoCliente(cliente: { auth: unknown }): Storage {
-  return (cliente.auth as { storage: Storage }).storage;
+type ArmazenamentoDaSessao = Pick<
+  Storage,
+  "getItem" | "setItem" | "removeItem"
+>;
+function armazenamentoDoCliente(cliente: {
+  auth: unknown;
+}): ArmazenamentoDaSessao {
+  return (cliente.auth as { storage: ArmazenamentoDaSessao }).storage;
 }
 
 describe("lib/supabase com o armazenamento do navegador bloqueado", () => {
@@ -67,11 +74,56 @@ describe("lib/supabase com o armazenamento do navegador bloqueado", () => {
     expect(() => armazenamentoDoCliente(supabase).getItem("x")).not.toThrow();
   });
 
-  it("controle: com o armazenamento normal o cliente segue usando o localStorage", async () => {
+  it("controle: com o armazenamento normal o cliente guarda e lê a sessão no localStorage", async () => {
+    const real = new ArmazenamentoComCota(1_000_000);
+    vi.stubGlobal("localStorage", real);
     vi.resetModules();
 
     const { supabase } = await import("@/lib/supabase");
+    const sessao = armazenamentoDoCliente(supabase);
+    sessao.setItem("sb-sessao", '{"access_token":"a"}');
 
-    expect(armazenamentoDoCliente(supabase)).toBe(globalThis.localStorage);
+    expect(real.getItem("sb-sessao")).toBe('{"access_token":"a"}');
+    expect(sessao.getItem("sb-sessao")).toBe('{"access_token":"a"}');
+    sessao.removeItem("sb-sessao");
+    expect(real.getItem("sb-sessao")).toBeNull();
+  });
+
+  it("localStorage cheio (setItem lança): guardar a sessão não lança e ela fica legível", async () => {
+    const cheio = new ArmazenamentoComCota(0);
+    vi.stubGlobal("localStorage", cheio);
+    vi.resetModules();
+
+    const { supabase } = await import("@/lib/supabase");
+    const sessao = armazenamentoDoCliente(supabase);
+
+    // O SDK chama exatamente isto ao concluir o login (setItemAsync).
+    expect(() =>
+      sessao.setItem("sb-sessao", '{"access_token":"a"}'),
+    ).not.toThrow();
+    expect(sessao.getItem("sb-sessao")).toBe('{"access_token":"a"}');
+    expect(cheio.getItem("sb-sessao")).toBeNull();
+    expect(() => sessao.removeItem("sb-sessao")).not.toThrow();
+    expect(sessao.getItem("sb-sessao")).toBeNull();
+  });
+
+  it("localStorage com os MÉTODOS lançando: ler e guardar a sessão não lança", async () => {
+    const recusar = () => {
+      throw new DOMException("insecure", "SecurityError");
+    };
+    vi.stubGlobal("localStorage", {
+      getItem: recusar,
+      setItem: recusar,
+      removeItem: recusar,
+    });
+    vi.resetModules();
+
+    const { supabase } = await import("@/lib/supabase");
+    const sessao = armazenamentoDoCliente(supabase);
+
+    expect(sessao.getItem("sb-sessao")).toBeNull();
+    expect(() => sessao.setItem("sb-sessao", "{}")).not.toThrow();
+    expect(sessao.getItem("sb-sessao")).toBe("{}");
+    expect(() => sessao.removeItem("sb-sessao")).not.toThrow();
   });
 });

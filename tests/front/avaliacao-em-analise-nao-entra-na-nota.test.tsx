@@ -166,6 +166,52 @@ describe("ProductView — avaliação em análise não entra na nota nem na cont
     expect(linhas).toEqual(["51", "40", "31", "20", "10"]);
   });
 
+  it("distribui duas publicadas em barras de 50% e ignora a avaliação em análise", async () => {
+    avaliacoesDoHook = [
+      avaliacao("a", 5, "publicada"),
+      avaliacao("b", 3, "publicada"),
+      avaliacao("c", 1, "pendente"),
+    ];
+    await montar();
+
+    const linhas = Array.from(
+      hospedeiro.querySelectorAll('#reviews-section [class~="group/row"]'),
+    );
+    expect(linhas.map((linha) => linha.firstElementChild?.textContent)).toEqual(
+      ["5", "4", "3", "2", "1"],
+    );
+    const larguras = linhas.map(
+      (linha) => linha.querySelector<HTMLElement>("[style]")?.style.width,
+    );
+    expect(larguras).toEqual(["50%", "0%", "50%", "0%", "0%"]);
+    expect(
+      larguras.reduce(
+        (soma, largura) => soma + Number.parseFloat(largura ?? ""),
+        0,
+      ),
+    ).toBe(100);
+  });
+
+  it("preserva as larguras fracionárias de duas notas 5 e uma nota 3 publicadas", async () => {
+    avaliacoesDoHook = [
+      avaliacao("a", 5, "publicada"),
+      avaliacao("b", 5, "publicada"),
+      avaliacao("c", 3, "publicada"),
+    ];
+    await montar();
+
+    const larguras = Array.from(
+      hospedeiro.querySelectorAll('#reviews-section [class~="group/row"]'),
+    ).map((linha) => linha.querySelector<HTMLElement>("[style]")?.style.width);
+    expect(larguras).toEqual([
+      "66.66666666666666%",
+      "0%",
+      "33.33333333333333%",
+      "0%",
+      "0%",
+    ]);
+  });
+
   it("uma única avaliação: nota com vírgula (também no topo) e 'opinião' no singular", async () => {
     avaliacoesDoHook = [avaliacao("a", 4, "publicada")];
     await montar();

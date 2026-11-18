@@ -312,6 +312,9 @@ describe("OrderDetailsView — devolução ou troca do produto entregue", () => 
     const cartao = hospedeiro.querySelector('[data-testid="cartao-devolucao"]');
     expect(cartao?.textContent).toContain("DV260926-ABCDE");
     expect(cartao?.textContent).toContain("Devolução aprovada");
+    expect(cartao?.textContent).toContain(
+      "Leve o produto até a loja: Rua A, 10.",
+    );
     expect(cartao?.textContent).toContain("Rua A, 10");
     expect(cartao?.textContent).toContain("Traga com a etiqueta, por favor.");
     expect(cartao?.textContent).toContain("Cancelar devolução");
@@ -321,6 +324,73 @@ describe("OrderDetailsView — devolução ou troca do produto entregue", () => 
     expect(
       hospedeiro.querySelector('[data-testid="devolucao-indisponivel"]'),
     ).toBeNull();
+  });
+
+  // Reembolso e vale concluídos já têm prova da orientação nos testes de
+  // regras puras/reembolso-r1. Aqui ficam os outros ramos terminais.
+  describe.each([
+    ["recusada", null, "A loja não aprovou esta devolução."],
+    ["cancelada", null, "Você cancelou esta devolução."],
+    ["reprovada", null, "O produto não foi aceito na inspeção da loja."],
+    [
+      "concluida",
+      "troca",
+      "A troca foi confirmada. A loja combina com você a entrega do novo produto.",
+    ],
+  ])("cartão terminal %s", (status, resolucao_final, orientacao) => {
+    it.each(["entrega_na_loja", "coleta", "envio_proprio", "etiqueta_reversa"])(
+      "%s: orienta sem mandar entregar ou postar o produto",
+      async (metodo_retorno) => {
+        const detalhe = {
+          ...DETALHE,
+          status,
+          resolucao_final,
+          metodo_retorno,
+          mensagem_loja: null,
+          codigo_postagem: "PP123456789BR",
+          etiqueta_url: "https://example.com/etiqueta.pdf",
+          coleta_em: "2026-10-01T15:00:00Z",
+        };
+        respostas.set("devolucoes_do_pedido", [detalhe]);
+        respostas.set("devolucao_detalhe", detalhe);
+        await renderizar();
+
+        const cartao = hospedeiro.querySelector(
+          '[data-testid="cartao-devolucao"]',
+        );
+        expect(cartao).not.toBeNull();
+        expect(cartao?.textContent).toContain(orientacao);
+        // Frases reais dos métodos aprovados, inclusive coleta e DC-e.
+        for (const instrucaoDeEntrega of [
+          "Leve o produto até a loja",
+          "A loja vai buscar o produto",
+          "A loja vai combinar com você o dia e o horário da coleta",
+          "A loja está gerando o código de postagem dos Correios",
+          "Imprima a declaração de conteúdo",
+          "A loja está preparando a declaração de conteúdo",
+          "Embale o produto, poste nos Correios",
+          "Envie para:",
+          "Peça o endereço de envio à loja",
+          "Já postou? Informe o código de rastreio",
+          "Código de postagem (também é o rastreio)",
+        ]) {
+          expect(cartao?.textContent).not.toContain(instrucaoDeEntrega);
+        }
+        expect(cartao?.textContent).not.toMatch(/\b(leve|entregue)\b/i);
+        expect(cartao?.querySelector("form, input")).toBeNull();
+        const acoes = [...(cartao?.querySelectorAll("button, a") ?? [])].map(
+          (acao) => acao.textContent?.trim(),
+        );
+        expect(acoes).not.toEqual(expect.arrayContaining(["Enviar"]));
+        expect(acoes).not.toEqual(expect.arrayContaining(["Etiqueta"]));
+        expect(acoes).not.toEqual(
+          expect.arrayContaining(["Já postei o pacote"]),
+        );
+        expect(acoes).not.toEqual(
+          expect.arrayContaining(["Cancelar devolução"]),
+        );
+      },
+    );
   });
 
   it("envio próprio aprovado: o cartão diz para onde mandar o pacote", async () => {

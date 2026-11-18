@@ -1970,6 +1970,38 @@ BLOQUEIA com o nome dela. O cadastro de UMA vez, na entrada do cliente:
    `instalar-chave-da-loja.yml` (script `scripts/publicacao/instalar-chave-da-loja.cjs`). Hoje o
    script aceita so IKCOUS e Savy: para a loja nova, acrescente o alvo dela ali e no workflow (mesmas
    travas) antes de rodar.
+7. **Chaves de push (VAPID):** antes do teste de ponta a ponta, configure nas functions da loja
+   (Supabase → Secrets) `VAPID_PUBLIC_KEY` e `VAPID_PRIVATE_KEY`, sempre do MESMO par. O procedimento
+   de [DEPLOYMENT.md](../../DEPLOYMENT.md) usa `web-push generate-vapid-keys` e guarda o par em
+   `vapid_keys.json`: guarde-o em local seguro, fora do versionamento; nunca cole os valores em
+   documentacao, logs ou conversa. Em producao, cadastre a MESMA chave publica na coluna
+   `vapid_public_key` de `public.store_config`, linha `id = 1`, no banco DESSA loja: pelo SQL
+   Editor do projeto Supabase, com acesso administrativo, atualize somente essa coluna com a
+   chave publica do par (NUNCA a privada). O painel do lojista nao grava esse campo: a escrita
+   exige conexao administrativa ou `service_role`. Confira a leitura em `public.v_store_config`:
+   e dali que o porteiro injeta a chave no front. `VITE_VAPID_PUBLIC_KEY` so vale no desenvolvimento
+   local, sem porteiro; nao configura a loja em producao. Nao gere outro par se a loja ja usa uma
+   chave. As duas chaves das functions precisam estar no mesmo formato (base64url cru ou JWK).
+   Configure tambem `VAPID_SUBJECT` com o contato da loja (`mailto:...` ou `https://...`): o aviso
+   ao lojista le essa variavel; sem ela usa um contato de exemplo. Para conferir, entre como
+   admin e, no Inicio do painel, use **Ligar avisos neste aparelho** no cartao de avisos e aceite
+   a permissao. Quando aparecer **Avisos ligados neste aparelho**, toque em **Mandar um aviso de
+   teste** e VEJA o aviso chegar nesse aparelho. Esse botao envia so para a inscricao do proprio
+   aparelho; NAO use a tela de campanhas para esse teste (ela abre com publico todos).
+   No teste de pagamento, confira tambem o aviso ao lojista. **Se esquecer as chaves, o aviso de pagamento ao lojista nao sai; o erro fica so no
+   log da function, sem erro visivel na compra.**
+8. **Remetente de e-mail do comprovante:** antes do teste de ponta a ponta, deixe pelo menos UMA
+   origem pronta: `SMTP_USER` e `SMTP_PASSWORD` nos Secrets das functions da loja, OU o Gmail da
+   loja cadastrado no painel (Ajustes → Minha loja → E-mail da loja). No painel, siga o passo a
+   passo da verificacao em duas etapas e da senha de app, salve e use **Enviar e-mail de teste**
+   ([roteiro do e-mail](email-da-loja-no-painel.md)); a chave de cifra do item 5 precisa existir.
+   O remetente do painel tem prioridade; o servidor e a alternativa. Nunca registre senha aqui.
+   Para conferir o fluxo real, peca o reenvio do comprovante de um pedido de teste pago e VEJA
+   o e-mail chegar na conta de teste (confira Spam; se remetente e destinatario forem o mesmo
+   Gmail, confira Enviados). O Inicio do painel avisa quando o envio de e-mails pela conta do
+   servidor esta falhando; a ausencia desse aviso NAO substitui conferir a entrega.
+   **Sem `SMTP_USER`/`SMTP_PASSWORD` E sem remetente cadastrado no painel, o comprovante do
+   pagamento nao e enviado; a compra segue sem erro visivel e a falha fica so no log.**
 
 ## Medicoes antes de escrever a migration (so leitura, nao e portao)
 

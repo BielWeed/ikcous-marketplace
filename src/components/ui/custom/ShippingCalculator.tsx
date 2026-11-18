@@ -1082,6 +1082,9 @@ export function ShippingCalculator({
       : neutro
         ? "text-zinc-600"
         : "text-zinc-400";
+    const corDoAviso = comCorDaMarca
+      ? "text-primary-foreground/70"
+      : "text-zinc-600";
     const verdeDoPreco = neutro ? "text-emerald-700" : "text-emerald-500";
     // RETIRADA NA LOJA (release 1.5.3): sem prazo de entrega (não
     // há entrega) e sem "pronto agora" — o endereço REAL da loja
@@ -1163,7 +1166,7 @@ export function ShippingCalculator({
                 className="w-12 border border-zinc-100"
               />
               {comCorDaMarca && (
-                <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-white text-primary shadow-sm">
+                <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-white text-primary-legivel shadow-sm">
                   <Check className="size-3" aria-hidden="true" />
                 </span>
               )}
@@ -1245,14 +1248,14 @@ export function ShippingCalculator({
                   </span>
                 )}
                 <span
-                  className={`mt-0.5 block leading-snug ${tamanhoApoio} ${corFraca}`}
+                  className={`mt-0.5 block text-xs leading-snug ${corDoAviso}`}
                 >
                   Aguarde a confirmação da loja para retirar
                 </span>
               </>
             ) : (
               <span
-                className={`mt-0.5 block leading-none ${tamanhoApoio} ${corFraca}`}
+                className={`mt-0.5 block text-xs leading-none ${corDoAviso}`}
               >
                 {prazoDaOpcao(option)}
               </span>

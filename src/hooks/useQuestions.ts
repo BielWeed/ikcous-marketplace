@@ -159,6 +159,7 @@ const contarPerguntas = (soPendentes: boolean) => {
 export function useQuestions() {
   const { user, isAdmin, profile } = useAuth();
   const { isLeader } = useLeaderElection();
+  const exclusoesEmVooRef = useRef(new Map<string, Promise<boolean | null>>());
   const [questions, setQuestions] = useState<Question[]>(() => {
     return isAdmin && cachedQuestionsData ? cachedQuestionsData : [];
   });
@@ -894,37 +895,54 @@ export function useQuestions() {
         if (!options?.silent) toast.error("Permissão negada");
         return false;
       }
-      try {
-        // `.select("id")`: 0 linhas apagadas (política de acesso) vem como sucesso.
-        const { data: apagadas, error } = await aguardarComPrazo(
-          Promise.resolve(
-            supabase
-              .from("questions" as any)
-              .delete()
-              .eq("id", questionId)
-              .select("id"),
-          ),
-          PRAZO_DAS_ACOES_DO_PEDIDO_MS,
-          () => erroDeConsultaSemResposta(),
-        );
-
-        if (error) throw error;
-        if (!apagadas?.length) throw new Error("Nenhuma pergunta apagada.");
-        setQuestions((prev) => prev.filter((q) => q.id !== questionId));
-        // Ressalva 2 da revisão C4: pergunta excluída sai do conjunto —
-        // resposta futura a ela (excluída em cascata ou órfã) não gera
-        // refetch inútil.
-        questionIdsDoProdutoRef.current?.delete(questionId);
-        if (!options?.silent) toast.success("Pergunta removida.");
-        return true;
-      } catch (error) {
-        console.error("Error deleting question:", error);
-        if (ehConsultaSemResposta(error))
-          toast.error(
-            "Sem resposta da rede. Confira na lista antes de tentar de novo.",
+      const emVoo = exclusoesEmVooRef.current.get(questionId);
+      if (emVoo) return emVoo;
+      const operacao = (async () => {
+        try {
+          // A ausência sem erro também encerra a exclusão: outra chamada pode ter apagado.
+          const { data: apagadas, error } = await aguardarComPrazo(
+            Promise.resolve(
+              supabase
+                .from("questions" as any)
+                .delete()
+                .eq("id", questionId)
+                .select("id"),
+            ),
+            PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+            () => erroDeConsultaSemResposta(),
           );
-        else if (!options?.silent) toast.error("Erro ao remover pergunta.");
-        return false;
+
+          if (error) throw error;
+          if (!apagadas?.length) {
+            if (!options?.silent)
+              toast.info(
+                "A pergunta já foi excluída ou não está mais acessível.",
+              );
+            return null;
+          }
+
+          setQuestions((prev) => prev.filter((q) => q.id !== questionId));
+          // Ressalva 2 da revisão C4: pergunta excluída sai do conjunto —
+          // resposta futura a ela (excluída em cascata ou órfã) não gera
+          // refetch inútil.
+          questionIdsDoProdutoRef.current?.delete(questionId);
+          if (!options?.silent) toast.success("Pergunta removida.");
+          return true;
+        } catch (error) {
+          console.error("Error deleting question:", error);
+          if (ehConsultaSemResposta(error))
+            toast.error(
+              "Sem resposta da rede. Confira na lista antes de tentar de novo.",
+            );
+          else if (!options?.silent) toast.error("Erro ao remover pergunta.");
+          return false;
+        }
+      })();
+      exclusoesEmVooRef.current.set(questionId, operacao);
+      try {
+        return await operacao;
+      } finally {
+        exclusoesEmVooRef.current.delete(questionId);
       }
     },
     [isAdmin],
@@ -1014,9 +1032,25 @@ export function useQuestions() {
             },
           );
 
+        // Só o socket cai e volta (a rede segue): a resposta que entrou no
+        // intervalo não chega por evento. Voltando de uma queda, relê UMA vez
+        // e avisa as outras abas; a 1ª confirmação não relê (já foi lida).
+        let caiu = false;
         channel.subscribe((status: any, err?: any) => {
+          if (status !== "SUBSCRIBED") caiu = true;
           if (status === "SUBSCRIBED") {
             console.log("[Realtime-Questions] Active: %s", channelId);
+            if (caiu) {
+              caiu = false;
+              bc?.postMessage({ type: "questions_change", productId });
+              if (onChange) {
+                onChange();
+              } else if (productId) {
+                getQuestionsByProduct(productId);
+              } else {
+                getAllQuestions();
+              }
+            }
           } else if (status === "CHANNEL_ERROR") {
             const errMessage =
               err?.message || (typeof err === "string" ? err : "");

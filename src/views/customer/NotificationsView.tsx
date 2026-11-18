@@ -1,6 +1,7 @@
 import { AvisosDoAparelhoDaCliente } from "@/components/pwa/AvisosDoAparelhoDaCliente";
 import { Button } from "@/components/ui/button";
 import { useNotificationCenter } from "@/contexts/NotificationContextCore";
+import { FUSO_DA_LOJA, dataNoFusoDaLoja } from "@/lib/data-da-loja";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Bell,
@@ -156,30 +157,25 @@ export function NotificationsView({
     try {
       const date = new Date(dateStr);
       const now = new Date();
-      // "Hoje" e "Ontem" são dias de CALENDÁRIO, não janelas de 24h: aviso
-      // criado às 23:50 de ontem e lido às 00:10 de hoje é de ONTEM, mas a
-      // diferença em milissegundos dá 0 dia e o floor dizia "Hoje às 23:50".
-      // Comparar início do dia resolve; e sem o Math.abs, created_at no
-      // futuro (clock skew) cai no formato completo em vez de "Hoje".
-      const inicioDoDia = (d: Date) =>
-        new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+      // Dia civil da loja, mesmo se o aparelho já estiver no dia seguinte.
+      // UTC aqui só permite subtrair os dias sem depender do fuso do aparelho.
+      const inicioDoDia = (d: Date) => {
+        const [dia, mes, ano] = dataNoFusoDaLoja(d).split("/").map(Number);
+        return Date.UTC(ano, mes - 1, dia);
+      };
       const diffDays = Math.round(
         (inicioDoDia(now) - inicioDoDia(date)) / (1000 * 60 * 60 * 24),
       );
 
-      if (diffDays === 0) {
-        return `Hoje às ${date.toLocaleTimeString("pt-BR", {
+      if (diffDays === 0 || diffDays === 1) {
+        const hora = date.toLocaleTimeString("pt-BR", {
           hour: "2-digit",
           minute: "2-digit",
-        })}`;
+          timeZone: FUSO_DA_LOJA,
+        });
+        return `${diffDays === 0 ? "Hoje" : "Ontem"} às ${hora}`;
       }
-      if (diffDays === 1) {
-        return `Ontem às ${date.toLocaleTimeString("pt-BR", {
-          hour: "2-digit",
-          minute: "2-digit",
-        })}`;
-      }
-      return date.toLocaleDateString("pt-BR", {
+      return dataNoFusoDaLoja(date, {
         day: "2-digit",
         month: "short",
         hour: "2-digit",

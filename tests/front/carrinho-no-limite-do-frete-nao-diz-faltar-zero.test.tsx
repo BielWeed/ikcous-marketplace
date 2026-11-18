@@ -22,6 +22,9 @@ vi.mock("@/lib/supabase", () => ({ supabase: {} }));
 const estado = vi.hoisted(() => ({
   precos: [10.1, 10.2] as number[],
   meta: 20.3,
+  comVariacao: false,
+  precoDaVariacao: null as number | null,
+  quantidade: 1,
 }));
 
 vi.mock("@/contexts/StoreContext", () => ({
@@ -50,6 +53,14 @@ vi.mock("@/hooks/useCart", () => ({
         name: `Produto ${i}`,
         description: "",
         price: preco,
+        variants: estado.comVariacao
+          ? [
+              {
+                id: "variacao-escolhida",
+                priceOverride: estado.precoDaVariacao,
+              },
+            ]
+          : [],
         images: [],
         category: "geral",
         stock: 5,
@@ -59,7 +70,8 @@ vi.mock("@/hooks/useCart", () => ({
         freeShipping: false,
         createdAt: new Date(0).toISOString(),
       },
-      quantity: 1,
+      variantId: estado.comVariacao ? "variacao-escolhida" : undefined,
+      quantity: estado.quantidade,
     })),
     shippingFee: 45,
     freteIndefinido: false,
@@ -121,6 +133,9 @@ describe("CartView — carrinho no limite do frete grátis, opção que não rec
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
+    estado.comVariacao = false;
+    estado.precoDaVariacao = null;
+    estado.quantidade = 1;
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -155,6 +170,39 @@ describe("CartView — carrinho no limite do frete grátis, opção que não rec
       await Promise.resolve();
     });
   }
+
+  it.each([
+    { preco: 30, subtotal: "R$ 60,00", falta: "R$ 20,00", percentual: "75" },
+    { preco: 0, subtotal: "R$ 0,00", falta: "R$ 80,00", percentual: "0" },
+    { preco: null, subtotal: "R$ 100,00", falta: null, percentual: "100" },
+  ])(
+    "variação de R$ $preco, quantidade 2: subtotal e frete usam o preço vendido",
+    async ({ preco, subtotal, falta, percentual }) => {
+      estado.precos = [50];
+      estado.meta = 80;
+      estado.comVariacao = true;
+      estado.precoDaVariacao = preco;
+      estado.quantidade = 2;
+
+      await renderizarCarrinho();
+
+      const linhaDoSubtotal = Array.from(hospedeiro.querySelectorAll("span"))
+        .find((elemento) => elemento.textContent === "Subtotal")
+        ?.parentElement?.textContent?.replaceAll(String.fromCharCode(160), " ");
+      expect(linhaDoSubtotal).toBe(`Subtotal${subtotal}`);
+      expect(percentualDaBarra()).toBe(percentual);
+      if (falta === null) {
+        expect(textoDoCorpo()).not.toContain("Adicione mais");
+        expect(textoDoCorpo()).toContain("mais barata");
+      } else {
+        expect(textoDoCorpo()).toContain(
+          `Adicione mais ${falta} para garantir Frete Grátis!`,
+        );
+        expect(textoDoCorpo()).not.toContain("mais barata");
+      }
+    },
+    30_000,
+  );
 
   it("10,10 + 10,20 com meta 20,30: nada falta — sem 'Adicione mais', sem 99%, barra cheia", async () => {
     estado.precos = [10.1, 10.2];

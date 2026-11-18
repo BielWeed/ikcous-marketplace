@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { ArmazenamentoComCota } from "./helpers/armazenamento-com-cota";
 vi.mock("@/lib/env-valores", () => ({
   lerSupabaseUrl: () => "https://falso.supabase.co/",
   lerChaveSupabase: () => "chave-publica-falsa",
@@ -143,6 +144,36 @@ it.each(["https://fora.invalid/roubar", "/checkout", "javascript:alert(1)"])(
     expect(guardarDestinoGoogle()).toBe(`${location.origin}/auth`);
   },
 );
+it("sessionStorage cheio (setItem lança): guardar o destino não impede de entrar com o Google", async () => {
+  vi.stubGlobal("sessionStorage", new ArmazenamentoComCota(0));
+  const { guardarDestinoGoogle, retomarDestinoGoogle } = await import(
+    "@/lib/google-login"
+  );
+  expect(() => guardarDestinoGoogle()).not.toThrow();
+  expect(guardarDestinoGoogle()).toBe(`${location.origin}/auth`);
+  // Sem destino guardado, a volta não lembra de onde veio, mas não lança.
+  history.replaceState(null, "", "/auth#access_token=falso");
+  expect(() => retomarDestinoGoogle()).not.toThrow();
+});
+it("sessionStorage com o ACESSO bloqueado: guardar o destino não impede de entrar com o Google", async () => {
+  const original = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "sessionStorage",
+  );
+  Object.defineProperty(globalThis, "sessionStorage", {
+    configurable: true,
+    get() {
+      throw new DOMException("The operation is insecure.", "SecurityError");
+    },
+  });
+  try {
+    const { guardarDestinoGoogle } = await import("@/lib/google-login");
+    expect(guardarDestinoGoogle()).toBe(`${location.origin}/auth`);
+  } finally {
+    if (original) Object.defineProperty(globalThis, "sessionStorage", original);
+    else Reflect.deleteProperty(globalThis, "sessionStorage");
+  }
+});
 it("estado vencido ou armazenamento bloqueado não quebra a entrada", async () => {
   const { guardarDestinoGoogle, retomarDestinoGoogle } = await import(
     "@/lib/google-login"

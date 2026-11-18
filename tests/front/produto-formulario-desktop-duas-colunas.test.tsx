@@ -408,6 +408,8 @@ const CLASSES_CELULAR_DO_BLOCO_BASE = [
   "h-20 w-16 shrink-0 rounded-xl object-cover",
   "flex h-20 w-16 shrink-0 flex-col items-center justify-center gap-1 rounded-xl bg-zinc-800 text-[11px] text-zinc-300",
   "size-6",
+  "flex h-20 w-16 shrink-0 flex-col items-center justify-center gap-1 rounded-xl bg-zinc-800 text-[11px] text-zinc-300",
+  "size-6",
   "min-w-0 space-y-1",
   "break-words text-base font-bold",
   "text-2xl font-bold tabular-nums",
@@ -550,7 +552,7 @@ const CLASSES_CELULAR_DO_BLOCO_BASE = [
   "produto-prever flex min-h-11 min-w-11 items-center justify-center rounded-full border border-solid border-admin-border-strong bg-admin-surface px-4 text-sm font-bold",
 ];
 const SHA256_CLASSES_CELULAR_BASE =
-  "e86f3345418ef681ce7906a439213d120df68821e31c19eef44126ab61721561";
+  "f22f5e1f01a9fd3fc108ae4c1165aca26cca15bec6b76ca50ee4207b7638fc58";
 const TOKENS_LG_DA_BASE = [
   "lg:grid-cols-12",
   "lg:col-span-8",

@@ -71,6 +71,18 @@ describe("Header — contador do sino segue o padrão da barra de baixo", () => 
     expect(classes).not.toMatch(/amber|orange/);
   });
 
+  it.each([
+    [99, "99"],
+    [100, "99+"],
+  ])(
+    "com %i não lidas, o sino mostra %s sem antecipar o teto",
+    async (quantidade, texto) => {
+      const sino = await desenhar(Number(quantidade));
+      expect(sino).not.toBeNull();
+      expect(sino!.querySelector("span")?.textContent).toBe(texto);
+    },
+  );
+
   it("acima de 99 mostra 99+, como a barra de baixo", async () => {
     const sino = await desenhar(120);
     const textos = Array.from(sino?.querySelectorAll("span") ?? []).map(

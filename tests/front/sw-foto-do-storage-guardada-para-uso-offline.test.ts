@@ -331,6 +331,101 @@ describe("src/sw/sw.ts — fotos do Storage em pedido no-cors (<img> sem crossor
     expect(urlsEm(IMAGE_CACHE_NAME)).toEqual([new URL(FOTO).href]);
   });
 
+  // O pedido CORS DIRETO (crossorigin / telas do admin) não passa pela via
+  // `buscarFotoDoStorage` de refazer em cors: a resposta dele vai direto à
+  // barreira `status === 200` do ramo. Os casos de 500 acima só cobrem o pedido
+  // no-cors, em que o 2º fetch volta opaco (status 0) — uma barreira frouxa
+  // (`>= 200`, `!== 0`) os deixaria passar e nenhum deles notaria. O DANO: a
+  // página de erro do servidor gravada como se fosse a foto, e a visita
+  // seguinte — inclusive SEM sinal, quando o fetch falha e o ramo devolve o que
+  // tinha guardado — recebe o erro do cache no lugar da imagem.
+  describe("pedido cors direto que recebe erro do servidor", () => {
+    it("200 continua gravando e devolvendo a cópia (a barreira não fecha o caminho feliz)", async () => {
+      const { aoBuscar, fetchMock, gravacoes, urlsEm } = await importarSw();
+      const pedido = pedidoDeImg(FOTO, { modo: "cors" });
+      const ev = evento(pedido);
+
+      aoBuscar(ev);
+      const resposta: Response = await ev.respondWith.mock.calls[0][0];
+      await esvaziarFila();
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(resposta.status).toBe(200);
+      expect(gravacoes).toHaveLength(1);
+      expect(gravacoes[0].res.status).toBe(200);
+      expect(await gravacoes[0].res.text()).toBe("bytes-da-foto");
+      expect(urlsEm(IMAGE_CACHE_NAME)).toEqual([new URL(FOTO).href]);
+    });
+
+    it.each([
+      [403, "proibida"],
+      [404, "não encontrada"],
+      [500, "erro do servidor"],
+      [503, "serviço fora do ar"],
+    ])(
+      "%i (%s) sem foto guardada: chega à página como veio e NÃO entra na gaveta",
+      async (status) => {
+        const { aoBuscar, fetchMock, gravacoes, urlsEm } = await importarSw();
+        const erro = respostaDeTipo("cors", "erro-do-servidor", status);
+        fetchMock.mockImplementation(async () => erro);
+        const pedido = pedidoDeImg(FOTO, { modo: "cors" });
+        const ev = evento(pedido);
+
+        aoBuscar(ev);
+        const resposta: Response = await ev.respondWith.mock.calls[0][0];
+        await esvaziarFila();
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(fetchMock.mock.calls[0][0]).toBe(pedido);
+        expect(resposta).toBe(erro); // o erro real continua chegando à página
+        expect(gravacoes).toEqual([]);
+        expect(urlsEm(IMAGE_CACHE_NAME)).toEqual([]);
+      },
+    );
+
+    it("500 com foto BOA já guardada: não substitui a cópia boa, e sem sinal a visita seguinte ainda recebe a foto", async () => {
+      const { aoBuscar, fetchMock, gravacoes, urlsEm, cachesFalso } =
+        await importarSw();
+      // 1ª visita: foto boa (200) guardada.
+      const primeira = evento(pedidoDeImg(FOTO, { modo: "cors" }));
+      aoBuscar(primeira);
+      await primeira.respondWith.mock.calls[0][0];
+      await esvaziarFila();
+      expect(gravacoes).toHaveLength(1);
+
+      // 2ª visita: o servidor engasga (500). A cópia boa atende a tela e o
+      // 500 que chega da rede em segundo plano não pode tomar o lugar dela.
+      fetchMock.mockImplementation(async () =>
+        respostaDeTipo("cors", "erro-do-servidor", 500),
+      );
+      const segunda = evento(pedidoDeImg(FOTO, { modo: "cors" }));
+      aoBuscar(segunda);
+      const daSegunda: Response = await segunda.respondWith.mock.calls[0][0];
+      await esvaziarFila();
+
+      expect(await daSegunda.clone().text()).toBe("bytes-da-foto");
+      expect(gravacoes).toHaveLength(1); // nenhum put novo
+      expect(urlsEm(IMAGE_CACHE_NAME)).toEqual([new URL(FOTO).href]);
+      const naGaveta = await (await cachesFalso.open(IMAGE_CACHE_NAME)).match(
+        FOTO,
+      );
+      expect(naGaveta?.status).toBe(200);
+      expect(await naGaveta?.clone().text()).toBe("bytes-da-foto");
+
+      // 3ª visita, SEM sinal: o fetch rejeita e o ramo devolve o guardado.
+      fetchMock.mockImplementation(async () => {
+        throw new TypeError("Failed to fetch");
+      });
+      const terceira = evento(pedidoDeImg(FOTO, { modo: "cors" }));
+      aoBuscar(terceira);
+      const offline: Response = await terceira.respondWith.mock.calls[0][0];
+      await esvaziarFila();
+
+      expect(offline.status).toBe(200);
+      expect(await offline.clone().text()).toBe("bytes-da-foto");
+    });
+  });
+
   it.each(["", "video", "audio", "script", "fetch"])(
     "no-cors com destination %j (não é <img>): fluxo de antes, UM fetch com o próprio pedido",
     async (destino) => {

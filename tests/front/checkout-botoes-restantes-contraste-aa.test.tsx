@@ -309,6 +309,19 @@ describe("CheckoutView — nenhum botão de texto usa a cor da loja como cor de 
   // `text-primary-foreground` é outra classe e não casa.
   const fonte = readFileSync("src/views/customer/CheckoutView.tsx", "utf8");
 
+  it("o título Resumo do Pedido usa zinco 600, legível sobre o branco", () => {
+    const titulo = fonte.match(
+      /<span className="([^"]*)">\s*Resumo do Pedido\s*<\/span>/,
+    );
+    expect(titulo).not.toBeNull();
+    const classes = titulo![1]!.split(/\s+/);
+    expect(classes).not.toContain("text-zinc-400");
+    expect(classes).toContain("text-zinc-600");
+    expect(
+      razao(corDaClasse(titulo![1]!, "text", BRANCO), BRANCO),
+    ).toBeGreaterThanOrEqual(AA);
+  });
+
   it("toda classe `text-primary` do arquivo está num elemento com `bg-primary` cheio", () => {
     const culpados: string[] = [];
     for (const [, classes] of fonte.matchAll(/className="([^"]*)"/g)) {

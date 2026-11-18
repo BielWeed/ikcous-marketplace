@@ -632,10 +632,15 @@ export const AdminReviewsView = memo(function AdminReviewsView({
     // Laudo 0109 (A-10): o hook devolve booleano — vibração de sucesso e
     // recarga só quando a exclusão de verdade aconteceu.
     const ok = await deleteReview(id);
+    // null (ausente) recarrega a lista sem a avaliação: o botão some, então o
+    // foco vai ao título, como no sucesso. Só false (falhou) mantém o botão.
     focoPendente.current = () =>
-      ok ? tituloListaRef.current : (botoesExcluir.current.get(id) ?? null);
+      ok !== false
+        ? tituloListaRef.current
+        : (botoesExcluir.current.get(id) ?? null);
     setConfirmDeleteId(null);
-    if (!ok) return; // o toast de erro já foi dado no hook (useReviews)
+    if (ok === null) triggerRefresh(); // ausente ou sem acesso: conferir a lista
+    if (!ok) return; // o aviso já foi dado no hook (useReviews)
     // A avaliação saiu: o rascunho dela não pode manter a tela "com alterações".
     setRascunhos((anteriores) => {
       if (!(id in anteriores)) return anteriores;

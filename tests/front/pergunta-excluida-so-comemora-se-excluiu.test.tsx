@@ -25,7 +25,7 @@ const h = vi.hoisted(() => {
   const estado = {
     perguntas: [] as unknown[],
     // Resultado que o dublê de deleteQuestion devolve — controlado por teste.
-    deleteQuestionResultado: true as boolean,
+    deleteQuestionResultado: true as boolean | null,
   };
 
   const deleteQuestion = vi.fn(async () => estado.deleteQuestionResultado);
@@ -78,6 +78,7 @@ vi.mock("sonner", () => ({
   toast: {
     success: (...args: unknown[]) => toastSuccess(...args),
     error: (...args: unknown[]) => toastError(...args),
+    info: vi.fn(),
     loading: vi.fn(),
   },
 }));
@@ -239,7 +240,16 @@ describe("AdminQAView — 'Pergunta excluída' só comemora se excluiu de verdad
       (b) => b.textContent?.trim() === "Excluindo…",
     ) as HTMLButtonElement;
     expect(gravando.disabled).toBe(true);
+    const cancelar = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (b) => b.textContent?.trim() === "Cancelar",
+    ) as HTMLButtonElement;
+    expect(cancelar.disabled).toBe(true);
     await act(async () => {
+      cancelar.click();
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      );
+      document.body.click();
       gravando.click();
     });
     expect(h.deleteQuestion).toHaveBeenCalledTimes(1);
@@ -251,6 +261,40 @@ describe("AdminQAView — 'Pergunta excluída' só comemora se excluiu de verdad
     expect(h.deleteQuestion).toHaveBeenCalledTimes(1);
     expect(toastSuccess).toHaveBeenCalledTimes(1);
     expect(toastSuccess).toHaveBeenCalledWith("Pergunta excluída");
+  });
+
+  it("pergunta já ausente fecha a confirmação sem aviso vermelho nem comemoração", async () => {
+    montarPergunta();
+    h.estado.deleteQuestionResultado = null;
+    await montar();
+    await act(async () => {
+      clicarExcluirEConfirmar();
+    });
+    await act(async () => {
+      clicarSim();
+      await esperarMicrotarefas();
+    });
+    expect(toastError).not.toHaveBeenCalled();
+    expect(toastSuccess).not.toHaveBeenCalled();
+    expect(hospedeiro.querySelector('[role="alertdialog"]')).toBeNull();
+  });
+
+  // Quem usa teclado estava no botão da confirmação, que sumiu: sem devolver
+  // o foco, ele caía no corpo da página e perdia a posição na lista.
+  it("pergunta já ausente devolve o foco ao título da lista, não ao corpo da página", async () => {
+    montarPergunta();
+    h.estado.deleteQuestionResultado = null;
+    await montar();
+    await act(async () => {
+      clicarExcluirEConfirmar();
+    });
+    await act(async () => {
+      clicarSim();
+      await esperarMicrotarefas();
+    });
+    expect(hospedeiro.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement?.textContent).toBe("Lista de perguntas");
   });
 
   it("controle positivo: exclusão que dá certo CONTINUA mostrando 'Pergunta excluída'", async () => {

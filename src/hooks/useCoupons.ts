@@ -13,6 +13,7 @@ import {
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
+import { prepararTextoDeBuscaDoPainel } from "@/lib/texto-de-busca-do-painel";
 import { arredondarParaCentavos } from "@/lib/utils";
 import type { ClienteDoCupom, Coupon } from "@/types";
 import type { Database } from "@/types/database.types";
@@ -529,7 +530,7 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
   const buscarClientesParaCupom = useCallback(
     async (termo: string): Promise<PaginaDeClientesParaCupom> => {
       const { data, error } = await supabase.rpc("get_admin_customers_paged", {
-        p_search: termo,
+        p_search: prepararTextoDeBuscaDoPainel(termo),
         p_sort_field: "created_at",
         p_sort_direction: "desc",
         p_page: 0,

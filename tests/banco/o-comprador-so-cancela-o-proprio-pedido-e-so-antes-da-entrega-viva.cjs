@@ -35,6 +35,14 @@ const MUTANTES = new Map(
       LISTA,
       "IF v_old_status NOT IN ('pending', 'processing', 'shipping', 'delivered') THEN",
     ],
+    "new-pode-cancelar": [
+      LISTA,
+      "IF v_old_status NOT IN ('pending', 'processing', 'shipping', 'new') THEN",
+    ],
+    "cancelled-pode-cancelar": [
+      LISTA,
+      "IF v_old_status NOT IN ('pending', 'processing', 'shipping', 'cancelled') THEN",
+    ],
     "sem-shipping": [
       LISTA,
       "IF v_old_status NOT IN ('pending', 'processing') THEN",
@@ -72,6 +80,31 @@ async function mutar() {
     "o banco nao instalou exatamente o mutante",
   );
 }
+
+prova(
+  "cliente nao cancela new nem cancelled (os demais status proibidos alem de delivered)",
+  () =>
+    P.emTransacao(async () => {
+      await pessoa(COMPRADOR_A, "customer");
+      await mutar();
+      for (const status of ["new", "cancelled"]) {
+        const oid = await pedido({
+          dono: COMPRADOR_A,
+          status,
+          pagamento: "cash",
+          situacao: null,
+        });
+        const antes = await foto(oid);
+        await recusada(
+          `cliente cancela ${status}`,
+          await cancelaComo(COMPRADOR_A, "customer", oid),
+          oid,
+          MSG_ENTREGUE,
+          antes,
+        );
+      }
+    }),
+);
 
 const identidade = (uid, cargo) => ({
   uid,

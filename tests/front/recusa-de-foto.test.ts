@@ -57,6 +57,12 @@ describe("recusaDeFoto", () => {
     expect(recusaDeFoto(arq("a.webp", "image/webp", 10 * MB))).toBeNull();
     expect(recusaDeFoto(arq("a.jpg", "image/jpeg", 10 * MB))).toBeNull();
   });
+  it("aceita exatamente 12 MiB e recusa um byte acima do limite", () => {
+    expect(recusaDeFoto(arq("a.jpg", "image/jpeg", 12 * MB))).toBeNull();
+    expect(recusaDeFoto(arq("a.jpg", "image/jpeg", 12 * MB + 1))).toMatch(
+      /12 MB/,
+    );
+  });
   it("recusa HEIC e arquivo acima de 12 MB", () => {
     expect(recusaDeFoto(arq("a.heic", "image/heic"))).toMatch(/JPG ou PNG/);
     expect(recusaDeFoto(arq("a.jpg", "image/jpeg", 13 * 1024 * 1024))).toMatch(

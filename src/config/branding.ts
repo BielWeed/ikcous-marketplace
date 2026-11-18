@@ -1,6 +1,6 @@
 import { primeiraLetra } from "@/lib/primeira-letra";
 import { buildIdentity } from "./buildIdentity";
-import { textoSobreACorDaLoja } from "./cor-da-loja";
+import { corDaMarcaSobreBranco, textoSobreACorDaLoja } from "./cor-da-loja";
 
 export interface Branding {
   appName: string;
@@ -62,15 +62,21 @@ export function hexToTailwindHsl(hex: string): string {
 }
 
 // Aplica a cor da loja nas variáveis do tema: `--primary` (a cor, igual a
-// sempre foi) e `--primary-foreground` (o texto que fica SOBRE ela, escolhido
-// pelo contraste — branco nas cores escuras, escuro nas claras). Único ponto
-// que escreve essas duas variáveis: a semente do build e o StoreContext
-// passam por aqui, para a cor e o texto sobre ela nunca divergirem.
+// sempre foi), `--primary-foreground` (o texto que fica SOBRE ela, escolhido
+// pelo contraste — branco nas cores escuras, escuro nas claras) e
+// `--primary-legivel` (a cor como texto/ícone/anel sobre BRANCO: a mesma cor,
+// escurecida só se precisar para chegar a 4,5:1). Único ponto que escreve
+// essas três variáveis: a semente do build e o StoreContext passam por aqui,
+// para a cor e o que depende dela nunca divergirem.
 export function aplicarCorDaLoja(corHex: string): void {
   if (typeof document === "undefined") return;
   const root = document.documentElement;
   root.style.setProperty("--primary", hexToTailwindHsl(corHex));
   root.style.setProperty("--primary-foreground", textoSobreACorDaLoja(corHex));
+  root.style.setProperty(
+    "--primary-legivel",
+    hexToTailwindHsl(corDaMarcaSobreBranco(corHex)),
+  );
 }
 
 // CONTRATO DE COR — precedência: o branding (build) acima é a SEMENTE imediata

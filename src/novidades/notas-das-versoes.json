@@ -1,4 +1,36 @@
 {
+  "1.5.208": {
+    "titulo": "Cartão com mais cuidado, busca por código e telas mais legíveis",
+    "novidades": [],
+    "correcoes": [
+      "Pagamento com cartão: se a resposta do Mercado Pago chegar sem poder ser lida, o pagamento fica \"em análise\" em vez de liberar uma nova tentativa que poderia cobrar duas vezes.",
+      "Avisos: com o app aberto em mais de uma janela, quando só a conexão em tempo real da janela principal cai e volta, as outras janelas também recebem os avisos novos e atualizam o contador.",
+      "Perguntas e avaliações: quando só a conexão em tempo real cai e volta, as listas de perguntas e de avaliações se atualizam sozinhas, na loja e no painel, sem recarregar a página.",
+      "Foto que não carrega deixa de aparecer como imagem quebrada e mostra \"Sem foto\" (ou um ícone, na edição de vitrines): no resumo do pedido, na barra de compra do produto, nas sugestões \"Atinja a Meta\" do carrinho, no balcão e no cadastro de produto.",
+      "Busca da loja: agora também encontra produtos pelo código (SKU) do produto ou de uma variação ativa.",
+      "Modo escuro da loja: o título \"Catálogo\" (ou \"Resultados da busca\") na tela inicial e o aviso \"Seu carrinho está vazio\" no pagamento voltam a ser legíveis.",
+      "Cadastro (nome) e criação de nova senha (senha curta ou senhas diferentes): o erro aparece junto do campo, o foco vai para ele e o leitor de tela o anuncia. No pagamento, o erro do nome também é anunciado.",
+      "Painel, buscas de pedidos, clientes, devoluções e balcão: % e _ digitados na busca passam a valer como caracteres comuns (como o _ de um cupom BF_10), em vez de casar com qualquer coisa, e espaços repetidos são ignorados.",
+      "Texto comprido: o nome muito grande da loja no topo deixa de empurrar a busca e os botões para fora da tela (se não couber, termina em reticências), e palavras compridas no bairro da lista de pedidos e no recibo impresso quebram a linha em vez de estourar a tela.",
+      "Loja com cor principal clara (branco, amarelo): o nome do produto ao passar o mouse, o \"Faltam R$\" do lembrete do carrinho, o botão Útil, o check do frete e a borda e o foco das miniaturas da galeria deixam de sumir sobre o fundo branco. Cores que já eram legíveis não mudam.",
+      "App da loja: quando a loja entra em manutenção ou o endereço fica sem loja, a página de manutenção volta a aparecer na abertura seguinte, em vez de ficar escondida pela cópia guardada do app. Falhas passageiras do servidor não apagam essa cópia.",
+      "Entrar com e-mail ou Google, fechar o pedido e digitar o CEP funcionam em aparelho com o armazenamento cheio ou bloqueado pelo navegador: o que ele recusa fica guardado só enquanto a página está aberta. \"Sair\" e a troca direta de conta apagam também essa cópia, então o CEP da conta anterior não aparece mais no pagamento de quem entra na mesma aba.",
+      "Pedido entregue e estornado: o cartão do pedido no painel diz \"pedido finalizado\" em vez de \"pedido aberto\".",
+      "Foco do teclado: ao aplicar um cupom no pagamento, o foco segue para \"Remover cupom\"; ao fechar a janela da foto ou da capa com Esc, o foco volta ao botão que a abriu.",
+      "Ajuste da foto no painel: o gesto de toque fica só na área da foto, sem travar a rolagem do resto do editor, e o botão Voltar e os de zoom têm área de toque de 44 por 44 pixels.",
+      "Busca de pedido: o botão de falar com a loja pelo WhatsApp já leva o identificador digitado; sem identificador válido, a mensagem só pede ajuda.",
+      "Fonte ampliada: os campos do iPhone mantêm o mínimo de 16 px e acompanham a fonte ampliada, e o prazo do frete e o aviso de aguardar a retirada crescem junto, com cinza mais escuro quando a opção não está marcada.",
+      "CSV de produtos: a criação e a atualização saem no horário de Brasília; datas ausentes ou inválidas ficam vazias.",
+      "Pedido com um único item avaliado: o texto diz \"1 de 1 avaliado\", no singular.",
+      "Nomes compridos sem espaço nas opções, nos grupos de variação e no horário de atendimento da loja quebram a linha em vez de estourar a tela.",
+      "Botão principal e resumo do pedido: o texto do botão passa a ter sempre o contraste mínimo de leitura sobre a cor da loja, e o título \"Resumo do Pedido\" ficou mais escuro. No painel, o aviso de cor clara aparece em mais cores.",
+      "Perfil e avisos: a data do pedido, o \"Hoje\" e \"Ontem\" e a data completa dos avisos mostram o horário de Brasília em qualquer aparelho."
+    ],
+    "melhorias": [
+      "O texto \"Sem foto\" ficou mais escuro para passar do contraste mínimo de leitura.",
+      "Não mudam o comportamento: mais testes (cobrança, e-mail de login, avisos de celular, provas do banco), relógio fixo em testes, ações de terceiros fixas nos fluxos de publicação, roteiros de publicação e de loja nova corrigidos e a nota da 1.5.204 mais clara sobre os limites do salvamento."
+    ]
+  },
   "1.5.207": {
     "titulo": "Pedidos em tempo real, avisos e comprovantes mais confiáveis",
     "novidades": [],
@@ -55,8 +87,8 @@
     "correcoes": [
       "Entrar com Google: ao voltar do navegador sem concluir, o botão não fica mais preso em Abrindo Google e dá para tentar de novo.",
       "Planilha do catálogo: nomes que têm trechos como _x0041_ agora saem iguais ao cadastro, sem serem trocados por outras letras.",
-      "Ajustes, Trocas e devoluções: ao salvar, vai só o que você mudou. Assim, duas pessoas ou dois aparelhos editando ao mesmo tempo não desfazem a mudança um do outro.",
-      "Ajustes, Frete: o desconto e a regra de frete para fora da cidade agora salvam só o campo que você mexeu. Assim, dois aparelhos editando juntos não sobrescrevem um ao outro.",
+      "Ajustes, Trocas e devoluções: ao salvar a política, os campos que você não mexeu mantêm o que outra pessoa ou aparelho alterou.",
+      "Ajustes, Frete: ao salvar o frete para fora da cidade, campos independentes mantêm as mudanças de outro aparelho. Tipo e valor do desconto são salvos juntos; trocar a regra também salva os campos ligados a ela.",
       "Sair da conta: agora apaga do aparelho o rascunho do checkout e o pedido que ainda estava sem resposta.",
       "WhatsApp da loja: o celular precisa ter o 9 depois do DDD. Número de celular sem o 9 é recusado ao salvar.",
       "Sino de avisos: a lista é atualizada depois que a conexão cai e volta, sem precisar recarregar a tela."

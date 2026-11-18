@@ -188,14 +188,95 @@ export function razaoDeContraste(corA: string, corB: string): number {
 // Devolve o token HSL (formato Tailwind) do texto que fica sobre `corDaLoja`:
 // o branco de sempre quando ele chega a 4,5:1 — por isso toda loja de cor
 // escura fica idêntica —, senão o escuro. Na faixa do meio, onde nenhum dos
-// dois chega a 4,5:1, vence o de maior contraste.
+// dois chega a 4,5:1, usa preto ou branco puro, o de maior contraste.
 export function textoSobreACorDaLoja(corDaLoja: string): string {
   const contrasteDoClaro = razaoDeContraste(HEX_DO_TEXTO_CLARO, corDaLoja);
   if (contrasteDoClaro >= CONTRASTE_MINIMO_DO_TEXTO) {
     return TEXTO_CLARO_SOBRE_A_COR_DA_LOJA;
   }
   const contrasteDoEscuro = razaoDeContraste(HEX_DO_TEXTO_ESCURO, corDaLoja);
+  if (
+    Math.max(contrasteDoClaro, contrasteDoEscuro) < CONTRASTE_MINIMO_DO_TEXTO
+  ) {
+    return razaoDeContraste("#000000", corDaLoja) >=
+      razaoDeContraste("#ffffff", corDaLoja)
+      ? "0 0% 0%"
+      : "0 0% 100%";
+  }
   return contrasteDoClaro >= contrasteDoEscuro
     ? TEXTO_CLARO_SOBRE_A_COR_DA_LOJA
     : TEXTO_ESCURO_SOBRE_A_COR_DA_LOJA;
+}
+
+// ── A COR DA LOJA COMO TEXTO, ÍCONE OU ANEL SOBRE BRANCO ──
+// O outro lado do mesmo problema: `text-primary`, `ring-primary` e
+// `border-primary` sobre um cartão BRANCO somem quando a lojista escolhe cor
+// clara (a validação aceita até #ffffff). `--primary-legivel` é a cor da
+// marca escurecida só o bastante para chegar a 4,5:1 contra o branco,
+// mantendo o matiz e a saturação. Cor que já tem contraste fica IDÊNTICA —
+// toda loja de cor escura continua com a aparência de sempre.
+//
+// A folga acima de 4,5: o navegador pinta o token HSL arredondado (matiz,
+// saturação e luz em inteiros, ver `hexToTailwindHsl`), e o arredondamento
+// pode tirar um décimo do contraste. A varredura do teste prova o resultado
+// JÁ arredondado.
+const CONTRASTE_DA_MARCA_SOBRE_BRANCO = 4.7;
+
+function hexParaRgb(hex: string): [number, number, number] | null {
+  let limpo = hex.trim().replace(/^#/, "").toLowerCase();
+  if (/^[0-9a-f]{3}$/.test(limpo)) {
+    limpo = `${limpo[0]}${limpo[0]}${limpo[1]}${limpo[1]}${limpo[2]}${limpo[2]}`;
+  }
+  if (!/^[0-9a-f]{6}$/.test(limpo)) return null;
+  return [0, 2, 4].map((i) => Number.parseInt(limpo.slice(i, i + 2), 16)) as [
+    number,
+    number,
+    number,
+  ];
+}
+
+function hslParaHex(h: number, s: number, l: number): string {
+  const a = s * Math.min(l, 1 - l);
+  const canal = (n: number): string => {
+    const k = (n + h / 30) % 12;
+    const v = l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+    return Math.round(v * 255)
+      .toString(16)
+      .padStart(2, "0");
+  };
+  return `#${canal(0)}${canal(8)}${canal(4)}`;
+}
+
+export function corDaMarcaSobreBranco(corDaLoja: string): string {
+  const rgb = hexParaRgb(corDaLoja);
+  if (!rgb) return corDaLoja;
+  const canonica = `#${rgb.map((c) => c.toString(16).padStart(2, "0")).join("")}`;
+  if (
+    razaoDeContraste(canonica, "#ffffff") >= CONTRASTE_DA_MARCA_SOBRE_BRANCO
+  ) {
+    return canonica;
+  }
+  const [r, g, b] = rgb.map((c) => c / 255);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const d = max - min;
+  const luz = (max + min) / 2;
+  const sat = d === 0 ? 0 : d / (1 - Math.abs(2 * luz - 1));
+  let matiz = 0;
+  if (d !== 0) {
+    if (max === r) matiz = ((g - b) / d + (g < b ? 6 : 0)) * 60;
+    else if (max === g) matiz = ((b - r) / d + 2) * 60;
+    else matiz = ((r - g) / d + 4) * 60;
+  }
+  // Desce a luz de 1 em 1% (matiz e saturação intactos) até o contraste
+  // chegar; a 0% é preto, que sempre passa.
+  for (let pct = Math.floor(luz * 100); pct >= 0; pct--) {
+    const candidata = hslParaHex(matiz, sat, pct / 100);
+    if (
+      razaoDeContraste(candidata, "#ffffff") >= CONTRASTE_DA_MARCA_SOBRE_BRANCO
+    ) {
+      return candidata;
+    }
+  }
+  return "#000000";
 }

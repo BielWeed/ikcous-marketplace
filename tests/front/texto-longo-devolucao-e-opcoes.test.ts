@@ -51,6 +51,21 @@ describe("texto longo sem corte silencioso", () => {
     expect(classes).not.toContain("truncate");
   });
 
+  it("valores das opções limitam a largura e quebram palavras sem espaços", () => {
+    const fonte = fontes["/src/components/ui/custom/FolhaDeOpcoes.tsx"];
+    const botao = fonte.match(
+      /<button\s+key=\{valor\}[\s\S]*?className=\{cn\(\s*"([^"]+)"/,
+    );
+    expect(botao).not.toBeNull();
+    expect(botao?.[1].split(/\s+/)).toContain("max-w-full");
+    const valor = fonte.match(
+      /<span\s+className="([^"]+)"\s*>\s*\{valor\}\s*<\/span>/,
+    );
+    expect(valor).not.toBeNull();
+    for (const classe of ["min-w-0", "break-words"])
+      expect(valor?.[1].split(/\s+/)).toContain(classe);
+  });
+
   it("nome do produto mostra reticências em duas linhas, sem teto fixo de altura", () => {
     const fonte = fontes["/src/components/ui/custom/FolhaDeOpcoes.tsx"];
     const titulo = fonte.match(

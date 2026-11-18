@@ -243,6 +243,22 @@ describe("vitrine mantém as páginas carregadas quando o catálogo muda", () =>
     expect(IntersectionObserverStub.ativos.size).toBe(0);
   });
 
+  it("mostra o último produto quando sobra só um e encerra o carregamento", async () => {
+    const produtos = criarProdutos(13);
+    await montarLista(produtos);
+    expect(produtosVisiveis()).toHaveLength(12);
+
+    carregarMais();
+
+    const ids = Array.from(produtosVisiveis(), (card) =>
+      card.getAttribute("data-produto"),
+    );
+    expect(ids).toEqual(produtos.map((produto) => produto.id));
+    expect(new Set(ids).size).toBe(13);
+    expect(IntersectionObserverStub.ativos.size).toBe(0);
+    expect(hospedeiro.querySelector(".animate-spin")).toBeNull();
+  });
+
   it("sem resetKey mantém o reset antigo por identidade de products", async () => {
     const produtos = criarProdutos();
     await montarLista(produtos);

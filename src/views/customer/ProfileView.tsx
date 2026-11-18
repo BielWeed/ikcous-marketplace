@@ -26,6 +26,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useOrders } from "@/hooks/useOrders";
 import { useReleituraDosEnderecosAoVoltar } from "@/hooks/useReleituraDosEnderecosAoVoltar";
 import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
+import { dataNoFusoDaLoja } from "@/lib/data-da-loja";
 import {
   TIPOS_DE_POLITICA,
   type TipoDePolitica,
@@ -216,6 +217,11 @@ export function ProfileView({
   const [isOrdersExpanded, setIsOrdersExpanded] = useState(false);
   const [isAddressesExpanded, setIsAddressesExpanded] = useState(false);
 
+  const origemDaFotoRef = useRef<HTMLElement | null>(null);
+  const devolverFocoDaFoto = (event: Event) => {
+    event.preventDefault();
+    origemDaFotoRef.current?.focus();
+  };
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
   const [isUpdatingAvatar, setIsUpdatingAvatar] = useState(false);
   const [modalTab, setModalTab] = useState<"avatars" | "upload">("avatars");
@@ -233,6 +239,7 @@ export function ProfileView({
   useVoltarFechaAFolha(confirmandoSaida, () => setConfirmandoSaida(false));
 
   const openAvatarModal = () => {
+    origemDaFotoRef.current = document.activeElement as HTMLElement | null;
     setModalTab("avatars");
     setIsAvatarModalOpen(true);
     haptic.light();
@@ -546,6 +553,8 @@ export function ProfileView({
         <button
           type="button"
           onClick={() => {
+            origemDaFotoRef.current =
+              document.activeElement as HTMLElement | null;
             setIsCoverModalOpen(true);
             haptic.light();
           }}
@@ -697,9 +706,7 @@ export function ProfileView({
                           </h3>
                           <p className="text-sm text-muted-foreground">
                             #{numeroDoPedido(order.id)} ·{" "}
-                            {new Date(order.createdAt).toLocaleDateString(
-                              "pt-BR",
-                            )}
+                            {dataNoFusoDaLoja(new Date(order.createdAt))}
                             {order.items.length > 1 && (
                               <>
                                 {" "}
@@ -1023,6 +1030,7 @@ export function ProfileView({
       {/* Custom Avatar Sheet/Dialog Modal */}
       <Dialog open={isAvatarModalOpen} onOpenChange={setIsAvatarModalOpen}>
         <DialogContent
+          onCloseAutoFocus={devolverFocoDaFoto}
           overlayClassName="z-[130]"
           className="z-[130] max-h-[85dvh] max-w-xs overflow-y-auto overflow-x-hidden rounded-[18px] border border-border bg-background p-5 text-foreground sm:max-w-md"
         >
@@ -1299,6 +1307,7 @@ export function ProfileView({
       {/* Custom Cover Sheet/Dialog Modal */}
       <Dialog open={isCoverModalOpen} onOpenChange={setIsCoverModalOpen}>
         <DialogContent
+          onCloseAutoFocus={devolverFocoDaFoto}
           overlayClassName="z-[130]"
           className="z-[130] mx-auto max-h-[85dvh] w-[90%] max-w-sm overflow-y-auto overflow-x-hidden rounded-[18px] border border-border bg-background p-5 text-foreground"
         >

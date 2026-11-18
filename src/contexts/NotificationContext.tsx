@@ -512,12 +512,18 @@ export function NotificationProvider({
       // "Marcar todas como lidas" vira uma rajada de eventos (um por aviso):
       // junta a rajada numa só releitura, e num só aviso às outras abas.
       let esperaDaRajada: ReturnType<typeof setTimeout> | null = null;
+      // O aviso às outras abas acumula dentro da janela: um pedido `false`
+      // que chegue depois de um `true` não o apaga.
+      let avisarNaRajada = false;
       const releituraAposRajada = (avisarAsOutrasAbas: boolean) => {
+        avisarNaRajada = avisarNaRajada || avisarAsOutrasAbas;
         if (esperaDaRajada) clearTimeout(esperaDaRajada);
         esperaDaRajada = setTimeout(() => {
           esperaDaRajada = null;
+          const avisar = avisarNaRajada;
+          avisarNaRajada = false;
           fetchNotifications(true);
-          if (avisarAsOutrasAbas) {
+          if (avisar) {
             bc?.postMessage({ type: "notification_update" });
           }
         }, 500);
@@ -560,11 +566,13 @@ export function NotificationProvider({
           )
           .subscribe((status: string) => {
             // A primeira conexão não relê (o efeito já buscou); só o
-            // SUBSCRIBED que vem DEPOIS de uma queda.
+            // SUBSCRIBED que vem DEPOIS de uma queda. Avisa as outras abas:
+            // só a líder tem canal, e quando só o socket cai nenhuma outra
+            // janela recebe visibilidade nem "online" para reler sozinha.
             if (status === "SUBSCRIBED") {
               if (canalJaCaiu) {
                 canalJaCaiu = false;
-                releituraAoVoltar();
+                if (ativo) releituraAposRajada(true);
               }
             } else if (
               status === "CHANNEL_ERROR" ||

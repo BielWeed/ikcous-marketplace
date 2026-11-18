@@ -202,6 +202,13 @@ describe("identidade publica pura", () => {
     );
     expect(() => parseStoreIdentity(row, origin)).toThrow();
   });
+  it("aceita nome com exatamente 160 caracteres sem alterar o texto", () => {
+    const storeName = "a".repeat(160);
+    expect(
+      parseStoreIdentity({ ...fixture(), store_name: storeName }, origin)
+        .storeName,
+    ).toBe(storeName);
+  });
   it.each([
     { store_name: " " },
     { store_name: "x".repeat(161) },

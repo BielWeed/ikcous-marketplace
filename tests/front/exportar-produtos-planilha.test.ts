@@ -93,9 +93,29 @@ describe("catálogo inteiro, fora da lista e dos filtros da tela", () => {
 });
 
 describe("CSV para Excel em português", () => {
+  it.each([
+    ["2026-11-17T02:30:00Z", "16/11/2026 23:30"],
+    ["2026-11-17T12:00:00Z", "17/11/2026 09:00"],
+    ["", ""],
+    ["ontem", ""],
+  ])("mostra criação e atualização %j em Brasília", (data, esperado) => {
+    const csv = produtosEmCsv(
+      [produto({ createdAt: data, updatedAt: data, description: "" })],
+      false,
+    );
+    expect(csv.split("\r\n").at(1)?.split(";").slice(-2)).toEqual([
+      `"${esperado}"`,
+      `"${esperado}"`,
+    ]);
+  });
+  it("deixa atualização ausente vazia", () => {
+    const csv = produtosEmCsv([produto({ updatedAt: undefined })], false);
+    expect(csv.endsWith(';""')).toBe(true);
+  });
+
   it("inclui BOM, ponto e vírgula, decimal com vírgula e aspas escapadas", () => {
     const csv = produtosEmCsv([produto()], true);
-    expect(csv.startsWith("﻿")).toBe(true);
+    expect(csv.charCodeAt(0)).toBe(0xfeff);
     expect(csv).toContain('"Preço (R$)";"Preço original (R$)"');
     expect(csv).toContain("80,00;100,00;30,00;50,00;62,50;12;");
     expect(csv).toContain('"Vestido ""Verão"", azul 🌻"');
@@ -209,6 +229,23 @@ describe("planilha de produtos", () => {
     });
   });
 
+  it("preserva preço próprio não zero da variante e calcula lucro e margem sobre ele", () => {
+    const base = produto({ price: 80, costPrice: 30 });
+    expect(
+      registro({ ...base, variants: [variante({ priceOverride: 120 })] }),
+    ).toMatchObject({
+      "Preço (R$)": 120,
+      "Custo (R$)": 30,
+      "Lucro por unidade (R$)": 90,
+      "Margem (%)": 75,
+    });
+    expect(registro(base)).toMatchObject({
+      "Preço (R$)": 80,
+      "Lucro por unidade (R$)": 50,
+      "Margem (%)": 62.5,
+    });
+  });
+
   it("não inclui qualquer coluna financeira quando não há permissão", () => {
     const linhas = linhasDosProdutos([produto({ costPrice: 123456 })], false);
     expect(linhas[0]).not.toContain("Custo (R$)");
@@ -306,8 +343,8 @@ describe("planilha de produtos", () => {
       "Largura (cm)": 10,
       "Altura (cm)": 20,
       "Comprimento (cm)": 30,
-      "Criado em": "2026-11-14T12:00:00Z",
-      "Atualizado em": "2026-11-15T12:00:00Z",
+      "Criado em": "14/11/2026 09:00",
+      "Atualizado em": "15/11/2026 09:00",
     });
     expect(r).not.toHaveProperty("Marca");
   });

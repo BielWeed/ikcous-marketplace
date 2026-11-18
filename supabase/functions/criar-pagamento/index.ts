@@ -3332,7 +3332,7 @@ async function handler(
     // os outros 409 de "cartão em análise" já usam.
     const respostaCartaoAmbiguoNaCriacao = async (erroOriginal: string) => {
       await registrarCartaoEmVerificacao(
-        "falha ao falar com o gateway na criação (rede/timeout/5xx) — resposta nunca confirmada",
+        "falha na criação (rede/timeout/5xx ou resposta 2xx ilegível) — resposta nunca confirmada",
       );
       return json({ error: erroOriginal, cartaoEmAnalise: true }, 502);
     };
@@ -3573,8 +3573,8 @@ async function handler(
         await soltarReservaDestaChamada();
         return json({ error: r.erro }, 502);
       }
-      // Achado R6-P5 (7ª revisão de risco, 26/09/2026): só REDE (status 0) e
-      // 5xx são AMBÍGUOS — a Orders API pode ter processado a order antes de
+      // Achado R6-P5 (7ª revisão de risco, 26/09/2026): REDE (status 0),
+      // 5xx e 2xx ilegível são AMBÍGUOS — a Orders API pode ter processado a order antes de
       // a resposta se perder (achado da 6ª rodada, `respostaCartaoAmbiguo
       // NaCriacao`, acima), então ocupa a vaga com um SENTINELA em vez de
       // deixá-la vazia. Um 4xx DEFINITIVO que sobra até aqui (429
@@ -3602,7 +3602,12 @@ async function handler(
       // próprio MP): OUTRA requisição com a MESMA chave ainda está em
       // andamento, e ela pode já ter criado uma order pagável. Não é recusa:
       // é resultado desconhecido, então nunca solta a reserva.
-      if (r.status === 0 || r.status >= 500 || r.status === 408 || r.status === 409 || r.status === 423) {
+      // 2xx sem corpo legível ou sem id: o MP pode já ter criado a cobrança.
+      // Soltar a reserva avançaria a chave e permitiria uma segunda cobrança.
+      if (
+        (r.status >= 200 && r.status < 300) ||
+        r.status === 0 || r.status >= 500 || r.status === 408 || r.status === 409 || r.status === 423
+      ) {
         return await respostaCartaoAmbiguoNaCriacao(r.erro);
       }
       // 4xx definitivo (429, 404, 422...): o MP respondeu e recusou a

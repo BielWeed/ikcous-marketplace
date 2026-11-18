@@ -13,7 +13,8 @@
  *       novos, recompra, receita recorrente, LTV, receita em risco; pedido
  *       cancelado não conta.
  *   (d) Início: hoje × semana passada, o mês bate com o CRM do mesmo período,
- *       saldo = soma das contas, pendências.
+ *       saldo = soma das contas, pendências; contagens exatas de pedidos para
+ *       preparar (abertos e sem bloqueio de pagamento) e devoluções abertas.
  *   (e) Início: o lucro estimado conta o MÊS INTEIRO (20261390000000) e bate com o
  *       fin_dre do Financeiro; despesa prevista de outro mês não entra.
  *
@@ -301,6 +302,97 @@ PROVAS.push({
     );
     assert.equal(inicio.serie_14d.length, 14);
     assert.equal(typeof Number(inicio.mes.lucro_estimado), "number");
+  },
+});
+
+// Cada cenário desfaz as fixtures para não mudar os totais das demais provas.
+PROVAS.push({
+  nome: "(d1) Início: pedidos para preparar contam só abertos sem bloqueio de pagamento, em quantidade exata",
+  corpo: async (cliente) => {
+    await cliente.query("BEGIN");
+    try {
+      await logar(cliente, U_ADMIN);
+      // A fixture (a)(b) já tem DOIS: processing pago + new na entrega.
+      // Trocar o AND por OR contaria tanto aberto não pago quanto pago já fechado.
+      for (const [status, paymentStatus, esperado] of [
+        ["new", "pago", 3],
+        ["pending", "pago", 4],
+        ["processing", "pago", 5],
+        ["pending", "aguardando", 5],
+        ["new", "expirado", 5],
+        ["processing", "recusado", 5],
+        ["pending", "estornado", 5],
+        ["shipping", "pago", 5],
+        ["delivered", "pago", 5],
+        ["cancelled", "pago", 5],
+      ]) {
+        await venda(cliente, {
+          userId: C1,
+          total: 10,
+          diasAtras: 0,
+          status,
+          paymentStatus,
+        });
+        const inicio = await rpc(cliente, "SELECT public.painel_inicio() AS r");
+        assert.equal(
+          Number(inicio.pendencias.pedidos_para_preparar),
+          esperado,
+          `preparar após ${status}/${paymentStatus}: só pedido aberto E pagamento sem bloqueio`,
+        );
+      }
+    } finally {
+      await cliente.query("ROLLBACK");
+    }
+  },
+});
+
+PROVAS.push({
+  nome: "(d2) Início: devoluções abertas contam os quatro estados, inclusive recebida, e excluem encerradas",
+  corpo: async (cliente) => {
+    await cliente.query("BEGIN");
+    try {
+      await logar(cliente, U_ADMIN);
+      // Um pedido diferente por devolução: respeita a unicidade de aberta por pedido.
+      // Sem 'recebida' no contador, o quarto caso retorna 3 em vez de 4.
+      for (const [status, esperado] of [
+        ["solicitada", 1],
+        ["aprovada", 2],
+        ["em_transito", 3],
+        ["recebida", 4],
+        ["concluida", 4],
+        ["recusada", 4],
+        ["cancelada", 4],
+        ["reprovada", 4],
+      ]) {
+        const pedido = (
+          await cliente.query(
+            `INSERT INTO public.marketplace_orders
+               (user_id, customer_name, customer_data, total, subtotal, status,
+                canal, payment_method, payment_status, paid_at)
+             VALUES ($1, 'Cliente devolucao Inicio', '{}', 50, 50, 'delivered',
+                     'online', 'online', 'pago', now()) RETURNING id`,
+            [C1],
+          )
+        ).rows[0].id;
+        // Mesmas colunas mínimas de devolucao-encerrada-nao-reabre-viva.cjs.
+        await cliente.query(
+          `INSERT INTO public.devolucoes
+             (protocolo, order_id, user_id, tipo, motivo, resolucao_desejada,
+              modalidade, metodo_retorno, status, valor_itens, prazo_ate, politica)
+           VALUES ($1, $2, $3, 'arrependimento', 'desisti', 'reembolso',
+                   'local', 'entrega_na_loja', $4, 50, current_date + 7, '{}')`,
+          [`inicio-${status}`, pedido, C1, status],
+        );
+        const inicio = await rpc(cliente, "SELECT public.painel_inicio() AS r");
+        assert.equal(
+          Number(inicio.pendencias.devolucoes_abertas),
+          esperado,
+          `devoluções após ${status}: só solicitada, aprovada, em_transito e recebida ficam abertas`,
+        );
+      }
+    } finally {
+      await cliente.query("ROLLBACK");
+    }
   },
 });
 

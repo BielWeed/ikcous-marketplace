@@ -59,8 +59,8 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-function carrinho(product: Product) {
-  const cart: CartItem[] = [{ product, quantity: 1 }];
+function carrinho(product: Product, variantId?: string) {
+  const cart: CartItem[] = [{ product, quantity: 1, variantId }];
   act(() => {
     raiz.render(
       <CartItemsList
@@ -115,6 +115,26 @@ describe("selo de desconto — carrinho", () => {
   it("desconto de verdade continua com o selo", () => {
     carrinho(produto(80, 100));
     expect(document.body.textContent).toContain("-20%");
+  });
+
+  it("o selo usa o preço da variação escolhida, não o preço-base", () => {
+    const product = produto(80, 100);
+    product.variants = [
+      {
+        id: "tamanho-m",
+        productId: product.id,
+        name: "Tamanho",
+        value: "M",
+        stockIncrement: 10,
+        priceOverride: 90,
+        active: true,
+      },
+    ];
+
+    carrinho(product, "tamanho-m");
+
+    expect(hospedeiro.textContent).toContain("-10%");
+    expect(hospedeiro.textContent).not.toContain("-20%");
   });
 });
 

@@ -65,18 +65,24 @@ export function guardarDestinoGoogle(): string {
   const destino = destinoPosLogin(origem) ?? "profile";
   // Google é entrada de cliente, não um atalho para o painel.
   const seguro = destino.startsWith("admin") ? "profile" : destino;
-  sessionStorage.setItem(
-    CHAVE_RETORNO,
-    JSON.stringify({
-      quando: Date.now(),
-      estado: {
-        view: "auth",
-        from: seguro,
-        requested: seguro,
-        id: idDoDestinoPosLogin(seguro, origem),
-      },
-    }),
-  );
+  try {
+    sessionStorage.setItem(
+      CHAVE_RETORNO,
+      JSON.stringify({
+        quando: Date.now(),
+        estado: {
+          view: "auth",
+          from: seguro,
+          requested: seguro,
+          id: idDoDestinoPosLogin(seguro, origem),
+        },
+      }),
+    );
+  } catch {
+    // Guardar o destino é um extra: sem armazenamento (cheio ou bloqueado) a
+    // volta só não lembra de onde a cliente veio; entrar com o Google não pode
+    // ser impedido.
+  }
   return `${location.origin}/auth`;
 }
 

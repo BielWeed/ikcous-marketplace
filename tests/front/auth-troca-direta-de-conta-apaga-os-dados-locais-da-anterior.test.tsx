@@ -191,6 +191,26 @@ it("troca direta A -> B apaga o CEP e os pedidos guardados da A (a mesma limpeza
   expect(localStorage.getItem("admin_banner_form_draft:A")).not.toBeNull();
 });
 
+it("limite: aparelho cheio (CEP só na memória do armazenamento seguro): a troca A -> B não deixa o CEP da A para a B", async () => {
+  await montar();
+  const { localStorageSeguro } = await import("@/lib/armazenamento-seguro");
+  await emitir("SIGNED_IN", "A");
+  vi.spyOn(localStorage, "setItem").mockImplementation(() => {
+    throw new DOMException("quota", "QuotaExceededError");
+  });
+  // É assim que o checkout grava o CEP digitado.
+  localStorageSeguro().setItem("ikcous_last_shipping_cep", "01310-100");
+  expect(localStorageSeguro().getItem("ikcous_last_shipping_cep")).toBe(
+    "01310-100",
+  );
+
+  await emitir("SIGNED_IN", "B");
+
+  expect(atual().userId).toBe("B");
+  // O checkout da B lê o CEP por aqui.
+  expect(localStorageSeguro().getItem("ikcous_last_shipping_cep")).toBeNull();
+});
+
 it("limite: a MESMA conta reemitindo SIGNED_IN / TOKEN_REFRESHED não apaga nada", async () => {
   await montar();
   await emitir("SIGNED_IN", "A");

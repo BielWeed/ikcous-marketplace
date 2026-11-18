@@ -31,7 +31,8 @@
  *   (8) reaplicar 2x não muda nada; o rollback comum devolve o catálogo (só os 5 objetos saem) e PRESERVA as linhas; o
  *       destrutivo exige confirmação e o rollback comum antes; o pré-voo recusa 8 estados desconhecidos sem escrever;
  *       o pós-voo que falha desfaz tudo numa conexão SEM BEGIN (como o aplicador);
- *   (9) CONTROLES: sem a migration (rollback) as sondas reprovam; 12 mutantes (cada guarda tirada) reprovam a SUA sonda.
+ *   (9) CONTROLES: sem a migration (rollback) as sondas reprovam; 12 mutantes (cada guarda tirada) reprovam AO MENOS a sonda
+ *       que cada um declara em `reprova` (só essa é exigida: outras podem reprovar junto, e M8 e M11 declaram a mesma).
  *
  * Toda chamada de teste roda numa transação DESFEITA no fim; as exceções (escrita real) restauram as fixtures.
  *

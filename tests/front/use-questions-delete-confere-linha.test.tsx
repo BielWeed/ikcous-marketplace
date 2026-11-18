@@ -4,7 +4,7 @@
 // linhas — exclusão barrada pelo banco (0 linhas, sem erro) voltava como
 // sucesso e a tela dizia "Pergunta excluída" com a pergunta ainda lá. Agora
 // segue o molde de `deleteReview` e `deleteCoupon`: `.select("id")` e 0
-// linhas é falha. O hook de verdade roda com o cliente do Supabase dublado.
+// linhas não é sucesso: vira aviso neutro. O cliente do Supabase é dublado.
 vi.hoisted(() => {
   if (typeof globalThis.BroadcastChannel === "undefined") {
     class BroadcastChannelFalso {
@@ -72,7 +72,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 type ExcluirFn = (
   id: string,
   opcoes?: { silent?: boolean },
-) => Promise<boolean>;
+) => Promise<boolean | null>;
 let excluir: ExcluirFn | null = null;
 
 function Capturador() {
@@ -108,7 +108,7 @@ describe("useQuestions.deleteQuestion — confere se apagou linha", () => {
 
   it("o banco apagou a linha: true e aviso de sucesso", async () => {
     h.resultadoDelete = { data: [{ id: "q-1" }], error: null };
-    let resposta: boolean | undefined;
+    let resposta: boolean | null | undefined;
     await act(async () => {
       resposta = await excluir!("q-1");
     });
@@ -116,31 +116,35 @@ describe("useQuestions.deleteQuestion — confere se apagou linha", () => {
     expect(toast.success).toHaveBeenCalledWith("Pergunta removida.");
   });
 
-  it("0 linhas apagadas (barrado pelo banco, sem erro): false e aviso de erro", async () => {
+  it("0 linhas apagadas: ausência ou sem acesso é aviso neutro, não sucesso", async () => {
     h.resultadoDelete = { data: [], error: null };
-    let resposta: boolean | undefined;
+    let resposta: boolean | null | undefined;
     await act(async () => {
       resposta = await excluir!("q-1");
     });
-    expect(resposta).toBe(false);
+    expect(resposta).toBeNull();
     expect(toast.success).not.toHaveBeenCalled();
-    expect(toast.error).toHaveBeenCalledWith("Erro ao remover pergunta.");
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(toast.info).toHaveBeenCalledWith(
+      "A pergunta já foi excluída ou não está mais acessível.",
+    );
   });
 
-  it("0 linhas com `silent`: false e nenhum aviso (a tela é quem avisa)", async () => {
+  it("0 linhas com `silent`: null e nenhum aviso (a tela é quem avisa)", async () => {
     h.resultadoDelete = { data: [], error: null };
-    let resposta: boolean | undefined;
+    let resposta: boolean | null | undefined;
     await act(async () => {
       resposta = await excluir!("q-1", { silent: true });
     });
-    expect(resposta).toBe(false);
+    expect(resposta).toBeNull();
+    expect(toast.info).not.toHaveBeenCalled();
     expect(toast.error).not.toHaveBeenCalled();
     expect(toast.success).not.toHaveBeenCalled();
   });
 
   it("erro do banco continua false", async () => {
     h.resultadoDelete = { data: null, error: { message: "rede" } };
-    let resposta: boolean | undefined;
+    let resposta: boolean | null | undefined;
     await act(async () => {
       resposta = await excluir!("q-1");
     });

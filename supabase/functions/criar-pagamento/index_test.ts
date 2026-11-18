@@ -9,6 +9,7 @@
  * A chamada ao MP em si já é coberta pelos testes de _shared/mercadopago.ts.
  */
 import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.177.0/testing/asserts.ts";
+import { FakeTime } from "jsr:@std/testing@1.0.21/time";
 import {
   chaveDeIdempotencia,
   descricaoDoPedido,
@@ -5277,6 +5278,78 @@ for (
   });
 }
 
+// Um 2xx ilegível não prova recusa: liberar a vaga avançaria a chave de
+// idempotência e permitiria cobrar de novo uma order que o MP já criou.
+for (
+  const caso of [
+    { nome: "HTML 200", status: 200, corpo: "<html>" },
+    { nome: "corpo vazio 200", status: 200, corpo: "" },
+    { nome: "JSON sem id 201", status: 201, corpo: JSON.stringify({ status: "processed" }) },
+  ]
+) {
+  Deno.test(`handler cartão: resposta ilegível (${caso.nome}) mantém sentinela, avisa análise e alerta o admin`, async () => {
+    const { supabase, registro, chamadasRpc } = cenarioCartao({
+      pedido: pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }),
+    });
+    const alertas: Array<Record<string, unknown>> = [];
+    const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+      supabase,
+      fetchImpl: async () => new Response(caso.corpo, { status: caso.status }),
+      alertarAdminCartaoOrfao: async (aviso) => {
+        alertas.push(aviso);
+      },
+    });
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 502);
+    assertEquals(corpo.cartaoEmAnalise, true);
+    assertEquals(corpo.error, FRASE_RESPOSTA_ILEGIVEL_DO_MP);
+    assertEquals(chamadasRpc, [], "não libera a vaga nem avança a tentativa");
+    const { data: pedido } = await supabase.from("marketplace_orders")
+      .select("gateway_payment_id, tentativas_de_pagamento").eq("id", UUID).maybeSingle();
+    assertEquals(pedido.gateway_payment_id, sentinelaDaReserva(registro), "a reserva continua ocupada");
+    assertEquals(sentinelaDaChave(pedido.gateway_payment_id, `${UUID}:c0`), true);
+    assertEquals(pedido.tentativas_de_pagamento, 0);
+    assertEquals(alertas.length, 1);
+    assertEquals(alertas[0].orderId, UUID);
+    assertEquals(alertas[0].idOrderOrfa, pedido.gateway_payment_id);
+    assertEquals(alertas[0].aviso.title, "Cartão em verificação — pode se resolver sozinho");
+  });
+}
+
+for (
+  const caso of [
+    { status: 400, esperado: 502 },
+    { status: 402, esperado: 200 },
+    { status: 403, esperado: 503 },
+    { status: 429, esperado: 502 },
+  ]
+) {
+  Deno.test(`handler cartão: recusa definitiva HTTP ${caso.status} libera sentinela sem análise nem alerta`, async () => {
+    const { supabase, registro, chamadasRpc } = cenarioCartao({
+      pedido: pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }),
+    });
+    let alertas = 0;
+    const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+      supabase,
+      fetchImpl: fetchMP({ criar: { status: caso.status, corpo: { message: "recusado" } } }).fn,
+      alertarAdminCartaoOrfao: async () => {
+        alertas++;
+      },
+    });
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, caso.esperado);
+    assertEquals(corpo.cartaoEmAnalise, undefined);
+    assertEquals(liberacoes(chamadasRpc), [{ p_order_id: UUID, p_gateway_payment_id: sentinelaDaReserva(registro) }]);
+    const { data: pedido } = await supabase.from("marketplace_orders")
+      .select("gateway_payment_id, tentativas_de_pagamento").eq("id", UUID).maybeSingle();
+    assertEquals(pedido.gateway_payment_id, null);
+    assertEquals(pedido.tentativas_de_pagamento, 1, "a próxima tentativa usa uma chave nova só após recusa definitiva");
+    assertEquals(alertas, 0);
+  });
+}
+
 Deno.test("handler cartão: token, CPF e e-mail NUNCA aparecem em log nem na resposta — nem na recusa 402 cujo corpo traz o pagador", async () => {
   const { supabase } = cenarioCartao({
     pedido: pedidoBase({ user_id: DONO_LOGADO, customer_data: { email: "titular@exemplo.com" } }),
@@ -6447,6 +6520,9 @@ Deno.test("handler cartão: recusa (402) + liberar_cobranca falhando PERSISTENTE
 // classe de erro que uma indisponibilidade real do MP), e mesmo um sentinela
 // bem velho continua bloqueando o PIX.
 Deno.test("handler cartão (Achado S1 + Ponto 1): recusa com resposta perdida vira sentinela; PIX sobre o sentinela FRESCO recebe 409 explícito (nunca 200 sem QR); sentinela VELHO com busca que FALHA continua bloqueando (nunca libera só pelo relógio)", async () => {
+  // Congela o agora: a duração das chamadas no CI não envelhece o carimbo.
+  const agora = Date.parse("2026-11-17T12:00:00.000Z");
+  using _relogio = new FakeTime(agora);
   const db = bancoComEstado(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }));
   const porChave = new Map<string, { corpo: string; order: Record<string, unknown> | null }>();
   let perderPrimeira = true;
@@ -6522,8 +6598,8 @@ Deno.test("handler cartão (Achado S1 + Ponto 1): recusa com resposta perdida vi
   assertEquals(c2.verificacao, "indisponivel");
   assertEquals(db.linha.gateway_payment_id?.startsWith("verificando:"), true);
   assertEquals(
-    (Date.now() - new Date(db.linha.updated_at as string).getTime()) < 1000,
-    true,
+    db.linha.updated_at,
+    new Date(agora).toISOString(),
     "sentinela recém-gravado — o carimbo é de agora",
   );
 

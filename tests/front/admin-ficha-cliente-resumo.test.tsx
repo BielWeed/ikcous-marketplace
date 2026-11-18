@@ -112,6 +112,18 @@ describe("calcularResumoFicha — a regra dos quatro números", () => {
     expect(resumo.totalGasto).toBe(100);
   });
 
+  it("pedido estornado conta no histórico, mas não no total nem no ticket médio", () => {
+    const resumo = calcularResumoFicha([
+      pedido({ id: "pago", total: 200, paymentStatus: "pago" }),
+      pedido({ id: "estornado", total: 500, paymentStatus: "estornado" }),
+    ]);
+
+    expect(resumo.pedidosQueContam).toHaveLength(2);
+    expect(resumo.pedidosPagos.map((o) => o.id)).toEqual(["pago"]);
+    expect(resumo.totalGasto).toBe(200);
+    expect(resumo.ticketMedio).toBe(200);
+  });
+
   it("ticket médio divide o dinheiro só pelos pedidos PAGOS, não pelos que contam", () => {
     const resumo = calcularResumoFicha([
       pedido({ id: "a", total: 100, paymentStatus: "pago" }),
@@ -357,6 +369,17 @@ describe("AdminUserDetailView — os cartões do resumo no ar", () => {
     expect(
       rotulo?.nextElementSibling?.classList.contains("text-emerald-400"),
     ).toBe(true);
+  });
+
+  it("pedido estornado não aumenta o total já comprado nem o valor médio por venda", async () => {
+    estado.orders = [
+      pedido({ id: "pago", total: 200, paymentStatus: "pago" }),
+      pedido({ id: "estornado", total: 500, paymentStatus: "estornado" }),
+    ];
+    await abrirFicha();
+
+    expect(valorDoCard("Total já comprado")).toBe("R$ 200,00");
+    expect(valorDoCard("Valor médio por venda")).toBe("R$ 200,00");
   });
 
   it("Ticket Médio é o dinheiro dividido pelos pedidos pagos", async () => {

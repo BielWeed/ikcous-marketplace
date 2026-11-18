@@ -222,6 +222,7 @@ export function formaAparece(texto: string, forma: FormaDaPalavra): boolean {
 
 /** Cor, tamanho, numero: so o que a variacao ATIVA diz; `name` ("Cor") nao entra. */
 interface VariacaoDaBusca {
+  sku?: string | null;
   value: string;
   active: boolean;
 }
@@ -230,13 +231,16 @@ interface VariacaoDaBusca {
 function textoDasVariacoes(variacoes?: VariacaoDaBusca[]): string {
   return (variacoes ?? [])
     .filter((variacao) => variacao.active)
-    .map((variacao) => normalizarParaBusca(variacao.value))
+    .flatMap((variacao) =>
+      [variacao.value, variacao.sku].map(normalizarParaBusca),
+    )
     .join("\n");
 }
 
 export function produtoCombinaComBusca(
   produto: {
     name: string;
+    sku?: string | null;
     description?: string | null;
     category?: string | null;
     variants?: VariacaoDaBusca[];
@@ -245,7 +249,12 @@ export function produtoCombinaComBusca(
 ): boolean {
   const palavras = palavrasDaBusca(busca);
   if (palavras.length === 0) return true;
-  const texto = [produto.name, produto.category, produto.description]
+  const texto = [
+    produto.name,
+    produto.category,
+    produto.description,
+    produto.sku,
+  ]
     .map(normalizarParaBusca)
     .join("\n");
   const variacoes = textoDasVariacoes(produto.variants);
@@ -286,8 +295,10 @@ export function pontuadorDaBusca(busca: string) {
 
   return (produto: {
     name: string;
+    sku?: string | null;
     description?: string | null;
     category?: string | null;
+    variants?: VariacaoDaBusca[];
   }): number => {
     let score = 0;
     const name = normalizarParaBusca(produto.name);
@@ -315,6 +326,19 @@ export function pontuadorDaBusca(busca: string) {
 
     // Description match
     if (description.includes(query)) score += 5;
+
+    const codigos = [
+      produto.sku,
+      ...(produto.variants ?? [])
+        .filter((variacao) => variacao.active)
+        .map((variacao) => variacao.sku),
+    ]
+      .map(normalizarParaBusca)
+      .filter(Boolean);
+    // Codigo exato vem antes de uma simples mencao na descricao (5 pontos).
+    if (query && codigos.some((codigo) => codigo === query)) score += 40;
+    else if (query && codigos.some((codigo) => codigo.includes(query)))
+      score += 5;
 
     return score;
   };

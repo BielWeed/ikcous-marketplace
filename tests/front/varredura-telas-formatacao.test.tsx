@@ -282,6 +282,28 @@ describe("1. dinheiro com separador de milhar", () => {
     expect(t.split("R$ 1.234,50").length - 1).toBe(5);
   });
 
+  it("OrderDetailsView: cada linha do resumo mostra seu próprio valor", async () => {
+    pedidos = [
+      pedido({ subtotal: 100, shipping: 15, discount: 7, total: 108 }),
+    ];
+    await montarPedido();
+
+    for (const [rotulo, valor] of [
+      ["Produtos", "R$ 100,00"],
+      ["Frete", "R$ 15,00"],
+      ["Desconto", "- R$ 7,00"],
+      ["Total", "R$ 108,00"],
+    ]) {
+      const etiqueta = [...hospedeiro.querySelectorAll("span")].find(
+        (elemento) => txt(elemento.textContent) === rotulo,
+      );
+      expect(etiqueta, rotulo).toBeTruthy();
+      expect(txt(etiqueta?.nextElementSibling?.textContent), rotulo).toBe(
+        valor,
+      );
+    }
+  });
+
   it("ProductView: preço grande, 'De:' e barra de compra", async () => {
     const { ProductView } = await import("@/views/customer/ProductView");
     await montar(

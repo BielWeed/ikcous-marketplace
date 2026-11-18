@@ -19,6 +19,7 @@ import {
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
+import { prepararTextoDeBuscaDoPainel } from "@/lib/texto-de-busca-do-painel";
 import type {
   IntervaloDeDatas,
   ListaDeClientesDoCrm,
@@ -306,7 +307,7 @@ export function useCrmClientes({
           Promise.resolve(
             supabase.rpc("crm_clientes", {
               p_segmento: segmento,
-              p_busca: termo === "" ? null : termo,
+              p_busca: prepararTextoDeBuscaDoPainel(termo) || null,
               p_limite: porPagina,
               p_offset: pagina * porPagina,
             }),

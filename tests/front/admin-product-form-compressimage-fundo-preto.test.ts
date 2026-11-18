@@ -217,6 +217,55 @@ describe("AdminProductFormView — compressImage (foto do produto) não pinta a 
     expect(contexto.fillRect).toHaveBeenCalledWith(0, 0, 1200, 1200);
   });
 
+  it.each([
+    [2400, 1200, 1200, 600],
+    [1200, 2400, 600, 1200],
+  ])(
+    "preserva a proporção da foto %ix%i ao desenhar em %ix%i",
+    async (largura, altura, larguraFinal, alturaFinal) => {
+      const { compressProductImage } = await import(
+        "@/views/admin/AdminProductFormView"
+      );
+      class ImagemRetangular extends ImagemFalsa {
+        width = largura;
+        height = altura;
+      }
+      vi.stubGlobal("Image", ImagemRetangular);
+
+      await compressProductImage(arquivoGrande());
+
+      expect(contexto.drawImage).toHaveBeenCalledExactlyOnceWith(
+        expect.any(ImagemRetangular),
+        0,
+        0,
+        larguraFinal,
+        alturaFinal,
+      );
+      expect(contexto.fillRect).toHaveBeenCalledWith(
+        0,
+        0,
+        larguraFinal,
+        alturaFinal,
+      );
+      const canvas = toBlobSpy.mock.instances[0] as HTMLCanvasElement;
+      expect(canvas.width).toBe(larguraFinal);
+      expect(canvas.height).toBe(alturaFinal);
+    },
+  );
+
+  it("libera uma única vez a mesma URL criada depois de concluir a compressão", async () => {
+    const { compressProductImage } = await import(
+      "@/views/admin/AdminProductFormView"
+    );
+    const arquivo = arquivoGrande();
+
+    await compressProductImage(arquivo);
+
+    expect(URL.createObjectURL).toHaveBeenCalledExactlyOnceWith(arquivo);
+    const objectUrl = vi.mocked(URL.createObjectURL).mock.results[0].value;
+    expect(URL.revokeObjectURL).toHaveBeenCalledExactlyOnceWith(objectUrl);
+  });
+
   it("continua devolvendo image/jpeg, com a qualidade padrão — o conserto não troca o tipo nem destrói a compressão que o upload espera", async () => {
     const { compressProductImage } = await import(
       "@/views/admin/AdminProductFormView"

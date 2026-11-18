@@ -13,6 +13,15 @@ describe("horarioRelativo", () => {
     expect(horarioRelativo(haMinutos(-5), AGORA)).toBe("agora mesmo");
   });
 
+  it.each([
+    [119_000, "agora mesmo"],
+    [120_000, "há 2 min"],
+  ])("com %i ms de idade mostra %s", (idadeMs, texto) => {
+    const criadoEm = new Date(AGORA.getTime() - idadeMs).toISOString();
+
+    expect(horarioRelativo(criadoEm, AGORA)).toBe(texto);
+  });
+
   it("menos de 1 hora usa há N min", () => {
     expect(horarioRelativo(haMinutos(5), AGORA)).toBe("há 5 min");
     expect(horarioRelativo(haMinutos(59), AGORA)).toBe("há 59 min");

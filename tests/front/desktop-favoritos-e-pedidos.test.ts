@@ -39,7 +39,8 @@ function classes(arquivo: string) {
 
 describe("Favoritos e pedidos no computador", () => {
   it("preserva todas as classes abaixo de 1024px, inclusive md: e estados condicionais", () => {
-    // Assinaturas da base 1.5.187: todos os literais de className na ordem da árvore.
+    // Base 1.5.187; pedidos inclui a quebra do bairro sem espaços (17/11/2026).
+    // Todos os literais de className na ordem da árvore.
     expect(classes(arquivos.favoritos)).toBe(
       "4867b0736e2e22521d6e8479f6c7354e629bbf1e0727dda4f486833645300cb9",
     );
@@ -47,7 +48,7 @@ describe("Favoritos e pedidos no computador", () => {
       "4496dc40387eeeafe39b70316ec3ce53e3a8ae9d884b01c0897d391ac0e5254d",
     );
     expect(classes(arquivos.pedidos)).toBe(
-      "30e79f7e39c6c65316a566903ceab567c7fff1d58da1cf37f2333494fb378aa1",
+      "25517ee6c392becb26e96a3c560aca5915539e126275ac1a930ad739be209bb6",
     );
     expect(classes(arquivos.busca)).toBe(
       "da4454082908c50fcec65bec2c10f2f24c6ce59b90af6465a08b5ba1dd81dbd5",

@@ -74,7 +74,7 @@ export const OrderReceipt = memo(function OrderReceipt({
     <>
       <div
         data-tema-fixo=""
-        className="mx-auto hidden max-w-[80mm] border border-gray-200 bg-white p-8 font-mono text-sm text-black print:block"
+        className="mx-auto hidden max-w-[80mm] border border-gray-200 bg-white p-8 font-mono text-sm text-black [overflow-wrap:anywhere] print:block"
       >
         <div className="mb-4 border-b border-dashed border-black pb-4 text-center">
           <h2 className="text-xl font-bold uppercase">{storeName}</h2>
@@ -126,7 +126,7 @@ export const OrderReceipt = memo(function OrderReceipt({
           <div className="space-y-1">
             {order.items.map((item, i) => (
               <div key={i} className="flex justify-between">
-                <span className="flex-1">
+                <span className="min-w-0 flex-1">
                   {item.quantity}x {item.name}
                   {item.variantId && variacoes?.[item.variantId] && (
                     <span className="block pl-4 text-xs">
@@ -134,7 +134,7 @@ export const OrderReceipt = memo(function OrderReceipt({
                     </span>
                   )}
                 </span>
-                <span>
+                <span className="shrink-0 whitespace-nowrap">
                   R$ {reais((item.price || 0) * (item.quantity || 0))}
                 </span>
               </div>

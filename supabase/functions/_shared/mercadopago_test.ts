@@ -7,6 +7,7 @@
  * stub. O que se prova é o que erra caro — corpo com valor errado cobra o
  * cliente errado, e status mal mapeado marca como pago um pedido recusado.
  */
+import { FakeTime } from "jsr:@std/testing@1.0.21/time";
 import {
   assertEquals,
   assertStringIncludes,
@@ -1689,19 +1690,30 @@ Deno.test("EST-EDGE-DIN-1 - fetchComTempo: corpo que nunca chega depois do 200 e
 Deno.test("EST-EDGE-DIN-1 - consultarOrder com 200 sem corpo devolve ok:false status 0 (tempo esgotado), não 'corpo ilegível'", async () => {
   const guardas: Array<ReturnType<typeof setTimeout>> = [];
   const { buscar } = respostaComCorpoPendurado(guardas);
-  const inicio = Date.now();
-  const r = await consultarOrder({
+  // Tempo virtual prova o prazo de 20 ms sem depender de pausas do CI.
+  using relogio = new FakeTime();
+  let terminou = false;
+  const andamento = consultarOrder({
     token: "t",
     orderId: "ORD01KZZ4D94WC79335A68CZ5NZ7X",
     fetchImpl: buscar,
     tempoLimiteMs: 20,
-  });
-  guardas.forEach(clearTimeout);
-  assertEquals(r.ok, false);
-  // status 0 = a mesma falha de rede/timeout da chamada sem resposta; sem o
-  // conserto o corpo quebrava pela guarda e saía status 200 "corpo ilegível".
-  assertEquals(r.ok ? null : r.status, 0);
-  assertEquals(Date.now() - inicio < 250, true);
+  }).then((r) => { terminou = true; return r; });
+  try {
+    await relogio.tickAsync(19);
+    assertEquals(terminou, false);
+    await relogio.tickAsync(1);
+    await relogio.runMicrotasks();
+    assertEquals(terminou, true, "o prazo vence antes da guarda do corpo (300 ms)");
+    const r = await andamento;
+    assertEquals(r.ok, false);
+    // status 0 = timeout; a guarda do corpo produziria status 200 ilegível.
+    assertEquals(r.ok ? null : r.status, 0);
+  } finally {
+    await relogio.tickAsync(300);
+    await andamento;
+    guardas.forEach(clearTimeout);
+  }
 });
 
 Deno.test("EST-EDGE-DIN-1 - consultarPagamento com 200 sem corpo devolve ok:false status 0 (tempo esgotado)", async () => {
@@ -1721,17 +1733,29 @@ Deno.test("EST-EDGE-DIN-1 - consultarPagamento com 200 sem corpo devolve ok:fals
 Deno.test("EST-EDGE-DIN-1 - buscarOrdersDoPedido com 200 sem corpo devolve ok:false dentro do prazo", async () => {
   const guardas: Array<ReturnType<typeof setTimeout>> = [];
   const { buscar } = respostaComCorpoPendurado(guardas);
-  const inicio = Date.now();
-  const r = await buscarOrdersDoPedido({
+  // Tempo virtual distingue o prazo da guarda sem medir a velocidade do CI.
+  using relogio = new FakeTime();
+  let terminou = false;
+  const andamento = buscarOrdersDoPedido({
     token: "t",
     pedidoId: "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b",
     desde: new Date().toISOString(),
     fetchImpl: buscar,
     tempoLimiteMs: 20,
-  });
-  guardas.forEach(clearTimeout);
-  assertEquals(r.ok, false);
-  assertEquals(Date.now() - inicio < 250, true);
+  }).then((r) => { terminou = true; return r; });
+  try {
+    await relogio.tickAsync(19);
+    assertEquals(terminou, false);
+    await relogio.tickAsync(1);
+    await relogio.runMicrotasks();
+    assertEquals(terminou, true, "a busca termina aos 20 ms, antes da guarda de 300 ms");
+    const r = await andamento;
+    assertEquals(r.ok, false);
+  } finally {
+    await relogio.tickAsync(300);
+    await andamento;
+    guardas.forEach(clearTimeout);
+  }
 });
 
 Deno.test("EST-EDGE-DIN-1 - fetchComTempo: corpo entregue a tempo preserva status, cabeçalhos e JSON; 204 sem corpo continua válido", async () => {

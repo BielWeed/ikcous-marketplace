@@ -286,6 +286,45 @@ describe("ProductView — galeria e quantidade acompanham a variação", () => {
         expect(acesos("Foto ")).toEqual(["Foto 3 de 4"]);
       });
 
+      it("anterior na primeira foto abre a ultima e desloca a faixa", async () => {
+        const deslocar = vi.fn();
+        vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(
+          320,
+        );
+        const scrollToAnterior = Object.getOwnPropertyDescriptor(
+          HTMLElement.prototype,
+          "scrollTo",
+        );
+        Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+          configurable: true,
+          value: deslocar,
+        });
+        try {
+          await montar(produtoComQuatroFotos());
+          expect(acesos("Foto ")).toEqual(["Foto 1 de 4"]);
+          deslocar.mockClear();
+
+          await tocar(botaoPorRotulo(hospedeiro, "Foto anterior"));
+
+          expect(acesos("Foto ")).toEqual(["Foto 4 de 4"]);
+          expect(deslocar).toHaveBeenCalledWith({
+            left: 960,
+            behavior: "smooth",
+          });
+        } finally {
+          vi.restoreAllMocks();
+          if (scrollToAnterior) {
+            Object.defineProperty(
+              HTMLElement.prototype,
+              "scrollTo",
+              scrollToAnterior,
+            );
+          } else {
+            Reflect.deleteProperty(HTMLElement.prototype, "scrollTo");
+          }
+        }
+      });
+
       it("navegar a partir da foto da variação segue a ordem da galeria", async () => {
         await montar(produtoComQuatroFotos());
         await tocar(botaoDaOpcao(hospedeiro, "Verde"));

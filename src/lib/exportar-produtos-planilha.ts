@@ -1,3 +1,4 @@
+import { dataLocal } from "@/lib/data-local-csv";
 import type { Product } from "@/types";
 
 export type CelulaDoProduto = string | number;
@@ -256,8 +257,10 @@ export function linhasDosProdutos(
           p.estoqueMinimo ?? "",
           p.id,
           v?.id ?? "",
-          p.createdAt,
-          p.updatedAt ?? "",
+          formato === "csv" ? dataLocal(p.createdAt ?? "") : p.createdAt,
+          formato === "csv"
+            ? dataLocal(p.updatedAt ?? "")
+            : (p.updatedAt ?? ""),
         ].map((celula) => (formato === "csv" ? textoSeguro(celula) : celula));
       });
     }),

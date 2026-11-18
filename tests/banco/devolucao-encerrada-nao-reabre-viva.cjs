@@ -129,6 +129,13 @@ const registrar = (alvo) =>
     [alvo],
     SESSAO,
   );
+const enviar = (alvo) =>
+  P.tentar(
+    "authenticated",
+    "SELECT public.admin_devolucao_registrar($1,'em_transito',NULL,'Enviado para a loja') AS r",
+    [alvo],
+    SESSAO,
+  );
 const decidir = (alvo, aprovar) =>
   P.tentar(
     "authenticated",
@@ -214,6 +221,39 @@ prova(
       ]) {
         await aceita(await fixture(estado, n), registrar, estado, "recebida");
       }
+    }),
+);
+
+prova(
+  "envio recusa concluida/recusada/cancelada sem mudar linha/eventos/saldo; aprovada aceita",
+  () =>
+    P.emTransacao(async () => {
+      await pessoas();
+      await mutar(
+        "devolucao-envia-sem-estado",
+        "public.admin_devolucao_registrar(uuid,text,text,text)",
+        "    IF v_d.status <> 'aprovada' THEN\n" +
+          "      RAISE EXCEPTION 'Só uma devolução aprovada pode ser marcada como enviada.' USING ERRCODE = '22023';\n" +
+          "    END IF;\n",
+      );
+      for (const [estado, n] of [
+        ["concluida", 400],
+        ["recusada", 410],
+        ["cancelada", 420],
+      ]) {
+        await recusa(
+          await fixture(estado, n),
+          enviar,
+          /^Só uma devolução aprovada pode ser marcada como enviada\.$/,
+          `enviar ${estado}`,
+        );
+      }
+      await aceita(
+        await fixture("aprovada", 430),
+        enviar,
+        "aprovada",
+        "em_transito",
+      );
     }),
 );
 

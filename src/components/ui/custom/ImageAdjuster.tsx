@@ -1207,7 +1207,7 @@ export function ImageAdjuster({
           <div className="flex items-center gap-2 sm:gap-4">
             <button
               onClick={onClose}
-              className="flex size-8 items-center justify-center rounded-full border border-white/10 bg-zinc-900 text-white transition-all hover:border-white/20 hover:bg-zinc-800 active:scale-95 disabled:opacity-50 sm:w-auto sm:px-4 sm:py-2"
+              className="flex size-8 min-h-11 min-w-11 items-center justify-center rounded-full border border-white/10 bg-zinc-900 text-white transition-all hover:border-white/20 hover:bg-zinc-800 active:scale-95 disabled:opacity-50 sm:w-auto sm:px-4 sm:py-2"
               disabled={isSubmitting}
               title="Voltar"
             >
@@ -1275,7 +1275,7 @@ export function ImageAdjuster({
               role="application"
               aria-label="Ajustador de imagem: clique e arraste para posicionar"
               className={cn(
-                "relative flex w-full cursor-move items-center justify-center overflow-hidden bg-zinc-950/40 shadow-inner transition-all duration-300",
+                "relative flex w-full cursor-move touch-none items-center justify-center overflow-hidden bg-zinc-950/40 shadow-inner transition-all duration-300",
                 aspectRatio === "4:5" && "aspect-[4/5]",
                 aspectRatio === "1:1" && "aspect-square",
                 aspectRatio === "2:1" && "aspect-[2/1]",
@@ -1540,7 +1540,7 @@ export function ImageAdjuster({
                         onClick={() =>
                           handleZoomChange(Math.max(1, zoom - 0.25))
                         }
-                        className="rounded-xl border border-white/5 bg-zinc-950 p-2 text-zinc-400 transition-all hover:bg-zinc-900 hover:text-white active:scale-90"
+                        className="flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-white/5 bg-zinc-950 p-2 text-zinc-400 transition-all hover:bg-zinc-900 hover:text-white active:scale-90"
                       >
                         <ZoomOut className="size-3.5" />
                       </button>
@@ -1568,7 +1568,7 @@ export function ImageAdjuster({
                         onClick={() =>
                           handleZoomChange(Math.min(3, zoom + 0.25))
                         }
-                        className="rounded-xl border border-white/5 bg-zinc-950 p-2 text-zinc-400 transition-all hover:bg-zinc-900 hover:text-white active:scale-90"
+                        className="flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-white/5 bg-zinc-950 p-2 text-zinc-400 transition-all hover:bg-zinc-900 hover:text-white active:scale-90"
                       >
                         <ZoomIn className="size-3.5" />
                       </button>

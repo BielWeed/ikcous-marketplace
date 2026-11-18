@@ -168,6 +168,20 @@ describe("OrderDetailsView — o aviso de cancelamento fala do dinheiro quando j
     expect(texto).not.toContain("NÃO volta automaticamente");
   });
 
+  it("paymentStatus 'pago_apos_expirar': o confirm diz que o dinheiro volta sozinho", async () => {
+    confirmMock = vi.fn().mockReturnValue(true);
+    vi.stubGlobal("confirm", confirmMock);
+    pedidoAtual = pedidoComPagamento("pago_apos_expirar");
+
+    await renderizar();
+    await clicarCancelar();
+
+    expect(confirmMock).toHaveBeenCalledTimes(1);
+    const texto = confirmMock.mock.calls[0][0] as string;
+    expect(texto).toContain("volta sozinho");
+    expect(texto).not.toContain("NÃO volta automaticamente");
+  });
+
   // Task 3b do plano docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md
   // (ponto 7, `pagamentoJaEntrou`): antes desta correção, um pedido recebido
   // na entrega lia o texto genérico de cancelamento, sem avisar que o

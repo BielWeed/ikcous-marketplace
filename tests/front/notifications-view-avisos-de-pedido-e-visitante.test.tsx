@@ -140,6 +140,18 @@ describe("NotificationsView: avisos de pedido e visitante sem conta", () => {
     expect(glifos[2]).toContain("text-muted-foreground");
   });
 
+  it.each(["info", "order", "delivery"])(
+    "pedido a caminho do tipo %s mostra o desenho do caminhao",
+    async (tipo) => {
+      estado.notificacoes = [aviso("a", "Pedido a caminho", tipo, "o1")];
+      await renderizar();
+      const linha = hospedeiro.querySelector('[role="listitem"]');
+      expect(linha?.textContent).toContain("Pedido a caminho");
+      const glifo = linha?.querySelector('[data-testid="notif-glifo"]');
+      expect(glifo?.classList.contains("lucide-truck")).toBe(true);
+    },
+  );
+
   it("C1: o vazio da aba Avisos fala da loja, nao de plataforma", async () => {
     await renderizar();
     await act(async () => {

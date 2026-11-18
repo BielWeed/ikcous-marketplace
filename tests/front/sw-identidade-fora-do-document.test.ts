@@ -185,6 +185,7 @@ describe("src/sw/sw.ts — a ficha da loja sem document", () => {
 
     installListener({ waitUntil });
 
+    expect(waitUntil.mock.calls).toHaveLength(2);
     // Nenhuma das promessas passadas ao waitUntil pode rejeitar — é isso que
     // prova que a falha da ficha não derruba o `install`.
     await expect(

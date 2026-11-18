@@ -201,6 +201,20 @@ describe("a caixinha de sugestoes concorda com a lista", () => {
     expect(nomesNaCaixinha()).toEqual(["Colar Estrela"]);
   });
 
+  it("mostra so os quatro primeiros termos elegiveis na ordem do catalogo", async () => {
+    const catalogo = [
+      produto("Colar", "c1"),
+      produto("Colete", "c2"),
+      produto("Colcha", "c3"),
+      produto("Colher", "c4"),
+      produto("Colante", "c5"),
+      produto("Colonia", "c6"),
+    ];
+    await digitar(catalogo, "col");
+
+    expect(termosSugeridos()).toEqual(["Colar", "Colete", "Colcha", "Colher"]);
+  });
+
   it("todo termo sugerido leva a pelo menos um produto na lista", async () => {
     // O termo sugerido e' o que a pessoa toca para buscar: se a lista nao o
     // acha, a sugestao e' uma promessa vazia. 'Colar-Coração' perdia o hifen

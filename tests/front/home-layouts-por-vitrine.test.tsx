@@ -162,6 +162,42 @@ const faixaCarrossel = (titulo: string) =>
   )?.parentElement?.parentElement;
 
 describe("HomeView — layouts independentes e compatibilidade da vitrine viva", () => {
+  it("faixa desligada esconde título e produtos e reaparece ao religar, sem afetar as ligadas", async () => {
+    const faixa = {
+      ...secao("curada"),
+      title: "Seleção exclusiva desligável",
+      productIds: ["exclusivo-a", "exclusivo-b"],
+      active: false,
+    };
+    const lista = [...produtos, produto("exclusivo-a"), produto("exclusivo-b")];
+    const ligadas = ids
+      .filter((id) => id !== "curada")
+      .map((id) => ({
+        ...secao(id),
+        productIds: ["novo", "antigo"],
+      }));
+    loja.config = { homeSections: [...ligadas, faixa] };
+    await montar(lista);
+    expect(host.textContent).not.toContain(faixa.title);
+    for (const id of faixa.productIds)
+      expect(host.textContent).not.toContain(`Produto ${id}`);
+    for (const titulo of titulos.slice(0, 2)) {
+      const ligada = faixaCarrossel(titulo)!;
+      expect(ligada).toBeDefined();
+      expect(ligada.textContent).toContain("Produto novo");
+      expect(ligada.textContent).toContain("Produto antigo");
+    }
+
+    loja.config = { homeSections: [...ligadas, { ...faixa, active: true }] };
+    await montar(lista);
+    const religada = faixaCarrossel(faixa.title)!;
+    expect(religada).toBeDefined();
+    for (const id of faixa.productIds)
+      expect(religada.textContent).toContain(`Produto ${id}`);
+    for (const titulo of titulos.slice(0, 2))
+      expect(faixaCarrossel(titulo)).toBeDefined();
+  });
+
   it.each([undefined, null, "desconhecido", "padrao"])(
     "config antiga (%s): Lançamentos/Destaques/personalizada continuam o carrossel real",
     async (layout) => {

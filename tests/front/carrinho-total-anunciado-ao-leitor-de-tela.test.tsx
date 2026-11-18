@@ -26,6 +26,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const estado = vi.hoisted(() => ({
   quantidade: 1,
   frete: 18.37,
+  comVariacao: false,
 }));
 
 vi.mock("@/lib/supabase", () => ({ supabase: {} }));
@@ -49,6 +50,9 @@ vi.mock("@/hooks/useCart", () => ({
           name: "Produto Teste",
           description: "",
           price: 100,
+          variants: estado.comVariacao
+            ? [{ id: "azul", priceOverride: 150 }]
+            : [],
           images: [],
           category: "geral",
           stock: 50,
@@ -58,6 +62,7 @@ vi.mock("@/hooks/useCart", () => ({
           freeShipping: false,
           createdAt: new Date(0).toISOString(),
         },
+        variantId: estado.comVariacao ? "azul" : undefined,
         quantity: estado.quantidade,
       },
     ],
@@ -174,6 +179,7 @@ describe("CartView — o novo total é anunciado a quem usa leitor de tela", () 
 
   beforeEach(() => {
     estado.quantidade = 1;
+    estado.comVariacao = false;
     estado.frete = 18.37;
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
@@ -255,6 +261,25 @@ describe("CartView — o novo total é anunciado a quem usa leitor de tela", () 
     expect(celular.className).toMatch(/(^|\s)lg:hidden(\s|$)/);
     expect(ancestralSoVisualmenteOculto(valorDoTotalEm(computador))).toBeNull();
     expect(ancestralSoVisualmenteOculto(valorDoTotalEm(celular))).toBeNull();
+  });
+
+  it("o subtotal usa o preço próprio da variação e acompanha a quantidade", async () => {
+    estado.comVariacao = true;
+    estado.quantidade = 2;
+    await renderizarCarrinho();
+
+    const subtotal = () => {
+      const rotulo = Array.from(
+        resumoDoComputador().querySelectorAll("span"),
+      ).find((el) => el.textContent === "Subtotal");
+      expect(rotulo).toBeTruthy();
+      return textoDe(rotulo?.nextElementSibling as Element);
+    };
+    expect(subtotal()).toBe("R$ 300,00");
+
+    estado.quantidade = 3;
+    await renderizarCarrinho();
+    expect(subtotal()).toBe("R$ 450,00");
   });
 
   it("quando a quantidade sobe, o texto da região muda nos dois resumos (rerender)", async () => {

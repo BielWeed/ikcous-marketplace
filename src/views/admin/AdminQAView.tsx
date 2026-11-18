@@ -449,11 +449,20 @@ export const AdminQAView = memo(function AdminQAView({
       });
       return;
     }
-    // `deleteQuestion` devolve booleano (mesmo molde de `addAnswer`, usado
-    // em `handleSendAnswer` acima) — sem checar, "Pergunta excluída" em
+    // `deleteQuestion`: true confirma, false falha, null é ausente/sem acesso.
+    // Sem checar, "Pergunta excluída" em
     // verde aparecia mesmo quando o apagamento falhava (rede, permissão,
     // sessão vencida), e a pergunta reaparecia na lista sem explicação.
     const success = await deleteQuestion(id, { silent: true });
+
+    if (success === null) {
+      toast.info("A pergunta já foi excluída ou não está mais acessível.");
+      focoPendente.current = () => tituloListaRef.current;
+      setConfirmDeleteId(null);
+      setRefreshTrigger((prev) => prev + 1);
+      loadQuestions(page);
+      return;
+    }
 
     if (!success) {
       // Calar tambem e mentir: sem isto a lojista clicava "Sim", nada

@@ -203,6 +203,59 @@ describe("CuponsDoCheckout — PASSO A3: cartões tocáveis e código atrás de 
     expect(onRemove).toHaveBeenCalled();
   });
 
+  it.each(["cartão", "campo", "botão"] as const)(
+    "aplicar pelo %s leva o foco ao botão de remover",
+    (origem) => {
+      montar();
+      if (origem === "cartão") {
+        const alvo = botao("Aplicar o cupom VIP15")!;
+        alvo.focus();
+        act(() => alvo.click());
+      } else {
+        act(() => link().click());
+        const input = document.getElementById(
+          "coupon-code-input",
+        ) as HTMLInputElement;
+        act(() => {
+          Object.getOwnPropertyDescriptor(
+            HTMLInputElement.prototype,
+            "value",
+          )?.set?.call(input, "VIP15");
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+        const alvo =
+          origem === "campo"
+            ? input
+            : campo().querySelector<HTMLButtonElement>("button")!;
+        act(() => alvo.focus());
+        act(() => {
+          campo()
+            .querySelector("form")!
+            .dispatchEvent(
+              new Event("submit", { bubbles: true, cancelable: true }),
+            );
+        });
+      }
+      montar({ appliedCoupon: { code: "VIP15", discount: 15 } });
+      expect(document.activeElement === botao("Remover cupom")).toBe(true);
+    },
+  );
+
+  it("não rouba o foco movido durante a aplicação nem ao restaurar um cupom", () => {
+    montar();
+    const alvo = botao("Aplicar o cupom VIP15")!;
+    alvo.focus();
+    act(() => alvo.click());
+    const outro = botao("Aplicar o cupom VITRINE10")!;
+    outro.focus();
+    montar({ appliedCoupon: { code: "VIP15", discount: 15 } });
+    expect(document.activeElement).toBe(outro);
+    montar({ appliedCoupon: null });
+    outro.focus();
+    montar({ appliedCoupon: { code: "VIP15", discount: 15 } });
+    expect(document.activeElement).toBe(outro);
+  });
+
   it("aplicado com código longo: o nome do cupom quebra linha em tela estreita, nunca some atrás de reticências", () => {
     montar({ appliedCoupon: { code: "BEMVINDO10", discount: 12.97 } });
     const selecionado = hospedeiro.querySelector(

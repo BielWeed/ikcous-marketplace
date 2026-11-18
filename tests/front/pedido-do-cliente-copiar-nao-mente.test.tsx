@@ -66,7 +66,7 @@ const pedidoBase: Order = {
   total: 120,
   paymentMethod: "pix",
   status: "shipping",
-  trackingCode: "AA123456789BR",
+  trackingCode: " aa123 456789br ",
   createdAt: new Date(0).toISOString(),
   updatedAt: new Date(0).toISOString(),
   cancelledAfterShipping: false,
@@ -304,6 +304,22 @@ describe("OrderDetailsView — copiar id e rastreio não mente", () => {
     expect(toast.error).toHaveBeenCalledWith(
       "Não foi possível copiar. Selecione o texto e copie manualmente.",
     );
+  });
+
+  it("copiar rastreio leva o código normalizado, não o ID do pedido", async () => {
+    await renderizar();
+
+    const botao = botaoRastreio();
+    expect(botao).toBeTruthy();
+    await act(async () => {
+      botao!.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(clipboardWriteText).toHaveBeenCalledTimes(1);
+    expect(clipboardWriteText).toHaveBeenCalledWith("AA123456789BR");
+    expect(clipboardWriteText).not.toHaveBeenCalledWith(pedidoBase.id);
   });
 
   it("copiar rastreio: clipboard aceita chama o toast de sucesso (controle)", async () => {

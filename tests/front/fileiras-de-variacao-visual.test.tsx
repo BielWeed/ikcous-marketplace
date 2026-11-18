@@ -415,6 +415,53 @@ describe("apresentação acessível das fileiras", () => {
     await act(async () => root.unmount());
     raiz.remove();
   });
+  it("grupo de 150 caracteres sem espaços quebra sem encolher o aviso Escolha", () => {
+    const nome = "G".repeat(150);
+    const host = document.createElement("div");
+    host.innerHTML = renderToStaticMarkup(
+      <FileirasDeVariacao
+        fileiras={[{ nome, valores: [] }]}
+        escolha={{}}
+        onEscolher={() => {}}
+      />,
+    );
+    const grupo = host.querySelector('[role="group"]')!;
+    const rotulo = host.querySelector(
+      `[id="${grupo.getAttribute("aria-labelledby")}"]`,
+    )!;
+    expect(rotulo.textContent).toBe(nome);
+    for (const classe of ["min-w-0", "break-words"])
+      expect(rotulo.classList.contains(classe), classe).toBe(true);
+    expect(rotulo.classList.contains("flex-1")).toBe(false);
+    const aviso = rotulo.nextElementSibling!;
+    expect(aviso.textContent).toBe("Escolha");
+    expect(aviso.classList.contains("shrink-0")).toBe(true);
+  });
+  it.each(["Valor escolhido com espaços ".repeat(2), "V".repeat(150)])(
+    "valor escolhido longo quebra sem tomar todo o espaço do grupo: %s",
+    (valor) => {
+      const nome = "Grupo de opções";
+      const host = document.createElement("div");
+      host.innerHTML = renderToStaticMarkup(
+        <FileirasDeVariacao
+          fileiras={[{ nome, valores: [] }]}
+          escolha={{ [nome]: valor }}
+          onEscolher={() => {}}
+        />,
+      );
+      const grupo = host.querySelector('[role="group"]')!;
+      const rotulo = host.querySelector(
+        `[id="${grupo.getAttribute("aria-labelledby")}"]`,
+      )!;
+      expect(rotulo.classList.contains("min-w-0")).toBe(true);
+      expect(rotulo.classList.contains("flex-1")).toBe(false);
+      const escolhido = rotulo.nextElementSibling!;
+      expect(escolhido.textContent).toBe(valor);
+      expect(escolhido.classList.contains("shrink-0")).toBe(false);
+      for (const classe of ["min-w-0", "break-words"])
+        expect(escolhido.classList.contains(classe), classe).toBe(true);
+    },
+  );
   it("três chips longos quebram linha, mostram o nome INTEIRO e não dão rolagem lateral (320/360/390)", () => {
     const longos = [
       "Xadrez Preto, Cinza e Branco",

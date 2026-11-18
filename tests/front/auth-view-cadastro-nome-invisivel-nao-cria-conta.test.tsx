@@ -107,6 +107,39 @@ describe("AuthView — cadastro não aceita nome só de caracteres invisíveis",
     expect(hospedeiro.textContent).not.toContain("Verifique seu e-mail");
   });
 
+  it.each([
+    ["espaços comuns", "     "],
+    ["caracteres invisíveis", String.fromCodePoint(32, 0x200b, 0x3164, 32)],
+  ])(
+    "%s: anuncia o erro junto do Nome, marca e foca o campo",
+    async (_d, nome) => {
+      await enviarCadastroComNome(nome);
+
+      const campo = document.getElementById("fullName") as HTMLInputElement;
+      expect(campo.getAttribute("aria-invalid")).toBe("true");
+      const idDoErro = campo.getAttribute("aria-describedby");
+      expect(idDoErro).toBeTruthy();
+      const mensagem = document.getElementById(idDoErro!);
+      expect(mensagem?.textContent).toBe("Informe seu nome");
+      expect(mensagem?.getAttribute("role")).toBe("alert");
+      expect(mensagem?.parentElement?.contains(campo)).toBe(true);
+      expect(document.activeElement).toBe(campo);
+      expect(signUp).not.toHaveBeenCalled();
+
+      // O aviso permanece ao ir a outro campo, mas sai ao corrigir o nome.
+      await act(async () => document.getElementById("email")?.focus());
+      expect(document.getElementById(idDoErro!)).toBe(mensagem);
+      await act(async () => digitar("fullName", "Pessoa Teste"));
+      expect(campo.getAttribute("aria-invalid")).not.toBe("true");
+      expect(campo.getAttribute("aria-describedby")).toBeNull();
+      expect(document.getElementById(idDoErro!)).toBeNull();
+      await act(async () =>
+        localizarBotaoPorTexto("FINALIZAR REGISTRO").click(),
+      );
+      expect(signUp).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it("controle: nome com letra visível continua criando a conta", async () => {
     await enviarCadastroComNome("Pessoa Teste");
 

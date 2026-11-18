@@ -29,6 +29,10 @@ module.exports = {
         primary: {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",
+          // A cor da marca como texto/ícone/anel sobre BRANCO: escurecida só
+          // se a cor for clara (aplicarCorDaLoja). Sem a variável, cai na
+          // própria --primary (temas do index.css).
+          legivel: "hsl(var(--primary-legivel, var(--primary)))",
         },
         // Luxury Tiers
         bronze: {

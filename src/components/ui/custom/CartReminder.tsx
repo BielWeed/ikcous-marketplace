@@ -172,7 +172,7 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
               ) : (
                 <p className="text-xs font-semibold leading-tight text-slate-600">
                   Faltam{" "}
-                  <span className="font-extrabold text-primary">
+                  <span className="font-extrabold text-primary-legivel">
                     {formatCurrency(amountToFree)}
                   </span>{" "}
                   para o{" "}

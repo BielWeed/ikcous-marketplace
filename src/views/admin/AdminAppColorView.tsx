@@ -83,13 +83,23 @@ function EscolhaDaCor({
   }, [corValida]);
   const cor = corValida ?? ultimaValida;
   const padrao = branding.theme.primary.toUpperCase();
-  const branco = textoSobreACorDaLoja(cor) === TEXTO_CLARO_SOBRE_A_COR_DA_LOJA;
-  const texto = branco ? "#FAFAFA" : "#18181B";
+  const tokenDoTexto = textoSobreACorDaLoja(cor);
+  const branco =
+    tokenDoTexto === TEXTO_CLARO_SOBRE_A_COR_DA_LOJA ||
+    tokenDoTexto === "0 0% 100%";
+  const texto =
+    tokenDoTexto === "0 0% 0%"
+      ? "#000000"
+      : tokenDoTexto === "0 0% 100%"
+        ? "#FFFFFF"
+        : branco
+          ? "#FAFAFA"
+          : "#18181B";
   const contraste = razaoDeContraste(cor, texto);
   const fraco = contraste < 4.5;
   // O app também usa a cor da marca como TEXTO sobre fundo branco ("Ver Meus
-  // Pedidos", "Escolher outro frete"): abaixo de 3:1 contra o branco ela some.
-  const claroDemais = razaoDeContraste(cor, "#FFFFFF") < 3;
+  // Pedidos", "Escolher outro frete"): texto normal precisa de 4,5:1.
+  const claroDemais = razaoDeContraste(cor, "#FFFFFF") < 4.5;
   const pendente =
     editor.phase === "pending" ||
     (editor.phase === "checking" && !!editor.intent);

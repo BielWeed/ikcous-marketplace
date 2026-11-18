@@ -328,6 +328,72 @@ Deno.test("devolução igual ou maior que o valor original NÃO é parcial -> re
   }
 });
 
+// Ponto flutuante: `valor * 100` cai ABAIXO do inteiro em muitos valores de centavo (0.29 * 100 =
+// 28.999999999999996; 1.15 * 100 = 114.99999999999999; 8.2 * 100 = 819.9999999999999). Truncar em vez
+// de arredondar faria o teto da cobrança perder um centavo: a devolução parcial legítima viraria
+// "total" (recusa) ou o devolvido registrado sairia 1 centavo a menos. Valores e resultados LITERAIS.
+function orderEmCentavos(cobranca: string, devolucoes: string[], agregado: string) {
+  const order = orderParcial({ total_amount: cobranca });
+  order.transactions.payments[0] = {
+    ...order.transactions.payments[0],
+    amount: cobranca,
+    paid_amount: cobranca,
+    refunded_amount: agregado,
+  };
+  order.transactions.refunds = devolucoes.map((amount, i) => ({
+    id: `REF0${i + 1}`,
+    amount,
+    status: "processed",
+  }));
+  return order;
+}
+
+for (
+  const [cobranca, devolvida, acima, valorOriginal, devolvido] of [
+    ["0.29", "0.28", "0.30", 0.29, 0.28],
+    ["1.15", "1.14", "1.16", 1.15, 1.14],
+    ["8.20", "8.19", "8.21", 8.2, 8.19],
+  ] as const
+) {
+  Deno.test(`centavos: cobrança ${cobranca} com devolução parcial de ${devolvida} PROVA e devolve ${devolvido} (sem perder 1 centavo)`, () => {
+    const decisao = devolucaoParcialProvaPagamento({
+      order: orderEmCentavos(cobranca, [devolvida], devolvida),
+      pedido: pedido({ total: valorOriginal }),
+    });
+    assertEquals(decisao, {
+      provado: true,
+      valorOriginal,
+      devolvido,
+      devolucoes: [{ id: "REF01", valor: devolvido }],
+    });
+  });
+
+  Deno.test(`centavos: cobrança ${cobranca} com devolução IGUAL (${cobranca}) ou 1 centavo acima segue sendo total -> recusa`, () => {
+    for (const total of [cobranca, acima]) {
+      assertEquals(
+        devolucaoParcialProvaPagamento({
+          order: orderEmCentavos(cobranca, [total], total),
+          pedido: pedido({ total: valorOriginal }),
+        }),
+        { provado: false, motivo: "devolucao_total_ou_maior" },
+      );
+    }
+  });
+}
+
+Deno.test("centavos: duas devoluções de 0.29 batem com o agregado 0.58 e somam 0.58 (a conferência cruzada também usa centavos exatos)", () => {
+  const decisao = devolucaoParcialProvaPagamento({
+    order: orderEmCentavos("1.00", ["0.29", "0.29"], "0.58"),
+    pedido: pedido({ total: 1 }),
+  });
+  assertEquals(decisao, {
+    provado: true,
+    valorOriginal: 1,
+    devolvido: 0.58,
+    devolucoes: [{ id: "REF01", valor: 0.29 }, { id: "REF02", valor: 0.29 }],
+  });
+});
+
 // Cartão parcelado com juros: a cobrança (110) é MAIOR que o total do pedido (100). O teto da "parcial" é o menor
 // dos dois — devolução de 105 passaria na régua da cobrança e depois não caberia no registro (`nao_cabe`).
 function orderComJuros(devolvido: string) {

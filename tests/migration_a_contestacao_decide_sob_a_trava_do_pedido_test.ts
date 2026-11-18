@@ -766,6 +766,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/caixa-contrapartida-inativa-nao-grava-viva.cjs",
     "tests/banco/baixa-concorrente-impede-edicao-do-lancamento-viva.cjs",
     "tests/banco/cupom-inativo-e-teto-do-desconto-na-v24-viva.cjs",
+    // sem migration: a v23 recusa o cupom vencido e a compra abaixo do minimo do cupom sem efeito; o mesmo cupom valido passa; mutantes no clone.
+    "tests/banco/cupom-vencido-e-minimo-na-v23-viva.cjs",
     // Onda 102-b: duas guardas vivas; cada arquivo tem controle mutante no clone descartavel.
     "tests/banco/comprador-nao-avanca-o-proprio-pedido-viva.cjs",
     "tests/banco/banner-vencido-nao-aparece-ao-visitante-viva.cjs",

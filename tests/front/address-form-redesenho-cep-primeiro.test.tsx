@@ -427,6 +427,36 @@ describe("AddressForm — redesenho: CEP primeiro, cartão, botões, aviso na te
     expect(onSubmit.mock.calls[0][0].number).toBe("S/N");
   });
 
+  it("desmarcar Sem número limpa e habilita o campo e exige preencher antes de salvar", async () => {
+    const onSubmit = await renderizar({ nomeDaConta: "Mariana Lopes" });
+    await buscarCep("38500000");
+    await act(async () => {
+      botao("Sem número").click();
+    });
+    expect(valor("number")).toBe("S/N");
+    expect(botao("Sem número").getAttribute("aria-pressed")).toBe("true");
+    await act(async () => {
+      botao("Sem número").click();
+    });
+    expect(botao("Sem número").getAttribute("aria-pressed")).toBe("false");
+    expect(valor("number")).toBe("");
+    expect(
+      (document.getElementById("number") as HTMLInputElement).disabled,
+    ).toBe(false);
+    await salvar();
+    await esperarAte(() =>
+      (hospedeiro.textContent ?? "").includes("Número é obrigatório"),
+    );
+    expect(onSubmit).not.toHaveBeenCalled();
+    await act(async () => {
+      digitar("number", "1250");
+    });
+    await salvar();
+    await esperarAte(() => onSubmit.mock.calls.length > 0);
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(onSubmit.mock.calls[0][0].number).toBe("1250");
+  });
+
   it("apelido por botão grava o MESMO texto de antes: Trabalho -> 'Trabalho'", async () => {
     const onSubmit = await renderizar({ nomeDaConta: "Mariana Lopes" });
     await buscarCep("38500000");

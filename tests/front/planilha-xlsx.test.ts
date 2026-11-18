@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
 import { Buffer } from "node:buffer";
 import { crc32 } from "node:zlib";
-import { linhasDosProdutos } from "@/lib/exportar-produtos-planilha";
+import {
+  linhasDosProdutos,
+  produtosEmCsv,
+} from "@/lib/exportar-produtos-planilha";
 import { gerarXlsx } from "@/lib/planilha-xlsx";
 import type { Product } from "@/types";
 import { describe, expect, it, vi } from "vitest";
@@ -415,6 +418,47 @@ function estilosDe(partes: Map<string, Document>) {
   return [...partes.get("xl/styles.xml")!.querySelectorAll("cellXfs xf")];
 }
 
+describe("estoque mínimo na planilha de produtos", () => {
+  it.each([
+    ["zero", 0],
+    ["positivo", 7],
+    ["nulo", null],
+    ["ausente", undefined],
+  ] as const)("XLSX preserva estoque mínimo %s", (_cenario, estoqueMinimo) => {
+    const doc = folha(
+      linhasDosProdutos([{ ...produto, estoqueMinimo }], true, "xlsx"),
+    );
+    const celula = celulaDa(doc, "Estoque mínimo", 2);
+    if (estoqueMinimo == null) {
+      expect(celula).toBeNull();
+    } else {
+      expect(celula).not.toBeNull();
+      expect(celula!.getAttribute("t")).not.toBe("inlineStr");
+      expect(celula!.querySelector("v")?.textContent).toBe(
+        String(estoqueMinimo),
+      );
+    }
+  });
+
+  it.each([
+    ["zero", 0],
+    ["positivo", 7],
+    ["nulo", null],
+    ["ausente", undefined],
+  ] as const)("CSV preserva estoque mínimo %s", (_cenario, estoqueMinimo) => {
+    const csv = produtosEmCsv(
+      [{ ...produto, description: "", estoqueMinimo }],
+      true,
+    );
+    const [cabecalho, linha] = csv.replace(/^\uFEFF/, "").split("\r\n");
+    const coluna = cabecalho.split(";").indexOf('"Estoque mínimo"');
+    expect(coluna).toBeGreaterThanOrEqual(0);
+    expect(linha.split(";").at(coluna)).toBe(
+      estoqueMinimo == null ? '""' : String(estoqueMinimo),
+    );
+  });
+});
+
 describe("o XLSX entrega o dado como ele é", () => {
   it.each(["=1+1", "+55 11 99999", "-Camisa", "@SUM(A1)", " =x", "\t=x"])(
     "texto %j sai cru, sem apóstrofo, e continua texto inline (nunca fórmula)",
@@ -587,6 +631,33 @@ describe("o XLSX entrega o dado como ele é", () => {
       43435 + 10 / 24,
       8,
     );
+  });
+
+  it("preserva o ISO para o XLSX e converte a virada de dia só uma vez", () => {
+    const linhas = linhasDosProdutos(
+      [
+        {
+          ...produto,
+          createdAt: "2026-11-17T02:30:00Z",
+          updatedAt: "2026-11-17T12:00:00Z",
+        },
+      ],
+      false,
+      "xlsx",
+    );
+    expect(linhas.at(1)?.slice(-2)).toEqual([
+      "2026-11-17T02:30:00Z",
+      "2026-11-17T12:00:00Z",
+    ]);
+    const doc = folha(linhas);
+    expect(
+      Number(celulaDa(doc, "Criado em", 2)?.querySelector("v")?.textContent),
+    ).toBeCloseTo(Date.UTC(2026, 10, 16, 23, 30) / 86400000 + 25569, 8);
+    expect(
+      Number(
+        celulaDa(doc, "Atualizado em", 2)?.querySelector("v")?.textContent,
+      ),
+    ).toBeCloseTo(Date.UTC(2026, 10, 17, 9) / 86400000 + 25569, 8);
   });
 
   it("aceita o timestamp com microssegundos que o Postgres devolve", () => {

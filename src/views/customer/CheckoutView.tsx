@@ -32,6 +32,7 @@ import { AddressList } from "@/components/ui/custom/AddressList";
 import { BotaoWhatsapp } from "@/components/ui/custom/BotaoWhatsapp";
 import { CarrinhoSalvoNaoLido } from "@/components/ui/custom/CarrinhoSalvoNaoLido";
 import { HEADER_CENTER_SLOT_ID } from "@/components/ui/custom/Header";
+import { ImagemComFallback } from "@/components/ui/custom/ImagemComFallback";
 import { SaidaDaRecusa } from "@/components/ui/custom/SaidaDaRecusa";
 import {
   ShippingCalculator,
@@ -6289,10 +6290,10 @@ export function CheckoutViewDaConta({
           />
         ) : (
           <>
-            <h1 className="text-lg font-bold text-zinc-900">
+            <h1 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">
               Seu carrinho está vazio
             </h1>
-            <p className="text-sm text-zinc-600">
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">
               Não há nenhum produto para finalizar. Volte ao carrinho para
               escolher o que você quer comprar.
             </p>
@@ -6829,6 +6830,7 @@ export function CheckoutViewDaConta({
                   {erroDoCampo("name") && (
                     <p
                       id="erro-checkout-name"
+                      role="alert"
                       className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
                     >
                       {erroDoCampo("name")?.message}
@@ -7806,7 +7808,7 @@ export function CheckoutViewDaConta({
                     )}
                   >
                     <div className="mb-3 flex items-center justify-between lg:shrink-0">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-600">
                         Resumo do Pedido
                       </span>
                       <button
@@ -7861,11 +7863,9 @@ export function CheckoutViewDaConta({
                             key={`${item.product.id}-${chaveDaLinha(item)}`}
                             className="flex items-center gap-3"
                           >
-                            <img
+                            <ImagemComFallback
                               src={miniaturaDoResumo(fotoDaLinha, 144)}
-                              onError={(e) =>
-                                usarImagemOriginal(e.currentTarget, fotoDaLinha)
-                              }
+                              original={fotoDaLinha}
                               alt=""
                               className="size-12 shrink-0 rounded-xl border border-zinc-100 bg-zinc-50 object-cover"
                             />

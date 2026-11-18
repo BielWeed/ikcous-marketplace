@@ -392,6 +392,50 @@ Deno.test("410 apaga a inscrição; 401 não apaga", async () => {
   }
 });
 
+for (const status of [401, 429, 500, 502, 503, null]) {
+  Deno.test(`falha temporária ${status ?? "de rede"} não apaga a inscrição e conta como falha, não como morta`, async () => {
+    const erro = status === null
+      ? new TypeError("falha de rede de teste")
+      : new webpush.PushMessageError(new Response(null, { status }));
+    const apagadas: string[] = [];
+    let tentativas = 0;
+    const servidor = {
+      subscribe: () => ({
+        pushTextMessage: () => {
+          tentativas++;
+          return Promise.reject(erro);
+        },
+      }),
+    };
+    const inscricao = { endpoint: "https://push.example/p/temporaria", p256dh: "x", auth: "y" };
+    const itens = await enviarParaInscritos({
+      servidor,
+      inscricoes: [inscricao],
+      mensagem: "{}",
+      aoDetectarMorta: (endpoint: string) => {
+        apagadas.push(endpoint);
+        return Promise.resolve();
+      },
+    });
+
+    assertEquals(tentativas, 1);
+    assertEquals(itens.length, 1);
+    assertEquals(itens[0].ok, false);
+    assertEquals(itens[0].status, status);
+    assertEquals(itens[0].removida, false);
+    assertStringIncludes(itens[0].motivo, status === null ? "falha de rede de teste" : String(status));
+    assertEquals(apagadas, []);
+    const resumo = resumir(itens);
+    assertEquals(resumo.total, 1);
+    assertEquals(resumo.enviados, 0);
+    assertEquals(resumo.falharam, 1);
+    assertEquals(resumo.removidas, 0);
+    assertEquals(resumo.falhas.length, 1);
+    assertEquals(resumo.falhas[0].status, status);
+    assertEquals(resumo.falhas[0].quantidade, 1);
+  });
+}
+
 Deno.test("falha ao apagar a inscrição não derruba o envio", async () => {
   const service = pushServiceFalso({ "/p/morta": 410 });
   // O caminho testado LOGA o erro de propósito; sem silenciar, a saída do CI
@@ -843,7 +887,7 @@ Deno.test("porta de admin: sem Authorization -> a mesma recusa de sempre, sem ch
 /** Chama o HANDLER de ponta a ponta ate o push service local; `noBanco` responde a leitura de push_subscriptions. */
 async function enviarPeloHandler(
   corpoDe: (inscricao: any) => Record<string, unknown>,
-  { noBanco = false } = {},
+  { noBanco = false, semPublica = false, semPrivada = false } = {},
 ) {
   const service = pushServiceFalso({ "/p/ok": 201 });
   const { base64url } = await parVapidDeTeste();
@@ -857,8 +901,10 @@ async function enviarPeloHandler(
   Deno.env.set("SUPABASE_URL", URL_SUPA_TESTE);
   Deno.env.set("SUPABASE_PUBLISHABLE_KEYS", JSON.stringify({ default: "anon-de-teste" }));
   Deno.env.set("SUPABASE_SECRET_KEYS", JSON.stringify({ default: "service-role-de-teste" }));
-  Deno.env.set("VAPID_PUBLIC_KEY", base64url.publica);
-  Deno.env.set("VAPID_PRIVATE_KEY", base64url.privada);
+  if (semPublica) Deno.env.delete("VAPID_PUBLIC_KEY");
+  else Deno.env.set("VAPID_PUBLIC_KEY", base64url.publica);
+  if (semPrivada) Deno.env.delete("VAPID_PRIVATE_KEY");
+  else Deno.env.set("VAPID_PRIVATE_KEY", base64url.privada);
   const inscricao = await inscricaoDeTeste(`${service.base}/p/ok`);
   // O Auth/profiles sao falsos; so o que vai para o push service local passa
   // para o `fetch` de verdade. A tabela de inscricoes devolve UMA linha.
@@ -902,6 +948,33 @@ const tokenDe = (inscricao: any) => ({
   endpoint: inscricao.endpoint,
   keys: { p256dh: inscricao.p256dh, auth: inscricao.auth },
 });
+
+for (const [rotulo, semPublica, semPrivada, variavel] of [
+  ["sem pública", true, false, "VAPID_PUBLIC_KEY"],
+  ["sem privada", false, true, "VAPID_PRIVATE_KEY"],
+  ["sem ambas", true, true, "VAPID_PUBLIC_KEY"],
+] as const) {
+  Deno.test(`handler sem VAPID: ${rotulo} responde 400 e ok false, sem enviar`, async () => {
+    const console_error = console.error;
+    console.error = () => {};
+    try {
+      const { resposta, corpo, recebidas } = await enviarPeloHandler(
+        (inscricao) => ({
+          title: "Teste",
+          body: "texto",
+          tokens: [tokenDe(inscricao)],
+        }),
+        { semPublica, semPrivada },
+      );
+      assertEquals(resposta.status, 400);
+      assertEquals(corpo.ok, false);
+      assertStringIncludes(corpo.error, variavel);
+      assertEquals(recebidas.length, 0);
+    } finally {
+      console.error = console_error;
+    }
+  });
+}
 
 Deno.test("handler da send-push: a campanha para clientes sai com Urgency normal e validade de 3 dias (nao 28)", async () => {
   const { resposta, corpo, recebidas } = await enviarPeloHandler((inscricao) => ({

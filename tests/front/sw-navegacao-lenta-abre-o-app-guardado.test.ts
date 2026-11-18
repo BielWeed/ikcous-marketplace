@@ -293,6 +293,7 @@ describe("src/sw/sw.ts — navegação com rede lenta abre o app guardado", () =
     falhar(new TypeError("Failed to fetch"));
     // Se o `waitUntil` rejeitasse, o worker registraria erro; tem de resolver.
     const trabalhos = event.waitUntil.mock.calls.map(([t]) => t);
+    expect(trabalhos).toHaveLength(1);
     await expect(Promise.all(trabalhos)).resolves.toBeDefined();
   });
 

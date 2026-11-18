@@ -244,6 +244,55 @@ describe("useAddresses — mutação em voo não atravessa troca de conta", () =
     }
   }
 
+  it("nenhum render da conta B recebe endereços da conta A antes de carregar", async () => {
+    const segundoA = {
+      ...END_A,
+      id: "end-a2",
+      street: "Rua Fictícia Dois",
+      is_default: false,
+    };
+    armazem.set(
+      "ikcous_addresses_cache_conta-a",
+      JSON.stringify([END_A, segundoA]),
+    );
+    armazem.delete("ikcous_addresses_cache_conta-b");
+    const renders: { id: string; street: string }[][] = [];
+
+    function Sonda() {
+      const hook = modulo.useAddresses!();
+      renders.push(hook.addresses.map(({ id, street }) => ({ id, street })));
+      return null;
+    }
+
+    if (!modulo.useAddresses) {
+      modulo.useAddresses = (await import("@/hooks/useAddresses")).useAddresses;
+    }
+    await act(async () => {
+      raiz.render(<Sonda />);
+    });
+    expect(renders.at(-1)).toEqual(
+      [END_A, segundoA].map(({ id, street }) => ({ id, street })),
+    );
+
+    const indiceDaTroca = renders.length;
+    sessao.usuario = { id: "conta-b" };
+    await act(async () => {
+      raiz.render(<Sonda />);
+    });
+
+    const rendersDaContaB = renders.slice(indiceDaTroca);
+    expect(rendersDaContaB.length).toBeGreaterThan(0);
+    for (const lista of rendersDaContaB) {
+      expect(lista).not.toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: END_A.id })]),
+      );
+      expect(lista).not.toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: segundoA.id })]),
+      );
+    }
+    expect(renders.at(-1)).toEqual([]);
+  });
+
   it.each(["M", "ZZ", "12"])(
     "não grava UF inválida %s na inclusão nem na edição",
     async (state) => {

@@ -5,6 +5,7 @@
 // descricao), em qualquer ordem, ignorando acento, maiuscula e "s" final.
 import {
   palavrasDaBusca,
+  pontuadorDaBusca,
   produtoCombinaComBusca,
 } from "@/lib/busca-de-produtos";
 import { describe, expect, it } from "vitest";
@@ -124,6 +125,58 @@ describe("produtoCombinaComBusca", () => {
     const garrafa = produto("Garrafa Termica", "Casa");
     expect(produtoCombinaComBusca(gas, "gas")).toBe(true);
     expect(produtoCombinaComBusca(garrafa, "gas")).toBe(false);
+  });
+
+  it.each(["ref9027", "REF9027", "9027"])(
+    "acha o produto pelo SKU %s",
+    (busca) => {
+      const blusa = { ...produto("Blusa básica"), sku: "REF9027" };
+      expect(produtoCombinaComBusca(blusa, busca)).toBe(true);
+    },
+  );
+
+  it("acha o SKU normalizado da variacao ativa, mas nao da inativa", () => {
+    const blusa = {
+      ...produto("Blusa básica"),
+      variants: [
+        { value: "Azul", active: true, sku: "RÉF   9027" },
+        { value: "Preto", active: false, sku: "REF9028" },
+      ],
+    };
+    expect(produtoCombinaComBusca(blusa, "ref 9027")).toBe(true);
+    expect(produtoCombinaComBusca(blusa, "9027")).toBe(true);
+    expect(produtoCombinaComBusca(blusa, "REF9028")).toBe(false);
+  });
+
+  it.each([undefined, "", null])("SKU %j nao quebra a busca antiga", (sku) => {
+    const blusa = {
+      ...produto("Blusa básica", "Roupas", "Algodao macio"),
+      sku,
+      variants: [{ value: "Azul", active: true, sku }],
+    };
+    for (const busca of ["blusa", "roupas", "algodao", "azul"]) {
+      expect(produtoCombinaComBusca(blusa, busca)).toBe(true);
+    }
+    expect(produtoCombinaComBusca(blusa, "REF9027")).toBe(false);
+  });
+
+  it("SKU exato fica antes de mencao fraca na descricao", () => {
+    const pontuar = pontuadorDaBusca("ref9027");
+    const descricao = produto("Saia", "Geral", "Combina com REF9027");
+    const blusa = { ...produto("Blusa"), sku: "REF9027" };
+    const calca = {
+      ...produto("Calca"),
+      variants: [{ value: "Azul", active: true, sku: "REF9027" }],
+    };
+    expect(pontuar(blusa)).toBeGreaterThan(pontuar(descricao));
+    expect(pontuar(calca)).toBeGreaterThan(pontuar(descricao));
+    expect(pontuar({ ...blusa, sku: undefined })).toBe(0);
+    expect(
+      pontuar({
+        ...calca,
+        variants: [{ value: "Azul", active: false, sku: "REF9027" }],
+      }),
+    ).toBe(0);
   });
 
   it("descricao nula nao quebra", () => {

@@ -249,6 +249,24 @@ describe("AccountSettingsView — CPF opcional em Informações Pessoais", () =>
     expect(rpc).not.toHaveBeenCalledWith("set_my_cpf", expect.anything());
   });
 
+  it("primeiro dígito verificador errado mostra CPF inválido e não envia", async () => {
+    const { toast } = await import("sonner");
+    await montar();
+    rpc.mockClear();
+
+    await act(async () => {
+      digitar("cpf", "111.444.777-43");
+    });
+    await act(async () => {
+      botaoSalvar()!.click();
+    });
+
+    expect(cpfInput()!.getAttribute("aria-invalid")).toBe("true");
+    expect(document.body.textContent).toContain("CPF inválido");
+    expect(toast.error).toHaveBeenCalledWith("CPF inválido", expect.anything());
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
   it("nunca aparece no AuthContext.profile — updateProfile (que gravaria no contexto global) não é chamado para CPF", async () => {
     cpfNaContaMock.valor = null;
     await montar();

@@ -200,6 +200,32 @@ describe("promover a administrador (folha do cartão)", () => {
       expect(linha("Ver ficha do cliente")).toBeTruthy();
     });
 
+    it.each([
+      ["administrador comum (não é o dono)", "admin-comum", false],
+      ["o dono da loja", "dono-1", true],
+    ])(
+      "cartão de um ADMINISTRADOR visto por %s: 'Remover acesso' aparece só para o dono",
+      async (_quem, meuId, deveAparecer) => {
+        h.meuId = meuId;
+        h.donoId = "dono-1";
+        await render(cliente({ role: "admin" }));
+        await abrirFolha();
+        // a folha abriu e a leitura do dono já terminou (não é "carregando")
+        expect(linha("Ver ficha do cliente")).toBeTruthy();
+        expect(h.leituraDono).toHaveBeenCalledTimes(1);
+        if (deveAparecer) {
+          expect(linha(TITULO_REMOVER)).toBeTruthy();
+        } else {
+          // um administrador não tira o acesso de outro: nem a linha, nem
+          // a pergunta de confirmação existem para ele
+          expect(linha(TITULO_REMOVER)).toBeUndefined();
+          expect(linha(TITULO_PROMOVER)).toBeUndefined();
+          expect(document.body.textContent).not.toContain(SUBTITULO_REMOVER);
+          expect(dialogo()).toBeNull();
+        }
+      },
+    );
+
     it("loja sem dono cadastrado: ninguém vê as ações", async () => {
       h.donoId = null;
       await render(cliente());
