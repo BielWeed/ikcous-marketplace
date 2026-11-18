@@ -47,7 +47,9 @@ export function BaixarPlanilhaProdutos({
         podeContinuar,
       });
       if (podeContinuar()) {
-        if (formato === "csv")
+        if (formato === "vazio")
+          toast.warning("Nenhum produto cadastrado para exportar.");
+        else if (formato === "csv")
           toast.warning(
             "Não foi possível gerar o XLSX. Baixamos o catálogo completo em CSV, sem a formatação.",
           );

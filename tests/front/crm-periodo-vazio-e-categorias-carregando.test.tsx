@@ -54,9 +54,11 @@ afterEach(() => {
 function Sonda({
   pedidos = 0,
   devolucao = 0,
+  comCompradores = true,
 }: {
   pedidos?: number;
   devolucao?: number;
+  comCompradores?: boolean;
 }) {
   const classico = useDashboardClassico(false);
   return (
@@ -65,11 +67,16 @@ function Sonda({
         kpis: {
           pedidos,
           ticket_medio: pedidos > 0 ? 25 : 0,
-          taxa_recompra: 0.5,
+          taxa_recompra: comCompradores ? 0.5 : 0,
           receita_recorrente_pct: 0,
           taxa_devolucao: devolucao,
         },
-        segmentos: [],
+        segmentos: comCompradores
+          ? [{ segmento: "novos", clientes: 2 }]
+          : [
+              { segmento: "pediu_nao_pagou", clientes: 2 },
+              { segmento: "nunca_comprou", clientes: 3 },
+            ],
         canais: [],
         formas: [],
         pipeline: [],
@@ -83,9 +90,15 @@ function Sonda({
     />
   );
 }
-async function montar(pedidos = 0, devolucao = 0) {
+async function montar(pedidos = 0, devolucao = 0, comCompradores = true) {
   await act(async () =>
-    root.render(<Sonda pedidos={pedidos} devolucao={devolucao} />),
+    root.render(
+      <Sonda
+        pedidos={pedidos}
+        devolucao={devolucao}
+        comCompradores={comCompradores}
+      />,
+    ),
   );
 }
 function cartao(rotulo: string) {
@@ -146,6 +159,14 @@ it("período sem venda: recompra preserva histórico mas não inventa percentual
     "Sem venda neste período",
   );
   expect(host.textContent).not.toContain("0% da receita vem de quem volta");
+});
+
+it("período sem venda e sem compradores no histórico: recompra mostra traço", async () => {
+  await montar(0, 0, false);
+  const texto = cartao("Taxa de recompra").textContent;
+  expect(texto).toContain("—");
+  expect(texto).not.toContain("0%");
+  expect(texto).toContain("Sem venda neste período");
 });
 
 it("com venda: zero de devolução é medido e recompra histórica continua", async () => {
