@@ -123,7 +123,7 @@ Deno.test("404: o GRANT por coluna lista as 34 colunas da tabela (20261175) meno
   assert.ok(rb.includes("GRANT SELECT ON public.devolucoes TO authenticated;"));
 });
 
-Deno.test("404: aditiva, sem BEGIN/COMMIT de nivel superior, com pre/pos-voo, sem escrever dado e sem tocar a funcao do dinheiro", () => {
+Deno.test("404 (fora da release, NAO aditiva: REVOKE por coluna): sem BEGIN/COMMIT de nivel superior, com pre/pos-voo, sem escrever dado e sem tocar a funcao do dinheiro", () => {
   for (const [nome, sql] of [
     [NOME, migration],
     [`rollback-manual-${NOME}`, rollback],
