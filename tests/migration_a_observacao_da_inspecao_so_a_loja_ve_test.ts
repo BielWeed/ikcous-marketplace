@@ -180,16 +180,19 @@ const A = "156a-conferir-a-observacao-da-inspecao-so-a-loja-ve-aplicado";
 const B = "156b-antes-a-observacao-da-inspecao-so-a-loja-ve-base-vigente";
 const PROVA_VIVA = "tests/banco/a-observacao-da-inspecao-so-a-loja-ve-viva.cjs";
 
-Deno.test("404: lote de apply normal 156a/156b, rol fechado de 8 linhas, so catalogo, cita os md5 certos e a ausencia vem da 156b", () => {
+Deno.test("404: FORA da release (politica) e sem lote no canais; as consultas 156a/156b seguem no menu, de rol fechado de 8 linhas, so catalogo, citam os md5 certos", () => {
+  // A 404 tira o SELECT da tabela devolucoes (REVOKE): nao e aditiva, entao se aplica a parte,
+  // como a 400. Estar em migrationsForaDaRelease E num lote do canais daria duas decisoes.
   const canais = JSON.parse(lerRepo("scripts/frota/canais-de-backend.json"));
   const lote = canais.provasDeObjetos.filter((p: { versoes: string[] }) =>
     p.versoes.includes("20261404000000"),
   );
-  assert.equal(lote.length, 1, "UM lote para a 20261404000000");
-  assert.deepEqual(lote[0].versoes, ["20261404000000"]);
-  assert.equal(lote[0].consulta, A);
-  assert.equal(lote[0].ausenciaConfirmadaPor, B);
-  assert.ok(!("backfillLedger" in lote[0]) && !("nuncaAplicar" in lote[0]));
+  assert.equal(lote.length, 0, "a 20261404000000 nao tem lote no canais");
+  const politica = JSON.parse(lerRepo("scripts/frota/politica.json"));
+  const fora = politica.migrationsForaDaRelease.filter(
+    (m: { versao: string }) => m.versao === "20261404000000",
+  );
+  assert.equal(fora.length, 1, "a 20261404000000 esta em migrationsForaDaRelease");
   const a = lerRepo(`scripts/publicacao/consultas/${A}.sql`);
   const b = lerRepo(`scripts/publicacao/consultas/${B}.sql`);
   assert.ok(a.includes(`'${H_NOVO}'`) && !b.includes(`'${H_NOVO}'`));
