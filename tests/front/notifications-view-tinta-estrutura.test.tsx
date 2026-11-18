@@ -18,7 +18,7 @@ const lista: Notification[] = [
   {
     id: "a",
     title: "Pedido entregue",
-    message: "Seu pedido foi entregue.",
+    message: "linha1\nlinha2",
     type: "sucesso",
     read: false,
     created_at: new Date(0).toISOString(),
@@ -94,6 +94,15 @@ describe("NotificationsView (Tinta): estrutura", () => {
     expect(todas?.className).toContain("text-background");
     expect(todas?.className).not.toContain("bg-primary");
     expect(todas?.className).toContain("h-11");
+  });
+
+  it("preserva as quebras de linha do corpo da notificação", () => {
+    const corpo = [...host.querySelectorAll("p")].find(
+      (p) => p.textContent === "linha1\nlinha2",
+    );
+    expect(corpo).toBeDefined();
+    expect(corpo?.classList.contains("whitespace-pre-line")).toBe(true);
+    expect(corpo?.classList.contains("break-words")).toBe(true);
   });
 
   it("a linha inteira é um botão com o destino do pedido e é focável", async () => {

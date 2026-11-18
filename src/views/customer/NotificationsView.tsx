@@ -442,7 +442,7 @@ export function NotificationsView({
                         >
                           {notif.title}
                         </h4>
-                        <p className="break-words text-[14px] leading-5 text-muted-foreground">
+                        <p className="whitespace-pre-line break-words text-[14px] leading-5 text-muted-foreground">
                           {notif.message}
                         </p>
                         <span className="mt-1 block font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
