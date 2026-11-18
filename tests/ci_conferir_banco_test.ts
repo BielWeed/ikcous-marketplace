@@ -2333,6 +2333,13 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "a439e320641d553e3a21883c6606c6f2",
           versao: "20261399992000",
         },
+        // 18/11/2026: a observacao da inspecao da devolucao so a loja ve (20261404000000): o detalhe da devolucao ganha a sua
+        // sucessora (a cadeia 99 -> 3992 -> 404); a consulta 144a aceita os dois corpos.
+        {
+          fn: "devolucao_detalhe",
+          h: "b4eb7a928f8a6ff04c34e93f4f56188c",
+          versao: "20261404000000",
+        },
         {
           fn: "devolucao_elegibilidade",
           h: "bedd211bba45261dfbf962241ca3c9dd",
