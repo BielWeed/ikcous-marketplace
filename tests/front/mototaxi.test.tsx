@@ -137,6 +137,34 @@ it.each([undefined, "", "   ", "cliente FICTÍCIA", "Cliente Ficticia"])(
     expect(msg).not.toContain("Quem recebe");
   },
 );
+it("leva a observação da cliente em uma linha só, depois da referência", () => {
+  const msg = contato.mensagemMototaxi(
+    { ...pedido, notes: "Campainha estragada;\n  deixar   na portaria.\n" },
+    "Loja",
+  );
+  const linhas = msg.split("\n");
+  expect(linhas[5]).toBe("Referência: portão azul");
+  expect(linhas[6]).toBe(
+    "Observação da cliente: Campainha estragada; deixar na portaria.",
+  );
+  expect(linhas[7]).toMatch(/^Itens: /);
+});
+it.each([undefined, "", "  \n "])(
+  "sem observação da cliente não inventa a linha: %j",
+  (notes) => {
+    expect(
+      contato.mensagemMototaxi({ ...pedido, notes }, "Loja"),
+    ).not.toContain("Observação");
+  },
+);
+it("observação longa é cortada em 300 caracteres com reticências", () => {
+  const msg = contato.mensagemMototaxi(
+    { ...pedido, notes: "a".repeat(500) },
+    "Loja",
+  );
+  const linha = msg.split("\n").find((l) => l.startsWith("Observação"));
+  expect(linha).toBe(`Observação da cliente: ${"a".repeat(299)}…`);
+});
 it("usa os seis últimos caracteres reconhecidos na ficha, nunca os primeiros", () => {
   const msg = contato.mensagemMototaxi(pedido, "Loja");
   expect(msg.split("\n")[0]).toBe("Entrega — Pedido #3884BE");

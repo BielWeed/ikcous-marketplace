@@ -64,6 +64,14 @@ export function normalizarNumeroMototaxi(
 export function mensagemMototaxi(order: Order, loja: string): string {
   const c = order.customer;
   const quemRecebe = quemVaiReceberSeForOutro(c.name, c.recipientName);
+  // "Deixar na portaria", "campainha estragada": a instrucao que a cliente
+  // escreveu no checkout. Numa linha so (nao quebra o formato) e com teto, para
+  // o link do WhatsApp nao crescer sem limite.
+  const notaLimpa = (order.notes ?? "").replace(/\s+/g, " ").trim();
+  const observacao =
+    notaLimpa.length > 300
+      ? `${notaLimpa.slice(0, 299).trimEnd()}…`
+      : notaLimpa;
   const pago =
     ["pago", "pago_apos_expirar", "recebido_na_entrega"].includes(
       order.paymentStatus ?? "",
@@ -104,6 +112,7 @@ export function mensagemMototaxi(order: Order, loja: string): string {
       .filter(Boolean)
       .join(" · "),
     c.reference ? `Referência: ${c.reference}` : "",
+    observacao ? `Observação da cliente: ${observacao}` : "",
     `Itens: ${order.items.map((i) => `${i.quantity}× ${i.name}`).join("; ")}`,
     pagamento,
     `Loja: ${loja}`,
