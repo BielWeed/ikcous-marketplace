@@ -110,8 +110,9 @@ describe("AdminBannersView — Voltar com o recorte aberto", () => {
           active
           onNavigate={vi.fn()}
           onSetBackOverride={(valor) => {
-            // Mesmo contrato do setter de estado usado no App.
-            overrideAtual = typeof valor === "function" ? valor() : valor;
+            // No App, o setter recebe um updater que devolve o override real.
+            overrideAtual =
+              valor === null ? null : (valor as () => (() => void) | null)();
           }}
         />,
       );
