@@ -18,6 +18,11 @@
       "versao": "20261201000000",
       "motivo": "201 só depois das edges novas + escoamento >=15 min com 1 ciclo do cron (ver cabeçalho da 201)",
       "conferencia": "8f-conferir-201"
+    },
+    {
+      "versao": "20261400000000",
+      "motivo": "400 se aplica a parte, em hora calma, loja por loja, depois de contar valores negativos (a propria migration recusa se houver)",
+      "conferencia": "contagem de negativos igual a 0 (cabecalho da 400)"
     }
   ],
   "aliasesDePreview": ["^ickous-marketplace-git-.+\\.vercel\\.app$"],
