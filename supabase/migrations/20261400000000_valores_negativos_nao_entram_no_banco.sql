@@ -19,7 +19,8 @@
 --
 -- 2. O QUE MUDA (so objeto NOVO; nenhuma funcao, linha ou permissao e' tocada)
 --
--- Quatro restricoes CHECK, criadas NOT VALID, na ordem store_config, product_variants, produtos, coupons:
+-- Quatro restricoes CHECK, criadas JA VALIDADAS (o ADD varre a tabela; ver secao 3), na ordem store_config, product_variants,
+-- produtos, coupons:
 --   store_config_local_delivery_fee_nao_negativo   CHECK (local_delivery_fee >= 0 AND local_delivery_fee <> 'NaN')
 --   product_variants_price_override_nao_negativo   CHECK (price_override IS NULL OR (price_override >= 0 AND price_override <> 'NaN'))
 --   produtos_preco_venda_nao_negativo              CHECK (preco_venda >= 0 AND preco_venda <> 'NaN')
@@ -31,9 +32,9 @@
 --
 -- 3. DADOS QUE JA EXISTIAM - A MIGRATION SE RECUSA A APLICAR SE HOUVER (leia antes de aplicar)
 --
--- NOT VALID so dispensa a conferencia das linhas existentes NO MOMENTO do ADD. O Postgres reavalia o CHECK em TODO INSERT e em
--- TODO UPDATE da linha, mesmo que a coluna nao mude. Logo, uma linha antiga NEGATIVA (ou NaN; so nasce por chamada direta, as
--- telas barram) ficaria "travada para UPDATE" ate alguem corrigi-la - e o pior caso e' a EXPIRACAO DE PEDIDOS:
+-- Uma restricao CHECK (mesmo NOT VALID) e' reavaliada em TODO INSERT e em TODO UPDATE da linha, mesmo que a coluna nao mude. Logo,
+-- uma linha antiga NEGATIVA (ou NaN; so nasce por chamada direta, as telas barram) ficaria "travada para UPDATE" ate alguem
+-- corrigi-la - e o pior caso e' a EXPIRACAO DE PEDIDOS:
 --   * expirar_pedidos_vencidos (20261393000000) percorre os pedidos pendentes vencidos NUMA transacao so e, para cada um, chama
 --     devolver_estoque (UPDATE em produtos/product_variants) e devolve o uso do cupom (UPDATE em coupons), sem tratamento de
 --     erro por pedido. UM produto, variacao ou cupom negativo num pedido pendente faria a varredura inteira desfazer a cada
@@ -43,13 +44,22 @@
 --     negativo: idem; cupom negativo: nao se usa (usage_count e' um UPDATE); taxa local negativa: qualquer salvamento da
 --     configuracao da loja recusa.
 --
--- Por isso a migration TEM UMA GUARDA (mesmo padrao da 20261396200000): logo depois dos quatro ADD CONSTRAINT (as tabelas ja
--- estao trancadas, entao nenhuma linha nova entra no meio), conta as linhas ruins das quatro colunas (a mesma expressao das
--- restricoes; NULL e zero nao contam; a sentinela -1 de free_shipping_min e' outra coluna e nao entra) e, se houver alguma,
--- ABORTA com B1_BASELINE_DIVERGENT dizendo QUAL coluna e QUANTAS linhas. A transacao inteira desfaz: nenhuma restricao fica,
--- nenhuma linha muda. Nesse caso NAO aplicar nessa loja antes de corrigir o valor dessas linhas (decisao da lojista: so ela
--- sabe o valor certo; esta migration nao corrige nem apaga). Corrigido o dado, aplicar de novo. A guarda roda em TODA execucao,
--- tambem na reaplicacao (loja limpa: no-op). Medicao previa, so leitura, em cada loja (esperado: tudo 0):
+-- Por isso a migration NAO cria a restricao por cima de dado ruim, e tem DUAS defesas, nesta ordem:
+--
+--   (a) A GUARDA (mesmo padrao da 20261396200000), ANTES dos ADD CONSTRAINT: conta as linhas ruins das quatro colunas (a mesma
+--       expressao das restricoes; NULL e zero nao contam; a sentinela -1 de free_shipping_min e' outra coluna e nao entra) e, se
+--       houver alguma, ABORTA com B1_BASELINE_DIVERGENT dizendo QUAL coluna e QUANTAS linhas. E' a recusa com mensagem clara
+--       para o caso comum (dado antigo ruim). Roda em TODA execucao, tambem na reaplicacao (loja limpa: no-op).
+--   (b) O PROPRIO ADD CONSTRAINT, VALIDADO (sem NOT VALID): varre a tabela e recusa (23514) se houver linha ruim. E' a rede da
+--       corrida. O aplicador abre a transacao em REPEATABLE READ e tira a foto do banco ANTES da migration rodar; a contagem da
+--       guarda le essa foto e NAO enxerga uma linha negativa que outra sessao gravou e confirmou entre a foto e a trava. O ADD
+--       validado, com a tabela trancada (ACCESS EXCLUSIVE), le o estado MAIS RECENTE e recusa essa linha tambem (provado em
+--       Postgres 17: sessao A em REPEATABLE READ leu antes, B grava -20 e confirma, A aplica -> RECUSA; com o NOT VALID de
+--       volta A aplicava e o UPDATE de usage_count desse cupom passava a falhar com 23514).
+--
+-- Nos dois casos a transacao inteira desfaz: nenhuma restricao fica, nenhuma linha muda. Nesse caso NAO aplicar nessa loja antes
+-- de corrigir o valor dessas linhas (decisao da lojista: so ela sabe o valor certo; esta migration nao corrige nem apaga).
+-- Corrigido o dado, aplicar de novo. Medicao previa, so leitura, em cada loja (esperado: tudo 0):
 --
 --   SELECT
 --     (SELECT count(*) FROM public.store_config WHERE NOT (local_delivery_fee >= 0 AND local_delivery_fee <> 'NaN'::numeric)) AS taxa,
@@ -57,8 +67,9 @@
 --     (SELECT count(*) FROM public.product_variants WHERE NOT (price_override IS NULL OR (price_override >= 0 AND price_override <> 'NaN'::numeric))) AS price_override,
 --     (SELECT count(*) FROM public.coupons WHERE NOT (value >= 0 AND value <> 'NaN'::numeric)) AS cupom;
 --
--- Custo da guarda: uma varredura de cada uma das quatro tabelas (pequenas numa loja), com as tabelas trancadas, dentro do
--- statement_timeout de 30 s. O VALIDATE CONSTRAINT fica de fora de proposito: esta migration nao o roda.
+-- Custo: a guarda varre as quatro tabelas (pequenas numa loja) so com trava de leitura; cada ADD varre a sua com a tabela
+-- trancada (ACCESS EXCLUSIVE) por um instante, dentro do statement_timeout de 30 s. (A trava exclusiva ja existia: o ADD, mesmo
+-- NOT VALID, a toma.)
 --
 -- 4. FORA DO ESCOPO (conferido, nao tocado)
 --   * store_config.free_shipping_min: a sentinela legada NEGATIVA (por produto, -1) e' intencional e nao ganha restricao.
@@ -66,10 +77,10 @@
 --   * cupom percentual acima de 100: outra frente (a tela barra e o servidor limita o desconto ao subtotal).
 --   * Nenhuma funcao, politica, gatilho, GRANT ou front muda; nenhuma tabela nova.
 --
--- 5. PRE-VOO (B1_BASELINE_DIVERGENT, ANTES de qualquer escrita; a guarda da secao 3 e' a 2a recusa, DEPOIS dos ADD e desfeita junto)
+-- 5. PRE-VOO (B1_BASELINE_DIVERGENT, ANTES de qualquer escrita; a guarda da secao 3 e' a 2a recusa, tambem ANTES dos ADD)
 --
--- As quatro colunas tem de existir como numeric; cada restricao, se ja existir, tem de ser exatamente a desenhada (NOT VALID
--- ou ja validada). Estados aceitos por restricao: ausente (cria) ou como desenhada (reaplicar e' no-op).
+-- As quatro colunas tem de existir como numeric; cada restricao, se ja existir, tem de ser exatamente a desenhada (validada; NOT
+-- VALID tambem e' aceita para nao recusar quem a criou assim a mao). Estados aceitos por restricao: ausente (cria) ou como desenhada (reaplicar e' no-op).
 --
 -- 6. TRANSACAO, IDEMPOTENCIA E TRAVA
 --
@@ -78,7 +89,8 @@
 -- para o arquivo inteiro, entao pre-voo, as quatro restricoes, a guarda e a conferencia caem juntas ou nao caem (provado numa conexao
 -- SEM BEGIN: falha na 3a restricao, a guarda recusando ou a conferencia deixa NENHUMA das quatro). Cada restricao so e' criada se ainda nao
 -- existe: rodar duas vezes deixa o mesmo estado (mesmo OID); restricao ja validada a mao tambem e' aceita.
--- ADD CONSTRAINT ... CHECK tranca a tabela (ACCESS EXCLUSIVE) por um instante, sem varrer (NOT VALID). Com lock_timeout = 5s,
+-- ADD CONSTRAINT ... CHECK tranca a tabela (ACCESS EXCLUSIVE) enquanto varre as linhas (e' validado) e a trava dura ate o fim da
+-- transacao. Com lock_timeout = 5s,
 -- loja com gravacao em voo falha LIMPO em vez de travar a compra - repetir depois. As travas sao pedidas na ordem em que a
 -- compra online as pega (store_config, variacoes, produtos, cupons), para a migration nao cruzar com ela (inversao de ordem
 -- entre a migration e uma compra seria deadlock).
@@ -125,30 +137,9 @@ BEGIN
   END LOOP;
 END $preflight_20261400000000$;
 
--- As quatro restricoes, NOT VALID: valem para todo INSERT/UPDATE a partir daqui e nao reprovam (nem leem) as linhas antigas.
-DO $restricoes_20261400000000$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint c WHERE c.conrelid = 'public.store_config'::regclass
-                  AND c.conname = 'store_config_local_delivery_fee_nao_negativo') THEN
-    ALTER TABLE public.store_config ADD CONSTRAINT store_config_local_delivery_fee_nao_negativo CHECK (local_delivery_fee >= 0 AND local_delivery_fee <> 'NaN'::numeric) NOT VALID;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint c WHERE c.conrelid = 'public.product_variants'::regclass
-                  AND c.conname = 'product_variants_price_override_nao_negativo') THEN
-    ALTER TABLE public.product_variants ADD CONSTRAINT product_variants_price_override_nao_negativo CHECK (price_override IS NULL OR (price_override >= 0 AND price_override <> 'NaN'::numeric)) NOT VALID;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint c WHERE c.conrelid = 'public.produtos'::regclass
-                  AND c.conname = 'produtos_preco_venda_nao_negativo') THEN
-    ALTER TABLE public.produtos ADD CONSTRAINT produtos_preco_venda_nao_negativo CHECK (preco_venda >= 0 AND preco_venda <> 'NaN'::numeric) NOT VALID;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint c WHERE c.conrelid = 'public.coupons'::regclass
-                  AND c.conname = 'coupons_value_nao_negativo') THEN
-    ALTER TABLE public.coupons ADD CONSTRAINT coupons_value_nao_negativo CHECK (value >= 0 AND value <> 'NaN'::numeric) NOT VALID;
-  END IF;
-END $restricoes_20261400000000$;
-
--- A GUARDA (cabecalho, secao 3): com as restricoes ativas, linha antiga NEGATIVA (ou NaN) trava qualquer UPDATE dela. As quatro
--- tabelas ja foram trancadas pelos ADD CONSTRAINT acima (a trava dura ate o fim da transacao), entao nenhuma linha nova entra
--- entre esta contagem e o fim. Mesma expressao das restricoes: NOT (col >= 0 AND col <> 'NaN'); NULL nao conta (nao e' ruim).
+-- A GUARDA (cabecalho, secao 3a): com as restricoes ativas, linha antiga NEGATIVA (ou NaN) trava qualquer UPDATE dela. Mesma
+-- expressao das restricoes: NOT (col >= 0 AND col <> 'NaN'); NULL nao conta (nao e' ruim). Le a foto da transacao: linha gravada
+-- entre a foto e a trava (REPEATABLE READ do aplicador) e' pega pelo ADD validado logo abaixo (secao 3b), nao por esta contagem.
 DO $guarda_20261400000000$
 DECLARE
   v_taxa bigint;
@@ -171,6 +162,28 @@ BEGIN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: ha valor negativo ou NaN que ja existia em: % - a migration NAO foi aplicada (a transacao desfaz tudo e nenhuma restricao fica). Com a restricao ativa cada uma dessas linhas travaria qualquer UPDATE dela, inclusive a baixa e a devolucao de estoque e do uso do cupom feitas pela expiracao de pedidos vencidos: UM item assim impediria a varredura inteira de expirar QUALQUER pedido da loja. Corrija o valor dessas linhas (decisao da lojista: so ela sabe o valor certo) e aplique de novo.', v_ruins;
   END IF;
 END $guarda_20261400000000$;
+
+-- As quatro restricoes, JA VALIDADAS (sem NOT VALID, de proposito): o ADD varre a tabela com ela trancada e recusa (23514) se
+-- houver linha ruim, inclusive a que a guarda nao viu por causa da foto do REPEATABLE READ (cabecalho, secao 3b).
+DO $restricoes_20261400000000$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint c WHERE c.conrelid = 'public.store_config'::regclass
+                  AND c.conname = 'store_config_local_delivery_fee_nao_negativo') THEN
+    ALTER TABLE public.store_config ADD CONSTRAINT store_config_local_delivery_fee_nao_negativo CHECK (local_delivery_fee >= 0 AND local_delivery_fee <> 'NaN'::numeric);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint c WHERE c.conrelid = 'public.product_variants'::regclass
+                  AND c.conname = 'product_variants_price_override_nao_negativo') THEN
+    ALTER TABLE public.product_variants ADD CONSTRAINT product_variants_price_override_nao_negativo CHECK (price_override IS NULL OR (price_override >= 0 AND price_override <> 'NaN'::numeric));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint c WHERE c.conrelid = 'public.produtos'::regclass
+                  AND c.conname = 'produtos_preco_venda_nao_negativo') THEN
+    ALTER TABLE public.produtos ADD CONSTRAINT produtos_preco_venda_nao_negativo CHECK (preco_venda >= 0 AND preco_venda <> 'NaN'::numeric);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint c WHERE c.conrelid = 'public.coupons'::regclass
+                  AND c.conname = 'coupons_value_nao_negativo') THEN
+    ALTER TABLE public.coupons ADD CONSTRAINT coupons_value_nao_negativo CHECK (value >= 0 AND value <> 'NaN'::numeric);
+  END IF;
+END $restricoes_20261400000000$;
 
 -- CONFERENCIA no instante do apply: as quatro existem, na tabela certa, com a regra desenhada.
 DO $conferencia_20261400000000$

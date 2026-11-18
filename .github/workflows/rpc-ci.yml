@@ -1320,10 +1320,13 @@ jobs:
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/cupom-tipo-invalido-e-recusado-no-banco-viva.cjs
       # Migration 20261400000000 (valores negativos nao entram no banco): taxa de entrega local, preco do produto, preco
-      # proprio da variacao e valor do cupom ganham CHECK >= 0 (e <> NaN) NOT VALID. Negativo e NaN recusam com 23514 pela
-      # restricao certa em todas as portas (RLS, upsert_store_config, salvar_produto_com_grade, sessao direta); zero e NULL de
-      # variacao seguem; linha antiga negativa nao impede a migration; 12 mutantes; reaplicar, rollback, pre-voo, falha no meio
-      # e lock_timeout sem deixar restricao pela metade. CLONE proprio.
+      # proprio da variacao e valor do cupom ganham CHECK >= 0 (e <> NaN), criado JA VALIDADO. Negativo e NaN recusam com 23514
+      # pela restricao certa em todas as portas (RLS, upsert_store_config, salvar_produto_com_grade, sessao direta); zero e NULL
+      # de variacao seguem. Linha antiga negativa/NaN IMPEDE a migration (guarda B1_BASELINE_DIVERGENT antes dos ADD, com a
+      # coluna e a contagem; nenhuma restricao fica), e a CORRIDA sob REPEATABLE READ (linha gravada depois da foto do aplicador)
+      # e recusada pelo proprio ADD validado. Mutantes: 12 das restricoes (sem a regra, sem NaN, zero recusado, por coluna),
+      # 9 da guarda (removida, cega a uma coluna, cega a NaN) e 2 do NOT VALID de volta (o estrago original e a corrida);
+      # reaplicar, rollback, pre-voo, falha no meio e lock_timeout sem deixar restricao pela metade. CLONE proprio.
       - name: Prova viva de que valores negativos nao entram no banco (migration 20261400000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/valores-negativos-prova.cjs

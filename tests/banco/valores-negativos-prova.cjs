@@ -8,7 +8,7 @@
  * pedido soma o que o banco guarda. Taxa de entrega local de -50 num pedido de R$100 cobra R$50 (upsert_store_config grava o
  * cast sem guarda); produto de -90 abate o total de outros produtos (salvar_produto_com_grade e a venda so olham preco nao
  * nulo); preco proprio de variacao negativo, idem; cupom `fixed` de -20 vira ACRESCIMO (validate_coupon_secure_v2 devolve
- * discount_value -20 com is_valid true). O conserto: um CHECK `col >= 0 AND col <> 'NaN'` em cada coluna, criado NOT VALID.
+ * discount_value -20 com is_valid true). O conserto: um CHECK `col >= 0 AND col <> 'NaN'` em cada coluna, criado JA VALIDADO.
  *
  *  ANTES       controle: sem os CHECKs os quatro negativos e o NaN entram, e o cupom de -20 devolve "desconto" -20 (o defeito).
  *  DEPOIS      negativo (-0.01, -50), NaN e a edicao para negativo sao recusados com 23514 pela restricao CERTA, para a sessao
@@ -20,7 +20,10 @@
  *              linha, aplica. Motivo: com o CHECK ativo a linha antiga trava todo UPDATE dela, e a expiracao de pedidos
  *              (expirar_pedidos_vencidos, uma transacao so) deixaria de expirar QUALQUER pedido da loja. Zero, NULL de
  *              variacao e a sentinela free_shipping_min = -1 NAO contam; loja limpa aplica e reaplica. Mutantes da guarda
- *              (removida, cega a uma coluna, cega a NaN) APLICAM sobre o dado ruim: a prova da recusa enxerga.
+ *              (removida, cega a uma coluna, cega a NaN) ainda RECUSAM (o ADD validado e' a rede), mas sem a mensagem B1.
+ *  CORRIDA     sessao A em REPEATABLE READ (a foto do aplicador) leu antes, B grava cupom negativo e confirma, A aplica: a
+ *              migration RECUSA (23514 do ADD validado, que le o estado mais recente) e nao deixa restricao. Mutante "volta o
+ *              NOT VALID" (com e sem a guarda) APLICA por cima da linha ruim e o UPDATE de outra coluna dela recusa (23514).
  *  SO NOVO     o apply cria so as 4 restricoes: nenhuma funcao (corpo/OID/ACL), tabela, politica, gatilho ou outra restricao muda.
  *  MUTANTES    sem a regra, sem o NaN e com `> 0` (zero recusado), em cada coluna: o roteiro fica VERMELHO nas chaves certas e so nelas.
  *  MIGRATION   reaplicar (2x, CRLF, ja validada) e no-op (mesmo OID); rollback sem tocar dado, 2x no-op; pre-voo recusa SEM
@@ -486,7 +489,7 @@ prova(
 );
 
 prova(
-  "As 4 restricoes nascem NOT VALID, uma por coluna, com a regra exata, e nada mais e criado",
+  "As 4 restricoes nascem VALIDADAS (varreram a tabela no ADD), uma por coluna, com a regra exata, e nada mais e criado",
   async () => {
     await P.emTransacao(async () => {
       await semear();
@@ -499,8 +502,8 @@ prova(
         const l = linhas.find((x) => x.conname === ALVOS[n].ck);
         assert.ok(l, `falta ${ALVOS[n].ck}`);
         assert.equal(l.t, ALVOS[n].tabela);
-        assert.equal(l.def, `${ALVOS[n].def} NOT VALID`);
-        assert.equal(l.convalidated, false);
+        assert.equal(l.def, ALVOS[n].def);
+        assert.equal(l.convalidated, true);
         assert.equal(l.contype, "c");
       }
     });
@@ -508,7 +511,7 @@ prova(
 );
 
 // ---- (d) LINHA ANTIGA ------------------------------------------------------------------------------------------------------
-// Dado ruim que ja existia ANTES da migration: com o CHECK (mesmo NOT VALID) ativo ele travaria todo UPDATE da linha, e a
+// Dado ruim que ja existia ANTES da migration: com o CHECK ativo (mesmo NOT VALID) ele travaria todo UPDATE da linha, e a
 // varredura de pedidos vencidos (expirar_pedidos_vencidos -> devolver_estoque/cupom, uma transacao so) desfaria a cada
 // rodada e NENHUM pedido da loja expiraria mais. Por isso a migration se RECUSA (B1_BASELINE_DIVERGENT) e nada fica gravado.
 const RUIM = {
@@ -658,8 +661,9 @@ prova(
   },
 );
 
-// MUTANTES DA GUARDA: sem ela (inteira, ou cega a uma coluna, ou cega a NaN) a migration APLICA sobre o dado ruim - e os testes
-// acima derrubam isso. Aqui a prova de que a prova enxerga: cada mutante tem de ser ACEITO onde o real e' recusado.
+// MUTANTES DA GUARDA: a guarda (antes dos ADD) da a MENSAGEM clara; a rede de seguranca e' o proprio ADD CONSTRAINT validado, que
+// varre a tabela e recusa com 23514. Sabotada a guarda (inteira, cega a uma coluna, cega a NaN), a migration continua RECUSANDO o
+// dado ruim e nao deixa nada, mas SEM o B1_BASELINE_DIVERGENT - e e' isso que os testes "LINHA ANTIGA" acima exigem da guarda.
 const MUTANTES_DA_GUARDA = [
   {
     nome: "sem a contagem (guarda removida)",
@@ -693,7 +697,7 @@ const MUTANTES_DA_GUARDA = [
 ];
 for (const { nome, valor, alvos, sabotar } of MUTANTES_DA_GUARDA) {
   prova(
-    `MUTANTE da guarda - ${nome}: a migration sabotada APLICA sobre a linha antiga (a prova da recusa enxerga)`,
+    `MUTANTE da guarda - ${nome}: sem ela a migration ainda RECUSA (o ADD validado e' a rede), mas sem a mensagem B1_BASELINE_DIVERGENT`,
     async () => {
       const sql = sabotar(MIGRATION, P.blocoDe(MIGRATION, BLOCO_GUARDA));
       assert.notEqual(sql, MIGRATION, "a sabotagem da guarda nao pegou");
@@ -702,25 +706,60 @@ for (const { nome, valor, alvos, sabotar } of MUTANTES_DA_GUARDA) {
           await semear();
           await antes();
           await plantar(n, valor);
-          assert.equal(
-            await P.aplicar(sql),
-            null,
-            `o mutante '${nome}' devia deixar passar ${n}=${valor}`,
-          );
-          assert.equal(await aplicado(), true);
-          // e e' ESTE o estrago que a guarda evita: aplicada sobre a linha ruim, a restricao recusa (23514) o UPDATE de OUTRA
-          // coluna da mesma linha - a baixa/devolucao de estoque e do uso do cupom da expiracao de pedidos seriam desse tipo
+          const r = await P.aplicar(sql);
           assert.ok(
-            recusada(
-              await direto(MEXER[n], IDS_RUIM[n] ? [IDS_RUIM[n]] : []),
-              n,
-            ),
-            `sem a guarda, o UPDATE de outra coluna da linha antiga (${n}) devia recusar`,
+            r,
+            `o mutante '${nome}' devia ser recusado pelo ADD validado`,
           );
+          assert.equal(r.codigo, "23514", r.erro);
+          assert.ok(
+            !r.erro.includes("B1_BASELINE_DIVERGENT"),
+            `o mutante '${nome}' ainda deu a mensagem da guarda: ${r.erro}`,
+          );
+          assert.equal(await aplicado(), false, "ficou restricao");
         });
     },
   );
 }
+
+// MUTANTE "volta o NOT VALID": e' o defeito original. Sem a varredura do ADD a restricao nasce por cima da linha ruim.
+const voltaNotValid = (m) => {
+  const sabotada = m.replace(
+    /(ADD CONSTRAINT \w+ CHECK \([^\n]*\));/g,
+    "$1 NOT VALID;",
+  );
+  assert.equal(
+    (sabotada.match(/ NOT VALID;/g) ?? []).length,
+    4,
+    "a sabotagem NOT VALID nao pegou as 4 restricoes",
+  );
+  return sabotada;
+};
+prova(
+  "MUTANTE volta o NOT VALID + sem a guarda: a migration APLICA sobre a linha antiga e o UPDATE de OUTRA coluna dela passa a recusar (23514) - o estrago original",
+  async () => {
+    const sql = voltaNotValid(
+      MIGRATION.replace(P.blocoDe(MIGRATION, BLOCO_GUARDA), ""),
+    );
+    for (const n of NOMES)
+      await P.emTransacao(async () => {
+        await semear();
+        await antes();
+        await plantar(n, "-20");
+        assert.equal(
+          await P.aplicar(sql),
+          null,
+          `o mutante devia deixar passar ${n}=-20`,
+        );
+        assert.equal(await aplicado(), true);
+        // a baixa/devolucao de estoque e do uso do cupom da expiracao de pedidos seriam UPDATEs deste tipo
+        assert.ok(
+          recusada(await direto(MEXER[n], IDS_RUIM[n] ? [IDS_RUIM[n]] : []), n),
+          `o UPDATE de outra coluna da linha antiga (${n}) devia recusar`,
+        );
+      });
+  },
+);
 
 // ---- (e) reaplicar --------------------------------------------------------------------------------------------------------------
 prova(
@@ -1086,6 +1125,85 @@ prova(
     } finally {
       await c3.end();
     }
+  },
+);
+
+// ---- CORRIDA (conexoes proprias; deixam o clone no estado ANTES) -----------------------------------------------------------------
+// O aplicador abre a transacao em REPEATABLE READ e tira a foto do banco ANTES da migration rodar. A contagem da guarda le a foto
+// e NAO enxerga a linha negativa que outra sessao gravou e confirmou entre a foto e a trava; o ADD CONSTRAINT validado varre o
+// estado MAIS RECENTE da tabela e recusa. Com o NOT VALID de volta, a restricao nasceria por cima dessa linha e a expiracao de
+// pedidos pararia (UPDATE de outra coluna do cupom -> 23514).
+async function corrida(sql) {
+  const url = lerDatabaseUrlEfemera();
+  const a = new Client({ connectionString: url });
+  const b = new Client({ connectionString: url });
+  await a.connect();
+  await b.connect();
+  const limpar = async () => {
+    await b.query("DELETE FROM public.coupons WHERE code = 'B14CORRIDA'");
+    await b.query(ROLLBACK);
+  };
+  let erro = null;
+  let ficou = null;
+  let estrago = null;
+  try {
+    await limpar();
+    await a.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+    await a.query("SELECT count(*) FROM public.coupons"); // a foto do aplicador
+    await b.query(
+      "INSERT INTO public.coupons (code, type, value, active) VALUES ('B14CORRIDA', 'fixed', -20, true)",
+    ); // outra sessao grava e confirma DEPOIS da foto
+    try {
+      await a.query(sql);
+    } catch (e) {
+      erro = e;
+    }
+    await a.query(erro ? "ROLLBACK" : "COMMIT");
+    ficou = await aplicado(b);
+    try {
+      await b.query(
+        "UPDATE public.coupons SET usage_count = usage_count WHERE code = 'B14CORRIDA'",
+      );
+    } catch (e) {
+      estrago = e.code;
+    }
+  } finally {
+    await limpar().catch(() => {});
+    await a.end().catch(() => {});
+    await b.end().catch(() => {});
+  }
+  return { erro, ficou, estrago };
+}
+
+prova(
+  "CORRIDA: a foto (REPEATABLE READ) leu antes, outra sessao grava cupom negativo e confirma, e a migration RECUSA (23514 do ADD validado); nenhuma restricao fica",
+  async () => {
+    const { erro, ficou, estrago } = await corrida(MIGRATION);
+    assert.ok(
+      erro,
+      "a migration devia ter recusado a linha gravada na corrida",
+    );
+    assert.equal(erro.code, "23514", erro.message);
+    assert.equal(ficou, false, "ficou restricao depois da recusa");
+    assert.equal(estrago, null, "o cupom ruim travou UPDATE?");
+  },
+);
+
+prova(
+  "MUTANTE volta o NOT VALID (com a guarda): na corrida a migration APLICA por cima da linha gravada e o UPDATE do cupom passa a recusar (23514)",
+  async () => {
+    const { erro, ficou, estrago } = await corrida(voltaNotValid(MIGRATION));
+    assert.equal(
+      erro,
+      null,
+      "o mutante devia aplicar (a guarda nao ve a corrida)",
+    );
+    assert.equal(ficou, true);
+    assert.equal(
+      estrago,
+      "23514",
+      "o UPDATE de outra coluna do cupom devia recusar",
+    );
   },
 );
 
