@@ -278,4 +278,82 @@ describe("CartContext — localStorage que lança não derruba o Provider", () =
     expect(estado!.cart).toEqual([]);
     expect(() => act(() => estado!.clearCart())).not.toThrow();
   });
+
+  it("Esvaziar carrinho limpa os itens e confirma a ação mesmo sem acesso à sessão", async () => {
+    const { toast } = await import("sonner");
+    const { CartProvider, useCartContext } = await import(
+      "@/contexts/CartContext"
+    );
+    const { sessionStorageSeguro } = await import("@/lib/armazenamento-seguro");
+    const {
+      lerRascunhoDoCheckout,
+      limparRascunhoDoCheckout,
+      rascunhoVazio,
+      salvarRascunhoDoCheckout,
+    } = await import("@/lib/rascunho-do-checkout");
+    let estado: ReturnType<typeof useCartContext> | undefined;
+    function SondaCart() {
+      const carrinho = useCartContext();
+      useEffect(() => {
+        estado = carrinho;
+      });
+      return null;
+    }
+    localStorage.setItem(
+      "marketplace_cart_v1",
+      JSON.stringify([
+        {
+          product: {
+            id: "pA",
+            name: "Produto de A",
+            price: 10,
+            stock: 10,
+            images: [],
+          },
+          quantity: 1,
+        },
+      ]),
+    );
+    await act(async () => {
+      raiz.render(
+        <CartProvider>
+          <SondaCart />
+        </CartProvider>,
+      );
+    });
+    expect(estado?.cart).toHaveLength(1);
+
+    const original = Object.getOwnPropertyDescriptor(
+      globalThis,
+      "sessionStorage",
+    )!;
+    Object.defineProperty(globalThis, "sessionStorage", {
+      configurable: true,
+      get() {
+        throw new DOMException("bloqueado", "SecurityError");
+      },
+    });
+    const sessao = sessionStorageSeguro();
+    try {
+      salvarRascunhoDoCheckout(sessao, {
+        ...rascunhoVazio(),
+        notas: "Tocar a campainha",
+        cupom: "CUPOM-TESTE",
+        contaDoCupom: "conta-teste",
+      });
+      expect(lerRascunhoDoCheckout(sessao)?.cupom).toBe("CUPOM-TESTE");
+
+      expect(() => act(() => estado!.clearCart())).not.toThrow();
+      expect(estado?.cart).toEqual([]);
+      expect(lerRascunhoDoCheckout(sessao)).toMatchObject({
+        cupom: null,
+        contaDoCupom: null,
+        notas: "Tocar a campainha",
+      });
+      expect(toast.info).toHaveBeenCalledWith("Carrinho limpo");
+    } finally {
+      limparRascunhoDoCheckout(sessao);
+      Object.defineProperty(globalThis, "sessionStorage", original);
+    }
+  });
 });

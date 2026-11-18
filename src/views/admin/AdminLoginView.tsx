@@ -5,15 +5,22 @@ import { primeiraLetra } from "@/lib/primeira-letra";
 import type { View } from "@/types";
 import { ArrowRight, Eye, EyeOff, Loader2, Lock } from "lucide-react";
 import type React from "react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 interface AdminLoginViewProps {
   readonly onLogin: () => void;
   readonly onNavigate: (view: View) => void;
+  readonly onForgotPassword?: () => void;
 }
 
 // Simple admin password - in production, this should be handled server-side
 // Password legacy removed
+
+const CREDENCIAIS_INCORRETAS = "E-mail ou senha administrativos incorretos.";
+const EMAIL_NAO_CONFIRMADO =
+  "Este e-mail administrativo ainda não foi confirmado. Verifique a caixa de entrada.";
+const LIMITE_DE_TENTATIVAS =
+  "Muitas tentativas. Aguarde alguns minutos antes de tentar novamente.";
 
 // Defeito relatado: a tela desestruturava só `{ success }` do retorno de
 // `login` (AuthContext) e por isso só conseguia emitir UMA frase — inclusive
@@ -36,6 +43,18 @@ interface AdminLoginViewProps {
 // ramos (e-mail não confirmado, 429, credenciais inválidas) continuam com
 // literal PRÓPRIO desta tela ("administrativos"), de propósito — a
 // divergência ali é deliberada, não o defeito que este comentário descreve.
+// A conta bloqueada responde `user_banned` com qualquer senha, então a
+// resposta é sobre o E-MAIL enviado. Se a lojista trocou o e-mail enquanto
+// esperava, o aviso falaria de outra conta e é descartado.
+function respostaDeContaBloqueada(error: unknown): boolean {
+  const detalhes = (error ?? {}) as { code?: unknown; message?: unknown };
+  return (
+    detalhes.code === "user_banned" ||
+    (typeof detalhes.message === "string" &&
+      detalhes.message.includes("User is banned"))
+  );
+}
+
 export function mensagemDeErroAdminLogin(error: unknown): string {
   const detalhes = (error ?? {}) as {
     code?: unknown;
@@ -51,12 +70,12 @@ export function mensagemDeErroAdminLogin(error: unknown): string {
     code === "email_not_confirmed" ||
     message.includes("Email not confirmed")
   ) {
-    return "Este e-mail administrativo ainda não foi confirmado. Verifique a caixa de entrada.";
+    return EMAIL_NAO_CONFIRMADO;
   }
   if (status === 429) {
     // Verificado na doc oficial: o limite de login é POR ENDEREÇO IP, não
     // por usuário — não revela se a senha está certa ou errada.
-    return "Muitas tentativas. Aguarde alguns minutos antes de tentar novamente.";
+    return LIMITE_DE_TENTATIVAS;
   }
   if (code === "user_banned" || message.includes("User is banned")) {
     // A1-fix3 (achado BLOQUEANTE) — PRECISA vir antes do `if (error?.status
@@ -79,7 +98,7 @@ export function mensagemDeErroAdminLogin(error: unknown): string {
     return MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA;
   }
   if (status === 400 || message.includes("Invalid login credentials")) {
-    return "E-mail ou senha administrativos incorretos.";
+    return CREDENCIAIS_INCORRETAS;
   }
   // Causa não distinguível (rede, erro inesperado do servidor, provedor de
   // e-mail desativado): nunca presumir "senha incorreta" sem confirmação, e
@@ -88,19 +107,25 @@ export function mensagemDeErroAdminLogin(error: unknown): string {
   return MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA;
 }
 
-export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
+export function AdminLoginView({
+  onLogin,
+  onNavigate,
+  onForgotPassword,
+}: AdminLoginViewProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const { login } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
+  const camposEditados = useRef({ email: false, senha: false });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setIsLoading(true);
-
+    const editado = { email: false, senha: false };
+    camposEditados.current = editado;
     try {
       // A1-fix2 — "admin" faz `login` (AuthContext) disparar o toast global
       // com `MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA` no ramo genérico, em vez
@@ -119,7 +144,16 @@ export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
         // frase de conexão lenta, não há causa para traduzir.
         setError(message);
       } else {
-        setError(mensagemDeErroAdminLogin(loginError));
+        const mensagem = mensagemDeErroAdminLogin(loginError);
+        if (
+          mensagem === CREDENCIAIS_INCORRETAS &&
+          (editado.email || editado.senha)
+        ) {
+          return;
+        }
+        if (mensagem === EMAIL_NAO_CONFIRMADO && editado.email) return;
+        if (respostaDeContaBloqueada(loginError) && editado.email) return;
+        setError(mensagem);
       }
     } catch (err) {
       // Só roda se `login` LANÇAR (não devolver `{ error }`) — não gera um
@@ -181,7 +215,17 @@ export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
                 id="admin-email"
                 name="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  camposEditados.current.email = true;
+                  if (
+                    !isLoading &&
+                    (error === CREDENCIAIS_INCORRETAS ||
+                      error === EMAIL_NAO_CONFIRMADO)
+                  ) {
+                    setError("");
+                  }
+                }}
                 autoComplete="username"
                 autoCapitalize="none"
                 placeholder="admin@exemplo.com"
@@ -208,7 +252,13 @@ export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
                   autoCorrect="off"
                   spellCheck={false}
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    camposEditados.current.senha = true;
+                    if (!isLoading && error === CREDENCIAIS_INCORRETAS) {
+                      setError("");
+                    }
+                  }}
                   placeholder="Digite a senha"
                   className="w-full rounded-2xl border border-admin-border bg-admin-surface py-4 pl-11 pr-12 text-sm font-medium text-white transition-all placeholder:text-zinc-700 focus:border-admin-gold focus:outline-none focus:ring-4 focus:ring-admin-gold/20"
                   required
@@ -228,6 +278,16 @@ export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
                 </button>
               </div>
             </div>
+
+            {onForgotPassword && (
+              <button
+                type="button"
+                onClick={onForgotPassword}
+                className="block min-h-11 text-sm text-zinc-400 underline hover:text-white"
+              >
+                Esqueceu a senha?
+              </button>
+            )}
 
             {error && (
               <div

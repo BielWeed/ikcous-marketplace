@@ -435,6 +435,21 @@ describe("CheckoutView — WhatsApp só vale com celular completo (11 dígitos)"
     );
   });
 
+  it("celular completo com DDD inexistente continua pendente e aponta o DDD no campo", async () => {
+    await renderizar();
+    await digitarTeclaATecla("20987654321");
+
+    expect(valorDe("checkout-tel")).toBe("(20) 98765-4321");
+    expect(faltaWhatsapp()).toBe(true);
+    await act(async () => {
+      document.getElementById("checkout-tel")?.focus();
+    });
+    await act(async () => {
+      document.getElementById("checkout-tel")?.blur();
+    });
+    expect(erroDoCampo()).toMatch(/DDD inválido/i);
+  });
+
   it("11 dígitos: libera — sem erro e sem pendência de WhatsApp", async () => {
     await renderizar();
     await digitarTeclaATecla("34988877777");

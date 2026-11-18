@@ -20,7 +20,7 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { rotuloDaFormaDePagamento } from "@/lib/crm";
+import { lerVisaoDoCrm, rotuloDaFormaDePagamento } from "@/lib/crm";
 import type { KpisDoCrm, VisaoDoCrm } from "@/types/crm";
 
 it("forma desconhecida derivada do financeiro tem o mesmo rótulo neutro no CRM", () => {
@@ -78,6 +78,29 @@ describe("CanaisDoCrm — paleta das formas de pagamento não colide com a ident
     const barra = li?.querySelector(".h-full.rounded-full");
     return Array.from(barra?.classList ?? []);
   }
+
+  it("exibe a média em centavos quando a RPC não manda o ticket do canal", async () => {
+    const { CanaisDoCrm } = await import("@/components/admin/crm/CanaisDoCrm");
+    const visao = lerVisaoDoCrm({
+      kpis: { receita: 0.15, pedidos: 6 },
+      canais: [{ canal: "online", receita: 0.15, pedidos: 6 }],
+    });
+
+    await act(async () => {
+      raiz.render(
+        <CanaisDoCrm visao={visao} carregando={false} onNavigate={() => {}} />,
+      );
+    });
+
+    const canal = hospedeiro.querySelector(
+      'li[aria-label="Detalhes App (online)"]',
+    );
+    const ticket = Array.from(canal?.querySelectorAll("dt") ?? []).find(
+      (rotulo) => texto(rotulo) === "Valor médio",
+    );
+    expect(texto(ticket?.nextElementSibling ?? null)).toBe("R$ 0,03");
+    expect(texto(canal)).not.toContain("% acima");
+  });
 
   it("dinheiro, cartão, crédito, débito, pix e outro: rótulo certo e cor distinta, sem sky-400/violet-400", async () => {
     const { CanaisDoCrm } = await import("@/components/admin/crm/CanaisDoCrm");

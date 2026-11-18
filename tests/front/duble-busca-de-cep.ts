@@ -35,3 +35,21 @@ export function pararABuscaDeCep(): ReturnType<typeof vi.fn> {
   vi.stubGlobal("fetch", fetchSemResposta);
   return fetchSemResposta;
 }
+
+/** Para testes de envio manual: a busca termina sem preencher os campos. */
+export function concluirBuscaDeCepSemEndereco(): void {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) => {
+      if (url.includes("viacep.com.br")) {
+        return { ok: true, status: 200, json: async () => ({ erro: true }) };
+      }
+      return {
+        ok: false,
+        status: 404,
+        json: async () =>
+          url.includes("opencep.com") ? { error: true } : { code: "not_found" },
+      };
+    }),
+  );
+}

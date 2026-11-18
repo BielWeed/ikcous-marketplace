@@ -667,7 +667,7 @@ describe("tela do cartão redesenhada", () => {
 
   // ── 3DS: o banco pediu uma confirmação ────────────────────────────────────
   describe("o banco pediu uma confirmação (3DS)", () => {
-    it("título curto, iframe do banco com título e credentialless", async () => {
+    it("leva o foco ao título da confirmação e mantém o iframe identificado", async () => {
       const { create } = instalarSdkFalso();
       const url =
         "https://www.mercadopago.com.br/auth/card/validation/pages/remedies/abc";
@@ -683,6 +683,11 @@ describe("tela do cartão redesenhada", () => {
       expect(hospedeiro.textContent).toContain(
         "Seu banco pediu uma confirmação",
       );
+      const titulo = [...hospedeiro.querySelectorAll("p")].find(
+        (p) => p.textContent === "Seu banco pediu uma confirmação",
+      );
+      expect(titulo).toBeDefined();
+      expect(document.activeElement).toBe(titulo);
       const iframe = hospedeiro.querySelector("iframe")!;
       expect(iframe.getAttribute("title")).toBe("Autenticação do seu banco");
       expect(iframe.hasAttribute("credentialless")).toBe(true);

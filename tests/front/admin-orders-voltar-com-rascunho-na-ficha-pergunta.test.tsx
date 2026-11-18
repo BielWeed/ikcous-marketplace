@@ -111,6 +111,7 @@ function linhaCrua() {
 function builder() {
   const b: any = {};
   b.select = vi.fn(() => b);
+  b.abortSignal = vi.fn(() => b);
   b.eq = vi.fn(() => b);
   b.single = vi.fn(() => Promise.resolve({ data: linhaCrua(), error: null }));
   b.maybeSingle = vi.fn(() => Promise.resolve({ data: null, error: null }));

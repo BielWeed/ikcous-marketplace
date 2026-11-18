@@ -168,7 +168,10 @@ describe("formulário de cupom — Quem pode usar", () => {
     await digitar("#coupon-value", "15");
     await clicar(botao("Clientes escolhidos"));
     await digitar("#coupon-clientes-busca", "an", 400);
-    expect(buscarClientesParaCupom).toHaveBeenCalledWith("an");
+    expect(buscarClientesParaCupom).toHaveBeenCalledWith(
+      "an",
+      expect.any(AbortSignal),
+    );
     await clicar(botao("Ana Prova"));
     expect(container?.textContent).toContain("Na lista (1)");
 

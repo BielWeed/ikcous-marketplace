@@ -158,6 +158,21 @@ describe("ficha do pedido — rastreio salvo: sem espaços, em maiúsculas, vazi
     expect(hospedeiro.textContent).toContain("AA123456789BR");
   });
 
+  it("só pontuação não é rastreio: avisa, mantém o rascunho e não grava", async () => {
+    await mostrar(pedido("CODIGO-ANTIGO"));
+    clicar("Editar Código");
+    digitarNoCampoDoCodigo(". .");
+    await act(async () => clicar("Salvar"));
+
+    expect(atualizar).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith(
+      expect.stringMatching(/letra ou número/i),
+    );
+    expect(
+      hospedeiro.querySelector<HTMLInputElement>("#tracking-input")?.value,
+    ).toBe(". .");
+  });
+
   it("campo apagado (ou só espaços) em pedido que já tinha código: o banco recebe NULL, não string vazia", async () => {
     for (const apagado of ["", "   ", "​‌‍⁠﻿­⠀"]) {
       atualizar.mockClear();

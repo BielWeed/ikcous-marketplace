@@ -29,6 +29,9 @@ vi.mock("@/lib/supabase", () => ({
     from: (tabela: string) => ({
       select: (colunas: string) => ({
         eq: (coluna: string, id: string) => ({
+          abortSignal() {
+            return this;
+          },
           maybeSingle: () =>
             tabela === "config_mototaxi"
               ? Promise.resolve({

@@ -76,6 +76,17 @@ interface SearchInputProps {
   onChange: (value: string) => void;
 }
 
+// Contraste de Escuro e Glass, separado das classes base da tela.
+const CONTRASTE_ESCURO = {
+  fundo: "dark:bg-card dark:text-foreground",
+  lupa: "dark:group-focus-within:text-foreground",
+  campo: "dark:text-foreground dark:placeholder:text-muted-foreground",
+  cabecalho: "dark:bg-card/90",
+  texto: "dark:text-foreground",
+  textoSecundario: "dark:text-muted-foreground",
+  indicador: "dark:border-foreground dark:border-t-transparent",
+};
+
 const SearchInput = React.memo(function SearchInput({
   value,
   onChange,
@@ -95,7 +106,12 @@ const SearchInput = React.memo(function SearchInput({
 
   return (
     <div className="group relative flex-1">
-      <SearchIcon className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-zinc-400 transition-colors group-focus-within:text-zinc-900" />
+      <SearchIcon
+        className={cn(
+          "absolute left-4 top-1/2 size-4 -translate-y-1/2 text-zinc-400 transition-colors group-focus-within:text-zinc-900",
+          CONTRASTE_ESCURO.lupa,
+        )}
+      />
       <Input
         id="search-input"
         name="q"
@@ -112,7 +128,10 @@ const SearchInput = React.memo(function SearchInput({
         }}
         placeholder="O que você deseja hoje?"
         aria-label="Buscar produtos"
-        className="h-12 rounded-2xl border-zinc-100 bg-zinc-50 pl-11 pr-4 text-sm text-zinc-900 transition-all placeholder:text-zinc-500 focus:border-zinc-200 focus:ring-black/5"
+        className={cn(
+          "h-12 rounded-2xl border-zinc-100 bg-zinc-50 pl-11 pr-4 text-sm text-zinc-900 transition-all placeholder:text-zinc-500 focus:border-zinc-200 focus:ring-black/5",
+          CONTRASTE_ESCURO.campo,
+        )}
       />
     </div>
   );
@@ -424,11 +443,19 @@ export const SearchView = React.memo(function SearchView({
     (sort !== "newest" ? 1 : 0);
 
   return (
-    <div className="pb-customer min-h-full bg-white selection:bg-black selection:text-white">
+    <div
+      className={cn(
+        "pb-customer min-h-full bg-white selection:bg-black selection:text-white",
+        CONTRASTE_ESCURO.fundo,
+      )}
+    >
       {/* Premium Sticky Search Header */}
       <div
         ref={cabecalhoRef}
-        className="sticky top-[-2px] z-50 border-b border-zinc-100 bg-white/90 backdrop-blur-2xl lg:static"
+        className={cn(
+          "sticky top-[-2px] z-50 border-b border-zinc-100 bg-white/90 backdrop-blur-2xl lg:static",
+          CONTRASTE_ESCURO.cabecalho,
+        )}
       >
         <div className="mx-auto max-w-7xl space-y-4 p-4 lg:mx-auto lg:w-full lg:max-w-screen-xl lg:px-8 2xl:max-w-[1440px]">
           <div className="flex items-center gap-3 lg:hidden">
@@ -584,15 +611,31 @@ export const SearchView = React.memo(function SearchView({
             : ""}
         </p>
         {loadingProducts || tentandoBusca ? (
-          <p role="status" className="py-20 text-center text-sm text-zinc-500">
+          <p
+            role="status"
+            className={cn(
+              "py-20 text-center text-sm text-zinc-500",
+              CONTRASTE_ESCURO.textoSecundario,
+            )}
+          >
             Carregando busca…
           </p>
         ) : catalogoErro && allProducts.length === 0 ? (
           <div role="alert" className="py-20 text-center">
-            <h2 className="text-xl font-black text-zinc-900">
+            <h2
+              className={cn(
+                "text-xl font-black text-zinc-900",
+                CONTRASTE_ESCURO.texto,
+              )}
+            >
               Não conseguimos carregar a busca agora
             </h2>
-            <p className="mt-2 text-sm text-zinc-500">
+            <p
+              className={cn(
+                "mt-2 text-sm text-zinc-500",
+                CONTRASTE_ESCURO.textoSecundario,
+              )}
+            >
               Verifique sua conexão e tente de novo.
             </p>
             <Button
@@ -608,7 +651,9 @@ export const SearchView = React.memo(function SearchView({
           <div className="space-y-8">
             <div className="flex items-center justify-between">
               <div role="status" className="flex items-center gap-2">
-                <Sparkles className="size-4 text-zinc-900" />
+                <Sparkles
+                  className={cn("size-4 text-zinc-900", CONTRASTE_ESCURO.texto)}
+                />
                 <h2 className="text-xl font-black tracking-tighter">
                   Encontramos {totalResults}{" "}
                   {totalResults === 1 ? "resultado" : "resultados"}
@@ -656,7 +701,12 @@ export const SearchView = React.memo(function SearchView({
                 ref={observerTargetRef}
                 className="flex h-20 items-center justify-center"
               >
-                <div className="size-6 animate-spin rounded-full border-2 border-zinc-900 border-t-transparent" />
+                <div
+                  className={cn(
+                    "size-6 animate-spin rounded-full border-2 border-zinc-900 border-t-transparent",
+                    CONTRASTE_ESCURO.indicador,
+                  )}
+                />
               </div>
             )}
           </div>
@@ -671,24 +721,49 @@ export const SearchView = React.memo(function SearchView({
                 /* Loja sem produto à venda: ninguém buscou nada que desse
                    para "limpar" -- a Home já separa os dois casos. */
                 <>
-                  <h2 className="text-2xl font-black tracking-tighter text-zinc-900">
+                  <h2
+                    className={cn(
+                      "text-2xl font-black tracking-tighter text-zinc-900",
+                      CONTRASTE_ESCURO.texto,
+                    )}
+                  >
                     A loja ainda não tem produtos
                   </h2>
-                  <p className="mt-2 text-xs font-medium leading-relaxed text-zinc-600">
+                  <p
+                    className={cn(
+                      "mt-2 text-xs font-medium leading-relaxed text-zinc-600",
+                      CONTRASTE_ESCURO.textoSecundario,
+                    )}
+                  >
                     Volte em breve.
                   </p>
                 </>
               ) : (
                 <>
-                  <h2 className="text-2xl font-black tracking-tighter text-zinc-900">
+                  <h2
+                    className={cn(
+                      "text-2xl font-black tracking-tighter text-zinc-900",
+                      CONTRASTE_ESCURO.texto,
+                    )}
+                  >
                     Ué, nenhum resultado?
                   </h2>
-                  <p className="mt-2 text-xs font-medium leading-relaxed text-zinc-600">
+                  <p
+                    className={cn(
+                      "mt-2 text-xs font-medium leading-relaxed text-zinc-600",
+                      CONTRASTE_ESCURO.textoSecundario,
+                    )}
+                  >
                     Não encontramos o que você buscou com esses filtros.
                     {trendingProducts.length > 0 && (
                       <>
                         <br />
-                        <span className="font-black text-zinc-900">
+                        <span
+                          className={cn(
+                            "font-black text-zinc-900",
+                            CONTRASTE_ESCURO.texto,
+                          )}
+                        >
                           Que tal dar uma olhada em alguns produtos da loja?
                         </span>
                       </>
@@ -697,7 +772,10 @@ export const SearchView = React.memo(function SearchView({
                   <Button
                     variant="outline"
                     onClick={handleClearSearch}
-                    className="mt-8 h-12 rounded-2xl border-zinc-200 px-8 text-xs font-black uppercase tracking-widest text-zinc-900"
+                    className={cn(
+                      "mt-8 h-12 rounded-2xl border-zinc-200 px-8 text-xs font-black uppercase tracking-widest text-zinc-900",
+                      CONTRASTE_ESCURO.texto,
+                    )}
                   >
                     Limpar Tudo
                   </Button>
@@ -712,10 +790,20 @@ export const SearchView = React.memo(function SearchView({
             {trendingProducts.length > 0 && (
               <div className="border-t border-zinc-100 pt-10">
                 <div className="mb-10 flex flex-col items-center text-center">
-                  <span className="mb-2 text-xs font-black uppercase tracking-[0.3em] text-zinc-600">
+                  <span
+                    className={cn(
+                      "mb-2 text-xs font-black uppercase tracking-[0.3em] text-zinc-600",
+                      CONTRASTE_ESCURO.textoSecundario,
+                    )}
+                  >
                     Sugestões
                   </span>
-                  <h3 className="text-2xl font-black tracking-tighter text-zinc-900">
+                  <h3
+                    className={cn(
+                      "text-2xl font-black tracking-tighter text-zinc-900",
+                      CONTRASTE_ESCURO.texto,
+                    )}
+                  >
                     {/* Nome do banco primeiro, branding.json como fallback —
                         mesma preferência do Header e da Home. */}
                     Alguns produtos da{" "}

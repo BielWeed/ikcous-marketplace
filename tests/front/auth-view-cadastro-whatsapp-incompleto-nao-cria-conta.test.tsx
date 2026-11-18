@@ -136,6 +136,18 @@ describe("AuthView — cadastro exige o mesmo celular completo do checkout", () 
     );
   });
 
+  it("DDD inexistente mesmo com +55 não cria a conta e aponta o erro no campo", async () => {
+    await enviarCadastroCom("+55 (20) 98765-4321");
+
+    expect(signUp).not.toHaveBeenCalled();
+    const telefone = document.getElementById("phone");
+    expect(telefone?.getAttribute("aria-invalid")).toBe("true");
+    const idDoErro = telefone?.getAttribute("aria-describedby");
+    expect(document.getElementById(idDoErro ?? "")?.textContent).toMatch(
+      /DDD inválido/i,
+    );
+  });
+
   it("controle: '+55 34 99999-8888' colado (limpo para 11 dígitos) passa", async () => {
     await enviarCadastroCom("+55 34 99999-8888");
     expect(signUp).toHaveBeenCalledTimes(1);

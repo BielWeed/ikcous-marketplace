@@ -39,7 +39,8 @@ import {
   idadeDoPedidoPendente,
 } from "@/lib/idade-do-pedido-pendente";
 import {
-  linkDeRastreio,
+  codigoDeRastreioTemLetraOuDigito,
+  linkDeRastreioDeCodigoValido,
   normalizarCodigoDeRastreio,
 } from "@/lib/link-de-rastreio";
 import { nomeOuReserva } from "@/lib/nome-visivel";
@@ -47,6 +48,7 @@ import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import {
   MENSAGEM_ACAO_DO_PEDIDO_SEM_RESPOSTA,
   PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+  PRAZO_DA_CONSULTA_DO_PAINEL_MS,
   PRAZO_DA_LEITURA_DO_TAMANHO_E_COR_MS,
   aguardarComPrazo,
   ehConsultaSemResposta,
@@ -76,7 +78,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { DevolucaoDoPedidoAdminCard } from "./DevolucaoDoPedidoAdminCard";
 import { EstornoCard } from "./EstornoCard";
@@ -318,7 +320,11 @@ const rotuloDaVariacaoEmDia = (id: string): boolean => {
     Date.now() - copia.lidoEm < VALIDADE_DO_ROTULO_DA_VARIACAO_MS
   );
 };
-const filaNotas = new Map<string, Promise<unknown>>();
+const FIM_DA_FILA_DE_NOTAS = "fim-da-fila-de-notas";
+const filaNotas = new Map<
+  string,
+  { pendente: Promise<unknown>; eventos: EventTarget }
+>();
 
 // Carimbo (`updated_at`, posto pelo servidor) da anotação como ESTA tela a viu
 // por último, por pedido; `null` = não havia anotação. Salvar só vale se a
@@ -335,12 +341,13 @@ const CODIGO_LINHA_JA_EXISTE = "23505";
 const MENSAGEM_RASTREIO_NAO_GRAVADO =
   "O código de rastreio não foi salvo. Tente de novo ou recarregue a página: sua sessão pode ter expirado.";
 
-const lerNotaInterna = async (pedidoId: string) => {
-  const { data, error } = await supabase
+const lerNotaInterna = async (pedidoId: string, sinal?: AbortSignal) => {
+  const consulta = supabase
     .from("marketplace_order_internal_notes")
     .select("note, updated_at")
-    .eq("order_id", pedidoId)
-    .maybeSingle();
+    .eq("order_id", pedidoId);
+  if (sinal) consulta.abortSignal(sinal);
+  const { data, error } = await consulta.maybeSingle();
   if (error) throw error;
   return {
     note: data?.note || "",
@@ -1429,9 +1436,9 @@ function OrderLogisticsCard({
             <Copy className="size-4" />
           )}
         </button>
-        {linkDeRastreio(localTrackingCode) && (
+        {linkDeRastreioDeCodigoValido(localTrackingCode) && (
           <a
-            href={linkDeRastreio(localTrackingCode)}
+            href={linkDeRastreioDeCodigoValido(localTrackingCode)}
             target="_blank"
             rel="noopener noreferrer"
             className="flex size-10 items-center justify-center rounded-xl text-zinc-300 transition-colors hover:bg-white/5 hover:text-white"
@@ -1461,7 +1468,7 @@ interface OrderNotesCardProps {
   notaDeOutroAparelho: string | null;
   isSavingNotes: boolean;
   isOffline: boolean;
-  notesStatus: "loading" | "ready" | "error";
+  notesStatus: "loading" | "ready" | "error" | "timeout";
   abrindoEdicao: boolean;
   onRetry: () => void;
   onEditNotes: () => void;
@@ -1487,17 +1494,28 @@ function OrderNotesCard({
   onSaveNotes,
 }: Readonly<OrderNotesCardProps>) {
   if (notesStatus !== "ready") {
+    let mensagem: string;
+    switch (notesStatus) {
+      case "loading":
+        mensagem = "Carregando anotação interna…";
+        break;
+      case "error":
+        mensagem = "Não consegui carregar a anotação interna";
+        break;
+      case "timeout":
+        mensagem =
+          "A anotação demorou para carregar. Tentar de novo não altera o que já foi salvo.";
+        break;
+    }
     return (
       <div className="space-y-2 px-4 py-3.5">
         <h3 className="text-sm font-medium text-zinc-200">
           Anotações internas
         </h3>
         <p className="text-xs text-zinc-400" role="status">
-          {notesStatus === "loading"
-            ? "Carregando anotação interna…"
-            : "Não consegui carregar a anotação interna"}
+          {mensagem}
         </p>
-        {notesStatus === "error" && (
+        {notesStatus !== "loading" && (
           <Button
             variant="ghost"
             size="sm"
@@ -1664,7 +1682,18 @@ export const OrderDetail = memo(function OrderDetail({
   // Cada salvamento ganha um número; trocar de pedido invalida os
   // que estavam no ar (ir de A para B e voltar a A não revive a resposta).
   const salvamentoNotasRef = useRef(0);
+  const encerrarEsperaDaNotaRef = useRef<(() => void) | null>(null);
   const salvamentoRastreioRef = useRef(0);
+
+  // Ao fechar a ficha, invalida as respostas antes que possam mudar o
+  // carimbo compartilhado. Só a espera da tela acaba, não a gravação.
+  useLayoutEffect(
+    () => () => {
+      salvamentoNotasRef.current++;
+      encerrarEsperaDaNotaRef.current?.();
+    },
+    [],
+  );
 
   const [localNotes, setLocalNotes] = useState("");
   const [isEditingNotes, setIsEditingNotes] = useState(false);
@@ -1959,27 +1988,44 @@ export const OrderDetail = memo(function OrderDetail({
 
   useEffect(() => {
     const pedidoId = order.id;
-    let vigente = true;
-    setLocalNotes("");
-    setNotesValue("");
+    const controlador = new AbortController();
+    const { signal } = controlador;
+    const consultaVigente = () =>
+      !signal.aborted && orderIdAtualRef.current === pedidoId;
     setLeituraNotas({ pedidoId, estado: "loading" });
+    // Um prazo só para a fila e a leitura. O aviso não cancela a gravação
+    // nem libera a edição: a leitura ainda pode chegar e encerrar a espera.
+    const prazo = setTimeout(() => {
+      if (consultaVigente()) setLeituraNotas({ pedidoId, estado: "timeout" });
+    }, PRAZO_DA_CONSULTA_DO_PAINEL_MS);
     const carregar = async () => {
+      if (!consultaVigente()) return;
       try {
-        await filaNotas.get(pedidoId);
-        const { note } = await lerNotaInterna(pedidoId);
-        if (!vigente || orderIdAtualRef.current !== pedidoId) return;
+        const { note } = await lerNotaInterna(pedidoId, signal);
+        if (!consultaVigente()) return;
         setLocalNotes(note);
         setNotesValue(note);
         setLeituraNotas({ pedidoId, estado: "ready" });
       } catch {
-        if (vigente && orderIdAtualRef.current === pedidoId) {
-          setLeituraNotas({ pedidoId, estado: "error" });
-        }
+        if (consultaVigente()) setLeituraNotas({ pedidoId, estado: "error" });
+      } finally {
+        clearTimeout(prazo);
       }
     };
-    void carregar();
+    // A espera da tela é removível; a promessa da gravação continua na fila.
+    const eventos = filaNotas.get(pedidoId)?.eventos;
+    const iniciarLeitura = () => void carregar();
+    if (eventos) {
+      eventos.addEventListener(FIM_DA_FILA_DE_NOTAS, iniciarLeitura, {
+        once: true,
+      });
+    } else {
+      iniciarLeitura();
+    }
     return () => {
-      vigente = false;
+      eventos?.removeEventListener(FIM_DA_FILA_DE_NOTAS, iniciarLeitura);
+      controlador.abort();
+      clearTimeout(prazo);
     };
   }, [order.id, tentativaNotas]);
 
@@ -1991,6 +2037,7 @@ export const OrderDetail = memo(function OrderDetail({
     setIsSavingNotes(false);
     setAbrindoEdicao(false);
     salvamentoNotasRef.current++;
+    encerrarEsperaDaNotaRef.current?.();
     salvamentoRastreioRef.current++;
   }, [order.id]);
 
@@ -2215,6 +2262,12 @@ export const OrderDetail = memo(function OrderDetail({
   const handleSaveTracking = async () => {
     const pedidoId = order.id;
     const codigo = normalizarCodigoDeRastreio(trackingValue);
+    if (codigo && !codigoDeRastreioTemLetraOuDigito(codigo)) {
+      toast.error(
+        "O código de rastreio precisa ter pelo menos uma letra ou número.",
+      );
+      return;
+    }
     const salvamento = ++salvamentoRastreioRef.current;
     const vigente = () =>
       orderIdAtualRef.current === pedidoId &&
@@ -2353,24 +2406,39 @@ export const OrderDetail = memo(function OrderDetail({
       setIsSavingNotes(true);
       const gravar = () => gravarNotaInterna(pedidoId, note);
       const fila = filaNotas;
-      const vez = (fila.get(pedidoId) ?? Promise.resolve()).then(gravar);
+      const anterior = fila.get(pedidoId);
+      const vez = (anterior?.pendente ?? Promise.resolve()).then(gravar);
       const pendente = vez.catch(() => undefined);
-      fila.set(pedidoId, pendente);
+      const eventos = anterior?.eventos ?? new EventTarget();
+      const entrada = { pendente, eventos };
+      fila.set(pedidoId, entrada);
       void pendente.then(() => {
-        if (fila.get(pedidoId) === pendente) fila.delete(pedidoId);
+        if (fila.get(pedidoId) !== entrada) return;
+        fila.delete(pedidoId);
+        eventos.dispatchEvent(new Event(FIM_DA_FILA_DE_NOTAS));
       });
       // Prazo só da espera da TELA: o envio pendurado CONTINUA na fila acima
       // (um novo salvar não passa na frente, então nada duplica nem se
       // reordena). Estourou: o `catch` abaixo conta que NÃO se sabe se
       // gravou, solta o campo COM o texto digitado e relê a anotação gravada.
-      const { error, conflito } = await aguardarComPrazo(
-        vez,
+      let encerrarEspera!: () => void;
+      const esperaEncerrada = new Promise<null>((resolve) => {
+        encerrarEspera = () => resolve(null);
+      });
+      encerrarEsperaDaNotaRef.current = encerrarEspera;
+      const resultado = await aguardarComPrazo(
+        Promise.race([vez, esperaEncerrada]),
         PRAZO_DAS_ACOES_DO_PEDIDO_MS,
         () => erroDeConsultaSemResposta(MENSAGEM_ACAO_DO_PEDIDO_SEM_RESPOSTA),
-      );
+      ).finally(() => {
+        if (encerrarEsperaDaNotaRef.current === encerrarEspera) {
+          encerrarEsperaDaNotaRef.current = null;
+        }
+      });
 
       // A resposta só pode alterar a ficha deste pedido E deste salvamento.
-      if (!vigente()) return;
+      if (!vigente() || !resultado) return;
+      const { error, conflito } = resultado;
       if (error) throw error;
       if (conflito) {
         // Outro aparelho mexeu na anotação depois que o editor abriu: nada foi

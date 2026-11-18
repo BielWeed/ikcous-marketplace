@@ -22,6 +22,7 @@ const insert = vi.fn();
 const update = vi.fn();
 const eq = vi.fn();
 const rpc = vi.fn();
+const sinalDaBusca = vi.fn();
 const sonda = vi.fn();
 /** O que a sonda `select('alcance').limit(0)` encontra; "lanca" simula um cliente sem `.limit`. */
 let respostaDaSonda: (() => unknown) | "lanca" = () => ({ error: null });
@@ -29,7 +30,16 @@ let linhasDoBanco: Record<string, unknown>[] = [];
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
-    rpc: (...args: unknown[]) => rpc(...args),
+    rpc: (...args: unknown[]) => {
+      const resposta = rpc(...args);
+      if (args[0] !== "get_admin_customers_paged") return resposta;
+      return Object.assign(resposta, {
+        abortSignal: (sinal: AbortSignal) => {
+          sinalDaBusca(sinal);
+          return resposta;
+        },
+      });
+    },
     from: () => ({
       select: (colunas?: string) => ({
         order: () => Promise.resolve({ data: linhasDoBanco, error: null }),
@@ -426,6 +436,16 @@ describe("useCoupons — alcance e clientes do cupom", () => {
       const achados = await hook().buscarClientesParaCupom("maria");
       expect(achados.clientes).toHaveLength(1);
       expect(achados.total).toBe(143);
+    });
+
+    it("encaminha o sinal de cancelamento da busca à consulta de rede", async () => {
+      rpc.mockResolvedValue({ data: null, error: null });
+      const hook = await montar(false);
+      const { signal } = new AbortController();
+
+      await hook().buscarClientesParaCupom("an", signal);
+
+      expect(sinalDaBusca).toHaveBeenCalledWith(signal);
     });
 
     it("resposta sem linhas (null) vira lista vazia, total 0", async () => {

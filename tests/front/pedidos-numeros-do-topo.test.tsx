@@ -33,6 +33,7 @@ const FINALIZADOS = 3;
 let cadeias: string[][] = [];
 /** Quando verdadeiro, toda contagem em `marketplace_orders` devolve erro. */
 let contagensFalham = false;
+let falhasDeParaPreparar = 0;
 /** Quando verdadeiro, a construção da consulta lança (dublê incompleto). */
 let construcaoLanca = false;
 /**
@@ -98,12 +99,19 @@ function criarBuilder(tabela: string) {
     return builder;
   });
   // biome-ignore lint/suspicious/noThenProperty: dublê do query builder thenable do Supabase — mesmo padrão de admin-layout-cracha-pedidos-pendentes.
-  builder.then = (resolve: unknown, reject?: unknown) =>
-    Promise.resolve(
-      contagensFalham || (ehDoAviso(cadeia) && abertosAConferir === null)
+  builder.then = (resolve: unknown, reject?: unknown) => {
+    const falhouParaPreparar =
+      cadeia.includes(`or:${FILTRO_POSTGREST_PARA_PREPARAR}`) &&
+      falhasDeParaPreparar > 0;
+    if (falhouParaPreparar) falhasDeParaPreparar--;
+    return Promise.resolve(
+      contagensFalham ||
+        falhouParaPreparar ||
+        (ehDoAviso(cadeia) && abertosAConferir === null)
         ? { count: null, error: { message: "caiu" } }
         : { count: respostaDaCadeia(cadeia), error: null },
     ).then(resolve as never, reject as never);
+  };
   return builder;
 }
 
@@ -235,6 +243,7 @@ describe("AdminOrdersView — o topo diz um número por conceito", () => {
     eventoDeTempoReal = null;
     reconciliarDoTempoReal = null;
     contagensFalham = false;
+    falhasDeParaPreparar = 0;
     construcaoLanca = false;
     abertosAConferir = 0;
     contagensDeMilhar = false;
@@ -699,6 +708,52 @@ describe("AdminOrdersView — o topo diz um número por conceito", () => {
     ]) {
       expect(valorDoCartao(rotulo)).toBe("—");
       expect(valorDoCartao(rotulo)).not.toBe("0");
+    }
+  });
+
+  it("recupera 'Para preparar' após uma falha sem trocar de aba nem repetir as contagens boas", async () => {
+    vi.useFakeTimers();
+    const visibilidade = vi
+      .spyOn(document, "visibilityState", "get")
+      .mockReturnValue("visible");
+    try {
+      falhasDeParaPreparar = 1;
+      await montar();
+      expect(valorDoCartao("Para preparar")).toBe("—");
+      expect(valorDoCartao("Aguardando pagamento")).toBe("2");
+      expect(contagensFeitas()).toBe(CONTAGENS_POR_RODADA);
+
+      await act(async () => vi.advanceTimersByTimeAsync(1000));
+
+      expect(valorDoCartao("Para preparar")).toBe("5");
+      expect(contagensFeitas()).toBe(CONTAGENS_POR_RODADA + 1);
+    } finally {
+      visibilidade.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it("dá três novas chances com espera crescente e mantém '—' se todas falharem", async () => {
+    vi.useFakeTimers();
+    const visibilidade = vi
+      .spyOn(document, "visibilityState", "get")
+      .mockReturnValue("visible");
+    try {
+      falhasDeParaPreparar = 10;
+      await montar();
+      for (const [vez, espera] of [1000, 2000, 4000].entries()) {
+        await act(async () => vi.advanceTimersByTimeAsync(espera - 1));
+        expect(contagensFeitas()).toBe(CONTAGENS_POR_RODADA + vez);
+        await act(async () => vi.advanceTimersByTimeAsync(1));
+        expect(contagensFeitas()).toBe(CONTAGENS_POR_RODADA + vez + 1);
+      }
+      await act(async () => vi.advanceTimersByTimeAsync(30000));
+
+      expect(contagensFeitas()).toBe(CONTAGENS_POR_RODADA + 3);
+      expect(valorDoCartao("Para preparar")).toBe("—");
+    } finally {
+      visibilidade.mockRestore();
+      vi.useRealTimers();
     }
   });
 

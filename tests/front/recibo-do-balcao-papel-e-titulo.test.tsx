@@ -118,7 +118,7 @@ describe("recibo da venda de balcão — papel e título", () => {
     expect(papel().textContent).toContain("Cartão na maquininha");
   });
 
-  it("papel de pedido ONLINE não muda: continua com Frete, sem linha de Pagamento", async () => {
+  it("papel de pedido ONLINE continua com Frete e informa o pagamento", async () => {
     await act(async () => {
       raiz.render(
         <OrderReceipt
@@ -129,7 +129,10 @@ describe("recibo da venda de balcão — papel e título", () => {
     });
     expect(papel().textContent).toContain("Frete");
     expect(papel().textContent).toContain("R$ 15,00");
-    expect(papel().textContent).not.toContain("Pagamento");
+    expect(papel().textContent).toContain("Pagamento: PIX Instantâneo");
+    expect(papel().textContent).toContain(
+      "Cobrar na entrega: R$ 115,00 (PIX Instantâneo)",
+    );
     expect(papel().textContent).toContain("CLIENTE:");
     expect(papel().textContent).toContain("Maria Teste");
   });
@@ -152,6 +155,29 @@ describe("recibo da venda de balcão — papel e título", () => {
     // A tela (fora do papel) continua identificando a venda.
     expect(hospedeiro.textContent).toContain("Venda no balcão");
   });
+
+  it.each([
+    ["card", "Cartão na maquininha"],
+    ["cash", "Dinheiro"],
+    ["pix", "PIX Instantâneo"],
+  ] as const)(
+    "papel do balcão: %s já foi pago e não deve ser cobrado",
+    async (pagamento, forma) => {
+      await act(async () => {
+        raiz.render(
+          <ReciboDaVenda
+            recibo={reciboDeBalcao({ pagamento })}
+            despachar={vi.fn()}
+            limparCupom={vi.fn()}
+            storeName="Loja Teste"
+          />,
+        );
+      });
+      expect(papel().textContent).not.toContain("Cobrar");
+      expect(papel().textContent).toContain(`Pagamento: ${forma}`);
+      expect(papel().textContent).toContain("Pago");
+    },
+  );
 
   it("recibo COM cliente: o papel traz o nome e o WhatsApp da cliente", async () => {
     await act(async () => {

@@ -25,7 +25,11 @@ const { banco, carimbo, gravacoes, bloqueio } = vi.hoisted(() => ({
   carimbo: { n: 0 },
   // Enquanto houver uma espera aqui, a PRÓXIMA gravação fica "no ar" (a rede
   // pendurada) e só se aplica quando a espera é liberada.
-  bloqueio: { espera: null as Promise<void> | null },
+  bloqueio: {
+    espera: null as Promise<void> | null,
+    leitura: null as Promise<void> | null,
+    leituras: 0,
+  },
   gravacoes: [] as Array<{
     operacao: string;
     valores?: unknown;
@@ -102,13 +106,19 @@ vi.mock("@/lib/supabase", () => ({
       return {
         select: () => ({
           eq: (_coluna: string, id: string) => ({
-            maybeSingle: () =>
-              tabela === "config_mototaxi"
-                ? Promise.resolve({
-                    data: { whatsapp: null, nome: null },
-                    error: null,
-                  })
-                : Promise.resolve({ data: banco.get(id) ?? null, error: null }),
+            abortSignal() {
+              return this;
+            },
+            maybeSingle: async () => {
+              if (tabela === "config_mototaxi") {
+                return { data: { whatsapp: null, nome: null }, error: null };
+              }
+              bloqueio.leituras++;
+              const espera = bloqueio.leitura;
+              bloqueio.leitura = null;
+              if (espera) await espera;
+              return { data: banco.get(id) ?? null, error: null };
+            },
           }),
         }),
         insert: (valores: unknown) => consulta("insert", valores),
@@ -178,6 +188,8 @@ describe("ficha do pedido — anotação interna salva de dois aparelhos", () =>
     gravacoes.length = 0;
     carimbo.n = 0;
     bloqueio.espera = null;
+    bloqueio.leitura = null;
+    bloqueio.leituras = 0;
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -189,9 +201,11 @@ describe("ficha do pedido — anotação interna salva de dois aparelhos", () =>
     hospedeiro.remove();
   });
 
-  async function mostrar(order: Order) {
+  async function mostrar(order: Order | null) {
     await act(async () => {
-      raiz.render(<OrderDetail order={order} onStatusChange={vi.fn()} />);
+      raiz.render(
+        order ? <OrderDetail order={order} onStatusChange={vi.fn()} /> : null,
+      );
     });
   }
 
@@ -345,6 +359,63 @@ describe("ficha do pedido — anotação interna salva de dois aparelhos", () =>
 
     expect(banco.get("A")?.note).toBe("Segunda");
     expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it("a leitura de Editar notas da ficha fechada não autoriza sobrescrever uma nota que o novo editor não viu", async () => {
+    outroAparelhoSalva("A", "Nota original");
+    await mostrar(pedido("A"));
+    let liberar!: () => void;
+    bloqueio.leitura = new Promise<void>((resolve) => {
+      liberar = resolve;
+    });
+    await abrirEditor("Editar notas");
+    expect(bloqueio.leitura).toBeNull();
+    expect(hospedeiro.querySelector("#notes-textarea")).toBeNull();
+
+    await mostrar(null);
+    await mostrar(pedido("A"));
+    await abrirEditor("Editar notas");
+    expect(campo().value).toBe("Nota original");
+    digitar("Rascunho da ficha reaberta");
+
+    outroAparelhoSalva("A", "Nota da funcionária");
+    await act(async () => liberar());
+    await act(async () => clicar("Salvar"));
+
+    expect(banco.get("A")?.note).toBe("Nota da funcionária");
+    expect(toast.error).toHaveBeenCalledWith(
+      expect.stringContaining("Esta anotação mudou em outro aparelho"),
+    );
+    expect(campo().value).toBe("Rascunho da ficha reaberta");
+  });
+
+  it("fechar a ficha encerra o prazo de salvar sem reler a nota nem impedir a gravação", async () => {
+    vi.useFakeTimers();
+    outroAparelhoSalva("A", "Nota original");
+    await mostrar(pedido("A"));
+    await abrirEditor("Editar notas");
+    digitar("Nota enviada");
+    let liberar!: () => void;
+    bloqueio.espera = new Promise<void>((resolve) => {
+      liberar = resolve;
+    });
+    await act(async () => clicar("Salvar"));
+    expect(bloqueio.espera).toBeNull();
+    expect(banco.get("A")?.note).toBe("Nota original");
+    const leiturasAntesDeFechar = bloqueio.leituras;
+
+    await mostrar(null);
+    const prazosAoFechar = vi.getTimerCount();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(PRAZO_DAS_ACOES_DO_PEDIDO_MS);
+    });
+    await act(async () => liberar());
+
+    expect(bloqueio.leituras).toBe(leiturasAntesDeFechar);
+    expect(prazosAoFechar).toBe(0);
+    expect(banco.get("A")?.note).toBe("Nota enviada");
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it("segundo salvar atrás de um primeiro ainda no ar usa o carimbo que o primeiro deixou (nenhum conflito falso)", async () => {

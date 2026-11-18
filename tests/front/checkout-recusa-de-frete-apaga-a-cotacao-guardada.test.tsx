@@ -13,7 +13,7 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { pararABuscaDeCep } from "./duble-busca-de-cep";
+import { concluirBuscaDeCepSemEndereco } from "./duble-busca-de-cep";
 
 const mundo = vi.hoisted(() => ({
   ordem: [] as string[],
@@ -210,7 +210,7 @@ describe("CheckoutView — a recusa de frete apaga a cotação guardada antes de
         `ir:${destino}:cotacao-guardada=${armazem.has(CHAVE_DO_CEP_DA_COMPRA)}`,
       );
     });
-    pararABuscaDeCep();
+    concluirBuscaDeCepSemEndereco();
     // Armazém completo (com `length` e `key`): o descarte varre por prefixo.
     vi.stubGlobal("localStorage", {
       getItem: (chave: string) => armazem.get(chave) ?? null,

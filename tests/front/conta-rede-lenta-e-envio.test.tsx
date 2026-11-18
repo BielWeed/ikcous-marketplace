@@ -172,8 +172,10 @@ describe("Conta: rede lenta e envio pelo formulário", () => {
     );
     await act(async () => botao("Salvar alterações").click());
     await passar(20001);
-    expect(botao("Salvar alterações")).toBeDefined();
-    expect(haOperacaoSensivel()).toBe(false);
+    expect(botao("Salvar alterações").disabled).toBe(false);
+    // A espera do envio acabou, mas o CPF não enviado ainda é um rascunho:
+    // a atualização automática do app não pode derrubá-lo.
+    expect(haOperacaoSensivel()).toBe(true);
     expect(toast.warning).toHaveBeenCalledWith(
       expect.stringContaining("pode ter sido salvo"),
     );
@@ -192,6 +194,27 @@ describe("Conta: rede lenta e envio pelo formulário", () => {
     expect(toast.success).not.toHaveBeenCalled();
     expect(rpc.mock.calls.some((c) => c[0] === "set_my_cpf")).toBe(false);
   });
+  it("CPF continua como rascunho se a sessão da gravação do CPF não responder", async () => {
+    await montar();
+    // A primeira sessão (perfil) responde normalmente. A segunda (CPF)
+    // não chega antes do prazo; nenhuma gravação de CPF pode ter saído.
+    getSession
+      .mockResolvedValueOnce({
+        data: { session: { user: usuario, access_token: "token-inventado" } },
+      })
+      .mockImplementationOnce(pendente);
+    digitar("cpf", "52998224725");
+    await act(async () => botao("Salvar alterações").click());
+
+    expect(getSession).toHaveBeenCalledTimes(2);
+    await passar(15001);
+
+    expect(campo("cpf").disabled).toBe(false);
+    expect(botao("Salvar alterações").disabled).toBe(false);
+    expect(rpc.mock.calls.some(([nome]) => nome === "set_my_cpf")).toBe(false);
+    expect(campo("cpf").value).toBe("529.982.247-25");
+  });
+
   it("resposta atrasada do primeiro salvamento espera o segundo CPF e não o devolve ao antigo", async () => {
     const cpfAntigo = "12345678909";
     const cpfNovo = "52998224725";

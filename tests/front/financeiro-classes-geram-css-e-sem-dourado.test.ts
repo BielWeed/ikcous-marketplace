@@ -64,6 +64,8 @@ function classesDe(fonte: string): string[] {
     ...[...fonte.matchAll(/"([^"\n]+)"/g)].map((m) => m[1] ?? ""),
   ];
   for (const literal of literais) {
+    // Valor CSS do SVG, não uma lista de classes (o fallback pode ter espaço).
+    if (/^var\(/.test(literal)) continue;
     const tokens = literal.split(/\s+/).filter(Boolean);
     // Frase de tela ("Saldo ao fim do dia") tem palavra sem hífen, sem `:` e
     // sem `[`; classe de verdade tem ao menos uma ficha assim, e todas as
@@ -154,6 +156,12 @@ describe("Financeiro — toda classe da casca e da Visão novas gera CSS", () =>
     ]) {
       expect(usadas, esperada).toContain(esperada);
     }
+  });
+
+  it("não confunde var() do SVG com classes, mas preserva utilitários com var()", () => {
+    expect(
+      classesDe('"var(--tom, #10b981)" className="text-white bg-[var(--tom)]"'),
+    ).toEqual(["text-white", "bg-[var(--tom)]"]);
   });
 
   it("cada classe aparece como regra no Tailwind compilado", async () => {

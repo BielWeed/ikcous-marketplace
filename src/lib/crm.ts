@@ -13,6 +13,7 @@
  * Sem hook, sem Supabase, sem `import.meta.env`: tudo aqui é testável com
  * entrada e saída.
  */
+import { paraCentavos } from "@/lib/financeiro";
 import { semMenosZero } from "@/lib/percentual";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 import type {
@@ -263,13 +264,15 @@ function lerCanais(valor: unknown): CanalDoCrm[] {
     if (!registro || !canal) continue;
     const receita = comoNumero(registro.receita) ?? 0;
     const pedidos = comoNumero(registro.pedidos) ?? 0;
+    const ticketDaRpc = comoNumero(registro.ticket_medio);
     canais.push({
       canal,
       receita,
       pedidos,
-      ticketMedio:
-        comoNumero(registro.ticket_medio) ??
-        (pedidos > 0 ? receita / pedidos : 0),
+      ticketMedio: ticketDaRpc ?? (pedidos > 0 ? receita / pedidos : 0),
+      ...(ticketDaRpc == null && pedidos > 0
+        ? { ticketMedioExibido: ticketPorForma(receita, pedidos) ?? 0 }
+        : {}),
     });
   }
   return canais;
@@ -1037,7 +1040,7 @@ export function ticketPorForma(
   pedidos: number,
 ): number | null {
   if (pedidos <= 0) return null;
-  return Math.round((receita / pedidos) * 100) / 100;
+  return Math.round(paraCentavos(receita) / pedidos) / 100;
 }
 
 /**

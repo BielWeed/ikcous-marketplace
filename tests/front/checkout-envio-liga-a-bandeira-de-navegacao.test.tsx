@@ -4,7 +4,7 @@ import { haEnvioDoCheckoutEmCurso } from "@/lib/envio-do-checkout-em-curso";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { pararABuscaDeCep } from "./duble-busca-de-cep";
+import { concluirBuscaDeCepSemEndereco } from "./duble-busca-de-cep";
 
 //
 // Caça 8 (03/11/2026) — o lado do CHECKOUT da trava de navegação durante o
@@ -225,7 +225,7 @@ describe("CheckoutView — a bandeira do envio em curso", () => {
     estado.cart = [{ product: produto, quantity: 1 }];
     estado.cartTotal = 100;
     sessionStorage.clear();
-    pararABuscaDeCep();
+    concluirBuscaDeCepSemEndereco();
     armazem = new Map<string, string>();
     vi.stubGlobal("localStorage", {
       getItem: (chave: string) => armazem.get(chave) ?? null,

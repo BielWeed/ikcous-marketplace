@@ -207,6 +207,12 @@ describe("download do catálogo pela porta já usada no painel", () => {
     await expect(exportarProdutosPlanilha(opcoes)).rejects.toThrow();
     expect(URL.createObjectURL).not.toHaveBeenCalled();
   });
+  it("catálogo completo confirmado vazio não baixa arquivo", async () => {
+    rpc.mockReturnValue(resposta({ data: [], total_count: 0 }));
+    expect(await exportarProdutosPlanilha(opcoes)).toBe("vazio");
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+    expect(links).toHaveLength(0);
+  });
   it("resposta sem contagem não é tratada como catálogo vazio", async () => {
     rpc.mockReturnValue(resposta({ data: [], total_count: null }));
     await expect(exportarProdutosPlanilha(opcoes)).rejects.toThrow();

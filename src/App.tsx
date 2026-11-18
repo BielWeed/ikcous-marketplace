@@ -641,7 +641,13 @@ const CarrinhoAtual = React.memo(function CarrinhoAtual({
 });
 
 const AppContent = () => {
-  const { user, isAdmin, adminStatus, loading: authLoading } = useAuth();
+  const {
+    user,
+    isAdmin,
+    adminStatus,
+    adminVerificacaoFalhou,
+    loading: authLoading,
+  } = useAuth();
   const {
     products,
     loading: productsLoading,
@@ -1089,6 +1095,7 @@ const AppContent = () => {
         retomarPedidoId?: string;
         trocarEntradaDeLogin?: boolean;
         substituirEntrada?: boolean;
+        abrirRecuperacao?: boolean;
       },
     ) => {
       // Pedido NO AR (caça 8, 03/11/2026): sair do checkout agora desmontaria a
@@ -1418,6 +1425,9 @@ const AppContent = () => {
           id
         ) {
           path = `/${targetView}?id=${id}`;
+        }
+        if (targetView === "auth" && opts?.abrirRecuperacao) {
+          path = "/auth?modo=recuperar&origem=painel";
         }
         const currentPathAndSearch =
           globalThis.location.pathname + globalThis.location.search;
@@ -1865,35 +1875,87 @@ const AppContent = () => {
     handleNavigate("notifications");
   }, [handleNavigate]);
 
-  const handleAuthSuccess = useCallback(() => {
-    // `AuthView` chama isto duas vezes no mesmo login bem-sucedido. Entre a
-    // chamada #1 e a #2, `handleNavigate` já pode ter navegado e já
-    // sobrescrito `history.state` com o `pushState` do DESTINO — não mais o
-    // do login. `destinoPosLogin` detecta isso e devolve `null`; aqui, só
-    // navegamos quando ela devolve uma view de verdade. Nenhuma trava de
-    // idempotência própria é necessária: se a chamada #1 tiver sido engolida
-    // (transição travada, guarda com ref defasado), `history.state` continua
-    // sendo o do login e a chamada #2 refaz o trabalho sozinha.
-    const estadoNoLogin = globalThis.history.state;
-    const destino = destinoPosLogin(estadoNoLogin);
-    if (destino !== null) {
-      // O `id` do perfil pedido segue no state do login (o gate grava
-      // {view:"auth", id, requested}) e precisa ser lido AQUI, antes de
-      // `handleNavigate` sobrescrever o state com o pushState do destino.
-      // "user-profile" sem o repasse montaria a view sem `userId` — skeleton
-      // eterno; "product-detail" e "order-details" sem id idem. O repasse é
-      // SÓ para elas (`idDoDestinoPosLogin`): id nas outras views criaria `?id`
-      // fantasma em URL que nunca o teve. `admin-orders` entra na lista com
-      // validação própria (uuid de pedido): é a ficha que o aviso de "Pedido
-      // novo" abre.
-      handleNavigate(
-        destino,
-        idDoDestinoPosLogin(destino, estadoNoLogin),
-        false,
-        { trocarEntradaDeLogin: true },
-      );
-    }
-  }, [handleNavigate]);
+  const retornoDaRecuperacaoRef = useRef<string | null>(null);
+  const redefinicaoEmCursoRef = useRef<string | null>(null);
+  const handlePasswordRecoveryPendingChange = useCallback(
+    (pendente: boolean) => {
+      // O contexto pode encerrar o modo de recuperação antes de a promessa
+      // chegar à tela. Nesse intervalo o login comum não decide o destino.
+      redefinicaoEmCursoRef.current =
+        pendente &&
+        new URLSearchParams(globalThis.location.search).get("origem") ===
+          "painel"
+          ? (userRef.current?.id ?? null)
+          : null;
+    },
+    [],
+  );
+  const handleAuthSuccess = useCallback(
+    (origem?: "recuperacao") => {
+      // `AuthView` chama isto duas vezes no mesmo login bem-sucedido. Entre a
+      // chamada #1 e a #2, `handleNavigate` já pode ter navegado e já
+      // sobrescrito `history.state` com o `pushState` do DESTINO — não mais o
+      // do login. `destinoPosLogin` detecta isso e devolve `null`; aqui, só
+      // navegamos quando ela devolve uma view de verdade. Nenhuma trava de
+      // idempotência própria é necessária: se a chamada #1 tiver sido engolida
+      // (transição travada, guarda com ref defasado), `history.state` continua
+      // sendo o do login e a chamada #2 refaz o trabalho sozinha.
+      let estadoNoLogin = globalThis.history.state;
+      const conta = userRef.current;
+      const veioDoPainel =
+        globalThis.location.pathname === "/auth" &&
+        new URLSearchParams(globalThis.location.search).get("origem") ===
+          "painel";
+      if (!veioDoPainel || !conta) {
+        retornoDaRecuperacaoRef.current = null;
+      } else if (origem === "recuperacao") {
+        retornoDaRecuperacaoRef.current = conta.id;
+      } else if (redefinicaoEmCursoRef.current === conta.id) {
+        return;
+      }
+
+      if (conta && retornoDaRecuperacaoRef.current === conta.id) {
+        // O parâmetro só indica de onde veio. Aguarda o papel da sessão;
+        // quem autoriza a entrada no painel continua sendo a guarda existente.
+        if (
+          authLoadingRef.current ||
+          (adminStatusRef.current === "unknown" && !adminVerificacaoFalhou)
+        ) {
+          return;
+        }
+        retornoDaRecuperacaoRef.current = null;
+        estadoNoLogin = {
+          view: "auth",
+          requested: adminStatusRef.current === "admin" ? "admin" : undefined,
+        };
+        globalThis.history.replaceState(estadoNoLogin, "");
+      }
+
+      const destino = destinoPosLogin(estadoNoLogin);
+      if (destino !== null) {
+        // O `id` do perfil pedido segue no state do login (o gate grava
+        // {view:"auth", id, requested}) e precisa ser lido AQUI, antes de
+        // `handleNavigate` sobrescrever o state com o pushState do destino.
+        // "user-profile" sem o repasse montaria a view sem `userId` — skeleton
+        // eterno; "product-detail" e "order-details" sem id idem. O repasse é
+        // SÓ para elas (`idDoDestinoPosLogin`): id nas outras views criaria `?id`
+        // fantasma em URL que nunca o teve. `admin-orders` entra na lista com
+        // validação própria (uuid de pedido): é a ficha que o aviso de "Pedido
+        // novo" abre.
+        handleNavigate(
+          destino,
+          idDoDestinoPosLogin(destino, estadoNoLogin),
+          false,
+          { trocarEntradaDeLogin: true },
+        );
+      }
+    },
+    [handleNavigate, adminVerificacaoFalhou],
+  );
+
+  useEffect(() => {
+    if (retornoDaRecuperacaoRef.current !== null) handleAuthSuccess();
+  }, [user, authLoading, adminStatus, handleAuthSuccess]);
 
   const handleAdminLoginSuccess = useCallback(() => {
     handleNavigate("admin");
@@ -2251,6 +2313,9 @@ const AppContent = () => {
           console.warn(
             "[App] Unauthorized admin access attempt blocked in syncWithUrl.",
           );
+          if (origem === "popstate" && user && adminStatus === "not-admin") {
+            toast.error("Acesso restrito a administradores.");
+          }
           targetView = "home";
           const caminhoDaHome = caminhoDaHomeRef.current();
           if (
@@ -2299,6 +2364,8 @@ const AppContent = () => {
           !authLoading &&
           user &&
           !isPasswordRecovery &&
+          retornoDaRecuperacaoRef.current !== user.id &&
+          redefinicaoEmCursoRef.current !== user.id &&
           (origem === "popstate" || !isTransitioningRef.current)
         ) {
           targetView = "profile";
@@ -3090,7 +3157,12 @@ const AppContent = () => {
         return (
           <PreloadedOrLazy
             component={AuthView}
-            props={{ onNavigate: handleNavigate, onSuccess: handleAuthSuccess }}
+            props={{
+              onNavigate: handleNavigate,
+              onSuccess: handleAuthSuccess,
+              onPasswordRecoveryPendingChange:
+                handlePasswordRecoveryPendingChange,
+            }}
           />
         );
 
@@ -3101,6 +3173,10 @@ const AppContent = () => {
             props={{
               onLogin: handleAdminLoginSuccess,
               onNavigate: handleNavigate,
+              onForgotPassword: () =>
+                handleNavigate("auth", undefined, false, {
+                  abrirRecuperacao: true,
+                }),
             }}
           />
         );
@@ -3143,9 +3219,7 @@ const AppContent = () => {
           <PreloadedOrLazy
             component={OrderDetailsView}
             props={{
-              key: user?.id
-                ? `order-details-${user.id}`
-                : "order-details-guest",
+              key: `order-details-${user?.id ?? "guest"}-${selectedProductId || ""}`,
               orderId: selectedProductId || "",
               onBack: handleOrderDetailsBack,
               onNavigate: handleNavigate,

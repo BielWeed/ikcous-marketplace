@@ -26,8 +26,20 @@ export function normalizarCodigoDeRastreio(codigo: string): string {
     .toUpperCase();
 }
 
+/** Recebe o código já limpo; pontuação pode fazer parte dele, mas não ser tudo. */
+export function codigoDeRastreioTemLetraOuDigito(codigoLimpo: string): boolean {
+  return /[\p{L}\p{Nd}]/u.test(codigoLimpo);
+}
+
 export function linkDeRastreio(codigo: string): string {
   const limpo = normalizarCodigoDeRastreio(codigo);
   if (!limpo) return "";
   return `${BASE_DO_RASTREIO}${encodeURIComponent(limpo)}`;
+}
+
+/** Só oferece o link do pedido quando há um código que pode ser usado. */
+export function linkDeRastreioDeCodigoValido(codigoLimpo: string): string {
+  return codigoDeRastreioTemLetraOuDigito(codigoLimpo)
+    ? linkDeRastreio(codigoLimpo)
+    : "";
 }

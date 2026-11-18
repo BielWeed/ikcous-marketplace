@@ -125,12 +125,17 @@ function soOQueMudou(
   const antes = new Map(Object.entries(base));
   const mexeu = (c: string) => agora.get(c) !== antes.get(c);
   const mexeuNoBloco = BLOCO_DO_CEP.some(mexeu);
+  const mudouDeCep =
+    formatarCep(valores.cep).limpo !== formatarCep(base.cep).limpo;
   return Object.fromEntries(
-    Object.entries(limpos).filter(([c]) =>
-      c === "is_default" || BLOCO_DO_CEP.includes(c)
-        ? c === "is_default" || mexeuNoBloco
-        : mexeu(c),
-    ),
+    Object.entries(limpos).filter(([c]) => {
+      if (c === "is_default") return true;
+      if (BLOCO_DO_CEP.includes(c)) return mexeuNoBloco;
+      // O imóvel do CEP novo pode ter o mesmo número, ou não ter complemento.
+      // Mesmo assim, os dois valores confirmados precisam ser gravados.
+      if (mudouDeCep && (c === "number" || c === "complement")) return true;
+      return mexeu(c);
+    }),
   );
 }
 
@@ -149,7 +154,8 @@ export type DadosDoFormularioDeEndereco = Omit<
  * Só o que a pessoa mudou em relação ao que a tela abriu (2º argumento do
  * `onSubmit`, só ao EDITAR). Campo intocado fica de fora: a tela pode estar
  * velha, e reenviá-lo desfaria a correção feita em outro aparelho. O bloco do
- * CEP vai inteiro se ela mexeu em qualquer parte dele. Quem grava uma edição
+ * CEP vai inteiro se ela mexeu em qualquer parte dele; se o CEP mudou, o
+ * número e o complemento do novo imóvel também vão. Quem grava uma edição
  * usa ISTO, não os dados completos do 1º argumento.
  */
 export type AlteracoesDoEndereco = Partial<DadosDoFormularioDeEndereco>;
@@ -292,12 +298,8 @@ export function AddressForm({
 
   // A quem os campos de endereço ATUALMENTE pertencem: o CEP do
   // `initialData` (edição) ou o último CEP cuja busca foi aplicada — mesmo
-  // em cadastro novo, depois da primeira busca bem-sucedida. `null` só
-  // antes de qualquer busca aplicada num cadastro novo: aí não existe outro
-  // CEP "dono" do que a pessoa já digitou à mão, e um campo que o ViaCEP não
-  // determina fica como está (CARRINHO-03 não cobre esse caso — só a
-  // divergência entre o CEP dono do valor atual e o CEP que acabou de
-  // responder).
+  // em cadastro novo, depois da primeira busca bem-sucedida. Antes disso,
+  // o preenchimento à mão pode ser a única origem conhecida dos valores.
   const cepAssociadoRef = useRef<string | null>(
     initialData?.cep ? formatarCep(initialData.cep).limpo : null,
   );
@@ -365,9 +367,10 @@ export function AddressForm({
       // busca pode ter ficado para trás se o CEP mudou por outro caminho (a
       // versão nova do endereço chegando do servidor) enquanto ela corria.
       if (formatarCep(form.getValues("cep")).limpo !== cepDaResposta) return;
+      const donoDosCampos =
+        cepDoPreenchimentoAMaoRef.current ?? cepAssociadoRef.current;
       const eraDeOutroCep =
-        cepAssociadoRef.current !== null &&
-        cepAssociadoRef.current !== cepDaResposta;
+        donoDosCampos !== null && donoDosCampos !== cepDaResposta;
 
       if (endereco.logradouro) {
         escreverCampoDoCep("street", endereco.logradouro);
@@ -385,6 +388,7 @@ export function AddressForm({
         form.setValue("state", endereco.uf, { shouldValidate: true });
 
       cepAssociadoRef.current = cepDaResposta;
+      cepDoPreenchimentoAMaoRef.current = null;
       setCepTrouxeRuaEBairro(!!(endereco.logradouro && endereco.bairro));
     },
     { avisarPorToast: false },
@@ -438,6 +442,8 @@ export function AddressForm({
         ? formatarCep(initialData.cep).limpo
         : null;
       cepDoPreenchimentoAMaoRef.current = null;
+      cepEmBuscaRef.current = "";
+      camposEditadosAMaoRef.current.clear();
       setReferenciaAberta(!!initialData.reference);
       setApelidoOutro(false);
       form.reset(valoresDoEndereco(initialData));
@@ -467,11 +473,24 @@ export function AddressForm({
       const blocoMexido = BLOCO_DO_CEP.some(
         (c) => agora.get(c) !== antes.get(c),
       );
-      const guardados = campos.filter((c) =>
-        BLOCO_DO_CEP.includes(c) ? blocoMexido : agora.get(c) !== antes.get(c),
-      );
+      const mudouCepDoServidor =
+        formatarCep(form.getValues("cep")).limpo !==
+        formatarCep(novos.cep).limpo;
+      const blocoDeOutroCep = blocoMexido && mudouCepDoServidor;
+      const guardados = campos.filter((c) => {
+        if (BLOCO_DO_CEP.includes(c)) return blocoMexido;
+        // Não ressuscita número/complemento de outro imóvel após a troca.
+        if (blocoDeOutroCep && (c === "number" || c === "complement"))
+          return true;
+        return agora.get(c) !== antes.get(c);
+      });
       initialDataAplicadoRef.current = initialData;
       if (!blocoMexido) {
+        if (mudouCepDoServidor) {
+          cepEmBuscaRef.current = "";
+          cepDoPreenchimentoAMaoRef.current = null;
+          camposEditadosAMaoRef.current.clear();
+        }
         cepAssociadoRef.current = initialData.cep
           ? formatarCep(initialData.cep).limpo
           : null;
@@ -560,7 +579,7 @@ export function AddressForm({
     // descreve o CEP do campo não limpa o endereço de outro CEP.
     if (formatarCep(form.getValues("cep")).limpo !== cepDaBusca) return;
     const donoDosCampos =
-      cepAssociadoRef.current ?? cepDoPreenchimentoAMaoRef.current;
+      cepDoPreenchimentoAMaoRef.current ?? cepAssociadoRef.current;
     if (donoDosCampos !== null && donoDosCampos !== cepDaBusca) {
       for (const campo of [
         "street",
@@ -708,6 +727,11 @@ export function AddressForm({
               const { limpo: digitos, formatado } = formatarCep(e.target.value);
               // Sem o maxLength do campo, um 9º dígito não pode derrubar o CEP achado.
               const limpo = digitos.slice(0, 8);
+              const cepAnterior = formatarCep(form.getValues("cep")).limpo;
+              const ultimoCepCompleto =
+                cepAnterior.length === 8
+                  ? cepAnterior
+                  : cepEmBuscaRef.current || cepAssociadoRef.current;
               field.onChange(formatado);
 
               // `limpo.length === 8` é portante, não só filtro de busca:
@@ -715,10 +739,13 @@ export function AddressForm({
               // dono que a busca nunca respondeu, e a limpeza de
               // `eraDeOutroCep` dispararia sozinha depois.
               if (limpo.length === 8) {
-                const mesmoCep =
-                  limpo === cepEmBuscaRef.current ||
-                  limpo === cepAssociadoRef.current;
-                if (!mesmoCep) camposEditadosAMaoRef.current.clear();
+                if (ultimoCepCompleto !== limpo) {
+                  camposEditadosAMaoRef.current.clear();
+                  if (ultimoCepCompleto?.length === 8) {
+                    form.setValue("number", "", { shouldDirty: true });
+                    form.setValue("complement", "", { shouldDirty: true });
+                  }
+                }
                 cepEmBuscaRef.current = limpo;
                 setCamposAbertos(false);
                 void buscarCep(limpo);

@@ -4,6 +4,7 @@
 // "R$ 12,5 mil" ou "−R$ 1,5 mil" — o número era cortado na borda. Largura 72,
 // a mesma do gráfico irmão de Relatórios (OperationalPerformanceChart), nos
 // dois gráficos da chave (Saldo e Entradas e saídas): o mesmo eixo serve aos dois.
+import { readFileSync } from "node:fs";
 import { FluxoDeCaixaGrafico } from "@/components/admin/financeiro/FluxoDeCaixaGrafico";
 import type { PontoDoFluxo } from "@/lib/financeiro";
 import { act } from "react";
@@ -96,6 +97,25 @@ afterEach(() => {
   }
   vi.useRealTimers();
   vi.unstubAllGlobals();
+});
+
+it("usa as cores do tema claro sem mudar os tons originais do escuro", () => {
+  montar(<div />);
+  const fonte = readFileSync(
+    "src/components/admin/financeiro/FluxoDeCaixaGrafico.tsx",
+    "utf8",
+  );
+  const tema = readFileSync(
+    "src/components/layouts/temas-do-painel.css",
+    "utf8",
+  );
+  expect(fonte).toMatch(/COR_ENTRADA\s*=\s*"var\(--lit-t-3ddc97, #10b981\)"/);
+  expect(fonte).toMatch(/COR_SAIDA\s*=\s*"var\(--lit-t-fda4af, #f43f5e\)"/);
+  expect(fonte).toMatch(/COR_SALDO\s*=\s*"var\(--lit-t-69c8ff, #7AA2FF\)"/);
+  expect(fonte).toMatch(/data-fluxo-de-caixa/);
+  expect(tema).toMatch(
+    /html\.admin-mode\[data-admin-tema="claro"\]\s+\[data-fluxo-de-caixa\]\s+\.recharts-cartesian-grid\s+line\s*\{\s*stroke:\s*hsl\(var\(--admin-text-soft\)\);\s*stroke-opacity:\s*1;/,
+  );
 });
 
 describe("FluxoDeCaixaGrafico: a régua de valores cabe 'R$ 12,5 mil'", () => {

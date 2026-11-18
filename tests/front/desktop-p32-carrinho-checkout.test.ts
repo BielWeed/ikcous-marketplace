@@ -154,7 +154,8 @@ describe("P32: alinhamento e resumo alcançável no computador", () => {
       ],
       [
         caminhos.checkout,
-        "40a2746183fcf3b9ed877d7afec24f7b990c9504750c4f3d46cef6bd74dd38f5",
+        // Duas linhas novas, também no celular: busca do CEP e endereço da retirada.
+        "229d21b9b76db7619a536952a24828ec501495c44cf0645286c03f9b40b6f4b9",
       ],
       [
         caminhos.favoritos,

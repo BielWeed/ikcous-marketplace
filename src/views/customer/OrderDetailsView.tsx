@@ -34,7 +34,7 @@ import {
 import { manterItensEEnderecoDaTela } from "@/lib/fundir-pedido-do-hook";
 import { linhasDoEndereco } from "@/lib/linhas-do-endereco-do-pedido";
 import {
-  linkDeRastreio,
+  linkDeRastreioDeCodigoValido,
   normalizarCodigoDeRastreio,
 } from "@/lib/link-de-rastreio";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
@@ -794,6 +794,15 @@ export function OrderDetailsView({
     ordersRef.current = orders;
   }, [orders]);
 
+  // Uma consulta antiga pode seguir a substituta mesmo após trocar de pedido.
+  const orderIdAtualRef = useRef<string | null>(orderId);
+  useEffect(() => {
+    orderIdAtualRef.current = orderId;
+    return () => {
+      orderIdAtualRef.current = null;
+    };
+  }, [orderId]);
+
   const loadOrder = useCallback(async () => {
     setLoading(true);
     // 1. Pinta com o que já está em memória (vem do cache do localStorage),
@@ -825,6 +834,7 @@ export function OrderDetailsView({
     const doServidor = await fetchUserOrders(false, {
       aguardarSubstituta: true,
     });
+    if (orderIdAtualRef.current !== orderId) return;
     let encontrado = doServidor.find((o) => mesmoIdDePedido(o.id, orderId));
 
     // 3. Convidado que rastreou pedido por OTP não tem linha em
@@ -1057,6 +1067,7 @@ export function OrderDetailsView({
    */
   const codigoDeRastreio =
     normalizarCodigoDeRastreio(order?.trackingCode ?? "") || null;
+  const linkDoRastreio = linkDeRastreioDeCodigoValido(codigoDeRastreio ?? "");
 
   const handleCopyTracking = async () => {
     if (!codigoDeRastreio) return;
@@ -1695,7 +1706,7 @@ export function OrderDetailsView({
               Só aparece quando existe código de verdade — ver `codigoDeRastreio`.
               Fica DENTRO do cartão de status porque é a resposta à única
               pergunta que traz o cliente a esta tela: "onde está meu pedido?". */}
-          {codigoDeRastreio && (
+          {codigoDeRastreio && linkDoRastreio && (
             <div
               className={cn(
                 "mt-4 flex items-center gap-2 rounded-2xl p-3",
@@ -1748,7 +1759,7 @@ export function OrderDetailsView({
                 )}
               </button>
               <a
-                href={linkDeRastreio(codigoDeRastreio)}
+                href={linkDoRastreio}
                 target="_blank"
                 rel="noopener noreferrer"
                 title="Rastrear entrega"

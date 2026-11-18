@@ -37,6 +37,10 @@ describe("celularBrasileiroCompleto — conta DÍGITOS, não caracteres", () => 
     ["13 dígitos com 55 na frente", "5534988877777", true],
     ["zero de tronco na frente", "034988877777", true],
     ["11 dígitos sem o 9 depois do DDD", "34288877777", false],
+    ["DDD inexistente", "(20) 98765-4321", false],
+    ["DDD inexistente com +55", "+55 (20) 98765-4321", false],
+    ["DDD 55 com +55", "+55 (55) 98765-4321", true],
+    ["DDD 55 com 55 sem +", "5555987654321", true],
     ["DDD 55 (RS) com 11 dígitos", "55988877777", true],
     ["12 dígitos sem 55 (excedente)", "349888777777", false],
   ])("%s", (_nome, entrada, esperado) => {
@@ -56,6 +60,11 @@ describe("celularBrasileiroCompleto — conta DÍGITOS, não caracteres", () => 
 });
 
 describe("mensagemDeWhatsappIncompleto", () => {
+  it("explica que o DDD está errado quando o restante do celular está completo", () => {
+    expect(mensagemDeWhatsappIncompleto("(20) 98765-4321")).toMatch(
+      /DDD inválido/i,
+    );
+  });
   it("com um número a menos, diz exatamente o que faltou", () => {
     expect(mensagemDeWhatsappIncompleto("(34) 98887-777")).toBe(
       "Confira o WhatsApp: faltou um número (DDD + 9 + 8 dígitos)",

@@ -539,14 +539,19 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
   /** Busca de contas para a lista do exclusivo (mesma RPC da tela de
    * Clientes e do balcão; a porta de admin é no servidor; sem CPF). */
   const buscarClientesParaCupom = useCallback(
-    async (termo: string): Promise<PaginaDeClientesParaCupom> => {
-      const { data, error } = await supabase.rpc("get_admin_customers_paged", {
+    async (
+      termo: string,
+      sinal?: AbortSignal,
+    ): Promise<PaginaDeClientesParaCupom> => {
+      const consulta = supabase.rpc("get_admin_customers_paged", {
         p_search: prepararTextoDeBuscaDoPainel(termo),
         p_sort_field: "created_at",
         p_sort_direction: "desc",
         p_page: 0,
         p_page_size: 8,
       });
+      const comSinal = sinal ? consulta.abortSignal?.(sinal) : undefined;
+      const { data, error } = await (comSinal ?? consulta);
       if (error) throw error;
       const resposta = data as {
         data?: unknown[];

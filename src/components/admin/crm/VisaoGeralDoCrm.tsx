@@ -99,6 +99,14 @@ export function VisaoGeralDoCrm({
     Number.isFinite(k.taxaDevolucao) &&
     k.taxaDevolucao > 0;
   const semVendaNemDevolucao = k?.pedidos === 0 && !temDevolucao;
+  // O KPI de compradores é do período; os segmentos contam todo o histórico.
+  const compradoresNoHistorico = visao?.segmentos.reduce(
+    (total, { segmento, clientes }) =>
+      segmento === "pediu_nao_pagou" || segmento === "nunca_comprou"
+        ? total
+        : total + clientes,
+    0,
+  );
   const cards: KpiCardConfig[] = [
     {
       label: "Valor médio por venda",
@@ -149,7 +157,9 @@ export function VisaoGeralDoCrm({
     },
     {
       label: "Taxa de recompra",
-      value: formatarPercentual(k?.taxaRecompra),
+      value: formatarPercentual(
+        compradoresNoHistorico === 0 ? null : k?.taxaRecompra,
+      ),
       icon: Repeat,
       accent: "text-emerald-400",
       footer:

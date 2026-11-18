@@ -216,6 +216,38 @@ describe("ordenação da vitrine sem Mais Vendidos", () => {
     expect(filtros?.getAttribute("aria-expanded")).toBe("false");
   });
 
+  it("fecha Filtros quando Tab passa da última opção, sem roubar o foco", async () => {
+    await montar("default");
+    const filtros = hospedeiro.querySelector<HTMLButtonElement>(
+      'button[aria-haspopup="listbox"]',
+    )!;
+    const proximo = document.createElement("button");
+    hospedeiro.after(proximo);
+    try {
+      await act(async () => {
+        filtros.focus();
+        // jsdom não executa a ação padrão de Enter num botão.
+        filtros.click();
+      });
+      const menu = hospedeiro.querySelector('[role="listbox"]');
+      expect(menu).not.toBeNull();
+      // jsdom também não move o foco com Tab: reproduzimos as transições.
+      for (const opcao of hospedeiro.querySelectorAll<HTMLElement>(
+        '[role="option"]',
+      )) {
+        await act(async () => opcao.focus());
+        expect(document.activeElement).toBe(opcao);
+        expect(hospedeiro.querySelector('[role="listbox"]')).toBe(menu);
+      }
+      await act(async () => proximo.focus());
+      expect(hospedeiro.querySelector('[role="listbox"]')).toBeNull();
+      expect(hospedeiro.querySelector('[aria-label="Fechar menu"]')).toBeNull();
+      expect(document.activeElement).toBe(proximo);
+    } finally {
+      proximo.remove();
+    }
+  });
+
   it("reserva a mesma faixa com Filtros durante o carregamento e sem categorias", async () => {
     await montar("default", undefined, true);
     const faixa = hospedeiro.querySelector(
@@ -249,6 +281,18 @@ describe("ordenação da vitrine sem Mais Vendidos", () => {
     expect(faixa?.querySelector('button[aria-label="Filtros"]')).not.toBeNull();
   });
 
+  it("clicar fora fecha o menu sem selecionar uma opção", async () => {
+    const aoMudar = vi.fn();
+    await montar("default", aoMudar);
+    await abrirMenu();
+    const camada = hospedeiro.querySelector<HTMLElement>(
+      '[aria-label="Fechar menu"]',
+    )!;
+    await act(async () => camada.click());
+    expect(hospedeiro.querySelector('[role="listbox"]')).toBeNull();
+    expect(aoMudar).not.toHaveBeenCalled();
+  });
+
   it("o menu oferece só Relevância, Menor Preço e Maior Preço", async () => {
     await montar("default");
     await abrirMenu();
@@ -269,9 +313,19 @@ describe("ordenação da vitrine sem Mais Vendidos", () => {
       await abrirMenu();
       const opcao = opcoes().find((o) => o.textContent?.trim() === rotulo);
       expect(opcao).toBeDefined();
+      const alvo = opcao as HTMLElement;
       await act(async () => {
-        (opcao as HTMLElement).click();
+        const naoCancelado = alvo.dispatchEvent(
+          new MouseEvent("mousedown", { bubbles: true, cancelable: true }),
+        );
+        // Reproduz a perda de foco de navegadores que não focam o botão
+        // pressionado. O click só chega se a opção ainda estiver montada.
+        if (naoCancelado) {
+          (document.activeElement as HTMLElement).blur();
+        }
       });
+      expect(alvo.isConnected).toBe(true);
+      await act(async () => alvo.click());
     }
 
     expect(escolhas).toEqual(["default", "price-asc", "price-desc"]);

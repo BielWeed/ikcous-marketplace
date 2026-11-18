@@ -16,7 +16,7 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { pararABuscaDeCep } from "./duble-busca-de-cep";
+import { concluirBuscaDeCepSemEndereco } from "./duble-busca-de-cep";
 
 const mundo = vi.hoisted(() => ({
   ordem: [] as string[],
@@ -205,7 +205,7 @@ describe("CheckoutView — a recusa de preço/estoque relê o carrinho antes de 
       mundo.ordem.push(`ir:${destino}`);
     });
     const armazem = new Map<string, string>();
-    pararABuscaDeCep();
+    concluirBuscaDeCepSemEndereco();
     vi.stubGlobal("localStorage", {
       getItem: (chave: string) => armazem.get(chave) ?? null,
       setItem: (chave: string, valor: string) => {

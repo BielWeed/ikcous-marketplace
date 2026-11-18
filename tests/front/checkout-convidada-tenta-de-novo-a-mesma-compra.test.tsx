@@ -19,7 +19,7 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { pararABuscaDeCep } from "./duble-busca-de-cep";
+import { concluirBuscaDeCepSemEndereco } from "./duble-busca-de-cep";
 
 const { estado, produto } = vi.hoisted(() => {
   const produto = {
@@ -264,7 +264,7 @@ describe("CheckoutView — convidada sem resposta do servidor tem saída: tentar
       whatsappNumber: "",
     };
     sessionStorage.clear();
-    pararABuscaDeCep();
+    concluirBuscaDeCepSemEndereco();
     const armazem = new Map<string, string>();
     vi.stubGlobal("localStorage", {
       getItem: (chave: string) => armazem.get(chave) ?? null,
@@ -726,7 +726,7 @@ describe("CheckoutView — com conta o painel de 'conferir antes' continua exata
       whatsappNumber: "34999998888",
     };
     sessionStorage.clear();
-    pararABuscaDeCep();
+    concluirBuscaDeCepSemEndereco();
     const armazem = new Map<string, string>();
     vi.stubGlobal("localStorage", {
       getItem: (chave: string) => armazem.get(chave) ?? null,

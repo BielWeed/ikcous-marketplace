@@ -17,9 +17,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const onNavigate = vi.fn();
 const onSetBackOverride = vi.fn();
+const createOrder = vi.fn(async () => ({ id: "pedido-teste-1234" }));
 
-const { mockConfig } = vi.hoisted(() => ({
-  mockConfig: { shippingCoverage: "national", originCep: "38500-000" },
+const { mockConfig, frete } = vi.hoisted(() => ({
+  mockConfig: {
+    shippingCoverage: "national",
+    originCep: "38500-000",
+    localCepRange: "",
+  },
+  frete: { cep: "" },
+}));
+
+vi.mock("@/hooks/useDeferredRender", () => ({
+  useDeferredRender: () => true,
+}));
+
+vi.mock("@/lib/sessao-ainda-e-do-dono", () => ({
+  sessaoAindaEhDoDono: async () => true,
 }));
 
 // A calculadora de frete do checkout (cotação automática pelo endereço)
@@ -75,8 +89,18 @@ vi.mock("@/hooks/useCart", () => ({
     cartTotal: 100,
     shippingFee: 0,
     clearCart: vi.fn(),
-    selectedShippingOption: null,
-    shippingCep: "",
+    selectedShippingOption: frete.cep
+      ? {
+          id: "local-delivery",
+          name: "Entrega Local",
+          price: 0,
+          deliveryDays: 1,
+          provider: "local",
+        }
+      : null,
+    shippingCep: frete.cep,
+    setSelectedShippingOption: vi.fn(),
+    setShippingCep: vi.fn(),
   }),
 }));
 
@@ -84,8 +108,9 @@ vi.mock("@/hooks/useCoupons", () => ({
   useCoupons: () => ({ validateCoupon: vi.fn() }),
 }));
 
-vi.mock("@/hooks/useOrders", () => ({
-  useOrders: () => ({ createOrder: vi.fn() }),
+vi.mock("@/hooks/useOrders", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/hooks/useOrders")>()),
+  useOrders: () => ({ createOrder }),
 }));
 
 vi.mock("@/lib/supabase", () => ({ supabase: {} }));
@@ -117,6 +142,9 @@ describe("CheckoutView (convidado) — trocar o CEP não mistura rua antiga com 
 
   beforeEach(() => {
     pendentes = new Map();
+    frete.cep = "";
+    createOrder.mockClear();
+    sessionStorage.clear();
     armazem = new Map<string, string>();
     vi.stubGlobal("localStorage", {
       getItem: (chave: string) => armazem.get(chave) ?? null,
@@ -128,6 +156,12 @@ describe("CheckoutView (convidado) — trocar o CEP não mistura rua antiga com 
       },
     });
     fetchMock = vi.fn((url: string) => {
+      if (url.includes("opencep.com")) {
+        return Promise.resolve({ json: async () => ({ error: true }) });
+      }
+      if (url.includes("awesomeapi.com.br")) {
+        return Promise.resolve({ json: async () => ({ code: "not_found" }) });
+      }
       const cep = /viacep\.com\.br\/ws\/(\d+)\/json/.exec(url)?.[1] ?? "";
       return new Promise((resolve) => {
         pendentes.set(cep, (data: unknown) =>
@@ -151,10 +185,11 @@ describe("CheckoutView (convidado) — trocar o CEP não mistura rua antiga com 
     Object.assign(mockConfig, {
       shippingCoverage: "national",
       originCep: "38500-000",
+      localCepRange: "",
     });
   });
 
-  it("segunda busca (localidade única) limpa rua e bairro em vez de manter os da primeira busca", async () => {
+  async function montar() {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
 
     await act(async () => {
@@ -165,7 +200,199 @@ describe("CheckoutView (convidado) — trocar o CEP não mistura rua antiga com 
         />,
       );
     });
+  }
 
+  const campo = (id: string) => document.getElementById(id) as HTMLInputElement;
+  const finalizar = () =>
+    document.querySelector<HTMLButtonElement>(
+      'button[aria-label="Finalizar pedido"]',
+    )!;
+
+  function onClickReal(botao: HTMLButtonElement): () => void {
+    // Mesmo método dos testes de guarda do checkout: click() no botão
+    // desabilitado não chama o React e não exercita a guarda de envio.
+    const props = Object.keys(botao).find((k) => k.startsWith("__reactProps$"));
+    expect(props, "props do botão Finalizar").toBeDefined();
+    const { onClick } = (
+      botao as unknown as Record<string, { onClick?: () => void }>
+    )[props!];
+    expect(onClick, "onClick real do botão Finalizar").toBeTypeOf("function");
+    return onClick!;
+  }
+
+  async function responderEndereco(cep: string) {
+    await act(async () => {
+      pendentes.get(cep)!({
+        logradouro: cep === "38500000" ? "Rua Antiga" : "Rua Nova",
+        bairro: "Centro",
+        localidade: "Monte Carmelo",
+        uf: "MG",
+      });
+    });
+  }
+
+  it("frete do CEP novo pronto antes do endereço ainda não permite finalizar a entrega", async () => {
+    mockConfig.shippingCoverage = "local";
+    mockConfig.localCepRange = "38500-000";
+    frete.cep = "38500-000";
+    await montar();
+    await act(async () => digitar("guest-cep", "38500000"));
+    await responderEndereco("38500000");
+    await act(async () => {
+      digitar("checkout-name", "Cliente Teste");
+      digitar("checkout-tel", "34999999999");
+      digitar("guest-number", "77");
+    });
+    expect(finalizar().disabled).toBe(false);
+
+    mockConfig.localCepRange = "38500-001";
+    frete.cep = "38500-001";
+    await act(async () => digitar("guest-cep", "38500001"));
+    expect(pendentes.has("38500001")).toBe(true);
+    // Frete e todos os campos de B válidos; só a busca pendente bloqueia.
+    await act(async () => {
+      digitar("guest-number", "88");
+      digitar("guest-street", "Rua Nova");
+      digitar("guest-neighborhood", "Centro");
+      digitar("guest-city", "Monte Carmelo");
+      digitar("guest-state", "MG");
+    });
+    expect(finalizar().disabled).toBe(true);
+    expect(document.body.textContent).toContain("Buscando o endereço do CEP…");
+    await act(async () => onClickReal(finalizar())());
+    expect(createOrder).not.toHaveBeenCalled();
+
+    await responderEndereco("38500001");
+    expect(finalizar().disabled).toBe(false);
+    expect(document.body.textContent).not.toContain(
+      "Buscando o endereço do CEP…",
+    );
+    await act(async () => finalizar().click());
+    expect(createOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        addressData: expect.objectContaining({
+          cep: "38500-001",
+          number: "88",
+          street: "Rua Nova",
+        }),
+      }),
+      expect.anything(),
+    );
+  });
+
+  it.each([
+    {
+      caso: "B traz somente cidade e UF",
+      resposta: { localidade: "Cidade B", uf: "SP" },
+      cidade: "Cidade B",
+      uf: "SP",
+    },
+    {
+      caso: "a busca de B também não encontra o endereço",
+      resposta: { erro: true },
+      cidade: "",
+      uf: "",
+    },
+  ])(
+    "não envia o endereço manual de A quando $caso",
+    async ({ resposta, cidade, uf }) => {
+      mockConfig.shippingCoverage = "local";
+      mockConfig.localCepRange = "38500-000";
+      frete.cep = "38500-000";
+      await montar();
+      await act(async () => digitar("guest-cep", "38500000"));
+      await act(async () => pendentes.get("38500000")!({ erro: true }));
+      expect(campo("guest-cep").readOnly).toBe(false);
+      await act(async () => {
+        digitar("checkout-name", "Cliente Teste");
+        digitar("checkout-tel", "34999999999");
+        digitar("guest-street", "Rua de A");
+        digitar("guest-neighborhood", "Bairro de A");
+        digitar("guest-city", "Cidade A");
+        digitar("guest-state", "MG");
+        digitar("guest-number", "77");
+        digitar("guest-complement", "Fundos de A");
+      });
+      expect(finalizar().disabled).toBe(false);
+
+      await act(async () => digitar("guest-cep", "3850000"));
+      await act(async () => digitar("guest-cep", "38500000"));
+      await act(async () => pendentes.get("38500000")!({ erro: true }));
+      expect(campo("guest-street").value).toBe("Rua de A");
+      expect(campo("guest-neighborhood").value).toBe("Bairro de A");
+      expect(campo("guest-number").value).toBe("77");
+      expect(campo("guest-complement").value).toBe("Fundos de A");
+
+      mockConfig.localCepRange = "38500-001";
+      frete.cep = "38500-001";
+      await act(async () => digitar("guest-cep", "38500001"));
+      await act(async () => pendentes.get("38500001")!(resposta));
+      await act(async () => digitar("guest-number", "88"));
+
+      // Só redigitar o número não basta para enviar o endereço incompleto de B.
+      const bloqueado = finalizar().disabled;
+      await act(async () => finalizar().click());
+      expect(createOrder).not.toHaveBeenCalled();
+      expect(bloqueado).toBe(true);
+      expect(campo("guest-street").value).toBe("");
+      expect(campo("guest-neighborhood").value).toBe("");
+      expect(campo("guest-city").value).toBe(cidade);
+      expect(campo("guest-state").value).toBe(uf);
+      expect(campo("guest-complement").value).toBe("");
+      expect(campo("checkout-name").value).toBe("Cliente Teste");
+      expect(campo("checkout-tel").value).toBe("(34) 99999-9999");
+
+      await act(async () => {
+        digitar("guest-street", "Rua de B");
+        digitar("guest-neighborhood", "Bairro de B");
+        if (!cidade) digitar("guest-city", "Cidade B");
+        if (!uf) digitar("guest-state", "SP");
+      });
+      expect(finalizar().disabled).toBe(false);
+      await act(async () => finalizar().click());
+      expect(createOrder).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          addressData: expect.objectContaining({
+            cep: "38500-001",
+            street: "Rua de B",
+            neighborhood: "Bairro de B",
+            city: "Cidade B",
+            state: "SP",
+            number: "88",
+            complement: undefined,
+          }),
+        }),
+        expect.anything(),
+      );
+    },
+  );
+
+  it("só limpa número e complemento ao completar um CEP diferente", async () => {
+    await montar();
+    await act(async () => {
+      digitar("guest-number", "77");
+      digitar("guest-complement", "Fundos");
+      digitar("guest-cep", "38500000");
+    });
+    await responderEndereco("38500000");
+    expect(campo("guest-number").value).toBe("77");
+    expect(campo("guest-complement").value).toBe("Fundos");
+
+    await act(async () => digitar("guest-cep", "3850000"));
+    await act(async () => digitar("guest-cep", "38500000"));
+    await responderEndereco("38500000");
+    expect(campo("guest-number").value).toBe("77");
+    expect(campo("guest-complement").value).toBe("Fundos");
+
+    await act(async () => digitar("guest-cep", "3850000"));
+    await act(async () => digitar("guest-cep", "38500001"));
+    expect(campo("guest-number").value).toBe("");
+    expect(campo("guest-complement").value).toBe("");
+    await responderEndereco("38500001");
+  });
+
+  it("segunda busca (localidade única) limpa rua e bairro em vez de manter os da primeira busca", async () => {
+    await montar();
     // Primeira busca: CEP com rua/bairro completos.
     act(() => {
       digitar("guest-cep", "01310100");

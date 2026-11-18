@@ -2246,6 +2246,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     }
   }, [formData.variants, formData.stock]);
 
+  const gravarRascunhoPendenteRef = useRef<(() => void) | null>(null);
+
   // Draft auto-save on changes
   //
   // #98 (ADMIN-060): este efeito NÃO remove o rascunho que já estava lá ao
@@ -2277,9 +2279,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // TODA saída — decidir, sair da tela, ou salvar (o rascunho some e o efeito
   // de verificação retira o aviso). Nada fica preso "pelo resto da sessão".
   useEffect(() => {
+    gravarRascunhoPendenteRef.current = null;
     if (isLoading || !draftChecked) return;
 
-    const timer = setTimeout(() => {
+    gravarRascunhoPendenteRef.current = () => {
+      gravarRascunhoPendenteRef.current = null;
       // Produto novo já criado (grade não gravou): o rascunho já foi para a
       // chave de edição dele, e esta chave NÃO pode ser recriada.
       if (!productId && produtoNovoJaCriadoRef.current) return;
@@ -2338,7 +2342,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       } catch (erro) {
         console.error("Erro ao guardar o rascunho do produto:", erro);
       }
-    }, 1000);
+    };
+    const timer = setTimeout(() => gravarRascunhoPendenteRef.current?.(), 1000);
 
     return () => clearTimeout(timer);
   }, [
@@ -2353,6 +2358,20 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     variacoesPendentes,
     ofertaDeRascunhoPendente,
   ]);
+
+  useEffect(() => {
+    const gravarPendente = () => gravarRascunhoPendenteRef.current?.();
+    const aoMudarVisibilidade = () => {
+      if (document.visibilityState === "hidden") gravarPendente();
+    };
+    window.addEventListener("pagehide", gravarPendente);
+    document.addEventListener("visibilitychange", aoMudarVisibilidade);
+    return () => {
+      gravarPendente();
+      window.removeEventListener("pagehide", gravarPendente);
+      document.removeEventListener("visibilitychange", aoMudarVisibilidade);
+    };
+  }, []);
 
   const processAndUploadImages = useCallback(
     async (arquivos: File[]) => {
@@ -2385,6 +2404,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       );
       const falhas: FotoComFalha[] = [];
       let enviadas = 0;
+      let envioCancelado = false;
       // Fotos que o aparelho não abriu: já têm o próprio aviso vermelho, mas
       // não são "falha de envio" (não adianta tentar de novo a mesma foto).
       let ilegiveis = 0;
@@ -2393,6 +2413,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         // Uma foto por vez; se a rede falha, o restante fica para tentar de
         // novo, sem acumular um prazo de espera por foto.
         for (const [indice, file] of files.entries()) {
+          if (!montadoRef.current || envioCancelado) break;
           setProgressoDoEnvio({ atual: indice + 1, total: files.length });
           setImageUploadStep("compressing");
           // Marca o estouro para a continuação ATRASADA não iniciar o upload
@@ -2401,6 +2422,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           let estourou = false;
           const cancelamento = new Promise<never>((_, rejeitar) => {
             cancelarEnvioRef.current = () => {
+              envioCancelado = true;
               estourou = true;
               rejeitar(new EnvioCancelado());
             };
@@ -2474,7 +2496,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           }
         }
 
-        if (falhas.length === 0 && ilegiveis === 0) {
+        if (!montadoRef.current) {
+          toast.dismiss(loadingToast);
+          return;
+        }
+        if (!envioCancelado && falhas.length === 0 && ilegiveis === 0) {
           toast.success("Imagens processadas e enviadas com sucesso!", {
             id: loadingToast,
           });
@@ -3781,6 +3807,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     montadoRef.current = true;
     return () => {
       montadoRef.current = false;
+      cancelarEnvioRef.current?.();
       if (successTimerRef.current) clearTimeout(successTimerRef.current);
     };
   }, []);

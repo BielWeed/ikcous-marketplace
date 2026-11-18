@@ -34,8 +34,10 @@ export function DevolucaoDoPedidoAdminCard({
   if (erro) {
     return (
       <div className="flex items-center justify-between gap-3 rounded-2xl border border-admin-border bg-admin-surface p-4 text-white">
-        <p className="text-xs font-medium text-zinc-400">
-          Não consegui conferir as devoluções deste pedido.
+        <p role="status" className="text-xs font-medium text-zinc-400">
+          {carregando
+            ? "Consultando devoluções…"
+            : "Não consegui conferir as devoluções deste pedido."}
         </p>
         <button
           type="button"

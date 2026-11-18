@@ -6,6 +6,7 @@ import {
   conversaoEmVenda,
   conversaoEntreEtapas,
   diasPorExtenso,
+  formatarMoeda,
   fraseLeituraDasFormas,
   fraseLeituraDosCanais,
   funilEhMonotonico,
@@ -80,6 +81,19 @@ describe("ticketPorForma", () => {
     expect(ticketPorForma(1500, 20)).toBe(75);
     expect(ticketPorForma(100, 3)).toBe(33.33);
   });
+
+  it.each([
+    [2.01, 2, "R$ 1,01"],
+    [0.01, 2, "R$ 0,01"],
+    [12.34, 1, "R$ 12,34"],
+  ])(
+    "exibe a média de %s reais em %s vendas como %s",
+    (receita, pedidos, esperado) => {
+      expect(
+        formatarMoeda(ticketPorForma(receita, pedidos)).replace(/\s+/g, " "),
+      ).toBe(esperado);
+    },
+  );
 
   it("arredonda para cima o centavo fracionado e preserva a divisão exata", () => {
     expect(ticketPorForma(100, 6)).toBe(16.67);

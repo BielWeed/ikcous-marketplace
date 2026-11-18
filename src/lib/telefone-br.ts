@@ -73,6 +73,26 @@ export function digitosDoTelefoneDoCampo(
   return limparTelefoneBrasileiro(novo, { colagem });
 }
 
+// Códigos de Área (DDD) em uso no Brasil, conforme a Anatel.
+const DDDS_BRASILEIROS = new Set(
+  (
+    "11 12 13 14 15 16 17 18 19 " +
+    "21 22 24 27 28 " +
+    "31 32 33 34 35 37 38 " +
+    "41 42 43 44 45 46 47 48 49 " +
+    "51 53 54 55 " +
+    "61 62 63 64 65 66 67 68 69 " +
+    "71 73 74 75 77 79 " +
+    "81 82 83 84 85 86 87 88 89 " +
+    "91 92 93 94 95 96 97 98 99"
+  ).split(" "),
+);
+
+/** Recebe os dígitos nacionais, já sem código do país. */
+export function dddBrasileiroValido(digitosNacionais: string): boolean {
+  return DDDS_BRASILEIROS.has(digitosNacionais.slice(0, 2));
+}
+
 /** Dígitos de um celular completo (DDD + 9 + 8). */
 const DIGITOS_DO_CELULAR = 11;
 /** Teto de dígitos que o campo guarda quando passa do celular (excedente visível). */
@@ -131,15 +151,26 @@ export function celularBrasileiroCompleto(
   valor: string | null | undefined,
 ): boolean {
   const digitos = limparTelefoneBrasileiro(valor);
-  return digitos.length === 11 && digitos[2] === "9";
+  return (
+    digitos.length === DIGITOS_DO_CELULAR &&
+    digitos[2] === "9" &&
+    dddBrasileiroValido(digitos)
+  );
 }
 
 /** Texto do erro do campo WhatsApp do checkout quando o celular não está completo. */
 export function mensagemDeWhatsappIncompleto(
   valor: string | null | undefined,
 ): string {
-  const quantidade = limparTelefoneBrasileiro(valor).length;
-  return quantidade === 10
+  const digitos = limparTelefoneBrasileiro(valor);
+  if (
+    digitos.length === DIGITOS_DO_CELULAR &&
+    digitos[2] === "9" &&
+    !dddBrasileiroValido(digitos)
+  ) {
+    return "Confira o WhatsApp: DDD inválido";
+  }
+  return digitos.length === 10
     ? "Confira o WhatsApp: faltou um número (DDD + 9 + 8 dígitos)"
     : "Confira o WhatsApp: precisa de DDD + 9 + 8 dígitos";
 }

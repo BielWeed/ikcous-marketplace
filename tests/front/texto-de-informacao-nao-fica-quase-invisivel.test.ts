@@ -54,8 +54,30 @@ describe("texto de informação legível (contraste e tamanho)", () => {
     });
   });
 
+  it("o frete selecionado usa texto opaco sobre o fundo da marca", () => {
+    const frete = fonte("src/components/ui/custom/ShippingCalculator.tsx");
+    const coresDaMarca = [
+      ...frete.matchAll(
+        /comCorDaMarca\s*\?\s*"(text-primary-foreground[^"]*)"/g,
+      ),
+    ].map(([, classe]) => classe);
+    expect(coresDaMarca).toEqual(Array(4).fill("text-primary-foreground"));
+  });
+
   describe("ProductView", () => {
     const produto = fonte("src/views/customer/ProductView.tsx");
+    it("os dois botões de adicionar mantêm a cor sólida ao passar o mouse", () => {
+      const classesDosBotoes = [
+        ...produto.matchAll(
+          /cartStatus === "idle"\s*\?\s*"(bg-primary[^"]*)"/g,
+        ),
+      ].map(([, classes]) => classes);
+      expect(classesDosBotoes).toHaveLength(2);
+      for (const classes of classesDosBotoes) {
+        expect(tem(classes, "bg-primary")).toBe(true);
+        expect(classes).not.toMatch(/hover:bg-primary\//);
+      }
+    });
     it("o 'De:' do preço é zinc-500", () => {
       const classes = classesDe(
         produto,

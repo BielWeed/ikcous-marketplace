@@ -1600,17 +1600,9 @@ export function CheckoutViewDaConta({
     }
   }, [storeConfigLoaded, authLoading, user]);
 
-  // A quem os campos de endereço ATUALMENTE pertencem: o último CEP cuja
-  // busca foi aplicada. `null` só quando o campo nasce vazio — aí não existe
-  // outro CEP "dono" do que a pessoa já digitou à mão, e um campo que o
-  // ViaCEP não determina fica como está. Mesmo desenho de AddressForm.tsx
-  // (linhas 81-83), e pela mesma razão: `cep` aqui NASCE preenchido de
-  // `ikcous_last_shipping_cep` (visita anterior), e um campo pré-preenchido
-  // nunca dispara `onChange` — sem esta semente, `cepAssociadoRef` ficava
-  // `null` para sempre nesse caminho, `eraDeOutroCep` nunca era `true`, e a
-  // rua completada à mão para o CEP antigo sobrevivia misturada com a
-  // cidade/estado de um CEP novo digitado por cima (achado da revisão de
-  // 25/08/2026).
+  // A quem os campos de endereço pertencem: ao CEP completo que a busca
+  // preencheu ou que estava no campo quando a cliente digitou à mão. O
+  // CEP também pode nascer preenchido da visita anterior ou do rascunho.
   const cepAssociadoRef = useRef<string | null>(
     (() => {
       const cepDaVisitaAnterior = localStorageSeguro().getItem(
@@ -1647,6 +1639,8 @@ export function CheckoutViewDaConta({
     form.register(campo, {
       onChange: () => {
         camposEditadosAMaoRef.current.add(campo);
+        const cepVigente = soDigitos(form.getValues("cep") ?? "");
+        if (cepVigente.length === 8) cepAssociadoRef.current = cepVigente;
       },
     });
 
@@ -1700,9 +1694,8 @@ export function CheckoutViewDaConta({
   // rascunho dele) e não pode seguir misturado com o CEP novo — o pedido
   // sairia com o CEP B e a cidade A. Mesma limpeza do AddressForm (efeito de
   // `resultadoCep`), por cima da regra de `escreverCampoDoCep`: o que o
-  // cliente digitou à mão neste CEP fica. Sem busca anterior aplicada
-  // (`null`) o que está na tela é só dele e nada se limpa. Depois de limpar o
-  // dono vira `null`, para a segunda falha do mesmo CEP não limpar de novo.
+  // cliente digitou à mão neste CEP fica. Sem CEP associado (`null`), nada
+  // se limpa. Depois de limpar, o dono volta a `null`.
   useEffect(() => {
     if (!resultadoCep || resultadoCep.tipo === "achou") return;
     if (
@@ -2075,11 +2068,12 @@ export function CheckoutViewDaConta({
   >(null);
   // Lote 210: o que a tela de sucesso do pedido "pago na entrega/retirada"
   // precisa saber e que o carrinho já esqueceu quando ela abre (limpar a
-  // compra derruba a opção de frete): a forma escolhida e se era retirada,
-  // guardadas no instante do envio, a partir do próprio pedido enviado.
+  // compra derruba a opção de frete): forma, modalidade e endereço de retirada
+  // vêm da compra congelada no envio, não do carrinho atual.
   const [resumoDoPedidoNaEntrega, setResumoDoPedidoNaEntrega] = useState<{
     paymentMethod: string | null;
     ehRetirada: boolean;
+    enderecoDaRetirada?: string;
   } | null>(null);
   // Mesmo motivo: o submétodo (PIX ou cartão) do pedido que JÁ nasceu. Sem
   // o congelamento, um efeito que mexe em `paymentMethod` depois do submit
@@ -4246,7 +4240,13 @@ export function CheckoutViewDaConta({
   // requisito novo que precisa ser lembrado nos dois lugares — e foi
   // exatamente isso que acabou de acontecer aqui. Com um nome só, a próxima
   // exigência entra num lugar, não em dois.
+  const buscandoEnderecoDaEntrega =
+    !user &&
+    !ehRetirada &&
+    isSearchingCep &&
+    cepEmBuscaRef.current === soDigitos(cepDigitadoNoFormulario ?? "");
   const botaoFinalizarDesabilitado =
+    buscandoEnderecoDaEntrega ||
     cart.length === 0 ||
     !!aplicandoCupom ||
     cupomEmConferencia ||
@@ -4502,6 +4502,8 @@ export function CheckoutViewDaConta({
   };
 
   const handleSubmitEvent = async () => {
+    // Protege o envio também no handler, não só no botão.
+    if (buscandoEnderecoDaEntrega) return;
     // Este handler cria uma compra nova; retomada paga o pedido já existente.
     if (
       cart.length === 0 ||
@@ -4977,6 +4979,9 @@ export function CheckoutViewDaConta({
       cpfParaRpc,
       contaEsperada,
       semConta: !user,
+      enderecoDaRetirada: ehRetirada
+        ? selectedShippingOption?.pickupAddress?.trim()
+        : undefined,
     });
   };
 
@@ -5135,6 +5140,10 @@ export function CheckoutViewDaConta({
         ehRetirada:
           typeof orderData.shippingOptionId === "string" &&
           ehRetiradaNaLoja(orderData.shippingOptionId),
+        enderecoDaRetirada:
+          typeof pedido.enderecoDaRetirada === "string"
+            ? pedido.enderecoDaRetirada
+            : undefined,
       });
       setShowSuccess(true);
 
@@ -6238,6 +6247,7 @@ export function CheckoutViewDaConta({
         valor={valorDoPedido}
         paymentMethod={resumoDoPedidoNaEntrega?.paymentMethod ?? null}
         ehRetirada={resumoDoPedidoNaEntrega?.ehRetirada ?? false}
+        enderecoDaRetirada={resumoDoPedidoNaEntrega?.enderecoDaRetirada}
         onNavigate={onNavigate}
       />
     );
@@ -7087,6 +7097,40 @@ export function CheckoutViewDaConta({
                             // campo mostra, os 8 primeiros. Mesmo corte do
                             // AddressForm.tsx.
                             const limpo = digitos.slice(0, 8);
+                            const cepAnterior = soDigitos(
+                              form.getValues("cep") ?? "",
+                            );
+                            const ultimoCepCompleto =
+                              cepAnterior.length === 8
+                                ? cepAnterior
+                                : cepEmBuscaRef.current ||
+                                  cepAssociadoRef.current;
+                            if (
+                              limpo.length === 8 &&
+                              ultimoCepCompleto !== limpo
+                            ) {
+                              camposEditadosAMaoRef.current.clear();
+                              if (ultimoCepCompleto?.length === 8) {
+                                // Limpa antes de publicar o CEP novo: preencher
+                                // um campo de B durante a busca não pode
+                                // transferir para B os outros campos de A.
+                                if (
+                                  cepAssociadoRef.current !== null &&
+                                  cepAssociadoRef.current !== limpo
+                                ) {
+                                  for (const campo of CAMPOS_DO_ENDERECO_DO_CEP) {
+                                    escreverCampoDoCep(campo, "");
+                                  }
+                                  cepAssociadoRef.current = null;
+                                }
+                                form.setValue("number", "", {
+                                  shouldValidate: true,
+                                });
+                                form.setValue("complement", "", {
+                                  shouldValidate: true,
+                                });
+                              }
+                            }
                             form.setValue("cep", formatado, {
                               shouldValidate: true,
                             });
@@ -7107,19 +7151,7 @@ export function CheckoutViewDaConta({
                             // de busca — ver o comentário equivalente em
                             // AddressForm.tsx.
                             if (limpo.length === 8) {
-                              // Mesmo CEP da última busca (ou dono dos campos
-                              // atuais): apagar e redigitar o último dígito
-                              // não pode fazer a rua que o cliente corrigiu
-                              // virar "da busca". CEP DIFERENTE: o que ele
-                              // digitou à mão valia para o CEP anterior (ou
-                              // antes deste) — a busca que sai agora volta a
-                              // poder preencher tudo.
-                              const mesmoCep =
-                                limpo === cepEmBuscaRef.current ||
-                                limpo === cepAssociadoRef.current;
                               cepEmBuscaRef.current = limpo;
-                              if (!mesmoCep)
-                                camposEditadosAMaoRef.current.clear();
                               await buscarCep(limpo);
                             }
                           }}
@@ -8235,6 +8267,11 @@ export function CheckoutViewDaConta({
                         )}
                       </button>
                     </div>
+                    {buscandoEnderecoDaEntrega && (
+                      <p role="status" className="text-center text-[11px]">
+                        Buscando o endereço do CEP…
+                      </p>
+                    )}
                     {/* Com destino, independe do estado do frete (22/10/2026):
                         antes sumia durante a cotação e aparecia depois — mais
                         um salto da barra. SEM destino continua escondida, como
@@ -8720,6 +8757,7 @@ interface SuccessViewProps {
   /** Forma escolhida na entrega/retirada (`cash` | `pix` | `card`). */
   paymentMethod: string | null;
   ehRetirada: boolean;
+  enderecoDaRetirada?: string;
   onNavigate: (view: View, productId?: string) => void;
 }
 
@@ -8730,6 +8768,7 @@ function SuccessView({
   valor,
   paymentMethod,
   ehRetirada,
+  enderecoDaRetirada,
   onNavigate,
 }: Readonly<SuccessViewProps>) {
   // Quem não tem conta acompanha o pedido por `AcompanharPedidoSemConta`
@@ -8786,6 +8825,11 @@ function SuccessView({
               ? "Recebemos o seu pedido. A loja vai separar os itens para você retirar."
               : "Recebemos o seu pedido. A loja vai cuidar da entrega."}
           </p>
+          {ehRetirada && enderecoDaRetirada && (
+            <p className="mt-2 break-words text-sm font-medium text-zinc-700">
+              Retire em: {enderecoDaRetirada}
+            </p>
+          )}
         </div>
         {appliedCoupon && (
           <div className="inline-flex items-center gap-2 rounded-lg border border-emerald-100/50 bg-emerald-50 px-4 py-2 text-[11px] font-black uppercase tracking-widest text-emerald-700">

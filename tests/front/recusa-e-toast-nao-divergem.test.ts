@@ -83,6 +83,17 @@ import { describe, expect, it, vi } from "vitest";
 
 const p0001 = (message: string) => ({ code: "P0001", message });
 
+it("explica que um item ou opção saiu de venda, sem inventar nome", () => {
+  const erro = p0001("Produto não encontrado não disponível.");
+  const mensagem =
+    "Um item ou uma opção do seu carrinho não está mais disponível. Confira seu carrinho.";
+  expect(classificarRecusaDoPedido(erro)).toEqual({
+    acao: "remover_item",
+    mensagem,
+  });
+  expect(mensagemAmigavelErroPedido(erro)).toBe(mensagem);
+});
+
 const TOAST_TENTAR_DE_NOVO =
   "Não foi possível criar seu pedido agora. Tente novamente em instantes.";
 const TOAST_CONFERIR_ANTES =

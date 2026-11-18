@@ -59,6 +59,8 @@ export interface CanalDoCrm {
   readonly receita: number;
   readonly pedidos: number;
   readonly ticketMedio: number;
+  /** Só quando calculado no front; a comparação percentual usa o valor bruto. */
+  readonly ticketMedioExibido?: number;
 }
 
 export interface FormaDePagamentoDoCrm {

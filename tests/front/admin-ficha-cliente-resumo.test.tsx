@@ -390,6 +390,24 @@ describe("AdminUserDetailView — os cartões do resumo no ar", () => {
     expect(valorDoCard("Valor médio por venda")).toBe("R$ 75,00");
   });
 
+  it.each([
+    { totais: [20.06, 20.07], esperado: "R$ 20,07" },
+    { totais: [10, 10, 10.01], esperado: "R$ 10,00" },
+    { totais: [12.34], esperado: "R$ 12,34" },
+    { totais: [10, 20], esperado: "R$ 15,00" },
+    { totais: [], esperado: "R$ 0,00" },
+  ])(
+    "valor médio por venda: $totais → $esperado",
+    async ({ totais, esperado }) => {
+      estado.orders = totais.map((total, i) =>
+        pedido({ id: `pago-${i}`, total, paymentStatus: "pago" }),
+      );
+      await abrirFicha();
+
+      expect(valorDoCard("Valor médio por venda")).toBe(esperado);
+    },
+  );
+
   it("Última Compra é a data do pedido que conta mais recente, não a do cancelado", async () => {
     await abrirFicha();
 

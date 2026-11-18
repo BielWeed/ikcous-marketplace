@@ -174,7 +174,7 @@ describe("AuthView — resposta atrasada respeita o fluxo e o e-mail enviado", (
     expect(toast.success).toHaveBeenCalledTimes(1);
   });
 
-  it("a confirmação da recuperação mostra A mesmo que o campo já tenha B", async () => {
+  it("a resposta da recuperação de A não troca a tela de quem já digitou B", async () => {
     const envio = pendente<{ success: boolean; message: string }>();
     resetPassword.mockReturnValue(envio.promessa);
     await enviarRecuperacao();
@@ -186,8 +186,13 @@ describe("AuthView — resposta atrasada respeita o fluxo e o e-mail enviado", (
       }),
     );
 
-    expect(host.textContent).toContain("Verifique seu e-mail");
-    expect(host.textContent).toContain("a@example.com");
-    expect(host.textContent).not.toContain("b@example.com");
+    expect(host.textContent).not.toContain("Verifique seu e-mail");
+    expect((document.getElementById("email") as HTMLInputElement).value).toBe(
+      "b@example.com",
+    );
+    expect(toast.success).toHaveBeenCalledTimes(1);
+    expect(toast.success).toHaveBeenCalledWith(
+      "Se a@example.com estiver cadastrado, enviamos um link de recuperação.",
+    );
   });
 });

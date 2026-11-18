@@ -22,7 +22,7 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { pararABuscaDeCep } from "./duble-busca-de-cep";
+import { concluirBuscaDeCepSemEndereco } from "./duble-busca-de-cep";
 
 import { chaveDoPedidoPendenteDoCheckout } from "@/lib/pedido-pendente-do-checkout";
 import {
@@ -259,7 +259,7 @@ describe("CheckoutView — F5 depois do pedido diz 'Seu pedido já foi feito'", 
         armazem.delete(chave);
       },
     });
-    pararABuscaDeCep();
+    concluirBuscaDeCepSemEndereco();
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);

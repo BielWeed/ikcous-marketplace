@@ -68,13 +68,14 @@ const ORIGENS = [
   ["Supabase local com porta", "http://127.0.0.1:54321"],
 ] as const;
 
-const ARQUIVOS: Array<[string, () => File]> = [
+const ARQUIVOS: Array<[string, () => File, boolean?]> = [
   [
     "IMG_1.JPG (câmera, extensão maiúscula)",
     () => new File(["x"], "IMG_1.JPG", { type: "image/jpeg" }),
   ],
   ["foto.jpeg", () => new File(["x"], "foto.jpeg", { type: "image/jpeg" })],
   ["recorte .webp (ImageAdjuster)", arquivoDoRecorte],
+  ["recorte .webp sem crypto.randomUUID", arquivoDoRecorte, true],
   [
     "nome com pontos e espaço (minha foto.v2.png)",
     () => new File(["x"], "minha foto.v2.png", { type: "image/png" }),
@@ -121,7 +122,7 @@ describe("descartarFotosDoProduto com a URL gerada de verdade pelo envio", () =>
   describe.each(ORIGENS)("%s", (_nome, origem) => {
     it.each(ARQUIVOS)(
       "%s: o objeto que o envio gravou é exatamente o que o descarte apaga (1 chamada)",
-      async (_arquivo, criarArquivo) => {
+      async (_arquivo, criarArquivo, semUuidNativo) => {
         vi.stubEnv("VITE_SUPABASE_URL", origem);
         moduloUseProducts = await import("@/hooks/useProducts");
         const { supabase } = await import("@/lib/supabase");
@@ -156,9 +157,18 @@ describe("descartarFotosDoProduto com a URL gerada de verdade pelo envio", () =>
 
         // O envio de verdade: nome gerado por `uploadProductImages`, URL
         // montada pelo `getPublicUrl` do storage-js.
+        if (semUuidNativo) {
+          const cryptoNativo = globalThis.crypto;
+          vi.stubGlobal("crypto", {
+            getRandomValues: cryptoNativo.getRandomValues.bind(cryptoNativo),
+          });
+        }
         const urls = await api.uploadProductImages([criarArquivo()]);
         expect(urls).toHaveLength(1);
         expect(gravados).toHaveLength(1);
+        expect(gravados[0]).toMatch(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\./,
+        );
         // Prova de que a URL é a que o storage-js montou: o caminho público
         // termina no nome que o envio gravou.
         expect(new URL(urls[0]).pathname).toBe(

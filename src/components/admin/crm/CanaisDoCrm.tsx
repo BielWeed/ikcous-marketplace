@@ -141,7 +141,7 @@ function BlocoDeCanal({
             <div className="flex flex-wrap justify-between gap-x-1">
               <dt className="text-admin-text-soft">Valor médio</dt>
               <dd className="text-admin-text font-bold tabular-nums">
-                {formatarMoeda(canal.ticketMedio)}
+                {formatarMoeda(canal.ticketMedioExibido ?? canal.ticketMedio)}
               </dd>
             </div>
           </dl>

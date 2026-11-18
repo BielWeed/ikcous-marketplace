@@ -1,6 +1,7 @@
 import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
+import { sessionStorageSeguro } from "@/lib/armazenamento-seguro";
 import type { OrigemDaEscolhaDoFrete } from "@/lib/auto-selecao-de-frete";
 import { criarCanalDeAbas } from "@/lib/canal-de-abas";
 import {
@@ -1846,9 +1847,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       });
       setSelectedShippingOption(null);
       setShippingCep(null);
-      const rascunho = lerRascunhoDoCheckout(globalThis.sessionStorage);
+      const sessao = sessionStorageSeguro();
+      const rascunho = lerRascunhoDoCheckout(sessao);
       if (rascunho) {
-        salvarRascunhoDoCheckout(globalThis.sessionStorage, {
+        salvarRascunhoDoCheckout(sessao, {
           ...rascunho,
           cupom: null,
           contaDoCupom: null,

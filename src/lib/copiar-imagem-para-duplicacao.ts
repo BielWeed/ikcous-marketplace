@@ -16,6 +16,7 @@
  * storage que usa estas funções mora em `useProducts.ts`:
  * `copiarImagemParaDuplicacao`.
  */
+import { gerarUuidV4 } from "./uuid-v4";
 
 /** Caminho do arquivo no bucket `products` atrás da URL — null se a URL
  * não tem arquivo nosso (placeholder, domínio externo, outro bucket). */
@@ -33,5 +34,5 @@ export function caminhoDaCopia(caminho: string): string {
   const fileParts = caminho.split(".");
   const ext = fileParts.pop();
   const baseName = fileParts.join(".");
-  return `${baseName}_copia_${crypto.randomUUID()}.${ext}`;
+  return `${baseName}_copia_${gerarUuidV4()}.${ext}`;
 }

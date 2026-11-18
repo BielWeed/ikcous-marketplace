@@ -1,9 +1,14 @@
+import {
+  paymentStatusConfig,
+  rotuloDoPagamento,
+} from "@/components/admin/orders/OrderStatusBadge";
 import { branding } from "@/config/branding";
 import { rotuloDaFormaDoPedido } from "@/lib/forma-de-pagamento";
 import { linhasDoEndereco } from "@/lib/linhas-do-endereco-do-pedido";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { observacaoDaClienteNoRecibo } from "@/lib/observacao-da-cliente-no-recibo";
 import { quemVaiReceberSeForOutro } from "@/lib/quem-vai-receber";
+import { situacaoDoPagamentoNaEntrega } from "@/lib/situacao-do-pagamento-na-entrega";
 import type { Order } from "@/types";
 import { memo } from "react";
 import { createPortal } from "react-dom";
@@ -58,6 +63,23 @@ export const OrderReceipt = memo(function OrderReceipt({
   variacoes,
 }: OrderReceiptProps) {
   const storeName = storeNameProp ?? branding.appName;
+  const { situacao, valor } = situacaoDoPagamentoNaEntrega(order);
+  const situacaoNoPapel =
+    situacao === "estornado"
+      ? "Estornado"
+      : order.status === "cancelled"
+        ? "Cancelado · nada a receber"
+        : situacao === "sem_valor"
+          ? "Sem valor a cobrar"
+          : situacao === "pago"
+            ? "Pago"
+            : situacao === "cobrar"
+              ? `Cobrar na ${order.canal === "presencial" ? "loja" : order.retiradaNaLoja ? "retirada" : "entrega"}: R$ ${valor} (${rotuloDaFormaDoPedido(order)})`
+              : order.paymentMethod === "online" &&
+                  rotuloDoPagamento(order.paymentStatus, order.status) ===
+                    paymentStatusConfig.recusado.label
+                ? "Pagamento recusado"
+                : "Pagamento pendente";
   // Venda de balcão: não tem frete, e o papel diz como a cliente pagou.
   const presencial = order.canal === "presencial";
   const observacao = observacaoDaClienteNoRecibo(order.notes);
@@ -194,11 +216,10 @@ export const OrderReceipt = memo(function OrderReceipt({
             <span>TOTAL</span>
             <span>R$ {reais(order?.total || 0)}</span>
           </div>
-          {presencial && (
-            <p className="mt-2 text-xs">
-              Pagamento: {rotuloDaFormaDoPedido(order)}
-            </p>
-          )}
+          <p className="mt-2 text-xs">
+            Pagamento: {rotuloDaFormaDoPedido(order)}
+          </p>
+          <p className="text-xs">{situacaoNoPapel}</p>
         </div>
 
         <div className="mt-8 border-t border-dashed border-black pt-4 text-center">

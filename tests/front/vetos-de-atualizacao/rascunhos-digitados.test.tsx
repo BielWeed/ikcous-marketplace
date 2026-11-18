@@ -35,6 +35,9 @@ vi.mock("@/lib/supabase", () => ({
       update: () => ({ eq: vi.fn() }),
       select: () => ({
         eq: () => ({
+          abortSignal() {
+            return this;
+          },
           maybeSingle: () => Promise.resolve({ data: null, error: null }),
         }),
       }),

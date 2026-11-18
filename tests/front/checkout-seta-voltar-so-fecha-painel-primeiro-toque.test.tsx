@@ -530,19 +530,26 @@ describe("checkout: a seta Voltar com o painel de resumo aberto só fecha o pain
     expect(estadoDoPainel()).toBe("fechado");
   });
 
-  it("sem nenhuma entrada extra órfã: depois do 1º toque (fecha) e do 2º (sai), não sobra um 3º toque que não faz nada visível", async () => {
+  it("1º toque fecha o painel e consome sua entrada no histórico; 2º toque volta ao início", async () => {
     await abrir();
+    expect(globalThis.history.state).toBeNull();
     await clicar("abrir-painel");
-    await clicar("seta-voltar"); // fecha o painel
-    await esperarAte(() => estadoDoPainel() === "fechado");
-    await clicar("seta-voltar"); // sai do checkout
-    await esperarAte(() => naTelaDeCheckout() === false);
-    expect(naTelaDeCheckout()).toBe(false);
+    expect(estadoDoPainel()).toBe("aberto");
+    expect(globalThis.history.state).toEqual({ modal: "checkout-summary" });
 
-    // Um "voltar" a mais não pode ficar preso batendo numa entrada morta —
-    // isto não afirma PARA ONDE foi, só que o app continua respondendo
-    // (não trava numa tela em branco).
-    expect(container?.querySelector("body")).toBeDefined();
+    await clicar("seta-voltar");
+    await esperarAte(() => estadoDoPainel() === "fechado");
+    expect(naTelaDeCheckout()).toBe(true);
+    expect(globalThis.location.pathname).toBe("/checkout");
+    // Fechar só o painel visualmente deixaria a entrada dele no histórico.
+    expect(globalThis.history.state).toBeNull();
+
+    await clicar("seta-voltar");
+    await esperarAte(() =>
+      Boolean(container?.querySelector('[data-testid="home"]')),
+    );
+    expect(naTelaDeCheckout()).toBe(false);
+    expect(globalThis.location.pathname).toBe("/");
   });
 
   it("🔴 achado da revisão (Opus): override de sucesso/aguardando pagamento SEM entrada empilhada — a seta navega para home, NUNCA chama history.back()", async () => {

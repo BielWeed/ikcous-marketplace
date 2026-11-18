@@ -259,8 +259,10 @@ afterEach(() => {
 describe("CheckoutView — a validação do toque em 'Aplicar' (tarefa 18)", () => {
   async function prepararFinalizacao() {
     createOrder.mockClear();
-    const { pararABuscaDeCep } = await import("./duble-busca-de-cep");
-    pararABuscaDeCep();
+    const { concluirBuscaDeCepSemEndereco } = await import(
+      "./duble-busca-de-cep"
+    );
+    concluirBuscaDeCepSemEndereco();
     await renderizar();
     const pix = [...hospedeiro.querySelectorAll("button")].find((b) =>
       b.textContent?.includes("Pix na Entrega"),

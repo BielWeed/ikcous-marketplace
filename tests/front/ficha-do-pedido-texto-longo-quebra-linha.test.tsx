@@ -22,6 +22,9 @@ vi.mock("@/lib/supabase", () => ({
     from: vi.fn((tabela: string) => ({
       select: vi.fn(() => ({
         eq: vi.fn(() => ({
+          abortSignal() {
+            return this;
+          },
           maybeSingle: vi.fn(() =>
             Promise.resolve({
               data:

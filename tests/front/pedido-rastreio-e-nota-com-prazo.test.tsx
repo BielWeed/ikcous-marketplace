@@ -38,6 +38,7 @@ const { atualizar, salvar, ler, gravarNota, banco, comLinhaGravada } =
 // A anotação só é gravada se o carimbo (`updated_at`) lido ao abrir o editor
 // ainda for o do banco; aqui o carimbo é derivado do texto (`v-<texto>`).
 const carimboDe = (nota: string) => `v-${nota}`;
+const sinaisDaLeitura: AbortSignal[] = [];
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
@@ -74,15 +75,24 @@ vi.mock("@/lib/supabase", () => ({
       };
       return {
         select: (colunas: string) => ({
-          eq: (coluna: string, id: string) => ({
-            maybeSingle: () =>
-              tabela === "config_mototaxi"
-                ? Promise.resolve({
-                    data: { whatsapp: null, nome: null },
-                    error: null,
-                  })
-                : ler(tabela, colunas, coluna, id),
-          }),
+          eq: (coluna: string, id: string) => {
+            const consulta = {
+              maybeSingle: () =>
+                tabela === "config_mototaxi"
+                  ? Promise.resolve({
+                      data: { whatsapp: null, nome: null },
+                      error: null,
+                    })
+                  : ler(tabela, colunas, coluna, id),
+            };
+            return {
+              ...consulta,
+              abortSignal: (sinal: AbortSignal) => {
+                sinaisDaLeitura.push(sinal);
+                return consulta;
+              },
+            };
+          },
         }),
         insert: (valores: { order_id: string; note: string }) => ({
           select: () => {
@@ -194,6 +204,7 @@ describe("ficha do pedido — rastreio e anotação: a espera da tela tem prazo"
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
+    sinaisDaLeitura.length = 0;
     salvar.mockReset().mockResolvedValue({ error: null });
     banco.clear();
     banco.set("A", "Interna de A");
@@ -230,13 +241,16 @@ describe("ficha do pedido — rastreio e anotação: a espera da tela tem prazo"
     });
     act(() => raiz.unmount());
     hospedeiro.remove();
+    vi.restoreAllMocks();
     vi.useRealTimers();
   });
 
-  async function mostrar(order: Order) {
+  async function mostrar(order: Order | null) {
     await act(async () => {
       raiz.render(
-        <OrderDetail order={order} onStatusChange={onStatusChange} />,
+        order ? (
+          <OrderDetail order={order} onStatusChange={onStatusChange} />
+        ) : null,
       );
     });
   }
@@ -249,10 +263,13 @@ describe("ficha do pedido — rastreio e anotação: a espera da tela tem prazo"
     return elemento;
   }
 
-  function clicar(texto: string) {
-    const botao = [...hospedeiro.querySelectorAll("button")].find(
+  const localizarBotao = (texto: string) =>
+    [...hospedeiro.querySelectorAll("button")].find(
       (b) => b.textContent === texto || b.getAttribute("title") === texto,
     );
+
+  function clicar(texto: string) {
+    const botao = localizarBotao(texto);
     if (!botao) throw new Error(`Botão ausente: ${texto}`);
     act(() => botao.click());
   }
@@ -281,6 +298,200 @@ describe("ficha do pedido — rastreio e anotação: a espera da tela tem prazo"
   async function editarNotas() {
     await act(async () => clicar("Editar notas"));
   }
+
+  const prazoParaCarregarNota = 20_000;
+  const avisoDeDemora = "A anotação demorou para carregar.";
+  const tentarNotaDeNovo = () => localizarBotao("Tentar de novo");
+  const esperarLeituraDaNota = () => {
+    let concluir!: (nota: string) => void;
+    ler.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          concluir = (note) =>
+            resolve({
+              data: { note, updated_at: carimboDe(note) },
+              error: null,
+            });
+        }),
+    );
+    return (nota: string) => concluir(nota);
+  };
+
+  it("leitura da anotação pendurada oferece tentar de novo ao vencer o prazo", async () => {
+    esperarLeituraDaNota();
+    await mostrar(pedido("A"));
+    await avancar(prazoParaCarregarNota - 1);
+    expect(hospedeiro.textContent).toContain("Carregando anotação interna…");
+    expect(tentarNotaDeNovo()).toBeUndefined();
+
+    await avancar(1);
+
+    expect(hospedeiro.textContent).toContain(avisoDeDemora);
+    expect(tentarNotaDeNovo()?.disabled).toBe(false);
+    expect(hospedeiro.textContent).not.toContain(
+      "Carregando anotação interna…",
+    );
+  });
+
+  it("tentar de novo cancela a leitura anterior antes de reler a anotação", async () => {
+    esperarLeituraDaNota();
+    await mostrar(pedido("A"));
+    await avancar(prazoParaCarregarNota);
+
+    await act(async () => clicar("Tentar de novo"));
+
+    expect(ler).toHaveBeenCalledTimes(2);
+    expect(sinaisDaLeitura.map((sinal) => sinal.aborted)).toEqual([
+      true,
+      false,
+    ]);
+    expect(hospedeiro.textContent).toContain("Interna de A");
+    expect(hospedeiro.textContent).not.toContain(avisoDeDemora);
+    expect(tentarNotaDeNovo()).toBeUndefined();
+  });
+
+  function contarOuvintesDaFilaDeNotas() {
+    const adicionar = vi.spyOn(EventTarget.prototype, "addEventListener");
+    const remover = vi.spyOn(EventTarget.prototype, "removeEventListener");
+    const totalDaFila = (chamadas: typeof adicionar.mock.calls) =>
+      chamadas.filter(([evento]) => evento === "fim-da-fila-de-notas").length;
+    return () =>
+      totalDaFila(adicionar.mock.calls) - totalDaFila(remover.mock.calls);
+  }
+
+  it("três novas tentativas não acumulam ouvintes nem leem antes da gravação", async () => {
+    const ouvintes = contarOuvintesDaFilaDeNotas();
+    const envio = envioPendente();
+    salvar.mockImplementationOnce(() => envio.resposta);
+    await mostrar(pedido("A"));
+    await editarNotas();
+    digitar("#notes-textarea", "Enviada antes de reabrir");
+    await act(async () => clicar("Salvar"));
+    await mostrar(pedido("B"));
+    await mostrar(pedido("A"));
+    ler.mockClear();
+
+    await avancar(prazoParaCarregarNota);
+
+    expect(hospedeiro.textContent).toContain(avisoDeDemora);
+    expect(tentarNotaDeNovo()?.disabled).toBe(false);
+    expect(ler).not.toHaveBeenCalled();
+    expect(localizarBotao("Editar notas")).toBeUndefined();
+    expect(hospedeiro.textContent).not.toContain("Adicionar anotação");
+    expect(hospedeiro.querySelector("#notes-textarea")).toBeNull();
+
+    // Nem repetir a leitura permite passar na frente da gravação pendente.
+    const ouvintesPorTentativa = [ouvintes()];
+    for (let tentativa = 0; tentativa < 3; tentativa++) {
+      await act(async () => clicar("Tentar de novo"));
+      ouvintesPorTentativa.push(ouvintes());
+      expect(ler).not.toHaveBeenCalled();
+      expect(localizarBotao("Editar notas")).toBeUndefined();
+      await avancar(prazoParaCarregarNota);
+    }
+    expect(ouvintesPorTentativa).toEqual([1, 1, 1, 1]);
+
+    const concluirLeitura = esperarLeituraDaNota();
+    await act(async () => envio.concluir({ error: null }));
+    expect(localizarBotao("Editar notas")).toBeUndefined();
+    expect(hospedeiro.textContent).not.toContain("Adicionar anotação");
+    expect(ler).toHaveBeenCalledTimes(1);
+
+    await act(async () => concluirLeitura("Enviada antes de reabrir"));
+    expect(hospedeiro.textContent).toContain("Enviada antes de reabrir");
+    expect(localizarBotao("Editar notas")?.disabled).toBe(false);
+  });
+
+  it.each(["fechar", "trocar de pedido"])(
+    "%s solta o ouvinte sem cancelar a gravação",
+    async (acao) => {
+      const ouvintes = contarOuvintesDaFilaDeNotas();
+      const envio = envioPendente();
+      salvar.mockImplementationOnce(() => envio.resposta);
+      await mostrar(pedido("A"));
+      await editarNotas();
+      digitar("#notes-textarea", "Gravação que continua");
+      await act(async () => clicar("Salvar"));
+      await mostrar(null);
+      await mostrar(pedido("A"));
+      const antesDeSair = ouvintes();
+      ler.mockClear();
+
+      await mostrar(acao === "fechar" ? null : pedido("B"));
+
+      expect([antesDeSair, ouvintes()]).toEqual([1, 0]);
+      await act(async () => envio.concluir({ error: null }));
+      expect(banco.get("A")).toBe("Gravação que continua");
+      expect(ler.mock.calls.some(([, , , id]) => id === "A")).toBe(false);
+      expect(hospedeiro.textContent).not.toContain("Gravação que continua");
+    },
+  );
+
+  it.each(["fechar", "trocar de pedido"])(
+    "%s cancela a leitura em voo e descarta a resposta do pedido antigo",
+    async (acao) => {
+      const concluirA = esperarLeituraDaNota();
+      await mostrar(pedido("A"));
+      banco.set("B", "Interna de B");
+
+      await mostrar(acao === "fechar" ? null : pedido("B"));
+      await act(async () => concluirA("Resposta atrasada de A"));
+
+      expect(sinaisDaLeitura[0]?.aborted).toBe(true);
+      expect(hospedeiro.textContent).not.toContain("Resposta atrasada de A");
+      if (acao !== "fechar") {
+        expect(hospedeiro.textContent).toContain("Interna de B");
+      }
+    },
+  );
+
+  it("fila e leitura da anotação compartilham um único prazo", async () => {
+    const envio = envioPendente();
+    salvar.mockImplementationOnce(() => envio.resposta);
+    await mostrar(pedido("A"));
+    await editarNotas();
+    digitar("#notes-textarea", "Enviada antes de reabrir");
+    await act(async () => clicar("Salvar"));
+    await mostrar(pedido("B"));
+    await mostrar(pedido("A"));
+
+    await avancar(prazoParaCarregarNota - 1);
+    const concluirLeitura = esperarLeituraDaNota();
+    await act(async () => envio.concluir({ error: null }));
+    expect(hospedeiro.textContent).toContain("Carregando anotação interna…");
+
+    await avancar(1);
+
+    expect(hospedeiro.textContent).toContain(avisoDeDemora);
+    await act(async () => concluirLeitura("Enviada antes de reabrir"));
+  });
+
+  it("leitura da anotação que responde depois do prazo tira o aviso sem novo clique", async () => {
+    const concluir = esperarLeituraDaNota();
+    await mostrar(pedido("A"));
+    await avancar(prazoParaCarregarNota);
+    expect(hospedeiro.textContent).toContain(avisoDeDemora);
+
+    await act(async () => concluir("Anotação que chegou depois"));
+
+    expect(hospedeiro.textContent).toContain("Anotação que chegou depois");
+    expect(hospedeiro.textContent).not.toContain(avisoDeDemora);
+    expect(tentarNotaDeNovo()).toBeUndefined();
+  });
+
+  it("resposta da leitura substituída não apaga o que a lojista digitou após tentar de novo", async () => {
+    const concluirLeituraAnterior = esperarLeituraDaNota();
+    await mostrar(pedido("A"));
+    await avancar(prazoParaCarregarNota);
+    await act(async () => clicar("Tentar de novo"));
+    await editarNotas();
+    digitar("#notes-textarea", "Meu rascunho");
+
+    await act(async () => concluirLeituraAnterior("Anotação antiga"));
+
+    expect(campo("#notes-textarea").value).toBe("Meu rascunho");
+    expect(haOperacaoSensivel()).toBe(true);
+  });
 
   const chamadasDeRastreio = () =>
     salvar.mock.calls.filter(([tipo]) => tipo === "rastreio");

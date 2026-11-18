@@ -106,6 +106,7 @@ describe("AuthView — botão de reenvio de confirmação no erro de login (issu
       raiz.unmount();
     });
     hospedeiro.remove();
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -206,6 +207,7 @@ describe("AuthView — botão de reenvio de confirmação no erro de login (issu
   });
 
   it("clicar no botão chama resendConfirmationEmail com o e-mail digitado no login e mostra estado de carregando enquanto está pendente", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
     login.mockResolvedValue({
       success: false,
       // O Supabase Auth devolve status 400 tanto para credenciais inválidas
@@ -247,8 +249,11 @@ describe("AuthView — botão de reenvio de confirmação no erro de login (issu
       await esperarMicrotarefas();
     });
 
-    // Depois de resolver, o botão volta a ficar disponível (não fica preso
-    // em carregando para sempre).
+    // Sucesso sai do carregamento, mas inicia a mesma espera da confirmação.
+    expect(botaoReenviar.textContent).toBe("Reenviar em 30s");
+    expect(botaoReenviar.disabled).toBe(true);
+    await act(async () => vi.advanceTimersByTime(30_000));
+    expect(botaoReenviar.textContent).toBe("Reenviar link de confirmação");
     expect(botaoReenviar.disabled).toBe(false);
   });
 

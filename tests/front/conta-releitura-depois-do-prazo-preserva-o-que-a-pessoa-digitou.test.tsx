@@ -164,6 +164,99 @@ describe("Conta: a releitura depois do prazo não apaga o que a pessoa digitou d
     expect(digitos(campo("cpf").value)).toBe("52998224725");
   });
 
+  it.each([false, true])(
+    "preserva o CPF editado antes de Salvar quando o perfil estoura o prazo (resposta tardia: %s)",
+    async (respostaTardia) => {
+      await montar();
+      digitar("full_name", "Nome do clique");
+      digitar("cpf", "52998224725");
+      await salvar();
+
+      const antes = leiturasDoPerfil();
+      await passar(20001);
+      expect(leiturasDoPerfil()).toBeGreaterThan(antes);
+      if (respostaTardia) {
+        const antesDaResposta = leiturasDoPerfil();
+        nomeNoBanco = "Nome do clique";
+        await act(async () => concluirEnvio({ error: null }));
+        expect(leiturasDoPerfil()).toBeGreaterThan(antesDaResposta);
+        expect(campo("full_name").value).toBe("Nome do clique");
+      }
+
+      expect(campo("cpf").disabled).toBe(false);
+      expect(digitos(campo("cpf").value)).toBe("52998224725");
+      expect(rpc.mock.calls.some(([nome]) => nome === "set_my_cpf")).toBe(
+        false,
+      );
+      expect(haOperacaoSensivel()).toBe(true);
+    },
+  );
+
+  it.each(["Conferir dados de novo", "Tentar de novo"])(
+    "preserva o CPF não gravado ao clicar em %s",
+    async (rotulo) => {
+      await montar();
+      digitar("cpf", "52998224725");
+      await salvar();
+      if (rotulo === "Tentar de novo") {
+        rpc.mockResolvedValueOnce({ data: null, error: null });
+      }
+
+      await passar(20001);
+      expect(campo("cpf").value).toBe("529.982.247-25");
+      expect(campo("cpf").disabled).toBe(rotulo === "Tentar de novo");
+      const antes = leiturasDoPerfil();
+      await act(async () => botao(rotulo).click());
+
+      expect(leiturasDoPerfil()).toBeGreaterThan(antes);
+      expect(campo("cpf").disabled).toBe(false);
+      expect(campo("cpf").value).toBe("529.982.247-25");
+      expect(rpc.mock.calls.some(([nome]) => nome === "set_my_cpf")).toBe(
+        false,
+      );
+    },
+  );
+
+  it("voltar ao CPF original deixa a outra aba trocar o CPF sem que salvar o nome o desfaça", async () => {
+    const original = "52998224725";
+    const cpfDaOutraAba = "12345678909";
+    let cpfNoBanco = original;
+    const normal = rpc.getMockImplementation()!;
+    rpc.mockImplementation((nome: string, args?: { p_cpf: string }) => {
+      if (nome === "get_my_cpf") {
+        return Promise.resolve({ data: cpfNoBanco, error: null });
+      }
+      if (nome === "set_my_cpf") {
+        cpfNoBanco = args!.p_cpf;
+        return Promise.resolve({ error: null });
+      }
+      return normal(nome);
+    });
+
+    await montar();
+    // Uma gravação lenta abre o botão de conferir, sem mexer no CPF.
+    digitar("full_name", "Primeiro nome");
+    await salvar();
+    await passar(20001);
+    await act(async () => concluirEnvio({ error: null }));
+
+    digitar("cpf", "11144477735");
+    digitar("cpf", original);
+    cpfNoBanco = cpfDaOutraAba;
+    await act(async () => botao("Conferir dados de novo").click());
+
+    digitar("full_name", "Somente o nome mudou");
+    await salvar();
+
+    expect(rpc).toHaveBeenCalledWith("update_my_profile_secure", {
+      p_full_name: "Somente o nome mudou",
+      p_whatsapp: null,
+    });
+    expect(cpfNoBanco).toBe(cpfDaOutraAba);
+    expect(rpc.mock.calls.some(([nome]) => nome === "set_my_cpf")).toBe(false);
+    expect(digitos(campo("cpf").value)).toBe(cpfDaOutraAba);
+  });
+
   it("o que a pessoa NÃO mexeu depois do clique recebe o valor real do banco", async () => {
     await montar();
     digitar("full_name", "Nome do clique");

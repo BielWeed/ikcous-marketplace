@@ -1760,6 +1760,7 @@ export function PagamentoComCartao({
           // estar vivo: nada de PIX nem de outro cartão aqui.
           <PainelDoCartao
             tom="alerta"
+            focarNoTitulo
             titulo="Sua sessão expirou. Entre de novo para ver a confirmação deste pagamento."
             detalhe="Não pague de novo enquanto isso."
           >
@@ -1779,13 +1780,15 @@ export function PagamentoComCartao({
         {etapa.tipo === "aprovado" && !semSessaoComCartaoVivo && (
           <PainelDoCartao
             tom="sucesso"
+            focarNoTitulo
             titulo="Pagamento aprovado! Confirmando seu pedido…"
             // Quem grava o pedido como pago é o webhook/reconciliação —
             // pode levar alguns minutos. Nunca oferece pagar de novo.
             detalhe={
-              avisoDoAprovado
-                ? "O banco aprovou o pagamento; a loja ainda está registrando o pedido como pago, e isso pode levar alguns minutos. Não pague de novo — o pedido aparece como pago em Meus pedidos assim que for registrado."
-                : undefined
+              <span aria-live="polite">
+                {avisoDoAprovado &&
+                  "O banco aprovou o pagamento; a loja ainda está registrando o pedido como pago, e isso pode levar alguns minutos. Não pague de novo — o pedido aparece como pago em Meus pedidos assim que for registrado."}
+              </span>
             }
           >
             {avisoDoAprovado && onVerMeusPedidos && (
@@ -1811,11 +1814,13 @@ export function PagamentoComCartao({
           // arquivo): o servidor recusa PIX enquanto o cartão está em análise.
           <PainelDoCartao
             tom="alerta"
+            focarNoTitulo
             titulo={TEXTOS_DO_CARTAO.emAnalise}
             detalhe={
-              paradaAqui
-                ? "O banco ainda não deu a resposta final. Não pague de novo com cartão — se ele aprovar, a confirmação aparece aqui e em Meus pedidos."
-                : undefined
+              <span aria-live="polite">
+                {paradaAqui &&
+                  "O banco ainda não deu a resposta final. Não pague de novo com cartão — se ele aprovar, a confirmação aparece aqui e em Meus pedidos."}
+              </span>
             }
           >
             {paradaAqui && podeVerificarDeNovo && (
@@ -1834,18 +1839,25 @@ export function PagamentoComCartao({
         {etapa.tipo === "confirmando-desafio" && !semSessaoComCartaoVivo && (
           <PainelDoCartao
             tom="info"
+            focarNoTitulo
             carregando={!paradaAqui}
             titulo={
-              paradaAqui
-                ? // A cadência terminou sem resposta final: a tela PARA de
-                  // girar e diz o que sabe. O cartão continua tratado como vivo.
-                  "O banco ainda não confirmou este pagamento."
-                : "Confirmando com o banco…"
+              // O painel mantém o foco (inclusive nos botões) ao parar a
+              // consulta. A região anuncia o novo título sem mover o foco.
+              <span aria-live="polite">
+                {paradaAqui
+                  ? "O banco ainda não confirmou este pagamento."
+                  : "Confirmando com o banco…"}
+              </span>
             }
             detalhe={
-              paradaAqui
-                ? 'Não pague de novo com cartão. Se o banco aprovar, a confirmação aparece aqui e em Meus pedidos. Se tocar em "Pagar com PIX", este pagamento é conferido com o banco antes: o PIX só é gerado se o banco confirmar que o pagamento com cartão foi cancelado.'
-                : "A confirmação aparece nesta tela. Se o banco não aprovar, você pode pagar com PIX."
+              // Anuncia a instrução de "não pagar de novo" quando a consulta
+              // para, sem mover o foco (mesmo padrão do título acima).
+              <span aria-live="polite">
+                {paradaAqui
+                  ? 'Não pague de novo com cartão. Se o banco aprovar, a confirmação aparece aqui e em Meus pedidos. Se tocar em "Pagar com PIX", este pagamento é conferido com o banco antes: o PIX só é gerado se o banco confirmar que o pagamento com cartão foi cancelado.'
+                  : "A confirmação aparece nesta tela. Se o banco não aprovar, você pode pagar com PIX."}
+              </span>
             }
           >
             {paradaAqui && podeVerificarDeNovo && (
@@ -1883,6 +1895,7 @@ export function PagamentoComCartao({
             tom="info"
             titulo={TEXTOS_DO_CARTAO.confirmacaoDoBanco}
             detalhe="Siga as instruções abaixo para concluir o pagamento."
+            focarNoTitulo
           />
           {/* credentialless: mantido depois que o COEP saiu do app (26/09/2026,
               decisão do dono — travava o Card Payment Brick), mas NÃO provado

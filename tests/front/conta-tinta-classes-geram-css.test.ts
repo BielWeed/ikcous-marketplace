@@ -123,6 +123,17 @@ describe("Conta (Tinta): toda classe vira regra no Tailwind do projeto", () => {
     expect(CLASSES.filter((c) => !g.has(c))).toEqual([]);
   }, 60_000);
 
+  it("gera as regras dos fundos temáticos e do X do modal de foto", async () => {
+    const classes = [
+      "bg-card",
+      "dark:bg-card/90",
+      "dark:[&>button[data-slot=dialog-close]]:text-foreground",
+      "dark:[&>button[data-slot=dialog-close]]:opacity-100",
+    ];
+    const css = await geradas(classes);
+    expect(classes.filter((classe) => !css.has(classe))).toEqual([]);
+  }, 60_000);
+
   it("as classes de cor da tinta usam variáveis do tema (nunca a cor da marca)", () => {
     const fonte = readFileSync(
       "src/views/customer/AccountSettingsView.tsx",

@@ -129,7 +129,7 @@ describe("AddressForm — trocar o CEP com a busca fora do ar não salva endere�
   const botaoSalvar = () =>
     document.querySelector('button[type="submit"]') as HTMLButtonElement;
 
-  it("CEP B também sem busca: o endereço do CEP A sai da tela, número e complemento ficam, e salvar pede o endereço de novo", async () => {
+  it("CEP B também sem busca: os dados do imóvel A saem da tela e salvar pede o endereço de novo", async () => {
     await preencherAMaoNoCepA();
 
     // A cliente troca para o CEP B; a busca também não acha.
@@ -143,9 +143,10 @@ describe("AddressForm — trocar o CEP com a busca fora do ar não salva endere�
     expect(valor("neighborhood")).toBe("");
     expect(valor("city")).toBe("");
     expect(valor("state")).toBe("");
-    // Número e complemento não pertencem ao CEP: ficam.
-    expect(valor("number")).toBe("77");
-    expect(valor("complement")).toBe("Fundos");
+    // Sem confirmação do imóvel no CEP B, nem número nem complemento
+    // podem sobreviver da entrega para o CEP A.
+    expect(valor("number")).toBe("");
+    expect(valor("complement")).toBe("");
 
     await act(async () => {
       botaoSalvar().click();
@@ -184,6 +185,7 @@ describe("AddressForm — trocar o CEP com a busca fora do ar não salva endere�
       city: "Cidade A",
       state: "MG",
       number: "77",
+      complement: "Fundos",
     });
   });
 });

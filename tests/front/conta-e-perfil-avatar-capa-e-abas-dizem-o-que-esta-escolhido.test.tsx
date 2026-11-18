@@ -182,6 +182,27 @@ describe.each(telas)(
       }
     });
 
+    if (tela.nome === "Ajustes da conta") {
+      it("o X aberto é o filho direto atingido pelas classes de contraste", async () => {
+        await abrir(tela.abrirFoto);
+        const modal = document.querySelector(
+          '[role="dialog"][data-state="open"]',
+        );
+        const fechar = modal?.querySelector(
+          ':scope > button[data-slot="dialog-close"]',
+        );
+        expect(fechar?.getAttribute("aria-label")).toBe("Fechar");
+        expect(modal?.classList.contains("bg-white")).toBe(true);
+        expect(modal?.classList.contains("dark:bg-card")).toBe(true);
+        expect(modal?.classList.contains("bg-background")).toBe(false);
+        for (const classe of ["text-foreground", "opacity-100"]) {
+          const seletor = `[&>button[data-slot=dialog-close]]:${classe}`;
+          expect(modal?.classList.contains(seletor)).toBe(false);
+          expect(modal?.classList.contains(`dark:${seletor}`)).toBe(true);
+        }
+      });
+    }
+
     it("avatar: sem escolha nenhuma, nenhum diz aria-pressed=true", async () => {
       estado.profile = {
         full_name: "Cliente",

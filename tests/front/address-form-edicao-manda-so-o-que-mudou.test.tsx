@@ -184,23 +184,44 @@ describe("AddressForm — edição manda só o que a pessoa mudou", () => {
     expect(alterados()).toEqual({ complement: "Apto 3" });
   });
 
-  it("trocar o CEP manda o bloco derivado inteiro (CEP, rua, bairro, cidade e UF), sem o número", async () => {
+  it("outro CEP exige confirmar o número e grava o complemento vazio mesmo se a base já estava vazia", async () => {
     viaCepResponde({
       logradouro: "Rua Nova",
       bairro: "Bairro Novo",
       localidade: "Uberlândia",
       uf: "MG",
     });
-    await abrir(casa());
+    await abrir(casa({ complement: "" }));
+    await act(async () => {
+      digitar("complement", "Fundos");
+      digitar("cep", "3850000");
+    });
     await act(async () => {
       digitar("cep", "38400000");
     });
     await esvaziar();
-    await salvar();
 
+    expect((document.getElementById("number") as HTMLInputElement).value).toBe(
+      "",
+    );
+    expect(
+      (document.getElementById("complement") as HTMLInputElement).value,
+    ).toBe("");
+    await salvar();
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    // Pode ser o mesmo número, mas foi preenchido de novo para este CEP. A
+    // edição precisa gravar os dados do novo imóvel junto com o CEP, para não
+    // deixar no banco dados do imóvel antigo mudados em outro aparelho.
+    await act(async () => {
+      digitar("number", "10");
+    });
+    await salvar();
     expect(alterados()).toEqual({
       cep: "38400-000",
       street: "Rua Nova",
+      number: "10",
+      complement: "",
       neighborhood: "Bairro Novo",
       city: "Uberlândia",
       state: "MG",

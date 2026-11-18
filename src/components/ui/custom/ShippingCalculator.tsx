@@ -468,6 +468,25 @@ export function ShippingCalculator({
   // A lista some ao escolher (o botão focado some junto): o foco vai para o
   // "Trocar" que reaparece — só quando a escolha veio da lista aberta.
   const focarTrocarRef = useRef(false);
+  const listaDeOpcoesRef = useRef<HTMLDivElement>(null);
+
+  // "Trocar" também some ao abrir: leva o foco à escolha atual (ou à
+  // primeira disponível) depois que a lista montar, nunca na carga inicial.
+  useEffect(() => {
+    if (!detalhesAbertosNoResumo) return;
+    const quadro = requestAnimationFrame(() => {
+      const lista = listaDeOpcoesRef.current;
+      const opcao =
+        lista?.querySelector<HTMLButtonElement>(
+          'button[aria-pressed="true"]:not(:disabled)',
+        ) ??
+        lista?.querySelector<HTMLButtonElement>(
+          "button[aria-pressed]:not(:disabled)",
+        );
+      opcao?.focus();
+    });
+    return () => cancelAnimationFrame(quadro);
+  }, [detalhesAbertosNoResumo]);
 
   // Lacre de sequência: cada `calculateShipping` tira um número; só quem tem
   // o número MAIS RECENTE pode escrever o resultado na tela. Sem isso, duas
@@ -1075,15 +1094,15 @@ export function ShippingCalculator({
     const comCorDaMarca = isSelected && !neutro;
     const tamanhoApoio = neutro ? "text-[11px]" : "text-[9px]";
     const corApoio = comCorDaMarca
-      ? "text-primary-foreground/80"
+      ? "text-primary-foreground"
       : "text-zinc-500";
     const corFraca = comCorDaMarca
-      ? "text-primary-foreground/70"
+      ? "text-primary-foreground"
       : neutro
         ? "text-zinc-600"
         : "text-zinc-400";
     const corDoAviso = comCorDaMarca
-      ? "text-primary-foreground/70"
+      ? "text-primary-foreground"
       : "text-zinc-600";
     const verdeDoPreco = neutro ? "text-emerald-700" : "text-emerald-500";
     // RETIRADA NA LOJA (release 1.5.3): sem prazo de entrega (não
@@ -1311,7 +1330,7 @@ export function ShippingCalculator({
                   neutro ? "text-[11px]" : "text-[8px]"
                 } ${
                   comCorDaMarca
-                    ? "text-primary-foreground/80"
+                    ? "text-primary-foreground"
                     : neutro
                       ? "text-emerald-700"
                       : "text-emerald-600"
@@ -1404,11 +1423,14 @@ export function ShippingCalculator({
               )}
             </span>
           )}
+          {retirada && option.pickupAddress && (
+            <span className="mt-0.5 block text-[11px] leading-snug text-zinc-600">
+              Retire em: {option.pickupAddress}
+            </span>
+          )}
           <span className="mt-0.5 block text-[11px] leading-snug text-zinc-600">
             {retirada
-              ? option.pickupAddress
-                ? `Retire em: ${option.pickupAddress}`
-                : "Aguarde a confirmação da loja para retirar"
+              ? "Aguarde a confirmação da loja para retirar"
               : prazoDaOpcao(option)}
           </span>
         </div>
@@ -1567,6 +1589,7 @@ export function ShippingCalculator({
               opções do destino ANTERIOR na tela — e clicáveis — durante o fade. */}
           {destinoValido && options.length > 0 && (
             <motion.div
+              ref={listaDeOpcoesRef}
               initial={{ opacity: 0, y: -5 }}
               animate={{ opacity: 1, y: 0 }}
               className="space-y-2"

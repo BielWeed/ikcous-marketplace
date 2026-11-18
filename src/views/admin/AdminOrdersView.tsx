@@ -461,6 +461,9 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   const [painelDeFiltros, setPainelDeFiltros] = useState<
     "ferramentas" | "filtros" | null
   >(null);
+  useVoltarFechaAFolha((active ?? false) && painelDeFiltros !== null, () =>
+    setPainelDeFiltros(null),
+  );
   const { anular } = useAnularVendaDoBalcao();
   const [avisoDaAnulacao, setAvisoDaAnulacao] = useState<{
     numero: string;

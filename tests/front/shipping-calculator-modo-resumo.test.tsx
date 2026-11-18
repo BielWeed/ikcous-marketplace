@@ -88,6 +88,7 @@ describe("ShippingCalculator — modoResumo (checkout compacto)", () => {
 
   const pai = {
     selecionada: null as ShippingOption | null,
+    selecionar: (_opcao: ShippingOption | null) => {},
   };
 
   beforeEach(() => {
@@ -141,6 +142,7 @@ describe("ShippingCalculator — modoResumo (checkout compacto)", () => {
       const [cepDaSelecao, setCepDaSelecao] = useState<string | null>(null);
       useEffect(() => {
         pai.selecionada = selecionada;
+        pai.selecionar = setSelecionada;
       }, [selecionada]);
       return (
         <ShippingCalculator
@@ -188,13 +190,57 @@ describe("ShippingCalculator — modoResumo (checkout compacto)", () => {
     expect(resumo).toContain("Entrega em até 8 dias úteis");
   });
 
-  it("clicar Trocar expande a lista completa de opções", async () => {
+  it("clicar Trocar expande a lista e foca a opção escolhida", async () => {
     await montar(true);
+    const trocar = botaoDe("Trocar")!;
+    trocar.focus();
     await act(async () => {
-      botaoDe("Trocar")?.click();
+      trocar.click();
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(20);
     });
     expect(botaoDe("Entrega econômica")).toBeDefined();
     expect(botaoDe("Entrega expressa")).toBeDefined();
+    expect(document.activeElement).toBe(botaoDe("Entrega econômica"));
+  });
+
+  it("reabrir a lista foca a nova escolha, mesmo que não seja a primeira", async () => {
+    await montar(true);
+    await act(async () => {
+      botaoDe("Trocar")!.click();
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(20);
+    });
+    await act(async () => {
+      botaoDe("Entrega expressa")!.click();
+    });
+    expect(document.activeElement).toBe(botaoDe("Trocar"));
+    await act(async () => {
+      botaoDe("Trocar")!.click();
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(20);
+    });
+    expect(document.activeElement).toBe(botaoDe("Entrega expressa"));
+  });
+
+  it("sem a escolha atual na lista, Trocar foca a primeira opção disponível", async () => {
+    await montar(true);
+    await act(async () => {
+      pai.selecionar({ ...SEDEX, id: "opcao-que-nao-esta-na-lista" });
+    });
+    const trocar = botaoDe("Trocar")!;
+    trocar.focus();
+    await act(async () => {
+      trocar.click();
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(20);
+    });
+    expect(hospedeiro.querySelector('button[aria-pressed="true"]')).toBeNull();
+    expect(document.activeElement).toBe(botaoDe("Entrega econômica"));
   });
 
   it("escolher outra opção na lista expandida recolhe de volta ao resumo, já com a nova opção", async () => {

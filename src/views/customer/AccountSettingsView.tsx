@@ -69,7 +69,7 @@ const MENSAGEM_WHATSAPP_INVALIDO =
   "Informe DDD + 9 + 8 dígitos, por exemplo (34) 99999-8888.";
 // 16 px no celular (abaixo disso o iPhone dá zoom ao focar o campo).
 const CAMPO =
-  "h-[52px] rounded-[14px] border border-input bg-muted/40 px-3.5 text-base font-medium text-foreground shadow-none transition-colors placeholder:text-muted-foreground/60 focus-visible:bg-background disabled:cursor-not-allowed disabled:opacity-60 md:text-[15px]";
+  "h-[52px] rounded-[14px] border border-input bg-muted/40 px-3.5 text-base font-medium text-foreground shadow-none transition-colors placeholder:text-muted-foreground/60 focus-visible:bg-background disabled:cursor-not-allowed disabled:opacity-60 md:text-[15px] dark:bg-muted dark:placeholder:text-muted-foreground dark:focus-visible:bg-card";
 
 // `preservarDigitado`: releitura automática depois de um salvamento sem
 // resposta. Campo que a pessoa mexeu depois do clique fica como ela deixou (e
@@ -100,11 +100,17 @@ export function AccountSettingsView() {
   const { user, profile, fetchProfile, updateProfile, updatePassword } =
     useAuth();
   const contaAtualIdRef = useRef<string | null>(user?.id ?? null);
+  // A identidade muda a cada edição. Uma resposta tardia só pode liberar
+  // o rascunho que realmente foi enviado naquela tentativa.
+  const rascunhoCpfRef = useRef<{ contaId: string; digitos: string } | null>(
+    null,
+  );
   useEffect(() => {
     contaAtualIdRef.current = user?.id ?? null;
     return () => {
       // A continuação antiga também perde a dona quando a tela desmonta.
       contaAtualIdRef.current = null;
+      rascunhoCpfRef.current = null;
     };
   }, [user?.id]);
   const [loading, setLoading] = useState(false);
@@ -500,7 +506,6 @@ export function AccountSettingsView() {
   const ultimoMostradoRef = useRef<{
     name: string;
     phone: string;
-    cpf: string;
   } | null>(null);
 
   // Nome em branco não salva (14/10/2026): o `COALESCE(p_full_name, full_name)`
@@ -520,8 +525,8 @@ export function AccountSettingsView() {
   const edicaoPendente =
     (profileLoadState === "loaded" &&
       (profileData.name !== profileDataOriginal.name ||
-        profileData.phone !== profileDataOriginal.phone ||
-        somenteDigitosDoCpf(cpf) !== cpfOriginal)) ||
+        profileData.phone !== profileDataOriginal.phone)) ||
+    somenteDigitosDoCpf(cpf) !== cpfOriginal ||
     passwordData.newPassword !== "" ||
     passwordData.confirmPassword !== "";
   const recargaBloqueada = edicaoPendente || loading || updatingPassword;
@@ -621,20 +626,21 @@ export function AccountSettingsView() {
           setProfileLoadState("error");
           return;
         }
-        const baseCpf = base?.cpf;
-        setCpf((c) =>
-          baseCpf !== undefined && somenteDigitosDoCpf(c) !== baseCpf
-            ? c
-            : digitosCpf
-              ? formatarCpf(digitosCpf).formatado
-              : "",
-        );
+        // Qualquer releitura pode atualizar o que sabemos do banco, mas só
+        // troca o campo se não houver edição ainda sem confirmação desta conta.
+        const rascunhoCpf = rascunhoCpfRef.current;
+        if (
+          rascunhoCpf?.contaId !== userId ||
+          rascunhoCpf.digitos === digitosCpf
+        ) {
+          rascunhoCpfRef.current = null;
+          setCpf(formatarCpf(digitosCpf).formatado);
+          setCpfErro(false);
+        }
         setCpfOriginal(digitosCpf);
-        setCpfErro(false);
         ultimoMostradoRef.current = {
           name: dadosCarregados.name,
           phone: dadosCarregados.phone,
-          cpf: digitosCpf,
         };
 
         setProfileLoadState("loaded");
@@ -767,7 +773,9 @@ export function AccountSettingsView() {
     setCpfErro(false);
     // "Só grava se mudou" (pedido do dono): campo vazio quando a conta já
     // tinha CPF TAMBÉM é uma mudança — é o caminho de limpar.
-    const cpfMudou = digitosCpfAtual !== cpfOriginal;
+    const cpfMudou =
+      rascunhoCpfRef.current?.contaId === contaDonaId &&
+      digitosCpfAtual !== cpfOriginal;
 
     // Como o WhatsApp e o CPF, o nome só vai quando ELA o editou: os dados são
     // lidos uma vez ao abrir a tela, e outro aparelho pode ter trocado o nome
@@ -775,10 +783,10 @@ export function AccountSettingsView() {
     const nomeMudou = nomeAparado !== profileDataOriginal.name.trim();
 
     const perfilEnviado = profileData;
+    const rascunhoCpfEnviado = rascunhoCpfRef.current;
     ultimoMostradoRef.current = {
       name: profileData.name,
       phone: profileData.phone,
-      cpf: digitosCpfAtual,
     };
     const rodadaSalvar = ++rodadaSalvarRef.current;
     // A leitura que já estava no ar também perde a vez para o novo salvamento.
@@ -831,10 +839,21 @@ export function AccountSettingsView() {
 
       if (cpfMudou) {
         if (!contaAindaEhDona()) return;
+        const confirmarRascunhoCpf = () => {
+          if (
+            contaAindaEhDona() &&
+            rascunhoCpfRef.current === rascunhoCpfEnviado
+          ) {
+            rascunhoCpfRef.current = null;
+          }
+        };
         const resultadoCpf = await gravarCpfDaConta(
           digitosCpfAtual,
           contaDonaId,
-          () => relerDepoisDoPrazo(contaDonaId),
+          (confirmou) => {
+            if (confirmou) confirmarRascunhoCpf();
+            relerDepoisDoPrazo(contaDonaId);
+          },
         );
         // CPF gravado (ou limpo) AQUI vale mais que o do cadastro: o
         // pendente não pode voltar depois e sobrescrever. Vale mesmo que a
@@ -854,6 +873,13 @@ export function AccountSettingsView() {
           if (resultadoCpf.motivo !== "conta_trocada")
             await comPrazo(Promise.resolve(fetchProfile()), 15_000);
           return;
+        }
+        confirmarRascunhoCpf();
+        if (rascunhoCpfRef.current?.digitos === digitosCpfAtual) {
+          rascunhoCpfRef.current = null;
+        }
+        if (!rascunhoCpfRef.current) {
+          setCpf(formatarCpf(digitosCpfAtual).formatado);
         }
         setCpfOriginal(digitosCpfAtual);
       }
@@ -1272,7 +1298,14 @@ export function AccountSettingsView() {
                       value={cpf}
                       disabled={profileLoadState !== "loaded"}
                       onChange={(e) => {
-                        setCpf(formatarCpf(e.target.value).formatado);
+                        const { limpo, formatado } = formatarCpf(
+                          e.target.value,
+                        );
+                        rascunhoCpfRef.current =
+                          userId && limpo !== cpfOriginal
+                            ? { contaId: userId, digitos: limpo }
+                            : null;
+                        setCpf(formatado);
                         if (cpfErro) setCpfErro(false);
                       }}
                       aria-invalid={cpfErro}
@@ -1470,10 +1503,10 @@ export function AccountSettingsView() {
       <Dialog open={isAvatarModalOpen} onOpenChange={setIsAvatarModalOpen}>
         <DialogContent
           overlayClassName="z-[130]"
-          className="z-[130] max-h-[85dvh] max-w-xs overflow-y-auto overflow-x-hidden rounded-[2.5rem] border border-zinc-100 bg-white p-6 shadow-premium sm:max-w-md"
+          className="z-[130] max-h-[85dvh] max-w-xs overflow-y-auto overflow-x-hidden rounded-[2.5rem] border border-zinc-100 bg-white p-6 shadow-premium dark:border-border dark:bg-card dark:text-foreground sm:max-w-md dark:[&>button[data-slot=dialog-close]]:text-foreground dark:[&>button[data-slot=dialog-close]]:opacity-100"
         >
           <DialogHeader>
-            <DialogTitle className="text-center text-[11px] font-black uppercase tracking-wider text-zinc-900">
+            <DialogTitle className="text-center text-[11px] font-black uppercase tracking-wider text-zinc-900 dark:text-foreground">
               Escolher Avatar ou Foto
             </DialogTitle>
             <DialogDescription className="sr-only">
@@ -1483,7 +1516,7 @@ export function AccountSettingsView() {
           </DialogHeader>
 
           {/* Modal Tab Selector */}
-          <div className="relative z-10 my-2 flex w-full rounded-xl bg-zinc-100/80 p-1 shadow-inner">
+          <div className="relative z-10 my-2 flex w-full rounded-xl bg-zinc-100/80 p-1 shadow-inner dark:bg-muted">
             <button
               type="button"
               aria-pressed={modalTab === "avatars"}
@@ -1491,16 +1524,16 @@ export function AccountSettingsView() {
                 setModalTab("avatars");
                 haptic.light();
               }}
-              className={`relative min-h-11 flex-1 rounded-lg py-2 text-sm font-bold outline-none transition-all focus-visible:ring-2 focus-visible:ring-zinc-900/50 ${
+              className={`relative min-h-11 flex-1 rounded-lg py-2 text-sm font-bold outline-none transition-all focus-visible:ring-2 focus-visible:ring-zinc-900/50 dark:focus-visible:ring-ring ${
                 modalTab === "avatars"
-                  ? "text-zinc-900"
-                  : "text-zinc-500 hover:text-zinc-900"
+                  ? "text-zinc-900 dark:text-foreground"
+                  : "text-zinc-500 hover:text-zinc-900 dark:text-muted-foreground dark:hover:text-foreground"
               }`}
             >
               {modalTab === "avatars" && (
                 <motion.div
                   layoutId="modalTabBackground"
-                  className="absolute inset-0 rounded-lg border border-zinc-200/40 bg-white shadow-sm"
+                  className="absolute inset-0 rounded-lg border border-zinc-200/40 bg-white shadow-sm dark:border-border dark:bg-card"
                   transition={{ type: "spring", stiffness: 380, damping: 30 }}
                 />
               )}
@@ -1516,16 +1549,16 @@ export function AccountSettingsView() {
                 setModalTab("upload");
                 haptic.light();
               }}
-              className={`relative min-h-11 flex-1 rounded-lg py-2 text-sm font-bold outline-none transition-all focus-visible:ring-2 focus-visible:ring-zinc-900/50 ${
+              className={`relative min-h-11 flex-1 rounded-lg py-2 text-sm font-bold outline-none transition-all focus-visible:ring-2 focus-visible:ring-zinc-900/50 dark:focus-visible:ring-ring ${
                 modalTab === "upload"
-                  ? "text-zinc-900"
-                  : "text-zinc-500 hover:text-zinc-900"
+                  ? "text-zinc-900 dark:text-foreground"
+                  : "text-zinc-500 hover:text-zinc-900 dark:text-muted-foreground dark:hover:text-foreground"
               }`}
             >
               {modalTab === "upload" && (
                 <motion.div
                   layoutId="modalTabBackground"
-                  className="absolute inset-0 rounded-lg border border-zinc-200/40 bg-white shadow-sm"
+                  className="absolute inset-0 rounded-lg border border-zinc-200/40 bg-white shadow-sm dark:border-border dark:bg-card"
                   transition={{ type: "spring", stiffness: 380, damping: 30 }}
                 />
               )}
@@ -1540,7 +1573,7 @@ export function AccountSettingsView() {
             {isUpdatingAvatar && (
               <div className="absolute inset-0 z-20 flex flex-col items-center justify-center space-y-2 rounded-[2rem] bg-white/85">
                 <Loader2 className="size-6 animate-spin text-zinc-900" />
-                <span className="animate-pulse text-[10px] font-black uppercase tracking-wider text-zinc-500">
+                <span className="animate-pulse text-[10px] font-black uppercase tracking-wider text-zinc-500 dark:animate-none dark:text-zinc-900">
                   Atualizando...
                 </span>
               </div>
@@ -1557,7 +1590,7 @@ export function AccountSettingsView() {
                   className="space-y-4"
                 >
                   <div>
-                    <p className="mb-3 text-center text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400">
+                    <p className="mb-3 text-center text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400 dark:text-muted-foreground">
                       Avatares Prontos
                     </p>
                     <div className="scrollbar-thin grid max-h-[250px] select-none grid-cols-4 gap-3 overflow-y-auto pr-1">
@@ -1625,7 +1658,7 @@ export function AccountSettingsView() {
                   className="space-y-4"
                 >
                   <div>
-                    <p className="mb-3 text-center text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400">
+                    <p className="mb-3 text-center text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400 dark:text-muted-foreground">
                       Sua Foto de Perfil
                     </p>
 
@@ -1663,7 +1696,7 @@ export function AccountSettingsView() {
                           </div>
                         </div>
 
-                        <p className="text-center text-[10px] font-semibold leading-relaxed text-zinc-600">
+                        <p className="text-center text-[10px] font-semibold leading-relaxed text-zinc-600 dark:text-muted-foreground">
                           Esta foto é exibida publicamente no marketplace.
                           <br />
                           Você pode trocá-la ou removê-la a qualquer momento.
@@ -1718,16 +1751,16 @@ export function AccountSettingsView() {
                           <motion.div
                             whileHover={{ scale: 1.01, borderColor: "#71717a" }}
                             whileTap={{ scale: 0.99 }}
-                            className="flex cursor-pointer flex-col items-center justify-center space-y-3 rounded-[2rem] border-2 border-dashed border-zinc-200 bg-zinc-50/50 p-8 text-center transition-colors hover:border-zinc-300"
+                            className="flex cursor-pointer flex-col items-center justify-center space-y-3 rounded-[2rem] border-2 border-dashed border-zinc-200 bg-zinc-50/50 p-8 text-center transition-colors hover:border-zinc-300 dark:bg-muted"
                           >
                             <div className="flex size-12 items-center justify-center rounded-2xl border border-zinc-100 bg-white text-zinc-400 shadow-sm">
                               <UploadCloud className="size-6 text-zinc-500" />
                             </div>
                             <div className="space-y-1">
-                              <p className="text-xs font-bold text-zinc-700">
+                              <p className="text-xs font-bold text-zinc-700 dark:text-foreground">
                                 Enviar foto do dispositivo
                               </p>
-                              <p className="px-4 text-[10px] font-semibold leading-normal text-zinc-600">
+                              <p className="px-4 text-[10px] font-semibold leading-normal text-zinc-600 dark:text-muted-foreground">
                                 Selecione uma imagem para fazer upload. Ela será
                                 redimensionada automaticamente.
                               </p>

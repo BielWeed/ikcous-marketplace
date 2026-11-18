@@ -36,6 +36,9 @@ vi.mock("@/lib/supabase", () => ({
     from: (tabela: string) => ({
       select: () => ({
         eq: () => ({
+          abortSignal() {
+            return this;
+          },
           maybeSingle: () =>
             Promise.resolve({
               data:

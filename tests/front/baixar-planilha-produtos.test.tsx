@@ -87,6 +87,17 @@ describe("botão de planilha", () => {
       expect.stringContaining("catálogo completo"),
     );
   });
+  it("avisa que não há produtos cadastrados sem anunciar download", async () => {
+    exportar.mockResolvedValue("vazio");
+    await montar();
+    await clicar();
+    expect(aviso).toHaveBeenCalledWith(
+      "Nenhum produto cadastrado para exportar.",
+    );
+    expect(sucesso).not.toHaveBeenCalled();
+    expect(erro).not.toHaveBeenCalled();
+    expect(host.querySelector("button")!.disabled).toBe(false);
+  });
   it("avisa que o CSV alternativo não tem formatação, sem anunciar sucesso de XLSX", async () => {
     exportar.mockResolvedValue("csv");
     await montar();

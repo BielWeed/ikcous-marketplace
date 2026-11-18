@@ -445,6 +445,11 @@ export const AddressList = memo(function AddressList({
                     ? ` - ${address.complement.trim()}`
                     : ""}
                 </p>
+                {address.reference?.trim() && (
+                  <p className="line-clamp-2 break-words leading-relaxed">
+                    Referência: {address.reference.trim()}
+                  </p>
+                )}
                 <p className="break-words leading-relaxed">
                   {address.neighborhood}, {address.city} - {address.state}
                 </p>

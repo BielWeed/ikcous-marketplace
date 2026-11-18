@@ -44,7 +44,7 @@ interface OpcoesDaPlanilha {
 
 export async function exportarProdutosPlanilha(
   opcoes: OpcoesDaPlanilha,
-): Promise<"xlsx" | "csv"> {
+): Promise<"xlsx" | "csv" | "vazio"> {
   const [
     { supabase },
     { mapProductFromDB },
@@ -97,6 +97,10 @@ export async function exportarProdutosPlanilha(
       total: Number(resposta.total_count),
     };
   });
+  if (produtos.length === 0) {
+    await conferir();
+    return "vazio";
+  }
   let formato: "xlsx" | "csv" = "xlsx";
   let blob: Blob;
   try {

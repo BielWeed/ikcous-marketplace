@@ -249,3 +249,23 @@ html.admin-mode[data-admin-tema] .recharts-cartesian-grid line {
 html.admin-mode[data-admin-tema] .recharts-cartesian-axis-tick-value {
   fill: hsl(var(--admin-text-soft)) !important;
 }
+
+/* Só o fluxo no Claro: a opacidade fixa do SVG apagava a grade mesmo com
+   o stroke do tema. Escuro e Confortável mantêm o desenho original. */
+html.admin-mode[data-admin-tema="claro"]
+  [data-fluxo-de-caixa]
+  .recharts-cartesian-grid
+  line {
+  stroke: hsl(var(--admin-text-soft));
+  stroke-opacity: 1;
+}
+
+html.admin-mode[data-admin-tema="claro"]
+  [data-fluxo-de-caixa]
+  .recharts-reference-line
+  line,
+html.admin-mode[data-admin-tema="claro"]
+  [data-fluxo-de-caixa]
+  path.recharts-tooltip-cursor {
+  stroke: hsl(var(--admin-text-soft));
+}
