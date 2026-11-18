@@ -183,6 +183,38 @@ O detalhe que importa: as duas chaves antigas são assinadas pela mesma chave-me
 >    - Valor: a chave que você copiou no passo 1
 >    - Ambiente: marque **Production**
 >    Salve.
+>
+>    🔴 **Esta variável sozinha NÃO troca a chave de quem é servido pelo porteiro** (o
+>    `middleware.ts`, que serve todas as lojas em produção — `x-ikcous-caderneta: hit`). O porteiro
+>    escreve no HTML uma *ficha* da loja, e o app **prefere a chave da ficha** à variável
+>    (`src/lib/env-valores.ts`: `lerFichaDaLoja()` vence). A chave da ficha vem da coluna
+>    `publishable_key` da tabela `frota_lojas`, no banco da loja **principal** — a variável da
+>    Vercel só vale como reserva (prévia, sem porteiro, ou caderneta ausente). Por isso, em
+>    produção, faça também o passo **2b** abaixo; sem ele o passo 4 nunca vai mostrar a chave nova.
+>
+>    **2b. Troque a chave na caderneta (`frota_lojas`).** No SQL Editor do Supabase da loja
+>    **principal** (a que `IKCOUS_FROTA_URL` aponta), primeiro olhe só o prefixo da chave atual:
+>
+>    ```sql
+>    select id, dominio_publico, left(publishable_key, 15) as prefixo
+>      from public.frota_lojas
+>     where project_ref = 'cafkrminfnokvgjqtkle';
+>    ```
+>
+>    Se o prefixo for `eyJhbGciOiJIUzI` (a `anon` legada), troque pela `sb_publishable_...` copiada
+>    no passo 1 (um registro por vez, só a linha deste `project_ref`):
+>
+>    ```sql
+>    update public.frota_lojas
+>       set publishable_key = '<cole aqui a chave publishable do passo 1>', updated_at = now()
+>     where project_ref = 'cafkrminfnokvgjqtkle';
+>    ```
+>
+>    Na mesma Vercel, confira também a variável `IKCOUS_FROTA_APIKEY` (a chave pública que o
+>    porteiro usa para perguntar à caderneta quem é a loja). Se ela for a `anon` legada (`eyJ...`),
+>    troque pela mesma publishable **antes** de desligar a chave antiga: com a `anon` desligada, a
+>    pergunta do porteiro leva 401, a loja segue por até 1 hora com a última ficha boa e depois
+>    responde 503 — **para todas as lojas**, não só esta.
 > 3. Aba **Deployments** → o último de Production → menu `···` → **Redeploy**.
 >    **Por que este passo não é opcional:** essa chave entra no código no momento do build —
 >    a mesma mecânica da §2.3 passo 5 abaixo, só que para a chave nova em vez da `anon`. Salvar
@@ -195,17 +227,32 @@ O detalhe que importa: as duas chaves antigas são assinadas pela mesma chave-me
 >    "os produtos apareceram" como prova, o passo 5 desliga a chave antiga e a loja cai.
 >
 >    **A conferência que vale, e é o portão da segurança inteira deste procedimento:**
->    aperte **F12** → aba **Console** → recarregue a página. Vai aparecer uma linha assim:
+>    aperte **F12** → aba **Console** → recarregue a página (numa janela anônima, para não pegar
+>    versão guardada). Vai aparecer uma linha assim:
 >
 >    ```
->    [EnvGuard] Chave do Supabase resolvida a partir de VITE_SUPABASE_PUBLISHABLE_KEY.
+>    [EnvGuard] Chave do Supabase resolvida a partir de ficha.
 >    ```
 >
->    **Tem de estar escrito `VITE_SUPABASE_PUBLISHABLE_KEY`.** Se aparecer
->    `VITE_SUPABASE_ANON_KEY`, o site publicado ainda NÃO está usando a chave nova —
->    **pare aqui e não desligue nada.** Quase sempre é uma destas três: a variável foi salva
->    em outro ambiente que não Production, o nome dela saiu digitado errado, ou o Redeploy do
->    passo 3 não chegou a terminar. Conserte e refaça o passo 3.
+>    - **Escrito `ficha` (o esperado em produção, com o porteiro):** o nome da variável **não
+>      prova nada** aqui — a chave veio da caderneta. O que prova é o prefixo da chave que a
+>      loja realmente usa. Na mesma aba **Console**, cole e aperte Enter (mostra só o começo da
+>      chave, que é pública):
+>
+>      ```js
+>      JSON.parse(document.getElementById('ikcous-loja').textContent).conexao.publishableKey.slice(0, 15)
+>      ```
+>
+>      **Tem de responder `sb_publishable_`.** Se responder `eyJhbGciOiJIUzI`, a loja ainda usa a
+>      `anon` legada — **pare aqui e não desligue nada.** O conserto é o passo **2b** (a linha
+>      de `frota_lojas` não foi trocada, ou o porteiro ainda guarda a ficha antiga: espere uns
+>      2 minutos e recarregue). Redeploy não resolve isto: a chave da ficha não vem do build.
+>    - **Escrito `VITE_SUPABASE_PUBLISHABLE_KEY` (sem porteiro, caderneta ausente):** é o
+>      esperado só nesse caso — a variável está valendo e o passo 3 chegou ao ar.
+>    - **Escrito `VITE_SUPABASE_ANON_KEY`:** o site publicado ainda NÃO está usando a chave
+>      nova — **pare aqui e não desligue nada.** Quase sempre é uma destas três: a variável foi
+>      salva em outro ambiente que não Production, o nome dela saiu digitado errado, ou o
+>      Redeploy do passo 3 não chegou a terminar. Conserte e refaça o passo 3.
 >
 >    Se não aparecer linha nenhuma, o que abriu é uma versão antiga guardada pelo navegador:
 >    abra numa janela anônima e olhe de novo.
@@ -231,7 +278,10 @@ Aí a loja vai cair por alguns minutos. Faça na ordem exata:
 1. Rotacione o JWT secret no painel do Supabase
 2. **Copie a `anon` key nova** (vai aparecer na mesma tela) pro bloco de notas
 3. Vá na Vercel: **Settings → Environment Variables**
-4. Edite `VITE_SUPABASE_ANON_KEY` e cole o valor novo
+4. Edite `VITE_SUPABASE_ANON_KEY` e cole o valor novo. **Em produção (porteiro) isto não
+   basta:** troque também a `publishable_key` da linha deste projeto em `frota_lojas` e a
+   variável `IKCOUS_FROTA_APIKEY`, se ela for a `anon` (mesmo `update` e mesmo motivo do passo
+   2b da §2.2) — senão a loja segue com a chave morta da ficha e responde 401.
 5. **Refaça o deploy** — só salvar a variável não basta. Essa chave entra no código no
    momento do build, então sem build novo o site continua com a chave velha.
    Na Vercel: aba **Deployments** → o último de Production → menu `···` → **Redeploy**
