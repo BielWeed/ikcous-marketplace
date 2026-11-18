@@ -5498,7 +5498,7 @@ export function useOrders(
           toast.error(
             Date.now() - (falhas.get(chave) ?? 0) < 60_000
               ? "Ainda não conseguimos enviar seu código. Tente de novo mais tarde; se continuar assim, fale com a loja."
-              : `Já enviamos um código há pouco. Espere ${data.espereSegundos ?? 60} segundos e confira sua caixa de entrada.`,
+              : `Já enviamos um código há pouco. Espere ${pluralizar(data.espereSegundos ?? 60, "segundo", "segundos")} e confira sua caixa de entrada.`,
           );
           return false;
         }

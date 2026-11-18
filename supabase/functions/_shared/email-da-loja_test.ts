@@ -381,6 +381,22 @@ Deno.test("limite: a primeira passa; menos de 1 min depois, não; 1 min depois, 
   assertEquals(avaliarLimiteDeTeste([iso(T0)], T0 + 60_000).permitido, true);
 });
 
+Deno.test("limite: o aviso da credenciais-email concorda com 1 e 2 segundos", async () => {
+  // Avalia o template REAL sem importar o entrypoint, que inicia o servidor.
+  const fonte = await Deno.readTextFile(
+    new URL("../credenciais-email/index.ts", import.meta.url),
+  );
+  const template = fonte.match(/erro: (`Calma: dá para tentar de novo em [^\n]+`),/);
+  assert(template, "o aviso de espera deve existir no entrypoint");
+  const mensagem = new Function("limite", `return ${template[1]};`);
+  for (const segundos of [1, 2]) {
+    assertEquals(
+      mensagem({ esperaSegundos: segundos }),
+      `Calma: dá para tentar de novo em ${segundos} ${segundos === 1 ? "segundo" : "segundos"} (o Google bloqueia a conta quando recebe tentativas demais).`,
+    );
+  }
+});
+
 Deno.test("limite: no máximo 10 por DIA, e o dia ROLA (o mais velho sai da conta)", () => {
   const dez = Array.from({ length: 10 }, (_, i) => iso(T0 + i * 120_000));
   const barrado = avaliarLimiteDeTeste(dez, T0 + 20 * 60_000);

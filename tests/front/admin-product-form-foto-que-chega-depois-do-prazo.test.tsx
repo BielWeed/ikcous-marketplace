@@ -258,7 +258,7 @@ describe("AdminProductFormView — foto que chega DEPOIS do prazo não vira arqu
       expect(textoDe("fotos-com-falha")).toMatch(/b\.jpg.*envio cancelado/i);
       expect(textoDe("fotos-com-falha")).toContain("c.jpg");
       expect(mocks.toastError).toHaveBeenCalledWith(
-        "2 de 3 fotos não subiram.",
+        "2 fotos não subiram (de 3).",
         expect.anything(),
       );
       expect(botaoPorTexto("Cancelar envio")).toBeUndefined();
@@ -309,7 +309,7 @@ describe("AdminProductFormView — foto que chega DEPOIS do prazo não vira arqu
         expect(textoDe("fotos-com-falha")).toContain("c.jpg");
         expect(botaoPorTexto("Tentar de novo")?.disabled).toBe(false);
         expect(mocks.toastError).toHaveBeenCalledWith(
-          "3 de 3 fotos não subiram.",
+          "3 fotos não subiram (de 3).",
           expect.anything(),
         );
       },

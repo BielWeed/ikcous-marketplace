@@ -217,7 +217,7 @@ describe("OrderDetailsView — cartão de avaliação em destaque", () => {
     const cartao = cartaoDeAvaliacao()!;
     expect(cartao).not.toBeNull();
     // Contador: 1 dos 2 produtos já avaliado.
-    expect(cartao.textContent).toContain("1 de 2 avaliados");
+    expect(cartao.textContent).toContain("Você avaliou 1 produto de 2.");
 
     const seloAvaliado = Array.from(cartao.querySelectorAll("span")).find(
       (el) => el.textContent === "Avaliado",
@@ -237,7 +237,7 @@ describe("OrderDetailsView — cartão de avaliação em destaque", () => {
     await renderizar();
 
     const cartao = cartaoDeAvaliacao()!;
-    expect(cartao.textContent).toContain("2 de 2 avaliados");
+    expect(cartao.textContent).toContain("Você avaliou 2 produtos de 2.");
     const botaoEscrever = Array.from(cartao.querySelectorAll("button")).find(
       (b) => b.textContent?.includes("Escrever avaliação"),
     );

@@ -39,6 +39,7 @@ import {
 } from "@/lib/link-de-rastreio";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
+import { pluralizar } from "@/lib/pluralizar";
 import { podeReenviarComprovante } from "@/lib/pode-reenviar-comprovante";
 import { podeRetomarPagamento } from "@/lib/pode-retomar-pagamento";
 import {
@@ -1773,8 +1774,7 @@ export function OrderDetailsView({
               </h4>
               {!conferenciaFalhou && !conferindoAvaliacoes && (
                 <span className="flex-shrink-0 text-xs font-semibold text-zinc-500">
-                  {totalProdutosAvaliados} de {produtosParaAvaliar.length}{" "}
-                  {produtosParaAvaliar.length === 1 ? "avaliado" : "avaliados"}
+                  {`Você avaliou ${pluralizar(totalProdutosAvaliados, "produto", "produtos")} de ${produtosParaAvaliar.length}.`}
                 </span>
               )}
             </div>

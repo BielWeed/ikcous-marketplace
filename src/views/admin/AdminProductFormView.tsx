@@ -74,6 +74,7 @@ import {
 } from "@/lib/gestao-de-categorias";
 import { imagemAbre } from "@/lib/imagem-abre";
 import { percentualComUmaCasa } from "@/lib/percentual";
+import { pluralizar } from "@/lib/pluralizar";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import {
   AVISO_ESTOQUE_NAO_RESTAURADO,
@@ -2483,7 +2484,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         } else {
           setFotosComFalha((prev) => [...prev, ...falhas]);
           toast.error(
-            `${falhas.length} de ${files.length} ${files.length === 1 ? "foto não subiu" : "fotos não subiram"}.`,
+            `${pluralizar(falhas.length, "foto não subiu", "fotos não subiram")} (de ${files.length}).`,
             {
               id: loadingToast,
               description:
