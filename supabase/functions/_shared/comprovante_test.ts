@@ -471,6 +471,51 @@ Deno.test("retirada na loja -> e-mail mostra 'Retirada na loja' + endereço da l
   assertEquals(html.includes("Entrega em"), false);
 });
 
+for (const [metodo, rotulo] of [
+  ["cash", "Dinheiro na retirada"],
+  ["pix", "PIX na retirada"],
+  ["card", "Cartão na retirada"],
+] as const) {
+  Deno.test(`retirada na loja + ${metodo} -> e-mail diz '${rotulo}', nunca 'na entrega'`, async () => {
+    const html = await htmlDoComprovante(metodo, "online", {
+      customer_data: {
+        email: "cliente@exemplo.com",
+        shipping_option_id: "store-pickup",
+      },
+    });
+    assertStringIncludes(html, `>${rotulo}<`);
+    assertEquals(html.includes("na entrega"), false);
+  });
+}
+
+Deno.test("retirada na loja + PIX online pago -> e-mail mantém 'PIX pelo site'", async () => {
+  const html = await htmlDoComprovante("online", "online", {
+    metodo_online: "pix",
+    customer_data: {
+      email: "cliente@exemplo.com",
+      shipping_option_id: "store-pickup",
+    },
+  });
+  assertStringIncludes(html, ">PIX pelo site<");
+  assertEquals(html.includes("na entrega"), false);
+});
+
+Deno.test("retirada na loja + cupom de 100% -> e-mail mantém 'Sem valor a pagar'", async () => {
+  const html = await htmlDoComprovante("cash", "online", {
+    subtotal: 100,
+    discount: 100,
+    shipping: 0,
+    total: 0,
+    customer_data: {
+      email: "cliente@exemplo.com",
+      shipping_option_id: "store-pickup",
+    },
+  });
+  assertStringIncludes(html, ">Sem valor a pagar<");
+  assertEquals(html.includes("na entrega"), false);
+  assertEquals(html.includes("Dinheiro na retirada"), false);
+});
+
 Deno.test("entrega local (controle) -> e-mail segue com 'Entrega em' e SEM bloco de retirada", async () => {
   const html = await htmlDoPedidoEnviado({
     shipping_option_id: "local-delivery",
@@ -478,6 +523,7 @@ Deno.test("entrega local (controle) -> e-mail segue com 'Entrega em' e SEM bloco
     number: "7",
   });
   assertStringIncludes(html, "Entrega em");
+  assertStringIncludes(html, ">Dinheiro na entrega<");
   assertEquals(html.includes("Retirada na loja"), false);
   assertEquals(html.includes("Aguarde a confirmação da loja"), false);
 });
