@@ -3198,7 +3198,22 @@ const ROL_DA_154 = [
   "painel_inicio: EXECUTE authenticated e service_role, sem PUBLIC ou anon",
   "fin_dre: devolve lucro_liquido e receita_liquida",
 ];
+// Lote 156 (20261404000000, a observacao da inspecao da devolucao so a loja ve: o corpo de devolucao_detalhe muda e authenticated perde a leitura de UMA coluna de public.devolucoes; nenhum objeto novo). A 156a e a 156b
+// tem o MESMO rol de 8 linhas (controle; devolucao_detalhe: corpo exato (md5), atributos e ACL; em devolucoes: a leitura da observacao por authenticated, a das outras colunas, anon e PUBLIC sem leitura, service_role com a
+// leitura inteira e a RLS ligada); a 156a espera o corpo e o privilegio da migration nova e a 156b o vigente de antes (o da 20261399992000, a439...). So catalogo: nenhuma le devolucao e nenhuma chama a funcao.
+const ROL_DA_156 = [
+  "controle: funcoes de public visiveis a este papel",
+  "devolucao_detalhe: corpo exato (md5)",
+  "devolucao_detalhe: uma so, atributos conhecidos (plpgsql, SECURITY DEFINER, STABLE, search_path=public, retorno jsonb) e EXECUTE de authenticated, sem PUBLIC nem anon",
+  "devolucoes: authenticated le observacao_inspecao",
+  "devolucoes: authenticated le as outras colunas (quantas)",
+  "devolucoes: anon sem leitura e PUBLIC sem privilegio (tabela e coluna)",
+  "devolucoes: service_role le a tabela e a observacao_inspecao",
+  "devolucoes: RLS ligada",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "156a-conferir-a-observacao-da-inspecao-so-a-loja-ve-aplicado": ROL_DA_156,
+  "156b-antes-a-observacao-da-inspecao-so-a-loja-ve-base-vigente": ROL_DA_156,
   "154a-conferir-o-inicio-mostra-o-dinheiro-a-devolver-aplicado": ROL_DA_154,
   "154b-antes-o-inicio-mostra-o-dinheiro-a-devolver-base-vigente": ROL_DA_154,
   "155a-conferir-o-total-comprado-do-cliente-e-o-mesmo-no-crm-na-lista-e-na-ficha-aplicado":

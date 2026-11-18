@@ -289,6 +289,8 @@ on:
       - "scripts/publicacao/consultas/145b-antes-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-base-vigente.sql"
       - "scripts/publicacao/consultas/155a-conferir-o-total-comprado-do-cliente-e-o-mesmo-no-crm-na-lista-e-na-ficha-aplicado.sql"
       - "scripts/publicacao/consultas/155b-antes-o-total-comprado-do-cliente-e-o-mesmo-no-crm-na-lista-e-na-ficha-base-vigente.sql"
+      - "scripts/publicacao/consultas/156a-conferir-a-observacao-da-inspecao-so-a-loja-ve-aplicado.sql"
+      - "scripts/publicacao/consultas/156b-antes-a-observacao-da-inspecao-so-a-loja-ve-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -551,6 +553,8 @@ on:
       - "scripts/publicacao/consultas/145b-antes-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-base-vigente.sql"
       - "scripts/publicacao/consultas/155a-conferir-o-total-comprado-do-cliente-e-o-mesmo-no-crm-na-lista-e-na-ficha-aplicado.sql"
       - "scripts/publicacao/consultas/155b-antes-o-total-comprado-do-cliente-e-o-mesmo-no-crm-na-lista-e-na-ficha-base-vigente.sql"
+      - "scripts/publicacao/consultas/156a-conferir-a-observacao-da-inspecao-so-a-loja-ve-aplicado.sql"
+      - "scripts/publicacao/consultas/156b-antes-a-observacao-da-inspecao-so-a-loja-ve-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -1257,6 +1261,13 @@ jobs:
       - name: Prova viva do total comprado do cliente igual no CRM, na lista e na ficha (20261403000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-total-do-cliente-e-o-mesmo-nas-tres-telas-viva.cjs
+      # Migration 20261404000000 (a Observacao da inspecao da devolucao e so da loja): devolucao_detalhe tira a chave observacao_inspecao para quem nao e o admin ATUAL e authenticated perde o SELECT da tabela
+      # devolucoes inteira (SELECT por coluna nas outras 34). Controle com o corpo e o GRANT de antes (o defeito: a cliente le a nota pelas duas portas), a cliente dona sem a chave e com permission denied na coluna,
+      # as outras colunas, itens, trilha e fotos seguindo, admin atual com a nota, admin rebaixado e outra cliente sem ela, service_role e a gravacao da nota intactos, a nota ja gravada preservada, mutantes que morrem
+      # na guarda certa, ACL/atributos/dono iguais, reaplicar (LF e CRLF), rollback byte a byte, pre-voo, conexao sem BEGIN com o pos-voo sabotado (a migration inteira cai). CLONE proprio.
+      - name: Prova viva da observacao da inspecao so da loja (20261404000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-observacao-da-inspecao-so-a-loja-ve-viva.cjs
       # Migration 20261399991000 (repetir a devolucao que falhou nao paga duas vezes): solicitar_estorno_repetindo(p_refund_id, p_motivo) repete UMA linha falhada (o valor sai da linha, a 2a chamada devolve a MESMA
       # repeticao com ja_repetida em vez de criar outra) e a tabela order_refund_repeticao (PK + UNIQUE) e a marca do servidor. Controle com o caminho antigo (duas linhas de R$ 30), DUAS conexoes reais na mesma falhada,
       # bordas (17 recusas sem escrever nada), permissao (anon, service_role, cliente, admin rebaixado), 15 mutantes, reaplicar, pre-voo, rollback que recusa com marca, conexao sem BEGIN com conferencia sabotada e

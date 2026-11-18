@@ -7,6 +7,7 @@
 // GRANT têm de ser as da tabela (20261175000000) menos a observação; sem BEGIN/COMMIT de nível superior; nenhuma linha lida para escrita.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
 
 const NOME = "20261404000000_a_observacao_da_inspecao_so_a_loja_ve.sql";
 const ORIGEM =
@@ -158,4 +159,118 @@ Deno.test("404: aditiva, sem BEGIN/COMMIT de nivel superior, com pre/pos-voo, se
       `('public.devolucao_detalhe(uuid)', '${H_VIGENTE}', '${H_NOVO}')`,
     ),
   );
+});
+
+// ---- Publicacao: o lote 156 (consultas 156a/156b), registrado em TODOS os lugares que o portao da release le ----
+const require = createRequire(import.meta.url);
+const lerRepo = (rel: string) =>
+  Deno.readTextFileSync(new URL(`../${rel}`, import.meta.url)).replace(
+    /\r\n/g,
+    "\n",
+  );
+const A = "156a-conferir-a-observacao-da-inspecao-so-a-loja-ve-aplicado";
+const B = "156b-antes-a-observacao-da-inspecao-so-a-loja-ve-base-vigente";
+const PROVA_VIVA = "tests/banco/a-observacao-da-inspecao-so-a-loja-ve-viva.cjs";
+
+Deno.test("404: lote de apply normal 156a/156b, rol fechado de 8 linhas, so catalogo, cita os md5 certos e a ausencia vem da 156b", () => {
+  const canais = JSON.parse(lerRepo("scripts/frota/canais-de-backend.json"));
+  const lote = canais.provasDeObjetos.filter((p: { versoes: string[] }) =>
+    p.versoes.includes("20261404000000"),
+  );
+  assert.equal(lote.length, 1, "UM lote para a 20261404000000");
+  assert.deepEqual(lote[0].versoes, ["20261404000000"]);
+  assert.equal(lote[0].consulta, A);
+  assert.equal(lote[0].ausenciaConfirmadaPor, B);
+  assert.ok(!("backfillLedger" in lote[0]) && !("nuncaAplicar" in lote[0]));
+  const a = lerRepo(`scripts/publicacao/consultas/${A}.sql`);
+  const b = lerRepo(`scripts/publicacao/consultas/${B}.sql`);
+  assert.ok(a.includes(`'${H_NOVO}'`) && !b.includes(`'${H_NOVO}'`));
+  assert.ok(b.includes(`'${H_VIGENTE}'`) && !a.includes(`'${H_VIGENTE}'`));
+  // A observacao: depois nao le, antes le (a unica linha que muda de esperado alem do md5).
+  assert.ok(
+    a.includes("'devolucoes: authenticated le observacao_inspecao', 'nao'"),
+  );
+  assert.ok(
+    b.includes("'devolucoes: authenticated le observacao_inspecao', 'sim'"),
+  );
+  for (const sql of [a, b]) {
+    const codigo = semComentarios(sql);
+    assert.doesNotMatch(
+      codigo,
+      /\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|LOCK)\b/i,
+    );
+    // so catalogo: nenhuma linha de devolucao (nem a nota de ninguem) e lida
+    assert.doesNotMatch(
+      codigo,
+      /\b(FROM|JOIN)\s+(public\.)?(devolucoes|devolucao_itens|devolucao_eventos|marketplace_orders|profiles)\b/i,
+    );
+    assert.ok(sql.includes("md5(replace(p.prosrc, chr(13), ''))"));
+  }
+  const {
+    ROL_FECHADO_POR_CONSULTA,
+  } = require("../scripts/publicacao/conferir-banco.cjs");
+  for (const nome of [A, B]) {
+    const rol = ROL_FECHADO_POR_CONSULTA[nome];
+    assert.equal(rol.length, 8, `${nome}: rol fechado de 8 linhas`);
+    for (const item of rol)
+      assert.ok(
+        (nome.startsWith("156a") ? a : b).includes(`'${item}'`),
+        `${nome}: falta a linha ${item}`,
+      );
+  }
+});
+
+Deno.test("404: registrada nos dois workflows, na lista de rol fechado da release e com UM passo de prova viva no rpc-ci", () => {
+  for (const wf of [
+    ".github/workflows/conferir-banco-da-loja.yml",
+    ".github/workflows/rpc-ci.yml",
+  ])
+    for (const nome of [A, B])
+      assert.ok(lerRepo(wf).includes(nome), `${wf} nao registra ${nome}`);
+  const liberacao = lerRepo("scripts/frota/publicar-release.mjs");
+  assert.ok(liberacao.includes(`"${A}"`) && liberacao.includes(`"${B}"`));
+  const rpc = lerRepo(".github/workflows/rpc-ci.yml");
+  // As duas listas de caminhos do rpc-ci (os dois gatilhos) citam as duas consultas.
+  for (const nome of [A, B])
+    assert.equal(
+      rpc.split(`scripts/publicacao/consultas/${nome}.sql`).length - 1,
+      2,
+      `${nome}: as duas listas de caminhos do rpc-ci`,
+    );
+  assert.equal(
+    rpc.split(PROVA_VIVA).length - 1,
+    1,
+    "a prova viva tem de ter UM passo no rpc-ci",
+  );
+});
+
+Deno.test("404: scripts/db-apply.cjs tem entrada NOVA, cada marcador aparece UMA vez no corpo novo e o de antes nao tem a troca", () => {
+  const { VERIFICACOES } = require("../scripts/db-apply.cjs");
+  const entrada = VERIFICACOES[NOME];
+  assert.ok(
+    entrada,
+    "sem entrada em VERIFICACOES o apply da migration nao confere o corpo",
+  );
+  assert.equal(entrada.length, 1);
+  assert.equal(entrada[0].funcao, "devolucao_detalhe");
+  for (const m of entrada[0].esperado) {
+    assert.equal(
+      NOVO.split(m.texto).length - 1,
+      m.vezes,
+      `marcador no corpo novo: ${m.texto}`,
+    );
+  }
+  // O marcador da troca nao existe no corpo de antes: o apply distingue "aplicou" de "nao aplicou".
+  assert.equal(
+    VIGENTE.split("to_jsonb(v_d) - 'observacao_inspecao'").length - 1,
+    0,
+  );
+});
+
+Deno.test("404: a consulta 144a aceita o corpo de antes e o de depois da 404 (normaliza para o antigo)", () => {
+  const sql = lerRepo(
+    "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql",
+  );
+  assert.ok(sql.includes(`'${H_VIGENTE}', '${H_NOVO}'`));
+  assert.ok(sql.includes(`THEN '${H_VIGENTE}' ELSE h END`));
 });

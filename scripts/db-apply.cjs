@@ -1115,6 +1115,24 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // 20261404000000: a observacao da inspecao da devolucao e so da loja. devolucao_detalhe ganha SO a troca da linha do RETURN (a chave observacao_inspecao sai do JSON quando quem chama nao e o admin ATUAL); as duas
+  // travas do topo (is_admin e is_admin_atual) ficam como estao. O REVOKE da tabela devolucoes e o GRANT por coluna NAO se conferem aqui (so sabemos ler corpo de funcao): a conferencia final da propria migration mede o
+  // privilegio EFETIVO e a consulta 156a o confirma. A consulta 156a confere o corpo exato (md5), os atributos e a ACL; a prova viva mede o comportamento.
+  "20261404000000_a_observacao_da_inspecao_so_a_loja_ve.sql": [
+    {
+      funcao: "devolucao_detalhe",
+      esperado: [
+        {
+          texto:
+            "RETURN CASE WHEN public.is_admin_atual() THEN to_jsonb(v_d) ELSE to_jsonb(v_d) - 'observacao_inspecao' END || jsonb_build_object(",
+          vezes: 1,
+        },
+        { texto: "to_jsonb(v_d) - 'observacao_inspecao'", vezes: 1 },
+        { texto: "AND NOT public.is_admin()) THEN", vezes: 1 },
+        { texto: "AND NOT public.is_admin_atual()) THEN", vezes: 1 },
+      ],
+    },
+  ],
   // 20261402000000: o Inicio mostra o dinheiro a devolver e a margem do Financeiro. painel_inicio ganha SO as chaves dinheiro_a_devolver {valor, pedidos} (a conta da lista "Devolver agora" da tela de
   // Pedidos, em centavos) e mes.receita_liquida (a do fin_dre do mesmo periodo do lucro; a leitura do fin_dre passa a ser UMA so, v_dre); as chaves que ja existiam, o vencido sem estorno (20261399300000) e as duas
   // travas de admin ficam como estao (corpo da 20261399300000). A consulta 154a confere o corpo exato (md5), os atributos e a ACL; a prova viva mede o comportamento.

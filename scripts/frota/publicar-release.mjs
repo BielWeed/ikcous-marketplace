@@ -725,6 +725,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "154b-antes-o-inicio-mostra-o-dinheiro-a-devolver-base-vigente",
   "155a-conferir-o-total-comprado-do-cliente-e-o-mesmo-no-crm-na-lista-e-na-ficha-aplicado",
   "155b-antes-o-total-comprado-do-cliente-e-o-mesmo-no-crm-na-lista-e-na-ficha-base-vigente",
+  "156a-conferir-a-observacao-da-inspecao-so-a-loja-ve-aplicado",
+  "156b-antes-a-observacao-da-inspecao-so-a-loja-ve-base-vigente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */
