@@ -111,7 +111,7 @@ export async function lerCpfDaConta(): Promise<ResultadoLeituraCpf> {
 export function gravarCpfDaConta(
   cpf: string,
   contaEsperada: string,
-  aoChegarDepois?: () => void,
+  aoChegarDepois?: (confirmou: boolean) => void,
 ): Promise<ResultadoGravacaoCpf> {
   return gravarNaConta(
     "set_my_cpf",
@@ -131,11 +131,8 @@ export function gravarPerfilDaConta(
   contaEsperada: string,
   aoChegarDepois?: () => void,
 ): Promise<ResultadoGravacaoCpf> {
-  return gravarNaConta(
-    "update_my_profile_secure",
-    args,
-    contaEsperada,
-    aoChegarDepois,
+  return gravarNaConta("update_my_profile_secure", args, contaEsperada, () =>
+    aoChegarDepois?.(),
   );
 }
 
@@ -143,7 +140,7 @@ async function gravarNaConta(
   nome: "set_my_cpf" | "update_my_profile_secure",
   args: Parameters<typeof gravarPerfilDaConta>[0] | { p_cpf: string },
   contaEsperada: string,
-  aoChegarDepois?: () => void,
+  aoChegarDepois?: (confirmou: boolean) => void,
 ): Promise<ResultadoGravacaoCpf> {
   try {
     const {
@@ -166,7 +163,7 @@ async function gravarNaConta(
       20_000,
       undefined,
       // Não continua a sequência de gravações depois do prazo: só relê.
-      () => aoChegarDepois?.(),
+      (resultadoTardio) => aoChegarDepois?.(!resultadoTardio.error),
     );
     if (error) {
       return {

@@ -23,7 +23,7 @@ import {
 } from "@/hooks/useNumerosDosPedidos";
 
 // Estado do banco de mentira: o número que cada contagem devolve.
-const banco = vi.hoisted(() => ({ contagem: 0, consultas: 0 }));
+const banco = vi.hoisted(() => ({ contagem: 0, consultas: 0, status: 200 }));
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
@@ -36,10 +36,11 @@ vi.mock("@/lib/supabase", () => ({
       builder.or = () => builder;
       // biome-ignore lint/suspicious/noThenProperty: dublê do query builder thenable do Supabase.
       builder.then = (resolve: unknown, reject?: unknown) =>
-        Promise.resolve({ count: banco.contagem, error: null }).then(
-          resolve as never,
-          reject as never,
-        );
+        Promise.resolve({
+          count: banco.status < 400 ? banco.contagem : null,
+          error: banco.status < 400 ? null : { message: "Falha de teste" },
+          status: banco.status,
+        }).then(resolve as never, reject as never);
       return builder;
     },
   },
@@ -92,6 +93,7 @@ describe("useNumerosDosPedidos — ao voltar a aba para a frente", () => {
     vi.useFakeTimers();
     banco.contagem = 0;
     banco.consultas = 0;
+    banco.status = 200;
     lido.paraPreparar = null;
     visibilidade = "visible";
     vi.spyOn(document, "visibilityState", "get").mockImplementation(
@@ -148,6 +150,59 @@ describe("useNumerosDosPedidos — ao voltar a aba para a frente", () => {
     await passar(ATRASO_COALESCENCIA_NUMEROS_MS * 3);
 
     expect(banco.consultas).toBe(antes);
+  });
+
+  it("ocultar cancela a retentativa antiga mesmo se a aba voltar antes do prazo", async () => {
+    banco.status = 503;
+    await montar();
+    expect(banco.consultas).toBe(CONSULTAS_POR_RODADA);
+    expect(lido.paraPreparar).toBeNull();
+
+    await passar(200);
+    await mudarVisibilidade("hidden");
+    await passar(200);
+    banco.status = 200;
+    banco.contagem = 3;
+    await mudarVisibilidade("visible");
+
+    await passar(600); // Venceria a retentativa antiga, não a recarga de foco.
+    expect(banco.consultas).toBe(CONSULTAS_POR_RODADA);
+    expect(lido.paraPreparar).toBeNull();
+    await passar(400);
+    expect(banco.consultas).toBe(CONSULTAS_POR_RODADA * 2);
+    expect(lido.paraPreparar).toBe(3);
+  });
+
+  it.each([401, 403])(
+    "não retenta uma consulta recusada com HTTP %s",
+    async (status) => {
+      banco.status = status;
+      await montar();
+      expect(lido.paraPreparar).toBeNull();
+
+      await passar(60_000);
+
+      expect(banco.consultas).toBe(CONSULTAS_POR_RODADA);
+      expect(lido.paraPreparar).toBeNull();
+    },
+  );
+
+  it("uma recarga de foco não renova as três retentativas já gastas nesta tela", async () => {
+    banco.status = 503;
+    await montar();
+    await passar(1000 + 2000 + 4000);
+    expect(banco.consultas).toBe(CONSULTAS_POR_RODADA * 4);
+
+    await mudarVisibilidade("hidden");
+    await mudarVisibilidade("visible");
+    await passar(ATRASO_COALESCENCIA_NUMEROS_MS);
+    const depoisDoFoco = CONSULTAS_POR_RODADA * 5;
+    expect(banco.consultas).toBe(depoisDoFoco);
+
+    await passar(60_000);
+
+    expect(banco.consultas).toBe(depoisDoFoco);
+    expect(lido.paraPreparar).toBeNull();
   });
 
   it("várias voltas seguidas viram uma rodada só", async () => {

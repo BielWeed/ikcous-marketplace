@@ -64,10 +64,15 @@ const NADA_CONTADO: Contagens = {
  * construção, e isso também é "não sei", não tela quebrada.
  */
 async function contar(
-  montar: () => PromiseLike<{ count: number | null; error: unknown }>,
-): Promise<number | null> {
+  montar: () => PromiseLike<{
+    count: number | null;
+    error: unknown;
+    status?: number;
+  }>,
+): Promise<number | null | "sem_acesso"> {
   try {
-    const { count, error } = await montar();
+    const { count, error, status } = await montar();
+    if (status === 401 || status === 403) return "sem_acesso";
     if (error || typeof count !== "number") return null;
     return count;
   } catch {
@@ -81,66 +86,106 @@ function contagemDePedidos() {
     .select("*", { count: "exact", head: true });
 }
 
+const CONSULTAS = {
+  paraPreparar: () =>
+    contagemDePedidos()
+      .in("status", STATUS_PARA_PREPARAR)
+      .or(FILTRO_POSTGREST_PARA_PREPARAR),
+  aguardandoPagamento: () =>
+    contagemDePedidos()
+      .in("status", STATUS_PARA_PREPARAR)
+      .eq("payment_status", "aguardando"),
+  aCaminho: () => contagemDePedidos().eq("status", "shipping"),
+  abertosComPagamentoAConferir: () =>
+    contagemDePedidos()
+      .in("status", STATUS_PARA_PREPARAR)
+      .in("payment_status", PAGAMENTOS_A_CONFERIR_EM_ABERTO),
+} satisfies Record<keyof Contagens, Parameters<typeof contar>[0]>;
+
+const CAMPOS_DAS_CONTAGENS = Object.keys(CONSULTAS) as (keyof Contagens)[];
+const ESPERAS_DAS_RETENTATIVAS_MS = [1000, 2000, 4000] as const;
+
 export function useNumerosDosPedidos(ativo: boolean): NumerosDosPedidos {
   const [contagens, setContagens] = useState<Contagens>(NADA_CONTADO);
-  // Guarda de rodada (mesmo padrão de `AdminLayout.tsx`, `fetchInitialCounts`):
-  // várias rodadas podem estar em voo (montagem, tempo real, volta de foco);
-  // só a mais nova grava, senão a velha que termina por último escreve um
-  // número velho por cima do novo.
+  // Várias rodadas podem estar em voo (montagem, tempo real, volta de foco);
+  // só a mais nova grava, inclusive quando uma retentativa já saiu.
   const rodadaAtual = useRef(0);
-  const montado = useRef(true);
+  const telaAtiva = useRef(false);
   const recargaAgendada = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retentativaAgendada = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  // Limite por tela montada, não por evento de foco/tempo real.
+  const retentativasFeitas = useRef(0);
+  const cancelarRetentativa = useCallback(() => {
+    if (retentativaAgendada.current !== null) {
+      clearTimeout(retentativaAgendada.current);
+      retentativaAgendada.current = null;
+    }
+  }, []);
 
   useEffect(() => {
-    montado.current = true;
+    telaAtiva.current = ativo;
     return () => {
-      montado.current = false;
-      if (recargaAgendada.current) {
+      telaAtiva.current = false;
+      ++rodadaAtual.current;
+      if (recargaAgendada.current !== null) {
         clearTimeout(recargaAgendada.current);
         recargaAgendada.current = null;
       }
+      cancelarRetentativa();
     };
-  }, []);
+  }, [ativo, cancelarRetentativa]);
 
   const recarregar = useCallback(async () => {
+    if (!telaAtiva.current) return;
     const rodada = ++rodadaAtual.current;
-    const [
-      paraPreparar,
-      aguardandoPagamento,
-      aCaminho,
-      abertosComPagamentoAConferir,
-    ] = await Promise.all([
-      contar(() =>
-        contagemDePedidos()
-          .in("status", STATUS_PARA_PREPARAR)
-          .or(FILTRO_POSTGREST_PARA_PREPARAR),
-      ),
-      contar(() =>
-        contagemDePedidos()
-          .in("status", STATUS_PARA_PREPARAR)
-          .eq("payment_status", "aguardando"),
-      ),
-      contar(() => contagemDePedidos().eq("status", "shipping")),
-      contar(() =>
-        contagemDePedidos()
-          .in("status", STATUS_PARA_PREPARAR)
-          .in("payment_status", PAGAMENTOS_A_CONFERIR_EM_ABERTO),
-      ),
-    ]);
-    if (!montado.current || rodada !== rodadaAtual.current) return;
-    setContagens({
-      paraPreparar,
-      aguardandoPagamento,
-      aCaminho,
-      abertosComPagamentoAConferir,
-    });
-  }, []);
+    cancelarRetentativa();
+
+    const aindaAtual = () =>
+      telaAtiva.current && rodada === rodadaAtual.current;
+    async function consultar(campos: (keyof Contagens)[]) {
+      const resultados = await Promise.all(
+        campos.map(async (campo) => ({
+          campo,
+          valor: await contar(CONSULTAS[campo]),
+        })),
+      );
+      if (!aindaAtual()) return;
+
+      const parciais: Partial<Contagens> = {};
+      const falharam: (keyof Contagens)[] = [];
+      for (const { campo, valor } of resultados) {
+        parciais[campo] = valor === "sem_acesso" ? null : valor;
+        if (valor === null) falharam.push(campo);
+      }
+      setContagens((anteriores) => ({ ...anteriores, ...parciais }));
+
+      const espera = ESPERAS_DAS_RETENTATIVAS_MS[retentativasFeitas.current];
+      if (
+        !falharam.length ||
+        espera === undefined ||
+        document.visibilityState !== "visible"
+      ) {
+        return;
+      }
+      retentativaAgendada.current = setTimeout(() => {
+        retentativaAgendada.current = null;
+        if (aindaAtual() && document.visibilityState === "visible") {
+          ++retentativasFeitas.current;
+          void consultar(falharam);
+        }
+      }, espera);
+    }
+
+    await consultar(CAMPOS_DAS_CONTAGENS);
+  }, [cancelarRetentativa]);
 
   const pedirRecarga = useCallback(() => {
-    if (recargaAgendada.current) return;
+    if (!telaAtiva.current || recargaAgendada.current !== null) return;
     recargaAgendada.current = setTimeout(() => {
       recargaAgendada.current = null;
-      if (montado.current) void recarregar();
+      void recarregar();
     }, ATRASO_COALESCENCIA_NUMEROS_MS);
   }, [recarregar]);
 
@@ -159,12 +204,18 @@ export function useNumerosDosPedidos(ativo: boolean): NumerosDosPedidos {
   useEffect(() => {
     if (!ativo) return;
     const aoVoltarParaAFrente = () => {
-      if (document.visibilityState === "visible") pedirRecarga();
+      if (document.visibilityState === "visible") {
+        pedirRecarga();
+      } else {
+        cancelarRetentativa();
+        // Uma resposta da rodada antiga também perde a vez de agendar.
+        ++rodadaAtual.current;
+      }
     };
     document.addEventListener("visibilitychange", aoVoltarParaAFrente);
     return () =>
       document.removeEventListener("visibilitychange", aoVoltarParaAFrente);
-  }, [ativo, pedirRecarga]);
+  }, [ativo, cancelarRetentativa, pedirRecarga]);
 
   // O disparo automático de montagem: ao ficar ativa. Troca de filtro, busca
   // ou página NÃO recarrega — as contagens não dependem deles. Depois disso

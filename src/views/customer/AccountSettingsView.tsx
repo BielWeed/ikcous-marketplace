@@ -100,11 +100,17 @@ export function AccountSettingsView() {
   const { user, profile, fetchProfile, updateProfile, updatePassword } =
     useAuth();
   const contaAtualIdRef = useRef<string | null>(user?.id ?? null);
+  // A identidade muda a cada edição. Uma resposta tardia só pode liberar
+  // o rascunho que realmente foi enviado naquela tentativa.
+  const rascunhoCpfRef = useRef<{ contaId: string; digitos: string } | null>(
+    null,
+  );
   useEffect(() => {
     contaAtualIdRef.current = user?.id ?? null;
     return () => {
       // A continuação antiga também perde a dona quando a tela desmonta.
       contaAtualIdRef.current = null;
+      rascunhoCpfRef.current = null;
     };
   }, [user?.id]);
   const [loading, setLoading] = useState(false);
@@ -500,7 +506,6 @@ export function AccountSettingsView() {
   const ultimoMostradoRef = useRef<{
     name: string;
     phone: string;
-    cpf: string;
   } | null>(null);
 
   // Nome em branco não salva (14/10/2026): o `COALESCE(p_full_name, full_name)`
@@ -520,8 +525,8 @@ export function AccountSettingsView() {
   const edicaoPendente =
     (profileLoadState === "loaded" &&
       (profileData.name !== profileDataOriginal.name ||
-        profileData.phone !== profileDataOriginal.phone ||
-        somenteDigitosDoCpf(cpf) !== cpfOriginal)) ||
+        profileData.phone !== profileDataOriginal.phone)) ||
+    somenteDigitosDoCpf(cpf) !== cpfOriginal ||
     passwordData.newPassword !== "" ||
     passwordData.confirmPassword !== "";
   const recargaBloqueada = edicaoPendente || loading || updatingPassword;
@@ -621,20 +626,21 @@ export function AccountSettingsView() {
           setProfileLoadState("error");
           return;
         }
-        const baseCpf = base?.cpf;
-        setCpf((c) =>
-          baseCpf !== undefined && somenteDigitosDoCpf(c) !== baseCpf
-            ? c
-            : digitosCpf
-              ? formatarCpf(digitosCpf).formatado
-              : "",
-        );
+        // Qualquer releitura pode atualizar o que sabemos do banco, mas só
+        // troca o campo se não houver edição ainda sem confirmação desta conta.
+        const rascunhoCpf = rascunhoCpfRef.current;
+        if (
+          rascunhoCpf?.contaId !== userId ||
+          rascunhoCpf.digitos === digitosCpf
+        ) {
+          rascunhoCpfRef.current = null;
+          setCpf(formatarCpf(digitosCpf).formatado);
+          setCpfErro(false);
+        }
         setCpfOriginal(digitosCpf);
-        setCpfErro(false);
         ultimoMostradoRef.current = {
           name: dadosCarregados.name,
           phone: dadosCarregados.phone,
-          cpf: digitosCpf,
         };
 
         setProfileLoadState("loaded");
@@ -767,7 +773,9 @@ export function AccountSettingsView() {
     setCpfErro(false);
     // "Só grava se mudou" (pedido do dono): campo vazio quando a conta já
     // tinha CPF TAMBÉM é uma mudança — é o caminho de limpar.
-    const cpfMudou = digitosCpfAtual !== cpfOriginal;
+    const cpfMudou =
+      rascunhoCpfRef.current?.contaId === contaDonaId &&
+      digitosCpfAtual !== cpfOriginal;
 
     // Como o WhatsApp e o CPF, o nome só vai quando ELA o editou: os dados são
     // lidos uma vez ao abrir a tela, e outro aparelho pode ter trocado o nome
@@ -775,10 +783,10 @@ export function AccountSettingsView() {
     const nomeMudou = nomeAparado !== profileDataOriginal.name.trim();
 
     const perfilEnviado = profileData;
+    const rascunhoCpfEnviado = rascunhoCpfRef.current;
     ultimoMostradoRef.current = {
       name: profileData.name,
       phone: profileData.phone,
-      cpf: digitosCpfAtual,
     };
     const rodadaSalvar = ++rodadaSalvarRef.current;
     // A leitura que já estava no ar também perde a vez para o novo salvamento.
@@ -831,10 +839,21 @@ export function AccountSettingsView() {
 
       if (cpfMudou) {
         if (!contaAindaEhDona()) return;
+        const confirmarRascunhoCpf = () => {
+          if (
+            contaAindaEhDona() &&
+            rascunhoCpfRef.current === rascunhoCpfEnviado
+          ) {
+            rascunhoCpfRef.current = null;
+          }
+        };
         const resultadoCpf = await gravarCpfDaConta(
           digitosCpfAtual,
           contaDonaId,
-          () => relerDepoisDoPrazo(contaDonaId),
+          (confirmou) => {
+            if (confirmou) confirmarRascunhoCpf();
+            relerDepoisDoPrazo(contaDonaId);
+          },
         );
         // CPF gravado (ou limpo) AQUI vale mais que o do cadastro: o
         // pendente não pode voltar depois e sobrescrever. Vale mesmo que a
@@ -854,6 +873,13 @@ export function AccountSettingsView() {
           if (resultadoCpf.motivo !== "conta_trocada")
             await comPrazo(Promise.resolve(fetchProfile()), 15_000);
           return;
+        }
+        confirmarRascunhoCpf();
+        if (rascunhoCpfRef.current?.digitos === digitosCpfAtual) {
+          rascunhoCpfRef.current = null;
+        }
+        if (!rascunhoCpfRef.current) {
+          setCpf(formatarCpf(digitosCpfAtual).formatado);
         }
         setCpfOriginal(digitosCpfAtual);
       }
@@ -1272,7 +1298,14 @@ export function AccountSettingsView() {
                       value={cpf}
                       disabled={profileLoadState !== "loaded"}
                       onChange={(e) => {
-                        setCpf(formatarCpf(e.target.value).formatado);
+                        const { limpo, formatado } = formatarCpf(
+                          e.target.value,
+                        );
+                        rascunhoCpfRef.current =
+                          userId && limpo !== cpfOriginal
+                            ? { contaId: userId, digitos: limpo }
+                            : null;
+                        setCpf(formatado);
                         if (cpfErro) setCpfErro(false);
                       }}
                       aria-invalid={cpfErro}
