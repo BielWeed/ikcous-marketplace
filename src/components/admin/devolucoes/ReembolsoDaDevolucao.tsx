@@ -79,13 +79,7 @@ const AVISOS = new Map<string, () => unknown>([
         "O Mercado Pago não confirmou. Nada foi feito; tente mais tarde.",
       ),
   ],
-  [
-    "combinado",
-    () =>
-      toast.success(
-        "Registrado como devolvido por fora. O cliente foi avisado.",
-      ),
-  ],
+  ["combinado", () => toast.success("Registrado como devolvido por fora.")],
 ]);
 
 /** Avisa o resultado; devolve o corpo quando ele é um objeto. */

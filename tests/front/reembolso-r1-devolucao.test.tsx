@@ -488,7 +488,9 @@ describe("ReembolsoDaDevolucao — o painel ganha os botões que o servidor já 
         },
       },
     ]);
-    expect(toastMock.success).toHaveBeenCalled();
+    expect(toastMock.success).toHaveBeenCalledWith(
+      "Registrado como devolvido por fora.",
+    );
   });
 
   it("D3: pode ter saído — SEM 'Tentar de novo' e sem 'por fora' normal; só 'não repita'", async () => {
