@@ -2897,7 +2897,6 @@ const AppContent = () => {
       variantId?: string,
       variantNames?: string,
     ) => {
-      console.log("[App-Trace] handleAddToCart Attempt");
       const entrou = addToCart(product, quantity, variantId, variantNames);
       // Só vibra o "deu certo" se algo entrou: com o estoque já todo no
       // carrinho a recusa vem como aviso, nunca como comemoração.

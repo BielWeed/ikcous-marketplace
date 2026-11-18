@@ -4505,7 +4505,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                               }))
                             }
                             className="w-full rounded-2xl border border-admin-border bg-zinc-950 px-5 py-4 font-mono text-sm font-bold uppercase transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                            placeholder="Ex: COR-TAM"
+                            placeholder="Ex.: COR-TAM"
                           />
                         </div>
                         {/* Código de Barras (C5.2) — a caixa da PP tem um código
@@ -4543,7 +4543,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                 )
                               }
                               className="w-full rounded-2xl border border-admin-border bg-zinc-950 px-5 py-4 font-mono text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                              placeholder="Ex: 7891234567890"
+                              placeholder="Ex.: 7891234567890"
                             />
                             {/* C5.3 — some sem câmera: o leitor físico USB digita
                             direto no campo acima, sem precisar deste botão. */}
@@ -5272,7 +5272,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   onFlush={(val) =>
                     setFormData((prev) => ({ ...prev, name: val }))
                   }
-                  placeholder="Ex: Camiseta básica preta"
+                  placeholder="Ex.: Camiseta básica preta"
                   className="w-full rounded-xl border border-admin-border bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5 sm:text-base"
                 />
               </div>
@@ -5395,7 +5395,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 <div className="group relative">
                   <LocalBufferedInput
                     id="product-stock"
-                    placeholder="Ex: 24"
+                    placeholder="Ex.: 24"
                     aria-invalid={!!stockError}
                     aria-describedby={
                       hasActiveVariants
@@ -5518,7 +5518,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             originalPrice: val,
                           }))
                         }
-                        placeholder="Ex: 99,90"
+                        placeholder="Ex.: 99,90"
                         className="w-full rounded-xl border border-admin-border bg-zinc-950/50 py-3 pl-11 pr-4 text-base font-black tabular-nums text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:py-5 sm:pl-14 sm:pr-6 sm:text-lg"
                       />
                     </div>
@@ -6118,7 +6118,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             name="widthCm"
                             type="number"
                             min="0"
-                            placeholder="Ex: 15"
+                            placeholder="Ex.: 15"
                             value={formData.widthCm}
                             onFlush={(val) =>
                               setFormData((prev) => ({ ...prev, widthCm: val }))
@@ -6150,7 +6150,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             name="heightCm"
                             type="number"
                             min="0"
-                            placeholder="Ex: 15"
+                            placeholder="Ex.: 15"
                             value={formData.heightCm}
                             onFlush={(val) =>
                               setFormData((prev) => ({
@@ -6185,7 +6185,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             name="lengthCm"
                             type="number"
                             min="0"
-                            placeholder="Ex: 15"
+                            placeholder="Ex.: 15"
                             value={formData.lengthCm}
                             onFlush={(val) =>
                               setFormData((prev) => ({
@@ -6287,7 +6287,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                               "produto",
                             )
                           }
-                          placeholder="Ex: 7891234567890"
+                          placeholder="Ex.: 7891234567890"
                           className="w-full rounded-xl border border-admin-border bg-zinc-950/50 px-4 py-3 font-mono text-sm font-black tabular-nums text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5"
                         />
                         {/* C5.3 — some sem câmera: o leitor físico USB digita direto
@@ -6344,7 +6344,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             estoqueMinimo: val,
                           }))
                         }
-                        placeholder="Ex: 5"
+                        placeholder="Ex.: 5"
                         aria-invalid={estoqueMinimoError ? true : undefined}
                         aria-describedby={
                           estoqueMinimoError

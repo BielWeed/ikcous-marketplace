@@ -558,7 +558,7 @@ describe("AdminProductFormView — o que faltava para chegar no desenho", () => 
     it("o exemplo do nome é o do desenho e cabe na caixa (era cortado no meio de 'Tamanho M')", async () => {
       await montar(0, "");
       const nome = document.getElementById("product-name") as HTMLInputElement;
-      expect(nome.placeholder).toBe("Ex: Camiseta básica preta");
+      expect(nome.placeholder).toBe("Ex.: Camiseta básica preta");
     });
 
     it("'Ver app': o título do simulador tem versão curta no celular (a longa era cortada em 'Simulador do…')", async () => {

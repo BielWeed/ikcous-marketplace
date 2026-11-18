@@ -4,7 +4,7 @@
 // inglês (`toast.error(\`... ${error.message}\`)`), inclusive um sétimo em
 // que a tela de admin nem tinha o dado: `AdminLoginView.tsx` desestruturava
 // só `{ success }` do retorno de `login`, então um bloqueio por excesso de
-// tentativas (429) mostrava "Email ou senha administrativos incorretos." com
+// tentativas (429) mostrava "E-mail ou senha administrativos incorretos." com
 // a senha CERTA — o lojista tentava de novo e ESTENDIA o próprio bloqueio.
 //
 // Cada `describe` cobre um dos 7 pontos. A regra que decide toda tradução
@@ -963,7 +963,7 @@ describe("AdminLoginView — o erro deixa de virar sempre 'senha incorreta'", ()
   // O defeito relatado: a tela lia só `success` e por isso um bloqueio por
   // excesso de tentativas (senha CERTA) virava "senha incorreta" — o lojista
   // tentava de novo e ESTENDIA o próprio bloqueio.
-  it("bloqueio por excesso de tentativas (429, senha certa): NÃO mostra 'Email ou senha administrativos incorretos'", async () => {
+  it("bloqueio por excesso de tentativas (429, senha certa): NÃO mostra 'E-mail ou senha administrativos incorretos'", async () => {
     login.mockResolvedValue({
       success: false,
       error: { status: 429, message: "Too many requests" },
@@ -972,12 +972,12 @@ describe("AdminLoginView — o erro deixa de virar sempre 'senha incorreta'", ()
     await montarESubmeter();
 
     expect(hospedeiro.textContent).not.toMatch(
-      /email ou senha administrativos incorretos/i,
+      /e-mail ou senha administrativos incorretos/i,
     );
     expect(hospedeiro.textContent).toMatch(/muitas tentativas/i);
   });
 
-  it("credenciais realmente inválidas (status 400): continua mostrando 'Email ou senha administrativos incorretos'", async () => {
+  it("credenciais realmente inválidas (status 400): continua mostrando 'E-mail ou senha administrativos incorretos'", async () => {
     login.mockResolvedValue({
       success: false,
       error: {
@@ -990,7 +990,7 @@ describe("AdminLoginView — o erro deixa de virar sempre 'senha incorreta'", ()
     await montarESubmeter();
 
     expect(hospedeiro.textContent).toMatch(
-      /email ou senha administrativos incorretos/i,
+      /e-mail ou senha administrativos incorretos/i,
     );
   });
 
@@ -1007,7 +1007,7 @@ describe("AdminLoginView — o erro deixa de virar sempre 'senha incorreta'", ()
 
     expect(hospedeiro.textContent).toMatch(/não foi confirmado/i);
     expect(hospedeiro.textContent).not.toMatch(
-      /email ou senha administrativos incorretos/i,
+      /e-mail ou senha administrativos incorretos/i,
     );
   });
 
@@ -1020,7 +1020,7 @@ describe("AdminLoginView — o erro deixa de virar sempre 'senha incorreta'", ()
     await montarESubmeter();
 
     expect(hospedeiro.textContent).not.toMatch(
-      /email ou senha administrativos incorretos/i,
+      /e-mail ou senha administrativos incorretos/i,
     );
     expect(hospedeiro.textContent).not.toMatch(/network request failed/i);
   });
@@ -1051,7 +1051,7 @@ describe("AdminLoginView — o erro deixa de virar sempre 'senha incorreta'", ()
     // a suíte passaria inteira.
     expect(hospedeiro.textContent).not.toMatch(/fale com a loja/i);
     expect(hospedeiro.textContent).not.toMatch(
-      /email ou senha administrativos incorretos/i,
+      /e-mail ou senha administrativos incorretos/i,
     );
     expect(hospedeiro.textContent).not.toMatch(/user is banned/i);
   });

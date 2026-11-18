@@ -1159,7 +1159,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                     htmlFor="email"
                     className="ml-1 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-600"
                   >
-                    Email
+                    E-mail
                   </label>
                   <div className="group/field relative">
                     <Mail className="absolute left-5 top-1/2 size-4 -translate-y-1/2 text-zinc-300 transition-colors group-focus-within/field:text-zinc-900" />
