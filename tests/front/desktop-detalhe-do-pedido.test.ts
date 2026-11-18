@@ -139,7 +139,7 @@ describe("detalhe do pedido no computador — P10", () => {
     }
   });
 
-  it("preserva a assinatura das 160 classes de celular, incluindo classes condicionais", () => {
+  it("preserva a assinatura das 161 classes de celular, incluindo classes condicionais", () => {
     const arvore = ts.createSourceFile(
       "OrderDetailsView.tsx",
       fonte,
@@ -164,10 +164,11 @@ describe("detalhe do pedido no computador — P10", () => {
       ts.forEachChild(no, visitar);
     }
     visitar(arvore);
-    expect(classes).toHaveLength(160);
-    // Medida na base f04669a6a, antes da implementação; não depende do HEAD.
+    expect(classes).toHaveLength(161);
+    // Base f04669a6a + parágrafo do horário de retirada (17/11/2026).
+    // Única adição conferida: "text-xs text-zinc-500"; demais classes intactas.
     expect(
       createHash("sha256").update(JSON.stringify(classes)).digest("hex"),
-    ).toBe("85cc285a16756b4cce95c1da18af7416062812b59c858cfee3b8ea0416504f59");
+    ).toBe("825b85d41dae4166e4dddc14f395cc9643fdce0c4bd393139cbcb19e7a65ecf0");
   });
 });

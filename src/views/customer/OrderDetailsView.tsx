@@ -399,6 +399,7 @@ function cancelledDescription(
   linhasDevolucao: LinhaDevolucaoDoCliente[],
   leituraDaDevolucao: LeituraDaDevolucao = "lida",
   noBalcao = false,
+  retiradaNaLoja = false,
 ): string {
   const key = paymentStatusKey(paymentStatus);
   // `recebido_na_entrega` fica fora do Mercado Pago (brief T7): a devolução
@@ -470,7 +471,9 @@ function cancelledDescription(
     // `pago_apos_expirar`. Comprar de novo na hora seria pagar duas vezes.
     return "O prazo do pagamento terminou e o pedido foi cancelado. Se você já pagou, aguarde alguns minutos antes de comprar de novo. Se não pagou, é só comprar de novo.";
   }
-  return statusConfig.cancelled.description;
+  return retiradaNaLoja
+    ? "Este pedido foi cancelado e não seguirá para retirada."
+    : statusConfig.cancelled.description;
 }
 
 export function OrderDetailsView({
@@ -1266,6 +1269,7 @@ export function OrderDetailsView({
             linhasDevolucao,
             leituraDaDevolucao,
             noBalcao,
+            order.retiradaNaLoja,
           )
         : currentStatus.description;
   // Estornado: o dinheiro já voltou, então só a linha CONCLUÍDA tem o que dizer
@@ -2058,6 +2062,11 @@ export function OrderDetailsView({
                   {avisoDaRetirada(order.status) && (
                     <p className="text-xs font-medium leading-relaxed text-zinc-500">
                       {avisoDaRetirada(order.status)}
+                    </p>
+                  )}
+                  {prontoParaRetirar && config.businessHours?.trim() && (
+                    <p className="text-xs text-zinc-500">
+                      Horário: {config.businessHours}
                     </p>
                   )}
                   {temEnderecoDoPedido && (
