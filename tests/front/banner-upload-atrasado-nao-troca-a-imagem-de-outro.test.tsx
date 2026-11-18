@@ -210,7 +210,7 @@ describe("upload de banner pertence à abertura do editor", () => {
 
   function imagemDoEditor() {
     return hospedeiro.querySelector<HTMLImageElement>(
-      'img[alt="Preview Thumbnail"]',
+      'img[alt="Miniatura do banner"]',
     )?.src;
   }
 

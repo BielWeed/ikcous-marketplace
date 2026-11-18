@@ -17,7 +17,7 @@ export function PreviaImagemPropria({
       {formData.imageUrl ? (
         <img
           src={formData.imageUrl}
-          alt="Banner Preview"
+          alt="Prévia do banner"
           className="size-full object-cover"
         />
       ) : (

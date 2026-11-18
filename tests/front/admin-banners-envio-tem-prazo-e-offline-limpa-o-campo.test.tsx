@@ -202,7 +202,7 @@ describe("AdminBannersView — envio da imagem: prazo, foto ilegível e campo li
 
   function imagem() {
     return hospedeiro.querySelector<HTMLImageElement>(
-      'img[alt="Preview Thumbnail"], img[alt="Banner Preview"]',
+      'img[alt="Miniatura do banner"], img[alt="Prévia do banner"]',
     )?.src;
   }
 

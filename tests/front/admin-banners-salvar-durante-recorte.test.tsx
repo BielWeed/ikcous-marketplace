@@ -186,7 +186,7 @@ describe("salvar banner e recortar não disputam a imagem publicada", () => {
 
   function imagem() {
     return hospedeiro.querySelector<HTMLImageElement>(
-      'img[alt="Preview Thumbnail"], img[alt="Banner Preview"]',
+      'img[alt="Miniatura do banner"], img[alt="Prévia do banner"]',
     )?.src;
   }
 

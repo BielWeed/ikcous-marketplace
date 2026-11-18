@@ -3148,7 +3148,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                       alt={
                         computadorSelecionado
                           ? "Imagem do computador"
-                          : "Preview Thumbnail"
+                          : "Miniatura do banner"
                       }
                       className={cn(
                         "h-16 rounded-xl object-cover",

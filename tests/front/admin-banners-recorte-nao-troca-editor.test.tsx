@@ -205,7 +205,7 @@ describe("recorte de banner não atravessa gerações do editor", () => {
 
   function imagem() {
     return hospedeiro.querySelector<HTMLImageElement>(
-      'img[alt="Preview Thumbnail"]',
+      'img[alt="Miniatura do banner"]',
     )?.src;
   }
 

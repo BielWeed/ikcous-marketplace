@@ -210,7 +210,7 @@ describe("limpeza do arquivo órfão de upload atrasado de banner", () => {
 
   function imagemDoEditor() {
     return hospedeiro.querySelector<HTMLImageElement>(
-      'img[alt="Preview Thumbnail"]',
+      'img[alt="Miniatura do banner"]',
     )?.src;
   }
 
