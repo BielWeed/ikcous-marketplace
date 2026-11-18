@@ -158,6 +158,7 @@ const soltarPrevia = (previa: string) => {
  */
 export function SolicitarDevolucaoSheet(props: SolicitarDevolucaoSheetProps) {
   const { aberto, onAbertoMudou } = props;
+  const origemRef = useRef<HTMLElement | null>(null);
   // O conteúdo da folha é desmontado ao fechar: o que a cliente preencheu some
   // junto. Quem sabe se há algo preenchido é o fluxo (ele avisa por esta ref);
   // aqui, por toque fora, Esc ou X, fechar com rascunho vira uma pergunta.
@@ -216,6 +217,17 @@ export function SolicitarDevolucaoSheet(props: SolicitarDevolucaoSheetProps) {
   return (
     <Sheet open={aberto} onOpenChange={pedirParaMudar}>
       <SheetContent
+        onOpenAutoFocus={() => {
+          origemRef.current =
+            document.activeElement instanceof HTMLElement
+              ? document.activeElement
+              : null;
+        }}
+        onCloseAutoFocus={(evento) => {
+          if (!origemRef.current?.isConnected) return;
+          evento.preventDefault();
+          origemRef.current.focus();
+        }}
         side="bottom"
         gavetaNoComputador={false}
         data-testid="folha-devolucao"

@@ -197,6 +197,22 @@ const MARCA = { folhaDePolitica: true };
 const TELA = { view: "order-details", id: "p-1" };
 
 describe("SolicitarDevolucaoSheet — o Voltar do celular fecha só a folha", () => {
+  it("fechar pelo X devolve o foco ao botão que abriu", async () => {
+    const gatilho = document.createElement("button");
+    gatilho.textContent = "Devolver ou trocar";
+    document.body.appendChild(gatilho);
+    gatilho.focus();
+    await montar();
+    await act(async () => {
+      folha()
+        ?.querySelector<HTMLButtonElement>('[aria-label="Fechar"]')
+        ?.click();
+      await esperar(30);
+    });
+    expect(folha()).toBeNull();
+    expect(document.activeElement).toBe(gatilho);
+  });
+
   it("abrir a folha empurra UMA entrada com o mesmo endereço do pedido", async () => {
     const antes = globalThis.history.length;
     await montar();

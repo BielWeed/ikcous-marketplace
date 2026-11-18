@@ -78,6 +78,34 @@ describe("folha e links das políticas", () => {
     throw new Error("a folha da política não abriu");
   }
 
+  it.each(["Termos de uso", "Política de Privacidade", "Trocas e devoluções"])(
+    "fechar devolve o foco ao link %s que abriu a folha",
+    async (nome) => {
+      const { FraseDeAceite, LinkDeTrocas } = await import(
+        "@/components/politicas/LinksDasPoliticas"
+      );
+      await renderizar(
+        <>
+          <FraseDeAceite acao="finalizar" />
+          <LinkDeTrocas />
+        </>,
+      );
+      const gatilho = botaoPorTexto(nome);
+      act(() => {
+        gatilho.focus();
+        gatilho.click();
+      });
+      await aguardarFolha();
+      await act(async () => {
+        document
+          .querySelector<HTMLButtonElement>('[aria-label="Fechar"]')
+          ?.click();
+        await esperar(30);
+      });
+      expect(document.activeElement).toBe(gatilho);
+    },
+  );
+
   it("frase de aceite: texto exato, com os dois links, sem caixa de marcar", async () => {
     const { FraseDeAceite } = await import(
       "@/components/politicas/LinksDasPoliticas"

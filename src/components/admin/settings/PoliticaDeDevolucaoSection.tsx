@@ -649,8 +649,9 @@ export function PoliticaDeDevolucaoSection({
           Dinheiro e frete
         </h4>
         <p className="text-[11px] leading-relaxed text-zinc-500">
-          O reembolso sai quando você abre a devolução, confere o produto e toca
-          em Concluir. É isso que o cliente lê na política.
+          O reembolso é feito após conferir o produto e concluir a devolução,
+          conforme o meio de pagamento. Passado o prazo do meio de pagamento, a
+          loja combina outra forma com o cliente.
         </p>
         <Escolha
           rotulo="Frete da troca por gosto"

@@ -1,4 +1,19 @@
 {
+  "1.5.212": {
+    "titulo": "Textos de dinheiro mais honestos, painel e conta mais fáceis de usar",
+    "novidades": [],
+    "correcoes": [
+      "Painel, devoluções: depois que a lojista registra que já devolveu o valor por fora, a tela avisa \"Não pague novamente\".",
+      "Painel, textos de dinheiro: a política de devolução e o aviso do Mercado Pago deixam de prometer reembolso automático ou atualização instantânea das telas abertas; o texto da devolução que a cliente lê também não garante o mesmo meio de pagamento.",
+      "Painel, avisos (push): a confirmação do envio explica que ele vai para todos os aparelhos inscritos, e o histórico fala em avisos aceitos para envio, não em recebidos.",
+      "Painel, banners: foto ausente ou data final inválida levam direto ao campo com o problema, abrindo as opções se estiverem fechadas.",
+      "Endereços: o CEP incompleto passa a receber o foco no campo; ao cancelar a exclusão de um endereço, o foco volta ao botão de onde você veio.",
+      "Devoluções e políticas: ao fechar a janela de solicitar devolução ou a política em folha, o foco volta ao botão de onde você veio.",
+      "Conta: se a foto de perfil não carregar, aparece a inicial do nome (ou um ícone) no lugar da imagem quebrada.",
+      "Painel, pedidos e balcão: a foto do pedido carrega no tamanho certo e a busca de produto do balcão carrega as imagens só quando aparecem na tela."
+    ],
+    "melhorias": []
+  },
   "1.5.211": {
     "titulo": "Pagamentos mais seguros, painel com avisos mais claros e compra mais acessível",
     "novidades": [],

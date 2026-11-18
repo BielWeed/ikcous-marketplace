@@ -1,5 +1,5 @@
 import { X } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { ConteudoDaPolitica } from "@/components/politicas/ConteudoDaPolitica";
 import {
@@ -31,6 +31,7 @@ interface PoliticaEmFolhaProps {
  * lida do banco quando alguém de fato a abre.
  */
 export function PoliticaEmFolha({ tipo, onFechar }: PoliticaEmFolhaProps) {
+  const origemRef = useRef<HTMLElement | null>(null);
   // Ao fechar, `tipo` vira null mas a folha ainda faz a animação de saída:
   // título e texto continuam os da última política aberta, senão a folha
   // esvaziaria e encolheria enquanto some.
@@ -47,6 +48,17 @@ export function PoliticaEmFolha({ tipo, onFechar }: PoliticaEmFolhaProps) {
       onOpenChange={(aberta) => !aberta && onFechar()}
     >
       <SheetContent
+        onOpenAutoFocus={() => {
+          origemRef.current =
+            document.activeElement instanceof HTMLElement
+              ? document.activeElement
+              : null;
+        }}
+        onCloseAutoFocus={(evento) => {
+          if (!origemRef.current?.isConnected) return;
+          evento.preventDefault();
+          origemRef.current.focus();
+        }}
         side="bottom"
         gavetaNoComputador={false}
         data-testid="folha-politica"

@@ -395,6 +395,7 @@ export function BuscaDeProduto({
                       <ImagemComFallback
                         src={imagemDoProduto(produto)}
                         alt=""
+                        loading="lazy"
                         className="pdv-item-image"
                         fallback={
                           <PackagePlus

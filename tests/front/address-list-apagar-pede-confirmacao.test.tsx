@@ -101,6 +101,20 @@ describe.each([
     ),
   ];
 
+  it("cancelar devolve o foco à lixeira exata, sem apagar", async () => {
+    const gatilho = lixeiras()[1];
+    act(() => {
+      gatilho.focus();
+      gatilho.click();
+    });
+    await act(async () => {
+      botao("Cancelar", pergunta() ?? document)?.click();
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+    expect(document.activeElement).toBe(gatilho);
+    expect(onDelete).not.toHaveBeenCalled();
+  });
+
   it("tocar na lixeira NAO apaga: abre a pergunta com o nome do endereco e nada e chamado", () => {
     expect(lixeiras()).toHaveLength(2);
     expect(pergunta()).toBeNull();

@@ -2163,6 +2163,16 @@ export const AdminBannersView = memo(function AdminBannersView({
     }
   };
 
+  const mostrarEFocarCampo = (id: string) => {
+    requestAnimationFrame(() => {
+      const campo = document.getElementById(id);
+      const opcoes = campo?.closest("details");
+      if (opcoes) opcoes.open = true;
+      campo?.focus();
+      campo?.scrollIntoView?.({ block: "center" });
+    });
+  };
+
   const handleSubmit = async () => {
     // A confirmação "Salvar mesmo assim" vale para ESTA chamada só: lida e
     // zerada antes de qualquer retorno antecipado (offline, salvando...),
@@ -2190,6 +2200,8 @@ export const AdminBannersView = memo(function AdminBannersView({
     try {
       if (!formData.imageUrl) {
         toast.error("Falta a imagem do celular");
+        setCampoDeImagem("imageUrl");
+        mostrarEFocarCampo("banner-enviar-imagem");
         setIsSubmitting(false);
         return;
       }
@@ -2227,6 +2239,7 @@ export const AdminBannersView = memo(function AdminBannersView({
       ) {
         if (problemaDeData === "fim-antes-do-inicio") {
           toast.error(MENSAGEM_FIM_ANTES_DO_INICIO);
+          mostrarEFocarCampo("banner-end-date");
         } else {
           setConfirmarFimVencido(true);
         }
@@ -3115,6 +3128,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <Button
+                      id="banner-enviar-imagem"
                       variant="outline"
                       className="min-h-11 border-admin-border bg-admin-surface text-white"
                       disabled={ocupadoComImagem}

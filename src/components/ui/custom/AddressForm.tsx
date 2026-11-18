@@ -731,6 +731,7 @@ export function AddressForm({
               <div className={cn("relative", cepCompacto && "lg:max-w-xs")}>
                 <input
                   id="cep"
+                  ref={field.ref}
                   name="cep"
                   value={field.value}
                   onChange={handleCepChange}

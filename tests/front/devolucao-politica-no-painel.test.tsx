@@ -241,7 +241,7 @@ describe("PoliticaDeDevolucaoSection", () => {
     expect(botao("Depois de conferir")).toBeUndefined();
     expect(texto).toContain("Dinheiro e frete");
     expect(texto).toContain(
-      "O reembolso sai quando você abre a devolução, confere o produto e toca em Concluir.",
+      "O reembolso é feito após conferir o produto e concluir a devolução, conforme o meio de pagamento. Passado o prazo do meio de pagamento, a loja combina outra forma com o cliente.",
     );
   });
 

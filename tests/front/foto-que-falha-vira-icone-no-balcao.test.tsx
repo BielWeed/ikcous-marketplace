@@ -39,6 +39,7 @@ it("BuscaDeProduto troca imagem que falha pelo ícone original", async () => {
     const linha = hospedeiro.querySelector(".pdv-result")!;
     const foto = linha.querySelector("img")!;
     expect(foto).not.toBeNull();
+    expect(foto.getAttribute("loading")).toBe("lazy");
     await act(async () => foto.dispatchEvent(new Event("error")));
     expect(linha.querySelector("img")).toBeNull();
     expect(linha.querySelector("svg.lucide-package-plus")).not.toBeNull();
