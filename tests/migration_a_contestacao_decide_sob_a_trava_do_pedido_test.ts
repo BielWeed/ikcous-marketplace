@@ -429,6 +429,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/solicitar-estorno-recusas-e-corrida-viva.cjs",
     "tests/banco/reembolso-manual-reserva-viva.cjs",
     "tests/banco/analise-por-categoria-so-conta-pedido-pago-viva.cjs",
+    // get_admin_analytics_v2 (corpo da 20261399995000): o "Ticket medio" e o "Pedidos" do painel (loja vazia = 0, 5 e 6 pedidos que contam, centavos, o que nao conta fica fora; mutantes no clone).
+    "tests/banco/o-ticket-medio-e-a-contagem-de-pedidos-do-painel-viva.cjs",
     // 20261347000000: o codigo de barras nao repete entre produto e variacao (gatilhos, corrida real com 2 conexoes, duplicata antiga, pre-voo e rollback sem tocar dado).
     "tests/banco/codigo-de-barras-entre-tabelas-viva.cjs",
     // 20261352000000: o produto e a grade salvam numa transacao so (travas da compra online, versao conferida, PRD01, mutantes, 2 conexoes reais, rollback e consultas 84a/84b).

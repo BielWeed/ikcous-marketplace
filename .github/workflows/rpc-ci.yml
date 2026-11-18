@@ -866,6 +866,9 @@ jobs:
       - name: Prova viva da analise por categoria so com pedido pago
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/analise-por-categoria-so-conta-pedido-pago-viva.cjs
+      - name: Prova viva do ticket medio e da contagem de pedidos do painel
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-ticket-medio-e-a-contagem-de-pedidos-do-painel-viva.cjs
       - name: Prova viva dos icones de categoria e ACL preservada (300)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/categorias-icones-viva.cjs
