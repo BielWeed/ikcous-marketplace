@@ -46,7 +46,10 @@ import {
   resumoDoAlcance,
 } from "@/lib/loja-pronta";
 import { usePagamentoPeloApp } from "@/lib/pagamento-pelo-app-no-painel";
-import { ehConsultaSemResposta } from "@/lib/prazo-da-requisicao";
+import {
+  MENSAGEM_MOTOTAXI_SEM_RESPOSTA,
+  ehConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import {
   type PresetFreteGratis,
   presetDoConfig,
@@ -1153,10 +1156,11 @@ export const AdminShippingView = memo(function AdminShippingView({
       console.error("[AdminShippingView] Error saving configs:", err);
       haptic.error();
       setFalhaAoSalvar(true);
-      // Sem resposta traz a frase pronta (o que pode ter sido gravado).
+      // Sem resposta: só `mototaxi.salvar` lança esse erro neste fluxo, e a
+      // frase fixa diz o que pode ter sido gravado (o cru fica no console).
       toast.error(
-        err instanceof Error && ehConsultaSemResposta(err)
-          ? err.message
+        ehConsultaSemResposta(err)
+          ? MENSAGEM_MOTOTAXI_SEM_RESPOSTA
           : "Erro ao salvar as configurações.",
       );
     } finally {

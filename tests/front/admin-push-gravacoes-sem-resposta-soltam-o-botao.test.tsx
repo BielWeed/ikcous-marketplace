@@ -14,7 +14,7 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { confirmarEnvioSePerguntar } from "./confirma-envio-para-todos";
 
-type Etapa = "registro" | "aviso" | "envio" | "ajuste" | null;
+type Etapa = "registro" | "aviso" | "avisoRecusado" | "envio" | "ajuste" | null;
 
 const { estado, invokeSendPush, toastError, toastSuccess, toastWarning } =
   vi.hoisted(() => ({
@@ -110,6 +110,11 @@ vi.mock("@/lib/supabase", () => ({
         return {
           insert: () => {
             estado.chamadasDoAviso += 1;
+            if (estado.pendurar === "avisoRecusado") {
+              return Promise.resolve({
+                error: { message: "RLS negou a linha" },
+              });
+            }
             return estado.pendurar === "aviso"
               ? pendurada()
               : Promise.resolve({ error: null });
@@ -385,6 +390,26 @@ describe("Avisar clientes: gravacoes do envio sem resposta", () => {
     expect(
       hospedeiro.querySelector<HTMLInputElement>("#push-title")?.value,
     ).toBe("Oferta");
+  });
+
+  it("cliente especifico sem aparelho, aviso recusado pelo banco (nao e prazo): segue a frase de sempre", async () => {
+    estado.aparelhosDoCliente = [
+      { user_id: "cliente-1", endpoint: "e1", p256dh: "p", auth: "a" },
+    ];
+    await abrirTela("cliente-1");
+    await escrever("Oferta", "Corre que acaba hoje");
+    estado.aparelhosDoCliente = [];
+    estado.pendurar = "avisoRecusado";
+    relogioFalso();
+    await tocarEmEnviar();
+
+    botaoVoltou();
+    expect(toastError).toHaveBeenCalledWith(
+      "Não foi possível registrar o aviso para este cliente",
+    );
+    expect(toastError).not.toHaveBeenCalledWith(
+      expect.stringContaining("pode ter sido registrado"),
+    );
   });
 
   it("tudo respondendo: envia como sempre, sem erro", async () => {
