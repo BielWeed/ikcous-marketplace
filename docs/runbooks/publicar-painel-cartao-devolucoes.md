@@ -445,9 +445,9 @@ ON CONFLICT (version) DO NOTHING;
 
 1. Abra GitHub → Actions → **"Publicar edge functions (Supabase)"** → *Run workflow*, no branch
    do SHA anotado.
-2. **Instrução histórica retirada: não publique functions com `projeto=loja`.** Esse alvo
-   é a DEK antiga, não a CAF do §1. Para os destinos atuais (`ikcous-publicada` e `savy`),
-   siga [`producao-unica-fonte.md`](producao-unica-fonte.md), incluindo `expected_sha`.
+2. **Não publique functions com `projeto=loja`**: esse alvo é a DEK antiga, não a CAF do §1.
+   Preencha `projeto` com `ikcous-publicada` ou `savy`, conforme a loja, e `expected_sha` com o SHA
+   completo do commit dessa execução (detalhes em [`producao-unica-fonte.md`](producao-unica-fonte.md)).
 3. Preencha `functions` com:
 
 ```text
@@ -581,8 +581,9 @@ Não precisa mexer em banco.
    até 40 min, que é o teto do 3DS.
 2. **Front**, se já subiu: promova de volta, no painel da Vercel, o deployment de produção
    anterior.
-3. **Functions**: rode o `publicar-functions.yml` a partir do commit anotado no §0, com as
-   mesmas cinco do §2. As versões antigas não leem nada das migrations novas.
+3. **Functions**: rode o `publicar-functions.yml` a partir do commit anotado no §0, selecionando
+   a loja correta e seu SHA completo em `expected_sha`, com as mesmas functions do §2.
+   As versões antigas não leem nada das migrations novas.
 4. **Banco**: rode **sempre 83 → 80 → 79 → 78 → 77 → 76 → 75** e pare onde o problema acabar. **A
    83, a 80 e a 79 só entram na fila se já tiverem sido aplicadas** — as três são publicadas à
    parte das 75–78, em frentes independentes. **A 83 (`o_crm_ve_todo_mundo`) só depende da 78** —
@@ -1004,9 +1005,10 @@ A ordem GLOBAL de rollback (§5, ajustada pela branch `fix/cancelar-com-cartao-v
 rode o rollback dela depois do de 80 e **antes** de tocar em 78/77/76/75 — ela redefine uma função
 que mora na 75 e cria uma RPC que só faz sentido com a tabela `devolucoes` (75) no ar:
 
-```bash
-psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261179000000_cancelar_devolucao_barra_compra_em_voo.sql
-```
+Execute pelo `aplicar-migrations.yml`, com a loja explícita em `projeto` e o SHA completo da
+execução em `expected_sha`; em `migracoes`, informe
+`rollback-manual-20261179000000_cancelar_devolucao_barra_compra_em_voo.sql`.
+O workflow desfaz o banco e remove a versão do registro na mesma transação (ver §5).
 
 Depois disso, a ordem do §5 (78 → 77 → 76 → 75) continua igual. Se só 79 precisar sair (o
 problema é isolado nela), o rollback acima sozinho já basta — `cancelar_devolucao` volta ao corpo
@@ -1223,8 +1225,9 @@ compra" mostra a data do PEDIDO NÃO PAGO como se fosse uma venda de verdade. Ju
 dia, não uma pessoa que só pediu e não pagou. Para não abrir essa janela, publique o front desta
 branch junto com a 83 (ou antes dela) sempre que puder.
 
-**Rollback:** `rollback-manual-20261183000000_o_crm_ve_todo_mundo.sql` (`psql -1 -f`, nunca
-`db-apply`) — restaura `crm_clientes`/`crm_visao` com os corpos EXATOS da 78 e derruba
+**Rollback:** `rollback-manual-20261183000000_o_crm_ve_todo_mundo.sql`, pelo
+`aplicar-migrations.yml` com loja explícita e `expected_sha` completo (ver §5, banco e registro
+na mesma transação) — restaura `crm_clientes`/`crm_visao` com os corpos EXATOS da 78 e derruba
 `crm__pedidos_nao_pagos`/`crm__nunca_comprou`. Reverta o front primeiro (ver cabeçalho do
 arquivo). **A 83 sempre ANTES da 78, se as duas estiverem aplicadas** — provado ao vivo (revisão de
 risco): reverter a 78 primeiro DROPA `crm_clientes`/`crm_visao`/`crm__vendas`/`crm__clientes_rfm`

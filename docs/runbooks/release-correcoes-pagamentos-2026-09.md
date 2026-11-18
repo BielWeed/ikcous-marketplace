@@ -117,8 +117,9 @@ publicação).
 no preview por loja antes de promover.
 
 **Reversão (sem dinheiro novo em risco):**
-- Functions: `vercel rm`/redeploy da versão anterior por função (as mudanças
-  são independentes por arquivo — reverter UMA function não desarma as outras;
+- Functions: reverta o código necessário e publique de novo a função pelo
+  `publicar-functions.yml`, no alvo correto, com o SHA completo da execução em `expected_sha`
+  (as mudanças são independentes por arquivo — reverter UMA function não desarma as outras;
   a frente 3 e a 8 são do MESMO arquivo `criar-pagamento`/`webhook` — reverter
   o webhook reverte W9+8+9 juntas: aceitável, todas aprovadas).
 - Front: redeploy do commit anterior (retomada do botão é aditiva; sem porta,
@@ -391,8 +392,9 @@ rate-limit externo — não é mais bloqueio de arquivo/código.**
    webhook produtivo com a MESMA chave → `ligar_pix` (recusa 409 sem
    teste verde + Public Key).
 6. **Rollback exato**:
-   - Functions: dispatch `publicar-functions` do ref **`ec930dd3`** com
-     `functions=cobranca` — repõe o bundle anterior function por function.
+   - Functions: reverta o código para o estado de **`ec930dd3`** e publique pelo
+     `publicar-functions.yml`, com `functions=cobranca`, a loja correta e o SHA completo
+     da execução em `expected_sha` — repõe o bundle anterior function por function.
    - Front: rollback/promote do deployment anterior na Vercel.
    - PIX OFF instantâneo (independe de rede/CDN): `desligar_pix`.
    - Dinheiro em voo: reconciliador (10 min) + P1 honram pagamento tardio;

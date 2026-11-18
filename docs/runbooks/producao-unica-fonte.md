@@ -167,9 +167,9 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
          `send-order-confirmation`: NAO e disparar o workflow no SHA antigo, e sim `git revert`
          num commit NOVO do ramo principal e publicar esse SHA pelo caminho normal; a versao
          anotada acima e o que se compara depois.
-      **Se a release mudar qualquer OUTRA function** (fora das onze acima), a loja fica PARADA pelo
-      nome, sem comando: o caminho central nao a publica, e como seguir (canal novo no workflow ou
-      publicacao separada) e decisao do dono.
+      Nas duas lojas, o caminho central tambem publica `credenciais-email` e `auth-send-email`,
+      somente pelo nome. **Se a release mudar qualquer OUTRA function** (fora dessas treze), a loja
+      fica PARADA pelo nome, sem comando: canal novo ou publicacao separada e decisao do dono.
    7. Passo 2 de novo. So segue com PRONTO.
    8. **Faixa historica 20261160..20261166 (so a IKCOUS/CAF; lote com `nuncaAplicar`).** O
       ledger da CAF salta de 20261150 para 20261167, mas o efeito dessas 7 migrations JA ESTA no
