@@ -8,6 +8,7 @@
 // é o BANCO; este arquivo só lê a resposta pela FORMA, conta o que está em uso
 // em português e traduz a recusa.
 
+import { compararNomes } from "@/lib/comparar-nomes";
 /** O que o servidor diz de UMA categoria na tela "Gerenciar categorias". */
 export interface CategoriaComUso {
   readonly id: string;
@@ -111,7 +112,7 @@ export function lerCategoriasComUso(dados: unknown): CategoriaComUso[] {
   });
   return lista.sort(
     (a, b) =>
-      a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" }) ||
+      compararNomes(a.nome, b.nome) ||
       a.nome.localeCompare(b.nome, "pt-BR") ||
       (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
   );

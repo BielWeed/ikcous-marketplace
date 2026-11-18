@@ -1,3 +1,4 @@
+import { compararNomes } from "@/lib/comparar-nomes";
 import type { ProductVariant } from "@/types";
 import {
   MAX_ATRIBUTOS_DA_GRADE,
@@ -66,10 +67,7 @@ export function compararValores(a: string, b: string): number {
   const y = chaveDoValor(b);
   if (x.grupo !== y.grupo) return x.grupo - y.grupo;
   if (x.posicao !== y.posicao) return x.posicao - y.posicao;
-  const texto = a.localeCompare(b, "pt-BR", {
-    sensitivity: "base",
-    numeric: true,
-  });
+  const texto = compararNomes(a, b);
   if (texto !== 0) return texto;
   return a < b ? -1 : a > b ? 1 : 0;
 }

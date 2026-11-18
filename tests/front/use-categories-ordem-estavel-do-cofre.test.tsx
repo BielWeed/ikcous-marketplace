@@ -25,6 +25,54 @@ const cat = (id: string, nome: string) => ({
   createdAt: "2026-01-01T00:00:00Z",
 });
 
+it("ordena números e português sem juntar categorias diferentes", async () => {
+  const { ordenarCategorias } = await import("@/hooks/useCategories");
+  const { lerCategoriasComUso, mesmaCategoria } = await import(
+    "@/lib/gestao-de-categorias"
+  );
+  const nomes = [
+    "Categoria 10",
+    "categoria 2",
+    "Categoria 1",
+    "Bruno",
+    "Ávila",
+  ];
+  const esperado = [
+    "Ávila",
+    "Bruno",
+    "Categoria 1",
+    "categoria 2",
+    "Categoria 10",
+  ];
+  expect(
+    ordenarCategorias(nomes.map((nome, i) => cat(String(i), nome))).map(
+      (c) => c.name,
+    ),
+  ).toEqual(esperado);
+  expect(
+    lerCategoriasComUso(
+      nomes.map((nome, i) => ({
+        id: String(i),
+        nome,
+        ativo: true,
+        produtos: 0,
+        produtos_excluidos: 0,
+        banners: 0,
+        regra_devolucao: 0,
+      })),
+    ).map((c) => c.nome),
+  ).toEqual(esperado);
+  expect(mesmaCategoria("Íntimos", "Intimos")).toBe(false);
+  expect(
+    ordenarCategorias([cat("z", "Íntimos"), cat("a", "Intimos")]).map(
+      (c) => c.id,
+    ),
+  ).toEqual(["a", "z"]);
+  expect(
+    ordenarCategorias([cat("z", "Mesmo"), cat("a", "Mesmo")]).map((c) => c.id),
+  ).toEqual(["a", "z"]);
+});
+
 const estado = vi.hoisted(() => ({
   // Ordem de uuid, de propósito fora da ordem alfabética.
   cofre: [] as unknown[],

@@ -3,6 +3,7 @@ import { ProductCard } from "@/components/ui/custom/ProductCard";
 import { useStore } from "@/contexts/StoreContext";
 import { useFavorites } from "@/hooks/useFavorites";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
+import { compararNomes } from "@/lib/comparar-nomes";
 import { promessasDeFrete } from "@/lib/estrategias-de-frete";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import { cn } from "@/lib/utils";
@@ -226,7 +227,7 @@ export const FavoritesView = React.memo(function FavoritesView({
     );
     // A ordem recebida já é a da lista salva. Nunca ordenar a prop no lugar.
     if (ordem === "nome") {
-      visiveis.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+      visiveis.sort((a, b) => compararNomes(a.name, b.name));
     } else if (ordem !== "original") {
       visiveis.sort(
         (a, b) =>
