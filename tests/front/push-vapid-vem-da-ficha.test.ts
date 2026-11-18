@@ -319,10 +319,10 @@ describe("usePushNotifications — a chave VAPID vem da ficha da loja (escala et
     });
 
     expect(erroCapturado).toBeInstanceOf(Error);
-    // Frase genérica que a TELA mostra (família "navegador",
-    // `mensagemDaOrigem`) — nunca o texto cru da causa.
+    // Frase que a TELA mostra (família "loja_sem_avisos", `mensagemDaOrigem`)
+    // — nunca o texto cru da causa.
     expect((erroCapturado as Error).message).toBe(
-      "Não foi possível ativar as notificações neste navegador. Tente novamente ou use um navegador atualizado.",
+      "Esta loja ainda não tem os avisos configurados. Fale com o suporte.",
     );
     // A causa crua, guardada em `.cause` só para depuração, prova que a
     // recusa veio da CHAVE FALTANDO — não de outro motivo qualquer que

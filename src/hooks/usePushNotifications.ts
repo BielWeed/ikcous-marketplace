@@ -44,6 +44,7 @@ type PushSubscribeErrorOrigin =
   | "permissao_pendente"
   | "permissao_do_aparelho"
   | "navegador"
+  | "loja_sem_avisos"
   | "banco"
   | "limite_de_aparelhos"
   | "sem_conta";
@@ -130,6 +131,11 @@ function mensagemDaOrigem(origin: PushSubscribeErrorOrigin): string {
         : "O aparelho está bloqueando as notificações do navegador. Abra as configurações do aparelho → Apps → o seu navegador → Notificações, ative e toque de novo.";
     case "navegador":
       return "Não foi possível ativar as notificações neste navegador. Tente novamente ou use um navegador atualizado.";
+    case "loja_sem_avisos":
+      // A chave pública de push vem da ficha da loja. Sem ela o problema é da
+      // LOJA, não do aparelho: a frase de `navegador` ("use um navegador
+      // atualizado") mandaria a pessoa trocar de navegador sem resolver nada.
+      return "Esta loja ainda não tem os avisos configurados. Fale com o suporte.";
     case "banco":
       return "Não conseguimos confirmar que sua inscrição foi salva. Tente novamente em instantes.";
     case "limite_de_aparelhos":
@@ -669,11 +675,12 @@ export function usePushNotifications() {
           // origem "sem_conta". Com o banner agora reaparecendo sempre que há
           // permissão concedida mas nenhuma inscrição salva, faltar a chave
           // deixava o tarjão "Quero Receber!" para sempre na tela, clicável e
-          // inerte. Família "navegador": não é decisão da pessoa (permissão),
-          // nem falha do banco — é o app que não está configurado para
-          // inscrever ninguém neste build.
+          // inerte. Família própria ("loja_sem_avisos"): não é decisão da
+          // pessoa (permissão), nem falha do banco, nem limite do navegador —
+          // é a loja que não está configurada para inscrever ninguém, e
+          // trocar de navegador não resolve.
           throw new PushSubscribeError(
-            "navegador",
+            "loja_sem_avisos",
             new Error("VAPID Public Key não configurada nesta loja"),
           );
         }
