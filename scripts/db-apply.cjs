@@ -1136,24 +1136,28 @@ const VERIFICACOES = {
   // 20261402000000: o Inicio mostra o dinheiro a devolver e a margem do Financeiro. painel_inicio ganha SO as chaves dinheiro_a_devolver {valor, pedidos} (a conta da lista "Devolver agora" da tela de
   // Pedidos, em centavos) e mes.receita_liquida (a do fin_dre do mesmo periodo do lucro; a leitura do fin_dre passa a ser UMA so, v_dre); as chaves que ja existiam, o vencido sem estorno (20261399300000) e as duas
   // travas de admin ficam como estao (corpo da 20261399300000). A consulta 154a confere o corpo exato (md5), os atributos e a ACL; a prova viva mede o comportamento.
-  "20261402000000_o_inicio_mostra_o_dinheiro_a_devolver_e_a_margem_do_financeiro.sql": [
-    {
-      funcao: "painel_inicio",
-      esperado: [
-        { texto: "v_dre := public.fin_dre(v_mes_inicio, v_mes_fim);", vezes: 1 },
-        { texto: "'receita_liquida', v_receita_liquida", vezes: 1 },
-        { texto: "'dinheiro_a_devolver', jsonb_build_object(", vezes: 1 },
-        { texto: "WHERE o.status = 'cancelled'", vezes: 1 },
-        {
-          texto:
-            "'contas_vencidas', (SELECT count(*) FROM prev WHERE tipo = 'saida' AND venc < v_hoje AND origem <> 'estorno'),",
-          vezes: 1,
-        },
-        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
-        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
-      ],
-    },
-  ],
+  "20261402000000_o_inicio_mostra_o_dinheiro_a_devolver_e_a_margem_do_financeiro.sql":
+    [
+      {
+        funcao: "painel_inicio",
+        esperado: [
+          {
+            texto: "v_dre := public.fin_dre(v_mes_inicio, v_mes_fim);",
+            vezes: 1,
+          },
+          { texto: "'receita_liquida', v_receita_liquida", vezes: 1 },
+          { texto: "'dinheiro_a_devolver', jsonb_build_object(", vezes: 1 },
+          { texto: "WHERE o.status = 'cancelled'", vezes: 1 },
+          {
+            texto:
+              "'contas_vencidas', (SELECT count(*) FROM prev WHERE tipo = 'saida' AND venc < v_hoje AND origem <> 'estorno'),",
+            vezes: 1,
+          },
+          { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+          { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        ],
+      },
+    ],
   // 20261397000000: o desconto do cupom de porcentagem e' arredondado ao centavo. As TRES funcoes (create_marketplace_order_v23/v24 e
   // validate_coupon_secure_v2) trocam SO a linha da conta do desconto percentual: `round(<subtotal * valor / 100>, 2)` no lugar da conta crua.
   // Cada marcador aparece UMA vez no corpo (o marcador nao admite "zero vezes": a ausencia da conta antiga e' do pos-voo da migration e da
