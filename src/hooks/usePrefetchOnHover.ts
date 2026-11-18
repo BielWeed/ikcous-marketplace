@@ -102,6 +102,13 @@ export function usePrefetchOnHover() {
 
       // Use requestIdleCallback if available
       const warm = () => {
+        // O aquecimento espera o navegador ficar ocioso (até 2 s): se nesse
+        // intervalo a cliente ligou a economia de dados ou a conexão virou
+        // 2G, não baixa — e a tela volta a poder ser aquecida no próximo hover.
+        if (isSlow()) {
+          prefetched.delete(view);
+          return;
+        }
         factory().catch(() => {
           prefetched.delete(view);
         }); // retry next hover if failed
