@@ -139,6 +139,7 @@ export function FolhaDeResposta({
               </SheetDescription>
             </div>
             <SheetClose
+              disabled={enviando}
               aria-label="Fechar"
               className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl border border-solid border-admin-border-strong bg-admin-raised text-zinc-200"
             >
@@ -199,6 +200,7 @@ export function FolhaDeResposta({
             <button
               type="button"
               onClick={aoFechar}
+              disabled={enviando}
               className={cn(BOTAO_NEUTRO, "min-h-12 flex-1 bg-transparent")}
             >
               Descartar

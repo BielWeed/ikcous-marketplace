@@ -624,6 +624,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
         0) > 0
     ) {
       setVitrineParaAutomatico(sectionId);
+      setEditingSectionId(null);
       return;
     }
     const salvou = await handleUpdateHomeSections(updated, false);
@@ -944,9 +945,11 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
           aoAlternarProduto={(idDoProduto) =>
             handleToggleProductInCuration(secaoEmEdicao.id, idDoProduto)
           }
-          aoVoltarAoAutomatico={() =>
-            setVitrineParaAutomatico(secaoEmEdicao.id)
-          }
+          aoVoltarAoAutomatico={() => {
+            if (!secaoEmEdicao.productIds?.length) return;
+            setVitrineParaAutomatico(secaoEmEdicao.id);
+            setEditingSectionId(null);
+          }}
           aoEscolherManualmente={() =>
             handleEscolherManualmente(secaoEmEdicao.id)
           }
@@ -989,7 +992,11 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel
+              onClick={() => setEditingSectionId(vitrineParaAutomatico)}
+            >
+              Cancelar
+            </AlertDialogCancel>
             <AlertDialogAction
               disabled={salvandoVitrines || configFalhou}
               onClick={() => {

@@ -433,13 +433,14 @@ export const AdminQAView = memo(function AdminQAView({
   const [confirmandoDescarte, setConfirmandoDescarte] = useState(false);
 
   const handleCloseDialog = useCallback(() => {
+    if (isSubmitting) return;
     const isDirty = answer.trim() !== initialAnswerRef.current.trim();
     if (isDirty) {
       setConfirmandoDescarte(true);
     } else {
       setSelectedQuestion(null);
     }
-  }, [answer]);
+  }, [answer, isSubmitting]);
 
   const handleDelete = async (id: string) => {
     if (isOffline) {
