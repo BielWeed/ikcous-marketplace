@@ -156,6 +156,29 @@ describe("recibo da venda de balcão — papel e título", () => {
     expect(hospedeiro.textContent).toContain("Venda no balcão");
   });
 
+  it.each([
+    ["card", "Cartão na maquininha"],
+    ["cash", "Dinheiro"],
+    ["pix", "PIX Instantâneo"],
+  ] as const)(
+    "papel do balcão: %s já foi pago e não deve ser cobrado",
+    async (pagamento, forma) => {
+      await act(async () => {
+        raiz.render(
+          <ReciboDaVenda
+            recibo={reciboDeBalcao({ pagamento })}
+            despachar={vi.fn()}
+            limparCupom={vi.fn()}
+            storeName="Loja Teste"
+          />,
+        );
+      });
+      expect(papel().textContent).not.toContain("Cobrar");
+      expect(papel().textContent).toContain(`Pagamento: ${forma}`);
+      expect(papel().textContent).toContain("Pago");
+    },
+  );
+
   it("recibo COM cliente: o papel traz o nome e o WhatsApp da cliente", async () => {
     await act(async () => {
       raiz.render(

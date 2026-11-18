@@ -93,6 +93,8 @@ function construirOrderParaImpressao(recibo: ReciboDaVendaRegistrada): Order {
     discount: recibo.desconto,
     total: recibo.total,
     paymentMethod: recibo.pagamento,
+    paymentStatus: "recebido_na_entrega",
+    pagamentoRecebidoEm: recibo.criadoEm,
     status: "delivered",
     createdAt: recibo.criadoEm,
     updatedAt: recibo.criadoEm,
