@@ -1094,15 +1094,15 @@ export function ShippingCalculator({
     const comCorDaMarca = isSelected && !neutro;
     const tamanhoApoio = neutro ? "text-[11px]" : "text-[9px]";
     const corApoio = comCorDaMarca
-      ? "text-primary-foreground/80"
+      ? "text-primary-foreground"
       : "text-zinc-500";
     const corFraca = comCorDaMarca
-      ? "text-primary-foreground/70"
+      ? "text-primary-foreground"
       : neutro
         ? "text-zinc-600"
         : "text-zinc-400";
     const corDoAviso = comCorDaMarca
-      ? "text-primary-foreground/70"
+      ? "text-primary-foreground"
       : "text-zinc-600";
     const verdeDoPreco = neutro ? "text-emerald-700" : "text-emerald-500";
     // RETIRADA NA LOJA (release 1.5.3): sem prazo de entrega (não
@@ -1330,7 +1330,7 @@ export function ShippingCalculator({
                   neutro ? "text-[11px]" : "text-[8px]"
                 } ${
                   comCorDaMarca
-                    ? "text-primary-foreground/80"
+                    ? "text-primary-foreground"
                     : neutro
                       ? "text-emerald-700"
                       : "text-emerald-600"

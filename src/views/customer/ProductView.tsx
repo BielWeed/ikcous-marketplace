@@ -1356,7 +1356,7 @@ export const ProductView = React.memo(function ProductView({
                   // (a jornada C12 a 1280 exige "Adicionar ao Carrinho" visível).
                   "lg:h-12 lg:basis-full lg:text-xs lg:tracking-wider",
                   cartStatus === "idle"
-                    ? "bg-primary hover:bg-primary/90 active:scale-[0.98]"
+                    ? "bg-primary enabled:hover:shadow-md active:scale-[0.98]"
                     : "bg-primary/80",
                   // "Adicionado" pinta de verde (não é a cor da loja): o texto
                   // sobre o verde é branco, não o da cor da loja.
@@ -2033,7 +2033,7 @@ export const ProductView = React.memo(function ProductView({
                   className={cn(
                     "ml-auto min-h-[52px] max-w-full shrink-0 rounded-full px-4 py-3 text-sm font-bold text-primary-foreground [overflow-wrap:anywhere]",
                     cartStatus === "idle"
-                      ? "bg-primary hover:bg-primary/90"
+                      ? "bg-primary enabled:hover:shadow-md"
                       : "bg-primary/80",
                     cartStatus === "success" && "bg-emerald-600 text-white",
                     isOutOfStock &&
