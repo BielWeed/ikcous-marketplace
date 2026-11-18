@@ -4,7 +4,7 @@ import { AdminArea } from "@/components/layouts/AdminArea";
 import { montarEnderecoDaLoja } from "@/lib/endereco-da-loja";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { type Mock, afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const estado = vi.hoisted(() => ({ desktop: true }));
 vi.mock("@/contexts/StoreContext", () => ({
@@ -49,7 +49,7 @@ import { AdminSettingsView } from "@/views/admin/AdminSettingsView";
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 let host: HTMLDivElement;
 let root: Root;
-let rolagem: ReturnType<typeof vi.fn>;
+let rolagem: Mock<(arg?: boolean | ScrollIntoViewOptions) => void>;
 beforeEach(() => {
   estado.desktop = true;
   vi.stubGlobal("matchMedia", () => ({
