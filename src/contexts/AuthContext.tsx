@@ -1747,11 +1747,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // O prazo estoura como EXCEÇÃO e cai no `catch` abaixo, que devolve a
         // mesma frase genérica do erro genuíno: nenhuma frase nova que
         // distinga conta cadastrada de não cadastrada (#120).
+        const retorno = new URL(
+          window.location.origin + window.location.pathname,
+        );
+        retorno.searchParams.set("type", "recovery");
+        if (
+          retorno.pathname === "/auth" &&
+          new URLSearchParams(window.location.search).get("origem") === "painel"
+        ) {
+          retorno.searchParams.set("origem", "painel");
+        }
         const { error } = await comPrazoDeAutenticacao(
           supabase.auth.resetPasswordForEmail(email, {
-            redirectTo: `${
-              window.location.origin + window.location.pathname
-            }?type=recovery`,
+            redirectTo: retorno.href,
           }),
           MENSAGEM_LOGIN_SEM_RESPOSTA,
         );

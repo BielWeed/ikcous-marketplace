@@ -46,7 +46,8 @@ import { toast } from "sonner";
 
 interface AuthViewProps {
   onNavigate: (view: View) => void;
-  onSuccess?: () => void;
+  onSuccess?: (origem?: "recuperacao") => void;
+  onPasswordRecoveryPendingChange?: (pendente: boolean) => void;
 }
 
 // Mesma frase no aviso (toast) e embaixo do campo de senha do cadastro.
@@ -131,7 +132,11 @@ function useEsperaDoReenvio(intervalo: number) {
   return { espera, emEspera, comecarEspera };
 }
 
-export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
+export function AuthView({
+  onNavigate,
+  onSuccess,
+  onPasswordRecoveryPendingChange,
+}: AuthViewProps) {
   const reduzirMovimento = useReducedMotion();
   const { config } = useStore();
   const {
@@ -176,7 +181,9 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
   >(
     isPasswordRecovery
       ? "new-password"
-      : linkDeRecuperacaoVencido
+      : linkDeRecuperacaoVencido ||
+          new URLSearchParams(globalThis.location.search).get("modo") ===
+            "recuperar"
         ? "forgot"
         : "login",
   );
@@ -627,10 +634,15 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
           setIsLoading(false);
           return;
         }
-        const success = await updatePassword(password);
-        if (success) {
-          if (onSuccess) onSuccess();
-          else onNavigate("profile");
+        onPasswordRecoveryPendingChange?.(true);
+        try {
+          const success = await updatePassword(password);
+          if (success) {
+            if (onSuccess) onSuccess("recuperacao");
+            else onNavigate("profile");
+          }
+        } finally {
+          onPasswordRecoveryPendingChange?.(false);
         }
       }
     } catch (err) {

@@ -59,7 +59,8 @@ vi.mock("framer-motion", async () => {
 });
 
 // Mutável de propósito: cada teste escolhe visitante, logada ou admin no ato.
-const { estadoAuth, avisoErro } = vi.hoisted(() => ({
+const { estadoAuth, avisoErro, modoDeTeste } = vi.hoisted(() => ({
+  modoDeTeste: { usarTelasReaisDeEntrada: false },
   // `toast.error` espiado: é o aviso "Acesso restrito" que a logada que não é
   // admin lê ao ser mandada para a vitrine.
   avisoErro: vi.fn(),
@@ -69,6 +70,7 @@ const { estadoAuth, avisoErro } = vi.hoisted(() => ({
     adminStatus: "not-admin" as string,
     loading: false,
     isPasswordRecovery: false,
+    updatePassword: vi.fn(),
   },
 }));
 
@@ -98,9 +100,21 @@ vi.mock("@/views/customer/ProductView", () => ({
 vi.mock("@/views/customer/ProfileView", () => ({
   ProfileView: () => <div data-testid="tela-perfil-proprio" />,
 }));
-vi.mock("@/views/admin/AdminLoginView", () => ({
-  AdminLoginView: () => <div data-testid="tela-login-do-lojista" />,
-}));
+vi.mock("@/views/admin/AdminLoginView", async (importOriginal) => {
+  const real =
+    await importOriginal<typeof import("@/views/admin/AdminLoginView")>();
+  return {
+    AdminLoginView: (
+      props: React.ComponentProps<typeof real.AdminLoginView>,
+    ) => (
+      <div data-testid="tela-login-do-lojista">
+        {modoDeTeste.usarTelasReaisDeEntrada && (
+          <real.AdminLoginView {...props} />
+        )}
+      </div>
+    ),
+  };
+});
 // O portão real fala com o servidor (`is_admin`); aqui basta saber SE o painel
 // montou — o que só acontece para quem o App já confirmou como admin.
 vi.mock("@/components/layouts/AdminAreaGate", () => ({
@@ -108,19 +122,30 @@ vi.mock("@/components/layouts/AdminAreaGate", () => ({
     <div data-testid="painel" data-tela={currentView} />
   ),
 }));
-vi.mock("@/views/shared/AuthView", async () => {
+vi.mock("@/views/shared/AuthView", async (importOriginal) => {
   const React = await import("react");
+  const AuthViewReal = React.lazy(async () => {
+    const real =
+      await importOriginal<typeof import("@/views/shared/AuthView")>();
+    return { default: real.AuthView };
+  });
   return {
-    // O AuthView real dispara `onSuccess` num `useEffect` que reage ao
-    // `user` sair de `null`. O duble repete o MESMO mecanismo.
-    AuthView: ({ onSuccess }: { readonly onSuccess: () => void }) => {
-      const user = estadoAuth.user;
-      React.useEffect(() => {
-        if (user) onSuccess();
-      }, [user, onSuccess]);
-      return <div data-testid="tela-login" />;
-    },
+    AuthView: (props: React.ComponentProps<typeof AuthViewReal>) =>
+      modoDeTeste.usarTelasReaisDeEntrada ? (
+        <AuthViewReal {...props} />
+      ) : (
+        <EntradaDuble onSuccess={props.onSuccess} />
+      ),
   };
+
+  // O AuthView real chama onSuccess quando chega um usuário de sessão.
+  function EntradaDuble({ onSuccess }: { readonly onSuccess?: () => void }) {
+    const user = estadoAuth.user;
+    React.useEffect(() => {
+      if (user) onSuccess?.();
+    }, [user, onSuccess]);
+    return <div data-testid="tela-login" />;
+  }
 });
 
 vi.mock("@/components/debug/DebugPanel", () => ({ DebugPanel: () => null }));
@@ -183,7 +208,7 @@ vi.mock("@/components/ui/alert-dialog", () => {
 vi.mock("@/contexts/StoreContext", () => ({
   StoreProvider: ({ children }: { readonly children?: unknown }) =>
     children as never,
-  useStore: () => ({ config: null }),
+  useStore: () => ({ config: modoDeTeste.usarTelasReaisDeEntrada ? {} : null }),
 }));
 vi.mock("@/contexts/CartContext", () => ({
   CartProvider: ({ children }: { readonly children?: unknown }) =>
@@ -315,6 +340,9 @@ describe("painel sem sessão pede entrada (aviso de pedido novo)", () => {
     estadoAuth.adminStatus = "not-admin";
     estadoAuth.loading = false;
     avisoErro.mockClear();
+    estadoAuth.isPasswordRecovery = false;
+    estadoAuth.updatePassword.mockReset();
+    modoDeTeste.usarTelasReaisDeEntrada = false;
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.stubGlobal("localStorage", dubleDeArmazem());
@@ -452,8 +480,7 @@ describe("painel sem sessão pede entrada (aviso de pedido novo)", () => {
     expect(tela("home")).toBeNull();
   });
 
-  it("(a) a mesma regra vale quando o endereço chega por Voltar/avançar do navegador (popstate)", async () => {
-    await abrirNaVitrine();
+  const voltarParaOPainel = async () => {
     await act(async () => {
       const estado = { view: "admin-orders" };
       globalThis.history.pushState(estado, "", "/admin-orders");
@@ -462,8 +489,122 @@ describe("painel sem sessão pede entrada (aviso de pedido novo)", () => {
       );
     });
     await assentar();
+  };
+
+  it("visitante volta pelo histórico ao painel: login sem aviso de acesso restrito", async () => {
+    await abrirNaVitrine();
+    await voltarParaOPainel();
     esperarTelaDeEntradaComPedidoGuardado();
+    expect(avisoErro).not.toHaveBeenCalled();
   });
+
+  it("conta comum volta pelo histórico ao painel: vitrine com um único aviso", async () => {
+    estadoAuth.user = { id: "pessoa-logada" };
+    await abrirNaVitrine();
+    await voltarParaOPainel();
+    expect(tela("home")).not.toBeNull();
+    expect(tela("painel")).toBeNull();
+    expect(avisoErro.mock.calls).toEqual([
+      ["Acesso restrito a administradores."],
+    ]);
+  });
+
+  it("Esqueceu a senha? na entrada do lojista abre a recuperação existente", async () => {
+    modoDeTeste.usarTelasReaisDeEntrada = true;
+    await abrirEm("/admin-login");
+    const atalho = await vi.waitFor(async () => {
+      await assentar(1);
+      const botao = Array.from(
+        container?.querySelectorAll("button") ?? [],
+      ).find((item) => item.textContent?.trim() === "Esqueceu a senha?");
+      expect(botao).toBeDefined();
+      return botao;
+    });
+    await act(async () => atalho?.click());
+    await vi.waitFor(async () => {
+      await assentar(1);
+      expect(globalThis.location.pathname).toBe("/auth");
+      expect(container?.textContent).toContain("SOLICITAR LINK");
+      expect(
+        new URLSearchParams(globalThis.location.search).get("origem"),
+      ).toBe("painel");
+    });
+  });
+
+  it.each([
+    { admin: true, origem: "painel", pendente: false, destino: "/admin" },
+    { admin: false, origem: "painel", pendente: false, destino: "/profile" },
+    { admin: true, origem: "painel", pendente: true, destino: "/admin" },
+    { admin: false, origem: "painel", pendente: true, destino: "/profile" },
+    { admin: true, origem: null, pendente: false, destino: "/profile" },
+  ])(
+    "depois de redefinir (origem=$origem, admin=$admin, papel pendente=$pendente) volta a $destino",
+    async ({ admin, origem, pendente, destino }) => {
+      modoDeTeste.usarTelasReaisDeEntrada = true;
+      estadoAuth.user = { id: "conta-do-link" };
+      estadoAuth.isAdmin = admin && !pendente;
+      estadoAuth.adminStatus = pendente
+        ? "unknown"
+        : admin
+          ? "admin"
+          : "not-admin";
+      estadoAuth.isPasswordRecovery = true;
+      estadoAuth.updatePassword.mockImplementation(async () => {
+        estadoAuth.isPasswordRecovery = false;
+        raiz?.render(<App />);
+        return true;
+      });
+
+      // O contexto já retirou type=recovery, mas preservou a origem do e-mail.
+      await abrirEm(origem === "painel" ? "/auth?origem=painel" : "/auth");
+      const submit = await vi.waitFor(
+        async () => {
+          await assentar(1);
+          const botao = container?.querySelector<HTMLButtonElement>(
+            'button[type="submit"]',
+          );
+          expect(botao?.textContent ?? "").toContain("ATUALIZAR SENHA");
+          return botao;
+        },
+        { timeout: 3000 },
+      );
+      const digitar = (id: string) => {
+        const campo = document.getElementById(id) as HTMLInputElement;
+        const setter = Object.getOwnPropertyDescriptor(
+          HTMLInputElement.prototype,
+          "value",
+        )?.set;
+        setter?.call(campo, "NovaSenha123!");
+        campo.dispatchEvent(new Event("input", { bubbles: true }));
+      };
+      await act(async () => {
+        digitar("password");
+        digitar("password-confirmacao");
+      });
+      expect(globalThis.location.pathname).toBe("/auth");
+      expect(tela("painel")).toBeNull();
+      await act(async () => submit?.click());
+      expect(estadoAuth.updatePassword).toHaveBeenCalledExactlyOnceWith(
+        "NovaSenha123!",
+      );
+      if (pendente) {
+        await assentar();
+        expect(globalThis.location.pathname).toBe("/auth");
+        expect(tela("painel")).toBeNull();
+        estadoAuth.isAdmin = admin;
+        estadoAuth.adminStatus = admin ? "admin" : "not-admin";
+        await act(async () => raiz?.render(<App />));
+      }
+      await vi.waitFor(async () => {
+        await assentar(1);
+        expect(globalThis.location.pathname).toBe(destino);
+        expect(globalThis.location.search).toBe("");
+        expect(
+          tela(destino === "/admin" ? "painel" : "tela-perfil-proprio"),
+        ).not.toBeNull();
+      });
+    },
+  );
 
   it("(a) a navegação interna (handleNavigate) segue a mesma regra e guarda o pedido", async () => {
     await abrirNaVitrine();

@@ -167,6 +167,33 @@ describe("AuthContext.resetPassword — fecha a enumeração de e-mails (issue #
     expect(resultadoCadastrado!.success).toBe(true);
   });
 
+  it("leva só a origem do painel no endereço de retorno do e-mail", async () => {
+    const { supabase, resetPassword } = await montar();
+    vi.mocked(supabase.auth.resetPasswordForEmail).mockResolvedValue({
+      data: {},
+      error: null,
+    });
+    const anterior = globalThis.location.href;
+    try {
+      globalThis.history.replaceState(
+        null,
+        "",
+        "/auth?modo=recuperar&origem=painel&extra=descartar",
+      );
+      await act(async () => {
+        await resetPassword("pessoa@example.com");
+      });
+      expect(supabase.auth.resetPasswordForEmail).toHaveBeenCalledWith(
+        "pessoa@example.com",
+        {
+          redirectTo: `${globalThis.location.origin}/auth?type=recovery&origem=painel`,
+        },
+      );
+    } finally {
+      globalThis.history.replaceState(null, "", anterior);
+    }
+  });
+
   it("2. não chama mais a RPC check_user_confirmation_status", async () => {
     const { supabase, resetPassword } = await montar();
 

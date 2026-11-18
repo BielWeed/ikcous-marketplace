@@ -10,6 +10,7 @@ import { useState } from "react";
 interface AdminLoginViewProps {
   readonly onLogin: () => void;
   readonly onNavigate: (view: View) => void;
+  readonly onForgotPassword?: () => void;
 }
 
 // Simple admin password - in production, this should be handled server-side
@@ -88,7 +89,11 @@ export function mensagemDeErroAdminLogin(error: unknown): string {
   return MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA;
 }
 
-export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
+export function AdminLoginView({
+  onLogin,
+  onNavigate,
+  onForgotPassword,
+}: AdminLoginViewProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -228,6 +233,16 @@ export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
                 </button>
               </div>
             </div>
+
+            {onForgotPassword && (
+              <button
+                type="button"
+                onClick={onForgotPassword}
+                className="block min-h-11 text-sm text-zinc-400 underline hover:text-white"
+              >
+                Esqueceu a senha?
+              </button>
+            )}
 
             {error && (
               <div
