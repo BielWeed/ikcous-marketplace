@@ -957,6 +957,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   }, [categoriaDoRascunho, carregandoCategorias, dbCategories]);
   const [deletedVariantIds, setDeletedVariantIds] = useState<string[]>([]);
   const [variantToDelete, setVariantToDelete] = useState<string | null>(null);
+  const variacaoEmExclusao = formData.variants.find(
+    (v) => v.id === variantToDelete,
+  );
   // Trocar o nome de uma variação já gravada espera o "sim" da lojista: o pedido
   // lê a variação ao vivo, então o nome novo aparece também nos pedidos antigos.
   // `aplicar` é o fim do "Salvar variação", adiado até a confirmação.
@@ -6727,9 +6730,20 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               Excluir variante?
             </AlertDialogTitle>
             <AlertDialogDescription className="text-xs text-zinc-400">
-              Tem certeza que deseja excluir esta variante? Ela será removida da
-              lista. Para guardar essa alteração no sistema, você precisa salvar
-              o formulário do produto.
+              {variacaoEmExclusao && (
+                <>
+                  {dividirEmAtributos(
+                    variacaoEmExclusao.name,
+                    variacaoEmExclusao.value,
+                  )
+                    .map((par) => `${par.name}: ${par.value}`)
+                    .join(" · ")}
+                  {". Estoque: "}
+                  {variacaoEmExclusao.stockIncrement} un.{" "}
+                </>
+              )}
+              Ela será removida da lista. Para guardar essa alteração no
+              sistema, você precisa salvar o formulário do produto.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="mt-4 gap-2">

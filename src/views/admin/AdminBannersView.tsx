@@ -900,6 +900,7 @@ export const AdminBannersView = memo(function AdminBannersView({
     id: string;
     imageUrl: string;
   } | null>(null);
+  const bannerEmExclusao = banners.find((b) => b.id === bannerToDelete?.id);
   const foco = useFocoAposExcluir();
   // Fim da programação já passou: pede confirmação antes de salvar.
   const [confirmarFimVencido, setConfirmarFimVencido] = useState(false);
@@ -3966,8 +3967,17 @@ export const AdminBannersView = memo(function AdminBannersView({
               Excluir Banner?
             </AlertDialogTitle>
             <AlertDialogDescription className="text-xs text-zinc-400">
-              Tem certeza que deseja excluir este banner? Esta ação não pode ser
-              desfeita e removerá a campanha do catálogo.
+              Excluir “
+              {bannerEmExclusao?.title?.trim() ||
+                bannerEmExclusao?.buttonText?.trim() ||
+                bannerEmExclusao?.link ||
+                "Banner sem título"}
+              ”?
+              {bannerEmExclusao?.startDate &&
+                ` De ${new Date(bannerEmExclusao.startDate).toLocaleString("pt-BR")}.`}
+              {bannerEmExclusao?.endDate &&
+                ` Até ${new Date(bannerEmExclusao.endDate).toLocaleString("pt-BR")}.`}{" "}
+              Esta ação não pode ser desfeita e removerá a campanha do catálogo.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="mt-4 gap-2">
