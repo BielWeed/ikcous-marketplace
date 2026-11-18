@@ -257,7 +257,7 @@ describe("AdminCouponFormView: recusa do Salvar marca o campo e leva o foco", ()
     await abrirTela();
     await digitar("coupon-code", "PROMO10");
     await clicar("R$ Fixo");
-    await digitar("coupon-value", "7.505");
+    await digitar("coupon-value", "7,505");
     await clicar("Salvar Cupom");
 
     const valor = campo("coupon-value");
@@ -286,7 +286,7 @@ describe("AdminCouponFormView: recusa do Salvar marca o campo e leva o foco", ()
     await abrirTela();
     await digitar("coupon-code", "PROMO10");
     await digitar("coupon-value", "10");
-    await digitar("coupon-min-purchase", "49.991");
+    await digitar("coupon-min-purchase", "49,991");
     await clicar("Salvar Cupom");
 
     expect(erroDoCampo(campo("coupon-min-purchase"))).toBe(

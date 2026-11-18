@@ -104,7 +104,7 @@ function botao(nome: string): HTMLButtonElement {
 function conferirB() {
   expect(campo("code").value).toBe("CUPOMB");
   expect(campo("value").value).toBe("30");
-  expect(campo("min-purchase").value).toBe("");
+  expect(campo("min-purchase").value).toBe("0,00");
   expect(campo("usage-limit").value).toBe("");
   expect(campo("valid-until").value).toBe("");
   expect(botao("% Percentual").getAttribute("aria-pressed")).toBe("true");
@@ -118,8 +118,8 @@ describe("formulário de cupom — troca de identidade sem desmontar a tela", ()
   it("mostra e salva somente os dados de B, inclusive os campos vazios", async () => {
     await mostrar(cupomA.id);
     expect(campo("code").value).toBe("CUPOMA");
-    expect(campo("value").value).toBe("10");
-    expect(campo("min-purchase").value).toBe("80");
+    expect(campo("value").value).toBe("10,00");
+    expect(campo("min-purchase").value).toBe("80,00");
 
     await mostrar(cupomB.id);
     conferirB();
@@ -151,7 +151,7 @@ describe("formulário de cupom — troca de identidade sem desmontar a tela", ()
       "usage-limit",
       "valid-until",
     ]) {
-      expect(campo(id).value, id).toBe("");
+      expect(campo(id).value, id).toBe(id === "min-purchase" ? "0,00" : "");
     }
     expect(marcarSujo).toHaveBeenLastCalledWith(false);
 
@@ -212,7 +212,7 @@ describe("formulário de cupom — troca de identidade sem desmontar a tela", ()
       "usage-limit",
       "valid-until",
     ]) {
-      expect(campo(id).value, id).toBe("");
+      expect(campo(id).value, id).toBe(id === "min-purchase" ? "0,00" : "");
     }
     expect(botao("% Percentual").getAttribute("aria-pressed")).toBe("true");
     expect(marcarSujo).toHaveBeenLastCalledWith(false);

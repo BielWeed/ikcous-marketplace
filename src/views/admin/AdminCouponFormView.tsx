@@ -35,6 +35,7 @@ import {
   cupomPodeCobrirACompraInteira,
 } from "@/lib/cupom-que-cobre-a-compra";
 import { porcentagem } from "@/lib/cupons-do-checkout";
+import { parseValorBR } from "@/lib/financeiro";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import { pluralizar } from "@/lib/pluralizar";
 import {
@@ -129,13 +130,11 @@ const AVISO_NUMERO_INCOMPLETO =
   "Número incompleto: termine de digitar ou apague o campo.";
 
 /**
- * Os três campos de número, na ordem da tela. Texto pela metade ("1e", "-")
- * deixa o value do navegador vazio, com `validity.badInput`; o buffer do campo
- * entrega "" e o Number("") dava 0, que em "Limite de uso" quer dizer
- * ilimitado e em "Mínimo de compra", sem mínimo. Como na validade, vale o que o
- * campo diz NA HORA de salvar: o salvar barra e avisa no campo, em vez de
- * gravar um zero que ela não digitou. Zero digitado e campo apagado de
- * propósito (sem `badInput`) seguem valendo.
+ * Campos na ordem da tela: percentual e limite de uso ainda são numéricos.
+ * Texto pela metade ("1e", "-") deixa o value vazio, com `validity.badInput`;
+ * Number("") dava 0 (ilimitado no limite de uso). Confere o navegador NA HORA
+ * de salvar. Os campos de dinheiro agora são texto: parseValorBR e a recusa
+ * de NaN abaixo protegem vazio/inválido; só zero explícito significa sem mínimo.
  */
 const CAMPOS_DE_NUMERO: readonly CampoDoCupom[] = [
   "value",
@@ -146,6 +145,18 @@ const CAMPOS_DE_NUMERO: readonly CampoDoCupom[] = [
 const numeroDigitadoIncompleto = (campo: CampoDoCupom): boolean =>
   (document.getElementById(idDoCampo(campo)) as HTMLInputElement | null)
     ?.validity?.badInput === true;
+
+// O texto preserva vírgula e milhar até o parser: type="number" pode perder
+// a vírgula antes de o onFlush receber "1.200,00". Sem máscara para não
+// arredondar/descartar as casas excedentes que o Salvar precisa recusar.
+function dinheiroParaEditar(valor: number | undefined): string {
+  return Number.isFinite(valor)
+    ? (valor ?? 0).toLocaleString("pt-BR", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })
+    : "";
+}
 
 function ErroDoCampo({
   id,
@@ -200,6 +211,10 @@ function FormularioDoCupom({
     formasPagamentoNaEntregaValidas(config.formasPagamentoEntrega).length === 0;
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [previaAberta, setPreviaAberta] = useState(false);
+  // null = ainda não editado: exibe o valor carregado sem alterar seus centavos.
+  // Texto inválido/vazio permanece visível e vira NaN, nunca zero silencioso.
+  const [textoValorFixo, setTextoValorFixo] = useState<string | null>(null);
+  const [textoMinimo, setTextoMinimo] = useState<string | null>(null);
   // Validade que já passou: pergunta antes de salvar (como o editor de banner).
   const [confirmarVencido, setConfirmarVencido] = useState(false);
   const vencidoConfirmadoRef = useRef(false);
@@ -477,17 +492,23 @@ function FormularioDoCupom({
     const lido = lidoAoAbrirRef.current ?? initialData;
     const valorIntocado =
       isEditing && value === lido.value && formData.type === lido.type;
-    const textoDoValor = String(value);
+    const textoDoValor = textoValorFixo ?? String(value);
     if (
       formData.type === "fixed" &&
       !valorIntocado &&
       (textoDoValor.includes("e") ||
-        (textoDoValor.split(".")[1] ?? "").length > 2)
+        (textoDoValor.split(textoValorFixo === null ? "." : ",")[1] ?? "")
+          .length > 2)
     ) {
       recusarCampo(
         "value",
         "O desconto fixo precisa ter no máximo 2 casas depois da vírgula.",
       );
+      return;
+    }
+
+    if (!Number.isFinite(value)) {
+      recusarCampo("value", "Digite um valor de desconto válido.");
       return;
     }
 
@@ -504,15 +525,24 @@ function FormularioDoCupom({
     // desconto fixo, valendo para qualquer tipo de cupom. Cupom já salvo cujo
     // mínimo ela não mexeu não é barrado por isso.
     const minimoIntocado = isEditing && minPurchase === (lido.minPurchase ?? 0);
-    const textoDoMinimo = String(minPurchase);
+    const textoDoMinimo = textoMinimo ?? String(minPurchase);
     if (
       !minimoIntocado &&
       (textoDoMinimo.includes("e") ||
-        (textoDoMinimo.split(".")[1] ?? "").length > 2)
+        (textoDoMinimo.split(textoMinimo === null ? "." : ",")[1] ?? "")
+          .length > 2)
     ) {
       recusarCampo(
         "minPurchase",
         "O mínimo de compra precisa ter no máximo 2 casas depois da vírgula.",
+      );
+      return;
+    }
+
+    if (!Number.isFinite(minPurchase)) {
+      recusarCampo(
+        "minPurchase",
+        "Digite um mínimo de compra válido (0 = sem mínimo).",
       );
       return;
     }
@@ -765,6 +795,7 @@ function FormularioDoCupom({
   const escolherTipo = (type: Coupon["type"]) => {
     if (isOffline || isSubmitting) return;
     limparErroDe("value");
+    if (type !== formData.type) setTextoValorFixo(null);
     setFormData({ ...formData, type });
   };
 
@@ -1066,16 +1097,28 @@ function FormularioDoCupom({
                 <LocalBufferedInput
                   id="coupon-value"
                   name="value"
-                  type="number"
+                  type={formData.type === "percentage" ? "number" : "text"}
+                  inputMode={formData.type === "fixed" ? "decimal" : undefined}
                   autoComplete="off"
                   min={0}
                   max={formData.type === "percentage" ? 100 : undefined}
-                  value={formData.value || ""}
+                  value={
+                    formData.type === "percentage"
+                      ? formData.value || ""
+                      : (textoValorFixo ?? dinheiroParaEditar(formData.value))
+                  }
                   onInput={() => limparErroDe("value")}
                   {...ariaDoErro("value")}
-                  onFlush={(val) =>
-                    setFormData((prev) => ({ ...prev, value: Number(val) }))
-                  }
+                  onFlush={(val) => {
+                    const percentual = formData.type === "percentage";
+                    if (!percentual) setTextoValorFixo(val);
+                    setFormData((prev) => ({
+                      ...prev,
+                      value: percentual
+                        ? Number(val)
+                        : (parseValorBR(val) ?? Number.NaN),
+                    }));
+                  }}
                   useShadcn={true}
                   disabled={isOffline || isSubmitting}
                   className={CAMPO}
@@ -1110,18 +1153,21 @@ function FormularioDoCupom({
                   <LocalBufferedInput
                     id="coupon-min-purchase"
                     name="minPurchase"
-                    type="number"
+                    type="text"
+                    inputMode="decimal"
                     autoComplete="off"
-                    min={0}
-                    value={formData.minPurchase || ""}
+                    value={
+                      textoMinimo ?? dinheiroParaEditar(formData.minPurchase)
+                    }
                     onInput={() => limparErroDe("minPurchase")}
                     {...ariaDoErro("minPurchase")}
-                    onFlush={(val) =>
+                    onFlush={(val) => {
+                      setTextoMinimo(val);
                       setFormData((prev) => ({
                         ...prev,
-                        minPurchase: Number(val),
-                      }))
-                    }
+                        minPurchase: parseValorBR(val) ?? Number.NaN,
+                      }));
+                    }}
                     useShadcn={true}
                     disabled={isOffline || isSubmitting}
                     className={CAMPO}

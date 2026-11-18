@@ -113,7 +113,8 @@ describe("AdminCouponFormView: mínimo de compra com no máximo 2 casas", () => 
     await salvar();
   }
 
-  for (const quebrado of ["49.991", "0.001", "10.005", "99.999"]) {
+  // Ponto com 3 dígitos é milhar no parseValorBR; centavos usam vírgula.
+  for (const quebrado of ["49,991", "0,001", "10,005", "99,999"]) {
     it(`recusa o mínimo ${quebrado} sem salvar`, async () => {
       await digitarMinimoESalvar(quebrado);
       expect(toast.error).toHaveBeenCalledWith(MENSAGEM);
@@ -137,7 +138,7 @@ describe("AdminCouponFormView: mínimo de compra com no máximo 2 casas", () => 
 
   it("vale também para cupom em porcentagem", async () => {
     mockCoupons = [cupom({ type: "percentage", value: 10 })];
-    await digitarMinimoESalvar("49.991");
+    await digitarMinimoESalvar("49,991");
     expect(toast.error).toHaveBeenCalledWith(MENSAGEM);
     expect(updateCoupon).not.toHaveBeenCalled();
   });
@@ -147,7 +148,7 @@ describe("AdminCouponFormView: mínimo de compra com no máximo 2 casas", () => 
     await abrir(undefined);
     await digitar("#coupon-code", "NOVO10");
     await digitar("#coupon-value", "10");
-    await digitar("#coupon-min-purchase", "49.991");
+    await digitar("#coupon-min-purchase", "49,991");
     await salvar();
     expect(toast.error).toHaveBeenCalledWith(MENSAGEM);
     expect(addCoupon).not.toHaveBeenCalled();
@@ -177,7 +178,7 @@ describe("AdminCouponFormView: mínimo de compra com no máximo 2 casas", () => 
   it("cupom já salvo com 3 casas é recusado se ela mexer no mínimo e deixar outro valor de 3 casas", async () => {
     mockCoupons = [cupom({ minPurchase: 49.991 })];
     await abrir("c1");
-    await digitar("#coupon-min-purchase", "49.995");
+    await digitar("#coupon-min-purchase", "49,995");
     await salvar();
     expect(toast.error).toHaveBeenCalledWith(MENSAGEM);
     expect(updateCoupon).not.toHaveBeenCalled();
