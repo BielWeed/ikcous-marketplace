@@ -3746,6 +3746,231 @@ PROVAS.push({
   },
 });
 
+// Frete de ida (migration 20261399992000, corpo vivo de solicitar_devolucao): o frete só volta quando as devoluções do pedido
+// cobrem TODAS as unidades, e a conta ignora a devolução que não valeu (cancelada, recusada, reprovada) e o item "Não veio".
+// MUTANTE_R100=<nome> troca UM trecho desse corpo dentro da transação desfeita (alvo único, instalação conferida).
+const FRETE_ASSINATURA =
+  "public.solicitar_devolucao(uuid,jsonb,text,text,text,text,text[])";
+const FRETE_CONTA = "WHERE d.order_id = v_o.id AND d.status NOT IN (";
+async function mutarFrete(cliente, nome, trecho, troca) {
+  if (process.env.MUTANTE_R100 !== nome) return;
+  const ler = async () =>
+    (
+      await cliente.query("SELECT pg_get_functiondef($1::regprocedure) AS d", [
+        FRETE_ASSINATURA,
+      ])
+    ).rows[0].d.replace(/\r/g, "");
+  const original = await ler();
+  assert.equal(
+    original.split(trecho).length - 1,
+    1,
+    `mutante ${nome}: alvo unico`,
+  );
+  const alterado = original.replace(trecho, () => troca);
+  assert.notEqual(alterado, original, "sabotagem nao aplicada");
+  await cliente.query(alterado);
+  assert.equal(
+    await ler(),
+    alterado,
+    "o banco nao instalou exatamente o mutante",
+  );
+  console.log(`MUTANTE aplicado: ${nome}`);
+}
+
+const O_FRETE_CANCELADA = "3eeeeeee-0000-0000-0000-000000000031";
+const I_FRETE_CANCELADA = "3fffffff-0000-0000-0000-000000000031";
+const O_FRETE_RECUSADA = "3eeeeeee-0000-0000-0000-000000000032";
+const I_FRETE_RECUSADA = "3fffffff-0000-0000-0000-000000000032";
+const O_FRETE_REPROVADA = "3eeeeeee-0000-0000-0000-000000000033";
+const I_FRETE_REPROVADA = "3fffffff-0000-0000-0000-000000000033";
+const O_FRETE_AUSENTE = "3eeeeeee-0000-0000-0000-000000000034";
+const I_FRETE_AUSENTE = "3fffffff-0000-0000-0000-000000000034";
+const O_FRETE_NOVA = "3eeeeeee-0000-0000-0000-000000000035";
+const I_FRETE_NOVA = "3fffffff-0000-0000-0000-000000000035";
+
+PROVAS.push({
+  nome: "(frete de ida) só volta quando as devoluções que valeram cobrem todas as unidades do pedido",
+  corpo: async (cliente) => {
+    await cliente.query("BEGIN");
+    try {
+      await mutarFrete(
+        cliente,
+        "frete-ignora-o-estado-da-devolucao",
+        `${FRETE_CONTA}'recusada', 'cancelada', 'reprovada')`,
+        "WHERE d.order_id = v_o.id",
+      );
+      await mutarFrete(
+        cliente,
+        "frete-so-desconta-a-cancelada",
+        `${FRETE_CONTA}'recusada', 'cancelada', 'reprovada')`,
+        `${FRETE_CONTA}'cancelada')`,
+      );
+      await mutarFrete(
+        cliente,
+        "frete-conta-o-item-que-nao-veio",
+        "AND di.condicao IS DISTINCT FROM 'ausente';\n    IF v_total_coberto",
+        "AND true;\n    IF v_total_coberto",
+      );
+      await mutarFrete(
+        cliente,
+        "frete-so-olha-a-devolucao-corrente",
+        `${FRETE_CONTA}'recusada', 'cancelada', 'reprovada')`,
+        "WHERE d.id = v_id AND d.status NOT IN ('recusada', 'cancelada', 'reprovada')",
+      );
+
+      // Pedido de 2 unidades (2 x 40) com frete de R$20, pago pelo app e entregue há 2 dias: arrependimento.
+      const novoPedido = async (pedidoId, itemId) => {
+        await pedidoCustom(cliente, pedidoId, {
+          userId: U_CLIENTE,
+          total: 100,
+          subtotal: 80,
+          shipping: 20,
+          paymentMethod: "online",
+          paymentStatus: "pago",
+          paidAt: new Date(),
+          gateway: `ORD-FRETE-${pedidoId.slice(-2)}`,
+          itemId,
+          productId: P_CAMISA,
+          qtd: 2,
+          preco: 40,
+          entregueHaDias: 2,
+        });
+      };
+      const pedirUma = async (pedidoId, itemId) => {
+        await logar(cliente, U_CLIENTE);
+        const d = await solicitar(
+          cliente,
+          pedidoId,
+          [{ order_item_id: itemId, quantidade: 1 }],
+          "desisti",
+          "reembolso",
+          "entrega_na_loja",
+        );
+        assert.equal(d.tipo, "arrependimento");
+        return d;
+      };
+      const freteDe = async (devolucaoId) =>
+        Number(
+          await valorUnico(
+            cliente,
+            "SELECT valor_frete_ida FROM public.devolucoes WHERE id = $1",
+            [devolucaoId],
+          ),
+        );
+      const concluirComCondicao = async (devolucaoId, condicao) => {
+        await ateRecebida(cliente, devolucaoId);
+        const itemDevolvido = await valorUnico(
+          cliente,
+          "SELECT id FROM public.devolucao_itens WHERE devolucao_id = $1",
+          [devolucaoId],
+        );
+        const r = await rpc(
+          cliente,
+          "SELECT public.admin_devolucao_concluir($1::uuid, 'reembolso', $2::jsonb) AS r",
+          [
+            devolucaoId,
+            JSON.stringify([
+              {
+                item_id: itemDevolvido,
+                condicao,
+                reestocar: condicao === "nova",
+              },
+            ]),
+          ],
+        );
+        assert.equal(r.status, "concluida");
+      };
+
+      // (a) A primeira devolução NÃO valeu (cancelada, recusada ou reprovada): a segunda, de 1 unidade, cobre só 1 de 2.
+      await novoPedido(O_FRETE_CANCELADA, I_FRETE_CANCELADA);
+      const aCancelada = await pedirUma(O_FRETE_CANCELADA, I_FRETE_CANCELADA);
+      assert.equal(
+        await freteDe(aCancelada.id),
+        0,
+        "1 de 2 unidades: sem frete",
+      );
+      const cancelou = await rpc(
+        cliente,
+        "SELECT public.cancelar_devolucao($1::uuid) AS r",
+        [aCancelada.id],
+      );
+      assert.equal(cancelou.status, "cancelada");
+      const bDepoisDaCancelada = await pedirUma(
+        O_FRETE_CANCELADA,
+        I_FRETE_CANCELADA,
+      );
+      assert.equal(
+        await freteDe(bDepoisDaCancelada.id),
+        0,
+        "frete-ignora-o-estado-da-devolucao: a cancelada não cobriu nada, então a 2a (1 de 2 unidades) não leva o frete",
+      );
+
+      await novoPedido(O_FRETE_RECUSADA, I_FRETE_RECUSADA);
+      const aRecusada = await pedirUma(O_FRETE_RECUSADA, I_FRETE_RECUSADA);
+      await logar(cliente, U_ADMIN);
+      const recusou = await rpc(
+        cliente,
+        "SELECT public.admin_devolucao_decidir($1::uuid, false, 'Fora do combinado com a loja') AS r",
+        [aRecusada.id],
+      );
+      assert.equal(recusou.status, "recusada");
+      const bDepoisDaRecusada = await pedirUma(
+        O_FRETE_RECUSADA,
+        I_FRETE_RECUSADA,
+      );
+      assert.equal(
+        await freteDe(bDepoisDaRecusada.id),
+        0,
+        "frete-so-desconta-a-cancelada: a recusada não cobriu nada, então a 2a (1 de 2 unidades) não leva o frete",
+      );
+
+      await novoPedido(O_FRETE_REPROVADA, I_FRETE_REPROVADA);
+      const aReprovada = await pedirUma(O_FRETE_REPROVADA, I_FRETE_REPROVADA);
+      await ateRecebida(cliente, aReprovada.id);
+      const reprovou = await rpc(
+        cliente,
+        "SELECT public.admin_devolucao_reprovar($1::uuid, 'Produto usado na inspecao') AS r",
+        [aReprovada.id],
+      );
+      assert.equal(reprovou.status, "reprovada");
+      const bDepoisDaReprovada = await pedirUma(
+        O_FRETE_REPROVADA,
+        I_FRETE_REPROVADA,
+      );
+      assert.equal(
+        await freteDe(bDepoisDaReprovada.id),
+        0,
+        "frete-so-desconta-a-cancelada: a reprovada não cobriu nada, então a 2a (1 de 2 unidades) não leva o frete",
+      );
+
+      // (b) A primeira concluiu com o item "Não veio" (ausente): ele não voltou, então a 2a cobre só 1 de 2.
+      await novoPedido(O_FRETE_AUSENTE, I_FRETE_AUSENTE);
+      const aAusente = await pedirUma(O_FRETE_AUSENTE, I_FRETE_AUSENTE);
+      await concluirComCondicao(aAusente.id, "ausente");
+      const bDepoisDaAusente = await pedirUma(O_FRETE_AUSENTE, I_FRETE_AUSENTE);
+      assert.equal(
+        await freteDe(bDepoisDaAusente.id),
+        0,
+        "frete-conta-o-item-que-nao-veio: o item que não veio não voltou, então o pedido não voltou inteiro e o frete fica",
+      );
+
+      // (c) Controle da mesma conta: a primeira concluiu com o item "Nova" (voltou de verdade), a 2a completa as 2 unidades.
+      await novoPedido(O_FRETE_NOVA, I_FRETE_NOVA);
+      const aNova = await pedirUma(O_FRETE_NOVA, I_FRETE_NOVA);
+      assert.equal(await freteDe(aNova.id), 0, "1 de 2 unidades: sem frete");
+      await concluirComCondicao(aNova.id, "nova");
+      const bDepoisDaNova = await pedirUma(O_FRETE_NOVA, I_FRETE_NOVA);
+      assert.equal(
+        await freteDe(bDepoisDaNova.id),
+        20,
+        "frete-so-olha-a-devolucao-corrente: a 1a (concluída, Nova) + a 2a cobrem as 2 unidades, então o frete de ida volta",
+      );
+    } finally {
+      await cliente.query("ROLLBACK");
+    }
+  },
+});
+
 async function main() {
   const url = lerDatabaseUrlEfemera();
   const cliente = new Client({ connectionString: url });
