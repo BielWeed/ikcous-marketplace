@@ -22,6 +22,7 @@ const { estado, invokeSendPush, toastError, toastSuccess, toastWarning } =
       pendurar: null as Etapa,
       chamadasDoAviso: 0,
       chamadasDoAjuste: 0,
+      aparelhosDoCliente: [] as Record<string, unknown>[],
     },
     invokeSendPush: vi.fn(),
     toastError: vi.fn(),
@@ -65,6 +66,19 @@ vi.mock("@/lib/supabase", () => ({
         return {
           select: () =>
             Promise.resolve({ count: aparelhos.length, error: null }),
+        };
+      }
+      if (tabela === "public_profiles") {
+        return {
+          select: () => ({
+            eq: () => ({
+              single: () =>
+                Promise.resolve({
+                  data: { full_name: "Cliente de Teste" },
+                  error: null,
+                }),
+            }),
+          }),
         };
       }
       if (tabela === "push_notifications_log") {
@@ -112,15 +126,20 @@ vi.mock("@/lib/supabase", () => ({
         }),
       };
     },
-    rpc: (nome: string) => {
+    rpc: (nome: string, args?: { p_segment?: string }) => {
+      // Segmento que nao e "all" = cliente especifico (como no banco real).
+      const lista =
+        args?.p_segment && args.p_segment !== "all"
+          ? estado.aparelhosDoCliente
+          : aparelhos;
       if (nome === "get_segmented_push_count") {
-        return Promise.resolve({ data: aparelhos.length, error: null });
+        return Promise.resolve({ data: lista.length, error: null });
       }
       const consulta = {
         order: () => consulta,
         range: (de: number, ate: number) =>
           Promise.resolve({
-            data: aparelhos.slice(de, Math.min(ate, de + 999) + 1),
+            data: lista.slice(de, Math.min(ate, de + 999) + 1),
             error: null,
           }),
       };
@@ -150,6 +169,7 @@ describe("Avisar clientes: gravacoes do envio sem resposta", () => {
     estado.pendurar = null;
     estado.chamadasDoAviso = 0;
     estado.chamadasDoAjuste = 0;
+    estado.aparelhosDoCliente = [];
     invokeSendPush.mockImplementation(() =>
       estado.pendurar === "envio"
         ? pendurada()
@@ -187,10 +207,12 @@ describe("Avisar clientes: gravacoes do envio sem resposta", () => {
     vi.restoreAllMocks();
   });
 
-  async function abrirTela() {
+  async function abrirTela(targetUserId?: string) {
     const { AdminPushView } = await import("@/views/admin/AdminPushView");
     await act(async () => {
-      raiz.render(<AdminPushView onNavigate={vi.fn()} />);
+      raiz.render(
+        <AdminPushView onNavigate={vi.fn()} targetUserId={targetUserId} />,
+      );
     });
     await act(async () => {
       await esperar(80);
@@ -332,6 +354,37 @@ describe("Avisar clientes: gravacoes do envio sem resposta", () => {
       "Notificação entregue em 3 dispositivos",
     );
     expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it("cliente especifico sem aparelho, aviso sem resposta: a frase diz que pode ter sido registrado e o texto fica na tela", async () => {
+    estado.aparelhosDoCliente = [
+      { user_id: "cliente-1", endpoint: "e1", p256dh: "p", auth: "a" },
+    ];
+    await abrirTela("cliente-1");
+    await escrever("Oferta", "Corre que acaba hoje");
+    // O aparelho some entre a medicao e o clique: cai no caminho do aviso so
+    // dentro do app, cujo INSERT nunca responde.
+    estado.aparelhosDoCliente = [];
+    estado.pendurar = "aviso";
+    relogioFalso();
+    await tocarEmEnviar();
+    expect(botao("Enviando Notificação")).toBeDefined();
+
+    await passar(PRAZO_DA_GRAVACAO_DO_ENVIO_DE_PUSH_MS);
+
+    botaoVoltou();
+    expect(estado.chamadasDoAviso).toBe(1);
+    expect(toastError).toHaveBeenCalledWith(
+      "Sem resposta da rede. O aviso pode ter sido registrado: confira o histórico antes de repetir.",
+    );
+    expect(toastError).not.toHaveBeenCalledWith(
+      "Não foi possível registrar o aviso para este cliente",
+    );
+    expect(invokeSendPush).not.toHaveBeenCalled();
+    // Nao limpa: a lojista ainda ve o texto que escreveu.
+    expect(
+      hospedeiro.querySelector<HTMLInputElement>("#push-title")?.value,
+    ).toBe("Oferta");
   });
 
   it("tudo respondendo: envia como sempre, sem erro", async () => {

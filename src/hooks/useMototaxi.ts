@@ -87,8 +87,8 @@ export function useMototaxi(sinalDeReleitura?: boolean) {
       setConfig({ whatsapp, nome });
       setErro(false);
       return true;
-    } catch (erro) {
-      if (ehConsultaSemResposta(erro)) throw erro;
+    } catch (falha) {
+      if (ehConsultaSemResposta(falha)) throw falha;
       return false;
     }
   };

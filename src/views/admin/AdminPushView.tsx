@@ -1083,7 +1083,11 @@ export const AdminPushView = memo(function AdminPushView({
             limparMensagemEnviada(mensagemEnviada);
           } catch (inAppErr) {
             console.error("Error saving in-app notification:", inAppErr);
-            toast.error("Não foi possível registrar o aviso para este cliente");
+            toast.error(
+              inAppErr instanceof PrazoEsgotado
+                ? "Sem resposta da rede. O aviso pode ter sido registrado: confira o histórico antes de repetir."
+                : "Não foi possível registrar o aviso para este cliente",
+            );
           }
         } else {
           toast.error("Nenhum destinatário encontrado para este segmento");
