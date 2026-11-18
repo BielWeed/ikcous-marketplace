@@ -7652,7 +7652,7 @@ export function CheckoutViewDaConta({
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 maxLength={500}
-                placeholder="Ex.: deixar na portaria ou avisar que a campainha está estragada."
+                placeholder="Ex.: deixar na portaria ou tocar a campainha."
                 rows={2}
                 className="w-full resize-none rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
                 autoComplete="off"
