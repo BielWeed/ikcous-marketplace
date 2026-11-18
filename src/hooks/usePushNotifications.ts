@@ -135,7 +135,7 @@ function mensagemDaOrigem(origin: PushSubscribeErrorOrigin): string {
       // A chave pública de push vem da ficha da loja. Sem ela o problema é da
       // LOJA, não do aparelho: a frase de `navegador` ("use um navegador
       // atualizado") mandaria a pessoa trocar de navegador sem resolver nada.
-      return "Esta loja ainda não tem os avisos configurados. Fale com o suporte.";
+      return "Esta loja ainda não tem os avisos configurados. Avise a loja.";
     case "banco":
       return "Não conseguimos confirmar que sua inscrição foi salva. Tente novamente em instantes.";
     case "limite_de_aparelhos":

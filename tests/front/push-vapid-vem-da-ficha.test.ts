@@ -322,7 +322,7 @@ describe("usePushNotifications — a chave VAPID vem da ficha da loja (escala et
     // Frase que a TELA mostra (família "loja_sem_avisos", `mensagemDaOrigem`)
     // — nunca o texto cru da causa.
     expect((erroCapturado as Error).message).toBe(
-      "Esta loja ainda não tem os avisos configurados. Fale com o suporte.",
+      "Esta loja ainda não tem os avisos configurados. Avise a loja.",
     );
     // A causa crua, guardada em `.cause` só para depuração, prova que a
     // recusa veio da CHAVE FALTANDO — não de outro motivo qualquer que

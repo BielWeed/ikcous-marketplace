@@ -13,9 +13,11 @@
 // mensagem explica por quê.
 //
 // O conserto: trocar o `return` por
-// `throw new PushSubscribeError("navegador", ...)` — a classe e a frase já
-// existem para esta família ("Não foi possível ativar as notificações
-// neste navegador. Tente novamente ou use um navegador atualizado.").
+// `throw new PushSubscribeError("loja_sem_avisos", ...)` — família própria,
+// porque o problema é da LOJA (falta configurar os avisos) e não do
+// navegador. A frase que a tela mostra é "Esta loja ainda não tem os avisos
+// configurados. Avise a loja." (a frase antiga, "use um navegador
+// atualizado", mandava trocar de navegador sem resolver nada).
 //
 // Mesmo andaime de push-sem-conta-avisa-em-vez-de-calar.test.ts: Sonda
 // (useEffect capturando o retorno do hook) via createRoot + act, sem
@@ -157,9 +159,9 @@ describe("usePushNotifications — sem VITE_VAPID_PUBLIC_KEY avisa em vez de fic
 
   // Chave ausente é problema da LOJA (falta configurar os avisos), não do
   // navegador: trocar de navegador não resolve, então a frase não pode mandar
-  // "usar um navegador atualizado". Frase própria, que manda falar com o suporte.
+  // "usar um navegador atualizado". Frase própria, que manda avisar a loja.
   const MENSAGEM_LOJA_SEM_AVISOS =
-    "Esta loja ainda não tem os avisos configurados. Fale com o suporte.";
+    "Esta loja ainda não tem os avisos configurados. Avise a loja.";
 
   it("chave VAPID ausente no build: a inscrição lança e avisa, em vez de sumir em silêncio", async () => {
     // Vazia, não ausente: `.env` deste repositório sempre tem a chave (ver
