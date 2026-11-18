@@ -319,7 +319,7 @@ Deno.test("sem credencial do MP com cobrança na vaga → recuperavel, nada no M
 
 Deno.test("GET da vaga com order failed de cartão cancela no banco sem POST", async () => {
   const mp = mpFalso({ [`GET /v1/orders/${ORDER}`]: () => jsonResp(orderCartao("failed", "failed")) });
-  const r = await cancelar({ linha: pedidoBase({ metodo_online: "credit_card" }), mp });
+  const r = await cancelar({ linha: pedidoBase({ metodo_online: "credito" }), mp });
   assertEquals(r.corpo.cancelamento, "cancelado");
   assertEquals(mp.chamadas, [`GET /v1/orders/${ORDER}`]);
   assertEquals(r.banco.rpcs.length, 1);
