@@ -1494,12 +1494,19 @@ function OrderNotesCard({
   onSaveNotes,
 }: Readonly<OrderNotesCardProps>) {
   if (notesStatus !== "ready") {
-    const mensagem = {
-      loading: "Carregando anotação interna…",
-      error: "Não consegui carregar a anotação interna",
-      timeout:
-        "A anotação demorou para carregar. Tentar de novo não altera o que já foi salvo.",
-    }[notesStatus];
+    let mensagem: string;
+    switch (notesStatus) {
+      case "loading":
+        mensagem = "Carregando anotação interna…";
+        break;
+      case "error":
+        mensagem = "Não consegui carregar a anotação interna";
+        break;
+      case "timeout":
+        mensagem =
+          "A anotação demorou para carregar. Tentar de novo não altera o que já foi salvo.";
+        break;
+    }
     return (
       <div className="space-y-2 px-4 py-3.5">
         <h3 className="text-sm font-medium text-zinc-200">
