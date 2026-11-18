@@ -32,6 +32,10 @@ import {
   ehConsultaSemResposta,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
+import {
+  criarRecuoDaFila,
+  falhasPassageirasDaFila,
+} from "@/lib/recuo-da-fila-offline";
 import { redimensionarImagem } from "@/lib/redimensiona-imagem";
 import {
   criarReligadorDaFila,
@@ -269,6 +273,7 @@ async function sincronizarFilaDoUsuario(
 ): Promise<boolean> {
   const chaveDaFila = chaveDoUsuario(CHAVE_BASE_DA_FILA_DE_PRODUTOS, userId);
   paradasPelaRede.delete(chaveDaFila);
+  falhasPassageirasDaFila.delete(chaveDaFila);
   if (typeof window === "undefined" || !navigator.onLine) return false;
   const queueStr = localStorage.getItem(chaveDaFila);
   if (!queueStr) return false;
@@ -486,6 +491,14 @@ async function sincronizarFilaDoUsuario(
 
     if (filaFinal.length > 0) {
       localStorage.setItem(chaveDaFila, JSON.stringify(filaFinal));
+    }
+    // Item devolvido por falha (servidor 500, estouro de tempo): o hook marca
+    // nova passada (`criarRecuoDaFila`) -- com a rede estável nenhum `online`
+    // novo viria. Só DEPOIS de a fila final estar gravada; passada
+    // interrompida (conta trocada, rede ao ler a sessão) tem os seus próprios
+    // caminhos. A versão-base (`baseUpdatedAt`) segue valendo em cada envio.
+    if (!interrompida && remainingQueue.length > 0) {
+      falhasPassageirasDaFila.add(chaveDaFila);
     }
     if (interrompida) {
       // A sessão trocou no meio: sem toast de sucesso nem de falha — a
@@ -1547,11 +1560,16 @@ export function useProducts({
     // uma passada silenciosa -- só quando a passada parou por rede.
     const chaveDaFila = chaveDoUsuario(CHAVE_BASE_DA_FILA_DE_PRODUTOS, userId);
     const religador = criarReligadorDaFila(userId, () => agendarPassada(true));
+    // Servidor 500/estouro de tempo com a rede estável: nenhum `online` novo
+    // viria, e a edição ficava na fila até recarregar a página. O recuo marca a
+    // nova passada (30 s, 2 min, 10 min) enquanto houver item devolvido.
+    const recuo = criarRecuoDaFila(() => agendarPassada(true));
     const agendarPassada = (silenciosa: boolean) => {
       const timer = setTimeout(() => {
         timersPendentes.delete(timer);
         syncOfflineUpdates(userId, silenciosa).then((synced) => {
           religador.aoFimDaPassada(paradasPelaRede.has(chaveDaFila));
+          recuo.aoFimDaPassada(falhasPassageirasDaFila.has(chaveDaFila));
           if (synced) {
             const versoes = new Map(versoesAposSincronizar);
             versoesAposSincronizar.clear();
@@ -1584,6 +1602,7 @@ export function useProducts({
     return () => {
       window.removeEventListener("online", handleOnlineSync);
       religador.encerrar();
+      recuo.encerrar();
       for (const timer of timersPendentes) clearTimeout(timer);
       timersPendentes.clear();
     };
