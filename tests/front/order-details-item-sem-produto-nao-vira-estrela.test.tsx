@@ -140,7 +140,7 @@ describe("OrderDetailsView — item sem produto vinculado não vira estrela (C2-
     expect(estrelasDe("Calça")).toHaveLength(5);
     expect(estrelasDe("Item sem produto")).toHaveLength(0);
     // O contador não conta o órfão: são 2 produtos avaliáveis.
-    expect(hospedeiro.textContent).toMatch(/0 de 2\s*avaliados/);
+    expect(hospedeiro.textContent).toMatch(/Você avaliou 0 produtos de 2\./);
   });
 
   it("o id vazio nunca vai à consulta de avaliações já feitas", async () => {

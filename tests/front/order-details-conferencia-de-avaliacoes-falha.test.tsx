@@ -167,7 +167,7 @@ describe("OrderDetailsView — conferência de avaliações que falha (13-C #5)"
       expect(
         document.body.querySelector('[aria-labelledby="titulo-avaliacao"]'),
       ).toBeNull();
-      expect(hospedeiro.textContent).toMatch(/1 de 1\s*avaliado/);
+      expect(hospedeiro.textContent).toMatch(/Você avaliou 1 produto de 1\./);
       expect(botaoDeEstrela(hospedeiro)).toBeUndefined();
     } finally {
       vi.useRealTimers();
@@ -197,7 +197,7 @@ describe("OrderDetailsView — conferência de avaliações que falha (13-C #5)"
     await act(async () => {
       resolver({ data: [], error: null });
     });
-    expect(hospedeiro.textContent).toMatch(/1 de 1\s*avaliado/);
+    expect(hospedeiro.textContent).toMatch(/Você avaliou 1 produto de 1\./);
   });
 
   it("enquanto confere não oferece avaliar nem afirma zero; prazo oferece tentar de novo", async () => {
@@ -206,7 +206,7 @@ describe("OrderDetailsView — conferência de avaliações que falha (13-C #5)"
     try {
       await abrir();
       expect(hospedeiro.textContent).toContain("Conferindo suas avaliações");
-      expect(hospedeiro.textContent).not.toMatch(/0 de 1\s*avaliado/);
+      expect(hospedeiro.textContent).not.toMatch(/Você avaliou/);
       expect(botaoDeEstrela(hospedeiro)).toBeUndefined();
       await act(async () => {
         await vi.advanceTimersByTimeAsync(15001);
@@ -223,7 +223,7 @@ describe("OrderDetailsView — conferência de avaliações que falha (13-C #5)"
     respostas.push({ data: null, error: { message: "rede" } });
     await abrir();
 
-    expect(hospedeiro.textContent).not.toMatch(/0 de 1\s*avaliado/);
+    expect(hospedeiro.textContent).not.toMatch(/Você avaliou/);
     expect(botaoDeEstrela(hospedeiro)).toBeUndefined();
     expect(hospedeiro.textContent).toContain(
       "Não deu para conferir suas avaliações",
@@ -248,7 +248,7 @@ describe("OrderDetailsView — conferência de avaliações que falha (13-C #5)"
       await Promise.resolve();
     });
 
-    expect(hospedeiro.textContent).toMatch(/1 de 1\s*avaliado/);
+    expect(hospedeiro.textContent).toMatch(/Você avaliou 1 produto de 1\./);
     expect(
       hospedeiro.querySelector('[data-testid="avaliacoes-tentar-de-novo"]'),
     ).toBeNull();
