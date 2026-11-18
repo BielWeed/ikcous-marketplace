@@ -12,6 +12,7 @@ import {
   semearBannersDoCofre,
 } from "@/lib/banners-da-vitrine";
 import { DataVault } from "@/lib/dataVault";
+import { mensagemDeErroDeSessaoDoPainel } from "@/lib/erro-de-sessao-do-painel";
 import { imagemAbre } from "@/lib/imagem-abre";
 import {
   imagemDoBannerEmUso,
@@ -684,7 +685,9 @@ export function useBanners(adminMode = false) {
         );
         await fetchBanners(false, true);
       } else {
-        toast.error("Erro ao atualizar banner.");
+        toast.error(
+          mensagemDeErroDeSessaoDoPainel(error) ?? "Erro ao atualizar banner.",
+        );
       }
       throw error;
     }

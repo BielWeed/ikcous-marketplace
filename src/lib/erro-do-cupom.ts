@@ -1,3 +1,4 @@
+import { mensagemDeErroDeSessaoDoPainel } from "@/lib/erro-de-sessao-do-painel";
 /**
  * Laudo 0109 (A4): a recusa de código duplicado chegava como mensagem
  * genérica ("Erro ao criar/atualizar cupom") — no cenário do A4 o lojista
@@ -12,6 +13,8 @@ export function mensagemDeErroDoCupom(
   error: unknown,
   mensagemPadrao: string,
 ): string {
+  const erroDeSessao = mensagemDeErroDeSessaoDoPainel(error);
+  if (erroDeSessao) return erroDeSessao;
   const err = error as { code?: string; message?: string } | null;
   if (
     err?.code === "23505" ||

@@ -6,6 +6,7 @@ import {
   caminhoDaCopia,
   caminhoDaImagemDoProduto,
 } from "@/lib/copiar-imagem-para-duplicacao";
+import { mensagemDeErroDeSessaoDoPainel } from "@/lib/erro-de-sessao-do-painel";
 import {
   CHAVE_BASE_DA_FILA_DE_PRODUTOS,
   chaveDoUsuario,
@@ -687,9 +688,6 @@ const CHAVE_DA_VARIACAO_VENDIDA =
 const MSG_VARIACAO_JA_VENDIDA =
   "Esta variação já tem vendas e não pode ser excluída. Desligue-a (botão de ligar/desligar na linha da variação) em vez de excluir: ela some da loja e o histórico dos pedidos fica guardado.";
 
-const MSG_SESSAO_OU_PERMISSAO =
-  "Sua sessão expirou ou você não tem permissão para salvar. Saia da conta, entre de novo e tente outra vez.";
-
 /** O UPDATE não achou o produto e a releitura confirmou: foi excluído. */
 const MSG_PRODUTO_EXCLUIDO =
   "Este produto foi excluído em outro aparelho. Recarregue a lista.";
@@ -774,14 +772,8 @@ function traduzirRecusaConhecida(error: unknown): string | null {
     return MSG_VARIACAO_JA_VENDIDA;
   }
 
-  if (
-    detalhes.code === "42501" ||
-    detalhes.code === "PGRST301" ||
-    detalhes.code === "PGRST303" ||
-    /JWT expired/i.test(textoOriginal)
-  ) {
-    return MSG_SESSAO_OU_PERMISSAO;
-  }
+  const erroDeSessao = mensagemDeErroDeSessaoDoPainel(error);
+  if (erroDeSessao) return erroDeSessao;
 
   // `fetch` sem resposta: Chrome "Failed to fetch", Firefox "NetworkError…",
   // Safari "Load failed". O que chega aqui NÃO é um TypeError: o `.catch` do

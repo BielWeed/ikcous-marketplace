@@ -185,6 +185,29 @@ describe("StoreContext.updateConfig — rede pendurada ao salvar", () => {
     vi.restoreAllMocks();
   });
 
+  it.each([
+    { code: "PGRST301", message: "JWT expired" },
+    { message: "JWT expired" },
+    { status: 401, message: "Unauthorized" },
+  ])(
+    "sessão vencida ao salvar manda entrar de novo: %j",
+    async (erroDeSessao) => {
+      const salvando = await salvar({ shippingFee: 20 });
+      await act(async () => {
+        rede.liberarRpc!({
+          data: null,
+          error: erroDeSessao,
+        });
+      });
+      const { toast } = await import("sonner");
+      expect(salvando.resultado).toBe(false);
+      expect(toast.error).toHaveBeenCalledWith(
+        "Sua sessão expirou ou você não tem permissão para salvar. Saia da conta, entre de novo e tente outra vez.",
+      );
+      expect(toast.success).not.toHaveBeenCalled();
+    },
+  );
+
   it("RPC pendurada: antes do prazo o botão segue esperando; estourou, updateConfig solta com false", async () => {
     const salvando = await salvar({ shippingFee: 20 });
     await avancar(ANTES_DO_PRAZO_MS);

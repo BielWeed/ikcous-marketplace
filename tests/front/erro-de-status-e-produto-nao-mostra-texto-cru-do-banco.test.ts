@@ -87,6 +87,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 afterEach(() => vi.unstubAllGlobals());
 
 describe("mensagemAmigavelErroAtualizacaoStatus — as causas de update_order_status_atomic", () => {
+  it.each([
+    { code: "PGRST301", message: "JWT expired" },
+    { message: "JWT expired" },
+    { status: 401, message: "Unauthorized" },
+  ])("sessão vencida no status manda entrar de novo: %j", (erro) => {
+    expect(mensagemAmigavelErroAtualizacaoStatus(erro)).toBe(
+      "Sua sessão expirou ou você não tem permissão para salvar. Saia da conta, entre de novo e tente outra vez.",
+    );
+  });
+
   it("P0001 (RAISE EXCEPTION da RPC) é confiável — sai em português, específica", () => {
     const erroDoBanco = {
       code: "P0001",
@@ -182,6 +192,23 @@ describe("updateOrderStatus toasta a versão traduzida, nunca o err.message cru 
     vi.stubGlobal("navigator", { onLine: true });
     mock.rpc.mockReset();
     vi.mocked(toast.error).mockReset();
+  });
+
+  it("RPC com JWT vencido mostra a orientação de entrar de novo", async () => {
+    mock.from.mockReturnValue(
+      criarQueryEncadeavel({ data: { status: "pending" }, error: null }),
+    );
+    mock.rpc.mockResolvedValue({
+      data: null,
+      error: { code: "PGRST301", message: "JWT expired" },
+    });
+    const { updateOrderStatus } = useOrders(false, true);
+    await expect(
+      updateOrderStatus("order-1", "shipping", undefined, false, "pending"),
+    ).rejects.toThrow();
+    expect(toast.error).toHaveBeenCalledWith(
+      "Sua sessão expirou ou você não tem permissão para salvar. Saia da conta, entre de novo e tente outra vez.",
+    );
   });
 
   it("RPC recusa com erro técnico cru: o toast NUNCA mostra o texto técnico", async () => {

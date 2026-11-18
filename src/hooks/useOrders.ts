@@ -11,6 +11,7 @@ import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { aoAnularVenda } from "@/lib/avisa-anulacao-do-balcao";
 import { completarOldDoEvento } from "@/lib/aviso-de-pedido-atualizado";
 import { criarCanalDeAbas } from "@/lib/canal-de-abas";
+import { mensagemDeErroDeSessaoDoPainel } from "@/lib/erro-de-sessao-do-painel";
 import {
   CHAVE_BASE_DA_FILA_DE_PEDIDOS,
   chaveDoUsuario,
@@ -1336,7 +1337,7 @@ export const mensagemAmigavelErroAtualizacaoStatus = (
     return textoOriginal;
   }
 
-  return frasePadrao;
+  return mensagemDeErroDeSessaoDoPainel(error) ?? frasePadrao;
 };
 
 /** Descrição dos avisos de falha das ações do lojista que não mudam o status. */

@@ -182,7 +182,9 @@ describe("falha ao confirmar o retorno ou o pagamento: o aviso não mostra o err
           error: { code: "PGRST301", message: "JWT expired" },
         }),
       );
-      expect(descricao).toBe(FRASE_PADRAO);
+      expect(descricao).toBe(
+        "Sua sessão expirou ou você não tem permissão para salvar. Saia da conta, entre de novo e tente outra vez.",
+      );
       expect(descricao).not.toMatch(TEXTO_TECNICO);
     });
 

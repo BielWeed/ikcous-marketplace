@@ -9,6 +9,7 @@ import { useLeaderElection } from "@/hooks/useLeaderElection";
 import { pedirBannersNoBoot } from "@/lib/banners-da-vitrine";
 import { DataVault } from "@/lib/dataVault";
 import { abrirCatalogoEmVoo } from "@/lib/deposito-do-catalogo";
+import { mensagemDeErroDeSessaoDoPainel } from "@/lib/erro-de-sessao-do-painel";
 import { espelhoLegado, precoFinalDaOpcao } from "@/lib/estrategias-de-frete";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import {
@@ -1688,7 +1689,8 @@ export function StoreProvider({
               ? "Ligue ao menos uma forma de pagamento — o PIX pelo app está desligado"
               : mensagemCrua === "LOJA_SO_RETIRADA_SEM_RETIRADA"
                 ? "Para entregar só por retirada, ligue a retirada na loja e cadastre o endereço da loja."
-                : "Erro ao salvar as configurações",
+                : (mensagemDeErroDeSessaoDoPainel(err) ??
+                  "Erro ao salvar as configurações"),
           );
         }
         return false;
