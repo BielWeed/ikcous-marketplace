@@ -97,6 +97,7 @@ const RETIRADA = {
   price: 0,
   deliveryDays: 0,
   provider: "pickup",
+  pickupAddress: "Rua Fictícia, 42 — Centro",
 };
 
 const novoItem = () => ({
@@ -590,6 +591,29 @@ describe("CheckoutView — lote 210: textos e caminhos do pagamento", () => {
       expect(texto()).toContain("separar os itens para você retirar");
       expect(texto()).not.toContain("entrega");
       expect(texto()).not.toContain("logística");
+    });
+
+    it("a confirmação repete o endereço da retirada mesmo depois de limpar o carrinho", async () => {
+      mockOpcaoDeFrete = RETIRADA;
+      const { CheckoutView } = await import("@/views/customer/CheckoutView");
+      await fecharPedidoCom(CheckoutView, "Cartão na Retirada");
+
+      expect(texto()).toContain("Pedido recebido!");
+      expect(mockOpcaoDeFrete).toBeNull();
+      expect(texto()).toContain("Retire em: Rua Fictícia, 42 — Centro");
+    });
+
+    it("a confirmação da entrega não mostra endereço de retirada", async () => {
+      mockOpcaoDeFrete = {
+        ...ENTREGA_LOCAL,
+        pickupAddress: RETIRADA.pickupAddress,
+      };
+      const { CheckoutView } = await import("@/views/customer/CheckoutView");
+      await fecharPedidoCom(CheckoutView, "Dinheiro na Entrega");
+
+      expect(texto()).toContain("Pedido recebido!");
+      expect(texto()).not.toContain("Retire em:");
+      expect(texto()).not.toContain(RETIRADA.pickupAddress);
     });
 
     it("total gravado zero: 'Sem valor a pagar', sem 'Total a pagar: R$ 0,00'", async () => {

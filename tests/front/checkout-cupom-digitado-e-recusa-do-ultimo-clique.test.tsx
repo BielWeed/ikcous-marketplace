@@ -356,8 +356,10 @@ const vip15: CupomDisponivel = {
 
 describe("CheckoutView — recusa do cupom no último clique atualiza a lista", () => {
   async function prepararEFinalizar() {
-    const { pararABuscaDeCep } = await import("./duble-busca-de-cep");
-    pararABuscaDeCep();
+    const { concluirBuscaDeCepSemEndereco } = await import(
+      "./duble-busca-de-cep"
+    );
+    concluirBuscaDeCepSemEndereco();
     await renderizar();
     const pix = [...hospedeiro.querySelectorAll("button")].find((b) =>
       b.textContent?.includes("Pix na Entrega"),

@@ -267,13 +267,28 @@ describe("AddressForm — versão nova do MESMO endereço chega com o formulári
     await esvaziar();
     expect(valor("cep")).toBe("38500-999");
 
-    // Outro aparelho corrigiu a rua do mesmo endereço.
-    await mostrar(casa({ street: "Rua do Comércio Nova" }));
+    // Outro aparelho corrigiu o imóvel antigo. A releitura não pode
+    // trazer número ou complemento daquele CEP de volta para o novo.
+    await mostrar(
+      casa({
+        street: "Rua do Comércio Nova",
+        number: "90",
+        complement: "Apto antigo",
+      }),
+    );
+    expect(valor("number")).toBe("");
+    expect(valor("complement")).toBe("");
 
+    // O número é obrigatório novamente, mesmo que a rua seja a mesma.
+    await act(async () => {
+      digitar("number", "11");
+    });
     await salvar();
     const dados = enviado();
     expect(dados.cep).toBe("38500-999");
     expect(dados.street).toBe("Rua do Comércio");
+    expect(dados.number).toBe("11");
+    expect(dados.complement).toBe("");
   });
 
   // CEP, rua, bairro, cidade e UF são UM bloco: quem decide é a pessoa, nas

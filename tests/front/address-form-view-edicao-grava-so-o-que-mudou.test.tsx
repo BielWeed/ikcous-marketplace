@@ -169,6 +169,26 @@ describe("AddressFormView — grava só o que a cliente mudou", () => {
     expect(updateAddress).toHaveBeenCalledWith("end-1", { number: "100" });
   });
 
+  it("ao trocar o CEP, grava os dados do imóvel novo pela edição da conta", async () => {
+    lista.itens = [{ ...salvo, complement: "Apto antigo" }];
+    await abrir("end-1");
+    await act(async () => digitar("cep", "38500001"));
+    await salvar();
+    expect(updateAddress).not.toHaveBeenCalled();
+
+    await act(async () => digitar("number", "10"));
+    await salvar();
+    expect(updateAddress).toHaveBeenCalledWith("end-1", {
+      cep: "38500-001",
+      street: "Rua Tiradentes",
+      number: "10",
+      complement: "",
+      neighborhood: "Centro",
+      city: "Monte Carmelo",
+      state: "MG",
+    });
+  });
+
   it("endereço NOVO: addAddress recebe tudo", async () => {
     await abrir(undefined);
     await act(async () => {

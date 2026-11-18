@@ -22,7 +22,7 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { pararABuscaDeCep } from "./duble-busca-de-cep";
+import { concluirBuscaDeCepSemEndereco } from "./duble-busca-de-cep";
 
 const onNavigate = vi.fn();
 const onSetBackOverride = vi.fn();
@@ -186,7 +186,7 @@ describe("CheckoutView — visitante que retira na loja só informa nome, WhatsA
     createOrder.mockResolvedValue({ id: "ped-1", totalAmount: 100 });
     toastError.mockReset();
     const armazem = new Map<string, string>();
-    pararABuscaDeCep();
+    concluirBuscaDeCepSemEndereco();
     vi.stubGlobal("localStorage", {
       getItem: (chave: string) => armazem.get(chave) ?? null,
       setItem: (chave: string, valor: string) => {

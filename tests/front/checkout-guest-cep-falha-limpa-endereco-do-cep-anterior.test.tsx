@@ -375,7 +375,7 @@ describe("CheckoutView (convidado) — busca do CEP novo que falha não deixa o 
     expect(valor("guest-city")).toBe("São Paulo");
   });
 
-  it("depois de limpar, o cliente preenche à mão e um terceiro CEP também falha: o que ele digitou fica (o dono dos campos deixou de ser o A)", async () => {
+  it("cidade e UF preenchidas à mão para o CEP B não passam para um terceiro CEP", async () => {
     await montar();
     await acharOCepA();
     await trocarParaOCepB();
@@ -383,14 +383,20 @@ describe("CheckoutView (convidado) — busca do CEP novo que falha não deixa o 
     expect(valor("guest-city")).toBe("");
 
     await digitarEsperando("guest-city", "Monte Carmelo");
-    // CEP diferente de B: as marcas zeram, mas já não há busca dona dos campos.
+    await digitarEsperando("guest-state", "MG");
+    expect(valor("guest-city")).toBe("Monte Carmelo");
+    expect(valor("guest-state")).toBe("MG");
+
+    // O que foi digitado para B não pertence ao terceiro CEP, mesmo sem
+    // um endereço encontrado pela busca de B.
     await digitarEsperando("guest-cep", "20040-02");
     await act(async () => {
       digitar("guest-cep", "20040-020");
       await vi.waitFor(() => expect(toastError).toHaveBeenCalledTimes(2));
     });
 
-    expect(valor("guest-city")).toBe("Monte Carmelo");
+    expect(valor("guest-city")).toBe("");
+    expect(valor("guest-state")).toBe("");
   });
 
   it("depois de limpar, uma segunda tentativa do mesmo CEP B que também falha não apaga o que o cliente digitou entre as duas", async () => {

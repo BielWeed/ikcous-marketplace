@@ -14,7 +14,7 @@ import { mapProductFromDB } from "@/lib/mappers";
 import { act, useEffect } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { pararABuscaDeCep } from "./duble-busca-de-cep";
+import { concluirBuscaDeCepSemEndereco } from "./duble-busca-de-cep";
 
 const mundo = vi.hoisted(() => ({
   usuario: { id: "user-1" } as null | { id: string },
@@ -257,7 +257,7 @@ describe("CheckoutView + CartProvider — reabrir o app com pedido sem resposta 
     mundo.avisos = [];
     mundo.catalogo = [linha()];
     sessionStorage.clear();
-    pararABuscaDeCep();
+    concluirBuscaDeCepSemEndereco();
     armazem = new Map<string, string>();
     vi.stubGlobal("localStorage", {
       getItem: (k: string) => armazem.get(k) ?? null,
