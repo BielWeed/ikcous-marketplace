@@ -77,7 +77,9 @@ export const OrderReceipt = memo(function OrderReceipt({
         className="mx-auto hidden max-w-[80mm] border border-gray-200 bg-white p-8 font-mono text-sm text-black [overflow-wrap:anywhere] print:block"
       >
         <div className="mb-4 border-b border-dashed border-black pb-4 text-center">
-          <h2 className="text-xl font-bold uppercase">{storeName}</h2>
+          <h2 className="break-words text-xl font-bold uppercase">
+            {storeName}
+          </h2>
           <p className="text-xs">Pedido #{numeroDoPedido(order.id)}</p>
           <p className="text-xs">
             {order?.createdAt
@@ -93,10 +95,12 @@ export const OrderReceipt = memo(function OrderReceipt({
         {(!presencial || nomeNoPapel) && (
           <div className="mb-4">
             <p className="mb-1 border-b border-black font-bold">CLIENTE:</p>
-            <p>{nomeNoPapel}</p>
-            {order.customer.whatsapp && <p>{order.customer.whatsapp}</p>}
+            <p className="break-words">{nomeNoPapel}</p>
+            {order.customer.whatsapp && (
+              <p className="break-words">{order.customer.whatsapp}</p>
+            )}
             {linhasDoEndereco(order.customer).map((linha) => (
-              <p key={linha} className="text-xs">
+              <p key={linha} className="break-words text-xs">
                 {linha}
               </p>
             ))}
@@ -108,7 +112,7 @@ export const OrderReceipt = memo(function OrderReceipt({
             <p className="mb-1 border-b border-black font-bold">
               RETIRADA NA LOJA:
             </p>
-            <p className="text-xs">{order.enderecoDeRetirada}</p>
+            <p className="break-words text-xs">{order.enderecoDeRetirada}</p>
           </div>
         )}
 
@@ -126,10 +130,10 @@ export const OrderReceipt = memo(function OrderReceipt({
           <div className="space-y-1">
             {order.items.map((item, i) => (
               <div key={i} className="flex justify-between">
-                <span className="min-w-0 flex-1">
+                <span className="min-w-0 flex-1 break-words">
                   {item.quantity}x {item.name}
                   {item.variantId && variacoes?.[item.variantId] && (
-                    <span className="block pl-4 text-xs">
+                    <span className="block break-words pl-4 text-xs">
                       {variacoes[item.variantId]}
                     </span>
                   )}
