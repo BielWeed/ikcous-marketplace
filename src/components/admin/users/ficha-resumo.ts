@@ -1,3 +1,4 @@
+import { paraCentavos } from "@/lib/financeiro";
 import type { Order } from "@/types";
 
 /**
@@ -167,7 +168,12 @@ export function calcularResumoFicha(
   const totalGasto = totalDaConta + balcao.total;
 
   const pagosNoTotal = pedidosPagos.length + balcao.pedidos;
-  const ticketMedio = pagosNoTotal > 0 ? totalGasto / pagosNoTotal : 0;
+  const centavosParaOMedio = pedidosPagos.reduce(
+    (soma, pedido) => soma + paraCentavos(pedido.total),
+    paraCentavos(balcao.total),
+  );
+  const ticketMedio =
+    pagosNoTotal > 0 ? Math.round(centavosParaOMedio / pagosNoTotal) / 100 : 0;
 
   const ultimaCompra = pedidosQueContam.reduce<Date | null>(
     (maisRecente, o) => {
