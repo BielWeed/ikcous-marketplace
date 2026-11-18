@@ -6043,8 +6043,9 @@ export function CheckoutViewDaConta({
               // conta é a única forma de cancelar antes disso.
               <p className="text-xs text-zinc-500">
                 Como você não está com a conta aberta, não é possível cancelar
-                por aqui. Se o pagamento não sair em 30 minutos, o pedido é
-                cancelado automaticamente e os itens voltam para o estoque. Para
+                por aqui. Se o pagamento não for confirmado, o pedido será
+                cancelado automaticamente após o prazo de pagamento e a
+                conferência do banco. Os itens voltam para o estoque. Para
                 cancelar agora, entre na sua conta.
               </p>
             )}

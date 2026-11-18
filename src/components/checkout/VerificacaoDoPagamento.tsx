@@ -413,7 +413,7 @@ export function VerificacaoDoPagamento({
             </p>
             <p>
               {situacao.cancelamento
-                ? `Se nenhuma cobrança aparecer, o pedido é cancelado automaticamente até ${situacao.cancelamento}.`
+                ? `Se nenhuma cobrança aparecer, o pedido é cancelado automaticamente a partir de ${situacao.cancelamento}.`
                 : "Se nenhuma cobrança aparecer, o pedido é cancelado automaticamente."}
             </p>
           </div>

@@ -266,8 +266,9 @@ describe("VerificacaoDoPagamento — um estado do contrato, um texto verdadeiro"
       "Se o banco confirmar, o pedido aparece como pago em Meus pedidos.",
     );
     expect(status).toMatch(
-      /Se nenhuma cobrança aparecer, o pedido é cancelado automaticamente até 03\/10\/2026 às \d{2}:\d{2}\./,
+      /Se nenhuma cobrança aparecer, o pedido é cancelado automaticamente a partir de 03\/10\/2026 às \d{2}:\d{2}\./,
     );
+    expect(status).not.toContain("cancelado automaticamente até");
     expect(botoes()).toEqual([
       "Falar com a loja",
       "Verificar de novo",
