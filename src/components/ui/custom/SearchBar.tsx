@@ -94,6 +94,7 @@ export function SearchBar({
   placeholder = "Buscar produtos",
   className = "",
 }: SearchBarProps) {
+  const [fotosComErro, setFotosComErro] = useState<string[]>([]);
   const [localValue, setLocalValue] = useState(value);
   const deferredLocalValue = useDeferredValue(localValue);
   const [isOpen, setIsOpen] = useState(false);
@@ -551,7 +552,8 @@ export function SearchBar({
                               terceiro): o mesmo "Sem foto" local do resto da
                               loja, sem pedir nada à rede -- sem internet a
                               miniatura não quebra. */}
-                          {item.capa === undefined ? (
+                          {item.capa === undefined ||
+                          fotosComErro.includes(item.capa) ? (
                             <div
                               data-sem-foto
                               className="flex size-full items-center justify-center px-0.5 text-center text-[9px] font-medium leading-tight text-zinc-600"
@@ -564,12 +566,18 @@ export function SearchBar({
                               // por letra digitada). O mesmo helper alimenta o
                               // useCacheWarmer: a string aquecida é esta.
                               src={miniaturaDaSugestao(item.capa)}
-                              onError={(event) =>
-                                usarImagemOriginal(
-                                  event.currentTarget,
-                                  item.capa,
+                              onError={(event) => {
+                                if (
+                                  !usarImagemOriginal(
+                                    event.currentTarget,
+                                    item.capa,
+                                  )
                                 )
-                              }
+                                  setFotosComErro((fotos) => [
+                                    ...fotos,
+                                    item.capa!,
+                                  ]);
+                              }}
                               alt={item.name}
                               className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
                               loading="lazy"
