@@ -5521,7 +5521,10 @@ export function CheckoutViewDaConta({
           </p>
         ) : (
           <>
-            <p role="alert" className="text-sm font-medium text-red-700 dark:text-red-400">
+            <p
+              role="alert"
+              className="text-sm font-medium text-red-700 dark:text-red-400"
+            >
               Não foi possível abrir o pagamento deste pedido agora. Nada foi
               cobrado nesta tentativa.
             </p>
@@ -8003,10 +8006,14 @@ export function CheckoutViewDaConta({
                             // PRÓPRIA opção, nunca recalculada aqui) + final.
                             <>
                               <span className="mr-1 text-zinc-500 line-through">
-                                <span className="sr-only">Frete original: </span>
+                                <span className="sr-only">
+                                  Frete original:{" "}
+                                </span>
                                 {reais(shipping + economiaDoFrete)}
                               </span>
-                              <span className="sr-only">Frete com desconto: </span>
+                              <span className="sr-only">
+                                Frete com desconto:{" "}
+                              </span>
                               {reais(shipping)}
                             </>
                           ) : shipping > 0 ? (

@@ -1,10 +1,10 @@
+import { useReviews } from "@/hooks/useReviews";
+import { MENSAGEM_SESSAO_OU_PERMISSAO } from "@/lib/erro-de-sessao-do-painel";
 // @vitest-environment jsdom
 import { act, useEffect } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { toast } from "sonner";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { useReviews } from "@/hooks/useReviews";
-import { MENSAGEM_SESSAO_OU_PERMISSAO } from "@/lib/erro-de-sessao-do-painel";
 
 const h = vi.hoisted(() => ({
   erro: null as unknown,

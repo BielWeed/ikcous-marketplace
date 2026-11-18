@@ -155,7 +155,9 @@ describe("HeroOfferCard -- com variação ativa, some o segundo botão", () => {
       expect(botoes[1].classList.contains("text-primary")).toBe(false);
       expect(botoes[1].classList.contains("bg-secondary/10")).toBe(true);
       expect(botoes[0].classList.contains("bg-primary")).toBe(true);
-      expect(botoes[0].classList.contains("text-primary-foreground")).toBe(true);
+      expect(botoes[0].classList.contains("text-primary-foreground")).toBe(
+        true,
+      );
     },
   );
 

@@ -1,8 +1,8 @@
+import { HistoricoCotacoesSection } from "@/components/admin/settings/HistoricoCotacoesCard";
 // @vitest-environment jsdom
 import { TransportadorasSection } from "@/components/admin/settings/TransportadorasCard";
-import { HistoricoCotacoesSection } from "@/components/admin/settings/HistoricoCotacoesCard";
 import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const s = vi.hoisted(() => ({ invoke: vi.fn(), logs: vi.fn() }));
@@ -39,7 +39,9 @@ const botao = (texto: RegExp) =>
   );
 const semResposta = () => new Promise(() => {});
 const avancar = (ms: number) =>
-  act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+  act(async () => {
+    await vi.advanceTimersByTimeAsync(ms);
+  });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -62,17 +64,23 @@ it("configuração sem resposta sai do esqueleto aos 20 s e permite tentar de no
   await avancar(19_999);
   expect(botao(/Tentar de novo/i)).toBeUndefined();
   await avancar(1);
-  expect(host.textContent).toMatch(/Não deu para confirmar as transportadoras/i);
+  expect(host.textContent).toMatch(
+    /Não deu para confirmar as transportadoras/i,
+  );
   expect(botao(/Tentar de novo/i)?.disabled).toBe(false);
   await act(async () => botao(/Tentar de novo/i)?.click());
-  expect(host.textContent).not.toMatch(/Não deu para confirmar as transportadoras/i);
+  expect(host.textContent).not.toMatch(
+    /Não deu para confirmar as transportadoras/i,
+  );
   expect(s.invoke).toHaveBeenCalledTimes(2);
 });
 
 it("serviços sem resposta soltam o botão aos 20 s e mostram a falha", async () => {
   await act(async () => root.render(<TransportadorasSection />));
   await act(async () =>
-    host.querySelector<HTMLButtonElement>('[aria-label="Melhor Envio"]')!.click(),
+    host
+      .querySelector<HTMLButtonElement>('[aria-label="Melhor Envio"]')!
+      .click(),
   );
   s.invoke.mockImplementationOnce(semResposta);
   await act(async () => botao(/Ver serviços da conta/)!.click());
@@ -81,7 +89,9 @@ it("serviços sem resposta soltam o botão aos 20 s e mostram a falha", async ()
   expect(botao(/Ver serviços da conta/)?.disabled).toBe(true);
   await avancar(1);
   expect(botao(/Ver serviços da conta/)?.disabled).toBe(false);
-  expect(document.body.textContent).toMatch(/Não foi possível carregar os serviços agora/);
+  expect(document.body.textContent).toMatch(
+    /Não foi possível carregar os serviços agora/,
+  );
 });
 
 it("histórico sem resposta sai dos esqueletos aos 20 s e Atualizar permite recuperar", async () => {
@@ -92,7 +102,9 @@ it("histórico sem resposta sai dos esqueletos aos 20 s e Atualizar permite recu
   expect(botao(/^Atualizar$/)?.disabled).toBe(true);
   await avancar(1);
   expect(botao(/^Atualizar$/)?.disabled).toBe(false);
-  expect(host.textContent).toMatch(/Não foi possível carregar o histórico de cotações/);
+  expect(host.textContent).toMatch(
+    /Não foi possível carregar o histórico de cotações/,
+  );
   await act(async () => botao(/^Atualizar$/)?.click());
   expect(host.textContent).toMatch(/Nenhuma cotação registrada recentemente/);
   expect(s.logs).toHaveBeenCalledTimes(2);

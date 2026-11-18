@@ -9,8 +9,11 @@ const fontes = import.meta.glob<string>("/src/hooks/useUpdateCheck.ts", {
   eager: true,
 });
 const fonte = Object.values(fontes)[0] ?? "";
-const inicio = fonte.indexOf("  useEffect(() => {\n    if (!registration) return;");
-const fimDoEfeito = "  }, [registration, fetchServerVersion, SAFE_APP_VERSION]);";
+const inicio = fonte.indexOf(
+  "  useEffect(() => {\n    if (!registration) return;",
+);
+const fimDoEfeito =
+  "  }, [registration, fetchServerVersion, SAFE_APP_VERSION]);";
 const fim = fonte.indexOf(fimDoEfeito, inicio);
 
 afterEach(() => {

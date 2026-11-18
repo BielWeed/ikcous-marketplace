@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, type ReactNode } from "react";
+import { type ReactNode, act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { escolherAtributo } from "./helpers/atributo-da-variacao";
@@ -99,14 +99,16 @@ async function montar(existente: boolean) {
     isBestseller: false,
     isActive: true,
     variants: existente
-      ? [{
-          id: "v-1",
-          productId: "p-1",
-          name: "Tamanho",
-          value: "GG",
-          stockIncrement: 20,
-          active: true,
-        }]
+      ? [
+          {
+            id: "v-1",
+            productId: "p-1",
+            name: "Tamanho",
+            value: "GG",
+            stockIncrement: 20,
+            active: true,
+          },
+        ]
       : [],
   });
   const { AdminProductFormView } = await import(
@@ -183,15 +185,18 @@ describe("AdminProductFormView — apagar quantidade não esgota uma variação"
     ).toBe("0");
   });
 
-  it.each(["0", "5"])("existente aceita quantidade explícita %s", async (quantidade) => {
-    await montar(true);
-    await editar();
-    await digitarCampo("variant-stock", quantidade);
-    await clicar("Salvar variação");
-    expect(mocks.toastErro).not.toHaveBeenCalled();
-    await editar();
-    expect(
-      (document.getElementById("variant-stock") as HTMLInputElement).value,
-    ).toBe(quantidade);
-  });
+  it.each(["0", "5"])(
+    "existente aceita quantidade explícita %s",
+    async (quantidade) => {
+      await montar(true);
+      await editar();
+      await digitarCampo("variant-stock", quantidade);
+      await clicar("Salvar variação");
+      expect(mocks.toastErro).not.toHaveBeenCalled();
+      await editar();
+      expect(
+        (document.getElementById("variant-stock") as HTMLInputElement).value,
+      ).toBe(quantidade);
+    },
+  );
 });

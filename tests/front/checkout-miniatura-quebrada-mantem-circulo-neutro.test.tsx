@@ -73,7 +73,9 @@ it("CheckoutView deixa o círculo neutro quando a miniatura do botão falha", as
     name: "Vestido",
     description: "",
     price: 100,
-    images: ["https://exemplo.supabase.co/storage/v1/object/public/fotos/vestido.jpg"],
+    images: [
+      "https://exemplo.supabase.co/storage/v1/object/public/fotos/vestido.jpg",
+    ],
     category: "Vestidos",
     stock: 5,
     sold: 0,
@@ -98,7 +100,9 @@ it("CheckoutView deixa o círculo neutro quando a miniatura do botão falha", as
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 420));
     });
-    const botao = slot.querySelector<HTMLButtonElement>("button[aria-expanded]")!;
+    const botao = slot.querySelector<HTMLButtonElement>(
+      "button[aria-expanded]",
+    )!;
     const foto = botao.querySelector("img")!;
     expect(foto).not.toBeNull();
     await act(async () => foto.dispatchEvent(new Event("error")));

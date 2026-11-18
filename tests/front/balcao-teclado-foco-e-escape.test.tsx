@@ -5,9 +5,9 @@ import {
 } from "@/components/admin/pdv/BuscaDeProduto";
 import { CupomDaVenda } from "@/components/admin/pdv/CupomDaVenda";
 import {
+  type EstadoDaVenda,
   estadoInicialDaVenda,
   reducerDaVenda,
-  type EstadoDaVenda,
 } from "@/hooks/useVendaPresencial";
 import { act, useReducer } from "react";
 import { type Root, createRoot } from "react-dom/client";

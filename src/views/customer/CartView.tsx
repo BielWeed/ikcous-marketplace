@@ -944,15 +944,18 @@ function ConteudoDoCarrinho({
     if (
       linhas.some(
         (item) =>
-          `${item.product.id}-${chaveDaLinha(item) || "default"}` === pendente.chave,
+          `${item.product.id}-${chaveDaLinha(item) || "default"}` ===
+          pendente.chave,
       )
-    ) return;
+    )
+      return;
     focoAoRemoverRef.current = null;
     // A remoção espera 300ms: se a pessoa já foi a outro controle, não puxar de volta.
     if (
       document.activeElement !== pendente.origem &&
       document.activeElement !== document.body
-    ) return;
+    )
+      return;
     const proxima = linhas[Math.min(pendente.indice, linhas.length - 1)];
     const chave = proxima
       ? `${proxima.product.id}-${chaveDaLinha(proxima) || "default"}`

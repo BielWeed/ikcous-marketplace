@@ -290,7 +290,9 @@ describe("OrderDetailsView — pedido cancelado com pagamento que ficou com a lo
 
     await renderizar();
 
-    expect(hospedeiro.textContent).toContain("Pagamento recebido — pedido já encerrado");
+    expect(hospedeiro.textContent).toContain(
+      "Pagamento recebido — pedido já encerrado",
+    );
     expect(hospedeiro.textContent).toContain("Fale com a loja para resolver");
     expect(hospedeiro.textContent).not.toContain("volta sozinho");
     expect(hospedeiro.textContent).not.toContain("Pagamento confirmado");

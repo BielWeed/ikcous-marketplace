@@ -897,7 +897,10 @@ export function instrucaoParaOCliente(
         if (d.reembolso_manual) {
           return `Reembolso de ${valor} combinado com a loja (em mãos ou por PIX).`;
         }
-        if (statusDoReembolso === "falhou" || statusDoReembolso === "recusado") {
+        if (
+          statusDoReembolso === "falhou" ||
+          statusDoReembolso === "recusado"
+        ) {
           return "O reembolso não foi concluído. Fale com a loja para resolver — o pedido de devolução continua registrado.";
         }
         return statusDoReembolso === "concluido"

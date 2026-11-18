@@ -84,12 +84,16 @@ describe("devolução do pedido na tela da cliente: atualiza sozinha enquanto es
       expect(h.ler).toHaveBeenCalledTimes(1);
 
       visibilidade.mockReturnValue("hidden");
-      await act(async () => document.dispatchEvent(new Event("visibilitychange")));
+      await act(async () =>
+        document.dispatchEvent(new Event("visibilitychange")),
+      );
       await avancar(INTERVALO_DE_RECARGA_MS * 4);
       expect(h.ler).toHaveBeenCalledTimes(1);
 
       visibilidade.mockReturnValue("visible");
-      await act(async () => document.dispatchEvent(new Event("visibilitychange")));
+      await act(async () =>
+        document.dispatchEvent(new Event("visibilitychange")),
+      );
       expect(h.ler).toHaveBeenCalledTimes(2);
       await avancar(INTERVALO_DE_RECARGA_MS);
       expect(h.ler).toHaveBeenCalledTimes(3);

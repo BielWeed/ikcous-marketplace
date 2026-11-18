@@ -1,8 +1,8 @@
-import { describe, expect, it } from "vitest";
 import {
   calcularResumoFicha,
   lerBalcaoDoMesmoWhatsapp,
 } from "@/components/admin/users/ficha-resumo";
+import { describe, expect, it } from "vitest";
 
 describe("brinde de balcão conta na ficha sem inventar dinheiro", () => {
   it("aceita um pedido com total zero", () => {

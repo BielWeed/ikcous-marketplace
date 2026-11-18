@@ -24,7 +24,6 @@ import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-
 const fetchProduct = vi.fn();
 const updateProduct = vi.fn();
 const upsertVariants = vi.fn();
@@ -210,18 +209,34 @@ describe("AdminProductFormView — excluir variação vendida não perde o resto
       await new Promise((r) => setTimeout(r, 50));
     });
   }
-  it.each([1, 2])("toast real concorda com %i exclusões recusadas", async (quantidade) => {
-    await montarProduto([variacao("v1", "Rosa", 3), variacao("v2", "Azul", 2), variacao("v3", "Verde", 1)]);
-    await excluirDaTela("Azul");
-    if (quantidade === 2) await excluirDaTela("Verde");
-    deleteVariants.mockRejectedValueOnce({ ...ERRO_VENDIDA, recusadas: quantidade === 2 ? ["v2", "v3"] : ["v2"] });
-    await salvar();
-    expect(deleteVariants).toHaveBeenCalledWith(quantidade === 2 ? ["v2", "v3"] : ["v2"]);
-    const aviso = toastError.mock.calls.map((c) => String(c[0])).find((texto) => texto.includes("não consegui excluir"));
-    expect(aviso).toContain("Cor: Azul");
-    expect(aviso).toContain(quantidade === 2
-      ? "Se elas já têm vendas, desligue-as"
-      : "Se ela já tem vendas, desligue-a");
-    if (quantidade === 2) expect(aviso).toContain("Cor: Verde");
-  });
+  it.each([1, 2])(
+    "toast real concorda com %i exclusões recusadas",
+    async (quantidade) => {
+      await montarProduto([
+        variacao("v1", "Rosa", 3),
+        variacao("v2", "Azul", 2),
+        variacao("v3", "Verde", 1),
+      ]);
+      await excluirDaTela("Azul");
+      if (quantidade === 2) await excluirDaTela("Verde");
+      deleteVariants.mockRejectedValueOnce({
+        ...ERRO_VENDIDA,
+        recusadas: quantidade === 2 ? ["v2", "v3"] : ["v2"],
+      });
+      await salvar();
+      expect(deleteVariants).toHaveBeenCalledWith(
+        quantidade === 2 ? ["v2", "v3"] : ["v2"],
+      );
+      const aviso = toastError.mock.calls
+        .map((c) => String(c[0]))
+        .find((texto) => texto.includes("não consegui excluir"));
+      expect(aviso).toContain("Cor: Azul");
+      expect(aviso).toContain(
+        quantidade === 2
+          ? "Se elas já têm vendas, desligue-as"
+          : "Se ela já tem vendas, desligue-a",
+      );
+      if (quantidade === 2) expect(aviso).toContain("Cor: Verde");
+    },
+  );
 });

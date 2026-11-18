@@ -61,75 +61,82 @@ function botao(texto: string) {
   expect(b).toBeTruthy();
   return b!;
 }
-it.each([null, { message: "JWT expired", status: 401 }, { message: "Falha de rede" }])("preserva a resposta durante o envio e explica a falha %j", async (causa) => {
-  h.toastError.mockClear();
-  class Observador {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  }
-  vi.stubGlobal("ResizeObserver", Observador);
-  vi.stubGlobal("IntersectionObserver", Observador);
-  vi.stubGlobal("matchMedia", (media: string) => ({
-    matches: false,
-    media,
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-  }));
-  const armazem = new Map<string, string>();
-  vi.stubGlobal("localStorage", {
-    getItem: (chave: string) => armazem.get(chave) ?? null,
-    setItem: (chave: string, valor: string) => armazem.set(chave, valor),
-    removeItem: (chave: string) => armazem.delete(chave),
-  });
-  let concluir!: (valor: boolean) => void;
-  h.addAnswer.mockImplementation(
-    (_answer, options) =>
-      new Promise<boolean>((resolve) => {
-        concluir = (valor) => {
-          if (causa) options?.onError?.(causa);
-          resolve(valor);
-        };
-      }),
-  );
-  hospedeiro = document.createElement("div");
-  document.body.appendChild(hospedeiro);
-  raiz = createRoot(hospedeiro);
-  const { AdminQAView } = await import("@/views/admin/AdminQAView");
-  await act(async () =>
-    raiz.render(<AdminQAView onNavigate={() => {}} active />),
-  );
-  await act(async () => botao("Responder").click());
-  const campo = document.getElementById(
-    "merchant-answer",
-  ) as HTMLTextAreaElement;
-  await act(async () => {
-    Object.getOwnPropertyDescriptor(
-      HTMLTextAreaElement.prototype,
-      "value",
-    )!.set!.call(campo, "Sim, temos.");
-    campo.dispatchEvent(new Event("input", { bubbles: true }));
-  });
-  await act(async () => botao("Publicar resposta").click());
-  expect(botao("Descartar").disabled).toBe(true);
-  expect(botao("Fechar").disabled).toBe(true);
-  await act(async () => {
-    botao("Descartar").click();
-    botao("Fechar").click();
-    document.dispatchEvent(
-      new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+it.each([
+  null,
+  { message: "JWT expired", status: 401 },
+  { message: "Falha de rede" },
+])(
+  "preserva a resposta durante o envio e explica a falha %j",
+  async (causa) => {
+    h.toastError.mockClear();
+    class Observador {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal("ResizeObserver", Observador);
+    vi.stubGlobal("IntersectionObserver", Observador);
+    vi.stubGlobal("matchMedia", (media: string) => ({
+      matches: false,
+      media,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }));
+    const armazem = new Map<string, string>();
+    vi.stubGlobal("localStorage", {
+      getItem: (chave: string) => armazem.get(chave) ?? null,
+      setItem: (chave: string, valor: string) => armazem.set(chave, valor),
+      removeItem: (chave: string) => armazem.delete(chave),
+    });
+    let concluir!: (valor: boolean) => void;
+    h.addAnswer.mockImplementation(
+      (_answer, options) =>
+        new Promise<boolean>((resolve) => {
+          concluir = (valor) => {
+            if (causa) options?.onError?.(causa);
+            resolve(valor);
+          };
+        }),
     );
-  });
-  expect(document.body.textContent).not.toContain("será perdido");
-  expect(document.getElementById("merchant-answer")).toBe(campo);
-  await act(async () => concluir(false));
-  expect(botao("Descartar").disabled).toBe(false);
-  expect(botao("Fechar").disabled).toBe(false);
-  expect(campo.value).toBe("Sim, temos.");
-  expect(h.toastError).toHaveBeenCalledWith(
-    causa && "status" in causa
-      ? "Sua sessão expirou. Entre de novo para enviar a resposta — o texto continua aqui."
-      : "Não foi possível confirmar o envio da resposta. Confira na lista antes de tentar de novo.",
-  );
-  expect(h.toastError).toHaveBeenCalledTimes(1);
-});
+    hospedeiro = document.createElement("div");
+    document.body.appendChild(hospedeiro);
+    raiz = createRoot(hospedeiro);
+    const { AdminQAView } = await import("@/views/admin/AdminQAView");
+    await act(async () =>
+      raiz.render(<AdminQAView onNavigate={() => {}} active />),
+    );
+    await act(async () => botao("Responder").click());
+    const campo = document.getElementById(
+      "merchant-answer",
+    ) as HTMLTextAreaElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLTextAreaElement.prototype,
+        "value",
+      )!.set!.call(campo, "Sim, temos.");
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => botao("Publicar resposta").click());
+    expect(botao("Descartar").disabled).toBe(true);
+    expect(botao("Fechar").disabled).toBe(true);
+    await act(async () => {
+      botao("Descartar").click();
+      botao("Fechar").click();
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      );
+    });
+    expect(document.body.textContent).not.toContain("será perdido");
+    expect(document.getElementById("merchant-answer")).toBe(campo);
+    await act(async () => concluir(false));
+    expect(botao("Descartar").disabled).toBe(false);
+    expect(botao("Fechar").disabled).toBe(false);
+    expect(campo.value).toBe("Sim, temos.");
+    expect(h.toastError).toHaveBeenCalledWith(
+      causa && "status" in causa
+        ? "Sua sessão expirou. Entre de novo para enviar a resposta — o texto continua aqui."
+        : "Não foi possível confirmar o envio da resposta. Confira na lista antes de tentar de novo.",
+    );
+    expect(h.toastError).toHaveBeenCalledTimes(1);
+  },
+);

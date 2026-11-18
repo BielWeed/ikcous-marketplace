@@ -1,15 +1,24 @@
+import type { CartItem } from "@/types";
 // @vitest-environment jsdom
 // Remover a recuperação de foco faz a lixeira desmontar com o foco no body.
 import { act, useState } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { CartItem } from "@/types";
 
 const produto = (id: string): CartItem => ({
   product: {
-    id, name: id, description: "", price: 10, images: [], category: "Teste",
-    stock: 5, sold: 0, isActive: true, isBestseller: false,
-    freeShipping: false, createdAt: new Date(0).toISOString(),
+    id,
+    name: id,
+    description: "",
+    price: 10,
+    images: [],
+    category: "Teste",
+    stock: 5,
+    sold: 0,
+    isActive: true,
+    isBestseller: false,
+    freeShipping: false,
+    createdAt: new Date(0).toISOString(),
   },
   quantity: 1,
 });
@@ -18,15 +27,29 @@ const produto = (id: string): CartItem => ({
 vi.mock("framer-motion", async (importOriginal) => {
   const real = await importOriginal<typeof import("framer-motion")>();
   const { createElement, forwardRef } = await import("react");
-  const motion = Object.fromEntries(["div", "span", "button"].map((tag) => [
-    tag,
-    forwardRef<HTMLElement, Record<string, unknown>>((props, ref) => {
-      const dom = { ...props };
-      for (const chave of ["initial", "animate", "exit", "transition", "variants",
-        "custom", "layout", "whileTap", "whileHover"]) delete dom[chave];
-      return createElement(tag, { ...dom, ref });
-    }),
-  ]));
+  const motion = Object.fromEntries(
+    ["div", "span", "button"].map((tag) => [
+      tag,
+      forwardRef<HTMLElement, Record<string, unknown>>((props, ref) => {
+        const dom = { ...props };
+        for (const chave of [
+          "initial",
+          "animate",
+          "exit",
+          "transition",
+          "variants",
+          "custom",
+          "layout",
+          "whileTap",
+          "whileHover",
+        ]) {
+          // eslint-disable-next-line security/detect-object-injection -- teste: entrada fixa, sem dado de usuário
+          delete dom[chave];
+        }
+        return createElement(tag, { ...dom, ref });
+      }),
+    ]),
+  );
   return {
     ...real,
     motion,
@@ -39,13 +62,21 @@ vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({ config: { shippingFee: 10, freeShippingMin: 0 } }),
 }));
 vi.mock("@/hooks/useProducts", () => ({
-  useProducts: () => ({ products: [], getFreeShippingEligibleProducts: () => [] }),
+  useProducts: () => ({
+    products: [],
+    getFreeShippingEligibleProducts: () => [],
+  }),
 }));
 vi.mock("@/hooks/useCart", () => ({
   useCart: () => ({
-    cart: [], shippingFee: 10, updateQuantity: vi.fn(), removeFromCart: vi.fn(),
-    clearCart: vi.fn(), selectedShippingOption: null,
-    setSelectedShippingOption: vi.fn(), setShippingCep: vi.fn(),
+    cart: [],
+    shippingFee: 10,
+    updateQuantity: vi.fn(),
+    removeFromCart: vi.fn(),
+    clearCart: vi.fn(),
+    selectedShippingOption: null,
+    setSelectedShippingOption: vi.fn(),
+    setShippingCep: vi.fn(),
   }),
 }));
 vi.mock("@/hooks/useOrders", () => ({
@@ -54,11 +85,19 @@ vi.mock("@/hooks/useOrders", () => ({
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: null }) }));
 vi.mock("@/hooks/useDeferredRender", () => ({ useDeferredRender: () => true }));
 vi.mock("@/lib/supabase", () => ({ supabase: {} }));
-vi.mock("@/components/ui/custom/ShippingCalculator", () => ({ ShippingCalculator: () => null }));
-vi.mock("@/components/ui/custom/ShippingProgress", () => ({ ShippingProgress: () => null }));
-vi.mock("@/components/ui/custom/CartFooterSummary", () => ({ CartFooterSummary: () => null }));
+vi.mock("@/components/ui/custom/ShippingCalculator", () => ({
+  ShippingCalculator: () => null,
+}));
+vi.mock("@/components/ui/custom/ShippingProgress", () => ({
+  ShippingProgress: () => null,
+}));
+vi.mock("@/components/ui/custom/CartFooterSummary", () => ({
+  CartFooterSummary: () => null,
+}));
 vi.mock("@/components/ui/custom/OrderList", () => ({ OrderList: () => null }));
-vi.mock("@/components/ui/custom/OrderSearch", () => ({ OrderSearch: () => null }));
+vi.mock("@/components/ui/custom/OrderSearch", () => ({
+  OrderSearch: () => null,
+}));
 
 // @ts-expect-error flag interna do React.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -74,16 +113,26 @@ afterEach(() => {
   hospedeiro.remove();
 });
 const lixeira = (nome: string) =>
-  hospedeiro.querySelector<HTMLButtonElement>(`[aria-label="Remover ${nome}"]`)!;
+  hospedeiro.querySelector<HTMLButtonElement>(
+    `[aria-label="Remover ${nome}"]`,
+  )!;
 async function montar(itens: CartItem[]) {
   const { CartView } = await import("@/views/customer/CartView");
   function Carrinho() {
     const [cart, setCart] = useState(itens);
-    return <CartView cart={cart} onNavigate={vi.fn()} onRemove={(id, variacao) =>
-      setCart((atual) => atual.filter((item) =>
-        item.product.id !== id || item.variantId !== variacao
-      ))
-    } />;
+    return (
+      <CartView
+        cart={cart}
+        onNavigate={vi.fn()}
+        onRemove={(id, variacao) =>
+          setCart((atual) =>
+            atual.filter(
+              (item) => item.product.id !== id || item.variantId !== variacao,
+            ),
+          )
+        }
+      />
+    );
   }
   await act(async () => raiz.render(<Carrinho />));
 }

@@ -160,15 +160,19 @@ describe("PrivacidadeEMeusDados", () => {
     await montar();
     expect(haOperacaoSensivel()).toBe(false);
     act(() => botao("Corrigir meu e-mail")?.click());
-    const campo = document.getElementById("privacidade-email-novo") as HTMLInputElement;
+    const campo = document.getElementById(
+      "privacidade-email-novo",
+    ) as HTMLInputElement;
     digitar(campo, "novo@exemplo.com");
-    expect(decidirMomentoSeguro({
-      view: "account-settings",
-      adminDirty: false,
-      pedidoPendenteDoCheckout: false,
-      documentoOculto: true,
-      trocouDeTela: false,
-    }).instalarAgora).toBe(false);
+    expect(
+      decidirMomentoSeguro({
+        view: "account-settings",
+        adminDirty: false,
+        pedidoPendenteDoCheckout: false,
+        documentoOculto: true,
+        trocouDeTela: false,
+      }).instalarAgora,
+    ).toBe(false);
     digitar(campo, "");
     expect(haOperacaoSensivel()).toBe(false);
     digitar(campo, "novo@exemplo.com");
@@ -181,7 +185,10 @@ describe("PrivacidadeEMeusDados", () => {
     banco.insercaoQuebra = new TypeError("Failed to fetch");
     await montar();
     act(() => botao("Corrigir meu e-mail")?.click());
-    digitar(document.getElementById("privacidade-email-novo") as HTMLInputElement, "novo@exemplo.com");
+    digitar(
+      document.getElementById("privacidade-email-novo") as HTMLInputElement,
+      "novo@exemplo.com",
+    );
     await act(async () => {
       botao("Enviar pedido", dialogo() as HTMLElement)?.click();
     });

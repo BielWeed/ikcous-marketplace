@@ -222,7 +222,9 @@ describe("AdminQAView — redesenho", () => {
     expect(
       document.getElementById(aviso.getAttribute("aria-labelledby")!)
         ?.textContent,
-    ).toBe("Excluir esta pergunta? As respostas dela também serão apagadas. Não dá para desfazer.");
+    ).toBe(
+      "Excluir esta pergunta? As respostas dela também serão apagadas. Não dá para desfazer.",
+    );
     await tocar(botaoPorTexto("Cancelar"));
     expect(document.activeElement).toBe(
       cartao.querySelector('[aria-label="Excluir pergunta de Gabriel"]'),

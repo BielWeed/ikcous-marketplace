@@ -19,10 +19,12 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 // compõe ações, reembolso e consultas. Como o ajuste é só de classes, travamos
 // seus elementos na fonte, como texto-longo-devolucao-e-opcoes.test.ts.
 // O jsdom não mede transbordamento real a 360px.
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- teste: entrada fixa, sem dado de usuário
 const fonte = (arquivo: string) => readFileSync(arquivo, "utf8");
 const classes = (trecho: string, elemento: string) =>
   trecho
-    .match(new RegExp("<" + elemento + '\\s+className="([^"]+)"'))?.[1]
+    // eslint-disable-next-line security/detect-non-literal-regexp -- teste: entrada fixa, sem dado de usuário
+    .match(new RegExp(`<${elemento}\\s+className="([^"]+)"`))?.[1]
     .split(/\s+/) ?? [];
 
 function confirmarQueQuebra(trecho: string) {
@@ -45,7 +47,7 @@ describe("nomes sem espaços não alargam o painel", () => {
   it("produto: excluir e duplicar permitem encolher o cabeçalho e quebrar o nome", () => {
     const texto = fonte("src/views/admin/AdminProductsView.tsx");
     for (const estado of ["productToDelete", "productToDuplicate"]) {
-      const inicio = texto.indexOf("open={" + estado + " !== null}");
+      const inicio = texto.indexOf(`open={${estado} !== null}`);
       expect(inicio).toBeGreaterThan(-1);
       const fim = texto.indexOf("</AlertDialog>", inicio);
       const dialogo = texto.slice(inicio, fim);
@@ -60,7 +62,10 @@ describe("nomes sem espaços não alargam o painel", () => {
     const texto = fonte("src/views/admin/AdminBannersView.tsx");
     const inicio = texto.indexOf("open={bannerToDelete !== null}");
     expect(inicio).toBeGreaterThan(-1);
-    const dialogo = texto.slice(inicio, texto.indexOf("</AlertDialog>", inicio));
+    const dialogo = texto.slice(
+      inicio,
+      texto.indexOf("</AlertDialog>", inicio),
+    );
     expect(dialogo).toContain("bannerEmExclusao?.title");
     expect(dialogo).toContain("bannerEmExclusao?.link");
     confirmarQueQuebra(dialogo);
@@ -115,7 +120,9 @@ describe("nomes sem espaços não alargam o painel", () => {
   });
 
   it("devolução: o dd que recebe o nome do cliente quebra palavras sem perder min-w-0", () => {
-    const texto = fonte("src/components/admin/devolucoes/DetalheDaDevolucao.tsx");
+    const texto = fonte(
+      "src/components/admin/devolucoes/DetalheDaDevolucao.tsx",
+    );
     expect(texto).toMatch(
       /<Linha rotulo="Cliente">\s*\{detalhe\.pedido\?\.customer_name/,
     );

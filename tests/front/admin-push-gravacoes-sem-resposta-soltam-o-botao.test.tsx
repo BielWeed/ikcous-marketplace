@@ -107,7 +107,9 @@ vi.mock("@/lib/supabase", () => ({
             eq: () => {
               estado.chamadasDoAjuste += 1;
               if (estado.pendurar === "ajusteRecusado") {
-                return Promise.resolve({ error: new Error("Falha no histórico") });
+                return Promise.resolve({
+                  error: new Error("Falha no histórico"),
+                });
               }
               return estado.pendurar === "ajuste"
                 ? pendurada()

@@ -326,7 +326,9 @@ describe("CheckoutView — valores a partir de mil reais levam o ponto do milhar
       ["barra de baixo", barra],
       ["resumo de cima", painel],
     ] as const) {
-      const riscado = superficie.querySelector(".line-through")!.cloneNode(true) as HTMLElement;
+      const riscado = superficie
+        .querySelector(".line-through")!
+        .cloneNode(true) as HTMLElement;
       riscado.querySelectorAll(".sr-only").forEach((el) => el.remove());
       expect(riscado.textContent, nome).toBe("R$ 2.234,50");
       expect(superficie.textContent, nome).toContain("R$ 1.000,50");

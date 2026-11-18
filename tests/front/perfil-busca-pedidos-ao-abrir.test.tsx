@@ -44,10 +44,7 @@ function builderDoFetch() {
     return Promise.resolve({
       data: falhaNaBusca ? null : semPedidos ? [] : linhasDoBanco,
       error: falhaNaBusca ? { message: "Servidor indisponível" } : null,
-    }).then(
-      resolve,
-      reject,
-    );
+    }).then(resolve, reject);
   };
   return builder;
 }

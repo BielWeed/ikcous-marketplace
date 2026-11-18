@@ -147,13 +147,10 @@ async function chamarEdgeDeFrete(
   // Só leituras: as outras ações deste helper podem gravar no servidor.
   const resposta =
     body.action === "ler_configuracao_frete" || body.action === "list_services"
-      ? await aguardarComPrazo(
-          requisicao,
-          PRAZO_DA_CONSULTA_DO_PAINEL_MS,
-          () =>
-            erroDeConsultaSemResposta(
-              "Não houve resposta do servidor. Confira sua conexão e tente de novo.",
-            ),
+      ? await aguardarComPrazo(requisicao, PRAZO_DA_CONSULTA_DO_PAINEL_MS, () =>
+          erroDeConsultaSemResposta(
+            "Não houve resposta do servidor. Confira sua conexão e tente de novo.",
+          ),
         )
       : await requisicao;
   return { data: resposta?.data, error: resposta?.error };

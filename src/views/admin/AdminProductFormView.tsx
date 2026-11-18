@@ -3554,10 +3554,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             devolvidas.length > 0
               ? devolvidas.map((v) => `${v.name}: ${v.value}`).join(", ")
               : "uma variação";
-          toast.error(
-            textoVariacoesNaoExcluidas(quais, devolvidas.length),
-            { duration: 15000 },
-          );
+          toast.error(textoVariacoesNaoExcluidas(quais, devolvidas.length), {
+            duration: 15000,
+          });
           setIsSubmitting(false);
           return;
         }

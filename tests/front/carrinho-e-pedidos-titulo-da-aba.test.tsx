@@ -1,10 +1,10 @@
-// @vitest-environment jsdom
-import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { branding } from "@/config/branding";
 import { useDocumentMeta } from "@/hooks/useDocumentMeta";
 import { CartView } from "@/views/customer/CartView";
+// @vitest-environment jsdom
+import { act } from "react";
+import { type Root, createRoot } from "react-dom/client";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const config: { storeName?: string } = {};
 const fetchUserOrders = vi.fn(async () => []);

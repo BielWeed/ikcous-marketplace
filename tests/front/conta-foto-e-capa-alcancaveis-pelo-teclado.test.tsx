@@ -143,7 +143,9 @@ describe("Conta — campos de foto e de capa alcançáveis pelo teclado", () => 
       expect(
         icone.parentElement!.classList.contains("text-primary-legivel"),
       ).toBe(true);
-      expect(icone.parentElement!.classList.contains("text-primary")).toBe(false);
+      expect(icone.parentElement!.classList.contains("text-primary")).toBe(
+        false,
+      );
       expect(icone.parentElement!.classList.contains("bg-zinc-50")).toBe(true);
     },
   );

@@ -247,6 +247,7 @@ describe("LocalBufferedInput — colar valor em campo de dinheiro", () => {
     await montar({
       value: "49.9",
       validate: (val) =>
+        // eslint-disable-next-line security/detect-unsafe-regex -- teste: entrada fixa, sem dado de usuário
         /^\d+(\.\d+)?$/.test(val) ? null : "Informe um valor válido",
     });
     await colar("1e3");

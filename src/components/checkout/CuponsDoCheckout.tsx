@@ -235,7 +235,7 @@ export const CuponsDoCheckout = memo(function CuponsDoCheckout({
             '[aria-label="Remover cupom"]',
           )
         : (secaoRef.current?.querySelector<HTMLElement>(
-            '#campo-de-cupom:not([hidden]) input',
+            "#campo-de-cupom:not([hidden]) input",
           ) ??
           secaoRef.current?.querySelector<HTMLElement>(
             'button[aria-controls="campo-de-cupom"]',

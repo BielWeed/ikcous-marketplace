@@ -259,7 +259,9 @@ describe("SearchView — caixa da página e categorias dos filtros", () => {
         "Sandálias",
       ]);
       await abrirFiltros();
-      expect(opcoes().filter((b) => b.textContent === "Roupas")).toHaveLength(2);
+      expect(opcoes().filter((b) => b.textContent === "Roupas")).toHaveLength(
+        2,
+      );
       expect(
         opcoes().some((b) =>
           ["roupas", " ROUPAS "].includes(b.textContent ?? ""),

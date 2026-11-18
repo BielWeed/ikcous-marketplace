@@ -245,17 +245,23 @@ describe("AdminProductFormView — recortar ou excluir foto acerta a variação"
   it("conta todas as variações da foto e Voltar preserva a foto e os vínculos", async () => {
     await montar(2);
     await act(async () => {
-      (document.querySelector('button[title="Excluir"]') as HTMLButtonElement).click();
+      (
+        document.querySelector('button[title="Excluir"]') as HTMLButtonElement
+      ).click();
     });
     const janela = document.querySelector('[data-testid="confirmar-acao"]');
     expect(janela?.textContent).toContain("Esta foto é usada em 2 variações.");
     await act(async () => {
-      ([...janela!.querySelectorAll("button")].find(
-        (b) => b.textContent?.trim() === "Voltar",
-      ) as HTMLButtonElement).click();
+      (
+        [...janela!.querySelectorAll("button")].find(
+          (b) => b.textContent?.trim() === "Voltar",
+        ) as HTMLButtonElement
+      ).click();
     });
     expect(document.querySelector('[data-testid="confirmar-acao"]')).toBeNull();
-    expect(document.querySelector('img[src="https://cdn/a.jpg"]')).not.toBeNull();
+    expect(
+      document.querySelector('img[src="https://cdn/a.jpg"]'),
+    ).not.toBeNull();
     await salvar();
     expect(upsertVariants).not.toHaveBeenCalled();
     expect(updateProduct.mock.calls.at(-1)?.[1].images).toBeUndefined();
@@ -264,7 +270,9 @@ describe("AdminProductFormView — recortar ou excluir foto acerta a variação"
   it("foto sem variação continua sendo excluída sem confirmação", async () => {
     await montar(0);
     await act(async () => {
-      (document.querySelector('button[title="Excluir"]') as HTMLButtonElement).click();
+      (
+        document.querySelector('button[title="Excluir"]') as HTMLButtonElement
+      ).click();
     });
     expect(document.querySelector('[data-testid="confirmar-acao"]')).toBeNull();
     await salvar();
@@ -285,11 +293,15 @@ describe("AdminProductFormView — recortar ou excluir foto acerta a variação"
     expect(janela?.textContent).toContain(
       "Esta foto é usada em 1 variação. Ao excluir, elas ficam sem foto. Excluir mesmo assim?",
     );
-    expect(document.querySelector('img[src="https://cdn/a.jpg"]')).not.toBeNull();
+    expect(
+      document.querySelector('img[src="https://cdn/a.jpg"]'),
+    ).not.toBeNull();
     await act(async () => {
-      ([...janela!.querySelectorAll("button")].find(
-        (b) => b.textContent?.trim() === "Excluir foto",
-      ) as HTMLButtonElement).click();
+      (
+        [...janela!.querySelectorAll("button")].find(
+          (b) => b.textContent?.trim() === "Excluir foto",
+        ) as HTMLButtonElement
+      ).click();
     });
 
     await salvar();

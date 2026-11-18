@@ -237,7 +237,11 @@ describe("pergunta de cancelar — Voltar do celular", () => {
   beforeEach(async () => {
     await esperarHistorico();
     globalThis.history.replaceState({ view: "home" }, "", "/");
-    globalThis.history.pushState({ view: "order-details" }, "", "/pedido?id=o-1");
+    globalThis.history.pushState(
+      { view: "order-details" },
+      "",
+      "/pedido?id=o-1",
+    );
     navegacoes = [];
     // Como o App: mesma tela e endereço não provocam navegação.
     aoNavegar = () => {

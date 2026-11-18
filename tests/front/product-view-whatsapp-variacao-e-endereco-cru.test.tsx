@@ -224,13 +224,15 @@ describe("ProductView — 'Dúvidas no WhatsApp': variação, preço e endereço
   );
 
   it("sem escolha não envia o preço base quando todas as variações têm preço próprio", async () => {
-    await renderizar(criarProduto({
-      price: 50,
-      variants: variantes.map((variante, indice) => ({
-        ...variante,
-        priceOverride: indice === 0 ? 100 : 120,
-      })),
-    }));
+    await renderizar(
+      criarProduto({
+        price: 50,
+        variants: variantes.map((variante, indice) => ({
+          ...variante,
+          priceOverride: indice === 0 ? 100 : 120,
+        })),
+      }),
+    );
     expect(hospedeiro.textContent).toContain("A partir de");
     expect(hospedeiro.textContent).toContain("100,00");
 

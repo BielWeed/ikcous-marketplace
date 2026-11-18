@@ -664,7 +664,10 @@ export function ProfileView({
             <p role="status" className="text-sm text-muted-foreground">
               Não conseguimos carregar seus pedidos agora.
             </p>
-            <Button variant="outline" onClick={() => void fetchUserOrders(true)}>
+            <Button
+              variant="outline"
+              onClick={() => void fetchUserOrders(true)}
+            >
               Tentar de novo
             </Button>
           </motion.section>

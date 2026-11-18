@@ -137,33 +137,49 @@ describe("cartão da devolução — Enter no campo do código de rastreio", () 
     await montar();
     expect(haOperacaoSensivel()).toBe(false);
     await digitar("AB123");
-    expect(decidirMomentoSeguro({
-      view: "order-detail",
-      adminDirty: false,
-      pedidoPendenteDoCheckout: false,
-      documentoOculto: true,
-      trocouDeTela: false,
-    }).instalarAgora).toBe(false);
+    expect(
+      decidirMomentoSeguro({
+        view: "order-detail",
+        adminDirty: false,
+        pedidoPendenteDoCheckout: false,
+        documentoOculto: true,
+        trocouDeTela: false,
+      }).instalarAgora,
+    ).toBe(false);
     await digitar("");
     expect(haOperacaoSensivel()).toBe(false);
   });
 
   it("mantém a marca no envio e na falha, libera no sucesso e ao desmontar", async () => {
     let terminar: (r: { ok: boolean; erro?: string }) => void = () => {};
-    const enviar = vi.fn(() => new Promise<{ ok: boolean; erro?: string }>((r) => {
-      terminar = r;
-    }));
+    const enviar = vi.fn(
+      () =>
+        new Promise<{ ok: boolean; erro?: string }>((r) => {
+          terminar = r;
+        }),
+    );
     await montar(enviar);
     const campo = await digitar("AB123");
-    const submeter = () => campo.closest("form")!.dispatchEvent(
-      new Event("submit", { bubbles: true, cancelable: true }),
-    );
-    await act(async () => { submeter(); });
+    const submeter = () =>
+      campo
+        .closest("form")!
+        .dispatchEvent(
+          new Event("submit", { bubbles: true, cancelable: true }),
+        );
+    await act(async () => {
+      submeter();
+    });
     expect(haOperacaoSensivel()).toBe(true);
-    await act(async () => { terminar({ ok: false, erro: "Falhou" }); });
+    await act(async () => {
+      terminar({ ok: false, erro: "Falhou" });
+    });
     expect(haOperacaoSensivel()).toBe(true);
-    await act(async () => { submeter(); });
-    await act(async () => { terminar({ ok: true }); });
+    await act(async () => {
+      submeter();
+    });
+    await act(async () => {
+      terminar({ ok: true });
+    });
     expect(haOperacaoSensivel()).toBe(false);
     await digitar("CD456");
     expect(haOperacaoSensivel()).toBe(true);
@@ -178,14 +194,14 @@ describe("cartão da devolução — Enter no campo do código de rastreio", () 
     await digitar("AB123");
     expect(haOperacaoSensivel()).toBe(true);
     await act(async () => {
-      Array.from(document.querySelectorAll("button")).find(
-        (b) => b.textContent?.trim() === "Cancelar devolução",
-      )!.click();
+      Array.from(document.querySelectorAll("button"))
+        .find((b) => b.textContent?.trim() === "Cancelar devolução")!
+        .click();
     });
     await act(async () => {
-      Array.from(document.querySelectorAll("button")).find(
-        (b) => b.textContent?.trim() === "Sim, cancelar",
-      )!.click();
+      Array.from(document.querySelectorAll("button"))
+        .find((b) => b.textContent?.trim() === "Sim, cancelar")!
+        .click();
     });
     expect(cancelar).toHaveBeenCalledWith("d-1");
     expect(haOperacaoSensivel()).toBe(false);

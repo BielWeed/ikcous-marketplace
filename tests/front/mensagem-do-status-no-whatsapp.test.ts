@@ -132,8 +132,10 @@ describe("mensagemDoStatusNoWhatsapp", () => {
     ["com espaços sobrando no meio", "  Maria   Silva ", "Olá Maria Silva!"],
   ])("nome do cliente %s", (_descricao, nomeDoCliente, abertura) => {
     const msg = mensagemDoStatusNoWhatsapp({ ...base, nomeDoCliente });
-    expect(msg.startsWith(`${abertura}
+    expect(
+      msg.startsWith(`${abertura}
 
-`)).toBe(true);
+`),
+    ).toBe(true);
   });
 });

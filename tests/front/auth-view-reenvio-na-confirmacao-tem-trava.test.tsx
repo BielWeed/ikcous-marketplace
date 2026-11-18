@@ -166,8 +166,11 @@ describe("AuthView — reenvio na confirmação tem trava (issue #208)", () => {
     resendConfirmationEmail.mockResolvedValue(true);
     const botao = await cadastrar();
     await act(async () => botao.click());
-    const indice = iniciar.mock.calls.findIndex((chamada) => chamada[1] === 1000);
+    const indice = iniciar.mock.calls.findIndex(
+      (chamada) => chamada[1] === 1000,
+    );
     expect(indice).toBeGreaterThanOrEqual(0);
+    // eslint-disable-next-line security/detect-object-injection -- teste: entrada fixa, sem dado de usuário
     const intervalo = iniciar.mock.results[indice].value;
     act(() => raiz.unmount());
     expect(limpar).toHaveBeenCalledWith(intervalo);

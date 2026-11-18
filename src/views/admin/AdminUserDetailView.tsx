@@ -426,7 +426,9 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
   );
   const escolhasDoItemASerRemovido = itemASerRemovido
     ? [itemASerRemovido.variantId, ...(itemASerRemovido.outrasVariantIds ?? [])]
-        .map((id) => itemASerRemovido.product.variants?.find((v) => v.id === id))
+        .map((id) =>
+          itemASerRemovido.product.variants?.find((v) => v.id === id),
+        )
         .filter((v) => !!v)
         .map((v) => `${v.name}: ${v.value}`)
         .join(", ")

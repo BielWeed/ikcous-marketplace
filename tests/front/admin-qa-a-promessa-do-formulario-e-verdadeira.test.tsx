@@ -146,7 +146,11 @@ describe("AdminQAView — o que a caixa de resposta promete é o que acontece", 
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
     await act(async () => {
-      (document.querySelector('button[title="Excluir pergunta"]') as HTMLButtonElement).click();
+      (
+        document.querySelector(
+          'button[title="Excluir pergunta"]',
+        ) as HTMLButtonElement
+      ).click();
     });
     expect(document.body.textContent).toContain(
       "Excluir esta pergunta? As respostas dela também serão apagadas. Não dá para desfazer.",

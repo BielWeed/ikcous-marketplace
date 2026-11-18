@@ -18,6 +18,7 @@ import {
 } from "@/config/textos-de-privacidade";
 import { usePedidosDePrivacidade } from "@/hooks/usePedidosDePrivacidade";
 import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
+import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import {
   type FalhaDoPedido,
   type PedidoDePrivacidade,
@@ -26,7 +27,6 @@ import {
   ultimoPedidoDoTipo,
   validarEmailNovo,
 } from "@/lib/pedidos-de-privacidade";
-import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { cn } from "@/lib/utils";
 import { ChevronDown, Loader2 } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";

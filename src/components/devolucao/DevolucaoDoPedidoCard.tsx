@@ -24,8 +24,8 @@ import {
 
 import type { Desfecho } from "@/hooks/useDevolucaoCliente";
 import { useRotulosDasVariacoes } from "@/hooks/useRotulosDasVariacoes";
-import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
+import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import {
   acoesDoCliente,
@@ -137,7 +137,9 @@ export function DevolucaoDoPedidoCard({
   const [enviando, setEnviando] = useState<"cancelar" | "envio" | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [confirmandoCancelar, setConfirmandoCancelar] = useState(false);
-  useVoltarFechaAFolha(confirmandoCancelar, () => setConfirmandoCancelar(false));
+  useVoltarFechaAFolha(confirmandoCancelar, () =>
+    setConfirmandoCancelar(false),
+  );
 
   // Qual cor/tamanho cada linha devolvida é (duas linhas do mesmo produto
   // não podem aparecer idênticas): o item só guarda o id da variação.
