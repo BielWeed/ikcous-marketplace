@@ -141,6 +141,28 @@ describe("cartão da devolução: explicação do valor final", () => {
     expect(hospedeiro.textContent).not.toContain("O valor final do reembolso");
   });
 
+  it("reembolso integral com centavos não anuncia um ajuste", async () => {
+    await montar({
+      valor_itens: 69.9,
+      valor_frete_ida: 5.2,
+      valor_reembolso: 75.1,
+    });
+    expect(valorDaLinha("Reembolso")).toContain("75,10");
+    expect(hospedeiro.textContent).not.toContain("O valor final do reembolso");
+  });
+
+  it("reembolso um centavo menor anuncia um ajuste", async () => {
+    await montar({
+      valor_itens: 69.9,
+      valor_frete_ida: 5.2,
+      valor_reembolso: 75.09,
+    });
+    expect(valorDaLinha("Reembolso")).toContain("75,09");
+    expect(hospedeiro.textContent).toContain(
+      "O valor final do reembolso foi definido pela loja.",
+    );
+  });
+
   it.each(["troca", "vale"] as const)(
     "%s concluído não exibe frete nem um total que pareça dinheiro a receber",
     async (resolucao_final) => {

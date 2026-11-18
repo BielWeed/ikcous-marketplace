@@ -49,6 +49,11 @@ const CONF = require(
 );
 const ROL = new Map(Object.entries(CONF.ROL_FECHADO_POR_CONSULTA));
 const md5 = (s) => crypto.createHash("md5").update(s).digest("hex");
+// A 20261403000000 sucede o corpo de get_admin_customers_paged desta migration: o rollback dela devolve o corpo da 3993 (e o da ficha); sai antes de qualquer medida do TOPO desta.
+const desfazerTotalDoCliente = (cx) =>
+  require("./a-busca-de-clientes-posterior.cjs").desfazerTotalDoClienteNaTransacao(
+    cx,
+  );
 
 const FN = {
   nunca: {
@@ -731,6 +736,8 @@ async function main() {
   await c.connect();
   try {
     await c.query("BEGIN");
+    // A 20261403000000 (o total comprado do cliente soma o balcao do mesmo WhatsApp) sucede o corpo de get_admin_customers_paged desta migration: sai antes de medir o TOPO.
+    await desfazerTotalDoCliente(c);
 
     // ---- 0. O topo instalado pelo CI e' o desta migration; o anterior e' o das migrations 20261183000000 e 20261392000000. ----
     for (const k of Object.keys(FN)) {
@@ -813,6 +820,7 @@ async function main() {
 
     // ---- 4. Ciclo: reaplicar, rollback, rollback de novo, reaplicar; dados intactos; ACL e atributos iguais. ----
     await c.query("BEGIN");
+    await desfazerTotalDoCliente(c);
     const a0 = await atributos(c);
     const contagens = async () =>
       JSON.stringify(
@@ -972,6 +980,7 @@ async function main() {
     const c2 = new Client({ connectionString: lerDatabaseUrlEfemera() });
     await c2.connect();
     try {
+      await desfazerTotalDoCliente(c2); // a 20261403000000 esta no ar no clone: sai antes (autocommit; o clone e' descartavel)
       await c2.query(rollback); // base vigente, gravada (autocommit): o clone e' descartavel
       assert.deepEqual(await hashes(c2), HASH_ANTES);
       const sabotada = migration.replace(

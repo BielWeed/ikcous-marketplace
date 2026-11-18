@@ -142,7 +142,7 @@ describe("Avaliado no pedido só conta a avaliação da pessoa logada", () => {
   it("avaliação publicada de outra conta não esconde estrelas nem o botão de escrever", async () => {
     const cartao = await renderizar();
 
-    expect(cartao.querySelector("span")?.textContent).toBe("0 de 1 avaliado");
+    expect(cartao.textContent).toContain("Você avaliou 0 produtos de 1.");
     expect(cartao.textContent).toContain("Escrever avaliação");
     expect(
       cartao.querySelectorAll('[aria-label*="para Kit canetas"]').length,
@@ -165,9 +165,7 @@ describe("Avaliado no pedido só conta a avaliação da pessoa logada", () => {
     try {
       const cartao = await renderizar();
 
-      expect(cartao.querySelector("span")?.textContent).toBe(
-        "1 de 2 avaliados",
-      );
+      expect(cartao.textContent).toContain("Você avaliou 1 produto de 2.");
     } finally {
       pedido.items = itensOriginais;
     }
@@ -182,7 +180,7 @@ describe("Avaliado no pedido só conta a avaliação da pessoa logada", () => {
 
     const cartao = await renderizar();
 
-    expect(cartao.querySelector("span")?.textContent).toBe("1 de 1 avaliado");
+    expect(cartao.textContent).toContain("Você avaliou 1 produto de 1.");
     expect(cartao.textContent).toContain("Avaliado");
     expect(cartao.textContent).not.toContain("Escrever avaliação");
     expect(

@@ -46,7 +46,7 @@ const FILTROS_DA_PRIVACIDADE: Array<[string, unknown]> = [];
 // pedidos pendentes pelo `.eq("status", "delivered")`.
 let RECEBIMENTOS_POR_MARCAR = 0;
 // Politica de devolucao da loja (15/10/2026): a janela do sino segue o prazo
-// dela. `null` = a leitura nao trouxe nada (cai em 90 dias).
+// dela. `null` = a leitura nao trouxe nada (cai em 365 dias).
 let POLITICA_DA_LOJA: unknown = null;
 const FILTROS_DE_RECEBIMENTO: Array<[string, ...unknown[]]> = [];
 
@@ -430,8 +430,9 @@ describe("AdminLayout — o sino abre as Notificações do lojista", () => {
     ]);
     const gte = FILTROS_DE_RECEBIMENTO.find((f) => f[0] === "gte");
     expect(gte?.[1]).toBe("updated_at");
-    // Sem configuracao da loja a janela e o padrao: 90 dias (era 30 fixos).
-    expect(gte?.[2]).toBe(inicioDaJanelaDeRecebimento(Date.now(), 90));
+    // Sem configuracao da loja a janela e o teto do banco: 365 dias (o aviso
+    // pode sobrar, nunca some para quem tem prazo longo).
+    expect(gte?.[2]).toBe(inicioDaJanelaDeRecebimento(Date.now(), 365));
   });
 
   it("a janela da bolinha segue o prazo de devolucao que a loja configurou", async () => {

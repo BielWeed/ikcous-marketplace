@@ -186,15 +186,6 @@ export const ProductView = React.memo(function ProductView({
   } = useReviews();
   const { trackRecommendationClick, fetchRecommendations, fetchProducts } =
     useProducts({ autoFetch: false });
-  // A lojista pode pausar o produto em outro aparelho com a ficha aberta: ao
-  // voltar a ela, relê o catálogo (produto pausado/removido sai da tela).
-  useEffect(() => {
-    const aoVoltar = () => {
-      if (document.visibilityState === "visible") void fetchProducts();
-    };
-    document.addEventListener("visibilitychange", aoVoltar);
-    return () => document.removeEventListener("visibilitychange", aoVoltar);
-  }, [fetchProducts]);
   const { isFavorite: checkFavorite, toggleFavorite } = useFavorites();
   // Laudo 0109 (C1): o preload das recomendações passa pelo prefetchImage,
   // que tem a guarda de rede lenta — 4 imagens pesadas sem o cliente pedir
@@ -392,7 +383,23 @@ export const ProductView = React.memo(function ProductView({
     recomendacoes: recommendations,
     carregando: loadingRecs,
     consultado: recsConsultado,
+    recarregar: recarregarRecomendacoes,
   } = useRecomendacoesDeProduto(product.id, recsVisible, fetchRecommendations);
+
+  // A lojista pode pausar o produto, ou mudar preço/estoque, em outro aparelho
+  // com a ficha aberta: ao voltar a ela, relê o catálogo (produto pausado/
+  // removido sai da tela) E as recomendações — elas moram em estado próprio do
+  // hook e, sem isto, os cards seguiam com o preço de antes, inclusive para
+  // comprar. `recarregarRecomendacoes` é estável (ref no hook): não reinscreve.
+  useEffect(() => {
+    const aoVoltar = () => {
+      if (document.visibilityState !== "visible") return;
+      void fetchProducts();
+      recarregarRecomendacoes();
+    };
+    document.addEventListener("visibilitychange", aoVoltar);
+    return () => document.removeEventListener("visibilitychange", aoVoltar);
+  }, [fetchProducts, recarregarRecomendacoes]);
 
   useEffect(() => {
     setRecsVisible(false);
@@ -482,10 +489,16 @@ export const ProductView = React.memo(function ProductView({
     reviews.length > 0 || produtoRespondido === product.id
       ? avaliacoesPublicadas.length
       : (product.reviewCount ?? 0);
+  // Média em décimos INTEIROS, metade para cima: o catálogo vem do banco
+  // (`round(avg(rating), 1)`) e 97/20 em ponto flutuante dá 4,8499… ("4,8")
+  // onde o banco diz 4,9.
   const averageRating =
     avaliacoesPublicadas.length > 0
-      ? avaliacoesPublicadas.reduce((acc, r) => acc + r.rating, 0) /
-        avaliacoesPublicadas.length
+      ? Math.floor(
+          (20 * avaliacoesPublicadas.reduce((acc, r) => acc + r.rating, 0) +
+            avaliacoesPublicadas.length) /
+            (2 * avaliacoesPublicadas.length),
+        ) / 10
       : reviews.length > 0
         ? 0
         : (product.rating ?? 5);

@@ -42,6 +42,7 @@ import type {
   TipoDeLancamento,
   TotaisPrevistos,
 } from "@/types/financeiro";
+import { camposQueMudaram } from "@/utils/campos-mexidos-do-produto";
 
 // ---------------------------------------------------------------------------
 // Dinheiro
@@ -1785,6 +1786,20 @@ export function validarConta(
       saldo_inicial_em: form.saldoInicialEm,
       ativa: form.ativa,
     },
+  };
+}
+
+/** Editar conta manda `id` + só o que difere da conta como a folha a abriu (outro
+ * aparelho pode ter mudado o resto). Os dois lados passam por `validarConta`: saldo
+ * é número, nome vem aparado. Nova (sem id) ou abertura inválida: corpo inteiro. */
+export function corpoDaContaEditada(
+  payload: PayloadDaConta,
+  abertura: ReturnType<typeof validarConta>,
+): Partial<PayloadDaConta> {
+  if (!payload.id || !abertura.ok) return payload;
+  return {
+    id: payload.id,
+    ...camposQueMudaram({ ...payload }, { ...abertura.payload }),
   };
 }
 

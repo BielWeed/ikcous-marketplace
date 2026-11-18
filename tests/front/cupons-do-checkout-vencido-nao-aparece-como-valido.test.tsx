@@ -4,9 +4,12 @@
 //
 // A lista de cupons é lida uma vez; se a cliente deixa o checkout aberto e o
 // prazo de um cupom passa, o cartão continuava dizendo "Válido até <data que
-// já passou>", como se valesse (e tocável). Agora: o texto da validade diz
-// "Vencido" para prazo que passou e a lista tira o cupom vencido quando a
-// cliente volta para a aba ou a janela ganha foco.
+// já passou>", como se valesse. Agora o texto da validade diz "Vencido" para
+// prazo que passou. QUEM TIRA o cupom vencido da lista é o servidor (a lista é
+// relida ao abrir o checkout e a cada mudança de subtotal, e ele recusa o
+// vencido ao aplicar): a tela NÃO o esconde pelo relógio do aparelho — com o
+// celular adiantado, um cupom ainda válido (às vezes exclusivo, de código que
+// a cliente não sabe) sumiria da lista.
 import { CuponsDoCheckout } from "@/components/checkout/CuponsDoCheckout";
 import {
   type CupomDisponivel,
@@ -82,7 +85,7 @@ describe("CuponsDoCheckout — cupom que vence com a tela aberta", () => {
       ),
     ].map((li) => li.textContent ?? "");
 
-  function montar() {
+  function montar(onApply: (codigo: string) => void = () => {}) {
     act(() => {
       raiz.render(
         <CuponsDoCheckout
@@ -95,7 +98,7 @@ describe("CuponsDoCheckout — cupom que vence com a tela aberta", () => {
           appliedCoupon={null}
           couponError=""
           aplicando={null}
-          onApply={() => {}}
+          onApply={onApply}
           onRemove={() => {}}
         />,
       );
@@ -109,40 +112,46 @@ describe("CuponsDoCheckout — cupom que vence com a tela aberta", () => {
     expect(textos.find((t) => t.includes("DOHOJE"))).toContain("Vence hoje");
   });
 
-  it("a virada acontece com a tela aberta e a cliente volta para a aba: o cupom vencido sai da lista", () => {
-    montar();
+  const botaoDeAplicar = (codigo: string) =>
+    hospedeiro.querySelector<HTMLButtonElement>(
+      `button[aria-label="Aplicar o cupom ${codigo}"]`,
+    );
+
+  it("a virada acontece com a tela aberta: o cupom fica até a próxima busca, o texto diz Vencido e o servidor decide no toque", () => {
+    const onApply = vi.fn();
+    montar(onApply);
     expect(codigosNaTela().some((t) => t.includes("DOHOJE"))).toBe(true);
 
     // Passa da meia-noite (29/09 00:30 em Brasília) com a aba em segundo plano.
     act(() => {
       vi.setSystemTime(new Date("2026-09-29T03:30:00.000Z"));
       document.dispatchEvent(new Event("visibilitychange"));
-    });
-
-    const textos = codigosNaTela();
-    expect(textos.some((t) => t.includes("DOHOJE"))).toBe(false);
-    expect(textos.some((t) => t.includes("SEMPRAZO"))).toBe(true);
-    // E nenhum cartão diz "Válido até" para prazo que passou.
-    expect(hospedeiro.textContent).not.toContain("Válido até");
-  });
-
-  it("a janela ganha foco depois da virada: o cupom vencido também sai", () => {
-    montar();
-
-    act(() => {
-      vi.setSystemTime(new Date("2026-09-29T03:30:00.000Z"));
       window.dispatchEvent(new Event("focus"));
     });
 
-    expect(codigosNaTela().some((t) => t.includes("DOHOJE"))).toBe(false);
+    const textos = codigosNaTela();
+    expect(textos.some((t) => t.includes("DOHOJE"))).toBe(true);
+    expect(textos.some((t) => t.includes("SEMPRAZO"))).toBe(true);
+    const botao = botaoDeAplicar("DOHOJE");
+    expect(botao).not.toBeNull();
+    act(() => botao?.click());
+    expect(onApply).toHaveBeenCalledWith("DOHOJE");
   });
 
-  it("lista que já chega com cupom vencido não o mostra", () => {
+  it("relógio do aparelho adiantado: o cupom que o servidor ainda lista como válido aparece, com o botão de aplicar", () => {
+    // O servidor listou o cupom do dia 28 (ainda válido para ele); o celular
+    // da cliente está 1 dia adiantado (29/09 10:00 em Brasília).
     vi.setSystemTime(new Date("2026-09-29T13:00:00.000Z"));
-    montar();
+    const onApply = vi.fn();
+    montar(onApply);
 
     const textos = codigosNaTela();
-    expect(textos.some((t) => t.includes("DOHOJE"))).toBe(false);
-    expect(textos).toHaveLength(1);
+    expect(textos.some((t) => t.includes("DOHOJE"))).toBe(true);
+    expect(textos).toHaveLength(2);
+    const botao = botaoDeAplicar("DOHOJE");
+    expect(botao).not.toBeNull();
+    expect(botao?.disabled).toBe(false);
+    act(() => botao?.click());
+    expect(onApply).toHaveBeenCalledWith("DOHOJE");
   });
 });

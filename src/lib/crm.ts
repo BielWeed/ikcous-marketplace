@@ -134,6 +134,18 @@ export function completarSerieDe14Dias(
   return completa;
 }
 
+/** `{ valor, pedidos }` do banco novo; chave ausente (banco antigo) ou fora da forma vira `null`, nunca zero inventado. */
+function lerDinheiroADevolver(
+  valor: unknown,
+): PainelInicio["dinheiroADevolver"] {
+  const registro = comoRegistro(valor);
+  if (!registro) return null;
+  return {
+    valor: comoNumero(registro.valor),
+    pedidos: comoNumero(registro.pedidos),
+  };
+}
+
 export function lerPainelInicio(json: unknown): PainelInicio | null {
   const raiz = comoRegistro(json);
   if (!raiz) return null;
@@ -155,7 +167,9 @@ export function lerPainelInicio(json: unknown): PainelInicio | null {
       pedidos: comoNumero(mes.pedidos),
       ticketMedio: comoNumero(mes.ticket_medio),
       lucroEstimado: comoNumero(mes.lucro_estimado),
+      receitaLiquida: comoNumero(mes.receita_liquida),
     },
+    dinheiroADevolver: lerDinheiroADevolver(raiz.dinheiro_a_devolver),
     saldoTotal: comoNumero(raiz.saldo_total),
     aReceber7d: comoNumero(raiz.a_receber_7d),
     aPagar7d: comoNumero(raiz.a_pagar_7d),

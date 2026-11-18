@@ -270,8 +270,8 @@ describe("form de cupom — A5: a chegada tardia da carga não apaga o digitado"
     // O resto TEM que ter enchido na tela (o form antigo ficaria nos zeros)...
     const campo = (id: string) =>
       (container?.querySelector(`#coupon-${id}`) as HTMLInputElement).value;
-    expect(campo("value")).toBe("25");
-    expect(campo("min-purchase")).toBe("50");
+    expect(campo("value")).toBe("25,00");
+    expect(campo("min-purchase")).toBe("50,00");
     expect(campo("usage-limit")).toBe("10");
     expect(campo("code")).toBe("NATAL");
 

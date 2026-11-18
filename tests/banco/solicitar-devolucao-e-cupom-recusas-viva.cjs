@@ -1,11 +1,13 @@
 "use strict";
 
 /**
- * Cinco guardas dos corpos VIVOS: solicitar_devolucao (20261175) e
- * create_marketplace_order_v24 (20261397). Não reaplica nem muda migrations.
+ * Sete guardas dos corpos VIVOS: solicitar_devolucao (20261175),
+ * create_marketplace_order_v24 (20261397) e create_marketplace_order_v23
+ * (20261399997000, a porta do visitante que paga na entrega). Não reaplica nem
+ * muda migrations.
  *
- * Chamadas diretas como authenticated, fixtures inventadas, em transações que
- * voltam. Cada guarda roda VERDE -> VERMELHO sem o predicado -> VERDE restaurado.
+ * Chamadas diretas como authenticated (v24) ou anon (v23), fixtures inventadas,
+ * em transações que voltam. Cada guarda roda VERDE -> VERMELHO sem o predicado -> VERDE restaurado.
  * O mutante só entra no clone de rodar-isolado.cjs e sai em finally.
  *
  * USO: node tests/banco/rodar-isolado.cjs tests/banco/solicitar-devolucao-e-cupom-recusas-viva.cjs
@@ -21,10 +23,14 @@ const SIG_DEV =
   "public.solicitar_devolucao(uuid,jsonb,text,text,text,text,text[])";
 const SIG_V24 =
   "public.create_marketplace_order_v24(jsonb,numeric,numeric,text,uuid,text,text,text,text,jsonb,text,text,uuid)";
+const SIG_V23 =
+  "public.create_marketplace_order_v23(jsonb,numeric,numeric,text,uuid,text,text,text,text,jsonb,text,text,uuid)";
 const CLAIMS = JSON.stringify({
   role: "authenticated",
   app_metadata: { role: "customer" },
 });
+// Visitante: sem sessão (auth.uid() nulo) e papel anon, como a vitrine chama a v23.
+const VISITANTE = { papel: "anon", claims: "" };
 let C;
 
 async function definicao(sig) {
@@ -58,14 +64,14 @@ async function emTransacao(corpo) {
 }
 
 /** Só a exceção desfaz a chamada; sucesso fica visível para medir os efeitos. */
-async function tentar(ator, sql, params) {
+async function tentar(ator, sql, params, { papel, claims } = {}) {
   await C.query("SAVEPOINT tentativa");
   try {
     await C.query(
       "SELECT set_config('app.rpc.user_id', $1, true), set_config('request.jwt.claims', $2, true)",
-      [ator, CLAIMS],
+      [ator, claims ?? CLAIMS],
     );
-    await C.query("SET LOCAL ROLE authenticated");
+    await C.query(`SET LOCAL ROLE ${papel ?? "authenticated"}`);
     const r = await C.query(sql, params);
     await C.query("RESET ROLE");
     await C.query("RELEASE SAVEPOINT tentativa");
@@ -146,6 +152,10 @@ async function medir(produtoId, cupomId = null) {
                        FROM public.order_refunds r),
          'pedidos', (SELECT COALESCE(jsonb_agg(to_jsonb(o) ORDER BY o.id), '[]'::jsonb)
                       FROM public.marketplace_orders o WHERE o.user_id IN ($1, $2)),
+         -- Pedido de visitante nasce com user_id NULO: sem esta linha a v23
+         -- poderia criar pedido e o retrato de "pedidos" não veria.
+         'pedidos_visitante', (SELECT COALESCE(jsonb_agg(to_jsonb(o) ORDER BY o.id), '[]'::jsonb)
+                      FROM public.marketplace_orders o WHERE o.user_id IS NULL),
          'itens', (SELECT COALESCE(jsonb_agg(to_jsonb(i) ORDER BY i.id), '[]'::jsonb)
                     FROM public.marketplace_order_items i WHERE i.product_id = $3),
          'historicos', (SELECT COALESCE(jsonb_agg(to_jsonb(h) ORDER BY h.id), '[]'::jsonb)
@@ -248,7 +258,12 @@ async function pedidoNaoEntregue() {
   });
 }
 
-async function cenarioCupom({ vencido = false, minimo = 0, preco = 100 } = {}) {
+async function cenarioCupom({
+  vencido = false,
+  minimo = 0,
+  preco = 100,
+  visitante = false,
+} = {}) {
   await C.query(
     `INSERT INTO public.store_config
        (id, origin_cep, local_cep_range, free_shipping_min, shipping_coverage, enable_coupons)
@@ -258,6 +273,16 @@ async function cenarioCupom({ vencido = false, minimo = 0, preco = 100 } = {}) {
        free_shipping_min = EXCLUDED.free_shipping_min,
        shipping_coverage = EXCLUDED.shipping_coverage, enable_coupons = true`,
   );
+  if (visitante) {
+    // A v23 só aceita "cash" se a loja oferecer pagar na entrega (forma_de_pagamento_aceita).
+    await C.query(
+      `UPDATE public.store_config
+          SET pagamento_online = true, formas_pagamento_entrega = ARRAY['cash'],
+              store_address = 'Rua Fictícia, 100',
+              enabled_shipping_methods = ARRAY['local-delivery', 'store-pickup']
+        WHERE id = 1`,
+    );
+  }
   const prod = await produto(preco);
   const codigo = `R98${randomUUID().replace(/-/g, "").toUpperCase()}`;
   const cupom = (
@@ -290,9 +315,50 @@ function comprar(cen) {
   );
 }
 
-async function aceitaCompra(cen) {
+/** O visitante chama a v23 (pagar na entrega, endereço digitado, sem conta). */
+function comprarV23(cen) {
+  return tentar(
+    "",
+    `SELECT public.create_marketplace_order_v23(
+       $1::jsonb, $2::numeric, 0::numeric, 'cash', NULL::uuid, $3::text,
+       'Pessoa fictícia R98', '5539000000000', NULL::text, $4::jsonb,
+       '38500-000', 'local-delivery', $5::uuid) AS r`,
+    [
+      JSON.stringify([{ product_id: cen.prod, variant_id: null, quantity: 1 }]),
+      cen.preco - 10,
+      cen.codigo,
+      JSON.stringify({
+        cep: "38500-000",
+        street: "Rua Fictícia",
+        number: "1",
+        neighborhood: "Centro",
+        city: "Cidade Prova",
+        state: "MG",
+      }),
+      randomUUID(),
+    ],
+    VISITANTE,
+  );
+}
+
+const PORTA_V24 = {
+  comprar,
+  visitante: false,
+  dono: CLIENTE,
+  pedidos: "pedidos",
+  sufixo: "",
+};
+const PORTA_V23 = {
+  comprar: comprarV23,
+  visitante: true,
+  dono: null,
+  pedidos: "pedidos_visitante",
+  sufixo: "_V23",
+};
+
+async function aceitaCompra(cen, porta = PORTA_V24) {
   const antes = await medir(cen.prod, cen.cupom);
-  const r = await comprar(cen);
+  const r = await porta.comprar(cen);
   assert.equal(
     r.erro,
     undefined,
@@ -306,7 +372,7 @@ async function aceitaCompra(cen) {
     )
   ).rows[0];
   assert.deepEqual(linha, {
-    user_id: CLIENTE,
+    user_id: porta.dono,
     coupon_id: cen.cupom,
     coupon_code: cen.codigo,
     subtotal: cen.preco.toFixed(2),
@@ -316,43 +382,53 @@ async function aceitaCompra(cen) {
   const depois = await medir(cen.prod, cen.cupom);
   assert.equal(depois.estoque, antes.estoque - 1);
   assert.equal(depois.cupom.usage_count, antes.cupom.usage_count + 1);
-  assert.equal(depois.pedidos.length, antes.pedidos.length + 1);
+  assert.equal(depois[porta.pedidos].length, antes[porta.pedidos].length + 1);
   assert.equal(depois.itens.length, antes.itens.length + 1);
 }
 
-async function cupomVencido() {
+async function cupomVencido(porta = PORTA_V24) {
   await emTransacao(async () => {
-    const cen = await cenarioCupom({ vencido: true });
+    const cen = await cenarioCupom({
+      vencido: true,
+      visitante: porta.visitante,
+    });
     await recusa(
-      () => comprar(cen),
+      () => porta.comprar(cen),
       cen.prod,
       cen.cupom,
       "P0001",
       /^O cupom .+ expirou em .+\.$/,
-      "CUPOM_VENCIDO",
+      `CUPOM_VENCIDO${porta.sufixo}`,
     );
-    await aceitaCompra(await cenarioCupom());
+    await aceitaCompra(
+      await cenarioCupom({ visitante: porta.visitante }),
+      porta,
+    );
   });
 }
 
-async function compraMinima() {
+async function compraMinima(porta = PORTA_V24) {
   await emTransacao(async () => {
     // Um centavo abaixo e o mínimo EXATO: mata tanto ausência quanto > por >=.
-    const cen = await cenarioCupom({ minimo: 100, preco: 99.99 });
+    const cen = await cenarioCupom({
+      minimo: 100,
+      preco: 99.99,
+      visitante: porta.visitante,
+    });
     await recusa(
-      () => comprar(cen),
+      () => porta.comprar(cen),
       cen.prod,
       cen.cupom,
       "P0001",
       /^O cupom .+ exige uma compra mínima de R\$ 100,00\.$/,
-      "COMPRA_MINIMA",
+      `COMPRA_MINIMA${porta.sufixo}`,
     );
     // O MESMO cupom, agora com o subtotal no limite: não é outro cupom mais permissivo.
     await C.query(
       "UPDATE public.produtos SET preco_venda = 100 WHERE id = $1",
       [cen.prod],
     );
-    await aceitaCompra({ ...cen, preco: 100 });
+    await aceitaCompra({ ...cen, preco: 100 }, porta);
   });
 }
 
@@ -398,6 +474,22 @@ const GUARDAS = [
     sig: SIG_V24,
     testar: compraMinima,
     marcador: /^COMPRA_MINIMA:/,
+    de: "          AND (min_purchase IS NULL OR v_calculated_subtotal >= min_purchase)",
+    para: "",
+  },
+  {
+    nome: "cupom vencido na v23 direta não cria pedido nem gasta estoque ou uso",
+    sig: SIG_V23,
+    testar: () => cupomVencido(PORTA_V23),
+    marcador: /^CUPOM_VENCIDO_V23:/,
+    de: "          AND (valid_until IS NULL OR valid_until > now())",
+    para: "",
+  },
+  {
+    nome: "v23 direta recusa um centavo abaixo da compra mínima; limite exato passa",
+    sig: SIG_V23,
+    testar: () => compraMinima(PORTA_V23),
+    marcador: /^COMPRA_MINIMA_V23:/,
     de: "          AND (min_purchase IS NULL OR v_calculated_subtotal >= min_purchase)",
     para: "",
   },
@@ -456,7 +548,7 @@ async function main() {
       "use rodar-isolado.cjs: nunca mutar o banco base",
     );
     const originais = new Map();
-    for (const sig of [SIG_DEV, SIG_V24]) {
+    for (const sig of [SIG_DEV, SIG_V24, SIG_V23]) {
       originais.set(sig, await definicao(sig));
       const hash = await C.query(
         "SELECT md5(replace(prosrc, E'\\r', '')) AS h FROM pg_proc WHERE oid = to_regprocedure($1)",
@@ -467,7 +559,7 @@ async function main() {
     await semearPessoas();
     for (const g of GUARDAS) await provarGuarda(g, originais.get(g.sig));
     console.log(
-      "\nsolicitar-devolucao-e-cupom-recusas-viva: 5/5 controles mortos; verde/vermelho/verde",
+      "\nsolicitar-devolucao-e-cupom-recusas-viva: 7/7 controles mortos; verde/vermelho/verde",
     );
   } finally {
     await C.end().catch(() => {});

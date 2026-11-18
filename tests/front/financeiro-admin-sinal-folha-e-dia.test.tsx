@@ -242,8 +242,13 @@ describe("Financeiro — sinal, envio da folha e virada do dia", () => {
       });
       expect(campo("fin-conta-saldo").value).toBe("-100,00");
       await clicar(botaoEm(folha(), "Salvar"));
+      // Salvo e sem digitar: o saldo não mudou, então não viaja (se o sinal
+      // tivesse virado na volta do blur, o corpo traria saldo_inicial: 100).
       expect(rpcFalso).toHaveBeenCalledWith("fin_conta_salvar", {
-        p: expect.objectContaining({ saldo_inicial: -100 }),
+        p:
+          origem === "salvo"
+            ? { id: CONTA.id }
+            : expect.objectContaining({ saldo_inicial: -100 }),
       });
     },
   );

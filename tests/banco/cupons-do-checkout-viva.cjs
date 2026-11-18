@@ -498,6 +498,29 @@ async function casoLista(c) {
     150,
   );
 
+  // Mínimo EXATO: subtotal 150 já aplica o V150 (corte `<=`, não `<`). Um centavo
+  // abaixo não aplica e falta 0,01.
+  const noMinimo = await comoPapel(c, "anon", null, () => lista(c, 150));
+  const v150NoMinimo = noMinimo.find((l) => l.codigo === cen.cod("V150"));
+  assert.equal(v150NoMinimo.aplica, true, "subtotal igual ao mínimo aplica");
+  assert.equal(Number(v150NoMinimo.falta), 0, "no mínimo exato não falta nada");
+  assert.equal(Number(v150NoMinimo.desconto), 30);
+  const umCentavoAbaixo = await comoPapel(c, "anon", null, () =>
+    lista(c, 149.99),
+  );
+  const v150Abaixo = umCentavoAbaixo.find((l) => l.codigo === cen.cod("V150"));
+  assert.equal(v150Abaixo.aplica, false, "um centavo abaixo não aplica");
+  assert.equal(Number(v150Abaixo.falta), 0.01);
+
+  // Desconto percentual SAI ARREDONDADO ao centavo: 10% de 29,95 é 2,995, e o
+  // numeric do Postgres arredonda meio para cima (3.00). Sem o round viria 2.995.
+  const quebrado = await comoPapel(c, "anon", null, () => lista(c, 29.95));
+  assert.equal(
+    quebrado.find((l) => l.codigo === cen.cod("V10")).desconto,
+    "3.00",
+    "10% de 29,95 = 3.00 (centavo inteiro, nunca 2.995)",
+  );
+
   // Cupom que esgota SOME da lista da dona (limite 1 alcançado agora).
   await c.query(
     "UPDATE public.coupons SET usage_limit = 1, usage_count = 1 WHERE code = $1",
@@ -1521,7 +1544,7 @@ PROVAS.push({
 });
 
 PROVAS.push({
-  nome: "(9) MUTANTES por guarda: sem o gatilho, sem a ordem do gatilho, sem o admin ATUAL, política com is_admin(), validação sem o bloco do exclusivo, corte `<`, lista vazando o secreto/o exclusivo alheio, atalho sem checar a colisão — cada um deixa uma prova VERMELHA; e o pré-voo sem a guarda do índice/do hash deixa a recusa passar",
+  nome: "(9) MUTANTES por guarda: sem o gatilho, sem a ordem do gatilho, sem o admin ATUAL, política com is_admin(), validação sem o bloco do exclusivo, corte `<`, lista vazando o secreto/o exclusivo alheio, lista com corte do mínimo `<`, lista sem arredondar o desconto, atalho sem checar a colisão — cada um deixa uma prova VERMELHA; e o pré-voo sem a guarda do índice/do hash deixa a recusa passar",
   corpo: async (c) => {
     await numaTransacao(c, async () => {
       const mutarFuncao = async (oid, de, para) => {
@@ -1688,6 +1711,25 @@ PROVAS.push({
           `GRANT EXECUTE ON FUNCTION ${OID_LER} TO authenticated, service_role`,
         );
         await casoAdmin(c);
+      });
+
+      // M19: a lista aplica o cupom só com o subtotal ESTRITAMENTE acima do mínimo.
+      await exigirVermelho(c, "lista com corte do mínimo `<`", async () => {
+        await mutarFuncao(
+          OID_LISTA,
+          "(COALESCE(c.min_purchase, 0) <= e.subtotal) AS aplica",
+          "(COALESCE(c.min_purchase, 0) < e.subtotal) AS aplica",
+        );
+        await casoLista(c);
+      });
+      // M20: o desconto percentual da lista sai sem o arredondamento ao centavo.
+      await exigirVermelho(c, "lista sem arredondar o desconto", async () => {
+        await mutarFuncao(
+          OID_LISTA,
+          "round(LEAST(subtotal * value / 100, subtotal), 2)",
+          "LEAST(subtotal * value / 100, subtotal)",
+        );
+        await casoLista(c);
       });
 
       // Guardas do PRÉ-VOO: sem a guarda do índice (ou do hash), a recusa que a

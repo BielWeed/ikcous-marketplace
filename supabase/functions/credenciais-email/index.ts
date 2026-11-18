@@ -235,7 +235,7 @@ export async function handler(
     if (!limite.permitido) {
       return json(
         {
-          erro: `Calma: dá para tentar de novo em ${limite.esperaSegundos} segundos (o Google bloqueia a conta quando recebe tentativas demais).`,
+          erro: `Calma: dá para tentar de novo em ${limite.esperaSegundos} ${limite.esperaSegundos === 1 ? "segundo" : "segundos"} (o Google bloqueia a conta quando recebe tentativas demais).`,
           espere_segundos: limite.esperaSegundos,
         },
         429,

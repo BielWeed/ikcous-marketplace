@@ -361,13 +361,17 @@ Deno.test("so a baseline, a 20261199, a 20261212, a 20261228, este par e a 20261
     "20261398000000_o_inicio_compara_o_mes_anterior_ate_a_mesma_hora.sql";
   const SUCESSORA_3993 =
     "20261399300000_o_estorno_em_andamento_nao_e_conta_vencida.sql";
+  const SUCESSORA_1402 =
+    "20261402000000_o_inicio_mostra_o_dinheiro_a_devolver_e_a_margem_do_financeiro.sql";
   assert.deepEqual(posteriores.sort(), [
     NOME,
     SUCESSORA_398,
     SUCESSORA_3993,
+    SUCESSORA_1402,
     `rollback-manual-${NOME}`,
     `rollback-manual-${SUCESSORA_398}`,
     `rollback-manual-${SUCESSORA_3993}`,
+    `rollback-manual-${SUCESSORA_1402}`,
   ]);
 });
 

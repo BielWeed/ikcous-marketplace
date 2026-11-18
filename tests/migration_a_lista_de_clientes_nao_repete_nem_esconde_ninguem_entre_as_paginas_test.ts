@@ -321,13 +321,18 @@ Deno.test("depois da 20261230000000 so este par redefine get_admin_customers_pag
   // A sucessora (20261399993000: um endereco principal por cliente) tem o proprio teste: tests/migration_o_crm_e_a_lista_de_clientes_nao_contam_a_mesma_pessoa_duas_vezes_test.ts.
   const SUCESSORA =
     "20261399993000_o_crm_e_a_lista_de_clientes_nao_contam_a_mesma_pessoa_duas_vezes.sql";
+  // A 20261403000000 (a lista soma o balcao do mesmo WhatsApp, como o CRM) tem o proprio teste: tests/migration_o_total_comprado_do_cliente_e_o_mesmo_no_crm_na_lista_e_na_ficha_test.ts.
+  const SUCESSORA_4030 =
+    "20261403000000_o_total_comprado_do_cliente_e_o_mesmo_no_crm_na_lista_e_na_ficha.sql";
   assert.deepEqual(
     posteriores.sort(),
     [
       NOME,
       SUCESSORA,
+      SUCESSORA_4030,
       `rollback-manual-${NOME}`,
       `rollback-manual-${SUCESSORA}`,
+      `rollback-manual-${SUCESSORA_4030}`,
     ].sort(),
   );
 });

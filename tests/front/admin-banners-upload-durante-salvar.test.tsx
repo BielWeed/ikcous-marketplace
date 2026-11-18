@@ -145,7 +145,7 @@ describe("upload normal e salvar banner não disputam a imagem", () => {
 
   function imagem() {
     return hospedeiro.querySelector<HTMLImageElement>(
-      'img[alt="Preview Thumbnail"], img[alt="Banner Preview"]',
+      'img[alt="Miniatura do banner"], img[alt="Prévia do banner"]',
     )?.src;
   }
 

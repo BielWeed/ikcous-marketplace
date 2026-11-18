@@ -64,7 +64,8 @@ WITH fn AS (
     CASE WHEN COALESCE((SELECT acl FROM fn WHERE k = 'busca'), false) THEN 'sim' ELSE 'nao' END
   UNION ALL
   SELECT 'painel_inicio: corpo exato (md5)', '8d58e15e7410afe0d254f37f38251df4',
-    COALESCE((SELECT h FROM fn WHERE k = 'painel'), 'AUSENTE')
+    -- A 20261402000000 (o Inicio mostra o dinheiro a devolver e a margem do Financeiro) sucede este corpo: so as chaves dinheiro_a_devolver e mes.receita_liquida sao novas. Aceita os dois corpos EXATOS; normaliza ao esperado.
+    COALESCE((SELECT CASE WHEN h IN ('8d58e15e7410afe0d254f37f38251df4', 'b4c3665bd806ae8fe8960e5f6d9dde29') THEN '8d58e15e7410afe0d254f37f38251df4' ELSE h END FROM fn WHERE k = 'painel'), 'AUSENTE')
   UNION ALL
   SELECT 'painel_inicio: assinatura e atributos conhecidos', 'sim',
     CASE WHEN COALESCE((SELECT atributos FROM fn WHERE k = 'painel'), false) THEN 'sim' ELSE 'nao' END

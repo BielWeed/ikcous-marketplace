@@ -20,6 +20,7 @@
  * Só o banco é um dublê.
  */
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
+import * as webpush from "jsr:@negrel/webpush@0.3.0";
 import { dispararPushContadoReal } from "./aviso-ao-lojista.ts";
 import { inscricaoDeTeste, parVapidDeTeste, pushServiceFalso } from "./webpush_fixtures.ts";
 
@@ -90,6 +91,42 @@ for (const [rotulo, aviso] of [
     }
   });
 }
+
+Deno.test("aviso ao lojista: envia título, texto e destino no corpo JSON, antes da criptografia", async () => {
+  const service = pushServiceFalso({ "/p/conteudo": 201 });
+  const corpos: string[] = [];
+  const subscribe = webpush.ApplicationServer.prototype.subscribe;
+  // Captura o texto entregue à biblioteca sem substituir o envio real ao servidor local.
+  webpush.ApplicationServer.prototype.subscribe = function (inscricao) {
+    const inscrito = subscribe.call(this, inscricao);
+    const enviar = inscrito.pushTextMessage.bind(inscrito);
+    inscrito.pushTextMessage = (mensagem, opcoes) => {
+      corpos.push(mensagem);
+      return enviar(mensagem, opcoes);
+    };
+    return inscrito;
+  };
+  try {
+    await comVapidDeTeste(async () => {
+      const entregues = await dispararPushContadoReal({
+        supabase: supabaseFalso([await inscricaoDeTeste(`${service.base}/p/conteudo`)], []),
+        aviso: { title: "Pedido novo", body: "#ABC123 · R$ 50,00 · Maria", url: "/admin-orders" },
+        rotulo: "teste",
+      });
+      assertEquals(entregues, 1);
+      assertEquals(service.recebidas.length, 1);
+      assertEquals(corpos.length, 1);
+      assertEquals(JSON.parse(corpos[0]), {
+        title: "Pedido novo",
+        body: "#ABC123 · R$ 50,00 · Maria",
+        url: "/admin-orders",
+      });
+    });
+  } finally {
+    webpush.ApplicationServer.prototype.subscribe = subscribe;
+    await service.encerrar();
+  }
+});
 
 Deno.test("aviso ao lojista: inscrição morta (410) continua sendo apagada e o erro não sobe", async () => {
   const service = pushServiceFalso({ "/p/morta": 410 });

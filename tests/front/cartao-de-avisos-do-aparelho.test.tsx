@@ -333,6 +333,12 @@ describe("CartaoDeAvisosDoAparelho", () => {
 
       expect(texto()).toContain("Compartilhar");
       expect(texto()).toContain("Adicionar à Tela de Início");
+      expect(texto()).toContain(
+        "Abra o app pelo novo ícone, toque em Perfil e depois em Acessar painel.",
+      );
+      expect(texto()).not.toContain(
+        "Abra o app pelo novo ícone e volte aqui para ligar os avisos.",
+      );
       expect(botao(LIGAR)).toBeUndefined();
     });
 

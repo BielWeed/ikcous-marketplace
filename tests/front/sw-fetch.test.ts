@@ -86,9 +86,10 @@ describe("src/sw/sw.ts — listener de fetch", () => {
   });
 
   /** Importa sw.ts com os globais falsos montados e devolve o listener de fetch. */
-  async function importarComGlobaisFalsos() {
+  async function importarComGlobaisFalsos(
+    { cachesFalso } = criarCachesFalso(),
+  ) {
     const { selfFalso, listeners } = criarSelfFalso();
-    const { cachesFalso } = criarCachesFalso();
     fetchMock = vi.fn().mockResolvedValue(new Response("ok", { status: 200 }));
 
     vi.stubGlobal("self", selfFalso);
@@ -121,6 +122,34 @@ describe("src/sw/sw.ts — listener de fetch", () => {
     expect(event.respondWith).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it.each(["cors", "navigate"])(
+    "auth/v1/user em %s fica na rede sem abrir, ler ou gravar cache",
+    async (mode) => {
+      const gavetas = criarCachesFalso();
+      const fetchListener = await importarComGlobaisFalsos(gavetas);
+      const request = new Request(
+        "https://xyzcompany.supabase.co/auth/v1/user",
+      );
+      // Uma navegação chega ao ramo de cache ANTES da segunda guarda de
+      // Supabase. Assim ela distingue o retorno antecipado de auth dessa guarda.
+      Object.defineProperty(request, "mode", { value: mode });
+      const event = criarFetchEvent(request);
+
+      fetchListener(event);
+      await Promise.all(
+        event.respondWith.mock.calls.map(([resposta]) => resposta),
+      );
+
+      expect(gavetas.cachesFalso.open).not.toHaveBeenCalled();
+      expect(gavetas.cachesFalso.match).not.toHaveBeenCalled();
+      expect(gavetas.cacheFalso.match).not.toHaveBeenCalled();
+      expect(gavetas.cacheFalso.put).not.toHaveBeenCalled();
+      // Sem respondWith, quem busca é o navegador, não o fetch interno do SW.
+      expect(event.respondWith).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
 
   it("intercepta asset estático same-origin (stale-while-revalidate)", async () => {
     const fetchListener = await importarComGlobaisFalsos();

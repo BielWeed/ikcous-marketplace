@@ -280,7 +280,7 @@ describe("PagamentoOnline — tela do Pix com prazo dinâmico e aviso estimado",
     // A região viva existe ANTES do aviso (vazia) — é o MESMO nó que o
     // recebe depois, senão o leitor de tela não anuncia nada.
     const regiaoViva = [
-      ...hospedeiro.querySelectorAll('[aria-live="polite"]'),
+      ...hospedeiro.querySelectorAll('section [aria-live="polite"]'),
     ].find((el) => !el.closest("button") && el.getAttribute("role") === null);
     expect(regiaoViva).toBeTruthy();
     expect(regiaoViva!.textContent).toBe("");

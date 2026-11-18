@@ -4,7 +4,8 @@
 // So clone descartavel do rodar-isolado.cjs (CI_BANCO_EFEMERO=1 + localhost); tudo volta no ROLLBACK.
 // Sem a guarda de desconto negativo, a venda de R$100 com desconto -10 nasceria por R$110.
 // Sem a guarda da forma de pagamento, 'misto' nasceria como venda do balcao.
-// MUTANTE_R100=<nome> remove SOMENTE a guarda da prova correspondente (alvo unico, instalacao confirmada).
+// Sem a guarda do teto do desconto (`> v_subtotal`), um desconto maior que a venda passaria por pouco: R$100,01 de desconto numa venda de R$100.
+// MUTANTE_R100=<nome> remove (valor texto) ou troca (valor {de,para}) SOMENTE a guarda da prova correspondente (alvo unico, instalacao confirmada).
 const P = require("./prova-de-objeto-novo.cjs");
 const { assert, prova } = P;
 const ADMIN = "b102c000-0000-4000-8000-000000000001";
@@ -24,6 +25,7 @@ const ITENS = JSON.stringify([
 ]);
 const MENSAGEM_DESCONTO = "O desconto não pode ser negativo.";
 const MENSAGEM_PAGAMENTO = "Forma de pagamento inválida para venda no balcão.";
+const MENSAGEM_TETO = "O desconto não pode ser maior que o subtotal da venda.";
 const MUTANTES = new Map(
   Object.entries({
     "balcao-aceita-desconto-negativo": `        IF v_desconto < 0 THEN
@@ -34,6 +36,11 @@ const MUTANTES = new Map(
             RAISE EXCEPTION USING ERRCODE='22023', MESSAGE='${MENSAGEM_PAGAMENTO}';
         END IF;
 `,
+    // Troca, nao remocao: a guarda segue de pe e so o limite folga R$1,00.
+    "balcao-teto-do-desconto-folga-um-real": {
+      de: "IF v_desconto > v_subtotal THEN",
+      para: "IF v_desconto > v_subtotal + 1 THEN",
+    },
   }),
 );
 
@@ -47,13 +54,14 @@ async function mutar(nome) {
     original.includes("p_total_esperado"),
     "a prova exige o corpo vivo da 280 (nove argumentos)",
   );
-  const trecho = MUTANTES.get(nome);
+  const alvo = MUTANTES.get(nome);
+  const { de, para } = typeof alvo === "string" ? { de: alvo, para: "" } : alvo;
   assert.equal(
-    original.split(trecho).length - 1,
+    original.split(de).length - 1,
     1,
     `mutante ${nome}: alvo deve ocorrer uma vez`,
   );
-  const alterado = original.replace(trecho, "");
+  const alterado = original.replace(de, () => para);
   assert.notEqual(alterado, original, "sabotagem nao aplicada");
   await c.query(alterado);
   const depois = (
@@ -192,6 +200,40 @@ prova(
       const depois = await fotografar();
       assert.equal(depois.pedidos.length, 3, "so as tres vendas validas");
       assert.equal(depois.produtos[0].estoque, 7);
+    }),
+);
+
+prova(
+  "desconto de 1 centavo acima do subtotal recusa 22023 sem escrever; o desconto igual ao subtotal segue aceito",
+  () =>
+    P.emTransacao(async () => {
+      await semear();
+      const antes = await fotografar();
+      await mutar("balcao-teto-do-desconto-folga-um-real");
+
+      // Subtotal = R$100 (1 x R$100). Um centavo acima do teto recusa; o motivo
+      // vai preenchido para a recusa ser a do teto, e nao a do motivo ausente.
+      const acima = await vender("cash", 100.01, "Erro de digitacao ficticio");
+      assert.equal(
+        acima.codigo,
+        "22023",
+        `desconto de R$100,01 numa venda de R$100 foi aceito ou falhou por outro motivo (codigo ${acima.codigo}, erro: ${acima.erro})`,
+      );
+      assert.equal(acima.erro, MENSAGEM_TETO);
+      assert.deepEqual(
+        await fotografar(),
+        antes,
+        "a recusa do desconto acima do subtotal escreveu pedido, estoque ou financeiro",
+      );
+
+      // Controle: o mesmo pedido com o desconto EXATAMENTE no subtotal nasce
+      // (venda de R$0,00 = brinde), so o centavo a mais separa aceita de recusa.
+      const exato = await vender("cash", 100, "Brinde ficticio");
+      assert.equal(exato.codigo, undefined, exato.erro);
+      assert.equal(Number(totalGravado(exato)), 0);
+      const depois = await fotografar();
+      assert.equal(depois.pedidos.length, 1, "so a venda do desconto exato");
+      assert.equal(depois.produtos[0].estoque, 9);
     }),
 );
 

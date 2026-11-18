@@ -721,6 +721,12 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente",
   "151a-conferir-o-banner-tem-imagem-propria-no-computador-aplicado",
   "151b-antes-o-banner-tem-imagem-propria-no-computador-ausente",
+  "154a-conferir-o-inicio-mostra-o-dinheiro-a-devolver-aplicado",
+  "154b-antes-o-inicio-mostra-o-dinheiro-a-devolver-base-vigente",
+  "155a-conferir-o-total-comprado-do-cliente-e-o-mesmo-no-crm-na-lista-e-na-ficha-aplicado",
+  "155b-antes-o-total-comprado-do-cliente-e-o-mesmo-no-crm-na-lista-e-na-ficha-base-vigente",
+  "156a-conferir-a-observacao-da-inspecao-so-a-loja-ve-aplicado",
+  "156b-antes-a-observacao-da-inspecao-so-a-loja-ve-base-vigente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

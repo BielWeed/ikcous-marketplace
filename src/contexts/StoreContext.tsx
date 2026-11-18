@@ -9,6 +9,7 @@ import { useLeaderElection } from "@/hooks/useLeaderElection";
 import { pedirBannersNoBoot } from "@/lib/banners-da-vitrine";
 import { DataVault } from "@/lib/dataVault";
 import { abrirCatalogoEmVoo } from "@/lib/deposito-do-catalogo";
+import { mensagemDeErroDeSessaoDoPainel } from "@/lib/erro-de-sessao-do-painel";
 import { espelhoLegado, precoFinalDaOpcao } from "@/lib/estrategias-de-frete";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import {
@@ -488,7 +489,13 @@ const PRAZO_DA_LEITURA_DA_CONFIG_MS = 20_000;
 export function StoreProvider({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  const { isAdmin, loading } = useAuth();
+  const { isAdmin, loading, user } = useAuth();
+  // Tempo real só com sessão (painel e cliente logada): visitante sem login
+  // não abre canal (teto de conexões do plano na Black Friday) e vê o dado
+  // novo ao voltar à aba.
+  // `isAdmin` entra por garantia: o painel nunca fica sem canal, mesmo que o
+  // `user` chegue um render depois do atalho de lojista.
+  const temSessao = !!user || isAdmin;
   const { isLeader } = useLeaderElection();
   const vaultRef = useRef<DataVault | null>(null);
   // O motor de tempo real precisa do cofre, e `ref` NÃO é dependência de
@@ -566,6 +573,10 @@ export function StoreProvider({
   const configResolvidaRef = useRef(false);
   const configFalhouRef = useRef(false);
   const geracaoDaConfigRef = useRef(0);
+  // Ordem de largada das leituras da mesma geração e a última que aplicou:
+  // a leitura que larga antes mas responde depois de uma mais nova é velha.
+  const leiturasDaConfigRef = useRef(0);
+  const leituraAplicadaDaConfigRef = useRef(0);
   const consultasDaConfigEmVooRef = useRef(0);
   const ultimaConsultaDaConfigEmRef = useRef(0);
   const buscarConfigRef = useRef<() => Promise<void>>(async () => {});
@@ -965,6 +976,7 @@ export function StoreProvider({
 
   const fetchConfig = useCallback(async () => {
     const geracao = geracaoDaConfigRef.current;
+    const ordem = ++leiturasDaConfigRef.current;
     // Esta leitura foi ultrapassada por uma escrita confirmada: o que ela
     // trouxe é velho, mas os campos que a escrita NÃO tocou (endereço, formas
     // de pagamento...) só se corrigem relendo — uma releitura por geração.
@@ -1079,7 +1091,8 @@ export function StoreProvider({
             applyBranding(corPrimariaEfetiva(mapped));
           }
         }
-      } else if (data) {
+      } else if (data && ordem >= leituraAplicadaDaConfigRef.current) {
+        leituraAplicadaDaConfigRef.current = ordem;
         const mapped = mapConfig(data);
         setConfig((prev) => {
           if (geracao !== geracaoDaConfigRef.current) return prev;
@@ -1676,7 +1689,8 @@ export function StoreProvider({
               ? "Ligue ao menos uma forma de pagamento — o PIX pelo app está desligado"
               : mensagemCrua === "LOJA_SO_RETIRADA_SEM_RETIRADA"
                 ? "Para entregar só por retirada, ligue a retirada na loja e cadastre o endereço da loja."
-                : "Erro ao salvar as configurações",
+                : (mensagemDeErroDeSessaoDoPainel(err) ??
+                  "Erro ao salvar as configurações"),
           );
         }
         return false;
@@ -1709,18 +1723,19 @@ export function StoreProvider({
     if (!isLoaded || !cofrePronto || !vaultRef.current) return;
 
     console.log(
-      `[StoreContext] Starting RealtimeSyncEngine (isLeader: ${isLeader}, isAdmin: ${isAdmin})`,
+      `[StoreContext] Starting RealtimeSyncEngine (isLeader: ${isLeader}, isAdmin: ${isAdmin}, temSessao: ${temSessao})`,
     );
     const cleanup = RealtimeSyncEngine.start(
       vaultRef.current,
       isLeader,
       isAdmin,
+      temSessao,
     );
 
     return () => {
       cleanup();
     };
-  }, [isLoaded, cofrePronto, isLeader, isAdmin]);
+  }, [isLoaded, cofrePronto, isLeader, isAdmin, temSessao]);
 
   // ── Realtime Sync: Listen for changes applied by RealtimeSyncEngine ──
   useSyncListener(
@@ -1739,7 +1754,10 @@ export function StoreProvider({
           }
           // Laudo 0109 (P-5): mesma guarda do fetchConfig — eco do realtime
           // com config IDÊNTICA não troca o objeto (cada eco re-renderizava
-          // a casa inteira de graça).
+          // a casa inteira de graça). O ao vivo é mais novo que toda leitura
+          // em voo: sobe a geração (antes de aplicar) para a resposta velha
+          // ser descartada e relida, em vez de restaurar o valor antigo.
+          geracaoDaConfigRef.current += 1;
           setConfig((prev) => (configIgual(mapped, prev) ? prev : mapped));
           applyBranding(corPrimariaEfetiva(mapped));
           // Configuração de verdade chegou pelo tempo real (evento ao vivo ou

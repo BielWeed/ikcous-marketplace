@@ -428,6 +428,53 @@ const VERIFICACOES = {
         ],
       },
     ],
+  // 20261403000000: o total comprado do cliente e o mesmo no CRM, na lista e na ficha. DUAS funcoes, uma checagem cada. get_admin_customers_paged ganha SO a CTE balcao_da_conta (le crm__vendas(now()), so o pedido SEM conta),
+  // o LEFT JOIN dela e a soma em orders_count e total_spent (o GROUP BY ganha as duas colunas); get_admin_user_detail ganha SO a variavel v_balcao, o passo 5 e a chave balcao_mesmo_whatsapp. As travas de admin, a busca,
+  // o ORDER BY e a lista de pedidos da ficha seguem como estavam. A consulta 155a confere o corpo exato (md5), os atributos e a ACL das duas.
+  "20261403000000_o_total_comprado_do_cliente_e_o_mesmo_no_crm_na_lista_e_na_ficha.sql":
+    [
+      {
+        funcao: "get_admin_customers_paged",
+        esperado: [
+          { texto: "WITH balcao_da_conta AS MATERIALIZED (", vezes: 1 },
+          { texto: "FROM public.crm__vendas(now()) v", vezes: 1 },
+          { texto: "AND bo.user_id IS NULL", vezes: 1 },
+          {
+            texto: "LEFT JOIN balcao_da_conta bal ON bal.user_id = p.id",
+            vezes: 1,
+          },
+          {
+            texto: "COUNT(o.id) + COALESCE(bal.pedidos, 0) as orders_count",
+            vezes: 1,
+          },
+          {
+            texto: "), 0) + COALESCE(bal.total, 0) as total_spent",
+            vezes: 1,
+          },
+          {
+            texto:
+              "GROUP BY p.id, u.email, u.phone, p.whatsapp, addr.city, addr.state, bal.pedidos, bal.total",
+            vezes: 1,
+          },
+          { texto: "END DESC,", vezes: 3 },
+          { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+          { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        ],
+      },
+      {
+        funcao: "get_admin_user_detail",
+        esperado: [
+          { texto: "v_balcao JSONB;", vezes: 1 },
+          { texto: "FROM public.crm__vendas(now()) v", vezes: 1 },
+          { texto: "AND bo.user_id IS NULL", vezes: 1 },
+          { texto: "WHERE v.user_id = p_user_id;", vezes: 1 },
+          { texto: "'balcao_mesmo_whatsapp', v_balcao", vezes: 1 },
+          { texto: "WHERE mo.user_id = p_user_id", vezes: 1 },
+          { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+          { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        ],
+      },
+    ],
   // 20261386: o preco do produto deixa historico. A tabela, a politica, o ACL e o gatilho nao sao conferiveis aqui (so corpo de funcao): a
   // consulta 91a e a prova viva fazem isso. Aqui: a funcao do gatilho grava 'cadastro' no INSERT e 'mudanca' so quando o preco muda.
   "20261386000000_o_preco_do_produto_deixa_historico.sql": {
@@ -1068,6 +1115,49 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // 20261404000000: a observacao da inspecao da devolucao e so da loja. devolucao_detalhe ganha SO a troca da linha do RETURN (a chave observacao_inspecao sai do JSON quando quem chama nao e o admin ATUAL); as duas
+  // travas do topo (is_admin e is_admin_atual) ficam como estao. O REVOKE da tabela devolucoes e o GRANT por coluna NAO se conferem aqui (so sabemos ler corpo de funcao): a conferencia final da propria migration mede o
+  // privilegio EFETIVO e a consulta 156a o confirma. A consulta 156a confere o corpo exato (md5), os atributos e a ACL; a prova viva mede o comportamento.
+  "20261404000000_a_observacao_da_inspecao_so_a_loja_ve.sql": [
+    {
+      funcao: "devolucao_detalhe",
+      esperado: [
+        {
+          texto:
+            "RETURN CASE WHEN public.is_admin_atual() THEN to_jsonb(v_d) ELSE to_jsonb(v_d) - 'observacao_inspecao' END || jsonb_build_object(",
+          vezes: 1,
+        },
+        { texto: "to_jsonb(v_d) - 'observacao_inspecao'", vezes: 1 },
+        { texto: "AND NOT public.is_admin()) THEN", vezes: 1 },
+        { texto: "AND NOT public.is_admin_atual()) THEN", vezes: 1 },
+      ],
+    },
+  ],
+  // 20261402000000: o Inicio mostra o dinheiro a devolver e a margem do Financeiro. painel_inicio ganha SO as chaves dinheiro_a_devolver {valor, pedidos} (a conta da lista "Devolver agora" da tela de
+  // Pedidos, em centavos) e mes.receita_liquida (a do fin_dre do mesmo periodo do lucro; a leitura do fin_dre passa a ser UMA so, v_dre); as chaves que ja existiam, o vencido sem estorno (20261399300000) e as duas
+  // travas de admin ficam como estao (corpo da 20261399300000). A consulta 154a confere o corpo exato (md5), os atributos e a ACL; a prova viva mede o comportamento.
+  "20261402000000_o_inicio_mostra_o_dinheiro_a_devolver_e_a_margem_do_financeiro.sql":
+    [
+      {
+        funcao: "painel_inicio",
+        esperado: [
+          {
+            texto: "v_dre := public.fin_dre(v_mes_inicio, v_mes_fim);",
+            vezes: 1,
+          },
+          { texto: "'receita_liquida', v_receita_liquida", vezes: 1 },
+          { texto: "'dinheiro_a_devolver', jsonb_build_object(", vezes: 1 },
+          { texto: "WHERE o.status = 'cancelled'", vezes: 1 },
+          {
+            texto:
+              "'contas_vencidas', (SELECT count(*) FROM prev WHERE tipo = 'saida' AND venc < v_hoje AND origem <> 'estorno'),",
+            vezes: 1,
+          },
+          { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+          { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        ],
+      },
+    ],
   // 20261397000000: o desconto do cupom de porcentagem e' arredondado ao centavo. As TRES funcoes (create_marketplace_order_v23/v24 e
   // validate_coupon_secure_v2) trocam SO a linha da conta do desconto percentual: `round(<subtotal * valor / 100>, 2)` no lugar da conta crua.
   // Cada marcador aparece UMA vez no corpo (o marcador nao admite "zero vezes": a ausencia da conta antiga e' do pos-voo da migration e da

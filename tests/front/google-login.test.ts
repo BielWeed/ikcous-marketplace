@@ -136,6 +136,25 @@ it("destino adulterado não abre painel nem endereço externo", async () => {
   retomarDestinoGoogle();
   expect(history.state.from).toBe("profile");
 });
+it("retorno guardado adulterado não retoma o painel depois do Google", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-11-18T12:00:00Z"));
+  sessionStorage.setItem(
+    "ikcous_google_retorno_v1",
+    JSON.stringify({
+      quando: Date.now(),
+      estado: { view: "auth", requested: "admin" },
+    }),
+  );
+  history.replaceState(null, "", "/auth");
+  const { retomarDestinoGoogle } = await import("@/lib/google-login");
+  const retorno = retomarDestinoGoogle();
+
+  expect(retorno.iniciado).toBe(true);
+  expect(history.state?.view).toBe("auth");
+  expect(history.state?.from).not.toBe("admin");
+  expect(retorno.estado?.from).not.toBe("admin");
+});
 it.each(["https://fora.invalid/roubar", "/checkout", "javascript:alert(1)"])(
   "endereço de volta nunca vem de next (%s)",
   async (next) => {

@@ -47,7 +47,8 @@ it("sem BroadcastChannel importa, lidera e recebe o ping remoto sem broadcast lo
     useEffect(() => {
       lider = isLeader;
     });
-    useRealtimeUpdate(retorno);
+    // Com sessão: visitante sem login não abre canal de tempo real.
+    useRealtimeUpdate(retorno, "usuario-1");
     return null;
   }
   const host = document.createElement("div");

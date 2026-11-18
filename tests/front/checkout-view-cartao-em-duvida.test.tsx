@@ -417,7 +417,10 @@ describe("CheckoutView — cartão em dúvida nunca vira 'em análise pelo banco
       "Não conseguimos confirmar com o banco se o pagamento com cartão deste pedido foi feito.",
     );
     expect(hospedeiro.textContent).toContain(
-      "Se nenhuma cobrança aparecer, o pedido é cancelado automaticamente até 03/10/2026 às",
+      "Se nenhuma cobrança aparecer, o pedido é cancelado automaticamente a partir de 03/10/2026 às",
+    );
+    expect(hospedeiro.textContent).not.toContain(
+      "cancelado automaticamente até",
     );
     expect(criarPagamento).not.toHaveBeenCalled();
     expect(pagamentoOnlineProps.length).toBe(montagensAntes);

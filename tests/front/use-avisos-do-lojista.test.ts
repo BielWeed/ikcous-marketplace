@@ -61,7 +61,7 @@ const FILTROS_DA_PRIVACIDADE: Array<[string, unknown]> = [];
 // pedidos pendentes), distinguidos pelo `.eq("status", "delivered")`.
 let RESPOSTA_RECEBIMENTOS: unknown = { data: [], error: null };
 // A janela do sino segue `politica_devolucao` (15/10/2026). `null` = a leitura
-// da configuracao nao trouxe nada (o hook tem de cair em 90 dias).
+// da configuracao nao trouxe nada (o hook tem de cair em 365 dias).
 let RESPOSTA_POLITICA: unknown = { data: null, error: null };
 let POLITICA_LANCA = false;
 const CONSULTAS_DE_PEDIDOS: Array<Array<[string, ...unknown[]]>> = [];
@@ -1099,7 +1099,7 @@ describe("useAvisosDoLojista — pedido entregue sem recebimento marcado", () =>
     expect(atual().quantidadeNoCracha).toBe(4);
   });
 
-  it("a consulta le SO entregue, nao-online, pagamento em branco, dos ultimos 90 dias (sem configuracao), no maximo 100", async () => {
+  it("a consulta le SO entregue, nao-online, pagamento em branco, dos ultimos 365 dias (sem configuracao), no maximo 100", async () => {
     await montarSonda();
 
     const calls = consultaDeRecebimentos();
@@ -1110,10 +1110,11 @@ describe("useAvisosDoLojista — pedido entregue sem recebimento marcado", () =>
     expect(calls).toContainEqual(["or", FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA]);
     // Pagamento em branco.
     expect(calls).toContainEqual(["is", "payment_status", null]);
-    // Janela de 90 dias (a configuracao nao chegou), pela data da entrega.
+    // Janela de 365 dias (a configuracao nao chegou: o teto do banco), pela
+    // data da entrega.
     const gte = calls?.find((c) => c[0] === "gte");
     expect(gte?.[1]).toBe("updated_at");
-    expect(gte?.[2]).toBe(inicioDaJanelaDeRecebimento(Date.now(), 90));
+    expect(gte?.[2]).toBe(inicioDaJanelaDeRecebimento(Date.now(), 365));
     // Teto de 100.
     expect(calls).toContainEqual(["limit", 100]);
   });
@@ -1162,7 +1163,7 @@ describe("useAvisosDoLojista — pedido entregue sem recebimento marcado", () =>
       true,
     ],
   ])(
-    "%s: a janela cai em 90 dias e o aviso aparece",
+    "%s: a janela cai em 365 dias e o aviso aparece",
     async (_n, resposta, lanca) => {
       RESPOSTA_POLITICA = resposta;
       POLITICA_LANCA = lanca;
@@ -1170,7 +1171,7 @@ describe("useAvisosDoLojista — pedido entregue sem recebimento marcado", () =>
 
       const { atual } = await montarSonda();
 
-      expect(corteDaConsulta()).toBe(corteDe(90));
+      expect(corteDaConsulta()).toBe(corteDe(365));
       expect(atual().avisos.map((a) => a.tipo)).toContain("recebimento");
       expect(atual().fontesComFalha).toEqual([]);
     },

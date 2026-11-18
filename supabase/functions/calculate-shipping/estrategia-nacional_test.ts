@@ -9,6 +9,7 @@ import {
     estrategiaNacionalDaLinha,
     subtotalDoCarrinho,
 } from "./estrategia-nacional.ts"
+import { valorUnitarioDoBanco } from "./regua.ts"
 
 const opcao = (id: string, price: number) => ({ id, name: id, price, deliveryDays: 5, provider: "melhor_envio" })
 
@@ -133,6 +134,73 @@ Deno.test("subtotalDoCarrinho: carrinho vazio → 0; produto desconhecido não e
     assertEquals(subtotalDoCarrinho([{ product: { id: "fantasma" }, quantity: 5 }], PRODUTOS, VARIANTES), 0)
     const misto = [{ product: { id: "p1" }, quantity: 1 }, { product: { id: "fantasma" }, quantity: 5 }]
     assertEquals(subtotalDoCarrinho(misto, PRODUTOS, VARIANTES), 59.9)
+})
+
+// Preço ZERO no banco é preço de verdade (variação grátis, produto brinde): a
+// régua do subtotal não pode tratá-lo como "ausente". Mutação que estes casos
+// derrubam em `regua.ts`: `if (variante.price_override)` (0 é falso e a variação
+// grátis cairia no preco_venda do produto). A mutação `numero >= 0` -> `numero > 0`
+// (0 viraria `null`) NÃO cai aqui: `null` e 0 somam igual no subtotal. Quem a
+// prova é só o teste direto de `valorUnitarioDoBanco`, mais abaixo.
+Deno.test("subtotalDoCarrinho: price_override 0 (variação grátis) VENCE o preco_venda e conta 0, não o preço do produto", () => {
+    const variantes = new Map([["vg", { id: "vg", product_id: "p1", price_override: 0 }]])
+    // p1 custa 59,9; a variação grátis conta 0; o p2 (10) segue somando.
+    const itens = [{ product: { id: "p1" }, variantId: "vg", quantity: 2 }, { product: { id: "p2" }, quantity: 1 }]
+    assertEquals(subtotalDoCarrinho(itens, PRODUTOS, variantes), 10)
+    // override numeric que chega como TEXTO ("0.00") também vale 0.
+    const comoTexto = new Map([["vg", { id: "vg", product_id: "p1", price_override: "0.00" }]])
+    assertEquals(subtotalDoCarrinho([{ product: { id: "p1" }, variantId: "vg", quantity: 3 }], PRODUTOS, comoTexto), 0)
+})
+
+Deno.test("subtotalDoCarrinho: produto com preco_venda 0 conta 0 e NÃO derruba a soma dos outros itens", () => {
+    const produtos = new Map([
+        ["brinde", { id: "brinde", preco_venda: 0 }],
+        ["p2", { id: "p2", preco_venda: 10 }],
+    ])
+    const itens = [{ product: { id: "brinde" }, quantity: 4 }, { product: { id: "p2" }, quantity: 2 }]
+    assertEquals(subtotalDoCarrinho(itens, produtos, new Map()), 20)
+})
+
+Deno.test("subtotalDoCarrinho: variação de OUTRO produto (product_id diferente) NÃO entra — nem cai no preco_venda do produto do carrinho", () => {
+    // v9 é da p2; o item diz p1 + v9. A régua é a da RPC: variação que não é do
+    // produto = item inválido (falha fechada), contado 0 — nunca 59,9 (o preço
+    // do p1) e nunca 1 (o override da variação alheia).
+    const variantes = new Map([["v9", { id: "v9", product_id: "p2", price_override: 1 }]])
+    const itens = [{ product: { id: "p1" }, variantId: "v9", quantity: 1 }, { product: { id: "p2" }, quantity: 1 }]
+    assertEquals(subtotalDoCarrinho(itens, PRODUTOS, variantes), 10)
+})
+
+Deno.test("subtotalDoCarrinho: variação pedida e NÃO achada no banco não entra (não cai no preco_venda do produto)", () => {
+    const itens = [{ product: { id: "p1" }, variantId: "fantasma", quantity: 1 }, { product: { id: "p2" }, quantity: 1 }]
+    assertEquals(subtotalDoCarrinho(itens, PRODUTOS, VARIANTES), 10)
+})
+
+// `subtotalDoCarrinho` não vê a diferença entre "preço 0" e "preço inválido"
+// (os dois somam 0), então o limite do 0 também se prova direto na régua — é
+// ela que alimenta o `valor` dos insumos da cotação (`configuracao.ts`), onde
+// `null` (falha fechada) e `0` (preço de verdade) assinam coisas diferentes.
+Deno.test("valorUnitarioDoBanco: 0 é preço válido (0, não null); inválido, negativo e variação alheia/ausente = null", () => {
+    const produto = { id: "p1", preco_venda: 59.9 }
+    // 0 do override vence o preco_venda e NÃO vira null.
+    assertEquals(valorUnitarioDoBanco(produto, { product_id: "p1", price_override: 0 }, true), 0)
+    assertEquals(valorUnitarioDoBanco(produto, { product_id: "p1", price_override: "0" }, true), 0)
+    // preco_venda 0 (sem variação) é 0, não null.
+    assertEquals(valorUnitarioDoBanco({ id: "p1", preco_venda: 0 }, null, false), 0)
+    assertEquals(valorUnitarioDoBanco({ id: "p1", preco_venda: "0.00" }, null, false), 0)
+    // override null/undefined cai no preco_venda, também quando este é 0.
+    assertEquals(valorUnitarioDoBanco(produto, { product_id: "p1", price_override: null }, true), 59.9)
+    assertEquals(valorUnitarioDoBanco(produto, { product_id: "p1" }, true), 59.9)
+    assertEquals(valorUnitarioDoBanco({ id: "p1", preco_venda: 0 }, { product_id: "p1", price_override: null }, true), 0)
+    // Inválidos: negativo, texto vazio, não numérico, ausente = null (falha fechada).
+    assertEquals(valorUnitarioDoBanco({ id: "p1", preco_venda: -1 }, null, false), null)
+    assertEquals(valorUnitarioDoBanco({ id: "p1", preco_venda: "" }, null, false), null)
+    assertEquals(valorUnitarioDoBanco({ id: "p1", preco_venda: "abc" }, null, false), null)
+    assertEquals(valorUnitarioDoBanco({ id: "p1" }, null, false), null)
+    assertEquals(valorUnitarioDoBanco(produto, { product_id: "p1", price_override: -5 }, true), null)
+    // Produto desconhecido, variação pedida e ausente, ou de OUTRO produto = null.
+    assertEquals(valorUnitarioDoBanco(null, null, false), null)
+    assertEquals(valorUnitarioDoBanco(produto, null, true), null)
+    assertEquals(valorUnitarioDoBanco(produto, { product_id: "p2", price_override: 1 }, true), null)
 })
 
 // ── aplicarEstrategiaNacional ────────────────────────────────────────────────
@@ -318,3 +386,16 @@ Deno.test("aplicarEstrategiaNacional: subtotalCotacao vai em TODA opção (benef
     assertEquals(semBeneficio[0].subtotalCotacao, 150)
     assertEquals(semBeneficio[0].price, 20)
 })
+
+// O preço do frete vira centavos inteiros e volta (`centavosDoPreco`). Em ponto
+// flutuante 4,35 * 100 = 434.99999999999994: só o arredondamento (Math.round)
+// devolve 435, e truncar faria o cliente ver R$ 4,34 de frete onde a
+// transportadora cobrou R$ 4,35 — com a estratégia DESLIGADA, ou seja, sem
+// nenhum desconto que justificasse mexer no preço.
+for (const preco of [4.35, 1.15, 0.29, 0.57]) {
+    Deno.test(`aplicarEstrategiaNacional: desligado mantém o frete cheio de R$ ${preco} sem perder centavo`, () => {
+        const [resultado] = aplicarEstrategiaNacional([opcao("a", preco)], estrategia({}), 100)
+        assertEquals(resultado.price, preco)
+        assertEquals(resultado.precoCheio, preco)
+    })
+}

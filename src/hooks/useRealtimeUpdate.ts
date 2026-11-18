@@ -27,6 +27,19 @@ export function useRealtimeUpdate(
   }, [onUpdateDetected]);
 
   useEffect(() => {
+    // Visitante SEM LOGIN não abre canal de tempo real (teto de conexões do
+    // plano na Black Friday; o painel do lojista divide esse teto com a
+    // vitrine). O ping de deploy só adianta a checagem de versão: sem ele a
+    // visitante é avisada pela checagem periódica e ao voltar à aba do
+    // `useUpdateCheck` (3 min / visibilitychange). Nem BroadcastChannel: o
+    // líder sem canal não tem ping para repassar.
+    if (!userId) {
+      console.log(
+        "[RealtimeUpdate] Sem sessão: sem canal de tempo real; a atualização é pela checagem periódica.",
+      );
+      return;
+    }
+
     let activeChannel: ReturnType<typeof supabase.channel> | null = null;
     let isUnmounting = false;
     let setupTimeoutId: ReturnType<typeof setTimeout> | null = null;

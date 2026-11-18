@@ -302,7 +302,7 @@ Deno.test("a cadeia 99 -> 12 -> 28 esta declarada: o cabecalho cita a ordem de d
   assert.ok(c17a.includes("20261228"), "a 17a cita a 20261228000000");
 });
 
-Deno.test("so a baseline, a 20261199000000, a 20261212000000, este par, a 20261390000000 (o lucro do Inicio conta o mes inteiro, par proprio) a 20261398000000 (o Inicio compara o mes anterior ate a mesma hora, par proprio) e a 20261399300000 (o estorno em andamento, par proprio) definem painel_inicio; depois da 20261212 ninguem mais a redefine", () => {
+Deno.test("so a baseline, a 20261199000000, a 20261212000000, este par, a 20261390000000 (o lucro do Inicio conta o mes inteiro, par proprio) a 20261398000000 (o Inicio compara o mes anterior ate a mesma hora, par proprio) a 20261399300000 (o estorno em andamento, par proprio) e a 20261402000000 (o Inicio mostra o dinheiro a devolver, par proprio) definem painel_inicio; depois da 20261212 ninguem mais a redefine", () => {
   const todas = [...Deno.readDirSync(new URL("supabase/migrations/", DIR))]
     .map((e) => e.name)
     .filter((n) => n.endsWith(".sql") && !n.startsWith("_"));
@@ -320,14 +320,18 @@ Deno.test("so a baseline, a 20261199000000, a 20261212000000, este par, a 202613
     "20261398000000_o_inicio_compara_o_mes_anterior_ate_a_mesma_hora.sql";
   const SUCESSORA_3993 =
     "20261399300000_o_estorno_em_andamento_nao_e_conta_vencida.sql";
+  const SUCESSORA_1402 =
+    "20261402000000_o_inicio_mostra_o_dinheiro_a_devolver_e_a_margem_do_financeiro.sql";
   assert.deepEqual(posteriores.sort(), [
     NOME,
     SUCESSORA,
     SUCESSORA_398,
     SUCESSORA_3993,
+    SUCESSORA_1402,
     `rollback-manual-${NOME}`,
     `rollback-manual-${SUCESSORA}`,
     `rollback-manual-${SUCESSORA_398}`,
     `rollback-manual-${SUCESSORA_3993}`,
+    `rollback-manual-${SUCESSORA_1402}`,
   ]);
 });

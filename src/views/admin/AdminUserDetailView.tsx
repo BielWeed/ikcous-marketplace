@@ -6,7 +6,11 @@ import {
   type PerguntaDaFicha,
   VozClienteTab,
 } from "@/components/admin/users/VozClienteTab";
-import { calcularResumoFicha } from "@/components/admin/users/ficha-resumo";
+import {
+  type BalcaoDoMesmoWhatsapp,
+  calcularResumoFicha,
+  lerBalcaoDoMesmoWhatsapp,
+} from "@/components/admin/users/ficha-resumo";
 import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import {
   AlertDialog,
@@ -114,6 +118,11 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
+  // Vendas de balcão (sem conta) com o mesmo WhatsApp, que o CRM atribui a esta pessoa
+  // (campo `balcao_mesmo_whatsapp`, 20261403000000). Zero quando o banco é antigo.
+  const [balcao, setBalcao] = useState<BalcaoDoMesmoWhatsapp>(
+    lerBalcaoDoMesmoWhatsapp(null),
+  );
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [cartItemToRemove, setCartItemToRemove] = useState<{
@@ -271,6 +280,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
         setIdCarregado(null);
         setProfile(null);
         setOrders([]);
+        setBalcao(lerBalcaoDoMesmoWhatsapp(null));
         setAddresses([]);
         setCartItems([]);
         setCartItemToRemove(null);
@@ -300,6 +310,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
         }
         setProfile(payload.profile as Profile);
         setOrders(payload.orders?.map(mapOrderFromDB) || []);
+        setBalcao(lerBalcaoDoMesmoWhatsapp(payload.balcao_mesmo_whatsapp));
         setAddresses(payload.addresses || []);
 
         // Handle Cart Items fetching products if needed
@@ -631,9 +642,13 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
 
     A ABA de pedidos continua mostrando o histórico inteiro de propósito:
     é o número de linhas que a tabela abaixo dela lista.
+
+    O balcão do mesmo WhatsApp (venda sem conta que o CRM atribui a esta
+    pessoa) soma no total, nos pedidos e no valor médio, igual à lista de
+    Clientes e ao CRM; só a ABA de pedidos continua com os pedidos da conta.
   */
-  const resumo = calcularResumoFicha(orders);
-  const { pedidosQueContam, pedidosDescartados } = resumo;
+  const resumo = calcularResumoFicha(orders, balcao);
+  const { pedidosDescartados } = resumo;
   // Número sem DDD+telefone (menos de 10 dígitos) não abre conversa: o botão
   // "Contato Direto" fica desabilitado em vez de abrir um link quebrado.
   const linkWhatsapp = linkWhatsappDoCliente(profile?.whatsapp);
@@ -900,6 +915,16 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                   >
                     {formatCurrency(resumo.totalGasto)}
                   </span>
+                  {resumo.balcao.total > 0 && (
+                    <span
+                      className="mt-1 break-words text-[11px] font-semibold text-zinc-400"
+                      data-testid="ficha-total-dividido"
+                    >
+                      ({formatCurrency(resumo.totalDaConta)} pela conta +{" "}
+                      {formatCurrency(resumo.balcao.total)} no balcão ou sem
+                      conta, com o mesmo WhatsApp)
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -910,7 +935,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                     Pedidos feitos
                   </span>
                   <span className="break-words text-sm font-bold tracking-tight text-white sm:text-base">
-                    {pedidosQueContam.length}
+                    {resumo.totalDePedidos}
                   </span>
                   {pedidosDescartados > 0 && (
                     <span className="mt-0.5 text-[11px] font-bold uppercase tracking-wider text-zinc-400">

@@ -117,8 +117,9 @@ publicação).
 no preview por loja antes de promover.
 
 **Reversão (sem dinheiro novo em risco):**
-- Functions: `vercel rm`/redeploy da versão anterior por função (as mudanças
-  são independentes por arquivo — reverter UMA function não desarma as outras;
+- Functions: reverta o código necessário e publique de novo a função pelo
+  `publicar-functions.yml`, no alvo correto, com o SHA completo da execução em `expected_sha`
+  (as mudanças são independentes por arquivo — reverter UMA function não desarma as outras;
   a frente 3 e a 8 são do MESMO arquivo `criar-pagamento`/`webhook` — reverter
   o webhook reverte W9+8+9 juntas: aceitável, todas aprovadas).
 - Front: redeploy do commit anterior (retomada do botão é aditiva; sem porta,
@@ -148,7 +149,7 @@ Pago apontando para o projeto novo, **(j)** segredos do GitHub Actions
 **Checklist-gate (cada item com prova esperada; sem TODOS verdes, nenhuma
 publicação financeira):**
 1. **(j) `SUPABASE_ACCESS_TOKEN` novo no GitHub** — prova: `publicar-functions`
-   (projeto=loja) executa `supabase functions list` sem 403.
+   (projeto=loja) (histórico: hoje use `ikcous-publicada` ou `savy`) executa `supabase functions list` sem 403.
 2. **(f) Cofre MP do lojista RECRIADO no projeto novo** — lojista cadastra
    token/chave em Ajustes contra o app apontando o novo projeto; prova: teste de
    credencial do painel verde + log da function.
@@ -266,12 +267,45 @@ pós-migração), gate PIX 409 sem chave própria, cartão desligado de nascenç
 Zero risco financeiro; correções de UX/estorno/webhook já no ar.
 
 **Fase 2 — liberação por loja (checklist §4/§5)**: credenciais produtivas +
-chave própria + webhook produtivo com a MESMA chave + `ligar_pix`.
+chave própria + webhook produtivo com a MESMA chave. Desde 30/09 o pagamento
+liga SOZINHO quando a última chave é salva e o teste passa (e a loja não está
+pausada): siga a ordem do §6.5 passo 5, que segura a cobrança deixando a Chave
+de notificações por último (ou pausando por HTTP antes, se já houver as três).
 
 **Fase 3 — primeiro pedido orgânico com PREVENÇÃO ATIVA (não passiva).**
-- **Pausa imediata**: RPC `desligar_pix` (existente) corta NOVAS cobranças
-  por loja em segundos; pedidos pendentes continuam resolvendo (dinheiro
-  não fica preso); rollback por function individual pelo workflow.
+- **Pausa imediata** (corta NOVAS cobranças da loja em segundos; pedidos
+  pendentes continuam resolvendo, dinheiro não fica preso; rollback por
+  function individual pelo workflow). **`desligar_pix` NÃO é RPC de banco**
+  (não existe função SQL com esse nome nas migrations): é uma AÇÃO da edge
+  function `credenciais-mercado-pago`, e "pausar" é o nome dela hoje. O
+  caminho que funciona:
+  1. **Pela tela (parada de emergência com a loja recebendo):** Ajustes →
+     Pagamentos → Mercado Pago → bloco "Receber pelo app (Pix e cartão)" →
+     botão **Pausar**. Ele só aparece com o pagamento pelo app já ligado (o
+     texto da tela é "Para parar de receber Pix e cartão pelo app por um tempo,
+     toque em Pausar."; com transportadora vendendo abre um aviso, confirme em
+     "Pausar mesmo assim").
+  2. **Pela chamada HTTP (se a tela não oferecer o botão ou não abrir) —
+     QUEM EXECUTA É O PROGRAMADOR, não o dono:** este roteiro **não traz receita
+     de leigo** para obter o token (não foi provado passo a passo na tela).
+     `POST` em `<URL do Supabase da loja>/functions/v1/credenciais-mercado-pago`,
+     com o cabeçalho `Authorization: Bearer <token da sessão de um admin logado>`
+     e corpo JSON `{ "acao": "desligar_pix" }`. A function é só de admin (chave
+     pública da loja ou `service_role` NÃO servem); o token vem da sessão do
+     admin logado, sem colar em chat nem em arquivo. Se não houver sessão de
+     admin à mão, pare e avise o dono em vez de improvisar.
+  3. **Como confirmar que pausou:** a resposta traz `"pix_ligado": false` e
+     `"pausado": true`, e a tela passa a dizer "Pausado por você". Se vier
+     `pix_ligado: false` mas `pausado: false`, a loja não tem cadastro de
+     credenciais (vende pelas chaves da plataforma) e não há pausa gravada. Erro
+     409 = a loja ficaria sem forma de pagamento na entrega (ligue uma e repita);
+     erro 500 "não consegui registrar a pausa" = o Pix JÁ foi desligado, mas
+     pode religar sozinho no próximo teste: **repita a pausa**. Erro 500 "Não
+     consegui desligar o PIX na ficha da loja" = **NÃO pausou** (a ficha
+     recusou; nada foi gravado): repita até confirmar — **exceto** se a mensagem
+     disser que a ficha da loja (`store_config id=1`) não existe: isso não se
+     resolve tentando de novo, pare e chame o suporte. Erro 401 = o token não é
+     de um admin atual (ou expirou): pegue um novo da sessão do admin.
 - **Antídoto contra "cobrança confirmada sem pedido"**: reconciliador
   (pg_cron 10 min, provado ativo com 8 runs succeeded) + política P1
   (`pago_apos_expirar` honra pagamento tardio — nunca 2ª cobrança) +
@@ -318,9 +352,10 @@ POSTERIOR, não condição. Checklist do gate (ordem):
      id para o GET de aprovação. **Nunca** token produtivo com order de
      teste.
 3. **[OK] Travas de publicação inerte**: `pagamento_online` DEFAULT false
-   (migration 20261150000000); `ligar_pix` RECUSA sem teste de conexão
-   bem-sucedido + Public Key válida (UI Ajustes — ativação autônoma do
-   lojista, sem editar banco e sem nós); PIX 409 sem chave própria de
+   (migration 20261150000000); desde 30/09 nada liga até a loja ter as TRÊS
+   chaves salvas + teste de conexão verde + não estar pausada (a function
+   liga sozinha nesse ponto, sem editar banco e sem nós; `ligar_pix` virou
+   Retomar e recusa 409 se faltar chave); PIX 409 sem chave própria de
    assinatura (frente 3); cartão nasce desligado; front falha fechada.
 4. **[OK] Destino**: #718 na branch-base da release; #720 em develop;
    nenhum deploy executado.
@@ -329,11 +364,11 @@ POSTERIOR, não condição. Checklist do gate (ordem):
    #711 deve fechar verde (a falha "Código x banco" restante era a da
    base).
 6. **[DECISÃO DO DONO] Merge da #711 + dispatch `publicar-functions`
-   (`projeto=loja`, agora destino ATIVO) + front** — atos dele ou
+   (`projeto=loja`, agora destino ATIVO) (histórico: hoje use `ikcous-publicada` ou `savy`) + front** — atos dele ou
    autorização expressa na hora.
 7. **[PÓS] Primeira transação orgânica**: monitorar (logs webhook,
-   `cron.job_run_details`, `aguardando`>15 min com cobrança), pausa por
-   `desligar_pix` (segundos), rollback por function; P1 honra pagamento
+   `cron.job_run_details`, `aguardando`>15 min com cobrança), pausa pelo
+   botão Pausar (segundos; §6.3 Fase 3), rollback por function; P1 honra pagamento
    tardio; entrega segue manual no painel.
 
 
@@ -364,8 +399,8 @@ rate-limit externo — não é mais bloqueio de arquivo/código.**
 1. **Merge da #711 na base** (ato do dono). Anotar o SHA pré-merge da base
    para rollback: **`ec930dd3`** (= last-known-good pré-release).
 2. **Deploy functions**: dispatch `publicar-functions.yml` DO BRANCH-BASE,
-   `functions=cobranca`, `projeto=loja` (agora = `dekxabvqdsuukijblazl`
-   ATIVO). 5 functions, uma por vez; concurrency do workflow impede
+   `functions=cobranca`, `projeto=loja` (histórico: hoje use `ikcous-publicada` ou `savy`)
+   (então = `dekxabvqdsuukijblazl` ATIVO). 5 functions, uma por vez; concurrency do workflow impede
    cancelamento no meio.
 3. **Verificação pós-functions (read-only)**: `functions list` com
    `updated_at` novos; diagnóstico read-only mostrando os MARCADORES das
@@ -386,20 +421,60 @@ rate-limit externo — não é mais bloqueio de arquivo/código.**
    **Rollback por classe**: classe B = promover o deployment anterior
    (`bc1cbc8`); classe A = re-alias para `95dbc8c5` (registrado; NUNCA o
    `03a89fa2` pré-remoção PII).
-5. **Ativação (quando o dono quiser)**: Ajustes → credenciais MP produtivas
-   → **Testar conexão** (precisa dar verde) → chave de assinatura própria →
-   webhook produtivo com a MESMA chave → `ligar_pix` (recusa 409 sem
-   teste verde + Public Key).
+5. **Ativação (quando o dono quiser)**. 🔴 **Não existe "só testar":** desde
+   30/09 o pagamento pelo app (Pix e cartão) LIGA SOZINHO assim que as três
+   chaves da loja (Public Key, Access Token, Chave de notificações) estão
+   salvas, o último teste de conexão passou e a loja não está pausada.
+   **Salvar credencial nova e Testar conexão rodam o teste e, com credenciais
+   de PRODUÇÃO, já podem ligar cobrança real na hora.** (`testar` reconcilia a
+   ficha: `credenciais-mercado-pago/index.ts`, `estadoDesejado` e
+   `camposDaFicha`.) `ligar_pix` virou **Retomar**: só tira a pausa. **Na
+   tela, o botão Pausar só aparece com o pagamento pelo app já ligado**
+   (parada de emergência); antes disso a tela só mostra "Falta para receber
+   pelo app" (ou "Pausado por você", com Retomar). Por isso o controle da
+   PRIMEIRA ativação é a ordem das chaves: **a Chave de notificações é a
+   última, e o Salvar dela é o que liga**. Em Ajustes → Pagamentos → Mercado
+   Pago, abra o bloco **"Suas chaves"**:
+   1. Preencha **Chave pública (Public Key)** e **Chave secreta (Access
+      Token)** de produção, deixe vazio **Senha dos avisos (Chave de
+      notificações)** e toque em **Salvar chaves**. Falta uma chave, então
+      nada liga (a tela mostra "Falta para receber pelo app").
+   2. Cadastre o webhook produtivo no Mercado Pago e deixe a Chave de
+      notificações à mão — **NÃO cole no app ainda**.
+   3. Quando o dono mandar: cole a MESMA Chave de notificações no campo
+      **Senha dos avisos (Chave de notificações)** e toque em **Salvar
+      chaves**. Esse Salvar roda o teste e, se der verde, **liga a cobrança na
+      hora**; aparece o botão **Pausar** (parada de emergência, §6.3 Fase 3).
+
+   **Ramo "a loja já tem as três chaves salvas" (ou já tinha a Chave de
+   notificações):** nesse estado a tela diz "Tudo preenchido. Toque em Testar
+   conexão (em Avançado) para liberar o pagamento pelo app" — esse toque **LIGA
+   a cobrança**. Então: **NÃO toque em Testar conexão nem em Salvar chaves.**
+   Para segurar o momento, **PAUSE PRIMEIRO, e só depois salve/teste**:
+   - a. A tela não tem botão Pausar nesse estado: a pausa sai pela chamada HTTP
+     `desligar_pix` (§6.3 Fase 3, item 2, **executada pelo programador**), que
+     grava a pausa em qualquer estado desde que a loja já tenha cadastro de
+     credenciais. A pausa vence Salvar e Testar. Confirme que a tela mostra
+     "Pausado por você" + Retomar antes de seguir.
+   - b. Salve/teste o que for preciso (nada liga com a pausa de pé).
+   - c. Quando o dono mandar: **Retomar** (botão da tela; é a ação `ligar_pix`,
+     que recusa com 409, sem gravar nada, se faltar chave ou o teste).
+   Credenciais de TESTE não ligam cobrança real, mas não use isso como
+   controle de produção.
 6. **Rollback exato**:
-   - Functions: dispatch `publicar-functions` do ref **`ec930dd3`** com
-     `functions=cobranca` — repõe o bundle anterior function por function.
+   - Functions: reverta o código para o estado de **`ec930dd3`** e publique pelo
+     `publicar-functions.yml`, com `functions=cobranca`, a loja correta e o SHA completo
+     da execução em `expected_sha` — repõe o bundle anterior function por function.
    - Front: rollback/promote do deployment anterior na Vercel.
-   - PIX OFF instantâneo (independe de rede/CDN): `desligar_pix`.
+   - PIX OFF em segundos: **Pausar** (`desligar_pix` é ação da edge function,
+     não RPC; depende da function no ar e de um admin logado — passo a passo
+     e conferência no §6.3, Fase 3).
    - Dinheiro em voo: reconciliador (10 min) + P1 honram pagamento tardio;
      estorno manual pelo painel se necessário.
 7. **Monitoramento do dia 1 (quando ativo)**: logs da webhook;
    `cron.job_run_details`; pedidos `aguardando` > 15 min com
-   `gateway_payment_id` = alerta imediato + `desligar_pix` se necessário.
+   `gateway_payment_id` = alerta imediato + **Pausar** se necessário (§6.3,
+   Fase 3).
 
 ## 7. Riscos residuais declarados
 

@@ -3133,6 +3133,15 @@ const ROL_DA_145 = [
   "crm__nunca_comprou: uma so, atributos conhecidos (sql, STABLE, SECURITY INVOKER, search_path=public) e sem EXECUTE para PUBLIC, anon ou authenticated",
   "get_admin_customers_paged: uma so, atributos conhecidos (plpgsql, SECURITY DEFINER, VOLATILE, search_path=public, extensions) e EXECUTE so de authenticated e service_role (nem PUBLIC nem anon)",
 ];
+// Lote 155 (20261403000000, o total comprado do cliente e o mesmo no CRM, na lista e na ficha: o corpo de DUAS funcoes muda, nenhuma ACL, nenhuma tabela). A 155a prova o estado novo (o md5 exato dos
+// dois corpos e atributos/ACL conhecidos); a 155b prova a base vigente (o corpo da lista da 20261399993000 e o da ficha da 20261199000000). So catalogo: nenhuma le perfil, endereco, pedido ou cliente e nenhuma chama as funcoes.
+const ROL_DA_155 = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_admin_customers_paged: corpo exato (md5)",
+  "get_admin_user_detail: corpo exato (md5)",
+  "get_admin_customers_paged: uma so, atributos conhecidos (plpgsql, SECURITY DEFINER, VOLATILE, search_path=public, extensions) e EXECUTE so de authenticated e service_role (nem PUBLIC nem anon)",
+  "get_admin_user_detail: uma so, atributos conhecidos (plpgsql, SECURITY DEFINER, VOLATILE, search_path=public) e EXECUTE so de authenticated e service_role (nem PUBLIC nem anon)",
+];
 // Lote 146 (20261399994000, o item "Nao veio" fica com a cliente no ranking de lucro: get_admin_analytics_v2 redefinida pela segunda vez, sem objeto novo). A 146a e a 146b tem o MESMO rol de 4 linhas
 // da 135 (controle, corpo exato (md5), atributos e ACL); a 146a espera o corpo desta migration e a 146b o vigente de antes (o da 20261399970000). So catalogo: nenhuma le pedido, devolucao ou estorno e nenhuma chama a funcao.
 const ROL_DA_146 = [...ROL_DA_135];
@@ -3179,7 +3188,38 @@ const ROL_DA_151_BASE = [
   "banners: tabela comum com RLS ligada",
   "banners: image_url text preservada",
 ];
+// Lote 154 (20261402000000, o Inicio mostra o dinheiro a devolver e a margem do Financeiro: painel_inicio redefinida, sem objeto novo). A 154a e a 154b tem o MESMO rol de 5 linhas (controle; de painel_inicio,
+// corpo exato (md5), atributos e ACL; e o fin_dre vivo, que o corpo novo le e tem de devolver lucro_liquido e receita_liquida); a 154a espera o corpo da migration nova e a 154b o vigente de antes (o da
+// 20261399300000). So catalogo: nenhuma le pedido, devolucao, estorno ou lancamento e nenhuma chama as funcoes.
+const ROL_DA_154 = [
+  "controle: funcoes de public visiveis a este papel",
+  "painel_inicio: corpo exato (md5)",
+  "painel_inicio: assinatura e atributos conhecidos (plpgsql, SECURITY DEFINER, STABLE, search_path=public, uma so)",
+  "painel_inicio: EXECUTE authenticated e service_role, sem PUBLIC ou anon",
+  "fin_dre: devolve lucro_liquido e receita_liquida",
+];
+// Lote 156 (20261404000000, a observacao da inspecao da devolucao so a loja ve: o corpo de devolucao_detalhe muda e authenticated perde a leitura de UMA coluna de public.devolucoes; nenhum objeto novo). A 156a e a 156b
+// tem o MESMO rol de 8 linhas (controle; devolucao_detalhe: corpo exato (md5), atributos e ACL; em devolucoes: a leitura da observacao por authenticated, a das outras colunas, anon e PUBLIC sem leitura, service_role com a
+// leitura inteira e a RLS ligada); a 156a espera o corpo e o privilegio da migration nova e a 156b o vigente de antes (o da 20261399992000, a439...). So catalogo: nenhuma le devolucao e nenhuma chama a funcao.
+const ROL_DA_156 = [
+  "controle: funcoes de public visiveis a este papel",
+  "devolucao_detalhe: corpo exato (md5)",
+  "devolucao_detalhe: uma so, atributos conhecidos (plpgsql, SECURITY DEFINER, STABLE, search_path=public, retorno jsonb) e EXECUTE de authenticated, sem PUBLIC nem anon",
+  "devolucoes: authenticated le observacao_inspecao",
+  "devolucoes: authenticated le as outras colunas (quantas)",
+  "devolucoes: anon sem leitura e PUBLIC sem privilegio (tabela e coluna)",
+  "devolucoes: service_role le a tabela e a observacao_inspecao",
+  "devolucoes: RLS ligada",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "156a-conferir-a-observacao-da-inspecao-so-a-loja-ve-aplicado": ROL_DA_156,
+  "156b-antes-a-observacao-da-inspecao-so-a-loja-ve-base-vigente": ROL_DA_156,
+  "154a-conferir-o-inicio-mostra-o-dinheiro-a-devolver-aplicado": ROL_DA_154,
+  "154b-antes-o-inicio-mostra-o-dinheiro-a-devolver-base-vigente": ROL_DA_154,
+  "155a-conferir-o-total-comprado-do-cliente-e-o-mesmo-no-crm-na-lista-e-na-ficha-aplicado":
+    ROL_DA_155,
+  "155b-antes-o-total-comprado-do-cliente-e-o-mesmo-no-crm-na-lista-e-na-ficha-base-vigente":
+    ROL_DA_155,
   "151a-conferir-o-banner-tem-imagem-propria-no-computador-aplicado": [
     ...ROL_DA_151_BASE,
     "banners: desktop_image_url text opcional, sem default nem privilegio proprio",

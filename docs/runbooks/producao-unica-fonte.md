@@ -167,9 +167,9 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
          `send-order-confirmation`: NAO e disparar o workflow no SHA antigo, e sim `git revert`
          num commit NOVO do ramo principal e publicar esse SHA pelo caminho normal; a versao
          anotada acima e o que se compara depois.
-      **Se a release mudar qualquer OUTRA function** (fora das onze acima), a loja fica PARADA pelo
-      nome, sem comando: o caminho central nao a publica, e como seguir (canal novo no workflow ou
-      publicacao separada) e decisao do dono.
+      Nas duas lojas, o caminho central tambem publica `credenciais-email` e `auth-send-email`,
+      somente pelo nome. **Se a release mudar qualquer OUTRA function** (fora dessas treze), a loja
+      fica PARADA pelo nome, sem comando: canal novo ou publicacao separada e decisao do dono.
    7. Passo 2 de novo. So segue com PRONTO.
    8. **Faixa historica 20261160..20261166 (so a IKCOUS/CAF; lote com `nuncaAplicar`).** O
       ledger da CAF salta de 20261150 para 20261167, mas o efeito dessas 7 migrations JA ESTA no
@@ -1953,7 +1953,27 @@ BLOQUEIA com o nome dela. O cadastro de UMA vez, na entrada do cliente:
    dominio no projeto Vercel;
 2. segredo do token da conta dela no repositorio (o dono grava) e o alvo dela nos workflows
    `aplicar-migrations.yml`, `conferir-banco-da-loja.yml` e `publicar-functions.yml` (mesmas
-   travas do alvo `savy`: ref fixo, segredo proprio, `expected_sha`);
+   travas do alvo `savy`: ref fixo, segredo proprio, `expected_sha`).
+   **Lista fechada do script de conferencia (sem isto o alvo novo nao roda ou, pior, usa o token
+   errado):** `scripts/publicacao/conferir-banco.cjs` mantem lista PROPRIA de projetos aceitos
+   (`REFS_POR_PROJETO`: `loja`, `sandbox`, `ikcous-publicada`, `savy`; linhas 232-246) e so escolhe
+   token proprio para a CAF e para a Savy (`main()`, linhas 3997-4008): qualquer outro alvo cairia
+   no `SUPABASE_ACCESS_TOKEN` legado. A loja nova entra ali com (a) ref fixo de 20 letras minusculas
+   (nunca texto livre) e um ramo proprio na `main()` com o segredo PROPRIO dela e a mensagem de
+   parada propria, sem fallback para o legado nem para o de outra loja; esse mesmo ramo tem de
+   recusar o job de ledger para ela e PARAR em 401/403, como `ehCaf`/`ehSavy` fazem (linhas
+   4032-4052 e 4094); (b) em `aplicar-migrations.yml` e `conferir-banco-da-loja.yml`, a opcao do
+   alvo, o segredo proprio dele e o alvo novo dentro do `!=` da expressao do segredo legado
+   (`inputs.projeto != 'ikcous-publicada' && inputs.projeto != 'savy' && ...`; senao a loja nova
+   recebe o token legado); em `publicar-functions.yml` os passos do alvo novo com o segredo proprio,
+   como os da Savy; (c) os testes que fixam os alvos de hoje
+   mudam junto, de proposito: `tests/ci_alvo_caf_explicita_test.ts` (o `REFS_POR_PROJETO` exato,
+   linhas 324-335) e `tests/ci_alvo_savy_explicita_test.ts` (a lista de opcoes e as expressoes de
+   segredo, byte a byte, linhas 122-126 e 209-239). Termine com UMA conferencia so de leitura pelo
+   alvo novo: workflow `conferir-banco-da-loja.yml` com `projeto=<alvo novo>`,
+   `consulta=149a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado` e `expected_sha` completo;
+   esperado: 6 linhas, todas `ok = true` (so catalogo e uma contagem, nenhum dado de pessoa).
+   `401/403` ali = token errado ou sem acesso: PARE, nao tente outro segredo.
 3. uma linha em `scripts/frota/canais-de-backend.json`. Se for loja de TESTE, a linha vai em
    `scripts/frota/politica.json` (`lojasSemBackendGerenciado`).
 4. **Reconciliacao de pagamentos (sem isto o pagamento cujo aviso se perdeu nao e achado):** no Vault
@@ -1970,7 +1990,117 @@ BLOQUEIA com o nome dela. O cadastro de UMA vez, na entrada do cliente:
    `instalar-chave-da-loja.yml` (script `scripts/publicacao/instalar-chave-da-loja.cjs`). Hoje o
    script aceita so IKCOUS e Savy: para a loja nova, acrescente o alvo dela ali e no workflow (mesmas
    travas) antes de rodar.
-7. **Chaves de push (VAPID):** antes do teste de ponta a ponta, configure nas functions da loja
+7. **E-mail do primeiro cadastro (antes da entrega; faca ANTES do passo 8):** o codigo que a
+   `send-otp-email` manda e' o do PEDIDO (exige e-mail, whatsapp e fragmento do pedido,
+   `supabase/functions/send-otp-email/index.ts:150-155`; sem remetente responde `sem_remetente`,
+   linhas 169-175; so depois gera o codigo do pedido, 177-181), nao o do cadastro da conta. O
+   cadastro usa o Supabase Auth (`supabase.auth.signUp`, `src/contexts/AuthContext.tsx:1351-1364`);
+   e quando o Auth manda o e-mail pela function `auth-send-email`, ela tambem precisa de remetente e falha sem ele
+   (`supabase/functions/auth-send-email/index.ts:110-118`).
+   (a) **Meca a configuracao do Auth da loja** pelas duas ferramentas de leitura da secao "E-mail do
+   login (Supabase Auth) por loja", abaixo: `medir-auth-da-loja.yml` (o cadastro exige confirmacao por
+   e-mail? ha remetente proprio?) e `ativar-email-do-login.yml` com `acao=medir` (o hook de e-mail esta
+   ativo? a function `auth-send-email` esta ativa e com segredo?; ela so le, `ativar-email-do-login.cjs:295-305`).
+   Hoje as duas aceitam so `ikcous-publicada` e `savy` (`.github/workflows/medir-auth-da-loja.yml`,
+   `.github/workflows/ativar-email-do-login.yml`): a loja nova entra nelas com as mesmas travas do
+   passo 6 antes de medir. Este roteiro nao afirma se a confirmacao esta ligada em nenhuma loja: quem
+   diz e' a medicao.
+   (b) Se a confirmacao for exigida ou o hook estiver ativo, o remetente (passo 10) tem de existir: Gmail
+   cadastrado no painel da loja (ou os segredos de ambiente do remetente), senao o e-mail do cadastro
+   nao sai. `ativar` PARA com "Gmail ainda nao cadastrado no painel" enquanto isso faltar
+   (`ativar-email-do-login.cjs:327-328`). NAO desligue a confirmacao por e-mail para "resolver": isso
+   e' decisao de produto, nao deste roteiro.
+   (c) **Prova:** um cadastro real, pelo app da loja nova, com um e-mail FORA da equipe do projeto
+   Supabase (sem remetente proprio o envio padrao so entrega para a equipe). O e-mail tem de chegar e a
+   confirmacao tem de abrir. O e-mail da futura administradora (passo 8) serve, se ela nao for da
+   equipe; nao o copie para este repositorio nem para o relatorio.
+8. **Primeira administradora (sem isto o painel recusa todo mundo e o dono da loja nao pode ser
+   cadastrado):** aplicar as migrations NAO cria administradora. O cadastro comum nasce `customer`
+   (`handle_new_user`, `supabase/migrations/20260806000000_baseline_do_schema_vivo.sql:2960-2966`,
+   mantido por `20261399940000_o_cadastro_cria_o_perfil_em_toda_loja.sql:21-25`) e o painel manda para
+   fora quem nao e admin (`src/components/layouts/AdminAreaGate.tsx:112-118`). Ser administradora e'
+   gravar `admin` nas DUAS fontes do cargo: `public.profiles.role` e
+   `auth.users.raw_app_meta_data ->> 'role'` (nao existe `user_roles`: `is_admin_atual()` le so essas
+   duas, `20261197000000_dinheiro_exige_admin_atual.sql:286-317`). O app nao faz isto sozinho:
+   `definir_cargo` so atende o DONO da loja, ja administrador nas duas fontes
+   (`20261383000000_so_o_dono_da_loja_define_cargo.sql:266-276`), e o dono so e' cadastrado a partir
+   de uma conta que ja e admin (`docs/runbooks/definir-o-dono-da-loja.md:149-167`, conferencia `1, 1, 1`;
+   se nao der, PARAR). Por baixo, `prevent_role_change` recusa mudar cargo numa sessao de login direto,
+   sem JWT (a do SQL Editor, GUC `role` = `none`, segundo `20261383000000...:359-360`):
+   "Unauthorized: You cannot change your own role"
+   (`20261199000000_portas_do_painel_exigem_admin_atual.sql:350-370`; prova em
+   `tests/banco/definir-cargo-so-o-dono-viva.cjs:656-686`). O que as protecoes deixam passar sem JWT e'
+   a sessao no papel `postgres`/`service_role` (`is_admin()` e `is_admin_atual()` aceitam esse papel;
+   `tr_papel_so_pelo_definir_cargo` tambem, `20261383000000...:357-363`): `SET LOCAL ROLE postgres`
+   na mesma transacao do `UPDATE`, e o gatilho de sincronia leva o cargo ao `auth.users` (prova no
+   Postgres de CI: `tests/banco/definir-cargo-so-o-dono-viva.cjs:636-655`).
+   **PENDENTE: procedimento nao verificado no SQL Editor de uma loja de verdade.** Sabido: o
+   mecanismo, provado por leitura e pelo teste acima num Postgres efemero com papel `postgres`
+   emulado. Falta: alguem rodar a Tela P2 abaixo uma vez no SQL Editor real (ensaie na loja `sandbox`,
+   com conta de teste, antes de usar na loja nova) e confirmar que o editor aceita `SET LOCAL ROLE
+   postgres`. Se nao aceitar, o `UPDATE` e' recusado inteiro e nada muda (e' seguro): volte a decisao
+   para quem escreveu este roteiro, nao improvise outro caminho (nao ha RPC para isto no repositorio).
+   Quem faz: a pessoa dona da loja, na conta dela do Supabase; o e-mail e' dado pessoal e o agente
+   nunca o digita nem o le (mesma regra e mesma **regra geral de erro** de
+   `docs/runbooks/definir-o-dono-da-loja.md`, secao 3.3: tela diferente ou erro = pare e avise so o
+   numero da tela, sem copiar a mensagem). Uma tela por vez:
+
+   **Tela P0. A conta existe.** Ela se cadastra no app da loja nova (tela de Cadastro) e confirma
+   o e-mail (passo 7). Deu certo se ela consegue entrar na loja. Se o e-mail de confirmacao nao chega,
+   **pare e avise "Tela P0"**: o passo 7 nao esta pronto.
+
+   **Tela P1. Abrir o editor e conferir que ela ainda e cliente.** Faca as Telas 1 e 2 da secao 3.3 de
+   `definir-o-dono-da-loja.md` (projeto da loja certa, SQL Editor, consulta nova; deixe o papel em
+   `postgres`) e, em seguida, a Tela 3 dela (so leitura). Aqui o resultado certo e' **`1, 0, 0`**
+   (a conta existe e ainda nao e admin em nenhuma fonte). `0, 0, 0` = e-mail errado ou loja errada;
+   primeiro numero 2 ou mais = **pare e avise "deu 2 na Tela P1"**; `1, 1, 1` = ela ja e admin, pule
+   para a Tela P3; `1, 1, 0` ou `1, 0, 1` = **pare e avise "Tela P1"** (as duas fontes do cargo
+   discordam; decisao do dono do produto, nao se mexe aqui).
+
+   **Tela P2. Tornar administradora.**
+   1. Apague o texto da caixa, cole o texto abaixo e troque `<e-mail-da-administradora>` (mantendo
+      as aspas simples). **Ele aparece DUAS vezes (no `UPDATE` e no `SELECT` final): troque nas duas,
+      pelo MESMO e-mail da Tela P1.** Trocar so no `UPDATE` da `0, 0, 0` no `SELECT`; trocar so no
+      `SELECT` da `1, 0, 0`. Clique em **Run**. (Aqui o marcador e' `<e-mail-da-administradora>`,
+      nao o `<e-mail-do-dono>` das Telas 3 e 4 do outro roteiro.)
+
+      ```sql
+      BEGIN;
+      SET LOCAL ROLE postgres;
+      UPDATE public.profiles p
+         SET role = 'admin'
+        FROM auth.users u
+       WHERE u.id = p.id
+         AND lower(u.email) = lower('<e-mail-da-administradora>');
+      COMMIT;
+      SELECT count(*) AS contas_com_esse_email,
+             count(*) FILTER (WHERE (u.raw_app_meta_data ->> 'role') = 'admin') AS admin_em_auth_users,
+             count(*) FILTER (WHERE p.role = 'admin') AS admin_em_profiles
+        FROM auth.users u
+        LEFT JOIN public.profiles p ON p.id = u.id
+       WHERE lower(u.email) = lower('<e-mail-da-administradora>');
+      ```
+
+      - Vai aparecer: uma tabelinha com tres numeros.
+      - **Deu certo se** forem `1, 1, 1`. Nao rode de novo sem falar com o programador (ver a Tela P3).
+      - Se aparecer diferente, **pare e avise "Tela P2"**, sem rodar de novo:
+        - `1, 0, 0`: nada mudou. Causa provavel: a conta nao tem linha em `profiles` (o `UPDATE` casa
+          0 linhas e nao da erro); outra possibilidade e' um dos dois e-mails digitado diferente.
+        - um erro em vermelho com a frase **`You cannot change your own role`**: o editor nao rodou
+          como `postgres` e a execucao inteira foi desfeita, nada mudou;
+        - qualquer outro erro, `0, 0, 0`, `1, 1, 0` ou `1, 0, 1`.
+        Antes de tentar outra coisa, clique em **New query** para comecar numa consulta limpa.
+
+   **Tela P3. Limpar o rastro e fechar.** Apague a consulta salva e feche a aba (Tela 5 da secao 3.3,
+   passo 1). Ela **sai da conta e entra de novo**, para o login ler o cargo novo (o cargo
+   guardado no login dura ate cerca de 1 hora, `20261383000000...:73`), e abre o painel. Se ela nao
+   entrar mesmo com `1, 1, 1` na Tela P2 (aparece "Acesso restrito a administradores"), **pare e
+   avise "Tela P3"**: pode ter sido promovida OUTRA conta (e-mail de outra pessoa da loja digitado
+   igual nas duas telas); **NAO repita a Tela P2**, senao uma conta alheia fica como administradora.
+   Diga ao programador apenas "cadastrei a primeira administradora na loja X".
+   Depois disto a conta cumpre o que o cadastro do dono pede: siga as Telas 3 a 5 de
+   `definir-o-dono-da-loja.md` (secao 3.3) e a consulta 88c.
+9. **Chaves de push (VAPID):** antes do teste de ponta a ponta, configure nas functions da loja
    (Supabase → Secrets) `VAPID_PUBLIC_KEY` e `VAPID_PRIVATE_KEY`, sempre do MESMO par. O procedimento
    de [DEPLOYMENT.md](../../DEPLOYMENT.md) usa `web-push generate-vapid-keys` e guarda o par em
    `vapid_keys.json`: guarde-o em local seguro, fora do versionamento; nunca cole os valores em
@@ -1990,7 +2120,7 @@ BLOQUEIA com o nome dela. O cadastro de UMA vez, na entrada do cliente:
    aparelho; NAO use a tela de campanhas para esse teste (ela abre com publico todos).
    No teste de pagamento, confira tambem o aviso ao lojista. **Se esquecer as chaves, o aviso de pagamento ao lojista nao sai; o erro fica so no
    log da function, sem erro visivel na compra.**
-8. **Remetente de e-mail do comprovante:** antes do teste de ponta a ponta, deixe pelo menos UMA
+10. **Remetente de e-mail do comprovante:** antes do teste de ponta a ponta, deixe pelo menos UMA
    origem pronta: `SMTP_USER` e `SMTP_PASSWORD` nos Secrets das functions da loja, OU o Gmail da
    loja cadastrado no painel (Ajustes → Minha loja → E-mail da loja). No painel, siga o passo a
    passo da verificacao em duas etapas e da senha de app, salve e use **Enviar e-mail de teste**

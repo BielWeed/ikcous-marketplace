@@ -118,8 +118,8 @@ describe("formulário de cupom — troca de identidade sem desmontar a tela", ()
   it("mostra e salva somente os dados de B, inclusive os campos vazios", async () => {
     await mostrar(cupomA.id);
     expect(campo("code").value).toBe("CUPOMA");
-    expect(campo("value").value).toBe("10");
-    expect(campo("min-purchase").value).toBe("80");
+    expect(campo("value").value).toBe("10,00");
+    expect(campo("min-purchase").value).toBe("80,00");
 
     await mostrar(cupomB.id);
     conferirB();

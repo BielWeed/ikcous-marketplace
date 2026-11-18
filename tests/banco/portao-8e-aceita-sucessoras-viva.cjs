@@ -150,6 +150,11 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     // tests/banco/o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-viva.cjs; `noEstado` a desfaz antes (a-busca-de-clientes-posterior.cjs, o rollback dela devolve as duas).
     s.nome !==
       "20261399993000_o_crm_e_a_lista_de_clientes_nao_contam_a_mesma_pessoa_duas_vezes.sql" &&
+    // A 20261403000000 (o total comprado do cliente e o mesmo no CRM, na lista e na ficha) e a QUARTA sucessora de get_admin_customers_paged (99 -> 230 -> 392 -> 3993 -> 4030) e a PRIMEIRA de
+    // get_admin_user_detail (99 -> 4030): UMA migration, duas funcoes da 8e, com a PROVA PROPRIA em tests/banco/o-total-do-cliente-e-o-mesmo-nas-tres-telas-viva.cjs; `noEstado` a desfaz
+    // antes (a-busca-de-clientes-posterior.cjs, o rollback dela devolve as duas de uma vez), como faz com a 3993.
+    s.nome !==
+      "20261403000000_o_total_comprado_do_cliente_e_o_mesmo_no_crm_na_lista_e_na_ficha.sql" &&
     // A 20261394000000 (o pedido de visitante na entrega tem freio) so redefine a v23 e a v24, em cima da 350 e da 384; nenhuma das duas e' funcao
     // da 8e. Entra em sucessoras-da-99.cjs so para cair antes da 384 (pedido-pelo-app-exige-conta-posterior.cjs chama
     // o-pedido-de-visitante-na-entrega-posterior.cjs); aqui sai do rol pela mesma razao da 384 e da 350.
@@ -204,6 +209,10 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     // tests/banco/o-grafico-do-financeiro-soma-so-as-contas-ativas-viva.cjs; `noEstado` a desfaz antes (o-grafico-do-financeiro-posterior.cjs), como a 3993.
     s.nome !==
       "20261399985000_o_grafico_do_financeiro_soma_so_as_contas_ativas.sql" &&
+    // A 20261402000000 (o Inicio mostra o dinheiro a devolver e a margem do Financeiro) e a sucessora de painel_inicio da 3993 (99 -> 12 -> 28 -> 390 -> 398 -> 3993 -> 1402): tem a PROVA PROPRIA em
+    // tests/banco/o-inicio-dinheiro-a-devolver-viva.cjs; `noEstado` a desfaz antes (o-inicio-dinheiro-a-devolver-posterior.cjs), como a 3993.
+    s.nome !==
+      "20261402000000_o_inicio_mostra_o_dinheiro_a_devolver_e_a_margem_do_financeiro.sql" &&
     // A 20261399992000 (o item que a lojista marcou "Nao veio" pode ser devolvido de novo) e a SEGUNDA sucessora de devolucao_elegibilidade e de devolucao_detalhe
     // (99 -> 39992) e a de solicitar_devolucao (175 -> 39992): UMA migration, duas funcoes da 8e (a terceira, solicitar_devolucao, nao e' da 8e). A 8e ja a aceita
     // (consulta 8e, CTE sucessoras); `noEstado` a desfaz antes (o-item-que-nao-veio-posterior.cjs, o rollback dela devolve as tres de uma vez), como a 3980.
@@ -221,7 +230,10 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
       "20261399995000_o_lucro_do_ranking_casa_com_o_financeiro_pedido_a_pedido.sql" &&
     // A 20261399997000 (o pedido guarda quem vai receber) so redefine a v23 e a v24, em cima da 397; nenhuma e funcao da 8e. Entra em sucessoras-da-99.cjs so para cair antes da 397
     // (o-desconto-do-cupom-posterior.cjs chama o-pedido-guarda-quem-vai-receber-posterior.cjs primeiro); aqui sai do rol pela mesma razao da 397.
-    s.nome !== "20261399997000_o_pedido_guarda_quem_vai_receber.sql",
+    s.nome !== "20261399997000_o_pedido_guarda_quem_vai_receber.sql" &&
+    // A 20261404000000 (a observacao da inspecao da devolucao e so da loja) e a TERCEIRA sucessora de devolucao_detalhe (99 -> 3992 -> 404): tem a PROVA PROPRIA em
+    // tests/banco/a-observacao-da-inspecao-so-a-loja-ve-viva.cjs; `noEstado` a desfaz antes (a-observacao-da-inspecao-posterior.cjs, o rollback dela devolve o corpo da 3992 e o GRANT de tabela inteira), como a 3992.
+    s.nome !== "20261404000000_a_observacao_da_inspecao_so_a_loja_ve.sql",
 );
 
 const REPO = path.resolve(__dirname, "..", "..");
@@ -387,6 +399,10 @@ let C; // a conexão única com o clone do rodar-isolado
 async function noEstado(montar, textos = [SQL_8E]) {
   await C.query("BEGIN");
   try {
+    // A 20261404000000 (a observacao da inspecao e so da loja) sucede o corpo da 3992 (devolucao_detalhe) e o GRANT de public.devolucoes: sai ANTES da 3992 (so se no ar).
+    await require("./a-observacao-da-inspecao-posterior.cjs").desfazerAObservacaoDaInspecaoNaTransacao(
+      C,
+    );
     // A 20261399992000 (o item que nao veio pode ser devolvido de novo) sucede os corpos da 99 (devolucao_elegibilidade, devolucao_detalhe) e da 175 (solicitar_devolucao): sai PRIMEIRO (so se no ar).
     await require("./o-item-que-nao-veio-posterior.cjs").desfazerOItemQueNaoVeioNaTransacao(
       C,
@@ -397,6 +413,10 @@ async function noEstado(montar, textos = [SQL_8E]) {
     );
     // A 20261399985000 (o grafico do Financeiro soma so as contas ativas) sucede o fin_resumo da 3993: sai PRIMEIRO (so se no ar).
     await require("./o-grafico-do-financeiro-posterior.cjs").desfazerGraficoDoFinanceiroNaTransacao(
+      C,
+    );
+    // A 20261402000000 (o Inicio mostra o dinheiro a devolver) sucede o painel_inicio da 3993: sai PRIMEIRO (so se no ar).
+    await require("./o-inicio-dinheiro-a-devolver-posterior.cjs").desfazerInicioDinheiroADevolverNaTransacao(
       C,
     );
     // A 20261399930000 (o caixa e a conta recusam valor que nao e numero) sucede a 370 em fin_caixa_abrir e a 99 em fin_conta_salvar: sai PRIMEIRO (ordem inversa da aplicacao; so se no ar).

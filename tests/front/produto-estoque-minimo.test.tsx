@@ -377,6 +377,28 @@ describe("AdminProductFormView — Avisar quando o estoque chegar a", () => {
       },
     );
 
+    it("2147483648 mostra aviso visível, desliga salvar e não grava nem por envio sintético", async () => {
+      await montar("prod-1");
+      await digitarCampo(ID, "2147483648");
+
+      const secaoCodigos = secao("Códigos e câmera");
+      expect(secaoCodigos.textContent).toContain(MENSAGEM_GRANDE_DEMAIS);
+      const cabecalho = secaoCodigos.querySelector("button");
+      expect(cabecalho?.getAttribute("aria-expanded")).toBe("true");
+      expect(campo().closest("[hidden]")).toBeNull();
+      expect(botao("Salvar").disabled).toBe(true);
+      expect(updateProduct).not.toHaveBeenCalled();
+
+      await act(async () => {
+        const form = document.querySelector("form") as HTMLFormElement;
+        form.dispatchEvent(
+          new Event("submit", { bubbles: true, cancelable: true }),
+        );
+        await esperar(100);
+      });
+      expect(updateProduct).not.toHaveBeenCalled();
+    });
+
     it("o erro abre a seção 'Códigos e câmera' sozinho", async () => {
       await montar("prod-1");
       await digitarCampo(ID, "-3");

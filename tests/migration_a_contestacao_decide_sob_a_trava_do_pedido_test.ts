@@ -429,6 +429,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/solicitar-estorno-recusas-e-corrida-viva.cjs",
     "tests/banco/reembolso-manual-reserva-viva.cjs",
     "tests/banco/analise-por-categoria-so-conta-pedido-pago-viva.cjs",
+    // get_admin_analytics_v2 (corpo da 20261399995000): o "Ticket medio" e o "Pedidos" do painel (loja vazia = 0, 5 e 6 pedidos que contam, centavos, o que nao conta fica fora; mutantes no clone).
+    "tests/banco/o-ticket-medio-e-a-contagem-de-pedidos-do-painel-viva.cjs",
     // 20261347000000: o codigo de barras nao repete entre produto e variacao (gatilhos, corrida real com 2 conexoes, duplicata antiga, pre-voo e rollback sem tocar dado).
     "tests/banco/codigo-de-barras-entre-tabelas-viva.cjs",
     // 20261352000000: o produto e a grade salvam numa transacao so (travas da compra online, versao conferida, PRD01, mutantes, 2 conexoes reais, rollback e consultas 84a/84b).
@@ -891,6 +893,18 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/a-loja-recebe-o-plano-por-porta-unica-viva.cjs",
     // Onda 1.5.207 (sem migration): o aviso de cobranca duplicada respeita o ciclo da reserva (7 provas, 2 mutantes).
     "tests/banco/aviso-de-cobranca-duplicada-ciclo-de-reserva.cjs",
+    // 20261402000000: o Inicio mostra o dinheiro a devolver e a margem do Financeiro (painel_inicio ganha dinheiro_a_devolver {valor, pedidos} e mes.receita_liquida; a conta da lista "Devolver agora" em
+    // centavos, cenarios compartilhados com o teste do front, JSON igual fora das duas chaves, 10 mutantes na rodada padrao, controle com o corpo anterior, rollback byte a byte, pre-voo, conferencia sabotada e consultas 154a/154b).
+    "tests/banco/o-inicio-dinheiro-a-devolver-viva.cjs",
+    // 20261403000000: o total comprado do cliente e o mesmo no CRM, na lista e na ficha (get_admin_customers_paged soma o balcao do mesmo WhatsApp e get_admin_user_detail ganha balcao_mesmo_whatsapp, ambos lidos de crm__vendas;
+    // com e sem o 55, balcao cancelado e sem pagar fora, WhatsApp em duas contas conta uma vez, ordenacao estavel, controle com os corpos antigos, 13 mutantes, rollback byte a byte, conexao sem BEGIN, pre/pos-voo e consultas 155a/155b).
+    "tests/banco/o-total-do-cliente-e-o-mesmo-nas-tres-telas-viva.cjs",
+    // 20261404000000: a observacao da inspecao da devolucao e so da loja (devolucao_detalhe tira a chave para quem nao e o admin atual e authenticated perde o SELECT da tabela devolucoes inteira, ficando o SELECT
+    // por coluna nas outras 34; a cliente dona sem a chave e com permission denied na coluna, admin atual com a nota, mutantes, rollback byte a byte, conexao sem BEGIN, pre/pos-voo e consultas 156a/156b).
+    "tests/banco/a-observacao-da-inspecao-so-a-loja-ve-viva.cjs",
+    // 20261400000000: valores negativos nao entram no banco (taxa de entrega local, preco do produto, preco da variacao e valor do cupom: CHECK >= 0 e <> NaN, criadas JA VALIDADAS;
+    // 23514 em todas as portas, zero e NULL de variacao seguem, linha antiga ruim faz a migration se recusar (B1_BASELINE_DIVERGENT), 12 mutantes, reaplicar, rollback, falha no meio e lock_timeout).
+    "tests/banco/valores-negativos-prova.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(

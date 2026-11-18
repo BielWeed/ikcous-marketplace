@@ -118,8 +118,17 @@ export function criarBufferDoLeitorFisico(
       return;
     }
 
+    if (evento.key === "Tab") {
+      limpar();
+      return;
+    }
+
     if (evento.key === "Enter") {
-      if (!burstEmExcesso && buffer.length >= tamanhoMinimo) {
+      if (
+        !burstEmExcesso &&
+        buffer.length >= tamanhoMinimo &&
+        agora() - instanteDaUltimaTecla <= intervaloMaximoMs
+      ) {
         // Sem isso o Enter também submeteria o formulário que estiver por
         // perto (o leitor físico manda Enter de verdade, não um evento
         // sintético isolado).
@@ -130,7 +139,7 @@ export function criarBufferDoLeitorFisico(
       return;
     }
 
-    // 4. Teclas de controle (Shift, Tab, F5, setas...) não fazem parte do
+    // 4. Teclas de controle (Shift, F5, setas...) não fazem parte do
     // código em si, mas Shift PODE preceder uma letra maiúscula (Code 39
     // usa letras) — ignora sem limpar o buffer em andamento.
     if (evento.key.length !== 1) {

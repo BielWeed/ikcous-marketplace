@@ -79,7 +79,7 @@ export function mensagemDeErroAdminLogin(error: unknown): string {
     return MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA;
   }
   if (status === 400 || message.includes("Invalid login credentials")) {
-    return "Email ou senha administrativos incorretos.";
+    return "E-mail ou senha administrativos incorretos.";
   }
   // Causa não distinguível (rede, erro inesperado do servidor, provedor de
   // e-mail desativado): nunca presumir "senha incorreta" sem confirmação, e
@@ -174,7 +174,7 @@ export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
                 htmlFor="admin-email"
                 className="mb-2 ml-1 block text-[11px] font-black uppercase tracking-widest text-zinc-500"
               >
-                Email
+                E-mail
               </label>
               <input
                 type="email"

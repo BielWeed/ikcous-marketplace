@@ -5,6 +5,7 @@ import {
   formatarPercentual,
   variacaoPercentual,
 } from "@/lib/crm";
+import { percentualDaReceita } from "@/lib/financeiro";
 import { ULTIMO_DIA_DA_MARGEM_EM_FORMACAO } from "@/lib/margem-em-formacao";
 import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import type { PainelInicio } from "@/types/painel";
@@ -44,10 +45,19 @@ export function NumerosDoMes({
   const dia = useDiaDeSaoPaulo();
   const [explicando, setExplicando] = useState(false);
   const idDaExplicacao = useId();
-  const margem =
-    mes?.lucroEstimado != null && mes.receita != null && mes.receita > 0
-      ? (mes.lucroEstimado / mes.receita) * 100
-      : null;
+  // A margem é a "Margem líquida" do Financeiro: lucro sobre a receita LÍQUIDA do mês (a do mesmo `fin_dre` do lucro),
+  // com a regra dele (base zero ou negativa não tem margem). Banco que ainda não manda a receita líquida: a conta de
+  // sempre, lucro sobre a receita das vendas pagas.
+  const receitaLiquida = mes?.receitaLiquida ?? null;
+  const margemDoFinanceiro = receitaLiquida != null;
+  let margem: number | null = null;
+  if (mes?.lucroEstimado != null) {
+    if (receitaLiquida != null) {
+      margem = percentualDaReceita(mes.lucroEstimado, receitaLiquida);
+    } else if (mes.receita != null && mes.receita > 0) {
+      margem = (mes.lucroEstimado / mes.receita) * 100;
+    }
+  }
   // O lucro estimado já desconta as despesas do mês INTEIRO, mas a receita só
   // vai até hoje: com lucro negativo na primeira metade do mês, o percentual
   // compara um mês cheio de contas com poucos dias de vendas (R$ 200 contra
@@ -154,6 +164,9 @@ export function NumerosDoMes({
             >
               Desconta estornos, devoluções, custos e despesas, mesmo não pagas.
               Sem custo cadastrado, usa R$ 0 de custo.
+              {margemDoFinanceiro
+                ? " A margem é a mesma do Financeiro: o lucro dividido pela receita líquida do mês."
+                : null}
             </p>
           ) : null}
         </div>

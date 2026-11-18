@@ -114,6 +114,26 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+it.each([
+  { code: "PGRST301", message: "JWT expired" },
+  { message: "JWT expired" },
+  { status: 401, message: "Unauthorized" },
+])(
+  "sessão vencida ao gravar regras do cupom manda entrar de novo: %j",
+  async (erroDeSessao) => {
+    gravarCupom.mockResolvedValue({
+      error: erroDeSessao,
+    });
+    await montar();
+    await digitar("#coupon-code", "NOVO");
+    await clicar("Salvar Cupom");
+    expect(erro).toHaveBeenCalledWith(
+      "Sua sessão expirou ou você não tem permissão para salvar. Saia da conta, entre de novo e tente outra vez.",
+    );
+    expect(sucesso).not.toHaveBeenCalled();
+  },
+);
+
 async function montar() {
   await act(async () => {
     raiz.render(

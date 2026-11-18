@@ -93,7 +93,8 @@ describe("AdminCouponFormView: valor fixo com no máximo 2 casas", () => {
     });
   }
 
-  for (const quebrado of ["7.505", "5.555", "10.005", "0.001"]) {
+  // Em texto pt-BR, "7.505" é milhar (7505); a vírgula indica centavos.
+  for (const quebrado of ["7,505", "5,555", "10,005", "0,001"]) {
     it(`recusa ${quebrado} sem salvar`, async () => {
       await digitarESalvar("#coupon-value", quebrado);
       expect(toast.error).toHaveBeenCalledWith(MENSAGEM);

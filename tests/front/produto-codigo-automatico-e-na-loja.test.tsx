@@ -407,6 +407,19 @@ describe("AdminProductFormView — código automático e Na loja", () => {
   });
 
   describe("seção Na loja", () => {
+    it("a ajuda de Em destaque distingue a vitrine automática da seleção manual", async () => {
+      await montar();
+      await tocar(botaoDaSecao("Na loja"));
+      const interruptor = chave("Em destaque");
+      expect(interruptor).not.toBeNull();
+      const idDaDescricao = interruptor?.getAttribute("aria-describedby");
+      expect(idDaDescricao).toBeTruthy();
+      const ajuda = document.getElementById(idDaDescricao ?? "")?.textContent;
+      expect(ajuda).toBe(
+        "Mostra o selo “Em alta” e inclui na vitrine de destaques automática. A seleção manual não muda.",
+      );
+    });
+
     it("fica depois de Códigos e câmera, fechada, com o resumo do que está valendo", async () => {
       await montar();
       expect(estaAberta("Na loja")).toBe(false);

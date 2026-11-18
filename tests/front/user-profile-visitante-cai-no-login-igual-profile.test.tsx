@@ -90,6 +90,20 @@ vi.mock("@/views/customer/HomeView", () => ({
       >
         Perfil
       </button>
+      <button
+        type="button"
+        data-testid="ir-account-settings"
+        onClick={() => onNavigate("account-settings")}
+      >
+        Segurança e conta
+      </button>
+      <button
+        type="button"
+        data-testid="ir-address-form"
+        onClick={() => onNavigate("address-form")}
+      >
+        Endereço
+      </button>
     </div>
   ),
 }));
@@ -382,6 +396,10 @@ describe("perfil público exige login igual ao perfil próprio (#487)", () => {
     { porta: "clique", view: "profile" },
     { porta: "popstate", view: "user-profile" },
     { porta: "popstate", view: "profile" },
+    { porta: "clique", view: "account-settings" },
+    { porta: "clique", view: "address-form" },
+    { porta: "popstate", view: "account-settings" },
+    { porta: "popstate", view: "address-form" },
   ])(
     "visitante sem sessão pela porta $porta: $view cai no mesmo login que o perfil próprio",
     async ({ porta, view }) => {
@@ -390,7 +408,9 @@ describe("perfil público exige login igual ao perfil próprio (#487)", () => {
         await clicar(
           view === "user-profile"
             ? "ir-para-perfil-publico"
-            : "ir-para-perfil-proprio",
+            : view === "profile"
+              ? "ir-para-perfil-proprio"
+              : `ir-${view}`,
         );
       } else {
         const estado =
@@ -401,7 +421,7 @@ describe("perfil público exige login igual ao perfil próprio (#487)", () => {
             "",
             view === "user-profile"
               ? "/user-profile?id=outra-pessoa"
-              : "/profile",
+              : `/${view}`,
           );
           globalThis.dispatchEvent(
             new PopStateEvent("popstate", { state: estado }),

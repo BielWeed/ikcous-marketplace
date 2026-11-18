@@ -114,6 +114,88 @@ it("leva apenas o necessário, com cobrança na entrega e texto pronto", () => {
     ].join("\n"),
   );
 });
+it("compra para outra pessoa leva o nome de quem recebe, logo depois do cliente", () => {
+  const msg = contato.mensagemMototaxi(
+    {
+      ...pedido,
+      customer: { ...pedido.customer, recipientName: "  Maria   da Silva " },
+    },
+    "Loja",
+  );
+  const linhas = msg.split("\n");
+  expect(linhas[1]).toBe("Cliente: Cliente fictícia");
+  expect(linhas[2]).toBe("Quem recebe: Maria da Silva");
+  expect(linhas[3]).toBe("Telefone: 11912345678");
+});
+it.each([undefined, "", "   ", "cliente FICTÍCIA", "Cliente Ficticia"])(
+  "não repete o comprador nem inventa quem recebe: %j",
+  (recipientName) => {
+    const msg = contato.mensagemMototaxi(
+      { ...pedido, customer: { ...pedido.customer, recipientName } },
+      "Loja",
+    );
+    expect(msg).not.toContain("Quem recebe");
+  },
+);
+it("leva as observações do pedido em uma linha só, depois da referência", () => {
+  const msg = contato.mensagemMototaxi(
+    { ...pedido, notes: "Campainha estragada\n  deixar   na portaria.\n" },
+    "Loja",
+  );
+  const linhas = msg.split("\n");
+  expect(linhas[5]).toBe("Referência: portão azul");
+  expect(linhas[6]).toBe(
+    "Observações do pedido: Campainha estragada · deixar na portaria.",
+  );
+  expect(linhas[7]).toMatch(/^Itens: /);
+});
+it("no formato que o checkout grava, a linha automática de frete não vira observação", () => {
+  // CheckoutView junta observação + escolhas de variação + nota do frete com "\n\n".
+  const notes = [
+    "Deixar na portaria",
+    "Camiseta: P",
+    "Frete Escolhido: Entrega local (Prazo: no mesmo dia)",
+  ].join("\n\n");
+  const msg = contato.mensagemMototaxi({ ...pedido, notes }, "Loja");
+  expect(msg).toContain(
+    "Observações do pedido: Deixar na portaria · Camiseta: P",
+  );
+  expect(msg).not.toContain("Frete Escolhido");
+  expect(msg.split("\n")).toHaveLength(10);
+});
+it("pedido de entrega local sem observação só tem a nota automática de frete: sem a linha", () => {
+  const notes = "Frete Escolhido: Entrega local (Prazo: no mesmo dia)";
+  const msg = contato.mensagemMototaxi({ ...pedido, notes }, "Loja");
+  expect(msg).not.toContain("Observações");
+  expect(msg).not.toContain("Frete Escolhido");
+});
+it.each([undefined, "", "  \n "])(
+  "sem observação não inventa a linha: %j",
+  (notes) => {
+    expect(
+      contato.mensagemMototaxi({ ...pedido, notes }, "Loja"),
+    ).not.toContain("Observações");
+  },
+);
+it("observação longa é cortada em 300 caracteres com reticências", () => {
+  const msg = contato.mensagemMototaxi(
+    { ...pedido, notes: "a".repeat(500) },
+    "Loja",
+  );
+  const linha = msg.split("\n").find((l) => l.startsWith("Observações"));
+  expect(linha).toBe(`Observações do pedido: ${"a".repeat(299)}…`);
+});
+it("o corte nunca parte um emoji ao meio: o link do WhatsApp continua válido", () => {
+  // 298 letras + emoji (2 unidades UTF-16) + texto: cortar por unidade deixaria
+  // meio emoji solto e o encodeURIComponent do link lançaria "URI malformed".
+  const msg = contato.mensagemMototaxi(
+    { ...pedido, notes: `${"a".repeat(298)}😀 fim de texto` },
+    "Loja",
+  );
+  const linha = msg.split("\n").find((l) => l.startsWith("Observações"));
+  expect(linha).toBe(`Observações do pedido: ${"a".repeat(298)}😀…`);
+  expect(() => encodeURIComponent(msg)).not.toThrow();
+});
 it("usa os seis últimos caracteres reconhecidos na ficha, nunca os primeiros", () => {
   const msg = contato.mensagemMototaxi(pedido, "Loja");
   expect(msg.split("\n")[0]).toBe("Entrega — Pedido #3884BE");
@@ -222,6 +304,15 @@ it("mostra o botão na ficha local com link exclusivamente wa.me e mensagem codi
     "Abre o WhatsApp do Zé com a mensagem pronta",
   );
 });
+it.each(["pending", "processing", "shipping"] as const)(
+  "oferece envio ao mototáxi para entrega local em dinheiro: %s",
+  async (status) => {
+    await abrir({ ...pedido, status, paymentMethod: "cash" });
+    expect(
+      host.querySelector('a[aria-label="Enviar ao mototáxi"]'),
+    ).not.toBeNull();
+  },
+);
 it.each([
   {
     caso: "cancelado em dinheiro",

@@ -561,22 +561,29 @@ export function AbaDre({
             texto="Assim que houver venda paga ou despesa lançada com mês de referência neste período, o resultado se monta sozinho."
           />
         ) : mensal ? (
-          porMes.erro && !porMes.dados ? (
-            <EstadoDeErro
-              mensagem={porMes.erro}
-              aoTentarDeNovo={porMes.recarregar}
-            />
-          ) : porMes.dados ? (
-            <TabelaMensal
-              total={dados}
-              meses={porMes.dados}
-              rotulos={meses.map((m) => m.rotulo)}
-              abertas={abertas}
-              aoAlternar={alternar}
-            />
-          ) : (
-            <EsqueletoDeLista linhas={8} />
-          )
+          <>
+            {porMes.erro ? (
+              <EstadoDeErro
+                mensagem={
+                  porMes.dados
+                    ? `Dados anteriores: a atualização não foi concluída. ${porMes.erro}`
+                    : porMes.erro
+                }
+                aoTentarDeNovo={porMes.recarregar}
+              />
+            ) : null}
+            {porMes.dados ? (
+              <TabelaMensal
+                total={dados}
+                meses={porMes.dados}
+                rotulos={meses.map((m) => m.rotulo)}
+                abertas={abertas}
+                aoAlternar={alternar}
+              />
+            ) : !porMes.erro ? (
+              <EsqueletoDeLista linhas={8} />
+            ) : null}
+          </>
         ) : (
           <TabelaDoPeriodo
             dre={dados}

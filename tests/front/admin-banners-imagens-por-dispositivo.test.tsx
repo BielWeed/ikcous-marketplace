@@ -160,18 +160,22 @@ describe("configurar uma versão sem substituir a outra", () => {
     )!;
     await act(async () => editar.click());
     expect(
-      document.querySelector('img[alt="Banner Preview"]')?.getAttribute("src"),
+      document
+        .querySelector('img[alt="Prévia do banner"]')
+        ?.getAttribute("src"),
     ).toBe(celular);
     await clicar("Computador (4:1)");
     const editor = document.body;
-    expect(editor.querySelector('img[alt="Banner Preview"]')).toBeNull();
+    expect(editor.querySelector('img[alt="Prévia do banner"]')).toBeNull();
     expect(editor.querySelector('img[alt="Imagem do computador"]')).toBeNull();
     expect(editor.textContent).toContain(
       "Este banner não aparece no computador",
     );
     await clicar("Celular (2:1)");
     expect(
-      document.querySelector('img[alt="Banner Preview"]')?.getAttribute("src"),
+      document
+        .querySelector('img[alt="Prévia do banner"]')
+        ?.getAttribute("src"),
     ).toBe(celular);
   });
   it("lista avisa quando banner ativo não tem imagem para computador", async () => {
@@ -267,7 +271,9 @@ describe("configurar uma versão sem substituir a outra", () => {
     );
     expect(h.upload).not.toHaveBeenCalled();
     expect(
-      document.querySelector('img[alt="Banner Preview"]')?.getAttribute("src"),
+      document
+        .querySelector('img[alt="Prévia do banner"]')
+        ?.getAttribute("src"),
     ).toBe(celular);
   });
   it("cancelar apaga os dois uploads novos, nunca os arquivos publicados", async () => {
@@ -311,11 +317,15 @@ describe("configurar uma versão sem substituir a outra", () => {
       "https://example.com/tardia-desktop.webp",
     );
     expect(
-      document.querySelector('img[alt="Banner Preview"]')?.getAttribute("src"),
+      document
+        .querySelector('img[alt="Prévia do banner"]')
+        ?.getAttribute("src"),
     ).toBe(celular);
     await clicar("Computador (4:1)");
     expect(
-      document.querySelector('img[alt="Banner Preview"]')?.getAttribute("src"),
+      document
+        .querySelector('img[alt="Prévia do banner"]')
+        ?.getAttribute("src"),
     ).toBe(computador);
   });
   it("salvamento sem resposta não apaga nenhum dos dois uploads ao cancelar", async () => {

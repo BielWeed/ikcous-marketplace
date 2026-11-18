@@ -1,5 +1,6 @@
 import { useSyncListener } from "@/hooks/useDataVault";
 import { publicarMudancaDeCategoria } from "@/lib/avisos-de-categoria";
+import { compararNomes } from "@/lib/comparar-nomes";
 import { DataVault } from "@/lib/dataVault";
 import {
   ErroDeCategoria,
@@ -47,7 +48,7 @@ const MENSAGEM_CATEGORIA_JA_EXISTE =
 export function ordenarCategorias(lista: readonly Category[]): Category[] {
   return [...lista].sort(
     (a, b) =>
-      a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" }) ||
+      compararNomes(a.name, b.name) ||
       a.name.localeCompare(b.name, "pt-BR") ||
       (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
   );

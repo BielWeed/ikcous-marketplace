@@ -111,6 +111,24 @@ Deno.test("o comprovante traz os valores do pedido", () => {
   assertStringIncludes(html, "Rua A, 1 · Centro");
 });
 
+Deno.test("o comprovante usa total_amount e shipping_cost quando total e shipping estão ausentes", () => {
+  const { total: _total, shipping: _shipping, ...pedido } = PEDIDO;
+  const html = base({
+    pedido: { ...pedido, total_amount: 123.45, shipping_cost: 17.89 },
+  });
+  const linhas = html.match(/<tr\b[^>]*>[\s\S]*?<\/tr>/g) ?? [];
+  assertStringIncludes(linhas.find((linha) => />Total<\/td>/.test(linha)) ?? "", "R$ 123,45");
+  assertStringIncludes(linhas.find((linha) => />Entrega<\/td>/.test(linha)) ?? "", "R$ 17,89");
+});
+
+Deno.test("o comprovante preserva total zero mesmo com total_amount preenchido", () => {
+  const html = base({ pedido: { ...PEDIDO, total: 0, total_amount: 50 } });
+  const linhas = html.match(/<tr\b[^>]*>[\s\S]*?<\/tr>/g) ?? [];
+  const linhaTotal = linhas.find((linha) => />Total<\/td>/.test(linha)) ?? "";
+  assertStringIncludes(linhaTotal, "R$ 0,00");
+  assertEquals(linhaTotal.includes("R$ 50,00"), false);
+});
+
 Deno.test("linha de valor zerada SOME, em vez de mostrar R$ 0,00", () => {
   const html = htmlDoPedido({
     pedido: { ...PEDIDO, discount: 0, shipping: 0 },

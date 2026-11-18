@@ -150,6 +150,20 @@ const reprovar = (alvo) =>
     [alvo],
     SESSAO,
   );
+const enviarComCodigo = (codigo) => (alvo) =>
+  P.tentar(
+    "authenticated",
+    "SELECT public.admin_devolucao_registrar($1,'em_transito',$2,'Postado na loja') AS r",
+    [alvo, codigo],
+    SESSAO,
+  );
+const reprovarComMotivo = (motivo) => (alvo) =>
+  P.tentar(
+    "authenticated",
+    "SELECT public.admin_devolucao_reprovar($1,$2) AS r",
+    [alvo, motivo],
+    SESSAO,
+  );
 
 async function recusa(fx, chamar, mensagem, rotulo) {
   const antes = await foto(fx.pedido);
@@ -319,6 +333,118 @@ prova(
         "recebida",
         "reprovada",
       );
+    }),
+);
+
+prova(
+  "marcar como enviada recusa concluida/recebida sem mudar linha/eventos/saldo; aprovada aceita",
+  () =>
+    P.emTransacao(async () => {
+      await pessoas();
+      // Sem esta guarda, uma devolucao CONCLUIDA com reembolso manual voltaria
+      // para em_transito e a lojista poderia pagar a mesma devolucao outra vez.
+      await mutar(
+        "devolucao-em-transito-sem-aprovada",
+        "public.admin_devolucao_registrar(uuid,text,text,text)",
+        "    IF v_d.status <> 'aprovada' THEN\n" +
+          "      RAISE EXCEPTION 'Só uma devolução aprovada pode ser marcada como enviada.' USING ERRCODE = '22023';\n" +
+          "    END IF;\n",
+      );
+      let n = 400;
+      for (const estado of ["concluida", "recebida"]) {
+        await recusa(
+          await fixture(estado, n),
+          enviarComCodigo(null),
+          /^Só uma devolução aprovada pode ser marcada como enviada\.$/,
+          `enviar ${estado}`,
+        );
+        n += 10;
+      }
+      await aceita(
+        await fixture("aprovada", n),
+        enviarComCodigo(null),
+        "aprovada",
+        "em_transito",
+      );
+    }),
+);
+
+prova(
+  "codigo de rastreio fora do formato e recusado sem escrever; o valido vira maiusculo",
+  () =>
+    P.emTransacao(async () => {
+      await pessoas();
+      await mutar(
+        "devolucao-em-transito-codigo-livre",
+        "public.admin_devolucao_registrar(uuid,text,text,text)",
+        "    IF v_codigo IS NOT NULL AND v_codigo !~ '^[A-Z0-9-]{5,40}$' THEN\n" +
+          "      RAISE EXCEPTION 'Código de rastreio inválido.' USING ERRCODE = '22023';\n" +
+          "    END IF;\n",
+      );
+      let n = 500;
+      // curto demais, simbolo, espaco no meio e longo demais (41 caracteres).
+      for (const codigo of [
+        "AB-1",
+        "BR!!123456",
+        "BR 123 456",
+        "A".repeat(41),
+      ]) {
+        await recusa(
+          await fixture("aprovada", n),
+          enviarComCodigo(codigo),
+          /^Código de rastreio inválido\.$/,
+          `rastreio ${codigo}`,
+        );
+        n += 10;
+      }
+      const fx = await fixture("aprovada", n);
+      await aceita(
+        fx,
+        enviarComCodigo("  br-12345-xx "),
+        "aprovada",
+        "em_transito",
+      );
+      assert.equal(
+        (
+          await P.conexao().query(
+            "SELECT codigo_rastreio FROM public.devolucoes WHERE id=$1",
+            [fx.alvo],
+          )
+        ).rows[0].codigo_rastreio,
+        "BR-12345-XX",
+        "o codigo valido fica em maiusculo e sem as pontas",
+      );
+    }),
+);
+
+prova(
+  "inspecao recusa motivo em branco, vazio ou nulo sem mudar linha/eventos/saldo; recebida segue recebida",
+  () =>
+    P.emTransacao(async () => {
+      await pessoas();
+      await mutar(
+        "devolucao-reprova-sem-motivo",
+        "public.admin_devolucao_reprovar(uuid,text)",
+        "  IF v_msg IS NULL THEN\n" +
+          "    RAISE EXCEPTION 'Explique ao cliente por que o produto não foi aceito.' USING ERRCODE = '22023';\n" +
+          "  END IF;\n",
+      );
+      let n = 600;
+      for (const motivo of ["   ", "", null]) {
+        const fx = await fixture("recebida", n);
+        await recusa(
+          fx,
+          reprovarComMotivo(motivo),
+          /^Explique ao cliente por que o produto não foi aceito\.$/,
+          `reprovar com motivo ${JSON.stringify(motivo)}`,
+        );
+        const alvo = (await foto(fx.pedido)).devolucoes.find(
+          (d) => d.id === fx.alvo,
+        );
+        assert.equal(alvo.status, "recebida", "a devolucao continua recebida");
+        assert.equal(alvo.mensagem_loja, null, "nenhuma mensagem foi gravada");
+        n += 10;
+      }
     }),
 );
 

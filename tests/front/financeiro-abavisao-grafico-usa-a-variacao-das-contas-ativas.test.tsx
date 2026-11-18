@@ -33,10 +33,11 @@ const { propsCapturadas } = vi.hoisted(() => ({
 vi.mock("@/components/admin/financeiro/FluxoDeCaixaGrafico", () => ({
   FluxoDeCaixaGrafico: (props: (typeof propsCapturadas)[number]) => {
     propsCapturadas.push(props);
-    return null;
+    return <div data-grafico="">{props.pontos.at(-1)?.saldo}</div>;
   },
 }));
 
+import { AbaVisao } from "@/components/admin/financeiro/AbaVisao";
 import { AdminFinanceiroView } from "@/views/admin/AdminFinanceiroView";
 
 const AGORA_FAKE = new Date("2026-09-27T15:00:00.000Z");
@@ -168,5 +169,117 @@ describe("AbaVisao — o saldo do gráfico usa a variação só das contas ativa
       expect(saldo("2026-09-19")).toBe(350);
       expect(saldo("2026-09-20")).toBe(100);
     });
+  });
+});
+
+describe("AbaVisao — falha só na fonte dos últimos 30 dias", () => {
+  let raiz: Root;
+  let hospedeiro: HTMLDivElement;
+  let falhar: boolean;
+  let saldo: number;
+
+  beforeEach(() => {
+    falhar = false;
+    saldo = 100;
+    rpcFalso.mockReset();
+    rpcFalso.mockImplementation(async (_nome, parametros) => {
+      if (parametros.p_inicio === "2026-08-29" && falhar) {
+        return { data: null, error: { message: "Failed to fetch" } };
+      }
+      const resposta = respostaResumo();
+      return {
+        ...resposta,
+        data: { ...resposta.data, saldo_total: saldo },
+      };
+    });
+    hospedeiro = document.createElement("div");
+    document.body.appendChild(hospedeiro);
+    raiz = createRoot(hospedeiro);
+  });
+
+  afterEach(() => {
+    act(() => raiz.unmount());
+    hospedeiro.remove();
+  });
+
+  async function montar(versao = 0, inicio = "2026-09-01") {
+    await act(async () => {
+      raiz.render(
+        <AbaVisao
+          ativo
+          intervalo={{ inicio, fim: "2026-09-27" }}
+          hoje="2026-09-27"
+          versao={versao}
+          contas={[]}
+          caixa={{
+            dados: null,
+            erro: null,
+            carregando: false,
+            recarregar: vi.fn(),
+          }}
+          abrirFolha={vi.fn()}
+          irParaAba={vi.fn()}
+          verPrevistos={vi.fn()}
+        />,
+      );
+    });
+    await esperar();
+  }
+
+  const aviso = "Dados anteriores: a atualização não foi concluída";
+  const grafico = () => hospedeiro.querySelector("[data-grafico]");
+  const tentar = () =>
+    [...hospedeiro.querySelectorAll("button")].find(
+      (botao) => botao.textContent?.trim() === "Tentar de novo",
+    );
+
+  it("mantém o gráfico anterior, avisa a falha e tenta de novo só sua fonte", async () => {
+    await montar();
+    expect(grafico()?.textContent).toBe("100");
+    expect(hospedeiro.textContent).not.toContain(aviso);
+    falhar = true;
+    saldo = 200;
+    await montar(1);
+    expect(
+      hospedeiro.querySelector('[aria-label="Saldo total"]')?.textContent,
+    ).toContain("200,00");
+    expect(grafico()?.textContent).toBe("100");
+    expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toContain(
+      aviso,
+    );
+    rpcFalso.mockClear();
+    falhar = false;
+    await act(async () => tentar()!.click());
+    await esperar();
+    expect(rpcFalso.mock.calls).toEqual([
+      ["fin_resumo", { p_inicio: "2026-08-29", p_fim: "2026-09-27" }],
+    ]);
+    expect(grafico()?.textContent).toBe("200");
+    expect(hospedeiro.textContent).not.toContain(aviso);
+    expect(tentar()).toBeUndefined();
+  });
+
+  it("período de 30 dias: a mesma consulta mostra só um alerta e uma nova tentativa", async () => {
+    await montar(0, "2026-08-29");
+    expect(grafico()?.textContent).toBe("100");
+    falhar = true;
+    await montar(1, "2026-08-29");
+
+    expect(grafico()?.textContent).toBe("100");
+    expect(hospedeiro.querySelectorAll('[role="alert"]')).toHaveLength(1);
+    expect(
+      [...hospedeiro.querySelectorAll("button")].filter(
+        (botao) => botao.textContent?.trim() === "Tentar de novo",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("sem dados anteriores, mantém o erro no lugar do gráfico", async () => {
+    falhar = true;
+    await montar();
+    expect(grafico()).toBeNull();
+    expect(hospedeiro.querySelector('[role="alert"]')).not.toBeNull();
+    expect(tentar()).toBeDefined();
+    expect(hospedeiro.textContent).not.toContain(aviso);
   });
 });

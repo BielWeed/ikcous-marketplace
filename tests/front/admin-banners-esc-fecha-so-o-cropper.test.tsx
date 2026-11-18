@@ -298,7 +298,7 @@ describe("AdminBannersView — Escape com o ImageAdjuster aberto fecha só o rec
     // campo de imagem do formulário teria sido limpo junto com o Storage.
     expect(localizarBotaoPorTexto(hospedeiro, "Ajustar")).toBeDefined();
     const miniatura = hospedeiro.querySelector<HTMLImageElement>(
-      'img[alt="Preview Thumbnail"]',
+      'img[alt="Miniatura do banner"]',
     );
     expect(miniatura?.src).toBe(urlImagemEnviada);
   });

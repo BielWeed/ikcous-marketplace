@@ -34,7 +34,22 @@ export interface PainelInicio {
     readonly ticketMedio: number | null;
     /** Receita − custo dos itens (o do dia da venda quando existe; senão o cadastro de hoje). */
     readonly lucroEstimado: number | null;
+    /**
+     * Receita líquida do mês, a MESMA do `fin_dre` do período do lucro (a base da
+     * "Margem líquida" do Financeiro). Ausente/`null` num banco que ainda não tem
+     * a migration 20261402000000: a tela cai na conta antiga (lucro ÷ receita).
+     */
+    readonly receitaLiquida?: number | null;
   };
+  /**
+   * Dinheiro que a lojista ainda deve devolver: pedido pago e cancelado cujo
+   * reembolso não saiu (a conta da lista "Devolver agora" da tela de Pedidos).
+   * `null`/ausente = banco sem a migration 20261402000000: o cartão não aparece.
+   */
+  readonly dinheiroADevolver?: {
+    readonly valor: number | null;
+    readonly pedidos: number | null;
+  } | null;
   readonly saldoTotal: number | null;
   readonly aReceber7d: number | null;
   readonly aPagar7d: number | null;

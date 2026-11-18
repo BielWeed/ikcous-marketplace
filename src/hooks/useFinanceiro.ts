@@ -507,7 +507,9 @@ export async function fecharCaixa(args: {
   return parseFechamento(data);
 }
 
-export async function salvarConta(payload: PayloadDaConta): Promise<void> {
+export async function salvarConta(
+  payload: Partial<PayloadDaConta>,
+): Promise<void> {
   const { error } = await comPrazo(
     supabase.rpc("fin_conta_salvar", { p: comoJson(payload) }),
     "a conta foi salva",

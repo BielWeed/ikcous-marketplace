@@ -189,7 +189,7 @@ describe("uploads de banner limpam a imagem substituída e o seletor", () => {
 
   function imagem() {
     return hospedeiro.querySelector<HTMLImageElement>(
-      'img[alt="Preview Thumbnail"], img[alt="Banner Preview"]',
+      'img[alt="Miniatura do banner"], img[alt="Prévia do banner"]',
     )?.src;
   }
 

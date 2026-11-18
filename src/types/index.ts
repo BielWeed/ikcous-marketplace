@@ -207,6 +207,10 @@ export interface Order {
   discount: number;
   total: number;
   paymentMethod: PaymentMethod;
+  /** Forma online efetivamente cobrada; ausente em cache antigo. */
+  metodoOnline?: "pix" | "credito" | "debito" | null;
+  /** Parcelas do crédito (1..12); null quando não gravadas. */
+  parcelas?: number | null;
   status: OrderStatus;
   /**
    * Estado da cobrança online (webhook do Mercado Pago). Os 64 pedidos

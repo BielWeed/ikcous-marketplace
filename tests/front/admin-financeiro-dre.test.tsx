@@ -76,13 +76,13 @@ describe("Financeiro — DRE", () => {
     hospedeiro.remove();
   });
 
-  async function montar(intervalo: IntervaloDeDatas) {
+  async function montar(intervalo: IntervaloDeDatas, versao = 0) {
     await act(async () => {
       raiz.render(
         <AbaDre
           ativo
           intervalo={intervalo}
-          versao={0}
+          versao={versao}
           rotuloDoPeriodo="Setembro de 2026"
         />,
       );
@@ -275,6 +275,72 @@ describe("Financeiro — DRE", () => {
     );
     expect(cabecalho).toEqual(["Linha", "jul/26", "ago/26", "set/26", "Total"]);
   });
+
+  it.each([true, false])(
+    "mês a mês: falha com dados anteriores = %s, nova tentativa só da fonte mensal",
+    async (comAnteriores) => {
+      const intervalo = { inicio: "2026-07-01", fim: "2026-09-30" };
+      const aviso = "Dados anteriores: a atualização não foi concluída";
+      let falhar = !comAnteriores;
+      let receita = 10000;
+      rpcFalso.mockImplementation(async (_nome, parametros) => ({
+        data:
+          falhar && parametros.p_fim === "2026-08-31"
+            ? null
+            : { ...DRE, receita_bruta: receita },
+        error:
+          falhar && parametros.p_fim === "2026-08-31"
+            ? { message: "Failed to fetch" }
+            : null,
+      }));
+      await montar(intervalo);
+      const mensal = [...hospedeiro.querySelectorAll("button")].find(
+        (b) => b.textContent === "Mês a mês",
+      )!;
+      await act(async () => mensal.click());
+      await esperar();
+      if (comAnteriores) {
+        expect(hospedeiro.querySelector("table")).not.toBeNull();
+        expect(hospedeiro.textContent).not.toContain(aviso);
+        falhar = true;
+        receita = 20000;
+        await montar(intervalo, 1);
+        const bruta = [...hospedeiro.querySelectorAll("tbody tr")].find((tr) =>
+          tr.querySelector("th")?.textContent?.includes("Receita bruta"),
+        )!;
+        expect(
+          [...bruta.querySelectorAll("td")].map((td) =>
+            normalizar(td.textContent),
+          ),
+        ).toEqual([
+          "R$ 10.000,00",
+          "R$ 10.000,00",
+          "R$ 10.000,00",
+          "R$ 20.000,00",
+        ]);
+      }
+      expect(hospedeiro.querySelector("table") !== null).toBe(comAnteriores);
+      const alerta = hospedeiro.querySelector('[role="alert"]')!;
+      expect(alerta).not.toBeNull();
+      if (comAnteriores) expect(alerta.textContent).toContain(aviso);
+      else expect(alerta.textContent).not.toContain(aviso);
+      const tentar = [...alerta.querySelectorAll("button")].find(
+        (b) => b.textContent?.trim() === "Tentar de novo",
+      )!;
+      falhar = false;
+      rpcFalso.mockClear();
+      await act(async () => tentar.click());
+      await esperar();
+      expect(rpcFalso.mock.calls).toEqual([
+        ["fin_dre", { p_inicio: "2026-07-01", p_fim: "2026-07-31" }],
+        ["fin_dre", { p_inicio: "2026-08-01", p_fim: "2026-08-31" }],
+        ["fin_dre", { p_inicio: "2026-09-01", p_fim: "2026-09-30" }],
+      ]);
+      expect(hospedeiro.querySelector("table")).not.toBeNull();
+      expect(hospedeiro.querySelector('[role="alert"]')).toBeNull();
+      expect(hospedeiro.textContent).not.toContain(aviso);
+    },
+  );
 
   it("lucros e resultados têm cor de sinal; receita e custos ficam neutros", async () => {
     await montar({ inicio: "2026-09-01", fim: "2026-09-30" });

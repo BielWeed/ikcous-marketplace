@@ -317,6 +317,16 @@ Deno.test("sem credencial do MP com cobrança na vaga → recuperavel, nada no M
   semEfeitoNoBanco({ banco: banco.registro });
 });
 
+Deno.test("GET da vaga com order failed de cartão cancela no banco sem POST", async () => {
+  const mp = mpFalso({ [`GET /v1/orders/${ORDER}`]: () => jsonResp(orderCartao("failed", "failed")) });
+  const r = await cancelar({ linha: pedidoBase({ metodo_online: "credito" }), mp });
+  assertEquals(r.corpo.cancelamento, "cancelado");
+  assertEquals(mp.chamadas, [`GET /v1/orders/${ORDER}`]);
+  assertEquals(r.banco.rpcs.length, 1);
+  assertEquals(r.banco.rpcs[0].nome, "cancelar_pedido_com_cobranca");
+  assertEquals(r.banco.escritas, 0);
+});
+
 // ─── Sentinela `verificando:` ────────────────────────────────────────────────
 
 const SENTINELA = `verificando:${PEDIDO}:c0:pabc:1790000000000`;
@@ -341,6 +351,40 @@ Deno.test("sentinela + ADMIN, a busca não acha order nenhuma → cancela COM AV
   assertEquals(r.corpo.aviso, MENSAGENS_DO_CANCELAMENTO.avisoSentinela);
   assertEquals(r.banco.rpcs[0].args.p_vaga_esperada, SENTINELA);
   assertEquals(r.banco.rpcs[0].args.p_ator, ADMIN);
+});
+
+Deno.test("sentinela + ADMIN, busca só com orders mortas cancela com aviso", async () => {
+  const mortas = ["failed", "canceled", "cancelled", "expired"].map((status, i) => ({
+    ...orderCartao(status, status), id: `${ORDER}${i}`,
+  }));
+  const mp = mpFalso({ "GET /v1/orders?busca": () => jsonResp({ data: mortas, paging: { total: "4" } }) });
+  const r = await cancelar({
+    linha: pedidoBase({ gateway_payment_id: SENTINELA, metodo_online: null }),
+    mp, sub: ADMIN, adminAtual: ADMIN,
+  });
+  assertEquals(r.corpo.cancelamento, "cancelado");
+  assertEquals(r.corpo.aviso, MENSAGENS_DO_CANCELAMENTO.avisoSentinela);
+  assertEquals(mp.chamadas, ["GET /v1/orders"]);
+  assertEquals(r.banco.rpcs.length, 1);
+  assertEquals(r.banco.rpcs[0].args.p_vaga_esperada, SENTINELA);
+  assertEquals(r.banco.rpcs[0].args.p_ator, ADMIN);
+  assertEquals(r.banco.escritas, 0);
+});
+
+Deno.test("sentinela + ADMIN, uma order morta e uma viva impedem cancelamento", async () => {
+  const mp = mpFalso({
+    "GET /v1/orders?busca": () => jsonResp({
+      data: [orderCartao("failed", "failed"), { ...orderCartao("processing", "in_process"), id: `${ORDER}VIVA` }],
+      paging: { total: "2" },
+    }),
+  });
+  const r = await cancelar({
+    linha: pedidoBase({ gateway_payment_id: SENTINELA, metodo_online: null }),
+    mp, sub: ADMIN, adminAtual: ADMIN,
+  });
+  assertEquals(r.corpo.cancelamento, "em_analise");
+  assertEquals(mp.chamadas, ["GET /v1/orders"]);
+  semEfeitoNoBanco(r);
 });
 
 Deno.test("sentinela + ADMIN, a busca acha uma order VIVA do pedido → em_analise, nada no banco", async () => {

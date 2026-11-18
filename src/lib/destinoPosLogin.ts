@@ -88,16 +88,46 @@ const DESTINOS_QUE_RECEBEM_ID = new Set<string>([
 ]);
 
 /**
+ * O id de pedido que o aviso de "Pedido novo" carrega em
+ * `/admin-orders?id=<uuid>` (`supabase/functions/notify-new-order`). O pedido é
+ * uma linha com `id uuid`: só esse formato (36 caracteres, hex e hífens nos
+ * lugares certos) atravessa o login. O resto — `javascript:`, `//host`, `../`,
+ * texto longo, uuid com sobra ou quebra de linha — vira `undefined` e a lojista
+ * cai na lista de pedidos, como antes. É a ÚNICA porta de validação: a leitura
+ * da URL (`syncWithUrl`) e a saída do login (`idDoDestinoPosLogin`) usam esta
+ * função, e o `history.state` é gravável pela própria página.
+ *
+ * Maiúsculas passam (o banco aceita o uuid do link em maiúsculas); a âncora
+ * `$` do JS só casa no fim da entrada, então `uuid\n` NÃO passa.
+ */
+const UUID_DE_PEDIDO =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function idDePedidoDoPainel(valor: unknown): string | undefined {
+  return typeof valor === "string" && UUID_DE_PEDIDO.test(valor)
+    ? valor
+    : undefined;
+}
+
+/**
  * O `id` que `handleAuthSuccess` (App.tsx) repassa a `handleNavigate` junto do
  * destino. Lê o state do login (precisa ser chamado ANTES de navegar, que o
  * sobrescreve). `undefined` para toda view fora de `DESTINOS_QUE_RECEBEM_ID` e
- * para id ausente, vazio ou que não é string.
+ * `admin-orders`, e para id ausente, vazio ou que não é string.
+ *
+ * `admin-orders` (17/11/2026) é a exceção que valida: o aviso de "Pedido novo"
+ * abre a ficha pelo id, e a lojista que entra depois de a sessão vencer tem de
+ * chegar nela, não na lista. Aqui o id só passa se for um uuid de pedido
+ * (`idDePedidoDoPainel`) — e nenhuma outra tela do painel recebe id.
  */
 export function idDoDestinoPosLogin(
   destino: View,
   state: unknown,
 ): string | undefined {
   const registro = comoRegistro(state);
+  if (destino === "admin-orders") {
+    return idDePedidoDoPainel(registro?.id);
+  }
   if (!DESTINOS_QUE_RECEBEM_ID.has(destino) || !idUtilizavel(registro)) {
     return undefined;
   }

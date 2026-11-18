@@ -46,6 +46,27 @@ describe("busca: empate por data e id", () => {
     host.remove();
     vi.useRealTimers();
   });
+  it("ordena nomes com números, acentos e maiúsculas", async () => {
+    const nomes = ["Produto 10", "produto 2", "Produto 1", "Bruno", "Ávila"];
+    await act(async () =>
+      raiz.render(
+        <Sonda
+          produtos={nomes.map((name, i) => ({
+            ...produto(String(i), 0),
+            name,
+          }))}
+        />,
+      ),
+    );
+    await act(async () => ultimo.setSort("name_asc"));
+    expect(ultimo.filteredProducts.map((p) => p.name)).toEqual([
+      "Ávila",
+      "Bruno",
+      "Produto 1",
+      "produto 2",
+      "Produto 10",
+    ]);
+  });
   it.each(["price_asc", "price_desc", "newest"] as const)(
     "%s nao depende da ordem de chegada",
     async (sort) => {

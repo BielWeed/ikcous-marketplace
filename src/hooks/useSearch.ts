@@ -3,6 +3,7 @@ import {
   produtoCombinaComBusca,
 } from "@/lib/busca-de-produtos";
 import { categoriaValidaDaBusca } from "@/lib/categoria-valida-da-busca";
+import { compararNomes } from "@/lib/comparar-nomes";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import { produtoDisponivel } from "@/lib/vitrine";
 import type { Category, Product } from "@/types";
@@ -141,7 +142,7 @@ export function useSearch(
               precoDeVitrine(b).preco - precoDeVitrine(a).preco || desempate
             );
           case "name_asc":
-            return a.name.localeCompare(b.name);
+            return compararNomes(a.name, b.name);
           case "newest": {
             if (pontuar) {
               const pontosDe = (p: Product) => {

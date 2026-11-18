@@ -22,6 +22,10 @@ async function desfazerEstornoForaDoVencidoNaTransacao(c) {
   await require("./o-grafico-do-financeiro-posterior.cjs").desfazerGraficoDoFinanceiroNaTransacao(
     c,
   );
+  // A 20261402000000 (o Inicio mostra o dinheiro a devolver) sucede o painel_inicio desta migration: sai ANTES dela (so se no ar).
+  await require("./o-inicio-dinheiro-a-devolver-posterior.cjs").desfazerInicioDinheiroADevolverNaTransacao(
+    c,
+  );
   if ((await c.query(ESTORNO_FORA_DO_VENCIDO.noAr)).rows[0]?.sim !== true)
     return false;
   await c.query(

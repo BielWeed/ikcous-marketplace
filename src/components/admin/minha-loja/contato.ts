@@ -5,6 +5,8 @@
 // +55 do Brasil entra sozinho na hora de gravar.
 
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
+import { observacaoDaClienteNoRecibo } from "@/lib/observacao-da-cliente-no-recibo";
+import { quemVaiReceberSeForOutro } from "@/lib/quem-vai-receber";
 import { limparTelefoneBrasileiro } from "@/lib/telefone-br";
 import type { Order } from "@/types";
 
@@ -62,6 +64,25 @@ export function normalizarNumeroMototaxi(
 /** Mensagem mínima: só os campos que o painel já mostra para entregar. */
 export function mensagemMototaxi(order: Order, loja: string): string {
   const c = order.customer;
+  const quemRecebe = quemVaiReceberSeForOutro(c.name, c.recipientName);
+  // "Deixar na portaria", "campainha estragada": o que a cliente escreveu no
+  // checkout. `order.notes` e o mesmo campo que a ficha mostra como
+  // "Observacoes do pedido": o checkout cola ali a observacao, as escolhas de
+  // variacao e a linha automatica "Frete Escolhido:" (a ficha e o recibo ja
+  // tratam assim). A linha automatica de frete sai; o resto vai em UMA linha
+  // so (nao quebra o formato da mensagem), com teto contado em CARACTERES
+  // inteiros: cortar no meio de um emoji deixaria meio caractere solto e o
+  // encodeURIComponent do link do WhatsApp lancaria erro na ficha inteira.
+  const notaLimpa = observacaoDaClienteNoRecibo(order.notes)
+    .split(/\r?\n/)
+    .map((linha) => linha.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .join(" · ");
+  const caracteres = Array.from(notaLimpa);
+  const observacao =
+    caracteres.length > 300
+      ? `${caracteres.slice(0, 299).join("").trimEnd()}…`
+      : notaLimpa;
   const pago =
     ["pago", "pago_apos_expirar", "recebido_na_entrega"].includes(
       order.paymentStatus ?? "",
@@ -89,6 +110,9 @@ export function mensagemMototaxi(order: Order, loja: string): string {
   return [
     `Entrega — Pedido #${numeroDoPedido(order.id)}`,
     `Cliente: ${c.name}`,
+    // Compra para presente/portaria: quem recebe na porta e outra pessoa, e o
+    // mototaxi precisa do nome dela (a ficha do painel ja mostra "Recebe: X").
+    quemRecebe ? `Quem recebe: ${quemRecebe}` : "",
     `Telefone: ${c.whatsapp}`,
     `Endereço: ${[c.address, c.number, c.complement].filter(Boolean).join(", ")}`,
     [
@@ -99,6 +123,7 @@ export function mensagemMototaxi(order: Order, loja: string): string {
       .filter(Boolean)
       .join(" · "),
     c.reference ? `Referência: ${c.reference}` : "",
+    observacao ? `Observações do pedido: ${observacao}` : "",
     `Itens: ${order.items.map((i) => `${i.quantity}× ${i.name}`).join("; ")}`,
     pagamento,
     `Loja: ${loja}`,

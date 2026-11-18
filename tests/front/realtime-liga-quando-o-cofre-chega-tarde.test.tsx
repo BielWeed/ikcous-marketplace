@@ -51,11 +51,17 @@ const controle = vi.hoisted(() => {
     cofreFalha: false,
     cofre: null as unknown,
     desligar: vi.fn(),
+    usuario: null as unknown,
+    ehAdmin: false,
   };
 });
 
 vi.mock("@/hooks/useAuth", () => ({
-  useAuth: () => ({ isAdmin: false, loading: false, user: null }),
+  useAuth: () => ({
+    isAdmin: controle.ehAdmin,
+    loading: false,
+    user: controle.usuario,
+  }),
 }));
 
 vi.mock("@/hooks/useLeaderElection", () => ({
@@ -168,6 +174,8 @@ describe("StoreContext — o motor de tempo real liga quando o cofre chega tarde
     controle.portaoDoCofre = controle.criarPortao();
     controle.portaoDaRede = controle.criarPortao();
     controle.cofreFalha = false;
+    controle.usuario = null;
+    controle.ehAdmin = false;
     controle.cofre = cofreFalso();
     alvo.isLoaded = false;
     motor = (await import("@/lib/realtimeSyncEngine"))
@@ -233,7 +241,14 @@ describe("StoreContext — o motor de tempo real liga quando o cofre chega tarde
     await deixarOCofreFicarPronto();
 
     expect(motor.start).toHaveBeenCalledTimes(1);
-    expect(motor.start).toHaveBeenCalledWith(controle.cofre, false, false);
+    // Visitante sem login: o 4o argumento (temSessao) é falso, e o motor não
+    // abre canal de tempo real.
+    expect(motor.start).toHaveBeenCalledWith(
+      controle.cofre,
+      false,
+      false,
+      false,
+    );
   });
 
   it("(b) O CONTROLE — cofre pronto antes de `isLoaded`: o motor liga exatamente uma vez", async () => {
@@ -249,8 +264,38 @@ describe("StoreContext — o motor de tempo real liga quando o cofre chega tarde
     // Uma vez, não duas: reexecutar o efeito sem soltar a assinatura anterior
     // deixaria canal órfão no Supabase.
     expect(motor.start).toHaveBeenCalledTimes(1);
-    expect(motor.start).toHaveBeenCalledWith(controle.cofre, false, false);
+    expect(motor.start).toHaveBeenCalledWith(
+      controle.cofre,
+      false,
+      false,
+      false,
+    );
     expect(controle.desligar).not.toHaveBeenCalled();
+  });
+
+  it("(d) tempo real só com sessão — a cliente logada liga o motor com canal (4o argumento verdadeiro)", async () => {
+    controle.usuario = { id: "cliente-1" };
+    await montar();
+    await deixarOCofreFicarPronto();
+    await deixarARedeResponder();
+
+    expect(motor.start).toHaveBeenCalledTimes(1);
+    expect(motor.start).toHaveBeenCalledWith(
+      controle.cofre,
+      false,
+      false,
+      true,
+    );
+  });
+
+  it("(e) BORDA — o painel nunca fica sem canal, mesmo se o `user` ainda não chegou", async () => {
+    controle.usuario = null;
+    controle.ehAdmin = true;
+    await montar();
+    await deixarOCofreFicarPronto();
+    await deixarARedeResponder();
+
+    expect(motor.start).toHaveBeenCalledWith(controle.cofre, false, true, true);
   });
 
   it("(c) O CONTROLE — o cofre nunca fica pronto: o motor não liga, e a tela não trava", async () => {

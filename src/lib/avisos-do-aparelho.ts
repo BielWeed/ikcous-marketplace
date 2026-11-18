@@ -94,7 +94,7 @@ export const PASSOS_PARA_INSTALAR_NO_IOS: readonly string[] = [
   "Abra este painel no Safari.",
   "Toque em Compartilhar (o quadrado com a seta para cima).",
   "Escolha Adicionar à Tela de Início.",
-  "Abra o app pelo novo ícone e volte aqui para ligar os avisos.",
+  "Abra o app pelo novo ícone, toque em Perfil e depois em Acessar painel.",
 ];
 
 /**

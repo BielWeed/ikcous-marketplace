@@ -1037,7 +1037,7 @@ describe("CheckoutView — saída do pagamento online falho (CHECKOUT-070, #197)
   // `aguardandoPagamento` é `useState` local, o componente não desmonta, e
   // o próximo render lê `user === null` — exatamente o ramo `user ?
   // <botão cancelar> : <texto explicando>` que este teste prova.
-  it("sessão cai (refresh do token falha) com a tela de erro do pagamento já aberta: o botão de cancelar SOME e o texto dos 30 min aparece — mesma tela, sem desmontar", async () => {
+  it("sessão cai (refresh do token falha) com a tela de erro do pagamento já aberta: o botão de cancelar SOME e o texto explica o cancelamento sem prometer minutos — mesma tela, sem desmontar", async () => {
     // O corpo da tela (`CheckoutViewDaConta`), sem a chave por conta do
     // `CheckoutView`: o que se prova aqui é UMA instância atravessando a
     // queda de sessão — o app real recria a tela pela chave do App.
@@ -1084,15 +1084,18 @@ describe("CheckoutView — saída do pagamento online falho (CHECKOUT-070, #197)
     ).toBeUndefined();
     // BLOQUEIO 3 (#197): tela morta vira tela que explica — que não dá para
     // cancelar por aqui, e a alternativa (entrar na conta).
-    //
-    // NÃO afirmar "30 minutos" aqui: achado da 5ª revisão (16/08/2026) — esse
-    // trecho também está no cabeçalho da tela de espera, que renderiza SEMPRE,
-    // fora do ramo `user ? botão : parágrafo`. A asserção passava mesmo com o
-    // parágrafo do convidado apagado por completo, e o comentário anterior
-    // afirmava uma prova que ela não fazia. Os dois trechos abaixo são
-    // exclusivos deste parágrafo.
+    // Os trechos exclusivos deste parágrafo provam a explicação sem sessão,
+    // sem confundir com o cabeçalho da tela de espera. O prazo não promete
+    // minutos fixos e a devolução dos itens ao estoque continua explícita.
     expect(hospedeiro.textContent).toContain(
       "não é possível cancelar por aqui",
+    );
+    expect(hospedeiro.textContent).toContain(
+      "Se o pagamento não for confirmado, o pedido será cancelado automaticamente após o prazo de pagamento e a conferência do banco.",
+    );
+    expect(hospedeiro.textContent).toContain("Os itens voltam para o estoque.");
+    expect(hospedeiro.textContent).not.toContain(
+      "Se o pagamento não sair em 30 minutos",
     );
     expect(hospedeiro.textContent).toContain("entre na sua conta");
   });

@@ -294,13 +294,14 @@ export function htmlDoPedido(dados: {
   const total = pedido?.total ?? pedido?.total_amount;
   const frete = pedido?.shipping ?? pedido?.shipping_cost;
   // `canal` entra no rotulo: venda de balcao nao e' "na entrega" (D3).
-  const pagamento = rotuloDoPagamento(
+  const rotulo = rotuloDoPagamento(
     pedido?.payment_method,
     pedido?.metodo_online,
     canal,
     // Cupom de 100%: o comprovante diz "Sem valor a pagar", nao "na entrega".
     { total, subtotal: pedido?.subtotal, discount: pedido?.discount, shipping: frete },
   );
+  const pagamento = retirada ? rotulo.replace(" na entrega", " na retirada") : rotulo;
   const loja = String(nomeDaLoja ?? "").trim();
 
   // O canal presencial VEM PRIMEIRO no if: venda de balcao nunca fica

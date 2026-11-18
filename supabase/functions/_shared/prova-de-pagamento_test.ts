@@ -59,6 +59,20 @@ for (const [valor, total, esperado] of [
   });
 }
 
+// A conversão de reais para centavos só fecha com ARREDONDAMENTO: em ponto
+// flutuante 9.95 * 100 = 994.9999999999999 e 10.03 * 100 = 1002.9999999999999,
+// e truncar (Math.floor/trunc) perde 1 centavo. Os pares abaixo ficam
+// exatamente na borda da tolerância de 5 centavos, onde esse centavo decide:
+// confirmar o pagamento de quem pagou 6 centavos a menos, ou recusar quem
+// pagou 5 (o limite aceito).
+Deno.test("conferência em centavos: 5 centavos a menos (9,95 contra 10,00) PROVA, no limite da tolerância", () => {
+  assertEquals(conferirValorDoPagamento(9.95, 10).provado, true);
+});
+
+Deno.test("conferência em centavos: 6 centavos a menos (9,97 contra 10,03) NÃO prova, um centavo além da tolerância", () => {
+  assertEquals(conferirValorDoPagamento(9.97, 10.03), { provado: false, motivo: "valor_divergente" });
+});
+
 Deno.test("conferência em centavos: captura à vista no limite de cinco centavos", () => {
   const order = {
     total_paid_amount: "59.70",

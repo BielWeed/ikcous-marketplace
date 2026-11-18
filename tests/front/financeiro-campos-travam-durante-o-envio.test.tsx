@@ -215,14 +215,16 @@ const CASOS: Caso[] = [
       campoDeTexto: "fin-conta-nome",
       texto: "Banco da loja",
       rpc: "fin_conta_salvar",
-      payload: {
-        ...(sistema ? { id: CONTA_BANCARIA } : {}),
-        nome: "Banco da loja",
-        tipo: "banco",
-        saldo_inicial: sistema ? 50 : 0,
-        saldo_inicial_em: HOJE,
-        ativa: true,
-      },
+      // Edição manda só o que mudou (o nome); conta nova manda tudo.
+      payload: sistema
+        ? { id: CONTA_BANCARIA, nome: "Banco da loja" }
+        : {
+            nome: "Banco da loja",
+            tipo: "banco",
+            saldo_inicial: 0,
+            saldo_inicial_em: HOJE,
+            ativa: true,
+          },
       salvar: "Salvar",
       cadastroNovo: !sistema,
     },

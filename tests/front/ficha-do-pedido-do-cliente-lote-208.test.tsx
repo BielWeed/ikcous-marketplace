@@ -246,6 +246,55 @@ describe("itens 3 e 4 — nome do produto e rastreio sem corte", () => {
   });
 });
 
+describe("resumo e andamento do pedido", () => {
+  it("resumo distingue produtos, desconto, frete e total", async () => {
+    await montar(
+      pedidoBase({ subtotal: 200, discount: 30, shipping: 15, total: 185 }),
+    );
+    const resumo = [...(container?.querySelectorAll("h4") ?? [])].find(
+      (el) => el.textContent === "Resumo",
+    )?.parentElement;
+    expect(resumo).toBeTruthy();
+    for (const [rotulo, valor] of [
+      ["Produtos", "R$ 200,00"],
+      ["Desconto", "- R$ 30,00"],
+      ["Frete", "R$ 15,00"],
+      ["Total", "R$ 185,00"],
+    ]) {
+      const linha = [...(resumo?.querySelectorAll("span") ?? [])].find(
+        (el) => el.textContent === rotulo,
+      )?.parentElement;
+      expect(linha, rotulo).toBeTruthy();
+      expect(linha?.lastElementChild?.textContent?.replace(/\s/g, " ")).toBe(
+        valor,
+      );
+    }
+  });
+
+  it("pedido a caminho destaca a terceira etapa", async () => {
+    await montar(pedidoBase({ status: "shipping" }));
+    const cartao = container?.querySelector('[data-testid="cartao-status"]');
+    const nos = ["Recebido", "Separado", "A caminho", "Entregue"].map(
+      (rotulo) =>
+        [...(cartao?.querySelectorAll("span") ?? [])].find(
+          (el) => el.textContent === rotulo,
+        )?.previousElementSibling,
+    );
+    for (const no of nos) expect(no).toBeTruthy();
+    for (const no of nos.slice(0, 2)) {
+      expect(no?.classList.contains("bg-white")).toBe(true);
+      expect(no?.classList.contains("ring-4")).toBe(false);
+      expect(no?.querySelector("svg.lucide-check")).not.toBeNull();
+    }
+    expect(nos[2]?.classList.contains("ring-4")).toBe(true);
+    expect(nos[2]?.querySelector("svg.lucide-check")).toBeNull();
+    expect(nos[3]?.classList.contains("border-white/25")).toBe(true);
+    expect(nos[3]?.classList.contains("bg-white")).toBe(false);
+    expect(nos[3]?.classList.contains("ring-4")).toBe(false);
+    expect(nos[3]?.querySelector("svg.lucide-check")).toBeNull();
+  });
+});
+
 describe("item 5 — nomes das etapas", () => {
   it("linha do tempo da ficha usa Recebido / Separado / A caminho / Entregue", async () => {
     await montar(pedidoBase());

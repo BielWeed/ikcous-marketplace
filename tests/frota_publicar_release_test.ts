@@ -3189,6 +3189,10 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "147a-conferir-o-lucro-do-ranking-casa-com-o-financeiro-pedido-a-pedido-aplicado",
     "148a-conferir-o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-aplicado",
     "151a-conferir-o-banner-tem-imagem-propria-no-computador-aplicado",
+    "154a-conferir-o-inicio-mostra-o-dinheiro-a-devolver-aplicado",
+    "155a-conferir-o-total-comprado-do-cliente-e-o-mesmo-no-crm-na-lista-e-na-ficha-aplicado",
+    // 156a (20261404000000) fica de fora de proposito: a 404 esta em migrationsForaDaRelease
+    // e nao tem lote no canais; a consulta segue no menu para quando ela for aplicada a parte.
   ]);
 });
 
@@ -4633,6 +4637,31 @@ Deno.test("guarda: toda migration (fora rollback) com versão >= 20261192000000 
   for (const l of lotes)
     for (const v of l.versoes ?? [])
       assert(versoes.includes(v), `${l.consulta}: versão ${v} sem arquivo`);
+});
+
+// A 400 (valores negativos) e a 404 (observação da inspeção: REVOKE na tabela de devoluções)
+// não são aditivas e se aplicam a parte: o portão REAL (politica.json + os arquivos de
+// supabase/migrations) não as põe na release, e as aditivas 402 e 403 continuam nela.
+Deno.test("política real: a 400 e a 404 ficam FORA da release; a 402 e a 403 continuam DENTRO", async () => {
+  const politicaReal = JSON.parse(
+    await Deno.readTextFile("scripts/frota/politica.json"),
+  );
+  const nomes: string[] = [];
+  for await (const e of Deno.readDir("supabase/migrations"))
+    if (e.isFile && e.name.endsWith(".sql")) nomes.push(e.name);
+  const naRelease = new Set(migrationsDaRelease(nomes, politicaReal));
+  assertEquals(naRelease.has("20261400000000"), false);
+  assertEquals(naRelease.has("20261404000000"), false);
+  assertEquals(naRelease.has("20261402000000"), true);
+  assertEquals(naRelease.has("20261403000000"), true);
+  // e a 404 não tem lote no canais: estar fora da release e num lote ao mesmo tempo daria
+  // duas decisões para a mesma versão
+  const lotes = lerCanais().provasDeObjetos;
+  assertEquals(
+    lotes.filter((l: any) => (l.versoes ?? []).includes("20261404000000"))
+      .length,
+    0,
+  );
 });
 
 // ===========================================================================

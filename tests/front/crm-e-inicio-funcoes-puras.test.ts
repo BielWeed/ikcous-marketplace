@@ -651,6 +651,12 @@ describe("formatadores", () => {
     expect(semNbsp(formatarMoedaCompacta(12345))).toContain("mil");
   });
 
+  it("compacta a moeda a partir de exatamente R$ 10 mil, em reais", () => {
+    expect(semNbsp(formatarMoedaCompacta(9_999))).toBe("R$ 9.999,00");
+    expect(semNbsp(formatarMoedaCompacta(10_000))).toBe("R$ 10 mil");
+    expect(semNbsp(formatarMoedaCompacta(10_001))).toBe("R$ 10 mil");
+  });
+
   it("variação: sem base honesta não inventa percentual", () => {
     expect(variacaoPercentual(120, 100)).toBe(20);
     expect(variacaoPercentual(80, 100)).toBe(-20);

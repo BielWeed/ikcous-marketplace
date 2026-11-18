@@ -32,6 +32,7 @@ import {
   formatarDia,
   formatarReais,
   instrucaoParaOCliente,
+  paraCentavos,
   rotuloMetodo,
   rotuloResolucao,
   rotuloStatus,
@@ -172,7 +173,8 @@ export function DevolucaoDoPedidoCard({
     atual.status === "concluida" &&
     atual.resolucao_final === "reembolso" &&
     atual.valor_reembolso !== null &&
-    atual.valor_reembolso < valorTotal;
+    paraCentavos(atual.valor_reembolso) <
+      paraCentavos(atual.valor_itens) + paraCentavos(atual.valor_frete_ida);
 
   async function copiar(valor: string, rotulo: string) {
     const ok = await copiarParaClipboard(valor);

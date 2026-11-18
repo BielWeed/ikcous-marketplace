@@ -579,9 +579,12 @@ const CONTA_ME_FELIZ = {
  * (reivindicação gravada? liberação com os dois filtros? evento de qual
  * etapa?).
  */
-function clienteFalso(configuracao: { pedido?: any; linhasReivindicadas?: any[]; linhasCpfAtualizadas?: any[]; itens?: any[]; produtosDb?: any[]; credentials?: any; enderecoConta?: any; erroRastreio?: boolean; erroReleituraPedido?: boolean } = {}) {
+function clienteFalso(configuracao: { pedido?: any; linhasReivindicadas?: any[]; linhasCpfAtualizadas?: any[]; itens?: any[]; produtosDb?: any[]; credentials?: any; enderecoConta?: any; erroRastreio?: boolean; erroReleituraPedido?: boolean; falhasNaLiberacao?: number } = {}) {
     const pedidoAtual = configuracao.pedido ? { ...configuracao.pedido } : null
     let leiturasPedido = 0
+    // Quantas liberações (`shipping_label_id` -> null) ainda devolvem `{ error }`
+    // antes de funcionar — o supabase-js não lança, devolve o erro.
+    let falhasRestantesNaLiberacao = configuracao.falhasNaLiberacao ?? 0
     const registro = {
         pedidoAtual,
         reivindicacoes: [] as Array<{ valores: any; filtros: any[] }>,
@@ -635,6 +638,10 @@ function clienteFalso(configuracao: { pedido?: any; linhasReivindicadas?: any[];
             const tomaVinculo = 'shipping_label_id' in (no.valores || {}) && no.valores.shipping_label_id !== null && !('shipping_label_url' in no.valores)
             if (soltaVinculo) {
                 registro.liberacoes.push({ valores: no.valores, filtros: [...no.filtros] })
+                if (falhasRestantesNaLiberacao > 0) {
+                    falhasRestantesNaLiberacao--
+                    return Promise.resolve({ data: null, error: { code: 'XX000', message: 'Falha simulada ao liberar a reivindicação' } })
+                }
                 if (bate) Object.assign(pedidoAtual, no.valores)
                 return Promise.resolve({ data: null, error: null })
             }
@@ -1273,6 +1280,123 @@ Deno.test("handler - checkout recusado (200 com status pending): item sai do car
         assertEquals(supa.registro.eventos[0].payload.label_id, LABEL_ID)
         // ramo que LIBERA não é resgate: o card pode reapresentar o botão
         assertEquals(corpo.resgate, undefined)
+    })
+})
+
+// ── Liberação da reivindicação com falha transitória (checkout não fechou) ──
+// O supabase-js NÃO lança: devolve `{ error }`. Antes, UMA falha ali deixava o
+// vínculo preso (o portão `already: true` devolvia "já tinha etiqueta" com URL
+// nula para sempre). Agora a liberação condicional tenta até 3 vezes, com
+// espera curta (150 ms, 400 ms) — a espera é injetada (`deps.esperar`) para os
+// testes não demorarem e para provar os intervalos.
+
+/** Roda um checkout recusado (200 pending) com a liberação falhando `falhas`
+ *  vezes antes de funcionar e devolve tudo o que os assentos registraram. */
+async function checkoutRecusadoComLiberacaoFalhando(falhas: number) {
+    const supa = clienteFalso({ pedido: PEDIDO_FELIZ, falhasNaLiberacao: falhas })
+    const me = buscarMeFalso({ checkout: 'pendente' })
+    const esperas: number[] = []
+    let resposta: Response | undefined
+    const erros = await comConsoleErrorCapturado(async () => {
+        resposta = await comAdminFalso(() =>
+            handler(requisicaoGerar(), {
+                supabase: supa.cliente,
+                buscar: me.buscar,
+                esperar: (ms: number) => { esperas.push(ms); return Promise.resolve() },
+            } as any))
+    })
+    return { supa, me, esperas, erros, res: resposta as Response }
+}
+
+Deno.test("handler - liberação falha 1x e acerta na 2ª: pedido volta a NULL e a resposta é a de sempre", async () => {
+    await comEnvAdmin(async () => {
+        const { supa, me, esperas, erros, res } = await checkoutRecusadoComLiberacaoFalhando(1)
+        assertEquals(res.status, 502)
+        const corpo = await res.json()
+        assertEquals(String(corpo.error).includes('saldo'), true)
+        assertEquals(corpo.resgate, undefined)
+        // a reserva foi solta: o pedido pode etiquetar de novo
+        assertEquals(supa.registro.pedidoAtual.shipping_label_id, null)
+        // 2 tentativas, com a MESMA forma condicional (id + vínculo desta corrida)
+        assertEquals(supa.registro.liberacoes.length, 2)
+        for (const lib of supa.registro.liberacoes) {
+            assertEquals(lib.valores, { shipping_label_id: null })
+            assertEquals(
+                lib.filtros.filter((f) => f.metodo === 'eq').map((f) => [f.coluna, f.valor]),
+                [['id', 'pedido-1'], ['shipping_label_id', LABEL_ID]],
+            )
+        }
+        assertEquals(esperas, [150])
+        // o carrinho do ME foi limpo UMA vez, e o evento sai igual a antes
+        assertEquals(me.registro.remocoes, 1)
+        assertEquals(supa.registro.eventos.length, 1)
+        assertEquals(supa.registro.eventos[0].payload.etapa, 'checkout')
+        // quem recuperou na 2ª não faz barulho de falha final
+        assertEquals(erros.some((l) => l.includes('Falha ao liberar a reivindicação')), false)
+    })
+})
+
+Deno.test("handler - liberação falha 2x e acerta na 3ª: pedido volta a NULL", async () => {
+    await comEnvAdmin(async () => {
+        const { supa, esperas, erros, res } = await checkoutRecusadoComLiberacaoFalhando(2)
+        assertEquals(res.status, 502)
+        assertEquals(supa.registro.pedidoAtual.shipping_label_id, null)
+        assertEquals(supa.registro.liberacoes.length, 3)
+        assertEquals(esperas, [150, 400])
+        assertEquals(erros.some((l) => l.includes('Falha ao liberar a reivindicação')), false)
+    })
+})
+
+Deno.test("handler - liberação falha 3x: vínculo permanece (limite documentado), 3 tentativas e console.error", async () => {
+    // O limite do conserto: três falhas seguidas NÃO viram liberação por tempo —
+    // o id pode estar pago em tese, então o vínculo fica e o log diz.
+    await comEnvAdmin(async () => {
+        const { supa, me, esperas, erros, res } = await checkoutRecusadoComLiberacaoFalhando(3)
+        assertEquals(res.status, 502)
+        const corpo = await res.json()
+        assertEquals(String(corpo.error).includes('saldo'), true)
+        assertEquals(supa.registro.pedidoAtual.shipping_label_id, LABEL_ID)
+        assertEquals(supa.registro.liberacoes.length, 3)
+        assertEquals(esperas, [150, 400])
+        assertEquals(erros.filter((l) => l.includes('Falha ao liberar a reivindicação')).length, 1)
+        // o resto da finalização não muda: carrinho limpo e evento gravado
+        assertEquals(me.registro.remocoes, 1)
+        assertEquals(supa.registro.eventos.length, 1)
+        assertEquals(supa.registro.eventos[0].payload.etapa, 'checkout')
+    })
+})
+
+Deno.test("handler - liberação que acerta de primeira faz UMA chamada de update e nenhuma espera", async () => {
+    await comEnvAdmin(async () => {
+        const { supa, esperas, erros, res } = await checkoutRecusadoComLiberacaoFalhando(0)
+        assertEquals(res.status, 502)
+        assertEquals(supa.registro.pedidoAtual.shipping_label_id, null)
+        assertEquals(supa.registro.liberacoes.length, 1)
+        assertEquals(esperas, [])
+        assertEquals(erros.some((l) => l.includes('Falha ao liberar a reivindicação')), false)
+    })
+})
+
+Deno.test("handler - pedido mudou durante o carrinho (409) e a liberação falha 1x: também solta na 2ª", async () => {
+    // Mesmo laço na etapa `validacao_pedido` (pedido cancelado no meio).
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({ pedido: PEDIDO_FELIZ, falhasNaLiberacao: 1 })
+        const me = buscarMeFalso()
+        const esperas: number[] = []
+        const buscar = async (input: any, init?: any) => {
+            const resposta = await me.buscar(input, init)
+            if (String(input).endsWith('/api/v2/me/cart')) Object.assign(supa.registro.pedidoAtual, { status: 'cancelled' })
+            return resposta
+        }
+        await comConsoleErrorCapturado(async () => {
+            const res = await comAdminFalso(() =>
+                handler(requisicaoGerar(), { supabase: supa.cliente, buscar, esperar: (ms: number) => { esperas.push(ms); return Promise.resolve() } } as any))
+            assertEquals(res.status, 409)
+        })
+        assertEquals(me.registro.checkouts, 0)
+        assertEquals(supa.registro.pedidoAtual.shipping_label_id, null)
+        assertEquals(supa.registro.liberacoes.length, 2)
+        assertEquals(esperas, [150])
     })
 })
 

@@ -261,6 +261,76 @@ describe("Cadastro — CPF opcional (o CPF mora na conta)", () => {
     expect(armazem.getItem(CHAVE_PENDENTE)).toBeNull();
   });
 
+  it("sessão imediata e set_my_cpf falhando: avisa que o cadastro concluiu sem salvar o CPF", async () => {
+    const { supabase } = await montarNoCadastro();
+    const { toast } = await import("sonner");
+    const session = { access_token: "token-user-1", user: { id: "user-1" } };
+    vi.mocked(supabase.auth.signUp).mockResolvedValue({
+      data: { user: session.user, session },
+      error: null,
+    } as never);
+    vi.mocked(supabase.auth.getSession).mockResolvedValue({
+      data: { session },
+      error: null,
+    } as never);
+    vi.mocked(supabase.rpc).mockImplementation(
+      () =>
+        pedidoCpfComCabecalho(
+          Promise.resolve({
+            data: null,
+            error: { code: "XX000", message: "falha interna" },
+          }),
+        ) as never,
+    );
+
+    await preencherCadastroBasico();
+    await act(async () => digitar("cpf", CPF_MASCARADO));
+    await act(async () => {
+      botao("FINALIZAR REGISTRO")!.click();
+      await esperarMicrotarefas();
+      await esperarMicrotarefas();
+    });
+
+    expect(supabase.rpc).toHaveBeenCalledWith("set_my_cpf", {
+      p_cpf: CPF_DIGITOS,
+    });
+    expect(toast.error).toHaveBeenCalledWith(
+      "Cadastro concluído, mas não foi possível salvar o CPF agora. Você pode informá-lo depois em Perfil > Segurança e conta.",
+    );
+  });
+
+  it("sem sessão e armazenamento cheio: avisa que o CPF não ficou guardado", async () => {
+    const { supabase } = await montarNoCadastro();
+    const { toast } = await import("sonner");
+    vi.mocked(supabase.auth.signUp).mockResolvedValue({
+      data: {
+        user: { id: "user-1", email: "cliente@example.com" },
+        session: null,
+      },
+      error: null,
+    } as never);
+    vi.spyOn(armazem, "setItem").mockImplementation(() => {
+      throw new DOMException("armazenamento cheio", "QuotaExceededError");
+    });
+
+    await preencherCadastroBasico();
+    await act(async () => digitar("cpf", CPF_MASCARADO));
+    await act(async () => {
+      botao("FINALIZAR REGISTRO")!.click();
+      await esperarMicrotarefas();
+      await esperarMicrotarefas();
+    });
+
+    expect(armazem.getItem(CHAVE_PENDENTE)).toBeNull();
+    expect(supabase.rpc).not.toHaveBeenCalledWith(
+      "set_my_cpf",
+      expect.anything(),
+    );
+    expect(toast.error).toHaveBeenCalledWith(
+      "Cadastro concluído, mas não foi possível guardar o CPF neste aparelho. Você pode informá-lo depois em Perfil > Segurança e conta ou no checkout.",
+    );
+  });
+
   it("cadastro imediato de A com SDK já em B: não grava e exibe a mensagem fixa", async () => {
     const { supabase } = await montarNoCadastro();
     const { toast } = await import("sonner");

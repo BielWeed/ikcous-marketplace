@@ -44,6 +44,14 @@ describe("aviso de pedido atualizado — old só com a chave primária (formato 
     expect(tipoDoAvisoDoPedido(evento)).toBe("pagamento");
   });
 
+  it("pedido cancelado que recebe pago_apos_expirar avisa o pagamento", () => {
+    const evento = completarOldDoEvento(
+      noAr({ status: "cancelled", payment_status: "pago_apos_expirar" }),
+      { status: "cancelled", paymentStatus: "aguardando" },
+    );
+    expect(tipoDoAvisoDoPedido(evento)).toBe("pagamento");
+  });
+
   it("pagamento que não tinha valor (null) e virou pago também conta", () => {
     const evento = completarOldDoEvento(
       noAr({ status: "pending", payment_status: "pago" }),

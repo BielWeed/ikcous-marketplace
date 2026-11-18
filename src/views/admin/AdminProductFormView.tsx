@@ -74,6 +74,7 @@ import {
 } from "@/lib/gestao-de-categorias";
 import { imagemAbre } from "@/lib/imagem-abre";
 import { percentualComUmaCasa } from "@/lib/percentual";
+import { pluralizar } from "@/lib/pluralizar";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import {
   AVISO_ESTOQUE_NAO_RESTAURADO,
@@ -957,6 +958,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   }, [categoriaDoRascunho, carregandoCategorias, dbCategories]);
   const [deletedVariantIds, setDeletedVariantIds] = useState<string[]>([]);
   const [variantToDelete, setVariantToDelete] = useState<string | null>(null);
+  const variacaoEmExclusao = formData.variants.find(
+    (v) => v.id === variantToDelete,
+  );
   // Trocar o nome de uma variação já gravada espera o "sim" da lojista: o pedido
   // lê a variação ao vivo, então o nome novo aparece também nos pedidos antigos.
   // `aplicar` é o fim do "Salvar variação", adiado até a confirmação.
@@ -2480,7 +2484,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         } else {
           setFotosComFalha((prev) => [...prev, ...falhas]);
           toast.error(
-            `${falhas.length} de ${files.length} ${files.length === 1 ? "foto não subiu" : "fotos não subiram"}.`,
+            `${pluralizar(falhas.length, "foto não subiu", "fotos não subiram")} (de ${files.length}).`,
             {
               id: loadingToast,
               description:
@@ -4010,10 +4014,23 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     originalPrice: originalPriceVal || null,
     variants: formData.variants,
   });
+  // O lucro é pelo MENOR preço que a cliente paga (o da vitrine), não pelo
+  // preço-base: variação com preço próprio menor muda o lucro. Preço próprio
+  // zero é preço cobrado (brinde), como no servidor. Sem opção à venda (tudo
+  // esgotado ou desligado) vale o preço-base, como antes.
+  const temOpcaoAVenda = formData.variants.some(
+    (v) => v.active && (v.stockIncrement ?? 0) > 0,
+  );
+  const precoDoLucro = temOpcaoAVenda ? vitrine.preco : priceVal;
+  const lucroUnit = precoDoLucro - costPriceVal;
+  const rotuloDoLucro =
+    temOpcaoAVenda && vitrine.aPartirDe ? "Menor lucro" : "Lucro";
   const marginPct =
-    priceVal > 0
-      ? Math.round(((priceVal - costPriceVal) / priceVal) * 10000) / 100
-      : 0;
+    precoDoLucro > 0
+      ? Math.round((lucroUnit / precoDoLucro) * 10000) / 100
+      : lucroUnit < 0
+        ? -100
+        : 0;
   // Quatro rótulos em palavras simples: prejuízo, sem lucro, lucro baixo
   // (< 30%) e lucro bom.
   const [analiseDoLucro, corDoLucro] =
@@ -4505,7 +4522,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                               }))
                             }
                             className="w-full rounded-2xl border border-admin-border bg-zinc-950 px-5 py-4 font-mono text-sm font-bold uppercase transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                            placeholder="Ex: COR-TAM"
+                            placeholder="Ex.: COR-TAM"
                           />
                         </div>
                         {/* Código de Barras (C5.2) — a caixa da PP tem um código
@@ -4543,7 +4560,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                 )
                               }
                               className="w-full rounded-2xl border border-admin-border bg-zinc-950 px-5 py-4 font-mono text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                              placeholder="Ex: 7891234567890"
+                              placeholder="Ex.: 7891234567890"
                             />
                             {/* C5.3 — some sem câmera: o leitor físico USB digita
                             direto no campo acima, sem precisar deste botão. */}
@@ -5272,7 +5289,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   onFlush={(val) =>
                     setFormData((prev) => ({ ...prev, name: val }))
                   }
-                  placeholder="Ex: Camiseta básica preta"
+                  placeholder="Ex.: Camiseta básica preta"
                   className="w-full rounded-xl border border-admin-border bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5 sm:text-base"
                 />
               </div>
@@ -5395,7 +5412,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 <div className="group relative">
                   <LocalBufferedInput
                     id="product-stock"
-                    placeholder="Ex: 24"
+                    placeholder="Ex.: 24"
                     aria-invalid={!!stockError}
                     aria-describedby={
                       hasActiveVariants
@@ -5518,7 +5535,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             originalPrice: val,
                           }))
                         }
-                        placeholder="Ex: 99,90"
+                        placeholder="Ex.: 99,90"
                         className="w-full rounded-xl border border-admin-border bg-zinc-950/50 py-3 pl-11 pr-4 text-base font-black tabular-nums text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:py-5 sm:pl-14 sm:pr-6 sm:text-lg"
                       />
                     </div>
@@ -5858,7 +5875,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   aviso={avisoDeCusto}
                   resumo={
                     priceVal > 0 && costPriceVal > 0
-                      ? `Lucro ${formatCurrency(priceVal - costPriceVal)} · margem ${percentualComUmaCasa(marginPct)}`
+                      ? `${rotuloDoLucro} ${formatCurrency(lucroUnit)} · margem ${percentualComUmaCasa(marginPct)}`
                       : "opcional"
                   }
                   temErro={!!costError && !costError.startsWith("Aviso")}
@@ -6008,10 +6025,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         >
                           <div>
                             <p className="text-xs text-zinc-400">
-                              Lucro por unidade
+                              {rotuloDoLucro} por unidade
                             </p>
                             <p className="mt-1 text-xl font-bold tabular-nums">
-                              {formatCurrency(priceVal - costPriceVal)}
+                              {formatCurrency(lucroUnit)}
                             </p>
                           </div>
                           <div className="text-right">
@@ -6118,7 +6135,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             name="widthCm"
                             type="number"
                             min="0"
-                            placeholder="Ex: 15"
+                            placeholder="Ex.: 15"
                             value={formData.widthCm}
                             onFlush={(val) =>
                               setFormData((prev) => ({ ...prev, widthCm: val }))
@@ -6150,7 +6167,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             name="heightCm"
                             type="number"
                             min="0"
-                            placeholder="Ex: 15"
+                            placeholder="Ex.: 15"
                             value={formData.heightCm}
                             onFlush={(val) =>
                               setFormData((prev) => ({
@@ -6185,7 +6202,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             name="lengthCm"
                             type="number"
                             min="0"
-                            placeholder="Ex: 15"
+                            placeholder="Ex.: 15"
                             value={formData.lengthCm}
                             onFlush={(val) =>
                               setFormData((prev) => ({
@@ -6287,7 +6304,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                               "produto",
                             )
                           }
-                          placeholder="Ex: 7891234567890"
+                          placeholder="Ex.: 7891234567890"
                           className="w-full rounded-xl border border-admin-border bg-zinc-950/50 px-4 py-3 font-mono text-sm font-black tabular-nums text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5"
                         />
                         {/* C5.3 — some sem câmera: o leitor físico USB digita direto
@@ -6344,7 +6361,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             estoqueMinimo: val,
                           }))
                         }
-                        placeholder="Ex: 5"
+                        placeholder="Ex.: 5"
                         aria-invalid={estoqueMinimoError ? true : undefined}
                         aria-describedby={
                           estoqueMinimoError
@@ -6400,7 +6417,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     />
                     <InterruptorDoProduto
                       rotulo="Em destaque"
-                      descricao="Mostra o selo “Em alta” e põe o produto na vitrine de destaques."
+                      descricao="Mostra o selo “Em alta” e inclui na vitrine de destaques automática. A seleção manual não muda."
                       ligado={formData.isBestseller}
                       onAlternar={() =>
                         setFormData((prev) => ({
@@ -6727,9 +6744,20 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               Excluir variante?
             </AlertDialogTitle>
             <AlertDialogDescription className="text-xs text-zinc-400">
-              Tem certeza que deseja excluir esta variante? Ela será removida da
-              lista. Para guardar essa alteração no sistema, você precisa salvar
-              o formulário do produto.
+              {variacaoEmExclusao && (
+                <>
+                  {dividirEmAtributos(
+                    variacaoEmExclusao.name,
+                    variacaoEmExclusao.value,
+                  )
+                    .map((par) => `${par.name}: ${par.value}`)
+                    .join(" · ")}
+                  {". Estoque: "}
+                  {variacaoEmExclusao.stockIncrement} un.{" "}
+                </>
+              )}
+              Ela será removida da lista. Para guardar essa alteração no
+              sistema, você precisa salvar o formulário do produto.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="mt-4 gap-2">

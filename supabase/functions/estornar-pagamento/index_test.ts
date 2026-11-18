@@ -665,6 +665,42 @@ Deno.test("F5 - fluxo feliz conclui via RPC e responde {status, valor, texto} se
     assertEquals(executor.registro.chamadas[0].pedido.gateway_payment_id, "123456789")
 })
 
+Deno.test("F5c - o MP CONFIRMOU mas a RPC concluir_estorno falha -> 202 em_processamento (nunca 200 'concluido': não se mente que gravou o que não gravou)", async () => {
+    // Mutação: apagar o bloco `if (erroConcluir) {...}` da edge faria a
+    // resposta cair no 200 'concluido' com a linha ainda em_processamento no
+    // banco — o lojista leria "devolução concluída" sem o ledger registrar.
+    const { cliente, registro } = clienteSupaFalso({
+        linha: LINHA_SOLICITADA,
+        pedido: PEDIDO_PAGO,
+        rpcErro: { message: "x" },
+    })
+    const executor = executorFalso(
+        { tipo: "concluido", mp_refund_id: "111222333", mp_status: "approved", mp_status_detail: null, valor: 100 },
+        { chamarMp: true },
+    )
+    const mp = fetchMpFalso()
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), {
+                supabase: cliente,
+                executarEstorno: executor.fn,
+                buscar: mp.buscar,
+            }),
+        ),
+    )
+    assertEquals(resposta.status, 202)
+    const corpo = await resposta.json()
+    assertEquals(corpo.status, "em_processamento")
+    assertEquals(corpo.status === "concluido", false)
+    // O MP foi chamado e a RPC foi TENTADA (a falha é da gravação, não do MP).
+    assertEquals(mp.registro.chamadas, 1)
+    assertEquals(registro.rpcs.length, 1)
+    assertEquals(registro.rpcs[0].nome, "concluir_estorno")
+    // Nada marcou a linha como falhou/recusado: ela segue viva para o cron
+    // completar pela mesma RPC (idempotente).
+    assertEquals(registro.finais.length, 0)
+})
+
 // ── F5b: PIX (Orders API) → a edge PRECISA de consultarTransacaoDaOrder ────
 // Conserto do laudo do PR #439 (07/09): sem passar consultarTransacaoDaOrder
 // ao executor, todo estorno de pedido cujo gateway_payment_id é de ORDER (o
@@ -1115,6 +1151,35 @@ Deno.test("T-1b - SEM outra linha reivindicando o refund (idsJaReivindicados vaz
     assertEquals(resposta.status, 200)
     const corpo = await resposta.json()
     assertEquals(corpo.status, "concluido")
+})
+
+Deno.test("T-1c - FALHA ao ler os ids já reivindicados por outras linhas -> 500, NENHUM POST ao MP, nenhuma marca e nenhum concluir_estorno (sem a leitura, o refund de outra linha poderia ser creditado de novo)", async () => {
+    // Mutação: apagar o `if (erroIdsReivindicados) {...}` da edge deixaria
+    // `linhasReivindicadas` null virar [] e o estorno seguiria sem excluir os
+    // refunds que outras linhas já reivindicaram.
+    const { cliente, registro } = clienteSupaFalso({
+        linha: LINHA_SOLICITADA,
+        pedido: PEDIDO_PAGO,
+        idsJaReivindicados: ["ref-outra-linha"],
+        erroIdsJaReivindicados: { message: "banco fora" },
+    })
+    const mp = fetchT1Falso()
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), {
+                supabase: cliente,
+                buscar: mp.buscar,
+                // SEM executarEstorno: o módulo real, igual ao T-1.
+            }),
+        ),
+    )
+    assertEquals(resposta.status, 500)
+    await resposta.text()
+    assertEquals(registro.leiturasIdsReivindicados, 1)
+    assertEquals(mp.registro.chamadas.length, 0, "nenhum POST/GET ao MP")
+    assertEquals(registro.marcas.length, 0, "a linha NÃO é marcada em_processamento")
+    assertEquals(registro.rpcs.length, 0, "nenhum concluir_estorno")
+    assertEquals(registro.finais.length, 0)
 })
 
 // ── Tarefa mp-2 (15/09/2026): de QUEM é o token que devolve o dinheiro ─────

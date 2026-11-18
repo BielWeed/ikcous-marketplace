@@ -131,8 +131,9 @@ describe("VerificacaoDoPagamento com pontoDePartida — a resposta do POST é a 
       "Se o banco confirmar, o pedido aparece como pago em Meus pedidos.",
     );
     expect(texto()).toContain(
-      "Se nenhuma cobrança aparecer, o pedido é cancelado automaticamente até 03/10/2026 às",
+      "Se nenhuma cobrança aparecer, o pedido é cancelado automaticamente a partir de 03/10/2026 às",
     );
+    expect(texto()).not.toContain("cancelado automaticamente até");
     expect(botoes()).toContain("Falar com a loja");
     expect(botoes()).toContain("Ver meus pedidos");
     semSaidaQueCobraOuCancela();

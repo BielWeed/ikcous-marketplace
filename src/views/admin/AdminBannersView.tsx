@@ -97,6 +97,7 @@ import { camposQueMudaram } from "@/utils/campos-mexidos-do-produto";
 import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
 import { AnimatePresence } from "framer-motion";
 import {
+  AlertCircle,
   ArrowDown,
   ArrowUp,
   Edit,
@@ -837,7 +838,19 @@ export const AdminBannersView = memo(function AdminBannersView({
     deleteStorageFile,
     reorderBanners,
     refreshBanners,
+    erroDeLeitura,
   } = useBanners(true);
+  // "Tentar de novo" na lista que não carregou: segura o botão enquanto a
+  // releitura roda, para a lojista não disparar várias seguidas.
+  const [relendoBanners, setRelendoBanners] = useState(false);
+  const tentarLerBannersDeNovo = async () => {
+    setRelendoBanners(true);
+    try {
+      await refreshBanners(false, true);
+    } finally {
+      setRelendoBanners(false);
+    }
+  };
   const { products } = useProducts();
   // L10 — o rascunho do formulário é do USUÁRIO (`admin_banner_form_draft:<uid>`):
   // cada admin só lê, grava e apaga o dele. Sem uid não há chave, e a tela
@@ -887,6 +900,7 @@ export const AdminBannersView = memo(function AdminBannersView({
     id: string;
     imageUrl: string;
   } | null>(null);
+  const bannerEmExclusao = banners.find((b) => b.id === bannerToDelete?.id);
   const foco = useFocoAposExcluir();
   // Fim da programação já passou: pede confirmação antes de salvar.
   const [confirmarFimVencido, setConfirmarFimVencido] = useState(false);
@@ -2687,6 +2701,25 @@ export const AdminBannersView = memo(function AdminBannersView({
                 <Skeleton className="h-44 w-full rounded-2xl" />
                 <Skeleton className="h-44 w-full rounded-2xl" />
               </div>
+            ) : banners.length === 0 && erroDeLeitura ? (
+              <div
+                role="alert"
+                className="flex flex-wrap items-center gap-3 rounded-3xl border border-admin-border bg-admin-surface p-4 text-red-300"
+              >
+                <AlertCircle aria-hidden="true" className="size-5 shrink-0" />
+                <p className="min-w-0 flex-1 text-sm leading-relaxed">
+                  Não foi possível carregar os banners. Verifique a internet e
+                  tente de novo.
+                </p>
+                <Button
+                  variant="outline"
+                  className="min-h-11"
+                  disabled={relendoBanners}
+                  onClick={() => void tentarLerBannersDeNovo()}
+                >
+                  {relendoBanners ? "Tentando…" : "Tentar de novo"}
+                </Button>
+              </div>
             ) : filteredBannersList.length === 0 ? (
               <div className="rounded-3xl border border-dashed border-admin-border bg-admin-surface p-6 text-center">
                 <h2 className="font-semibold text-white">
@@ -3116,7 +3149,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                       alt={
                         computadorSelecionado
                           ? "Imagem do computador"
-                          : "Preview Thumbnail"
+                          : "Miniatura do banner"
                       }
                       className={cn(
                         "h-16 rounded-xl object-cover",
@@ -3812,8 +3845,8 @@ export const AdminBannersView = memo(function AdminBannersView({
                   Imagem Promocional
                 </div>
                 <p className="text-[11px] text-zinc-400">
-                  Ideal usar proporção horizontal de 2:1 (1200 × 600 px).
-                  Imagens com boa legibilidade aumentam a conversão.
+                  Celular · recomendado 1200 × 600 px (2:1). Computador ·
+                  recomendado 1920 × 480 px (4:1).
                 </p>
               </div>
 
@@ -3934,8 +3967,17 @@ export const AdminBannersView = memo(function AdminBannersView({
               Excluir Banner?
             </AlertDialogTitle>
             <AlertDialogDescription className="text-xs text-zinc-400">
-              Tem certeza que deseja excluir este banner? Esta ação não pode ser
-              desfeita e removerá a campanha do catálogo.
+              Excluir “
+              {bannerEmExclusao?.title?.trim() ||
+                bannerEmExclusao?.buttonText?.trim() ||
+                bannerEmExclusao?.link ||
+                "Banner sem título"}
+              ”?
+              {bannerEmExclusao?.startDate &&
+                ` De ${new Date(bannerEmExclusao.startDate).toLocaleString("pt-BR")}.`}
+              {bannerEmExclusao?.endDate &&
+                ` Até ${new Date(bannerEmExclusao.endDate).toLocaleString("pt-BR")}.`}{" "}
+              Esta ação não pode ser desfeita e removerá a campanha do catálogo.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="mt-4 gap-2">

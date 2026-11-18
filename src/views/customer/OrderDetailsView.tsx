@@ -39,6 +39,7 @@ import {
 } from "@/lib/link-de-rastreio";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
+import { pluralizar } from "@/lib/pluralizar";
 import { podeReenviarComprovante } from "@/lib/pode-reenviar-comprovante";
 import { podeRetomarPagamento } from "@/lib/pode-retomar-pagamento";
 import {
@@ -399,6 +400,7 @@ function cancelledDescription(
   linhasDevolucao: LinhaDevolucaoDoCliente[],
   leituraDaDevolucao: LeituraDaDevolucao = "lida",
   noBalcao = false,
+  retiradaNaLoja = false,
 ): string {
   const key = paymentStatusKey(paymentStatus);
   // `recebido_na_entrega` fica fora do Mercado Pago (brief T7): a devolução
@@ -461,16 +463,18 @@ function cancelledDescription(
   // `status='cancelled'` + `payment_status='expirado'` (migration
   // 20261186000000, `expirar_pedidos_vencidos`). A frase genérica de baixo
   // ("não seguirá para entrega") não dizia POR QUÊ: quem só demorou para pagar
-  // achava que a loja cancelou. A tela não sabe se a cobrança era PIX ou
-  // cartão (`metodo_online` não chega ao app), então o texto não nomeia o
-  // meio — "pagamento", que vale para os dois.
+  // achava que a loja cancelou. O texto não nomeia o meio por escolha
+  // (`metodo_online` já chega ao app, mas o mesmo texto serve a PIX e a
+  // cartão) — "pagamento" vale para os dois.
   if (key === "expirado") {
     // Pagou no fim do prazo e o vencimento passou antes da confirmação do
     // Mercado Pago: o pedido fica minutos como `expirado` e só depois vira
     // `pago_apos_expirar`. Comprar de novo na hora seria pagar duas vezes.
     return "O prazo do pagamento terminou e o pedido foi cancelado. Se você já pagou, aguarde alguns minutos antes de comprar de novo. Se não pagou, é só comprar de novo.";
   }
-  return statusConfig.cancelled.description;
+  return retiradaNaLoja
+    ? "Este pedido foi cancelado e não seguirá para retirada."
+    : statusConfig.cancelled.description;
 }
 
 export function OrderDetailsView({
@@ -1266,6 +1270,7 @@ export function OrderDetailsView({
             linhasDevolucao,
             leituraDaDevolucao,
             noBalcao,
+            order.retiradaNaLoja,
           )
         : currentStatus.description;
   // Estornado: o dinheiro já voltou, então só a linha CONCLUÍDA tem o que dizer
@@ -1355,8 +1360,16 @@ export function OrderDetailsView({
     chaveDoPagamento === "pago" ||
     chaveDoPagamento === "pago_apos_expirar" ||
     chaveDoPagamento === "recebido_na_entrega";
-  const rotuloDoTotal =
-    order.status !== "cancelled" && dinheiroConfirmado ? "Total pago" : "Total";
+  const creditoParcelado =
+    order.status !== "cancelled" &&
+    dinheiroConfirmado &&
+    order.metodoOnline === "credito" &&
+    (order.parcelas ?? 0) > 1;
+  const rotuloDoTotal = creditoParcelado
+    ? "Total do pedido"
+    : order.status !== "cancelled" && dinheiroConfirmado
+      ? "Total pago"
+      : "Total";
 
   // Unidades, como o carrinho e o painel contam: 1 produto x 3 = "3 itens".
   const unidades = order.items.reduce(
@@ -1761,8 +1774,7 @@ export function OrderDetailsView({
               </h4>
               {!conferenciaFalhou && !conferindoAvaliacoes && (
                 <span className="flex-shrink-0 text-xs font-semibold text-zinc-500">
-                  {totalProdutosAvaliados} de {produtosParaAvaliar.length}{" "}
-                  {produtosParaAvaliar.length === 1 ? "avaliado" : "avaliados"}
+                  {`Você avaliou ${pluralizar(totalProdutosAvaliados, "produto", "produtos")} de ${produtosParaAvaliar.length}.`}
                 </span>
               )}
             </div>
@@ -2024,6 +2036,14 @@ export function OrderDetailsView({
                 {formatCurrency(order.total)}
               </span>
             </div>
+            {creditoParcelado && (
+              <p>
+                <small>
+                  Parcelado em {order.parcelas}x no cartão. Juros do
+                  parcelamento, se houver, vêm na fatura.
+                </small>
+              </p>
+            )}
           </div>
         </motion.div>
 
@@ -2058,6 +2078,11 @@ export function OrderDetailsView({
                   {avisoDaRetirada(order.status) && (
                     <p className="text-xs font-medium leading-relaxed text-zinc-500">
                       {avisoDaRetirada(order.status)}
+                    </p>
+                  )}
+                  {prontoParaRetirar && config.businessHours?.trim() && (
+                    <p className="text-xs text-zinc-500">
+                      Horário: {config.businessHours}
                     </p>
                   )}
                   {temEnderecoDoPedido && (

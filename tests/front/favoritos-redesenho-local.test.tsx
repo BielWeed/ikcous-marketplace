@@ -200,6 +200,29 @@ describe("Favoritos — lista vertical por categoria", () => {
     expect(botao("Brinquedo 2").getAttribute("aria-current")).toBeNull();
   });
 
+  it("ordena nomes naturalmente sem trocar as categorias de lugar", () => {
+    const lista = [
+      produto("a", "Produto 10", 1, "Z"),
+      produto("b", "produto 2", 1, "Z"),
+      produto("c", "Produto 1", 1, "Z"),
+      produto("d", "Bruno", 1, "A"),
+      produto("e", "Ávila", 1, "A"),
+    ];
+    montar(lista);
+    const ordem = container.querySelector<HTMLSelectElement>(
+      'select[aria-label="Ordem dos favoritos"]',
+    )!;
+    act(() => {
+      ordem.value = "nome";
+      ordem.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(secoes()).toEqual([
+      { titulo: "Z", itens: ["Produto 1", "produto 2", "Produto 10"] },
+      { titulo: "A", itens: ["Ávila", "Bruno"] },
+    ]);
+    expect(lista[0].name).toBe("Produto 10");
+  });
+
   it("ordena por preço e nome dentro de cada categoria, sem modificar a lista recebida", () => {
     montar();
     const ordem = container.querySelector<HTMLSelectElement>(

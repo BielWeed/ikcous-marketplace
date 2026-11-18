@@ -143,7 +143,7 @@ describe("OrderDetailsView — produto excluído não convida a avaliar", () => 
     expect(estrelasDe("Calça")).toHaveLength(5);
     expect(estrelasDe("Produto excluído")).toHaveLength(0);
     // O contador não conta o excluído: são 2 produtos avaliáveis.
-    expect(hospedeiro.textContent).toMatch(/0 de 2\s*avaliados/);
+    expect(hospedeiro.textContent).toMatch(/Você avaliou 0 produtos de 2\./);
     // O item continua na lista "Itens do pedido" (a compra aconteceu).
     expect(hospedeiro.textContent).toContain("Produto excluído");
   });

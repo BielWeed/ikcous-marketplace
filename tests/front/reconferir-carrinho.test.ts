@@ -185,6 +185,47 @@ describe("oBancoRecusaria", () => {
     expect(r.oBancoRecusaria).toBe(true);
   });
 
+  it("preco CAI de 10 para 4 reais -> banco recusa os 600 centavos de diferenca", async () => {
+    const r = await reconferirCarrinho(
+      [item("a", 10, 1)],
+      leitor([
+        { id: "a", nome: "Produto a", preco: 4, estoque: 5, ativo: true },
+      ]),
+    );
+    expect(r.oBancoRecusaria).toBe(true);
+  });
+
+  it("dois itens CAEM 4 centavos no MESMO sentido e passam do teto", async () => {
+    const r = await reconferirCarrinho(
+      [item("a", 10, 1), item("b", 20, 1)],
+      leitor([
+        { id: "a", nome: "Produto a", preco: 9.96, estoque: 5, ativo: true },
+        { id: "b", nome: "Produto b", preco: 19.96, estoque: 5, ativo: true },
+      ]),
+    );
+    expect(r.oBancoRecusaria).toBe(true);
+  });
+
+  it("queda de EXATAMENTE 5 centavos NAO passa do teto", async () => {
+    const r = await reconferirCarrinho(
+      [item("a", 10, 1)],
+      leitor([
+        { id: "a", nome: "Produto a", preco: 9.95, estoque: 5, ativo: true },
+      ]),
+    );
+    expect(r.oBancoRecusaria).toBe(false);
+  });
+
+  it("queda de 6 centavos passa do teto -> banco recusa", async () => {
+    const r = await reconferirCarrinho(
+      [item("a", 10, 1)],
+      leitor([
+        { id: "a", nome: "Produto a", preco: 9.94, estoque: 5, ativo: true },
+      ]),
+    );
+    expect(r.oBancoRecusaria).toBe(true);
+  });
+
   // 🔴 O TESTE QUE FALTAVA, e sem ele a rodada 2 passou com a conta errada.
   // Somar MODULOS e' uma conta diferente de somar COM SINAL, e so' este caso
   // separa as duas. A revisao mediu: com a suite antiga, trocar uma pela outra

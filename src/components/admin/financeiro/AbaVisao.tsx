@@ -559,19 +559,24 @@ export function AbaVisao({
       )}
 
       <CartaoSecao titulo="Fluxo de caixa · últimos 30 dias">
-        {fonteDoGrafico.erro && !fonteDoGrafico.dados ? (
+        {!mesmaJanela && fonteDoGrafico.erro ? (
           <EstadoDeErro
-            mensagem={fonteDoGrafico.erro}
+            mensagem={
+              fonteDoGrafico.dados
+                ? `Dados anteriores: a atualização não foi concluída. ${fonteDoGrafico.erro}`
+                : fonteDoGrafico.erro
+            }
             aoTentarDeNovo={fonteDoGrafico.recarregar}
           />
-        ) : (
+        ) : null}
+        {!fonteDoGrafico.erro || fonteDoGrafico.dados ? (
           <FluxoDeCaixaGrafico
             pontos={pontos}
             carregando={fonteDoGrafico.carregando}
             ativo={ativo}
             marco={marco}
           />
-        )}
+        ) : null}
       </CartaoSecao>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

@@ -13,6 +13,7 @@ import {
 import { escalasEnxutasDoGrafico } from "./scripts/escalasEnxutasDoGrafico";
 import { graficoEnxuto } from "./scripts/graficoEnxuto";
 import { helpersCompartilhadosDoGrafico } from "./scripts/helpersCompartilhadosDoGrafico";
+import { notasRecentesDasVersoes } from "./scripts/notasRecentesDasVersoes";
 import { portaoDividido } from "./scripts/portaoDividido";
 import { precacheSemPainel } from "./scripts/precacheSemPainel";
 import { MANIFESTO_BASE } from "./src/config/manifestoBase";
@@ -147,6 +148,9 @@ export default defineConfig(async (context): Promise<UserConfig> => {
     },
     plugins: [
       identity.plugin,
+      // Só as 20 notas de versão mais novas entram no pacote (o aparelho guarda
+      // no máximo 20): -44 kB brotli no teto do cliente, medido em 17/11/2026.
+      notasRecentesDasVersoes(),
       // Só gerador de JSON Schema e WebAuthn não usados; versões e conteúdo
       // travados. Validação de formulários e login mantêm a implementação original.
       zodSemJsonSchema(),

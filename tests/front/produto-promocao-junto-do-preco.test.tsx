@@ -264,7 +264,7 @@ describe("AdminProductFormView — promoção junto do preço (u180)", () => {
     it("o exemplo do campo 'De' usa vírgula, como o campo aceita e como se escreve preço", async () => {
       await montar();
       await alternarPromocao();
-      expect(campo("product-original-price").placeholder).toBe("Ex: 99,90");
+      expect(campo("product-original-price").placeholder).toBe("Ex.: 99,90");
       // Digitando só números a máscara mostra com vírgula: o exemplo não mente.
       await digitarCampo("product-original-price", "9990");
       expect(campo("product-original-price").value).toBe("99,90");

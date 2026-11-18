@@ -343,7 +343,7 @@ describe("AdminBannersView — recorte confirmado chega ao upload com o tipo REA
     // O formulário agora aponta para o recorte — com o nome HONESTO no
     // caminho (a URL devolvida pelo mock carrega o nome do File).
     const miniatura = hospedeiro.querySelector<HTMLImageElement>(
-      'img[alt="Preview Thumbnail"]',
+      'img[alt="Miniatura do banner"]',
     );
     expect(miniatura?.src).toMatch(/banner-image-\d+\.webp$/);
 

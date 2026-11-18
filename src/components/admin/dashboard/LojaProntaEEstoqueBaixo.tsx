@@ -4,6 +4,7 @@ import type { FormaDePagamentoNaEntrega } from "@/lib/formas-de-pagamento-na-ent
 import {
   type ChaveDosSeisPassos,
   type ConfigDosSeisPassos,
+  type PassoDaLoja,
   type ProdutoDoPrimeiroPasso,
   avisoDaFaixaDeCep,
   contagemDosPassos,
@@ -84,7 +85,7 @@ interface LojaProntaEEstoqueBaixoProps {
    * não bloqueiam nada: viram linhas com atalho para o ajuste. Ausente = nada.
    */
   readonly recomendados?: readonly PassoRecomendado[];
-  readonly onNavigate: (view: View) => void;
+  readonly onNavigate: (view: View, id?: string) => void;
   /** Tenta buscar `stats` de novo (Início em estado "não sei"). */
   readonly onTentarDeNovo: () => void;
 }
@@ -124,6 +125,10 @@ export function LojaProntaEEstoqueBaixo({
   onTentarDeNovo,
   somenteBoasVindas = false,
 }: LojaProntaEEstoqueBaixoProps) {
+  const abrirPasso = (passo: PassoDaLoja) =>
+    passo.chave === "recebe"
+      ? onNavigate(passo.destino, "pagamentos")
+      : onNavigate(passo.destino);
   const idDaLista = useId();
   const [listaAberta, setListaAberta] = useState(false);
 
@@ -177,7 +182,7 @@ export function LojaProntaEEstoqueBaixo({
         </p>
         <button
           type="button"
-          onClick={() => onNavigate(proximo.destino)}
+          onClick={() => abrirPasso(proximo)}
           className={BOTAO_INICIO}
         >
           <Icone className="size-5 shrink-0" aria-hidden="true" />
@@ -236,7 +241,7 @@ export function LojaProntaEEstoqueBaixo({
           <>
             <button
               type="button"
-              onClick={() => onNavigate(proximo.destino)}
+              onClick={() => abrirPasso(proximo)}
               className={BOTAO_INICIO}
             >
               <span className="min-w-0">
@@ -339,7 +344,7 @@ export function LojaProntaEEstoqueBaixo({
                   ) : (
                     <button
                       type="button"
-                      onClick={() => onNavigate(passo.destino)}
+                      onClick={() => abrirPasso(passo)}
                       className={LINHA_INICIO}
                     >
                       <TileDoInicio icone={Icone} tom="atencao" />

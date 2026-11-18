@@ -12,6 +12,7 @@ import {
   semearBannersDoCofre,
 } from "@/lib/banners-da-vitrine";
 import { DataVault } from "@/lib/dataVault";
+import { mensagemDeErroDeSessaoDoPainel } from "@/lib/erro-de-sessao-do-painel";
 import { imagemAbre } from "@/lib/imagem-abre";
 import {
   imagemDoBannerEmUso,
@@ -146,6 +147,11 @@ export function useBanners(adminMode = false) {
   const vaultRef = useRef<DataVault | null>(null);
   const [banners, setBanners] = useState<Banner[]>(bannersEmCache() || []);
   const [isLoaded, setIsLoaded] = useState(!!bannersEmCache());
+  // A ÚLTIMA leitura na rede falhou. Sem isto a tela não distinguia "a loja
+  // não tem banner" de "não deu para ler": com a leitura marcada como
+  // concluída, a lista vazia sugeria criar o primeiro e saíam duplicados.
+  // Volta a false assim que uma leitura funciona.
+  const [erroDeLeitura, setErroDeLeitura] = useState(false);
   const isFetchingRef = useRef(false);
 
   // Persist to DataVault (non-blocking helper)
@@ -177,11 +183,19 @@ export function useBanners(adminMode = false) {
   // confia que ele reflete a última verdade conhecida. Sem isto, um banner
   // criado agora não aparecia na Home por até 1 minuto — e um excluído
   // ressuscitaria nela no mesmo intervalo.
+  //
+  // `gravacaoConfirmada`: o servidor acabou de aceitar a gravação (criar e
+  // excluir). Aí a lista local é a verdade conhecida e o erro de leitura
+  // anterior deixa de valer -- sem isto, excluir o último banner depois de uma
+  // leitura falha mostrava "Não foi possível carregar" em vez de "Nenhum
+  // Banner". Atualização otimista e reversão NÃO passam por aqui: nada foi
+  // confirmado (e a reversão de uma gravação que falhou não prova leitura).
   const applyLocalBanners = useCallback(
-    (items: Banner[]) => {
+    (items: Banner[], gravacaoConfirmada = false) => {
       gravarBannersLocais(items);
       persistToVault(items);
       setBanners(items);
+      if (gravacaoConfirmada) setErroDeLeitura(false);
     },
     [persistToVault],
   );
@@ -269,11 +283,13 @@ export function useBanners(adminMode = false) {
               ? data
               : bannersEmCache() || [],
           );
+          setErroDeLeitura(false);
           setIsLoaded(true);
         } catch {
           /* fallback */
           // A consulta que esta tela pegou carona falhou: sem isto a loja
           // sem banner ficava com o esqueleto ligado para sempre.
+          setErroDeLeitura(true);
           setIsLoaded(true);
         }
         return;
@@ -291,8 +307,10 @@ export function useBanners(adminMode = false) {
             ? mappedBanners
             : bannersEmCache() || [],
         );
+        setErroDeLeitura(false);
       } catch (error: any) {
         console.error("[Banners] Error fetching banners:", error.message);
+        setErroDeLeitura(true);
       } finally {
         setIsLoaded(true);
         isFetchingRef.current = false;
@@ -514,6 +532,8 @@ export function useBanners(adminMode = false) {
         [...banners, newBanner],
         data.id,
       );
+      // Criar um banner não prova que a leitura funciona: o aviso de leitura
+      // que falhou continua até uma leitura bem-sucedida.
       applyLocalBanners(updatedBanners);
 
       // Async normalization of position order in DB
@@ -665,7 +685,9 @@ export function useBanners(adminMode = false) {
         );
         await fetchBanners(false, true);
       } else {
-        toast.error("Erro ao atualizar banner.");
+        toast.error(
+          mensagemDeErroDeSessaoDoPainel(error) ?? "Erro ao atualizar banner.",
+        );
       }
       throw error;
     }
@@ -796,7 +818,7 @@ export function useBanners(adminMode = false) {
         normalizeBannersOrder(deletedBanner.position).catch(() => {});
       }
 
-      applyLocalBanners(updated);
+      applyLocalBanners(updated, true);
       toast.success("Banner excluído com sucesso!");
     } catch (error) {
       console.error("Error deleting banner:", error);
@@ -842,6 +864,7 @@ export function useBanners(adminMode = false) {
   return {
     banners,
     isLoaded,
+    erroDeLeitura,
     getBannersByPosition,
     uploadBannerImage,
     addBanner,

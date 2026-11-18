@@ -154,11 +154,15 @@ async function abrir(produto: string) {
     raiz.render(<ProductQA productId={produto} />);
   });
 }
-async function eventoDePergunta(produto: string) {
-  const handler = h.handlers.get("questions");
-  expect(handler).toBeDefined();
+// O visitante sem login (o `useAuth` acima) não abre canal de tempo real: a
+// "mudança que acorda a página" é VOLTAR À ABA depois do intervalo mínimo (30 s).
+// Ela chama a mesma releitura que o evento do canal chamava, que é o que este
+// teste prova (a segunda carga cancela a primeira sem mostrar vazio).
+async function eventoDePergunta(_produto: string) {
+  expect(h.handlers.get("questions")).toBeUndefined();
+  vi.spyOn(Date, "now").mockReturnValue(Date.now() + 31_000);
   await act(async () => {
-    handler!({ eventType: "INSERT", new: { product_id: produto } });
+    document.dispatchEvent(new Event("visibilitychange"));
     // A tarefa seguinte vem depois das continuações do abort já resolvido,
     // inclusive catch/finally da primeira carga; a segunda segue pendente.
     await new Promise<void>((resolve) => setTimeout(resolve, 0));

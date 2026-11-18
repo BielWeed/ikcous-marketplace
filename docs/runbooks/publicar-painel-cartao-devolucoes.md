@@ -142,8 +142,9 @@ antes de abrir o estorno automático do cancelamento. As functions novas continu
     `assinatura_da_loja_ler`, `crm_visao`, `crm_clientes` e `painel_inicio`. **Se aparecer
     qualquer outro nome, pare.**
   - Os jobs marcados "(informacional)" não bloqueiam.
-- [ ] **"Build e tamanho" verde.** O portão de tamanho é dividido: cliente ≤ 550 kB, painel
-  ≤ 466 kB ([AGENTS.md](../../AGENTS.md), Verificação).
+- [ ] **"Build e tamanho" verde.** O portão de tamanho é dividido (cliente e painel, cada um com
+  o seu teto): vale o limite vigente em `.size-limit.cjs` (o portão de tamanho do CI), que muda a
+  cada release — não confie em número copiado neste roteiro.
 - [ ] **Todas as revisões de risco independentes deram PASSA**, no commit que vai ser publicado:
   - migrations 75–78;
   - edges do cartão;
@@ -352,22 +353,12 @@ overload novo na rodada 4 dela.
 
 ### 1.3 Ledger (decisão do dono)
 
-O workflow não registra as versões em `supabase_migrations.schema_migrations`. Só o `db-apply`
-registra. Para casar o ledger, use o mesmo `INSERT` que o `db-apply` faz:
+Desde 06/10/2026, o `aplicar-migrations.yml` registra cada versão em
+`supabase_migrations.schema_migrations` na mesma transação da aplicação, inclusive a 79 quando
+publicada à parte. Não cole `INSERT` à mão. Para aplicações anteriores a essa data sem registro,
+use o fluxo de conferência e acerto histórico do ledger descrito no §1 e no Atalho.
 
-```sql
-INSERT INTO supabase_migrations.schema_migrations (version, name) VALUES
-  ('20261175000000', 'a_devolucao_nasce_no_pedido'),
-  ('20261176000000', 'o_cartao_online_nasce'),
-  ('20261177000000', 'o_financeiro_da_loja_nasce'),
-  ('20261178000000', 'o_crm_e_o_inicio_leem_a_loja')
-ON CONFLICT (version) DO NOTHING;
-```
-
-**A linha da 79 não entra neste `INSERT`** — o ledger dela é registrado pelo §7.4 do runbook da
-frente `fix/devolucao-pos-revisao`, que é quem publica e mantém aquela migration.
-
-Se registrar e depois reverter (§5), apague as linhas das versões revertidas.
+Ao desfazer pelo mesmo workflow (§5), a versão também é removida na mesma transação.
 
 ### 1.4 Aplicar a 80 (achado independente de risco, 26/09/2026)
 
@@ -400,13 +391,8 @@ um banco parado na 74) sai com esse erro e **nada é gravado**, em vez de criar 
 silenciosamente (o que aconteceria sem o preflight — provado em Postgres 17 efêmero, ver o
 cabeçalho do arquivo).
 
-Depois de aplicar, acrescente ao ledger do §1.3:
-
-```sql
-INSERT INTO supabase_migrations.schema_migrations (version, name) VALUES
-  ('20261180000000', 'cliente_nao_cancela_com_cartao_vivo')
-ON CONFLICT (version) DO NOTHING;
-```
+O workflow já registra a versão da 80 na mesma transação da aplicação (ver §1.3);
+não é necessário acrescentar a linha ao ledger à mão.
 
 ### 1.5 A 81 — já aplicada em produção (achado LGPD, alto)
 
@@ -433,21 +419,17 @@ menção a tabelas/funções de 75–80). Por isso ela **não tem posição fixa
 `get_orders_by_whatsapp_v3` para `anon`/`authenticated`. ⚠️ **Rodar este rollback REABRE o
 vazamento de LGPD** — só rode se a 81 em si for a causa de um problema, nunca por rotina.
 
-Ledger (se ainda não estiver registrado):
-
-```sql
-INSERT INTO supabase_migrations.schema_migrations (version, name) VALUES
-  ('20261181000000', 'pedido_por_whatsapp_fecha_para_anon')
-ON CONFLICT (version) DO NOTHING;
-```
+Ledger: aplicações atuais pelo workflow já registram a versão automaticamente. Para a aplicação
+histórica de 26/09/2026, se faltar o registro, siga a conferência e o acerto histórico do Atalho
+(ver §1.3), sem colar `INSERT` à mão.
 
 ## 2. Publicar as functions — só depois do §1 conferido
 
 1. Abra GitHub → Actions → **"Publicar edge functions (Supabase)"** → *Run workflow*, no branch
    do SHA anotado.
-2. **Instrução histórica retirada: não publique functions com `projeto=loja`.** Esse alvo
-   é a DEK antiga, não a CAF do §1. Para os destinos atuais (`ikcous-publicada` e `savy`),
-   siga [`producao-unica-fonte.md`](producao-unica-fonte.md), incluindo `expected_sha`.
+2. **Não publique functions com `projeto=loja`**: esse alvo é a DEK antiga, não a CAF do §1.
+   Preencha `projeto` com `ikcous-publicada` ou `savy`, conforme a loja, e `expected_sha` com o SHA
+   completo do commit dessa execução (detalhes em [`producao-unica-fonte.md`](producao-unica-fonte.md)).
 3. Preencha `functions` com:
 
 ```text
@@ -581,8 +563,10 @@ Não precisa mexer em banco.
    até 40 min, que é o teto do 3DS.
 2. **Front**, se já subiu: promova de volta, no painel da Vercel, o deployment de produção
    anterior.
-3. **Functions**: rode o `publicar-functions.yml` a partir do commit anotado no §0, com as
-   mesmas cinco do §2. As versões antigas não leem nada das migrations novas.
+3. **Functions**: reverta com `git revert` o código necessário para o estado anotado no §0,
+   num commit NOVO da branch principal. Rode o `publicar-functions.yml` nessa branch, com as
+   mesmas functions do §2, a loja correta e `expected_sha` igual ao SHA completo desse commit
+   novo (40 hexadecimais, igual ao do próprio run). Não dispare no SHA antigo.
 4. **Banco**: rode **sempre 83 → 80 → 79 → 78 → 77 → 76 → 75** e pare onde o problema acabar. **A
    83, a 80 e a 79 só entram na fila se já tiverem sido aplicadas** — as três são publicadas à
    parte das 75–78, em frentes independentes. **A 83 (`o_crm_ve_todo_mundo`) só depende da 78** —
@@ -991,11 +975,8 @@ confira `ok = true` em TODAS as linhas que ela devolver.
 
 ### 7.4 Ledger
 
-```sql
-INSERT INTO supabase_migrations.schema_migrations (version, name) VALUES
-  ('20261179000000', 'cancelar_devolucao_barra_compra_em_voo')
-ON CONFLICT (version) DO NOTHING;
-```
+O `aplicar-migrations.yml` já registra a 79 na mesma transação da aplicação (ver §1.3).
+Não cole `INSERT` à mão; para aplicação histórica sem registro, use o acerto do Atalho.
 
 ### 7.5 Rollback — 79 ANTES de 78 (e DEPOIS de 80)
 
@@ -1004,9 +985,10 @@ A ordem GLOBAL de rollback (§5, ajustada pela branch `fix/cancelar-com-cartao-v
 rode o rollback dela depois do de 80 e **antes** de tocar em 78/77/76/75 — ela redefine uma função
 que mora na 75 e cria uma RPC que só faz sentido com a tabela `devolucoes` (75) no ar:
 
-```bash
-psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261179000000_cancelar_devolucao_barra_compra_em_voo.sql
-```
+Execute pelo `aplicar-migrations.yml`, com a loja explícita em `projeto` e o SHA completo da
+execução em `expected_sha`; em `migracoes`, informe
+`rollback-manual-20261179000000_cancelar_devolucao_barra_compra_em_voo.sql`.
+O workflow desfaz o banco e remove a versão do registro na mesma transação (ver §5).
 
 Depois disso, a ordem do §5 (78 → 77 → 76 → 75) continua igual. Se só 79 precisar sair (o
 problema é isolado nela), o rollback acima sozinho já basta — `cancelar_devolucao` volta ao corpo
@@ -1204,8 +1186,9 @@ ou cole `scripts/publicacao/consultas/7a-conferir-83.sql` direto no SQL Editor: 
 `anon`/`authenticated` (mesma régua de `crm__vendas`/`crm__clientes_rfm`), e que
 `crm_clientes`/`crm_visao` têm o corpo novo e continuam só para `authenticated`.
 
-**Ledger** (decisão do dono, mesmo fluxo de 79–82 — `LEDGER=83` no workflow "Conferir banco da
-loja", `confirmar = GRAVAR`): pré-confere com `7a-conferir-83` e grava
+**Ledger:** o workflow de aplicação já registra a 83 na mesma transação. Só para acertar uma
+aplicação histórica sem registro: `LEDGER=83` no workflow "Conferir banco da loja", `confirmar =
+GRAVAR`; pré-confere com `7a-conferir-83` e grava
 `scripts/publicacao/consultas/ledger-83.sql` (idempotente, `ON CONFLICT (version) DO NOTHING`), e
 a verificação pós-gravação mostra o ledger 72–83 inteiro.
 
@@ -1223,8 +1206,9 @@ compra" mostra a data do PEDIDO NÃO PAGO como se fosse uma venda de verdade. Ju
 dia, não uma pessoa que só pediu e não pagou. Para não abrir essa janela, publique o front desta
 branch junto com a 83 (ou antes dela) sempre que puder.
 
-**Rollback:** `rollback-manual-20261183000000_o_crm_ve_todo_mundo.sql` (`psql -1 -f`, nunca
-`db-apply`) — restaura `crm_clientes`/`crm_visao` com os corpos EXATOS da 78 e derruba
+**Rollback:** `rollback-manual-20261183000000_o_crm_ve_todo_mundo.sql`, pelo
+`aplicar-migrations.yml` com loja explícita e `expected_sha` completo (ver §5, banco e registro
+na mesma transação) — restaura `crm_clientes`/`crm_visao` com os corpos EXATOS da 78 e derruba
 `crm__pedidos_nao_pagos`/`crm__nunca_comprou`. Reverta o front primeiro (ver cabeçalho do
 arquivo). **A 83 sempre ANTES da 78, se as duas estiverem aplicadas** — provado ao vivo (revisão de
 risco): reverter a 78 primeiro DROPA `crm_clientes`/`crm_visao`/`crm__vendas`/`crm__clientes_rfm`

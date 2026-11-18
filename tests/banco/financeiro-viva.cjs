@@ -1642,6 +1642,76 @@ PROVAS.push({
   },
 });
 
+// Mutante que esta prova mata: apagar `o.payment_method = 'cash'` da soma de
+// `v_vendas` em fin__caixa_calculo (ou trocá-lo por IN ('cash','pix','card')).
+// Sem ele, venda de balcão em PIX ou na maquininha com o caixa aberto entraria
+// na gaveta: o esperado inflaria e o fechamento gravaria "Quebra de caixa"
+// falsa. As vendas ficam todas `recebido_na_entrega`, canal presencial, no
+// período da sessão: só a FORMA de pagamento as separa da venda em dinheiro.
+// Fica por último e SEM transação de propósito: fin__caixa_calculo usa now()
+// (início da transação) como fim da sessão, e uma venda gravada depois dele não
+// entraria nem em dinheiro; as outras provas do caixa também gravam de verdade.
+PROVAS.push({
+  nome: "(caixa) venda de balcão em PIX e em maquininha com o caixa aberto não entra na gaveta",
+  corpo: async (cliente) => {
+    await logar(cliente, U_ADMIN);
+    assert.equal(
+      await rpc(cliente, "SELECT public.fin_caixa_atual() AS r"),
+      null,
+      "precondição: nenhuma gaveta aberta herdada das provas anteriores",
+    );
+    const { id: sessao } = await rpc(
+      cliente,
+      "SELECT public.fin_caixa_abrir(0) AS r",
+    );
+    const gaveta = async () => {
+      const a = await rpc(cliente, "SELECT public.fin_caixa_atual() AS r");
+      return { vendas: num(a.vendas_dinheiro), esperado: num(a.esperado) };
+    };
+    const venda = (id, pagamento, total) =>
+      pedido(cliente, id, {
+        total,
+        pagamento,
+        paymentStatus: "recebido_na_entrega",
+        recebidoEm: new Date(),
+        canal: "presencial",
+        itens: [{ produto: P_B, qtd: 1, preco: total }],
+      });
+
+    await venda("5eeeeeee-0000-0000-0000-0000000000c1", "pix", 40);
+    await venda("5eeeeeee-0000-0000-0000-0000000000c2", "card", 30);
+    assert.deepEqual(
+      await gaveta(),
+      { vendas: 0, esperado: 0 },
+      "PIX (40) e maquininha (30) não são dinheiro na gaveta: vendas_dinheiro e esperado seguem em 0",
+    );
+
+    await venda("5eeeeeee-0000-0000-0000-0000000000c3", "cash", 15);
+    assert.deepEqual(
+      await gaveta(),
+      { vendas: 15, esperado: 15 },
+      "só a venda em dinheiro (15) entra: as de PIX e maquininha continuam de fora",
+    );
+
+    const fechado = await rpc(
+      cliente,
+      "SELECT public.fin_caixa_fechar(15, 'conferido') AS r",
+    );
+    assert.equal(num(fechado.esperado), 15, "o fechamento esperava 15");
+    assert.equal(
+      num(fechado.diferenca),
+      0,
+      "contar 15 fecha sem diferença: nenhuma 'Quebra de caixa' falsa por PIX/maquininha",
+    );
+    const { rows } = await cliente.query(
+      `SELECT count(*)::int AS n FROM public.fin_lancamentos
+        WHERE origem = 'ajuste_caixa' AND caixa_sessao_id = $1`,
+      [sessao],
+    );
+    assert.equal(rows[0].n, 0, "nenhum ajuste de caixa gravado no fechamento");
+  },
+});
+
 async function main() {
   const url = lerDatabaseUrlEfemera();
   const cliente = new Client({ connectionString: url });

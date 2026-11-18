@@ -224,6 +224,32 @@ describe("AdminProductFormView — foto principal e reenvio do mesmo arquivo", (
     });
   }
 
+  it.each([1, 2])(
+    "avisa quantas fotos falharam quando %s não sobe",
+    async (falhas) => {
+      await montarPreenchido();
+      mocks.uploadProductImages
+        .mockResolvedValueOnce(["https://cdn/a.jpg"])
+        .mockRejectedValueOnce(new Error("Falha no envio"));
+
+      await act(async () => {
+        escolherFotos(
+          ["a", "b", ...(falhas === 2 ? ["c"] : [])].map((n) =>
+            foto(`${n}.jpg`),
+          ),
+        );
+        await new Promise((r) => setTimeout(r, 0));
+      });
+
+      expect(mocks.toastError).toHaveBeenCalledWith(
+        falhas === 1
+          ? "1 foto não subiu (de 2)."
+          : "2 fotos não subiram (de 3).",
+        expect.any(Object),
+      );
+    },
+  );
+
   const botaoPublicar = () => botaoPorTexto("Publicar") as HTMLButtonElement;
 
   describe("o seletor de arquivo zera depois de ler as fotos", () => {

@@ -187,6 +187,22 @@ describe("generateOrderOtp — o retorno segue o envio, não a validação", () 
     );
   });
 
+  it.each([1, 2, 0, undefined])(
+    "pedido repetido: espera %s com concordância",
+    async (segundos) => {
+      invoke.mockResolvedValue({
+        data: { ok: false, motivo: "muito_recente", espereSegundos: segundos },
+        error: null,
+      });
+      const gerar = await pegarGenerateOrderOtp();
+      expect(await gerar("a@b.c", "34999999999", "abcdef")).toBe(false);
+      const n = segundos ?? 60;
+      expect(String(toastError.mock.calls[0][0])).toContain(
+        `Espere ${n} ${n === 1 ? "segundo" : "segundos"} e confira`,
+      );
+    },
+  );
+
   it("pedido repetido cedo demais: diz quantos segundos esperar", async () => {
     invoke.mockResolvedValue({
       data: { ok: false, motivo: "muito_recente", espereSegundos: 42 },

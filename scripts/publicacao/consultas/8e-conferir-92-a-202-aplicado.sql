@@ -28,7 +28,8 @@
 --                                e, DEPOIS dela, 20261228000000 (o início compara até a mesma hora)
 --                                e, DEPOIS dela, 20261390000000 (o lucro do início conta o mês inteiro)
 --                                e, DEPOIS dela, 20261398000000 (o início compara o mês anterior até a mesma hora)
---                                e, DEPOIS dela, 20261399300000 (o estorno em andamento não é conta vencida);
+--                                e, DEPOIS dela, 20261399300000 (o estorno em andamento não é conta vencida)
+--                                e, DEPOIS dela, 20261402000000 (o Início mostra o dinheiro a devolver e a margem do Financeiro);
 --   * `get_admin_analytics_v2` → 20261214000000 (o lucro do estoque só conta produto com custo)
 --                                e, DEPOIS dela, 20261234000000 (o lucro só conta produto com custo)
 --                                e, DEPOIS dela, 20261242000000 (o lucro usa o custo do dia da venda)
@@ -44,7 +45,9 @@
 --                                e, DEPOIS dela, 20261232000000 (a grade do CRM mede a recência do mesmo instante da lista);
 --   * `get_admin_customers_paged` → 20261230000000 (a busca de clientes acha pelo número do WhatsApp)
 --                                e, DEPOIS dela, 20261392000000 (a lista de clientes não repete ninguém entre as páginas)
---                                e, DEPOIS dela, 20261399993000 (a lista toma UM endereço principal por cliente: o pedido não conta em dobro);
+--                                e, DEPOIS dela, 20261399993000 (a lista toma UM endereço principal por cliente: o pedido não conta em dobro)
+--                                e, DEPOIS dela, 20261403000000 (a lista soma o balcão do mesmo WhatsApp, como o CRM);
+--   * `get_admin_user_detail`   → 20261403000000 (a ficha ganha o campo balcao_mesmo_whatsapp; o total comprado é o mesmo do CRM);
 --   * `get_admin_orders_paged`  → 20261387000000 (a busca de pedido pelo número não vira busca de telefone)
 --                                e, DEPOIS dela, 20261399900000 (a busca de Pedidos acha o telefone colado com o +55)
 --                                e, DEPOIS dela, 20261399980000 (as listas do painel desempatam por id);
@@ -170,12 +173,15 @@ WITH corpos AS (
     ('painel_inicio', 'b4aa318b777824bd49aab4175d9133f8', '20261390000000'),
     ('painel_inicio', '01d29aedf98b7f95851c1a1001b5c7ca', '20261398000000'),
     ('painel_inicio', '8d58e15e7410afe0d254f37f38251df4', '20261399300000'),
+    ('painel_inicio', 'b4c3665bd806ae8fe8960e5f6d9dde29', '20261402000000'),
     ('fin_resumo', 'a10e7f301eaf6b3edfac50bc87ff74bc', '20261399300000'),
     ('fin_resumo', '9e711b03cc63f610461915b850f2eb70', '20261399985000'),
     ('get_admin_customers_paged', 'd6c092c3e0d8069891af795147d65e9e', '20261230000000'),
     ('crm_clientes', '9c4268178a50729b5f7b256b77882585', '20261231000000'),
     ('get_admin_customers_paged', '1c71829d75e3d8f17bf7fb01019c05ec', '20261392000000'),
     ('get_admin_customers_paged', '35212d373895b2a9ede613198fc4c794', '20261399993000'),
+    ('get_admin_customers_paged', '309bbd903420f146423c7cf0512b91b3', '20261403000000'),
+    ('get_admin_user_detail', 'e7977d4d60b6114bb8247097b8ae3d4b', '20261403000000'),
     ('crm_clientes', '39a2a6de59041e09b6f1e466a6782dca', '20261392100000'),
     ('crm_visao', '0dfda3ea5129c6f8aabfcf0052fd2936', '20261232000000'),
     ('get_admin_analytics_v2', '05eac70f6bd4360c1f71fd373747ad0e', '20261234000000'),
@@ -204,7 +210,8 @@ WITH corpos AS (
     ('upsert_store_config', '391e8e1064400df5aea579f3472b203c', '20261244000000'),
     ('fin_lancamento_salvar', '1356dbfc037a9202ef163ba598854891', '20261246000000'),
     ('devolucao_elegibilidade', 'bedd211bba45261dfbf962241ca3c9dd', '20261399992000'),
-    ('devolucao_detalhe', 'a439e320641d553e3a21883c6606c6f2', '20261399992000')), colunas(tabela, coluna) AS (VALUES
+    ('devolucao_detalhe', 'a439e320641d553e3a21883c6606c6f2', '20261399992000'),
+    ('devolucao_detalhe', 'b4eb7a928f8a6ff04c34e93f4f56188c', '20261404000000')), colunas(tabela, coluna) AS (VALUES
     ('order_refunds', 'mp_chargeback_id'),
     ('order_refunds', 'mp_chargeback_case_id'),
     ('order_refunds', 'mp_chargeback_valor_do_caso'),

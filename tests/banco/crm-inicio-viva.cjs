@@ -296,8 +296,11 @@ PROVAS.push({
     assert.equal(inicio.pendencias.caixa_aberto, false);
     assert.equal(Number(inicio.pendencias.devolucoes_abertas), 0);
     assert.ok(Number(inicio.pendencias.estoque_baixo) >= 1);
-    assert.ok(
-      Number(inicio.pendencias.pedidos_para_preparar) >= 2,
+    // Exatamente 2: o processing já pago e o novo para pagar na entrega. O PIX aguardando (pending),
+    // o cancelado pago e os entregues ficam de fora (a prova (f) abre cada borda e os mutantes).
+    assert.equal(
+      Number(inicio.pendencias.pedidos_para_preparar),
+      2,
       "processing pago + novo na entrega",
     );
     assert.equal(inicio.serie_14d.length, 14);
@@ -520,6 +523,249 @@ PROVAS.push({
           `${onde}: o corte em hoje deixaria a despesa de fora`,
         );
     }
+  },
+});
+
+// (f) As PENDÊNCIAS do Início (pedidos para preparar, devoluções abertas, caixa aberto): cada borda da regra,
+// com o corpo vivo e com um mutante por borda. A prova (d) só via `devolucoes_abertas == 0` e
+// `caixa_aberto == false` (um corpo que devolvesse sempre 0 / false passava) e `pedidos_para_preparar >= 2`.
+// Tudo numa transação que SEMPRE desfaz (a semente, o mutante e o corpo vivo voltam ao que eram).
+async function pedidoDaProvaF(cliente, status, paymentStatus) {
+  return (
+    await cliente.query(
+      `INSERT INTO public.marketplace_orders
+         (user_id, customer_name, customer_data, total, subtotal, status, canal, payment_method, payment_status, created_at)
+       VALUES ($1, 'Pendência (f)', '{}'::jsonb, 10, 10, $2, 'online', 'online', $3, now())
+       RETURNING id`,
+      [C1, status, paymentStatus],
+    )
+  ).rows[0].id;
+}
+
+async function devolucaoDaProvaF(cliente, numero, status) {
+  const pedido = await pedidoDaProvaF(cliente, "delivered", "pago");
+  await cliente.query(
+    `INSERT INTO public.devolucoes
+       (protocolo, order_id, user_id, tipo, motivo, resolucao_desejada, modalidade, metodo_retorno,
+        status, valor_itens, prazo_ate, politica)
+     VALUES ($1, $2, $3, 'arrependimento', 'desisti', 'reembolso', 'local', 'entrega_na_loja',
+             $4, 10, current_date + 7, '{}'::jsonb)`,
+    [`PF-${numero}`, pedido, C1, status],
+  );
+}
+
+const PENDENCIAS = async (cliente) =>
+  (await rpc(cliente, "SELECT public.painel_inicio() AS r")).pendencias;
+
+/** `mutar` troca o corpo vivo de painel_inicio (ou null para provar o corpo vivo). Sempre desfaz. */
+async function provaDasPendencias(cliente, mutar) {
+  await logar(cliente, U_ADMIN);
+  await cliente.query("BEGIN");
+  try {
+    // Antes de semear, e SEMPRE com o corpo vivo: o que a prova (d) já viu.
+    const base = await PENDENCIAS(cliente);
+    assert.deepEqual(
+      [
+        Number(base.pedidos_para_preparar),
+        Number(base.devolucoes_abertas),
+        base.caixa_aberto,
+      ],
+      [2, 0, false],
+      "ponto de partida (2 para preparar, 0 devoluções, caixa fechado)",
+    );
+    // O mutante só entra DEPOIS do ponto de partida: ele tem de morrer na semente desta prova, não na da (d).
+    if (mutar) {
+      const def = (
+        await cliente.query(
+          "SELECT pg_get_functiondef('public.painel_inicio()'::regprocedure) AS d",
+        )
+      ).rows[0].d.replace(/\r\n/g, "\n");
+      const mutado = mutar(def);
+      assert.notEqual(mutado, def, "o mutante não mudou nada");
+      await cliente.query(mutado);
+    }
+
+    // Devoluções: as 4 abertas contam, as 4 encerradas não.
+    let n = 0;
+    for (const status of [
+      "solicitada",
+      "aprovada",
+      "em_transito",
+      "recebida",
+      "concluida",
+      "recusada",
+      "cancelada",
+      "reprovada",
+    ]) {
+      n += 1;
+      await devolucaoDaProvaF(cliente, n, status);
+    }
+    assert.equal(
+      Number((await PENDENCIAS(cliente)).devolucoes_abertas),
+      4,
+      "PENDENCIAS: devoluções abertas = solicitada, aprovada, em_transito e recebida (concluida, recusada, cancelada e reprovada não contam)",
+    );
+
+    // Pedidos para preparar: status novo/pendente/em preparo COM pagamento que vale; o resto fica fora.
+    for (const [status, pagamento] of [
+      ["processing", "pago"],
+      ["new", "recebido_na_entrega"],
+      ["pending", "pago_apos_expirar"],
+      ["new", null],
+    ])
+      await pedidoDaProvaF(cliente, status, pagamento);
+    for (const [status, pagamento] of [
+      ["pending", "aguardando"],
+      ["new", "expirado"],
+      ["processing", "recusado"],
+      ["processing", "estornado"],
+      ["shipping", "pago"],
+      ["delivered", "pago"],
+      ["cancelled", "pago"],
+    ])
+      await pedidoDaProvaF(cliente, status, pagamento);
+    assert.equal(
+      Number((await PENDENCIAS(cliente)).pedidos_para_preparar),
+      6,
+      "PENDENCIAS: pedidos para preparar = os 2 de antes + 4 novos que valem (aguardando, expirado, recusado, estornado, em envio, entregue e cancelado ficam fora)",
+    );
+
+    // Caixa: só sessão ABERTA conta; uma já fechada não.
+    await cliente.query(
+      `INSERT INTO public.fin_caixa_sessoes (conta_id, status, valor_abertura, fechado_em)
+       VALUES ($1, 'fechado', 50, now())`,
+      [CAIXA],
+    );
+    assert.equal(
+      (await PENDENCIAS(cliente)).caixa_aberto,
+      false,
+      "PENDENCIAS: caixa só com sessão fechada não é caixa aberto",
+    );
+    await cliente.query(
+      "INSERT INTO public.fin_caixa_sessoes (conta_id, valor_abertura) VALUES ($1, 100)",
+      [CAIXA],
+    );
+    assert.equal(
+      (await PENDENCIAS(cliente)).caixa_aberto,
+      true,
+      "PENDENCIAS: caixa com sessão aberta é caixa aberto",
+    );
+
+    // O que foi lido no fim, com tudo semeado: os três juntos.
+    const fim = await PENDENCIAS(cliente);
+    return {
+      pedidos_para_preparar: Number(fim.pedidos_para_preparar),
+      devolucoes_abertas: Number(fim.devolucoes_abertas),
+      caixa_aberto: fim.caixa_aberto,
+    };
+  } finally {
+    await cliente.query("ROLLBACK");
+  }
+}
+
+// Cada mutante troca UM trecho do corpo vivo (que tem de aparecer exatamente 1x: se sumir a prova falha alto).
+const STATUS_DEVOLUCAO = "'solicitada', 'aprovada', 'em_transito', 'recebida'";
+const FILTRO_PEDIDOS = "o.status IN ('new', 'pending', 'processing')";
+const PAGAMENTO_FORA = "'aguardando', 'expirado', 'recusado', 'estornado'";
+const CAIXA_ABERTO =
+  "EXISTS (SELECT 1 FROM public.fin_caixa_sessoes s WHERE s.status = 'aberto')";
+// Um valor que nenhuma linha tem: tira o item da lista sem criar NULL dentro de um NOT IN (que zeraria tudo).
+const NUNCA = "'__nenhum__'";
+const MUTANTES_DAS_PENDENCIAS = [
+  [
+    "devoluções abertas: sempre 0",
+    "'devolucoes_abertas', (SELECT count(*) FROM",
+    "'devolucoes_abertas', (SELECT 0 * count(*) FROM",
+  ],
+  ...["solicitada", "aprovada", "em_transito", "recebida"].map((s) => [
+    `devoluções abertas: perde o status '${s}'`,
+    `IN (${STATUS_DEVOLUCAO})`,
+    `IN (${STATUS_DEVOLUCAO.replace(`'${s}'`, NUNCA)})`,
+  ]),
+  [
+    "devoluções abertas: conta também a concluída",
+    `IN (${STATUS_DEVOLUCAO})`,
+    `IN (${STATUS_DEVOLUCAO}, 'concluida')`,
+  ],
+  [
+    "devoluções abertas: conta todas",
+    `d.status IN (${STATUS_DEVOLUCAO})`,
+    "d.status IS NOT NULL",
+  ],
+  [
+    "pedidos para preparar: filtro de pagamento vira OU",
+    "AND COALESCE(o.payment_status, '') NOT IN (",
+    "OR COALESCE(o.payment_status, '') NOT IN (",
+  ],
+  ...["new", "pending", "processing"].map((s) => [
+    `pedidos para preparar: perde o status '${s}'`,
+    FILTRO_PEDIDOS,
+    FILTRO_PEDIDOS.replace(`'${s}'`, NUNCA),
+  ]),
+  [
+    "pedidos para preparar: conta também o pedido em envio",
+    FILTRO_PEDIDOS,
+    "o.status IN ('new', 'pending', 'processing', 'shipping')",
+  ],
+  [
+    "pedidos para preparar: conta também o cancelado",
+    FILTRO_PEDIDOS,
+    "o.status IN ('new', 'pending', 'processing', 'cancelled')",
+  ],
+  ...["aguardando", "expirado", "recusado", "estornado"].map((s) => [
+    `pedidos para preparar: deixa de excluir o pagamento '${s}'`,
+    `NOT IN (${PAGAMENTO_FORA})`,
+    `NOT IN (${PAGAMENTO_FORA.replace(`'${s}'`, NUNCA)})`,
+  ]),
+  [
+    "caixa aberto: sempre falso",
+    CAIXA_ABERTO,
+    "EXISTS (SELECT 1 FROM public.fin_caixa_sessoes s WHERE false)",
+  ],
+  [
+    "caixa aberto: conta a sessão fechada",
+    CAIXA_ABERTO,
+    "EXISTS (SELECT 1 FROM public.fin_caixa_sessoes s WHERE s.status IS NOT NULL)",
+  ],
+  ["caixa aberto: sempre verdadeiro", CAIXA_ABERTO, "true"],
+];
+
+PROVAS.push({
+  nome: "(f) Início: as pendências contam só o que é pendência (devoluções abertas, pedidos para preparar, caixa aberto) e cada mutante de borda reprova",
+  corpo: async (cliente) => {
+    const vivo = await provaDasPendencias(cliente, null);
+    assert.deepEqual(vivo, {
+      pedidos_para_preparar: 6,
+      devolucoes_abertas: 4,
+      caixa_aberto: true,
+    });
+    for (const [rotulo, de, para] of MUTANTES_DAS_PENDENCIAS) {
+      let pego;
+      try {
+        await provaDasPendencias(cliente, (def) => {
+          assert.equal(
+            def.split(de).length - 1,
+            1,
+            `mutante "${rotulo}": a âncora precisa casar exatamente 1x: ${de}`,
+          );
+          return def.replace(de, para);
+        });
+      } catch (erro) {
+        pego = erro;
+      }
+      assert.ok(
+        pego instanceof assert.AssertionError &&
+          /^PENDENCIAS:/.test(pego.message),
+        `MUTANTE SOBREVIVEU ou falhou por outro motivo (${rotulo}): ${pego?.stack ?? "passou"}`,
+      );
+      if (process.env.MOSTRAR_MORTE)
+        console.log(`    morreu: ${rotulo} => ${pego.message.split("\n")[0]}`);
+    }
+    // O corpo vivo depois de todos os mutantes: o mesmo (cada um rodou em transação desfeita).
+    assert.deepEqual(await provaDasPendencias(cliente, null), vivo);
+    console.log(
+      `    ${MUTANTES_DAS_PENDENCIAS.length} mutantes das pendências reprovam`,
+    );
   },
 });
 

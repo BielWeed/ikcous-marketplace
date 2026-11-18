@@ -24,8 +24,8 @@ WITH fn AS (
     -- A 20261398000000 (o Inicio compara o mes anterior ate a mesma hora: o mesmo corpo com o ultimo dia do mes anterior cortado na hora)
     -- sucede a 390: aceita os dois corpos EXATOS; normaliza ao esperado desta migration. O `vivo` mostra o esperado (quem distingue e a 116a).
     -- A 20261399300000 (o estorno em andamento nao e conta vencida: o corpo da 398 com o estorno fora de contas_vencidas) sucede a 398: aceita tambem o corpo
-    -- dela (quem distingue e a 119a).
-    COALESCE((SELECT CASE WHEN h IN ('b4aa318b777824bd49aab4175d9133f8', '01d29aedf98b7f95851c1a1001b5c7ca', '8d58e15e7410afe0d254f37f38251df4') THEN 'b4aa318b777824bd49aab4175d9133f8' ELSE h END FROM fn), 'AUSENTE')
+    -- dela (quem distingue e a 119a). A 20261402000000 (o Inicio mostra o dinheiro a devolver: o corpo da 3993 com duas chaves novas) a sucede: aceita tambem o corpo dela.
+    COALESCE((SELECT CASE WHEN h IN ('b4aa318b777824bd49aab4175d9133f8', '01d29aedf98b7f95851c1a1001b5c7ca', '8d58e15e7410afe0d254f37f38251df4', 'b4c3665bd806ae8fe8960e5f6d9dde29') THEN 'b4aa318b777824bd49aab4175d9133f8' ELSE h END FROM fn), 'AUSENTE')
   UNION ALL
   SELECT 'painel_inicio: assinatura e atributos conhecidos', 'sim',
     CASE WHEN COALESCE((SELECT atributos FROM fn), false) THEN 'sim' ELSE 'nao' END

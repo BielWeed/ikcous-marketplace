@@ -226,6 +226,79 @@ describe("SolicitarDevolucaoSheet — pedido de devolução do cliente", () => {
     expect(folha()?.textContent).toContain("Peça o endereço de envio à loja");
   });
 
+  it("devolução parcial mostra somente o valor selecionado", async () => {
+    await ateOPassoDoMetodo();
+    await clicar(radio("reembolso"));
+    await clicar(radio("envio_proprio"));
+    await clicar(botao("Continuar"));
+
+    const revisao = folha()?.querySelector('[data-testid="passo-revisao"]');
+    const linhaDoItem = [...(revisao?.querySelectorAll("span") ?? [])].find(
+      (el) => el.textContent === "1× Tênis",
+    )?.parentElement;
+    expect(linhaDoItem).toBeTruthy();
+    expect(
+      linhaDoItem?.lastElementChild?.textContent?.replace(/\s/g, " "),
+    ).toBe("R$ 100,00");
+    const linhaDoValor = [...(revisao?.querySelectorAll("span") ?? [])].find(
+      (el) => el.textContent === "Valor dos itens",
+    )?.parentElement;
+    expect(linhaDoValor).toBeTruthy();
+    expect(
+      linhaDoValor?.lastElementChild?.textContent?.replace(/\s/g, " "),
+    ).toBe("R$ 100,00");
+    expect(revisao?.textContent?.replace(/\s/g, " ")).not.toContain(
+      "R$ 200,00",
+    );
+  });
+
+  it("devolver 2 de 3 unidades a R$ 19,99 mostra R$ 39,98, não o preço unitário nem o pedido inteiro", async () => {
+    await montar({
+      ...ELEGIBILIDADE,
+      itens: [
+        {
+          ...ELEGIBILIDADE.itens[0],
+          quantidade: 3,
+          disponivel: 3,
+          valor_unitario: 19.99,
+        },
+      ],
+    });
+    await clicar(botao("Aumentar Tênis"));
+    await clicar(botao("Aumentar Tênis"));
+    await clicar(botao("Continuar"));
+    await clicar(radio("tamanho_pequeno"));
+    await clicar(botao("Continuar"));
+    await clicar(radio("reembolso"));
+    await clicar(radio("envio_proprio"));
+    await clicar(botao("Continuar"));
+
+    const revisao = folha()?.querySelector('[data-testid="passo-revisao"]');
+    const linhaDoItem = [...(revisao?.querySelectorAll("span") ?? [])].find(
+      (el) => el.textContent === "2× Tênis",
+    )?.parentElement;
+    expect(linhaDoItem).toBeTruthy();
+    expect(
+      linhaDoItem?.lastElementChild?.textContent?.replace(/\s/g, " "),
+    ).toBe("R$ 39,98");
+    const linhaDoValor = [...(revisao?.querySelectorAll("span") ?? [])].find(
+      (el) => el.textContent === "Valor dos itens",
+    )?.parentElement;
+    expect(linhaDoValor).toBeTruthy();
+    expect(
+      linhaDoValor?.lastElementChild?.textContent?.replace(/\s/g, " "),
+    ).toBe("R$ 39,98");
+    expect(revisao?.textContent?.replace(/\s/g, " ")).not.toContain("R$ 59,97");
+
+    await clicar(botao("Confirmar devolução"));
+    expect(solicitar).toHaveBeenCalledWith(
+      expect.objectContaining({
+        itens: [{ order_item_id: "oi-1", quantidade: 2 }],
+        resolucao: "reembolso",
+      }),
+    );
+  });
+
   it("caminho feliz: item, motivo, resolução e método viram o payload da RPC e o protocolo aparece", async () => {
     await montar();
     expect(folha()?.textContent).toContain("O que vai voltar?");

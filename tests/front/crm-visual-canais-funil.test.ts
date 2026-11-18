@@ -80,6 +80,11 @@ describe("ticketPorForma", () => {
     expect(ticketPorForma(1500, 20)).toBe(75);
     expect(ticketPorForma(100, 3)).toBe(33.33);
   });
+
+  it("arredonda para cima o centavo fracionado e preserva a divisão exata", () => {
+    expect(ticketPorForma(100, 6)).toBe(16.67);
+    expect(ticketPorForma(120, 6)).toBe(20);
+  });
 });
 
 describe("conversaoEntreEtapas", () => {

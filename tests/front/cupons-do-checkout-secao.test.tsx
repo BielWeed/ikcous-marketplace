@@ -167,6 +167,12 @@ describe("CuponsDoCheckout", () => {
     expect(cartoes()[0].textContent).toContain("Melhor opção");
   });
 
+  it("empate com o cupom aplicado não recebe o selo Melhor opção", () => {
+    montar({ appliedCoupon: { code: "QUARTO5", discount: 15 } });
+    expect(cartoes()[0].textContent).toContain("VIP15");
+    expect(hospedeiro.textContent).not.toContain("Melhor opção");
+  });
+
   it("cupom restaurado (desconto 0) diz que está conferindo, não 'R$ 0,00'", () => {
     montar({ appliedCoupon: { code: "VIP15", discount: 0 } });
     expect(hospedeiro.textContent).toContain("Conferindo o desconto…");

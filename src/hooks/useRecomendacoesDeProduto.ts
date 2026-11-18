@@ -8,7 +8,7 @@ import {
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import type { Product } from "@/types";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 // ─── Cache SWR das recomendações (migrado do ProductView) ───────────────────
 
@@ -80,6 +80,11 @@ export interface RecomendacoesDoProduto {
    * que deixa a página DIFERENCIAR "sem recomendações" (seção some) de
    * "ainda buscando" (skeletons). */
   consultado: boolean;
+  /** Relê as recomendações do produto SEM esqueleto: a lista atual fica na
+   * tela até a nova chegar (falha mantém a antiga). A página chama ao voltar à
+   * aba — preço, estoque ou pausa mudados no painel entram nos cards. Sem
+   * efeito com a seção invisível (a próxima vez que ficar visível busca). */
+  recarregar: () => void;
 }
 
 /**
@@ -120,6 +125,15 @@ export function useRecomendacoesDeProduto(
     buscarRef.current = buscar;
   });
 
+  // Ponte para `recarregar`: o efeito abaixo publica aqui a sua própria busca
+  // (com o `isMounted` e o contador dele) e a despublica no cleanup. É por ref
+  // — e não por dependência do efeito — que a releitura nunca reinicia a busca
+  // em andamento nem cria laço (a armadilha de 01/09).
+  const releituraRef = useRef<(() => void) | null>(null);
+  const recarregar = useCallback(() => {
+    releituraRef.current?.();
+  }, []);
+
   useEffect(() => {
     if (!visivel) return;
 
@@ -135,7 +149,11 @@ export function useRecomendacoesDeProduto(
 
     // 2. Fetch fresh data in background
     let isMounted = true;
+    // Só a ÚLTIMA busca iniciada pode mexer na tela: a releitura de agora
+    // não pode ser sobrescrita pela resposta tardia da anterior.
+    let ultimaBusca = 0;
     const loadRecs = async () => {
+      const minhaBusca = ++ultimaBusca;
       let recs: Product[];
       try {
         // Sem prazo, rede que conecta e não responde deixava os esqueletos
@@ -147,7 +165,7 @@ export function useRecomendacoesDeProduto(
           () => erroDeConsultaSemResposta(),
         );
       } catch (err) {
-        if (!isMounted) return;
+        if (!isMounted || minhaBusca !== ultimaBusca) return;
         // Falha da busca (ou falta de resposta no prazo) NÃO é "sem
         // recomendações": mantém o que já está na tela e a cópia guardada
         // (memória + aparelho). Sem cópia, a lista segue vazia e a seção some
@@ -157,7 +175,7 @@ export function useRecomendacoesDeProduto(
         setConsultado(true);
         return;
       }
-      if (!isMounted) return;
+      if (!isMounted || minhaBusca !== ultimaBusca) return;
       setRecomendacoes(recs);
       // Resposta com a leitura das variações falha é a do momento, não vale
       // como cópia: a próxima visita busca de novo.
@@ -168,11 +186,15 @@ export function useRecomendacoesDeProduto(
       setConsultado(true);
     };
     loadRecs();
+    releituraRef.current = () => {
+      void loadRecs();
+    };
 
     return () => {
       isMounted = false;
+      releituraRef.current = null;
     };
   }, [productId, visivel]);
 
-  return { recomendacoes, carregando, consultado };
+  return { recomendacoes, carregando, consultado, recarregar };
 }

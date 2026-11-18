@@ -638,6 +638,19 @@ describe("painel sem sessão pede entrada (aviso de pedido novo)", () => {
     expect(globalThis.location.pathname).toBe("/profile");
   });
 
+  it("admin já logada abrindo /admin-login vai para /admin", async () => {
+    estadoAuth.user = { id: "lojista" };
+    estadoAuth.isAdmin = true;
+    estadoAuth.adminStatus = "admin";
+    await abrirEm("/admin-login");
+
+    expect(globalThis.location.pathname).toBe("/admin");
+    expect(globalThis.history.state?.view).toBe("admin");
+    expect(tela("painel")?.getAttribute("data-tela")).toBe("admin");
+    expect(tela("tela-login-do-lojista")).toBeNull();
+    expect(tela("tela-login")).toBeNull();
+  });
+
   it("a tela de entrada do próprio lojista (/admin-login) continua alcançável sem sessão", async () => {
     await abrirEm("/admin-login");
 

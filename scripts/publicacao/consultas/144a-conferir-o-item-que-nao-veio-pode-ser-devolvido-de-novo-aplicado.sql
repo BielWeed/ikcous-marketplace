@@ -44,7 +44,9 @@ WITH el AS (
   UNION ALL
   SELECT 'solicitar_devolucao: corpo exato (md5)', '52e5c30c06f9767a97e98f3a393b8496', COALESCE((SELECT h FROM so), 'AUSENTE')
   UNION ALL
-  SELECT 'devolucao_detalhe: corpo exato (md5)', 'a439e320641d553e3a21883c6606c6f2', COALESCE((SELECT h FROM de), 'AUSENTE')
+  -- aceita os dois corpos EXATOS (o desta migration e o da sucessora 20261404000000); normaliza ao esperado historico do rol.
+  SELECT 'devolucao_detalhe: corpo exato (md5)', 'a439e320641d553e3a21883c6606c6f2',
+         COALESCE((SELECT CASE WHEN h IN ('a439e320641d553e3a21883c6606c6f2', 'b4eb7a928f8a6ff04c34e93f4f56188c') THEN 'a439e320641d553e3a21883c6606c6f2' ELSE h END FROM de), 'AUSENTE')
   UNION ALL
   SELECT 'as tres: uma so de cada nome, atributos conhecidos (SECURITY DEFINER, plpgsql, volatilidade, retorno jsonb, search_path=public) e EXECUTE so do authenticated (nem PUBLIC nem anon)', 'sim',
          CASE WHEN COALESCE((SELECT ok FROM el), false) AND COALESCE((SELECT ok FROM so), false) AND COALESCE((SELECT ok FROM de), false) THEN 'sim' ELSE 'nao' END

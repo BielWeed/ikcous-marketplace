@@ -267,6 +267,8 @@ on:
       - "scripts/publicacao/consultas/150b-antes-o-pedido-guarda-quem-vai-receber-base-vigente.sql"
       - "scripts/publicacao/consultas/150c-conferir-a-loja-recebe-o-plano-por-porta-unica-aplicado.sql"
       - "scripts/publicacao/consultas/150d-antes-a-loja-recebe-o-plano-por-porta-unica-ausente.sql"
+      - "scripts/publicacao/consultas/154a-conferir-o-inicio-mostra-o-dinheiro-a-devolver-aplicado.sql"
+      - "scripts/publicacao/consultas/154b-antes-o-inicio-mostra-o-dinheiro-a-devolver-base-vigente.sql"
       - "scripts/publicacao/consultas/135a-conferir-o-ranking-de-lucro-desconta-a-devolucao-aplicado.sql"
       - "scripts/publicacao/consultas/135b-antes-o-ranking-de-lucro-desconta-a-devolucao-base-vigente.sql"
       - "scripts/publicacao/consultas/140a-conferir-as-listas-do-painel-nao-repetem-ninguem-aplicado.sql"
@@ -285,6 +287,10 @@ on:
       - "scripts/publicacao/consultas/148b-antes-o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-base-vigente.sql"
       - "scripts/publicacao/consultas/145a-conferir-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-aplicado.sql"
       - "scripts/publicacao/consultas/145b-antes-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-base-vigente.sql"
+      - "scripts/publicacao/consultas/155a-conferir-o-total-comprado-do-cliente-e-o-mesmo-no-crm-na-lista-e-na-ficha-aplicado.sql"
+      - "scripts/publicacao/consultas/155b-antes-o-total-comprado-do-cliente-e-o-mesmo-no-crm-na-lista-e-na-ficha-base-vigente.sql"
+      - "scripts/publicacao/consultas/156a-conferir-a-observacao-da-inspecao-so-a-loja-ve-aplicado.sql"
+      - "scripts/publicacao/consultas/156b-antes-a-observacao-da-inspecao-so-a-loja-ve-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -525,6 +531,8 @@ on:
       - "scripts/publicacao/consultas/150b-antes-o-pedido-guarda-quem-vai-receber-base-vigente.sql"
       - "scripts/publicacao/consultas/150c-conferir-a-loja-recebe-o-plano-por-porta-unica-aplicado.sql"
       - "scripts/publicacao/consultas/150d-antes-a-loja-recebe-o-plano-por-porta-unica-ausente.sql"
+      - "scripts/publicacao/consultas/154a-conferir-o-inicio-mostra-o-dinheiro-a-devolver-aplicado.sql"
+      - "scripts/publicacao/consultas/154b-antes-o-inicio-mostra-o-dinheiro-a-devolver-base-vigente.sql"
       - "scripts/publicacao/consultas/135a-conferir-o-ranking-de-lucro-desconta-a-devolucao-aplicado.sql"
       - "scripts/publicacao/consultas/135b-antes-o-ranking-de-lucro-desconta-a-devolucao-base-vigente.sql"
       - "scripts/publicacao/consultas/140a-conferir-as-listas-do-painel-nao-repetem-ninguem-aplicado.sql"
@@ -543,6 +551,10 @@ on:
       - "scripts/publicacao/consultas/148b-antes-o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-base-vigente.sql"
       - "scripts/publicacao/consultas/145a-conferir-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-aplicado.sql"
       - "scripts/publicacao/consultas/145b-antes-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-base-vigente.sql"
+      - "scripts/publicacao/consultas/155a-conferir-o-total-comprado-do-cliente-e-o-mesmo-no-crm-na-lista-e-na-ficha-aplicado.sql"
+      - "scripts/publicacao/consultas/155b-antes-o-total-comprado-do-cliente-e-o-mesmo-no-crm-na-lista-e-na-ficha-base-vigente.sql"
+      - "scripts/publicacao/consultas/156a-conferir-a-observacao-da-inspecao-so-a-loja-ve-aplicado.sql"
+      - "scripts/publicacao/consultas/156b-antes-a-observacao-da-inspecao-so-a-loja-ve-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -854,6 +866,9 @@ jobs:
       - name: Prova viva da analise por categoria so com pedido pago
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/analise-por-categoria-so-conta-pedido-pago-viva.cjs
+      - name: Prova viva do ticket medio e da contagem de pedidos do painel
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-ticket-medio-e-a-contagem-de-pedidos-do-painel-viva.cjs
       - name: Prova viva dos icones de categoria e ACL preservada (300)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/categorias-icones-viva.cjs
@@ -1242,6 +1257,20 @@ jobs:
       - name: Prova viva do CRM e da lista de clientes que nao contam a mesma pessoa duas vezes (20261399993000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-viva.cjs
+      # Migration 20261403000000 (o total comprado do cliente e o mesmo no CRM, na lista e na ficha): get_admin_customers_paged soma o balcao (pedido pago SEM conta) do mesmo WhatsApp que o CRM atribui a conta, em orders_count e total_spent,
+      # e get_admin_user_detail ganha o campo separado balcao_mesmo_whatsapp. Controle com os corpos da 20261399993000 e da 20261199000000 na MESMA fixture (o defeito) e a pessoa que ja existia passando de R$ 100 para R$ 200 sem mexer em dado,
+      # bordas (com e sem o 55, DDD 55, balcao cancelado ou sem pagar, varias vendas, pedido proprio sem pagar, WhatsApp em duas contas, perfil so com WhatsApp), ordenacao estavel com e sem a mudanca, permissao, 13 mutantes que morrem por valor,
+      # ACL/atributos/dono iguais, reaplicar, rollback byte a byte, pre-voo, conexao sem BEGIN com conferencia sabotada (as duas trocas caem juntas). CLONE proprio.
+      - name: Prova viva do total comprado do cliente igual no CRM, na lista e na ficha (20261403000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-total-do-cliente-e-o-mesmo-nas-tres-telas-viva.cjs
+      # Migration 20261404000000 (a Observacao da inspecao da devolucao e so da loja): devolucao_detalhe tira a chave observacao_inspecao para quem nao e o admin ATUAL e authenticated perde o SELECT da tabela
+      # devolucoes inteira (SELECT por coluna nas outras 34). Controle com o corpo e o GRANT de antes (o defeito: a cliente le a nota pelas duas portas), a cliente dona sem a chave e com permission denied na coluna,
+      # as outras colunas, itens, trilha e fotos seguindo, admin atual com a nota, admin rebaixado e outra cliente sem ela, service_role e a gravacao da nota intactos, a nota ja gravada preservada, mutantes que morrem
+      # na guarda certa, ACL/atributos/dono iguais, reaplicar (LF e CRLF), rollback byte a byte, pre-voo, conexao sem BEGIN com o pos-voo sabotado (a migration inteira cai). CLONE proprio.
+      - name: Prova viva da observacao da inspecao so da loja (20261404000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-observacao-da-inspecao-so-a-loja-ve-viva.cjs
       # Migration 20261399991000 (repetir a devolucao que falhou nao paga duas vezes): solicitar_estorno_repetindo(p_refund_id, p_motivo) repete UMA linha falhada (o valor sai da linha, a 2a chamada devolve a MESMA
       # repeticao com ja_repetida em vez de criar outra) e a tabela order_refund_repeticao (PK + UNIQUE) e a marca do servidor. Controle com o caminho antigo (duas linhas de R$ 30), DUAS conexoes reais na mesma falhada,
       # bordas (17 recusas sem escrever nada), permissao (anon, service_role, cliente, admin rebaixado), 15 mutantes, reaplicar, pre-voo, rollback que recusa com marca, conexao sem BEGIN com conferencia sabotada e
@@ -1262,6 +1291,14 @@ jobs:
       - name: Prova viva do cadastro que cria o perfil em toda loja (20261399940000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-cadastro-cria-o-perfil-em-toda-loja-viva.cjs
+      # Migration 20261402000000 (o Inicio mostra o dinheiro a devolver e a margem do Financeiro): painel_inicio ganha SO as chaves dinheiro_a_devolver {valor, pedidos} (a MESMA conta da lista "Devolver
+      # agora" da tela de Pedidos: cancelado cujo pagamento entrou, fora o que espera o produto, menos reembolso manual concluido, valor_estornado e o que o Mercado Pago ja esta devolvendo) e
+      # mes.receita_liquida (a do fin_dre do mesmo periodo do lucro). Cenarios COMPARTILHADOS com o teste do front (dinheiro-a-devolver-cenarios.json, esperado escrito a mao), soma de todos, pedido antigo
+      # sem janela, receita liquida com estorno parcial, JSON identico ao do corpo anterior fora das duas chaves, guarda de admin, reaplicar (LF e CRLF), rollback byte a byte, pre-voo (corpo, atributo, ACL),
+      # conferencia sabotada que derruba a migration inteira e 10 mutantes mais o controle com o corpo anterior (os mutantes rodam dentro da rodada padrao da prova). CLONE proprio.
+      - name: Prova viva do Inicio que mostra o dinheiro a devolver (20261402000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-inicio-dinheiro-a-devolver-viva.cjs
       - name: Prova viva do Financeiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/financeiro-viva.cjs
@@ -1296,6 +1333,17 @@ jobs:
       - name: Prova viva de que tipo invalido de cupom e recusado no banco
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/cupom-tipo-invalido-e-recusado-no-banco-viva.cjs
+      # Migration 20261400000000 (valores negativos nao entram no banco): taxa de entrega local, preco do produto, preco
+      # proprio da variacao e valor do cupom ganham CHECK >= 0 (e <> NaN), criado JA VALIDADO. Negativo e NaN recusam com 23514
+      # pela restricao certa em todas as portas (RLS, upsert_store_config, salvar_produto_com_grade, sessao direta); zero e NULL
+      # de variacao seguem. Linha antiga negativa/NaN IMPEDE a migration (guarda B1_BASELINE_DIVERGENT antes dos ADD, com a
+      # coluna e a contagem; nenhuma restricao fica), e a CORRIDA sob REPEATABLE READ (linha gravada depois da foto do aplicador)
+      # e recusada pelo proprio ADD validado. Mutantes: 12 das restricoes (sem a regra, sem NaN, zero recusado, por coluna),
+      # 9 da guarda (removida, cega a uma coluna, cega a NaN) e 2 do NOT VALID de volta (o estrago original e a corrida);
+      # reaplicar, rollback, pre-voo, falha no meio e lock_timeout sem deixar restricao pela metade. CLONE proprio.
+      - name: Prova viva de que valores negativos nao entram no banco (migration 20261400000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/valores-negativos-prova.cjs
       - name: Prova viva da disputa pelo ultimo uso do cupom com compras distintas
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/cupom-ultima-vaga-corrida-viva.cjs

@@ -117,6 +117,7 @@ describe("banners: o que a lojista mandou é o que chega ao banco e à vitrine",
 
   beforeEach(() => {
     vi.resetModules();
+    vi.clearAllMocks();
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
     vi.setSystemTime(new Date("2026-12-15T12:00:00.000Z"));
     h.linhas = [linha("a")];
@@ -162,6 +163,31 @@ describe("banners: o que a lojista mandou é o que chega ao banco e à vitrine",
     expect(h.inserir).toHaveBeenCalledTimes(1);
     return (h.inserir.mock.calls[0][0] as Record<string, unknown>[])[0];
   }
+
+  it.each([
+    { code: "PGRST301", message: "JWT expired" },
+    { message: "JWT expired" },
+    { status: 401, message: "Unauthorized" },
+  ])(
+    "sessão vencida ao editar manda entrar de novo: %j",
+    async (erroDeSessao) => {
+      await montar(true);
+      h.atualizar.mockResolvedValue({
+        data: null,
+        error: erroDeSessao,
+      });
+      await act(async () => {
+        await expect(
+          hook().updateBanner("a", { title: "Novo" }),
+        ).rejects.toBeDefined();
+      });
+      const { toast } = await import("sonner");
+      expect(toast.error).toHaveBeenCalledWith(
+        "Sua sessão expirou ou você não tem permissão para salvar. Saia da conta, entre de novo e tente outra vez.",
+      );
+      expect(toast.success).not.toHaveBeenCalled();
+    },
+  );
 
   describe("editar a programação", () => {
     beforeEach(async () => {

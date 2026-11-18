@@ -355,6 +355,12 @@ on:
           - 9a-conferir-60-a-66-aplicado
           - 151a-conferir-o-banner-tem-imagem-propria-no-computador-aplicado
           - 151b-antes-o-banner-tem-imagem-propria-no-computador-ausente
+          - 154a-conferir-o-inicio-mostra-o-dinheiro-a-devolver-aplicado
+          - 154b-antes-o-inicio-mostra-o-dinheiro-a-devolver-base-vigente
+          - 155a-conferir-o-total-comprado-do-cliente-e-o-mesmo-no-crm-na-lista-e-na-ficha-aplicado
+          - 155b-antes-o-total-comprado-do-cliente-e-o-mesmo-no-crm-na-lista-e-na-ficha-base-vigente
+          - 156a-conferir-a-observacao-da-inspecao-so-a-loja-ve-aplicado
+          - 156b-antes-a-observacao-da-inspecao-so-a-loja-ve-base-vigente
           - backups
       projeto:
         description: "Projeto de destino: loja, sandbox, ikcous-publicada (a CAF explicita) ou savy (a loja cliente explicita, mesmas travas): as duas exigem expected_sha; nunca texto livre — achado da rodada 2"

@@ -1,5 +1,6 @@
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import * as webpush from "jsr:@negrel/webpush@0.3.0";
+import { aceitarPushServiceLocalSoNosTestes } from "../_shared/endpoint-de-push.ts";
 import { bytesParaBase64Url, handler } from "./index.ts";
 
 /** Chaves efêmeras de um navegador fictício; nenhuma credencial real. */
@@ -25,6 +26,8 @@ for (const statusMorta of [404, 410]) {
     const parVapid = await webpush.generateVapidKeys({ extractable: true });
     const vapid = await webpush.exportVapidKeys(parVapid);
     const recebidas: string[] = [];
+    // O push service é http://localhost: a trava de endereço só o aceita aqui.
+    const desfazerBrecha = aceitarPushServiceLocalSoNosTestes();
     const servidor = Deno.serve({ port: 0, onListen: () => {} }, async (req) => {
       await req.arrayBuffer();
       const caminho = new URL(req.url).pathname;
@@ -133,6 +136,7 @@ for (const statusMorta of [404, 410]) {
         if (valor === undefined) Deno.env.delete(chave);
         else Deno.env.set(chave, valor);
       }
+      desfazerBrecha();
       await servidor.shutdown();
     }
   });

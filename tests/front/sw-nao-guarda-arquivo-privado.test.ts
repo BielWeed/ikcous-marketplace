@@ -211,14 +211,51 @@ describe("src/sw/sw.ts — a gaveta de imagens só guarda arquivo público (R12)
       expect(lista.length).toBe(1);
       return lista[0];
     };
-    return { um, fetchMock, urlsEm, abertos, cachesFalso, gravacoes };
+    return {
+      um,
+      fetchMock,
+      urlsEm,
+      abertos,
+      cachesFalso,
+      gravacoes,
+      selfFalso,
+    };
   }
 
   function eventoDeFetch(request: Request) {
     return { request, respondWith: vi.fn(), waitUntil: vi.fn() };
   }
 
+  describe("mensagem de ativação", () => {
+    it("SW ativa somente com SKIP_WAITING", async () => {
+      const { um, selfFalso } = await importarSw();
+
+      expect(selfFalso.skipWaiting).not.toHaveBeenCalled();
+      um("message")({ data: { type: "MENSAGEM_DESCONHECIDA" } });
+      expect(selfFalso.skipWaiting).not.toHaveBeenCalled();
+
+      um("message")({ data: { type: "SKIP_WAITING" } });
+      expect(selfFalso.skipWaiting).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("fetch", () => {
+    it.each([
+      "/rest/v1/orders?select=*",
+      "/functions/v1/verificar-pagamento",
+      "/auth/v1/user",
+    ])("fetch não intercepta APIs: %s", async (caminho) => {
+      const { um, fetchMock, gravacoes } = await importarSw();
+      const evento = eventoDeFetch(new Request(`${SUPA}${caminho}`));
+
+      um("fetch")(evento);
+      await esvaziarFila();
+
+      expect(evento.respondWith).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(gravacoes).toEqual([]);
+    });
+
     it.each([
       ["objeto público", PUBLICO_OBJETO],
       ["render público", PUBLICO_RENDER],

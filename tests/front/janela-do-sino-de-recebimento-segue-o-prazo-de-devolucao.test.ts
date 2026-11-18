@@ -5,12 +5,13 @@
 //
 // Aqui: a data de corte (semântica do servidor: dia de calendário de São
 // Paulo, `v_dias <= prazo`, migration 20261175000000) e a leitura do prazo,
-// com a regra de ouro: se a configuração não chegou, o prazo é 90 — o aviso
-// tem de SOBRAR, nunca sumir.
+// com a regra de ouro: se a configuração não chegou, o prazo é 365 (o teto que
+// o banco permite) — o aviso tem de SOBRAR, nunca sumir.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   JANELA_DE_RECEBIMENTO_DIAS,
+  JANELA_DE_RECEBIMENTO_SEM_CONFIGURACAO_DIAS,
   inicioDaJanelaDeRecebimento,
   inicioDaJanelaDoSino,
 } from "@/lib/recebimentos-por-marcar";
@@ -37,8 +38,9 @@ function apareceNoSino(atualizadoEm: string, agora: string, dias?: number) {
 }
 
 describe("a data de corte do sino", () => {
-  it("o padrão é 90 dias", () => {
+  it("o padrão comercial é 90 dias, e o fallback sem configuração é o teto do banco (365)", () => {
     expect(JANELA_DE_RECEBIMENTO_DIAS).toBe(90);
+    expect(JANELA_DE_RECEBIMENTO_SEM_CONFIGURACAO_DIAS).toBe(365);
   });
 
   it("o corte é o INÍCIO do dia de São Paulo, `dias` dias de calendário atrás", () => {
@@ -168,15 +170,28 @@ describe("a leitura do prazo da loja", () => {
     ["a linha vem sem o prazo", { data: {}, error: null }],
     ["o prazo vem torto", { data: { prazo_vicio_dias: "x" }, error: null }],
     ["o prazo vem zerado", { data: { prazo_vicio_dias: 0 }, error: null }],
-  ])("%s: usa 90", async (_nome, resposta) => {
-    maybeSingleMock.mockResolvedValue(resposta);
+  ])(
+    "%s: usa 365 (o teto do banco), nunca o padrão de 90",
+    async (_nome, resposta) => {
+      maybeSingleMock.mockResolvedValue(resposta);
 
-    expect(diasDoCorte(await inicioDaJanelaDoSino())).toBe(90);
-  });
+      expect(diasDoCorte(await inicioDaJanelaDoSino())).toBe(365);
+    },
+  );
 
-  it("a consulta que lança (rede caiu) também usa 90 — e não derruba quem chamou", async () => {
+  it("a consulta que lança (rede caiu) também usa 365 — e não derruba quem chamou", async () => {
     maybeSingleMock.mockRejectedValue(new Error("rede"));
 
-    expect(diasDoCorte(await inicioDaJanelaDoSino())).toBe(90);
+    expect(diasDoCorte(await inicioDaJanelaDoSino())).toBe(365);
+  });
+
+  it("pedido entregue há 200 dias de loja com prazo de 365 NÃO some quando a leitura falha", async () => {
+    maybeSingleMock.mockRejectedValue(new Error("rede"));
+    const agora = Date.now();
+    const duzentosDiasAtras = agora - 200 * 86_400_000;
+
+    const corte = await inicioDaJanelaDoSino();
+
+    expect(Date.parse(corte)).toBeLessThanOrEqual(duzentosDiasAtras);
   });
 });

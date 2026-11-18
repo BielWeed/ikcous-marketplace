@@ -196,6 +196,26 @@ it("grava uma única RPC com patch, base exata, grade mista e exclusões; limpa 
   expect(banco.sucesso).toHaveBeenCalledTimes(1);
 });
 
+it("salvar grade preserva preço próprio zero", async () => {
+  expect(banco.produto.price).toBe(50);
+  await act(async () => {
+    await api.salvarProdutoComGrade(
+      "p-1",
+      {},
+      {
+        variantes: [variante({ priceOverride: 0 })],
+        apagar: [],
+      },
+    );
+  });
+
+  expect(banco.rpc).toHaveBeenCalledTimes(1);
+  const [nome, parametros] = banco.rpc.mock.calls[0];
+  expect(nome).toBe("salvar_produto_com_grade");
+  expect(parametros.p_variantes[0]).toHaveProperty("id", "v-1");
+  expect(parametros.p_variantes[0].price_override).toBe(0);
+});
+
 it("sem estoque mexido manda base nula e omite stock_increment, sem preencher com null", async () => {
   await act(async () => {
     await api.salvarProdutoComGrade(

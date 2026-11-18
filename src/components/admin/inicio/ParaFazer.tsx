@@ -1,4 +1,4 @@
-import { formatarInteiro } from "@/lib/crm";
+import { formatarInteiro, formatarMoeda } from "@/lib/crm";
 import {
   type TomDeEstado,
   classeDoIcone,
@@ -11,6 +11,7 @@ import type { PainelInicio } from "@/types/painel";
 import { VISAO_ESTOQUE_BAIXO } from "@/utils/produtos-sem-custo";
 import {
   AlertTriangle,
+  Banknote,
   CheckCircle2,
   ChevronRight,
   Package,
@@ -65,6 +66,13 @@ export function ParaFazer({
   const vencidas = painel?.contasVencidas ?? null;
   const estoque = pend?.estoqueBaixo ?? null;
   const caixaAberto = pend?.caixaAberto ?? false;
+  // Dinheiro que a lojista ainda deve devolver (pedido pago e cancelado sem reembolso; a conta da lista "Devolver
+  // agora" da tela de Pedidos). Só vale com valor E contagem conhecidos: banco sem o número (ausente) ou fora da
+  // forma não vira "R$ 0,00 de N pedidos" — a linha simplesmente não aparece, como quando não há nada a devolver.
+  const aDevolver = painel?.dinheiroADevolver;
+  const valorADevolver = aDevolver?.valor ?? null;
+  const pedidosADevolver =
+    valorADevolver != null ? (aDevolver?.pedidos ?? 0) : 0;
   const itens: readonly {
     chave: string;
     icone: typeof Package;
@@ -119,6 +127,20 @@ export function ParaFazer({
       contagem: devolucoes,
       pendente: (devolucoes ?? 0) > 0,
       destino: "admin-devolucoes",
+    },
+    {
+      chave: "devolver-dinheiro",
+      icone: Banknote,
+      tomDoIcone: "atencao",
+      tomDoValor: "atencao",
+      tomDaDescricao: "neutro",
+      rotulo: "Dinheiro a devolver",
+      titulo: `Dinheiro a devolver: ${formatarMoeda(valorADevolver)} de ${formatarInteiro(pedidosADevolver)} ${pedidosADevolver === 1 ? "pedido cancelado" : "pedidos cancelados"}`,
+      descricao: "Devolver em Pedidos",
+      // Conhecido e zero (ou desconhecido): `contagem` 0 não é `null`, então a linha some sem virar "—".
+      contagem: pedidosADevolver,
+      pendente: pedidosADevolver > 0,
+      destino: "admin-orders",
     },
     {
       chave: "caixa",

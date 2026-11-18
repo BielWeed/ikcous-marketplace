@@ -374,7 +374,7 @@ describe("Folhas do financeiro — renomear o que é do sistema", () => {
     expect(aoSalvar).toHaveBeenCalledExactlyOnceWith("Categoria atualizada.");
   });
 
-  it("conta do sistema: trocar o nome e o saldo salva (o tipo vai igual ao de hoje)", async () => {
+  it("conta do sistema: trocar só o nome salva e só o nome viaja (nem tipo, nem saldo)", async () => {
     const aoSalvar = vi.fn();
     await act(async () =>
       raiz.render(
@@ -391,14 +391,7 @@ describe("Folhas do financeiro — renomear o que é do sistema", () => {
     await act(async () => botao("Salvar").click());
 
     expect(rpcFalso).toHaveBeenCalledExactlyOnceWith("fin_conta_salvar", {
-      p: {
-        id: "conta-loja",
-        nome: "Gaveta da loja",
-        tipo: "caixa",
-        saldo_inicial: 100,
-        saldo_inicial_em: "2026-01-01",
-        ativa: true,
-      },
+      p: { id: "conta-loja", nome: "Gaveta da loja" },
     });
     expect(aoSalvar).toHaveBeenCalledExactlyOnceWith("Conta atualizada.");
   });

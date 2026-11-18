@@ -2149,11 +2149,26 @@ async function handler(
         // pedido seguia com dinheiro de duas cobranças aprovadas e nenhum
         // aviso além do `console.warn` acima. Mesmo aviso do `cartao_
         // divergente` logo abaixo, para o admin conferir e devolver.
-        const { data: linhaAposCorrida } = await supabase
+        const { data: linhaAposCorrida, error: erroAposCorrida } = await supabase
           .from("marketplace_orders")
           .select("gateway_payment_id")
           .eq("id", orderId)
           .maybeSingle();
+        // Esta releitura NÃO pode falhar em silêncio: `data` nulo por timeout/5xx
+        // do PostgREST pulava o aviso, `confirmar_pagamento` devolvia
+        // 'divergente' e o webhook respondia 200 — o MP não reenvia e a
+        // reconciliação só olha o id gravado na vaga: cartão cobrado em dobro sem
+        // aviso nenhum. 500 mantém o evento na fila do MP. Nada a desfazer: até
+        // aqui só houve leituras, a consulta GET ao MP e a adoção CAS que não
+        // casou; na reentrega a vaga já traz o id do vencedor e o ramo
+        // "divergente" (abaixo) cria o MESMO aviso, com a mesma chave idempotente.
+        if (erroAposCorrida) {
+          console.error(
+            "webhook-mercadopago: releitura do pedido após perder a corrida da adoção (Achado S5) falhou — evento mantido na fila do MP",
+            { orderId, idOrder: idParaRpc, erro: erroAposCorrida },
+          );
+          return json({ error: "Erro ao reler o pedido após a corrida." }, 500);
+        }
         const idNaVagaAposCorrida = (linhaAposCorrida as Record<string, unknown> | null)
           ?.gateway_payment_id;
         if (

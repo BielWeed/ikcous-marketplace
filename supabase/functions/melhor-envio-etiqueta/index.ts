@@ -2153,6 +2153,8 @@ async function gerarDevolucaoReversa(ctx: ContextoReversa): Promise<Response> {
 export type EtiquetaDeps = {
     supabase?: any
     buscar?: typeof fetch
+    /** Espera entre as tentativas de liberar a reivindicação (ms). Teste injeta um no-op. */
+    esperar?: (ms: number) => Promise<void>
 }
 
 export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Response> {
@@ -2161,6 +2163,7 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
     }
 
     const buscar = deps.buscar ?? fetch
+    const esperar = deps.esperar ?? ((ms: number) => new Promise<void>((resolver) => setTimeout(resolver, ms)))
 
     try {
         const body = await req.json()
@@ -2928,13 +2931,25 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
                 // sempre — o portão `already: true` devolvia uma etiqueta que
                 // não existe mais, e só UPDATE na mão do dono destravava.
                 // Update CONDICIONAL: só solta se o vínculo ainda é o desta
-                // corrida.
+                // corrida. O supabase-js NÃO lança: devolve `{ error }`, e uma
+                // falha transitória aqui deixava o pedido preso para sempre
+                // (o `already: true` devolvia URL nula). Por isso até 3
+                // tentativas (espera de 150 ms e 400 ms), parando na primeira
+                // sem erro. Se as 3 falharem o vínculo FICA (nunca se libera
+                // um id potencialmente pago "por tempo") e o log diz.
                 await removerDoCarrinho(buscar, baseUrl, headersME, labelId)
-                const { error: erroLiberacao } = await supabaseClient
-                    .from('marketplace_orders')
-                    .update({ shipping_label_id: null })
-                    .eq('id', orderId)
-                    .eq('shipping_label_id', labelId)
+                const esperasEntreTentativas = [150, 400]
+                let erroLiberacao: unknown = null
+                for (let tentativa = 0; tentativa <= esperasEntreTentativas.length; tentativa++) {
+                    if (tentativa > 0) await esperar(esperasEntreTentativas[tentativa - 1])
+                    const { error } = await supabaseClient
+                        .from('marketplace_orders')
+                        .update({ shipping_label_id: null })
+                        .eq('id', orderId)
+                        .eq('shipping_label_id', labelId)
+                    erroLiberacao = error
+                    if (!erroLiberacao) break
+                }
                 if (erroLiberacao) {
                     console.error('[melhor-envio-etiqueta] Falha ao liberar a reivindicação do pedido:', erroLiberacao)
                 }
