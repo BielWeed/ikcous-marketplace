@@ -33,14 +33,24 @@
  *               subtotal BRUTO. Bruto acima do limite e liquido (com o cupom) abaixo: o frete e gratis; bruto exatamente no limite:
  *               gratis; um centavo abaixo do limite: cobra. No nacional, a cotacao feita sobre o subtotal bruto (o que a edge e a
  *               tela fazem) vale; a cotada sobre o valor com cupom e recusada.
+ *  FRETE        o frete enviado pelo cliente e' ignorado: o parametro `p_shipping_cost` nao e' lido em lugar nenhum do corpo vivo (v23 e
+ *  ENVIADO      v24); o frete que o pedido grava e' o VALIDADO (o price da cotacao, a taxa da entrega local ou 0 na retirada) e o total e'
+ *               o calculado pelo servidor. Com o total enviado coerente e `p_shipping_cost` ALTO (999,99), NEGATIVO (-50) e MENOR que
+ *               o frete real (1,00), o pedido nasce com o frete validado e o total calculado: frete nacional cotado (simples, com
+ *               desconto nacional e gratis), entrega local com taxa (v24 e v23) e retirada na loja (v24 e v23, frete 0 mesmo com 999,99,
+ *               -50 ou 0,01 enviados). Antes so se provava contra 0.
  *  CONTROLES    a MESMA bateria, com o corpo vivo das duas funcoes trocado dentro de uma transacao que termina em ROLLBACK: (1) toda
  *               recusa FRETE_COTACAO_DESATUALIZADA vira aviso e cada cenario de recusa PASSA a deixar o pedido nascer; (2) o limite
  *               ">=" vira ">" e os cenarios do limite exato deixam de dar o frete certo; (3) a tolerancia do total vira ">=" (a borda
  *               de 0,05 passa a ser recusada), vira 0,01 (0,02 passa a ser recusado) e vira 0,10 (0,06 passa a nascer); (4) o cupom
  *               passa a entrar no subtotal do frete gratis e os cenarios do cupom perdem o frete certo; (5) o `>=` do minimo nacional
  *               no pedido vira `>` e os cenarios do minimo exato (a cotacao um centavo abaixo, ou nos dois lados) deixam de dar o
- *               resultado certo. Prova que os cenarios enxergam a regra e que a regra, e nao o acaso, e o que segura. O corpo
- *               original volta byte a byte depois.
+ *               resultado certo; (6) o servidor passa a gravar o frete do CLIENTE no INSERT do pedido (o total segue calculado): (A)
+ *               `LEAST(v_shipping_validated, p_shipping_cost)`, o "frete do cliente quando menor que a cotacao", deixa vermelhos
+ *               na assercao "frete gravado" so os cenarios com frete enviado menor que o validado (-50 e 1,00) e os de frete enviado
+ *               maior seguem verdes; (B) `p_shipping_cost` puro deixa vermelhos TODOS os cenarios do frete enviado (999,99, -50, 1,00,
+ *               0,01). Prova que os cenarios enxergam a regra e que a regra, e nao o acaso, e o que segura. O corpo original
+ *               volta byte a byte depois de cada controle (hash do corpo conferido).
  *  MINIMO       o minimo nacional (acima_de_valor 199) a UM centavo, em cada lado: cotada no minimo e pedido com 198,99 recusa; cotada
  *               com 198,99 e pedido no minimo recusa (o subtotal cruzou o limite entre cotar e pedir).
  *
@@ -208,7 +218,7 @@ async function chamarRpc(fn, c, total) {
     [
       itensJson(c.itens),
       total,
-      0,
+      c.freteEnviado, // o `p_shipping_cost` que a cliente MANDA: a funcao o ignora (ver FRETE ENVIADO)
       c.pagamento,
       c.enderecoId ?? null,
       c.cupom ? codigoDoCupom(c) : null,
@@ -321,6 +331,8 @@ function cenario(base) {
     cupom: null, // { tipo, valor }: o cupom que o pedido usa (um por cenario)
     desconto: 0, // o desconto que o servidor tem de calcular com esse cupom
     ajuste: 0, // centavos somados ao total que a cliente MANDA (o servidor calcula o dele sem olhar este numero)
+    freteEnviado: 0, // `p_shipping_cost` que a cliente manda (a funcao o ignora); so os cenarios FRETE ENVIADO o variam
+    freteDaCliente: false, // marca os cenarios que provam o `p_shipping_cost` ignorado (alvo dos mutantes do controle 6)
     ...base,
   };
 }
@@ -884,6 +896,86 @@ for (const rpc of [V24, V23]) {
   }
 }
 
+// -- FRETE ENVIADO: o `p_shipping_cost` que a cliente manda e' IGNORADO --
+// Medido no corpo vivo (v23 e v24): o parametro `p_shipping_cost` NAO e' lido em lugar nenhum; o frete e' `v_shipping_validated` (o price
+// da cotacao do cache, a taxa da entrega local ou 0 na retirada) e o total e' GREATEST(0, subtotal + frete - desconto). Aqui o total
+// enviado e' COERENTE com o calculado (ajuste 0), entao o pedido nasce, e o que muda e' so o frete que a cliente diz pagar: ALTO
+// (999,99, pagar demais), NEGATIVO (-50, abater o total) e MENOR que o frete real (1,00, pagar menos). Em todos o pedido grava o frete
+// VALIDADO e o total calculado pelo servidor.
+const FRETES_ENVIADOS = [
+  ["alto-999-99", 999.99],
+  ["negativo-menos-50", -50],
+  ["menor-que-o-frete-1-00", 1],
+];
+const freteDaCliente = (id, base) =>
+  add({
+    ...base,
+    id: `frete-enviado-${id}`,
+    freteDaCliente: true,
+  });
+for (const [nome, enviado] of FRETES_ENVIADOS) {
+  // (a) frete NACIONAL cotado (v24; a v23 recusa transportadora): cotacao simples de R$ 20 e cotacao com 15% de desconto (21,16).
+  freteDaCliente(`nacional-cotado-${nome}`, {
+    opt: "frenet-fe1",
+    cotacao: opcao("frenet-fe1", 20),
+    subtotal: 50,
+    frete: 20,
+    freteEnviado: enviado,
+  });
+  freteDaCliente(`nacional-com-desconto-${nome}`, {
+    nacional: D15,
+    opt: "frenet-fe2",
+    cotacao: opcao("frenet-fe2", 21.16, {
+      precoCheio: 24.9,
+      estrategiaNacional: carimbo(D15),
+    }),
+    subtotal: 50,
+    frete: 21.16,
+    freteEnviado: enviado,
+  });
+  // (b) ENTREGA LOCAL com taxa (v24 e v23): o frete e' a taxa da loja (12,50).
+  for (const rpc of [V24, V23])
+    freteDaCliente(`local${rpc === V23 ? "-v23" : ""}-taxa-${nome}`, {
+      rpc,
+      opt: "local-delivery",
+      pagamento: "pix",
+      destino: CEP_LOCAL,
+      subtotal: 50,
+      frete: TAXA_LOCAL,
+      freteEnviado: enviado,
+    });
+}
+// (a) tambem com a cotacao que da frete GRATIS (price 0): o cliente manda 999,99 ou -50 e o pedido segue com frete 0.
+for (const [nome, enviado] of FRETES_ENVIADOS.slice(0, 2))
+  freteDaCliente(`nacional-gratis-${nome}`, {
+    nacional: SEMPRE,
+    opt: "frenet-fe3",
+    cotacao: opcao("frenet-fe3", 0, {
+      precoCheio: 25,
+      estrategiaNacional: carimbo(SEMPRE),
+    }),
+    subtotal: 50,
+    frete: 0,
+    freteEnviado: enviado,
+  });
+// (c) RETIRADA na loja (v24 e v23): frete 0 sempre. "Menor que o frete" nao existe (o frete real e' 0): o terceiro valor e' 0,01 (maior).
+for (const [nome, enviado] of [
+  ["alto-999-99", 999.99],
+  ["negativo-menos-50", -50],
+  ["um-centavo-0-01", 0.01],
+])
+  for (const rpc of [V24, V23])
+    freteDaCliente(`retirada${rpc === V23 ? "-v23" : ""}-${nome}`, {
+      rpc,
+      retirada: true,
+      opt: "store-pickup",
+      pagamento: "pix",
+      destino: CEP_LOCAL,
+      subtotal: 50,
+      frete: 0,
+      freteEnviado: enviado,
+    });
+
 // -- CUPOM: o frete gratis olha o subtotal BRUTO (antes do cupom), no local (v24 e v23) e no nacional (v24) --
 // O desconto e' calculado DEPOIS do bloco do frete e so entra no total. Mesma leitura da edge (`subtotalDoCarrinho` nao conhece cupom)
 // e da tela (ShippingCalculator soma preco x quantidade): os tres concordam, entao a cliente ve o frete que o servidor cobra.
@@ -1378,6 +1470,84 @@ async function main() {
     console.log(
       `PASS controle 5: com o minimo nacional estrito, os ${m5.length} cenarios do minimo exato ficam vermelhos.`,
     );
+
+    // CONTROLE 6: o servidor passa a CONFIAR no frete que a cliente manda, so na gravacao do pedido (o total segue calculado). Dois
+    // mutantes do mesmo INSERT: (A) `LEAST(v_shipping_validated, p_shipping_cost)` ("usa o frete do cliente quando menor que a
+    // cotacao") e (B) `p_shipping_cost` puro. Cada um tem de derrubar exatamente os cenarios em que o frete enviado difere do validado
+    // do lado que ele mexe, na assercao "frete gravado", e deixar VERDES os demais (o mutante mexe so no que devia).
+    const GRAVA_O_FRETE =
+      "v_user_id, v_calculated_total, v_shipping_validated, p_payment_method, p_address_id,";
+    const doCliente = CENARIOS.filter((c) => c.freteDaCliente);
+    assert.ok(
+      doCliente.length === 20 &&
+        doCliente.some((c) => c.freteEnviado > 100) &&
+        doCliente.some((c) => c.freteEnviado < 0) &&
+        doCliente.some((c) => c.freteEnviado > 0 && c.freteEnviado < c.frete) &&
+        doCliente.some((c) => c.retirada) &&
+        doCliente.some((c) => c.rpc === V23),
+      "faltam cenarios do frete enviado (alto, negativo, menor que a cotacao; nacional, local e retirada; v24 e v23)",
+    );
+    // (A) so mexe quando o frete enviado e MENOR que o validado: os cenarios com frete enviado maior seguem verdes (minimo 4 deles).
+    // (B) mexe em todos: nenhum cenario tem o frete enviado igual ao validado, entao nenhum verde.
+    for (const [rotulo, novaGravacao, devemFicarVermelhos, minVerdes] of [
+      [
+        "frete do cliente quando menor que a cotacao",
+        GRAVA_O_FRETE.replace(
+          "v_shipping_validated",
+          "LEAST(v_shipping_validated, p_shipping_cost)",
+        ),
+        (c) => c.freteEnviado < c.frete,
+        4,
+      ],
+      [
+        "frete do cliente sempre",
+        GRAVA_O_FRETE.replace("v_shipping_validated", "p_shipping_cost"),
+        (c) => centavos(c.freteEnviado) !== centavos(c.frete),
+        0,
+      ],
+    ]) {
+      const m6 = await comCorpoTrocado(
+        rotulo,
+        (def) => trocarExato(def, GRAVA_O_FRETE, novaGravacao, 1),
+        doCliente,
+      );
+      for (const r of m6)
+        console.log(`  controle 6 (${rotulo}) | ${r.alvo.id}: ${r.detalhe}`);
+      const esperadosVermelhos = m6.filter((r) => devemFicarVermelhos(r.alvo));
+      const esperadosVerdes = m6.filter((r) => !devemFicarVermelhos(r.alvo));
+      assert.ok(
+        esperadosVermelhos.length >= 6 && esperadosVerdes.length >= minVerdes,
+        `CONTROLE 6 (${rotulo}): o mutante precisa ter alvo vermelho (>= 6) e verde (>= ${minVerdes})`,
+      );
+      const naoPegou = esperadosVermelhos
+        .filter((r) => r.ok)
+        .map((r) => r.alvo.id);
+      assert.deepEqual(
+        naoPegou,
+        [],
+        `CONTROLE 6 (${rotulo}): estes cenarios continuaram verdes (nao enxergam o frete gravado): ${naoPegou.join(", ")}`,
+      );
+      // Na asserção CERTA: o frete gravado diverge do validado (e nao outro motivo, como o pedido recusado).
+      const motivoErrado = esperadosVermelhos
+        .filter((r) => !r.detalhe.startsWith("frete gravado"))
+        .map((r) => `${r.alvo.id} (${r.detalhe})`);
+      assert.deepEqual(
+        motivoErrado,
+        [],
+        `CONTROLE 6 (${rotulo}): ficaram vermelhos por outro motivo que nao "frete gravado": ${motivoErrado.join("; ")}`,
+      );
+      const mexeuDemais = esperadosVerdes
+        .filter((r) => !r.ok)
+        .map((r) => `${r.alvo.id} (${r.detalhe})`);
+      assert.deepEqual(
+        mexeuDemais,
+        [],
+        `CONTROLE 6 (${rotulo}): o mutante derrubou cenario em que o frete enviado nao o altera: ${mexeuDemais.join("; ")}`,
+      );
+      console.log(
+        `PASS controle 6 (${rotulo}): ${esperadosVermelhos.length} cenarios ficam vermelhos em "frete gravado" e os ${esperadosVerdes.length} em que o frete enviado nao muda nada seguem verdes.`,
+      );
+    }
 
     // Depois dos controles o corpo verdadeiro responde de novo: um cenario de cada tipo, outra vez.
     for (const c of [CENARIOS[2], noLimite[0]]) {
