@@ -43,6 +43,11 @@
  *   C2  gasto a pagar de 20 (previsto) não desconta; depois de
  *       fin_lancamento_baixar desconta -> esperado 80; contar 80 fecha sem quebra
  *   C3  gasto de 20 pago pela conta BANCÁRIA não mexe no esperado do caixa
+ *   C4  gasto realizado de 20 em dinheiro datado de ONTEM (fin_lancamento_salvar)
+ *       com o caixa de hoje aberto: esperado segue 100, caixa_sessao_id NULL;
+ *       contar 100 fecha sem diferença
+ *   C5  o mesmo gasto, a pagar e baixado com data de ONTEM
+ *       (fin_lancamento_baixar(id, hoje - 1)): mesmos resultados do C4
  *
  * MUTANTES: MUTANTE_R111D=<nome> troca UM trecho do corpo vivo (pg_get_functiondef,
  * dentro da transação desfeita) e roda os cenários; a execução TEM de ficar
@@ -89,7 +94,7 @@ const MUTANTES = {
   "saldo-sem-filtro-do-saldo-inicial": {
     funcao: SALDOS,
     espera: ["A1", "A2", "A3"],
-    verde: ["B1", "B2", "B3", "C1", "C2", "C3"],
+    verde: ["B1", "B2", "B3", "C1", "C2", "C3", "C4", "C5"],
     de: "\n              AND m.data >= c.saldo_inicial_em",
     para: "",
   },
@@ -98,7 +103,21 @@ const MUTANTES = {
   // asserção "a abertura reconcilia o saldo". É a mesma raiz, não vazamento.
   "saldo-inicial-sem-igual": {
     funcao: SALDOS,
-    espera: ["A1", "A2", "A3", "B1", "B2", "B3", "B4", "B5", "C1", "C2", "C3"],
+    espera: [
+      "A1",
+      "A2",
+      "A3",
+      "B1",
+      "B2",
+      "B3",
+      "B4",
+      "B5",
+      "C1",
+      "C2",
+      "C3",
+      "C4",
+      "C5",
+    ],
     verde: [],
     de: "m.data >= c.saldo_inicial_em",
     para: "m.data > c.saldo_inicial_em",
@@ -106,37 +125,56 @@ const MUTANTES = {
   "sobra-vira-saida": {
     funcao: FECHAR,
     espera: ["B1", "B4"],
-    verde: ["A1", "A2", "A3", "B2", "B3", "B5", "C1", "C2", "C3"],
+    verde: ["A1", "A2", "A3", "B2", "B3", "B5", "C1", "C2", "C3", "C4", "C5"],
     de: CASE_TIPO,
     para: "CASE WHEN v_dif > 0 THEN 'saida' ELSE 'saida' END",
   },
   "quebra-vira-entrada": {
     funcao: FECHAR,
     espera: ["B2", "B5"],
-    verde: ["A1", "A2", "A3", "B1", "B3", "B4", "C1", "C2", "C3"],
+    verde: ["A1", "A2", "A3", "B1", "B3", "B4", "C1", "C2", "C3", "C4", "C5"],
     de: CASE_TIPO,
     para: "CASE WHEN v_dif > 0 THEN 'entrada' ELSE 'entrada' END",
   },
   "sobra-na-categoria-de-quebra": {
     funcao: FECHAR,
     espera: ["B1", "B4"],
-    verde: ["B2", "B3", "B5", "C1", "C2", "C3"],
+    verde: ["B2", "B3", "B5", "C1", "C2", "C3", "C4", "C5"],
     de: CASE_CATEGORIA_SOBRA,
     para: "CASE WHEN v_dif > 0 THEN 'f2000000-0000-4000-8000-000000000031'::uuid",
   },
   "sem-desconto-do-gasto-em-dinheiro": {
     funcao: SALVAR,
     espera: ["C1"],
-    verde: ["A1", "A2", "A3", "B1", "B2", "B3", "C2", "C3"],
+    verde: ["A1", "A2", "A3", "B1", "B2", "B3", "C2", "C3", "C4", "C5"],
     de: "IF v_status = 'realizado' AND v_real = v_hoje THEN",
     para: "IF false THEN",
   },
   "sem-desconto-do-gasto-baixado-em-dinheiro": {
     funcao: BAIXAR,
     espera: ["C2"],
-    verde: ["A1", "A2", "A3", "B1", "B2", "B3", "C1", "C3"],
+    verde: ["A1", "A2", "A3", "B1", "B2", "B3", "C1", "C3", "C4", "C5"],
     de: "IF v_data = public.fin__hoje() THEN",
     para: "IF false THEN",
+  },
+  // Os dois abaixo tiram SÓ o teste de DATA e deixam o resto da condição: o
+  // gasto de ontem passa a descontar da gaveta de hoje (esperado cai 20 sem
+  // ter saído dela, e contar 100 vira "Sobra de caixa" falsa). O `IF false`
+  // dos dois mutantes acima não os pega: ele só prova que o gasto de HOJE
+  // entra.
+  "gasto-de-ontem-desconta-da-gaveta": {
+    funcao: SALVAR,
+    espera: ["C4"],
+    verde: ["A1", "A2", "A3", "B1", "B2", "B3", "C1", "C2", "C3", "C5"],
+    de: "IF v_status = 'realizado' AND v_real = v_hoje THEN",
+    para: "IF v_status = 'realizado' THEN",
+  },
+  "baixa-de-ontem-desconta-da-gaveta": {
+    funcao: BAIXAR,
+    espera: ["C5"],
+    verde: ["A1", "A2", "A3", "B1", "B2", "B3", "C1", "C2", "C3", "C4"],
+    de: "IF v_data = public.fin__hoje() THEN",
+    para: "IF true THEN",
   },
 };
 
@@ -594,6 +632,78 @@ CENARIOS.push({
     );
     assert.strictEqual(await saldoDe(c, CAIXA), 100, "[C3] Caixa segue em 100");
     assert.strictEqual(await saldoDe(c, BANCO), -20, "[C3] o banco paga os 20");
+  },
+});
+
+/**
+ * Gasto de ONTEM na conta Caixa, com o caixa de HOJE aberto: ele pertence ao
+ * dia que já passou, não à gaveta de hoje. Confere que o esperado segue 100,
+ * que o lançamento NÃO entrou na sessão e que contar 100 fecha sem diferença.
+ */
+async function gastoDeOntemNaoDescontaDaGaveta(c, s, gasto, rotulo) {
+  const { rows } = await c.query(
+    "SELECT status, data_realizacao::text AS data, caixa_sessao_id FROM public.fin_lancamentos WHERE id = $1",
+    [gasto],
+  );
+  assert.strictEqual(rows[0].status, "realizado", `[${rotulo}] realizado`);
+  assert.strictEqual(
+    rows[0].data,
+    await dia(c, 1),
+    `[${rotulo}] o gasto é datado de ONTEM`,
+  );
+  assert.strictEqual(
+    rows[0].caixa_sessao_id,
+    null,
+    `[${rotulo}] o gasto de ontem NÃO entra na sessão do caixa de hoje`,
+  );
+  assert.strictEqual(
+    await esperadoDe(c, s),
+    100,
+    `[${rotulo}] o esperado da gaveta de hoje segue 100: o gasto de ontem não sai dela`,
+  );
+  const r = await fecharCaixa(c, s, 100);
+  assert.strictEqual(
+    num(r.diferenca),
+    0,
+    `[${rotulo}] contar 100 fecha SEM diferença (esperado ${num(r.esperado)})`,
+  );
+  assert.strictEqual(
+    (await ajustesDaSessao(c, s)).length,
+    0,
+    `[${rotulo}] nenhum ajuste de sobra/quebra`,
+  );
+}
+
+CENARIOS.push({
+  id: "C4",
+  nome: "C4: gasto realizado em dinheiro de 20 datado de ONTEM (salvar) com o caixa de hoje aberto -> esperado 100, fora da sessão; contar 100 fecha sem diferença",
+  corpo: async (c) => {
+    const s = await caixaAbertoCom(c, 100, "C4");
+    const gasto = await lancar(
+      c,
+      gastoEmDinheiro(CAIXA, { data_realizacao: await dia(c, 1) }),
+    );
+    await gastoDeOntemNaoDescontaDaGaveta(c, s, gasto, "C4");
+  },
+});
+
+CENARIOS.push({
+  id: "C5",
+  nome: "C5: gasto a pagar de 20 baixado em dinheiro com data de ONTEM (fin_lancamento_baixar) com o caixa de hoje aberto -> esperado 100, fora da sessão; contar 100 fecha sem diferença",
+  corpo: async (c) => {
+    const s = await caixaAbertoCom(c, 100, "C5");
+    const gasto = await lancar(
+      c,
+      gastoEmDinheiro(CAIXA, {
+        status: "previsto",
+        data_vencimento: await dia(c, 1),
+      }),
+    );
+    await rpc(c, "SELECT public.fin_lancamento_baixar($1, $2::date) AS r", [
+      gasto,
+      await dia(c, 1),
+    ]);
+    await gastoDeOntemNaoDescontaDaGaveta(c, s, gasto, "C5");
   },
 });
 
