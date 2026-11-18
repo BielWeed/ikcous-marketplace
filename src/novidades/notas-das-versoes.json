@@ -29,7 +29,9 @@
       "Meu pedido, cartão parcelado: a tela diz \"Total do pedido\" em vez de \"Total pago\" e explica que os juros do parcelamento, se houver, vêm na fatura do cartão. Antes mostrava o valor sem os juros como se fosse o total pago.",
       "Ordem por nome: \"Camiseta 2\" passa a vir antes de \"Camiseta 10\" na lista de categorias, na busca ordenada por nome e nos favoritos ordenados por nome (antes a ordem era letra por letra).",
       "Busca da loja: se a foto de uma sugestão não carrega, aparece \"Sem foto\" em vez de uma imagem quebrada.",
-      "Painel, cadastro de produto: o lucro e a margem passam a usar o menor preço que a cliente realmente paga (o menor entre as variações à venda), e não só o preço-base. Quando os preços das variações diferem, o rótulo diz \"Menor lucro\"."
+      "Painel, cadastro de produto: o lucro e a margem passam a usar o menor preço que a cliente realmente paga (o menor entre as variações à venda), e não só o preço-base. Quando os preços das variações diferem, o rótulo diz \"Menor lucro\".",
+      "Painel, Início: no gráfico de desempenho, o período \"Tudo\" não esconde mais o primeiro dia quando ele só teve prejuízo (por exemplo, uma venda toda estornada sem recuperar a peça). Antes, o lucro somado em \"Tudo\" podia sair maior que o de \"30 dias\" para o mesmo intervalo.",
+      "Etiqueta de envio: se o Melhor Envio não concluir a compra da etiqueta (por exemplo, por saldo insuficiente) e o app falhar por um instante ao liberar o pedido, ele agora tenta de novo até 3 vezes. Antes o pedido podia ficar preso como se já tivesse etiqueta, e a lojista não conseguia gerar de novo pelo app."
     ],
     "melhorias": [
       "Mais testes protegem os centavos dos estornos e do frete nacional, os textos dos avisos de pedido e de pagamento atrasado, o preço que cai no carrinho e o limite das parcelas.",
