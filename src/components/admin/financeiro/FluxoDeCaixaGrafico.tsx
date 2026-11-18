@@ -29,9 +29,9 @@ import { Dinheiro, Segmentado, useValoresEstaoOcultos } from "./partes";
 // Cores por FUNÇÃO (não por série arbitrária): entrada verde, saída
 // vermelha, saldo azul. A cor nunca anda sozinha — a legenda
 // nomeia cada uma e o tooltip escreve o sinal.
-const COR_ENTRADA = "#10b981";
-const COR_SAIDA = "#f43f5e";
-const COR_SALDO = "#7AA2FF";
+const COR_ENTRADA = "var(--lit-t-3ddc97, #10b981)";
+const COR_SAIDA = "var(--lit-t-fda4af, #f43f5e)";
+const COR_SALDO = "var(--lit-t-69c8ff, #7AA2FF)";
 const COR_EIXO = "#ABABB7";
 
 type ModoDoFluxo = "saldo" | "movimentos";
@@ -267,7 +267,7 @@ export function FluxoDeCaixaGrafico({
   );
 
   return (
-    <div className="flex flex-col gap-3">
+    <div data-fluxo-de-caixa className="flex flex-col gap-3">
       <Segmentado<ModoDoFluxo>
         rotulo="Gráfico do fluxo de caixa"
         valor={modo}
