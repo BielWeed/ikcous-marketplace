@@ -210,11 +210,14 @@ O detalhe que importa: as duas chaves antigas são assinadas pela mesma chave-me
 >     where project_ref = 'cafkrminfnokvgjqtkle';
 >    ```
 >
->    Na mesma Vercel, confira também a variável `IKCOUS_FROTA_APIKEY` (a chave pública que o
->    porteiro usa para perguntar à caderneta quem é a loja). Se ela for a `anon` legada (`eyJ...`),
->    troque pela mesma publishable **antes** de desligar a chave antiga: com a `anon` desligada, a
->    pergunta do porteiro leva 401, a loja segue por até 1 hora com a última ficha boa e depois
->    responde 503 — **para todas as lojas**, não só esta.
+>    Confira também a variável `IKCOUS_FROTA_APIKEY` (a chave pública que o porteiro usa para
+>    perguntar à caderneta quem é a loja) **em CADA projeto da Vercel de loja** (principal, Savy e
+>    as demais — ela está em Production em todos os que servem pelo porteiro). Se ela for a
+>    `anon` legada (`eyJ...`), troque pela mesma publishable **antes** de desligar a chave antiga
+>    (e refaça o Redeploy daquele projeto): com a `anon` desligada, a pergunta do porteiro leva
+>    401; instância já quente do porteiro segue até 1 hora com a última ficha boa, mas instância
+>    fria responde 503 `banco-indisponivel` na hora — e a consulta é a mesma para **todas as
+>    lojas**, não só esta.
 > 3. Aba **Deployments** → o último de Production → menu `···` → **Redeploy**.
 >    **Por que este passo não é opcional:** essa chave entra no código no momento do build —
 >    a mesma mecânica da §2.3 passo 5 abaixo, só que para a chave nova em vez da `anon`. Salvar
@@ -273,15 +276,21 @@ já sabe usar a chave nova, graças ao pré-requisito acima.
 
 ### 2.3 — Se só houver o caminho do JWT secret
 
-Aí a loja vai cair por alguns minutos. Faça na ordem exata:
+A rotação do JWT secret mata a `anon` no passo 1, mas a `publishable` **sobrevive** (§2.1). Em
+produção (porteiro), a loja só cai se a `anon` ainda for a chave da ficha ou de
+`IKCOUS_FROTA_APIKEY`. Por isso o **passo 0 vem ANTES de rotacionar**; sem ele a loja (e a
+consulta do porteiro, que atende todas as lojas) cai por alguns minutos. Faça na ordem exata:
 
+0. **Antes de tudo:** faça o passo **2b da §2.2** — a `publishable_key` da linha deste
+   `project_ref` em `frota_lojas` e a variável `IKCOUS_FROTA_APIKEY` **em cada projeto da Vercel
+   de loja** têm de estar na `sb_publishable_...` (com Redeploy), e a conferência do Console da
+   §2.2 passo 4 tem de responder `sb_publishable_`.
 1. Rotacione o JWT secret no painel do Supabase
 2. **Copie a `anon` key nova** (vai aparecer na mesma tela) pro bloco de notas
 3. Vá na Vercel: **Settings → Environment Variables**
-4. Edite `VITE_SUPABASE_ANON_KEY` e cole o valor novo. **Em produção (porteiro) isto não
-   basta:** troque também a `publishable_key` da linha deste projeto em `frota_lojas` e a
-   variável `IKCOUS_FROTA_APIKEY`, se ela for a `anon` (mesmo `update` e mesmo motivo do passo
-   2b da §2.2) — senão a loja segue com a chave morta da ficha e responde 401.
+4. Edite `VITE_SUPABASE_ANON_KEY` e cole o valor novo (é só a reserva de quem não passa pelo
+   porteiro: prévia, build de loja única). Sem o passo 0, trocar só isto não basta: a loja segue
+   com a chave morta da ficha e responde 401.
 5. **Refaça o deploy** — só salvar a variável não basta. Essa chave entra no código no
    momento do build, então sem build novo o site continua com a chave velha.
    Na Vercel: aba **Deployments** → o último de Production → menu `···` → **Redeploy**
@@ -306,8 +315,9 @@ Depois de terminar, me chama que eu rodo a verificação. Ou faça você mesmo:
    uma das duas estiver certa. Pra saber qual delas realmente respondeu:
    - Abra o Console do navegador (tecla **F12** → aba **Console**) logo depois de a página
      carregar. Vai aparecer uma linha começando com `[EnvGuard] Chave do Supabase resolvida a
-     partir de...` — ela nomeia exatamente a variável usada (`VITE_SUPABASE_PUBLISHABLE_KEY`
-     ou `VITE_SUPABASE_ANON_KEY`). Essa linha existe desde a INFRA-260 (#126) exatamente para
+     partir de...` — ela nomeia a variável usada (`VITE_SUPABASE_PUBLISHABLE_KEY` ou
+     `VITE_SUPABASE_ANON_KEY`) ou diz `ficha` (porteiro: nesse caso confira o prefixo da chave
+     da ficha, como no passo 4 da §2.2). Essa linha existe desde a INFRA-260 (#126) exatamente para
      tirar essa dúvida sem precisar desligar nada para testar.
    - ⚠️ **Isso vale mesmo se você rotacionou o JWT secret pela §2.3.** A `publishable` **não**
      é assinada pela chave-mestra (a §2.1 explica: as chaves novas se revogam uma a uma), então

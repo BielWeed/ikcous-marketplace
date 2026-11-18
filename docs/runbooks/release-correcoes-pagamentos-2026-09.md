@@ -269,7 +269,8 @@ Zero risco financeiro; correções de UX/estorno/webhook já no ar.
 **Fase 2 — liberação por loja (checklist §4/§5)**: credenciais produtivas +
 chave própria + webhook produtivo com a MESMA chave. Desde 30/09 o pagamento
 liga SOZINHO quando a última chave é salva e o teste passa (e a loja não está
-pausada): siga a ordem do §6.5 passo 5, que segura a cobrança com a pausa.
+pausada): siga a ordem do §6.5 passo 5, que segura a cobrança deixando a Chave
+de notificações por último (ou pausando por HTTP antes, se já houver as três).
 
 **Fase 3 — primeiro pedido orgânico com PREVENÇÃO ATIVA (não passiva).**
 - **Pausa imediata** (corta NOVAS cobranças da loja em segundos; pedidos
@@ -278,10 +279,11 @@ pausada): siga a ordem do §6.5 passo 5, que segura a cobrança com a pausa.
   (não existe função SQL com esse nome nas migrations): é uma AÇÃO da edge
   function `credenciais-mercado-pago`, e "pausar" é o nome dela hoje. O
   caminho que funciona:
-  1. **Pela tela (o normal):** Ajustes → Pagamentos → Mercado Pago → bloco
-     "Receber pelo app (Pix e cartão)" → botão **Pausar** (com transportadora
-     vendendo abre um aviso; confirme em "Pausar mesmo assim").
-  2. **Pela chamada HTTP (se a tela não abrir):** `POST` em
+  1. **Pela tela (parada de emergência com a loja recebendo):** Ajustes →
+     Pagamentos → Mercado Pago → bloco "Receber pelo app (Pix e cartão)" →
+     botão **Pausar**. Ele só aparece com a loja em "Recebendo pelo app" (com
+     transportadora vendendo abre um aviso; confirme em "Pausar mesmo assim").
+  2. **Pela chamada HTTP (se a tela não oferecer o botão ou não abrir):** `POST` em
      `<URL do Supabase da loja>/functions/v1/credenciais-mercado-pago`, com o
      cabeçalho `Authorization: Bearer <token da sessão de um admin logado>` e
      corpo JSON `{ "acao": "desligar_pix" }`. A function é só de admin (chave
@@ -293,7 +295,10 @@ pausada): siga a ordem do §6.5 passo 5, que segura a cobrança com a pausa.
      credenciais (vende pelas chaves da plataforma) e não há pausa gravada. Erro
      409 = a loja ficaria sem forma de pagamento na entrega (ligue uma e repita);
      erro 500 "não consegui registrar a pausa" = o Pix JÁ foi desligado, mas
-     pode religar sozinho no próximo teste: **toque em Pausar de novo**.
+     pode religar sozinho no próximo teste: **repita a pausa**. Erro 500 "Não
+     consegui desligar o PIX na ficha da loja" = **NÃO pausou** (a ficha
+     recusou; nada foi gravado): repita até confirmar. Erro 401 = o token não é
+     de um admin atual (ou expirou): pegue um novo da sessão do admin.
 - **Antídoto contra "cobrança confirmada sem pedido"**: reconciliador
   (pg_cron 10 min, provado ativo com 8 runs succeeded) + política P1
   (`pago_apos_expirar` honra pagamento tardio — nunca 2ª cobrança) +
@@ -416,21 +421,31 @@ rate-limit externo — não é mais bloqueio de arquivo/código.**
    **Salvar credencial nova e Testar conexão rodam o teste e, com credenciais
    de PRODUÇÃO, já podem ligar cobrança real na hora.** (`testar` reconcilia a
    ficha: `credenciais-mercado-pago/index.ts`, `estadoDesejado` e
-   `camposDaFicha`.) `ligar_pix` virou **Retomar**: só tira a pausa. Para o
-   dono controlar o momento, nesta ordem (Ajustes → Pagamentos → Mercado Pago):
+   `camposDaFicha`.) `ligar_pix` virou **Retomar**: só tira a pausa. **Na
+   tela, o botão Pausar só existe com a loja já "Recebendo pelo app"** (parada
+   de emergência); antes disso a tela só mostra "Falta para receber pelo app"
+   (ou "Pausado por você", com Retomar). Por isso o controle da PRIMEIRA
+   ativação é a ordem das chaves: **a Chave de notificações é a última, e o
+   Salvar dela é o que liga** (Ajustes → Pagamentos → Mercado Pago):
    1. Salve a Public Key e o Access Token de produção **sem** a Chave de
-      notificações — sem ela falta uma chave e nada liga. (Se a loja já tinha
-      a Chave de notificações salva de antes, este Salvar já pode ligar:
-      toque em **Pausar** logo em seguida, ou use credenciais de TESTE, que
-      não ligam cobrança real.)
-   2. Toque em **Pausar** (a pausa só é gravada depois que existe cadastro de
-      credenciais — por isso vem depois do passo 1; confirme como no §6.3,
-      Fase 3, item 3).
-   3. Cadastre o webhook produtivo no Mercado Pago, cole a MESMA Chave de
-      notificações, salve e **Testar conexão** (precisa dar verde). Com a
-      pausa de pé, nada liga.
-   4. Quando o dono mandar: **Retomar** (`ligar_pix`; recusa 409, sem gravar
-      nada, se faltar chave ou o teste).
+      notificações. Falta uma chave, então nada liga (a tela mostra "Falta
+      para receber pelo app").
+   2. Cadastre o webhook produtivo no Mercado Pago e deixe a Chave de
+      notificações à mão — **NÃO cole no app ainda**.
+   3. Quando o dono mandar: cole a MESMA Chave de notificações e salve. Esse
+      Salvar roda o teste e, se der verde, **liga a cobrança na hora**; a tela
+      passa a "Recebendo pelo app" e o botão **Pausar** aparece (parada de
+      emergência, §6.3 Fase 3).
+   - **Se a loja já tinha a Chave de notificações salva (ou as três chaves
+     estão salvas e você quer segurar):** **PAUSE PRIMEIRO, e salve/teste
+     depois.** Sem botão na tela nesse estado, a pausa sai pela chamada HTTP
+     `desligar_pix` (§6.3 Fase 3, item 2), que grava a pausa em qualquer estado
+     desde que a loja já tenha cadastro de credenciais. A pausa vence Salvar e
+     Testar (a tela mostra "Pausado por você" + Retomar). Só então salve e teste.
+     Credenciais de TESTE não ligam cobrança real, mas não use isso como
+     controle de produção.
+   4. Para ligar de verdade com a pausa de pé: **Retomar** (`ligar_pix`; recusa
+      409, sem gravar nada, se faltar chave ou o teste).
 6. **Rollback exato**:
    - Functions: reverta o código para o estado de **`ec930dd3`** e publique pelo
      `publicar-functions.yml`, com `functions=cobranca`, a loja correta e o SHA completo
