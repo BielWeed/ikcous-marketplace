@@ -1423,11 +1423,14 @@ export function ShippingCalculator({
               )}
             </span>
           )}
+          {retirada && option.pickupAddress && (
+            <span className="mt-0.5 block text-[11px] leading-snug text-zinc-600">
+              Retire em: {option.pickupAddress}
+            </span>
+          )}
           <span className="mt-0.5 block text-[11px] leading-snug text-zinc-600">
             {retirada
-              ? option.pickupAddress
-                ? `Retire em: ${option.pickupAddress}`
-                : "Aguarde a confirmação da loja para retirar"
+              ? "Aguarde a confirmação da loja para retirar"
               : prazoDaOpcao(option)}
           </span>
         </div>
