@@ -102,7 +102,10 @@ const CONSULTAS = {
       .in("payment_status", PAGAMENTOS_A_CONFERIR_EM_ABERTO),
 } satisfies Record<keyof Contagens, Parameters<typeof contar>[0]>;
 
-const CAMPOS_DAS_CONTAGENS = Object.keys(CONSULTAS) as (keyof Contagens)[];
+const CONSULTAS_POR_CAMPO = Object.entries(CONSULTAS) as [
+  keyof Contagens,
+  Parameters<typeof contar>[0],
+][];
 const ESPERAS_DAS_RETENTATIVAS_MS = [1000, 2000, 4000] as const;
 
 export function useNumerosDosPedidos(ativo: boolean): NumerosDosPedidos {
@@ -126,9 +129,10 @@ export function useNumerosDosPedidos(ativo: boolean): NumerosDosPedidos {
 
   useEffect(() => {
     telaAtiva.current = ativo;
+    const rodadaRef = rodadaAtual;
     return () => {
       telaAtiva.current = false;
-      ++rodadaAtual.current;
+      ++rodadaRef.current;
       if (recargaAgendada.current !== null) {
         clearTimeout(recargaAgendada.current);
         recargaAgendada.current = null;
@@ -144,21 +148,24 @@ export function useNumerosDosPedidos(ativo: boolean): NumerosDosPedidos {
 
     const aindaAtual = () =>
       telaAtiva.current && rodada === rodadaAtual.current;
-    async function consultar(campos: (keyof Contagens)[]) {
+    async function consultar(consultas: typeof CONSULTAS_POR_CAMPO) {
       const resultados = await Promise.all(
-        campos.map(async (campo) => ({
-          campo,
-          valor: await contar(CONSULTAS[campo]),
+        consultas.map(async (consulta) => ({
+          consulta,
+          valor: await contar(consulta[1]),
         })),
       );
       if (!aindaAtual()) return;
 
-      const parciais: Partial<Contagens> = {};
-      const falharam: (keyof Contagens)[] = [];
-      for (const { campo, valor } of resultados) {
-        parciais[campo] = valor === "sem_acesso" ? null : valor;
-        if (valor === null) falharam.push(campo);
-      }
+      const parciais = Object.fromEntries(
+        resultados.map(({ consulta: [campo], valor }) => [
+          campo,
+          valor === "sem_acesso" ? null : valor,
+        ]),
+      );
+      const falharam = resultados
+        .filter(({ valor }) => valor === null)
+        .map(({ consulta }) => consulta);
       setContagens((anteriores) => ({ ...anteriores, ...parciais }));
 
       const espera = ESPERAS_DAS_RETENTATIVAS_MS[retentativasFeitas.current];
@@ -178,7 +185,7 @@ export function useNumerosDosPedidos(ativo: boolean): NumerosDosPedidos {
       }, espera);
     }
 
-    await consultar(CAMPOS_DAS_CONTAGENS);
+    await consultar(CONSULTAS_POR_CAMPO);
   }, [cancelarRetentativa]);
 
   const pedirRecarga = useCallback(() => {
