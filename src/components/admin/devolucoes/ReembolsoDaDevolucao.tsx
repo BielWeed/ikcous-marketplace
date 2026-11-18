@@ -47,13 +47,40 @@ const SEM_RESPOSTA =
   "Sem resposta da rede. Não dá para saber se o pedido foi feito. Confira o reembolso na ficha, que foi atualizada, antes de tentar de novo.";
 
 /**
+ * O `use_por_fora` do servidor traz um `detalhe` (migration 20261241000000):
+ * em `devolvido_pelo_painel_do_mp` o dinheiro JÁ saiu pelo painel do Mercado
+ * Pago — mandar "devolver por PIX ou dinheiro" ali induz pagamento em dobro.
+ * Detalhe ausente ou desconhecido cai no aviso conservador, sem ordem de pagar.
+ */
+const CONFIRME_PENDENTE =
+  "Confirme que o valor continua pendente antes de devolver por fora.";
+const TEXTO_DO_USE_POR_FORA: Record<string, string> = {
+  devolvido_pelo_painel_do_mp:
+    "Já existe um reembolso concluído pelo painel do Mercado Pago. Não repita esse valor; confira lá se falta alguma diferença.",
+  sem_prova_de_que_nao_saiu:
+    "Não foi possível confirmar se o dinheiro saiu. Confira no Mercado Pago antes de devolver por fora.",
+  pedido_nao_entregue: `O pedido ainda não foi entregue. ${CONFIRME_PENDENTE}`,
+  sem_pagamento_pelo_app: `O pagamento não foi feito pelo app. ${CONFIRME_PENDENTE}`,
+  fora_do_prazo_ou_da_forma: `O reembolso está fora do prazo ou da forma aceita pelo Mercado Pago. ${CONFIRME_PENDENTE}`,
+};
+const USE_POR_FORA_CONSERVADOR =
+  "O Mercado Pago não refez o reembolso. Confira o valor no Mercado Pago antes de devolver por fora.";
+
+export function textoDoUsePorFora(detalhe: unknown): string {
+  return typeof detalhe === "string" &&
+    Object.hasOwn(TEXTO_DO_USE_POR_FORA, detalhe)
+    ? TEXTO_DO_USE_POR_FORA[detalhe]
+    : USE_POR_FORA_CONSERVADOR;
+}
+
+/**
  * Aviso de cada `resultado` da reemissão (edge `estornar-pagamento`, ação
  * `reemitir`) e do "por fora" (RPC `admin_devolucao_reembolso_por_fora`) —
  * contrato da migration 20261226. `ja_existia`, `ja_concluido`,
  * `em_andamento` e `reembolso_mudou` = a devolução mudou; a ficha relê.
  * Sem `resultado` = erro (mensagem da edge, ou a genérica).
  */
-const AVISOS = new Map<string, () => unknown>([
+const AVISOS = new Map<string, (corpo: Record<string, unknown>) => unknown>([
   [
     "reemitido",
     () =>
@@ -63,10 +90,7 @@ const AVISOS = new Map<string, () => unknown>([
   ],
   [
     "use_por_fora",
-    () =>
-      toast.warning(
-        "O Mercado Pago não aceita refazer. Devolva por PIX ou dinheiro e toque em “Já devolvi por fora”.",
-      ),
+    (c) => toast.warning(textoDoUsePorFora(c.detalhe), { duration: 20_000 }),
   ],
   [
     "sem_saldo_para_reemitir",
@@ -89,7 +113,7 @@ function avisar(corpo: unknown): Record<string, unknown> {
       ? (corpo as Record<string, unknown>)
       : {};
   const aviso = AVISOS.get(String(c.resultado));
-  if (aviso) aviso();
+  if (aviso) aviso(c);
   else if (typeof c.resultado === "string") toast.info(MUDOU);
   else toast.error(typeof c.erro === "string" ? c.erro : ERRO);
   if (c.risco_de_dobro === true) toast.warning(AVISO_DE_DOBRO);
