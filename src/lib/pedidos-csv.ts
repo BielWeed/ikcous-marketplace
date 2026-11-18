@@ -63,7 +63,13 @@ export function pedidosParaCsv(
       escaparCampo(rotuloDoStatus(pedido.status, pedido.retiradaNaLoja)),
       escaparCampo(rotuloDaFormaDePagamento(pedido)),
       escaparCampo(
-        rotuloDoPagamento(pedido.paymentStatus, pedido.status, pedido.canal),
+        rotuloDoPagamento(
+          pedido.paymentStatus,
+          pedido.status,
+          pedido.canal,
+          false,
+          pedido.retiradaNaLoja,
+        ),
       ),
       pedido.total.toFixed(2).replace(".", ","),
       escaparCampo(pedido.customer?.city ?? ""),
