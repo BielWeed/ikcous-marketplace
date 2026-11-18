@@ -6400,7 +6400,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     />
                     <InterruptorDoProduto
                       rotulo="Em destaque"
-                      descricao="Mostra o selo “Em alta” e põe o produto na vitrine de destaques."
+                      descricao="Mostra o selo “Em alta” e inclui na vitrine de destaques automática. A seleção manual não muda."
                       ligado={formData.isBestseller}
                       onAlternar={() =>
                         setFormData((prev) => ({
