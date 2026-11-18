@@ -306,6 +306,26 @@ describe("Produtos — voltar do fundo", () => {
     },
   );
 
+  it.each([
+    [undefined, 30_000],
+    ["sem-custo", 300_000],
+  ] as const)(
+    "sem primeira carga na visão %s, falha silenciosa mantém o erro completo",
+    async (visaoInicial, intervalo) => {
+      consultar.mockResolvedValue(null);
+      await abrir(visaoInicial);
+      expect(host.textContent).toContain("Erro ao Carregar Produtos");
+      await esperar(intervalo);
+      await voltar();
+      expect(consultar).toHaveBeenCalledTimes(2);
+      const aviso = host.querySelector('[role="alert"]');
+      expect(aviso?.textContent).toContain("Erro ao Carregar Produtos");
+      expect(aviso?.textContent).toContain("A lista não chegou.");
+      expect(aviso?.textContent).toContain("Tentar Novamente");
+      expect(host.textContent).not.toContain("mostrando os dados anteriores");
+    },
+  );
+
   it("Tentar de novo atualiza sem perder os filtros e remove o aviso", async () => {
     await abrir();
     host.scrollTop = 123;

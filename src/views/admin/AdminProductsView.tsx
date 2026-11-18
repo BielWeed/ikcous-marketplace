@@ -345,6 +345,7 @@ export const AdminProductsView = memo(function AdminProductsView({
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [erroSilencioso, setErroSilencioso] = useState(false);
+  const avisoSilencioso = erroSilencioso && !loadError;
   const buscandoSemCusto = modoSemCusto && semCusto === null && !loadError;
   const buscandoEstoqueBaixo =
     modoEstoqueBaixo && !estoqueBaixoPronto && !loadError;
@@ -1935,10 +1936,10 @@ export const AdminProductsView = memo(function AdminProductsView({
               role="alert"
               className={cn(
                 "rounded-3xl border border-admin-border bg-admin-surface text-center",
-                erroSilencioso ? "p-3" : "p-6",
+                avisoSilencioso ? "p-3" : "p-6",
               )}
             >
-              {!erroSilencioso && (
+              {!avisoSilencioso && (
                 <>
                   <AlertTriangle
                     aria-hidden="true"
@@ -1950,20 +1951,20 @@ export const AdminProductsView = memo(function AdminProductsView({
                 </>
               )}
               <p className="my-4 text-sm text-zinc-400">
-                {erroSilencioso
-                  ? "Não foi possível atualizar; mostrando os dados anteriores"
+                {avisoSilencioso
+                  ? "Não foi possível atualizar; mostrando os dados anteriores."
                   : lista.length > 0
                     ? "A lista na tela é de antes do que você pediu. Confira a internet e tente de novo."
                     : "A lista não chegou. Confira a internet e tente de novo."}
               </p>
               <button
                 type="button"
-                onClick={() => loadData(currentPage, erroSilencioso)}
+                onClick={() => loadData(currentPage, avisoSilencioso)}
                 disabled={loading}
                 className="produto-secundario w-full"
               >
                 <RefreshCw aria-hidden="true" className="size-4" />{" "}
-                {erroSilencioso ? "Tentar de novo" : "Tentar Novamente"}
+                {avisoSilencioso ? "Tentar de novo" : "Tentar Novamente"}
               </button>
             </div>
           )}
