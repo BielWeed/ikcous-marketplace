@@ -24,6 +24,10 @@ type Fake = {
   reivindicados?: string[];
   rpc?: { data?: unknown; error?: unknown };
   erroLeitura?: string;
+  // Falha SÓ a leitura dos ids já reivindicados (a 2ª de order_refunds, a que
+  // tem `.not`). `erroLeitura: "order_refunds"` não serve: a 1ª leitura da
+  // tabela (a linha esperada) falharia antes e esta nunca seria exercitada.
+  erroIdsReivindicados?: boolean;
 };
 
 function supabaseFalso(f: Fake) {
@@ -45,6 +49,9 @@ function supabaseFalso(f: Fake) {
         then: (res: (v: unknown) => void, rej?: (e: unknown) => void) => {
           leituras.push(tabela);
           if (f.erroLeitura === tabela) return Promise.resolve({ data: null, error: { message: "banco fora" } }).then(res, rej);
+          if (f.erroIdsReivindicados && tabela === "order_refunds" && filtros.some((x) => x.startsWith("not:"))) {
+            return Promise.resolve({ data: null, error: { message: "banco fora" } }).then(res, rej);
+          }
           const data = tabela === "devolucoes"
             ? f.devolucao
             : tabela === "marketplace_orders"
@@ -201,4 +208,27 @@ Deno.test("resposta do banco VAZIA (data null, sem erro): 500 com a mensagem de 
   const r = reemitir({ ...completo, rpc: { data: null } }, mp(200, orderSemReembolso).f);
   assertEquals(await r.resposta, { http: 500, corpo: { erro: "Resposta inesperada ao reemitir o reembolso." } });
   assertEquals(r.rpcs.length, 1, "o banco foi chamado uma vez; a resposta dele é que veio ilegível");
+});
+
+Deno.test("M5- FALHA ao ler os reembolsos já reivindicados por outras linhas: 500 e nada vai ao MP nem ao banco (sem a lista, um refund de outra linha poderia ser adotado por esta)", async () => {
+  // Mutação: apagar o `if (erroIds) {...}` da reemissão deixaria `reivindicadas`
+  // null virar [] e a consulta ao MP seguiria sem excluir os refunds de outras
+  // linhas — e o banco receberia um `achou` com o dinheiro de outra devolução.
+  const corpoComRefund = {
+    ...orderSemReembolso,
+    transactions: { payments: [{ id: "PAY1" }], refunds: [{ id: "REF9", amount: "50.00", status: "processed" }] },
+  };
+  const dubleMp = mp(200, corpoComRefund);
+  const r = reemitir(
+    { ...completo, reivindicados: ["REF9"], erroIdsReivindicados: true, rpc: { data: { resultado: "ja_existia", detalhe: "adotado" } } },
+    dubleMp.f,
+  );
+  const { http, corpo } = await r.resposta;
+  assertEquals(http, 500);
+  assertEquals(corpo, { erro: "Não consegui ler a devolução agora. Tente novamente em instantes." });
+  assertEquals(r.rpcs.length, 0, "o banco NÃO é chamado");
+  assertEquals(dubleMp.chamadas.length, 0, "o MP NÃO é consultado");
+  // A falha caiu de fato na 2ª leitura de order_refunds (a linha esperada
+  // foi lida antes, com sucesso) — o dublê não falhou a tabela inteira.
+  assertEquals(r.leituras, ["devolucoes", "order_refunds", "marketplace_orders", "order_refunds"]);
 });

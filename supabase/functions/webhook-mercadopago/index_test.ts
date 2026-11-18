@@ -3311,6 +3311,68 @@ Deno.test("W2 - order 'processed'+'partially_refunded' com refund de 30 e linha 
   assertEquals(registro.chamadasRpc.length, 0);
 });
 
+Deno.test("W2a - a leitura das linhas de reembolso do app FALHA -> 500, e registrar_estorno_externo_do_mp NÃO roda (sem ver as linhas do app, registraria o mesmo reembolso de novo)", async () => {
+  // Mutação: apagar `if (erroRefundsRows) throw erroRefundsRows;` faz `data`
+  // (null) virar lista vazia: o webhook não enxerga a linha 'solicitado' de
+  // 30 do app, trata o refund r2 como estorno externo e o registra DE NOVO.
+  const registro = {
+    chamadasRpc: [] as any[],
+    chamadasConcluirEstorno: [] as any[],
+    insertsOrderRefunds: [] as any[],
+    chamadasExternoDoMp: [] as any[],
+  };
+  const pedido = {
+    id: UUID_PEDIDO,
+    gateway_payment_id: ID_ORDER_TESTE,
+    total: 100,
+    valor_estornado: 0,
+    payment_status: "pago",
+    paid_at: new Date().toISOString(),
+    status: "cancelled",
+  };
+  const orderRefundsRows = [
+    {
+      id: "linha-2",
+      order_id: UUID_PEDIDO,
+      amount: 30,
+      status: "solicitado",
+      solicitado_por: "cliente",
+      mp_refund_id: null,
+      tentativas: 0,
+      concluido_em: null,
+    },
+  ];
+  const supabase = clienteFalso({
+    pedido,
+    registro,
+    orderRefundsRows,
+    erroOrderRefundsSelect: { message: "banco fora" },
+  });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const fetchImpl = fetchConsulta(200, {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "processed",
+    status_detail: "partially_refunded",
+    transactions: {
+      payments: [{ id: "PAY01XYZ", status: "processed" }],
+      refunds: [{ id: "r2", amount: "30.00", status: "processed" }],
+    },
+  });
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+  await resposta.text();
+
+  assertEquals(resposta.status, 500);
+  assertEquals(
+    registro.chamadasExternoDoMp.length,
+    0,
+    "falha de leitura do ledger NÃO pode virar 'lista vazia' e registrar o reembolso outra vez",
+  );
+  assertEquals(registro.chamadasConcluirEstorno.length, 0);
+  assertEquals(registro.insertsOrderRefunds.length, 0);
+});
+
 Deno.test("W2b - achado MÉDIO da revisão do P1 de estorno: linha em_processamento COM o próprio mp_refund_id 'r2' e refund AGORA 'processed' -> conclui pela T5 (id próprio NÃO entra em idsJaReivindicados)", async () => {
   // Com a regra do P1 de estorno (29/09), o caso majoritário passou a ser
   // linha em_processamento COM o id do refund dela gravado (POST nasce

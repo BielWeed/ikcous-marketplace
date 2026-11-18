@@ -1998,6 +1998,53 @@ Deno.test("R5 - item que lança (pedido não encontrado) não impede o seguinte 
   assertEquals(registro.chamadasConcluirEstorno[0].args.p_refund_id, "rBoa");
 });
 
+Deno.test("R5b - FALHA ao ler os ids já reivindicados por outras linhas conta como falha e NADA é chamado: nem o MP, nem a marca, nem concluir_estorno (sem a leitura, o refund de outra linha poderia ser creditado de novo)", async () => {
+  // Mutação: apagar `if (erroIdsReivindicados) throw erroIdsReivindicados;` do
+  // cron deixaria `linhasReivindicadas` null virar [] e a linha seguiria
+  // para o MP sem excluir os refunds que outras linhas já reivindicaram.
+  const registro = {
+    chamadasConfirmar: [] as Array<{ args: Record<string, unknown> }>,
+    chamouCandidatos: false,
+    chamadasConcluirEstorno: [] as Array<{ args: Record<string, unknown> }>,
+    atualizacoesOrderRefunds: [] as Array<
+      { id: string; valores: Record<string, unknown>; statusFiltro: string[] }
+    >,
+  };
+  const pedido = pedidoFrescoPara({ id: "20000000-0000-4000-8000-0000000000ee", total: 15 });
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [
+      { id: "rLeitura", order_id: pedido.id, amount: 15, status: "solicitado", tentativas: 0, mp_refund_id: null },
+    ],
+    resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+    idsJaReivindicadosPorPedido: () => ["ref-outra-linha"],
+    erroIdsJaReivindicados: { message: "banco fora" },
+  });
+  // Se a guarda sumir, a linha vai ao MP e CONCLUI: esta rota deixaria o
+  // POST dar certo, e o teste enxerga isso como chamada + concluir_estorno.
+  const mp = fetchDubleReconciliacao([
+    { metodo: "POST", trecho: "/v1/payments/123456789/refunds", status: 201, corpo: { id: 321, status: "approved", amount: 15 } },
+  ]);
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.estornos, { vistos: 1, concluidos: 0, adiados: 0, falhos: 1 });
+  assertEquals(mp.chamadas.length, 0, "nenhuma chamada ao MP");
+  assertEquals(registro.chamadasConcluirEstorno.length, 0, "nenhum concluir_estorno");
+  // O `finally` do laço só carimba a VISITA (updated_at); status e tentativas
+  // — a MARCA — não podem ter sido gravados.
+  for (const escrita of registro.atualizacoesOrderRefunds) {
+    assertEquals(
+      Object.keys(escrita.valores),
+      ["updated_at"],
+      "a linha NÃO é marcada em_processamento: só o carimbo de visita é gravado",
+    );
+  }
+});
+
 Deno.test("R6 - linha atualizada há 30s NÃO é tocada (janela de 2 minutos evita disputar com a edge do clique)", async () => {
   const registro = {
     chamadasConfirmar: [] as Array<{ args: Record<string, unknown> }>,
