@@ -137,24 +137,44 @@ it.each([undefined, "", "   ", "cliente FICTÍCIA", "Cliente Ficticia"])(
     expect(msg).not.toContain("Quem recebe");
   },
 );
-it("leva a observação da cliente em uma linha só, depois da referência", () => {
+it("leva as observações do pedido em uma linha só, depois da referência", () => {
   const msg = contato.mensagemMototaxi(
-    { ...pedido, notes: "Campainha estragada;\n  deixar   na portaria.\n" },
+    { ...pedido, notes: "Campainha estragada\n  deixar   na portaria.\n" },
     "Loja",
   );
   const linhas = msg.split("\n");
   expect(linhas[5]).toBe("Referência: portão azul");
   expect(linhas[6]).toBe(
-    "Observação da cliente: Campainha estragada; deixar na portaria.",
+    "Observações do pedido: Campainha estragada · deixar na portaria.",
   );
   expect(linhas[7]).toMatch(/^Itens: /);
 });
+it("no formato que o checkout grava, a linha automática de frete não vira observação", () => {
+  // CheckoutView junta observação + escolhas de variação + nota do frete com "\n\n".
+  const notes = [
+    "Deixar na portaria",
+    "Camiseta: P",
+    "Frete Escolhido: Entrega local (Prazo: no mesmo dia)",
+  ].join("\n\n");
+  const msg = contato.mensagemMototaxi({ ...pedido, notes }, "Loja");
+  expect(msg).toContain(
+    "Observações do pedido: Deixar na portaria · Camiseta: P",
+  );
+  expect(msg).not.toContain("Frete Escolhido");
+  expect(msg.split("\n")).toHaveLength(10);
+});
+it("pedido de entrega local sem observação só tem a nota automática de frete: sem a linha", () => {
+  const notes = "Frete Escolhido: Entrega local (Prazo: no mesmo dia)";
+  const msg = contato.mensagemMototaxi({ ...pedido, notes }, "Loja");
+  expect(msg).not.toContain("Observações");
+  expect(msg).not.toContain("Frete Escolhido");
+});
 it.each([undefined, "", "  \n "])(
-  "sem observação da cliente não inventa a linha: %j",
+  "sem observação não inventa a linha: %j",
   (notes) => {
     expect(
       contato.mensagemMototaxi({ ...pedido, notes }, "Loja"),
-    ).not.toContain("Observação");
+    ).not.toContain("Observações");
   },
 );
 it("observação longa é cortada em 300 caracteres com reticências", () => {
@@ -162,8 +182,19 @@ it("observação longa é cortada em 300 caracteres com reticências", () => {
     { ...pedido, notes: "a".repeat(500) },
     "Loja",
   );
-  const linha = msg.split("\n").find((l) => l.startsWith("Observação"));
-  expect(linha).toBe(`Observação da cliente: ${"a".repeat(299)}…`);
+  const linha = msg.split("\n").find((l) => l.startsWith("Observações"));
+  expect(linha).toBe(`Observações do pedido: ${"a".repeat(299)}…`);
+});
+it("o corte nunca parte um emoji ao meio: o link do WhatsApp continua válido", () => {
+  // 298 letras + emoji (2 unidades UTF-16) + texto: cortar por unidade deixaria
+  // meio emoji solto e o encodeURIComponent do link lançaria "URI malformed".
+  const msg = contato.mensagemMototaxi(
+    { ...pedido, notes: `${"a".repeat(298)}😀 fim de texto` },
+    "Loja",
+  );
+  const linha = msg.split("\n").find((l) => l.startsWith("Observações"));
+  expect(linha).toBe(`Observações do pedido: ${"a".repeat(298)}😀…`);
+  expect(() => encodeURIComponent(msg)).not.toThrow();
 });
 it("usa os seis últimos caracteres reconhecidos na ficha, nunca os primeiros", () => {
   const msg = contato.mensagemMototaxi(pedido, "Loja");
