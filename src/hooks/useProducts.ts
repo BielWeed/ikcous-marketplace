@@ -265,6 +265,35 @@ async function syncOfflineUpdates(
   }
 }
 
+/**
+ * Recusa PERMANENTE do banco: classe 23 do Postgres (dado recusado: unicidade
+ * 23505, não-nulo 23502, chave estrangeira 23503, check 23514) ou 42501 (sem
+ * permissão / política de linha). O mesmo envio repetido recebe a mesma
+ * resposta; só rede, 5xx e estouro de tempo valem nova tentativa.
+ */
+function codigoDoBanco(err: unknown): string | undefined {
+  if (typeof err !== "object" || err === null || !("code" in err)) {
+    return undefined;
+  }
+  return typeof err.code === "string" ? err.code : undefined;
+}
+
+function erroDoBancoEhPermanente(err: unknown): boolean {
+  const codigo = codigoDoBanco(err);
+  return (
+    codigo !== undefined && (codigo.startsWith("23") || codigo === "42501")
+  );
+}
+
+function motivoDaRecusaDoBanco(err: unknown): string {
+  const codigo = codigoDoBanco(err);
+  if (codigo === "23505") {
+    return "esse valor já existe em outro produto, como o código de barras";
+  }
+  if (codigo === "42501") return "sem permissão para alterar este produto";
+  return "o banco não aceitou esses valores";
+}
+
 async function sincronizarFilaDoUsuario(
   userId: string,
   // Retentativa por renovação do token (`criarReligadorDaFila`): não pisca o
@@ -448,6 +477,17 @@ async function sincronizarFilaDoUsuario(
         }
       } catch (err) {
         console.error("[Offline Sync] Failed to sync product %s:", id, err);
+        if (erroDoBancoEhPermanente(err)) {
+          // O banco recusou o VALOR (unicidade, nulo, check, chave) ou a
+          // PERMISSÃO: tentar de novo repete a recusa até as 72 h. Sai da fila
+          // com aviso, igual ao conflito acima (`conflitos` também impede o
+          // "sincronizado com sucesso" falso) e não marca nova tentativa.
+          conflitos += 1;
+          toast.warning(
+            `A edição offline do produto ${item.productName || updates?.name || id} foi descartada: o servidor a recusou e tentar de novo não resolve (${motivoDaRecusaDoBanco(err)}). Confira o produto e edite novamente.`,
+          );
+          continue;
+        }
         remainingQueue.push(item);
       }
     }

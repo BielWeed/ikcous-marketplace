@@ -84,6 +84,8 @@ describe("classificação de erro da sincronização", () => {
     new Error("Este pedido não pode mais ser cancelado por você."),
     { message: "Este pedido não pode ser cancelado." },
     { code: "23514" },
+    // `avancar_status_do_pedido`: quem não é admin. Permanente.
+    { code: "42501", message: "Acesso negado." },
   ])("reconhece o estado terminal: %j", (erro) => {
     expect(erroDeSincronizacaoEhTerminal(erro)).toBe(true);
   });

@@ -27,6 +27,11 @@ const mock = vi.hoisted(() => ({
   atualizados: [] as { id: string; payload: any }[],
   // Quantas respostas de erro (500) ainda saem antes de o servidor aceitar.
   falhasRestantes: 0,
+  // O erro que o servidor devolve enquanto `falhasRestantes` > 0.
+  erroDoServidor: { message: "Internal Server Error", code: "500" } as {
+    message: string;
+    code?: string;
+  },
   // Quando verdadeiro, o UPDATE só conclui quando alguém o chamar.
   segurar: false,
   segurarEnvio: null as null | { concluir: () => void },
@@ -81,10 +86,7 @@ vi.mock("@/lib/supabase", () => ({
               };
               if (mock.falhasRestantes > 0) {
                 mock.falhasRestantes -= 1;
-                resposta = {
-                  data: null,
-                  error: { message: "Internal Server Error", code: "500" },
-                };
+                resposta = { data: null, error: mock.erroDoServidor };
               }
               if (!mock.segurar) return Promise.resolve(resposta);
               return new Promise((resolve) => {
@@ -169,6 +171,7 @@ describe("fila offline de produtos — tenta de novo depois de falha passageira"
     mock.sessoesSeguintes.length = 0;
     mock.atualizados.length = 0;
     mock.falhasRestantes = 0;
+    mock.erroDoServidor = { message: "Internal Server Error", code: "500" };
     mock.segurar = false;
     mock.segurarEnvio = null;
     localStorage.clear();
@@ -300,6 +303,64 @@ describe("fila offline de produtos — tenta de novo depois de falha passageira"
     await passar(3 * HORA);
     expect(passadas()).toBe(passadasAteAqui);
     expect(mock.atualizados).toHaveLength(1);
+  });
+
+  it.each([
+    ["23505", "duplicate key value violates unique constraint"],
+    ["23502", "null value in column violates not-null constraint"],
+    ["23514", "new row violates check constraint"],
+    ["42501", "new row violates row-level security policy"],
+  ])(
+    "erro PERMANENTE do banco (%s): a edição é descartada com aviso e NÃO há nova tentativa",
+    async (code, message) => {
+      mock.falhasRestantes = 99;
+      mock.erroDoServidor = { message, code };
+      localStorage.setItem(
+        CHAVE_A,
+        JSON.stringify([
+          {
+            ...itemDe("prod-1", { price: 19.9 }),
+            productName: "Camiseta azul",
+          },
+        ]),
+      );
+
+      await montar();
+      await passar(1 * S);
+
+      expect(mock.atualizados).toHaveLength(1);
+      // Saiu da fila (tentar de novo não conserta) e a lojista foi avisada, com
+      // o nome do produto; nenhum "Tentando novamente mais tarde".
+      expect(fila()).toBeNull();
+      expect(toast.warning).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(toast.warning).mock.calls[0][0]).toContain(
+        "Camiseta azul",
+      );
+      expect(toast.error).not.toHaveBeenCalled();
+      expect(toast.success).not.toHaveBeenCalled();
+
+      await passar(3 * HORA);
+      expect(mock.atualizados).toHaveLength(1);
+      expect(toast.error).not.toHaveBeenCalled();
+    },
+  );
+
+  it("erro de tempo esgotado do banco (57014, sem código de classe 23 nem 42501) segue passageiro: a edição fica e é retentada", async () => {
+    mock.falhasRestantes = 1;
+    mock.erroDoServidor = {
+      message: "canceling statement due to statement timeout",
+      code: "57014",
+    };
+
+    await montar();
+    await passar(1 * S);
+    expect(mock.atualizados).toHaveLength(1);
+    expect(fila()).toHaveLength(1);
+    expect(toast.error).toHaveBeenCalledTimes(1);
+
+    await passar(31 * S);
+    expect(mock.atualizados).toHaveLength(2);
+    expect(fila()).toBeNull();
   });
 
   it("a passada que parou porque a sessão NÃO é do dono (conta trocada) não marca nova tentativa", async () => {

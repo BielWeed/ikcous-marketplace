@@ -427,6 +427,16 @@ export function erroDeSincronizacaoEhTerminal(err: unknown): boolean {
   if ("code" in err && err.code === "23514") return true;
   if (!("message" in err) || typeof err.message !== "string") return false;
   const mensagem = err.message.toLowerCase();
+  // `avancar_status_do_pedido` recusa quem não é admin com 42501 + "Acesso
+  // negado." (20261345000000): permanente, retentar só repete a recusa. O 42501
+  // genérico ("permission denied") segue fora: a mensagem é que o identifica.
+  if (
+    "code" in err &&
+    err.code === "42501" &&
+    mensagem.includes("acesso negado")
+  ) {
+    return true;
+  }
   return (
     mensagem.includes("pedido_status_mudou") ||
     mensagem.includes("apenas pedidos pendentes") ||

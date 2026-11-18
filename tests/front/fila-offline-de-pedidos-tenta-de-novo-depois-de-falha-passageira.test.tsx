@@ -281,6 +281,28 @@ describe("fila offline de pedidos — tenta de novo depois de falha passageira",
     expect(rpcMock).toHaveBeenCalledTimes(1);
   });
 
+  it("'Acesso negado.' (42501, o avanço de quem não é admin): o item sai da fila e NÃO há nova tentativa", async () => {
+    rpcMock.mockResolvedValue({
+      data: null,
+      error: { message: "Acesso negado.", code: "42501" },
+    });
+    const avanco = {
+      ...cancelamento,
+      status: "processing",
+      statusEsperado: "pending",
+    };
+    armazem.set(CHAVE_A, JSON.stringify([avanco]));
+
+    await renderizar();
+    await passar(1 * S);
+    expect(rpcMock).toHaveBeenCalledTimes(1);
+    expect(fila()).toBeNull();
+    expect(toast.error).not.toHaveBeenCalled();
+
+    await passar(3 * HORA);
+    expect(rpcMock).toHaveBeenCalledTimes(1);
+  });
+
   it("a passada que parou por falta de sessão (conta trocada, sem rede) NÃO marca recuo: quem religa é o religador", async () => {
     // A sessão do cliente é de OUTRO usuário: a trava de troca de conta
     // encerra a passada sem enviar -- isso não é falha passageira.
