@@ -86,7 +86,7 @@
 --
 -- Sem BEGIN/COMMIT de nivel superior neste arquivo (AGENTS.md: "Migration nao leva BEGIN/COMMIT"; com eles o ROLLBACK da prova
 -- vira no-op e a mudanca fica gravada): o aplicador (db-apply.cjs, aplicar-migrations.yml, o job do rpc-ci) abre UMA transacao
--- para o arquivo inteiro, entao pre-voo, as quatro restricoes, a guarda e a conferencia caem juntas ou nao caem (provado numa conexao
+-- para o arquivo inteiro, entao pre-voo, a guarda, as quatro restricoes e a conferencia caem juntas ou nao caem (provado numa conexao
 -- SEM BEGIN: falha na 3a restricao, a guarda recusando ou a conferencia deixa NENHUMA das quatro). Cada restricao so e' criada se ainda nao
 -- existe: rodar duas vezes deixa o mesmo estado (mesmo OID); restricao ja validada a mao tambem e' aceita.
 -- ADD CONSTRAINT ... CHECK tranca a tabela (ACCESS EXCLUSIVE) enquanto varre as linhas (e' validado) e a trava dura ate o fim da

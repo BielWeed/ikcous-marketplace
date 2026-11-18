@@ -897,8 +897,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261403000000: o total comprado do cliente e o mesmo no CRM, na lista e na ficha (get_admin_customers_paged soma o balcao do mesmo WhatsApp e get_admin_user_detail ganha balcao_mesmo_whatsapp, ambos lidos de crm__vendas;
     // com e sem o 55, balcao cancelado e sem pagar fora, WhatsApp em duas contas conta uma vez, ordenacao estavel, controle com os corpos antigos, 13 mutantes, rollback byte a byte, conexao sem BEGIN, pre/pos-voo e consultas 155a/155b).
     "tests/banco/o-total-do-cliente-e-o-mesmo-nas-tres-telas-viva.cjs",
-    // 20261400000000: valores negativos nao entram no banco (taxa de entrega local, preco do produto, preco da variacao e valor do cupom: CHECK >= 0 e <> NaN NOT VALID;
-    // 23514 em todas as portas, zero e NULL de variacao seguem, linha antiga nao impede a migration, 12 mutantes, reaplicar, rollback, falha no meio e lock_timeout).
+    // 20261400000000: valores negativos nao entram no banco (taxa de entrega local, preco do produto, preco da variacao e valor do cupom: CHECK >= 0 e <> NaN, criadas JA VALIDADAS;
+    // 23514 em todas as portas, zero e NULL de variacao seguem, linha antiga ruim faz a migration se recusar (B1_BASELINE_DIVERGENT), 12 mutantes, reaplicar, rollback, falha no meio e lock_timeout).
     "tests/banco/valores-negativos-prova.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
