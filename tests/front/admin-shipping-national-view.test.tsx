@@ -263,9 +263,11 @@ describe("AdminShippingNationalView — CONTRATO (casca da tela unificada)", () 
     expect(pill(/^Porcentagem$/i)).toBeDefined();
     expect(pill(/^Valor em R\$/i)).toBeDefined();
     expect(
-      hospedeiro.querySelector("#frete-nacional-valor-desconto"),
-    ).toBeDefined();
-    expect(hospedeiro.querySelector("#frete-nacional-minimo")).toBeDefined();
+      hospedeiro.querySelector("input#frete-nacional-valor-desconto"),
+    ).toMatchObject({ value: "", disabled: true });
+    expect(
+      hospedeiro.querySelector("input#frete-nacional-minimo"),
+    ).toMatchObject({ value: "", disabled: false, placeholder: "opcional" });
     expect(pill(/s[óo] a mais barata/i)).toBeUndefined();
     expect(pill(/qualquer uma/i)).toBeUndefined();
   });
