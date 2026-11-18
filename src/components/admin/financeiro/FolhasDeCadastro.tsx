@@ -11,6 +11,7 @@ import {
   type FormularioDaConta,
   TIPOS_DE_CONTA,
   ajudaDoGrupoDre,
+  corpoDaContaEditada,
   ehFalhaDeRedeSemCodigo,
   fraseDeGravacaoSemConfirmacao,
   gruposDaNatureza,
@@ -176,7 +177,10 @@ export function ContaFolha({
     aoMudarEnviando?.(true);
     setEnviando(true);
     try {
-      await salvarConta(resultado.payload);
+      // Só o que ela mexeu viaja; `resultado.payload` (inteiro) só alimenta o aviso.
+      await salvarConta(
+        corpoDaContaEditada(resultado.payload, validarConta(inicial, hoje)),
+      );
       confirmarVisualmente({
         titulo: conta ? "Conta atualizada." : "Conta criada.",
         descricao: resultado.payload.nome,
