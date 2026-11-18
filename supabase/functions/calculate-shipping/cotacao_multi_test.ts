@@ -879,6 +879,31 @@ Deno.test("nacional: acima_de_valor usa o SUBTOTAL DO BANCO (59,90), nunca o pri
     assert(corpoAbaixo.options.every((o: any) => o.price === o.precoCheio), JSON.stringify(corpoAbaixo.options))
 })
 
+Deno.test("nacional: acima_de_valor usa a variação de 120, não o produto de 59,90, para atingir 100", async () => {
+    const banco = nacional(colunasNacionais({ national_shipping_strategy: "acima_de_valor", national_shipping_min: 100 }), {
+        variantes: [{ id: "v1", product_id: "p1", price_override: 120 }],
+    })
+    const { resposta, corpo } = await rodar(cotacao({ cart: [{ product: { id: "p1", price: 1 }, variantId: "v1", quantity: 1 }] }), { banco })
+    assertEquals(resposta.status, 200)
+    assertEquals(ids(corpo).sort(), ["superfrete-1", "superfrete-17", "superfrete-2"])
+    assert(corpo.options.every((o: any) => o.price === 0 && o.precoCheio > 0), JSON.stringify(corpo.options))
+})
+
+Deno.test("nacional: acima_de_valor conta duas variações de 30 para atingir 50; uma só paga cheio", async () => {
+    const configurar = () => nacional(colunasNacionais({ national_shipping_strategy: "acima_de_valor", national_shipping_min: 50 }), {
+        variantes: [{ id: "v1", product_id: "p1", price_override: 30 }],
+    })
+    const carrinho = (quantity: number) => cotacao({ cart: [{ product: { id: "p1", price: 1 }, variantId: "v1", quantity }] })
+    const duas = await rodar(carrinho(2), { banco: configurar() })
+    const uma = await rodar(carrinho(1), { banco: configurar() })
+    assertEquals(duas.resposta.status, 200)
+    assertEquals(uma.resposta.status, 200)
+    assertEquals(ids(duas.corpo).sort(), ["superfrete-1", "superfrete-17", "superfrete-2"])
+    assertEquals(ids(uma.corpo).sort(), ["superfrete-1", "superfrete-17", "superfrete-2"])
+    assert(duas.corpo.options.every((o: any) => o.price === 0 && o.precoCheio > 0), JSON.stringify(duas.corpo.options))
+    assert(uma.corpo.options.every((o: any) => o.price === o.precoCheio && o.price > 0), JSON.stringify(uma.corpo.options))
+})
+
 Deno.test("nacional: por_produto INDEPENDENTE do local — local desligado (free_shipping_min=0) + nacional por_produto: CEP fora vira free-shipping-promo, CEP local paga a taxa cheia", async () => {
     const banco = nacional(colunasNacionais({ national_shipping_strategy: "por_produto" }), { produtos: [PRODUTO_P1_MARCADO] })
     const fora = await rodar(cotacao(), { banco })

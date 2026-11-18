@@ -26,6 +26,13 @@ describe("conferirFreteEscolhidoComACotacao", () => {
     expect(r.tipo === "preco-mudou" && r.fresca).toBe(fresco);
   });
 
+  it("mesmo id com diferença de um centavo: preço mudou", () => {
+    const fresca = { ...pac, price: 25.31 };
+    expect(
+      conferirFreteEscolhidoComACotacao({ ...pac, price: 25.3 }, [fresca]),
+    ).toEqual({ tipo: "preco-mudou", fresca });
+  });
+
   it("id fora da lista: sumiu", () => {
     expect(conferirFreteEscolhidoComACotacao(pac, [loggi])).toEqual({
       tipo: "sumiu",
