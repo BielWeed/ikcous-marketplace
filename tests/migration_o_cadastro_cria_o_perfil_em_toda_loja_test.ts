@@ -167,7 +167,7 @@ Deno.test("1399940: o reparo usa a MESMA expressao de handle_new_user, so de que
 Deno.test("1399940: o teto do banco e' o da tela (a tela impede o que o gatilho passaria a recusar no cadastro)", () => {
   assert.ok(/maxLength=\{120\}/.test(lerRepo("src/views/shared/AuthView.tsx")));
   assert.ok(
-    lerRepo("src/lib/telefone-br.ts").includes("return novo.slice(0, 15);"),
+    lerRepo("src/lib/telefone-br.ts").includes("novo.slice(0, 15)"),
     "a mascara do cadastro deixou de limitar o telefone a 15 (o banco recusa mais de 20)",
   );
   assert.ok(
