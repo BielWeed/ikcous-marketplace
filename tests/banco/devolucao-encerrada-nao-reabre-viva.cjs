@@ -150,7 +150,7 @@ const reprovar = (alvo) =>
     [alvo],
     SESSAO,
   );
-const enviar = (codigo) => (alvo) =>
+const enviarComCodigo = (codigo) => (alvo) =>
   P.tentar(
     "authenticated",
     "SELECT public.admin_devolucao_registrar($1,'em_transito',$2,'Postado na loja') AS r",
@@ -354,7 +354,7 @@ prova(
       for (const estado of ["concluida", "recebida"]) {
         await recusa(
           await fixture(estado, n),
-          enviar(null),
+          enviarComCodigo(null),
           /^Só uma devolução aprovada pode ser marcada como enviada\.$/,
           `enviar ${estado}`,
         );
@@ -362,7 +362,7 @@ prova(
       }
       await aceita(
         await fixture("aprovada", n),
-        enviar(null),
+        enviarComCodigo(null),
         "aprovada",
         "em_transito",
       );
@@ -391,14 +391,19 @@ prova(
       ]) {
         await recusa(
           await fixture("aprovada", n),
-          enviar(codigo),
+          enviarComCodigo(codigo),
           /^Código de rastreio inválido\.$/,
           `rastreio ${codigo}`,
         );
         n += 10;
       }
       const fx = await fixture("aprovada", n);
-      await aceita(fx, enviar("  br-12345-xx "), "aprovada", "em_transito");
+      await aceita(
+        fx,
+        enviarComCodigo("  br-12345-xx "),
+        "aprovada",
+        "em_transito",
+      );
       assert.equal(
         (
           await P.conexao().query(
