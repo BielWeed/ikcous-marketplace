@@ -16,21 +16,31 @@ export function somenteDigitosDoCpf(valor: string): string {
   return (valor ?? "").replace(/\D/g, "");
 }
 
+/** Teto de dígitos que o campo guarda: 11 do CPF + o excedente visível (14 = CNPJ). */
+const MAX_DIGITOS_NO_CAMPO = 14;
+
 /**
  * Formata progressivamente em `000.000.000-00`, do jeito que
  * `formatarCep` (useBuscaCep.ts) já faz para CEP — mesma forma de retorno
  * (`limpo`/`formatado`), para quem chama poder gravar os dígitos crus e
  * mostrar a máscara com a mesma resposta.
+ *
+ * O que passa do 11º dígito NÃO é cortado: "12345678909000" colado virava
+ * "123.456.789-09", um CPF válido, e a cliente não via que o número mudou.
+ * Os dígitos a mais ficam na tela depois da máscara ("123.456.789-09000") e
+ * `cpfValido` reprova — o erro de CPF inválido que já existe aparece, e
+ * apagar o excedente devolve o CPF. Só a colagem gigante é limitada
+ * (14 dígitos), o que continua reprovando.
  */
 export function formatarCpf(bruto: string): {
   limpo: string;
   formatado: string;
 } {
-  const limpo = somenteDigitosDoCpf(bruto).slice(0, 11);
+  const limpo = somenteDigitosDoCpf(bruto).slice(0, MAX_DIGITOS_NO_CAMPO);
   let formatado = limpo.slice(0, 3);
   if (limpo.length > 3) formatado += `.${limpo.slice(3, 6)}`;
   if (limpo.length > 6) formatado += `.${limpo.slice(6, 9)}`;
-  if (limpo.length > 9) formatado += `-${limpo.slice(9, 11)}`;
+  if (limpo.length > 9) formatado += `-${limpo.slice(9)}`;
   return { limpo, formatado };
 }
 

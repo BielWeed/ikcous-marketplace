@@ -10,7 +10,7 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { formatarCpf } from "@/lib/cpf";
+import { cpfValido, formatarCpf } from "@/lib/cpf";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
@@ -74,9 +74,12 @@ describe("CEP da loja (Minha loja) — colar com máscara", () => {
 });
 
 describe("CPF do destinatário (checkout) — colar com espaço ou ponto na frente", () => {
-  it("a máscara do CPF aceita o texto colado inteiro e limita em 11 dígitos", () => {
+  it("a máscara do CPF aceita o texto colado inteiro e NÃO corta o excedente em silêncio", () => {
     expect(formatarCpf(" 529.982.247-25").formatado).toBe("529.982.247-25");
-    expect(formatarCpf("52998224725 99").formatado).toBe("529.982.247-25");
+    // Antes virava "529.982.247-25" (válido): o lixo do fim sumia sem aviso.
+    const comLixo = formatarCpf("52998224725 99").formatado;
+    expect(comLixo).toBe("529.982.247-2599");
+    expect(cpfValido(comLixo)).toBe(false);
   });
 
   it("o campo #checkout-cpf não tem maxLength (o corte do navegador antes da máscara perdia o último dígito)", () => {

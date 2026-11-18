@@ -33,11 +33,37 @@ describe("formatarCpf", () => {
     });
   });
 
-  it("ignora dígito além do 11º (não deixa passar de 11)", () => {
-    expect(formatarCpf("111444777350000")).toEqual({
-      limpo: "11144477735",
-      formatado: "111.444.777-35",
-    });
+  it("NÃO corta em silêncio o que passa do 11º dígito: o excedente fica e o CPF reprova", () => {
+    // Antes: "12345678909000" virava "123.456.789-09" (um CPF válido) e a
+    // cliente nem via que o número tinha mudado.
+    const colado = formatarCpf("12345678909000");
+    expect(colado.limpo).toBe("12345678909000");
+    expect(colado.formatado).toBe("123.456.789-09000");
+    expect(cpfValido(colado.formatado)).toBe(false);
+    expect(cpfValido("12345678909")).toBe(true);
+  });
+
+  it("12º dígito digitado no fim de um CPF completo também reprova", () => {
+    const campo = formatarCpf("111.444.777-350");
+    expect(campo.formatado).toBe("111.444.777-350");
+    expect(cpfValido(campo.formatado)).toBe(false);
+  });
+
+  it("apagar o excedente devolve o CPF válido", () => {
+    expect(cpfValido(formatarCpf("111.444.777-350").formatado)).toBe(false);
+    expect(cpfValido(formatarCpf("111.444.777-35").formatado)).toBe(true);
+  });
+
+  it("colagem enorme é limitada a 14 dígitos e continua reprovada", () => {
+    const campo = formatarCpf("111444777351114447773511144477735");
+    expect(campo.limpo).toHaveLength(14);
+    expect(cpfValido(campo.formatado)).toBe(false);
+  });
+
+  it("CPF colado com máscara, espaços ou prefixo continua válido", () => {
+    expect(formatarCpf(" 111.444.777-35 ").formatado).toBe("111.444.777-35");
+    expect(formatarCpf("CPF: 11144477735").formatado).toBe("111.444.777-35");
+    expect(cpfValido(formatarCpf("111 444 777 35").formatado)).toBe(true);
   });
 });
 
