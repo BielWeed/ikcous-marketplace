@@ -1146,7 +1146,7 @@ export function CheckoutViewDaConta({
   // recolhido — mantém DDD e os 4 últimos dígitos (o que a pessoa
   // reconhece de relance), esconde o miolo.
   const abreviarWhatsapp = (formatado: string) => {
-    const numbers = formatado.replace(/\D/g, "");
+    const numbers = formatado.replaceAll(/\D/g, "");
     if (numbers.length < 10) return formatado || "—";
     const ddd = numbers.slice(0, 2);
     const ultimos4 = numbers.slice(-4);

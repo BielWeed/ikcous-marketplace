@@ -1733,7 +1733,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       const indice = opcoes?.comDesfazer
         ? cartRef.current.findIndex((item) => chaveDoItem(item) === key)
         : -1;
-      const item = indice >= 0 ? cartRef.current[indice] : undefined;
+      const item = indice >= 0 ? cartRef.current.at(indice) : undefined;
       const tombstones = loadTombstones();
       tombstones.set(key, { key, deletedAt });
       saveTombstones(tombstones);

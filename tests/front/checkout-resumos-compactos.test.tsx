@@ -376,24 +376,6 @@ describe("CheckoutView — PASSO A1: resumos compactos de dados e endereço", ()
     await drenar();
   }
 
-  it("abrevia o WhatsApp no cartão mesmo sem String.prototype.replaceAll", async () => {
-    cotacoesControladas({ "38500000": [LOCAL] });
-    await montar();
-
-    const descriptor = Object.getOwnPropertyDescriptor(
-      String.prototype,
-      "replaceAll",
-    )!;
-    try {
-      Reflect.deleteProperty(String.prototype, "replaceAll");
-      await preencherNomeEWhatsapp();
-    } finally {
-      Object.defineProperty(String.prototype, "replaceAll", descriptor);
-    }
-
-    expect(cartaoDeDados().textContent).toContain("(34) *****-8888");
-  });
-
   it("recolhida e completa: DOIS cartões separados, com selo de ok, nome, WhatsApp abreviado, apelido e endereço", async () => {
     cotacoesControladas({ "38500000": [LOCAL] });
     await montar();

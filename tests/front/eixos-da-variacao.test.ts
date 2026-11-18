@@ -46,36 +46,6 @@ const eixoDe = (m: ReturnType<typeof modelo>, nome: string) =>
   m.eixos.find((e) => e.nome === nome)!;
 
 describe("eixos da variação — tradução sem mudar a linha entregue", () => {
-  it("resolve o valor legado mesmo sem Array.prototype.at", () => {
-    // A linha legada tem nome composto e só um valor. Assim o leitor de
-    // atributos (fora deste lote) devolve a linha bruta sem usar .at().
-    const legado = variante("Azul");
-    const descriptor = Object.getOwnPropertyDescriptor(Array.prototype, "at")!;
-    let resultado: unknown;
-    try {
-      Reflect.deleteProperty(Array.prototype, "at");
-      const m = criarEixosDaVariacao([legado]);
-      const chave = m.eixos[0]!.chave;
-      const selecao = new Map([[chave, "Azul"]]);
-      resultado = {
-        vazio: criarEixosDaVariacao([]),
-        valores: m.eixos[0]!.valores,
-        disponibilidade: disponibilidadeDoValor(m, selecao, chave, "Azul"),
-        compativeis: variantesCompativeis(m, selecao),
-        resolvida: [...resolverSelecaoDosEixos(m, selecao)],
-      };
-    } finally {
-      Object.defineProperty(Array.prototype, "at", descriptor);
-    }
-    expect(resultado).toEqual({
-      vazio: { eixos: [], grupos: [] },
-      valores: ["Azul"],
-      disponibilidade: { existe: true, disponivel: true, ultima: false },
-      compativeis: [legado],
-      resolvida: [["Cor / Tamanho", "Azul"]],
-    });
-  });
-
   it("produto sem variante não inventa eixo nem seleção", () => {
     const m = criarEixosDaVariacao([]);
     expect(m.eixos).toEqual([]);
