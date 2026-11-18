@@ -1837,3 +1837,42 @@ Deno.test("e-mail de entrega para outra pessoa sem nome do comprador no pedido -
   });
   assertStringIncludes(html, "Recebe: Ana Presente");
 });
+
+// O front compara o destinatario com `customer_name || customer_data.name ||
+// "Cliente"` (mappers.ts); o e-mail usa o mesmo nome, senao pedido com
+// `customer_name` vazio mostraria "Recebe:" com o proprio comprador.
+Deno.test("e-mail de entrega: customer_name vazio e customer_data.name igual ao destinatário -> NÃO ganha a linha", async () => {
+  const html = await htmlDoComprovante("cash", "online", {
+    customer_name: "",
+    customer_data: {
+      email: "cliente@exemplo.com",
+      name: "Ana Presente",
+      address: ENDERECO_COM_QUEM_RECEBE("ana  PRESENTE"),
+    },
+  });
+  assertEquals(html.includes("Recebe:"), false);
+  assertStringIncludes(html, "Entrega em");
+});
+
+Deno.test("e-mail de entrega: customer_name vazio e customer_data.name DIFERENTE do destinatário -> ganha a linha", async () => {
+  const html = await htmlDoComprovante("cash", "online", {
+    customer_name: null,
+    customer_data: {
+      email: "cliente@exemplo.com",
+      name: "Maria Souza",
+      address: ENDERECO_COM_QUEM_RECEBE("Ana Presente"),
+    },
+  });
+  assertStringIncludes(html, "Recebe: Ana Presente");
+});
+
+Deno.test("e-mail de entrega: espaço duplo no nome do COMPRADOR não vira pessoa diferente", async () => {
+  const html = await htmlDoComprovante("cash", "online", {
+    customer_name: "Maria  Souza",
+    customer_data: {
+      email: "cliente@exemplo.com",
+      address: ENDERECO_COM_QUEM_RECEBE("maria souza"),
+    },
+  });
+  assertEquals(html.includes("Recebe:"), false);
+});

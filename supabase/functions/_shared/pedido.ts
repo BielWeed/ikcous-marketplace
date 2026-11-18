@@ -293,5 +293,8 @@ export function quemRecebeSeForOutro(
   const bruto = typeof fonte?.recipient_name === "string" ? fonte.recipient_name : "";
   const nome = bruto.replace(/\s+/g, " ").trim();
   if (!nome) return "";
-  return chaveDoNome(nome) === chaveDoNome(comprador) ? "" : nome;
+  // Mesmo nome que o front mostra como comprador (mappers.ts): `customer_name`,
+  // senao `customer_data.name`, senao "Cliente".
+  const quemComprou = comprador || cd.name || "Cliente";
+  return chaveDoNome(nome) === chaveDoNome(quemComprou) ? "" : nome;
 }
