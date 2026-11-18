@@ -609,6 +609,9 @@ export function ClientesDoCrm({
     chave: chaveDoFiltro,
     pagina: 0,
   });
+  if (paginacao.chave !== chaveDoFiltro) {
+    setPaginacao({ chave: chaveDoFiltro, pagina: 0 });
+  }
   const pagina = paginacao.chave === chaveDoFiltro ? paginacao.pagina : 0;
 
   const { lista, carregando, erro, atualizar } = useCrmClientes({
