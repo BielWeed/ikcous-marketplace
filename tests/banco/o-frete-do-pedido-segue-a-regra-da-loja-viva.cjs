@@ -24,10 +24,25 @@
  *               desconto_na_mais_barata); de duas opcoes na mesma cotacao vale o price da ESCOLHIDA.
  *  PORTOES      id nacional com CEP local ou sem CEP, endereco da conta local com CEP distante, free-shipping-promo so no modo por
  *               produto; retirada e local intactos; a v23 continua recusando transportadora.
+ *  TOLERANCIA   o total que a cliente MANDA pode diferir do total que o servidor CALCULA em ate R$ 0,05 (a funcao recusa so com
+ *               `ABS(calculado - enviado) > 0.05`): 0,00, 0,01, 0,02 e 0,05 (a borda) a favor e contra passam, 0,06 e recusado com
+ *               "Os valores do pedido mudaram" sem gravar nada. O pedido que passa grava SEMPRE o total e o frete CALCULADOS (o price
+ *               do cache), nunca o numero que veio do cliente: a tolerancia decide se recusa, nao quanto se cobra. Frete nacional
+ *               (v24) e entrega local (v24 e v23).
+ *  CUPOM        o CUPOM NAO entra no subtotal que decide o frete gratis: o limite (local, v24 e v23) e o minimo nacional olham o
+ *               subtotal BRUTO. Bruto acima do limite e liquido (com o cupom) abaixo: o frete e gratis; bruto exatamente no limite:
+ *               gratis; um centavo abaixo do limite: cobra. No nacional, a cotacao feita sobre o subtotal bruto (o que a edge e a
+ *               tela fazem) vale; a cotada sobre o valor com cupom e recusada.
  *  CONTROLES    a MESMA bateria, com o corpo vivo das duas funcoes trocado dentro de uma transacao que termina em ROLLBACK: (1) toda
  *               recusa FRETE_COTACAO_DESATUALIZADA vira aviso e cada cenario de recusa PASSA a deixar o pedido nascer; (2) o limite
- *               ">=" vira ">" e os cenarios do limite exato deixam de dar o frete certo. Prova que os cenarios enxergam a regra e que a
- *               regra, e nao o acaso, e o que segura. O corpo original volta byte a byte depois.
+ *               ">=" vira ">" e os cenarios do limite exato deixam de dar o frete certo; (3) a tolerancia do total vira ">=" (a borda
+ *               de 0,05 passa a ser recusada), vira 0,01 (0,02 passa a ser recusado) e vira 0,10 (0,06 passa a nascer); (4) o cupom
+ *               passa a entrar no subtotal do frete gratis e os cenarios do cupom perdem o frete certo; (5) o `>=` do minimo nacional
+ *               no pedido vira `>` e os cenarios do minimo exato (a cotacao um centavo abaixo, ou nos dois lados) deixam de dar o
+ *               resultado certo. Prova que os cenarios enxergam a regra e que a regra, e nao o acaso, e o que segura. O corpo
+ *               original volta byte a byte depois.
+ *  MINIMO       o minimo nacional (acima_de_valor 199) a UM centavo, em cada lado: cotada no minimo e pedido com 198,99 recusa; cotada
+ *               com 198,99 e pedido no minimo recusa (o subtotal cruzou o limite entre cotar e pedir).
  *
  * NAO e' prova de migration (nao reaplica, nao desfaz, nao compara hash de corpo): isso fica nas provas de cada migration.
  * Nenhuma migration, funcao ou dado de loja real e' tocado: so o clone efemero do rodar-isolado.cjs.
@@ -60,6 +75,9 @@ const V24 = "create_marketplace_order_v24";
 const ASSINATURA =
   "(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)";
 const RECUSA_COTACAO = /^FRETE_COTACAO_DESATUALIZADA/;
+const RECUSA_TOTAL = /^Os valores do pedido mudaram\./;
+/** Um cupom por cenario (o pedido que o usa fica gravado e o cupom nao pode sumir debaixo dele). */
+const codigoDoCupom = (c) => `PF-${c.id}`.toUpperCase();
 
 let C = null; // a conexao unica da prova
 let EM_TRANSACAO = false; // dentro de um controle: cada chamada ganha um SAVEPOINT (erro de RPC nao aborta a transacao inteira)
@@ -86,17 +104,26 @@ async function garantirUsuarioEEndereco() {
 }
 
 /** Volta TUDO que a decisao do frete le para um estado conhecido e neutro, antes de cada cenario. */
-async function estadoBase({
-  fsm,
-  normal,
-  gratis,
-  nacional,
-  revisao,
-  retirada,
-}) {
+async function estadoBase(c) {
+  const { fsm, normal, gratis, nacional, revisao, retirada, cupom } = c;
   await C.query(
     "DELETE FROM public.store_shipping_credentials WHERE provider = '_revisao'",
   );
+  if (cupom) {
+    // Sem DELETE: um pedido de uma rodada anterior pode referenciar o cupom. Zera o uso e reaplica o desenho do cenario.
+    const r = await C.query(
+      `UPDATE public.coupons
+          SET type = $2, value = $3, active = true, usage_count = 0, usage_limit = NULL, min_purchase = 0, valid_until = NULL
+        WHERE code = $1`,
+      [codigoDoCupom(c), cupom.tipo, cupom.valor],
+    );
+    if (r.rowCount === 0)
+      await C.query(
+        `INSERT INTO public.coupons (code, type, value, active, usage_count, usage_limit, min_purchase)
+         VALUES ($1, $2, $3, true, 0, NULL, 0)`,
+        [codigoDoCupom(c), cupom.tipo, cupom.valor],
+      );
+  }
   await C.query(
     `INSERT INTO public.produtos (id, nome, preco_venda, estoque, ativo, frete_gratis)
      VALUES ($1, 'Produto normal', $3, 999, true, false), ($2, 'Produto com frete gratis', $4, 999, true, true)
@@ -184,7 +211,7 @@ async function chamarRpc(fn, c, total) {
       0,
       c.pagamento,
       c.enderecoId ?? null,
-      null,
+      c.cupom ? codigoDoCupom(c) : null,
       "Cliente de Prova",
       "5539000000000",
       null,
@@ -210,7 +237,7 @@ async function fotoDoBanco() {
 
 async function lerPedido(id) {
   const r = await C.query(
-    "SELECT shipping, total, subtotal FROM public.marketplace_orders WHERE id = $1",
+    "SELECT shipping, total, subtotal, discount FROM public.marketplace_orders WHERE id = $1",
     [id],
   );
   assert.equal(r.rows.length, 1, `pedido ${id} nao gravado`);
@@ -218,6 +245,7 @@ async function lerPedido(id) {
     shipping: num(r.rows[0].shipping),
     total: num(r.rows[0].total),
     subtotal: num(r.rows[0].subtotal),
+    discount: num(r.rows[0].discount),
   };
 }
 
@@ -290,6 +318,9 @@ function cenario(base) {
     destino: CEP_NACIONAL,
     itens: UM_NORMAL,
     cotacao: null, // [{ id, price, ... }] gravado como a linha do cache; o id escolhido e `opt`
+    cupom: null, // { tipo, valor }: o cupom que o pedido usa (um por cenario)
+    desconto: 0, // o desconto que o servidor tem de calcular com esse cupom
+    ajuste: 0, // centavos somados ao total que a cliente MANDA (o servidor calcula o dele sem olhar este numero)
     ...base,
   };
 }
@@ -808,6 +839,171 @@ add({
   recusa: /^Envio por transportadora exige pagamento antecipado\./,
 });
 
+// -- TOLERANCIA do total: o servidor recusa so quando |calculado - enviado| > R$ 0,05 --
+// Medido no corpo vivo (v23 e v24): `ABS(v_calculated_total - p_total_amount) > 0.05`. O numero e' numeric exato, sem ruido de ponto
+// flutuante: 0,05 de diferenca PASSA (a borda) e 0,06 recusa. O que e' gravado e' o total CALCULADO, nunca o enviado.
+const DIFERENCAS_ACEITAS = [0, 1, -1, 2, -2, 5, -5]; // centavos
+const DIFERENCAS_RECUSADAS = [6, -6];
+const nomeDaDiferenca = (d) =>
+  d === 0 ? "igual" : `${d < 0 ? "menos" : "mais"}-0-0${Math.abs(d)}`;
+for (const d of [...DIFERENCAS_ACEITAS, ...DIFERENCAS_RECUSADAS]) {
+  const recusada = DIFERENCAS_RECUSADAS.includes(d);
+  const desfecho = recusada ? { recusa: RECUSA_TOTAL } : {};
+  const sufixo = `${nomeDaDiferenca(d)}-${recusada ? "recusa" : "aceita"}`;
+  // Frete NACIONAL (v24): o price do cache (21,16, com 15% de desconto nacional) e' o que se cobra; o total enviado e' que varia.
+  const D15_TOL = descontoPct(15);
+  add({
+    id: `tolerancia-nacional-total-enviado-${sufixo}`,
+    nacional: D15_TOL,
+    opt: `frenet-t-${nomeDaDiferenca(d)}`,
+    cotacao: opcao(`frenet-t-${nomeDaDiferenca(d)}`, 21.16, {
+      precoCheio: 24.9,
+      estrategiaNacional: carimbo(D15_TOL),
+    }),
+    subtotal: 50,
+    frete: 21.16,
+    ajuste: d,
+    ...desfecho,
+  });
+}
+// Entrega local, nas duas portas, so nas pontas (a borda de 0,05 e o primeiro centavo de fora): a tolerancia e' a MESMA nas duas.
+for (const rpc of [V24, V23]) {
+  for (const d of [5, -5, 6, -6]) {
+    const recusada = Math.abs(d) > 5;
+    add({
+      id: `tolerancia-${rpc === V23 ? "local-v23" : "local"}-total-enviado-${nomeDaDiferenca(d)}-${recusada ? "recusa" : "aceita"}`,
+      rpc,
+      opt: "local-delivery",
+      pagamento: "pix",
+      destino: CEP_LOCAL,
+      subtotal: 50,
+      frete: TAXA_LOCAL,
+      ajuste: d,
+      ...(recusada ? { recusa: RECUSA_TOTAL } : {}),
+    });
+  }
+}
+
+// -- CUPOM: o frete gratis olha o subtotal BRUTO (antes do cupom), no local (v24 e v23) e no nacional (v24) --
+// O desconto e' calculado DEPOIS do bloco do frete e so entra no total. Mesma leitura da edge (`subtotalDoCarrinho` nao conhece cupom)
+// e da tela (ShippingCalculator soma preco x quantidade): os tres concordam, entao a cliente ve o frete que o servidor cobra.
+const CUPOM_10 = { tipo: "percentage", valor: 10 };
+for (const rpc of [V24, V23]) {
+  const v = rpc === V23 ? "-v23" : "";
+  const baseLocal = {
+    rpc,
+    normal: 100,
+    itens: normais(2), // bruto 200, cupom de 10% = 20, liquido 180
+    opt: "local-delivery",
+    pagamento: "pix",
+    destino: CEP_LOCAL,
+    subtotal: 200,
+    cupom: CUPOM_10,
+    desconto: 20,
+  };
+  add({
+    ...baseLocal,
+    id: `cupom-local${v}-bruto-acima-do-minimo-e-liquido-abaixo-o-frete-e-gratis`,
+    fsm: 190, // bruto 200 >= 190; liquido 180 < 190
+    frete: 0,
+    cupomDecide: true,
+  });
+  add({
+    ...baseLocal,
+    id: `cupom-local${v}-bruto-exatamente-no-minimo-o-frete-e-gratis`,
+    fsm: 200, // bruto 200 = 200; liquido 180 < 200
+    frete: 0,
+    cupomDecide: true,
+  });
+  add({
+    ...baseLocal,
+    id: `cupom-local${v}-bruto-um-centavo-abaixo-do-minimo-cobra-a-taxa`,
+    fsm: 200.01, // bruto 200 < 200,01: o cupom nao muda este lado
+    frete: TAXA_LOCAL,
+  });
+}
+// Nacional (acima_de_valor, minimo 199): bruto 200, liquido 180.
+add({
+  id: "cupom-nacional-bruto-200-liquido-180-minimo-199-cotado-no-bruto-o-frete-e-gratis",
+  nacional: A199,
+  normal: 100,
+  itens: normais(2),
+  opt: "frenet-cp1",
+  cotacao: opcao("frenet-cp1", 0, {
+    precoCheio: 25,
+    estrategiaNacional: carimbo(A199),
+    subtotalCotacao: 200, // o que a edge grava: o subtotal bruto do carrinho
+  }),
+  cupom: CUPOM_10,
+  desconto: 20,
+  subtotal: 200,
+  frete: 0,
+  cupomDecide: true,
+});
+add({
+  id: "cupom-nacional-bruto-200-liquido-180-minimo-199-cotado-no-liquido-recusa",
+  nacional: A199,
+  normal: 100,
+  itens: normais(2),
+  opt: "frenet-cp2",
+  cotacao: opcao("frenet-cp2", 25, {
+    precoCheio: 25,
+    estrategiaNacional: carimbo(A199),
+    subtotalCotacao: 180, // cotada sobre o valor com cupom: o servidor olha o bruto (200 >= 199) e ve o outro lado
+  }),
+  cupom: CUPOM_10,
+  desconto: 20,
+  subtotal: 200,
+  recusa: RECUSA_COTACAO,
+  cupomDecide: true,
+});
+add({
+  id: "cupom-nacional-bruto-180-abaixo-do-minimo-199-cobra-o-price-da-cotacao",
+  nacional: A199,
+  normal: 90,
+  itens: normais(2),
+  opt: "frenet-cp3",
+  cotacao: opcao("frenet-cp3", 25, {
+    precoCheio: 25,
+    estrategiaNacional: carimbo(A199),
+    subtotalCotacao: 180,
+  }),
+  cupom: CUPOM_10,
+  desconto: 18,
+  subtotal: 180,
+  frete: 25,
+});
+
+// -- Minimo NACIONAL (acima_de_valor 199) a UM CENTAVO, para cada lado: o `>=` do pedido contra o `>=` da cotacao --
+add({
+  id: "carimbo-acima-de-valor-cotado-199-pedido-198-99-recusa",
+  nacional: A199,
+  normal: 198.99,
+  itens: normais(1),
+  opt: "frenet-cm1",
+  cotacao: opcao("frenet-cm1", 0, {
+    precoCheio: 25,
+    estrategiaNacional: carimbo(A199),
+    subtotalCotacao: 199, // atingia o minimo (gratis); o pedido ficou um centavo abaixo
+  }),
+  subtotal: 198.99,
+  recusa: RECUSA_COTACAO,
+});
+add({
+  id: "carimbo-acima-de-valor-cotado-198-99-pedido-199-recusa",
+  nacional: A199,
+  normal: 199,
+  itens: normais(1),
+  opt: "frenet-cm2",
+  cotacao: opcao("frenet-cm2", 25, {
+    precoCheio: 25,
+    estrategiaNacional: carimbo(A199),
+    subtotalCotacao: 198.99, // nao atingia (cobrava 25); o pedido chegou no minimo
+  }),
+  subtotal: 199,
+  recusa: RECUSA_COTACAO,
+});
+
 assert.equal(
   new Set(CENARIOS.map((c) => c.id)).size,
   CENARIOS.length,
@@ -825,7 +1021,9 @@ async function executar(c) {
   // Recusa: o total e' o que o pedido TERIA se a guarda deixasse passar (subtotal + price da opcao escolhida), para que um controle que
   // desligue a guarda veja o pedido NASCER e nao uma recusa por total errado.
   const precoEscolhido = c.cotacao?.find((o) => o.id === c.opt)?.price ?? 0;
-  const total = c.subtotal + (c.recusa ? precoEscolhido : c.frete);
+  // `totalCalculado` e' o que o servidor tem de gravar; `total` e' o que a cliente manda (o mesmo, mais o `ajuste` em centavos).
+  const totalCalculado = c.subtotal - c.desconto + (c.frete ?? precoEscolhido);
+  const total = (centavos(totalCalculado) + c.ajuste) / 100;
   const antes = await fotoDoBanco();
 
   let id = null;
@@ -868,14 +1066,20 @@ async function executar(c) {
       ok: false,
       detalhe: `subtotal gravado ${pedido.subtotal}, esperado ${c.subtotal}`,
     };
-  if (centavos(pedido.total) !== centavos(total))
+  if (centavos(pedido.discount) !== centavos(c.desconto))
     return {
       ok: false,
-      detalhe: `total gravado ${pedido.total}, esperado ${total}`,
+      detalhe: `desconto gravado ${pedido.discount}, esperado ${c.desconto}`,
+    };
+  // O total gravado e' o CALCULADO, nunca o que veio da cliente (que pode diferir em ate R$ 0,05).
+  if (centavos(pedido.total) !== centavos(totalCalculado))
+    return {
+      ok: false,
+      detalhe: `total gravado ${pedido.total}, esperado ${totalCalculado} (a cliente mandou ${total})`,
     };
   return {
     ok: true,
-    detalhe: `frete ${pedido.shipping}, total ${pedido.total}`,
+    detalhe: `frete ${pedido.shipping}, total ${pedido.total}, desconto ${pedido.discount} (cliente mandou ${total})`,
   };
 }
 
@@ -928,6 +1132,20 @@ async function comCorpoTrocado(rotulo, transformar, alvos) {
     `controle "${rotulo}": o corpo original NAO voltou depois do ROLLBACK`,
   );
   return resultados;
+}
+
+/**
+ * Troca `de` por `para` em TODAS as ocorrencias, mas so se houver exatamente `vezes` delas: o controle FALHA ALTO quando a ancora some
+ * ou aparece onde nao devia (a funcao foi reescrita), em vez de passar calado sem mutar o que prometia mutar.
+ */
+function trocarExato(def, de, para, vezes) {
+  const achadas = def.split(de).length - 1;
+  assert.equal(
+    achadas,
+    vezes,
+    `a ancora "${de.slice(0, 70)}" aparece ${achadas} vez(es) no corpo VIVO, esperava ${vezes}. Se a funcao foi reescrita, atualize a ancora deste controle.`,
+  );
+  return def.replaceAll(de, para);
 }
 
 // ---- Principal -------------------------------------------------------------
@@ -1017,6 +1235,148 @@ async function main() {
     );
     console.log(
       `PASS controle 2: com o limite estrito, os ${m2.length} cenarios do limite exato ficam vermelhos.`,
+    );
+
+    // CONTROLE 3: a TOLERANCIA do total. Tres mutantes do mesmo predicado, cada um contra os cenarios que so ele pode derrubar.
+    const TOLERANCIA = "ABS(v_calculated_total - p_total_amount) > 0.05";
+    const aceitasNaBorda = CENARIOS.filter(
+      (c) => !c.recusa && Math.abs(c.ajuste) === 5,
+    );
+    const aceitasForaDe1Centavo = CENARIOS.filter(
+      (c) => !c.recusa && Math.abs(c.ajuste) >= 2,
+    );
+    const recusadasPorTotal = CENARIOS.filter((c) => c.recusa === RECUSA_TOTAL);
+    // O conjunto tem de existir de verdade, nas duas portas (v23 e v24): sem isto o mutante rodaria contra a lista vazia.
+    assert.ok(
+      aceitasNaBorda.length === 6 && recusadasPorTotal.length === 6,
+      "poucos cenarios de tolerancia do total",
+    );
+    for (const [rotulo, novo, alvos, esperado] of [
+      [
+        "tolerancia estrita (>= 0.05)",
+        "ABS(v_calculated_total - p_total_amount) >= 0.05",
+        aceitasNaBorda,
+        "o pedido foi recusado",
+      ],
+      [
+        "tolerancia de 1 centavo (> 0.01)",
+        "ABS(v_calculated_total - p_total_amount) > 0.01",
+        aceitasForaDe1Centavo,
+        "o pedido foi recusado",
+      ],
+      [
+        "tolerancia de 10 centavos (> 0.10)",
+        "ABS(v_calculated_total - p_total_amount) > 0.10",
+        recusadasPorTotal,
+        "o pedido NASCEU",
+      ],
+    ]) {
+      const m3 = await comCorpoTrocado(
+        rotulo,
+        (def) => trocarExato(def, TOLERANCIA, novo, 1),
+        alvos,
+      );
+      for (const r of m3)
+        console.log(`  controle 3 (${rotulo}) | ${r.alvo.id}: ${r.detalhe}`);
+      const naoPegou = m3.filter((r) => r.ok).map((r) => r.alvo.id);
+      assert.deepEqual(
+        naoPegou,
+        [],
+        `CONTROLE 3 (${rotulo}): estes cenarios continuaram verdes: ${naoPegou.join(", ")}`,
+      );
+      const motivoErrado = m3
+        .filter((r) => !r.detalhe.startsWith(esperado))
+        .map((r) => `${r.alvo.id} (${r.detalhe})`);
+      assert.deepEqual(
+        motivoErrado,
+        [],
+        `CONTROLE 3 (${rotulo}): ficaram vermelhos por outro motivo que nao "${esperado}": ${motivoErrado.join("; ")}`,
+      );
+      console.log(
+        `PASS controle 3 (${rotulo}): os ${m3.length} cenarios da tolerancia ficam vermelhos.`,
+      );
+    }
+
+    // CONTROLE 4: o CUPOM passa a entrar no subtotal que decide o frete gratis (local e nacional). Os cenarios que dependem de o
+    // subtotal ser o BRUTO tem de ficar vermelhos; os que nao dependem (cobra dos dois jeitos) seguem verdes, o que mostra que o
+    // mutante mexe so no que devia.
+    const LIQUIDO_DO_CUPOM =
+      "(v_calculated_subtotal - LEAST(v_calculated_subtotal, COALESCE((SELECT CASE WHEN cp.type = 'percentage' THEN round((v_calculated_subtotal * cp.value) / 100, 2) ELSE cp.value END FROM public.coupons cp WHERE UPPER(cp.code) = UPPER(p_coupon_code) AND cp.active = true), 0)))";
+    const cupomDecide = CENARIOS.filter((c) => c.cupomDecide);
+    const cupomNaoDecide = CENARIOS.filter((c) => c.cupom && !c.cupomDecide);
+    assert.ok(
+      cupomDecide.length >= 6 && cupomNaoDecide.length >= 3,
+      "poucos cenarios de cupom",
+    );
+    const m4 = await comCorpoTrocado(
+      "cupom entra no subtotal do frete",
+      (def) =>
+        trocarExato(
+          trocarExato(
+            def,
+            "v_calculated_subtotal >= v_free_shipping_min",
+            `${LIQUIDO_DO_CUPOM} >= v_free_shipping_min`,
+            2,
+          ),
+          "(v_calculated_subtotal >= v_store_config.national_shipping_min)",
+          `(${LIQUIDO_DO_CUPOM} >= v_store_config.national_shipping_min)`,
+          1,
+        ),
+      [...cupomDecide, ...cupomNaoDecide],
+    );
+    for (const r of m4)
+      console.log(`  controle 4 | ${r.alvo.id}: ${r.detalhe}`);
+    const cupomNaoPegou = m4
+      .filter((r) => r.alvo.cupomDecide && r.ok)
+      .map((r) => r.alvo.id);
+    assert.deepEqual(
+      cupomNaoPegou,
+      [],
+      `CONTROLE 4: com o cupom no subtotal do frete estes cenarios continuaram verdes (nao enxergam o subtotal bruto): ${cupomNaoPegou.join(", ")}`,
+    );
+    const cupomMexeuDemais = m4
+      .filter((r) => !r.alvo.cupomDecide && !r.ok)
+      .map((r) => `${r.alvo.id} (${r.detalhe})`);
+    assert.deepEqual(
+      cupomMexeuDemais,
+      [],
+      `CONTROLE 4: o mutante derrubou cenario que nao depende do subtotal do frete: ${cupomMexeuDemais.join("; ")}`,
+    );
+    console.log(
+      `PASS controle 4: com o cupom no subtotal do frete, os ${cupomDecide.length} cenarios do subtotal bruto ficam vermelhos e os ${cupomNaoDecide.length} que cobram dos dois jeitos seguem verdes.`,
+    );
+
+    // CONTROLE 5: o `>=` do minimo NACIONAL (subtotal do pedido contra o minimo, no pedido) vira `>`. Quem enxerga e' o cenario em que
+    // o pedido cai EXATAMENTE no minimo e a cotacao tinha ficado um centavo abaixo (o pedido passa a ver o mesmo lado e aceita), e o
+    // do minimo exato nos dois lados (so o pedido muda de lado e passa a ser recusado).
+    const noMinimoNacional = CENARIOS.filter(
+      (c) =>
+        c.id ===
+          "carimbo-acima-de-valor-subtotal-igual-ao-minimo-nos-dois-lados-aceita" ||
+        c.id === "carimbo-acima-de-valor-cotado-198-99-pedido-199-recusa",
+    );
+    assert.equal(noMinimoNacional.length, 2, "esperava 2 cenarios do minimo");
+    const m5 = await comCorpoTrocado(
+      "minimo nacional estrito",
+      (def) =>
+        trocarExato(
+          def,
+          "(v_calculated_subtotal >= v_store_config.national_shipping_min)",
+          "(v_calculated_subtotal > v_store_config.national_shipping_min)",
+          1,
+        ),
+      noMinimoNacional,
+    );
+    for (const r of m5)
+      console.log(`  controle 5 | ${r.alvo.id}: ${r.detalhe}`);
+    const minimoNaoPegou = m5.filter((r) => r.ok).map((r) => r.alvo.id);
+    assert.deepEqual(
+      minimoNaoPegou,
+      [],
+      `CONTROLE 5: com o minimo nacional estrito estes cenarios continuaram verdes: ${minimoNaoPegou.join(", ")}`,
+    );
+    console.log(
+      `PASS controle 5: com o minimo nacional estrito, os ${m5.length} cenarios do minimo exato ficam vermelhos.`,
     );
 
     // Depois dos controles o corpo verdadeiro responde de novo: um cenario de cada tipo, outra vez.
