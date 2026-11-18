@@ -348,6 +348,7 @@ export function AdminArea({
             props={{
               onNavigate: onNavigate,
               active: currentView === "admin-settings",
+              grupoInicial: selectedProductId,
               onSetDirty: setIsAdminDirty,
             }}
           />

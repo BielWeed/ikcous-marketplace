@@ -292,7 +292,11 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
       const proximo = botaoComTexto("Próximo passo");
       expect(proximo?.textContent).toBe(texto);
       await clicar(proximo!);
-      expect(onNavigate).toHaveBeenCalledWith(destino);
+      if (destino === "admin-settings") {
+        expect(onNavigate).toHaveBeenCalledWith(destino, "pagamentos");
+      } else {
+        expect(onNavigate).toHaveBeenCalledWith(destino);
+      }
     },
   );
 
@@ -435,7 +439,7 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
     );
     expect(pendente).toBeTruthy();
     await clicar(pendente!);
-    expect(onNavigate).toHaveBeenCalledWith("admin-settings");
+    expect(onNavigate).toHaveBeenCalledWith("admin-settings", "pagamentos");
     expect(hospedeiro.textContent).not.toContain("Cadastro completo");
   });
 

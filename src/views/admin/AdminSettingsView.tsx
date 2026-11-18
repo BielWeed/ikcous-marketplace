@@ -100,6 +100,7 @@ interface AdminSettingsViewProps {
   // `id` opcional: a seção de privacidade abre a ficha da cliente (admin-user-detail).
   onNavigate: (view: View, id?: string) => void;
   active?: boolean;
+  grupoInicial?: string | null;
   onSetDirty?: (dirty: boolean) => void;
 }
 
@@ -769,6 +770,7 @@ type NivelDoPix = "ok" | "alerta" | "off";
 export const AdminSettingsView = memo(function AdminSettingsView({
   onNavigate,
   active,
+  grupoInicial,
   onSetDirty,
 }: Readonly<AdminSettingsViewProps>) {
   const { config, isLoaded, updateConfig, configIndisponivel, refresh } =
@@ -817,6 +819,17 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   // Pagamentos" de Ferramentas abre a seção sem ele.
   const [abrirChavesGatilho, setAbrirChavesGatilho] = useState(0);
   const [abrirPagamentosGatilho, setAbrirPagamentosGatilho] = useState(0);
+  useEffect(() => {
+    if (active === false || !isLoaded || grupoInicial !== "pagamentos") return;
+    setGrupoSelecionado("pagamentos");
+    setAbrirPagamentosGatilho((n) => n + 1);
+    const timer = setTimeout(() => {
+      document
+        .getElementById("grupo-de-ajustes-pagamentos")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [active, grupoInicial, isLoaded]);
   const [relerCartaoGatilho, setRelerCartaoGatilho] = useState(0);
   const relerCartao = useCallback(
     () => setRelerCartaoGatilho((n) => n + 1),
