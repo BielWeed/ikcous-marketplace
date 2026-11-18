@@ -489,10 +489,16 @@ export const ProductView = React.memo(function ProductView({
     reviews.length > 0 || produtoRespondido === product.id
       ? avaliacoesPublicadas.length
       : (product.reviewCount ?? 0);
+  // Média em décimos INTEIROS, metade para cima: o catálogo vem do banco
+  // (`round(avg(rating), 1)`) e 97/20 em ponto flutuante dá 4,8499… ("4,8")
+  // onde o banco diz 4,9.
   const averageRating =
     avaliacoesPublicadas.length > 0
-      ? avaliacoesPublicadas.reduce((acc, r) => acc + r.rating, 0) /
-        avaliacoesPublicadas.length
+      ? Math.floor(
+          (20 * avaliacoesPublicadas.reduce((acc, r) => acc + r.rating, 0) +
+            avaliacoesPublicadas.length) /
+            (2 * avaliacoesPublicadas.length),
+        ) / 10
       : reviews.length > 0
         ? 0
         : (product.rating ?? 5);
