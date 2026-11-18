@@ -352,22 +352,12 @@ overload novo na rodada 4 dela.
 
 ### 1.3 Ledger (decisão do dono)
 
-O workflow não registra as versões em `supabase_migrations.schema_migrations`. Só o `db-apply`
-registra. Para casar o ledger, use o mesmo `INSERT` que o `db-apply` faz:
+Desde 06/10/2026, o `aplicar-migrations.yml` registra cada versão em
+`supabase_migrations.schema_migrations` na mesma transação da aplicação, inclusive a 79 quando
+publicada à parte. Não cole `INSERT` à mão. Para aplicações anteriores a essa data sem registro,
+use o fluxo de conferência e acerto histórico do ledger descrito no §1 e no Atalho.
 
-```sql
-INSERT INTO supabase_migrations.schema_migrations (version, name) VALUES
-  ('20261175000000', 'a_devolucao_nasce_no_pedido'),
-  ('20261176000000', 'o_cartao_online_nasce'),
-  ('20261177000000', 'o_financeiro_da_loja_nasce'),
-  ('20261178000000', 'o_crm_e_o_inicio_leem_a_loja')
-ON CONFLICT (version) DO NOTHING;
-```
-
-**A linha da 79 não entra neste `INSERT`** — o ledger dela é registrado pelo §7.4 do runbook da
-frente `fix/devolucao-pos-revisao`, que é quem publica e mantém aquela migration.
-
-Se registrar e depois reverter (§5), apague as linhas das versões revertidas.
+Ao desfazer pelo mesmo workflow (§5), a versão também é removida na mesma transação.
 
 ### 1.4 Aplicar a 80 (achado independente de risco, 26/09/2026)
 
@@ -400,13 +390,8 @@ um banco parado na 74) sai com esse erro e **nada é gravado**, em vez de criar 
 silenciosamente (o que aconteceria sem o preflight — provado em Postgres 17 efêmero, ver o
 cabeçalho do arquivo).
 
-Depois de aplicar, acrescente ao ledger do §1.3:
-
-```sql
-INSERT INTO supabase_migrations.schema_migrations (version, name) VALUES
-  ('20261180000000', 'cliente_nao_cancela_com_cartao_vivo')
-ON CONFLICT (version) DO NOTHING;
-```
+O workflow já registra a versão da 80 na mesma transação da aplicação (ver §1.3);
+não é necessário acrescentar a linha ao ledger à mão.
 
 ### 1.5 A 81 — já aplicada em produção (achado LGPD, alto)
 
@@ -433,13 +418,9 @@ menção a tabelas/funções de 75–80). Por isso ela **não tem posição fixa
 `get_orders_by_whatsapp_v3` para `anon`/`authenticated`. ⚠️ **Rodar este rollback REABRE o
 vazamento de LGPD** — só rode se a 81 em si for a causa de um problema, nunca por rotina.
 
-Ledger (se ainda não estiver registrado):
-
-```sql
-INSERT INTO supabase_migrations.schema_migrations (version, name) VALUES
-  ('20261181000000', 'pedido_por_whatsapp_fecha_para_anon')
-ON CONFLICT (version) DO NOTHING;
-```
+Ledger: aplicações atuais pelo workflow já registram a versão automaticamente. Para a aplicação
+histórica de 26/09/2026, se faltar o registro, siga a conferência e o acerto histórico do Atalho
+(ver §1.3), sem colar `INSERT` à mão.
 
 ## 2. Publicar as functions — só depois do §1 conferido
 
@@ -581,9 +562,10 @@ Não precisa mexer em banco.
    até 40 min, que é o teto do 3DS.
 2. **Front**, se já subiu: promova de volta, no painel da Vercel, o deployment de produção
    anterior.
-3. **Functions**: rode o `publicar-functions.yml` a partir do commit anotado no §0, selecionando
-   a loja correta e seu SHA completo em `expected_sha`, com as mesmas functions do §2.
-   As versões antigas não leem nada das migrations novas.
+3. **Functions**: reverta com `git revert` o código necessário para o estado anotado no §0,
+   num commit NOVO da branch principal. Rode o `publicar-functions.yml` nessa branch, com as
+   mesmas functions do §2, a loja correta e `expected_sha` igual ao SHA completo desse commit
+   novo (40 hexadecimais, igual ao do próprio run). Não dispare no SHA antigo.
 4. **Banco**: rode **sempre 83 → 80 → 79 → 78 → 77 → 76 → 75** e pare onde o problema acabar. **A
    83, a 80 e a 79 só entram na fila se já tiverem sido aplicadas** — as três são publicadas à
    parte das 75–78, em frentes independentes. **A 83 (`o_crm_ve_todo_mundo`) só depende da 78** —
@@ -992,11 +974,8 @@ confira `ok = true` em TODAS as linhas que ela devolver.
 
 ### 7.4 Ledger
 
-```sql
-INSERT INTO supabase_migrations.schema_migrations (version, name) VALUES
-  ('20261179000000', 'cancelar_devolucao_barra_compra_em_voo')
-ON CONFLICT (version) DO NOTHING;
-```
+O `aplicar-migrations.yml` já registra a 79 na mesma transação da aplicação (ver §1.3).
+Não cole `INSERT` à mão; para aplicação histórica sem registro, use o acerto do Atalho.
 
 ### 7.5 Rollback — 79 ANTES de 78 (e DEPOIS de 80)
 
@@ -1206,8 +1185,9 @@ ou cole `scripts/publicacao/consultas/7a-conferir-83.sql` direto no SQL Editor: 
 `anon`/`authenticated` (mesma régua de `crm__vendas`/`crm__clientes_rfm`), e que
 `crm_clientes`/`crm_visao` têm o corpo novo e continuam só para `authenticated`.
 
-**Ledger** (decisão do dono, mesmo fluxo de 79–82 — `LEDGER=83` no workflow "Conferir banco da
-loja", `confirmar = GRAVAR`): pré-confere com `7a-conferir-83` e grava
+**Ledger:** o workflow de aplicação já registra a 83 na mesma transação. Só para acertar uma
+aplicação histórica sem registro: `LEDGER=83` no workflow "Conferir banco da loja", `confirmar =
+GRAVAR`; pré-confere com `7a-conferir-83` e grava
 `scripts/publicacao/consultas/ledger-83.sql` (idempotente, `ON CONFLICT (version) DO NOTHING`), e
 a verificação pós-gravação mostra o ledger 72–83 inteiro.
 

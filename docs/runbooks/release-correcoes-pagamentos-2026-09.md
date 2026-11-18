@@ -149,7 +149,7 @@ Pago apontando para o projeto novo, **(j)** segredos do GitHub Actions
 **Checklist-gate (cada item com prova esperada; sem TODOS verdes, nenhuma
 publicação financeira):**
 1. **(j) `SUPABASE_ACCESS_TOKEN` novo no GitHub** — prova: `publicar-functions`
-   (projeto=loja) executa `supabase functions list` sem 403.
+   (projeto=loja) (histórico: hoje use `ikcous-publicada` ou `savy`) executa `supabase functions list` sem 403.
 2. **(f) Cofre MP do lojista RECRIADO no projeto novo** — lojista cadastra
    token/chave em Ajustes contra o app apontando o novo projeto; prova: teste de
    credencial do painel verde + log da function.
@@ -330,7 +330,7 @@ POSTERIOR, não condição. Checklist do gate (ordem):
    #711 deve fechar verde (a falha "Código x banco" restante era a da
    base).
 6. **[DECISÃO DO DONO] Merge da #711 + dispatch `publicar-functions`
-   (`projeto=loja`, agora destino ATIVO) + front** — atos dele ou
+   (`projeto=loja`, agora destino ATIVO) (histórico: hoje use `ikcous-publicada` ou `savy`) + front** — atos dele ou
    autorização expressa na hora.
 7. **[PÓS] Primeira transação orgânica**: monitorar (logs webhook,
    `cron.job_run_details`, `aguardando`>15 min com cobrança), pausa por
@@ -365,8 +365,8 @@ rate-limit externo — não é mais bloqueio de arquivo/código.**
 1. **Merge da #711 na base** (ato do dono). Anotar o SHA pré-merge da base
    para rollback: **`ec930dd3`** (= last-known-good pré-release).
 2. **Deploy functions**: dispatch `publicar-functions.yml` DO BRANCH-BASE,
-   `functions=cobranca`, `projeto=loja` (agora = `dekxabvqdsuukijblazl`
-   ATIVO). 5 functions, uma por vez; concurrency do workflow impede
+   `functions=cobranca`, `projeto=loja` (histórico: hoje use `ikcous-publicada` ou `savy`)
+   (então = `dekxabvqdsuukijblazl` ATIVO). 5 functions, uma por vez; concurrency do workflow impede
    cancelamento no meio.
 3. **Verificação pós-functions (read-only)**: `functions list` com
    `updated_at` novos; diagnóstico read-only mostrando os MARCADORES das
