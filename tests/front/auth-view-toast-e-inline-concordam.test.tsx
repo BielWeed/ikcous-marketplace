@@ -186,9 +186,12 @@ describe("AuthView — toast global e banner inline concordam para o CLIENTE (ou
       "@/lib/mensagens-auth"
     );
     const mensagemToast = MENSAGEM_ERRO_LOGIN_GENERICA;
-    const mensagemInline = document
-      .querySelector(".text-red-600")
-      ?.textContent?.trim();
+    const alertas = [...document.querySelectorAll('[role="alert"]')];
+    const mensagensDeLogin = alertas
+      .map((alerta) => alerta.textContent?.trim())
+      .filter((mensagem) => mensagem === mensagemToast);
+    expect(mensagensDeLogin).toHaveLength(1);
+    const [mensagemInline] = mensagensDeLogin;
 
     // Invariante: a faixa mostra a frase única do cliente, não outra versão do
     // mesmo erro.

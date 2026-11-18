@@ -793,9 +793,22 @@ export const HomeView = React.memo(function HomeView({
               aria-hidden="true"
               className="mx-2 mt-1 h-12 w-px shrink-0 bg-border"
             />
-            <div className="relative shrink-0 py-1">
+            <div
+              className="relative shrink-0 py-1"
+              onBlur={(e) => {
+                if (
+                  showSortMenu &&
+                  !e.currentTarget.contains(e.relatedTarget)
+                ) {
+                  setShowSortMenu(false);
+                }
+              }}
+            >
               <button
                 ref={sortButtonRef}
+                onMouseDown={(e) => {
+                  if (showSortMenu) e.preventDefault();
+                }}
                 onClick={() => {
                   haptic.light();
                   setShowSortMenu(!showSortMenu);
@@ -832,6 +845,7 @@ export const HomeView = React.memo(function HomeView({
                 <>
                   <div
                     className="fixed inset-0 z-40"
+                    onMouseDown={(e) => e.preventDefault()}
                     onClick={() => setShowSortMenu(false)}
                     role="button"
                     aria-label="Fechar menu"
@@ -846,6 +860,9 @@ export const HomeView = React.memo(function HomeView({
                     ref={listboxOrdenarRef}
                     className="absolute right-0 top-full z-50 mt-1.5 w-56 rounded-3xl border border-white/20 bg-white/95 p-2 shadow-2xl backdrop-blur-2xl duration-300 animate-in fade-in zoom-in"
                     role="listbox"
+                    // Sem isso, em alguns navegadores o blur desmonta a
+                    // opção antes de ela receber o clique.
+                    onMouseDown={(e) => e.preventDefault()}
                     // tabIndex={-1}: programaticamente focável (exigência
                     // do jsx-a11y para role interativo com onKeyDown) sem
                     // entrar na ordem de Tab — quem navega chega pelas

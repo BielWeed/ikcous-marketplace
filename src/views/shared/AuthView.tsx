@@ -1406,7 +1406,7 @@ export function AuthView({
                   initial={reduzirMovimento ? false : { opacity: 0, height: 0 }}
                   transition={reduzirMovimento ? { duration: 0 } : undefined}
                   animate={{ opacity: 1, height: "auto" }}
-                  className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-center text-[10px] font-black uppercase tracking-widest text-red-600"
+                  className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-center text-[10px] font-black uppercase tracking-widest text-red-700"
                 >
                   {loginError}
                   {/* #200 — só aparece no ramo "e-mail ainda não confirmado":
