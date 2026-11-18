@@ -1132,7 +1132,7 @@ export const ProductCard = memo(function ProductCard({
                 {aPartirDe && (
                   <span
                     className={cn(
-                      "whitespace-nowrap text-[11px] font-bold uppercase leading-none tracking-wider text-slate-600",
+                      "whitespace-nowrap text-[11px] font-bold uppercase leading-none tracking-wider text-slate-600 dark:bg-card dark:text-foreground dark:group-hover:bg-white dark:group-hover:text-slate-600",
                       promocional && "mt-1",
                     )}
                   >

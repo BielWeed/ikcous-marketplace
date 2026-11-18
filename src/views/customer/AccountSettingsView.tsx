@@ -69,7 +69,7 @@ const MENSAGEM_WHATSAPP_INVALIDO =
   "Informe DDD + 9 + 8 dígitos, por exemplo (34) 99999-8888.";
 // 16 px no celular (abaixo disso o iPhone dá zoom ao focar o campo).
 const CAMPO =
-  "h-[52px] rounded-[14px] border border-input bg-muted/40 px-3.5 text-base font-medium text-foreground shadow-none transition-colors placeholder:text-muted-foreground/60 focus-visible:bg-background disabled:cursor-not-allowed disabled:opacity-60 md:text-[15px]";
+  "h-[52px] rounded-[14px] border border-input bg-muted/40 px-3.5 text-base font-medium text-foreground shadow-none transition-colors placeholder:text-muted-foreground/60 focus-visible:bg-background disabled:cursor-not-allowed disabled:opacity-60 md:text-[15px] dark:bg-muted dark:placeholder:text-muted-foreground dark:focus-visible:bg-card";
 
 // `preservarDigitado`: releitura automática depois de um salvamento sem
 // resposta. Campo que a pessoa mexeu depois do clique fica como ela deixou (e
@@ -1470,10 +1470,10 @@ export function AccountSettingsView() {
       <Dialog open={isAvatarModalOpen} onOpenChange={setIsAvatarModalOpen}>
         <DialogContent
           overlayClassName="z-[130]"
-          className="z-[130] max-h-[85dvh] max-w-xs overflow-y-auto overflow-x-hidden rounded-[2.5rem] border border-zinc-100 bg-white p-6 shadow-premium sm:max-w-md"
+          className="z-[130] max-h-[85dvh] max-w-xs overflow-y-auto overflow-x-hidden rounded-[2.5rem] border border-zinc-100 bg-white p-6 shadow-premium sm:max-w-md dark:border-border dark:bg-card dark:text-foreground dark:[&>button[data-slot=dialog-close]]:text-foreground dark:[&>button[data-slot=dialog-close]]:opacity-100"
         >
           <DialogHeader>
-            <DialogTitle className="text-center text-[11px] font-black uppercase tracking-wider text-zinc-900">
+            <DialogTitle className="text-center text-[11px] font-black uppercase tracking-wider text-zinc-900 dark:text-foreground">
               Escolher Avatar ou Foto
             </DialogTitle>
             <DialogDescription className="sr-only">
@@ -1483,7 +1483,7 @@ export function AccountSettingsView() {
           </DialogHeader>
 
           {/* Modal Tab Selector */}
-          <div className="relative z-10 my-2 flex w-full rounded-xl bg-zinc-100/80 p-1 shadow-inner">
+          <div className="relative z-10 my-2 flex w-full rounded-xl bg-zinc-100/80 p-1 shadow-inner dark:bg-muted">
             <button
               type="button"
               aria-pressed={modalTab === "avatars"}
@@ -1491,16 +1491,16 @@ export function AccountSettingsView() {
                 setModalTab("avatars");
                 haptic.light();
               }}
-              className={`relative min-h-11 flex-1 rounded-lg py-2 text-sm font-bold outline-none transition-all focus-visible:ring-2 focus-visible:ring-zinc-900/50 ${
+              className={`relative min-h-11 flex-1 rounded-lg py-2 text-sm font-bold outline-none transition-all focus-visible:ring-2 focus-visible:ring-zinc-900/50 dark:focus-visible:ring-ring ${
                 modalTab === "avatars"
-                  ? "text-zinc-900"
-                  : "text-zinc-500 hover:text-zinc-900"
+                  ? "text-zinc-900 dark:text-foreground"
+                  : "text-zinc-500 hover:text-zinc-900 dark:text-muted-foreground dark:hover:text-foreground"
               }`}
             >
               {modalTab === "avatars" && (
                 <motion.div
                   layoutId="modalTabBackground"
-                  className="absolute inset-0 rounded-lg border border-zinc-200/40 bg-white shadow-sm"
+                  className="absolute inset-0 rounded-lg border border-zinc-200/40 bg-white shadow-sm dark:bg-card dark:border-border"
                   transition={{ type: "spring", stiffness: 380, damping: 30 }}
                 />
               )}
@@ -1516,16 +1516,16 @@ export function AccountSettingsView() {
                 setModalTab("upload");
                 haptic.light();
               }}
-              className={`relative min-h-11 flex-1 rounded-lg py-2 text-sm font-bold outline-none transition-all focus-visible:ring-2 focus-visible:ring-zinc-900/50 ${
+              className={`relative min-h-11 flex-1 rounded-lg py-2 text-sm font-bold outline-none transition-all focus-visible:ring-2 focus-visible:ring-zinc-900/50 dark:focus-visible:ring-ring ${
                 modalTab === "upload"
-                  ? "text-zinc-900"
-                  : "text-zinc-500 hover:text-zinc-900"
+                  ? "text-zinc-900 dark:text-foreground"
+                  : "text-zinc-500 hover:text-zinc-900 dark:text-muted-foreground dark:hover:text-foreground"
               }`}
             >
               {modalTab === "upload" && (
                 <motion.div
                   layoutId="modalTabBackground"
-                  className="absolute inset-0 rounded-lg border border-zinc-200/40 bg-white shadow-sm"
+                  className="absolute inset-0 rounded-lg border border-zinc-200/40 bg-white shadow-sm dark:bg-card dark:border-border"
                   transition={{ type: "spring", stiffness: 380, damping: 30 }}
                 />
               )}
@@ -1540,7 +1540,7 @@ export function AccountSettingsView() {
             {isUpdatingAvatar && (
               <div className="absolute inset-0 z-20 flex flex-col items-center justify-center space-y-2 rounded-[2rem] bg-white/85">
                 <Loader2 className="size-6 animate-spin text-zinc-900" />
-                <span className="animate-pulse text-[10px] font-black uppercase tracking-wider text-zinc-500">
+                <span className="animate-pulse text-[10px] font-black uppercase tracking-wider text-zinc-500 dark:animate-none dark:text-zinc-900">
                   Atualizando...
                 </span>
               </div>
@@ -1557,7 +1557,7 @@ export function AccountSettingsView() {
                   className="space-y-4"
                 >
                   <div>
-                    <p className="mb-3 text-center text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400">
+                    <p className="mb-3 text-center text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400 dark:text-muted-foreground">
                       Avatares Prontos
                     </p>
                     <div className="scrollbar-thin grid max-h-[250px] select-none grid-cols-4 gap-3 overflow-y-auto pr-1">
@@ -1625,7 +1625,7 @@ export function AccountSettingsView() {
                   className="space-y-4"
                 >
                   <div>
-                    <p className="mb-3 text-center text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400">
+                    <p className="mb-3 text-center text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400 dark:text-muted-foreground">
                       Sua Foto de Perfil
                     </p>
 
@@ -1663,7 +1663,7 @@ export function AccountSettingsView() {
                           </div>
                         </div>
 
-                        <p className="text-center text-[10px] font-semibold leading-relaxed text-zinc-600">
+                        <p className="text-center text-[10px] font-semibold leading-relaxed text-zinc-600 dark:text-muted-foreground">
                           Esta foto é exibida publicamente no marketplace.
                           <br />
                           Você pode trocá-la ou removê-la a qualquer momento.
@@ -1718,16 +1718,16 @@ export function AccountSettingsView() {
                           <motion.div
                             whileHover={{ scale: 1.01, borderColor: "#71717a" }}
                             whileTap={{ scale: 0.99 }}
-                            className="flex cursor-pointer flex-col items-center justify-center space-y-3 rounded-[2rem] border-2 border-dashed border-zinc-200 bg-zinc-50/50 p-8 text-center transition-colors hover:border-zinc-300"
+                            className="flex cursor-pointer flex-col items-center justify-center space-y-3 rounded-[2rem] border-2 border-dashed border-zinc-200 bg-zinc-50/50 p-8 text-center transition-colors hover:border-zinc-300 dark:bg-muted"
                           >
                             <div className="flex size-12 items-center justify-center rounded-2xl border border-zinc-100 bg-white text-zinc-400 shadow-sm">
                               <UploadCloud className="size-6 text-zinc-500" />
                             </div>
                             <div className="space-y-1">
-                              <p className="text-xs font-bold text-zinc-700">
+                              <p className="text-xs font-bold text-zinc-700 dark:text-foreground">
                                 Enviar foto do dispositivo
                               </p>
-                              <p className="px-4 text-[10px] font-semibold leading-normal text-zinc-600">
+                              <p className="px-4 text-[10px] font-semibold leading-normal text-zinc-600 dark:text-muted-foreground">
                                 Selecione uma imagem para fazer upload. Ela será
                                 redimensionada automaticamente.
                               </p>
