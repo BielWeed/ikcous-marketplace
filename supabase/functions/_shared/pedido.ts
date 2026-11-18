@@ -259,3 +259,39 @@ export function montarEndereco(
     .filter(Boolean)
     .join(" · ");
 }
+
+/** Nome sem acento, sem caixa e com um espaco so entre as palavras: a regua para dizer "e' a mesma pessoa". */
+const chaveDoNome = (nome: unknown): string =>
+  String(nome ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+
+/**
+ * O nome de quem vai RECEBER o pedido, SE for outra pessoa; "" quando nao ha
+ * nome ou quando e' a propria cliente.
+ *
+ * A cliente que compra para outra pessoa digita "Quem vai receber" no endereco
+ * e o pedido guarda o nome em `customer_data.address.recipient_name` (migration
+ * 20261399997000). Mesma regra de `quemVaiReceberSeForOutro` do front
+ * (`src/lib/quem-vai-receber.ts`, que a edge nao importa): o endereco traz o
+ * nome da propria cliente por padrao, e repeti-lo em todo e-mail seria ruido. A
+ * comparacao ignora acento, caixa e espaco sobrando; "Souza" e "Sousa" nao sao
+ * a mesma pessoa. Le o mesmo RETRATO do pedido que a etiqueta
+ * (`nomeDeQuemRecebe`): `addressData` ou `address` — nunca a linha atual da
+ * conta, que a cliente pode ter editado depois da compra.
+ */
+export function quemRecebeSeForOutro(
+  comprador: unknown,
+  customerData: Record<string, unknown> | null | undefined,
+): string {
+  const cd = customerData || {};
+  const fonte = cd.addressData ||
+    (typeof cd.address === "object" && cd.address !== null ? cd.address : null);
+  const bruto = typeof fonte?.recipient_name === "string" ? fonte.recipient_name : "";
+  const nome = bruto.replace(/\s+/g, " ").trim();
+  if (!nome) return "";
+  return chaveDoNome(nome) === chaveDoNome(comprador) ? "" : nome;
+}
