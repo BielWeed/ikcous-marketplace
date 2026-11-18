@@ -11,22 +11,92 @@
 // boundary e a cliente ficava sem comprar, mesmo com internet (e recarregar
 // repetia a mesma leitura). Sem armazenamento, o checkout abre sem CEP salvo e
 // sem rascunho, e o CEP digitado continua buscando o endereço.
-import { act } from "react";
+import { act, useEffect } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const produto = {
+  id: "prod-1",
+  name: "Produto Teste",
+  description: "",
+  price: 100,
+  images: [],
+  category: "geral",
+  stock: 10,
+  sold: 0,
+  isActive: true,
+  isBestseller: false,
+  freeShipping: false,
+  createdAt: new Date(0).toISOString(),
+};
+const createOrder = vi.fn();
+let comprador: { id: string; email: string } | null = null;
+
+vi.mock("@/lib/sessao-ainda-e-do-dono", () => ({
+  sessaoAindaEhDoDono: async () => true,
+}));
+vi.mock("@/lib/flags", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/flags")>()),
+  pagamentoOnlineLigado: () => true,
+}));
+vi.mock("@/hooks/useLeaderElection", () => ({
+  useLeaderElection: () => ({ isLeader: false }),
+}));
+vi.mock("@/hooks/useConfigDoCartao", async () => {
+  const { ESTADO_PRONTO_SEM_CARTAO } = await import(
+    "./duble-use-config-do-cartao"
+  );
+  return { useConfigDoCartao: () => ESTADO_PRONTO_SEM_CARTAO };
+});
+// Observa o pedido e o método que o checkout entregou ao componente.
+// Nenhuma cobrança é criada neste teste.
+vi.mock("@/components/checkout/PagamentoOnline", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/components/checkout/PagamentoOnline")
+  >()),
+  PagamentoOnline: ({
+    orderId,
+    metodo,
+  }: { orderId: string; metodo: string }) => (
+    <div data-testid="pagamento-online">
+      {metodo}:{orderId}
+    </div>
+  ),
+}));
 
 vi.mock("@/components/ui/custom/ShippingCalculator", () => ({
   ShippingCalculator: () => null,
 }));
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
-    config: { shippingCoverage: "national", originCep: "38500-000" },
+    config: {
+      shippingCoverage: comprador ? "local" : "national",
+      originCep: "38500-000",
+      shippingFee: 0,
+      enableCoupons: false,
+    },
     isLoaded: true,
   }),
 }));
 vi.mock("@/hooks/useAddresses", () => ({
   useAddresses: () => ({
-    addresses: [],
+    addresses: comprador
+      ? [
+          {
+            id: "addr-1",
+            user_id: comprador.id,
+            name: "Casa",
+            recipient_name: "Cliente Teste",
+            cep: "38500-000",
+            street: "Rua Teste",
+            number: "100",
+            neighborhood: "Centro",
+            city: "Monte Carmelo",
+            state: "MG",
+            is_default: true,
+          },
+        ]
+      : [],
     fetchAddresses: vi.fn(),
     addAddress: vi.fn(),
     updateAddress: vi.fn(),
@@ -34,43 +104,29 @@ vi.mock("@/hooks/useAddresses", () => ({
   }),
 }));
 vi.mock("@/hooks/useAuth", () => ({
-  useAuth: () => ({ user: null, profile: null, loading: false }),
+  useAuth: () => ({ user: comprador, profile: null, loading: false }),
 }));
-vi.mock("@/hooks/useCart", () => ({
-  useCart: () => ({
-    cart: [
-      {
-        product: {
-          id: "prod-1",
-          name: "Produto Teste",
-          description: "",
-          price: 100,
-          images: [],
-          category: "geral",
-          stock: 10,
-          sold: 0,
-          isActive: true,
-          isBestseller: false,
-          freeShipping: false,
-          createdAt: new Date().toISOString(),
-        },
-        quantity: 1,
-      },
-    ],
-    cartTotal: 100,
-    shippingFee: 0,
-    clearCart: vi.fn(),
-    selectedShippingOption: null,
-    shippingCep: "",
-  }),
-}));
+const carrinho = vi.hoisted(() => ({ useCart: vi.fn() }));
+vi.mock("@/hooks/useCart", () => carrinho);
 vi.mock("@/hooks/useCoupons", () => ({
   useCoupons: () => ({ validateCoupon: vi.fn() }),
 }));
 vi.mock("@/hooks/useOrders", () => ({
-  useOrders: () => ({ createOrder: vi.fn() }),
+  useOrders: () => ({ createOrder }),
 }));
-vi.mock("@/lib/supabase", () => ({ supabase: {} }));
+vi.mock("@/lib/supabase", () => ({
+  supabase: {
+    from: () => ({
+      select: () => ({
+        eq: () =>
+          Object.assign(Promise.resolve({ data: null, error: null }), {
+            maybeSingle: async () => ({ data: null, error: null }),
+            single: async () => ({ data: null, error: null }),
+          }),
+      }),
+    }),
+  },
+}));
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 vi.mock("canvas-confetti", () => ({ default: vi.fn() }));
 
@@ -120,7 +176,7 @@ function valor(id: string): string {
   return (document.getElementById(id) as HTMLInputElement).value;
 }
 
-describe("CheckoutView (convidado) — armazenamento do navegador bloqueado", () => {
+describe("CheckoutView — armazenamento do navegador bloqueado", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
   let restaurar: Array<() => void>;
@@ -140,6 +196,15 @@ describe("CheckoutView (convidado) — armazenamento do navegador bloqueado", ()
 
   beforeEach(() => {
     restaurar = [];
+    createOrder.mockReset();
+    carrinho.useCart.mockImplementation(() => ({
+      cart: [{ product: produto, quantity: 1 }],
+      cartTotal: 100,
+      shippingFee: 0,
+      clearCart: vi.fn(),
+      selectedShippingOption: null,
+      shippingCep: "",
+    }));
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
     fetchMock = vi.fn(() => new Promise<Response>(() => {}));
@@ -154,6 +219,7 @@ describe("CheckoutView (convidado) — armazenamento do navegador bloqueado", ()
       raiz.unmount();
     });
     hospedeiro.remove();
+    comprador = null;
     for (const desfazer of restaurar) desfazer();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
@@ -203,6 +269,101 @@ describe("CheckoutView (convidado) — armazenamento do navegador bloqueado", ()
     expect(
       (document.getElementById("order-notes") as HTMLTextAreaElement).value,
     ).toBe("Deixar com o porteiro");
+  });
+
+  it("abre o Pix do pedido criado mesmo se o carrinho real não puder acessar a sessão", async () => {
+    const { CartProvider, useCartContext } = await import(
+      "@/contexts/CartContext"
+    );
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    const { useCart } =
+      await vi.importActual<typeof import("@/hooks/useCart")>(
+        "@/hooks/useCart",
+      );
+    const { toast } = await import("sonner");
+
+    carrinho.useCart.mockImplementation(useCart);
+    comprador = { id: "user-1", email: "teste@example.com" };
+    vi.stubGlobal("localStorage", {
+      getItem: (chave: string) =>
+        chave === "marketplace_cart_v1"
+          ? JSON.stringify([{ product: produto, quantity: 1 }])
+          : null,
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+    });
+    restaurar.push(bloquearOAcesso("sessionStorage"));
+    createOrder.mockResolvedValue({ id: "ped-confirmado-1", totalAmount: 100 });
+    const avisarErro = vi.spyOn(toast, "error");
+    vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+    const onNavigate = vi.fn();
+    const onSetBackOverride = vi.fn();
+
+    let estado: ReturnType<typeof useCartContext> | undefined;
+    function Compra() {
+      const contexto = useCartContext();
+      useEffect(() => {
+        estado = contexto;
+      }, [contexto]);
+      return (
+        <CheckoutView
+          onNavigate={onNavigate}
+          onSetBackOverride={onSetBackOverride}
+        />
+      );
+    }
+    const botao = (texto: string) =>
+      [...document.querySelectorAll("button")].find((b) =>
+        b.textContent?.includes(texto),
+      );
+
+    await act(async () => {
+      raiz.render(
+        <CartProvider>
+          <Compra />
+        </CartProvider>,
+      );
+    });
+    expect(estado?.cart).toHaveLength(1);
+    await act(async () => {
+      estado?.setSelectedShippingOption(
+        {
+          id: "local-delivery",
+          name: "Entrega Local",
+          price: 0,
+          deliveryDays: 1,
+          provider: "local",
+        },
+        "cliente",
+      );
+      estado?.setShippingCep("38500-000");
+    });
+    await act(async () => {
+      botao("Pagar agora com PIX")!.click();
+      digitar("checkout-name", "Cliente Teste");
+      digitar("checkout-tel", "34999999999");
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 420));
+    });
+    const finalizar = botao("Finalizar Pedido");
+    expect(finalizar).toBeDefined();
+    expect(finalizar?.disabled).toBe(false);
+    await act(async () => {
+      finalizar?.click();
+    });
+
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    expect(createOrder).toHaveBeenCalledWith(expect.anything(), {
+      comPagamentoOnline: true,
+    });
+    expect(avisarErro).not.toHaveBeenCalledWith(
+      expect.stringContaining("Falha no Pedido"),
+    );
+    expect(
+      document.querySelector('[data-testid="pagamento-online"]')?.textContent,
+    ).toBe("pix:ped-confirmado-1");
+    expect(estado?.cart).toEqual([]);
   });
 
   it("controle: com o armazenamento normal, o que a cliente preenche vira rascunho na sessão", async () => {
