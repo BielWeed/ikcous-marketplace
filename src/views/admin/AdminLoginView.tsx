@@ -5,7 +5,7 @@ import { primeiraLetra } from "@/lib/primeira-letra";
 import type { View } from "@/types";
 import { ArrowRight, Eye, EyeOff, Loader2, Lock } from "lucide-react";
 import type React from "react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 interface AdminLoginViewProps {
   readonly onLogin: () => void;
@@ -15,6 +15,12 @@ interface AdminLoginViewProps {
 
 // Simple admin password - in production, this should be handled server-side
 // Password legacy removed
+
+const CREDENCIAIS_INCORRETAS = "E-mail ou senha administrativos incorretos.";
+const EMAIL_NAO_CONFIRMADO =
+  "Este e-mail administrativo ainda não foi confirmado. Verifique a caixa de entrada.";
+const LIMITE_DE_TENTATIVAS =
+  "Muitas tentativas. Aguarde alguns minutos antes de tentar novamente.";
 
 // Defeito relatado: a tela desestruturava só `{ success }` do retorno de
 // `login` (AuthContext) e por isso só conseguia emitir UMA frase — inclusive
@@ -52,12 +58,12 @@ export function mensagemDeErroAdminLogin(error: unknown): string {
     code === "email_not_confirmed" ||
     message.includes("Email not confirmed")
   ) {
-    return "Este e-mail administrativo ainda não foi confirmado. Verifique a caixa de entrada.";
+    return EMAIL_NAO_CONFIRMADO;
   }
   if (status === 429) {
     // Verificado na doc oficial: o limite de login é POR ENDEREÇO IP, não
     // por usuário — não revela se a senha está certa ou errada.
-    return "Muitas tentativas. Aguarde alguns minutos antes de tentar novamente.";
+    return LIMITE_DE_TENTATIVAS;
   }
   if (code === "user_banned" || message.includes("User is banned")) {
     // A1-fix3 (achado BLOQUEANTE) — PRECISA vir antes do `if (error?.status
@@ -80,7 +86,7 @@ export function mensagemDeErroAdminLogin(error: unknown): string {
     return MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA;
   }
   if (status === 400 || message.includes("Invalid login credentials")) {
-    return "E-mail ou senha administrativos incorretos.";
+    return CREDENCIAIS_INCORRETAS;
   }
   // Causa não distinguível (rede, erro inesperado do servidor, provedor de
   // e-mail desativado): nunca presumir "senha incorreta" sem confirmação, e
@@ -100,11 +106,23 @@ export function AdminLoginView({
   const [error, setError] = useState("");
   const { login } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
+  const camposEditados = useRef({ email: false, senha: false });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setIsLoading(true);
+    const editado = { email: false, senha: false };
+    camposEditados.current = editado;
+    const mostrarErro = (mensagem: string) => {
+      if (
+        mensagem === LIMITE_DE_TENTATIVAS ||
+        (!editado.email &&
+          (mensagem === EMAIL_NAO_CONFIRMADO || !editado.senha))
+      ) {
+        setError(mensagem);
+      }
+    };
 
     try {
       // A1-fix2 — "admin" faz `login` (AuthContext) disparar o toast global
@@ -122,16 +140,16 @@ export function AdminLoginView({
         // Sem `error` o servidor não respondeu no prazo (rede pendurada, ver
         // `PRAZO_DA_AUTENTICACAO_MS` em AuthContext.tsx): `message` já é a
         // frase de conexão lenta, não há causa para traduzir.
-        setError(message);
+        mostrarErro(message);
       } else {
-        setError(mensagemDeErroAdminLogin(loginError));
+        mostrarErro(mensagemDeErroAdminLogin(loginError));
       }
     } catch (err) {
       // Só roda se `login` LANÇAR (não devolver `{ error }`) — não gera um
       // toast divergente (não há toast neste caminho), mas ainda assim não
       // pode inventar uma TERCEIRA frase para uma causa que é a mesma
       // família "não distinguível" do ramo genérico de `mensagemDeErroAdminLogin`.
-      setError(MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA);
+      mostrarErro(MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA);
       console.error(err);
     } finally {
       setIsLoading(false);
@@ -186,7 +204,17 @@ export function AdminLoginView({
                 id="admin-email"
                 name="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  camposEditados.current.email = true;
+                  if (
+                    !isLoading &&
+                    (error === CREDENCIAIS_INCORRETAS ||
+                      error === EMAIL_NAO_CONFIRMADO)
+                  ) {
+                    setError("");
+                  }
+                }}
                 autoComplete="username"
                 autoCapitalize="none"
                 placeholder="admin@exemplo.com"
@@ -213,7 +241,13 @@ export function AdminLoginView({
                   autoCorrect="off"
                   spellCheck={false}
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    camposEditados.current.senha = true;
+                    if (!isLoading && error === CREDENCIAIS_INCORRETAS) {
+                      setError("");
+                    }
+                  }}
                   placeholder="Digite a senha"
                   className="w-full rounded-2xl border border-admin-border bg-admin-surface py-4 pl-11 pr-12 text-sm font-medium text-white transition-all placeholder:text-zinc-700 focus:border-admin-gold focus:outline-none focus:ring-4 focus:ring-admin-gold/20"
                   required

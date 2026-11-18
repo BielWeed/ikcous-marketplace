@@ -166,6 +166,81 @@ describe("AuthView — recuperação: reenviar, spam e corrigir o e-mail", () =>
     }
   });
 
+  it("o formulário respeita o reenvio pendente só para o mesmo endereço", async () => {
+    await chegarNaTelaDeConfirmacao();
+    await passarOIntervalo();
+    const { promessa, resolver } = criarEnvioPendente();
+    resetPassword.mockReturnValueOnce(promessa);
+    await act(async () => botaoQueComeca("Reenviar link")!.click());
+    await act(async () => botaoQueComeca("Corrigir e-mail")!.click());
+    await act(async () => digitar("email", " MARIA@gmial.com "));
+
+    try {
+      const formulario = hospedeiro.querySelector("form")!;
+      const enviar = formulario.querySelector<HTMLButtonElement>(
+        'button[type="submit"]',
+      )!;
+      await act(async () => {
+        enviar.click();
+        formulario.dispatchEvent(
+          new Event("submit", { bubbles: true, cancelable: true }),
+        );
+      });
+      expect(resetPassword).toHaveBeenCalledTimes(2);
+      expect(enviar.disabled).toBe(true);
+      expect(enviar.textContent).toContain("Enviando o link");
+
+      await act(async () => digitar("email", "maria@gmail.com"));
+      expect(enviar.disabled).toBe(false);
+      await act(async () => enviar.click());
+      expect(resetPassword).toHaveBeenCalledTimes(3);
+      expect(resetPassword).toHaveBeenLastCalledWith("maria@gmail.com");
+      expect(hospedeiro.textContent).toContain("maria@gmail.com");
+    } finally {
+      await act(async () => resolver(SUCESSO));
+    }
+
+    await act(async () => botaoQueComeca("Corrigir e-mail")!.click());
+    await act(async () => digitar("email", "maria@gmial.com"));
+    expect(hospedeiro.textContent).toContain(
+      "Dá para pedir outro link em 60 s.",
+    );
+  });
+
+  it("um pedido pendente no formulário não bloqueia outro endereço nem troca a tela dele", async () => {
+    const { AuthView } = await import("@/views/shared/AuthView");
+    await act(async () => raiz.render(<AuthView onNavigate={vi.fn()} />));
+    await act(async () => botaoQueComeca("Esqueceu?")!.click());
+    await act(async () => digitar("email", "maria@gmial.com"));
+
+    const original = criarEnvioPendente();
+    resetPassword.mockReturnValueOnce(original.promessa);
+    await act(async () => botaoQueComeca("SOLICITAR LINK")!.click());
+    expect(resetPassword).toHaveBeenCalledTimes(1);
+    try {
+      await act(async () => digitar("email", "maria@gmail.com"));
+      const enviar = hospedeiro.querySelector<HTMLButtonElement>(
+        'button[type="submit"]',
+      )!;
+      expect(enviar.disabled).toBe(false);
+
+      const corrigido = criarEnvioPendente();
+      resetPassword.mockReturnValueOnce(corrigido.promessa);
+      await act(async () => enviar.click());
+      try {
+        expect(resetPassword).toHaveBeenLastCalledWith("maria@gmail.com");
+        await act(async () => original.resolver(SUCESSO));
+        expect(hospedeiro.textContent).not.toContain("Verifique seu e-mail");
+        expect(enviar.disabled).toBe(true);
+      } finally {
+        await act(async () => corrigido.resolver(SUCESSO));
+      }
+      expect(hospedeiro.textContent).toContain("maria@gmail.com");
+    } finally {
+      await act(async () => original.resolver(SUCESSO));
+    }
+  });
+
   it("falha no reenvio mostra o erro genérico e também espera (não convida a martelar o servidor)", async () => {
     await chegarNaTelaDeConfirmacao();
     await passarOIntervalo();
@@ -196,6 +271,40 @@ describe("AuthView — recuperação: reenviar, spam e corrigir o e-mail", () =>
     expect(botaoQueComeca("Reenviar link")!.disabled).toBe(false);
   });
 
+  it("o formulário mantém a espera do mesmo endereço e libera após 60 s", async () => {
+    await chegarNaTelaDeConfirmacao();
+    await act(async () => vi.advanceTimersByTime(10_000));
+    await act(async () => botaoQueComeca("Corrigir e-mail")!.click());
+
+    const enviar = hospedeiro.querySelector<HTMLButtonElement>(
+      'button[type="submit"]',
+    )!;
+    await act(async () => enviar.click());
+    expect(resetPassword).toHaveBeenCalledTimes(1);
+    expect(hospedeiro.textContent).toContain(
+      "Dá para pedir outro link em 50 s.",
+    );
+
+    await act(async () => digitar("email", " MARIA@gmial.com "));
+    // O bloqueio é também no formulário, não só no clique do botão.
+    await act(async () => {
+      hospedeiro
+        .querySelector("form")!
+        .dispatchEvent(
+          new Event("submit", { bubbles: true, cancelable: true }),
+        );
+    });
+    expect(resetPassword).toHaveBeenCalledTimes(1);
+    expect(enviar.disabled).toBe(true);
+
+    await act(async () => vi.advanceTimersByTime(49_000));
+    expect(enviar.disabled).toBe(true);
+    await act(async () => vi.advanceTimersByTime(1_000));
+    expect(enviar.disabled).toBe(false);
+    await act(async () => enviar.click());
+    expect(resetPassword).toHaveBeenCalledTimes(2);
+  });
+
   it("'Corrigir e-mail' volta ao campo de recuperação com o e-mail digitado preservado", async () => {
     await chegarNaTelaDeConfirmacao();
     await act(async () => botaoQueComeca("Corrigir e-mail")!.click());
@@ -210,7 +319,12 @@ describe("AuthView — recuperação: reenviar, spam e corrigir o e-mail", () =>
     await act(async () => botaoQueComeca("SOLICITAR LINK")!.click());
     expect(resetPassword).toHaveBeenLastCalledWith("maria@gmail.com");
     expect(hospedeiro.textContent).toContain("maria@gmail.com");
-    // E o intervalo recomeça para o novo envio.
+    // E o intervalo recomeça para o novo envio, sem apagar o do anterior.
     expect(botaoQueComeca("Reenviar link")!.disabled).toBe(true);
+    await act(async () => botaoQueComeca("Corrigir e-mail")!.click());
+    await act(async () => digitar("email", "maria@gmial.com"));
+    expect(hospedeiro.textContent).toContain(
+      "Dá para pedir outro link em 60 s.",
+    );
   });
 });

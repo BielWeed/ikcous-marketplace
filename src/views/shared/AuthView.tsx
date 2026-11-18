@@ -99,26 +99,36 @@ const INTERVALO_REENVIO_RECUPERACAO_S = 60;
 const AVISO_DO_LINK_DE_RECUPERACAO =
   "Este link expirou ou já foi usado. Se você pediu mais de um, só vale o do e-mail mais recente. Se precisar, peça um novo abaixo (pode ser preciso esperar 1 minuto entre um pedido e outro).";
 
+const chaveDoEmail = (email: string) => email.trim().toLowerCase();
+
 // A confirmação e a recuperação compartilham o relógio e sua limpeza.
-function useEsperaDoReenvio(intervalo: number) {
-  const [espera, setEspera] = useState(0);
-  const emEspera = espera > 0;
-  const fimDaEspera = useRef(0);
-  const comecarEspera = () => {
-    fimDaEspera.current = Date.now() + intervalo * 1000;
-    setEspera(intervalo);
+function useEsperaDoReenvio(intervalo: number, email: string) {
+  const [prazos, setPrazos] = useState(
+    () => new Map<string, [number, number]>(),
+  );
+  const espera = prazos.get(chaveDoEmail(email))?.[1] ?? 0;
+  const contando = prazos.size > 0;
+  const comecarEspera = (endereco: string) => {
+    const fim = Date.now() + intervalo * 1000;
+    setPrazos((anteriores) =>
+      new Map(anteriores).set(chaveDoEmail(endereco), [fim, intervalo]),
+    );
   };
 
   useEffect(() => {
-    if (!emEspera) return;
+    if (!contando) return;
     // Usa a hora real: o navegador pode congelar os tiques em segundo plano.
-    const atualizar = () =>
-      setEspera(
-        Math.min(
-          intervalo,
-          Math.max(0, Math.ceil((fimDaEspera.current - Date.now()) / 1000)),
-        ),
-      );
+    const atualizar = () => {
+      const agora = Date.now();
+      setPrazos((anteriores) => {
+        const ativos = new Map<string, [number, number]>();
+        for (const [endereco, [fim]] of anteriores) {
+          const segundos = Math.min(intervalo, Math.ceil((fim - agora) / 1000));
+          if (segundos > 0) ativos.set(endereco, [fim, segundos]);
+        }
+        return ativos;
+      });
+    };
     const relogio = setInterval(atualizar, 1000);
     document.addEventListener("visibilitychange", atualizar);
     window.addEventListener("pageshow", atualizar);
@@ -127,9 +137,9 @@ function useEsperaDoReenvio(intervalo: number) {
       document.removeEventListener("visibilitychange", atualizar);
       window.removeEventListener("pageshow", atualizar);
     };
-  }, [emEspera, intervalo]);
+  }, [contando, intervalo]);
 
-  return { espera, emEspera, comecarEspera };
+  return { espera, emEspera: espera > 0, comecarEspera };
 }
 
 export function AuthView({
@@ -343,21 +353,40 @@ export function AuthView({
   const [emailNaoConfirmado, setEmailNaoConfirmado] = useState(false);
   const [reenviandoConfirmacao, setReenviandoConfirmacao] = useState(false);
   const reenvioConfirmacaoEmCurso = useRef(false);
-  // Reenvio do link de RECUPERAÇÃO (tela "Verifique seu e-mail" do "Esqueceu?"):
-  // mesma trava síncrona do reenvio da confirmação, mais um intervalo entre
-  // envios, que começa a contar já no primeiro envio.
-  const [reenviandoRecuperacao, setReenviandoRecuperacao] = useState(false);
-  const reenvioRecuperacaoEmCurso = useRef(false);
+  // O formulário e o reenvio da recuperação usam a mesma trava por endereço.
+  const [enviosRecuperacao, setEnviosRecuperacao] = useState(
+    () => new Map<string, "pedido" | "reenvio">(),
+  );
+  const enviosRecuperacaoAtuais = useRef(enviosRecuperacao);
+  const emailDaRecuperacao =
+    viewMode === "reset-prompt" ? emailDaConfirmacao : email;
+  const chaveDaRecuperacao = chaveDoEmail(emailDaRecuperacao);
+  const enviandoRecuperacao = enviosRecuperacao.has(chaveDaRecuperacao);
+  const temPedidoPendente = (envios: ReadonlyMap<string, string>) =>
+    [...envios.values()].includes("pedido");
+  const recuperando = viewMode === "forgot";
+  const enviandoFormulario =
+    isLoading ||
+    (recuperando ? enviandoRecuperacao : temPedidoPendente(enviosRecuperacao));
+  const marcarEnvioRecuperacao = (origem?: "pedido" | "reenvio") => {
+    const envios = new Map(enviosRecuperacaoAtuais.current);
+    if (origem) envios.set(chaveDaRecuperacao, origem);
+    else envios.delete(chaveDaRecuperacao);
+    enviosRecuperacaoAtuais.current = envios;
+    setEnviosRecuperacao(envios);
+  };
   const {
     espera: esperaReenvioRecuperacao,
     emEspera: emEsperaDeReenvio,
     comecarEspera: comecarEsperaDoReenvio,
-  } = useEsperaDoReenvio(INTERVALO_REENVIO_RECUPERACAO_S);
+  } = useEsperaDoReenvio(INTERVALO_REENVIO_RECUPERACAO_S, emailDaRecuperacao);
+  const aguardandoNoFormulario = recuperando && emEsperaDeReenvio;
+  const emailDoReenvio = showConfirmation ? emailDaConfirmacao : email.trim();
   const {
     espera: esperaReenvioConfirmacao,
     emEspera: emEsperaDeConfirmacao,
     comecarEspera: comecarEsperaDeConfirmacao,
-  } = useEsperaDoReenvio(30);
+  } = useEsperaDoReenvio(30, emailDoReenvio);
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setPhone(mascaraTelefoneDoCadastro(e.target.value, phone));
@@ -365,7 +394,15 @@ export function AuthView({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (envioEmCurso.current) return;
+    const envios = enviosRecuperacaoAtuais.current;
+    if (
+      envioEmCurso.current ||
+      (recuperando
+        ? emEsperaDeReenvio || envios.has(chaveDaRecuperacao)
+        : temPedidoPendente(envios))
+    ) {
+      return;
+    }
     const emailEnviado = email.trim();
     const fluxoEnviado = fluxoDaTela.current;
     setLoginError(null);
@@ -380,8 +417,11 @@ export function AuthView({
       }
     }
 
-    envioEmCurso.current = true;
-    setIsLoading(true);
+    if (recuperando) marcarEnvioRecuperacao("pedido");
+    else {
+      envioEmCurso.current = true;
+      setIsLoading(true);
+    }
 
     // A resposta do login pode chegar depois de a pessoa trocar para Cadastro ou
     // "Esqueceu?" (internet lenta). Fora do fluxo de origem a faixa vermelha de
@@ -597,7 +637,6 @@ export function AuthView({
       } else if (viewMode === "forgot") {
         if (!email.trim()) {
           toast.error("Informe seu e-mail para recuperação.");
-          setIsLoading(false);
           return;
         }
         // #120 — o resultado de `resetPassword` não distingue mais e-mail
@@ -607,9 +646,12 @@ export function AuthView({
         const res = await resetPassword(emailEnviado);
         if (res.success) {
           toast.success(res.message);
-          if (fluxoDaTela.current === fluxoEnviado) {
+          comecarEsperaDoReenvio(emailEnviado);
+          if (
+            fluxoDaTela.current === fluxoEnviado &&
+            chaveDoEmail(emailAtual.current) === chaveDaRecuperacao
+          ) {
             setEmailDaConfirmacao(emailEnviado);
-            comecarEsperaDoReenvio();
             setViewMode("reset-prompt");
           }
         } else {
@@ -656,8 +698,11 @@ export function AuthView({
         toast.error(erroInesperado);
       }
     } finally {
-      envioEmCurso.current = false;
-      setIsLoading(false);
+      if (recuperando) marcarEnvioRecuperacao();
+      else {
+        envioEmCurso.current = false;
+        setIsLoading(false);
+      }
     }
   };
 
@@ -666,20 +711,15 @@ export function AuthView({
   // AuthContext já mostra o toast no caminho normal. Na rejeição, mantém
   // o banner do login e usa toast na confirmação, que não tem esse banner.
   const handleResendConfirmation = async () => {
-    if (
-      reenvioConfirmacaoEmCurso.current ||
-      (showConfirmation && emEsperaDeConfirmacao)
-    ) {
+    if (reenvioConfirmacaoEmCurso.current || emEsperaDeConfirmacao) {
       return;
     }
     reenvioConfirmacaoEmCurso.current = true;
     setReenviandoConfirmacao(true);
     const fluxoEnviado = fluxoDaTela.current;
     try {
-      const sucesso = await resendConfirmationEmail(
-        showConfirmation ? emailDaConfirmacao : email.trim(),
-      );
-      if (sucesso && showConfirmation) comecarEsperaDeConfirmacao();
+      const sucesso = await resendConfirmationEmail(emailDoReenvio);
+      if (sucesso) comecarEsperaDeConfirmacao(emailDoReenvio);
     } catch (err) {
       console.error(err);
       const message =
@@ -698,9 +738,13 @@ export function AuthView({
   // é a mesma exista ou não a conta (#120), então o aviso é condicional. Dá
   // certo ou errado, o botão espera o intervalo: não convida a martelar.
   const handleResendRecuperacao = async () => {
-    if (reenvioRecuperacaoEmCurso.current || emEsperaDeReenvio) return;
-    reenvioRecuperacaoEmCurso.current = true;
-    setReenviandoRecuperacao(true);
+    if (
+      enviosRecuperacaoAtuais.current.has(chaveDaRecuperacao) ||
+      emEsperaDeReenvio
+    ) {
+      return;
+    }
+    marcarEnvioRecuperacao("reenvio");
     const falhaGenerica =
       "Não foi possível reenviar o link agora. Tente novamente em instantes.";
     try {
@@ -717,9 +761,8 @@ export function AuthView({
       console.error(err);
       toast.error(falhaGenerica);
     } finally {
-      reenvioRecuperacaoEmCurso.current = false;
-      setReenviandoRecuperacao(false);
-      comecarEsperaDoReenvio();
+      comecarEsperaDoReenvio(emailDaConfirmacao);
+      marcarEnvioRecuperacao();
     }
   };
 
@@ -894,13 +937,13 @@ export function AuthView({
                 <button
                   type="button"
                   onClick={handleResendRecuperacao}
-                  disabled={reenviandoRecuperacao || emEsperaDeReenvio}
+                  disabled={enviandoRecuperacao || emEsperaDeReenvio}
                   className="relative text-amber-800 after:absolute after:-inset-x-2 after:-inset-y-3.5 after:content-[''] hover:underline disabled:no-underline disabled:opacity-60"
                 >
-                  {reenviandoRecuperacao ? "Reenviando..." : "Reenviar link"}
+                  {enviandoRecuperacao ? "Reenviando..." : "Reenviar link"}
                 </button>
               </p>
-              {emEsperaDeReenvio && !reenviandoRecuperacao && (
+              {emEsperaDeReenvio && !enviandoRecuperacao && (
                 <p className="text-[10px] font-bold text-zinc-500">
                   Dá para pedir outro link em {esperaReenvioRecuperacao} s.
                 </p>
@@ -995,7 +1038,7 @@ export function AuthView({
                     <Button
                       type="button"
                       variant="outline"
-                      disabled={entrandoGoogle || isLoading}
+                      disabled={entrandoGoogle || enviandoFormulario}
                       onClick={entrarComGoogle}
                       className="h-14 w-full gap-3 rounded-2xl border-zinc-300 bg-white font-bold text-zinc-900 focus-visible:ring-2 focus-visible:ring-zinc-900"
                     >
@@ -1426,12 +1469,16 @@ export function AuthView({
                       <button
                         type="button"
                         onClick={handleResendConfirmation}
-                        disabled={reenviandoConfirmacao}
+                        disabled={
+                          reenviandoConfirmacao || emEsperaDeConfirmacao
+                        }
                         className="text-red-700 underline underline-offset-2 disabled:no-underline disabled:opacity-60"
                       >
                         {reenviandoConfirmacao
                           ? "Reenviando..."
-                          : "Reenviar link de confirmação"}
+                          : emEsperaDeConfirmacao
+                            ? `Reenviar em ${esperaReenvioConfirmacao}s`
+                            : "Reenviar link de confirmação"}
                       </button>
                     </div>
                   )}
@@ -1454,10 +1501,10 @@ export function AuthView({
                 whileHover={reduzirMovimento ? undefined : { scale: 1.01 }}
                 whileTap={reduzirMovimento ? undefined : { scale: 0.98 }}
                 type="submit"
-                disabled={isLoading}
+                disabled={enviandoFormulario || aguardandoNoFormulario}
                 className="group mt-2 flex h-14 w-full items-center justify-center gap-3 rounded-2xl bg-zinc-900 text-xs font-black uppercase tracking-[0.2em] text-white shadow-lg shadow-zinc-200/50 disabled:opacity-70 sm:mt-4 sm:rounded-3xl"
               >
-                {isLoading ? (
+                {enviandoFormulario ? (
                   <>
                     <Loader2 className="size-5 animate-spin" />
                     <span className="sr-only">
@@ -1471,7 +1518,10 @@ export function AuthView({
                   <>
                     {viewMode === "login" && "ENTRAR AGORA"}
                     {viewMode === "signup" && "FINALIZAR REGISTRO"}
-                    {viewMode === "forgot" && "SOLICITAR LINK"}
+                    {viewMode === "forgot" &&
+                      (aguardandoNoFormulario
+                        ? `Dá para pedir outro link em ${esperaReenvioRecuperacao} s.`
+                        : "SOLICITAR LINK")}
                     {viewMode === "new-password" && "ATUALIZAR SENHA"}
                     <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
                   </>

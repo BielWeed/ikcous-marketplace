@@ -66,6 +66,102 @@ describe("AdminLoginView — campos de entrada pedem ao teclado que não mexa", 
     exigirSenhaSemAutocorrecao();
   });
 
+  function digitar(id: string, valor: string) {
+    const el = document.getElementById(id) as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(
+      globalThis.HTMLInputElement.prototype,
+      "value",
+    )!.set!;
+    setter.call(el, valor);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  const credencialIncorreta = {
+    success: false,
+    error: { status: 400, code: "invalid_credentials" },
+  };
+
+  async function preencher() {
+    await abrir();
+    await act(async () => {
+      digitar("admin-email", "lojista@example.com");
+      digitar("admin-password", "senha-errada");
+    });
+    return hospedeiro.querySelector<HTMLButtonElement>(
+      'button[type="submit"]',
+    )!;
+  }
+
+  function aviso() {
+    return hospedeiro.querySelector('[role="alert"]');
+  }
+
+  it.each(["admin-email", "admin-password"])(
+    "editar %s limpa só o aviso antigo e não esconde o erro da nova tentativa",
+    async (campo) => {
+      const erro = "E-mail ou senha administrativos incorretos.";
+      login.mockResolvedValue(credencialIncorreta);
+      const botao = await preencher();
+      await act(async () => botao.click());
+      expect(aviso()?.textContent).toBe(erro);
+
+      await act(async () => {
+        digitar(
+          campo,
+          campo === "admin-email" ? "outro@example.com" : "outra-senha",
+        );
+      });
+      expect(aviso()).toBeNull();
+
+      await act(async () => botao.click());
+      expect(login).toHaveBeenCalledTimes(2);
+      expect(aviso()?.textContent).toBe(erro);
+    },
+  );
+
+  it("o aviso de limite de tentativas fica mesmo após editar os campos", async () => {
+    login.mockResolvedValue({ success: false, error: { status: 429 } });
+    const botao = await preencher();
+    await act(async () => botao.click());
+    expect(aviso()?.textContent).toContain("Muitas tentativas");
+
+    await act(async () => digitar("admin-password", "outra-senha"));
+    expect(aviso()?.textContent).toContain("Muitas tentativas");
+    await act(async () => digitar("admin-email", "outro@example.com"));
+    expect(aviso()?.textContent).toContain("Muitas tentativas");
+  });
+
+  it("o aviso de e-mail não confirmado fica até trocar de endereço", async () => {
+    login.mockResolvedValue({
+      success: false,
+      error: { status: 400, code: "email_not_confirmed" },
+    });
+    const botao = await preencher();
+    await act(async () => botao.click());
+    expect(aviso()?.textContent).toContain("ainda não foi confirmado");
+
+    await act(async () => digitar("admin-password", "outra-senha"));
+    expect(aviso()?.textContent).toContain("ainda não foi confirmado");
+    await act(async () => digitar("admin-email", "outro@example.com"));
+    expect(aviso()).toBeNull();
+  });
+
+  it("não mostra erro de credencial da tentativa anterior se a senha foi editada durante o envio", async () => {
+    let responder!: (resultado: typeof credencialIncorreta) => void;
+    login.mockReturnValueOnce(
+      new Promise<typeof credencialIncorreta>((resolve) => {
+        responder = resolve;
+      }),
+    );
+    const botao = await preencher();
+    await act(async () => botao.click());
+    expect(botao.disabled).toBe(true);
+    await act(async () => digitar("admin-password", "outra-senha"));
+    await act(async () => responder(credencialIncorreta));
+    expect(login).toHaveBeenCalledTimes(1);
+    expect(aviso()).toBeNull();
+  });
+
   it("o e-mail do lojista não ganha maiúscula automática", async () => {
     await abrir();
     const campo = document.getElementById("admin-email") as HTMLInputElement;

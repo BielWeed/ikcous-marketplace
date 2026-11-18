@@ -6,12 +6,13 @@ import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const signUp = vi.fn();
+const login = vi.fn();
 const resendConfirmationEmail = vi.fn();
 
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({
     user: null,
-    login: vi.fn(),
+    login,
     signUp,
     resetPassword: vi.fn(),
     updatePassword: vi.fn(),
@@ -70,6 +71,10 @@ describe("AuthView — reenvio na confirmação tem trava (issue #208)", () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
     signUp.mockReset().mockResolvedValue(true);
+    login.mockReset().mockResolvedValue({
+      success: false,
+      error: { status: 400, code: "email_not_confirmed" },
+    });
     resendConfirmationEmail.mockReset();
     vi.mocked(toast.error).mockClear();
     hospedeiro = document.createElement("div");
@@ -150,6 +155,35 @@ describe("AuthView — reenvio na confirmação tem trava (issue #208)", () => {
     await act(async () => botao.click());
     expect(resendConfirmationEmail).toHaveBeenCalledTimes(2);
     expect(botao.textContent).toBe("Reenviar em 30s");
+  });
+
+  it("a espera da confirmação continua no login só para o mesmo endereço", async () => {
+    resendConfirmationEmail.mockResolvedValue(true);
+    const botao = await cadastrar();
+    await act(async () => botao.click());
+    expect(botao.textContent).toBe("Reenviar em 30s");
+    await act(async () => vi.advanceTimersByTime(5_000));
+    await act(async () => localizarBotaoPorTexto("Retornar ao Login").click());
+
+    async function entrarComo(email: string) {
+      await act(async () => digitar("email", email));
+      await act(async () => localizarBotaoPorTexto("ENTRAR AGORA").click());
+    }
+
+    await entrarComo("outro@example.com");
+    expect(
+      localizarBotaoPorTexto("Reenviar link de confirmação").disabled,
+    ).toBe(false);
+
+    await entrarComo(" PESSOA@example.com ");
+    const reenviar = localizarBotaoPorTexto("Reenviar em 25s");
+    expect(reenviar.disabled).toBe(true);
+    await act(async () => reenviar.click());
+    expect(resendConfirmationEmail).toHaveBeenCalledTimes(1);
+    await act(async () => vi.advanceTimersByTime(25_000));
+    expect(
+      localizarBotaoPorTexto("Reenviar link de confirmação").disabled,
+    ).toBe(false);
   });
 
   it("resposta sem sucesso não inicia a contagem", async () => {
