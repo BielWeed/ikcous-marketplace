@@ -192,7 +192,11 @@ Deno.test("404: FORA da release (politica) e sem lote no canais; as consultas 15
   const fora = politica.migrationsForaDaRelease.filter(
     (m: { versao: string }) => m.versao === "20261404000000",
   );
-  assert.equal(fora.length, 1, "a 20261404000000 esta em migrationsForaDaRelease");
+  assert.equal(
+    fora.length,
+    1,
+    "a 20261404000000 esta em migrationsForaDaRelease",
+  );
   const a = lerRepo(`scripts/publicacao/consultas/${A}.sql`);
   const b = lerRepo(`scripts/publicacao/consultas/${B}.sql`);
   assert.ok(a.includes(`'${H_NOVO}'`) && !b.includes(`'${H_NOVO}'`));
