@@ -1,7 +1,10 @@
 import { normalizarNumeroMototaxi } from "@/components/admin/minha-loja/contato";
 import {
+  MENSAGEM_MOTOTAXI_SEM_RESPOSTA,
   PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+  PRAZO_DE_GRAVAR_O_CONTATO_DO_MOTOTAXI_MS,
   aguardarComPrazo,
+  ehConsultaSemResposta,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
@@ -59,10 +62,19 @@ export function useMototaxi(sinalDeReleitura?: boolean) {
     const nome = valor.nome?.trim() || null;
     if (nome && nome.length > 80) return false;
     try {
-      const { data, error } = await supabase.rpc("salvar_config_mototaxi", {
-        p_whatsapp: whatsapp,
-        p_nome: nome,
-      });
+      // Rede pendurada: sem prazo o Salvar do frete ficava em "Salvando…" para
+      // sempre. Sem resposta NÃO é falha do servidor (o contato pode ter sido
+      // gravado): o erro com a frase pronta sobe para a tela, que a mostra.
+      const { data, error } = await aguardarComPrazo(
+        Promise.resolve(
+          supabase.rpc("salvar_config_mototaxi", {
+            p_whatsapp: whatsapp,
+            p_nome: nome,
+          }),
+        ),
+        PRAZO_DE_GRAVAR_O_CONTATO_DO_MOTOTAXI_MS,
+        () => erroDeConsultaSemResposta(MENSAGEM_MOTOTAXI_SEM_RESPOSTA),
+      );
       if (
         error ||
         !data ||
@@ -75,7 +87,8 @@ export function useMototaxi(sinalDeReleitura?: boolean) {
       setConfig({ whatsapp, nome });
       setErro(false);
       return true;
-    } catch {
+    } catch (erro) {
+      if (ehConsultaSemResposta(erro)) throw erro;
       return false;
     }
   };

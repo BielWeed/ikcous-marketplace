@@ -175,6 +175,27 @@ export const MENSAGEM_COMPRA_DA_ETIQUETA_SEM_RESPOSTA =
 // consulta não grava nada, e a resposta tardia é descartada.
 export const PRAZO_DA_LEITURA_DO_TAMANHO_E_COR_MS = 15_000;
 
+// PRAZO DE GRAVAR O CONTATO DO MOTOTÁXI NO FRETE (17/11/2026): a RPC é a
+// PRIMEIRA gravação do Salvar do frete; rede "pendurada" deixava o botão em
+// "Salvando…" para sempre e as regras seguintes nem saíam. 20 s, como as outras
+// gravações de uma RPC. Só encerra a ESPERA da tela: o contato pode ter sido
+// gravado. Repetir é seguro (upsert da linha única, mesmos valores).
+export const PRAZO_DE_GRAVAR_O_CONTATO_DO_MOTOTAXI_MS = 20_000;
+export const MENSAGEM_MOTOTAXI_SEM_RESPOSTA =
+  "Sem resposta da rede. O contato do mototáxi pode ter sido salvo; o resto do frete não foi enviado. Tentar de novo é seguro.";
+
+// PRAZOS DAS GRAVAÇÕES DO ENVIO EM "AVISAR CLIENTES" (17/11/2026). Rede
+// "pendurada" conecta e não responde: o botão ficava em "Enviando Notificação…"
+// para sempre e reenviar depois de recarregar podia duplicar avisos. Só
+// encerram a ESPERA DA TELA; o servidor pode ter gravado.
+//
+// - 20 s: uma linha ou um lote de avisos (registro no histórico, avisos dentro
+//   do app, ajuste final do histórico), o prazo das outras gravações de uma linha.
+// - 60 s: a chamada da `send-push`. A edge para de abrir lote novo aos 50 s
+//   (`ORCAMENTO_DE_TEMPO_MS`) e então responde: 60 s não corta um envio só lento.
+export const PRAZO_DA_GRAVACAO_DO_ENVIO_DE_PUSH_MS = 20_000;
+export const PRAZO_DA_EDGE_DE_ENVIO_DE_PUSH_MS = 60_000;
+
 /** Frase para quem está na tela: o que aconteceu e o que fazer. */
 export const MENSAGEM_CONEXAO_LENTA =
   "A conexão está lenta. Toque em Tentar de novo.";

@@ -32,7 +32,7 @@ describe("P12 — campanhas push no computador", () => {
       .replace(/\s+/g, " ")
       .trim();
     expect(createHash("sha256").update(semComputador).digest("hex")).toBe(
-      "94494551f4e4debe5dce0dcafc15905fd396d162fdd3094db33168686b9e4c4b",
+      "8e04d144b33bca40972561dff878d10ed908cdd88905824b1ec6740e4c93bfb6",
     );
   });
 

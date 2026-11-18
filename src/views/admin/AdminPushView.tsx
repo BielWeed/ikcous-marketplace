@@ -45,7 +45,11 @@ import {
 import { motivoDaFalhaEmPortugues } from "@/lib/motivo-da-falha-de-push";
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { intercalarPorServico } from "@/lib/ordem-do-envio-de-push";
-import { PRAZO_DA_CONSULTA_DO_PAINEL_MS } from "@/lib/prazo-da-requisicao";
+import {
+  PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+  PRAZO_DA_EDGE_DE_ENVIO_DE_PUSH_MS,
+  PRAZO_DA_GRAVACAO_DO_ENVIO_DE_PUSH_MS,
+} from "@/lib/prazo-da-requisicao";
 import { primeiraLetra } from "@/lib/primeira-letra";
 import { supabase } from "@/lib/supabase";
 import { normalizeText } from "@/lib/utils";
@@ -363,6 +367,14 @@ const ROTULO_CURTO_DO_DESTINO: Record<string, string> = {
 // chave prometia "avisos de compras" que a loja nunca mostra. A configuração
 // guardada segue intacta; religar = trocar para `true` quando o recurso existir.
 const MOSTRAR_AVISOS_DE_COMPRAS: boolean = false;
+
+// Gravação do envio com prazo: rede que conecta e não responde deixava o botão
+// em "Enviando Notificação..." para sempre. Só encerra a ESPERA da tela, o
+// servidor pode ter gravado; cada etapa trata o estouro do seu jeito.
+const gravarComPrazo = <T,>(
+  requisicao: PromiseLike<T>,
+  prazoMs: number = PRAZO_DA_GRAVACAO_DO_ENVIO_DE_PUSH_MS,
+) => comPrazo(Promise.resolve(requisicao), prazoMs);
 
 /**
  * Confere na tabela de cupons da loja os códigos que o texto cita. Devolve as
@@ -1054,15 +1066,15 @@ export const AdminPushView = memo(function AdminPushView({
             // conferir isso (como `targetError` e `logError` já conferem,
             // acima), o `catch` nunca disparava e a tela anunciava sucesso
             // e limpava o formulário mesmo sem ter gravado nada.
-            const { error: inAppInsertError } = await supabase
-              .from("notificacoes")
-              .insert({
+            const { error: inAppInsertError } = await gravarComPrazo(
+              supabase.from("notificacoes").insert({
                 titulo: notification.title,
                 mensagem: notification.body,
                 tipo: "aviso",
                 usuario_id: targetUserId,
                 dados: { segment, action_url: notification.url },
-              });
+              }),
+            );
             if (inAppInsertError) throw inAppInsertError;
             toast.error("Este cliente não tem aparelho inscrito para push", {
               description:
@@ -1084,17 +1096,19 @@ export const AdminPushView = memo(function AdminPushView({
       // era esse número que o histórico mostrava — mesmo quando ninguém
       // recebeu. Se o passo de correção abaixo falhar, o registro fica em 0,
       // que é o padrão honesto: entrega não confirmada.
-      const { data: logRow, error: logError } = await supabase
-        .from("push_notifications_log")
-        .insert({
-          title: notification.title,
-          body: notification.body,
-          url: notification.url,
-          recipient_count: 0,
-          created_by: user?.id,
-        })
-        .select("id")
-        .single();
+      const { data: logRow, error: logError } = await gravarComPrazo(
+        supabase
+          .from("push_notifications_log")
+          .insert({
+            title: notification.title,
+            body: notification.body,
+            url: notification.url,
+            recipient_count: 0,
+            created_by: user?.id,
+          })
+          .select("id")
+          .single(),
+      );
 
       if (logError) throw logError;
 
@@ -1110,26 +1124,26 @@ export const AdminPushView = memo(function AdminPushView({
       let avisoNoAppFalhou = false;
       try {
         if (targetUserId) {
-          const { error: avisoError } = await supabase
-            .from("notificacoes")
-            .insert({
+          const { error: avisoError } = await gravarComPrazo(
+            supabase.from("notificacoes").insert({
               titulo: notification.title,
               mensagem: notification.body,
               tipo: "aviso",
               usuario_id: targetUserId,
               dados: { segment, action_url: notification.url },
-            });
+            }),
+          );
           if (avisoError) avisoNoAppFalhou = true;
         } else if (segment === "all") {
-          const { error: avisoError } = await supabase
-            .from("notificacoes")
-            .insert({
+          const { error: avisoError } = await gravarComPrazo(
+            supabase.from("notificacoes").insert({
               titulo: notification.title,
               mensagem: notification.body,
               tipo: "aviso",
               usuario_id: null,
               dados: { segment, action_url: notification.url },
-            });
+            }),
+          );
           if (avisoError) avisoNoAppFalhou = true;
         } else {
           const uniqueUserIds = Array.from(
@@ -1146,9 +1160,9 @@ export const AdminPushView = memo(function AdminPushView({
             const chunkSize = 100;
             for (let i = 0; i < inAppRows.length; i += chunkSize) {
               const chunk = inAppRows.slice(i, i + chunkSize);
-              const { error: avisoError } = await supabase
-                .from("notificacoes")
-                .insert(chunk);
+              const { error: avisoError } = await gravarComPrazo(
+                supabase.from("notificacoes").insert(chunk),
+              );
               if (avisoError) avisoNoAppFalhou = true;
             }
           }
@@ -1158,8 +1172,10 @@ export const AdminPushView = memo(function AdminPushView({
         avisoNoAppFalhou = true;
       }
 
-      const { data: envio, error: pushError } = await supabase.functions
-        .invoke("send-push", {
+      // Sem resposta da edge (60 s) cai no mesmo caminho de "envio não
+      // confirmado" abaixo: alguns clientes podem ter recebido.
+      const { data: envio, error: pushError } = await gravarComPrazo(
+        supabase.functions.invoke("send-push", {
           body: {
             title: notification.title,
             body: notification.body,
@@ -1169,8 +1185,9 @@ export const AdminPushView = memo(function AdminPushView({
               keys: { p256dh: t.p256dh, auth: t.auth },
             })),
           },
-        })
-        .catch((error: unknown) => ({ data: null, error }));
+        }),
+        PRAZO_DA_EDGE_DE_ENVIO_DE_PUSH_MS,
+      ).catch((error: unknown) => ({ data: null, error }));
 
       // A resposta agora traz contagem de verdade. Até 05/08/2026 a função
       // devolvia `{ success: true }` mesmo com todos os envios falhando, e esta
@@ -1191,10 +1208,14 @@ export const AdminPushView = memo(function AdminPushView({
         : undefined;
 
       if (envioConfirmado && entregues > 0) {
-        const { error: ajusteError } = await supabase
-          .from("push_notifications_log")
-          .update({ recipient_count: entregues })
-          .eq("id", logRow.id);
+        // O envio já está confirmado: sem resposta aqui só deixa o histórico em
+        // 0 (o padrão honesto), nunca vira falha de envio.
+        const { error: ajusteError } = await gravarComPrazo(
+          supabase
+            .from("push_notifications_log")
+            .update({ recipient_count: entregues })
+            .eq("id", logRow.id),
+        ).catch((error: unknown) => ({ error }));
         if (ajusteError) {
           console.error(
             "Falha ao corrigir o recipient_count do log:",
@@ -1258,7 +1279,7 @@ export const AdminPushView = memo(function AdminPushView({
       if (avisoNoAppFalhou) {
         toast.warning("O aviso dentro do app não foi registrado", {
           description:
-            "O banco recusou gravar a mensagem que o cliente veria ao abrir a loja. Confira o resultado do envio acima.",
+            "O banco não confirmou a gravação da mensagem que o cliente veria ao abrir a loja. Confira o resultado do envio acima.",
         });
       }
 
@@ -1299,7 +1320,7 @@ export const AdminPushView = memo(function AdminPushView({
       console.error("Error sending push:", error);
       toast.error(
         error instanceof PrazoEsgotado
-          ? "Demorou demais, tente de novo. Nada foi enviado."
+          ? "Demorou demais, tente de novo. Nada foi enviado; se o Histórico mostrar este aviso com 0 aparelhos, é só o registro."
           : "Falha ao registrar notificação no banco",
       );
     } finally {

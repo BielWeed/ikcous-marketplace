@@ -46,6 +46,7 @@ import {
   resumoDoAlcance,
 } from "@/lib/loja-pronta";
 import { usePagamentoPeloApp } from "@/lib/pagamento-pelo-app-no-painel";
+import { ehConsultaSemResposta } from "@/lib/prazo-da-requisicao";
 import {
   type PresetFreteGratis,
   presetDoConfig,
@@ -1152,7 +1153,12 @@ export const AdminShippingView = memo(function AdminShippingView({
       console.error("[AdminShippingView] Error saving configs:", err);
       haptic.error();
       setFalhaAoSalvar(true);
-      toast.error("Erro ao salvar as configurações.");
+      // Sem resposta traz a frase pronta (o que pode ter sido gravado).
+      toast.error(
+        err instanceof Error && ehConsultaSemResposta(err)
+          ? err.message
+          : "Erro ao salvar as configurações.",
+      );
     } finally {
       setIsSaving(false);
     }
