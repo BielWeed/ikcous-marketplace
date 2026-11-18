@@ -656,12 +656,18 @@ export function AuthView({
         // confirmação, e o de erro genuíno (rede, rate limit).
         const res = await resetPassword(emailEnviado);
         if (res.success) {
-          toast.success(res.message);
-          comecarEsperaDoReenvio(emailEnviado);
-          if (
+          const aindaNoMesmoEmail =
             fluxoDaTela.current === fluxoEnviado &&
-            chaveDoEmail(emailAtual.current) === chaveDaRecuperacao
-          ) {
+            chaveDoEmail(emailAtual.current) === chaveDaRecuperacao;
+          // Com o campo já em outro e-mail a tela não troca: o aviso diz
+          // para qual endereço o link foi, senão a pessoa não saberia.
+          toast.success(
+            aindaNoMesmoEmail
+              ? res.message
+              : `Se ${emailEnviado} estiver cadastrado, enviamos um link de recuperação.`,
+          );
+          comecarEsperaDoReenvio(emailEnviado);
+          if (aindaNoMesmoEmail) {
             setEmailDaConfirmacao(emailEnviado);
             setViewMode("reset-prompt");
           }

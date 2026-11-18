@@ -191,5 +191,8 @@ describe("AuthView — resposta atrasada respeita o fluxo e o e-mail enviado", (
       "b@example.com",
     );
     expect(toast.success).toHaveBeenCalledTimes(1);
+    expect(toast.success).toHaveBeenCalledWith(
+      "Se a@example.com estiver cadastrado, enviamos um link de recuperação.",
+    );
   });
 });
