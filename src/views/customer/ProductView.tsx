@@ -898,8 +898,16 @@ export const ProductView = React.memo(function ProductView({
         });
       } catch {
         toast.error("Não consegui copiar", {
-          description:
-            "Seu navegador bloqueou a cópia. Copie o endereço da barra do navegador.",
+          description: (
+            <>
+              Seu navegador bloqueou a cópia. Segure o link abaixo para copiar:
+              <span className="block select-all break-all">
+                {shareData.url}
+              </span>
+            </>
+          ),
+          duration: 15_000,
+          dismissible: false,
         });
       }
     };

@@ -137,11 +137,11 @@ describe("ProductView — compartilhar: só 'cancelou' é silêncio", () => {
     vi.restoreAllMocks();
   });
 
-  async function compartilharComShareQueRejeita(erro: Error) {
+  async function compartilhar(share?: () => Promise<void>) {
     Object.defineProperty(globalThis.navigator, "share", {
       configurable: true,
       writable: true,
-      value: vi.fn().mockRejectedValue(erro),
+      value: share,
     });
     const { ProductView } = await import("@/views/customer/ProductView");
     await act(async () => {
@@ -165,6 +165,19 @@ describe("ProductView — compartilhar: só 'cancelou' é silêncio", () => {
     });
   }
 
+  const compartilharComShareQueRejeita = (erro: Error) =>
+    compartilhar(vi.fn().mockRejectedValue(erro));
+
+  it("share nativo funciona: não copia nem mostra aviso", async () => {
+    const share = vi.fn().mockResolvedValue(undefined);
+    await compartilhar(share);
+
+    expect(share).toHaveBeenCalledTimes(1);
+    expect(copiou).not.toHaveBeenCalled();
+    expect(toastMock.success).not.toHaveBeenCalled();
+    expect(toastMock.error).not.toHaveBeenCalled();
+  });
+
   it("share rejeita com NotAllowedError: o link é copiado e a cliente é avisada", async () => {
     await compartilharComShareQueRejeita(erroComNome("NotAllowedError"));
 
@@ -177,16 +190,31 @@ describe("ProductView — compartilhar: só 'cancelou' é silêncio", () => {
     expect(toastMock.error).not.toHaveBeenCalled();
   });
 
-  it("share rejeita com NotAllowedError e a cópia também falha: o aviso de erro existente aparece", async () => {
-    copiou.mockRejectedValue(new Error("bloqueado"));
-    await compartilharComShareQueRejeita(erroComNome("NotAllowedError"));
+  it.each([
+    { cenario: "share indisponível", share: undefined },
+    {
+      cenario: "share rejeita",
+      share: vi.fn().mockRejectedValue(erroComNome("NotAllowedError")),
+    },
+  ])(
+    "$cenario e cópia falha: o aviso mostra o link para copiar à mão",
+    async ({ share }) => {
+      copiou.mockRejectedValue(new Error("bloqueado"));
+      await compartilhar(share);
 
-    expect(toastMock.error).toHaveBeenCalledWith(
-      "Não consegui copiar",
-      expect.anything(),
-    );
-    expect(toastMock.success).not.toHaveBeenCalled();
-  });
+      expect(toastMock.error).toHaveBeenCalledWith(
+        "Não consegui copiar",
+        expect.anything(),
+      );
+      expect(toastMock.success).not.toHaveBeenCalled();
+
+      const { description } = toastMock.error.mock.calls[0][1];
+      await act(async () => {
+        raiz.render(description);
+      });
+      expect(hospedeiro.textContent).toContain(globalThis.location.href);
+    },
+  );
 
   it("share rejeita com AbortError (a cliente cancelou): silêncio, nada é copiado", async () => {
     await compartilharComShareQueRejeita(erroComNome("AbortError"));
