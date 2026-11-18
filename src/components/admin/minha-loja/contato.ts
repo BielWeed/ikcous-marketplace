@@ -5,6 +5,7 @@
 // +55 do Brasil entra sozinho na hora de gravar.
 
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
+import { quemVaiReceberSeForOutro } from "@/lib/quem-vai-receber";
 import { limparTelefoneBrasileiro } from "@/lib/telefone-br";
 import type { Order } from "@/types";
 
@@ -62,6 +63,7 @@ export function normalizarNumeroMototaxi(
 /** Mensagem mínima: só os campos que o painel já mostra para entregar. */
 export function mensagemMototaxi(order: Order, loja: string): string {
   const c = order.customer;
+  const quemRecebe = quemVaiReceberSeForOutro(c.name, c.recipientName);
   const pago =
     ["pago", "pago_apos_expirar", "recebido_na_entrega"].includes(
       order.paymentStatus ?? "",
@@ -89,6 +91,9 @@ export function mensagemMototaxi(order: Order, loja: string): string {
   return [
     `Entrega — Pedido #${numeroDoPedido(order.id)}`,
     `Cliente: ${c.name}`,
+    // Compra para presente/portaria: quem recebe na porta e outra pessoa, e o
+    // mototaxi precisa do nome dela (a ficha do painel ja mostra "Recebe: X").
+    quemRecebe ? `Quem recebe: ${quemRecebe}` : "",
     `Telefone: ${c.whatsapp}`,
     `Endereço: ${[c.address, c.number, c.complement].filter(Boolean).join(", ")}`,
     [

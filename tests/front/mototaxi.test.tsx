@@ -114,6 +114,29 @@ it("leva apenas o necessário, com cobrança na entrega e texto pronto", () => {
     ].join("\n"),
   );
 });
+it("compra para outra pessoa leva o nome de quem recebe, logo depois do cliente", () => {
+  const msg = contato.mensagemMototaxi(
+    {
+      ...pedido,
+      customer: { ...pedido.customer, recipientName: "  Maria   da Silva " },
+    },
+    "Loja",
+  );
+  const linhas = msg.split("\n");
+  expect(linhas[1]).toBe("Cliente: Cliente fictícia");
+  expect(linhas[2]).toBe("Quem recebe: Maria da Silva");
+  expect(linhas[3]).toBe("Telefone: 11912345678");
+});
+it.each([undefined, "", "   ", "cliente FICTÍCIA", "Cliente Ficticia"])(
+  "não repete o comprador nem inventa quem recebe: %j",
+  (recipientName) => {
+    const msg = contato.mensagemMototaxi(
+      { ...pedido, customer: { ...pedido.customer, recipientName } },
+      "Loja",
+    );
+    expect(msg).not.toContain("Quem recebe");
+  },
+);
 it("usa os seis últimos caracteres reconhecidos na ficha, nunca os primeiros", () => {
   const msg = contato.mensagemMototaxi(pedido, "Loja");
   expect(msg.split("\n")[0]).toBe("Entrega — Pedido #3884BE");
