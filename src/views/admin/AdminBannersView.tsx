@@ -3845,8 +3845,8 @@ export const AdminBannersView = memo(function AdminBannersView({
                   Imagem Promocional
                 </div>
                 <p className="text-[11px] text-zinc-400">
-                  Ideal usar proporção horizontal de 2:1 (1200 × 600 px).
-                  Imagens com boa legibilidade aumentam a conversão.
+                  Celular · recomendado 1200 × 600 px (2:1). Computador ·
+                  recomendado 1920 × 480 px (4:1).
                 </p>
               </div>
 
