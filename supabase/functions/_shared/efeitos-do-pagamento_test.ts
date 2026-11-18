@@ -928,6 +928,31 @@ Deno.test("r200-a - guarda do pedido: dentro da janela (23 h) e online ENVIA —
   assertEquals(enviados.length, 1);
 });
 
+Deno.test("r200-a - fronteira da janela: exatamente 24 h envia UM comprovante", async () => {
+  const banco = bancoComReserva({
+    payment_status: "pago",
+    reservado: false,
+    extras: { ...ONLINE_RECENTE, paid_at: "2026-11-11T12:00:00.000Z" },
+  });
+  const enviados: unknown[] = [];
+  await reenviarPago(banco, comprovanteComReserva(async () => { enviados.push(1); }));
+  assertEquals(enviados.length, 1);
+  assertEquals(banco.estado.reservado, true);
+});
+
+Deno.test("r200-a - fronteira da janela: 24 h mais 1 ms não envia comprovante", async () => {
+  const banco = bancoComReserva({
+    payment_status: "pago",
+    reservado: false,
+    extras: { ...ONLINE_RECENTE, paid_at: "2026-11-11T11:59:59.999Z" },
+  });
+  const enviados: unknown[] = [];
+  await reenviarPago(banco, comprovanteComReserva(async () => { enviados.push(1); }));
+  assertEquals(enviados.length, 0);
+  assertEquals(banco.estado.reservado, false);
+  assertEquals(banco.rpcs.length, 0);
+});
+
 Deno.test("r200-a - só 'pago' ganha o ramo novo: aguardando/recusado/expirado/estornado/cancelado/nulo não enviam NADA", async () => {
   for (const status of ["aguardando", "recusado", "expirado", "estornado", "cancelado", "cancelled", "", "recebido_na_entrega"]) {
     const banco = bancoComReserva({ payment_status: status, reservado: false, extras: ONLINE_RECENTE });
