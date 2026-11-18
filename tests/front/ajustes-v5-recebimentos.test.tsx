@@ -221,6 +221,34 @@ it("faixa acompanha a resposta gravada, inclusive quando difere do clique", asyn
   expect(estado.ler).toHaveBeenCalledTimes(3);
 });
 
+it("o campo clicado respeita a resposta confirmada", async () => {
+  estado.ler.mockResolvedValue({
+    ok: true,
+    config: { credito: false, debito: false, parcelasMax: 1 },
+  });
+  estado.salvar.mockResolvedValue({
+    credito: false,
+    debito: false,
+    parcelasMax: 1,
+  });
+  await montar();
+  await clicar("Gerenciar recebimentos");
+  const credito = host.querySelector<HTMLButtonElement>(
+    'button[aria-label="Cartão de crédito pelo app"]',
+  )!;
+  expect(credito.getAttribute("aria-checked")).toBe("false");
+
+  await clicar("Cartão de crédito pelo app");
+
+  expect(estado.salvar).toHaveBeenCalledWith({
+    credito: true,
+    debito: false,
+    parcelasMax: 1,
+  });
+  expect(credito.getAttribute("aria-checked")).toBe("false");
+  expect(resumo().textContent).toContain("Cartão desligado");
+});
+
 it.each([true, false])(
   "o PIX usa seu símbolo decorativo, ligado=%s",
   async (ligado) => {

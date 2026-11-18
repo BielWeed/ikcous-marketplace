@@ -5,6 +5,7 @@
 // apagar. Aqui se prova a TELA e o que ela manda ao banco; quem protege de verdade (RLS, gatilho, ninguém
 // apaga) é provado em tests/banco/pedidos-de-privacidade-viva.cjs.
 import { PrivacidadeDosClientesSection } from "@/components/admin/settings/PrivacidadeDosClientesSection";
+import { prazoFinalDoPedido, prazoVencido } from "@/lib/pedidos-de-privacidade";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -196,6 +197,29 @@ function digitar(campo: HTMLTextAreaElement, valor: string) {
   });
 }
 
+describe("prazo de resposta do pedido de privacidade", () => {
+  it("soma quinze dias completos à data de criação", () => {
+    expect(prazoFinalDoPedido("2026-10-14T12:00:00Z")?.toISOString()).toBe(
+      "2026-10-29T12:00:00.000Z",
+    );
+  });
+
+  it("só vence depois do último milissegundo do prazo", () => {
+    expect(
+      prazoVencido(
+        "2026-10-14T12:00:00Z",
+        new Date("2026-10-29T12:00:00.000Z"),
+      ),
+    ).toBe(false);
+    expect(
+      prazoVencido(
+        "2026-10-14T12:00:00Z",
+        new Date("2026-10-29T12:00:00.001Z"),
+      ),
+    ).toBe(true);
+  });
+});
+
 describe("PrivacidadeDosClientesSection", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
@@ -270,6 +294,17 @@ describe("PrivacidadeDosClientesSection", () => {
     expect(
       hospedeiro.querySelectorAll("li[data-pedido-de-privacidade]"),
     ).toHaveLength(2);
+  });
+
+  it("mostra a data de resposta quinze dias depois do pedido de exclusão", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-14T12:00:00Z"));
+    banco.lista = {
+      data: [pedido({ criado_em: "2026-10-14T12:00:00Z" })],
+      error: null,
+    };
+    await montar();
+    expect(corpo()).toContain("Responder até 29/10/2026");
   });
 
   it("nome que não veio de profiles vira 'Cliente' em vez de sumir o pedido", async () => {
