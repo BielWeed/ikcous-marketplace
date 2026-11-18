@@ -202,12 +202,12 @@ describe("AbaVisao — falha só na fonte dos últimos 30 dias", () => {
     hospedeiro.remove();
   });
 
-  async function montar(versao = 0) {
+  async function montar(versao = 0, inicio = "2026-09-01") {
     await act(async () => {
       raiz.render(
         <AbaVisao
           ativo
-          intervalo={{ inicio: "2026-09-01", fim: "2026-09-27" }}
+          intervalo={{ inicio, fim: "2026-09-27" }}
           hoje="2026-09-27"
           versao={versao}
           contas={[]}
@@ -257,6 +257,21 @@ describe("AbaVisao — falha só na fonte dos últimos 30 dias", () => {
     expect(grafico()?.textContent).toBe("200");
     expect(hospedeiro.textContent).not.toContain(aviso);
     expect(tentar()).toBeUndefined();
+  });
+
+  it("período de 30 dias: a mesma consulta mostra só um alerta e uma nova tentativa", async () => {
+    await montar(0, "2026-08-29");
+    expect(grafico()?.textContent).toBe("100");
+    falhar = true;
+    await montar(1, "2026-08-29");
+
+    expect(grafico()?.textContent).toBe("100");
+    expect(hospedeiro.querySelectorAll('[role="alert"]')).toHaveLength(1);
+    expect(
+      [...hospedeiro.querySelectorAll("button")].filter(
+        (botao) => botao.textContent?.trim() === "Tentar de novo",
+      ),
+    ).toHaveLength(1);
   });
 
   it("sem dados anteriores, mantém o erro no lugar do gráfico", async () => {

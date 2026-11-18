@@ -559,7 +559,7 @@ export function AbaVisao({
       )}
 
       <CartaoSecao titulo="Fluxo de caixa · últimos 30 dias">
-        {fonteDoGrafico.erro ? (
+        {!mesmaJanela && fonteDoGrafico.erro ? (
           <EstadoDeErro
             mensagem={
               fonteDoGrafico.dados
