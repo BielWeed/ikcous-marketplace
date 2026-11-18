@@ -389,6 +389,104 @@ describe("AdminProductFormView — textos, avisos e botões (u179)", () => {
     });
   });
 
+  describe("4b. lucro com preço próprio de variação", () => {
+    // O lucro é pelo MENOR preço vendável (o da vitrine): produto a 100, custo
+    // 60, e a única variação à venda cobra 50 -- a cliente paga 50.
+    const comVariacoes = async (variants: unknown[]) => {
+      fetchProduct.mockResolvedValue({
+        ...produtoDoBanco,
+        price: 100,
+        costPrice: 60,
+        variants,
+      });
+      await montar("prod-1");
+      const caixa = secao("Custo e lucro");
+      const analise = [...caixa.querySelectorAll("p")].find((p) =>
+        p.textContent?.startsWith("Análise do Sistema ·"),
+      ) as HTMLElement;
+      return { caixa, analise };
+    };
+    const preco = (id: string, valor: number | null, extra = {}) => ({
+      ...variacao(id, id, true),
+      priceOverride: valor,
+      ...extra,
+    });
+
+    it("única opção com preço próprio menor que o custo é prejuízo, e não 'Lucro bom'", async () => {
+      const { caixa, analise } = await comVariacoes([preco("P", 50)]);
+      expect(analise.textContent).toContain("Prejuízo");
+      expect(analise.textContent).not.toContain("Lucro bom");
+      expect(caixa.textContent).toContain("-R$");
+      expect(caixa.textContent).toContain("-20,0%");
+      // Um só preço à venda: o lucro é um só, o texto de sempre.
+      expect(caixa.textContent).toContain("Lucro por unidade");
+    });
+
+    it("preço próprio maior que o base, ao lado de uma opção sem preço próprio: usa o base", async () => {
+      const { caixa, analise } = await comVariacoes([
+        preco("P", 150),
+        preco("M", null),
+      ]);
+      expect(analise.textContent).toContain("Lucro bom");
+      expect(caixa.textContent).toContain("40,0%");
+      expect(caixa.textContent).toContain("Menor lucro por unidade");
+    });
+
+    it("única opção com preço próprio maior que o base: a cliente paga esse preço", async () => {
+      const { caixa } = await comVariacoes([preco("P", 150)]);
+      expect(caixa.textContent).toContain("60,0%");
+    });
+
+    it("duas opções à venda: vale o menor preço entre elas", async () => {
+      const { caixa, analise } = await comVariacoes([
+        preco("P", 50),
+        preco("M", null),
+      ]);
+      expect(analise.textContent).toContain("Prejuízo");
+      expect(caixa.textContent).toContain("Menor lucro por unidade");
+    });
+
+    it("preço próprio igual ao base: números e texto de sempre", async () => {
+      const { caixa, analise } = await comVariacoes([preco("P", 100)]);
+      expect(analise.textContent).toContain("Lucro bom");
+      expect(caixa.textContent).toContain("Lucro por unidade");
+      expect(caixa.textContent).not.toContain("Menor lucro");
+    });
+
+    it("variação inativa não entra na conta", async () => {
+      const { caixa, analise } = await comVariacoes([
+        preco("P", 50, { active: false }),
+        preco("M", null),
+      ]);
+      expect(analise.textContent).toContain("Lucro bom");
+      expect(caixa.textContent).not.toContain("Menor lucro");
+    });
+
+    it("variação esgotada não entra na conta", async () => {
+      const { caixa, analise } = await comVariacoes([
+        preco("P", 50, { stockIncrement: 0, stock: 0 }),
+        preco("M", null),
+      ]);
+      expect(analise.textContent).toContain("Lucro bom");
+      expect(caixa.textContent).not.toContain("Menor lucro");
+    });
+
+    it("tudo esgotado: sem opção à venda, vale o preço-base", async () => {
+      const { caixa, analise } = await comVariacoes([
+        preco("P", 50, { stockIncrement: 0, stock: 0 }),
+      ]);
+      expect(analise.textContent).toContain("Lucro bom");
+      expect(caixa.textContent).toContain("40,0%");
+      expect(caixa.textContent).not.toContain("Menor lucro");
+    });
+
+    it("preço próprio zero é o preço cobrado (brinde): prejuízo, não herda o base", async () => {
+      const { caixa, analise } = await comVariacoes([preco("P", 0)]);
+      expect(analise.textContent).toContain("Prejuízo");
+      expect(caixa.textContent).toContain("-R$");
+    });
+  });
+
   describe("5. aviso 'Excluir variante?'", () => {
     it("botão vermelho de classe existente, 44 px de toque e título em caixa normal", async () => {
       fetchProduct.mockResolvedValue({

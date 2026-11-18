@@ -4013,10 +4013,23 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     originalPrice: originalPriceVal || null,
     variants: formData.variants,
   });
+  // O lucro é pelo MENOR preço que a cliente paga (o da vitrine), não pelo
+  // preço-base: variação com preço próprio menor muda o lucro. Preço próprio
+  // zero é preço cobrado (brinde), como no servidor. Sem opção à venda (tudo
+  // esgotado ou desligado) vale o preço-base, como antes.
+  const temOpcaoAVenda = formData.variants.some(
+    (v) => v.active && (v.stockIncrement ?? 0) > 0,
+  );
+  const precoDoLucro = temOpcaoAVenda ? vitrine.preco : priceVal;
+  const lucroUnit = precoDoLucro - costPriceVal;
+  const rotuloDoLucro =
+    temOpcaoAVenda && vitrine.aPartirDe ? "Menor lucro" : "Lucro";
   const marginPct =
-    priceVal > 0
-      ? Math.round(((priceVal - costPriceVal) / priceVal) * 10000) / 100
-      : 0;
+    precoDoLucro > 0
+      ? Math.round((lucroUnit / precoDoLucro) * 10000) / 100
+      : lucroUnit < 0
+        ? -100
+        : 0;
   // Quatro rótulos em palavras simples: prejuízo, sem lucro, lucro baixo
   // (< 30%) e lucro bom.
   const [analiseDoLucro, corDoLucro] =
@@ -5861,7 +5874,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   aviso={avisoDeCusto}
                   resumo={
                     priceVal > 0 && costPriceVal > 0
-                      ? `Lucro ${formatCurrency(priceVal - costPriceVal)} · margem ${percentualComUmaCasa(marginPct)}`
+                      ? `${rotuloDoLucro} ${formatCurrency(lucroUnit)} · margem ${percentualComUmaCasa(marginPct)}`
                       : "opcional"
                   }
                   temErro={!!costError && !costError.startsWith("Aviso")}
@@ -6011,10 +6024,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         >
                           <div>
                             <p className="text-xs text-zinc-400">
-                              Lucro por unidade
+                              {rotuloDoLucro} por unidade
                             </p>
                             <p className="mt-1 text-xl font-bold tabular-nums">
-                              {formatCurrency(priceVal - costPriceVal)}
+                              {formatCurrency(lucroUnit)}
                             </p>
                           </div>
                           <div className="text-right">
