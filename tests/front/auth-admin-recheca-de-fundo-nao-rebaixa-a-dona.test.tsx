@@ -336,6 +336,26 @@ describe("AuthContext — recheca de fundo não rebaixa a dona confirmada", () =
     expect(localStorage.getItem("ikcous_is_admin_dona")).toBe("false");
   });
 
+  it.each([
+    { role: "admin", esperado: "admin" },
+    { role: "vendedor", esperado: "not-admin" },
+    { role: "gerente", esperado: "not-admin" },
+  ])(
+    "plano B em profiles: $role resulta em $esperado",
+    async ({ role, esperado }) => {
+      const ctx = await montar();
+      vi.useFakeTimers();
+      profilesResponde({ data: { role }, error: null });
+
+      await disparar(ctx, "SIGNED_IN", "primeira-vez");
+      ctx.fila[0].resolve({ data: null, error: { message: "rpc fora do ar" } });
+      await avancar(0);
+
+      expect(ultimoEstado(ctx.aoAtualizar)?.adminStatus).toBe(esperado);
+      expect(ultimoEstado(ctx.aoAtualizar)?.isAdmin).toBe(role === "admin");
+    },
+  );
+
   it("7. depois de uma recheca engasgada, o 'não' real da recheca seguinte ainda rebaixa", async () => {
     const ctx = await entrarComoDona();
     vi.useFakeTimers();

@@ -203,6 +203,33 @@ describe("Retomada do CPF pendente — nova aba, sem estado em memória", () => 
     expect(armazem.getItem(CHAVE_PENDENTE)).toBeNull();
   });
 
+  it("retomada com falha de rede: orienta informar o CPF em Segurança e conta", async () => {
+    gravarPendente(armazem);
+    const { supabase } = await montarProvider();
+    const { toast } = await import("sonner");
+    vi.mocked(supabase.rpc).mockImplementation(
+      (nome) =>
+        pedidoCpfComCabecalho(
+          nome === "set_my_cpf"
+            ? Promise.reject(new TypeError("Failed to fetch"))
+            : Promise.resolve({ data: null, error: null }),
+        ) as never,
+    );
+
+    await act(async () => {
+      callbackDoListener!("SIGNED_IN", sessaoFake(USER_ID, EMAIL));
+      await esperarMicrotarefas();
+      await esperarMicrotarefas();
+    });
+
+    expect(supabase.rpc).toHaveBeenCalledWith("set_my_cpf", {
+      p_cpf: CPF_DIGITOS,
+    });
+    expect(toast.error).toHaveBeenCalledWith(
+      "Não foi possível salvar o CPF do cadastro. Informe-o em Perfil > Segurança e conta.",
+    );
+  });
+
   it("SIGNED_IN + INITIAL_SESSION duplicados (mesmo usuário): só UMA chamada set_my_cpf", async () => {
     gravarPendente(armazem);
     const { supabase } = await montarProvider();
