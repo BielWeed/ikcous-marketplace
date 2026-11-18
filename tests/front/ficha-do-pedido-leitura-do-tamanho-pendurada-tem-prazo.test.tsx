@@ -38,6 +38,7 @@ vi.mock("@/lib/supabase", () => {
     const builder: Record<string, unknown> = {};
     builder.select = vi.fn(() => builder);
     builder.eq = vi.fn(() => builder);
+    builder.abortSignal = vi.fn(() => builder);
     builder.in = vi.fn((_coluna: string, ids: string[]) => {
       // O estado do banco é fotografado na hora da chamada: uma resposta
       // tardia leva o que o banco dizia quando ela partiu.

@@ -182,6 +182,7 @@ function ehSelectDaFichaAvulsa(colunas: unknown): boolean {
 function builderPedidoUnico(linha: unknown) {
   const builder: any = {};
   let ehFichaAvulsa = false;
+  builder.abortSignal = vi.fn(() => builder);
   builder.select = vi.fn((colunas: unknown) => {
     ehFichaAvulsa = ehSelectDaFichaAvulsa(colunas);
     return builder;

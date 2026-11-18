@@ -17,6 +17,9 @@ vi.mock("@/lib/supabase", () => ({
     from: (tabela: string) => ({
       select: () => ({
         eq: () => ({
+          abortSignal() {
+            return this;
+          },
           maybeSingle: async () => {
             if (estado.leituraPendurada) return new Promise<never>(() => {});
             return {
