@@ -95,7 +95,8 @@ function ConteudoDoTooltip({
           Saídas
         </span>
         <span className="font-bold tabular-nums text-red-300">
-          −{valor(ponto.saidas)}
+          {ponto.saidas > 0 ? "−" : ""}
+          {valor(ponto.saidas)}
         </span>
       </p>
       <p className="flex justify-between gap-4 border-t border-admin-border pt-1.5 text-zinc-400">
