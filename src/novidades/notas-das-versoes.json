@@ -1,4 +1,27 @@
 {
+  "1.5.213": {
+    "titulo": "Pedidos mais claros, endereços e painel mais fáceis de usar",
+    "novidades": [],
+    "correcoes": [
+      "Painel, pedidos: o botão Voltar fecha os filtros antes de sair da lista. Se uma contagem do topo falhar enquanto a tela estiver visível, a consulta é repetida até três vezes.",
+      "Painel, pedidos: a anotação interna avisa se demorar para carregar e pede que a lojista confira a versão mais recente se outra pessoa tiver alterado a anotação antes de salvar.",
+      "Painel, devoluções e cupons: se a consulta de devoluções do pedido ou a busca de clientes para um cupom falhar ou demorar, aparece a opção de tentar de novo.",
+      "Painel, reembolsos: se o Mercado Pago informar que já devolveu um valor, o aviso orienta a não pagar de novo; se não der para confirmar se o dinheiro saiu, orienta a conferir antes de devolver por fora.",
+      "Painel, recibos: o papel mostra a forma e a situação do pagamento, incluindo o valor quando ainda há cobrança na entrega ou na retirada; a venda já paga no balcão não sai com ordem de cobrar.",
+      "Painel, banners e produtos: Voltar fecha o recorte sem fechar a edição do banner; ao sair do formulário de produto, o rascunho pendente é salvo e o envio de fotos em andamento é interrompido.",
+      "Painel, catálogo, clientes e financeiro: a planilha avisa se não há produtos para exportar, a taxa de recompra fica sem valor quando não há compradores, as médias calculadas na tela são arredondadas em centavos e as linhas de referência do fluxo de caixa ficam mais visíveis no tema claro.",
+      "Entrada: a lojista pode pedir a recuperação de senha na entrada do painel e volta ao painel se a conta tiver acesso; a espera para reenviar os e-mails de recuperação e confirmação passa a valer por endereço de e-mail.",
+      "Conta e endereços: uma resposta atrasada ao salvar não apaga um CPF mais recente que a pessoa digitou; a lista mostra a referência quando ela foi preenchida.",
+      "Endereço e compra: ao trocar um CEP completo por outro, número e complemento do endereço anterior são limpos; numa entrega sem conta, finalizar espera a busca do CEP atual.",
+      "Checkout: a cliente recebe um aviso mais claro se um item ou uma opção do carrinho não estiver mais disponível; se o navegador bloquear o armazenamento da sessão, ainda dá para mexer no carrinho.",
+      "Checkout, retirada e cartão: a retirada pede que se aguarde a confirmação da loja e mostra o endereço quando disponível; ao terminar a verificação do cartão, o foco vai para o título do resultado.",
+      "Frete: ao abrir as opções pelo resumo, o foco vai para a opção selecionada ou para a primeira disponível.",
+      "Pedidos e WhatsApp: um código de rastreio só de símbolos não é aceito no painel nem vira link para a cliente; os campos de celular que validam o WhatsApp também rejeitam DDD inexistente.",
+      "Meus pedidos: ao abrir outro pedido, a ficha anterior não reaparece por causa de uma resposta atrasada.",
+      "Vitrine e conta: o menu de ordenação fecha quando o foco sai dele com a tecla Tab; quando compartilhar e copiar falham, o link do produto aparece para cópia manual. Busca, conta, aviso de entrada e textos de produto e frete ganham contraste."
+    ],
+    "melhorias": []
+  },
   "1.5.212": {
     "titulo": "Textos de dinheiro mais honestos, painel e conta mais fáceis de usar",
     "novidades": [],
