@@ -648,9 +648,13 @@ Deno.test("F5 - fluxo feliz conclui via RPC e responde {status, valor, texto} se
     // MP duas vezes; apagar esta linha da edge derruba esta asserção. Desde a
     // defesa em profundidade de 29/09, a marca também EXCLUI linha de sistema
     // (.neq do cron — se o gate 2b for pulado num dia, a marca devolve 0).
+    // E o `.eq('tentativas', lido)` (CAS, 18/11/2026): o `.in` de status sozinho
+    // NÃO fecha a corrida, porque a própria marca grava em_processamento — ver
+    // o teste CAS-1 no fim deste arquivo.
     assertEquals(registro.marcas[0].filtros, [
         { metodo: "eq", coluna: "id", valor: REFUND_ID },
         { metodo: "in", coluna: "status", valores: ["solicitado", "em_processamento"] },
+        { metodo: "eq", coluna: "tentativas", valor: 0 },
         { metodo: "neq", coluna: "solicitado_por", valor: "sistema" },
     ])
     // E a conclusão é ATÔMICA pela RPC (a edge não soma valor_estornado na mão).
@@ -918,6 +922,8 @@ Deno.test("F9 - segunda chamada que perde a marca responde 409 e o MP so' e' cha
     assertEquals(registro.marcas[1].filtros, [
         { metodo: "eq", coluna: "id", valor: REFUND_ID },
         { metodo: "in", coluna: "status", valores: ["solicitado", "em_processamento"] },
+        // CAS (18/11/2026): só vence a marca que ainda vê o `tentativas` que leu.
+        { metodo: "eq", coluna: "tentativas", valor: 0 },
         // Defesa em profundidade de 29/09: a marca também exclui sistema.
         { metodo: "neq", coluna: "solicitado_por", valor: "sistema" },
     ])
@@ -1889,6 +1895,244 @@ Deno.test("RE5 (M1) - o MP responde 500 à consulta: 200 indeterminado, o banco 
     assertEquals(resposta.status, 200)
     assertEquals((await resposta.json()).resultado, "indeterminado")
     assertEquals(registro.reemissoes.length, 0)
+})
+
+// ── CAS da MARCA (18/11/2026) ───────────────────────────────────────────────
+// A marca grava `em_processamento` e filtra `status IN ('solicitado',
+// 'em_processamento')`: a SEGUNDA requisição simultânea também casa com esse
+// filtro (a primeira acabou de deixar a linha em_processamento) e devolvia 1
+// linha. Só o `.eq('tentativas', <lido>)` fecha a janela: duas requisições que
+// leram o MESMO valor disputam um UPDATE condicional e o banco deixa passar UMA.
+//
+// O dublê abaixo tem ESTADO (a linha vive na memória) e avalia os filtros do
+// UPDATE de verdade, de forma atômica como o Postgres faz — o clienteSupaFalso
+// acima devolve o que se configurou e por isso não consegue provar corrida.
+// De propósito, a RPC concluir_estorno NÃO muda o estado aqui: o que se mede é a
+// MARCA com o vencedor ainda em voo (depois que ele termina, o filtro de status
+// já recusava o segundo, e o teste passaria sem a correção).
+function clienteSupaComEstado(opts: {
+    linha: any
+    pedido: any
+    // Barreira: a leitura da linha só devolve quando N requisições já leram —
+    // garante que todas viram o MESMO retrato antes de qualquer marca.
+    leitoresSimultaneos?: number
+    // Roda logo depois de uma leitura da linha: outro executor (cron) mexendo
+    // no meio, entre o carregamento e a marca.
+    depoisDaLeitura?: (estado: any) => void
+}) {
+    const estado: any = { ...opts.linha }
+    const registro = {
+        leituras: [] as any[],
+        updates: [] as Array<{ valores: any; filtros: any[]; casou: boolean }>,
+        rpcs: [] as any[],
+    }
+    let chegadas = 0
+    let liberar: () => void = () => {}
+    const barreira = new Promise<void>((resolve) => {
+        liberar = resolve
+    })
+    let socorro: number | undefined
+    const casa = (filtros: any[]) =>
+        filtros.every((f) => {
+            const atual = estado[f.coluna]
+            if (f.metodo === "eq") return atual === f.valor
+            if (f.metodo === "neq") return atual !== f.valor
+            if (f.metodo === "in") return f.valores.includes(atual)
+            if (f.metodo === "is") return f.valor === null ? atual == null : atual === f.valor
+            return true
+        })
+    const promessa = (valor: any) => Promise.resolve(valor)
+    const cliente: any = {
+        rpc(nome: string, args?: any) {
+            if (nome === "autorizar_post_do_estorno") {
+                return promessa({ data: { decisao: "autorizado", pedido: opts.pedido }, error: null })
+            }
+            if (nome === "registrar_diagnostico_do_estorno") {
+                return promessa({ data: { transitorios: 1, post_incerto: false, mp_codigo: null }, error: null })
+            }
+            registro.rpcs.push({ nome, args })
+            return promessa({ data: { concluido: true }, error: null })
+        },
+        from(tabela: string) {
+            const no: any = { tabela, acao: null, valores: null, filtros: [] as any[] }
+            const api: any = {
+                select: () => api,
+                update(valores: any) {
+                    no.acao = "update"
+                    no.valores = valores
+                    return api
+                },
+                eq(coluna: string, valor: any) {
+                    no.filtros.push({ metodo: "eq", coluna, valor })
+                    return api
+                },
+                neq(coluna: string, valor: any) {
+                    no.filtros.push({ metodo: "neq", coluna, valor })
+                    return api
+                },
+                not(coluna: string, op: string, valor: any) {
+                    no.filtros.push({ metodo: "not", coluna, op, valor })
+                    return api
+                },
+                in(coluna: string, valores: any) {
+                    no.filtros.push({ metodo: "in", coluna, valores })
+                    return api
+                },
+                is(coluna: string, valor: any) {
+                    no.filtros.push({ metodo: "is", coluna, valor })
+                    return api
+                },
+                maybeSingle: () => api,
+                single: () => api,
+                then(resolveu: any, rejeitou: any) {
+                    return resolver(no).then(resolveu, rejeitou)
+                },
+            }
+            return api
+        },
+    }
+    async function resolver(no: any) {
+        if (no.tabela === "app_settings") return { data: null, error: null }
+        if (no.tabela === "marketplace_orders") return { data: opts.pedido, error: null }
+        if (no.tabela !== "order_refunds") return { data: null, error: null }
+        if (no.acao === "update") {
+            // O UPDATE condicional INTEIRO é decidido e aplicado de uma vez, sem
+            // `await` no meio: é a atomicidade da linha no Postgres.
+            const casou = casa(no.filtros)
+            registro.updates.push({ valores: no.valores, filtros: [...no.filtros], casou })
+            if (!casou) return { data: [], error: null }
+            Object.assign(estado, Object.fromEntries(Object.entries(no.valores).filter(([, v]) => v !== undefined)))
+            return { data: [{ id: estado.id }], error: null }
+        }
+        if (no.filtros.some((f: any) => f.metodo === "not")) return { data: [], error: null }
+        // Leitura da linha: o retrato é tirado na CHEGADA, a resposta só sai
+        // depois da barreira — como uma resposta de rede que demora.
+        const retrato = { ...estado }
+        registro.leituras.push(retrato)
+        chegadas++
+        const n = opts.leitoresSimultaneos ?? 0
+        if (n > 0 && chegadas <= n) {
+            if (chegadas === n) {
+                if (socorro !== undefined) clearTimeout(socorro)
+                liberar()
+            } else {
+                // Rede de segurança: se o outro leitor nunca chegar, o teste
+                // falha por asserção em vez de pendurar.
+                socorro = setTimeout(liberar, 3000)
+            }
+            await barreira
+        }
+        opts.depoisDaLeitura?.(estado)
+        return { data: retrato, error: null }
+    }
+    return { cliente, registro, estado }
+}
+
+const executorQueConclui = () =>
+    executorFalso(
+        { tipo: "concluido", mp_refund_id: "111222333", mp_status: "approved", mp_status_detail: null, valor: 100 },
+        { chamarMp: true },
+    )
+
+Deno.test("CAS-1 - dois cliques que leram o MESMO `tentativas` (duplo clique / duas abas): só UM marca e chama o MP, o outro recebe 409 estorno_em_execucao", async () => {
+    const { cliente, registro, estado } = clienteSupaComEstado({
+        linha: LINHA_SOLICITADA,
+        pedido: PEDIDO_PAGO,
+        leitoresSimultaneos: 2,
+    })
+    const executor = executorQueConclui()
+    const mp = fetchMpFalso()
+    const deps = { supabase: cliente, executarEstorno: executor.fn, buscar: mp.buscar }
+    const [a, b] = await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () =>
+            Promise.all([
+                handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), deps),
+                handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), deps),
+            ]),
+        ),
+    )
+    // A janela estava ABERTA: as duas requisições leram solicitado/0.
+    assertEquals(registro.leituras.slice(0, 2).map((l: any) => [l.status, l.tentativas]), [
+        ["solicitado", 0],
+        ["solicitado", 0],
+    ])
+    // Uma conclui, a outra recebe o 409 que o cabeçalho da edge promete.
+    assertEquals([a.status, b.status].sort(), [200, 409])
+    const perdedora = a.status === 409 ? a : b
+    assertEquals(await perdedora.json(), { erro: "estorno_em_execucao" })
+    // O que importa: UM POST ao MP, UM executor, UMA conclusão.
+    assertEquals(mp.registro.chamadas, 1)
+    assertEquals(executor.registro.chamadas.length, 1)
+    assertEquals(registro.rpcs.filter((r: any) => r.nome === "concluir_estorno").length, 1)
+    // As duas marcas foram tentadas e uma só venceu; a contagem subiu UMA vez.
+    const marcas = registro.updates.filter((u: any) => u.valores?.status === "em_processamento")
+    assertEquals(marcas.map((m: any) => m.casou).sort(), [false, true])
+    assertEquals(estado.tentativas, 1)
+})
+
+Deno.test("CAS-2 - o cron mexeu na linha ENTRE a leitura do clique e a marca: o clique recebe 409, ZERO POST, e não sobrescreve a contagem do cron", async () => {
+    const { cliente, estado } = clienteSupaComEstado({
+        linha: LINHA_SOLICITADA,
+        pedido: PEDIDO_PAGO,
+        // O cron marcou DUAS vezes (2 ciclos) enquanto a resposta da leitura
+        // do clique estava em voo: tentativas 0 -> 2, status em_processamento.
+        depoisDaLeitura: (e) => {
+            e.status = "em_processamento"
+            e.tentativas = 2
+        },
+    })
+    const executor = executorQueConclui()
+    const mp = fetchMpFalso()
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), {
+                supabase: cliente,
+                executarEstorno: executor.fn,
+                buscar: mp.buscar,
+            }),
+        ),
+    )
+    assertEquals(resposta.status, 409)
+    assertEquals(await resposta.json(), { erro: "estorno_em_execucao" })
+    assertEquals(mp.registro.chamadas, 0)
+    assertEquals(executor.registro.chamadas.length, 0)
+    assertEquals(estado.tentativas, 2, "a contagem do cron fica intacta")
+})
+
+Deno.test("CAS-3 (controle) - clique ÚNICO numa linha em_processamento com tentativas 1 (o reenvio legítimo): a marca passa, tentativas vai a 2, 1 POST", async () => {
+    const { cliente, registro, estado } = clienteSupaComEstado({ linha: LINHA_JA_ENVIADA, pedido: PEDIDO_DE_200 })
+    const mp = mpQueVigiaOPost([{ status: 200, corpo: MP_SEM_REEMBOLSO }], { postProibido: false })
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), { supabase: cliente, buscar: mp.buscar }),
+        ),
+    )
+    assertEquals(resposta.status, 200)
+    assertEquals(mp.registro.chamadas.map((c) => c.metodo), ["GET", "POST"])
+    const marca = registro.updates.find((u: any) => u.valores?.status === "em_processamento")
+    assertEquals(marca?.casou, true)
+    assertEquals(estado.tentativas, 2)
+})
+
+Deno.test("CAS-4 (controle) - o DESFAZER do pré-voo inconclusivo continua casando com o valor que a marca CAS gravou: tentativas volta a 1", async () => {
+    const { cliente, registro, estado } = clienteSupaComEstado({
+        linha: LINHA_PAROU_ANTES_DO_POST,
+        pedido: PEDIDO_DE_200,
+    })
+    const mp = mpQueVigiaOPost([{ status: 500, corpo: {} }], { postProibido: true })
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), { supabase: cliente, buscar: mp.buscar }),
+        ),
+    )
+    assertEquals(resposta.status, 202)
+    assertEquals(mp.registro.violacoes, [])
+    const desfazer = registro.updates.find(
+        (u: any) => u.valores && "tentativas" in u.valores && !("status" in u.valores),
+    )
+    assertEquals(desfazer?.casou, true, "o UPDATE do desfazer casou com a marca CAS (tentativas 2)")
+    assertEquals(estado.tentativas, 1)
+    assertEquals(estado.status, "em_processamento")
 })
 
 // ── Corpo que não é um objeto JSON: 400 em JSON, com CORS, antes de tudo ───
