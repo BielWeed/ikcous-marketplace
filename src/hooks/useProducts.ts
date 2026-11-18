@@ -33,6 +33,10 @@ import {
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import { redimensionarImagem } from "@/lib/redimensiona-imagem";
+import {
+  criarReligadorDaFila,
+  paradasPelaRede,
+} from "@/lib/religar-fila-offline";
 import { sessaoAindaEhDoDono } from "@/lib/sessao-ainda-e-do-dono";
 import { supabase } from "@/lib/supabase";
 import {
@@ -232,7 +236,10 @@ const ouvintesDaSincronizacao = new Set<(userId: string) => void>();
  */
 const filasEmSincronizacao = new Map<string, { desde: number }>();
 
-async function syncOfflineUpdates(userId: string): Promise<boolean> {
+async function syncOfflineUpdates(
+  userId: string,
+  silenciosa = false,
+): Promise<boolean> {
   const emCurso = filasEmSincronizacao.get(userId);
   if (emCurso && Date.now() - emCurso.desde < PRAZO_DA_TRAVA_DA_FILA_MS) {
     return false;
@@ -243,7 +250,7 @@ async function syncOfflineUpdates(userId: string): Promise<boolean> {
     return await comTravaEntreAbas(
       `ikcous-fila-produtos:${userId}`,
       false,
-      () => sincronizarFilaDoUsuario(userId),
+      () => sincronizarFilaDoUsuario(userId, silenciosa),
       PRAZO_DA_TRAVA_DA_FILA_MS,
     );
   } finally {
@@ -254,9 +261,15 @@ async function syncOfflineUpdates(userId: string): Promise<boolean> {
   }
 }
 
-async function sincronizarFilaDoUsuario(userId: string): Promise<boolean> {
-  if (typeof window === "undefined" || !navigator.onLine) return false;
+async function sincronizarFilaDoUsuario(
+  userId: string,
+  // Retentativa por renovação do token (`criarReligadorDaFila`): não pisca o
+  // "Sincronizando…" a cada tentativa. O resultado (sucesso/falha) é avisado.
+  silenciosa = false,
+): Promise<boolean> {
   const chaveDaFila = chaveDoUsuario(CHAVE_BASE_DA_FILA_DE_PRODUTOS, userId);
+  paradasPelaRede.delete(chaveDaFila);
+  if (typeof window === "undefined" || !navigator.onLine) return false;
   const queueStr = localStorage.getItem(chaveDaFila);
   if (!queueStr) return false;
 
@@ -296,11 +309,13 @@ async function sincronizarFilaDoUsuario(userId: string): Promise<boolean> {
     let syncedCount = 0;
     let interrompida = false;
     let naoTentados: any[] = [];
-    const toastId = toast.loading(
-      queue.length === 1
-        ? "Sincronizando 1 atualização pendente offline..."
-        : `Sincronizando ${queue.length} atualizações pendentes offline...`,
-    );
+    const toastId = silenciosa
+      ? undefined
+      : toast.loading(
+          queue.length === 1
+            ? "Sincronizando 1 atualização pendente offline..."
+            : `Sincronizando ${queue.length} atualizações pendentes offline...`,
+        );
 
     for (const [indice, item] of queue.entries()) {
       const { id, updates } = item;
@@ -327,7 +342,11 @@ async function sincronizarFilaDoUsuario(userId: string): Promise<boolean> {
       // no meio (tablet de balcão). Se já não é a dele, o envio NÃO sai: o
       // resto fica na fila dele (entra na fila final abaixo, sem contar como
       // falha) e nada é gravado em outra chave.
-      if (!(await sessaoAindaEhDoDono(userId))) {
+      if (
+        !(await sessaoAindaEhDoDono(userId, () =>
+          paradasPelaRede.add(chaveDaFila),
+        ))
+      ) {
         interrompida = true;
         naoTentados = queue.slice(indice);
         break;
@@ -470,8 +489,10 @@ async function sincronizarFilaDoUsuario(userId: string): Promise<boolean> {
     }
     if (interrompida) {
       // A sessão trocou no meio: sem toast de sucesso nem de falha — a
-      // passada não terminou e o dono a refaz quando voltar.
-      toast.dismiss(toastId);
+      // passada não terminou e o dono a refaz quando voltar. (Se foi a rede
+      // que impediu a renovação do token, o efeito do hook refaz sozinho
+      // quando a sessão voltar.) `dismiss()` sem id apagaria TODOS os avisos.
+      if (toastId !== undefined) toast.dismiss(toastId);
       if (discarded.length > 0) {
         toast.warning(
           `${discarded.length} ${discarded.length === 1 ? "alteração feita sem internet foi descartada" : "alterações feitas sem internet foram descartadas"} porque o produto não aceita esses valores (por exemplo, preço ou estoque inválido). Confira o produto.`,
@@ -490,7 +511,7 @@ async function sincronizarFilaDoUsuario(userId: string): Promise<boolean> {
       }
       if (syncedCount > 0) clearAnalyticsCache();
       if (discarded.length > 0 || conflitos > 0) {
-        toast.dismiss(toastId);
+        if (toastId !== undefined) toast.dismiss(toastId);
       } else {
         toast.success(
           "Todas as atualizações pendentes foram sincronizadas com sucesso!",
@@ -1520,10 +1541,17 @@ export function useProducts({
     // isto ele disparava DEPOIS da saída, contra uma sessão que já não é a
     // dona da fila.
     const timersPendentes = new Set<ReturnType<typeof setTimeout>>();
-    const handleOnlineSync = () => {
+    // Token vencido na volta da rede: a passada para por erro de REDE ao ler a
+    // sessão e nada a refaria (o supabase-js só renova ~1 min depois). O
+    // religador espera o aviso de sessão renovada do MESMO usuário e agenda
+    // uma passada silenciosa -- só quando a passada parou por rede.
+    const chaveDaFila = chaveDoUsuario(CHAVE_BASE_DA_FILA_DE_PRODUTOS, userId);
+    const religador = criarReligadorDaFila(userId, () => agendarPassada(true));
+    const agendarPassada = (silenciosa: boolean) => {
       const timer = setTimeout(() => {
         timersPendentes.delete(timer);
-        syncOfflineUpdates(userId).then((synced) => {
+        syncOfflineUpdates(userId, silenciosa).then((synced) => {
+          religador.aoFimDaPassada(paradasPelaRede.has(chaveDaFila));
           if (synced) {
             const versoes = new Map(versoesAposSincronizar);
             versoesAposSincronizar.clear();
@@ -1547,6 +1575,7 @@ export function useProducts({
       }, 1000);
       timersPendentes.add(timer);
     };
+    const handleOnlineSync = () => agendarPassada(false);
 
     window.addEventListener("online", handleOnlineSync);
     if (navigator.onLine) {
@@ -1554,6 +1583,7 @@ export function useProducts({
     }
     return () => {
       window.removeEventListener("online", handleOnlineSync);
+      religador.encerrar();
       for (const timer of timersPendentes) clearTimeout(timer);
       timersPendentes.clear();
     };
