@@ -39,7 +39,8 @@ import {
   idadeDoPedidoPendente,
 } from "@/lib/idade-do-pedido-pendente";
 import {
-  linkDeRastreio,
+  codigoDeRastreioTemLetraOuDigito,
+  linkDeRastreioDeCodigoValido,
   normalizarCodigoDeRastreio,
 } from "@/lib/link-de-rastreio";
 import { nomeOuReserva } from "@/lib/nome-visivel";
@@ -1429,9 +1430,9 @@ function OrderLogisticsCard({
             <Copy className="size-4" />
           )}
         </button>
-        {linkDeRastreio(localTrackingCode) && (
+        {linkDeRastreioDeCodigoValido(localTrackingCode) && (
           <a
-            href={linkDeRastreio(localTrackingCode)}
+            href={linkDeRastreioDeCodigoValido(localTrackingCode)}
             target="_blank"
             rel="noopener noreferrer"
             className="flex size-10 items-center justify-center rounded-xl text-zinc-300 transition-colors hover:bg-white/5 hover:text-white"
@@ -2215,6 +2216,12 @@ export const OrderDetail = memo(function OrderDetail({
   const handleSaveTracking = async () => {
     const pedidoId = order.id;
     const codigo = normalizarCodigoDeRastreio(trackingValue);
+    if (codigo && !codigoDeRastreioTemLetraOuDigito(codigo)) {
+      toast.error(
+        "O código de rastreio precisa ter pelo menos uma letra ou número.",
+      );
+      return;
+    }
     const salvamento = ++salvamentoRastreioRef.current;
     const vigente = () =>
       orderIdAtualRef.current === pedidoId &&

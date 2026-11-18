@@ -61,6 +61,12 @@ describe("mensagemDoStatusNoWhatsapp", () => {
     }
   });
 
+  it("código legado só com pontuação não acrescenta código nem link à mensagem", () => {
+    expect(
+      mensagemDoStatusNoWhatsapp({ ...base, codigoDeRastreio: ".." }),
+    ).toBe(mensagemDoStatusNoWhatsapp(base));
+  });
+
   it("retirada na loja nunca leva rastreio (ninguém está levando nada)", () => {
     const msg = mensagemDoStatusNoWhatsapp({
       ...base,

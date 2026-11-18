@@ -4,6 +4,7 @@
 // telas passam por ele.
 import {
   linkDeRastreio,
+  linkDeRastreioDeCodigoValido,
   normalizarCodigoDeRastreio,
 } from "@/lib/link-de-rastreio";
 import { describe, expect, it } from "vitest";
@@ -40,6 +41,19 @@ describe("linkDeRastreio", () => {
   it("código vazio ou só espaços não vira link", () => {
     expect(linkDeRastreio("")).toBe("");
     expect(linkDeRastreio("   \n\t ")).toBe("");
+  });
+
+  it.each(["..", " . . ", "/-!?"])(
+    "código só com pontuação (%s) não vira link",
+    (codigo) =>
+      expect(
+        linkDeRastreioDeCodigoValido(normalizarCodigoDeRastreio(codigo)),
+      ).toBe(""),
+  );
+
+  it("permite códigos de transportadoras que não seguem o formato dos Correios", () => {
+    expect(linkDeRastreioDeCodigoValido("42-7")).toBe(`${BASE}42-7`);
+    expect(linkDeRastreioDeCodigoValido("XY-Z")).toBe(`${BASE}XY-Z`);
   });
 
   it("valor ausente (banco devolveu null) não quebra", () => {

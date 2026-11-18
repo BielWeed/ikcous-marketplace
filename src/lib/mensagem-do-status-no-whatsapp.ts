@@ -1,5 +1,5 @@
 import {
-  linkDeRastreio,
+  linkDeRastreioDeCodigoValido,
   normalizarCodigoDeRastreio,
 } from "@/lib/link-de-rastreio";
 import { nomeOuReserva } from "@/lib/nome-visivel";
@@ -65,10 +65,13 @@ export function mensagemDoStatusNoWhatsapp({
   codigoDeRastreio,
 }: DadosDaMensagem): string {
   const codigo = normalizarCodigoDeRastreio(codigoDeRastreio ?? "");
-  const rastreio =
-    status === "shipping" && !retiradaNaLoja && codigo
-      ? `Código de rastreio: ${codigo}\nAcompanhe a entrega: ${linkDeRastreio(codigo)}\n`
+  const link =
+    status === "shipping" && !retiradaNaLoja
+      ? linkDeRastreioDeCodigoValido(codigo)
       : "";
+  const rastreio = link
+    ? `Código de rastreio: ${codigo}\nAcompanhe a entrega: ${link}\n`
+    : "";
   // Pedido cancelado não agradece a compra: avisa e deixa a conversa aberta
   // para a lojista explicar o motivo.
   const fecho =
