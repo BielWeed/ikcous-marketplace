@@ -4,6 +4,23 @@ const LEADER_KEY = "pwa_leader_tab";
 const LEADER_TTL = 5000; // 5s heartbeat
 const TAB_ID = Math.random().toString(36).slice(2, 8);
 
+/**
+ * O batimento guardado vale? `0 <= idade <= TTL`. Idade NEGATIVA é batimento
+ * "do futuro": o relógio da máquina recuou (ajuste de hora, sincronização) e o
+ * valor gravado antes do recuo não prova mais nada — contá-lo como válido
+ * preservava por horas uma líder morta (aba fechada sem `beforeunload`).
+ * A líder viva não é prejudicada: ela regrava o batimento com a hora nova a
+ * cada LEADER_TTL / 2.
+ */
+function batimentoVigente(
+  existente: { ts?: unknown } | null,
+  agora: number,
+): boolean {
+  if (!existente) return false;
+  const idade = agora - (existente.ts as number);
+  return idade >= 0 && idade <= LEADER_TTL;
+}
+
 // Shared BroadcastChannel singleton to prevent multiple instances and closure errors on HMR/re-renders
 const bc =
   typeof window === "undefined" || typeof BroadcastChannel === "undefined"
@@ -121,7 +138,7 @@ export function useLeaderElection() {
     try {
       const existing = JSON.parse(localStorage.getItem(LEADER_KEY) || "null");
       const now = Date.now();
-      if (existing && now - existing.ts <= LEADER_TTL) {
+      if (batimentoVigente(existing, now)) {
         const active = existing.tabId === TAB_ID;
         updateLeadership(active);
         return active;
@@ -144,7 +161,7 @@ export function useLeaderElection() {
               localStorage.getItem(LEADER_KEY) || "null",
             );
             const stillNow = Date.now();
-            if (stillExisting && stillNow - stillExisting.ts <= LEADER_TTL) {
+            if (batimentoVigente(stillExisting, stillNow)) {
               updateLeadership(stillExisting.tabId === TAB_ID);
               return;
             }
