@@ -254,6 +254,73 @@ describe("QuemPodeUsarOCupom — buscar e montar a lista", () => {
     expect(hospedeiro.textContent).not.toContain("Resposta Velha");
   });
 
+  it("trocar ana por bia remove os resultados antigos antes de iniciar a nova busca", async () => {
+    let soltarBia: (v: unknown) => void = () => {};
+    buscarClientes
+      .mockResolvedValueOnce({ clientes: [ANA], total: 1 })
+      .mockImplementationOnce(
+        () =>
+          new Promise((r) => {
+            soltarBia = r;
+          }),
+      );
+    await montar();
+    await digitar("ana");
+    expect(botao("Ana Prova").disabled).toBe(false);
+    await digitar("bia", 0);
+    expect(
+      hospedeiro.querySelector('[aria-label="Clientes encontrados"]'),
+    ).toBeNull();
+    expect(hospedeiro.textContent).toContain("Buscando…");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
+    });
+    expect(
+      hospedeiro.querySelector('[aria-label="Clientes encontrados"]'),
+    ).toBeNull();
+    expect(onClientes).not.toHaveBeenCalled();
+    await act(async () => {
+      soltarBia({
+        clientes: [{ id: "u-bia", full_name: "Bia Prova", email: null }],
+        total: 1,
+      });
+    });
+    await act(async () => botao("Bia Prova").click());
+    expect(onClientes).toHaveBeenCalledWith([
+      { id: "u-bia", nome: "Bia Prova", email: null },
+    ]);
+  });
+
+  it("ignora a resposta de ana durante os 300 ms de espera da busca por bia", async () => {
+    let soltarAna: (v: unknown) => void = () => {};
+    buscarClientes
+      .mockImplementationOnce(
+        () =>
+          new Promise((r) => {
+            soltarAna = r;
+          }),
+      )
+      .mockResolvedValueOnce({
+        clientes: [{ id: "u-bia", full_name: "Bia Prova", email: null }],
+        total: 1,
+      });
+    await montar();
+    await digitar("ana");
+    await digitar("bia", 0);
+    await act(async () => {
+      soltarAna({ clientes: [ANA], total: 1 });
+    });
+    expect(
+      hospedeiro.querySelector('[aria-label="Clientes encontrados"]'),
+    ).toBeNull();
+    expect(hospedeiro.textContent).toContain("Buscando…");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
+    });
+    expect(hospedeiro.textContent).toContain("Bia Prova");
+    expect(hospedeiro.textContent).not.toContain("Ana Prova");
+  });
+
   it("apagar o texto antes da resposta chegar descarta a resposta", async () => {
     let soltar: (v: unknown) => void = () => {};
     buscarClientes.mockImplementationOnce(

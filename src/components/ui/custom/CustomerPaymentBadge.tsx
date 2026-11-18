@@ -40,13 +40,16 @@ const customerPaymentConfig: Record<
   CustomerPaymentEntry
 > = {
   pago: { label: "Pagamento confirmado", tone: "confirmado" },
-  // Diferente de `pago`: o dinheiro entrou DEPOIS que a reserva venceu (ou
-  // depois que o pedido foi cancelado), o estoque já voltou para a
+  // Diferente de `pago`: o dinheiro entrou após a reserva vencer OU após
+  // o cancelamento pelo app, mesmo com o PIX ainda válido. O estoque voltou para a
   // prateleira e o pedido está morto — mas o valor está com a loja. Rastreado
   // no SQL (20260810000000_confirmar_pagamento_guarda_status.sql, ~118-120 e
   // ~173-176): `pago_apos_expirar` SEMPRE vem junto de `status='cancelled'`.
   // Continuar verde e igual a `pago` escondia isso do comprador.
-  pago_apos_expirar: { label: "Pago após o vencimento", tone: "atencao" },
+  pago_apos_expirar: {
+    label: "Pagamento recebido — pedido já encerrado",
+    tone: "atencao",
+  },
   aguardando: { label: "Aguardando pagamento", tone: "aguardando" },
   recusado: { label: "Pagamento recusado", tone: "recusado" },
   expirado: { label: "Pagamento expirado", tone: "expirado" },

@@ -242,7 +242,8 @@ describe("OrderDetailsView — acompanha o pedido ao vivo", () => {
       },
     ]);
 
-    expect(texto()).toContain("Em separação");
+    expect(texto()).toContain("Separado");
+    expect(texto()).not.toContain("Em separação");
   });
 
   it("a linha do realtime sem itens nem endereço não esvazia a tela", async () => {

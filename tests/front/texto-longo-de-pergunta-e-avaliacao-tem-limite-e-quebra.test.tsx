@@ -23,7 +23,8 @@ const pergunta: Question = {
   id: "q-1",
   userId: "u-1",
   productId: "p-1",
-  customerName: "Cliente",
+  customerName: "N".repeat(120),
+  isVerified: true,
   question: "P".repeat(80),
   createdAt: "2026-10-01T09:00:00Z",
   answers: [resposta],
@@ -70,6 +71,28 @@ describe("texto longo de pergunta e avaliação (V5)", () => {
       raiz.unmount();
     });
     hospedeiro.remove();
+  });
+
+  it("ProductQA: nome sem espaços encolhe e preserva selo e data", async () => {
+    const { ProductQA } = await import("@/components/ui/custom/ProductQA");
+    await act(async () => {
+      raiz.render(<ProductQA productId="p-1" />);
+    });
+    const nome = Array.from(hospedeiro.querySelectorAll("span")).find(
+      (el) => el.textContent === pergunta.customerName,
+    )!;
+    expect(nome.classList.contains("truncate")).toBe(true);
+    const coluna = nome.parentElement!.parentElement!;
+    expect(coluna.classList.contains("min-w-0")).toBe(true);
+    const identidade = coluna.parentElement!;
+    expect(identidade.classList.contains("min-w-0")).toBe(true);
+    const selo = Array.from(hospedeiro.querySelectorAll("span")).find(
+      (el) => el.textContent?.trim() === "Comprador",
+    )!;
+    expect(selo.classList.contains("shrink-0")).toBe(true);
+    const data = identidade.parentElement!.lastElementChild!;
+    expect(data.textContent).not.toBe("");
+    expect(data.classList.contains("shrink-0")).toBe(true);
   });
 
   it("ProductQA: o campo da pergunta aceita no máximo 500 caracteres", async () => {

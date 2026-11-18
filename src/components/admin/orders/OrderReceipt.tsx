@@ -141,7 +141,10 @@ export const OrderReceipt = memo(function OrderReceipt({
           <p className="mb-1 border-b border-black font-bold">ITENS:</p>
           <div className="space-y-1">
             {order.items.map((item, i) => (
-              <div key={i} className="flex justify-between">
+              <div
+                key={i}
+                className="flex justify-between print:break-inside-avoid"
+              >
                 <span className="min-w-0 flex-1 break-words">
                   {item.quantity}x {item.name}
                   {item.variantId && variacoes?.[item.variantId] && (
@@ -158,7 +161,7 @@ export const OrderReceipt = memo(function OrderReceipt({
           </div>
         </div>
 
-        <div className="mb-4 border-t border-dashed border-black pt-4">
+        <div className="mb-4 border-t border-dashed border-black pt-4 print:break-inside-avoid">
           <div className="flex justify-between">
             <span>Subtotal</span>
             <span>R$ {reais(order?.subtotal || 0)}</span>

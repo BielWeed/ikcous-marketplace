@@ -194,6 +194,8 @@ describe("AddressForm — campos obrigatórios só com espaços", () => {
     await esperarAte(() => onSubmit.mock.calls.length > 0);
     expect(onSubmit).toHaveBeenCalledExactlyOnceWith({
       ...valores,
+      // O estado tira os espaços ao digitar/colar (corrige " SP " -> "SP").
+      state: "MG",
       cep: "38500-000",
       complement: "",
       reference: "",

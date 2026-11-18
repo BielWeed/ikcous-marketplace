@@ -6,6 +6,11 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const banco = vi.hoisted(() => ({
+  falharOrdem: false,
+  travarOrdem: false,
+  falharLeitura: false,
+  consultar: vi.fn(),
+  remover: vi.fn().mockResolvedValue({ error: null }),
   linhas: [] as {
     id: string;
     order: number;
@@ -17,13 +22,18 @@ const banco = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/supabase", () => ({
   supabase: {
+    storage: { from: () => ({ remove: banco.remover }) },
     from: () => ({
       select: (_colunas: string) => ({
-        order: () =>
-          Promise.resolve({
-            data: banco.linhas.map((b) => ({ ...b })),
-            error: null,
-          }),
+        order: () => {
+          banco.consultar();
+          return Promise.resolve({
+            data: banco.falharLeitura
+              ? null
+              : banco.linhas.map((b) => ({ ...b })),
+            error: banco.falharLeitura ? new Error("Sem leitura") : null,
+          });
+        },
         eq: (_campo: string, pos: string) => ({
           order: () => ({
             order: () =>
@@ -41,10 +51,24 @@ vi.mock("@/lib/supabase", () => ({
       }),
       update: (dados: Partial<Banner>) => ({
         eq: (_campo: string, id: string) => {
-          Object.assign(banco.linhas.find((b) => b.id === id)!, dados);
-          return Object.assign(Promise.resolve({ error: null }), {
-            select: () => Promise.resolve({ data: [{ id }], error: null }),
-          });
+          const linha = banco.linhas.find((b) => b.id === id)!;
+          if (!banco.falharOrdem) Object.assign(linha, dados);
+          return Object.assign(
+            banco.travarOrdem
+              ? new Promise<never>(() => {})
+              : Promise.resolve({
+                  error: banco.falharOrdem
+                    ? new Error("Falha ao gravar posições")
+                    : null,
+                }),
+            {
+              select: () => {
+                // O banner principal salva; só a gravação das demais posições falha.
+                Object.assign(linha, dados);
+                return Promise.resolve({ data: [{ id }], error: null });
+              },
+            },
+          );
         },
       }),
       insert: (linhas: typeof banco.linhas) => ({
@@ -93,6 +117,9 @@ function Sonda() {
   );
 }
 beforeEach(async () => {
+  banco.falharOrdem = false;
+  banco.travarOrdem = false;
+  banco.falharLeitura = false;
   banco.linhas = ["a-primeiro", "b-segundo", "z-terceiro"].map((id, i) => ({
     id,
     order: i + 1,
@@ -109,6 +136,7 @@ afterEach(() => {
   act(() => raiz.unmount());
   host.remove();
   vi.clearAllMocks();
+  vi.useRealTimers();
 });
 
 it("editar para ordem 1 põe o salvo antes do empate, no aparelho e no banco", async () => {
@@ -152,6 +180,85 @@ it.each([
     expect(banco.linhas.map((b) => b.order)).toEqual(ordens);
   },
 );
+
+it("falha ao gravar as outras posições desfaz a ordem e não anuncia sucesso", async () => {
+  const { toast } = await import("sonner");
+  banco.falharOrdem = true;
+  await act(async () => {
+    await atual.updateBanner("z-terceiro", { order: 1 }).catch(() => {});
+  });
+  expect(toast.success).not.toHaveBeenCalled();
+  // Releitura mostra a gravação principal confirmada, mesmo com empate parcial.
+  expect(host.textContent).toBe("a-primeiro,z-terceiro,b-segundo");
+  expect(toast.error).toHaveBeenCalledWith(
+    "Não foi possível salvar a nova ordem dos banners. Tente de novo.",
+  );
+});
+
+it("falha da ordem mantém foto e título gravados, relê o servidor e avisa uma vez", async () => {
+  const { toast } = await import("sonner");
+  banco.falharOrdem = true;
+  banco.linhas.find((b) => b.id === "z-terceiro")!.image_url =
+    "https://loja.test/antiga.jpg";
+  await act(async () => atual.refreshBanners(false, true));
+  banco.consultar.mockClear();
+  let erro: unknown;
+  await act(async () => {
+    await atual
+      .updateBanner("z-terceiro", {
+        order: 1,
+        imageUrl: "https://loja.test/nova.jpg",
+        title: "Campanha nova",
+      })
+      .catch((e) => {
+        erro = e;
+      });
+  });
+  expect(banco.remover).toHaveBeenCalledExactlyOnceWith(["antiga.jpg"]);
+  expect(banco.consultar).toHaveBeenCalledTimes(1);
+  expect(atual.banners.find((b) => b.id === "z-terceiro")).toMatchObject({
+    imageUrl: "https://loja.test/nova.jpg",
+    title: "Campanha nova",
+  });
+  expect(erro).toMatchObject({ name: "BannerOrdemNaoSalva" });
+  expect(toast.success).not.toHaveBeenCalled();
+  expect(toast.error).toHaveBeenCalledTimes(1);
+});
+
+it("prazo da ordem mantém conteúdo salvo no estado e cache mesmo se a releitura falhar", async () => {
+  const { toast } = await import("sonner");
+  const { bannersEmCache } = await import("@/lib/banners-da-vitrine");
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  banco.travarOrdem = true;
+  banco.falharLeitura = true;
+  banco.consultar.mockClear();
+  let erro: unknown;
+  await act(async () => {
+    atual
+      .updateBanner("z-terceiro", {
+        order: 1,
+        imageUrl: "https://loja.test/nova.jpg",
+        title: "Campanha salva",
+      })
+      .catch((e) => {
+        erro = e;
+      });
+    await vi.advanceTimersByTimeAsync(25_000);
+  });
+  expect(erro).toMatchObject({ name: "BannerOrdemNaoSalva" });
+  expect(banco.consultar).toHaveBeenCalledTimes(1);
+  const salvo = {
+    imageUrl: "https://loja.test/nova.jpg",
+    title: "Campanha salva",
+    order: 3,
+  };
+  expect(atual.banners.find((b) => b.id === "z-terceiro")).toMatchObject(salvo);
+  expect(bannersEmCache()?.find((b) => b.id === "z-terceiro")).toMatchObject(
+    salvo,
+  );
+  expect(toast.error).toHaveBeenCalledTimes(1);
+  expect(toast.success).not.toHaveBeenCalled();
+});
 
 it("criar com ordem 1 põe o novo antes dos existentes", async () => {
   await act(async () => {

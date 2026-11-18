@@ -161,7 +161,7 @@ describe("passo 1 da grade — ajuda e cartões numerados", () => {
     expect(texto(cartao(0))).toContain("1 · Material");
   });
 
-  it("a contagem concorda em gênero: cores no feminino, tamanhos e voltagens no masculino", async () => {
+  it("a contagem concorda em gênero: cores e voltagens no feminino, tamanhos no masculino", async () => {
     await abrir();
     const contagem = (i: number) =>
       texto(cartao(i)?.querySelector('[data-testid="contagem-do-atributo"]'));
@@ -183,7 +183,7 @@ describe("passo 1 da grade — ajuda e cartões numerados", () => {
     await tocar(botaoExato("+ Adicionar outro atributo"));
     await tocarPeca(2, "Voltagem");
     await escolher(2, "110V", "220V");
-    expect(contagem(2)).toBe("2 selecionados");
+    expect(contagem(2)).toBe("2 selecionadas");
   });
 
   it("o tipo que OUTRO cartão já usa fica apagado e não clicável; o do próprio cartão segue clicável", async () => {

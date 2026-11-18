@@ -361,6 +361,18 @@ describe("CheckoutView — cupom em conferência não deixa finalizar", () => {
     expect(pedido.totalAmount).toBe(70);
   });
 
+  it("resposta válida com desconto zero encerra a espera também na tela do checkout", async () => {
+    await abrirComRascunho(0.1);
+    expect(document.body.textContent).toContain("Conferindo o desconto");
+
+    await responderAConferencia({ valid: true, discount: 0 });
+
+    const cupom = document.querySelector('[data-testid="cupom-aplicado"]');
+    expect(cupom?.textContent).toContain("Cupom aplicado");
+    expect(cupom?.textContent).not.toContain("Conferindo o desconto");
+    expect(cupom?.textContent).not.toContain("Você economiza");
+  });
+
   it("revalidação diz que o cupom é inválido: o cupom sai, o botão habilita e o pedido sai sem cupom e com o total cheio", async () => {
     await abrirComRascunho();
     expect(localizarBotaoFinalizar()!.disabled).toBe(true);

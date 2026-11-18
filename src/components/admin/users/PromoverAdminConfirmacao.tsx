@@ -110,8 +110,8 @@ export function PromoverAdminConfirmacao({
           retornoDoFoco.current?.focus();
         }}
       >
-        <AlertDialogHeader>
-          <AlertDialogTitle className="text-lg font-bold text-white">
+        <AlertDialogHeader className="min-w-0">
+          <AlertDialogTitle className="text-lg font-bold text-white [overflow-wrap:anywhere]">
             {promover
               ? `Dar acesso de administrador a ${nome}?`
               : `Tirar o acesso de administrador de ${nome}?`}

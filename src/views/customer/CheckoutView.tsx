@@ -179,7 +179,7 @@ import {
   mensagemDeWhatsappIncompleto,
 } from "@/lib/telefone-br";
 import { criarTravaDeEnvio } from "@/lib/travaDeEnvio";
-import { ufBrasileiraValida } from "@/lib/uf-brasileira";
+import { normalizarUf, ufBrasileiraValida } from "@/lib/uf-brasileira";
 import { arredondarParaCentavos, cn, formatCurrency } from "@/lib/utils";
 import type {
   Address,
@@ -819,8 +819,13 @@ function GatilhoDoResumoDoPedido({
             >
               {foto && !ehMarcadorDeFoto(foto) && (
                 <img
+                  key={foto}
                   src={miniaturaDoResumo(foto, 96)}
-                  onError={(e) => usarImagemOriginal(e.currentTarget, foto)}
+                  onError={(e) => {
+                    if (!usarImagemOriginal(e.currentTarget, foto)) {
+                      e.currentTarget.hidden = true;
+                    }
+                  }}
                   alt=""
                   className="size-full object-cover"
                 />
@@ -5516,7 +5521,10 @@ export function CheckoutViewDaConta({
           </p>
         ) : (
           <>
-            <p role="alert" className="text-sm font-medium text-red-700">
+            <p
+              role="alert"
+              className="text-sm font-medium text-red-700 dark:text-red-400"
+            >
               Não foi possível abrir o pagamento deste pedido agora. Nada foi
               cobrado nesta tentativa.
             </p>
@@ -6407,6 +6415,21 @@ export function CheckoutViewDaConta({
     formasNaEntregaDisponiveis.includes(opcao.value as "pix" | "card" | "cash"),
   );
 
+  const opcoesDePagamentoVisiveis = [
+    ...opcoesNoApp,
+    ...(!selectedShippingOption || ehEntregaLocal ? opcoesNaEntrega : []),
+  ];
+  // Sem seleção habilitada, Tab ainda precisa alcançar o grupo — inclusive
+  // a opção bloqueada que leva o convidado a entrar/criar conta.
+  const opcaoDePagamentoTabulavel =
+    opcoesDePagamentoVisiveis.find(
+      (opcao) =>
+        !(opcao.requerConta && !user) &&
+        paymentMethod === opcao.value &&
+        (opcao.metodoOnline === undefined ||
+          opcao.metodoOnline === metodoOnlineEfetivo),
+    ) ?? opcoesDePagamentoVisiveis[0];
+
   // Extraído do `.map()` que existia antes da separação em grupos — o
   // corpo do botão não mudou UMA linha, só passou a ser chamado duas vezes
   // (uma por grupo) em vez de uma.
@@ -6434,6 +6457,8 @@ export function CheckoutViewDaConta({
         // seleção (a borda dela não usa `isSelected`), então não anuncia
         // seleção.
         aria-checked={isSelected && !bloqueadaPorFaltaDeConta}
+        tabIndex={option === opcaoDePagamentoTabulavel ? 0 : -1}
+        data-pagamento-bloqueado={bloqueadaPorFaltaDeConta || undefined}
         onClick={() => {
           if (bloqueadaPorFaltaDeConta) {
             haptic.light();
@@ -7265,8 +7290,17 @@ export function CheckoutViewDaConta({
                           <input
                             id="guest-state"
                             {...registrarCampoDoEndereco("state")}
+                            // O corte em 2 letras é feito aqui, depois de tirar
+                            // os espaços (e não por `maxLength`): o navegador
+                            // cortaria " SP " colado em " S" e a cliente leria
+                            // "Estado inválido" por uma UF copiada certa.
+                            onChange={(e) => {
+                              e.target.value = normalizarUf(e.target.value);
+                              return registrarCampoDoEndereco("state").onChange(
+                                e,
+                              );
+                            }}
                             autoComplete="address-level1"
-                            maxLength={2}
                             // O exemplo da loja vai como exemplo ("UF (ex.: SP)"):
                             // um "SP" cinza sozinho parecia valor já preenchido, e a
                             // pessoa passava direto pelo campo vazio.
@@ -7489,6 +7523,7 @@ export function CheckoutViewDaConta({
               situacao={cuponsDoCheckout.situacao}
               onTentarDeNovo={cuponsDoCheckout.tentarDeNovo}
               appliedCoupon={appliedCoupon}
+              conferindo={cupomEmConferencia}
               couponError={couponError}
               aplicando={aplicandoCupom}
               emEnvio={isSubmitting}
@@ -7521,9 +7556,34 @@ export function CheckoutViewDaConta({
               só, misturando "pagar agora" com "pagar na entrega" — dois
               subgrupos rotulados dentro do MESMO `radiogroup` (a escolha
               continua sendo uma só; só o agrupamento visual é novo). */}
+            {/* eslint-disable-next-line jsx-a11y/interactive-supports-focus -- o grupo não recebe foco: cada opção `radio` dentro dele é focável e as setas trocam a escolha */}
             <div
               role="radiogroup"
               aria-label="Meio de pagamento"
+              onKeyDown={(evento) => {
+                const direcao =
+                  evento.key === "ArrowRight" || evento.key === "ArrowDown"
+                    ? 1
+                    : evento.key === "ArrowLeft" || evento.key === "ArrowUp"
+                      ? -1
+                      : 0;
+                if (!direcao) return;
+                const opcoes = [
+                  ...evento.currentTarget.querySelectorAll<HTMLButtonElement>(
+                    '[role="radio"]:not(:disabled):not([aria-disabled="true"]):not([data-pagamento-bloqueado="true"])',
+                  ),
+                ];
+                const indice = opcoes.findIndex(
+                  (opcao) => opcao === evento.target,
+                );
+                if (indice < 0) return;
+                evento.preventDefault();
+                const proxima =
+                  opcoes[(indice + direcao + opcoes.length) % opcoes.length];
+                proxima.focus();
+                // Reusa exatamente a seleção do clique, inclusive o submétodo.
+                proxima.click();
+              }}
               className="mt-3 space-y-4"
             >
               {opcoesNoApp.length > 0 && (
@@ -7946,7 +8006,13 @@ export function CheckoutViewDaConta({
                             // PRÓPRIA opção, nunca recalculada aqui) + final.
                             <>
                               <span className="mr-1 text-zinc-500 line-through">
+                                <span className="sr-only">
+                                  Frete original:{" "}
+                                </span>
                                 {reais(shipping + economiaDoFrete)}
+                              </span>
+                              <span className="sr-only">
+                                Frete com desconto:{" "}
                               </span>
                               {reais(shipping)}
                             </>

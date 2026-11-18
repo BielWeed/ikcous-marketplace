@@ -1,4 +1,4 @@
-import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
+import { nomeOuReserva, nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 // Nome feito só de caracteres invisíveis: o `trim()` do JavaScript só tira
 // espaços comuns, então um espaço de largura zero (U+200B), o espaço Braille em
 // branco (U+2800) ou o preenchimento Hangul (U+3164) passavam como "nome" e
@@ -43,5 +43,19 @@ describe("nomeTemConteudoVisivel", () => {
     ["nome em outro alfabeto", "山田"],
   ])("aceita %s", (_descricao, texto) => {
     expect(nomeTemConteudoVisivel(texto)).toBe(true);
+  });
+});
+
+describe("nomeOuReserva", () => {
+  it.each([
+    ["só espaços", "     ", "Cliente"],
+    ["vazio", "", "Cliente"],
+    ["nulo", null, "Cliente"],
+    ["só invisíveis", "\u200B\u3164", "Cliente"],
+    ["espaços nas pontas", "  Maria  ", "Maria"],
+    ["espaços sobrando no meio", "  Maria   Silva ", "Maria Silva"],
+    ["tab e quebra de linha no meio", "Maria\t\n Silva", "Maria Silva"],
+  ])("%s", (_descricao, nome, esperado) => {
+    expect(nomeOuReserva(nome, "Cliente")).toBe(esperado);
   });
 });

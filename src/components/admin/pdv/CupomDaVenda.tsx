@@ -54,6 +54,8 @@ export interface PropsDoCupomDaVenda {
   readonly feedback?: FeedbackDoLeitor | null;
   /** Injeção de teste do relógio — padrão `Date.now`. */
   readonly agora?: () => number;
+  /** Abre a busca antes de devolver o foco ao sair de uma camada com Esc. */
+  readonly aoRetomarBusca?: () => void;
 }
 
 function reais(valor: number): string {
@@ -72,6 +74,7 @@ export function CupomDaVenda({
   consultandoCodigo = false,
   feedback: feedbackProp,
   agora = () => Date.now(),
+  aoRetomarBusca,
 }: PropsDoCupomDaVenda): ReactElement {
   // O AudioContext NASCE PREGUIÇOSO dentro de `criarFeedbackDoLeitor` — não
   // tem custo criar a instância aqui mesmo sem gesto do usuário ainda.
@@ -104,6 +107,10 @@ export function CupomDaVenda({
   }, [estado.aviso, feedback]);
 
   const escolha = estado.escolhaDeVariacao;
+  const cancelarVariacaoRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (escolha) cancelarVariacaoRef.current?.focus();
+  }, [escolha]);
   // O número do aviso "não cadastrado", para o toque em "Cadastrar produto"
   // levá-lo ao cadastro (o TS não mantém o estreitamento de `estado.aviso`
   // dentro do onClick).
@@ -135,6 +142,22 @@ export function CupomDaVenda({
     if (confirmandoCancelamento) voltarDoCancelamentoRef.current?.focus();
   }, [confirmandoCancelamento]);
 
+  const devolverFocoDaBuscaRef = useRef(false);
+  useEffect(() => {
+    if (!devolverFocoDaBuscaRef.current) return;
+    devolverFocoDaBuscaRef.current = false;
+    if (aoRetomarBusca) aoRetomarBusca();
+    else document.getElementById("busca-manual-de-produto")?.focus();
+  }, [escolha, confirmandoCancelamento, aoRetomarBusca]);
+
+  function aoTeclarNaCamada(evento: React.KeyboardEvent<HTMLElement>): void {
+    if (evento.key !== "Escape") return;
+    evento.stopPropagation();
+    devolverFocoDaBuscaRef.current = true;
+    if (confirmandoCancelamento) setConfirmandoCancelamento(false);
+    else if (escolha) despachar({ tipo: "variacao_cancelada" });
+  }
+
   return (
     <div className="pdv-flow" data-etapa={estado.etapa}>
       {limparCupom && temVendaParaCancelar && !confirmandoCancelamento && (
@@ -150,7 +173,12 @@ export function CupomDaVenda({
         </Button>
       )}
       {escolha && (
-        <section className="pdv-variation-layer" aria-label="Escolher variação">
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- Esc vem dos botões da camada, como em AnularVendaDoBalcao.
+        <section
+          className="pdv-variation-layer"
+          aria-label="Escolher variação"
+          onKeyDown={aoTeclarNaCamada}
+        >
           <div className="pdv-variation-heading">
             <h3 className="pdv-heading">
               <PackagePlus aria-hidden="true" className="pdv-icon pdv-pink" />
@@ -160,6 +188,7 @@ export function CupomDaVenda({
               type="button"
               variant="outline"
               className="pdv-secondary pdv-variation-cancel"
+              ref={cancelarVariacaoRef}
               onClick={() => despachar({ tipo: "variacao_cancelada" })}
             >
               Cancelar
@@ -444,7 +473,13 @@ export function CupomDaVenda({
       )}
 
       {limparCupom && temVendaParaCancelar && confirmandoCancelamento && (
-        <div role="group" aria-label="Cancelar venda" className="pdv-notice">
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- Esc vem dos botões da confirmação.
+        <div
+          role="group"
+          aria-label="Cancelar venda"
+          className="pdv-notice"
+          onKeyDown={aoTeclarNaCamada}
+        >
           <p className="pdv-heading">
             <XCircle aria-hidden="true" className="pdv-icon pdv-red" />
             Cancelar venda

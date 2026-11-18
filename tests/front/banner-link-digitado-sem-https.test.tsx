@@ -288,6 +288,35 @@ describe("AdminBannersView: o link digitado chega corrigido ao salvar", () => {
     });
   }
 
+  it.each([true, false])(
+    "falha ao criar banner: sessão vencida=%j preserva o editor e não duplica aviso",
+    async (sessao) => {
+      const mensagem =
+        "Sua sessão expirou. Entre de novo para salvar o banner — o que você digitou continua aqui.";
+      addBanner.mockImplementation(async () => {
+        // A mensagem emitida pelo hook é comprovada no teste do hook real.
+        h.toastError(sessao ? mensagem : "Erro ao adicionar banner.");
+        throw { message: sessao ? "JWT expired" : "Falha de rede" };
+      });
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      await abrirNoModoLinkCustomizado();
+      await digitarLinkESalvar("https://example.com/ofertas");
+      expect(addBanner).toHaveBeenCalledTimes(1);
+      expect(h.toastError).toHaveBeenCalledWith(
+        sessao ? mensagem : "Erro ao adicionar banner.",
+      );
+      expect(h.toastError).toHaveBeenCalledTimes(sessao ? 1 : 2);
+      if (!sessao)
+        expect(h.toastError).toHaveBeenCalledWith(
+          "Erro ao salvar as configurações do banner.",
+        );
+      expect(
+        (document.getElementById("banner-link-custom") as HTMLInputElement)
+          .value,
+      ).toBe("https://example.com/ofertas");
+    },
+  );
+
   it.each([
     ["wa.me/5511999999999", "https://wa.me/5511999999999"],
     ["instagram.com/loja", "https://instagram.com/loja"],

@@ -4261,6 +4261,30 @@ Deno.test("cron: cartão à vista com captura MENOR que o pedido NÃO confirma; 
   }
 });
 
+for (const tipo of [undefined, "bank_transfer"]) {
+  for (const pago of ["60.00", "149.85", undefined, "ilegivel"]) {
+    Deno.test(`captura qualquer tipo cron: ${tipo ?? "sem type"}, recebido ${pago ?? "ausente"}`, async () => {
+      const registro = { chamadasConfirmar: [], chamouCandidatos: false };
+      const id = "ORDTST01CAPTURAQUALQUERTIPO";
+      const supabase = clienteFalso({ candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: id }], registro });
+      const o = orderParceladaComJuros(id, 1, pago ?? "149.90");
+      if (tipo === undefined) delete o.transactions.payments[0].payment_method.type;
+      else o.transactions.payments[0].payment_method.type = tipo;
+      if (pago === undefined) {
+        delete o.total_paid_amount;
+        delete o.transactions.payments[0].paid_amount;
+      }
+      const r = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: fetchConsulta(200, o) });
+      const corpo = await r.json();
+      const esperado = pago !== "60.00";
+      assertEquals(r.status, 200);
+      assertEquals(registro.chamadasConfirmar.length, esperado ? 1 : 0);
+      assertEquals(corpo.confirmados, esperado ? 1 : 0);
+      assertEquals(corpo.ignorados, esperado ? 0 : 1);
+    });
+  }
+}
+
 const PARCELADOS_COM_JUROS = [
   { parcelas: 1, pago: "149.90" },
   { parcelas: 2, pago: "164.35" },

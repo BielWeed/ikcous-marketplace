@@ -22,6 +22,7 @@ import {
   FORMAS_DE_PAGAMENTO_NA_ENTREGA_EM_ORDEM,
   type FormaDePagamentoNaEntrega,
 } from "@/lib/formas-de-pagamento-na-entrega";
+import { ehConsultaSemResposta } from "@/lib/prazo-da-requisicao";
 import { haptic } from "@/utils/haptic";
 
 import type { StoreConfig } from "@/types";
@@ -355,6 +356,7 @@ export function CartaoPeloAppBloco({
     estado: "carregando",
   });
   const [salvando, setSalvando] = useState(false);
+  const [avisoDeGravacao, setAvisoDeGravacao] = useState<string | null>(null);
   const idDasParcelas = useId();
   const idDoCredito = useId();
   const idDoDebito = useId();
@@ -390,7 +392,8 @@ export function CartaoPeloAppBloco({
     setSalvando(true);
     onDirtyMudou?.(true);
     try {
-      const atual = await buscarConfigDoCartao();
+      // Não compõe os três campos enquanto uma gravação anterior pode chegar.
+      const atual = await buscarConfigDoCartao(true);
       if (!atual.ok) {
         toast.error(CARTAO_PELO_APP.conferirFalhou);
         return;
@@ -400,6 +403,7 @@ export function CartaoPeloAppBloco({
         ...mudanca,
       });
       setLeitura({ estado: "ok", config: gravada });
+      setAvisoDeGravacao(null);
       toast.success(sucesso);
     } catch (err) {
       toast.error(
@@ -407,6 +411,17 @@ export function CartaoPeloAppBloco({
           ? err.message
           : "Não foi possível salvar o cartão pelo app. Tente de novo.",
       );
+      if (ehConsultaSemResposta(err) && err instanceof Error) {
+        setAvisoDeGravacao(err.message);
+        // O valor anterior deixou de ser confirmação. Solta o botão já, e
+        // confere o banco sem esperar a resposta da gravação pendurada.
+        setLeitura({ estado: "falhou" });
+        buscarConfigDoCartao().then((resultado) => {
+          if (resultado.ok) {
+            setLeitura({ estado: "ok", config: resultado.config });
+          }
+        });
+      }
     } finally {
       setSalvando(false);
       onDirtyMudou?.(false);
@@ -433,6 +448,11 @@ export function CartaoPeloAppBloco({
         )}
       </div>
 
+      {avisoDeGravacao && (
+        <p role="alert" className="text-[11px] text-orange-200">
+          {avisoDeGravacao}
+        </p>
+      )}
       {leitura.estado === "carregando" && (
         <p className="text-[11px] text-zinc-500">Lendo a configuração...</p>
       )}

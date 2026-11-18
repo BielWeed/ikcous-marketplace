@@ -198,6 +198,12 @@ describe("AdminUserDetailView — carrinho da cliente com cor e tamanho separado
     await act(async () => {
       lixeira.click();
     });
+    const descricao =
+      document.querySelector('[role="alertdialog"]')?.textContent ?? "";
+    expect(descricao).toContain("Camiseta");
+    expect(descricao).toContain("Cor: Azul");
+    expect(descricao).toContain("Tamanho: P");
+    expect(descricao).not.toContain("Tamanho: M");
     const confirmar = [...document.body.querySelectorAll("button")].find(
       (b) => b.textContent?.trim() === "Remover Item",
     )!;
@@ -227,6 +233,12 @@ describe("AdminUserDetailView — carrinho da cliente com cor e tamanho separado
     await act(async () => {
       lixeira.click();
     });
+    const descricao =
+      document.querySelector('[role="alertdialog"]')?.textContent ?? "";
+    expect(descricao).toContain("Camiseta");
+    expect(descricao).toContain("Cor: Azul");
+    expect(descricao).toContain("Tamanho: P");
+    expect(descricao).not.toContain("Tamanho: M");
     const confirmar = [...document.body.querySelectorAll("button")].find(
       (b) => b.textContent?.trim() === "Remover Item",
     )!;

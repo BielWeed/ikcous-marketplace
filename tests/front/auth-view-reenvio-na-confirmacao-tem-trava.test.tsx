@@ -68,6 +68,7 @@ describe("AuthView — reenvio na confirmação tem trava (issue #208)", () => {
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
     signUp.mockReset().mockResolvedValue(true);
     resendConfirmationEmail.mockReset();
     vi.mocked(toast.error).mockClear();
@@ -79,6 +80,7 @@ describe("AuthView — reenvio na confirmação tem trava (issue #208)", () => {
   afterEach(() => {
     act(() => raiz.unmount());
     hospedeiro.remove();
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -132,8 +134,47 @@ describe("AuthView — reenvio na confirmação tem trava (issue #208)", () => {
     } finally {
       await act(async () => resolver(true));
     }
+    expect(botao.disabled).toBe(true);
+    expect(botao.textContent).toBe("Reenviar em 30s");
+    await act(async () => botao.click());
+    expect(resendConfirmationEmail).toHaveBeenCalledTimes(1);
+    await act(async () => vi.advanceTimersByTime(1000));
+    expect(botao.textContent).toBe("Reenviar em 29s");
+    await act(async () => vi.advanceTimersByTime(28_000));
+    expect(botao.disabled).toBe(true);
+    expect(botao.textContent).toBe("Reenviar em 1s");
+    await act(async () => vi.advanceTimersByTime(1000));
     expect(botao.disabled).toBe(false);
     expect(botao.textContent).toBe("Reenviar link");
+    resendConfirmationEmail.mockResolvedValue(true);
+    await act(async () => botao.click());
+    expect(resendConfirmationEmail).toHaveBeenCalledTimes(2);
+    expect(botao.textContent).toBe("Reenviar em 30s");
+  });
+
+  it("resposta sem sucesso não inicia a contagem", async () => {
+    resendConfirmationEmail.mockResolvedValue(false);
+    const botao = await cadastrar();
+    await act(async () => botao.click());
+    expect(botao.disabled).toBe(false);
+    expect(botao.textContent).toBe("Reenviar link");
+  });
+
+  it("limpa o intervalo ao desmontar durante a espera", async () => {
+    const iniciar = vi.spyOn(globalThis, "setInterval");
+    const limpar = vi.spyOn(globalThis, "clearInterval");
+    resendConfirmationEmail.mockResolvedValue(true);
+    const botao = await cadastrar();
+    await act(async () => botao.click());
+    const indice = iniciar.mock.calls.findIndex(
+      (chamada) => chamada[1] === 1000,
+    );
+    expect(indice).toBeGreaterThanOrEqual(0);
+    // eslint-disable-next-line security/detect-object-injection -- teste: entrada fixa, sem dado de usuário
+    const intervalo = iniciar.mock.results[indice].value;
+    act(() => raiz.unmount());
+    expect(limpar).toHaveBeenCalledWith(intervalo);
+    raiz = createRoot(hospedeiro);
   });
 
   it("rejeição mostra o erro traduzido e libera uma nova tentativa", async () => {
@@ -150,7 +191,7 @@ describe("AuthView — reenvio na confirmação tem trava (issue #208)", () => {
     resendConfirmationEmail.mockResolvedValue(true);
     await act(async () => botao.click());
     expect(resendConfirmationEmail).toHaveBeenCalledTimes(2);
-    expect(botao.disabled).toBe(false);
+    expect(botao.disabled).toBe(true);
     await act(async () => localizarBotaoPorTexto("Retornar ao Login").click());
     expect(hospedeiro.textContent).not.toContain(
       "Não foi possível reenviar o e-mail de confirmação. Tente novamente.",

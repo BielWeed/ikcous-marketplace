@@ -29,6 +29,8 @@ const linhasDoBanco = [
   },
 ];
 let buscasDePedidos = 0;
+let falhaNaBusca = false;
+let semPedidos = false;
 
 function builderDoFetch() {
   const builder: any = {};
@@ -39,10 +41,10 @@ function builderDoFetch() {
   // biome-ignore lint/suspicious/noThenProperty: mock do query builder thenable do Supabase
   builder.then = (resolve: any, reject?: any) => {
     buscasDePedidos++;
-    return Promise.resolve({ data: linhasDoBanco, error: null }).then(
-      resolve,
-      reject,
-    );
+    return Promise.resolve({
+      data: falhaNaBusca ? null : semPedidos ? [] : linhasDoBanco,
+      error: falhaNaBusca ? { message: "Servidor indisponível" } : null,
+    }).then(resolve, reject);
   };
   return builder;
 }
@@ -130,6 +132,8 @@ describe("ProfileView — busca os pedidos ao abrir (hook real, cache vazio)", (
 
   beforeEach(() => {
     buscasDePedidos = 0;
+    falhaNaBusca = false;
+    semPedidos = false;
     vi.stubGlobal("ResizeObserver", ObserverStub);
     vi.stubGlobal("IntersectionObserver", ObserverStub);
     // Cache do aparelho VAZIO: o estado de quem acabou de entrar na conta.
@@ -170,6 +174,52 @@ describe("ProfileView — busca os pedidos ao abrir (hook real, cache vazio)", (
 
     expect(buscasDePedidos).toBeGreaterThan(0);
     expect(hospedeiro.textContent).toContain("Pedidos em andamento");
+  });
+
+  it("falha sem cache avisa e permite buscar de novo até mostrar os pedidos", async () => {
+    falhaNaBusca = true;
+    await renderizar(true);
+
+    expect(hospedeiro.textContent).toContain(
+      "Não conseguimos carregar seus pedidos agora.",
+    );
+    const tentarDeNovo = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (botao) => botao.textContent === "Tentar de novo",
+    );
+    expect(tentarDeNovo).toBeDefined();
+    const buscasAntes = buscasDePedidos;
+    falhaNaBusca = false;
+    await act(async () => tentarDeNovo!.click());
+
+    expect(buscasDePedidos).toBe(buscasAntes + 1);
+    expect(hospedeiro.textContent).toContain("Pedidos em andamento");
+    expect(hospedeiro.textContent).not.toContain(
+      "Não conseguimos carregar seus pedidos agora.",
+    );
+  });
+
+  it("consulta vazia sem erro continua sem cartão nem aviso", async () => {
+    semPedidos = true;
+    await renderizar(true);
+
+    expect(buscasDePedidos).toBe(1);
+    expect(hospedeiro.textContent).not.toContain("Pedidos em andamento");
+    expect(hospedeiro.textContent).not.toContain(
+      "Não conseguimos carregar seus pedidos agora.",
+    );
+  });
+
+  it("falha com pedidos salvos mantém o cartão sem o aviso de lista vazia", async () => {
+    await renderizar(true);
+    await renderizar(false);
+    falhaNaBusca = true;
+    await renderizar(true);
+
+    expect(buscasDePedidos).toBe(2);
+    expect(hospedeiro.textContent).toContain("Pedidos em andamento");
+    expect(hospedeiro.textContent).not.toContain(
+      "Não conseguimos carregar seus pedidos agora.",
+    );
   });
 
   it("aba escondida não busca; ao voltar a ser a visível, busca de novo", async () => {

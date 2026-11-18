@@ -16,9 +16,9 @@
 // XSS na origem já lê cookie de sessão, carrinho, etc.). Mitigado por: (1)
 // TTL de 24h — depois disso o registro se autodestrói na próxima leitura;
 // (2) chave EXCLUSIVA, nunca lida por código que não seja este módulo; (3)
-// limpeza em TRÊS gatilhos — sucesso da gravação, expiração, e sessão de
-// OUTRA conta; (4) o campo é OPT-IN — quem não preenche CPF no cadastro
-// nunca cria este registro. Sem isso, a alternativa seria pedir para a
+// limpeza em QUATRO gatilhos — sucesso da gravação, expiração, sessão de
+// OUTRA conta e saída/encerramento da sessão; (4) o campo é OPT-IN — quem
+// não preenche CPF no cadastro nunca cria este registro. Sem isso, a alternativa seria pedir para a
 // pessoa redigitar o CPF depois de confirmar o e-mail — pior experiência
 // por um ganho de segurança marginal (o mesmo aparelho/navegador
 // comprometido já vê o resto da sessão).
@@ -242,8 +242,8 @@ export async function retomarCpfPendente(sessao: {
       return "falhou";
     }
     if (resultado.motivo === "sem_sessao") {
-      // Saiu da conta no meio da gravação: não há ninguém para avisar e o
-      // CPF segue guardado para o próximo login.
+      // Não há sessão para gravar nem ninguém para avisar. O encerramento
+      // da sessão no AuthContext remove o pendente; esta tentativa não o recria.
       return "sem_sessao";
     }
     // Falha genuína (rede, servidor fora): MANTÉM o pendente até o TTL

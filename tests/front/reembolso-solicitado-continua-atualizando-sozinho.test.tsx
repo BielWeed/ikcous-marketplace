@@ -73,6 +73,33 @@ describe("devolução do pedido na tela da cliente: atualiza sozinha enquanto es
     vi.restoreAllMocks();
   });
 
+  it.each(["solicitado", "em_processamento"])(
+    "aba escondida pausa %s; ao voltar consulta uma vez e retoma o intervalo",
+    async (status) => {
+      const visibilidade = vi
+        .spyOn(document, "visibilityState", "get")
+        .mockReturnValue("visible");
+      h.ler.mockResolvedValue({ data: [devolucao(status)], error: null });
+      await montar();
+      expect(h.ler).toHaveBeenCalledTimes(1);
+
+      visibilidade.mockReturnValue("hidden");
+      await act(async () =>
+        document.dispatchEvent(new Event("visibilitychange")),
+      );
+      await avancar(INTERVALO_DE_RECARGA_MS * 4);
+      expect(h.ler).toHaveBeenCalledTimes(1);
+
+      visibilidade.mockReturnValue("visible");
+      await act(async () =>
+        document.dispatchEvent(new Event("visibilitychange")),
+      );
+      expect(h.ler).toHaveBeenCalledTimes(2);
+      await avancar(INTERVALO_DE_RECARGA_MS);
+      expect(h.ler).toHaveBeenCalledTimes(3);
+    },
+  );
+
   it("`solicitado` + 15 s sem desmontar: lê de novo e mostra o estado novo", async () => {
     h.ler
       .mockResolvedValueOnce({ data: [devolucao("solicitado")], error: null })

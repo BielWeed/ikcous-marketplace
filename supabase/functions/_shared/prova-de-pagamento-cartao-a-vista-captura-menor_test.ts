@@ -118,9 +118,9 @@ Deno.test("parcelado: captura ilegível recusa (comportamento de hoje)", () => {
   assertEquals(conferirValorDoPagamento(100, 100, o), DIVERGENTE);
 });
 
-Deno.test("PIX: captura menor NÃO muda nesta função (a recusa do PIX mora na prova completa)", () => {
+Deno.test("PIX: captura menor recusa também na conferência compartilhada do webhook e cron", () => {
   const pix = order("60.00", { tipo: "bank_transfer", parcelas: null });
-  assertEquals(conferirValorDoPagamento(100, 100, pix), { provado: true, valor: 100, total: 100 });
+  assertEquals(conferirValorDoPagamento(100, 100, pix), DIVERGENTE);
 });
 
 Deno.test("sem order (caminho clássico): a função continua como antes", () => {

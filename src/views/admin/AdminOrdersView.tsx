@@ -1954,7 +1954,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       // banco, em inglês, dentro da mensagem que a lojista manda para a
       // cliente. O nome é o do app da cliente, não o do painel.
       const message = mensagemDoStatusNoWhatsapp({
-        nomeDoCliente: order.customer?.name || "Cliente",
+        nomeDoCliente: order.customer?.name,
         numeroDoPedido: numeroDoPedido(order.id),
         rotuloDoStatus: rotuloDoStatusParaACliente(
           order.status,

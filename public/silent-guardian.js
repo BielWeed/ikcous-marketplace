@@ -1,7 +1,11 @@
 (() => {
   // Splash check
-  if (sessionStorage.getItem("splash_shown")) {
-    document.documentElement.classList.add("splash-shown");
+  try {
+    if (sessionStorage.getItem("splash_shown")) {
+      document.documentElement.classList.add("splash-shown");
+    }
+  } catch {
+    // Sem armazenamento, o splash segue visível e a recuperação continua ativa.
   }
 
   // GHOST PURGE APOSENTADO (laudo ofensiva 3108, achado N5).

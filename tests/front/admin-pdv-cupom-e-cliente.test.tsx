@@ -250,6 +250,46 @@ describe("AdminPdvView — CupomDaVenda e ClienteDaVenda (C3.2)", () => {
     await avancar();
   }
 
+  it.each(["variacao", "cancelamento"])(
+    "Esc em %s abre a busca e mantém o carrinho",
+    async (camada) => {
+      await montar();
+      await bipar(PRODUTO_SIMPLES.codigo);
+      if (camada === "variacao") {
+        await bipar(PRODUTO_COM_VARIACOES.codigo);
+      } else {
+        await act(async () =>
+          localizarBotaoPorTexto(hospedeiro, "Cancelar")!.click(),
+        );
+      }
+      const seletor =
+        camada === "variacao"
+          ? '[aria-label="Escolher variação"]'
+          : '[aria-label="Cancelar venda"]';
+      const folha = hospedeiro.querySelector(seletor)!;
+      expect(folha).not.toBeNull();
+      await act(async () => {
+        document.activeElement?.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "Escape",
+            bubbles: true,
+          }),
+        );
+      });
+      await avancar();
+      expect(hospedeiro.querySelector(seletor)).toBeNull();
+      expect(
+        hospedeiro.querySelector('[aria-label="Itens da venda"]')?.textContent,
+      ).toContain("Camiseta Lisa");
+      expect(
+        hospedeiro.querySelector("#busca-do-balcao")?.hasAttribute("hidden"),
+      ).toBe(false);
+      expect(document.activeElement).toBe(
+        document.getElementById("busca-manual-de-produto"),
+      );
+    },
+  );
+
   it("a lista base só consulta produtos ao entrar em Buscar, sem afetar o cupom", async () => {
     await montar();
     expect(rpcMock).not.toHaveBeenCalled();

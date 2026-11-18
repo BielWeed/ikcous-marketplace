@@ -79,6 +79,17 @@ export function normalizeBannersOrder(
   prioritarioId?: string,
   salvoDepoisDoEmpate = false,
 ): Promise<void> {
+  // Contrato público: registra falhas, mas não rejeita quem dispara em fundo.
+  return normalizarOrdemOuFalhar(pos, prioritarioId, salvoDepoisDoEmpate).catch(
+    () => {},
+  );
+}
+
+function normalizarOrdemOuFalhar(
+  pos: "home_top" | "home_middle" | "home_bottom",
+  prioritarioId?: string,
+  salvoDepoisDoEmpate = false,
+): Promise<void> {
   return naFilaDaOrdem(() =>
     arrumarAOrdemNoBanco(pos, prioritarioId, salvoDepoisDoEmpate),
   );
@@ -132,6 +143,7 @@ async function arrumarAOrdemNoBanco(
     }
   } catch (err) {
     console.error("[Banners] Error normalizing banners order:", err);
+    throw err;
   }
 }
 
@@ -546,7 +558,12 @@ export function useBanners(adminMode = false) {
       return data;
     } catch (error) {
       console.error("Error adding banner:", error);
-      if (!aoFicarSemResposta(error)) toast.error("Erro ao adicionar banner.");
+      if (!aoFicarSemResposta(error))
+        toast.error(
+          mensagemDeErroDeSessaoDoPainel(error)
+            ? "Sua sessão expirou. Entre de novo para salvar o banner — o que você digitou continua aqui."
+            : "Erro ao adicionar banner.",
+        );
       throw error;
     }
   };
@@ -585,6 +602,7 @@ export function useBanners(adminMode = false) {
     }
 
     applyLocalBanners(updated);
+    let salvandoOrdem = false;
 
     try {
       const dbUpdates: any = {};
@@ -653,26 +671,55 @@ export function useBanners(adminMode = false) {
         }
       }
 
-      // Run DB order normalization if position or order changed
-      if (oldBanner) {
-        if (updates.position && updates.position !== oldBanner.position) {
-          normalizeBannersOrder(oldBanner.position).catch(() => {});
-          normalizeBannersOrder(updates.position, id).catch(() => {});
-        } else if (
-          updates.order !== undefined ||
-          updates.position !== undefined
-        ) {
-          normalizeBannersOrder(
-            oldBanner.position,
-            id,
-            salvoDepoisDoEmpate,
-          ).catch(() => {});
-        }
+      // Só confirmar depois de gravar também as posições dos outros banners.
+      if (
+        oldBanner &&
+        (updates.order !== undefined || updates.position !== undefined)
+      ) {
+        salvandoOrdem = true;
+        await aguardarComPrazo(
+          (async () => {
+            if (updates.position && updates.position !== oldBanner.position) {
+              await normalizarOrdemOuFalhar(oldBanner.position);
+              await normalizarOrdemOuFalhar(updates.position, id);
+            } else {
+              await normalizarOrdemOuFalhar(
+                oldBanner.position,
+                id,
+                salvoDepoisDoEmpate,
+              );
+            }
+          })(),
+          PRAZO_DA_GRAVACAO_DO_BANNER_MS,
+          () => new Error("Sem resposta ao salvar a ordem dos banners."),
+        );
+        salvandoOrdem = false;
       }
 
       toast.success("Banner atualizado com sucesso!");
     } catch (error) {
       console.error("Error updating banner:", error);
+      if (salvandoOrdem) {
+        // A gravação principal já foi confirmada; a foto antiga pode ter sido
+        // apagada. Desfaz só a arrumação otimista, nunca o conteúdo salvo.
+        applyLocalBanners(
+          previousBanners.map((b) =>
+            b.id === id
+              ? { ...b, ...updates, order: b.order, position: b.position }
+              : b,
+          ),
+        );
+        toast.error(
+          "Não foi possível salvar a nova ordem dos banners. Tente de novo.",
+        );
+        const falhaDaOrdem = new Error(
+          "A edição foi salva, mas a ordem não foi confirmada.",
+          { cause: error },
+        );
+        falhaDaOrdem.name = "BannerOrdemNaoSalva";
+        void fetchBanners(false, true);
+        throw falhaDaOrdem;
+      }
       applyLocalBanners(previousBanners);
       if (aoFicarSemResposta(error)) {
         // Aviso e releitura já saíram: nada a acrescentar.

@@ -6,6 +6,8 @@
 // duplicado e acessibilidade básica. O banco (RLS, índice único, ninguém apaga) é provado em
 // tests/banco/pedidos-de-privacidade-viva.cjs.
 import { PrivacidadeEMeusDados } from "@/components/account/PrivacidadeEMeusDados";
+import { decidirMomentoSeguro } from "@/lib/atualizacao/momento-seguro";
+import { haOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -153,6 +155,48 @@ describe("PrivacidadeEMeusDados", () => {
     });
     await assentar();
   }
+
+  it("e-mail digitado impede recarga em segundo plano; limpar e cancelar liberam", async () => {
+    await montar();
+    expect(haOperacaoSensivel()).toBe(false);
+    act(() => botao("Corrigir meu e-mail")?.click());
+    const campo = document.getElementById(
+      "privacidade-email-novo",
+    ) as HTMLInputElement;
+    digitar(campo, "novo@exemplo.com");
+    expect(
+      decidirMomentoSeguro({
+        view: "account-settings",
+        adminDirty: false,
+        pedidoPendenteDoCheckout: false,
+        documentoOculto: true,
+        trocouDeTela: false,
+      }).instalarAgora,
+    ).toBe(false);
+    digitar(campo, "");
+    expect(haOperacaoSensivel()).toBe(false);
+    digitar(campo, "novo@exemplo.com");
+    expect(haOperacaoSensivel()).toBe(true);
+    act(() => botao("Voltar", dialogo() as HTMLElement)?.click());
+    expect(haOperacaoSensivel()).toBe(false);
+  });
+
+  it("e-mail com envio falho mantém a marca; sair da tela libera", async () => {
+    banco.insercaoQuebra = new TypeError("Failed to fetch");
+    await montar();
+    act(() => botao("Corrigir meu e-mail")?.click());
+    digitar(
+      document.getElementById("privacidade-email-novo") as HTMLInputElement,
+      "novo@exemplo.com",
+    );
+    await act(async () => {
+      botao("Enviar pedido", dialogo() as HTMLElement)?.click();
+    });
+    expect(haOperacaoSensivel()).toBe(true);
+    act(() => raiz.unmount());
+    expect(haOperacaoSensivel()).toBe(false);
+    raiz = createRoot(hospedeiro);
+  });
 
   it("mostra o que a loja guarda, o que a exclusão apaga, o que fica por lei e o prazo, em português simples", async () => {
     await montar();
@@ -307,6 +351,7 @@ describe("PrivacidadeEMeusDados", () => {
     expect(dialogo()).toBeNull();
     expect(corpo()).toContain("Pedido enviado em 14/10/2026");
     expect(corpo()).toContain("maria.nova@exemplo.com");
+    expect(haOperacaoSensivel()).toBe(false);
     expect(botao("Corrigir meu e-mail")).toBeUndefined();
   });
 

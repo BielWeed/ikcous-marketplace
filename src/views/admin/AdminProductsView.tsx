@@ -2423,7 +2423,7 @@ export const AdminProductsView = memo(function AdminProductsView({
             {...foco.dialogo}
             className="produtos-confirmacao max-w-md rounded-3xl border border-admin-border bg-admin-raised"
           >
-            <AlertDialogHeader>
+            <AlertDialogHeader className="min-w-0">
               <AlertDialogTitle className="text-xl font-bold text-white">
                 <Trash2
                   aria-hidden="true"
@@ -2431,7 +2431,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                 />
                 Confirmar Exclusão
               </AlertDialogTitle>
-              <AlertDialogDescription className="text-xs text-zinc-400">
+              <AlertDialogDescription className="text-xs text-zinc-400 [overflow-wrap:anywhere]">
                 “
                 {lista.find((p) => p.id === productToDelete)?.name ??
                   "Este produto"}
@@ -2467,7 +2467,7 @@ export const AdminProductsView = memo(function AdminProductsView({
           }
         >
           <AlertDialogContent className="produtos-confirmacao max-w-md rounded-3xl border border-admin-border bg-admin-raised">
-            <AlertDialogHeader>
+            <AlertDialogHeader className="min-w-0">
               <AlertDialogTitle className="text-xl font-bold text-white">
                 <Copy
                   aria-hidden="true"
@@ -2475,7 +2475,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                 />
                 Confirmar Duplicação
               </AlertDialogTitle>
-              <AlertDialogDescription className="text-xs text-zinc-400">
+              <AlertDialogDescription className="text-xs text-zinc-400 [overflow-wrap:anywhere]">
                 Vamos criar “{productToDuplicate?.name} (Cópia)”, desativada.
                 Você revisa e ativa quando quiser.
               </AlertDialogDescription>

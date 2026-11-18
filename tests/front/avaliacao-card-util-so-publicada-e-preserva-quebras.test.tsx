@@ -46,6 +46,32 @@ function montar(review: Review) {
     raiz.render(<ReviewCard review={review} onHelpful={vi.fn()} />);
   });
 }
+it("nome sem espaços encolhe sem expulsar data nem selos", () => {
+  const nome = "A".repeat(120);
+  montar(avaliacao({ customerName: nome, status: "pendente" }));
+  const span = Array.from(host.querySelectorAll("span")).find(
+    (el) => el.textContent === nome,
+  )!;
+  expect(span.classList.contains("truncate")).toBe(true);
+  expect(span.parentElement!.parentElement!.classList.contains("min-w-0")).toBe(
+    true,
+  );
+  expect(
+    span.parentElement!.parentElement!.parentElement!.classList.contains(
+      "min-w-0",
+    ),
+  ).toBe(true);
+  for (const texto of ["Verificado", "Em análise"]) {
+    const selo = Array.from(host.querySelectorAll("span")).find(
+      (el) => el.textContent?.trim() === texto,
+    )!;
+    expect(selo.classList.contains("shrink-0")).toBe(true);
+  }
+  const data = host.firstElementChild!.firstElementChild!.lastElementChild!;
+  expect(data.textContent).toContain("2026");
+  expect(data.classList.contains("shrink-0")).toBe(true);
+});
+
 const botaoUtil = () =>
   Array.from(host.querySelectorAll("button")).find((b) =>
     b.textContent?.includes("Útil"),

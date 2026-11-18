@@ -176,6 +176,7 @@ export function useDevolucaoDoPedidoCliente(
   useEffect(() => {
     if (!habilitado || !temLinhaAtiva) return;
     const id = setInterval(() => {
+      if (document.visibilityState === "hidden") return;
       void carregar();
     }, INTERVALO_DE_RECARGA_MS);
     return () => clearInterval(id);

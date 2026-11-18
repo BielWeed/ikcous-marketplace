@@ -85,6 +85,7 @@ class ObservadorFalso {
 }
 
 describe("HeroOfferCard -- com variação ativa, some o segundo botão", () => {
+  const estiloOriginal = document.documentElement.style.cssText;
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
@@ -111,6 +112,7 @@ describe("HeroOfferCard -- com variação ativa, some o segundo botão", () => {
       raiz.unmount();
     });
     hospedeiro.remove();
+    document.documentElement.style.cssText = estiloOriginal;
     vi.unstubAllGlobals();
   });
 
@@ -140,6 +142,40 @@ describe("HeroOfferCard -- com variação ativa, some o segundo botão", () => {
       hospedeiroEl.querySelectorAll<HTMLDivElement>(".flex.gap-2"),
     ).find((d) => d.querySelector("button"))!;
   }
+
+  it.each(["#FFFFFF", "#FFFF00"])(
+    "Comprar usa a cor legível com marca %s, sem mudar o botão Adicionar",
+    async (cor) => {
+      const { aplicarCorDaLoja } = await import("@/config/branding");
+      aplicarCorDaLoja(cor);
+      await renderizarOfertas(criarProduto());
+
+      const botoes = containerDeCtas(hospedeiro).querySelectorAll("button");
+      expect(botoes[1].classList.contains("text-primary-legivel")).toBe(true);
+      expect(botoes[1].classList.contains("text-primary")).toBe(false);
+      expect(botoes[1].classList.contains("bg-secondary/10")).toBe(true);
+      expect(botoes[0].classList.contains("bg-primary")).toBe(true);
+      expect(botoes[0].classList.contains("text-primary-foreground")).toBe(
+        true,
+      );
+    },
+  );
+
+  it.each(["#FFFFFF", "#FFFF00"])(
+    "categoria usa a cor legível com marca %s",
+    async (cor) => {
+      const { aplicarCorDaLoja } = await import("@/config/branding");
+      aplicarCorDaLoja(cor);
+      await renderizarOfertas(criarProduto());
+
+      const categoria = [...hospedeiro.querySelectorAll("span")].find(
+        (elemento) => elemento.textContent === "roupas",
+      )!;
+      expect(categoria.classList.contains("text-primary-legivel")).toBe(true);
+      expect(categoria.classList.contains("text-primary")).toBe(false);
+      expect(categoria.classList.contains("bg-secondary/10")).toBe(true);
+    },
+  );
 
   it("com variação ativa: só UM botão ('Escolher opções')", async () => {
     const produto = criarProduto({ variants: criarVariantes(true) });

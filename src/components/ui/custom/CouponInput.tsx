@@ -10,6 +10,8 @@ interface CouponInputProps {
   onRemove: () => void;
   appliedCoupon?: { code: string; discount: number } | null;
   error?: string;
+  /** O cupom aplicado ainda aguarda a resposta da conferência. */
+  conferindo?: boolean;
   /** Uma validação está em voo — o botão trava (toque duplo não valida duas vezes). */
   aplicando?: boolean;
   /** O pedido está saindo: aplicar e remover ficam apagados (diferente de
@@ -24,6 +26,7 @@ export const CouponInput = memo(function CouponInput({
   onRemove,
   appliedCoupon,
   error,
+  conferindo = false,
   aplicando = false,
   travado = false,
   destaque,
@@ -52,9 +55,8 @@ export const CouponInput = memo(function CouponInput({
 
   if (appliedCoupon) {
     // Frente B (28/09/2026): cores AA — o verde do desconto é emerald-700
-    // sobre branco (5,2:1). Cupom restaurado do rascunho chega com desconto 0
-    // até a revalidação responder — "R$ 0,00 aplicado" era mentira; agora diz
-    // que está conferindo.
+    // sobre branco (5,2:1). A espera depende da conferência, não do valor:
+    // um cupom válido também pode arredondar o desconto para R$ 0,00.
     // PASSO A3 (22/10/2026): o cupom aplicado é o cartão SELECIONADO — borda
     // forte + bolinha escura com check, no mesmo desenho dos cartões da lista.
     return (
@@ -85,9 +87,11 @@ export const CouponInput = memo(function CouponInput({
             <span className="font-medium text-emerald-700">aplicado</span>
           </p>
           <p className="text-xs font-semibold text-emerald-700">
-            {appliedCoupon.discount > 0
-              ? `Você economiza ${formatCurrency(appliedCoupon.discount)}`
-              : "Conferindo o desconto…"}
+            {conferindo
+              ? "Conferindo o desconto…"
+              : appliedCoupon.discount > 0
+                ? `Você economiza ${formatCurrency(appliedCoupon.discount)}`
+                : "Cupom aplicado"}
           </p>
           {/* Laudo de acessibilidade 03/09, achado 2: o botão diz o que faz.
               Frente B: o X virou a palavra "Remover" (alvo de 44px). */}

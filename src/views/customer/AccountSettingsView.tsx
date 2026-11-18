@@ -901,6 +901,11 @@ export function AccountSettingsView() {
       return;
     }
 
+    if (passwordData.newPassword.trim() === "") {
+      toast.error("A senha não pode ser só espaços. Use letras ou números.");
+      return;
+    }
+
     // Mesma regra do GoTrue (8) — ver conserto irmão em AuthView.tsx.
     if (passwordData.newPassword.length < 8) {
       toast.error("A senha deve ter pelo menos 8 caracteres");
@@ -1910,8 +1915,8 @@ export function AccountSettingsView() {
                     whileTap={{ scale: 0.99 }}
                     className="flex cursor-pointer flex-col items-center justify-center space-y-3 rounded-2xl border-2 border-dashed border-zinc-100 bg-zinc-50/10 p-6 text-center transition-colors hover:border-primary/25 hover:bg-primary/[0.04]"
                   >
-                    <div className="flex size-10 items-center justify-center rounded-xl border border-zinc-100 bg-zinc-50 text-primary">
-                      <UploadCloud className="size-5 text-primary" />
+                    <div className="flex size-10 items-center justify-center rounded-xl border border-zinc-100 bg-zinc-50 text-primary-legivel">
+                      <UploadCloud className="size-5 text-primary-legivel" />
                     </div>
                     <div className="space-y-1">
                       <p className="text-[10px] font-black uppercase tracking-wider text-slate-700">

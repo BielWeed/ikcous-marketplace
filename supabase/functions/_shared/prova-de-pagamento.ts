@@ -33,8 +33,10 @@
  *       conferidos por `conferirValorDoPagamento` — a MESMA regra do cron;
  *   (f) VALOR PAGO capturado: `total_paid_amount` da raiz — ou, só quando ele
  *       não vem, `paid_amount` do pagamento — presente, finito, > 0 e
- *       conferido pela mesma régua de valor: parcelado nunca aceita menos
- *       que o pedido. Com principal correto, crédito 2..12x aceita captura
+ *       conferido pela mesma régua de valor: captura presente e legível abaixo
+ *       do pedido além da tolerância recusa para QUALQUER tipo, mesmo ausente
+ *       ou desconhecido; parcelado nunca aceita menos que o pedido.
+ *       Com principal correto, crédito 2..12x aceita captura
  *       até o teto sem depender do valor por parcela, que o MP não garante.
  *       Os DOIS ausentes: recusa `valor_pago_ausente`. A raiz manda quando
  *       existe. Só principal acima do pedido exige a soma das parcelas;
@@ -164,10 +166,17 @@ export function conferirValorDoPagamento(
     (!order || !jurosCompativeis(valor, total, order))) {
     return { provado: false, motivo: "valor_divergente" };
   }
-  // Captura parcial ou acima do teto não confirma. Principal exato não
+  // Captura presente e legível abaixo do pedido recusa para QUALQUER tipo,
+  // mesmo ausente/desconhecido: webhook e cron não passam pela prova completa.
+  // Ausência/valor ilegível não ganham nova recusa nesta conferência.
+  if (order && presente(valorCapturado(order))) {
+    const capturado = comoNumero(valorCapturado(order));
+    if (capturado !== null && totalEmCentavos - Math.round(capturado * 100) > toleranciaEmCentavos) {
+      return { provado: false, motivo: "valor_divergente" };
+    }
+  }
+  // Cartão mantém a régua própria de parcelamento e teto. Principal exato não
   // exige installment_amount: juros podem existir só no total capturado.
-  // Captura abaixo do pedido vale para TODO cartão (à vista também): o webhook
-  // e a reconciliação só chamam esta função, não a prova completa.
   if (order && orderEhDeCartao(order) && presente(valorCapturado(order))) {
     const pago = comoNumero(valorCapturado(order));
     if ((parcelado && (pago === null || Math.round(pago * 100) < Math.round(total * 100))) ||

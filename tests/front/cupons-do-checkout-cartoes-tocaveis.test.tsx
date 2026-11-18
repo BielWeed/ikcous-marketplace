@@ -256,6 +256,37 @@ describe("CuponsDoCheckout — PASSO A3: cartões tocáveis e código atrás de 
     expect(document.activeElement).toBe(outro);
   });
 
+  it.each([false, true])(
+    "remover cupom devolve foco ao aplicar (campo aberto: %s)",
+    (aberto) => {
+      montar();
+      if (aberto) act(() => link().click());
+      montar({ appliedCoupon: { code: "VIP15", discount: 15 } });
+      const remover = botao("Remover cupom")!;
+      act(() => remover.focus());
+      act(() => remover.click());
+      montar({ appliedCoupon: null });
+      const destino = aberto
+        ? document.getElementById("coupon-code-input")
+        : link();
+      expect(document.activeElement).toBe(destino);
+    },
+  );
+
+  it("remover não rouba foco que foi movido nem remoção externa desloca foco", () => {
+    montar({ appliedCoupon: { code: "VIP15", discount: 15 } });
+    const remover = botao("Remover cupom")!;
+    act(() => remover.focus());
+    act(() => remover.click());
+    const outro = botao("Aplicar o cupom VITRINE10")!;
+    act(() => outro.focus());
+    montar({ appliedCoupon: null });
+    expect(document.activeElement).toBe(outro);
+    montar({ appliedCoupon: { code: "VIP15", discount: 15 } });
+    montar({ appliedCoupon: null });
+    expect(document.activeElement).toBe(outro);
+  });
+
   it("aplicado com código longo: o nome do cupom quebra linha em tela estreita, nunca some atrás de reticências", () => {
     montar({ appliedCoupon: { code: "BEMVINDO10", discount: 12.97 } });
     const selecionado = hospedeiro.querySelector(

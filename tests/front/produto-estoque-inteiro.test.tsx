@@ -3,6 +3,7 @@ import { act } from "react";
 import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { escolherCategoriaDoProduto } from "./helpers/escolher-categoria-do-produto";
 
 const addProduct = vi.fn();
 const updateProduct = vi.fn();
@@ -162,7 +163,7 @@ describe("Produto — estoque inteiro", () => {
     vi.restoreAllMocks();
   });
 
-  async function montar() {
+  async function montar(productId: string | undefined = "prod-1") {
     const { AdminProductFormView } = await import(
       "@/views/admin/AdminProductFormView"
     );
@@ -170,7 +171,7 @@ describe("Produto — estoque inteiro", () => {
       raiz.render(
         <AdminProductFormView
           userId="u-teste"
-          productId="prod-1"
+          productId={productId}
           onNavigate={vi.fn()}
           onSetDirty={vi.fn()}
         />,
@@ -232,6 +233,65 @@ describe("Produto — estoque inteiro", () => {
       );
     },
   );
+
+  it("apagar as 20 unidades do produto existente bloqueia salvar e mantém o estoque salvo", async () => {
+    let estoqueSalvo = produtoDoBanco.stock;
+    updateProduct.mockImplementation(async (_id, dados) => {
+      if ("stock" in dados) estoqueSalvo = dados.stock;
+      return { id: "prod-1" };
+    });
+    await montar();
+    await digitarCampo("product-stock", "");
+
+    await act(async () => {
+      botao("Salvar").click();
+      hospedeiro
+        .querySelector("form")!
+        .dispatchEvent(
+          new Event("submit", { bubbles: true, cancelable: true }),
+        );
+    });
+
+    expect(estoqueSalvo).toBe(20);
+    expect(updateProduct).not.toHaveBeenCalled();
+    expect(addProduct).not.toHaveBeenCalled();
+    expect(botao("Salvar").disabled).toBe(true);
+    expect(hospedeiro.textContent).toContain(
+      "Informe o estoque: digite 0 ou mais.",
+    );
+    expect(
+      (document.getElementById("product-stock") as HTMLInputElement).value,
+    ).toBe("");
+  });
+
+  it("produto novo continua aceitando estoque vazio como zero", async () => {
+    // String vazia abre a criação, sem um produto já salvo.
+    addProduct.mockResolvedValue({ id: "novo-1" });
+    await montar("");
+    await digitarCampo("product-name", "Camiseta");
+    await digitarCampo("product-description", "Camiseta de algodão");
+    await digitarCampo("product-sale-price", "5000");
+    await act(async () => {
+      escolherCategoriaDoProduto("Geral");
+    });
+
+    expect(
+      (document.getElementById("product-stock") as HTMLInputElement).value,
+    ).toBe("");
+    // O botão já exige estoque na criação; o submit direto ainda converte
+    // vazio para zero. Esta correção não muda esse caminho de produto novo.
+    await act(async () => {
+      hospedeiro
+        .querySelector("form")!
+        .dispatchEvent(
+          new Event("submit", { bubbles: true, cancelable: true }),
+        );
+    });
+
+    expect(addProduct).toHaveBeenCalledWith(
+      expect.objectContaining({ stock: 0 }),
+    );
+  });
 
   it("continua recusando decimal no estoque mínimo", async () => {
     await montar();

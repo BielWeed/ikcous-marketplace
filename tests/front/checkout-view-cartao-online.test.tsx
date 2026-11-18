@@ -34,6 +34,7 @@ vi.mock("@/components/ui/custom/ShippingCalculator", () => ({
   ShippingCalculator: () => null,
 }));
 
+let mockFormasPagamentoEntrega: Array<"pix" | "card" | "cash"> | undefined;
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
     config: {
@@ -41,6 +42,7 @@ vi.mock("@/contexts/StoreContext", () => ({
       originCep: "38500-000",
       localCepRange: "01310-100",
       enableCoupons: false,
+      formasPagamentoEntrega: mockFormasPagamentoEntrega,
     },
     isLoaded: true,
   }),
@@ -267,6 +269,7 @@ describe("CheckoutView — cartão pelo app", () => {
     mockShippingFee = 20;
     mockSelectedShippingOption = { ...ENTREGA_LOCAL };
     mockConfigDoCartao = { credito: true, debito: true, parcelasMax: 6 };
+    mockFormasPagamentoEntrega = undefined;
     const armazem = new Map<string, string>();
     vi.stubGlobal("localStorage", {
       getItem: (chave: string) => armazem.get(chave) ?? null,
@@ -289,6 +292,204 @@ describe("CheckoutView — cartão pelo app", () => {
     hospedeiro.remove();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+  });
+
+  it("só a forma marcada entra na ordem de Tab, também depois do clique", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await montar(CheckoutView);
+    const radios = [
+      ...hospedeiro.querySelectorAll<HTMLButtonElement>('[role="radio"]'),
+    ];
+    expect(radios.filter((b) => b.tabIndex === 0)).toHaveLength(1);
+    expect(
+      radios.find((b) => b.tabIndex === 0)?.getAttribute("aria-checked"),
+    ).toBe("true");
+    await clicar(botaoPorTexto(hospedeiro, "Cartão de crédito ou débito")!);
+    expect(radios.filter((b) => b.tabIndex === 0)).toEqual([
+      botaoPorTexto(hospedeiro, "Cartão de crédito ou débito"),
+    ]);
+  });
+
+  it.each([
+    {
+      cenario: "convidado com entrega local",
+      convidado: true,
+      transportadora: false,
+      semEntrega: false,
+      indiceTab: 2,
+    },
+    {
+      cenario: "convidado com transportadora",
+      convidado: true,
+      transportadora: true,
+      semEntrega: false,
+      indiceTab: 0,
+    },
+    {
+      cenario: "convidado sem formas na entrega",
+      convidado: true,
+      transportadora: false,
+      semEntrega: true,
+      indiceTab: 0,
+    },
+    {
+      cenario: "logado com entrega local",
+      convidado: false,
+      transportadora: false,
+      semEntrega: false,
+      indiceTab: 2,
+    },
+    {
+      cenario: "logado com transportadora",
+      convidado: false,
+      transportadora: true,
+      semEntrega: false,
+      indiceTab: 0,
+    },
+  ])(
+    "$cenario: exatamente uma forma de pagamento recebe Tab",
+    async ({ convidado, transportadora, semEntrega, indiceTab }) => {
+      if (convidado) mockUser = null;
+      if (transportadora) {
+        mockSelectedShippingOption = {
+          id: "melhor-envio-CorreiosSedex",
+          name: "Sedex",
+          price: 20,
+          deliveryDays: 3,
+          provider: "melhor_envio",
+        };
+      }
+      if (semEntrega) mockFormasPagamentoEntrega = [];
+      const { CheckoutView } = await import("@/views/customer/CheckoutView");
+      await montar(CheckoutView);
+      const grupo = hospedeiro.querySelector('[role="radiogroup"]')!;
+      const radios = [
+        ...grupo.querySelectorAll<HTMLButtonElement>('[role="radio"]'),
+      ];
+      expect(radios.filter((radio) => radio.tabIndex === 0)).toEqual([
+        // eslint-disable-next-line security/detect-object-injection -- teste: entrada fixa, sem dado de usuário
+        radios[indiceTab],
+      ]);
+
+      if (convidado && (transportadora || semEntrega)) {
+        expect(radios).toHaveLength(2);
+        expect(
+          radios.every(
+            (radio) => radio.getAttribute("aria-checked") === "false",
+          ),
+        ).toBe(true);
+        act(() => radios[0].focus());
+        expect(document.activeElement).toBe(radios[0]);
+        await act(async () =>
+          radios[0].dispatchEvent(
+            new KeyboardEvent("keydown", {
+              key: "ArrowRight",
+              bubbles: true,
+              cancelable: true,
+            }),
+          ),
+        );
+        expect(document.activeElement).toBe(radios[0]);
+        expect(onNavigate).not.toHaveBeenCalled();
+        await clicar(radios[0]);
+        expect(onNavigate).toHaveBeenCalledWith("auth");
+        expect(radios[0].getAttribute("aria-checked")).toBe("false");
+      } else {
+        // eslint-disable-next-line security/detect-object-injection -- teste: entrada fixa, sem dado de usuário
+        expect(radios[indiceTab].getAttribute("aria-checked")).toBe("true");
+      }
+    },
+  );
+
+  it("setas percorrem os dois subgrupos e dão volta, selecionando como o clique", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await montar(CheckoutView);
+    const radios = [
+      ...hospedeiro.querySelectorAll<HTMLButtonElement>('[role="radio"]'),
+    ];
+    await clicar(radios[0]);
+    act(() => radios[0].focus());
+    for (const [tecla, indice] of [
+      ["ArrowLeft", 4],
+      ["ArrowDown", 0],
+      ["ArrowRight", 1],
+      ["ArrowDown", 2],
+      ["ArrowUp", 1],
+    ] as const) {
+      await act(async () => {
+        document.activeElement!.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: tecla,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      });
+      // eslint-disable-next-line security/detect-object-injection -- teste: entrada fixa, sem dado de usuário
+      expect(document.activeElement).toBe(radios[indice]);
+      expect(
+        radios.filter((b) => b.getAttribute("aria-checked") === "true"),
+        // eslint-disable-next-line security/detect-object-injection -- teste: entrada fixa, sem dado de usuário
+      ).toEqual([radios[indice]]);
+      // eslint-disable-next-line security/detect-object-injection -- teste: entrada fixa, sem dado de usuário
+      expect(radios.filter((b) => b.tabIndex === 0)).toEqual([radios[indice]]);
+    }
+    // A seleção pelo teclado deve alimentar o mesmo fluxo real do cartão.
+    await finalizar();
+    expect(createOrder.mock.calls[0][0].paymentMethod).toBe("online");
+    expect(propsDoPagamento.at(-1)?.metodo).toBe("cartao");
+  });
+
+  it("as setas pulam formas desabilitadas e não interceptam Tab", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await montar(CheckoutView);
+    const radios = [
+      ...hospedeiro.querySelectorAll<HTMLButtonElement>('[role="radio"]'),
+    ];
+    await clicar(radios[0]);
+    act(() => radios[0].focus());
+    radios[1].disabled = true;
+    const tab = new KeyboardEvent("keydown", {
+      key: "Tab",
+      bubbles: true,
+      cancelable: true,
+    });
+    act(() => radios[0].dispatchEvent(tab));
+    expect(tab.defaultPrevented).toBe(false);
+    await act(async () =>
+      radios[0].dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "ArrowRight",
+          bubbles: true,
+          cancelable: true,
+        }),
+      ),
+    );
+    expect(document.activeElement).toBe(radios[2]);
+    expect(radios[2].getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("as setas do convidado pulam opções que exigem conta, sem abrir login", async () => {
+    mockUser = null;
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await montar(CheckoutView);
+    const radios = [
+      ...hospedeiro.querySelectorAll<HTMLButtonElement>('[role="radio"]'),
+    ];
+    await clicar(radios[2]);
+    act(() => radios[2].focus());
+    await act(async () =>
+      radios[2].dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "ArrowUp",
+          bubbles: true,
+          cancelable: true,
+        }),
+      ),
+    );
+    expect(document.activeElement).toBe(radios[4]);
+    expect(radios[4].getAttribute("aria-checked")).toBe("true");
+    expect(onNavigate).not.toHaveBeenCalled();
   });
 
   it("com crédito e débito ligados, 'No app' mostra PIX e 'Cartão de crédito ou débito', nessa ordem, antes da entrega", async () => {

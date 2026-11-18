@@ -52,7 +52,7 @@ function Linha({
   return (
     <div className="flex items-start justify-between gap-3 text-xs">
       <dt className="shrink-0 text-zinc-500">{rotulo}</dt>
-      <dd className="min-w-0 text-right font-semibold text-zinc-200">
+      <dd className="min-w-0 text-right font-semibold text-zinc-200 [overflow-wrap:anywhere]">
         {children}
       </dd>
     </div>

@@ -1,4 +1,5 @@
 import { dataLocal } from "@/lib/data-local-csv";
+import { hojeEmSaoPaulo } from "@/lib/financeiro";
 import type { Product } from "@/types";
 
 export type CelulaDoProduto = string | number;
@@ -124,7 +125,7 @@ export async function exportarProdutosPlanilha(
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "")
       .slice(0, 80) || "loja";
-  link.download = `produtos-${loja}-${new Date().toISOString().slice(0, 10)}.${formato}`;
+  link.download = `produtos-${loja}-${hojeEmSaoPaulo()}.${formato}`;
   document.body.append(link);
   try {
     link.click();

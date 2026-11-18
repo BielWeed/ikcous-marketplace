@@ -1,4 +1,28 @@
 {
+  "1.5.211": {
+    "titulo": "Pagamentos mais seguros, painel com avisos mais claros e compra mais acessível",
+    "novidades": [],
+    "correcoes": [
+      "Pagamento: um valor recebido abaixo do permitido não confirma o pedido, e a lojista recebe um aviso para conferir a divergência.",
+      "Cartão: recusas por parcelamento inválido ou cartão desabilitado recebem explicações específicas. Ligar ou desligar o cartão no painel espera a gravação anterior terminar e, se o servidor demorar, avisa que o resultado é incerto e confere o que ficou salvo.",
+      "Pedidos: o pagamento recebido depois do encerramento ganha um texto mais claro, e o comprovante de retirada não manda esperar uma confirmação que pode já ter acontecido.",
+      "Devoluções: quando o reembolso falha ou é recusado, a cliente recebe orientação para falar com a loja, sem perder o registro da devolução.",
+      "Painel: consultas de frete, cupons e avisos deixam de ficar carregando indefinidamente quando o servidor não responde.",
+      "Painel, banners: a edição só confirma a nova ordem depois de salvá-la, e uma falha nessa etapa não apaga a foto já salva.",
+      "Painel, valores: colar letras ou sinais inválidos em campos de dinheiro mostra erro sem gravar outro valor; colar um valor negativo onde ele é permitido mantém o sinal. Os gráficos distinguem datas de anos diferentes.",
+      "Painel, produtos: apagar o estoque de um produto ou variação existente pede um número, e excluir uma foto usada por variações exige confirmação.",
+      "Cupons: trocar a busca de clientes não deixa aparecer resultados antigos, e um desconto válido de zero deixa de parecer uma conferência sem fim.",
+      "Vitrine: nomes e preços ficam mais legíveis no modo escuro, categorias repetidas por diferença de maiúsculas ou espaços aparecem uma vez, e fotos indisponíveis deixam de mostrar imagens quebradas.",
+      "Teclado: escolher o pagamento pelas setas, remover itens ou cupons e voltar à busca do balcão mantém o foco no lugar certo.",
+      "Conta e sessão: senhas só de espaços são recusadas, o reenvio da confirmação respeita uma espera e os avisos de sessão vencida orientam entrar novamente sem apagar o texto digitado.",
+      "Endereço e pedido: colar o estado com espaços, como \" SP \", funciona, e o link de um pedido escrito em letras maiúsculas abre o pedido certo.",
+      "Avisos da loja: quando o envio foi feito, mas o histórico não conseguiu registrar as entregas, o painel explica essa diferença."
+    ],
+    "melhorias": [
+      "Atualizações do app esperam enquanto há um novo e-mail digitado em Privacidade ou um código de rastreio de devolução sendo preenchido ou enviado.",
+      "Descrições de produto reconhecem listas com marcadores também na prévia do painel, e falar com a loja pelo WhatsApp não exige escolher todas as opções do produto (sem a escolha completa, a mensagem sai sem preço)."
+    ]
+  },
   "1.5.210": {
     "titulo": "Retirada com os textos certos, CPF e WhatsApp mais seguros e o Voltar do celular que fecha só a folha",
     "novidades": [],

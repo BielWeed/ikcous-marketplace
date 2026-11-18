@@ -120,7 +120,9 @@ describe("lote 230 — Cancelar pedido (ficha do painel) pergunta pela janela do
     expect(nativo).not.toHaveBeenCalled();
     const j = janela();
     expect(j).not.toBeNull();
-    expect(normal(j?.textContent)).toContain("Cancelar este pedido?");
+    expect(normal(j?.textContent)).toContain(
+      "Cancelar o pedido #ED-230 de Cliente Teste?",
+    );
     expect(normal(j?.textContent)).toContain(
       "Este pedido está PAGO e ainda não saiu para entrega.",
     );

@@ -42,6 +42,7 @@ import {
   linkDeRastreio,
   normalizarCodigoDeRastreio,
 } from "@/lib/link-de-rastreio";
+import { nomeOuReserva } from "@/lib/nome-visivel";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import {
   MENSAGEM_ACAO_DO_PEDIDO_SEM_RESPOSTA,
@@ -2498,7 +2499,7 @@ export const OrderDetail = memo(function OrderDetail({
     let confirmado = false;
     try {
       confirmado = await confirmar({
-        titulo: "Cancelar este pedido?",
+        titulo: `Cancelar o pedido #${numeroDoPedido(order.id)}${order.customer?.name ? ` de ${order.customer.name}` : ""}?`,
         texto,
         verbo: "Cancelar pedido",
       });
@@ -2532,7 +2533,7 @@ export const OrderDetail = memo(function OrderDetail({
 
   const handleWhatsAppDirect = () => {
     if (!whatsappUrl) return;
-    const message = `Olá ${order.customer?.name || "Cliente"}! Entramos em contato sobre o seu pedido #${numeroDoPedido(order.id)}.`;
+    const message = `Olá ${nomeOuReserva(order.customer?.name, "Cliente")}! Entramos em contato sobre o seu pedido #${numeroDoPedido(order.id)}.`;
     abrirWhatsapp(`${whatsappUrl}?text=${encodeURIComponent(message)}`);
   };
 

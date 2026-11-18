@@ -58,6 +58,7 @@ import {
   problemaDasDatas,
 } from "@/lib/datas-do-banner";
 import { LINK_DA_PAGINA_DA_LOJA } from "@/lib/destino-do-banner";
+import { mensagemDeErroDeSessaoDoPainel } from "@/lib/erro-de-sessao-do-painel";
 import { chaveDoUsuario } from "@/lib/fila-offline-por-usuario";
 import { soFotosReais } from "@/lib/foto-do-produto";
 import {
@@ -2314,9 +2315,12 @@ export const AdminBannersView = memo(function AdminBannersView({
       setIsDialogOpen(false);
     } catch (error) {
       console.error("Erro ao salvar banner:", error);
-      if (ehGravacaoIncerta(error)) {
-        // Sem resposta ou com falha de rede sem rejeição definitiva, o servidor
-        // pode ter gravado o banner com a foto enviada: ela deixa de ser "órfã
+      if (
+        ehGravacaoIncerta(error) ||
+        (error instanceof Error && error.name === "BannerOrdemNaoSalva")
+      ) {
+        // Sem resposta, pode ter gravado; se só a ordem falhou, já gravou.
+        // A foto enviada deixa de ser "órfã
         // provada", então fechar o editor não pode apagá-la (apagar deixaria
         // um banner publicado sem imagem). O rascunho segue no editor.
         imagemEnviadaNaoSalvaRef.current = null;
@@ -2324,7 +2328,12 @@ export const AdminBannersView = memo(function AdminBannersView({
       }
       if (
         !ehConsultaSemResposta(error) &&
-        !(error instanceof Error && error.name === "BannerIndisponivel")
+        !(!editingBanner && mensagemDeErroDeSessaoDoPainel(error)) &&
+        !(
+          error instanceof Error &&
+          (error.name === "BannerIndisponivel" ||
+            error.name === "BannerOrdemNaoSalva")
+        )
       ) {
         toast.error("Erro ao salvar as configurações do banner.");
       }
@@ -3962,11 +3971,11 @@ export const AdminBannersView = memo(function AdminBannersView({
           {...foco.dialogo}
           className="max-w-md rounded-3xl border border-admin-border bg-admin-surface"
         >
-          <AlertDialogHeader>
+          <AlertDialogHeader className="min-w-0">
             <AlertDialogTitle className="text-lg font-black uppercase tracking-tight text-white">
               Excluir Banner?
             </AlertDialogTitle>
-            <AlertDialogDescription className="text-xs text-zinc-400">
+            <AlertDialogDescription className="text-xs text-zinc-400 [overflow-wrap:anywhere]">
               Excluir “
               {bannerEmExclusao?.title?.trim() ||
                 bannerEmExclusao?.buttonText?.trim() ||

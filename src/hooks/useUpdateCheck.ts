@@ -169,6 +169,7 @@ export function useUpdateCheck() {
     if (!registration) return;
 
     const checkUpdateNow = async () => {
+      if (document.visibilityState === "hidden") return;
       console.log("[PWA] Checking for updates...");
       const ver = await fetchServerVersion();
       if (ver && ver !== SAFE_APP_VERSION) {

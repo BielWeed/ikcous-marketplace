@@ -8,6 +8,10 @@ import {
   MARGEM_TOPO_VENDAS,
   reais,
 } from "@/components/admin/dashboard/BalaoDoGrafico";
+import {
+  rotuloDoDia,
+  serieCobreMaisDeUmAno,
+} from "@/components/admin/dashboard/rotulo-do-dia";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { DashboardStats } from "@/hooks/useAnalytics";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
@@ -189,6 +193,7 @@ export const OperationalPerformanceChart = memo(
       // primeira venda são aparados — a loja não nasceu 10 anos atrás.
       return desdeOPrimeiroDiaDeMovimento(revenueHistory);
     }, [revenueHistory, timeframe]);
+    const mostrarAno = serieCobreMaisDeUmAno(filteredRevenueHistory);
 
     // Faturamento Total / Pedidos / Ticket Médio do bloco de resumo, somados
     // a partir dos MESMOS dias que alimentam as barras (`filteredRevenueHistory`).
@@ -460,10 +465,7 @@ export const OperationalPerformanceChart = memo(
                       fill: "hsl(var(--admin-text-soft, 240 6.8% 65.5%))",
                       fontWeight: 500,
                     }}
-                    tickFormatter={(val) => {
-                      const part = val.split("-");
-                      return part.length >= 3 ? `${part[2]}/${part[1]}` : val;
-                    }}
+                    tickFormatter={(val) => rotuloDoDia(val, mostrarAno)}
                     dy={10}
                   />
                   <YAxis
@@ -490,7 +492,11 @@ export const OperationalPerformanceChart = memo(
                         return (
                           <BalaoDoGrafico
                             tipo="vendas"
-                            data={data.full_date || data.date}
+                            data={
+                              mostrarAno
+                                ? rotuloDoDia(data.date, true)
+                                : data.full_date || data.date
+                            }
                             receita={data.revenue || 0}
                             pedidos={
                               typeof data.orders === "number" ? data.orders : 0
@@ -575,10 +581,7 @@ export const OperationalPerformanceChart = memo(
                       fill: "hsl(var(--admin-text-soft, 240 6.8% 65.5%))",
                       fontWeight: 500,
                     }}
-                    tickFormatter={(val) => {
-                      const part = val.split("-");
-                      return part.length >= 3 ? `${part[2]}/${part[1]}` : val;
-                    }}
+                    tickFormatter={(val) => rotuloDoDia(val, mostrarAno)}
                     dy={10}
                   />
                   <YAxis
@@ -609,7 +612,11 @@ export const OperationalPerformanceChart = memo(
                         return (
                           <BalaoDoGrafico
                             tipo="lucro"
-                            data={data.full_date || data.date}
+                            data={
+                              mostrarAno
+                                ? rotuloDoDia(data.date, true)
+                                : data.full_date || data.date
+                            }
                             lucroAcumulado={data.cumulativeProfit}
                             estoqueInvestido={data.inventoryCost}
                           />

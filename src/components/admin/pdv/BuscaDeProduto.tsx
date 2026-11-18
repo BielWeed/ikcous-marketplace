@@ -266,6 +266,7 @@ export function BuscaDeProduto({
         ),
         em: agora(),
       });
+      document.getElementById("busca-manual-de-produto")?.focus();
       return;
     }
     setProdutoExpandidoId((atual) =>
@@ -286,6 +287,7 @@ export function BuscaDeProduto({
       ),
       em: agora(),
     });
+    document.getElementById("busca-manual-de-produto")?.focus();
   }
 
   return (

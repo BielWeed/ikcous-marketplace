@@ -2,6 +2,7 @@ import {
   linkDeRastreio,
   normalizarCodigoDeRastreio,
 } from "@/lib/link-de-rastreio";
+import { nomeOuReserva } from "@/lib/nome-visivel";
 import {
   ROTULOS_DAS_ETAPAS,
   ROTULO_RETIRADA_FEITA,
@@ -38,7 +39,7 @@ export function rotuloDoStatusParaACliente(
 }
 
 interface DadosDaMensagem {
-  nomeDoCliente: string;
+  nomeDoCliente: string | null | undefined;
   numeroDoPedido: string;
   /** Rótulo do status como a cliente o lê (`rotuloDoStatusParaACliente`). */
   rotuloDoStatus: string;
@@ -74,5 +75,5 @@ export function mensagemDoStatusNoWhatsapp({
     status === "cancelled"
       ? "Qualquer dúvida sobre o cancelamento, é só responder esta mensagem."
       : `Obrigado por comprar na ${nomeDaLoja}!`;
-  return `Olá ${nomeDoCliente}!\n\nSeu pedido #${numeroDoPedido} foi atualizado.\nStatus: ${rotuloDoStatus}\n${rastreio}\n${fecho}`;
+  return `Olá ${nomeOuReserva(nomeDoCliente, "Cliente")}!\n\nSeu pedido #${numeroDoPedido} foi atualizado.\nStatus: ${rotuloDoStatus}\n${rastreio}\n${fecho}`;
 }

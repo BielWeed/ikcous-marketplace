@@ -8734,6 +8734,79 @@ Deno.test("webhook: cartão à vista com captura MENOR que o pedido NÃO confirm
   }
 });
 
+// Captura parcial não depende de payment_method.type. A raiz vem do GET autenticado.
+for (const tipo of [undefined, "bank_transfer"]) {
+  for (const pago of ["60.00", "149.85", undefined, "ilegivel"]) {
+    Deno.test(`captura qualquer tipo webhook order: ${tipo ?? "sem type"}, recebido ${pago ?? "ausente"}`, async () => {
+      ambienteDoWebhook();
+      const registro = { chamadasRpc: [], chamadasReservar: [] };
+      const pedido = { id: UUID_PEDIDO, total: 149.9, gateway_payment_id: ID_ORDER_CARTAO_MP };
+      const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+      const o = orderParceladaComJuros(1, pago ?? "149.90");
+      if (tipo === undefined) delete o.transactions.payments[0].payment_method.type;
+      else o.transactions.payments[0].payment_method.type = tipo;
+      if (pago === undefined) {
+        delete o.total_paid_amount;
+        delete o.transactions.payments[0].paid_amount;
+      }
+      const avisos = [];
+      const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+      const r = await handler(req, {
+        supabase, fetchImpl: fetchConsulta(200, o),
+        enviarPush: async () => {}, enviarComprovante: async () => {},
+        enviarPushContado: async ({ aviso }) => { avisos.push(aviso); return 1; },
+      });
+      const esperado = pago !== "60.00";
+      assertEquals(r.status, 200);
+      assertEquals((await r.json()).ignorado, esperado ? undefined : "valor divergente");
+      assertEquals(registro.chamadasRpc.length, esperado ? 1 : 0);
+      assertEquals(avisos.length, esperado ? 0 : 1);
+      if (!esperado) assertEquals(registro.chamadasReservar[0].args.p_chave, `valor_divergente:${UUID_PEDIDO}:${ID_ORDER_CARTAO_MP}`);
+    });
+  }
+}
+
+// A notificação clássica consulta a ORDER GRAVADA; status pago sozinho não basta.
+for (const tipo of ["credit_card", undefined, "bank_transfer"]) {
+  for (const pago of ["60.00", "149.85", undefined, "ilegivel"]) {
+    Deno.test(`captura qualquer tipo webhook payment: ${tipo ?? "sem type"}, recebido ${pago ?? "ausente"}`, async () => {
+      ambienteDoWebhook();
+      const registro = { chamadasRpc: [], chamadasReservar: [] };
+      const pedido = { id: UUID_PEDIDO, total: 149.9, gateway_payment_id: ID_GRAVADO_NO_BANCO };
+      const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+      const o = orderParceladaComJuros(1, pago ?? "149.90");
+      o.id = ID_GRAVADO_NO_BANCO;
+      if (tipo === undefined) delete o.transactions.payments[0].payment_method.type;
+      else o.transactions.payments[0].payment_method.type = tipo;
+      if (pago === undefined) {
+        delete o.total_paid_amount;
+        delete o.transactions.payments[0].paid_amount;
+      }
+      const fetchMp = fetchInspecionavel({
+        pagamento: { status: 200, corpo: {
+          id: ID_PAGAMENTO_DO_MP, status: "approved", external_reference: UUID_PEDIDO, transaction_amount: 149.9,
+        } },
+        order: { status: 200, corpo: o },
+      });
+      const avisos = [];
+      const req = await requisicaoAssinada("999", { corpoExtra: { type: "payment" } });
+      const r = await handler(req, {
+        supabase, fetchImpl: fetchMp.fn,
+        enviarPush: async () => {}, enviarComprovante: async () => {},
+        enviarPushContado: async ({ aviso }) => { avisos.push(aviso); return 1; },
+      });
+      const esperado = pago !== "60.00";
+      assertEquals(r.status, 200);
+      assertEquals((await r.json()).ignorado, esperado ? undefined : "valor divergente");
+      assertEquals(registro.chamadasRpc.length, esperado ? 1 : 0);
+      assertEquals(avisos.length, esperado ? 0 : 1);
+      assertEquals(fetchMp.chamadas.some((url) => url.endsWith(`/v1/orders/${ID_GRAVADO_NO_BANCO}`)), true);
+      if (!esperado) assertEquals(registro.chamadasReservar[0].args.p_chave, `valor_divergente:${UUID_PEDIDO}:${ID_GRAVADO_NO_BANCO}`);
+      else assertEquals(registro.chamadasRpc[0].args.p_payment_id, ID_GRAVADO_NO_BANCO);
+    });
+  }
+}
+
 const PARCELADOS_COM_JUROS = [
   { parcelas: 1, pago: "149.90" },
   { parcelas: 2, pago: "164.35" },

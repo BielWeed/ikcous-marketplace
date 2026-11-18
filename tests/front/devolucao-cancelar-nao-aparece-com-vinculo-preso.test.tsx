@@ -227,6 +227,91 @@ const botaoCancelar = () =>
     (b) => b.textContent?.trim() === "Cancelar devolução",
   );
 
+const esperarHistorico = () =>
+  new Promise<void>((resolve) => setTimeout(resolve, 200));
+
+describe("pergunta de cancelar — Voltar do celular", () => {
+  let navegacoes: string[];
+  let aoNavegar: () => void;
+
+  beforeEach(async () => {
+    await esperarHistorico();
+    globalThis.history.replaceState({ view: "home" }, "", "/");
+    globalThis.history.pushState(
+      { view: "order-details" },
+      "",
+      "/pedido?id=o-1",
+    );
+    navegacoes = [];
+    // Como o App: mesma tela e endereço não provocam navegação.
+    aoNavegar = () => {
+      if (globalThis.history.state?.view !== "order-details") {
+        navegacoes.push(globalThis.location.pathname);
+      }
+    };
+    globalThis.addEventListener("popstate", aoNavegar);
+  });
+
+  afterEach(() => {
+    globalThis.removeEventListener("popstate", aoNavegar);
+  });
+
+  async function abrirPergunta() {
+    await montar(detalheDe({}));
+    await act(async () => {
+      botaoCancelar()?.click();
+    });
+    expect(document.querySelector('[role="alertdialog"]')).not.toBeNull();
+  }
+
+  async function voltar() {
+    await act(async () => {
+      globalThis.history.back();
+      await esperarHistorico();
+    });
+  }
+
+  it("Voltar fecha só a pergunta e mantém o cartão e o pedido", async () => {
+    await abrirPergunta();
+    await voltar();
+
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(hospedeiro.textContent).toContain("DV261113-AAAAA");
+    expect(botaoCancelar()).toBeTruthy();
+    expect(onCancelar).not.toHaveBeenCalled();
+    expect(navegacoes).toEqual([]);
+    expect(globalThis.location.pathname + globalThis.location.search).toBe(
+      "/pedido?id=o-1",
+    );
+    expect(globalThis.history.state?.view).toBe("order-details");
+  });
+
+  it.each(["Manter devolução", "Sim, cancelar"])(
+    "%s fecha a pergunta sem deixar entrada sobrando",
+    async (rotulo) => {
+      await abrirPergunta();
+      expect(globalThis.history.state?.folhaDePolitica).toBe(true);
+      await act(async () => {
+        Array.from(document.querySelectorAll("button"))
+          .find((b) => b.textContent?.trim() === rotulo)
+          ?.click();
+        await esperarHistorico();
+      });
+
+      expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+      expect(globalThis.history.state?.folhaDePolitica).not.toBe(true);
+      expect(navegacoes).toEqual([]);
+      if (rotulo === "Sim, cancelar") {
+        expect(onCancelar).toHaveBeenCalledExactlyOnceWith("d-1");
+      } else {
+        expect(onCancelar).not.toHaveBeenCalled();
+      }
+      await voltar();
+      expect(navegacoes).toEqual(["/"]);
+    },
+  );
+});
+
 const orientacao = () =>
   hospedeiro.querySelector(
     '[data-testid="cancelar-devolucao-fale-com-a-loja"]',

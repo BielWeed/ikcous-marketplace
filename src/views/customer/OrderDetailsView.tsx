@@ -38,7 +38,7 @@ import {
   normalizarCodigoDeRastreio,
 } from "@/lib/link-de-rastreio";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
-import { numeroDoPedido } from "@/lib/numero-do-pedido";
+import { mesmoIdDePedido, numeroDoPedido } from "@/lib/numero-do-pedido";
 import { pluralizar } from "@/lib/pluralizar";
 import { podeReenviarComprovante } from "@/lib/pode-reenviar-comprovante";
 import { podeRetomarPagamento } from "@/lib/pode-retomar-pagamento";
@@ -137,7 +137,7 @@ const statusConfig: Record<
       "Aguardando confirmação de pagamento para iniciar a separação.",
   },
   processing: {
-    label: "Em separação",
+    label: ROTULOS_DAS_ETAPAS.separado,
     icon: Clock,
     description: "Seu pedido está sendo preparado com todo cuidado e atenção.",
   },
@@ -803,7 +803,9 @@ export function OrderDetailsView({
     //    passa por `escolherVersaoDoPedido`: a tela pode já ter recebido uma
     //    versão mais nova pela lista do tempo real (efeito logo abaixo), e a
     //    resposta de uma busca que nasceu antes do pagamento não a desfaz.
-    const emMemoria = ordersRef.current.find((o) => o.id === orderId);
+    const emMemoria = ordersRef.current.find((o) =>
+      mesmoIdDePedido(o.id, orderId),
+    );
     if (emMemoria) {
       setOrder((prev) =>
         prev ? escolherVersaoDoPedido(prev, emMemoria) : emMemoria,
@@ -823,7 +825,7 @@ export function OrderDetailsView({
     const doServidor = await fetchUserOrders(false, {
       aguardarSubstituta: true,
     });
-    let encontrado = doServidor.find((o) => o.id === orderId);
+    let encontrado = doServidor.find((o) => mesmoIdDePedido(o.id, orderId));
 
     // 3. Convidado que rastreou pedido por OTP não tem linha em
     //    marketplace_orders para o user_id dele; o pedido fica no
@@ -833,7 +835,9 @@ export function OrderDetailsView({
     let doRetrato: { consultadoEm: number | null } | null = null;
     if (!encontrado) {
       const retrato = lerRetratoDoConvidado();
-      const noRetrato = retrato?.pedidos.find((o) => o?.id === orderId);
+      const noRetrato = retrato?.pedidos.find((o) =>
+        mesmoIdDePedido(o?.id, orderId),
+      );
       if (retrato && noRetrato) {
         encontrado = noRetrato;
         doRetrato = { consultadoEm: retrato.consultadoEm };
@@ -853,7 +857,7 @@ export function OrderDetailsView({
       setOrder((prev) =>
         novo && prev
           ? escolherVersaoDoPedido(prev, novo)
-          : (novo ?? (prev?.id === orderId ? prev : null)),
+          : (novo ?? (mesmoIdDePedido(prev?.id, orderId) ? prev : null)),
       );
     }
     setLoading(false);
@@ -923,7 +927,7 @@ export function OrderDetailsView({
   // `handleCancelOrder`, que no fim grava `cancelled`, relê o servidor e
   // aplica o que a lista emitiu no meio (guardado em
   // `emitidoDuranteOCancelamentoRef`).
-  const doPedidoNaLista = orders.find((o) => o.id === orderId);
+  const doPedidoNaLista = orders.find((o) => mesmoIdDePedido(o.id, orderId));
   useEffect(() => {
     if (!doPedidoNaLista) return;
     // A lista viva trouxe o pedido: o status daqui em diante é o do servidor,
@@ -1892,7 +1896,8 @@ export function OrderDetailsView({
         {/* Devolução/troca em andamento (ou a última) deste pedido: status,
             protocolo, o que a loja escreveu e a próxima ação do cliente. */}
         {podeUsarDevolucao &&
-          devolucaoDoProduto.atual?.order_id === orderId && (
+          devolucaoDoProduto.atual &&
+          mesmoIdDePedido(devolucaoDoProduto.atual.order_id, orderId) && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}

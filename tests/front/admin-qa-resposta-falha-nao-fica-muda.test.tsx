@@ -221,7 +221,7 @@ describe("AdminQAView — resposta que falha não fica muda (laudo 0109, A-1)", 
     expect(h.addAnswer).toHaveBeenCalledTimes(1);
     expect(h.addAnswer).toHaveBeenCalledWith(
       { questionId: "q-1", answer: "Sim, enviamos para todo o Brasil!" },
-      { silent: true },
+      { silent: true, onError: expect.any(Function) },
     );
 
     // O ponto do A-1: falha tem de FALAR. Com o defeito, nenhum toast saía.

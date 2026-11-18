@@ -93,9 +93,10 @@ describe("vitrine de ofertas pausa a rotacao automatica", () => {
     act(async () => {
       vi.advanceTimersByTime(ms);
     });
-  const disparar = (el: Element, tipo: string, extra: EventInit = {}) =>
+  const disparar = (el: Element, tipo: string, extra: TouchEventInit = {}) =>
     act(async () => {
-      el.dispatchEvent(new Event(tipo, { bubbles: true, ...extra }));
+      const Evento = tipo.startsWith("touch") ? TouchEvent : Event;
+      el.dispatchEvent(new Evento(tipo, { bubbles: true, ...extra }));
     });
 
   beforeEach(() => {
@@ -201,6 +202,35 @@ describe("vitrine de ofertas pausa a rotacao automatica", () => {
     await avancar(6100);
     expect(scrollNext).toHaveBeenCalledTimes(1);
   });
+
+  it.each(["touchend", "touchcancel"])(
+    "%s de um dos dois dedos mantém a pausa até o último sair",
+    async (evento) => {
+      const vitrine = await montar();
+      const dedo: Touch = {
+        identifier: 1,
+        target: vitrine,
+        clientX: 0,
+        clientY: 0,
+        pageX: 0,
+        pageY: 0,
+        screenX: 0,
+        screenY: 0,
+        radiusX: 1,
+        radiusY: 1,
+        rotationAngle: 0,
+        force: 1,
+      };
+      const outroDedo: Touch = { ...dedo, identifier: 2 };
+      await disparar(vitrine, "touchstart", { touches: [dedo, outroDedo] });
+      await disparar(vitrine, evento, { touches: [outroDedo] });
+      await avancar(6100);
+      expect(scrollNext).not.toHaveBeenCalled();
+      await disparar(vitrine, evento, { touches: [] });
+      await avancar(6100);
+      expect(scrollNext).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("o mouse emulado logo apos o toque nao trava a vitrine parada", async () => {
     const vitrine = await montar();

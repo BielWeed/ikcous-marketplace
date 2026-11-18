@@ -222,7 +222,9 @@ describe("AdminQAView — redesenho", () => {
     expect(
       document.getElementById(aviso.getAttribute("aria-labelledby")!)
         ?.textContent,
-    ).toBe("Excluir esta pergunta? Não dá para desfazer.");
+    ).toBe(
+      "Excluir esta pergunta? As respostas dela também serão apagadas. Não dá para desfazer.",
+    );
     await tocar(botaoPorTexto("Cancelar"));
     expect(document.activeElement).toBe(
       cartao.querySelector('[aria-label="Excluir pergunta de Gabriel"]'),
@@ -336,7 +338,7 @@ describe("AdminQAView — redesenho", () => {
     expect(lixeiras).toHaveLength(2);
     await tocar(lixeiras[0] as HTMLElement);
     expect(norm(hospedeiro.textContent)).toContain(
-      "Excluir esta pergunta? Não dá para desfazer.",
+      "Excluir esta pergunta? As respostas dela também serão apagadas. Não dá para desfazer.",
     );
     expect(h.deleteQuestion).not.toHaveBeenCalled();
 
@@ -439,7 +441,7 @@ describe("AdminQAView — redesenho", () => {
     await tocar(publicar as HTMLElement);
     expect(h.addAnswer).toHaveBeenCalledWith(
       { questionId: "q-1", answer: "Oi, Isadora! Que bom que gostou." },
-      { silent: true },
+      { silent: true, onError: expect.any(Function) },
     );
   });
 
@@ -494,7 +496,7 @@ describe("AdminQAView — redesenho", () => {
     await tocar(publicar);
     expect(h.addAnswer).toHaveBeenCalledWith(
       { questionId: "q-1", answer: "Obrigado" },
-      { silent: true },
+      { silent: true, onError: expect.any(Function) },
     );
   });
 

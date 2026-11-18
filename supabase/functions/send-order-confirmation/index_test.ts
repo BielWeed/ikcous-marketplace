@@ -268,7 +268,7 @@ Deno.test("o comprovante usa acento em TODAS as frases fixas (online, aguardando
     balcao,
     "Obrigado pela preferência! Este e-mail é o resumo do que você levou hoje.",
   );
-  assertStringIncludes(retirada, "Aguarde a confirmação da loja para retirar.");
+  assertStringIncludes(retirada, "Para informações sobre a retirada, consulte seu pedido ou fale com a loja.");
   assertStringIncludes(retirada, "Endereço do cliente");
   for (const html of [aguardando, confirmado, balcao, retirada]) {
     assertStringIncludes(html, "Dúvida sobre este pedido? Responda este e-mail.");

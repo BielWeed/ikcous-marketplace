@@ -82,8 +82,8 @@ export function ReviewCard({
   return (
     <div className="rounded-3xl border border-zinc-100 bg-white p-5 shadow-sm transition-all duration-300 hover:shadow-md">
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
           <div
             onClick={handleUserClick}
             role={onNavigate && review.userId ? "button" : undefined}
@@ -110,8 +110,8 @@ export function ReviewCard({
               </AvatarFallback>
             </Avatar>
           </div>
-          <div>
-            <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
               <span
                 onClick={handleUserClick}
                 role={onNavigate && review.userId ? "button" : undefined}
@@ -126,12 +126,12 @@ export function ReviewCard({
                     handleUserClick();
                   }
                 }}
-                className={`text-sm font-bold tracking-tight text-zinc-900 ${onNavigate && review.userId ? "cursor-pointer hover:underline" : ""}`}
+                className={`min-w-0 truncate text-sm font-bold tracking-tight text-zinc-900 ${onNavigate && review.userId ? "cursor-pointer hover:underline" : ""}`}
               >
                 {review.customerName}
               </span>
               {review.verified && (
-                <span className="flex items-center gap-0.5 rounded-md border border-emerald-100/50 bg-emerald-50/70 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-700">
+                <span className="flex shrink-0 items-center gap-0.5 rounded-md border border-emerald-100/50 bg-emerald-50/70 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-700">
                   <Check className="size-2.5" />
                   Verificado
                 </span>
@@ -140,7 +140,7 @@ export function ReviewCard({
               autor e para quem administra -- o selo diz que ela ainda não é
               pública e não conta na nota. */}
               {review.status === "pendente" && (
-                <span className="flex items-center gap-0.5 rounded-md border border-amber-100 bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-700">
+                <span className="flex shrink-0 items-center gap-0.5 rounded-md border border-amber-100 bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-700">
                   Em análise
                 </span>
               )}
@@ -152,7 +152,7 @@ export function ReviewCard({
         </div>
         <span
           className={cn(
-            "text-[10px] font-medium uppercase tracking-wider text-zinc-600",
+            "shrink-0 text-[10px] font-medium uppercase tracking-wider text-zinc-600",
             "lg:text-[11px]",
           )}
         >

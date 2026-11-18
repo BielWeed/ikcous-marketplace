@@ -3,10 +3,8 @@
 // "Dúvidas no WhatsApp" da página do produto (ProductView.handleWhatsApp).
 // Três promessas que nenhum teste fixava:
 //
-//  1. Com variação obrigatória por escolher, o botão NÃO abre o WhatsApp: avisa
-//     (o toast cita o grupo que falta) e fica nisso. Sem a guarda, a loja
-//     recebia "Tenho interesse no produto: X - R$ <preço base>" sem dizer
-//     qual tamanho/cor, e a cliente era mandada embora sem ter escolhido.
+//  1. Sem variação escolhida, o botão de dúvidas abre o WhatsApp com o nome
+//     do produto, inclusive quando todas as opções estão esgotadas.
 //  2. Com a variação escolhida, a mensagem leva a variação e o PREÇO DELA (o
 //     override), não o do produto.
 //  3. O endereço que sai em `window.open` é o texto CRU: '#', '&' e espaço do
@@ -193,17 +191,57 @@ describe("ProductView — 'Dúvidas no WhatsApp': variação, preço e endereço
     },
   );
 
-  it("variação por escolher: avisa qual grupo falta e NÃO abre o WhatsApp", async () => {
-    await renderizar(criarProduto({ variants: variantes }));
+  it.each([false, true])(
+    "sem variação escolhida abre dúvidas com o produto, todas esgotadas=%s",
+    async (esgotadas) => {
+      await renderizar(
+        criarProduto({
+          stock: esgotadas ? 0 : 10,
+          variants: esgotadas
+            ? variantes.map((variante) => ({ ...variante, stockIncrement: 0 }))
+            : variantes,
+        }),
+      );
+      if (esgotadas) {
+        for (const valor of ["P", "G"]) {
+          const opcao = hospedeiro.querySelector<HTMLButtonElement>(
+            `button[aria-label="${valor}, esgotado"]`,
+          );
+          expect(opcao).not.toBeNull();
+          expect(opcao?.disabled).toBe(true);
+        }
+      }
+
+      await tocarWhatsapp();
+
+      expect(abrir).toHaveBeenCalledTimes(1);
+      expect(textoDaMensagem(abrir.mock.calls[0][0])).toBe(
+        "Olá! Tenho interesse no produto: Camisa P&B Acao",
+      );
+      const { toast } = await import("sonner");
+      expect(toast.warning).not.toHaveBeenCalled();
+    },
+  );
+
+  it("sem escolha não envia o preço base quando todas as variações têm preço próprio", async () => {
+    await renderizar(
+      criarProduto({
+        price: 50,
+        variants: variantes.map((variante, indice) => ({
+          ...variante,
+          priceOverride: indice === 0 ? 100 : 120,
+        })),
+      }),
+    );
+    expect(hospedeiro.textContent).toContain("A partir de");
+    expect(hospedeiro.textContent).toContain("100,00");
 
     await tocarWhatsapp();
 
-    const { toast } = await import("sonner");
-    const chamada = (toast.warning as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(chamada).toBeDefined();
-    // o título cita o grupo que falta (é o que a cliente precisa para agir)
-    expect(chamada[0]).toContain("Tamanho");
-    expect(abrir).not.toHaveBeenCalled();
+    expect(abrir).toHaveBeenCalledTimes(1);
+    const mensagem = textoDaMensagem(abrir.mock.calls[0][0]);
+    expect(mensagem).not.toContain("R$ 50");
+    expect(mensagem).toBe("Olá! Tenho interesse no produto: Camisa P&B Acao");
   });
 
   it("com a variação escolhida: abre o WhatsApp, a mensagem leva a variação e o PREÇO DELA", async () => {
@@ -227,6 +265,30 @@ describe("ProductView — 'Dúvidas no WhatsApp': variação, preço e endereço
     expect(textoDaMensagem(url)).not.toContain("80,00");
     expect(alvo).toBe("_blank");
     expect(recursos).toBe("noopener,noreferrer");
+  });
+
+  it("escolha incompleta em cadastro de dois grupos: a mensagem sai sem preço nenhum", async () => {
+    const cor = (valor: string, id: string): ProductVariant => ({
+      id,
+      productId: "prod-pb",
+      name: "Cor",
+      value: valor,
+      stockIncrement: 5,
+      active: true,
+    });
+    await renderizar(
+      criarProduto({
+        variants: [cor("Azul", "v-az"), cor("Preto", "v-pr"), ...variantes],
+      }),
+    );
+    await escolherTamanho("G");
+
+    await tocarWhatsapp();
+
+    expect(abrir).toHaveBeenCalledTimes(1);
+    const mensagem = textoDaMensagem(abrir.mock.calls[0][0]);
+    expect(mensagem).not.toContain("R$");
+    expect(mensagem).toContain("Camisa P&B Acao");
   });
 
   it("sem variações no produto: abre direto, sem '(…)' na mensagem, com o preço do produto", async () => {

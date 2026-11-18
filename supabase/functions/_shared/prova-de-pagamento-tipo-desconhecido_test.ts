@@ -27,8 +27,8 @@ const prova = (o) =>
     origem: "get_por_id", idConsultado: id, vagaRelida: id, pedidoId, totalRelido: 37.27, order: o,
   });
 
-Deno.test("tipo desconhecido com captura PARCIAL (10,00 de 37,27) recusa por valor pago", () => {
-  assertEquals(prova(order("10.00", "account_money")), { provado: false, motivo: "valor_pago" });
+Deno.test("tipo desconhecido com captura PARCIAL (10,00 de 37,27) recusa por valor divergente", () => {
+  assertEquals(prova(order("10.00", "account_money")), { provado: false, motivo: "valor_divergente" });
 });
 
 Deno.test("tipo desconhecido com captura inteira confirma", () => {
@@ -38,7 +38,7 @@ Deno.test("tipo desconhecido com captura inteira confirma", () => {
 // A régua tem a folga de 5 centavos (TOLERANCIA_DE_VALOR) para os dois lados.
 Deno.test("tipo desconhecido: a fronteira de 5 centavos fica no lugar certo", () => {
   assertEquals(prova(order("37.22", "account_money")).provado, true);
-  assertEquals(prova(order("37.21", "account_money")), { provado: false, motivo: "valor_pago" });
+  assertEquals(prova(order("37.21", "account_money")), { provado: false, motivo: "valor_divergente" });
   assertEquals(prova(order("37.32", "account_money")).provado, true);
   assertEquals(prova(order("37.33", "account_money")), { provado: false, motivo: "valor_pago" });
 });

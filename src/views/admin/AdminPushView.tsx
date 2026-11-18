@@ -49,6 +49,8 @@ import {
   PRAZO_DA_CONSULTA_DO_PAINEL_MS,
   PRAZO_DA_EDGE_DE_ENVIO_DE_PUSH_MS,
   PRAZO_DA_GRAVACAO_DO_ENVIO_DE_PUSH_MS,
+  aguardarComPrazo,
+  erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import { primeiraLetra } from "@/lib/primeira-letra";
 import { supabase } from "@/lib/supabase";
@@ -558,14 +560,18 @@ export const AdminPushView = memo(function AdminPushView({
     setLoadingProducts(true);
     setErroProdutos(false);
     try {
-      const { data, error } = await lerEmPaginas((de, ate) =>
-        supabase
-          .from("vw_produtos_public")
-          .select("id, nome")
-          .eq("ativo", true)
-          .order("nome", { ascending: true })
-          .order("id", { ascending: true })
-          .range(de, ate),
+      const { data, error } = await aguardarComPrazo(
+        lerEmPaginas((de, ate) =>
+          supabase
+            .from("vw_produtos_public")
+            .select("id, nome")
+            .eq("ativo", true)
+            .order("nome", { ascending: true })
+            .order("id", { ascending: true })
+            .range(de, ate),
+        ),
+        PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+        () => erroDeConsultaSemResposta(),
       );
       if (!error && data) {
         const validProducts = (data as any[])
@@ -674,13 +680,29 @@ export const AdminPushView = memo(function AdminPushView({
     if (targetUserId) {
       setSegment(targetUserId);
       const fetchUserName = async () => {
-        const { data, error } = await supabase
-          .from("public_profiles")
-          .select("full_name")
-          .eq("id", targetUserId)
-          .single();
-        if (!superada && !error && data) {
-          setTargetUserName({ id: targetUserId, nome: data.full_name });
+        try {
+          const { data, error } = await aguardarComPrazo(
+            Promise.resolve(
+              supabase
+                .from("public_profiles")
+                .select("full_name")
+                .eq("id", targetUserId)
+                .single(),
+            ),
+            PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+            () => erroDeConsultaSemResposta(),
+          );
+          if (error) throw error;
+          if (!superada) {
+            setTargetUserName({
+              id: targetUserId,
+              nome: data?.full_name ?? null,
+            });
+          }
+        } catch {
+          if (!superada) {
+            setTargetUserName({ id: targetUserId, nome: null });
+          }
         }
       };
       fetchUserName();
@@ -698,35 +720,56 @@ export const AdminPushView = memo(function AdminPushView({
     // repunha um total velho (0) e travava o envio para todos. Mesmo padrão
     // de `rodadaDoAlcanceRef`.
     const rodada = ++rodadaDosAparelhosRef.current;
-    const { count, error } = await supabase
-      .from("push_subscriptions")
-      .select("*", { count: "exact", head: true });
-    if (rodada !== rodadaDosAparelhosRef.current) return;
+    try {
+      const { count, error } = await aguardarComPrazo(
+        Promise.resolve(
+          supabase
+            .from("push_subscriptions")
+            .select("*", { count: "exact", head: true }),
+        ),
+        PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+        () => erroDeConsultaSemResposta(),
+      );
+      if (rodada !== rodadaDosAparelhosRef.current) return;
 
-    // Consulta falhou: `null`, nunca `0` — zero é a afirmação de que a loja
-    // não tem ninguém cadastrado, e isso só se pode dizer depois de medir.
-    setSubCount(error ? null : (count ?? 0));
+      // Consulta falhou: `null`, nunca `0` — zero é a afirmação de que a loja
+      // não tem ninguém cadastrado, e isso só se pode dizer depois de medir.
+      setSubCount(error ? null : (count ?? 0));
+    } catch {
+      if (rodada === rodadaDosAparelhosRef.current) setSubCount(null);
+    }
   }, []);
 
   const fetchHistory = useCallback(async () => {
     // Nova tentativa: a falha anterior sai da tela e volta "Carregando…".
     setHistoryFalhou(false);
-    const { data, error } = await supabase
-      .from("push_notifications_log")
-      .select("*")
-      .order("sent_at", { ascending: false })
-      .limit(LIMITE_DA_BUSCA_DO_HISTORICO);
+    try {
+      const { data, error } = await aguardarComPrazo(
+        Promise.resolve(
+          supabase
+            .from("push_notifications_log")
+            .select("*")
+            .order("sent_at", { ascending: false })
+            .limit(LIMITE_DA_BUSCA_DO_HISTORICO),
+        ),
+        PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+        () => erroDeConsultaSemResposta(),
+      );
 
-    // PAINEL-08: `null` em falha — `history` nasce `[]` e o render
-    // exibia "Nenhuma mensagem enviada" para uma falha de rede. O
-    // subCount ao lado (linha 244) já usava null; o histórico não.
-    //
-    // Só campanhas: as linhas "Sua pergunta/avaliação foi respondida!" que as
-    // RPCs de resposta da loja gravam neste log não são envio nenhum — a
-    // busca traz mais linhas do que a tela mostra para que elas não ocupem os
-    // 20 lugares das campanhas (src/lib/historico-de-campanhas.ts).
-    setHistoryFalhou(!!error || !data);
-    setHistory(error || !data ? null : somenteCampanhasReais(data));
+      // PAINEL-08: `null` em falha — `history` nasce `[]` e o render
+      // exibia "Nenhuma mensagem enviada" para uma falha de rede. O
+      // subCount ao lado (linha 244) já usava null; o histórico não.
+      //
+      // Só campanhas: as linhas "Sua pergunta/avaliação foi respondida!" que as
+      // RPCs de resposta da loja gravam neste log não são envio nenhum — a
+      // busca traz mais linhas do que a tela mostra para que elas não ocupem os
+      // 20 lugares das campanhas (src/lib/historico-de-campanhas.ts).
+      setHistoryFalhou(!!error || !data);
+      setHistory(error || !data ? null : somenteCampanhasReais(data));
+    } catch {
+      setHistoryFalhou(true);
+      setHistory(null);
+    }
   }, []);
 
   // Achado 6 da auditoria de 20/08/2026: dos quatro botões de público, só o
@@ -755,9 +798,14 @@ export const AdminPushView = memo(function AdminPushView({
     const resultados = await Promise.all(
       segmentosNaoSelecionaveisPeloTodos.map(async (seg) => {
         try {
-          const { data, error } = await (supabase.rpc as any)(
-            "get_segmented_push_count",
-            { p_segment: seg },
+          const { data, error } = await aguardarComPrazo(
+            Promise.resolve(
+              (supabase.rpc as any)("get_segmented_push_count", {
+                p_segment: seg,
+              }),
+            ) as Promise<{ data: number | null; error: unknown }>,
+            PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+            () => erroDeConsultaSemResposta(),
           );
           if (error || data === null || data === undefined) return null;
           return Number(data);
@@ -799,11 +847,14 @@ export const AdminPushView = memo(function AdminPushView({
     try {
       // Mesma emenda da medição dos segmentos: a previsão de alcance é um
       // número — a função de contagem devolve ele sem baixar credencial.
-      const { data, error } = await (supabase.rpc as any)(
-        "get_segmented_push_count",
-        {
-          p_segment: segment,
-        },
+      const { data, error } = await aguardarComPrazo(
+        Promise.resolve(
+          (supabase.rpc as any)("get_segmented_push_count", {
+            p_segment: segment,
+          }),
+        ) as Promise<{ data: number | null; error: unknown }>,
+        PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+        () => erroDeConsultaSemResposta(),
       );
       if (rodada !== rodadaDoAlcanceRef.current) return;
       if (!error && data !== null && data !== undefined) {
@@ -1211,6 +1262,7 @@ export const AdminPushView = memo(function AdminPushView({
         ? `${primeiraFalha.quantidade}x ${motivoDaFalhaEmPortugues(primeiraFalha)}`
         : undefined;
 
+      let avisoDoHistorico: string | undefined;
       if (envioConfirmado && entregues > 0) {
         // O envio já está confirmado: sem resposta aqui só deixa o histórico em
         // 0 (o padrão honesto), nunca vira falha de envio.
@@ -1221,6 +1273,8 @@ export const AdminPushView = memo(function AdminPushView({
             .eq("id", logRow.id),
         ).catch((error: unknown) => ({ error }));
         if (ajusteError) {
+          avisoDoHistorico =
+            "O envio foi feito, mas não foi possível atualizar o histórico (mostra 0 entregas).";
           console.error(
             "Falha ao corrigir o recipient_count do log:",
             ajusteError,
@@ -1248,20 +1302,24 @@ export const AdminPushView = memo(function AdminPushView({
           `Entregue em ${entregues} de ${entregues + falharam + naoTentados}`,
           {
             description:
-              naoTentados > 0
-                ? [
-                    detalheDaFalha,
-                    `${naoTentados} ${naoTentados === 1 ? "dispositivo não recebeu" : "dispositivos não receberam"} porque o envio demorou demais. Se reenviar esta campanha, quem já recebeu pode receber a mensagem repetida.`,
-                  ]
-                    .filter(Boolean)
-                    .join(" ")
-                : detalheDaFalha,
+              [
+                detalheDaFalha,
+                naoTentados > 0
+                  ? `${naoTentados} ${naoTentados === 1 ? "dispositivo não recebeu" : "dispositivos não receberam"} porque o envio demorou demais. Se reenviar esta campanha, quem já recebeu pode receber a mensagem repetida.`
+                  : undefined,
+                avisoDoHistorico,
+              ]
+                .filter(Boolean)
+                .join(" ") || undefined,
           },
         );
       } else {
-        toast.success(
-          `Notificação entregue em ${entregues} ${entregues === 1 ? "dispositivo" : "dispositivos"}`,
-        );
+        const mensagem = `Notificação entregue em ${entregues} ${entregues === 1 ? "dispositivo" : "dispositivos"}`;
+        if (avisoDoHistorico) {
+          toast.success(mensagem, { description: avisoDoHistorico });
+        } else {
+          toast.success(mensagem);
+        }
       }
 
       // Segundo fato, distinto do de cima: o push é uma coisa, o aviso
@@ -1664,9 +1722,10 @@ export const AdminPushView = memo(function AdminPushView({
                       </p>
                       <p className="text-xs font-bold text-white mt-0.5">
                         Cliente:{" "}
-                        {(targetUserName?.id === targetUserId &&
-                          targetUserName.nome) ||
-                          "Carregando..."}
+                        {targetUserName?.id === targetUserId
+                          ? (targetUserName.nome ??
+                            "Não foi possível carregar o nome. Confira a conexão e abra esta tela de novo.")
+                          : "Carregando..."}
                       </p>
                     </div>
                   </div>

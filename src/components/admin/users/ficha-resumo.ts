@@ -88,7 +88,7 @@ import type { Order } from "@/types";
  *       o balcão do CRM já é só venda paga, então entra nos dois lados;
  *     - a ÚLTIMA COMPRA continua a da conta (o campo do balcão não traz data);
  *     - a ABA de pedidos continua só com os pedidos da conta.
- *   Servidor antigo (sem o campo), campo nulo, zero ou lixo: nada muda, a
+ *   Servidor antigo (sem o campo), campo nulo, sem pedidos ou lixo: nada muda, a
  *   ficha fica exatamente como era. A view mostra a divisão ("R$ 100 pela
  *   conta + R$ 100 no balcão ou sem conta, com o mesmo WhatsApp") só quando o balcão é > 0.
  */
@@ -108,6 +108,7 @@ const SEM_BALCAO: BalcaoDoMesmoWhatsapp = Object.freeze({
  * Lê o campo `balcao_mesmo_whatsapp` do retorno de `get_admin_user_detail`.
  * Ausente (servidor antigo), nulo, negativo, não numérico ou sem pedido: sem
  * balcão — a ficha segue como era, nunca quebra e nunca inventa dinheiro.
+ * Total zero é válido: brinde com desconto de 100% também conta como pedido.
  */
 export function lerBalcaoDoMesmoWhatsapp(
   valor: unknown,
@@ -117,7 +118,7 @@ export function lerBalcaoDoMesmoWhatsapp(
   const pedidos = Number(bruto.pedidos);
   const total = Number(bruto.total);
   if (!Number.isFinite(pedidos) || !Number.isFinite(total)) return SEM_BALCAO;
-  if (Math.trunc(pedidos) < 1 || total <= 0) return SEM_BALCAO;
+  if (Math.trunc(pedidos) < 1 || total < 0) return SEM_BALCAO;
   return { pedidos: Math.trunc(pedidos), total };
 }
 

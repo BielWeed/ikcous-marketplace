@@ -2339,6 +2339,28 @@ async function handler(
           );
           return json({ ok: true, ignorado: "id gravado não confirma o mesmo desfecho" }, 200);
         }
+        // A conferência anterior da rota payment não tinha a order. Antes de
+        // confirmar, a captura da ORDER GRAVADA também precisa cobrir o pedido.
+        if (statusDoGravado === "pago") {
+          const conferenciaDoGravado = conferirValorDoPagamento(valorPagoMp, brutoTotal, orderGravada);
+          if (!conferenciaDoGravado.provado) {
+            console.error(
+              "webhook-mercadopago: VALOR da order gravada diverge do total do pedido — pedido NÃO confirmado; conferir no painel do MP",
+              { orderId, rota, valorPago: valorPagoMp, totalDoPedido: Number(brutoTotal), paymentId: idGravadoNoBanco },
+            );
+            await comTempoLimite(avisarAdminUmaVez({
+              supabase,
+              enviarPushContado: deps.enviarPushContado ?? disparoPushContadoReal,
+              chave: `valor_divergente:${orderId}:${idGravadoNoBanco}`,
+              aviso: {
+                title: "Pagamento precisa de conferência",
+                body: `${numeroDoPedido(orderId)} · valor divergente; confira no painel do Mercado Pago`,
+                url: `/admin-orders?id=${encodeURIComponent(orderId)}`,
+              },
+            }), 5000);
+            return json({ ok: true, ignorado: "valor divergente" }, 200);
+          }
+        }
       }
 
       idParaRpc = idGravadoNoBanco;

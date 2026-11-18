@@ -266,10 +266,18 @@ export function useEstornosDoPedido(
   // O intervalo só existe enquanto houver linha ativa.
   useEffect(() => {
     if (!temLinhaAtiva) return;
+    const aoVoltarAba = () => {
+      if (document.visibilityState === "visible") void carregar();
+    };
     const id = setInterval(() => {
+      if (document.visibilityState === "hidden") return;
       void carregar();
     }, INTERVALO_DE_RECARGA_MS);
-    return () => clearInterval(id);
+    document.addEventListener("visibilitychange", aoVoltarAba);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", aoVoltarAba);
+    };
   }, [temLinhaAtiva, carregar]);
 
   const solicitarEstorno = useCallback(

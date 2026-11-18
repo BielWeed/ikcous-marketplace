@@ -932,22 +932,14 @@ export const ProductView = React.memo(function ProductView({
   };
 
   const handleWhatsApp = () => {
-    const missingVariations = Object.keys(variantGroups).filter(
-      (groupName) => !selectedVariants[groupName],
-    );
-
-    if (missingVariations.length > 0) {
-      toast.warning(`Por favor, selecione: ${missingVariations.join(", ")}`, {
-        description:
-          "Selecione todas as opções de variação antes de prosseguir para o WhatsApp.",
-      });
-      return;
-    }
-
     const variantInfo = selectedVariantObjects
       .map((v) => `${v.name}: ${v.value}`)
       .join(", ");
-    const message = `Olá! Tenho interesse no produto: ${product.name}${variantInfo ? ` (${variantInfo})` : ""} - ${reais(currentPrice)}`;
+    // Escolha incompleta: o preço da tela é "a partir de", que nenhuma
+    // combinação paga. Por escrito à lojista só vai o preço de uma escolha
+    // completa; antes disso a conversa é uma dúvida, sem preço.
+    const precoNaMensagem = faltaAlgo ? "" : ` - ${reais(currentPrice)}`;
+    const message = `Olá! Tenho interesse no produto: ${product.name}${variantInfo ? ` (${variantInfo})` : ""}${precoNaMensagem}`;
     let phone = limparTelefoneBrasileiro(config.whatsappNumber);
     if (phone.length === 11 || phone.length === 10) {
       phone = `55${phone}`;
@@ -1194,7 +1186,7 @@ export const ProductView = React.memo(function ProductView({
                   )}
                   <span
                     className={cn(
-                      "text-[30px] font-bold tracking-tight text-foreground",
+                      "text-[30px] font-bold tracking-tight text-foreground lg:text-zinc-950",
                       "lg:text-4xl",
                     )}
                   >

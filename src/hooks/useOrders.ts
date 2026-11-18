@@ -2113,6 +2113,7 @@ function iniciarConsultaDoCliente(userId: string, signal: AbortSignal) {
     )
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
     .abortSignal(signal);
 }
 

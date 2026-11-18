@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // @vitest-environment jsdom
 //
@@ -109,6 +111,54 @@ describe("silent-guardian.js — app que não abre mostra aviso e botão em vez 
     expect(document.getElementById("silent-guardian-loader")).toBeNull();
     expect(botaoTentarDeNovo()).not.toBeNull();
     expect(root.querySelector('[role="alert"]')).not.toBeNull();
+  });
+
+  it.each([
+    ["acesso", "erro"],
+    ["acesso", "prazo"],
+    ["getItem", "erro"],
+    ["getItem", "prazo"],
+  ])(
+    "sessionStorage bloqueado no %s: recuperação por %s segue funcionando",
+    (bloqueio, canal) => {
+      const recusar = () => {
+        throw new DOMException("The operation is insecure.", "SecurityError");
+      };
+      if (bloqueio === "acesso") {
+        vi.spyOn(globalThis, "sessionStorage", "get").mockImplementation(
+          recusar,
+        );
+      } else {
+        vi.stubGlobal("sessionStorage", { getItem: recusar });
+      }
+
+      expect(() => rodarGuardian()).not.toThrow();
+      expect(document.documentElement.classList.contains("splash-shown")).toBe(
+        false,
+      );
+      if (canal === "erro") falharScriptPrincipal();
+      else vi.advanceTimersByTime(20_000);
+
+      expect(document.getElementById("root")?.textContent).toContain(FRASE);
+      expect(document.getElementById("silent-guardian-loader")).toBeNull();
+      expect(botaoTentarDeNovo()).not.toBeNull();
+      botaoTentarDeNovo()?.click();
+      expect(recarregar).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("sem JavaScript, o HTML explica como abrir a loja dentro do splash, sem código inline", () => {
+    const html = readFileSync(
+      path.resolve(import.meta.dirname, "../../index.html"),
+      "utf8",
+    );
+    const pagina = new DOMParser().parseFromString(html, "text/html");
+    const aviso = pagina.querySelector("#silent-guardian-loader noscript");
+    expect(aviso?.textContent).toContain(
+      "Para usar a loja, ative o JavaScript do navegador.",
+    );
+    expect(aviso?.querySelector("script, style, [style]")).toBeNull();
+    expect(aviso?.innerHTML).not.toMatch(/\son[a-z]+=/i);
   });
 
   it("o botão Tentar de novo recarrega a página", () => {

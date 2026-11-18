@@ -174,7 +174,7 @@ describe("CuponsDoCheckout", () => {
   });
 
   it("cupom restaurado (desconto 0) diz que está conferindo, não 'R$ 0,00'", () => {
-    montar({ appliedCoupon: { code: "VIP15", discount: 0 } });
+    montar({ appliedCoupon: { code: "VIP15", discount: 0 }, conferindo: true });
     expect(hospedeiro.textContent).toContain("Conferindo o desconto…");
     expect(hospedeiro.textContent).not.toContain("R$ 0,00");
   });

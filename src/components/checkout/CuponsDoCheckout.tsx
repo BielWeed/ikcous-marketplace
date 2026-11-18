@@ -188,6 +188,8 @@ export interface CuponsDoCheckoutProps {
   readonly onTentarDeNovo: () => void;
   readonly appliedCoupon: { code: string; discount: number } | null;
   readonly couponError: string;
+  /** O cupom aplicado ainda não foi conferido para a compra atual. */
+  readonly conferindo?: boolean;
   /** Código em validação agora (toque em "Aplicar"), ou null. */
   readonly aplicando: string | null;
   /** O pedido está sendo enviado: o desconto já foi para o servidor, então
@@ -203,6 +205,7 @@ export const CuponsDoCheckout = memo(function CuponsDoCheckout({
   onTentarDeNovo,
   appliedCoupon,
   couponError,
+  conferindo = false,
   aplicando,
   emEnvio = false,
   onApply,
@@ -214,18 +217,30 @@ export const CuponsDoCheckout = memo(function CuponsDoCheckout({
     origemRef.current = document.activeElement;
     onApply(...args);
   };
+  const remover = () => {
+    origemRef.current = document.activeElement;
+    onRemove();
+  };
   useEffect(() => {
     const origem = origemRef.current;
     if (
-      appliedCoupon &&
       origem &&
       !origem.isConnected &&
       (document.activeElement === origem ||
         document.activeElement === document.body)
     ) {
-      secaoRef.current
-        ?.querySelector<HTMLButtonElement>('[aria-label="Remover cupom"]')
-        ?.focus();
+      // Com o campo aberto, já pode digitar; recolhido, o botão o revela.
+      const destino = appliedCoupon
+        ? secaoRef.current?.querySelector<HTMLElement>(
+            '[aria-label="Remover cupom"]',
+          )
+        : (secaoRef.current?.querySelector<HTMLElement>(
+            "#campo-de-cupom:not([hidden]) input",
+          ) ??
+          secaoRef.current?.querySelector<HTMLElement>(
+            'button[aria-controls="campo-de-cupom"]',
+          ));
+      destino?.focus();
     }
     origemRef.current = null;
   }, [appliedCoupon]);
@@ -300,8 +315,9 @@ export const CuponsDoCheckout = memo(function CuponsDoCheckout({
         {appliedCoupon && (
           <CouponInput
             onApply={aplicar}
-            onRemove={onRemove}
+            onRemove={remover}
             appliedCoupon={appliedCoupon}
+            conferindo={conferindo}
             travado={emEnvio}
             destaque={
               cupomAplicadoDaLista
@@ -416,7 +432,7 @@ export const CuponsDoCheckout = memo(function CuponsDoCheckout({
             <div id="campo-de-cupom" hidden={!campoVisivel} className="pt-1">
               <CouponInput
                 onApply={aplicar}
-                onRemove={onRemove}
+                onRemove={remover}
                 appliedCoupon={null}
                 error={couponError}
                 aplicando={aplicando !== null}

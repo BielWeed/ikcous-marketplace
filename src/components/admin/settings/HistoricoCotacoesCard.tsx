@@ -9,6 +9,11 @@ import {
   nomeDoProvedorNoHistorico,
 } from "@/lib/motivo-da-cotacao";
 import { papel } from "@/lib/papeis-aria-da-tabela";
+import {
+  PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+  aguardarComPrazo,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import { History, RefreshCw } from "lucide-react";
 import { Fragment, memo, useCallback, useEffect, useState } from "react";
@@ -149,11 +154,20 @@ export const HistoricoCotacoesSection = memo(
       // "Atualizar" que deu certo precisa tirar o aviso vermelho da tela.
       setLogsError(false);
       try {
-        const { data, error } = await supabase
-          .from("shipping_calculation_logs")
-          .select("*")
-          .order("created_at", { ascending: false })
-          .limit(15);
+        const { data, error } = await aguardarComPrazo(
+          Promise.resolve(
+            supabase
+              .from("shipping_calculation_logs")
+              .select("*")
+              .order("created_at", { ascending: false })
+              .limit(15),
+          ),
+          PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+          () =>
+            erroDeConsultaSemResposta(
+              "Não houve resposta do servidor. Confira sua conexão e tente de novo.",
+            ),
+        );
         if (error) throw error;
         setLogs(data || []);
       } catch (err) {

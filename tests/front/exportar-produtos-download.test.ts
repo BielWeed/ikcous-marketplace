@@ -107,6 +107,23 @@ describe("download do catálogo pela porta já usada no painel", () => {
       );
     },
   );
+  it.each(["xlsx", "csv"] as const)(
+    "nomeia o arquivo %s com a data de Brasília depois das 21h",
+    async (formato) => {
+      vi.setSystemTime(new Date("2026-11-19T01:00:00Z"));
+      rpc.mockReturnValue(resposta({ data: [linha("p1")], total_count: 1 }));
+      if (formato === "csv") {
+        vi.spyOn(planilha, "gerarXlsx").mockImplementationOnce(() => {
+          throw new Error("não foi possível gerar");
+        });
+      }
+      expect(await exportarProdutosPlanilha(opcoes)).toBe(formato);
+      expect(links).toHaveLength(1);
+      expect(links[0].download).toBe(
+        `produtos-loja-arvore-2026-11-18.${formato}`,
+      );
+    },
+  );
   it("o XLSX recebe o nome cru e o CSV de reserva recebe o apóstrofo", async () => {
     rpc.mockReturnValue(
       resposta({ data: [{ ...linha("p1"), nome: "=1+1" }], total_count: 1 }),

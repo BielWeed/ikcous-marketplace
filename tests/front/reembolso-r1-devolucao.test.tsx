@@ -682,7 +682,7 @@ describe("texto da cliente — só diz 'liberado' com o dinheiro confirmado", ()
     expect(instrucaoParaOCliente(d, {}, "concluido")).toContain(
       "liberado pelo Mercado Pago",
     );
-    for (const status of [null, "solicitado", "em_processamento", "falhou"]) {
+    for (const status of [null, "solicitado", "pendente", "em_processamento"]) {
       const frase = instrucaoParaOCliente(d, {}, status);
       expect(frase).not.toContain("liberado");
       expect(frase).toBe(
@@ -690,6 +690,18 @@ describe("texto da cliente — só diz 'liberado' com o dinheiro confirmado", ()
       );
     }
   });
+
+  it.each(["falhou", "recusado"])(
+    "C1: reembolso %s orienta a cliente a falar com a loja",
+    (status) => {
+      const frase = instrucaoParaOCliente(detalhe(), {}, status);
+      expect(frase).toBe(
+        "O reembolso não foi concluído. Fale com a loja para resolver — o pedido de devolução continua registrado.",
+      );
+      expect(frase).not.toContain("está confirmando");
+      expect(frase).not.toContain("Mercado Pago");
+    },
+  );
 
   it("C2: reembolso manual continua 'combinado com a loja'", () => {
     const d = detalhe({ reembolso_manual: true, refund_id: null });
@@ -717,15 +729,32 @@ describe("texto da cliente — só diz 'liberado' com o dinheiro confirmado", ()
     });
   }
 
-  it("C3: cartão da cliente com a linha ainda em processamento diz que a loja está confirmando", async () => {
-    STATUS_DA_LINHA_CLIENTE = "em_processamento";
-    await montarCartaoDaCliente();
+  it.each(["falhou", "recusado"])(
+    "C3: cartão com reembolso %s mostra orientação sem prometer confirmação",
+    async (status) => {
+      STATUS_DA_LINHA_CLIENTE = status;
+      await montarCartaoDaCliente();
 
-    expect(texto()).toContain(
-      "A loja está confirmando sua devolução com o Mercado Pago.",
-    );
-    expect(texto()).not.toContain("liberado pelo Mercado Pago");
-  });
+      expect(texto()).toContain(
+        "O reembolso não foi concluído. Fale com a loja para resolver — o pedido de devolução continua registrado.",
+      );
+      expect(texto()).not.toContain("está confirmando");
+      expect(texto()).not.toContain("liberado pelo Mercado Pago");
+    },
+  );
+
+  it.each(["pendente", "em_processamento"])(
+    "C3: cartão da cliente com a linha %s diz que a loja está confirmando",
+    async (status) => {
+      STATUS_DA_LINHA_CLIENTE = status;
+      await montarCartaoDaCliente();
+
+      expect(texto()).toContain(
+        "A loja está confirmando sua devolução com o Mercado Pago.",
+      );
+      expect(texto()).not.toContain("liberado pelo Mercado Pago");
+    },
+  );
 
   it("C4: cartão da cliente com a linha concluída diz 'liberado'", async () => {
     STATUS_DA_LINHA_CLIENTE = "concluido";

@@ -1,4 +1,5 @@
 import { useAuth } from "@/hooks/useAuth";
+import { mensagemDeErroDeSessaoDoPainel } from "@/lib/erro-de-sessao-do-painel";
 import { supabase } from "@/lib/supabase";
 import { ufBrasileiraValida } from "@/lib/uf-brasileira";
 import type { Address } from "@/types";
@@ -409,7 +410,11 @@ export function useAddresses() {
           duration: DURACAO_DO_AVISO_LONGO_MS,
         });
       } else {
-        toast.error("Erro ao adicionar endereço");
+        toast.error(
+          mensagemDeErroDeSessaoDoPainel(error)
+            ? "Sua sessão expirou. Entre de novo para salvar o endereço — o que você digitou continua aqui."
+            : "Erro ao adicionar endereço",
+        );
       }
       return null;
     }
@@ -566,7 +571,11 @@ export function useAddresses() {
           duration: DURACAO_DO_AVISO_LONGO_MS,
         });
       } else {
-        toast.error("Erro ao atualizar endereço");
+        toast.error(
+          mensagemDeErroDeSessaoDoPainel(error)
+            ? "Sua sessão expirou. Entre de novo para salvar o endereço — o que você digitou continua aqui."
+            : "Erro ao atualizar endereço",
+        );
       }
       return false;
     }

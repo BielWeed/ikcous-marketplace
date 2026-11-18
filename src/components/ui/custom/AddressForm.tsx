@@ -7,7 +7,7 @@ import {
   type PassosDoEndereco,
   passosDoEndereco,
 } from "@/lib/passos-do-endereco";
-import { ufBrasileiraValida } from "@/lib/uf-brasileira";
+import { normalizarUf, ufBrasileiraValida } from "@/lib/uf-brasileira";
 import { cn } from "@/lib/utils";
 import type { Address } from "@/types";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -1090,14 +1090,16 @@ export function AddressForm({
                     {...form.register("state")}
                     onChange={(e) => {
                       // A classe `uppercase` só muda o desenho; o valor
-                      // digitado ("mg") seguia minúsculo até o envio.
-                      e.target.value = e.target.value.toUpperCase();
+                      // digitado ("mg") seguia minúsculo até o envio. O corte em
+                      // 2 letras é feito aqui (e não por `maxLength`): o
+                      // navegador cortaria " SP " colado em " S" antes de
+                      // tirar os espaços.
+                      e.target.value = normalizarUf(e.target.value);
                       marcarPreenchimentoAMao();
                       return form.register("state").onChange(e);
                     }}
                     placeholder="UF"
                     disabled={loading}
-                    maxLength={2}
                     aria-invalid={!!erros.state}
                     aria-describedby={erros.state ? "erro-state" : undefined}
                     className={cn(

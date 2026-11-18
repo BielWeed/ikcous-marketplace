@@ -285,12 +285,14 @@ describe("OrderDetailsView — pedido cancelado com pagamento que ficou com a lo
   // linha nunca nasce porque o cancelamento aconteceu ANTES do dinheiro
   // entrar) e a rodada 3 manda "Fale com a loja" para ele, nunca mais
   // "volta sozinho" inferido de `payment_status`+`cancelledAfterShipping`.
-  it("status 'cancelled' + pago_apos_expirar + sem linha observada: mostra 'Pago após o vencimento' e 'Fale com a loja', NUNCA 'volta sozinho'", async () => {
+  it("status 'cancelled' + pago_apos_expirar + sem linha observada: mostra 'Pagamento recebido — pedido já encerrado' e 'Fale com a loja', NUNCA 'volta sozinho'", async () => {
     pedidoAtual = pedidoCanceladoComPagamento("pago_apos_expirar");
 
     await renderizar();
 
-    expect(hospedeiro.textContent).toContain("Pago após o vencimento");
+    expect(hospedeiro.textContent).toContain(
+      "Pagamento recebido — pedido já encerrado",
+    );
     expect(hospedeiro.textContent).toContain("Fale com a loja para resolver");
     expect(hospedeiro.textContent).not.toContain("volta sozinho");
     expect(hospedeiro.textContent).not.toContain("Pagamento confirmado");

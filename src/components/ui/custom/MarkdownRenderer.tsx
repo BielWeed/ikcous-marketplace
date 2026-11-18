@@ -25,12 +25,9 @@ interface MarkdownRendererProps {
   className?: string;
 }
 
-const ehItemDeLista = (linha: string) => /^[*-]\s+/.test(linha);
+const ehItemDeLista = (linha: string) => /^[*•-]\s+/.test(linha);
 const ehSeparador = (linha: string) =>
   /^\s*(-{3,}|_{3,}|\*{3,})\s*$/.test(linha);
-
-const ehTituloEmNegrito = (linha: string) =>
-  /^\*\*[^*]+\*\*:?\s*$/.test(linha.trim());
 
 /**
  * Título de uma linha: de 1 a 6 "#" seguidos de espaço e de texto ("## Algo").
@@ -66,7 +63,7 @@ function renderLista(itens: string[], chave: number) {
             "lg:text-base",
           )}
         >
-          {processInline(line.replace(/^[*-]\s+/, ""))}
+          {processInline(line.replace(/^[*•-]\s+/, ""))}
         </li>
       ))}
     </ul>
@@ -81,22 +78,18 @@ function renderCorpo(lines: string[], i: number) {
     return <hr key={i} className="border-zinc-200" />;
   }
 
-  // Bloco de lista: TODAS as linhas (não vazias) começam com "* " ou
-  // "- " — é a forma que a lojista escreve na descrição. Renderiza
-  // <ul> com marcador; linha solta no meio de texto segue parágrafo.
+  // Bloco só de itens ("* ", "- " ou "• ") vira lista com marcadores.
+  // Item solto entre linhas de texto continua no parágrafo.
   const naoVazias = lines.filter((l) => l.trim() !== "");
   if (naoVazias.length > 0 && naoVazias.every(ehItemDeLista)) {
     return renderLista(naoVazias, i);
   }
 
-  // Lista colada numa linha de título em negrito, sem linha em branco
-  // (título em negrito seguido de "* Tema: …"): o título vira parágrafo e
-  // o resto vira lista. Só esse caso — "texto comum" seguido de "* item"
-  // segue parágrafo.
+  // Frase comum ou em negrito seguida só de itens, sem linha em branco:
+  // preserva a frase como parágrafo e renderiza os marcadores como lista.
   const [primeira, ...resto] = naoVazias;
   if (
     primeira !== undefined &&
-    ehTituloEmNegrito(primeira) &&
     resto.length > 0 &&
     resto.every(ehItemDeLista)
   ) {

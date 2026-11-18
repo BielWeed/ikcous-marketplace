@@ -76,7 +76,6 @@ describe("lerBalcaoDoMesmoWhatsapp — o que o servidor manda vira número segur
       [],
       {},
       { pedidos: 0, total: 0 },
-      { pedidos: 1, total: 0 },
       { pedidos: 0, total: 100 },
       { pedidos: -1, total: 100 },
       { pedidos: 1, total: -100 },
