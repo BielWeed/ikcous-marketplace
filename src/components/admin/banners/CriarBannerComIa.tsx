@@ -9,6 +9,7 @@ import {
   ROTULOS_DOS_OBJETIVOS,
   gerarPromptDeBanner,
 } from "@/lib/prompt-de-banner";
+import { ehImagem } from "@/lib/recusa-de-foto";
 import { ArrowLeft, Copy, Upload } from "lucide-react";
 import { useId, useRef, useState } from "react";
 
@@ -190,7 +191,7 @@ export function CriarBannerComIa({
             const arquivo = evento.target.files?.[0];
             evento.target.value = "";
             if (!arquivo) return;
-            const imagem = arquivo.type.startsWith("image/");
+            const imagem = ehImagem(arquivo);
             definirErroDaImagem(!imagem);
             if (imagem) aoEscolherImagem(arquivo);
           }}

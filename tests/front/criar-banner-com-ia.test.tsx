@@ -147,6 +147,23 @@ describe("criar imagem do banner com IA", () => {
     },
   );
 
+  it.each(["", "application/octet-stream"])(
+    "aceita banner.png sem tipo reconhecido (%j), como o envio normal de foto",
+    (tipo) => {
+      const campo = tela.querySelector(
+        'input[type="file"]',
+      ) as HTMLInputElement;
+      const imagem = new File(["imagem"], "banner.png", { type: tipo });
+      Object.defineProperty(campo, "files", {
+        configurable: true,
+        value: [imagem],
+      });
+      act(() => campo.dispatchEvent(new Event("change", { bubbles: true })));
+      expect(aoEscolherImagem).toHaveBeenCalledWith(imagem);
+      expect(tela.querySelector('[role="alert"]')).toBeNull();
+    },
+  );
+
   it("seleciona o texto e usa a cópia antiga se o clipboard recusar", async () => {
     copiar.mockRejectedValue(new Error("indisponível"));
     let selecionado = "";
