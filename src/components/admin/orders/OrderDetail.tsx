@@ -843,7 +843,7 @@ function OrderDeliveryCard({
           <p className="text-sm font-medium text-emerald-400">
             Retirada na loja
           </p>
-          <p className="text-sm leading-relaxed text-zinc-200">
+          <p className="break-words text-sm leading-relaxed text-zinc-200">
             A cliente busca o pedido em: {order.enderecoDeRetirada}
           </p>
         </div>

@@ -11,9 +11,10 @@ const css = readFileSync("src/index.css", "utf8");
 // Base 251753360 + parágrafo do horário de retirada (17/11/2026).
 // Conferido: a única adição é "text-xs text-zinc-500"; nenhuma classe antiga mudou.
 // + linha "Recebe: X" do cartão de endereço (18/11/2026): só entra "mt-0.5 break-words text-sm font-medium text-zinc-700".
+// + nome do comprador com `break-words` (18/11/2026): só essa classe entra no literal existente.
 // Ordem dos literais dentro de TODOS os className, inclusive cn/condicionais.
 const assinaturaDoCelular =
-  "df167f5a337e47628e62640519b42c250ed00195dad727b68b9522ac31c88ed0";
+  "2f44298d91f1c25fcefdc69f4ed926400701c17eca08d6c6bc354f1e359300a5";
 const classesOriginais = [
   "fixed inset-x-0 bottom-[var(--folha-acima-da-barra)] top-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm duration-300 animate-in fade-in",
   "relative z-10 max-h-[calc(100dvh-var(--folha-acima-da-barra)-72px)] w-full max-w-md overflow-y-auto rounded-t-[2.5rem] bg-zinc-50 p-6 shadow-2xl duration-300 animate-in slide-in-from-bottom",

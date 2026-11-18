@@ -2104,7 +2104,7 @@ export function OrderDetailsView({
               {/* Retirada sem endereco de quem comprou: nada de rotulo
                   "Seu endereco" sobre um nome solto. */}
               {(temEnderecoDoPedido || !order.retiradaNaLoja) && (
-                <p className="mt-1 text-sm font-bold text-zinc-900">
+                <p className="mt-1 break-words text-sm font-bold text-zinc-900">
                   {order.customer.name}
                 </p>
               )}

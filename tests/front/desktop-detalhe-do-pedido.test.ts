@@ -169,8 +169,9 @@ describe("detalhe do pedido no computador — P10", () => {
     // Única adição conferida: "text-xs text-zinc-500"; demais classes intactas.
     // + linha "Recebe: X" do cartão de endereço (18/11/2026): a única classe nova
     // é "mt-0.5 break-words text-sm font-medium text-zinc-700"; o resto segue igual.
+    // + nome do comprador com `break-words` (18/11/2026): só essa classe entra no literal existente.
     expect(
       createHash("sha256").update(JSON.stringify(classes)).digest("hex"),
-    ).toBe("1ee410963133b3343075d879271d172a25dc142aaf1dba0d82d3173775acf0bb");
+    ).toBe("8c18c458178e8aa3c4c3c68ae617a226ad547b5fe17d7e3b046c70903d026a11");
   });
 });
