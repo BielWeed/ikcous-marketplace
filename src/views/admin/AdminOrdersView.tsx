@@ -1551,6 +1551,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         // na tela quando o chip "Balcão" está ligado.
         canal: canalFilter,
       });
+      if (pedidosDoFiltro.length === 0) {
+        toast.info("Nenhum pedido neste filtro para exportar.");
+        return;
+      }
       const rotulos = await lerRotulosDasVariacoes(pedidosDoFiltro);
       const agora = new Date();
       const doisDigitos = (numero: number) => String(numero).padStart(2, "0");
