@@ -1,3 +1,7 @@
+import {
+  paymentStatusConfig,
+  rotuloDoPagamento,
+} from "@/components/admin/orders/OrderStatusBadge";
 import { branding } from "@/config/branding";
 import { rotuloDaFormaDoPedido } from "@/lib/forma-de-pagamento";
 import { linhasDoEndereco } from "@/lib/linhas-do-endereco-do-pedido";
@@ -71,7 +75,11 @@ export const OrderReceipt = memo(function OrderReceipt({
             ? "Pago"
             : situacao === "cobrar"
               ? `Cobrar na ${order.canal === "presencial" ? "loja" : order.retiradaNaLoja ? "retirada" : "entrega"}: R$ ${valor} (${rotuloDaFormaDoPedido(order)})`
-              : "Pagamento pendente";
+              : order.paymentMethod === "online" &&
+                  rotuloDoPagamento(order.paymentStatus, order.status) ===
+                    paymentStatusConfig.recusado.label
+                ? "Pagamento recusado"
+                : "Pagamento pendente";
   // Venda de balcão: não tem frete, e o papel diz como a cliente pagou.
   const presencial = order.canal === "presencial";
   const observacao = observacaoDaClienteNoRecibo(order.notes);

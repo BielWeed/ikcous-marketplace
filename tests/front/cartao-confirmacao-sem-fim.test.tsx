@@ -261,6 +261,19 @@ describe("Confirmação do cartão depois do 3DS: nunca mais um spinner sem fim"
     expect(chamadasVerificar()).toBe(0);
   }
 
+  function tituloDoPainel(texto: string): HTMLParagraphElement | undefined {
+    return [...hospedeiro.querySelectorAll("p")].find((p) =>
+      p.textContent?.startsWith(texto),
+    );
+  }
+
+  it("leva o foco ao título da confirmação quando o quadro do banco sai", async () => {
+    await chegarAoConfirmando();
+
+    expect(hospedeiro.querySelector("iframe")).toBeNull();
+    expect(document.activeElement).toBe(tituloDoPainel(CONFIRMANDO));
+  });
+
   it("BLOQUEIO: consulta que NUNCA volta — depois de minutos a tela para de girar, mostra o estado incerto, e só existe UMA chamada real", async () => {
     await chegarAoConfirmando();
     criarPagamento.mockImplementation(() => new Promise(() => {}));
@@ -269,6 +282,7 @@ describe("Confirmação do cartão depois do 3DS: nunca mais um spinner sem fim"
 
     expect(chamadasVerificar()).toBe(1);
     expect(hospedeiro.textContent).toContain(SEM_RESPOSTA);
+    expect(document.activeElement).toBe(tituloDoPainel(SEM_RESPOSTA));
     expect(hospedeiro.textContent).not.toContain(CONFIRMANDO);
     expect(girando()).toBe(false);
     expect(botao("Verificar de novo")).toBeDefined();
@@ -390,7 +404,7 @@ describe("Confirmação do cartão depois do 3DS: nunca mais um spinner sem fim"
     );
 
     expect(chamadasVerificar()).toBe(3);
-    expect(hospedeiro.textContent).toContain(APROVADO);
+    expect(document.activeElement).toBe(tituloDoPainel(APROVADO));
     expect(botao("Pagar com PIX")).toBeUndefined();
     expect(botao("Tentar outro cartão")).toBeUndefined();
 
@@ -415,7 +429,9 @@ describe("Confirmação do cartão depois do 3DS: nunca mais um spinner sem fim"
 
     await avancar(ESPERAS_DA_CONFIRMACAO_MS[0] + 1);
 
-    expect(hospedeiro.textContent).toContain(MOTIVO_DA_TENTATIVA_ENCERRADA);
+    expect(document.activeElement).toBe(
+      tituloDoPainel(MOTIVO_DA_TENTATIVA_ENCERRADA),
+    );
     expect(hospedeiro.textContent).not.toContain("não foi aprovado");
     expect(props.onCartaoEncerradoPelaConsulta).toHaveBeenCalledWith({
       orderId: PEDIDO,
@@ -511,8 +527,8 @@ describe("Confirmação do cartão depois do 3DS: nunca mais um spinner sem fim"
 
     await avancar(ESPERAS_DA_CONFIRMACAO_MS[0] + 1);
 
-    expect(hospedeiro.textContent).toContain(
-      "Este pedido não está aguardando pagamento.",
+    expect(document.activeElement).toBe(
+      tituloDoPainel("Este pedido não está aguardando pagamento."),
     );
     expect(girando()).toBe(false);
     expect(botao("Pagar com PIX")).toBeUndefined();
@@ -587,7 +603,9 @@ describe("Confirmação do cartão depois do 3DS: nunca mais um spinner sem fim"
       .mockResolvedValueOnce({ verificacao: "pago", paymentId: ORDER });
 
     await avancar(ESPERAS_DA_CONFIRMACAO_MS[0] + 1);
-    expect(hospedeiro.textContent).toContain("Seu banco está analisando.");
+    expect(document.activeElement).toBe(
+      tituloDoPainel("Seu banco está analisando."),
+    );
     await avancar(ESPERAS_DA_CONFIRMACAO_MS[1] + 1);
     expect(hospedeiro.textContent).toContain(APROVADO);
     expect(chamadasVerificar()).toBe(2);
@@ -810,7 +828,7 @@ describe("Confirmação do cartão depois do 3DS: nunca mais um spinner sem fim"
     await avancar(10 * 60_000);
 
     expect(chamadasVerificar()).toBe(0);
-    expect(hospedeiro.textContent).toContain("Sua sessão expirou.");
+    expect(document.activeElement).toBe(tituloDoPainel("Sua sessão expirou."));
     expect(botao("Pagar com PIX")).toBeUndefined();
     expect(botao("Tentar outro cartão")).toBeUndefined();
     await act(async () => {

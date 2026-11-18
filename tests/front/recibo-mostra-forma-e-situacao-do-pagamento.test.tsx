@@ -48,6 +48,25 @@ it("imprime a forma e a situação sem mandar cobrar pedidos pagos ou cancelados
     ],
     [{ metodoOnline: "pix", paymentStatus: "pago" }, "PIX pelo site", "Pago"],
     [
+      {
+        metodoOnline: "pix",
+        status: "processing",
+        paymentStatus: "aguardando",
+      },
+      "PIX pelo site",
+      "Pagamento pendente",
+    ],
+    [
+      { metodoOnline: "pix", status: "processing", paymentStatus: "recusado" },
+      "PIX pelo site",
+      "Pagamento recusado",
+    ],
+    [
+      { metodoOnline: "pix", status: "cancelled", paymentStatus: "recusado" },
+      "PIX pelo site",
+      "Cancelado · nada a receber",
+    ],
+    [
       { metodoOnline: "credito", paymentStatus: "pago" },
       "Cartão de crédito pelo site",
       "Pago",
