@@ -78,7 +78,17 @@ import { useDeferredRender } from "@/hooks/useDeferredRender";
 // que abre com os pedidos achados usam a MESMA, senão a aba aberta e a lista
 // divergem (foi assim que o pedido achado pelo código sumia atrás de "Nenhum
 // pedido em andamento").
-const STATUS_EM_ANDAMENTO = ["pending", "processing", "shipping"];
+//
+// "new" entra de propósito: é o valor histórico que o CHECK do banco ainda
+// aceita (o `OrderStatus` do type não o lista). O cartão da lista o mostra como
+// "recebido" (1ª etapa, "A loja já recebeu seu pedido"), igual a "pending" —
+// classificá-lo em Histórico contradizia o próprio cartão.
+const STATUS_EM_ANDAMENTO: string[] = [
+  "new",
+  "pending",
+  "processing",
+  "shipping",
+];
 const pedidoEmAndamento = (pedido: Order) =>
   STATUS_EM_ANDAMENTO.includes(pedido.status);
 const abaDosPedidos = (pedidos: Order[]): "active" | "history" =>

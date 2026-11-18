@@ -154,6 +154,16 @@ const enviando = {
   status: "shipping",
 } as unknown as Order;
 
+// 'new' é o status histórico que o CHECK do banco ainda aceita: o pedido acabou
+// de ser recebido e a loja ainda não mexeu nele. O cartão da lista já o trata
+// como "recebido" (1ª etapa, "A loja já recebeu seu pedido"), então ele é
+// pedido em andamento — nunca Histórico.
+const recebidoNovo = {
+  ...base,
+  id: "ped-novo",
+  status: "new",
+} as unknown as Order;
+
 const RETRATO = "guest_tracked_orders";
 
 describe("CartView — aba Meus Pedidos: pedido achado abre na aba certa e avisa do retrato", () => {
@@ -282,6 +292,22 @@ describe("CartView — aba Meus Pedidos: pedido achado abre na aba certa e avisa
       await esperarPedido("ped-enviando");
       expect(
         hospedeiro.querySelector('[data-testid="pedido-ped-enviando"]'),
+      ).not.toBeNull();
+    });
+
+    it("pedido com status 'new' (recebido, a loja ainda não mexeu): conta em Em andamento, não em Histórico", async () => {
+      duble.achados = [recebidoNovo];
+      await montar();
+      await achar();
+
+      expect(botaoDaAba("Em andamento")?.getAttribute("aria-pressed")).toBe(
+        "true",
+      );
+      expect(botaoDaAba("Em andamento")?.textContent).toContain("(1)");
+      expect(botaoDaAba("Histórico")?.textContent).toContain("(0)");
+      await esperarPedido("ped-novo");
+      expect(
+        hospedeiro.querySelector('[data-testid="pedido-ped-novo"]'),
       ).not.toBeNull();
     });
 
