@@ -70,6 +70,7 @@ Deno.test("o aviso traz os três dados que o critério 2 exige", () => {
     created_at: new Date().toISOString(),
   });
 
+  assertEquals(aviso.title, "Pedido novo");
   assertStringIncludes(aviso.body, "#4F5A6B"); // número do pedido
   assertStringIncludes(aviso.body, "R$ 129,80"); // valor
   assertStringIncludes(aviso.body, "Maria Silva"); // nome do cliente
@@ -357,7 +358,11 @@ Deno.test("aviso: o push leva o texto montado do BANCO e a resposta não expõe 
   const banco = bancoDoAviso();
   const push = pushContado();
   const r = await avisar(UUID_VALIDO, banco, push);
-  assertEquals(push.avisos[0], montarAviso(PEDIDO_RECENTE));
+  assertEquals(push.avisos[0], {
+    title: "Pedido novo",
+    body: "#4F5A6B · R$ 129,80 · Maria Silva",
+    url: "/admin-orders?id=3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b",
+  });
   assertEquals("total" in r.corpo, false);
   assertEquals("enviados" in r.corpo, false);
 });
