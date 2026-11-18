@@ -461,9 +461,17 @@ export const ProductCard = memo(function ProductCard({
   const semEstoqueNoCard = temGruposDeOpcao
     ? nenhumaOpcaoDisponivel
     : estoqueAtual <= 0;
-  // Selo "Esgotado" do card em grade: o que o botão diz OU o que a escolha
-  // feita já esgotou (estoque do item vivo em zero).
-  const seloEsgotado = semEstoqueNoCard || estoqueAtual <= 0;
+  // Selo "Esgotado" do card em grade: a MESMA pergunta do botão (o produto
+  // inteiro sem estoque). Uma escolha antiga guardada que acabou depois de a
+  // folha fechar (o P zerou, o M segue com 5) não esgota o card: o botão
+  // continua vendendo, e o selo não pode dizer o contrário.
+  const seloEsgotado = semEstoqueNoCard;
+  // O número anunciado nunca sai dessa escolha morta ("Restam 0" num card que
+  // vende): volta ao total do produto, como quando nada foi escolhido. A folha
+  // e o carrinho seguem usando `estoqueAtual`, e a folha limpa a escolha ao abrir.
+  const escolhaMortaNoCard =
+    temGruposDeOpcao && selecionadasObjs.length > 0 && estoqueAtual <= 0;
+  const estoqueAnunciado = escolhaMortaNoCard ? product.stock : estoqueAtual;
   const rotuloAcessivelDoBotao =
     cartStatus !== "idle"
       ? undefined
@@ -875,7 +883,7 @@ export const ProductCard = memo(function ProductCard({
                     "flex items-center gap-1",
                     semEstoqueNoCard
                       ? "font-semibold text-red-700 dark:text-red-400"
-                      : estoqueAtual <= 5
+                      : estoqueAnunciado <= 5
                         ? "font-semibold text-amber-700 dark:text-amber-400"
                         : "text-muted-foreground",
                   )}
@@ -886,18 +894,18 @@ export const ProductCard = memo(function ProductCard({
                       "size-1.5 shrink-0 rounded-full",
                       semEstoqueNoCard
                         ? "bg-red-600"
-                        : estoqueAtual <= 5
+                        : estoqueAnunciado <= 5
                           ? "bg-amber-500"
                           : "bg-emerald-600",
                     )}
                   />
                   {semEstoqueNoCard
                     ? "Sem estoque"
-                    : estoqueAtual <= 5
-                      ? estoqueAtual === 1
+                    : estoqueAnunciado <= 5
+                      ? estoqueAnunciado === 1
                         ? "Resta 1"
-                        : `Restam ${estoqueAtual}`
-                      : `Estoque: ${estoqueAtual}`}
+                        : `Restam ${estoqueAnunciado}`
+                      : `Estoque: ${estoqueAnunciado}`}
                 </span>
                 {/* Nada some ao virar linha: selo de frete, nota e "em alta"
                     seguem, só que em texto corrido no fim da mesma faixa. */}
@@ -1071,7 +1079,7 @@ export const ProductCard = memo(function ProductCard({
                       showRating ? "w-1 h-1" : "w-1.5 h-1.5",
                       seloEsgotado
                         ? "bg-zinc-400"
-                        : estoqueAtual <= 5
+                        : estoqueAnunciado <= 5
                           ? "bg-rose-500"
                           : "bg-emerald-500",
                     )}
@@ -1080,16 +1088,16 @@ export const ProductCard = memo(function ProductCard({
                     className={
                       seloEsgotado
                         ? "text-zinc-500"
-                        : estoqueAtual <= 5
+                        : estoqueAnunciado <= 5
                           ? "text-rose-600"
                           : "text-emerald-700"
                     }
                   >
                     {seloEsgotado
                       ? "Esgotado"
-                      : estoqueAtual <= 5
-                        ? textoEstoqueBaixo(estoqueAtual)
-                        : `Estoque: ${estoqueAtual}`}
+                      : estoqueAnunciado <= 5
+                        ? textoEstoqueBaixo(estoqueAnunciado)
+                        : `Estoque: ${estoqueAnunciado}`}
                   </span>
                 </div>
               </div>
