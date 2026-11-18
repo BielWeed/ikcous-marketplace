@@ -134,7 +134,7 @@ const AVISO_NUMERO_INCOMPLETO =
  * Texto pela metade ("1e", "-") deixa o value vazio, com `validity.badInput`;
  * Number("") dava 0 (ilimitado no limite de uso). Confere o navegador NA HORA
  * de salvar. Os campos de dinheiro agora são texto: parseValorBR e a recusa
- * de NaN abaixo protegem vazio/inválido; só zero explícito significa sem mínimo.
+ * de NaN abaixo protegem inválidos; mínimo apagado de propósito significa zero.
  */
 const CAMPOS_DE_NUMERO: readonly CampoDoCupom[] = [
   "value",
@@ -150,12 +150,19 @@ const numeroDigitadoIncompleto = (campo: CampoDoCupom): boolean =>
 // a vírgula antes de o onFlush receber "1.200,00". Sem máscara para não
 // arredondar/descartar as casas excedentes que o Salvar precisa recusar.
 function dinheiroParaEditar(valor: number | undefined): string {
-  return Number.isFinite(valor)
+  return Number.isFinite(valor) && valor !== 0
     ? (valor ?? 0).toLocaleString("pt-BR", {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       })
     : "";
+}
+
+// Só as bordas podem ter espaços. Não transforme "1 200,00" em outro número
+// removendo um caractere que a pessoa digitou no meio do dinheiro.
+function dinheiroDoTexto(texto: string): number {
+  const limpo = texto.trim();
+  return /\s/.test(limpo) ? Number.NaN : (parseValorBR(limpo) ?? Number.NaN);
 }
 
 function ErroDoCampo({
@@ -212,7 +219,7 @@ function FormularioDoCupom({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [previaAberta, setPreviaAberta] = useState(false);
   // null = ainda não editado: exibe o valor carregado sem alterar seus centavos.
-  // Texto inválido/vazio permanece visível e vira NaN, nunca zero silencioso.
+  // Inválido permanece visível e vira NaN; só no mínimo vazio significa zero.
   const [textoValorFixo, setTextoValorFixo] = useState<string | null>(null);
   const [textoMinimo, setTextoMinimo] = useState<string | null>(null);
   // Validade que já passou: pergunta antes de salvar (como o editor de banner).
@@ -492,7 +499,7 @@ function FormularioDoCupom({
     const lido = lidoAoAbrirRef.current ?? initialData;
     const valorIntocado =
       isEditing && value === lido.value && formData.type === lido.type;
-    const textoDoValor = textoValorFixo ?? String(value);
+    const textoDoValor = (textoValorFixo ?? String(value)).trim();
     if (
       formData.type === "fixed" &&
       !valorIntocado &&
@@ -525,7 +532,7 @@ function FormularioDoCupom({
     // desconto fixo, valendo para qualquer tipo de cupom. Cupom já salvo cujo
     // mínimo ela não mexeu não é barrado por isso.
     const minimoIntocado = isEditing && minPurchase === (lido.minPurchase ?? 0);
-    const textoDoMinimo = textoMinimo ?? String(minPurchase);
+    const textoDoMinimo = (textoMinimo ?? String(minPurchase)).trim();
     if (
       !minimoIntocado &&
       (textoDoMinimo.includes("e") ||
@@ -1111,12 +1118,17 @@ function FormularioDoCupom({
                   {...ariaDoErro("value")}
                   onFlush={(val) => {
                     const percentual = formData.type === "percentage";
+                    // Foco/Tab devolve o texto arredondado de exibição, não uma
+                    // edição: preserve o número original (inclusive legado).
+                    if (
+                      !percentual &&
+                      val === dinheiroParaEditar(formData.value)
+                    )
+                      return;
                     if (!percentual) setTextoValorFixo(val);
                     setFormData((prev) => ({
                       ...prev,
-                      value: percentual
-                        ? Number(val)
-                        : (parseValorBR(val) ?? Number.NaN),
+                      value: percentual ? Number(val) : dinheiroDoTexto(val),
                     }));
                   }}
                   useShadcn={true}
@@ -1162,10 +1174,16 @@ function FormularioDoCupom({
                     onInput={() => limparErroDe("minPurchase")}
                     {...ariaDoErro("minPurchase")}
                     onFlush={(val) => {
+                      if (
+                        Number.isFinite(formData.minPurchase) &&
+                        val === dinheiroParaEditar(formData.minPurchase)
+                      )
+                        return;
                       setTextoMinimo(val);
                       setFormData((prev) => ({
                         ...prev,
-                        minPurchase: parseValorBR(val) ?? Number.NaN,
+                        minPurchase:
+                          val.trim() === "" ? 0 : dinheiroDoTexto(val),
                       }));
                     }}
                     useShadcn={true}

@@ -51,20 +51,32 @@ describe("AdminCouponFormView: dinheiro brasileiro não perde o milhar", () => {
     hospedeiro.remove();
   });
 
-  async function abrir() {
+  async function abrir(novo = false) {
     const { AdminCouponFormView } = await import(
       "@/views/admin/AdminCouponFormView"
     );
     await act(async () => {
-      raiz.render(<AdminCouponFormView couponId="c1" onNavigate={vi.fn()} />);
+      raiz.render(
+        <AdminCouponFormView
+          couponId={novo ? undefined : "c1"}
+          onNavigate={vi.fn()}
+        />,
+      );
     });
   }
-  const campo = (nome: "value" | "minPurchase") =>
+  const campo = (nome: "value" | "minPurchase" | "code") =>
     hospedeiro.querySelector<HTMLInputElement>(
-      nome === "value" ? "#coupon-value" : "#coupon-min-purchase",
+      nome === "value"
+        ? "#coupon-value"
+        : nome === "minPurchase"
+          ? "#coupon-min-purchase"
+          : "#coupon-code",
     ) as HTMLInputElement;
 
-  async function digitar(nome: "value" | "minPurchase", texto: string) {
+  async function digitar(
+    nome: "value" | "minPurchase" | "code",
+    texto: string,
+  ) {
     const el = campo(nome);
     const setter = Object.getOwnPropertyDescriptor(
       HTMLInputElement.prototype,
@@ -108,7 +120,17 @@ describe("AdminCouponFormView: dinheiro brasileiro não perde o milhar", () => {
       });
     }
 
-    for (const invalido of ["12,345", "12,340", "", "abc", "1e", "-", "1,"]) {
+    for (const invalido of [
+      ...(nome === "value" ? [""] : []),
+      "12,345",
+      "12,340",
+      "abc",
+      "1e",
+      "-",
+      "1,",
+      ",",
+      "-1",
+    ]) {
       it(`${nome}: "${invalido}" não vira zero nem outro valor válido`, async () => {
         await abrir();
         await digitar(nome, invalido);
@@ -120,6 +142,63 @@ describe("AdminCouponFormView: dinheiro brasileiro não perde o milhar", () => {
       });
     }
   }
+
+  it.each(["", "   "])(
+    "R3: apagar mínimo inválido para %j volta a significar sem mínimo",
+    async (vazio) => {
+      await abrir();
+      await digitar("minPurchase", "abc");
+      await salvar();
+      expect(updateCoupon).not.toHaveBeenCalled();
+      await digitar("minPurchase", vazio);
+      await salvar();
+      expect(updateCoupon).toHaveBeenCalledExactlyOnceWith("c1", {
+        minPurchase: 0,
+      });
+    },
+  );
+
+  for (const nome of ["value", "minPurchase"] as const) {
+    it(`Menor: ${nome} aceita espaços só nas pontas sem acusar casas decimais`, async () => {
+      await abrir();
+      await digitar(nome, " 1.200,00 ");
+      await salvar();
+      expect(toast.error).not.toHaveBeenCalled();
+      const gravado = updateCoupon.mock.calls[0][1];
+      expect(nome === "value" ? gravado.value : gravado.minPurchase).toBe(1200);
+    });
+    it(`Menor: ${nome} recusa espaço no meio com o motivo correto`, async () => {
+      await abrir();
+      await digitar(nome, " 1 200,00 ");
+      await salvar();
+      expect(updateCoupon).not.toHaveBeenCalled();
+      expect(toast.error).toHaveBeenCalledExactlyOnceWith(
+        nome === "value"
+          ? "Digite um valor de desconto válido."
+          : "Digite um mínimo de compra válido (0 = sem mínimo).",
+      );
+    });
+  }
+
+  it("R1: cupom novo fixo começa vazio, sem zero para se misturar ao desconto", async () => {
+    await abrir(true);
+    const fixo = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (botao) => botao.textContent?.includes("R$ Fixo"),
+    ) as HTMLButtonElement;
+    await act(async () => fixo.click());
+    expect(campo("value").value).toBe("");
+    expect(campo("value").placeholder).toBe("EX: 15");
+    await digitar("value", "15");
+    expect(campo("value").value).toBe("15");
+  });
+
+  it("R1: mínimo zero fica vazio e o valor existente continua formatado", async () => {
+    mockCoupons = [{ ...mockCoupons[0], value: 1200, minPurchase: 0 }];
+    await abrir();
+    expect(campo("value").value).toBe("1.200,00");
+    expect(campo("minPurchase").value).toBe("");
+    expect(campo("minPurchase").placeholder).toBe("EX: 50");
+  });
 
   it("ao editar, mostra milhar e centavos e mantém a prévia e o resumo", async () => {
     mockCoupons = [{ ...mockCoupons[0], value: 1200, minPurchase: 2400.5 }];
@@ -141,6 +220,29 @@ describe("AdminCouponFormView: dinheiro brasileiro não perde o milhar", () => {
     expect(updateCoupon.mock.calls[0][1]).toMatchObject({
       value: 1200.5,
       minPurchase: 2500,
+    });
+  });
+
+  it("R2: só passar pelos campos de dinheiro antigo não altera valor nem tipo", async () => {
+    mockCoupons = [{ ...mockCoupons[0], value: 7.505, minPurchase: 49.991 }];
+    await abrir();
+    expect(campo("value").value).toBe("7,51");
+    expect(campo("minPurchase").value).toBe("49,99");
+    for (const nome of ["value", "minPurchase"] as const) {
+      await act(async () => {
+        campo(nome).dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+      });
+      await act(async () => {
+        campo(nome).dispatchEvent(
+          new FocusEvent("focusout", { bubbles: true }),
+        );
+      });
+    }
+    await digitar("code", "OUTRONOME");
+    await salvar();
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(updateCoupon).toHaveBeenCalledExactlyOnceWith("c1", {
+      code: "OUTRONOME",
     });
   });
 

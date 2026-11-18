@@ -5,8 +5,8 @@
 // quer dizer ILIMITADO (em "Mínimo de compra", sem mínimo): um cupom de 10%
 // limitado a 1 uso era salvo ilimitado, com "Cupom atualizado". Agora número
 // incompleto BARRA o salvar e avisa no campo. Zero digitado de propósito e
-// limite de uso apagado de propósito (sem badInput) continuam valendo. No
-// mínimo, agora texto pt-BR, vazio é recusado e só 0 explícito libera o piso.
+// campos apagados de propósito (sem badInput) continuam valendo: vazio no
+// mínimo, agora texto pt-BR, também significa sem mínimo, não número inválido.
 import type { Coupon } from "@/types";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -203,10 +203,10 @@ describe("AdminCouponFormView: número incompleto não vira zero", () => {
     expect(updateCoupon.mock.calls[0][1].minPurchase).toBe(0);
   });
 
-  it("limite de uso apagado continua ilimitado; mínimo exige zero explícito", async () => {
+  it("R3: campo apagado de propósito continua sem mínimo e sem limite", async () => {
     await abrirTela("c1");
     await digitar("usageLimit", "", false);
-    await digitar("minPurchase", "0", false);
+    await digitar("minPurchase", "", false);
     await salvar();
 
     expect(toast.error).not.toHaveBeenCalled();
