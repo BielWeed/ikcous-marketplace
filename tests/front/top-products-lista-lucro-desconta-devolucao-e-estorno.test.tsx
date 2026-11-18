@@ -66,6 +66,10 @@ describe("TopProductsList — o lucro desconta devolução e estorno", () => {
     expect(texto).toContain(
       "Reembolso total não tira o pedido da lista; só sai o pedido cancelado.",
     );
+    // A função do banco filtra `p.deleted_at IS NULL`: produto excluído não entra no ranking (o gráfico diário e o Financeiro contam a venda dele).
+    expect(texto).toContain(
+      "só sai o pedido cancelado. Produtos excluídos não aparecem aqui. Conta no dia",
+    );
     expect(texto).toContain(
       "Conta no dia da venda e sem frete, por isso difere do Financeiro do mês.",
     );
