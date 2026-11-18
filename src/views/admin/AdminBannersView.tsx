@@ -1618,8 +1618,19 @@ export const AdminBannersView = memo(function AdminBannersView({
       if (isDialogOpen) {
         efetuouFechamentoRef.current = false;
         onSetBackOverride(() => () => {
-          if (telaRef.current === "modelos" || telaRef.current === "ia") {
-            setTela("jeito");
+          // O recorte fica por cima do editor. O contexto atual só existe
+          // enquanto ele está aberto, mesmo sem re-registrar este override.
+          const recorteAberto = contextoDoRecorteAtual.current !== null;
+          if (
+            recorteAberto ||
+            telaRef.current === "modelos" ||
+            telaRef.current === "ia"
+          ) {
+            if (recorteAberto) {
+              setIsAdjusterOpen(false);
+            } else {
+              setTela("jeito");
+            }
             // No Voltar FÍSICO o navegador já consumiu a entrada do editor
             // antes de chegar aqui: sem devolvê-la, o segundo Voltar sairia
             // da tela de Banners em vez de só fechar o editor.
@@ -1645,7 +1656,7 @@ export const AdminBannersView = memo(function AdminBannersView({
         onSetBackOverride(null);
       }
     };
-  }, [isDialogOpen, onSetBackOverride]);
+  }, [isDialogOpen, onSetBackOverride, setIsAdjusterOpen]);
 
   // Analyze image brightness and extract colors when imageUrl changes
   useEffect(() => {
