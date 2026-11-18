@@ -8267,16 +8267,16 @@ export function CheckoutViewDaConta({
                         )}
                       </button>
                     </div>
+                    {buscandoEnderecoDaEntrega && (
+                      <p role="status" className="text-center text-[11px]">
+                        Buscando o endereço do CEP…
+                      </p>
+                    )}
                     {/* Com destino, independe do estado do frete (22/10/2026):
                         antes sumia durante a cotação e aparecia depois — mais
                         um salto da barra. SEM destino continua escondida, como
                         na base (1.5.50, commit 38c52de4): o card do alto já pede
                         o endereço, e repetir em vermelho aqui engordava a barra. */}
-                    <p role="status" className="text-center text-[11px]">
-                      {buscandoEnderecoDaEntrega
-                        ? "Buscando o endereço do CEP…"
-                        : null}
-                    </p>
                     {!semDestinoDeEntrega &&
                       !isOffline &&
                       !pagamentoIncompativel &&
