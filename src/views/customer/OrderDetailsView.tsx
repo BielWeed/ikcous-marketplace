@@ -794,6 +794,15 @@ export function OrderDetailsView({
     ordersRef.current = orders;
   }, [orders]);
 
+  // Uma consulta antiga pode seguir a substituta mesmo após trocar de pedido.
+  const orderIdAtualRef = useRef<string | null>(orderId);
+  useEffect(() => {
+    orderIdAtualRef.current = orderId;
+    return () => {
+      orderIdAtualRef.current = null;
+    };
+  }, [orderId]);
+
   const loadOrder = useCallback(async () => {
     setLoading(true);
     // 1. Pinta com o que já está em memória (vem do cache do localStorage),
@@ -825,6 +834,7 @@ export function OrderDetailsView({
     const doServidor = await fetchUserOrders(false, {
       aguardarSubstituta: true,
     });
+    if (orderIdAtualRef.current !== orderId) return;
     let encontrado = doServidor.find((o) => mesmoIdDePedido(o.id, orderId));
 
     // 3. Convidado que rastreou pedido por OTP não tem linha em

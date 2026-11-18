@@ -3143,9 +3143,7 @@ const AppContent = () => {
           <PreloadedOrLazy
             component={OrderDetailsView}
             props={{
-              key: user?.id
-                ? `order-details-${user.id}`
-                : "order-details-guest",
+              key: `order-details-${user?.id ?? "guest"}-${selectedProductId || ""}`,
               orderId: selectedProductId || "",
               onBack: handleOrderDetailsBack,
               onNavigate: handleNavigate,

@@ -15,7 +15,8 @@
 //
 // App inteiro, só as pontas dubladas (harness de
 // app-endereco-desconhecido-volta-para-a-home).
-import { act } from "react";
+import type { Order } from "@/types";
+import { type ComponentProps, act, useState } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -120,21 +121,41 @@ vi.mock("@/views/customer/CheckoutView", () => ({
     <div data-testid="tela-checkout" data-retomada={retomarPedidoId ?? ""} />
   ),
 }));
-vi.mock("@/views/customer/OrderDetailsView", () => ({
-  OrderDetailsView: ({
-    onRetomarPagamento,
-  }: {
-    readonly onRetomarPagamento: (pedidoId: string) => void;
-  }) => (
-    <button
-      type="button"
-      data-testid="retomar-pagamento"
-      onClick={() => onRetomarPagamento("pedido-7")}
-    >
-      Retomar pagamento
-    </button>
-  ),
+const { fetchUserOrders } = vi.hoisted(() => ({ fetchUserOrders: vi.fn() }));
+let usarFichaReal = false;
+let pedidosEmMemoria: Order[] = [];
+vi.mock("@/hooks/useOrders", () => ({
+  useOrders: () => ({ orders: pedidosEmMemoria, fetchUserOrders }),
 }));
+vi.mock("@/views/customer/OrderDetailsView", async (importOriginal) => {
+  const { OrderDetailsView: FichaReal } =
+    await importOriginal<typeof import("@/views/customer/OrderDetailsView")>();
+
+  function FichaComSonda(props: ComponentProps<typeof FichaReal>) {
+    // O spinner também esconde A sem remontar. A sonda distingue os dois casos.
+    const [pedidoNaMontagem] = useState(props.orderId);
+    return (
+      <div data-pedido-na-montagem={pedidoNaMontagem}>
+        <FichaReal {...props} />
+      </div>
+    );
+  }
+
+  return {
+    OrderDetailsView: (props: ComponentProps<typeof FichaReal>) =>
+      usarFichaReal ? (
+        <FichaComSonda {...props} />
+      ) : (
+        <button
+          type="button"
+          data-testid="retomar-pagamento"
+          onClick={() => props.onRetomarPagamento?.("pedido-7")}
+        >
+          Retomar pagamento
+        </button>
+      ),
+  };
+});
 
 vi.mock("@/components/debug/DebugPanel", () => ({ DebugPanel: () => null }));
 vi.mock("@/components/pwa/PushNotificationBanner", () => ({
@@ -184,7 +205,9 @@ vi.mock("@/components/ui/alert-dialog", () => {
 vi.mock("@/contexts/StoreContext", () => ({
   StoreProvider: ({ children }: { readonly children?: unknown }) =>
     children as never,
-  useStore: () => ({ config: null }),
+  useStore: () => ({
+    config: usarFichaReal ? { enableReviews: false } : null,
+  }),
 }));
 vi.mock("@/contexts/CartContext", async () => {
   const React = await import("react");
@@ -276,6 +299,8 @@ vi.mock("@/lib/supabase", () => {
   consulta.select = () => consulta;
   consulta.eq = () => consulta;
   consulta.single = () => Promise.resolve({ data: null, error: null });
+  consulta.in = () => Promise.resolve({ data: [], error: null });
+  consulta.order = () => Promise.resolve({ data: [], error: null });
   return {
     supabase: {
       from: () => consulta,
@@ -328,6 +353,9 @@ describe("Voltar depois de finalizar o pedido não abre o checkout vazio", () =>
   let container: HTMLDivElement | null = null;
 
   beforeEach(() => {
+    usarFichaReal = false;
+    pedidosEmMemoria = [];
+    fetchUserOrders.mockReset();
     carrinho.gravar([]);
     vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -511,6 +539,9 @@ describe("Voltar depois de finalizar o pedido não abre o checkout vazio", () =>
         estado: { view: "order-details", id: "pedido-7", from: "orders" },
       },
     ]);
+    await esperarAte(
+      () => !!container?.querySelector('[data-testid="retomar-pagamento"]'),
+    );
     await clicar("retomar-pagamento");
     expect(checkout()?.getAttribute("data-retomada")).toBe("pedido-7");
 
@@ -522,6 +553,92 @@ describe("Voltar depois de finalizar o pedido não abre o checkout vazio", () =>
     expect(checkout()).not.toBeNull();
     expect(checkout()?.getAttribute("data-retomada")).toBe("pedido-7");
     expect(rota()).toBe("/checkout");
+  });
+
+  it("trocar de pedido pelo histórico remonta a ficha antes de a consulta nova responder", async () => {
+    usarFichaReal = true;
+    const a: Order = {
+      id: "pedido-a",
+      customer: { name: "Cliente fictício", whatsapp: "" },
+      items: [
+        {
+          id: "item-a",
+          productId: "",
+          name: "Produto do pedido A",
+          quantity: 1,
+          price: 10,
+          image: "",
+        },
+      ],
+      subtotal: 10,
+      shipping: 0,
+      discount: 0,
+      total: 10,
+      paymentMethod: "pix",
+      paymentStatus: "aguardando",
+      status: "pending",
+      createdAt: "2026-11-18T10:00:00Z",
+      updatedAt: "2026-11-18T10:00:00Z",
+      cancelledAfterShipping: false,
+    };
+    const b: Order = {
+      ...a,
+      id: "pedido-b",
+      items: a.items.map((item) => ({
+        ...item,
+        id: "item-b",
+        name: "Produto do pedido B",
+      })),
+    };
+    pedidosEmMemoria = [a];
+    let terminarA!: (pedidos: Order[]) => void;
+    let terminarB!: (pedidos: Order[]) => void;
+    fetchUserOrders
+      .mockImplementationOnce(
+        () =>
+          new Promise<Order[]>((resolve) => {
+            terminarA = resolve;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<Order[]>((resolve) => {
+            terminarB = resolve;
+          }),
+      );
+
+    const entrada = (id: string) => ({
+      caminho: `/order-details?id=${id}`,
+      estado: { view: "order-details", id, from: "orders" },
+    });
+    await montar([entrada(b.id), entrada(a.id)]);
+    const texto = () => container?.textContent ?? "";
+    const semDadosDeA = () => {
+      expect(texto()).not.toContain("Produto do pedido A");
+      expect(texto()).not.toContain("Retomar pagamento");
+    };
+    const fichaMontada = () =>
+      container?.querySelector("[data-pedido-na-montagem]");
+
+    await esperarAte(() => texto().includes("Produto do pedido A"));
+    expect(texto()).toContain("Retomar pagamento");
+    expect(fichaMontada()?.getAttribute("data-pedido-na-montagem")).toBe(a.id);
+    expect(fetchUserOrders).toHaveBeenCalledTimes(1);
+
+    await voltarDoAparelho();
+    await esperarAte(() => fetchUserOrders.mock.calls.length === 2);
+    expect(rota()).toBe(entrada(b.id).caminho);
+    expect(texto()).toContain("Sincronizando pedido");
+    semDadosDeA();
+    expect(fichaMontada()?.getAttribute("data-pedido-na-montagem")).toBe(b.id);
+
+    await act(async () => terminarA([a, b]));
+    expect(texto()).toContain("Sincronizando pedido");
+    semDadosDeA();
+
+    await act(async () => terminarB([a, b]));
+    expect(texto()).toContain("Produto do pedido B");
+    expect(texto()).not.toContain("Produto do pedido A");
   });
 
   it("controle: quem já está no checkout não é expulsa quando o carrinho esvazia e a guarda do envio desfaz", async () => {
