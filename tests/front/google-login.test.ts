@@ -137,6 +137,8 @@ it("destino adulterado não abre painel nem endereço externo", async () => {
   expect(history.state.from).toBe("profile");
 });
 it("retorno guardado adulterado não retoma o painel depois do Google", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-11-18T12:00:00Z"));
   sessionStorage.setItem(
     "ikcous_google_retorno_v1",
     JSON.stringify({

@@ -304,7 +304,11 @@ describe("PrivacidadeDosClientesSection", () => {
       error: null,
     };
     await montar();
-    expect(corpo()).toContain("Responder até 29/10/2026");
+    // formatarDataDoPedido usa o fuso do aparelho, não dataNoFusoDaLoja.
+    const prazoEsperado = new Date("2026-10-29T12:00:00Z").toLocaleDateString(
+      "pt-BR",
+    );
+    expect(corpo()).toContain(`Responder até ${prazoEsperado}`);
   });
 
   it("nome que não veio de profiles vira 'Cliente' em vez de sumir o pedido", async () => {
