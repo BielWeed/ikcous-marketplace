@@ -93,3 +93,50 @@ export function sanitizarDadosPessoaisDoTexto(texto: string): string {
         .replace(REGEX_TELEFONE_CRU, '[telefone]')
         .replace(REGEX_TELEFONE_FORMATADO, '[telefone]')
 }
+
+// Nomes de campo que o carrinho do ME recebe (`from`, `to`, `products`,
+// `volumes`, `options`) — as chaves de `errors` da validação do Laravel são
+// caminhos feitos só destes segmentos (`to.postal_code`, `volumes.0.weight`).
+// Lista FECHADA de propósito: o texto de uma recusa pode ecoar nome, rua,
+// número, bairro, cidade e CEP do destinatário, e `sanitizarDadosPessoaisDoTexto`
+// só reconhece CPF, e-mail e telefone — não dá para limpar nome e endereço por
+// padrão (abreviação, acento, caixa). O que não está na lista some.
+const SEGMENTOS_DE_CAMPO_DO_CARRINHO: ReadonlySet<string> = new Set([
+    'service', 'from', 'to', 'products', 'volumes', 'options',
+    'name', 'phone', 'email', 'document', 'company_document', 'state_register',
+    'address', 'complement', 'number', 'district', 'city', 'state_abbr', 'country_id', 'postal_code',
+    'quantity', 'unitary_value', 'weight', 'width', 'height', 'length',
+    'insurance_value', 'receipt', 'own_hand', 'reverse', 'non_commercial',
+])
+const REGEX_INDICE_DE_LISTA = /^\d{1,3}$/
+const MAXIMO_DE_CAMPOS_NO_LOG = 6
+
+/**
+ * Os NOMES dos campos que o Melhor Envio recusou (`errors` do corpo de
+ * validação), para o log de servidor — NUNCA o texto da recusa, que pode
+ * carregar dado pessoal do destinatário. Só entra a chave cujos segmentos
+ * (separados por `.`) são todos campos conhecidos do carrinho ou índice de
+ * lista; texto, chave estranha, formato inesperado e corpo ilegível dão `[]`.
+ * Sem repetição, no máximo 6.
+ */
+export function camposRecusadosDoProvedor(texto: string): string[] {
+    if (typeof texto !== 'string') return []
+    let dados: unknown
+    try {
+        dados = JSON.parse(texto)
+    } catch {
+        return []
+    }
+    const erros = (dados as { errors?: unknown } | null)?.errors
+    if (!erros || typeof erros !== 'object' || Array.isArray(erros)) return []
+    const campos: string[] = []
+    for (const chave of Object.keys(erros)) {
+        if (campos.length >= MAXIMO_DE_CAMPOS_NO_LOG) break
+        const segmentos = chave.split('.')
+        const conhecida = segmentos.every(
+            (segmento) => SEGMENTOS_DE_CAMPO_DO_CARRINHO.has(segmento) || REGEX_INDICE_DE_LISTA.test(segmento),
+        )
+        if (conhecida && !campos.includes(chave)) campos.push(chave)
+    }
+    return campos
+}
