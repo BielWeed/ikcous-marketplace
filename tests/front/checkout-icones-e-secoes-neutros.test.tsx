@@ -367,6 +367,35 @@ describe("CheckoutView — PASSO A5: ícones e seleção neutros nas seções", 
     }
   });
 
+  it.each([
+    ["Pagar agora com PIX", LOCAL],
+    ["Pix na Entrega", LOCAL],
+    [
+      "Pix na Retirada",
+      {
+        ...LOCAL,
+        id: "store-pickup",
+        name: "Retirada na loja",
+        provider: "pickup",
+      },
+    ],
+  ] as const)("mostra o glifo Pix com size-6 em %s", async (texto, frete) => {
+    cotacoesControladas({ "38500000": [frete] });
+    await montar();
+    if (frete.id === "store-pickup") {
+      const retirada = [
+        ...document.querySelectorAll("button[aria-pressed]"),
+      ].find((botao) => botao.textContent?.includes(frete.name));
+      expect(retirada).toBeInstanceOf(HTMLButtonElement);
+      await act(async () => {
+        (retirada as HTMLButtonElement).click();
+      });
+    }
+
+    const glifo = radioDe(texto)?.querySelector("span[aria-hidden='true'] svg");
+    expect(glifo?.classList.contains("size-6")).toBe(true);
+  });
+
   it("a opção marcada: borda forte + bolinha escura com check (nunca a cor da marca); as outras, bolinha vazia", async () => {
     cotacoesControladas({ "38500000": [LOCAL] });
     await montar();

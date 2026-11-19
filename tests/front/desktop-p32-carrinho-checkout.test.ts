@@ -155,7 +155,9 @@ describe("P32: alinhamento e resumo alcançável no computador", () => {
       [
         caminhos.checkout,
         // 1.5.214: troco e seus avisos, pedido cancelado e resumo do parcelamento.
-        "8492ebf8d43a766373c28f7faabd9f46f740a6ecd0aa17529895dcf9d44fdf2e",
+        // Selo Pix de ao menos 24 px visíveis (manual do BCB): 388 → 389
+        // literais. Só entra a caixa Pix de 25 px; os outros mantêm size-5.
+        "401f7da15839c6e737bf52055f52be42b29ccb00b7c2c3a1b769578db6bc0391",
       ],
       [
         caminhos.favoritos,

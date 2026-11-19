@@ -6804,7 +6804,14 @@ export function CheckoutViewDaConta({
         }`}
       >
         <QuadradinhoDoIcone grande>
-          <Icon className="size-5" />
+          {/* O traço do Pix não preenche todo o viewBox: a 24 px, o
+              Chromium mediu 23,9985 px de desenho. O mínimo de 25 px
+              na caixa garante os 24 px visíveis exigidos pelo BCB. */}
+          <Icon
+            className={
+              Icon === IconePix ? "size-6 min-h-[25px] min-w-[25px]" : "size-5"
+            }
+          />
         </QuadradinhoDoIcone>
         <div className="flex min-w-0 flex-1 flex-col items-start gap-1.5 text-left">
           {/* `zinc-400` sobre branco dá 2,56:1 — os três meios de pagamento
