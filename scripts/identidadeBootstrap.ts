@@ -1,4 +1,4 @@
-/* eslint-disable security/detect-non-literal-fs-filename -- Caminhos vem do kit local: loja e' um dos valores fixos de LOJAS, e sha256/nome (o objeto mora em objetos/<sha256>/<nome-original>) vem de asset.path, ja validado por assetSchema (^v1/[a-f0-9]{64}/[A-Za-z0-9][A-Za-z0-9._-]{0,79}$, sem "/" nem ".."); nenhum vem de rede ou de entrada nao validada do usuario. */
+/* eslint-disable security/detect-non-literal-fs-filename -- Caminhos vem do kit local: loja e' um slug validado (sem separadores), e sha256/nome (o objeto mora em objetos/<sha256>/<nome-original>) vem de asset.path, ja validado por assetSchema (^v1/[a-f0-9]{64}/[A-Za-z0-9][A-Za-z0-9._-]{0,79}$, sem "/" nem ".."); nenhum vem de rede ou de entrada nao validada do usuario. */
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -20,8 +20,8 @@ import type { BrandingAssets } from "../src/lib/storeIdentity";
 // para o ambiente em vez de "VALORES" (ver ANOTADO da revisao A11:
 // montarIdentidade confunde URL malformada com valor de identidade ruim).
 export { normalizeSupabaseOrigin };
+export { assertPublicSupabaseKey } from "../src/lib/publicSupabaseKey";
 
-export type Loja = "ikcous" | "savy";
 export interface ObjetoDoKit {
   readonly path: string;
   readonly arquivo: string;
@@ -30,7 +30,7 @@ export interface ObjetoDoKit {
   readonly mime: string;
 }
 export interface Kit {
-  readonly loja: Loja;
+  readonly loja: string;
   readonly assets: BrandingAssets;
   // Chave = path (v1/<sha>/<nome>).
   readonly objetos: ReadonlyMap<string, ObjetoDoKit>;
@@ -88,6 +88,18 @@ export class BootstrapError extends Error {
 }
 
 const LOJAS: ReadonlySet<string> = new Set(["ikcous", "savy"]);
+const rotuloValido = (rotulo: string) =>
+  rotulo.length > 0 &&
+  !/[^a-z0-9-]/.test(rotulo) &&
+  !rotulo.startsWith("-") &&
+  !rotulo.endsWith("-");
+
+const slugValido = (slug: string) => slug.length <= 63 && rotuloValido(slug);
+
+function dominioValido(dominio: string): boolean {
+  const rotulos = dominio.split(".");
+  return rotulos.length > 1 && rotulos.every(rotuloValido);
+}
 const sha = (bytes: Uint8Array) =>
   createHash("sha256").update(bytes).digest("hex");
 
@@ -104,8 +116,9 @@ export function canonico(valor: unknown): string {
   return JSON.stringify(valor);
 }
 
-export async function lerKit(dir: string, loja: Loja): Promise<Kit> {
-  if (!LOJAS.has(loja)) throw new BootstrapError("KIT", "loja desconhecida");
+export async function lerKit(dir: string, loja: string): Promise<Kit> {
+  if (!slugValido(loja))
+    throw new BootstrapError("KIT", "slug da loja invalido");
   const mapa = path.join(dir, loja, "branding-assets.json");
   let bruto: unknown;
   try {
@@ -440,9 +453,10 @@ export async function desfazer(
 
 export interface Argumentos {
   readonly kit: string;
-  readonly loja: Loja;
+  readonly loja: string;
   readonly valores: string;
   readonly workdirSupabase: string;
+  readonly alvoNovo?: { readonly ref: string; readonly dominio: string };
   readonly aplicar: boolean;
   readonly desfazer: boolean;
   // --saida: caminho onde o lancador grava o relatorio JSON de um --aplicar
@@ -457,6 +471,9 @@ export interface Argumentos {
 const FLAGS_COM_VALOR: ReadonlySet<string> = new Set([
   "--kit",
   "--loja",
+  "--alvo-novo",
+  "--ref",
+  "--dominio",
   "--valores",
   "--workdir-supabase",
   "--saida",
@@ -468,6 +485,7 @@ const FLAGS_BOOLEANAS: ReadonlySet<string> = new Set([
 ]);
 const USO =
   "uso: identidade-bootstrap.mjs --kit <dir> --loja ikcous|savy --valores <json> --workdir-supabase <dir> [--desfazer [--subidos <arquivo>]] [--aplicar [--saida <arquivo>]]\n" +
+  "ou: identidade-bootstrap.mjs --kit <dir> --alvo-novo <slug> --ref <ref> --dominio <host> --valores <json> [--aplicar --saida <arquivo>]\n" +
   "sem --aplicar nada e' gravado nem removido (dry-run), inclusive no --desfazer";
 
 // --aplicar e --desfazer sao independentes, e a MESMA regra vale para os
@@ -507,12 +525,46 @@ export function lerArgumentos(argv: readonly string[]): Argumentos {
   const lojaBruta = valores.get("--loja");
   const arquivoValores = valores.get("--valores");
   const workdirSupabase = valores.get("--workdir-supabase");
-  if (!kit || !lojaBruta || !arquivoValores || !workdirSupabase)
-    throw new BootstrapError("VALORES", USO);
-  if (!LOJAS.has(lojaBruta))
-    throw new BootstrapError("VALORES", `loja desconhecida: ${lojaBruta}`);
+  const slug = valores.get("--alvo-novo");
+  const ref = valores.get("--ref");
+  const dominio = valores.get("--dominio");
   const aplicar = booleanas.has("--aplicar");
   const desfazer = booleanas.has("--desfazer");
+  if (!kit || !arquivoValores) throw new BootstrapError("VALORES", USO);
+
+  let alvoNovo: Argumentos["alvoNovo"];
+  if (slug !== undefined) {
+    if (lojaBruta !== undefined || workdirSupabase !== undefined)
+      throw new BootstrapError(
+        "VALORES",
+        "--alvo-novo nao usa --loja nem --workdir-supabase",
+      );
+    if (!slugValido(slug))
+      throw new BootstrapError("VALORES", "slug de --alvo-novo invalido");
+    if (!ref || !/^[a-z0-9]{20}$/.test(ref))
+      throw new BootstrapError("VALORES", "--alvo-novo exige --ref valido");
+    if (!dominio || !dominioValido(dominio))
+      throw new BootstrapError(
+        "VALORES",
+        "--alvo-novo exige --dominio sem protocolo ou caminho",
+      );
+    if (desfazer || valores.has("--subidos"))
+      throw new BootstrapError(
+        "VALORES",
+        "--alvo-novo so faz a primeira gravacao, nao desfaz",
+      );
+    alvoNovo = { ref, dominio };
+  } else {
+    if (ref !== undefined || dominio !== undefined)
+      throw new BootstrapError(
+        "VALORES",
+        "--ref e --dominio exigem --alvo-novo",
+      );
+    if (!lojaBruta || !workdirSupabase)
+      throw new BootstrapError("VALORES", USO);
+    if (!LOJAS.has(lojaBruta))
+      throw new BootstrapError("VALORES", `loja desconhecida: ${lojaBruta}`);
+  }
   const saida = valores.get("--saida") ?? null;
   // So' o ramo bootstrap (--aplicar sem --desfazer) precisa de --saida: e'
   // onde o relatorio de um --aplicar e' gravado. --desfazer nao usa --saida.
@@ -523,10 +575,10 @@ export function lerArgumentos(argv: readonly string[]): Argumentos {
     );
   return {
     kit,
-    // LOJAS.has(lojaBruta) ja' garantiu que lojaBruta e' "ikcous" ou "savy".
-    loja: lojaBruta === "ikcous" ? "ikcous" : "savy",
+    loja: slug ?? (lojaBruta === "ikcous" ? "ikcous" : "savy"),
     valores: arquivoValores,
-    workdirSupabase,
+    workdirSupabase: workdirSupabase ?? "",
+    ...(alvoNovo ? { alvoNovo } : {}),
     aplicar,
     desfazer,
     saida,
