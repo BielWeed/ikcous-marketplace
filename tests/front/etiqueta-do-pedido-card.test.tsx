@@ -435,6 +435,49 @@ describe("EtiquetaDoPedidoCard", () => {
     expect(aviso()).toBeNull();
   });
 
+  it("avisa que a etiqueta está cancelada ao consultar o rastreio e ao reabrir o card", async () => {
+    const urlAntiga = "https://imprimir.teste/etiqueta";
+    const linkDaEtiqueta = () =>
+      hospedeiro.querySelector(`a[href="${urlAntiga}"]`);
+    pedidoState.data = pedido({
+      shipping_label_id: "lbl-cancelada",
+      shipping_label_url: urlAntiga,
+    });
+    await abrirCard();
+    expect(hospedeiro.textContent).toContain("Etiqueta emitida");
+    expect(linkDaEtiqueta()?.textContent).toBe("Abrir etiqueta");
+    expect(botao("Atualizar rastreio")).toBeTruthy();
+
+    const resultado = {
+      label_id: "lbl-cancelada",
+      status_etiqueta: "canceled",
+    };
+    invokeMock.mockResolvedValue({ data: { success: true, ...resultado } });
+    eventosState.data = [
+      { event_type: "rastreio_consultado", payload: resultado },
+    ];
+    await act(async () => {
+      botao("Atualizar rastreio")?.click();
+      await esperarMicrotarefas();
+    });
+
+    const conferirCancelamento = () => {
+      expect(linkDaEtiqueta()).toBeNull();
+      expect(botao("Atualizar rastreio")).toBeUndefined();
+      expect(hospedeiro.textContent).not.toContain("Etiqueta emitida");
+      expect(hospedeiro.textContent).toContain(
+        "Etiqueta cancelada no Melhor Envio",
+      );
+      expect(botao("Gerar etiqueta")).toBeUndefined();
+    };
+    conferirCancelamento();
+
+    act(() => raiz.unmount());
+    raiz = createRoot(hospedeiro);
+    await abrirCard();
+    conferirCancelamento();
+  });
+
   it("already: true — mostra que nada foi comprado de novo", async () => {
     invokeMock.mockResolvedValue({
       data: {

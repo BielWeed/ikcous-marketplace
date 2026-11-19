@@ -430,6 +430,7 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
   const elegibilidade: ElegibilidadeDaEtiqueta | null = pedido
     ? elegibilidadeDaEtiqueta(pedido)
     : null;
+  const etiquetaCancelada = pedido?.situacao_da_compra === "cancelada";
 
   const handleGerarEtiqueta = useCallback(async () => {
     const orderIdDoClique = orderId;
@@ -876,7 +877,19 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
               </p>
             )}
 
-          {elegibilidade.estado === "emitida" && (
+          {elegibilidade.estado === "emitida" && etiquetaCancelada && (
+            <div className="rounded-xl border border-admin-border bg-admin-surface p-3 duration-200 animate-in fade-in">
+              <p
+                role="status"
+                className="flex items-start gap-2 text-sm font-medium leading-snug text-amber-400"
+              >
+                <AlertCircle className="mt-0.5 size-4 shrink-0 text-amber-400" />
+                <span>Etiqueta cancelada no Melhor Envio</span>
+              </p>
+            </div>
+          )}
+
+          {elegibilidade.estado === "emitida" && !etiquetaCancelada && (
             <div className="space-y-3 rounded-xl border border-admin-border bg-admin-surface p-3 duration-200 animate-in fade-in">
               <div className="flex items-center gap-2 text-sm font-medium text-emerald-400">
                 <CheckCircle2 className="size-4 shrink-0" />
