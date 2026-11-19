@@ -218,11 +218,11 @@ const SUBTITULO_PARA_PREPARAR = STATUS_PARA_PREPARAR.map(
 
 /**
  * Lista vazia com canal/pagamento ligado enquanto o status é "Em Aberto": o
- * "Em Aberto" esconde os entregues e a venda do balcão já nasce Entregue,
+ * "Em Aberto" esconde os finalizados e a venda do balcão já nasce finalizada,
  * então limpar só o canal/pagamento não traz nada de volta.
  */
 const textoDoEmAbertoTambemLigado =
-  'O status "Em Aberto" também está ligado e não mostra pedidos entregues (vendas do balcão nascem como Entregue). Escolha "Todos" no status para ver esses pedidos.';
+  'O status "Em Aberto" também está ligado e não mostra pedidos finalizados (vendas do balcão já nascem finalizadas). Escolha "Todos" no status para ver esses pedidos.';
 
 /**
  * `mapOrderFromDB` (src/lib/mappers.ts) já copia `payment_status` para
@@ -806,7 +806,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         value: formatarInteiro(aCaminho),
         icon: Truck,
         accent: "text-cyan-300",
-        subValue: "Enviados",
+        subValue: "Entrega ou retirada pronta",
       },
       {
         label: "Finalizados",
