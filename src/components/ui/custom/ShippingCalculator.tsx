@@ -552,7 +552,11 @@ export function ShippingCalculator({
       foiEscolhidaPelaCliente,
     );
     // Só informa o resultado da seleção existente; não interfere nela.
-    if (!opcao || origem === "cliente") {
+    if (
+      !opcao ||
+      origem === "cliente" ||
+      lista.some((opcaoAtual) => ehRetiradaNaLoja(opcaoAtual.id))
+    ) {
       setAvisarTrocaDaRetirada(false);
     } else if (foiEscolhidaPelaCliente && ehRetiradaNaLoja(anterior?.id)) {
       setAvisarTrocaDaRetirada(true);

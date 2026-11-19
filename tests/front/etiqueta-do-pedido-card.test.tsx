@@ -776,7 +776,7 @@ describe("EtiquetaDoPedidoCard", () => {
     );
   });
 
-  it("código já salvo continua na resposta sem anunciar nova gravação", async () => {
+  it("mostra e repassa o código já salvo em outro aparelho sem anunciar nova gravação", async () => {
     pedidoState.data = pedido({
       shipping_label_id: "lbl-ja-existe",
       shipping_label_url: "https://imprimir.teste/etiqueta",
@@ -785,20 +785,26 @@ describe("EtiquetaDoPedidoCard", () => {
     invokeMock.mockResolvedValue({
       data: {
         success: true,
-        tracking_code: "MANUAL-ANTIGO",
+        label_id: "lbl-ja-existe",
+        tracking_code: "ME23002OWZ7BR",
         rastreio_atualizado: false,
       },
     });
     const onTrackingAtualizado = vi.fn();
     await abrirCard(undefined, { onTrackingAtualizado });
+    expect(hospedeiro.textContent).toContain("MANUAL-ANTIGO");
 
     await act(async () => {
       botao("Atualizar rastreio")?.click();
       await esperarMicrotarefas();
     });
 
-    expect(hospedeiro.textContent).toContain("MANUAL-ANTIGO");
-    expect(onTrackingAtualizado).not.toHaveBeenCalled();
+    expect(hospedeiro.textContent).toContain("ME23002OWZ7BR");
+    expect(hospedeiro.textContent).not.toContain("MANUAL-ANTIGO");
+    expect(onTrackingAtualizado).toHaveBeenCalledExactlyOnceWith(
+      "11111111-1111-1111-1111-111111111111",
+      "ME23002OWZ7BR",
+    );
     expect(toast.success).not.toHaveBeenCalled();
     expect(toast.info).toHaveBeenCalledWith(
       "O código de rastreio já está atualizado.",
