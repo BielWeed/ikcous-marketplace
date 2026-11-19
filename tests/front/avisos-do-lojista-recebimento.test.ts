@@ -42,7 +42,7 @@ describe("montarAvisos — recebimento por marcar", () => {
       id: `recebimento:${PEDIDO}`,
       tipo: "recebimento",
       titulo:
-        "Pedido #4F5A6B de Maria Silva entregue: você já recebeu o pagamento?",
+        "Pedido #4F5A6B de Maria Silva finalizado: você já recebeu o pagamento?",
       detalhe: expect.stringContaining(
         "marque para a cliente poder pedir devolução",
       ),
@@ -123,7 +123,7 @@ describe("montarAvisos — recebimento por marcar", () => {
       });
 
       expect(aviso.titulo).toBe(
-        "Pedido #4F5A6B entregue: você já recebeu o pagamento?",
+        "Pedido #4F5A6B finalizado: você já recebeu o pagamento?",
       );
     }
   });
@@ -135,7 +135,7 @@ describe("montarAvisos — recebimento por marcar", () => {
     });
 
     expect(aviso.titulo).toBe(
-      "Pedido #4F5A6B de Joana entregue: você já recebeu o pagamento?",
+      "Pedido #4F5A6B de Joana finalizado: você já recebeu o pagamento?",
     );
   });
 

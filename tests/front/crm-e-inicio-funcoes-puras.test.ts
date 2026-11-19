@@ -682,6 +682,10 @@ describe("formatadores", () => {
     expect(rotuloDoStatusDoPedido("desconhecido")).toBe("desconhecido");
   });
 
+  it("nomeia a etapa que reúne pedidos a caminho e retiradas prontas", () => {
+    expect(rotuloDoStatusDoPedido("shipping")).toBe("A caminho ou retirada");
+  });
+
   it("erro de função inexistente diz que o painel ainda não foi ativado", () => {
     expect(
       mensagemDeErroDoPainel({ code: "PGRST202", message: "x" }, "carregar"),

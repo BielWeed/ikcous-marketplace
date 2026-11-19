@@ -460,7 +460,7 @@ function cancelledDescription(
     return "Este pedido foi cancelado e o seu pagamento foi estornado: o dinheiro foi devolvido.";
   }
   if (key === "aguardando") {
-    return "Este pedido foi cancelado. Se o pagamento ainda estiver aberto no seu banco, não pague — o pedido não será entregue.";
+    return "Este pedido foi cancelado. Se o pagamento ainda estiver aberto no seu banco, não pague.";
   }
   // 14/10/2026: o cron que vence a reserva de 30 minutos grava
   // `status='cancelled'` + `payment_status='expirado'` (migration

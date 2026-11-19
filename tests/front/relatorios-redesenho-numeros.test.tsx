@@ -447,6 +447,6 @@ it("Funil conserva a conversão, as três etapas e as quantidades da fila", asyn
   expect(texto(host)).toContain("2 pedidos não viraram venda paga");
   expect([...host.querySelectorAll("li")].map((li) => texto(li))).toEqual([
     "Em separação 13",
-    "Em trânsito 17",
+    "A caminho ou retirada 17",
   ]);
 });

@@ -1090,7 +1090,7 @@ describe("useAvisosDoLojista — pedido entregue sem recebimento marcado", () =>
       | (AvisoLido & { destino?: { view: string; id?: string } })
       | undefined;
     expect(aviso?.titulo).toBe(
-      "Pedido #4F5A6B de Maria Silva entregue: você já recebeu o pagamento?",
+      "Pedido #4F5A6B de Maria Silva finalizado: você já recebeu o pagamento?",
     );
     expect(aviso?.destino).toEqual({ view: "admin-orders", id: PEDIDO });
     expect(aviso?.contaNoCracha).toBe(true);

@@ -378,7 +378,7 @@ describe("OrderDetailsView — pedido cancelado com pagamento que ficou com a lo
     await renderizar();
 
     expect(hospedeiro.textContent).toContain(
-      "Este pedido foi cancelado. Se o pagamento ainda estiver aberto no seu banco, não pague — o pedido não será entregue.",
+      "Este pedido foi cancelado. Se o pagamento ainda estiver aberto no seu banco, não pague.",
     );
     expect(hospedeiro.textContent).not.toContain(
       "Este pedido foi cancelado e não seguirá para entrega.",

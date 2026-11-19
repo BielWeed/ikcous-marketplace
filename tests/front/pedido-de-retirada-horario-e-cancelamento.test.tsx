@@ -89,6 +89,21 @@ describe("retirada — horário e aviso de cancelamento", () => {
     return hospedeiro.textContent ?? "";
   }
 
+  it("retirada cancelada com pagamento aberto orienta a não pagar sem falar em entrega", async () => {
+    estado.pedido = {
+      ...estado.pedido,
+      status: "cancelled",
+      paymentMethod: "online",
+      paymentStatus: "aguardando",
+    };
+
+    const texto = await renderizar();
+    expect(texto).toContain(
+      "Este pedido foi cancelado. Se o pagamento ainda estiver aberto no seu banco, não pague.",
+    );
+    expect(texto).not.toContain("não será entregue");
+  });
+
   it("mostra o horário junto do endereço quando já pode retirar", async () => {
     await renderizar();
     const endereco = [...hospedeiro.querySelectorAll("p")].find((p) =>

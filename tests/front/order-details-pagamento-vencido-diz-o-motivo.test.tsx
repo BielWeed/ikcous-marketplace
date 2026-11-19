@@ -185,7 +185,7 @@ describe("OrderDetailsView — pedido cancelado porque o pagamento venceu diz o 
       nome: "cancelado + aguardando (o aviso 'não pague' de sempre)",
       status: "cancelled",
       pagamento: "aguardando",
-      frase: "não pague — o pedido não será entregue",
+      frase: "não pague.",
     },
   ];
 
