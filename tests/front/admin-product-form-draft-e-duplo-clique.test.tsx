@@ -185,7 +185,8 @@ describe("AdminProductFormView — #98 duplo clique cria produto duplicado", () 
       digitarInput("product-stock", "5");
       selecionarCategoria("Geral");
       // Flush do debounce (200ms) do LocalBufferedInput/LocalBufferedTextarea.
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      if (vi.isFakeTimers()) await vi.advanceTimersByTimeAsync(300);
+      else await new Promise((resolve) => setTimeout(resolve, 300));
     });
   }
 
@@ -222,9 +223,11 @@ describe("AdminProductFormView — #98 duplo clique cria produto duplicado", () 
     expect(addProduct).toHaveBeenCalledTimes(1);
   });
 
-  it("sair antes da resposta de salvar não navega nem limpa a outra tela", async () => {
-    await preencherFormularioValido();
+  it("sair com cadastro em andamento não deixa rascunho nem navega depois", async () => {
     vi.useFakeTimers();
+    await preencherFormularioValido();
+    const chaveDeCadastro = "ikcous_product_form_draft:lojista-1";
+    expect(armazem.has(chaveDeCadastro)).toBe(false);
     let concluirGravacao!: (produto: { id: string }) => void;
     addProduct.mockImplementationOnce(
       () =>
@@ -238,6 +241,7 @@ describe("AdminProductFormView — #98 duplo clique cria produto duplicado", () 
     });
     expect(addProduct).toHaveBeenCalledTimes(1);
     expect(onNavigate).not.toHaveBeenCalled();
+    const rascunhoDuranteCadastro = armazem.get(chaveDeCadastro);
 
     await act(async () => {
       raiz.unmount();
@@ -260,6 +264,8 @@ describe("AdminProductFormView — #98 duplo clique cria produto duplicado", () 
 
     expect(onNavigate).not.toHaveBeenCalled();
     expect(onSetDirty).not.toHaveBeenCalled();
+    expect(armazem.has(chaveDeCadastro)).toBe(false);
+    expect(rascunhoDuranteCadastro).toBeUndefined();
   });
 
   it("desmontar durante a janela de 'Salvo' cancela a navegação pendente", async () => {

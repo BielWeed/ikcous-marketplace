@@ -3334,6 +3334,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       toast.error(mensagemDePrecoAcimaDoTeto("O preço de uma variação"));
       return;
     }
+    // Protege a edição se a sessão acabar durante a conferência. Não antecipa
+    // no cadastro: se ele confirmar depois da saída, o rascunho permitiria
+    // publicar o mesmo produto de novo.
+    if (productId) gravarRascunhoPendenteRef.current?.();
     setIsSubmitting(true);
     // Quem tocou em Salvar. Depois de qualquer espera (a conferência dos
     // códigos abaixo), só se grava se a conta viva ainda é esta.

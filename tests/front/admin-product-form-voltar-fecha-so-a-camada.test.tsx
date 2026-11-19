@@ -514,16 +514,26 @@ describe("AdminProductFormView — Voltar do celular fecha só a camada aberta",
     await act(async () => {
       botaoPorTexto("Nova categoria")?.click();
     });
-    await esperar(100);
-
+    const folhaNova = () =>
+      [...document.body.querySelectorAll('[role="dialog"]')].find(
+        (d) => d.querySelector("h2")?.textContent?.trim() === "Nova categoria",
+      ) ?? null;
+    // O formulário da categoria só é importado depois do clique.
+    await act(async () => {
+      await vi.dynamicImportSettled();
+    });
+    await vi.waitFor(
+      async () => {
+        await esperar(0);
+        expect(folhaNova()).not.toBeNull();
+      },
+      { timeout: 3_000 },
+    );
     expect(overrideAtual).toBeInstanceOf(Function);
-    const abertas = () =>
-      [...document.body.querySelectorAll('[role="dialog"]')].length;
-    expect(abertas()).toBeGreaterThan(0);
 
     await voltarFisico();
 
-    expect(abertas()).toBe(0);
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
     expect(document.getElementById("product-name")).not.toBeNull();
     expect(overrideAtual).toBeNull();
   });
