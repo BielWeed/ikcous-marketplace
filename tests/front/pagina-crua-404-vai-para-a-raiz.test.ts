@@ -62,7 +62,7 @@ describe("vercel.json: /404.html não serve a página crua", () => {
   });
 
   it("a regra que manda as rotas do app ao índice continua lá, sem cobrir /assets/", () => {
-    const regra = vercel.rewrites.find(
+    const regra = (vercel.rewrites ?? []).find(
       (regra) => regra.destination === "/index.html",
     );
     expect(regra).toBeDefined();
