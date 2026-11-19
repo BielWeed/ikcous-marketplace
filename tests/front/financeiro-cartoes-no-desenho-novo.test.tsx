@@ -336,7 +336,12 @@ describe("Financeiro — cartões e linhas-botão no desenho novo", () => {
     // vencido, a linha diz "Nada vencido" em cinza. "Próximos 7 dias" aparece
     // nos dois cartões, com o valor.
     const aPagar = hospedeiro.querySelector('[aria-label="A pagar"]');
-    const aReceber = hospedeiro.querySelector('[aria-label="A receber"]');
+    const aReceber = hospedeiro.querySelector(
+      '[aria-label="Contas lançadas a receber"]',
+    );
+    expect(aReceber?.textContent ?? "").toContain(
+      "Pagamentos de pedidos ainda não registrados como recebidos ficam em Pedidos.",
+    );
     expect(aPagar?.querySelector("[data-vencido]")).toBeNull();
     const nada = [...(aPagar?.querySelectorAll("p") ?? [])].find(
       (el) => normalizar(el.textContent) === "Nada vencido",

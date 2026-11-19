@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 //
 // Frente "ficha do cliente" (03/09): o resumo do topo responde "quem é este
-// cliente" com quatro números — total gasto, nº de pedidos, última compra e
-// ticket médio.
+// cliente" com quatro números — total gasto, nº de pedidos, data do último
+// pedido sem cancelados ou devolvidos e ticket médio.
 //
 // A REGRA, decidida e DOCUMENTADA na tela (ver comentário do resumo em
 // AdminUserDetailView e as regras numeradas em
@@ -12,7 +12,7 @@
 //   a cobrança dele está paga: cancelado é dinheiro que voltou, e a regra da
 //   casa (`get_admin_customers_paged`, `status NOT IN
 //   ('cancelled','returned')`) o tira de todas as contagens. Devolvido
-//   (returned), idem. O mesmo vale para a ÚLTIMA COMPRA: um cancelado de
+//   (returned), idem. O mesmo vale para a DATA DO ÚLTIMO PEDIDO: um cancelado de
 //   ontem não prova que o cliente está ativo.
 //
 //   DINHEIRO só com cobrança reconhecida ('pago', 'pago_apos_expirar',
@@ -470,7 +470,7 @@ describe("AdminUserDetailView — os cartões do resumo no ar", () => {
     },
   );
 
-  it("Última Compra é a data do pedido que conta mais recente, não a do cancelado", () =>
+  it("a data do último pedido ignora o cancelado mais recente", () =>
     comFusoLocalUtc(async () => {
       expect(new Intl.DateTimeFormat().resolvedOptions().timeZone).toBe("UTC");
       const instante = new Date(COMPRA_PERTO_DA_MEIA_NOITE);
@@ -484,7 +484,9 @@ describe("AdminUserDetailView — os cartões do resumo no ar", () => {
       const cancelado = "20/09/2026";
 
       const etiqueta = [...hospedeiro.querySelectorAll("span")].find(
-        (s) => s.textContent?.trim() === "Última Compra",
+        (s) =>
+          s.textContent?.trim() ===
+          "Último pedido (sem cancelados ou devolvidos)",
       );
       expect(etiqueta).toBeDefined();
       const cartao = etiqueta!.parentElement?.parentElement;
@@ -493,11 +495,11 @@ describe("AdminUserDetailView — os cartões do resumo no ar", () => {
         .find((t) => /\d/.test(t));
       expect(data).toBe(esperado);
       // A prova do engano: o cancelado é o MAIS recente de todos (20/09) e não
-      // pode aparecer como última compra.
+      // pode aparecer no cartão do resumo.
       expect(data).not.toBe(cancelado);
     }));
 
-  it("cliente que só tem pedidos cancelados mostra '—' na última compra e R$ 0,00 no dinheiro", async () => {
+  it("cliente que só tem pedidos cancelados mostra '—' no cartão do último pedido e R$ 0,00 no dinheiro", async () => {
     estado.orders = [
       pedido({
         id: "unico",
@@ -513,7 +515,9 @@ describe("AdminUserDetailView — os cartões do resumo no ar", () => {
     expect(valorDoCard("Valor médio por venda")).toBe("R$ 0,00");
 
     const etiqueta = [...hospedeiro.querySelectorAll("span")].find(
-      (s) => s.textContent?.trim() === "Última Compra",
+      (s) =>
+        s.textContent?.trim() ===
+        "Último pedido (sem cancelados ou devolvidos)",
     );
     const cartao = etiqueta!.parentElement?.parentElement;
     expect(cartao?.textContent).toContain("—");

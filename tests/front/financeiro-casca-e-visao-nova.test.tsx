@@ -430,7 +430,7 @@ describe("Financeiro — casca nova e Visão no desenho aprovado", () => {
       expect(dd("Saídas").querySelector(".text-red-400")).not.toBeNull();
     });
 
-    it("A pagar | A receber: vencido em etiqueta vermelha, 'Nada vencido' no zero, próximos 7 dias sempre à vista e toque leva ao lado certo", async () => {
+    it("A pagar | Contas lançadas a receber: vencido em etiqueta vermelha, 'Nada vencido' no zero, próximos 7 dias sempre à vista e toque leva ao lado certo", async () => {
       resumoAtual = {
         ...RESUMO_BASE,
         a_pagar: { total: 700, vencido: 0, proximos_7_dias: 200 },
@@ -438,7 +438,7 @@ describe("Financeiro — casca nova e Visão no desenho aprovado", () => {
       };
       await montar();
       const pagar = secao("A pagar");
-      const receber = secao("A receber");
+      const receber = secao("Contas lançadas a receber");
       expect(normalizar(pagar.textContent)).toContain("Nada vencido");
       expect(pagar.querySelector("[data-vencido]")).toBeNull();
       expect(normalizar(pagar.textContent)).toContain(
@@ -456,7 +456,7 @@ describe("Financeiro — casca nova e Visão no desenho aprovado", () => {
         "min-h-[7.5rem]",
       );
 
-      // Toque em A receber → aba Pagar e receber já no lado "A receber".
+      // Toque em Contas lançadas a receber → aba Pagar e receber já no lado "A receber".
       await act(async () => {
         receber.querySelector<HTMLButtonElement>("button")!.click();
       });
@@ -473,7 +473,7 @@ describe("Financeiro — casca nova e Visão no desenho aprovado", () => {
       expect(lado.getAttribute("aria-pressed")).toBe("true");
     });
 
-    it("A pagar | A receber: toque chama verPrevistos com o lado certo (saída / entrada)", async () => {
+    it("A pagar | Contas lançadas a receber: toque chama verPrevistos com o lado certo (saída / entrada)", async () => {
       const verPrevistos = vi.fn();
       await act(async () => {
         raiz.render(
@@ -495,7 +495,7 @@ describe("Financeiro — casca nova e Visão no desenho aprovado", () => {
         secao("A pagar").querySelector("button")!.click();
       });
       await act(async () => {
-        secao("A receber").querySelector("button")!.click();
+        secao("Contas lançadas a receber").querySelector("button")!.click();
       });
       expect(verPrevistos.mock.calls).toEqual([["saida"], ["entrada"]]);
     });
@@ -639,7 +639,7 @@ describe("Financeiro — casca nova e Visão no desenho aprovado", () => {
         secao("Saldo total"),
         secao("Movimentos do período"),
         secao("A pagar"),
-        secao("A receber"),
+        secao("Contas lançadas a receber"),
         secao("Saldo por conta"),
         secao("Fluxo de caixa · últimos 30 dias"),
         secao("Recebimentos por forma"),
@@ -766,7 +766,7 @@ describe("Financeiro — casca nova e Visão no desenho aprovado", () => {
       expect(heroi.className).toContain("whitespace-nowrap");
     });
 
-    it("A pagar e A receber também encolhem o total (nunca quebra em duas linhas)", async () => {
+    it("A pagar e Contas lançadas a receber também encolhem o total (nunca quebra em duas linhas)", async () => {
       resumoAtual = {
         ...RESUMO_BASE,
         a_pagar: { total: 123456.78, vencido: 0, proximos_7_dias: 0 },
@@ -777,8 +777,10 @@ describe("Financeiro — casca nova e Visão no desenho aprovado", () => {
         secao(rotulo).querySelector<HTMLElement>(".tabular-nums")!;
       // "−R$ 123.456,78" (14) → 13px; "+R$ 12,00" (9) → 20px.
       expect(total("A pagar").className).toContain("text-[13px]");
-      expect(total("A receber").className).toContain("text-[20px]");
-      for (const rotulo of ["A pagar", "A receber"]) {
+      expect(total("Contas lançadas a receber").className).toContain(
+        "text-[20px]",
+      );
+      for (const rotulo of ["A pagar", "Contas lançadas a receber"]) {
         expect(total(rotulo).className).toContain("whitespace-nowrap");
       }
     });

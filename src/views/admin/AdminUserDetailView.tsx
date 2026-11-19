@@ -657,7 +657,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
     - Dinheiro só com cobrança reconhecida: 'pago', 'pago_apos_expirar' e
       'recebido_na_entrega' (migrations 20260823000000 e 20261021000000);
       nulo, 'aguardando', 'recusado', 'expirado' e 'estornado' ficam fora;
-    - Última compra e contagem NÃO filtram cobrança (mesma regra do
+    - Data do último pedido e contagem NÃO filtram cobrança (mesma regra do
       `last_order_date`/`orders_count` do servidor);
     - Valor médio por venda = total gasto ÷ pedidos COM dinheiro reconhecido — a
       fórmula do `get_admin_analytics_v2` aplicada ao recorte do cliente.
@@ -989,7 +989,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                 </div>
               </div>
 
-              {/* Última Compra Widget — data do pedido que conta mais recente
+              {/* Data de criação do pedido que conta mais recente
                   (não cancelado/devolvido, SEM filtro de cobrança: mesma
                   regra do `last_order_date` do servidor; um PIX aguardando
                   feito ontem prova que o cliente está ativo). Sem pedido que
@@ -997,7 +997,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
               <div className="flex min-w-0 items-start border-t border-admin-border px-2 pt-4">
                 <div className="flex min-w-0 flex-col">
                   <span className="mb-1 text-[11px] font-semibold text-zinc-400">
-                    Última Compra
+                    Último pedido (sem cancelados ou devolvidos)
                   </span>
                   <span className="break-words text-sm font-bold tracking-tight text-white sm:text-base">
                     {resumo.ultimaCompra
@@ -1656,9 +1656,10 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                 </div>
                 <p className="text-xs text-zinc-400">
                   Total já comprado, número de pedidos, valor médio por venda e
-                  última compra. Pedido cancelado ou devolvido não entra na
-                  conta; o total só soma cobrança confirmada (paga, paga após
-                  expirar ou recebida na entrega).
+                  último pedido (sem cancelados ou devolvidos). A data é a de
+                  criação do pedido, mesmo que ainda não tenha sido pago. O
+                  total só soma cobrança confirmada (paga, paga após expirar ou
+                  recebida na entrega).
                 </p>
               </div>
               <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">

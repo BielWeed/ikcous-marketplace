@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 //
 // Cartão do cliente na lista do painel: e-mail ausente aparecia como "N/A"
-// (inglês) e a última compra ausente como "--". Agora: "Não informado" e o
-// mesmo traço "—" do resto do painel.
+// (inglês) e a data do último pedido ausente como "--". Agora: "Não informado"
+// e o mesmo traço "—" do resto do painel.
 import { CartaoCliente } from "@/components/admin/users/CartaoCliente";
 import type { Customer } from "@/utils/admin_cache";
 import { act } from "react";
@@ -59,7 +59,7 @@ describe("CartaoCliente — dado ausente", () => {
     return hospedeiro.textContent ?? "";
   }
 
-  it("sem e-mail e sem compra: 'Não informado' e '—', nunca 'N/A' nem '--'", async () => {
+  it("sem e-mail e sem pedido: 'Não informado' e '—', nunca 'N/A' nem '--'", async () => {
     const texto = await mostrar(
       cliente({ email: null as unknown as string, last_order_date: undefined }),
     );
@@ -70,7 +70,7 @@ describe("CartaoCliente — dado ausente", () => {
   });
 
   it.each(["UTC", "America/Manaus", "America/Sao_Paulo"])(
-    "cadastro e última compra respeitam São Paulo com aparelho em %s",
+    "cadastro e último pedido respeitam São Paulo com aparelho em %s",
     async (timeZone) => {
       const original = Date.prototype.toLocaleDateString;
       vi.spyOn(Date.prototype, "toLocaleDateString").mockImplementation(
@@ -95,7 +95,11 @@ describe("CartaoCliente — dado ausente", () => {
     );
     expect(texto).toContain("maria@exemplo.com");
     expect(texto).toContain("Desde 07/02/2026");
-    expect(texto).toContain("10/08/2026");
+    expect(
+      hospedeiro.querySelector(
+        '[title="Último pedido (sem cancelados ou devolvidos)"]',
+      )?.textContent,
+    ).toBe("10/08/2026");
     expect(texto).not.toContain("Não informado");
   });
 });

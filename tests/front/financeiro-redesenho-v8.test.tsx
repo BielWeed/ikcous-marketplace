@@ -165,19 +165,21 @@ it.each(["carregando", "erro", "vazio"])(
   },
 );
 
-it("Visão apresenta os movimentos do período, depois A pagar antes de A receber", async () => {
+it("Visão apresenta os movimentos do período, depois A pagar antes de Contas lançadas a receber", async () => {
   await act(async () =>
     root.render(<AdminFinanceiroView onNavigate={vi.fn()} />),
   );
   const pagar = host.querySelector('[aria-label="A pagar"]');
-  const receber = host.querySelector('[aria-label="A receber"]');
+  const receber = host.querySelector(
+    '[aria-label="Contas lançadas a receber"]',
+  );
   expect(pagar).not.toBeNull();
   expect(receber).not.toBeNull();
   expect(
     pagar!.compareDocumentPosition(receber!) & Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
   // Desenho de 22/10/2026: Entradas | Saídas vêm logo depois do saldo, antes
-  // de A pagar | A receber.
+  // de A pagar | Contas lançadas a receber.
   const movimentos = host.querySelector('[aria-label="Movimentos do período"]');
   expect(movimentos).not.toBeNull();
   expect(

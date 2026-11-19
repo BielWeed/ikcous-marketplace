@@ -260,7 +260,7 @@ export const CartaoCliente = memo(function CartaoCliente({
       {detalhado && (
         <div
           className="hidden min-w-0 flex-wrap items-center gap-1 break-words text-[11px] md:col-span-1 md:flex"
-          title="Última compra"
+          title="Último pedido (sem cancelados ou devolvidos)"
         >
           <Calendar
             aria-hidden="true"
