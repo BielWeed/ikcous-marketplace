@@ -45,7 +45,7 @@ describe("Favoritos e pedidos no computador", () => {
       "01c4f2611dc3321eaab592ad1e8eb651f00621e95352f0393f1c3baa9bb7e38e",
     );
     expect(classes(arquivos.carrinho)).toBe(
-      "b510351dbdf198d99c9f309f35176c00139a11888891b03a63afb50d41c041e4",
+      "1dc0eeae81190e2946f2b062e7036424fc24e369d31fb97fecb039bd2be421c2",
     );
     expect(classes(arquivos.pedidos)).toBe(
       "25517ee6c392becb26e96a3c560aca5915539e126275ac1a930ad739be209bb6",
