@@ -181,8 +181,8 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
     ["pending", "aguardando", "pix", "2000-01-01T00:00:00Z", false],
     ["processing", "aguardando", "pix", "2099-01-01T00:00:00Z", false],
   ] as const)(
-    "aviso de Pix: %s, %s, %s, criado em %s",
-    async (status, paymentStatus, metodoOnline, createdAt, mostraAviso) => {
+    "aviso de Pix: %s, %s, %s, vence em %s",
+    async (status, paymentStatus, metodoOnline, expiraEm, mostraAviso) => {
       const { OrderDetail } = await import(
         "@/components/admin/orders/OrderDetail"
       );
@@ -191,7 +191,7 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
         status,
         paymentMethod: "online",
         metodoOnline,
-        createdAt,
+        expiraEm,
       };
 
       await act(async () => {
@@ -274,7 +274,7 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
       "Se a cliente pagou na loja, feche este aviso, cancele o pedido (botão Cancelar pedido) e registre a venda em Vender.",
     );
     expect(hospedeiro.textContent).toContain(
-      "O estoque e o cupom ficam reservados até você cancelar o pedido ou o Pix ser pago.",
+      "Avançar não confirma o Pix. Se você não recebeu por fora, confira com o cliente antes de seguir.",
     );
     expect(hospedeiro.textContent).not.toContain("balcão");
     expect(onStatusChange).not.toHaveBeenCalled();

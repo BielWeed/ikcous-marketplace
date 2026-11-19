@@ -13,6 +13,7 @@ import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import type { MetodoOnline } from "@/lib/forma-de-pagamento";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { PRAZO_DA_CONSULTA_DO_CHECKOUT_MS } from "@/lib/prazo-da-requisicao";
+import { lerPrazoDoPixEmMs, prazoDoPixPassou } from "@/lib/prazo-do-pix";
 import { cn, formatCurrency } from "@/lib/utils";
 import { AlertCircle, Check, Clock, Copy, Loader2 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
@@ -851,19 +852,9 @@ function PagamentoComPix({
   // do pagamento. Nada aqui muda status de pagamento, reserva nem
   // cria cobrança.
   const [agora, setAgora] = useState(() => Date.now());
-  // Postgres pode devolver frações com 1 a 6 dígitos, enquanto o formato
-  // interoperável de Date.parse usa milissegundos (3). Completar/truncar a
-  // fração preserva o instante e o fuso sem depender de parsers permissivos.
-  const expiraEmMs = pix
-    ? Date.parse(
-        pix.expiraEm.replace(
-          /\.(\d+)(?=Z$|[+-]\d{2}:\d{2}$)/i,
-          (_, fracao: string) => `.${fracao.padEnd(3, "0").slice(0, 3)}`,
-        ),
-      )
-    : Number.NaN;
+  const expiraEmMs = lerPrazoDoPixEmMs(pix?.expiraEm);
   const prazoConhecido = Number.isFinite(expiraEmMs);
-  const horarioPrevistoPassou = prazoConhecido && agora >= expiraEmMs;
+  const horarioPrevistoPassou = prazoDoPixPassou(expiraEmMs, agora);
 
   useEffect(() => {
     if (!prazoConhecido) return;
