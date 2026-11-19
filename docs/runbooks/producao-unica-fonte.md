@@ -75,7 +75,6 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
    aplicar o banco antes de comprovar `criar-pagamento` e `webhook-mercadopago` no ar em cada
    loja.** O portao pode imprimir o apply sem exigir essa prova. Veja o
    [roteiro do PIX anulado](publicar-pix-anulado-devolve-cupom.md).
-   Antes de publicar function ou aplicar migration que mexa em OTP/login, confirme numa loja de verificação que o código chega por e-mail e permite entrar.
 
    A regra que o comando aplica a cada lote de migrations
    (`provasDeObjetos` em `scripts/frota/canais-de-backend.json`):
@@ -1929,6 +1928,11 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
        efêmero pendente na entrega desta frente. Nada aqui comprova banco externo.
 
 4. **Promover UM front e conferir a frota.**
+
+   **Conferência pós-publicação de OTP/login:** no passo 3, publique a mudança de backend primeiro só na loja de desenvolvimento
+   [IKCOUS](https://ickous-marketplace.vercel.app) (`cafkrminfnokvgjqtkle`). Só depois de ela estar no ar nessa loja, teste
+   em janela anônima se o código chega por e-mail e permite entrar. Se falhar, **pare a propagação para as demais lojas**
+   e reverta pelo [caminho de desfazer](#rollback). Só retome o passo 3 e promova o front após o teste passar.
 
    ```powershell
    node scripts/frota/publicar-release.mjs --sha <sha40> --deployment <dpl_...> --promover --json <arquivo-da-primeira-tentativa>
