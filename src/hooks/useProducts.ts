@@ -1047,7 +1047,12 @@ function variacoesParaBanco(variants: Array<any>, productId?: string) {
 export function useProducts({
   autoFetch = true,
   onSincronizado,
-}: { autoFetch?: boolean; onSincronizado?: () => void } = {}) {
+  semFilaOffline = false,
+}: {
+  autoFetch?: boolean;
+  onSincronizado?: () => void;
+  semFilaOffline?: boolean;
+} = {}) {
   const onSincronizadoRef = useRef(onSincronizado);
   useEffect(() => {
     onSincronizadoRef.current = onSincronizado;
@@ -1903,8 +1908,13 @@ export function useProducts({
         return;
       }
 
-      // Check if offline
       if (typeof navigator !== "undefined" && !navigator.onLine) {
+        if (semFilaOffline) {
+          toast.error(
+            "Sem conexão: o produto não foi salvo. Suas alterações continuam nesta tela.",
+          );
+          return;
+        }
         // L10 — a fila é por dono (`products_offline_updates_queue:<uid>`).
         // Sem usuário identificado não há de quem ser a alteração: recusa
         // ANTES de pintar ou guardar qualquer coisa (um item sem dono seria
@@ -2148,6 +2158,7 @@ export function useProducts({
       backupStorageFile,
       fetchProduct,
       user?.id,
+      semFilaOffline,
     ],
   );
 

@@ -800,7 +800,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     // conta nesse meio-tempo. `= () => undefined`: consumidor que não expõe a
     // leitura (testes de contrato da tela) fica sem a trava, como antes.
     idDaContaViva = () => undefined,
-  } = useProducts({ autoFetch: false });
+  } = useProducts({ autoFetch: false, semFilaOffline: true });
 
   // O SKU da variação é UNIQUE na loja INTEIRA, não por produto. A grade gera
   // códigos previsíveis (base reaproveitada, sufixo por valor), então a
@@ -3531,9 +3531,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             ? normalizarCodigoBarras(v.codigoBarras)
             : undefined,
         }));
-        // O mesmo critério do `updateProduct` (que só enfileira com `!navigator.onLine`): a sonda de rede
-        // (`isOffline`) pode dizer "fora" por até 15 s com o navegador online, e aí o caminho antigo gravaria
-        // produto e grade em requisições separadas — a janela que esta RPC fecha.
+        // A sonda de rede (`isOffline`) pode dizer "fora" por até 15 s com
+        // o navegador online. Nesse caso, produto e grade ainda devem ser
+        // gravados juntos, sem passar pelo caminho de requisições separadas.
         const salvarEmTransacao =
           navigator.onLine &&
           (formData.variants.length > 0 || deletedVariantIds.length > 0);

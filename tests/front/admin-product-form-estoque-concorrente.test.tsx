@@ -15,6 +15,7 @@ const banco = vi.hoisted(() => ({
   versao: 0,
   falharVariacoes: false,
   chamadasRpc: [] as any[],
+  conferirCodigo: vi.fn(),
   recusadas: [] as string[],
   falharReleitura: false,
   toastError: vi.fn(),
@@ -64,6 +65,9 @@ vi.mock("@/lib/supabase", () => ({
       getSession: async () => ({ data: { session: null } }),
     },
     rpc: async (nome: string, parametros: any) => {
+      if (nome === "buscar_por_codigo_barras") {
+        return banco.conferirCodigo(parametros);
+      }
       expect(nome).toBe("salvar_produto_com_grade");
       banco.chamadasRpc.push(structuredClone(parametros));
       if (
@@ -320,32 +324,75 @@ afterEach(() => {
 });
 
 describe("salvar estoque confere a versão lida na abertura", () => {
-  it("rede caiu e produto fora do cache: recusa real do hook mantém edição e rascunho", async () => {
+  it("se a rede cai durante a conferência do código, não dá Salvo nem perde o rascunho", async () => {
+    banco.produto.codigo_barras = "7890000000001";
+    const rede = vi.spyOn(navigator, "onLine", "get").mockReturnValue(true);
+    let liberarConferencia!: () => void;
+    banco.conferirCodigo.mockReturnValueOnce(
+      new Promise((resolve) => {
+        liberarConferencia = () =>
+          resolve({ data: { encontrado: false }, error: null });
+      }),
+    );
+
+    await montar();
+    await digitar("product-name", "Camiseta editada");
+    const chave = chaveDoRascunhoDoProduto("lojista-1", "p-1");
+    const fila = "products_offline_updates_queue:lojista-1";
+    const barra = host.querySelector('[aria-label="Ações do produto"]');
+    if (!chave || !barra) throw new Error("Formulário de edição incompleto");
+    const botao = [...barra.querySelectorAll("button")].find(
+      (b) => b.textContent?.trim() === "Salvar alterações",
+    );
+    if (!botao) throw new Error("Botão Salvar não está na tela");
+    expect(botao.disabled).toBe(false);
+
+    vi.useFakeTimers();
+    try {
+      await act(async () => botao.click());
+      expect(banco.conferirCodigo).toHaveBeenCalledWith({
+        p_codigo: "7890000000001",
+      });
+      expect(botao.textContent).toContain("Salvando");
+      expect(JSON.parse(localStorage.getItem(chave) ?? "{}").name).toBe(
+        "Camiseta editada",
+      );
+
+      rede.mockReturnValue(false);
+      await act(async () => liberarConferencia());
+      await act(async () => vi.advanceTimersByTimeAsync(2000));
+
+      expect.soft(barra.textContent).not.toContain("Salvo");
+      expect.soft(botao.textContent?.trim()).toBe("Salvar alterações");
+      expect.soft(botao.disabled).toBe(false);
+      expect
+        .soft(JSON.parse(localStorage.getItem(chave) ?? "{}").name)
+        .toBe("Camiseta editada");
+      expect.soft(navegar).not.toHaveBeenCalled();
+      expect.soft(localStorage.getItem(fila)).toBeNull();
+      expect.soft(banco.gravacoes).toBe(0);
+      expect
+        .soft(banco.toastError)
+        .toHaveBeenCalledWith(
+          expect.stringMatching(/Sem conexão.*não foi salvo/),
+        );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("sem conexão ao gravar, recusa sem tentar reler o produto", async () => {
     await montar();
     await digitar("product-name", "Camiseta editada");
     const chave = chaveDoRascunhoDoProduto("lojista-1", "p-1")!;
-    localStorage.setItem(chave, JSON.stringify({ name: "Camiseta editada" }));
     vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
-    // O formulário já carregou; a releitura do hook agora encontra a rede caída.
     const { supabase } = await import("@/lib/supabase");
-    vi.spyOn(supabase, "from").mockImplementationOnce(
-      () =>
-        ({
-          select: () => ({
-            eq: () => ({
-              is: () => ({
-                single: async () => {
-                  throw new TypeError("Failed to fetch");
-                },
-              }),
-            }),
-          }),
-        }) as never,
-    );
+    const consultarBanco = vi.spyOn(supabase, "from");
     await salvar();
 
+    expect(consultarBanco).not.toHaveBeenCalled();
     expect(banco.toastError).toHaveBeenCalledWith(
-      "Sem conexão e a versão atual deste produto não está neste aparelho. A alteração não foi guardada — conecte-se e tente de novo.",
+      expect.stringMatching(/Sem conexão.*não foi salvo/),
     );
     expect(banco.gravacoes).toBe(0);
     expect(host.textContent).not.toContain("Salvo · voltando à lista");
@@ -530,7 +577,7 @@ describe("salvar estoque confere a versão lida na abertura", () => {
     expect(banco.variacoes[0].stock_increment).toBe(9);
   });
 
-  it("offline com grade mantém fila do produto e caminho antigo, sem RPC", async () => {
+  it("offline com grade não enfileira o preço nem grava a grade separadamente", async () => {
     banco.variacoes = [
       {
         id: "v-1",
@@ -542,15 +589,17 @@ describe("salvar estoque confere a versão lida na abertura", () => {
       },
     ];
     await montar();
+    await editarVariacao();
     vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
     await digitar("product-sale-price", "60,00");
     await salvar();
     expect(banco.chamadasRpc).toEqual([]);
-    const fila = JSON.parse(
-      localStorage.getItem("products_offline_updates_queue:lojista-1") ?? "[]",
-    );
-    expect(fila).toHaveLength(1);
-    expect(fila[0].updates.price).toBe(60);
+    expect(banco.gravacoesDeVariacoes).toBe(0);
+    expect(
+      localStorage.getItem("products_offline_updates_queue:lojista-1"),
+    ).toBeNull();
+    const chave = chaveDoRascunhoDoProduto("lojista-1", "p-1")!;
+    expect(JSON.parse(localStorage.getItem(chave) ?? "{}").price).toBe("60.00");
   });
 
   it("recusa estoque mexido após venda e avisa sem gravar produto nem variações", async () => {
