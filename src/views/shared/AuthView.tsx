@@ -1282,7 +1282,9 @@ export function AuthView({
                       // type="email" não dá acesso à seleção do texto.
                       type="text"
                       inputMode="email"
-                      pattern={PADRAO_DO_EMAIL}
+                      // Espaço comum nas pontas é aceito (o envio usa trim(), como
+                      // o type="email" fazia); espaço no meio continua inválido.
+                      pattern={String.raw`\s*(?:${PADRAO_DO_EMAIL})\s*`}
                       autoComplete="username"
                       autoCapitalize="none"
                       autoCorrect="off"

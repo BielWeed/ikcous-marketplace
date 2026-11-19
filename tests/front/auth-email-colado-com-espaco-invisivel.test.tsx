@@ -190,6 +190,24 @@ describe("AuthView — e-mail colado com espaço invisível", () => {
     expect(login).not.toHaveBeenCalled();
   });
 
+  it("espaço comum no fim do e-mail digitado não trava o login e é aparado no envio", async () => {
+    const campo = document.getElementById("email") as HTMLInputElement;
+    await act(async () => {
+      digitar("password", "senha12345");
+      campo.focus();
+    });
+
+    for (const caractere of "ana@example.test ") {
+      await act(async () => inserirNaSelecao(campo, caractere));
+    }
+
+    expect(campo.value).toBe("ana@example.test ");
+    expect(campo.checkValidity()).toBe(true);
+    await act(async () => clicarBotao("ENTRAR AGORA"));
+    expect(login).toHaveBeenCalledTimes(1);
+    expect(login.mock.calls[0][0]).toBe("ana@example.test");
+  });
+
   it("não corrige silenciosamente um espaço no meio do endereço", async () => {
     const campo = document.getElementById("email") as HTMLInputElement;
     await act(async () => {
