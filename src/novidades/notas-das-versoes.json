@@ -1,4 +1,34 @@
 {
+  "1.5.217": {
+    "titulo": "Pix, pedidos e um painel mais claro",
+    "novidades": [
+      "Enquanto o Pix aguarda confirmação, a cliente conectada pode tocar em “Já paguei — verificar”. Se o checkout estiver com o carrinho vazio, a cliente conectada encontra o atalho “Ver meus pedidos”.",
+      "Na compra sem conta, a cliente pode retomar o preenchimento na mesma aba por até duas horas após a última edição."
+    ],
+    "correcoes": [
+      "Se o cupom não gerar desconto no valor atual do carrinho, a cliente vê o motivo e o cupom não fica aplicado.",
+      "Se o pagamento pelo app estiver pausado, o carrinho avisa quando a entrega selecionada exige essa forma de pagamento.",
+      "Sem entrega disponível, a calculadora não sugere WhatsApp se a loja não tiver número cadastrado. Na busca, só produtos disponíveis aparecem entre as sugestões.",
+      "Se um pedido com cartão for cancelado por vencimento, a cliente recebe orientação para confirmar com a loja antes de comprar de novo.",
+      "Se o CPF não puder ser salvo, a tela da conta distingue as outras alterações já salvas daquilo que ainda precisa ser conferido.",
+      "Ao reimprimir um pedido não cancelado com reembolso confirmado, o recibo mostra o valor reembolsado e o “Total após reembolso”, além do total original.",
+      "No Financeiro, se um pedido pago for cancelado e os itens voltarem ao estoque em outro mês, o custo volta no mês da reposição, sem mudar o custo do mês da venda.",
+      "Ao salvar o preço de um produto sem variações, o painel recusa a gravação se os dados que a lojista conferiu estiverem desatualizados.",
+      "Ao exportar pedidos ou produtos, o painel interrompe o download se a sessão mudar ou o acesso ao painel não puder ser confirmado.",
+      "Na lista de clientes, uma resposta antiga não substitui a busca atual. Na busca de produtos, pesquisar 50% não confunde esse percentual com 150% ou 1,50%.",
+      "Se dois avisos tiverem o mesmo instante de criação ou dois banners tiverem a mesma posição, a lista mantém a ordem entre eles.",
+      "Ao adicionar fotos ao produto, o painel avisa se alguma não abriu ou ficou fora do limite de dez. Ao trocar uma arte da loja que exige imagem estática, o painel explica por que um WebP animado não serve."
+    ],
+    "melhorias": [
+      "Antes da primeira venda, a lojista recebe orientações sobre pagamento e entrega. O Início explica o período dos números. Ao usar o atalho para pedidos em aberto, a lojista não leva a busca nem os filtros antigos.",
+      "No Financeiro, a lojista distingue contas lançadas a receber de pagamentos de pedidos. Na ficha da cliente, o último pedido indica que não considera cancelados nem devolvidos.",
+      "Na lista de pedidos, o filtro “Em Aberto” explica que esconde pedidos finalizados, inclusive vendas de balcão, e indica como vê-los.",
+      "Antes de enviar uma campanha para todos ou para um grupo, a lojista vê quantos aparelhos estão inscritos. Se o número aumentar, o painel pede nova confirmação.",
+      "A cliente consegue ler nomes e códigos de rastreio longos sem corte na ficha do pedido. Na folha de opções, escolhas longas quebram em linhas sem empurrar o rótulo.",
+      "Quem usa os temas escuro e vidro vê mais contraste em botões, avisos e campos.",
+      "Antes de excluir uma avaliação respondida ou limpar as escolhas manuais das vitrines, a lojista vê o que será removido. O painel também orienta o preenchimento de cupom, estoque mínimo e frete local."
+    ]
+  },
   "1.5.215": {
     "titulo": "Cancelar retirada pronta e painel que acompanha o relógio",
     "novidades": [],
