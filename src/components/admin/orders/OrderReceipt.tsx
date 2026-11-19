@@ -230,13 +230,13 @@ export const OrderReceipt = memo(function OrderReceipt({
           {valorEstornado > 0 && order.status !== "cancelled" ? (
             <>
               <div className="flex justify-between gap-2 text-xs">
-                <span>Reembolsado:</span>
+                <span>Reembolsado pelo Mercado Pago:</span>
                 <span className="shrink-0 whitespace-nowrap">
                   R$ {reais(reembolsadoEmCentavos / 100)}
                 </span>
               </div>
               <div className="flex justify-between gap-2 text-xs">
-                <span>Total após reembolso:</span>
+                <span>Total menos reembolso do Mercado Pago:</span>
                 <span className="shrink-0 whitespace-nowrap">
                   R$ {reais((totalEmCentavos - reembolsadoEmCentavos) / 100)}
                 </span>
