@@ -53,8 +53,9 @@ describe("Favoritos e pedidos no computador", () => {
     // 1.5.218: aviso novo junto ao campo do código ("text-sm text-destructive") e a
     // borda de erro só quando inválido ("aria-invalid:border-destructive"); nenhuma
     // outra classe de celular mudou.
+    // Bloco do número da loja no rastreio.
     expect(classes(arquivos.busca)).toBe(
-      "e1482db0c15a17189670b6bea1484bbc37ab4763c2b9dc526ee787e15fa315f4",
+      "b54ccc1c64b801b86974f3632b7af77fc10885f4c935fa45069ed3744e22e5f0",
     );
   });
 

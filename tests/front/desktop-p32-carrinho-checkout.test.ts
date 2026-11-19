@@ -169,7 +169,8 @@ describe("P32: alinhamento e resumo alcançável no computador", () => {
         // ("text-sm text-destructive", elemento novo) e o campo ganha a borda de
         // erro só quando inválido ("aria-invalid:border-destructive"). Nenhuma
         // outra classe de celular mudou (conferido contra a base 8dccb46f7).
-        "e1482db0c15a17189670b6bea1484bbc37ab4763c2b9dc526ee787e15fa315f4",
+        // Bloco do número da loja no rastreio.
+        "b54ccc1c64b801b86974f3632b7af77fc10885f4c935fa45069ed3744e22e5f0",
       ],
     ]) {
       // Extração independente dos atributos agrupados, para preservar condicionais.
