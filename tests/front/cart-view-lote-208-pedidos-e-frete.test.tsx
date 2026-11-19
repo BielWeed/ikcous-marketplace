@@ -16,6 +16,8 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { ShippingOption } from "@/types";
+
 const { duble } = vi.hoisted(() => ({
   duble: {
     usuario: null as null | { id: string },
@@ -28,6 +30,8 @@ const { duble } = vi.hoisted(() => ({
     pronto: true,
     cart: [] as any[],
     freteIndefinido: false,
+    opcaoSelecionada: null as ShippingOption | null,
+    pagamentoOnline: false,
     config: { shippingFee: 10, freeShippingMin: 0 } as Record<string, unknown>,
   },
 }));
@@ -63,7 +67,7 @@ vi.mock("@/hooks/useCart", async () => {
       freteGratis: false,
       updateQuantity: () => {},
       removeFromCart: () => {},
-      selectedShippingOption: null as null,
+      selectedShippingOption: duble.opcaoSelecionada,
       setSelectedShippingOption: () => {},
       setShippingCep: () => {},
     }),
@@ -76,6 +80,10 @@ vi.mock("@/hooks/useDeferredRender", () => ({
   useDeferredRender: () => duble.pronto,
 }));
 vi.mock("@/lib/supabase", () => ({ supabase: {} }));
+vi.mock("@/lib/flags", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/flags")>()),
+  pagamentoOnlineLigado: () => duble.pagamentoOnline,
+}));
 vi.mock("@/utils/haptic", () => ({
   haptic: { light: vi.fn(), medium: vi.fn(), success: vi.fn() },
 }));
@@ -129,6 +137,8 @@ describe("CartView — lote 208", () => {
     duble.pronto = true;
     duble.cart = [];
     duble.freteIndefinido = false;
+    duble.opcaoSelecionada = null;
+    duble.pagamentoOnline = false;
     duble.config = { shippingFee: 10, freeShippingMin: 0 };
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
@@ -219,6 +229,38 @@ describe("CartView — lote 208", () => {
     },
     quantity: 1,
   };
+
+  it("só avisa no carrinho quando há transportadora selecionada e o pagamento pelo app está pausado", async () => {
+    duble.usuario = { id: "cliente-1" };
+    duble.cart = [itemNoCarrinho];
+    duble.config = { ...duble.config, formasPagamentoEntrega: ["cash"] };
+    const transportadora: ShippingOption = {
+      id: "superfrete-17",
+      name: "Entrega econômica",
+      price: 10,
+      deliveryDays: 3,
+      provider: "superfrete",
+    };
+    const aviso = "Esta forma de entrega exige pagamento pelo app";
+
+    await montar("cart");
+    expect(texto()).not.toContain(aviso);
+
+    for (const id of ["local-delivery", "store-pickup"]) {
+      duble.opcaoSelecionada = transportadora;
+      await montar("cart");
+      expect(texto()).toContain(aviso);
+
+      duble.opcaoSelecionada = { ...transportadora, id };
+      await montar("cart");
+      expect(texto()).not.toContain(aviso);
+    }
+
+    duble.pagamentoOnline = true;
+    duble.opcaoSelecionada = transportadora;
+    await montar("cart");
+    expect(texto()).not.toContain(aviso);
+  });
 
   const lojaComMetaDeFrete = {
     shippingFee: 10,

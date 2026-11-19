@@ -18,8 +18,13 @@ import {
 import { chaveDaLinha } from "@/lib/escolhas-do-item";
 import type { PromessaDeCanal } from "@/lib/estrategias-de-frete";
 import { promessasDeFrete } from "@/lib/estrategias-de-frete";
+import { pagamentoOnlineLigado } from "@/lib/flags";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
-import { ehModalidadeDaLoja, ehRetiradaNaLoja } from "@/lib/guarda-de-frete";
+import {
+  ehModalidadeDaLoja,
+  ehRetiradaNaLoja,
+  pagamentoIncompativelComFrete,
+} from "@/lib/guarda-de-frete";
 import { precoVendido } from "@/lib/preco-vendido";
 import {
   EVENTO_RETRATO_LIMPO,
@@ -284,9 +289,11 @@ function ConteudoDoCarrinho({
   onAddToCart?: (product: Product, quantity?: number) => void;
 }) {
   const { config } = useStore();
+  const [primeiraFormaNaEntrega] = formasPagamentoNaEntregaValidas(
+    config.formasPagamentoEntrega,
+  );
   // Nenhuma forma na entrega/retirada: a loja só recebe pelo app (exige conta).
-  const soPeloApp =
-    formasPagamentoNaEntregaValidas(config.formasPagamentoEntrega).length === 0;
+  const soPeloApp = primeiraFormaNaEntrega === undefined;
   const { getFreeShippingEligibleProducts } = useProducts();
   const {
     cart: ctxCart,
@@ -1008,6 +1015,16 @@ function ConteudoDoCarrinho({
   // resumos (computador e rodapé do celular) dizem "Retirada na loja" e não
   // anunciam "frete grátis", que seria promessa que a loja pode não ter.
   const retiradaEscolhida = ehRetiradaNaLoja(selectedShippingOption?.id);
+  const onlineLigado = pagamentoOnlineLigado();
+  const freteIncompativelComPagamentoNaEntrega =
+    !onlineLigado &&
+    primeiraFormaNaEntrega !== undefined &&
+    pagamentoIncompativelComFrete({
+      temOpcaoSelecionada: !!selectedShippingOption,
+      ehEntregaLocal: ehModalidadeDaLoja(selectedShippingOption?.id),
+      paymentMethod: primeiraFormaNaEntrega,
+      pagamentoOnlineLigado: onlineLigado,
+    });
   return (
     <div
       ref={regiaoDoCarrinhoRef}
@@ -1242,6 +1259,16 @@ function ConteudoDoCarrinho({
                             )
                           }
                         />
+                        {freteIncompativelComPagamentoNaEntrega && (
+                          <p
+                            role="alert"
+                            className="rounded-xl border border-border bg-muted p-3 text-sm text-foreground"
+                          >
+                            Esta forma de entrega exige pagamento pelo app, que
+                            a loja pausou no momento. Escolha entrega local ou
+                            retirada, se disponíveis, ou fale com a loja.
+                          </p>
+                        )}
                         {/* SELETOR DE ENDEREÇO EM FOLHA (22/09, relato da
                             cliente no celular): o painel antigo nascia NO
                             FLUXO, logo abaixo do card de frete — com o

@@ -435,6 +435,7 @@ export function ShippingCalculator({
   // `useStore` real quebraria — mas todo chamador de produção (CartView,
   // CheckoutView) já vive dentro dele, mesmo contrato de hoje.
   const { config } = useStore();
+  const temWhatsappDaLoja = lojaTemWhatsapp(config.whatsappNumber);
   const isOffline = useOnlineStatus();
   // Contexto da loja da cotação (cache v2). Fora do StoreProvider (peça
   // montada sozinha) vale o contexto "sem config" — estável, o cache segue
@@ -1620,10 +1621,10 @@ export function ShippingCalculator({
             </motion.div>
           )}
 
-          {/* Exibição honesta (onda D-1): sem opção de entrega nenhuma, o
-              estado é "A calcular" — nunca silêncio nem preço inventado. FRETE
-              V3 (T3, 23/09): a supressão por "isFree" GLOBAL saiu daqui pelo
-              mesmo motivo do bloco de erro acima. */}
+          {/* Sem opção de entrega, a calculadora informa isso — nunca silêncio
+              nem preço inventado. FRETE V3 (T3, 23/09): a supressão por
+              "isFree" GLOBAL saiu daqui pelo mesmo motivo do bloco de erro
+              acima. */}
           {destinoValido &&
             cotouSemOpcoes &&
             !loading &&
@@ -1633,15 +1634,16 @@ export function ShippingCalculator({
                 <div className="flex items-start gap-1.5 rounded-2xl border border-zinc-100 bg-white p-2.5 text-[11px] font-medium text-zinc-500">
                   <Truck className="mt-0.5 size-3.5 shrink-0 text-zinc-400" />
                   <span>
-                    A calcular: nenhuma opção de entrega para este endereço —
-                    combine a entrega com a loja.
+                    {temWhatsappDaLoja
+                      ? "A calcular: nenhuma opção de entrega para este endereço — combine a entrega com a loja."
+                      : "Nenhuma opção de entrega para este endereço."}
                   </span>
                 </div>
                 {/* "Combine com a loja" precisa de um jeito de combinar: com
                     WhatsApp cadastrado (mesma régua do checkout), o botão abre
                     a conversa com o CEP dela. Só contato — não libera
                     finalizar sem frete. */}
-                {lojaTemWhatsapp(config.whatsappNumber) && (
+                {temWhatsappDaLoja && (
                   <BotaoWhatsapp onClick={combinarEntregaPeloWhatsapp}>
                     Combinar entrega pelo WhatsApp
                   </BotaoWhatsapp>

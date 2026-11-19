@@ -268,14 +268,16 @@ describe("ShippingCalculator — modoResumo (checkout compacto)", () => {
     expect(botaoDe("Trocar")).toBeUndefined();
   });
 
-  it("modoResumo sem seleção nenhuma (lista vazia): mostra o estado 'A calcular' completo", async () => {
+  it("modoResumo com cotação vazia: informa que não há entrega e não oferece Trocar", async () => {
     invoke.mockReset();
     invoke.mockResolvedValue({
       data: { options: [], cotacaoIncompleta: false },
       error: null,
     });
     await montar(true);
-    expect(hospedeiro.textContent).toContain("A calcular");
+    expect(hospedeiro.textContent).toContain(
+      "Nenhuma opção de entrega para este endereço.",
+    );
     expect(botaoDe("Trocar")).toBeUndefined();
   });
 

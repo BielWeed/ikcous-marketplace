@@ -337,19 +337,11 @@ export const SearchView = React.memo(function SearchView({
   useEffect(() => {
     aoMudarQuantidadeRef.current?.({ termo: query, quantidade: visibleCount });
   }, [query, visibleCount]);
-  // Get trending products for empty state (prioritizing available products).
-  // Defeito irmão do da prova de rua (01/09, sugestões de favoritos): para o
-  // dono da loja (admin) a lista carrega o catálogo inteiro — trending só
-  // sugere produto ATIVO, pausado não é vitrine nem aqui.
-  const trendingProducts = useMemo(() => {
-    return [...produtosAVenda]
-      .sort((a, b) => {
-        const aAvailable = produtoDisponivel(a) ? 1 : 0;
-        const bAvailable = produtoDisponivel(b) ? 1 : 0;
-        return bAvailable - aAvailable;
-      })
-      .slice(0, 4);
-  }, [produtosAVenda]);
+  // Só nas sugestões: esgotados ativos seguem encontráveis na busca normal.
+  const trendingProducts = useMemo(
+    () => produtosAVenda.filter(produtoDisponivel).slice(0, 4),
+    [produtosAVenda],
+  );
 
   // Categorias dos filtros: as dos produtos à venda, menos as que a lojista
   // escondeu (a Home só mostra as ativas). Só tira o que sabe estar escondido:
@@ -783,10 +775,8 @@ export const SearchView = React.memo(function SearchView({
               )}
             </div>
 
-            {/* Sugestões: são só 4 produtos da loja (os com estoque primeiro) --
-                UI-191 (G7): nada de "Editor's Choice"/"Trending", que afirmam
-                curadoria e tendência que a loja não mediu, e em inglês.
-                Sem produto à venda o bloco não existe (como nos Favoritos). */}
+            {/* Até quatro sugestões disponíveis para compra (como nos Favoritos,
+                sem inventar curadoria ou tendência). */}
             {trendingProducts.length > 0 && (
               <div className="border-t border-zinc-100 pt-10">
                 <div className="mb-10 flex flex-col items-center text-center">

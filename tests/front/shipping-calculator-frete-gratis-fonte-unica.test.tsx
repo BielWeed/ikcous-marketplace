@@ -304,14 +304,14 @@ describe("ShippingCalculator — o grátis da calculadora é o mesmo veredito do
     expect(texto).not.toContain("GRÁTIS");
   });
 
-  it("cotação sem opção nenhuma e sem grátis: estado honesto 'A calcular', nunca silêncio", async () => {
+  it("cotação sem opção nenhuma e sem grátis: informa que não há opção, sem inventar preço", async () => {
     // Resposta honesta da edge (frente C): loja sem transportadora
     // conectada devolve `options: []`.
     estado.opcoes = [];
     estado.config = { ...estado.config, freeShippingMin: 0 };
     const texto = await montarECotar([item(produto())]);
 
-    expect(texto).toContain("A calcular");
+    expect(texto).toContain("Nenhuma opção de entrega para este endereço.");
     expect(texto).not.toContain("41,90");
   });
 });
