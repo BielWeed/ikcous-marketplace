@@ -995,9 +995,6 @@ export const AdminShippingView = memo(function AdminShippingView({
     }
 
     setRecusaDaFaixa(null);
-    sincronizacaoSuspensaRef.current = true;
-    setIsSaving(true);
-    haptic.medium();
 
     // Só chega aqui com valor inválido se o campo está ESCONDIDO ("Só
     // retirada": as duas travas acima não valem). Virar R$ 0 seria entrega

@@ -48,6 +48,7 @@ import type { View } from "@/types";
 // mesma tela, repete rótulos como "Grátis acima de um valor").
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
+import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { estadoDaLoja, estadoDoBanco, updateConfig, invoke } = vi.hoisted(
@@ -362,6 +363,28 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
       expect(document.getElementById("erro-faixa-de-cep")?.textContent).toMatch(
         /38500-000, 38599-999/,
       );
+    });
+
+    it("recusa o segundo CEP com nove dígitos sem travar o salvamento", async () => {
+      await abrirTela();
+      await editarFaixa("38500, 385000000");
+      await salvar();
+
+      expect(toast.error).toHaveBeenCalledWith(
+        expect.stringMatching(/faixa de CEP.*até 8 dígitos/i),
+      );
+      expect(updateConfig).not.toHaveBeenCalled();
+      expect(botaoSalvar()?.textContent?.trim()).toBe("Salvar");
+      expect(botaoSalvar()?.disabled).toBe(false);
+
+      // Simula a chegada de um config atualizado pelo outro aparelho.
+      estadoDaLoja.atual = { ...estadoDaLoja.atual, localDeliveryFee: 15 };
+      await abrirTela();
+      expect(
+        hospedeiro.querySelector<HTMLInputElement>("#local-delivery-fee")
+          ?.value,
+      ).toBe("15,00");
+      expect(campoDaFaixa().value).toBe("38500, 385000000");
     });
 
     it.each(["38501-123", "38500-000, 38599-999", ""])(
