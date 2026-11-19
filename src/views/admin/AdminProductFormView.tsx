@@ -885,6 +885,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // e salvar de novo a inseriria outra vez. Só recarregar a tela resolve.
   const [precisaRecarregar, setPrecisaRecarregar] = useState(false);
   const [draftChecked, setDraftChecked] = useState(false);
+  const [falhouAoGuardarRascunho, setFalhouAoGuardarRascunho] = useState(false);
   const [showVariantForm, setShowVariantForm] = useState(false);
   const salvandoVariacaoRef = useRef(false);
   // Grade de combinações: o modal de lote ao lado do unitário.
@@ -2313,6 +2314,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   useEffect(() => {
     gravarRascunhoPendenteRef.current = null;
     if (isLoading || !draftChecked) return;
+    const isDirty = isProductFormDirty(formData, initialData);
+    if (!isDirty) setFalhouAoGuardarRascunho(false);
 
     gravarRascunhoPendenteRef.current = () => {
       gravarRascunhoPendenteRef.current = null;
@@ -2330,7 +2333,6 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       // O rascunho antigo ainda espera a decisão dela: gravar agora o
       // sobrescreveria. Quando ela decidir, este efeito roda de novo.
       if (ofertaDeRascunhoPendente) return;
-      const isDirty = isProductFormDirty(formData, initialData);
       const draftKey = chaveDoRascunhoDoProduto(userId, productId);
       // Armazenamento cheio (QuotaExceededError: descrição enorme, fotos em
       // rascunho) ou bloqueado não pode estourar do temporizador: ela segue
@@ -2353,6 +2355,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             }),
           );
           gravouRascunhoRef.current = draftKey;
+          setFalhouAoGuardarRascunho(false);
         } else if (draftKey && gravouRascunhoRef.current === draftKey) {
           // Voltou a ser igual ao banco: o rascunho que ESTA abertura gravou não
           // tem mais o que oferecer.
@@ -2372,6 +2375,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           }
         }
       } catch (erro) {
+        if (isDirty && draftKey) setFalhouAoGuardarRascunho(true);
         console.error("Erro ao guardar o rascunho do produto:", erro);
       }
     };
@@ -4876,6 +4880,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         onSubmit={handleSubmit}
         className="gpu-accelerated mx-auto max-w-3xl space-y-4 p-4 sm:px-5 xl:col-start-1 xl:row-start-3 xl:mx-0 xl:w-full xl:min-w-0 xl:max-w-none"
       >
+        {falhouAoGuardarRascunho && (
+          <div
+            role="alert"
+            className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200"
+          >
+            O navegador não guardou as últimas alterações no rascunho. Salve o
+            produto antes de fechar.
+          </div>
+        )}
         {/* Enquanto salva ("Salvando…") e durante o "Salvo", o corpo do
             formulário fica travado: o salvar leva a cópia de quando o botão foi
             tocado e a ida para a lista ignora o que for mexido depois — campo

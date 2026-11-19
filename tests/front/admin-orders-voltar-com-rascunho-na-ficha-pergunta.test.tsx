@@ -133,6 +133,7 @@ describe("AdminOrdersView — Voltar com anotação/rastreio digitados e não sa
   let hospedeiro: HTMLDivElement;
   let desvio: (() => void) | null = null;
   const onNavigate = vi.fn();
+  const setRascunhoDePedidoPendente = vi.fn();
   // Mesma semântica do `useState` do App: uma função passada vira "atualizador"
   // (por isso as views registram `() => () => ...`).
   const onSetBackOverride = (
@@ -204,6 +205,7 @@ describe("AdminOrdersView — Voltar com anotação/rastreio digitados e não sa
           active={active}
           selectedOrderId={PEDIDO_ID}
           onSetBackOverride={onSetBackOverride}
+          setRascunhoDePedidoPendente={setRascunhoDePedidoPendente}
         />,
       );
     });
@@ -231,7 +233,7 @@ describe("AdminOrdersView — Voltar com anotação/rastreio digitados e não sa
   async function abrirOEditorDaAnotacao() {
     await clicar(
       Array.from(hospedeiro.querySelectorAll("button")).find((b) =>
-        b.textContent?.includes("Adicionar anotação"),
+        /Adicionar anotação|Editar notas/.test(b.textContent ?? ""),
       ),
     );
     expect(textarea()).not.toBeNull();
@@ -417,6 +419,32 @@ describe("AdminOrdersView — Voltar com anotação/rastreio digitados e não sa
     });
     await assentar();
     expect(pergunta()?.textContent).toContain(PERGUNTA);
+  });
+
+  it("avisa a guarda da página ao digitar e libera ao salvar, descartar ou fechar a ficha", async () => {
+    await abrirFicha();
+    await abrirOEditorDaAnotacao();
+    expect(setRascunhoDePedidoPendente).not.toHaveBeenCalledWith(true);
+
+    await digitarAnotacao("anotação de teste");
+    expect(setRascunhoDePedidoPendente).toHaveBeenLastCalledWith(true);
+    await abrirFicha(false);
+    expect(setRascunhoDePedidoPendente).toHaveBeenLastCalledWith(true);
+    await abrirFicha();
+
+    await clicar(botao("Salvar", hospedeiro));
+    expect(setRascunhoDePedidoPendente).toHaveBeenLastCalledWith(false);
+    await abrirOEditorDaAnotacao();
+    await digitarAnotacao("segunda anotação de teste");
+    expect(setRascunhoDePedidoPendente).toHaveBeenLastCalledWith(true);
+    await clicar(botao("Cancelar edição das anotações", hospedeiro));
+    expect(setRascunhoDePedidoPendente).toHaveBeenLastCalledWith(false);
+
+    await abrirOEditorDaAnotacao();
+    await digitarAnotacao("terceira anotação de teste");
+    expect(setRascunhoDePedidoPendente).toHaveBeenLastCalledWith(true);
+    await act(async () => raiz.render(null));
+    expect(setRascunhoDePedidoPendente).toHaveBeenLastCalledWith(false);
   });
 
   it("salvar a anotação libera o Voltar: sem desvio e sem pergunta", async () => {

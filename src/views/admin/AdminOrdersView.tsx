@@ -383,6 +383,7 @@ interface AdminOrdersViewProps {
   active?: boolean;
   selectedOrderId?: string | null;
   onSetBackOverride?: (fn: (() => void) | null) => void;
+  setRascunhoDePedidoPendente?: (pendente: boolean) => void;
 }
 
 export const AdminOrdersView = memo(function AdminOrdersView({
@@ -390,6 +391,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   active,
   selectedOrderId,
   onSetBackOverride,
+  setRascunhoDePedidoPendente,
 }: Readonly<AdminOrdersViewProps>) {
   const { isSupported: isTransitionSupported } = useViewTransition();
   const isOffline = useOnlineStatus();
@@ -875,10 +877,14 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   // com a aba trocada o rascunho continua guardado, mas o Voltar já é da outra
   // aba (nada de engolir o Voltar nem de perguntar por cima dela).
   const fichaProtegida = active !== false && rascunhoDaFicha;
-  const aoMudarRascunhoDaFicha = useCallback((pendente: boolean) => {
-    setRascunhoDaFicha(pendente);
-    if (!pendente) setPerguntandoDescarte(false);
-  }, []);
+  const aoMudarRascunhoDaFicha = useCallback(
+    (pendente: boolean) => {
+      setRascunhoDaFicha(pendente);
+      setRascunhoDePedidoPendente?.(pendente);
+      if (!pendente) setPerguntandoDescarte(false);
+    },
+    [setRascunhoDePedidoPendente],
+  );
   // O Voltar do aparelho com a pergunta já na tela vale "continuar digitando".
   useVoltarFechaAFolha(fichaProtegida, () => {
     setPerguntandoDescarte((aberta) => !aberta);

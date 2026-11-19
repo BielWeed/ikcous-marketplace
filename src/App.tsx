@@ -778,6 +778,8 @@ const AppContent = () => {
     null,
   );
   const [isAdminDirty, setIsAdminDirty] = useState(false);
+  const [rascunhoDePedidoPendente, setRascunhoDePedidoPendente] =
+    useState(false);
   const [pendingNavigation, setPendingNavigation] = useState<{
     view: View;
     id?: string;
@@ -801,17 +803,20 @@ const AppContent = () => {
     isAdminDirtyRef.current = isAdminDirty;
   }, [isAdminDirty]);
 
+  // A ficha pode ficar montada atrás de outra aba. Sua guarda interna do
+  // Voltar é própria; só o aviso nativo é compartilhado com os formulários.
+  const protegerSaidaDaPagina = isAdminDirty || rascunhoDePedidoPendente;
   useEffect(() => {
-    if (!isAdminDirty) return;
+    if (!protegerSaidaDaPagina) return;
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       e.preventDefault();
-      return "";
+      e.returnValue = "";
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => {
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
-  }, [isAdminDirty]);
+  }, [protegerSaidaDaPagina]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -3812,6 +3817,7 @@ const AppContent = () => {
                   onNavigate={handleNavigate}
                   selectedProductId={selectedProductId}
                   setIsAdminDirty={setIsAdminDirty}
+                  setRascunhoDePedidoPendente={setRascunhoDePedidoPendente}
                   setBackOverride={setBackOverride}
                   handleAdminUserDetailBack={handleAdminUserDetailBack}
                   backOverride={backOverride}

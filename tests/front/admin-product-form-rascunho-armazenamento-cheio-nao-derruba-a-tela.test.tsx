@@ -6,9 +6,8 @@
 // armazenamento do navegador. Com o armazenamento cheio (descrição enorme,
 // muitas fotos em rascunho) ou bloqueado, o `setItem` lança
 // `QuotaExceededError` dentro do temporizador — erro sem dono, que escapa da
-// tela. O certo: a gravação falha em silêncio para ela (o que ela digitou
-// segue na tela), nada de erro solto, e quando o armazenamento volta a aceitar
-// a próxima edição é guardada.
+// tela. O certo: explicar a falha no formulário sem perder o que ela digitou;
+// quando o armazenamento volta a aceitar, a próxima edição é guardada.
 import { act } from "react";
 import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -82,6 +81,8 @@ vi.mock("sonner", () => ({
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const CHAVE_EDICAO = "ikcous_product_form_draft_edit_p-1:lojista-1";
+const AVISO =
+  "O navegador não guardou as últimas alterações no rascunho. Salve o produto antes de fechar.";
 
 const campo = (id: string) =>
   document.getElementById(id) as HTMLInputElement | null;
@@ -203,14 +204,28 @@ describe("AdminProductFormView — armazenamento cheio não derruba o rascunho",
     expect(campo("product-sale-price")).not.toBeNull();
   }, 20000);
 
+  it("ao desfazer a edição, o aviso sai mesmo com o armazenamento cheio", async () => {
+    await montar();
+    cheio = true;
+    await digitarPreco("60,00");
+    expect(hospedeiro.textContent).toContain(AVISO);
+
+    await digitarPreco("50,00");
+    expect(hospedeiro.textContent).not.toContain(AVISO);
+    expect(armazem.has(CHAVE_EDICAO)).toBe(false);
+  }, 20000);
+
   it("quando o armazenamento volta a aceitar, a próxima edição é guardada", async () => {
     await montar();
     cheio = true;
     await digitarPreco("60,00");
     expect(armazem.has(CHAVE_EDICAO)).toBe(false);
 
+    expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toBe(AVISO);
+
     cheio = false;
     await digitarPreco("65,00");
+    expect(hospedeiro.textContent).not.toContain(AVISO);
 
     expect(errosSoltos).toEqual([]);
     expect(armazem.has(CHAVE_EDICAO)).toBe(true);
