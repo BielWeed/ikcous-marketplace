@@ -74,7 +74,7 @@ describe("recibo impresso — somente o estorno confirmado", () => {
     expect(linhas.slice(linhas.indexOf("TOTAL R$ 100,00"), -2)).toEqual([
       "TOTAL R$ 100,00",
       `Reembolsado: R$ ${reembolsado}`,
-      `Valor retido: R$ ${retido}`,
+      `Total após reembolso: R$ ${retido}`,
     ]);
   }
 
@@ -108,7 +108,9 @@ describe("recibo impresso — somente o estorno confirmado", () => {
   it("não imprime os valores de reembolso nem de retenção em pedido cancelado", () => {
     renderizar({ ...pedido, status: "cancelled" }, 30);
     expect(papel()?.textContent).toContain("Cancelado · nada a receber");
-    expect(papel()?.textContent).not.toMatch(/Reembolsado:|Valor retido:/);
+    expect(papel()?.textContent).not.toMatch(
+      /Reembolsado:|Total após reembolso:/,
+    );
   });
 
   it.each([undefined, 0])(

@@ -236,7 +236,7 @@ export const OrderReceipt = memo(function OrderReceipt({
                 </span>
               </div>
               <div className="flex justify-between gap-2 text-xs">
-                <span>Valor retido:</span>
+                <span>Total após reembolso:</span>
                 <span className="shrink-0 whitespace-nowrap">
                   R$ {reais((totalEmCentavos - reembolsadoEmCentavos) / 100)}
                 </span>
