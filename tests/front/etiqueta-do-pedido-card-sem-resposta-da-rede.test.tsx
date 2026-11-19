@@ -441,6 +441,103 @@ describe("EtiquetaDoPedidoCard com a rede pendurada", () => {
       expect(haOperacaoSensivel()).toBe(false);
     });
 
+    it("erro HTTP com cabeçalhos recebidos e corpo pendurado: em 5 s solta os botões e relê sem comprar de novo", async () => {
+      const corpo = chamadaPendurada();
+      const resposta = new Response(null, { status: 503 });
+      vi.spyOn(resposta, "json").mockReturnValue(corpo.promessa);
+      h.invokeMock.mockResolvedValue({
+        data: null,
+        error: { name: "FunctionsHttpError", context: resposta },
+      });
+      await abrirCard();
+      await confirmarACompra();
+
+      try {
+        await passar(4_999);
+        expect(botao("Gerando…")?.disabled).toBe(true);
+        expect(botao("Cancelar")?.disabled).toBe(true);
+        expect(haOperacaoSensivel()).toBe(true);
+        expect(h.leiturasDoPedido).toEqual([ORDER_A]);
+
+        await passar(1);
+        expect(botao("Gerando…")).toBeUndefined();
+        expect(botao("Confirmar e gerar")?.disabled).toBe(false);
+        expect(botao("Cancelar")?.disabled).toBe(false);
+        expect(haOperacaoSensivel()).toBe(false);
+        expect(avisoSemResposta()?.textContent).toBe(
+          "Não foi possível confirmar a compra da etiqueta. Confira o pedido antes de tentar de novo.",
+        );
+        expect(h.leiturasDoPedido).toEqual([ORDER_A, ORDER_A]);
+        expect(h.invokeMock).toHaveBeenCalledTimes(1);
+      } finally {
+        await act(async () => {
+          corpo.resolver({ error: "Resposta recebida depois do prazo." });
+        });
+      }
+
+      expect(hospedeiro.textContent).not.toContain(
+        "Resposta recebida depois do prazo.",
+      );
+      expect(toast.error).not.toHaveBeenCalled();
+      expect(toast.success).not.toHaveBeenCalled();
+      expect(h.invokeMock).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+      { caso: "texto/HTML", data: "<html>Resposta inesperada</html>" },
+      { caso: "texto vazio", data: "" },
+      { caso: "objeto vazio", data: {} },
+      { caso: "sucesso sem id", data: { success: true } },
+      { caso: "id só com espaços", data: { success: true, label_id: "  " } },
+      { caso: "id numérico", data: { success: true, label_id: 123 } },
+      {
+        caso: "sucesso que não é booleano",
+        data: { success: "true", label_id: "lbl" },
+      },
+    ])(
+      "HTTP 200 com $caso: avisa que não confirmou e só relê o pedido",
+      async ({ data }) => {
+        h.invokeMock.mockResolvedValue({ data, error: null });
+        await abrirCard();
+        await confirmarACompra();
+
+        expect(toast.success).not.toHaveBeenCalled();
+        expect(avisoSemResposta()?.textContent).toBe(
+          "Não foi possível confirmar a compra da etiqueta. Confira o pedido antes de tentar de novo.",
+        );
+        expect(h.leiturasDoPedido).toEqual([ORDER_A, ORDER_A]);
+        expect(h.invokeMock).toHaveBeenCalledTimes(1);
+        expect(haOperacaoSensivel()).toBe(false);
+      },
+    );
+
+    it("a releitura após HTTP 200 inválido mantém a etiqueta já vinculada no servidor", async () => {
+      h.invokeMock.mockResolvedValue({
+        data: { success: true, tracking_code: "ME-SEM-CONFIRMACAO" },
+        error: null,
+      });
+      await abrirCard();
+      const urlDaEtiqueta = "https://melhorenvio.example/imprimir/ja-gravada";
+      h.pedidoState.data = pedido({
+        shipping_label_id: "lbl-ja-gravada",
+        shipping_label_url: urlDaEtiqueta,
+        tracking_code: "ME-GRAVADO",
+      });
+      await confirmarACompra();
+
+      expect(hospedeiro.textContent).toContain("Etiqueta emitida");
+      expect(hospedeiro.textContent).toContain("ME-GRAVADO");
+      expect(
+        hospedeiro.querySelector(`a[href="${urlDaEtiqueta}"]`),
+      ).not.toBeNull();
+      expect(botao("Gerar etiqueta")).toBeUndefined();
+      expect(botao("Confirmar e gerar")).toBeUndefined();
+      expect(onTrackingAtualizado).not.toHaveBeenCalled();
+      expect(toast.success).not.toHaveBeenCalled();
+      expect(h.leiturasDoPedido).toEqual([ORDER_A, ORDER_A]);
+      expect(h.invokeMock).toHaveBeenCalledTimes(1);
+    });
+
     it("erro de negócio do servidor (não é falta de resposta): continua a frase do servidor, sem o aviso de 'não dá para saber'", async () => {
       h.invokeMock.mockResolvedValue({
         data: null,
