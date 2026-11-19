@@ -82,8 +82,10 @@ vi.mock("@/lib/supabase", () => ({
       if (tabela === "push_notifications_log") {
         return {
           select: () => ({
-            order: () => ({
-              limit: () => Promise.resolve({ data: [], error: null }),
+            not: () => ({
+              order: () => ({
+                limit: () => Promise.resolve({ data: [], error: null }),
+              }),
             }),
           }),
           insert: (linha: Record<string, unknown>) => {

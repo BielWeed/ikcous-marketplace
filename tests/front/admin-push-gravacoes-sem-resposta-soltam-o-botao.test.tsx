@@ -66,6 +66,10 @@ const aparelhos = Array.from({ length: 3 }, (_, i) => ({
 }));
 const pendurada = () => new Promise<never>(() => {});
 
+const lerHistorico = vi.hoisted(() =>
+  vi.fn(async () => ({ data: [], error: null })),
+);
+
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: (tabela: string) => {
@@ -91,9 +95,7 @@ vi.mock("@/lib/supabase", () => ({
       if (tabela === "push_notifications_log") {
         return {
           select: () => ({
-            order: () => ({
-              limit: () => Promise.resolve({ data: [], error: null }),
-            }),
+            not: () => ({ order: () => ({ limit: lerHistorico }) }),
           }),
           insert: () => ({
             select: () => ({
@@ -236,6 +238,8 @@ describe("Avisar clientes: gravacoes do envio sem resposta", () => {
     await act(async () => {
       await esperar(80);
     });
+    expect(lerHistorico).toHaveBeenCalledWith(100);
+    expect(lerHistorico).toHaveResolvedWith({ data: [], error: null });
   }
 
   function digitar(el: HTMLInputElement | HTMLTextAreaElement, valor: string) {

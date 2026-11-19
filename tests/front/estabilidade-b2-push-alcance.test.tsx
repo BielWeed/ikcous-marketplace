@@ -33,8 +33,10 @@ vi.mock("@/lib/supabase", () => ({
         ? { select: () => Promise.resolve({ count: 8, error: null }) }
         : {
             select: () => ({
-              order: () => ({
-                limit: () => Promise.resolve({ data: [], error: null }),
+              not: () => ({
+                order: () => ({
+                  limit: () => Promise.resolve({ data: [], error: null }),
+                }),
               }),
               eq: () => ({
                 order: () => Promise.resolve({ data: [], error: null }),
