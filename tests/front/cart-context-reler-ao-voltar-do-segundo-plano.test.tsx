@@ -14,6 +14,7 @@ import type { CartItem, Product } from "@/types";
 import { act, useEffect } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { comPaginacao } from "./duble-consulta-paginada";
 
 type Linha = Record<string, unknown>;
 
@@ -51,7 +52,7 @@ vi.mock("@/lib/supabase", () => ({
             data: tabela === "cart_items" ? mundo.itensNoBanco : [],
             error: null,
           }),
-        in: async (_coluna: string, ids: unknown) => {
+        in: comPaginacao(async (_coluna: string, ids: unknown) => {
           if (tabela === "vw_produtos_public") {
             mundo.leiturasDoCatalogo += 1;
             if (mundo.falhaNoCatalogo) {
@@ -66,7 +67,7 @@ vi.mock("@/lib/supabase", () => ({
             };
           }
           return { data: [], error: null };
-        },
+        }),
       }),
     }),
     rpc: () => Promise.resolve({ error: null }),

@@ -4,6 +4,7 @@ import type { CartItem, Product } from "@/types";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { comPaginacao } from "./duble-consulta-paginada";
 
 const mundo = vi.hoisted(() => ({
   usuario: { id: "A" },
@@ -38,7 +39,7 @@ vi.mock("@/lib/supabase", () => ({
     from: () => ({
       select: () => ({
         eq: () => Promise.resolve({ data: [], error: null }),
-        in: () => Promise.resolve({ data: [], error: null }),
+        in: comPaginacao(() => Promise.resolve({ data: [], error: null })),
       }),
     }),
     auth: {

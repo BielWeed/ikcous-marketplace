@@ -24,6 +24,7 @@ import {
 // -- local calcula aqui (mesmo preset de sempre); nacional só EXIBE o que a
 // edge já mandou pronto (a opção escolhida É a fonte, contrato §3).
 import { economiaDaOpcao, precoFinalDaOpcao } from "@/lib/estrategias-de-frete";
+import { lerEmPaginas } from "@/lib/ler-em-paginas";
 import {
   AVISO_DO_TETO_POR_ITEM,
   MAX_ITEM_QUANTITY,
@@ -536,10 +537,14 @@ async function lerProdutosEVariacoes(ids: string[]) {
     .in("id", ids);
   if (prodError) throw prodError;
 
-  const { data: varData, error: varError } = await supabase
-    .from("product_variants")
-    .select("*")
-    .in("product_id", ids);
+  const { data: varData, error: varError } = await lerEmPaginas((de, ate) =>
+    supabase
+      .from("product_variants")
+      .select("*")
+      .in("product_id", ids)
+      .order("id")
+      .range(de, ate),
+  );
   if (varError) {
     console.error("[CartContext] Error fetching variants:", varError);
   }

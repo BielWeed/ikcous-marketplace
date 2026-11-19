@@ -27,6 +27,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CartProvider } from "@/contexts/CartContext";
 import type { CartItem, ShippingOption } from "@/types";
+import { comPaginacao } from "./duble-consulta-paginada";
 
 // Estado mutável POR TESTE — vi.mock é içado, então os mocks leem este
 // objeto (vi.hoisted), e cada teste o reescreve antes de montar.
@@ -80,7 +81,7 @@ vi.mock("@/lib/supabase", () => {
     const alvo: Record<string, unknown> = {
       select: () => alvo,
       eq: resposta,
-      in: resposta,
+      in: comPaginacao(resposta),
     };
     return alvo;
   };

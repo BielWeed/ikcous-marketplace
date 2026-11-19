@@ -12,6 +12,7 @@ import type { CartItem } from "@/types";
 import { act, useEffect } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { comPaginacao } from "./duble-consulta-paginada";
 
 const estado = vi.hoisted(() => ({
   usuario: null as null | { id: string },
@@ -52,11 +53,12 @@ vi.mock("@/lib/supabase", () => ({
             estado.liberarItens = (itens) =>
               resolve({ data: itens, error: null });
           }),
-        in: () =>
+        in: comPaginacao(() =>
           Promise.resolve({
             data: tabela === "vw_produtos_public" ? [{ id: "pA" }] : [],
             error: null,
           }),
+        ),
       }),
     }),
     auth: {

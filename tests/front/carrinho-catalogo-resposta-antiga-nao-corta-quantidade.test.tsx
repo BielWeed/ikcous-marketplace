@@ -12,6 +12,7 @@ import type { CartItem } from "@/types";
 import { act, useEffect } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { comPaginacao } from "./duble-consulta-paginada";
 
 type Linha = Record<string, unknown>;
 type Resposta = { data: Linha[]; error: null };
@@ -43,7 +44,7 @@ vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: (tabela: string) => ({
       select: () => ({
-        in: (coluna: string, ids: string[]) => {
+        in: comPaginacao((coluna: string, ids: string[]) => {
           if (tabela === "vw_produtos_public") {
             return mundo.produtos(coluna, ids);
           }
@@ -51,7 +52,7 @@ vi.mock("@/lib/supabase", () => ({
             return mundo.variantes(coluna, ids);
           }
           throw new Error(`Consulta não prevista neste teste: ${tabela}`);
-        },
+        }),
       }),
     }),
     auth: {

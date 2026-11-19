@@ -32,6 +32,7 @@ import type { CartItem } from "@/types";
 import { act, useEffect } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { comPaginacao } from "./duble-consulta-paginada";
 
 const mundo = vi.hoisted(() => ({
   itens: [] as Record<string, unknown>[],
@@ -75,10 +76,11 @@ vi.mock("@/lib/supabase", () => ({
     from: (tabela: string) => ({
       select: () => ({
         eq: async () => ({ data: mundo.itens, error: null }),
-        in: async () =>
+        in: comPaginacao(async () =>
           tabela === "product_variants"
             ? { data: variantes, error: null }
             : { data: [linha], error: null },
+        ),
       }),
     }),
     auth: {

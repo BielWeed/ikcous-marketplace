@@ -9,6 +9,7 @@ import { CartProvider, useCartContext } from "@/contexts/CartContext";
 import { act, useEffect } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { comPaginacao } from "./duble-consulta-paginada";
 
 const mundo = vi.hoisted(() => ({
   usuario: null as null | { id: string },
@@ -59,7 +60,7 @@ vi.mock("@/lib/supabase", () => ({
             error: null,
           });
         },
-        in: async (_coluna: string, ids: unknown) => {
+        in: comPaginacao(async (_coluna: string, ids: unknown) => {
           if (tabela === "vw_produtos_public") {
             mundo.leiturasDoCatalogo += 1;
             if (mundo.falhaNoCatalogo) {
@@ -74,7 +75,7 @@ vi.mock("@/lib/supabase", () => ({
             };
           }
           return { data: [], error: null };
-        },
+        }),
       }),
     }),
     rpc: () => Promise.resolve({ error: null }),

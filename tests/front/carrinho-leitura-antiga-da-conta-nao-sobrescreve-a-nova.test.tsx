@@ -20,6 +20,7 @@ import { CartProvider, useCartContext } from "@/contexts/CartContext";
 import { act, useEffect } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { comPaginacao } from "./duble-consulta-paginada";
 
 type Portao = { promessa: Promise<void>; liberar: () => void };
 type LinhaDoBanco = Record<string, unknown>;
@@ -92,7 +93,7 @@ vi.mock("@/lib/supabase", () => ({
           if (roteiro.portao) await roteiro.portao.promessa;
           return dados;
         },
-        in: async (_coluna: string, ids: string[]) => {
+        in: comPaginacao(async (_coluna: string, ids: string[]) => {
           if (tabela === "product_variants") return { data: [], error: null };
           const roteiro = mundo.filaDoCatalogo.shift();
           const estoque = roteiro ? roteiro.estoque : mundo.estoque;
@@ -104,7 +105,7 @@ vi.mock("@/lib/supabase", () => ({
           };
           if (roteiro?.portao) await roteiro.portao.promessa;
           return dados;
-        },
+        }),
       }),
     }),
     auth: {
