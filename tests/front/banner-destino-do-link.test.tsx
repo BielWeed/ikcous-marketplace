@@ -25,7 +25,10 @@ import {
   LINK_DA_PAGINA_DA_LOJA,
   destinoDoBanner,
 } from "@/lib/destino-do-banner";
-import { linkDaCategoria } from "@/lib/link-do-banner-no-painel";
+import {
+  linkDaCategoria,
+  linkDoBannerParaSalvar,
+} from "@/lib/link-do-banner-no-painel";
 import type { Banner } from "@/types";
 
 // @ts-expect-error flag interna do React, sem tipo público.
@@ -73,6 +76,10 @@ describe("linkDaCategoria: o link novo sai codificado", () => {
   );
 });
 
+it("o painel aceita salvar /cart sem reescrever o link", () => {
+  expect(linkDoBannerParaSalvar("/cart")).toBe("/cart");
+});
+
 describe("destinoDoBanner: banner já gravado funciona sem migrar dado", () => {
   const lerCategoria = (link: string | null) =>
     new URLSearchParams(new URL(link ?? "", "https://loja.test").search).get(
@@ -117,7 +124,8 @@ describe("destinoDoBanner: banner já gravado funciona sem migrar dado", () => {
   );
 
   it.each([
-    "/checkout",
+    "/checkout?origem=banner",
+    "https://loja.test/checkout",
     "/profile",
     "/product-detail?id=abc",
     "https://wa.me/5511999999999",
@@ -196,6 +204,15 @@ describe("BannerCarousel: o toque chega no destino certo", () => {
     expect(globalThis.location.pathname).toBe("/");
     expect(pushState.mock.calls.at(-1)?.[0]).toMatchObject({ view: "home" });
   });
+
+  it.each(["/checkout", "/cart"])(
+    "o toque no banner com %s abre o carrinho",
+    async (link) => {
+      await tocarNoBanner(link);
+      expect(globalThis.location.pathname).toBe("/cart");
+      expect(pushState.mock.calls.at(-1)?.[0]).toMatchObject({ view: "cart" });
+    },
+  );
 
   it.each(["/produtos", "/"])(
     "página da loja (%s) leva à Home",

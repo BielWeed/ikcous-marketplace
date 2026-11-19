@@ -121,6 +121,8 @@ export function destinoDoBanner(
 ): string | null {
   const link = destinoSeguroDoBanner(linkGravado);
   if (link === null) return null;
+  // O antigo atalho "Carrinho" gravava /checkout. Só o banner corrige isso.
+  if (linkGravado === "/checkout") return "/cart";
 
   const caminho = link.split(/[?#]/, 1)[0].toLowerCase();
   if (caminho === "/produtos" || caminho === "/produtos/") {

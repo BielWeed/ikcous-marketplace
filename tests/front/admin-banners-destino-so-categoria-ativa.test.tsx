@@ -143,6 +143,14 @@ describe("AdminBannersView — atalho de destino só para categoria ativa", () =
     expect(atalho?.textContent).toContain("(/?category=Cama%20%26%20Banho)");
   });
 
+  it("o atalho Carrinho coloca /cart no campo de link", async () => {
+    await abrirPaginasDaLoja();
+    await clicar(botao("Carrinho"));
+    expect(
+      document.querySelector<HTMLInputElement>("#banner-link-custom")?.value,
+    ).toBe("/cart");
+  });
+
   it("NÃO oferece atalho para categoria escondida da vitrine", async () => {
     await abrirPaginasDaLoja();
     // Controle: o atalho da ativa está na tela, então a ausência abaixo não é
