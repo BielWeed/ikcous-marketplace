@@ -367,6 +367,7 @@ describe("CheckoutView — cupom no envio e na tela de sucesso", () => {
     await esperar(50);
 
     expect(createOrder).toHaveBeenCalledTimes(1);
+    expect(createOrder.mock.calls[0][0].couponCode).toBe("DEZ");
     expect(createOrder.mock.calls[0][1]).toEqual({ comPagamentoOnline: true });
     expect(
       mockValidateCoupon.mock.calls.filter(([, subtotal]) => subtotal === 0),
