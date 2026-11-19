@@ -2815,6 +2815,7 @@ export const OrderDetail = memo(function OrderDetail({
           order={order}
           storeName={storeName}
           variacoes={variacoes}
+          valorEstornado={order.valorEstornado}
         />
       )}
 

@@ -39,6 +39,8 @@ interface OrderReceiptProps {
    * exemplo, já leva a variação dentro do nome).
    */
   variacoes?: Record<string, string>;
+  /** Valor do estorno já confirmado pelo Mercado Pago, em reais. */
+  valorEstornado?: number;
 }
 
 // O recibo e o unico documento desta tela que sai IMPRESSO e vai para a mao
@@ -61,8 +63,14 @@ export const OrderReceipt = memo(function OrderReceipt({
   order,
   storeName: storeNameProp,
   variacoes,
+  valorEstornado = 0,
 }: OrderReceiptProps) {
   const storeName = storeNameProp ?? branding.appName;
+  const totalEmCentavos = Math.max(0, Math.round(order.total * 100));
+  const reembolsadoEmCentavos = Math.min(
+    Math.round(valorEstornado * 100),
+    totalEmCentavos,
+  );
   const { situacao, valor } = situacaoDoPagamentoNaEntrega(order);
   const situacaoNoPapel =
     situacao === "estornado"
@@ -219,6 +227,22 @@ export const OrderReceipt = memo(function OrderReceipt({
             <span>TOTAL</span>
             <span>R$ {reais(order?.total || 0)}</span>
           </div>
+          {valorEstornado > 0 && order.status !== "cancelled" ? (
+            <>
+              <div className="flex justify-between gap-2 text-xs">
+                <span>Reembolsado:</span>
+                <span className="shrink-0 whitespace-nowrap">
+                  R$ {reais(reembolsadoEmCentavos / 100)}
+                </span>
+              </div>
+              <div className="flex justify-between gap-2 text-xs">
+                <span>Valor retido:</span>
+                <span className="shrink-0 whitespace-nowrap">
+                  R$ {reais((totalEmCentavos - reembolsadoEmCentavos) / 100)}
+                </span>
+              </div>
+            </>
+          ) : null}
           <p className="mt-2 text-xs">
             Pagamento: {rotuloDaFormaDoPedido(order)}
           </p>
