@@ -304,6 +304,12 @@ interface OrderDetailProps {
 }
 
 const globalSkuCache: Record<string, string> = {};
+const UUID_DO_CATALOGO =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function ehIdDoCatalogo(id: string | null | undefined): id is string {
+  return typeof id === "string" && UUID_DO_CATALOGO.test(id);
+}
 // Rótulo da variação ("Cor Azul · Tamanho M") por id da variação, lido na
 // mesma consulta do código interno. O pedido só guarda o id (`variant_id`);
 // quem diz qual é a escolha é `product_variants`. "" = lida, sem texto.
@@ -2088,10 +2094,13 @@ export const OrderDetail = memo(function OrderDetail({
           productId: string;
           variantId: string | null;
         }[];
-        const productIds = itemsList.map((item) => item.productId);
+        // Itens antigos continuam no pedido; só IDs de catálogo vão ao banco.
+        const productIds = itemsList
+          .map((item) => item.productId)
+          .filter(ehIdDoCatalogo);
         const variantIds = itemsList
           .map((item) => item.variantId)
-          .filter((id): id is string => !!id);
+          .filter(ehIdDoCatalogo);
 
         setFalhaNaLeitura(false);
         const missingProductIds = productIds.filter(
@@ -2203,11 +2212,14 @@ export const OrderDetail = memo(function OrderDetail({
 
   const nextStatus = getNextStatus(order.status);
 
-  // O papel só leva "Tamanho M · Cor Azul" se a leitura chegou. Enquanto ela
-  // carrega, ou depois de falhar, e há item com variação sem rótulo, imprimir
-  // sairia sem a peça certa e sem aviso — então o botão espera.
+  // O papel espera a variação dos itens vinculados ao catálogo. Para itens
+  // sem produto, a leitura ainda é tentada, mas o papel usa os dados salvos
+  // se o rótulo não chegar.
   const faltaVariacaoNoPapel = order.items.some(
-    (i) => !!i.variantId && !variacoes[i.variantId],
+    (i) =>
+      ehIdDoCatalogo(i.productId) &&
+      ehIdDoCatalogo(i.variantId) &&
+      !variacoes[i.variantId],
   );
   let motivoDeNaoImprimir: string | null = null;
   // Pedido cancelado (e venda do balcão anulada) deixa de valer como

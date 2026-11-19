@@ -75,7 +75,7 @@ type ItemDoPedido = Order["items"][number];
 function pedidoFake(variantId: string): Order {
   const items: ItemDoPedido[] = [
     {
-      productId: "prod-camiseta",
+      productId: "598044d4-9426-44d9-a0c9-000000000001",
       name: "Camiseta Básica",
       price: 50,
       quantity: 1,
@@ -165,23 +165,23 @@ describe("ficha do pedido — o nome da variação corrigido chega à impressão
 
   it("depois de 60 s a ficha lê o cadastro de novo e traz o nome corrigido", async () => {
     banco.push({
-      id: "var-validade-1",
+      id: "598044d4-9426-44d9-a0c9-000000000002",
       sku: "CAM-M",
       name: "Tamanho",
       value: "M",
     });
-    await abrirFicha(pedidoFake("var-validade-1"));
+    await abrirFicha(pedidoFake("598044d4-9426-44d9-a0c9-000000000002"));
     expect(hospedeiro.textContent).toContain("Tamanho M");
 
     // A lojista corrige o nome da opção no produto e volta ao pedido.
     banco[0] = {
-      id: "var-validade-1",
+      id: "598044d4-9426-44d9-a0c9-000000000002",
       sku: "CAM-M",
       name: "Tamanho",
       value: "G",
     };
     agora += 61_000;
-    await abrirFicha(pedidoFake("var-validade-1"));
+    await abrirFicha(pedidoFake("598044d4-9426-44d9-a0c9-000000000002"));
 
     expect(hospedeiro.textContent).toContain("Tamanho G");
     expect(hospedeiro.textContent).not.toContain("Tamanho M");
@@ -190,22 +190,22 @@ describe("ficha do pedido — o nome da variação corrigido chega à impressão
 
   it("CONTROLE: dentro dos 60 s reaproveita a cópia (sem consulta nova)", async () => {
     banco.push({
-      id: "var-validade-2",
+      id: "598044d4-9426-44d9-a0c9-000000000003",
       sku: "CAM-P",
       name: "Tamanho",
       value: "P",
     });
-    await abrirFicha(pedidoFake("var-validade-2"));
+    await abrirFicha(pedidoFake("598044d4-9426-44d9-a0c9-000000000003"));
     expect(consultas.product_variants).toBe(1);
 
     banco[0] = {
-      id: "var-validade-2",
+      id: "598044d4-9426-44d9-a0c9-000000000003",
       sku: "CAM-P",
       name: "Tamanho",
       value: "GG",
     };
     agora += 30_000;
-    await abrirFicha(pedidoFake("var-validade-2"));
+    await abrirFicha(pedidoFake("598044d4-9426-44d9-a0c9-000000000003"));
 
     expect(consultas.product_variants).toBe(1);
     expect(hospedeiro.textContent).toContain("Tamanho P");
@@ -214,17 +214,17 @@ describe("ficha do pedido — o nome da variação corrigido chega à impressão
 
   it("variação apagada do catálogo depois de 60 s: o nome velho não volta ao papel", async () => {
     banco.push({
-      id: "var-validade-4",
+      id: "598044d4-9426-44d9-a0c9-000000000004",
       sku: "CAM-XG",
       name: "Tamanho",
       value: "XG",
     });
-    await abrirFicha(pedidoFake("var-validade-4"));
+    await abrirFicha(pedidoFake("598044d4-9426-44d9-a0c9-000000000004"));
     expect(hospedeiro.textContent).toContain("Tamanho XG");
 
     banco.length = 0;
     agora += 61_000;
-    await abrirFicha(pedidoFake("var-validade-4"));
+    await abrirFicha(pedidoFake("598044d4-9426-44d9-a0c9-000000000004"));
 
     expect(hospedeiro.textContent).not.toContain("Tamanho XG");
     // Leitura que deu certo e não achou: imprime como sempre.
@@ -233,19 +233,19 @@ describe("ficha do pedido — o nome da variação corrigido chega à impressão
 
   it("se a releitura falha, o aviso aparece (a cópia vencida não finge estar em dia)", async () => {
     banco.push({
-      id: "var-validade-3",
+      id: "598044d4-9426-44d9-a0c9-000000000005",
       sku: "CAM-G",
       name: "Cor",
       value: "Azul",
     });
-    await abrirFicha(pedidoFake("var-validade-3"));
+    await abrirFicha(pedidoFake("598044d4-9426-44d9-a0c9-000000000005"));
     expect(hospedeiro.textContent).toContain("Cor Azul");
 
     // Cadastro mudou e a releitura vai falhar: nada de recibo em silêncio.
     consultas.falhar = true;
     vi.spyOn(console, "error").mockImplementation(() => {});
     agora += 61_000;
-    await abrirFicha(pedidoFake("var-validade-3"));
+    await abrirFicha(pedidoFake("598044d4-9426-44d9-a0c9-000000000005"));
 
     expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toContain(
       "Não deu para carregar tamanho",

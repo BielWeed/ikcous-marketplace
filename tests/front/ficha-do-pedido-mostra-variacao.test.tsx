@@ -81,7 +81,7 @@ type ItemDoPedido = Order["items"][number];
 
 function item(overrides: Partial<ItemDoPedido> = {}): ItemDoPedido {
   return {
-    productId: "prod-camiseta",
+    productId: "598044d2-9426-44d9-a0c9-000000000001",
     name: "Camiseta Básica",
     price: 50,
     quantity: 1,
@@ -171,12 +171,14 @@ describe("ficha do pedido e recibo — mostram a variação de cada item", () =>
 
   it("combinação (cor e tamanho): a linha do item diz 'Cor Azul · Tamanho M'", async () => {
     variacoesNoBanco.push({
-      id: "var-azul-m-1",
+      id: "598044d2-9426-44d9-a0c9-000000000003",
       name: "Cor / Tamanho",
       value: "Azul / M",
     });
 
-    await renderizarFicha(pedidoFake([item({ variantId: "var-azul-m-1" })]));
+    await renderizarFicha(
+      pedidoFake([item({ variantId: "598044d2-9426-44d9-a0c9-000000000003" })]),
+    );
 
     expect(variacoesDaFicha()).toEqual(["Cor Azul · Tamanho M"]);
     // O nome do produto e a conta continuam onde estavam.
@@ -185,23 +187,40 @@ describe("ficha do pedido e recibo — mostram a variação de cada item", () =>
   });
 
   it("variação de um atributo só: 'Cor Rosa'", async () => {
-    variacoesNoBanco.push({ id: "var-rosa-2", name: "Cor", value: "Rosa" });
+    variacoesNoBanco.push({
+      id: "598044d2-9426-44d9-a0c9-000000000004",
+      name: "Cor",
+      value: "Rosa",
+    });
 
-    await renderizarFicha(pedidoFake([item({ variantId: "var-rosa-2" })]));
+    await renderizarFicha(
+      pedidoFake([item({ variantId: "598044d2-9426-44d9-a0c9-000000000004" })]),
+    );
 
     expect(variacoesDaFicha()).toEqual(["Cor Rosa"]);
   });
 
   it("o mesmo produto em dois tamanhos: cada linha diz o SEU tamanho", async () => {
     variacoesNoBanco.push(
-      { id: "var-tam-p-3", name: "Tamanho", value: "P" },
-      { id: "var-tam-m-3", name: "Tamanho", value: "M" },
+      {
+        id: "598044d2-9426-44d9-a0c9-000000000005",
+        name: "Tamanho",
+        value: "P",
+      },
+      {
+        id: "598044d2-9426-44d9-a0c9-000000000006",
+        name: "Tamanho",
+        value: "M",
+      },
     );
 
     await renderizarFicha(
       pedidoFake([
-        item({ variantId: "var-tam-p-3" }),
-        item({ variantId: "var-tam-m-3", quantity: 2 }),
+        item({ variantId: "598044d2-9426-44d9-a0c9-000000000005" }),
+        item({
+          variantId: "598044d2-9426-44d9-a0c9-000000000006",
+          quantity: 2,
+        }),
       ]),
     );
 
@@ -217,16 +236,24 @@ describe("ficha do pedido e recibo — mostram a variação de cada item", () =>
 
   it("pedido antigo cuja variação foi apagada do catálogo: não quebra e não inventa", async () => {
     // Nenhuma linha no banco para este id.
-    await renderizarFicha(pedidoFake([item({ variantId: "var-apagada-4" })]));
+    await renderizarFicha(
+      pedidoFake([item({ variantId: "598044d2-9426-44d9-a0c9-000000000007" })]),
+    );
 
     expect(variacoesDaFicha()).toEqual([]);
     expect(blocoDeItens()?.textContent).toContain("Camiseta Básica");
   });
 
   it("a ficha pede ao banco o nome e o valor da variação, não só o código", async () => {
-    variacoesNoBanco.push({ id: "var-pede-5", name: "Cor", value: "Verde" });
+    variacoesNoBanco.push({
+      id: "598044d2-9426-44d9-a0c9-000000000008",
+      name: "Cor",
+      value: "Verde",
+    });
 
-    await renderizarFicha(pedidoFake([item({ variantId: "var-pede-5" })]));
+    await renderizarFicha(
+      pedidoFake([item({ variantId: "598044d2-9426-44d9-a0c9-000000000008" })]),
+    );
 
     const pedido = consultasDeVariacao.join(" | ");
     expect(pedido).toMatch(/\bname\b/);
@@ -235,12 +262,14 @@ describe("ficha do pedido e recibo — mostram a variação de cada item", () =>
 
   it("o recibo impresso dentro da ficha também leva a variação", async () => {
     variacoesNoBanco.push({
-      id: "var-recibo-6",
+      id: "598044d2-9426-44d9-a0c9-000000000009",
       name: "Cor / Tamanho",
       value: "Preto / G",
     });
 
-    await renderizarFicha(pedidoFake([item({ variantId: "var-recibo-6" })]));
+    await renderizarFicha(
+      pedidoFake([item({ variantId: "598044d2-9426-44d9-a0c9-000000000009" })]),
+    );
 
     const papel = papelDoRecibo();
     expect(papel).toBeDefined();
@@ -257,9 +286,17 @@ describe("ficha do pedido e recibo — mostram a variação de cada item", () =>
 
     it("variantes com erro: avisa na ficha, sem fingir que o item não tem tamanho", async () => {
       falhas.product_variants = true;
-      variacoesNoBanco.push({ id: "var-falha-7", name: "Tamanho", value: "M" });
+      variacoesNoBanco.push({
+        id: "598044d2-9426-44d9-a0c9-000000000010",
+        name: "Tamanho",
+        value: "M",
+      });
 
-      await renderizarFicha(pedidoFake([item({ variantId: "var-falha-7" })]));
+      await renderizarFicha(
+        pedidoFake([
+          item({ variantId: "598044d2-9426-44d9-a0c9-000000000010" }),
+        ]),
+      );
 
       expect(blocoDeItens()?.textContent).toContain(AVISO);
       expect(blocoDeItens()?.textContent).toContain(
@@ -271,9 +308,17 @@ describe("ficha do pedido e recibo — mostram a variação de cada item", () =>
 
     it("não grava vazio no cache: 'Tentar de novo' busca de novo e mostra o tamanho", async () => {
       falhas.product_variants = true;
-      variacoesNoBanco.push({ id: "var-falha-8", name: "Tamanho", value: "G" });
+      variacoesNoBanco.push({
+        id: "598044d2-9426-44d9-a0c9-000000000011",
+        name: "Tamanho",
+        value: "G",
+      });
 
-      await renderizarFicha(pedidoFake([item({ variantId: "var-falha-8" })]));
+      await renderizarFicha(
+        pedidoFake([
+          item({ variantId: "598044d2-9426-44d9-a0c9-000000000011" }),
+        ]),
+      );
       expect(blocoDeItens()?.textContent).toContain(AVISO);
       const antes = consultasDeVariacao.length;
 
@@ -293,15 +338,27 @@ describe("ficha do pedido e recibo — mostram a variação de cada item", () =>
     it("leitura do código do produto com erro também avisa", async () => {
       falhas.vw_produtos_admin = true;
 
-      await renderizarFicha(pedidoFake([item({ productId: "prod-falha-9" })]));
+      await renderizarFicha(
+        pedidoFake([
+          item({ productId: "598044d2-9426-44d9-a0c9-000000000012" }),
+        ]),
+      );
 
       expect(blocoDeItens()?.textContent).toContain(AVISO);
     });
 
     it("leitura ok: nenhum aviso", async () => {
-      variacoesNoBanco.push({ id: "var-ok-10", name: "Tamanho", value: "P" });
+      variacoesNoBanco.push({
+        id: "598044d2-9426-44d9-a0c9-000000000013",
+        name: "Tamanho",
+        value: "P",
+      });
 
-      await renderizarFicha(pedidoFake([item({ variantId: "var-ok-10" })]));
+      await renderizarFicha(
+        pedidoFake([
+          item({ variantId: "598044d2-9426-44d9-a0c9-000000000013" }),
+        ]),
+      );
 
       expect(blocoDeItens()?.textContent).not.toContain(AVISO);
       expect(botaoTentar()).toBeUndefined();

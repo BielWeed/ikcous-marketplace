@@ -87,7 +87,7 @@ type ItemDoPedido = Order["items"][number];
 
 function item(overrides: Partial<ItemDoPedido> = {}): ItemDoPedido {
   return {
-    productId: "prod-camiseta",
+    productId: "598044d1-9426-44d9-a0c9-000000000001",
     name: "Camiseta Básica",
     price: 50,
     quantity: 1,
@@ -184,9 +184,15 @@ describe("ficha do pedido — a leitura do tamanho e da cor tem prazo", () => {
 
   it("variações penduradas: passou o prazo, o aviso e o 'Tentar de novo' aparecem e Imprimir segue desligado", async () => {
     rede.modo.product_variants = "pendurado";
-    noBanco({ id: "var-prazo-1", name: "Tamanho", value: "M" });
+    noBanco({
+      id: "598044d1-9426-44d9-a0c9-000000000002",
+      name: "Tamanho",
+      value: "M",
+    });
 
-    await renderizarFicha(pedidoFake([item({ variantId: "var-prazo-1" })]));
+    await renderizarFicha(
+      pedidoFake([item({ variantId: "598044d1-9426-44d9-a0c9-000000000002" })]),
+    );
 
     // Antes do prazo: ainda carregando, sem aviso e sem botão de repetir.
     await avancar(PRAZO_DA_LEITURA_DO_TAMANHO_E_COR_MS - 1_000);
@@ -203,11 +209,36 @@ describe("ficha do pedido — a leitura do tamanho e da cor tem prazo", () => {
     expect(motivo()).not.toContain("Carregando o tamanho e a cor");
   });
 
+  it("imprime os dados salvos do item sem produto mesmo sem resposta da variação", async () => {
+    rede.modo.product_variants = "pendurado";
+    await renderizarFicha(
+      pedidoFake([
+        item({
+          productId: "",
+          variantId: "598044d1-9426-44d9-a0c9-000000000006",
+          name: "Camiseta antiga",
+          quantity: 2,
+          price: 37.5,
+        }),
+      ]),
+    );
+
+    expect(rede.soltar).toHaveLength(1);
+    await avancar(PRAZO_DA_LEITURA_DO_TAMANHO_E_COR_MS + 500);
+
+    expect(aviso()?.textContent).toContain("Não deu para carregar tamanho");
+    expect(botaoImprimir()?.disabled).toBe(false);
+    expect(hospedeiro.textContent).toContain("Camiseta antiga");
+    const recibo = document.body.querySelector("[data-tema-fixo]");
+    expect(recibo?.textContent).toContain("2x Camiseta antiga");
+    expect(recibo?.textContent).toContain("R$ 75,00");
+  });
+
   it("código do produto pendurado: o prazo também cobre a primeira consulta", async () => {
     rede.modo.vw_produtos_admin = "pendurado";
 
     await renderizarFicha(
-      pedidoFake([item({ productId: "prod-prazo-sem-var-2" })]),
+      pedidoFake([item({ productId: "598044d1-9426-44d9-a0c9-000000000003" })]),
     );
     await avancar(PRAZO_DA_LEITURA_DO_TAMANHO_E_COR_MS + 500);
 
@@ -217,15 +248,25 @@ describe("ficha do pedido — a leitura do tamanho e da cor tem prazo", () => {
 
   it("'Tentar de novo' repete a leitura; a resposta tardia da tentativa velha é descartada", async () => {
     rede.modo.product_variants = "pendurado";
-    noBanco({ id: "var-prazo-3", name: "Tamanho", value: "P" });
+    noBanco({
+      id: "598044d1-9426-44d9-a0c9-000000000004",
+      name: "Tamanho",
+      value: "P",
+    });
 
-    await renderizarFicha(pedidoFake([item({ variantId: "var-prazo-3" })]));
+    await renderizarFicha(
+      pedidoFake([item({ variantId: "598044d1-9426-44d9-a0c9-000000000004" })]),
+    );
     await avancar(PRAZO_DA_LEITURA_DO_TAMANHO_E_COR_MS + 500);
     expect(botaoTentar()).toBeDefined();
 
     // A segunda tentativa responde na hora, com o nome já corrigido.
     rede.banco.length = 0;
-    noBanco({ id: "var-prazo-3", name: "Tamanho", value: "G" });
+    noBanco({
+      id: "598044d1-9426-44d9-a0c9-000000000004",
+      name: "Tamanho",
+      value: "G",
+    });
     rede.modo.product_variants = "ok";
     await act(async () => {
       botaoTentar()?.click();
@@ -248,9 +289,15 @@ describe("ficha do pedido — a leitura do tamanho e da cor tem prazo", () => {
   });
 
   it("CONTROLE: resposta dentro do prazo não vira aviso e o prazo não dispara depois", async () => {
-    noBanco({ id: "var-prazo-4", name: "Cor", value: "Azul" });
+    noBanco({
+      id: "598044d1-9426-44d9-a0c9-000000000005",
+      name: "Cor",
+      value: "Azul",
+    });
 
-    await renderizarFicha(pedidoFake([item({ variantId: "var-prazo-4" })]));
+    await renderizarFicha(
+      pedidoFake([item({ variantId: "598044d1-9426-44d9-a0c9-000000000005" })]),
+    );
     await avancar(PRAZO_DA_LEITURA_DO_TAMANHO_E_COR_MS + 5_000);
 
     expect(botaoImprimir()?.disabled).toBe(false);
