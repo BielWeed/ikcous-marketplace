@@ -6820,7 +6820,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           {conflitoDePrecosComGrade && (
             <div className="space-y-1 px-1 text-xs text-amber-300">
               <div role="alert">
-                <p>O produto mudou em outro aparelho. Nada foi salvo.</p>
+                <p>
+                  Este produto mudou depois que você abriu a tela. Nada foi
+                  salvo.
+                </p>
                 {linhaDoPrecoEmConflito(
                   "Preço de venda",
                   conflitoDePrecosComGrade.price,

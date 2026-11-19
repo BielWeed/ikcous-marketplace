@@ -239,8 +239,9 @@ it.each([false, true])(
   },
 );
 
-// Base 84a35d769, gerada uma vez: classe do container + bloco de marcaDoTopo
-// até AcaoDaBarra (inclusive). Exclui os modais de variante/ajuda fora desse bloco.
+// Base 84a35d769: classe do container + bloco de marcaDoTopo até AcaoDaBarra
+// (inclusive), com os dois literais do aviso de conflito de preço com grade.
+// Exclui os modais de variante/ajuda fora desse bloco.
 // Congelada aqui para funcionar também no CI sem Git/histórico disponível.
 const CLASSES_CELULAR_DO_BLOCO_BASE = [
   "produto-formulario pb-admin relative h-auto min-h-full overflow-x-clip text-white",
@@ -536,6 +537,8 @@ const CLASSES_CELULAR_DO_BLOCO_BASE = [
   "mt-0.5 size-4 shrink-0",
   "break-all text-[11px] text-zinc-400",
   "produto-acoes mx-auto w-full max-w-3xl space-y-1.5",
+  "space-y-1 px-1 text-xs text-amber-300",
+  "min-h-11 rounded-full bg-admin-raised px-4 text-xs font-bold text-white",
   "produto-status flex flex-wrap items-center gap-x-2 px-1 text-xs font-medium text-amber-300",
   "size-4 shrink-0 text-amber-400",
   "min-h-11 rounded-full bg-admin-raised px-4 text-xs font-bold text-white",
@@ -558,7 +561,7 @@ const CLASSES_CELULAR_DO_BLOCO_BASE = [
   "produto-prever flex min-h-11 min-w-11 items-center justify-center rounded-full border border-solid border-admin-border-strong bg-admin-surface px-4 text-sm font-bold",
 ];
 const SHA256_CLASSES_CELULAR_BASE =
-  "6bbeee4f060be720a0e2784004cd345295ff840f11c615e3a35895995d86d1a3";
+  "a315f55c67ffc6a584fcc774803512c7aeca6c66bfe7a35cc5ec61330f29ac56";
 const TOKENS_LG_DA_BASE = [
   "lg:grid-cols-12",
   "lg:col-span-8",
@@ -647,10 +650,9 @@ it("preserva todos os literais do bloco e os tokens lg da base congelada", () =>
     "utf8",
   );
   const atuais = literaisDoBloco(fonte);
-  expect(
-    atuais.length,
-    "quantidade de literais no bloco da base 84a35d769",
-  ).toBe(CLASSES_CELULAR_DO_BLOCO_BASE.length);
+  expect(atuais.length, "quantidade de literais no bloco congelado").toBe(
+    CLASSES_CELULAR_DO_BLOCO_BASE.length,
+  );
   const divergencias = atuais.flatMap((classe, indice) => {
     const base = CLASSES_CELULAR_DO_BLOCO_BASE.at(indice);
     return classe === base
@@ -659,7 +661,7 @@ it("preserva todos os literais do bloco e os tokens lg da base congelada", () =>
   });
   expect(
     divergencias,
-    "classes do celular diferentes da base 84a35d769",
+    "classes do celular diferentes da lista congelada",
   ).toEqual([]);
   expect(
     createHash("sha256").update(JSON.stringify(atuais)).digest("hex"),

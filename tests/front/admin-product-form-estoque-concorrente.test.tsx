@@ -958,6 +958,9 @@ describe("salvar estoque confere a versão lida na abertura", () => {
         "2026-10-21T13:00:00.123456+00:00",
       );
       const aviso = host.querySelector('[role="alert"]');
+      expect(aviso?.textContent).toContain(
+        "Este produto mudou depois que você abriu a tela. Nada foi salvo.",
+      );
       expect(aviso?.textContent).toMatch(/Atual:.*120,00.*Digitado:.*110,00/s);
       expect(
         (document.getElementById("product-sale-price") as HTMLInputElement)
