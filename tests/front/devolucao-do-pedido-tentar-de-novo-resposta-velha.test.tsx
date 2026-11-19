@@ -10,7 +10,7 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DevolucaoDoPedidoAdminCard } from "@/components/admin/orders/DevolucaoDoPedidoAdminCard";
-import { useDevolucoesDoPedidoAdmin } from "@/hooks/useDevolucoesAdmin";
+import { useDevolucoesDoPedidoAdmin } from "@/hooks/useDevolucoesDoPedidoAdmin";
 
 const { rpc, sinais } = vi.hoisted(() => ({
   rpc: vi.fn(),
@@ -61,6 +61,13 @@ let raiz: Root;
 let hospedeiro: HTMLDivElement;
 let leitura: ReturnType<typeof useDevolucoesDoPedidoAdmin>;
 
+function CardComLeitura() {
+  const leituraDeDevolucoes = useDevolucoesDoPedidoAdmin("pedido-1", true);
+  return (
+    <DevolucaoDoPedidoAdminCard leituraDeDevolucoes={leituraDeDevolucoes} />
+  );
+}
+
 function Sonda() {
   const lida = useDevolucoesDoPedidoAdmin("pedido-1", true);
   useEffect(() => {
@@ -89,9 +96,7 @@ describe("devoluções do pedido — só a leitura mais recente vale", () => {
     vi.useFakeTimers();
     try {
       rpc.mockImplementation(() => new Promise(() => {}));
-      await act(async () =>
-        raiz.render(<DevolucaoDoPedidoAdminCard orderId="pedido-1" />),
-      );
+      await act(async () => raiz.render(<CardComLeitura />));
       const avancar = () =>
         act(async () => {
           await vi.advanceTimersByTimeAsync(20_000);
@@ -123,9 +128,7 @@ describe("devoluções do pedido — só a leitura mais recente vale", () => {
     vi.useFakeTimers();
     try {
       rpc.mockImplementation(() => pendente().promessa);
-      await act(async () =>
-        raiz.render(<DevolucaoDoPedidoAdminCard orderId="pedido-1" />),
-      );
+      await act(async () => raiz.render(<CardComLeitura />));
       await act(async () => vi.advanceTimersByTimeAsync(20_000));
       expect(sinais[0]?.aborted).toBe(false);
 
@@ -145,9 +148,7 @@ describe("devoluções do pedido — só a leitura mais recente vale", () => {
     try {
       const consulta = pendente();
       rpc.mockReturnValueOnce(consulta.promessa);
-      await act(async () =>
-        raiz.render(<DevolucaoDoPedidoAdminCard orderId="pedido-1" />),
-      );
+      await act(async () => raiz.render(<CardComLeitura />));
       await act(async () => vi.advanceTimersByTimeAsync(20_000));
       expect(hospedeiro.textContent).toContain("Tentar de novo");
 
@@ -186,7 +187,7 @@ describe("devoluções do pedido — só a leitura mais recente vale", () => {
       .mockReturnValueOnce(primeira.promessa)
       .mockReturnValueOnce(segunda.promessa);
     await act(async () => raiz.render(<Sonda />));
-    act(() => leitura.recarregar());
+    await act(async () => leitura.recarregar());
     expect(rpc).toHaveBeenCalledTimes(2);
 
     await act(async () => {
@@ -211,7 +212,7 @@ describe("devoluções do pedido — só a leitura mais recente vale", () => {
       .mockReturnValueOnce(primeira.promessa)
       .mockReturnValueOnce(segunda.promessa);
     await act(async () => raiz.render(<Sonda />));
-    act(() => leitura.recarregar());
+    await act(async () => leitura.recarregar());
 
     await act(async () => {
       segunda.resolver({ data: [linha("dev-nova", "DV-NOVA")], error: null });
@@ -231,7 +232,7 @@ describe("devoluções do pedido — só a leitura mais recente vale", () => {
       .mockReturnValueOnce(primeira.promessa)
       .mockReturnValueOnce(segunda.promessa);
     await act(async () => raiz.render(<Sonda />));
-    act(() => leitura.recarregar());
+    await act(async () => leitura.recarregar());
     expect(leitura.carregando).toBe(true);
 
     await act(async () => {
@@ -281,9 +282,7 @@ describe("card de devolução do pedido — 'Tentar de novo'", () => {
     rpc
       .mockResolvedValueOnce({ data: null, error: { message: "caiu" } })
       .mockReturnValueOnce(segunda.promessa);
-    await act(async () =>
-      raiz.render(<DevolucaoDoPedidoAdminCard orderId="pedido-1" />),
-    );
+    await act(async () => raiz.render(<CardComLeitura />));
 
     expect(botaoDeNovo()?.textContent).toBe("Tentar de novo");
     expect(botaoDeNovo()?.disabled).toBe(false);

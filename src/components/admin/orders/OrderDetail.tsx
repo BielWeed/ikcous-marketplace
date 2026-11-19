@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { useAnularVendaDoBalcao } from "@/hooks/useAnularVendaDoBalcao";
 import { useConfirmarAcao } from "@/hooks/useConfirmarAcao";
 import { useDevolucaoConcluidaDoPedido } from "@/hooks/useDevolucaoConcluidaDoPedido";
+import { useDevolucoesDoPedidoAdmin } from "@/hooks/useDevolucoesDoPedidoAdmin";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import {
   DEPOIS_DO_DIA_COM_CLIENTE,
@@ -80,7 +81,10 @@ import {
 } from "lucide-react";
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { DevolucaoDoPedidoAdminCard } from "./DevolucaoDoPedidoAdminCard";
+import {
+  AvisoFalhaNaLeituraDasDevolucoes,
+  DevolucaoDoPedidoAdminCard,
+} from "./DevolucaoDoPedidoAdminCard";
 import { EstornoCard } from "./EstornoCard";
 import { EtiquetaDoPedidoCard } from "./EtiquetaDoPedidoCard";
 import { OrderReceipt } from "./OrderReceipt";
@@ -1123,6 +1127,7 @@ interface OrderFinanceCardProps {
   order: Order;
   /** Prova de devolução concluída (ver `OrderHeaderProps.devolucaoConcluida`). */
   devolucaoConcluida: boolean;
+  leituraDeDevolucoes: ReturnType<typeof useDevolucoesDoPedidoAdmin>;
   /** Task 4b — `undefined` só nos testes que montam `<OrderDetail>` direto
    * sem a prop (ver `OrderDetailProps.onRegistrarPagamento`); nesse caso o
    * bloco de recebimento não renderiza (ver guarda no JSX abaixo). */
@@ -1153,6 +1158,7 @@ function anulacaoDoBalcaoPassouDoDia(order: Order): boolean {
 function OrderFinanceCard({
   order,
   devolucaoConcluida,
+  leituraDeDevolucoes,
   onRegistrarPagamento,
   registrandoPagamento,
 }: Readonly<OrderFinanceCardProps>) {
@@ -1266,7 +1272,9 @@ function OrderFinanceCard({
                 )}
               </span>
               <DesfazerRecebimento
+                key={order.id}
                 order={order}
+                leituraDeDevolucoes={leituraDeDevolucoes}
                 aoDesfazer={() => onRegistrarPagamento(order.id, false)}
                 disabled={registrandoPagamento}
                 className="h-11 shrink-0 rounded-xl border border-admin-border bg-white/5 px-4 text-sm font-medium text-zinc-300 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-50"
@@ -1282,6 +1290,13 @@ function OrderFinanceCard({
             />
           )}
         </div>
+      )}
+
+      {order.status !== "delivered" && leituraDeDevolucoes.erro && (
+        <AvisoFalhaNaLeituraDasDevolucoes
+          carregando={leituraDeDevolucoes.carregando}
+          recarregar={leituraDeDevolucoes.recarregar}
+        />
       )}
 
       {(anuladoId === order.id ||
@@ -2611,6 +2626,13 @@ export const OrderDetail = memo(function OrderDetail({
   // Entregue + estornado: a devolução foi concluída por inteiro (selo neutro)
   // ou pode ser contestação perdida (selo de atenção)? Sem prova, atenção.
   const devolucaoConcluida = useDevolucaoConcluidaDoPedido(order);
+  const leituraDeDevolucoes = useDevolucoesDoPedidoAdmin(
+    order.id,
+    order.status === "delivered" ||
+      (!!onRegistrarPagamento &&
+        !!order.pagamentoRecebidoEm &&
+        podeRegistrarPagamento(order)),
+  );
 
   const handleWhatsAppDirect = () => {
     if (!whatsappUrl) return;
@@ -2663,6 +2685,7 @@ export const OrderDetail = memo(function OrderDetail({
         <OrderFinanceCard
           order={order}
           devolucaoConcluida={devolucaoConcluida}
+          leituraDeDevolucoes={leituraDeDevolucoes}
           onRegistrarPagamento={
             onRegistrarPagamento ? handleRegistrarPagamento : undefined
           }
@@ -2674,7 +2697,7 @@ export const OrderDetail = memo(function OrderDetail({
         {order.status === "delivered" && (
           <DevolucaoDoPedidoAdminCard
             key={`devolucao-do-produto-${order.id}`}
-            orderId={order.id}
+            leituraDeDevolucoes={leituraDeDevolucoes}
             onAbrirDevolucoes={onAbrirDevolucoes}
           />
         )}

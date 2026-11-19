@@ -18,7 +18,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
-    rpc: vi.fn(),
+    rpc: vi.fn((nome: string) =>
+      nome === "devolucoes_do_pedido" ? { data: [], error: null } : undefined,
+    ),
     from: vi.fn(),
     functions: { invoke: vi.fn() },
     channel: vi.fn(),

@@ -32,7 +32,7 @@ vi.mock("@/lib/supabase", () => ({
     removeChannel: vi.fn(),
   },
 }));
-vi.mock("@/hooks/useDevolucoesAdmin", () => ({
+vi.mock("@/hooks/useDevolucoesDoPedidoAdmin", () => ({
   useDevolucoesDoPedidoAdmin: () => ({
     devolucoes:
       estadoDosHooks.devolucao === "dados"

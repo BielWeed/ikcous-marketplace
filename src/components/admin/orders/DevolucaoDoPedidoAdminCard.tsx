@@ -4,7 +4,7 @@ import {
   SeloDoStatus,
   SeloDoTipo,
 } from "@/components/admin/devolucoes/SelosDaDevolucao";
-import { useDevolucoesDoPedidoAdmin } from "@/hooks/useDevolucoesAdmin";
+import type { useDevolucoesDoPedidoAdmin } from "@/hooks/useDevolucoesDoPedidoAdmin";
 import {
   ehStatusAberto,
   formatarDia,
@@ -14,6 +14,32 @@ import {
 } from "@/lib/devolucao";
 import { cn } from "@/lib/utils";
 
+export function AvisoFalhaNaLeituraDasDevolucoes({
+  carregando,
+  recarregar,
+}: Readonly<{
+  carregando: boolean;
+  recarregar: () => void;
+}>) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-2xl border border-admin-border bg-admin-surface p-4 text-white">
+      <p role="status" className="text-xs font-medium text-zinc-400">
+        {carregando
+          ? "Consultando devoluções…"
+          : "Não consegui conferir as devoluções deste pedido."}
+      </p>
+      <button
+        type="button"
+        onClick={recarregar}
+        disabled={carregando}
+        className="min-h-11 shrink-0 rounded-xl border border-admin-border bg-white/5 px-3 text-xs font-medium text-zinc-200 disabled:opacity-60"
+      >
+        {carregando ? "Tentando…" : "Tentar de novo"}
+      </button>
+    </div>
+  );
+}
+
 /**
  * Devolução de PRODUTO deste pedido, na ficha do lojista (logo antes da
  * devolução de dinheiro — `EstornoCard`). Só resume: quem decide e age é a
@@ -21,33 +47,21 @@ import { cn } from "@/lib/utils";
  * Sem devolução, o card não existe.
  */
 export function DevolucaoDoPedidoAdminCard({
-  orderId,
+  leituraDeDevolucoes,
   onAbrirDevolucoes,
 }: Readonly<{
-  orderId: string;
+  leituraDeDevolucoes: ReturnType<typeof useDevolucoesDoPedidoAdmin>;
   /** Navega para `admin-devolucoes` (sem ele, o card só informa). */
   onAbrirDevolucoes?: (id: string) => void;
 }>) {
-  const { devolucoes, carregando, erro, recarregar } =
-    useDevolucoesDoPedidoAdmin(orderId, true);
+  const { devolucoes, carregando, erro, recarregar } = leituraDeDevolucoes;
 
   if (erro) {
     return (
-      <div className="flex items-center justify-between gap-3 rounded-2xl border border-admin-border bg-admin-surface p-4 text-white">
-        <p role="status" className="text-xs font-medium text-zinc-400">
-          {carregando
-            ? "Consultando devoluções…"
-            : "Não consegui conferir as devoluções deste pedido."}
-        </p>
-        <button
-          type="button"
-          onClick={recarregar}
-          disabled={carregando}
-          className="min-h-11 shrink-0 rounded-xl border border-admin-border bg-white/5 px-3 text-xs font-medium text-zinc-200 disabled:opacity-60"
-        >
-          {carregando ? "Tentando…" : "Tentar de novo"}
-        </button>
-      </div>
+      <AvisoFalhaNaLeituraDasDevolucoes
+        carregando={carregando}
+        recarregar={recarregar}
+      />
     );
   }
 

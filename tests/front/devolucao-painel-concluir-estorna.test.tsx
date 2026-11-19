@@ -356,15 +356,20 @@ describe("AdminDevolucoesView — concluir e devolver o dinheiro", () => {
     const { DevolucaoDoPedidoAdminCard } = await import(
       "@/components/admin/orders/DevolucaoDoPedidoAdminCard"
     );
+    const { useDevolucoesDoPedidoAdmin } = await import(
+      "@/hooks/useDevolucoesDoPedidoAdmin"
+    );
     const onAbrirDevolucoes = vi.fn();
-    await act(async () => {
-      raiz.render(
+    function CardComLeitura() {
+      const leituraDeDevolucoes = useDevolucoesDoPedidoAdmin("o-1", true);
+      return (
         <DevolucaoDoPedidoAdminCard
-          orderId="o-1"
+          leituraDeDevolucoes={leituraDeDevolucoes}
           onAbrirDevolucoes={onAbrirDevolucoes}
-        />,
+        />
       );
-    });
+    }
+    await act(async () => raiz.render(<CardComLeitura />));
     await drenar();
 
     const card = hospedeiro.querySelector(
