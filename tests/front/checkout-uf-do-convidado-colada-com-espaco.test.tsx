@@ -144,12 +144,14 @@ describe("CheckoutView — UF do convidado colada com espaço", () => {
     },
   );
 
-  it("digitar normalmente continua igual: 'mg' vira 'MG' e o excesso é cortado em 2 letras", async () => {
+  it("normaliza uma sigla ou nome completo sem cortar uma entrada desconhecida", async () => {
     const campo = await abrir();
     await digitar(campo, "mg");
     expect(campo.value).toBe("MG");
     await digitar(campo, "mgx");
-    expect(campo.value).toBe("MG");
+    expect(campo.value).toBe("mgx");
+    await digitar(campo, "Mato Grosso do Sul");
+    expect(campo.value).toBe("MS");
   });
 
   it("o campo não tem `maxLength`: o navegador cortaria o texto colado ANTES da limpeza (o jsdom não reproduz esse corte, por isso a trava é no atributo)", async () => {

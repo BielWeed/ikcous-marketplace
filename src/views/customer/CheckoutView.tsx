@@ -7643,10 +7643,8 @@ export function CheckoutViewDaConta({
                           <input
                             id="guest-state"
                             {...registrarCampoDoEndereco("state")}
-                            // O corte em 2 letras é feito aqui, depois de tirar
-                            // os espaços (e não por `maxLength`): o navegador
-                            // cortaria " SP " colado em " S" e a cliente leria
-                            // "Estado inválido" por uma UF copiada certa.
+                            // Sem maxLength: o navegador precisa entregar a sigla
+                            // com espaços ou o nome completo antes da normalização.
                             onChange={(e) => {
                               e.target.value = normalizarUf(e.target.value);
                               return registrarCampoDoEndereco("state").onChange(

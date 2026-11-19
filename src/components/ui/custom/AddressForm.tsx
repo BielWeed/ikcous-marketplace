@@ -1150,11 +1150,8 @@ export function AddressForm({
                     id="state"
                     {...form.register("state")}
                     onChange={(e) => {
-                      // A classe `uppercase` só muda o desenho; o valor
-                      // digitado ("mg") seguia minúsculo até o envio. O corte em
-                      // 2 letras é feito aqui (e não por `maxLength`): o
-                      // navegador cortaria " SP " colado em " S" antes de
-                      // tirar os espaços.
+                      // Sem maxLength: o navegador precisa entregar a sigla
+                      // com espaços ou o nome completo antes da normalização.
                       e.target.value = normalizarUf(e.target.value);
                       marcarPreenchimentoAMao();
                       return form.register("state").onChange(e);

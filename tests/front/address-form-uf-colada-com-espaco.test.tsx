@@ -129,12 +129,14 @@ describe("AddressForm — UF colada com espaço", () => {
     },
   );
 
-  it("digitar normalmente continua igual: 'mg' vira 'MG' e o excesso é cortado em 2 letras", async () => {
+  it("normaliza uma sigla ou nome completo sem cortar uma entrada desconhecida", async () => {
     await abrirFormulario();
     await act(async () => digitar("state", "mg"));
     expect(campoUf().value).toBe("MG");
     await act(async () => digitar("state", "mgx"));
-    expect(campoUf().value).toBe("MG");
+    expect(campoUf().value).toBe("mgx");
+    await act(async () => digitar("state", "Mato Grosso do Sul"));
+    expect(campoUf().value).toBe("MS");
   });
 
   it("o campo não tem `maxLength`: o navegador cortaria o texto colado ANTES da limpeza (o jsdom não reproduz esse corte, por isso a trava é no atributo)", async () => {
