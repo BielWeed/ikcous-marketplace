@@ -163,7 +163,11 @@ describe("P32: alinhamento e resumo alcançável no computador", () => {
       ],
       [
         caminhos.busca,
-        "da4454082908c50fcec65bec2c10f2f24c6ce59b90af6465a08b5ba1dd81dbd5",
+        // 1.5.218: código com menos de 6 dígitos mostra o aviso junto ao campo
+        // ("text-sm text-destructive", elemento novo) e o campo ganha a borda de
+        // erro só quando inválido ("aria-invalid:border-destructive"). Nenhuma
+        // outra classe de celular mudou (conferido contra a base 8dccb46f7).
+        "e1482db0c15a17189670b6bea1484bbc37ab4763c2b9dc526ee787e15fa315f4",
       ],
     ]) {
       // Extração independente dos atributos agrupados, para preservar condicionais.

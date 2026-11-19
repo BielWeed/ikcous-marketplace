@@ -254,6 +254,9 @@ const CLASSES_CELULAR_DO_BLOCO_BASE = [
   "text-xs text-zinc-400",
   "mt-3",
   "gpu-accelerated mx-auto max-w-3xl space-y-4 p-4 sm:px-5",
+  // 1.5.218 (19/11/2026): elemento NOVO, o aviso "o navegador não guardou o
+  // rascunho" (só aparece se o armazenamento falhar). Nenhum literal antigo mudou.
+  "rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200",
   "m-0 min-w-0 space-y-4 border-0 p-0",
   "flex select-none items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-xs font-bold uppercase tracking-wider text-red-400 duration-300 animate-in fade-in slide-in-from-top-2",
   "size-5 shrink-0 animate-pulse text-red-500",
@@ -555,7 +558,7 @@ const CLASSES_CELULAR_DO_BLOCO_BASE = [
   "produto-prever flex min-h-11 min-w-11 items-center justify-center rounded-full border border-solid border-admin-border-strong bg-admin-surface px-4 text-sm font-bold",
 ];
 const SHA256_CLASSES_CELULAR_BASE =
-  "71dbb98df9142226a03303b99cfc85ce1b5784609793c0c4617cf7f2623006b9";
+  "6bbeee4f060be720a0e2784004cd345295ff840f11c615e3a35895995d86d1a3";
 const TOKENS_LG_DA_BASE = [
   "lg:grid-cols-12",
   "lg:col-span-8",

@@ -42,6 +42,10 @@ vi.mock("@/lib/supabase", () => {
     builder.or = vi.fn(() => builder);
     builder.is = vi.fn(() => builder);
     builder.gte = vi.fn(() => builder);
+    // A contagem de recebimentos relê só os pedidos de total 0 (brindes): sem
+    // nenhum, o total contado vale como veio.
+    builder.order = vi.fn(() => builder);
+    builder.range = vi.fn(() => Promise.resolve({ data: [], error: null }));
     // biome-ignore lint/suspicious/noThenProperty: mock do query builder thenable do Supabase
     builder.then = (resolver: any, rejeitar?: any) =>
       Promise.resolve(

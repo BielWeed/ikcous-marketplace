@@ -50,8 +50,11 @@ describe("Favoritos e pedidos no computador", () => {
     expect(classes(arquivos.pedidos)).toBe(
       "25517ee6c392becb26e96a3c560aca5915539e126275ac1a930ad739be209bb6",
     );
+    // 1.5.218: aviso novo junto ao campo do código ("text-sm text-destructive") e a
+    // borda de erro só quando inválido ("aria-invalid:border-destructive"); nenhuma
+    // outra classe de celular mudou.
     expect(classes(arquivos.busca)).toBe(
-      "da4454082908c50fcec65bec2c10f2f24c6ce59b90af6465a08b5ba1dd81dbd5",
+      "e1482db0c15a17189670b6bea1484bbc37ab4763c2b9dc526ee787e15fa315f4",
     );
   });
 
