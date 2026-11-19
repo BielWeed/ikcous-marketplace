@@ -128,7 +128,7 @@ describe("P32: alinhamento e resumo alcançável no computador", () => {
       [
         caminhos.favoritos,
         "flex flex-col items-center px-6 pb-6 pt-10 text-center",
-        "flex flex-col items-center px-6 pb-6 pt-10 text-center",
+        "flex flex-col items-center px-6 pb-6 pt-10 text-center [html[data-theme-mode=glass]_&]:bg-card",
       ],
       [
         caminhos.favoritos,
