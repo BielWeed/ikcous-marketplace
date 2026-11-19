@@ -729,8 +729,9 @@ async function processarFilaOfflineDePedidos(
             // enquanto o avanço esperava na fila: aplicar agora reativaria
             // um pedido morto, ou reabriria um já concluído. Mesmo balde —
             // e mesmo toast honesto — que `erroDeSincronizacaoEhTerminal`
-            // usa para os descartes que a própria RPC recusa.
+            // usa para os descartes de avanço que a própria RPC recusa.
             descartesTerminais++;
+            if (status === "cancelled") cancelamentosSemEtapa++;
             processados.set(orderId, timestamp);
             continue;
           }

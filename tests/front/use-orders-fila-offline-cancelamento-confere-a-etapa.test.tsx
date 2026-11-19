@@ -77,8 +77,8 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const chave = "orders_offline_updates_queue:lojista-1";
 const toastId = "sincronizacao-fila-offline";
-const MENSAGEM_DE_DESCARTE =
-  "Fila de pedidos atualizada. Algumas alterações não se aplicam mais ao estado atual dos pedidos.";
+const MENSAGEM_DE_RECONFIRMACAO =
+  "Não foi possível conferir a etapa de um cancelamento offline. Abra o pedido e confirme o cancelamento novamente.";
 
 function cancelamento(orderId: string, statusEsperado?: string) {
   return {
@@ -168,7 +168,7 @@ describe("useOrders — cancelamento offline confere a etapa antes de enviar", (
       expect(fromMock).toHaveBeenCalledWith("marketplace_orders");
       expect(localStorage.getItem(chave)).toBeNull();
       expect(toast.error).not.toHaveBeenCalled();
-      expect(toast.info).toHaveBeenCalledWith(MENSAGEM_DE_DESCARTE, {
+      expect(toast.info).toHaveBeenCalledWith(MENSAGEM_DE_RECONFIRMACAO, {
         id: toastId,
       });
 
@@ -302,7 +302,7 @@ describe("useOrders — cancelamento offline confere a etapa antes de enviar", (
       }),
     );
     expect(localStorage.getItem(chave)).toBeNull();
-    expect(toast.info).toHaveBeenCalledWith(MENSAGEM_DE_DESCARTE, {
+    expect(toast.info).toHaveBeenCalledWith(MENSAGEM_DE_RECONFIRMACAO, {
       id: toastId,
     });
   });
