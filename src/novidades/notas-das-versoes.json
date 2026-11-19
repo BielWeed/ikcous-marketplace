@@ -11,8 +11,8 @@
       "A cliente pode mudar só o apelido de um endereço sem desfazer a alteração do imóvel feita em outro aparelho.",
       "O painel não pede para marcar um novo recebimento nem conta no sino pedidos sem valor a pagar.",
       "Se a etiqueta emitida foi cancelada, a ficha mostra “Etiqueta cancelada no Melhor Envio” no lugar do botão de atualizar o rastreio.",
-      "Ao buscar um pedido, a cliente só vê a confirmação de envio do código quando a tela tem essa confirmação. Se digitar menos de seis dígitos, o aviso aparece junto ao campo.",
-      "Ao confirmar a retirada, a tela orienta a aguardar a loja e conferir o endereço antes de sair. Se a retirada escolhida der lugar a uma entrega automática, a calculadora avisa e mostra o preço.",
+      "Ao buscar um pedido, a cliente só vê “Código enviado” quando o envio deu certo. Se digitar menos de seis dígitos, o aviso aparece junto ao campo.",
+      "Ao finalizar um pedido de retirada sem pagamento pelo app, a tela de confirmação orienta a aguardar a loja e conferir o endereço antes de sair. Se a retirada escolhida der lugar a uma entrega automática, a calculadora avisa e mostra o preço.",
       "Se houver rascunho na ficha do pedido, o navegador pode avisar ao sair ou recarregar. No cadastro de produto, o painel avisa se não conseguiu guardar as últimas alterações no rascunho.",
       "O app adia a atualização automática enquanto o painel está aguardando a compra da etiqueta.",
       "Ao compartilhar um produto pelo botão da loja, a cliente envia um link sem os dados de campanha da página que abriu."
