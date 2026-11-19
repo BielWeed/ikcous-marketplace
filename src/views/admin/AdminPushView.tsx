@@ -28,6 +28,7 @@ import {
   nomeDoDestino,
   urlDoDestino,
 } from "@/lib/destino-do-aviso";
+import { idDePedidoDoPainel } from "@/lib/destinoPosLogin";
 import {
   LIMITE_DA_BUSCA_DO_HISTORICO,
   somenteCampanhasReais,
@@ -1000,6 +1001,17 @@ export const AdminPushView = memo(function AdminPushView({
         toast.error(
           "Esse endereço não existe no app: a cliente cairia na página inicial",
         );
+        return;
+      }
+      if (
+        nomeDaTela === "order-details" &&
+        !idDePedidoDoPainel(
+          new URL(notification.url, "https://loja.example").searchParams.get(
+            "id",
+          ),
+        )
+      ) {
+        toast.error("Link de pedido inválido");
         return;
       }
     }
