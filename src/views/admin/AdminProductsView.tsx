@@ -1677,6 +1677,11 @@ export const AdminProductsView = memo(function AdminProductsView({
           }))}
           onLimpar={temBuscaOuFiltro ? limparBuscaEFiltros : undefined}
           onGerenciarCategorias={() => setGerenciandoCategorias(true)}
+          onFecharCategorias={
+            gerenciandoCategorias
+              ? () => setGerenciandoCategorias(false)
+              : undefined
+          }
         />
         {gerenciandoCategorias && (
           <Suspense fallback={null}>

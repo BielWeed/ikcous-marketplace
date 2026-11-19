@@ -37,6 +37,11 @@ const hashVivo = `SELECT md5(replace(prosrc, chr(13), '')) AS h FROM pg_proc WHE
 
 /** Desfaz a 20261399992000 na transação aberta, se ALGUMA das três funções está no corpo dela; repetir é no-op. Devolve true se desfez. */
 async function desfazerOItemQueNaoVeioNaTransacao(c) {
+  // A 20261405400000 (a devolucao integral com cupom nao perde o centavo) sucede o corpo de solicitar_devolucao desta migration: sai ANTES, senao o rollback
+  // desta recusa (B1_BASELINE_DIVERGENT, o corpo vivo nao e o da 3992). So se no ar; repetir e' no-op.
+  await require("./a-devolucao-integral-nao-perde-o-centavo-do-cupom-posterior.cjs").desfazerADevolucaoIntegralNaTransacao(
+    c,
+  );
   let noAr = false;
   for (const [assinatura, [, hashDesta]] of Object.entries(CORPOS))
     if ((await c.query(hashVivo, [assinatura])).rows[0]?.h === hashDesta)

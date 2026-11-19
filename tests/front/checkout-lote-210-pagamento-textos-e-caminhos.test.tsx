@@ -19,6 +19,8 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { CartItem } from "@/types";
+
 const createOrder = vi.fn();
 const updateOrderStatus = vi.fn().mockResolvedValue(undefined);
 const criarPagamento = vi.fn();
@@ -100,7 +102,7 @@ const RETIRADA = {
   pickupAddress: "Rua Fictícia, 42 — Centro",
 };
 
-const novoItem = () => ({
+const novoItem = (): CartItem => ({
   product: {
     id: "prod-1",
     name: "Produto Teste",
@@ -347,7 +349,22 @@ describe("CheckoutView — lote 210: textos e caminhos do pagamento", () => {
       expect(botaoPorTexto(hospedeiro, "Voltar ao carrinho")).toBeUndefined();
     });
 
-    it("payment_status 'expirado' num pedido criado nesta tela: tira o 'reservado', mostra 'Voltar ao carrinho' e o botão devolve os itens", async () => {
+    it("payment_status 'expirado' num pedido criado nesta tela: tira o 'reservado', mostra 'Voltar ao carrinho' e o botão devolve os itens com a variante escolhida", async () => {
+      const item = novoItem();
+      item.product.variants = [
+        {
+          id: "var-tamanho-m",
+          productId: item.product.id,
+          name: "Tamanho",
+          value: "M",
+          stockIncrement: 0,
+          stock: 10,
+          active: true,
+        },
+      ];
+      mockCart = [
+        { ...item, variantId: "var-tamanho-m", variantNames: "Tamanho: M" },
+      ];
       const { CheckoutView } = await import("@/views/customer/CheckoutView");
       await fecharPedidoCom(CheckoutView, "Pagar agora com PIX");
       expect(texto()).toContain("Seu pedido está reservado");
@@ -368,10 +385,12 @@ describe("CheckoutView — lote 210: textos e caminhos do pagamento", () => {
       expect(addToCart).toHaveBeenCalledTimes(1);
       expect(addToCart.mock.calls[0][0].id).toBe("prod-1");
       expect(addToCart.mock.calls[0][1]).toBe(1);
+      expect(addToCart.mock.calls[0][2]).toBe("var-tamanho-m");
+      expect(addToCart.mock.calls[0][3]).toBe("Tamanho: M");
       expect(onNavigate).toHaveBeenCalledWith("cart");
     });
 
-    it("'aguardando' + 'cancelled' (cancelado): mesma saída, mesmo topo limpo", async () => {
+    it("'aguardando' + 'cancelled' (cancelado): limpa o topo e devolve os itens ao voltar ao carrinho", async () => {
       const { CheckoutView } = await import("@/views/customer/CheckoutView");
       await fecharPedidoCom(CheckoutView, "Pagar agora com PIX");
 
@@ -379,7 +398,16 @@ describe("CheckoutView — lote 210: textos e caminhos do pagamento", () => {
 
       expect(texto()).not.toContain("Seu pedido está reservado");
       expect(texto()).not.toContain("Finalize o pagamento");
-      expect(botaoPorTexto(hospedeiro, "Voltar ao carrinho")).toBeDefined();
+
+      const voltar = botaoPorTexto(hospedeiro, "Voltar ao carrinho");
+      expect(voltar).toBeDefined();
+      await act(async () => {
+        voltar!.click();
+      });
+      expect(addToCart).toHaveBeenCalledTimes(1);
+      expect(addToCart.mock.calls[0][0].id).toBe("prod-1");
+      expect(addToCart.mock.calls[0][1]).toBe(1);
+      expect(onNavigate).toHaveBeenCalledWith("cart");
     });
 
     // O AVISO AO VIVO (Realtime) de 'expirado': a consulta periódica pode estar

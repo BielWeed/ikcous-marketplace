@@ -115,6 +115,7 @@ export function AccountSettingsView() {
   }, [user?.id]);
   const [loading, setLoading] = useState(false);
   const salvandoRef = useRef(false);
+  const contaComCpfNoEnvioRef = useRef<string | null>(null);
   const rodadaSalvarRef = useRef(0);
   const releituraPendenteRef = useRef<{
     contaId: string;
@@ -792,6 +793,10 @@ export function AccountSettingsView() {
     // A leitura que já estava no ar também perde a vez para o novo salvamento.
     ++cargaRef.current;
     salvandoRef.current = true;
+    // O clique já fixa o CPF que a segunda chamada vai gravar. Protege a
+    // volta ao original desde aqui, mas só se este envio inclui CPF.
+    contaComCpfNoEnvioRef.current = cpfMudou ? contaDonaId : null;
+    let cpfPodeTerSidoGravado = false;
     setLoading(true);
     setSalvamentoIncerto(false);
     const desmarcar = marcarOperacaoSensivel("salvar-conta");
@@ -855,6 +860,9 @@ export function AccountSettingsView() {
             relerDepoisDoPrazo(contaDonaId);
           },
         );
+        contaComCpfNoEnvioRef.current = null;
+        cpfPodeTerSidoGravado =
+          resultadoCpf.ok || resultadoCpf.motivo === "prazo_esgotado";
         // CPF gravado (ou limpo) AQUI vale mais que o do cadastro: o
         // pendente não pode voltar depois e sobrescrever. Vale mesmo que a
         // sessão tenha virado outra conta — o servidor gravou na conta dona.
@@ -900,6 +908,17 @@ export function AccountSettingsView() {
     } finally {
       desmarcar();
       salvandoRef.current = false;
+      contaComCpfNoEnvioRef.current = null;
+      // Se o CPF não chegou a ser enviado ou foi recusado, voltar ao valor
+      // original cancela a edição. Um CPF diferente segue como rascunho.
+      if (
+        cpfMudou &&
+        !cpfPodeTerSidoGravado &&
+        rascunhoCpfRef.current?.contaId === contaDonaId &&
+        rascunhoCpfRef.current.digitos === cpfOriginal
+      ) {
+        rascunhoCpfRef.current = null;
+      }
       const releitura = releituraPendenteRef.current;
       releituraPendenteRef.current = null;
       if (contaAindaEhDona()) {
@@ -1302,7 +1321,9 @@ export function AccountSettingsView() {
                           e.target.value,
                         );
                         rascunhoCpfRef.current =
-                          userId && limpo !== cpfOriginal
+                          userId &&
+                          (limpo !== cpfOriginal ||
+                            contaComCpfNoEnvioRef.current === userId)
                             ? { contaId: userId, digitos: limpo }
                             : null;
                         setCpf(formatado);

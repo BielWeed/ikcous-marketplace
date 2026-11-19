@@ -295,7 +295,10 @@ const ESPERA_MAX_REENVIO_MS = 30_000;
 // Voltar do segundo plano relê o catálogo no máximo a cada 15 s.
 const INTERVALO_MIN_RENOVAR_VISIVEL_MS = 15_000;
 const CART_STORAGE_KEY = "marketplace_cart_v1";
-const CART_TOMBSTONES_KEY = "marketplace_cart_tombstones_v1";
+// A chave antiga não distinguia visitante de conta. Nenhuma marca dela
+// pode apagar uma linha da conta, inclusive depois de atualizar o app.
+const CART_GUEST_TOMBSTONES_KEY = "marketplace_cart_tombstones_v1";
+const CART_ACCOUNT_TOMBSTONES_KEY = "marketplace_cart_account_tombstones_v1";
 // As linhas que o banco já confirmou ter (ver `guardarConfirmado`).
 const CART_CONFIRMADO_KEY = "marketplace_cart_confirmado_v1";
 // Quanto tempo o aviso da lixeira oferece "Desfazer" (o padrão do aviso, ~4 s,
@@ -308,14 +311,40 @@ interface CartTombstone {
   deletedAt: number; // epoch ms
 }
 
-function loadTombstones(): Map<string, CartTombstone> {
+function chaveDasLapides(uid: string | null): string {
+  return uid ? CART_ACCOUNT_TOMBSTONES_KEY : CART_GUEST_TOMBSTONES_KEY;
+}
+
+function loadTombstones(uid: string | null): Map<string, CartTombstone> {
+  const chave = chaveDasLapides(uid);
   try {
-    const raw = localStorage.getItem(CART_TOMBSTONES_KEY);
+    const raw = localStorage.getItem(chave);
     if (raw) {
-      const parsed: CartTombstone[] = JSON.parse(raw);
+      const parsed:
+        | CartTombstone[]
+        | { uid: string; marcas: CartTombstone[] }
+        | null = JSON.parse(raw);
+      // Uma aba antiga pode ter trocado de conta sem limpar esta chave.
+      // A marca só vale se trouxer o dono desta leitura.
+      let marcas: CartTombstone[];
+      if (uid) {
+        if (
+          Array.isArray(parsed) ||
+          parsed?.uid !== uid ||
+          !Array.isArray(parsed.marcas)
+        ) {
+          localStorage.removeItem(chave);
+          return new Map();
+        }
+        marcas = parsed.marcas;
+      } else {
+        if (!Array.isArray(parsed)) return new Map();
+        marcas = parsed;
+      }
+
       const map = new Map<string, CartTombstone>();
       const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000; // 7-day TTL
-      parsed.forEach((t) => {
+      marcas.forEach((t) => {
         if (t.deletedAt > cutoff) map.set(t.key, t);
       });
       return map;
@@ -326,11 +355,12 @@ function loadTombstones(): Map<string, CartTombstone> {
   return new Map();
 }
 
-function saveTombstones(map: Map<string, CartTombstone>) {
+function saveTombstones(uid: string | null, map: Map<string, CartTombstone>) {
   try {
+    const marcas = Array.from(map.values());
     localStorage.setItem(
-      CART_TOMBSTONES_KEY,
-      JSON.stringify(Array.from(map.values())),
+      chaveDasLapides(uid),
+      JSON.stringify(uid ? { uid, marcas } : marcas),
     );
   } catch (e) {
     console.error("[CartContext] Failed to save tombstones:", e);
@@ -340,9 +370,9 @@ function saveTombstones(map: Map<string, CartTombstone>) {
 // Pôr a linha de novo (de verdade) vale mais que a lápide dela: a lápide é
 // comparada por relógio, e hora de aparelho que voltou atrás a faria esconder
 // o que a cliente acabou de pôr.
-function esquecerLapide(key: string) {
-  const lapides = loadTombstones();
-  if (lapides.delete(key)) saveTombstones(lapides);
+function esquecerLapide(uid: string | null, key: string) {
+  const lapides = loadTombstones(uid);
+  if (lapides.delete(key)) saveTombstones(uid, lapides);
 }
 
 /** A sessão de agora é mesmo desta conta? Qualquer falha diz "não". */
@@ -1070,7 +1100,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           }
 
           setCart((prev) => {
-            const tombstones = loadTombstones();
+            const tombstones = loadTombstones(uidDaLeitura);
             // Nada pendente aqui: o carrinho de agora é o último que o banco
             // confirmou ter igual ao daqui (na memória, ou nas linhas que o
             // aparelho guardou como confirmadas).
@@ -1246,7 +1276,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         );
         setCart([]);
         removerSeguro(CART_STORAGE_KEY);
-        removerSeguro(CART_TOMBSTONES_KEY);
+        removerSeguro(CART_ACCOUNT_TOMBSTONES_KEY);
+        removerSeguro(CART_GUEST_TOMBSTONES_KEY);
         removerSeguro(CART_CONFIRMADO_KEY);
       }
       // Troca de conta/saída não herda nada da sessão anterior: itens,
@@ -1627,7 +1658,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       if (previsto.aviso) toast.error(previsto.aviso);
       cartRef.current = previsto.cart;
       if (previsto.entrou > 0) {
-        esquecerLapide(chaveDoItem({ product, variantId, outrasVariantIds }));
+        esquecerLapide(
+          userIdAtualRef.current,
+          chaveDoItem({ product, variantId, outrasVariantIds }),
+        );
       }
       setCart(
         (prev) =>
@@ -1697,10 +1731,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         toast.info(`Devolvemos ${quantity} (limite do estoque).`);
       }
       // Só a lápide que ESTA tirada gravou; a de outra tirada, não.
-      const tombstones = loadTombstones();
+      const tombstones = loadTombstones(removida.uid);
       if (tombstones.get(removida.key)?.deletedAt === removida.deletedAt) {
         tombstones.delete(removida.key);
-        saveTombstones(tombstones);
+        saveTombstones(removida.uid, tombstones);
       }
       setCart((prev) => {
         if (prev.some((linha) => chaveDoItem(linha) === removida.key)) {
@@ -1734,9 +1768,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         ? cartRef.current.findIndex((item) => chaveDoItem(item) === key)
         : -1;
       const item = indice >= 0 ? cartRef.current.at(indice) : undefined;
-      const tombstones = loadTombstones();
+      const uid = userIdAtualRef.current;
+      const tombstones = loadTombstones(uid);
       tombstones.set(key, { key, deletedAt });
-      saveTombstones(tombstones);
+      saveTombstones(uid, tombstones);
       setCart((prev) => prev.filter((linha) => chaveDoItem(linha) !== key));
       if (opcoes?.silencioso) {
         // Tirada por conclusão de compra: um "Desfazer" ainda na tela não
@@ -1750,7 +1785,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           indice,
           key,
           deletedAt,
-          uid: userIdAtualRef.current,
+          uid,
           geracao: geracaoDoCarrinhoRef.current,
         };
         toast.info("Produto removido do carrinho", {
@@ -1775,6 +1810,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      const uid = userIdAtualRef.current;
       setCart((prev) =>
         prev.flatMap((item) => {
           if (item.product.id === productId && chaveDaLinha(item) === chave) {
@@ -1794,10 +1830,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             // ressuscitar de outra aba.
             if (availableStock <= 0) {
               toast.error("Este produto está esgotado e saiu do seu carrinho.");
-              const tombstones = loadTombstones();
+              const tombstones = loadTombstones(uid);
               const key = chaveDoItem(item);
               tombstones.set(key, { key, deletedAt: Date.now() });
-              saveTombstones(tombstones);
+              saveTombstones(uid, tombstones);
               return [];
             }
 
@@ -1815,7 +1851,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
               );
             }
 
-            esquecerLapide(chaveDoItem(item));
+            esquecerLapide(uid, chaveDoItem(item));
             return [
               {
                 ...item,
@@ -1835,14 +1871,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     (opcoes?: { silencioso?: boolean }) => {
       geracaoDoCarrinhoRef.current += 1;
       // Tombstone all current items before clearing
+      const uid = userIdAtualRef.current;
       setCart((prev) => {
-        const tombstones = loadTombstones();
+        const tombstones = loadTombstones(uid);
         const now = Date.now();
         prev.forEach((item) => {
           const key = chaveDoItem(item);
           tombstones.set(key, { key, deletedAt: now });
         });
-        saveTombstones(tombstones);
+        saveTombstones(uid, tombstones);
         return [];
       });
       setSelectedShippingOption(null);

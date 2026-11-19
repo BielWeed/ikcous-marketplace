@@ -66,12 +66,12 @@ function useFotoQueTentaDeNovo(foto: string) {
 
   // Toque da cliente no aviso: pede de novo na hora e devolve o fôlego das
   // tentativas automáticas.
-  const tentarDeNovo = () => {
+  const tentarDeNovo = useCallback(() => {
     limparTimer();
     automaticasRef.current = 0;
     setDesistiu(false);
     setCiclo((c) => c + 1);
-  };
+  }, [limparTimer]);
 
   return { ciclo, desistiu, aoFalhar, tentarDeNovo };
 }
@@ -82,10 +82,17 @@ interface FotoDaFaixaProps {
   posicao: number;
   /** Só a primeira foto, quando a transição de vista está ligada. */
   comTransicao: boolean;
+  aoTentarDeNovo?: () => void;
 }
 
 /** A foto grande de uma posição da faixa, com nova tentativa e aviso. */
-function FotoDaFaixa({ foto, nome, posicao, comTransicao }: FotoDaFaixaProps) {
+function FotoDaFaixa({
+  foto,
+  nome,
+  posicao,
+  comTransicao,
+  aoTentarDeNovo,
+}: FotoDaFaixaProps) {
   const { ciclo, desistiu, aoFalhar, tentarDeNovo } =
     useFotoQueTentaDeNovo(foto);
   if (!foto || ehMarcadorDeFoto(foto)) {
@@ -143,6 +150,7 @@ function FotoDaFaixa({ foto, nome, posicao, comTransicao }: FotoDaFaixaProps) {
             e.preventDefault();
             e.stopPropagation();
             tentarDeNovo();
+            aoTentarDeNovo?.();
           }}
           className="absolute inset-0 z-10 flex items-center justify-center bg-zinc-50"
         >
@@ -156,11 +164,25 @@ function FotoDaFaixa({ foto, nome, posicao, comTransicao }: FotoDaFaixaProps) {
 }
 
 /** A miniatura do computador: tenta de novo sozinha (o aviso fica na foto grande). */
-function Miniatura({ foto }: { foto: string }) {
-  const { ciclo, desistiu, aoFalhar } = useFotoQueTentaDeNovo(foto);
+function Miniatura({
+  foto,
+  posicao,
+  registrarRetentativa,
+}: {
+  foto: string;
+  posicao: number;
+  registrarRetentativa: (posicao: number, retentar: () => void) => () => void;
+}) {
+  const { ciclo, desistiu, aoFalhar, tentarDeNovo } =
+    useFotoQueTentaDeNovo(foto);
   if (!foto || ehMarcadorDeFoto(foto) || desistiu) {
     return (
       <span
+        ref={(elemento) => {
+          if (elemento && desistiu) {
+            return registrarRetentativa(posicao, tentarDeNovo);
+          }
+        }}
         aria-hidden="true"
         className="flex size-full items-center justify-center bg-zinc-100 text-[10px] text-zinc-600"
       >
@@ -218,6 +240,19 @@ export function GaleriaDoProduto({
   acoes,
 }: GaleriaDoProdutoProps) {
   const computador = useTelaDeComputador();
+  // Só miniaturas que desistiram oferecem uma retentativa. A retirada do
+  // aviso também remove a ação, inclusive quando a miniatura é desmontada.
+  const retentativasDasMiniaturas = useRef(new Map<number, () => void>());
+  const registrarRetentativaDaMiniatura = (
+    posicao: number,
+    retentar: () => void,
+  ) => {
+    const retentativas = retentativasDasMiniaturas.current;
+    retentativas.set(posicao, retentar);
+    return () => {
+      retentativas.delete(posicao);
+    };
+  };
   const faixaRef = useRef<HTMLDivElement>(null);
   // Foto que uma rolagem INICIADA POR NÓS (seta, bolinha, miniatura, escolha
   // de variação) ainda está alcançando. Enquanto existe, os eventos de
@@ -358,6 +393,9 @@ export function GaleriaDoProduto({
                 foto={foto}
                 nome={nome}
                 posicao={posicao}
+                aoTentarDeNovo={() => {
+                  retentativasDasMiniaturas.current.get(posicao)?.();
+                }}
                 comTransicao={
                   isViewTransitionSupported && posicao === 0 && indice === 0
                 }
@@ -471,7 +509,11 @@ export function GaleriaDoProduto({
                   : "lg:border-zinc-200 lg:hover:border-zinc-400",
               )}
             >
-              <Miniatura foto={foto} />
+              <Miniatura
+                foto={foto}
+                posicao={posicao}
+                registrarRetentativa={registrarRetentativaDaMiniatura}
+              />
             </button>
           ))}
         </div>

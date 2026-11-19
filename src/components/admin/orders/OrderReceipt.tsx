@@ -82,7 +82,10 @@ export const OrderReceipt = memo(function OrderReceipt({
                 : "Pagamento pendente";
   // Venda de balcão: não tem frete, e o papel diz como a cliente pagou.
   const presencial = order.canal === "presencial";
-  const observacao = observacaoDaClienteNoRecibo(order.notes);
+  const observacao = observacaoDaClienteNoRecibo(
+    order.notes,
+    order.retiradaNaLoja ? (order.enderecoDeRetirada ?? "") : undefined,
+  );
   // O banco grava este texto em `customer_name` quando a venda de balcão nasce
   // sem cliente (e quando a cliente cadastrada não tem nome no perfil). Ele não
   // é nome de gente: sem conta vinculada o papel não leva o bloco CLIENTE; com

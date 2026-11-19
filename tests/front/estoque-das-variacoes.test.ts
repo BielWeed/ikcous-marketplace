@@ -164,6 +164,13 @@ describe("estoqueDoProdutoFoiMexido", () => {
     ).toBe(true);
   });
 
+  it("só reordenar as variações ligadas não é mexer no estoque", () => {
+    const inicial = { stock: "5", variants: [v("a", 3), v("b", 2)] };
+    const reordenado = { stock: "5", variants: [v("b", 2), v("a", 3)] };
+
+    expect(estoqueDoProdutoFoiMexido(reordenado, inicial)).toBe(false);
+  });
+
   it("desligar, religar ou apagar uma variação ligada é mexer; acrescentar uma DESLIGADA não", () => {
     const inicial = { stock: "5", variants: [v("a", 3), v("b", 2)] };
     expect(

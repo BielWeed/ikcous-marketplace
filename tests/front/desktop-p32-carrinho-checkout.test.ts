@@ -154,8 +154,8 @@ describe("P32: alinhamento e resumo alcançável no computador", () => {
       ],
       [
         caminhos.checkout,
-        // Duas linhas novas, também no celular: busca do CEP e endereço da retirada.
-        "229d21b9b76db7619a536952a24828ec501495c44cf0645286c03f9b40b6f4b9",
+        // 1.5.214: troco e seus avisos, pedido cancelado e resumo do parcelamento.
+        "8152afb12251e6827fa3294f6b0455fe4651189ae07ce964c6528c0d7307e625",
       ],
       [
         caminhos.favoritos,

@@ -42,7 +42,7 @@ const PEDIDO_PENDENTE: PedidoSimulado = {
 
 /** O select EXATO da leitura da retomada, na ordem que a tela pede. */
 const SELECT_DA_RETOMADA =
-  "total,metodo_online,gateway_payment_id,payment_status,status,user_id";
+  "total,metodo_online,gateway_payment_id,payment_status,status,user_id,parcelas";
 
 test('retomar pagamento com a leitura do pedido falhando: avisa sem cobrar, e "Tentar de novo" relê e abre o PIX', async ({
   page,

@@ -22,6 +22,7 @@ import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useMototaxi } from "@/hooks/useMototaxi";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import {
   transportadoraFicaSemPagamento,
   transportadoraVendeForaDaCidade,
@@ -51,6 +52,7 @@ import {
   ehConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import {
+  FRETE_GRATIS_SEMPRE,
   type PresetFreteGratis,
   presetDoConfig,
   valorDeFreteEmCentavos,
@@ -384,6 +386,7 @@ export const AdminShippingView = memo(function AdminShippingView({
   }, [mototaxiPendente]);
 
   const [showHelpModal, setShowHelpModal] = useState(false);
+  useVoltarFechaAFolha(showHelpModal, () => setShowHelpModal(false), true);
   const [isSaving, setIsSaving] = useState(false);
   const sincronizacaoSuspensaRef = useRef(false);
   const [falhaAoSalvar, setFalhaAoSalvar] = useState(false);
@@ -736,9 +739,14 @@ export const AdminShippingView = memo(function AdminShippingView({
     regrasMudaram || !!acaoTransportadoras?.mudou || mototaxiPendente;
   const soMototaxiPendente =
     mototaxiPendente && !regrasMudaram && !acaoTransportadoras?.mudou;
-  const erroLocal =
+  // Valida o mesmo valor em centavos que será gravado.
+  const acimaDeAjustado = valorDeFreteEmCentavos(formData.acimaDe);
+  const minimoLocalReservado =
     formData.preset === "acima_de_valor" &&
-    valorDeFreteEmCentavos(formData.acimaDe) <= 0
+    acimaDeAjustado === FRETE_GRATIS_SEMPRE;
+  const erroLocal = minimoLocalReservado
+    ? "R$ 0,01 é reservado para 'Sempre grátis'. Use outro valor ou escolha 'Sempre grátis'."
+    : formData.preset === "acima_de_valor" && acimaDeAjustado <= 0
       ? "Escreva o valor. Para não dar frete grátis, escolha a primeira opção."
       : null;
 
@@ -910,9 +918,6 @@ export const AdminShippingView = memo(function AdminShippingView({
         formData.localCepRange,
       ) ?? formData.localCepRange;
 
-    // Centavos inteiros e dentro da coluna: o enviado tem de ser igual ao
-    // gravado, senão a tela nunca confirma o que salvou.
-    const acimaDeAjustado = valorDeFreteEmCentavos(formData.acimaDe);
     const ehDesconto =
       formDataNacional.estrategia === "desconto_na_mais_barata";
     const nacionalAjustado = {
@@ -1321,7 +1326,9 @@ export const AdminShippingView = memo(function AdminShippingView({
           </div>
           {(erroLocal || erroNacional) && (
             <p className="mt-2 text-xs text-red-300 lg:col-span-2">
-              Corrija o valor em Frete grátis para salvar.
+              {minimoLocalReservado
+                ? erroLocal
+                : "Corrija o valor em Frete grátis para salvar."}
             </p>
           )}
         </header>

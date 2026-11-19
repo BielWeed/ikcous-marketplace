@@ -309,7 +309,12 @@ describe("CheckoutView — a chave de idempotência acompanha o EIXO do meio de 
   function chaveDaUltimaChamada(): string {
     const chamada = createOrder.mock.calls.at(-1);
     expect(chamada).toBeDefined();
-    return chamada![0].idempotencyKey;
+    const chave = chamada![0].idempotencyKey;
+    expect(typeof chave, "cada envio deve incluir a chave").toBe("string");
+    expect(chave).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+    return chave;
   }
 
   it("trocar de 'Pagar agora com PIX' (online) para 'Dinheiro na Entrega' (entrega), mesmo carrinho, gira chave DIFERENTE", async () => {

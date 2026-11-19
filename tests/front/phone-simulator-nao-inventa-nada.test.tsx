@@ -85,6 +85,17 @@ describe("PhoneSimulator — a prévia não inventa nada", () => {
     });
   }
 
+  it("foto na prévia de produto sem nome tem descrição em português", async () => {
+    await montar("page", {
+      ...base,
+      name: "",
+      images: ["https://example.com/produto.png"],
+    });
+    expect(document.body.querySelector("img")?.alt).toBe(
+      "Prévia da foto do produto",
+    );
+  });
+
   it("descrição da prévia usa a mesma formatação da loja", async () => {
     await montar("page", {
       ...base,

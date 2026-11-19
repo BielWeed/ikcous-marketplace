@@ -138,6 +138,43 @@ describe("ReciboDaVenda — o valor que a lojista lê é o TOTAL cobrado", () =>
     },
   );
 
+  it("celular incompleto deixa o envio indisponível e não abre o WhatsApp", async () => {
+    await renderizar({
+      ...reciboComDesconto(100, 10, 90),
+      cliente: {
+        tipo: "avulso",
+        nome: "Cliente de Teste",
+        whatsapp: "(34) 99876-543",
+      },
+    });
+
+    const enviar = botao(hospedeiro, "Enviar por WhatsApp");
+    expect(enviar).toBeDefined();
+    await act(async () => enviar?.click());
+    expect(abrirWhatsappMock).not.toHaveBeenCalled();
+    expect(enviar?.disabled).toBe(true);
+    expect(hospedeiro.textContent).toContain("incompleto");
+  });
+
+  it.each([
+    ["(34) 99876-5432", "5534998765432"],
+    ["(34) 3333-4444", "553433334444"],
+  ])(
+    "número completo %s continua abrindo o WhatsApp",
+    async (whatsapp, destino) => {
+      await renderizar({
+        ...reciboComDesconto(100, 10, 90),
+        cliente: { tipo: "avulso", nome: "Cliente de Teste", whatsapp },
+      });
+
+      const enviar = botao(hospedeiro, "Enviar por WhatsApp");
+      expect(enviar?.disabled).toBe(false);
+      await act(async () => enviar?.click());
+      const url = abrirWhatsappMock.mock.lastCall?.[0];
+      expect(url?.split("?")[0]).toBe(`https://wa.me/${destino}`);
+    },
+  );
+
   it.each(CASOS)(
     "a mensagem de WhatsApp (subtotal %s, desconto %s) leva o total cobrado com os centavos certos",
     async (subtotal, desconto, total, esperado) => {

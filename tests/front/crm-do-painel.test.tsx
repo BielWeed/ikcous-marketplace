@@ -299,11 +299,21 @@ describe("Dashboard CRM", () => {
       )!.set!.call(busca, "Ana");
       busca.dispatchEvent(new Event("input", { bubbles: true }));
     });
+    // Durante a consulta, a paginação não pode usar o total anterior.
+    const contador = () =>
+      texto(
+        hospedeiro.querySelector(
+          '[data-testid="paginacao-admin"]:not([aria-busy="true"])',
+        ),
+      );
+    const exibePaginaDois = () => contador().includes("Exibindo 21 - 40 de 45");
     await esperarAte(
-      () => chamadasDe("crm_clientes").at(-1)?.p_busca === "Ana",
+      () =>
+        chamadasDe("crm_clientes").at(-1)?.p_busca === "Ana" && !!contador(),
     );
     await act(async () => botao(hospedeiro, "Próximo").click());
-    await esperarAte(() => chamadasDe("crm_clientes").at(-1)?.p_offset === 20);
+    await esperarAte(exibePaginaDois);
+    expect(chamadasDe("crm_clientes").at(-1)?.p_offset).toBe(20);
     await act(async () => botao(hospedeiro, "Ver cliente").click());
     await esperarAte(() => texto(hospedeiro).includes("Voltar da ficha"));
     await act(async () => botao(hospedeiro, "Voltar da ficha").click());
@@ -322,9 +332,7 @@ describe("Dashboard CRM", () => {
       p_segmento: "em_risco",
       p_offset: 20,
     });
-    expect(
-      texto(hospedeiro.querySelector('[data-testid="paginacao-admin"]')),
-    ).toContain("Exibindo 21 - 40 de 45");
+    await esperarAte(exibePaginaDois);
     expect(
       [...hospedeiro.querySelectorAll("button")]
         .find(
@@ -343,9 +351,7 @@ describe("Dashboard CRM", () => {
         .querySelector('[aria-label="Clientes"]')
         ?.getAttribute("aria-selected"),
     ).toBe("true");
-    expect(
-      texto(hospedeiro.querySelector('[data-testid="paginacao-admin"]')),
-    ).toContain("Exibindo 21 - 40 de 45");
+    await esperarAte(exibePaginaDois);
     await act(async () => botao(hospedeiro, "Visão").click());
     expect(botao(hospedeiro, "7 dias").getAttribute("aria-pressed")).toBe(
       "true",

@@ -111,6 +111,7 @@ let hospedeiro: HTMLDivElement;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  invoke.mockReset();
   respostas.clear();
   respostas.set("admin_devolucoes_listar", {
     total: 1,
@@ -247,6 +248,75 @@ describe("concluir devolução — o aviso do reembolso reflete o status da edge
       expect(texto).not.toMatch(/Abra o pedido/);
     },
   );
+
+  it("relê a ficha após a resposta: o reembolso em andamento passa a oferecer nova tentativa", async () => {
+    const detalheConcluido = {
+      ...DETALHE,
+      status: "concluida",
+      resolucao_final: "reembolso",
+      valor_reembolso: 219.8,
+      refund_id: "ref-1",
+    };
+    const saldo = {
+      total: 219.8,
+      valor_estornado: 0,
+      em_voo: 219.8,
+      em_duvida: 0,
+      manual: 0,
+      disponivel: 0,
+      reservado_por_fora: 0,
+    };
+    const linha = {
+      id: "ref-1",
+      amount: 219.8,
+      status: "em_processamento",
+      pode_ter_saido: false,
+      por_fora_liberado_em: null,
+      por_fora_apos_espera_liberado: false,
+      substituida_por_manual: false,
+      eh_pix: true,
+    };
+    rpc.mockImplementation((nome: string) => {
+      const data = respostas.get(nome) ?? null;
+      if (nome === "admin_devolucao_concluir") {
+        respostas.set("devolucao_detalhe", detalheConcluido);
+        respostas.set("pedido_reembolsos_e_saldo", {
+          ...saldo,
+          linhas: [linha],
+        });
+      }
+      return Promise.resolve({ data, error: null });
+    });
+
+    let responder!: () => void;
+    invoke.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          responder = () =>
+            resolve({ data: { status: "falhou" }, error: null });
+        }),
+    );
+    await concluirComReembolso();
+
+    const reembolso = () =>
+      hospedeiro.querySelector('[data-testid="reembolso-da-devolucao"]');
+    expect(reembolso()?.textContent).toContain("em andamento no Mercado Pago");
+    expect(botao("Tentar de novo")).toBeUndefined();
+
+    respostas.set("pedido_reembolsos_e_saldo", {
+      ...saldo,
+      em_voo: 0,
+      disponivel: 219.8,
+      linhas: [{ ...linha, status: "falhou" }],
+    });
+    await act(async () => responder());
+    await drenar();
+
+    expect(reembolso()?.textContent).toContain(
+      "não foi concluído pelo Mercado Pago",
+    );
+    expect(botao("Tentar de novo")?.disabled).toBe(false);
+  });
 
   it("em andamento e sem status legível também apontam para esta devolução, não para o pedido", async () => {
     invoke.mockResolvedValue({

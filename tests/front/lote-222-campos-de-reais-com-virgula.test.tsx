@@ -64,6 +64,54 @@ describe("lote 222 — campos de reais aceitam vírgula", () => {
     expect(modo("frete-nacional-minimo")).toBe("decimal");
   });
 
+  it.each([
+    [1234.5, "1.234,50"],
+    [0.5, "0,50"],
+    [10, "10"],
+    [1000000, "1000000"],
+    [0, ""],
+  ])("nacional: preserva %s ao reabrir e redigitar", (valor, texto) => {
+    const onMinimo = vi.fn();
+    const onValorDesconto = vi.fn();
+    act(() =>
+      raiz.render(
+        nacional({
+          estrategia: "desconto_na_mais_barata",
+          minimo: valor,
+          tipoDesconto: "fixo",
+          valorDesconto: valor,
+          onMinimo,
+          onValorDesconto,
+        }),
+      ),
+    );
+    const minimo = host.querySelector<HTMLInputElement>(
+      "#frete-nacional-minimo",
+    );
+    const desconto = host.querySelector<HTMLInputElement>(
+      "#frete-nacional-valor-desconto",
+    );
+    expect(minimo?.value).toBe(texto);
+    expect(desconto?.value).toBe(texto);
+
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    for (const campo of [minimo, desconto]) {
+      act(() => {
+        setter?.call(campo, "7");
+        campo?.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      act(() => {
+        setter?.call(campo, texto);
+        campo?.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    }
+    expect(onMinimo).toHaveBeenLastCalledWith(valor);
+    expect(onValorDesconto).toHaveBeenLastCalledWith(valor);
+  });
+
   it("nacional: desconto fixo em R$ decimal; percentual segue numérico", () => {
     act(() =>
       raiz.render(

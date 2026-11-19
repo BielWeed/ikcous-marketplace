@@ -108,7 +108,7 @@ Deno.test("handler: o assunto e o corpo levam o nome da loja lido de store_confi
   assertStringIncludes(enviados[0].html, "Loja da Ana");
 });
 
-Deno.test("mascarar: o log nunca carrega o endereco inteiro de quem compra", () => {
+Deno.test("mascarar: oculta o nome de usuario do endereco", () => {
   assertEquals(mascarar("cliente@teste.com"), "c*****e@teste.com".replace("*****", "***"));
   assertEquals(mascarar("ab@teste.com"), "***@teste.com");
   assertEquals(mascarar("sem-arroba"), "***");
@@ -231,7 +231,11 @@ Deno.test("handler: loja so' com o AMBIENTE (IKCOUS) — resolvedor REAL — env
     const chamadas: string[] = [];
     const enviados: any[] = [];
     const r = await handler(pedidoDeCodigo(), {
-      supabase: supabaseDoCodigo(CODIGO_GERADO, chamadas),
+      // O formulário e o banco divergem: só o banco confirma o destino.
+      supabase: supabaseDoCodigo(
+        { ...CODIGO_GERADO, email: "do-banco@exemplo.com" },
+        chamadas,
+      ),
       enviarEmail: async (mensagem: unknown, remetente: unknown) => void enviados.push([mensagem, remetente]),
     });
     assertEquals(r.status, 200);
@@ -239,7 +243,7 @@ Deno.test("handler: loja so' com o AMBIENTE (IKCOUS) — resolvedor REAL — env
     assertEquals(chamadas, ["generate_order_otp_v2"]);
     assertEquals(enviados.length, 1);
     const [mensagem, remetente] = enviados[0];
-    assertEquals(mensagem.para, "cliente@exemplo.com");
+    assertEquals(mensagem.para, "do-banco@exemplo.com");
     // O dublê não tem `from`: a leitura do nome falha e cai em "Nossa loja".
     assertEquals(mensagem.assunto, "Seu código de verificação — Nossa loja");
     assertStringIncludes(mensagem.html, "654321");
@@ -302,15 +306,74 @@ Deno.test("handler: codigo recusado pelo freio ou nao confere NAO envia nada", a
   }
 });
 
-Deno.test("handler: o envio falha -> 502 envio_falhou, e a resposta nao carrega texto do erro", async () => {
-  const r = await handler(pedidoDeCodigo(), {
-    supabase: supabaseDoCodigo(CODIGO_GERADO),
-    resolverRemetente: async () => REMETENTE_AMBIENTE,
-    enviarEmail: async () => {
-      throw new Error("SMTP: envio recusado (EAUTH) senha-do-ambiente");
-    },
-  });
+// Captura todos os argumentos, inclusive objetos e erros, sem depender
+// do formato da mensagem nem do nível escolhido pelo handler.
+async function capturarLogs(executar: () => Promise<Response>) {
+  const registros: string[] = [];
+  const originalLog = console.log;
+  const originalInfo = console.info;
+  const originalWarn = console.warn;
+  const originalError = console.error;
+  const registrar = (...args: unknown[]) => {
+    registros.push(
+      Deno.inspect(args, {
+        depth: Infinity,
+        iterableLimit: Infinity,
+        strAbbreviateSize: Infinity,
+      }),
+    );
+  };
+
+  try {
+    console.log = registrar;
+    console.info = registrar;
+    console.warn = registrar;
+    console.error = registrar;
+    return { resposta: await executar(), registros };
+  } finally {
+    console.log = originalLog;
+    console.info = originalInfo;
+    console.warn = originalWarn;
+    console.error = originalError;
+  }
+}
+
+function exigirEnderecoOculto(registros: string[]) {
+  assertEquals(
+    registros.some((registro) => registro.includes("cliente@exemplo.com")),
+    false,
+    "o handler não deve registrar o endereço completo",
+  );
+}
+
+Deno.test("handler: envio bem-sucedido não registra o endereço completo", async () => {
+  const { resposta, registros } = await capturarLogs(() =>
+    handler(pedidoDeCodigo(), {
+      supabase: supabaseDoCodigo(CODIGO_GERADO),
+      resolverRemetente: async () => REMETENTE_AMBIENTE,
+      enviarEmail: async () => {},
+    }),
+  );
+  assertEquals(resposta.status, 200);
+  assertEquals(await resposta.json(), { ok: true });
+  exigirEnderecoOculto(registros);
+});
+
+Deno.test("handler: falha no envio -> 502 sem expor o erro na resposta nem o endereço no log", async () => {
+  let tentouEnviar = false;
+  const { resposta: r, registros } = await capturarLogs(() =>
+    handler(pedidoDeCodigo(), {
+      supabase: supabaseDoCodigo(CODIGO_GERADO),
+      resolverRemetente: async () => REMETENTE_AMBIENTE,
+      enviarEmail: async () => {
+        tentouEnviar = true;
+        throw new Error("SMTP: envio recusado (EAUTH) senha-do-ambiente");
+      },
+    }),
+  );
+  assertEquals(tentouEnviar, true);
   assertEquals(r.status, 502);
+  exigirEnderecoOculto(registros);
   const texto = JSON.stringify(await r.json());
   assertEquals(texto.includes("senha-do-ambiente"), false);
   assertEquals(JSON.parse(texto).motivo, "envio_falhou");

@@ -121,7 +121,7 @@ describe("OrderList — card do pedido redesenhado", () => {
 
   it.each<[OrderStatus, string, number]>([
     ["pending", "Recebido", 1],
-    ["processing", "Separado", 2],
+    ["processing", "Em separação", 2],
     ["shipping", "A caminho", 3],
   ])(
     "status %s: etapa atual '%s' nomeada, sem corte no bloco neutro",
@@ -148,7 +148,12 @@ describe("OrderList — card do pedido redesenhado", () => {
         trilha?.querySelector("span.h-7.rounded-full.bg-foreground")
           ?.textContent,
       ).toBe(atual);
-      for (const etapa of ["Recebido", "Separado", "A caminho", "Entregue"]) {
+      for (const etapa of [
+        "Recebido",
+        "Em separação",
+        "A caminho",
+        "Entregue",
+      ]) {
         expect(trilha?.textContent).toContain(etapa);
       }
       expect(painel?.textContent).toContain("Próxima etapa:");

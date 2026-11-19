@@ -296,7 +296,145 @@ describe("ProductView — a foto segue a COR, mesmo sem escolher o tamanho", () 
     expect(fotos[3]?.getAttribute("src")).toBe("/so-da-azul.png");
   });
 
-  it("cor sem foto em linha nenhuma não puxa a galeria", async () => {
+  const montarCores = () =>
+    montar({
+      ...blusa([
+        { ...linha("Vermelho", "/vermelho.png"), name: "Cor" },
+        { ...linha("Azul"), name: "Cor" },
+      ]),
+      images: ["/capa.png", "/vermelho.png", "/detalhe.png"],
+    });
+  const fotoExibida = () =>
+    hospedeiro
+      .querySelectorAll<HTMLImageElement>("img.main-product-image")
+      .item(fotoAtiva() - 1)
+      ?.getAttribute("src");
+
+  it("volta à capa ao trocar de uma cor com foto para outra sem foto", async () => {
+    await montarCores();
+    expect(fotoExibida()).toBe("/capa.png");
+
+    await tocar(opcao("Vermelho"));
+    expect(fotoExibida()).toBe("/vermelho.png");
+
+    await tocar(opcao("Azul"));
+    expect(fotoExibida()).toBe("/capa.png");
+    expect(scrollTo).toHaveBeenLastCalledWith(
+      expect.objectContaining({ left: 0 }),
+    );
+  });
+
+  it("desmarcar Vermelho volta à capa, que permanece ao escolher Azul sem foto", async () => {
+    await montarCores();
+    await tocar(opcao("Vermelho"));
+    expect(fotoExibida()).toBe("/vermelho.png");
+
+    await tocar(opcao("Vermelho"));
+    expect(opcao("Vermelho").getAttribute("aria-pressed")).toBe("false");
+    expect(fotoExibida()).toBe("/capa.png");
+
+    await tocar(opcao("Azul"));
+    expect(opcao("Azul").getAttribute("aria-pressed")).toBe("true");
+    expect(fotoExibida()).toBe("/capa.png");
+  });
+
+  it("preserva a outra foto aberta à mão ao escolher uma cor sem foto", async () => {
+    await montarCores();
+    await tocar(opcao("Vermelho"));
+    expect(fotoExibida()).toBe("/vermelho.png");
+
+    await tocar(bolinhas()[2]);
+    expect(fotoExibida()).toBe("/detalhe.png");
+    scrollTo.mockClear();
+
+    await tocar(opcao("Azul"));
+    expect(opcao("Azul").getAttribute("aria-pressed")).toBe("true");
+    expect(fotoExibida()).toBe("/detalhe.png");
+    expect(scrollTo).not.toHaveBeenCalled();
+  });
+
+  it("desmarcar Vermelho troca a foto para a de P, que continua escolhido", async () => {
+    await montar({
+      ...blusa([
+        { ...linha("Vermelho", "/vermelho.png"), name: "Cor" },
+        { ...linha("Azul"), name: "Cor" },
+        { ...linha("P", "/tamanho-p.png"), name: "Tamanho" },
+        { ...linha("M"), name: "Tamanho" },
+      ]),
+      images: ["/capa.png", "/vermelho.png", "/tamanho-p.png", "/detalhe.png"],
+    });
+    await tocar(opcao("Vermelho"));
+    await tocar(opcao("P"));
+    await tocar(bolinhas()[1]);
+    expect(fotoExibida()).toBe("/vermelho.png");
+
+    await tocar(opcao("Vermelho"));
+    expect(opcao("Vermelho").getAttribute("aria-pressed")).toBe("false");
+    expect(opcao("P").getAttribute("aria-pressed")).toBe("true");
+    expect(fotoExibida()).toBe("/tamanho-p.png");
+
+    await tocar(opcao("Vermelho"));
+    await tocar(bolinhas()[3]);
+    expect(fotoExibida()).toBe("/detalhe.png");
+    await tocar(opcao("Vermelho"));
+    expect(fotoExibida()).toBe("/detalhe.png");
+  });
+
+  it("mantém a foto de P aberta à mão quando desmarcar Vermelho muda sua posição", async () => {
+    await montar({
+      ...blusa([
+        { ...linha("Vermelho", "/vermelho.png"), name: "Cor" },
+        { ...linha("Azul"), name: "Cor" },
+        { ...linha("P", "/tamanho-p.png"), name: "Tamanho" },
+        { ...linha("M"), name: "Tamanho" },
+        { ...linha("Clássico", "/modelo.png"), name: "Modelo" },
+        { ...linha("Moderno"), name: "Modelo" },
+      ]),
+      images: ["/capa.png"],
+    });
+    await tocar(opcao("Clássico"));
+    await tocar(opcao("P"));
+    await tocar(opcao("Vermelho"));
+    expect(bolinhas()).toHaveLength(4);
+
+    await tocar(bolinhas()[2]);
+    expect(fotoExibida()).toBe("/tamanho-p.png");
+
+    await tocar(opcao("Vermelho"));
+    expect(opcao("Vermelho").getAttribute("aria-pressed")).toBe("false");
+    expect(bolinhas()).toHaveLength(3);
+    expect(fotoExibida()).toBe("/tamanho-p.png");
+    expect(fotoAtiva()).toBe(2);
+  });
+
+  it("Vermelho, Azul e Vermelho ficam na foto vermelha sem esperar a faixa andar", async () => {
+    await montarCores();
+    scrollTo.mockImplementation(() => {});
+
+    await tocar(opcao("Vermelho"));
+    expect(fotoExibida()).toBe("/vermelho.png");
+    await tocar(opcao("Azul"));
+    expect(fotoExibida()).toBe("/capa.png");
+    await tocar(opcao("Vermelho"));
+
+    expect(fotoExibida()).toBe("/vermelho.png");
+    expect(scrollTo).toHaveBeenLastCalledWith(
+      expect.objectContaining({ left: LARGURA }),
+    );
+  });
+
+  it("a mesma foto da cor volta à capa mesmo quando reaberta pela galeria", async () => {
+    await montarCores();
+    await tocar(opcao("Vermelho"));
+    await tocar(bolinhas()[2]);
+    await tocar(bolinhas()[1]);
+    expect(fotoExibida()).toBe("/vermelho.png");
+
+    await tocar(opcao("Vermelho"));
+    expect(fotoExibida()).toBe("/capa.png");
+  });
+
+  it("cor sem foto em linha nenhuma não puxa a galeria quando já está na capa", async () => {
     // Só a Azul tem foto; a Verde não tem em linha nenhuma.
     await montar(
       blusa([

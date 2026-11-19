@@ -158,6 +158,26 @@ describe("Política de Privacidade", () => {
       expect(comQuem).toMatch(/código de verificação/i);
     });
 
+    it("explica quais dados vão para o mapa ao abrir o endereço no Perfil", () => {
+      expect(comQuem).toContain(
+        "No seu Perfil, ao abrir os detalhes de um endereço, o mapa é carregado do Google Maps",
+      );
+      expect(comQuem).toContain("rua, número, cidade e estado");
+      expect(comQuem).toContain(
+        "o CEP pode acompanhar a busca e, se o endereço estiver incompleto, também o bairro",
+      );
+      expect(comQuem).toContain("nunca o seu nome");
+    });
+
+    it("informa que abrir o mapa do pedido pode enviar bairro, cidade e estado mesmo sem rua nem CEP", () => {
+      const mapa = secao?.paragrafos.find((paragrafo) =>
+        paragrafo.includes("Google Maps"),
+      );
+      expect(mapa).toContain("ficha do pedido");
+      expect(mapa).toMatch(/sem rua nem CEP.*bairro, cidade e estado/);
+      expect(mapa).toContain("nem o nome de quem recebe");
+    });
+
     it("o serviço de notificações do navegador, só para quem permitiu", () => {
       expect(comQuem).toMatch(/serviço de notificações do seu navegador/i);
       expect(comQuem).toMatch(/se você permitir/i);

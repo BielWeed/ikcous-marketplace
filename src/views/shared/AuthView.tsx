@@ -53,6 +53,19 @@ interface AuthViewProps {
 // Mesma frase no aviso (toast) e embaixo do campo de senha do cadastro.
 const MENSAGEM_SENHA_CURTA = "A senha deve ter pelo menos 8 caracteres.";
 
+// A mesma regra de type="email" do HTML, com escapes para o pattern (modo v).
+const PADRAO_DO_EMAIL = String.raw`[a-zA-Z0-9.!#$%&'*+\/=?^_\x60\{\|\}~\-]+@[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*`;
+
+// \s já inclui os espaços Unicode (como U+00A0); U+200B precisa ser explícito.
+const ESPACOS_NO_INICIO_DO_EMAIL = /^[\s\u{200B}]+/u;
+
+function apararEmailColado(valor: string): string {
+  // No fim, $1 conserva o último caractere do endereço antes dos espaços.
+  return valor
+    .replace(ESPACOS_NO_INICIO_DO_EMAIL, "")
+    .replace(/([^\s\u{200B}])[\s\u{200B}]+$/u, "$1");
+}
+
 const containerVariants: Variants = {
   hidden: { opacity: 0, y: 30 },
   visible: {
@@ -302,6 +315,18 @@ export function AuthView({
   const avisoVisivel =
     avisoDoLink !== null && (viewMode === "forgot" || viewMode === "login");
   const [email, setEmail] = useState("");
+  const campoEmail = useRef<HTMLInputElement>(null);
+  const [selecaoDoEmail, setSelecaoDoEmail] = useState<Parameters<
+    HTMLInputElement["setSelectionRange"]
+  > | null>(null);
+
+  useLayoutEffect(() => {
+    const campo = campoEmail.current;
+    if (campo && document.activeElement === campo && selecaoDoEmail) {
+      campo.setSelectionRange(...selecaoDoEmail);
+    }
+  }, [selecaoDoEmail]);
+
   // Espelho do campo para as respostas assíncronas do login: um closure de
   // `email` fica velho se a pessoa corrige o e-mail enquanto espera.
   const emailAtual = useRef(email);
@@ -1254,12 +1279,51 @@ export function AuthView({
                     <Input
                       id="email"
                       name="email"
-                      type="email"
+                      // type="email" não dá acesso à seleção do texto.
+                      type="text"
+                      inputMode="email"
+                      // Espaço comum nas pontas é aceito (o envio usa trim(), como
+                      // o type="email" fazia); espaço no meio continua inválido.
+                      pattern={String.raw`\s*(?:${PADRAO_DO_EMAIL})\s*`}
                       autoComplete="username"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
                       placeholder="seu@email.com"
+                      ref={campoEmail}
                       value={email}
                       onChange={(e) => {
-                        setEmail(e.target.value);
+                        const {
+                          value,
+                          selectionStart,
+                          selectionEnd,
+                          selectionDirection,
+                        } = e.currentTarget;
+                        // Durante a digitação, um espaço na ponta pode virar
+                        // interno na próxima tecla. Só apare texto colado.
+                        const veioDeColagem =
+                          "inputType" in e.nativeEvent &&
+                          e.nativeEvent.inputType === "insertFromPaste";
+                        const aparado = veioDeColagem
+                          ? apararEmailColado(value)
+                          : value;
+                        if (
+                          value !== aparado &&
+                          selectionStart !== null &&
+                          selectionEnd !== null
+                        ) {
+                          const removidosNoInicio =
+                            value.match(ESPACOS_NO_INICIO_DO_EMAIL)?.[0]
+                              .length ?? 0;
+                          setSelecaoDoEmail([
+                            Math.max(0, selectionStart - removidosNoInicio),
+                            Math.max(0, selectionEnd - removidosNoInicio),
+                            selectionDirection ?? "none",
+                          ]);
+                        } else {
+                          setSelecaoDoEmail(null);
+                        }
+                        setEmail(aparado);
                         if (loginError) setLoginError(null);
                         if (emailNaoConfirmado) setEmailNaoConfirmado(false);
                       }}

@@ -27,8 +27,8 @@
 //
 // Best-effort, como o irmão: storage cheio, modo privado ou SecurityError (até o
 // ACESSO a `globalThis.sessionStorage` pode lançar) nunca derrubam o checkout.
-// Quem apaga: o AuthContext (logout), e a leitura do que venceu. NINGUÉM apaga
-// por AUSÊNCIA de usuário.
+// Quem apaga: o AuthContext (logout), a leitura do que venceu e o checkout
+// quando vê o cancelamento do pedido do recibo. NINGUÉM apaga por AUSÊNCIA de usuário.
 
 const CHAVE_DO_RECIBO = "ikcous:checkout-recibo";
 
@@ -130,7 +130,7 @@ export function lerReciboDoCheckout(
   return recibo.userId === donoNormalizado(userId) ? recibo.pedidoId : null;
 }
 
-/** Apaga o recibo (logout). */
+/** Apaga o recibo (logout ou cancelamento do pedido do recibo). */
 export function esquecerReciboDoCheckout(): void {
   apagar();
 }

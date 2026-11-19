@@ -510,7 +510,8 @@ export function mesclarFilaOfflineAposPassada(
 // sob um Web Lock por dono da fila (`comTravaEntreAbas`): a aba que não o
 // consegue sai sem avisar — a passada em curso já leva a fila inteira, e a
 // segunda passada (item que entrou durante a primeira) acontece DENTRO do mesmo
-// lock. O lock vence em `PRAZO_DA_TRAVA_DA_FILA_MS` (2 min): a RPC e a releitura
+// lock. O que entrar durante a segunda agenda outra rodada. O lock vence em
+// `PRAZO_DA_TRAVA_DA_FILA_MS` (2 min): a RPC e a releitura
 // daqui não têm prazo próprio, e uma passada pendurada não pode segurar a fila
 // de TODAS as abas do usuário (depois do prazo, raras vezes, duas passadas
 // coexistem — `avancar_status_do_pedido` com `p_status_esperado` deixa só uma
@@ -521,6 +522,7 @@ let sincronizacaoEmVoo: { userId: string; promise: Promise<boolean> } | null =
 function syncOfflineOrderUpdates(
   userId: string,
   silenciosa = false,
+  agendarContinuacao?: () => void,
 ): Promise<boolean> {
   if (sincronizacaoEmVoo?.userId === userId) return sincronizacaoEmVoo.promise;
   const anterior = sincronizacaoEmVoo?.promise.catch(() => false);
@@ -528,7 +530,13 @@ function syncOfflineOrderUpdates(
     comTravaEntreAbas(
       `ikcous-fila-pedidos:${userId}`,
       false,
-      () => processarFilaOfflineDePedidos(userId, false, silenciosa),
+      () =>
+        processarFilaOfflineDePedidos(
+          userId,
+          false,
+          silenciosa,
+          agendarContinuacao,
+        ),
       PRAZO_DA_TRAVA_DA_FILA_MS,
     );
   const promise: Promise<boolean> = (
@@ -567,11 +575,11 @@ async function processarFilaOfflineDePedidos(
   // Retentativa por renovação do token (`criarReligadorDaFila`): não pisca o
   // "Sincronizando…" a cada tentativa. O resultado (sucesso/falha) é avisado.
   silenciosa = false,
+  agendarContinuacao?: () => void,
+  falhasAdiadas?: ReadonlyMap<string, number>,
 ): Promise<boolean> {
   const chaveDaFila = chaveDoUsuario(CHAVE_BASE_DA_FILA_DE_PEDIDOS, userId);
   if (!segundaPassada) paradasPelaRede.delete(chaveDaFila);
-  // Vale a ÚLTIMA passada (a segunda também apaga): se ela esvaziou a fila, a
-  // falha passageira da primeira já não conta.
   falhasPassageirasDaFila.delete(chaveDaFila);
   if (typeof window === "undefined" || !navigator.onLine) return false;
   // Declarado fora do try: se o storage falhar na ESCRITA, depois das RPCs, o
@@ -609,6 +617,11 @@ async function processarFilaOfflineDePedidos(
     const processados = new Map<string, number>();
     const statusEnviados = new Map<string, string>();
     const tentados = new Map<string, number>();
+    const falhasDaRodada = new Map(falhasAdiadas);
+    const aguardaRecuo = (orderId: string, timestamp: number) => {
+      const versaoQueFalhou = falhasDaRodada.get(orderId);
+      return versaoQueFalhou !== undefined && timestamp <= versaoQueFalhou;
+    };
     let syncedAny = false;
     let falhasTransitorias = 0;
     let descartesTerminais = 0;
@@ -632,6 +645,13 @@ async function processarFilaOfflineDePedidos(
           ? item.timestamp
           : Number.NEGATIVE_INFINITY;
       tentados.set(orderId, timestamp);
+
+      // A segunda passada envia as edições novas, sem retentar a versão
+      // que falhou na primeira. Uma reedição do mesmo pedido ainda pode sair.
+      if (aguardaRecuo(orderId, timestamp)) {
+        remainingQueue.push(item);
+        continue;
+      }
 
       // L10 — a sessão também é conferida ANTES da releitura abaixo. Se a
       // conta saiu no meio da passada, a releitura (sem login) falharia e o
@@ -699,6 +719,7 @@ async function processarFilaOfflineDePedidos(
             err,
           );
           falhasTransitorias++;
+          falhasDaRodada.set(orderId, timestamp);
           remainingQueue.push(item);
           continue;
         }
@@ -761,6 +782,7 @@ async function processarFilaOfflineDePedidos(
           err,
         );
         falhasTransitorias++;
+        falhasDaRodada.set(orderId, timestamp);
         remainingQueue.push(item);
       }
     }
@@ -790,7 +812,10 @@ async function processarFilaOfflineDePedidos(
     // de baixo não marca nada (a fila antiga continua no armazenamento e
     // reenviar por cima dela não é decisão de um relógio). Passada interrompida
     // (conta trocada, rede ao ler a sessão) tem os seus próprios caminhos.
-    if (!interrompida && falhasTransitorias > 0) {
+    const temFalhaPendente = final.some((item) =>
+      aguardaRecuo(item.orderId, item.timestamp ?? Number.NEGATIVE_INFINITY),
+    );
+    if (!interrompida && temFalhaPendente) {
       falhasPassageirasDaFila.add(chaveDaFila);
     }
 
@@ -828,7 +853,9 @@ async function processarFilaOfflineDePedidos(
       );
     } else {
       toast.info(
-        "Alterações de pedidos sincronizadas. Há novas alterações na fila offline.",
+        temFalhaPendente
+          ? "Algumas alterações de pedidos ainda aguardam nova tentativa."
+          : "Alterações de pedidos sincronizadas. Há novas alterações na fila offline.",
         { id: toastId },
       );
     }
@@ -847,8 +874,15 @@ async function processarFilaOfflineDePedidos(
         userId,
         true,
         silenciosa,
+        agendarContinuacao,
+        falhasDaRodada,
       );
       return sincronizouNaSegunda || filaAvancou;
+    }
+    // Mantém o limite de duas passadas por trava. Se outra edição entrou na
+    // segunda, ela vai numa nova rodada (ou na retentativa por falha).
+    if (temItemNovo && !temFalhaPendente && navigator.onLine) {
+      agendarContinuacao?.();
     }
 
     return filaAvancou;
@@ -5731,12 +5765,18 @@ export function useOrders(
     // nova passada (30 s, 2 min, 10 min) enquanto houver item devolvido por
     // falha passageira.
     const recuo = criarRecuoDaFila(() => agendarPassada(true));
+    let encerrado = false;
     const agendarPassada = (silenciosa: boolean) => {
+      if (encerrado) return;
       const timer = setTimeout(async () => {
         timersPendentes.delete(timer);
         const fim = iniciarOperacaoSensivel("fila-offline-de-pedidos");
         try {
-          const filaAvancou = await syncOfflineOrderUpdates(userId, silenciosa);
+          const filaAvancou = await syncOfflineOrderUpdates(
+            userId,
+            silenciosa,
+            () => agendarPassada(true),
+          );
           if (filaAvancou) {
             recarregarAposReconexaoRef
               .current({ silencioso: true })
@@ -5762,6 +5802,7 @@ export function useOrders(
       handleOnlineSync();
     }
     return () => {
+      encerrado = true;
       window.removeEventListener("online", handleOnlineSync);
       religador.encerrar();
       recuo.encerrar();

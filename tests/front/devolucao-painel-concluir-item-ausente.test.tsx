@@ -352,6 +352,43 @@ describe("AcoesDaDevolucao — valor sugerido e itens que não voltaram", () => 
     expect(campoValor()?.value).toBe("0,00");
   });
 
+  // 20261405400000: com cupom, a devolução integral de 3 x 50,00 (cupom de 2,00) vale 148,00 no servidor, mas cada linha guarda o preço de UMA
+  // unidade arredondado (49,33): quantidade x preço soma 147,99. O desconto do item que não veio é a parte dele no valor_itens do servidor,
+  // nunca quantidade x preço solto; senão "tudo Não veio" sugeriria R$ 0,01 de reembolso.
+  it("com cupom: tudo 'Não veio' zera o sugerido (nunca sobra o centavo que o arredondamento por unidade deixa)", async () => {
+    await abrirConclusao(
+      detalheDe({
+        valor_itens: 148,
+        itens: [item("a", "Camiseta azul", 3, 49.33)],
+      }),
+    );
+    await clicar(condicaoDe("Camiseta azul", "Não veio"));
+
+    expect(campoValor()?.value).toBe("0,00");
+    await clicar(botao("Concluir devolução"));
+    expect(concluir).not.toHaveBeenCalled();
+    expect(hospedeiro.textContent).toContain("Informe o valor do reembolso.");
+  });
+
+  it("com cupom: o que não veio desconta a parte dele no valor do servidor e o que veio fecha o centavo", async () => {
+    // Duas linhas de 3 unidades de 49,33 (cada uma 148,00 no total, 296,00 no pedido): uma não veio, a outra veio.
+    await abrirConclusao(
+      detalheDe({
+        valor_itens: 296,
+        itens: [
+          item("a", "Camiseta azul", 3, 49.33),
+          item("b", "Calça preta", 3, 49.33),
+        ],
+      }),
+    );
+    await clicar(condicaoDe("Camiseta azul", "Não veio"));
+    await clicar(condicaoDe("Calça preta", "Nova, sem uso"));
+
+    // 296,00 - metade (148,00) = 148,00, e não 296,00 - 3 x 49,33 = 148,01.
+    expect(campoValor()?.value).toBe("148,00");
+    expect(aviso()?.textContent).toContain("148,00");
+  });
+
   it("o servidor recebe o valor que está no campo (100,00), nunca o cheio", async () => {
     await abrirConclusao(detalheDe());
     await clicar(condicaoDe("Camiseta azul", "Nova, sem uso"));

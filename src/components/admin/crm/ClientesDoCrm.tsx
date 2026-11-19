@@ -406,12 +406,15 @@ function CamposDoPedidoEDaAtividade({
 function LinhaDoCliente({
   cliente,
   loja,
+  acoesDesabilitadas,
   onNavigate,
 }: Readonly<{
   cliente: ClienteDoCrm;
   loja: string;
+  acoesDesabilitadas: boolean;
   onNavigate: (view: View, id?: string) => void;
 }>) {
+  const AcaoWhatsapp = acoesDesabilitadas ? "button" : "a";
   const nome = cliente.nome ?? "Cliente sem nome";
   const whatsapp = linkWhatsappDoCrm(
     cliente.whatsapp,
@@ -515,10 +518,14 @@ function LinhaDoCliente({
           de `<button>` zera `border-style`). */}
       <div className="col-span-2 flex gap-2 xl:col-span-1 xl:flex-wrap xl:justify-end xl:gap-2 xl:pl-2">
         {whatsapp ? (
-          <a
-            href={whatsapp}
-            target="_blank"
-            rel="noopener noreferrer"
+          <AcaoWhatsapp
+            {...(acoesDesabilitadas
+              ? { type: "button", disabled: true, "aria-disabled": true }
+              : {
+                  href: whatsapp,
+                  target: "_blank",
+                  rel: "noopener noreferrer",
+                })}
             title={`WhatsApp — chamar ${nome}`}
             className={cn(
               "flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 text-[11px] font-black uppercase tracking-widest text-emerald-300 transition-colors hover:bg-emerald-500/20 xl:min-w-11 xl:flex-none xl:px-3",
@@ -528,7 +535,7 @@ function LinhaDoCliente({
             <IconeWhatsapp className="size-4" aria-hidden="true" />
             <span className="xl:not-sr-only">WhatsApp</span>
             <span className="sr-only"> — chamar {nome} (abre em nova aba)</span>
-          </a>
+          </AcaoWhatsapp>
         ) : (
           <span className="flex min-h-11 flex-1 items-center justify-center rounded-xl border border-dashed border-admin-border px-3 text-[11px] font-bold text-zinc-500 xl:flex-none">
             Sem WhatsApp
@@ -537,6 +544,8 @@ function LinhaDoCliente({
         {cliente.userId ? (
           <button
             type="button"
+            disabled={acoesDesabilitadas}
+            aria-disabled={acoesDesabilitadas}
             onClick={() =>
               onNavigate("admin-user-detail", cliente.userId ?? undefined)
             }
@@ -641,14 +650,14 @@ export function ClientesDoCrm({
   if (filtroDaLista.chave !== chaveDoFiltro) {
     setFiltroDaLista({ chave: chaveDoFiltro, listaAnterior: lista });
   }
-  const totalDaListaAtual =
+  const totalDoFiltroAtual =
     lista &&
-    !carregando &&
     !erro &&
     filtroDaLista.chave === chaveDoFiltro &&
     lista !== filtroDaLista.listaAnterior
       ? lista.total
       : null;
+  const totalDaListaAtual = carregando ? null : totalDoFiltroAtual;
 
   // "Sincronizar" do topo: só recarrega quando o sinal MUDA depois de a
   // aba montar (montar já busca).
@@ -662,7 +671,9 @@ export function ClientesDoCrm({
   // Em falha (já sem recarregar) a lista guardada é de OUTRA consulta: não vira
   // linha nem paginação sob o rótulo do filtro novo — só o alerta fica.
   const listaVisivel = erro && !carregando ? null : lista;
-  const total = listaVisivel?.total ?? 0;
+  // Mesmo filtro: mantenha o paginador montado e bloqueado durante a
+  // leitura, para o botão focado não desaparecer. Outro filtro não usa o total.
+  const total = totalDoFiltroAtual ?? 0;
   const quantidadeDoGrupo = (grupo: SegmentoCrm) =>
     segmentosDisponiveis
       ? (segmentos.find((s) => s.segmento === grupo)?.clientes ?? 0)
@@ -672,9 +683,9 @@ export function ClientesDoCrm({
   // página aberta deixou de existir, volta para a última que existe em vez
   // de mostrar uma página vazia.
   useEffect(() => {
-    if (!lista || carregando || erro || pagina < totalPaginas) return;
+    if (totalDaListaAtual === null || pagina < totalPaginas) return;
     setPaginacao({ chave: chaveDoFiltro, pagina: totalPaginas - 1 });
-  }, [lista, carregando, erro, pagina, totalPaginas, chaveDoFiltro]);
+  }, [totalDaListaAtual, pagina, totalPaginas, chaveDoFiltro]);
   // Lista vazia que ainda é a do filtro ANTERIOR (o hook só a troca quando a
   // nova chega): não vale como "não há cliente" — é esqueleto até a nova vir.
   const listaVelhaVazia =
@@ -811,9 +822,16 @@ export function ClientesDoCrm({
             className="text-admin-text-soft pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2"
             aria-hidden="true"
           />
-          <label htmlFor="crm-busca-cliente" className="sr-only">
-            Buscar cliente por nome, e-mail ou WhatsApp
-          </label>
+          <div className="sr-only">
+            <label htmlFor="crm-busca-cliente">
+              Buscar cliente por nome, e-mail ou WhatsApp
+            </label>
+            <span aria-live="polite" aria-atomic="true">
+              {!erro && (carregando || (lista && totalDaListaAtual === null))
+                ? "Atualizando a lista…"
+                : null}
+            </span>
+          </div>
           <DebouncedSearchInput
             id="crm-busca-cliente"
             value={busca}
@@ -986,6 +1004,7 @@ export function ClientesDoCrm({
                     key={cliente.chave}
                     cliente={cliente}
                     loja={loja}
+                    acoesDesabilitadas={totalDaListaAtual === null}
                     onNavigate={onNavigate}
                   />
                 ))}
@@ -1043,6 +1062,7 @@ export function ClientesDoCrm({
             totalPaginas={totalPaginas}
             totalItens={total}
             itensPorPagina={POR_PAGINA}
+            ocupada={carregando}
             aoMudar={(novaPagina) => {
               rolarAoTopo.current = true;
               setPaginacao({ chave: chaveDoFiltro, pagina: novaPagina });

@@ -178,6 +178,7 @@ export function FechamentoDaVenda({
     totalEmCentavos,
     centavosDoTextoEmReais(recebidoTexto),
   );
+  const faltaReceber = mostraTroco && troco?.tipo === "faltam";
   const desabilitado =
     !validacao.ok ||
     estado.enviando ||
@@ -474,6 +475,7 @@ export function FechamentoDaVenda({
             </div>
             <p
               id="troco-da-venda"
+              role="status"
               aria-live="polite"
               className={`pdv-change-result${troco?.tipo === "faltam" ? " pdv-red" : ""}`}
             >
@@ -545,7 +547,7 @@ export function FechamentoDaVenda({
                 </span>
               </p>
             )}
-            {!desabilitado && (
+            {!desabilitado && !faltaReceber && (
               <p className="pdv-green flex items-center gap-2">
                 <Check aria-hidden="true" className="size-4 shrink-0" />
                 {pedeConferencia

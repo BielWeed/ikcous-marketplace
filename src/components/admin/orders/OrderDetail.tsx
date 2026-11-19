@@ -103,9 +103,9 @@ const statusFlow: OrderStatus[] = [
 // Os três estados em que a cobrança online não se resolveu a favor do
 // lojista: dinheiro ainda não entrou (ou não vai entrar). Avançar o pedido
 // nesses estados encaminha mercadoria sem o dinheiro confirmado — por isso
-// pedem confirmação. `pago`, `pago_apos_expirar` e `null` (sem cobrança
-// online, ex.: pagamento na entrega) não entram aqui: são fluxo legítimo e
-// avisar ali transformaria o aviso em ruído.
+// pedem confirmação de pedido não pago. `pago_apos_expirar` pede uma
+// conferência diferente: houve pagamento, mas fora do fluxo. `pago` e
+// `null` (sem cobrança online, ex.: pagamento na entrega) ficam fora da lista.
 //
 // Falta um SEXTO valor nesta conta, e a omissão é deliberada: `expirado`
 // (o PIX venceu e o dinheiro nunca entrou) pertenceria à lista pelo
@@ -573,12 +573,17 @@ interface OrderActionBarProps {
   retiradaNaLoja?: boolean;
   isOffline: boolean;
   isUpdatingStatus: boolean;
+  pagoForaDoFluxo: boolean;
   // Dois callbacks, não um: "Avançar" e "Cancelar pedido" são ações
   // distintas por natureza (uma confirma pagamento pendente, a outra
   // confirma o CANCELAMENTO — laudo #2, L-1: cancelar parou de ser um
   // clique sem guarda) — a distinção continua estrutural, cada botão chama
   // o seu; quem pergunta é o handler de cada um.
-  onAdvance: (id: string, nextStatus: OrderStatus) => void;
+  onAdvance: (
+    id: string,
+    nextStatus: OrderStatus,
+    botao: HTMLButtonElement,
+  ) => void;
   onCancel: (id: string) => void;
 }
 
@@ -599,6 +604,7 @@ function OrderActionBar({
   retiradaNaLoja,
   isOffline,
   isUpdatingStatus,
+  pagoForaDoFluxo,
   onAdvance,
   onCancel,
 }: Readonly<OrderActionBarProps>) {
@@ -639,8 +645,15 @@ function OrderActionBar({
 
         {podeAvancar && nextStatus && (
           <Button
-            onClick={() => onAdvance(orderId, nextStatus)}
-            disabled={isOffline || isUpdatingStatus}
+            onClick={(event) => {
+              if (!isUpdatingStatus) {
+                onAdvance(orderId, nextStatus, event.currentTarget);
+              }
+            }}
+            disabled={isOffline || (isUpdatingStatus && !pagoForaDoFluxo)}
+            aria-disabled={
+              pagoForaDoFluxo && isUpdatingStatus ? true : undefined
+            }
             className="flex h-11 min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-normal rounded-xl bg-foreground px-2.5 text-sm font-semibold leading-tight text-background transition-colors hover:opacity-90 active:scale-95 disabled:pointer-events-none disabled:opacity-40 lg:ml-auto lg:min-w-72 lg:flex-none lg:px-8"
           >
             {isUpdatingStatus ? (
@@ -1750,28 +1763,28 @@ export const OrderDetail = memo(function OrderDetail({
   const [copiedTracking, setCopiedTracking] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
-  // Avanço represado enquanto espera confirmação — de "pedido não pago" (ver
-  // `paymentStatusQuePedeConfirmacao` acima) OU da pergunta de recebimento
-  // na entrega (Task 4b). `null` = nenhuma confirmação pendente / diálogo
-  // fechado. `perguntaRecebimento` decide qual dos dois textos o mesmo
-  // AlertDialog mostra — ver JSX abaixo.
+  // A mesma caixa pergunta sobre pedido não pago, pagamento fora do fluxo
+  // ou recebimento na entrega. Sem avanço pendente, fica fechada.
+  const botaoDoAvancoForaDoFluxoRef = useRef<HTMLButtonElement>(null);
+  const pagoForaDoFluxo = order.paymentStatus === "pago_apos_expirar";
   const [pendingAdvance, setPendingAdvance] = useState<{
     orderId: string;
     status: OrderStatus;
     statusOrigem: OrderStatus;
-    perguntaRecebimento: boolean;
+    motivo: "naoPago" | "foraDoFluxo" | "recebimento";
   } | null>(null);
 
   useEffect(() => {
     if (
       pendingAdvance &&
       (pendingAdvance.orderId !== order.id ||
-        pendingAdvance.statusOrigem !== order.status)
+        pendingAdvance.statusOrigem !== order.status ||
+        (pendingAdvance.motivo === "foraDoFluxo" && !pagoForaDoFluxo))
     ) {
       setPendingAdvance(null);
       toast.warning("O pedido mudou de situação. Confira antes de avançar.");
     }
-  }, [pendingAdvance, order.id, order.status]);
+  }, [pendingAdvance, order.id, order.status, pagoForaDoFluxo]);
 
   const handleStatusChange = async (
     orderId: string,
@@ -1827,22 +1840,24 @@ export const OrderDetail = memo(function OrderDetail({
     }
   };
 
-  // Ponto de entrada exclusivo do botão "Avançar" — o botão de abortar chama
-  // handleStatusChange direto com "cancelled" (ver onCancel no JSX abaixo),
-  // então esta função nunca recebe "cancelled" e não precisa mais comparar
-  // valor para distinguir os dois casos. Ela desvia para a confirmação só quando o
-  // pedido de verdade não foi liquidado; do contrário avança igual a antes,
-  // sem fricção nenhuma.
-  const requestStatusChange = (orderId: string, nextStatus: OrderStatus) => {
+  // Ponto de entrada exclusivo do botão "Avançar"; cancelar tem sua própria
+  // confirmação.
+  const requestStatusChange = (
+    orderId: string,
+    nextStatus: OrderStatus,
+    botao: HTMLButtonElement,
+  ) => {
     if (
-      order.paymentStatus &&
-      paymentStatusQuePedeConfirmacao.includes(order.paymentStatus)
+      pagoForaDoFluxo ||
+      (order.paymentStatus &&
+        paymentStatusQuePedeConfirmacao.includes(order.paymentStatus))
     ) {
+      if (pagoForaDoFluxo) botaoDoAvancoForaDoFluxoRef.current = botao;
       setPendingAdvance({
         orderId,
         status: nextStatus,
         statusOrigem: order.status,
-        perguntaRecebimento: false,
+        motivo: pagoForaDoFluxo ? "foraDoFluxo" : "naoPago",
       });
       return;
     }
@@ -1880,7 +1895,7 @@ export const OrderDetail = memo(function OrderDetail({
         orderId,
         status: nextStatus,
         statusOrigem: order.status,
-        perguntaRecebimento: true,
+        motivo: "recebimento",
       });
       return;
     }
@@ -1888,9 +1903,7 @@ export const OrderDetail = memo(function OrderDetail({
     handleStatusChange(orderId, nextStatus);
   };
 
-  // Usada pelo caso "pagamento não confirmado" (perguntaRecebimento: false)
-  // e por "Ainda não" do caso "pergunta de recebimento" (perguntaRecebimento:
-  // true) — os dois só avançam o status, sem gravar nada.
+  // Só avança a etapa; não altera o pagamento.
   const confirmPendingAdvance = () => {
     if (!pendingAdvance) return;
     const { orderId, status, statusOrigem } = pendingAdvance;
@@ -2624,6 +2637,7 @@ export const OrderDetail = memo(function OrderDetail({
         retiradaNaLoja={order.retiradaNaLoja}
         isOffline={isOffline}
         isUpdatingStatus={isUpdatingStatus}
+        pagoForaDoFluxo={pagoForaDoFluxo}
         onAdvance={requestStatusChange}
         onCancel={handleCancelarComConfirmacao}
       />
@@ -2808,8 +2822,18 @@ export const OrderDetail = memo(function OrderDetail({
         open={pendingAdvance !== null}
         onOpenChange={(open) => !open && setPendingAdvance(null)}
       >
-        <AlertDialogContent className="max-w-md rounded-3xl border border-admin-border bg-zinc-950">
-          {pendingAdvance?.perguntaRecebimento ? (
+        <AlertDialogContent
+          className="max-w-md rounded-3xl border border-admin-border bg-zinc-950"
+          onCloseAutoFocus={(event) => {
+            const botao = botaoDoAvancoForaDoFluxoRef.current;
+            botaoDoAvancoForaDoFluxoRef.current = null;
+            if (botao?.isConnected && !botao.disabled) {
+              event.preventDefault();
+              botao.focus();
+            }
+          }}
+        >
+          {pendingAdvance?.motivo === "recebimento" ? (
             <>
               {/* Task 4b — pedido de pagamento na entrega, avançando para
                   "delivered": o instante em que o dinheiro troca de mão.
@@ -2849,14 +2873,14 @@ export const OrderDetail = memo(function OrderDetail({
             <>
               <AlertDialogHeader>
                 <AlertDialogTitle className="text-lg font-black uppercase tracking-tight text-white">
-                  Este pedido não está com o pagamento confirmado
+                  {pendingAdvance?.motivo === "foraDoFluxo"
+                    ? "Conferir pagamento"
+                    : "Este pedido não está com o pagamento confirmado"}
                 </AlertDialogTitle>
                 <AlertDialogDescription className="text-xs text-zinc-400">
-                  O dinheiro deste pedido não entrou. Se você avançar, a
-                  mercadoria caminha para sair mesmo assim — e, depois de
-                  finalizado, não dá mais para cancelar e devolver ao estoque.
-                  Se a cliente pagou na loja, feche este aviso, cancele o pedido
-                  (botão Cancelar pedido) e registre a venda em Vender.
+                  {pendingAdvance?.motivo === "foraDoFluxo"
+                    ? "Este pedido está marcado como pago fora do fluxo. Confirme que o pagamento foi conferido antes de avançar."
+                    : "O dinheiro deste pedido não entrou. Se você avançar, a mercadoria caminha para sair mesmo assim — e, depois de finalizado, não dá mais para cancelar e devolver ao estoque. Se a cliente pagou na loja, feche este aviso, cancele o pedido (botão Cancelar pedido) e registre a venda em Vender."}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter className="mt-4 gap-2">

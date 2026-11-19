@@ -9,6 +9,7 @@ import {
   acoesDoCliente,
   acoesDoLojista,
   caminhoDaFoto,
+  centavosDosItensQueNaoVieram,
   contagemDe,
   devolveFreteDeIda,
   enderecoParaDevolver,
@@ -976,6 +977,24 @@ describe("linha do tempo, prazos e instruções", () => {
     expect(textoDoPrazo("2026-09-27", hoje)).toBe("venceu há 2 dias");
   });
 
+  it("coleta aprovada sem data válida diz que a loja vai combinar o horário", () => {
+    const devolucao = lerDevolucaoDetalhe({
+      ...DETALHE_CRU,
+      status: "aprovada",
+      metodo_retorno: "coleta",
+    });
+    if (!devolucao) throw new Error("Devolução de teste inválida.");
+
+    for (const coleta_em of ["invalida", null]) {
+      const texto = instrucaoParaOCliente({ ...devolucao, coleta_em }, {});
+      expect(texto).toBe(
+        "A loja vai combinar com você o dia e o horário da coleta no endereço do pedido.",
+      );
+      expect(texto).not.toContain("Invalid Date");
+      expect(texto).not.toContain("em .");
+    }
+  });
+
   it("instrução de entrega na loja traz endereço e horário", () => {
     const d = lerDevolucaoDetalhe({
       ...DETALHE_CRU,
@@ -1108,5 +1127,78 @@ describe("linha do tempo, prazos e instruções", () => {
       const texto = instrucaoParaOCliente(codigoComDce, {});
       expect(texto).toContain("botão Etiqueta");
     }
+  });
+});
+
+// 20261405400000: com cupom o servidor fecha o valor da linha numa conta só (3 x 50,00 com cupom de 2,00 = 148,00), mas o item guarda o preço de
+// UMA unidade arredondado (49,33). O desconto do item "Não veio" é a parte dele no `valor_itens` do servidor, nunca `quantidade x preço` solto.
+describe("centavosDosItensQueNaoVieram — a parte do que não veio no valor do servidor", () => {
+  const linha = (quantidade: number, valor_unitario: number) => ({
+    quantidade,
+    valor_unitario,
+  });
+
+  it("nada ausente não desconta nada; valor zerado não desconta nada", () => {
+    expect(centavosDosItensQueNaoVieram(14800, [linha(3, 49.33)], [])).toBe(0);
+    expect(
+      centavosDosItensQueNaoVieram(
+        0,
+        [linha(1, 10), linha(1, 10)],
+        [linha(1, 10)],
+      ),
+    ).toBe(0);
+  });
+
+  it("tudo ausente desconta o valor INTEIRO do servidor (148,00), não os 147,99 de quantidade x preço", () => {
+    const itens = [linha(3, 49.33)];
+    expect(centavosDosItensQueNaoVieram(14800, itens, itens)).toBe(14800);
+    // Também com duas linhas: tudo ausente = o valor todo.
+    const duas = [linha(1, 49.33), linha(2, 49.33)];
+    expect(centavosDosItensQueNaoVieram(14800, duas, duas)).toBe(14800);
+  });
+
+  it("sem cupom a parte é exatamente quantidade x preço (o total das linhas é o próprio valor)", () => {
+    const meia = linha(3, 10);
+    const calca = linha(2, 100);
+    expect(centavosDosItensQueNaoVieram(23000, [meia, calca], [meia])).toBe(
+      3000,
+    );
+    expect(centavosDosItensQueNaoVieram(23000, [meia, calca], [calca])).toBe(
+      20000,
+    );
+    // A conta de ponto flutuante que erra no centavo (0,29 x 100 = 28.999...) fecha em centavos inteiros.
+    const um = linha(1, 0.29);
+    const dois = linha(1, 1.15);
+    expect(centavosDosItensQueNaoVieram(144, [um, dois], [um])).toBe(29);
+  });
+
+  it("com cupom: a parte do ausente é proporcional e o que veio fecha o centavo (296,00: metade é 148,00, não 148,01)", () => {
+    const a = linha(3, 49.33);
+    const b = linha(3, 49.33);
+    expect(centavosDosItensQueNaoVieram(29600, [a, b], [a])).toBe(14800);
+    // 1 de 3 unidades iguais (linhas separadas): 148,00 / 3 arredondado, nunca mais que o valor do servidor.
+    const c = linha(1, 49.33);
+    const d = linha(2, 49.33);
+    expect(centavosDosItensQueNaoVieram(14800, [c, d], [c])).toBe(4933);
+    expect(centavosDosItensQueNaoVieram(14800, [c, d], [d])).toBe(9867);
+    expect(
+      centavosDosItensQueNaoVieram(14800, [c, d], [c]) +
+        centavosDosItensQueNaoVieram(14800, [c, d], [d]),
+    ).toBe(14800);
+  });
+
+  it("bordas: linhas de preço zero não dividem por zero; o desconto nunca passa do valor do servidor", () => {
+    const gratis = linha(2, 0);
+    const outra = linha(1, 0);
+    expect(centavosDosItensQueNaoVieram(5000, [gratis, outra], [gratis])).toBe(
+      0,
+    );
+    // Valor do servidor MENOR que as linhas (a trava de arredondamento cortou): o que não veio nunca passa do valor.
+    const a = linha(3, 6.67);
+    const b = linha(3, 6.67);
+    expect(centavosDosItensQueNaoVieram(2000, [a, b], [a])).toBeLessThanOrEqual(
+      2000,
+    );
+    expect(centavosDosItensQueNaoVieram(99, [a], [a])).toBe(99);
   });
 });

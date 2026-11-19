@@ -196,6 +196,45 @@ describe("AdminShippingView: valores de frete grátis em centavos", () => {
     expect(updateConfig.mock.calls[0][0].nationalShippingMin).toBe(99999999.99);
   });
 
+  it("0,01 não grava o preset Sempre grátis por engano", async () => {
+    await abrir();
+    await digitar("frete-gratis-acima-de", "0,01");
+    await salvar();
+    expect(updateConfig).not.toHaveBeenCalled();
+    expect(hospedeiro.textContent).toContain(
+      "R$ 0,01 é reservado para 'Sempre grátis'. Use outro valor ou escolha 'Sempre grátis'.",
+    );
+  });
+
+  it.each([
+    ["0,02", 0.02],
+    ["1,00", 1],
+  ])("%s salva como mínimo do frete grátis", async (texto, valor) => {
+    await abrir();
+    await digitar("frete-gratis-acima-de", texto);
+    await salvar();
+    expect(updateConfig.mock.calls[0]?.[0]).toMatchObject({
+      freeShippingMin: valor,
+    });
+  });
+
+  it("0,01 já salvo abre como Sempre grátis e não impede outra edição", async () => {
+    estadoDaLoja.atual.freeShippingMin = 0.01;
+    await abrir();
+    const presetAtivo = hospedeiro.querySelector(
+      '#gratis-local [role="radio"][aria-checked="true"]',
+    );
+    expect(presetAtivo?.textContent).toContain("Sempre grátis");
+    expect(hospedeiro.querySelector("#frete-gratis-acima-de")).toBeNull();
+
+    await digitar("frete-nacional-minimo", "200,00");
+    await salvar();
+    expect(updateConfig).toHaveBeenCalledTimes(1);
+    expect(updateConfig.mock.calls[0]?.[0]).toEqual({
+      nationalShippingMin: 200,
+    });
+  });
+
   it("um valor que arredonda para zero é recusado, não vira 'desligado'", async () => {
     await abrir();
     await digitar("frete-gratis-acima-de", "0,004");

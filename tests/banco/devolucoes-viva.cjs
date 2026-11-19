@@ -3971,6 +3971,370 @@ PROVAS.push({
   },
 });
 
+// Valor dos itens com cupom (migration 20261405400000, corpo vivo de solicitar_devolucao): o valor da LINHA devolvida é o proporcional
+// ACUMULADO depois da devolução menos o de antes, arredondado uma vez; a soma das devoluções de uma linha (juntas ou separadas) fecha o
+// total da linha. Antes, o preço de UMA unidade era arredondado e multiplicado: 3 x 50,00 com cupom de 2,00 devolvia 147,99 de 148,00.
+// MUTANTE_R214=<nome> troca UM trecho desse corpo dentro da transação desfeita (alvo único, instalação conferida); a prova tem de cair.
+const VALOR_ASSINATURA =
+  "public.solicitar_devolucao(uuid,jsonb,text,text,text,text,text[])";
+const VALOR_CONTA_NOVA =
+  "      + round(v_oi.price * v_cupom_num * (v_ja + v_qtd) / v_cupom_den, 2)\n      - round(v_oi.price * v_cupom_num * v_ja / v_cupom_den, 2);";
+async function mutarValor(cliente, nome, trecho, troca) {
+  if (process.env.MUTANTE_R214 !== nome) return;
+  const ler = async () =>
+    (
+      await cliente.query("SELECT pg_get_functiondef($1::regprocedure) AS d", [
+        VALOR_ASSINATURA,
+      ])
+    ).rows[0].d.replace(/\r/g, "");
+  const original = await ler();
+  assert.equal(
+    original.split(trecho).length - 1,
+    1,
+    `mutante ${nome}: alvo unico`,
+  );
+  const alterado = original.replace(trecho, () => troca);
+  assert.notEqual(alterado, original, "sabotagem nao aplicada");
+  await cliente.query(alterado);
+  assert.equal(
+    await ler(),
+    alterado,
+    "o banco nao instalou exatamente o mutante",
+  );
+  console.log(`MUTANTE aplicado: ${nome}`);
+}
+
+// Referência INDEPENDENTE do Postgres: o proporcional acumulado em centavos inteiros (BigInt), meio centavo para cima, como o round() do numeric.
+// preço, subtotal e desconto chegam em REAIS com 2 casas (como a fixture); n é o total de unidades da linha já devolvidas.
+const emCentavos = (reais) => BigInt(Math.round(reais * 100));
+function acumuladoEmCentavos(preco, subtotal, desconto, n) {
+  const den = emCentavos(subtotal);
+  const num = emCentavos(subtotal) - emCentavos(desconto);
+  const a = emCentavos(preco) * num * BigInt(n);
+  return Number((2n * a + den) / (2n * den));
+}
+const parteDaDevolucao = (preco, subtotal, desconto, antes, agora) =>
+  (acumuladoEmCentavos(preco, subtotal, desconto, antes + agora) -
+    acumuladoEmCentavos(preco, subtotal, desconto, antes)) /
+  100;
+
+const O_R214_1 = "3eeeeeee-0000-0000-0000-000000000040";
+const O_R214_2 = "3eeeeeee-0000-0000-0000-000000000041";
+const O_R214_3 = "3eeeeeee-0000-0000-0000-000000000042";
+const O_R214_SEPARADAS = "3eeeeeee-0000-0000-0000-000000000043";
+const O_R214_FRETE = "3eeeeeee-0000-0000-0000-000000000044";
+const O_R214_SEM_CUPOM = "3eeeeeee-0000-0000-0000-000000000045";
+const O_R214_SETE = "3eeeeeee-0000-0000-0000-000000000046";
+const O_R214_AUSENTE = "3eeeeeee-0000-0000-0000-000000000047";
+const O_R214_TETO = "3eeeeeee-0000-0000-0000-000000000048";
+const O_R214_SUBTOTAL_ZERO = "3eeeeeee-0000-0000-0000-000000000049";
+const O_R214_PARCIAL = "3eeeeeee-0000-0000-0000-00000000004a";
+const I_R214_1 = "3fffffff-0000-0000-0000-000000000040";
+const I_R214_2 = "3fffffff-0000-0000-0000-000000000041";
+const I_R214_3 = "3fffffff-0000-0000-0000-000000000042";
+const I_R214_SEPARADAS = "3fffffff-0000-0000-0000-000000000043";
+const I_R214_FRETE = "3fffffff-0000-0000-0000-000000000044";
+const I_R214_SEM_CUPOM = "3fffffff-0000-0000-0000-000000000045";
+const I_R214_SETE = "3fffffff-0000-0000-0000-000000000046";
+const I_R214_AUSENTE = "3fffffff-0000-0000-0000-000000000047";
+const I_R214_TETO = "3fffffff-0000-0000-0000-000000000048";
+const I_R214_SUBTOTAL_ZERO = "3fffffff-0000-0000-0000-000000000049";
+const I_R214_PARCIAL = "3fffffff-0000-0000-0000-00000000004a";
+
+PROVAS.push({
+  nome: "(valor dos itens com cupom) a devolução integral fecha o que foi pago, junta ou em partes; sem cupom nada muda",
+  corpo: async (cliente) => {
+    await cliente.query("BEGIN");
+    try {
+      await mutarValor(
+        cliente,
+        "valor-por-unidade-arredondada",
+        VALOR_CONTA_NOVA,
+        "      + round(v_qtd * v_valor_unit, 2);",
+      );
+      await mutarValor(
+        cliente,
+        "sem-o-acumulado-de-antes",
+        VALOR_CONTA_NOVA,
+        "      + round(v_oi.price * v_cupom_num * (v_ja + v_qtd) / v_cupom_den, 2);",
+      );
+      await mutarValor(
+        cliente,
+        "o-que-nao-veio-conta-como-ja-devolvido",
+        "AND di.condicao IS DISTINCT FROM 'ausente';\n    IF v_qtd IS NULL",
+        "AND true;\n    IF v_qtd IS NULL",
+      );
+      await mutarValor(
+        cliente,
+        "fracao-sem-o-cupom",
+        "    v_cupom_num := GREATEST(LEAST(v_o.subtotal - COALESCE(v_o.discount, 0), v_o.subtotal), 0);",
+        "    v_cupom_num := v_o.subtotal;",
+      );
+
+      const novoPedido = async (pedidoId, itemId, o) => {
+        await pedidoCustom(cliente, pedidoId, {
+          userId: U_CLIENTE,
+          total: o.total,
+          subtotal: o.subtotal,
+          discount: o.discount ?? 0,
+          shipping: o.shipping ?? 0,
+          paymentMethod: "online",
+          paymentStatus: "pago",
+          paidAt: new Date(),
+          gateway: `ORD-R214-${pedidoId.slice(-2)}`,
+          itemId,
+          productId: P_CAMISA,
+          qtd: o.qtd,
+          preco: o.preco,
+          entregueHaDias: 2,
+        });
+      };
+      const pedir = async (pedidoId, itemId, quantidade) => {
+        await logar(cliente, U_CLIENTE);
+        return solicitar(
+          cliente,
+          pedidoId,
+          [{ order_item_id: itemId, quantidade }],
+          "desisti",
+          "reembolso",
+          "entrega_na_loja",
+        );
+      };
+      const valorItensDe = async (devolucaoId) =>
+        Number(
+          await valorUnico(
+            cliente,
+            "SELECT valor_itens FROM public.devolucoes WHERE id = $1",
+            [devolucaoId],
+          ),
+        );
+      // Conclui pelo caminho do dono: valor DEFAULT (o que a tela sugere e envia), item voltando com a condição dada.
+      const concluir = async (devolucaoId, condicao = "nova") => {
+        await ateRecebida(cliente, devolucaoId);
+        const itemDevolvido = await valorUnico(
+          cliente,
+          "SELECT id FROM public.devolucao_itens WHERE devolucao_id = $1",
+          [devolucaoId],
+        );
+        const r = await rpc(
+          cliente,
+          "SELECT public.admin_devolucao_concluir($1::uuid, 'reembolso', $2::jsonb) AS r",
+          [
+            devolucaoId,
+            JSON.stringify([
+              {
+                item_id: itemDevolvido,
+                condicao,
+                reestocar: condicao === "nova",
+              },
+            ]),
+          ],
+        );
+        assert.equal(r.status, "concluida");
+        return Number(r.valor_reembolso);
+      };
+      const saldoDe = async (pedidoId) =>
+        Number(
+          await valorUnico(
+            cliente,
+            "SELECT public.pedido__saldo_a_estornar($1::uuid)",
+            [pedidoId],
+          ),
+        );
+
+      // (1) O caso do defeito: 3 x 50,00, cupom de 2,00, sem frete: o cliente pagou 148,00. 1, 2 e 3 unidades de UMA vez (um pedido para cada).
+      const cupomDe2 = {
+        total: 148,
+        subtotal: 150,
+        discount: 2,
+        qtd: 3,
+        preco: 50,
+      };
+      const integral = [
+        { pedidoId: O_R214_1, itemId: I_R214_1, unidades: 1, esperado: 49.33 },
+        { pedidoId: O_R214_2, itemId: I_R214_2, unidades: 2, esperado: 98.67 },
+        { pedidoId: O_R214_3, itemId: I_R214_3, unidades: 3, esperado: 148 },
+      ];
+      for (const { pedidoId, itemId, unidades, esperado } of integral) {
+        await novoPedido(pedidoId, itemId, cupomDe2);
+        const d = await pedir(pedidoId, itemId, unidades);
+        assert.equal(
+          await valorItensDe(d.id),
+          esperado,
+          `${unidades} unidade(s) de 3 x 50,00 com cupom de 2,00: ${esperado} (por unidade arredondada dava 49,33 / 98,66 / 147,99)`,
+        );
+        assert.equal(
+          esperado,
+          parteDaDevolucao(50, 150, 2, 0, unidades),
+          "a referência em centavos inteiros concorda com o número acima",
+        );
+        assert.equal(
+          Number(
+            await valorUnico(
+              cliente,
+              "SELECT valor_unitario FROM public.devolucao_itens WHERE devolucao_id = $1",
+              [d.id],
+            ),
+          ),
+          49.33,
+          "o valor por unidade gravado no item não muda (quem lê quantidade x valor_unitario continua vendo o mesmo)",
+        );
+        if (unidades === 3) {
+          // A integral concluída pelo valor que a tela sugere (o do servidor): devolve TUDO o que foi pago e o saldo zera.
+          assert.equal(
+            await concluir(d.id),
+            148,
+            "a devolução integral devolve os 148,00 pagos, nem 1 centavo a menos",
+          );
+          assert.equal(
+            await saldoDe(pedidoId),
+            0,
+            "depois da integral não sobra centavo para sempre no pedido",
+          );
+        }
+      }
+
+      // (2) As mesmas 3 unidades em TRÊS devoluções de 1 (cada uma concluída antes da próxima): a soma fecha 148,00, e cada parte é a do acumulado.
+      await novoPedido(O_R214_SEPARADAS, I_R214_SEPARADAS, cupomDe2);
+      const partes = [];
+      for (let antes = 0; antes < 3; antes += 1) {
+        const d = await pedir(O_R214_SEPARADAS, I_R214_SEPARADAS, 1);
+        const parte = await valorItensDe(d.id);
+        assert.equal(
+          parte,
+          parteDaDevolucao(50, 150, 2, antes, 1),
+          `devolução ${antes + 1} de 3 (1 unidade cada)`,
+        );
+        partes.push(parte);
+        await concluir(d.id);
+      }
+      assert.deepEqual(partes, [49.33, 49.34, 49.33]);
+      assert.equal(
+        Math.round(partes.reduce((s, v) => s + v, 0) * 100),
+        14800,
+        "três devoluções separadas somam os 148,00 pagos",
+      );
+      assert.equal(await saldoDe(O_R214_SEPARADAS), 0);
+
+      // (3) Com frete de ida: 3 x 50,00, cupom de 2,00, frete de 10,00 (pago 158,00). A integral é arrependimento: itens 148,00 + frete 10,00.
+      await novoPedido(O_R214_FRETE, I_R214_FRETE, {
+        ...cupomDe2,
+        shipping: 10,
+        total: 158,
+      });
+      const comFrete = await pedir(O_R214_FRETE, I_R214_FRETE, 3);
+      assert.equal(await valorItensDe(comFrete.id), 148);
+      assert.equal(
+        await concluir(comFrete.id),
+        158,
+        "itens com cupom + frete de ida = exatamente o que foi pago",
+      );
+      assert.equal(await saldoDe(O_R214_FRETE), 0);
+
+      // (4) Sem cupom: idêntico ao de antes (preço x quantidade, cada devolução).
+      await novoPedido(O_R214_SEM_CUPOM, I_R214_SEM_CUPOM, {
+        total: 99.99,
+        subtotal: 99.99,
+        qtd: 3,
+        preco: 33.33,
+      });
+      const semCupom = await pedir(O_R214_SEM_CUPOM, I_R214_SEM_CUPOM, 2);
+      assert.equal(await valorItensDe(semCupom.id), 66.66);
+      await concluir(semCupom.id);
+      const restoSemCupom = await pedir(O_R214_SEM_CUPOM, I_R214_SEM_CUPOM, 1);
+      assert.equal(await valorItensDe(restoSemCupom.id), 33.33);
+
+      // (5) Sete unidades de 10,01 com cupom de 3,33 (nada redondo), devolvidas em 2 + 3 + 2: cada parte é a da referência, a soma é o total da linha.
+      const sete = {
+        total: 66.74,
+        subtotal: 70.07,
+        discount: 3.33,
+        qtd: 7,
+        preco: 10.01,
+      };
+      await novoPedido(O_R214_SETE, I_R214_SETE, sete);
+      let acumulado = 0;
+      let soma = 0;
+      for (const lote of [2, 3, 2]) {
+        const d = await pedir(O_R214_SETE, I_R214_SETE, lote);
+        const parte = await valorItensDe(d.id);
+        assert.equal(
+          parte,
+          parteDaDevolucao(10.01, 70.07, 3.33, acumulado, lote),
+          `7 x 10,01 com cupom de 3,33: devolução de ${lote} depois de ${acumulado}`,
+        );
+        soma += Math.round(parte * 100);
+        acumulado += lote;
+        await concluir(d.id);
+      }
+      assert.equal(
+        soma,
+        6674,
+        "2 + 3 + 2 unidades somam os 66,74 que a linha custou",
+      );
+      assert.equal(await saldoDe(O_R214_SETE), 0);
+
+      // (6) O item que "não veio" não conta como já devolvido: a devolução seguinte da mesma unidade vale como a PRIMEIRA (49,33), não como a segunda.
+      await novoPedido(O_R214_AUSENTE, I_R214_AUSENTE, cupomDe2);
+      const aAusente = await pedir(O_R214_AUSENTE, I_R214_AUSENTE, 1);
+      assert.equal(await valorItensDe(aAusente.id), 49.33);
+      await concluir(aAusente.id, "ausente");
+      const denovo = await pedir(O_R214_AUSENTE, I_R214_AUSENTE, 1);
+      assert.equal(
+        await valorItensDe(denovo.id),
+        49.33,
+        "a unidade que não veio volta a valer como a primeira devolvida",
+      );
+
+      // (7) O teto continua: dado antigo com itens que somam MAIS que o subtotal do pedido (3 x 50 = 150 contra subtotal 100) trava em 100,00.
+      await novoPedido(O_R214_TETO, I_R214_TETO, {
+        total: 100,
+        subtotal: 100,
+        qtd: 3,
+        preco: 50,
+      });
+      const noTeto = await pedir(O_R214_TETO, I_R214_TETO, 3);
+      assert.equal(
+        await valorItensDe(noTeto.id),
+        100,
+        "o teto do que o pedido cobrou pelos itens segue valendo",
+      );
+
+      // (8) Dado antigo com subtotal 0 (fração 1, sem rateio): a conta dá 40,00, mas o teto (subtotal - desconto = 0) zera, igual ao corpo de antes.
+      await novoPedido(O_R214_SUBTOTAL_ZERO, I_R214_SUBTOTAL_ZERO, {
+        total: 40,
+        subtotal: 0,
+        qtd: 2,
+        preco: 20,
+      });
+      const semSubtotal = await pedir(
+        O_R214_SUBTOTAL_ZERO,
+        I_R214_SUBTOTAL_ZERO,
+        2,
+      );
+      assert.equal(
+        await valorItensDe(semSubtotal.id),
+        0,
+        "subtotal 0 (dado legado): o teto do que o pedido cobrou pelos itens zera, como antes; sem erro de divisão por zero",
+      );
+
+      // (9) Devolução PARCIAL com cupom continua proporcional (1 de 2 unidades de 100,00 com cupom de 100,00 = 50,00, o caso (A) de cima).
+      await novoPedido(O_R214_PARCIAL, I_R214_PARCIAL, {
+        total: 120,
+        subtotal: 200,
+        discount: 100,
+        shipping: 20,
+        qtd: 2,
+        preco: 100,
+      });
+      const parcial = await pedir(O_R214_PARCIAL, I_R214_PARCIAL, 1);
+      assert.equal(await valorItensDe(parcial.id), 50);
+    } finally {
+      await cliente.query("ROLLBACK");
+    }
+  },
+});
+
 async function main() {
   const url = lerDatabaseUrlEfemera();
   const cliente = new Client({ connectionString: url });

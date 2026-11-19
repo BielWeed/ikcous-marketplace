@@ -171,15 +171,38 @@ describe("CartView — Total não fecha enquanto o frete está 'A calcular'", ()
   const rodapeDoCelular = () =>
     document.querySelector(".bottom-docked-navigation") as HTMLElement | null;
 
-  /** O número (ou o texto) que está embaixo do rótulo "Total". */
-  function valorDoTotal(raizDoResumo: HTMLElement | null | undefined): string {
+  function linhaDoRotulo(
+    raizDoResumo: HTMLElement | null | undefined,
+    rotulo: string,
+  ): Element {
     expect(raizDoResumo).toBeTruthy();
+    const temTexto = (elemento: Element) =>
+      elemento.textContent?.trim() === rotulo;
     const rotulos = Array.from(
-      raizDoResumo?.querySelectorAll("span") ?? [],
-    ).filter((s) => s.textContent?.trim() === "Total");
+      raizDoResumo?.querySelectorAll("*") ?? [],
+    ).filter(
+      (elemento) =>
+        temTexto(elemento) && !Array.from(elemento.children).some(temTexto),
+    );
     expect(rotulos).toHaveLength(1);
-    const valor = rotulos[0]?.nextElementSibling;
-    expect(valor, "a linha do Total tem de continuar existindo").toBeTruthy();
+    const linha = rotulos[0]?.parentElement;
+    expect(linha, `a linha de ${rotulo} precisa existir`).toBeTruthy();
+    return linha!;
+  }
+
+  function conferirFreteACalcular(
+    raizDoResumo: HTMLElement | null | undefined,
+  ) {
+    const linha = linhaDoRotulo(raizDoResumo, "Frete");
+    // A comparação fica na linha do Frete, não pode usar o texto do Total.
+    expect(linha.textContent?.replace("Frete", "").trim()).toBe("A calcular");
+  }
+
+  function valorDoTotal(raizDoResumo: HTMLElement | null | undefined): string {
+    // No rodapé, o contêiner também abriga o Frete; só o Total é anunciado.
+    const linha = linhaDoRotulo(raizDoResumo, "Total");
+    const valor = linha.querySelector('[role="status"]');
+    expect(valor, "a linha do Total precisa ter um valor").toBeTruthy();
     return (valor?.textContent ?? "").replace(/\u00A0/g, " ").trim();
   }
 
@@ -188,6 +211,7 @@ describe("CartView — Total não fecha enquanto o frete está 'A calcular'", ()
     const resumo = resumoDoComputador();
 
     expect(valorDoTotal(resumo)).toBe("A calcular");
+    conferirFreteACalcular(resumo);
     const texto = (resumo?.textContent ?? "").replace(/\u00A0/g, " ");
     // O subtotal segue honesto, e o chute de fábrica não foi somado.
     expect(texto).toContain("R$ 100,00");
@@ -204,8 +228,7 @@ describe("CartView — Total não fecha enquanto o frete está 'A calcular'", ()
     expect(texto).not.toContain("R$ 100,00");
     expect(texto).not.toContain("R$ 115,00");
     expect(texto).not.toContain("GRÁTIS");
-    // A linha do Frete continua dizendo a mesma coisa.
-    expect(texto).toContain("A calcular");
+    conferirFreteACalcular(rodape);
   });
 
   it("controle, RETIRADA NA LOJA (frete zero conhecido): Total fechado, nos dois resumos", async () => {

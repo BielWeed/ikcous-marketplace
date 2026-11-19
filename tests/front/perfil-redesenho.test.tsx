@@ -381,7 +381,7 @@ describe("ProfileView — redesenho aprovado", () => {
       expect(lista!.querySelectorAll("li")).toHaveLength(4);
       expect(
         lista!.querySelector('li[aria-current="step"]')?.textContent,
-      ).toContain("Separado");
+      ).toContain("Em separação");
     });
 
     // Medido em navegador a 320 px (jsdom não calcula layout; aqui só se trava

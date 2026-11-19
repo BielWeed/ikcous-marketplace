@@ -233,6 +233,64 @@ describe("fila offline de produtos — tenta de novo depois de falha passageira"
     expect(mock.atualizados).toHaveLength(2);
   });
 
+  it("envia a edição que entrou durante o envio e só anuncia sucesso com a fila vazia", async () => {
+    mock.segurar = true;
+    await montar();
+    await passar(S);
+    expect(mock.atualizados.map(({ id }) => id)).toEqual(["prod-1"]);
+
+    // O segundo produto entra enquanto a primeira gravação ainda está em voo.
+    const novo = itemDe("prod-2", { price: 25 });
+    localStorage.setItem(CHAVE_A, JSON.stringify([...(fila() ?? []), novo]));
+    await act(async () => {
+      window.dispatchEvent(new Event("online"));
+      await vi.advanceTimersByTimeAsync(S);
+    });
+    expect(mock.atualizados).toHaveLength(1);
+
+    await act(async () => {
+      mock.segurarEnvio?.concluir();
+    });
+    expect(fila()).toEqual([novo]);
+    expect(toast.success).not.toHaveBeenCalled();
+
+    await passar(S);
+    expect(mock.atualizados.map(({ id }) => id)).toEqual(["prod-1", "prod-2"]);
+    expect(toast.success).not.toHaveBeenCalled();
+
+    await act(async () => {
+      mock.segurarEnvio?.concluir();
+    });
+    expect(fila()).toBeNull();
+    expect(toast.success).toHaveBeenCalledTimes(1);
+  });
+
+  it("mantém no recuo a edição nova que sempre falha, sem anunciar que tudo foi enviado", async () => {
+    mock.segurar = true;
+    await montar();
+    await passar(S);
+
+    const veneno = itemDe("prod-2", { price: 25 });
+    localStorage.setItem(CHAVE_A, JSON.stringify([...(fila() ?? []), veneno]));
+    mock.falhasRestantes = 99;
+    mock.segurar = false;
+    await act(async () => {
+      mock.segurarEnvio?.concluir();
+    });
+    await passar(S);
+    expect(mock.atualizados.map(({ id }) => id)).toEqual(["prod-1", "prod-2"]);
+    expect(fila()).toEqual([veneno]);
+    expect(toast.success).not.toHaveBeenCalled();
+
+    // O item que falhou não é novo: antes do recuo, não volta a ser enviado.
+    await passar(31 * S - 1);
+    expect(mock.atualizados).toHaveLength(2);
+    await passar(1);
+    expect(mock.atualizados).toHaveLength(3);
+    expect(fila()).toEqual([veneno]);
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
   it("falha que persiste: o recuo cresce (30 s, 2 min, 10 min) e fica em 10 min", async () => {
     mock.falhasRestantes = 99;
 

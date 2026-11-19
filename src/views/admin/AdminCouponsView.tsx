@@ -188,6 +188,10 @@ export const AdminCouponsView = memo(function AdminCouponsView({
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [couponToDelete, setCouponToDelete] = useState<string | null>(null);
+  const exclusoesEmVooRef = useRef(new Set<string>());
+  const [exclusoesEmVoo, setExclusoesEmVoo] = useState<Set<string>>(
+    () => new Set(),
+  );
   const foco = useFocoAposExcluir();
 
   const { ref: viewRef } = useScrollRestoration(
@@ -245,6 +249,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
   };
 
   const handleDelete = (id: string) => {
+    if (exclusoesEmVooRef.current.has(id)) return;
     if (isOffline) {
       toast.error("Sem conexão com a internet", {
         description: "Você precisa estar online para excluir cupons.",
@@ -255,14 +260,19 @@ export const AdminCouponsView = memo(function AdminCouponsView({
   };
 
   const confirmDeleteCoupon = async () => {
-    if (!couponToDelete) return;
+    const id = couponToDelete;
+    if (!id || exclusoesEmVooRef.current.has(id)) return;
+    exclusoesEmVooRef.current.add(id);
+    setExclusoesEmVoo(new Set(exclusoesEmVooRef.current));
+    foco.marcarExclusao();
     try {
-      await deleteCoupon(couponToDelete);
+      await deleteCoupon(id);
     } catch (error) {
       console.error("Error deleting coupon:", error);
       // o toast de erro já foi dado no hook (useCoupons)
     } finally {
-      setCouponToDelete(null);
+      exclusoesEmVooRef.current.delete(id);
+      setExclusoesEmVoo(new Set(exclusoesEmVooRef.current));
     }
   };
 
@@ -677,6 +687,8 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                 {coupons.map((coupon) => {
                   const rotulo = rotuloDoCupom(coupon);
                   const aberto = Boolean(detalhesAbertos[coupon.id]);
+                  const excluirDesabilitado =
+                    isOffline || exclusoesEmVoo.has(coupon.id);
                   const indisponivel =
                     rotulo === "Expirado" || rotulo === "Esgotado";
                   return (
@@ -841,7 +853,8 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                           type="button"
                           aria-label={`Excluir cupom ${coupon.code}`}
                           onClick={() => handleDelete(coupon.id)}
-                          disabled={isOffline}
+                          disabled={excluirDesabilitado}
+                          aria-disabled={excluirDesabilitado}
                           className={`${SECUNDARIO} px-0`}
                         >
                           <Trash
@@ -1040,13 +1053,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
             <AlertDialogCancel className={SECUNDARIO}>
               Cancelar
             </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                foco.marcarExclusao();
-                confirmDeleteCoupon();
-              }}
-              className={PERIGO}
-            >
+            <AlertDialogAction onClick={confirmDeleteCoupon} className={PERIGO}>
               Excluir cupom
             </AlertDialogAction>
           </AlertDialogFooter>

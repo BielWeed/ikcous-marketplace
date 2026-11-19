@@ -963,6 +963,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   const variacaoEmExclusao = formData.variants.find(
     (v) => v.id === variantToDelete,
   );
+  // Excluir toda a grade preserva o estoque do produto, não o da variação.
+  const estoqueSemVariacoes =
+    variacaoEmExclusao && formData.variants.length === 1 && formData.isActive
+      ? Number(formData.stock)
+      : 0;
   // Trocar o nome de uma variação já gravada espera o "sim" da lojista: o pedido
   // lê a variação ao vivo, então o nome novo aparece também nos pedidos antigos.
   // `aplicar` é o fim do "Salvar variação", adiado até a confirmação.
@@ -6845,6 +6850,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               )}
               Ela será removida da lista. Para guardar essa alteração no
               sistema, você precisa salvar o formulário do produto.
+              {estoqueSemVariacoes > 0 ? (
+                <>
+                  {" "}
+                  Se a exclusão for concluída ao salvar, este produto continuará
+                  à venda com {estoqueSemVariacoes}{" "}
+                  {estoqueSemVariacoes === 1 ? "unidade" : "unidades"}, sem
+                  escolha de tamanho.
+                </>
+              ) : null}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="mt-4 gap-2">

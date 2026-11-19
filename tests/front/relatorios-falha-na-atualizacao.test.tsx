@@ -4,13 +4,11 @@ import { ClientesDoCrm } from "@/components/admin/crm/ClientesDoCrm";
 import { FunilEPedidosDoCrm } from "@/components/admin/crm/FunilEPedidosDoCrm";
 import { VisaoGeralDoCrm } from "@/components/admin/crm/VisaoGeralDoCrm";
 import { lerVisaoDoCrm } from "@/lib/crm";
-import { type ReactNode, act } from "react";
+import { type ComponentProps, type ReactNode, act } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 
-vi.mock("@/components/admin/dashboard/OperationalPerformanceChart", () => ({
-  OperationalPerformanceChart: () => null,
-}));
+vi.mock("@/hooks/useMediaQuery", () => ({ useMediaQuery: () => false }));
 vi.mock("@/components/admin/dashboard/StrategicIntelligenceBlocks", () => ({
   StrategicIntelligenceBlocks: () => null,
 }));
@@ -143,6 +141,105 @@ async function montar(
     host.remove();
   }
 }
+
+type EstadoClassico = ComponentProps<typeof VisaoGeralDoCrm>["classico"];
+
+function montarHistorico(estado: EstadoClassico) {
+  return (
+    <VisaoGeralDoCrm
+      visao={visao}
+      carregando={false}
+      comparacao=""
+      classico={estado}
+      active
+      onNavigate={vi.fn()}
+      aoVerSegmento={vi.fn()}
+    />
+  );
+}
+
+it("histórico com falha não finge que está vazio ou carregando e permite tentar de novo", async () => {
+  const carregar = vi.fn();
+  await montar(
+    montarHistorico({ ...classico, erro: "Falha de rede", carregar }),
+    async (host) => {
+      const historico = host.querySelector(
+        'section[aria-label="Histórico completo da loja"]',
+      )!;
+      const grafico = historico.querySelector(
+        'section[aria-label="Histórico da loja"]',
+      )!;
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 260));
+      });
+      expect(grafico.textContent).not.toContain(
+        "Nenhum dado disponível no período",
+      );
+      expect(grafico.querySelector(".premium-shimmer")).toBeNull();
+      expect(grafico.textContent?.match(/—/g)).toHaveLength(3);
+      expect(historico.querySelector('[role="alert"]')?.textContent).toBe(
+        "Falha ao carregar o histórico da loja",
+      );
+      const tentar = [...historico.querySelectorAll("button")].find(
+        (botao) => botao.textContent?.trim() === "Tentar de novo",
+      );
+      expect(tentar).toBeDefined();
+      await act(async () => tentar!.click());
+      expect(carregar).toHaveBeenCalledExactlyOnceWith(true);
+    },
+  );
+});
+
+it.each([false, true])(
+  "histórico sem permissão orienta a conferir a conta de administradora (com cache: %s)",
+  async (comCache) => {
+    const erro =
+      "Sem permissão para acessar estes dados agora. Confirme que você entrou com a conta de administradora da loja.";
+    await montar(
+      montarHistorico({
+        ...classico,
+        erro,
+        stats: comCache
+          ? ({ revenueHistory: [] } as unknown as NonNullable<
+              EstadoClassico["stats"]
+            >)
+          : null,
+      }),
+      (host) => {
+        const aviso = host.querySelector('[data-aviso-historico="falha"]');
+        expect(aviso?.textContent).toContain(erro);
+        if (comCache) {
+          expect(aviso?.textContent).toContain("mostrando a última busca");
+        }
+        expect(
+          host.querySelector(
+            'section[aria-label="Histórico da loja"] [role="alert"]',
+          )?.textContent,
+        ).toContain(erro);
+      },
+    );
+  },
+);
+
+it("histórico consultado com sucesso, sem vendas, mantém o estado vazio", async () => {
+  await montar(
+    montarHistorico({
+      ...classico,
+      stats: { revenueHistory: [] } as unknown as NonNullable<
+        EstadoClassico["stats"]
+      >,
+    }),
+    async (host) => {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 260));
+      });
+      expect(host.textContent).toContain("Nenhum dado disponível no período");
+      expect(host.textContent).not.toContain(
+        "Falha ao carregar o histórico da loja",
+      );
+    },
+  );
+});
 
 it.each(abas)(
   "%s: erro com cache avisa e conserva os números",

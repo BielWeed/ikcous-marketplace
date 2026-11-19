@@ -1319,11 +1319,20 @@ Deno.test("leitura do pedido falha -> 500 (evento fica na fila do MP), RPC não 
 
 // --- 4. 'ja_pago' -> idempotência --------------------------------------------
 
-Deno.test("RPC devolve 'ja_pago' -> 200 e NENHUM push — é a prova da idempotência", async () => {
+Deno.test("mesmo evento aprovado duas vezes -> 'pago', depois 'ja_pago', e um único push", async () => {
   const registro = { chamadasRpc: [] };
-  const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
-  const supabase = clienteFalso({ rpcResultado: "ja_pago", pedido, registro });
+  const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null, payment_status: "aguardando" };
+  const supabase = clienteFalso({ pedido, registro });
+  const rpc = supabase.rpc;
+  supabase.rpc = async (nome, args) => {
+    if (nome !== "confirmar_pagamento") return rpc(nome, args);
+    registro.chamadasRpc.push({ args });
+    const anterior = pedido.payment_status;
+    pedido.payment_status = "pago";
+    return { data: anterior === "pago" ? "ja_pago" : "pago", error: null };
+  };
   const req = await requisicaoAssinada("999");
+  const repetida = req.clone();
   const fetchImpl = fetchConsulta(200, {
     id: 999,
     status: "approved",
@@ -1331,14 +1340,27 @@ Deno.test("RPC devolve 'ja_pago' -> 200 e NENHUM push — é a prova da idempot�
     external_reference: UUID_PEDIDO,
   });
   const chamadasPush: unknown[] = [];
-  const enviarPush = async (args: unknown) => {
-    chamadasPush.push(args);
+  const deps = {
+    supabase,
+    fetchImpl,
+    enviarPush: async (args: unknown) => { chamadasPush.push(args); },
+    enviarComprovante: async () => {},
+    enviarAvisoAtrasado: async () => {},
   };
 
-  const resposta = await handler(req, { supabase, fetchImpl, enviarPush });
+  const primeira = await handler(req, deps);
+  assertEquals(primeira.status, 200);
+  assertEquals((await primeira.json()).resultado, "pago");
+  assertEquals(chamadasPush.length, 1, "o aviso sai na primeira entrega");
 
-  assertEquals(resposta.status, 200);
-  assertEquals(chamadasPush.length, 0);
+  const segunda = await handler(repetida, deps);
+  assertEquals(segunda.status, 200);
+  assertEquals((await segunda.json()).resultado, "ja_pago");
+  assertEquals(chamadasPush.length, 1, "a reentrega não repete o aviso");
+  assertEquals(registro.chamadasRpc.map(({ args }) => args), [
+    { p_order_id: UUID_PEDIDO, p_payment_id: "999", p_status: "pago" },
+    { p_order_id: UUID_PEDIDO, p_payment_id: "999", p_status: "pago" },
+  ]);
 });
 
 // --- 5. 'pago_apos_expirar' -----------------------------------------------
@@ -1532,33 +1554,36 @@ Deno.test("push dispara em exatamente 2 dos 9 retornos possíveis da RPC", async
 
 // --- 10. ts antigo é ACEITO (rodada de conserto 1: janela desligada) -------
 
-Deno.test("ts de 1h atrás é ACEITO — o webhook nunca confia no que chega, só no que consulta no MP", async () => {
-  // O MP não para de reenviar depois da 3ª tentativa — estende o intervalo
-  // e continua, sem limite documentado. Nenhuma janela finita é segura, e
-  // aceitar um ts velho não custa nada: quem autentica é o HMAC, e a decisão
-  // vem de uma consulta NOVA ao MP (o status ATUAL), não do que veio no
-  // header. Todos os outros testes assinam com ts=agora; sem este, a decisão
-  // de desligar a janela não está presa por nenhum teste.
+Deno.test("assinatura antiga de 1h ou 7 dias é aceita e sempre consulta de novo o Mercado Pago", async () => {
+  // Uma reentrega pode ultrapassar 24 h. A assinatura continua sendo
+  // exigida, mas a decisão vem de uma consulta nova ao MP, não do header.
   const registro = { chamadasRpc: [] };
   const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
   const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
   const agora = Math.floor(Date.now() / 1000);
-  const req = await requisicaoAssinada("999", { ts: agora - 3600 });
-  const fetchImpl = fetchConsulta(200, {
+  const consultar = fetchConsulta(200, {
     id: 999,
     status: "approved",
     transaction_amount: 149.9,
     external_reference: UUID_PEDIDO,
   });
-  const chamadasPush: unknown[] = [];
-  const enviarPush = async (args: unknown) => {
-    chamadasPush.push(args);
-  };
+  for (const [idade, segundos] of [["1h", 3600], ["7 dias", 7 * 86400]] as const) {
+    const consultas: string[] = [];
+    const req = await requisicaoAssinada("999", { ts: agora - segundos });
+    const resposta = await handler(req, {
+      supabase,
+      fetchImpl: (url, init) => {
+        consultas.push(url);
+        return consultar(url, init);
+      },
+      enviarPush: async () => {},
+      enviarComprovante: async () => {},
+    });
 
-  const resposta = await handler(req, { supabase, fetchImpl, enviarPush });
-
-  assertEquals(resposta.status, 200);
-  assertEquals(registro.chamadasRpc.length, 1);
+    assertEquals(resposta.status, 200, `assinatura válida de ${idade}`);
+    assertEquals(consultas, ["https://api.mercadopago.com/v1/payments/999"], idade);
+  }
+  assertEquals(registro.chamadasRpc.length, 2);
 });
 
 // --- type/topic que não é payment: barato de filtrar, evita poluir o log ---
@@ -6637,18 +6662,30 @@ Deno.test("MP-W8, CONTROLE: x-signature no FORMATO do MP mas com HMAC errado pas
   assertEquals(registro.chamadasRpc.length, 0);
 });
 
-Deno.test("MP-W8, CONTROLE: a assinatura VALIDA (ts em segundos e em milissegundos) continua passando da porta e do HMAC", async () => {
-  for (const ts of [Math.floor(Date.now() / 1000), Date.now()]) {
+for (const unidade of ["segundos", "milissegundos"] as const) {
+  Deno.test(`MP-W8, CONTROLE: assinatura válida com ts em ${unidade} consulta o pagamento correto`, async () => {
+    const agora = Date.now();
+    const ts = unidade === "segundos" ? Math.floor(agora / 1000) : agora;
     const registro = { chamadasRpc: [] };
     const tabelas: string[] = [];
     const supabase = contandoFrom(clienteFalso({ rpcResultado: "pago", registro }), tabelas);
     const req = await requisicaoAssinada("999", { ts });
-    const resposta = await handler(req, { supabase, fetchImpl: fetchConsulta(500, { message: "erro interno" }) });
-    // O MP fora do ar DEPOIS da assinatura: 401 nunca; leu as credenciais.
-    assert(resposta.status !== 401, `ts=${ts}: a assinatura valida nao pode virar 401`);
+    const consultas: Array<{ metodo: string; url: string }> = [];
+    const consultar = fetchConsulta(500, { message: "erro interno" });
+    const resposta = await handler(req, {
+      supabase,
+      fetchImpl: (url, init) => {
+        consultas.push({ metodo: init?.method ?? "GET", url });
+        return consultar(url, init);
+      },
+    });
+
     assertEquals(tabelas[0], "app_settings");
-  }
-});
+    assertEquals(consultas, [{ metodo: "GET", url: "https://api.mercadopago.com/v1/payments/999" }]);
+    // O MP ficou indisponível DEPOIS de autenticar e consultar.
+    assertEquals(resposta.status, 500);
+  });
+}
 
 // --- Tarefa mp-6: UMA resolução de credenciais por invocação ---------------
 //

@@ -431,7 +431,7 @@ export function VerificacaoDoPagamento({
           </p>
         )}
         {situacao.tipo === "desafio" && (
-          <p className="flex items-start gap-2 text-sm text-zinc-700">
+          <p className="flex items-start gap-2 rounded-2xl border border-zinc-200 bg-white p-4 text-sm text-zinc-900">
             <ShieldCheck
               aria-hidden="true"
               className="mt-0.5 size-5 shrink-0 text-zinc-500"
@@ -441,13 +441,13 @@ export function VerificacaoDoPagamento({
           </p>
         )}
         {situacao.tipo === "desafio-sem-pagina" && (
-          <p className="text-sm text-zinc-700">
+          <p className="rounded-2xl border border-zinc-200 bg-white p-4 text-sm text-zinc-900">
             Seu banco pediu uma confirmação de segurança para este pagamento,
             mas ela não pôde ser aberta aqui.
           </p>
         )}
         {situacao.tipo === "desafio-concluido" && (
-          <p className="text-sm text-zinc-700">
+          <p className="rounded-2xl border border-zinc-200 bg-white p-4 text-sm text-zinc-900">
             Confirmação enviada ao banco. Toque em “Verificar de novo” para ver
             a resposta.
           </p>

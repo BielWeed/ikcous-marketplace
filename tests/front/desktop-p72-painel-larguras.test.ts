@@ -332,7 +332,7 @@ function avancar(fonte: string): string[] {
   const botoes = l.elementos.filter(
     (e) =>
       l.tag(e) === "Button" &&
-      l.texto(e).includes("onAdvance(orderId, nextStatus)") &&
+      l.texto(e).includes("onAdvance(") &&
       l.texto(e).includes("`Avançar →"),
   );
   if (botoes.length !== 1) return [`achou ${botoes.length} botões Avançar`];

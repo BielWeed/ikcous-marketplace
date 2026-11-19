@@ -90,6 +90,7 @@ import { usePredictiveNavigation } from "@/hooks/usePredictiveNavigation";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useSwipeBack } from "@/hooks/useSwipeBack";
 import { useViewTransition } from "@/hooks/useViewTransition";
+import { consumirVoltarDaFolhaAntesDaGuarda } from "@/hooks/useVoltarFechaAFolha";
 import { useWebVitals } from "@/hooks/useWebVitals";
 
 function DeferredTabContent({
@@ -2582,6 +2583,8 @@ const AppContent = () => {
 
     syncWithUrl("efeito");
     const handlePopState = (e: PopStateEvent) => {
+      if (consumirVoltarDaFolhaAntesDaGuarda(e)) return;
+
       // 1. PRIORITY: a camada aberta consome o Voltar ANTES do gate de
       //      dirty (mesmo tema do 94c2638, agora do lado do App). Com cupom
       //      cheio no PDV e a camada de cliente/variação/fechamento aberta,

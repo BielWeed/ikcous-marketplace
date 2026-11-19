@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 describe("rotuloDoStatusParaACliente", () => {
   it("entrega: cada status vira o nome da etapa que o app da cliente mostra", () => {
     expect(rotuloDoStatusParaACliente("pending")).toBe("Recebido");
-    expect(rotuloDoStatusParaACliente("processing")).toBe("Separado");
+    expect(rotuloDoStatusParaACliente("processing")).toBe("Em separação");
     expect(rotuloDoStatusParaACliente("shipping")).toBe("A caminho");
     expect(rotuloDoStatusParaACliente("delivered")).toBe("Entregue");
     expect(rotuloDoStatusParaACliente("cancelled")).toBe("Cancelado");

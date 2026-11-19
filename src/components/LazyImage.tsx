@@ -53,6 +53,8 @@ interface LazyImageProps {
   carregarCedo?: boolean;
   /** Avisa uma vez a cada vez que a foto termina de carregar. */
   aoCarregar?: () => void;
+  /** Eleva a foto sobre as camadas do banner apenas enquanto o aviso aparece. */
+  priorizarAvisoDeErro?: boolean;
 }
 
 export function LazyImage({
@@ -70,6 +72,7 @@ export function LazyImage({
   semFade = false,
   carregarCedo = false,
   aoCarregar,
+  priorizarAvisoDeErro = false,
 }: LazyImageProps) {
   const [isLoaded, setIsLoaded] = useState(false);
   const [visto, setIsInView] = useState(priority);
@@ -203,13 +206,16 @@ export function LazyImage({
     );
   }
 
+  const avisoCompacto = hasError && priorizarAvisoDeErro;
+
   return (
     <div
       ref={imgRef}
       // `isolate`: o `z-10` do botão de tentar de novo vale só DENTRO da foto.
       // Sem isto a raiz (relative, z-index auto) não forma camada própria e o
-      // botão passava por cima do coração do card e do texto/botão do banner.
-      className={`relative isolate overflow-hidden bg-zinc-100 dark:bg-zinc-900/50 ${className}`}
+      // botão passava por cima do coração do card. No banner, a camada elevada
+      // é transparente e deixa os toques passarem, exceto no aviso compacto.
+      className={`relative isolate overflow-hidden ${avisoCompacto ? "pointer-events-none z-10" : "bg-zinc-100 dark:bg-zinc-900/50"} ${className}`}
       style={style}
     >
       {/* Placeholder skeleton */}
@@ -235,7 +241,11 @@ export function LazyImage({
           // própria que, vindo depois no DOM, pintava POR CIMA do botão
           // (z-index auto) e engolia o toque -- o clique caía no card e abria
           // o produto. Medido no Chromium real; jsdom não enxerga empilhamento.
-          className="absolute inset-0 z-10 flex items-center justify-center border border-zinc-100 bg-zinc-50 dark:border-white/5 dark:bg-zinc-900"
+          className={
+            avisoCompacto
+              ? "pointer-events-auto absolute left-1/2 top-2 z-10 flex min-h-11 -translate-x-1/2 items-center justify-center rounded-lg border border-zinc-100 bg-zinc-50 px-2 shadow-md dark:border-white/5 dark:bg-zinc-900"
+              : "absolute inset-0 z-10 flex items-center justify-center border border-zinc-100 bg-zinc-50 dark:border-white/5 dark:bg-zinc-900"
+          }
         >
           <span className="px-2 text-center text-[10px] font-medium text-zinc-600 dark:text-zinc-500">
             Toque para tentar de novo

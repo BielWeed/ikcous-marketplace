@@ -10,7 +10,7 @@
  */
 export const ROTULOS_DAS_ETAPAS = {
   recebido: "Recebido",
-  separado: "Separado",
+  separado: "Em separação",
   aCaminho: "A caminho",
   entregue: "Entregue",
 } as const;

@@ -375,8 +375,8 @@ describe("ProductView — a galeria desliza e a variação não esconde as fotos
 
     await tocar(opcao("Rosa"));
     expect(bolinhas()).toHaveLength(3);
-    // A foto ativa nunca fica apontando para uma foto que deixou de existir.
-    expect(fotoAtiva()).toBe(3);
+    // A foto da opção desmarcada saiu da faixa: voltamos à capa.
+    expect(fotoAtiva()).toBe(1);
   });
 
   it("produto de uma foto só não vira carrossel", async () => {

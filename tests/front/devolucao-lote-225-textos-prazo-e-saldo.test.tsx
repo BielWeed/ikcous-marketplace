@@ -210,6 +210,50 @@ async function abrirFicha() {
   await clicar(hospedeiro.querySelector<HTMLElement>('[data-devolucao="d-1"]'));
 }
 
+it("só a coleta muda para Brasília: Pedido em e histórico conservam o horário do aparelho em UTC", async () => {
+  const instante = "2026-11-19T01:30:00Z";
+  const original = Date.prototype.toLocaleString;
+  const relogio = vi
+    .spyOn(Date.prototype, "toLocaleString")
+    .mockImplementation(function (this: Date, locales, options) {
+      return original.call(this, locales, { timeZone: "UTC", ...options });
+    });
+  try {
+    respostas.set("devolucao_detalhe", {
+      ...DETALHE,
+      metodo_retorno: "coleta",
+      created_at: instante,
+      coleta_em: instante,
+      eventos: [
+        {
+          id: "ev-1",
+          de_status: "solicitada",
+          para_status: "aprovada",
+          ator: "lojista",
+          nota: null,
+          created_at: instante,
+        },
+      ],
+    });
+    await abrirFicha();
+    const campos = Array.from(hospedeiro.querySelectorAll("dt"));
+    const valorDe = (rotulo: string) =>
+      campos.find((campo) => campo.textContent === rotulo)?.nextElementSibling
+        ?.textContent;
+
+    expect(valorDe("Pedido em")).toBe("19/11/2026, 01:30");
+    const historico = Array.from(hospedeiro.querySelectorAll("section")).find(
+      (secao) => secao.querySelector("h3")?.textContent === "Histórico",
+    );
+    expect(historico?.querySelector(".tabular-nums")?.textContent).toBe(
+      "19/11/2026, 01:30",
+    );
+    expect(valorDe("Coleta")).toBe("18/11/2026, 22:30");
+  } finally {
+    relogio.mockRestore();
+  }
+});
+
 async function abrirConclusao() {
   await abrirFicha();
   await clicar(botao("Concluir"));

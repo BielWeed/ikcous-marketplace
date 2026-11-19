@@ -415,10 +415,10 @@ describe("OrderDetailsView — a linha do tempo de 4 etapas some no pedido cance
     );
   }
 
-  it("shipping: as 4 etapas aparecem ('Separado' e 'A caminho' inclusive)", async () => {
+  it("shipping: as 4 etapas aparecem ('Em separação' e 'A caminho' inclusive)", async () => {
     await renderizarComStatus("shipping");
 
-    expect(etapaExiste("Separado")).toBe(true);
+    expect(etapaExiste("Em separação")).toBe(true);
     expect(etapaExiste("A caminho")).toBe(true);
     expect(etapaExiste("Entregue")).toBe(true);
   });
@@ -426,7 +426,7 @@ describe("OrderDetailsView — a linha do tempo de 4 etapas some no pedido cance
   it("cancelled: nenhuma das etapas da linha do tempo aparece", async () => {
     await renderizarComStatus("cancelled");
 
-    expect(etapaExiste("Separado")).toBe(false);
+    expect(etapaExiste("Em separação")).toBe(false);
     expect(etapaExiste("A caminho")).toBe(false);
     expect(etapaExiste("Entregue")).toBe(false);
   });

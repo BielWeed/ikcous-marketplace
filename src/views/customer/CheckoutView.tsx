@@ -72,6 +72,7 @@ import {
 } from "@/lib/chave-do-pedido";
 import { ehRecusaDeCupomInexistente } from "@/lib/codigo-do-cupom";
 import { rotuloDaOpcaoDeCartao } from "@/lib/config-do-cartao";
+import { cortarTexto } from "@/lib/cortar-texto";
 import {
   cpfValido,
   formatarCpf,
@@ -101,6 +102,7 @@ import { pagamentoOnlineLigado } from "@/lib/flags";
 import {
   type MetodoOnline,
   ROTULO_SEM_VALOR_A_PAGAR,
+  avisoDeJurosDoParcelamento,
   pedidoSemValorAPagar,
   rotuloDaFormaDoPedido,
 } from "@/lib/forma-de-pagamento";
@@ -155,6 +157,7 @@ import {
   salvarRascunhoDoCheckout,
 } from "@/lib/rascunho-do-checkout";
 import {
+  esquecerReciboDoCheckout,
   guardarReciboDoCheckout,
   lerReciboDoCheckout,
 } from "@/lib/recibo-do-checkout";
@@ -178,6 +181,7 @@ import {
   mascaraWhatsappBr,
   mensagemDeWhatsappIncompleto,
 } from "@/lib/telefone-br";
+import { PAGAMENTO_RECEBIDO_PEDIDO_CANCELADO } from "@/lib/texto-estorno-do-cliente";
 import { criarTravaDeEnvio } from "@/lib/travaDeEnvio";
 import { normalizarUf, ufBrasileiraValida } from "@/lib/uf-brasileira";
 import { arredondarParaCentavos, cn, formatCurrency } from "@/lib/utils";
@@ -455,6 +459,22 @@ const decidirSaidaDaTela = (error: unknown): RecusaDoPedido => {
 
 /** Dinheiro do resumo e da barra: "R$ 1.299,90". Espaço comum depois do "R$" (o `formatCurrency` põe um espaço que não quebra linha). */
 const reais = (valor: number) => formatCurrency(valor).replace("\u00a0", " ");
+
+const LIMITE_DA_OBSERVACAO = 500;
+
+function lerValorParaTrocoEmCentavos(texto: string): number {
+  // V\u00edrgula ou ponto para centavos; tamb\u00e9m aceita milhar no formato pt-BR.
+  // Converte as duas partes separadamente, sem calcular com fra\u00e7\u00f5es de real.
+  const entrada = texto.trim();
+  // eslint-disable-next-line security/detect-unsafe-regex -- Cada grupo de milhar tem um ponto e três dígitos, sem divisão ambígua.
+  const normalizada = /^\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?$/.test(entrada)
+    ? entrada.replace(/\./g, "")
+    : entrada;
+  // eslint-disable-next-line security/detect-unsafe-regex -- As duas faixas têm tamanho limitado e são separadas por pontuação.
+  if (!/^\d{1,9}(?:[,.]\d{1,2})?$/.test(normalizada)) return Number.NaN;
+  const [inteira, decimal = ""] = normalizada.split(/[,.]/);
+  return Number(inteira) * 100 + Number(decimal.padEnd(2, "0"));
+}
 
 /** Sessão do Supabase vencida na hora de finalizar (caça 7): o pedido não sai como anônimo. */
 const MENSAGEM_SESSAO_EXPIRADA =
@@ -1058,9 +1078,18 @@ export function CheckoutViewDaConta({
       if (payload?.eventType !== "UPDATE") return;
       const pedidoAtualizado = payload.new;
       if (!pedidoAtualizado || pedidoAtualizado.id !== orderId) return;
-      if (pedidoAtualizado.payment_status === "pago") {
-        setStatusPagamentoPix("confirmado");
+      if (
+        pedidoAtualizado.status === "cancelled" &&
+        pedidoAtualizado.payment_status === "pago"
+      ) {
+        setStatusPagamentoPix("pedido-cancelado");
+      } else if (pedidoAtualizado.payment_status === "pago") {
+        setParcelamentoConfirmado(parcelamentoDoCreditoPago(pedidoAtualizado));
+        setStatusPagamentoPix((atual) =>
+          atual === "pedido-cancelado" ? atual : "confirmado",
+        );
       } else if (pedidoAtualizado.payment_status === "pago_apos_expirar") {
+        setParcelamentoConfirmado(parcelamentoDoCreditoPago(pedidoAtualizado));
         setStatusPagamentoPix("fora-do-prazo");
       } else if (
         pedidoAtualizado.payment_status === "recusado" ||
@@ -1737,6 +1766,9 @@ export function CheckoutViewDaConta({
       ? "cartao"
       : "pix";
   const [notes, setNotes] = useState("");
+  // null = "Não"; texto vazio = "Sim", ainda sem valor.
+  const [valorParaTroco, setValorParaTroco] = useState<string | null>(null);
+  const trocoVivoRef = useRef<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   // A opção de frete VIVA, atualizada a cada render. O envio roda numa
   // closure do clique em "Finalizar" (modalidade e frete de ANTES dos
@@ -1821,11 +1853,13 @@ export function CheckoutViewDaConta({
   //
   // Confirmado por dois caminhos independentes — o evento de realtime
   // (onRealtimeEvent, acima) e a verificação periódica (useEffect abaixo,
-  // rede de segurança contra WebSocket caído) — e nenhum dos dois estados
-  // finais tem caminho de volta a `null`.
+  // rede de segurança contra WebSocket caído). 'pedido-cancelado' conserva
+  // a notícia do cancelamento, mesmo se chegar uma confirmação antiga.
   const [statusPagamentoPix, setStatusPagamentoPix] = useState<
-    "confirmado" | "fora-do-prazo" | "nao-concluido" | null
+    "confirmado" | "fora-do-prazo" | "nao-concluido" | "pedido-cancelado" | null
   >(null);
+  const [parcelamentoConfirmado, setParcelamentoConfirmado] =
+    useState<ParcelamentoConfirmado>(null);
   // F1 (04/10/2026): o SERVIDOR já gravou este pedido como morto
   // (`expirado`, ou `aguardando` + `cancelled`) — a tela do PIX deixa de
   // mostrar QR e "Copiar código" como válidos (o banco recusaria o código).
@@ -2109,6 +2143,7 @@ export function CheckoutViewDaConta({
     readonly userId: string;
     readonly valor: number;
     readonly foraDoPrazo: boolean;
+    readonly parcelamento: ParcelamentoConfirmado;
   } | null>(null);
   const retomadaJaPaga =
     confirmacaoDaRecarga !== null &&
@@ -2203,7 +2238,7 @@ export function CheckoutViewDaConta({
     supabase
       .from("marketplace_orders")
       .select(
-        "total, metodo_online, gateway_payment_id, payment_status, status, user_id",
+        "total, metodo_online, gateway_payment_id, payment_status, status, user_id, parcelas",
       )
       .eq("id", retomarPedidoId)
       .maybeSingle()
@@ -2260,6 +2295,7 @@ export function CheckoutViewDaConta({
               userId: dono,
               valor: Number((data as { total: unknown }).total ?? 0),
               foraDoPrazo: false,
+              parcelamento: parcelamentoDoCreditoPago(data),
             });
             fecharAJanela();
             return;
@@ -2279,6 +2315,7 @@ export function CheckoutViewDaConta({
               userId: dono,
               valor: Number((data as { total: unknown }).total ?? 0),
               foraDoPrazo: true,
+              parcelamento: parcelamentoDoCreditoPago(data),
             });
             fecharAJanela();
             return;
@@ -2516,6 +2553,18 @@ export function CheckoutViewDaConta({
       pedidoQueEstaTelaAcompanhouRef.current = null;
     }
   }, [idDoUsuarioDaRetomada, pedidoParaARecarga]);
+  // Se a confirmação chegou antes do cancelamento, ela já pode ter deixado
+  // um recibo. Apaga só o deste pedido e desta conta, sem consultar de novo.
+  useEffect(() => {
+    if (
+      statusPagamentoPix === "pedido-cancelado" &&
+      orderId &&
+      idDoUsuarioDaRetomada &&
+      lerReciboDoCheckout(idDoUsuarioDaRetomada) === orderId
+    ) {
+      esquecerReciboDoCheckout();
+    }
+  }, [statusPagamentoPix, orderId, idDoUsuarioDaRetomada]);
   // Mesmo motivo do valorDoPedido: onClearCart() zera `cart` duas linhas
   // abaixo, e cancelar o pagamento precisa devolver estes itens depois. Um
   // ref (não estado) porque nada aqui precisa re-renderizar a tela.
@@ -3806,7 +3855,9 @@ export function CheckoutViewDaConta({
       const leitura = ++leiturasDaVagaRef.current;
       const { data, error } = await supabase
         .from("marketplace_orders")
-        .select("payment_status, expires_at, gateway_payment_id, status")
+        .select(
+          "payment_status, expires_at, gateway_payment_id, status, metodo_online, parcelas",
+        )
         .eq("id", orderId)
         .single();
 
@@ -3814,11 +3865,22 @@ export function CheckoutViewDaConta({
 
       // Ver o comentário do estado `statusPagamentoPix`, acima: os dois
       // status são finais e mutuamente exclusivos.
+      // Um cancelamento da loja não apaga o pagamento, mas impede a
+      // confirmação que promete separar o pedido. O pagamento após expirar
+      // continua com seu próprio aviso: a reserva já venceu nesse caso.
+      if (data.status === "cancelled" && data.payment_status === "pago") {
+        setStatusPagamentoPix("pedido-cancelado");
+        return;
+      }
       if (data.payment_status === "pago") {
-        setStatusPagamentoPix("confirmado");
+        setParcelamentoConfirmado(parcelamentoDoCreditoPago(data));
+        setStatusPagamentoPix((atual) =>
+          atual === "pedido-cancelado" ? atual : "confirmado",
+        );
         return;
       }
       if (data.payment_status === "pago_apos_expirar") {
+        setParcelamentoConfirmado(parcelamentoDoCreditoPago(data));
         setStatusPagamentoPix("fora-do-prazo");
         return;
       }
@@ -4026,6 +4088,7 @@ export function CheckoutViewDaConta({
   }, [aguardandoPagamento, orderId, statusPagamentoPix, user?.id]);
 
   if (authLoading) {
+    trocoVivoRef.current = null;
     return (
       // `min-h-dvh` (era min-h-screen): mesma altura de tela cheia, mas
       // estável no celular — o 100vh sobe/desce quando a barra do navegador
@@ -4161,6 +4224,42 @@ export function CheckoutViewDaConta({
   // total fechado para mostrar. Fonte ÚNICA usada pelos dois lugares — não
   // mexe em `finalizarBloqueadoPorFrete` nem no CartContext, só na exibição.
   const totalExibido = semFreteSelecionado ? null : finalTotal;
+  const podePagarNaEntrega = !selectedShippingOption || ehEntregaLocal;
+  const totalEmCentavos = Math.round(finalTotal * 100);
+  const mostraTroco =
+    podePagarNaEntrega &&
+    !ehRetirada &&
+    totalEmCentavos > 0 &&
+    paymentMethod === "cash" &&
+    !formaDePagamentoDesligada;
+  const solicitaTroco = mostraTroco && valorParaTroco !== null;
+  const valorParaTrocoEmCentavos = solicitaTroco
+    ? lerValorParaTrocoEmCentavos(valorParaTroco)
+    : Number.NaN;
+  let avisoDeTroco = "";
+  let prefixoDeTroco = "";
+  if (solicitaTroco) {
+    if (
+      Number.isNaN(valorParaTrocoEmCentavos) ||
+      valorParaTrocoEmCentavos <= 0
+    ) {
+      avisoDeTroco =
+        "Informe um valor em reais para o troco, com até 9 dígitos antes dos centavos.";
+    } else if (valorParaTrocoEmCentavos <= totalEmCentavos) {
+      avisoDeTroco = "Informe um valor maior que o total do pedido.";
+    } else {
+      const pagamento = reais(valorParaTrocoEmCentavos / 100);
+      const troco = reais((valorParaTrocoEmCentavos - totalEmCentavos) / 100);
+      prefixoDeTroco = `Troco para ${pagamento} (levar ${troco})`;
+    }
+  }
+  const espacoDaObservacao =
+    LIMITE_DA_OBSERVACAO - (prefixoDeTroco ? prefixoDeTroco.length + 1 : 0);
+  const notaSeraCortada =
+    !!prefixoDeTroco && notes.trim().length > espacoDaObservacao;
+  // null: sem troco; vazio: troco solicitado, ainda inválido.
+  const trocoNesteRender = solicitaTroco ? prefixoDeTroco : null;
+  trocoVivoRef.current = trocoNesteRender;
 
   // A loja não tem de onde despachar (sem CEP de origem): o frete não será
   // calculado pelo app, e quem resolve é a loja, não a cliente.
@@ -4193,19 +4292,28 @@ export function CheckoutViewDaConta({
   // "sem-destino") de um instante antes da cotação não pode piscar o motivo.
   const escolhaDeFreteNaSecao =
     freteComMotivoNaSecao && statusDoFrete === "pronto";
+  const buscandoEnderecoDaEntrega =
+    !user &&
+    !ehRetirada &&
+    isSearchingCep &&
+    cepEmBuscaRef.current === soDigitos(cepDigitadoNoFormulario ?? "");
+  const fraseDaBuscaDoCep = "Buscando o endereço do CEP…";
   // O que o leitor de tela ouve, na MESMA região `status` da barra (escondida,
   // sem custo de altura): antes um `role="alert"` falava estes motivos (laudo
   // de acessibilidade 03/09, achado 9); eles saíram da barra, a voz não pode
   // sair junto. `status` (educado), nunca `alert`: espera não é falha.
-  const avisoDoFreteParaLeitorDeTela = lojaConfigurandoOFrete
-    ? fraseDaLojaSemFrete
-    : barraCalculandoOFrete
-      ? "Calculando o frete do endereço de entrega..."
-      : escolhaDeFreteNaSecao
-        ? "Escolha uma opção de frete para continuar"
-        : freteComMotivoNaSecao && statusDoFrete === "vazio"
-          ? "Nenhuma opção de entrega para este endereço. Combine a entrega com a loja."
-          : "";
+  // Durante a busca, só a região do endereço anuncia a espera.
+  const avisoDoFreteParaLeitorDeTela = buscandoEnderecoDaEntrega
+    ? ""
+    : lojaConfigurandoOFrete
+      ? fraseDaLojaSemFrete
+      : barraCalculandoOFrete
+        ? "Calculando o frete do endereço de entrega..."
+        : escolhaDeFreteNaSecao
+          ? "Escolha uma opção de frete para continuar"
+          : freteComMotivoNaSecao && statusDoFrete === "vazio"
+            ? "Nenhuma opção de entrega para este endereço. Combine a entrega com a loja."
+            : "";
 
   // Sem endereço de entrega, o card "Entrega" e o aviso de "Seus dados" JÁ dizem
   // isso no alto da tela. Repetir em vermelho na barra do Finalizar só a
@@ -4240,11 +4348,6 @@ export function CheckoutViewDaConta({
   // requisito novo que precisa ser lembrado nos dois lugares — e foi
   // exatamente isso que acabou de acontecer aqui. Com um nome só, a próxima
   // exigência entra num lugar, não em dois.
-  const buscandoEnderecoDaEntrega =
-    !user &&
-    !ehRetirada &&
-    isSearchingCep &&
-    cepEmBuscaRef.current === soDigitos(cepDigitadoNoFormulario ?? "");
   const botaoFinalizarDesabilitado =
     buscandoEnderecoDaEntrega ||
     cart.length === 0 ||
@@ -4260,6 +4363,7 @@ export function CheckoutViewDaConta({
     convidadoComUnidadesDemais ||
     pagamentoIncompativel ||
     formaDePagamentoDesligada ||
+    !!avisoDeTroco ||
     totalZero.bloqueiaFinalizar;
   // Com a identificação recolhida, o botão cinza precisa apontar o campo
   // pendente na própria barra, sem afrouxar a validação do pedido.
@@ -4503,7 +4607,7 @@ export function CheckoutViewDaConta({
 
   const handleSubmitEvent = async () => {
     // Protege o envio também no handler, não só no botão.
-    if (buscandoEnderecoDaEntrega) return;
+    if (buscandoEnderecoDaEntrega || avisoDeTroco) return;
     // Este handler cria uma compra nova; retomada paga o pedido já existente.
     if (
       cart.length === 0 ||
@@ -4809,9 +4913,12 @@ export function CheckoutViewDaConta({
     // do banco — ver o relatório da tarefa que introduziu este bloco.
     const cpfParaRpc =
       exigeCpfDoDestinatario && customerInfo.cpf ? customerInfo.cpf : undefined;
-    const observations = nomeTemConteudoVisivel(notes)
-      ? notes.trim()
-      : undefined;
+    const observacao = nomeTemConteudoVisivel(notes) ? notes.trim() : "";
+    const observations = prefixoDeTroco
+      ? observacao
+        ? `${prefixoDeTroco}\n${cortarTexto(observacao, espacoDaObservacao)}`
+        : prefixoDeTroco
+      : observacao;
 
     // O pedido só recebe UM variant_id por linha; produto de cadastro antigo
     // com cor e tamanho separados leva as duas escolhas (e a quantidade de cada
@@ -4928,6 +5035,15 @@ export function CheckoutViewDaConta({
       toast.error(
         "A forma de entrega mudou enquanto o pedido era enviado. Confira o total e finalize.",
       );
+      setIsSubmitting(false);
+      travaDeEnvioRef.current.liberar();
+      return;
+    }
+
+    // Se a cliente mudou o dinheiro, o total ou a forma de pagamento
+    // durante as conferências, o pedido não sai com o troco do clique antigo.
+    if (trocoVivoRef.current !== trocoNesteRender) {
+      toast.error("O troco mudou. Confira o pagamento e finalize de novo.");
       setIsSubmitting(false);
       travaDeEnvioRef.current.liberar();
       return;
@@ -5567,6 +5683,7 @@ export function CheckoutViewDaConta({
       <PagamentoForaDoPrazoView
         orderId={confirmacaoDaRecarga.pedidoId}
         valor={confirmacaoDaRecarga.valor}
+        parcelamento={confirmacaoDaRecarga.parcelamento}
         onNavigate={onNavigate}
       />
     );
@@ -5577,6 +5694,7 @@ export function CheckoutViewDaConta({
       <PagamentoConfirmadoView
         orderId={confirmacaoDaRecarga.pedidoId}
         valor={confirmacaoDaRecarga.valor}
+        parcelamento={confirmacaoDaRecarga.parcelamento}
         onNavigate={onNavigate}
       />
     );
@@ -5672,6 +5790,29 @@ export function CheckoutViewDaConta({
   }
 
   if (aguardandoPagamento && orderId) {
+    if (statusPagamentoPix === "pedido-cancelado") {
+      return (
+        <div className="pb-customer mx-auto w-full max-w-md space-y-4 px-3.5 pt-4 text-center">
+          <TituloQueRecebeOFoco
+            nivel={2}
+            className="text-lg font-bold text-zinc-900"
+          >
+            Pedido cancelado
+          </TituloQueRecebeOFoco>
+          <p className="text-sm text-zinc-600">
+            {PAGAMENTO_RECEBIDO_PEDIDO_CANCELADO} Veja os detalhes em Meus
+            pedidos.
+          </p>
+          <Button
+            onClick={() => onNavigate("orders")}
+            className="w-full rounded-xl bg-zinc-900 text-white hover:bg-zinc-900/90"
+          >
+            Ver meus pedidos
+          </Button>
+        </div>
+      );
+    }
+
     // CHECKOUT-090: pagamento confirmado — troca o QR (e o aviso de reserva
     // de 30 minutos, que é justamente a frase que faz o cliente achar que
     // falhou) pela confirmação. Ramos separados, ANTES do JSX do QR: os três
@@ -5681,6 +5822,7 @@ export function CheckoutViewDaConta({
         <PagamentoConfirmadoView
           orderId={orderId}
           valor={valorDoPedido}
+          parcelamento={parcelamentoConfirmado}
           onNavigate={onNavigate}
         />
       );
@@ -5706,6 +5848,7 @@ export function CheckoutViewDaConta({
         <PagamentoForaDoPrazoView
           orderId={orderId}
           valor={valorDoPedido}
+          parcelamento={parcelamentoConfirmado}
           onNavigate={onNavigate}
         />
       );
@@ -6427,7 +6570,7 @@ export function CheckoutViewDaConta({
 
   const opcoesDePagamentoVisiveis = [
     ...opcoesNoApp,
-    ...(!selectedShippingOption || ehEntregaLocal ? opcoesNaEntrega : []),
+    ...(podePagarNaEntrega ? opcoesNaEntrega : []),
   ];
   // Sem seleção habilitada, Tab ainda precisa alcançar o grupo — inclusive
   // a opção bloqueada que leva o convidado a entrar/criar conta.
@@ -6475,6 +6618,7 @@ export function CheckoutViewDaConta({
             onNavigate("auth");
             return;
           }
+          if (option.value !== paymentMethod) setValorParaTroco(null);
           setPaymentMethod(option.value);
           if (option.metodoOnline) setMetodoOnline(option.metodoOnline);
         }}
@@ -6647,8 +6791,12 @@ export function CheckoutViewDaConta({
             </div>
           )}
 
+          {/* O CEP salvo pode disparar a busca na abertura, antes da barra.
+              Esta região do endereço já existe vazia quando a busca começa. */}
           <p role="status" className="sr-only">
-            {avisoDoEnderecoEscolhido}
+            {buscandoEnderecoDaEntrega
+              ? fraseDaBuscaDoCep
+              : avisoDoEnderecoEscolhido}
           </p>
 
           {/* PASSO A1 (22/10/2026): recolhida, a seção vira DOIS resumos
@@ -7705,18 +7853,17 @@ export function CheckoutViewDaConta({
                 (pagamento pelo app EXIGE conta, P6) vê o aviso de login no
                 lugar; cliente logado com o PIX ligado já vê o grupo "No
                 app" acima e não precisa de aviso extra. */}
-              {(!selectedShippingOption || ehEntregaLocal) &&
-                opcoesNaEntrega.length > 0 && (
-                  <div className="space-y-2.5">
-                    <span className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600">
-                      {ehRetirada ? "Na retirada" : "Na entrega"}
-                    </span>
-                    <div className="grid grid-cols-1 gap-2.5">
-                      {opcoesNaEntrega.map(renderOpcaoDePagamento)}
-                    </div>
+              {podePagarNaEntrega && opcoesNaEntrega.length > 0 && (
+                <div className="space-y-2.5">
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600">
+                    {ehRetirada ? "Na retirada" : "Na entrega"}
+                  </span>
+                  <div className="grid grid-cols-1 gap-2.5">
+                    {opcoesNaEntrega.map(renderOpcaoDePagamento)}
                   </div>
-                )}
-              {(!selectedShippingOption || ehEntregaLocal) &&
+                </div>
+              )}
+              {podePagarNaEntrega &&
                 opcoesNaEntrega.length === 0 &&
                 !user &&
                 !totalZero.zerado && (
@@ -7738,6 +7885,64 @@ export function CheckoutViewDaConta({
                   </div>
                 )}
             </div>
+            {mostraTroco && (
+              <fieldset className="mt-4 rounded-xl bg-zinc-50 px-3 pb-1">
+                <legend className="text-sm font-semibold text-zinc-900">
+                  Precisa de troco?
+                </legend>
+                <div className="flex flex-wrap items-center gap-x-5">
+                  <label className="flex min-h-11 items-center gap-2 text-sm text-zinc-800">
+                    <input
+                      type="radio"
+                      name="checkout-troco"
+                      value="nao"
+                      checked={!solicitaTroco}
+                      onChange={() => setValorParaTroco(null)}
+                    />
+                    Não
+                  </label>
+                  <label className="flex min-h-11 items-center gap-2 text-sm text-zinc-800">
+                    <input
+                      type="radio"
+                      name="checkout-troco"
+                      value="sim"
+                      checked={solicitaTroco}
+                      onChange={() => setValorParaTroco("")}
+                    />
+                    Sim, para R$
+                  </label>
+                </div>
+                {solicitaTroco && (
+                  <>
+                    <label
+                      htmlFor="checkout-valor-para-troco"
+                      className="sr-only"
+                    >
+                      Valor para o troco em reais
+                    </label>
+                    <input
+                      id="checkout-valor-para-troco"
+                      type="text"
+                      inputMode="decimal"
+                      autoComplete="off"
+                      value={valorParaTroco}
+                      onChange={(e) => setValorParaTroco(e.target.value)}
+                      placeholder="Ex.: 100,00"
+                      aria-invalid={!!avisoDeTroco}
+                      aria-describedby="checkout-aviso-troco"
+                      className="mb-2 min-h-11 w-full rounded-xl border border-zinc-300 bg-white px-3 text-base text-zinc-900 md:text-sm"
+                    />
+                  </>
+                )}
+                <p
+                  id="checkout-aviso-troco"
+                  role="status"
+                  className="text-sm text-red-700"
+                >
+                  {avisoDeTroco}
+                </p>
+              </fieldset>
+            )}
           </section>
 
           {/* Notes */}
@@ -7759,12 +7964,23 @@ export function CheckoutViewDaConta({
                 name="order_notes"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                maxLength={500}
+                maxLength={espacoDaObservacao}
+                aria-describedby={
+                  notaSeraCortada ? "checkout-aviso-nota-com-troco" : undefined
+                }
                 placeholder="Ex.: deixar na portaria ou tocar a campainha."
                 rows={2}
                 className="w-full resize-none rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
                 autoComplete="off"
               />
+              {notaSeraCortada && (
+                <p
+                  id="checkout-aviso-nota-com-troco"
+                  className="mt-1 text-sm text-zinc-600"
+                >
+                  O fim da nota será cortado para caber a informação do troco.
+                </p>
+              )}
             </div>
           </section>
 
@@ -8268,8 +8484,8 @@ export function CheckoutViewDaConta({
                       </button>
                     </div>
                     {buscandoEnderecoDaEntrega && (
-                      <p role="status" className="text-center text-[11px]">
-                        Buscando o endereço do CEP…
+                      <p aria-hidden="true" className="text-center text-[11px]">
+                        {fraseDaBuscaDoCep}
                       </p>
                     )}
                     {/* Com destino, independe do estado do frete (22/10/2026):
@@ -8864,20 +9080,60 @@ function SuccessView({
   );
 }
 
-// CHECKOUT-090: tela de PIX confirmado. Mesmo padrão visual do SuccessView
-// (ícone de check em círculo esmeralda, hierarquia de texto, dois botões de
-// saída) — sem redesenho. Diferente do SuccessView (pedido pago na entrega,
-// nada a confirmar), aqui existiu de fato um pagamento online recebido, daí
-// o valor pago em destaque.
+type ParcelamentoConfirmado = { readonly parcelas: number | null } | null;
+
+function parcelamentoDoCreditoPago(pedido: {
+  readonly metodo_online?: unknown;
+  readonly parcelas?: unknown;
+}): ParcelamentoConfirmado {
+  // A forma gravada é a que pagou, não a que a tela selecionou por último.
+  if (pedido.metodo_online !== "credito" || pedido.parcelas === 1) return null;
+  return {
+    parcelas:
+      typeof pedido.parcelas === "number" && pedido.parcelas > 1
+        ? pedido.parcelas
+        : null,
+  };
+}
+
+function ValorDoPagamentoConfirmado({
+  valor,
+  parcelamento,
+  className,
+}: Readonly<{
+  valor: number;
+  parcelamento: ParcelamentoConfirmado;
+  className: string;
+}>) {
+  return (
+    <>
+      <p className={cn("text-lg font-black", className)}>
+        {parcelamento
+          ? `Total do pedido: ${formatCurrency(valor)}`
+          : `${formatCurrency(valor)} recebido`}
+      </p>
+      {parcelamento && (
+        <p className="text-sm text-zinc-600">
+          {avisoDeJurosDoParcelamento(parcelamento.parcelas)}
+        </p>
+      )}
+    </>
+  );
+}
+
+// CHECKOUT-090: tela de pagamento online confirmado. Em crédito parcelado,
+// o total do pedido não representa necessariamente o valor cobrado na fatura.
 interface PagamentoConfirmadoViewProps {
   orderId: string;
   valor: number;
+  parcelamento: ParcelamentoConfirmado;
   onNavigate: (view: View, productId?: string) => void;
 }
 
 function PagamentoConfirmadoView({
   orderId,
   valor,
+  parcelamento,
   onNavigate,
 }: Readonly<PagamentoConfirmadoViewProps>) {
   // O F5 depois do Pix confirmado diz "Seu pedido já foi feito".
@@ -8905,9 +9161,11 @@ function PagamentoConfirmadoView({
           Pedido:{" "}
           <span className="text-zinc-900">#{numeroDoPedido(orderId)}</span>
         </p>
-        <p className="text-lg font-black text-emerald-700">
-          {formatCurrency(valor)} recebido
-        </p>
+        <ValorDoPagamentoConfirmado
+          valor={valor}
+          parcelamento={parcelamento}
+          className="text-emerald-700"
+        />
         <div className="mx-auto max-w-[300px]">
           <p className="text-sm font-medium leading-relaxed text-zinc-500">
             Seu pagamento foi confirmado. A loja vai iniciar a separação do seu
@@ -8954,12 +9212,14 @@ function PagamentoConfirmadoView({
 interface PagamentoForaDoPrazoViewProps {
   orderId: string;
   valor: number;
+  parcelamento: ParcelamentoConfirmado;
   onNavigate: (view: View, productId?: string) => void;
 }
 
 function PagamentoForaDoPrazoView({
   orderId,
   valor,
+  parcelamento,
   onNavigate,
 }: Readonly<PagamentoForaDoPrazoViewProps>) {
   const { config } = useStore();
@@ -9010,9 +9270,11 @@ function PagamentoForaDoPrazoView({
           Pedido:{" "}
           <span className="text-zinc-900">#{numeroDoPedido(orderId)}</span>
         </p>
-        <p className="text-lg font-black text-amber-700">
-          {formatCurrency(valor)} recebido
-        </p>
+        <ValorDoPagamentoConfirmado
+          valor={valor}
+          parcelamento={parcelamento}
+          className="text-amber-700"
+        />
         <div className="mx-auto max-w-[300px]">
           <p className="text-sm font-medium leading-relaxed text-zinc-500">
             Recebemos seu pagamento, mas o prazo de reserva venceu. A loja vai

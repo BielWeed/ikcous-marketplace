@@ -185,7 +185,7 @@ describe("pedido do balcão na conta da cliente", () => {
       expect(texto).not.toContain("Grátis");
       expect(texto).not.toContain("Endereço de entrega");
       expect(texto).not.toContain("A caminho");
-      expect(texto).not.toContain("Separado");
+      expect(texto).not.toContain("Em separação");
       expect(texto).not.toContain("Recebido");
     });
 
@@ -197,7 +197,7 @@ describe("pedido do balcão na conta da cliente", () => {
       expect(texto).toContain("Grátis");
       expect(texto).toContain("Endereço de entrega");
       expect(texto).toContain("A caminho");
-      expect(texto).toContain("Separado");
+      expect(texto).toContain("Em separação");
       expect(texto).not.toContain("Compra na loja");
     });
 

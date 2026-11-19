@@ -392,6 +392,45 @@ describe("useOrders — a fila offline não engole item novo", () => {
     },
   );
 
+  it("envia B na segunda passada, mas espera o recuo antes de reenviar A após um 500", async () => {
+    const primeira = rpcPendente();
+    rpcMock.mockReturnValueOnce(primeira.promessa);
+    localStorage.setItem(chave, JSON.stringify([item1]));
+    await montar();
+
+    const item2 = { ...item1, orderId: "pedido-2", timestamp: Date.now() };
+    try {
+      await reconectar();
+      expect(rpcMock).toHaveBeenCalledTimes(1);
+      localStorage.setItem(chave, JSON.stringify([item1, item2]));
+    } finally {
+      await act(async () => {
+        primeira.concluir({ data: null, error: { status: 500 } });
+        await primeira.promessa;
+      });
+    }
+
+    const enviados = () =>
+      rpcMock.mock.calls.map(
+        ([, args]) => (args as { p_order_id: string }).p_order_id,
+      );
+    expect(enviados()).toEqual(["pedido-1", "pedido-2"]);
+    expect(JSON.parse(localStorage.getItem(chave) ?? "null")).toEqual([item1]);
+    expect(toast.success).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_999);
+    });
+    expect(enviados()).toEqual(["pedido-1", "pedido-2"]);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(enviados()).toEqual(["pedido-1", "pedido-2", "pedido-1"]);
+    expect(localStorage.getItem(chave)).toBeNull();
+    expect(toast.success).toHaveBeenCalledTimes(1);
+  });
+
   it("preserva o item novo sem chamar a RPC enquanto a rede está caída", async () => {
     const primeira = rpcPendente();
     rpcMock.mockReturnValueOnce(primeira.promessa);
@@ -442,7 +481,7 @@ describe("useOrders — a fila offline não engole item novo", () => {
     expect(localStorage.getItem(chave)).toBeNull();
   });
 
-  it("compartilha a promessa durante a segunda passada e não abre uma terceira", async () => {
+  it("envia o terceiro item sem outro evento de rede e sem sobrepor passadas", async () => {
     const primeira = rpcPendente();
     const segunda = rpcPendente();
     rpcMock.mockReturnValueOnce(primeira.promessa);
@@ -471,8 +510,21 @@ describe("useOrders — a fila offline não engole item novo", () => {
     }
     expect(rpcMock).toHaveBeenCalledTimes(2);
     expect(JSON.parse(localStorage.getItem(chave) ?? "null")).toEqual([item3]);
-    expect(toast.error).not.toHaveBeenCalled();
     expect(toast.success).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(rpcMock).toHaveBeenCalledTimes(3);
+    expect(rpcMock).toHaveBeenNthCalledWith(3, "update_order_status_atomic", {
+      p_order_id: "pedido-3",
+      p_new_status: "cancelled",
+      p_notes: null,
+      p_silent: false,
+    });
+    expect(localStorage.getItem(chave)).toBeNull();
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(toast.success).toHaveBeenCalledTimes(1);
   });
 
   it("recupera a falha transitória em memória se o JSON se corromper durante a RPC", async () => {

@@ -3211,7 +3211,18 @@ const ROL_DA_156 = [
   "devolucoes: service_role le a tabela e a observacao_inspecao",
   "devolucoes: RLS ligada",
 ];
+// Lote 157 (20261405400000): a 157a espera o corpo novo de solicitar_devolucao e a 157b o vigente da 20261399992000.
+// Mesmo rol fechado nas duas: so catalogo, sem ler devolucoes nem chamar a funcao.
+const ROL_DA_157 = [
+  "controle: funcoes de public visiveis a este papel",
+  "solicitar_devolucao: corpo exato (md5)",
+  "solicitar_devolucao: uma so, atributos conhecidos (plpgsql, SECURITY DEFINER, VOLATILE, search_path=public, retorno jsonb) e EXECUTE de authenticated, sem PUBLIC nem anon",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "157a-conferir-a-devolucao-integral-nao-perde-o-centavo-do-cupom-aplicado":
+    ROL_DA_157,
+  "157b-antes-a-devolucao-integral-nao-perde-o-centavo-do-cupom-base-vigente":
+    ROL_DA_157,
   "156a-conferir-a-observacao-da-inspecao-so-a-loja-ve-aplicado": ROL_DA_156,
   "156b-antes-a-observacao-da-inspecao-so-a-loja-ve-base-vigente": ROL_DA_156,
   "154a-conferir-o-inicio-mostra-o-dinheiro-a-devolver-aplicado": ROL_DA_154,

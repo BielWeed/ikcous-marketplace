@@ -13,6 +13,7 @@ import {
 } from "@/lib/estrategias-de-frete";
 import { entregaPropriaLigada } from "@/lib/guarda-de-frete";
 import { percentualDeDesconto } from "@/lib/percentual-de-desconto";
+import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import { textoEstoqueBaixo } from "@/lib/texto-estoque-baixo";
 import { cn } from "@/lib/utils";
 import type { ProductVariant } from "@/types";
@@ -103,6 +104,14 @@ export const PhoneSimulator = memo(function PhoneSimulator({
     }
     return formData.price;
   }, [formData.price, selectedVariant]);
+
+  const precoDoCartao = precoDeVitrine({
+    price: Number.parseFloat(formData.price || "0"),
+    originalPrice: formData.price
+      ? Number.parseFloat(formData.originalPrice)
+      : null,
+    variants: [...formData.variants],
+  });
 
   // Percentual do selo "% OFF", já arredondado. 0 = sem selo: De 100 por 99,70
   // arredonda para 0 e o cartão da loja não mostra "0% OFF" (`discount > 0`).
@@ -303,14 +312,14 @@ export const PhoneSimulator = memo(function PhoneSimulator({
                       )}
 
                       {/* Promotion Discount Badge */}
-                      {percentualDoSelo > 0 && (
+                      {precoDoCartao.desconto > 0 && (
                         <div
                           className={cn(
                             "shrink-0 select-none whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-wider shadow-sm backdrop-blur-md",
                             CLASSE_SELO_DESCONTO,
                           )}
                         >
-                          {percentualDoSelo}% OFF
+                          {precoDoCartao.desconto}% OFF
                         </div>
                       )}
 
@@ -347,20 +356,19 @@ export const PhoneSimulator = memo(function PhoneSimulator({
                     {/* Price */}
                     <div className="mt-auto flex items-end pt-1">
                       <div className="flex w-full flex-col">
-                        {formData.originalPrice &&
-                        Number.parseFloat(formData.originalPrice) >
-                          Number.parseFloat(displayPrice) ? (
+                        {precoDoCartao.precoOriginal !== null ? (
                           <div className="flex flex-col">
                             <span className="text-[8px] font-bold uppercase leading-none tracking-wider text-zinc-500">
                               De:{" "}
                               <span className="line-through">
                                 R${" "}
-                                {Number.parseFloat(
-                                  formData.originalPrice,
-                                ).toLocaleString("pt-BR", {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2,
-                                })}
+                                {precoDoCartao.precoOriginal.toLocaleString(
+                                  "pt-BR",
+                                  {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                  },
+                                )}
                               </span>
                             </span>
                             <span
@@ -369,22 +377,21 @@ export const PhoneSimulator = memo(function PhoneSimulator({
                                 CLASSE_PRECO_PROMOCIONAL_FUNDO_ESCURO,
                               )}
                             >
-                              Por: R${" "}
-                              {Number.parseFloat(displayPrice).toLocaleString(
-                                "pt-BR",
-                                {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2,
-                                },
-                              )}
+                              {precoDoCartao.aPartirDe
+                                ? "A partir de "
+                                : "Por: "}
+                              R${" "}
+                              {precoDoCartao.preco.toLocaleString("pt-BR", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
                             </span>
                           </div>
                         ) : (
                           <span className="text-xs font-black leading-none tracking-tight text-white">
+                            {precoDoCartao.aPartirDe && "A partir de "}
                             R${" "}
-                            {Number.parseFloat(
-                              displayPrice || "0",
-                            ).toLocaleString("pt-BR", {
+                            {precoDoCartao.preco.toLocaleString("pt-BR", {
                               minimumFractionDigits: 2,
                               maximumFractionDigits: 2,
                             })}
@@ -402,7 +409,7 @@ export const PhoneSimulator = memo(function PhoneSimulator({
                       {validImages.length > 0 ? (
                         <img
                           src={validImages[previewImgIndex] || validImages[0]}
-                          alt={formData.name || "Preview"}
+                          alt={formData.name || "Prévia da foto do produto"}
                           className="h-full w-auto max-w-full object-contain"
                           onError={() =>
                             handleImageError(

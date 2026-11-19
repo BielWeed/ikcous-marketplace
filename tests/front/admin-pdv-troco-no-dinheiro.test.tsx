@@ -298,6 +298,37 @@ describe("FechamentoDaVenda — troco na tela quando o pagamento é em dinheiro"
     expect(aoRegistrarVenda).toHaveBeenCalledTimes(1);
   });
 
+  it("anuncia a falta uma vez, sem aviso de pronto nem bloqueio do registro", async () => {
+    await montar("cash");
+    await digitar("7890");
+
+    expect(resultado()).toBe("Faltam R$ 0,90");
+    expect(botaoPorTexto(hospedeiro, "Registrar venda").disabled).toBe(false);
+    const avisosDeFalta = [
+      ...hospedeiro.querySelectorAll(
+        '[role="status"], [role="alert"], [aria-live="polite"], [aria-live="assertive"]',
+      ),
+    ].filter((linha) =>
+      /faltam|ainda falta receber/i.test(linha.textContent ?? ""),
+    );
+    expect(avisosDeFalta).toHaveLength(1);
+    expect(avisosDeFalta[0]?.id).toBe("troco-da-venda");
+    expect(avisosDeFalta[0]?.getAttribute("role")).toBe("status");
+    expect(hospedeiro.textContent).not.toContain("Tudo pronto");
+    expect(hospedeiro.textContent).not.toContain("Ainda falta receber");
+  });
+
+  it("volta a mostrar o aviso de pronto quando o valor recebido é igual ao total", async () => {
+    await montar("cash");
+    await digitar("7890");
+    await digitar("7980");
+
+    const status = hospedeiro.querySelector(".pdv-checkout-status");
+    expect(status?.querySelector(".pdv-green")?.textContent).toContain(
+      "Tudo pronto para registrar.",
+    );
+  });
+
   it("troco não é vermelho (só a falta é)", async () => {
     await montar("cash");
     await digitar("10000");

@@ -5,10 +5,7 @@
 // "essa data já passou" com "Voltar e ajustar" / "Salvar mesmo assim". Quem não
 // mexeu na data de um cupom que já estava vencido não é perguntada de novo.
 import type { Coupon } from "@/types";
-import {
-  dataEscolhidaParaValidade,
-  validadeParaDataDoInput,
-} from "@/utils/validade-do-cupom";
+import { validadeParaDataDoInput } from "@/utils/validade-do-cupom";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -49,6 +46,7 @@ describe("AdminCouponFormView — validade que já passou pede confirmação", (
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
+    vi.setSystemTime(new Date("2026-11-30T12:00:00.000Z"));
     updateCoupon.mockReset().mockResolvedValue(undefined);
     addCoupon.mockReset().mockResolvedValue({ id: "novo" });
     hospedeiro = document.createElement("div");
@@ -61,6 +59,7 @@ describe("AdminCouponFormView — validade que já passou pede confirmação", (
     });
     hospedeiro.remove();
     mockCoupons = [];
+    vi.useRealTimers();
   });
 
   async function abrirTela(couponId: string) {
@@ -102,10 +101,10 @@ describe("AdminCouponFormView — validade que já passou pede confirmação", (
   const dataDeDiasAtras = (dias: number) =>
     new Date(Date.now() - dias * UM_DIA_MS).toISOString().slice(0, 10);
 
-  it("data no passado: pergunta antes, 'Voltar e ajustar' não salva", async () => {
+  it("validade de ontem: pergunta antes, 'Voltar e ajustar' não salva", async () => {
     mockCoupons = [cupomBase()];
     await abrirTela("c1");
-    await escolherData(dataDeDiasAtras(10));
+    await escolherData("2026-11-29");
     await salvar();
 
     expect(document.body.textContent).toContain("Essa data já passou");
@@ -121,7 +120,7 @@ describe("AdminCouponFormView — validade que já passou pede confirmação", (
   it("'Salvar mesmo assim' salva uma vez, com a data escolhida", async () => {
     mockCoupons = [cupomBase()];
     await abrirTela("c1");
-    const escolhida = dataDeDiasAtras(10);
+    const escolhida = "2026-11-20";
     await escolherData(escolhida);
     await salvar();
     await act(async () => {
@@ -132,7 +131,7 @@ describe("AdminCouponFormView — validade que já passou pede confirmação", (
     const { validUntil } = updateCoupon.mock.calls[0][1];
     // Não basta existir uma data: tem de ser exatamente a que ela escolheu,
     // até o fim daquele dia, e a ida e volta devolve o mesmo dia no campo.
-    expect(validUntil).toBe(dataEscolhidaParaValidade(escolhida));
+    expect(validUntil).toBe("2026-11-21T02:59:59.999Z");
     expect(validadeParaDataDoInput(validUntil)).toBe(escolhida);
   });
 
@@ -151,19 +150,41 @@ describe("AdminCouponFormView — validade que já passou pede confirmação", (
     expect(document.body.textContent).toContain("Essa data já passou");
   });
 
-  it("data no futuro salva direto, sem perguntar", async () => {
+  it("validade de hoje ainda vale a 1 ms do fim do dia em Brasília", async () => {
+    vi.setSystemTime(new Date("2026-11-21T02:59:59.998Z"));
     mockCoupons = [cupomBase()];
     await abrirTela("c1");
-    const escolhida = new Date(Date.now() + 30 * UM_DIA_MS)
-      .toISOString()
-      .slice(0, 10);
-    await escolherData(escolhida);
+    await escolherData("2026-11-20");
     await salvar();
 
     expect(document.body.textContent).not.toContain("Essa data já passou");
     expect(updateCoupon).toHaveBeenCalledTimes(1);
     expect(updateCoupon.mock.calls[0][1].validUntil).toBe(
-      dataEscolhidaParaValidade(escolhida),
+      "2026-11-21T02:59:59.999Z",
+    );
+  });
+
+  it("logo depois da virada do dia em Brasília, a mesma validade já passou", async () => {
+    vi.setSystemTime(new Date("2026-11-21T03:00:00.000Z"));
+    mockCoupons = [cupomBase()];
+    await abrirTela("c1");
+    await escolherData("2026-11-20");
+    await salvar();
+
+    expect(document.body.textContent).toContain("Essa data já passou");
+    expect(updateCoupon).not.toHaveBeenCalled();
+  });
+
+  it("data no futuro salva direto, sem perguntar", async () => {
+    mockCoupons = [cupomBase()];
+    await abrirTela("c1");
+    await escolherData("2026-12-30");
+    await salvar();
+
+    expect(document.body.textContent).not.toContain("Essa data já passou");
+    expect(updateCoupon).toHaveBeenCalledTimes(1);
+    expect(updateCoupon.mock.calls[0][1].validUntil).toBe(
+      "2026-12-31T02:59:59.999Z",
     );
   });
 

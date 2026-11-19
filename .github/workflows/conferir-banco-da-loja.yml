@@ -361,6 +361,8 @@ on:
           - 155b-antes-o-total-comprado-do-cliente-e-o-mesmo-no-crm-na-lista-e-na-ficha-base-vigente
           - 156a-conferir-a-observacao-da-inspecao-so-a-loja-ve-aplicado
           - 156b-antes-a-observacao-da-inspecao-so-a-loja-ve-base-vigente
+          - 157a-conferir-a-devolucao-integral-nao-perde-o-centavo-do-cupom-aplicado
+          - 157b-antes-a-devolucao-integral-nao-perde-o-centavo-do-cupom-base-vigente
           - backups
       projeto:
         description: "Projeto de destino: loja, sandbox, ikcous-publicada (a CAF explicita) ou savy (a loja cliente explicita, mesmas travas): as duas exigem expected_sha; nunca texto livre — achado da rodada 2"

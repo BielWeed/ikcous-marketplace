@@ -1660,36 +1660,34 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   const [totalAbsolutoNaLoja, setTotalAbsolutoNaLoja] = useState<number | null>(
     null,
   );
+  const [falhaNaMedicaoAbsoluta, setFalhaNaMedicaoAbsoluta] = useState(false);
   const [rodadaDaMedicaoAbsoluta, setRodadaDaMedicaoAbsoluta] = useState(0);
   const listaVazia = active && isLoaded && paginatedOrders.length === 0;
   useEffect(() => {
     if (!listaVazia || totalAbsolutoNaLoja !== null) return;
-    // Best-effort de verdade: se a consulta não puder existir/rodar (dublês
-    // de teste com builder parcial, ambiente sem a tabela), a tela continua
-    // com as mensagens de sempre — a medição só ADICIONA o caso "loja vazia
-    // de verdade", nunca remove nada.
-    try {
-      let cancelado = false;
-      const consulta = supabase
-        .from("marketplace_orders")
-        .select("*", { count: "exact", head: true });
-      void (
-        consulta as unknown as {
-          then?: (
-            ok: (r: { count: number | null; error: unknown }) => void,
-          ) => void;
+    let cancelado = false;
+    setFalhaNaMedicaoAbsoluta(false);
+
+    async function medirTotalAbsoluto() {
+      try {
+        const resultado = await supabase
+          .from("marketplace_orders")
+          .select("*", { count: "exact", head: true });
+        if (cancelado) return;
+        if (!resultado?.error && typeof resultado?.count === "number") {
+          setTotalAbsolutoNaLoja(resultado.count);
+        } else {
+          setFalhaNaMedicaoAbsoluta(true);
         }
-      ).then?.(({ count, error }) => {
-        if (!cancelado && !error && count !== null) {
-          setTotalAbsolutoNaLoja(count);
-        }
-      });
-      return () => {
-        cancelado = true;
-      };
-    } catch {
-      // Sem medição, as mensagens existentes seguem valendo.
+      } catch {
+        if (!cancelado) setFalhaNaMedicaoAbsoluta(true);
+      }
     }
+
+    void medirTotalAbsoluto();
+    return () => {
+      cancelado = true;
+    };
   }, [listaVazia, totalAbsolutoNaLoja, rodadaDaMedicaoAbsoluta]);
   // Lista que passou a ter pedidos desmente o "0": solta a medição velha, e a
   // próxima lista vazia mede de novo (a loja já tem pedido).
@@ -1967,6 +1965,8 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         status: order.status,
         retiradaNaLoja: order.retiradaNaLoja,
         codigoDeRastreio: order.trackingCode,
+        enderecoDeRetirada: order.enderecoDeRetirada,
+        horarioDeAtendimento: config.businessHours,
       });
 
       // Laudo 0109 (A-7): número sem DDD+numero não abre conversa válida.
@@ -1976,7 +1976,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       const url = `${link}?text=${encodeURIComponent(message)}`;
       abrirWhatsapp(url);
     },
-    [isOffline, storeNameDaLoja],
+    [config.businessHours, isOffline, storeNameDaLoja],
   );
 
   // Removed early return loading block to prevent visual layout shifts
@@ -2791,20 +2791,22 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                     searchQuery.trim() === "" &&
                     !dateRange.start &&
                     !dateRange.end ? (
-                    // Em Aberto vazio e NENHUM outro filtro ligado (pagamento,
-                    // canal e período inválido já foram tratados acima): a
-                    // causa é certa, não há pedido em aberto. Culpar "o filtro
-                    // de status, a busca ou o período" fazia quem está com
-                    // tudo em dia ler pedido sumido ou filtro errado.
-                    <>
-                      <h3 className="text-lg font-bold leading-snug text-zinc-100">
-                        Nada para preparar agora
-                      </h3>
-                      <p className="mt-2 max-w-md text-sm leading-relaxed text-zinc-400">
-                        Todos os pedidos em aberto já foram atendidos. Os
-                        finalizados e cancelados continuam em Todos.
-                      </p>
-                    </>
+                    // Em Aberto vazio não informa se a loja já teve pedidos.
+                    // Enquanto mede, não mostramos texto de lista vazia.
+                    totalAbsolutoNaLoja !== null || falhaNaMedicaoAbsoluta ? (
+                      <>
+                        <h3 className="text-lg font-bold leading-snug text-zinc-100">
+                          Nada para preparar agora
+                        </h3>
+                        {totalAbsolutoNaLoja !== null &&
+                          totalAbsolutoNaLoja > 0 && (
+                            <p className="mt-2 max-w-md text-sm leading-relaxed text-zinc-400">
+                              Todos os pedidos em aberto já foram atendidos. Os
+                              finalizados e cancelados continuam em Todos.
+                            </p>
+                          )}
+                      </>
+                    ) : null
                   ) : filter !== "all" ||
                     searchQuery.trim() !== "" ||
                     dateRange.start ||

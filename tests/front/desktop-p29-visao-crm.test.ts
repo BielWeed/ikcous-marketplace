@@ -142,7 +142,7 @@ function conferirEstado(texto: string, estado: Estado, alerta: boolean) {
     "LocalErrorBoundary",
     "LocalErrorBoundary",
   ]);
-  expect(atributo(filhos[0], "role")).toBe("alert");
+  expect(atributo(filhos[0], "data-aviso-historico")).toBe("falha");
   for (const [indice, componente] of [
     "OperationalPerformanceChart",
     "StrategicIntelligenceBlocks",
@@ -192,7 +192,12 @@ function conferirEstado(texto: string, estado: Estado, alerta: boolean) {
       alerta
         ? createElement(
             "div",
-            { role: atributo(filhos[0], "role") },
+            {
+              "data-aviso-historico": atributo(
+                filhos[0],
+                "data-aviso-historico",
+              ),
+            },
             "Falha de teste",
           )
         : null,

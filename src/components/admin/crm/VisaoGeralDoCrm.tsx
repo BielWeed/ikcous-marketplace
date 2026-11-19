@@ -68,6 +68,23 @@ export function VisaoGeralDoCrm({
   const esqueleto = carregando && !visao;
   const { stats, categorias, erro, erroDeCategoria, carregar } = classico;
   const carregandoClassico = classico.carregando && !stats;
+  // useAnalytics já distingue permissão de falhas comuns e traduz o erro.
+  const orientacaoDePermissao = erro?.startsWith(
+    "Sem permissão para acessar estes dados agora.",
+  )
+    ? erro
+    : null;
+  const avisoDoHistorico =
+    erro && !classico.carregando
+      ? stats
+        ? [
+            "Não deu para atualizar o histórico · mostrando a última busca",
+            orientacaoDePermissao,
+          ]
+            .filter(Boolean)
+            .join(". ")
+        : (orientacaoDePermissao ?? "Falha ao carregar o histórico da loja")
+      : "";
   const falha = !esqueleto && !visao && (!!erroDaVisao || offline);
   const variacaoDaReceita = variacaoPercentual(k?.receita, k?.receitaAnterior);
   const variacaoDosPedidos = variacaoPercentual(k?.pedidos, k?.pedidosAnterior);
@@ -318,26 +335,27 @@ export function VisaoGeralDoCrm({
         aria-label="Histórico completo da loja"
         className="space-y-4 pt-2 xl:grid xl:grid-cols-2 xl:items-start xl:gap-6 xl:space-y-0 xl:[&:has(#crm-categorias-titulo):has(#crm-produtos-lucro-titulo)>:has(#crm-categorias-titulo)]:col-span-1 xl:[&:has(#crm-categorias-titulo):has(#crm-produtos-lucro-titulo)>:has(#crm-produtos-lucro-titulo)]:col-span-1 xl:[&>*]:col-span-2 xl:[&>*]:min-w-0"
       >
-        {erro && !classico.carregando ? (
+        {avisoDoHistorico && (
           <div
-            role="alert"
+            data-aviso-historico="falha"
             className="flex items-center gap-3 rounded-2xl border border-rose-500/20 bg-rose-500/10 p-3 text-rose-300"
           >
             <AlertCircle className="size-5 shrink-0" aria-hidden="true" />
-            <p className="text-xs">Falha ao carregar dados: {erro}</p>
+            <p className="text-xs">{avisoDoHistorico}</p>
             <button
               type="button"
               onClick={() => carregar(true)}
               className="ml-auto min-h-11 px-3 text-xs font-bold"
             >
-              Tentar
+              Tentar de novo
             </button>
           </div>
-        ) : null}
+        )}
         <LocalErrorBoundary>
           <OperationalPerformanceChart
             stats={stats}
             loading={carregandoClassico}
+            avisoDaConsulta={avisoDoHistorico}
             active={active}
             onNavigate={onNavigate}
           />

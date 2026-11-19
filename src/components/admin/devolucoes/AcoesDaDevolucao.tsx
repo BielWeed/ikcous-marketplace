@@ -20,6 +20,7 @@ import { useRotulosDasVariacoes } from "@/hooks/useRotulosDasVariacoes";
 import {
   CONDICOES,
   acoesDoLojista,
+  centavosDosItensQueNaoVieram,
   formatarReais,
   paraCentavos,
   podeLiberarVinculoReverso,
@@ -194,9 +195,11 @@ export function AcoesDaDevolucao({
       : resolucoes[0],
   );
   // Item marcado "Não veio" não voltou: a ficha traz o preço de cada item (já
-  // com o cupom rateado), então o valor sugerido o desconta. "Danificada" fica
-  // no valor cheio (devolver tudo pode ser legítimo) e só ganha aviso. Soma por
-  // item pode passar de `valor_itens` por arredondamento: nunca abaixo de zero.
+  // com o cupom rateado), então o valor sugerido desconta a PARTE dele no
+  // `valor_itens` do servidor (e não `quantidade x preço` solto, que com cupom
+  // difere do servidor em centavos: ver `centavosDosItensQueNaoVieram`).
+  // "Danificada" fica no valor cheio (devolver tudo pode ser legítimo) e só
+  // ganha aviso. O desconto nunca passa de `valor_itens`: nunca abaixo de zero.
   const itensComCondicao = (condicao: CondicaoItemDevolvido) =>
     detalhe.itens.filter(
       (item) => inspecao.get(item.id)?.condicao === condicao,
@@ -204,13 +207,10 @@ export function AcoesDaDevolucao({
   const itensAusentes = itensComCondicao("ausente");
   const itensDanificados = itensComCondicao("danificada");
   const centavosDosItens = paraCentavos(detalhe.valor_itens);
-  const centavosAusentes = Math.min(
+  const centavosAusentes = centavosDosItensQueNaoVieram(
     centavosDosItens,
-    itensAusentes.reduce(
-      (soma, item) =>
-        soma + item.quantidade * paraCentavos(item.valor_unitario),
-      0,
-    ),
+    detalhe.itens,
+    itensAusentes,
   );
   const sugeridoCheio =
     centavosDosItens - centavosAusentes + paraCentavos(detalhe.valor_frete_ida);

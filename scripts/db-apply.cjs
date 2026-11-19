@@ -1115,6 +1115,25 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // 20261405400000: solicitar_devolucao rateia o cupom pela diferenca entre dois totais acumulados.
+  // O mapa aceita so contagens positivas; a ausencia da formula antiga fica no pos-voo. A 157a confere corpo exato, atributos e ACL.
+  "20261405400000_a_devolucao_integral_nao_perde_o_centavo_do_cupom.sql": [
+    {
+      funcao: "solicitar_devolucao",
+      esperado: [
+        {
+          texto:
+            "round(v_oi.price * v_cupom_num * (v_ja + v_qtd) / v_cupom_den, 2)",
+          vezes: 1,
+        },
+        {
+          texto: "round(v_oi.price * v_cupom_num * v_ja / v_cupom_den, 2)",
+          vezes: 1,
+        },
+        { texto: "v_cupom_den := v_o.subtotal;", vezes: 1 },
+      ],
+    },
+  ],
   // 20261404000000: a observacao da inspecao da devolucao e so da loja. devolucao_detalhe ganha SO a troca da linha do RETURN (a chave observacao_inspecao sai do JSON quando quem chama nao e o admin ATUAL); as duas
   // travas do topo (is_admin e is_admin_atual) ficam como estao. O REVOKE da tabela devolucoes e o GRANT por coluna NAO se conferem aqui (so sabemos ler corpo de funcao): a conferencia final da propria migration mede o
   // privilegio EFETIVO e a consulta 156a o confirma. A consulta 156a confere o corpo exato (md5), os atributos e a ACL; a prova viva mede o comportamento.

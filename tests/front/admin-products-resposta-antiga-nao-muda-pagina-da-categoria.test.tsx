@@ -61,6 +61,25 @@ vi.mock("@/hooks/useAnalytics", () => ({
 vi.mock("@/hooks/useCategories", () => ({
   useCategories: () => ({ categories: categorias }),
 }));
+vi.mock("@/hooks/useUsoDasCategorias", () => ({
+  useUsoDasCategorias: () => ({
+    usos: [
+      {
+        id: "categoria-a",
+        nome: "Categoria A",
+        slug: "categoria-a",
+        ativo: true,
+        produtos: 1,
+        produtos_excluidos: 0,
+        banners: 0,
+        regra_devolucao: 0,
+      },
+    ],
+    carregando: false,
+    erro: null,
+    recarregar: vi.fn(),
+  }),
+}));
 vi.mock("@/hooks/useOnlineStatus", () => ({
   useOnlineStatus: () => false,
 }));
@@ -194,6 +213,79 @@ describe("AdminProductsView — resposta antiga não muda a página de outra cat
   function paginacao() {
     return hospedeiro.querySelector('[data-testid="paginacao-admin"]');
   }
+
+  it("o Voltar depois de Filtros → Gerenciar categorias fecha só a gaveta", async () => {
+    globalThis.history.replaceState(
+      { view: "admin-orders" },
+      "",
+      "/admin-orders",
+    );
+    globalThis.history.pushState(
+      { view: "admin-products" },
+      "",
+      "/admin-products",
+    );
+    await abrirNaPaginaExtinta(pendente());
+    vi.useRealTimers();
+
+    const clicar = async (botao: HTMLButtonElement | undefined | null) => {
+      if (!botao) throw new Error("Botão não encontrado");
+      await act(async () => botao.click());
+    };
+    await import("@/components/admin/categorias/GerenciarCategorias");
+    await clicar(
+      hospedeiro.querySelector<HTMLButtonElement>(
+        'button[aria-label="Filtros"]',
+      ),
+    );
+    await clicar(
+      [...document.querySelectorAll("button")].find(
+        (botao) => botao.textContent?.trim() === "Gerenciar categorias",
+      ),
+    );
+    const gaveta = () =>
+      [...document.querySelectorAll('[role="dialog"]')].find((dialogo) =>
+        dialogo.textContent?.includes("Gerenciar categorias"),
+      );
+    await vi.waitFor(async () => {
+      await act(async () => {});
+      expect(gaveta()).toBeDefined();
+    });
+
+    async function voltar() {
+      await act(async () => {
+        globalThis.history.back();
+        await new Promise((resolve) => setTimeout(resolve, 60));
+      });
+    }
+    // Deixa chegar qualquer retorno assíncrono disparado ao fechar Filtros.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 60));
+    });
+    expect(gaveta()).toBeDefined();
+    await clicar(
+      gaveta()?.querySelector('button[aria-label="Renomear Categoria A"]'),
+    );
+    const campo = gaveta()?.querySelector<HTMLInputElement>(
+      "#nome-da-categoria-categoria-a",
+    );
+    if (!campo) throw new Error("Campo de renomear não encontrado");
+    const setter = Object.getOwnPropertyDescriptor(
+      globalThis.HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    await act(async () => {
+      setter?.call(campo, "Nome não salvo");
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(campo.value).toBe("Nome não salvo");
+
+    await voltar();
+    expect(globalThis.location.pathname).toBe("/admin-products");
+    expect(gaveta()).toBeUndefined();
+    await voltar();
+    expect(globalThis.location.pathname).toBe("/admin-orders");
+  });
 
   it("abre B na primeira página mesmo se A corrigir sua página durante o debounce", async () => {
     const a = pendente();

@@ -50,6 +50,8 @@ interface BarraDeBuscaProps {
   readonly onAbrirFiltros?: () => void;
   readonly onLimpar?: () => void;
   readonly onGerenciarCategorias?: () => void;
+  /** Presente enquanto o gerenciador aberto a partir dos Filtros pode fechar. */
+  readonly onFecharCategorias?: () => void;
   readonly children?: ReactNode;
 }
 
@@ -138,12 +140,16 @@ export function BarraDeBusca({
   onAbrirFiltros,
   onLimpar,
   onGerenciarCategorias,
+  onFecharCategorias,
   children,
 }: BarraDeBuscaProps) {
   const [aberta, setAberta] = useState(false);
-  // O Voltar do aparelho fecha só a janela de filtros, em vez de tirar o lojista
-  // da tela (Produtos e Clientes ficam montados, inativos, atrás das outras abas).
-  useVoltarFechaAFolha(aberta, () => setAberta(false));
+  // Filtros → Categorias troca o conteúdo da camada, não a entrada. Assim, o
+  // back() assíncrono de fechar Filtros não pode consumir a entrada da gaveta.
+  useVoltarFechaAFolha(aberta || !!onFecharCategorias, () => {
+    if (onFecharCategorias) onFecharCategorias();
+    else setAberta(false);
+  });
   const botaoFiltros = useRef<HTMLButtonElement>(null);
   const faixaDeOpcoes = useRef<HTMLDivElement>(null);
   const escolhida = opcoes.find((opcao) => opcao.selecionada)?.valor;

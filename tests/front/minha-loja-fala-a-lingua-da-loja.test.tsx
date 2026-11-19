@@ -104,12 +104,13 @@ describe("Minha loja — texto sem linguagem interna", () => {
     await act(async () => {
       raiz.render(<AdminAboutStoreView onNavigate={vi.fn()} active={true} />);
     });
-    // O bloco da marca é carregado sob demanda: espera sair o "Carregando…".
+    // Espera a marca aparecer carregada, não apenas o aviso sumir.
     await vi.waitFor(async () => {
       await act(async () => {
         await esperarMicrotarefas();
       });
       expect(hospedeiro.textContent).not.toContain("Carregando identidade");
+      expect(hospedeiro.textContent).toContain("Nome da loja");
     });
   });
 

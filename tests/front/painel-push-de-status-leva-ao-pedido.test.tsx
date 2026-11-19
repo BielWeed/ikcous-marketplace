@@ -150,15 +150,13 @@ const pedido: Order = {
   shipping: 20,
   discount: 0,
   total: 120,
-  paymentMethod: "pix",
+  paymentMethod: "online",
   paymentStatus: "pago",
   status: "processing",
   createdAt: new Date(0).toISOString(),
   updatedAt: new Date(0).toISOString(),
   cancelledAfterShipping: false,
 };
-
-const esperar = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 
 describe("urlDoPedidoNoPush — o endereço que o aviso abre", () => {
   it("é o formato que o app usa na barra de endereço", () => {
@@ -215,7 +213,7 @@ describe("Painel — o push de 'status atualizado' abre o pedido, não a vitrine
     vi.unstubAllGlobals();
   });
 
-  it("avançar o pedido manda o push com a url do detalhe do pedido", async () => {
+  it("os avisos levam à ficha e guardam a ordem dos avanços mesmo se o primeiro sair por último", async () => {
     const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
     await act(async () => {
       raiz.render(
@@ -226,35 +224,69 @@ describe("Painel — o push de 'status atualizado' abre o pedido, não a vitrine
         />,
       );
     });
-    await act(async () => {
-      await esperar(20);
-    });
+    const botaoAvancar = () =>
+      [...hospedeiro.querySelectorAll("button")].find((b) =>
+        b.textContent?.includes("Avançar"),
+      );
+    await vi.waitFor(() => expect(botaoAvancar()?.disabled).toBe(false));
 
-    const avancar = Array.from(hospedeiro.querySelectorAll("button")).find(
-      (b) => b.textContent?.includes("Avançar"),
+    const avancar = async () => {
+      const botao = botaoAvancar();
+      expect(botao).toBeDefined();
+      expect(botao?.disabled).toBe(false);
+      await act(async () => botao?.click());
+    };
+    const avisos = () =>
+      invoke.mock.calls
+        .filter(([nome]) => nome === "send-push")
+        .map(([, opcoes]) => opcoes.body);
+
+    let liberarPrimeiraSessao!: () => void;
+    getSession.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          liberarPrimeiraSessao = () => resolve({ data: { session: null } });
+        }),
     );
-    expect(avancar).toBeTruthy();
-    const antes = Date.now();
-    await act(async () => {
-      avancar?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await esperar(20);
-    });
 
-    const depois = Date.now();
-    const chamada = invoke.mock.calls.find(([nome]) => nome === "send-push");
-    expect(chamada).toBeTruthy();
-    const corpo = chamada?.[1].body;
-    expect(corpo.url).toBe(`/order-details?id=${ID_DO_PEDIDO}`);
-    // O resto do aviso segue como estava.
-    expect(corpo.targetUserId).toBe("cliente-1");
-    expect(corpo.data).toEqual({
-      orderId: ID_DO_PEDIDO,
-      type: "order_status",
-      emitidoEm: expect.any(Number),
-    });
-    // Carimbo de ordem: o instante em que o status foi gravado (ms), para o
-    // aparelho manter o aviso mais novo se os avisos chegarem trocados.
-    expect(corpo.data.emitidoEm).toBeGreaterThanOrEqual(antes);
-    expect(corpo.data.emitidoEm).toBeLessThanOrEqual(depois);
+    const relogio = vi.spyOn(Date, "now").mockReturnValue(1_780_000_000_000);
+    try {
+      await avancar();
+      expect(liberarPrimeiraSessao).toBeTypeOf("function");
+      expect(avisos()).toHaveLength(0);
+
+      relogio.mockReturnValue(1_780_000_001_000);
+      await avancar();
+      expect(avisos()).toHaveLength(1);
+      expect(avisos()[0].body).toMatch(/entregue/i);
+
+      relogio.mockReturnValue(1_780_000_002_000);
+      await act(async () => liberarPrimeiraSessao());
+
+      expect(avisos()).toEqual([
+        expect.objectContaining({
+          url: `/order-details?id=${ID_DO_PEDIDO}`,
+          targetUserId: "cliente-1",
+          body: expect.stringMatching(/entregue/i),
+          data: {
+            orderId: ID_DO_PEDIDO,
+            type: "order_status",
+            emitidoEm: 1_780_000_001_000,
+          },
+        }),
+        expect.objectContaining({
+          url: `/order-details?id=${ID_DO_PEDIDO}`,
+          targetUserId: "cliente-1",
+          body: expect.stringMatching(/a caminho/i),
+          data: {
+            orderId: ID_DO_PEDIDO,
+            type: "order_status",
+            emitidoEm: 1_780_000_000_000,
+          },
+        }),
+      ]);
+    } finally {
+      relogio.mockRestore();
+    }
   });
 });

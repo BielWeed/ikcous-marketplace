@@ -48,6 +48,20 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+it("quando a lista pública está vazia, informa que não há avaliações publicadas", async () => {
+  await act(async () =>
+    raiz.render(<UserProfileView userId="autor" onNavigate={() => {}} />),
+  );
+
+  expect(rpc).toHaveBeenCalledWith("perfil_publico_avaliacoes", {
+    p_autor: "autor",
+  });
+  expect(hospedeiro.textContent).toContain(
+    "Nenhuma avaliação publicada ainda.",
+  );
+  expect(hospedeiro.textContent).not.toContain("ainda não avaliou");
+});
+
 it.each(["perfil", "avaliações", "perguntas"])(
   "%s sem resposta encerra o esqueleto e oferece nova tentativa",
   async (consulta) => {

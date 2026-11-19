@@ -6,6 +6,7 @@ import { ehMarcadorDeFoto } from "@/lib/foto-do-produto";
 import { usarImagemOriginal } from "@/lib/imageUrl";
 import { miniaturaDeCompra } from "@/lib/miniatura-de-compra";
 import { percentualDeDesconto } from "@/lib/percentual-de-desconto";
+import { pluralizar } from "@/lib/pluralizar";
 import { precoVendido } from "@/lib/preco-vendido";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { CartItem } from "@/types";
@@ -274,8 +275,8 @@ export const CartItemsList = memo(function CartItemsList({
       {cart.length > 50 && (
         <div className="mb-4 flex items-center justify-between gap-3 rounded-[18px] border border-border p-4">
           <p className="min-w-0 text-[13px] text-muted-foreground">
-            Seu carrinho tem {cart.length} produtos diferentes. Para recomeçar,
-            esvazie o carrinho.
+            Seu carrinho tem {pluralizar(cart.length, "item", "itens")} na
+            lista. Para recomeçar, esvazie o carrinho.
           </p>
           <button
             type="button"

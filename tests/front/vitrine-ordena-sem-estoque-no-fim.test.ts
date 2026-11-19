@@ -33,6 +33,23 @@ describe("ordenarParaVitrine — a regra que a loja sempre usou", () => {
     ]);
   });
 
+  it("produto legado com opção obrigatória zerada vai para o fim apesar do saldo geral", () => {
+    const legado = {
+      ...p("Legado novo", 8, 300),
+      variants: [
+        { name: "Cor", active: true, stockIncrement: 8 },
+        { name: "Tamanho", active: true, stockIncrement: 0 },
+        { name: "Tamanho", active: true, stockIncrement: 0 },
+      ],
+    };
+    const compravel = p("Comprável antigo", 5, 100);
+
+    expect(ordenarParaVitrine([legado, compravel])).toEqual([
+      compravel,
+      legado,
+    ]);
+  });
+
   it("dentro de cada grupo, mais recente primeiro", () => {
     const lista = [
       p("Disp. velho", 5, 100),

@@ -5,7 +5,7 @@
 //       na leitura não quebra a ficha;
 //  (3)  nome do produto em até 2 linhas (nada de `truncate`);
 //  (4)  código de rastreio nunca cortado em 1 linha;
-//  (5)  etapas com os nomes da tabela única (Recebido/Separado/A caminho/
+//  (5)  etapas com os nomes da tabela única (Recebido/Em separação/A caminho/
 //       Entregue);
 //  (7)  retirada na loja: "Sem frete (retirada)", "Retirado" e nada de
 //       "Chegou!"/"entregue", e "Seu endereço" só com endereço;
@@ -274,7 +274,7 @@ describe("resumo e andamento do pedido", () => {
   it("pedido a caminho destaca a terceira etapa", async () => {
     await montar(pedidoBase({ status: "shipping" }));
     const cartao = container?.querySelector('[data-testid="cartao-status"]');
-    const nos = ["Recebido", "Separado", "A caminho", "Entregue"].map(
+    const nos = ["Recebido", "Em separação", "A caminho", "Entregue"].map(
       (rotulo) =>
         [...(cartao?.querySelectorAll("span") ?? [])].find(
           (el) => el.textContent === rotulo,
@@ -296,10 +296,10 @@ describe("resumo e andamento do pedido", () => {
 });
 
 describe("item 5 — nomes das etapas", () => {
-  it("linha do tempo da ficha usa Recebido / Separado / A caminho / Entregue", async () => {
+  it("linha do tempo da ficha usa Recebido / Em separação / A caminho / Entregue", async () => {
     await montar(pedidoBase());
     const cartao = container?.querySelector('[data-testid="cartao-status"]');
-    for (const etapa of ["Recebido", "Separado", "A caminho", "Entregue"]) {
+    for (const etapa of ["Recebido", "Em separação", "A caminho", "Entregue"]) {
       expect(cartao?.textContent).toContain(etapa);
     }
   });

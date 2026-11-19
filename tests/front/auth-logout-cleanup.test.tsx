@@ -478,7 +478,7 @@ describe("AuthContext — limpeza local de sessão (issue #122)", () => {
     const { callback } = await montarLogado();
 
     localStorage.setItem(
-      "marketplace_cart_tombstones_v1",
+      "marketplace_cart_account_tombstones_v1",
       JSON.stringify([{ key: "p1-", deletedAt: Date.now() }]),
     );
 
@@ -488,7 +488,9 @@ describe("AuthContext — limpeza local de sessão (issue #122)", () => {
       await esperarMicrotarefas();
     });
 
-    expect(localStorage.getItem("marketplace_cart_tombstones_v1")).toBeNull();
+    expect(
+      localStorage.getItem("marketplace_cart_account_tombstones_v1"),
+    ).toBeNull();
   });
 
   it("3c. a anotação das linhas que o banco confirmou no carrinho também é apagada no SIGNED_OUT", async () => {

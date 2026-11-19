@@ -3191,6 +3191,7 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "151a-conferir-o-banner-tem-imagem-propria-no-computador-aplicado",
     "154a-conferir-o-inicio-mostra-o-dinheiro-a-devolver-aplicado",
     "155a-conferir-o-total-comprado-do-cliente-e-o-mesmo-no-crm-na-lista-e-na-ficha-aplicado",
+    "157a-conferir-a-devolucao-integral-nao-perde-o-centavo-do-cupom-aplicado",
     // 156a (20261404000000) fica de fora de proposito: a 404 esta em migrationsForaDaRelease
     // e nao tem lote no canais; a consulta segue no menu para quando ela for aplicada a parte.
   ]);
