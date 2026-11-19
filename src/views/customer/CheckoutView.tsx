@@ -1148,7 +1148,7 @@ export function CheckoutViewDaConta({
     user,
     profile: perfilQueOAuthEntregou,
     loading: authLoading,
-    updateProfile,
+    fetchProfile,
   } = useAuth();
   // O PERFIL SÓ VALE SE FOR DA CONTA QUE ESTÁ LOGADA. O AuthContext entrega
   // `user` e `profile` em estados separados: na troca de conta, na saída com
@@ -5233,25 +5233,49 @@ export function CheckoutViewDaConta({
       // Pedido confirmado: a próxima compra terá outra chave e outro rascunho.
       limparCompraCriada();
 
-      // Conveniência pós-pedido, nunca condição do pagamento. Perfil ausente
-      // não é perfil vazio; relê a ref para não substituir número que chegou
-      // enquanto a criação esperava. A RPC preserva os demais campos via COALESCE.
+      // Conveniência pós-pedido: só preenche se o banco ainda tiver o mesmo
+      // valor vazio que a tela viu (inclusive espaços), sem apagar outra edição.
       const perfilAtual = perfilAtualRef.current;
+      const whatsappVisto = perfilAtual?.whatsapp;
+      const contaDoPedido = pedido.contaEsperada;
       const whatsappDoPedido = (orderData.customer as Customer).whatsapp;
       if (
         !pedido.semConta &&
-        pedido.contaEsperada &&
-        perfilAtual?.id === pedido.contaEsperada &&
-        !perfilAtual.whatsapp?.trim() &&
+        contaDoPedido &&
+        perfilAtual?.id === contaDoPedido &&
+        (whatsappVisto === null ||
+          (typeof whatsappVisto === "string" && whatsappVisto.trim() === "")) &&
         celularBrasileiroCompleto(whatsappDoPedido)
       ) {
         void Promise.resolve()
-          .then(() =>
-            updateProfile(
-              { whatsapp: whatsappDoPedido },
-              { silencioso: true, contaEsperada: pedido.contaEsperada! },
-            ),
-          )
+          .then(async () => {
+            const {
+              data: { session },
+              error: erroDaSessao,
+            } = await aguardarComPrazo(
+              supabase.auth.getSession(),
+              PRAZO_DA_CONSULTA_DO_CHECKOUT_MS,
+              () => new Error("A conferência da sessão demorou demais."),
+            );
+            if (erroDaSessao) throw erroDaSessao;
+            if (session?.user.id !== contaDoPedido) return;
+            const atualizacao = supabase
+              .from("profiles")
+              .update({ whatsapp: whatsappDoPedido })
+              .eq("id", contaDoPedido);
+            const seNaoMudou =
+              whatsappVisto === null
+                ? atualizacao.is("whatsapp", null)
+                : atualizacao.eq("whatsapp", whatsappVisto);
+            const { error } = await seNaoMudou.setHeader(
+              "Authorization",
+              `Bearer ${session.access_token}`,
+            );
+            if (error) throw error;
+            // Zero linhas é normal: outro aparelho pode ter preenchido.
+            // A releitura também fica fora do caminho crítico da compra.
+            void fetchProfile().catch(() => {});
+          })
           .catch(() =>
             console.error(
               "[Checkout] Não foi possível salvar o WhatsApp no perfil.",

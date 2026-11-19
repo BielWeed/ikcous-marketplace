@@ -95,7 +95,7 @@ describe("Conta: rede lenta e envio pelo formulário", () => {
     getSession.mockResolvedValue({
       data: { session: { user: usuario, access_token: "token-inventado" } },
     });
-    fetchProfile.mockResolvedValue(undefined);
+    fetchProfile.mockResolvedValue(true);
     rpc.mockImplementation((nome: string) =>
       Promise.resolve({
         data:
@@ -413,17 +413,25 @@ describe("Conta: rede lenta e envio pelo formulário", () => {
     );
     expect(toast.success).not.toHaveBeenCalled();
   });
-  it("atualização do cabeçalho sem resposta também libera o Salvar", async () => {
+  it("cabeçalho sem resposta libera o Salvar e avisa que só a tela ficou para trás", async () => {
     await montar();
     digitar("full_name", "Nome Alterado");
-    fetchProfile.mockReturnValue(pendente());
+    fetchProfile.mockReturnValueOnce(pendente());
     await act(async () => botao("Salvar alterações").click());
     await passar(15001);
-    expect(botao("Salvar alterações")).toBeDefined();
-    expect(toast.warning).toHaveBeenCalledWith(
-      expect.stringContaining("pode ter sido salvo"),
-    );
+    expect(botao("Salvar alterações").disabled).toBe(false);
+    expect(host.textContent).toContain("Salvamos, mas ainda não conseguimos");
+    expect(toast.warning).not.toHaveBeenCalled();
     expect(toast.success).not.toHaveBeenCalled();
+
+    await act(async () => botao("Atualizar").click());
+    expect(fetchProfile).toHaveBeenCalledTimes(2);
+    expect(
+      rpc.mock.calls.filter(([nome]) => nome === "update_my_profile_secure"),
+    ).toHaveLength(1);
+    expect(host.textContent).not.toContain(
+      "Salvamos, mas ainda não conseguimos",
+    );
   });
   it("sessão pendente tem prazo e nunca começa a escrita quando chega tarde", async () => {
     let concluir!: (valor: unknown) => void;

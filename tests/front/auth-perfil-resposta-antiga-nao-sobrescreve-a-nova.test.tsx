@@ -36,7 +36,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 interface Snapshot {
   userId: string | null;
   nome: string | null;
-  fetchProfile: (usuario?: { id: string }) => Promise<void>;
+  fetchProfile: (usuario?: { id: string }) => Promise<boolean>;
 }
 
 function Sonda({
@@ -49,7 +49,7 @@ function Sonda({
   const ctx = useContext(authContext) as {
     user: { id: string } | null;
     profile: { full_name?: string } | null;
-    fetchProfile: (usuario?: { id: string }) => Promise<void>;
+    fetchProfile: (usuario?: { id: string }) => Promise<boolean>;
   };
   aoAtualizar({
     userId: ctx.user?.id ?? null,
@@ -209,6 +209,32 @@ it("a mais nova FALHAR não impede a antiga de ser aplicada (nada mais novo foi 
   expect(atual().nome).toBeNull();
   await responder(0, comNome("Único dado que chegou"));
   expect(atual().nome).toBe("Único dado que chegou");
+});
+
+it("a releitura informa se atualizou o perfil sem apagar o que já estava na tela", async () => {
+  await montar();
+  await entrar("A");
+  await responder(0, comNome("Nome anterior"));
+
+  let leitura!: Promise<unknown>;
+  const reler = async () => {
+    leitura = atual().fetchProfile({ id: "A" });
+    await esperar();
+  };
+  await reler();
+  await responder(1, { data: null, error: { message: "sem rede" } });
+  await expect(leitura).resolves.toBe(false);
+  expect(atual().nome).toBe("Nome anterior");
+
+  await reler();
+  await responder(2, { data: [], error: null });
+  await expect(leitura).resolves.toBe(false);
+  expect(atual().nome).toBe("Nome anterior");
+
+  await reler();
+  await responder(3, comNome("Nome salvo"));
+  await expect(leitura).resolves.toBe(true);
+  expect(atual().nome).toBe("Nome salvo");
 });
 
 it("conta trocada: a resposta de A que chega depois da entrada de B continua descartada", async () => {
