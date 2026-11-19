@@ -22,6 +22,7 @@ import {
   type VariacaoComparavel,
   variacaoMudou,
 } from "@/utils/campos-mexidos-do-produto";
+import { estoqueDaVariacaoValido } from "@/utils/estoque-da-variacao";
 
 /**
  * Validade do rascunho: 7 dias, contados do ÚLTIMO salvamento automático (a
@@ -135,13 +136,23 @@ export function lerRascunhoVigenteDoProduto(
 const ehVariacaoNova = (v: { id?: unknown }) =>
   typeof v.id === "string" && v.id.startsWith("temp-");
 
+// NaN representa o campo vazio no formulário, sem confundir com um zero
+// explícito. Se o rascunho for guardado de novo, o JSON grava null (também inválido).
+export function esvaziarEstoqueInvalidoDoRascunho(
+  variacao: ProductVariant,
+): ProductVariant {
+  return estoqueDaVariacaoValido(variacao.stockIncrement)
+    ? variacao
+    : { ...variacao, stockIncrement: Number.NaN };
+}
+
 /**
  * As variações do rascunho com o estoque do BANCO de hoje.
  *
  *  - já existe no banco: tudo o que a lojista editou no rascunho (nome, valor,
  *    ligada, preço, foto, códigos) fica; o estoque (`stockIncrement`/`stock`)
  *    é o do banco;
- *  - nova (`temp-…`): fica como digitada, estoque incluso;
+ *  - nova (`temp-…`): fica como digitada; estoque inválido volta em branco;
  *  - tem id de verdade mas já não existe no banco (saiu desde o rascunho):
  *    não volta — restaurá-la recriaria, pelo upsert, uma variação apagada com
  *    o estoque de antes.
@@ -152,7 +163,7 @@ export function variacoesDoRascunhoComEstoqueDoBanco(
 ): ProductVariant[] {
   const bancoPorId = new Map(doBanco.map((v) => [v.id, v]));
   return doRascunho.flatMap((v) => {
-    if (ehVariacaoNova(v)) return [v];
+    if (ehVariacaoNova(v)) return [esvaziarEstoqueInvalidoDoRascunho(v)];
     const noBanco = bancoPorId.get(v.id);
     if (!noBanco) return [];
     const { stock: _estoqueDoRascunho, ...resto } = v;

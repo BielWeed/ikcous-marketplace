@@ -86,7 +86,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-async function montar(existente: boolean) {
+async function montar(existente: boolean, ativa = true) {
   mocks.fetchProduct.mockResolvedValue({
     id: "p-1",
     name: "Camiseta",
@@ -106,7 +106,7 @@ async function montar(existente: boolean) {
             name: "Tamanho",
             value: "GG",
             stockIncrement: 20,
-            active: true,
+            active: ativa,
           },
         ]
       : [],
@@ -154,6 +154,76 @@ async function editar() {
   await act(async () => botao.click());
 }
 
+describe("AdminProductFormView — botões de estoque de uma variação existente", () => {
+  async function ajustarEstoque(botao: string, texto: string) {
+    const campo = document.querySelector<HTMLInputElement>("#variant-stock");
+    const controle = document.querySelector<HTMLButtonElement>(
+      `button[aria-label="${botao}"]`,
+    );
+    if (!campo || !controle) throw new Error("Controle de estoque ausente.");
+    await act(async () => {
+      campo.focus();
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )?.set?.call(campo, texto);
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    // Clique antes do debounce, sem depender de o navegador desfocar o campo.
+    await act(async () => controle.click());
+    return campo.value;
+  }
+
+  describe.each(["Diminuir estoque", "Aumentar estoque"])("%s", (botao) => {
+    it.each([
+      ["", /informe o estoque/i],
+      ["2.5", /números inteiros/i],
+      ["-5", /não pode ser negativo/i],
+    ])('preserva "%s" e avisa', async (texto, aviso) => {
+      await montar(true);
+      await editar();
+      expect(await ajustarEstoque(botao, texto)).toBe(texto);
+      expect(mocks.toastErro).toHaveBeenCalledExactlyOnceWith(
+        expect.stringMatching(aviso),
+      );
+    });
+  });
+
+  it.each([
+    ["Aumentar estoque", "999999999999"],
+    ["Aumentar estoque", "10000"],
+    ["Aumentar estoque", "10001"],
+    ["Diminuir estoque", "10001"],
+    ["Aumentar estoque", "9007199254740993"],
+  ])("%s não altera %s ao ultrapassar o limite", async (botao, texto) => {
+    await montar(true);
+    await editar();
+    expect(await ajustarEstoque(botao, texto)).toBe(texto);
+    expect(mocks.toastErro).toHaveBeenCalledExactlyOnceWith(
+      "O estoque máximo é 10.000",
+    );
+  });
+
+  it.each([
+    ["Aumentar estoque", "9999", "10000"],
+    ["Diminuir estoque", "10000", "9999"],
+    ["Diminuir estoque", "20", "19"],
+    ["Aumentar estoque", "20", "21"],
+    ["Diminuir estoque", "0", "0"],
+    ["Aumentar estoque", "0", "1"],
+  ])("%s: de %s para %s", async (botao, texto, resultado) => {
+    await montar(true);
+    await editar();
+    expect(await ajustarEstoque(botao, texto)).toBe(resultado);
+    expect(mocks.toastErro).not.toHaveBeenCalled();
+    await clicar("Salvar variação");
+    await editar();
+    expect(
+      document.querySelector<HTMLInputElement>("#variant-stock")?.value,
+    ).toBe(resultado);
+  });
+});
+
 describe("AdminProductFormView — apagar quantidade não esgota uma variação", () => {
   it("existente com 20: apagar avisa e mantém o modal e o estoque anterior", async () => {
     await montar(true);
@@ -184,6 +254,34 @@ describe("AdminProductFormView — apagar quantidade não esgota uma variação"
       (document.getElementById("variant-stock") as HTMLInputElement).value,
     ).toBe("0");
   });
+
+  it.each([
+    ["ligada", true],
+    ["desligada", false],
+  ])(
+    "Salvar variação %s recusa 10.001 e aceita 10.000",
+    async (_estado, ativa) => {
+      await montar(true, ativa);
+      await editar();
+      await digitarCampo("variant-stock", "10001");
+      await clicar("Salvar variação");
+
+      expect(mocks.toastErro).toHaveBeenCalledExactlyOnceWith(
+        "O estoque máximo é 10.000",
+      );
+      expect(
+        document.querySelector<HTMLInputElement>("#variant-stock")?.value,
+      ).toBe("10001");
+
+      await digitarCampo("variant-stock", "10000");
+      await clicar("Salvar variação");
+      expect(mocks.toastErro).toHaveBeenCalledTimes(1);
+      await editar();
+      expect(
+        document.querySelector<HTMLInputElement>("#variant-stock")?.value,
+      ).toBe("10000");
+    },
+  );
 
   it.each(["0", "5"])(
     "existente aceita quantidade explícita %s",

@@ -25,13 +25,14 @@ import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fetchProduct = vi.fn();
+const addProduct = vi.fn();
 const updateProduct = vi.fn();
 const salvarProdutoComGrade = vi.fn();
 const upsertVariants = vi.fn();
 const deleteVariants = vi.fn();
 vi.mock("@/hooks/useProducts", () => ({
   useProducts: () => ({
-    addProduct: vi.fn(),
+    addProduct,
     updateProduct,
     salvarProdutoComGrade,
     upsertVariants,
@@ -187,6 +188,7 @@ describe("AdminProductFormView — restaurar rascunho não devolve estoque vendi
       produto: undefined,
       recusadas: [],
     });
+    addProduct.mockResolvedValue({ id: "novo-1" });
     updateProduct.mockResolvedValue(undefined);
     upsertVariants.mockResolvedValue(undefined);
     deleteVariants.mockResolvedValue(undefined);
@@ -240,8 +242,8 @@ describe("AdminProductFormView — restaurar rascunho não devolve estoque vendi
     });
   }
 
-  async function salvar() {
-    const botao = botaoPorTexto("Salvar alterações");
+  async function salvar(texto = "Salvar alterações") {
+    const botao = botaoPorTexto(texto);
     if (!botao) throw new Error("O botão Salvar não está na tela.");
     await act(async () => {
       botao.click();
@@ -344,6 +346,76 @@ describe("AdminProductFormView — restaurar rascunho não devolve estoque vendi
     // O estoque do produto é a soma do que existe HOJE (1) + a nova (4).
     expect(remendoEnviado().stock).toBe(5);
   });
+
+  it.each([
+    ["edição", -3],
+    ["edição", 1.5],
+    ["edição", 10001],
+    ["edição", 9999999999],
+    ["criação", -3],
+  ])(
+    "%s: pede correção do estoque %s da variação desligada sem perder o rascunho",
+    async (modo, estoque) => {
+      const criando = modo === "criação";
+      const acao = criando ? "Publicar" : "Salvar alterações";
+      const nome = "Camiseta de algodão";
+      fetchProduct.mockResolvedValue(produtoDoBanco(3));
+      armazem.set(
+        criando ? CHAVE_NOVO : CHAVE_EDICAO,
+        JSON.stringify(
+          rascunho({
+            name: nome,
+            stock: "3",
+            variants: [variacao("temp-123", "Verde", estoque, false)],
+          }),
+        ),
+      );
+      await montar(criando ? null : "p-1");
+      if (!criando) await restaurar();
+      expect(campo("product-name")?.value).toBe(nome);
+      expect(campo("product-stock")?.value).toBe("3");
+
+      await salvar(acao);
+
+      expect(addProduct).not.toHaveBeenCalled();
+      expect(salvarProdutoComGrade).not.toHaveBeenCalled();
+      expect(updateProduct).not.toHaveBeenCalled();
+      expect(upsertVariants).not.toHaveBeenCalled();
+      expect(toast.error).toHaveBeenCalledWith(
+        expect.stringMatching(/estoque da variação Cor Verde.*10\.000/i),
+      );
+
+      const editar = document.querySelector<HTMLButtonElement>(
+        '[aria-label="Editar variação Verde"]',
+      )!;
+      await act(async () => editar.click());
+      expect(campo("variant-stock")?.value).toBe("");
+      const quantidade = campo("variant-stock")!;
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(
+          HTMLInputElement.prototype,
+          "value",
+        )?.set?.call(quantidade, "10000");
+        quantidade.dispatchEvent(new Event("input", { bubbles: true }));
+        await new Promise((r) => setTimeout(r, 250));
+      });
+      await act(async () => botaoPorTexto("Salvar variação")?.click());
+      expect(toast.error).toHaveBeenCalledTimes(1);
+
+      await salvar(acao);
+
+      const dados = criando ? addProduct.mock.calls[0]?.[0] : remendoEnviado();
+      const linhas = criando ? dados?.variants : variacoesEnviadas();
+      expect(dados?.name).toBe(nome);
+      expect(linhas).toEqual([
+        expect.objectContaining({
+          value: "Verde",
+          stockIncrement: 10000,
+          active: false,
+        }),
+      ]);
+    },
+  );
 
   it("variação que já saiu do banco desde o rascunho não volta com o estoque de antes", async () => {
     fetchProduct.mockResolvedValue(

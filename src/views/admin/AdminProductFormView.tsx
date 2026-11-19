@@ -41,6 +41,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
 import { ImageAdjuster } from "@/components/ui/custom/ImageAdjuster";
 import { LimiteDePedaco } from "@/components/ui/custom/LimiteDePedaco";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -84,6 +85,7 @@ import {
   avisoDeVariacoesAlteradasEmOutroAparelho,
   chaveDoRascunhoDoProduto,
   estoqueDoRascunhoDifereDoBanco,
+  esvaziarEstoqueInvalidoDoRascunho,
   lerRascunhoVigenteDoProduto,
   rascunhoSobreOBancoDeHoje,
   serializarRascunhoDoProduto,
@@ -92,6 +94,7 @@ import {
 } from "@/lib/rascunho-do-produto";
 import { recusaDeFoto } from "@/lib/recusa-de-foto";
 import { ehAnimada } from "@/lib/redimensiona-imagem";
+import { rotuloDaVariacao } from "@/lib/rotulo-da-variacao";
 import { textoVariacoesNaoExcluidas } from "@/lib/texto-variacoes-nao-excluidas";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product, ProductVariant, View } from "@/types";
@@ -103,7 +106,12 @@ import {
   variacoesQueMudaram,
 } from "@/utils/campos-mexidos-do-produto";
 import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
-import { erroDoEstoqueDaVariacao } from "@/utils/estoque-da-variacao";
+import {
+  ESTOQUE_MAXIMO_DA_VARIACAO_EM_TEXTO,
+  MENSAGEM_ESTOQUE_MAXIMO_DA_VARIACAO,
+  erroDoEstoqueDaVariacao,
+  estoqueDaVariacaoValido,
+} from "@/utils/estoque-da-variacao";
 import {
   estoqueDoProdutoFoiMexido,
   estoqueQueAPrimeiraVariacaoHerda,
@@ -134,6 +142,7 @@ import {
   acimaDoTetoDePreco,
   mensagemDePrecoAcimaDoTeto,
 } from "@/utils/teto-de-preco";
+import { ESTOQUE_MAXIMO_DA_VARIACAO } from "@/utils/truth_gate";
 import {
   chaveDoGrupo,
   gruposDeVariacao,
@@ -753,7 +762,7 @@ function isProductFormDirty(
       vA.codigoBarras !== vB.codigoBarras ||
       vA.name !== vB.name ||
       vA.value !== vB.value ||
-      vA.stockIncrement !== vB.stockIncrement ||
+      !Object.is(vA.stockIncrement, vB.stockIncrement) ||
       vA.stock !== vB.stock ||
       vA.priceOverride !== vB.priceOverride ||
       vA.active !== vB.active ||
@@ -1049,7 +1058,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       }
     >
   >({});
-  const evaluatedImagesRef = useRef<Set<string>>(new Set());
+  const evaluatedImagesRef = useRef(new Map<string, symbol | null>());
   // #98 (ADMIN-060): guarda o setTimeout de navegação pós-sucesso para poder
   // cancelá-lo se o admin sair da tela antes dos 1,5s — sem isto, onNavigate
   // dispara mesmo com o componente já desmontado.
@@ -1328,52 +1337,58 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       ? "+ Outra coisa que muda"
       : `+ Outra coisa que muda (ex.: ${exemploDoProximoAtributo})`;
 
-  useEffect(() => {
-    formData.images.forEach((url) => {
-      if (evaluatedImagesRef.current.has(url)) return;
-      evaluatedImagesRef.current.add(url);
+  const avaliarFoto = useCallback((url: string) => {
+    // Só a tentativa mais recente desta URL pode concluir a avaliação.
+    const tentativa = Symbol();
+    evaluatedImagesRef.current.set(url, tentativa);
+    setImageMetadata((prev) => ({
+      ...prev,
+      [url]: { width: 0, height: 0, status: "loading" },
+    }));
+
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      if (evaluatedImagesRef.current.get(url) !== tentativa) return;
+      const w = img.naturalWidth;
+      const h = img.naturalHeight;
+      const ratio = w / h;
+      const res = w * h;
+
+      let status: "excellent" | "warning_aspect" | "warning_res" | "good" =
+        "good";
+
+      if (res < 600 * 600) {
+        status = "warning_res";
+      } else if (
+        (ratio < 0.7 || ratio > 0.9) &&
+        (ratio < 0.95 || ratio > 1.05)
+      ) {
+        status = "warning_aspect";
+      } else if (res >= 1000 * 1000) {
+        status = "excellent";
+      }
 
       setImageMetadata((prev) => ({
         ...prev,
-        [url]: { width: 0, height: 0, status: "loading" },
+        [url]: { width: w, height: h, status },
       }));
+    };
+    img.onerror = () => {
+      if (evaluatedImagesRef.current.get(url) !== tentativa) return;
+      setImageMetadata((prev) => ({
+        ...prev,
+        [url]: { width: 0, height: 0, status: "erro" },
+      }));
+    };
+    img.src = url;
+  }, []);
 
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      img.onload = () => {
-        const w = img.naturalWidth;
-        const h = img.naturalHeight;
-        const ratio = w / h;
-        const res = w * h;
-
-        let status: "excellent" | "warning_aspect" | "warning_res" | "good" =
-          "good";
-
-        if (res < 600 * 600) {
-          status = "warning_res";
-        } else if (
-          (ratio < 0.7 || ratio > 0.9) &&
-          (ratio < 0.95 || ratio > 1.05)
-        ) {
-          status = "warning_aspect";
-        } else if (res >= 1000 * 1000) {
-          status = "excellent";
-        }
-
-        setImageMetadata((prev) => ({
-          ...prev,
-          [url]: { width: w, height: h, status },
-        }));
-      };
-      img.onerror = () => {
-        setImageMetadata((prev) => ({
-          ...prev,
-          [url]: { width: 0, height: 0, status: "erro" },
-        }));
-      };
-      img.src = url;
+  useEffect(() => {
+    formData.images.forEach((url) => {
+      if (!evaluatedImagesRef.current.has(url)) avaliarFoto(url);
     });
-  }, [formData.images]);
+  }, [avaliarFoto, formData.images]);
 
   // Lock body scroll when variant or category forms are open
   useEffect(() => {
@@ -1439,7 +1454,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         // na lista: senão o efeito de avaliação (que roda a cada mudança de
         // `formData.images`) mede os pixels esticados e grava "Excelente" por
         // cima. Sem aviso herdado, ele a avalia sozinho.
-        if (statusHerdado) evaluatedImagesRef.current.add(newUrl);
+        if (statusHerdado) evaluatedImagesRef.current.set(newUrl, null);
         setFormData((prev) => {
           const newImages = [...prev.images];
           const fotoAntiga = prev.images.at(adjustingImgIndex);
@@ -1467,11 +1482,13 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             width: number,
             height: number,
             status: typeof statusHerdado | "erro",
-          ) =>
+          ) => {
+            if (evaluatedImagesRef.current.get(newUrl) !== null) return;
             setImageMetadata((prev) => ({
               ...prev,
               [newUrl]: { width, height, status },
             }));
+          };
           img.onload = () =>
             medida(img.naturalWidth, img.naturalHeight, statusHerdado);
           img.onerror = () => medida(0, 0, "erro");
@@ -1575,7 +1592,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             metaDescription: parsed.metaDescription || "",
             sku: parsed.sku || "",
             codigoBarras: parsed.codigoBarras || "",
-            variants: parsed.variants || [],
+            variants: Array.isArray(parsed.variants)
+              ? parsed.variants.map(esvaziarEstoqueInvalidoDoRascunho)
+              : [],
             weightKg: parsed.weightKg || "",
             widthCm: parsed.widthCm || "",
             heightCm: parsed.heightCm || "",
@@ -2698,7 +2717,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     // "Tornar principal" quem mudou.
     if (!focarNasAcoesRef.current) return;
     focarNasAcoesRef.current = false;
-    fotoEmFocoRef.current?.querySelector<HTMLElement>("button")?.focus();
+    fotoEmFocoRef.current
+      ?.querySelector<HTMLElement>(".produto-foto-foco-acoes button")
+      ?.focus();
   }, [formData.images]);
 
   const atualizarParDeAtributo = (
@@ -2714,16 +2735,29 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     }));
   };
 
-  // O − e o + do estoque da variação. O que não é número inteiro (o lojista
-  // digitou "1,5" ou apagou) conta como 0 antes de somar, e o − para em 0.
   const somarEstoqueDaVariacao = (passo: 1 | -1) => {
-    // No iPhone o botão não tira o foco: envie o texto pendente antes da conta.
-    document.getElementById("variant-stock")?.blur();
-    setVariantFormData((p) => {
-      const texto = p.stockIncrement.trim();
-      const atual = /^\d+$/.test(texto) ? Number(texto) : 0;
-      return { ...p, stockIncrement: String(Math.max(0, atual + passo)) };
-    });
+    // Leia o texto visível antes do blur: o valor do formulário pode ainda
+    // não ter recebido a digitação (o botão não tira o foco no iPhone).
+    const campo = document.querySelector<HTMLInputElement>("#variant-stock");
+    const texto = campo?.value ?? variantFormData.stockIncrement;
+    campo?.blur();
+    const erroDoEstoque = erroDoEstoqueDaVariacao(
+      texto,
+      editingVariant !== null,
+    );
+    if (erroDoEstoque) {
+      toast.error(erroDoEstoque);
+      return;
+    }
+    const atual = Number(texto.trim());
+    if (passo === 1 && atual === ESTOQUE_MAXIMO_DA_VARIACAO) {
+      toast.error(MENSAGEM_ESTOQUE_MAXIMO_DA_VARIACAO);
+      return;
+    }
+    setVariantFormData((p) => ({
+      ...p,
+      stockIncrement: String(Math.max(0, atual + passo)),
+    }));
   };
 
   const handleVariantSubmit = () => {
@@ -3026,7 +3060,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       pares: comChaveDeRender(dividirEmAtributos(v.name, v.value)),
       sku: v.sku || "",
       codigoBarras: v.codigoBarras || "",
-      stockIncrement: v.stockIncrement.toString(),
+      stockIncrement: estoqueDaVariacaoValido(v.stockIncrement)
+        ? v.stockIncrement.toString()
+        : "",
       priceOverride: v.priceOverride?.toString() || "",
       active: v.active,
       imageUrl: v.imageUrl || "",
@@ -3256,6 +3292,20 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             onClick: () => restaurarPendenteRef.current?.(),
           },
         },
+      );
+      return;
+    }
+    // Variação desligada não conta no total, mas seu estoque também é gravado.
+    const variacaoComEstoqueInvalido = formData.variants.find(
+      (v) => !estoqueDaVariacaoValido(v.stockIncrement),
+    );
+    if (variacaoComEstoqueInvalido) {
+      const rotulo = rotuloDaVariacao(
+        variacaoComEstoqueInvalido.name,
+        variacaoComEstoqueInvalido.value,
+      );
+      toast.error(
+        `Preencha o estoque da variação ${rotulo} com um número inteiro de 0 a ${ESTOQUE_MAXIMO_DA_VARIACAO_EM_TEXTO}.`,
       );
       return;
     }
@@ -4970,9 +5020,19 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                   </div>
                                 </div>
                                 {meta?.status === "erro" && (
-                                  <p className="mt-2 text-xs text-zinc-400">
-                                    Não foi possível carregar esta foto
-                                  </p>
+                                  <>
+                                    <p className="mt-2 text-xs text-zinc-400">
+                                      Não foi possível carregar esta foto
+                                    </p>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="lg"
+                                      onClick={() => avaliarFoto(image)}
+                                    >
+                                      Tentar de novo
+                                    </Button>
+                                  </>
                                 )}
                                 {meta &&
                                   meta.status !== "loading" &&
@@ -6845,7 +6905,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     .map((par) => `${par.name}: ${par.value}`)
                     .join(" · ")}
                   {". Estoque: "}
-                  {variacaoEmExclusao.stockIncrement} un.{" "}
+                  {estoqueDaVariacaoValido(variacaoEmExclusao.stockIncrement)
+                    ? `${variacaoEmExclusao.stockIncrement} un.`
+                    : "a preencher"}{" "}
                 </>
               )}
               Ela será removida da lista. Para guardar essa alteração no
@@ -7015,7 +7077,9 @@ const VariantItem = React.memo(function VariantItem({
             <span className="flex items-center gap-1.5 rounded-md border border-admin-border bg-white/5 px-2 py-1">
               <Package className="size-3 text-zinc-400" />
               <span className="text-zinc-300">
-                {variant.stockIncrement} un.
+                {estoqueDaVariacaoValido(variant.stockIncrement)
+                  ? `${variant.stockIncrement} un.`
+                  : "Estoque a preencher"}
               </span>
             </span>
             {/* `!= null`, não verdade: o 0 é um preço próprio (brinde) e
