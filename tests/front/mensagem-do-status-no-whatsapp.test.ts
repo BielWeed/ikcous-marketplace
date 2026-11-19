@@ -7,8 +7,7 @@ import {
 // rastreio: a lojista tinha de digitar o código à mão, e a cliente que comprou
 // como convidada (sem conta, sem sino, sem e-mail) não recebia nada além disso.
 //
-// Só ganha instruções extras para entrega com rastreio ou retirada pronta
-// com endereço ou horário disponíveis.
+// Só ganha instruções extras para entrega com rastreio ou retirada pronta.
 import { describe, expect, it } from "vitest";
 
 const base = {
@@ -44,10 +43,18 @@ describe("mensagemDoStatusNoWhatsapp", () => {
       horarioDeAtendimento,
       "Retire em: Rua São José, #42 & Cia\nHorário: Seg a sex, das 9h às 18h\n",
     ],
-    [enderecoDeRetirada, undefined, "Retire em: Rua São José, #42 & Cia\n"],
+    [
+      enderecoDeRetirada,
+      undefined,
+      "Retire em: Rua São José, #42 & Cia\nConfirme o horário de retirada com a loja antes de vir.\n",
+    ],
     [null, horarioDeAtendimento, "Horário: Seg a sex, das 9h às 18h\n"],
-    [undefined, undefined, ""],
-    ["  ", "  ", ""],
+    [
+      undefined,
+      null,
+      "Confirme o horário de retirada com a loja antes de vir.\n",
+    ],
+    ["  ", "  ", "Confirme o horário de retirada com a loja antes de vir.\n"],
   ])(
     "retirada pronta com endereço %s e horário %s",
     (endereco, horario, linhas) => {

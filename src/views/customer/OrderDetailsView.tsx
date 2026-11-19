@@ -2110,9 +2110,11 @@ export function OrderDetailsView({
                       {avisoDaRetirada(order.status)}
                     </p>
                   )}
-                  {prontoParaRetirar && config.businessHours?.trim() && (
+                  {prontoParaRetirar && (
                     <p className="text-xs text-zinc-500">
-                      Horário: {config.businessHours}
+                      {config.businessHours?.trim()
+                        ? `Horário: ${config.businessHours}`
+                        : "Confirme o horário de retirada com a loja antes de vir."}
                     </p>
                   )}
                   {temEnderecoDoPedido && (
