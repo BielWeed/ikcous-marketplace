@@ -391,6 +391,7 @@ it("4: limpar carrinho elimina o cupom do rascunho sem apagar os demais campos",
     ...rascunhoVazio(),
     cupom: "TESTE10",
     contaDoCupom: usuario.id,
+    contaDosDados: usuario.id,
     notas: "Nota fictícia",
   });
   await act(async () => atual.clearCart());

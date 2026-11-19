@@ -6,7 +6,7 @@ import {
   rascunhoVazio,
   salvarRascunhoDoCheckout,
 } from "@/lib/rascunho-do-checkout";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Armazenamento de teste: Map com o contrato de sessionStorage (mesma
 // injeção dos testes de chave-do-pedido).
@@ -42,8 +42,89 @@ const rascunhoCheio = {
 
 describe("rascunho-do-checkout", () => {
   it("salva e relê o rascunho inteiro", () => {
-    salvarRascunhoDoCheckout(storage, rascunhoCheio);
-    expect(lerRascunhoDoCheckout(storage)).toEqual(rascunhoCheio);
+    const rascunho = {
+      ...rascunhoCheio,
+      contaDosDados: null,
+      dadosDoVisitanteAlteradosEm: Date.now(),
+    };
+    salvarRascunhoDoCheckout(storage, rascunho);
+    expect(lerRascunhoDoCheckout(storage)).toEqual(rascunho);
+  });
+
+  describe("validade dos dados pessoais do visitante", () => {
+    const agora = Date.UTC(2026, 10, 19, 12);
+    const hora = 60 * 60 * 1000;
+    const chave = "ikcous-rascunho-do-checkout-v1";
+    const visitante = {
+      ...rascunhoCheio,
+      contaDosDados: null,
+      complemento: "Casa",
+      email: "teste@example.invalid",
+    };
+
+    beforeEach(() => {
+      vi.spyOn(Date, "now").mockReturnValue(agora);
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it.each([
+      ["mais de 2 horas", agora - 3 * hora],
+      ["2 horas e um milissegundo", agora - 2 * hora - 1],
+      ["sem carimbo", undefined],
+      ["carimbo inválido", "ontem"],
+      ["carimbo futuro", agora + hora],
+    ])("descarta só os dados pessoais do visitante: %s", (_caso, carimbo) => {
+      storage.setItem(
+        chave,
+        JSON.stringify({ ...visitante, dadosDoVisitanteAlteradosEm: carimbo }),
+      );
+
+      const semDados = {
+        ...rascunhoVazio(),
+        contaDosDados: null,
+        cupom: "CUPOM10",
+      };
+      expect(lerRascunhoDoCheckout(storage)).toEqual(semDados);
+      expect(JSON.parse(storage.getItem(chave) ?? "null")).toEqual(semDados);
+    });
+
+    it.each([1, 2])("restaura o visitante com dados de %s h atrás", (horas) => {
+      storage.setItem(
+        chave,
+        JSON.stringify({
+          ...visitante,
+          dadosDoVisitanteAlteradosEm: agora - horas * hora,
+        }),
+      );
+
+      expect(lerRascunhoDoCheckout(storage)).toMatchObject({
+        nome: visitante.nome,
+        whatsapp: visitante.whatsapp,
+        rua: visitante.rua,
+        notas: visitante.notas,
+        cupom: visitante.cupom,
+      });
+    });
+
+    it("não restaura dados antigos sem dono, mas preserva o cupom", () => {
+      storage.setItem(chave, JSON.stringify(rascunhoCheio));
+
+      expect(lerRascunhoDoCheckout(storage)).toEqual({
+        ...rascunhoVazio(),
+        cupom: "CUPOM10",
+      });
+    });
+
+    it("mantém o rascunho antigo que pertence a uma conta", () => {
+      const daConta = { ...rascunhoCheio, contaDosDados: "user-1" };
+      storage.setItem(chave, JSON.stringify(daConta));
+
+      expect(lerRascunhoDoCheckout(storage)).toEqual(daConta);
+      expect(storage.getItem(chave)).toBe(JSON.stringify(daConta));
+    });
   });
 
   it("sem rascunho gravado, lê null (não objeto vazio)", () => {

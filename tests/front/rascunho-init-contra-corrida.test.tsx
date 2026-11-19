@@ -62,6 +62,7 @@ function rascunhoDe(
   cupom: string | null,
 ): RascunhoDoCheckout {
   return {
+    contaDosDados: "user-1",
     nome: valores.name,
     whatsapp: valores.whatsapp,
     cep: valores.cep,
@@ -155,6 +156,7 @@ describe("o rascunho sobrevive à corrida init×watch (config chega depois)", ()
   });
 
   const rascunhoCheio: RascunhoDoCheckout = {
+    contaDosDados: "user-1",
     nome: "Maria da Prova",
     whatsapp: "34999999999",
     cep: "38500-000",

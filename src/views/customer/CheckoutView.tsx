@@ -1455,6 +1455,12 @@ export function CheckoutViewDaConta({
   // conta como de convidado). Mantido pelo efeito "de quem são nome e
   // WhatsApp", mais abaixo, e semeado pelo init quando a conta já é conhecida.
   const donoDosDadosRef = useRef<string | null | undefined>(undefined);
+  const dadosDoVisitanteAlteradosEmRef = useRef<number | undefined>(undefined);
+  const marcarEdicaoDoVisitante = () => {
+    if (donoDosDadosRef.current === null) {
+      dadosDoVisitanteAlteradosEmRef.current = Date.now();
+    }
+  };
   // O rascunho (inteiro) de uma CONTA que chegou antes de a autenticação
   // dizer quem entrou: só se aplica se for a mesma conta.
   const dadosPendentesDoRascunhoRef = useRef<{
@@ -1473,6 +1479,8 @@ export function CheckoutViewDaConta({
       // transitória dos resets é substituída, logo depois, pela gravação dos
       // valores restaurados.
       const rascunho = lerRascunhoDoCheckout(sessionStorageSeguro());
+      dadosDoVisitanteAlteradosEmRef.current =
+        rascunho?.dadosDoVisitanteAlteradosEm;
       // Revisão de segurança (23/09/2026): quando a config da loja chega
       // DEPOIS de `get_my_cpf`, os resets abaixo apagavam o CPF que a conta
       // acabou de preencher. O valor atual do campo (nunca o rascunho — CPF
@@ -2984,8 +2992,8 @@ export function CheckoutViewDaConta({
   // consertar): (1) NÃO grava antes do init/restore ter acontecido
   // (`hasInitializedRef`) — a config da loja chega async, e um efeito de
   // gravação rodando antes do restore sobrescreveria o rascunho com um
-  // vazio; (2) NÃO grava rascunho SEM CONTEÚDO — escrever vazio por cima de
-  // rascunho com dados é perda silenciosa.
+  // vazio; (2) NÃO grava rascunho SEM CONTEÚDO, salvo se o visitante já
+  // editou: se apagar o último dado, o valor antigo não deve reaparecer.
   const notasRef = useRef(notes);
   const cupomRef = useRef(appliedCoupon);
   useEffect(() => {
@@ -3012,6 +3020,10 @@ export function CheckoutViewDaConta({
       if (donoDosDadosRef.current === undefined) return;
       const rascunho = {
         contaDosDados: donoDosDadosRef.current,
+        dadosDoVisitanteAlteradosEm:
+          donoDosDadosRef.current === null
+            ? dadosDoVisitanteAlteradosEmRef.current
+            : undefined,
         nome: valores.name ?? "",
         whatsapp: valores.whatsapp ?? "",
         cep: valores.cep ?? "",
@@ -3032,12 +3044,31 @@ export function CheckoutViewDaConta({
           ? cupomRef.current.conta
           : (cupomPendenteDoRascunhoRef.current?.conta ?? null),
       };
-      if (!rascunhoTemConteudo(rascunho)) return;
+      if (
+        !rascunhoTemConteudo(rascunho) &&
+        rascunho.dadosDoVisitanteAlteradosEm === undefined
+      )
+        return;
       salvarRascunhoDoCheckout(sessionStorageSeguro(), rascunho);
     };
-    const subscription = form.watch((valores) =>
-      gravarRascunho(valores as CheckoutFormValues),
-    );
+    let anteriores = { ...form.getValues() };
+    const subscription = form.watch((valores, { name, type }) => {
+      const atuais = valores as CheckoutFormValues;
+      // Só o evento de edição conta: reset, setValue e preenchimento por
+      // busca podem mudar os valores sem a pessoa ter tocado no campo.
+      if (
+        type === "change" &&
+        name &&
+        name !== "cpf" &&
+        (Reflect.get(atuais, name) ?? "") !==
+          (Reflect.get(anteriores, name) ?? "") &&
+        donoDosDadosRef.current === null
+      ) {
+        dadosDoVisitanteAlteradosEmRef.current = Date.now();
+      }
+      anteriores = { ...atuais };
+      gravarRascunho(atuais);
+    });
     return () => subscription.unsubscribe();
   }, [form]);
   // Notas e cupom não passam pelo form.watch (estado próprio) — gravação
@@ -3047,6 +3078,10 @@ export function CheckoutViewDaConta({
     if (donoDosDadosRef.current === undefined) return;
     const rascunho = {
       contaDosDados: donoDosDadosRef.current,
+      dadosDoVisitanteAlteradosEm:
+        donoDosDadosRef.current === null
+          ? dadosDoVisitanteAlteradosEmRef.current
+          : undefined,
       nome: form.getValues("name") ?? "",
       whatsapp: form.getValues("whatsapp") ?? "",
       cep: form.getValues("cep") ?? "",
@@ -3065,7 +3100,11 @@ export function CheckoutViewDaConta({
         ? appliedCoupon.conta
         : (cupomPendenteDoRascunhoRef.current?.conta ?? null),
     };
-    if (!rascunhoTemConteudo(rascunho)) return;
+    if (
+      !rascunhoTemConteudo(rascunho) &&
+      rascunho.dadosDoVisitanteAlteradosEm === undefined
+    )
+      return;
     salvarRascunhoDoCheckout(sessionStorageSeguro(), rascunho);
   }, [notes, appliedCoupon, form]);
   // Achado 8 da revisão (17/08/2026): o painel precisa devolver o foco ao
@@ -3654,6 +3693,7 @@ export function CheckoutViewDaConta({
     const agora = user?.id ?? null;
     const dono = donoDosDadosRef.current;
     if (typeof dono === "string" && dono !== agora) {
+      dadosDoVisitanteAlteradosEmRef.current = undefined;
       dadosPendentesDoRascunhoRef.current = null;
       camposMexidosPelaClienteRef.current.clear();
       perfilVistoRef.current = { name: "", whatsapp: "" };
@@ -7294,6 +7334,10 @@ export function CheckoutViewDaConta({
                                 });
                               }
                             }
+                            // Este campo chama setValue diretamente em vez
+                            // de passar pelo onChange do register.
+                            if (limpo !== cepAnterior)
+                              marcarEdicaoDoVisitante();
                             form.setValue("cep", formatado, {
                               shouldValidate: true,
                             });
@@ -7978,7 +8022,10 @@ export function CheckoutViewDaConta({
                 id="order-notes"
                 name="order_notes"
                 value={notes}
-                onChange={(e) => setNotes(e.target.value)}
+                onChange={(e) => {
+                  if (e.target.value !== notes) marcarEdicaoDoVisitante();
+                  setNotes(e.target.value);
+                }}
                 maxLength={espacoDaObservacao}
                 aria-describedby={
                   notaSeraCortada ? "checkout-aviso-nota-com-troco" : undefined

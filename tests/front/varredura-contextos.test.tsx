@@ -340,6 +340,7 @@ describe("CartContext — localStorage que lança não derruba o Provider", () =
         notas: "Tocar a campainha",
         cupom: "CUPOM-TESTE",
         contaDoCupom: "conta-teste",
+        contaDosDados: "conta-teste",
       });
       expect(lerRascunhoDoCheckout(sessao)?.cupom).toBe("CUPOM-TESTE");
 
