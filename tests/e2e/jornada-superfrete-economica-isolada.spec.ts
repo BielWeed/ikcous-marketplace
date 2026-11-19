@@ -188,15 +188,87 @@ async function levarAoCarrinho(page: Page, produto: string) {
   });
 }
 
+async function conferirOpcoesDeFrete(
+  page: Page,
+  precoEconomico: string,
+  diasEconomicos: number,
+) {
+  const frete = page.getByRole("region", { name: "Entrega e frete" });
+  const cartaoDaOpcao = (nome: string) =>
+    frete
+      .getByRole("button")
+      .filter({ has: page.getByText(nome, { exact: true }) });
+
+  // Quando uma opção é a mais rápida e a mais barata, a outra fica recolhida.
+  await expect(
+    cartaoDaOpcao("Entrega econômica")
+      .or(cartaoDaOpcao("Entrega expressa"))
+      .first(),
+  ).toBeVisible({ timeout: 30_000 });
+  const verOutras = frete.getByRole("button", { name: /Ver outras opções/ });
+  if (await verOutras.isVisible()) await verOutras.click();
+
+  const conferirOpcao = async (nome: string, preco: string, dias: number) => {
+    const cartao = cartaoDaOpcao(nome);
+    await expect(cartao.getByText(nome, { exact: true })).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(cartao.getByText(preco, { exact: true })).toBeVisible();
+    await expect(
+      cartao.getByText(`Entrega em até ${dias} dias úteis`, { exact: true }),
+    ).toBeVisible();
+    return cartao;
+  };
+
+  const economica = await conferirOpcao(
+    "Entrega econômica",
+    precoEconomico,
+    diasEconomicos,
+  );
+  const expressa = await conferirOpcao("Entrega expressa", "R$ 52,59", 4);
+  return { economica, expressa };
+}
+
+async function conferirTotalAoTrocarFrete(
+  page: Page,
+  opcoes: Awaited<ReturnType<typeof conferirOpcoesDeFrete>>,
+  esperado: {
+    freteEconomico: string;
+    totalExpresso: string;
+    totalEconomico: string;
+  },
+) {
+  // No celular, o total e o frete selecionado ficam juntos no rodapé.
+  const resumo = page
+    .getByText("Total", { exact: true })
+    .locator("..")
+    .filter({ has: page.getByRole("status") });
+  const total = resumo.getByRole("status");
+  const linhaFrete = resumo.getByText("Frete", { exact: true }).locator("..");
+
+  // Começa pela expressa para provar a mudança mesmo se a seleção automática
+  // já tiver escolhido a econômica.
+  await opcoes.expressa.click();
+  await expect(opcoes.expressa).toHaveAttribute("aria-pressed", "true");
+  await expect(total).toHaveText(esperado.totalExpresso);
+
+  await opcoes.economica.click();
+  await expect(opcoes.economica).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    linhaFrete.getByText(esperado.freteEconomico, { exact: true }),
+  ).toBeVisible();
+  await expect(total).toHaveText(esperado.totalEconomico);
+}
+
 async function fotografarFrete(
   page: Page,
   testInfo: TestInfo,
   arquivo: string,
+  economica: Awaited<ReturnType<typeof conferirOpcoesDeFrete>>["economica"],
 ) {
-  const economica = page.getByText("Entrega econômica").first();
   await economica.scrollIntoViewIfNeeded();
-  await page.waitForTimeout(300);
   await page.screenshot({
+    animations: "disabled",
     path: path.join(pastaDeEvidencias(testInfo), arquivo),
     fullPage: false,
   });
@@ -210,20 +282,22 @@ test("ISOLADA — tênis de teste 6 cm: econômica PAC R$ 25,31 + expressa R$ 52
   await expect(page.getByText(PRODUTO_ROUPAS).first()).toBeVisible();
   await levarAoCarrinho(page, TENIS);
 
-  await expect(page.getByText("Entrega econômica").first()).toBeVisible({
-    timeout: 30_000,
-  });
-  await expect(page.getByText("Entrega expressa").first()).toBeVisible();
-  await expect(page.getByText(/25,31/).first()).toBeVisible();
-  await expect(page.getByText(/52,59/).first()).toBeVisible();
-  await expect(
-    page.getByText("Entrega em até 8 dias úteis").first(),
-  ).toBeVisible();
+  const opcoes = await conferirOpcoesDeFrete(page, "R$ 25,31", 8);
   // Uma econômica só — nunca PAC e Mini lado a lado.
   await expect(page.getByText("Entrega econômica")).toHaveCount(1);
   await expect(page.getByText(/19,01/)).toHaveCount(0);
 
-  await fotografarFrete(page, testInfo, "isolada-tenis-6cm-pac-25-31.png");
+  await fotografarFrete(
+    page,
+    testInfo,
+    "isolada-tenis-6cm-pac-25-31.png",
+    opcoes.economica,
+  );
+  await conferirTotalAoTrocarFrete(page, opcoes, {
+    freteEconomico: "R$ 25,31",
+    totalExpresso: "R$ 112,49",
+    totalEconomico: "R$ 85,21",
+  });
   expect(errosNoFim().erros).toEqual([]);
 });
 
@@ -234,20 +308,22 @@ test("ISOLADA — estojo de teste 4 cm: econômica Mini R$ 19,01 em 11 dias + ex
   const errosNoFim = await abrirLoja(page);
   await levarAoCarrinho(page, ESTOJO);
 
-  await expect(page.getByText("Entrega econômica").first()).toBeVisible({
-    timeout: 30_000,
-  });
-  await expect(page.getByText("Entrega expressa").first()).toBeVisible();
-  await expect(page.getByText(/19,01/).first()).toBeVisible();
-  await expect(
-    page.getByText("Entrega em até 11 dias úteis").first(),
-  ).toBeVisible();
-  await expect(page.getByText(/52,59/).first()).toBeVisible();
+  const opcoes = await conferirOpcoesDeFrete(page, "R$ 19,01", 11);
   await expect(page.getByText("Entrega econômica")).toHaveCount(1);
   // O nome do serviço não aparece para a cliente (ela vê "Entrega econômica").
   await expect(page.getByText("Mini Envios")).toHaveCount(0);
   await expect(page.getByText(/25,31/)).toHaveCount(0);
 
-  await fotografarFrete(page, testInfo, "isolada-estojo-4cm-mini-19-01.png");
+  await fotografarFrete(
+    page,
+    testInfo,
+    "isolada-estojo-4cm-mini-19-01.png",
+    opcoes.economica,
+  );
+  await conferirTotalAoTrocarFrete(page, opcoes, {
+    freteEconomico: "R$ 19,01",
+    totalExpresso: "R$ 92,49",
+    totalEconomico: "R$ 58,91",
+  });
   expect(errosNoFim().erros).toEqual([]);
 });
