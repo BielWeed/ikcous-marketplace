@@ -124,7 +124,7 @@ export function mensagemMototaxi(order: Order, loja: string): string {
 export function validarWhatsappDaLoja(digitado: string): string | null {
   const digitos = soDigitos(digitado);
   if (!digitos) return null;
-  if (digitos.length === 10 && /[6-9]/.test(digitos.charAt(2))) {
+  if (digitos.length === 10 && /[7-9]/.test(digitos.charAt(2))) {
     return "Celulares têm 9 dígitos depois do DDD: coloque o 9 na frente.";
   }
   if (digitos.length < 10 || digitos.length > 11) {

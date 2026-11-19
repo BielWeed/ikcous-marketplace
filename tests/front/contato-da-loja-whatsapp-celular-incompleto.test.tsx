@@ -16,7 +16,6 @@ import {
 const mensagem =
   "Celulares têm 9 dígitos depois do DDD: coloque o 9 na frente.";
 const celularesIncompletos = [
-  "(11) 6765-4321",
   "+55 11 7765-4321",
   "(11) 8765-4321",
   "3499991234",
@@ -32,7 +31,7 @@ describe("Contato da loja — celular com um dígito faltando", () => {
     },
   );
 
-  it.each(["1167654321", "1177654321", "1187654321", "3499991234"])(
+  it.each(["1177654321", "1187654321", "3499991234"])(
     "recusa também o número nacional %s já limpo pelo campo",
     (numero) => {
       expect(whatsappParaGravar(numero, true)).toEqual({ valido: false });

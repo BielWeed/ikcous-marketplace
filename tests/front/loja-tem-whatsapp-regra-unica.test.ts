@@ -28,12 +28,15 @@ describe("lojaTemWhatsapp — a régua dos 10 dígitos, em um lugar só", () => 
     expect(lojaTemWhatsapp("34999999999")).toBe(true);
   });
 
-  it.each(["551122345678", "551132345678", "551142345678", "551152345678"])(
-    "mantém o botão do WhatsApp disponível para o fixo %s",
-    (numero) => {
-      expect(lojaTemWhatsapp(numero)).toBe(true);
-    },
-  );
+  it.each([
+    "551122345678",
+    "551132345678",
+    "551142345678",
+    "551152345678",
+    "551167654321",
+  ])("mantém o botão do WhatsApp disponível para o fixo %s", (numero) => {
+    expect(lojaTemWhatsapp(numero)).toBe(true);
+  });
 
   it("número formatado com pontuação vale igual ao cru", () => {
     expect(lojaTemWhatsapp("(34) 99999-9999")).toBe(true);
