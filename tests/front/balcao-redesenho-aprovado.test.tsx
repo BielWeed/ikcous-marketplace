@@ -103,14 +103,14 @@ it("cupom mantém nomes completos, controles nomeados e o valor junto à ação 
   expect(linha.textContent).toContain("Limite do estoque");
   expect(botao("Fechar venda").textContent).toContain("R$ 1.198,80");
   expect(
-    botao("Cancelar venda").compareDocumentPosition(
+    botao("Limpar a tela da venda").compareDocumentPosition(
       botao("Cliente (opcional)"),
     ) & Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
   expect(
     host
       .querySelector("#busca-manual-de-produto")!
-      .compareDocumentPosition(botao("Cancelar venda")) &
+      .compareDocumentPosition(botao("Limpar a tela da venda")) &
       Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
   await act(async () =>

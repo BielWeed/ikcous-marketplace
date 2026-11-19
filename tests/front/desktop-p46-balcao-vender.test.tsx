@@ -250,7 +250,7 @@ const guardar = async (nome: string, cenario: Cenario): Promise<void> => {
 
 beforeAll(async () => {
   codigoBipadoRef.atual = PRODUTO_SIMPLES.codigo;
-  // Cupom de ontem: aviso de venda antiga + item + "Cancelar" + leitor.
+  // Cupom de ontem: aviso de venda antiga + item + "Limpar" + leitor.
   await guardar("antiga", {
     rascunho: { estado: vendaComItem("cupom"), idadeMs: 20 * HORA },
   });
@@ -293,7 +293,7 @@ beforeAll(async () => {
   // Pergunta "Limpar a tela da venda?" (também sobreposta).
   await guardar("cancelando", {
     rascunho: { estado: vendaComItem("cupom"), idadeMs: 2 * HORA },
-    passos: async (agir) => agir("Cancelar"),
+    passos: async (agir) => agir("Limpar a tela da venda"),
   });
   // As outras etapas, que NÃO podem ser tocadas.
   await guardar("fechamento", {

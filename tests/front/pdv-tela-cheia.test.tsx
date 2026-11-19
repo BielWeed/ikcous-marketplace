@@ -502,12 +502,15 @@ it("cancelar é pílula no topo e continua pedindo confirmação antes de limpar
   );
   const cancelar = host.querySelector<HTMLButtonElement>(".pdv-cancel")!;
   expect(cancelar).not.toBeNull();
-  expect(cancelar.textContent).toContain("Cancelar");
+  expect(cancelar.textContent?.trim()).toBe("Limpar a tela da venda");
   expect(
     cancelar.compareDocumentPosition(host.querySelector(".pdv-cupom")!) &
       Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
   await act(async () => cancelar.click());
+  expect(
+    host.querySelector('[role="group"][aria-label="Limpar a tela da venda"]'),
+  ).not.toBeNull();
   expect(host.textContent).toContain("Limpar a tela da venda?");
   expect(limpar).not.toHaveBeenCalled();
   await act(async () => botao("Limpar esta venda da tela").click());

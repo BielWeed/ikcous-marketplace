@@ -259,13 +259,13 @@ describe("AdminPdvView — CupomDaVenda e ClienteDaVenda (C3.2)", () => {
         await bipar(PRODUTO_COM_VARIACOES.codigo);
       } else {
         await act(async () =>
-          localizarBotaoPorTexto(hospedeiro, "Cancelar")!.click(),
+          localizarBotaoPorTexto(hospedeiro, "Limpar a tela da venda")!.click(),
         );
       }
       const seletor =
         camada === "variacao"
           ? '[aria-label="Escolher variação"]'
-          : '[aria-label="Cancelar venda"]';
+          : '[aria-label="Limpar a tela da venda"]';
       const folha = hospedeiro.querySelector(seletor)!;
       expect(folha).not.toBeNull();
       await act(async () => {

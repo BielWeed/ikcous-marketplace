@@ -43,7 +43,7 @@ export interface PropsDoCupomDaVenda {
   readonly onNavigate: (view: View) => void;
   /** `useVendaPresencial().limparCupom`: volta o caixa ao zero (itens,
    * desconto, cliente, forma de pagamento e rascunho). Ausente = sem o botão
-   * "Cancelar venda" (testes que montam só a lista). */
+   * "Limpar a tela da venda" (testes que montam só a lista). */
   readonly limparCupom?: () => void;
   /** Há consulta de código de barras no ar (a view conta). A resposta de um
    * bipe só entra enquanto a etapa é "cupom": sair daqui (Fechar venda ou
@@ -117,7 +117,7 @@ export function CupomDaVenda({
   const codigoNaoCadastrado =
     estado.aviso?.tipo === "nao_cadastrado" ? estado.aviso.codigo : "";
 
-  // "Cancelar venda": só há o que cancelar quando o cupom guarda ALGUMA coisa
+  // "Limpar a tela da venda": só há o que limpar quando o cupom guarda ALGUMA coisa
   // da venda (item, desconto, cliente ou forma de pagamento — os dois últimos
   // sobreviviam à desistência e iam para a venda seguinte).
   const temVendaParaCancelar =
@@ -169,7 +169,7 @@ export function CupomDaVenda({
           onClick={() => setConfirmandoCancelamento(true)}
         >
           <XCircle aria-hidden="true" className="pdv-red size-5" />
-          Cancelar<span className="sr-only"> venda</span>
+          Limpar<span className="sr-only"> a tela da venda</span>
         </Button>
       )}
       {escolha && (
@@ -476,7 +476,7 @@ export function CupomDaVenda({
         // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- Esc vem dos botões da confirmação.
         <div
           role="group"
-          aria-label="Cancelar venda"
+          aria-label="Limpar a tela da venda"
           className="pdv-notice"
           onKeyDown={aoTeclarNaCamada}
         >
@@ -489,7 +489,7 @@ export function CupomDaVenda({
             Os itens e o cliente escolhido serão limpos, e o caixa volta ao
             começo.{" "}
             {estado.erro || estado.talvezGravada
-              ? "Isso não anula uma venda já registrada: se a tela travou ao registrar, confira em Pedidos antes de refazer."
+              ? "Isso não anula uma venda já registrada. Se não tiver certeza de que a venda foi registrada, confira em Pedidos antes de refazer."
               : "Nada é registrado."}
           </p>
           <div className="pdv-annul-actions">

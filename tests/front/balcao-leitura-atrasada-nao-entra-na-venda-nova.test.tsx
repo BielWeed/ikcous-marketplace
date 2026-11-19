@@ -157,7 +157,7 @@ describe("Balcão — leitura atrasada de uma venda cancelada", () => {
     await clicar("bipar");
 
     // A venda é cancelada com a leitura ainda no ar.
-    await clicar("Cancelar venda");
+    await clicar("Limpar a tela da venda");
     await clicar("Limpar esta venda da tela");
     await avancar(400);
     expect(hospedeiro.textContent).toContain("Bipe o primeiro produto");
