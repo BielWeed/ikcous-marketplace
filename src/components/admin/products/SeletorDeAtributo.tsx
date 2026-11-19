@@ -887,7 +887,7 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
                 onClick={marcarTodos}
                 className="min-h-11 text-xs font-bold text-zinc-400 transition-all hover:text-foreground active:scale-95"
               >
-                Marcar todos
+                {temAbas ? "Marcar todos desta aba" : "Marcar todos"}
               </button>
             )}
             {props.modo === "multiplo" &&

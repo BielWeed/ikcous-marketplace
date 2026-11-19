@@ -53,9 +53,7 @@ describe("textos sem garantia de atualização, meio de reembolso ou entrega de 
 
   it("AdminPushView descreve todos os aparelhos inscritos, sem prometer quem são", () => {
     const codigo = fonte("/src/views/admin/AdminPushView.tsx");
-    expect(
-      /vai agora para todos os aparelhos inscritos nos avisos\./.test(codigo),
-    ).toBe(true);
+    expect(codigo).toContain("Push para aparelhos inscritos");
     expect(
       codigo.includes(
         "vai agora para todos os clientes que ativaram os avisos.",

@@ -343,16 +343,16 @@ describe("Marcar todos e Limpar na grade (o pai troca a lista inteira de uma vez
   it("Marcar todos marca os 7 tamanhos de roupa de uma vez: o resumo conta 7, não 1", async () => {
     await abrir();
     await tocarPeca(0, "Tamanho");
-    await tocar(acao(0, "Marcar todos"));
+    await tocar(acao(0, "Marcar todos desta aba"));
     expect(texto(resumo())).toContain("7 tamanhos = 7 opções");
     expect(contagem(0)).toBe("7 selecionados");
-    expect(acao(0, "Marcar todos")).toBeUndefined();
+    expect(acao(0, "Marcar todos desta aba")).toBeUndefined();
   });
 
   it("Limpar desmarca tudo e o resumo volta a pedir uma escolha", async () => {
     await abrir();
     await tocarPeca(0, "Tamanho");
-    await tocar(acao(0, "Marcar todos"));
+    await tocar(acao(0, "Marcar todos desta aba"));
     await tocar(acao(0, "Limpar"));
     expect(contagem(0)).toBe("nenhum selecionado");
     expect(texto(resumo())).toContain(
@@ -364,7 +364,7 @@ describe("Marcar todos e Limpar na grade (o pai troca a lista inteira de uma vez
     await abrir();
     await tocarPeca(0, "Tamanho");
     await tocar(aba(0, "Números"));
-    await tocar(acao(0, "Marcar todos"));
+    await tocar(acao(0, "Marcar todos desta aba"));
     await tocar(botaoExato("+ Adicionar outro atributo"));
     await tocarPeca(1, "Cor");
     await escolher(1, "Preto", "Branco", "Cinza", "Azul", "Verde", "Vermelho");

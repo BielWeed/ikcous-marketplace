@@ -125,7 +125,7 @@ vi.mock("@/lib/supabase", () => ({
           const seg = args.p_segment;
           const lista = () => {
             if (seg === "vip" || seg === "inactive" || seg === "new") {
-              return estadoDoBanco.porSegmento[args.p_segment] ?? [];
+              return Reflect.get(estadoDoBanco.porSegmento, seg) ?? [];
             }
             if (seg === "all") return estadoDoBanco.alvosDoSegmentoTodos;
             return estadoDoBanco.alvosDoClienteEspecifico;
@@ -309,7 +309,10 @@ describe("AdminPushView — enviar para TODOS os clientes pede confirmação", (
     expect(janela()).not.toBeNull();
     const texto = janela()?.textContent ?? "";
     expect(texto).toContain("todos os clientes");
-    expect(texto).toContain("8 aparelhos");
+    expect(texto).toContain("Push para 8 aparelhos inscritos");
+    expect(texto).toContain(
+      "Aviso no sino para as contas que já existem na loja, mesmo sem push",
+    );
     expect(texto).toMatch(/não dá para desfazer/i);
     expect(invokeSendPush).not.toHaveBeenCalled();
     expect(inserts.pushLog).toHaveLength(0);
@@ -344,6 +347,101 @@ describe("AdminPushView — enviar para TODOS os clientes pede confirmação", (
     expect(invokeSendPush).toHaveBeenCalledTimes(1);
     expect(inserts.pushLog).toHaveLength(1);
     expect(inserts.pushLog[0]).toMatchObject({ title: "Oferta de sábado" });
+    expect(invokeSendPush.mock.lastCall?.[1].body.tokens).toHaveLength(8);
+    expect(inserts.notificacoes).toEqual([
+      expect.objectContaining({ usuario_id: null }),
+    ]);
+  });
+
+  it("Todos: se o alcance aumentou durante a confirmação, espera novo aceite e usa a lista já consultada", async () => {
+    await abrirTela();
+    await preencherMensagem("Oferta de sábado", "Corre que acaba hoje!");
+    await tocarEnviar();
+
+    estadoDoBanco.alvosDoSegmentoTodos = [
+      ...estadoDoBanco.alvosDoSegmentoTodos,
+      alvo(9),
+    ];
+    await tocarNaJanela("Enviar agora");
+
+    expect(invokeSendPush).not.toHaveBeenCalled();
+    expect(inserts.pushLog).toHaveLength(0);
+    expect(inserts.notificacoes).toHaveLength(0);
+    expect(janela()?.textContent).toContain(
+      "O número de aparelhos mudou de 8 para 9",
+    );
+    expect(janela()?.textContent).toContain("Push para 9 aparelhos inscritos");
+    expect(janela()?.textContent).toContain(
+      "Aviso no sino para as contas que já existem na loja, mesmo sem push",
+    );
+
+    estadoDoBanco.alvosDoSegmentoTodos = [alvo(10)];
+    invokeSendPush.mockResolvedValueOnce({
+      data: { enviados: 9, falharam: 0 },
+      error: null,
+    });
+    await tocarNaJanela("Enviar agora");
+
+    expect(invokeSendPush).toHaveBeenCalledTimes(1);
+    const tokens = invokeSendPush.mock.lastCall?.[1].body.tokens;
+    expect(tokens).toHaveLength(9);
+    expect(tokens).toContainEqual({
+      endpoint: alvo(9).endpoint,
+      keys: { p256dh: "p9", auth: "a9" },
+    });
+    expect(tokens).not.toContainEqual(
+      expect.objectContaining({ endpoint: alvo(10).endpoint }),
+    );
+    expect(inserts.pushLog).toHaveLength(1);
+    expect(inserts.notificacoes).toEqual([
+      expect.objectContaining({ usuario_id: null }),
+    ]);
+  });
+
+  it("Todos: se o alcance diminuiu, envia só para os aparelhos encontrados e informa a mudança", async () => {
+    await abrirTela();
+    await preencherMensagem("Oferta de sábado", "Corre que acaba hoje!");
+    await tocarEnviar();
+
+    estadoDoBanco.alvosDoSegmentoTodos = [alvo(3)];
+    invokeSendPush.mockResolvedValueOnce({
+      data: { enviados: 1, falharam: 0 },
+      error: null,
+    });
+    await tocarNaJanela("Enviar agora");
+
+    expect(janela()).toBeNull();
+    expect(invokeSendPush).toHaveBeenCalledTimes(1);
+    expect(invokeSendPush.mock.lastCall?.[1].body.tokens).toEqual([
+      { endpoint: alvo(3).endpoint, keys: { p256dh: "p3", auth: "a3" } },
+    ]);
+    const { toast } = await import("sonner");
+    expect(toast.success).toHaveBeenCalledWith(
+      "Notificação entregue em 1 dispositivo",
+      { description: "O número de aparelhos mudou de 8 para 1." },
+    );
+  });
+
+  it("Todos: se o alcance zerou, avisa e não envia nem grava o aviso no sino", async () => {
+    await abrirTela();
+    await preencherMensagem("Oferta de sábado", "Corre que acaba hoje!");
+    await tocarEnviar();
+
+    estadoDoBanco.alvosDoSegmentoTodos = [];
+    await tocarNaJanela("Enviar agora");
+
+    expect(janela()).toBeNull();
+    expect(invokeSendPush).not.toHaveBeenCalled();
+    expect(inserts.pushLog).toHaveLength(0);
+    expect(inserts.notificacoes).toHaveLength(0);
+    const { toast } = await import("sonner");
+    expect(toast.error).toHaveBeenCalledWith(
+      "Nenhum destinatário encontrado para este segmento",
+      {
+        description:
+          "O número de aparelhos mudou de 8 para 0. Nada foi enviado ou registrado.",
+      },
+    );
   });
 
   it("toque repetido em 'Enviar agora' com a pergunta aberta não abre duas e não envia em dobro", async () => {
@@ -403,6 +501,9 @@ describe("AdminPushView — enviar para TODOS os clientes pede confirmação", (
     expect(texto).toContain("3 aparelhos");
     expect(texto).toMatch(/não dá para desfazer/i);
     expect(texto).not.toContain("todos os clientes");
+    expect(texto).not.toContain(
+      "Aviso no sino para as contas que já existem na loja",
+    );
     expect(invokeSendPush).not.toHaveBeenCalled();
     expect(inserts.pushLog).toHaveLength(0);
     expect(inserts.notificacoes).toHaveLength(0);
@@ -425,6 +526,36 @@ describe("AdminPushView — enviar para TODOS os clientes pede confirmação", (
     await tocarNaJanela("Enviar agora");
     expect(invokeSendPush).toHaveBeenCalledTimes(1);
     expect(inserts.pushLog).toHaveLength(1);
+  });
+
+  it("grupo (Inativos): se o alcance cresceu, Voltar na segunda pergunta não envia nem grava", async () => {
+    estadoDoBanco.porSegmento.inactive = [alvo(1), alvo(2)];
+    await abrirTela();
+    await preencherMensagem("Sentimos sua falta", "Volte a nos visitar!");
+    await escolherGrupo("Inativos há 30 dias");
+    await tocarEnviar();
+
+    estadoDoBanco.porSegmento.inactive = [alvo(1), alvo(2), alvo(3)];
+    await tocarNaJanela("Enviar agora");
+
+    expect(invokeSendPush).not.toHaveBeenCalled();
+    expect(inserts.pushLog).toHaveLength(0);
+    expect(inserts.notificacoes).toHaveLength(0);
+    expect(janela()?.textContent).toContain("Inativos há 30 dias");
+    expect(janela()?.textContent).toContain(
+      "O número de aparelhos mudou de 2 para 3",
+    );
+    expect(janela()?.textContent).toContain("3 aparelhos");
+    expect(janela()?.textContent).not.toContain(
+      "Aviso no sino para as contas que já existem na loja",
+    );
+    await tocarNaJanela("Voltar");
+
+    expect(janela()).toBeNull();
+    expect(invokeSendPush).not.toHaveBeenCalled();
+    expect(inserts.pushLog).toHaveLength(0);
+    expect(inserts.notificacoes).toHaveLength(0);
+    expect(botaoEnviar().disabled).toBe(false);
   });
 
   it("cliente específico (vindo da ficha): envia direto, sem a pergunta extra", async () => {
