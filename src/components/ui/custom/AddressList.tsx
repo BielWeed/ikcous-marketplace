@@ -489,7 +489,6 @@ export const AddressList = memo(function AddressList({
                       title={`Mapa do endereço ${address.name}`}
                       src={`https://maps.google.com/maps?q=${queryMaps}&z=15&output=embed`}
                       loading="lazy"
-                      referrerPolicy="no-referrer-when-downgrade"
                       credentialless=""
                       tabIndex={-1}
                       className="pointer-events-none absolute left-0 top-[-56px] block h-[calc(100%+56px)] w-full border-0"

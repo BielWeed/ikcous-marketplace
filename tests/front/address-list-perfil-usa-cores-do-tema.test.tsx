@@ -79,6 +79,21 @@ describe("AddressList do Perfil — cartão expandido usa as cores do tema", () 
     expect(comCorFixa).toEqual([]);
   });
 
+  it("o mapa do endereço usa a política de referência do site", () => {
+    act(() =>
+      raiz.render(
+        <AddressList addresses={[CASA]} onEdit={() => {}} showMaps />,
+      ),
+    );
+    const mapa = hospedeiro.querySelector(
+      'iframe[title="Mapa do endereço Casa"]',
+    );
+    expect(mapa?.getAttribute("src")).toBe(
+      "https://maps.google.com/maps?q=Rua%20Teste%2C%2010%2C%20Cidade%20Teste%2C%20MG&z=15&output=embed",
+    );
+    expect(mapa?.getAttribute("referrerpolicy")).toBeNull();
+  });
+
   it("o texto do endereço e o fundo do cartão usam os tokens do tema", () => {
     act(() =>
       raiz.render(<AddressList addresses={[CASA]} onEdit={() => {}} />),

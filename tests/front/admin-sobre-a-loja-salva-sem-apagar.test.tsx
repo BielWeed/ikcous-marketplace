@@ -202,6 +202,17 @@ describe("AdminAboutStoreView — salvar endereço/descrição sem apagar os out
     expect(botao?.getAttribute("aria-disabled")).toBe("true");
   });
 
+  it("a prévia do mapa usa a política de referência do site", async () => {
+    await renderizarTela();
+    const mapa = hospedeiro.querySelector(
+      'iframe[title="Prévia do mapa da página Sobre a Loja"]',
+    );
+    expect(mapa?.getAttribute("src")).toBe(
+      "https://maps.google.com/maps?q=38500-000&z=15&output=embed",
+    );
+    expect(mapa?.getAttribute("referrerpolicy")).toBeNull();
+  });
+
   it("o título da tela é 'Minha loja'", async () => {
     await renderizarTela();
     expect(hospedeiro.querySelector("h1")?.textContent).toBe("Minha loja");

@@ -631,7 +631,6 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
                   title="Prévia do mapa da página Sobre a Loja"
                   src={`https://maps.google.com/maps?q=${encodeURIComponent(queryPrevia)}&z=15&output=embed`}
                   loading="lazy"
-                  referrerPolicy="no-referrer-when-downgrade"
                   credentialless=""
                   className="pointer-events-none absolute left-0 top-[-56px] block h-[calc(100%+56px)] w-full border-0"
                 />
