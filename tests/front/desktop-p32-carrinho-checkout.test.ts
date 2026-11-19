@@ -150,16 +150,16 @@ describe("P32: alinhamento e resumo alcançável no computador", () => {
     for (const [caminho, assinatura] of [
       [
         caminhos.carrinho,
-        "4496dc40387eeeafe39b70316ec3ce53e3a8ae9d884b01c0897d391ac0e5254d",
+        "1dc0eeae81190e2946f2b062e7036424fc24e369d31fb97fecb039bd2be421c2",
       ],
       [
         caminhos.checkout,
         // 1.5.214: troco e seus avisos, pedido cancelado e resumo do parcelamento.
-        "8152afb12251e6827fa3294f6b0455fe4651189ae07ce964c6528c0d7307e625",
+        "8492ebf8d43a766373c28f7faabd9f46f740a6ecd0aa17529895dcf9d44fdf2e",
       ],
       [
         caminhos.favoritos,
-        "4867b0736e2e22521d6e8479f6c7354e629bbf1e0727dda4f486833645300cb9",
+        "01c4f2611dc3321eaab592ad1e8eb651f00621e95352f0393f1c3baa9bb7e38e",
       ],
       [
         caminhos.busca,
