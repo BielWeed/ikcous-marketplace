@@ -188,9 +188,11 @@ describe("AccountSettingsView — WhatsApp usa máscara e validação de src/uti
     await montarComPerfilCarregado();
 
     const telefone = document.getElementById("phone") as HTMLInputElement;
-    for (const [indice, tecla] of [..."+5534999998888"].entries()) {
+    let digitado = "";
+    for (const tecla of "+5534999998888") {
+      digitado += tecla;
       await act(async () => digitar("phone", telefone.value + tecla));
-      if (indice < 3) expect(telefone.value).toBe(["+", "+5", "+55"][indice]);
+      if (digitado.length <= 3) expect(telefone.value).toBe(digitado);
     }
     expect(telefone.value).toBe("(34) 99999-8888");
     expect((await salvarEPegarWhatsappGravado())?.[1]).toMatchObject({

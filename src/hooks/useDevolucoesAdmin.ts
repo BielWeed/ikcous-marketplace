@@ -21,7 +21,6 @@ import {
   aguardarComPrazo,
   ehConsultaSemResposta,
   erroDeConsultaSemResposta,
-  programarAvisoDeConsultaDoPainel,
 } from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import { prepararTextoDeBuscaDoPainel } from "@/lib/texto-de-busca-do-painel";

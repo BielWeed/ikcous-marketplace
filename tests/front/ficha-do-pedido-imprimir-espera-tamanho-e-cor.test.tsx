@@ -25,16 +25,14 @@ const { variacoesNoBanco, falhas, segurar } = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/supabase", () => {
+  const uuid = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
+
   function construtorDa(tabela: string) {
     const builder: Record<string, unknown> = {};
     builder.select = vi.fn(() => builder);
     builder.eq = vi.fn(() => builder);
     builder.in = vi.fn((_coluna: string, ids: string[]) => {
-      if (
-        ids.some(
-          (id) => !/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(id),
-        )
-      ) {
+      if (ids.some((id) => !uuid.test(id))) {
         return Promise.resolve({
           data: null,
           error: { message: "UUID inválido" },

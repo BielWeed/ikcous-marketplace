@@ -103,7 +103,7 @@ describe.each(["ficha", "lista"] as const)("Desfazer na %s", (local) => {
   async function montar(order = pedido, aoMontar?: () => void) {
     // Lê o primeiro DOM antes do efeito que inicia a consulta.
     function Sonda() {
-      useLayoutEffect(() => aoMontar?.(), [aoMontar]);
+      useLayoutEffect(() => aoMontar?.(), []);
       return null;
     }
     await act(async () => {
