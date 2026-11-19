@@ -408,7 +408,7 @@ describe("CheckoutView — troco para pagamento em dinheiro", () => {
 
   it.each([
     [60, "Troco para R$ 100,00 (levar R$ 40,00)"],
-    [100, "Troco para R$ 100,00 (levar R$ 0,00)"],
+    [100, null],
   ])(
     "restaura o troco e recalcula a nota para o total de %s",
     async (preco, prefixo) => {
@@ -442,11 +442,17 @@ describe("CheckoutView — troco para pagamento em dinheiro", () => {
       expect(campo().value).toBe("100");
       expect(aviso().textContent).toBe("");
       expect(sessionStorage.getItem(CHAVE_RASCUNHO)).not.toBeNull();
-      expect(await enviar()).toMatchObject({
+      const pedido = await enviar(); // Também verifica que Finalizar está habilitado.
+      expect(pedido).toMatchObject({
         paymentMethod: "cash",
         totalAmount: preco,
-        notes: expect.stringContaining(`${prefixo}\nDeixar na portaria.`),
       });
+      if (prefixo === null) {
+        expect(pedido.notes).toMatch(/^Deixar na portaria\./);
+        expect(pedido.notes).not.toContain("Troco para");
+      } else {
+        expect(pedido.notes).toContain(`${prefixo}\nDeixar na portaria.`);
+      }
       expect(sessionStorage.getItem(CHAVE_RASCUNHO)).toBeNull();
     },
   );
@@ -463,6 +469,31 @@ describe("CheckoutView — troco para pagamento em dinheiro", () => {
     expect(aviso().textContent).toMatch(/valor.*total/i);
     expect(finalizar().disabled).toBe(true);
     act(() => finalizar().click());
+    expect(createOrder).not.toHaveBeenCalled();
+  });
+
+  it("não envia o pedido se o dinheiro exato deixa de cobrir o total durante o envio", async () => {
+    await montar();
+    await pedirTroco("100");
+    await reabrirComTotal(100);
+    expect(finalizar().disabled).toBe(false);
+
+    let liberarSessao: (vale: boolean) => void = () => {};
+    sessaoAindaEhDoDono.mockReturnValueOnce(
+      new Promise<boolean>((resolve) => {
+        liberarSessao = resolve;
+      }),
+    );
+    await act(async () => {
+      finalizar().click();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(sessaoAindaEhDoDono).toHaveBeenCalledTimes(1);
+
+    total = 110;
+    await renderizar(true);
+    expect(campo().getAttribute("aria-invalid")).toBe("true");
+    await act(async () => liberarSessao(true));
     expect(createOrder).not.toHaveBeenCalled();
   });
 

@@ -4425,7 +4425,7 @@ export function CheckoutViewDaConta({
       avisoDeTroco = troco?.restaurado
         ? "O valor não cobre o total. Corrija o valor para o troco."
         : "Informe um valor maior que o total do pedido.";
-    } else {
+    } else if (valorParaTrocoEmCentavos > totalEmCentavos) {
       const pagamento = reais(valorParaTrocoEmCentavos / 100);
       const troco = reais((valorParaTrocoEmCentavos - totalEmCentavos) / 100);
       prefixoDeTroco = `Troco para ${pagamento} (levar ${troco})`;
@@ -4435,8 +4435,11 @@ export function CheckoutViewDaConta({
     LIMITE_DA_OBSERVACAO - (prefixoDeTroco ? prefixoDeTroco.length + 1 : 0);
   const notaSeraCortada =
     !!prefixoDeTroco && notes.trim().length > espacoDaObservacao;
-  // null: sem troco; vazio: troco solicitado, ainda inválido.
-  const trocoNesteRender = solicitaTroco ? prefixoDeTroco : null;
+  // null: sem solicitação; vazio: dinheiro exato; aviso: valor inválido.
+  // O envio em andamento não pode confundir dinheiro exato com insuficiente.
+  const trocoNesteRender = solicitaTroco
+    ? avisoDeTroco || prefixoDeTroco
+    : null;
   trocoVivoRef.current = trocoNesteRender;
 
   // A loja não tem de onde despachar (sem CEP de origem): o frete não será

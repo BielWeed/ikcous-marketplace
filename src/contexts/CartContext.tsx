@@ -1896,6 +1896,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           ...rascunho,
           cupom: null,
           contaDoCupom: null,
+          trocoPara: undefined,
         });
       }
       removerSeguro(CART_STORAGE_KEY);

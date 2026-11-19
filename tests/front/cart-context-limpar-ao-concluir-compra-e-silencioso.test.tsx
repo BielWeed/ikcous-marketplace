@@ -9,6 +9,11 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CartProvider, useCartContext } from "@/contexts/CartContext";
+import {
+  lerRascunhoDoCheckout,
+  rascunhoVazio,
+  salvarRascunhoDoCheckout,
+} from "@/lib/rascunho-do-checkout";
 import type { CartItem, Product } from "@/types";
 
 const toastInfo = vi.fn();
@@ -104,6 +109,7 @@ describe("CartContext — 'Carrinho limpo' só aparece quando a pessoa esvazia",
       raiz.unmount();
     });
     hospedeiro.remove();
+    sessionStorage.clear();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
@@ -117,6 +123,29 @@ describe("CartContext — 'Carrinho limpo' só aparece quando a pessoa esvazia",
 
     expect(atual.cart).toHaveLength(0);
     expect(toastInfo).toHaveBeenCalledWith("Carrinho limpo");
+  });
+
+  it("esvaziar a compra limpa troco e cupom sem apagar a observação do rascunho", async () => {
+    salvarRascunhoDoCheckout(sessionStorage, {
+      ...rascunhoVazio(),
+      contaDosDados: null,
+      dadosDoVisitanteAlteradosEm: Date.now(),
+      notas: "Tocar a campainha.",
+      cupom: "CUPOM10",
+      trocoPara: "100",
+    });
+    expect(lerRascunhoDoCheckout(sessionStorage)?.trocoPara).toBe("100");
+
+    await act(async () => {
+      atual.clearCart();
+    });
+
+    const rascunho = lerRascunhoDoCheckout(sessionStorage);
+    expect(rascunho).toMatchObject({
+      notas: "Tocar a campainha.",
+      cupom: null,
+    });
+    expect(rascunho?.trocoPara).toBeUndefined();
   });
 
   it("limpar por conclusão de compra (silencioso) esvazia sem nenhum aviso", async () => {
