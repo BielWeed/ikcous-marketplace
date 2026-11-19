@@ -5,7 +5,7 @@
 //   - a transportadora aparece pelo nome ("Melhor Envio", "SuperFrete"), não
 //     pelo id com "_" trocado por espaço;
 //   - o motivo que veio como corpo bruto da API da transportadora vira frase,
-//     e o texto INTEIRO continua no `title` para quem precisar do detalhe;
+//     e a frase traduzida inteira fica no `title`;
 //   - o cabeçalho não usa texto menor que 11px.
 import { motivoDaCotacao } from "@/lib/motivo-da-cotacao";
 import { act } from "react";
@@ -216,7 +216,7 @@ describe("HistoricoCotacoesSection — leitura de lojista", () => {
       expect(texto()).not.toContain("{");
       expect(texto()).not.toContain("<html>");
       const celula = [...hospedeiro.querySelectorAll("[title]")].find(
-        (el) => el.getAttribute("title") === bruto,
+        (el) => el.getAttribute("title") === esperada,
       );
       expect(celula).toBeTruthy();
     },

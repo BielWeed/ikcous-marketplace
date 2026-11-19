@@ -192,9 +192,13 @@ describe("HistoricoCotacoesSection — o selo vermelho passa a dizer o motivo", 
       await abrirSecao();
 
       expect(textoDoHistorico()).toContain("Motivo:");
-      const celula = [...hospedeiro.querySelectorAll("[title]")].find(
-        (el) => el.getAttribute("title") === motivo,
+      const celula = [...hospedeiro.querySelectorAll("[title]")].find((el) =>
+        el.textContent?.includes("Cotação parcial — "),
       );
+      const dica = celula?.getAttribute("title") ?? "";
+      expect(dica).toMatch(/^Cotação parcial — /);
+      for (const frase of frases) expect(dica).toContain(frase);
+      expect(dica).not.toContain(falha);
       expect(celula).toBeTruthy();
       expect(celula!.textContent).toContain("Cotação parcial — ");
       for (const frase of frases) expect(celula!.textContent).toContain(frase);
@@ -278,11 +282,10 @@ describe("HistoricoCotacoesSection — o selo vermelho passa a dizer o motivo", 
   });
 
   it("RODADA DE CORREÇÃO (achado ANTES DE CRESCER): motivo muito longo é cortado na tela, mas o texto completo vai para o title", async () => {
-    // A edge concatena o corpo bruto da resposta do provedor
-    // (`await response.text()`) na mensagem de erro de falha de API — sem
-    // limite. Um corpo de gateway de alguns KB não pode virar um parágrafo
-    // de texto empurrando o resto da tabela para fora da tela no celular.
-    const motivoGigante = `Melhor Envio API retornou 502: ${"x".repeat(2500)}`;
+    // Uma frase já legível continua inteira na dica, mas não pode
+    // empurrar o resto da tabela para fora da tela no celular.
+    const motivoGigante =
+      "Confira as opções de entrega da transportadora. ".repeat(53);
     logsState.data = [
       {
         id: "1",
@@ -296,9 +299,6 @@ describe("HistoricoCotacoesSection — o selo vermelho passa a dizer o motivo", 
     ];
     await abrirSecao();
 
-    // Sem isto, o teste falharia pelo motivo CERTO: a implementação
-    // anterior imprimia `log.error_message` cru, sem corte e sem `title`
-    // com o texto completo.
     const celulaComTitulo = [...hospedeiro.querySelectorAll("[title]")].find(
       (el) => el.getAttribute("title") === motivoGigante,
     );

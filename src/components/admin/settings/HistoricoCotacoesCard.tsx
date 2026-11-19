@@ -277,115 +277,116 @@ export const HistoricoCotacoesSection = memo(
                 {...papel("rowgroup")}
                 className="block text-zinc-300 sm:table-row-group sm:divide-y sm:divide-admin-border-strong"
               >
-                {grupos.map(({ log, repeticoes }) => (
-                  <Fragment key={log.id}>
-                    <tr
-                      {...papel("row")}
-                      className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 border-t border-admin-border px-3 pb-1 pt-3 first:border-t-0 hover:bg-white/5 sm:table-row sm:border-t-0 sm:p-0"
-                    >
-                      <td
-                        {...papel("cell")}
-                        className="col-start-1 row-start-1 block whitespace-nowrap font-mono text-[11px] text-zinc-400 sm:table-cell sm:p-2.5"
-                      >
-                        {new Date(log.created_at).toLocaleString("pt-BR", {
-                          day: "2-digit",
-                          month: "2-digit",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </td>
-                      <td
-                        {...papel("cell")}
-                        className="col-start-1 row-start-2 block whitespace-nowrap font-semibold text-white sm:table-cell sm:p-2.5"
-                      >
-                        {/* Linha com campo nulo não pode derrubar a seção
-                                inteira (achado A2 da revisão adversária: o
-                                original carregou este mesmo risco — guardado
-                                aqui onde ele agora mora). */}
-                        {(log.destination_cep ?? "").replace(
-                          /(\d{5})(\d{3})/,
-                          "$1-$2",
-                        )}
-                      </td>
-                      <td
-                        {...papel("cell")}
-                        className="col-start-2 row-start-2 block min-w-0 break-words text-right text-zinc-300 sm:table-cell sm:p-2.5 sm:text-left"
-                      >
-                        {nomeDoProvedorNoHistorico(
-                          log.provider,
-                          nomeDaTransportadora,
-                        )}
-                      </td>
-                      <td
-                        {...papel("cell")}
-                        className="col-span-2 col-start-1 row-start-3 block font-mono text-zinc-400 sm:table-cell sm:p-2.5"
-                      >
-                        {tempoDeResposta(log.response_time_ms)}
-                      </td>
-                      <td
-                        {...papel("cell")}
-                        className="col-start-2 row-start-1 block text-right sm:table-cell sm:p-2.5 sm:text-left"
-                      >
-                        <span
-                          className={`inline-flex rounded-md px-1.5 py-0.5 text-[11px] font-bold uppercase ${
-                            log.status === "success"
-                              ? "bg-emerald-500/20 text-emerald-300"
-                              : log.status === "contingency"
-                                ? "bg-amber-500/20 text-amber-300"
-                                : "bg-red-500/20 text-red-300"
-                          }`}
-                        >
-                          {log.status === "success"
-                            ? "Sucesso"
-                            : log.status === "contingency"
-                              ? "Valor de reserva"
-                              : "Erro"}
-                          {repeticoes > 1 ? ` ×${repeticoes}` : ""}
-                        </span>
-                      </td>
-                    </tr>
-                    {/* Achado HistoricoCotacoesCard-100: a edge grava
-                        `error_message` com o motivo ACIONÁVEL ("Conecte a
-                        transportadora...") e aguarda a gravação só para isso
-                        chegar aqui — sem esta linha, o selo vermelho não
-                        distingue "falta credencial" de "Melhor Envio fora do
-                        ar". Segunda linha do <tr>, não coluna nova: o
-                        motivo é texto livre e longo, e uma sexta coluna
-                        estouraria a tabela no celular.
-
-                        RODADA DE CORREÇÃO (achado ANTES DE CRESCER):
-                        `error_message` não tem limite de tamanho — no ramo
-                        de falha de API a edge concatena o corpo BRUTO da
-                        resposta do provedor. `title` no <td> carrega o
-                        texto INTEIRO (hover mostra o motivo completo); o
-                        texto EXIBIDO é cortado em
-                        `LIMITE_MOTIVO_EXIBIDO` caracteres para não empurrar
-                        o resto da tabela para fora da tela no celular. */}
-                    {log.error_message ? (
+                {grupos.map(({ log, repeticoes }) => {
+                  const motivo = motivoDaCotacao(
+                    log.error_message,
+                    nomeDaTransportadora,
+                  );
+                  return (
+                    <Fragment key={log.id}>
                       <tr
                         {...papel("row")}
-                        className="block bg-white/[0.02] px-3 pb-3 sm:table-row sm:p-0"
+                        className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 border-t border-admin-border px-3 pb-1 pt-3 first:border-t-0 hover:bg-white/5 sm:table-row sm:border-t-0 sm:p-0"
                       >
                         <td
                           {...papel("cell")}
-                          colSpan={5}
-                          title={log.error_message}
-                          className="block break-words text-[11px] leading-relaxed text-zinc-400 sm:table-cell sm:px-2.5 sm:pb-2.5 sm:pt-0"
+                          className="col-start-1 row-start-1 block whitespace-nowrap font-mono text-[11px] text-zinc-400 sm:table-cell sm:p-2.5"
                         >
-                          <span className="font-bold text-zinc-300">
-                            Motivo:{" "}
-                          </span>
-                          {cortarMotivoExibido(
-                            motivoDaCotacao(
-                              log.error_message,
-                              nomeDaTransportadora,
-                            ),
+                          {new Date(log.created_at).toLocaleString("pt-BR", {
+                            day: "2-digit",
+                            month: "2-digit",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </td>
+                        <td
+                          {...papel("cell")}
+                          className="col-start-1 row-start-2 block whitespace-nowrap font-semibold text-white sm:table-cell sm:p-2.5"
+                        >
+                          {/* Linha com campo nulo não pode derrubar a seção
+                                  inteira (achado A2 da revisão adversária: o
+                                  original carregou este mesmo risco — guardado
+                                  aqui onde ele agora mora). */}
+                          {(log.destination_cep ?? "").replace(
+                            /(\d{5})(\d{3})/,
+                            "$1-$2",
                           )}
                         </td>
+                        <td
+                          {...papel("cell")}
+                          className="col-start-2 row-start-2 block min-w-0 break-words text-right text-zinc-300 sm:table-cell sm:p-2.5 sm:text-left"
+                        >
+                          {nomeDoProvedorNoHistorico(
+                            log.provider,
+                            nomeDaTransportadora,
+                          )}
+                        </td>
+                        <td
+                          {...papel("cell")}
+                          className="col-span-2 col-start-1 row-start-3 block font-mono text-zinc-400 sm:table-cell sm:p-2.5"
+                        >
+                          {tempoDeResposta(log.response_time_ms)}
+                        </td>
+                        <td
+                          {...papel("cell")}
+                          className="col-start-2 row-start-1 block text-right sm:table-cell sm:p-2.5 sm:text-left"
+                        >
+                          <span
+                            className={`inline-flex rounded-md px-1.5 py-0.5 text-[11px] font-bold uppercase ${
+                              log.status === "success"
+                                ? "bg-emerald-500/20 text-emerald-300"
+                                : log.status === "contingency"
+                                  ? "bg-amber-500/20 text-amber-300"
+                                  : "bg-red-500/20 text-red-300"
+                            }`}
+                          >
+                            {log.status === "success"
+                              ? "Sucesso"
+                              : log.status === "contingency"
+                                ? "Valor de reserva"
+                                : "Erro"}
+                            {repeticoes > 1 ? ` ×${repeticoes}` : ""}
+                          </span>
+                        </td>
                       </tr>
-                    ) : null}
-                  </Fragment>
-                ))}
+                      {/* Achado HistoricoCotacoesCard-100: a edge grava
+                          `error_message` com o motivo ACIONÁVEL ("Conecte a
+                          transportadora...") e aguarda a gravação só para isso
+                          chegar aqui — sem esta linha, o selo vermelho não
+                          distingue "falta credencial" de "Melhor Envio fora do
+                          ar". Segunda linha do <tr>, não coluna nova: o
+                          motivo é texto livre e longo, e uma sexta coluna
+                          estouraria a tabela no celular.
+
+                          RODADA DE CORREÇÃO (achado ANTES DE CRESCER):
+                          `error_message` não tem limite de tamanho — no ramo
+                          de falha de API a edge concatena o corpo BRUTO da
+                          resposta do provedor. `title` mostra o motivo
+                          completo em português; o
+                          texto EXIBIDO é cortado em
+                          `LIMITE_MOTIVO_EXIBIDO` caracteres para não empurrar
+                          o resto da tabela para fora da tela no celular. */}
+                      {motivo ? (
+                        <tr
+                          {...papel("row")}
+                          className="block bg-white/[0.02] px-3 pb-3 sm:table-row sm:p-0"
+                        >
+                          <td
+                            {...papel("cell")}
+                            colSpan={5}
+                            title={motivo}
+                            className="block break-words text-[11px] leading-relaxed text-zinc-400 sm:table-cell sm:px-2.5 sm:pb-2.5 sm:pt-0"
+                          >
+                            <span className="font-bold text-zinc-300">
+                              Motivo:{" "}
+                            </span>
+                            {cortarMotivoExibido(motivo)}
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>

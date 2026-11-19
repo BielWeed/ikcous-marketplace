@@ -224,14 +224,14 @@ describe("HistoricoCotacoesSection — cabe no celular", () => {
     const texto =
       hospedeiro.querySelector("#historico-cotacoes-section")?.textContent ??
       "";
-    expect(texto).toContain(
-      "A transportadora demorou demais para responder. Tente de novo mais tarde.",
-    );
+    const frase =
+      "A transportadora demorou demais para responder. Tente de novo mais tarde.";
+    expect(texto).toContain(frase);
     expect(texto).not.toContain("The signal has been aborted");
     expect(
-      [...hospedeiro.querySelectorAll("[title]")].some(
-        (el) => el.getAttribute("title") === bruto,
+      [...hospedeiro.querySelectorAll("[title]")].map((el) =>
+        el.getAttribute("title"),
       ),
-    ).toBe(true);
+    ).toContain(frase);
   });
 });

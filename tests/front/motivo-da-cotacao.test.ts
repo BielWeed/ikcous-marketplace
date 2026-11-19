@@ -2,7 +2,7 @@
 // sempre é frase da loja: no ramo de falha de API é o corpo BRUTO que a
 // transportadora devolveu ("Melhor Envio API retornou 422: {...}"). A
 // lojista não lê JSON nem HTML — o histórico mostra uma frase, e o texto
-// inteiro fica no `title` (isso é do card; aqui é só a tradução, pura).
+// traduzido inteiro fica no `title` (aqui é só a tradução, pura).
 import {
   motivoDaCotacao,
   nomeDoProvedorNoHistorico,
@@ -16,6 +16,18 @@ const CHAVE_RECUSADA =
 const CEP_RECUSADO = "A transportadora não aceitou o CEP do cliente.";
 
 describe("motivoDaCotacao", () => {
+  it.each([
+    [
+      "Falha ao gravar a cotação: canceling statement due to statement timeout",
+      "A cotação foi calculada, mas o banco demorou demais para guardá-la.",
+    ],
+    [
+      "configuracao_mudou_durante_cotacao: a configuração do frete mudou duas vezes durante a cotação; nada foi gravado.",
+      "A configuração do frete mudou durante a cotação; nada foi guardado. Tente de novo.",
+    ],
+  ])("traduz a falha ao salvar: %s", (motivo, frase) => {
+    expect(motivoDaCotacao(motivo)).toBe(frase);
+  });
   it("frase em português que a edge escreveu passa igual", () => {
     const credencial =
       'Sem credencial cadastrada para o provedor "melhor_envio". Conecte a transportadora para cotar entregas fora da cidade.';
