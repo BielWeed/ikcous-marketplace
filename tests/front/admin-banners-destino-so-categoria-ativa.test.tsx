@@ -140,7 +140,12 @@ describe("AdminBannersView — atalho de destino só para categoria ativa", () =
   it("oferece o atalho da categoria ativa, com o link codificado", async () => {
     await abrirPaginasDaLoja();
     const atalho = botao("Categoria: Cama & Banho");
-    expect(atalho?.textContent).toContain("(/?category=Cama%20%26%20Banho)");
+    const destino = "/?category=Cama%20%26%20Banho";
+    expect(atalho?.textContent).toContain(`(${destino})`);
+    await clicar(atalho);
+    expect(
+      document.querySelector<HTMLInputElement>("#banner-link-custom")?.value,
+    ).toBe(destino);
   });
 
   it("o atalho Carrinho coloca /cart no campo de link", async () => {

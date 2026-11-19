@@ -1,6 +1,7 @@
-// Lote 203, lido do texto-fonte (as telas inteiras exigem banco e tempo real):
-// 1. os avisos com botão ("Ver" o pedido novo, "Restaurar" a grade) duram 10 s;
-// 2. o botão "Mais ações" das vitrines tem área de toque de 44 px, como o Ajuda.
+// Lote 203, lido do texto-fonte: o aviso para restaurar a grade dura 10 s
+// e "Mais ações" tem área de toque de 44 px, como o Ajuda.
+// O aviso de pedido novo é verificado na tela em
+// admin-orders-vazio-some-quando-chega-a-primeira-venda.test.tsx.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
@@ -9,13 +10,6 @@ const ler = (caminho: string) =>
   readFileSync(caminho, "utf-8").replace(/\r\n/g, "\n");
 
 describe("avisos com botão de ação duram o bastante para tocar", () => {
-  it("'Novo pedido recebido' com o botão Ver dura 10 s", () => {
-    const fonte = ler("src/views/admin/AdminOrdersView.tsx");
-    expect(fonte).toMatch(
-      /toast\.info\(`Novo pedido recebido! #\$\{numeroDoPedido\(newId\)\}`, \{\n\s+duration: 10_000,\n\s+action: \{/,
-    );
-  });
-
   it("'variações ainda não foram salvas' com o botão Restaurar dura 10 s", () => {
     const fonte = ler("src/views/admin/AdminProductFormView.tsx");
     expect(fonte).toMatch(

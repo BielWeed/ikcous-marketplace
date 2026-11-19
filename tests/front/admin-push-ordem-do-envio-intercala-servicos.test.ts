@@ -54,7 +54,12 @@ describe("intercalarPorServico", () => {
   });
 
   it("serviços muito desiguais: os pequenos aparecem logo, o resto segue em ordem", () => {
-    const saida = intercalarPorServico(ordenadoPorEndereco([100, 0, 3, 0]));
+    const entrada = ordenadoPorEndereco([100, 0, 3, 0]);
+    const saida = intercalarPorServico(entrada);
+    expect(saida).toHaveLength(103);
+    expect(saida.map((t) => t.endpoint).sort()).toEqual(
+      entrada.map((t) => t.endpoint).sort(),
+    );
     const servicos = saida.map((t) => servicoDe(t.endpoint));
     expect(servicos.slice(0, 6)).toEqual([
       "fcm.googleapis.com",
