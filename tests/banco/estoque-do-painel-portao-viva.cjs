@@ -1479,6 +1479,11 @@ async function main() {
         "20261405400000_a_devolucao_integral_nao_perde_o_centavo_do_cupom.sql",
         "public.solicitar_devolucao(uuid,jsonb,text,text,text,text,text[])",
       ],
+      // A 4059 só muda o custo no Resultado; a 17a não lê fin_dre.
+      [
+        "20261405900000_o_custo_do_cancelamento_fica_no_mes_da_volta.sql",
+        "public.fin_dre(date,date)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

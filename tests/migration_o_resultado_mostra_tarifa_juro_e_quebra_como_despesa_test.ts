@@ -117,22 +117,17 @@ Deno.test("382: sem BEGIN/COMMIT, pre-voo antes do CREATE, hashes e fotografia d
   );
 });
 
-Deno.test("382: a vigente e' a ultima redefinicao de fin_dre da arvore; db-apply exige as guardas; a lista das sucessoras da 99 fecha", () => {
+Deno.test("382: cadeia de redefinicoes de fin_dre, guardas do db-apply e sucessoras da 99", () => {
   const fontes = [...Deno.readDirSync(dir)]
     .map((e) => e.name)
     .filter((n) => /^\d{14}_.*\.sql$/.test(n))
     .sort()
     .filter((n) => definicao(ler(`supabase/migrations/${n}`)));
-  // A 3996 (o resultado credita o custo da devolucao de outro mes) e a unica redefinicao depois da 382.
-  assert.equal(
-    fontes.at(-2),
+  assert.deepEqual(fontes.slice(-3), [
     nome,
-    "outra migration redefine fin_dre entre a 382 e a ultima",
-  );
-  assert.equal(
-    fontes.at(-1),
     "20261399600000_o_resultado_credita_o_custo_da_devolucao_de_outro_mes.sql",
-  );
+    "20261405900000_o_custo_do_cancelamento_fica_no_mes_da_volta.sql",
+  ]);
   const { VERIFICACOES, avaliarChecagem } = require("../scripts/db-apply.cjs");
   // eslint-disable-next-line security/detect-object-injection -- Nome literal desta migration, nunca entrada externa.
   const checagem = VERIFICACOES[nome];

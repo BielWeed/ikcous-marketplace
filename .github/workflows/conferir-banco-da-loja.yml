@@ -367,6 +367,8 @@ on:
           - 158b-antes-cancelar-retirada-pronta-base-vigente
           - 159a-conferir-cancelar-pedido-do-painel-confere-a-etapa-aplicado
           - 159b-antes-cancelar-pedido-do-painel-confere-a-etapa-base-vigente
+          - 161a-conferir-o-custo-do-cancelamento-fica-no-mes-da-volta-aplicado
+          - 161b-antes-o-custo-do-cancelamento-fica-no-mes-da-volta-base-vigente
           - backups
       projeto:
         description: "Projeto de destino: loja, sandbox, ikcous-publicada (a CAF explicita) ou savy (a loja cliente explicita, mesmas travas): as duas exigem expected_sha; nunca texto livre — achado da rodada 2"

@@ -19,9 +19,9 @@ WITH fn AS (
     CASE WHEN (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace) > 0 THEN 'sim' ELSE 'nao' END
   UNION ALL
   SELECT 'fin_dre: corpo exato (md5)', '2d191bc8120a9b188c04eeaaa0263110',
-    -- A 20261399600000 (o resultado credita o custo da devolucao de outro mes) sucede so o fin_dre: aceita os dois corpos
-    -- EXATOS (o desta e o dela); normaliza ao esperado historico do rol.
-    COALESCE((SELECT CASE WHEN h IN ('2d191bc8120a9b188c04eeaaa0263110', 'eafc6a2c4663e33f5459791c6601b848')
+    -- A 20261399600000 e a 20261405900000 sucedem fin_dre. Aceita os corpos exatos
+    -- da 382 ou das sucessoras; normaliza ao esperado historico do rol.
+    COALESCE((SELECT CASE WHEN h IN ('2d191bc8120a9b188c04eeaaa0263110', 'eafc6a2c4663e33f5459791c6601b848') OR h = 'a27c9649621b3ac1502f458576120259'
                          THEN '2d191bc8120a9b188c04eeaaa0263110' ELSE h END FROM fn), 'AUSENTE')
   UNION ALL
   SELECT 'fin_dre: assinatura e atributos conhecidos', 'sim',

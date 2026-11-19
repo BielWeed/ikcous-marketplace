@@ -3241,6 +3241,10 @@ const ROL_FECHADO_POR_CONSULTA = {
     ROL_DA_159,
   "159b-antes-cancelar-pedido-do-painel-confere-a-etapa-base-vigente":
     ROL_DA_159,
+  "161a-conferir-o-custo-do-cancelamento-fica-no-mes-da-volta-aplicado":
+    ROL_DA_122,
+  "161b-antes-o-custo-do-cancelamento-fica-no-mes-da-volta-base-vigente":
+    ROL_DA_122,
   "158a-conferir-cancelar-retirada-pronta-aplicado": ROL_DA_158,
   "158b-antes-cancelar-retirada-pronta-base-vigente": ROL_DA_158,
   "156a-conferir-a-observacao-da-inspecao-so-a-loja-ve-aplicado": ROL_DA_156,

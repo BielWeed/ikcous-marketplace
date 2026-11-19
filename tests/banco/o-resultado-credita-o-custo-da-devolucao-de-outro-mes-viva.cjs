@@ -259,7 +259,10 @@ async function main() {
   try {
     await c.query("BEGIN");
 
-    // O topo instalado pelo CI (todas as migrations do zero) e o desta migration.
+    // Isola a versão desta prova sem relaxar a guarda de nenhum rollback.
+    await require("./o-resultado-credita-o-custo-da-devolucao-posterior.cjs").desfazerCustoDoCancelamentoNaTransacao(
+      c,
+    );
     const topo = await funcao(c);
     assert.equal(
       topo.prosrc,

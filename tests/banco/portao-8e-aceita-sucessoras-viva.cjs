@@ -184,6 +184,9 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     // o-resultado-credita-o-custo-da-devolucao-posterior.cjs primeiro), como faz com a 382.
     s.nome !==
       "20261399600000_o_resultado_credita_o_custo_da_devolucao_de_outro_mes.sql" &&
+    // A 4059 tem prova própria; o helper da 3996 desfaz esta sucessora antes do estado histórico.
+    s.nome !==
+      "20261405900000_o_custo_do_cancelamento_fica_no_mes_da_volta.sql" &&
     // A 20261399900000 (a busca de Pedidos acha o telefone colado com o +55) e a SEGUNDA sucessora de get_admin_orders_paged (99 -> 387 -> 3999) e a 20261399910000
     // (a busca de devolucao ignora o acento) a SEGUNDA de admin_devolucoes_listar (99 -> 395 -> 3999100): tem a PROVA PROPRIA do que as consultas 125a/125b e 126a/126b
     // fazem com elas (a-busca-de-pedidos-acha-o-telefone-colado-com-o-55-viva.cjs e a-busca-de-devolucao-ignora-o-acento-viva.cjs); `noEstado` as desfaz antes

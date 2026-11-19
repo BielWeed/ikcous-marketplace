@@ -1155,6 +1155,21 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20261405900000_o_custo_do_cancelamento_fica_no_mes_da_volta.sql": {
+    funcao: "fin_dre",
+    esperado: [
+      {
+        texto: "AND public.fin__dia(o.stock_returned_at) <= m.data_competencia",
+        vezes: 1,
+      },
+      {
+        texto:
+          "AND public.fin__dia(o.stock_returned_at) BETWEEN p_inicio AND p_fim",
+        vezes: 1,
+      },
+      { texto: "oi.quantity - COALESCE(sum(di.quantidade), 0)", vezes: 1 },
+    ],
+  },
   // 20261405700000: RPC nova só para admin; a 159a confere corpo e ACL.
   "20261405700000_cancelar_pedido_do_painel_confere_a_etapa.sql": [
     {
