@@ -190,8 +190,9 @@ async function main() {
     );
     if (process.env.MUTANTE_STATUS_SEM_UPDATED_AT) {
       assert.equal(process.env.MUTANTE_STATUS_SEM_UPDATED_AT, "1");
+      // Na árvore inteira, o UPDATE está na rotina delegada pela casca.
       const assinatura =
-        "public.pedido__mudar_status(uuid,text,text,uuid,boolean,boolean)";
+        "public.pedido__mudar_status_com_etapa(uuid,text,text,uuid,boolean,boolean,text)";
       const lerCorpo = async () =>
         (
           await C.query("SELECT pg_get_functiondef($1::regprocedure) AS d", [

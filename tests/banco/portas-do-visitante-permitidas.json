@@ -187,6 +187,14 @@
       "porque": "Devolucao do pedido pelo cliente logado (ou pelo admin): precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige quem esta logado (auth.uid()); o visitante nao a executa."
     },
     {
+      "funcao": "public.cancelar_pedido_do_painel(p_order_id uuid, p_status_esperado text, p_notes text)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Operacao do painel: confirma a etapa do pedido sob trava antes do cancelamento; exige o admin atual (is_admin_atual())."
+    },
+    {
       "funcao": "public.categorias_com_uso()",
       "executa": ["authenticated"],
       "tipo": "leitura",

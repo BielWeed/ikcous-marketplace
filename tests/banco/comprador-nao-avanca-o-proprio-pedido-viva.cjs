@@ -1,8 +1,8 @@
 "use strict";
 
 // Somente o clone Postgres descartavel de rodar-isolado.cjs, nunca banco de loja.
-// Corpo VIVO: pedido__mudar_status da 20261198000000 (ultima que a redefine; update_order_status_atomic
-// e' so a casca que a chama com auth.uid() e is_admin_atual()). A guarda provada: quem NAO e' admin so
+// Corpo VIVO: pedido__mudar_status_com_etapa (20261405700000), que a casca
+// de pedido__mudar_status chama. A guarda provada: quem NAO e' admin so
 // pode levar o PROPRIO pedido a 'cancelled'. MUTANTE_R100 remove somente ela; fixtures e mutante
 // voltam no ROLLBACK de cada caso.
 const P = require("./prova-de-objeto-novo.cjs");
@@ -11,7 +11,8 @@ const ADMIN = "b102b000-0000-4000-8000-000000000001";
 const COMPRADOR = "b102b000-0000-4000-8000-000000000002";
 const PEDIDO = "b102b000-0000-4000-8000-000000000010";
 const PEDIDO_CANCELA = "b102b000-0000-4000-8000-000000000011";
-const FN = "public.pedido__mudar_status(uuid,text,text,uuid,boolean,boolean)";
+const FN =
+  "public.pedido__mudar_status_com_etapa(uuid,text,text,uuid,boolean,boolean,text)";
 const MENSAGEM =
   "Operação não permitida: Usuários só podem cancelar seus próprios pedidos.";
 
