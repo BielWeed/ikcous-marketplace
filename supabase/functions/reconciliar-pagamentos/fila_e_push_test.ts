@@ -340,8 +340,8 @@ Deno.test("EST-EDGE-DIN-2 - lote que cabe no orçamento: nada é adiado e todos 
   assertEquals(r.avisos.some((a) => a.includes("orçamento de tempo")), false);
 });
 
-// Sem sobrescrever o orçamento: protege o padrão usado pelo cron e seu limite inclusivo.
-for (const [msPorConsulta, consultados] of [[99_999, 2], [100_000, 1]]) {
+// Sem sobrescrever o orçamento: mantém folga para avisos, estornos e contestações.
+for (const [msPorConsulta, consultados] of [[44_999, 2], [45_000, 1]]) {
   Deno.test(`EST-EDGE-DIN-2 - orçamento PADRÃO: após ${msPorConsulta} ms começa ${consultados === 2 ? "a segunda consulta" : "nenhuma consulta nova"}`, async () => {
     // Início não nulo: o limite é o tempo decorrido, não o valor absoluto do relógio.
     const relogio = relogioQueAvancaComOMp(msPorConsulta, 500_000);

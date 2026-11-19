@@ -1988,8 +1988,11 @@ BLOQUEIA com o nome dela. O cadastro de UMA vez, na entrada do cliente:
    do banco da loja crie `reconciliacao_url` (endereco da function `reconciliar-pagamentos` DESSA loja)
    e `reconciliacao_secret`; instale o MESMO valor do segredo como `RECONCILIACAO_SECRET` nas
    functions da loja (Supabase → Secrets). O cron "succeeded" NAO prova nada (so enfileirou a
-   chamada): comprove UM ciclo com resposta HTTP 200 da function (`DEPLOYMENT.md`, §5.2; `401` =
-   segredos diferentes).
+   chamada). HTTP 200 tambem NAO prova saude: confira no corpo da resposta da function
+   `degradado: false` e as quatro entradas de `etapas` com `ok: true`.
+   `fila_vazia: true` indica uma rodada saudavel, sem trabalho nas filas. Se vier
+   `degradado: true` (mesmo com HTTP 200), confira em `etapas` qual falhou, o `erro` (se houver)
+   e as contagens de `processados` e `falhas` (`DEPLOYMENT.md`, §5.2; `401` = segredos diferentes).
 5. **Chave de cifra das credenciais:** instale `MP_CHAVES_ENCRYPTION_KEY` (32 bytes em base64) nas
    functions da loja ANTES de cadastrar credenciais de pagamento ou do Gmail. Sem ela o cadastro
    fica `indisponivel` (falha fechada: ninguem cobra). Nunca substitua uma chave que ja cifrou

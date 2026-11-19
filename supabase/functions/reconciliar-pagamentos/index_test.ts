@@ -1092,7 +1092,7 @@ Deno.test("sentinela: cartão EM ANÁLISE, busca vazia, busca falhando ou só or
   for (const [nome, resultadoBusca] of cenarios) {
     const registro = { chamadasConfirmar: [], chamouCandidatos: false, adocoesPedido: [] as any[] };
     const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: SENTINELA_1 }];
-    const supabase = clienteFalso({ candidatos, registro });
+    const supabase = clienteDoCiclo({ candidatos, registro });
     const fetchImpl = fetchSentinela(resultadoBusca, null, []);
     const console_error = console.error;
     console.error = () => {};
@@ -1108,6 +1108,8 @@ Deno.test("sentinela: cartão EM ANÁLISE, busca vazia, busca falhando ou só or
     assertEquals(registro.chamadasConfirmar.length, 0, nome);
     assertEquals(corpo.ignorados, 1, nome);
     assertEquals(corpo.falhas, 0, nome);
+    assertEquals(corpo.degradado, nome === "busca falhou", nome);
+    assertEquals(corpo.etapas.pagamentos.ok, nome !== "busca falhou", nome);
   }
 });
 
@@ -1371,18 +1373,149 @@ Deno.test("pagamentos_a_reconciliar devolve {error} -> 500", async () => {
   assertEquals(resposta.status, 500);
 });
 
-Deno.test("pagamentos_a_reconciliar rejeita (erro de rede) -> 500, não escapa do handler", async () => {
-  const supabase = {
-    rpc: async (nome: string) => {
-      if (nome === "pagamentos_a_reconciliar") throw new Error("timeout de rede");
-      throw new Error(`rpc inesperada nos testes: ${nome}`);
+// Mesmos dublês de banco e de MP dos demais testes, com as duas filas
+// auxiliares vazias. Os acessos provam que o handler chegou a cada etapa.
+function clienteDoCiclo(opts: Parameters<typeof clienteFalso>[0], leituras: string[] = []) {
+  const base = clienteFalso(opts);
+  return {
+    ...base,
+    rpc: (nome: string, args?: Record<string, unknown>) =>
+      nome === "marcar_visitas_da_reconciliacao"
+        ? Promise.resolve({ data: null, error: null })
+        : base.rpc(nome, args),
+    from(tabela: string) {
+      if (tabela === "marketplace_order_history") {
+        leituras.push("cancelamentos");
+        const q = { ...cadeiaVazia(), not: () => q, gte: () => q, eq: () => q };
+        return { select: () => q };
+      }
+      const consulta = base.from(tabela);
+      if (tabela !== "order_refunds") return consulta;
+      return {
+        ...consulta,
+        select(colunas: string) {
+          if (colunas === "id, order_id, updated_at") leituras.push("contestacoes");
+          else if (colunas.startsWith("id, order_id, amount,")) leituras.push("estornos");
+          return consulta.select(colunas);
+        },
+      };
     },
   };
-  const req = requisicaoComSegredo(SEGREDO);
+}
 
-  const resposta = await handler(req, { supabase });
+Deno.test("saúde do ciclo: pagamentos_a_reconciliar lança, mantém 500 e roda as outras etapas", async () => {
+  const leituras: string[] = [];
+  const base = clienteDoCiclo({ registro: { chamadasConfirmar: [], chamouCandidatos: false } }, leituras);
+  const supabase = {
+    ...base,
+    rpc: async (nome: string, args?: Record<string, unknown>) => {
+      if (nome === "pagamentos_a_reconciliar") throw new Error("timeout de rede");
+      return await base.rpc(nome, args);
+    },
+  };
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase });
+  const corpo = await resposta.json();
 
   assertEquals(resposta.status, 500);
+  assertEquals(leituras, ["cancelamentos", "estornos", "contestacoes"]);
+  assertEquals(corpo.degradado, true);
+  assertEquals(corpo.fila_vazia, false);
+  assertEquals(corpo.etapas.pagamentos, { ok: false, erro: "Erro ao buscar candidatos.", processados: 0, falhas: 1 });
+  assertEquals(corpo.etapas.cancelamentos.ok, true);
+  assertEquals(corpo.etapas.estornos.ok, true);
+  assertEquals(corpo.etapas.contestacoes.ok, true);
+});
+
+Deno.test("saúde do ciclo: sem credencial do MP, 200 não é saúde nem fila vazia saudável", async () => {
+  const registro = { chamadasConfirmar: [], chamouCandidatos: false };
+  // O cadastro ilegível fecha o cofre sem alterar o ambiente dos outros testes.
+  const supabase = clienteDoCiclo({ registro, registroMp: { token_cifrado: "invalido", token_iv: "invalido" } });
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), {
+    supabase,
+    fetchImpl: () => { throw new Error("MP não deve ser chamado sem token"); },
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.degradado, true);
+  assertEquals(corpo.fila_vazia, false);
+  assertEquals(corpo.etapas.pagamentos.ok, false);
+  assertEquals(corpo.etapas.contestacoes.ok, false);
+});
+
+Deno.test("saúde do ciclo: todas as consultas ao MP falham e não se confundem com fila vazia", async () => {
+  const supabase = clienteDoCiclo({
+    registro: { chamadasConfirmar: [], chamouCandidatos: false },
+    candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: "123" }],
+  });
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: fetchConsulta(503, {}) });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.degradado, true);
+  assertEquals(corpo.fila_vazia, false);
+  assertEquals(corpo.etapas.pagamentos.processados, 1);
+  assertEquals(corpo.etapas.pagamentos.falhas, 1);
+});
+
+Deno.test("saúde do ciclo: quatro filas vazias e legíveis são saudáveis", async () => {
+  const supabase = clienteDoCiclo({ registro: { chamadasConfirmar: [], chamouCandidatos: false } });
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.degradado, false);
+  assertEquals(corpo.fila_vazia, true);
+  assertEquals(corpo.etapas, {
+    pagamentos: { ok: true, processados: 0, falhas: 0 },
+    cancelamentos: { ok: true, processados: 0, falhas: 0 },
+    estornos: { ok: true, processados: 0, falhas: 0 },
+    contestacoes: { ok: true, processados: 0, falhas: 0 },
+  });
+});
+
+Deno.test("saúde do ciclo: estorno lento conclui, não começa outro e deixa vez para contestações", async () => {
+  let agora = 0;
+  const leituras: string[] = [];
+  const registro = { chamadasConfirmar: [], chamouCandidatos: false, chamadasConcluirEstorno: [], atualizacoesOrderRefunds: [] };
+  const pedido = pedidoFrescoPara({ total: 50 });
+  const supabase = clienteDoCiclo({
+    registro,
+    refundsPendentes: [
+      { id: "r1", order_id: pedido.id, amount: 20, status: "solicitado", tentativas: 0 },
+      { id: "r2", order_id: pedido.id, amount: 20, status: "solicitado", tentativas: 0 },
+    ],
+    resolverPedidoFresco: () => pedido,
+  }, leituras);
+  const mp = fetchDubleReconciliacao([
+    { metodo: "POST", trecho: "/v1/payments/123456789/refunds", status: 201, corpo: { id: 999, status: "approved", amount: 20 } },
+  ]);
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), {
+    supabase: {
+      ...supabase,
+      rpc: (nome: string, args?: Record<string, unknown>) => {
+        // O ciclo chega aos estornos com 60 s já gastos. O primeiro POST
+        // usa mais 14 s, ainda dentro de seu próprio timeout de 15 s.
+        if (nome === "pagamentos_a_reconciliar") agora = 60_000;
+        return supabase.rpc(nome, args);
+      },
+    },
+    agora: () => agora,
+    fetchImpl: (url, init) => {
+      agora += 14_000;
+      return mp.f(url, init);
+    },
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(leituras, ["cancelamentos", "estornos", "contestacoes"]);
+  assertEquals(registro.chamadasConcluirEstorno.map(({ args }) => args.p_refund_id), ["r1"]);
+  assertEquals(registro.atualizacoesOrderRefunds.some(({ id }) => id === "r2"), false);
+  assertEquals(mp.chamadas.map(({ metodo, chave }) => [metodo, chave]), [["POST", "r1"]]);
+  assertEquals(corpo.estornos, { vistos: 1, concluidos: 1, adiados: 0, falhos: 0 });
+  assertEquals(corpo.estornosAdiadosPorTempo, 1);
+  assertEquals(corpo.etapas.contestacoes.ok, true);
 });
 
 // --- 12. invariante da soma, com candidatos mistos --------------------------------
@@ -1572,7 +1705,7 @@ Deno.test("R1 - linha solicitado antiga -> marca em_processamento, chama o execu
     >,
   };
   const pedido = pedidoFrescoPara({ total: 50 });
-  const supabase = clienteFalso({
+  const supabase = clienteDoCiclo({
     candidatos: [],
     registro,
     refundsPendentes: [
@@ -1588,6 +1721,10 @@ Deno.test("R1 - linha solicitado antiga -> marca em_processamento, chama o execu
   const corpo = await resposta.json();
 
   assertEquals(resposta.status, 200);
+  assertEquals(corpo.ok, true);
+  assertEquals(corpo.degradado, false);
+  assertEquals(corpo.fila_vazia, false);
+  assertEquals(corpo.etapas.estornos, { ok: true, processados: 1, falhas: 0 });
   assertEquals(corpo.estornos, { vistos: 1, concluidos: 1, adiados: 0, falhos: 0 });
   assertEquals(registro.chamadasConcluirEstorno.length, 1);
   assertEquals(registro.chamadasConcluirEstorno[0].args.p_refund_id, "r1");
