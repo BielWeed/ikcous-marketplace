@@ -1,3 +1,4 @@
+import { branding } from "@/config/branding";
 import {
   mensagemDoStatusNoWhatsapp,
   rotuloDoStatusParaACliente,
@@ -28,6 +29,13 @@ const enderecoDeRetirada = "Rua São José, #42 & Cia";
 const horarioDeAtendimento = "Seg a sex, das 9h às 18h";
 
 describe("mensagemDoStatusNoWhatsapp", () => {
+  it("usa o nome padrão da marca quando o nome da loja é invisível", () => {
+    const mensagem = mensagemDoStatusNoWhatsapp({
+      ...base,
+      nomeDaLoja: "​",
+    });
+    expect(mensagem).toContain(`Obrigado por comprar na ${branding.appName}!`);
+  });
   it("diz que o pedido está em separação, não que já foi separado", () => {
     const msg = mensagemDoStatusNoWhatsapp({
       ...base,

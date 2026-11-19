@@ -81,6 +81,7 @@ import {
   rotuloDoStatusParaACliente,
 } from "@/lib/mensagem-do-status-no-whatsapp";
 import { motivoDaFalhaEmPortugues } from "@/lib/motivo-da-falha-de-push";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { CAMPO_DO_CARIMBO_DO_AVISO } from "@/lib/ordem-do-aviso-do-pedido";
 import { pedidosParaCsv } from "@/lib/pedidos-csv";
@@ -402,11 +403,13 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   const isOffline = useOnlineStatus();
   // A-3 (laudo varredura 01/09): o nome da LOJA para o recibo impresso.
   // Este é o ancestral mais alto da cadeia do recibo (AdminOrdersView ->
-  // OrderDetail -> OrderReceipt) — o nome oficial nas telas é
-  // `config.storeName?.trim() || branding.appName`, e é ele que vai para o
-  // papel, não o branding do build.
+  // OrderDetail -> OrderReceipt): o nome configurado tem prioridade, desde
+  // que apareça no papel e na mensagem de WhatsApp.
   const { config } = useStore();
-  const storeNameDaLoja = config.storeName?.trim() || branding.appName;
+  const nomeConfigurado = config.storeName?.trim() ?? "";
+  const storeNameDaLoja = nomeTemConteudoVisivel(nomeConfigurado)
+    ? nomeConfigurado
+    : branding.appName;
   const [recentOrderChanges, setRecentOrderChanges] = useState<
     Record<string, "INSERT" | "UPDATE">
   >({});

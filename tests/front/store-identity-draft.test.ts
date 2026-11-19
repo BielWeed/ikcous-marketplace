@@ -282,7 +282,10 @@ describe("rascunho de identidade separado da fotografia", () => {
     );
     expect(edited.expected).toEqual(original.expected);
     expect(identityEditorDraftIsDirty(edited, origin)).toBe(true);
-    error(() => buildIdentityEditorIntent(edited, origin));
+    error(
+      () => buildIdentityEditorIntent(edited, origin),
+      "storeName" in patch ? "IDENTITY_DRAFT_NAME_REQUIRED" : undefined,
+    );
   });
 
   it("nao executa getters ou toJSON nem aceita extras, ciclo, undefined e prototipo", () => {

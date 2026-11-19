@@ -249,6 +249,21 @@ describe("Cor do app — tela com editor real e fotografia completa", () => {
     expect(h.dirty).toHaveBeenLastCalledWith(false);
   });
 
+  it("salva a cor sem mudar um nome invisível já gravado", async () => {
+    const before = snapshot();
+    before.identity.store_name = "​";
+    h.read.mockResolvedValue(before);
+    await render();
+    await type("#0F766E");
+    await click("Salvar cor");
+    const intent = h.save.mock.calls[0]?.[0] as StoreIdentityIntent;
+    expect(intent?.desired).toEqual({
+      ...before.identity,
+      primary_color: "#0f766e",
+    });
+    expect(host.textContent).toContain("Cor salva");
+  });
+
   it.each([
     ["#000000", "Preto puro não funciona bem"],
     ["#12", "Use o formato #RRGGBB:"],

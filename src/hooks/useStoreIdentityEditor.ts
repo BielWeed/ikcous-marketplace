@@ -17,6 +17,7 @@ import {
   APP_ICON_ROLES,
   type AppIconRole,
   type IdentityDraftChange,
+  IdentityDraftError,
   type IdentityDraftFields,
   type IdentityEditorDraft,
   buildIdentityEditorIntent,
@@ -560,11 +561,12 @@ export function useStoreIdentityEditor(active = true) {
           desired: { ...intent.expected.identity, primary_color: color.cor },
         };
       }
-    } catch {
+    } catch (error) {
       publish({
         ...before,
         message:
-          before.draft!.fields.storeName.trim() === ""
+          error instanceof IdentityDraftError &&
+          error.code === "IDENTITY_DRAFT_NAME_REQUIRED"
             ? "Escreva o nome da loja (até 160 letras)."
             : "Confira nome, cidade, estado e cores no formato #RRGGBB antes de salvar.",
       });

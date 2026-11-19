@@ -25,6 +25,7 @@ import {
   ehRetiradaNaLoja,
   pagamentoIncompativelComFrete,
 } from "@/lib/guarda-de-frete";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { precoVendido } from "@/lib/preco-vendido";
 import {
   EVENTO_RETRATO_LIMPO,
@@ -456,7 +457,10 @@ function ConteudoDoCarrinho({
   const isSummaryReady = useDeferredRender(380);
 
   const [activeTab, setActiveTab] = useState<"cart" | "orders">(initialTab);
-  const nomeDaLoja = config.storeName?.trim() || branding.appName;
+  const nomeConfigurado = config.storeName?.trim() ?? "";
+  const nomeDaLoja = nomeTemConteudoVisivel(nomeConfigurado)
+    ? nomeConfigurado
+    : branding.appName;
   // A tela fica montada ao sair: retirar o título da pilha restaura o da Home.
   useDocumentMeta({
     title: isActive

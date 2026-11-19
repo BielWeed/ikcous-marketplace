@@ -76,6 +76,7 @@ import {
   mesmaCategoria,
 } from "@/lib/gestao-de-categorias";
 import { imagemAbre } from "@/lib/imagem-abre";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { percentualComUmaCasa } from "@/lib/percentual";
 import { pluralizar } from "@/lib/pluralizar";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
@@ -3261,7 +3262,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // "tudo pronto". O botão, a frase do que falta e o contador usam ESTA cópia.
   const camposObrigatorios = {
     ...formData,
-    name: formData.name.trim(),
+    name: nomeTemConteudoVisivel(formData.name) ? formData.name.trim() : "",
     description: formData.description.trim(),
   };
 
@@ -3331,6 +3332,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     if (isSubmitting || showSuccess || precisaRecarregar) return;
     if (isOffline) {
       toast.error("Não é possível salvar alterações em modo offline.");
+      return;
+    }
+    if (!camposObrigatorios.name) {
+      toast.error("Escreva o nome do produto.");
+      mostrarEFocarCampo("product-name");
       return;
     }
     // Produto criado, variações ainda só no rascunho: salvar agora não grava

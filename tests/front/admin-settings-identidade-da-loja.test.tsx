@@ -214,6 +214,23 @@ afterEach(() => {
 });
 
 describe("Sobre a Loja — identidade da loja pela RPC protegida", () => {
+  it("recusa um nome invisível com uma instrução clara", async () => {
+    await render();
+    await type("store-name", "​");
+    await click("Salvar alterações");
+    expect(h.save).not.toHaveBeenCalled();
+    expect(input("store-name").getAttribute("aria-invalid")).toBe("true");
+    expect(host.textContent).toContain("Escreva o nome da loja");
+  });
+
+  it("preserva o nome visível com emoji e espaço de largura zero", async () => {
+    await render();
+    const nome = "Café ​☕";
+    await type("store-name", nome);
+    await click("Salvar alterações");
+    expect(h.save.mock.calls[0]?.[0].desired.store_name).toBe(nome);
+  });
+
   it("salvar identidade não limpa horário que falhou; nova tentativa grava só o horário", async () => {
     await render();
     await type("store-name", "Novo nome");

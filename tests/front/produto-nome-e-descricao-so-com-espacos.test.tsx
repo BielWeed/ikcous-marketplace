@@ -243,6 +243,29 @@ describe("AdminProductFormView — nome e descrição só com espaços", () => {
     expect(textoDaTela()).toContain("4 de 5 essenciais prontos");
   });
 
+  it("nome invisível: desliga Publicar e explica o que falta", async () => {
+    await montar();
+    await preencherOBasico();
+    await digitarCampo("product-name", "​");
+    expect(botaoPorTexto("Publicar")?.disabled).toBe(true);
+    expect(textoDaTela()).toContain("falta preencher: nome");
+    expect(textoDaTela()).toContain("4 de 5 essenciais prontos");
+  });
+
+  it("nome invisível: nem o envio direto do formulário grava", async () => {
+    await montar();
+    await preencherOBasico();
+    await digitarCampo("product-name", "​");
+    const formulario = document.getElementById("product-name")?.closest("form");
+    expect(formulario).not.toBeNull();
+    await act(async () => {
+      formulario?.dispatchEvent(
+        new Event("submit", { bubbles: true, cancelable: true }),
+      );
+    });
+    expect(addProduct).not.toHaveBeenCalled();
+  });
+
   it("espaço não-quebrável (colado de outro lugar) também conta como vazio", async () => {
     await montar();
     await preencherOBasico();

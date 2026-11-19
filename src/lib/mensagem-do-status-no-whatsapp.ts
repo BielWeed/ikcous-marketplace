@@ -1,9 +1,10 @@
+import { branding } from "@/config/branding";
 import { cortarTexto } from "@/lib/cortar-texto";
 import {
   linkDeRastreioDeCodigoValido,
   normalizarCodigoDeRastreio,
 } from "@/lib/link-de-rastreio";
-import { nomeOuReserva } from "@/lib/nome-visivel";
+import { nomeOuReserva, nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import {
   ROTULOS_DAS_ETAPAS,
   ROTULO_RETIRADA_FEITA,
@@ -122,6 +123,6 @@ export function mensagemDoStatusNoWhatsapp({
   const fecho =
     status === "cancelled"
       ? "Qualquer dúvida sobre o cancelamento, é só responder esta mensagem."
-      : `Obrigado por comprar na ${nomeDaLoja}!`;
+      : `Obrigado por comprar na ${nomeTemConteudoVisivel(nomeDaLoja) ? nomeDaLoja : branding.appName}!`;
   return `Olá ${nomeOuReserva(nomeDoCliente, "Cliente")}!\n\nSeu pedido #${numeroDoPedido} foi atualizado.\nStatus: ${rotuloDoStatus}\n${rastreio}${orientacoesDeRetirada}\n${fecho}`;
 }

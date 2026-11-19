@@ -6,6 +6,7 @@ import {
   type IdentityUploadTarget,
   useStoreIdentityEditor,
 } from "@/hooks/useStoreIdentityEditor";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import type { IdentityAsset, IdentityAssetRole } from "@/lib/storeIdentity";
 import type { IdentityDraftFields } from "@/lib/storeIdentityDraft";
 import type { View } from "@/types";
@@ -175,7 +176,7 @@ export function IdentitySettingsSection({
                   id={id}
                   className="h-11"
                   maxLength={160}
-                  aria-invalid={value.trim() === ""}
+                  aria-invalid={!nomeTemConteudoVisivel(value)}
                   value={value}
                   onChange={(e) => editor.setField(key, e.target.value)}
                 />
