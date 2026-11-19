@@ -835,7 +835,8 @@ describe("CheckoutView com pagamentoOnlineLigado() ligada", () => {
       await esperarMicrotarefas();
     });
     await act(async () => {
-      digitar("guest-state", "SP");
+      // Simula o preenchimento do navegador, sem sair do campo antes do envio.
+      digitar("guest-state", "São Paulo");
       await esperarMicrotarefas();
     });
 
@@ -854,8 +855,11 @@ describe("CheckoutView com pagamentoOnlineLigado() ligada", () => {
     });
 
     expect(createOrder).toHaveBeenCalledTimes(1);
-    expect(createOrder).toHaveBeenCalledWith(expect.anything(), {
-      comPagamentoOnline: false,
-    });
+    expect(createOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        addressData: expect.objectContaining({ state: "SP" }),
+      }),
+      { comPagamentoOnline: false },
+    );
   });
 });

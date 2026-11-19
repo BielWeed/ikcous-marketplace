@@ -190,7 +190,11 @@ import {
 } from "@/lib/texto-da-retirada";
 import { PAGAMENTO_RECEBIDO_PEDIDO_CANCELADO } from "@/lib/texto-estorno-do-cliente";
 import { criarTravaDeEnvio } from "@/lib/travaDeEnvio";
-import { normalizarUf, ufBrasileiraValida } from "@/lib/uf-brasileira";
+import {
+  normalizarUf,
+  siglaDaUfColada,
+  ufBrasileiraValida,
+} from "@/lib/uf-brasileira";
 import { arredondarParaCentavos, cn, formatCurrency } from "@/lib/utils";
 import type {
   Address,
@@ -1226,7 +1230,7 @@ export function CheckoutViewDaConta({
         number: z.string().optional(),
         neighborhood: z.string().optional(),
         city: z.string().optional(),
-        state: z.string().optional(),
+        state: z.string().transform(normalizarUf).optional(),
         complement: z.string().max(100).optional(),
         cpf: z.string().optional(),
       })
@@ -1368,7 +1372,9 @@ export function CheckoutViewDaConta({
     ReadonlySet<keyof CheckoutFormValues>
   >(() => new Set());
   const [tentouAvancar, setTentouAvancar] = useState(false);
+  const [editandoUf, setEditandoUf] = useState(false);
   const erroDoCampo = (campo: keyof CheckoutFormValues) => {
+    if (campo === "state" && editandoUf) return undefined;
     const erro = form.getFieldState(campo, form.formState).error;
     return erro && (tentouAvancar || camposSaidos.has(campo))
       ? erro
@@ -1388,6 +1394,7 @@ export function CheckoutViewDaConta({
   // Tentou continuar: todos os erros obrigatórios aparecem, inclusive os dos
   // campos que ainda não foram validados (por isso o `trigger` completo).
   const mostrarTodosOsErros = () => {
+    setEditandoUf(false);
     setTentouAvancar(true);
     void form.trigger();
   };
@@ -1704,6 +1711,7 @@ export function CheckoutViewDaConta({
   const registrarCampoDoEndereco = (campo: CampoDoEnderecoDoCep) =>
     form.register(campo, {
       onChange: () => {
+        if (campo === "state") setEditandoUf(true);
         camposEditadosAMaoRef.current.add(campo);
         const cepVigente = soDigitos(form.getValues("cep") ?? "");
         if (cepVigente.length === 8) cepAssociadoRef.current = cepVigente;
@@ -2720,7 +2728,7 @@ export function CheckoutViewDaConta({
   const numeroAtual = form.watch("number");
   const bairroAtual = form.watch("neighborhood");
   const cidadeAtual = form.watch("city");
-  const estadoAtual = form.watch("state");
+  const estadoAtual = normalizarUf(form.watch("state") ?? "");
   const faltaNome = !nomeAtual?.trim();
   const faltaWhatsapp = !celularBrasileiroCompleto(whatsappAtual);
   // RETIRADA NA LOJA (12/11/2026): com a retirada marcada, o CEP completo é
@@ -4736,6 +4744,7 @@ export function CheckoutViewDaConta({
     if (!isFormValid) {
       travaDeEnvioRef.current.liberar();
       // Tentou continuar: daqui em diante todo erro obrigatório aparece.
+      setEditandoUf(false);
       setTentouAvancar(true);
       // Laudo de acessibilidade 03/09, achado 1: o aviso genérico do toast
       // não diz ONDE está o erro. Levar o foco ao primeiro campo inválido faz
@@ -5041,9 +5050,8 @@ export function CheckoutViewDaConta({
               number: data.number,
               neighborhood: data.neighborhood,
               city: data.city,
-              // A caixa da UF vai normalizada: "sp" digitado sai "SP" (a regra
-              // `ufBrasileiraValida` já aceita os dois, o pedido grava um só).
-              state: data.state?.trim().toUpperCase(),
+              // getValues() lê o texto original; o pedido leva a sigla.
+              state: normalizarUf(data.state ?? ""),
               complement: nomeTemConteudoVisivel(data.complement)
                 ? data.complement?.trim()
                 : undefined,
@@ -7643,10 +7651,25 @@ export function CheckoutViewDaConta({
                           <input
                             id="guest-state"
                             {...registrarCampoDoEndereco("state")}
-                            // Sem maxLength: o navegador precisa entregar a sigla
-                            // com espaços ou o nome completo antes da normalização.
-                            onChange={(e) => {
-                              e.target.value = normalizarUf(e.target.value);
+                            onBlur={(e) => {
+                              form.setValue(
+                                "state",
+                                normalizarUf(e.currentTarget.value),
+                                { shouldDirty: true },
+                              );
+                              setEditandoUf(false);
+                              return registrarCampoDoEndereco("state").onBlur(
+                                e,
+                              );
+                            }}
+                            onPaste={(e) => {
+                              const sigla = siglaDaUfColada(
+                                e.currentTarget,
+                                e.clipboardData.getData("text"),
+                              );
+                              if (!sigla) return;
+                              e.preventDefault();
+                              e.currentTarget.value = sigla;
                               return registrarCampoDoEndereco("state").onChange(
                                 e,
                               );

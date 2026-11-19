@@ -1,9 +1,6 @@
 // @vitest-environment jsdom
 //
-// Colar " SP " no campo UF do cadastro de endereço. Com `maxLength={2}` o
-// navegador guardava " S" (cortava antes de tirar os espaços) e a cliente via
-// "Estado inválido" por ter copiado uma UF válida. O corte em 2 letras agora é
-// do `onChange`, depois de normalizar.
+// Colar uma UF ou nome no cadastro de endereço não deve truncar o texto.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -92,6 +89,7 @@ describe("AddressForm — UF colada com espaço", () => {
     );
     expect(outro).toBeDefined();
     await act(async () => outro!.click());
+    await esperarAte(() => document.activeElement?.id === "name");
     return onSubmit;
   }
 
@@ -106,37 +104,64 @@ describe("AddressForm — UF colada com espaço", () => {
     recipient_name: "Pessoa Teste",
   };
 
-  it.each([" sp ", "SP ", " SP", "s p"])(
-    "colar %j deixa 'SP' no campo e grava 'SP'",
-    async (colado) => {
-      const onSubmit = await abrirFormulario();
-      await act(async () => {
-        for (const [campo, valor] of Object.entries(completos))
-          digitar(campo, valor);
-        digitar("state", colado);
+  it.each([
+    [" sp ", "SP"],
+    ["SP ", "SP"],
+    [" SP", "SP"],
+    ["s p", "SP"],
+    ["Mato Grosso do Sul", "MS"],
+  ])("colar %j mostra e salva %s", async (colado, sigla) => {
+    const onSubmit = await abrirFormulario();
+    await act(async () => {
+      for (const [campo, valor] of Object.entries(completos))
+        digitar(campo, valor);
+      const evento = new Event("paste", { bubbles: true, cancelable: true });
+      Object.defineProperty(evento, "clipboardData", {
+        value: { getData: () => colado },
       });
-      expect(campoUf().value).toBe("SP");
+      expect(campoUf().dispatchEvent(evento)).toBe(false);
+    });
+    expect(campoUf().value).toBe(sigla);
 
-      const formulario = hospedeiro.querySelector("form");
-      await act(async () => {
-        formulario!.dispatchEvent(
+    const formulario = hospedeiro.querySelector("form");
+    await act(async () => {
+      formulario!.dispatchEvent(
+        new Event("submit", { bubbles: true, cancelable: true }),
+      );
+    });
+    await esperarAte(() => onSubmit.mock.calls.length > 0);
+    expect(onSubmit.mock.calls[0]?.[0].state).toBe(sigla);
+    expect(hospedeiro.textContent).not.toContain("Estado inválido");
+  });
+
+  it.each([
+    ["Mato Grosso do Sul", "MS"],
+    ["Paraíba", "PB"],
+    ["Paraná", "PR"],
+  ])("preserva %s durante a digitação e salva %s", async (nome, sigla) => {
+    const onSubmit = await abrirFormulario();
+    await act(async () => {
+      for (const [campo, valor] of Object.entries(completos))
+        digitar(campo, valor);
+    });
+    await act(async () => campoUf().focus());
+    for (const letra of nome) {
+      await act(async () => digitar("state", campoUf().value + letra));
+      expect(document.activeElement).toBe(campoUf());
+      expect(document.getElementById("erro-state")).toBeNull();
+    }
+    expect(campoUf().value).toBe(nome);
+
+    await act(async () => campoUf().blur());
+    expect(campoUf().value).toBe(sigla);
+    await act(async () => {
+      hospedeiro
+        .querySelector("form")!
+        .dispatchEvent(
           new Event("submit", { bubbles: true, cancelable: true }),
         );
-      });
-      await esperarAte(() => onSubmit.mock.calls.length > 0);
-      expect(onSubmit.mock.calls[0]?.[0].state).toBe("SP");
-      expect(hospedeiro.textContent).not.toContain("Estado inválido");
-    },
-  );
-
-  it("normaliza uma sigla ou nome completo sem cortar uma entrada desconhecida", async () => {
-    await abrirFormulario();
-    await act(async () => digitar("state", "mg"));
-    expect(campoUf().value).toBe("MG");
-    await act(async () => digitar("state", "mgx"));
-    expect(campoUf().value).toBe("mgx");
-    await act(async () => digitar("state", "Mato Grosso do Sul"));
-    expect(campoUf().value).toBe("MS");
+    });
+    expect(onSubmit.mock.calls[0]?.[0].state).toBe(sigla);
   });
 
   it("o campo não tem `maxLength`: o navegador cortaria o texto colado ANTES da limpeza (o jsdom não reproduz esse corte, por isso a trava é no atributo)", async () => {

@@ -8,7 +8,11 @@ import {
   type PassosDoEndereco,
   passosDoEndereco,
 } from "@/lib/passos-do-endereco";
-import { normalizarUf, ufBrasileiraValida } from "@/lib/uf-brasileira";
+import {
+  normalizarUf,
+  siglaDaUfColada,
+  ufBrasileiraValida,
+} from "@/lib/uf-brasileira";
 import { cn } from "@/lib/utils";
 import type { Address } from "@/types";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -68,6 +72,7 @@ const addressSchema = z.object({
   city: z.string().refine(nomeTemConteudoVisivel, "Cidade é obrigatória"),
   state: z
     .string()
+    .transform(normalizarUf)
     .refine((v) => v.trim().length > 0, "Estado é obrigatório")
     .refine((v) => !v.trim() || ufBrasileiraValida(v), "Estado inválido"),
   reference: z
@@ -543,7 +548,16 @@ export function AddressForm({
     "reference",
     "recipient_name",
   ]);
-  const erros = form.formState.errors;
+  const [editandoUf, setEditandoUf] = useState(false);
+  const erros = editandoUf
+    ? { ...form.formState.errors, state: undefined }
+    : form.formState.errors;
+  const campoUf = form.register("state", {
+    onChange: () => {
+      setEditandoUf(true);
+      marcarPreenchimentoAMao();
+    },
+  });
 
   const cepPronto = cepAtual.replace(/\D/g, "").length === 8;
   const enderecoCompleto = !!(rua && bairro && cidade && uf);
@@ -735,7 +749,10 @@ export function AddressForm({
 
   return (
     <form
-      onSubmit={form.handleSubmit(handleSubmit)}
+      onSubmit={(e) => {
+        setEditandoUf(false);
+        return form.handleSubmit(handleSubmit)(e);
+      }}
       className="flex flex-1 flex-col gap-4"
       noValidate
     >
@@ -1148,13 +1165,28 @@ export function AddressForm({
                   </label>
                   <input
                     id="state"
-                    {...form.register("state")}
-                    onChange={(e) => {
-                      // Sem maxLength: o navegador precisa entregar a sigla
-                      // com espaços ou o nome completo antes da normalização.
-                      e.target.value = normalizarUf(e.target.value);
+                    {...campoUf}
+                    onBlur={(e) => {
+                      form.setValue(
+                        "state",
+                        normalizarUf(e.currentTarget.value),
+                        { shouldDirty: true, shouldValidate: true },
+                      );
+                      setEditandoUf(false);
+                      return campoUf.onBlur(e);
+                    }}
+                    onPaste={(e) => {
+                      const sigla = siglaDaUfColada(
+                        e.currentTarget,
+                        e.clipboardData.getData("text"),
+                      );
+                      if (!sigla) return;
+                      e.preventDefault();
                       marcarPreenchimentoAMao();
-                      return form.register("state").onChange(e);
+                      form.setValue("state", sigla, {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      });
                     }}
                     placeholder="UF"
                     disabled={loading}

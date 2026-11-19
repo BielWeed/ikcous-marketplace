@@ -49,6 +49,16 @@ export function normalizarUf(valor: string): string {
   return SIGLAS_POR_NOME.get(nome) ?? valor;
 }
 
+// Considera a seleção, para não substituir texto que não faz parte da colagem.
+export function siglaDaUfColada(campo: HTMLInputElement, texto: string) {
+  const inicio = campo.selectionStart ?? campo.value.length;
+  const fim = campo.selectionEnd ?? inicio;
+  const uf = normalizarUf(
+    campo.value.slice(0, inicio) + texto + campo.value.slice(fim),
+  );
+  return ufBrasileiraValida(uf) ? uf : undefined;
+}
+
 export function ufBrasileiraValida(uf: string | undefined): boolean {
   return UFS.has(uf?.trim().toUpperCase() ?? "");
 }
