@@ -12,6 +12,7 @@ import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { escolherCategoriaDoProduto } from "./helpers/escolher-categoria-do-produto";
+import { nomesInvisiveis, nomesVisiveis } from "./helpers/nomes-invisiveis";
 
 const addProduct = vi.fn();
 const updateProduct = vi.fn();
@@ -243,14 +244,39 @@ describe("AdminProductFormView — nome e descrição só com espaços", () => {
     expect(textoDaTela()).toContain("4 de 5 essenciais prontos");
   });
 
-  it("nome invisível: desliga Publicar e explica o que falta", async () => {
-    await montar();
-    await preencherOBasico();
-    await digitarCampo("product-name", "​");
-    expect(botaoPorTexto("Publicar")?.disabled).toBe(true);
+  async function montarComNome(nome: string) {
+    await montar("prod-1");
+    await digitarCampo("product-name", nome);
+  }
+
+  it.each(nomesInvisiveis)("recusa nome só com %s", async (_rotulo, nome) => {
+    await montarComNome(nome);
+    expect(botaoPorTexto("Salvar alterações")?.disabled).toBe(true);
     expect(textoDaTela()).toContain("falta preencher: nome");
     expect(textoDaTela()).toContain("4 de 5 essenciais prontos");
+    const formulario = document.getElementById("product-name")?.closest("form");
+    expect(formulario).not.toBeNull();
+    await act(async () => {
+      formulario?.dispatchEvent(
+        new Event("submit", { bubbles: true, cancelable: true }),
+      );
+    });
+    expect(updateProduct).not.toHaveBeenCalled();
   });
+
+  it.each(nomesVisiveis)(
+    "salva nome visível sem alterar: %s",
+    async (_rotulo, nome) => {
+      await montarComNome(nome);
+      expect(botaoPorTexto("Salvar alterações")?.disabled).toBe(false);
+      await act(async () => {
+        botaoPorTexto("Salvar alterações")?.click();
+        await esperar(100);
+      });
+      expect(updateProduct).toHaveBeenCalledTimes(1);
+      expect(updateProduct.mock.calls[0]?.[1].name).toBe(nome);
+    },
+  );
 
   it("nome invisível: nem o envio direto do formulário grava", async () => {
     await montar();

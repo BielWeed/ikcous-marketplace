@@ -3,6 +3,7 @@ import type { StoreIdentityIntent } from "@/lib/adminStoreIdentity";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { nomesInvisiveis, nomesVisiveis } from "./helpers/nomes-invisiveis";
 
 const h = vi.hoisted(() => ({
   read: vi.fn(),
@@ -214,22 +215,25 @@ afterEach(() => {
 });
 
 describe("Sobre a Loja — identidade da loja pela RPC protegida", () => {
-  it("recusa um nome invisível com uma instrução clara", async () => {
+  it.each(nomesInvisiveis)("recusa nome só com %s", async (_rotulo, nome) => {
     await render();
-    await type("store-name", "​");
+    await type("store-name", nome);
     await click("Salvar alterações");
     expect(h.save).not.toHaveBeenCalled();
     expect(input("store-name").getAttribute("aria-invalid")).toBe("true");
     expect(host.textContent).toContain("Escreva o nome da loja");
   });
 
-  it("preserva o nome visível com emoji e espaço de largura zero", async () => {
-    await render();
-    const nome = "Café ​☕";
-    await type("store-name", nome);
-    await click("Salvar alterações");
-    expect(h.save.mock.calls[0]?.[0].desired.store_name).toBe(nome);
-  });
+  it.each(nomesVisiveis)(
+    "salva nome visível sem alterar: %s",
+    async (_rotulo, nome) => {
+      await render();
+      await type("store-name", nome);
+      await click("Salvar alterações");
+      expect(h.save).toHaveBeenCalledTimes(1);
+      expect(h.save.mock.calls[0]?.[0].desired.store_name).toBe(nome);
+    },
+  );
 
   it("salvar identidade não limpa horário que falhou; nova tentativa grava só o horário", async () => {
     await render();
