@@ -2760,6 +2760,17 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     }));
   };
 
+  // O teto do app vale para quantidades novas ou alteradas. Editar outro
+  // campo não precisa reduzir o saldo que já veio do banco.
+  const estoqueAcimaDoTetoJaGravado = (id: string, estoque: number) =>
+    estoque > ESTOQUE_MAXIMO_DA_VARIACAO &&
+    Number.isSafeInteger(estoque) &&
+    !id.startsWith("temp-") &&
+    Object.is(
+      estoque,
+      initialData.variants.find((inicial) => inicial.id === id)?.stockIncrement,
+    );
+
   const handleVariantSubmit = () => {
     if (salvandoVariacaoRef.current) return;
     const erroDosPares = validarAtributos(variantFormData.pares);
@@ -2865,7 +2876,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       textoDoEstoque,
       editingVariant !== null,
     );
-    if (erroDoEstoque) {
+    if (
+      erroDoEstoque &&
+      !(
+        erroDoEstoque === MENSAGEM_ESTOQUE_MAXIMO_DA_VARIACAO &&
+        editingVariant &&
+        estoqueAcimaDoTetoJaGravado(editingVariant.id, Number(textoDoEstoque))
+      )
+    ) {
       toast.error(erroDoEstoque);
       return;
     }
@@ -3060,7 +3078,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       pares: comChaveDeRender(dividirEmAtributos(v.name, v.value)),
       sku: v.sku || "",
       codigoBarras: v.codigoBarras || "",
-      stockIncrement: estoqueDaVariacaoValido(v.stockIncrement)
+      stockIncrement: Number.isFinite(v.stockIncrement)
         ? v.stockIncrement.toString()
         : "",
       priceOverride: v.priceOverride?.toString() || "",
@@ -3297,7 +3315,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     }
     // Variação desligada não conta no total, mas seu estoque também é gravado.
     const variacaoComEstoqueInvalido = formData.variants.find(
-      (v) => !estoqueDaVariacaoValido(v.stockIncrement),
+      (v) =>
+        !estoqueDaVariacaoValido(v.stockIncrement) &&
+        !estoqueAcimaDoTetoJaGravado(v.id, v.stockIncrement),
     );
     if (variacaoComEstoqueInvalido) {
       const rotulo = rotuloDaVariacao(
@@ -6909,7 +6929,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     .map((par) => `${par.name}: ${par.value}`)
                     .join(" · ")}
                   {". Estoque: "}
-                  {estoqueDaVariacaoValido(variacaoEmExclusao.stockIncrement)
+                  {Number.isFinite(variacaoEmExclusao.stockIncrement)
                     ? `${variacaoEmExclusao.stockIncrement} un.`
                     : "a preencher"}{" "}
                 </>
@@ -7081,7 +7101,7 @@ const VariantItem = React.memo(function VariantItem({
             <span className="flex items-center gap-1.5 rounded-md border border-admin-border bg-white/5 px-2 py-1">
               <Package className="size-3 text-zinc-400" />
               <span className="text-zinc-300">
-                {estoqueDaVariacaoValido(variant.stockIncrement)
+                {Number.isFinite(variant.stockIncrement)
                   ? `${variant.stockIncrement} un.`
                   : "Estoque a preencher"}
               </span>

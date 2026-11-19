@@ -6,13 +6,14 @@ import { escolherAtributo } from "./helpers/atributo-da-variacao";
 
 const mocks = vi.hoisted(() => ({
   fetchProduct: vi.fn(),
+  salvarProdutoComGrade: vi.fn(),
   toastErro: vi.fn(),
 }));
 vi.mock("@/hooks/useProducts", () => ({
   useProducts: () => ({
     addProduct: vi.fn(),
     updateProduct: vi.fn(),
-    salvarProdutoComGrade: vi.fn(),
+    salvarProdutoComGrade: mocks.salvarProdutoComGrade,
     upsertVariants: vi.fn(),
     deleteVariants: vi.fn(),
     uploadProductImages: vi.fn().mockResolvedValue([]),
@@ -68,6 +69,7 @@ let hospedeiro: HTMLDivElement;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.salvarProdutoComGrade.mockResolvedValue({ recusadas: [] });
   localStorage.clear();
   sessionStorage.clear();
   vi.stubGlobal("localStorage", {
@@ -86,13 +88,13 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-async function montar(existente: boolean, ativa = true) {
+async function montar(existente: boolean, ativa = true, estoque = 20) {
   mocks.fetchProduct.mockResolvedValue({
     id: "p-1",
     name: "Camiseta",
     description: "Algodão",
     price: 50,
-    stock: 20,
+    stock: existente && ativa ? estoque : 20,
     category: "Geral",
     images: [],
     freeShipping: false,
@@ -105,7 +107,7 @@ async function montar(existente: boolean, ativa = true) {
             productId: "p-1",
             name: "Tamanho",
             value: "GG",
-            stockIncrement: 20,
+            stockIncrement: estoque,
             active: ativa,
           },
         ]
@@ -221,6 +223,90 @@ describe("AdminProductFormView — botões de estoque de uma variação existent
     expect(
       document.querySelector<HTMLInputElement>("#variant-stock")?.value,
     ).toBe(resultado);
+  });
+});
+
+describe("AdminProductFormView — estoque de variação acima do teto já no banco", () => {
+  it("salva o novo nome do produto sem regravar a variação de 10.002 unidades", async () => {
+    await montar(true, true, 10_002);
+    await digitarCampo("product-name", "Camiseta estampada");
+    await clicar("Salvar alterações");
+
+    expect(mocks.salvarProdutoComGrade).toHaveBeenCalledExactlyOnceWith(
+      "p-1",
+      expect.objectContaining({ name: "Camiseta estampada" }),
+      expect.objectContaining({ variantes: [] }),
+    );
+  });
+
+  it("exibe 10.002 e salva a edição do SKU sem alterar o estoque", async () => {
+    await montar(true, true, 10_002);
+    expect(
+      document
+        .querySelector('[data-testid="variante-cadastrada"]')
+        ?.closest("div.group")?.textContent,
+    ).toContain("10002 un.");
+    await editar();
+    expect(
+      document.querySelector<HTMLInputElement>("#variant-stock")?.value,
+    ).toBe("10002");
+    await digitarCampo("variant-sku", "CAM-GG");
+    await clicar("Salvar variação");
+    await clicar("Salvar alterações");
+
+    const variantes = mocks.salvarProdutoComGrade.mock.calls[0]?.[2].variantes;
+    expect(variantes).toEqual([
+      expect.objectContaining({ id: "v-1", sku: "CAM-GG" }),
+    ]);
+    expect(variantes[0]).not.toHaveProperty("stockIncrement");
+  });
+
+  it("recusa alterar o estoque de 10.002 para 10.003", async () => {
+    await montar(true, true, 10_002);
+    await editar();
+    await digitarCampo("variant-stock", "10003");
+    await clicar("Salvar variação");
+
+    expect(mocks.toastErro).toHaveBeenCalledExactlyOnceWith(
+      "O estoque máximo é 10.000",
+    );
+    expect(
+      document.querySelector<HTMLInputElement>("#variant-stock")?.value,
+    ).toBe("10003");
+  });
+
+  it("grava a redução de 10.002 para 9.999", async () => {
+    await montar(true, true, 10_002);
+    await editar();
+    await digitarCampo("variant-stock", "9999");
+    await clicar("Salvar variação");
+    await clicar("Salvar alterações");
+
+    expect(mocks.salvarProdutoComGrade).toHaveBeenCalledExactlyOnceWith(
+      "p-1",
+      expect.objectContaining({ stock: 9_999 }),
+      expect.objectContaining({
+        variantes: [
+          expect.objectContaining({ id: "v-1", stockIncrement: 9_999 }),
+        ],
+      }),
+    );
+  });
+
+  it("recusa incluir uma variação nova com 10.001 unidades", async () => {
+    await montar(false);
+    await clicar("+ Novo");
+    await escolherAtributo(0, "Tamanho", "variant-name", digitarCampo);
+    await digitarCampo("variant-value", "GG");
+    await digitarCampo("variant-stock", "10001");
+    await clicar("Salvar variação");
+
+    expect(mocks.toastErro).toHaveBeenCalledExactlyOnceWith(
+      "O estoque máximo é 10.000",
+    );
+    expect(
+      document.querySelector('[data-testid="variante-cadastrada"]'),
+    ).toBeNull();
   });
 });
 
