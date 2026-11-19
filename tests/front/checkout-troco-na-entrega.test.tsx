@@ -4,6 +4,7 @@ import { CheckoutView } from "@/views/customer/CheckoutView";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { comReleituraDeEnderecos } from "./duble-releitura-de-enderecos";
 
 const createOrder = vi.fn();
 const validateCoupon = vi.fn();
@@ -58,11 +59,11 @@ vi.mock("@/contexts/StoreContext", () => ({
 }));
 
 vi.mock("@/hooks/useAddresses", () => ({
-  useAddresses: () => ({
-    addresses: enderecos,
-    fetchAddresses: vi.fn(),
-    loading: false,
-  }),
+  useAddresses: () =>
+    comReleituraDeEnderecos({
+      addresses: enderecos,
+      loading: false,
+    }),
 }));
 
 vi.mock("@/hooks/useAuth", () => ({

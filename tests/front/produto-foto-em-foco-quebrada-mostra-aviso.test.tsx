@@ -153,6 +153,58 @@ describe("AdminProductFormView — foto indisponível", () => {
     }
   }
 
+  it("tenta carregar só a foto em foco de novo, sem trocar a galeria", async () => {
+    const capa = "https://cdn.example/capa.jpg";
+    const detalhe = "https://cdn.example/detalhe.jpg";
+    const consultas: string[] = [];
+    let redeDaFotoVoltou = false;
+    vi.stubGlobal(
+      "Image",
+      class {
+        naturalWidth = 1000;
+        naturalHeight = 1000;
+        onload: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+
+        set src(url: string) {
+          consultas.push(url);
+          queueMicrotask(() => {
+            if (url === detalhe && !redeDaFotoVoltou) this.onerror?.();
+            else this.onload?.();
+          });
+        }
+      },
+    );
+    fetchProduct.mockResolvedValue({
+      ...produtoDoBanco,
+      images: [capa, detalhe],
+    });
+    await montar("prod-1");
+    const galeria = q('[aria-label="Galeria de fotos do produto"]')!;
+    const miniaturas = [...galeria.querySelectorAll("button")];
+    await act(async () => miniaturas[1].click());
+    const foco = q('[data-testid="foto-em-foco"]')!;
+    expect(foco.querySelector("img")).toBeNull();
+    expect(foco.textContent).toContain("Não foi possível carregar esta foto");
+
+    redeDaFotoVoltou = true;
+    const tentarDeNovo = [...foco.querySelectorAll("button")].find(
+      (botao) => botao.textContent?.trim() === "Tentar de novo",
+    );
+    expect(tentarDeNovo).toBeDefined();
+    await act(async () => tentarDeNovo?.click());
+
+    expect(foco.querySelector("img")?.getAttribute("src")).toBe(detalhe);
+    expect(foco.textContent).not.toContain(
+      "Não foi possível carregar esta foto",
+    );
+    expect(foco.textContent).toContain("1000 × 1000 px");
+    expect(consultas).toEqual([capa, detalhe, detalhe]);
+    expect(q('[aria-label="Galeria de fotos do produto"]')).toBe(galeria);
+    expect([...galeria.querySelectorAll("button")]).toEqual(miniaturas);
+    expect(miniaturas[1].getAttribute("aria-pressed")).toBe("true");
+  });
+
   it("AdminProductFormView mostra aviso de erro e permite remover a foto em foco", async () => {
     fetchProduct.mockResolvedValue({
       ...produtoDoBanco,

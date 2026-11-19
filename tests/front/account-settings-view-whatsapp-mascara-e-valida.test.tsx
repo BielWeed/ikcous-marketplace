@@ -114,6 +114,7 @@ describe("AccountSettingsView — WhatsApp usa máscara e validação de src/uti
 
   beforeEach(() => {
     vi.clearAllMocks();
+    fetchProfile.mockReset().mockResolvedValue(true);
     rpc.mockImplementation((nome: string) => {
       if (nome === "get_my_complete_profile") {
         return Promise.resolve({
@@ -182,6 +183,80 @@ describe("AccountSettingsView — WhatsApp usa máscara e validação de src/uti
       (chamada) => chamada[0] === "update_my_profile_secure",
     );
   }
+
+  it("preserva o +55 tecla por tecla, sem usá-lo como DDD na hora de salvar", async () => {
+    await montarComPerfilCarregado();
+
+    const telefone = document.getElementById("phone") as HTMLInputElement;
+    let digitado = "";
+    for (const tecla of "+5534999998888") {
+      digitado += tecla;
+      await act(async () => digitar("phone", telefone.value + tecla));
+      if (digitado.length <= 3) expect(telefone.value).toBe(digitado);
+    }
+    expect(telefone.value).toBe("(34) 99999-8888");
+    expect((await salvarEPegarWhatsappGravado())?.[1]).toMatchObject({
+      p_whatsapp: "(34) 99999-8888",
+    });
+  });
+
+  it("não reinterpreta como código do país o DDD 55 com dígitos a mais", async () => {
+    await montarComPerfilCarregado();
+    const telefone = document.getElementById("phone") as HTMLInputElement;
+    await act(async () => digitar("phone", "55349999988"));
+    for (const tecla of "88") {
+      await act(async () => digitar("phone", telefone.value + tecla));
+    }
+
+    expect(telefone.value).toContain("(55)");
+    expect(await salvarEPegarWhatsappGravado()).toBeUndefined();
+  });
+
+  it("não corta dígitos de um número colado com DDD (55) explícito", async () => {
+    await montarComPerfilCarregado();
+    const telefone = document.getElementById("phone") as HTMLInputElement;
+    await act(async () => digitar("phone", "(55) 34999-998888"));
+
+    expect(telefone.value).toBe("(55) 34999-998888");
+    expect(await salvarEPegarWhatsappGravado()).toBeUndefined();
+  });
+
+  it("mantém DDD 55 de um celular nacional válido", async () => {
+    await montarComPerfilCarregado();
+    const telefone = document.getElementById("phone") as HTMLInputElement;
+    for (const tecla of "55999998888") {
+      await act(async () => digitar("phone", telefone.value + tecla));
+    }
+    expect(telefone.value).toBe("(55) 99999-8888");
+    expect((await salvarEPegarWhatsappGravado())?.[1]).toMatchObject({
+      p_whatsapp: "(55) 99999-8888",
+    });
+  });
+
+  it("avisa que salvou quando a releitura falha e Atualizar só relê", async () => {
+    await montarComPerfilCarregado();
+    const { toast } = await import("sonner");
+    fetchProfile.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    await act(async () => digitar("full_name", "Nome atualizado"));
+
+    expect(await salvarEPegarWhatsappGravado()).toBeTruthy();
+    const aviso =
+      "Salvamos, mas ainda não conseguimos atualizar o que aparece aqui";
+    expect(hospedeiro.textContent).toContain(aviso);
+    expect(toast.success).not.toHaveBeenCalled();
+    const atualizar = [...hospedeiro.querySelectorAll("button")].find(
+      (botao) => botao.textContent === "Atualizar",
+    );
+    expect(atualizar).toBeDefined();
+
+    await act(async () => atualizar?.click());
+
+    expect(fetchProfile).toHaveBeenCalledTimes(2);
+    expect(
+      rpc.mock.calls.filter(([nome]) => nome === "update_my_profile_secure"),
+    ).toHaveLength(1);
+    expect(hospedeiro.textContent).not.toContain(aviso);
+  });
 
   it("colar '+55 34 99999-8888' limpa o +55 e grava (34) 99999-8888", async () => {
     await montarComPerfilCarregado();

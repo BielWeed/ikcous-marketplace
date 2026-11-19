@@ -1034,7 +1034,7 @@ export const AdminBannersView = memo(function AdminBannersView({
       // Sem atalho "Produtos": a loja não tem `/produtos`; a lista de produtos
       // é a própria Home ("Início").
       { label: "Início", path: LINK_DA_PAGINA_DA_LOJA },
-      { label: "Carrinho", path: "/checkout" },
+      { label: "Carrinho", path: "/cart" },
       { label: "Perfil", path: "/profile" },
     ];
     const categoryChips = categories

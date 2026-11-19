@@ -82,7 +82,7 @@ vi.mock("@/hooks/useEstornosDoPedido", () => ({
 }));
 
 const devolucoesDoPedido: { lista: ResumoDevolucao[] } = { lista: [] };
-vi.mock("@/hooks/useDevolucoesAdmin", () => ({
+vi.mock("@/hooks/useDevolucoesDoPedidoAdmin", () => ({
   useDevolucoesDoPedidoAdmin: () => ({
     devolucoes: devolucoesDoPedido.lista,
     carregando: false,

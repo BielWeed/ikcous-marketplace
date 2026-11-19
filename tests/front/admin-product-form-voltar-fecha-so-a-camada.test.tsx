@@ -520,6 +520,7 @@ describe("AdminProductFormView — Voltar do celular fecha só a camada aberta",
       },
     );
     await act(async () => novaCategoria.click());
+    // O formulário da categoria só é importado depois do clique.
     await act(async () => vi.dynamicImportSettled());
 
     const dialogos = () => document.body.querySelectorAll('[role="dialog"]');

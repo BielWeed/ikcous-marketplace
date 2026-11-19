@@ -188,6 +188,11 @@ describe("Produto — estoque inteiro", () => {
     ["1,5", NAO_INTEIRO, NEGATIVO],
     ["1e2", NAO_INTEIRO, NEGATIVO],
     ["-1", NEGATIVO, NAO_INTEIRO],
+    [
+      "2147483648",
+      "O estoque total não pode passar de 10.000 unidades",
+      NAO_INTEIRO,
+    ],
   ])(
     "recusa estoque %s antes de gravar, inclusive em submit direto",
     async (valor, frase, fraseErrada) => {

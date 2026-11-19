@@ -29,6 +29,15 @@ import {
 } from "@/components/admin/orders/OrderStatusBadge";
 import type { Order } from "@/types";
 
+vi.mock("@/hooks/useDevolucoesDoPedidoAdmin", () => ({
+  useDevolucoesDoPedidoAdmin: () => ({
+    devolucoes: [],
+    carregando: false,
+    erro: false,
+    recarregar: vi.fn(),
+  }),
+}));
+
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;

@@ -32,7 +32,9 @@ const { linhaDaEtiqueta, notaInterna, gravarNota, atualizarPedido } =
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
-    rpc: vi.fn(),
+    rpc: vi.fn((nome: string) =>
+      nome === "devolucoes_do_pedido" ? { data: [], error: null } : undefined,
+    ),
     from: (tabela: string) => ({
       select: () => ({
         eq: () => ({

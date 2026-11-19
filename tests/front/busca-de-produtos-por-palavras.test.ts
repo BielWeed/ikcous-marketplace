@@ -23,6 +23,20 @@ const vestido = produto("Vestido Midi Preto", "Vestidos");
 const short = produto("Short Jeans Cintura Alta", "Shorts");
 const saia = produto("Saia Midi Plissada", "Saias");
 
+it.each(["bolsa preta", "bolsa  preta", "  bolsa  preta  "])(
+  "mantém o nome exato acima do nome parcial mais novo ao buscar %j",
+  (busca) => {
+    const exata = produto("Bolsa Preta");
+    const pontuar = pontuadorDaBusca(busca);
+    // O catálogo desempata pela data; a bolsa grande vem primeiro nesse caso.
+    expect([bolsa, exata].sort((a, b) => pontuar(b) - pontuar(a))).toEqual([
+      exata,
+      bolsa,
+    ]);
+    expect(pontuar(produto("Bolsa  Preta"))).toBe(pontuar(exata));
+  },
+);
+
 describe("produtoCombinaComBusca", () => {
   it.each([
     ["Vestido Festa Longo", "vestido de festa"],

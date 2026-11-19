@@ -859,6 +859,13 @@ export async function instalarSessaoClienteFixtura(
       await rota.fulfill({ status: 204, body: "" });
       return;
     }
+    // O checkout atual grava esse WhatsApp com um UPDATE direto na tabela, só
+    // se o banco ainda estiver vazio (filtro no próprio PATCH); sem `select`,
+    // o PostgREST responde 204 sem corpo.
+    if (chave === "PATCH /rest/v1/profiles") {
+      await rota.fulfill({ status: 204, body: "" });
+      return;
+    }
     if (chave === "POST /rest/v1/rpc/get_my_complete_profile") {
       await responderJson([
         {

@@ -185,9 +185,93 @@ describe("AdminProductFormView — #98 duplo clique cria produto duplicado", () 
       digitarInput("product-stock", "5");
       selecionarCategoria("Geral");
       // Flush do debounce (200ms) do LocalBufferedInput/LocalBufferedTextarea.
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      if (vi.isFakeTimers()) await vi.advanceTimersByTimeAsync(300);
+      else await new Promise((resolve) => setTimeout(resolve, 300));
     });
   }
+
+  async function digitarPrecoTeclaATecla(texto: string) {
+    const campo = document.getElementById(
+      "product-sale-price",
+    ) as HTMLInputElement;
+    const alterar = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )!.set!;
+    await act(async () => campo.focus());
+    for (const [i, tecla] of [...texto].entries()) {
+      await act(async () => {
+        const apagar = tecla === "\b";
+        const anterior = i === 0 ? "" : campo.value;
+        alterar.call(campo, apagar ? anterior.slice(0, -1) : anterior + tecla);
+        campo.dispatchEvent(
+          new InputEvent("input", {
+            bubbles: true,
+            inputType: apagar ? "deleteContentBackward" : "insertText",
+            data: apagar ? null : tecla,
+          }),
+        );
+      });
+    }
+    return campo;
+  }
+
+  it.each([
+    ["12,5", "12,50", 12.5],
+    ["12.5", "12,50", 12.5],
+    ["1.25", "1,25", 1.25],
+    ["12.345", "12.345,00", 12345],
+    ["1250", "12,50", 12.5],
+    ["1.250,00", "1.250,00", 1250],
+    ["1.250", "1.250,00", 1250],
+    ["12,5\b\b", "12,00", 12],
+  ])("digitar %j mostra R$ %s e grava %d", async (texto, exibido, preco) => {
+    await preencherFormularioValido();
+    const campo = await digitarPrecoTeclaATecla(texto);
+    await act(async () => campo.blur());
+    expect(campo.value).toBe(exibido);
+
+    await act(async () => {
+      localizarBotaoPorTexto(acoesDoProduto(), "Publicar")!.click();
+      await esperarMicrotarefas();
+    });
+    expect(addProduct).toHaveBeenCalledWith(
+      expect.objectContaining({ price: preco }),
+    );
+  });
+
+  it.each(["1,250.00", "12, 5", "12,505", "1.2500", "1.2.3"])(
+    "digitar %j mantém o texto inválido e não publica o último preço válido",
+    async (texto) => {
+      await preencherFormularioValido();
+      const campo = await digitarPrecoTeclaATecla(texto);
+      await act(async () => campo.blur());
+
+      expect(campo.value).toBe(texto);
+      expect(document.getElementById("product-price-error")?.textContent).toBe(
+        "Use um preço válido, como 1.250,00.",
+      );
+      const publicar = localizarBotaoPorTexto(acoesDoProduto(), "Publicar")!;
+      expect(publicar.disabled).toBe(true);
+      await act(async () => publicar.click());
+      expect(addProduct).not.toHaveBeenCalled();
+    },
+  );
+
+  it("avisa que preço negativo é inválido e não publica", async () => {
+    await preencherFormularioValido();
+    await act(async () => {
+      digitarInput("product-sale-price", "-1000");
+    });
+
+    expect(document.getElementById("product-price-error")?.textContent).toBe(
+      "Preço de venda deve ser maior que zero.",
+    );
+    const publicar = localizarBotaoPorTexto(acoesDoProduto(), "Publicar")!;
+    expect(publicar.disabled).toBe(true);
+    await act(async () => publicar.click());
+    expect(addProduct).not.toHaveBeenCalled();
+  });
 
   it("clicar duas vezes rápido em Publicar chama addProduct UMA vez só", async () => {
     await preencherFormularioValido();
@@ -222,9 +306,11 @@ describe("AdminProductFormView — #98 duplo clique cria produto duplicado", () 
     expect(addProduct).toHaveBeenCalledTimes(1);
   });
 
-  it("sair antes da resposta de salvar não navega nem limpa a outra tela", async () => {
-    await preencherFormularioValido();
+  it("sair com cadastro em andamento não deixa rascunho nem navega depois", async () => {
     vi.useFakeTimers();
+    await preencherFormularioValido();
+    const chaveDeCadastro = "ikcous_product_form_draft:lojista-1";
+    expect(armazem.has(chaveDeCadastro)).toBe(false);
     let concluirGravacao!: (produto: { id: string }) => void;
     addProduct.mockImplementationOnce(
       () =>
@@ -238,6 +324,7 @@ describe("AdminProductFormView — #98 duplo clique cria produto duplicado", () 
     });
     expect(addProduct).toHaveBeenCalledTimes(1);
     expect(onNavigate).not.toHaveBeenCalled();
+    const rascunhoDuranteCadastro = armazem.get(chaveDeCadastro);
 
     await act(async () => {
       raiz.unmount();
@@ -260,6 +347,8 @@ describe("AdminProductFormView — #98 duplo clique cria produto duplicado", () 
 
     expect(onNavigate).not.toHaveBeenCalled();
     expect(onSetDirty).not.toHaveBeenCalled();
+    expect(armazem.has(chaveDeCadastro)).toBe(false);
+    expect(rascunhoDuranteCadastro).toBeUndefined();
   });
 
   it("desmontar durante a janela de 'Salvo' cancela a navegação pendente", async () => {

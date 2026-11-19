@@ -60,6 +60,7 @@ import {
 } from "@/lib/prazo-da-requisicao";
 import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
+import { gerarUuidV4 } from "@/lib/uuid-v4";
 import type { Product, View } from "@/types";
 import {
   LIMIAR_PADRAO_DE_ESTOQUE,
@@ -302,9 +303,11 @@ export const AdminProductsView = memo(function AdminProductsView({
   const [simStock, setSimStock] = useState<string>("20");
   const [productToDelete, setProductToDelete] = useState<string | null>(null);
   const foco = useFocoAposExcluir();
-  const [productToDuplicate, setProductToDuplicate] = useState<any | null>(
-    null,
-  );
+  const [planoDeCopia, setPlanoDeCopia] = useState<{
+    origem: any;
+    nome: string;
+    sku: string;
+  } | null>(null);
   // Cópia em andamento: o botão vira "Duplicando…" e um segundo toque não cria
   // outra. A ref é a trava de verdade (vale já no segundo toque, antes de a tela
   // redesenhar); o estado só pinta o botão.
@@ -326,7 +329,7 @@ export const AdminProductsView = memo(function AdminProductsView({
   useEffect(() => {
     if (!active) {
       setProductToDelete(null);
-      setProductToDuplicate(null);
+      setPlanoDeCopia(null);
     }
   }, [active]);
 
@@ -1150,7 +1153,7 @@ export const AdminProductsView = memo(function AdminProductsView({
   }, [deleteProduct, productToDelete, isOffline, refreshFinancialStats]);
 
   const handleDuplicate = useCallback(
-    (product: any) => {
+    (product: Product) => {
       if (isOffline) {
         toast.error("Ação não permitida offline", {
           description: "Reconecte-se à internet para duplicar produtos.",
@@ -1171,20 +1174,28 @@ export const AdminProductsView = memo(function AdminProductsView({
         return;
       }
       haptic.medium();
-      setProductToDuplicate(product);
+      // A lista é paginada/filtrada: contar cópias visíveis pode repetir o
+      // nome e o SKU em outra página, após recarregar ou em outra aba.
+      const codigo = gerarUuidV4().toUpperCase();
+      const rotulo = codigo.replaceAll("-", "").slice(0, 12);
+      setPlanoDeCopia({
+        origem: product,
+        nome: `${product.name} (Cópia ${rotulo})`,
+        sku: `${product.sku ? `${product.sku}-` : ""}COPIA-${codigo}`,
+      });
     },
     [isOffline],
   );
 
   const confirmDuplicate = useCallback(async () => {
-    if (!productToDuplicate) return;
-    if (duplicandoRef.current) return;
+    if (!planoDeCopia || duplicandoRef.current) return;
+    const { origem: productToDuplicate, nome, sku } = planoDeCopia;
     if (isOffline) {
       toast.error("Você está offline", {
         description: "Não é possível confirmar a duplicação sem conexão.",
       });
       haptic.error();
-      setProductToDuplicate(null);
+      setPlanoDeCopia(null);
       return;
     }
     duplicandoRef.current = true;
@@ -1238,7 +1249,7 @@ export const AdminProductsView = memo(function AdminProductsView({
         })),
       );
       const duplicateData = {
-        name: `${productToDuplicate.name} (Cópia)`,
+        name: nome,
         description: productToDuplicate.description,
         price: productToDuplicate.price,
         // `?? null`, não `|| 0`: a cópia herda o estado real do custo — sem
@@ -1257,9 +1268,7 @@ export const AdminProductsView = memo(function AdminProductsView({
         metaTitle: productToDuplicate.metaTitle,
         metaDescription: productToDuplicate.metaDescription,
         tags: productToDuplicate.tags || [],
-        sku: productToDuplicate.sku
-          ? `${productToDuplicate.sku}-COPIA`
-          : undefined,
+        sku,
         weightKg: productToDuplicate.weightKg,
         widthCm: productToDuplicate.widthCm,
         heightCm: productToDuplicate.heightCm,
@@ -1323,12 +1332,12 @@ export const AdminProductsView = memo(function AdminProductsView({
     } finally {
       duplicandoRef.current = false;
       setDuplicando(false);
-      setProductToDuplicate(null);
+      setPlanoDeCopia(null);
     }
   }, [
     addProduct,
     copiarImagemParaDuplicacao,
-    productToDuplicate,
+    planoDeCopia,
     isOffline,
     refreshFinancialStats,
     setCurrentPage,
@@ -2466,9 +2475,9 @@ export const AdminProductsView = memo(function AdminProductsView({
 
         {/* Diálogo de Confirmação de Duplicação */}
         <AlertDialog
-          open={productToDuplicate !== null}
+          open={planoDeCopia !== null}
           onOpenChange={(open) =>
-            !open && !duplicandoRef.current && setProductToDuplicate(null)
+            !open && !duplicandoRef.current && setPlanoDeCopia(null)
           }
         >
           <AlertDialogContent className="produtos-confirmacao max-w-md rounded-3xl border border-admin-border bg-admin-raised">
@@ -2481,8 +2490,8 @@ export const AdminProductsView = memo(function AdminProductsView({
                 Confirmar Duplicação
               </AlertDialogTitle>
               <AlertDialogDescription className="text-xs text-zinc-400 [overflow-wrap:anywhere]">
-                Vamos criar “{productToDuplicate?.name} (Cópia)”, desativada.
-                Você revisa e ativa quando quiser.
+                Vamos criar “{planoDeCopia?.nome}”, desativada. Você revisa e
+                ativa quando quiser.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter className="mt-4 gap-2">

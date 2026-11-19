@@ -46,14 +46,15 @@ afterEach(() => {
 describe("nomes sem espaços não alargam o painel", () => {
   it("produto: excluir e duplicar permitem encolher o cabeçalho e quebrar o nome", () => {
     const texto = fonte("src/views/admin/AdminProductsView.tsx");
-    for (const estado of ["productToDelete", "productToDuplicate"]) {
+    for (const [estado, nome] of [
+      ["productToDelete", "?.name"],
+      ["planoDeCopia", "planoDeCopia?.nome"],
+    ]) {
       const inicio = texto.indexOf(`open={${estado} !== null}`);
       expect(inicio).toBeGreaterThan(-1);
       const fim = texto.indexOf("</AlertDialog>", inicio);
       const dialogo = texto.slice(inicio, fim);
-      expect(dialogo).toContain(
-        estado === "productToDelete" ? "?.name" : "productToDuplicate?.name",
-      );
+      expect(dialogo).toContain(nome);
       confirmarQueQuebra(dialogo);
     }
   });

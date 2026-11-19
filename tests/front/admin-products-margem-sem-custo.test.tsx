@@ -579,7 +579,7 @@ describe("AdminProductsView — achado 8: produto sem custo não afirma margem/R
 
     expect(addProduct).toHaveBeenCalledTimes(1);
     const payload = addProduct.mock.calls[0][0];
-    expect(payload.name).toBe("Produto de Teste (Cópia)");
+    expect(payload.name).toMatch(/^Produto de Teste \(Cópia [A-F0-9]{12}\)$/);
     expect(payload.costPrice).toBeNull();
   });
 

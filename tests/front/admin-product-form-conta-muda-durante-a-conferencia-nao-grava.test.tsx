@@ -16,6 +16,9 @@ const updateProduct = vi.fn();
 const fetchProduct = vi.fn();
 const rpcDoSupabase = vi.fn();
 const toastError = vi.fn();
+const toastInfo = vi.fn();
+const onNavigate = vi.fn();
+const onSetDirty = vi.fn();
 
 // A conta que o painel enxerga AGORA (muda no meio do teste). O hook real a
 // expõe por `idDaContaViva` (coberto em use-products-conta-viva-...).
@@ -53,11 +56,12 @@ vi.mock("@/lib/supabase", () => ({ supabase: { rpc: rpcDoSupabase } }));
 
 vi.mock("sonner", () => ({
   toast: {
-    info: vi.fn(),
+    info: toastInfo,
     success: vi.fn(),
     error: toastError,
     warning: vi.fn(),
     loading: vi.fn(),
+    dismiss: vi.fn(),
   },
 }));
 
@@ -104,16 +108,19 @@ const produtoDoBanco = {
 };
 
 function digitar(id: string, valor: string) {
-  const el = document.getElementById(id) as HTMLInputElement;
-  if (!el) throw new Error(`Campo "${id}" não está na tela.`);
-  Object.getOwnPropertyDescriptor(
-    globalThis.HTMLInputElement.prototype,
-    "value",
-  )?.set?.call(el, valor);
+  const el = document.getElementById(id);
+  if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement))
+    throw new Error(`Campo "${id}" não está na tela.`);
+  const prototipo =
+    el instanceof HTMLTextAreaElement
+      ? HTMLTextAreaElement.prototype
+      : HTMLInputElement.prototype;
+  Object.getOwnPropertyDescriptor(prototipo, "value")?.set?.call(el, valor);
   el.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-const esperar = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const esperar = (ms: number) => vi.advanceTimersByTimeAsync(ms);
+const CHAVE_DO_RASCUNHO = "ikcous_product_form_draft_edit_p-1:conta-a";
 
 describe("AdminProductFormView — a conta muda enquanto o código de barras é conferido", () => {
   let raiz: Root;
@@ -129,15 +136,17 @@ describe("AdminProductFormView — a conta muda enquanto o código de barras é 
         <AdminProductFormView
           userId="conta-a"
           productId="p-1"
-          onNavigate={vi.fn()}
-          onSetDirty={vi.fn()}
+          onNavigate={onNavigate}
+          onSetDirty={onSetDirty}
         />,
       );
     });
   }
 
   beforeEach(async () => {
+    vi.useFakeTimers();
     vi.clearAllMocks();
+    localStorage.clear();
     sessao.user = { id: "conta-a" };
     rpcDoSupabase.mockReset();
     salvarProdutoComGrade.mockResolvedValue({
@@ -146,11 +155,6 @@ describe("AdminProductFormView — a conta muda enquanto o código de barras é 
     });
     updateProduct.mockResolvedValue(undefined);
     fetchProduct.mockResolvedValue(produtoDoBanco);
-    vi.stubGlobal("localStorage", {
-      getItem: () => null,
-      setItem: () => undefined,
-      removeItem: () => undefined,
-    });
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -198,14 +202,17 @@ describe("AdminProductFormView — a conta muda enquanto o código de barras é 
       raiz.unmount();
     });
     hospedeiro.remove();
-    vi.unstubAllGlobals();
+    localStorage.clear();
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
-  /** Muda o nome (só para o Salvar valer) e toca em Salvar: a conferência fica em voo. */
-  async function salvarComAConferenciaEmVoo() {
+  async function salvarComAConferenciaEmVoo(
+    campo = "product-name",
+    valor = "Camiseta nova",
+  ) {
     await act(async () => {
-      digitar("product-name", "Camiseta nova");
+      digitar(campo, valor);
       await esperar(300);
     });
     const barra = document.querySelector<HTMLElement>(
@@ -258,6 +265,77 @@ describe("AdminProductFormView — a conta muda enquanto o código de barras é 
     expect(toastError).toHaveBeenCalledTimes(1);
   });
 
+  it("ao voltar depois do logout durante a conferência, Restaurar traz a descrição recém-digitada", async () => {
+    // A mudança do código já virou rascunho; a descrição ainda não.
+    await act(async () => {
+      await esperar(1100);
+    });
+    const rascunhoAnterior = localStorage.getItem(CHAVE_DO_RASCUNHO);
+    expect(JSON.parse(rascunhoAnterior ?? "{}").description).toBe("Algodão");
+
+    const descricaoNova = "Algodão com gola reforçada";
+    await salvarComAConferenciaEmVoo("product-description", descricaoNova);
+
+    sessao.user = null;
+    act(() => raiz.unmount());
+    await terminarAConferencia();
+    expect(salvarProdutoComGrade).not.toHaveBeenCalled();
+    expect(updateProduct).not.toHaveBeenCalled();
+    expect(addProduct).not.toHaveBeenCalled();
+
+    sessao.user = { id: "conta-a" };
+    raiz = createRoot(hospedeiro);
+    await renderizar();
+    const oferta = toastInfo.mock.calls.find(
+      ([titulo]) =>
+        titulo === "Rascunho não salvo encontrado para este produto",
+    );
+    expect(oferta).toBeDefined();
+    act(() => oferta?.[1].action.onClick());
+    const descricao = document.querySelector<HTMLTextAreaElement>(
+      "#product-description",
+    );
+    expect(descricao?.value).toBe(descricaoNova);
+  });
+
+  it("sair com uma edição gravando não cria rascunho de novo produto", async () => {
+    let concluirGravacao!: () => void;
+    salvarProdutoComGrade.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          concluirGravacao = () =>
+            resolve({
+              produto: { ...produtoDoBanco, name: "Camiseta nova" },
+              recusadas: [],
+            });
+        }),
+    );
+    await salvarComAConferenciaEmVoo();
+    const rascunho = localStorage.getItem(CHAVE_DO_RASCUNHO);
+    expect(JSON.parse(rascunho ?? "{}").name).toBe("Camiseta nova");
+
+    await terminarAConferencia();
+    expect(salvarProdutoComGrade).toHaveBeenCalledTimes(1);
+    act(() => raiz.unmount());
+    await act(async () => concluirGravacao());
+
+    expect(
+      localStorage.getItem("ikcous_product_form_draft:conta-a"),
+    ).toBeNull();
+  });
+
+  it("quando o banco recusa o salvamento, a edição ainda está no rascunho", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    salvarProdutoComGrade.mockRejectedValueOnce(new Error("Falha ao gravar"));
+    await salvarComAConferenciaEmVoo();
+    await terminarAConferencia();
+
+    expect(salvarProdutoComGrade).toHaveBeenCalledTimes(1);
+    expect(
+      JSON.parse(localStorage.getItem(CHAVE_DO_RASCUNHO) ?? "{}").name,
+    ).toBe("Camiseta nova");
+  });
+
   it("depois do aviso o botão Salvar volta a funcionar (a trava não fica presa)", async () => {
     await salvarComAConferenciaEmVoo();
     sessao.user = { id: "conta-b" };
@@ -283,8 +361,9 @@ describe("AdminProductFormView — a conta muda enquanto o código de barras é 
     expect(salvarProdutoComGrade).toHaveBeenCalledTimes(1);
   });
 
-  it("controle: a mesma conta do começo ao fim grava normalmente e não avisa nada", async () => {
+  it("a mesma conta salva, apaga o rascunho e não o recria", async () => {
     await salvarComAConferenciaEmVoo();
+    expect(localStorage.getItem(CHAVE_DO_RASCUNHO)).not.toBeNull();
 
     // O painel reage a algo (nova renderização) mas a conta é a mesma.
     await renderizar();
@@ -292,5 +371,10 @@ describe("AdminProductFormView — a conta muda enquanto o código de barras é 
 
     expect(salvarProdutoComGrade).toHaveBeenCalledTimes(1);
     expect(toastError).not.toHaveBeenCalled();
+    expect(localStorage.getItem(CHAVE_DO_RASCUNHO)).toBeNull();
+    await act(async () => {
+      await esperar(1100);
+    });
+    expect(localStorage.getItem(CHAVE_DO_RASCUNHO)).toBeNull();
   });
 });

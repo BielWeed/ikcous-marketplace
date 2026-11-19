@@ -43,6 +43,8 @@ import React, {
 interface SearchViewProps {
   onNavigate: (view: View, productId?: string) => void;
   initialQuery?: string;
+  /** Incrementa a cada clique em "Ver todos os resultados" no topo. */
+  pedidoTodasCategorias?: number;
   onBack: () => void;
   selectedProductId?: string;
   /** Avisa quem montou a tela que o termo de busca mudou — sem isso, quem
@@ -140,6 +142,7 @@ const SearchInput = React.memo(function SearchInput({
 export const SearchView = React.memo(function SearchView({
   onNavigate,
   initialQuery = "",
+  pedidoTodasCategorias = 0,
   onBack,
   selectedProductId,
   onQueryChange,
@@ -394,6 +397,15 @@ export const SearchView = React.memo(function SearchView({
     },
     [setQuery, onQueryChange],
   );
+
+  // O botão é um pedido explícito, mesmo quando não muda o termo. Não
+  // repete um pedido antigo quando a tela remonta ao voltar de um produto.
+  const pedidoAnterior = useRef(pedidoTodasCategorias);
+  useEffect(() => {
+    if (pedidoAnterior.current === pedidoTodasCategorias) return;
+    pedidoAnterior.current = pedidoTodasCategorias;
+    setCategory("Todas");
+  }, [pedidoTodasCategorias, setCategory]);
 
   // Initialize query from props if needed. Termo que já é o desta caixa (o eco
   // do que foi digitada aqui, ou o mesmo termo de novo) não mexe nos filtros:

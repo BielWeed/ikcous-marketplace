@@ -483,6 +483,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
             })}
           </span>
           <DesfazerRecebimento
+            key={order.id}
             order={order}
             aoDesfazer={() => onRegistrarPagamento(order.id, false)}
             disabled={bloqueado}

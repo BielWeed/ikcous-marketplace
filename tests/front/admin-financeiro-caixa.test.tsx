@@ -522,6 +522,24 @@ describe("Financeiro — abrir e fechar o caixa", () => {
     expect(aviso).not.toMatch(/sangria|registrou a saída/i);
   });
 
+  it("quando falta dinheiro, orienta lançar a saída antes de abrir sem oferecer atalho", async () => {
+    await clicar(botaoEm(hospedeiro, "Abrir caixa"));
+    await digitar("fin-caixa-abertura", "10000");
+    const abertura = folha() as HTMLElement;
+    const aviso = normalizar(
+      abertura.querySelector('[role="status"]')?.textContent,
+    );
+
+    expect(aviso).toMatch(
+      /Se saiu dinheiro da gaveta antes de abrir[^.]*registre a saída em Novo lançamento/i,
+    );
+    expect(
+      [...abertura.querySelectorAll("button")].some(
+        (b) => b.textContent?.trim() === "Registrar essa saída",
+      ),
+    ).toBe(false);
+  });
+
   it("sangria acima do esperado avisa e não promete que o registro passa nem que falha", async () => {
     await abrirSessao();
     await clicar(botaoEm(hospedeiro, "Sangria"));

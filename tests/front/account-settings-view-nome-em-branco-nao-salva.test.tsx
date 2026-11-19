@@ -13,7 +13,7 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { pedidoCpfComCabecalho } from "./helpers/pedido-cpf-com-cabecalho";
 
-const fetchProfile = vi.fn();
+const fetchProfile = vi.fn().mockResolvedValue(true);
 const updateProfile = vi.fn();
 const updatePassword = vi.fn();
 const rpc = vi.fn();

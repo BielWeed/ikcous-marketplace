@@ -296,14 +296,28 @@ describe("AdminProductsView — achado 546: duplicar duas vezes preserva a grade
     }
   });
 
-  it("duplicar: o código da cópia ganha o sufixo em português '-COPIA', nunca '-COPY'", async () => {
+  it("duplicar: o código mantém a marca em português '-COPIA-' e ganha um identificador", async () => {
     await montar();
     await duplicar();
 
     expect(addProduct).toHaveBeenCalledTimes(1);
     const { sku } = addProduct.mock.calls[0][0];
-    expect(sku).toBe("CAM-01-COPIA");
+    expect(sku).toMatch(/^CAM-01-COPIA-[A-F0-9-]{36}$/);
     expect(sku).not.toMatch(/COPY/);
+  });
+
+  it("duplicar duas vezes gera nomes e códigos diferentes mesmo sem a primeira cópia na lista", async () => {
+    await montar();
+    await duplicar();
+    await duplicar();
+
+    expect(addProduct).toHaveBeenCalledTimes(2);
+    const [primeira, segunda] = addProduct.mock.calls.map(
+      ([payload]) => payload,
+    );
+    expect(segunda.name).not.toBe(primeira.name);
+    expect(segunda.sku).toBeTruthy();
+    expect(segunda.sku).not.toBe(primeira.sku);
   });
 
   it("duplicar produto sem foto (a exibição o chama de 'Sem Imagem') não grava o marcador na cópia", async () => {

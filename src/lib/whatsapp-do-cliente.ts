@@ -1,5 +1,4 @@
 import {
-  celularBrasileiroCompleto,
   dddBrasileiroValido,
   limparTelefoneBrasileiro,
 } from "@/lib/telefone-br";
@@ -28,17 +27,24 @@ export function linkWhatsappDoCliente(
   return `https://wa.me/${digitos}`;
 }
 
-/** No caixa, um celular incompleto não pode virar destino de um recibo. */
+/**
+ * No caixa, só um telefone brasileiro completo pode receber o recibo.
+ * O campo avulso já entrega dígitos nacionais: nunca releia o DDD 55 como DDI.
+ */
 export function linkWhatsappDoClienteDoBalcao(
   telefone: string | null | undefined,
+  { jaNacional = false }: { jaNacional?: boolean } = {},
 ): string | null {
-  const digitos = limparTelefoneBrasileiro(telefone);
-  if (digitos.length === 10) {
-    // Fixo brasileiro tem DDD e começa com 2 a 5, nunca com o 9 do celular.
-    if (!dddBrasileiroValido(digitos) || !/^[2-5]$/.test(digitos.charAt(2)))
-      return null;
-  } else if (digitos.length === 11 && !celularBrasileiroCompleto(telefone)) {
+  const texto = telefone?.trimStart();
+  if (texto?.startsWith("+") && !texto.startsWith("+55")) return null;
+
+  const nacional = jaNacional
+    ? (telefone ?? "")
+    : limparTelefoneBrasileiro(texto);
+  if (!/^\d{10,11}$/.test(nacional) || !dddBrasileiroValido(nacional))
     return null;
-  }
-  return linkWhatsappDoCliente(telefone);
+  const completo =
+    (nacional.length === 10 && /^[2-5]$/.test(nacional.charAt(2))) ||
+    (nacional.length === 11 && nacional[2] === "9");
+  return completo ? `https://wa.me/55${nacional}` : null;
 }

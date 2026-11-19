@@ -69,7 +69,20 @@ vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
 vi.mock("@/components/admin/orders/EtiquetaDoPedidoCard", () => ({
-  EtiquetaDoPedidoCard: () => null,
+  EtiquetaDoPedidoCard: ({
+    orderId,
+    onTrackingAtualizado,
+  }: {
+    orderId: string;
+    onTrackingAtualizado: (id: string, codigo: string) => void;
+  }) => (
+    <button
+      type="button"
+      onClick={() => onTrackingAtualizado(orderId, banco.codigo)}
+    >
+      Atualizar rastreio
+    </button>
+  ),
 }));
 vi.mock("@/components/admin/orders/EstornoCard", () => ({
   EstornoCard: () => null,
@@ -188,6 +201,21 @@ describe("ficha do pedido — salvar depois da atualização ao vivo", () => {
     expect(toast.success).not.toHaveBeenCalled();
     expect(toast.error).toHaveBeenCalledWith(AVISO_DE_CONFLITO);
     expect(campo().value).toBe("RASCUNHO");
+  });
+
+  it("a resposta do cartão de etiqueta não apaga o texto em edição nem troca a referência do Salvar", async () => {
+    banco.codigo = "ANTIGO";
+    await mostrar(pedido("A", "ANTIGO"));
+    await clicar("Editar Código");
+    digitar("RASCUNHO");
+    banco.codigo = "CODIGO-CORRETO";
+    await clicar("Atualizar rastreio");
+
+    expect(campo().value).toBe("RASCUNHO");
+    await clicar("Salvar");
+    expect(banco.codigo).toBe("CODIGO-CORRETO");
+    expect(banco.escritas).toEqual([]);
+    expect(toast.error).toHaveBeenCalledWith(AVISO_DE_CONFLITO);
   });
 
   it("depois do aviso, o segundo Salvar (consciente) grava condicionado ao código de B", async () => {

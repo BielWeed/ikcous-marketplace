@@ -164,9 +164,18 @@ describe("AuthView — reenvio na confirmação tem trava (issue #208)", () => {
     expect(botao.textContent).toBe("Reenviar em 30s");
     await act(async () => vi.advanceTimersByTime(5_000));
     await act(async () => localizarBotaoPorTexto("Retornar ao Login").click());
+    expect(document.querySelector<HTMLInputElement>("#email")?.value).toBe(
+      "pessoa@example.com",
+    );
+    expect(document.querySelector<HTMLInputElement>("#password")?.value).toBe(
+      "",
+    );
 
     async function entrarComo(email: string) {
-      await act(async () => digitar("email", email));
+      await act(async () => {
+        digitar("email", email);
+        digitar("password", "senha12345");
+      });
       await act(async () => localizarBotaoPorTexto("ENTRAR AGORA").click());
     }
 

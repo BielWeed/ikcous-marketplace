@@ -37,7 +37,7 @@ vi.mock("@/lib/supabase", () => {
   builder.eq = vi.fn(() => builder);
   builder.in = vi.fn(() =>
     Promise.resolve({
-      data: [{ id: "produto-com-codigo", codigo: "CAM-01" }],
+      data: [{ id: "bbbbbbbb-2222-4222-8222-222222222222", codigo: "CAM-01" }],
       error: null,
     }),
   );
@@ -405,7 +405,7 @@ describe("pedidos e dinheiro — o que a lojista lê", () => {
       },
       items: [
         {
-          productId: "produto-com-codigo",
+          productId: "bbbbbbbb-2222-4222-8222-222222222222",
           name: "Camiseta",
           price: 20,
           quantity: 1,

@@ -266,7 +266,7 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
                 // Forma REAL de `get_admin_customers_paged` (migration
                 // 20261392000000: `COALESCE(p.whatsapp, u.phone) as phone`) —
                 // a chave NUNCA é `whatsapp`.
-                phone: "(34) 99999-1234",
+                phone: "034 99999-1234",
                 email: "maria@example.com",
               },
             ],
@@ -1150,7 +1150,11 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
     });
   }
 
-  async function digitarNoCampo(id: string, valor: string): Promise<void> {
+  async function digitarNoCampo(
+    id: string,
+    valor: string,
+    inputType?: string,
+  ): Promise<void> {
     await act(async () => {
       const campo = document.getElementById(id) as HTMLInputElement;
       const setter = Object.getOwnPropertyDescriptor(
@@ -1158,7 +1162,9 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
         "value",
       )!.set!;
       setter.call(campo, valor);
-      campo.dispatchEvent(new Event("input", { bubbles: true }));
+      campo.dispatchEvent(
+        new InputEvent("input", { bubbles: true, inputType }),
+      );
     });
     await avancar(300);
   }
@@ -1205,7 +1211,7 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
     // A linha da lista mostra o TELEFONE (e não o e-mail) quando existe.
     expect(
       localizarBotaoPorTexto(hospedeiro, "Maria Cliente")!.textContent,
-    ).toContain("(34) 99999-1234");
+    ).toContain("034 99999-1234");
     await act(async () => {
       localizarBotaoPorTexto(hospedeiro, "Maria Cliente")!.click();
     });
@@ -1215,13 +1221,23 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
     const params = chamadasDeRegistro()[0][1];
     expect(params.p_cliente_user_id).toBe("cliente-1");
     expect(params.p_cliente_nome).toBeNull();
-    expect(params.p_cliente_whatsapp).toBe("(34) 99999-1234");
+    expect(params.p_cliente_whatsapp).toBe("034 99999-1234");
 
     expect(hospedeiro.textContent).toContain("Compra na loja");
     expect(hospedeiro.textContent).not.toContain("cliente sem WhatsApp");
-    expect(
-      localizarBotaoPorTexto(hospedeiro, "Enviar por WhatsApp")!.disabled,
-    ).toBe(false);
+    const botao = localizarBotaoPorTexto(hospedeiro, "Enviar por WhatsApp")!;
+    expect(botao.disabled).toBe(false);
+    const abrir = vi.spyOn(window, "open").mockReturnValue(null);
+    try {
+      act(() => botao.click());
+      expect(abrir).toHaveBeenCalledWith(
+        expect.stringMatching(/^https:\/\/wa\.me\/5534999991234\?text=/),
+        "_blank",
+        "noopener,noreferrer",
+      );
+    } finally {
+      abrir.mockRestore();
+    }
   });
 
   it("caso 11b — cliente AVULSO segue mandando nome e WhatsApp digitados (sem user_id)", async () => {
@@ -1246,6 +1262,167 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
     expect(
       localizarBotaoPorTexto(hospedeiro, "Enviar por WhatsApp")!.disabled,
     ).toBe(false);
+  });
+
+  it("uma tecla a mais no fim do celular de DDD 55 não troca o destino do recibo", async () => {
+    armarRegistroQueEcoaOCliente();
+    await biparEAbrirCliente();
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Cliente avulso")!.click();
+    });
+    await avancar();
+    await digitarNoCampo("nome-do-cliente-avulso", "Cliente Teste");
+    const id = "whatsapp-do-cliente-avulso";
+    await digitarNoCampo(id, "55912345678");
+
+    const campo = document.querySelector<HTMLInputElement>(`#${id}`)!;
+    expect(campo.value).toBe("(55) 91234-5678");
+    await digitarNoCampo(id, `${campo.value}9`, "insertText");
+    expect(campo.value).toBe("(55) 91234-5678");
+
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Confirmar cliente avulso")!.click();
+    });
+    await avancar();
+    await pagarEmDinheiroERegistrar();
+
+    expect(chamadasDeRegistro()[0][1].p_cliente_whatsapp).toBe("55912345678");
+    const abrir = vi.spyOn(window, "open").mockReturnValue(null);
+    try {
+      act(() =>
+        localizarBotaoPorTexto(hospedeiro, "Enviar por WhatsApp")!.click(),
+      );
+      expect(abrir).toHaveBeenCalledWith(
+        expect.stringMatching(/^https:\/\/wa\.me\/5555912345678\?text=/),
+        "_blank",
+        "noopener,noreferrer",
+      );
+    } finally {
+      abrir.mockRestore();
+    }
+  });
+
+  it("um dígito inserido no meio de celular avulso com DDD 55 não vira DDI", async () => {
+    armarRegistroQueEcoaOCliente();
+    await biparEAbrirCliente();
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Cliente avulso")!.click();
+    });
+    await avancar();
+    await digitarNoCampo("nome-do-cliente-avulso", "Cliente Teste");
+    const id = "whatsapp-do-cliente-avulso";
+    await digitarNoCampo(id, "55912345678");
+
+    const campo = document.querySelector<HTMLInputElement>(`#${id}`)!;
+    expect(campo.value).toBe("(55) 91234-5678");
+    const cursor = "(55) 91".length;
+    campo.setSelectionRange(cursor, cursor);
+    await digitarNoCampo(
+      id,
+      `${campo.value.slice(0, cursor)}3${campo.value.slice(cursor)}`,
+      "insertText",
+    );
+    expect(campo.value.replace(/\D/g, "")).toBe("559132345678");
+    expect(campo.getAttribute("aria-invalid")).toBe("true");
+    expect(hospedeiro.textContent).toContain("Número inválido");
+
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Confirmar cliente avulso")!.click();
+    });
+    await avancar();
+    await pagarEmDinheiroERegistrar();
+
+    expect(chamadasDeRegistro()).toHaveLength(1);
+    expect(chamadasDeRegistro()[0][1].p_cliente_whatsapp).toBeNull();
+    expect(
+      localizarBotaoPorTexto(hospedeiro, "Enviar por WhatsApp")!.disabled,
+    ).toBe(true);
+  });
+
+  it.each([
+    "119876543219",
+    "1198765432199",
+    "+55 (55) 11 2345-6789",
+    "987654321",
+    "",
+  ])(
+    "registra a venda avulsa sem gravar o WhatsApp ausente ou inválido (%j)",
+    async (whatsapp) => {
+      armarRegistroQueEcoaOCliente();
+      await biparEAbrirCliente();
+      await act(async () => {
+        localizarBotaoPorTexto(hospedeiro, "Cliente avulso")!.click();
+      });
+      await avancar();
+      await digitarNoCampo("nome-do-cliente-avulso", "Cliente Teste");
+      const id = "whatsapp-do-cliente-avulso";
+      // Colar 12 dígitos sobre um número igual nos primeiros 11 não é
+      // digitar uma tecla extra: todo o número colado deve ficar visível.
+      if (whatsapp === "119876543219") {
+        await digitarNoCampo(id, "11987654321");
+      }
+      await digitarNoCampo(id, whatsapp, "insertFromPaste");
+
+      const campo = document.querySelector<HTMLInputElement>(
+        "#whatsapp-do-cliente-avulso",
+      )!;
+      expect(campo.value.replace(/\D/g, "")).toBe(whatsapp.replace(/\D/g, ""));
+      if (whatsapp) {
+        expect(campo.getAttribute("aria-invalid")).toBe("true");
+        expect(hospedeiro.textContent).toContain("Número inválido");
+      } else {
+        expect(campo.getAttribute("aria-invalid")).not.toBe("true");
+      }
+
+      await act(async () => {
+        localizarBotaoPorTexto(hospedeiro, "Confirmar cliente avulso")!.click();
+      });
+      await avancar();
+      await pagarEmDinheiroERegistrar();
+
+      expect(chamadasDeRegistro()).toHaveLength(1);
+      expect(chamadasDeRegistro()[0][1]).toMatchObject({
+        p_cliente_nome: "Cliente Teste",
+        p_cliente_whatsapp: null,
+      });
+      expect(
+        localizarBotaoPorTexto(hospedeiro, "Enviar por WhatsApp")!.disabled,
+      ).toBe(true);
+    },
+  );
+
+  it("recibo de venda já gravada não abre WhatsApp para número inválido", async () => {
+    registrarImplRef.atual = async () => ({
+      data: {
+        ja_existia: false,
+        order: {
+          ...pedidoDeExemplo("88888888-8888-8888-8888-888888888888"),
+          customer_name: "Cliente Teste",
+          customer_data: { whatsapp: "1198765432199" },
+        },
+        items: [],
+      },
+      error: null,
+    });
+    await biparEAbrirCliente();
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Sem cliente")!.click();
+    });
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Confirmar sem cliente")!.click();
+    });
+    await avancar();
+    await pagarEmDinheiroERegistrar();
+
+    const abrir = vi.spyOn(window, "open").mockReturnValue(null);
+    try {
+      const botao = localizarBotaoPorTexto(hospedeiro, "Enviar por WhatsApp")!;
+      expect(botao.disabled).toBe(true);
+      act(() => botao.click());
+      expect(abrir).not.toHaveBeenCalled();
+    } finally {
+      abrir.mockRestore();
+    }
   });
 
   it("caso 11c — cadastrado SEM WhatsApp no perfil manda null (o banco não ganha texto vazio) e o recibo explica", async () => {

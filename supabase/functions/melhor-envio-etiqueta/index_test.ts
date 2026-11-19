@@ -663,7 +663,7 @@ function clienteFalso(configuracao: { pedido?: any; linhasReivindicadas?: any[];
             }
             registro.completacoes.push({ valores: no.valores, filtros: [...no.filtros] })
             if (bate) Object.assign(pedidoAtual, no.valores)
-            return Promise.resolve({ data: null, error: null })
+            return Promise.resolve({ data: no.colunas === 'id' ? (bate ? [{ id: pedidoAtual.id }] : []) : null, error: null })
         }
         leiturasPedido++
         if (leiturasPedido > 1 && configuracao.erroReleituraPedido) {
@@ -675,7 +675,8 @@ function clienteFalso(configuracao: { pedido?: any; linhasReivindicadas?: any[];
         from(tabela: string) {
             const no: any = { tabela, acao: null, valores: null, filtros: [] }
             const api: any = {
-                select(_colunas?: string) {
+                select(colunas?: string) {
+                    no.colunas = colunas
                     return api
                 },
                 insert(valores: any) {
@@ -886,6 +887,34 @@ Deno.test('handler - falha na releitura antes de pagar: não compra a etiqueta e
     })
 })
 
+Deno.test('handler - compra já paga grava a etiqueta mesmo se cancelaram o pedido durante a compra', async () => {
+    await comEnvAdmin(async () => {
+        for (const etapa of ['checkout', 'print', null]) {
+            const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+            const me = buscarMeFalso()
+            const buscar = async (input: any, init?: any) => {
+                const resposta = await me.buscar(input, init)
+                if (etapa && String(input).endsWith(`/api/v2/me/shipment/${etapa}`)) {
+                    // O portão pré-checkout já passou; o pagamento não é desfeito.
+                    supa.registro.pedidoAtual.status = 'cancelled'
+                    supa.registro.pedidoAtual.payment_status = 'estornado'
+                }
+                return resposta
+            }
+            const res = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar }))
+            assertEquals(res.status, 200)
+            const corpo = await res.json()
+            assertEquals(corpo.success, true)
+            assertEquals(corpo.label_id, LABEL_ID)
+            assertEquals(supa.registro.pedidoAtual.shipping_label_id, LABEL_ID)
+            assertEquals(supa.registro.pedidoAtual.shipping_label_url, 'https://imprimir.teste/etiqueta')
+            assertEquals(me.registro.checkouts, 1)
+            assertEquals(me.registro.remocoes, 0)
+            assertEquals(corpo.aviso, undefined)
+        }
+    })
+})
+
 Deno.test('handler - emissão preserva rastreio salvo por outra aba durante as chamadas do Melhor Envio', async () => {
     await comEnvAdmin(async () => {
         for (const tracking of [null, 'ME123456789BR']) {
@@ -917,6 +946,85 @@ Deno.test('handler - emissão grava o rastreio do Melhor Envio quando o pedido c
         const res = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
         assertEquals(res.status, 200)
         assertEquals(supa.registro.pedidoAtual.tracking_code, 'ME123456789BR')
+    })
+})
+
+Deno.test('handler - consulta mantém a gravação pelo pedido mesmo se outra aba editou durante a consulta', async () => {
+    await comEnvAdmin(async () => {
+        for (const anterior of ['MANUAL-ANTIGO', null]) {
+            const supa = clienteFalso({ pedido: { ...PEDIDO_FELIZ, shipping_label_id: LABEL_ID, tracking_code: anterior } })
+            const me = buscarMeFalso()
+            const buscar = async (input: any, init?: any) => {
+                if (String(input).endsWith('/api/v2/me/shipment/tracking')) {
+                    // A consulta já leu o pedido; outra aba grava enquanto o provedor responde.
+                    supa.registro.pedidoAtual.tracking_code = 'MANUAL-NOVO'
+                    return new Response(JSON.stringify({ [LABEL_ID]: { tracking: 'ME-NOVO', status: 'cancelled' } }))
+                }
+                return me.buscar(input, init)
+            }
+            const res = await comAdminFalso(() => handler(requisicaoGerar('consultar_rastreio'), { supabase: supa.cliente, buscar }))
+            assertEquals(res.status, 200)
+            assertEquals(supa.registro.pedidoAtual.tracking_code, 'ME-NOVO')
+            const corpo = await res.json()
+            assertEquals(corpo.tracking_code, 'ME-NOVO')
+            assertEquals(corpo.rastreio_atualizado, true)
+            assertEquals(corpo.status_etiqueta, 'cancelled')
+            const evento = supa.registro.eventos.find((e) => e.event_type === 'rastreio_consultado')
+            assertEquals(evento?.payload, { label_id: LABEL_ID, status_etiqueta: 'cancelled' })
+            assertEquals(evento?.tracking_code, 'ME-NOVO')
+        }
+    })
+})
+
+Deno.test('handler - status consultado continua vinculado à etiqueta original quando o id muda em voo', async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({ pedido: { ...PEDIDO_FELIZ, shipping_label_id: LABEL_ID, tracking_code: 'MANUAL-ANTIGO' } })
+        const me = buscarMeFalso()
+        const buscar = async (input: any, init?: any) => {
+            if (String(input).endsWith('/api/v2/me/shipment/tracking')) {
+                supa.registro.pedidoAtual.shipping_label_id = 'label-nova'
+                return new Response(JSON.stringify({ [LABEL_ID]: { tracking: 'ME-ANTIGO', status: 'posted' } }))
+            }
+            return me.buscar(input, init)
+        }
+        const res = await comAdminFalso(() => handler(requisicaoGerar('consultar_rastreio'), { supabase: supa.cliente, buscar }))
+        assertEquals(res.status, 200)
+        assertEquals(supa.registro.pedidoAtual.tracking_code, 'ME-ANTIGO')
+        const corpo = await res.json()
+        assertEquals(corpo.label_id, LABEL_ID)
+        assertEquals(corpo.tracking_code, 'ME-ANTIGO')
+        assertEquals(corpo.rastreio_atualizado, true)
+        assertEquals(corpo.status_etiqueta, 'posted')
+        const evento = supa.registro.eventos.find((e) => e.event_type === 'rastreio_consultado')
+        assertEquals(evento?.payload, { label_id: LABEL_ID, status_etiqueta: 'posted' })
+    })
+})
+
+Deno.test('handler - consulta limpa cada rastreio antes de escolher ou preservar o código salvo', async () => {
+    await comEnvAdmin(async () => {
+        for (const [entrada, esperado, atualizado] of [
+            [{ tracking: '   ' }, 'MANUAL-ANTIGO', false],
+            [{ tracking: ' C ' }, 'C', true],
+            [{ tracking: ' ​ ', melhorenvio_tracking: ' D ' }, 'D', true],
+            [{ tracking: '...', melhorenvio_tracking: ' Q7 ' }, 'Q7', true],
+            [{ tracking: '...', status: 'pending' }, 'MANUAL-ANTIGO', false],
+            [{ tracking: 12345 }, '12345', true],
+        ] as const) {
+            const supa = clienteFalso({ pedido: { ...PEDIDO_FELIZ, shipping_label_id: LABEL_ID, tracking_code: 'MANUAL-ANTIGO' } })
+            const me = buscarMeFalso()
+            const buscar = async (input: any, init?: any) => {
+                if (String(input).endsWith('/api/v2/me/shipment/tracking')) {
+                    return new Response(JSON.stringify({ [LABEL_ID]: entrada }))
+                }
+                return me.buscar(input, init)
+            }
+            const res = await comAdminFalso(() => handler(requisicaoGerar('consultar_rastreio'), { supabase: supa.cliente, buscar }))
+            assertEquals(res.status, 200)
+            assertEquals(supa.registro.pedidoAtual.tracking_code, esperado)
+            const corpo = await res.json()
+            assertEquals(corpo.tracking_code, atualizado ? esperado : null)
+            assertEquals(corpo.rastreio_atualizado, atualizado)
+        }
     })
 })
 

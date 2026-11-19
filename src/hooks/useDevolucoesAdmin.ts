@@ -7,7 +7,6 @@ import {
   formatarDia,
   formatarReais,
   lerDevolucaoDetalhe,
-  lerDevolucoesDoPedido,
   lerListaAdmin,
   lerRespostaEtiquetaReversa,
   lerResultadoConclusao,
@@ -22,7 +21,6 @@ import {
   aguardarComPrazo,
   ehConsultaSemResposta,
   erroDeConsultaSemResposta,
-  programarAvisoDeConsultaDoPainel,
 } from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import { prepararTextoDeBuscaDoPainel } from "@/lib/texto-de-busca-do-painel";
@@ -33,7 +31,6 @@ import type {
   LinhaDevolucaoAdmin,
   ResolucaoDevolucao,
   ResultadoConclusao,
-  ResumoDevolucao,
   StatusDevolucao,
 } from "@/types/devolucao";
 
@@ -303,84 +300,6 @@ export function useDevolucoesAbertas(ativo = true): {
     abertas: contagem ? totalAbertas(contagem) : null,
     solicitadas: contagem?.solicitada ?? 0,
   };
-}
-
-// ---------------------------------------------------------------------------
-// Devoluções de UM pedido (card na ficha do pedido)
-// ---------------------------------------------------------------------------
-
-export function useDevolucoesDoPedidoAdmin(
-  orderId: string,
-  habilitado: boolean,
-): {
-  devolucoes: ResumoDevolucao[];
-  carregando: boolean;
-  erro: boolean;
-  recarregar: () => void;
-} {
-  const [devolucoes, setDevolucoes] = useState<ResumoDevolucao[]>([]);
-  const [carregando, setCarregando] = useState(habilitado);
-  const [erro, setErro] = useState(false);
-  const ativoRef = useRef(true);
-  // "Tentar de novo" pode ser tocado com a consulta anterior ainda em voo: só
-  // a rodada mais recente escreve (sucesso, erro e o fim do "carregando"), e a
-  // limpeza do efeito invalida a que ficou para trás.
-  const rodadaRef = useRef(0);
-  const cancelarConsultaRef = useRef<(() => void) | null>(null);
-
-  const carregar = useCallback(async () => {
-    if (!habilitado) return;
-    const rodada = ++rodadaRef.current;
-    cancelarConsultaRef.current?.();
-    const valeAinda = () => ativoRef.current && rodada === rodadaRef.current;
-    setCarregando(true);
-    const cancelarAviso = programarAvisoDeConsultaDoPainel(() => {
-      if (!valeAinda()) return;
-      setErro(true);
-      setCarregando(false);
-    });
-    const controle = new AbortController();
-    const cancelar = () => {
-      cancelarAviso();
-      controle.abort();
-    };
-    cancelarConsultaRef.current = cancelar;
-    try {
-      const consulta = supabase.rpc("devolucoes_do_pedido", {
-        p_order_id: orderId,
-      });
-      const comSinal = consulta.abortSignal?.(controle.signal);
-      const { data, error } = await (comSinal ?? consulta);
-      if (!valeAinda()) return;
-      const lista = error ? null : lerDevolucoesDoPedido(data);
-      if (!lista) {
-        setErro(true);
-        return;
-      }
-      setDevolucoes(lista);
-      setErro(false);
-    } catch {
-      if (valeAinda()) setErro(true);
-    } finally {
-      cancelarAviso();
-      if (cancelarConsultaRef.current === cancelar) {
-        cancelarConsultaRef.current = null;
-      }
-      if (valeAinda()) setCarregando(false);
-    }
-  }, [orderId, habilitado]);
-
-  useEffect(() => {
-    ativoRef.current = true;
-    if (habilitado) void carregar();
-    return () => {
-      ativoRef.current = false;
-      rodadaRef.current += 1;
-      cancelarConsultaRef.current?.();
-    };
-  }, [habilitado, carregar]);
-
-  return { devolucoes, carregando, erro, recarregar: () => void carregar() };
 }
 
 // ---------------------------------------------------------------------------

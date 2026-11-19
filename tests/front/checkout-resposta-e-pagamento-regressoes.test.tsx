@@ -3,6 +3,7 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { comReleituraDeEnderecos } from "./duble-releitura-de-enderecos";
 
 import type { ConfigDoCartao } from "@/lib/config-do-cartao";
 import type { CartItem } from "@/types";
@@ -42,27 +43,27 @@ vi.mock("@/contexts/StoreContext", () => ({
 }));
 
 vi.mock("@/hooks/useAddresses", () => ({
-  useAddresses: () => ({
-    addresses: [
-      {
-        id: "addr-1",
-        user_id: "user-1",
-        name: "Casa",
-        recipient_name: "Cliente Teste",
-        cep: "38500-000",
-        street: "Rua Teste",
-        number: "100",
-        neighborhood: "Centro",
-        city: "Monte Carmelo",
-        state: "MG",
-        is_default: true,
-      },
-    ],
-    fetchAddresses: vi.fn(),
-    addAddress: vi.fn(),
-    updateAddress: vi.fn(),
-    loading: false,
-  }),
+  useAddresses: () =>
+    comReleituraDeEnderecos({
+      addresses: [
+        {
+          id: "addr-1",
+          user_id: "user-1",
+          name: "Casa",
+          recipient_name: "Cliente Teste",
+          cep: "38500-000",
+          street: "Rua Teste",
+          number: "100",
+          neighborhood: "Centro",
+          city: "Monte Carmelo",
+          state: "MG",
+          is_default: true,
+        },
+      ],
+      addAddress: vi.fn(),
+      updateAddress: vi.fn(),
+      loading: false,
+    }),
 }));
 
 let mockUser: { id: string; email?: string } | null = {

@@ -6,6 +6,7 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { comReleituraDeEnderecos } from "./duble-releitura-de-enderecos";
 
 import {
   chaveDoCacheDeFrete,
@@ -84,13 +85,13 @@ vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({ user: conta, profile: null, loading: false }),
 }));
 vi.mock("@/hooks/useAddresses", () => ({
-  useAddresses: () => ({
-    addresses: ENDERECOS,
-    fetchAddresses: vi.fn(),
-    addAddress: vi.fn(),
-    updateAddress: vi.fn(),
-    loading: false,
-  }),
+  useAddresses: () =>
+    comReleituraDeEnderecos({
+      addresses: ENDERECOS,
+      addAddress: vi.fn(),
+      updateAddress: vi.fn(),
+      loading: false,
+    }),
 }));
 // O estado real de React devolve à calculadora o que o checkout seleciona,
 // inclusive o objeto antigo que o defeito recolocava depois de Finalizar.

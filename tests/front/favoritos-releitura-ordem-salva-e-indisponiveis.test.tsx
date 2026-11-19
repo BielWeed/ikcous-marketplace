@@ -142,6 +142,7 @@ type Ctx = {
   favorites: Product[];
   favoritosIndisponiveis: number;
   limparIndisponiveis: () => Promise<void>;
+  toggleFavorite: (produto: Product) => void;
 };
 let ultimoContexto: unknown = null;
 let Tela: typeof import("@/views/customer/FavoritesView").FavoritesView | null =
@@ -157,6 +158,7 @@ function Sonda({ contexto }: { contexto: Context<any> }) {
       loading={false}
       onToggleFavorite={() => {}}
       onProductClick={() => {}}
+      onAddToCart={() => {}}
       onNavigate={() => {}}
     />
   ) : null;
@@ -555,6 +557,62 @@ describe("FavoritesContext — (C) favoritos indisponíveis", () => {
 // chamada nova ao servidor).
 describe("favoritos indisponíveis do visitante (sem conta)", () => {
   const guardados = ["a", "pausado", "excluido"];
+  const botaoDoCard = () =>
+    hospedeiro.querySelector('[data-testid="product-card-action"]');
+
+  async function favoritarComATelaAberta() {
+    const produto = { ...umProduto("a"), variants: [] };
+    productsDaLoja = [produto];
+    Tela = (await import("@/views/customer/FavoritesView")).FavoritesView;
+    const ctx = await montar();
+    await act(async () => {
+      ctx()?.toggleFavorite(produto);
+    });
+    expect(ctx()?.favorites.map((p) => p.id)).toEqual(["a"]);
+    expect(botaoDoCard()?.textContent).toContain("Carrinho");
+    return ctx;
+  }
+
+  it.each([
+    { nome: "com outro produto", produtos: [umProduto("outro")] },
+    { nome: "vazio", produtos: [] },
+  ])(
+    "catálogo confirmado $nome: favorito retirado fica indisponível e sem botão de carrinho",
+    async ({ produtos }) => {
+      const ctx = await favoritarComATelaAberta();
+
+      productsDaLoja = produtos;
+      await montar();
+
+      expect.soft(ctx()?.favorites).toEqual([]);
+      expect.soft(ctx()?.favoritosIndisponiveis).toBe(1);
+      expect
+        .soft(hospedeiro.textContent)
+        .toContain("Seus favoritos estão indisponíveis agora");
+      // Uma sugestão da loja ainda pode ter seu próprio botão de carrinho.
+      expect(hospedeiro.textContent).not.toContain("Produto a");
+      if (produtos.length === 0) expect(botaoDoCard()).toBeNull();
+    },
+  );
+
+  it.each([
+    { nome: "carregando", carregando: true, erro: false },
+    { nome: "com erro", carregando: false, erro: true },
+  ])(
+    "catálogo $nome: mantém o retrato do favorito sem dizer que está indisponível",
+    async ({ carregando, erro }) => {
+      const ctx = await favoritarComATelaAberta();
+
+      productsDaLoja = [];
+      catalogoCarregando = carregando;
+      catalogoErro = erro;
+      await montar();
+
+      expect(ctx()?.favorites.map((p) => p.id)).toEqual(["a"]);
+      expect(ctx()?.favoritosIndisponiveis).toBe(0);
+      expect(botaoDoCard()?.textContent).toContain("Carrinho");
+    },
+  );
 
   it("pausado ou fora do catálogo: conta, e a tela avisa com o botão de limpar", async () => {
     usuarioDaVez = null;

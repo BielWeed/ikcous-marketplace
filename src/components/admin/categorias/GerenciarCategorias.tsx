@@ -172,7 +172,16 @@ function ConteudoDaGestao() {
             ? (e as Error).message
             : mensagemDaFalhaDeCategoria(e),
       });
-      if (semResposta) void recarregar();
+      if (
+        apagando === id &&
+        e instanceof ErroDeCategoria &&
+        e.code === "55006"
+      ) {
+        setApagando(null);
+        void recarregar();
+      } else if (semResposta) {
+        void recarregar();
+      }
     } finally {
       emVooRef.current = false;
       setOcupado(null);

@@ -113,6 +113,8 @@ describe("CheckoutView (convidado) — CEP colado com mais de 8 dígitos", () =>
   let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
+    // Cada caso começa uma compra independente, sem retomar o CEP do anterior.
+    sessionStorage.clear();
     pendentes = new Map();
     const armazem = new Map<string, string>();
     vi.stubGlobal("localStorage", {
@@ -143,6 +145,7 @@ describe("CheckoutView (convidado) — CEP colado com mais de 8 dígitos", () =>
       raiz.unmount();
     });
     hospedeiro.remove();
+    sessionStorage.clear();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });

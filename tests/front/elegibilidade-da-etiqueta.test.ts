@@ -6,9 +6,10 @@
 // serviço, etc.).
 import {
   type PedidoParaEtiqueta,
-  compraIndeterminadaPeloHistorico,
+  deveAvisarCancelamentoComEtiquetaPaga,
   elegibilidadeDaEtiqueta,
   freteEfetivoDoPedido,
+  situacaoDaCompraPeloHistorico,
 } from "@/lib/elegibilidade-da-etiqueta";
 import { describe, expect, it } from "vitest";
 
@@ -35,7 +36,11 @@ function pedido(over: Partial<PedidoParaEtiqueta> = {}): PedidoParaEtiqueta {
 describe("elegibilidadeDaEtiqueta", () => {
   it("já etiquetado vence QUALQUER outro motivo — inclusive cancelado depois", () => {
     const r = elegibilidadeDaEtiqueta(
-      pedido({ shipping_label_id: "abc123", status: "cancelled" }),
+      pedido({
+        shipping_label_id: "abc123",
+        status: "cancelled",
+        situacao_da_compra: "confirmada",
+      }),
     );
     expect(r).toEqual({ estado: "emitida" });
   });
@@ -61,7 +66,7 @@ describe("elegibilidadeDaEtiqueta", () => {
   it("não pago + superfrete: o motivo é de PAGAMENTO, não de superfrete (pagamento vence serviço)", () => {
     const r = elegibilidadeDaEtiqueta(
       pedido({
-        payment_status: "aguardando",
+        payment_status: "sem_prova",
         shipping_option_id: "superfrete-1",
       }),
     );
@@ -71,7 +76,7 @@ describe("elegibilidadeDaEtiqueta", () => {
     });
   });
 
-  it.each(["aguardando", "recusado", "expirado", "estornado", null])(
+  it.each(["sem_prova", "recusado", "expirado", "estornado", null])(
     "payment_status %s recusa (falha fechado)",
     (paymentStatus) => {
       const r = elegibilidadeDaEtiqueta(
@@ -289,7 +294,11 @@ describe("elegibilidadeDaEtiqueta — CPF do destinatário (ordem: emitida e ind
 
   it("já etiquetado vence CPF ausente — emitida, não precisa_cpf", () => {
     const r = elegibilidadeDaEtiqueta(
-      pedido({ cpf: null, shipping_label_id: "abc123" }),
+      pedido({
+        cpf: null,
+        shipping_label_id: "abc123",
+        situacao_da_compra: "confirmada",
+      }),
     );
     expect(r).toEqual({ estado: "emitida" });
   });
@@ -303,7 +312,7 @@ describe("elegibilidadeDaEtiqueta — CPF do destinatário (ordem: emitida e ind
 
   it("indisponível (pagamento não confirmado) vence CPF ausente", () => {
     const r = elegibilidadeDaEtiqueta(
-      pedido({ cpf: null, payment_status: "aguardando" }),
+      pedido({ cpf: null, payment_status: "sem_prova" }),
     );
     expect(r.estado).toBe("indisponivel");
   });
@@ -334,66 +343,75 @@ describe("freteEfetivoDoPedido", () => {
   });
 });
 
-// Lote 227: compra de etiqueta com resposta indeterminada (tempo esgotado ou
-// erro do Melhor Envio no pagamento). O vínculo FICA (é o que impede comprar
-// duas vezes), mas a tela não pode afirmar "Etiqueta emitida" sem confirmação.
-describe("elegibilidadeDaEtiqueta — compra indeterminada", () => {
+describe("elegibilidadeDaEtiqueta — compra da etiqueta", () => {
+  const vinculo = { shipping_label_id: "lbl-1" } as const;
   const indeterminada = {
-    shipping_label_id: "lbl-1",
-    compra_indeterminada: true,
+    ...vinculo,
+    situacao_da_compra: "indeterminada",
   } as const;
 
-  it("vínculo + compra indeterminada, sem link e sem rastreio: 'conferindo' (nunca 'emitida')", () => {
+  it("vínculo com resposta indeterminada continua conferindo, inclusive se o pedido foi cancelado", () => {
     expect(elegibilidadeDaEtiqueta(pedido(indeterminada))).toEqual({
       estado: "conferindo",
     });
-  });
-
-  it("o vínculo vence os outros motivos também aqui (cancelado depois continua 'conferindo')", () => {
     expect(
       elegibilidadeDaEtiqueta(
         pedido({ ...indeterminada, status: "cancelled" }),
       ),
-    ).toEqual({ estado: "conferindo" });
+    ).toEqual({
+      estado: "conferindo",
+    });
   });
 
-  it("com link de impressão a etiqueta existe de verdade: 'emitida'", () => {
+  it("o link de impressão é evidência de compra, mesmo sem histórico", () => {
     expect(
       elegibilidadeDaEtiqueta(
-        pedido({ ...indeterminada, shipping_label_url: "https://x/y" }),
+        pedido({ ...vinculo, shipping_label_url: "https://x/y" }),
       ),
-    ).toEqual({ estado: "emitida" });
+    ).toEqual({
+      estado: "emitida",
+    });
   });
 
-  it("com código de rastreio a etiqueta existe de verdade: 'emitida'", () => {
+  it("id isolado mantém o rótulo da base; código manual não comprova a compra", () => {
+    expect(elegibilidadeDaEtiqueta(pedido(vinculo))).toEqual({
+      estado: "emitida",
+    });
+    const cancelado = pedido({
+      ...vinculo,
+      status: "cancelled",
+      tracking_code: "AA123456789BR",
+    });
+    expect(deveAvisarCancelamentoComEtiquetaPaga(cancelado)).toBe(false);
     expect(
-      elegibilidadeDaEtiqueta(
-        pedido({ ...indeterminada, tracking_code: "AA123456789BR" }),
-      ),
-    ).toEqual({ estado: "emitida" });
+      deveAvisarCancelamentoComEtiquetaPaga({
+        ...cancelado,
+        shipping_label_url: "https://imprimir.teste/etiqueta",
+      }),
+    ).toBe(true);
   });
 
-  it("sem a marca (pedido antigo, ou compra confirmada): continua 'emitida', como sempre foi", () => {
-    expect(
-      elegibilidadeDaEtiqueta(pedido({ shipping_label_id: "lbl-1" })),
-    ).toEqual({ estado: "emitida" });
+  it("confirmação da compra basta mesmo sem link de impressão e sem rastreio", () => {
     expect(
       elegibilidadeDaEtiqueta(
-        pedido({ shipping_label_id: "lbl-1", compra_indeterminada: false }),
+        pedido({ ...vinculo, situacao_da_compra: "confirmada" }),
       ),
-    ).toEqual({ estado: "emitida" });
+    ).toEqual({
+      estado: "emitida",
+    });
   });
 
-  it("sem vínculo a marca não muda nada (a etiqueta foi liberada: pode comprar de novo)", () => {
+  it("sem vínculo o histórico não muda a elegibilidade", () => {
     expect(
-      elegibilidadeDaEtiqueta(
-        pedido({ shipping_label_id: null, compra_indeterminada: true }),
-      ),
-    ).toEqual({ estado: "disponivel", servico: "Melhor Envio (serviço 3)" });
+      elegibilidadeDaEtiqueta(pedido({ situacao_da_compra: "indeterminada" })),
+    ).toEqual({
+      estado: "disponivel",
+      servico: "Melhor Envio (serviço 3)",
+    });
   });
 });
 
-describe("compraIndeterminadaPeloHistorico", () => {
+describe("situacaoDaCompraPeloHistorico", () => {
   const indet = (
     extra: Record<string, unknown> = {},
     quando = "2026-10-27T10:00:00Z",
@@ -401,85 +419,112 @@ describe("compraIndeterminadaPeloHistorico", () => {
     event_type: "erro",
     created_at: quando,
     error_message: "Falha indeterminada no checkout/geração da etiqueta: x",
-    payload: { etapa: "checkout_indeterminado", ...extra },
+    payload: { etapa: "checkout_indeterminado", label_id: "lbl-1", ...extra },
   });
 
-  it("evento indeterminado sem confirmação: verdadeiro", () => {
+  it("evento indeterminado sem confirmação explícita deixa a compra indeterminada", () => {
     expect(
-      compraIndeterminadaPeloHistorico([indet({ pago_confirmado: false })]),
-    ).toBe(true);
+      situacaoDaCompraPeloHistorico(
+        [indet({ pago_confirmado: false })],
+        "lbl-1",
+      ),
+    ).toBe("indeterminada");
+    expect(situacaoDaCompraPeloHistorico([indet()], "lbl-1")).toBe(
+      "indeterminada",
+    );
   });
 
-  it("evento antigo, sem a marca pago_confirmado: continua indeterminado (na dúvida, não afirma)", () => {
-    expect(compraIndeterminadaPeloHistorico([indet()])).toBe(true);
+  it("compra confirmada com falha na impressão ou gravação continua confirmada", () => {
+    for (const evento of [
+      indet({ pago_confirmado: true }),
+      {
+        ...indet(),
+        error_message:
+          "Compra CONFIRMADA no Melhor Envio, falha na finalização: x",
+      },
+      indet({ etapa: "gravacao" }),
+    ]) {
+      expect(situacaoDaCompraPeloHistorico([evento], "lbl-1")).toBe(
+        "confirmada",
+      );
+    }
   });
 
-  it("compra CONFIRMADA e só o arquivo falhou (marca nova ou texto antigo): falso", () => {
-    expect(
-      compraIndeterminadaPeloHistorico([indet({ pago_confirmado: true })]),
-    ).toBe(false);
-    expect(
-      compraIndeterminadaPeloHistorico([
-        {
-          ...indet(),
-          error_message:
-            "Compra CONFIRMADA no Melhor Envio, falha na finalização: x",
-        },
-      ]),
-    ).toBe(false);
-  });
-
-  it("uma etiqueta gerada DEPOIS apaga a dúvida; uma dúvida DEPOIS da etiqueta volta a valer", () => {
+  it("leva em conta o evento mais recente daquela etiqueta, não a ordem da lista", () => {
     const gerada = (quando: string) => ({
       event_type: "etiqueta_gerada",
       created_at: quando,
-      payload: {},
+      payload: { label_id: "lbl-1" },
     });
     expect(
-      compraIndeterminadaPeloHistorico([
-        indet({}, "2026-10-27T10:00:00Z"),
-        gerada("2026-10-27T11:00:00Z"),
-      ]),
-    ).toBe(false);
+      situacaoDaCompraPeloHistorico(
+        [gerada("2026-10-27T11:00:00Z"), indet()],
+        "lbl-1",
+      ),
+    ).toBe("confirmada");
     expect(
-      compraIndeterminadaPeloHistorico([
-        gerada("2026-10-27T09:00:00Z"),
-        indet({}, "2026-10-27T10:00:00Z"),
-      ]),
-    ).toBe(true);
+      situacaoDaCompraPeloHistorico(
+        [indet(), gerada("2026-10-27T09:00:00Z")],
+        "lbl-1",
+      ),
+    ).toBe("indeterminada");
   });
 
-  it("a ordem do que o banco devolve não importa (vale a data do evento)", () => {
+  it("confirmação de outra etiqueta não prova a compra da que está vinculada agora", () => {
     expect(
-      compraIndeterminadaPeloHistorico([
-        {
-          event_type: "etiqueta_gerada",
-          created_at: "2026-10-27T11:00:00Z",
-          payload: {},
-        },
-        indet({}, "2026-10-27T10:00:00Z"),
-      ]),
-    ).toBe(false);
+      situacaoDaCompraPeloHistorico(
+        [indet({ label_id: "lbl-antiga", pago_confirmado: true })],
+        "lbl-1",
+      ),
+    ).toBe("sem_prova");
   });
 
-  it("outros erros (geração, tracking) não são compra indeterminada", () => {
+  it("rastreio retornado pelo provedor para o id atual confirma a etiqueta; vazio não", () => {
+    const consultado = {
+      event_type: "rastreio_consultado",
+      payload: { label_id: "lbl-1" },
+    };
     expect(
-      compraIndeterminadaPeloHistorico([
-        {
-          event_type: "erro",
-          created_at: "2026-10-27T10:00:00Z",
-          payload: { etapa: "generate" },
-        },
-        {
-          event_type: "erro",
-          created_at: "2026-10-27T10:01:00Z",
-          payload: { etapa: "tracking" },
-        },
-      ]),
-    ).toBe(false);
+      situacaoDaCompraPeloHistorico(
+        [{ ...consultado, tracking_code: "ME123" }],
+        "lbl-1",
+      ),
+    ).toBe("confirmada");
+    expect(
+      situacaoDaCompraPeloHistorico(
+        [{ ...consultado, tracking_code: "  " }],
+        "lbl-1",
+      ),
+    ).toBe("sem_prova");
+    expect(
+      situacaoDaCompraPeloHistorico(
+        [{ ...consultado, tracking_code: "..." }],
+        "lbl-1",
+      ),
+    ).toBe("sem_prova");
   });
 
-  it("lixo, vazio ou ausente: falso, sem quebrar", () => {
+  it("falha em generate para a etiqueta vinculada só acontece depois do pagamento", () => {
+    expect(
+      situacaoDaCompraPeloHistorico([indet({ etapa: "generate" })], "lbl-1"),
+    ).toBe("confirmada");
+  });
+
+  it("histórico da consulta confirma status de etiqueta já paga mesmo sem rastreio", () => {
+    const consultar = (status: string) => ({
+      event_type: "rastreio_consultado",
+      payload: { label_id: "lbl-1", status_etiqueta: status },
+      tracking_code: null,
+    });
+    expect(
+      situacaoDaCompraPeloHistorico([consultar("released")], "lbl-1"),
+    ).toBe("confirmada");
+    expect(situacaoDaCompraPeloHistorico([consultar("pending")], "lbl-1")).toBe(
+      "sem_prova",
+    );
+  });
+
+  it("outros erros, dados ilegíveis ou vazios não confirmam a compra", () => {
     for (const v of [
       null,
       undefined,
@@ -490,8 +535,9 @@ describe("compraIndeterminadaPeloHistorico", () => {
       [null],
       [{}],
       [{ payload: "texto" }],
+      [indet({ etapa: "tracking" })],
     ]) {
-      expect(compraIndeterminadaPeloHistorico(v)).toBe(false);
+      expect(situacaoDaCompraPeloHistorico(v, "lbl-1")).toBe("sem_prova");
     }
   });
 });

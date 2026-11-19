@@ -19,12 +19,13 @@ vi.mock("@/contexts/NotificationContextCore", () => ({
 vi.mock("@/hooks/useProducts", () => ({
   useProducts: () => ({ products: produtos }),
 }));
-vi.mock("@/hooks/useCategories", () => ({
-  useCategories: () => ({
-    categories: [{ id: "capas", name: "Capas", isActive: true }],
-    isLoading: false,
-  }),
-}));
+vi.mock("@/hooks/useCategories", () => {
+  const categories = [{ id: "capas", name: "Capas", isActive: true }];
+  return {
+    categoriasEmMemoria: () => categories,
+    useCategories: () => ({ categories, isLoading: false }),
+  };
+});
 vi.mock("@/hooks/useBanners", () => ({
   useBanners: () => ({ getBannersByPosition: () => [], isLoaded: true }),
 }));
@@ -95,33 +96,37 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it("o chip Capas escolhe a categoria, limpa a busca e exclui Capacidade de outra categoria", async () => {
-  function Vitrine() {
-    const [busca, setBusca] = useState("");
-    const [categoria, setCategoria] = useState("Todas");
-    return (
-      <>
-        <Header
-          onNavigate={() => {}}
-          searchQuery={busca}
-          onSearch={setBusca}
-          onCategorySelect={setCategoria}
-        />
-        <HomeView
-          products={produtos}
-          favorites={[]}
-          onToggleFavorite={() => {}}
-          onProductClick={() => {}}
-          onNavigate={() => {}}
-          searchQuery={busca}
-          selectedCategory={categoria}
-          onCategoryChange={setCategoria}
-          sortBy="default"
-          onSortByChange={() => {}}
-        />
-      </>
-    );
-  }
+function Vitrine() {
+  const [busca, setBusca] = useState("");
+  const [categoria, setCategoria] = useState("Todas");
+  return (
+    <>
+      <Header
+        onNavigate={() => {}}
+        searchQuery={busca}
+        onSearch={(termo, todasAsCategorias) => {
+          if (todasAsCategorias) setCategoria("Todas");
+          setBusca(termo);
+        }}
+        onCategorySelect={setCategoria}
+      />
+      <HomeView
+        products={produtos}
+        favorites={[]}
+        onToggleFavorite={() => {}}
+        onProductClick={() => {}}
+        onNavigate={() => {}}
+        searchQuery={busca}
+        selectedCategory={categoria}
+        onCategoryChange={setCategoria}
+        sortBy="default"
+        onSortByChange={() => {}}
+      />
+    </>
+  );
+}
+
+async function buscarCapa() {
   await act(async () => raiz.render(<Vitrine />));
   const campo = hospedeiro.querySelector<HTMLInputElement>(
     'input[name="search"]',
@@ -140,6 +145,11 @@ it("o chip Capas escolhe a categoria, limpa a busca e exclui Capacidade de outra
   expect(
     hospedeiro.querySelector('[data-produto="carregador"]'),
   ).not.toBeNull();
+  return campo;
+}
+
+it("o chip Capas escolhe a categoria, limpa a busca e exclui Capacidade de outra categoria", async () => {
+  const campo = await buscarCapa();
   const titulo = Array.from(hospedeiro.querySelectorAll("span")).find(
     (s) => s.textContent === "Categorias Encontradas",
   );
@@ -156,4 +166,31 @@ it("o chip Capas escolhe a categoria, limpa a busca e exclui Capacidade de outra
   });
   expect(campo.value).toBe("");
   expect(hospedeiro.querySelector('[data-produto="carregador"]')).toBeNull();
+});
+
+it("Ver todos os resultados remove a categoria da faixa sem apagar o termo", async () => {
+  const campo = await buscarCapa();
+  const categoria = hospedeiro.querySelector<HTMLButtonElement>(
+    '[aria-label="Selecionar categoria Capas"]',
+  )!;
+  await act(async () => {
+    campo.blur();
+    categoria.click();
+  });
+  expect(campo.value).toBe("capa");
+  expect(hospedeiro.querySelector('[data-produto="carregador"]')).toBeNull();
+
+  await act(async () => campo.focus());
+  expect(hospedeiro.textContent).toContain("Produtos (2)");
+  const todos = Array.from(hospedeiro.querySelectorAll("button")).find(
+    (botao) => botao.textContent?.includes("Ver todos os resultados"),
+  );
+  expect(todos).toBeDefined();
+  await act(async () => todos?.click());
+
+  expect(campo.value).toBe("capa");
+  expect(hospedeiro.querySelector('[data-produto="capa"]')).not.toBeNull();
+  expect(
+    hospedeiro.querySelector('[data-produto="carregador"]'),
+  ).not.toBeNull();
 });

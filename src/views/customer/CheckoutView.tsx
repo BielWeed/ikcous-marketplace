@@ -40,7 +40,10 @@ import {
   chaveDoCacheDeFrete,
 } from "@/components/ui/custom/ShippingCalculator";
 import { useStore } from "@/contexts/StoreContext";
-import { useAddresses } from "@/hooks/useAddresses";
+import {
+  type ConfrontoDaEdicaoDoEndereco,
+  useAddresses,
+} from "@/hooks/useAddresses";
 import { useAuth } from "@/hooks/useAuth";
 import { formatarCep, useBuscaCep } from "@/hooks/useBuscaCep";
 import { useCart } from "@/hooks/useCart";
@@ -476,6 +479,22 @@ function lerValorParaTrocoEmCentavos(texto: string): number {
   return Number(inteira) * 100 + Number(decimal.padEnd(2, "0"));
 }
 
+function mesmoEnderecoDeEntrega(a: Address, b: Address | undefined) {
+  return (
+    b !== undefined &&
+    a.id === b.id &&
+    a.cep === b.cep &&
+    a.street === b.street &&
+    a.number === b.number &&
+    (a.complement ?? "") === (b.complement ?? "") &&
+    a.neighborhood === b.neighborhood &&
+    a.city === b.city &&
+    a.state === b.state &&
+    (a.recipient_name ?? "") === (b.recipient_name ?? "") &&
+    (a.reference ?? "").trim() === (b.reference ?? "").trim()
+  );
+}
+
 /** Sessão do Supabase vencida na hora de finalizar (caça 7): o pedido não sai como anônimo. */
 const MENSAGEM_SESSAO_EXPIRADA =
   "Sua sessão expirou. Entre de novo para finalizar o pedido.";
@@ -483,6 +502,11 @@ const MENSAGEM_SESSAO_EXPIRADA =
 /** A sessão não pôde ser conferida por falta de internet: o pedido não sai, mas a conta não caiu. */
 const MENSAGEM_SEM_CONEXAO_AO_FINALIZAR =
   "Sem conexão agora. Seu carrinho está guardado; tente de novo em instantes.";
+
+const RECUSA_ENDERECO_NAO_CONFIRMADO: RecusaDoPedido = {
+  acao: "tentar_de_novo",
+  mensagem: "Não consegui confirmar o endereço. Tente de novo.",
+};
 
 /**
  * A frase de quem compra SEM CONTA quando não se sabe se o pedido chegou. É
@@ -1130,7 +1154,7 @@ export function CheckoutViewDaConta({
     user,
     profile: perfilQueOAuthEntregou,
     loading: authLoading,
-    updateProfile,
+    fetchProfile,
   } = useAuth();
   // O PERFIL SÓ VALE SE FOR DA CONTA QUE ESTÁ LOGADA. O AuthContext entrega
   // `user` e `profile` em estados separados: na troca de conta, na saída com
@@ -2668,6 +2692,8 @@ export function CheckoutViewDaConta({
   const enderecoEfetivo = user
     ? enderecoDeEntregaEfetivo(addresses, selectedAddressId)
     : undefined;
+  const enderecoVivoRef = useRef(enderecoEfetivo);
+  enderecoVivoRef.current = enderecoEfetivo;
   const cepDeEntrega = user
     ? (enderecoEfetivo?.cep ?? null)
     : cepDigitadoNoFormulario || null;
@@ -4605,6 +4631,7 @@ export function CheckoutViewDaConta({
   const handleNewAddressSubmit = async (
     data: DadosDoFormularioDeEndereco,
     alteracoes?: AlteracoesDoEndereco,
+    confronto?: ConfrontoDaEdicaoDoEndereco,
   ): Promise<void> => {
     // A janela em que a cliente tocou em Salvar. O salvamento espera a rede
     // por até 15 s e o Voltar do aparelho fecha a janela nesse meio-tempo (só
@@ -4613,8 +4640,13 @@ export function CheckoutViewDaConta({
     const minhaJanela = janelaDoEnderecoRef.current;
     let result;
     if (editingAddressId) {
+      if (!confronto) return;
       // Só o que a cliente mudou (a tela pode estar velha).
-      const success = await updateAddress(editingAddressId, alteracoes ?? data);
+      const success = await updateAddress(
+        editingAddressId,
+        alteracoes ?? data,
+        confronto,
+      );
       if (success) {
         result = addresses.find((a) => a.id === editingAddressId);
       }
@@ -5060,6 +5092,47 @@ export function CheckoutViewDaConta({
       }
     }
 
+    // Só uma compra NOVA com endereço de entrega salvo passa por aqui. O
+    // pedido já existente é retomado com o endereço gravado nele.
+    if (contaEsperada && !ehRetirada && enderecoEfetivo) {
+      // Só o callback prova que ESTA releitura respondeu e não foi superada.
+      // Uma lista vazia confirmada é diferente de não receber confirmação.
+      let enderecosConfirmados: Address[] | undefined;
+      await fetchAddresses({
+        silencioso: true,
+        aoLer: (atualizados) => {
+          enderecosConfirmados = atualizados;
+        },
+      });
+      if (!montadoRef.current || contaRef.current !== contaEsperada) {
+        setIsSubmitting(false);
+        travaDeEnvioRef.current.liberar();
+        return;
+      }
+      if (!enderecosConfirmados) {
+        toast.error(RECUSA_ENDERECO_NAO_CONFIRMADO.mensagem);
+        setRecusaDoUltimoClique(RECUSA_ENDERECO_NAO_CONFIRMADO);
+        setIsSubmitting(false);
+        travaDeEnvioRef.current.liberar();
+        return;
+      }
+      if (
+        !mesmoEnderecoDeEntrega(
+          enderecoEfetivo,
+          enderecosConfirmados.find((a) => a.id === selectedAddressId),
+        ) ||
+        !mesmoEnderecoDeEntrega(enderecoEfetivo, enderecoVivoRef.current)
+      ) {
+        setIdentificacaoAbertaManual(true);
+        toast.error(
+          "O endereço de entrega foi alterado em outro aparelho. Confira o novo endereço e finalize de novo.",
+        );
+        setIsSubmitting(false);
+        travaDeEnvioRef.current.liberar();
+        return;
+      }
+    }
+
     // A MODALIDADE DO CLIQUE × A ESCOLHA DE AGORA (13/11/2026): `orderData`
     // carrega o frete capturado no clique, e até aqui o envio esperou a revisão
     // do frete e a sessão. Se a cliente trocou entrega x retirada (ou o preço
@@ -5145,6 +5218,20 @@ export function CheckoutViewDaConta({
     });
   };
 
+  const finalizarPedido = () => {
+    haptic.medium();
+    void handleSubmitEvent().catch((error: unknown) => {
+      // Protege também as exceções ANTES do try da RPC
+      // (ex.: Web Crypto ou sessionStorage indisponível).
+      setIsSubmitting(false);
+      travaDeEnvioRef.current.liberar();
+      console.error("Falha inesperada no checkout:", error);
+      const saida = decidirSaidaDoCheckout(error);
+      setRecusaDoUltimoClique(saida);
+      toast.error(`Falha no Pedido: ${saida.mensagem}`);
+    });
+  };
+
   /**
    * Manda o pedido e conduz o que vem depois (sucesso, recusa ou silêncio).
    * Serve ao clique em "Finalizar" E ao reenvio da compra congelada: os dois
@@ -5219,25 +5306,49 @@ export function CheckoutViewDaConta({
       // Pedido confirmado: a próxima compra terá outra chave e outro rascunho.
       limparCompraCriada();
 
-      // Conveniência pós-pedido, nunca condição do pagamento. Perfil ausente
-      // não é perfil vazio; relê a ref para não substituir número que chegou
-      // enquanto a criação esperava. A RPC preserva os demais campos via COALESCE.
+      // Conveniência pós-pedido: só preenche se o banco ainda tiver o mesmo
+      // valor vazio que a tela viu (inclusive espaços), sem apagar outra edição.
       const perfilAtual = perfilAtualRef.current;
+      const whatsappVisto = perfilAtual?.whatsapp;
+      const contaDoPedido = pedido.contaEsperada;
       const whatsappDoPedido = (orderData.customer as Customer).whatsapp;
       if (
         !pedido.semConta &&
-        pedido.contaEsperada &&
-        perfilAtual?.id === pedido.contaEsperada &&
-        !perfilAtual.whatsapp?.trim() &&
+        contaDoPedido &&
+        perfilAtual?.id === contaDoPedido &&
+        (whatsappVisto === null ||
+          (typeof whatsappVisto === "string" && whatsappVisto.trim() === "")) &&
         celularBrasileiroCompleto(whatsappDoPedido)
       ) {
         void Promise.resolve()
-          .then(() =>
-            updateProfile(
-              { whatsapp: whatsappDoPedido },
-              { silencioso: true, contaEsperada: pedido.contaEsperada! },
-            ),
-          )
+          .then(async () => {
+            const {
+              data: { session },
+              error: erroDaSessao,
+            } = await aguardarComPrazo(
+              supabase.auth.getSession(),
+              PRAZO_DA_CONSULTA_DO_CHECKOUT_MS,
+              () => new Error("A conferência da sessão demorou demais."),
+            );
+            if (erroDaSessao) throw erroDaSessao;
+            if (session?.user.id !== contaDoPedido) return;
+            const atualizacao = supabase
+              .from("profiles")
+              .update({ whatsapp: whatsappDoPedido })
+              .eq("id", contaDoPedido);
+            const seNaoMudou =
+              whatsappVisto === null
+                ? atualizacao.is("whatsapp", null)
+                : atualizacao.eq("whatsapp", whatsappVisto);
+            const { error } = await seNaoMudou.setHeader(
+              "Authorization",
+              `Bearer ${session.access_token}`,
+            );
+            if (error) throw error;
+            // Zero linhas é normal: outro aparelho pode ter preenchido.
+            // A releitura também fica fora do caminho crítico da compra.
+            void fetchProfile().catch(() => {});
+          })
           .catch(() =>
             console.error(
               "[Checkout] Não foi possível salvar o WhatsApp no perfil.",
@@ -8512,22 +8623,7 @@ export function CheckoutViewDaConta({
 
                       <button
                         type="button"
-                        onClick={() => {
-                          haptic.medium();
-                          void handleSubmitEvent().catch((error: unknown) => {
-                            // Protege também as exceções ANTES do try da RPC
-                            // (ex.: Web Crypto ou sessionStorage indisponível).
-                            setIsSubmitting(false);
-                            travaDeEnvioRef.current.liberar();
-                            console.error(
-                              "Falha inesperada no checkout:",
-                              error,
-                            );
-                            const saida = decidirSaidaDoCheckout(error);
-                            setRecusaDoUltimoClique(saida);
-                            toast.error(`Falha no Pedido: ${saida.mensagem}`);
-                          });
-                        }}
+                        onClick={finalizarPedido}
                         disabled={botaoFinalizarDesabilitado}
                         aria-label="Finalizar pedido"
                         className={cn(
@@ -8836,10 +8932,25 @@ export function CheckoutViewDaConta({
                       <div className="mx-auto max-w-md">
                         <SaidaDaRecusa
                           recusa={recusaDoUltimoClique}
-                          onAgir={agirNaRecusa}
+                          // Só esta recusa é anterior ao envio: o novo clique
+                          // pode repetir o fluxo inteiro, incluindo a releitura.
+                          onAgir={
+                            recusaDoUltimoClique ===
+                            RECUSA_ENDERECO_NAO_CONFIRMADO
+                              ? () => {
+                                  if (!botaoFinalizarDesabilitado)
+                                    finalizarPedido();
+                                }
+                              : agirNaRecusa
+                          }
                           onFechar={() => {
-                            pedidoCongeladoRef.current = null;
-                            limparPedidoSemResposta();
+                            if (
+                              recusaDoUltimoClique !==
+                              RECUSA_ENDERECO_NAO_CONFIRMADO
+                            ) {
+                              pedidoCongeladoRef.current = null;
+                              limparPedidoSemResposta();
+                            }
                             setRecusaDoUltimoClique(null);
                           }}
                           onFalarComALoja={
@@ -9377,6 +9488,7 @@ interface AddressSelectionViewProps {
   onNewAddressSubmit: (
     data: DadosDoFormularioDeEndereco,
     alteracoes?: AlteracoesDoEndereco,
+    confronto?: ConfrontoDaEdicaoDoEndereco,
   ) => Promise<void>;
   onCancel: () => void;
   /** Nome da conta: já vem em "Quem vai receber" do endereço novo. */
@@ -9390,6 +9502,9 @@ function AddressSelectionView({
   onCancel,
   nomeDaConta,
 }: Readonly<AddressSelectionViewProps>) {
+  const enderecoEmEdicao = editingAddressId
+    ? addresses.find((a) => a.id === editingAddressId)
+    : undefined;
   return (
     <div className="pb-customer min-h-screen bg-background duration-500 animate-in slide-in-from-right">
       <div className="mx-auto max-w-md p-4">
@@ -9417,16 +9532,21 @@ function AddressSelectionView({
         </div>
 
         <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-          <AddressForm
-            initialData={
-              editingAddressId
-                ? addresses.find((a) => a.id === editingAddressId)
-                : undefined
-            }
-            onSubmit={onNewAddressSubmit}
-            onCancel={onCancel}
-            nomeDaConta={nomeDaConta}
-          />
+          {editingAddressId && !enderecoEmEdicao ? (
+            <>
+              <p role="status">Este endereço não existe mais.</p>
+              <Button type="button" variant="outline" onClick={onCancel}>
+                Voltar
+              </Button>
+            </>
+          ) : (
+            <AddressForm
+              initialData={enderecoEmEdicao}
+              onSubmit={onNewAddressSubmit}
+              onCancel={onCancel}
+              nomeDaConta={nomeDaConta}
+            />
+          )}
         </div>
 
         <div className="mt-8 px-6 text-center">

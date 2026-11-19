@@ -9,6 +9,11 @@ import { toast } from "sonner";
 
 const LISTA_VAZIA: Address[] = [];
 
+export interface ConfrontoDaEdicaoDoEndereco {
+  original: Address;
+  aoConflitar: (enderecoAtual: Address) => void;
+}
+
 // PRAZO DAS CHAMADAS DE ENDEREÇO. Rede "pendurada" conecta e não responde: sem
 // prazo o "Salvar" travava o formulário inteiro e o "Editar endereço" abria em
 // "Carregando…" sem Voltar. É um prazo da ESPERA da tela: o servidor pode
@@ -225,7 +230,10 @@ export function useAddresses() {
   // `silencioso`: releitura de fundo (a cliente voltou ao app). Falhar nela não
   // vira aviso nem banner de erro: a lista que a tela já tem continua valendo.
   const fetchAddresses = useCallback(
-    async (opcoes?: { silencioso?: boolean }) => {
+    async (opcoes?: {
+      silencioso?: boolean;
+      aoLer?: (enderecos: Address[]) => void;
+    }) => {
       // Depende do ID, não do objeto `user`: um `user` novo a cada render (o
       // contexto troca de identidade sem trocar de conta) recriaria esta função
       // e faria as telas, cujo efeito relê quando ela muda, lerem sem parar.
@@ -254,6 +262,7 @@ export function useAddresses() {
         if (!atual()) return;
         gravarLista(idDaBusca, mapped, true);
         setContaComErro(null);
+        opcoes?.aoLer?.(mapped);
       } catch (error) {
         if (!atual()) return;
         console.error("Error fetching addresses:", error);
@@ -263,7 +272,7 @@ export function useAddresses() {
         // aviso de erro e o Perfil diria "nenhum endereço" a quem tem.
         if (
           opcoes?.silencioso === true &&
-          leituraConfirmadaDeRef.current === idDaBusca
+          (opcoes.aoLer || leituraConfirmadaDeRef.current === idDaBusca)
         ) {
           return;
         }
@@ -420,7 +429,11 @@ export function useAddresses() {
     }
   };
 
-  const updateAddress = async (id: string, updates: Partial<Address>) => {
+  const updateAddress = async (
+    id: string,
+    updates: Partial<Address>,
+    confronto?: ConfrontoDaEdicaoDoEndereco,
+  ) => {
     if (!user) return false;
     if (updates.state !== undefined && !ufBrasileiraValida(updates.state)) {
       toast.error("Estado inválido");
@@ -434,16 +447,35 @@ export function useAddresses() {
     }
     const idDaConta = user.id;
     try {
+      const consulta = supabase
+        .from("user_addresses")
+        .update(updates)
+        .eq("id", id)
+        .eq("user_id", idDaConta);
+      if (confronto) {
+        const { original } = confronto;
+        const filtros = [
+          ["cep", original.cep],
+          ["street", original.street],
+          ["number", original.number],
+          ["neighborhood", original.neighborhood],
+          ["city", original.city],
+          ["state", original.state],
+        ] as const;
+        for (const [campo, valor] of filtros) {
+          if (valor == null) consulta.is(campo, null);
+          else consulta.eq(campo, valor);
+        }
+      }
+      // Zero linhas com os valores de abertura não é sucesso nem falha de rede.
+      const respostaDaEscrita = confronto
+        ? Promise.resolve(consulta.select()).then(({ data, error }) => ({
+            data: data?.[0] ?? null,
+            error,
+          }))
+        : Promise.resolve(consulta.select().single());
       const { data, error } = await comPrazo(
-        Promise.resolve(
-          supabase
-            .from("user_addresses")
-            .update(updates)
-            .eq("id", id)
-            .eq("user_id", user.id)
-            .select()
-            .single(),
-        ),
+        respostaDaEscrita,
         PRAZO_DAS_CHAMADAS_DE_ENDERECO_MS,
         undefined,
         (resposta) => reconciliarDepoisDoPrazo(idDaConta, resposta),
@@ -452,6 +484,19 @@ export function useAddresses() {
       if (error) throw error;
       // Resposta da conta anterior não grava nada, nem avisa sucesso.
       if (usuarioAtualRef.current !== idDaConta) return false;
+      if (!data) {
+        if (!confronto) throw new Error("edição de endereço sem resposta");
+        toast.error(
+          "Este endereço foi alterado em outro aparelho. Revise e salve de novo.",
+        );
+        await fetchAddresses({
+          aoLer: (itens) => {
+            const atual = itens.find((item) => item.id === id);
+            if (atual) confronto.aoConflitar(atual);
+          },
+        });
+        return false;
+      }
 
       // Edição que manda `is_default: false`: o formulário só envia a marca
       // se a cliente mexeu nela (endereço novo sempre envia). Se sobrar outro

@@ -31,11 +31,20 @@ describe("linkDeRastreio", () => {
   });
 
   it("caracteres especiais não escapam do caminho do endereço", () => {
-    const link = linkDeRastreio("AB/12?x=1#y");
+    const link = linkDeRastreio("AB12?x=1#y");
     expect(link.startsWith(BASE)).toBe(true);
     const depois = link.slice(BASE.length);
     expect(depois).not.toMatch(/[/?#=]/);
-    expect(depois).toBe(encodeURIComponent("AB/12?X=1#Y"));
+    expect(depois).toBe(encodeURIComponent("AB12?X=1#Y"));
+  });
+
+  it.each([
+    " https://www.melhorrastreio.com.br/rastreio/AA123456789BR ",
+    "httpAA123456789BR",
+    "rastreio/AA123456789BR",
+  ])("não monta um link a partir do valor legado %j", (codigo) => {
+    expect(linkDeRastreio(codigo)).toBe("");
+    expect(linkDeRastreioDeCodigoValido(codigo)).toBe("");
   });
 
   it("código vazio ou só espaços não vira link", () => {

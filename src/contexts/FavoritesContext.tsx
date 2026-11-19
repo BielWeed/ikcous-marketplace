@@ -239,7 +239,7 @@ interface FavoritesContextType {
   // com a rede de pé nunca dispara `online`. Resolve quando a tentativa acabou.
   retentarPendentes: (opcoes?: { avisarFalha?: boolean }) => Promise<void>;
   limparIndisponiveis: () => Promise<void>;
-  // Favoritos de quem tem conta cujo produto não aparece na lista (pausado ou
+  // Favoritos cujo produto não aparece na lista (pausado ou
   // fora do catálogo). Só conta com catálogo confirmado pela rede, sem erro —
   // antes disso "ausente" pode ser só atraso ou cópia velha. A tela usa para avisar em vez de
   // fingir que a pessoa nunca favoritou nada.
@@ -262,11 +262,13 @@ export function FavoritesProvider({
     catalogoDaRedeAplicado,
     catalogoErro,
   } = useProducts();
+  // O StoreContext também confirma uma resposta vazia pela rede. Para o
+  // visitante isso basta; quem tem conta mantém a regra de limpeza anterior.
   const catalogoConfirmado =
     catalogoDaRedeAplicado &&
     !catalogoErro &&
     !carregandoCatalogo &&
-    allProducts.length > 0;
+    (!user || allProducts.length > 0);
   // Tipado como "pode ser string OU Product" (ver `EntradaFavoritoLocal`
   // acima) porque o primeiro render lê o disco como ele estiver — um
   // aparelho antigo ainda tem o `Product` inteiro aqui, e a migração
@@ -298,13 +300,9 @@ export function FavoritesProvider({
     [setFavoritosGuardados],
   );
   // Cache EM MEMÓRIA (nunca em disco — o disco só guarda id, de propósito)
-  // do último retrato conhecido de cada favorito do visitante. Ela só entra
-  // em jogo quando o id não bate com NENHUM produto de `allProducts` — ou
-  // porque o catálogo ainda não carregou, ou porque a lojista excluiu o
-  // produto. Para um produto que ainda existe no catálogo, o memo de
-  // `favorites` abaixo SEMPRE prefere o dado vivo; este cache nunca compete
-  // com ele, só cobre a ausência (sem isto, o favorito sumiria da lista sem
-  // explicação nenhuma assim que o id parasse de bater com o catálogo).
+  // do último retrato conhecido de cada favorito do visitante. Só cobre a
+  // ausência enquanto o catálogo não estiver confirmado; o dado vivo sempre
+  // tem prioridade.
   const snapshotsSemCatalogoRef = useRef<Map<string, Product>>(new Map());
   const [dbFavoriteIds, setDbFavoriteIds] = useState<string[]>([]);
   // Escrita pendente de um usuário IDENTIFICADO que falhou ao sincronizar
@@ -1017,23 +1015,18 @@ export function FavoritesProvider({
   // devolvia `localFavorites` cru, o `Product` congelado no instante do
   // toque no coração, e nunca revalidava preço/estoque contra o catálogo.
   // Agora ele faz o MESMO que o cliente logado faz uma linha abaixo —
-  // resolve cada id contra `allProducts` (dado vivo) — e só cai para o
-  // cache de fallback (`snapshotsSemCatalogoRef`) quando o catálogo (já
-  // carregado) não tem mais aquele id, para o favorito não desaparecer sem
-  // explicação nenhuma por causa de uma lojista que excluiu o produto.
-  //
-  // Produto PAUSADO não aparece: o dono logado tem o catálogo inteiro (com os
-  // pausados), e o retrato de reserva do visitante é de quando o produto ainda
-  // vendia. Se o catálogo traz o id e ele está pausado, vale o catálogo — o
-  // retrato não o ressuscita. Id que o catálogo NÃO traz segue pelo retrato:
-  // o catálogo vem em páginas, então "ausente" não prova que foi excluído.
+  // resolve cada id contra `allProducts` (dado vivo). Produto pausado não
+  // aparece. Se o id está ausente, só usa o retrato enquanto não houver
+  // confirmação da rede; depois disso o aviso de indisponível explica a falta.
   const favorites = React.useMemo(() => {
     if (!user) {
       return localFavoriteIds
         .map((id) => {
           const vivo = allProducts.find((p) => p.id === id);
           if (vivo) return vivo.isActive === false ? undefined : vivo;
-          return snapshotsSemCatalogoRef.current.get(id);
+          return catalogoConfirmado
+            ? undefined
+            : snapshotsSemCatalogoRef.current.get(id);
         })
         .filter((p): p is Product => p !== undefined);
     }
@@ -1046,13 +1039,13 @@ export function FavoritesProvider({
       if (produto && produto.isActive !== false) salvos.push(produto);
     }
     return salvos;
-  }, [user, allProducts, dbFavoriteIds, localFavoriteIds]);
+  }, [user, allProducts, catalogoConfirmado, dbFavoriteIds, localFavoriteIds]);
 
   // Favorito (da conta, ou do aparelho de quem não tem conta) que não aparece em
   // `favorites` (produto pausado ou fora do catálogo). O catálogo é lido
   // inteiro, todas as páginas, antes de chegar aqui; ainda assim só conta após
-  // confirmação pela rede, sem erro e com produtos: a cópia local pode ser
-  // velha e faria um favorito parecer indisponível. O visitante já tem a lista
+  // confirmação segura: a cópia local pode ser velha e faria um favorito
+  // parecer indisponível. O visitante já tem a lista
   // no aparelho (`localFavoriteIds`): nenhuma consulta nova ao servidor.
   const favoritosIndisponiveis = React.useMemo(() => {
     if (!catalogoConfirmado) return 0;
@@ -1118,8 +1111,7 @@ export function FavoritesProvider({
         // Guarda só o id (ver `EntradaFavoritoLocal`/migração acima) — o
         // retrato completo vem do catálogo vivo, no memo de `favorites`.
         // Ainda assim alimenta o cache de fallback com o que o chamador já
-        // tem em mãos: se a lojista excluir o produto antes do catálogo
-        // recarregar, o favorito não desaparece sem explicação nenhuma.
+        // tem em mãos, para manter o favorito se o catálogo atrasar ou falhar.
         snapshotsSemCatalogoRef.current.set(product.id, product);
         setLocalFavoritesRaw((prev) => {
           if (

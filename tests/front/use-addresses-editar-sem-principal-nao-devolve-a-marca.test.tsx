@@ -32,6 +32,9 @@ const avisos = vi.hoisted(() => ({
   warning: vi.fn(),
 }));
 vi.mock("sonner", () => ({ toast: avisos }));
+vi.mock("@/contexts/StoreContext", () => ({
+  useStore: () => ({ config: {}, isLoaded: true }),
+}));
 
 vi.mock("@/lib/supabase", () => {
   const ordenadas = () =>
@@ -74,7 +77,12 @@ vi.mock("@/lib/supabase", () => {
       return { data: null, error: null };
     };
     const cadeia: any = {
+      is: (k: string, v: null) => {
+        filtros.set(k, v);
+        return cadeia;
+      },
       eq: (k: string, v: unknown) => {
+        if (v === null) throw new Error("NULL requer is, não eq");
         filtros.set(k, v);
         return cadeia;
       },
@@ -149,6 +157,14 @@ describe("useAddresses — edição sem is_default e a marca de outro aparelho",
   }
 
   beforeEach(async () => {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
     banco.linhas = [];
     banco.contador = 0;
     banco.falharLeitura = false;
@@ -169,6 +185,7 @@ describe("useAddresses — edição sem is_default e a marca de outro aparelho",
     act(() => raiz.unmount());
     hospedeiro.remove();
     localStorage.clear();
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
@@ -184,6 +201,142 @@ describe("useAddresses — edição sem is_default e a marca de outro aparelho",
       await hook.fetchAddresses();
     });
   }
+
+  async function abrirEdicao() {
+    const { AddressFormView } = await import(
+      "@/views/customer/AddressFormView"
+    );
+    const onBack = vi.fn();
+    await act(async () => {
+      raiz.render(
+        <>
+          <Sonda />
+          <AddressFormView addressId="end-Casa" onBack={onBack} />
+        </>,
+      );
+    });
+    return onBack;
+  }
+
+  const campoNumero = () =>
+    hospedeiro.querySelector<HTMLInputElement>("#number")!;
+
+  async function digitarNumero(valor: string) {
+    await act(async () => {
+      const campo = campoNumero();
+      const setter = Object.getOwnPropertyDescriptor(
+        globalThis.HTMLInputElement.prototype,
+        "value",
+      )!.set!;
+      setter.call(campo, valor);
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  }
+
+  async function salvar() {
+    await act(async () => {
+      hospedeiro
+        .querySelector("form")!
+        .dispatchEvent(
+          new Event("submit", { bubbles: true, cancelable: true }),
+        );
+    });
+  }
+
+  it("zero linhas atualizadas: não mistura imóveis e mantém a edição aberta com os dados atuais", async () => {
+    semear(["Casa", true]);
+    const onBack = await abrirEdicao();
+    expect(campoNumero().value).toBe("1");
+
+    Object.assign(banco.linhas[0], {
+      cep: "38400-000",
+      street: "Rua Nova",
+      number: "20",
+    });
+    await digitarNumero("11");
+    await salvar();
+
+    expect(banco.linhas[0]).toMatchObject({
+      street: "Rua Nova",
+      number: "20",
+    });
+    expect(avisos.error).toHaveBeenCalledWith(
+      "Este endereço foi alterado em outro aparelho. Revise e salve de novo.",
+    );
+    expect(avisos.success).not.toHaveBeenCalled();
+    expect(onBack).not.toHaveBeenCalled();
+    expect(campoNumero().value).toBe("20");
+
+    await digitarNumero("21");
+    await salvar();
+    expect(banco.linhas[0].number).toBe("21");
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it("imóvel igual: salva só o número, com o imóvel original no filtro", async () => {
+    semear(["Casa", true]);
+    const onBack = await abrirEdicao();
+    await digitarNumero("11");
+    await salvar();
+
+    expect(atualizacoes()).toEqual([
+      {
+        op: "update",
+        payload: { number: "11" },
+        filtros: {
+          id: "end-Casa",
+          user_id: "conta-a",
+          cep: "38500-001",
+          street: "Rua Casa",
+          number: "1",
+          neighborhood: "Centro",
+          city: "Monte Carmelo",
+          state: "MG",
+        },
+      },
+    ]);
+    expect(avisos.success).toHaveBeenCalledWith("Endereço atualizado");
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it("uma releitura de fundo não rebaseia o número digitado para outro imóvel", async () => {
+    semear(["Casa", true]);
+    const onBack = await abrirEdicao();
+    await digitarNumero("11");
+    Object.assign(banco.linhas[0], {
+      cep: "38400-000",
+      street: "Rua Nova",
+      number: "20",
+    });
+    await celularLeAListaDoServidor();
+
+    await salvar();
+
+    expect(banco.linhas[0].number).toBe("20");
+    expect(campoNumero().value).toBe("20");
+    expect(avisos.success).not.toHaveBeenCalled();
+    expect(onBack).not.toHaveBeenCalled();
+  });
+
+  it("o campo original nulo usa IS NULL no filtro, não igualdade", async () => {
+    semear(["Casa", true]);
+    banco.linhas[0].neighborhood = null;
+    await celularLeAListaDoServidor();
+    await act(async () => {
+      expect(
+        await hook.updateAddress(
+          "end-Casa",
+          { number: "11" },
+          {
+            original: hook.addresses[0],
+            aoConflitar: vi.fn(),
+          },
+        ),
+      ).toBe(true);
+    });
+    expect(atualizacoes()[0].filtros).toMatchObject({ neighborhood: null });
+    expect(banco.linhas[0].number).toBe("11");
+  });
 
   it("o outro aparelho passou o principal de Casa para Mãe: editar Casa (sem is_default) NÃO devolve a marca, e a lista do celular se acerta", async () => {
     semear(["Casa", true], ["Trabalho", false], ["Mãe", false]);

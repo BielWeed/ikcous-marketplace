@@ -190,7 +190,7 @@ interface AuthContextType {
   resendConfirmationEmail: (email: string) => Promise<boolean>;
   updatePassword: (newPassword: string) => Promise<boolean>;
   logout: () => Promise<void>;
-  fetchProfile: (passedUser?: User | null) => Promise<void>;
+  fetchProfile: (passedUser?: User | null) => Promise<boolean>;
   updateProfile: (
     updates: {
       full_name?: string | null;
@@ -817,41 +817,45 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const consultaDoPerfilRef = useRef(0);
   const perfilAplicadoRef = useRef(0);
   const fetchProfile = useCallback(async (passedUser?: User | null) => {
-    const currentUser =
-      passedUser || (await supabase.auth.getSession()).data.session?.user;
-    if (!currentUser) {
-      setProfile(null);
-      return;
-    }
-
     try {
+      let currentUser = passedUser;
+      if (!currentUser) {
+        const contaAntesDaLeitura = activeUserIdRef.current;
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        currentUser = data.session?.user;
+        if (!currentUser && activeUserIdRef.current === contaAntesDaLeitura) {
+          setProfile(null);
+        }
+      }
+      if (!currentUser || activeUserIdRef.current !== currentUser.id) {
+        return false;
+      }
+
       const consulta = ++consultaDoPerfilRef.current;
       const { data, error } = await supabase.rpc("get_my_complete_profile");
       // A resposta pertence à conta que iniciou a leitura, mesmo chegando após a troca.
-      if (activeUserIdRef.current !== currentUser.id) return;
-      if (!error && data) {
-        // Resposta de uma consulta mais velha que a já aplicada: descarta.
-        if (consulta < perfilAplicadoRef.current) return;
-        perfilAplicadoRef.current = consulta;
-        const profileData = Array.isArray(data) ? data[0] : data;
-        setProfile((prev: any) => {
-          // Impede mudança de referência se os dados forem idênticos (previne re-renderização em cascata)
-          if (prev && JSON.stringify(prev) === JSON.stringify(profileData))
-            return prev;
-          return profileData;
-        });
-        // O nome NAO entra no log: sao 540 `console.*` no projeto e quase
-        // nenhum sob guarda, entao isto ia para producao — qualquer pessoa que
-        // abrisse o console na loja lia o nome completo de quem acabara de
-        // entrar. Saber QUE o perfil chegou basta para depurar; saber de quem
-        // e' dado de cliente na tela de um estranho.
-        if (profileData && import.meta.env.DEV)
-          console.log("[Auth] Profile fetched");
-      } else if (error) {
+      if (activeUserIdRef.current !== currentUser.id) return false;
+      if (error) {
         console.error("[Auth] Error fetching profile:", error);
+        return false;
       }
+      const profileData = Array.isArray(data) ? data[0] : data;
+      if (!profileData) return false;
+      // Uma leitura mais nova já foi aplicada: esta não atualizou a tela.
+      if (consulta < perfilAplicadoRef.current) return false;
+      perfilAplicadoRef.current = consulta;
+      setProfile((prev: any) => {
+        // Impede mudança de referência se os dados forem idênticos (previne re-renderização em cascata)
+        if (prev && JSON.stringify(prev) === JSON.stringify(profileData))
+          return prev;
+        return profileData;
+      });
+      if (import.meta.env.DEV) console.log("[Auth] Profile fetched");
+      return true;
     } catch (err) {
       console.error("[Auth] Profile fetch exception:", err);
+      return false;
     }
   }, []);
 

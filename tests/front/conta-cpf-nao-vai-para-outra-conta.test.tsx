@@ -103,6 +103,7 @@ describe("Conta — CPF pertence à conta que começou a salvar", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    fetchProfile.mockResolvedValue(true);
     getSession.mockResolvedValue({
       data: { session: { access_token: "token-a", user: CONTA_A } },
     });

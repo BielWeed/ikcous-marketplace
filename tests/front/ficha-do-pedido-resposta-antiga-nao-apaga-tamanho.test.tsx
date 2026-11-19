@@ -77,6 +77,28 @@ function controlarConsulta(tabela: string, id: string) {
   };
 }
 
+const sufixosDoCatalogo = [
+  "invertida-a",
+  "invertida-b",
+  "feliz",
+  "mesmos-itens",
+  "loading-a",
+  "loading-b",
+  "cache-b",
+  "cache-a",
+  "produto-lento-a",
+  "produto-lento-b",
+  "desmontada",
+  "erro-a",
+  "erro-b",
+];
+
+function idDoCatalogo(sufixo: string, tipo: 1 | 2): string {
+  const indice = sufixosDoCatalogo.indexOf(sufixo) + 1;
+  if (!indice) throw new Error(`Sufixo de fixture desconhecido: ${sufixo}`);
+  return `598044d5-9426-44d9-a0c9-${tipo}${String(indice).padStart(11, "0")}`;
+}
+
 function pedidoFake(sufixo: string): Order {
   return {
     id: `pedido-${sufixo}`,
@@ -90,8 +112,8 @@ function pedidoFake(sufixo: string): Order {
     },
     items: [
       {
-        productId: `produto-${sufixo}`,
-        variantId: `variacao-${sufixo}`,
+        productId: idDoCatalogo(sufixo, 2),
+        variantId: idDoCatalogo(sufixo, 1),
         name: "Camiseta de teste",
         price: 50,
         quantity: 1,
@@ -113,7 +135,12 @@ function pedidoFake(sufixo: string): Order {
 
 function tamanho(sufixo: string, value: string): LinhaDoCatalogo[] {
   return [
-    { id: `variacao-${sufixo}`, sku: `SKU-${sufixo}`, name: "Tamanho", value },
+    {
+      id: idDoCatalogo(sufixo, 1),
+      sku: `SKU-${sufixo}`,
+      name: "Tamanho",
+      value,
+    },
   ];
 }
 
@@ -162,8 +189,14 @@ describe("ficha do pedido — resposta antiga não apaga tamanho e código", () 
     );
 
   it("mantém o tamanho e o SKU de B na ficha e no recibo quando A responde depois", async () => {
-    const a = controlarConsulta("product_variants", "variacao-invertida-a");
-    const b = controlarConsulta("product_variants", "variacao-invertida-b");
+    const a = controlarConsulta(
+      "product_variants",
+      idDoCatalogo("invertida-a", 1),
+    );
+    const b = controlarConsulta(
+      "product_variants",
+      idDoCatalogo("invertida-b", 1),
+    );
     await renderizar(pedidoFake("invertida-a"));
     await renderizar(pedidoFake("invertida-b"));
 
@@ -180,14 +213,17 @@ describe("ficha do pedido — resposta antiga não apaga tamanho e código", () 
   });
 
   it("continua mostrando cor, tamanho e código no caminho feliz", async () => {
-    const consulta = controlarConsulta("product_variants", "variacao-feliz");
+    const consulta = controlarConsulta(
+      "product_variants",
+      idDoCatalogo("feliz", 1),
+    );
     await renderizar(pedidoFake("feliz"));
     expect(itens()?.textContent).toContain("Carregando código…");
 
     await act(async () =>
       consulta.responder([
         {
-          id: "variacao-feliz",
+          id: idDoCatalogo("feliz", 1),
           sku: "AZUL-M",
           name: "Cor / Tamanho",
           value: "Azul / M",
@@ -201,10 +237,16 @@ describe("ficha do pedido — resposta antiga não apaga tamanho e código", () 
   });
 
   it("trocar de pedido invalida a consulta mesmo quando os dois têm os mesmos itens", async () => {
-    const a = controlarConsulta("product_variants", "variacao-mesmos-itens");
+    const a = controlarConsulta(
+      "product_variants",
+      idDoCatalogo("mesmos-itens", 1),
+    );
     const pedidoA = pedidoFake("mesmos-itens");
     await renderizar(pedidoA);
-    const b = controlarConsulta("product_variants", "variacao-mesmos-itens");
+    const b = controlarConsulta(
+      "product_variants",
+      idDoCatalogo("mesmos-itens", 1),
+    );
     await renderizar({ ...pedidoA, id: "outro-pedido-com-os-mesmos-itens" });
 
     await act(async () => b.responder(tamanho("mesmos-itens", "M")));
@@ -215,8 +257,14 @@ describe("ficha do pedido — resposta antiga não apaga tamanho e código", () 
   });
 
   it("o finally de A não encerra o carregamento de B, que termina com a resposta de B", async () => {
-    const a = controlarConsulta("product_variants", "variacao-loading-a");
-    const b = controlarConsulta("product_variants", "variacao-loading-b");
+    const a = controlarConsulta(
+      "product_variants",
+      idDoCatalogo("loading-a", 1),
+    );
+    const b = controlarConsulta(
+      "product_variants",
+      idDoCatalogo("loading-b", 1),
+    );
     await renderizar(pedidoFake("loading-a"));
     await renderizar(pedidoFake("loading-b"));
 
@@ -230,11 +278,11 @@ describe("ficha do pedido — resposta antiga não apaga tamanho e código", () 
   });
 
   it("sair de uma consulta pendente para um pedido em cache não prende o carregamento", async () => {
-    const b = controlarConsulta("product_variants", "variacao-cache-b");
+    const b = controlarConsulta("product_variants", idDoCatalogo("cache-b", 1));
     const pedidoB = pedidoFake("cache-b");
     await renderizar(pedidoB);
     await act(async () => b.responder(tamanho("cache-b", "M")));
-    const a = controlarConsulta("product_variants", "variacao-cache-a");
+    const a = controlarConsulta("product_variants", idDoCatalogo("cache-a", 1));
     await renderizar(pedidoFake("cache-a"));
     expect(itens()?.textContent).toContain("Carregando código…");
 
@@ -246,8 +294,14 @@ describe("ficha do pedido — resposta antiga não apaga tamanho e código", () 
   });
 
   it("descarta também a resposta antiga que ainda esperava a consulta de produtos", async () => {
-    const a = controlarConsulta("vw_produtos_admin", "produto-produto-lento-a");
-    const b = controlarConsulta("product_variants", "variacao-produto-lento-b");
+    const a = controlarConsulta(
+      "vw_produtos_admin",
+      idDoCatalogo("produto-lento-a", 2),
+    );
+    const b = controlarConsulta(
+      "product_variants",
+      idDoCatalogo("produto-lento-b", 1),
+    );
     const pedidoA = pedidoFake("produto-lento-a");
     // Sem variação em A, só há o primeiro await para proteger seus setters.
     pedidoA.items[0].variantId = undefined;
@@ -256,7 +310,9 @@ describe("ficha do pedido — resposta antiga não apaga tamanho e código", () 
     await act(async () => b.responder(tamanho("produto-lento-b", "M")));
 
     await act(async () =>
-      a.responder([{ id: "produto-produto-lento-a", codigo: "CODIGO-ANTIGO" }]),
+      a.responder([
+        { id: idDoCatalogo("produto-lento-a", 2), codigo: "CODIGO-ANTIGO" },
+      ]),
     );
     expect(variacoes()).toEqual(["Tamanho M"]);
     expect(itens()?.textContent).toContain(
@@ -266,7 +322,10 @@ describe("ficha do pedido — resposta antiga não apaga tamanho e código", () 
   });
 
   it("desmontar descarta a resposta e não deixa tamanho antigo em cache para a próxima ficha", async () => {
-    const antiga = controlarConsulta("product_variants", "variacao-desmontada");
+    const antiga = controlarConsulta(
+      "product_variants",
+      idDoCatalogo("desmontada", 1),
+    );
     const pedido = pedidoFake("desmontada");
     await renderizar(pedido);
     act(() => raiz.unmount());
@@ -274,7 +333,10 @@ describe("ficha do pedido — resposta antiga não apaga tamanho e código", () 
 
     // React ignora setters depois de desmontar; ausência de warning não
     // prova descarte. Remontar com os mesmos itens expõe o cache indevido.
-    const nova = controlarConsulta("product_variants", "variacao-desmontada");
+    const nova = controlarConsulta(
+      "product_variants",
+      idDoCatalogo("desmontada", 1),
+    );
     raiz = createRoot(hospedeiro);
     await renderizar(pedido);
     expect(variacoes()).toEqual([]);
@@ -286,8 +348,8 @@ describe("ficha do pedido — resposta antiga não apaga tamanho e código", () 
 
   it("erro de uma consulta invalidada não vira erro do pedido atual nem encerra seu carregamento", async () => {
     const erro = vi.spyOn(console, "error").mockImplementation(() => {});
-    const a = controlarConsulta("product_variants", "variacao-erro-a");
-    const b = controlarConsulta("product_variants", "variacao-erro-b");
+    const a = controlarConsulta("product_variants", idDoCatalogo("erro-a", 1));
+    const b = controlarConsulta("product_variants", idDoCatalogo("erro-b", 1));
     await renderizar(pedidoFake("erro-a"));
     await renderizar(pedidoFake("erro-b"));
     await act(async () =>

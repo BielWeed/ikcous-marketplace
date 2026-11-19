@@ -36,6 +36,7 @@ import {
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
+import { taxaDeResposta } from "@/lib/taxa-de-resposta";
 import {
   TETO_DA_RESPOSTA_DA_LOJA,
   avisoDoTetoDaRespostaDaLoja,
@@ -678,7 +679,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
   // Denominadores GLOBAIS (achado 5): as taxas usam o total sem filtro —
   // filtro vazio nunca mais fabrica "100%" de zero.
   const verifiedRate = formatRate(globalVerifiedCount, globalTotal);
-  const responseRate = formatRate(globalRepliedCount, globalTotal);
+  const responseRate = taxaDeResposta(globalRepliedCount, globalTotal);
 
   const handleDelete = async (id: string) => {
     if (isOffline) {
