@@ -507,26 +507,47 @@ describe("AdminProductFormView — Voltar do celular fecha só a camada aberta",
 
   it("Voltar com a folha 'Nova categoria' aberta fecha só ela", async () => {
     await montar();
-    await act(async () => {
-      document.getElementById("product-category")?.click();
-    });
-    await esperar();
-    await act(async () => {
-      botaoPorTexto("Nova categoria")?.click();
-    });
-    await esperar(100);
+    const campoCategoria = await vi.waitUntil(
+      () => document.getElementById("product-category"),
+      { timeout: 3000 },
+    );
+    await act(async () => campoCategoria.click());
 
+    const novaCategoria = await vi.waitUntil(
+      () => botaoPorTexto("Nova categoria"),
+      {
+        timeout: 3000,
+      },
+    );
+    await act(async () => novaCategoria.click());
+    await act(async () => vi.dynamicImportSettled());
+
+    const dialogos = () => document.body.querySelectorAll('[role="dialog"]');
+    await vi.waitFor(
+      () => {
+        const folhaNovaCategoria = [...dialogos()].find((dialogo) => {
+          const tituloId = dialogo.getAttribute("aria-labelledby");
+          return (
+            tituloId &&
+            document.getElementById(tituloId)?.textContent?.trim() ===
+              "Nova categoria"
+          );
+        });
+        expect(folhaNovaCategoria).toBeDefined();
+      },
+      { timeout: 3000 },
+    );
     expect(overrideAtual).toBeInstanceOf(Function);
-    const abertas = () =>
-      [...document.body.querySelectorAll('[role="dialog"]')].length;
-    expect(abertas()).toBeGreaterThan(0);
+    expect(dialogos().length).toBeGreaterThan(0);
 
     await voltarFisico();
 
-    expect(abertas()).toBe(0);
+    await vi.waitFor(() => expect(dialogos().length).toBe(0), {
+      timeout: 3000,
+    });
     expect(document.getElementById("product-name")).not.toBeNull();
     expect(overrideAtual).toBeNull();
-  });
+  }, 15_000);
   // O leitor de câmera abre POR DENTRO da janela de variação. Há UMA entrada de
   // histórico para o conjunto: o 1º Voltar a consome (e fecha o leitor), então
   // a variação que continua aberta precisa de uma entrada nova -- senão o 2º

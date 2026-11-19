@@ -3,9 +3,18 @@
 // Criar categoria de dentro do formulário de produto: sem duplo toque, sem erro
 // genérico quando o nome só difere em maiúscula/acento (o banco tem nome único e
 // slug único), e com a palavra 'categoria' em vez de 'setor'.
+import type { AdminProductFormView as FormularioDeProduto } from "@/views/admin/AdminProductFormView";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 const fetchProduct = vi.fn();
 const addProduct = vi.fn();
@@ -86,6 +95,13 @@ const botaoPorTexto = (texto: string) =>
 describe("AdminProductFormView — criar categoria de dentro do produto", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
+  let AdminProductFormView: typeof FormularioDeProduto;
+
+  beforeAll(async () => {
+    ({ AdminProductFormView } = await import(
+      "@/views/admin/AdminProductFormView"
+    ));
+  }, 30_000);
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -110,9 +126,6 @@ describe("AdminProductFormView — criar categoria de dentro do produto", () => 
   });
 
   async function abrirNovaCategoria() {
-    const { AdminProductFormView } = await import(
-      "@/views/admin/AdminProductFormView"
-    );
     await act(async () => {
       raiz.render(
         <AdminProductFormView
@@ -123,22 +136,26 @@ describe("AdminProductFormView — criar categoria de dentro do produto", () => 
       );
     });
     // Pelo caminho da lojista: toca no campo e depois em "Nova categoria".
-    await act(async () => {
-      document.getElementById("product-category")?.click();
-    });
-    await act(async () => {
-      botaoPorTexto("Nova categoria")?.click();
-    });
-    // A folha é baixada sob demanda (import dinâmico): espera ela chegar (até
-    // ~3 s, para não falhar com a máquina carregada).
-    for (let i = 0; i < 60 && !botaoPorTexto("Criar categoria"); i++) {
-      await act(async () => {
-        await new Promise((r) => setTimeout(r, 50));
-      });
-    }
+    const campoCategoria = await vi.waitUntil(
+      () => document.getElementById("product-category"),
+      { timeout: 3000 },
+    );
+    await act(async () => campoCategoria.click());
+    const novaCategoria = await vi.waitUntil(
+      () => botaoPorTexto("Nova categoria"),
+      {
+        timeout: 3000,
+      },
+    );
+    await act(async () => novaCategoria.click());
+
+    // Aguarda o carregamento sob demanda dentro do ciclo de atualização do React.
+    await act(async () => vi.dynamicImportSettled());
+    return encontrarBotaoCriar();
   }
 
   const botaoCriar = () => botaoPorTexto("Criar categoria");
+  const encontrarBotaoCriar = () => vi.waitUntil(botaoCriar, { timeout: 3000 });
 
   it("o modal fala 'categoria', não 'setor'", async () => {
     await abrirNovaCategoria();
@@ -147,13 +164,13 @@ describe("AdminProductFormView — criar categoria de dentro do produto", () => 
     expect(botaoCriar()).toBeDefined();
     expect(document.body.textContent).not.toContain("Criar Setor");
     expect(document.body.textContent).not.toContain("Setor / Categoria");
-  });
+  }, 15_000);
 
   it("nome que só difere em maiúscula ou acento avisa qual categoria já existe e não tenta criar", async () => {
-    await abrirNovaCategoria();
+    const criar = await abrirNovaCategoria();
     await digitarCampo("cat-name", "VESTUARIO");
     await act(async () => {
-      botaoCriar()?.click();
+      criar.click();
     });
 
     expect(addCategory).not.toHaveBeenCalled();
@@ -163,19 +180,19 @@ describe("AdminProductFormView — criar categoria de dentro do produto", () => 
     );
     // A folha continua aberta com o que ela digitou, para corrigir.
     expect(botaoCriar()).toBeDefined();
-  });
+  }, 15_000);
 
   it("nome realmente novo cria uma vez e escolhe a categoria nova", async () => {
-    await abrirNovaCategoria();
+    const criar = await abrirNovaCategoria();
     await digitarCampo("cat-name", "Calçados");
     await act(async () => {
-      botaoCriar()?.click();
+      criar.click();
     });
 
     expect(addCategory).toHaveBeenCalledTimes(1);
     expect(addCategory.mock.calls[0][0]).toMatchObject({ name: "Calçados" });
     expect(toastError).not.toHaveBeenCalled();
-  });
+  }, 15_000);
 
   it("duplo toque rápido em 'Criar categoria' cria UMA vez só, e o botão fica desligado enquanto cria", async () => {
     let terminar: (v: unknown) => void = () => {};
@@ -184,12 +201,12 @@ describe("AdminProductFormView — criar categoria de dentro do produto", () => 
         terminar = resolve;
       }),
     );
-    await abrirNovaCategoria();
+    const criar = await abrirNovaCategoria();
     await digitarCampo("cat-name", "Calçados");
 
     await act(async () => {
-      botaoCriar()?.click();
-      botaoCriar()?.click();
+      criar.click();
+      criar.click();
     });
 
     expect(addCategory).toHaveBeenCalledTimes(1);
@@ -199,21 +216,20 @@ describe("AdminProductFormView — criar categoria de dentro do produto", () => 
       terminar({ id: "cat-novo" });
     });
     expect(addCategory).toHaveBeenCalledTimes(1);
-  });
+  }, 15_000);
 
   it("se a criação falhar, o botão volta a funcionar para tentar de novo", async () => {
     addCategory.mockRejectedValueOnce(new Error("sem rede"));
-    await abrirNovaCategoria();
+    const criar = await abrirNovaCategoria();
     await digitarCampo("cat-name", "Calçados");
     await act(async () => {
-      botaoCriar()?.click();
+      criar.click();
     });
 
     expect(toastError).toHaveBeenCalledTimes(1);
     expect(botaoCriar()?.disabled).toBe(false);
-    await act(async () => {
-      botaoCriar()?.click();
-    });
+    const tentarDeNovo = await encontrarBotaoCriar();
+    await act(async () => tentarDeNovo.click());
     expect(addCategory).toHaveBeenCalledTimes(2);
-  });
+  }, 15_000);
 });
