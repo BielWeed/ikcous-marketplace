@@ -48,6 +48,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useAoMudarCategoria } from "@/hooks/useAoMudarCategoria";
+import { useCamadaDeTelaCheia } from "@/hooks/useCamadaDeTelaCheia";
 import { useCategories } from "@/hooks/useCategories";
 import { useConfirmarAcao } from "@/hooks/useConfirmarAcao";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
@@ -1032,6 +1033,17 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   const [leitorAberto, setLeitorAberto] = useState<
     "produto" | "variacao" | null
   >(null);
+  const fecharLeitor = () => setLeitorAberto(null);
+  const camadaDoLeitorRef = useCamadaDeTelaCheia<HTMLDivElement>(
+    fecharLeitor,
+    true,
+    leitorAberto !== null,
+  );
+  function abrirLeitor(alvo: "produto" | "variacao", botao: HTMLButtonElement) {
+    // Nem todo navegador foca um botão clicado; o hook restaura o foco daqui.
+    botao.focus({ preventScroll: true });
+    setLeitorAberto(alvo);
+  }
   const [priceError, setPriceError] = useState("");
   const [costError, setCostError] = useState("");
   const [originalPriceError, setOriginalPriceError] = useState("");
@@ -4751,7 +4763,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             {temCameraDisponivel() && (
                               <button
                                 type="button"
-                                onClick={() => setLeitorAberto("variacao")}
+                                onClick={(evento) =>
+                                  abrirLeitor("variacao", evento.currentTarget)
+                                }
                                 className="flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 text-[11px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95"
                                 title="Ler com a câmera"
                               >
@@ -6550,7 +6564,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         {temCameraDisponivel() && (
                           <button
                             type="button"
-                            onClick={() => setLeitorAberto("produto")}
+                            onClick={(evento) =>
+                              abrirLeitor("produto", evento.currentTarget)
+                            }
                             className="flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 text-[11px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95 sm:rounded-2xl"
                             title="Ler com a câmera"
                           >
@@ -7081,13 +7097,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           `fallback={null}` porque a abertura já é o clique do lojista. */}
       {leitorAberto !== null && (
         <div
+          ref={camadaDoLeitorRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Ler o código de barras"
+          tabIndex={-1}
           data-testid="container-do-leitor"
           className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 p-4"
         >
-          <LimiteDePedaco
-            pedacos={[LeitorDeCodigo]}
-            aoFechar={() => setLeitorAberto(null)}
-          >
+          <LimiteDePedaco pedacos={[LeitorDeCodigo]} aoFechar={fecharLeitor}>
             <Suspense fallback={null}>
               <LeitorDeCodigo
                 aberto
@@ -7095,7 +7113,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 titulo="Ler o código de barras"
                 dica="Aponte para o código da embalagem"
                 aoLer={aoLerCodigoDeBarras}
-                aoFechar={() => setLeitorAberto(null)}
+                aoFechar={fecharLeitor}
               />
             </Suspense>
           </LimiteDePedaco>

@@ -317,6 +317,68 @@ describe("AdminProductFormView — C5.3 ler com a câmera e tirar foto", () => {
     expect(duble!.getAttribute("data-modo")).toBe("unico");
   });
 
+  it.each(["produto", "variação"])(
+    "o leitor no alvo %s contém o foco e o Esc fecha só a camada do topo",
+    async (alvo) => {
+      await montarFormNovo();
+      const novaVariacao = localizarBotaoUnico("+ Novo");
+      if (alvo === "variação") {
+        novaVariacao.focus();
+        await abrirModalDeVariante();
+      }
+
+      const variacao = document.querySelector(
+        '[aria-labelledby="titulo-da-variacao"]',
+      );
+      const botoes = localizarBotoesPorTexto(document, "Ler com a câmera");
+      const botao = botoes[botoes.length - 1];
+      // click() não foca o botão, assim como um clique em alguns navegadores.
+      expect(document.activeElement).not.toBe(botao);
+      await act(async () => {
+        botao.click();
+        await esperarMicrotarefas();
+        await esperarMicrotarefas();
+      });
+
+      const camada = document.querySelector(
+        '[data-testid="container-do-leitor"]',
+      );
+      expect(camada).not.toBeNull();
+      expect(document.activeElement).toBe(camada);
+
+      function teclar(key: string, shiftKey = false) {
+        const evento = new KeyboardEvent("keydown", {
+          key,
+          shiftKey,
+          bubbles: true,
+          cancelable: true,
+        });
+        act(() => {
+          document.activeElement?.dispatchEvent(evento);
+        });
+        expect(evento.defaultPrevented).toBe(true);
+      }
+
+      const primeiro = localizarBotaoUnico("bipar");
+      const ultimo = localizarBotaoUnico("fechar leitor");
+      teclar("Tab");
+      expect(document.activeElement).toBe(primeiro);
+      teclar("Tab", true);
+      expect(document.activeElement).toBe(ultimo);
+      teclar("Tab");
+      expect(document.activeElement).toBe(primeiro);
+
+      teclar("Escape");
+      expect(camada?.isConnected).toBe(false);
+      expect(document.activeElement).toBe(botao);
+      if (alvo === "variação") {
+        expect(variacao?.contains(botao)).toBe(true);
+        teclar("Escape");
+        expect(document.activeElement).toBe(novaVariacao);
+      }
+    },
+  );
+
   it("4. bipar preenche o campo do produto, fecha o leitor e dispara a checagem de duplicidade", async () => {
     await montarFormNovo();
 
