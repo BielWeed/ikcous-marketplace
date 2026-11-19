@@ -2,7 +2,7 @@
 /**
  * Avançar status (lojista) com rede "pendurada": a conexão abre e não
  * responde. Sem prazo, a RPC `avancar_status_do_pedido` (ou
- * `update_order_status_atomic`, no cancelamento que não passa pela edge) e a
+ * `cancelar_pedido_do_painel`, no cancelamento que não passa pela edge) e a
  * releitura do status que vem antes dela nunca terminavam, o `finally` da
  * ficha nunca rodava e o botão ficava em "Processando" para sempre.
  *
@@ -92,7 +92,7 @@ const gravacoesDeStatus = () =>
   rpc.mock.calls.filter(
     ([nome]) =>
       nome === "avancar_status_do_pedido" ||
-      nome === "update_order_status_atomic",
+      nome === "cancelar_pedido_do_painel",
   );
 
 /** Clica e devolve o que a chamada fará (resolve ou rejeita). */
@@ -233,7 +233,7 @@ describe("Avançar status: a espera da tela tem prazo", () => {
     ]);
   });
 
-  it("cancelar pelo painel (RPC update_order_status_atomic, sem edge) também tem prazo", async () => {
+  it("cancelar pelo painel (RPC cancelar_pedido_do_painel, sem edge) também tem prazo", async () => {
     await abrirComPedido(linha("PZ-2"));
     gravacao = () => new Promise(() => {});
 
@@ -251,7 +251,7 @@ describe("Avançar status: a espera da tela tem prazo", () => {
     );
     expect(statusDe("PZ-2")).toBe("pending");
     expect(gravacoesDeStatus()).toHaveLength(1);
-    expect(gravacoesDeStatus()[0]?.[0]).toBe("update_order_status_atomic");
+    expect(gravacoesDeStatus()[0]?.[0]).toBe("cancelar_pedido_do_painel");
   });
 
   it("borda: a resposta que chega ANTES do prazo vale (sucesso), e passar do prazo depois não desfaz nada", async () => {

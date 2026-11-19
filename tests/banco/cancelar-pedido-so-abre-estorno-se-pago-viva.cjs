@@ -63,12 +63,13 @@ const {
 const TITULO =
   "Prova viva: cancelar só abre estorno automático para pedido pago de verdade (rpc-ci)";
 const FUNCAO =
-  "public.pedido__mudar_status(uuid,text,text,uuid,boolean,boolean)";
+  "public.pedido__mudar_status_com_etapa(uuid,text,text,uuid,boolean,boolean,text)";
 
 // ---------------------------------------------------------------- mutantes
 // `de`/`para` trocam UM trecho EXATO do corpo vivo (cada `de` aparece 1x).
 const DE_PAGO = "AND v_payment_status IN ('pago', 'pago_apos_expirar')";
-const DE_STATUS = "AND v_old_status IN ('pending', 'processing')";
+const DE_STATUS =
+  "AND (v_old_status IN ('pending', 'processing') OR (v_old_status = 'shipping' AND v_retirada AND v_is_admin))";
 const DE_PAID_AT =
   "AND v_paid_at IS NOT NULL\n       AND NOT v_cancelled_after_shipping\n    THEN\n        v_saldo";
 const MUTANTES = {

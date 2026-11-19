@@ -18,6 +18,9 @@ const { authState, fromMock, adminOrdersMock, channelMock } = vi.hoisted(() => {
     Promise.resolve({ data: [], error: null, count: 0 }),
     {
       select: vi.fn().mockReturnThis(),
+      single: vi
+        .fn()
+        .mockResolvedValue({ data: { status: "pending" }, error: null }),
       eq: vi.fn().mockReturnThis(),
       order: vi.fn().mockReturnThis(),
       range: vi.fn().mockReturnThis(),
@@ -84,6 +87,7 @@ const toastId = "sincronizacao-fila-offline";
 const item1 = {
   orderId: "pedido-1",
   status: "cancelled",
+  statusEsperado: "pending",
   silent: false,
   timestamp: 1,
 };
@@ -286,9 +290,13 @@ describe("useOrders — a fila offline não engole item novo", () => {
             p_search: "termo",
           }),
         );
-        expect(fromMock).not.toHaveBeenCalled();
+        // Uma leitura da etapa; a recarga de admin é a RPC de paginação.
+        expect(fromMock).toHaveBeenCalledTimes(1);
+        expect(fromMock.mock.results[0]?.value.select).toHaveBeenCalledWith(
+          "status",
+        );
       } else {
-        expect(fromMock).toHaveBeenCalledWith("marketplace_orders");
+        expect(fromMock).toHaveBeenCalledTimes(2);
         expect(adminOrdersMock).not.toHaveBeenCalled();
       }
       expect(console.error).not.toHaveBeenCalled();
@@ -312,7 +320,11 @@ describe("useOrders — a fila offline não engole item novo", () => {
       expect(JSON.parse(localStorage.getItem(chave) ?? "null")).toEqual([
         item1,
       ]);
-      expect(fromMock).not.toHaveBeenCalled();
+      // Só relê a etapa. Não busca a lista, nem pelo painel nem pelo cliente.
+      expect(fromMock).toHaveBeenCalledTimes(1);
+      expect(fromMock.mock.results[0]?.value.select).toHaveBeenCalledWith(
+        "status",
+      );
       expect(adminOrdersMock).not.toHaveBeenCalled();
     },
   );
@@ -379,11 +391,10 @@ describe("useOrders — a fila offline não engole item novo", () => {
           await primeira.promessa;
         });
       }
-      expect(rpcMock).toHaveBeenNthCalledWith(2, "update_order_status_atomic", {
+      expect(rpcMock).toHaveBeenNthCalledWith(2, "cancelar_pedido_do_painel", {
         p_order_id: "pedido-2",
-        p_new_status: "cancelled",
+        p_status_esperado: "pending",
         p_notes: null,
-        p_silent: false,
       });
       expect(JSON.parse(localStorage.getItem(chave) ?? "null")).toEqual(
         falhaNoSegundo ? [item2] : null,
@@ -472,11 +483,10 @@ describe("useOrders — a fila offline não engole item novo", () => {
         await primeira.promessa;
       });
     }
-    expect(rpcMock).toHaveBeenNthCalledWith(2, "update_order_status_atomic", {
+    expect(rpcMock).toHaveBeenNthCalledWith(2, "cancelar_pedido_do_painel", {
       p_order_id: "pedido-1",
-      p_new_status: "cancelled",
+      p_status_esperado: "pending",
       p_notes: "nova versão",
-      p_silent: false,
     });
     expect(localStorage.getItem(chave)).toBeNull();
   });

@@ -652,7 +652,15 @@ async function main() {
   // ----------------------------------------------------------- as bases
   const cheio = await clonar("cheio");
   const pre = `pv_${SUF}_pre`.slice(0, 60);
-  await montarBase(pre, (f) => f !== ARQUIVO);
+  // A 11b fotografa a rotina de status como era antes da anulação, não
+  // a sucessora da retirada pronta.
+  await montarBase(
+    pre,
+    (f) =>
+      f !== ARQUIVO &&
+      !f.startsWith("20261405600000_") &&
+      !f.startsWith("20261405700000_"),
+  );
   {
     const sonda = await usar(pre, async (c) => ({
       funcao: (

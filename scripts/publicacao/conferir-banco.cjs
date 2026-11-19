@@ -3218,11 +3218,31 @@ const ROL_DA_157 = [
   "solicitar_devolucao: corpo exato (md5)",
   "solicitar_devolucao: uma so, atributos conhecidos (plpgsql, SECURITY DEFINER, VOLATILE, search_path=public, retorno jsonb) e EXECUTE de authenticated, sem PUBLIC nem anon",
 ];
+const ROL_DA_158 = [
+  "controle: funcoes de public visiveis a este papel",
+  "pedido__mudar_status: corpo exato (md5)",
+  "pedido__mudar_status: assinatura, atributos e ACL interna",
+];
+const ROL_DA_159 = [
+  "controle: funcoes de public visiveis a este papel",
+  "pedido__mudar_status: corpo exato (md5)",
+  "pedido__mudar_status: assinatura e ACL esperadas",
+  "pedido__mudar_status_com_etapa: corpo exato (md5)",
+  "pedido__mudar_status_com_etapa: assinatura e ACL esperadas",
+  "cancelar_pedido_do_painel: corpo exato (md5)",
+  "cancelar_pedido_do_painel: assinatura e ACL esperadas",
+];
 const ROL_FECHADO_POR_CONSULTA = {
   "157a-conferir-a-devolucao-integral-nao-perde-o-centavo-do-cupom-aplicado":
     ROL_DA_157,
   "157b-antes-a-devolucao-integral-nao-perde-o-centavo-do-cupom-base-vigente":
     ROL_DA_157,
+  "159a-conferir-cancelar-pedido-do-painel-confere-a-etapa-aplicado":
+    ROL_DA_159,
+  "159b-antes-cancelar-pedido-do-painel-confere-a-etapa-base-vigente":
+    ROL_DA_159,
+  "158a-conferir-cancelar-retirada-pronta-aplicado": ROL_DA_158,
+  "158b-antes-cancelar-retirada-pronta-base-vigente": ROL_DA_158,
   "156a-conferir-a-observacao-da-inspecao-so-a-loja-ve-aplicado": ROL_DA_156,
   "156b-antes-a-observacao-da-inspecao-so-a-loja-ve-base-vigente": ROL_DA_156,
   "154a-conferir-o-inicio-mostra-o-dinheiro-a-devolver-aplicado": ROL_DA_154,

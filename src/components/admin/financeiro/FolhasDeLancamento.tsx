@@ -24,6 +24,7 @@ import {
   ehDataIso,
   ehLancamentoJaResolvido,
   formatarData,
+  hojeEmSaoPaulo,
   mensagemDeErroFinanceiro,
   origemVemDoPedido,
   rotuloDaForma,
@@ -269,7 +270,10 @@ export function BaixarLancamentoFolha({
   readonly aoMudarSujo: (sujo: boolean) => void;
 }) {
   const confirmarVisualmente = useConfirmacaoFinanceira();
-  const [data, setData] = useState<string>(hoje);
+  const [dataInicial] = useState(hoje);
+  const [dataEditada, setDataEditada] = useState<string | null>(null);
+  const recebimento = alvo.lado === "entrada";
+  const data = dataEditada ?? (recebimento ? hoje : dataInicial);
   const [contaEscolhida, setContaEscolhida] = useState<string | null>(null);
   const [erroData, setErroData] = useState<string | null>(null);
   const [erroDoServidor, setErroDoServidor] = useState<string | null>(null);
@@ -294,11 +298,13 @@ export function BaixarLancamentoFolha({
 
   async function confirmar() {
     if (enviandoRef.current || faltaEscolherConta) return;
+    // O relógio atual só valida o limite; a baixa usa a data exibida.
+    const hojeDoEnvio = recebimento ? hojeEmSaoPaulo() : hoje;
     if (!ehDataIso(data)) {
       setErroData("Informe a data.");
       return;
     }
-    if (data > hoje) {
+    if (data > hojeDoEnvio) {
       setErroData(
         "A baixa é do que já aconteceu: a data não pode ser no futuro.",
       );
@@ -311,7 +317,11 @@ export function BaixarLancamentoFolha({
     setErroDoServidor(null);
     const fim = marcarOperacaoSensivel("baixa-financeira");
     try {
-      await baixarLancamento({ id: alvo.id, data, contaId: contaId || null });
+      await baixarLancamento({
+        id: alvo.id,
+        data,
+        contaId: contaId || null,
+      });
       confirmarVisualmente({
         titulo:
           alvo.lado === "entrada"
@@ -407,7 +417,7 @@ export function BaixarLancamentoFolha({
             type="date"
             value={data}
             max={hoje}
-            onChange={(e) => setData(e.target.value)}
+            onChange={(e) => setDataEditada(e.target.value)}
             className={CLASSE_CAMPO}
           />
         </Campo>

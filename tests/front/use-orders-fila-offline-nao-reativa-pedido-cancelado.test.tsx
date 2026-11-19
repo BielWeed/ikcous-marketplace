@@ -229,7 +229,7 @@ describe("useOrders — a fila offline não reativa pedido cancelado/entregue", 
     );
   });
 
-  it("cancelar pela fila sem statusEsperado (fila legada) não relê o servidor e segue sendo enviado", async () => {
+  it("cancelamento legado sem statusEsperado não é enviado e pede nova confirmação", async () => {
     const itemDeCancelamento = {
       orderId: "pedido-B",
       status: "cancelled",
@@ -242,12 +242,12 @@ describe("useOrders — a fila offline não reativa pedido cancelado/entregue", 
     await reconectar();
 
     expect(fromMock).not.toHaveBeenCalled();
-    expect(rpcMock).toHaveBeenCalledWith("update_order_status_atomic", {
-      p_order_id: "pedido-B",
-      p_new_status: "cancelled",
-      p_notes: null,
-      p_silent: false,
-    });
+    expect(rpcMock).not.toHaveBeenCalled();
+    expect(localStorage.getItem(chave)).toBeNull();
+    expect(toast.info).toHaveBeenCalledWith(
+      expect.stringContaining("confirme o cancelamento novamente"),
+      { id: toastId },
+    );
   });
 
   it("não confirmando o status atual, mantém o item na fila para tentar de novo (não sei nunca vira pode avançar)", async () => {

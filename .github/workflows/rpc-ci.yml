@@ -293,6 +293,10 @@ on:
       - "scripts/publicacao/consultas/156b-antes-a-observacao-da-inspecao-so-a-loja-ve-base-vigente.sql"
       - "scripts/publicacao/consultas/157a-conferir-a-devolucao-integral-nao-perde-o-centavo-do-cupom-aplicado.sql"
       - "scripts/publicacao/consultas/157b-antes-a-devolucao-integral-nao-perde-o-centavo-do-cupom-base-vigente.sql"
+      - "scripts/publicacao/consultas/158a-conferir-cancelar-retirada-pronta-aplicado.sql"
+      - "scripts/publicacao/consultas/158b-antes-cancelar-retirada-pronta-base-vigente.sql"
+      - "scripts/publicacao/consultas/159a-conferir-cancelar-pedido-do-painel-confere-a-etapa-aplicado.sql"
+      - "scripts/publicacao/consultas/159b-antes-cancelar-pedido-do-painel-confere-a-etapa-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -559,6 +563,10 @@ on:
       - "scripts/publicacao/consultas/156b-antes-a-observacao-da-inspecao-so-a-loja-ve-base-vigente.sql"
       - "scripts/publicacao/consultas/157a-conferir-a-devolucao-integral-nao-perde-o-centavo-do-cupom-aplicado.sql"
       - "scripts/publicacao/consultas/157b-antes-a-devolucao-integral-nao-perde-o-centavo-do-cupom-base-vigente.sql"
+      - "scripts/publicacao/consultas/158a-conferir-cancelar-retirada-pronta-aplicado.sql"
+      - "scripts/publicacao/consultas/158b-antes-cancelar-retirada-pronta-base-vigente.sql"
+      - "scripts/publicacao/consultas/159a-conferir-cancelar-pedido-do-painel-confere-a-etapa-aplicado.sql"
+      - "scripts/publicacao/consultas/159b-antes-cancelar-pedido-do-painel-confere-a-etapa-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -843,6 +851,12 @@ jobs:
       - name: Prova viva o bucket das fotos de devolucao so aceita imagem
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-bucket-das-fotos-de-devolucao-so-aceita-imagem-viva.cjs
+      - name: Prova viva da retirada pronta cancelada sem saída
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cancelar-retirada-pronta-viva.cjs
+      - name: Prova viva do cancelamento do painel concorrente com a finalização
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cancelar-pedido-do-painel-confere-a-etapa-viva.cjs
       - name: Prova viva cancelar pedido so abre estorno se pago de verdade
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/cancelar-pedido-so-abre-estorno-se-pago-viva.cjs

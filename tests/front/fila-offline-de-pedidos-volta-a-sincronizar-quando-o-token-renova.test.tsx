@@ -123,6 +123,7 @@ const HORA = 60 * 60 * 1000;
 const cancelamento = {
   orderId: "pedido-1",
   status: "cancelled",
+  statusEsperado: "pending",
   silent: false,
   timestamp: AGORA - HORA,
 };

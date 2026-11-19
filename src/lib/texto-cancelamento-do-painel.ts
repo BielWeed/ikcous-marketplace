@@ -73,12 +73,21 @@ const PAGOS = new Set(["pago", "pago_apos_expirar", "recebido_na_entrega"]);
 const PAGOS_PELO_MERCADO_PAGO = new Set(["pago", "pago_apos_expirar"]);
 const AINDA_NAO_SAIU = new Set(["pending", "processing"]);
 
+function retiradaProntaSemSaida(pedido: PedidoParaConfirmarCancelamento) {
+  return (
+    pedido.status === "shipping" &&
+    pedido.retiradaNaLoja === true &&
+    pedido.cancelledAfterShipping !== true
+  );
+}
+
 function cancelarDevolveSozinho(pedido: PedidoParaConfirmarCancelamento) {
   return (
     Boolean(pedido.payment_status) &&
     PAGOS_PELO_MERCADO_PAGO.has(pedido.payment_status as string) &&
     Boolean(pedido.status) &&
-    AINDA_NAO_SAIU.has(pedido.status as string) &&
+    (AINDA_NAO_SAIU.has(pedido.status as string) ||
+      retiradaProntaSemSaida(pedido)) &&
     pedido.cancelledAfterShipping !== true
   );
 }
@@ -111,11 +120,8 @@ function produtoJaVoltouParaALoja(pedido: PedidoParaConfirmarCancelamento) {
   );
 }
 
-// Retirada na loja pronta (ou reativada depois de pronta), cancelada. O banco
-// carimba `cancelled_after_shipping` em qualquer cancelamento vindo de
-// `shipping`, retirada ou não, e então NÃO repõe o estoque e `solicitar_estorno`
-// recusa a devolução até a loja tocar em "O produto voltou". O texto diz o que
-// é verdade nos dois lados: o produto não saiu E o passo ainda é da loja.
+// Retiradas com um carimbo histórico continuam no fluxo antigo: o banco
+// não presume que a peça voltou, nem reclassifica cancelamentos antigos.
 const PASSO_DA_RETIRADA_CANCELADA =
   'O pedido entra na lista "Esperando o produto voltar": toque em "O produto voltou" para repor o estoque';
 
@@ -145,11 +151,21 @@ function textoBaseDoCancelamento(
 ): string {
   // Prazo: o cron roda a cada 10 min e pega a linha depois de 2 min — "em
   // alguns minutos", nunca um número que o código não garante.
+  const retiradaPronta = retiradaProntaSemSaida(pedido);
   if (cancelarDevolveSozinho(pedido)) {
+    const situacao = retiradaPronta
+      ? "está pronto para retirar e continua na loja"
+      : "ainda não saiu para entrega";
+    const avisoEstoque = retiradaPronta
+      ? "Ao cancelar, o app repõe o estoque. "
+      : "";
     if (jaDevolveuParte(pedido)) {
-      return 'Este pedido está PAGO, ainda não saiu para entrega e uma parte do valor já foi devolvida. Ao cancelar, o app pede sozinho ao Mercado Pago, em alguns minutos, a devolução do que ainda falta devolver (não do valor total do pedido). NÃO devolva o restante por outro meio (PIX, dinheiro, transferência): o cliente receberia duas vezes. Antes de qualquer devolução por fora, confira na lista "Devolver agora" o valor que ainda falta e se há devolução em andamento. Se você já devolveu o restante por fora, toque em "Já estornei no Mercado Pago" logo depois de cancelar. Cancelar mesmo assim?';
+      return `Este pedido está PAGO, ${situacao} e uma parte do valor já foi devolvida. ${avisoEstoque}Ao cancelar, o app pede sozinho ao Mercado Pago, em alguns minutos, a devolução do que ainda falta devolver (não do valor total do pedido). NÃO devolva o restante por outro meio (PIX, dinheiro, transferência): o cliente receberia duas vezes. Antes de qualquer devolução por fora, confira na lista "Devolver agora" o valor que ainda falta e se há devolução em andamento. Se você já devolveu o restante por fora, toque em "Já estornei no Mercado Pago" logo depois de cancelar. Cancelar mesmo assim?`;
     }
-    return 'Este pedido está PAGO e ainda não saiu para entrega. Ao cancelar, o app pede sozinho ao Mercado Pago, em alguns minutos, que devolva o valor ao cliente. NÃO devolva o dinheiro por outro meio (PIX, dinheiro, transferência): o cliente receberia duas vezes. Se você já devolveu por fora, toque em "Já estornei no Mercado Pago" na lista "Devolver agora" logo depois de cancelar. Cancelar mesmo assim?';
+    return `Este pedido está PAGO e ${situacao}. ${avisoEstoque}Ao cancelar, o app pede sozinho ao Mercado Pago, em alguns minutos, que devolva o valor ao cliente. NÃO devolva o dinheiro por outro meio (PIX, dinheiro, transferência): o cliente receberia duas vezes. Se você já devolveu por fora, toque em "Já estornei no Mercado Pago" na lista "Devolver agora" logo depois de cancelar. Cancelar mesmo assim?`;
+  }
+  if (retiradaPronta && pedido.payment_status === "recebido_na_entrega") {
+    return 'Este pedido já está pronto para retirar. Cancelar repõe o estoque, mas não devolve o dinheiro automaticamente: combine a devolução com a cliente e registre na lista "Devolver agora". Cancelar mesmo assim?';
   }
   // Pago que JÁ SAIU e o produto JÁ VOLTOU (enviado, cancelado, devolvido,
   // reativado): o servidor não abre devolução automática (o carimbo de envio
@@ -187,9 +203,10 @@ function textoBaseDoCancelamento(
   // cancelamento não a devolve ao estoque (o servidor só credita estoque de
   // pedido que nunca saiu; o resto volta em "O produto voltou").
   if (
-    (pedido.status && EM_ROTA.has(pedido.status)) ||
-    (pedido.cancelledAfterShipping === true &&
-      !produtoJaVoltouParaALoja(pedido))
+    !retiradaPronta &&
+    ((pedido.status && EM_ROTA.has(pedido.status)) ||
+      (pedido.cancelledAfterShipping === true &&
+        !produtoJaVoltouParaALoja(pedido)))
   ) {
     if (pedido.retiradaNaLoja === true) {
       return `Este pedido já está pronto para retirar na loja: a cliente não levou o produto. Cancelar não repõe o estoque sozinho. ${PASSO_DA_RETIRADA_CANCELADA}. Cancelar mesmo assim?`;
@@ -205,7 +222,10 @@ function textoBaseDoCancelamento(
         : "O cliente é avisado no aplicativo."
     } Cancelar?`;
   }
-  return `Tem certeza que deseja cancelar este pedido? O estoque volta para o produto${
+  const inicio = retiradaPronta
+    ? "Este pedido já está pronto para retirar na loja."
+    : "Tem certeza que deseja cancelar este pedido?";
+  return `${inicio} O estoque volta para o produto${
     pedido.clienteSemConta === true
       ? `. ${FRASE_CLIENTE_SEM_CONTA}`
       : " e o cliente é avisado no aplicativo."

@@ -49,7 +49,10 @@ vi.mock("@/lib/supabase", () => ({
           error: { code: "P0001", message: "pedido_status_mudou" },
         };
       }
-      servidor.status = String(args.p_new_status);
+      servidor.status =
+        nome === "cancelar_pedido_do_painel"
+          ? "cancelled"
+          : String(args.p_new_status);
       return { data: null, error: null };
     },
     functions: { invoke: vi.fn() },
@@ -239,13 +242,14 @@ describe("fila offline de pedidos — trava entre abas", () => {
     const locks = instalarLocksFalsos();
     const aba = await abrirAba();
     guardarAvanco();
-    // Enquanto a RPC do primeiro avanço está em voo, entra outro avanço na fila.
+    // Enquanto a RPC do avanço está em voo, entra outro item na fila.
     servidor.aoReceberRpc = () => {
       servidor.aoReceberRpc = undefined;
       const fila = JSON.parse(localStorage.getItem(CHAVE) ?? "[]");
       fila.push({
         orderId: "pedido-2",
         status: "cancelled",
+        statusEsperado: "processing",
         silent: false,
         timestamp: Date.now() + 1,
       });
@@ -258,7 +262,7 @@ describe("fila offline de pedidos — trava entre abas", () => {
     // pedido de novo pela segunda passada (com `ifAvailable` ela se recusaria).
     expect(servidor.rpcs.map((r) => r.nome)).toEqual([
       "avancar_status_do_pedido",
-      "update_order_status_atomic",
+      "cancelar_pedido_do_painel",
     ]);
     expect(locks.request).toHaveBeenCalledTimes(1);
     expect(localStorage.getItem(CHAVE)).toBeNull();

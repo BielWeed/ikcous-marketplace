@@ -12,6 +12,51 @@ import { textoCancelamentoDoPainel } from "../../src/lib/texto-cancelamento-do-p
 // e nunca cancelado depois de enviado.
 const FRASE_ANTIGA = "não devolve o dinheiro automaticamente";
 
+describe("cancelamento da retirada pronta que nunca saiu da loja", () => {
+  const pronta = {
+    status: "shipping",
+    retiradaNaLoja: true,
+    cancelledAfterShipping: false,
+  };
+
+  it("paga online: repõe o estoque e não manda devolver o dinheiro por fora", () => {
+    const texto = textoCancelamentoDoPainel({
+      ...pronta,
+      payment_status: "pago",
+    });
+    expect(texto).toContain("repõe o estoque");
+    expect(texto).toContain("Mercado Pago");
+    expect(texto).toContain("NÃO devolva");
+    expect(texto).not.toContain("O produto voltou");
+  });
+
+  it("sem pagamento: não pede que a lojista confirme o retorno", () => {
+    const texto = textoCancelamentoDoPainel(pronta);
+    expect(texto).toContain("O estoque volta");
+    expect(texto).not.toContain("O produto voltou");
+  });
+
+  it("paga na retirada: repõe o estoque, mas a devolução é manual", () => {
+    const texto = textoCancelamentoDoPainel({
+      ...pronta,
+      payment_status: "recebido_na_entrega",
+    });
+    expect(texto).toContain("repõe o estoque");
+    expect(texto).toContain("Devolver agora");
+    expect(texto).not.toContain("Mercado Pago");
+  });
+
+  it("histórico de saída continua impedindo reposição automática", () => {
+    const texto = textoCancelamentoDoPainel({
+      ...pronta,
+      payment_status: "pago",
+      cancelledAfterShipping: true,
+    });
+    expect(texto).toContain("Esperando o produto voltar");
+    expect(texto).not.toContain("Mercado Pago");
+  });
+});
+
 describe("textoCancelamentoDoPainel — pago e ainda não saiu: o app devolve sozinho (L3e)", () => {
   it("pago/pago_apos_expirar em pending/processing: diz que o app pede a devolução ao Mercado Pago e proíbe devolver por fora", () => {
     for (const payment_status of ["pago", "pago_apos_expirar"]) {

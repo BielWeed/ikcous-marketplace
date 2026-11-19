@@ -66,10 +66,15 @@ function corpoDe(texto, assinatura) {
   return texto.slice(a, texto.indexOf(m[1], a));
 }
 // A ULTIMA migration (por nome) que define a funcao: e' o corpo vivo numa arvore limpa.
-function ultimaDefinicao(assinatura) {
+function ultimaDefinicao(assinatura, antesDe) {
   const arquivos = [...Deno.readDirSync(PASTA)]
     .map((e) => e.name)
-    .filter((n) => n.endsWith(".sql") && !n.startsWith("rollback-"))
+    .filter(
+      (n) =>
+        n.endsWith(".sql") &&
+        !n.startsWith("rollback-") &&
+        (antesDe === undefined || n < antesDe),
+    )
     .sort();
   let ultimo = null;
   for (const n of arquivos) if (ler(n).includes(assinatura)) ultimo = n;
@@ -99,16 +104,19 @@ Deno.test("204: os hashes do rollback sao o sha256 real do corpo (LF e CRLF) e s
   assertEquals(lit, [sha256(corpo), sha256(crlf(corpo))]);
 });
 
-Deno.test("204: o md5 das duas dependencias do preflight e o do corpo da ULTIMA migration que as define", () => {
+Deno.test("204: o md5 das duas dependencias do preflight e o do corpo vigente no apply da 204", () => {
   const casos = [
     ["public.is_admin_atual()", "FUNCTION public.is_admin_atual()"],
     [
       "public.pedido__mudar_status(uuid, text, text, uuid, boolean, boolean)",
       "FUNCTION public.pedido__mudar_status(",
+      // Este pré-voo é histórico: 5600/5700 sucedem o corpo da 98 depois
+      // do apply da 204. Não se reescreve uma migration publicada.
+      NOME,
     ],
   ];
-  for (const [assinaturaNoPreflight, trecho] of casos) {
-    const { nome, texto } = ultimaDefinicao(trecho);
+  for (const [assinaturaNoPreflight, trecho, antesDe] of casos) {
+    const { nome, texto } = ultimaDefinicao(trecho, antesDe);
     const h = md5(corpoDe(texto, trecho).replace(/\r/g, ""));
     assertStringIncludes(
       migration,

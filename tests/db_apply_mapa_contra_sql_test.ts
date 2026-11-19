@@ -38,6 +38,8 @@ import {
 const require = createRequire(import.meta.url);
 const {
   VERIFICACOES,
+  avaliarChecagem,
+  buscarDef,
   conferirMarcador,
   checagemBemFormada,
 } = require("../scripts/db-apply.cjs");
@@ -166,6 +168,39 @@ Deno.test("o extrator ignora CREATE FUNCTION no rollback comentado da 280 e mant
   assertEquals(corpos.length, 1, "rollback comentado não é sobrecarga ativa");
   assertStringIncludes(corpos[0], "p_total_esperado numeric DEFAULT NULL");
   assertStringIncludes(corpos[0], "-- (1) O GATE VEM ANTES");
+});
+
+Deno.test("5600: verifica os marcadores com a rotina original ou a delegação da 5700", async () => {
+  const primeira = "20261405600000_cancelar_retirada_pronta.sql";
+  const segunda =
+    "20261405700000_cancelar_pedido_do_painel_confere_a_etapa.sql";
+  const [checagem] = VERIFICACOES[primeira];
+  const funcao = "pedido__mudar_status";
+  const interna = "pedido__mudar_status_com_etapa";
+  const original = corpoDaMigration(primeira, funcao);
+  const casca = corpoDaMigration(segunda, funcao);
+  const sucessora = corpoDaMigration(segunda, interna);
+
+  for (const [def, internaDef, chamadasEsperadas, resultado] of [
+    [original, undefined, [funcao], "verificada"],
+    [casca, sucessora, [funcao, interna], "verificada"],
+    [casca, undefined, [funcao, interna], "falhou"],
+    ["corpo inesperado", sucessora, [funcao], "falhou"],
+  ]) {
+    const chamadas: string[] = [];
+    const cliente = {
+      query(_sql: string, [nome]: [string]) {
+        chamadas.push(nome);
+        const encontrada = nome === funcao ? def : internaDef;
+        return Promise.resolve({
+          rows: encontrada ? [{ def: encontrada }] : [],
+        });
+      },
+    };
+    const corpo = await buscarDef(cliente, checagem);
+    assertEquals(chamadas, chamadasEsperadas);
+    assertEquals(avaliarChecagem(corpo, checagem).situacao, resultado);
+  }
 });
 
 function corpoDaMigration(arquivo, funcao) {

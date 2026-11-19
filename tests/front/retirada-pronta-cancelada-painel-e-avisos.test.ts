@@ -7,16 +7,8 @@
 // com a cliente e "avisar o transporte", quando a cliente nunca levou nada e
 // não existe transporte.
 //
-// A VERDADE DO SERVIDOR (migration 20261198000000, `update_order_status_atomic`
-// e `confirmar_retorno_do_produto`): cancelar em `shipping` carimba
-// `cancelled_after_shipping` SEM olhar se é retirada, NÃO devolve o estoque e
-// NÃO abre a devolução do dinheiro. `solicitar_estorno` recusa ("A devolução
-// espera o produto") até a loja tocar em "O produto voltou". Então o texto
-// honesto NÃO manda a retirada pronta direto para "Devolver agora": diz que o
-// produto não saiu da loja E que a loja ainda precisa tocar em "O produto
-// voltou" para repor o estoque e liberar a devolução do dinheiro.
-//
-// SÓ TEXTO: pedido de ENTREGA fica idêntico (controle em cada bloco).
+// A 20261405600000 distingue retirada pronta sem saída: o estoque volta
+// sem ação da loja. As entregas e o carimbo de saída histórico não mudam.
 import { describe, expect, it } from "vitest";
 
 import { textoCancelamentoDoPainel } from "@/lib/texto-cancelamento-do-painel";
@@ -38,11 +30,10 @@ describe("textoCancelamentoDoPainel — retirada pronta", () => {
     });
     expect(texto).not.toMatch(FALA_DE_ENTREGA);
     expect(texto).toContain("pronto para retirar");
-    expect(texto).toContain("não levou");
-    // O servidor só libera a devolução depois de "O produto voltou": o texto
-    // não pode prometer a devolução do dinheiro sem esse passo.
-    expect(texto).toContain('"O produto voltou"');
-    expect(texto).toContain("estoque");
+    expect(texto).toContain("continua na loja");
+    expect(texto).not.toContain('"O produto voltou"');
+    expect(texto).toContain("repõe o estoque");
+    expect(texto).toContain("Mercado Pago");
     expect(texto.endsWith("Cancelar mesmo assim?")).toBe(true);
   });
 
@@ -65,8 +56,9 @@ describe("textoCancelamentoDoPainel — retirada pronta", () => {
     });
     expect(texto).not.toMatch(FALA_DE_ENTREGA);
     expect(texto).toContain("pronto para retirar");
-    expect(texto).toContain('"O produto voltou"');
-    expect(texto.endsWith("Cancelar mesmo assim?")).toBe(true);
+    expect(texto).toContain("O estoque volta");
+    expect(texto).not.toContain('"O produto voltou"');
+    expect(texto.endsWith("Cancelar?")).toBe(true);
   });
 
   it("aviso da etiqueta paga continua entrando antes da pergunta", () => {

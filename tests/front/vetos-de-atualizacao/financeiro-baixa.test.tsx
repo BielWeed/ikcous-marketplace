@@ -33,6 +33,8 @@ describe("baixa financeira com valores padrão também veta a atualização", ()
   let raiz: Root;
   let host: HTMLDivElement;
   beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-16T12:00:00Z"));
     baixar.mockReset();
     host = document.createElement("div");
     document.body.appendChild(host);
@@ -41,6 +43,7 @@ describe("baixa financeira com valores padrão também veta a atualização", ()
   afterEach(() => {
     act(() => raiz.unmount());
     host.remove();
+    vi.useRealTimers();
   });
 
   it.each([false, true])("marca até a RPC terminar (erro=%s)", async (erro) => {

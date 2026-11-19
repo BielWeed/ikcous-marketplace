@@ -11,13 +11,8 @@
 // tela dizia "Devolução: a loja faz depois de receber o produto de volta". E
 // no Perfil o cartão do pedido mostrava "Em rota" com caminhão.
 //
-// A VERDADE DO DINHEIRO (supabase/migrations/20261198000000_cancelar_pedido_
-// anula_a_cobranca.sql): cancelar em `shipping` NÃO grava estorno sozinho --
-// quem confirma é a loja, à mão. Então o texto da retirada pronta não afirma
-// estorno automático nem prazo; diz que a loja cuida do reembolso.
-//
-// SÓ TEXTO e a escolha de qual texto aparece: nenhuma regra de cancelar ou
-// reembolsar muda. Pedido de ENTREGA fica idêntico (controle em cada bloco).
+// A 20261405600000 só muda o cancelamento pela loja. A cliente que cancela
+// a própria retirada pronta continua sem estorno automático.
 //
 // Blocos:
 //   A. textos PUROS (tabela: entrega x retirada x pago/não pago).
@@ -59,9 +54,8 @@ describe("textoConfirmarCancelamento — entrega x retirada x pagamento", () => 
     });
     expect(texto).toBe(CONFIRM_RETIRADA_PAGA);
     expect(texto).not.toMatch(FALA_DE_DEVOLVER_PRODUTO);
-    // Honesto: não promete estorno automático nem prazo.
     expect(texto).not.toMatch(/volta sozinho/i);
-    expect(texto).not.toMatch(/\bdias?\b|horas?\b|fatura/i);
+    expect(texto).not.toMatch(/\bdias?\b|horas?\b/i);
   });
 
   it("retirada pronta vence 'já enviado' mesmo se os dois sinais chegarem juntos", () => {

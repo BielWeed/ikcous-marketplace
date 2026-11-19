@@ -193,11 +193,10 @@ describe("useOrders — cancelamento offline confere a etapa antes de enviar", (
 
     expect(fromMock).toHaveBeenCalledWith("marketplace_orders");
     expect(rpcMock).toHaveBeenCalledTimes(1);
-    expect(rpcMock).toHaveBeenCalledWith("update_order_status_atomic", {
+    expect(rpcMock).toHaveBeenCalledWith("cancelar_pedido_do_painel", {
       p_order_id: "pedido-A",
-      p_new_status: "cancelled",
+      p_status_esperado: "processing",
       p_notes: null,
-      p_silent: false,
     });
     expect(localStorage.getItem(chave)).toBeNull();
     expect(toast.success).toHaveBeenCalledWith(
@@ -206,9 +205,7 @@ describe("useOrders — cancelamento offline confere a etapa antes de enviar", (
     );
   });
 
-  it("compatibilidade: item SEM statusEsperado (fila já gravada) segue sendo enviado, sem releitura", async () => {
-    // Mesmo com o servidor em 'delivered', o item legado sai como hoje: a
-    // fila antiga não sabe qual etapa a lojista via.
+  it("item legado sem a etapa não cancela e pede nova confirmação", async () => {
     releituraPorPedido.set("pedido-A", {
       data: { status: "delivered" },
       error: null,
@@ -219,13 +216,12 @@ describe("useOrders — cancelamento offline confere a etapa antes de enviar", (
     await reconectar();
 
     expect(fromMock).not.toHaveBeenCalled();
-    expect(rpcMock).toHaveBeenCalledWith("update_order_status_atomic", {
-      p_order_id: "pedido-A",
-      p_new_status: "cancelled",
-      p_notes: null,
-      p_silent: false,
-    });
+    expect(rpcMock).not.toHaveBeenCalled();
     expect(localStorage.getItem(chave)).toBeNull();
+    expect(toast.info).toHaveBeenCalledWith(
+      expect.stringContaining("confirme o cancelamento novamente"),
+      { id: toastId },
+    );
   });
 
   it("limite: cancelar de propósito um pedido que a lojista via 'delivered' continua valendo quando o servidor ainda está 'delivered'", async () => {
@@ -241,11 +237,10 @@ describe("useOrders — cancelamento offline confere a etapa antes de enviar", (
     await montar();
     await reconectar();
 
-    expect(rpcMock).toHaveBeenCalledWith("update_order_status_atomic", {
+    expect(rpcMock).toHaveBeenCalledWith("cancelar_pedido_do_painel", {
       p_order_id: "pedido-A",
-      p_new_status: "cancelled",
+      p_status_esperado: "delivered",
       p_notes: null,
-      p_silent: false,
     });
     expect(localStorage.getItem(chave)).toBeNull();
   });
@@ -300,8 +295,11 @@ describe("useOrders — cancelamento offline confere a etapa antes de enviar", (
 
     expect(rpcMock).toHaveBeenCalledTimes(1);
     expect(rpcMock).toHaveBeenCalledWith(
-      "update_order_status_atomic",
-      expect.objectContaining({ p_order_id: "pedido-B" }),
+      "cancelar_pedido_do_painel",
+      expect.objectContaining({
+        p_order_id: "pedido-B",
+        p_status_esperado: "pending",
+      }),
     );
     expect(localStorage.getItem(chave)).toBeNull();
     expect(toast.info).toHaveBeenCalledWith(MENSAGEM_DE_DESCARTE, {

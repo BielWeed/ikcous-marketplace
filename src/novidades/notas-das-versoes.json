@@ -1,4 +1,14 @@
 {
+  "1.5.215": {
+    "titulo": "Cancelar retirada pronta e painel que acompanha o relógio",
+    "novidades": [],
+    "correcoes": [
+      "Painel, pedidos: ao cancelar um pedido de retirada que já estava pronto e que a cliente ainda não levou, o produto volta ao estoque e o estorno segue o mesmo caminho de um pedido não enviado. Antes de cancelar, o painel confere se o pedido continua na etapa que você viu.",
+      "Painel, financeiro: ao registrar o recebimento de uma venda com a tela aberta desde o dia anterior, a data da baixa é a de hoje, a não ser que você escolha outra. O caixa passa a mostrar o dia e a hora da conferência depois da virada do dia.",
+      "Painel, banners: com a lista aberta, uma campanha que começa ou termina passa para Agendados ou Expirados na hora marcada, sem recarregar a página."
+    ],
+    "melhorias": []
+  },
   "1.5.214": {
     "titulo": "Troco na entrega, retirada com endereço e pedidos mais claros",
     "novidades": [

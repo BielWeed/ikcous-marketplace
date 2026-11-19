@@ -151,9 +151,16 @@ function instalarRpc(
           }),
       };
     }
+    if (nome === "get_admin_orders_cancelados_recentes") {
+      return {
+        abortSignal: () =>
+          Promise.resolve({ data: { data: [], total_count: 0 }, error: null }),
+      };
+    }
     if (
       nome === "update_order_status_atomic" ||
-      nome === "avancar_status_do_pedido"
+      nome === "avancar_status_do_pedido" ||
+      nome === "cancelar_pedido_do_painel"
     ) {
       chamadasUpdateOrderStatus.push(args);
       return handlerUpdate(args);
@@ -329,6 +336,62 @@ describe("updateOrderStatus (admin) relê o status no servidor antes de gravar �
     });
   });
 
+  it("cancelamento do painel envia a etapa confirmada para a nova RPC", async () => {
+    respostaDaReleitura = { data: { status: "shipping" }, error: null };
+    const { updateOrderStatus } = await montarSondaAdmin(
+      pedidoFake("shipping"),
+    );
+
+    await act(async () => {
+      await updateOrderStatus(
+        "pedido-1",
+        "cancelled",
+        "motivo",
+        true,
+        "shipping",
+      );
+    });
+
+    expect(rpc).toHaveBeenCalledWith("cancelar_pedido_do_painel", {
+      p_order_id: "pedido-1",
+      p_status_esperado: "shipping",
+      p_notes: "motivo",
+    });
+  });
+
+  it("não pinta cancelado se a nova RPC recusar uma etapa que mudou depois da releitura", async () => {
+    respostaDaReleitura = { data: { status: "shipping" }, error: null };
+    instalarRpc(async () => ({
+      error: {
+        code: "P0001",
+        message: "pedido_status_mudou: situação já finalizada",
+      },
+    }));
+    const { pegarOrders, updateOrderStatus } = await montarSondaAdmin(
+      pedidoFake("shipping"),
+    );
+
+    await act(async () => {
+      await expect(
+        updateOrderStatus(
+          "pedido-1",
+          "cancelled",
+          undefined,
+          false,
+          "shipping",
+        ),
+      ).rejects.toMatchObject({ code: "P0001" });
+    });
+
+    expect(pegarOrders().find((o) => o.id === "pedido-1")?.status).toBe(
+      "shipping",
+    );
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith(
+      "O pedido mudou de situação enquanto você olhava. Atualize e tente de novo.",
+    );
+  });
+
   it("M8: se mudou DEPOIS da releitura, a RPC recebe o esperado e a tela desfaz o avanço com mensagem amigavel", async () => {
     instalarRpc(async () => ({
       error: {
@@ -471,7 +534,7 @@ describe("updateOrderStatus (admin) relê o status no servidor antes de gravar �
     expect(from).toHaveBeenCalledTimes(1);
     expect(chamadasUpdateOrderStatus).toHaveLength(1);
     expect(chamadasUpdateOrderStatus[0]).toMatchObject({
-      p_new_status: "cancelled",
+      p_status_esperado: "processing",
     });
   });
 

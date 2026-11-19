@@ -1678,6 +1678,9 @@ PROVAS.push({
       // A 20261241000000 (posterior: redefine o pedido__saldo_a_estornar que a 98 criou) sai antes, se no ar —
       // com ela no ar o pré-voo da 98 recusa o saldo de outro corpo (o comportamento certo).
       await desfazerReembolsoEmDuvidaNaTransacao(cliente);
+      await require("./cancelar-retirada-pronta-posterior.cjs").desfazerCancelarRetiradaProntaNaTransacao(
+        cliente,
+      );
       // Reaplicar a 98 por cima dela mesma: idempotente.
       await cliente.query(sql98);
       assert.equal(await md5Vivo(cliente), HASH_98);
@@ -1738,6 +1741,9 @@ PROVAS.push({
     const sqlRollback = fs.readFileSync(CAMINHO_ROLLBACK_98, "utf8");
     await cliente.query("BEGIN");
     try {
+      await require("./cancelar-retirada-pronta-posterior.cjs").desfazerCancelarRetiradaProntaNaTransacao(
+        cliente,
+      );
       await cliente.query(sqlRollback);
       await cliente.query("SAVEPOINT controle");
       let pegouODefeito = false;

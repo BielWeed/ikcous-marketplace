@@ -526,7 +526,7 @@ describe("updateOrderStatus (admin) recarrega pedidosCancelados sozinho — acha
     rpc.mockReset();
     chamadasCanceladosRecentes = [];
     rpc.mockImplementation((nome: string, args: any) => {
-      if (nome === "update_order_status_atomic") {
+      if (nome === "cancelar_pedido_do_painel") {
         return Promise.resolve({ error: null });
       }
       if (nome === "get_admin_orders_cancelados_recentes") {

@@ -97,12 +97,14 @@ const HORA = 60 * 60 * 1000;
 const itemDeA = {
   orderId: "pedido-1",
   status: "cancelled",
+  statusEsperado: "pending",
   silent: false,
   timestamp: AGORA - HORA,
 };
 const itemDeB = {
   orderId: "pedido-2",
   status: "cancelled",
+  statusEsperado: "pending",
   silent: false,
   timestamp: AGORA - HORA,
 };
@@ -397,6 +399,7 @@ describe("fila offline de pedidos — uma chave por usuário", () => {
       const semData = {
         orderId: "pedido-s",
         status: "cancelled",
+        statusEsperado: "pending",
         silent: false,
       };
       guardarFila("admin-a", [semData]);
@@ -412,6 +415,7 @@ describe("fila offline de pedidos — uma chave por usuário", () => {
     const legado = {
       orderId: "pedido-legado",
       status: "cancelled",
+      statusEsperado: "pending",
       silent: false,
       timestamp: AGORA - HORA,
     };

@@ -252,6 +252,9 @@ const CAMINHO_ROLLBACK_98 = path.join(
 // Só a 98, para os passos que NÃO desfazem a 97 (o preflight da 97 e do
 // rollback da 97 por cima de estado divergente medem a 97 sem a 98).
 async function desfazer98NaTransacao(cliente) {
+  await require("./cancelar-retirada-pronta-posterior.cjs").desfazerCancelarRetiradaProntaNaTransacao(
+    cliente,
+  );
   assert.equal(
     (await catalogo(cliente, REEMITIR)).hash,
     HASH_98_REEMITIR,

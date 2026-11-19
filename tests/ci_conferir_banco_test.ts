@@ -2535,6 +2535,22 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "b4c3665bd806ae8fe8960e5f6d9dde29",
           versao: "20261402000000",
         },
+        // Retirada pronta e, depois, a porta com conferência de etapa.
+        ...(await Promise.all(
+          [
+            "20261405600000_cancelar_retirada_pronta.sql",
+            "20261405700000_cancelar_pedido_do_painel_confere_a_etapa.sql",
+          ].map(async (nome) => ({
+            fn: "pedido__mudar_status",
+            h: md5(
+              corpoNoTexto(
+                await Deno.readTextFile(`${MIGRATIONS_DIR}/${nome}`),
+                "pedido__mudar_status",
+              )!,
+            ),
+            versao: nome.slice(0, 14),
+          })),
+        )),
         {
           fn: "pedido__saldo_a_estornar",
           h: "99741b4cdbf1e8d8340f80440e6da094",

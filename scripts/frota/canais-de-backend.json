@@ -754,6 +754,18 @@
       "versoes": ["20261405400000"],
       "ausenciaConfirmadaPor": "157b-antes-a-devolucao-integral-nao-perde-o-centavo-do-cupom-base-vigente",
       "_comentario": "UMA migration ADITIVA de APPLY NORMAL, sem backfillLedger e sem nuncaAplicar; so o corpo de solicitar_devolucao muda para o rateio acumulado do cupom por linha. Sem reescrita de devolucoes antigas, sem mudanca de assinatura, atributos ou ACL. Ordem: depois da 20261399992000. So IKCOUS e Savy; lojas de teste ficam fora. A 157a verifica o corpo novo; se negativa, exige 157b positiva e mais nova para confirmar a base exata antes do apply. Repetir 157a depois. O rollback manual restaura o corpo anterior byte a byte."
+    },
+    {
+      "consulta": "158a-conferir-cancelar-retirada-pronta-aplicado",
+      "versoes": ["20261405600000"],
+      "ausenciaConfirmadaPor": "158b-antes-cancelar-retirada-pronta-base-vigente",
+      "_comentario": "Apply normal aditivo. So troca o corpo privado de pedido__mudar_status: so no cancelamento pelo admin, retirada pronta que nunca saiu repoe estoque e segue o estorno de nao enviado. Cancelamento pela cliente, dados antigos e ACL intactos. Antes do front e da 20261405700000; rollback restaura a 20261198000000."
+    },
+    {
+      "consulta": "159a-conferir-cancelar-pedido-do-painel-confere-a-etapa-aplicado",
+      "versoes": ["20261405700000"],
+      "ausenciaConfirmadaPor": "159b-antes-cancelar-pedido-do-painel-confere-a-etapa-base-vigente",
+      "_comentario": "Apply normal aditivo. Depois da 20261405600000: porta nova do painel confere a etapa sob as travas de estorno e pedido. App antigo e edge continuam usando as portas antigas. Banco antes do front. Rollback restaura a 20261405600000."
     }
   ],
   "_comentarioCanais": "projetosNoMesmoBanco: outros alvos dos workflows de banco que atingem o MESMO projeto Supabase (um apply por eles vence a evidencia desta loja; `loja` aponta para a CAF). functionsPublicaveis: o que publicar-functions.yml aceita por este canal (loja cliente = as cinco financeiras; IKCOUS e Savy aceitam tambem a send-order-confirmation desde 09/10/2026, porque o comprovante do balcao divide _shared/pedido.ts e comprovante.ts com as financeiras; e, desde 13/10/2026 por decisao do dono, calculate-shipping, notify-new-order, send-otp-email, melhor-envio-etiqueta e send-push, SO pelo nome (e, desde 14/10/2026, a credenciais-email, o painel onde a lojista cadastra o Gmail da loja; e, desde 21/10/2026, a auth-send-email, o Send Email Hook autenticado por assinatura Standard Webhooks): antes, uma delas que mudasse na release deixava a loja PARADA; a send-order-whatsapp segue proibida, nenhuma outra loja ganha rota, e a pre-condicao de publicar cada uma e medir o que esta no ar em CADA loja antes, passo 6 de docs/runbooks/producao-unica-fonte.md; o teste tests/ci_publicar_functions_test.ts exige que esta lista e o workflow concordem, function por function); function fora da lista que mudar na release fica PARADA pelo nome, sem comando.",
