@@ -31,10 +31,10 @@
    vermelha quando o prazo passa. **Não há e-mail, push nem mensagem para a
    loja**: se ninguém abrir o painel, ninguém é avisado. Por isso: abra o painel
    todo dia útil.
-4. **A nota que você escreve ao marcar o pedido é lida pela cliente**, na tela
-   dela. Escreva em português simples, sem dados de outras pessoas e sem nome de
-   tabela. Exemplo: "Sua conta foi encerrada e seus dados pessoais foram
-   removidos. Os pedidos ficam guardados sem os seus dados, como a lei exige."
+4. **A nota do painel não substitui a confirmação por e-mail.** A cliente só
+   consegue ler a nota se ainda puder entrar no app. Na exclusão, a loja envia
+   a confirmação à mão (passo 7). Escreva a nota em português simples, sem
+   endereço de e-mail, outros dados pessoais ou nomes de tabelas.
 5. **A decisão é final.** Depois de marcar "atendido" ou "não posso atender" o
    banco não deixa mudar. Marque só depois de terminar o trabalho.
 6. **Loja por loja.** Cada loja (IKCOUS, Savy…) tem o banco dela e os pedidos
@@ -59,6 +59,12 @@
    > fazer nada: vamos atender daqui a 3 dias. Se NÃO foi você (por exemplo, alguém
    > usou o seu celular), responda a este e-mail agora dizendo "não fui eu" e não
    > vamos mexer em nada.
+
+   **Esse e-mail só avisa que o pedido chegou.** Para exclusão, mantenha a
+   conversa do aviso. Antes de apagar fotos ou bloquear a conta, reconfira o
+   destinatário no passo 4. Depois de concluir e conferir a exclusão, responda
+   na conversa do aviso que valeu para a espera (passo 7). Não copie o endereço
+   de e-mail para a nota do pedido.
 
 2. **Conte 3 dias corridos** a partir do envio do aviso e anote a data na nota
    interna de quem atende. Antes disso, **não** troque o e-mail, **não** apague
@@ -265,7 +271,14 @@ Como usar:
    mudaria". Esse erro é de propósito: ele desfaz tudo, é o ensaio.
 3. Mostre a lista ao dono, incluindo a contagem de fotos do passo 2. Só siga
    depois do "pode" dele e da espera de 3 dias descrita acima.
-4. **Imediatamente antes de apagar qualquer foto**, rode de novo o passo 2
+4. **Antes de apagar qualquer foto**, abra Supabase > **Authentication > Users**
+   e localize a conta pelo identificador do passo 1. Confira se o e-mail
+   verificado que aparece ali ainda é o destinatário do aviso. Se mudou, não
+   apague fotos nem bloqueie a conta: envie um novo aviso ao endereço verificado
+   atual e conte de novo os 3 dias corridos a partir desse envio. Anote só a
+   data do novo aviso, sem copiar o endereço para a nota do pedido. Se não
+   conseguir confirmar o endereço, deixe o pedido aberto e avise o dono.
+   Com o destinatário conferido e a espera cumprida, rode de novo o passo 2
    e o ensaio com `v_confirmar := false`. Confirme que o pedido de exclusão
    segue aberto, que não chegou resposta "não fui eu" e que todas as
    contagens de pendências do passo 2 estão zeradas. Se aparecer `PARADO:`,
@@ -287,7 +300,11 @@ Como usar:
    a conferência do item 4 antes de apagar. Rode o passo 2 de novo: "fotos de
    devolução guardadas" tem de dar 0. Se não der, pare. **[CONFERIR EM LOJA DE
    TESTE]** os nomes dos botões do Storage (mudam com a versão do painel).
-6. Troque para `v_confirmar := true` e rode de novo. O bloco reconfere as
+6. **Imediatamente antes de bloquear a conta**, mesmo se não houver fotos,
+   repita a conferência do destinatário do item 4. Se o e-mail mudou, siga a
+   mesma regra de novo aviso e nova espera antes de retomar. Use a conversa
+   desse aviso conferido para a confirmação do passo 7.
+   Só então troque para `v_confirmar := true` e rode de novo. O bloco reconfere as
    travas, inclusive a ausência de fotos no Storage. Se der `PARADO:` ou
    outro erro, o bloco não gravou nada **no banco**; as fotos já apagadas não
    voltam. Mantenha o pedido aberto e avise o dono antes de continuar.
@@ -586,11 +603,14 @@ se o dono quiser limpar também, é um passo novo a pedir a quem programa.
       AND created_at > timestamptz '2026-11-17 10:00:00-03:00';
    ```
 
-4. Se apareceu dado pessoal novo no perfil, endereço ou pedido, **repita o
-   passo 4**, respeitando as mesmas travas, e refaça este passo 5 (inclusive a
-   espera, contada da nova execução). Se o bloco parar, o pedido de privacidade
-   continua aberto: não marque como atendido.
-5. Só depois de reconferir sem dado pessoal novo, siga para o passo 6.
+4. Se apareceu dado pessoal novo no perfil, endereço ou pedido, **mantenha o
+   pedido aberto e avise o dono**. Não repita o passo 4: a conta já foi
+   bloqueada. Só prossiga depois de corrigir a pendência e reconferir os dados.
+5. Para perguntas, avaliações e respostas públicas, faça a limpeza e a
+   conferência na vitrine do passo 6. Se ainda encontrar um dado público,
+   repita só essa limpeza e a conferência. Não reenvie o aviso nem confira
+   ou registre o destinatário de novo: no passo 7, use a conversa já verificada
+   antes do bloqueio.
 
 ## Passo 6 — Caçar o que sobrou (texto livre)
 
@@ -641,21 +661,31 @@ devolução, pedido feito sem login com o mesmo e-mail…). Este bloco só LÊ e
 anotou no passo 2. Troque os quatro valores entre aspas (se não tiver um deles,
 deixe `''`).
 
-Antes de rodar o bloco abaixo, **leia à mão o que a própria cliente escreveu em
-público**: a busca por número só acha o telefone que está HOJE no perfil; um
-número antigo, ou o nome só pelo primeiro nome, passa batido.
+**Confira as perguntas, as avaliações e as respostas da loja antes de encerrar.**
+A busca por número só acha os números que você informou: um telefone antigo ou
+um nome escrito só pelo primeiro nome pode passar batido.
 
-```sql
-SELECT 'pergunta' AS tipo, q.id, q.question AS texto FROM public.questions q WHERE q.user_id = 'COLE-O-ID-AQUI'::uuid
-UNION ALL
-SELECT 'avaliação', r.id, r.comment FROM public.reviews r WHERE r.user_id = 'COLE-O-ID-AQUI'::uuid;
-```
+1. No Supabase > **SQL Editor**, rode a leitura com o identificador da cliente.
+   O resultado lista o tipo, o identificador do texto, o produto e o que ela
+   escreveu. Leia cada texto inteiro, procurando nome, telefone (inclusive
+   antigo), CPF, e-mail, endereço ou outro dado que identifique a cliente.
 
-Se algum texto tiver telefone, endereço ou outro dado pessoal dela, troque só o
-trecho por `[removido]`. A política continua a da tela: a pergunta/avaliação
-**fica**, sem o nome.
+   ```sql
+   SELECT 'pergunta' AS tipo, q.id, q.product_id, q.question AS texto
+     FROM public.questions q WHERE q.user_id = 'COLE-O-ID-AQUI'::uuid
+   UNION ALL
+   SELECT 'avaliação', r.id, r.product_id, r.comment
+     FROM public.reviews r WHERE r.user_id = 'COLE-O-ID-AQUI'::uuid;
+   ```
 
-Agora rode a busca de sobras com os valores anotados no passo 2:
+2. No Supabase > **Table Editor**, abra **questions** (coluna `question`) ou
+   **reviews** (coluna `comment`). Filtre pelo identificador do texto e confira
+   o produto e a cliente antes de editar. Troque só o trecho com dado pessoal
+   por `[removido]` e salve. A pergunta ou avaliação fica, sem identificar a
+   cliente. Leia também as respostas da loja nesses textos. Se uma resposta
+   citar dados dela, faça a mesma limpeza em **reviews** (`merchant_reply`) ou
+   em **answers** (confira o `question_id` e o identificador da resposta).
+**Agora rode a busca de sobras** com os valores anotados no passo 2:
 
 ```sql
 -- BLOCO: sobras
@@ -728,22 +758,47 @@ aparece em `marketplace_orders.customer_data` e é esperado — confira.
 Refaça a busca depois de corrigir os trechos. Se sobrar algum dado pessoal
 da cliente que você não consiga tratar, deixe o pedido aberto e avise o dono.
 
+**Por fim, reconfira o que o público vê:**
+
+1. Abra a **vitrine sem entrar na conta** e vá à página de cada produto
+   conferido, incluindo produtos com textos encontrados na busca de sobras.
+2. Recarregue a página e abra **Perguntas** e **Avaliações**. Leia os textos
+   e as respostas. Deu certo quando nenhum deles mostra dado da cliente.
+3. Se ainda aparecer algum dado, volte à correção e repita a busca e a
+   conferência na vitrine. Se não conseguir confirmar a correção, mantenha
+   o pedido aberto e avise o dono. Não passe para o passo 7.
+
 O que **fica de propósito**: a linha do pedido de privacidade (a tabela
 `pedidos_de_privacidade`, que guarda o e-mail novo quando o pedido era de
 correção — é o registro legal do que foi pedido); `vor_receipts` (cadeia de
 provas encadeadas por hash: mexer quebraria a prova); o identificador (um código
 sem nome) que continua ligando pedidos ao login bloqueado.
 
-## Passo 7 — Marcar o pedido no painel
+## Passo 7 — Enviar a confirmação e marcar o pedido no painel
 
-1. Para marcar como atendido, confirme que o passo 4 rodou valendo, que o passo
-   5 não encontrou dado pessoal novo e que o passo 6 já conferiu as notas de
-   inspeção e das decisões da loja e a busca de sobras, sem correção pendente.
-2. Volte à seção "Pedidos de privacidade dos clientes", escreva a nota (regra
-   4) e toque em "Marcar como atendido". Se a decisão for recusar (por exemplo,
-   a dona da conta respondeu "não fui eu"), use "Não posso atender" e informe o
-   motivo na nota. Confirme na pergunta. O painel grava quem decidiu e quando;
-   a cliente passa a ver a resposta na tela dela.
+1. Antes de encerrar a exclusão, confirme que o passo 4 rodou valendo e que
+   as conferências dos passos 5 e 6 terminaram sem dado pessoal pendente,
+   incluindo as notas da loja, a busca de sobras e a revisão na vitrine.
+2. Abra a conversa do aviso cujo destinatário foi conferido no passo 4, antes
+   do bloqueio. Se houve novo aviso, use a conversa desse último aviso, não a
+   do endereço anterior. Envie **manualmente** a confirmação por ali. Não use
+   o endereço substituto do login nem dependa da nota do painel para avisar a
+   cliente. Exemplo:
+
+   > Olá! Concluímos a exclusão da sua conta. Você não poderá mais entrar nela.
+   > Seus pedidos ficam guardados sem seus dados pessoais, como a lei exige.
+
+   Confira que a mensagem aparece em **Enviados**. Se o envio falhar ou voltar
+   como não entregue, não encerre o pedido enquanto a confirmação estiver
+   pendente; avise o dono.
+3. No painel, abra **Ajustes > Minha loja > Pedidos de privacidade dos clientes**.
+   Na nota, registre que a confirmação foi enviada por e-mail, **sem copiar o
+   endereço ou a conversa**. Toque em **Marcar como atendido** e confirme.
+   O pedido deve passar para **Já respondidos** como atendido, com a data da
+   decisão. Se não aparecer, recarregue e confira antes de tentar de novo.
+4. Se a decisão for recusar (por exemplo, a dona da conta respondeu "não fui eu"),
+   use **Não posso atender** e informe o motivo na nota. A cliente pode ler
+   a resposta no app se ainda conseguir entrar.
 
 ## Correção de e-mail (a cliente digitou o e-mail novo)
 
@@ -770,7 +825,8 @@ alguém pedir a troca para o e-mail dele e ficar com a conta):
 ## O que NÃO fazer
 
 - Não apagar o login da cliente nem pedido nenhum.
-- Não marcar "atendido" antes de terminar os passos 3, 4, 5 e 6 (a decisão é final).
+- Não marcar "atendido" antes de terminar os passos 3, 4, 5 e 6 e, na exclusão,
+  enviar a confirmação do passo 7 (a decisão é final).
 - Não pedir a senha da cliente, nem por e-mail.
 - Não copiar dados da cliente para planilha, e-mail ou conversa.
 
