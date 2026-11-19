@@ -193,7 +193,7 @@ describe("Minha loja — bloco Contato (WhatsApp e mensagem de compartilhar)", (
     });
   }
 
-  it.each(["553499802821", "5534998028216"])(
+  it.each(["553498888001", "5534988880016"])(
     "excesso digitado tecla a tecla (%s) fica visível, avisa e não salva",
     async (numero) => {
       await abrirTela();
@@ -213,7 +213,7 @@ describe("Minha loja — bloco Contato (WhatsApp e mensagem de compartilhar)", (
     },
   );
 
-  it.each(["3432123456", "34998028216", "55991234567"])(
+  it.each(["3432123456", "34988880016", "55991234567"])(
     "número nacional %s digitado tecla a tecla salva sem trocar o DDD",
     async (numero) => {
       await abrirTela();
@@ -228,10 +228,10 @@ describe("Minha loja — bloco Contato (WhatsApp e mensagem de compartilhar)", (
 
   it("colar com +55 continua salvando o número nacional", async () => {
     await abrirTela();
-    await digitarWhatsApp("+55 34 99802-8216");
+    await digitarWhatsApp("+55 34 98888-0016");
     await clicarSalvarContato();
     expect(updateConfigMock).toHaveBeenCalledWith(
-      { whatsappNumber: "5534998028216" },
+      { whatsappNumber: "5534988880016" },
       { silentSuccess: true },
     );
   });
@@ -557,7 +557,7 @@ describe("Minha loja — bloco Contato (WhatsApp e mensagem de compartilhar)", (
 });
 
 describe("regras do número de WhatsApp (contato.ts)", () => {
-  it.each(["553499802821", "5534998028216", "349980282167"])(
+  it.each(["553498888001", "5534988880016", "349888800167"])(
     "whatsappParaGravar recusa excesso nacional sem reinterpretar 55: %s",
     (numero) => {
       expect(whatsappParaGravar(numero, true)).toEqual({ valido: false });
@@ -565,18 +565,18 @@ describe("regras do número de WhatsApp (contato.ts)", () => {
   );
 
   it("whatsappParaGravar aceita país explícito e preserva legado ao carregar", () => {
-    expect(whatsappParaGravar("+55 34 99802-8216")).toEqual({
+    expect(whatsappParaGravar("+55 34 98888-0016")).toEqual({
       valido: true,
-      valor: "5534998028216",
+      valor: "5534988880016",
     });
-    expect(whatsappParaGravar(numeroParaOCampo("5534998028216"))).toEqual({
+    expect(whatsappParaGravar(numeroParaOCampo("5534988880016"))).toEqual({
       valido: true,
-      valor: "5534998028216",
+      valor: "5534988880016",
     });
   });
 
   it("legado com excesso sem país continua visível, mas precisa corrigir para salvar", () => {
-    const legado = "349980282167";
+    const legado = "349888800167";
     expect(numeroParaOCampo(legado)).toBe(legado);
     expect(whatsappParaGravar(numeroParaOCampo(legado))).toEqual({
       valido: false,

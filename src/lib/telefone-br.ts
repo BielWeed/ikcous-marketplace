@@ -176,7 +176,7 @@ export function mensagemDeWhatsappIncompleto(
 }
 
 /**
- * WhatsApp da LOJA para mostrar na tela: "(34) 99802-8216". O número da loja
+ * WhatsApp da LOJA para mostrar na tela: "(34) 98888-0016". O número da loja
  * costuma estar guardado com o 55 do país (13 dígitos); sem tirá-lo a máscara
  * não cabe e o número aparecia cru. Fixo (10 dígitos) e celular (11) formatam;
  * qualquer outro formato volta como veio — não inventa nem corta dígito.
