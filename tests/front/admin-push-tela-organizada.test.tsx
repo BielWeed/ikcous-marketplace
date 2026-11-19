@@ -62,9 +62,14 @@ vi.mock("@/lib/supabase", () => ({
       if (tabela === "push_notifications_log") {
         return {
           select: () => ({
-            order: () => ({
-              limit: () =>
-                Promise.resolve({ data: estadoDoBanco.historico, error: null }),
+            not: () => ({
+              order: () => ({
+                limit: () =>
+                  Promise.resolve({
+                    data: estadoDoBanco.historico,
+                    error: null,
+                  }),
+              }),
             }),
           }),
         };

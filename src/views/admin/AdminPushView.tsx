@@ -31,6 +31,7 @@ import {
 import { idDePedidoDoPainel } from "@/lib/destinoPosLogin";
 import {
   LIMITE_DA_BUSCA_DO_HISTORICO,
+  filtroDeTitulosDeRespostaDaLoja,
   somenteCampanhasReais,
 } from "@/lib/historico-de-campanhas";
 import { lerEmPaginas } from "@/lib/ler-em-paginas";
@@ -751,6 +752,7 @@ export const AdminPushView = memo(function AdminPushView({
           supabase
             .from("push_notifications_log")
             .select("*")
+            .not("title", "in", filtroDeTitulosDeRespostaDaLoja())
             .order("sent_at", { ascending: false })
             .limit(LIMITE_DA_BUSCA_DO_HISTORICO),
         ),
@@ -764,8 +766,7 @@ export const AdminPushView = memo(function AdminPushView({
       //
       // Só campanhas: as linhas "Sua pergunta/avaliação foi respondida!" que as
       // RPCs de resposta da loja gravam neste log não são envio nenhum — a
-      // busca traz mais linhas do que a tela mostra para que elas não ocupem os
-      // 20 lugares das campanhas (src/lib/historico-de-campanhas.ts).
+      // busca já exclui essas respostas; a tela também filtra por precaução.
       setHistoryFalhou(!!error || !data);
       setHistory(error || !data ? null : somenteCampanhasReais(data));
     } catch {

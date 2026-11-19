@@ -161,24 +161,28 @@ vi.mock("@/lib/supabase", () => ({
         };
       }
       return {
-        select: () => ({
-          order: () => ({
-            limit: () =>
-              Promise.resolve({
-                data:
-                  tabela === "push_notifications_log"
-                    ? estadoDoBancoPush.historico
-                    : [],
-                error: null,
-              }),
-          }),
-          eq: () => ({
-            order: () =>
-              Object.assign(Promise.resolve({ data: [], error: null }), {
-                range: () => Promise.resolve({ data: [], error: null }),
-              }),
-          }),
-        }),
+        select: () => {
+          const consulta = {
+            not: () => consulta,
+            order: () => ({
+              limit: () =>
+                Promise.resolve({
+                  data:
+                    tabela === "push_notifications_log"
+                      ? estadoDoBancoPush.historico
+                      : [],
+                  error: null,
+                }),
+            }),
+            eq: () => ({
+              order: () =>
+                Object.assign(Promise.resolve({ data: [], error: null }), {
+                  range: () => Promise.resolve({ data: [], error: null }),
+                }),
+            }),
+          };
+          return consulta;
+        },
       };
     },
     rpc: (_nome: string, _args: { p_segment: string }) =>

@@ -10,19 +10,14 @@
  * A migration 20261240000000 parou de gravar a linha das PERGUNTAS, mas as que
  * já existem continuam no banco (apagar dado existente é decisão do dono) e a
  * linha das AVALIAÇÕES ainda é gravada (a consulta de medição 27m a usa como
- * rastro). Por isso o filtro mora aqui, na leitura: a busca traz mais linhas
- * do que a tela mostra (LIMITE_DA_BUSCA_DO_HISTORICO), as linhas de resposta
- * da loja saem, e sobram no máximo LIMITE_DO_HISTORICO campanhas.
+ * rastro). A busca exclui essas respostas antes de aplicar o limite; a tela
+ * também filtra por precaução e mostra no máximo LIMITE_DO_HISTORICO campanhas.
  */
 
 /** Quantas campanhas a tela mostra. */
 export const LIMITE_DO_HISTORICO = 20;
 
-/**
- * Quantas linhas a busca pede ao banco. Maior que o que a tela mostra para que
- * linhas de resposta da loja (que saem do filtro) não ocupem os lugares das
- * campanhas.
- */
+/** Quantas campanhas a busca pede ao banco, após excluir as respostas. */
 export const LIMITE_DA_BUSCA_DO_HISTORICO = 100;
 
 /**
@@ -36,6 +31,16 @@ export const TITULOS_DE_RESPOSTA_DA_LOJA: readonly string[] = [
   "Sua avaliacao foi respondida!",
   "Sua avaliação foi respondida!",
 ];
+
+/** Valor bruto para o filtro PostgREST `.not("title", "in", valor)`. */
+export function filtroDeTitulosDeRespostaDaLoja(
+  titulos: readonly string[] = TITULOS_DE_RESPOSTA_DA_LOJA,
+): string {
+  const valores = titulos.map(
+    (titulo) => `"${titulo.replace(/["\\]/g, "\\$&")}"`,
+  );
+  return `(${valores.join(",")})`;
+}
 
 /**
  * Tira as linhas de resposta da loja e devolve, na ordem recebida (a busca já

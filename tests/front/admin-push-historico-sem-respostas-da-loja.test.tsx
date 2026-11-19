@@ -54,17 +54,35 @@ vi.mock("@/lib/supabase", () => ({
       }
       if (tabela === "push_notifications_log") {
         return {
-          select: () => ({
-            order: () => ({
-              limit: (n: number) => {
-                limitesPedidos.push(n);
-                return Promise.resolve({
-                  data: historicoDoBanco.linhas.slice(0, n),
-                  error: null,
-                });
+          select: () => {
+            let linhas = historicoDoBanco.linhas;
+            const consulta = {
+              not: (coluna: string, operador: string, valor: string) => {
+                expect([coluna, operador, valor]).toEqual([
+                  "title",
+                  "in",
+                  '("Sua pergunta foi respondida!","Sua avaliacao foi respondida!","Sua avaliação foi respondida!")',
+                ]);
+                const titulos = JSON.parse(
+                  `[${valor.slice(1, -1)}]`,
+                ) as string[];
+                linhas = linhas.filter(
+                  (linha) => !titulos.includes(String(linha.title)),
+                );
+                return consulta;
               },
-            }),
-          }),
+              order: () => ({
+                limit: (n: number) => {
+                  limitesPedidos.push(n);
+                  return Promise.resolve({
+                    data: linhas.slice(0, n),
+                    error: null,
+                  });
+                },
+              }),
+            };
+            return consulta;
+          },
         };
       }
       return {
@@ -232,8 +250,8 @@ describe("AdminPushView — o histórico só mostra campanhas", () => {
     expect(texto()).toContain("26/10/2026 às 22:30");
   });
 
-  it("80 respostas recentes não empurram as campanhas para fora da lista", async () => {
-    const respostas = Array.from({ length: 80 }, () =>
+  it("100 respostas recentes não empurram as campanhas para fora da lista", async () => {
+    const respostas = Array.from({ length: 100 }, () =>
       linhaDoLog("Sua pergunta foi respondida!"),
     );
     const campanhas = Array.from({ length: 3 }, (_, i) =>
@@ -245,8 +263,7 @@ describe("AdminPushView — o histórico só mostra campanhas", () => {
 
     for (const i of [1, 2, 3]) expect(texto()).toContain(`Campanha real ${i}`);
     expect(texto()).not.toContain("Sua pergunta foi respondida!");
-    // a busca pede mais linhas do que a tela mostra (senão o filtro não teria de onde tirar)
-    expect(Math.max(...limitesPedidos)).toBeGreaterThan(20);
+    expect(limitesPedidos).toContain(100);
   });
 
   it("sem nenhuma campanha, só com respostas da loja, a tela diz que nada foi enviado (não 'Não confirmada')", async () => {
