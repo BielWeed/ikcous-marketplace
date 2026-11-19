@@ -293,6 +293,51 @@ describe("ShippingCalculator — retirada na loja é escolha EXPLÍCITA da clien
     },
   );
 
+  it("retira o aviso assim que a retirada volta, sem trocar a entrega selecionada", async () => {
+    const aviso = "A retirada não está mais disponível.";
+    await montar();
+    await irPara("38500000");
+    await act(async () => {
+      botaoDe("Retirar na loja")?.click();
+    });
+    expect(pai.selecionada?.id).toBe(RETIRADA.id);
+    expect(hospedeiro.textContent).not.toContain(aviso);
+
+    invoke.mockResolvedValue({
+      data: { options: [LOCAL] },
+      error: null,
+    });
+    await act(async () => {
+      pai.alterarCarrinho(carrinho(2));
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(800);
+    });
+    await drenar();
+
+    expect(botaoDe("Retirar na loja")).toBeUndefined();
+    expect(pai.selecionada).toMatchObject({ id: LOCAL.id, price: 10 });
+    expect(hospedeiro.textContent).toContain(aviso);
+
+    invoke.mockResolvedValue({
+      data: { options: [LOCAL, RETIRADA] },
+      error: null,
+    });
+    await act(async () => {
+      pai.alterarCarrinho(carrinho(3));
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(800);
+    });
+    await drenar();
+
+    expect(botaoDe("Retirar na loja")?.getAttribute("aria-pressed")).toBe(
+      "false",
+    );
+    expect(pai.selecionada).toMatchObject({ id: LOCAL.id, price: 10 });
+    expect(hospedeiro.textContent).not.toContain(aviso);
+  });
+
   it("escolhida pela cliente, a retirada SOBREVIVE à recotação do mesmo destino (quantidade mudou)", async () => {
     await montar();
     await irPara("38500000");
