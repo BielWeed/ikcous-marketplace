@@ -25,6 +25,9 @@ import { type Root, createRoot } from "react-dom/client";
 import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const AVISO_ETIQUETA_PAGA =
+  "Confira no Melhor Envio se ainda é possível cancelar a etiqueta e solicitar o reembolso.";
+
 const {
   invokeMock,
   pedidoState,
@@ -353,8 +356,8 @@ describe("EtiquetaDoPedidoCard", () => {
     expect(hospedeiro.textContent).toContain(
       "Etiqueta gerada e vinculada ao pedido!",
     );
-    expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toMatch(
-      /^Este pedido foi cancelado\. Não envie/,
+    expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toBe(
+      AVISO_ETIQUETA_PAGA,
     );
   });
 
@@ -387,13 +390,13 @@ describe("EtiquetaDoPedidoCard", () => {
     });
 
     const aviso = () => hospedeiro.querySelector('[role="alert"]')?.textContent;
-    expect(aviso()).toMatch(/^Este pedido foi cancelado\. Não envie/);
+    expect(aviso()).toBe(AVISO_ETIQUETA_PAGA);
     expect(toast.success).not.toHaveBeenCalled();
 
     act(() => raiz.unmount());
     raiz = createRoot(hospedeiro);
     await abrirCard();
-    expect(aviso()).toMatch(/^Este pedido foi cancelado\. Não envie/);
+    expect(aviso()).toBe(AVISO_ETIQUETA_PAGA);
     expect(botao("Gerar etiqueta")).toBeUndefined();
   });
 

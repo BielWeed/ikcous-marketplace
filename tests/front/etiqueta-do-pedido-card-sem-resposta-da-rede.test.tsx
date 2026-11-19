@@ -290,8 +290,8 @@ describe("EtiquetaDoPedidoCard com a rede pendurada", () => {
       // O que a tela mostra agora vem da LEITURA do servidor, não da resposta.
       expect(h.leiturasDoPedido).toHaveLength(3);
       expect(hospedeiro.textContent).toMatch(/Etiqueta emitida/);
-      expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toMatch(
-        /^Este pedido foi cancelado\. Não envie/,
+      expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toBe(
+        "Confira no Melhor Envio se ainda é possível cancelar a etiqueta e solicitar o reembolso.",
       );
     });
 

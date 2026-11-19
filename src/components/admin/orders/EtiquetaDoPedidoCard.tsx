@@ -851,8 +851,8 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
               role="alert"
               className="rounded-xl border border-admin-border bg-admin-surface px-3 py-2 text-sm font-medium leading-snug text-amber-400"
             >
-              Este pedido foi cancelado. Não envie o pacote e cancele a etiqueta
-              na sua conta do Melhor Envio para recuperar o valor do frete.
+              Confira no Melhor Envio se ainda é possível cancelar a etiqueta e
+              solicitar o reembolso.
             </p>
           )}
 
