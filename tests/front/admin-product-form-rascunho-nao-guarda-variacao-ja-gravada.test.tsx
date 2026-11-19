@@ -82,6 +82,7 @@ vi.mock("sonner", () => ({
     error: vi.fn(),
     warning: vi.fn(),
     loading: vi.fn(),
+    dismiss: vi.fn(),
   },
 }));
 
@@ -98,10 +99,24 @@ function digitar(id: string, valor: string) {
   el.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
+function respostaPendente<T>(valor: T) {
+  let resolver!: (resposta: T) => void;
+  const promessa = new Promise<T>((resolve) => {
+    resolver = resolve;
+  });
+  return { promessa, entregar: () => resolver(valor) };
+}
+
+async function avancarRelogio(ms: number) {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(ms);
+  });
+}
+
 async function digitarCampo(id: string, valor: string) {
   await act(async () => {
     digitar(id, valor);
-    await new Promise((r) => setTimeout(r, 300));
+    await vi.advanceTimersByTimeAsync(300);
   });
 }
 
@@ -150,6 +165,7 @@ describe("AdminProductFormView — rascunho x releitura do banco", () => {
   let eventos: string[];
 
   beforeEach(() => {
+    vi.useFakeTimers();
     vi.clearAllMocks();
     localStorage.clear();
     sessionStorage.clear();
@@ -190,6 +206,7 @@ describe("AdminProductFormView — rascunho x releitura do banco", () => {
     hospedeiro.remove();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   async function montar() {
@@ -206,9 +223,7 @@ describe("AdminProductFormView — rascunho x releitura do banco", () => {
         />,
       );
     });
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 50));
-    });
+    await avancarRelogio(50);
   }
 
   const idsNoRascunho = (): string[] => {
@@ -228,25 +243,16 @@ describe("AdminProductFormView — rascunho x releitura do banco", () => {
       ...produtoBase,
       variants: [variacao("v1", "Rosa", 3), variacao("v2", "Azul", 2)],
     });
-    // Releitura lenta (rede de celular): 1,5 s, mais que o 1 s do auto-save.
-    fetchProduct.mockImplementationOnce(
-      () =>
-        new Promise((resolver) =>
-          setTimeout(
-            () =>
-              resolver({
-                ...produtoBase,
-                stock: 9,
-                variants: [
-                  variacao("v1", "Rosa", 3),
-                  variacao("v2", "Azul", 2),
-                  variacao("v-verde", "Verde", 4),
-                ],
-              }),
-            1500,
-          ),
-        ),
-    );
+    const releitura = respostaPendente({
+      ...produtoBase,
+      stock: 9,
+      variants: [
+        variacao("v1", "Rosa", 3),
+        variacao("v2", "Azul", 2),
+        variacao("v-verde", "Verde", 4),
+      ],
+    });
+    fetchProduct.mockReturnValueOnce(releitura.promessa);
     await montar();
     await act(async () => {
       (
@@ -274,11 +280,14 @@ describe("AdminProductFormView — rascunho x releitura do banco", () => {
 
     await act(async () => {
       botaoPorTexto("Salvar alterações")?.click();
-      await new Promise((r) => setTimeout(r, 2500));
     });
+    expect(fetchProduct).toHaveBeenCalledTimes(2);
+    // A releitura ainda está pendente quando o auto-save de 1 s venceria.
+    await avancarRelogio(1500);
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 1500));
+      releitura.entregar();
     });
+    await avancarRelogio(2500);
 
     expect(fetchProduct).toHaveBeenCalledTimes(2);
     // Depois do último "apaga", nenhuma gravação do rascunho levou o id
@@ -303,9 +312,7 @@ describe("AdminProductFormView — rascunho x releitura do banco", () => {
     });
     expect(updateProduct).toHaveBeenCalledTimes(1);
     const gravacoesAoEntrarEmSalvando = [...gravacoes];
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 1500));
-    });
+    await avancarRelogio(1500);
 
     expect(gravacoes).toEqual(gravacoesAoEntrarEmSalvando);
   }, 20000);
@@ -315,9 +322,7 @@ describe("AdminProductFormView — rascunho x releitura do banco", () => {
     await montar();
 
     await digitarCampo("product-sale-price", "60,00");
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 1200));
-    });
+    await avancarRelogio(1200);
 
     expect(gravacoes.length).toBeGreaterThan(0);
     expect(JSON.parse(armazem.get(CHAVE_DO_RASCUNHO) ?? "{}").price).toMatch(
@@ -333,22 +338,11 @@ describe("AdminProductFormView — rascunho x releitura do banco", () => {
       ...produtoBase,
       variants: [variacao("v1", "Rosa", 3), variacao("v2", "Azul", 2)],
     });
-    fetchProduct.mockImplementationOnce(
-      () =>
-        new Promise((resolver) =>
-          setTimeout(
-            () =>
-              resolver({
-                ...produtoBase,
-                variants: [
-                  variacao("v1", "Rosa", 3),
-                  variacao("v2", "Azul", 2),
-                ],
-              }),
-            1500,
-          ),
-        ),
-    );
+    const releitura = respostaPendente({
+      ...produtoBase,
+      variants: [variacao("v1", "Rosa", 3), variacao("v2", "Azul", 2)],
+    });
+    fetchProduct.mockReturnValueOnce(releitura.promessa);
     await montar();
     await act(async () => {
       (
@@ -363,15 +357,18 @@ describe("AdminProductFormView — rascunho x releitura do banco", () => {
     // Um rascunho que o auto-save guardou antes do Salvar.
     armazem.set(CHAVE_DO_RASCUNHO, JSON.stringify({ name: "Rascunho velho" }));
 
-    let existiaNoMeioDaEspera = false;
     await act(async () => {
       botaoPorTexto("Salvar alterações")?.click();
-      await new Promise((r) => setTimeout(r, 800));
-      existiaNoMeioDaEspera = armazem.has(CHAVE_DO_RASCUNHO);
-      await new Promise((r) => setTimeout(r, 1500));
     });
+    expect(fetchProduct).toHaveBeenCalledTimes(2);
+    await avancarRelogio(800);
+    expect(armazem.has(CHAVE_DO_RASCUNHO)).toBe(true);
 
-    expect(existiaNoMeioDaEspera).toBe(true);
+    await avancarRelogio(700);
+    await act(async () => {
+      releitura.entregar();
+    });
+    await avancarRelogio(800);
     expect(armazem.has(CHAVE_DO_RASCUNHO)).toBe(false);
   }, 20000);
 });

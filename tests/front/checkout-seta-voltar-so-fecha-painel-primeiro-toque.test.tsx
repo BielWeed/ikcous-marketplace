@@ -443,12 +443,9 @@ describe("checkout: a seta Voltar com o painel de resumo aberto só fecha o pain
     await act(async () => {
       raiz?.render(<App />);
     });
-    await assentar();
-    // Peça 17 (P1 da revisão do PR): o assentar de voltas fixas não garante
-    // o commit da tela sob carga — quase todo caso clica num botão do
-    // checkout logo em seguida, e o botão só existe com a tela montada. A
-    // espera condicional mora AQUI, dentro de `abrir`, para todos os casos.
-    await esperarAte(() => naTelaDeCheckout() === true);
+    // O botão só existe depois que a tela assíncrona monta. Espere pela
+    // própria tela, com margem antes do limite de 5 s do teste no CI.
+    await esperarAte(() => naTelaDeCheckout() === true, { timeoutMs: 3000 });
   };
 
   const clicar = async (testId: string) => {
