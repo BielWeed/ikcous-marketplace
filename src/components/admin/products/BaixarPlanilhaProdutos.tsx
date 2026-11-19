@@ -51,11 +51,11 @@ export function BaixarPlanilhaProdutos({
           toast.warning("Nenhum produto cadastrado para exportar.");
         else if (formato === "csv")
           toast.warning(
-            "Não foi possível gerar o XLSX. Baixamos o catálogo completo em CSV, sem a formatação. Para não perder zeros à esquerda em código interno e código de barras, importe essas colunas como Texto.",
+            "Planilha gerada em CSV, sem formatação. Confira os downloads do seu aparelho. Para não perder zeros à esquerda em código interno e código de barras, importe essas colunas como Texto.",
           );
         else
           toast.success(
-            "Planilha do catálogo completo baixada, sem os filtros da tela.",
+            "Planilha gerada. Confira os downloads do seu aparelho.",
           );
       }
     } catch {

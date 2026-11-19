@@ -43,8 +43,8 @@ beforeEach(() => {
   conta = "conta-teste";
   exportar.mockImplementation(
     () =>
-      new Promise<void>((resolve) => {
-        resolver = resolve;
+      new Promise<"xlsx">((resolve) => {
+        resolver = () => resolve("xlsx");
       }),
   );
   host = document.createElement("div");
@@ -84,7 +84,7 @@ describe("botão de planilha", () => {
     await act(async () => resolver());
     expect(botao.disabled).toBe(false);
     expect(sucesso).toHaveBeenCalledWith(
-      expect.stringContaining("catálogo completo"),
+      "Planilha gerada. Confira os downloads do seu aparelho.",
     );
   });
   it("avisa que não há produtos cadastrados sem anunciar download", async () => {
@@ -103,7 +103,7 @@ describe("botão de planilha", () => {
     await montar();
     await clicar();
     expect(aviso).toHaveBeenCalledWith(
-      "Não foi possível gerar o XLSX. Baixamos o catálogo completo em CSV, sem a formatação. Para não perder zeros à esquerda em código interno e código de barras, importe essas colunas como Texto.",
+      "Planilha gerada em CSV, sem formatação. Confira os downloads do seu aparelho. Para não perder zeros à esquerda em código interno e código de barras, importe essas colunas como Texto.",
     );
     expect(sucesso).not.toHaveBeenCalled();
     expect(erro).not.toHaveBeenCalled();
