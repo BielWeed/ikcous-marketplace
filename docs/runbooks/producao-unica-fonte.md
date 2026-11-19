@@ -2055,36 +2055,81 @@ O cadastro de UMA vez, na entrada do cliente:
      (`maskable_512`: PNG 512 × 512) e imagem de compartilhamento (`og`: PNG 1200 × 630).
      O utilitario confere tamanho e hash dos arquivos e monta `logo_url` pelo `header`, no
      Storage da propria loja.
-   - **Simule primeiro.** Na raiz do repositorio, forneca no ambiente do terminal os valores do
-     projeto novo: `VITE_SUPABASE_URL` (`https://<ref>.supabase.co`), `VITE_SUPABASE_ANON_KEY`
-     (chave publica) e `SUPABASE_SERVICE_ROLE_KEY` (chave de servico, so no terminal confiavel;
-     nunca em comando, log, conversa ou no repositorio). O modo novo usa essa mesma URL para
-     banco e arquivos, nao usa `DATABASE_URL` nem o projeto linkado pelo CLI. Substitua os
-     marcadores entre aspas abaixo, usando o dominio sem `https://` e sem caminho:
+   - **Simule primeiro.** Use a mesma janela de um Windows PowerShell 5.1 confiavel, na raiz
+     do repositorio, do inicio ao fim. O modo novo usa a mesma URL para banco e arquivos,
+     nao usa `DATABASE_URL` nem o projeto linkado pelo CLI.
 
-     ```powershell
-     node scripts/identidade-bootstrap.mjs --alvo-novo "<slug>" --ref "<ref>" --dominio "<dominio>" --kit "<pasta-do-kit>" --valores "<valores.json>"
-     ```
+     1. Substitua os marcadores pelos valores do projeto novo e execute:
 
-     Prossiga so com saida 0 e plano `bootstrap` ou `nada` (identidade ja igual).
-     Se o plano for `bootstrap`, grave com os mesmos valores e um caminho novo para o relatorio:
+        ```powershell
+        $env:VITE_SUPABASE_URL = 'https://<ref>.supabase.co'
+        $env:VITE_SUPABASE_ANON_KEY = '<chave-publica>'
+        ```
 
-     ```powershell
-     node scripts/identidade-bootstrap.mjs --alvo-novo "<slug>" --ref "<ref>" --dominio "<dominio>" --kit "<pasta-do-kit>" --valores "<valores.json>" --aplicar --saida "<relatorio-novo.json>"
-     ```
+        O terminal volta ao prompt sem mostrar nada. Se aparecer erro, corrija antes de
+        continuar. A chave de servico nao vai nesse bloco.
+     2. Execute o bloco abaixo sem editar. Quando aparecer `Chave de servico da loja nova:`,
+        o dono ou operador digita a chave ali e pressiona Enter, nunca cola a chave em
+        conversa com agente. A entrada e mascarada e nao entra no historico de comandos;
+        nao escreva a chave em comando, log ou arquivo.
 
-     Espere saida 0 e `prova: "ok"` para uma gravacao nova. A ferramenta so grava a identidade
-     depois que os arquivos podem ser lidos publicamente. Se der erro, pare e confira o estado
-     antes de repetir; o erro de prova pode ocorrer depois de a identidade ja ter sido gravada.
+        ```powershell
+        $chaveProtegida = Read-Host 'Chave de servico da loja nova' -AsSecureString
+        try {
+          if ($chaveProtegida.Length -eq 0) { throw 'Nenhuma chave informada.' }
+          $env:SUPABASE_SERVICE_ROLE_KEY = [System.Net.NetworkCredential]::new('', $chaveProtegida).Password
+          Write-Host 'Chave carregada nesta sessao.'
+        } finally {
+          $chaveProtegida.Dispose()
+          Remove-Variable chaveProtegida
+        }
+        ```
+
+        So prossiga se aparecer `Chave carregada nesta sessao.`, sem erro e sem exibir a chave.
+        Caso contrario, va direto ao passo 5 e depois refaca a entrada.
+     3. Simule com o comando abaixo. Substitua os marcadores entre aspas; use o dominio
+        sem `https://` e sem caminho.
+
+        ```powershell
+        node scripts/identidade-bootstrap.mjs --alvo-novo "<slug>" --ref "<ref>" --dominio "<dominio>" --kit "<pasta-do-kit>" --valores "<valores.json>"
+        $LASTEXITCODE
+        ```
+
+        O terminal deve mostrar o plano e, na ultima linha, `0`. Se o plano for `nada`
+        (identidade ja igual), va ao passo 5. So va ao passo 4 com plano `bootstrap` e codigo
+        `0`. Qualquer outra saida: nao grave; va ao passo 5 e investigue o erro.
+     4. Grave com os mesmos valores e um caminho novo para o relatorio:
+
+        ```powershell
+        node scripts/identidade-bootstrap.mjs --alvo-novo "<slug>" --ref "<ref>" --dominio "<dominio>" --kit "<pasta-do-kit>" --valores "<valores.json>" --aplicar --saida "<relatorio-novo.json>"
+        $LASTEXITCODE
+        ```
+
+        Espere codigo `0` e confira `"prova": "ok"` no relatorio para uma gravacao nova.
+        A ferramenta so grava a identidade depois que os arquivos podem ser lidos publicamente.
+        Se der erro, va ao passo 5 e confira o estado antes de repetir: um erro de prova
+        pode ocorrer depois de a identidade ja ter sido gravada.
+     5. Ao terminar, inclusive se deu erro ou se voce cancelou, remova a chave na mesma janela:
+
+        ```powershell
+        Remove-Item Env:SUPABASE_SERVICE_ROLE_KEY -ErrorAction SilentlyContinue
+        Test-Path Env:SUPABASE_SERVICE_ROLE_KEY
+        ```
+
+        Tem de aparecer `False`: a chave saiu do ambiente desta sessao. Se aparecer `True`
+        ou houver erro na conferencia, feche essa janela antes de continuar.
    - **Prove no dominio real**, numa janela anonima nova, sem login e sem cache antigo:
      1. Abra a vitrine e, a partir dela, a tela de **Cadastro**. As duas devem abrir com a marca
         certa, sem a mensagem de manutencao.
      2. Abra `/identidade.json` no mesmo dominio. Confira `host`, `identidade.publicUrl` e
         `identidade.identity.storeName`, e compare `identidade.identity.projectRef` e
         `conexao.supabaseUrl` com o projeto novo. Nao copie a ficha inteira para o relatorio.
-     3. Abra `/manifest.webmanifest`: deve devolver JSON, nao uma pagina HTML. Abra todas as
-        URLs `icons[].src` (relativas ao dominio, se for o caso) e confirme que carregam as
-        imagens da marca nova.
+     3. Abra `/manifest.webmanifest`: deve devolver JSON, nao uma pagina HTML. Em `icons`,
+        abra os enderecos `src` no mesmo dominio se forem relativos. Os tres icones de marca
+        (192x192, 512x512 e 512x512 com `purpose: "maskable"`) devem carregar as imagens
+        da marca nova. O quarto, 96x96 com `purpose: "monochrome"`, deve carregar
+        `/icons/badge-96x96.png`: e um PNG neutro, branco com transparencia, de proposito.
+        Ele nao mostrar a marca nova nao e falha.
 
      **Se qualquer uma dessas provas falhar, nao entregue o dominio e nao peca o primeiro
      cadastro.** Abrir a vitrine e o Cadastro nao libera vendas: o aceite de vendas do
