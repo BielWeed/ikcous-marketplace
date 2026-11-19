@@ -508,8 +508,8 @@ it("cancelar é pílula no topo e continua pedindo confirmação antes de limpar
       Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
   await act(async () => cancelar.click());
-  expect(host.textContent).toContain("Descartar esta venda?");
+  expect(host.textContent).toContain("Limpar a tela da venda?");
   expect(limpar).not.toHaveBeenCalled();
-  await act(async () => botao("Sim, cancelar venda").click());
+  await act(async () => botao("Limpar esta venda da tela").click());
   expect(limpar).toHaveBeenCalledTimes(1);
 });

@@ -290,7 +290,7 @@ describe("Balcão — a dúvida da venda sobrevive à 2ª falha", () => {
     expect(hospedeiro.textContent).toContain(TITULO_DA_DUVIDA);
     await clicar("Cancelar venda");
     expect(hospedeiro.textContent).toContain(
-      "Se a venda chegou a ser gravada, ela está em Pedidos.",
+      "Isso não anula uma venda já registrada: se a tela travou ao registrar, confira em Pedidos antes de refazer.",
     );
     expect(hospedeiro.textContent).not.toContain("Nada é registrado");
   });
@@ -441,7 +441,7 @@ describe("Cancelar venda — a pergunta olha a dúvida, não só o texto do erro
       talvezGravada: true,
       erro: null,
     });
-    expect(texto).toContain("Se a venda chegou a ser gravada");
+    expect(texto).toContain("Isso não anula uma venda já registrada");
     expect(texto).not.toContain("Nada é registrado");
   });
 

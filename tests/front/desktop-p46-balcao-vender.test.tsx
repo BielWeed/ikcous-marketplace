@@ -290,7 +290,7 @@ beforeAll(async () => {
     rpc: async () => ({ data: NAO_CADASTRADO, error: null }),
     passos: async (agir) => agir("bipar"),
   });
-  // Pergunta "Descartar esta venda?" (também sobreposta).
+  // Pergunta "Limpar a tela da venda?" (também sobreposta).
   await guardar("cancelando", {
     rascunho: { estado: vendaComItem("cupom"), idadeMs: 2 * HORA },
     passos: async (agir) => agir("Cancelar"),
@@ -468,7 +468,7 @@ function conferirBloco(css: string): void {
   );
   expect(regraDaBusca, "regra da busca do balcão").toHaveLength(1);
   expect(declaracoes(regraDaBusca[0])["min-height"]).toBe("0");
-  // Avisos e a pergunta "Descartar esta venda?" flutuam: presos à direita
+  // Avisos e a pergunta "Limpar a tela da venda?" flutuam: presos à direita
   // (`left: auto`) em vez de atravessar a tela. A largura é livre para mudar.
   const regraDosAvisos = regras.filter((r) =>
     r.selectors.includes(`${RAIZ} > .pdv-flow > .pdv-notice`),

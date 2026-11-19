@@ -482,14 +482,14 @@ export function CupomDaVenda({
         >
           <p className="pdv-heading">
             <XCircle aria-hidden="true" className="pdv-icon pdv-red" />
-            Cancelar venda
+            Limpar venda
           </p>
-          <p className="text-xl font-bold">Descartar esta venda?</p>
+          <p className="text-xl font-bold">Limpar a tela da venda?</p>
           <p className="pdv-muted">
             Os itens e o cliente escolhido serão limpos, e o caixa volta ao
             começo.{" "}
             {estado.erro || estado.talvezGravada
-              ? "Se a venda chegou a ser gravada, ela está em Pedidos."
+              ? "Isso não anula uma venda já registrada: se a tela travou ao registrar, confira em Pedidos antes de refazer."
               : "Nada é registrado."}
           </p>
           <div className="pdv-annul-actions">
@@ -511,7 +511,7 @@ export function CupomDaVenda({
                 limparCupom();
               }}
             >
-              Sim, cancelar venda
+              Limpar esta venda da tela
             </Button>
           </div>
         </div>

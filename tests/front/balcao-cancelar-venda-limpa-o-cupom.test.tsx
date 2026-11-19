@@ -209,7 +209,7 @@ describe("Balcão — cancelar a venda limpa o cupom inteiro", () => {
     await bipar();
 
     await clicar("Cancelar venda");
-    expect(hospedeiro.textContent).toContain("Descartar esta venda?");
+    expect(hospedeiro.textContent).toContain("Limpar a tela da venda?");
     expect(hospedeiro.textContent).toContain(
       "Os itens e o cliente escolhido serão limpos",
     );
@@ -219,7 +219,7 @@ describe("Balcão — cancelar a venda limpa o cupom inteiro", () => {
     expect(document.activeElement).toBe(botao(hospedeiro, "Voltar"));
 
     await clicar("Voltar");
-    expect(hospedeiro.textContent).not.toContain("Descartar esta venda?");
+    expect(hospedeiro.textContent).not.toContain("Limpar a tela da venda?");
     expect(hospedeiro.textContent).toContain("Camiseta Lisa");
     expect(botao(hospedeiro, "Cancelar venda")).toBeTruthy();
   });
@@ -236,7 +236,7 @@ describe("Balcão — cancelar a venda limpa o cupom inteiro", () => {
     expect(armazem.has(CHAVE_DO_RASCUNHO)).toBe(true);
 
     await clicar("Cancelar venda");
-    await clicar("Sim, cancelar venda");
+    await clicar("Limpar esta venda da tela");
     await avancar(400);
 
     expect(hospedeiro.textContent).toContain("Bipe o primeiro produto");
@@ -264,10 +264,10 @@ describe("Balcão — cancelar a venda limpa o cupom inteiro", () => {
     await montar();
     await bipar();
     await clicar("Cancelar venda");
-    await clicar("Sim, cancelar venda");
+    await clicar("Limpar esta venda da tela");
 
     expect(botao(hospedeiro, "Cancelar venda")).toBeUndefined();
-    expect(hospedeiro.textContent).not.toContain("Descartar esta venda?");
+    expect(hospedeiro.textContent).not.toContain("Limpar a tela da venda?");
   });
 
   it("só cliente escolhido (sem item) também pode ser cancelado", async () => {
@@ -276,7 +276,7 @@ describe("Balcão — cancelar a venda limpa o cupom inteiro", () => {
     expect(hospedeiro.textContent).toContain("Cliente: Fulano de Tal");
 
     await clicar("Cancelar venda");
-    await clicar("Sim, cancelar venda");
+    await clicar("Limpar esta venda da tela");
 
     expect(hospedeiro.textContent).not.toContain("Fulano de Tal");
     expect(botao(hospedeiro, "Cliente (opcional)")).toBeTruthy();
@@ -302,15 +302,15 @@ describe("Balcão — cancelar a venda limpa o cupom inteiro", () => {
     await montar();
     await bipar();
     await clicar("Cancelar venda");
-    expect(hospedeiro.textContent).toContain("Descartar esta venda?");
+    expect(hospedeiro.textContent).toContain("Limpar a tela da venda?");
 
     await clicar("Fechar venda");
     await clicar("Dinheiro");
     await clicar("Registrar venda");
 
     // A venda está no ar: nada de "Sim, cancelar" para zerar a tela por cima.
-    expect(botao(hospedeiro, "Sim, cancelar venda")).toBeUndefined();
-    expect(hospedeiro.textContent).not.toContain("Descartar esta venda?");
+    expect(botao(hospedeiro, "Limpar esta venda da tela")).toBeUndefined();
+    expect(hospedeiro.textContent).not.toContain("Limpar a tela da venda?");
     expect(hospedeiro.textContent).toContain("Camiseta Lisa");
 
     await act(async () => {
@@ -351,7 +351,7 @@ describe("Balcão — cancelar a venda limpa o cupom inteiro", () => {
     await clicar("Cancelar venda");
     expect(hospedeiro.textContent).toContain("Nada é registrado");
     expect(hospedeiro.textContent).not.toContain(
-      "Se a venda chegou a ser gravada",
+      "Isso não anula uma venda já registrada",
     );
   });
 
@@ -371,7 +371,7 @@ describe("Balcão — cancelar a venda limpa o cupom inteiro", () => {
     await clicar("Cancelar venda");
 
     expect(hospedeiro.textContent).toContain(
-      "Se a venda chegou a ser gravada, ela está em Pedidos.",
+      "Isso não anula uma venda já registrada: se a tela travou ao registrar, confira em Pedidos antes de refazer.",
     );
     expect(hospedeiro.textContent).not.toContain("Nada é registrado");
   });
@@ -410,7 +410,7 @@ describe("Balcão — cancelar a venda limpa o cupom inteiro", () => {
 
     await clicar("Cancelar venda");
     expect(hospedeiro.textContent).toContain(
-      "Se a venda chegou a ser gravada, ela está em Pedidos.",
+      "Isso não anula uma venda já registrada: se a tela travou ao registrar, confira em Pedidos antes de refazer.",
     );
     expect(hospedeiro.textContent).not.toContain("Nada é registrado");
   });

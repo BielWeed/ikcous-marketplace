@@ -393,7 +393,7 @@ it("cancelar e limpar a venda em Buscar volta para Bipar", async () => {
   await selecionar("buscar");
   await act(async () => botao("Camiseta").click());
   await act(async () => botao("Cancelar venda").click());
-  await act(async () => botao("Sim, cancelar venda").click());
+  await act(async () => botao("Limpar esta venda da tela").click());
   expect(aba("bipar").getAttribute("aria-selected")).toBe("true");
   expect(painelVisivel().querySelector("video")).not.toBeNull();
   expect(host.querySelector('[aria-label="Itens da venda"] li')).toBeNull();

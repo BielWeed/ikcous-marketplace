@@ -2,7 +2,7 @@
 //
 // P54 — Balcão no computador: três medidas que a prova visual no Chromium
 // (1280x720, 1366x650, 1536x864, 1920x1080) achou fora do lugar.
-//  1. o aviso flutuante ("Código não encontrado", "Descartar esta venda?") tinha
+//  1. o aviso flutuante ("Código não encontrado", "Limpar a tela da venda?") tinha
 //     36rem e invadia a coluna esquerda em 1280 (92 px) e 1366 (49 px);
 //  2. a busca deixava 124 px vazios ao lado da barra do total;
 //  3. os botões do item (lixeira, quantidade, "+") saíam do cartão ~8 px quando

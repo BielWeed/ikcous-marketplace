@@ -1045,8 +1045,9 @@ export const AdminCouponsView = memo(function AdminCouponsView({
               {coupons.find((coupon) => coupon.id === couponToDelete)?.code}
             </p>
             <AlertDialogDescription className="text-sm leading-relaxed text-zinc-400">
-              Tem certeza que deseja excluir este cupom? Esta ação não pode ser
-              desfeita e invalidará o código para os clientes.
+              Quer excluir este cupom? A exclusão não pode ser desfeita. Cupom
+              que já foi usado em pedidos não pode ser excluído; para impedir
+              novos usos, desligue o cupom na lista.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="mt-4 gap-2">
