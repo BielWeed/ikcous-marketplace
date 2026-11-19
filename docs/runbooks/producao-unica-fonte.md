@@ -75,6 +75,7 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
    aplicar o banco antes de comprovar `criar-pagamento` e `webhook-mercadopago` no ar em cada
    loja.** O portao pode imprimir o apply sem exigir essa prova. Veja o
    [roteiro do PIX anulado](publicar-pix-anulado-devolve-cupom.md).
+   Antes de publicar function ou aplicar migration que mexa em OTP/login, confirme numa loja de verificação que o código chega por e-mail e permite entrar.
 
    A regra que o comando aplica a cada lote de migrations
    (`provasDeObjetos` em `scripts/frota/canais-de-backend.json`):

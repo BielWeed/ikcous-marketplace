@@ -118,11 +118,10 @@ invalida certo? Separe medido de palpite; se for palpite, **meça ou não relate
 **5. Compatibilidade.** A API existe no runtime alvo? Front é navegador (PWA, inclusive offline);
 `supabase/functions/` é **Deno**, não Node — `node:fs` lá é achado. Versão bate com o
 `package-lock.json`? Isso quebra contrato de quem consome (assinatura, formato de retorno, código
-de erro)? **Dado já gravado no formato antigo continua legível, e existe migração?** — lembrando
-que o backup aqui é diário e não há PITR — o custo de reverter é tempo remontando massa de
-desenvolvimento, não pedido de cliente perdido, porque este repositório é o app-molde e o banco
-ligado a ele é de desenvolvimento. O que **é** caro: defeito daqui se replica em cada loja
-vendida, onde existe dinheiro de verdade. Revise com esse peso, não com o do banco local.
+de erro)? **Dado já gravado no formato antigo continua legível, e existe migração?**
+O Supabase oferece [backup diário automático](https://supabase.com/docs/guides/platform/backups) nos planos Pro, Team e Enterprise, não no Free. Confira o plano de cada loja e não conte com backup para desfazer migration que altera dados.
+Defeito daqui se replica em cada loja vendida, onde existe dinheiro de verdade. Revise com esse
+peso, não com o do banco local.
 Diferença de caminho, fim de linha (CRLF) e fuso entre Windows local e Linux do CI.
 
 **6. Qualidade de código.** Isto já existia no projeto e foi reinventado? A abstração está no

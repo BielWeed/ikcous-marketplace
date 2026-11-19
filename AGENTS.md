@@ -280,7 +280,8 @@ escrita serial (salvo a exceção do `/paralelizar`, acima); quem escreveu não 
   [produção — fonte única](docs/runbooks/producao-unica-fonte.md).
 - **Migration não leva `BEGIN`/`COMMIT`.** Com eles, o `ROLLBACK` do script de prova vira
   no-op e a mudança fica gravada.
-- **Backup é diário e não há PITR.** Nunca `--no-verify` no commit — o `secretlint` do
+- **Backup depende do plano.** O Supabase oferece [backup diário automático](https://supabase.com/docs/guides/platform/backups) nos planos Pro, Team e Enterprise, não no Free. Confira o plano de cada loja e não conte com backup para desfazer migration que altera dados.
+- Nunca `--no-verify` no commit — o `secretlint` do
   pre-commit é a única trava contra credencial vazada (o histórico já teve chave commitada).
 
 ## Verificação — o que realmente cobra
