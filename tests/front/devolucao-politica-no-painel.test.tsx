@@ -182,6 +182,33 @@ describe("PoliticaDeDevolucaoSection", () => {
     );
   });
 
+  it("tempo esgotado no servidor mantém o rascunho e orienta a tentar salvar de novo", async () => {
+    await montar();
+    await digitar("politica-arrependimento", "10");
+    rpc.mockResolvedValueOnce({
+      data: null,
+      error: {
+        code: "57014",
+        message: "canceling statement due to statement timeout",
+      },
+    });
+
+    await act(async () => {
+      botao("Salvar política")?.click();
+    });
+
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(toast.error).toHaveBeenCalledExactlyOnceWith(
+      "O servidor demorou para salvar a política de trocas e devoluções. O que você digitou continua na tela. Toque em Salvar política para tentar de novo.",
+    );
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(
+      hospedeiro.querySelector<HTMLInputElement>("#politica-arrependimento")
+        ?.value,
+    ).toBe("10");
+    expect(botao("Salvar política")?.disabled).toBe(false);
+  });
+
   it("abaixo do mínimo legal explica e não deixa salvar", async () => {
     await montar();
     expect(botao("Política salva")?.disabled).toBe(true);

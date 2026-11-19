@@ -489,9 +489,8 @@ export function AuthView({
           if (onSuccess) onSuccess();
           else onNavigate("profile");
         } else if (!error && message) {
-          // Sem `error` o servidor não respondeu no prazo (rede pendurada, ver
-          // `PRAZO_DA_AUTENTICACAO_MS` em AuthContext.tsx): não há causa para
-          // traduzir, e `message` já é a frase de conexão lenta.
+          // Sem `error`, o AuthContext já devolveu a frase pronta: prazo
+          // local esgotado ou exceção sem uma causa que a tela possa traduzir.
           mostrarErroDeEntrar(message);
         } else if (error) {
           // Tratamento de Erro - Localização de mensagens do Supabase
@@ -731,7 +730,10 @@ export function AuthView({
       }
     } catch (err) {
       console.error(err);
-      const erroInesperado = "Ocorreu um erro inesperado na autenticação.";
+      const erroInesperado =
+        viewMode === "login"
+          ? MENSAGEM_ERRO_LOGIN_GENERICA
+          : "Ocorreu um erro inesperado na autenticação.";
       // A faixa vermelha é da tela de entrar; nos outros modos (ou depois de
       // trocar de tela) o aviso vai pelo toast, para não sumir nem pousar errado.
       if (viewMode === "login" && fluxoDaTela.current === fluxoEnviado) {

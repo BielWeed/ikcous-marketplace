@@ -182,6 +182,18 @@ describe("AuthView — o ramo final do erro de login para de repetir a frase cru
     expect(hospedeiro.textContent).not.toMatch(/does not exist/i);
   });
 
+  it("login que lança mostra a orientação na faixa e não expõe o erro", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    login.mockRejectedValueOnce(new Error("falha interna de teste"));
+
+    await montarELogar("alguem@example.com", "senha123");
+
+    expect(hospedeiro.textContent).toContain(
+      "Não foi possível entrar agora. Tente novamente em instantes ou fale com a loja.",
+    );
+    expect(hospedeiro.textContent).not.toContain("falha interna de teste");
+  });
+
   // Regressão: os três ramos com frase própria continuam intactos — a
   // correção do ramo final não pode ter apagado a distinção entre eles.
   it("credenciais inválidas (status 400) continua com a frase própria, não a genérica do else final", async () => {

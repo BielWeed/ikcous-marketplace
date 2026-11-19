@@ -1470,6 +1470,17 @@ const RE_PORTUGUES =
 const CODIGOS_ESCRITOS_A_MAO = new Set(["P0001", "P0002", "22023"]);
 const CODIGOS_DE_SESSAO = new Set(["42501", "PGRST301", "PGRST303"]);
 
+const STATUS_DO_PEDIDO_NA_CONCLUSAO = new Map([
+  ["cancelled", "cancelado"],
+  ["delivered", "entregue"],
+  ["new", "novo"],
+  ["pending", "pendente"],
+  ["processing", "em preparação"],
+  ["shipping", "em envio"],
+]);
+const RE_STATUS_DO_PEDIDO_NA_CONCLUSAO =
+  /^(O pedido desta devolução não está mais entregue \(status atual: )([^)]+)(\)\. Fale com o financeiro antes de concluir\.)$/;
+
 // Os dois textos moram em dinheiro (reembolso/estorno): mandam conferir se a
 // devolução já aparece antes de repetir, para não pedir duas vezes.
 const MSG_SESSAO_VENCEU =
@@ -1500,6 +1511,14 @@ export function mensagemDoErro(erro: unknown, generica: string): string {
     ehObjeto(erro) && typeof campo(erro, "code") === "string"
       ? String(campo(erro, "code"))
       : "";
+  if (code === "22023") {
+    const conclusao = msg.match(RE_STATUS_DO_PEDIDO_NA_CONCLUSAO);
+    if (conclusao) {
+      const [, antes, status, depois] = conclusao;
+      const traduzido = STATUS_DO_PEDIDO_NA_CONCLUSAO.get(status);
+      return traduzido ? `${antes}${traduzido}${depois}` : msg;
+    }
+  }
   if (CODIGOS_ESCRITOS_A_MAO.has(code)) return reaisComVirgula(msg);
   if (RE_SESSAO.test(msg)) return MSG_SESSAO_VENCEU;
   if (code === "57014" || RE_TEMPO.test(msg)) return MSG_TEMPO_ESGOTADO;

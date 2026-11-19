@@ -825,6 +825,12 @@ export function AccountSettingsView() {
           toast.error(mensagemFalhaCpf(resultado.motivo));
           return;
         }
+        if (resultado.motivo === "sem_sessao") {
+          toast.error(
+            "Entre de novo na sua conta para salvar as alterações do perfil.",
+          );
+          return;
+        }
         throw resultado;
       }
 

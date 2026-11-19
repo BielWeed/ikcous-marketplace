@@ -1512,7 +1512,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           MENSAGEM_LOGIN_SEM_RESPOSTA,
         );
       } catch (erroDeRede) {
-        if (!ehConsultaSemResposta(erroDeRede)) throw erroDeRede;
+        if (!ehConsultaSemResposta(erroDeRede)) {
+          if (audience === "admin") throw erroDeRede;
+          return { success: false, message: MENSAGEM_ERRO_LOGIN_GENERICA };
+        }
         // Sem `error`: não há causa do servidor para traduzir, e as telas não
         // podem cair em "senha incorreta" nem em "e-mail não confirmado". Elas
         // mostram `message` quando `error` não vem (AuthView, AdminLoginView).
