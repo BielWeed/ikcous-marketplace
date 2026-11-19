@@ -20,8 +20,12 @@ let rodadasDoSino = 0;
 
 function criarBuilder(tabela: string) {
   const builder: any = {};
+  let contandoEntregues = false;
   builder.select = vi.fn(() => builder);
-  builder.eq = vi.fn(() => builder);
+  builder.eq = vi.fn((coluna: string, valor: string) => {
+    if (coluna === "status" && valor === "delivered") contandoEntregues = true;
+    return builder;
+  });
   builder.in = vi.fn(() => builder);
   builder.or = vi.fn(() => builder);
   builder.is = vi.fn(() => builder);
@@ -36,7 +40,10 @@ function criarBuilder(tabela: string) {
   builder.then = (resolve: any, reject?: any) => {
     if (tabela === "pedidos_de_privacidade") rodadasDoSino += 1;
     return Promise.resolve({
-      count: tabela === "marketplace_orders" ? PEDIDOS_PARA_PREPARAR : 0,
+      count:
+        tabela === "marketplace_orders" && !contandoEntregues
+          ? PEDIDOS_PARA_PREPARAR
+          : 0,
       error: null,
     }).then(resolve, reject);
   };

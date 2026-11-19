@@ -1223,6 +1223,11 @@ function OrderFinanceCard({
   if (situacaoPositiva) corDaSituacao = "text-emerald-400";
   else if (situacaoResolvida) corDaSituacao = "text-zinc-400";
 
+  // Ainda permite desfazer um recebimento que já foi registrado.
+  const mostraRegistroDePagamento =
+    podeRegistrarPagamento(order) &&
+    (Boolean(order.pagamentoRecebidoEm) || !pedidoSemValorAPagar(order));
+
   return (
     <section
       data-testid="bloco-dinheiro"
@@ -1258,12 +1263,7 @@ function OrderFinanceCard({
         />
       </div>
 
-      {/* Task 4b do plano recebimento-na-entrega — o botão de pagamento
-          recebido na mão fica disponível na FICHA o tempo todo, mesma
-          condição (`podeRegistrarPagamento`) e mesmo comportamento do
-          cartão da lista (Task 4). `onRegistrarPagamento` falta só nos
-          testes que montam `<OrderDetail>` direto sem a prop. */}
-      {onRegistrarPagamento && podeRegistrarPagamento(order) && (
+      {onRegistrarPagamento && mostraRegistroDePagamento && (
         <div className="flex items-center justify-between gap-2 border-t border-admin-border pt-4">
           {order.pagamentoRecebidoEm ? (
             <>

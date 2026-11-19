@@ -34,10 +34,7 @@ import {
   aguardarComPrazo,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
-import {
-  FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA,
-  inicioDaJanelaDoSino,
-} from "@/lib/recebimentos-por-marcar";
+import { contarRecebimentosPorMarcar } from "@/lib/recebimentos-por-marcar";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
@@ -407,18 +404,8 @@ export function AdminLayout({
           // duas contagens diferentes para a mesma pergunta seria pior que
           // nenhuma.
           async () => {
-            const { count: recebimentosCount, error: recebimentosErr } =
-              await supabase
-                .from("marketplace_orders")
-                .select("*", { count: "exact", head: true })
-                .eq("status", "delivered")
-                .or(FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA)
-                .is("payment_status", null)
-                .gte("updated_at", await inicioDaJanelaDoSino());
-
-            if (recebimentosErr) {
-              falhouAlgumaConsulta = true;
-            } else if (recebimentosCount !== null && podeGravar()) {
+            const recebimentosCount = await contarRecebimentosPorMarcar();
+            if (podeGravar()) {
               setRecebimentosPorMarcarCount(recebimentosCount);
               anotarContagem("recebimentos", recebimentosCount);
             }

@@ -300,7 +300,13 @@ export const AdminOrderCard = memo(function AdminOrderCard({
     }
   }
 
-  const acaoPrincipal = faltaReceber && !pagamentoNaoConfirmado;
+  const semValorAPagar = pedidoSemValorAPagar(order);
+  const acaoPrincipal =
+    faltaReceber && !semValorAPagar && !pagamentoNaoConfirmado;
+
+  useEffect(() => {
+    if (painel === "receber" && semValorAPagar) setPainel(null);
+  }, [painel, semValorAPagar]);
   const pagoForaDoFluxo = order.paymentStatus === "pago_apos_expirar";
   const estiloPrincipal =
     destaquePrimario &&
@@ -629,23 +635,27 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                   clicar: () => onWhatsApp(order),
                   disabled: !linkWhatsapp || isOffline,
                 },
-                {
-                  label: "Marcar como recebido",
-                  motivo:
-                    order.status === "cancelled"
-                      ? "Indisponível: pedido cancelado."
-                      : !registra
-                        ? "Indisponível: este pagamento é online."
-                        : order.pagamentoRecebidoEm
-                          ? "Indisponível: o valor já foi recebido."
-                          : isOffline
-                            ? "Indisponível: sem conexão."
-                            : "Confirme depois de receber o valor.",
-                  Icone: CircleDollarSign,
-                  cor: "text-emerald-300",
-                  clicar: () => setPainel("receber"),
-                  disabled: !faltaReceber || bloqueado,
-                },
+                ...(!semValorAPagar
+                  ? [
+                      {
+                        label: "Marcar como recebido",
+                        motivo:
+                          order.status === "cancelled"
+                            ? "Indisponível: pedido cancelado."
+                            : !registra
+                              ? "Indisponível: este pagamento é online."
+                              : order.pagamentoRecebidoEm
+                                ? "Indisponível: o valor já foi recebido."
+                                : isOffline
+                                  ? "Indisponível: sem conexão."
+                                  : "Confirme depois de receber o valor.",
+                        Icone: CircleDollarSign,
+                        cor: "text-emerald-300",
+                        clicar: () => setPainel("receber"),
+                        disabled: !faltaReceber || bloqueado,
+                      },
+                    ]
+                  : []),
                 {
                   label: "Cancelar pedido",
                   motivo: !podeCancelar
