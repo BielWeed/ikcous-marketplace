@@ -86,6 +86,7 @@ const nomeComVariacao = (
 ) => {
   const nome = item.product_name || padrao;
   const chave = item.order_item_id || item.variant_id;
+  // eslint-disable-next-line security/detect-object-injection -- a chave é o id (UUID) do item do pedido, nunca texto digitado
   const rotulo = chave ? rotulos[chave] : undefined;
   return rotulo ? `${nome} (${rotulo})` : nome;
 };

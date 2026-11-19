@@ -124,6 +124,7 @@ export function useRotulosDasVariacoes(
         rotuloDaVariacaoGuardada(item) ||
         (item.id && historicoLido?.get(item.id)) ||
         (item.variantId && catalogo[item.variantId]);
+      // eslint-disable-next-line security/detect-object-injection -- a chave é o id (UUID) do item do pedido, nunca texto digitado
       if (chave && rotulo) rotulos[chave] = rotulo;
     }
     return rotulos;
