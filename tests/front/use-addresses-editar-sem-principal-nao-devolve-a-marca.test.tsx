@@ -243,6 +243,69 @@ describe("useAddresses — edição sem is_default e a marca de outro aparelho",
     });
   }
 
+  it("número corrigido em outro aparelho: salva só o apelido, mas barra outra edição do número", async () => {
+    semear(["Casa", true]);
+    await celularLeAListaDoServidor();
+    const original = { ...hook.addresses[0] };
+    banco.linhas[0].number = "100";
+    const aoConflitar = vi.fn();
+    const confronto = { original, aoConflitar };
+
+    await act(async () => {
+      expect(
+        await hook.updateAddress("end-Casa", { name: "Minha casa" }, confronto),
+      ).toBe(true);
+    });
+
+    expect(banco.linhas[0]).toMatchObject({
+      name: "Minha casa",
+      number: "100",
+    });
+    expect(aoConflitar).not.toHaveBeenCalled();
+    expect(avisos.error).not.toHaveBeenCalled();
+
+    await act(async () => {
+      expect(
+        await hook.updateAddress("end-Casa", { number: "11" }, confronto),
+      ).toBe(false);
+    });
+
+    expect(banco.linhas[0].number).toBe("100");
+    expect(aoConflitar).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "Minha casa", number: "100" }),
+    );
+    expect(avisos.error).toHaveBeenCalledWith(
+      "Este endereço foi alterado em outro aparelho. Revise e salve de novo.",
+    );
+  });
+
+  it("imóvel mudou em outro aparelho: não grava só o complemento do imóvel antigo", async () => {
+    semear(["Casa", true]);
+    await celularLeAListaDoServidor();
+    const original = { ...hook.addresses[0] };
+    Object.assign(banco.linhas[0], { street: "Rua Nova", number: "200" });
+    const aoConflitar = vi.fn();
+
+    await act(async () => {
+      expect(
+        await hook.updateAddress(
+          "end-Casa",
+          { complement: "Bloco 2 ap 31" },
+          { original, aoConflitar },
+        ),
+      ).toBe(false);
+    });
+
+    expect(banco.linhas[0]).toMatchObject({
+      street: "Rua Nova",
+      number: "200",
+      complement: null,
+    });
+    expect(aoConflitar).toHaveBeenCalledWith(
+      expect.objectContaining({ street: "Rua Nova", number: "200" }),
+    );
+  });
+
   it("zero linhas atualizadas: não mistura imóveis e mantém a edição aberta com os dados atuais", async () => {
     semear(["Casa", true]);
     const onBack = await abrirEdicao();
