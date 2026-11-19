@@ -1,3 +1,4 @@
+import { criarCanalDeAbas } from "@/lib/canal-de-abas";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const LEADER_KEY = "pwa_leader_tab";
@@ -26,10 +27,7 @@ function batimentoVigente(
 }
 
 // Shared BroadcastChannel singleton to prevent multiple instances and closure errors on HMR/re-renders
-const bc =
-  typeof window === "undefined" || typeof BroadcastChannel === "undefined"
-    ? null
-    : new BroadcastChannel("ikcous_leader_coordination");
+const bc = criarCanalDeAbas("ikcous_leader_coordination");
 
 // localStorage has no compare-and-swap, so mutual exclusion can't come from
 // "locking" the read-check-write in claimLeadership — the best a tab can do
