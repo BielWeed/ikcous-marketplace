@@ -198,7 +198,7 @@ describe("generateOrderOtp — o retorno segue o envio, não a validação", () 
       expect(await gerar("a@b.c", "34999999999", "abcdef")).toBe(false);
       const n = segundos ?? 60;
       expect(String(toastError.mock.calls[0][0])).toContain(
-        `Espere ${n} ${n === 1 ? "segundo" : "segundos"} e confira`,
+        `Aguarde ${n} ${n === 1 ? "segundo" : "segundos"} antes de pedir outro código.`,
       );
     },
   );
@@ -240,9 +240,9 @@ describe("generateOrderOtp — o retorno segue o envio, não a validação", () 
  * A edge grava o código e a janela de 60 s ANTES do SMTP, e não os desfaz se o
  * SMTP falha (desfazer tira o freio e deixaria uma pane queimar os tetos de
  * 24 h da cliente). Então quem tenta de novo em seguida recebe `muito_recente`
- * — e dizer "Já enviamos um código, confira sua caixa de entrada" seria
- * mentira: o último envio falhou. A tela lembra a falha, por pedido, e só nesse
- * caso troca a frase. O contrato com a edge é o mesmo.
+ * — antes de confirmar um envio, o aviso só fala da tentativa. Quando a falha
+ * é conhecida, a tela lembra dela por pedido e mostra o aviso específico.
+ * O contrato com a edge é o mesmo.
  */
 describe("generateOrderOtp — muito_recente depois de um envio que falhou", () => {
   const FALHOU = { data: { ok: false, motivo: "envio_falhou" }, error: null };
@@ -306,19 +306,18 @@ describe("generateOrderOtp — muito_recente depois de um envio que falhou", () 
     expect(textoDoUltimoToast()).toContain("Ainda não conseguimos enviar");
   });
 
-  it("nenhuma falha anterior: o 'já enviamos' de sempre, com os segundos", async () => {
+  it("sem confirmação nesta tela: avisa da tentativa recente, não do envio", async () => {
     invoke.mockResolvedValueOnce(MUITO_RECENTE);
     const gerar = await pegarGenerateOrderOtp();
 
     await gerar("a@b.c", "34999999999", "abcdef");
 
-    const texto = textoDoUltimoToast();
-    expect(texto).toContain("Já enviamos um código há pouco");
-    expect(texto).toContain("42");
-    expect(texto).toContain("caixa de entrada");
+    expect(textoDoUltimoToast()).toBe(
+      "Houve uma tentativa recente. Aguarde 42 segundos antes de pedir outro código. Se já recebeu um, use-o.",
+    );
   });
 
-  it("o último envio deu certo: o 'já enviamos' continua valendo", async () => {
+  it("o último envio deu certo: volta a usar a mensagem de tentativa recente", async () => {
     invoke
       .mockResolvedValueOnce(FALHOU)
       .mockResolvedValueOnce({ data: { ok: true }, error: null })
@@ -329,7 +328,7 @@ describe("generateOrderOtp — muito_recente depois de um envio que falhou", () 
     expect(await gerar("a@b.c", "34999999999", "abcdef")).toBe(true);
     await gerar("a@b.c", "34999999999", "abcdef");
 
-    expect(textoDoUltimoToast()).toContain("Já enviamos um código há pouco");
+    expect(textoDoUltimoToast()).toContain("Houve uma tentativa recente.");
   });
 
   it("a falha de um pedido não contamina outro", async () => {
@@ -339,7 +338,7 @@ describe("generateOrderOtp — muito_recente depois de um envio que falhou", () 
     await gerar("a@b.c", "34999999999", "abcdef");
     await gerar("outra@pessoa.com", "34888888888", "123456");
 
-    expect(textoDoUltimoToast()).toContain("Já enviamos um código há pouco");
+    expect(textoDoUltimoToast()).toContain("Houve uma tentativa recente.");
   });
 
   it("falha de rede (sem resposta da função) NÃO vira falha lembrada: pode haver código enviado antes", async () => {
@@ -354,7 +353,7 @@ describe("generateOrderOtp — muito_recente depois de um envio que falhou", () 
     await gerar("a@b.c", "34999999999", "abcdef");
     await gerar("a@b.c", "34999999999", "abcdef");
 
-    expect(textoDoUltimoToast()).toContain("Já enviamos um código há pouco");
+    expect(textoDoUltimoToast()).toContain("Houve uma tentativa recente.");
   });
 
   it("depois de 60 s a falha lembrada vence: o freio de agora é de outro envio", async () => {
@@ -367,7 +366,7 @@ describe("generateOrderOtp — muito_recente depois de um envio que falhou", () 
     vi.setSystemTime(new Date("2026-11-02T12:01:01Z"));
     await gerar("a@b.c", "34999999999", "abcdef");
 
-    expect(textoDoUltimoToast()).toContain("Já enviamos um código há pouco");
+    expect(textoDoUltimoToast()).toContain("Houve uma tentativa recente.");
   });
 
   it("troca de conta apaga a memória da falha", async () => {
@@ -379,6 +378,6 @@ describe("generateOrderOtp — muito_recente depois de um envio que falhou", () 
     await rerenderizar();
     await gerar("a@b.c", "34999999999", "abcdef");
 
-    expect(textoDoUltimoToast()).toContain("Já enviamos um código há pouco");
+    expect(textoDoUltimoToast()).toContain("Houve uma tentativa recente.");
   });
 });

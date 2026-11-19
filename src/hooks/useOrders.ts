@@ -5549,8 +5549,8 @@ export function useOrders(
       // A edge grava o código e a janela de 60 s ANTES do SMTP e não os desfaz
       // se ele falha (desfazer tiraria o freio e deixaria uma pane queimar os
       // tetos de 24 h). Quem tenta de novo em seguida recebe `muito_recente` de
-      // um código que NUNCA saiu: a frase "já enviamos" seria falsa. Por isso
-      // lembramos, por pedido, que o último envio falhou (por 60 s, a janela).
+      // um código que pode não ter saído. Sem confirmação, só falamos da
+      // tentativa. Se a falha foi observada nesta tela, lembramos por 60 s.
       const falhas = falhasDoOtpRef.current;
       const chave = [email, whatsapp, orderFragment]
         .map((s) => String(s).trim().toLowerCase())
@@ -5599,7 +5599,7 @@ export function useOrders(
           toast.error(
             Date.now() - (falhas.get(chave) ?? 0) < 60_000
               ? "Ainda não conseguimos enviar seu código. Tente de novo mais tarde; se continuar assim, fale com a loja."
-              : `Já enviamos um código há pouco. Espere ${pluralizar(data.espereSegundos ?? 60, "segundo", "segundos")} e confira sua caixa de entrada.`,
+              : `Houve uma tentativa recente. Aguarde ${pluralizar(data.espereSegundos ?? 60, "segundo", "segundos")} antes de pedir outro código. Se já recebeu um, use-o.`,
           );
           return false;
         }

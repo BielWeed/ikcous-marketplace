@@ -516,7 +516,9 @@ export function OrderSearch({
                   <div className="flex items-center gap-2 rounded-[14px] border border-border p-3 text-amber-700 dark:text-amber-400">
                     <KeyRound className="size-4 flex-shrink-0" />
                     <span className="min-w-0 break-words text-sm font-medium">
-                      Código enviado para {trioEnviado?.email ?? email}
+                      {trioEnviado
+                        ? `Código enviado para ${trioEnviado.email}`
+                        : "Digite o código recebido por e-mail."}
                     </span>
                   </div>
 

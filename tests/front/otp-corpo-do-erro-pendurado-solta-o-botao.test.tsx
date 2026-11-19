@@ -165,7 +165,7 @@ describe("generateOrderOtp — corpo do erro HTTP pendurado não prende o botão
     // Nada foi gravado em `falhasDoOtpRef`: a tentativa seguinte, barrada pelo
     // freio de 60 s, recebe a frase comum — e não a de "falha lembrada".
     expect(await gerar(EMAIL, WHATSAPP, FRAGMENTO)).toBe(false);
-    expect(textoDoUltimoToast()).toContain("Já enviamos um código há pouco");
+    expect(textoDoUltimoToast()).toContain("Houve uma tentativa recente.");
     expect(textoDoUltimoToast()).not.toContain("Ainda não conseguimos");
   });
 
@@ -219,7 +219,7 @@ describe("generateOrderOtp — corpo do erro HTTP pendurado não prende o botão
     expect(await gerar(EMAIL, WHATSAPP, FRAGMENTO)).toBe(false);
     expect(await gerar(EMAIL, WHATSAPP, FRAGMENTO)).toBe(false);
 
-    expect(textoDoUltimoToast()).toContain("Já enviamos um código há pouco");
+    expect(textoDoUltimoToast()).toContain("Houve uma tentativa recente.");
   });
 
   it("controle: corpo que rejeita (não é JSON) segue devolvendo false sem gravar falha", async () => {
@@ -234,6 +234,6 @@ describe("generateOrderOtp — corpo do erro HTTP pendurado não prende o botão
     expect(toastError).toHaveBeenCalledTimes(1);
     expect(await gerar(EMAIL, WHATSAPP, FRAGMENTO)).toBe(false);
 
-    expect(textoDoUltimoToast()).toContain("Já enviamos um código há pouco");
+    expect(textoDoUltimoToast()).toContain("Houve uma tentativa recente.");
   });
 });

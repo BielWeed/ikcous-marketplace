@@ -126,6 +126,8 @@ describe("OrderSearch — Já tenho o código", () => {
 
     expect(porPlaceholder(host, CAMPO_CODIGO)).not.toBeNull();
     expect(document.activeElement).toBe(porPlaceholder(host, CAMPO_CODIGO));
+    expect(host.textContent).toContain("Digite o código recebido por e-mail.");
+    expect(host.textContent).not.toContain("Código enviado para");
     expect(generateOrderOtp).not.toHaveBeenCalled();
   });
 
