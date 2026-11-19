@@ -120,29 +120,125 @@ describe("Conta — CPF recusado não deixa o nome antigo no cabeçalho", () => 
     vi.restoreAllMocks();
   });
 
-  it("nome mudou e o CPF falhou: avisa o erro do CPF e atualiza o perfil do contexto", async () => {
-    vi.spyOn(cpfDaConta, "gravarCpfDaConta").mockResolvedValue({
-      ok: false,
-      motivo: "cpf_invalido",
-    });
+  async function abrirConta() {
     const { AccountSettingsView } = await import(
       "@/views/customer/AccountSettingsView"
     );
     await act(async () => {
       raiz.render(<AccountSettingsView />);
     });
+  }
+
+  it.each([
+    {
+      caso: "só o nome mudou",
+      nome: "Nome novo",
+      whatsapp: "",
+      motivo: "falha",
+      mensagem:
+        "Seu nome foi salvo. Não foi possível salvar o CPF agora. Tente de novo em Perfil > Segurança e conta.",
+    },
+    {
+      caso: "só o WhatsApp mudou",
+      nome: "",
+      whatsapp: "11987654321",
+      motivo: "falha",
+      mensagem:
+        "Seu WhatsApp foi salvo. Não foi possível salvar o CPF agora. Tente de novo em Perfil > Segurança e conta.",
+    },
+    {
+      caso: "só o CPF mudou",
+      nome: "",
+      whatsapp: "",
+      motivo: "falha",
+      mensagem:
+        "Não foi possível salvar o CPF agora. Tente de novo em Perfil > Segurança e conta.",
+    },
+    {
+      caso: "o servidor recusou o CPF como inválido",
+      nome: "Nome novo",
+      whatsapp: "",
+      motivo: "cpf_invalido",
+      mensagem:
+        "Seu nome foi salvo. CPF inválido. Confira os números e tente de novo.",
+    },
+    {
+      caso: "a sessão acabou depois de salvar o nome",
+      nome: "Nome novo",
+      whatsapp: "",
+      motivo: "sem_sessao",
+      mensagem: "Seu nome foi salvo. Entre na conta para salvar o CPF.",
+    },
+    {
+      caso: "a conta mudou antes de gravar o CPF",
+      nome: "Nome novo",
+      whatsapp: "",
+      motivo: "conta_trocada",
+      mensagem:
+        "Seu nome foi salvo. A conta mudou durante a operação: o CPF não foi salvo. Confira a conta e tente de novo.",
+    },
+  ] as const)(
+    "$caso: avisa o que foi salvo",
+    async ({ nome, whatsapp, motivo, mensagem }) => {
+      const gravarCpf = vi
+        .spyOn(cpfDaConta, "gravarCpfDaConta")
+        .mockResolvedValue({
+          ok: false,
+          motivo,
+        });
+      await abrirConta();
+      if (nome) digitar("full_name", nome);
+      if (whatsapp) digitar("phone", whatsapp);
+      digitar("cpf", "52998224725");
+      await salvar();
+
+      expect(rpc).toHaveBeenCalledWith("update_my_profile_secure", {
+        p_full_name: nome || null,
+        p_whatsapp: whatsapp ? "(11) 98765-4321" : null,
+      });
+      expect(gravarCpf).toHaveBeenCalledOnce();
+      expect(toast.error).toHaveBeenCalledExactlyOnceWith(mensagem);
+      expect(fetchProfile).toHaveBeenCalledTimes(
+        motivo === "conta_trocada" ? 0 : 1,
+      );
+      expect(toast.success).not.toHaveBeenCalled();
+    },
+  );
+
+  it("nome e WhatsApp salvos, mas sem confirmação do CPF: não diz que o CPF falhou", async () => {
+    vi.spyOn(cpfDaConta, "gravarCpfDaConta").mockResolvedValue({
+      ok: false,
+      motivo: "prazo_esgotado",
+    });
+    await abrirConta();
     digitar("full_name", "Nome novo");
+    digitar("phone", "11987654321");
     digitar("cpf", "52998224725");
     await salvar();
 
-    expect(rpc).toHaveBeenCalledWith("update_my_profile_secure", {
-      p_full_name: "Nome novo",
-      p_whatsapp: null,
-    });
-    expect(toast.error).toHaveBeenCalledWith(
-      cpfDaConta.mensagemFalhaCpf("cpf_invalido"),
+    expect(toast.warning).toHaveBeenCalledExactlyOnceWith(
+      "Seu nome e seu WhatsApp foram salvos. Não deu para confirmar: o dado pode ter sido salvo. Estamos conferindo sua conta; confira antes de tentar de novo.",
     );
-    expect(fetchProfile).toHaveBeenCalledTimes(1);
+    expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toContain(
+      "Seu nome e seu WhatsApp foram salvos. Não deu para confirmar: o dado pode ter sido salvo.",
+    );
+    expect(toast.error).not.toHaveBeenCalled();
     expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it("CPF inválido no formulário bloqueia tudo: não diz que o nome foi salvo", async () => {
+    await abrirConta();
+    digitar("full_name", "Nome novo");
+    digitar("cpf", "11111111111");
+    await salvar();
+
+    expect(toast.error).toHaveBeenCalledExactlyOnceWith("CPF inválido", {
+      description: "Confira os números ou deixe o campo em branco.",
+    });
+    expect(rpc).not.toHaveBeenCalledWith(
+      "update_my_profile_secure",
+      expect.anything(),
+    );
+    expect(rpc).not.toHaveBeenCalledWith("set_my_cpf", expect.anything());
   });
 });

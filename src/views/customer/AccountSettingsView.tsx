@@ -122,7 +122,9 @@ export function AccountSettingsView() {
     rodada: number;
     relerCampos: boolean;
   } | null>(null);
-  const [salvamentoIncerto, setSalvamentoIncerto] = useState(false);
+  const [prefixoSalvamentoIncerto, setPrefixoSalvamentoIncerto] = useState<
+    string | null
+  >(null);
   const cargaRef = useRef(0);
   const [updatingPassword, setUpdatingPassword] = useState(false);
   const [activeTab, setActiveTab] = useState<"profile" | "security">("profile");
@@ -668,11 +670,12 @@ export function AccountSettingsView() {
   const relerDepoisDoPrazo = (
     contaDonaId: string | null,
     relerCampos = true,
+    prefixo = "",
   ) => {
     if (contaAtualIdRef.current !== contaDonaId || !contaDonaId) return;
-    setSalvamentoIncerto(true);
+    setPrefixoSalvamentoIncerto(prefixo);
     toast.warning(
-      "Não deu para confirmar: o dado pode ter sido salvo. Estamos conferindo sua conta; confira antes de tentar de novo.",
+      `${prefixo}Não deu para confirmar: o dado pode ter sido salvo. Estamos conferindo sua conta; confira antes de tentar de novo.`,
     );
     // Uma resposta antiga não pode trocar o campo enquanto um novo CPF é salvo.
     // Junta os avisos da mesma rodada numa única conferência, depois do envio.
@@ -798,7 +801,7 @@ export function AccountSettingsView() {
     contaComCpfNoEnvioRef.current = cpfMudou ? contaDonaId : null;
     let cpfPodeTerSidoGravado = false;
     setLoading(true);
-    setSalvamentoIncerto(false);
+    setPrefixoSalvamentoIncerto(null);
     const desmarcar = marcarOperacaoSensivel("salvar-conta");
     try {
       // `update_my_profile_secure` faz `whatsapp = COALESCE(p_whatsapp,
@@ -850,6 +853,14 @@ export function AccountSettingsView() {
 
       if (cpfMudou) {
         if (!contaAindaEhDona()) return;
+        let prefixo = "";
+        if (nomeMudou && whatsappMudou) {
+          prefixo = "Seu nome e seu WhatsApp foram salvos. ";
+        } else if (nomeMudou) {
+          prefixo = "Seu nome foi salvo. ";
+        } else if (whatsappMudou) {
+          prefixo = "Seu WhatsApp foi salvo. ";
+        }
         const confirmarRascunhoCpf = () => {
           if (
             contaAindaEhDona() &&
@@ -863,7 +874,7 @@ export function AccountSettingsView() {
           contaDonaId,
           (confirmou) => {
             if (confirmou) confirmarRascunhoCpf();
-            relerDepoisDoPrazo(contaDonaId);
+            relerDepoisDoPrazo(contaDonaId, true, prefixo);
           },
         );
         contaComCpfNoEnvioRef.current = null;
@@ -876,10 +887,14 @@ export function AccountSettingsView() {
         if (!contaAindaEhDona()) return;
         if (!resultadoCpf.ok) {
           if (resultadoCpf.motivo === "prazo_esgotado") {
-            relerDepoisDoPrazo(contaDonaId);
+            relerDepoisDoPrazo(contaDonaId, true, prefixo);
             return;
           }
-          toast.error(mensagemFalhaCpf(resultadoCpf.motivo));
+          const avisoCpf =
+            prefixo && resultadoCpf.motivo === "conta_trocada"
+              ? "A conta mudou durante a operação: o CPF não foi salvo. Confira a conta e tente de novo."
+              : mensagemFalhaCpf(resultadoCpf.motivo);
+          toast.error(prefixo + avisoCpf);
           // O resto do perfil (nome/WhatsApp) JÁ foi salvo com sucesso —
           // não desfaz; só o CPF fica pendente para uma nova tentativa.
           // O nome novo já está no banco: atualiza o Perfil/cabeçalho também
@@ -1181,12 +1196,13 @@ export function AccountSettingsView() {
                     void handleUpdateProfile();
                   }}
                 >
-                  {salvamentoIncerto && (
+                  {prefixoSalvamentoIncerto !== null && (
                     <div
                       role="alert"
                       className="space-y-2 rounded-[14px] border border-border p-4 text-sm"
                     >
                       <p>
+                        {prefixoSalvamentoIncerto}
                         Não deu para confirmar: o dado pode ter sido salvo.
                         Confira os dados antes de tentar salvar de novo.
                       </p>
