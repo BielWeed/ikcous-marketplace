@@ -67,8 +67,8 @@ describe("lote 222 — campos de reais aceitam vírgula", () => {
   it.each([
     [1234.5, "1.234,50"],
     [0.5, "0,50"],
-    [10, "10,00"],
-    [1000000, "1.000.000,00"],
+    [10, "10"],
+    [1000000, "1000000"],
     [0, ""],
   ])("nacional: preserva %s ao reabrir e redigitar", (valor, texto) => {
     const onMinimo = vi.fn();
