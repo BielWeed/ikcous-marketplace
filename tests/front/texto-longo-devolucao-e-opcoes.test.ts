@@ -66,6 +66,19 @@ describe("texto longo sem corte silencioso", () => {
       expect(valor?.[1].split(/\s+/)).toContain(classe);
   });
 
+  it("o valor escolhido no cabeçalho quebra sem espremer o rótulo nem a seta", () => {
+    const fonte = fontes["/src/components/ui/custom/FolhaDeOpcoes.tsx"];
+    const valorEscolhido = fonte.match(
+      /<span\s+className="([^"]+)"\s*>\s*\{escolhido\}\s*<\/span>/,
+    );
+    expect(valorEscolhido).not.toBeNull();
+    const classes = valorEscolhido?.[1].split(/\s+/) ?? [];
+    expect(classes).toContain("min-w-0");
+    expect(classes).toContain("break-words");
+    // Reserva a outra metade para o rótulo, a seta e a bolinha de cor.
+    expect(classes).toContain("max-w-[50%]");
+  });
+
   it("nome do produto mostra reticências em duas linhas, sem teto fixo de altura", () => {
     const fonte = fontes["/src/components/ui/custom/FolhaDeOpcoes.tsx"];
     const titulo = fonte.match(

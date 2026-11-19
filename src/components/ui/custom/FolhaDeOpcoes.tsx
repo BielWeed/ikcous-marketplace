@@ -298,7 +298,7 @@ export function CorpoDaFolhaDeOpcoes({
                       Escolher
                     </span>
                   ) : (
-                    <span className="break-words font-semibold">
+                    <span className="min-w-0 max-w-[50%] break-words font-semibold">
                       {escolhido}
                     </span>
                   )}

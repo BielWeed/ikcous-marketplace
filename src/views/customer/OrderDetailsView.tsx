@@ -1737,9 +1737,8 @@ export function OrderDetailsView({
                 </span>
                 <code
                   className={cn(
-                    // Codigo livre nunca e cortado: quebra em qualquer ponto e
-                    // ocupa ate 2 linhas (igual a lista de pedidos).
-                    "line-clamp-2 block break-all font-mono text-xs font-bold tracking-tight",
+                    // Código livre quebra em qualquer ponto, sem corte.
+                    "block break-all font-mono text-xs font-bold tracking-tight",
                     order.status === "cancelled"
                       ? "text-zinc-900"
                       : "text-white",
@@ -1976,7 +1975,7 @@ export function OrderDetailsView({
                   />
                 </div>
                 <div className="flex min-w-0 flex-1 flex-col justify-center">
-                  <h5 className="line-clamp-2 break-words text-sm font-bold leading-tight text-zinc-900 transition-colors group-hover:text-zinc-650">
+                  <h5 className="break-words text-sm font-bold leading-tight text-zinc-900 transition-colors group-hover:text-zinc-650">
                     {item.name}
                   </h5>
                   {item.variantId && rotulosDasVariacoes[item.variantId] && (

@@ -14,7 +14,7 @@ const css = readFileSync("src/index.css", "utf8");
 // + nome do comprador com `break-words` (18/11/2026): só essa classe entra no literal existente.
 // Ordem dos literais dentro de TODOS os className, inclusive cn/condicionais.
 const assinaturaDoCelular =
-  "2f44298d91f1c25fcefdc69f4ed926400701c17eca08d6c6bc354f1e359300a5";
+  "872ea435878b21e660af995db587c098cf92a7aedf2c0c9218b494280c3f1dc9";
 const classesOriginais = [
   "fixed inset-x-0 bottom-[var(--folha-acima-da-barra)] top-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm duration-300 animate-in fade-in",
   "relative z-10 max-h-[calc(100dvh-var(--folha-acima-da-barra)-72px)] w-full max-w-md overflow-y-auto rounded-t-[2.5rem] bg-zinc-50 p-6 shadow-2xl duration-300 animate-in slide-in-from-bottom",
