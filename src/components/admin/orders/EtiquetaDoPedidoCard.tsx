@@ -703,7 +703,7 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
           void fetchPedido({ silencioso: true });
           return;
         }
-        if (atualizado) {
+        if (rastreioConfirmado) {
           onTrackingAtualizado?.(orderIdDoClique, codigoDoProvedor);
         }
         setPedido((prev) => {
@@ -712,7 +712,9 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
           }
           return {
             ...prev,
-            tracking_code: atualizado ? codigoDoProvedor : prev.tracking_code,
+            tracking_code: rastreioConfirmado
+              ? codigoDoProvedor
+              : prev.tracking_code,
             situacao_da_compra: cancelada
               ? "cancelada"
               : confirmado && prev.situacao_da_compra !== "cancelada"
