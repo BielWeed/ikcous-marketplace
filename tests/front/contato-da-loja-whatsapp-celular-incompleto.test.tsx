@@ -13,19 +13,31 @@ import {
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
-const mensagem = "Confira o WhatsApp: faltou um número (DDD + 9 + 8 dígitos)";
+const mensagem =
+  "Celulares têm 9 dígitos depois do DDD: coloque o 9 na frente.";
+const celularesIncompletos = [
+  "(11) 6765-4321",
+  "+55 11 7765-4321",
+  "(11) 8765-4321",
+  "3499991234",
+  "(34) 9999-1234",
+  "+55 34 9999-1234",
+];
 
 describe("Contato da loja — celular com um dígito faltando", () => {
-  it.each(["3499991234", "(34) 9999-1234", "+55 34 9999-1234"])(
+  it.each(celularesIncompletos)(
     "recusa gravar o celular incompleto %s",
     (numero) => {
       expect(whatsappParaGravar(numero)).toEqual({ valido: false });
     },
   );
 
-  it("recusa também o número nacional já limpo pelo campo", () => {
-    expect(whatsappParaGravar("3499991234", true)).toEqual({ valido: false });
-  });
+  it.each(["1167654321", "1177654321", "1187654321", "3499991234"])(
+    "recusa também o número nacional %s já limpo pelo campo",
+    (numero) => {
+      expect(whatsappParaGravar(numero, true)).toEqual({ valido: false });
+    },
+  );
 
   it.each([
     ["34999912345", "5534999912345"],
@@ -53,7 +65,7 @@ describe("Contato da loja — celular com um dígito faltando", () => {
     return host.querySelector("input") as HTMLInputElement;
   }
 
-  it.each(["3499991234", "(34) 9999-1234", "+55 34 9999-1234"])(
+  it.each(celularesIncompletos)(
     "mostra no campo a mensagem de celular incompleto ao digitar %s",
     (numero) => {
       const campo = abrir("");
