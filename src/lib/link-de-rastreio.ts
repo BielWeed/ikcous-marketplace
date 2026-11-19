@@ -15,7 +15,7 @@ import {
  *
  * Tira TODOS os espaços e quebras de linha (inclusive do meio: "AA 123 456
  * 789 BR"), põe em maiúsculas e codifica para caber no caminho do endereço.
- * Devolve "" quando não sobra código — quem chama não mostra o botão.
+ * Devolve "" quando não sobra código ou o valor parece um link.
  */
 const BASE_DO_RASTREIO = "https://www.melhorrastreio.com.br/rastreio/";
 
@@ -27,9 +27,14 @@ const BASE_DO_RASTREIO = "https://www.melhorrastreio.com.br/rastreio/";
  */
 export { codigoDeRastreioTemLetraOuDigito, normalizarCodigoDeRastreio };
 
+/** Recebe o código já limpo, em maiúsculas. */
+export function codigoDeRastreioPareceLink(codigoLimpo: string): boolean {
+  return codigoLimpo.startsWith("HTTP") || codigoLimpo.includes("/");
+}
+
 export function linkDeRastreio(codigo: string): string {
   const limpo = normalizarCodigoDeRastreio(codigo);
-  if (!limpo) return "";
+  if (!limpo || codigoDeRastreioPareceLink(limpo)) return "";
   return `${BASE_DO_RASTREIO}${encodeURIComponent(limpo)}`;
 }
 

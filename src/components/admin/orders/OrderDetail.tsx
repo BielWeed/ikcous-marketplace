@@ -40,6 +40,7 @@ import {
   idadeDoPedidoPendente,
 } from "@/lib/idade-do-pedido-pendente";
 import {
+  codigoDeRastreioPareceLink,
   codigoDeRastreioTemLetraOuDigito,
   linkDeRastreioDeCodigoValido,
   normalizarCodigoDeRastreio,
@@ -2290,6 +2291,10 @@ export const OrderDetail = memo(function OrderDetail({
   const handleSaveTracking = async () => {
     const pedidoId = order.id;
     const codigo = normalizarCodigoDeRastreio(trackingValue);
+    if (codigoDeRastreioPareceLink(codigo)) {
+      toast.error("Cole só o código de rastreio, não o link");
+      return;
+    }
     if (codigo && !codigoDeRastreioTemLetraOuDigito(codigo)) {
       toast.error(
         "O código de rastreio precisa ter pelo menos uma letra ou número.",

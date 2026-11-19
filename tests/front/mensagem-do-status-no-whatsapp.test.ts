@@ -62,7 +62,7 @@ describe("mensagemDoStatusNoWhatsapp", () => {
     },
   );
 
-  it("limita endereço e horário mesmo quando os caracteres ocupam mais na URL", () => {
+  it("limita o endereço sem enviar um horário cortado", () => {
     const mensagem = mensagemDoStatusNoWhatsapp({
       ...retiradaPronta,
       enderecoDeRetirada: "界".repeat(5000),
@@ -70,9 +70,27 @@ describe("mensagemDoStatusNoWhatsapp", () => {
     });
     const url = `https://wa.me/5534999999999?text=${encodeURIComponent(mensagem)}`;
     expect(url.length).toBeLessThan(2000);
-    expect(mensagem).toMatch(/Retire em: 界+…\nHorário: á+…\n/);
+    expect(mensagem).toMatch(/Retire em: 界+…\n/);
+    expect(mensagem).toContain(
+      "Confirme o horário de retirada com a loja antes de vir.",
+    );
+    expect(mensagem).not.toContain("Horário: ");
     expect(new URL(url).searchParams.get("text")).toBe(mensagem);
   });
+
+  it.each(["a".repeat(201), "á".repeat(109)])(
+    "não envia parte do horário se exceder um dos dois limites",
+    (horario) => {
+      const mensagem = mensagemDoStatusNoWhatsapp({
+        ...retiradaPronta,
+        horarioDeAtendimento: horario,
+      });
+      expect(mensagem).toContain(
+        "Confirme o horário de retirada com a loja antes de vir.",
+      );
+      expect(mensagem).not.toContain("Horário: ");
+    },
+  );
 
   it("entrega a caminho não usa os dados de retirada", () => {
     const dados = {
@@ -126,6 +144,16 @@ describe("mensagemDoStatusNoWhatsapp", () => {
   it("código legado só com pontuação não acrescenta código nem link à mensagem", () => {
     expect(
       mensagemDoStatusNoWhatsapp({ ...base, codigoDeRastreio: ".." }),
+    ).toBe(mensagemDoStatusNoWhatsapp(base));
+  });
+
+  it("não acrescenta rastreio se o código legado for um link", () => {
+    expect(
+      mensagemDoStatusNoWhatsapp({
+        ...base,
+        codigoDeRastreio:
+          "HTTPS://WWW.MELHORRASTREIO.COM.BR/RASTREIO/AA123456789BR",
+      }),
     ).toBe(mensagemDoStatusNoWhatsapp(base));
   });
 

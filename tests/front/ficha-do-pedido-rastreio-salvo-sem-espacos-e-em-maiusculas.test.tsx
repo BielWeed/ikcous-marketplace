@@ -158,6 +158,25 @@ describe("ficha do pedido — rastreio salvo: sem espaços, em maiúsculas, vazi
     expect(hospedeiro.textContent).toContain("AA123456789BR");
   });
 
+  it.each([
+    "https://www.melhorrastreio.com.br/rastreio/AA123456789BR",
+    "HTTPsAA123456789BR",
+    "rastreio/AA123456789BR",
+  ])("não salva o link colado como código de rastreio (%s)", async (link) => {
+    await mostrar(pedido("CODIGO-ANTIGO"));
+    clicar("Editar Código");
+    digitarNoCampoDoCodigo(link);
+    await act(async () => clicar("Salvar"));
+
+    expect(atualizar).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith(
+      "Cole só o código de rastreio, não o link",
+    );
+    expect(
+      hospedeiro.querySelector<HTMLInputElement>("#tracking-input")?.value,
+    ).toBe(link.toUpperCase());
+  });
+
   it("só pontuação não é rastreio: avisa, mantém o rascunho e não grava", async () => {
     await mostrar(pedido("CODIGO-ANTIGO"));
     clicar("Editar Código");

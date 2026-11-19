@@ -418,7 +418,11 @@ function LinhaDoCliente({
   const nome = cliente.nome ?? "Cliente sem nome";
   const whatsapp = linkWhatsappDoCrm(
     cliente.whatsapp,
-    mensagemDoSegmento(cliente.segmento, { nome: cliente.nome, loja }),
+    mensagemDoSegmento(cliente.segmento, {
+      nome: cliente.nome,
+      loja,
+      valorEmAberto: cliente.valorEmAberto,
+    }),
   );
   // Quem nunca comprou não tem NENHUM dos 4 campos preenchido — repetir
   // "Pedidos 0 / Receita — / Última compra Nunca / Canal —" por pessoa

@@ -1,6 +1,9 @@
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { digitosDoTelefoneDoCampo } from "@/lib/telefone-br";
+import {
+  digitosComExcedenteVisivel,
+  digitosDoTelefoneDoCampo,
+} from "@/lib/telefone-br";
 import { cn } from "@/lib/utils";
 import { AlertTriangle } from "lucide-react";
 import type React from "react";
@@ -17,8 +20,10 @@ interface LocalBufferedInputProps
   readonly delay?: number;
   readonly validate?: (val: string) => string | null;
   readonly mask?: "phone" | "currency";
-  /** Mantém dígitos excedentes para o validador do WhatsApp da loja recusar. */
+  /** Mantém dígitos excedentes para o validador do WhatsApp recusar. */
   readonly preservarExcessoTelefone?: boolean;
+  /** Na digitação, mantém o celular completo se só acrescentarem uma tecla no fim. */
+  readonly ignorarTeclaExtraTelefone?: boolean;
   /** Só com `mask="currency"`: preserva o sinal na exibição e no onFlush. */
   readonly permiteNegativo?: boolean;
   /**
@@ -56,9 +61,21 @@ const formatPhone = (
   val: string,
   anterior?: string,
   preservarExcesso = false,
+  ignorarTeclaExtra = false,
 ) => {
-  const clean = digitosDoTelefoneDoCampo(val, anterior);
-  // Excedente precisa chegar à validação, não virar outro número válido.
+  // Não retire o +55 de um número longo demais: o restante poderia parecer
+  // outro telefone com código de país e acabar aceito pelo validador.
+  if (preservarExcesso && val.trimStart().startsWith("+55")) {
+    const digitos = val.replace(/\D/g, "");
+    if (digitos.length > 13) return digitos;
+  }
+  const digitos = digitosDoTelefoneDoCampo(val, anterior);
+  // Só para a tecla extra: o DDD 55 não pode virar código de país. A
+  // colagem mantém o excedente para o validador, sem cortar dígitos.
+  const clean =
+    preservarExcesso && ignorarTeclaExtra && digitos.length === 12
+      ? digitosComExcedenteVisivel(digitos, anterior)
+      : digitos;
   if (preservarExcesso && clean.length > 11) return clean;
   if (clean.length === 0) return "";
   if (clean.length <= 2) return `(${clean}`;
@@ -154,6 +171,7 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
   validate,
   mask,
   preservarExcessoTelefone = false,
+  ignorarTeclaExtraTelefone = false,
   permiteNegativo = false,
   zeroVazio = false,
   zeroDigitadoVale = false,
@@ -221,7 +239,13 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
     let rawVal = val;
 
     if (mask === "phone") {
-      val = formatPhone(val, localVal.toString(), preservarExcessoTelefone);
+      const { inputType } = e.nativeEvent as InputEvent;
+      val = formatPhone(
+        val,
+        localVal.toString(),
+        preservarExcessoTelefone,
+        ignorarTeclaExtraTelefone && inputType === "insertText",
+      );
       rawVal = val.replace(/\D/g, "");
     } else if (mask === "currency") {
       const { inputType: tipo, data } = e.nativeEvent as InputEvent;

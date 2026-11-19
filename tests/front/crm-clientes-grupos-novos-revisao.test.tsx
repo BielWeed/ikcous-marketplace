@@ -224,6 +224,7 @@ describe("linha do cliente: célula de dinheiro (mutante 'voltar a formatarMoeda
           segmento: "pediu_nao_pagou",
           receita: 0,
           valorEmAberto: 134.8,
+          whatsapp: "34988887777",
           pedidos: 1,
         }),
       ],
@@ -244,7 +245,10 @@ describe("linha do cliente: célula de dinheiro (mutante 'voltar a formatarMoeda
         />,
       );
     });
-    const linha = texto(linhaDoCliente(hospedeiro, "Bruna Ferreira"));
+    const cartao = linhaDoCliente(hospedeiro, "Bruna Ferreira");
+    const link = new URL(cartao.querySelector("a")!.href);
+    expect(link.searchParams.get("text")).toContain("finalizar a compra");
+    const linha = texto(cartao);
     expect(linha).toMatch(/R\$\s?134,80/);
     // O mutante ("voltar a formatarMoeda(cliente.receita)") mostraria isto:
     expect(linha).not.toMatch(/R\$\s?0,00/);
@@ -378,6 +382,7 @@ describe("linha do cliente: célula de dinheiro (mutante 'voltar a formatarMoeda
           segmento: "pediu_nao_pagou",
           receita: 0,
           valorEmAberto: 0,
+          whatsapp: "34988887777",
           pedidos: 1,
         }),
       ],
@@ -399,6 +404,11 @@ describe("linha do cliente: célula de dinheiro (mutante 'voltar a formatarMoeda
       );
     });
     const linha = linhaDoCliente(hospedeiro, "Caio Ribeiro");
+    const link = new URL(linha.querySelector("a")!.href);
+    expect(link.searchParams.get("text")).toContain(
+      "Passando para saber se posso te ajudar com alguma compra.",
+    );
+    expect(link.searchParams.get("text")).not.toContain("finalizar a compra");
     expect(texto(linha)).not.toMatch(/R\$\s?0,00/);
     const celulaReceita = Array.from(linha.querySelectorAll("p")).find(
       (el) => texto(el) === "Sem valor em aberto",
