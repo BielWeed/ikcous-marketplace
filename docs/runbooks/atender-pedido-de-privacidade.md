@@ -16,8 +16,8 @@
 ## Regras que não se negociam
 
 1. **Toda exclusão real passa pelo dono.** Quem atende mostra ao dono o resultado
-   do passo 4 (o ensaio) e só roda "valendo" depois do "pode". Vale também para a
-   correção de e-mail.
+   do passo 4 (o ensaio). Espere o "pode" antes de apagar fotos do Storage ou
+   rodar "valendo". A correção de e-mail também precisa do "pode".
 2. **Nunca apagar** a linha do login (`auth.users`) nem os pedidos
    (`marketplace_orders`). Os pedidos apontam para o login, sem cascata, e apagar
    levaria junto o histórico fiscal e financeiro da loja. A exclusão é
@@ -61,9 +61,9 @@
    > vamos mexer em nada.
 
 2. **Conte 3 dias corridos** a partir do envio do aviso e anote a data na nota
-   interna de quem atende. Antes disso, **não** troque o e-mail e **não** rode o
-   passo 4 "valendo" (o ensaio, com `v_confirmar := false`, pode rodar a qualquer
-   hora).
+   interna de quem atende. Antes disso, **não** troque o e-mail, **não** apague
+   fotos e **não** rode o passo 4 "valendo" (o ensaio, com
+   `v_confirmar := false`, pode rodar a qualquer hora).
 3. **Se a dona da conta responder "não fui eu"** (em qualquer momento), pare: não
    troque, não anonimize, marque "Não posso atender" com a nota "Não conseguimos
    confirmar o seu pedido. Se precisar, faça um novo pedido pelo app." e avise o
@@ -110,7 +110,37 @@ trocar, o Supabase responde com erro de formato — nada acontece.
 
 ```sql
 -- BLOCO: listar
-WITH alvo AS (SELECT 'COLE-O-ID-AQUI'::uuid AS id)
+WITH alvo AS (SELECT 'COLE-O-ID-AQUI'::uuid AS id), a_devolver AS (
+  -- Mesma conta do painel "Dinheiro a devolver" (20261402000000), por pedido,
+  -- em centavos, limitada à conta da cliente.
+  SELECT GREATEST(b.centavos - COALESCE(l.em_curso, 0)
+                  - GREATEST(COALESCE(l.concluido, 0) - b.estornado, 0), 0) AS resto
+    FROM (
+      SELECT o.id,
+             GREATEST(round(COALESCE(o.total, 0) * 100)
+                      - round(COALESCE(dm.valor, 0) * 100)
+                      - round(COALESCE(o.valor_estornado, 0) * 100), 0) AS centavos,
+             round(COALESCE(o.valor_estornado, 0) * 100) AS estornado
+        FROM public.marketplace_orders o
+        LEFT JOIN LATERAL (
+          SELECT sum(dv.valor_reembolso) AS valor FROM public.devolucoes dv
+           WHERE dv.order_id = o.id AND dv.status = 'concluida' AND dv.reembolso_manual
+        ) dm ON true
+       WHERE o.user_id = (SELECT id FROM alvo)
+         AND o.status = 'cancelled'
+         AND o.payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega')
+         AND NOT (COALESCE(o.cancelled_after_shipping, false) AND o.returned_to_seller_at IS NULL)
+    ) b
+    LEFT JOIN LATERAL (
+      SELECT sum(round(r.amount * 100)) FILTER (WHERE r.status IN ('solicitado', 'em_processamento')) AS em_curso,
+             sum(round(r.amount * 100)) FILTER (WHERE r.status = 'concluido') AS concluido
+        FROM public.order_refunds r
+       WHERE r.order_id = b.id
+         AND r.status IN ('solicitado', 'em_processamento', 'concluido')
+         AND round(r.amount * 100) > 0
+    ) l ON true
+   WHERE b.centavos > 0
+)
 SELECT 'e-mail de entrada' AS o_que, u.email AS valor FROM auth.users u, alvo WHERE u.id = alvo.id
 UNION ALL SELECT 'nome', p.full_name FROM public.profiles p, alvo WHERE p.id = alvo.id
 UNION ALL SELECT 'whatsapp', p.whatsapp FROM public.profiles p, alvo WHERE p.id = alvo.id
@@ -130,14 +160,27 @@ UNION ALL SELECT 'pedidos EM ANDAMENTO', count(*)::text FROM public.marketplace_
   WHERE o.user_id = alvo.id
     AND (o.status IN ('new', 'processing', 'shipping')
          OR (o.status = 'pending' AND coalesce(o.payment_status, '') NOT IN ('expirado', 'recusado', 'estornado')))
+UNION ALL SELECT 'pedidos com DINHEIRO A DEVOLVER', count(*)::text FROM a_devolver WHERE resto > 0
+UNION ALL SELECT 'pedidos cancelados esperando a mercadoria voltar', count(*)::text
+  FROM public.marketplace_orders o, alvo
+  WHERE o.user_id = alvo.id AND o.status = 'cancelled'
+    AND o.payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega')
+    AND o.cancelled_after_shipping AND o.returned_to_seller_at IS NULL
+UNION ALL SELECT 'estornos EM ANDAMENTO', count(*)::text
+  FROM public.order_refunds r JOIN public.marketplace_orders o ON o.id = r.order_id, alvo
+  WHERE o.user_id = alvo.id AND r.status IN ('solicitado', 'em_processamento')
 UNION ALL SELECT 'devoluções EM ANDAMENTO', count(*)::text FROM public.devolucoes d, alvo
   WHERE d.user_id = alvo.id AND d.status IN ('solicitada', 'aprovada', 'em_transito', 'recebida')
+UNION ALL SELECT 'devoluções com REEMBOLSO NÃO CONCLUÍDO', count(*)::text
+  FROM public.devolucoes d JOIN public.order_refunds r ON r.id = d.refund_id, alvo
+  WHERE d.user_id = alvo.id AND d.status = 'concluida' AND d.resolucao_final = 'reembolso'
+    AND NOT d.reembolso_manual AND r.status <> 'concluido'
 UNION ALL SELECT 'fotos de devolução guardadas', count(*)::text FROM storage.objects s, alvo
   WHERE s.bucket_id = 'devolucoes' AND split_part(s.name, '/', 1) = alvo.id::text;
 ```
 
 **Anote** o e-mail de entrada, o nome, o whatsapp, o CPF e o **endereço** (rua,
-complemento, bairro e CEP) que aparecerem: o passo 7 precisa deles (depois do
+complemento, bairro e CEP) que aparecerem: o passo 6 precisa deles (depois do
 passo 4 eles deixam de existir no banco).
 
 Anote também os telefones distintos guardados nos pedidos da cliente, antes que
@@ -147,36 +190,47 @@ o passo 4 os apague:
 SELECT DISTINCT customer_phone FROM public.marketplace_orders WHERE user_id = 'COLE-O-ID-AQUI'::uuid;
 ```
 
-Leve esses números ao passo 7 e repita a busca de sobras para cada telefone,
+Leve esses números ao passo 6 e repita a busca de sobras para cada telefone,
 além do whatsapp atual.
 
-Mostre o resultado ao dono. Se houver **pedido ou devolução em andamento**, pare:
-anonimizar o endereço de um pedido que ainda não foi entregue estraga a entrega.
-O bloco do passo 4 recusa rodar nesse caso. Espere o pedido terminar (ou combine
-com a cliente, fora do app) e volte. O pedido de privacidade continua aberto —
-o prazo corre, então avise a cliente por fora do app.
+Mostre o resultado ao dono. Se qualquer uma das **contagens de pendências**
+(pedido ou devolução em andamento, dinheiro a devolver, mercadoria a voltar,
+estorno em andamento ou reembolso não concluído) for maior que zero, pare.
+Anonimizar agora pode atrapalhar a entrega ou tirar da cliente o acesso para
+acompanhar o reembolso. O passo 4 também recusa nesses casos. Espere resolver e
+volte. O pedido de privacidade continua aberto — o prazo corre, então avise a
+cliente por fora do app.
 
-## Passo 3 — Apagar as fotos de devolução (se o passo 2 mostrou alguma)
+A linha "pedidos com DINHEIRO A DEVOLVER" segue a mesma conta do painel
+"Dinheiro a devolver" (trecho `a_devolver` da migration
+[`20261402000000`](../../supabase/migrations/20261402000000_o_inicio_mostra_o_dinheiro_a_devolver_e_a_margem_do_financeiro.sql)).
+Ela inclui o cancelado pago depois do prazo e desconta o que já foi devolvido
+ou está em estorno. O painel deixa fora desse saldo o cancelado que saiu para
+entrega e ainda espera a mercadoria voltar, mas **o roteiro bloqueia também
+esse caso**: o reembolso só pode acontecer depois que o produto voltar.
+"Estornos EM ANDAMENTO" inclui todo estorno solicitado ou em processamento,
+mesmo que já cubra o saldo. "Devoluções com REEMBOLSO NÃO CONCLUÍDO" cobre
+também a devolução encerrada cujo estorno pelo Mercado Pago falhou ou foi
+recusado: encerrar a devolução não quer dizer que o dinheiro saiu.
 
-O SQL não consegue apagar arquivo de verdade (só a linha do cadastro, deixando o
-arquivo órfão), então este passo é à mão, no site:
+## Passo 3 — Localizar as fotos de devolução (sem apagar)
 
-1. Supabase > **Storage** (menu da esquerda) > bucket **devolucoes**.
-2. Abra a pasta cujo nome é o **identificador da cliente**.
-3. Marque todos os arquivos (caixinha de cima) > **Delete** > confirme.
-4. Rode o bloco do passo 2 de novo: "fotos de devolução guardadas" tem de dar 0.
-
-O bloco do passo 4 recusa rodar se ainda houver foto. **[CONFERIR EM LOJA DE
-TESTE]** os nomes exatos dos botões do Storage (mudam com a versão do painel).
+Se o passo 2 mostrou fotos, abra Supabase > **Storage** (menu da esquerda) >
+bucket **devolucoes** > pasta cujo nome é o **identificador da cliente**.
+Confira que é a pasta certa. **Não clique em Delete neste passo.** Apagar
+o arquivo não tem desfazer pelo SQL: deixe para a execução definitiva do
+passo 4, depois do ensaio e da aprovação.
 
 ## Passo 4 — Anonimizar (primeiro o ENSAIO, depois valendo)
 
-**Antes do "valendo": o aviso ao e-mail atual já foi enviado e já se passaram 3
-dias corridos sem resposta "não fui eu"** (seção "Aviso ao e-mail ATUAL e espera
-de 3 dias", regra 7). O ensaio pode rodar antes; o "valendo", não.
+**Antes de apagar fotos ou rodar "valendo": o aviso ao e-mail atual já foi
+enviado e já se passaram 3 dias corridos sem resposta "não fui eu"** (seção
+"Aviso ao e-mail ATUAL e espera de 3 dias", regra 7). O ensaio pode rodar antes;
+a execução definitiva, não.
 
-Este bloco faz **tudo numa operação só** (ou tudo, ou nada) e **não apaga o login
-nem pedido nenhum**:
+As mudanças que o bloco faz **no banco** acontecem juntas (ou tudo, ou nada).
+Ele **não apaga o login nem pedido nenhum**. Os arquivos no Storage são
+apagados separadamente e não voltam se o SQL falhar:
 
 - perfil: nome vira "Cliente removido"; telefone, CPF e fotos de perfil somem;
 - login: o e-mail vira `excluido+<id>@invalid.local` (um endereço que não existe),
@@ -199,7 +253,8 @@ nem pedido nenhum**:
   (`marketplace_order_internal_notes`) são **apagadas** (a linha inteira), com a
   contagem no relatório;
 - devoluções: somem o texto que a cliente escreveu e a lista de fotos (o valor,
-  o motivo e os estados ficam);
+  o motivo e os estados ficam); as notas da loja são conferidas e tratadas à
+  mão no passo 6;
 - eventos de navegação (`analytics_events`): perdem o vínculo com a cliente.
 
 Como usar:
@@ -208,10 +263,35 @@ Como usar:
 2. Rode. O resultado esperado é um **erro vermelho** começando por
    `ENSAIO (nada foi gravado)` seguido da lista "quantas linhas cada coisa
    mudaria". Esse erro é de propósito: ele desfaz tudo, é o ensaio.
-3. Mostre essa lista ao dono. Com o "pode" dele, troque para `v_confirmar := true`
-   e rode de novo. Sem erro = feito.
-4. Se o erro começar por `PARADO:` leia o motivo (pedido em andamento, foto
-   ainda no Storage, pedido de exclusão não está aberto…). Nada foi mudado.
+3. Mostre a lista ao dono, incluindo a contagem de fotos do passo 2. Só siga
+   depois do "pode" dele e da espera de 3 dias descrita acima.
+4. **Imediatamente antes de apagar qualquer foto**, rode de novo o passo 2
+   e o ensaio com `v_confirmar := false`. Confirme que o pedido de exclusão
+   segue aberto, que não chegou resposta "não fui eu" e que todas as
+   contagens de pendências do passo 2 estão zeradas. Se aparecer `PARADO:`,
+   outro erro ou algo diferente do aprovado, pare sem apagar e leve ao dono.
+   Se houver fotos, liste os caminhos dos arquivos, no mesmo Supabase.
+   A lista precisa bater com a contagem de fotos que você acabou de conferir:
+
+   ```sql
+   SELECT s.name FROM storage.objects s
+    WHERE s.bucket_id = 'devolucoes'
+      AND split_part(s.name, '/', 1) = 'COLE-O-ID-AQUI'::uuid::text
+    ORDER BY s.name;
+   ```
+
+5. Só então, se houver fotos, volte à pasta conferida no passo 3. Compare com
+   a lista do item anterior e selecione **só os arquivos listados**, um por um,
+   pelo caminho completo. Toque em **Delete** e confirme. Não use "selecionar todos". Se vir um
+   arquivo novo, se a lista não bater ou se não tiver certeza, pare e refaça
+   a conferência do item 4 antes de apagar. Rode o passo 2 de novo: "fotos de
+   devolução guardadas" tem de dar 0. Se não der, pare. **[CONFERIR EM LOJA DE
+   TESTE]** os nomes dos botões do Storage (mudam com a versão do painel).
+6. Troque para `v_confirmar := true` e rode de novo. O bloco reconfere as
+   travas, inclusive a ausência de fotos no Storage. Se der `PARADO:` ou
+   outro erro, o bloco não gravou nada **no banco**; as fotos já apagadas não
+   voltam. Mantenha o pedido aberto e avise o dono antes de continuar.
+   Sem erro no SQL, siga para o passo 5; ainda não marque como atendido.
 
 ```sql
 -- BLOCO: anonimizar
@@ -243,9 +323,65 @@ BEGIN
               WHERE d.user_id = v_id AND d.status IN ('solicitada', 'aprovada', 'em_transito', 'recebida')) THEN
     RAISE EXCEPTION 'PARADO: há DEVOLUÇÃO em andamento desta cliente. Espere terminar. Nada foi mudado.';
   END IF;
-  IF EXISTS (SELECT 1 FROM storage.objects s
-              WHERE s.bucket_id = 'devolucoes' AND split_part(s.name, '/', 1) = v_id::text) THEN
-    RAISE EXCEPTION 'PARADO: ainda há fotos de devolução dela no Storage. Apague-as primeiro (passo 3). Nada foi mudado.';
+  -- Estorno em curso bloqueia mesmo quando já cobre todo o saldo do painel.
+  IF EXISTS (
+    SELECT 1 FROM public.order_refunds r
+      JOIN public.marketplace_orders o ON o.id = r.order_id
+     WHERE o.user_id = v_id AND r.status IN ('solicitado', 'em_processamento')
+  ) THEN
+    RAISE EXCEPTION 'PARADO: há estorno EM ANDAMENTO desta cliente. Espere terminar. Nada foi mudado no banco.';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM public.marketplace_orders o
+     WHERE o.user_id = v_id AND o.status = 'cancelled'
+       AND o.payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega')
+       AND o.cancelled_after_shipping AND o.returned_to_seller_at IS NULL
+  ) THEN
+    RAISE EXCEPTION 'PARADO: há pedido cancelado esperando a mercadoria voltar; o reembolso ainda vai acontecer.';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM public.devolucoes d JOIN public.order_refunds r ON r.id = d.refund_id
+     WHERE d.user_id = v_id AND d.status = 'concluida' AND d.resolucao_final = 'reembolso'
+       AND NOT d.reembolso_manual AND r.status <> 'concluido'
+  ) THEN
+    RAISE EXCEPTION 'PARADO: há devolução com REEMBOLSO NÃO CONCLUÍDO. Resolva o reembolso antes.';
+  END IF;
+  -- Mesma conta do passo 2 e do painel "Dinheiro a devolver" (20261402000000).
+  IF EXISTS (
+    SELECT 1
+      FROM (
+        SELECT o.id,
+               GREATEST(round(COALESCE(o.total, 0) * 100)
+                        - round(COALESCE(dm.valor, 0) * 100)
+                        - round(COALESCE(o.valor_estornado, 0) * 100), 0) AS centavos,
+               round(COALESCE(o.valor_estornado, 0) * 100) AS estornado
+          FROM public.marketplace_orders o
+          LEFT JOIN LATERAL (
+            SELECT sum(dv.valor_reembolso) AS valor FROM public.devolucoes dv
+             WHERE dv.order_id = o.id AND dv.status = 'concluida' AND dv.reembolso_manual
+          ) dm ON true
+         WHERE o.user_id = v_id
+           AND o.status = 'cancelled'
+           AND o.payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega')
+           AND NOT (COALESCE(o.cancelled_after_shipping, false) AND o.returned_to_seller_at IS NULL)
+      ) b
+      LEFT JOIN LATERAL (
+        SELECT sum(round(r.amount * 100)) FILTER (WHERE r.status IN ('solicitado', 'em_processamento')) AS em_curso,
+               sum(round(r.amount * 100)) FILTER (WHERE r.status = 'concluido') AS concluido
+          FROM public.order_refunds r
+         WHERE r.order_id = b.id
+           AND r.status IN ('solicitado', 'em_processamento', 'concluido')
+           AND round(r.amount * 100) > 0
+      ) l ON true
+     WHERE b.centavos > 0
+       AND GREATEST(b.centavos - COALESCE(l.em_curso, 0)
+                    - GREATEST(COALESCE(l.concluido, 0) - b.estornado, 0), 0) > 0
+  ) THEN
+    RAISE EXCEPTION 'PARADO: há pedido com DINHEIRO A DEVOLVER para esta cliente. Resolva o reembolso antes. Nada foi mudado no banco.';
+  END IF;
+  IF v_confirmar AND EXISTS (SELECT 1 FROM storage.objects s
+                             WHERE s.bucket_id = 'devolucoes' AND split_part(s.name, '/', 1) = v_id::text) THEN
+    RAISE EXCEPTION 'PARADO: ainda há fotos de devolução dela no Storage. Siga a ordem do passo 4. Nada foi mudado no banco.';
   END IF;
 
   v_novo_email := 'excluido+' || v_id::text || '@invalid.local';
@@ -315,7 +451,8 @@ BEGIN
     v_rel := v_rel || E'anotações internas dos pedidos: esta loja ainda não tem a tabela (nada a apagar)\n';
   END IF;
 
-  -- Devoluções: o que a cliente escreveu e a lista de fotos (as fotos já foram apagadas no passo 3).
+  -- Devoluções: o que a cliente escreveu e a lista de fotos. No ensaio, os arquivos
+  -- ficam no Storage e o próprio bloco desfaz a limpeza da lista.
   UPDATE public.devolucoes SET detalhe = NULL, fotos = '{}' WHERE user_id = v_id;
   GET DIAGNOSTICS v_n = ROW_COUNT;
   v_rel := v_rel || format(E'devoluções limpas de texto e fotos: %s\n', v_n);
@@ -395,7 +532,7 @@ BEGIN
 
   IF NOT v_confirmar THEN
     RAISE EXCEPTION '%', E'ENSAIO (nada foi gravado). Isto é o que mudaria:\n' || v_rel
-      || E'Para valer, mude v_confirmar para true e rode de novo.';
+      || E'Siga a ordem do passo 4: aprovação, reconferência e fotos antes de rodar valendo.';
   END IF;
   RAISE NOTICE '%', E'FEITO:\n' || v_rel;
 END
@@ -420,7 +557,7 @@ $anonimizar$;
   do login escreve ali: o bloco para inteiro com "permission denied" e nada muda);
 - se algum gatilho do Supabase (fora das migrations do projeto) reage a mudança
   no `auth.users`;
-- se o passo 7, rodado de novo depois, não lista nenhuma tabela `auth.`.
+- se o passo 6, rodado de novo depois, não lista nenhuma tabela `auth.`.
 
 Ficam de fora, de propósito (não são dado pessoal legível, mas diga ao dono):
 `auth.refresh_tokens` e `auth.flow_state` (códigos técnicos de acesso, sem nome
@@ -455,15 +592,47 @@ se o dono quiser limpar também, é um passo novo a pedir a quem programa.
    continua aberto: não marque como atendido.
 5. Só depois de reconferir sem dado pessoal novo, siga para o passo 6.
 
-## Passo 6 — Marcar o pedido no painel
+## Passo 6 — Caçar o que sobrou (texto livre)
 
-Só depois do passo 4 valendo e da reconferência do passo 5. Volte à seção
-"Pedidos de privacidade dos clientes", escreva a nota (regra 4) e toque em
-"Marcar como atendido" (ou "Não
-posso atender", com o motivo na nota) e confirme na pergunta. O painel grava quem
-decidiu e quando; a cliente passa a ver a resposta na tela dela.
+Faça esta conferência **antes de marcar o pedido como atendido**, depois do
+passo 4 valendo e da espera e reconferência do passo 5.
 
-## Passo 7 — Caçar o que sobrou (texto livre)
+**Confira as notas de inspeção e das decisões da loja vinculadas à conta**,
+mesmo que a busca pelo nome completo não encontre nada. No detalhe da devolução,
+o painel mostra essas notas em **Inspeção** e **Histórico**.
+
+1. Rode as duas leituras com o identificador da cliente. Leia cada nota inteira:
+   um primeiro nome sozinho, apelido ou telefone antigo pode não aparecer na
+   busca automática.
+
+   ```sql
+   SELECT d.id, d.protocolo, d.observacao_inspecao
+     FROM public.devolucoes d
+    WHERE d.user_id = 'COLE-O-ID-AQUI'::uuid
+      AND nullif(btrim(d.observacao_inspecao), '') IS NOT NULL
+    ORDER BY d.protocolo;
+   ```
+
+   ```sql
+   SELECT e.id, e.devolucao_id, e.nota
+     FROM public.devolucao_eventos e
+     JOIN public.devolucoes d ON d.id = e.devolucao_id
+    WHERE d.user_id = 'COLE-O-ID-AQUI'::uuid
+      AND e.ator = 'loja' AND e.nota IS NOT NULL
+    ORDER BY e.devolucao_id, e.id;
+   ```
+
+2. No Supabase > **Table Editor**, filtre pelos identificadores antes de editar:
+   em **devolucoes**, confira `user_id`, `id` e o protocolo; em
+   **devolucao_eventos**, confira `devolucao_id`, o `id` do evento e
+   `ator = loja`. Confira o texto atual. Na célula `observacao_inspecao` ou
+   `nota`, troque só o trecho que identifica a cliente por `[removido]`.
+   Preserve as informações sobre o produto, os valores, a situação e as
+   linhas do histórico. Não copie a nota original para fora do Supabase.
+3. Rode as duas leituras de novo e confira as notas. Se não conseguir confirmar a
+   linha, separar os trechos ou salvar a correção, mantenha o pedido aberto e
+   avise o dono. Não passe para o passo 7 enquanto a conferência estiver
+   pendente.
 
 O que o bloco do passo 4 não consegue saber: texto livre onde o **nome** ou o
 **telefone** dela foi escrito à mão (resposta da loja numa avaliação, nota de
@@ -542,9 +711,10 @@ SELECT * FROM pg_temp.sobras('NOME COMPLETO ANTIGO', 'email.antigo@exemplo.com',
                              ARRAY['RUA ANTIGA', 'COMPLEMENTO ANTIGO', 'BAIRRO ANTIGO'], '01001-000');
 ```
 
-Resultado vazio = não sobrou nada. Se listar algo, abra aquela tabela, olhe as
-linhas e troque o trecho à mão por "[removido]". Os dois últimos valores são o
-**endereço** que você anotou no passo 2 (rua, complemento e bairro, na lista
+Resultado vazio = a busca não achou os dados que você informou; isso não
+substitui a leitura à mão. Se listar algo, confira se cada trecho é mesmo da
+cliente e troque só esse trecho à mão por "[removido]". Os dois últimos valores
+são o **endereço** que você anotou no passo 2 (rua, complemento e bairro, na lista
 entre colchetes, e o CEP): esvazie o que não tiver (`ARRAY[]::text[]` e `''`).
 Tabelas que começam por `auth.` são do login (registro de atividade, códigos de
 troca, verificação em duas etapas): se aparecer alguma depois do passo 4, **pare
@@ -555,12 +725,25 @@ telefone, CPF e CEP casam por dígitos, então um código de barras parecido pod
 aparecer: confira antes de mexer. O endereço **da loja** (retirada) fica no
 pedido de propósito: se a cliente morava no mesmo bairro da loja, o bairro
 aparece em `marketplace_orders.customer_data` e é esperado — confira.
+Refaça a busca depois de corrigir os trechos. Se sobrar algum dado pessoal
+da cliente que você não consiga tratar, deixe o pedido aberto e avise o dono.
 
 O que **fica de propósito**: a linha do pedido de privacidade (a tabela
 `pedidos_de_privacidade`, que guarda o e-mail novo quando o pedido era de
 correção — é o registro legal do que foi pedido); `vor_receipts` (cadeia de
 provas encadeadas por hash: mexer quebraria a prova); o identificador (um código
 sem nome) que continua ligando pedidos ao login bloqueado.
+
+## Passo 7 — Marcar o pedido no painel
+
+1. Para marcar como atendido, confirme que o passo 4 rodou valendo, que o passo
+   5 não encontrou dado pessoal novo e que o passo 6 já conferiu as notas de
+   inspeção e das decisões da loja e a busca de sobras, sem correção pendente.
+2. Volte à seção "Pedidos de privacidade dos clientes", escreva a nota (regra
+   4) e toque em "Marcar como atendido". Se a decisão for recusar (por exemplo,
+   a dona da conta respondeu "não fui eu"), use "Não posso atender" e informe o
+   motivo na nota. Confirme na pergunta. O painel grava quem decidiu e quando;
+   a cliente passa a ver a resposta na tela dela.
 
 ## Correção de e-mail (a cliente digitou o e-mail novo)
 
@@ -587,7 +770,7 @@ alguém pedir a troca para o e-mail dele e ficar com a conta):
 ## O que NÃO fazer
 
 - Não apagar o login da cliente nem pedido nenhum.
-- Não marcar "atendido" antes de terminar os passos 3, 4 e 5 (a decisão é final).
+- Não marcar "atendido" antes de terminar os passos 3, 4, 5 e 6 (a decisão é final).
 - Não pedir a senha da cliente, nem por e-mail.
 - Não copiar dados da cliente para planilha, e-mail ou conversa.
 
