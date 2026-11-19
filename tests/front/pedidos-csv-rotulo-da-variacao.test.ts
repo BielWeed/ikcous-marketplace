@@ -44,6 +44,22 @@ describe("pedidosParaCsv com o rótulo da variação", () => {
     );
   });
 
+  it("separa duas compras da mesma opção pelo retrato de cada linha", () => {
+    const antiga = pedido("v");
+    Object.assign(antiga.items[0], {
+      variacaoNomeNaCompra: "Cor / Tamanho",
+      variacaoValorNaCompra: "Azul / M",
+    });
+    const recente = pedido("v", "Camiseta Nova");
+    const csv = pedidosParaCsv([antiga, recente], {
+      v: "Cor Marinho · Tamanho M",
+    });
+    expect(csv).toContain("Camiseta Básica - Cor Azul · Tamanho M (1 x 49,90)");
+    expect(csv).toContain(
+      "Camiseta Nova - Cor Marinho · Tamanho M (1 x 49,90)",
+    );
+  });
+
   it("item sem variação, ou sem rótulo no mapa, sai como antes", () => {
     expect(itensDa(pedidosParaCsv([pedido()], { "var-m": "Tamanho M" }))).toBe(
       "Camiseta Básica (1 x 49,90)",

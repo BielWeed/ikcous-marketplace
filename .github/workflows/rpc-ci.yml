@@ -301,6 +301,8 @@ on:
       - "scripts/publicacao/consultas/160b-antes-o-cupom-que-nao-da-desconto-base-vigente.sql"
       - "scripts/publicacao/consultas/161a-conferir-o-custo-do-cancelamento-fica-no-mes-da-volta-aplicado.sql"
       - "scripts/publicacao/consultas/161b-antes-o-custo-do-cancelamento-fica-no-mes-da-volta-base-vigente.sql"
+      - "scripts/publicacao/consultas/162a-conferir-o-pedido-guarda-o-nome-antigo-da-opcao-aplicado.sql"
+      - "scripts/publicacao/consultas/162b-antes-o-pedido-guarda-o-nome-antigo-da-opcao-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -575,6 +577,8 @@ on:
       - "scripts/publicacao/consultas/160b-antes-o-cupom-que-nao-da-desconto-base-vigente.sql"
       - "scripts/publicacao/consultas/161a-conferir-o-custo-do-cancelamento-fica-no-mes-da-volta-aplicado.sql"
       - "scripts/publicacao/consultas/161b-antes-o-custo-do-cancelamento-fica-no-mes-da-volta-base-vigente.sql"
+      - "scripts/publicacao/consultas/162a-conferir-o-pedido-guarda-o-nome-antigo-da-opcao-aplicado.sql"
+      - "scripts/publicacao/consultas/162b-antes-o-pedido-guarda-o-nome-antigo-da-opcao-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -868,6 +872,9 @@ jobs:
       - name: Prova viva do custo do cancelamento no mês da volta (20261405900000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-custo-do-cancelamento-fica-no-mes-da-volta-viva.cjs
+      - name: Prova viva do nome antigo da opção no pedido (20261406000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-pedido-guarda-o-nome-antigo-da-opcao-viva.cjs
       - name: Prova viva cancelar pedido so abre estorno se pago de verdade
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/cancelar-pedido-so-abre-estorno-se-pago-viva.cjs

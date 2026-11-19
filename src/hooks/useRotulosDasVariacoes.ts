@@ -1,34 +1,95 @@
-import { rotuloDaVariacao } from "@/lib/rotulo-da-variacao";
+import {
+  rotuloDaVariacao,
+  rotuloDaVariacaoGuardada,
+} from "@/lib/rotulo-da-variacao";
 import { supabase } from "@/lib/supabase";
+import type { OrderItem } from "@/types";
 import { useEffect, useMemo, useState } from "react";
 
-/**
- * O texto da variação de cada linha do pedido ("Cor Azul · Tamanho M"), por id
- * da variação. O pedido só guarda o `variantId`; quem diz qual foi a escolha é
- * `product_variants` — a mesma leitura e o mesmo rótulo que o painel usa na
- * ficha da loja (`OrderDetail.tsx`).
- *
- * É um enfeite que ajuda a cliente a distinguir duas linhas do mesmo produto
- * (camiseta M e camiseta G): se a leitura falhar, o mapa fica vazio e a ficha
- * aparece como sempre, sem rótulo e sem erro.
- */
-export function useRotulosDasVariacoes(
-  itens: ReadonlyArray<{ variantId?: string }> | null | undefined,
-): Record<string, string> {
-  const [rotulos, setRotulos] = useState<Record<string, string>>({});
+type Item = Pick<
+  OrderItem,
+  "id" | "variantId" | "variacaoNomeNaCompra" | "variacaoValorNaCompra"
+>;
 
-  // Chave estável: o efeito só roda de novo quando o CONJUNTO de ids muda.
-  const chaveDosIds = useMemo(() => {
+export function chaveDoRotuloDaVariacao(item: Item): string {
+  return item.id ?? item.variantId ?? "";
+}
+
+/** Rótulo por linha da compra, não por id do catálogo: compras feitas em
+ * momentos diferentes podem ter retratos diferentes da mesma opção.
+ * A ficha de devolução recebe só o id da linha e busca o retrato sob a RLS do
+ * pedido. Meus pedidos já recebe os dois campos junto com os itens. */
+export function useRotulosDasVariacoes(
+  itens: readonly Item[] | null | undefined,
+  lerHistorico = false,
+): Record<string, string> {
+  const [historico, setHistorico] = useState<{
+    chave: string;
+    rotulos: Map<string, string>;
+  } | null>(null);
+  const [catalogo, setCatalogo] = useState<Record<string, string>>({});
+
+  const chaveDoHistorico = useMemo(() => {
+    if (!lerHistorico) return "";
     const ids = new Set<string>();
     for (const item of itens ?? []) {
-      if (item.variantId) ids.add(item.variantId);
+      if (item.id && item.variantId && !rotuloDaVariacaoGuardada(item)) {
+        ids.add(item.id);
+      }
     }
     return [...ids].sort().join(",");
-  }, [itens]);
+  }, [itens, lerHistorico]);
+
+  useEffect(() => {
+    if (!chaveDoHistorico) return;
+    let cancelado = false;
+    const ler = async () => {
+      const rotulos = new Map<string, string>();
+      try {
+        const { data, error } = await supabase
+          .from("marketplace_order_items")
+          .select("id, variacao_nome_na_compra, variacao_valor_na_compra")
+          .in("id", chaveDoHistorico.split(","));
+        if (!error) {
+          for (const item of data ?? []) {
+            const rotulo = rotuloDaVariacao(
+              item.variacao_nome_na_compra,
+              item.variacao_valor_na_compra,
+            );
+            if (rotulo) rotulos.set(item.id, rotulo);
+          }
+        }
+      } catch {
+        // Loja ainda sem a migração, ou leitura indisponível: vale a reserva.
+      }
+      if (!cancelado) setHistorico({ chave: chaveDoHistorico, rotulos });
+    };
+    void ler();
+    return () => {
+      cancelado = true;
+    };
+  }, [chaveDoHistorico]);
+
+  const historicoLido =
+    historico?.chave === chaveDoHistorico ? historico.rotulos : null;
+  const chaveDosIds = useMemo(() => {
+    if (chaveDoHistorico && !historicoLido) return "";
+    const ids = new Set<string>();
+    for (const item of itens ?? []) {
+      if (
+        item.variantId &&
+        !rotuloDaVariacaoGuardada(item) &&
+        !(item.id && historicoLido?.has(item.id))
+      ) {
+        ids.add(item.variantId);
+      }
+    }
+    return [...ids].sort().join(",");
+  }, [itens, chaveDoHistorico, historicoLido]);
 
   useEffect(() => {
     if (chaveDosIds === "") {
-      setRotulos({});
+      setCatalogo({});
       return;
     }
     let cancelado = false;
@@ -44,7 +105,7 @@ export function useRotulosDasVariacoes(
           const rotulo = rotuloDaVariacao(v.name, v.value);
           if (rotulo) lidos[v.id] = rotulo;
         }
-        setRotulos(lidos);
+        setCatalogo(lidos);
       } catch {
         // Sem rótulo, a ficha mostra como sempre (nunca quebra por isto).
       }
@@ -55,5 +116,16 @@ export function useRotulosDasVariacoes(
     };
   }, [chaveDosIds]);
 
-  return rotulos;
+  return useMemo(() => {
+    const rotulos: Record<string, string> = {};
+    for (const item of itens ?? []) {
+      const chave = chaveDoRotuloDaVariacao(item);
+      const rotulo =
+        rotuloDaVariacaoGuardada(item) ||
+        (item.id && historicoLido?.get(item.id)) ||
+        (item.variantId && catalogo[item.variantId]);
+      if (chave && rotulo) rotulos[chave] = rotulo;
+    }
+    return rotulos;
+  }, [itens, historicoLido, catalogo]);
 }

@@ -184,6 +184,8 @@ export interface OrderItem {
   id?: string;
   productId: string;
   variantId?: string;
+  variacaoNomeNaCompra?: string | null;
+  variacaoValorNaCompra?: string | null;
   name: string;
   price: number;
   quantity: number;

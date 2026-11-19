@@ -145,10 +145,13 @@ export function DevolucaoDoPedidoCard({
   // não podem aparecer idênticas): o item só guarda o id da variação.
   const itensParaRotular = useMemo(
     () =>
-      atual.itens.map((item) => ({ variantId: item.variant_id ?? undefined })),
+      atual.itens.map((item) => ({
+        id: item.order_item_id ?? undefined,
+        variantId: item.variant_id ?? undefined,
+      })),
     [atual.itens],
   );
-  const rotulosDasVariacoes = useRotulosDasVariacoes(itensParaRotular);
+  const rotulosDasVariacoes = useRotulosDasVariacoes(itensParaRotular, true);
 
   const etapas = etapasDaDevolucao(atual);
   const acoes = acoesDoCliente(atual);
@@ -396,14 +399,21 @@ export function DevolucaoDoPedidoCard({
             <dt className="min-w-0 break-words text-zinc-600">
               <span className="line-clamp-2">
                 {item.quantidade}× {item.product_name || "Produto"}
-                {item.variant_id && rotulosDasVariacoes[item.variant_id] && (
-                  <span
-                    data-testid="variacao-do-item-devolvido"
-                    className="block break-words text-xs text-zinc-500"
-                  >
-                    {rotulosDasVariacoes[item.variant_id]}
-                  </span>
-                )}
+                {item.variant_id &&
+                  rotulosDasVariacoes[
+                    item.order_item_id || item.variant_id
+                  ] && (
+                    <span
+                      data-testid="variacao-do-item-devolvido"
+                      className="block break-words text-xs text-zinc-500"
+                    >
+                      {
+                        rotulosDasVariacoes[
+                          item.order_item_id || item.variant_id
+                        ]
+                      }
+                    </span>
+                  )}
               </span>
               {item.condicao === "ausente" && (
                 <span className="block text-xs text-zinc-500">

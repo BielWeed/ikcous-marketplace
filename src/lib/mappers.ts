@@ -320,7 +320,14 @@ export function mapOrderFromDB(
           // por ele); sem id a chave nem existe, como era antes.
           ...(item.id ? { id: item.id } : {}),
           productId: item.product_id || "",
-          variantId: (item as any).variant_id || undefined,
+          variantId: item.variant_id || undefined,
+          ...(item.variacao_nome_na_compra != null &&
+          item.variacao_valor_na_compra != null
+            ? {
+                variacaoNomeNaCompra: item.variacao_nome_na_compra,
+                variacaoValorNaCompra: item.variacao_valor_na_compra,
+              }
+            : {}),
           name: item.product_name || "",
           price: Number(item.price || 0),
           quantity: Number(item.quantity || 1),

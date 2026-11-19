@@ -21,7 +21,10 @@ import { useDevolucaoCliente } from "@/hooks/useDevolucaoCliente";
 import { useDevolucaoDoPedidoCliente } from "@/hooks/useDevolucaoDoPedidoCliente";
 import { useMarcarAvisosDoPedidoComoLidos } from "@/hooks/useMarcarAvisosDoPedidoComoLidos";
 import { ErroCancelamentoNaoConcluido, useOrders } from "@/hooks/useOrders";
-import { useRotulosDasVariacoes } from "@/hooks/useRotulosDasVariacoes";
+import {
+  chaveDoRotuloDaVariacao,
+  useRotulosDasVariacoes,
+} from "@/hooks/useRotulosDasVariacoes";
 import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import { avisoDeCartaoNoPedidoVencido } from "@/lib/aviso-de-cartao-no-pedido-vencido";
@@ -502,16 +505,14 @@ export function OrderDetailsView({
   const [retratoDoConvidado, setRetratoDoConvidado] = useState<{
     consultadoEm: number | null;
   } | null>(null);
-  // Qual cor/tamanho cada linha do pedido e (o pedido so guarda o id).
+  // Qual cor/tamanho cada linha do pedido mostrava na compra.
   const rotulosDasVariacoes = useRotulosDasVariacoes(order?.items);
   // O mesmo texto, por id da LINHA do pedido: é a chave que a folha de devolução
   // usa (`order_item_id`) para distinguir duas linhas do mesmo produto.
   const rotulosPorLinhaDoPedido = useMemo(() => {
     const porLinha: Record<string, string> = {};
     for (const linha of order?.items ?? []) {
-      const rotulo = linha.variantId
-        ? rotulosDasVariacoes[linha.variantId]
-        : undefined;
+      const rotulo = rotulosDasVariacoes[chaveDoRotuloDaVariacao(linha)];
       if (linha.id && rotulo) porLinha[linha.id] = rotulo;
     }
     return porLinha;
@@ -1343,8 +1344,8 @@ export function OrderDetailsView({
   const rotulosDoProduto = (productId: string): string[] => {
     const vistos = new Set<string>();
     for (const linha of order.items) {
-      if (linha.productId !== productId || !linha.variantId) continue;
-      const rotulo = rotulosDasVariacoes[linha.variantId];
+      if (linha.productId !== productId) continue;
+      const rotulo = rotulosDasVariacoes[chaveDoRotuloDaVariacao(linha)];
       if (rotulo) vistos.add(rotulo);
     }
     return [...vistos];
@@ -1978,12 +1979,12 @@ export function OrderDetailsView({
                   <h5 className="break-words text-sm font-bold leading-tight text-zinc-900 transition-colors group-hover:text-zinc-650">
                     {item.name}
                   </h5>
-                  {item.variantId && rotulosDasVariacoes[item.variantId] && (
+                  {rotulosDasVariacoes[chaveDoRotuloDaVariacao(item)] && (
                     <p
                       data-testid="variacao-do-item"
                       className="mt-0.5 break-words text-xs font-medium text-zinc-600"
                     >
-                      {rotulosDasVariacoes[item.variantId]}
+                      {rotulosDasVariacoes[chaveDoRotuloDaVariacao(item)]}
                     </p>
                   )}
                   <p className="mt-0.5 text-xs font-medium text-zinc-500">

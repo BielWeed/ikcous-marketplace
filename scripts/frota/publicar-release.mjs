@@ -737,6 +737,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "160b-antes-o-cupom-que-nao-da-desconto-base-vigente",
   "161a-conferir-o-custo-do-cancelamento-fica-no-mes-da-volta-aplicado",
   "161b-antes-o-custo-do-cancelamento-fica-no-mes-da-volta-base-vigente",
+  "162a-conferir-o-pedido-guarda-o-nome-antigo-da-opcao-aplicado",
+  "162b-antes-o-pedido-guarda-o-nome-antigo-da-opcao-base-vigente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

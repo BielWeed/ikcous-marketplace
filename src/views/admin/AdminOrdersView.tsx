@@ -93,7 +93,10 @@ import {
   ehConsultaSemResposta,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
-import { rotuloDaVariacao } from "@/lib/rotulo-da-variacao";
+import {
+  rotuloDaVariacao,
+  rotuloDaVariacaoGuardada,
+} from "@/lib/rotulo-da-variacao";
 import { sessaoAindaEhDoDono } from "@/lib/sessao-ainda-e-do-dono";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
@@ -145,17 +148,19 @@ import { toast } from "sonner";
 
 const CSV_SEM_TAMANHO_E_COR = "CSV_SEM_TAMANHO_E_COR";
 
-/** O pedido grava só o nome do produto; o tamanho e a cor moram em
- * `product_variants` (a mesma consulta da ficha do pedido). Sem eles a
- * planilha deixa a lojista separar a peça errada — por isso, se a leitura
- * falhar ou demorar, ela PARA com erro em vez de gerar planilha sem a
- * informação. Consulta em fatias: 5000 pedidos estouram o tamanho do endereço. */
+/** Só as linhas sem retrato precisam reler tamanho e cor do catálogo.
+ * Se essa leitura falhar ou demorar, não baixa uma planilha incompleta.
+ * Consulta em fatias: 5000 pedidos estouram o tamanho do endereço. */
 async function lerRotulosDasVariacoes(
   pedidos: Order[],
 ): Promise<Record<string, string>> {
   const ids = [
     ...new Set(
-      pedidos.flatMap((p) => p.items.flatMap((i) => i.variantId ?? [])),
+      pedidos.flatMap((p) =>
+        p.items.flatMap((i) =>
+          rotuloDaVariacaoGuardada(i) ? [] : (i.variantId ?? []),
+        ),
+      ),
     ),
   ];
   const rotulos: Record<string, string> = {};

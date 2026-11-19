@@ -122,11 +122,12 @@ export function DetalheDaDevolucao({
   const itensParaRotular = useMemo(
     () =>
       itensDaFicha?.map((item) => ({
+        id: item.order_item_id ?? undefined,
         variantId: item.variant_id ?? undefined,
       })),
     [itensDaFicha],
   );
-  const rotulosDasVariacoes = useRotulosDasVariacoes(itensParaRotular);
+  const rotulosDasVariacoes = useRotulosDasVariacoes(itensParaRotular, true);
 
   const whatsapp = linkWhatsappDoCliente(detalhe?.pedido?.whatsapp);
   const dentroDoPrazo = detalhe?.prazo_ate
@@ -318,12 +319,18 @@ export function DetalheDaDevolucao({
                         {item.product_name || "Produto"}
                       </p>
                       {item.variant_id &&
-                        rotulosDasVariacoes[item.variant_id] && (
+                        rotulosDasVariacoes[
+                          item.order_item_id || item.variant_id
+                        ] && (
                           <p
                             data-testid="variacao-do-item-devolvido"
                             className="break-words text-[11px] text-zinc-300"
                           >
-                            {rotulosDasVariacoes[item.variant_id]}
+                            {
+                              rotulosDasVariacoes[
+                                item.order_item_id || item.variant_id
+                              ]
+                            }
                           </p>
                         )}
                       <p className="text-[11px] tabular-nums text-zinc-400">

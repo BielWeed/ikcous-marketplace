@@ -799,6 +799,10 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   corpos +1 linha, atributo, `EXECUTE` por papel, a função antiga reaberta, a tabela com policy/grant/sem RLS/coluna a
   mais, a espera ausente, os marcadores), as sucessoras na `8e`, `28a` e `29a` antes e depois, mutantes do texto das
   consultas e o veredito do `conferir-banco.cjs` (`rol=ok`). **Não prova** a IKCOUS nem a Savy.
+- **o pedido guarda o nome antigo da opção (`o-pedido-guarda-o-nome-antigo-da-opcao-viva.cjs`, via `rodar-isolado.cjs`)**:
+  a 20261406000000 conserva nome e valor, por item, quando a opção muda. A prova separa compras de antes e entre duas
+  trocas, exige que estoque/preço não gravem rótulo, simula erro de escrita, confere 162a/162b e repete a aplicação
+  e o rollback sem apagar rótulos existentes. Não toca o banco de nenhuma loja.
 - **o lucro usa o custo do dia da venda (`custo-do-dia-viva.cjs`, via `rodar-isolado.cjs`)**: a migration
   `20261242000000` (DINHEIRO e dado de cliente), com o gatilho real, as portas reais de venda (loja e balcão) e os papéis
   reais num Postgres efêmero. A venda grava o custo do dia numa tabela lateral só do servidor (o custo não vai para o

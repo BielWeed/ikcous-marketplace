@@ -3238,7 +3238,15 @@ const ROL_DA_159 = [
   "cancelar_pedido_do_painel: corpo exato (md5)",
   "cancelar_pedido_do_painel: assinatura e ACL esperadas",
 ];
+const ROL_DA_162 = [
+  "historico da opcao: tabelas, RLS dos itens e colunas de origem",
+  "historico da opcao: colunas de destino",
+  "historico da opcao: funcao interna",
+  "historico da opcao: gatilho de nome ou valor",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "162a-conferir-o-pedido-guarda-o-nome-antigo-da-opcao-aplicado": ROL_DA_162,
+  "162b-antes-o-pedido-guarda-o-nome-antigo-da-opcao-base-vigente": ROL_DA_162,
   "157a-conferir-a-devolucao-integral-nao-perde-o-centavo-do-cupom-aplicado":
     ROL_DA_157,
   "157b-antes-a-devolucao-integral-nao-perde-o-centavo-do-cupom-base-vigente":

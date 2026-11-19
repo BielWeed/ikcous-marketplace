@@ -58,7 +58,10 @@ import {
 } from "@/lib/prazo-da-requisicao";
 import { quemVaiReceberSeForOutro } from "@/lib/quem-vai-receber";
 import { buscaDoMapaDoEndereco } from "@/lib/query-maps-do-endereco";
-import { rotuloDaVariacao } from "@/lib/rotulo-da-variacao";
+import {
+  rotuloDaVariacao,
+  rotuloDaVariacaoGuardada,
+} from "@/lib/rotulo-da-variacao";
 import { supabase } from "@/lib/supabase";
 import { textoCancelamentoDoPainel } from "@/lib/texto-cancelamento-do-painel";
 import { tipoDeEntregaDoPedido } from "@/lib/tipo-de-entrega-do-pedido";
@@ -311,8 +314,8 @@ function ehIdDoCatalogo(id: string | null | undefined): id is string {
   return typeof id === "string" && UUID_DO_CATALOGO.test(id);
 }
 // Rótulo da variação ("Cor Azul · Tamanho M") por id da variação, lido na
-// mesma consulta do código interno. O pedido só guarda o id (`variant_id`);
-// quem diz qual é a escolha é `product_variants`. "" = lida, sem texto.
+// mesma consulta do código interno. Vale como reserva quando a linha do
+// pedido ainda não tem retrato. "" = lida, sem texto.
 //
 // A cópia VENCE em 60 s (`lidoEm`): a lojista corrige o nome da opção no
 // produto e volta ao pedido, e o papel não pode sair com o nome antigo (a
@@ -1025,7 +1028,9 @@ function OrderItemsCard({
           const itemSku = item.variantId
             ? skus[`var-${item.variantId}`] || skus[`prod-${item.productId}`]
             : skus[`prod-${item.productId}`];
-          const variacao = item.variantId ? variacoes[item.variantId] : "";
+          const variacao =
+            rotuloDaVariacaoGuardada(item) ||
+            (item.variantId ? variacoes[item.variantId] : "");
 
           return (
             <div
@@ -2219,6 +2224,7 @@ export const OrderDetail = memo(function OrderDetail({
     (i) =>
       ehIdDoCatalogo(i.productId) &&
       ehIdDoCatalogo(i.variantId) &&
+      !rotuloDaVariacaoGuardada(i) &&
       !variacoes[i.variantId],
   );
   let motivoDeNaoImprimir: string | null = null;

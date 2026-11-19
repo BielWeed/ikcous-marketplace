@@ -903,6 +903,22 @@ Deno.test("mesmo vestido em P e em G -> o e-mail mostra os DOIS tamanhos, em lin
   assertStringIncludes(enviados[0].html, "1× Vestido Midi Linho – Tamanho: G");
 });
 
+Deno.test("e-mail mantém a variação guardada por item mesmo que outro use a opção atual", async () => {
+  const atual = DOIS_TAMANHOS[0];
+  const { desfecho, enviados } = await enviarComItens([
+    {
+      ...atual,
+      product_name: "Vestido antigo",
+      variacao_nome_na_compra: "Tamanho",
+      variacao_valor_na_compra: "Pequeno",
+    },
+    atual,
+  ], { variantes: VARIANTES_P_E_G });
+  assertEquals(desfecho, { ok: true });
+  assertStringIncludes(enviados[0].html, "1× Vestido antigo – Tamanho: Pequeno");
+  assertStringIncludes(enviados[0].html, "1× Vestido Midi Linho – Tamanho: P");
+});
+
 Deno.test("a busca de variação é UMA por pedido (em lote, ids sem repetição) e só na tabela product_variants", async () => {
   const itens = [
     ...DOIS_TAMANHOS,

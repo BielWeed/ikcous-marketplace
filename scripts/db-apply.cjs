@@ -1168,6 +1168,15 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20261406000000_o_pedido_guarda_o_nome_antigo_da_opcao.sql": {
+    funcao: "guardar_rotulo_da_opcao_no_pedido",
+    esperado: [
+      { texto: "variacao_nome_na_compra = OLD.name", vezes: 1 },
+      { texto: "variacao_valor_na_compra = OLD.value", vezes: 1 },
+      { texto: "AND variacao_nome_na_compra IS NULL", vezes: 1 },
+      { texto: "EXCEPTION WHEN OTHERS", vezes: 1 },
+    ],
+  },
   "20261405900000_o_custo_do_cancelamento_fica_no_mes_da_volta.sql": {
     funcao: "fin_dre",
     esperado: [

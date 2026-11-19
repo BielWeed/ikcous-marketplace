@@ -155,6 +155,8 @@ function item(extra: Partial<OrderItemRow> = {}): OrderItemRow {
     product_id: "prod-1",
     product_name: "Caneca Térmica 500 ml",
     quantity: 1,
+    variacao_nome_na_compra: null,
+    variacao_valor_na_compra: null,
     variant_id: null,
     ...extra,
   };
@@ -169,6 +171,25 @@ function semRuido<T>(fn: () => T): T {
     espiao.mockRestore();
   }
 }
+
+it("mantém o nome e o valor guardados ao ler o item do pedido", () => {
+  const mapeado = mapOrderFromDB(
+    pedido({
+      items: [
+        item({
+          variant_id: "var-1",
+          variacao_nome_na_compra: "Cor",
+          variacao_valor_na_compra: "Azul",
+        }),
+      ],
+    }),
+  );
+  expect(mapeado.items[0]).toMatchObject({
+    variantId: "var-1",
+    variacaoNomeNaCompra: "Cor",
+    variacaoValorNaCompra: "Azul",
+  });
+});
 
 describe("mapProductFromDB", () => {
   it("mapeia a linha da view pública sem inventar custo", () => {
