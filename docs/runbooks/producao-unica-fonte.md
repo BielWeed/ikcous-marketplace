@@ -1930,12 +1930,18 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
 4. **Promover UM front e conferir a frota.**
 
    ```powershell
-   node scripts/frota/publicar-release.mjs --sha <sha40> --deployment <dpl_...> --promover
+   node scripts/frota/publicar-release.mjs --sha <sha40> --deployment <dpl_...> --promover --json <arquivo-da-primeira-tentativa>
    ```
 
    Ele repete todo o portao, chama `vercel promote` UMA vez e roda a conferencia da frota com o
    SHA (versao, isolamento e canonico de TODOS os enderecos, e a producao oficial = o deployment
    promovido). Saida 0 = publicado e conferido.
+
+   Preserve o PRIMEIRO JSON e use OUTRO nome de arquivo em cada repeticao para nao sobrescreve-lo.
+   O ponto de volta e o `producaoAnterior` valido (nao nulo) do PRIMEIRO JSON. Se o arquivo nao
+   existir ou o id for nulo ou invalido, recupere e anote o id que estava no ar antes da primeira
+   promocao. Sem um desses dois ids validos, nao repita o `--promover`. Nao use o id do ultimo
+   relatorio como substituto: ele pode ser o proprio candidato.
 
 5. **Depois:** PR do ramo para `production` com merge commit (registro do que esta no ar).
 
@@ -1955,7 +1961,16 @@ padrao do GitHub e `develop`, e agendamento so dispara de la.
 
 O inventario vem do cadastro oficial (aliases da Vercel + ficha `frota_lojas`), entao a loja nova
 entra na proxima publicacao sem ninguem editar lista. Se ela nao tiver canal de backend, o passo 2
-BLOQUEIA com o nome dela. O cadastro de UMA vez, na entrada do cliente:
+BLOQUEIA com o nome dela.
+
+**Instalacao do zero — NÃO ENSAIADO.** `aplicar-migrations.yml` atualiza bancos que ja existem:
+so aplica a lista informada, na ordem digitada, e consulta `marketplace_orders` antes do primeiro
+arquivo. Recusa os dois arquivos de estorno com prefixo de 13 digitos (`2026110000000` e
+`2026110000100`) que o CI aceita. O portao de publicacao tambem recusa um historico de migrations
+vazio. O workflow nao e instalador de banco vazio; o caminho completo para um banco novo ainda
+nao foi ensaiado em projeto descartavel.
+
+O cadastro de UMA vez, na entrada do cliente:
 
 1. projeto Supabase da loja com a cadeia de migrations inteira; linha em `frota_lojas`;
    dominio no projeto Vercel;
@@ -2001,6 +2016,18 @@ BLOQUEIA com o nome dela. O cadastro de UMA vez, na entrada do cliente:
    `instalar-chave-da-loja.yml` (script `scripts/publicacao/instalar-chave-da-loja.cjs`). Hoje o
    script aceita so IKCOUS e Savy: para a loja nova, acrescente o alvo dela ali e no workflow (mesmas
    travas) antes de rodar.
+   **Antes do primeiro acesso (inclusive o cadastro do passo 7) — NÃO ENSAIADO em loja nova:**
+   `public.store_config` nasce sem a linha `id = 1`. Sem essa linha ou sem dominio preenchido,
+   o porteiro mostra manutencao. Crie a linha `id = 1` com o dominio canonico da loja em
+   `dominio_publico`, pelo SQL Editor do projeto Supabase da loja, com o mesmo acesso
+   administrativo do passo 9. Confira que a leitura anonima de `public.v_store_config` para
+   `id = 1` responde HTTP 200 com uma unica ficha e o dominio da loja certa. Se nao der certo,
+   pare: nao abra excecao no porteiro.
+
+   `public.dono_da_loja` tambem nasce vazia: sem dono cadastrado, ninguem define cargos.
+   Nao promova dono automaticamente. Depois da primeira administradora (passo 8), siga o
+   [roteiro para definir o dono da loja](definir-o-dono-da-loja.md).
+
 7. **E-mail do primeiro cadastro (antes da entrega; faca ANTES do passo 8):** o codigo que a
    `send-otp-email` manda e' o do PEDIDO (exige e-mail, whatsapp e fragmento do pedido,
    `supabase/functions/send-otp-email/index.ts:150-155`; sem remetente responde `sem_remetente`,
@@ -2143,6 +2170,18 @@ BLOQUEIA com o nome dela. O cadastro de UMA vez, na entrada do cliente:
    servidor esta falhando; a ausencia desse aviso NAO substitui conferir a entrega.
    **Sem `SMTP_USER`/`SMTP_PASSWORD` E sem remetente cadastrado no painel, o comprovante do
    pagamento nao e enviado; a compra segue sem erro visivel e a falha fica so no log.**
+11. **Aceite de vendas:** so libere vendas depois de confirmar a 400 e a 404 da secao
+    [Fora da release, de proposito](#fora-da-release-de-proposito) e as tres provas na loja nova:
+    - Um Pix de teste virou pedido pago **no endereco da loja nova**, no dominio real dela e com
+      o Supabase dela. O [§5.4 do DEPLOYMENT.md](../../DEPLOYMENT.md#54-o-teste-de-ponta-a-ponta--e-como-o-pix-de-teste-é-pago)
+      explica como pagar o Pix de teste, mas usa a previa do PR, que le a loja principal: aqui
+      use o endereco da loja nova, NAO a previa. O [§5.5](../../DEPLOYMENT.md#55-o-que-confirma-que-funcionou)
+      explica como confirmar o pagamento. **NÃO ENSAIADO: ainda nao ha roteiro de Pix de teste
+      direto na loja nova.** Sem essa prova, nao libere vendas.
+    - O comprovante chegou a caixa de teste (passo 10 acima).
+    - Um ciclo da reconciliacao retornou HTTP 200 com `ok: true`
+      ([DEPLOYMENT.md, §5.6](../../DEPLOYMENT.md#56-como-saber-se-a-reconciliação-está-viva))
+      e passou nas checagens de saude do passo 4 acima. HTTP 200 com `ok: true` sozinho nao basta.
 
 ## Medicoes antes de escrever a migration (so leitura, nao e portao)
 
@@ -2171,12 +2210,25 @@ BLOQUEIA com o nome dela. O cadastro de UMA vez, na entrada do cliente:
 - `20261201000000` so entra depois das edges novas e de >= 15 min de escoamento com 1 ciclo do
   cron (cabecalho da propria migration); conferencia `8f-conferir-201`. Ela esta em
   `politica.json` (`migrationsForaDaRelease`) para o portao nao exigi-la.
+- Antes de liberar vendas na loja nova, confirme separadamente, conforme `migrationsForaDaRelease`
+  em `scripts/frota/politica.json`, as duas migrations aplicadas a parte, em hora calma, loja por loja:
+  - `20261400000000_valores_negativos_nao_entram_no_banco.sql`: antes de aplicar, a contagem do
+    cabecalho tem de dar zero nas quatro colunas (negativos e `NaN`).
+  - `20261404000000_a_observacao_da_inspecao_so_a_loja_ve.sql`: muda permissoes e nao e aditiva.
+    Antes de aplicar, exija revisao Opus do SQL, confirme que nenhum codigo depende de ler a tabela
+    inteira e rode `156b-antes-a-observacao-da-inspecao-so-a-loja-ve-base-vigente`. Depois, rode
+    `156a-conferir-a-observacao-da-inspecao-so-a-loja-ve-aplicado`. As duas consultas sao do
+    `conferir-banco-da-loja.yml`.
 
 ## Rollback
 
-- Front (a frota inteira de uma vez): `vercel rollback <producao anterior> --yes --scope gabriels-projects-5a19f6ee` (o comando do
-  passo 4 imprime o id exato). Depois de um rollback a atribuicao automatica de dominios fica
-  desligada ate o proximo `vercel promote`.
+- Front (a frota inteira de uma vez): `vercel rollback <producao anterior> --yes --scope gabriels-projects-5a19f6ee`.
+  Use o `producaoAnterior` valido (nao nulo) do PRIMEIRO JSON salvo com `--json`. Se o arquivo nao
+  existir ou o id for nulo ou invalido, use o id que estava no ar antes da primeira promocao,
+  recuperado e anotado antes de repetir, como no passo 4. Sem um desses dois ids validos, nao
+  repita o `--promover`. Nao use o id do ultimo relatorio como substituto: ele pode ser o proprio
+  candidato. Depois de um rollback a atribuicao automatica de dominios fica desligada ate o
+  proximo `vercel promote`.
 - Functions: publicar de novo pelo workflow a partir do commit anterior.
 - Banco: `rollback-manual-<versao>` pelo `aplicar-migrations.yml`, do mais novo para o mais
   antigo; ele apaga a linha da versao no ledger na mesma transacao.
