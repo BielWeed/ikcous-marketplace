@@ -84,7 +84,9 @@ it.each([1, 2, 3])(
     const linhas = [...host.querySelectorAll("li")];
     expect(linhas).toHaveLength(quantidade);
     for (const linha of linhas) {
-      expect(linha.textContent).toContain("Valor médio por venda:");
+      expect(linha.textContent).toContain(
+        "Valor médio desta categoria por pedido:",
+      );
     }
     expect(linhas[0].textContent).toMatch(/R\$\s*50,00/);
     const total = categorias
@@ -94,6 +96,16 @@ it.each([1, 2, 3])(
       `Faturamento Total: R$ ${total},00`,
     );
     expect(host.querySelector("button[aria-expanded]")).toBeNull();
+    act(() => {
+      host
+        .querySelector<HTMLButtonElement>(
+          '[aria-label="Entender Vendas por categoria"]',
+        )!
+        .click();
+    });
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain(
+      "A média usa só o valor desta categoria e só os pedidos que têm itens dela. Um pedido com itens de várias categorias aparece em cada uma.",
+    );
   },
 );
 
@@ -104,17 +116,23 @@ it("mais de três categorias mantêm os detalhes recolhidos até expandir", asyn
     ),
   );
   expect(host.querySelectorAll("li")).toHaveLength(3);
-  expect(host.textContent).not.toContain("Valor médio por venda:");
+  expect(host.textContent).not.toContain(
+    "Valor médio desta categoria por pedido:",
+  );
   expect(host.textContent).not.toContain("Faturamento Total:");
   clicar("Ver todas as 4 categorias");
   expect(host.querySelectorAll("li")).toHaveLength(4);
   for (const linha of host.querySelectorAll("li")) {
-    expect(linha.textContent).toContain("Valor médio por venda:");
+    expect(linha.textContent).toContain(
+      "Valor médio desta categoria por pedido:",
+    );
   }
   expect(host.textContent?.replace(/\s/g, " ")).toContain(
     "Faturamento Total: R$ 1.000,00",
   );
   clicar("Recolher");
-  expect(host.textContent).not.toContain("Valor médio por venda:");
+  expect(host.textContent).not.toContain(
+    "Valor médio desta categoria por pedido:",
+  );
   expect(host.textContent).not.toContain("Faturamento Total:");
 });

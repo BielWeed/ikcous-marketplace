@@ -270,7 +270,7 @@ describe("CanaisDoCrm — desenho novo do cartão de métrica", () => {
     expect(resumo).not.toBeNull();
     const valores = [...resumo.querySelectorAll("h3")].map((e) => texto(e));
     expect(valores).toEqual(["R$ 800,00", "R$ 200,00"]);
-    expect(resumo.textContent).toContain("Total");
+    expect(resumo.textContent).toContain("Total antes de reembolsos parciais");
     expect(resumo.textContent).toContain("Pedidos");
     expect(resumo.textContent).not.toContain("Total vendido");
   });
@@ -306,6 +306,9 @@ describe("CanaisDoCrm — desenho novo do cartão de métrica", () => {
     ).replace(/\s+/g, " ");
     expect(fonte).not.toMatch(/devolvid/i);
     expect(fonte).toContain("sem as canceladas, neste período");
+    expect(fonte).toContain(
+      "Os valores não descontam reembolsos parciais. Para ver o valor após as deduções, consulte a receita líquida em Financeiro › Resultado.",
+    );
   });
 
   it("cada canal: dois cartões, Pedidos e Valor médio em frase normal, sem truncar dinheiro", async () => {
