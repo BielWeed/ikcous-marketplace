@@ -8,7 +8,7 @@
 //   1. a retirada NUNCA vem escolhida: a entrega local é a auto-seleção; a
 //      cliente clica em "Retirar na loja";
 //   2. a escolha EXPLÍCITA chega até o payload do pedido: id `store-pickup`,
-//      frete 0, total = subtotal, nota "Retirada na loja: <endereço>" (sem
+//      frete 0, total = subtotal, nota orienta confirmar o endereço (sem
 //      prazo inventado), e o pagamento na entrega/retirada continua valendo
 //      (grupo "Na retirada", sem a regra da transportadora);
 //   3. trocar para endereço FORA da área derruba a retirada e recota;
@@ -345,7 +345,7 @@ describe("CheckoutView — retirada na loja é escolha explícita e chega inteir
     expect(botao("Dinheiro na Retirada")).toBeUndefined();
   });
 
-  it("escolha explícita chega ao payload: store-pickup, frete 0, total = subtotal, nota com o endereço e sem prazo; pagamento na retirada", async () => {
+  it("escolha explícita chega ao payload: store-pickup, frete 0, total = subtotal, nota sem endereço cotado nem prazo; pagamento na retirada", async () => {
     await montar();
     await clicar(trocarFrete());
     await clicar(botao("Retirar na loja"));
@@ -374,7 +374,10 @@ describe("CheckoutView — retirada na loja é escolha explícita e chega inteir
     expect(pedido.totalAmount).toBe(256.5);
     expect(pedido.destinationCep).toBe("38500-000");
     expect(pedido.paymentMethod).toBe("cash");
-    expect(pedido.notes).toContain(`Retirada na loja: ${ENDERECO_FICTICIO}`);
+    expect(pedido.notes).toContain(
+      "Retirada na loja: Aguarde a confirmação da loja e confira o endereço antes de sair para retirar.",
+    );
+    expect(pedido.notes).not.toContain(ENDERECO_FICTICIO);
     expect(pedido.notes).not.toContain("Prazo");
     expect(opcoes).toEqual({ comPagamentoOnline: false });
   });

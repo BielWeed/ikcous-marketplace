@@ -450,6 +450,7 @@ export function ShippingCalculator({
   // é `error` — as opções que vieram (a retirada, por exemplo) seguem
   // escolhíveis e o status continua "pronto".
   const [aviso, setAviso] = useState<string | null>(null);
+  const [avisarTrocaDaRetirada, setAvisarTrocaDaRetirada] = useState(false);
   // HONESTIDADE (onda D-1): guarda se a ÚLTIMA cotação concluída voltou sem
   // opção nenhuma (edge devolve `options: []` — loja sem transportadora
   // conectada, frente C). É o que permite mostrar o estado "A calcular" em
@@ -543,11 +544,19 @@ export function ShippingCalculator({
   // automática. Lista sem nada auto-selecionável (só a retirada) derruba a
   // escolha anterior, que é preço de OUTRA cotação.
   const aplicarEscolhaContra = (lista: ShippingOption[]) => {
+    const anterior = selecaoVivaRef.current;
+    const foiEscolhidaPelaCliente = selecaoVivaEhDaCliente();
     const { opcao, origem } = resolverEscolhaDoFrete(
-      selecaoVivaRef.current,
+      anterior,
       lista,
-      selecaoVivaEhDaCliente(),
+      foiEscolhidaPelaCliente,
     );
+    // Só informa o resultado da seleção existente; não interfere nela.
+    if (!opcao || origem === "cliente") {
+      setAvisarTrocaDaRetirada(false);
+    } else if (foiEscolhidaPelaCliente && ehRetiradaNaLoja(anterior?.id)) {
+      setAvisarTrocaDaRetirada(true);
+    }
     if (origem === "automatica") idTocadoNestaMontagemRef.current = null;
     if (opcao) {
       onSelectOption(opcao, origem);
@@ -569,6 +578,7 @@ export function ShippingCalculator({
     setLoading(false);
     setError(null);
     setAviso(null);
+    setAvisarTrocaDaRetirada(false);
     setOptions([]);
     setCotouSemOpcoes(false);
     setOutrasExpandidas(false);
@@ -723,6 +733,7 @@ export function ShippingCalculator({
       );
       // Resposta vazia não preserva a escolha anterior: ela é preço de
       // outra cotação.
+      if (calculatedOptions.length === 0) setAvisarTrocaDaRetirada(false);
       if (calculatedOptions.length === 0 && selecaoVivaRef.current) {
         onSelectOption(null);
       }
@@ -785,6 +796,7 @@ export function ShippingCalculator({
       // tests/front/shipping-calculator-sem-preco-inventado.test.tsx.
       setOptions([]);
       setCotouSemOpcoes(false);
+      setAvisarTrocaDaRetirada(false);
       onSelectOption(null);
     } finally {
       // Uma resposta obsoleta não pode apagar o `loading` de uma requisição
@@ -1049,6 +1061,14 @@ export function ShippingCalculator({
     subtotal: subtotalDoCarrinho,
     temItemMarcado,
   };
+  const precoDaEntregaSubstituta =
+    avisarTrocaDaRetirada &&
+    status === "pronto" &&
+    selectedOption &&
+    !ehRetiradaNaLoja(selectedOption.id) &&
+    !selecaoEscolhidaPelaCliente
+      ? precoFinalDaOpcao(selectedOption, contextoDoPreco)
+      : null;
   // Alguma opção NACIONAL foi beneficiada (grátis ou desconto) só na "mais
   // barata"? As demais nacionais da lista ganham uma nota dizendo que o
   // benefício não é delas (contrato §5, alcance='mais_barata').
@@ -1157,6 +1177,7 @@ export function ShippingCalculator({
           idTocadoNestaMontagemRef.current = option.id;
           escolhaDaClienteViaPropRef.current =
             escolhaDaClienteViaPropRef.current === undefined ? undefined : true;
+          setAvisarTrocaDaRetirada(false);
           onSelectOption(option, "cliente");
           // MODO RESUMO: escolher uma opção na lista aberta volta ao
           // resumo compacto, já com a nova opção — a pessoa não precisa
@@ -1531,6 +1552,19 @@ export function ShippingCalculator({
           </div>
           {acaoDoEndereco && <div className="shrink-0">{acaoDoEndereco}</div>}
         </div>
+      )}
+
+      {precoDaEntregaSubstituta !== null && (
+        <p
+          role="alert"
+          className="rounded-2xl border border-amber-100 bg-amber-50 p-2.5 text-sm font-medium text-amber-800"
+        >
+          {`A retirada não está mais disponível. ${
+            precoDaEntregaSubstituta === 0
+              ? "Selecionamos entrega sem custo."
+              : `Selecionamos entrega por ${formatCurrency(precoDaEntregaSubstituta)}.`
+          } Confira o novo total antes de finalizar.`}
+        </p>
       )}
 
       {exibindoResumoDaOpcao ? (

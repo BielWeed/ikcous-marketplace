@@ -184,6 +184,10 @@ import {
   mascaraWhatsappBr,
   mensagemDeWhatsappIncompleto,
 } from "@/lib/telefone-br";
+import {
+  AVISO_ENDERECO_DA_RETIRADA,
+  NOTA_AUTOMATICA_DA_RETIRADA,
+} from "@/lib/texto-da-retirada";
 import { PAGAMENTO_RECEBIDO_PEDIDO_CANCELADO } from "@/lib/texto-estorno-do-cliente";
 import { criarTravaDeEnvio } from "@/lib/travaDeEnvio";
 import { normalizarUf, ufBrasileiraValida } from "@/lib/uf-brasileira";
@@ -625,7 +629,8 @@ export const notaDoFreteEscolhido = (
 ): string | undefined => {
   if (!option) return undefined;
   if (ehRetiradaNaLoja(option.id)) {
-    return `Retirada na loja${option.pickupAddress ? `: ${option.pickupAddress}` : ""}`;
+    // A nota é enviada antes de o banco gravar o endereço do pedido.
+    return NOTA_AUTOMATICA_DA_RETIRADA;
   }
   const prazo =
     option.id === "free-shipping-promo" || option.provider === "free"
@@ -2137,12 +2142,11 @@ export function CheckoutViewDaConta({
   >(null);
   // Lote 210: o que a tela de sucesso do pedido "pago na entrega/retirada"
   // precisa saber e que o carrinho já esqueceu quando ela abre (limpar a
-  // compra derruba a opção de frete): forma, modalidade e endereço de retirada
-  // vêm da compra congelada no envio, não do carrinho atual.
+  // compra derruba a opção de frete): forma e modalidade vêm da compra
+  // congelada no envio, não do carrinho atual.
   const [resumoDoPedidoNaEntrega, setResumoDoPedidoNaEntrega] = useState<{
     paymentMethod: string | null;
     ehRetirada: boolean;
-    enderecoDaRetirada?: string;
   } | null>(null);
   // Mesmo motivo: o submétodo (PIX ou cartão) do pedido que JÁ nasceu. Sem
   // o congelamento, um efeito que mexe em `paymentMethod` depois do submit
@@ -5212,9 +5216,6 @@ export function CheckoutViewDaConta({
       cpfParaRpc,
       contaEsperada,
       semConta: !user,
-      enderecoDaRetirada: ehRetirada
-        ? selectedShippingOption?.pickupAddress?.trim()
-        : undefined,
     });
   };
 
@@ -5411,10 +5412,6 @@ export function CheckoutViewDaConta({
         ehRetirada:
           typeof orderData.shippingOptionId === "string" &&
           ehRetiradaNaLoja(orderData.shippingOptionId),
-        enderecoDaRetirada:
-          typeof pedido.enderecoDaRetirada === "string"
-            ? pedido.enderecoDaRetirada
-            : undefined,
       });
       setShowSuccess(true);
 
@@ -6546,7 +6543,6 @@ export function CheckoutViewDaConta({
         valor={valorDoPedido}
         paymentMethod={resumoDoPedidoNaEntrega?.paymentMethod ?? null}
         ehRetirada={resumoDoPedidoNaEntrega?.ehRetirada ?? false}
-        enderecoDaRetirada={resumoDoPedidoNaEntrega?.enderecoDaRetirada}
         onNavigate={onNavigate}
       />
     );
@@ -9146,7 +9142,6 @@ interface SuccessViewProps {
   /** Forma escolhida na entrega/retirada (`cash` | `pix` | `card`). */
   paymentMethod: string | null;
   ehRetirada: boolean;
-  enderecoDaRetirada?: string;
   onNavigate: (view: View, productId?: string) => void;
 }
 
@@ -9157,7 +9152,6 @@ function SuccessView({
   valor,
   paymentMethod,
   ehRetirada,
-  enderecoDaRetirada,
   onNavigate,
 }: Readonly<SuccessViewProps>) {
   // Quem não tem conta acompanha o pedido por `AcompanharPedidoSemConta`
@@ -9214,9 +9208,10 @@ function SuccessView({
               ? "Recebemos o seu pedido. A loja vai separar os itens para você retirar."
               : "Recebemos o seu pedido. A loja vai cuidar da entrega."}
           </p>
-          {ehRetirada && enderecoDaRetirada && (
+          {/* createOrder não retorna o endereço gravado; a cotação não o confirma. */}
+          {ehRetirada && (
             <p className="mt-2 break-words text-sm font-medium text-zinc-700">
-              Retire em: {enderecoDaRetirada}
+              {AVISO_ENDERECO_DA_RETIRADA}
             </p>
           )}
         </div>

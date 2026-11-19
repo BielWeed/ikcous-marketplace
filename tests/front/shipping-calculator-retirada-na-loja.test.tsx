@@ -152,7 +152,7 @@ describe("ShippingCalculator — retirada na loja é escolha EXPLÍCITA da clien
     });
   }
 
-  async function montar() {
+  async function montar(modoResumo = false) {
     const { ShippingCalculator } = await import(
       "@/components/ui/custom/ShippingCalculator"
     );
@@ -176,6 +176,7 @@ describe("ShippingCalculator — retirada na loja é escolha EXPLÍCITA da clien
           cepDestino={destino}
           cepDaSelecao={cepDaSelecao}
           onCepValidated={setCepDaSelecao}
+          modoResumo={modoResumo}
         />
       );
     }
@@ -230,6 +231,67 @@ describe("ShippingCalculator — retirada na loja é escolha EXPLÍCITA da clien
     expect(pai.selecionada?.price).toBe(0);
     expect(pai.selecionada?.pickupAddress).toBe(ENDERECO_FICTICIO);
   });
+
+  it("não avisa sobre retirada na primeira seleção automática", async () => {
+    await montar(true);
+    await irPara("38500000");
+
+    expect(pai.selecionada?.id).toBe(LOCAL.id);
+    expect(hospedeiro.textContent).not.toContain(
+      "A retirada não está mais disponível.",
+    );
+  });
+
+  it.each([
+    { price: 12.37, anuncio: "Selecionamos entrega por R$ 12,37." },
+    { price: 0, anuncio: "Selecionamos entrega sem custo." },
+  ])(
+    "avisa quando retirada escolhida vira entrega de preço $price e some na próxima escolha",
+    async ({ price, anuncio }) => {
+      await montar(true);
+      await irPara("38500000");
+      await act(async () => {
+        botaoDe("Trocar")?.click();
+      });
+      await act(async () => {
+        botaoDe("Retirar na loja")?.click();
+      });
+      expect(pai.selecionada?.id).toBe(RETIRADA.id);
+      expect(hospedeiro.textContent).not.toContain(
+        "A retirada não está mais disponível.",
+      );
+
+      invoke.mockResolvedValue({
+        data: { options: [{ ...PAC, price }, SEDEX] },
+        error: null,
+      });
+      await act(async () => {
+        pai.alterarCarrinho(carrinho(2));
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(800);
+      });
+      await drenar();
+
+      expect(invoke).toHaveBeenCalledTimes(2);
+      expect(pai.selecionada?.id).toBe(PAC.id);
+      const mensagem = `A retirada não está mais disponível. ${anuncio} Confira o novo total antes de finalizar.`;
+      const aviso = hospedeiro.querySelector('[role="alert"]');
+      expect(aviso?.textContent?.replace(" ", " ")).toBe(mensagem);
+
+      await act(async () => {
+        botaoDe("Trocar")?.click();
+      });
+      expect(hospedeiro.textContent?.replace(" ", " ")).toContain(mensagem);
+      await act(async () => {
+        botaoDe(SEDEX.name)?.click();
+      });
+      expect(pai.selecionada?.id).toBe(SEDEX.id);
+      expect(hospedeiro.textContent).not.toContain(
+        "A retirada não está mais disponível.",
+      );
+    },
+  );
 
   it("escolhida pela cliente, a retirada SOBREVIVE à recotação do mesmo destino (quantidade mudou)", async () => {
     await montar();
