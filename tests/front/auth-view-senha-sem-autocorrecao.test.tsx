@@ -54,6 +54,20 @@ function exigirSemAutocorrecao(id: string) {
   expect(campo?.getAttribute("spellcheck")).toBe("false");
 }
 
+function campo(id: string) {
+  return document.getElementById(id) as HTMLInputElement;
+}
+
+function digitar(id: string, valor: string) {
+  const input = campo(id);
+  const setter = Object.getOwnPropertyDescriptor(
+    globalThis.HTMLInputElement.prototype,
+    "value",
+  )!.set!;
+  setter.call(input, valor);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
 describe("AuthView — campos de senha pedem ao teclado que não mexa", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
@@ -101,6 +115,64 @@ describe("AuthView — campos de senha pedem ao teclado que não mexa", () => {
       "text",
     );
     exigirSemAutocorrecao("password");
+  });
+
+  it.each([
+    { origem: "Entrar", destino: "Cadastro", abrirCadastro: false },
+    { origem: "Cadastro", destino: "Entrar", abrirCadastro: true },
+  ])(
+    "$origem → $destino: mantém só o e-mail, com a senha vazia e mascarada",
+    async ({ abrirCadastro }) => {
+      await abrir();
+      if (abrirCadastro) {
+        await act(async () => botaoPorTexto("CADASTRO").click());
+      }
+
+      const email = "pessoa@example.com";
+      const senha = "SenhaFicticia123!";
+      await act(async () => {
+        digitar("email", email);
+        digitar("password", senha);
+      });
+      const olho = document.querySelector<HTMLButtonElement>(
+        'button[aria-label="Mostrar senha"]',
+      );
+      expect(olho).not.toBeNull();
+      await act(async () => olho?.click());
+      expect(campo("password").value).toBe(senha);
+      expect(campo("password").type).toBe("text");
+
+      await act(async () =>
+        botaoPorTexto(abrirCadastro ? "Entrar" : "CADASTRO").click(),
+      );
+
+      expect(campo("email").value).toBe(email);
+      expect(campo("password").value).toBe("");
+      expect(campo("password").type).toBe("password");
+    },
+  );
+
+  it("volta de Esqueceu? para Entrar com o e-mail e sem a senha visível", async () => {
+    await abrir();
+    const email = "pessoa@example.com";
+    const senha = "SenhaFicticia123!";
+    await act(async () => {
+      digitar("email", email);
+      digitar("password", senha);
+      document
+        .querySelector<HTMLButtonElement>('button[aria-label="Mostrar senha"]')!
+        .click();
+    });
+    expect(campo("password").value).toBe(senha);
+    expect(campo("password").type).toBe("text");
+
+    await act(async () => botaoPorTexto("Esqueceu?").click());
+    expect(hospedeiro.textContent).toContain("SOLICITAR LINK");
+    await act(async () => botaoPorTexto("Entrar").click());
+
+    expect(campo("email").value).toBe(email);
+    expect(campo("password").value).toBe("");
+    expect(campo("password").type).toBe("password");
   });
 
   it("nova senha: a senha e a confirmação mantêm os três atributos com o olho ligado", async () => {
