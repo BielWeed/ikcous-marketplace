@@ -66,6 +66,7 @@ function smtpLento(gotejar: boolean) {
     }
   })();
   return {
+    ciclo,
     recebeu: () => recebeu,
     fechouEm: () => fechouEm,
     carregarNodemailer: async () => ({
@@ -97,6 +98,23 @@ function smtpLento(gotejar: boolean) {
   };
 }
 
+async function aguardarFechamento(servidor: ReturnType<typeof smtpLento>) {
+  let guarda: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      servidor.ciclo,
+      new Promise<never>((_, rejeitar) => {
+        guarda = setTimeout(
+          () => rejeitar(new Error("servidor não observou o fechamento SMTP")),
+          1000,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(guarda);
+  }
+}
+
 for (const gotejar of [false, true]) {
   Deno.test(`SMTP prazo absoluto: derruba socket real ${gotejar ? "com bytes lentos" : "sem saudação"}`, async () => {
     const servidor = smtpLento(gotejar);
@@ -113,7 +131,7 @@ for (const gotejar of [false, true]) {
       // A recusa tem de vir do prazo, não da guarda de emergência do TESTE.
       assert(ms < 800, `SMTP levou ${ms} ms`);
       assert(servidor.recebeu());
-      await new Promise((r) => setTimeout(r, 30));
+      await aguardarFechamento(servidor);
       assert(
         servidor.fechouEm() !== undefined,
         "cliente não derrubou o socket",
@@ -160,7 +178,7 @@ Deno.test("hook SMTP real lento: 500 e socket encerrado dentro de cinco segundos
     assertEquals(r.status, 500);
     assert(servidor.recebeu(), "hook não chegou ao SMTP");
     assert(ms >= 3000 && ms < 5000, `hook levou ${ms} ms`);
-    await new Promise((r) => setTimeout(r, 50));
+    await aguardarFechamento(servidor);
     assert(
       servidor.fechouEm() !== undefined,
       "socket continuou ativo após timeout HTTP",

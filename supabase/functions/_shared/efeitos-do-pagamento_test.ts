@@ -12,6 +12,7 @@
  * `criar-pagamento/index_test.ts`.
  */
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
+import { FakeTime } from "jsr:@std/testing@1.0.21/time";
 import {
   aplicarEfeitosDoPagamentoConfirmado,
   assuntoDoAvisoDePagamentoAtrasado,
@@ -760,26 +761,54 @@ Deno.test("r59-f aviso atrasado: conta que NÃO existe (404) segue como 'sem e-m
   assertEquals(r.avisos.some((l) => l.includes("sem e-mail")), true);
 });
 
+async function provarTetoDoEnvio<T>(
+  valorDoEnvio: T,
+  executar: (enviar: () => Promise<T>) => Promise<void>,
+) {
+  using relogio = new FakeTime();
+  const envio = Promise.withResolvers<T>();
+  let iniciou = false;
+  let terminou = false;
+  const andamento = executar(() => {
+    iniciou = true;
+    return envio.promise;
+  }).then(() => {
+    terminou = true;
+  });
+  try {
+    await relogio.runMicrotasks();
+    assertEquals(iniciou, true, "o envio tem de começar");
+    assertEquals(terminou, false, "a operação saiu antes de esperar pelo envio");
+    await relogio.tickAsync(30);
+    await relogio.runMicrotasks();
+    assertEquals(terminou, true, "a operação esperou o envio sem teto");
+  } finally {
+    // Libera o envio inclusive se a asserção falhar no mutante que espera por ele.
+    envio.resolve(valorDoEnvio);
+    await andamento;
+  }
+}
+
 for (const resultado of ["pago", "pago_apos_expirar"]) {
   Deno.test(`r59-f efeitos '${resultado}': e-mail que não responde NÃO prende quem espera (o push já saiu) e nada sobe`, async () => {
     const db = bancoDoPedido();
     const c = coletores();
-    const demorado = () => new Promise<void>((r) => setTimeout(r, 200));
-    const inicio = performance.now();
-    await emSilencio(() =>
-      aplicarEfeitosDoPagamentoConfirmado({
-        supabase: db as never,
-        orderId: PEDIDO,
-        resultado,
-        ...c.deps,
-        enviarComprovante: demorado,
-        enviarAvisoAtrasado: demorado,
-        tetoDoEmailMs: 30,
-      })
+    await provarTetoDoEnvio(
+      undefined,
+      (demorado) =>
+        emSilencio(() =>
+          aplicarEfeitosDoPagamentoConfirmado({
+            supabase: db as never,
+            orderId: PEDIDO,
+            resultado,
+            ...c.deps,
+            enviarComprovante: demorado,
+            enviarAvisoAtrasado: demorado,
+            tetoDoEmailMs: 30,
+          })
+        ),
     );
-    assertEquals(performance.now() - inicio < 150, true, "esperou o e-mail sem teto");
     assertEquals(c.pushes.length, 1);
-    await new Promise((r) => setTimeout(r, 250)); // deixa o envio lento terminar sozinho
   });
 }
 
@@ -993,10 +1022,10 @@ Deno.test("r200-a - o comprovante da reentrega que LANÇA não sobe, e o teto de
   await reenviarPago(banco, async () => {
     throw new Error("explodiu");
   });
-  const inicio = performance.now();
-  await reenviarPago(banco, () => new Promise<void>((r) => setTimeout(r, 200)), { tetoDoEmailMs: 30 });
-  assertEquals(performance.now() - inicio < 150, true, "esperou o e-mail sem teto");
-  await new Promise((r) => setTimeout(r, 250)); // deixa o envio lento terminar sozinho
+  await provarTetoDoEnvio(
+    undefined,
+    (demorado) => reenviarPago(banco, demorado, { tetoDoEmailMs: 30 }),
+  );
 });
 
 Deno.test("r200-a - o e-mail de pagamento atrasado NÃO afirma que a loja 'já foi avisada' (o push pode ter entregue 0), mas segue dizendo que a loja entra em contato", () => {
@@ -1271,12 +1300,9 @@ Deno.test("r210-h - 'pago' NÃO ganhou reserva: continua sendo o push simples (s
 
 Deno.test("r210-h - o teto do push (cron) vale também para o aviso com reserva: um push lento não prende o laço", async () => {
   const banco = bancoDoAvisoFora();
-  const inicio = performance.now();
-  await transicaoAposExpirar(
-    banco,
-    { enviarPushContado: () => new Promise<number>((r) => setTimeout(() => r(1), 200)) },
-    { tetoDoPushMs: 30 },
+  await provarTetoDoEnvio(
+    1,
+    (enviarPushContado) =>
+      transicaoAposExpirar(banco, { enviarPushContado }, { tetoDoPushMs: 30 }),
   );
-  assertEquals(performance.now() - inicio < 150, true, "esperou o push sem teto");
-  await new Promise((r) => setTimeout(r, 250)); // deixa o envio lento terminar sozinho
 });
