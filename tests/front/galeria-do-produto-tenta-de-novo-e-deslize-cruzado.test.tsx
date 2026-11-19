@@ -107,6 +107,24 @@ describe("GaleriaDoProduto — foto que falha tenta de novo", () => {
     act(() => raiz.render(<Pai />));
   });
 
+  it("esconde a segunda foto durante a espera e só a revela ao carregar", async () => {
+    const segunda = fotosDaFaixa()[1];
+    expect(segunda).toBeDefined();
+    expect(getComputedStyle(segunda as HTMLImageElement).opacity).toBe("0");
+
+    falhar(segunda);
+    expect(getComputedStyle(segunda as HTMLImageElement).opacity).toBe("0");
+    expect(botaoDeNovaTentativa()).toBeNull();
+
+    await avancar(1_500);
+    const nova = fotosDaFaixa()[1] as HTMLImageElement;
+    expect(nova).not.toBe(segunda);
+    expect(nova.src).toContain("_r=1");
+    expect(getComputedStyle(nova).opacity).toBe("0");
+    act(() => nova.dispatchEvent(new Event("load")));
+    expect(getComputedStyle(nova).opacity).not.toBe("0");
+  });
+
   it("falhou: não mostra aviso, espera e pede a foto de novo (elemento novo, URL com marca)", async () => {
     const [primeira] = fotosDaFaixa();
     expect(primeira?.getAttribute("src")).toBe(FOTOS[0]);

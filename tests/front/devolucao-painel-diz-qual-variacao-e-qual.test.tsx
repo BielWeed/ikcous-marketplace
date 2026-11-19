@@ -206,6 +206,30 @@ const nomesAcessiveis = (prefixo: string) =>
   );
 
 describe("ficha da devolução no painel: qual variação é qual", () => {
+  it("substitui a miniatura com erro sem perder nome, variação e quantidade", async () => {
+    const detalhe = detalheDe([item("i-1", "v-azul-p")]);
+    await montar({
+      ...detalhe,
+      itens: detalhe.itens.map((linha) => ({
+        ...linha,
+        image_url: "/foto-da-camiseta-quebrada.jpg",
+      })),
+    });
+    const foto = hospedeiro.querySelector(
+      'img[src="/foto-da-camiseta-quebrada.jpg"]',
+    );
+    const linha = foto?.closest("li");
+    expect(linha).toBeTruthy();
+    act(() => foto?.dispatchEvent(new Event("error")));
+    expect(
+      linha?.querySelector('[aria-label="Foto indisponível"]'),
+    ).toBeTruthy();
+    expect(linha?.contains(foto)).toBe(false);
+    expect(linha?.textContent).toContain("Camiseta");
+    expect(linha?.textContent).toContain("Cor Azul · Tamanho P");
+    expect(linha?.textContent).toContain("1 ×");
+  });
+
   it("a lista de itens mostra a cor e o tamanho de cada linha do mesmo produto", async () => {
     await montar(
       detalheDe([item("i-1", "v-azul-p"), item("i-2", "v-preta-m")]),

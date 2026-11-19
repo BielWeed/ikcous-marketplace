@@ -1,3 +1,4 @@
+import { MiniaturaDoItemDevolvido } from "@/components/devolucao/MiniaturaDoItemDevolvido";
 import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import {
   ChevronLeft,
@@ -307,9 +308,9 @@ export function DetalheDaDevolucao({
                   <li key={item.id} className="flex items-center gap-3">
                     <div className="size-12 shrink-0 overflow-hidden rounded-xl border border-admin-border bg-zinc-900">
                       {item.image_url && (
-                        <img
-                          src={item.image_url}
-                          alt=""
+                        <MiniaturaDoItemDevolvido
+                          key={item.image_url}
+                          url={item.image_url}
                           className="size-full object-cover"
                         />
                       )}

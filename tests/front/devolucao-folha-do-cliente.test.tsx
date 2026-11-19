@@ -105,6 +105,7 @@ afterEach(() => {
 async function montar(
   elegibilidade = ELEGIBILIDADE,
   enderecoDaLoja: string | null = "Rua A, 10",
+  rotulosDosItens?: Readonly<Record<string, string>>,
 ) {
   const { SolicitarDevolucaoSheet } = await import(
     "@/components/devolucao/SolicitarDevolucaoSheet"
@@ -118,6 +119,7 @@ async function montar(
         userId="u-1"
         enderecoDaLoja={enderecoDaLoja}
         horarioDaLoja="Seg a Sex, 9h às 18h"
+        rotulosDosItens={rotulosDosItens}
         solicitar={solicitar}
         enviarFoto={enviarFoto}
       />,
@@ -169,6 +171,31 @@ async function escolherFoto(nome = "foto.jpg") {
 }
 
 describe("SolicitarDevolucaoSheet — pedido de devolução do cliente", () => {
+  it("substitui a miniatura com erro sem perder nome, variação e quantidade", async () => {
+    await montar(
+      {
+        ...ELEGIBILIDADE,
+        itens: ELEGIBILIDADE.itens.map((item) => ({
+          ...item,
+          image_url: "/foto-do-tenis-quebrada.jpg",
+        })),
+      },
+      undefined,
+      { "oi-1": "Cor Azul · Tamanho 38" },
+    );
+    const itens = folha()?.querySelector('[data-testid="passo-itens"]');
+    const foto = itens?.querySelector('img[src="/foto-do-tenis-quebrada.jpg"]');
+    expect(foto).toBeTruthy();
+    act(() => foto?.dispatchEvent(new Event("error")));
+    expect(
+      itens?.querySelector('[aria-label="Foto indisponível"]'),
+    ).toBeTruthy();
+    expect(itens?.contains(foto ?? null)).toBe(false);
+    expect(itens?.textContent).toContain("Tênis");
+    expect(itens?.textContent).toContain("Cor Azul · Tamanho 38");
+    expect(itens?.textContent).toContain("pode devolver 2");
+  });
+
   // "Eu mesmo envio": a cliente escolhe o método SEM saber para onde mandar o
   // pacote. O bloco de endereço (que só "Entregar na loja" tinha) aparece
   // também aqui.
