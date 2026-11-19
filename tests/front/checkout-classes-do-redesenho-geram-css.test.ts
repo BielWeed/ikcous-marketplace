@@ -147,6 +147,7 @@ function classesEmVariaveis(fonte: string): string[] {
 const NAO_E_CLASSE = new Set([
   "fora-do-prazo",
   "nao-concluido",
+  "pedido-cancelado", // status do pagamento, não classe CSS
   "preco-mudou",
   "conecte-se",
   "selo-de-escolhida",
