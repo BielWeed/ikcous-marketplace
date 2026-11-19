@@ -15,7 +15,42 @@ describe("avisos de terceiros", () => {
     expect(resultado.status, resultado.stderr).toBe(0);
   });
 
-  it("ao abrir o endereço, o service worker deixa a rede responder", async () => {
+  it.each(["--check", "geração"])(
+    "recusa pacote sem LICENSE nem exceção verificada (%s)",
+    (modo) => {
+      const resultado = spawnSync(
+        process.execPath,
+        [
+          "--input-type=module",
+          "--eval",
+          `
+            import fs from "node:fs";
+            import { syncBuiltinESMExports } from "node:module";
+            const listar = fs.readdirSync;
+            fs.readdirSync = (pasta, ...opcoes) => {
+              const nomes = listar(pasta, ...opcoes);
+              return pasta?.pathname?.endsWith("/node_modules/clsx/")
+                ? nomes.filter((nome) => nome !== "license")
+                : nomes;
+            };
+            fs.writeFileSync = () => { throw new Error("O teste não escreve no disco"); };
+            syncBuiltinESMExports();
+            const script = "./scripts/gerar-avisos-de-terceiros.mjs";
+            process.argv = [process.execPath, script, ...process.argv.slice(1)];
+            await import(script);
+          `,
+          ...(modo === "--check" ? ["--", "--check"] : []),
+        ],
+        { cwd: new URL("../../", import.meta.url), encoding: "utf8" },
+      );
+
+      expect(resultado.error).toBeUndefined();
+      expect(resultado.status).toBe(1);
+      expect(resultado.stderr).toMatch(/clsx@[^:]+: sem LICENSE/);
+    },
+  );
+
+  it("o service worker não intercepta a navegação ao arquivo (não testa precache)", async () => {
     const listeners = new Map<string, (event: unknown) => void>();
     vi.stubGlobal("self", {
       location: { origin: "https://loja.exemplo.com" },

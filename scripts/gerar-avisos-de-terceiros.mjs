@@ -1,12 +1,14 @@
 /* eslint-disable security/detect-non-literal-fs-filename -- caminhos locais do inventário npm e arquivos fixos do projeto */
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { licencasVerificadas } from "./avisos-de-terceiros-licencas.mjs";
 
 const raiz = new URL("../", import.meta.url);
 const destino = new URL("public/THIRD_PARTY_NOTICES.txt", raiz);
 const ler = (arquivo) => readFileSync(arquivo, "utf8").replace(/\r\n/g, "\n");
 const json = (arquivo) => JSON.parse(ler(arquivo));
 
-// Revisar a lista ao mudar o grafo do navegador: usar os IDs de chunk.modules
+// --check não descobre transitivas novas no bundle; revise a lista quando o
+// empacotamento mudar. Para atualizar o inventário, usar os IDs de chunk.modules
 // com renderedLength > 0 no generateBundle do Vite (modo fixture), incluindo
 // os chunks sob demanda. Inclui também o CSS do Tailwind e o workbox-core,
 // já incorporado pelo workbox-window conforme seu source map.
@@ -139,18 +141,7 @@ function copyrightDoPacote(pacote, licenca) {
     ).split("\n")[0];
     return banner.split(" | ")[1] ?? banner;
   }
-  if (copyrights.length) return copyrights.join("\n");
-  if (
-    /^embla-carousel(?:-react|-reactive-utils)?$/.test(pacote.name) &&
-    pacote.version === "8.6.0"
-  )
-    return "Copyright (c) David Jerleke. (LICENSE: github.com/davidjerleke/embla-carousel, tag v8.6.0)";
-  if (pacote.name.startsWith("@radix-ui/")) {
-    return "Copyright (c) 2022 WorkOS (LICENSE: github.com/radix-ui/primitives)";
-  }
-  const autor =
-    typeof pacote.author === "string" ? pacote.author : pacote.author?.name;
-  return autor ? `Autor declarado (package.json): ${autor}` : "";
+  return copyrights.join("\n");
 }
 
 function lerPacotes() {
@@ -168,12 +159,19 @@ function lerPacotes() {
     }
     const id = `${pacote.name}@${pacote.version}`;
     const { licenca, avisos } = textosDaPasta(pasta);
-    const copyright = copyrightDoPacote(pacote, licenca);
+    const excecao = licenca ? undefined : licencasVerificadas.get(id);
+    const texto = licenca || excecao?.texto;
+    if (!texto) throw new Error(`${id}: sem LICENSE nem exceção verificada.`);
+    const creditos = [
+      excecao?.ressalva,
+      excecao && `LICENSE upstream: ${excecao.fonte}`,
+      copyrightDoPacote(pacote, texto),
+      ...avisos,
+    ].filter(Boolean);
     const atual = porIdentidade.get(id);
     // Instâncias da mesma versão podem estar em caminhos aninhados no npm.
     if (atual) {
-      if (copyright) atual.creditos.add(copyright);
-      for (const aviso of avisos) atual.creditos.add(aviso);
+      for (const credito of creditos) atual.creditos.add(credito);
       continue;
     }
     const spdx = pacote.license;
@@ -182,7 +180,7 @@ function lerPacotes() {
       id,
       spdx,
       licencas: pacote.name === "lucide-react" ? [aplicada, "MIT"] : [aplicada],
-      creditos: new Set([copyright, ...avisos].filter(Boolean)),
+      creditos: new Set(creditos),
     });
   }
   return [...porIdentidade.keys()].sort().map((id) => porIdentidade.get(id));
@@ -240,7 +238,10 @@ function gerar() {
     "Código nativo no leitor de códigos de barras",
     `${nativos[0]} — Apache-2.0`,
     "https://github.com/zxing-cpp/zxing-cpp/tree/2ecec3f5be0ee803f6e14a5a2c7028c0cfe525b4",
-    "Copyright 2019 Axel Waggershauser (core/src/ReadBarcode.cpp; consulte os demais avisos nas fontes upstream).",
+    "Copyright 2019 Axel Waggershauser (core/src/ReadBarcode.cpp).",
+    "Copyright 2016 Nu-book Inc. (core/src/Barcode.cpp e core/src/qrcode/QRDecoder.cpp).",
+    "Copyright 2016 ZXing authors (core/src/Barcode.cpp e core/src/qrcode/QRDecoder.cpp).",
+    "Consulte os demais avisos nas fontes upstream.",
     ...textosDaPasta(pastaZxing).avisos,
     "",
     `${nativos[1]} — Apache-2.0`,
@@ -261,6 +262,7 @@ function gerar() {
   const inter = ler(new URL("src/assets/fonts/OFL.txt", raiz)).trim();
   return `${[
     "IKCOUS Marketplace — Avisos de terceiros\n\nLicenças e atribuições dos componentes de terceiros distribuídos no aplicativo web.\nArquivo gerado por scripts/gerar-avisos-de-terceiros.mjs.",
+    "O --check confere os pacotes conhecidos; não detecta novas transitivas no bundle. O inventário deve ser revisto quando o empacotamento mudar.",
     `Pacotes do navegador\n\n${inventario.join("\n\n")}`,
     zxing,
     ...licencas,
