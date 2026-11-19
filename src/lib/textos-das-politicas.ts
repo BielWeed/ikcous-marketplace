@@ -80,7 +80,7 @@ export interface VersaoDosTextos {
 export const VERSAO_DOS_TEXTOS: VersaoDosTextos = {
   versao: 4,
   atualizadoEm: "2026-11-19",
-  impressaoDoTexto: "d29fede7",
+  impressaoDoTexto: "fe1da4d3",
 };
 
 /**
@@ -255,7 +255,7 @@ function montarPrivacidade(loja: DadosDaLoja): DocumentoDePolitica {
         paragrafos: [
           "Só o necessário para a compra acontecer: o Mercado Pago, que processa o pagamento feito pelo app; os serviços de frete e as transportadoras, que recebem nome, endereço, WhatsApp, e-mail e, quando exigido, o CPF de quem recebe; e o serviço de e-mail que a loja usa para enviar o comprovante do pedido e o código de verificação. O CEP que você digita também é consultado em serviços de busca de CEP.",
           "Ao abrir o formulário de cartão, o app carrega uma ferramenta de segurança do Mercado Pago. Ao enviar o pagamento, o app repassa ao Mercado Pago o identificador do aparelho, se estiver disponível, para ajudar a prevenir fraudes.",
-          "Ao tocar em Falar com a loja durante ou depois da compra, o WhatsApp recebe o telefone da loja e o texto sugerido para a mensagem, que pode incluir seu nome ou o número do pedido.",
+          "Ao tocar em Falar com a loja durante ou depois da compra, o WhatsApp recebe o telefone da loja e o texto sugerido para a mensagem, que pode incluir seu nome ou o número do pedido. Ao tocar em Combinar entrega pelo WhatsApp no cálculo do frete, o WhatsApp recebe o telefone da loja e uma mensagem com o CEP informado.",
           "A opção Continuar com Google só aparece se a loja ativou a entrada pelo Google. Ao usar essa opção, a loja recebe do Google o nome e o e-mail da sua conta Google.",
           "Se um produto não tiver foto, o app carrega a imagem Sem Imagem do serviço placehold.co.",
           "No seu Perfil, ao abrir os detalhes de um endereço, o mapa é carregado do Google Maps se houver conexão e dados suficientes para a busca. A equipe da loja também pode abrir o Google Maps pela ficha do pedido. Para localizar o endereço, enviamos rua, número, cidade e estado, quando disponíveis; o CEP pode acompanhar a busca e, se o endereço estiver incompleto, também o bairro e a indicação do país (Brasil) — nunca o seu nome nem o nome de quem recebe. No pedido sem rua nem CEP, a busca pode levar apenas bairro, cidade e estado.",
@@ -428,8 +428,7 @@ function montarTrocas(
       "Depois que o pedido for entregue, entre na sua conta, abra o pedido em Meus pedidos e toque em Solicitar devolução ou troca. Você recebe um protocolo e acompanha o andamento por lá.",
       // Quem comprou sem criar conta não tem "Meus pedidos" nem o botão: o
       // caminho dele é a conversa com a loja (contato no fim desta página).
-      "Se você comprou sem criar conta, fale com a loja pelo contato no fim desta página e informe o número do pedido.",
-      "Se você comprou sem conta e quer cancelar antes da entrega, fale com a loja informando o número do pedido.",
+      "Se você comprou sem criar conta, fale com a loja para cancelar antes da entrega ou para pedir devolução ou troca depois da entrega. Use o contato no fim desta página e informe o número do pedido.",
       "Se você tem conta e quer cancelar antes da entrega, entre na conta, abra o pedido em Meus pedidos e toque em Cancelar Pedido, se o botão estiver disponível.",
     ],
   });

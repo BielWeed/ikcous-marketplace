@@ -118,25 +118,35 @@ describe("Minha loja › Dados da empresa", () => {
   });
 
   const aviso =
-    "A lei pede que a loja mostre quem é: nome ou razão social, CNPJ ou CPF, endereço físico e contato eletrônico (como e-mail). Sem isso, a cliente não sabe com quem compra.";
+    "A lei pede que a loja mostre quem é: nome ou razão social, CNPJ ou CPF, endereço físico e contato eletrônico (como e-mail). Preencha o endereço em Minha loja › Endereço da loja.";
 
   it("orienta a lojista quando os três campos estão vazios", async () => {
     await abrir();
     expect(hospedeiro.textContent).toContain(aviso);
   });
 
+  const identificacaoCompleta = {
+    storeLegalName: "Loja da Ana Ltda",
+    storeLegalDocument: "11222333000181",
+    storeSupportEmail: "oi@loja.com",
+  };
+
   it.each([
-    { storeLegalName: "Loja da Ana Ltda" },
-    { storeLegalDocument: "11222333000181" },
-    { storeSupportEmail: "oi@loja.com" },
-  ])(
-    "não mostra o aviso quando algum dado já está preenchido (%o)",
-    async (config) => {
-      estado.config = config;
-      await abrir();
-      expect(hospedeiro.textContent).not.toContain(aviso);
-    },
-  );
+    ["nome", { ...identificacaoCompleta, storeLegalName: "" }],
+    ["documento", { ...identificacaoCompleta, storeLegalDocument: "" }],
+    ["e-mail", { ...identificacaoCompleta, storeSupportEmail: "" }],
+    ["nome e documento", { storeSupportEmail: "oi@loja.com" }],
+  ] as const)("mostra o aviso quando falta %s", async (_nome, config) => {
+    estado.config = config;
+    await abrir();
+    expect(hospedeiro.textContent).toContain(aviso);
+  });
+
+  it("não mostra o aviso quando os três campos estão preenchidos", async () => {
+    estado.config = identificacaoCompleta;
+    await abrir();
+    expect(hospedeiro.textContent).not.toContain(aviso);
+  });
 
   it("os campos têm nome visível e alvo de 44px (celular)", async () => {
     await abrir();
