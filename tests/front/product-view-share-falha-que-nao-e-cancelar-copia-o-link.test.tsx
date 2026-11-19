@@ -94,6 +94,8 @@ const produto: Product = {
 const erroComNome = (nome: string) =>
   Object.assign(new Error(nome), { name: nome });
 
+const enderecoDoProduto = `${globalThis.location.origin}/product-detail?id=prod-202`;
+
 describe("ProductView — compartilhar: só 'cancelou' é silêncio", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
@@ -182,7 +184,7 @@ describe("ProductView — compartilhar: só 'cancelou' é silêncio", () => {
     await compartilharComShareQueRejeita(erroComNome("NotAllowedError"));
 
     expect(copiou).toHaveBeenCalledTimes(1);
-    expect(copiou.mock.calls[0][0]).toContain(globalThis.location.href);
+    expect(copiou.mock.calls[0][0]).toContain(enderecoDoProduto);
     expect(toastMock.success).toHaveBeenCalledWith(
       "Link copiado!",
       expect.anything(),
@@ -212,7 +214,7 @@ describe("ProductView — compartilhar: só 'cancelou' é silêncio", () => {
       await act(async () => {
         raiz.render(description);
       });
-      expect(hospedeiro.textContent).toContain(globalThis.location.href);
+      expect(hospedeiro.textContent).toContain(enderecoDoProduto);
     },
   );
 

@@ -23,6 +23,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Product } from "@/types";
 
+const enderecoDoProduto = `${globalThis.location.origin}/product-detail?id=prod-101`;
 const getReviewsByProduct = vi.fn();
 const subscribeToReviews = vi.fn(() => () => {});
 
@@ -187,7 +188,7 @@ describe("ProductView — share sem [link] ainda cola a URL, e clipboard não me
     // Âncora: o clique chegou ao clipboard.
     expect(texto).not.toBe("");
 
-    expect(texto).toContain(globalThis.location.href);
+    expect(texto).toContain(enderecoDoProduto);
     expect(texto).toContain("Produto Compartilhavel");
     expect(texto).toContain("R$ 49,90");
     expect(texto).not.toContain("[nome]");
@@ -201,7 +202,7 @@ describe("ProductView — share sem [link] ainda cola a URL, e clipboard não me
 
     expect(texto).not.toBe("");
 
-    const url = globalThis.location.href;
+    const url = enderecoDoProduto;
     const ocorrencias = texto.split(url).length - 1;
     expect(ocorrencias).toBe(1);
   });
