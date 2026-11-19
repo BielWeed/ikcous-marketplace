@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 //
 // Rodada 84 (lote E), rastreio sem conta: quem consultou o pedido por e-mail +
-// código vê a lista na aba Pedidos. O retrato que a sustenta vale 60 min e some
+// código vê a lista na aba Pedidos. O retrato que a sustenta vale 15 min e some
 // do aparelho, mas a lista guardada em MEMÓRIA na CartView (que fica montada o
 // tempo todo) continuava na tela. Ao tocar em "Ver detalhes", a pessoa caía em
 // "Entre na conta... seu pedido está salvo na sua conta" — falso: nunca teve
@@ -248,30 +248,31 @@ describe("CartView — retrato do rastreio sem conta vencido tira a lista da tel
       vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
     });
 
-    it("passados 60 min a lista some e a tela manda consultar de novo", async () => {
+    it("passados 15 min a lista some e a tela manda consultar de novo", async () => {
       duble.achados = [enviando];
       await montar();
       await achar();
       expect(lista()).not.toBeNull();
       expect(texto()).toMatch(/Status de \d{2}:\d{2} — pode ter mudado/);
 
-      await passar(PRAZO_DO_RETRATO_MS + 1_000);
+      await passar(15 * MIN + 1);
       await assentar();
 
       expect(lista()).toBeNull();
       expect(texto()).not.toContain("pode ter mudado");
+      expect(texto()).toContain("depois de 15 minutos.");
       expect(texto()).toContain("Consulte de novo");
       expect(
         hospedeiro.querySelector('[data-testid="busca-pedido"]'),
       ).not.toBeNull();
     });
 
-    it("CONTROLE: antes do prazo a lista continua igual (59 min)", async () => {
+    it("CONTROLE: antes do prazo a lista continua igual", async () => {
       duble.achados = [enviando];
       await montar();
       await achar();
 
-      await passar(59 * MIN);
+      await passar(PRAZO_DO_RETRATO_MS - MIN);
       await assentar();
 
       expect(lista()).not.toBeNull();
@@ -291,12 +292,12 @@ describe("CartView — retrato do rastreio sem conta vencido tira a lista da tel
       expect(lista()).not.toBeNull();
       expect(texto()).not.toContain("Consulte de novo");
 
-      // O relógio da consulta VELHA não pode apagar a nova: 30 min depois dela
-      // a lista segue, 61 min depois some.
-      await passar(30 * MIN);
+      // O relógio da consulta VELHA não pode apagar a nova: a lista segue
+      // antes do novo prazo e só some depois dele.
+      await passar(PRAZO_DO_RETRATO_MS - MIN);
       await assentar();
       expect(lista()).not.toBeNull();
-      await passar(31 * MIN);
+      await passar(MIN + 1);
       await assentar();
       expect(lista()).toBeNull();
     });
@@ -345,7 +346,7 @@ describe("CartView — retrato do rastreio sem conta vencido tira a lista da tel
       await achar();
       const montagensAntes = duble.montagensDaBusca;
 
-      await passar(59 * MIN);
+      await passar(PRAZO_DO_RETRATO_MS - MIN);
       await assentar();
 
       expect(duble.montagensDaBusca).toBe(montagensAntes);
@@ -388,12 +389,12 @@ describe("CartView — retrato do rastreio sem conta vencido tira a lista da tel
 
   describe("a volta à aba: o relógio dormiu com o app em segundo plano", () => {
     beforeEach(() => {
-      // Só o Date: o setTimeout real nunca dispara em 60 min, então quem tira a
+      // Só o Date: adiantar o Date não dispara o setTimeout real. Quem tira a
       // lista aqui é a releitura ao voltar para a aba, não o relógio.
       vi.useFakeTimers({ toFake: ["Date"] });
     });
 
-    it("ao voltar à aba depois de 60 min, a lista velha não fica na tela", async () => {
+    it("ao voltar à aba depois do prazo, a lista velha não fica na tela", async () => {
       duble.achados = [enviando];
       await montar();
       await achar();
@@ -407,7 +408,7 @@ describe("CartView — retrato do rastreio sem conta vencido tira a lista da tel
       expect(texto()).toContain("Consulte de novo");
     });
 
-    it("voltar ao app (sem trocar de aba) depois de 60 min também solta a lista", async () => {
+    it("voltar ao app (sem trocar de aba) depois do prazo também solta a lista", async () => {
       duble.achados = [enviando];
       await montar();
       await achar();

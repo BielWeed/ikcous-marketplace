@@ -542,7 +542,7 @@ function ConteudoDoCarrinho({
   // antigo, sem horário) e contador que REMONTA a busca em "Consultar de novo".
   const [retratoEm, setRetratoEm] = useState<number | null>(null);
   const [buscaDoRastreio, setBuscaDoRastreio] = useState(0);
-  // A lista do rastreio sem conta saiu da tela porque o retrato venceu (60 min):
+  // A lista do rastreio sem conta saiu da tela porque o retrato venceu (15 min):
   // a tela explica e manda consultar de novo, em vez de sumir sem dizer nada.
   const [retratoSaiuDaTela, setRetratoSaiuDaTela] = useState(false);
 
@@ -633,7 +633,7 @@ function ConteudoDoCarrinho({
     return () => globalThis.removeEventListener(EVENTO_RETRATO_LIMPO, aoLimpar);
   }, []);
 
-  // O retrato venceu (60 min) com a lista ainda na memória da tela: esta tela
+  // O retrato venceu (15 min) com a lista ainda na memória da tela: esta tela
   // fica montada o tempo todo, e só o aparelho soltava o dado — a lista velha
   // seguia à vista e "Ver detalhes" caía em "Entre na conta" para quem nunca
   // teve conta. A lista sai da memória no mesmo instante (mesma régua do
@@ -1698,8 +1698,8 @@ function ConteudoDoCarrinho({
                   className="mb-4 rounded-2xl border border-solid border-border bg-background px-4 py-3 text-[13px] font-medium text-foreground"
                 >
                   Por segurança, os pedidos que você consultou saem da tela
-                  depois de 1 hora. Consulte de novo com o seu e-mail e o código
-                  do pedido.
+                  depois de 15 minutos. Consulte de novo com o seu e-mail e o
+                  código do pedido.
                 </div>
               )}
 

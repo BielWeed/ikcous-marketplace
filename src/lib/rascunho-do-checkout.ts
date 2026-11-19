@@ -28,7 +28,9 @@ import type { ArmazenamentoSimples } from "./chave-do-pedido";
 import { nomeTemConteudoVisivel } from "./nome-visivel";
 
 const CHAVE_DE_ARMAZENAMENTO = "ikcous-rascunho-do-checkout-v1";
-// Uma aba compartilhada não deve lembrar os dados do visitante indefinidamente.
+// Risco aceito: outra pessoa pode ver o rascunho do visitante na mesma aba de
+// um aparelho compartilhado. Reabrir a decisão se houver relato de dados de
+// outra pessoa ou se uma loja usar a vitrine em tablet de balcão.
 const VALIDADE_DOS_DADOS_DO_VISITANTE_MS = 2 * 60 * 60 * 1000;
 
 export interface RascunhoDoCheckout {

@@ -25,8 +25,11 @@ export const CHAVE_DO_RETRATO = "guest_tracked_orders";
 // velha que acabou de ser apagada.
 export const EVENTO_RETRATO_LIMPO = "retrato-do-convidado-limpo";
 
-/** Quanto tempo o retrato vale depois da consulta (60 min). */
-export const PRAZO_DO_RETRATO_MS = 60 * 60_000;
+/**
+ * A cópia não pode durar mais que o código por e-mail que liberou a consulta.
+ * Ver supabase/migrations/20260820000000_otp_v2_devolve_o_codigo.sql:100.
+ */
+export const PRAZO_DO_RETRATO_MS = 15 * 60_000;
 
 /**
  * O retrato consultado em `consultadoEm` já passou do prazo? Uma única régua,
