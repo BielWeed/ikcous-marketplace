@@ -40,7 +40,10 @@ import {
   chaveDoCacheDeFrete,
 } from "@/components/ui/custom/ShippingCalculator";
 import { useStore } from "@/contexts/StoreContext";
-import { useAddresses } from "@/hooks/useAddresses";
+import {
+  type ConfrontoDaEdicaoDoEndereco,
+  useAddresses,
+} from "@/hooks/useAddresses";
 import { useAuth } from "@/hooks/useAuth";
 import { formatarCep, useBuscaCep } from "@/hooks/useBuscaCep";
 import { useCart } from "@/hooks/useCart";
@@ -474,6 +477,21 @@ function lerValorParaTrocoEmCentavos(texto: string): number {
   if (!/^\d{1,9}(?:[,.]\d{1,2})?$/.test(normalizada)) return Number.NaN;
   const [inteira, decimal = ""] = normalizada.split(/[,.]/);
   return Number(inteira) * 100 + Number(decimal.padEnd(2, "0"));
+}
+
+function mesmoEnderecoDeEntrega(a: Address, b: Address | undefined) {
+  return (
+    b !== undefined &&
+    a.id === b.id &&
+    a.cep === b.cep &&
+    a.street === b.street &&
+    a.number === b.number &&
+    (a.complement ?? "") === (b.complement ?? "") &&
+    a.neighborhood === b.neighborhood &&
+    a.city === b.city &&
+    a.state === b.state &&
+    (a.recipient_name ?? "") === (b.recipient_name ?? "")
+  );
 }
 
 /** Sessão do Supabase vencida na hora de finalizar (caça 7): o pedido não sai como anônimo. */
@@ -2657,6 +2675,8 @@ export function CheckoutViewDaConta({
   const enderecoEfetivo = user
     ? enderecoDeEntregaEfetivo(addresses, selectedAddressId)
     : undefined;
+  const enderecoVivoRef = useRef(enderecoEfetivo);
+  enderecoVivoRef.current = enderecoEfetivo;
   const cepDeEntrega = user
     ? (enderecoEfetivo?.cep ?? null)
     : cepDigitadoNoFormulario || null;
@@ -4561,6 +4581,7 @@ export function CheckoutViewDaConta({
   const handleNewAddressSubmit = async (
     data: DadosDoFormularioDeEndereco,
     alteracoes?: AlteracoesDoEndereco,
+    confronto?: ConfrontoDaEdicaoDoEndereco,
   ): Promise<void> => {
     // A janela em que a cliente tocou em Salvar. O salvamento espera a rede
     // por até 15 s e o Voltar do aparelho fecha a janela nesse meio-tempo (só
@@ -4569,8 +4590,13 @@ export function CheckoutViewDaConta({
     const minhaJanela = janelaDoEnderecoRef.current;
     let result;
     if (editingAddressId) {
+      if (!confronto) return;
       // Só o que a cliente mudou (a tela pode estar velha).
-      const success = await updateAddress(editingAddressId, alteracoes ?? data);
+      const success = await updateAddress(
+        editingAddressId,
+        alteracoes ?? data,
+        confronto,
+      );
       if (success) {
         result = addresses.find((a) => a.id === editingAddressId);
       }
@@ -5010,6 +5036,38 @@ export function CheckoutViewDaConta({
           : { acao: "entrar_na_conta", mensagem: MENSAGEM_SESSAO_EXPIRADA };
         toast.error(recusa.mensagem);
         setRecusaDoUltimoClique(recusa);
+        setIsSubmitting(false);
+        travaDeEnvioRef.current.liberar();
+        return;
+      }
+    }
+
+    // Só uma compra NOVA com endereço de entrega salvo passa por aqui. O
+    // pedido já existente é retomado com o endereço gravado nele.
+    if (contaEsperada && !ehRetirada && enderecoEfetivo) {
+      let enderecoMudou = false;
+      await fetchAddresses({
+        silencioso: true,
+        aoLer: (atualizados) => {
+          enderecoMudou = !mesmoEnderecoDeEntrega(
+            enderecoEfetivo,
+            atualizados.find((a) => a.id === selectedAddressId),
+          );
+        },
+      });
+      if (!montadoRef.current || contaRef.current !== contaEsperada) {
+        setIsSubmitting(false);
+        travaDeEnvioRef.current.liberar();
+        return;
+      }
+      if (
+        enderecoMudou ||
+        !mesmoEnderecoDeEntrega(enderecoEfetivo, enderecoVivoRef.current)
+      ) {
+        setIdentificacaoAbertaManual(true);
+        toast.error(
+          "O endereço de entrega foi alterado em outro aparelho. Confira o novo endereço e finalize de novo.",
+        );
         setIsSubmitting(false);
         travaDeEnvioRef.current.liberar();
         return;
@@ -9315,6 +9373,7 @@ interface AddressSelectionViewProps {
   onNewAddressSubmit: (
     data: DadosDoFormularioDeEndereco,
     alteracoes?: AlteracoesDoEndereco,
+    confronto?: ConfrontoDaEdicaoDoEndereco,
   ) => Promise<void>;
   onCancel: () => void;
   /** Nome da conta: já vem em "Quem vai receber" do endereço novo. */
@@ -9328,6 +9387,9 @@ function AddressSelectionView({
   onCancel,
   nomeDaConta,
 }: Readonly<AddressSelectionViewProps>) {
+  const enderecoEmEdicao = editingAddressId
+    ? addresses.find((a) => a.id === editingAddressId)
+    : undefined;
   return (
     <div className="pb-customer min-h-screen bg-background duration-500 animate-in slide-in-from-right">
       <div className="mx-auto max-w-md p-4">
@@ -9355,16 +9417,21 @@ function AddressSelectionView({
         </div>
 
         <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-          <AddressForm
-            initialData={
-              editingAddressId
-                ? addresses.find((a) => a.id === editingAddressId)
-                : undefined
-            }
-            onSubmit={onNewAddressSubmit}
-            onCancel={onCancel}
-            nomeDaConta={nomeDaConta}
-          />
+          {editingAddressId && !enderecoEmEdicao ? (
+            <>
+              <p role="status">Este endereço não existe mais.</p>
+              <Button type="button" variant="outline" onClick={onCancel}>
+                Voltar
+              </Button>
+            </>
+          ) : (
+            <AddressForm
+              initialData={enderecoEmEdicao}
+              onSubmit={onNewAddressSubmit}
+              onCancel={onCancel}
+              nomeDaConta={nomeDaConta}
+            />
+          )}
         </div>
 
         <div className="mt-8 px-6 text-center">

@@ -4,7 +4,10 @@ import {
   type DadosDoFormularioDeEndereco,
 } from "@/components/ui/custom/AddressForm";
 import { useStore } from "@/contexts/StoreContext";
-import { useAddresses } from "@/hooks/useAddresses";
+import {
+  type ConfrontoDaEdicaoDoEndereco,
+  useAddresses,
+} from "@/hooks/useAddresses";
 import { useAuth } from "@/hooks/useAuth";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { cn } from "@/lib/utils";
@@ -70,13 +73,15 @@ export function AddressFormView({ addressId, onBack }: AddressFormViewProps) {
   const handleSubmit = async (
     data: DadosDoFormularioDeEndereco,
     alteracoes?: AlteracoesDoEndereco,
+    confronto?: ConfrontoDaEdicaoDoEndereco,
   ) => {
     const permissao = permissaoDeVoltarRef.current;
     let success;
     if (addressId) {
+      if (!confronto) return;
       // Só o que a cliente mudou: a tela pode estar velha, e reenviar o resto
       // desfaria a correção feita em outro aparelho.
-      success = await updateAddress(addressId, alteracoes ?? data);
+      success = await updateAddress(addressId, alteracoes ?? data, confronto);
     } else {
       // Endereço novo: o formulário sempre manda `is_default`.
       const newAddr = await addAddress({

@@ -154,9 +154,11 @@ describe("AddressFormView — grava só o que a cliente mudou", () => {
     await salvar();
 
     expect(updateAddress).toHaveBeenCalledTimes(1);
-    expect(updateAddress).toHaveBeenCalledWith("end-1", {
-      complement: "Apto 3",
-    });
+    expect(updateAddress).toHaveBeenCalledWith(
+      "end-1",
+      { complement: "Apto 3" },
+      expect.objectContaining({ original: salvo }),
+    );
   });
 
   it("editar o número: o número vai", async () => {
@@ -166,7 +168,11 @@ describe("AddressFormView — grava só o que a cliente mudou", () => {
     });
     await salvar();
 
-    expect(updateAddress).toHaveBeenCalledWith("end-1", { number: "100" });
+    expect(updateAddress).toHaveBeenCalledWith(
+      "end-1",
+      { number: "100" },
+      expect.objectContaining({ original: salvo }),
+    );
   });
 
   it("ao trocar o CEP, grava os dados do imóvel novo pela edição da conta", async () => {
@@ -178,15 +184,19 @@ describe("AddressFormView — grava só o que a cliente mudou", () => {
 
     await act(async () => digitar("number", "10"));
     await salvar();
-    expect(updateAddress).toHaveBeenCalledWith("end-1", {
-      cep: "38500-001",
-      street: "Rua Tiradentes",
-      number: "10",
-      complement: "",
-      neighborhood: "Centro",
-      city: "Monte Carmelo",
-      state: "MG",
-    });
+    expect(updateAddress).toHaveBeenCalledWith(
+      "end-1",
+      {
+        cep: "38500-001",
+        street: "Rua Tiradentes",
+        number: "10",
+        complement: "",
+        neighborhood: "Centro",
+        city: "Monte Carmelo",
+        state: "MG",
+      },
+      expect.objectContaining({ original: lista.itens[0] }),
+    );
   });
 
   it("endereço NOVO: addAddress recebe tudo", async () => {

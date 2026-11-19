@@ -68,6 +68,7 @@ vi.mock("@/components/ui/custom/AddressForm", () => ({
     onSubmit: (
       data: Record<string, unknown>,
       alteracoes?: Record<string, unknown>,
+      confronto?: { original: { id: string }; aoConflitar: () => void },
     ) => Promise<void>;
     initialData?: { id: string };
   }) => (
@@ -88,6 +89,9 @@ vi.mock("@/components/ui/custom/AddressForm", () => ({
             is_default: false,
           },
           initialData ? estado.alteracoes : undefined,
+          initialData
+            ? { original: initialData, aoConflitar: vi.fn() }
+            : undefined,
         );
       }}
     >
@@ -437,9 +441,40 @@ describe("CheckoutView — Voltar do aparelho enquanto o endereço é salvo", ()
     await tocarEmSalvar();
 
     expect(updateAddress).toHaveBeenCalledTimes(1);
-    expect(updateAddress).toHaveBeenCalledWith("addr-1", {
-      complement: "Apto 3",
+    expect(updateAddress).toHaveBeenCalledWith(
+      "addr-1",
+      { complement: "Apto 3" },
+      expect.objectContaining({ original: ENDERECO_DA_CONTA }),
+    );
+  });
+
+  it("endereço apagado enquanto a edição está aberta: avisa, sem deixar um Salvar que não funciona", async () => {
+    await abrirOApp();
+    await act(async () => {
+      document
+        .querySelector<HTMLButtonElement>(
+          'button[aria-label="Editar endereço Casa"]',
+        )!
+        .click();
     });
+    expect(
+      document.querySelector('[data-testid="salvar-endereco-teste"]'),
+    ).not.toBeNull();
+
+    estado.enderecos = [];
+    await abrirOApp();
+
+    expect(document.querySelector('[role="status"]')?.textContent).toBe(
+      "Este endereço não existe mais.",
+    );
+    expect(
+      document.querySelector('[data-testid="salvar-endereco-teste"]'),
+    ).toBeNull();
+    expect(updateAddress).not.toHaveBeenCalled();
+    expect(addAddress).not.toHaveBeenCalled();
+
+    await act(async () => botaoExato("Voltar")!.click());
+    expect(voltarDoNavegador).toHaveBeenCalledTimes(1);
   });
 
   it("o salvamento FALHA e a cliente já tinha apertado Voltar: nada acontece (nem passo para trás, nem escolha)", async () => {

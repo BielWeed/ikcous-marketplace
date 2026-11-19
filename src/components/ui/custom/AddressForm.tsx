@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useStore } from "@/contexts/StoreContext";
+import type { ConfrontoDaEdicaoDoEndereco } from "@/hooks/useAddresses";
 import { formatarCep, useBuscaCep } from "@/hooks/useBuscaCep";
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import {
@@ -165,6 +166,7 @@ interface AddressFormProps {
   onSubmit: (
     address: DadosDoFormularioDeEndereco,
     alteracoes?: AlteracoesDoEndereco,
+    confronto?: ConfrontoDaEdicaoDoEndereco,
   ) => Promise<void>;
   onCancel: () => void;
   /**
@@ -295,6 +297,9 @@ export function AddressForm({
   // sobrescrevia o endereço real. Chegou endereço DIFERENTE do aplicado,
   // o formulário se preenche.
   const initialDataAplicadoRef = useRef<Address | undefined>(undefined);
+  // A releitura de fundo pode preencher campos intocados, mas não pode mudar
+  // a versão em que um rascunho já começou a ser escrito.
+  const originalDaEdicaoRef = useRef<Address | undefined>(undefined);
 
   // A quem os campos de endereço ATUALMENTE pertencem: o CEP do
   // `initialData` (edição) ou o último CEP cuja busca foi aplicada — mesmo
@@ -399,6 +404,7 @@ export function AddressForm({
       hasInitializedRef.current = true;
       principalTocadoRef.current = false;
       initialDataAplicadoRef.current = initialData;
+      originalDaEdicaoRef.current = initialData;
       cepAssociadoRef.current = initialData?.cep
         ? formatarCep(initialData.cep).limpo
         : null;
@@ -437,6 +443,7 @@ export function AddressForm({
       initialData.id !== initialDataAplicadoRef.current?.id
     ) {
       initialDataAplicadoRef.current = initialData;
+      originalDaEdicaoRef.current = initialData;
       principalTocadoRef.current = false;
       cepAssociadoRef.current = initialData.cep
         ? formatarCep(initialData.cep).limpo
@@ -485,6 +492,7 @@ export function AddressForm({
         return agora.get(c) !== antes.get(c);
       });
       initialDataAplicadoRef.current = initialData;
+      if (guardados.length === 0) originalDaEdicaoRef.current = initialData;
       if (!blocoMexido) {
         if (mudouCepDoServidor) {
           cepEmBuscaRef.current = "";
@@ -632,12 +640,33 @@ export function AddressForm({
           : "",
         recipient_name: values.recipient_name,
       };
-      // Base: o endereço como a tela o aplicou (sem ela, manda tudo).
-      const aplicado = initialData && initialDataAplicadoRef.current;
-      if (aplicado) {
+      // Base: o endereço aplicado ou, antes da inicialização, aquele que já
+      // preencheu os valores iniciais. Endereço novo não tem base.
+      const aplicado = initialDataAplicadoRef.current;
+      const base = aplicado?.id === initialData?.id ? aplicado : initialData;
+      if (base) {
         await onSubmit(
           cleanData,
-          soOQueMudou(values, valoresDoEndereco(aplicado), cleanData),
+          soOQueMudou(values, valoresDoEndereco(base), cleanData),
+          {
+            original:
+              originalDaEdicaoRef.current?.id === base.id
+                ? originalDaEdicaoRef.current
+                : base,
+            aoConflitar: (atual) => {
+              if (initialDataAplicadoRef.current?.id !== atual.id) return;
+              initialDataAplicadoRef.current = atual;
+              originalDaEdicaoRef.current = atual;
+              principalTocadoRef.current = false;
+              cepAssociadoRef.current = formatarCep(atual.cep).limpo;
+              cepDoPreenchimentoAMaoRef.current = null;
+              cepEmBuscaRef.current = "";
+              camposEditadosAMaoRef.current.clear();
+              setReferenciaAberta(!!atual.reference);
+              setApelidoOutro(false);
+              form.reset(valoresDoEndereco(atual));
+            },
+          },
         );
       } else {
         await onSubmit(cleanData);

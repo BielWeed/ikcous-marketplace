@@ -17,6 +17,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const onNavigate = vi.fn();
 const onSetBackOverride = vi.fn();
+const createOrder = vi.fn();
+const ENTREGA_LOCAL = {
+  id: "local-delivery",
+  name: "Entrega Local",
+  price: 0,
+  deliveryDays: 1,
+  provider: "local",
+};
 
 const { conta, banco, escolha } = vi.hoisted(() => ({
   conta: { usuario: { id: "user-1" } as { id: string } | null },
@@ -81,8 +89,8 @@ vi.mock("@/hooks/useCart", async () => {
       () => escolha.id,
     );
     return {
-      cart: [],
-      cartTotal: 0,
+      cart: CART,
+      cartTotal: 80,
       shippingFee: 0,
       clearCart: vi.fn(),
       addToCart: vi.fn(),
@@ -90,7 +98,7 @@ vi.mock("@/hooks/useCart", async () => {
       setSelectedShippingOption: vi.fn(),
       setShippingCep: vi.fn(),
       freteGratis: false,
-      selectedShippingOption: null,
+      selectedShippingOption: ENTREGA_LOCAL,
       freteIndefinido: false,
       enderecoSelecionadoId,
       setEnderecoSelecionadoId,
@@ -104,7 +112,7 @@ vi.mock("@/hooks/useCoupons", () => ({
 }));
 
 vi.mock("@/hooks/useOrders", () => ({
-  useOrders: () => ({ createOrder: vi.fn(), updateOrderStatus: vi.fn() }),
+  useOrders: () => ({ createOrder, updateOrderStatus: vi.fn() }),
 }));
 
 vi.mock("@/lib/supabase", () => ({
@@ -240,6 +248,8 @@ describe("CheckoutView -- relê os endereços ao voltar ao app", () => {
     escolha.id = null;
     onNavigate.mockClear();
     onSetBackOverride.mockClear();
+    createOrder.mockReset().mockResolvedValue({ id: "ped-1", totalAmount: 80 });
+    vi.spyOn(window, "scrollTo").mockImplementation(() => {});
     globalThis.sessionStorage.clear();
     estadoDaVisibilidade = "visible";
     Object.defineProperty(document, "visibilityState", {
@@ -308,6 +318,77 @@ describe("CheckoutView -- relê os endereços ao voltar ao app", () => {
     expect(banco.leituras).toBe(2);
     expect(toast.error).not.toHaveBeenCalled();
     expect(escolha.id).toBe("addr-x");
+  });
+
+  async function prepararEntrega() {
+    await montar();
+    await act(async () => {
+      for (const [id, valor] of [
+        ["checkout-name", "Cliente Teste"],
+        ["checkout-tel", "34999999999"],
+      ]) {
+        const campo = document.getElementById(id) as HTMLInputElement;
+        const setter = Object.getOwnPropertyDescriptor(
+          globalThis.HTMLInputElement.prototype,
+          "value",
+        )!.set!;
+        setter.call(campo, valor);
+        campo.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    });
+    await esperar(420);
+  }
+
+  async function finalizar(doisToques = false) {
+    const botao = [...document.body.querySelectorAll("button")].find((el) =>
+      el.textContent?.includes("Finalizar Pedido"),
+    );
+    expect(botao?.disabled).toBe(false);
+    await act(async () => {
+      botao!.click();
+      if (doisToques) botao!.click();
+    });
+  }
+
+  it("número diferente no mesmo CEP não cria pedido até a cliente conferir", async () => {
+    const { toast } = await import("sonner");
+    await prepararEntrega();
+    expect(document.body.textContent).toContain("Rua addr-x, 10");
+
+    banco.linhas[0] = { ...banco.linhas[0], number: "20" };
+    await finalizar();
+
+    expect(createOrder).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith(
+      "O endereço de entrega foi alterado em outro aparelho. Confira o novo endereço e finalize de novo.",
+    );
+    expect(document.body.textContent).toContain("Rua addr-x, 20");
+
+    await finalizar();
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    expect(createOrder.mock.calls[0][0]).toMatchObject({ addressId: "addr-x" });
+  });
+
+  it("endereço igual confirma o pedido uma vez, mesmo com dois toques", async () => {
+    await prepararEntrega();
+    await finalizar(true);
+
+    expect(banco.leituras).toBe(2);
+    expect(createOrder).toHaveBeenCalledTimes(1);
+  });
+
+  it("falha da releitura antes de finalizar não bloqueia a compra", async () => {
+    const { toast } = await import("sonner");
+    vi.mocked(toast.error).mockClear();
+    await prepararEntrega();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    banco.falharLeitura = true;
+
+    await finalizar();
+
+    expect(banco.leituras).toBe(2);
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    expect(toast.error).not.toHaveBeenCalled();
   });
 
   it("visitante (sem conta): voltar ao app não consulta endereço nenhum", async () => {
