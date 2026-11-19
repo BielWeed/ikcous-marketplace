@@ -69,8 +69,14 @@ export function useUsoDasCategorias(): {
   }, []);
 
   useEffect(() => {
+    const aoVoltarParaAba = () => {
+      if (document.visibilityState === "visible") void recarregar();
+    };
+
     void recarregar();
+    document.addEventListener("visibilitychange", aoVoltarParaAba);
     return () => {
+      document.removeEventListener("visibilitychange", aoVoltarParaAba);
       pedidoRef.current += 1;
     };
   }, [recarregar]);
