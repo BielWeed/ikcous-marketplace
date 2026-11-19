@@ -1116,7 +1116,7 @@ const VERIFICACOES = {
     },
   ],
   // 20261405400000: solicitar_devolucao rateia o cupom pela diferenca entre dois totais acumulados.
-  // Os marcadores sao os do pos-voo da migration; a 157a confere corpo exato, atributos e ACL.
+  // O mapa aceita so contagens positivas; a ausencia da formula antiga fica no pos-voo. A 157a confere corpo exato, atributos e ACL.
   "20261405400000_a_devolucao_integral_nao_perde_o_centavo_do_cupom.sql": [
     {
       funcao: "solicitar_devolucao",
@@ -1131,7 +1131,6 @@ const VERIFICACOES = {
           vezes: 1,
         },
         { texto: "v_cupom_den := v_o.subtotal;", vezes: 1 },
-        { texto: "round(v_qtd * v_valor_unit, 2)", vezes: 0 },
       ],
     },
   ],
