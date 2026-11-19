@@ -35,6 +35,15 @@ export interface FormaDoPedido {
  * pedido como "pagar na entrega" e isto não muda. */
 export const ROTULO_SEM_VALOR_A_PAGAR = "Sem valor a pagar";
 
+export function avisoDeJurosDoParcelamento(
+  parcelas: number | null | undefined,
+) {
+  const aviso = "Juros do parcelamento, se houver, vêm na fatura.";
+  return parcelas == null
+    ? aviso
+    : `Parcelado em ${parcelas}x no cartão. ${aviso}`;
+}
+
 /**
  * A ÚNICA decisão de "este pedido não tem nada a pagar" nas telas (decisão do
  * dono, 15/10/2026). Em centavos: 0,004 de ponto flutuante é zero, 0,01 não.

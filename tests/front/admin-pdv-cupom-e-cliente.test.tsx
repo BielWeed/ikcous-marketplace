@@ -476,47 +476,90 @@ describe("AdminPdvView — CupomDaVenda e ClienteDaVenda (C3.2)", () => {
     expect(hospedeiro.textContent).toContain("Mostrando 8 de 143");
   });
 
-  it("caso 7 — cliente avulso com WhatsApp inválido avisa mas não bloqueia", async () => {
+  it.each(["123", "3499876543"])(
+    "caso 7 — cliente avulso com WhatsApp inválido (%s) avisa mas não bloqueia",
+    async (whatsapp) => {
+      await montar();
+
+      const botaoCliente = localizarBotaoPorTexto(
+        hospedeiro,
+        "Cliente (opcional)",
+      )!;
+      await act(async () => {
+        botaoCliente.click();
+      });
+      await avancar();
+
+      const botaoAvulso = localizarBotaoPorTexto(hospedeiro, "Cliente avulso")!;
+      await act(async () => {
+        botaoAvulso.click();
+      });
+      await avancar();
+
+      await act(async () => {
+        digitarInput("nome-do-cliente-avulso", "Fulano de Tal");
+      });
+      await avancar(200);
+      await act(async () => {
+        digitarInput("whatsapp-do-cliente-avulso", whatsapp);
+      });
+      await avancar(200);
+
+      expect(hospedeiro.textContent).toContain("não abre conversa no WhatsApp");
+
+      const botaoConfirmar = localizarBotaoPorTexto(
+        hospedeiro,
+        "Confirmar cliente avulso",
+      ) as HTMLButtonElement;
+      expect(botaoConfirmar.disabled).toBe(false);
+
+      await act(async () => {
+        botaoConfirmar.click();
+      });
+      await avancar();
+
+      expect(hospedeiro.textContent).toContain("Cliente: Fulano de Tal");
+    },
+  );
+
+  it("avisa sobre WhatsApp inválido na mesma região de anúncio e limpa o aviso ao corrigir", async () => {
     await montar();
-
-    const botaoCliente = localizarBotaoPorTexto(
-      hospedeiro,
-      "Cliente (opcional)",
-    )!;
+    await abrirCliente();
     await act(async () => {
-      botaoCliente.click();
+      localizarBotaoPorTexto(hospedeiro, "Cliente avulso")!.click();
     });
     await avancar();
 
-    const botaoAvulso = localizarBotaoPorTexto(hospedeiro, "Cliente avulso")!;
-    await act(async () => {
-      botaoAvulso.click();
-    });
-    await avancar();
+    const idCampo = "whatsapp-do-cliente-avulso";
+    const campo = document.getElementById(idCampo)!;
+    const regiao = hospedeiro.querySelector('[role="status"]');
+    expect(regiao).not.toBeNull();
+    expect(regiao?.textContent).toBe("");
 
-    await act(async () => {
-      digitarInput("nome-do-cliente-avulso", "Fulano de Tal");
-    });
-    await avancar(200);
-    await act(async () => {
-      digitarInput("whatsapp-do-cliente-avulso", "123");
-    });
-    await avancar(200);
+    async function digitarWhatsapp(valor: string): Promise<void> {
+      await act(async () => {
+        digitarInput(idCampo, valor);
+      });
+      await avancar(200);
+    }
 
-    expect(hospedeiro.textContent).toContain("não abre conversa no WhatsApp");
+    await digitarWhatsapp("34998765432");
+    expect(regiao?.textContent).toBe("");
+    expect(campo.hasAttribute("aria-describedby")).toBe(false);
+    expect(campo.getAttribute("aria-invalid")).not.toBe("true");
 
-    const botaoConfirmar = localizarBotaoPorTexto(
-      hospedeiro,
-      "Confirmar cliente avulso",
-    ) as HTMLButtonElement;
-    expect(botaoConfirmar.disabled).toBe(false);
+    await digitarWhatsapp("349987654");
+    expect(hospedeiro.querySelector('[role="status"]')).toBe(regiao);
+    expect(regiao?.textContent).toContain("não abre conversa no WhatsApp");
+    expect(regiao?.id).toBeTruthy();
+    expect(campo.getAttribute("aria-describedby")).toBe(regiao?.id);
+    expect(campo.getAttribute("aria-invalid")).toBe("true");
 
-    await act(async () => {
-      botaoConfirmar.click();
-    });
-    await avancar();
-
-    expect(hospedeiro.textContent).toContain("Cliente: Fulano de Tal");
+    await digitarWhatsapp("34998765432");
+    expect(hospedeiro.querySelector('[role="status"]')).toBe(regiao);
+    expect(regiao?.textContent).toBe("");
+    expect(campo.hasAttribute("aria-describedby")).toBe(false);
+    expect(campo.getAttribute("aria-invalid")).not.toBe("true");
   });
 
   // Defeito 8 da caçada do balcão: apagar o nome do avulso e tocar em "Voltar

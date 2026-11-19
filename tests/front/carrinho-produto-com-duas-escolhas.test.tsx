@@ -338,8 +338,9 @@ describe("carrinho: produto com cor e tamanho em escolhas separadas", () => {
     // A exclusão fica marcada pela combinação: a outra não é "ressuscitada"
     // nem "apagada" pelo merge das abas.
     const marcas = JSON.parse(
-      localStorage.getItem("marketplace_cart_tombstones_v1") ?? "[]",
-    ).map((t: { key: string }) => t.key);
+      localStorage.getItem("marketplace_cart_account_tombstones_v1") ??
+        '{"marcas":[]}',
+    ).marcas.map((t: { key: string }) => t.key);
     expect(marcas).toEqual([`p1-${AZUL_P}`]);
   });
 
@@ -351,8 +352,9 @@ describe("carrinho: produto com cor e tamanho em escolhas separadas", () => {
     });
     await act(async () => atual.clearCart());
     const marcas = JSON.parse(
-      localStorage.getItem("marketplace_cart_tombstones_v1") ?? "[]",
-    ).map((t: { key: string }) => t.key);
+      localStorage.getItem("marketplace_cart_account_tombstones_v1") ??
+        '{"marcas":[]}',
+    ).marcas.map((t: { key: string }) => t.key);
     expect(marcas.sort()).toEqual([`p1-${AZUL_M}`, `p1-${AZUL_P}`].sort());
   });
 

@@ -79,6 +79,7 @@ const PRODUTO = {
 };
 
 const ID = "11111111-1111-1111-1111-111111111111";
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function respostaDaVenda(extra: Record<string, unknown> = {}, ja = false) {
   return {
@@ -149,6 +150,13 @@ describe("tela Vender — anular a venda pelo recibo", () => {
         return { data: PRODUTO, error: null };
       }
       if (nome === "registrar_venda_presencial") {
+        const chave = params.p_idempotency_key;
+        if (typeof chave !== "string" || !UUID.test(chave)) {
+          return {
+            data: null,
+            error: { code: "22P02", message: "UUID inválido" },
+          };
+        }
         return registrarImplRef.atual?.(params);
       }
       if (nome === "anular_venda_presencial") {
@@ -175,27 +183,49 @@ describe("tela Vender — anular a venda pelo recibo", () => {
     vi.restoreAllMocks();
   });
 
+  async function clicarNoCaixa(rotulo: string): Promise<void> {
+    const alvo = botao(hospedeiro, rotulo);
+    expect(alvo?.disabled, rotulo).toBe(false);
+    await act(async () => alvo?.click());
+    await avancar();
+  }
+
+  async function registrarUmItem(): Promise<void> {
+    await clicarNoCaixa("bipar");
+    await clicarNoCaixa("Fechar venda");
+    await clicarNoCaixa("Dinheiro");
+    await clicarNoCaixa("Registrar venda");
+  }
+
   async function venderAteORecibo(): Promise<void> {
     await act(async () => {
       raiz.render(<AdminPdvView onNavigate={vi.fn()} />);
     });
     await avancar();
-    await act(async () => {
-      botao(hospedeiro, "bipar")?.click();
-    });
-    await avancar();
-    await act(async () => {
-      botao(hospedeiro, "Fechar venda")?.click();
-    });
-    await avancar();
-    await act(async () => {
-      botao(hospedeiro, "Dinheiro")?.click();
-    });
-    await avancar();
-    await act(async () => {
-      botao(hospedeiro, "Registrar venda")?.click();
-    });
-    await avancar();
+    await registrarUmItem();
+  }
+
+  async function registrarComoOutraVenda(): Promise<void> {
+    expect(hospedeiro.textContent).not.toContain("Camiseta Lisa");
+    registrarImplRef.atual = async () =>
+      respostaDaVenda({ id: "22222222-2222-2222-2222-222222222222" });
+    await registrarUmItem();
+
+    const registros = rpcMock.mock.calls.filter(
+      ([nome]) => nome === "registrar_venda_presencial",
+    );
+    expect(registros).toHaveLength(2);
+    const primeira = registros[0][1];
+    const segunda = registros[1][1];
+    expect(segunda.p_itens).toEqual([
+      { product_id: "produto-1", variant_id: null, quantity: 1 },
+    ]);
+    expect(primeira.p_idempotency_key).toMatch(UUID);
+    expect(segunda.p_idempotency_key).toMatch(UUID);
+    expect(segunda.p_idempotency_key.toLowerCase()).not.toBe(
+      primeira.p_idempotency_key.toLowerCase(),
+    );
+    expect(hospedeiro.textContent).toContain("Compra na loja");
   }
 
   it("o recibo oferece 'Anular venda'; anula o pedido que acabou de ser gravado, com o motivo, e vira 'Venda anulada'", async () => {
@@ -231,8 +261,8 @@ describe("tela Vender — anular a venda pelo recibo", () => {
     expect(texto).not.toContain("Compra na loja");
     expect(botao(hospedeiro, "Imprimir")).toBeUndefined();
     expect(botao(hospedeiro, "Enviar por WhatsApp")).toBeUndefined();
-    // e a próxima venda continua a um clique
-    expect(botao(hospedeiro, "Nova venda")).toBeDefined();
+    await clicarNoCaixa("Nova venda");
+    await registrarComoOutraVenda();
   });
 
   it("servidor sem a função: o recibo continua como compra e a tela diz que a anulação não está liberada", async () => {
@@ -274,7 +304,22 @@ describe("tela Vender — anular a venda pelo recibo", () => {
     expect(texto).not.toContain("Compra na loja");
     expect(botao(hospedeiro, "Anular venda")).toBeUndefined();
     expect(botao(hospedeiro, "Registrar venda")?.disabled ?? true).toBe(true);
-    expect(botao(hospedeiro, "Começar uma venda nova")).toBeDefined();
+    const comecar = botao(hospedeiro, "Começar uma venda nova");
+    expect(comecar).toBeDefined();
+    await act(async () => comecar?.click());
+    const confirmacao = document.querySelector(
+      '[data-testid="confirmar-acao"]',
+    );
+    expect(confirmacao?.textContent ?? "").toContain(
+      "Apagar a venda em andamento?",
+    );
+    await act(async () => {
+      botao(confirmacao!, "Apagar e começar outra")?.click();
+    });
+    await avancar();
+
+    expect(hospedeiro.textContent).not.toContain("Esta venda já foi anulada");
+    await registrarComoOutraVenda();
   });
 
   it("retentativa de uma venda gravada e ainda válida (ja_existia, entregue) segue mostrando o MESMO recibo", async () => {

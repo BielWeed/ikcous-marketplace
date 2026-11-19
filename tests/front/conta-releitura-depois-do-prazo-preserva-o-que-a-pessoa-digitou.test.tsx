@@ -74,12 +74,14 @@ describe("Conta: a releitura depois do prazo não apaga o que a pessoa digitou d
   let raiz: Root;
   let host: HTMLDivElement;
   let nomeNoBanco: string;
+  let cpfNoBanco: string;
   let concluirEnvio!: (valor: unknown) => void;
 
   beforeEach(() => {
     vi.resetAllMocks();
     vi.useFakeTimers();
     nomeNoBanco = "Pessoa Inventada";
+    cpfNoBanco = "";
     getSession.mockResolvedValue({
       data: { session: { user: usuario, access_token: "token-inventado" } },
     });
@@ -94,7 +96,7 @@ describe("Conta: a releitura depois do prazo não apaga o que a pessoa digitou d
           nome === "get_my_complete_profile"
             ? [{ full_name: nomeNoBanco, whatsapp: "" }]
             : nome === "get_my_cpf"
-              ? ""
+              ? cpfNoBanco
               : null,
         error: null,
       });
@@ -216,6 +218,132 @@ describe("Conta: a releitura depois do prazo não apaga o que a pessoa digitou d
       );
     },
   );
+
+  it.each([
+    { caso: "CPF vazio", original: "", originalFormatado: "" },
+    {
+      caso: "CPF anterior",
+      original: "11144477735",
+      originalFormatado: "111.444.777-35",
+    },
+  ])(
+    "confirmação do envio não sobrescreve o $caso restaurado enquanto salvava",
+    async ({ original, originalFormatado }) => {
+      cpfNoBanco = original;
+      let concluirCpf!: (resposta: { data: null; error: null }) => void;
+      const envioCpf = new Promise<{ data: null; error: null }>((resolve) => {
+        concluirCpf = resolve;
+      });
+      const normal = rpc.getMockImplementation()!;
+      rpc.mockImplementation((nome: string) => {
+        if (nome === "update_my_profile_secure") {
+          return Promise.resolve({ data: null, error: null });
+        }
+        if (nome === "set_my_cpf") return envioCpf;
+        return normal(nome);
+      });
+
+      await montar();
+      expect(campo("cpf").value).toBe(originalFormatado);
+      digitar("cpf", "52998224725");
+      await salvar();
+      expect(rpc).toHaveBeenCalledWith("set_my_cpf", { p_cpf: "52998224725" });
+
+      digitar("cpf", original);
+      expect(campo("cpf").value).toBe(originalFormatado);
+      await act(async () => concluirCpf({ data: null, error: null }));
+
+      expect(campo("cpf").value).toBe(originalFormatado);
+    },
+  );
+
+  it("releitura atualiza o CPF alterado em outro aparelho quando a pessoa não mexeu no campo", async () => {
+    cpfNoBanco = "11144477735";
+    await montar();
+    expect(campo("cpf").value).toBe("111.444.777-35");
+
+    digitar("full_name", "Nome do clique");
+    await salvar();
+    cpfNoBanco = "52998224725";
+    await passar(20001);
+
+    expect(campo("cpf").value).toBe("529.982.247-25");
+  });
+
+  it.each(["prazo esgotado", "erro explícito"])(
+    "voltar ao CPF original enquanto salva só o nome não desfaz a edição de outro aparelho: %s",
+    async (desfecho) => {
+      const cpfOriginal = "11144477735";
+      cpfNoBanco = cpfOriginal;
+      await montar();
+      expect(campo("cpf").value).toBe("111.444.777-35");
+
+      digitar("full_name", "Nome do clique");
+      await salvar();
+      expect(rpc).toHaveBeenCalledWith("update_my_profile_secure", {
+        p_full_name: "Nome do clique",
+        p_whatsapp: null,
+      });
+      digitar("cpf", "12345678909");
+      digitar("cpf", cpfOriginal);
+      expect(campo("cpf").value).toBe("111.444.777-35");
+      cpfNoBanco = "52998224725";
+
+      if (desfecho === "erro explícito") {
+        await act(async () =>
+          concluirEnvio({ data: null, error: { code: "42501" } }),
+        );
+        // A recusa não relê o cadastro. Um novo envio só do nome, sem
+        // resposta, provoca a primeira releitura sem tocar mais no CPF.
+        rpc.mockImplementationOnce(() => new Promise(() => {}));
+        digitar("full_name", "Outro nome");
+        await salvar();
+      }
+      await passar(20001);
+
+      expect(campo("cpf").value).toBe("529.982.247-25");
+
+      rpc.mockImplementationOnce(() =>
+        Promise.resolve({ data: null, error: null }),
+      );
+      digitar("full_name", "Nome depois da releitura");
+      await salvar();
+      expect(rpc).toHaveBeenCalledWith("update_my_profile_secure", {
+        p_full_name: "Nome depois da releitura",
+        p_whatsapp: null,
+      });
+      expect(rpc).not.toHaveBeenCalledWith("set_my_cpf", expect.anything());
+    },
+  );
+
+  it("CPF recusado pelo servidor não deixa pendente a volta ao valor original", async () => {
+    const cpfOriginal = "11144477735";
+    cpfNoBanco = cpfOriginal;
+    let recusarCpf!: (valor: unknown) => void;
+    const cpfEmEnvio = new Promise((resolve) => {
+      recusarCpf = resolve;
+    });
+    await montar();
+
+    rpc.mockResolvedValueOnce({ data: null, error: null });
+    rpc.mockImplementationOnce(() => cpfEmEnvio);
+    digitar("cpf", "12345678909");
+    await salvar();
+    expect(rpc).toHaveBeenCalledWith("set_my_cpf", { p_cpf: "12345678909" });
+
+    digitar("cpf", cpfOriginal);
+    cpfNoBanco = "52998224725";
+    await act(async () => recusarCpf({ data: null, error: { code: "CPF01" } }));
+
+    digitar("full_name", "Nome do clique");
+    await salvar();
+    await passar(20001);
+
+    expect(campo("cpf").value).toBe("529.982.247-25");
+    expect(
+      rpc.mock.calls.filter(([nome]) => nome === "set_my_cpf"),
+    ).toHaveLength(1);
+  });
 
   it("voltar ao CPF original deixa a outra aba trocar o CPF sem que salvar o nome o desfaça", async () => {
     const original = "52998224725";

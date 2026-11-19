@@ -1,0 +1,404 @@
+// @vitest-environment jsdom
+
+import { CheckoutView } from "@/views/customer/CheckoutView";
+import { act } from "react";
+import { type Root, createRoot } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const createOrder = vi.fn();
+const validateCoupon = vi.fn();
+const sessaoAindaEhDoDono = vi.fn();
+const onNavigate = vi.fn();
+const onSetBackOverride = vi.fn();
+const entrega = {
+  id: "local-delivery",
+  name: "Entrega local",
+  price: 0,
+  deliveryDays: 1,
+  provider: "local",
+};
+const endereco = {
+  id: "addr-1",
+  user_id: "user-1",
+  name: "Casa",
+  recipient_name: "Cliente Teste",
+  cep: "38500-000",
+  street: "Rua Teste",
+  number: "100",
+  neighborhood: "Centro",
+  city: "Monte Carmelo",
+  state: "MG",
+  is_default: true,
+};
+const enderecos = [endereco];
+const usuario = { id: "user-1" };
+let total = 76.5;
+let formas: string[];
+let cuponsLigados = false;
+let opcaoDeFrete = entrega;
+
+vi.mock("@/lib/sessao-ainda-e-do-dono", () => ({
+  sessaoAindaEhDoDono: () => sessaoAindaEhDoDono(),
+}));
+
+vi.mock("@/components/ui/custom/ShippingCalculator", () => ({
+  ShippingCalculator: () => null,
+}));
+
+vi.mock("@/contexts/StoreContext", () => ({
+  useStore: () => ({
+    config: {
+      shippingCoverage: "local",
+      originCep: "38500-000",
+      enableCoupons: cuponsLigados,
+      formasPagamentoEntrega: formas,
+    },
+    isLoaded: true,
+  }),
+}));
+
+vi.mock("@/hooks/useAddresses", () => ({
+  useAddresses: () => ({
+    addresses: enderecos,
+    fetchAddresses: vi.fn(),
+    loading: false,
+  }),
+}));
+
+vi.mock("@/hooks/useAuth", () => ({
+  useAuth: () => ({ user: usuario, profile: null, loading: false }),
+}));
+
+vi.mock("@/hooks/useCart", async () => {
+  const { criarUseCartDeTeste } = await import("./duble-use-cart");
+  return {
+    useCart: criarUseCartDeTeste(() => ({
+      cart: [
+        {
+          product: {
+            id: "prod-1",
+            name: "Produto Teste",
+            price: total,
+            images: [],
+            stock: 10,
+          },
+          quantity: 1,
+        },
+      ],
+      cartTotal: total,
+      shippingFee: 0,
+      selectedShippingOption: opcaoDeFrete,
+      shippingCep: endereco.cep,
+      clearCart: vi.fn(),
+    })),
+  };
+});
+
+vi.mock("@/hooks/useCoupons", () => ({
+  useCoupons: () => ({ validateCoupon }),
+}));
+
+vi.mock("@/hooks/useOrders", () => ({
+  useOrders: () => ({ createOrder }),
+}));
+
+vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
+
+vi.mock("@/lib/flags", () => ({
+  pagamentoOnlineLigado: () => false,
+  lerFlagPagamentoOnline: (v: string | undefined) => v === "true",
+}));
+
+vi.mock("@/hooks/useConfigDoCartao", async () => {
+  const { ESTADO_PRONTO_SEM_CARTAO } = await import(
+    "./duble-use-config-do-cartao"
+  );
+  return { useConfigDoCartao: () => ESTADO_PRONTO_SEM_CARTAO };
+});
+
+vi.mock("@/lib/supabase", () => ({ supabase: {} }));
+vi.mock("canvas-confetti", () => ({ default: vi.fn() }));
+
+// @ts-expect-error flag interna do React, sem tipo público.
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+function digitar(campo: HTMLInputElement | HTMLTextAreaElement, valor: string) {
+  const setter = Object.getOwnPropertyDescriptor(
+    Object.getPrototypeOf(campo),
+    "value",
+  )?.set;
+  setter?.call(campo, valor);
+  campo.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+describe("CheckoutView — troco para pagamento em dinheiro", () => {
+  let raiz: Root;
+  let hospedeiro: HTMLDivElement;
+  const nota = () =>
+    hospedeiro.querySelector<HTMLTextAreaElement>("#order-notes")!;
+  const campo = () =>
+    hospedeiro.querySelector<HTMLInputElement>("#checkout-valor-para-troco")!;
+  const aviso = () => hospedeiro.querySelector("#checkout-aviso-troco")!;
+  const escolha = (valor: string) =>
+    hospedeiro.querySelector<HTMLInputElement>(
+      `input[name="checkout-troco"][value="${valor}"]`,
+    )!;
+  const botao = (texto: string, dentroDe: ParentNode = hospedeiro) =>
+    [...dentroDe.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes(texto),
+    )!;
+  const finalizar = () => botao("Finalizar Pedido", document.body);
+
+  beforeEach(() => {
+    total = 76.5;
+    formas = ["pix", "cash"];
+    cuponsLigados = false;
+    opcaoDeFrete = entrega;
+    validateCoupon
+      .mockReset()
+      .mockResolvedValue({ valid: true, discount: total });
+    createOrder.mockReset().mockResolvedValue({ id: "ped-1" });
+    sessaoAindaEhDoDono.mockReset().mockResolvedValue(true);
+    vi.stubGlobal("scrollTo", vi.fn());
+    vi.useFakeTimers();
+    hospedeiro = document.createElement("div");
+    document.body.appendChild(hospedeiro);
+    raiz = createRoot(hospedeiro);
+  });
+
+  afterEach(() => {
+    act(() => raiz.unmount());
+    hospedeiro.remove();
+    localStorage.clear();
+    sessionStorage.clear();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  async function renderizar() {
+    await act(async () => {
+      raiz.render(
+        <CheckoutView
+          onNavigate={onNavigate}
+          onSetBackOverride={onSetBackOverride}
+        />,
+      );
+    });
+  }
+
+  async function montar() {
+    await renderizar();
+    await act(async () => {
+      digitar(
+        hospedeiro.querySelector<HTMLInputElement>("#checkout-name")!,
+        "Cliente Teste",
+      );
+      digitar(
+        hospedeiro.querySelector<HTMLInputElement>("#checkout-tel")!,
+        "34999999999",
+      );
+      await vi.advanceTimersByTimeAsync(420);
+    });
+    expect(finalizar().disabled).toBe(false);
+  }
+
+  async function pedirTroco(valor: string) {
+    act(() => botao("Dinheiro na Entrega").click());
+    expect(hospedeiro.textContent).toContain("Precisa de troco?");
+    expect(escolha("nao").checked).toBe(true);
+    act(() => escolha("sim").click());
+    if (valor) act(() => digitar(campo(), valor));
+  }
+
+  async function enviar() {
+    expect(finalizar().disabled).toBe(false);
+    await act(async () => {
+      finalizar().click();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    return createOrder.mock.calls[0][0];
+  }
+
+  it("só pergunta quando dinheiro está selecionado; Não é o padrão", async () => {
+    await montar();
+    expect(hospedeiro.textContent).not.toContain("Precisa de troco?");
+    act(() => botao("Dinheiro na Entrega").click());
+    expect(hospedeiro.textContent).toContain("Precisa de troco?");
+    expect(escolha("nao").checked).toBe(true);
+    expect(campo()).toBeNull();
+    expect(finalizar().disabled).toBe(false);
+  });
+
+  it("não pergunta na retirada quando a loja só oferece Pix", async () => {
+    formas = ["pix"];
+    opcaoDeFrete = { ...entrega, id: "store-pickup", provider: "pickup" };
+    await renderizar();
+    expect(botao("Pix na Retirada")).toBeDefined();
+    expect(botao("Dinheiro na Retirada")).toBeUndefined();
+    expect(hospedeiro.textContent).not.toContain("Precisa de troco?");
+  });
+
+  it.each([
+    [76.5, "100", "Troco para R$ 100,00 (levar R$ 23,50)"],
+    [19.9, "20", "Troco para R$ 20,00 (levar R$ 0,10)"],
+    [19.9, "20,10", "Troco para R$ 20,10 (levar R$ 0,20)"],
+    [19.9, "20.10", "Troco para R$ 20,10 (levar R$ 0,20)"],
+    [10_000, "10.000,01", "Troco para R$ 10.000,01 (levar R$ 0,01)"],
+  ])(
+    "com total %s e pagamento %s, envia o troco antes da nota",
+    async (preco, valor, prefixo) => {
+      total = preco;
+      await montar();
+      await pedirTroco(valor);
+      act(() => digitar(nota(), "Tocar a campainha.\nO portão é azul."));
+      const pedido = await enviar();
+      expect(pedido).toMatchObject({
+        totalAmount: preco,
+        paymentMethod: "cash",
+      });
+      expect(
+        pedido.notes.startsWith(
+          `${prefixo}\nTocar a campainha.\nO portão é azul.`,
+        ),
+      ).toBe(true);
+    },
+  );
+
+  it.each(["", "0", "76.49", "76,50", "abc", "1000000000,00"])(
+    "bloqueia valor inválido (%j) e anuncia o motivo junto ao campo",
+    async (valor) => {
+      await montar();
+      await pedirTroco("100");
+      const regiao = aviso();
+      expect(regiao.textContent).toBe("");
+      act(() => digitar(campo(), valor));
+      expect(aviso()).toBe(regiao);
+      expect(regiao.textContent).toMatch(/valor|troco/i);
+      expect(finalizar().disabled).toBe(true);
+      act(() => finalizar().click());
+      expect(createOrder).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["Pix na Entrega", "Não"])(
+    "escolher %s tira o prefixo sem apagar a nota",
+    async (mudanca) => {
+      await montar();
+      await pedirTroco("100");
+      act(() => {
+        digitar(nota(), "Deixar na portaria.");
+        if (mudanca === "Não") escolha("nao").click();
+        else botao(mudanca).click();
+      });
+      expect(campo()).toBeNull();
+      const pedido = await enviar();
+      expect(pedido.notes).toMatch(/^Deixar na portaria\./);
+      expect(pedido.notes).not.toContain("Troco para");
+    },
+  );
+
+  it("não envia o troco antigo se a forma de pagamento mudar antes do envio", async () => {
+    await montar();
+    await pedirTroco("100");
+    let liberarSessao: (vale: boolean) => void = () => {};
+    sessaoAindaEhDoDono.mockReturnValueOnce(
+      new Promise<boolean>((resolve) => {
+        liberarSessao = resolve;
+      }),
+    );
+    await act(async () => {
+      finalizar().click();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(sessaoAindaEhDoDono).toHaveBeenCalledTimes(1);
+    expect(createOrder).not.toHaveBeenCalled();
+
+    act(() => botao("Pix na Entrega").click());
+    await act(async () => liberarSessao(true));
+    expect(createOrder).not.toHaveBeenCalled();
+    const pedido = await enviar();
+    expect(pedido.paymentMethod).toBe("pix");
+    expect(pedido.notes ?? "").not.toContain("Troco para");
+  });
+
+  it.each(["100", ""])(
+    "cupom que zera o pedido desliga o troco com Sim marcado e valor %j",
+    async (valor) => {
+      formas = ["cash"];
+      cuponsLigados = true;
+      await montar();
+      await pedirTroco(valor);
+      act(() => digitar(nota(), "Deixar na portaria."));
+      await act(async () => {
+        digitar(
+          hospedeiro.querySelector<HTMLInputElement>("#coupon-code-input")!,
+          "CUPOM100",
+        );
+      });
+      await act(async () => {
+        botao("Aplicar").click();
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(validateCoupon).toHaveBeenCalled();
+      expect(
+        hospedeiro.querySelector('[data-testid="checkout-pedido-sem-valor"]'),
+      ).not.toBeNull();
+      expect(botao("Dinheiro na Entrega").getAttribute("aria-checked")).toBe(
+        "true",
+      );
+
+      expect(hospedeiro.textContent).not.toContain("Precisa de troco?");
+      const pedido = await enviar();
+      expect(pedido).toMatchObject({ totalAmount: 0, couponCode: "CUPOM100" });
+      expect(pedido.notes).toMatch(/^Deixar na portaria\./);
+      expect(pedido.notes).not.toContain("Troco para");
+    },
+  );
+
+  it("ao trocar de entrega para retirada em dinheiro, ignora o troco", async () => {
+    await montar();
+    await pedirTroco("100");
+    opcaoDeFrete = { ...entrega, id: "store-pickup", provider: "pickup" };
+    await renderizar();
+
+    expect(botao("Dinheiro na Retirada").getAttribute("aria-checked")).toBe(
+      "true",
+    );
+    expect(hospedeiro.textContent).not.toContain("Precisa de troco?");
+    const pedido = await enviar();
+    expect(pedido).toMatchObject({ totalAmount: 76.5, paymentMethod: "cash" });
+    expect(pedido.notes ?? "").not.toContain("Troco para");
+  });
+
+  it("revalida o valor e refaz a conta quando muda o total", async () => {
+    await montar();
+    await pedirTroco("100");
+    total = 100;
+    await renderizar();
+    expect(aviso().textContent).toMatch(/maior.*total/i);
+    expect(finalizar().disabled).toBe(true);
+
+    total = 89.9;
+    await renderizar();
+    expect(aviso().textContent).toBe("");
+    const pedido = await enviar();
+    expect(pedido.notes).toMatch(/^Troco para R\$ 100,00 \(levar R\$ 10,10\)/);
+  });
+
+  it("reserva espaço na nota e preserva o prefixo mesmo com a nota já cheia", async () => {
+    await montar();
+    const textoLongo = `${"x".repeat(457)}🚪${"y".repeat(41)}`;
+    act(() => digitar(nota(), textoLongo));
+    expect(nota().maxLength).toBe(500);
+    await pedirTroco("100");
+    const prefixo = "Troco para R$ 100,00 (levar R$ 23,50)\n";
+    expect(nota().maxLength).toBe(500 - prefixo.length);
+    expect(nota().value).toBe(textoLongo);
+    const pedido = await enviar();
+    const [primeiraLinha, notaEnviada] = pedido.notes.split("\n");
+    expect(`${primeiraLinha}\n`).toBe(prefixo);
+    expect(notaEnviada.length).toBeLessThanOrEqual(500 - prefixo.length);
+    expect(notaEnviada).toMatch(/^x{457}🚪y+…$/u);
+  });
+});

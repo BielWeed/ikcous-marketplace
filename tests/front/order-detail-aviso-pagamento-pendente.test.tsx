@@ -10,7 +10,7 @@
 //      de pedidos, para o vocabulário ficar idêntico);
 //   2. clicar em "Avançar" com `paymentStatus` em 'aguardando', 'recusado'
 //      ou 'estornado' abre uma confirmação antes de mudar o status;
-//      `null`/'pago'/'pago_apos_expirar' avançam direto, sem aviso.
+//      `pago_apos_expirar` tem um aviso próprio; `null`/'pago' avançam direto.
 //
 // `@/lib/supabase` é mocado pelo mesmo motivo dos outros testes deste
 // componente: OrderDetail.tsx importa `supabase` no topo (usado no useEffect
@@ -407,6 +407,36 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
       "Este pedido não está com o pagamento confirmado",
     );
     expect(onStatusChange).toHaveBeenCalledWith(
+      "ped-teste",
+      "processing",
+      "pending",
+    );
+  });
+
+  it("pago fora do fluxo: só avança após confirmar a conferência do pagamento", async () => {
+    const { OrderDetail } = await import(
+      "@/components/admin/orders/OrderDetail"
+    );
+    const order = pedidoFake("pago_apos_expirar");
+    const onStatusChange = vi.fn();
+    await act(async () =>
+      raiz.render(
+        <OrderDetail order={order} onStatusChange={onStatusChange} />,
+      ),
+    );
+
+    await act(async () =>
+      localizarBotaoPorTexto(hospedeiro, "Avançar →")!.click(),
+    );
+    expect(onStatusChange).not.toHaveBeenCalled();
+    expect(hospedeiro.textContent).toContain(
+      "Este pedido está marcado como pago fora do fluxo. Confirme que o pagamento foi conferido antes de avançar.",
+    );
+
+    await act(async () =>
+      localizarBotaoPorTexto(hospedeiro, "Avançar mesmo assim")!.click(),
+    );
+    expect(onStatusChange).toHaveBeenCalledExactlyOnceWith(
       "ped-teste",
       "processing",
       "pending",

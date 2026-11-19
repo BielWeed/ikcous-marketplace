@@ -325,6 +325,9 @@ describe.each(imagens)(
         }
         await selecionarArquivo();
         await terminarLeitura();
+        const operacao =
+          fase === "compressao" ? imagem.comprimir : updateProfile;
+        expect(operacao).toHaveBeenCalledTimes(1);
         await trocarConta();
         const erroNoConsole = vi
           .spyOn(console, "error")

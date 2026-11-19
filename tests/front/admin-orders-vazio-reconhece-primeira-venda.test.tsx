@@ -19,8 +19,9 @@ let mockOrders: any[] = [];
 let mockTotalOrders = 0;
 
 // Contagem ABSOLUTA de pedidos na loja — o que o novo count sem filtro
-// devolve. `null` simula erro (a view deve manter as mensagens de sempre).
+// devolve. `null` simula erro, não zero pedidos.
 let totalAbsolutoNoBanco: number | null = 0;
+let esperaDaContagem: Promise<void> | undefined;
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
@@ -32,10 +33,12 @@ vi.mock("@/lib/supabase", () => ({
       builder.is = vi.fn(() => builder);
       // biome-ignore lint/suspicious/noThenProperty: mock do query builder thenable do Supabase
       builder.then = (resolve: any, reject?: any) =>
-        Promise.resolve({
-          count: totalAbsolutoNoBanco,
-          error: totalAbsolutoNoBanco === null ? { message: "x" } : null,
-        }).then(resolve, reject);
+        Promise.resolve(esperaDaContagem)
+          .then(() => ({
+            count: totalAbsolutoNoBanco,
+            error: totalAbsolutoNoBanco === null ? { message: "x" } : null,
+          }))
+          .then(resolve, reject);
       return builder;
     }),
     rpc: vi.fn(() =>
@@ -118,6 +121,40 @@ describe("AdminOrdersView — loja sem pedido nenhum vs filtro vazio", () => {
     mockOrders = [];
     mockTotalOrders = 0;
     totalAbsolutoNoBanco = 0;
+    esperaDaContagem = undefined;
+  });
+
+  it("Em Aberto não afirma que houve pedidos enquanto espera a contagem", async () => {
+    let concluir!: () => void;
+    esperaDaContagem = new Promise<void>((resolve) => {
+      concluir = resolve;
+    });
+    const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
+    await act(async () => {
+      raiz.render(<AdminOrdersView onNavigate={vi.fn()} active />);
+    });
+
+    expect(hospedeiro.textContent).not.toContain("já foram atendidos");
+    expect(hospedeiro.textContent).not.toContain(
+      "Seus pedidos vão aparecer aqui",
+    );
+
+    await act(async () => concluir());
+    expect(hospedeiro.textContent).toContain("Seus pedidos vão aparecer aqui");
+  });
+
+  it("Em Aberto usa texto neutro quando a contagem falha", async () => {
+    totalAbsolutoNoBanco = null;
+    const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
+    await act(async () => {
+      raiz.render(<AdminOrdersView onNavigate={vi.fn()} active />);
+    });
+
+    expect(hospedeiro.textContent).not.toContain("já foram atendidos");
+    expect(hospedeiro.textContent).not.toContain(
+      "Seus pedidos vão aparecer aqui",
+    );
+    expect(hospedeiro.textContent).toContain("Nada para preparar agora");
   });
 
   it("loja sem venda nenhuma: 'Seus pedidos vão aparecer aqui', não orientação de filtro", async () => {
@@ -159,6 +196,7 @@ describe("AdminOrdersView — loja sem pedido nenhum vs filtro vazio", () => {
     // pagamento. A causa é certa: não há pedido em aberto. Não é "recorte"
     // nem "filtro errado", e a saída não é "limpar filtros".
     expect(hospedeiro.textContent).toContain("Nada para preparar agora");
+    expect(hospedeiro.textContent).toContain("já foram atendidos");
     expect(hospedeiro.textContent).toContain(
       "Os finalizados e cancelados continuam em Todos",
     );

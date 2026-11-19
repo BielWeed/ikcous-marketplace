@@ -63,8 +63,10 @@ describe("Meu pedido — total sem prometer o valor da fatura", () => {
       id: "pedido-parcelado",
       customer_name: "Cliente Teste",
       customer_data: {},
-      total: 100,
+      total: 112.4,
       subtotal: 100,
+      shipping: 19.9,
+      discount: 7.5,
       payment_method: paymentMethod,
       payment_status: paymentStatus,
       status,
@@ -91,6 +93,12 @@ describe("Meu pedido — total sem prometer o valor da fatura", () => {
   it("12x no crédito mostra o total do pedido e explica os juros da fatura", async () => {
     const texto = await renderizar("credito", 12);
     expect(texto).toContain("Total do pedido");
+    const rotulo = Array.from(hospedeiro.querySelectorAll("span")).find(
+      (span) => span.textContent === "Total do pedido",
+    );
+    const textoDoValor = rotulo?.nextElementSibling?.textContent;
+    const valor = textoDoValor?.replaceAll(" ", " ");
+    expect(valor).toBe("R$ 112,40");
     expect(texto).toContain(
       "Parcelado em 12x no cartão. Juros do parcelamento, se houver, vêm na fatura.",
     );

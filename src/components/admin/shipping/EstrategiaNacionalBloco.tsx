@@ -6,6 +6,7 @@ import {
   resumoDaEstrategiaNacional,
 } from "@/lib/estrategias-de-frete";
 import { parseValorBR } from "@/lib/financeiro";
+import { formatCurrency } from "@/lib/utils";
 import type { EstrategiaDeFreteNacional } from "@/types";
 import { AlertCircle } from "lucide-react";
 import { memo, useEffect, useState } from "react";
@@ -72,7 +73,9 @@ function reaisDoTexto(texto: string): number {
 }
 
 function textoDeReais(valor: number): string {
-  return valor === 0 ? "" : String(valor);
+  if (valor === 0) return "";
+  if (!Number.isFinite(valor)) return String(valor);
+  return formatCurrency(valor).replace(/R\$\s*/, "");
 }
 
 /** Dinheiro como a pessoa escreve, sempre com centavos: "R$ 24,90". */

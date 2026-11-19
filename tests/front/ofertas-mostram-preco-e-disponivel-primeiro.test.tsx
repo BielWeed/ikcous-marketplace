@@ -124,12 +124,19 @@ describe("PremiumOffers — preço e ordem da faixa de ofertas", () => {
     it("com originalPrice: continua De (riscado) / Por / Economize, como sempre", async () => {
       await renderizar([criarProduto({ price: 50, originalPrice: 80 })]);
 
-      expect(hospedeiro.textContent).toContain(`De: ${formatCurrency(80)}`);
-      expect(hospedeiro.textContent).toContain(`Por: ${formatCurrency(50)}`);
+      const precos = Array.from(hospedeiro.querySelectorAll("span"));
+      const de = precos.find(
+        (el) => el.textContent?.trim() === `De: ${formatCurrency(80)}`,
+      );
+      const por = precos.find(
+        (el) => el.textContent?.trim() === `Por: ${formatCurrency(50)}`,
+      );
+
+      expect(de?.classList.contains("line-through")).toBe(true);
+      expect(por?.classList.contains("line-through")).toBe(false);
       expect(hospedeiro.textContent).toContain(
         `Economize ${formatCurrency(30)}`,
       );
-      expect(hospedeiro.querySelector(".line-through")).not.toBeNull();
     });
 
     it("originalPrice igual ao preço atual não finge promoção: preço simples, sem riscado", async () => {
@@ -186,6 +193,25 @@ describe("PremiumOffers — preço e ordem da faixa de ofertas", () => {
         "Esgotada 50",
         "Esgotada 10",
       ]);
+    });
+
+    it("o maior percentual vem primeiro, mesmo com menor economia em reais", async () => {
+      await renderizar([
+        criarProduto({
+          id: "25-off",
+          name: "Oferta 25%",
+          price: 150,
+          originalPrice: 200,
+        }),
+        criarProduto({
+          id: "50-off",
+          name: "Oferta 50%",
+          price: 20,
+          originalPrice: 40,
+        }),
+      ]);
+
+      expect(nomesNaOrdem()).toEqual(["Oferta 50%", "Oferta 25%"]);
     });
 
     it("empate mantém a ordem recebida (estável), inclusive sem preço promocional", async () => {

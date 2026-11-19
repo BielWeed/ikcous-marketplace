@@ -23,7 +23,7 @@ import {
   pedidoSemValorAPagar,
 } from "@/lib/forma-de-pagamento";
 import { gerarUuidV4 } from "@/lib/uuid-v4";
-import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
+import { linkWhatsappDoClienteDoBalcao } from "@/lib/whatsapp-do-cliente";
 import type { Order } from "@/types";
 import {
   AlertTriangle,
@@ -163,7 +163,7 @@ export function ReciboDaVenda({
   }, [confirmandoNovaVenda]);
   const divergencia = recibo.divergenciaComATela;
   const whatsapp = whatsappDoCliente(recibo.cliente);
-  const linkWhatsapp = linkWhatsappDoCliente(whatsapp);
+  const linkWhatsapp = linkWhatsappDoClienteDoBalcao(whatsapp);
   // A MESMA decisão do papel (`OrderReceipt` -> `rotuloDaFormaDoPedido`): venda
   // de R$ 0,00 não tem forma de pagamento a mostrar nem pagamento conferido.
   const semValorAPagar = pedidoSemValorAPagar({
@@ -357,7 +357,7 @@ export function ReciboDaVenda({
               className="pdv-muted text-center"
             >
               {whatsapp
-                ? "Indisponível: WhatsApp do cliente inválido."
+                ? "Indisponível: WhatsApp do cliente inválido ou incompleto."
                 : "Indisponível: cliente sem WhatsApp."}
             </p>
           )}

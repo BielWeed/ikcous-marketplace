@@ -10,7 +10,7 @@ import {
   Save,
   Tag,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";
 import { CARTAO_AJUSTES, IconeDeAjustes } from "./visual-ajustes";
 
@@ -55,6 +55,9 @@ import { haptic } from "@/utils/haptic";
 // do id 1), então repetir o mesmo pedido deixa o mesmo resultado.
 const SEM_RESPOSTA_AO_SALVAR =
   "Sem resposta da rede. Não dá para saber se a política foi salva. O que você digitou continua na tela: toque em Salvar política de novo e espere o aviso de que foi salva.";
+
+const AVISO_ENDERECO_PENDENTE =
+  "Informe o endereço de devolução ou marque 'Mesmo endereço da loja'.";
 
 /** O formulário: prazos em texto (o campo pode ficar vazio enquanto digita). */
 interface FormDaPolitica {
@@ -178,9 +181,9 @@ export function PoliticaDeDevolucaoSection({
   const [erroDeLeitura, setErroDeLeitura] = useState(false);
   const [salvando, setSalvando] = useState(false);
   // "Mesmo endereço da loja": só apresentação. Marcada = `endereco_devolucao`
-  // vazio, que já era "usa o endereço da loja"; o payload da RPC não muda.
-  // Desmarcar com o campo vazio também grava vazio (como antes).
+  // vazio, que já era "usa o endereço da loja". A entrega na loja exige endereço.
   const [mesmoEndereco, setMesmoEndereco] = useState(true);
+  const avisoEnderecoId = useId();
   // O endereço que estava no campo quando a caixa foi marcada: desmarcar de
   // novo o devolve, em vez de apagar o que a loja tinha digitado.
   const enderecoAntesDaCaixaRef = useRef("");
@@ -334,6 +337,19 @@ export function PoliticaDeDevolucaoSection({
     vicio: erroDoVicio(form.prazo_vicio_dias, form.prazo_arrependimento_dias),
   };
   const temErro = Object.values(erros).some((e) => e !== null);
+  const enderecoDaLoja = config.storeAddress?.trim();
+  const temDevolucaoPresencial =
+    form.metodos_locais.includes("entrega_na_loja");
+  const enderecoEscolhido = mesmoEndereco
+    ? enderecoDaLoja
+    : form.endereco_devolucao.trim();
+  const avisoEndereco =
+    temDevolucaoPresencial && !enderecoEscolhido
+      ? mesmoEndereco
+        ? "Cadastre o endereço em Minha loja ou informe outro endereço de devolução."
+        : AVISO_ENDERECO_PENDENTE
+      : null;
+  const enderecoPendente = avisoEndereco !== null;
 
   function alternarMetodo(
     lista: "metodos_locais" | "metodos_nacionais",
@@ -377,7 +393,7 @@ export function PoliticaDeDevolucaoSection({
   }
 
   async function salvar() {
-    if (!form || salvando) return;
+    if (!form || salvando || enderecoPendente) return;
     if (temErro) {
       toast.error("Corrija os prazos destacados antes de salvar.");
       return;
@@ -625,20 +641,40 @@ export function PoliticaDeDevolucaoSection({
             Mesmo endereço da loja
           </label>
           {mesmoEndereco ? (
-            <p className="text-[11px] leading-relaxed text-zinc-400">
-              {config.storeAddress?.trim() ||
+            <p
+              id={enderecoPendente ? avisoEnderecoId : undefined}
+              role={enderecoPendente ? "alert" : undefined}
+              className="text-[11px] leading-relaxed text-zinc-400"
+            >
+              {enderecoDaLoja ||
+                avisoEndereco ||
                 "A loja ainda não tem endereço. Cadastre em Minha loja."}
             </p>
           ) : (
-            <LocalBufferedInput
-              id="politica-endereco"
-              aria-label="Endereço para devolução"
-              value={form.endereco_devolucao}
-              maxLength={300}
-              placeholder="Rua, número, bairro e cidade"
-              onFlush={(v) => mudar("endereco_devolucao", v)}
-              className={CAMPO}
-            />
+            <>
+              <LocalBufferedInput
+                id="politica-endereco"
+                aria-label="Endereço para devolução"
+                aria-invalid={enderecoPendente || undefined}
+                aria-describedby={
+                  enderecoPendente ? avisoEnderecoId : undefined
+                }
+                value={form.endereco_devolucao}
+                maxLength={300}
+                placeholder="Rua, número, bairro e cidade"
+                onFlush={(v) => mudar("endereco_devolucao", v)}
+                className={CAMPO}
+              />
+              {enderecoPendente && (
+                <p
+                  id={avisoEnderecoId}
+                  role="alert"
+                  className="mt-1 text-xs text-red-300"
+                >
+                  {AVISO_ENDERECO_PENDENTE}
+                </p>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -744,7 +780,10 @@ export function PoliticaDeDevolucaoSection({
           <button
             type="button"
             onClick={() => void salvar()}
-            disabled={!sujo || salvando || temErro || isOffline}
+            disabled={
+              !sujo || salvando || temErro || isOffline || enderecoPendente
+            }
+            aria-describedby={enderecoPendente ? avisoEnderecoId : undefined}
             className="admin-barra-principal ajustes-primario flex min-h-14 w-full items-center justify-center gap-2"
           >
             {salvando ? (

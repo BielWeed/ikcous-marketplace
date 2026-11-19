@@ -113,7 +113,14 @@ describe("preparação do incidente PWA — espera estado, não existência de c
   ])("repete false assíncrono na espera de $nome", async ({ esperar }) => {
     let registro: Estado = {};
     const active = { state: "activated" };
-    const getRegistration = vi.fn(async () => registro);
+    let avisarSegundaConsulta!: () => void;
+    const segundaConsulta = new Promise<void>((resolve) => {
+      avisarSegundaConsulta = resolve;
+    });
+    const getRegistration = vi.fn(async () => {
+      if (getRegistration.mock.calls.length === 2) avisarSegundaConsulta();
+      return registro;
+    });
     const serviceWorker = {
       getRegistration,
       controller: null as object | null,
@@ -128,19 +135,16 @@ describe("preparação do incidente PWA — espera estado, não existência de c
     let terminou = false;
     const verificar = {
       poll: (ler: () => Promise<boolean>) =>
-        expect.poll(ler, { timeout: 1000, interval: 10 }),
+        expect.poll(ler, { timeout: 3000, interval: 10 }),
     };
     const execucao = esperar(page, verificar).then(() => {
       terminou = true;
     });
     try {
-      // Duas leituras provam retry de false, não apenas adoção da Promise.
-      await expect
-        .poll(() => getRegistration.mock.calls.length, {
-          timeout: 500,
-          interval: 10,
-        })
-        .toBeGreaterThanOrEqual(2);
+      // A própria consulta sinaliza a nova tentativa. Se a espera terminar
+      // sem repetir a leitura, a contagem abaixo denuncia o erro.
+      await Promise.race([segundaConsulta, execucao]);
+      expect(getRegistration.mock.calls.length).toBeGreaterThanOrEqual(2);
       expect(terminou).toBe(false);
     } finally {
       registro = { active, waiting: { state: "installed" } };

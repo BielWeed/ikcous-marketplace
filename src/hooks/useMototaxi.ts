@@ -15,6 +15,23 @@ export interface ConfigMototaxi {
   nome: string | null;
 }
 
+/** Leitura direta, inclusive para conferir o destinatário antes do despacho. */
+export async function lerContatoMototaxi(): Promise<ConfigMototaxi | null> {
+  const { data, error } = await aguardarComPrazo(
+    Promise.resolve(
+      supabase
+        .from("config_mototaxi")
+        .select("whatsapp,nome")
+        .eq("id", 1)
+        .maybeSingle(),
+    ),
+    PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+    () => erroDeConsultaSemResposta(),
+  );
+  if (error) throw error;
+  return data;
+}
+
 /** Só componentes do painel. Nunca passa pelo StoreContext, vault ou storage público.
  * O sinal só dispara leitura nova quando muda (ex.: voltar à aba), não é uma trava. */
 export function useMototaxi(sinalDeReleitura?: boolean) {
@@ -28,19 +45,8 @@ export function useMototaxi(sinalDeReleitura?: boolean) {
       try {
         // Rede pendurada vira o erro com nova tentativa já usado no painel;
         // a resposta tardia desta leitura não sobrescreve a tentativa seguinte.
-        const { data, error } = await aguardarComPrazo(
-          Promise.resolve(
-            supabase
-              .from("config_mototaxi")
-              .select("whatsapp,nome")
-              .eq("id", 1)
-              .maybeSingle(),
-          ),
-          PRAZO_DA_CONSULTA_DO_PAINEL_MS,
-          () => erroDeConsultaSemResposta(),
-        );
+        const data = await lerContatoMototaxi();
         if (!atual) return;
-        if (error) throw error;
         setConfig(data ?? { whatsapp: null, nome: null });
         setErro(false);
       } catch {

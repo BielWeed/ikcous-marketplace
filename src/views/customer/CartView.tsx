@@ -367,9 +367,16 @@ function ConteudoDoCarrinho({
   // não relê, porque a leitura explícita aplica o catálogo ao carrinho, gira a
   // chave e o próximo "Finalizar" criaria um SEGUNDO pedido.
   const irAoCarrinhoRelido = useIrAoCarrinhoRelido();
-  const isActiveRef = useRef(isActive);
-  isActiveRef.current = isActive;
   const indoAoCheckoutRef = useRef(false);
+  const [releituraTerminou, setReleituraTerminou] = useState(false);
+  useEffect(() => {
+    if (!releituraTerminou) return;
+    setReleituraTerminou(false);
+    indoAoCheckoutRef.current = false;
+    // A promessa pode resolver antes de o React aplicar a remoção dos itens.
+    // Decide com o carrinho atualizado, sem arrastar quem já saiu desta tela.
+    if (isActive && cart.length > 0) onNavigate("checkout");
+  }, [releituraTerminou, isActive, cart.length, onNavigate]);
   const irAoCheckout = () => {
     if (indoAoCheckoutRef.current) return;
     if (haChaveDoPedidoVigente(user?.id ?? null)) {
@@ -378,9 +385,7 @@ function ConteudoDoCarrinho({
     }
     indoAoCheckoutRef.current = true;
     irAoCarrinhoRelido(() => {
-      indoAoCheckoutRef.current = false;
-      // Saiu desta tela durante a leitura: não é arrastada ao checkout.
-      if (isActiveRef.current) onNavigate("checkout");
+      setReleituraTerminou(true);
     });
   };
 

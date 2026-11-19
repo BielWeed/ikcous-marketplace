@@ -1,3 +1,4 @@
+import { cortarTexto } from "@/lib/cortar-texto";
 import {
   linkDeRastreioDeCodigoValido,
   normalizarCodigoDeRastreio,
@@ -47,13 +48,41 @@ interface DadosDaMensagem {
   status: string;
   retiradaNaLoja?: boolean | null;
   codigoDeRastreio?: string | null;
+  enderecoDeRetirada?: string | null;
+  horarioDeAtendimento?: string | null;
+}
+
+function limitarTrechoParaWhatsapp(
+  texto: string,
+  max: number,
+  maxCodificado: number,
+): string {
+  if (
+    texto.length <= max &&
+    encodeURIComponent(texto).length <= maxCodificado
+  ) {
+    return texto;
+  }
+
+  // O mesmo caractere pode ocupar mais de uma posição na URL. Reserve
+  // espaço para as reticências e conte por pontos de código, sem partir pares.
+  let restante = maxCodificado - encodeURIComponent("…").length;
+  let unidades = 0;
+  for (const caractere of texto) {
+    restante -= encodeURIComponent(caractere).length;
+    if (restante < 0 || unidades + caractere.length >= max) break;
+    unidades += caractere.length;
+  }
+
+  // Inclui o próximo ponto de código para o helper localizar a fronteira,
+  // sem precisar segmentar o texto inteiro quando ele é muito grande.
+  return cortarTexto(texto.slice(0, unidades + 3), unidades + 1);
 }
 
 /**
- * O texto que o botão de WhatsApp do painel abre para a cliente. Fica igual ao
- * de sempre em todo caso sem rastreio; quando o pedido está ENVIADO, é de
- * ENTREGA e tem código, ganha o código e o link para acompanhar. Serve a quem
- * comprou como convidada, que não tem conta, sino nem e-mail no pedido.
+ * O texto que o botão de WhatsApp do painel abre para a cliente. Acrescenta
+ * rastreio na entrega a caminho ou orientações na retirada pronta, quando
+ * disponíveis. Serve também a quem comprou como convidada.
  */
 export function mensagemDoStatusNoWhatsapp({
   nomeDoCliente,
@@ -63,6 +92,8 @@ export function mensagemDoStatusNoWhatsapp({
   status,
   retiradaNaLoja,
   codigoDeRastreio,
+  enderecoDeRetirada,
+  horarioDeAtendimento,
 }: DadosDaMensagem): string {
   const codigo = normalizarCodigoDeRastreio(codigoDeRastreio ?? "");
   const link =
@@ -72,11 +103,20 @@ export function mensagemDoStatusNoWhatsapp({
   const rastreio = link
     ? `Código de rastreio: ${codigo}\nAcompanhe a entrega: ${link}\n`
     : "";
+  let orientacoesDeRetirada = "";
+  if (retiradaNaLoja === true && status === "shipping") {
+    if (enderecoDeRetirada?.trim()) {
+      orientacoesDeRetirada += `Retire em: ${limitarTrechoParaWhatsapp(enderecoDeRetirada, 300, 950)}\n`;
+    }
+    if (horarioDeAtendimento?.trim()) {
+      orientacoesDeRetirada += `Horário: ${limitarTrechoParaWhatsapp(horarioDeAtendimento, 200, 650)}\n`;
+    }
+  }
   // Pedido cancelado não agradece a compra: avisa e deixa a conversa aberta
   // para a lojista explicar o motivo.
   const fecho =
     status === "cancelled"
       ? "Qualquer dúvida sobre o cancelamento, é só responder esta mensagem."
       : `Obrigado por comprar na ${nomeDaLoja}!`;
-  return `Olá ${nomeOuReserva(nomeDoCliente, "Cliente")}!\n\nSeu pedido #${numeroDoPedido} foi atualizado.\nStatus: ${rotuloDoStatus}\n${rastreio}\n${fecho}`;
+  return `Olá ${nomeOuReserva(nomeDoCliente, "Cliente")}!\n\nSeu pedido #${numeroDoPedido} foi atualizado.\nStatus: ${rotuloDoStatus}\n${rastreio}${orientacoesDeRetirada}\n${fecho}`;
 }

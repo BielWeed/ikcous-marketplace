@@ -1,6 +1,7 @@
 import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import type { DashboardStats } from "@/hooks/useAnalytics";
 import type { FormaDePagamentoNaEntrega } from "@/lib/formas-de-pagamento-na-entrega";
+import { modoDaEntregaNaCidade } from "@/lib/guarda-de-frete";
 import {
   type ChaveDosSeisPassos,
   type ConfigDosSeisPassos,
@@ -164,7 +165,10 @@ export function LojaProntaEEstoqueBaixo({
   // O texto do aviso amarelo. Desde 15/10/2026 o MESMO aviso também deixa o
   // passo "entrega" pendente (`estadoDaEntrega`), então ele nunca convive com
   // "Loja pronta"; aqui ele só detalha o que o passo pede e leva ao Frete.
-  const avisoDaFaixa = configCarregando ? null : avisoDaFaixaDeCep(config);
+  const avisoDaFaixa =
+    configCarregando || modoDaEntregaNaCidade(config) === "so_retiro"
+      ? null
+      : avisoDaFaixaDeCep(config);
 
   if (somenteBoasVindas) {
     if (conferindo || lojaPronta || !proximo) return null;

@@ -570,7 +570,7 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
                         Nenhuma avaliação
                       </p>
                       <p className="mt-1 text-xs text-zinc-500">
-                        Este usuário ainda não avaliou nenhum produto.
+                        Nenhuma avaliação publicada ainda.
                       </p>
                     </div>
                   ) : (

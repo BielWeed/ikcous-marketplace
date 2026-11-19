@@ -1,4 +1,3 @@
-import { format } from "date-fns";
 // @vitest-environment jsdom
 //
 // Frente "ficha do cliente" (03/09): o resumo do topo responde "quem é este
@@ -261,11 +260,74 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 // timeout dentro de cada `it`.
 let TelaFicha: typeof TipoTelaFicha;
 
-beforeAll(async () => {
-  ({ AdminUserDetailView: TelaFicha } = await import(
-    "@/views/admin/AdminUserDetailView"
-  ));
-});
+const COMPRA_PERTO_DA_MEIA_NOITE = "2026-09-12T01:00:00Z";
+
+async function comFusoLocalUtc(executar: () => Promise<void>) {
+  const fusoAnterior = process.env.TZ;
+  const restaurar: (() => void)[] = [];
+  try {
+    process.env.TZ = "UTC";
+    // Em worker threads, mudar TZ pode não mudar o calendário do Node.
+    // Simula UTC nas leituras locais, sem trocar o fuso pedido explicitamente.
+    if (
+      new Intl.DateTimeFormat().resolvedOptions().timeZone !== "UTC" ||
+      new Date(COMPRA_PERTO_DA_MEIA_NOITE).getTimezoneOffset() !== 0
+    ) {
+      const FormatoNativo = Intl.DateTimeFormat;
+      const dataLocalNativa = Date.prototype.toLocaleDateString;
+      const emUtc = (opcoes?: Intl.DateTimeFormatOptions) => ({
+        ...opcoes,
+        timeZone: opcoes?.timeZone ?? "UTC",
+      });
+      const formato = vi.spyOn(Intl, "DateTimeFormat");
+      restaurar.push(() => formato.mockRestore());
+      formato.mockImplementation(
+        // biome-ignore lint/complexity/useArrowFunction: Intl também chama com new.
+        function (idiomas, opcoes) {
+          return new FormatoNativo(idiomas, emUtc(opcoes));
+        },
+      );
+
+      // Mantém a classe Date nativa e troca somente as leituras locais.
+      for (const [metodo, lerEmUtc] of [
+        ["getFullYear", Date.prototype.getUTCFullYear],
+        ["getMonth", Date.prototype.getUTCMonth],
+        ["getDate", Date.prototype.getUTCDate],
+        ["getDay", Date.prototype.getUTCDay],
+        ["getHours", Date.prototype.getUTCHours],
+        ["getMinutes", Date.prototype.getUTCMinutes],
+        ["getSeconds", Date.prototype.getUTCSeconds],
+        ["getMilliseconds", Date.prototype.getUTCMilliseconds],
+        ["getTimezoneOffset", () => 0],
+      ] as const) {
+        const leitura = vi.spyOn(Date.prototype, metodo);
+        restaurar.push(() => leitura.mockRestore());
+        leitura.mockImplementation(lerEmUtc);
+      }
+
+      const dataLocal = vi.spyOn(Date.prototype, "toLocaleDateString");
+      restaurar.push(() => dataLocal.mockRestore());
+      dataLocal.mockImplementation(function (this: Date, idiomas, opcoes) {
+        return dataLocalNativa.call(this, idiomas, emUtc(opcoes));
+      });
+    }
+    await executar();
+  } finally {
+    for (const restaurarMetodo of restaurar) restaurarMetodo();
+    if (fusoAnterior === undefined) Reflect.deleteProperty(process.env, "TZ");
+    else process.env.TZ = fusoAnterior;
+  }
+}
+
+// O CRM cria o formatador durante a importação. O fuso local já precisa
+// estar diferente de São Paulo nesse momento, não só ao renderizar.
+beforeAll(() =>
+  comFusoLocalUtc(async () => {
+    ({ AdminUserDetailView: TelaFicha } = await import(
+      "@/views/admin/AdminUserDetailView"
+    ));
+  }),
+);
 
 describe("AdminUserDetailView — os cartões do resumo no ar", () => {
   let raiz: Root;
@@ -299,7 +361,7 @@ describe("AdminUserDetailView — os cartões do resumo no ar", () => {
         id: "pix-pendente",
         status: "pending",
         total: 30,
-        createdAt: "2026-09-12T12:00:00Z",
+        createdAt: COMPRA_PERTO_DA_MEIA_NOITE,
         paymentStatus: "aguardando",
       }),
       pedido({
@@ -408,25 +470,32 @@ describe("AdminUserDetailView — os cartões do resumo no ar", () => {
     },
   );
 
-  it("Última Compra é a data do pedido que conta mais recente, não a do cancelado", async () => {
-    await abrirFicha();
+  it("Última Compra é a data do pedido que conta mais recente, não a do cancelado", () =>
+    comFusoLocalUtc(async () => {
+      expect(new Intl.DateTimeFormat().resolvedOptions().timeZone).toBe("UTC");
+      const instante = new Date(COMPRA_PERTO_DA_MEIA_NOITE);
+      expect(instante.getDate()).toBe(12);
+      expect(instante.getHours()).toBe(1);
+      expect(instante.getTimezoneOffset()).toBe(0);
+      await abrirFicha();
 
-    const esperado = format(new Date("2026-09-12T12:00:00Z"), "dd/MM/yyyy");
-    const cancelado = format(new Date("2026-09-20T12:00:00Z"), "dd/MM/yyyy");
+      // 12/09 às 01:00 UTC ainda é 11/09 em America/Sao_Paulo.
+      const esperado = "11/09/2026";
+      const cancelado = "20/09/2026";
 
-    const etiqueta = [...hospedeiro.querySelectorAll("span")].find(
-      (s) => s.textContent?.trim() === "Última Compra",
-    );
-    expect(etiqueta).toBeDefined();
-    const cartao = etiqueta!.parentElement?.parentElement;
-    const data = [...(cartao?.querySelectorAll("span") ?? [])]
-      .map((s) => s.textContent?.trim() ?? "")
-      .find((t) => /\d/.test(t));
-    expect(data).toBe(esperado);
-    // A prova do engano: o cancelado é o MAIS recente de todos (20/09) e não
-    // pode aparecer como última compra.
-    expect(data).not.toBe(cancelado);
-  });
+      const etiqueta = [...hospedeiro.querySelectorAll("span")].find(
+        (s) => s.textContent?.trim() === "Última Compra",
+      );
+      expect(etiqueta).toBeDefined();
+      const cartao = etiqueta!.parentElement?.parentElement;
+      const data = [...(cartao?.querySelectorAll("span") ?? [])]
+        .map((s) => s.textContent?.trim() ?? "")
+        .find((t) => /\d/.test(t));
+      expect(data).toBe(esperado);
+      // A prova do engano: o cancelado é o MAIS recente de todos (20/09) e não
+      // pode aparecer como última compra.
+      expect(data).not.toBe(cancelado);
+    }));
 
   it("cliente que só tem pedidos cancelados mostra '—' na última compra e R$ 0,00 no dinheiro", async () => {
     estado.orders = [

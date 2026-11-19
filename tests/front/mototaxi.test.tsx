@@ -166,6 +166,17 @@ it("no formato que o checkout grava, a linha automática de frete não vira obse
   expect(msg).not.toContain("Frete Escolhido");
   expect(msg.split("\n")).toHaveLength(10);
 });
+it("a linha antiga de retirada não muda a mensagem de uma entrega", () => {
+  const notes = "Deixar na portaria";
+  const mensagem = contato.mensagemMototaxi({ ...pedido, notes }, "Loja");
+  expect(
+    contato.mensagemMototaxi(
+      { ...pedido, notes: `${notes}\n\nRetirada na loja: Rua X, 10` },
+      "Loja",
+    ),
+  ).toBe(mensagem);
+});
+
 it("pedido de entrega local sem observação só tem a nota automática de frete: sem a linha", () => {
   const notes = "Frete Escolhido: Entrega local (Prazo: no mesmo dia)";
   const msg = contato.mensagemMototaxi({ ...pedido, notes }, "Loja");
@@ -294,17 +305,17 @@ async function abrir(order = pedido) {
 }
 it("mostra o botão na ficha local com link exclusivamente wa.me e mensagem codificada", async () => {
   await abrir();
-  const a = host.querySelector<HTMLAnchorElement>(
-    'a[aria-label="Enviar ao mototáxi"]',
-  );
-  expect(a).not.toBeNull();
-  const url = new URL(a!.href);
+  const { navegar, aba, link } = await clicarParaEnviar();
+  expect(aba.opener).toBeNull();
+  expect(link.rel).toBe("noreferrer");
+  expect(navegar).toHaveBeenCalledOnce();
+  const url = new URL(navegar.mock.calls[0][0]);
   expect(url.origin).toBe("https://wa.me");
   expect(url.pathname).toBe("/5511987654321");
   expect(url.searchParams.get("text")).toContain("Cliente: Cliente fictícia");
   expect(url.searchParams.get("text")).toContain("Loja: Loja fictícia");
   expect(host.textContent).toContain(
-    "Abre o WhatsApp do Zé com a mensagem pronta",
+    "Abre o WhatsApp do mototáxi com a mensagem pronta",
   );
 });
 it.each(["pending", "processing", "shipping"] as const)(
@@ -312,7 +323,7 @@ it.each(["pending", "processing", "shipping"] as const)(
   async (status) => {
     await abrir({ ...pedido, status, paymentMethod: "cash" });
     expect(
-      host.querySelector('a[aria-label="Enviar ao mototáxi"]'),
+      host.querySelector('[aria-label="Enviar ao mototáxi"]'),
     ).not.toBeNull();
   },
 );
@@ -345,7 +356,7 @@ it.each([
   "não despacha pedido $caso",
   async ({ status, paymentMethod, paymentStatus }) => {
     await abrir({ ...pedido, status, paymentMethod, paymentStatus });
-    expect(host.querySelector('a[aria-label="Enviar ao mototáxi"]')).toBeNull();
+    expect(host.querySelector('[aria-label="Enviar ao mototáxi"]')).toBeNull();
   },
 );
 it.each(["aguardando", "recusado", "expirado", null, undefined] as const)(
@@ -359,7 +370,7 @@ it.each(["aguardando", "recusado", "expirado", null, undefined] as const)(
         paymentStatus,
       });
       expect(
-        host.querySelector('a[aria-label="Enviar ao mototáxi"]'),
+        host.querySelector('[aria-label="Enviar ao mototáxi"]'),
         `pedido: ${status}`,
       ).toBeNull();
     }
@@ -369,11 +380,8 @@ it.each(["pago", "pago_apos_expirar"] as const)(
   "despacha online confirmado em %s sem cobrar novamente",
   async (paymentStatus) => {
     await abrir({ ...pedido, paymentMethod: "online", paymentStatus });
-    const a = host.querySelector<HTMLAnchorElement>(
-      'a[aria-label="Enviar ao mototáxi"]',
-    );
-    expect(a).not.toBeNull();
-    const mensagem = new URL(a!.href).searchParams.get("text");
+    const { navegar } = await clicarParaEnviar();
+    const mensagem = new URL(navegar.mock.calls[0][0]).searchParams.get("text");
     expect(mensagem).toContain("Já pago — não cobrar");
     expect(mensagem).not.toContain("Cobrar na entrega");
   },
@@ -382,13 +390,10 @@ it.each(["cash", "pix", "card"] as const)(
   "mantém despacho com cobrança na entrega em %s",
   async (paymentMethod) => {
     await abrir({ ...pedido, paymentMethod, paymentStatus: null });
-    const a = host.querySelector<HTMLAnchorElement>(
-      'a[aria-label="Enviar ao mototáxi"]',
-    );
-    expect(a).not.toBeNull();
-    expect(new URL(a!.href).searchParams.get("text")).toContain(
-      "Cobrar na entrega",
-    );
+    const { navegar } = await clicarParaEnviar();
+    expect(
+      new URL(navegar.mock.calls[0][0]).searchParams.get("text"),
+    ).toContain("Cobrar na entrega");
   },
 );
 it.each(["store-pickup", "sedex", undefined, "LOCAL-DELIVERY"])(
@@ -410,6 +415,79 @@ async function abrirMototaxi(order = pedido) {
     root.render(<EnviarAoMototaxi order={order} loja="Loja fictícia" />);
   });
 }
+// Intercepta a navegação nativa do link antigo e a da aba reservada pelo botão.
+async function clicarParaEnviar() {
+  const comando = host.querySelector<HTMLElement>(
+    '[aria-label="Enviar ao mototáxi"]',
+  );
+  expect(comando).not.toBeNull();
+  const navegar = vi.fn();
+  const fechar = vi.fn();
+  const link = document.createElement("a");
+  vi.spyOn(link, "click").mockImplementation(() => navegar(link.href));
+  const aba = {
+    opener: window,
+    closed: false,
+    close: fechar,
+    document: { createElement: () => link, body: { append: vi.fn() } },
+  };
+  const abrirAba = vi
+    .spyOn(window, "open")
+    .mockReturnValue(aba as unknown as Window);
+  const interceptar = (evento: MouseEvent) => {
+    if (
+      evento.target === comando &&
+      comando instanceof HTMLAnchorElement &&
+      !evento.defaultPrevented
+    ) {
+      evento.preventDefault();
+      navegar(comando.href);
+    }
+  };
+  document.addEventListener("click", interceptar);
+  try {
+    await act(async () => comando!.click());
+    return { navegar, fechar, aba, link };
+  } finally {
+    document.removeEventListener("click", interceptar);
+    abrirAba.mockRestore();
+  }
+}
+
+it("consulta o número novo no clique, sem usar o que a ficha mostrou ao abrir", async () => {
+  await abrirMototaxi();
+  estado.numero = "5534987654321";
+  const { navegar } = await clicarParaEnviar();
+  expect(navegar).toHaveBeenCalledTimes(1);
+  expect(new URL(navegar.mock.calls[0][0]).pathname).toBe("/5534987654321");
+});
+
+it.each([
+  {
+    caso: "contato apagado",
+    numero: null,
+    erroLeitura: false,
+    aviso: "O mototáxi está sem um número cadastrado.",
+  },
+  {
+    caso: "falha da rede",
+    numero: "5511987654321",
+    erroLeitura: true,
+    aviso: "Não consegui consultar o número do mototáxi. Tente de novo.",
+  },
+])(
+  "não envia a mensagem em caso de $caso",
+  async ({ numero, erroLeitura, aviso }) => {
+    await abrirMototaxi();
+    estado.numero = numero;
+    estado.erroLeitura = erroLeitura;
+    const { navegar, fechar } = await clicarParaEnviar();
+    expect(navegar).not.toHaveBeenCalled();
+    expect(fechar).toHaveBeenCalledOnce();
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain(aviso);
+  },
+);
+
 it("leitura pendurada avisa depois do prazo e permite reler o contato", async () => {
   vi.useFakeTimers();
   estado.leituraPendurada = true;
@@ -429,7 +507,7 @@ it("leitura pendurada avisa depois do prazo e permite reler o contato", async ()
   await act(async () => tentar!.click());
   expect(host.querySelector('[role="alert"]')).toBeNull();
   expect(
-    host.querySelector('a[aria-label="Enviar ao mototáxi"]'),
+    host.querySelector('[aria-label="Enviar ao mototáxi"]'),
   ).not.toBeNull();
 });
 
@@ -439,7 +517,7 @@ it("avisa quando a leitura falha e relê o contato ao tentar de novo", async () 
   expect(host.textContent).toContain(
     "Não consegui ler o número do mototáxi agora.",
   );
-  expect(host.querySelector('a[aria-label="Enviar ao mototáxi"]')).toBeNull();
+  expect(host.querySelector('[aria-label="Enviar ao mototáxi"]')).toBeNull();
   const tentar = [...host.querySelectorAll("button")].find(
     (b) => b.textContent?.trim() === "Tentar de novo",
   );
@@ -452,7 +530,7 @@ it("avisa quando a leitura falha e relê o contato ao tentar de novo", async () 
   );
   expect(host.textContent).not.toContain("Tentar de novo");
   expect(
-    host.querySelector('a[aria-label="Enviar ao mototáxi"]'),
+    host.querySelector('[aria-label="Enviar ao mototáxi"]'),
   ).not.toBeNull();
 });
 it.each(["store-pickup", "sedex", undefined])(
@@ -464,7 +542,7 @@ it.each(["store-pickup", "sedex", undefined])(
       "Não consegui ler o número do mototáxi agora.",
     );
     expect(host.textContent).not.toContain("Tentar de novo");
-    expect(host.querySelector('a[aria-label="Enviar ao mototáxi"]')).toBeNull();
+    expect(host.querySelector('[aria-label="Enviar ao mototáxi"]')).toBeNull();
   },
 );
 it("nova leitura sem número cadastrado esconde o aviso e o despacho", async () => {
@@ -481,7 +559,7 @@ it("nova leitura sem número cadastrado esconde o aviso e o despacho", async () 
     "Não consegui ler o número do mototáxi agora.",
   );
   expect(host.textContent).not.toContain("Tentar de novo");
-  expect(host.querySelector('a[aria-label="Enviar ao mototáxi"]')).toBeNull();
+  expect(host.querySelector('[aria-label="Enviar ao mototáxi"]')).toBeNull();
 });
 it.each([null, "", "12345", "351912345678"])(
   "não mostra sem número BR válido: %s",

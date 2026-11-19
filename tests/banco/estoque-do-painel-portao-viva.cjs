@@ -1473,6 +1473,12 @@ async function main() {
         "20261404000000_a_observacao_da_inspecao_so_a_loja_ve.sql",
         "public.devolucao_detalhe(uuid)",
       ],
+      // A 20261405400000 (a devolucao integral com cupom nao perde o centavo): solicitar_devolucao sobre o corpo da 20261399992000 (a mesma funcao da 3992 acima). So muda a conta do valor da linha
+      // devolvida; nao mexe no estoque do painel e a 17a nao a le. O rollback dela devolve o corpo da 3992 (a 3992 so cai depois dela, pela cadeia de posteriores).
+      [
+        "20261405400000_a_devolucao_integral_nao_perde_o_centavo_do_cupom.sql",
+        "public.solicitar_devolucao(uuid,jsonb,text,text,text,text,text[])",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

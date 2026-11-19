@@ -43,6 +43,7 @@ import {
 interface OperationalPerformanceChartProps {
   stats: DashboardStats | null;
   loading: boolean;
+  avisoDaConsulta?: string;
   className?: string;
   active?: boolean;
   /** Atalho "Cadastrar custo" do aviso de produtos sem custo (abre a lista de
@@ -144,10 +145,12 @@ export const OperationalPerformanceChart = memo(
   function OperationalPerformanceChart({
     stats,
     loading,
+    avisoDaConsulta = "",
     className,
     active = true,
     onNavigate,
   }: OperationalPerformanceChartProps) {
+    const indisponivel = Boolean(avisoDaConsulta) && !stats;
     const semCusto = produtosSemCusto(stats);
     const crescimento = !loading && stats ? crescimentoDoSelo(stats) : null;
     const _isMobile = useMediaQuery("(max-width: 1023px)");
@@ -263,6 +266,9 @@ export const OperationalPerformanceChart = memo(
           className,
         )}
       >
+        <p role="alert" className="sr-only">
+          {avisoDaConsulta}
+        </p>
         <header className="flex min-h-11 shrink-0 items-center justify-between gap-1">
           <div className="min-w-0">
             <h2 className="text-admin-text text-[15px] font-bold">
@@ -334,7 +340,21 @@ export const OperationalPerformanceChart = memo(
           ))}
         </div>
         <div className="grid min-h-11 shrink-0 grid-cols-3 divide-x divide-admin-border">
-          {loading || !stats ? (
+          {indisponivel ? (
+            (chartMode === "revenue"
+              ? ["Faturamento", "Pedidos", "Valor médio"]
+              : [
+                  "Estoque (custo)",
+                  "Lucro acumulado",
+                  "Sobre o estoque de hoje",
+                ]
+            ).map((rotulo) => (
+              <div key={rotulo} className="min-w-0 px-2 first:pl-0">
+                <p className="text-admin-text-soft text-[11px]">{rotulo}</p>
+                <p className="text-admin-text text-sm font-extrabold">—</p>
+              </div>
+            ))
+          ) : loading || !stats ? (
             [0, 1, 2].map((i) => (
               <span key={i} className="premium-shimmer m-2 h-6 rounded" />
             ))
@@ -419,7 +439,13 @@ export const OperationalPerformanceChart = memo(
             height: chartMode === "roi" ? ALTURA_LUCRO : ALTURA_VENDAS,
           }}
         >
-          {loading || !isChartReady ? (
+          {indisponivel ? (
+            <div className="flex size-full items-center justify-center rounded-3xl border border-admin-border bg-white/5 px-4">
+              <p className="text-admin-text-soft text-center text-[11px] font-semibold">
+                Os dados do histórico estão indisponíveis agora.
+              </p>
+            </div>
+          ) : loading || !isChartReady ? (
             <Skeleton className="size-full animate-pulse rounded-3xl bg-white/5" />
           ) : filteredRevenueHistory.length === 0 || semMovimento ? (
             <div className="flex size-full flex-col items-center justify-center space-y-4 rounded-3xl border border-admin-border bg-white/5">

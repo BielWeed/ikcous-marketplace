@@ -13,3 +13,31 @@ export function dataNoFusoDaLoja(
     timeZone: FUSO_DA_LOJA,
   });
 }
+
+/** Exibe um instante no fuso da loja, sem inventar data quando a entrada é inválida. */
+export function formatarDataHoraBrasilia(
+  iso: string | null | undefined,
+  formato: "completo" | "curto" = "completo",
+): string {
+  if (!iso) return "";
+  const data = new Date(iso);
+  if (Number.isNaN(data.getTime())) return "";
+
+  const dia = { day: "2-digit", month: "2-digit" } as const;
+  const hora = { hour: "2-digit", minute: "2-digit" } as const;
+  if (formato === "curto") {
+    return `${dataNoFusoDaLoja(data, dia)} às ${data.toLocaleTimeString(
+      "pt-BR",
+      {
+        ...hora,
+        timeZone: FUSO_DA_LOJA,
+      },
+    )}`;
+  }
+  return data.toLocaleString("pt-BR", {
+    ...dia,
+    ...hora,
+    year: "numeric",
+    timeZone: FUSO_DA_LOJA,
+  });
+}

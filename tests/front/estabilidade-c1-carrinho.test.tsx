@@ -132,8 +132,11 @@ it("a marca de exclusão de outra aba tira o item local da mesclagem e do próxi
   expect(atual().cart).toHaveLength(1);
   // A outra aba removeu p1 e publicou a marca no armazenamento compartilhado.
   localStorage.setItem(
-    "marketplace_cart_tombstones_v1",
-    JSON.stringify([{ key: "p1-", deletedAt: Date.now() }]),
+    "marketplace_cart_account_tombstones_v1",
+    JSON.stringify({
+      uid: mundo.usuario.id,
+      marcas: [{ key: "p1-", deletedAt: Date.now() }],
+    }),
   );
   await act(async () => mundo.aoMudar({ eventType: "DELETE" }));
   expect(atual().cart).toEqual([]);

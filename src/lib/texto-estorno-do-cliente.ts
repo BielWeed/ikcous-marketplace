@@ -32,6 +32,10 @@ export interface LinhaDevolucaoDoCliente {
   concluido_em: string | null;
 }
 
+// Fato comum à ficha do pedido e ao checkout, sem afirmar nada sobre a devolução.
+export const PAGAMENTO_RECEBIDO_PEDIDO_CANCELADO =
+  "Este pedido foi cancelado, mas o seu pagamento foi recebido.";
+
 const TEXTO_NAO_PAGO =
   "Tem certeza que deseja cancelar este pedido? Esta ação não pode ser desfeita.";
 

@@ -43,7 +43,7 @@ const pedido = (sobre: Partial<Order> = {}): Order => ({
   ...sobre,
 });
 
-async function abrirMenuDeAcoes(order: Order) {
+async function abrirMenuDeAcoes(order: Order, onStatusChange = vi.fn()) {
   act(() =>
     root.render(
       <AdminOrderCard
@@ -53,7 +53,7 @@ async function abrirMenuDeAcoes(order: Order) {
         onWhatsApp={vi.fn()}
         onRegistrarPagamento={vi.fn()}
         registrandoPagamento={false}
-        onStatusChange={vi.fn()}
+        onStatusChange={onStatusChange}
         onReceberAntesDeAvancar={vi.fn()}
         onAnularVenda={vi.fn()}
         isOffline={false}
@@ -70,14 +70,17 @@ async function abrirMenuDeAcoes(order: Order) {
   );
 }
 
-/** O texto de apoio do item "Cancelar pedido" no menu de ações. */
-function motivoDoCancelar(): string {
+function botaoCancelar(): HTMLButtonElement {
   const contexto = document.querySelector('[role="dialog"]') ?? document.body;
-  const botao = [...contexto.querySelectorAll("button")].find(
-    (b) => b.getAttribute("aria-label") === "Cancelar pedido",
+  const botao = contexto.querySelector<HTMLButtonElement>(
+    'button[aria-label="Cancelar pedido"]',
   );
-  expect(botao, "item Cancelar pedido no menu").toBeTruthy();
-  return (botao!.textContent ?? "").replace(/\s+/g, " ").trim();
+  expect(botao, "item Cancelar pedido no menu").not.toBeNull();
+  return botao!;
+}
+
+function motivoDoCancelar(): string {
+  return (botaoCancelar().textContent ?? "").replace(/\s+/g, " ").trim();
 }
 
 beforeEach(() => {
@@ -93,12 +96,20 @@ afterEach(() => {
 });
 
 describe("cartão do pedido entregue: o motivo de não poder cancelar", () => {
-  it("pedido online entregue diz 'Pedido finalizado não se cancela' e não cita Anular venda", async () => {
-    await abrirMenuDeAcoes(pedido({ canal: "online" }));
+  it("pedido online entregue não abre a confirmação de cancelamento nem pede mudança de status", async () => {
+    const onStatusChange = vi.fn();
+    await abrirMenuDeAcoes(pedido({ canal: "online" }), onStatusChange);
 
     const motivo = motivoDoCancelar();
     expect(motivo).toContain("Pedido finalizado não se cancela.");
     expect(motivo).not.toContain("Anular venda");
+
+    const cancelar = botaoCancelar();
+    await act(async () => cancelar.click());
+    const dialogo = document.querySelector('[role="dialog"]');
+    expect(dialogo?.textContent ?? "").not.toContain("Manter pedido");
+    expect(onStatusChange).not.toHaveBeenCalled();
+    expect(cancelar.disabled).toBe(true);
   });
 
   it("canal ausente (pedido antigo, sem o campo) também é tratado como online", async () => {

@@ -73,7 +73,7 @@ vi.mock("@/lib/supabase", () => ({
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const LAPIDES = "marketplace_cart_tombstones_v1";
+const LAPIDES = "marketplace_cart_account_tombstones_v1";
 const HORA = 3_600_000;
 const produto = (id: string) =>
   mapProductFromDB({
@@ -156,17 +156,19 @@ async function internetVolta() {
     await vi.advanceTimersByTimeAsync(50);
   });
 }
+function lerLapides(): { key: string; deletedAt: number }[] {
+  return JSON.parse(localStorage.getItem(LAPIDES) ?? '{"marcas":[]}').marcas;
+}
 const semearLapide = (key: string, deletedAt: number) => {
-  const outras = JSON.parse(localStorage.getItem(LAPIDES) ?? "[]");
   localStorage.setItem(
     LAPIDES,
-    JSON.stringify([...outras, { key, deletedAt }]),
+    JSON.stringify({
+      uid: usuario.id,
+      marcas: [...lerLapides(), { key, deletedAt }],
+    }),
   );
 };
-const chavesDasLapides = (): string[] =>
-  JSON.parse(localStorage.getItem(LAPIDES) ?? "[]").map(
-    (t: { key: string }) => t.key,
-  );
+const chavesDasLapides = (): string[] => lerLapides().map((t) => t.key);
 const linhasGravadasNaUltimaChamada = (): string[] => {
   const ultima = mundo.rpc.mock.calls.at(-1);
   return (ultima?.[1].p_cart_items ?? []).map(

@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { useDevolucaoAdmin } from "@/hooks/useDevolucoesAdmin";
 import { useRotulosDasVariacoes } from "@/hooks/useRotulosDasVariacoes";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
+import { formatarDataHoraBrasilia } from "@/lib/data-da-loja";
 import {
   formatarDataHora,
   formatarDia,
@@ -450,7 +451,7 @@ export function DetalheDaDevolucao({
                   )}
                   {detalhe.coleta_em && (
                     <Linha rotulo="Coleta">
-                      {formatarDataHora(detalhe.coleta_em)}
+                      {formatarDataHoraBrasilia(detalhe.coleta_em)}
                     </Linha>
                   )}
                 </dl>

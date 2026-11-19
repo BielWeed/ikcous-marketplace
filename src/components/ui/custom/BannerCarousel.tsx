@@ -316,6 +316,7 @@ export const BannerCarousel = memo(function BannerCarousel({
                         : banner.imageUrl
                     }
                     alt={descricao}
+                    priorizarAvisoDeErro
                     className="size-full transition-transform [transition-duration:2000ms] [transition-timing-function:cubic-bezier(0.4,0,0.2,1)] group-hover:scale-105 lg:group-hover:scale-100 lg:[&_img]:!object-contain"
                     priority={primeiraSemFade && index === 0}
                     semFade={primeiraSemFade && index === 0}

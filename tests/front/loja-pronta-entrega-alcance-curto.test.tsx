@@ -277,6 +277,16 @@ describe("o cartão do Início", () => {
     expect(onNavigate).toHaveBeenCalledWith("admin-shipping");
   });
 
+  it("Só retirada não mostra aviso da entrega própria", async () => {
+    const configDeRetirada = {
+      ...config({ localDeliveryEnabled: false }),
+      enabledShippingMethods: ["store-pickup"],
+    };
+    await montar({ config: configDeRetirada });
+    expect(hospedeiro.textContent).toContain("Cadastro completo");
+    expect(hospedeiro.textContent).not.toMatch(/entrega.*CEPs que começam com/);
+  });
+
   it("mesmo CEP + alcance que cobre a cidade: 'Cadastro completo', sem aviso", async () => {
     await montar({ config: config({ localCepRange: ALCANCE_DA_CIDADE }) });
     const texto = hospedeiro.textContent ?? "";

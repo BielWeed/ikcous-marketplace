@@ -227,8 +227,8 @@ const ouvintesDaSincronizacao = new Set<(userId: string) => void>();
  * fila antes de qualquer um gravar; o primeiro mudava a versão do produto no
  * servidor e os outros, com a versão velha, recebiam 0 linhas e avisavam "sua
  * edição offline não foi aplicada" — falso. Por dono de fila, só uma passada
- * roda por vez; quem chega durante ela sai sem avisar (a passada em curso já
- * leva a fila inteira, e o que entrar nela depois a próxima chamada pega).
+ * roda por vez; quem chega durante ela sai sem avisar. A passada em curso
+ * agenda outra se encontrar uma edição nova no fim.
  * A marca nasce de forma síncrona (sem brecha entre conferir e marcar) e morre
  * no fim da passada, dê certo ou erre. Se a passada travar de vez (rede que
  * nunca responde), a marca vence em 2 minutos: uma travada não pode impedir
@@ -244,6 +244,7 @@ const filasEmSincronizacao = new Map<string, { desde: number }>();
 async function syncOfflineUpdates(
   userId: string,
   silenciosa = false,
+  agendarContinuacao?: () => void,
 ): Promise<boolean> {
   const emCurso = filasEmSincronizacao.get(userId);
   if (emCurso && Date.now() - emCurso.desde < PRAZO_DA_TRAVA_DA_FILA_MS) {
@@ -255,7 +256,7 @@ async function syncOfflineUpdates(
     return await comTravaEntreAbas(
       `ikcous-fila-produtos:${userId}`,
       false,
-      () => sincronizarFilaDoUsuario(userId, silenciosa),
+      () => sincronizarFilaDoUsuario(userId, silenciosa, agendarContinuacao),
       PRAZO_DA_TRAVA_DA_FILA_MS,
     );
   } finally {
@@ -300,6 +301,7 @@ async function sincronizarFilaDoUsuario(
   // Retentativa por renovação do token (`criarReligadorDaFila`): não pisca o
   // "Sincronizando…" a cada tentativa. O resultado (sucesso/falha) é avisado.
   silenciosa = false,
+  agendarContinuacao?: () => void,
 ): Promise<boolean> {
   const chaveDaFila = chaveDoUsuario(CHAVE_BASE_DA_FILA_DE_PRODUTOS, userId);
   paradasPelaRede.delete(chaveDaFila);
@@ -564,7 +566,7 @@ async function sincronizarFilaDoUsuario(
         localStorage.removeItem(chaveDaFila);
       }
       if (syncedCount > 0) clearAnalyticsCache();
-      if (discarded.length > 0 || conflitos > 0) {
+      if (filaFinal.length > 0 || discarded.length > 0 || conflitos > 0) {
         if (toastId !== undefined) toast.dismiss(toastId);
       } else {
         toast.success(
@@ -582,6 +584,10 @@ async function sincronizarFilaDoUsuario(
       );
     }
 
+    // Se já há retentativa por falha, ela também leva as edições novas.
+    if (novos.length > 0 && remainingQueue.length === 0 && navigator.onLine) {
+      agendarContinuacao?.();
+    }
     return syncedCount > 0;
   } catch (e) {
     console.error("[Offline Sync] Error parsing offline updates queue:", e);
@@ -1605,10 +1611,15 @@ export function useProducts({
     // viria, e a edição ficava na fila até recarregar a página. O recuo marca a
     // nova passada (30 s, 2 min, 10 min) enquanto houver item devolvido.
     const recuo = criarRecuoDaFila(() => agendarPassada(true));
+    let encerrado = false;
     const agendarPassada = (silenciosa: boolean) => {
+      if (encerrado) return;
       const timer = setTimeout(() => {
         timersPendentes.delete(timer);
-        syncOfflineUpdates(userId, silenciosa).then((synced) => {
+        const sync = syncOfflineUpdates(userId, silenciosa, () =>
+          agendarPassada(true),
+        );
+        sync.then((synced) => {
           religador.aoFimDaPassada(paradasPelaRede.has(chaveDaFila));
           recuo.aoFimDaPassada(falhasPassageirasDaFila.has(chaveDaFila));
           if (synced) {
@@ -1641,6 +1652,7 @@ export function useProducts({
       handleOnlineSync();
     }
     return () => {
+      encerrado = true;
       window.removeEventListener("online", handleOnlineSync);
       religador.encerrar();
       recuo.encerrar();

@@ -953,7 +953,7 @@ export const AdminQAView = memo(function AdminQAView({
 
         {renderContent()}
 
-        {!loading && totalPages > 1 && (
+        {!loading && !erroDaListagemAdmin && totalPages > 1 && (
           <Paginador
             pagina={page}
             totalDePaginas={totalPages}

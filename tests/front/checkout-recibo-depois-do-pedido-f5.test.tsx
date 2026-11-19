@@ -26,7 +26,6 @@ import { concluirBuscaDeCepSemEndereco } from "./duble-busca-de-cep";
 
 import { chaveDoPedidoPendenteDoCheckout } from "@/lib/pedido-pendente-do-checkout";
 import {
-  VALIDADE_DO_RECIBO_MS,
   guardarReciboDoCheckout,
   lerReciboDoCheckout,
 } from "@/lib/recibo-do-checkout";
@@ -560,17 +559,21 @@ describe("CheckoutView — F5 depois do pedido diz 'Seu pedido já foi feito'", 
       expect(textoDaTela()).not.toContain(TITULO_NOVO);
     });
 
-    it("recibo VENCIDO (mais de 2 horas) não aparece", async () => {
-      guardarReciboDoCheckout(
-        "user-1",
-        PEDIDO,
-        Date.now() - VALIDADE_DO_RECIBO_MS - 1000,
-      );
+    it("recibo VENCIDO (há 2 horas e 1 minuto) não aparece", async () => {
+      guardarReciboDoCheckout("user-1", PEDIDO, Date.now() - 121 * 60_000);
       mockCart = [];
       await montar();
 
       expect(textoDaTela()).toContain(FRASE_DO_CARRINHO_VAZIO);
       expect(textoDaTela()).not.toContain(TITULO_NOVO);
+    });
+
+    it("recibo ainda válido (há 1 hora e 59 minutos) aparece", async () => {
+      guardarReciboDoCheckout("user-1", PEDIDO, Date.now() - 119 * 60_000);
+      mockCart = [];
+      await montar();
+
+      esperaATelaDoRecibo();
     });
 
     it("storage com erro cai na tela de hoje, sem quebrar", async () => {

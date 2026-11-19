@@ -160,6 +160,84 @@ function botaoComTexto(alvo: string): HTMLButtonElement | undefined {
 }
 
 describe("EstornoCard — o lojista devolve o dinheiro do pedido pelo painel", () => {
+  it.each(["UTC", "America/Sao_Paulo"])(
+    "mostra quando o dinheiro foi devolvido num aparelho em %s",
+    async (fuso) => {
+      const data = Date.prototype.toLocaleDateString;
+      const hora = Date.prototype.toLocaleTimeString;
+      const dataLocal = vi
+        .spyOn(Date.prototype, "toLocaleDateString")
+        .mockImplementation(function (this: Date, locales, options) {
+          return data.call(this, locales, { timeZone: fuso, ...options });
+        });
+      const horaLocal = vi
+        .spyOn(Date.prototype, "toLocaleTimeString")
+        .mockImplementation(function (this: Date, locales, options) {
+          return hora.call(this, locales, { timeZone: fuso, ...options });
+        });
+      try {
+        useEstornosDoPedidoMock.mockReturnValue(
+          hookPadrao({
+            linhas: [
+              linhaDeExemplo({
+                status: "concluido",
+                concluido_em: "2026-11-19T01:30:00Z",
+              }),
+            ],
+            devolvido: 30,
+            disponivel: 70,
+          }),
+        );
+        await montar();
+        expect(texto()).toContain("devolvido em 18/11 às 22:30");
+        expect(texto()).not.toContain("horário de Brasília");
+      } finally {
+        dataLocal.mockRestore();
+        horaLocal.mockRestore();
+      }
+    },
+  );
+
+  it.each([
+    {
+      concluido: "invalida",
+      criado: "2026-11-19T01:30:00Z",
+      esperado: "devolvido em 18/11 às 22:30",
+    },
+    {
+      concluido: null,
+      criado: "2026-11-19T01:30:00Z",
+      esperado: "devolvido em 18/11 às 22:30",
+    },
+    {
+      concluido: "2026-11-19T01:30:00Z",
+      criado: "2026-11-17T10:00:00Z",
+      esperado: "devolvido em 18/11 às 22:30",
+    },
+    { concluido: "invalida", criado: "", esperado: "devolvido" },
+  ])(
+    "mostra a data disponível sem Invalid Date ($concluido, $criado)",
+    async ({ concluido, criado, esperado }) => {
+      useEstornosDoPedidoMock.mockReturnValue(
+        hookPadrao({
+          linhas: [
+            linhaDeExemplo({
+              status: "concluido",
+              concluido_em: concluido,
+              created_at: criado,
+            }),
+          ],
+          devolvido: 30,
+          disponivel: 70,
+        }),
+      );
+      await montar();
+      expect(texto()).toContain(`30,00 ${esperado}`);
+      expect(texto()).not.toContain("Invalid Date");
+      if (!criado) expect(texto()).not.toContain("devolvido em");
+    },
+  );
+
   it("U1: pedido pago, cancelado, não enviado, sem linhas — botão habilitado com o total disponível", async () => {
     useEstornosDoPedidoMock.mockReturnValue(hookPadrao());
 

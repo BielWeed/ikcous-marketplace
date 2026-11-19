@@ -157,7 +157,7 @@ function semearDadosDaA() {
   localStorage.setItem("ikcous_addresses_cache_A", "[]");
   localStorage.setItem("marketplace_cart_v1", "[]");
   // As lápides do carrinho (linhas que a A tirou) também são dela, não da B.
-  localStorage.setItem("marketplace_cart_tombstones_v1", "[]");
+  localStorage.setItem("marketplace_cart_account_tombstones_v1", "[]");
   localStorage.setItem("marketplace_cart_confirmado_v1", "{}");
   // Escrita pendente legítima e rascunho por usuário NÃO são apagados (nem no
   // Sair): são trabalho em curso do dono da conta, que os reencontra ao voltar.
@@ -172,7 +172,7 @@ const dadosDaAAindaExistem = () =>
     "ikcous_orders_cache_A",
     "ikcous_addresses_cache_A",
     "marketplace_cart_v1",
-    "marketplace_cart_tombstones_v1",
+    "marketplace_cart_account_tombstones_v1",
     "marketplace_cart_confirmado_v1",
   ].filter((chave) => localStorage.getItem(chave) !== null);
 

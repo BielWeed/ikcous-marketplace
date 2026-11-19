@@ -1,4 +1,8 @@
-import { limparTelefoneBrasileiro } from "@/lib/telefone-br";
+import {
+  celularBrasileiroCompleto,
+  dddBrasileiroValido,
+  limparTelefoneBrasileiro,
+} from "@/lib/telefone-br";
 
 /**
  * Link de WhatsApp do cliente do pedido — ou `null` quando o número não
@@ -22,4 +26,19 @@ export function linkWhatsappDoCliente(
   if (digitos.length < 10) return null;
   if (digitos.length <= 11) return `https://wa.me/55${digitos}`;
   return `https://wa.me/${digitos}`;
+}
+
+/** No caixa, um celular incompleto não pode virar destino de um recibo. */
+export function linkWhatsappDoClienteDoBalcao(
+  telefone: string | null | undefined,
+): string | null {
+  const digitos = limparTelefoneBrasileiro(telefone);
+  if (digitos.length === 10) {
+    // Fixo brasileiro tem DDD e começa com 2 a 5, nunca com o 9 do celular.
+    if (!dddBrasileiroValido(digitos) || !/^[2-5]$/.test(digitos.charAt(2)))
+      return null;
+  } else if (digitos.length === 11 && !celularBrasileiroCompleto(telefone)) {
+    return null;
+  }
+  return linkWhatsappDoCliente(telefone);
 }

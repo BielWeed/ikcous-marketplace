@@ -220,8 +220,8 @@ describe("CheckoutView — botões que sobravam com text-primary (contraste AA)"
     });
   }
 
-  // Retomada: a leitura periódica do pedido devolve o `payment_status` dado.
-  async function chegarNaTelaFinal(payment_status: string) {
+  // Retomada: a leitura periódica devolve o estado do pedido e do pagamento.
+  async function chegarNaTelaFinal(payment_status: string, status: string) {
     auth.logada = true;
     await montar("c35ce4dd-1234-4abc-8def-1a2b3c3884be");
     await act(async () => {
@@ -230,7 +230,7 @@ describe("CheckoutView — botões que sobravam com text-primary (contraste AA)"
     lerPoll.mockResolvedValue({
       data: {
         payment_status,
-        status: "cancelled",
+        status,
         gateway_payment_id: "pay-1",
         expires_at: null,
       },
@@ -257,7 +257,7 @@ describe("CheckoutView — botões que sobravam com text-primary (contraste AA)"
     ) as HTMLElement;
 
   it("pagamento confirmado: 'Retornar à Vitrine' continua legível sobre o branco com QUALQUER cor da loja", async () => {
-    await chegarNaTelaFinal("pago");
+    await chegarNaTelaFinal("pago", "pending");
     expect(hospedeiro.textContent).toContain("Pagamento Confirmado");
 
     const botao = botaoPorTexto("Retornar à Vitrine");
@@ -266,7 +266,7 @@ describe("CheckoutView — botões que sobravam com text-primary (contraste AA)"
   });
 
   it("pagamento fora do prazo: 'Retornar à Vitrine' continua legível sobre o branco com QUALQUER cor da loja", async () => {
-    await chegarNaTelaFinal("pago_apos_expirar");
+    await chegarNaTelaFinal("pago_apos_expirar", "cancelled");
     expect(hospedeiro.textContent).toContain("prazo de reserva venceu");
 
     const botao = botaoPorTexto("Retornar à Vitrine");

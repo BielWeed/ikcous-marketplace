@@ -241,8 +241,8 @@ function botaoPorTexto(
 type TelaCheckout = typeof import("@/views/customer/CheckoutView").CheckoutView;
 
 const PRAZO_FUTURO = "2999-01-01T00:00:00.000Z";
-// 15:00 UTC cai no dia 03/10 em qualquer fuso do Brasil e em UTC (CI).
-const CANCELAMENTO_AUTOMATICO = "2026-10-03T15:00:00.000Z";
+// 15:37 UTC = 12:37 no horário de Brasília.
+const CANCELAMENTO_AUTOMATICO = "2026-10-03T15:37:00.000Z";
 
 describe("CheckoutView — cartão em dúvida nunca vira 'em análise pelo banco' sem order (C5)", () => {
   let raiz: Root;
@@ -401,7 +401,30 @@ describe("CheckoutView — cartão em dúvida nunca vira 'em análise pelo banco
     }
   }
 
-  it("sem_registro do POST de cartão: abre a verificação com a data real, sem consulta sozinha e sem saída que cobra", async () => {
+  it("sem_registro do POST de cartão: abre a verificação com a data e hora reais, sem consulta sozinha e sem saída que cobra", async () => {
+    // Simula o fuso do aparelho sem substituir a formatação da data e da hora.
+    const { toLocaleDateString, toLocaleTimeString } = Date.prototype;
+    vi.spyOn(Date.prototype, "toLocaleDateString").mockImplementation(function (
+      this: Date,
+      locales,
+      options,
+    ) {
+      return toLocaleDateString.call(this, locales, {
+        timeZone: "America/Sao_Paulo",
+        ...options,
+      });
+    });
+    vi.spyOn(Date.prototype, "toLocaleTimeString").mockImplementation(function (
+      this: Date,
+      locales,
+      options,
+    ) {
+      return toLocaleTimeString.call(this, locales, {
+        timeZone: "America/Sao_Paulo",
+        ...options,
+      });
+    });
+
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await chegarNoPagamentoComCartao(CheckoutView);
     expect(props().metodo).toBe("cartao");
@@ -417,7 +440,7 @@ describe("CheckoutView — cartão em dúvida nunca vira 'em análise pelo banco
       "Não conseguimos confirmar com o banco se o pagamento com cartão deste pedido foi feito.",
     );
     expect(hospedeiro.textContent).toContain(
-      "Se nenhuma cobrança aparecer, o pedido é cancelado automaticamente a partir de 03/10/2026 às",
+      "Se nenhuma cobrança aparecer, o pedido é cancelado automaticamente a partir de 03/10/2026 às 12:37",
     );
     expect(hospedeiro.textContent).not.toContain(
       "cancelado automaticamente até",

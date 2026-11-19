@@ -7,10 +7,8 @@ import {
 // rastreio: a lojista tinha de digitar o código à mão, e a cliente que comprou
 // como convidada (sem conta, sem sino, sem e-mail) não recebia nada além disso.
 //
-// Regra travada aqui: o texto é IDÊNTICO ao de antes em todo caso sem rastreio
-// (o teste `admin-orders-whatsapp-usa-o-nome-da-loja` já fixa o byte a byte do
-// pedido novo); só ganha duas linhas quando o pedido está ENVIADO, é de ENTREGA
-// e tem código.
+// Só ganha instruções extras para entrega com rastreio ou retirada pronta
+// com endereço ou horário disponíveis.
 import { describe, expect, it } from "vitest";
 
 const base = {
@@ -22,7 +20,72 @@ const base = {
   retiradaNaLoja: false,
 };
 
+const retiradaPronta = {
+  ...base,
+  retiradaNaLoja: true,
+  rotuloDoStatus: "Pronto para retirar",
+};
+const enderecoDeRetirada = "Rua São José, #42 & Cia";
+const horarioDeAtendimento = "Seg a sex, das 9h às 18h";
+
 describe("mensagemDoStatusNoWhatsapp", () => {
+  it("diz que o pedido está em separação, não que já foi separado", () => {
+    const msg = mensagemDoStatusNoWhatsapp({
+      ...base,
+      status: "processing",
+      rotuloDoStatus: rotuloDoStatusParaACliente("processing"),
+    });
+    expect(msg).toContain("Status: Em separação\n");
+  });
+
+
+  it.each([
+    [
+      enderecoDeRetirada,
+      horarioDeAtendimento,
+      "Retire em: Rua São José, #42 & Cia\nHorário: Seg a sex, das 9h às 18h\n",
+    ],
+    [enderecoDeRetirada, undefined, "Retire em: Rua São José, #42 & Cia\n"],
+    [null, horarioDeAtendimento, "Horário: Seg a sex, das 9h às 18h\n"],
+    [undefined, undefined, ""],
+    ["  ", "  ", ""],
+  ])(
+    "retirada pronta com endereço %s e horário %s",
+    (endereco, horario, linhas) => {
+      const dados = {
+        ...retiradaPronta,
+        enderecoDeRetirada: endereco,
+        horarioDeAtendimento: horario,
+      };
+      expect(mensagemDoStatusNoWhatsapp(dados)).toBe(
+        `Olá Ana!\n\nSeu pedido #A1B2C3 foi atualizado.\nStatus: Pronto para retirar\n${linhas}\nObrigado por comprar na Savy!`,
+      );
+    },
+  );
+
+  it("limita endereço e horário mesmo quando os caracteres ocupam mais na URL", () => {
+    const mensagem = mensagemDoStatusNoWhatsapp({
+      ...retiradaPronta,
+      enderecoDeRetirada: "界".repeat(5000),
+      horarioDeAtendimento: "á".repeat(5000),
+    });
+    const url = `https://wa.me/5534999999999?text=${encodeURIComponent(mensagem)}`;
+    expect(url.length).toBeLessThan(2000);
+    expect(mensagem).toMatch(/Retire em: 界+…\nHorário: á+…\n/);
+    expect(new URL(url).searchParams.get("text")).toBe(mensagem);
+  });
+
+  it("entrega a caminho não usa os dados de retirada", () => {
+    const dados = {
+      ...base,
+      rotuloDoStatus: "A caminho",
+      enderecoDeRetirada,
+      horarioDeAtendimento,
+    };
+    expect(mensagemDoStatusNoWhatsapp(dados)).toBe(
+      "Olá Ana!\n\nSeu pedido #A1B2C3 foi atualizado.\nStatus: A caminho\n\nObrigado por comprar na Savy!",
+    );
+  });
   it("sem rastreio, o texto é o de sempre, byte a byte", () => {
     expect(mensagemDoStatusNoWhatsapp(base)).toBe(
       "Olá Ana!\n\nSeu pedido #A1B2C3 foi atualizado.\nStatus: Em Trânsito\n\nObrigado por comprar na Savy!",

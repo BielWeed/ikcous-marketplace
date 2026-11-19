@@ -158,7 +158,7 @@ async function montar() {
     );
   });
 }
-async function excluirDaTela(valor: string) {
+async function abrirConfirmacaoDeExclusao(valor: string) {
   await act(async () => {
     const lixeira = host.querySelector<HTMLButtonElement>(
       `[aria-label="Excluir variação ${valor}"]`,
@@ -166,6 +166,9 @@ async function excluirDaTela(valor: string) {
     expect(lixeira).not.toBeNull();
     lixeira!.click();
   });
+}
+async function excluirDaTela(valor: string) {
+  await abrirConfirmacaoDeExclusao(valor);
   await clicarTexto("Excluir Variante");
 }
 const gradeNaTela = () =>
@@ -222,6 +225,84 @@ afterEach(() => {
   vi.restoreAllMocks();
   localStorage.clear();
   sessionStorage.clear();
+});
+
+describe("aviso ao excluir a última variação", () => {
+  it.each([
+    {
+      caso: "produto ativo com 5 unidades",
+      estoque: 5,
+      ativo: true,
+      unica: true,
+      aviso:
+        "Se a exclusão for concluída ao salvar, este produto continuará à venda com 5 unidades, sem escolha de tamanho.",
+    },
+    {
+      caso: "produto ativo com 1 unidade",
+      estoque: 1,
+      ativo: true,
+      unica: true,
+      aviso:
+        "Se a exclusão for concluída ao salvar, este produto continuará à venda com 1 unidade, sem escolha de tamanho.",
+    },
+    {
+      caso: "última variação desligada com 2 unidades e produto com 7",
+      estoque: 7,
+      ativo: true,
+      unica: true,
+      estoqueDaVariacaoDesligada: 2,
+      aviso:
+        "Se a exclusão for concluída ao salvar, este produto continuará à venda com 7 unidades, sem escolha de tamanho.",
+    },
+    {
+      caso: "produto ativo com duas variações",
+      estoque: 5,
+      ativo: true,
+      unica: false,
+      aviso: null,
+    },
+    {
+      caso: "produto inativo com estoque",
+      estoque: 5,
+      ativo: false,
+      unica: true,
+      aviso: null,
+    },
+    {
+      caso: "produto ativo sem estoque",
+      estoque: 0,
+      ativo: true,
+      unica: true,
+      aviso: null,
+    },
+  ])(
+    "$caso",
+    async ({ estoque, ativo, unica, estoqueDaVariacaoDesligada, aviso }) => {
+      banco.produto.estoque = estoque;
+      banco.produto.ativo = ativo;
+      banco.variacoes[0].stock_increment =
+        estoqueDaVariacaoDesligada ?? estoque;
+      banco.variacoes[0].active = estoqueDaVariacaoDesligada === undefined;
+      if (unica) banco.variacoes = banco.variacoes.slice(0, 1);
+
+      await montar();
+      await abrirConfirmacaoDeExclusao("P");
+
+      const dialogo = document.querySelector('[role="alertdialog"]');
+      const descricao = document.getElementById(
+        dialogo?.getAttribute("aria-describedby") ?? "",
+      )?.textContent;
+      expect(descricao).toContain("Ela será removida da lista.");
+      if (estoqueDaVariacaoDesligada !== undefined) {
+        expect(descricao).toContain("Estoque: 2 un.");
+      }
+      if (aviso) {
+        expect(descricao).toContain(aviso);
+      } else {
+        expect(descricao).not.toContain("continuará à venda");
+      }
+    },
+  );
 });
 
 describe("excluir variação confere a versão da abertura", () => {

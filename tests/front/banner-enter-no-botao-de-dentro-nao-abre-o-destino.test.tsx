@@ -75,6 +75,8 @@ describe("BannerCarousel: teclado dentro do slide", () => {
       active: true,
       order: 1,
       link: "/profile",
+      buttonText: "Ver campanha",
+      templateType: "split_center",
     };
     const { BannerCarousel } = await import(
       "@/components/ui/custom/BannerCarousel"
@@ -146,6 +148,58 @@ describe("BannerCarousel: teclado dentro do slide", () => {
 
     expect(abrir).not.toHaveBeenCalled();
     expect(evento.defaultPrevented).toBe(false);
+  });
+
+  it("clicar em tentar de novo pede outra URL da foto e não abre a campanha", async () => {
+    await montar();
+    await quebrarAFoto();
+    const srcQueFalhou = hospedeiro.querySelector("img")?.src;
+    const botao = hospedeiro.querySelector<HTMLButtonElement>(
+      'button[aria-label*="Toque para tentar de novo"]',
+    );
+    expect(botao).not.toBeNull();
+
+    act(() => botao?.click());
+
+    const novaFoto = hospedeiro.querySelector("img");
+    expect(novaFoto?.src).toBe("https://example.com/banner.jpg?_r=3");
+    expect(novaFoto?.src).not.toBe(srcQueFalhou);
+    expect(abrir).not.toHaveBeenCalled();
+  });
+
+  it("sobe a camada da foto acima do texto só enquanto o botão de erro está visível", async () => {
+    await montar();
+    const camadaDaFoto = hospedeiro.querySelector("img")?.parentElement;
+    expect(hospedeiro.querySelector("h2")?.textContent).toBe("Campanha");
+    expect(camadaDaFoto?.classList.contains("z-10")).toBe(false);
+
+    await quebrarAFoto();
+    // jsdom não calcula o toque por coordenadas. A camada elevada não pinta
+    // fundo nem captura clique; apenas o controle compacto recebe o toque.
+    expect(camadaDaFoto?.classList.contains("z-10")).toBe(true);
+    expect(camadaDaFoto?.classList.contains("pointer-events-none")).toBe(true);
+    expect(camadaDaFoto?.className).not.toContain("bg-zinc");
+
+    const botao = camadaDaFoto?.querySelector("button");
+    expect(botao?.classList.contains("pointer-events-auto")).toBe(true);
+    expect(botao?.classList.contains("inset-0")).toBe(false);
+    act(() => botao?.click());
+    expect(camadaDaFoto?.classList.contains("z-10")).toBe(false);
+    expect(camadaDaFoto?.classList.contains("pointer-events-none")).toBe(false);
+  });
+
+  it("o botão da campanha continua abrindo o destino com a foto em erro", async () => {
+    await montar();
+    await quebrarAFoto();
+    const campanha = [...hospedeiro.querySelectorAll("button")].find(
+      (botao) => botao.textContent === "Ver campanha",
+    );
+    expect(campanha).toBeDefined();
+
+    act(() => campanha?.click());
+
+    expect(abrir).toHaveBeenCalledTimes(1);
+    expect(window.location.pathname).toBe("/profile");
   });
 
   it("Enter no próprio slide continua abrindo o destino", async () => {

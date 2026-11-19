@@ -233,7 +233,11 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     s.nome !== "20261399997000_o_pedido_guarda_quem_vai_receber.sql" &&
     // A 20261404000000 (a observacao da inspecao da devolucao e so da loja) e a TERCEIRA sucessora de devolucao_detalhe (99 -> 3992 -> 404): tem a PROVA PROPRIA em
     // tests/banco/a-observacao-da-inspecao-so-a-loja-ve-viva.cjs; `noEstado` a desfaz antes (a-observacao-da-inspecao-posterior.cjs, o rollback dela devolve o corpo da 3992 e o GRANT de tabela inteira), como a 3992.
-    s.nome !== "20261404000000_a_observacao_da_inspecao_so_a_loja_ve.sql",
+    s.nome !== "20261404000000_a_observacao_da_inspecao_so_a_loja_ve.sql" &&
+    // A 20261405400000 (a devolucao integral com cupom nao perde o centavo) so redefine solicitar_devolucao, em cima da 3992; nao e funcao da 8e. Entra em sucessoras-da-99.cjs so para cair antes da 3992
+    // (o-item-que-nao-veio-posterior.cjs chama a-devolucao-integral-nao-perde-o-centavo-do-cupom-posterior.cjs primeiro); aqui sai do rol pela mesma razao da 3997.
+    s.nome !==
+      "20261405400000_a_devolucao_integral_nao_perde_o_centavo_do_cupom.sql",
 );
 
 const REPO = path.resolve(__dirname, "..", "..");

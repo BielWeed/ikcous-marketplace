@@ -78,9 +78,9 @@ export interface VersaoDosTextos {
 }
 
 export const VERSAO_DOS_TEXTOS: VersaoDosTextos = {
-  versao: 1,
-  atualizadoEm: "2026-11-12",
-  impressaoDoTexto: "b2adc854",
+  versao: 2,
+  atualizadoEm: "2026-11-18",
+  impressaoDoTexto: "c0582230",
 };
 
 /**
@@ -246,6 +246,7 @@ function montarPrivacidade(loja: DadosDaLoja): DocumentoDePolitica {
         titulo: "Com quem dividimos",
         paragrafos: [
           "Só o necessário para a compra acontecer: o Mercado Pago, que processa o pagamento feito pelo app; os serviços de frete e as transportadoras, que recebem nome, endereço, WhatsApp, e-mail e, quando exigido, o CPF de quem recebe; e o serviço de e-mail que a loja usa para enviar o comprovante do pedido e o código de verificação. O CEP que você digita também é consultado em serviços de busca de CEP.",
+          "No seu Perfil, ao abrir os detalhes de um endereço, o mapa é carregado do Google Maps se houver conexão e dados suficientes para a busca. A equipe da loja também pode abrir o Google Maps pela ficha do pedido. Para localizar o endereço, enviamos rua, número, cidade e estado, quando disponíveis; o CEP pode acompanhar a busca e, se o endereço estiver incompleto, também o bairro e a indicação do país (Brasil) — nunca o seu nome nem o nome de quem recebe. No pedido sem rua nem CEP, a busca pode levar apenas bairro, cidade e estado.",
           "Se você permitir as notificações, o serviço de notificações do seu navegador ou aparelho entrega os avisos até você.",
           "A plataforma que hospeda o app e o banco de dados usa servidores de terceiros, que podem ficar fora do Brasil, e tem acesso técnico aos dados apenas para manter o serviço funcionando.",
           "A loja não vende os seus dados.",

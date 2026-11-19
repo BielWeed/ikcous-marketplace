@@ -675,11 +675,17 @@ export const ProductView = React.memo(function ProductView({
     Math.max(fotosDaGaleria.length - 1, 0),
   );
 
+  // A URL identifica a foto ligada à escolha, mesmo se foi reaberta à mão.
+  const galeriaMostraFotoDaEscolha = (escolha: Record<string, string>) =>
+    fotosQueAEscolhaAponta(escolha).some(
+      (foto) => foto === fotosDaGaleria.at(indiceDaFoto),
+    );
+
   // ESCOLHER uma variação (usado pelos botões da página e pelo menu da barra
   // fixa de baixo). A quantidade já escolhida nunca passa do estoque da
   // combinação nova: a cliente que pediu 5 do vermelho (10) e troca para o
   // azul (2) fica com 2 e é avisada, em vez de a tela mostrar 5 e o carrinho
-  // cortar depois. Se a variação tem foto, a galeria anda até ela.
+  // cortar depois. Havendo foto para a nova escolha, a galeria vai até ela.
   const escolherVariante = (grupo: string, valor: string) => {
     // Valor sem estoque em combinação nenhuma: nada muda. Valor só apagado pela
     // combinação atual (existe em outra): entra e solta o que deixou de combinar
@@ -706,6 +712,8 @@ export const ProductView = React.memo(function ProductView({
     setSelectedVariants(proxima);
     const posicao = posicaoDaFotoDaEscolha(proxima);
     if (posicao >= 0) setCurrentImageIndex(posicao);
+    else if (galeriaMostraFotoDaEscolha(selectedVariants))
+      setCurrentImageIndex(0);
     const estoque = estoqueDaEscolha(proxima);
     if (estoque > 0 && quantity > estoque) {
       setQuantity(estoque);
@@ -724,11 +732,23 @@ export const ProductView = React.memo(function ProductView({
     // Opção única já marcada: tocar nela é confirmar, não desfazer. Desmarcar
     // devolveria o "Falta escolher" por uma fileira que não tem outra opção.
     if (fileiras.find((f) => f.nome === grupo)?.valores.length === 1) return;
-    setSelectedVariants(
-      Object.fromEntries(
-        Object.entries(selectedVariants).filter(([nome]) => nome !== grupo),
-      ),
+    const proxima = Object.fromEntries(
+      Object.entries(selectedVariants).filter(([nome]) => nome !== grupo),
     );
+    setSelectedVariants(proxima);
+    if (
+      galeriaMostraFotoDaEscolha(selectedVariants) &&
+      !galeriaMostraFotoDaEscolha(proxima)
+    ) {
+      setCurrentImageIndex(Math.max(posicaoDaFotoDaEscolha(proxima), 0));
+      return;
+    }
+
+    // Uma foto extra pode sair antes da foto exibida e mudar sua posição.
+    const fotoAtual = fotosDaGaleria.at(indiceDaFoto);
+    if (!fotoAtual) return;
+    const posicao = fotosDaEscolha(proxima).indexOf(fotoAtual);
+    if (posicao >= 0) setCurrentImageIndex(posicao);
   };
   const variantImage = fotosQueAEscolhaAponta(selectedVariants)[0];
   const fotoDaMiniatura = soFotosReais([

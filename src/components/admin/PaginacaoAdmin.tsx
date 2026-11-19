@@ -17,6 +17,7 @@ export function PaginacaoAdmin({
   totalItens,
   itensPorPagina,
   aoMudar,
+  ocupada = false,
   className,
   aparencia,
 }: {
@@ -25,6 +26,7 @@ export function PaginacaoAdmin({
   totalItens: number;
   itensPorPagina: number;
   aoMudar: (novaPagina: number) => void;
+  ocupada?: boolean;
   className?: string;
   aparencia?: "clientes";
 }) {
@@ -40,6 +42,7 @@ export function PaginacaoAdmin({
   return (
     <div
       data-testid="paginacao-admin"
+      aria-busy={ocupada || undefined}
       className={cn(
         "mt-6 flex select-none items-center justify-between",
         aparencia === "clientes" && "flex-col gap-2 text-center",
@@ -53,8 +56,14 @@ export function PaginacaoAdmin({
             : "text-[11px] font-bold uppercase tracking-widest text-zinc-500"
         }
       >
-        Exibindo {formatarInteiro(primeiro)} - {formatarInteiro(ultimo)} de{" "}
-        {formatarInteiro(totalItens)}
+        {ocupada ? (
+          "Atualizando a lista…"
+        ) : (
+          <>
+            Exibindo {formatarInteiro(primeiro)} - {formatarInteiro(ultimo)} de{" "}
+            {formatarInteiro(totalItens)}
+          </>
+        )}
       </p>
       {totalPaginas > 1 && (
         <div
@@ -66,8 +75,11 @@ export function PaginacaoAdmin({
           <Button
             variant="outline"
             size="sm"
-            onClick={() => aoMudar(Math.max(0, paginaEfetiva - 1))}
-            disabled={paginaEfetiva === 0}
+            onClick={() => {
+              if (!ocupada) aoMudar(Math.max(0, paginaEfetiva - 1));
+            }}
+            aria-disabled={ocupada || undefined}
+            disabled={!ocupada && paginaEfetiva === 0}
             className={cn(
               "h-11 rounded-xl border-admin-border bg-zinc-950/60 px-4 text-zinc-400 transition-all hover:bg-zinc-800 hover:text-white",
               aparencia === "clientes" &&
@@ -84,10 +96,12 @@ export function PaginacaoAdmin({
           <Button
             variant="outline"
             size="sm"
-            onClick={() =>
-              aoMudar(Math.min(totalPaginas - 1, paginaEfetiva + 1))
-            }
-            disabled={paginaEfetiva >= totalPaginas - 1}
+            onClick={() => {
+              if (!ocupada)
+                aoMudar(Math.min(totalPaginas - 1, paginaEfetiva + 1));
+            }}
+            aria-disabled={ocupada || undefined}
+            disabled={!ocupada && paginaEfetiva >= totalPaginas - 1}
             className={cn(
               "h-11 rounded-xl border-admin-border bg-zinc-950/60 px-4 text-zinc-400 transition-all hover:bg-zinc-800 hover:text-white",
               aparencia === "clientes" &&

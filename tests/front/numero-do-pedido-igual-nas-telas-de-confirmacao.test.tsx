@@ -135,7 +135,7 @@ describe("CheckoutView — número do pedido nas telas de confirmação", () => 
     vi.useRealTimers();
   });
 
-  async function chegarNaConfirmacao(payment_status: string) {
+  async function chegarNaConfirmacao(payment_status: string, status: string) {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await act(async () => {
       raiz.render(
@@ -152,7 +152,7 @@ describe("CheckoutView — número do pedido nas telas de confirmação", () => 
     lerPoll.mockResolvedValue({
       data: {
         payment_status,
-        status: "cancelled",
+        status,
         gateway_payment_id: "pay-1",
         expires_at: null,
       },
@@ -164,14 +164,14 @@ describe("CheckoutView — número do pedido nas telas de confirmação", () => 
   }
 
   it("pago: a tela final mostra #3884BE", async () => {
-    await chegarNaConfirmacao("pago");
+    await chegarNaConfirmacao("pago", "pending");
     expect(hospedeiro.textContent).toContain("Pagamento Confirmado");
     expect(hospedeiro.textContent).toContain("#3884BE");
     expect(hospedeiro.textContent).not.toContain("#c35ce4dd");
   });
 
   it("pago fora do prazo: a tela mostra #3884BE", async () => {
-    await chegarNaConfirmacao("pago_apos_expirar");
+    await chegarNaConfirmacao("pago_apos_expirar", "cancelled");
     expect(hospedeiro.textContent).toContain("prazo de reserva venceu");
     expect(hospedeiro.textContent).toContain("#3884BE");
   });

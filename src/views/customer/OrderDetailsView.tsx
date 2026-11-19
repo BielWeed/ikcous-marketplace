@@ -28,6 +28,7 @@ import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { dataNoFusoDaLoja } from "@/lib/data-da-loja";
 import { enderecoParaDevolver } from "@/lib/devolucao";
 import {
+  avisoDeJurosDoParcelamento,
   pedidoSemValorAPagar,
   rotuloDaFormaDoPedido,
 } from "@/lib/forma-de-pagamento";
@@ -65,6 +66,7 @@ import { limparTelefoneBrasileiro } from "@/lib/telefone-br";
 import { motivoDaDevolucaoIndisponivel } from "@/lib/texto-devolucao-indisponivel";
 import {
   type LinhaDevolucaoDoCliente,
+  PAGAMENTO_RECEBIDO_PEDIDO_CANCELADO,
   desfechoDaDevolucao,
   textoConfirmarCancelamento,
   textoDevolucao,
@@ -337,8 +339,6 @@ function pendingDescription(
  */
 type LeituraDaDevolucao = "conferindo" | "falhou" | "lida";
 
-const PAGAMENTO_RECEBIDO_PEDIDO_CANCELADO =
-  "Este pedido foi cancelado, mas o seu pagamento foi recebido.";
 const TEXTO_CONFERINDO_DEVOLUCAO = "Conferindo sua devolução…";
 const TEXTO_NAO_CONSEGUI_CONFERIR =
   "Não consegui conferir agora. Tente de novo mais tarde ou fale com a loja.";
@@ -616,6 +616,8 @@ export function OrderDetailsView({
   // Guardar o texto no momento do clique deixaria "o dinheiro volta sozinho"
   // na tela de um pedido que já saiu.
   const [perguntandoCancelar, setPerguntandoCancelar] = useState(false);
+  const botaoCancelarPedidoRef = useRef<HTMLButtonElement>(null);
+  const tituloDoPedidoRef = useRef<HTMLHeadingElement>(null);
 
   // O MESMO critério mostra o botão "Cancelar Pedido" e mantém a caixa aberta.
   // Exige sessão: o convidado chega aqui pelo fallback de sessionStorage e
@@ -1408,7 +1410,11 @@ export function OrderDetailsView({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-xs font-semibold text-zinc-500">Meu pedido</p>
-            <h1 className="mt-0.5 text-2xl font-black tracking-tighter text-zinc-900">
+            <h1
+              ref={tituloDoPedidoRef}
+              tabIndex={-1}
+              className="mt-0.5 text-2xl font-black tracking-tighter text-zinc-900"
+            >
               {prontoParaRetirar
                 ? PRONTO_PARA_RETIRAR.heroTitle
                 : jaRetirado
@@ -2063,10 +2069,7 @@ export function OrderDetailsView({
             </div>
             {creditoParcelado && (
               <p>
-                <small>
-                  Parcelado em {order.parcelas}x no cartão. Juros do
-                  parcelamento, se houver, vêm na fatura.
-                </small>
+                <small>{avisoDeJurosDoParcelamento(order.parcelas)}</small>
               </p>
             )}
           </div>
@@ -2304,6 +2307,7 @@ export function OrderDetailsView({
               'delivered' fica fora, é devolução, outro assunto. */}
           {podeCancelarPedido && (
             <button
+              ref={botaoCancelarPedidoRef}
               onClick={handleCancelOrder}
               disabled={isCancelling}
               className="flex w-full items-center gap-3 border-b border-zinc-100 px-5 py-3.5 text-left text-sm font-semibold text-red-600 transition-colors last:border-b-0 hover:bg-red-50 active:bg-red-100 disabled:opacity-50"
@@ -2482,6 +2486,14 @@ export function OrderDetailsView({
         <AlertDialogContent
           overlayClassName="z-[130]"
           className="z-[130] sm:max-w-sm"
+          onCloseAutoFocus={(event) => {
+            const botao = botaoCancelarPedidoRef.current;
+            const destino =
+              botao && !botao.disabled ? botao : tituloDoPedidoRef.current;
+            if (!destino) return;
+            event.preventDefault();
+            destino.focus();
+          }}
         >
           <AlertDialogHeader>
             <AlertDialogTitle>Cancelar este pedido?</AlertDialogTitle>

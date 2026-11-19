@@ -209,6 +209,38 @@ describe("AdminReviewsView — exclusão lenta com a lista mudando", () => {
     expect(paginasPedidas().at(-1)).toBe(0);
   });
 
+  it("exclusão atrasada não diminui a página de uma nova consulta com o mesmo filtro e página", async () => {
+    await montarNaPagina(1);
+    expect(paginaGuardada()).toBe("1");
+    const terminar = await confirmarExclusaoLenta();
+    expect(h.deleteReview).toHaveBeenCalledWith(UMA.id);
+
+    const filtro = (rotulo: string) =>
+      [
+        ...hospedeiro.querySelectorAll<HTMLButtonElement>(
+          '[aria-label="Filtrar por situação"] button',
+        ),
+      ].find((botao) => botao.textContent?.trim().startsWith(rotulo));
+    await act(async () => filtro("Sem resposta")?.click());
+    expect(paginaGuardada()).toBe("0");
+    await act(async () => filtro("Todas")?.click());
+
+    h.reviews = [
+      { ...UMA, id: "nova-1", customerName: "Cliente fictício novo" },
+      { ...UMA, id: "nova-2" },
+    ];
+    h.getAllReviews.mockResolvedValue(leitura(12));
+    const main = hospedeiro.querySelector("main");
+    if (main) main.scrollTo = vi.fn();
+    await act(async () => botao("Seguinte")?.click());
+    expect(paginaGuardada()).toBe("1");
+    expect(hospedeiro.textContent).toContain("Cliente fictício novo");
+
+    await terminar(true);
+    expect(paginasPedidas().at(-1)).toBe(1);
+    expect(paginaGuardada()).toBe("1");
+  });
+
   it("controle: sem trocar nada, excluir a única da página 2 volta para a página 1", async () => {
     await montarNaPagina(1);
     const terminar = await confirmarExclusaoLenta();

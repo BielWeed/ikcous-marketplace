@@ -126,6 +126,44 @@ describe("cartão da devolução no pedido", () => {
     pedido: null,
   } as unknown as DevolucaoDetalhe;
 
+  it.each(["UTC", "America/Sao_Paulo"])(
+    "mostra a coleta no horário de Brasília num aparelho em %s",
+    async (fuso) => {
+      const original = Date.prototype.toLocaleString;
+      const relogio = vi
+        .spyOn(Date.prototype, "toLocaleString")
+        .mockImplementation(function (this: Date, locales, options) {
+          return original.call(this, locales, { timeZone: fuso, ...options });
+        });
+      try {
+        const { DevolucaoDoPedidoCard } = await import(
+          "@/components/devolucao/DevolucaoDoPedidoCard"
+        );
+        await act(async () => {
+          raiz.render(
+            <DevolucaoDoPedidoCard
+              atual={{
+                ...devolucao,
+                status: "aprovada",
+                metodo_retorno: "coleta",
+                coleta_em: "2026-11-19T01:30:00Z",
+              }}
+              anteriores={[]}
+              enderecoDaLoja={null}
+              horarioDaLoja={null}
+              onCancelar={vi.fn()}
+              onInformarEnvio={vi.fn()}
+            />,
+          );
+        });
+        expect(hospedeiro.textContent).toContain("18/11/2026, 22:30");
+        expect(hospedeiro.textContent).toContain("22:30 (horário de Brasília)");
+      } finally {
+        relogio.mockRestore();
+      }
+    },
+  );
+
   it("'Solicitada em' mostra 12/11/2026 num aparelho em UTC", async () => {
     process.env.TZ = "UTC";
     const { DevolucaoDoPedidoCard } = await import(

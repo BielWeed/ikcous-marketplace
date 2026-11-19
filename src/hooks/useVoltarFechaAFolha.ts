@@ -8,6 +8,22 @@ const pilhaDeFolhas: symbol[] = [];
 /** Retornos do nosso `history.back()` ainda por chegar (devem ser engolidos). */
 let retornosPendentes = 0;
 
+// Só folhas que pedem prioridade entram aqui. No navegador real o listener
+// do App pode rodar antes do listener local, mesmo que este use captura.
+const ouvintesAntesDaGuarda = new Set<(evento: PopStateEvent) => boolean>();
+
+export function consumirVoltarDaFolhaAntesDaGuarda(
+  evento: PopStateEvent,
+): boolean {
+  for (const ouvir of ouvintesAntesDaGuarda) {
+    if (ouvir(evento)) return true;
+  }
+  return false;
+}
+
+const enderecoDaFolha = () =>
+  `${globalThis.location.pathname}${globalThis.location.search}`;
+
 /**
  * Faz o botão Voltar do aparelho (Android, gesto, tecla do navegador) FECHAR a
  * folha em vez de tirar a cliente da tela.
@@ -43,8 +59,9 @@ let retornosPendentes = 0;
  * do checkout, com o painel de resumo aberto por baixo da folha), ele roda no
  * mesmo Voltar. Então um único Voltar pode fechar a folha E o painel, e sobra
  * uma entrada de histórico a mais (o Voltar seguinte pode parecer "sem
- * efeito"). A tela não troca, então o que foi digitado fica. Corrigir isso
- * é mexer no App.
+ * efeito"). A tela não troca, então o que foi digitado fica. A opção
+ * `antesDaGuarda` deixa o App entregar primeiro o retorno da mesma URL a
+ * esta folha, inclusive o retorno interno de fechar pelo X.
  *
  * Se a tela some com a folha aberta (a navegação trocou de tela), NADA é
  * devolvido: a entrada no topo já não é a nossa, e mexer no histórico no meio
@@ -68,6 +85,7 @@ let retornosPendentes = 0;
 export function useVoltarFechaAFolha(
   aberta: boolean,
   aoVoltar: () => unknown,
+  antesDaGuarda = false,
 ): () => void {
   const saindoPorNavegacaoRef = useRef(false);
   const aoVoltarRef = useRef(aoVoltar);
@@ -91,6 +109,7 @@ export function useVoltarFechaAFolha(
     saindoPorNavegacaoRef.current = false;
 
     const eu = Symbol("folha");
+    const endereco = enderecoDaFolha();
     pilhaDeFolhas.push(eu);
     const sairDaPilha = () => {
       const posicao = pilhaDeFolhas.indexOf(eu);
@@ -113,9 +132,10 @@ export function useVoltarFechaAFolha(
     const aoPopState = (evento: PopStateEvent) => {
       // O retorno do `history.back()` de outra folha que fechou pelo X não é
       // Voltar: quem o engole é o ouvinte armado por `engolirOProximoPopState`.
-      if (retornosPendentes > 0) return;
+      if (retornosPendentes > 0) return false;
       // Empilhadas: só a de cima trata este Voltar.
-      if (pilhaDeFolhas[pilhaDeFolhas.length - 1] !== eu) return;
+      if (pilhaDeFolhas[pilhaDeFolhas.length - 1] !== eu) return false;
+      if (antesDaGuarda && enderecoDaFolha() !== endereco) return false;
       evento.stopImmediatePropagation();
       entradaPropria = false;
       if (aoVoltarRef.current() === false) {
@@ -123,13 +143,16 @@ export function useVoltarFechaAFolha(
         // próximo precisa encontrar outra.
         empurrarEntrada();
         entradaPropria = true;
-        return;
+        return true;
       }
       sairDaPilha();
+      return true;
     };
+    if (antesDaGuarda) ouvintesAntesDaGuarda.add(aoPopState);
     globalThis.addEventListener("popstate", aoPopState, true);
 
     return () => {
+      ouvintesAntesDaGuarda.delete(aoPopState);
       globalThis.removeEventListener("popstate", aoPopState, true);
       const eraDaFrente = pilhaDeFolhas[pilhaDeFolhas.length - 1] === eu;
       sairDaPilha();
@@ -138,10 +161,11 @@ export function useVoltarFechaAFolha(
       // Fechada por baixo de outra folha: a entrada do topo é da outra.
       if (!eraDaFrente) return;
       if (globalThis.history.state?.folhaDePolitica !== true) return;
-      engolirOProximoPopState();
+      if (antesDaGuarda && enderecoDaFolha() !== endereco) return;
+      engolirOProximoPopState(antesDaGuarda ? endereco : undefined);
       globalThis.history.back();
     };
-  }, [aberta]);
+  }, [aberta, antesDaGuarda]);
 
   return () => {
     saindoPorNavegacaoRef.current = true;
@@ -149,19 +173,23 @@ export function useVoltarFechaAFolha(
 }
 
 /** Engole o `popstate` do `history.back()` que acabamos de pedir. */
-function engolirOProximoPopState(): void {
+function engolirOProximoPopState(endereco?: string): void {
   retornosPendentes += 1;
   let armado = true;
   const engolir = (evento: PopStateEvent) => {
+    if (endereco !== undefined && enderecoDaFolha() !== endereco) return false;
     evento.stopImmediatePropagation();
     desarmar();
+    return true;
   };
+  if (endereco !== undefined) ouvintesAntesDaGuarda.add(engolir);
   const timer = setTimeout(() => desarmar(), JANELA_DO_RETORNO_MS);
   function desarmar() {
     if (!armado) return;
     armado = false;
     retornosPendentes -= 1;
     clearTimeout(timer);
+    ouvintesAntesDaGuarda.delete(engolir);
     // O temporizador pode vencer depois de a janela (jsdom) ser desmontada: sem
     // o método na janela não há o que desarmar.
     globalThis.removeEventListener?.("popstate", engolir, true);

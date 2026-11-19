@@ -22,7 +22,8 @@ vi.mock("sonner", () => ({
 
 // Cada chamada de `is_admin` entra em `pendentes`; o teste decide se e quando
 // o servidor responde (nunca = rede pendurada).
-const { servidor } = vi.hoisted(() => ({
+const { servidor, renderizarPainel } = vi.hoisted(() => ({
+  renderizarPainel: vi.fn(),
   servidor: {
     pendentes: [] as Array<(resposta: unknown) => void>,
   },
@@ -41,7 +42,10 @@ vi.mock("@/lib/supabase", () => ({
 }));
 
 vi.mock("@/components/layouts/AdminArea", () => ({
-  AdminArea: () => <div data-testid="painel-de-verdade">PAINEL ABERTO</div>,
+  AdminArea: () => {
+    renderizarPainel();
+    return <div data-testid="painel-de-verdade">PAINEL ABERTO</div>;
+  },
 }));
 
 // @ts-expect-error flag interna do React, sem tipo público.
@@ -59,6 +63,7 @@ describe("Portão do painel — verificação pendurada tem prazo", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     toastError.mockClear();
     onNavigate.mockClear();
+    renderizarPainel.mockClear();
     servidor.pendentes.length = 0;
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
@@ -111,9 +116,11 @@ describe("Portão do painel — verificação pendurada tem prazo", () => {
   it("pergunta que nunca volta: antes do prazo segue verificando; no prazo mostra 'Tentar de novo', sem expulsar e sem abrir o painel", async () => {
     await abrirPortao();
     expect(servidor.pendentes).toHaveLength(1);
+    expect(renderizarPainel).not.toHaveBeenCalled();
 
     await passar(PRAZO_MS - 1000);
     expect(carregando()).not.toBeNull();
+    expect(renderizarPainel).not.toHaveBeenCalled();
     expect(botao(/tentar de novo/i)).toBeUndefined();
 
     await passar(1500);
@@ -126,7 +133,8 @@ describe("Portão do painel — verificação pendurada tem prazo", () => {
     expect(onNavigate).not.toHaveBeenCalled();
     expect(toastError).not.toHaveBeenCalled();
     expect(hospedeiro.textContent).not.toMatch(/acesso restrito/i);
-    // E o painel NÃO abriu por demora.
+    // Nenhum render ocorreu, nem mesmo um que já tenha sido desmontado.
+    expect(renderizarPainel).not.toHaveBeenCalled();
     expect(painelAberto()).toBeNull();
   });
 
@@ -199,10 +207,12 @@ describe("Portão do painel — verificação pendurada tem prazo", () => {
   it("controle: 'é admin' dentro do prazo abre o painel e o relógio não derruba depois", async () => {
     await abrirPortao();
     await passar(2000);
+    expect(renderizarPainel).not.toHaveBeenCalled();
     await act(async () => {
       servidor.pendentes[0]({ data: true, error: null });
       await vi.advanceTimersByTimeAsync(0);
     });
+    expect(renderizarPainel).toHaveBeenCalled();
     expect(painelAberto()).not.toBeNull();
 
     await passar(PRAZO_MS * 2);

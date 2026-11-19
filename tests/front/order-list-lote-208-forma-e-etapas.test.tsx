@@ -2,7 +2,7 @@
 //
 // Lote 208 (caça 8) — "Meus pedidos":
 //  (item 5)  a mesma etapa tem o mesmo nome na lista e na linha do tempo do
-//            Perfil: Recebido / Separado / A caminho / Entregue;
+//            Perfil: Recebido / Em separação / A caminho / Entregue;
 //  (item 6)  a forma de pagamento usa a MESMA frase da ficha do pedido, e um
 //            método que a tela não conhece nunca vira "PIX";
 //  (item 10) pedido sem itens mostra "Pedido", nunca "N/A".
@@ -97,9 +97,9 @@ describe("OrderList — forma de pagamento, etapas e pedido sem itens (lote 208)
     ).toContain("Pagamento pelo site");
   });
 
-  it("a trilha chama a etapa de 'Separado' (nome da ficha), não 'Separação'", async () => {
+  it("a trilha chama a etapa de 'Em separação' (nome da ficha), não 'Separação'", async () => {
     const texto = await renderizar(pedidoBase);
-    expect(texto).toContain("Separado");
+    expect(texto).toContain("Em separação");
     expect(texto).not.toContain("Separação");
   });
 
@@ -127,7 +127,7 @@ describe("OrderList — forma de pagamento, etapas e pedido sem itens (lote 208)
 });
 
 describe("OrderTimeline — mesmos nomes de etapa da ficha (lote 208)", () => {
-  it("diz Recebido / Separado / A caminho / Entregue (e não 'Preparando' / 'Em rota')", async () => {
+  it("diz Recebido / Em separação / A caminho / Entregue (e não 'Preparando' / 'Em rota')", async () => {
     const { OrderTimeline } = await import(
       "@/components/ui/custom/OrderTimeline"
     );
@@ -138,7 +138,7 @@ describe("OrderTimeline — mesmos nomes de etapa da ficha (lote 208)", () => {
       r.render(<OrderTimeline status="processing" compacto />);
     });
     const texto = host.textContent ?? "";
-    for (const etapa of ["Recebido", "Separado", "A caminho", "Entregue"]) {
+    for (const etapa of ["Recebido", "Em separação", "A caminho", "Entregue"]) {
       expect(texto).toContain(etapa);
     }
     expect(texto).not.toContain("Preparando");

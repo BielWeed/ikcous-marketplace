@@ -55,7 +55,14 @@ import {
   ThumbsUp,
   Trash2,
 } from "lucide-react";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 
 // Respostas rápidas do formulário: os mesmos textos de antes; os rótulos
@@ -401,31 +408,79 @@ export const AdminReviewsView = memo(function AdminReviewsView({
   // padrão de AdminCustomersView.
   const rodadaRef = useRef(0);
   const leiturasEmVooRef = useRef(0);
-  // Retrato da consulta atual (página + filtros), sempre o de agora: a exclusão
-  // que termina tarde compara com ele para saber se a lista ainda é a dela.
-  const consultaAtualRef = useRef("");
+  const chaveDaPagina = (pagina: number) =>
+    JSON.stringify([pagina, ratingFilter, searchQuery, statusFilter]);
+  const consultaAtual = chaveDaPagina(page);
+
+  // Cada troca cria uma identidade nova, mesmo ao voltar ao mesmo filtro.
+  // A lista de A não confirma a nova consulta A depois de passar por B.
+  const [consultaDaTela, setConsultaDaTela] = useState({
+    chave: consultaAtual,
+  });
+  if (consultaDaTela.chave !== consultaAtual) {
+    setConsultaDaTela({ chave: consultaAtual });
+  }
+  // Uma exclusão atrasada só pode ajustar a página desta mesma consulta.
+  const consultaAtualRef = useRef(consultaDaTela);
+  useLayoutEffect(() => {
+    consultaAtualRef.current = consultaDaTela;
+  }, [consultaDaTela]);
+
+  const [consultaDaLista, setConsultaDaLista] = useState<
+    typeof consultaDaTela | null
+  >(null);
+  const consultaDaListaRef = useRef<typeof consultaDaTela | null>(null);
+  const listaAtual =
+    consultaDaTela.chave === consultaAtual &&
+    consultaDaLista === consultaDaTela;
+  const acoesBloqueadas = loading || !listaAtual || !!erroDaListagemAdmin;
+  const atualizandoLista =
+    active && !erroDaListagemAdmin && (loading || !listaAtual);
+
+  const focoDaPaginacao = useRef<{ destino: string; indice: number } | null>(
+    null,
+  );
   useEffect(() => {
-    consultaAtualRef.current = JSON.stringify([
-      page,
-      ratingFilter,
-      searchQuery,
-      statusFilter,
-    ]);
-  }, [page, ratingFilter, searchQuery, statusFilter]);
+    const foco = focoDaPaginacao.current;
+    if (!foco) return;
+    if (!active || foco.destino !== consultaAtual || erroDaListagemAdmin) {
+      focoDaPaginacao.current = null;
+      return;
+    }
+    if (acoesBloqueadas) return;
+    focoDaPaginacao.current = null;
+    // Se a lojista já passou para outro controle, não roube o foco.
+    if (document.activeElement !== document.body) return;
+    const botoes = viewRef.current?.querySelectorAll<HTMLButtonElement>(
+      'nav[aria-label="Páginas"] button',
+    );
+    const preferido = botoes?.[foco.indice];
+    const destino =
+      preferido && !preferido.disabled
+        ? preferido
+        : (botoes?.[1 - foco.indice] ?? tituloListaRef.current);
+    destino?.focus();
+  }, [active, acoesBloqueadas, consultaAtual, erroDaListagemAdmin, viewRef]);
 
   const loadReviews = useCallback(
     async (pageToFetch: number, silent = false) => {
       const rodada = ++rodadaRef.current;
       leiturasEmVooRef.current += 1;
+      // Só uma lista já confirmada para esta consulta pode sobreviver a uma
+      // falha silenciosa. Um evento que substitui a primeira carga precisa
+      // usar o mesmo caminho de erro e recuperação da carga original.
+      const releitura = silent && consultaDaListaRef.current === consultaDaTela;
       try {
         const result = await getAllReviews(pageToFetch, pageSize, {
           rating: ratingFilter,
           search: searchQuery,
           status: statusFilter,
-          silent,
+          silent: releitura,
         });
         if (rodada !== rodadaRef.current) return;
         if (result) {
+          consultaDaListaRef.current = consultaDaTela;
+          setConsultaDaLista(consultaDaTela);
           setJaLeu(true);
           setTotalReviews(result.total);
           setGlobalVerifiedCount(result.globalVerifiedCount || 0);
@@ -440,6 +495,9 @@ export const AdminReviewsView = memo(function AdminReviewsView({
           if (pageToFetch > maxPage) {
             setPage(maxPage);
           }
+        } else if (!releitura) {
+          consultaDaListaRef.current = null;
+          setConsultaDaLista(null);
         }
 
         // Mesmo recarregamento da lista: aprovar/recusar/apagar passam por
@@ -478,7 +536,15 @@ export const AdminReviewsView = memo(function AdminReviewsView({
         firstLoadRef.current = false;
       }
     },
-    [getAllReviews, pageSize, ratingFilter, searchQuery, statusFilter, setPage],
+    [
+      consultaDaTela,
+      getAllReviews,
+      pageSize,
+      ratingFilter,
+      searchQuery,
+      statusFilter,
+      setPage,
+    ],
   );
 
   useEffect(() => {
@@ -627,7 +693,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
     // A decisão "era a última da página, volta uma" vale para a consulta de
     // AGORA (antes da espera). Se a lojista trocar filtro/busca/página enquanto
     // a rede demora, a lista é outra e a página nunca pode ser diminuída.
-    const consultaDaExclusao = consultaAtualRef.current;
+    const consultaDaExclusao = consultaDaTela;
     const eraAUnicaDaPagina = adminReviews.length === 1 && page > 0;
     // Laudo 0109 (A-10): o hook devolve booleano — vibração de sucesso e
     // recarga só quando a exclusão de verdade aconteceu.
@@ -902,6 +968,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
           type="button"
           onClick={() => enviarResposta(reviewId)}
           disabled={
+            acoesBloqueadas ||
             isSubmittingReply ||
             !nomeTemConteudoVisivel(replyText) ||
             replyText.length > TETO_DA_RESPOSTA_DA_LOJA ||
@@ -1036,6 +1103,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
           {confirmDeleteId === review.id ? (
             <ConfirmarExclusao
               frase="Excluir esta avaliação? Não dá para desfazer."
+              desabilitada={acoesBloqueadas}
               aoCancelar={() => {
                 focoPendente.current = () =>
                   botoesExcluir.current.get(review.id) ?? null;
@@ -1060,7 +1128,9 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                   onClick={() => {
                     handleAprovar(review.id);
                   }}
-                  disabled={isOffline || publicando.has(review.id)}
+                  disabled={
+                    acoesBloqueadas || isOffline || publicando.has(review.id)
+                  }
                   aria-label="Aprovar e Publicar"
                   title="Aprovar e Publicar"
                   className={cn(BOTAO_NEUTRO, "min-w-0 flex-1")}
@@ -1074,7 +1144,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
               )}
               <button
                 type="button"
-                disabled={isOffline || isSubmittingReply}
+                disabled={acoesBloqueadas || isOffline || isSubmittingReply}
                 ref={(botao) => {
                   if (botao) botoesResposta.current.set(review.id, botao);
                   else botoesResposta.current.delete(review.id);
@@ -1092,7 +1162,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
               <button
                 type="button"
                 onClick={() => setConfirmDeleteId(review.id)}
-                disabled={isOffline}
+                disabled={acoesBloqueadas || isOffline}
                 ref={(botao) => {
                   if (botao) botoesExcluir.current.set(review.id, botao);
                   else botoesExcluir.current.delete(review.id);
@@ -1159,7 +1229,8 @@ export const AdminReviewsView = memo(function AdminReviewsView({
             setPage(0);
           }}
           aoDigitar={setIsTyping}
-          buscando={loading || isTyping}
+          buscando={atualizandoLista || isTyping}
+          atualizandoLista={atualizandoLista}
           detalhado={detalhado}
           aoTrocarModo={() =>
             setViewMode((prev) =>
@@ -1389,11 +1460,19 @@ export const AdminReviewsView = memo(function AdminReviewsView({
           </ul>
         )}
 
-        {totalPages > 1 && (
+        {listaAtual && !erroDaListagemAdmin && totalPages > 1 && (
           <Paginador
             pagina={page}
             totalDePaginas={totalPages}
+            ocupado={loading}
             aoMudar={(nova, origem) => {
+              focoDaPaginacao.current =
+                document.activeElement === origem
+                  ? {
+                      destino: chaveDaPagina(nova),
+                      indice: nova > page ? 1 : 0,
+                    }
+                  : null;
               setPage(nova);
               rolarAoTopo(origem);
             }}

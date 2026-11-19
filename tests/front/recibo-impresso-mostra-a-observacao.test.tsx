@@ -135,6 +135,39 @@ describe("OrderReceipt — a observação vai no papel", () => {
     },
   );
 
+  it.each([false, true])(
+    "sem endereço gravado (retirada: %s), mantém o filtro antigo",
+    async (retiradaNaLoja) => {
+      const papel = await imprimir(
+        pedidoBase({
+          retiradaNaLoja,
+          notes: "Retirada na loja: Rua X, 10\n\n  Retirada na loja  ",
+        }),
+      );
+      expect(papel.textContent).not.toContain("OBSERVAÇÃO:");
+      expect(papel.textContent).not.toContain("Rua X, 10");
+    },
+  );
+
+  it.each(["", "\n\nRetirada na loja: Rua X, 10"])(
+    "retirada: preserva a instrução da cliente com ou sem nota automática (%s)",
+    async (sufixo) => {
+      const instrucao = "Retirada na loja: minha irmã busca às 17h 🧾";
+      const papel = await imprimir(
+        pedidoBase({
+          notes: instrucao + sufixo,
+          retiradaNaLoja: true,
+          enderecoDeRetirada: "Rua X, 10",
+        }),
+      );
+      const rotulo = Array.from(papel.querySelectorAll("p")).find(
+        (p) => p.textContent === "OBSERVAÇÃO:",
+      );
+      expect(rotulo?.nextElementSibling?.textContent).toBe(instrucao);
+      expect(papel.textContent?.split("Rua X, 10")).toHaveLength(2);
+    },
+  );
+
   it("mantém linhas da cliente e variação legada, sem espaços vazios excessivos", async () => {
     const papel = await imprimir(
       pedidoBase({

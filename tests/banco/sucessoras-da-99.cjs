@@ -178,6 +178,9 @@ const NOMES = [
   // A observacao da inspecao e so da loja: devolucao_detalhe sucede o corpo da 3992 (a CADEIA 99 -> 3992 -> 404: o `hashVigente` da 404 e o `hashDesta` da 3992). A 404 tambem tira o SELECT
   // da tabela devolucoes de authenticated (grant por coluna) e o rollback-manual dela devolve os dois. O rollback da 3992 recusa com o corpo novo no ar: ela cai antes (e, na ordem inversa, primeiro).
   "20261404000000_a_observacao_da_inspecao_so_a_loja_ve.sql",
+  // A devolucao integral com cupom nao perde o centavo: solicitar_devolucao sucede o corpo da 3992 (a CADEIA 175 -> 3992 -> 5400: o `hashVigente` da 5400 e o `hashDesta` da 3992). Nao e uma das
+  // 42 da 99 (como a 397 e a 3997), mas o rollback da 3992 recusa com o corpo novo no ar: ela cai antes (e, na ordem inversa, primeiro).
+  "20261405400000_a_devolucao_integral_nao_perde_o_centavo_do_cupom.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).

@@ -165,7 +165,7 @@ describe("Mesmo endereço da loja (D8)", () => {
     expect(botao("Política salva")?.disabled).toBe(true);
   });
 
-  it("desmarcar mostra o campo, vazio, e não suja o formulário", async () => {
+  it("desmarcar sem endereço em devolução presencial avisa junto ao campo", async () => {
     await montar();
     await clicar(caixa());
     expect(caixa().checked).toBe(false);
@@ -174,7 +174,13 @@ describe("Mesmo endereço da loja (D8)", () => {
     expect(hospedeiro.textContent).not.toContain(
       "Rua das Flores, 100 — Centro",
     );
+    expect(hospedeiro.textContent).toContain(
+      "Informe o endereço de devolução ou marque 'Mesmo endereço da loja'.",
+    );
     expect(botao("Política salva")?.disabled).toBe(true);
+    expect(hospedeiro.querySelector('[role="status"]')?.textContent).toBe(
+      "Os prazos contam da entrega",
+    );
   });
 
   it("desmarcada com valor: envia o endereço digitado", async () => {
@@ -185,13 +191,47 @@ describe("Mesmo endereço da loja (D8)", () => {
     expect(enderecoEnviado()).toBe("Galpão, Rua B 50");
   });
 
-  it("desmarcada e vazia: não envia o endereço (continua o da loja, como no banco)", async () => {
+  it("desmarcada e vazia: não salva outra alteração até confirmar o endereço", async () => {
     await montar();
     await clicar(caixa());
     await digitar("politica-troca", "15");
+    expect(botao("Salvar política")?.disabled).toBe(true);
+    expect(hospedeiro.querySelector('[role="status"]')?.textContent).toBe(
+      "Salve antes de fechar",
+    );
     await salvar();
-    expect(enderecoEnviado()).toBeUndefined();
+    expect(rpc).not.toHaveBeenCalled();
+    expect(caixa().checked).toBe(false);
+    expect(hospedeiro.textContent).toContain(
+      "Informe o endereço de devolução ou marque 'Mesmo endereço da loja'.",
+    );
   });
+
+  it.each(["", "   "])(
+    "com apenas postagem configurada, salva a política com endereço %j",
+    async (endereco) => {
+      loja.storeAddress = null;
+      maybeSingle.mockResolvedValue({
+        data: {
+          ...LINHA,
+          metodos_locais: [],
+          metodos_nacionais: ["envio_proprio"],
+        },
+        error: null,
+      });
+      await montar();
+      await clicar(caixa());
+      await digitar("politica-endereco", endereco);
+      await digitar("politica-troca", "15");
+
+      expect(campo()?.value).toBe(endereco);
+      expect(campo()?.getAttribute("aria-invalid")).not.toBe("true");
+      await salvar();
+      expect(rpc).toHaveBeenCalledWith("salvar_politica_de_devolucao", {
+        p: expect.objectContaining({ prazo_troca_dias: 15 }),
+      });
+    },
+  );
 
   it("marcada sem mexer: não envia o endereço", async () => {
     await montar();
@@ -231,10 +271,22 @@ describe("Mesmo endereço da loja (D8)", () => {
     expect(botao("Política salva")?.disabled).toBe(true);
   });
 
-  it("loja sem endereço cadastrado: a caixa avisa onde cadastrar", async () => {
+  it("devolução presencial sem endereço da loja: não salva até informar outro", async () => {
     loja.storeAddress = null;
     await montar();
     expect(caixa().checked).toBe(true);
-    expect(hospedeiro.textContent).toContain("Minha loja");
+    await digitar("politica-troca", "15");
+
+    expect(botao("Salvar política")?.disabled).toBe(true);
+    await salvar();
+    expect(rpc).not.toHaveBeenCalled();
+    expect(hospedeiro.textContent).toContain(
+      "Cadastre o endereço em Minha loja ou informe outro endereço de devolução.",
+    );
+
+    await clicar(caixa());
+    await digitar("politica-endereco", "Galpão, Rua B 50");
+    await salvar();
+    expect(enderecoEnviado()).toBe("Galpão, Rua B 50");
   });
 });

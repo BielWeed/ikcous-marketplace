@@ -1,4 +1,30 @@
 {
+  "1.5.214": {
+    "titulo": "Troco na entrega, retirada com endereço e pedidos mais claros",
+    "novidades": [
+      "Na entrega paga em dinheiro, a compra pergunta se você precisa de troco. O valor necessário fica na observação do pedido, sem mudar o total."
+    ],
+    "correcoes": [
+      "Devoluções: a nova conta corrige a perda de centavos na devolução integral com cupom em pedidos de até dois produtos diferentes, desde que não haja devolução anterior calculada pela regra antiga. Com três ou mais produtos diferentes, ainda pode faltar R$ 0,01.",
+      "Painel, cupons: enquanto a exclusão está em andamento, o botão do mesmo cupom não permite repetir o pedido.",
+      "Na compra sem conta, o leitor de tela avisa que está buscando o endereço pelo CEP, sem anunciar o frete ao mesmo tempo.",
+      "Cartão parcelado: a confirmação mostra o total do pedido, não o valor da fatura, e informa o número de parcelas quando disponível. Se o pedido pago foi cancelado, a tela diz “Pedido cancelado” em vez de prometer a separação.",
+      "Ao criar a conta, colar o e-mail com espaços invisíveis nas pontas não impede mais o cadastro. Nos ajustes da conta, salvar sem mudar o CPF não deixa o CPF pendente só porque o envio está em andamento.",
+      "Carrinho: antes de abrir o pagamento, a loja confere os itens. Se todos tiverem esgotado, a cliente fica no carrinho em vez de seguir para o pagamento.",
+      "Painel, sem internet: novas alterações de pedidos e produtos que entram enquanto outras estão sendo enviadas ganham outra tentativa de envio.",
+      "Painel, Clientes e Avaliações: durante a troca de filtro, as ações da lista anterior ficam indisponíveis. Em Avaliações, a tecla Tab ainda pode perder o ponto enquanto a próxima página carrega.",
+      "Balcão: se o dinheiro informado não cobre a venda, o leitor de tela anuncia quanto falta e o caixa não diz que está tudo pronto. Ao trocar de Dinheiro para PIX e voltar, o aviso do leitor de tela é recriado. Um WhatsApp inválido ou incompleto pode impedir o envio do recibo, mas não a venda.",
+      "Painel, frete grátis: R$ 0,01 não pode mais ser salvo como valor mínimo de compra, pois esse valor é reservado para “Sempre grátis”.",
+      "Produtos: a galeria acompanha a foto da opção escolhida. Antes de excluir a última opção de um produto ativo, o painel avisa se ele continuará à venda sem escolha de tamanho.",
+      "WhatsApp: a mensagem de pedido pronto para retirar inclui endereço e horário quando cadastrados, com reticências se o texto for longo. Para o mototáxi, o painel confere o número atual antes de abrir a conversa.",
+      "Pedidos: a cliente passa a ler “Em separação” no lugar de “Separado”. Na ficha do painel, avançar um pedido marcado como “Pago fora do fluxo” pede confirmação de que o pagamento foi conferido.",
+      "Painel, Pedidos: a tela espera conferir se a loja já teve pedidos antes de orientar sobre a primeira venda. Se não der para conferir, não afirma que todos os pedidos já foram atendidos.",
+      "Devoluções e reembolsos: os horários da coleta e dos registros de dinheiro devolvido aparecem no horário de Brasília.",
+      "Painel, histórico: se a atualização falhar, a tela avisa quando está mostrando a última consulta. Se não houver dados para mostrar, aparece um aviso no lugar do carregamento.",
+      "Recibo impresso: quando há endereço de retirada no pedido, a observação da cliente pode começar com “Retirada na loja:” sem ser confundida com a nota automática."
+    ],
+    "melhorias": []
+  },
   "1.5.213": {
     "titulo": "Pedidos mais claros, endereços e painel mais fáceis de usar",
     "novidades": [],

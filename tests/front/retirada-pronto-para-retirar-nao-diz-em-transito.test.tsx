@@ -243,7 +243,7 @@ describe("retirada na loja — 'Pronto para retirar' no lugar de 'Em Trânsito'"
 
     it("retirada em separação: a etapa já se chama 'Pronto para retirar' (igual ao painel), com o aviso de espera", async () => {
       const texto = await telaDaCliente(await pedido("processing", true));
-      expect(texto).toContain("Separado");
+      expect(texto).toContain("Em separação");
       expect(texto).toContain("Aguarde a confirmação da loja para retirar.");
       // Só a ETAPA futura da linha do tempo; o título e a frase de "pronto"
       // ficam para quando a loja avisar.

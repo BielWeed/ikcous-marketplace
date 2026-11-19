@@ -154,15 +154,18 @@ describe("OrderDetailsView — cancelar pedido pela caixa de confirmação da lo
     expect(updateOrderStatusMock).not.toHaveBeenCalled();
   });
 
-  it("'Manter pedido' fecha a caixa e não cancela", async () => {
+  it("'Manter pedido' fecha a caixa sem cancelar e devolve o foco", async () => {
+    const abrir = botao(hospedeiro, "Cancelar Pedido")!;
+    abrir.focus();
     await abrirACaixa();
+
     await act(async () => {
       botao(caixa()!, "Manter pedido")!.click();
     });
 
     expect(caixa()).toBeNull();
     expect(updateOrderStatusMock).not.toHaveBeenCalled();
-    expect(botao(hospedeiro, "Cancelar Pedido")).toBeDefined();
+    await vi.waitFor(() => expect(document.activeElement).toBe(abrir));
   });
 
   it("'Cancelar pedido' (o sim) chama o cancelamento uma vez, com o id do pedido", async () => {
@@ -359,6 +362,9 @@ describe("OrderDetailsView — cancelar pedido pela caixa de confirmação da lo
     expect(botao(hospedeiro, "Cancelar Pedido")).toBeUndefined();
     expect(caixa()).toBeNull();
     expect(document.body.textContent).not.toContain("volta sozinho");
+    const titulo = hospedeiro.querySelector("h1");
+    expect(titulo).not.toBeNull();
+    await vi.waitFor(() => expect(document.activeElement).toBe(titulo));
 
     // E não fica "armada": se o pedido voltasse a ser cancelável, a caixa
     // não reabre sozinha.

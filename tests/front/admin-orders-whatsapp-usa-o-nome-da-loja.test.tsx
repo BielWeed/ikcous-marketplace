@@ -12,10 +12,11 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 let nomeConfigurado: string | undefined;
+let horarioConfigurado: string | undefined;
 
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
-    config: { storeName: nomeConfigurado },
+    config: { storeName: nomeConfigurado, businessHours: horarioConfigurado },
     isLoaded: true,
     updateConfig: vi.fn(),
   }),
@@ -132,6 +133,7 @@ describe("AdminOrdersView — WhatsApp de status chama a loja pelo nome que a lo
     vi.resetModules();
     mockOrders = [];
     nomeConfigurado = undefined;
+    horarioConfigurado = undefined;
   });
 
   async function tocarNoWhatsapp(sobre: Partial<Order> = {}): Promise<string> {
@@ -196,15 +198,35 @@ describe("AdminOrdersView — WhatsApp de status chama a loja pelo nome que a lo
     );
   });
 
-  it("pedido enviado de retirada: nunca leva rastreio", async () => {
+  it("retirada pronta leva endereço e horário no link, nunca rastreio", async () => {
     nomeConfigurado = "Loja Teste";
-    const mensagem = await tocarNoWhatsapp({
+    horarioConfigurado = "Seg a sex, das 9h às 18h";
+    await tocarNoWhatsapp({
       status: "shipping",
       trackingCode: "AB123456789BR",
       retiradaNaLoja: true,
+      enderecoDeRetirada: "Rua São José, #42 & Cia",
     });
-    expect(mensagem).toContain("Status: Pronto para retirar");
-    expect(mensagem).not.toContain("rastreio");
+    expect(abrirWhatsapp).toHaveBeenCalledExactlyOnceWith(
+      `https://wa.me/5534999999999?text=${encodeURIComponent(
+        "Olá Cliente Teste!\n\nSeu pedido #-WHATS foi atualizado.\n" +
+          "Status: Pronto para retirar\nRetire em: Rua São José, #42 & Cia\n" +
+          "Horário: Seg a sex, das 9h às 18h\n\nObrigado por comprar na Loja Teste!",
+      )}`,
+    );
+  });
+
+  it("retirada com horário longo abre uma URL curta sem cortar o emoji ao meio", async () => {
+    nomeConfigurado = "Loja Teste";
+    horarioConfigurado = `${"a".repeat(198)}👍🏽${"a".repeat(4798)}`;
+    const mensagem = await tocarNoWhatsapp({
+      status: "shipping",
+      retiradaNaLoja: true,
+    });
+    const url = abrirWhatsapp.mock.calls[0][0] as string;
+    expect(url.length).toBeLessThan(2000);
+    expect(new URL(url).searchParams.get("text")).toBe(mensagem);
+    expect(mensagem).toContain(`Horário: ${"a".repeat(198)}…\n`);
   });
 
   it("sem nome configurado: cai no nome do app", async () => {

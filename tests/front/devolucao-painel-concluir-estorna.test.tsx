@@ -317,21 +317,25 @@ describe("AdminDevolucoesView — concluir e devolver o dinheiro", () => {
     expect(toast.error).not.toHaveBeenCalled();
   });
 
-  it("reembolso manual: nenhuma edge, e o lojista é mandado devolver em mãos/PIX", async () => {
+  it("reembolso manual: avisa o valor confirmado pelo servidor, em mãos ou por PIX, sem chamar a edge", async () => {
     respostas.set("admin_devolucao_concluir", {
       id: "d-1",
       status: "concluida",
       resolucao: "reembolso",
-      valor_reembolso: 219.8,
+      valor_reembolso: 179.35,
       refund_id: null,
       reembolso_manual: true,
       reestocados: 0,
     });
     await abrirEConcluirComoNova();
 
+    expect(rpc).toHaveBeenCalledWith(
+      "admin_devolucao_concluir",
+      expect.objectContaining({ p_valor_reembolso: 219.8 }),
+    );
     expect(invoke).not.toHaveBeenCalled();
     expect(toast.warning).toHaveBeenCalledWith(
-      expect.stringContaining("em mãos ou por PIX"),
+      expect.stringContaining("R$ 179,35, em mãos ou por PIX"),
       expect.anything(),
     );
   });

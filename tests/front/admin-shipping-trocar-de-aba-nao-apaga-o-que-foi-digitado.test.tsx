@@ -25,6 +25,7 @@
 // `isFormDirty` faria a tela NUNCA carregar os valores salvos. Por isso a
 // guarda é "já sincronizei uma vez E o lojista mexeu", nunca só a segunda
 // parte. O terceiro teste deste arquivo é o que prende essa metade.
+import { consumirVoltarDaFolhaAntesDaGuarda } from "@/hooks/useVoltarFechaAFolha";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -110,12 +111,17 @@ describe("AdminShippingView — trocar de aba não apaga o que foi digitado", ()
     vi.restoreAllMocks();
   });
 
-  async function renderizar(active: boolean) {
+  async function renderizar(
+    active: boolean,
+    onSetDirty = vi.fn<(sujo: boolean) => void>(),
+  ) {
     const { AdminShippingView } = await import(
       "@/views/admin/AdminShippingView"
     );
     await act(async () => {
-      raiz.render(<AdminShippingView active={active} onSetDirty={vi.fn()} />);
+      raiz.render(
+        <AdminShippingView active={active} onSetDirty={onSetDirty} />,
+      );
     });
     await act(async () => {
       await esperarMicrotarefas();
@@ -143,6 +149,59 @@ describe("AdminShippingView — trocar de aba não apaga o que foi digitado", ()
       campo.dispatchEvent(new Event("input", { bubbles: true }));
     });
   }
+
+  it("o Voltar fecha a ajuda sem tirar o lojista do Frete nem apagar o rascunho", async () => {
+    globalThis.history.replaceState(
+      { view: "admin-orders" },
+      "",
+      "/admin-orders",
+    );
+    globalThis.history.pushState(
+      { view: "admin-shipping" },
+      "",
+      "/admin-shipping",
+    );
+    const onSetDirty = vi.fn<(sujo: boolean) => void>();
+    await renderizar(true, onSetDirty);
+    await digitarNoValor("7");
+    expect(onSetDirty).toHaveBeenLastCalledWith(true);
+
+    const guarda = vi.fn();
+    const ouvirComoApp = (evento: PopStateEvent) => {
+      if (consumirVoltarDaFolhaAntesDaGuarda(evento)) return;
+      if (onSetDirty.mock.lastCall?.[0]) guarda();
+    };
+    // Captura no jsdom para o App do teste ser chamado primeiro, como
+    // acontece no navegador, mesmo quando a folha tem seu próprio ouvinte.
+    globalThis.addEventListener("popstate", ouvirComoApp, true);
+    async function voltar() {
+      await act(async () => {
+        globalThis.history.back();
+        await new Promise((resolve) => setTimeout(resolve, 60));
+      });
+    }
+    try {
+      await act(async () => {
+        hospedeiro
+          .querySelector<HTMLButtonElement>(
+            'button[title="Ajuda e explicação desta tela"]',
+          )
+          ?.click();
+      });
+      expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+
+      await voltar();
+      expect(globalThis.location.pathname).toBe("/admin-shipping");
+      expect(document.querySelector('[role="dialog"]')).toBeNull();
+      expect(pegarCampoValor().value).toBe("7");
+      expect(guarda).not.toHaveBeenCalled();
+
+      await voltar();
+      expect(guarda).toHaveBeenCalledTimes(1);
+    } finally {
+      globalThis.removeEventListener("popstate", ouvirComoApp, true);
+    }
+  });
 
   it("o valor digitado sobrevive a sair da aba e voltar", async () => {
     await renderizar(true);

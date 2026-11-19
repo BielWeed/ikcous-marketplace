@@ -12,7 +12,7 @@ import type {
   AcaoDaVenda,
   ClienteDaVenda as ClienteDaVendaEstado,
 } from "@/hooks/useVendaPresencial";
-import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
+import { linkWhatsappDoClienteDoBalcao } from "@/lib/whatsapp-do-cliente";
 import {
   AlertTriangle,
   ChevronLeft,
@@ -170,7 +170,7 @@ export function ClienteDaVenda({
 
   const avisoWhatsappInvalido =
     whatsappAvulso.trim() !== "" &&
-    linkWhatsappDoCliente(whatsappAvulso) === null;
+    linkWhatsappDoClienteDoBalcao(whatsappAvulso) === null;
 
   return (
     <section className="pdv-layer" aria-label="Identificação da venda">
@@ -333,17 +333,27 @@ export function ClienteDaVenda({
                 }}
                 delay={200}
                 className="pdv-field"
+                aria-describedby={
+                  avisoWhatsappInvalido ? "aviso-whatsapp-avulso" : undefined
+                }
+                aria-invalid={avisoWhatsappInvalido || undefined}
               />
-              {avisoWhatsappInvalido && (
-                <p className="pdv-muted flex items-start gap-2">
-                  <AlertTriangle
-                    aria-hidden="true"
-                    className="pdv-orange size-4 shrink-0"
-                  />
-                  Esse número não abre conversa no WhatsApp — o recibo não vai
-                  ter o botão de enviar disponível, mas a venda segue normal.
-                </p>
-              )}
+              <p
+                id="aviso-whatsapp-avulso"
+                role="status"
+                className={
+                  avisoWhatsappInvalido
+                    ? "pdv-muted flex items-start gap-2"
+                    : "sr-only"
+                }
+              >
+                <AlertTriangle
+                  aria-hidden="true"
+                  className="pdv-orange size-4 shrink-0"
+                />
+                {avisoWhatsappInvalido &&
+                  "Esse número não abre conversa no WhatsApp — o recibo não vai ter o botão de enviar disponível, mas a venda segue normal."}
+              </p>
             </div>
             <Button
               type="button"

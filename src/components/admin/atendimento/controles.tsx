@@ -74,6 +74,7 @@ export function BuscaEModo({
   aoMudar,
   aoDigitar,
   buscando,
+  atualizandoLista = false,
   detalhado,
   aoTrocarModo,
 }: {
@@ -84,6 +85,7 @@ export function BuscaEModo({
   readonly aoMudar: (novo: string) => void;
   readonly aoDigitar: (digitando: boolean) => void;
   readonly buscando: boolean;
+  readonly atualizandoLista?: boolean;
   readonly detalhado: boolean;
   readonly aoTrocarModo: () => void;
 }) {
@@ -103,6 +105,9 @@ export function BuscaEModo({
           ) : (
             <Search className="size-4" />
           )}
+        </span>
+        <span aria-live="polite" aria-atomic="true" className="sr-only">
+          {atualizandoLista ? "Atualizando a lista…" : null}
         </span>
         <label htmlFor={id} className="sr-only">
           {rotulo}
@@ -387,10 +392,12 @@ export function AvisoDeProblema({
  */
 export function ConfirmarExclusao({
   frase,
+  desabilitada = false,
   aoCancelar,
   aoConfirmar,
 }: {
   readonly frase: string;
+  readonly desabilitada?: boolean;
   readonly aoCancelar: () => void;
   readonly aoConfirmar: () => unknown;
 }) {
@@ -402,7 +409,7 @@ export function ConfirmarExclusao({
   const [excluindo, setExcluindo] = useState(false);
   const travado = useRef(false);
   async function confirmar() {
-    if (travado.current) return;
+    if (desabilitada || travado.current) return;
     travado.current = true;
     setExcluindo(true);
     try {
@@ -431,7 +438,7 @@ export function ConfirmarExclusao({
         </button>
         <button
           type="button"
-          disabled={excluindo}
+          disabled={desabilitada || excluindo}
           onClick={() => void confirmar()}
           className={cn(BOTAO_DE_EXCLUIR, "flex-1")}
         >
@@ -447,20 +454,26 @@ export function Paginador({
   pagina,
   totalDePaginas,
   aoMudar,
+  ocupado = false,
 }: {
   readonly pagina: number;
   readonly totalDePaginas: number;
+  readonly ocupado?: boolean;
   readonly aoMudar: (nova: number, origem: HTMLElement) => void;
 }) {
   return (
     <nav
       aria-label="Páginas"
+      aria-busy={ocupado || undefined}
       className="mt-5 flex items-center justify-between gap-3"
     >
       <button
         type="button"
-        onClick={(e) => aoMudar(Math.max(0, pagina - 1), e.currentTarget)}
-        disabled={pagina === 0}
+        onClick={(e) => {
+          if (!ocupado) aoMudar(Math.max(0, pagina - 1), e.currentTarget);
+        }}
+        aria-disabled={ocupado || undefined}
+        disabled={!ocupado && pagina === 0}
         className={BOTAO_NEUTRO}
       >
         <ChevronLeft aria-hidden="true" className="size-4" />
@@ -472,10 +485,12 @@ export function Paginador({
       </span>
       <button
         type="button"
-        onClick={(e) =>
-          aoMudar(Math.min(totalDePaginas - 1, pagina + 1), e.currentTarget)
-        }
-        disabled={pagina >= totalDePaginas - 1}
+        onClick={(e) => {
+          if (!ocupado)
+            aoMudar(Math.min(totalDePaginas - 1, pagina + 1), e.currentTarget);
+        }}
+        aria-disabled={ocupado || undefined}
+        disabled={!ocupado && pagina >= totalDePaginas - 1}
         className={BOTAO_NEUTRO}
       >
         Seguinte

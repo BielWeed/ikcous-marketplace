@@ -42,7 +42,9 @@ WITH el AS (
   UNION ALL
   SELECT 'devolucao_elegibilidade: corpo exato (md5)', 'bedd211bba45261dfbf962241ca3c9dd', COALESCE((SELECT h FROM el), 'AUSENTE')
   UNION ALL
-  SELECT 'solicitar_devolucao: corpo exato (md5)', '52e5c30c06f9767a97e98f3a393b8496', COALESCE((SELECT h FROM so), 'AUSENTE')
+  -- aceita os dois corpos EXATOS (o desta migration e o da sucessora 20261405400000); normaliza ao esperado historico do rol.
+  SELECT 'solicitar_devolucao: corpo exato (md5)', '52e5c30c06f9767a97e98f3a393b8496',
+         COALESCE((SELECT CASE WHEN h IN ('52e5c30c06f9767a97e98f3a393b8496', '94ecd75ba32dd0a8ce7d433f4b6f7961') THEN '52e5c30c06f9767a97e98f3a393b8496' ELSE h END FROM so), 'AUSENTE')
   UNION ALL
   -- aceita os dois corpos EXATOS (o desta migration e o da sucessora 20261404000000); normaliza ao esperado historico do rol.
   SELECT 'devolucao_detalhe: corpo exato (md5)', 'a439e320641d553e3a21883c6606c6f2',

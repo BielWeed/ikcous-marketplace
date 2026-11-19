@@ -11,7 +11,7 @@
  * Os rótulos moram em `Map` (e não em objeto indexado por chave dinâmica)
  * pela mesma razão do resto do painel: `security/detect-object-injection`.
  */
-import { dataNoFusoDaLoja } from "@/lib/data-da-loja";
+import { dataNoFusoDaLoja, formatarDataHoraBrasilia } from "@/lib/data-da-loja";
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { formatCurrency, reaisComVirgula } from "@/lib/utils";
 import type {
@@ -531,6 +531,38 @@ export function valorDaSelecao(
 }
 
 /**
+ * Quanto do `valor_itens` da devolução (em centavos, o do SERVIDOR) cabe aos itens que a lojista marcou "Não veio".
+ *
+ * Com cupom, o servidor fecha o valor da linha numa conta só (20261405400000): 3 x R$ 50,00 com cupom de R$ 2,00 valem R$ 148,00,
+ * mas cada item guarda o preço de UMA unidade arredondado (R$ 49,33), e `quantidade x preço` soma R$ 147,99. Descontar essa soma
+ * solta do valor do servidor deixava R$ 0,01 de "reembolso" quando TUDO não veio (e um centavo a mais ou a menos nos casos
+ * parciais). Por isso o desconto é a PARTE dos itens ausentes no total das linhas, aplicada ao valor do servidor: tudo ausente
+ * desconta o valor inteiro; sem cupom a parte é exatamente `quantidade x preço` (o total das linhas é o próprio valor).
+ */
+export function centavosDosItensQueNaoVieram(
+  centavosDosItens: number,
+  itens: readonly { quantidade: number; valor_unitario: number }[],
+  ausentes: readonly { quantidade: number; valor_unitario: number }[],
+): number {
+  if (ausentes.length === 0 || centavosDosItens <= 0) return 0;
+  if (ausentes.length >= itens.length) return centavosDosItens;
+  const soma = (
+    linhas: readonly { quantidade: number; valor_unitario: number }[],
+  ) =>
+    linhas.reduce(
+      (total, item) =>
+        total + item.quantidade * paraCentavos(item.valor_unitario),
+      0,
+    );
+  const totalDasLinhas = soma(itens);
+  if (totalDasLinhas <= 0) return 0;
+  return Math.min(
+    centavosDosItens,
+    Math.round((centavosDosItens * soma(ausentes)) / totalDasLinhas),
+  );
+}
+
+/**
  * Arrependimento e defeito devolvem também o frete de ida quando o pedido
  * volta INTEIRO (CDC art. 49, parágrafo único) — mesma conta do servidor:
  * o que já está em devolução ativa + o que vai agora cobre o pedido todo.
@@ -860,10 +892,13 @@ export function instrucaoParaOCliente(
           const horario = loja.horario?.trim();
           return `Leve o produto até a loja${endereco ? `: ${endereco}` : ""}.${horario ? ` Horário de atendimento: ${horario}.` : ""}`;
         }
-        case "coleta":
-          return d.coleta_em
-            ? `A loja vai buscar o produto no endereço do pedido em ${formatarDataHora(d.coleta_em)}.`
+        case "coleta": {
+          const coleta = formatarDataHoraBrasilia(d.coleta_em);
+          // Sem data válida, o horário da coleta fica a combinar.
+          return coleta
+            ? `A loja vai buscar o produto no endereço do pedido em ${coleta} (horário de Brasília).`
             : "A loja vai combinar com você o dia e o horário da coleta no endereço do pedido.";
+        }
         case "etiqueta_reversa": {
           if (!d.codigo_postagem) {
             return "A loja está gerando o código de postagem dos Correios. Ele aparece aqui assim que ficar pronto.";

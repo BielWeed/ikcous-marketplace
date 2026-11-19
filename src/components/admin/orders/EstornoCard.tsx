@@ -7,6 +7,7 @@ import {
   type LinhaEstornoDoPedido,
   useEstornosDoPedido,
 } from "@/hooks/useEstornosDoPedido";
+import { formatarDataHoraBrasilia } from "@/lib/data-da-loja";
 import {
   BOTAO_POR_FORA_APOS_ESPERA,
   TEXTO_CONFIRMANDO,
@@ -50,19 +51,6 @@ function paraNumero(valorBruto: string): number {
   return Number.NaN;
 }
 
-function formatarDataHora(iso: string): string {
-  const data = new Date(iso);
-  const dataFormatada = data.toLocaleDateString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-  });
-  const horaFormatada = data.toLocaleTimeString("pt-BR", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  return `${dataFormatada} às ${horaFormatada}`;
-}
-
 interface TextoDaLinha {
   texto: string;
   /** Só `falhou` oferece nova tentativa — as demais (em andamento, teto,
@@ -78,7 +66,10 @@ interface TextoDaLinha {
  */
 function textoDaLinha(linha: LinhaEstornoDoPedido): TextoDaLinha {
   const valor = formatCurrency(linha.amount);
-  const quando = formatarDataHora(linha.concluido_em ?? linha.created_at);
+  const quando =
+    formatarDataHoraBrasilia(linha.concluido_em, "curto") ||
+    formatarDataHoraBrasilia(linha.created_at, "curto");
+  const dataDaLinha = quando ? ` em ${quando}` : "";
 
   if (linha.mp_status === "charged_back") {
     if (linha.status === "em_processamento") {
@@ -89,7 +80,7 @@ function textoDaLinha(linha: LinhaEstornoDoPedido): TextoDaLinha {
     }
     if (linha.status === "concluido") {
       return {
-        texto: `Contestação no cartão de ${valor} decidida contra a loja em ${quando}: o dinheiro voltou ao cliente.`,
+        texto: `Contestação no cartão de ${valor} decidida contra a loja${dataDaLinha}: o dinheiro voltou ao cliente.`,
         podeTentarDeNovo: false,
       };
     }
@@ -122,12 +113,12 @@ function textoDaLinha(linha: LinhaEstornoDoPedido): TextoDaLinha {
   if (linha.status === "concluido") {
     if (linha.solicitado_por === "sistema") {
       return {
-        texto: `${valor} devolvido fora do app (pelo painel do Mercado Pago) em ${quando}`,
+        texto: `${valor} devolvido fora do app (pelo painel do Mercado Pago)${dataDaLinha}`,
         podeTentarDeNovo: false,
       };
     }
     return {
-      texto: `${valor} devolvido em ${quando}`,
+      texto: `${valor} devolvido${dataDaLinha}`,
       podeTentarDeNovo: false,
     };
   }

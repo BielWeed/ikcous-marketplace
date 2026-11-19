@@ -210,7 +210,7 @@ it("recibo explica WhatsApp inválido e oferece impressão antes da anulação e
   );
   expect(botao("Enviar por WhatsApp").disabled).toBe(true);
   expect(host.textContent).toContain(
-    "Indisponível: WhatsApp do cliente inválido.",
+    "Indisponível: WhatsApp do cliente inválido ou incompleto.",
   );
   expect(botao("Imprimir").disabled).toBe(false);
   expect(

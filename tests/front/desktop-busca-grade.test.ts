@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { GRADE_DE_PRODUTOS_NO_COMPUTADOR } from "@/components/desktop/medidas";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { classesDoCelularSemGradeDeTablet } from "./classes-do-celular";
@@ -44,13 +45,27 @@ describe("Busca — grade no computador", () => {
     expect(fonte).toContain(
       'import { GRADE_DE_PRODUTOS_NO_COMPUTADOR } from "@/components/desktop/medidas"',
     );
-    const grades = fonte.match(
-      /className={cn\(\s*"grid grid-cols-2 gap-6 md:grid-cols-3",\s*GRADE_DE_PRODUTOS_NO_COMPUTADOR,\s*"lg:gap-x-6 lg:gap-y-10",/g,
+    const grades = fonte.matchAll(
+      /className={cn\(\s*"grid grid-cols-2 gap-6 md:grid-cols-3",\s*GRADE_DE_PRODUTOS_NO_COMPUTADOR,\s*"lg:gap-x-6 lg:gap-y-10",([^}]*?)\)}\s*>\s*\{(filteredProducts|trendingProducts)\./g,
     );
-    expect(grades).toHaveLength(2);
-    // P64: só as sugestões (4 produtos) trocam o xl:grid-cols-5 da constante por
-    // 4 colunas; a grade dos resultados segue com a grade compartilhada pura.
-    expect(fonte.match(/"xl:grid-cols-4"/g)).toHaveLength(1);
+    const colunasEmXlPorLista = Object.fromEntries(
+      Array.from(grades, ([, extras, lista]) => {
+        const classesExtras = extras.replace(/\/\/[^\n]*/g, "");
+        const sobrescrita = Array.from(
+          classesExtras.matchAll(/"(xl:grid-cols-\d+)"/g),
+          ([, classe]) => classe,
+        ).at(-1);
+        return [
+          lista,
+          sobrescrita ??
+            GRADE_DE_PRODUTOS_NO_COMPUTADOR.match(/\bxl:grid-cols-\d+\b/)?.[0],
+        ];
+      }),
+    );
+    expect(colunasEmXlPorLista).toEqual({
+      filteredProducts: "xl:grid-cols-5",
+      trendingProducts: "xl:grid-cols-4",
+    });
   });
 
   it("preserva o contêiner próprio da Busca com largura limitada e margens no PC", () => {

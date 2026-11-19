@@ -2,9 +2,8 @@
 // Testes da edge estornar-pagamento — Task 3 da frente "estorno de dinheiro
 // pelo app" (plano 20260907). Padrão da casa (melhor-envio-etiqueta /
 // calculate-shipping): handler exportado com costura de deps, NENHUMA rede
-// real — o executor da Task 2 é DUBLÊ aqui (a Restrição Global veda chamada
-// real ao MP em teste; a integração com o `_shared/estorno.ts` de verdade é
-// validada pelo CI quando os PRs da T2 e da T3 se encontram).
+// real. F6/F10 e outros testes executam `_shared/estorno.ts` com fetch falso
+// para conferir a requisição que seria enviada ao Mercado Pago.
 //
 // Afirmativas nomeadas (plano T3 Step 1):
 //   F1  sem JWT -> 401
@@ -421,9 +420,8 @@ function clienteSupaFalso(opts: {
     return { cliente, registro }
 }
 
-// ── Executor falso: registra os args, opcionalmente faz UMA chamada ao
-// buscar recebido (o caminho real passa pelo MP — é onde F9/F10 contam e
-// leem o header de idempotência) e devolve o resultado configurado.
+// ── Executor falso: registra os args, opcionalmente chama o fetch dublado
+// (F9 conta se o fluxo chegou até ele) e devolve o resultado configurado.
 function executorFalso(resultado: any, opts: { chamarMp?: boolean } = {}) {
     const registro = { chamadas: [] as any[] }
     const fn = async (args: any) => {
@@ -440,7 +438,7 @@ function executorFalso(resultado: any, opts: { chamarMp?: boolean } = {}) {
     return { fn, registro }
 }
 
-/** Fetch do MP falso: CONTA chamadas e guarda os headers (assento do F9/F10). */
+/** Fetch do MP falso: conta chamadas e guarda os headers. */
 function fetchMpFalso() {
     const registro = { chamadas: 0, headers: [] as any[] }
     const buscar = ((_input: any, init?: any) => {
@@ -791,34 +789,40 @@ Deno.test("F5b - pedido PIX (order): a edge passa consultarTransacaoDaOrder e o 
 
 // ── F6: parcial → valor parcial na resposta ────────────────────────────────
 
-Deno.test("F6 - devolucao parcial devolve o valor parcial e a decisao de payment_status e' da RPC", async () => {
-    const { cliente, registro } = clienteSupaFalso({
-        linha: { ...LINHA_SOLICITADA, amount: 30 },
-        pedido: PEDIDO_PAGO,
-        rpcResultado: { concluido: true, payment_status: "pago" },
-    })
-    const executor = executorFalso(
-        { tipo: "concluido", mp_refund_id: "444555666", mp_status: "approved", mp_status_detail: "partially_refunded", valor: 30 },
-        { chamarMp: true },
-    )
-    const mp = fetchMpFalso()
-    const resposta = await comEnv({}, () =>
-        comFetch(fetchAdminFalso, () =>
-            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), {
-                supabase: cliente,
-                executarEstorno: executor.fn,
-                buscar: mp.buscar,
-            }),
-        ),
-    )
-    assertEquals(resposta.status, 200)
-    const corpo = await resposta.json()
-    assertEquals(corpo.status, "concluido")
-    assertEquals(corpo.valor, 30)
-    // A edge NÃO escreve valor_estornado/payment_status: uma chamada à RPC, nada além.
-    assertEquals(registro.rpcs.length, 1)
-    const escreveuPedido = registro.atualizacoes.some((u) => u.valores && ("valor_estornado" in u.valores || "payment_status" in u.valores))
-    assertEquals(escreveuPedido, false)
+Deno.test("F6 - estorno parcial envia R$ 30 ao MP e preserva o payment_status devolvido pela RPC", async () => {
+    // Os mesmos R$ 30 podem deixar saldo ou completar a devolução acumulada.
+    // No segundo caso o status precisa vir da RPC, não do pedido lido antes.
+    for (const [valorAnterior, statusDaRpc] of [[0, "pago"], [70, "estornado"]] as const) {
+        const { cliente, registro } = clienteSupaFalso({
+            linha: { ...LINHA_SOLICITADA, amount: 30 },
+            pedido: { ...PEDIDO_PAGO, valor_estornado: valorAnterior },
+            rpcResultado: { concluido: true, payment_status: statusDaRpc },
+        })
+        const envios: Array<{ metodo: string | undefined; url: string; corpo: BodyInit | null | undefined }> = []
+        const buscar: typeof fetch = async (input, init) => {
+            envios.push({ metodo: init?.method, url: String(input), corpo: init?.body })
+            return Response.json({ id: 444555666, status: "approved", amount: 30 }, { status: 201 })
+        }
+        const resposta = await comEnv({}, () =>
+            comFetch(fetchAdminFalso, () =>
+                handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), { supabase: cliente, buscar }),
+            ),
+        )
+        assertEquals(envios.length, 1)
+        assertEquals(envios[0].metodo, "POST")
+        assertEquals(envios[0].url, "https://api.mercadopago.com/v1/payments/123456789/refunds")
+        assertEquals(JSON.parse(String(envios[0].corpo)), { amount: 30 })
+
+        assertEquals(resposta.status, 200)
+        const corpo = await resposta.json()
+        assertEquals(corpo.status, "concluido")
+        assertEquals(corpo.valor, 30)
+        assertEquals(corpo.payment_status, statusDaRpc)
+        // A edge NÃO escreve valor_estornado/payment_status: uma chamada à RPC, nada além.
+        assertEquals(registro.rpcs.map(({ nome }) => nome), ["concluir_estorno"])
+        const escreveuPedido = registro.atualizacoes.some((u) => u.valores && ("valor_estornado" in u.valores || "payment_status" in u.valores))
+        assertEquals(escreveuPedido, false)
+    }
 })
 
 // ── F7: in_process → 202 com o texto exato ────────────────────────────────
@@ -931,24 +935,46 @@ Deno.test("F9 - segunda chamada que perde a marca responde 409 e o MP so' e' cha
 
 // ── F10: X-Idempotency-Key == refund_id ───────────────────────────────────
 
-Deno.test("F10 - o header X-Idempotency-Key que chega ao MP e' o refund_id da linha", async () => {
-    const { cliente } = clienteSupaFalso({ linha: LINHA_SOLICITADA, pedido: PEDIDO_PAGO })
-    const executor = executorFalso(
-        { tipo: "concluido", mp_refund_id: "111222333", mp_status: "approved", mp_status_detail: null, valor: 100 },
-        { chamarMp: true },
-    )
-    const mp = fetchMpFalso()
-    await comEnv({}, () =>
+Deno.test("F10 - primeiro POST e reenvio do mesmo estorno usam o refund_id como chave", async () => {
+    const banco = { linha: { ...LINHA_SOLICITADA, criada_sob_autorizacao: true }, pedido: PEDIDO_PAGO }
+    const { cliente, registro } = clienteSupaFalso(banco)
+    const chamadas: Array<{ metodo: string; url: string; chave: string | null }> = []
+    const buscar: typeof fetch = async (input, init) => {
+        const metodo = init?.method ?? "GET"
+        chamadas.push({ metodo, url: String(input), chave: new Headers(init?.headers).get("X-Idempotency-Key") })
+        if (metodo === "GET") return Response.json(MP_SEM_REEMBOLSO)
+        // A primeira resposta não confirma se o POST chegou; a consulta antes
+        // de repetir esclarece que ainda não houve devolução.
+        if (chamadas.length === 1) return Response.json({ message: "indisponível" }, { status: 503 })
+        return Response.json({ id: 111222333, status: "approved", amount: 100 }, { status: 201 })
+    }
+    const enviar = () => comEnv({}, () =>
         comFetch(fetchAdminFalso, () =>
-            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), {
-                supabase: cliente,
-                executarEstorno: executor.fn,
-                buscar: mp.buscar,
-            }),
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), { supabase: cliente, buscar }),
         ),
     )
-    assertEquals(mp.registro.chamadas, 1)
-    assertEquals(mp.registro.headers[0]["X-Idempotency-Key"], REFUND_ID)
+
+    const primeira = await enviar()
+    assertEquals(primeira.status, 202)
+    assertEquals((await primeira.json()).status, "em_processamento")
+    assertEquals(registro.autorizacoes.length, 1)
+
+    // O Supabase falso não persiste UPDATEs. A nova leitura enxerga a marca
+    // e o carimbo do POST anterior, como no banco real.
+    Object.assign(banco.linha, {
+        status: registro.marcas[0].valores.status,
+        tentativas: registro.marcas[0].valores.tentativas,
+        post_autorizado_em: new Date().toISOString(),
+    })
+    const repetida = await enviar()
+    assertEquals(repetida.status, 200)
+    assertEquals((await repetida.json()).status, "concluido")
+    assertEquals(chamadas.map(({ metodo }) => metodo), ["POST", "GET", "POST"])
+    const url = "https://api.mercadopago.com/v1/payments/123456789/refunds"
+    assertEquals(chamadas.filter(({ metodo }) => metodo === "POST"), [
+        { metodo: "POST", url, chave: REFUND_ID },
+        { metodo: "POST", url, chave: REFUND_ID },
+    ])
 })
 
 // ── extras de contrato da porta e da marca ────────────────────────────────
