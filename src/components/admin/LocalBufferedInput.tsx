@@ -26,6 +26,8 @@ interface LocalBufferedInputProps
   readonly ignorarTeclaExtraTelefone?: boolean;
   /** Só com `mask="currency"`: preserva o sinal na exibição e no onFlush. */
   readonly permiteNegativo?: boolean;
+  /** Um separador digitado troca a máscara de centavos por edição em reais. */
+  readonly decimalNaDigitacao?: boolean;
   /**
    * Só com `mask="currency"`: o zero DIGITADO vira campo vazio. A máscara nunca
    * deixa o campo vazio sozinha (apagar o "0,05" com backspace dá "0,0", lido
@@ -122,6 +124,39 @@ const parseCurrencyToFloatString = (val: string, permiteNegativo = false) => {
   return sinal + num.toFixed(2);
 };
 
+// O ponto pode ser decimal (12.5) ou de milhar (1.250), como na colagem.
+const centavosDoDecimalDigitado = (texto: string): string | null => {
+  const sinal = texto.startsWith("-") ? "-" : "";
+  const semSinal = sinal ? texto.slice(1) : texto;
+  const [inteira, depoisDaVirgula, sobra] = semSinal.split(",");
+  let fracao = depoisDaVirgula ?? "";
+  if (sobra !== undefined || !/^\d{0,2}$/.test(fracao)) return null;
+
+  const [primeiro, ...grupos] = inteira.split(".");
+  if (/\D/.test(primeiro)) return null;
+  let reais = primeiro;
+  if (grupos.length > 0) {
+    const milhar =
+      primeiro.length > 0 &&
+      primeiro.length <= 3 &&
+      grupos.every((grupo) => /^\d{3}$/.test(grupo));
+    if (milhar) {
+      reais = primeiro + grupos.join("");
+    } else if (
+      depoisDaVirgula === undefined &&
+      grupos.length === 1 &&
+      /^\d{0,2}$/.test(grupos[0])
+    ) {
+      fracao = grupos[0];
+    } else {
+      return null;
+    }
+  }
+  return reais || fracao ? sinal + reais + fracao.padEnd(2, "0") : sinal;
+};
+
+const PRECO_DIGITADO_INVALIDO = "NaN";
+
 // Colagem: lê o texto como número brasileiro (vírgula decimal, ponto de milhar;
 // prefixo "R$" e espaços nas pontas aceitos) e devolve os centavos, ou "" se inválido.
 // Ponto sem vírgula: 1-2 dígitos depois é decimal ("12.5"), 3 é milhar ("1.234").
@@ -173,6 +208,7 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
   preservarExcessoTelefone = false,
   ignorarTeclaExtraTelefone = false,
   permiteNegativo = false,
+  decimalNaDigitacao = false,
   zeroVazio = false,
   zeroDigitadoVale = false,
   normalizarAoSair,
@@ -203,6 +239,7 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
   const erroId = useId();
   const onFlushRef = useRef(onFlush);
   const isFocusedRef = useRef(false);
+  const editandoDecimal = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -210,7 +247,11 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
   }, [onFlush]);
 
   useEffect(() => {
-    if (!isFocusedRef.current) {
+    if (
+      !isFocusedRef.current &&
+      !(editandoDecimal.current && value === PRECO_DIGITADO_INVALIDO)
+    ) {
+      editandoDecimal.current = false;
       setLocalVal(formatValue(value));
       if (validate) {
         let rawVal = value.toString();
@@ -249,6 +290,7 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
       rawVal = val.replace(/\D/g, "");
     } else if (mask === "currency") {
       const { inputType: tipo, data } = e.nativeEvent as InputEvent;
+      let centavosDigitados: string | null = null;
       if (tipo === "insertFromPaste" || tipo === "insertFromDrop") {
         // Colar/soltar não é "máscara de centavos": o texto vale como número e
         // substitui o campo. `data` é só o trecho inserido (o campo já vem
@@ -260,10 +302,50 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
           return; // ignora sem alterar o valor nem agendar sua gravação
         }
         val = sinalDaMoeda(colado, permiteNegativo) + centavos;
+        editandoDecimal.current = false;
+      } else if (decimalNaDigitacao) {
+        if ((data === "," || data === ".") && !editandoDecimal.current) {
+          // A vírgula que a máscara mostrou NÃO foi digitada. Ex.: em
+          // "0,12" + "," só a última vírgula separa reais de centavos.
+          const posicao = (e.currentTarget.selectionEnd ?? val.length) - 1;
+          const antes = val.slice(0, posicao);
+          const reais = antes.replace(/\D/g, "").replace(/^0+(?=\d)/, "");
+          const fracao = val.slice(posicao + 1).replace(/\D/g, "");
+          const sinal = sinalDaMoeda(val, permiteNegativo);
+          val = `${sinal}${reais}${data}${fracao}`;
+          editandoDecimal.current = true;
+        } else if (val === "") {
+          // Sem o separador, um rascunho em reais continua em reais até
+          // esvaziar ou sair do campo. "12," → "12" nunca vira R$ 0,12.
+          editandoDecimal.current = false;
+        }
+
+        // Não transforma um menos fora de posição em outro preço positivo.
+        if (permiteNegativo && /[-−]/.test(val)) {
+          val = `-${val.replace(/[-−]/g, "")}`;
+        }
+        // Uma substituição inteira também pode trazer separadores explícitos.
+        const substituicaoComSeparador =
+          /[,.]/.test(val) &&
+          ((!data && (!tipo || tipo === "insertText")) ||
+            (data?.length ?? 0) > 1);
+        if (editandoDecimal.current || substituicaoComSeparador) {
+          centavosDigitados = centavosDoDecimalDigitado(val);
+          if (centavosDigitados === null) editandoDecimal.current = true;
+        }
       }
       const textoBruto = val;
-      val = formatCurrency(val, permiteNegativo);
-      rawVal = parseCurrencyToFloatString(val, permiteNegativo);
+      const centavosOuTexto = centavosDigitados ?? val;
+      if (!editandoDecimal.current) {
+        val = formatCurrency(centavosOuTexto, permiteNegativo);
+      }
+      rawVal =
+        editandoDecimal.current && centavosDigitados === null
+          ? PRECO_DIGITADO_INVALIDO
+          : parseCurrencyToFloatString(
+              editandoDecimal.current ? centavosOuTexto : val,
+              permiteNegativo,
+            );
       const zeroEscrito =
         zeroDigitadoVale &&
         (tipo === undefined
@@ -280,6 +362,15 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
 
     if (timerRef.current) {
       clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    if (
+      decimalNaDigitacao &&
+      (editandoDecimal.current || rawVal.startsWith("-"))
+    ) {
+      // Não deixa o preço anterior publicável durante o debounce.
+      onFlushRef.current(rawVal);
+      return;
     }
 
     timerRef.current = setTimeout(() => {
@@ -306,7 +397,17 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
     if (mask === "phone") {
       rawVal = val.replace(/\D/g, "");
     } else if (mask === "currency") {
-      rawVal = parseCurrencyToFloatString(val, permiteNegativo);
+      const centavos = editandoDecimal.current
+        ? centavosDoDecimalDigitado(val)
+        : null;
+      rawVal =
+        editandoDecimal.current && centavos === null
+          ? PRECO_DIGITADO_INVALIDO
+          : parseCurrencyToFloatString(centavos ?? val, permiteNegativo);
+      if (centavos !== null && !isFocusedRef.current) {
+        setLocalVal(formatCurrency(centavos, permiteNegativo));
+        editandoDecimal.current = false;
+      }
     }
     onFlushRef.current(rawVal);
   };

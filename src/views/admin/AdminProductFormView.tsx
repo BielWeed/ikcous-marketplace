@@ -2148,7 +2148,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   useEffect(() => {
     // Validar Preço de Venda
     const price = Number.parseFloat(formData.price);
-    if (formData.price && (Number.isNaN(price) || price <= 0)) {
+    if (formData.price && formData.price !== "-" && Number.isNaN(price)) {
+      setPriceError("Use um preço válido, como 1.250,00.");
+    } else if (formData.price && (Number.isNaN(price) || price <= 0)) {
       setPriceError("Preço de venda deve ser maior que zero.");
     } else if (
       acimaDoTetoDePreco(price) &&
@@ -5536,6 +5538,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     }
                     name="price"
                     mask="currency"
+                    decimalNaDigitacao
+                    permiteNegativo
+                    inputMode="decimal"
                     value={formData.price}
                     onFlush={(val) => {
                       // Sair do campo sem mexer também chama o onFlush: só
