@@ -313,7 +313,7 @@ export function BuscaDeProduto({
         className="pdv-field"
       />
       <p id="busca-produto-ajuda" className="pdv-muted">
-        Nome ou código interno · mínimo de 2 letras
+        Nome ou código interno · mínimo de 2 caracteres
       </p>
       {buscando && (
         <p role="status" className="pdv-muted">

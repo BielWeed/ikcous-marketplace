@@ -7986,7 +7986,7 @@ export function CheckoutViewDaConta({
                       autoComplete="off"
                       value={valorParaTroco}
                       onChange={(e) => setValorParaTroco(e.target.value)}
-                      placeholder="Ex.: 100,00"
+                      placeholder="Valor maior que o total do pedido"
                       aria-invalid={!!avisoDeTroco}
                       aria-describedby="checkout-aviso-troco"
                       className="mb-2 min-h-11 w-full rounded-xl border border-zinc-300 bg-white px-3 text-base text-zinc-900 md:text-sm"

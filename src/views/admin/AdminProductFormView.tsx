@@ -6480,7 +6480,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         id="product-estoque-minimo-dica"
                         className="ml-1 mt-1 block text-[11px] leading-tight text-zinc-400"
                       >
-                        Vazio usa o padrão (5). Com variações, vale para a soma.
+                        Vazio usa o padrão (5). Com variações ativas, vale a
+                        soma do estoque delas.
                       </span>
                       {estoqueMinimoError && (
                         <span

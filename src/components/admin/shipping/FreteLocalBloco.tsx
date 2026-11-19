@@ -44,7 +44,7 @@ function textoDoValor(valor: number): string {
 
 /** A dica do texto livre: os dois formatos que o servidor lê e o que "vazio" quer dizer. */
 function dicaDoTexto(cepDaLoja: string | null | undefined): string {
-  return `Escreva dois CEPs separados por vírgula (o primeiro e o último) e vale tudo o que está entre eles; ou os 5 primeiros números de cada região, separados por vírgula. ${dicaDaFaixaVazia(cepDaLoja)}. CEP que não entra recebe o frete nacional.`;
+  return `Escreva dois CEPs separados por vírgula (o primeiro e o último) e vale tudo o que está entre eles; ou os 5 primeiros números de cada região, separados por vírgula. ${dicaDaFaixaVazia(cepDaLoja)}. Fora dessa área, só há entrega se o frete nacional estiver disponível.`;
 }
 
 /** O que acontece com o cliente de outro bairro, conforme a regra pronta. */
