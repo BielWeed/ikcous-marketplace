@@ -493,7 +493,7 @@ describe("Clientes — falha de leitura não vira vazio nem resultado de outra c
       ),
     ).toEqual([
       "Total Clientes",
-      "Novos (30 dias)",
+      "Novos cadastros (30 dias)",
       "Valor médio por venda",
       "Pedidos Totais",
     ]);

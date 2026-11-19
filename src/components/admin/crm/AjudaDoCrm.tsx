@@ -42,7 +42,9 @@ export function AjudaDoCrm({
               pedidos, valor médio por venda, clientes, recompra, total já
               comprado por cliente (quanto um cliente já gastou, em média),
               receita em risco e taxa de devolução — e, abaixo, o histórico
-              completo da loja.
+              completo da loja. A primeira compra válida é a primeira compra
+              paga de cada cliente identificado, sem contar compras canceladas
+              ou devolvidas.
             </li>
             <li>
               <strong className="text-white">Clientes:</strong> a lista mostra

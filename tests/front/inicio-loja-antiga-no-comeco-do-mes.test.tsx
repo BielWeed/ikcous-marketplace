@@ -155,7 +155,7 @@ describe("Início: loja antiga no começo do mês", () => {
     expect(
       hospedeiro.querySelector('section[aria-label="Boas-vindas"]'),
     ).toBeNull();
-    expect(texto(hospedeiro)).not.toContain("Sua loja começa por aqui");
+    expect(texto(hospedeiro)).not.toContain("Próximo passo da sua loja");
     expect(texto(hospedeiro)).not.toContain("Sem pedidos por enquanto");
     expect(texto(hospedeiro)).toContain("Tudo em dia");
   });
@@ -176,12 +176,26 @@ describe("Início: loja antiga no começo do mês", () => {
     expect(texto(hospedeiro)).toContain("Tudo em dia");
   });
 
+  it("usa um título neutro mesmo quando as vendas antigas não aparecem nas janelas do painel", async () => {
+    // Uma loja que vendeu só antes dessas janelas devolve os mesmos dados
+    // que uma loja sem vendas: nenhuma venda visível nesta resposta.
+    await montarComPainel(PAINEL_DIA_1);
+
+    const boasVindas = hospedeiro.querySelector(
+      'section[aria-label="Boas-vindas"]',
+    );
+    expect(boasVindas?.querySelector("h2")?.textContent).toBe(
+      "Próximo passo da sua loja",
+    );
+    expect(texto(boasVindas)).not.toContain("Sua loja começa por aqui");
+  });
+
   it("controle: loja que de fato nunca vendeu continua com as boas-vindas", async () => {
     await montarComPainel(PAINEL_DIA_1);
     expect(
       hospedeiro.querySelector('section[aria-label="Boas-vindas"]'),
     ).not.toBeNull();
-    expect(texto(hospedeiro)).toContain("Sua loja começa por aqui");
+    expect(texto(hospedeiro)).toContain("Próximo passo da sua loja");
     expect(texto(hospedeiro)).toContain("Sem pedidos por enquanto");
   });
 });

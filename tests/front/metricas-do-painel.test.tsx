@@ -15,7 +15,7 @@ const cards: readonly KpiCardConfig[] = [
     accent: "text-indigo-300",
   },
   {
-    label: "Novos (30 dias)",
+    label: "Novos cadastros (30 dias)",
     value: "0",
     subValue: "Crescimento",
     icon: Clock,
@@ -36,7 +36,7 @@ const cards: readonly KpiCardConfig[] = [
     accent: "text-pink-300",
   },
 ];
-const legendas = ["Total", "Novos · 30d", "Média/pedido", "Pedidos"];
+const legendas = ["Total", "Cadastros · 30 dias", "Média/pedido", "Pedidos"];
 let host: HTMLDivElement;
 let root: Root;
 
@@ -74,7 +74,7 @@ it.each(["Clientes", "Pedidos", "Produtos"])(
     const grupos = [...secao.querySelectorAll('[role="group"]')];
     expect(grupos.map((g) => g.getAttribute("aria-label"))).toEqual([
       "Total Clientes",
-      "Novos (30 dias)",
+      "Novos cadastros (30 dias)",
       "Valor médio por venda",
       "Pedidos Totais",
     ]);
@@ -216,7 +216,7 @@ it("Expandir abre todos os cartões; Recolher volta ao resumo, sem navegação d
   const cartoes = [...grade.querySelectorAll("article")];
   expect(cartoes.map((c) => c.getAttribute("aria-label"))).toEqual([
     "Total Clientes",
-    "Novos (30 dias)",
+    "Novos cadastros (30 dias)",
     "Valor médio por venda",
     "Pedidos Totais",
   ]);

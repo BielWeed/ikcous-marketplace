@@ -177,11 +177,11 @@ export function ParaFazer({
       alvo: VISAO_ESTOQUE_BAIXO,
     },
   ];
-  // Loja que ainda não vendeu: o Início mostra "Sua loja começa por aqui"
+  // Sem vendas nas janelas lidas: o Início mostra "Próximo passo da sua loja"
   // acima, então dizer "Tudo em dia" aqui contradiz a tela.
   const semPedidosAinda = lojaSemVendasAinda(painel);
   const esqueleto = carregando && !painel;
-  // Com o cartão "Preparar pedidos" já acima, a linha "preparar" sai da lista
+  // Com o cartão de pedidos a preparar já acima, a linha "preparar" sai da lista
   // (`preparoEmDestaque`): ela também sai da contagem do cabeçalho e do "Tudo
   // em dia", que têm de falar só do que a lista mostra.
   const preparoSoNoCartaoDeCima = preparoEmDestaque && (preparar ?? 0) > 0;

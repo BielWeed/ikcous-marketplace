@@ -170,7 +170,7 @@ export function VisaoGeralDoCrm({
       footer:
         k?.clientesNovos == null
           ? "Sem dado agora"
-          : `${formatarInteiro(k.clientesNovos)} ${k.clientesNovos === 1 ? "cliente novo" : "clientes novos"}`,
+          : `Fizeram a 1ª compra válida no período: ${formatarInteiro(k.clientesNovos)}`,
     },
     {
       label: "Taxa de recompra",

@@ -661,6 +661,7 @@ describe("Dashboard CRM", () => {
     const pagina = texto(hospedeiro);
     expect(pagina).toContain("+25%"); // receita 5000 vs 4000
     expect(pagina).toContain("−20%"); // pedidos 40 vs 50
+    expect(pagina).toContain("Fizeram a 1ª compra válida no período: 6");
     expect(pagina).toContain("Taxa de recompra");
     expect(pagina).toContain("33,3%");
     expect(pagina).toContain("Receita em risco");

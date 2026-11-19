@@ -113,7 +113,7 @@ function linhasDaLista(): HTMLLIElement[] {
 }
 
 describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () => {
-  it("cadastrar nome e logo é secundário: só Preparar pedidos pode ser branco", async () => {
+  it("cadastrar nome e logo é secundário: só Ver pedidos em aberto pode ser branco", async () => {
     await montar({
       somenteBoasVindas: true,
       config: { ...CONFIG_PRONTA, storeName: "", logoUrl: "" },

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// Defeito (O2 da revisão da tela Pedidos): "Preparar pedidos" no Início abria a
+// Defeito (O2 da revisão da tela Pedidos): "Ver pedidos em aberto" no Início abria a
 // tela Pedidos com o filtro, a busca e o período que a lojista deixou salvos
 // no aparelho da última vez. Quem tocava num atalho que promete "os pedidos
 // para preparar" via uma lista vazia ou de outro assunto e concluía que os
@@ -243,14 +243,14 @@ describe("Início → Pedidos: o atalho abre limpo, o menu respeita o que ficou 
     return { abrirPeloMenu: () => act(async () => menu.abrir()) };
   }
 
-  it("'Preparar pedidos' do Início abre Pedidos em 'Em aberto', sem busca, período, pagamento nem canal salvos", async () => {
+  it("'Ver pedidos em aberto' do Início abre Pedidos em 'Em aberto', sem busca, período, pagamento nem canal salvos", async () => {
     h.respostas.set("painel_inicio", { data: PAINEL_COM_PEDIDOS, error: null });
     salvarFiltrosAntigos();
     await montarAsDuasTelas();
-    await esperarAte(() => texto(hospedeiro).includes("Preparar pedidos"));
+    await esperarAte(() => texto(hospedeiro).includes("Ver pedidos em aberto"));
 
     await act(async () => {
-      botaoPorTexto(hospedeiro, "Preparar pedidos").click();
+      botaoPorTexto(hospedeiro, "Ver pedidos em aberto").click();
     });
     await esperarAte(() => h.cargas.length > 0);
 

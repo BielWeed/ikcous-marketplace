@@ -575,10 +575,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   );
   const itemsPerPage = 12;
 
-  // Atalho do Início ("Preparar pedidos"): abre Pedidos LIMPO. O filtro, a
-  // busca, o período, o pagamento, o canal e a página da última visita ficam
+  // Atalho do Início ("Ver pedidos em aberto"): abre Pedidos LIMPO. O filtro,
+  // a busca, o período, o pagamento, o canal e a página da última visita ficam
   // salvos no aparelho (conveniência de quem abre pelo menu), mas quem toca
-  // num atalho que promete "os pedidos para preparar" e cai numa lista de
+  // num atalho para ver os pedidos em aberto e cai numa lista de
   // outro assunto acha que os pedidos sumiram. O recado é de uma vez só e tem
   // validade (src/lib/atalho-do-inicio-para-pedidos.ts); abrir pelo menu não
   // o gera, então a preferência salva de quem usa o menu não é tocada. Como a

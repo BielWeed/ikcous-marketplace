@@ -179,7 +179,7 @@ export function LojaProntaEEstoqueBaixo({
         className={`${CARTAO_INICIO} space-y-4`}
       >
         <h2 className="text-[22px] font-bold text-white">
-          Sua loja começa por aqui
+          Próximo passo da sua loja
         </h2>
         <p className="text-base leading-relaxed text-zinc-400">
           Complete sua loja. Próximo passo: {proximo.rotuloPendente}.

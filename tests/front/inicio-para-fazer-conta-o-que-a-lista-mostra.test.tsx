@@ -2,7 +2,7 @@
 //
 // "Para fazer" do Início: o número do cabeçalho e o "Tudo em dia" têm de
 // concordar com as linhas que a lista de fato mostra. O Início passa
-// `preparoEmDestaque` (o cartão "Preparar pedidos" já está logo acima) e a
+// `preparoEmDestaque` (o cartão "Ver pedidos em aberto" já está logo acima) e a
 // lista esconde a linha "preparar"; contar essa linha escondida dizia "1
 // pendência" sobre uma lista sem nenhuma pendência de verdade.
 import { ParaFazer } from "@/components/admin/inicio/ParaFazer";

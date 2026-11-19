@@ -312,7 +312,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
     void fetchCustomers(page);
   }, [fetchCustomers, page]);
 
-  // "Novos (30 dias)" é medido pelo servidor com o dia de HOJE dele: com o
+  // "Novos cadastros (30 dias)" é medido pelo servidor com o dia de HOJE dele: com o
   // painel aberto de um dia para o outro, a virada (`dia` mudou) relê a página
   // atual. Em silêncio — a lista fica na tela até a resposta chegar — e dentro
   // dos mesmos 320 ms da abertura, então ficar ativa já no dia seguinte lê uma
@@ -382,7 +382,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
         subValue: "Base de Clientes",
       },
       {
-        label: "Novos (30 dias)",
+        label: "Novos cadastros (30 dias)",
         value: formatarInteiro(globalStats?.new_customers_30d),
         icon: TrendingUp,
         accent: "text-emerald-300",
@@ -616,7 +616,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
               onEntender={() => setShowHelpModal(true)}
               legendasDoResumo={[
                 "Total",
-                "Novos · 30d",
+                "Cadastros · 30 dias",
                 "Média/pedido",
                 "Pedidos",
               ]}
@@ -932,10 +932,10 @@ function AjudaDaBaseClientes() {
               texto: "Base de Clientes: perfis com conta no app.",
             },
             {
-              titulo: "Novos (30 dias)",
+              titulo: "Novos cadastros (30 dias)",
               icone: TrendingUp,
               cor: "text-emerald-300",
-              texto: "Crescimento: perfis criados nos últimos 30 dias.",
+              texto: "Contas criadas no app nos últimos 30 dias.",
             },
             {
               titulo: "Valor médio por venda",
