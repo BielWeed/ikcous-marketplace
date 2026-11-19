@@ -3943,8 +3943,9 @@ export const AdminBannersView = memo(function AdminBannersView({
                   Status de Exibição
                 </div>
                 <p className="text-[11px] text-zinc-400">
-                  Suspenda ou ative a visibilidade de qualquer campanha
-                  instantaneamente usando o botão de alternar.
+                  Use o botão para ativar ou pausar o banner. Quando ativo, ele
+                  só aparece nas telas para as quais tem imagem e respeita as
+                  datas programadas, se houver.
                 </p>
               </div>
             </div>
