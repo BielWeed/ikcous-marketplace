@@ -83,7 +83,7 @@ export const StrategicIntelligenceBlocks = memo(
       <CartaoDoCrm
         id="crm-categorias"
         titulo="Vendas por categoria"
-        descricao="Desde o início da loja · com frete"
+        descricao="Vendas desde o início da loja, agrupadas pela categoria atual dos produtos."
         className="min-h-[282px]"
         acao={
           <ExplicacaoDoRelatorio titulo="Vendas por categoria">
