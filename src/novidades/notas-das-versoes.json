@@ -1,4 +1,15 @@
 {
+  "1.5.219": {
+    "titulo": "Rastreio e retirada mais fiéis",
+    "novidades": [],
+    "correcoes": [
+      "Ao refazer a consulta de frete, se a retirada voltar a ser oferecida, o aviso de que ela não estava mais disponível some.",
+      "Ao atualizar o rastreio de uma etiqueta, o painel mostra o código mais recente mesmo quando ele já tinha sido salvo em outro aparelho."
+    ],
+    "melhorias": [
+      "A planilha de produtos deixou de ter a coluna “Vendidos”, que mostrava zero para todos os produtos."
+    ]
+  },
   "1.5.218": {
     "titulo": "Retirada, devoluções e pedidos mais claros",
     "novidades": [],
