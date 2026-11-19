@@ -18,6 +18,32 @@
 // "38500000-38505000" (dois blocos longos) = faixa; "38500-000" (5+3) = CEP
 // único; CEP completo casa exato, item curto vale como prefixo.
 
+function blocosDoItem(bruto: string): string[] {
+  return bruto
+    .split("-")
+    .map((p) => p.replace(/\D/g, ""))
+    .filter(Boolean);
+}
+
+function ehIntervalo(partes: string[]): boolean {
+  return partes.length === 2 && partes[0].length >= 6 && partes[1].length >= 6;
+}
+
+// Validação apenas da escrita nova no painel: não muda a interpretação de
+// faixas já gravadas, que continua espelhando o banco e a edge.
+export function erroDaFaixaDeCepLocal(
+  faixa: string,
+): "separador" | "digitos-demais" | null {
+  if (/[^\d,\s-]/.test(faixa)) return "separador";
+
+  for (const bruto of faixa.split(",")) {
+    const partes = blocosDoItem(bruto);
+    const longas = ehIntervalo(partes) ? partes : [partes.join("")];
+    if (longas.some((parte) => parte.length > 8)) return "digitos-demais";
+  }
+  return null;
+}
+
 export function cepEhLocal(
   originCep: string,
   destCep: string,
@@ -34,19 +60,12 @@ export function cepEhLocal(
     const simples: string[] = [];
 
     for (const bruto of faixa.split(",")) {
-      const partes = bruto
-        .split("-")
-        .map((p) => p.replace(/\D/g, ""))
-        .filter(Boolean);
+      const partes = blocosDoItem(bruto);
       if (partes.length === 0) continue;
 
       // "38500000-38505000": dois blocos longos = faixa explícita.
       // "38500-000": 5+3 dígitos = um único CEP formatado.
-      if (
-        partes.length === 2 &&
-        partes[0].length >= 6 &&
-        partes[1].length >= 6
-      ) {
+      if (ehIntervalo(partes)) {
         const inicio = Number(partes[0].padEnd(8, "0"));
         const fim = Number(partes[1].padEnd(8, "9"));
         faixas.push(inicio <= fim ? [inicio, fim] : [fim, inicio]);

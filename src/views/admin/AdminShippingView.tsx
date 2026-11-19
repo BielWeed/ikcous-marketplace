@@ -28,6 +28,7 @@ import {
   transportadoraFicaSemPagamento,
   transportadoraVendeForaDaCidade,
 } from "@/lib/aviso-transportadora-sem-pagamento";
+import { erroDaFaixaDeCepLocal } from "@/lib/cep-local";
 import { formatarCepDaLoja } from "@/lib/endereco-da-loja";
 import {
   erroDoFormularioNacional,
@@ -916,10 +917,6 @@ export const AdminShippingView = memo(function AdminShippingView({
       return;
     }
 
-    sincronizacaoSuspensaRef.current = true;
-    setIsSaving(true);
-    haptic.medium();
-
     const retiradaMudou =
       (formData.modo !== "entrego") !==
       retiradaLigadaNaLista(config?.enabledShippingMethods);
@@ -1032,6 +1029,24 @@ export const AdminShippingView = memo(function AdminShippingView({
     const gravaRegras =
       regrasMudaram && Object.keys(regrasParaGravar).length > 0;
 
+    // Valida só a faixa que este Salvar gravaria, não uma faixa antiga que
+    // ficou intocada enquanto a lojista ajustava outra regra.
+    if (gravaRegras && mexeu.alcance) {
+      const erroDaFaixa = erroDaFaixaDeCepLocal(alcance);
+      if (erroDaFaixa) {
+        setPainelAberto((prev) => ({ ...prev, local: true }));
+        toast.error(
+          erroDaFaixa === "digitos-demais"
+            ? "Confira a faixa de CEP: use até 8 dígitos por CEP."
+            : "Confira a faixa de CEP: separe os CEPs com vírgula.",
+        );
+        return;
+      }
+    }
+
+    sincronizacaoSuspensaRef.current = true;
+    setIsSaving(true);
+    haptic.medium();
     salvandoRef.current = true;
     try {
       // Se esta gravação falhar, PARA AQUI (ADMIN-010, #94). O toast de

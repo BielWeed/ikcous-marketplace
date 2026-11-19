@@ -176,6 +176,50 @@ describe("Frete — o Salvar manda só o que foi mexido neste aparelho", () => {
     await act(async () => botaoSalvar().click());
   }
 
+  describe("faixa de CEP escrita à mão", () => {
+    it.each(["013101000", "01310100 a 01310200", "01310100; 01310200"])(
+      "não grava a faixa inválida %s",
+      async (faixa) => {
+        await desenhar();
+        await digitar("local-cep-range", faixa);
+        await salvar();
+
+        expect(updateConfig).not.toHaveBeenCalled();
+        expect(toastErro).toHaveBeenCalledWith(
+          expect.stringContaining("Confira a faixa de CEP"),
+        );
+        expect(campo("local-cep-range").value).toBe(faixa);
+      },
+    );
+
+    it.each(["01310-100", "013", "01310100, 01310200", "013101-013102", ""])(
+      "grava a faixa válida %j",
+      async (faixa) => {
+        loja.atual.localCepRange = "38400";
+        await desenhar();
+        await digitar("local-cep-range", faixa);
+        await salvar();
+
+        expect(updateConfig).toHaveBeenCalledWith(
+          { localCepRange: faixa },
+          { silentSuccess: true },
+        );
+      },
+    );
+
+    it("salva a taxa sem regravar uma faixa antiga inválida", async () => {
+      loja.atual.localCepRange = "013101000";
+      await desenhar();
+      await digitar("local-delivery-fee", "9");
+      await salvar();
+
+      expect(updateConfig).toHaveBeenCalledWith(
+        { localDeliveryFee: 9 },
+        { silentSuccess: true },
+      );
+    });
+  });
+
   describe("dois aparelhos na mesma tela", () => {
     it("mexeu só na taxa: o prazo e as regras que o outro aparelho mudou NÃO são regravados", async () => {
       await desenhar();
