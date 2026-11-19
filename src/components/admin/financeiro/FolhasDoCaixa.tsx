@@ -268,6 +268,9 @@ export function AbrirCaixaFolha({
                   resultado. Se esse dinheiro foi para o banco ou outra conta,
                   registre antes uma transferência do Caixa para essa conta (em
                   Novo lançamento, escolha Transferência): isso evita a quebra.
+                  Se saiu dinheiro da gaveta antes de abrir (uma despesa ou um
+                  pagamento), registre a saída em Novo lançamento antes de abrir
+                  o caixa.
                 </>
               ) : (
                 <>
