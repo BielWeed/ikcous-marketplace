@@ -229,7 +229,7 @@ describe("ficha — alvos de toque das janelas de confirmação", () => {
     );
   });
 
-  it("pergunta de recebimento: 'Ainda não' e 'Recebi' têm 44px de altura mínima", async () => {
+  it("pergunta de recebimento: os botões de finalizar e de receber têm 44px de altura mínima", async () => {
     await montarFicha(
       pedidoFake({
         paymentMethod: "cash",
@@ -240,7 +240,9 @@ describe("ficha — alvos de toque das janelas de confirmação", () => {
     await clicarAvancar();
 
     expect(hospedeiro.textContent).toMatch(/Recebeu os R\$/);
-    expect(botaoComTexto("Ainda não")?.className).toContain("min-h-11");
+    expect(
+      botaoComTexto("Finalizar sem registrar recebimento")?.className,
+    ).toContain("min-h-11");
     expect(botaoComTexto("Recebi")?.className).toContain("min-h-11");
   });
 });

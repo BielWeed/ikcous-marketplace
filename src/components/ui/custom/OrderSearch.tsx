@@ -89,10 +89,12 @@ export function OrderSearch({
   const idWhatsapp = `${idBase}-whatsapp`;
   const idFragmento = `${idBase}-fragmento`;
   const idDicaFragmento = `${idBase}-fragmento-dica`;
+  const idErroCodigo = `${idBase}-codigo-erro`;
   const [email, setEmail] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [orderFragment, setOrderFragment] = useState("");
   const [otp, setOtp] = useState("");
+  const [codigoIncompleto, setCodigoIncompleto] = useState(false);
   // O trio do envio que DEU CERTO. Durante a espera da rede os campos seguem
   // editáveis: a verificação confere contra o trio que pediu o código, não
   // contra o que está digitado agora. Só um envio com sucesso o fixa; "Voltar"
@@ -104,6 +106,8 @@ export function OrderSearch({
   const [isLoading, setIsLoading] = useState(false);
   const envioOtpEmCurso = useRef(false);
   const campoCodigo = useRef<HTMLInputElement>(null);
+  const campoEmail = useRef<HTMLInputElement>(null);
+  const focarEmailAoVoltar = useRef(false);
   // Número da consulta de código vigente. "Voltar", um novo envio ou verificação,
   // a saída da tela e a troca de conta na sessão (abaixo) o avançam: a resposta
   // de uma consulta antiga, ao chegar, vê que não é mais a vigente e não publica
@@ -112,7 +116,12 @@ export function OrderSearch({
   const rodadaDaConsulta = useRef(0);
 
   useEffect(() => {
-    if (step === "verify") campoCodigo.current?.focus();
+    if (step === "verify") {
+      campoCodigo.current?.focus();
+    } else if (focarEmailAoVoltar.current) {
+      focarEmailAoVoltar.current = false;
+      campoEmail.current?.focus();
+    }
   }, [step]);
 
   useEffect(
@@ -225,7 +234,7 @@ export function OrderSearch({
     haptic.medium();
 
     if (otp.length < 6) {
-      toast.error("O código de verificação deve conter 6 dígitos.");
+      setCodigoIncompleto(true);
       return;
     }
 
@@ -409,6 +418,7 @@ export function OrderSearch({
                         <Mail className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                         <input
                           id={idEmail}
+                          ref={campoEmail}
                           type="email"
                           required
                           autoComplete="email"
@@ -530,17 +540,34 @@ export function OrderSearch({
                       ref={campoCodigo}
                       required
                       aria-label="Código de 6 dígitos"
+                      aria-invalid={codigoIncompleto || undefined}
+                      aria-describedby={
+                        codigoIncompleto ? idErroCodigo : undefined
+                      }
                       placeholder="DIGITE O CÓDIGO DE 6 DÍGITOS"
                       value={otp}
                       // Sem `maxLength`: o navegador cortava o texto COLADO em
                       // 6 caracteres antes desta limpeza, e '123 456' ou
                       // '123-456' perdia o último dígito. O corte em 6 dígitos
                       // é daqui.
-                      onChange={(e) =>
-                        setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))
-                      }
-                      className="h-14 w-full rounded-[14px] border border-input bg-muted/40 text-center text-lg font-bold tracking-[0.3em] text-foreground transition-colors placeholder:text-sm placeholder:font-medium placeholder:tracking-normal placeholder:text-muted-foreground focus:border-foreground focus:outline-none"
+                      onChange={(e) => {
+                        const digitos = e.target.value
+                          .replace(/\D/g, "")
+                          .slice(0, 6);
+                        setOtp(digitos);
+                        if (digitos.length === 6) setCodigoIncompleto(false);
+                      }}
+                      className="aria-invalid:border-destructive h-14 w-full rounded-[14px] border border-input bg-muted/40 text-center text-lg font-bold tracking-[0.3em] text-foreground transition-colors placeholder:text-sm placeholder:font-medium placeholder:tracking-normal placeholder:text-muted-foreground focus:border-foreground focus:outline-none"
                     />
+                    {codigoIncompleto && (
+                      <p
+                        id={idErroCodigo}
+                        role="alert"
+                        className="text-sm text-destructive"
+                      >
+                        O código de verificação deve conter 6 dígitos.
+                      </p>
+                    )}
                   </div>
 
                   <div className="flex gap-3">
@@ -553,8 +580,10 @@ export function OrderSearch({
                         // de código, que tem o próprio fim, ainda esteja no ar).
                         rodadaDaConsulta.current += 1;
                         if (!envioOtpEmCurso.current) setIsLoading(false);
+                        focarEmailAoVoltar.current = true;
                         setStep("request");
                         setOtp("");
+                        setCodigoIncompleto(false);
                         setTrioEnviado(null);
                       }}
                       className="h-[52px] flex-1 rounded-2xl border border-solid border-border text-base font-semibold text-foreground transition-colors hover:bg-muted/40 active:scale-[0.98]"

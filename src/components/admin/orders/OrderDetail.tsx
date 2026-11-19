@@ -2912,7 +2912,7 @@ export const OrderDetail = memo(function OrderDetail({
                   onClick={confirmPendingAdvance}
                   className="min-h-11 rounded-xl border border-admin-border bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white"
                 >
-                  Ainda não
+                  Finalizar sem registrar recebimento
                 </AlertDialogAction>
                 <AlertDialogAction
                   onClick={confirmarRecebimentoEAvancar}

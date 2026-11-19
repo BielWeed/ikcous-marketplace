@@ -141,6 +141,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
   const [anulada, setAnulada] = useState(false);
   const emVoo = useRef(false);
   const menuRef = useRef<HTMLButtonElement>(null);
+  const botaoQueAbriuRef = useRef<HTMLButtonElement>(null);
   const grande = viewMode === "detailed";
   const itens = order.items ?? [];
   const unidades = itens.reduce((soma, item) => soma + (item.quantity || 1), 0);
@@ -252,6 +253,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
     if (receber && !registra) return;
     emVoo.current = true;
     setProcessando(true);
+    botaoQueAbriuRef.current = null;
     setPainel(null);
     try {
       // Mesma ordem da ficha: dinheiro primeiro; se rejeitar, não muda o status.
@@ -526,9 +528,13 @@ export const AdminOrderCard = memo(function AdminOrderCard({
         </button>
         {acaoPrincipal ? (
           <button
+            key="receber"
             type="button"
             disabled={bloqueado}
-            onClick={() => setPainel("receber")}
+            onClick={(evento) => {
+              botaoQueAbriuRef.current = evento.currentTarget;
+              setPainel("receber");
+            }}
             className={`${estiloPrincipal} flex-1`}
           >
             {registrandoPagamento || processando
@@ -537,9 +543,13 @@ export const AdminOrderCard = memo(function AdminOrderCard({
           </button>
         ) : proximo && onStatusChange && !pagoForaDoFluxo ? (
           <button
+            key="avancar"
             type="button"
             disabled={bloqueado}
-            onClick={avancar}
+            onClick={(evento) => {
+              botaoQueAbriuRef.current = evento.currentTarget;
+              avancar();
+            }}
             className={`${estiloPrincipal} flex-1`}
           >
             {processando
@@ -565,7 +575,10 @@ export const AdminOrderCard = memo(function AdminOrderCard({
           <button
             type="button"
             disabled={bloqueado}
-            onClick={abrirCancelamento}
+            onClick={(evento) => {
+              botaoQueAbriuRef.current = evento.currentTarget;
+              abrirCancelamento();
+            }}
             className={`${PERIGO} mt-2 w-full`}
           >
             <XCircle aria-hidden="true" className="size-4" />
@@ -589,7 +602,13 @@ export const AdminOrderCard = memo(function AdminOrderCard({
           showCloseButton={false}
           onCloseAutoFocus={(evento) => {
             evento.preventDefault();
-            menuRef.current?.focus();
+            const botao = botaoQueAbriuRef.current;
+            botaoQueAbriuRef.current = null;
+            if (botao?.isConnected && !botao.disabled) {
+              botao.focus();
+            } else {
+              menuRef.current?.focus();
+            }
           }}
           className="fixed bottom-0 left-1/2 top-auto z-[80] max-h-[90dvh] w-full max-w-full -translate-x-1/2 translate-y-0 gap-5 overflow-y-auto rounded-b-none rounded-t-[28px] border-admin-border-strong bg-admin-raised p-5 pb-[max(20px,env(safe-area-inset-bottom))] text-zinc-100 sm:bottom-auto sm:top-1/2 sm:max-w-lg sm:-translate-y-1/2 sm:rounded-[28px]"
         >
@@ -819,7 +838,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                     ? "Manter pedido"
                     : painel === "avancar"
                       ? "Voltar"
-                      : "Ainda não"}
+                      : "Finalizar sem registrar recebimento"}
                 </button>
                 <button
                   type="button"

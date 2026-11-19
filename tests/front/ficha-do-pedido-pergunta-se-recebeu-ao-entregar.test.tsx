@@ -365,7 +365,9 @@ describe("OrderDetail (ficha do pedido) — pergunta se recebeu ao avançar para
     expect(hospedeiro.textContent).toContain("Pedido");
     expect(hospedeiro.textContent).toMatch(/Recebeu/i);
     expect(botaoComTexto(hospedeiro, "Recebi")).toBeTruthy();
-    expect(botaoComTexto(hospedeiro, "Ainda não")).toBeTruthy();
+    expect(
+      botaoComTexto(hospedeiro, "Finalizar sem registrar recebimento"),
+    ).toBeTruthy();
     expect(onStatusChangeMock).not.toHaveBeenCalled();
   });
 
@@ -404,7 +406,7 @@ describe("OrderDetail (ficha do pedido) — pergunta se recebeu ao avançar para
     expect(chamadas).toEqual(["registrar", "avancar"]);
   });
 
-  it("caso 3: clicar 'Ainda não' — avança o status, e registrarPagamento NÃO é chamado", async () => {
+  it("caso 3: finalizar sem registrar recebimento avança sem chamar registrarPagamento", async () => {
     const order = pedidoFake({
       id: "ped-3",
       status: "shipping",
@@ -414,9 +416,13 @@ describe("OrderDetail (ficha do pedido) — pergunta se recebeu ao avançar para
     await renderizar(order);
     await clicarAvancar();
 
-    const botaoAindaNao = botaoComTexto(hospedeiro, "Ainda não");
+    const botaoFinalizar = botaoComTexto(
+      hospedeiro,
+      "Finalizar sem registrar recebimento",
+    );
+    expect(botaoFinalizar).toBeTruthy();
     await act(async () => {
-      botaoAindaNao!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      botaoFinalizar!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await Promise.resolve();
     });
 

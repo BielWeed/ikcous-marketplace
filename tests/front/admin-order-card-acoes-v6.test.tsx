@@ -317,13 +317,13 @@ it("se registrar o dinheiro falhar, não finaliza", async () => {
   expect(avancar).not.toHaveBeenCalled();
 });
 
-it("Ainda não finaliza sem gravar recebimento, como na ficha", async () => {
+it("Finalizar sem registrar recebimento avança o pedido, como na ficha", async () => {
   montar(
     pedido({ status: "shipping", paymentMethod: "cash", paymentStatus: null }),
   );
   await abrirAcoes();
   await clicar("Avançar → Finalizado");
-  await clicar("Ainda não");
+  await clicar("Finalizar sem registrar recebimento");
   expect(receber).not.toHaveBeenCalled();
   expect(avancar).toHaveBeenCalledWith(
     "pedido-abc123",
