@@ -40,7 +40,7 @@ const IconeDaCategoriaBuscada = lazy(() =>
 
 interface SearchBarProps {
   readonly value: string;
-  readonly onChange: (value: string) => void;
+  readonly onChange: (value: string, todasAsCategorias?: boolean) => void;
   readonly onProductClick?: (id: string) => void;
   readonly onCategorySelect?: (category: string) => void;
   readonly placeholder?: string;
@@ -662,7 +662,7 @@ export function SearchBar({
                 type="button"
                 onClick={() => {
                   haptic.medium();
-                  onChange(localValue);
+                  onChange(localValue, true);
                   setIsOpen(false);
                 }}
                 className="flex w-full items-center justify-center gap-2 rounded-2xl bg-zinc-900 px-4 py-3 text-xs font-bold text-white shadow-md transition-all hover:bg-zinc-800 active:scale-[0.98]"

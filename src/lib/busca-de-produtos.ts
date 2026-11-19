@@ -290,7 +290,8 @@ export function produtoCombinaComBusca(
  * todos os produtos.
  */
 export function pontuadorDaBusca(busca: string) {
-  const query = normalizarParaBusca(busca);
+  const codigoBuscado = normalizarParaBusca(busca);
+  const query = codigoBuscado.replace(/\s+/g, " ");
   const palavras = palavrasDaBusca(busca);
 
   return (produto: {
@@ -301,11 +302,14 @@ export function pontuadorDaBusca(busca: string) {
     variants?: VariacaoDaBusca[];
   }): number => {
     let score = 0;
-    const name = normalizarParaBusca(produto.name);
+    const name = normalizarParaBusca(produto.name).replace(/\s+/g, " ");
     // `description` pode vir nula do banco: `.toLowerCase()` direto quebrava a
     // busca inteira. `normalizarParaBusca` aguenta nulo.
-    const description = normalizarParaBusca(produto.description);
-    const category = normalizarParaBusca(produto.category);
+    const description = normalizarParaBusca(produto.description).replace(
+      /\s+/g,
+      " ",
+    );
+    const category = normalizarParaBusca(produto.category).replace(/\s+/g, " ");
 
     // Exact match
     if (name === query) score += 100;
@@ -336,8 +340,12 @@ export function pontuadorDaBusca(busca: string) {
       .map(normalizarParaBusca)
       .filter(Boolean);
     // Codigo exato vem antes de uma simples mencao na descricao (5 pontos).
-    if (query && codigos.some((codigo) => codigo === query)) score += 40;
-    else if (query && codigos.some((codigo) => codigo.includes(query)))
+    if (codigoBuscado && codigos.some((codigo) => codigo === codigoBuscado))
+      score += 40;
+    else if (
+      codigoBuscado &&
+      codigos.some((codigo) => codigo.includes(codigoBuscado))
+    )
       score += 5;
 
     return score;
