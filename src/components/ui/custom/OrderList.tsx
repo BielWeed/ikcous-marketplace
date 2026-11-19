@@ -1,4 +1,5 @@
 import { CustomerPaymentBadge } from "@/components/ui/custom/CustomerPaymentBadge";
+import { avisoDeCartaoNoPedidoVencido } from "@/lib/aviso-de-cartao-no-pedido-vencido";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { dataNoFusoDaLoja } from "@/lib/data-da-loja";
 import { rotuloDaFormaDoPedido } from "@/lib/forma-de-pagamento";
@@ -161,11 +162,15 @@ function OrderStatusTrail({
 
 function fraseDoCancelado(
   paymentStatus: Order["paymentStatus"],
+  metodoOnline: Order["metodoOnline"],
   noBalcao = false,
 ) {
   switch (paymentStatus) {
     case "expirado":
-      return "O prazo para pagar terminou. Se não pagou, é só comprar de novo.";
+      return (
+        avisoDeCartaoNoPedidoVencido(metodoOnline) ??
+        "O prazo para pagar terminou. Se não pagou, é só comprar de novo."
+      );
     case "aguardando":
       return "Se o pagamento ainda estiver aberto no seu banco, não pague.";
     case "pago":
@@ -646,7 +651,11 @@ export const OrderList = memo(function OrderList({
                 ) : null}
                 {order.status === "cancelled" && (
                   <p className="mt-2 min-h-7 text-[15px] leading-5 text-muted-foreground">
-                    {fraseDoCancelado(order.paymentStatus, noBalcao)}
+                    {fraseDoCancelado(
+                      order.paymentStatus,
+                      order.metodoOnline,
+                      noBalcao,
+                    )}
                   </p>
                 )}
               </div>

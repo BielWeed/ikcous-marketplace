@@ -6,9 +6,8 @@
 // entrega" — sem dizer o motivo. Quem apenas demorou para pagar achava que a
 // loja cancelou, e não havia caminho óbvio para comprar de novo.
 //
-// Agora o pedido cancelado por vencimento diz que o prazo terminou, que é só
-// comprar de novo, e leva à vitrine pelo mesmo `onNavigate("home")` das outras
-// telas de fim de compra. Os demais cancelados ficam como estavam.
+// O pedido vencido explica o cancelamento e leva à vitrine. No cartão, pede
+// para confirmar a aprovação com a loja antes de comprar de novo.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -103,8 +102,14 @@ describe("OrderDetailsView — pedido cancelado porque o pagamento venceu diz o 
     status: OrderStatus,
     pagamento: PaymentStatus | null,
     onNavigate: (view: string) => void = () => {},
+    metodoOnline?: Order["metodoOnline"],
   ) {
-    pedidoAtual = { ...pedidoBase, status, paymentStatus: pagamento };
+    pedidoAtual = {
+      ...pedidoBase,
+      status,
+      paymentStatus: pagamento,
+      metodoOnline,
+    };
     const { OrderDetailsView } = await import(
       "@/views/customer/OrderDetailsView"
     );
@@ -128,10 +133,10 @@ describe("OrderDetailsView — pedido cancelado porque o pagamento venceu diz o 
       b.textContent?.includes("Voltar para a loja"),
     );
 
-  it("cancelado + expirado: explica o vencimento e o botão leva à vitrine", async () => {
+  it("PIX cancelado + expirado: mantém o aviso e o botão leva à vitrine", async () => {
     const onNavigate = vi.fn();
 
-    await renderizar("cancelled", "expirado", onNavigate);
+    await renderizar("cancelled", "expirado", onNavigate, "pix");
 
     expect(texto()).toContain(FRASE_DO_VENCIMENTO);
     expect(texto()).toContain(AVISO_DE_QUEM_JA_PAGOU);
@@ -145,6 +150,18 @@ describe("OrderDetailsView — pedido cancelado porque o pagamento venceu diz o 
     expect(onNavigate).toHaveBeenCalledTimes(1);
     expect(onNavigate).toHaveBeenCalledWith("home");
   });
+
+  it.each(["credito", "debito"] as const)(
+    "cartão (%s) cancelado + expirado: orienta confirmar a aprovação antes de recomprar",
+    async (metodoOnline) => {
+      await renderizar("cancelled", "expirado", undefined, metodoOnline);
+
+      expect(texto()).toContain(
+        "O prazo do pagamento terminou e o pedido foi cancelado. Antes de comprar de novo, fale com a loja para confirmar se o pagamento do cartão foi aprovado.",
+      );
+      expect(texto()).not.toContain(AVISO_DE_QUEM_JA_PAGOU);
+    },
+  );
 
   const controles: Array<{
     nome: string;
