@@ -139,7 +139,7 @@ describe("Política de Privacidade", () => {
       (s) => s.id === "seus-direitos",
     )?.paragrafos;
     expect(direitos?.join(" ")).toContain(
-      "Minha conta → Segurança e conta → Privacidade e meus dados",
+      "Perfil → Segurança e conta → Privacidade e meus dados",
     );
     expect(direitos?.join(" ")).toMatch(/sem conta.*fale com a loja/);
   });
