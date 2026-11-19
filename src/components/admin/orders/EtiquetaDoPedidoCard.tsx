@@ -1,4 +1,5 @@
 import { Skeleton } from "@/components/ui/skeleton";
+import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import {
   cpfValido,
   formatarCpfEnquantoDigita,
@@ -451,6 +452,7 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
     // A chamada de compra, guardada fora do `try` para o `catch` do estouro
     // poder ouvir a resposta TARDIA dela (só para reler, nunca para aplicar).
     let invocacao: Promise<unknown> | undefined;
+    const fim = marcarOperacaoSensivel("compra-de-etiqueta");
     try {
       // PRAZO DA ESPERA DA TELA (não da compra): rede que conecta e não
       // responde deixava "Gerando…" para sempre, com a trava do pedido presa.
@@ -584,6 +586,7 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
       toast.error(detalhe);
     } finally {
       geracaoDaEtiquetaEmVoo.delete(orderIdDoClique);
+      fim();
     }
   }, [isOffline, pedido, orderId, onTrackingAtualizado, fetchPedido]);
 

@@ -17,6 +17,7 @@
 //     `already: true`.
 // "Atualizar rastreio" / "Conferir de novo" (leituras) soltam o botão e dizem
 // que não deu para consultar.
+import { haOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { toast } from "sonner";
@@ -193,6 +194,7 @@ describe("EtiquetaDoPedidoCard com a rede pendurada", () => {
       expect(botao("Gerando…")?.disabled).toBe(true);
       expect(botao("Cancelar")?.disabled).toBe(true);
       expect(avisoSemResposta()).toBeNull();
+      await passar(1);
     });
 
     it("estourou o prazo: avisa que não dá para saber, não afirma nada, solta os botões e relê o pedido", async () => {
@@ -201,8 +203,12 @@ describe("EtiquetaDoPedidoCard com a rede pendurada", () => {
       await confirmarACompra();
       expect(h.leiturasDoPedido).toHaveLength(1);
 
-      await passar(PRAZO_DA_COMPRA_MS);
+      await passar(PRAZO_DA_COMPRA_MS - 1);
+      const vetouDuranteAEspera = haOperacaoSensivel();
+      await passar(1);
 
+      expect(vetouDuranteAEspera).toBe(true);
+      expect(haOperacaoSensivel()).toBe(false);
       // Aviso neutro, na tela e no toast.
       expect(avisoSemResposta()?.textContent).toMatch(
         /Sem resposta da rede\. Não dá para saber se a etiqueta foi gerada/,
@@ -340,6 +346,7 @@ describe("EtiquetaDoPedidoCard com a rede pendurada", () => {
         /já tinha etiqueta — nada foi comprado de novo/,
       );
       expect(avisoSemResposta()).toBeNull();
+      expect(haOperacaoSensivel()).toBe(false);
     });
 
     it("antes do estouro o 2º clique continua barrado (a trava local vale enquanto a compra está em voo)", async () => {
@@ -355,6 +362,7 @@ describe("EtiquetaDoPedidoCard com a rede pendurada", () => {
       await passar(PRAZO_DA_COMPRA_MS - 1);
 
       expect(h.invokeMock).toHaveBeenCalledTimes(1);
+      await passar(1);
     });
 
     it("pedido trocado antes do estouro: nada de aviso nem de releitura sobre o pedido novo", async () => {
@@ -370,6 +378,34 @@ describe("EtiquetaDoPedidoCard com a rede pendurada", () => {
       expect(vi.mocked(toast.warning)).not.toHaveBeenCalled();
       expect(avisoSemResposta()).toBeNull();
       expect(h.leiturasDoPedido).toHaveLength(leiturasAntes);
+    });
+
+    it("trocar de ficha mantém o veto até a compra do pedido anterior responder", async () => {
+      const pendurada = chamadaPendurada();
+      h.invokeMock.mockReturnValue(pendurada.promessa);
+      await abrirCard(ORDER_A);
+      await confirmarACompra();
+
+      h.pedidoState.data = pedido({ shipping_option_id: "store-pickup" });
+      await abrirCard(ORDER_B); // Outra key: a ficha anterior foi desmontada.
+      const vetouDepoisDaTroca = haOperacaoSensivel();
+
+      await act(async () => {
+        pendurada.resolver({
+          data: {
+            success: true,
+            already: false,
+            tracking_code: "ME-ANTIGO",
+            label_url: null,
+            label_id: "lbl-antiga",
+          },
+          error: null,
+        });
+      });
+
+      expect(vetouDepoisDaTroca).toBe(true);
+      expect(haOperacaoSensivel()).toBe(false);
+      expect(vi.mocked(toast.success)).not.toHaveBeenCalled();
     });
 
     it("resposta normal dentro do prazo: igual a antes (sucesso, rastreio, nenhum aviso) e sem temporizador sobrando", async () => {
@@ -402,6 +438,7 @@ describe("EtiquetaDoPedidoCard com a rede pendurada", () => {
       expect(vi.mocked(toast.warning)).not.toHaveBeenCalled();
       expect(avisoSemResposta()).toBeNull();
       expect(vi.getTimerCount()).toBe(0);
+      expect(haOperacaoSensivel()).toBe(false);
     });
 
     it("erro de negócio do servidor (não é falta de resposta): continua a frase do servidor, sem o aviso de 'não dá para saber'", async () => {
@@ -420,6 +457,26 @@ describe("EtiquetaDoPedidoCard com a rede pendurada", () => {
       expect(hospedeiro.textContent).toMatch(/Saldo insuficiente\./);
       expect(vi.mocked(toast.warning)).not.toHaveBeenCalled();
       expect(avisoSemResposta()).toBeNull();
+      expect(haOperacaoSensivel()).toBe(false);
+    });
+
+    it("rejeição da invocação solta o veto sem esperar o prazo", async () => {
+      const pendurada = chamadaPendurada();
+      h.invokeMock.mockReturnValue(pendurada.promessa);
+      await abrirCard();
+      await confirmarACompra();
+      const vetouAntesDaRejeicao = haOperacaoSensivel();
+
+      await act(async () => {
+        pendurada.rejeitar(new Error("Failed to fetch"));
+      });
+
+      expect(vetouAntesDaRejeicao).toBe(true);
+      expect(haOperacaoSensivel()).toBe(false);
+      expect(
+        hospedeiro.querySelector('[data-testid="erro-etiqueta"]'),
+      ).not.toBeNull();
+      expect(vi.getTimerCount()).toBe(0);
     });
   });
 
