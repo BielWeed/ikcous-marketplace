@@ -12,6 +12,7 @@ import {
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import type { MetodoOnline } from "@/lib/forma-de-pagamento";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
+import { PRAZO_DA_CONSULTA_DO_CHECKOUT_MS } from "@/lib/prazo-da-requisicao";
 import { cn, formatCurrency } from "@/lib/utils";
 import { AlertCircle, Check, Clock, Copy, Loader2 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
@@ -120,6 +121,8 @@ export function comTempoLimite<T>(
 }
 
 type DadosDoPix = {
+  paymentId: string | null;
+  aguardando: boolean;
   qrCodeBase64?: string;
   qrCode?: string;
   expiraEm: string;
@@ -221,6 +224,8 @@ function classificarRespostaPagamento(
   return {
     tipo: "pix",
     pix: {
+      paymentId: r.paymentId,
+      aguardando: r.statusPagamento === "aguardando",
       qrCodeBase64: r.qrCodeBase64,
       qrCode: r.qrCode,
       expiraEm: r.expiraEm,
@@ -414,6 +419,7 @@ export function PagamentoOnline({
   onCartaoEncerradoPelaConsulta,
   sessaoAtiva = true,
   onEntrarDeNovo,
+  onRelerPagamentoPix,
 }: {
   orderId: string;
   valor: number;
@@ -450,6 +456,7 @@ export function PagamentoOnline({
   onCartaoEncerradoPelaConsulta?: (cartao: CartaoEmCurso) => void;
   sessaoAtiva?: boolean;
   onEntrarDeNovo?: () => void;
+  onRelerPagamentoPix?: RelerPagamentoPix;
 }) {
   const [trocouParaPix, setTrocouParaPix] = useState(false);
   // Tipos que o servidor recusou com "forma desligada" NESTE pedido. Só o
@@ -580,6 +587,7 @@ export function PagamentoOnline({
       pedidoMortoNoServidor={pedidoMortoNoServidor}
       onVerMeusPedidos={onVerMeusPedidos}
       onVoltarAoCarrinho={onVoltarAoCarrinho}
+      onRelerPagamentoPix={sessaoAtiva ? onRelerPagamentoPix : undefined}
     />
   );
 }
@@ -651,6 +659,125 @@ export function AvisoDePixEncerrado({
   );
 }
 
+type RelerPagamentoPix = () => Promise<boolean | undefined> | undefined;
+
+const INTERVALO_VERIFICAR_PIX_MS = 15_000;
+const LIMITE_VERIFICACOES_PIX = 5;
+const PRAZO_VERIFICAR_PIX_MS = 35_000;
+
+// Reabrir o mesmo QR nesta execução do app não devolve o orçamento de
+// consultas. O limite é da interface, não um rate limit do servidor.
+const tentativasDeVerificarPix = new Map<
+  string,
+  { total: number; liberaEm: number }
+>();
+
+function VerificarPix({
+  orderId,
+  tentativaId,
+  criarPagamento,
+  relerPagamento,
+}: {
+  orderId: string;
+  tentativaId: string;
+  criarPagamento: CriarPagamento;
+  relerPagamento: RelerPagamentoPix;
+}) {
+  const [total, setTotal] = useState(
+    () => tentativasDeVerificarPix.get(tentativaId)?.total ?? 0,
+  );
+  const [liberaEm, setLiberaEm] = useState(
+    () => tentativasDeVerificarPix.get(tentativaId)?.liberaEm ?? 0,
+  );
+  const [verificando, setVerificando] = useState(false);
+  const [semConfirmacao, setSemConfirmacao] = useState(false);
+  const montadoRef = useRef(false);
+  useEffect(() => {
+    montadoRef.current = true;
+    return () => {
+      montadoRef.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (!liberaEm) return;
+    const timer = setTimeout(
+      () => setLiberaEm(0),
+      Math.max(0, Math.ceil(liberaEm - performance.now())),
+    );
+    return () => clearTimeout(timer);
+  }, [liberaEm]);
+
+  const verificar = async () => {
+    const anterior = tentativasDeVerificarPix.get(tentativaId);
+    const agora = performance.now();
+    if (
+      verificando ||
+      (anterior &&
+        (anterior.total >= LIMITE_VERIFICACOES_PIX ||
+          agora < anterior.liberaEm))
+    ) {
+      return;
+    }
+    const tentativa = {
+      total: (anterior?.total ?? 0) + 1,
+      liberaEm: agora + INTERVALO_VERIFICAR_PIX_MS,
+    };
+    tentativasDeVerificarPix.set(tentativaId, tentativa);
+    setTotal(tentativa.total);
+    setLiberaEm(tentativa.liberaEm);
+    setVerificando(true);
+    setSemConfirmacao(false);
+
+    let confirmado = false;
+    try {
+      const resposta = await comTempoLimite(
+        criarPagamento({ orderId, metodo: "verificar" }),
+        PRAZO_VERIFICAR_PIX_MS,
+      );
+      if (montadoRef.current && resposta.verificacao === "pago") {
+        // A consulta não decide a tela: a releitura do checkout trata pago,
+        // pago fora do prazo e pedido cancelado exatamente como no polling.
+        confirmado = Boolean(
+          await comTempoLimite(
+            Promise.resolve(relerPagamento()),
+            PRAZO_DA_CONSULTA_DO_CHECKOUT_MS,
+          ),
+        );
+      }
+    } catch {
+      // Rede/erro da consulta é incerteza, nunca recusa nem nova cobrança.
+    }
+    if (!montadoRef.current) return;
+    setSemConfirmacao(!confirmado);
+    setVerificando(false);
+  };
+
+  const esgotou = total >= LIMITE_VERIFICACOES_PIX;
+  return (
+    <div className="lg:col-start-1">
+      <button
+        type="button"
+        onClick={verificar}
+        disabled={verificando || liberaEm !== 0 || esgotou}
+        className="min-h-11 w-full rounded-xl border border-zinc-300 px-4 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+      >
+        {verificando ? "Verificando…" : "Já paguei — verificar"}
+      </button>
+      <p aria-live="polite" className="text-sm text-zinc-600">
+        {semConfirmacao &&
+          !esgotou &&
+          "Ainda não confirmado. Tente de novo em instantes."}
+      </p>
+      {esgotou && !verificando && (
+        <p className="text-sm text-zinc-600">
+          As verificações manuais deste Pix acabaram. Acompanhe a confirmação
+          nesta tela ou em Meus pedidos.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function PagamentoComPix({
   orderId,
   valor,
@@ -658,6 +785,7 @@ function PagamentoComPix({
   pedidoMortoNoServidor = false,
   onVerMeusPedidos,
   onVoltarAoCarrinho,
+  onRelerPagamentoPix,
 }: {
   orderId: string;
   valor: number;
@@ -667,6 +795,7 @@ function PagamentoComPix({
   onVerMeusPedidos?: () => void;
   // Outra saída do mesmo aviso: volta ao carrinho com os itens (lote 210).
   onVoltarAoCarrinho?: () => void;
+  onRelerPagamentoPix?: RelerPagamentoPix;
   // Terceiro parâmetro opcional — ver `SinalDeErroPagamento`.
   onErro: (
     msg: string,
@@ -684,7 +813,9 @@ function PagamentoComPix({
   const { criarPagamento } = useOrders(false, false);
   // `expiraEm` vem junto do PIX, da resposta da edge function — é o prazo que
   // está gravado na linha do pedido, o mesmo que o pg_cron vai ler.
-  const [pix, setPix] = useState<DadosDoPix | null>(null);
+  const [pix, setPix] = useState<(DadosDoPix & { orderId: string }) | null>(
+    null,
+  );
   // B4: PIX pedido com o cartão já aprovado — a edge devolve 'pago' sem QR
   // (ver `classificarRespostaPagamento`, acima). Estado final e exclusivo
   // com `pix`: quem confirma de vez continua sendo o webhook/CheckoutView,
@@ -761,7 +892,7 @@ function PagamentoComPix({
       // chegar: sincroniza junto do Pix para o aviso começar correto.
       onPix: (dados) => {
         setAgora(Date.now());
-        setPix(dados);
+        setPix({ ...dados, orderId });
       },
       onConfirmado: () => setConfirmado(true),
     });
@@ -865,6 +996,7 @@ function PagamentoComPix({
     </p>
   );
   if (pix) {
+    const tentativaId = `${orderId}:${pix.paymentId ?? ""}`;
     const valorConhecido = Number.isFinite(valor) && valor > 0;
     const descritoPeloAviso = horarioPrevistoPassou
       ? idAvisoHorario
@@ -1076,6 +1208,16 @@ function PagamentoComPix({
               Confira o valor e confirme. A confirmação aparece nesta tela.
             </li>
           </ol>
+
+          {pix.orderId === orderId && pix.aguardando && onRelerPagamentoPix && (
+            <VerificarPix
+              key={tentativaId}
+              orderId={orderId}
+              tentativaId={tentativaId}
+              criarPagamento={criarPagamento}
+              relerPagamento={onRelerPagamentoPix}
+            />
+          )}
 
           {pix.ticketUrl && (
             <a

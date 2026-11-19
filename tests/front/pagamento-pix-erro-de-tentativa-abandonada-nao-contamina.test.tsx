@@ -93,6 +93,8 @@ it("erro terminal atrasado do PIX abandonado não chama onErro nem contamina o P
     await esperarMicrotarefas();
 
     expect(onPixB).toHaveBeenCalledExactlyOnceWith({
+      paymentId: "pay-b",
+      aguardando: true,
       qrCodeBase64: "abc123",
       qrCode: "000201-pix-b",
       expiraEm: "2026-11-11T12:00:00.000Z",

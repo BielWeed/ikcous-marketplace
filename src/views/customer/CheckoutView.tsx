@@ -1955,8 +1955,11 @@ export function CheckoutViewDaConta({
   const [cartaoEncerrado, setCartaoEncerrado] = useState<CartaoEmCurso | null>(
     null,
   );
-  // A verificação periódica, para o realtime pedir UMA leitura agora.
-  const lerAVagaAgoraRef = useRef<(() => void) | null>(null);
+  // Atalho para uma leitura avulsa do pedido, pelo realtime ou pelo Pix.
+  const lerAVagaAgoraRef = useRef<
+    | ((pedidoEsperado?: string) => Promise<boolean | undefined> | undefined)
+    | null
+  >(null);
   // ── Lacuna L1 (02/10/2026): soltura da vaga e DEPOIS o pedido fechado ───
   // A tentativa que a leitura da vaga já encerrou (C6). Depois da recusa, a
   // tela do cartão desarma a tentativa (a etapa "recusado" não está em
@@ -3870,19 +3873,19 @@ export function CheckoutViewDaConta({
       // continua com seu próprio aviso: a reserva já venceu nesse caso.
       if (data.status === "cancelled" && data.payment_status === "pago") {
         setStatusPagamentoPix("pedido-cancelado");
-        return;
+        return true;
       }
       if (data.payment_status === "pago") {
         setParcelamentoConfirmado(parcelamentoDoCreditoPago(data));
         setStatusPagamentoPix((atual) =>
           atual === "pedido-cancelado" ? atual : "confirmado",
         );
-        return;
+        return true;
       }
       if (data.payment_status === "pago_apos_expirar") {
         setParcelamentoConfirmado(parcelamentoDoCreditoPago(data));
         setStatusPagamentoPix("fora-do-prazo");
-        return;
+        return true;
       }
 
       // F1: o pedido morto no servidor — mesma definição de "fechado" que a
@@ -4069,11 +4072,12 @@ export function CheckoutViewDaConta({
     if (typeof document !== "undefined") {
       document.addEventListener("visibilitychange", aoVoltarAFicarVisivel);
     }
-    // C6 (P1): o realtime pede uma leitura avulsa — mesmas guardas, não conta
-    // como tick do teto.
-    const lerAgora = () => {
-      verificarPagamento();
-    };
+    // O realtime e a verificação manual do Pix pedem a mesma leitura
+    // avulsa, sem contar como tick do intervalo.
+    const lerAgora = (pedidoEsperado?: string) =>
+      pedidoEsperado === undefined || pedidoEsperado === orderId
+        ? verificarPagamento()
+        : undefined;
     lerAVagaAgoraRef.current = lerAgora;
 
     return () => {
@@ -6316,6 +6320,7 @@ export function CheckoutViewDaConta({
             // tela do outro).
             sessaoAtiva={Boolean(user?.id)}
             onEntrarDeNovo={() => onNavigate("auth")}
+            onRelerPagamentoPix={() => lerAVagaAgoraRef.current?.(orderId)}
             onTrocarParaPix={(cartaoAindaVivo) => {
               if (cartaoAindaVivo) marcarCobrancaIncerta(orderId);
               // Lacuna L1b: a tela agora é do PIX — a recusa do cartão saiu
@@ -6471,6 +6476,16 @@ export function CheckoutViewDaConta({
             >
               Voltar ao carrinho
             </Button>
+            {user?.id && (
+              <Button
+                type="button"
+                variant="link"
+                onClick={() => onNavigate("orders")}
+                className="min-h-11 w-full whitespace-normal text-zinc-700 underline dark:text-zinc-300"
+              >
+                Já fez um pedido? Ver meus pedidos
+              </Button>
+            )}
           </>
         )}
       </div>

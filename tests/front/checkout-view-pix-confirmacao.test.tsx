@@ -11,6 +11,13 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const criarPagamento = vi.fn();
+const verificarPix = vi.fn();
+let tentativaPix = 0;
+const ROTULO_VERIFICAR_PIX = "Já paguei — verificar";
+const PIX_AINDA_NAO_CONFIRMADO =
+  "Ainda não confirmado. Tente de novo em instantes.";
+
 const createOrder = vi
   .fn()
   .mockResolvedValue({ id: "ped-999", totalAmount: 100 });
@@ -181,9 +188,11 @@ vi.mock("@/hooks/useOrders", () => ({
     isAdmin?: boolean,
     options?: { onRealtimeEvent?: EventoRealtime },
   ) => {
-    useOrdersArgsCapturados = [enabled, isAdmin];
-    onRealtimeEventCapturado = options?.onRealtimeEvent ?? null;
-    return { createOrder, updateOrderStatus };
+    if (options) {
+      useOrdersArgsCapturados = [enabled, isAdmin];
+      onRealtimeEventCapturado = options.onRealtimeEvent ?? null;
+    }
+    return { createOrder, updateOrderStatus, criarPagamento };
   },
 }));
 
@@ -246,14 +255,6 @@ vi.mock("@/lib/flags", () => ({
   lerFlagPagamentoOnline: (v: string | undefined) => v === "true",
 }));
 
-vi.mock("@/components/checkout/PagamentoOnline", async (importOriginal) => {
-  const real =
-    await importOriginal<
-      typeof import("@/components/checkout/PagamentoOnline")
-    >();
-  return { ...real, PagamentoOnline: () => null };
-});
-
 // Cartão pelo app (26/09/2026): o checkout lê `config_pagamento_cartao` ao
 // montar (useConfigDoCartao) — uma consulta que não é do polling que este
 // arquivo conta em `fromSpy`. A leitura tem suíte própria
@@ -302,6 +303,21 @@ describe("CheckoutView — confirmação de pagamento na tela do PIX (CHECKOUT-0
   beforeEach(() => {
     createOrder.mockClear();
     updateOrderStatus.mockClear();
+    verificarPix.mockReset().mockResolvedValue({ verificacao: "pix" });
+    const paymentId = `pix-ficticio-${++tentativaPix}`;
+    criarPagamento.mockReset().mockImplementation(async ({ metodo }) => {
+      if (metodo === "verificar") return verificarPix();
+      if (metodo === "pix") {
+        return {
+          paymentId,
+          statusPagamento: "aguardando",
+          expiraEm: "2099-11-17T23:59:00Z",
+          qrCode: "PIX-FICTICIO",
+          qrCodeBase64: "abc123",
+        };
+      }
+      throw new Error(`Método inesperado: ${metodo}`);
+    });
     clearCart.mockClear();
     addToCart.mockClear();
     confettiMock.mockClear();
@@ -360,6 +376,7 @@ describe("CheckoutView — confirmação de pagamento na tela do PIX (CHECKOUT-0
       raiz.unmount();
     });
     hospedeiro.remove();
+    sessionStorage.clear();
     vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
@@ -412,6 +429,162 @@ describe("CheckoutView — confirmação de pagamento na tela do PIX (CHECKOUT-0
       await vi.advanceTimersByTimeAsync(0);
     });
   }
+
+  function botaoVerificarPix() {
+    const botao = localizarBotaoPorTexto(hospedeiro, ROTULO_VERIFICAR_PIX);
+    expect(botao).toBeDefined();
+    return botao!;
+  }
+
+  it("consulta o mesmo pedido uma vez e bloqueia novos cliques durante a consulta e nos primeiros 15 s", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNaTelaDeAguardarPagamento(CheckoutView);
+    let responder = (_: { verificacao: string }) => {};
+    verificarPix.mockImplementationOnce(
+      () =>
+        new Promise<{ verificacao: string }>((resolve) => {
+          responder = resolve;
+        }),
+    );
+    const verificar = botaoVerificarPix();
+    expect(verificar.type).toBe("button");
+    await act(async () => {
+      verificar.click();
+      verificar.click();
+    });
+    expect(verificar.disabled).toBe(true);
+    expect(verificar.textContent).toContain("Verificando…");
+    expect(criarPagamento.mock.calls).toEqual([
+      [{ orderId: "ped-999", metodo: "pix" }],
+      [{ orderId: "ped-999", metodo: "verificar" }],
+    ]);
+    await act(async () => {
+      responder({ verificacao: "pix" });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(14_999);
+    });
+    verificar.click();
+    expect(verificarPix).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(verificar.disabled).toBe(false);
+    await act(async () => {
+      verificar.click();
+    });
+    expect(verificarPix).toHaveBeenCalledTimes(2);
+    expect(updateOrderStatus).not.toHaveBeenCalled();
+  });
+
+  it("depois de cinco verificações não envia mais nenhuma para a mesma tentativa", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNaTelaDeAguardarPagamento(CheckoutView);
+    const verificar = botaoVerificarPix();
+    for (let tentativa = 0; tentativa < 5; tentativa++) {
+      expect(verificar.disabled).toBe(false);
+      await act(async () => {
+        verificar.click();
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000);
+      });
+    }
+    expect(verificar.disabled).toBe(true);
+    expect(hospedeiro.textContent).toContain(
+      "As verificações manuais deste Pix acabaram.",
+    );
+    expect(hospedeiro.textContent).not.toContain(PIX_AINDA_NAO_CONFIRMADO);
+    verificar.click();
+    expect(verificarPix).toHaveBeenCalledTimes(5);
+    expect(criarPagamento.mock.calls.map(([args]) => args.metodo)).toEqual([
+      "pix",
+      "verificar",
+      "verificar",
+      "verificar",
+      "verificar",
+      "verificar",
+    ]);
+  });
+
+  it("relê o pedido na hora e usa a confirmação do checkout quando a consulta confirma", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNaTelaDeAguardarPagamento(CheckoutView);
+    const leiturasAnteriores = fromSpy.mock.calls.length;
+    verificarPix.mockImplementationOnce(async () => {
+      mockRespostaPoll = {
+        data: { payment_status: "pago", expires_at: null },
+        error: null,
+      };
+      return { verificacao: "pago" };
+    });
+
+    await act(async () => {
+      botaoVerificarPix().click();
+    });
+
+    expect(fromSpy).toHaveBeenCalledTimes(leiturasAnteriores + 1);
+    expect(eqSpy).toHaveBeenLastCalledWith("id", "ped-999");
+    expect(hospedeiro.textContent).toContain("Pagamento Confirmado");
+    expect(hospedeiro.textContent).toContain("#ED-999");
+    expect(hospedeiro.querySelector('img[alt="QR code do Pix"]')).toBeNull();
+    expect(
+      localizarBotaoPorTexto(hospedeiro, ROTULO_VERIFICAR_PIX),
+    ).toBeUndefined();
+  });
+
+  it.each(["sem confirmação", "erro na consulta", "falha na releitura"])(
+    "%s mantém o QR e anuncia apenas a mensagem neutra",
+    async (resultado) => {
+      const { CheckoutView } = await import("@/views/customer/CheckoutView");
+      await chegarNaTelaDeAguardarPagamento(CheckoutView);
+      if (resultado === "erro na consulta") {
+        verificarPix.mockRejectedValueOnce(new Error("falha de rede"));
+      } else if (resultado === "falha na releitura") {
+        verificarPix.mockResolvedValueOnce({ verificacao: "pago" });
+        mockRespostaPoll = { data: null, error: { message: "sem leitura" } };
+      }
+
+      await act(async () => {
+        botaoVerificarPix().click();
+      });
+
+      const anuncios = [...hospedeiro.querySelectorAll('[aria-live="polite"]')];
+      expect(
+        anuncios.some(
+          (anuncio) => anuncio.textContent === PIX_AINDA_NAO_CONFIRMADO,
+        ),
+      ).toBe(true);
+      expect(
+        hospedeiro.querySelector('img[alt="QR code do Pix"]'),
+      ).not.toBeNull();
+      expect(hospedeiro.textContent).not.toContain("Pagamento Confirmado");
+      expect(criarPagamento).toHaveBeenCalledTimes(2);
+      expect(criarPagamento).toHaveBeenLastCalledWith({
+        orderId: "ped-999",
+        metodo: "verificar",
+      });
+      expect(updateOrderStatus).not.toHaveBeenCalled();
+    },
+  );
+
+  it("remove a verificação manual junto do QR quando o servidor marca o pedido expirado", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNaTelaDeAguardarPagamento(CheckoutView);
+    botaoVerificarPix();
+    mockRespostaPoll = {
+      data: { payment_status: "expirado", expires_at: null },
+      error: null,
+    };
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(hospedeiro.querySelector('img[alt="QR code do Pix"]')).toBeNull();
+    expect(
+      localizarBotaoPorTexto(hospedeiro, ROTULO_VERIFICAR_PIX),
+    ).toBeUndefined();
+    expect(verificarPix).not.toHaveBeenCalled();
+  });
 
   // Achado 2 da revisão (16/08/2026): protege a linha que era a causa-raiz
   // do CHECKOUT-090. Sem este teste, `useOrders(false, true, {...})` (o
@@ -787,7 +960,9 @@ describe("CheckoutView — confirmação de pagamento na tela do PIX (CHECKOUT-0
     // Cliente sai da aba para pagar no app do banco.
     fromSpy.mockClear();
     definirVisibilidade("hidden");
-    document.dispatchEvent(new Event("visibilitychange"));
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
 
     // Enquanto a aba estava escondida, o pagamento foi confirmado no banco —
     // é exatamente o que o cliente estava fazendo lá fora.
