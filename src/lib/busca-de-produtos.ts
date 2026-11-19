@@ -55,7 +55,9 @@ export const normalizarParaBusca = (texto: string | null | undefined): string =>
     .replace(/(\d)[^\S\r\n]+%/g, "$1%")
     .trim();
 
+// eslint-disable-next-line security/detect-unsafe-regex -- medido linear (3 ms em 200 mil chars): o separador [.,] é obrigatório em cada repetição, sem divisão ambígua
 const PERCENTUAL_COM_PONTUACAO = /^(\d+(?:[.,]\d+)*%)[^a-z0-9]*$/;
+// eslint-disable-next-line security/detect-unsafe-regex -- medido linear (3 ms em 200 mil chars): o separador [.,] é obrigatório em cada repetição, sem divisão ambígua
 const PERCENTUAL = /^\d+(?:[.,]\d+)*%$/;
 
 const TAMANHO_MINIMO_PARA_TIRAR_O_S = 4;

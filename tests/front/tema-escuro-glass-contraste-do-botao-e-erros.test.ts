@@ -68,6 +68,7 @@ const casos = [
   {
     nome: "CEP",
     arquivo: "src/components/ui/custom/AddressForm.tsx",
+    // eslint-disable-next-line security/detect-unsafe-regex -- roda só sobre o texto de um arquivo do repositório, de tamanho fixo e conhecido
     trecho: /id="cep"[\s\S]*?\bCAMPO,\s*(?:\/\/[^\n]*\s*)*"([^"]*)"/,
     novas: [
       "placeholder:text-muted-foreground/40",
