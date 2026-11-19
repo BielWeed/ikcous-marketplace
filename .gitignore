@@ -36,6 +36,7 @@ build/
 # sem esta negação, a regra *.txt acima é exatamente o motivo de ele nunca
 # ter entrado no repositório.
 !public/robots.txt
+!public/THIRD_PARTY_NOTICES.txt
 build_*.txt
 build_*.log
 lint_*.txt

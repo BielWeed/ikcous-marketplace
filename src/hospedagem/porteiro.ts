@@ -89,7 +89,7 @@ const PREFIXOS_RESERVADOS =
 // existindo em `dist/` (e serve o `vite dev`), mas na Vercel a borda atende
 // antes dele.
 const ARQUIVOS_RESERVADOS_DE_RAIZ =
-  "sw\\.js$|workbox-[^/]*\\.js$|version\\.json$|favicon\\.ico$|favicon\\.svg$|logo\\.svg$|apple-touch-icon\\.png$|og-image\\.png$|silent-guardian\\.js$|loading\\.css$|404\\.html$|index\\.html$|registerSW\\.js$|offline\\.html$|google[A-Za-z0-9]*\\.html$";
+  "sw\\.js$|workbox-[^/]*\\.js$|version\\.json$|favicon\\.ico$|favicon\\.svg$|logo\\.svg$|apple-touch-icon\\.png$|og-image\\.png$|silent-guardian\\.js$|loading\\.css$|404\\.html$|index\\.html$|registerSW\\.js$|offline\\.html$|THIRD_PARTY_NOTICES\\.txt$|google[A-Za-z0-9]*\\.html$";
 
 // O array abaixo NÃO é o que a Vercel lê: `config.matcher` em `middleware.ts`
 // precisa ser um LITERAL para ser lido por análise estática (ver o
