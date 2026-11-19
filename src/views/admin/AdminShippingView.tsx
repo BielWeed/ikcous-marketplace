@@ -45,6 +45,7 @@ import {
 } from "@/lib/guarda-de-frete";
 import {
   alcanceAoMudarOCepDaLoja,
+  alcanceSemNumeros,
   cepCompleto,
   resumoDoAlcance,
 } from "@/lib/loja-pronta";
@@ -399,6 +400,18 @@ export const AdminShippingView = memo(function AdminShippingView({
   const salvandoRef = useRef(false);
   const sincronizacaoSuspensaRef = useRef(false);
   const [falhaAoSalvar, setFalhaAoSalvar] = useState(false);
+  const [recusaDaFaixa, setRecusaDaFaixa] = useState<{ faixa: string } | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (!recusaDaFaixa) return;
+    // O painel já abriu neste render. Abra também o texto livre antes do foco.
+    const campo = document.getElementById("local-cep-range");
+    const detalhes = campo?.closest("details");
+    if (detalhes) detalhes.open = true;
+    campo?.focus();
+  }, [recusaDaFaixa]);
 
   // Painéis recolhíveis (pedido do dono, 23/09/2026): todos nascem
   // FECHADOS, exceto "Fora da cidade" quando a entrada veio pela rota
@@ -966,6 +979,25 @@ export const AdminShippingView = memo(function AdminShippingView({
         nacionalAjustado,
       ),
     };
+    // A mesma diferença usada para gravar poupa quem só mexeu no preço ou
+    // no prazo de uma faixa antiga inválida. Ao religar, ela volta a valer.
+    const religouEntrega =
+      retratoLocal?.modo === "so_retiro" && formData.modo !== "so_retiro";
+    if (
+      regrasMudaram &&
+      (mexeu.alcance || religouEntrega) &&
+      alcanceSemNumeros(alcance)
+    ) {
+      setRecusaDaFaixa({ faixa: alcance });
+      setPainelAberto((prev) => ({ ...prev, local: true }));
+      return;
+    }
+
+    setRecusaDaFaixa(null);
+    sincronizacaoSuspensaRef.current = true;
+    setIsSaving(true);
+    haptic.medium();
+
     // Só chega aqui com valor inválido se o campo está ESCONDIDO ("Só
     // retirada": as duas travas acima não valem). Virar R$ 0 seria entrega
     // grátis sem aviso e perderia o valor de antes: o valor gravado fica, o
@@ -1546,6 +1578,7 @@ export const AdminShippingView = memo(function AdminShippingView({
                   }))
                 }
                 faixa={formData.localCepRange}
+                faixaRecusada={recusaDaFaixa?.faixa}
                 onFaixa={(faixa) =>
                   atualizarFormData((prev) => ({
                     ...prev,

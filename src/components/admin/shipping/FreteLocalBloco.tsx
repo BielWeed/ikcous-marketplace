@@ -124,6 +124,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
   valor,
   onValor,
   faixa,
+  faixaRecusada,
   onFaixa,
   coverage,
   semOrigem,
@@ -142,6 +143,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
   readonly valor: number;
   readonly onValor: (valor: number) => void;
   readonly faixa: string;
+  readonly faixaRecusada?: string;
   readonly onFaixa: (faixa: string) => void;
   readonly coverage: "local" | "national";
   readonly onCoverage?: (coverage: "local" | "national") => void;
@@ -275,10 +277,21 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
               })
             ? "sem-pagamento"
             : "sim";
+  const erroDaFaixa = faixaRecusada === faixa;
+  const dicaDaFaixaManual = erroDaFaixa ? (
+    <span id="erro-faixa-de-cep" role="alert">
+      Digite um CEP ou os números iniciais da região. Para entregar perto da
+      loja, deixe o campo vazio.
+    </span>
+  ) : (
+    dicaDoTexto(cepDaLoja)
+  );
   const campoDaFaixa = (
     <input
       id="local-cep-range"
       aria-label="CEPs da entrega"
+      aria-invalid={erroDaFaixa || undefined}
+      aria-describedby={erroDaFaixa ? "erro-faixa-de-cep" : undefined}
       type="text"
       value={faixa}
       onChange={(e) => onFaixa(e.target.value)}
@@ -463,13 +476,11 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
         </Linha>
       )}
 
-      {soRetiro ? null : prefixo === null ? (
-        // Sem CEP completo da loja não há "perto da loja" para escolher: só o
-        // campo de texto, como sempre foi.
-        <Linha
-          nome="Escrever a faixa de CEP à mão"
-          dica={dicaDoTexto(cepDaLoja)}
-        >
+      {soRetiro && faixaRecusada === undefined ? null : soRetiro ||
+        prefixo === null ? (
+        // Em "Só retirada", o campo só reaparece para corrigir uma edição
+        // inválida feita antes de trocar o modo. Sem CEP de origem, só há texto.
+        <Linha nome="Escrever a faixa de CEP à mão" dica={dicaDaFaixaManual}>
           {campoDaFaixa}
         </Linha>
       ) : (
@@ -573,14 +584,14 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
             >
               Escrever a faixa de CEP à mão
             </summary>
-            <Linha nome="CEPs da entrega" dica={dicaDoTexto(cepDaLoja)}>
+            <Linha nome="CEPs da entrega" dica={dicaDaFaixaManual}>
               {campoDaFaixa}
             </Linha>
           </details>
         </div>
       )}
 
-      {!soRetiro && avisoDaFaixa && (
+      {!soRetiro && !erroDaFaixa && avisoDaFaixa && (
         <p role="note" className="mt-2 text-xs text-amber-300">
           {avisoDaFaixa}
         </p>
