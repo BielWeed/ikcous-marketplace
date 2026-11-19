@@ -35,6 +35,7 @@ import {
   estrategiaTemAlcanceEditavel,
   resumoDaEstrategiaNacional,
 } from "@/lib/estrategias-de-frete";
+import { faixaDeCepReconhecida } from "@/lib/faixa-de-cep";
 import {
   DIAS_DA_ENTREGA_PROPRIA_PADRAO,
   type ModoDaEntregaNaCidade,
@@ -45,7 +46,6 @@ import {
 } from "@/lib/guarda-de-frete";
 import {
   alcanceAoMudarOCepDaLoja,
-  alcanceSemNumeros,
   cepCompleto,
   resumoDoAlcance,
 } from "@/lib/loja-pronta";
@@ -986,7 +986,8 @@ export const AdminShippingView = memo(function AdminShippingView({
     if (
       regrasMudaram &&
       (mexeu.alcance || religouEntrega) &&
-      alcanceSemNumeros(alcance)
+      alcance.trim() !== "" &&
+      !faixaDeCepReconhecida(alcance)
     ) {
       setRecusaDaFaixa({ faixa: alcance });
       setPainelAberto((prev) => ({ ...prev, local: true }));

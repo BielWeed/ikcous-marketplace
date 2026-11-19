@@ -9,6 +9,7 @@ import {
   transportadoraVendeForaDaCidade,
 } from "@/lib/aviso-transportadora-sem-pagamento";
 import { cepEhLocal } from "@/lib/cep-local";
+import { EXEMPLO_DE_INTERVALO_DE_CEP } from "@/lib/faixa-de-cep";
 import { parseValorBR } from "@/lib/financeiro";
 import type { ModoDaEntregaNaCidade } from "@/lib/guarda-de-frete";
 import {
@@ -280,8 +281,9 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
   const erroDaFaixa = faixaRecusada === faixa;
   const dicaDaFaixaManual = erroDaFaixa ? (
     <span id="erro-faixa-de-cep" role="alert">
-      Digite um CEP ou os números iniciais da região. Para entregar perto da
-      loja, deixe o campo vazio.
+      Digite um CEP ou os números iniciais da região. Para um intervalo, separe
+      o primeiro e o último CEP por vírgula: {EXEMPLO_DE_INTERVALO_DE_CEP}. Para
+      entregar perto da loja, deixe o campo vazio.
     </span>
   ) : (
     dicaDoTexto(cepDaLoja)

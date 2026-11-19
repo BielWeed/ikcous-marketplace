@@ -55,9 +55,9 @@ describe("avisoDaFaixaDeCep: faixa escrita que o servidor não entende", () => {
     });
     expect(aviso).not.toBeNull();
     expect(aviso).toContain(FRASE_DO_AVISO);
-    expect(aviso).toContain("nem o CEP da sua loja entra");
+    expect(aviso).toContain("nenhum CEP");
     // O aviso ensina o formato que funciona.
-    expect(aviso).toContain("00000-000, 00000-999");
+    expect(aviso).toContain("38500-000, 38599-999");
   });
 
   it("o formato do placeholder não avisa", () => {
@@ -101,7 +101,8 @@ describe("avisoDaFaixaDeCep: faixa escrita que o servidor não entende", () => {
       localCepRange: FORMATO_QUE_FUNCIONA,
     });
     expect(depoisDeMudar).not.toBeNull();
-    expect(depoisDeMudar).toContain(FRASE_DO_AVISO);
+    expect(depoisDeMudar).toContain("O CEP da sua loja está fora");
+    expect(depoisDeMudar).not.toContain(FRASE_DO_AVISO);
   });
 
   it("sem CEP completo da loja não há como conferir: sem aviso", () => {

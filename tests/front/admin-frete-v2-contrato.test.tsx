@@ -353,8 +353,19 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
       conferirRecusaDaFaixa();
     });
 
-    it.each(["38501-123", ""])(
-      "salva a nova faixa %j (um CEP válido fora do CEP da loja, ou vazio)",
+    it("recusa intervalo com 'a' e ensina o formato que a cotação usa", async () => {
+      await abrirTela();
+      await editarFaixa("38500-000 a 38599-999");
+      await salvar();
+
+      conferirRecusaDaFaixa();
+      expect(document.getElementById("erro-faixa-de-cep")?.textContent).toMatch(
+        /38500-000, 38599-999/,
+      );
+    });
+
+    it.each(["38501-123", "38500-000, 38599-999", ""])(
+      "salva a nova faixa %j (reconhecida pela cotação ou vazia)",
       async (faixa) => {
         estadoDaLoja.atual.localCepRange = "38400-000, 38400-999";
         await abrirTela();
