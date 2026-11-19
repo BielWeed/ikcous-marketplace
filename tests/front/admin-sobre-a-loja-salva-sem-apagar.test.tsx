@@ -131,13 +131,13 @@ describe("AdminAboutStoreView — salvar endereço/descrição sem apagar os out
     vi.unstubAllGlobals();
   });
 
-  async function renderizarTela() {
+  async function renderizarTela(onNavigate = vi.fn()) {
     const { AdminAboutStoreView } = await import(
       "@/views/admin/AdminAboutStoreView"
     );
     await act(async () => {
       raiz.render(
-        <AdminAboutStoreView onNavigate={() => {}} onSetDirty={onSetDirty} />,
+        <AdminAboutStoreView onNavigate={onNavigate} onSetDirty={onSetDirty} />,
       );
     });
   }
@@ -202,6 +202,17 @@ describe("AdminAboutStoreView — salvar endereço/descrição sem apagar os out
     expect(botao?.getAttribute("aria-disabled")).toBe("true");
   });
 
+  it("a prévia do mapa usa a política de referência do site", async () => {
+    await renderizarTela();
+    const mapa = hospedeiro.querySelector(
+      'iframe[title="Prévia do mapa da página Sobre a Loja"]',
+    );
+    expect(mapa?.getAttribute("src")).toBe(
+      "https://maps.google.com/maps?q=38500-000&z=15&output=embed",
+    );
+    expect(mapa?.getAttribute("referrerpolicy")).toBeNull();
+  });
+
   it("o título da tela é 'Minha loja'", async () => {
     await renderizarTela();
     expect(hospedeiro.querySelector("h1")?.textContent).toBe("Minha loja");
@@ -254,6 +265,75 @@ describe("AdminAboutStoreView — salvar endereço/descrição sem apagar os out
     expect(toast.success).toHaveBeenLastCalledWith(
       "Endereço e descrição salvos",
     );
+  });
+
+  it.each([
+    ["alcance válido", true, 18.75, "38500-000, 38509-999", true, "R$ 18,75"],
+    ["alcance malformado", true, 23, "38500 a 385", true, "R$ 23,00"],
+    ["alcance vazio", true, 12, "", true, "R$ 12,00"],
+    ["Só retiro", false, 18.75, "01310", true, null],
+    ["salvamento falhou", true, 18.75, "01310", false, null],
+  ] as const)(
+    "aviso de frete após salvar endereço: %s",
+    async (_caso, entregaLigada, taxa, alcance, salvou, valor) => {
+      configAtual = {
+        ...BASE_CONFIG,
+        enabledShippingMethods: ["store-pickup"],
+        localDeliveryEnabled: entregaLigada,
+        localDeliveryFee: taxa,
+        localCepRange: alcance,
+      };
+      updateConfigMock.mockImplementation(async (updates) => {
+        if (salvou) configAtual = { ...configAtual, ...updates };
+        return salvou;
+      });
+      instalarCepDeSaoPaulo();
+      const navegar = vi.fn();
+      await renderizarTela(navegar);
+      const atalho = () =>
+        Array.from(hospedeiro.querySelectorAll("button")).find(
+          (botao) => botao.textContent === "Revisar frete",
+        );
+
+      expect(atalho()).toBeUndefined();
+      await digitarNoEndereco("endereco-cep", "01310100");
+      await digitarNoEndereco("endereco-numero", "1578");
+      await clicarSalvar();
+      expect(updateConfigMock).toHaveBeenCalledTimes(1);
+
+      if (!valor) {
+        expect(atalho()).toBeUndefined();
+        return;
+      }
+      const botaoFrete = atalho();
+      const texto = botaoFrete?.parentElement
+        ?.querySelector("p")
+        ?.textContent?.replace(/\s+/g, " ");
+      expect(texto).toBe(
+        `Entrega local: taxa-base de ${valor}. Confira o alcance da entrega em Revisar frete.`,
+      );
+      await act(async () => botaoFrete?.click());
+      expect(navegar).toHaveBeenCalledWith("admin-shipping");
+    },
+  );
+
+  it("mantém a mesma região viva vazia até salvar o endereço", async () => {
+    configAtual = {
+      ...BASE_CONFIG,
+      localDeliveryEnabled: true,
+      localDeliveryFee: 18.75,
+    };
+    instalarCepDeSaoPaulo();
+    await renderizarTela();
+    const seletor = '[data-aviso-de-frete][role="status"][aria-live="polite"]';
+    const live = hospedeiro.querySelector(seletor);
+    expect(live?.textContent).toBe("");
+    await digitarNoEndereco("endereco-cep", "01310100");
+    await digitarNoEndereco("endereco-numero", "1578");
+    await clicarSalvar();
+
+    expect(hospedeiro.querySelector(seletor)).toBe(live);
+    expect(live?.textContent?.replace(/\s+/g, " ")).toContain("R$ 18,75");
   });
 
   it("mudar só o endereço NÃO manda a descrição: outro aparelho pode ter gravado uma nova", async () => {

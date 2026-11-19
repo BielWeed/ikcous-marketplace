@@ -107,6 +107,7 @@ describe("ProductView — o menu de compartilhar do celular recebe a URL uma vez
   let enderecoAnterior: string;
   const caminhoDoProduto = `/product-detail?id=${produto.id}`;
   const enderecoDoProduto = `${globalThis.location.origin}${caminhoDoProduto}`;
+  const caminhoComCampanha = `/product-detail/?id=${produto.id}&utm_source=instagram&source=feed#x`;
 
   beforeEach(() => {
     enderecoAnterior = globalThis.location.href;
@@ -222,7 +223,30 @@ describe("ProductView — o menu de compartilhar do celular recebe a URL uma vez
     expect(ocorrenciasDaUrl(dados)).toBe(1);
   });
 
-  it("sem menu do celular: o texto copiado leva ao produto, nao a pagina inicial", async () => {
+  it("modelo com [link]: a mensagem não repassa campanha, fragmento ou barra final", async () => {
+    globalThis.history.replaceState({}, "", caminhoComCampanha);
+    shareTextDaLoja = "Acesse: [link]";
+    await compartilhar(true);
+
+    expect(share).toHaveBeenCalledExactlyOnceWith({
+      title: produto.name,
+      text: `Acesse: ${enderecoDoProduto}`,
+    });
+  });
+
+  it("modelo sem [link]: o campo url recebe só o endereço do produto", async () => {
+    globalThis.history.replaceState({}, "", caminhoComCampanha);
+    await compartilhar(true);
+
+    expect(share).toHaveBeenCalledExactlyOnceWith({
+      title: produto.name,
+      text: expect.any(String),
+      url: enderecoDoProduto,
+    });
+  });
+
+  it("sem menu do celular: o texto copiado leva ao produto sem repassar a campanha", async () => {
+    globalThis.history.replaceState({}, "", caminhoComCampanha);
     shareTextDaLoja =
       "Confira este produto incrível: [nome] por apenas [preco]! Acesse: [link]";
     await compartilhar(false);

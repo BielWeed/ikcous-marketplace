@@ -124,8 +124,13 @@ vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: () => ({
       select: () => {
-        const comOrdenacao = (proprias: boolean) => ({
-          order: () => ({
+        const comOrdenacao = (proprias: boolean) => {
+          let desempatar = false;
+          const consulta = {
+            order: (coluna: string, opcoes: { ascending: boolean }) => {
+              if (coluna === "id") desempatar = !opcoes.ascending;
+              return consulta;
+            },
             limit: (n: number) => {
               const doFiltro = linhasDoBanco()
                 .filter((l) =>
@@ -136,15 +141,17 @@ vi.mock("@/lib/supabase", () => ({
                 .sort(
                   (a, b) =>
                     new Date(b.created_at).getTime() -
-                    new Date(a.created_at).getTime(),
+                      new Date(a.created_at).getTime() ||
+                    (desempatar ? b.id.localeCompare(a.id) : 0),
                 );
               return Promise.resolve({
                 data: banco.ignorarLimite ? doFiltro : doFiltro.slice(0, n),
                 error: null,
               });
             },
-          }),
-        });
+          };
+          return consulta;
+        };
         return {
           eq: () => comOrdenacao(true),
           is: () => comOrdenacao(false),
@@ -318,6 +325,25 @@ describe("sino da cliente — marcar como lidas só alcança o que ela viu", () 
     // Os 50 que ela viu (n0..n49) foram lidos; os 10 mais antigos, não.
     for (let i = 0; i < 50; i++) expect(doBanco(`n${i}`).lida).toBe(true);
     for (let i = 50; i < 60; i++) expect(doBanco(`n${i}`).lida).toBe(false);
+  });
+
+  it("o 50º aviso é o de maior id quando os dois últimos têm a mesma data", async () => {
+    const empate = aviso("a-empatado", { indice: 49 });
+    banco.linhas = [
+      ...Array.from({ length: 49 }, (_, i) => aviso(`n${i}`, { indice: i })),
+      empate,
+      { ...empate, id: "z-empatado" },
+    ];
+    await montar();
+    expect(centro.notifications).toHaveLength(50);
+    expect(centro.notifications.at(-1)?.id).toBe("z-empatado");
+
+    banco.linhas.reverse();
+    await act(async () => {
+      await centro.refresh();
+    });
+    expect(centro.notifications).toHaveLength(50);
+    expect(centro.notifications.at(-1)?.id).toBe("z-empatado");
   });
 
   it("só campanha não lida: não chama o banco, e a campanha vira lida neste aparelho", async () => {

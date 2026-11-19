@@ -37,16 +37,16 @@ export function cepCompleto(cep: string | null | undefined): boolean {
  * "Na sua cidade". Enquanto a config carrega, "não sei".
  *
  * Com CEP, o passo ainda precisa do ALCANCE: o aviso amarelo da tela de Frete
- * (`avisoDaFaixaDeCep`) deixa o passo pendente SÓ no ramo da faixa VAZIA — CEP
+ * (`avisoDaFaixaDeCep`) deixa o passo pendente quando a faixa não tem nenhum
+ * número ou quando a faixa está VAZIA e o CEP é de rua — CEP
  * de rua com "Alcance por CEP" vazio só entrega para os mesmos 5 primeiros
  * números do CEP (um pedaço de bairro), e cliente de outro bairro, sem conta,
  * vai embora. É a MESMA função, nunca uma cópia da regra (nem da heurística do
  * "000"), para o cartão e a tela de Frete não divergirem.
  *
  * Continuam "pronto": o CEP geral de cidade pequena (termina em "000"; ali o
- * aviso é calado de propósito) e QUALQUER faixa preenchida. O aviso do ramo da
- * faixa preenchida ("nem o CEP da loja entra") é só aviso na tela de Frete —
- * uma faixa legítima pode deixar o CEP da loja de fora — e nunca trava o passo.
+ * aviso é calado de propósito) e faixas que contêm números. Uma faixa legítima
+ * pode deixar o CEP da loja de fora sem deixar o passo pendente.
  *
  * "SÓ RETIRO" (16/10/2026): sem entrega própria não há alcance a confirmar. O
  * passo vale pela RETIRADA: ligada e com o endereço da loja conferido (o texto
@@ -71,7 +71,10 @@ export function estadoDaEntrega(
       ? "feito"
       : "pendente";
   }
-  return entregaComAlcanceCurto(config) ? "pendente" : "feito";
+  return alcanceSemNumeros(config.localCepRange) ||
+    entregaComAlcanceCurto(config)
+    ? "pendente"
+    : "feito";
 }
 
 /**

@@ -518,7 +518,7 @@ async function semearLogin(c) {
   );
 }
 
-/** A foto some do Storage (passo 3 do roteiro, feito à mão no site). */
+/** A foto some do Storage (passo 4.5 do roteiro, feito à mão no site). */
 const apagarFotosDoStorage = (c) =>
   c.query(`DELETE FROM storage.objects WHERE split_part(name, '/', 1) = $1`, [
     ALVO,
@@ -672,7 +672,7 @@ PROVAS.push({
 });
 
 PROVAS.push({
-  nome: "(e) as travas recusam e nada muda: sem pedido aberto, cliente inexistente, marcador não trocado, pedido/devolução em andamento, foto no Storage",
+  nome: "(e) as travas recusam e nada muda: sem pedido, identificador inválido, entrega, devolução, reembolso pendente ou foto no Storage",
   corpo: async (c) => {
     await emTransacao(c, async () => {
       await apagarFotosDoStorage(c);
@@ -744,6 +744,90 @@ PROVAS.push({
       await c.query(
         "UPDATE public.devolucoes SET status = 'concluida' WHERE id = '9b1cdddd-0000-4000-8000-000000000001'",
       );
+      const conferirPendencia = async (rotulo, quantidade) => {
+        const { rows } = await c.query(comId(BLOCOS.listar, ALVO));
+        assert.strictEqual(
+          rows.find((r) => r.o_que === rotulo)?.valor,
+          quantidade,
+          rotulo,
+        );
+      };
+      const pedidoEntregue = "9b1caaaa-0000-4000-8000-000000000001";
+      const pedidoCancelado = "9b1caaaa-0000-4000-8000-000000000002";
+      const devolucao = "9b1cdddd-0000-4000-8000-000000000001";
+      const estorno = "9b1ceeee-0000-4000-8000-000000000001";
+
+      // Pedido ENTREGUE: o estorno em curso bloqueia mesmo fora do saldo do painel.
+      await c.query(
+        `INSERT INTO public.order_refunds (id, order_id, amount, solicitado_por, status)
+         VALUES ($1, $2, 30, 'lojista', 'em_processamento')`,
+        [estorno, pedidoEntregue],
+      );
+      await conferirPendencia("estornos EM ANDAMENTO", "1");
+      await conferirPendencia("pedidos com DINHEIRO A DEVOLVER", "0");
+      await recusa(
+        anonimizar(ALVO, true),
+        /^PARADO:.*estorno EM ANDAMENTO/,
+        "estorno em andamento",
+      );
+
+      // A devolução está concluída, mas o estorno do pedido entregue não saiu.
+      await c.query(
+        `UPDATE public.devolucoes
+            SET resolucao_final = 'reembolso', valor_reembolso = 30, refund_id = $1
+          WHERE id = $2`,
+        [estorno, devolucao],
+      );
+      for (const status of ["falhou", "recusado"]) {
+        await c.query(
+          "UPDATE public.order_refunds SET status = $1 WHERE id = $2",
+          [status, estorno],
+        );
+        await conferirPendencia("estornos EM ANDAMENTO", "0");
+        await conferirPendencia("devoluções com REEMBOLSO NÃO CONCLUÍDO", "1");
+        await recusa(
+          anonimizar(ALVO, true),
+          /^PARADO:.*devolução com REEMBOLSO NÃO CONCLUÍDO/,
+          `reembolso da devolução ${status}`,
+        );
+      }
+      await c.query(
+        "UPDATE public.devolucoes SET resolucao_final = NULL, valor_reembolso = NULL, refund_id = NULL WHERE id = $1",
+        [devolucao],
+      );
+
+      // Pagamento tardio sem nenhum estorno: há saldo a devolver.
+      await c.query(
+        "UPDATE public.marketplace_orders SET payment_status = 'pago_apos_expirar' WHERE id = $1",
+        [pedidoCancelado],
+      );
+      await conferirPendencia("pedidos com DINHEIRO A DEVOLVER", "1");
+      await recusa(
+        anonimizar(ALVO, true),
+        /^PARADO:.*pedido com DINHEIRO A DEVOLVER/,
+        "pagamento após expirar",
+      );
+
+      // O mesmo pedido aguarda o produto: sai do painel, mas não fica livre.
+      await c.query(
+        "UPDATE public.marketplace_orders SET cancelled_after_shipping = true WHERE id = $1",
+        [pedidoCancelado],
+      );
+      await conferirPendencia("pedidos com DINHEIRO A DEVOLVER", "0");
+      await conferirPendencia(
+        "pedidos cancelados esperando a mercadoria voltar",
+        "1",
+      );
+      await recusa(
+        anonimizar(ALVO, true),
+        /^PARADO:.*pedido cancelado esperando a mercadoria voltar/,
+        "mercadoria ainda não voltou",
+      );
+      await c.query(
+        "UPDATE public.marketplace_orders SET payment_status = 'expirado', cancelled_after_shipping = false WHERE id = $1",
+        [pedidoCancelado],
+      );
+
       // foto ainda no Storage
       await c.query(
         "INSERT INTO storage.objects (bucket_id, name) VALUES ('devolucoes', $1)",
@@ -759,10 +843,22 @@ PROVAS.push({
 });
 
 PROVAS.push({
-  nome: "(a) o ENSAIO para com erro, lista as contagens e NÃO grava nada",
+  nome: "(a) com foto no Storage, o ENSAIO lista as contagens e NÃO grava nada",
   corpo: async (c) => {
     await emTransacao(c, async () => {
-      await apagarFotosDoStorage(c);
+      const arquivo = `${ALVO}/foto1.jpg`;
+      const conferirArquivo = async () =>
+        assert.strictEqual(
+          (
+            await um(
+              c,
+              "SELECT name FROM storage.objects WHERE bucket_id = 'devolucoes' AND name = $1",
+              [arquivo],
+            )
+          ).name,
+          arquivo,
+        );
+      await conferirArquivo();
       const foto = async () =>
         JSON.stringify(
           await c
@@ -778,7 +874,8 @@ PROVAS.push({
                 (SELECT jsonb_agg(to_jsonb(a) ORDER BY a.ip_address, a.payload::text) FROM auth.audit_log_entries a) i,
                 (SELECT count(*) FROM auth.one_time_tokens) j,
                 (SELECT count(*) FROM auth.mfa_factors) k,
-                (SELECT jsonb_agg(to_jsonb(u) ORDER BY u.id) FROM auth.users u) l`,
+                (SELECT jsonb_agg(to_jsonb(u) ORDER BY u.id) FROM auth.users u) l,
+                (SELECT fotos FROM public.devolucoes WHERE id = '9b1cdddd-0000-4000-8000-000000000001') m`,
               [ALVO],
             )
             .then((r) => r.rows[0]),
@@ -818,6 +915,7 @@ PROVAS.push({
         /registro de atividade de administrador sobre ela.*: 1/,
       );
       assert.strictEqual(await foto(), antes, "o ensaio gravou");
+      await conferirArquivo();
     });
   },
 });

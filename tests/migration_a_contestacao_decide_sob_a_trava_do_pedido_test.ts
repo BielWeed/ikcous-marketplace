@@ -713,6 +713,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261399600000: o resultado credita o custo da devolucao de venda de outro mes (fin_dre deixa de cortar o CMV em zero; CMV negativo = credito de custo; a linha do CMV aparece quando nao e zero;
     // controle com o corpo da 382 na mesma fixture, soma dos meses fecha com o periodo, mutantes, rollback byte a byte, pre/pos-voo e consultas 122a/122b).
     "tests/banco/o-resultado-credita-o-custo-da-devolucao-de-outro-mes-viva.cjs",
+    // 20261405900000: o custo do cancelamento fica no mês da volta, sem duplicar devoluções.
+    "tests/banco/o-custo-do-cancelamento-fica-no-mes-da-volta-viva.cjs",
     // 20261399700000: o painel de avaliacoes filtra o que esta em moderacao (get_admin_reviews_paged troca de 4 para 5 argumentos: p_status 'pendente' filtra a lista e o total_count; DROP da assinatura
     // antiga sem sobrecarga ambigua; ACL, dono e atributos iguais aos de antes; controle com o corpo da 381 na mesma fixture, mutantes, rollback byte a byte, pre/pos-voo e consultas 123a/123b).
     "tests/banco/o-painel-de-avaliacoes-filtra-o-que-esta-em-moderacao-viva.cjs",
@@ -907,6 +909,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261400000000: valores negativos nao entram no banco (taxa de entrega local, preco do produto, preco da variacao e valor do cupom: CHECK >= 0 e <> NaN, criadas JA VALIDADAS;
     // 23514 em todas as portas, zero e NULL de variacao seguem, linha antiga ruim faz a migration se recusar (B1_BASELINE_DIVERGENT), 12 mutantes, reaplicar, rollback, falha no meio e lock_timeout).
     "tests/banco/valores-negativos-prova.cjs",
+    // 20261405800000: o cupom que nao da desconto nao vale (a RPC recusa desconto zerado pelo arredondamento).
+    "tests/banco/o-cupom-que-nao-da-desconto-nao-vale-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(

@@ -25,7 +25,7 @@ const h = vi.hoisted(() => ({
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: () => ({
-      select: () => ({ order: h.consultar }),
+      select: () => ({ order: () => ({ order: h.consultar }) }),
       insert: (linhas: unknown) => ({
         select: () => ({ single: () => h.inserir(linhas) }),
       }),

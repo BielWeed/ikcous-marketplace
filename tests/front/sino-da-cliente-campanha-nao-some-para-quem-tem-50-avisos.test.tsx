@@ -58,6 +58,7 @@ let buildersUsados: {
   eq: ReturnType<typeof vi.fn>;
   is: ReturnType<typeof vi.fn>;
   or: ReturnType<typeof vi.fn>;
+  order: ReturnType<typeof vi.fn>;
   limit: ReturnType<typeof vi.fn>;
 }[] = [];
 
@@ -209,6 +210,44 @@ describe("sino da cliente — campanha fora do limite dos avisos próprios", () 
     }
   });
 
+  it.each([
+    ["a", "z"],
+    ["z", "a"],
+  ])(
+    "mostra os avisos empatados por id desc com entrada %s, %s",
+    async (primeiro, segundo) => {
+      const base = avisoProprio(0);
+      filaDeConsultas = [
+        {
+          builder: builderDeConsulta(
+            [primeiro, segundo].map((id) => ({ ...base, id, titulo: id })),
+          ),
+        },
+        { builder: builderDeConsulta([]) },
+      ];
+      const container = document.createElement("div");
+      document.body.appendChild(container);
+      const root = createRoot(container);
+      try {
+        await act(async () => {
+          root.render(
+            <NotificationProvider>
+              <NotificationsView />
+            </NotificationProvider>,
+          );
+        });
+        expect(
+          [...container.querySelectorAll('[role="listitem"] h4')].map(
+            (titulo) => titulo.textContent,
+          ),
+        ).toEqual(["z", "a"]);
+      } finally {
+        act(() => root.unmount());
+        container.remove();
+      }
+    },
+  );
+
   it("as duas pontas consultam com filtros próprios — não mais o `.or` único", async () => {
     const container = document.createElement("div");
     document.body.appendChild(container);
@@ -230,6 +269,13 @@ describe("sino da cliente — campanha fora do limite dos avisos próprios", () 
     expect(propria.limit).toHaveBeenCalledWith(50);
     expect(deCampanha.is).toHaveBeenCalledWith("usuario_id", null);
     expect(deCampanha.limit).toHaveBeenCalledWith(20);
+    for (const consulta of [propria, deCampanha]) {
+      expect(consulta.order.mock.calls).toEqual([
+        ["created_at", { ascending: false }],
+        ["id", { ascending: false }],
+      ]);
+      expect(consulta.order).toHaveBeenCalledBefore(consulta.limit);
+    }
     expect(propria.or).not.toHaveBeenCalled();
     expect(deCampanha.or).not.toHaveBeenCalled();
 

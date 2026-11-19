@@ -1223,6 +1223,11 @@ function OrderFinanceCard({
   if (situacaoPositiva) corDaSituacao = "text-emerald-400";
   else if (situacaoResolvida) corDaSituacao = "text-zinc-400";
 
+  // Ainda permite desfazer um recebimento que já foi registrado.
+  const mostraRegistroDePagamento =
+    podeRegistrarPagamento(order) &&
+    (Boolean(order.pagamentoRecebidoEm) || !pedidoSemValorAPagar(order));
+
   return (
     <section
       data-testid="bloco-dinheiro"
@@ -1258,12 +1263,7 @@ function OrderFinanceCard({
         />
       </div>
 
-      {/* Task 4b do plano recebimento-na-entrega — o botão de pagamento
-          recebido na mão fica disponível na FICHA o tempo todo, mesma
-          condição (`podeRegistrarPagamento`) e mesmo comportamento do
-          cartão da lista (Task 4). `onRegistrarPagamento` falta só nos
-          testes que montam `<OrderDetail>` direto sem a prop. */}
-      {onRegistrarPagamento && podeRegistrarPagamento(order) && (
+      {onRegistrarPagamento && mostraRegistroDePagamento && (
         <div className="flex items-center justify-between gap-2 border-t border-admin-border pt-4">
           {order.pagamentoRecebidoEm ? (
             <>
@@ -2867,6 +2867,7 @@ export const OrderDetail = memo(function OrderDetail({
           order={order}
           storeName={storeName}
           variacoes={variacoes}
+          valorEstornado={order.valorEstornado}
         />
       )}
 
@@ -2911,7 +2912,7 @@ export const OrderDetail = memo(function OrderDetail({
                   onClick={confirmPendingAdvance}
                   className="min-h-11 rounded-xl border border-admin-border bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white"
                 >
-                  Ainda não
+                  Finalizar sem registrar recebimento
                 </AlertDialogAction>
                 <AlertDialogAction
                   onClick={confirmarRecebimentoEAvancar}

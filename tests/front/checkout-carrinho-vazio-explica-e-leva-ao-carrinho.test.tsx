@@ -264,12 +264,24 @@ describe("CheckoutView — carrinho vazio e nada a retomar", () => {
     },
   );
 
-  it("convidado (sem conta) com carrinho vazio também recebe a explicação", async () => {
+  it("com carrinho vazio e sessão ativa, oferece um caminho para Meus pedidos", async () => {
+    await renderizar();
+    const meusPedidos = botao("Já fez um pedido? Ver meus pedidos");
+    expect(meusPedidos).toBeDefined();
+
+    await act(async () => {
+      meusPedidos?.click();
+    });
+    expect(onNavigate).toHaveBeenCalledExactlyOnceWith("orders");
+  });
+
+  it("convidado com carrinho vazio recebe a explicação sem o atalho para Meus pedidos", async () => {
     estado.user = null;
     await renderizar();
 
     expect(texto()).toContain(FRASE_DO_CARRINHO_VAZIO);
     expect(botoes()).toContain("Voltar ao carrinho");
+    expect(texto()).not.toContain("Já fez um pedido? Ver meus pedidos");
   });
 
   it("carrinho ainda sendo lido da conta: não diz 'vazio' (ainda não dá para saber)", async () => {

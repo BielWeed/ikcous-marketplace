@@ -232,7 +232,9 @@ describe("Início: cada número diz o conceito e a janela", () => {
     );
     await act(async () => ajuda?.click());
     const corpo = texto(document.body);
-    expect(corpo).toContain("Vendas pagas hoje:");
+    expect(corpo.replace(/\s+/g, " ")).toContain(
+      "Vendas pagas hoje e no mês: sem pedidos cancelados ou devolvidos.",
+    );
     expect(corpo).toContain("o resultado do Financeiro no mês");
   });
 });

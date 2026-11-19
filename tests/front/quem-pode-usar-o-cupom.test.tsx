@@ -204,25 +204,35 @@ describe("QuemPodeUsarOCupom — as três opções", () => {
   it("clientes escolhidos sem limite de uso avisa que o limite é da loja toda, não de cada cliente", async () => {
     await montar({ alcance: "exclusivo", semLimiteDeUso: true });
     expect(hospedeiro.textContent).toContain(
-      "Cada cliente da lista pode usar este cupom em todas as compras",
+      "Clientes da lista podem usar o cupom sem limite de vezes, desde que respeitem o valor mínimo e a validade.",
     );
     expect(hospedeiro.textContent).toContain(
-      "O limite de uso é da loja inteira, não de cada cliente",
+      "Quando definido, o limite de usos vale para a loja toda, não por cliente.",
     );
     // com limite definido o aviso some; nos outros alcances também
     await montar({ alcance: "exclusivo", semLimiteDeUso: false });
-    expect(hospedeiro.textContent).not.toContain("em todas as compras");
+    expect(hospedeiro.textContent).not.toContain(
+      "Clientes da lista podem usar o cupom sem limite de vezes",
+    );
     await montar({ alcance: "codigo", semLimiteDeUso: true });
-    expect(hospedeiro.textContent).not.toContain("em todas as compras");
+    expect(hospedeiro.textContent).not.toContain(
+      "Clientes da lista podem usar o cupom sem limite de vezes",
+    );
     await montar({ alcance: "vitrine", semLimiteDeUso: true });
-    expect(hospedeiro.textContent).not.toContain("em todas as compras");
+    expect(hospedeiro.textContent).not.toContain(
+      "Clientes da lista podem usar o cupom sem limite de vezes",
+    );
   });
 
   it("sem a informação do limite, o exclusivo cai no aviso de 'sem limite nem validade'", async () => {
     await montar({ alcance: "exclusivo", semLimiteNemValidade: true });
-    expect(hospedeiro.textContent).toContain("em todas as compras");
+    expect(hospedeiro.textContent).toContain(
+      "Clientes da lista podem usar o cupom sem limite de vezes",
+    );
     await montar({ alcance: "exclusivo", semLimiteNemValidade: false });
-    expect(hospedeiro.textContent).not.toContain("em todas as compras");
+    expect(hospedeiro.textContent).not.toContain(
+      "Clientes da lista podem usar o cupom sem limite de vezes",
+    );
   });
 
   it("fora do exclusivo não há busca de clientes", async () => {

@@ -113,6 +113,9 @@ const ARQ397 =
 // A 20261399997000 (o pedido guarda quem vai receber) sucede a 397 nas funcoes v23/v24 (nao toca a validate): o pre-voo dela exige o corpo da 397 ou o dela, entao
 // sai de `t203` e de `pre` JUNTO com a 397 (nao ha corpo da 397 nessas bases). `cheio08` a desfaz PRIMEIRO, pela cascata de o-desconto-do-cupom-posterior.cjs.
 const ARQ3997 = "20261399997000_o_pedido_guarda_quem_vai_receber.sql";
+// A 20261405800000 (o cupom que nao da desconto nao vale) redefine a validate DEPOIS da 397: o pre-voo dela exige o corpo vivo da 397 ou o dela, entao sai de `t203` e de
+// `pre` JUNTO com a 397. `cheio08` a desfaz PRIMEIRO (cascata de o-desconto-do-cupom-posterior.cjs) e `cheio397` desfaz só ela.
+const ARQ4058 = "20261405800000_o_cupom_que_nao_da_desconto_nao_vale.sql";
 const REF_SAVY = "gnjsrucsmjkajijrakzr";
 const SHA40 = "d".repeat(40);
 const SQL = {
@@ -652,7 +655,10 @@ async function main() {
   // ----------------------------------------------------------- as bases
   // `cheio` = a arvore inteira ATE a 203 (sem a 08); `cheio08` = a arvore inteira.
   const t203 = `pv_${SUF}_t203`.slice(0, 60);
-  await montarBase(t203, (f) => f !== ARQ08 && f !== ARQ397 && f !== ARQ3997);
+  await montarBase(
+    t203,
+    (f) => f !== ARQ08 && f !== ARQ397 && f !== ARQ3997 && f !== ARQ4058,
+  );
   const cheio = await clonar("cheio", t203);
   const cheio08 = await clonar("cheio08");
   await usar(cheio08, async (c) => {
@@ -663,10 +669,27 @@ async function main() {
     await c.query("COMMIT");
   });
   const cheio397 = await clonar("cheio397");
+  // A árvore inteira já traz a 20261405800000 por cima da 397: esta prova mede o corpo da 397, então só ela cai (a 3997 e a 08 ficam).
+  await usar(cheio397, async (c) => {
+    await c.query("BEGIN");
+    assert.equal(
+      await require("./o-desconto-do-cupom-posterior.cjs").desfazerCupomSemDescontoNaTransacao(
+        c,
+      ),
+      true,
+      "precondição: a árvore inteira tem a 20261405800000 viva e o rollback manual a desfez",
+    );
+    await c.query("COMMIT");
+  });
   const pre = `pv_${SUF}_pre`.slice(0, 60);
   await montarBase(
     pre,
-    (f) => f !== ARQUIVO && f !== ARQ08 && f !== ARQ397 && f !== ARQ3997,
+    (f) =>
+      f !== ARQUIVO &&
+      f !== ARQ08 &&
+      f !== ARQ397 &&
+      f !== ARQ3997 &&
+      f !== ARQ4058,
   );
   {
     const sonda = await usar(pre, async (c) => ({

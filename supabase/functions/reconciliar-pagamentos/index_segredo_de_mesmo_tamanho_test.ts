@@ -17,7 +17,8 @@ async function chamar(segredo: string) {
   const supabase = {
     from(tabela: string) {
       banco.push(`from:${tabela}`);
-      assertEquals(tabela, "app_settings");
+      // A falha fictícia dos pagamentos não cancela as outras etapas.
+      if (tabela !== "app_settings") throw new Error("Fila auxiliar indisponível no teste de autenticação");
       return {
         select(colunas: string) {
           assertEquals(colunas, "value");
@@ -86,7 +87,9 @@ Deno.test("segredo exato passa da autenticação e alcança a fila fictícia", a
 
   // 500 é a falha de banco deliberada, NÃO uma recusa de autenticação.
   assertEquals(resposta.status, 500);
-  assertEquals(await resposta.json(), { error: "Erro ao buscar candidatos." });
-  assertEquals(banco, ["from:app_settings", "rpc:pagamentos_a_reconciliar"]);
+  const corpo = await resposta.json();
+  assertEquals(corpo.error, "Erro ao buscar candidatos.");
+  assertEquals(corpo.etapas.pagamentos.ok, false);
+  assertEquals(banco.slice(0, 2), ["from:app_settings", "rpc:pagamentos_a_reconciliar"]);
   assertEquals(chamadasExternas, []);
 });

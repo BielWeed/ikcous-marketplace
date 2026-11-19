@@ -622,14 +622,17 @@ describe("CheckoutView — lote 210: textos e caminhos do pagamento", () => {
       expect(texto()).not.toContain("logística");
     });
 
-    it("a confirmação repete o endereço da retirada mesmo depois de limpar o carrinho", async () => {
+    it("sem endereço gravado na resposta, a confirmação não repete o endereço da cotação", async () => {
       mockOpcaoDeFrete = RETIRADA;
       const { CheckoutView } = await import("@/views/customer/CheckoutView");
       await fecharPedidoCom(CheckoutView, "Cartão na Retirada");
 
       expect(texto()).toContain("Pedido recebido!");
       expect(mockOpcaoDeFrete).toBeNull();
-      expect(texto()).toContain("Retire em: Rua Fictícia, 42 — Centro");
+      expect(texto()).toContain(
+        "Aguarde a confirmação da loja e confira o endereço antes de sair para retirar.",
+      );
+      expect(texto()).not.toContain(RETIRADA.pickupAddress);
     });
 
     it("a confirmação da entrega não mostra endereço de retirada", async () => {

@@ -48,13 +48,21 @@ const pedido = (id: string): Order => ({
   cancelledAfterShipping: false,
 });
 
-function Lista({ ids }: Readonly<{ ids: string[] }>) {
+function Lista({
+  ids,
+  paymentStatus = null,
+  isOffline = false,
+}: Readonly<{
+  ids: string[];
+  paymentStatus?: Order["paymentStatus"];
+  isOffline?: boolean;
+}>) {
   return (
     <>
       {ids.map((id) => (
         <AdminOrderCard
           key={id}
-          order={pedido(id)}
+          order={{ ...pedido(id), paymentStatus }}
           viewMode="compact"
           onSelect={vi.fn()}
           onWhatsApp={vi.fn()}
@@ -62,7 +70,7 @@ function Lista({ ids }: Readonly<{ ids: string[] }>) {
           registrandoPagamento={false}
           onStatusChange={aoMudarStatus}
           onReceberAntesDeAvancar={vi.fn()}
-          isOffline={false}
+          isOffline={isOffline}
         />
       ))}
     </>
@@ -104,9 +112,12 @@ const botaoDe = (texto: string, dentro: ParentNode = document) =>
       b.textContent?.trim() === texto || b.getAttribute("aria-label") === texto,
   );
 
-async function montar(ids: string[]) {
+async function montar(
+  ids: string[],
+  opcoes: Omit<Parameters<typeof Lista>[0], "ids"> = {},
+) {
   await act(async () => {
-    raiz.render(<Lista ids={ids} />);
+    raiz.render(<Lista ids={ids} {...opcoes} />);
     await esperar(0);
   });
 }
@@ -148,15 +159,54 @@ describe("AdminOrderCard — as perguntas do cartão e o Voltar do celular", () 
 
   it("o Voltar fecha SÓ a pergunta de recebimento: a lista não troca e nada é gravado", async () => {
     await montar(["pedido-a"]);
-    await abrirRecebimento();
+    const gatilho = botaoDe("Marcar como recebido", hospedeiro);
+    expect(gatilho).toBeDefined();
+    await clicar(gatilho);
     await apertarVoltar();
 
     expect(janela()).toBeNull();
+    expect(document.activeElement).toBe(gatilho);
     expect(navegacoesDoApp).toEqual([]);
     expect(globalThis.location.pathname).toBe("/pedidos");
     expect(globalThis.history.state?.view).toBe("admin-orders");
     expect(aoReceber).not.toHaveBeenCalled();
     expect(aoMudarStatus).not.toHaveBeenCalled();
+  });
+
+  it.each(["Avançar mesmo assim", "Cancelar pedido"])(
+    "o Voltar devolve o foco ao botão direto %s",
+    async (rotulo) => {
+      await montar(["pedido-a"], { paymentStatus: "aguardando" });
+      const gatilho = botaoDe(rotulo, hospedeiro);
+      expect(gatilho).toBeDefined();
+      await clicar(gatilho);
+      expect(janela()).not.toBeNull();
+
+      await apertarVoltar();
+
+      expect(janela()).toBeNull();
+      expect(document.activeElement).toBe(gatilho);
+      expect(aoMudarStatus).not.toHaveBeenCalled();
+    },
+  );
+
+  it("se o botão direto ficar desabilitado, o Voltar foca Ações do pedido", async () => {
+    await montar(["pedido-a"]);
+    const gatilho = botaoDe("Marcar como recebido", hospedeiro);
+    expect(gatilho).toBeDefined();
+    await clicar(gatilho);
+    expect(janela()).not.toBeNull();
+    await montar(["pedido-a"], { isOffline: true });
+    expect(gatilho?.disabled).toBe(true);
+
+    await apertarVoltar();
+
+    expect(janela()).toBeNull();
+    const acoes = hospedeiro.querySelector(
+      'button[aria-label^="Ações do pedido"]',
+    );
+    expect(acoes).not.toBeNull();
+    expect(document.activeElement).toBe(acoes);
   });
 
   it("o Voltar fecha SÓ a pergunta de cancelar aberta pelo menu: nada é cancelado", async () => {

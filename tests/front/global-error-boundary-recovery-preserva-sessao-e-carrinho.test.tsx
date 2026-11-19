@@ -199,6 +199,7 @@ describe("GlobalErrorBoundary — recovery não apaga sessão nem carrinho", () 
     guardarPedidoPendenteDoCheckout("conta-1", pedidoId);
     salvarRascunhoDoCheckout(sessionStorage, {
       ...rascunhoVazio(),
+      contaDosDados: "conta-1",
       nome: "Maria",
       whatsapp: "11999990000",
     });

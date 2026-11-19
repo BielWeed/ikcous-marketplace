@@ -24,6 +24,7 @@ import { ErroCancelamentoNaoConcluido, useOrders } from "@/hooks/useOrders";
 import { useRotulosDasVariacoes } from "@/hooks/useRotulosDasVariacoes";
 import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
+import { avisoDeCartaoNoPedidoVencido } from "@/lib/aviso-de-cartao-no-pedido-vencido";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { dataNoFusoDaLoja } from "@/lib/data-da-loja";
 import { enderecoParaDevolver } from "@/lib/devolucao";
@@ -402,6 +403,7 @@ function cancelledDescription(
   leituraDaDevolucao: LeituraDaDevolucao = "lida",
   noBalcao = false,
   retiradaNaLoja = false,
+  metodoOnline?: Order["metodoOnline"],
 ): string {
   const key = paymentStatusKey(paymentStatus);
   // `recebido_na_entrega` fica fora do Mercado Pago (brief T7): a devolução
@@ -458,16 +460,16 @@ function cancelledDescription(
     return "Este pedido foi cancelado e o seu pagamento foi estornado: o dinheiro foi devolvido.";
   }
   if (key === "aguardando") {
-    return "Este pedido foi cancelado. Se o pagamento ainda estiver aberto no seu banco, não pague — o pedido não será entregue.";
+    return "Este pedido foi cancelado. Se o pagamento ainda estiver aberto no seu banco, não pague.";
   }
   // 14/10/2026: o cron que vence a reserva de 30 minutos grava
   // `status='cancelled'` + `payment_status='expirado'` (migration
   // 20261186000000, `expirar_pedidos_vencidos`). A frase genérica de baixo
   // ("não seguirá para entrega") não dizia POR QUÊ: quem só demorou para pagar
-  // achava que a loja cancelou. O texto não nomeia o meio por escolha
-  // (`metodo_online` já chega ao app, mas o mesmo texto serve a PIX e a
-  // cartão) — "pagamento" vale para os dois.
+  // achava que a loja cancelou.
   if (key === "expirado") {
+    const avisoDeCartao = avisoDeCartaoNoPedidoVencido(metodoOnline);
+    if (avisoDeCartao) return avisoDeCartao;
     // Pagou no fim do prazo e o vencimento passou antes da confirmação do
     // Mercado Pago: o pedido fica minutos como `expirado` e só depois vira
     // `pago_apos_expirar`. Comprar de novo na hora seria pagar duas vezes.
@@ -1297,6 +1299,7 @@ export function OrderDetailsView({
             leituraDaDevolucao,
             noBalcao,
             order.retiradaNaLoja,
+            order.metodoOnline,
           )
         : currentStatus.description;
   // Estornado: o dinheiro já voltou, então só a linha CONCLUÍDA tem o que dizer
@@ -1734,9 +1737,8 @@ export function OrderDetailsView({
                 </span>
                 <code
                   className={cn(
-                    // Codigo livre nunca e cortado: quebra em qualquer ponto e
-                    // ocupa ate 2 linhas (igual a lista de pedidos).
-                    "line-clamp-2 block break-all font-mono text-xs font-bold tracking-tight",
+                    // Código livre quebra em qualquer ponto, sem corte.
+                    "block break-all font-mono text-xs font-bold tracking-tight",
                     order.status === "cancelled"
                       ? "text-zinc-900"
                       : "text-white",
@@ -1973,7 +1975,7 @@ export function OrderDetailsView({
                   />
                 </div>
                 <div className="flex min-w-0 flex-1 flex-col justify-center">
-                  <h5 className="line-clamp-2 break-words text-sm font-bold leading-tight text-zinc-900 transition-colors group-hover:text-zinc-650">
+                  <h5 className="break-words text-sm font-bold leading-tight text-zinc-900 transition-colors group-hover:text-zinc-650">
                     {item.name}
                   </h5>
                   {item.variantId && rotulosDasVariacoes[item.variantId] && (
@@ -2250,6 +2252,12 @@ export function OrderDetailsView({
               </div>
             )}
 
+          {order.status === "delivered" && !user && !authLoading && (
+            <p className="border-b border-zinc-100 px-5 py-3.5 text-sm text-zinc-600 last:border-b-0">
+              Para devolução ou troca, fale com a loja informando o número do
+              pedido.
+            </p>
+          )}
           {/* Devolução ou troca (CDC art. 49 e Decreto 7.962/2013: o cliente
               desiste pelo MESMO canal da compra). A linha só existe quando o
               servidor diz que pode (`devolucao_elegibilidade.pode`); quando

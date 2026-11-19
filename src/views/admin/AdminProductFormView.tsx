@@ -315,6 +315,8 @@ interface FotoComFalha {
 class FotoIlegivel extends Error {}
 class EnvioCancelado extends Error {}
 
+const MAXIMO_DE_FOTOS_DO_PRODUTO = 10;
+
 export const compressProductImage = async (
   file: File,
   maxWidth = 1200,
@@ -883,6 +885,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // e salvar de novo a inseriria outra vez. Só recarregar a tela resolve.
   const [precisaRecarregar, setPrecisaRecarregar] = useState(false);
   const [draftChecked, setDraftChecked] = useState(false);
+  const [falhouAoGuardarRascunho, setFalhouAoGuardarRascunho] = useState(false);
   const [showVariantForm, setShowVariantForm] = useState(false);
   const salvandoVariacaoRef = useRef(false);
   // Grade de combinações: o modal de lote ao lado do unitário.
@@ -916,6 +919,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     imageUrl: "",
   });
   const [currentProduct, setCurrentProduct] = useState<any>(null);
+  // A recarga após conflito atualiza estoque, fotos e grade, mas não o
+  // preço exibido. Não adote aquela versão como base para gravar preço.
+  const versaoDosPrecosRef = useRef<string | undefined>(undefined);
   const [showCategoryForm, setShowCategoryForm] = useState(false);
   const [gerenciandoCategorias, setGerenciandoCategorias] = useState(false);
   // A folha "Categoria" (o campo a controla; o formulário só precisa saber se
@@ -1550,6 +1556,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           setInitialData(productFields);
           setIsPromoActive(!!product.originalPrice);
           setCurrentProduct(product);
+          versaoDosPrecosRef.current = product.updatedAt;
           salvarAnteriorGravouProdutoRef.current = false;
         } else {
           toast.error("Produto não encontrado");
@@ -2307,6 +2314,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   useEffect(() => {
     gravarRascunhoPendenteRef.current = null;
     if (isLoading || !draftChecked) return;
+    const isDirty = isProductFormDirty(formData, initialData);
+    if (!isDirty) setFalhouAoGuardarRascunho(false);
 
     gravarRascunhoPendenteRef.current = () => {
       gravarRascunhoPendenteRef.current = null;
@@ -2324,7 +2333,6 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       // O rascunho antigo ainda espera a decisão dela: gravar agora o
       // sobrescreveria. Quando ela decidir, este efeito roda de novo.
       if (ofertaDeRascunhoPendente) return;
-      const isDirty = isProductFormDirty(formData, initialData);
       const draftKey = chaveDoRascunhoDoProduto(userId, productId);
       // Armazenamento cheio (QuotaExceededError: descrição enorme, fotos em
       // rascunho) ou bloqueado não pode estourar do temporizador: ela segue
@@ -2347,6 +2355,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             }),
           );
           gravouRascunhoRef.current = draftKey;
+          setFalhouAoGuardarRascunho(false);
         } else if (draftKey && gravouRascunhoRef.current === draftKey) {
           // Voltou a ser igual ao banco: o rascunho que ESTA abertura gravou não
           // tem mais o que oferecer.
@@ -2366,6 +2375,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           }
         }
       } catch (erro) {
+        if (isDirty && draftKey) setFalhouAoGuardarRascunho(true);
         console.error("Erro ao guardar o rascunho do produto:", erro);
       }
     };
@@ -2401,26 +2411,26 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
   const processAndUploadImages = useCallback(
     async (arquivos: File[]) => {
-      let files = arquivos;
-      if (files.length === 0 || cancelarEnvioRef.current) return;
+      if (arquivos.length === 0 || cancelarEnvioRef.current) return;
 
       // O tamanho conta por foto ORIGINAL; o total não, porque cada uma é
-      // reduzida antes de subir. A quantidade entra até o máximo de 10.
-      const legiveis = files.filter((file) => {
+      // reduzida antes de subir. A quantidade entra até o máximo de fotos da galeria.
+      const files = arquivos.filter((file) => {
         const recusa = recusaDeFoto(file);
         if (recusa) toast.error(recusa);
         return !recusa;
       });
-      const vagas = Math.max(0, 10 - formData.images.length);
-      if (legiveis.length > vagas) {
-        toast.error(
-          vagas === 0
-            ? "Limite de imagens atingido: o produto já tem 10 fotos. Remova uma para adicionar outra."
-            : `${legiveis.length - vagas} ${legiveis.length - vagas === 1 ? "foto ficou" : "fotos ficaram"} de fora: o máximo é 10 fotos por produto.`,
-        );
-      }
-      files = legiveis.slice(0, vagas);
+      const vagas = Math.max(
+        0,
+        MAXIMO_DE_FOTOS_DO_PRODUTO - formData.images.length,
+      );
       if (files.length === 0) return;
+      if (vagas === 0) {
+        toast.error(
+          `Limite de imagens atingido: o produto já tem ${MAXIMO_DE_FOTOS_DO_PRODUTO} fotos. Remova uma para adicionar outra.`,
+        );
+        return;
+      }
 
       setIsUploadingImages(true);
       setImageUploadStep("compressing");
@@ -2430,6 +2440,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       );
       const falhas: FotoComFalha[] = [];
       let enviadas = 0;
+      let sobras = 0;
       let envioCancelado = false;
       // Fotos que o aparelho não abriu: já têm o próprio aviso vermelho, mas
       // não são "falha de envio" (não adianta tentar de novo a mesma foto).
@@ -2440,6 +2451,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         // novo, sem acumular um prazo de espera por foto.
         for (const [indice, file] of files.entries()) {
           if (!montadoRef.current || envioCancelado) break;
+          if (enviadas === vagas) {
+            sobras = files.length - indice;
+            break;
+          }
           setProgressoDoEnvio({ atual: indice + 1, total: files.length });
           setImageUploadStep("compressing");
           // Marca o estouro para a continuação ATRASADA não iniciar o upload
@@ -2526,29 +2541,35 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           toast.dismiss(loadingToast);
           return;
         }
-        if (!envioCancelado && falhas.length === 0 && ilegiveis === 0) {
+        if (sobras > 0) {
+          toast.error(
+            `${sobras} ${sobras === 1 ? "foto ficou" : "fotos ficaram"} de fora: o máximo é ${MAXIMO_DE_FOTOS_DO_PRODUTO} fotos por produto.`,
+          );
+        }
+        const resumo = `${enviadas} de ${arquivos.length} fotos enviadas`;
+        if (enviadas === arquivos.length) {
           toast.success("Imagens processadas e enviadas com sucesso!", {
             id: loadingToast,
           });
         } else if (falhas.length === 0) {
-          // O vermelho de cada foto ilegível já está na tela: aqui só não se
-          // pode dizer "sucesso" por cima dele.
           if (enviadas > 0) {
-            toast.warning(
-              `${enviadas} de ${files.length} fotos enviadas; ${ilegiveis} ${ilegiveis === 1 ? "não abriu" : "não abriram"}.`,
-              { id: loadingToast },
-            );
+            const detalhe =
+              sobras > 0
+                ? `; o limite é ${MAXIMO_DE_FOTOS_DO_PRODUTO}`
+                : ilegiveis > 0
+                  ? `; ${ilegiveis} ${ilegiveis === 1 ? "não abriu" : "não abriram"}`
+                  : "";
+            toast.warning(`${resumo}${detalhe}.`, { id: loadingToast });
           } else {
             toast.dismiss(loadingToast);
           }
         } else {
           setFotosComFalha((prev) => [...prev, ...falhas]);
           toast.error(
-            `${pluralizar(falhas.length, "foto não subiu", "fotos não subiram")} (de ${files.length}).`,
+            `${pluralizar(falhas.length, "foto não subiu", "fotos não subiram")} (de ${files.length - sobras}).`,
             {
               id: loadingToast,
-              description:
-                "Veja o aviso abaixo das fotos: dá para tentar de novo, remover, ou publicar sem elas.",
+              description: `${enviadas > 0 ? `${resumo}. ` : ""}Veja o aviso abaixo das fotos: dá para tentar de novo, remover, ou publicar sem elas.`,
             },
           );
         }
@@ -2568,10 +2589,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     async (id: string) => {
       const falha = fotosComFalha.find((f) => f.id === id);
       if (!falha || isOffline) return;
-      if (formData.images.length >= 10) {
+      if (formData.images.length >= MAXIMO_DE_FOTOS_DO_PRODUTO) {
         // Mesma regra do envio: não some com a foto da lista sem ela caber.
         toast.error(
-          "O produto já tem 10 fotos. Remova uma foto antes de tentar de novo.",
+          `O produto já tem ${MAXIMO_DE_FOTOS_DO_PRODUTO} fotos. Remova uma foto antes de tentar de novo.`,
         );
         return;
       }
@@ -2621,7 +2642,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         quantidade > 0 &&
         !(await confirmarExclusaoDeFoto({
           titulo: "Excluir foto?",
-          texto: `Esta foto é usada em ${quantidade} ${quantidade === 1 ? "variação" : "variações"}. Ao excluir, elas ficam sem foto. Excluir mesmo assim?`,
+          texto: `Esta foto é usada em ${quantidade} ${quantidade === 1 ? "variação" : "variações"}. Ao salvar, esta foto sairá do produto e deixará de ser a foto dessas variações. As outras fotos do produto, se houver, continuarão visíveis. Remover esta foto?`,
           verbo: "Excluir foto",
         }))
       ) {
@@ -3538,12 +3559,23 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         // que esta tela vai apagar, com estoque novo (o gatilho do banco avança
         // a versão do produto a cada mudança de variação).
         const excluiuVariacao = deletedVariantIds.length > 0;
+        const conferirPrecoNaGravacaoDireta =
+          navigator.onLine &&
+          !salvarEmTransacao &&
+          (camposDoProduto.price !== undefined ||
+            camposDoProduto.costPrice !== undefined ||
+            camposDoProduto.originalPrice !== undefined);
         const conferencia =
+          conferirPrecoNaGravacaoDireta ||
           mexeuNoEstoque ||
           mexeuNasFotos ||
           mexeuNaGradeExistente ||
           excluiuVariacao
-            ? { baseUpdatedAt: currentProduct?.updatedAt }
+            ? {
+                baseUpdatedAt: conferirPrecoNaGravacaoDireta
+                  ? versaoDosPrecosRef.current
+                  : currentProduct?.updatedAt,
+              }
             : undefined;
         let naoApagadas: string[] = [];
         let produtoSalvo: Product | undefined | null;
@@ -3639,6 +3671,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             setFormData(campos);
             setInitialData(campos);
             setCurrentProduct(doBanco);
+            versaoDosPrecosRef.current = doBanco.updatedAt;
             setIsPromoActive(!!doBanco.originalPrice);
           } else if (formData.variants.some((v) => v.id.startsWith("temp-"))) {
             setPrecisaRecarregar(true);
@@ -3795,7 +3828,21 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           stock,
           variants,
           images: fotosDoBanco,
+          price,
+          costPrice,
+          originalPrice,
         } = camposDoFormularioDoProduto(atual);
+        // Na recuperação do estoque, pode usar a versão que recarregou o
+        // estoque se os três preços que a lojista viu ao abrir ainda valem.
+        // Uma recusa de preço por si só não revalida a edição.
+        if (
+          estoqueDoProdutoFoiMexido(formData, initialData) &&
+          price === initialData.price &&
+          costPrice === initialData.costPrice &&
+          originalPrice === initialData.originalPrice
+        ) {
+          versaoDosPrecosRef.current = atual.updatedAt;
+        }
         // Troca o produto-base: o efeito do rascunho rodaria de novo e
         // ofereceria restaurar o que a lojista já tem na tela.
         pularOfertaDeRascunhoRef.current = true;
@@ -4833,6 +4880,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         onSubmit={handleSubmit}
         className="gpu-accelerated mx-auto max-w-3xl space-y-4 p-4 sm:px-5 xl:col-start-1 xl:row-start-3 xl:mx-0 xl:w-full xl:min-w-0 xl:max-w-none"
       >
+        {falhouAoGuardarRascunho && (
+          <div
+            role="alert"
+            className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200"
+          >
+            O navegador não guardou as últimas alterações no rascunho. Salve o
+            produto antes de fechar.
+          </div>
+        )}
         {/* Enquanto salva ("Salvando…") e durante o "Salvo", o corpo do
             formulário fica travado: o salvar leva a cópia de quando o botão foi
             tocado e a ida para a lista ignora o que for mexido depois — campo
@@ -4872,8 +4928,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   </span>
                   <span className="mt-1 block text-xs text-zinc-400">
                     {formData.images.length
-                      ? `${formData.images.length} de 10 · Proporção ideal: 4:5`
-                      : "Opcional · até 10 fotos"}
+                      ? `${formData.images.length} de ${MAXIMO_DE_FOTOS_DO_PRODUTO} · Proporção ideal: 4:5`
+                      : `Opcional · até ${MAXIMO_DE_FOTOS_DO_PRODUTO} fotos`}
                   </span>
                 </span>
               </div>
@@ -5276,7 +5332,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               )}
               {formData.images.length > 0 && (
                 <p className="mt-3 text-[11px] text-zinc-400">
-                  Máx. 10 fotos · 12 MB cada. A ordem não muda por arraste.
+                  Máx. {MAXIMO_DE_FOTOS_DO_PRODUTO} fotos · 12 MB cada. A ordem
+                  não muda por arraste.
                 </p>
               )}
             </div>
@@ -6555,7 +6612,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         id="product-estoque-minimo-dica"
                         className="ml-1 mt-1 block text-[11px] leading-tight text-zinc-400"
                       >
-                        Vazio usa o padrão (5). Com variações, vale para a soma.
+                        Vazio usa o padrão (5). Com variações ativas, vale a
+                        soma do estoque delas.
                       </span>
                       {estoqueMinimoError && (
                         <span

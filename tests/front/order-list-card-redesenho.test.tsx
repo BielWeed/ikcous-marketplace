@@ -248,6 +248,35 @@ describe("OrderList — card do pedido redesenhado", () => {
     },
   );
 
+  it.each([
+    [
+      "credito",
+      "Antes de comprar de novo, fale com a loja para confirmar se o pagamento do cartão foi aprovado.",
+    ],
+    [
+      "debito",
+      "Antes de comprar de novo, fale com a loja para confirmar se o pagamento do cartão foi aprovado.",
+    ],
+    ["pix", "O prazo para pagar terminou. Se não pagou, é só comprar de novo."],
+  ] as const)(
+    "pedido vencido com %s: orientação antes de recomprar",
+    async (metodoOnline, frase) => {
+      await renderizar({
+        ...pedidoBase,
+        status: "cancelled",
+        paymentStatus: "expirado",
+        metodoOnline,
+      });
+      const painel = hospedeiro.querySelector(
+        '[data-testid="order-status-panel"]',
+      );
+      expect(painel?.textContent).toContain(frase);
+      if (metodoOnline !== "pix") {
+        expect(painel?.textContent).not.toContain("é só comprar de novo");
+      }
+    },
+  );
+
   it("sem cobrança: altura menor, sem selo e sem botão de pagamento", async () => {
     await renderizar(pedidoBase);
     const painel = hospedeiro.querySelector(

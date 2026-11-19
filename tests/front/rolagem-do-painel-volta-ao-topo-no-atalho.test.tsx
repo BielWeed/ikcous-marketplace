@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// Defeito (ressalva da 1.5.68): o atalho "Preparar pedidos" do Início zera
+// Defeito (ressalva da 1.5.68): o atalho "Ver pedidos em aberto" do Início zera
 // filtros e página da tela Pedidos, mas a rolagem da última visita era
 // devolvida pelo `useScrollRestoration` (efeito de layout, que roda ANTES do
 // reset) e ainda reaplicada no quadro seguinte. A lista "Em aberto" abria já

@@ -202,7 +202,8 @@ export function pedirBanners(
         supabase
           .from("banners")
           .select("*")
-          .order("order", { ascending: true }),
+          .order("order", { ascending: true })
+          .order("id", { ascending: true }),
       ),
       PRAZO_DA_CONSULTA_DOS_BANNERS_MS,
       () => erroDeConsultaSemResposta(),

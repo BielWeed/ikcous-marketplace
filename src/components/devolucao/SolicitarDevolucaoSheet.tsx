@@ -339,6 +339,9 @@ function FluxoDaDevolucao({
   const [motivo, setMotivo] = useState<MotivoDevolucao | null>(null);
   const [detalhe, setDetalhe] = useState("");
   const [fotos, setFotos] = useState<FotoEscolhida[]>([]);
+  // Duas conferências podem acabar antes do mesmo redesenho. A reserva de
+  // vagas é síncrona, sem colocar avisos no atualizador de estado do React.
+  const chavesDasFotos = useRef(new Set<string>());
   const [resolucao, setResolucao] = useState<ResolucaoDevolucao | null>(null);
   const [metodo, setMetodo] = useState<MetodoDevolucao | null>(
     metodos.length === 1 ? metodos[0] : null,
@@ -526,10 +529,7 @@ function FluxoDaDevolucao({
     if (!lista || lista.length === 0) return;
     const escolhidas = Array.from(lista);
     if (entradaDeFotoRef.current) entradaDeFotoRef.current.value = "";
-    const vagas = Math.max(MAXIMO_DE_FOTOS - fotos.length, 0);
-    if (escolhidas.length > vagas) {
-      toast.info(`Envie no máximo ${MAXIMO_DE_FOTOS} fotos.`);
-    }
+    const vagas = () => MAXIMO_DE_FOTOS - chavesDasFotos.current.size;
     // Conferir a foto demora: até ela entrar na lista, confirmar mandaria o
     // pedido sem ela. O contador sobe aqui e só desce no `finally`, depois do
     // `setFotos` (os dois entram no mesmo lote e o botão não pisca liberado).
@@ -538,27 +538,31 @@ function FluxoDaDevolucao({
     try {
       // A foto ruim é barrada aqui, com o nome dela; as outras da escolha entram.
       const aceitas: File[] = [];
-      for (const arquivo of escolhidas.slice(0, vagas)) {
+      let conferidas = 0;
+      for (const arquivo of escolhidas) {
+        if (desmontadaRef.current) return;
+        if (aceitas.length >= vagas()) break;
         const recusa = await recusaDaFoto(arquivo);
+        conferidas += 1;
         if (recusa) toast.error(recusa);
         else aceitas.push(arquivo);
       }
       if (desmontadaRef.current) return;
-      const novas = aceitas.map((arquivo) => ({
+      const novas = aceitas.slice(0, vagas()).map((arquivo) => ({
         chave: `${arquivo.name}-${arquivo.size}-${Math.random()}`,
         arquivo,
         previa: previaDe(arquivo),
         caminho: null,
       }));
-      // Duas escolhas em preparo ao mesmo tempo calcularam as `vagas` lá em
-      // cima com a MESMA lista velha (4 + 4 = 8). Só o `antes` do atualizador é
-      // a lista de verdade: o teto é aplicado aqui, e a sobra solta a prévia
-      // (soltar duas vezes é inofensivo — o React pode rodar o atualizador de novo).
-      setFotos((antes) => {
-        const cabem = Math.max(MAXIMO_DE_FOTOS - antes.length, 0);
-        for (const sobra of novas.slice(cabem)) soltarPrevia(sobra.previa);
-        return [...antes, ...novas.slice(0, cabem)];
-      });
+      for (const foto of novas) chavesDasFotos.current.add(foto.chave);
+      setFotos((antes) => [...antes, ...novas]);
+      const sobras =
+        escolhidas.length - conferidas + aceitas.length - novas.length;
+      if (sobras > 0) {
+        toast.info(
+          `${sobras} ${sobras === 1 ? "foto ficou" : "fotos ficaram"} de fora. Envie no máximo ${MAXIMO_DE_FOTOS} fotos.`,
+        );
+      }
       setErro(null);
     } finally {
       preparandoRef.current -= 1;
@@ -567,6 +571,7 @@ function FluxoDaDevolucao({
   }
 
   function removerFoto(chave: string) {
+    if (!chavesDasFotos.current.delete(chave)) return;
     // Foto que já subiu e o cliente tirou da lista: apaga do bucket. Fora do
     // setState (o atualizador tem de ser puro; o React o roda duas vezes em dev).
     const jaEnviada = fotos.find((f) => f.chave === chave)?.caminho;
@@ -890,8 +895,8 @@ function FluxoDaDevolucao({
               {tipo === "troca" && (
                 <p className="rounded-2xl bg-zinc-50 p-3 text-xs leading-relaxed text-zinc-600">
                   {prazos.arrependimento_ate
-                    ? "O prazo de arrependimento terminou: pela política da loja, este pedido pode ser trocado ou virar vale-troca."
-                    : "Pela política da loja, este pedido pode ser trocado ou virar vale-troca."}
+                    ? "O prazo de arrependimento terminou. Você pode solicitar uma troca. Se a loja oferecer vale-troca, essa opção aparece abaixo."
+                    : "Você pode solicitar uma troca. Se a loja oferecer vale-troca, essa opção aparece abaixo."}
                 </p>
               )}
               {permitidas.map((r) => (

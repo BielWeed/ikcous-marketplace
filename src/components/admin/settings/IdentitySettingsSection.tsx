@@ -40,8 +40,8 @@ const fields: readonly [keyof IdentityDraftFields, string, string][] = [
 const camposDoConflito: readonly [keyof IdentityDraftFields, string, string][] =
   [fields[0], ...camposEscondidos];
 const previews: readonly [IdentityAssetRole, string, string][] = [
-  ["header", "Cabeçalho", "PNG, JPEG, WebP ou SVG"],
-  ["loader", "Abertura", "PNG, JPEG, WebP ou SVG"],
+  ["header", "Cabeçalho", "PNG, JPEG, WebP estático ou SVG"],
+  ["loader", "Abertura", "PNG, JPEG, WebP estático ou SVG"],
   ["icon_512", "Ícone do aplicativo", "PNG, 512 × 512"],
   ["og", "Compartilhamento", "PNG, 1200 × 630"],
 ];

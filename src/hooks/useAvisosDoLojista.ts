@@ -11,11 +11,7 @@ import {
   aguardarComPrazo,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
-import {
-  FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA,
-  TETO_DE_RECEBIMENTOS,
-  inicioDaJanelaDoSino,
-} from "@/lib/recebimentos-por-marcar";
+import { buscarRecebimentosPorMarcar } from "@/lib/recebimentos-por-marcar";
 import { supabase } from "@/lib/supabase";
 import type { Product } from "@/types";
 import {
@@ -26,7 +22,6 @@ import {
   type LinhaDeCancelamento,
   type PedidoPendente,
   type ProdutoComEstoque,
-  type RecebimentoPorMarcar,
   type TipoDeAviso,
   montarAvisos,
   selecionarCancelamentosDoCliente,
@@ -259,38 +254,6 @@ async function buscarCancelamentosDoCliente(): Promise<
       .map((perfil) => perfil.id),
   );
   return selecionarCancelamentosDoCliente(linhas, admins);
-}
-
-// 14/10/2026: pedido ENTREGUE, pago na entrega, em que a lojista ainda nao
-// marcou o recebimento — enquanto isso o servidor recusa a devolucao da
-// cliente. A regra (e o porque) mora em `@/lib/recebimentos-por-marcar`, lida
-// tambem pela bolinha do sino (`AdminLayout`). Falha de leitura LANCA: vira
-// falha da FONTE, nunca "nenhum pedido por marcar".
-interface LeituraDeRecebimentos {
-  recebimentos: RecebimentoPorMarcar[];
-  /** Havia mais por marcar que o teto: esta lista traz so os mais recentes. */
-  truncou: boolean;
-}
-
-async function buscarRecebimentosPorMarcar(): Promise<LeituraDeRecebimentos> {
-  const { data, error, count } = await supabase
-    .from("marketplace_orders")
-    .select("id, customer_name, total, updated_at", { count: "exact" })
-    .eq("status", "delivered")
-    .or(FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA)
-    .is("payment_status", null)
-    .gte("updated_at", await inicioDaJanelaDoSino())
-    .order("updated_at", { ascending: false })
-    .limit(TETO_DE_RECEBIMENTOS);
-
-  if (error) throw error;
-  const recebimentos = (data ?? []) as unknown as RecebimentoPorMarcar[];
-  // O sino conta todos; a lista traz ate o teto. Sem numero na resposta nao ha
-  // como afirmar corte: nao se inventa aviso.
-  return {
-    recebimentos,
-    truncou: typeof count === "number" && count > recebimentos.length,
-  };
 }
 
 interface LeituraDeProdutos {

@@ -272,8 +272,12 @@ describe("cartão da devolução no pedido", () => {
     const dt = Array.from(hospedeiro.querySelectorAll("dt")).find((d) =>
       d.textContent?.includes(NOME_LONGO),
     );
-    expect(dt?.className).toContain("line-clamp-2");
+    // O corte em 2 linhas vale só para o nome (span interno): a linha "Não
+    // recebido pela loja" fica fora dele, no mesmo dt, e nunca é cortada.
+    const nome = dt?.querySelector(":scope > span");
+    expect(nome?.className).toContain("line-clamp-2");
     expect(dt?.className).not.toContain("truncate");
+    expect(nome?.className).not.toContain("truncate");
   });
 
   it("cancelar abre o diálogo do app, não a caixa do navegador, e só cancela ao confirmar", async () => {

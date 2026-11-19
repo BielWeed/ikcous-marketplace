@@ -193,6 +193,9 @@ vi.mock("@/lib/supabase", () => ({
               .slice(0, 50);
           const comOrdenacao = (filtro: "proprias" | "campanha") => ({
             order: () => ({
+              order() {
+                return this;
+              },
               limit: () =>
                 Promise.resolve({ data: linhasDoFiltro(filtro), error: null }),
             }),

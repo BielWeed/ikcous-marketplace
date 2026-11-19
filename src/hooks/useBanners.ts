@@ -439,7 +439,11 @@ export function useBanners(adminMode = false) {
 
           return true;
         })
-        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        .sort(
+          (a, b) =>
+            (a.order ?? 0) - (b.order ?? 0) ||
+            (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+        );
     },
     [banners, adminMode, agoraNaTela, computador],
   );

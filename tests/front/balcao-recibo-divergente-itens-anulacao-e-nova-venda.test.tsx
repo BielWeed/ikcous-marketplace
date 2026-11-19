@@ -390,6 +390,27 @@ describe("recibo vermelho — texto, anulação e Nova venda", () => {
     });
   }
 
+  it.each([
+    [1, "a peça que estava na tela"],
+    [3, "as 3 peças que estavam na tela"],
+  ])(
+    "faz a concordância do aviso com %i peça(s) na tela",
+    async (quantidade, trecho) => {
+      const registrada = registradaComDivergencia(
+        [item("p1", "Camiseta", "M", quantidade)],
+        [CALCA],
+      );
+      const anulada = reducerDaVenda(registrada, {
+        tipo: "recibo_anulado",
+        orderId: ORDER_ID,
+      });
+      if (!anulada.recibo) throw new Error("O recibo anulado deveria existir");
+      await montar(anulada.recibo);
+
+      expect(hospedeiro.textContent).toContain(`Volta ao cupom com ${trecho}.`);
+    },
+  );
+
   async function anularEstaVenda(): Promise<void> {
     await act(async () => {
       botao(hospedeiro, "Anular venda")!.click();

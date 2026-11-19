@@ -311,7 +311,7 @@ describe("Início do painel", () => {
 
     // Lote 224: "contas vencidas" abre direto em "Pagar e receber" (2º argumento).
     const destinos: [string, ...string[]][] = [
-      ["Preparar pedidos", "admin-orders"],
+      ["Ver pedidos em aberto", "admin-orders"],
       ["1 devolução aberta", "admin-devolucoes"],
       ["2 contas vencidas", "admin-financeiro", "previstos"],
       ["3 produtos com estoque baixo", "admin-products", "estoque-baixo"],
@@ -344,7 +344,7 @@ describe("Início do painel", () => {
     h.respostas.set("painel_inicio", { data: PAINEL, error: null });
     await montar();
     await esperarAte(() => texto(hospedeiro).includes("pendências"));
-    const preparar = botaoPorTexto(hospedeiro, "Preparar pedidos");
+    const preparar = botaoPorTexto(hospedeiro, "Ver pedidos em aberto");
     for (const classe of ["rounded-2xl", "min-h-14", "bg-white"]) {
       expect(preparar.classList.contains(classe)).toBe(true);
     }
@@ -712,7 +712,7 @@ describe("Início do painel", () => {
     });
     await montar();
     await esperarAte(() =>
-      texto(hospedeiro).includes("Sua loja começa por aqui"),
+      texto(hospedeiro).includes("Próximo passo da sua loja"),
     );
     const boasVindas = hospedeiro.querySelector(
       'section[aria-label="Boas-vindas"]',

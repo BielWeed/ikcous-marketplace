@@ -27,6 +27,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CartProvider } from "@/contexts/CartContext";
 import type { CartItem, ShippingOption } from "@/types";
+import { comPaginacao } from "./duble-consulta-paginada";
 
 // Estado mutável POR TESTE — vi.mock é içado, então os mocks leem este
 // objeto (vi.hoisted), e cada teste o reescreve antes de montar.
@@ -80,7 +81,7 @@ vi.mock("@/lib/supabase", () => {
     const alvo: Record<string, unknown> = {
       select: () => alvo,
       eq: resposta,
-      in: resposta,
+      in: comPaginacao(resposta),
     };
     return alvo;
   };
@@ -304,14 +305,14 @@ describe("ShippingCalculator — o grátis da calculadora é o mesmo veredito do
     expect(texto).not.toContain("GRÁTIS");
   });
 
-  it("cotação sem opção nenhuma e sem grátis: estado honesto 'A calcular', nunca silêncio", async () => {
+  it("cotação sem opção nenhuma e sem grátis: informa que não há opção, sem inventar preço", async () => {
     // Resposta honesta da edge (frente C): loja sem transportadora
     // conectada devolve `options: []`.
     estado.opcoes = [];
     estado.config = { ...estado.config, freeShippingMin: 0 };
     const texto = await montarECotar([item(produto())]);
 
-    expect(texto).toContain("A calcular");
+    expect(texto).toContain("Nenhuma opção de entrega para este endereço.");
     expect(texto).not.toContain("41,90");
   });
 });

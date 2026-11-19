@@ -440,7 +440,9 @@ export function PoliticaDeDevolucaoSection({
       );
       if (error) {
         toast.error(
-          mensagemDoErro(error, "Não foi possível salvar a política."),
+          error.code === "57014"
+            ? "O servidor demorou para salvar a política de trocas e devoluções. O que você digitou continua na tela. Toque em Salvar política para tentar de novo."
+            : mensagemDoErro(error, "Não foi possível salvar a política."),
         );
         return;
       }

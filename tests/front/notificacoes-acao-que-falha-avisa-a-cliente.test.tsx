@@ -76,11 +76,17 @@ function fabricarFrom() {
     select: () => ({
       eq: () => ({
         order: () => ({
+          order() {
+            return this;
+          },
           limit: () => Promise.resolve({ data: [linhaDaCliente], error: null }),
         }),
       }),
       is: () => ({
         order: () => ({
+          order() {
+            return this;
+          },
           limit: () => Promise.resolve({ data: [], error: null }),
         }),
       }),

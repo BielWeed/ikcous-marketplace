@@ -12,9 +12,14 @@ const css = readFileSync("src/index.css", "utf8");
 // Conferido: a única adição é "text-xs text-zinc-500"; nenhuma classe antiga mudou.
 // + linha "Recebe: X" do cartão de endereço (18/11/2026): só entra "mt-0.5 break-words text-sm font-medium text-zinc-700".
 // + nome do comprador com `break-words` (18/11/2026): só essa classe entra no literal existente.
+// + 1.5.218 (19/11/2026): nomes e códigos longos ficam completos no detalhe do pedido
+//   (saem 2 `line-clamp-2`: no código livre e no nome do item), e entra 1 linha nova
+//   com a orientação de devolução ou troca para quem não entrou na conta
+//   ("border-b border-zinc-100 px-5 py-3.5 text-sm text-zinc-600 last:border-b-0").
+//   Total 210 -> 211; nenhuma outra classe antiga mudou.
 // Ordem dos literais dentro de TODOS os className, inclusive cn/condicionais.
 const assinaturaDoCelular =
-  "2f44298d91f1c25fcefdc69f4ed926400701c17eca08d6c6bc354f1e359300a5";
+  "e3d9b9f354c2b06b339e893a34c16bfe500310dbe9484a5f90395b0101b454bf";
 const classesOriginais = [
   "fixed inset-x-0 bottom-[var(--folha-acima-da-barra)] top-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm duration-300 animate-in fade-in",
   "relative z-10 max-h-[calc(100dvh-var(--folha-acima-da-barra)-72px)] w-full max-w-md overflow-y-auto rounded-t-[2.5rem] bg-zinc-50 p-6 shadow-2xl duration-300 animate-in slide-in-from-bottom",
@@ -95,9 +100,9 @@ describe("P30 — avisos e avaliação no computador", () => {
     ).toBeGreaterThan(fonte.indexOf("ref={avaliacaoFolhaRef}"));
   });
 
-  it("preserva os 210 literais de celular, inclusive os dois elementos tocados", () => {
+  it("preserva os 211 literais de celular, inclusive os dois elementos tocados", () => {
     const lista = literaisDasClasses(fonte).map(classesDoCelular);
-    expect(lista).toHaveLength(210);
+    expect(lista).toHaveLength(211);
     expect(
       createHash("sha256").update(JSON.stringify(lista)).digest("hex"),
       "classes do celular divergiram da base 251753360; confira a lista de className, não atualize o hash sem investigar",

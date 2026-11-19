@@ -43,6 +43,7 @@ import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useAnalytics } from "@/hooks/useAnalytics";
 import { useAnularVendaDoBalcao } from "@/hooks/useAnularVendaDoBalcao";
+import { useAuth } from "@/hooks/useAuth";
 import { useConfirmarAcao } from "@/hooks/useConfirmarAcao";
 import { useDevolucoesAbertas } from "@/hooks/useDevolucoesAdmin";
 import {
@@ -87,11 +88,13 @@ import { STATUS_PARA_PREPARAR } from "@/lib/pedidos-para-preparar";
 import {
   MENSAGEM_ACAO_DO_PEDIDO_SEM_RESPOSTA,
   PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+  PRAZO_DA_CONSULTA_DO_PAINEL_MS,
   aguardarComPrazo,
   ehConsultaSemResposta,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import { rotuloDaVariacao } from "@/lib/rotulo-da-variacao";
+import { sessaoAindaEhDoDono } from "@/lib/sessao-ainda-e-do-dono";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import {
@@ -128,7 +131,15 @@ import {
   WifiOff,
   X,
 } from "lucide-react";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { flushSync } from "react-dom";
 import { toast } from "sonner";
 
@@ -218,11 +229,11 @@ const SUBTITULO_PARA_PREPARAR = STATUS_PARA_PREPARAR.map(
 
 /**
  * Lista vazia com canal/pagamento ligado enquanto o status é "Em Aberto": o
- * "Em Aberto" esconde os entregues e a venda do balcão já nasce Entregue,
+ * "Em Aberto" esconde os finalizados e a venda do balcão já nasce finalizada,
  * então limpar só o canal/pagamento não traz nada de volta.
  */
 const textoDoEmAbertoTambemLigado =
-  'O status "Em Aberto" também está ligado e não mostra pedidos entregues (vendas do balcão nascem como Entregue). Escolha "Todos" no status para ver esses pedidos.';
+  'O status "Em Aberto" também está ligado e não mostra pedidos finalizados (vendas do balcão já nascem finalizadas). Escolha "Todos" no status para ver esses pedidos.';
 
 /**
  * `mapOrderFromDB` (src/lib/mappers.ts) já copia `payment_status` para
@@ -372,6 +383,7 @@ interface AdminOrdersViewProps {
   active?: boolean;
   selectedOrderId?: string | null;
   onSetBackOverride?: (fn: (() => void) | null) => void;
+  setRascunhoDePedidoPendente?: (pendente: boolean) => void;
 }
 
 export const AdminOrdersView = memo(function AdminOrdersView({
@@ -379,6 +391,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   active,
   selectedOrderId,
   onSetBackOverride,
+  setRascunhoDePedidoPendente,
 }: Readonly<AdminOrdersViewProps>) {
   const { isSupported: isTransitionSupported } = useViewTransition();
   const isOffline = useOnlineStatus();
@@ -456,7 +469,12 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   );
   const [isTyping, setIsTyping] = useState(false);
   const [gerandoCsv, setGerandoCsv] = useState(false);
-  const exportacaoCsvEmCursoRef = useRef(false);
+  const exportacaoCsvEmCursoRef = useRef<AbortController | null>(null);
+  const { user, isAdmin, contaAindaTemAcessoAdmin } = useAuth();
+  const contaDoCsv = isAdmin ? user?.id : undefined;
+  useLayoutEffect(() => {
+    if (contaDoCsv) return () => exportacaoCsvEmCursoRef.current?.abort();
+  }, [contaDoCsv]);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [painelDeFiltros, setPainelDeFiltros] = useState<
     "ferramentas" | "filtros" | null
@@ -575,10 +593,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   );
   const itemsPerPage = 12;
 
-  // Atalho do Início ("Preparar pedidos"): abre Pedidos LIMPO. O filtro, a
-  // busca, o período, o pagamento, o canal e a página da última visita ficam
+  // Atalho do Início ("Ver pedidos em aberto"): abre Pedidos LIMPO. O filtro,
+  // a busca, o período, o pagamento, o canal e a página da última visita ficam
   // salvos no aparelho (conveniência de quem abre pelo menu), mas quem toca
-  // num atalho que promete "os pedidos para preparar" e cai numa lista de
+  // num atalho para ver os pedidos em aberto e cai numa lista de
   // outro assunto acha que os pedidos sumiram. O recado é de uma vez só e tem
   // validade (src/lib/atalho-do-inicio-para-pedidos.ts); abrir pelo menu não
   // o gera, então a preferência salva de quem usa o menu não é tocada. Como a
@@ -806,7 +824,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         value: formatarInteiro(aCaminho),
         icon: Truck,
         accent: "text-cyan-300",
-        subValue: "Enviados",
+        subValue: "Entrega ou retirada pronta",
       },
       {
         label: "Finalizados",
@@ -859,10 +877,14 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   // com a aba trocada o rascunho continua guardado, mas o Voltar já é da outra
   // aba (nada de engolir o Voltar nem de perguntar por cima dela).
   const fichaProtegida = active !== false && rascunhoDaFicha;
-  const aoMudarRascunhoDaFicha = useCallback((pendente: boolean) => {
-    setRascunhoDaFicha(pendente);
-    if (!pendente) setPerguntandoDescarte(false);
-  }, []);
+  const aoMudarRascunhoDaFicha = useCallback(
+    (pendente: boolean) => {
+      setRascunhoDaFicha(pendente);
+      setRascunhoDePedidoPendente?.(pendente);
+      if (!pendente) setPerguntandoDescarte(false);
+    },
+    [setRascunhoDePedidoPendente],
+  );
   // O Voltar do aparelho com a pergunta já na tela vale "continuar digitando".
   useVoltarFechaAFolha(fichaProtegida, () => {
     setPerguntandoDescarte((aberta) => !aberta);
@@ -1537,8 +1559,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       : "Exportar CSV";
 
   const exportarCsv = async () => {
-    if (totalOrders === 0 || exportacaoCsvEmCursoRef.current) return;
-    exportacaoCsvEmCursoRef.current = true;
+    if (!contaDoCsv || totalOrders === 0 || exportacaoCsvEmCursoRef.current)
+      return;
+    const controle = new AbortController();
+    exportacaoCsvEmCursoRef.current = controle;
     setGerandoCsv(true);
     try {
       // O MESMO recorte da lista (loadAllData): a planilha não pode exportar
@@ -1554,6 +1578,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         // na tela quando o chip "Balcão" está ligado.
         canal: canalFilter,
       });
+      if (controle.signal.aborted) return;
       if (pedidosDoFiltro.length === 0) {
         toast.info("Nenhum pedido neste filtro para exportar.");
         return;
@@ -1566,6 +1591,19 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       const arquivo = new Blob([pedidosParaCsv(pedidosDoFiltro, rotulos)], {
         type: "text/csv;charset=utf-8;",
       });
+      if (controle.signal.aborted) return;
+      const sessaoValida = await aguardarComPrazo(
+        sessaoAindaEhDoDono(contaDoCsv),
+        PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+        () => erroDeConsultaSemResposta("A sessão não respondeu."),
+      );
+      if (controle.signal.aborted) return;
+      if (!sessaoValida || !contaAindaTemAcessoAdmin(contaDoCsv)) {
+        toast.error(
+          "A sessão mudou ou você perdeu o acesso ao painel. O CSV não foi baixado.",
+        );
+        return;
+      }
       const url = URL.createObjectURL(arquivo);
       const link = document.createElement("a");
       link.href = url;
@@ -1579,6 +1617,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         setTimeout(() => URL.revokeObjectURL(url), 1000);
       }
     } catch (erro) {
+      if (controle.signal.aborted) return;
       const codigo = (erro as { code?: string } | null)?.code;
       toast.error(
         codigo === "CSV_PEDIDOS_DEMAIS"
@@ -1590,7 +1629,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
               : "Não foi possível gerar o CSV. Tente de novo.",
       );
     } finally {
-      exportacaoCsvEmCursoRef.current = false;
+      exportacaoCsvEmCursoRef.current = null;
       setGerandoCsv(false);
     }
   };

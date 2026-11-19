@@ -216,21 +216,25 @@ describe("item 1 — qual cor/tamanho a cliente comprou", () => {
 });
 
 describe("itens 3 e 4 — nome do produto e rastreio sem corte", () => {
-  it("nome do produto em até 2 linhas, nunca truncate", async () => {
+  it("nome do item na ficha quebra sem limite; no cartão de avaliação, mantém o corte", async () => {
     await montar(pedidoBase({ status: "delivered" }));
 
     const nomes = [...(container?.querySelectorAll("h5, p") ?? [])].filter(
       (el) => el.textContent === "Camiseta",
     );
-    expect(nomes.length).toBeGreaterThan(0);
+    expect(nomes.some((el) => el.tagName === "H5")).toBe(true);
     for (const el of nomes) {
-      expect(el.className).toContain("line-clamp-2");
+      if (el.tagName === "H5") {
+        expect(el.className).not.toContain("line-clamp-2");
+      } else {
+        expect(el.className).toContain("line-clamp-2");
+      }
       expect(el.className).toContain("break-words");
       expect(el.className).not.toContain("truncate");
     }
   });
 
-  it("código de rastreio quebra em até 2 linhas, sem truncate", async () => {
+  it("código de rastreio quebra sem limite de linhas, sem truncate", async () => {
     await montar(
       pedidoBase({
         status: "shipping",
@@ -241,7 +245,7 @@ describe("itens 3 e 4 — nome do produto e rastreio sem corte", () => {
     const codigo = container?.querySelector("code");
     expect(codigo?.textContent).toContain("AB123456789BR");
     expect(codigo?.className).toContain("break-all");
-    expect(codigo?.className).toContain("line-clamp-2");
+    expect(codigo?.className).not.toContain("line-clamp-2");
     expect(codigo?.className).not.toContain("truncate");
   });
 });

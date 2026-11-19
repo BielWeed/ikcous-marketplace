@@ -1,4 +1,62 @@
 {
+  "1.5.218": {
+    "titulo": "Retirada, devoluções e pedidos mais claros",
+    "novidades": [],
+    "correcoes": [
+      "Quem recebe um link de produto com uma barra no fim do caminho também pode ver a prévia.",
+      "Ao enviar um aviso com link interno de produto, o painel pede um produto válido se o link estiver incompleto ou inválido.",
+      "No aviso de cancelamento de retirada que já estava pronta, a lojista vê se o retorno foi confirmado ou se precisa conferir que o produto está na loja.",
+      "Ao conferir o carrinho, a loja busca todas as variações dos produtos, mesmo quando não cabem em uma única consulta.",
+      "Os mapas voltam a aparecer em Sobre a loja, na edição dessa página no painel e nos endereços salvos.",
+      "A cliente pode mudar só o apelido de um endereço sem desfazer a alteração do imóvel feita em outro aparelho.",
+      "O painel não pede para marcar um novo recebimento nem conta no sino pedidos sem valor a pagar.",
+      "Se a etiqueta emitida foi cancelada, a ficha mostra “Etiqueta cancelada no Melhor Envio” no lugar do botão de atualizar o rastreio.",
+      "Ao buscar um pedido, a cliente só vê “Código enviado” quando o envio deu certo. Se digitar menos de seis dígitos, o aviso aparece junto ao campo.",
+      "Ao finalizar um pedido de retirada sem pagamento pelo app, a tela de confirmação orienta a aguardar a loja e conferir o endereço antes de sair. Se, ao refazer a consulta de frete para o mesmo CEP, a retirada escolhida der lugar a uma entrega automática, a calculadora avisa e mostra o preço.",
+      "Se houver rascunho na ficha do pedido, o navegador pode avisar ao sair ou recarregar. No cadastro de produto, o painel avisa se não conseguiu guardar as últimas alterações no rascunho.",
+      "O app adia a atualização automática enquanto o painel está aguardando a compra da etiqueta.",
+      "Ao compartilhar um produto pelo botão da loja, a cliente envia um link sem os dados de campanha da página que abriu."
+    ],
+    "melhorias": [
+      "Ao pedir a exclusão da conta, a cliente lê que a loja vai confirmar a conclusão pelo e-mail da conta.",
+      "Nos relatórios, a lojista vê que a taxa de recompra é histórica e que o percentual da receita de quem volta considera só vendas com cliente identificado no período.",
+      "Nos avisos de recebimento, o painel chama o pedido de “Finalizado”. Ao concluir a entrega ou retirada, a opção de seguir sem marcar o pagamento diz “Finalizar sem registrar recebimento”.",
+      "Na devolução, a cliente vê quais itens a loja marcou como não recebidos e a validade do código de postagem mais recente, quando é possível calculá-la. Sem entrar na conta, a ficha do pedido entregue orienta falar com a loja para trocar ou devolver.",
+      "A ajuda dos banners explica que a exibição depende da imagem de cada tela e das datas programadas. Na solicitação de troca, o texto explica que o vale-troca só aparece se a loja oferecer essa opção.",
+      "No início do painel, a lojista vê a orientação de ligar o pagamento pelo app quando a compra com envio por transportadora estiver impedida por falta dessa opção.",
+      "O gráfico de vendas explica que usa a categoria atual dos produtos e como calcula a média por categoria. Em Canais, a lojista vê que o total é anterior aos reembolsos parciais."
+    ]
+  },
+  "1.5.217": {
+    "titulo": "Pix, pedidos e um painel mais claro",
+    "novidades": [
+      "Enquanto o Pix aguarda confirmação, a cliente conectada pode tocar em “Já paguei — verificar”. Se o checkout estiver com o carrinho vazio, a cliente conectada encontra o atalho “Ver meus pedidos”.",
+      "Na compra sem conta, a cliente pode retomar o preenchimento na mesma aba por até duas horas após a última edição."
+    ],
+    "correcoes": [
+      "Se o cupom não gerar desconto no valor atual do carrinho, a cliente vê o motivo e o cupom não fica aplicado.",
+      "Se o pagamento pelo app estiver pausado, o carrinho avisa quando a entrega selecionada exige essa forma de pagamento.",
+      "Sem entrega disponível, a calculadora não sugere WhatsApp se a loja não tiver número cadastrado. Na busca, só produtos disponíveis aparecem entre as sugestões.",
+      "Se um pedido com cartão for cancelado por vencimento, a cliente vê na tela a orientação para confirmar com a loja antes de comprar de novo.",
+      "Se o CPF não puder ser salvo, a tela da conta distingue as outras alterações já salvas daquilo que ainda precisa ser conferido.",
+      "Ao reimprimir um pedido não cancelado com reembolso confirmado pelo Mercado Pago, o recibo mostra o valor reembolsado e o “Total após reembolso”, além do total original.",
+      "No Financeiro, se um pedido pago for cancelado e os itens voltarem ao estoque em outro mês, o custo volta no mês da reposição, sem mudar o custo do mês da venda.",
+      "Ao salvar o preço de um produto sem variações, o painel recusa a gravação se os dados que a lojista conferiu estiverem desatualizados.",
+      "Ao exportar pedidos ou produtos, o painel interrompe o download se a sessão mudar ou o acesso ao painel não puder ser confirmado.",
+      "Na lista de clientes, uma resposta antiga não substitui a busca atual. Na busca de produtos, pesquisar 50% não confunde esse percentual com 150% ou 1,50%.",
+      "Se dois avisos tiverem o mesmo instante de criação ou dois banners tiverem a mesma posição, a lista mantém a ordem entre eles.",
+      "Ao adicionar fotos ao produto, o painel avisa se alguma não abriu ou ficou fora do limite de dez. Ao trocar uma arte da loja que exige imagem estática, o painel explica por que um WebP animado não serve."
+    ],
+    "melhorias": [
+      "Antes da primeira venda, a lojista recebe orientações sobre pagamento e entrega. O Início explica o período dos números. Ao usar o atalho para pedidos em aberto, a lojista não leva a busca nem os filtros antigos.",
+      "No Financeiro, a lojista distingue contas lançadas a receber de pagamentos de pedidos. Na ficha da cliente, o último pedido indica que não considera cancelados nem devolvidos.",
+      "Se a lista estiver vazia com “Em Aberto” e filtro de canal ou pagamento, sem busca nem período, o painel orienta escolher “Todos” para ver pedidos finalizados. No resumo, “Entrega ou retirada pronta” substitui “Enviados”.",
+      "Antes de enviar uma campanha para todos ou para um grupo, a lojista vê quantos aparelhos estão inscritos. Se o número aumentar, o painel pede nova confirmação.",
+      "A cliente consegue ler nomes e códigos de rastreio longos sem corte na ficha do pedido. Na folha de opções, escolhas longas quebram em linhas sem empurrar o rótulo.",
+      "Quem usa os temas escuro e vidro vê mais contraste em botões, avisos e campos.",
+      "Antes de excluir uma avaliação respondida ou limpar as escolhas manuais das vitrines, a lojista vê o que será removido. O painel também orienta o preenchimento de cupom, estoque mínimo e frete local."
+    ]
+  },
   "1.5.216": {
     "titulo": "Endereço conferido e pedidos mais claros",
     "novidades": [],
@@ -13,7 +71,7 @@
       "Banners agendados podem aparecer com a vitrine aberta, sem precisar atualizar a página.",
       "Nos favoritos de visitante, um produto deixa de aparecer quando a loja confirma que ele não está mais no catálogo.",
       "Se outra pessoa alterar o mesmo dado de um endereço, a tela pede para conferir o novo valor antes de salvar.",
-      "Ao enviar uma nova compra para um endereço salvo, a loja confere o endereço. Se não conseguir confirmar, pede nova tentativa.",
+      "Ao finalizar uma nova compra com endereço salvo para entrega, a tela confere o endereço antes de enviar o pedido. Se não conseguir confirmar, pede nova tentativa.",
       "Trocar entre entrar e criar conta apaga a senha que estava digitada.",
       "O painel avisa se o estoque novo de uma variação passar de 10.000. Se a quantidade já estava salva, ainda dá para editar os outros campos.",
       "Editar um produto guarda o rascunho antes da conferência, para não perder as alterações se a sessão terminar nessa espera.",
@@ -21,7 +79,7 @@
       "Se um pedido for cancelado com etiqueta paga, o painel orienta a verificar no Melhor Envio se ainda dá para cancelar e pedir reembolso.",
       "Ao salvar o contato do mototáxi, o painel avisa se ele mudou em outro aparelho em vez de restaurar o número antigo.",
       "Se a regra de frete grátis mudar em outro aparelho, o painel pede para revisar o valor mínimo digitado.",
-      "No balcão, só um celular brasileiro completo pode receber o recibo; a falta de um número válido não impede a venda.",
+      "No balcão, o atalho de WhatsApp do recibo aceita telefone brasileiro com DDD válido: fixo de 10 dígitos ou celular de 11. Sem número válido, a venda pode seguir.",
       "Ao colar um link no rastreio manual, o painel explica que precisa apenas do código.",
       "Na lista de quem pediu e não pagou, a mensagem só convida a finalizar a compra se ainda houver valor em aberto.",
       "Se o horário de retirada for longo demais para caber na mensagem, ela orienta a confirmar com a loja, sem mostrar um horário cortado.",

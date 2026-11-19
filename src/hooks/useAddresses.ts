@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 const LISTA_VAZIA: Address[] = [];
+const CAMPOS_SEM_CONFRONTO = new Set(["name"]);
 
 export interface ConfrontoDaEdicaoDoEndereco {
   original: Address;
@@ -452,8 +453,13 @@ export function useAddresses() {
         .update(updates)
         .eq("id", id)
         .eq("user_id", idDaConta);
-      if (confronto) {
-        const { original } = confronto;
+      const confrontoDoImovel = Object.keys(updates).some(
+        (campo) => !CAMPOS_SEM_CONFRONTO.has(campo),
+      )
+        ? confronto
+        : undefined;
+      if (confrontoDoImovel) {
+        const { original } = confrontoDoImovel;
         const filtros = [
           ["cep", original.cep],
           ["street", original.street],
@@ -468,7 +474,7 @@ export function useAddresses() {
         }
       }
       // Zero linhas com os valores de abertura não é sucesso nem falha de rede.
-      const respostaDaEscrita = confronto
+      const respostaDaEscrita = confrontoDoImovel
         ? Promise.resolve(consulta.select()).then(({ data, error }) => ({
             data: data?.[0] ?? null,
             error,
@@ -485,14 +491,16 @@ export function useAddresses() {
       // Resposta da conta anterior não grava nada, nem avisa sucesso.
       if (usuarioAtualRef.current !== idDaConta) return false;
       if (!data) {
-        if (!confronto) throw new Error("edição de endereço sem resposta");
+        if (!confrontoDoImovel) {
+          throw new Error("edição de endereço sem resposta");
+        }
         toast.error(
           "Este endereço foi alterado em outro aparelho. Revise e salve de novo.",
         );
         await fetchAddresses({
           aoLer: (itens) => {
             const atual = itens.find((item) => item.id === id);
-            if (atual) confronto.aoConflitar(atual);
+            if (atual) confrontoDoImovel.aoConflitar(atual);
           },
         });
         return false;

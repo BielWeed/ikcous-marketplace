@@ -151,6 +151,19 @@ function criarBuilder(tabela: string) {
   builder.gte = registrar("gte");
   builder.order = registrar("order");
   builder.limit = registrar("limit");
+  builder.range = registrar("range");
+  const respostaDosRecebimentos = () => {
+    const resposta = RESPOSTA_RECEBIMENTOS as { data?: unknown };
+    if (!Array.isArray(resposta.data)) return resposta;
+    const faixa = calls.find((c) => c[0] === "range");
+    const limite = calls.find((c) => c[0] === "limit");
+    return {
+      ...resposta,
+      data: faixa
+        ? resposta.data.slice(Number(faixa[1]), Number(faixa[2]) + 1)
+        : resposta.data.slice(0, Number(limite?.[1])),
+    };
+  };
   const respostaDosPedidos = () => {
     const resposta = RESPOSTA_PEDIDOS as { data: unknown; error: unknown };
     if (filtrouOPagamento || !Array.isArray(resposta.data)) return resposta;
@@ -173,7 +186,7 @@ function criarBuilder(tabela: string) {
               : tabela === "pedidos_de_privacidade"
                 ? RESPOSTA_PRIVACIDADE
                 : ehRecebimento()
-                  ? RESPOSTA_RECEBIMENTOS
+                  ? respostaDosRecebimentos()
                   : respostaDosPedidos(),
     ).then(resolve as never, reject as never);
   return builder;
@@ -1090,13 +1103,46 @@ describe("useAvisosDoLojista — pedido entregue sem recebimento marcado", () =>
       | (AvisoLido & { destino?: { view: string; id?: string } })
       | undefined;
     expect(aviso?.titulo).toBe(
-      "Pedido #4F5A6B de Maria Silva entregue: você já recebeu o pagamento?",
+      "Pedido #4F5A6B de Maria Silva finalizado: você já recebeu o pagamento?",
     );
     expect(aviso?.destino).toEqual({ view: "admin-orders", id: PEDIDO });
     expect(aviso?.contaNoCracha).toBe(true);
     expect(atual().fontesComFalha).toEqual([]);
     // Pedido, pergunta, avaliacao e este: 4 no cracha (estoque fica de fora).
     expect(atual().quantidadeNoCracha).toBe(4);
+  });
+
+  it("só tira da lista o pedido cujo total zerou com a conta batendo", async () => {
+    RESPOSTA_RECEBIMENTOS = {
+      data: [
+        entregueSemRecebimento({ id: "pago-na-entrega" }),
+        entregueSemRecebimento({
+          id: "brinde",
+          total: 0,
+          subtotal: 90,
+          discount: 90,
+          shipping: 0,
+        }),
+        entregueSemRecebimento({
+          id: "conta-incompleta",
+          total: 0,
+          subtotal: 90,
+          discount: null,
+          shipping: null,
+        }),
+      ],
+      count: 3,
+      error: null,
+    };
+
+    const { atual } = await montarSonda();
+
+    expect(
+      atual()
+        .avisos.filter((a) => a.tipo === "recebimento")
+        .map((a) => a.id),
+    ).toEqual(["recebimento:pago-na-entrega", "recebimento:conta-incompleta"]);
+    expect(atual().listasCortadas).not.toContain("recebimento");
   });
 
   it("a consulta le SO entregue, nao-online, pagamento em branco, dos ultimos 365 dias (sem configuracao), no maximo 100", async () => {
@@ -1354,8 +1400,8 @@ describe("useAvisosDoLojista — o aviso de cancelamento ja resolvido (08/11/202
 });
 
 describe("useAvisosDoLojista — mais pagamentos por marcar do que o teto (08/11/2026)", () => {
-  function cemRecebimentos() {
-    return Array.from({ length: TETO_DE_RECEBIMENTOS }, (_, i) => ({
+  function cemRecebimentos(quantidade = TETO_DE_RECEBIMENTOS) {
+    return Array.from({ length: quantidade }, (_, i) => ({
       id: `ped-${String(i).padStart(4, "0")}`,
       customer_name: "Maria",
       total: 50,
@@ -1375,7 +1421,7 @@ describe("useAvisosDoLojista — mais pagamentos por marcar do que o teto (08/11
 
   it("130 por marcar e so 100 na lista: a lista fica marcada como cortada (a tela diz a verdade)", async () => {
     RESPOSTA_RECEBIMENTOS = {
-      data: cemRecebimentos(),
+      data: cemRecebimentos(130),
       count: 130,
       error: null,
     };
@@ -1388,6 +1434,33 @@ describe("useAvisosDoLojista — mais pagamentos por marcar do que o teto (08/11
     expect(atual().listasCortadas).toContain("recebimento");
     // Cortar nao e falha: o botao de tentar de novo nao serve.
     expect(atual().fontesComFalha).toEqual([]);
+  });
+
+  it("um brinde não ocupa vaga nem faz a lista parecer cortada", async () => {
+    RESPOSTA_RECEBIMENTOS = {
+      data: [
+        {
+          id: "brinde",
+          total: 0,
+          subtotal: 50,
+          discount: 50,
+          shipping: 0,
+          updated_at: "2026-10-12T15:00:00.000Z",
+        },
+        ...cemRecebimentos(),
+      ],
+      count: 101,
+      error: null,
+    };
+
+    const { atual } = await montarSonda();
+    const ids = atual()
+      .avisos.filter((a) => a.tipo === "recebimento")
+      .map((a) => a.id);
+    expect(ids).toHaveLength(100);
+    expect(ids).toContain("recebimento:ped-0099");
+    expect(ids).not.toContain("recebimento:brinde");
+    expect(atual().listasCortadas).not.toContain("recebimento");
   });
 
   it("controle: exatamente 100 por marcar nao e corte", async () => {

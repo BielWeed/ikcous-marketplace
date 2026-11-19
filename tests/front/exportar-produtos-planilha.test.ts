@@ -205,6 +205,31 @@ describe("planilha de produtos", () => {
     });
   });
 
+  it("não exporta o contador desatualizado de vendidos", () => {
+    const linhas = linhasDosProdutos([produto({ sold: 987654 })], true);
+    expect(linhas[0]).not.toContain("Vendidos");
+    expect(linhas[1]).not.toContain(987654);
+  });
+
+  it("mostra o estoque-base quando só existem variantes desligadas", () => {
+    const p = produto({
+      variants: [variante({ active: false })],
+    });
+    const linhas = linhasDosProdutos([p], true);
+    const [estoque, ativa] = ["Estoque", "Variante ativa"].map((coluna) =>
+      linhas[0].indexOf(coluna),
+    );
+    expect(
+      linhas.slice(1).map((linha) => [linha.at(estoque), linha.at(ativa)]),
+    ).toEqual(
+      expect.arrayContaining([
+        [12, ""],
+        [4, "Não"],
+      ]),
+    );
+    expect(linhas).toHaveLength(3);
+  });
+
   it("faz uma linha por variante, inclusive inativa, sem somar estoques nem perder preço zero", () => {
     const p = produto({
       variants: [

@@ -87,19 +87,11 @@ function efeitosDeRestaurar(
       texto: `Somem as ${personalizadas.length} vitrines personalizadas`,
     });
   }
-  const escolhidos = secoes.reduce(
-    (soma, s) => soma + (s.productIds?.length ?? 0),
-    0,
-  );
-  if (escolhidos === 1) {
+  if (secoes.some((s) => (s.productIds?.length ?? 0) > 0)) {
     efeitos.push({
       chave: "produtos-escolhidos",
-      texto: "Some o produto escolhido à mão",
-    });
-  } else if (escolhidos > 1) {
-    efeitos.push({
-      chave: "produtos-escolhidos",
-      texto: `Somem os ${escolhidos} produtos escolhidos à mão`,
+      texto:
+        "As escolhas manuais são removidas das vitrines. Os produtos continuam no catálogo.",
     });
   }
   efeitos.push({

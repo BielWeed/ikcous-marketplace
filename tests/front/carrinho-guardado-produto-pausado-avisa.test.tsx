@@ -15,6 +15,7 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { comPaginacao } from "./duble-consulta-paginada";
 
 type Linha = Record<string, unknown>;
 
@@ -49,10 +50,11 @@ vi.mock("@/lib/supabase", () => ({
     from: (tabela: string) => ({
       select: () => ({
         eq: async () => ({ data: mundo.itensNoBanco, error: null }),
-        in: async () =>
+        in: comPaginacao(async () =>
           tabela === "vw_produtos_public"
             ? { data: mundo.catalogo, error: null }
             : { data: [], error: null },
+        ),
       }),
     }),
     auth: {

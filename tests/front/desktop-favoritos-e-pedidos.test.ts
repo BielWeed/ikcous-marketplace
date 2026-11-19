@@ -42,16 +42,19 @@ describe("Favoritos e pedidos no computador", () => {
     // Base 1.5.187; pedidos inclui a quebra do bairro sem espaços (17/11/2026).
     // Todos os literais de className na ordem da árvore.
     expect(classes(arquivos.favoritos)).toBe(
-      "4867b0736e2e22521d6e8479f6c7354e629bbf1e0727dda4f486833645300cb9",
+      "01c4f2611dc3321eaab592ad1e8eb651f00621e95352f0393f1c3baa9bb7e38e",
     );
     expect(classes(arquivos.carrinho)).toBe(
-      "4496dc40387eeeafe39b70316ec3ce53e3a8ae9d884b01c0897d391ac0e5254d",
+      "1dc0eeae81190e2946f2b062e7036424fc24e369d31fb97fecb039bd2be421c2",
     );
     expect(classes(arquivos.pedidos)).toBe(
       "25517ee6c392becb26e96a3c560aca5915539e126275ac1a930ad739be209bb6",
     );
+    // 1.5.218: aviso novo junto ao campo do código ("text-sm text-destructive") e a
+    // borda de erro só quando inválido ("aria-invalid:border-destructive"); nenhuma
+    // outra classe de celular mudou.
     expect(classes(arquivos.busca)).toBe(
-      "da4454082908c50fcec65bec2c10f2f24c6ce59b90af6465a08b5ba1dd81dbd5",
+      "e1482db0c15a17189670b6bea1484bbc37ab4763c2b9dc526ee787e15fa315f4",
     );
   });
 

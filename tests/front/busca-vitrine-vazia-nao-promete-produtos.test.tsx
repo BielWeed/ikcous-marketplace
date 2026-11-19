@@ -91,10 +91,16 @@ describe("SearchView — vitrine vazia não promete produtos", () => {
     hospedeiro.remove();
   });
 
-  async function renderizarBusca() {
+  async function renderizarBusca(initialQuery?: string) {
     const { SearchView } = await import("@/views/customer/SearchView");
     await act(async () => {
-      raiz.render(<SearchView onNavigate={() => {}} onBack={() => {}} />);
+      raiz.render(
+        <SearchView
+          onNavigate={() => {}}
+          onBack={() => {}}
+          initialQuery={initialQuery}
+        />,
+      );
     });
     return hospedeiro;
   }
@@ -134,6 +140,33 @@ describe("SearchView — vitrine vazia não promete produtos", () => {
     const host = await renderizarBusca();
     expect(host.textContent).toContain("A loja ainda não tem produtos");
     expect(host.textContent).not.toContain("Ué, nenhum resultado?");
+  });
+
+  it("busca sem resultado com catálogo só de esgotados: não sugere produtos e mantém Limpar Tudo", async () => {
+    catalogo = [produto({ id: "vestido", name: "Vestido", stock: 0 })];
+    await renderizarBusca("zzzz-nao-existe");
+    await act(async () => {
+      await new Promise((resolver) => setTimeout(resolver, 400));
+    });
+
+    expect(hospedeiro.textContent).toContain("Ué, nenhum resultado?");
+    expect(hospedeiro.textContent).toContain("Limpar Tudo");
+    expect(hospedeiro.textContent).not.toContain("alguns produtos da loja");
+    expect(hospedeiro.textContent).not.toContain("Sugestões");
+    expect(hospedeiro.querySelector('[data-testid="resultado"]')).toBeNull();
+  });
+
+  it("produto ativo esgotado ainda aparece quando corresponde à busca", async () => {
+    catalogo = [produto({ id: "vestido", name: "Vestido", stock: 0 })];
+    await renderizarBusca("Vestido");
+    await act(async () => {
+      await new Promise((resolver) => setTimeout(resolver, 400));
+    });
+
+    expect(
+      hospedeiro.querySelector('[data-testid="resultado"]')?.textContent,
+    ).toBe("vestido");
+    expect(hospedeiro.textContent).not.toContain("Sugestões");
   });
 
   it("controle: com produto à venda e busca sem resultado, mantém 'Ué, nenhum resultado?' e 'Limpar Tudo'", async () => {

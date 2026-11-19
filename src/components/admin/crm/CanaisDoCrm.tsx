@@ -338,7 +338,7 @@ export function CanaisDoCrm({
           rodape: (
             <span className="flex flex-wrap gap-x-3">
               <span>
-                Total{" "}
+                Total antes de reembolsos parciais{" "}
                 <strong className="text-admin-text">
                   {formatarMoeda(visao?.kpis.receita)}
                 </strong>
@@ -357,7 +357,9 @@ export function CanaisDoCrm({
           ajuda: (
             <ExplicacaoDoRelatorio titulo="Vendas que ficaram: app × loja">
               De onde veio o dinheiro das vendas pagas, sem as canceladas, neste
-              período. Total e pedidos são os mesmos da Visão.
+              período. Total e pedidos são os mesmos da Visão. Os valores não
+              descontam reembolsos parciais. Para ver o valor após as deduções,
+              consulte a receita líquida em Financeiro › Resultado.
             </ExplicacaoDoRelatorio>
           ),
           barra: (

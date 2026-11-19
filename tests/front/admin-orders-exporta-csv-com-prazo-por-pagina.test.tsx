@@ -20,7 +20,7 @@ vi.mock("@/lib/supabase", () => ({
   },
 }));
 vi.mock("@/hooks/useAuth", () => ({
-  useAuth: () => ({ user: null, isAdmin: true }),
+  useAuth: () => ({ user: { id: "admin-teste" }, isAdmin: true }),
 }));
 vi.mock("@/hooks/useLeaderElection", () => ({
   useLeaderElection: () => ({ isLeader: false }),

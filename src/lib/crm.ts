@@ -944,7 +944,7 @@ export function rotuloDoStatusDoPedido(status: string): string {
     case "processing":
       return "Em separação";
     case "shipping":
-      return "Em trânsito";
+      return "A caminho ou retirada";
     case "delivered":
       return "Entregue";
     case "cancelled":

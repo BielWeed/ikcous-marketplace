@@ -35,6 +35,30 @@ describe("produtoCombinaComBusca — pontuação junto da palavra", () => {
     expect(produtoCombinaComBusca(fone, "35")).toBe(false);
   });
 
+  it.each(["50%", "50 %", "(50%),", "50%."])(
+    "'%s' acha o percentual exato, não o peso nem outro percentual",
+    (busca) => {
+      const catalogo = [
+        { name: "Café 50 g" },
+        { name: "Chocolate 50% cacau" },
+        { name: "Chocolate 50 % cacau" },
+        { name: "Pacote 150%" },
+        { name: "Chocolate 1,50% cacau" },
+      ];
+      const buscar = (termo: string) =>
+        catalogo
+          .filter((produto) => produtoCombinaComBusca(produto, termo))
+          .map((produto) => produto.name);
+
+      expect(buscar(busca)).toEqual([
+        "Chocolate 50% cacau",
+        "Chocolate 50 % cacau",
+      ]);
+      expect(buscar("50")).toEqual(catalogo.map((produto) => produto.name));
+      expect(buscar("cafe")).toEqual(["Café 50 g"]);
+    },
+  );
+
   it("busca sem letra nem número (só pontuação ou emoji) segue como antes: acha só quem tem aquilo no nome", () => {
     const presente = { name: "Caixa 🎁 Presente", category: "Geral" };
     expect(produtoCombinaComBusca(camiseta, "...")).toBe(false);

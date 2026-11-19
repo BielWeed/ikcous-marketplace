@@ -225,6 +225,37 @@ it("finalizar sem recebimento preserva a pergunta e registra o dinheiro antes do
   );
 });
 
+const pedidoLocal = pedido({ paymentMethod: "cash", paymentStatus: null });
+const pedidoZerado = { ...pedidoLocal, total: 0, discount: 20 };
+
+it("pedido zerado não oferece recebimento manual nem no cartão nem em Ações", async () => {
+  montar(pedidoZerado);
+  expect.soft(botao("Marcar como recebido")).toBeUndefined();
+
+  await abrirAcoes();
+  expect(botao("Fechar ações do pedido")).toBeTruthy();
+  expect(botao("Marcar como recebido")).toBeUndefined();
+  expect(document.body.textContent).not.toMatch(/Recebeu os R\$\s*0,00/);
+});
+
+it("fecha a pergunta de recebimento manual se o pedido passar a não ter valor a pagar", async () => {
+  montar(pedidoLocal);
+  await clicar("Marcar como recebido");
+  expect(document.body.textContent).toMatch(/Recebeu os R\$\s*20,00/);
+
+  montar(pedidoZerado);
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+  expect(document.body.textContent).not.toMatch(/Recebeu os R\$\s*0,00/);
+  expect(receber).not.toHaveBeenCalled();
+
+  // Total zerado com subtotal sem desconto: dado incompleto, não um brinde.
+  montar({ ...pedidoLocal, total: 0 });
+  expect(botao("Marcar como recebido")).toBeTruthy();
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+  await abrirAcoes();
+  expect(botao("Marcar como recebido")?.disabled).toBe(false);
+});
+
 const casosDeConfirmacao = [
   { status: "pending", paymentStatus: "aguardando", paymentMethod: "online" },
   { status: "shipping", paymentStatus: null, paymentMethod: "cash" },
@@ -286,13 +317,13 @@ it("se registrar o dinheiro falhar, não finaliza", async () => {
   expect(avancar).not.toHaveBeenCalled();
 });
 
-it("Ainda não finaliza sem gravar recebimento, como na ficha", async () => {
+it("Finalizar sem registrar recebimento avança o pedido, como na ficha", async () => {
   montar(
     pedido({ status: "shipping", paymentMethod: "cash", paymentStatus: null }),
   );
   await abrirAcoes();
   await clicar("Avançar → Finalizado");
-  await clicar("Ainda não");
+  await clicar("Finalizar sem registrar recebimento");
   expect(receber).not.toHaveBeenCalled();
   expect(avancar).toHaveBeenCalledWith(
     "pedido-abc123",

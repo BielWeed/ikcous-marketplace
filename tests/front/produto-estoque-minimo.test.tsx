@@ -7,7 +7,7 @@
 // escolhê-lo. O campo mora na seção "Códigos e câmera" do formulário de produto:
 //
 //   a. existe, montado e fechado dentro de "Códigos e câmera", com a ajuda dizendo que
-//      vazio usa o padrão (5) e que, com variações, vale para a soma;
+//      vazio usa o padrão (5) e que, com variações ativas, vale a soma do estoque delas;
 //   b. produto com 8 mostra 8; produto com 0 mostra 0 (zero é escolha, não
 //      ausência); produto sem valor mostra vazio;
 //   c. o que vai no payload: vazio = `null` (volta ao padrão), "7" = 7,
@@ -247,7 +247,7 @@ describe("AdminProductFormView — Avisar quando o estoque chegar a", () => {
       const rotulo = document.querySelector(`label[for="${ID}"]`);
       expect(rotulo?.textContent).toContain("Avisar quando o estoque chegar a");
       expect(secao("Códigos e câmera").textContent).toContain(
-        "Vazio usa o padrão (5). Com variações, vale para a soma.",
+        "Vazio usa o padrão (5). Com variações ativas, vale a soma do estoque delas.",
       );
     });
 

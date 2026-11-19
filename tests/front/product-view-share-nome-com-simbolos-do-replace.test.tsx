@@ -88,6 +88,8 @@ function produtoComNome(name: string): Product {
   };
 }
 
+const enderecoDoProduto = `${globalThis.location.origin}/product-detail?id=prod-101`;
+
 describe("ProductView — share com nome de produto cheio de símbolos do replace", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
@@ -157,14 +159,12 @@ describe("ProductView — share com nome de produto cheio de símbolos do replac
     const texto = await compartilhar("Bolo $& com $1 e $$");
     // O caminho do clipboard cola " - <link>" no fim (sem [link] no modelo).
     expect(texto).toBe(
-      `Bolo $& com $1 e $$ por R$ 49,90 - ${globalThis.location.href}`,
+      `Bolo $& com $1 e $$ por R$ 49,90 - ${enderecoDoProduto}`,
     );
   });
 
   it("nome que contém [preco] não é trocado de novo pela etapa seguinte", async () => {
     const texto = await compartilhar("Kit [preco]");
-    expect(texto).toBe(
-      `Kit [preco] por R$ 49,90 - ${globalThis.location.href}`,
-    );
+    expect(texto).toBe(`Kit [preco] por R$ 49,90 - ${enderecoDoProduto}`);
   });
 });

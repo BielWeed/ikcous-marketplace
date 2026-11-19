@@ -15,6 +15,7 @@ import { act, useEffect } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { concluirBuscaDeCepSemEndereco } from "./duble-busca-de-cep";
+import { comPaginacao } from "./duble-consulta-paginada";
 import { comReleituraDeEnderecos } from "./duble-releitura-de-enderecos";
 
 const mundo = vi.hoisted(() => ({
@@ -103,7 +104,7 @@ vi.mock("@/lib/supabase", () => ({
                 : [],
             error: null,
           }),
-        in: async (_coluna: string, ids: unknown) => {
+        in: comPaginacao(async (_coluna: string, ids: unknown) => {
           if (tabela === "vw_produtos_public") {
             const pedidos = Array.isArray(ids) ? ids.map(String) : [];
             return {
@@ -114,7 +115,7 @@ vi.mock("@/lib/supabase", () => ({
             };
           }
           return { data: [], error: null };
-        },
+        }),
       }),
     }),
     rpc: () => Promise.resolve({ error: null }),

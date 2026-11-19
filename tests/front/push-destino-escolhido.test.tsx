@@ -21,10 +21,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { confirmarEnvioSePerguntar } from "./confirma-envio-para-todos";
 
 const PRODUTOS = [
-  { id: "p-corrida", nome: "Tênis Corrida" },
-  { id: "p-casual", nome: "Tênis Casual" },
-  { id: "p-bota", nome: "Bota de Couro" },
-  { id: "p-camiseta", nome: "Camiseta Básica" },
+  { id: "00000000-0000-4000-8000-00000000000a", nome: "Tênis Corrida" },
+  { id: "00000000-0000-4000-8000-00000000000b", nome: "Tênis Casual" },
+  { id: "00000000-0000-4000-8000-00000000000c", nome: "Bota de Couro" },
+  { id: "00000000-0000-4000-8000-00000000000d", nome: "Camiseta Básica" },
 ];
 
 const inserts = vi.hoisted(() => ({
@@ -401,10 +401,12 @@ describe("Avisar clientes — destino escolhido por lista", () => {
       "Tênis Casual",
     ]);
 
-    await escolher(seletorDoProduto()!, "p-casual");
+    await escolher(seletorDoProduto()!, "00000000-0000-4000-8000-00000000000b");
     await enviar();
 
-    expect(urlEnviada()).toBe("/product-detail?id=p-casual");
+    expect(urlEnviada()).toBe(
+      "/product-detail?id=00000000-0000-4000-8000-00000000000b",
+    );
   });
 
   it("o filtro de produto ignora acento e caixa: 'TENIS' acha 'Tênis'", async () => {
@@ -428,7 +430,7 @@ describe("Avisar clientes — destino escolhido por lista", () => {
     await abrirTela();
     await preencherMensagem();
     await escolher(seletorDoDestino(), "product");
-    await escolher(seletorDoProduto()!, "p-bota");
+    await escolher(seletorDoProduto()!, "00000000-0000-4000-8000-00000000000c");
 
     await act(async () => {
       digitar(
@@ -440,10 +442,12 @@ describe("Avisar clientes — destino escolhido por lista", () => {
     // O escolhido não some da lista só porque o filtro não o casa: senão a
     // tela mostraria um seletor vazio enquanto o aviso sairia com o produto.
     expect([...seletorDoProduto()!.options].map((o) => o.value)).toEqual([
-      "p-bota",
+      "00000000-0000-4000-8000-00000000000c",
     ]);
     await enviar();
-    expect(urlEnviada()).toBe("/product-detail?id=p-bota");
+    expect(urlEnviada()).toBe(
+      "/product-detail?id=00000000-0000-4000-8000-00000000000c",
+    );
   });
 
   it("um caminho real no Avançado preserva query e hash no envio", async () => {
@@ -543,12 +547,14 @@ describe("Avisar clientes — destino escolhido por lista", () => {
     await abrirTela();
     await preencherMensagem();
     await escolher(seletorDoDestino(), "product");
-    await escolher(seletorDoProduto()!, "p-casual");
+    await escolher(seletorDoProduto()!, "00000000-0000-4000-8000-00000000000b");
 
     await focarESair(campoManual());
     await enviar();
 
-    expect(urlEnviada()).toBe("/product-detail?id=p-casual");
+    expect(urlEnviada()).toBe(
+      "/product-detail?id=00000000-0000-4000-8000-00000000000b",
+    );
   });
 
   it("modelo pronto depois de digitar um caminho manual: o campo esvazia e o aviso leva a URL do modelo, mesmo após focar e sair", async () => {

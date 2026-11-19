@@ -439,7 +439,15 @@ describe("Notificações v5 — funções preservadas", () => {
     expect(pagamento?.textContent).toContain(
       "marque para a cliente poder pedir devolução",
     );
-    expect(pagamento?.textContent).toContain("Entregue");
+    expect(pagamento?.textContent).toContain("Finalizado");
+  });
+
+  it("descreve o pedido do aviso de recebimento sem presumir entrega", async () => {
+    AVISOS = oitoTipos();
+    await montar();
+    const pagamento = container?.querySelector('[data-aviso="recebimento"]');
+    expect(pagamento?.textContent).toContain("Pedido #2DC8F4 finalizado");
+    expect(pagamento?.textContent).not.toMatch(/\bentregue\b/i);
   });
 
   it("mantém nomes e detalhes longos inteiros, sem truncar títulos ou ancestrais", async () => {
@@ -706,12 +714,12 @@ describe("Notificações do painel — linguagem Tinta", () => {
     ).toBeNull();
   });
 
-  it("o pagamento mostra o selo Entregue com borda verde, sem bloco pintado", async () => {
+  it("o pagamento mostra o selo Finalizado com borda verde, sem bloco pintado", async () => {
     AVISOS = oitoTipos();
     await montar();
     const pagamento = container?.querySelector('[data-aviso="recebimento"]');
     const selo = Array.from(pagamento?.querySelectorAll("span") ?? []).find(
-      (no) => no.textContent === "Entregue",
+      (no) => no.textContent === "Finalizado",
     );
     expect(selo?.className).toContain("border-border");
     expect(selo?.className).toContain("text-emerald-400");

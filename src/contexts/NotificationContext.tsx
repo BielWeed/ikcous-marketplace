@@ -207,12 +207,14 @@ export function NotificationProvider({
               .select("*")
               .eq("usuario_id", user.id)
               .order("created_at", { ascending: false })
+              .order("id", { ascending: false })
               .limit(LIMITE_DOS_AVISOS_PROPRIOS),
             supabase
               .from("notificacoes")
               .select("*")
               .is("usuario_id", null)
               .order("created_at", { ascending: false })
+              .order("id", { ascending: false })
               .limit(20),
           ]),
           PRAZO_DA_CONSULTA_DO_PAINEL_MS,
@@ -230,7 +232,9 @@ export function NotificationProvider({
           ),
         ].sort(
           (a, b) =>
-            new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+            new Date(b.created_at).getTime() -
+              new Date(a.created_at).getTime() ||
+            (a.id < b.id ? 1 : a.id > b.id ? -1 : 0),
         );
 
         const estadoLocal = lerEstadoLocalDaCampanha(user.id);

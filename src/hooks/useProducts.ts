@@ -1896,7 +1896,7 @@ export function useProducts({
     async (
       id: string,
       updates: Partial<Product>,
-      conferenciaDeEstoque?: { baseUpdatedAt?: string },
+      conferenciaDeVersao?: { baseUpdatedAt?: string },
     ) => {
       if (!isAdmin) {
         toast.error("Permissão negada");
@@ -2031,7 +2031,7 @@ export function useProducts({
           oldImages = oldProduct?.images || [];
         }
 
-        if (conferenciaDeEstoque && !conferenciaDeEstoque.baseUpdatedAt) {
+        if (conferenciaDeVersao && !conferenciaDeVersao.baseUpdatedAt) {
           throw new RecusaDoCadastroDeProduto(
             "Não consegui conferir a versão do produto. Recarregue o produto antes de salvar de novo.",
           );
@@ -2049,10 +2049,10 @@ export function useProducts({
           .is("deleted_at", null);
         // A mesma comparação atômica da fila offline. A versão vem da
         // abertura do formulário, sem Date/ISO (preserva microssegundos).
-        if (conferenciaDeEstoque) {
+        if (conferenciaDeVersao) {
           gravacao = gravacao.eq(
             "ultima_atualizacao",
-            conferenciaDeEstoque.baseUpdatedAt,
+            conferenciaDeVersao.baseUpdatedAt,
           );
         }
         const retorno = gravacao.select(`
@@ -2066,14 +2066,14 @@ export function useProducts({
         // sobrescrever.
         const { data, error } = await aguardarComPrazo(
           Promise.resolve(
-            conferenciaDeEstoque ? retorno.maybeSingle() : retorno.single(),
+            conferenciaDeVersao ? retorno.maybeSingle() : retorno.single(),
           ) as Promise<{ data: any; error: any }>,
           PRAZO_DE_GRAVAR_O_PRODUTO_MS,
           () => erroDeConsultaSemResposta(MENSAGEM_PRODUTO_EDICAO_SEM_RESPOSTA),
         );
 
         // Nenhuma linha casou: ou o produto foi excluído em outro aparelho, ou
-        // (só com conferência) o estoque mudou. `.single()` devolve isso como
+        // (só com conferência) a versão mudou. `.single()` devolve isso como
         // PGRST116; `.maybeSingle()`, como `data` nulo. Quem diz qual dos dois
         // é a releitura por id (que não enxerga excluído); se ela própria
         // falhar, nada se afirma sobre exclusão e segue a recusa de antes.
@@ -2090,10 +2090,16 @@ export function useProducts({
           if (produtoAtual === null) {
             throw new RecusaDoCadastroDeProduto(MSG_PRODUTO_EXCLUIDO);
           }
-          if (conferenciaDeEstoque && !error) {
+          if (conferenciaDeVersao && !error) {
+            const gravavaPreco =
+              dbUpdates.preco_venda !== undefined ||
+              dbUpdates.custo !== undefined ||
+              dbUpdates.preco_original !== undefined;
             throw Object.assign(
               new RecusaDoCadastroDeProduto(
-                "Este produto foi alterado em outro aparelho enquanto você editava (estoque ou fotos). Os dados foram recarregados; confira e salve de novo.",
+                gravavaPreco
+                  ? "Outra pessoa alterou este produto depois que você abriu. Recarregue e confira o preço antes de salvar."
+                  : "Este produto foi alterado em outro aparelho enquanto você editava (estoque ou fotos). Os dados foram recarregados; confira e salve de novo.",
               ),
               { produtoAtual: produtoAtual ?? null },
             );

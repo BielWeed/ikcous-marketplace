@@ -2,7 +2,7 @@
 //
 // Painel simples, onda J2 (J2-D) — Clientes e a ficha do cliente:
 //   - Clientes escreve os números em milhar pt-BR ("1.289", não "1289") e diz
-//     "Novos (30 dias)" por extenso;
+//     "Novos cadastros (30 dias)" por extenso;
 //   - a aba Carrinho da ficha não rola na lateral no celular: cada item vira
 //     um BLOCO (a tabela só é tabela a partir de `sm:`), com o botão de
 //     remover de 44px e o cabeçalho só para leitor de tela até `sm:`;
@@ -236,7 +236,7 @@ describe("Clientes e ficha do cliente — J2-D", () => {
       expect(texto).toContain("2.345");
       expect(texto).not.toMatch(/(^|\D)2345(\D|$)/);
       expect(texto).toContain("1.500");
-      expect(texto).toContain("Novos (30 dias)");
+      expect(texto).toContain("Novos cadastros (30 dias)");
       expect(texto).not.toMatch(/30d\)/i);
     });
   });

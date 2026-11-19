@@ -268,12 +268,89 @@ describe("CheckoutView (convidado) — CEP semeado do aparelho busca o endereço
         cupom: null,
         contaDoCupom: null,
         contaDosDados: null,
+        dadosDoVisitanteAlteradosEm: Date.now(),
       }),
     );
     await montar();
 
     expect(valor("guest-street")).toBe("Rua do rascunho");
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  function rascunhoSalvo() {
+    return JSON.parse(sessao.get(CHAVE_RASCUNHO) ?? "{}");
+  }
+
+  async function remontar() {
+    await act(async () => raiz.unmount());
+    raiz = createRoot(hospedeiro);
+    await montar();
+  }
+
+  it("reabrir o checkout não renova a validade da última digitação", async () => {
+    const inicio = Date.UTC(2026, 10, 19, 12);
+    const umaHora = 60 * 60 * 1000;
+    const relogio = vi.spyOn(Date, "now").mockReturnValue(inicio);
+    await montar();
+    await act(async () => digitar("checkout-name", "Nome de teste"));
+
+    relogio.mockReturnValue(inicio + umaHora);
+    await remontar();
+    expect(valor("checkout-name")).toBe("Nome de teste");
+
+    relogio.mockReturnValue(inicio + 2 * umaHora + 1);
+    await remontar();
+    expect(valor("checkout-name")).toBe("");
+  });
+
+  it("mudar um campo pessoal renova a validade de verdade", async () => {
+    const inicio = Date.UTC(2026, 10, 19, 12);
+    const umaHora = 60 * 60 * 1000;
+    const relogio = vi.spyOn(Date, "now").mockReturnValue(inicio);
+    await montar();
+    await act(async () => digitar("checkout-name", "Nome de teste"));
+    const primeiroCarimbo = rascunhoSalvo().dadosDoVisitanteAlteradosEm;
+
+    relogio.mockReturnValue(inicio + umaHora);
+    await remontar();
+    await act(async () => digitar("checkout-tel", "34988887777"));
+    expect(rascunhoSalvo().dadosDoVisitanteAlteradosEm).toBeGreaterThan(
+      primeiroCarimbo,
+    );
+
+    relogio.mockReturnValue(inicio + 2 * umaHora + 1);
+    await remontar();
+    expect(valor("checkout-name")).toBe("Nome de teste");
+    expect(valor("checkout-tel")).toBe("(34) 98888-7777");
+  });
+
+  it("CEP e observações digitados contam como edição, mas o preenchimento por busca não", async () => {
+    const inicio = Date.UTC(2026, 10, 19, 12);
+    const relogio = vi.spyOn(Date, "now").mockReturnValue(inicio);
+    await montar();
+    await act(async () => digitar("guest-cep", "01310100"));
+    expect(rascunhoSalvo().dadosDoVisitanteAlteradosEm).toBe(inicio);
+
+    relogio.mockReturnValue(inicio + 1000);
+    await responder("01310100", PAULISTA);
+    expect(rascunhoSalvo().dadosDoVisitanteAlteradosEm).toBe(inicio);
+
+    relogio.mockReturnValue(inicio + 2000);
+    await act(async () => {
+      const nota = document.getElementById(
+        "order-notes",
+      ) as HTMLTextAreaElement;
+      const setter = Object.getOwnPropertyDescriptor(
+        HTMLTextAreaElement.prototype,
+        "value",
+      )!.set!;
+      setter.call(nota, "Deixe na portaria");
+      nota.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(rascunhoSalvo()).toMatchObject({
+      notas: "Deixe na portaria",
+      dadosDoVisitanteAlteradosEm: inicio + 2000,
+    });
   });
 
   it("BORDA: CEP que ninguém acha — uma busca só, campos vazios, sem laço", async () => {

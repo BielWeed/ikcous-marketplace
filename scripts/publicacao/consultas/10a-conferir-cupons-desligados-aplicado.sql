@@ -192,7 +192,10 @@ WITH tab AS (
                                             'fdfacc20cc3bc2a691ad8961c525e5cb77071b7d5e9e590a7470e45690a2df3a',
                                            -- a sucessora da 20261208000000, a 20261397000000 (o desconto do cupom e' arredondado ao centavo), LF | CRLF
                                            'cd7865bee8797fee5575643f749b56d1e9cc8af852cd74297f9a1f065ac44097',
-                                           '139fffba24153eff45f66a2885e1eafb92bbffcdc2e6b0203c8b0448b5c267fa')
+                                           '139fffba24153eff45f66a2885e1eafb92bbffcdc2e6b0203c8b0448b5c267fa',
+                                           -- a 20261405800000 preserva o desligamento, LF | CRLF
+                                           '65ff4a8b8c319b92d1b909847159617ab774f31fd3113c252c8126dab7656e40',
+                                           '2bc9b4b9fe45396d484d759c2c05ca16c324089cb4fa6c82f4ac00cccc103864')
                                THEN '489c0cd19b3529ef2d9cf341096ee9b0048e5787ff0a2d0a918df4db580e82f3'
                                ELSE v.h END
                      FROM va v), 'AUSENTE')

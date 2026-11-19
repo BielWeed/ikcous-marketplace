@@ -22,6 +22,7 @@ import {
   ROTULO_SEM_VALOR_A_PAGAR,
   pedidoSemValorAPagar,
 } from "@/lib/forma-de-pagamento";
+import { pluralizar } from "@/lib/pluralizar";
 import { gerarUuidV4 } from "@/lib/uuid-v4";
 import { linkWhatsappDoClienteDoBalcao } from "@/lib/whatsapp-do-cliente";
 import type { Order } from "@/types";
@@ -117,7 +118,7 @@ function resumo(total: number, unidades: number, forma: string): string {
 }
 
 function pecas(quantidade: number): string {
-  return quantidade === 1 ? "1 peça" : `${quantidade} peças`;
+  return pluralizar(quantidade, "peça", "peças");
 }
 
 /** "Camiseta M" ou, com mais de uma, "2 × Camiseta M". */
@@ -391,8 +392,10 @@ export function ReciboDaVenda({
             Registrar de novo com os itens da tela
           </Button>
           <p className="pdv-muted text-center">
-            Volta ao cupom com as {pecas(divergencia.unidadesDaTela)} que
-            estavam na tela.
+            Volta ao cupom com{" "}
+            {divergencia.unidadesDaTela === 1
+              ? "a peça que estava na tela."
+              : `as ${pecas(divergencia.unidadesDaTela)} que estavam na tela.`}
           </p>
         </div>
       )}

@@ -13,6 +13,7 @@
  * (por isso o `p_order_id` sai da RESPOSTA do MP, nunca do corpo).
  */
 import { assert, assertEquals, assertStringIncludes } from "https://deno.land/std@0.177.0/testing/asserts.ts";
+import { FakeTime } from "jsr:@std/testing@1.0.21/time";
 import { handler, htmlDoAvisoDePagamentoAtrasado } from "./index.ts";
 // mp-10: prova que a porta barata do handler e `avaliarAssinatura` usam a
 // MESMA regra de parse (ver o teste "camposDaAssinatura vem do módulo
@@ -2743,14 +2744,54 @@ Deno.test("r59-f: e-mail do comprovante que demora NÃO segura a resposta ao Mer
     external_reference: UUID_PEDIDO,
   });
   const enviarPush = async (_args: unknown) => {};
-  const demorado = () => new Promise<void>((r) => setTimeout(r, 200));
+  const inicioDoEnvio = Promise.withResolvers<void>();
+  let envioIniciado = false;
+  const envio = Promise.withResolvers<void>();
+  const enviarComprovante = () => {
+    envioIniciado = true;
+    inicioDoEnvio.resolve();
+    return envio.promise;
+  };
 
-  const inicio = performance.now();
-  const resposta = await handler(req, { supabase, fetchImpl, enviarPush, enviarComprovante: demorado, tetoDoEmailMs: 30 });
-
-  assertEquals(resposta.status, 200);
-  assertEquals(performance.now() - inicio < 150, true, "o webhook esperou o e-mail sem teto");
-  await new Promise((r) => setTimeout(r, 250)); // deixa o envio lento terminar sozinho
+  // A assinatura usa Web Crypto de verdade. Espera a chamada ao e-mail, não
+  // uma volta do event loop; o relógio real só impede que o teste fique preso.
+  const agendarGuarda = globalThis.setTimeout;
+  const cancelarGuarda = globalThis.clearTimeout;
+  using relogio = new FakeTime();
+  let guarda: ReturnType<typeof setTimeout> | undefined;
+  let resposta: Response | undefined;
+  const andamento = handler(req, {
+    supabase,
+    fetchImpl,
+    enviarPush,
+    enviarComprovante,
+    tetoDoEmailMs: 30,
+  }).then((r) => {
+    resposta = r;
+  });
+  try {
+    const iniciou = await Promise.race([
+      inicioDoEnvio.promise.then(() => true),
+      andamento.then(() => false),
+      new Promise<boolean>((resolve) => {
+        guarda = agendarGuarda(() => resolve(false), 5000);
+      }),
+    ]);
+    assert(iniciou, "o webhook não iniciou o comprovante");
+    await relogio.runMicrotasks();
+    assertEquals(
+      resposta,
+      undefined,
+      "o webhook saiu antes de esperar pelo envio",
+    );
+    await relogio.tickAsync(30);
+    await relogio.runMicrotasks();
+    assertEquals(resposta?.status, 200, "o webhook esperou o e-mail sem teto");
+  } finally {
+    cancelarGuarda(guarda);
+    envio.resolve();
+    if (envioIniciado) await andamento;
+  }
 });
 
 Deno.test("resultado 'pago_apos_expirar' -> NÃO dispara o comprovante padrão, mas dispara o aviso honesto de pagamento atrasado", async () => {

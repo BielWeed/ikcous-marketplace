@@ -276,6 +276,7 @@ interface AdminAreaProps {
   ) => void;
   readonly selectedProductId: string | null;
   readonly setIsAdminDirty: (dirty: boolean) => void;
+  readonly setRascunhoDePedidoPendente?: (pendente: boolean) => void;
   readonly setBackOverride: (fn: (() => void) | null) => void;
   readonly handleAdminUserDetailBack: () => void;
   readonly backOverride: (() => void) | null;
@@ -294,6 +295,7 @@ export function AdminArea({
   onNavigate,
   selectedProductId,
   setIsAdminDirty,
+  setRascunhoDePedidoPendente,
   setBackOverride,
   handleAdminUserDetailBack,
   backOverride,
@@ -431,6 +433,7 @@ export function AdminArea({
                       active: currentView === "admin-orders",
                       selectedOrderId: selectedProductId,
                       onSetBackOverride: setBackOverride,
+                      setRascunhoDePedidoPendente,
                     }}
                   />
                 </DeferredTabContent>
@@ -539,6 +542,7 @@ export function AdminArea({
                       active: currentView === "admin-orders",
                       selectedOrderId: selectedProductId,
                       onSetBackOverride: setBackOverride,
+                      setRascunhoDePedidoPendente,
                     }}
                   />
                 </DeferredTabContent>

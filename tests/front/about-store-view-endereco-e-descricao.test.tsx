@@ -92,6 +92,16 @@ describe("AboutStoreView — o endereço da loja alimenta o mapa (20261167000000
     expect(mapaSrc(doc)).not.toContain("38500-000");
   });
 
+  it("o mapa da loja usa a política de referência do site", async () => {
+    configAtual = { ...BASE_DA_LOJA };
+    const doc = await renderizarPagina();
+    const mapa = doc.querySelector('iframe[title^="Mapa da loja"]');
+    expect(mapa?.getAttribute("src")).toBe(
+      "https://maps.google.com/maps?q=38500-000&z=15&output=embed",
+    );
+    expect(mapa?.getAttribute("referrerpolicy")).toBeNull();
+  });
+
   it("sem endereço, o mapa cai para o CEP de frete (comportamento de antes da coluna)", async () => {
     configAtual = { ...BASE_DA_LOJA };
     const doc = await renderizarPagina();

@@ -229,9 +229,21 @@ export const AdminCustomersView = memo(function AdminCustomersView({
   // e gravar por cima (tela e cache de módulo). O padrão da casa é o
   // rodadaRef do useAvisosDoLojista.ts.
   const rodadaRef = useRef(0);
+  const termoAceitoRef = useRef("");
+
+  function aceitarTermoDeBusca(termo: string) {
+    if (termo === termoAceitoRef.current) return;
+    // A busca anterior perde a vez já na edição aceita, não 320 ms depois.
+    termoAceitoRef.current = termo;
+    rodadaRef.current += 1;
+    setLoading(true);
+    setChaveComErro(null);
+    setSearchTerm(termo);
+  }
 
   const fetchCustomers = useCallback(
     async (pageToFetch: number) => {
+      if (searchTerm !== termoAceitoRef.current) return;
       const rodada = ++rodadaRef.current;
       const chaveDaRodada = JSON.stringify([
         searchTerm,
@@ -291,8 +303,8 @@ export const AdminCustomersView = memo(function AdminCustomersView({
           setChaveComErro(null);
         }
       } catch (error) {
-        console.error("Error fetching customers:", error);
         if (rodada === rodadaRef.current) {
+          console.error("Error fetching customers:", error);
           setChaveComErro(chaveDaRodada);
           toast.error("Erro ao carregar clientes");
         }
@@ -312,7 +324,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
     void fetchCustomers(page);
   }, [fetchCustomers, page]);
 
-  // "Novos (30 dias)" é medido pelo servidor com o dia de HOJE dele: com o
+  // "Novos cadastros (30 dias)" é medido pelo servidor com o dia de HOJE dele: com o
   // painel aberto de um dia para o outro, a virada (`dia` mudou) relê a página
   // atual. Em silêncio — a lista fica na tela até a resposta chegar — e dentro
   // dos mesmos 320 ms da abertura, então ficar ativa já no dia seguinte lê uma
@@ -382,7 +394,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
         subValue: "Base de Clientes",
       },
       {
-        label: "Novos (30 dias)",
+        label: "Novos cadastros (30 dias)",
         value: formatarInteiro(globalStats?.new_customers_30d),
         icon: TrendingUp,
         accent: "text-emerald-300",
@@ -543,7 +555,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
     sortField !== "total_spent" ||
     sortDirection !== "desc";
   const limparBuscaEOrdenacao = () => {
-    setSearchTerm("");
+    aceitarTermoDeBusca("");
     setSortField("total_spent");
     setSortDirection("desc");
     setPage(0);
@@ -616,7 +628,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
               onEntender={() => setShowHelpModal(true)}
               legendasDoResumo={[
                 "Total",
-                "Novos · 30d",
+                "Cadastros · 30 dias",
                 "Média/pedido",
                 "Pedidos",
               ]}
@@ -634,7 +646,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
             placeholder="Buscar cliente, telefone…"
             value={searchTerm}
             onChange={(val) => {
-              setSearchTerm(val);
+              aceitarTermoDeBusca(val);
               setPage(0);
               shouldScrollToTop.current = true;
             }}
@@ -932,10 +944,10 @@ function AjudaDaBaseClientes() {
               texto: "Base de Clientes: perfis com conta no app.",
             },
             {
-              titulo: "Novos (30 dias)",
+              titulo: "Novos cadastros (30 dias)",
               icone: TrendingUp,
               cor: "text-emerald-300",
-              texto: "Crescimento: perfis criados nos últimos 30 dias.",
+              texto: "Contas criadas no app nos últimos 30 dias.",
             },
             {
               titulo: "Valor médio por venda",

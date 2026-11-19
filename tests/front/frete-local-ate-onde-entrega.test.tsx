@@ -130,6 +130,13 @@ describe("FreteLocalBloco: até onde você entrega", () => {
     expect(opcao("Escolher CEPs")?.getAttribute("aria-checked")).toBe("false");
   });
 
+  it("não promete entrega fora da área local sem frete nacional", () => {
+    montar("", { cepDaLoja: "" });
+    expect(texto()).toContain(
+      "Fora dessa área, só há entrega se o frete nacional estiver disponível.",
+    );
+  });
+
   describe("'Perto da loja'", () => {
     it("grava os 5 primeiros números do CEP da loja, pelo campo do formulário, uma vez só", () => {
       montar("");

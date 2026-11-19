@@ -206,7 +206,6 @@ export function linhasDosProdutos(
     "Destaque",
     "Frete grátis",
     "Etiquetas",
-    "Vendidos",
     "Estoque mínimo",
     "ID do produto",
     "ID da variante",
@@ -216,7 +215,10 @@ export function linhasDosProdutos(
   return [
     cabecalho,
     ...produtos.flatMap((p) => {
-      const variantes = p.variants?.length ? p.variants : [undefined];
+      const grade = p.variants ?? [];
+      const mostrarBase =
+        grade.length === 0 || (p.stock > 0 && !grade.some((v) => v.active));
+      const variantes = mostrarBase ? [undefined, ...grade] : grade;
       return variantes.map((v) => {
         const preco = v?.priceOverride ?? p.price;
         const custo = p.costPrice;
@@ -258,7 +260,6 @@ export function linhasDosProdutos(
           p.isBestseller ? "Sim" : "Não",
           p.freeShipping ? "Sim" : "Não",
           p.tags?.join(", ") ?? "",
-          p.sold,
           p.estoqueMinimo ?? "",
           p.id,
           v?.id ?? "",

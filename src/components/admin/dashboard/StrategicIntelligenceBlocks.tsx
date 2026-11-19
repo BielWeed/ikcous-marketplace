@@ -83,7 +83,7 @@ export const StrategicIntelligenceBlocks = memo(
       <CartaoDoCrm
         id="crm-categorias"
         titulo="Vendas por categoria"
-        descricao="Desde o início da loja · com frete"
+        descricao="Vendas desde o início da loja, agrupadas pela categoria atual dos produtos."
         className="min-h-[282px]"
         acao={
           <ExplicacaoDoRelatorio titulo="Vendas por categoria">
@@ -91,6 +91,11 @@ export const StrategicIntelligenceBlocks = memo(
               Total desta lista = a receita total da loja (rateada por
               categoria, já líquida de desconto e com frete). Só fica abaixo se
               algum pedido tiver todos os produtos excluídos do catálogo.
+            </p>
+            <p>
+              A média usa só o valor desta categoria e só os pedidos que têm
+              itens dela. Um pedido com itens de várias categorias aparece em
+              cada uma.
             </p>
           </ExplicacaoDoRelatorio>
         }
@@ -179,7 +184,7 @@ export const StrategicIntelligenceBlocks = memo(
                         !!entry.avg_ticket && (
                           <>
                             {" "}
-                            · Valor médio por venda:{" "}
+                            · Valor médio desta categoria por pedido:{" "}
                             {formatCurrency(entry.avg_ticket)}
                           </>
                         )}

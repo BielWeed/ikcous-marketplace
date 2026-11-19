@@ -113,7 +113,7 @@ function linhasDaLista(): HTMLLIElement[] {
 }
 
 describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () => {
-  it("cadastrar nome e logo é secundário: só Preparar pedidos pode ser branco", async () => {
+  it("cadastrar nome e logo é secundário: só Ver pedidos em aberto pode ser branco", async () => {
     await montar({
       somenteBoasVindas: true,
       config: { ...CONFIG_PRONTA, storeName: "", logoUrl: "" },
@@ -135,6 +135,23 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
       raiz.unmount();
     });
     hospedeiro.remove();
+  });
+
+  it("mostra só os meios ativos na entrega e abre Formas de pagamento", async () => {
+    const onNavigate = vi.fn();
+    await montar({ formasNaEntrega: ["pix", "card"], onNavigate });
+    await abrirALista();
+
+    const linha = linhasDaLista().find((item) =>
+      item.textContent?.includes("Ativos na entrega:"),
+    );
+    expect(linha?.textContent).toContain("Ativos na entrega: Pix, Cartão");
+    expect(linha?.textContent).not.toContain("Dinheiro");
+    expect(linha?.textContent).toContain("Sem maquininha?");
+    const atalho = botaoComTexto("Formas de pagamento");
+    expect(atalho).toBeDefined();
+    await clicar(atalho!);
+    expect(onNavigate).toHaveBeenCalledWith("admin-settings", "pagamentos");
   });
 
   // ── O card de estoque mostra o número e navega para os avisos ──

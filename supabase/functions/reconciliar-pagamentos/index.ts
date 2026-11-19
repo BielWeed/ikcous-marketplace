@@ -78,6 +78,7 @@ import {
   parcelasDaOrder,
   recusaLiberaAVaga,
   resolverSentinela,
+  TEMPO_LIMITE_MS,
   tipoDoPagamentoDaOrder,
   vagaEmVerificacao,
 } from "../_shared/mercadopago.ts";
@@ -346,6 +347,7 @@ async function adotarCartaoCapturadoDoSentinela(args: {
   token: string;
   pedidoId: string;
   sentinela: string;
+  registrarConsulta: (ok: boolean) => void;
   fetchImpl?: typeof fetch;
   enviarPushContado?: typeof dispararPushContadoReal;
 }): Promise<string | null> {
@@ -362,6 +364,7 @@ async function adotarCartaoCapturadoDoSentinela(args: {
     desde: String((pedido as Record<string, unknown> | null)?.created_at ?? ""),
     fetchImpl: args.fetchImpl,
   });
+  args.registrarConsulta(busca.ok);
   if (!busca.ok) return null;
 
   const resolucao = resolverSentinela(busca.orders, limiteInferiorDoSentinela(args.sentinela));
@@ -383,6 +386,7 @@ async function adotarCartaoCapturadoDoSentinela(args: {
     fetchImpl: args.fetchImpl,
     corpoNoLog: false,
   });
+  args.registrarConsulta(reconsulta.ok);
   if (!reconsulta.ok) return null;
   const orderReconsultada = reconsulta.order as Record<string, unknown>;
   const statusReconsultado = mapearStatusOrder(
@@ -478,123 +482,70 @@ async function avisarDevolucoesQueNaoCabem(args: {
   }
 }
 
-/**
- * Orçamento de tempo do laço de CONSULTA ao MP, por ciclo (EST-EDGE-DIN-2,
- * 16/10/2026). A RPC entrega até 100 cobranças e o laço consulta uma por vez,
- * cada uma com até 15 s de teto: todas expirando seria 1.500 s, muito acima
- * do limite de execução da Edge Function (150 s no plano gratuito, 400 s no
- * pago). O processo morria no meio, SEM carimbar o rodízio nem chegar aos
- * reembolsos, e o ciclo seguinte repetia as mesmas cobranças. Passados ~100 s
- * do início, o laço para de abrir consultas NOVAS — a consulta em curso
- * termina — e o handler segue para o carimbo, os avisos e os reembolsos, com
- * folga para o que vem depois.
- */
-export const ORCAMENTO_DO_CICLO_MS = 100_000;
+// O pg_net já espera no máximo 120 s (20260808000100_reconciliacao.sql),
+// menos que os 150 s do limite de resposta do Supabase, em qualquer plano.
+// Os 115 s são o orçamento de admissão dos laços, descontados 5 s para
+// arranque/resposta. Os limites de início são 45 s para pagamentos e 70 s
+// para estornos; esses limites não cancelam itens já em andamento.
+// Os 30 s reservados para contestações servem só para a etapa final começar.
+// Ela reconsulta até 10 pedidos em sequência, com até dois GETs ao MP
+// de 15 s cada por pedido (order + caso), sem teto próprio de término.
+// Assim, o ciclo pode durar além da espera do pg_net.
+// https://supabase.com/docs/guides/functions/limits
+const ORCAMENTO_TOTAL_MS = 120_000 - 5_000;
+const RESERVA_DAS_CONTESTACOES_MS = 2 * TEMPO_LIMITE_MS;
+const LIMITE_PARA_INICIAR_ESTORNO_MS = ORCAMENTO_TOTAL_MS - RESERVA_DAS_CONTESTACOES_MS - TEMPO_LIMITE_MS;
+export const ORCAMENTO_DO_CICLO_MS = LIMITE_PARA_INICIAR_ESTORNO_MS - TETO_DO_PASSO_MS - TEMPO_LIMITE_MS;
 
-/**
- * Mesma costura `handler(req, deps = {})` da Task 4
- * (`webhook-mercadopago/index.ts`): em produção o `serve()` lá embaixo chama
- * `handler(req)` com um único argumento; os testes injetam `supabase` e
- * `fetchImpl` para não tocar rede nem banco — o que importa aqui, porque a
- * RPC `pagamentos_a_reconciliar` (Task 5) ainda não foi aplicada em produção.
- */
-async function handler(
-  req: Request,
-  deps: {
-    supabase?: ReturnType<typeof createClient>;
-    fetchImpl?: typeof fetch;
-    enviarComprovante?: DepsDosEfeitos["enviarComprovante"];
-    enviarAvisoAtrasado?: DepsDosEfeitos["enviarAvisoAtrasado"];
-    enviarPush?: DepsDosEfeitos["enviarPush"];
-    // O push contado do aviso ao admin uma vez (contestação presa).
-    enviarPushContado?: typeof dispararPushContadoReal;
-    // Fixa o seller ID (X-Caller-Id) no teste; ausente: `GET /users/me` do próprio token.
-    vendedorId?: string | null;
-    // Teto de espera do passo do aviso de cancelamento (opção da chamada, como
-    // `tetoDoPushMs`): o teste o encurta; em produção vale `TETO_DO_PASSO_MS`.
-    tetoDosCancelamentosMs?: number;
-    // Teto de espera pelo e-mail ao cliente (o teste o encurta); em produção
-    // vale `TETO_DO_EMAIL_MS`: o SMTP lento não pode prender a fila nem os estornos.
-    tetoDoEmailMs?: number;
-    // Relógio e orçamento do laço de consulta (EST-EDGE-DIN-2): o teste os
-    // injeta para não esperar 100 s; em produção valem `Date.now` e
-    // `ORCAMENTO_DO_CICLO_MS`.
-    agora?: () => number;
-    orcamentoDoCicloMs?: number;
-  } = {},
-): Promise<Response> {
-  // Sem CORS aqui: quem chama é o `pg_net` (agendado pela migration
-  // `20260808000100_reconciliacao.sql`), que não faz preflight — nenhum
-  // navegador chama esta função. O `corsHeaders` de `_shared/webpush.ts`
-  // também não liberaria `x-reconciliacao-secret`, então um ramo `OPTIONS`
-  // aqui afirmaria uma consistência que nem existiria de verdade.
+type DepsDaReconciliacao = {
+  supabase?: ReturnType<typeof createClient>;
+  fetchImpl?: typeof fetch;
+  enviarComprovante?: DepsDosEfeitos["enviarComprovante"];
+  enviarAvisoAtrasado?: DepsDosEfeitos["enviarAvisoAtrasado"];
+  enviarPush?: DepsDosEfeitos["enviarPush"];
+  // O push contado do aviso ao admin uma vez (contestação presa).
+  enviarPushContado?: typeof dispararPushContadoReal;
+  // Fixa o seller ID (X-Caller-Id) no teste; ausente: `GET /users/me` do próprio token.
+  vendedorId?: string | null;
+  // Teto de espera do passo do aviso de cancelamento (opção da chamada, como
+  // `tetoDoPushMs`): o teste o encurta; em produção vale `TETO_DO_PASSO_MS`.
+  tetoDosCancelamentosMs?: number;
+  // Teto de espera pelo e-mail ao cliente (o teste o encurta); em produção
+  // vale `TETO_DO_EMAIL_MS`: o SMTP lento não pode prender a fila nem os estornos.
+  tetoDoEmailMs?: number;
+  // Relógio do ciclo e orçamento do laço de pagamentos (EST-EDGE-DIN-2):
+  // os testes os injetam para não esperar pelo tempo real.
+  agora?: () => number;
+  orcamentoDoCicloMs?: number;
+};
 
-  // Ordem que importa: primeiro confere se o ambiente TEM o segredo — sem
-  // isso, um deploy que esqueceu de configurar `RECONCILIACAO_SECRET`
-  // compararia contra "" e QUALQUER header vazio "passaria direto". Só depois
-  // compara em tempo constante. Assim um ambiente mal configurado nunca vira
-  // "passa direto" nem um 401 confuso de diagnosticar.
-  const segredoEsperado = Deno.env.get("RECONCILIACAO_SECRET");
-  if (!segredoEsperado) {
-    console.error("reconciliar-pagamentos: RECONCILIACAO_SECRET ausente no ambiente");
-    return json({ error: "Ambiente mal configurado." }, 503);
-  }
+type ResumoDaEtapa = { ok: boolean; erro?: string; processados: number; falhas: number };
 
-  const segredoRecebido = req.headers.get("x-reconciliacao-secret") ?? "";
-  if (!segredoConfere(segredoEsperado, segredoRecebido)) {
-    console.warn("reconciliar-pagamentos: segredo inválido");
-    return json({ error: "Não autorizado." }, 401);
-  }
+function resumirEtapa(processados: number, falhas: number, erro?: string): ResumoDaEtapa {
+  if (erro) return { ok: false, erro, processados, falhas: Math.max(1, falhas) };
+  return { ok: falhas === 0, processados, falhas };
+}
 
-  // EST-EDGE-DIN-2: o relógio do ciclo corre desde aqui — resolver credencial
-  // e buscar a fila também gastam o limite de execução da função.
-  const agora = deps.agora ?? Date.now;
-  const orcamentoDoCicloMs = deps.orcamentoDoCicloMs ?? ORCAMENTO_DO_CICLO_MS;
-  const inicioDoCiclo = agora();
-
-  const supabase =
-    deps.supabase ??
-    createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      readKey("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY"),
-    );
-
-  // Tarefa mp-2 (15/09/2026): de QUEM é a chave que este cron usa para
-  // perguntar ao MP — a do LOJISTA (cadastrada na tela de Ajustes, guardada
-  // cifrada em app_settings) ou, só quando não existe cadastro nenhum, o
-  // MP_ACCESS_TOKEN da plataforma. UMA resolução por ciclo, aqui fora do
-  // laço: é a mesma loja para todos os candidatos (app único, banco por
-  // cliente), e resolver por candidato seria uma leitura de app_settings por
-  // pedido sem mudar resposta nenhuma.
-  const credenciaisMp = await resolverCredenciaisMp(supabase);
-  if (!credenciaisMp.token) {
-    // Log só com origem e motivo — token nenhum, de ninguém, entra aqui. O
-    // ciclo NÃO aborta, e a resposta continua contando tudo: cada candidato
-    // de pagamento vira `falhas++` e cada linha da fila de estornos (mais
-    // abaixo) vira `estornos.falhos++` — o rótulo honesto de "não deu para
-    // verificar", nunca `ignorados`, e nunca uma chamada ao MP sem chave.
-    console.error(
-      `reconciliar-pagamentos: sem credencial do Mercado Pago (origem: ${credenciaisMp.origem}, motivo: ${credenciaisMp.motivo ?? "sem_token"})`,
-    );
-  }
-
-  // Em try: uma REJEIÇÃO (rede, cliente mal configurado) não pode escapar do
-  // handler inteiro — o `webhook-mercadopago` envolve a chamada equivalente
-  // pelo mesmo motivo.
-  let candidatos: Array<{ order_id: string; gateway_payment_id: string }> | null;
-  try {
-    const { data, error: erroCandidatos } = await supabase.rpc("pagamentos_a_reconciliar");
-    if (erroCandidatos) throw erroCandidatos;
-    candidatos = data;
-  } catch (erro) {
-    console.error("reconciliar-pagamentos: pagamentos_a_reconciliar falhou", erro);
-    return json({ error: "Erro ao buscar candidatos." }, 500);
-  }
+async function reconciliarFilaDePagamentos(
+  supabase: ReturnType<typeof createClient>,
+  mpToken: string | null,
+  deps: DepsDaReconciliacao,
+  tempoDecorrido: () => number,
+  orcamentoDoCicloMs: number,
+) {
+  const { data: candidatos, error: erroCandidatos } = await supabase.rpc("pagamentos_a_reconciliar");
+  if (erroCandidatos) throw erroCandidatos;
 
   let verificados = 0;
   let confirmados = 0;
   let ignorados = 0;
   let falhas = 0;
+  let consultasTentadas = 0;
+  let consultasBemSucedidas = 0;
+  const registrarConsulta = (ok: boolean) => {
+    consultasTentadas++;
+    if (ok) consultasBemSucedidas++;
+  };
   // Fase 3.5 (cartão): quantos dos `ignorados` foram recusas de cartão cuja
   // vaga a reconciliação LIBEROU (a RPC devolveu true) — SUBCONJUNTO de
   // `ignorados`, informativo: a invariante lá embaixo não muda.
@@ -616,12 +567,12 @@ async function handler(
   // fora para sempre. A invariante confirmados + ignorados + falhas ===
   // verificados continua valendo (ver o fim da função).
   let adiadosPorTempo = 0;
-  const filaDoCiclo = candidatos ?? [];
+  const filaDoCiclo: Array<{ order_id: string; gateway_payment_id: string }> = candidatos ?? [];
   for (const [posicaoNaFila, candidatoDaFila] of filaDoCiclo.entries()) {
     // Ao menos UMA cobrança por ciclo, mesmo com o orçamento já gasto antes
     // do laço (RPC ou cofre lentos): sem isso um ciclo que sempre estourasse
     // antes de começar nunca carimbaria nada e repetiria a mesma fila.
-    if (posicaoNaFila > 0 && agora() - inicioDoCiclo >= orcamentoDoCicloMs) {
+    if (posicaoNaFila > 0 && tempoDecorrido() >= orcamentoDoCicloMs) {
       adiadosPorTempo = filaDoCiclo.length - posicaoNaFila;
       console.warn(
         `reconciliar-pagamentos: orçamento de tempo do ciclo esgotado (${orcamentoDoCicloMs} ms) — ${adiadosPorTempo} de ${filaDoCiclo.length} cobranças ficam para o próximo ciclo`,
@@ -638,7 +589,6 @@ async function handler(
     // mesmos de fora (D3).
     visitados.push(candidatoDaFila.order_id);
     try {
-      const mpToken = credenciaisMp.token;
       if (!mpToken) {
         // Falha FECHADA (tarefa mp-2): com chave do lojista cadastrada e
         // ilegível, consultar o MP com a chave da PLATAFORMA devolveria 404
@@ -722,6 +672,7 @@ async function handler(
           token: mpToken,
           pedidoId: candidato.order_id,
           sentinela: candidato.gateway_payment_id,
+          registrarConsulta,
           fetchImpl: deps.fetchImpl,
           enviarPushContado: deps.enviarPushContado,
         });
@@ -742,6 +693,7 @@ async function handler(
           fetchImpl: deps.fetchImpl,
         });
 
+        registrarConsulta(consultaClassica.ok);
         if (!consultaClassica.ok) {
           console.warn(
             "reconciliar-pagamentos: consultarPagamento falhou (candidato legado)",
@@ -773,6 +725,7 @@ async function handler(
           corpoNoLog: false,
         });
 
+        registrarConsulta(consultaOrder.ok);
         if (!consultaOrder.ok) {
           console.warn(
             "reconciliar-pagamentos: consultarOrder falhou",
@@ -1179,6 +1132,88 @@ async function handler(
     }
   }
 
+  return {
+    verificados, confirmados, ignorados, falhas, cobrancasLiberadas, adiadosPorTempo,
+    todasConsultasFalharam: consultasTentadas > 0 && consultasBemSucedidas === 0,
+  };
+}
+
+/**
+ * O cron e os testes usam o mesmo handler; apenas os testes injetam banco,
+ * gateway e relógio para não tocar rede nem esperar pelo relógio real.
+ */
+async function handler(req: Request, deps: DepsDaReconciliacao = {}): Promise<Response> {
+  // Sem CORS aqui: quem chama é o `pg_net` (agendado pela migration
+  // `20260808000100_reconciliacao.sql`), que não faz preflight — nenhum
+  // navegador chama esta função. O `corsHeaders` de `_shared/webpush.ts`
+  // também não liberaria `x-reconciliacao-secret`, então um ramo `OPTIONS`
+  // aqui afirmaria uma consistência que nem existiria de verdade.
+
+  // Ordem que importa: primeiro confere se o ambiente TEM o segredo — sem
+  // isso, um deploy que esqueceu de configurar `RECONCILIACAO_SECRET`
+  // compararia contra "" e QUALQUER header vazio "passaria direto". Só depois
+  // compara em tempo constante. Assim um ambiente mal configurado nunca vira
+  // "passa direto" nem um 401 confuso de diagnosticar.
+  const segredoEsperado = Deno.env.get("RECONCILIACAO_SECRET");
+  if (!segredoEsperado) {
+    console.error("reconciliar-pagamentos: RECONCILIACAO_SECRET ausente no ambiente");
+    return json({ error: "Ambiente mal configurado." }, 503);
+  }
+
+  const segredoRecebido = req.headers.get("x-reconciliacao-secret") ?? "";
+  if (!segredoConfere(segredoEsperado, segredoRecebido)) {
+    console.warn("reconciliar-pagamentos: segredo inválido");
+    return json({ error: "Não autorizado." }, 401);
+  }
+
+  // EST-EDGE-DIN-2: o relógio do ciclo corre desde aqui — resolver credencial
+  // e buscar a fila também gastam o limite de execução da função.
+  const agora = deps.agora ?? Date.now;
+  const orcamentoDoCicloMs = deps.orcamentoDoCicloMs ?? ORCAMENTO_DO_CICLO_MS;
+  const inicioDoCiclo = agora();
+
+  const supabase =
+    deps.supabase ??
+    createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      readKey("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY"),
+    );
+
+  // Tarefa mp-2 (15/09/2026): de QUEM é a chave que este cron usa para
+  // perguntar ao MP — a do LOJISTA (cadastrada na tela de Ajustes, guardada
+  // cifrada em app_settings) ou, só quando não existe cadastro nenhum, o
+  // MP_ACCESS_TOKEN da plataforma. UMA resolução por ciclo, aqui fora do
+  // laço: é a mesma loja para todos os candidatos (app único, banco por
+  // cliente), e resolver por candidato seria uma leitura de app_settings por
+  // pedido sem mudar resposta nenhuma.
+  const tempoDecorrido = () => agora() - inicioDoCiclo;
+  let tokenMp: string | null = null;
+  try {
+    const credenciaisMp = await resolverCredenciaisMp(supabase);
+    tokenMp = credenciaisMp.token;
+    if (!tokenMp) {
+      console.error(
+        `reconciliar-pagamentos: sem credencial do Mercado Pago (origem: ${credenciaisMp.origem}, motivo: ${credenciaisMp.motivo ?? "sem_token"})`,
+      );
+    }
+  } catch {
+    console.error("reconciliar-pagamentos: resolução da credencial do Mercado Pago falhou");
+  }
+  const erroDeCredencial = tokenMp ? undefined : "Credencial do Mercado Pago indisponível.";
+
+  let pagamentos = {
+    verificados: 0, confirmados: 0, ignorados: 0, falhas: 0,
+    cobrancasLiberadas: 0, adiadosPorTempo: 0, todasConsultasFalharam: false,
+  };
+  let erroDaFilaDePagamentos: string | undefined;
+  try {
+    pagamentos = await reconciliarFilaDePagamentos(supabase, tokenMp, deps, tempoDecorrido, orcamentoDoCicloMs);
+  } catch (erro) {
+    console.error("reconciliar-pagamentos: pagamentos_a_reconciliar falhou", erro);
+    // Preserva o 500, mas só DEPOIS que as outras filas tiverem a sua vez.
+    erroDaFilaDePagamentos = "Erro ao buscar candidatos.";
+  }
+
   // ─── PASSO NOVO (14/10/2026): avisa o lojista que o CLIENTE cancelou um pedido
   // pago. ANTES do passo do estorno, de propósito: o estorno automático vira o
   // pedido para 'estornado' (o módulo aceita os dois, mas assim o texto sai
@@ -1196,6 +1231,7 @@ async function handler(
   // (o passo segue em segundo plano; a reserva do aviso expira em 2 min) e o
   // ciclo vai direto aos estornos.
   let cancelamentos: ResumoDosCancelamentos = { candidatos: 0, avisados: 0, ignorados: 0, falhas: 0 };
+  let erroDosCancelamentos: string | undefined;
   try {
     const resumoDoPasso = await comTempoLimite(avisarCancelamentosDoCliente({
       supabase,
@@ -1211,8 +1247,12 @@ async function handler(
       rotulo: "reconciliar-pagamentos",
     }), deps.tetoDosCancelamentosMs ?? TETO_DO_PASSO_MS);
     if (resumoDoPasso) cancelamentos = resumoDoPasso;
-    else console.warn("reconciliar-pagamentos: aviso de cancelamento do cliente passou do teto; segue para os estornos");
+    else {
+      erroDosCancelamentos = "Tempo de espera dos avisos de cancelamento esgotado.";
+      console.warn("reconciliar-pagamentos: aviso de cancelamento do cliente passou do teto; segue para os estornos");
+    }
   } catch (erro) {
+    erroDosCancelamentos = "Erro ao processar avisos de cancelamento.";
     console.error("reconciliar-pagamentos: aviso de cancelamento do cliente falhou (não fatal)", erro);
   }
 
@@ -1226,6 +1266,8 @@ async function handler(
   let refundsConcluidos = 0;
   let refundsAdiados = 0;
   let refundsFalhos = 0;
+  let estornosAdiadosPorTempo = 0;
+  let erroDosEstornos: string | undefined;
 
   try {
     // Janela de 2 minutos (brief da T4): evita disputar com a edge do
@@ -1257,7 +1299,7 @@ async function handler(
     // MESMA credencial resolvida lá em cima (tarefa mp-2): o estorno sai da
     // conta que recebeu — devolver dinheiro pela conta da plataforma tiraria
     // de quem NÃO vendeu, e por isso aqui também não há reserva de token.
-    const mpToken = credenciaisMp.token ?? "";
+    const mpToken = tokenMp ?? "";
     // Mesmo timeout de 15s de toda chamada ao MP (Restrições globais) — o
     // `buscar` injetado pelos testes (`deps.fetchImpl`) nunca vê o `fetch`
     // cru por fora deste envelope, igual à edge do clique (T3).
@@ -1293,7 +1335,14 @@ async function handler(
         buscar: deps.fetchImpl ?? fetch,
       });
 
-    for (const refund of refundsPendentes ?? []) {
+    const filaDeEstornos = refundsPendentes ?? [];
+    for (const refund of filaDeEstornos) {
+      if (tempoDecorrido() >= LIMITE_PARA_INICIAR_ESTORNO_MS) {
+        // Antes de ler, marcar ou gastar tentativa da próxima linha. A
+        // anterior já teve o desfecho gravado, como no ciclo sem limite.
+        estornosAdiadosPorTempo = filaDeEstornos.length - refundsVistos;
+        break;
+      }
       refundsVistos++;
       // Falha FECHADA também na fila de estornos (tarefa mp-2), pelo MESMO
       // motivo do laço de pagamentos — e com um preço a mais aqui: sair com
@@ -1585,6 +1634,7 @@ async function handler(
       }
     }
   } catch (erro) {
+    erroDosEstornos = "Erro ao processar fila de estornos.";
     console.error("reconciliar-pagamentos: varredura de devoluções pendentes falhou", erro);
   }
 
@@ -1596,11 +1646,12 @@ async function handler(
   // Sem token (credencial do lojista ilegível) não consulta o MP com a chave
   // errada — a mesma falha FECHADA dos dois passos anteriores.
   let contestacoes: ResumoDaReconsulta = { vistas: 0, reconsultadas: 0, emAberto: 0, resolvidasAntes: 0, conservadas: 0, falhas: 0 };
-  if (credenciaisMp.token) {
+  let erroDasContestacoes: string | undefined;
+  if (tokenMp) {
     try {
       contestacoes = await reconsultarContestacoesPresas({
         supabase,
-        token: credenciaisMp.token,
+        token: tokenMp,
         vendedorId: deps.vendedorId,
         fetchImpl: deps.fetchImpl,
         avisar: (chave, aviso) =>
@@ -1615,15 +1666,11 @@ async function handler(
         rotulo: "reconciliar-pagamentos",
       });
     } catch (erro) {
+      erroDasContestacoes = "Erro ao reconsultar contestações.";
       console.error("reconciliar-pagamentos: reconsulta de contestações presas falhou", erro);
     }
   }
 
-  // Contagem verdadeira: responder sucesso sem verificar nada é como este
-  // projeto passou meses achando que o push funcionava (#80). `ok` continua
-  // `true` mesmo com falhas — decisão da sessão principal, pendência
-  // separada desta rodada.
-  //
   // INVARIANTE (não quebrar): confirmados + ignorados + falhas === verificados.
   // Todo `continue` e todo fim de iteração do loop acima incrementa
   // exatamente um dos três — inclusive o status que o MP devolve fora do
@@ -1635,15 +1682,30 @@ async function handler(
   // candidato "sumiria" do total. `adiadosPorTempo` (EST-EDGE-DIN-2) é o que
   // o laço NEM ABRIU por falta de orçamento: fora de `verificados`, e
   // verificados + adiadosPorTempo === o tamanho da fila entregue pela RPC.
+  const { todasConsultasFalharam, ...contagensDePagamento } = pagamentos;
+  const etapas = {
+    pagamentos: resumirEtapa(
+      pagamentos.verificados, pagamentos.falhas,
+      erroDaFilaDePagamentos ?? erroDeCredencial ??
+        (todasConsultasFalharam ? "Todas as consultas de pagamentos ao Mercado Pago falharam." : undefined),
+    ),
+    cancelamentos: resumirEtapa(cancelamentos.candidatos, cancelamentos.falhas, erroDosCancelamentos),
+    estornos: resumirEtapa(refundsVistos, refundsFalhos, erroDosEstornos ?? erroDeCredencial),
+    contestacoes: resumirEtapa(contestacoes.vistas, contestacoes.falhas, erroDasContestacoes ?? erroDeCredencial),
+  };
+  const degradado = Object.values(etapas).some((etapa) => !etapa.ok);
+  // Fila ilegível, etapa não executada ou trabalho adiado não é fila vazia.
+  const filaVazia = !degradado && Object.values(etapas).every((etapa) => etapa.processados === 0) &&
+    pagamentos.adiadosPorTempo === 0 && estornosAdiadosPorTempo === 0;
   return json(
     {
-      ok: true,
-      verificados,
-      confirmados,
-      ignorados,
-      falhas,
-      cobrancasLiberadas,
-      adiadosPorTempo,
+      ok: !erroDaFilaDePagamentos,
+      ...(erroDaFilaDePagamentos ? { error: erroDaFilaDePagamentos } : {}),
+      degradado,
+      fila_vazia: filaVazia,
+      etapas,
+      ...contagensDePagamento,
+      estornosAdiadosPorTempo,
       estornos: {
         vistos: refundsVistos,
         concluidos: refundsConcluidos,
@@ -1653,7 +1715,7 @@ async function handler(
       contestacoes,
       cancelamentos,
     },
-    200,
+    erroDaFilaDePagamentos ? 500 : 200,
   );
 }
 

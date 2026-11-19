@@ -74,6 +74,7 @@ const CELULAR_ABA_VISAO = [
   "text-zinc-400",
   "flex flex-wrap items-baseline gap-x-1 text-zinc-400",
   "whitespace-nowrap",
+  "text-zinc-400", // Legenda de Contas lançadas a receber (r217-u).
   "sr-only",
   "text-xs text-zinc-400",
   "flex flex-col gap-3.5",
@@ -186,7 +187,7 @@ const ESTRUTURA_ABA_VISAO = {
     dt: 3,
     h2: 1,
     li: 2,
-    p: 8,
+    p: 9, // Inclui a legenda de Contas lançadas a receber (r217-u).
     section: 3,
     span: 12,
     ul: 2,
@@ -328,7 +329,7 @@ const literaisComToken = (fonte: string, token: string) =>
   literaisDeClasse(fonte).filter((l) => l.split(/\s+/).includes(token));
 
 describe("P79 -- celular byte a byte igual, só tokens de computador acrescentados", () => {
-  it("AbaVisao: tudo que vale abaixo de 1024 px é o da base 1555c0d30", () => {
+  it("AbaVisao: classes abaixo de 1024 px preservam a base e incluem a legenda de contas a receber", () => {
     expect(celularDoArquivo(FONTE_VISAO)).toEqual(CELULAR_ABA_VISAO);
   });
 
@@ -364,7 +365,7 @@ describe("P79 -- celular byte a byte igual, só tokens de computador acrescentad
     expect([...noCaixa].sort()).toEqual([...NO_BOTAO_FECHAR].sort());
   });
 
-  it("nenhum elemento e nenhuma frase nova: as tags e os textos fixos do JSX são os da base", () => {
+  it("tags e textos fixos do JSX preservam a base com a legenda de contas a receber", () => {
     expect(estruturaDoJsx(FONTE_VISAO)).toEqual(ESTRUTURA_ABA_VISAO);
     expect(estruturaDoJsx(FONTE_CAIXA)).toEqual(ESTRUTURA_CAIXA_DE_HOJE);
     // controle: um elemento a mais derruba a prova.
@@ -691,7 +692,7 @@ describe("P79 -- os seletores de coluna acertam o filho certo da raiz", () => {
       "Caixa",
       "Saldo total",
       "Movimentos do período",
-      "div", // A pagar / A receber
+      "div", // A pagar / Contas lançadas a receber
       "Saldo por conta",
       "Fluxo de caixa · últimos 30 dias",
       "div", // Recebimentos por forma / App x loja

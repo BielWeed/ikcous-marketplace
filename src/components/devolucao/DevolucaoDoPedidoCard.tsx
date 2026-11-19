@@ -393,14 +393,21 @@ export function DevolucaoDoPedidoCard({
       <dl className="mt-4 space-y-1 border-t border-dashed border-zinc-200 pt-3 text-[13px]">
         {atual.itens.map((item) => (
           <div key={item.id} className="flex justify-between gap-3">
-            <dt className="line-clamp-2 min-w-0 break-words text-zinc-600">
-              {item.quantidade}× {item.product_name || "Produto"}
-              {item.variant_id && rotulosDasVariacoes[item.variant_id] && (
-                <span
-                  data-testid="variacao-do-item-devolvido"
-                  className="block break-words text-xs text-zinc-500"
-                >
-                  {rotulosDasVariacoes[item.variant_id]}
+            <dt className="min-w-0 break-words text-zinc-600">
+              <span className="line-clamp-2">
+                {item.quantidade}× {item.product_name || "Produto"}
+                {item.variant_id && rotulosDasVariacoes[item.variant_id] && (
+                  <span
+                    data-testid="variacao-do-item-devolvido"
+                    className="block break-words text-xs text-zinc-500"
+                  >
+                    {rotulosDasVariacoes[item.variant_id]}
+                  </span>
+                )}
+              </span>
+              {item.condicao === "ausente" && (
+                <span className="block text-xs text-zinc-500">
+                  Não recebido pela loja
                 </span>
               )}
             </dt>

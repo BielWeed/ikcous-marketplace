@@ -128,18 +128,17 @@ Deno.test("3996: sem BEGIN/COMMIT, pre-voo antes do CREATE, hashes e fotografia 
   );
 });
 
-Deno.test("3996: a vigente e' a ultima redefinicao de fin_dre da arvore; db-apply exige as guardas; a lista das sucessoras da 99 fecha", () => {
+Deno.test("3996: cadeia de redefinicoes de fin_dre, guardas do db-apply e sucessoras da 99", () => {
   const fontes = [...Deno.readDirSync(dir)]
     .map((e) => e.name)
     .filter((n) => /^\d{14}_.*\.sql$/.test(n))
     .sort()
     .filter((n) => definicao(ler(`supabase/migrations/${n}`)));
-  assert.equal(
-    fontes.at(-1),
+  assert.deepEqual(fontes.slice(-3), [
+    nome382,
     nome,
-    "outra migration redefine fin_dre depois da 3996",
-  );
-  assert.equal(fontes.at(-2), nome382, "a 3996 sucede a 382 direto");
+    "20261405900000_o_custo_do_cancelamento_fica_no_mes_da_volta.sql",
+  ]);
   const { VERIFICACOES, avaliarChecagem } = require("../scripts/db-apply.cjs");
   // eslint-disable-next-line security/detect-object-injection -- Nome literal desta migration, nunca entrada externa.
   const checagem = VERIFICACOES[nome];
@@ -248,4 +247,52 @@ Deno.test("3996: a 8e, a 45a e a 87a aceitam o corpo novo; as consultas 122a/122
       "rodar-isolado.cjs tests/banco/o-resultado-credita-o-custo-da-devolucao-de-outro-mes-viva.cjs",
     ),
   );
+});
+
+Deno.test("4059: a retirada do custo é reversível e as duas consultas medem os corpos certos", () => {
+  const arquivo =
+    "20261405900000_o_custo_do_cancelamento_fica_no_mes_da_volta.sql";
+  const migration = ler(`supabase/migrations/${arquivo}`);
+  const rollback = ler(`supabase/migrations/rollback-manual-${arquivo}`);
+  const novo = "a27c9649621b3ac1502f458576120259";
+  assert.equal(definicao(rollback), definicao(sql));
+  assert.equal(md5(corpo(rollback)), H_NOVO);
+  assert.equal(md5(corpo(migration)), novo);
+  assert.equal(
+    definicao(migration).split("AS $$")[0],
+    definicao(sql).split("AS $$")[0],
+  );
+  for (const texto of [migration, rollback]) {
+    assert.equal(texto.match(/^CREATE OR REPLACE FUNCTION/gm)?.length, 1);
+    assert.doesNotMatch(
+      texto.replace(definicao(texto), "").replace(/^--.*$/gm, ""),
+      /\b(?:BEGIN;|COMMIT|GRANT|REVOKE|INSERT|UPDATE|DELETE|DROP|TRUNCATE|ALTER)\b/i,
+    );
+  }
+  const {
+    contarStatements,
+    ROL_FECHADO_POR_CONSULTA,
+  } = require("../scripts/publicacao/conferir-banco.cjs");
+  const consultas = [
+    [
+      "161a-conferir-o-custo-do-cancelamento-fica-no-mes-da-volta-aplicado",
+      novo,
+      H_NOVO,
+    ],
+    [
+      "161b-antes-o-custo-do-cancelamento-fica-no-mes-da-volta-base-vigente",
+      H_NOVO,
+      novo,
+    ],
+  ];
+  for (const [consulta, hash, outroHash] of consultas) {
+    const texto = ler(`scripts/publicacao/consultas/${consulta}.sql`);
+    assert.equal(contarStatements(texto), 1);
+    assert.ok(texto.includes(hash));
+    assert.ok(!texto.includes(outroHash));
+    assert.doesNotMatch(texto, /FROM public\.(?:fin_|marketplace_)/);
+    const itens = [...texto.matchAll(/SELECT '([^']+)'/g)].map((m) => m[1]);
+    // eslint-disable-next-line security/detect-object-injection -- Dupla fechada de consultas.
+    assert.deepEqual(itens, ROL_FECHADO_POR_CONSULTA[consulta]);
+  }
 });

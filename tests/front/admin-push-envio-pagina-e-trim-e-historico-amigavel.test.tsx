@@ -287,7 +287,7 @@ describe("Avisar clientes: envio paginado, texto em branco e historico amigavel"
     const texto = hospedeiro.textContent ?? "";
     expect(texto).toContain("Ao clicar: Busca de produtos");
     expect(texto).not.toContain("/search");
-    expect(texto).toContain("Quem aceitou receber avisos");
+    expect(texto).toContain("Push para aparelhos inscritos");
     expect(texto).not.toContain("Toda a base da loja");
   });
 });

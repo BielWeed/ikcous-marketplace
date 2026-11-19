@@ -18,6 +18,7 @@ import type { Product } from "@/types";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { comPaginacao } from "./duble-consulta-paginada";
 
 type Linha = Record<string, unknown>;
 type Leitura = "ok" | "falha" | "pendurada";
@@ -74,7 +75,7 @@ vi.mock("@/lib/supabase", () => ({
           }
           return { data: mundo.itensNoBanco, error: null };
         },
-        in: async () => {
+        in: comPaginacao(async () => {
           if (tabela === "vw_produtos_public") {
             if (mundo.falhaNoCatalogo) {
               return { data: null, error: { message: "503" } };
@@ -82,7 +83,7 @@ vi.mock("@/lib/supabase", () => ({
             return { data: mundo.catalogo, error: null };
           }
           return { data: [], error: null };
-        },
+        }),
       }),
     }),
     auth: {

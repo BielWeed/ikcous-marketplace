@@ -149,7 +149,11 @@ describe("OrderReceipt — a observação vai no papel", () => {
     },
   );
 
-  it.each(["", "\n\nRetirada na loja: Rua X, 10"])(
+  it.each([
+    "",
+    "\n\nRetirada na loja: Rua X, 10",
+    "\n\nRetirada na loja: Aguarde a confirmação da loja e confira o endereço antes de sair para retirar.",
+  ])(
     "retirada: preserva a instrução da cliente com ou sem nota automática (%s)",
     async (sufixo) => {
       const instrucao = "Retirada na loja: minha irmã busca às 17h 🧾";

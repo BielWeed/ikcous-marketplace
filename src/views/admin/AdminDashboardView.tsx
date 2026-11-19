@@ -188,6 +188,7 @@ function ComRecomendados({
     pendentesRecomendados({
       email: lidos.email,
       pixOk: ligado && chaveOk,
+      pagamentoPeloAppLigado: ligado,
       nomesLigados: lidos.nomesLigados,
       config,
       configCarregando,
@@ -255,9 +256,9 @@ export const AdminDashboardView = memo(function AdminDashboardView({
   const [mostrarAjuda, setMostrarAjuda] = useState(false);
 
   // Toda saída do Início passa por aqui. Quem toca num atalho para Pedidos
-  // ("Preparar pedidos", a linha do Para fazer) quer ver os pedidos a
-  // preparar, não o filtro e a busca que ficaram salvos da última visita à
-  // tela: o recado faz Pedidos abrir limpa (abrir pelo menu não passa por
+  // ("Ver pedidos em aberto", a linha do Para fazer) quer ver os pedidos em
+  // aberto, não o filtro e a busca que ficaram salvos da última visita à tela:
+  // o recado faz Pedidos abrir limpa (abrir pelo menu não passa por
   // aqui e continua respeitando o que ela deixou). Com `id`, é a ficha de um
   // pedido, que não é lista. A aridade é preservada: `onNavigate(view)` sem
   // segundo argumento.
@@ -525,15 +526,17 @@ export const AdminDashboardView = memo(function AdminDashboardView({
       >
         <div className="space-y-4 text-xs leading-relaxed text-zinc-400">
           <p>
-            O Início é o resumo do dia da sua loja — app e balcão juntos. Os
-            números contam só o dinheiro que entrou de verdade (PIX confirmado,
-            pagamento online aprovado ou recebido na mão).
+            O Início resume as vendas e as pendências da sua loja — app e balcão
+            juntos.
           </p>
           <ul className="list-inside list-disc space-y-2">
             <li>
-              <strong className="text-white">Vendas pagas hoje:</strong> quanto
-              entrou hoje, quanto veio do app e quanto do balcão, comparado com
-              o mesmo dia da semana passada até esta mesma hora.
+              <strong className="text-white">
+                Vendas pagas hoje e no mês:
+              </strong>{" "}
+              sem pedidos cancelados ou devolvidos. O total de hoje mostra
+              quanto veio do app e do balcão e compara com o mesmo dia da semana
+              passada até esta mesma hora.
             </li>
             <li>
               <strong className="text-white">Lucro estimado:</strong> o

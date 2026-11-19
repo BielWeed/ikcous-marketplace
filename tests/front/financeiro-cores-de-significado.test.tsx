@@ -61,7 +61,9 @@ it("a receber e a pagar seguem entrada e saída no resumo; o saldo total é neut
     />,
   );
   expect
-    .soft(valor("A receber").classList.contains("text-emerald-400"))
+    .soft(
+      valor("Contas lançadas a receber").classList.contains("text-emerald-400"),
+    )
     .toBe(true);
   expect.soft(valor("A pagar").classList.contains("text-red-400")).toBe(true);
   // Desenho de 22/10/2026: o saldo é texto neutro — cor só onde significa algo.
@@ -89,7 +91,9 @@ it("totais zerados da visão geral são cinza, não entrada e saída", async () 
       verPrevistos={noop}
     />,
   );
-  expect(valor("A receber").classList.contains("text-zinc-400")).toBe(true);
+  expect(
+    valor("Contas lançadas a receber").classList.contains("text-zinc-400"),
+  ).toBe(true);
   expect(valor("A pagar").classList.contains("text-zinc-400")).toBe(true);
 });
 

@@ -7,6 +7,9 @@
 // Convidado e pedido não entregue nem chegam a perguntar ao servidor.
 //
 // Molde de montagem: order-details-cartao-de-avaliacao-em-destaque.test.tsx.
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -180,6 +183,26 @@ const DETALHE = {
   pedido: null,
 };
 
+function eventoDeGeracao(created_at: string) {
+  const servidor = readFileSync(
+    resolve(
+      dirname(fileURLToPath(import.meta.url)),
+      "../../supabase/functions/melhor-envio-etiqueta/index.ts",
+    ),
+    "utf8",
+  );
+  const nota = /const NOTA_CODIGO_DE_POSTAGEM_GERADO = '([^']+)'/.exec(
+    servidor,
+  )?.[1];
+  if (!nota) throw new Error("Nota de geração não encontrada no servidor.");
+  return { para_status: "aprovada", ator: "sistema", nota, created_at };
+}
+
+const ORIENTACAO_AO_CONVIDADO =
+  "Para devolução ou troca, fale com a loja informando o número do pedido.";
+const AVISO_CODIGO_VENCIDO =
+  "Este código de postagem venceu. Fale com a loja para gerar outro.";
+
 describe("OrderDetailsView — devolução ou troca do produto entregue", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
@@ -202,6 +225,7 @@ describe("OrderDetailsView — devolução ou troca do produto entregue", () => 
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     act(() => raiz.unmount());
     hospedeiro.remove();
     document.body.innerHTML = "";
@@ -226,6 +250,16 @@ describe("OrderDetailsView — devolução ou troca do produto entregue", () => 
     });
   }
 
+  async function mostrarDevolucao(campos: Record<string, unknown>) {
+    const detalhe = { ...DETALHE, ...campos };
+    respostas.set("devolucoes_do_pedido", [detalhe]);
+    respostas.set("devolucao_detalhe", detalhe);
+    await renderizar();
+    const cartao = hospedeiro.querySelector('[data-testid="cartao-devolucao"]');
+    expect(cartao).not.toBeNull();
+    return cartao;
+  }
+
   const botaoPedir = () =>
     hospedeiro.querySelector<HTMLButtonElement>(
       '[data-testid="acao-solicitar-devolucao"]',
@@ -236,6 +270,7 @@ describe("OrderDetailsView — devolução ou troca do produto entregue", () => 
     await renderizar();
 
     expect(botaoPedir()?.textContent).toContain("Solicitar devolução ou troca");
+    expect(hospedeiro.textContent).not.toContain(ORIENTACAO_AO_CONVIDADO);
     expect(rpc).toHaveBeenCalledWith("devolucao_elegibilidade", {
       p_order_id: "pedido-dev",
     });
@@ -258,12 +293,155 @@ describe("OrderDetailsView — devolução ou troca do produto entregue", () => 
     expect(nomesDasRpcs()).not.toContain("devolucao_elegibilidade");
   });
 
-  it("convidado (sem sessão): nem linha nem pergunta ao servidor", async () => {
+  it("convidado com pedido entregue recebe orientação, sem abrir devolução no app", async () => {
     usuarioAtual = null;
     await renderizar();
 
+    expect(hospedeiro.textContent).toContain(ORIENTACAO_AO_CONVIDADO);
+    expect(
+      [...hospedeiro.querySelectorAll("button")].some(
+        (botao) => botao.textContent?.trim() === "Falar com a loja",
+      ),
+    ).toBe(true);
     expect(botaoPedir()).toBeNull();
     expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("convidado com pedido a caminho não vê orientação de devolução", async () => {
+    usuarioAtual = null;
+    pedidoAtual = { ...pedidoBase, status: "shipping" };
+    await renderizar();
+
+    expect(hospedeiro.textContent).not.toContain(ORIENTACAO_AO_CONVIDADO);
+    expect(botaoPedir()).toBeNull();
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  describe("validade do código de postagem", () => {
+    const camposDaReversa = {
+      modalidade: "nacional",
+      metodo_retorno: "etiqueta_reversa",
+      codigo_postagem: "PP123456789BR",
+      etiqueta_url: "https://example.com/etiqueta.pdf",
+    };
+
+    it("exibe o prazo da reemissão em Brasília, não o do primeiro código", async () => {
+      vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-10-07T01:30:00Z"));
+      const nova = eventoDeGeracao("2026-09-30T01:30:00Z");
+      const antiga = eventoDeGeracao("2026-09-26T10:00:00Z");
+      const cartao = await mostrarDevolucao({
+        ...camposDaReversa,
+        eventos: [
+          antiga,
+          nova,
+          { ...nova, nota: "Outro evento", created_at: "2026-10-02T12:00:00Z" },
+        ],
+      });
+
+      expect(cartao?.textContent).toContain(
+        "válido até 06/10 às 22:30 (horário de Brasília)",
+      );
+      expect(cartao?.textContent).not.toContain("em até 7 dias");
+      expect(cartao?.textContent).not.toContain(AVISO_CODIGO_VENCIDO);
+    });
+
+    it.each([
+      ["com", camposDaReversa.etiqueta_url],
+      ["sem", null],
+    ])(
+      "avisa que venceu %s declaração pronta, sem orientar a postar",
+      async (_, etiqueta_url) => {
+        vi.spyOn(Date, "now").mockReturnValue(
+          Date.parse("2026-10-07T01:30:00.001Z"),
+        );
+        const cartao = await mostrarDevolucao({
+          ...camposDaReversa,
+          etiqueta_url,
+          eventos: [eventoDeGeracao("2026-09-30T01:30:00Z")],
+        });
+
+        expect(cartao?.textContent).toContain(AVISO_CODIGO_VENCIDO);
+        expect(cartao?.textContent).not.toContain("leve o pacote");
+        expect(cartao?.textContent).not.toContain("vale a pena esperar");
+        expect(cartao?.textContent).not.toContain("válido até");
+      },
+    );
+
+    it("mostra a validade mesmo enquanto a declaração ainda está em preparo", async () => {
+      vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-10-01T12:00:00Z"));
+      const cartao = await mostrarDevolucao({
+        ...camposDaReversa,
+        etiqueta_url: null,
+        eventos: [eventoDeGeracao("2026-09-30T01:30:00Z")],
+      });
+
+      expect(cartao?.textContent).toContain(
+        "válido até 06/10 às 22:30 (horário de Brasília)",
+      );
+      expect(cartao?.textContent).toContain("A loja está preparando");
+    });
+
+    it.each([
+      ["sem o evento", []],
+      ["com data ilegível", [eventoDeGeracao("sem-data")]],
+    ])("%s: não inventa validade nem vencimento", async (_, eventos) => {
+      const cartao = await mostrarDevolucao({ ...camposDaReversa, eventos });
+
+      expect(cartao?.textContent).toContain("em até 7 dias");
+      expect(cartao?.textContent).not.toContain("válido até");
+      expect(cartao?.textContent).not.toContain(AVISO_CODIGO_VENCIDO);
+    });
+  });
+
+  it("identifica só o item não recebido e preserva os preços e o reembolso", async () => {
+    const cartao = await mostrarDevolucao({
+      status: "concluida",
+      resolucao_final: "reembolso",
+      reembolso_manual: true,
+      valor_itens: 100,
+      valor_reembolso: 70,
+      itens: [
+        {
+          id: "i-1",
+          order_item_id: "oi-1",
+          product_name: "Tênis",
+          quantidade: 1,
+          valor_unitario: 30,
+          condicao: "ausente",
+        },
+        {
+          id: "i-2",
+          order_item_id: "oi-2",
+          product_name: "Sandália",
+          quantidade: 1,
+          valor_unitario: 40,
+          condicao: "usada",
+        },
+        {
+          id: "i-3",
+          order_item_id: "oi-3",
+          product_name: "Bota",
+          quantidade: 1,
+          valor_unitario: 30,
+          condicao: "danificada",
+        },
+      ],
+    });
+    const termos = [...(cartao?.querySelectorAll("dt") ?? [])];
+    const termo = (nome: string) =>
+      termos.find((linha) => linha.textContent?.includes(nome));
+
+    expect(termo("Tênis")?.textContent).toContain("Não recebido pela loja");
+    expect(termo("Sandália")?.textContent).toBe("1× Sandália");
+    expect(termo("Bota")?.textContent).toBe("1× Bota");
+    for (const [nome, valor] of [
+      ["Tênis", /R\$\s*30,00/],
+      ["Sandália", /R\$\s*40,00/],
+      ["Bota", /R\$\s*30,00/],
+      ["Reembolso", /R\$\s*70,00/],
+    ] as const) {
+      expect(termo(nome)?.nextElementSibling?.textContent).toMatch(valor);
+    }
   });
 
   it("sem poder e sem devolução ainda: o motivo do servidor aparece discreto", async () => {

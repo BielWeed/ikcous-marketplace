@@ -263,7 +263,7 @@ describe("Conta — CPF pertence à conta que começou a salvar", () => {
       expect(toast.error).toHaveBeenCalledExactlyOnceWith(
         motivo === "conta_trocada"
           ? cpfDaConta.mensagemFalhaCpf("conta_trocada")
-          : "Erro ao atualizar perfil",
+          : "Entre de novo na sua conta para salvar as alterações do perfil.",
       );
       expect(toast.success).not.toHaveBeenCalled();
       expect(fetchProfile).not.toHaveBeenCalled();

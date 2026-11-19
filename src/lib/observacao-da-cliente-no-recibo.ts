@@ -1,3 +1,5 @@
+import { NOTA_AUTOMATICA_DA_RETIRADA } from "@/lib/texto-da-retirada";
+
 // O checkout junta observação, variações legadas e a nota automática de entrega.
 // O papel já tem um bloco de retirada; estas linhas fixas não são observações.
 export function observacaoDaClienteNoRecibo(
@@ -10,8 +12,12 @@ export function observacaoDaClienteNoRecibo(
     texto = texto.replace(/\r\n/g, "\n").trimEnd();
     const rotulo = "Retirada na loja";
     // O checkout acrescenta a nota automática por último, em um bloco próprio.
-    // Aceita também o formato sem endereço; o prefixo sozinho não identifica a nota.
-    for (const nota of [`${rotulo}: ${endereco}`, rotulo]) {
+    // O prefixo sozinho não identifica a nota: a cliente também pode usá-lo.
+    for (const nota of [
+      NOTA_AUTOMATICA_DA_RETIRADA,
+      `${rotulo}: ${endereco}`,
+      rotulo,
+    ]) {
       const sufixo = `\n\n${nota}`;
       // Uma observação única idêntica à nota automática é indistinguível.
       if (texto === nota) {

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// Defeito: "Novos (30 dias)" vem do servidor (`NOW() - INTERVAL '30 days'`) e a
+// Defeito: "Novos cadastros (30 dias)" vem do servidor (`NOW() - INTERVAL '30 days'`) e a
 // tela de Clientes só relia por abertura, busca, página, volta da rede ou
 // foco. Com o painel aberto de 23h59 a 00h01 (São Paulo), o cartão seguia com
 // a janela de ontem. Agora a virada do dia relê a página atual — em silêncio:

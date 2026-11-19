@@ -120,7 +120,7 @@ describe("os textos falam com o lojista, sem jargão", () => {
       "Transportadora só funciona com pagamento pelo app ligado.",
     );
     expect(AVISO_DO_FRETE.detalhe).toContain(
-      "Hoje seus clientes de outras cidades não conseguem finalizar a compra.",
+      "Hoje seus clientes de fora da sua região não conseguem finalizar a compra.",
     );
   });
 

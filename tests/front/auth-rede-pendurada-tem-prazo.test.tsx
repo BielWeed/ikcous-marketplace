@@ -321,6 +321,19 @@ describe("AuthContext — rede pendurada na autenticação tem prazo", () => {
       expect(resultado.message).toMatch(/e-mail ou senha incorretos/i);
     });
 
+    it("exceção no login da cliente devolve orientação sem expor o erro", async () => {
+      const { ctx, auth } = await montar();
+      auth.signInWithPassword.mockRejectedValueOnce(new Error("falha interna"));
+
+      await expect(
+        chamarEEsperar(() => ctx.login("a@b.com", "senha1234", "customer"), 0),
+      ).resolves.toEqual({
+        success: false,
+        message:
+          "Não foi possível entrar agora. Tente novamente em instantes ou fale com a loja.",
+      });
+    });
+
     it("controle: exceção de verdade (não é prazo) continua LANÇANDO — o prazo não engole outras falhas", async () => {
       const { ctx, auth } = await montar();
       auth.signInWithPassword.mockRejectedValue(new Error("boom"));

@@ -766,6 +766,18 @@
       "versoes": ["20261405700000"],
       "ausenciaConfirmadaPor": "159b-antes-cancelar-pedido-do-painel-confere-a-etapa-base-vigente",
       "_comentario": "Apply normal aditivo. Depois da 20261405600000: porta nova do painel confere a etapa sob as travas de estorno e pedido. App antigo e edge continuam usando as portas antigas. Banco antes do front. Rollback restaura a 20261405600000."
+    },
+    {
+      "consulta": "160a-conferir-o-cupom-que-nao-da-desconto-aplicado",
+      "versoes": ["20261405800000"],
+      "ausenciaConfirmadaPor": "160b-antes-o-cupom-que-nao-da-desconto-base-vigente",
+      "_comentario": "Apply normal aditivo. A conferência do cupom recusa desconto zero, sem alterar a criação do pedido. Rollback restaura a conferência da 20261397000000."
+    },
+    {
+      "consulta": "161a-conferir-o-custo-do-cancelamento-fica-no-mes-da-volta-aplicado",
+      "versoes": ["20261405900000"],
+      "ausenciaConfirmadaPor": "161b-antes-o-custo-do-cancelamento-fica-no-mes-da-volta-base-vigente",
+      "_comentario": "Apply normal aditivo, depois da 20261399600000. Só muda o corpo de fin_dre: o custo retorna no mês da reposição de estoque, sem tocar o período da venda nem duplicar devoluções parciais. Rollback restaura o corpo anterior byte a byte; sem mudança de dados ou privilégios."
     }
   ],
   "_comentarioCanais": "projetosNoMesmoBanco: outros alvos dos workflows de banco que atingem o MESMO projeto Supabase (um apply por eles vence a evidencia desta loja; `loja` aponta para a CAF). functionsPublicaveis: o que publicar-functions.yml aceita por este canal (loja cliente = as cinco financeiras; IKCOUS e Savy aceitam tambem a send-order-confirmation desde 09/10/2026, porque o comprovante do balcao divide _shared/pedido.ts e comprovante.ts com as financeiras; e, desde 13/10/2026 por decisao do dono, calculate-shipping, notify-new-order, send-otp-email, melhor-envio-etiqueta e send-push, SO pelo nome (e, desde 14/10/2026, a credenciais-email, o painel onde a lojista cadastra o Gmail da loja; e, desde 21/10/2026, a auth-send-email, o Send Email Hook autenticado por assinatura Standard Webhooks): antes, uma delas que mudasse na release deixava a loja PARADA; a send-order-whatsapp segue proibida, nenhuma outra loja ganha rota, e a pre-condicao de publicar cada uma e medir o que esta no ar em CADA loja antes, passo 6 de docs/runbooks/producao-unica-fonte.md; o teste tests/ci_publicar_functions_test.ts exige que esta lista e o workflow concordem, function por function); function fora da lista que mudar na release fica PARADA pelo nome, sem comando.",

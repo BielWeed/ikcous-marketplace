@@ -293,8 +293,9 @@ export function QuemPodeUsarOCupom({
             aria-hidden="true"
             className="mt-0.5 size-3.5 shrink-0"
           />
-          Cada cliente da lista pode usar este cupom em todas as compras. O
-          limite de uso é da loja inteira, não de cada cliente.
+          Clientes da lista podem usar o cupom sem limite de vezes, desde que
+          respeitem o valor mínimo e a validade. Quando definido, o limite de
+          usos vale para a loja toda, não por cliente.
         </p>
       )}
 

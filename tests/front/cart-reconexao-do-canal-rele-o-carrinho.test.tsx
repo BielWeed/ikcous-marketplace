@@ -17,6 +17,7 @@ import { criarGerenciadorDeChave } from "@/lib/chave-do-pedido";
 import { act, useEffect } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { comPaginacao } from "./duble-consulta-paginada";
 
 type Status = "SUBSCRIBED" | "CHANNEL_ERROR" | "TIMED_OUT" | "CLOSED";
 
@@ -78,13 +79,14 @@ vi.mock("@/lib/supabase", () => ({
           if (tabela === "cart_items") mundo.leiturasDoCarrinho += 1;
           return Promise.resolve({ data: mundo.itens.slice(), error: null });
         },
-        in: async (_coluna: string, ids: string[]) =>
+        in: comPaginacao(async (_coluna: string, ids: string[]) =>
           tabela === "product_variants"
             ? { data: [], error: null }
             : {
                 data: produtos.filter((p) => ids.includes(p.id)),
                 error: null,
               },
+        ),
       }),
     }),
     auth: {

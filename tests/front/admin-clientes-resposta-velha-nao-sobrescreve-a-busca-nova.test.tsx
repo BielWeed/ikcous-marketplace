@@ -153,6 +153,21 @@ describe("Clientes — resposta velha não sobrescreve a busca nova", () => {
     });
   }
 
+  async function digitarBusca(termo: string) {
+    const campo =
+      hospedeiro.querySelector<HTMLInputElement>("#customers-search");
+    const atribuir = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    if (!campo || !atribuir) throw new Error("Campo de busca não encontrado");
+    await act(async () => {
+      atribuir.call(campo, termo);
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await avancar(300);
+  }
+
   // Consulta A (busca vazia) sai ao abrir a tela e fica em voo; "Maria" sai
   // como consulta B, também em voo. Devolve as duas respostas nas mãos do teste.
   async function abrirEBuscarMaria() {
@@ -195,10 +210,45 @@ describe("Clientes — resposta velha não sobrescreve a busca nova", () => {
 
   function listaEstaCarregando() {
     return (
-      hospedeiro.querySelector("[aria-busy]")?.getAttribute("aria-busy") ===
-      "true"
+      hospedeiro
+        .querySelector(".admin-topo-lista [aria-busy]")
+        ?.getAttribute("aria-busy") === "true"
     );
   }
+
+  it.each(["Bruno", ""])(
+    "descarta a resposta vazia de Ana após aceitar '%s', antes da nova consulta",
+    async (novoTermo) => {
+      const ana = pendente();
+      const nova = pendente();
+      const inicial = sucesso([cliente("joao", "João Silva")], 1, 1);
+      rpc.mockResolvedValueOnce(inicial);
+      rpc.mockImplementationOnce(() => ana.promessa);
+      rpc.mockImplementationOnce(() => nova.promessa);
+
+      await montar();
+      await avancar(320);
+      await digitarBusca("Ana");
+      await avancar(320);
+      expect(rpc.mock.lastCall?.[1].p_search).toBe("Ana");
+
+      await digitarBusca(novoTermo);
+      await avancar(100);
+      expect(rpc).toHaveBeenCalledTimes(2);
+      await act(async () => ana.resolver(sucesso([], 0, 0)));
+
+      expect(hospedeiro.textContent).not.toContain("Nenhum cliente retornado");
+      expect(hospedeiro.textContent).toContain("João Silva");
+      expect(cachedCustomersData?.customers.map((c) => c.id)).toEqual(["joao"]);
+      expect(listaEstaCarregando()).toBe(true);
+
+      await avancar(220);
+      expect(rpc.mock.lastCall?.[1].p_search).toBe(novoTermo);
+      await act(async () => nova.resolver(respostaB()));
+      expect(hospedeiro.textContent).toContain("Maria Souza");
+      expect(listaEstaCarregando()).toBe(false);
+    },
+  );
 
   it("B chega primeiro e A depois: a tela, o total e o cache ficam com Maria", async () => {
     const { a, b } = await abrirEBuscarMaria();

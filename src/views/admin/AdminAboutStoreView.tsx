@@ -14,6 +14,7 @@ import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { mensagemDeErroDoPainel } from "@/lib/erro-do-painel";
+import { modoDaEntregaNaCidade } from "@/lib/guarda-de-frete";
 import {
   type ChaveDosSeisPassos,
   alcanceAoMudarOCepDaLoja,
@@ -21,6 +22,7 @@ import {
   seisPassosDaLojaPronta,
 } from "@/lib/loja-pronta";
 import { descricaoDaLojaParaHtml, textoDaLoja } from "@/lib/texto-da-loja";
+import { formatCurrency } from "@/lib/utils";
 import { lazyRetentavel } from "@/utils/lazyRetentavel";
 import { AlertTriangle, RefreshCw, Save } from "lucide-react";
 import {
@@ -70,8 +72,7 @@ const BLOCO_DO_PASSO = new Map<ChaveDosSeisPassos, BlocoDeMinhaLoja>([
 ]);
 
 interface AdminAboutStoreViewProps {
-  /** O AdminArea repassa a todas as telas; esta não navega para fora (o
-   * Contato mora aqui e o "Falta preencher" rola até o bloco). */
+  /** Atalho do aviso de entrega local para a tela de Frete. */
   onNavigate: (view: View) => void;
   active?: boolean;
   onSetDirty?: (dirty: boolean) => void;
@@ -178,6 +179,7 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
   const [descricao, setDescricao] = useState(baselineDescricao);
   const [mudancaEndereco, setMudancaEndereco] =
     useState<MudancaDoEndereco | null>(null);
+  const [enderecoSalvo, setEnderecoSalvo] = useState(false);
   const [saving, setSaving] = useState(false);
   const [salvandoTudo, setSalvandoTudo] = useState(false);
   const editores = useRef(new Map<ChaveDeSalvamento, EditorDeMinhaLoja>());
@@ -228,6 +230,7 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
     // A fila pertence à tela ativa e ao administrador que a iniciou.
     setSaving(false);
     setSalvandoTudo(false);
+    setEnderecoSalvo(false);
     operacao.current = null;
   }, [active, usuario]);
   // O que o lojista tem NA TELA vs o que o banco mandou por último: a
@@ -404,6 +407,7 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
         usuarioEditou.current = false;
         if (descricaoEditada)
           setDescricao(textoDaLoja(descricaoDaLojaParaHtml(descricao)));
+        if (enderecoParaGravar) setEnderecoSalvo(true);
         // Este resultado confirma só o pacote de endereço e descrição.
         toast.success(
           alcanceNovo === null
@@ -467,6 +471,21 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
       passo.destino === "admin-about-store" && passo.estado === "pendente",
   );
 
+  const taxaLocal = config.localDeliveryFee;
+  const mostrarAvisoDeFrete =
+    active &&
+    enderecoSalvo &&
+    !configFalhou &&
+    modoDaEntregaNaCidade(config) !== "so_retiro";
+  let avisoDeFrete = "";
+  if (mostrarAvisoDeFrete) {
+    const taxa =
+      typeof taxaLocal === "number" && Number.isFinite(taxaLocal)
+        ? `Entrega local: taxa-base de ${formatCurrency(taxaLocal)}. `
+        : "";
+    avisoDeFrete = `${taxa}Confira o alcance da entrega em Revisar frete.`;
+  }
+
   return (
     <div className="pb-admin relative min-h-screen bg-admin-bg font-sans text-zinc-400 lg:pb-12">
       <header className="admin-topo-cabecalho mx-auto flex h-[76px] w-full max-w-4xl items-center justify-between gap-3 px-5 lg:max-w-none lg:px-6">
@@ -485,6 +504,15 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
         </div>
       )}
 
+      <span
+        data-aviso-de-frete
+        role="status"
+        aria-live="polite"
+        className="sr-only"
+      >
+        {avisoDeFrete}
+      </span>
+
       {/* Com a leitura da config falha (`configFalhou`) a tela mostra a
           config de FÁBRICA: gravar dela apagaria os dados reais (a identidade
           legal, por exemplo, vai com os três campos juntos). Trava tudo até
@@ -501,6 +529,28 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
               Você está offline. O salvamento das configurações está
               desabilitado até restabelecer a rede.
             </span>
+          </div>
+        )}
+
+        {mostrarAvisoDeFrete && (
+          <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-admin-gold/20 bg-admin-gold/5 p-3 xl:col-span-2">
+            <AlertTriangle
+              className="size-5 shrink-0 text-admin-gold"
+              aria-hidden="true"
+            />
+            <p
+              aria-hidden="true"
+              className="min-w-0 flex-1 text-sm leading-relaxed text-white"
+            >
+              {avisoDeFrete}
+            </p>
+            <button
+              type="button"
+              onClick={() => onNavigate("admin-shipping")}
+              className="flex min-h-11 items-center rounded-xl border border-admin-gold/30 bg-admin-bg px-4 text-sm font-bold text-admin-gold transition-colors hover:border-admin-gold/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              Revisar frete
+            </button>
           </div>
         )}
 
@@ -581,7 +631,6 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
                   title="Prévia do mapa da página Sobre a Loja"
                   src={`https://maps.google.com/maps?q=${encodeURIComponent(queryPrevia)}&z=15&output=embed`}
                   loading="lazy"
-                  referrerPolicy="no-referrer-when-downgrade"
                   credentialless=""
                   className="pointer-events-none absolute left-0 top-[-56px] block h-[calc(100%+56px)] w-full border-0"
                 />

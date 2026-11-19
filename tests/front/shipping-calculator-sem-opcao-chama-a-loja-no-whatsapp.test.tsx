@@ -5,7 +5,7 @@
 // se a loja tem WhatsApp cadastrado (mesma régua `lojaTemWhatsapp` do
 // checkout), aparece "Combinar entrega pelo WhatsApp" — abre o wa.me da loja
 // (DDI 55 para número de 10/11 dígitos, sem opener) com o CEP dela. Sem
-// WhatsApp o texto segue como era, sem botão. Com opção de entrega, nada novo.
+// WhatsApp não há convite nem botão. Com opção de entrega, nada novo.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -154,6 +154,7 @@ describe("ShippingCalculator — sem opção de entrega, a cliente chama a loja"
     await pintar();
 
     expect(hospedeiro.textContent).toContain(TEXTO_SEM_OPCAO);
+    expect(hospedeiro.textContent).toContain("combine a entrega com a loja");
     const b = botao();
     expect(b).toBeDefined();
 
@@ -170,21 +171,21 @@ describe("ShippingCalculator — sem opção de entrega, a cliente chama a loja"
     expect(recursos).toBe("noopener,noreferrer");
   });
 
-  it("cotação vazia + loja SEM WhatsApp: o texto atual fica e não há botão", async () => {
-    await pintar();
+  it.each(["", "99999"])(
+    "cotação vazia + WhatsApp ausente ou inválido (%j): só informa que não há entrega",
+    async (whatsappNumber) => {
+      lojaAtual.whatsappNumber = whatsappNumber;
+      await pintar();
 
-    expect(hospedeiro.textContent).toContain(TEXTO_SEM_OPCAO);
-    expect(hospedeiro.textContent).toContain("combine a entrega com a loja");
-    expect(botao()).toBeUndefined();
-  });
-
-  it("número curto demais não conta como WhatsApp (mesma régua do checkout)", async () => {
-    lojaAtual.whatsappNumber = "99999";
-    await pintar();
-
-    expect(hospedeiro.textContent).toContain(TEXTO_SEM_OPCAO);
-    expect(botao()).toBeUndefined();
-  });
+      expect(hospedeiro.textContent).toContain(
+        "Nenhuma opção de entrega para este endereço.",
+      );
+      expect(hospedeiro.textContent).not.toContain(
+        "combine a entrega com a loja",
+      );
+      expect(botao()).toBeUndefined();
+    },
+  );
 
   it("com opção de entrega disponível o botão não aparece, mesmo com WhatsApp", async () => {
     lojaAtual.whatsappNumber = "34999991234";

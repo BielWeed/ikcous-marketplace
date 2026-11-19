@@ -919,6 +919,14 @@ export const AdminReviewsView = memo(function AdminReviewsView({
         </div>
       </div>
 
+      {isOffline && (
+        <p
+          id={`avisoRespostaOffline${reviewId}`}
+          className="text-sm text-[hsl(var(--admin-text-soft))]"
+        >
+          Você está offline. Não é possível responder no momento.
+        </p>
+      )}
       <textarea
         ref={campoRespostaRef}
         value={replyText}
@@ -933,13 +941,17 @@ export const AdminReviewsView = memo(function AdminReviewsView({
         }}
         maxLength={TETO_DA_RESPOSTA_DA_LOJA}
         aria-label="Sua resposta"
-        aria-describedby={`contadorDaResposta${reviewId}`}
+        aria-describedby={
+          isOffline
+            ? `avisoRespostaOffline${reviewId} contadorDaResposta${reviewId}`
+            : `contadorDaResposta${reviewId}`
+        }
         placeholder={
           isOffline
-            ? "Você está offline. Não é possível responder no momento."
+            ? undefined
             : "Escreva uma resposta atenciosa para este cliente..."
         }
-        className="h-32 w-full resize-none rounded-2xl border border-solid border-admin-border-strong bg-admin-bg p-3.5 text-base text-white placeholder:text-zinc-400 focus:outline-none focus-visible:outline focus-visible:outline-2 disabled:opacity-40"
+        className="h-32 w-full resize-none rounded-2xl border border-solid border-[hsl(var(--admin-text-soft))] bg-admin-bg p-3.5 text-base text-white placeholder:text-zinc-400 focus:outline-none focus-visible:outline focus-visible:outline-2 disabled:opacity-40"
         disabled={isSubmittingReply || isOffline}
       />
       <p
@@ -1103,7 +1115,11 @@ export const AdminReviewsView = memo(function AdminReviewsView({
         <div className="mt-3">
           {confirmDeleteId === review.id ? (
             <ConfirmarExclusao
-              frase="Excluir esta avaliação? Não dá para desfazer."
+              frase={
+                review.merchantReply
+                  ? "Excluir esta avaliação e a resposta da loja? Não dá para desfazer."
+                  : "Excluir esta avaliação? Não dá para desfazer."
+              }
               desabilitada={acoesBloqueadas}
               aoCancelar={() => {
                 focoPendente.current = () =>

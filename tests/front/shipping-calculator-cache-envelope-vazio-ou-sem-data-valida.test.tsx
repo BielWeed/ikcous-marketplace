@@ -248,7 +248,7 @@ describe("ShippingCalculator com envelope vazio ou sem data válida no localStor
     expect(selecionada?.id).toBe("superfrete-17");
   });
 
-  it("envelope com opcoes VAZIA e a edge ainda sem opção: cota na rede UMA vez e mostra 'A calcular: nenhuma opção de entrega'", async () => {
+  it("envelope com opcoes VAZIA e a edge ainda sem opção: cota na rede UMA vez e informa que não há entrega", async () => {
     armazem.set(chaveDoCacheDeFrete(CEP), envelopeSemeado({ opcoes: [] }));
     opcoesDaEdge = [];
     await pintar();
@@ -256,7 +256,7 @@ describe("ShippingCalculator com envelope vazio ou sem data válida no localStor
     expect(cotacoes()).toHaveLength(1);
     expect(confirmacoesDeRevisao()).toHaveLength(0);
     expect(hospedeiro.textContent).toContain(
-      "A calcular: nenhuma opção de entrega",
+      "Nenhuma opção de entrega para este endereço.",
     );
   });
 
@@ -266,7 +266,9 @@ describe("ShippingCalculator com envelope vazio ou sem data válida no localStor
     await pintar();
 
     expect(cotacoes()).toHaveLength(1);
-    expect(hospedeiro.textContent).not.toContain("A calcular: nenhuma opção");
+    expect(hospedeiro.textContent).not.toContain(
+      "Nenhuma opção de entrega para este endereço.",
+    );
     expect(hospedeiro.textContent).toContain("19,01");
     expect(selecionada?.id).toBe("superfrete-17");
   });

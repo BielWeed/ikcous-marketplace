@@ -4,18 +4,30 @@ import { act, useEffect } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ rpc: vi.fn(), erro: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  rpc: vi.fn(),
+  erro: vi.fn(),
+  getSession: vi.fn(),
+}));
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     rpc: mocks.rpc,
+    auth: {
+      getSession: mocks.getSession,
+    },
     from: vi.fn(),
     channel: vi.fn(),
     removeChannel: vi.fn(),
     functions: { invoke: vi.fn() },
   },
 }));
+let sessaoDeTeste: { user: { id: string } | null; isAdmin: boolean };
+let adminConfirmado: string | null;
 vi.mock("@/hooks/useAuth", () => ({
-  useAuth: () => ({ user: null, isAdmin: true }),
+  useAuth: () => ({
+    ...sessaoDeTeste,
+    contaAindaTemAcessoAdmin: (id: string) => adminConfirmado === id,
+  }),
 }));
 vi.mock("@/hooks/useLeaderElection", () => ({
   useLeaderElection: () => ({ isLeader: false }),
@@ -137,6 +149,13 @@ describe("CSV de todos os pedidos do filtro", () => {
   }
 
   beforeEach(() => {
+    sessaoDeTeste = { user: { id: "admin-teste" }, isAdmin: true };
+    adminConfirmado = "admin-teste";
+    mocks.getSession.mockReset().mockImplementation(async () => ({
+      data: {
+        session: sessaoDeTeste.user ? { user: sessaoDeTeste.user } : null,
+      },
+    }));
     mocks.rpc.mockReset();
     mocks.erro.mockClear();
     armazem = new Map();
@@ -330,6 +349,49 @@ describe("CSV de todos os pedidos do filtro", () => {
       expect(args.p_end_date).toBe("");
     }
   });
+
+  it("não baixa o CSV se a conta sair durante a consulta", async () => {
+    let liberar!: (valor: Resposta) => void;
+    exportacao = () =>
+      new Promise((resolve) => {
+        liberar = resolve;
+      });
+    await montarTela();
+    await act(async () => botao().click());
+    expect(chamadasExportacao()).toHaveLength(1);
+    await act(async () => {
+      sessaoDeTeste = { user: null, isAdmin: false };
+      raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={true} />);
+    });
+    await act(async () => liberar(resposta([pedido(1)])));
+    expect(baixar).not.toHaveBeenCalled();
+  });
+
+  it.each(["outra conta", "cargo revogado"])(
+    "bloqueia o download na conferência final: %s, sem atualizar a tela",
+    async (caso) => {
+      await montarTela();
+      const sessoesAntes = mocks.getSession.mock.calls.length;
+      mocks.getSession.mockImplementationOnce(async () => {
+        // O contexto já recebeu o novo veredito, mas ainda não publicou um render.
+        if (caso === "cargo revogado") adminConfirmado = null;
+        const id = caso === "outra conta" ? "outro-admin" : "admin-teste";
+        return { data: { session: { user: { id } } } };
+      });
+      await act(async () => botao().click());
+
+      expect(chamadasExportacao()).toHaveLength(2);
+      expect(sessaoDeTeste).toEqual({
+        user: { id: "admin-teste" },
+        isAdmin: true,
+      });
+      expect(baixar).not.toHaveBeenCalled();
+      expect(mocks.getSession).toHaveBeenCalledTimes(sessoesAntes + 1);
+      expect(mocks.erro).toHaveBeenCalledWith(
+        "A sessão mudou ou você perdeu o acesso ao painel. O CSV não foi baixado.",
+      );
+    },
+  );
 
   it("mantém o botão desabilitado enquanto gera e não baixa arquivo se a segunda página falhar", async () => {
     let liberar!: (valor: Resposta) => void;

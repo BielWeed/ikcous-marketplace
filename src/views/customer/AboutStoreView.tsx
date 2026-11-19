@@ -282,7 +282,6 @@ export function AboutStoreView() {
                   title={`Mapa da loja ${storeName}`}
                   src={`https://maps.google.com/maps?q=${queryMaps}&z=15&output=embed`}
                   loading="lazy"
-                  referrerPolicy="no-referrer-when-downgrade"
                   credentialless=""
                   tabIndex={-1}
                   aria-hidden="true"

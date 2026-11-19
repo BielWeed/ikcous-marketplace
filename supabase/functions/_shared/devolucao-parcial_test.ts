@@ -227,6 +227,18 @@ Deno.test("formato: duas devoluções parciais (20 + 30) somam 50 e ambas voltam
   assertEquals(decisao.devolucoes, [{ id: "REF01", valor: 20 }, { id: "REF02", valor: 30 }]);
 });
 
+Deno.test("reembolso negativo não reduz o total devolvido nem volta para registro", () => {
+  const order = orderParcial();
+  // Sem o agregado, o total vem apenas da lista de estornos concluídos.
+  delete order.transactions.payments[0].refunded_amount;
+  order.transactions.refunds.push({ id: "REF02", transaction_id: "PAY01XYZ", amount: "-1.00", status: "processed" });
+
+  const decisao = devolucaoParcialProvaPagamento({ order, pedido: pedido() });
+  assertEquals(decisao.provado, true);
+  assertEquals(decisao.devolvido, 20);
+  assertEquals(decisao.devolucoes, [{ id: "REF01", valor: 20 }]);
+});
+
 Deno.test("centavos: duas devoluções de 0,29 com agregado 0,58 PROVAM (a conversão para centavos arredonda, não trunca)", () => {
   // 0,29 * 100 = 28.999999999999996 e 0,58 * 100 = 57.99999999999999: truncar
   // soma 28 + 28 = 56 da lista contra 57 do agregado e recusava, como "parte

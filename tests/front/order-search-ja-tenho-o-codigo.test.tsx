@@ -126,6 +126,8 @@ describe("OrderSearch — Já tenho o código", () => {
 
     expect(porPlaceholder(host, CAMPO_CODIGO)).not.toBeNull();
     expect(document.activeElement).toBe(porPlaceholder(host, CAMPO_CODIGO));
+    expect(host.textContent).toContain("Digite o código recebido por e-mail.");
+    expect(host.textContent).not.toContain("Código enviado para");
     expect(generateOrderOtp).not.toHaveBeenCalled();
   });
 
@@ -163,6 +165,8 @@ describe("OrderSearch — Já tenho o código", () => {
   });
 
   it("Voltar -> reenviar com código recente: a tela fica no pedido, mas o botão leva ao campo do código", async () => {
+    expect(porPlaceholder(host, "SEU E-MAIL")).not.toBeNull();
+    expect(document.activeElement).not.toBe(porPlaceholder(host, "SEU E-MAIL"));
     generateOrderOtp.mockResolvedValueOnce(true);
     await preencher(host);
     await enviar(host);
@@ -171,6 +175,7 @@ describe("OrderSearch — Já tenho o código", () => {
 
     await clicar(host, "Voltar");
     expect(porPlaceholder(host, CAMPO_CODIGO)).toBeNull();
+    expect(document.activeElement).toBe(porPlaceholder(host, "SEU E-MAIL"));
 
     // `muito_recente`: o hook toasta e devolve false; a tela não avança.
     generateOrderOtp.mockResolvedValueOnce(false);

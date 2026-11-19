@@ -25,7 +25,7 @@ cada loja antes e depois. O item do portão, com todos os limites, está em
 | Ordem | O quê | Onde |
 |---|---|---|
 | 0 | Pré-requisito: `20261205000000` e `20261206000000` (cupom preso) já no banco de cada loja | `16b` PARA se faltar |
-| 1 | **Antes do banco:** medir a versão das edge functions no ar em **cada** loja (seção abaixo) | IKCOUS e Savy |
+| 1 | **Antes do banco:** comprovar em **cada** loja que o conteúdo de `criar-pagamento` e `webhook-mercadopago` (incluindo `_shared`) e o `verify_jwt` das duas batem com o commit da release (seção abaixo) | IKCOUS e Savy |
 | 2 | Banco: a foto da cobrança no cancelamento (tabela fechada, função e gatilho) e as três funções do cupom lendo a foto | [`20261209000000_a_foto_da_cobranca_no_cancelamento.sql`](../../supabase/migrations/20261209000000_a_foto_da_cobranca_no_cancelamento.sql) e [`20261210000000_a_vaga_do_cupom_do_pix_anulado_volta_em_minutos.sql`](../../supabase/migrations/20261210000000_a_vaga_do_cupom_do_pix_anulado_volta_em_minutos.sql) |
 | 3 | O site (promoção normal da release, todas as lojas) | sem mudança própria deste lote |
 
@@ -49,29 +49,21 @@ vale):
   `test/pix-anulado-webhook-20261009` (`supabase/functions/webhook-mercadopago/index_test.ts`); ele
   entra no mesmo PR deste lote. Se um dia o webhook passar a adotar PIX, a pista precisa ser revista.
 
-Regra segura e simples: **no ar tem de estar o código do SHA desta release (ou um mais novo)** para
-essas duas functions e o que elas importam (`_shared`).
+**Data não é prova.** Antes do banco, confirme em cada loja que o código no ar de
+`criar-pagamento` e `webhook-mercadopago`, incluindo o que importam de `_shared`, corresponde
+ao commit da release. Confira também se o `verify_jwt` de cada função bate com o `config.toml`
+desse commit.
 
-**Como medir, uma loja por vez:**
+No resumo do ensaio de **cada loja**, a linha `functions: N em dia` só comprova as duas se
+`N` for igual ao total de funções que o ensaio espera para o commit, as duas estiverem nesse
+total e não houver o erro `functions não listadas`. O total não inclui `_shared` nem as funções
+marcadas como não publicadas. Sem a listagem, nenhuma função é conferida. Se a contagem não comprovar as duas, compare diretamente
+o conteúdo publicado das duas (incluindo `_shared`) e seu `verify_jwt` com o commit da release.
 
-1. A data do código que importa, no SHA da release (PowerShell, na pasta do repositório):
-
-   ```powershell
-   git log -1 --format=%cI <sha40> -- supabase/functions/criar-pagamento supabase/functions/webhook-mercadopago supabase/functions/_shared
-   ```
-
-2. O que está no ar **na IKCOUS**: *Actions* → **Publicar edge functions** → *Run workflow* com
-   `projeto = ikcous-publicada`, `functions = listar` e `expected_sha` = o SHA da release. O modo
-   `listar` **só lista, não publica** nada; o resumo do run mostra, por function, a **versão** e a
-   data de atualização.
-3. **Na Savy** esse modo não existe. Duas saídas (decisão do dono, a mais segura primeiro): publicar
-   as cinco financeiras do SHA da release (`functions = cobranca`, `projeto = savy`), o que o portão
-   já imprime quando a release mexe nelas; ou o dono abrir o painel da Savy (*Edge Functions*) e
-   ler a data de atualização de `criar-pagamento` e `webhook-mercadopago`.
-4. **Se a data no ar for anterior à do passo 1:** NÃO aplique o banco ainda. Publique primeiro as
-   functions (o `publicar-functions.yml` com o `expected_sha` da release) e meça de novo. O portão
-   imprime "banco → functions → front"; aqui, de propósito, as functions desta pista vêm **antes**
-   do apply. Anote as versões no ar (é o retrato "ANTES" para desfazer).
+Se houver divergência, inclusive "deriva antiga" em uma das duas, publique primeiro as funções
+pelo `publicar-functions.yml` com o `expected_sha` da release e confira de novo. **Se não puder
+comprovar as duas em cada loja, pare**, mesmo que o portão já imprima o comando de aplicar o
+banco. Anote as versões no ar antes de publicar para poder desfazer.
 
 ## 2. Banco, uma loja por vez
 

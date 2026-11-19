@@ -184,6 +184,10 @@ import {
   mascaraWhatsappBr,
   mensagemDeWhatsappIncompleto,
 } from "@/lib/telefone-br";
+import {
+  AVISO_ENDERECO_DA_RETIRADA,
+  NOTA_AUTOMATICA_DA_RETIRADA,
+} from "@/lib/texto-da-retirada";
 import { PAGAMENTO_RECEBIDO_PEDIDO_CANCELADO } from "@/lib/texto-estorno-do-cliente";
 import { criarTravaDeEnvio } from "@/lib/travaDeEnvio";
 import { normalizarUf, ufBrasileiraValida } from "@/lib/uf-brasileira";
@@ -625,7 +629,8 @@ export const notaDoFreteEscolhido = (
 ): string | undefined => {
   if (!option) return undefined;
   if (ehRetiradaNaLoja(option.id)) {
-    return `Retirada na loja${option.pickupAddress ? `: ${option.pickupAddress}` : ""}`;
+    // A nota é enviada antes de o banco gravar o endereço do pedido.
+    return NOTA_AUTOMATICA_DA_RETIRADA;
   }
   const prazo =
     option.id === "free-shipping-promo" || option.provider === "free"
@@ -1479,6 +1484,12 @@ export function CheckoutViewDaConta({
   // conta como de convidado). Mantido pelo efeito "de quem são nome e
   // WhatsApp", mais abaixo, e semeado pelo init quando a conta já é conhecida.
   const donoDosDadosRef = useRef<string | null | undefined>(undefined);
+  const dadosDoVisitanteAlteradosEmRef = useRef<number | undefined>(undefined);
+  const marcarEdicaoDoVisitante = () => {
+    if (donoDosDadosRef.current === null) {
+      dadosDoVisitanteAlteradosEmRef.current = Date.now();
+    }
+  };
   // O rascunho (inteiro) de uma CONTA que chegou antes de a autenticação
   // dizer quem entrou: só se aplica se for a mesma conta.
   const dadosPendentesDoRascunhoRef = useRef<{
@@ -1497,6 +1508,8 @@ export function CheckoutViewDaConta({
       // transitória dos resets é substituída, logo depois, pela gravação dos
       // valores restaurados.
       const rascunho = lerRascunhoDoCheckout(sessionStorageSeguro());
+      dadosDoVisitanteAlteradosEmRef.current =
+        rascunho?.dadosDoVisitanteAlteradosEm;
       // Revisão de segurança (23/09/2026): quando a config da loja chega
       // DEPOIS de `get_my_cpf`, os resets abaixo apagavam o CPF que a conta
       // acabou de preencher. O valor atual do campo (nunca o rascunho — CPF
@@ -1979,8 +1992,11 @@ export function CheckoutViewDaConta({
   const [cartaoEncerrado, setCartaoEncerrado] = useState<CartaoEmCurso | null>(
     null,
   );
-  // A verificação periódica, para o realtime pedir UMA leitura agora.
-  const lerAVagaAgoraRef = useRef<(() => void) | null>(null);
+  // Atalho para uma leitura avulsa do pedido, pelo realtime ou pelo Pix.
+  const lerAVagaAgoraRef = useRef<
+    | ((pedidoEsperado?: string) => Promise<boolean | undefined> | undefined)
+    | null
+  >(null);
   // ── Lacuna L1 (02/10/2026): soltura da vaga e DEPOIS o pedido fechado ───
   // A tentativa que a leitura da vaga já encerrou (C6). Depois da recusa, a
   // tela do cartão desarma a tentativa (a etapa "recusado" não está em
@@ -2126,12 +2142,11 @@ export function CheckoutViewDaConta({
   >(null);
   // Lote 210: o que a tela de sucesso do pedido "pago na entrega/retirada"
   // precisa saber e que o carrinho já esqueceu quando ela abre (limpar a
-  // compra derruba a opção de frete): forma, modalidade e endereço de retirada
-  // vêm da compra congelada no envio, não do carrinho atual.
+  // compra derruba a opção de frete): forma e modalidade vêm da compra
+  // congelada no envio, não do carrinho atual.
   const [resumoDoPedidoNaEntrega, setResumoDoPedidoNaEntrega] = useState<{
     paymentMethod: string | null;
     ehRetirada: boolean;
-    enderecoDaRetirada?: string;
   } | null>(null);
   // Mesmo motivo: o submétodo (PIX ou cartão) do pedido que JÁ nasceu. Sem
   // o congelamento, um efeito que mexe em `paymentMethod` depois do submit
@@ -3007,8 +3022,8 @@ export function CheckoutViewDaConta({
   // consertar): (1) NÃO grava antes do init/restore ter acontecido
   // (`hasInitializedRef`) — a config da loja chega async, e um efeito de
   // gravação rodando antes do restore sobrescreveria o rascunho com um
-  // vazio; (2) NÃO grava rascunho SEM CONTEÚDO — escrever vazio por cima de
-  // rascunho com dados é perda silenciosa.
+  // vazio; (2) NÃO grava rascunho SEM CONTEÚDO, salvo se o visitante já
+  // editou: se apagar o último dado, o valor antigo não deve reaparecer.
   const notasRef = useRef(notes);
   const cupomRef = useRef(appliedCoupon);
   useEffect(() => {
@@ -3035,6 +3050,10 @@ export function CheckoutViewDaConta({
       if (donoDosDadosRef.current === undefined) return;
       const rascunho = {
         contaDosDados: donoDosDadosRef.current,
+        dadosDoVisitanteAlteradosEm:
+          donoDosDadosRef.current === null
+            ? dadosDoVisitanteAlteradosEmRef.current
+            : undefined,
         nome: valores.name ?? "",
         whatsapp: valores.whatsapp ?? "",
         cep: valores.cep ?? "",
@@ -3055,12 +3074,31 @@ export function CheckoutViewDaConta({
           ? cupomRef.current.conta
           : (cupomPendenteDoRascunhoRef.current?.conta ?? null),
       };
-      if (!rascunhoTemConteudo(rascunho)) return;
+      if (
+        !rascunhoTemConteudo(rascunho) &&
+        rascunho.dadosDoVisitanteAlteradosEm === undefined
+      )
+        return;
       salvarRascunhoDoCheckout(sessionStorageSeguro(), rascunho);
     };
-    const subscription = form.watch((valores) =>
-      gravarRascunho(valores as CheckoutFormValues),
-    );
+    let anteriores = { ...form.getValues() };
+    const subscription = form.watch((valores, { name, type }) => {
+      const atuais = valores as CheckoutFormValues;
+      // Só o evento de edição conta: reset, setValue e preenchimento por
+      // busca podem mudar os valores sem a pessoa ter tocado no campo.
+      if (
+        type === "change" &&
+        name &&
+        name !== "cpf" &&
+        (Reflect.get(atuais, name) ?? "") !==
+          (Reflect.get(anteriores, name) ?? "") &&
+        donoDosDadosRef.current === null
+      ) {
+        dadosDoVisitanteAlteradosEmRef.current = Date.now();
+      }
+      anteriores = { ...atuais };
+      gravarRascunho(atuais);
+    });
     return () => subscription.unsubscribe();
   }, [form]);
   // Notas e cupom não passam pelo form.watch (estado próprio) — gravação
@@ -3070,6 +3108,10 @@ export function CheckoutViewDaConta({
     if (donoDosDadosRef.current === undefined) return;
     const rascunho = {
       contaDosDados: donoDosDadosRef.current,
+      dadosDoVisitanteAlteradosEm:
+        donoDosDadosRef.current === null
+          ? dadosDoVisitanteAlteradosEmRef.current
+          : undefined,
       nome: form.getValues("name") ?? "",
       whatsapp: form.getValues("whatsapp") ?? "",
       cep: form.getValues("cep") ?? "",
@@ -3088,7 +3130,11 @@ export function CheckoutViewDaConta({
         ? appliedCoupon.conta
         : (cupomPendenteDoRascunhoRef.current?.conta ?? null),
     };
-    if (!rascunhoTemConteudo(rascunho)) return;
+    if (
+      !rascunhoTemConteudo(rascunho) &&
+      rascunho.dadosDoVisitanteAlteradosEm === undefined
+    )
+      return;
     salvarRascunhoDoCheckout(sessionStorageSeguro(), rascunho);
   }, [notes, appliedCoupon, form]);
   // Achado 8 da revisão (17/08/2026): o painel precisa devolver o foco ao
@@ -3677,6 +3723,7 @@ export function CheckoutViewDaConta({
     const agora = user?.id ?? null;
     const dono = donoDosDadosRef.current;
     if (typeof dono === "string" && dono !== agora) {
+      dadosDoVisitanteAlteradosEmRef.current = undefined;
       dadosPendentesDoRascunhoRef.current = null;
       camposMexidosPelaClienteRef.current.clear();
       perfilVistoRef.current = { name: "", whatsapp: "" };
@@ -3896,19 +3943,19 @@ export function CheckoutViewDaConta({
       // continua com seu próprio aviso: a reserva já venceu nesse caso.
       if (data.status === "cancelled" && data.payment_status === "pago") {
         setStatusPagamentoPix("pedido-cancelado");
-        return;
+        return true;
       }
       if (data.payment_status === "pago") {
         setParcelamentoConfirmado(parcelamentoDoCreditoPago(data));
         setStatusPagamentoPix((atual) =>
           atual === "pedido-cancelado" ? atual : "confirmado",
         );
-        return;
+        return true;
       }
       if (data.payment_status === "pago_apos_expirar") {
         setParcelamentoConfirmado(parcelamentoDoCreditoPago(data));
         setStatusPagamentoPix("fora-do-prazo");
-        return;
+        return true;
       }
 
       // F1: o pedido morto no servidor — mesma definição de "fechado" que a
@@ -4095,11 +4142,12 @@ export function CheckoutViewDaConta({
     if (typeof document !== "undefined") {
       document.addEventListener("visibilitychange", aoVoltarAFicarVisivel);
     }
-    // C6 (P1): o realtime pede uma leitura avulsa — mesmas guardas, não conta
-    // como tick do teto.
-    const lerAgora = () => {
-      verificarPagamento();
-    };
+    // O realtime e a verificação manual do Pix pedem a mesma leitura
+    // avulsa, sem contar como tick do intervalo.
+    const lerAgora = (pedidoEsperado?: string) =>
+      pedidoEsperado === undefined || pedidoEsperado === orderId
+        ? verificarPagamento()
+        : undefined;
     lerAVagaAgoraRef.current = lerAgora;
 
     return () => {
@@ -5168,9 +5216,6 @@ export function CheckoutViewDaConta({
       cpfParaRpc,
       contaEsperada,
       semConta: !user,
-      enderecoDaRetirada: ehRetirada
-        ? selectedShippingOption?.pickupAddress?.trim()
-        : undefined,
     });
   };
 
@@ -5367,10 +5412,6 @@ export function CheckoutViewDaConta({
         ehRetirada:
           typeof orderData.shippingOptionId === "string" &&
           ehRetiradaNaLoja(orderData.shippingOptionId),
-        enderecoDaRetirada:
-          typeof pedido.enderecoDaRetirada === "string"
-            ? pedido.enderecoDaRetirada
-            : undefined,
       });
       setShowSuccess(true);
 
@@ -6427,6 +6468,7 @@ export function CheckoutViewDaConta({
             // tela do outro).
             sessaoAtiva={Boolean(user?.id)}
             onEntrarDeNovo={() => onNavigate("auth")}
+            onRelerPagamentoPix={() => lerAVagaAgoraRef.current?.(orderId)}
             onTrocarParaPix={(cartaoAindaVivo) => {
               if (cartaoAindaVivo) marcarCobrancaIncerta(orderId);
               // Lacuna L1b: a tela agora é do PIX — a recusa do cartão saiu
@@ -6501,7 +6543,6 @@ export function CheckoutViewDaConta({
         valor={valorDoPedido}
         paymentMethod={resumoDoPedidoNaEntrega?.paymentMethod ?? null}
         ehRetirada={resumoDoPedidoNaEntrega?.ehRetirada ?? false}
-        enderecoDaRetirada={resumoDoPedidoNaEntrega?.enderecoDaRetirada}
         onNavigate={onNavigate}
       />
     );
@@ -6582,6 +6623,16 @@ export function CheckoutViewDaConta({
             >
               Voltar ao carrinho
             </Button>
+            {user?.id && (
+              <Button
+                type="button"
+                variant="link"
+                onClick={() => onNavigate("orders")}
+                className="min-h-11 w-full whitespace-normal text-zinc-700 underline dark:text-zinc-300"
+              >
+                Já fez um pedido? Ver meus pedidos
+              </Button>
+            )}
           </>
         )}
       </div>
@@ -7390,6 +7441,10 @@ export function CheckoutViewDaConta({
                                 });
                               }
                             }
+                            // Este campo chama setValue diretamente em vez
+                            // de passar pelo onChange do register.
+                            if (limpo !== cepAnterior)
+                              marcarEdicaoDoVisitante();
                             form.setValue("cep", formatado, {
                               shouldValidate: true,
                             });
@@ -8038,7 +8093,7 @@ export function CheckoutViewDaConta({
                       autoComplete="off"
                       value={valorParaTroco}
                       onChange={(e) => setValorParaTroco(e.target.value)}
-                      placeholder="Ex.: 100,00"
+                      placeholder="Valor maior que o total do pedido"
                       aria-invalid={!!avisoDeTroco}
                       aria-describedby="checkout-aviso-troco"
                       className="mb-2 min-h-11 w-full rounded-xl border border-zinc-300 bg-white px-3 text-base text-zinc-900 md:text-sm"
@@ -8074,7 +8129,10 @@ export function CheckoutViewDaConta({
                 id="order-notes"
                 name="order_notes"
                 value={notes}
-                onChange={(e) => setNotes(e.target.value)}
+                onChange={(e) => {
+                  if (e.target.value !== notes) marcarEdicaoDoVisitante();
+                  setNotes(e.target.value);
+                }}
                 maxLength={espacoDaObservacao}
                 aria-describedby={
                   notaSeraCortada ? "checkout-aviso-nota-com-troco" : undefined
@@ -9084,7 +9142,6 @@ interface SuccessViewProps {
   /** Forma escolhida na entrega/retirada (`cash` | `pix` | `card`). */
   paymentMethod: string | null;
   ehRetirada: boolean;
-  enderecoDaRetirada?: string;
   onNavigate: (view: View, productId?: string) => void;
 }
 
@@ -9095,7 +9152,6 @@ function SuccessView({
   valor,
   paymentMethod,
   ehRetirada,
-  enderecoDaRetirada,
   onNavigate,
 }: Readonly<SuccessViewProps>) {
   // Quem não tem conta acompanha o pedido por `AcompanharPedidoSemConta`
@@ -9152,9 +9208,10 @@ function SuccessView({
               ? "Recebemos o seu pedido. A loja vai separar os itens para você retirar."
               : "Recebemos o seu pedido. A loja vai cuidar da entrega."}
           </p>
-          {ehRetirada && enderecoDaRetirada && (
+          {/* createOrder não retorna o endereço gravado; a cotação não o confirma. */}
+          {ehRetirada && (
             <p className="mt-2 break-words text-sm font-medium text-zinc-700">
-              Retire em: {enderecoDaRetirada}
+              {AVISO_ENDERECO_DA_RETIRADA}
             </p>
           )}
         </div>

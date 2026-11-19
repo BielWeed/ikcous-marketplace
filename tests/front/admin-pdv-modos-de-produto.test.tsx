@@ -161,7 +161,7 @@ it("abre em Bipar, alterna um painel por vez e mantém teclado ligado com câmer
   const campo = painelVisivel().querySelector("#busca-manual-de-produto")!;
   expect(campo.getAttribute("aria-describedby")).toBe("busca-produto-ajuda");
   expect(painelVisivel().textContent).toContain(
-    "Nome ou código interno · mínimo de 2 letras",
+    "Nome ou código interno · mínimo de 2 caracteres",
   );
   expect(painelVisivel().textContent).not.toContain(
     "Nenhum produto encontrado",

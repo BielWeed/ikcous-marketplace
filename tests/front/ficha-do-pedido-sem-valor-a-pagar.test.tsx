@@ -222,6 +222,8 @@ describe("ficha do pedido — pedido de R$ 0,00 (sem valor a pagar)", () => {
     expect(bloco).toContain("Sem valor a pagar");
     expect(bloco).not.toContain("Dinheiro");
     expect(bloco).not.toContain("Falta receber");
+    expect(botaoComTexto(hospedeiro, "Marcar como recebido")).toBeUndefined();
+    expect(document.body.textContent).not.toMatch(/Recebeu os R\$\s*0,00/);
   });
 
   it("CONTROLE: com total 100 a ficha continua com 'Dinheiro' e 'Falta receber na entrega'", async () => {
@@ -231,6 +233,7 @@ describe("ficha do pedido — pedido de R$ 0,00 (sem valor a pagar)", () => {
     expect(bloco).toContain("Dinheiro");
     expect(bloco).toContain("Falta receber na entrega");
     expect(bloco).not.toContain("Sem valor a pagar");
+    expect(botaoComTexto(hospedeiro, "Marcar como recebido")).toBeTruthy();
   });
 
   it("entregar um pedido de R$ 0: não pergunta 'Recebeu', registra o 'Recebi' sozinha e DEPOIS avança", async () => {
@@ -323,6 +326,7 @@ describe("ficha do pedido — pedido de R$ 0,00 (sem valor a pagar)", () => {
     });
 
     expect(blocoDoDinheiro()).not.toContain("Sem valor a pagar");
+    expect(botaoComTexto(hospedeiro, "Marcar como recebido")).toBeTruthy();
 
     await clicarAvancar();
 

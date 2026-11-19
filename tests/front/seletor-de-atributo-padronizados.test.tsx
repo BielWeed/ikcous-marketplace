@@ -399,15 +399,15 @@ describe("Marcar todos e Limpar", () => {
     await act(async () => {
       raiz.render(<Grade aoDefinir={aoDefinir} />);
     });
-    await clicar(acao("Marcar todos"));
+    await clicar(acao("Marcar todos desta aba"));
     expect(marcados()).toEqual(ROUPAS);
     expect(contagem()).toBe("7 selecionados");
     // Tudo da aba já está marcado: não há mais o que marcar.
-    expect(acao("Marcar todos")).toBeUndefined();
+    expect(acao("Marcar todos desta aba")).toBeUndefined();
 
     await clicar(aba("Números"));
     await clicar(valor("38"));
-    await clicar(acao("Marcar todos"));
+    await clicar(acao("Marcar todos desta aba"));
     expect(contagem()).toBe("19 selecionados");
     // Uma chamada só por clique, com a lista inteira (nada de 12 toques em fila).
     expect(aoDefinir).toHaveBeenLastCalledWith([
@@ -445,7 +445,7 @@ describe("Marcar todos e Limpar", () => {
         />,
       );
     });
-    await clicar(acao("Marcar todos"));
+    await clicar(acao("Marcar todos desta aba"));
     const enviados = aoDefinir.mock.lastCall?.[0] as string[];
     expect(enviados).toContain("p");
     expect(enviados).not.toContain("P");
@@ -456,7 +456,7 @@ describe("Marcar todos e Limpar", () => {
     await act(async () => {
       raiz.render(<Unico nomeInicial="Tamanho" valorInicial="P" />);
     });
-    expect(acao("Marcar todos")).toBeUndefined();
+    expect(acao("Marcar todos desta aba")).toBeUndefined();
     expect(acao("Limpar")).toBeUndefined();
   });
 
@@ -464,7 +464,7 @@ describe("Marcar todos e Limpar", () => {
     await act(async () => {
       raiz.render(<Grade comDefinir={false} selecionadosIniciais={["P"]} />);
     });
-    expect(acao("Marcar todos")).toBeUndefined();
+    expect(acao("Marcar todos desta aba")).toBeUndefined();
     expect(acao("Limpar")).toBeUndefined();
   });
 
@@ -473,7 +473,7 @@ describe("Marcar todos e Limpar", () => {
       raiz.render(<Grade selecionadosIniciais={["P"]} />);
     });
     await clicar(aba("Outro"));
-    expect(acao("Marcar todos")).toBeUndefined();
+    expect(acao("Marcar todos desta aba")).toBeUndefined();
     expect(acao("Limpar")).toBeTruthy();
   });
 });

@@ -250,6 +250,34 @@ describe("ficha do cliente — respostas pertencem ao usuário atual", () => {
     expect(mocks.filtro).toHaveBeenCalledTimes(1);
   });
 
+  it("não envia um segundo DELETE enquanto a limpeza do carrinho está pendente", async () => {
+    const exclusao = adiar();
+    mocks.apagar.mockReturnValueOnce(exclusao.promessa);
+    await responderBantesDeA();
+    await confirmarLimpeza();
+    expect(mocks.apagar).toHaveBeenCalledTimes(1);
+
+    await act(async () => botaoLimpar().click());
+    const confirmar = [
+      ...document.querySelectorAll<HTMLButtonElement>(
+        '[role="alertdialog"] button',
+      ),
+    ].find((botao) =>
+      ["Limpar Carrinho", "Limpando…"].includes(
+        botao.textContent?.trim() ?? "",
+      ),
+    );
+    await act(async () => confirmar?.click());
+    expect(mocks.apagar).toHaveBeenCalledTimes(1);
+    expect(botaoLimpar().disabled).toBe(true);
+    expect(confirmar?.textContent?.trim()).toBe("Limpando…");
+    expect(confirmar?.disabled).toBe(true);
+
+    await resolver(exclusao, { data: [{ id: "item-B" }], error: null });
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(botaoLimpar().disabled).toBe(false);
+  });
+
   it("esconde os dados de A e fecha sua confirmação enquanto B carrega", async () => {
     await renderizar("A");
     await resolver(consultaA, ficha("A"));

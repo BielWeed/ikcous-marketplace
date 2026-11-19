@@ -294,8 +294,9 @@ describe("Produto — estoque inteiro", () => {
     });
 
     expect(addProduct).toHaveBeenCalledWith(
-      expect.objectContaining({ stock: 0 }),
+      expect.objectContaining({ stock: 0, price: 50 }),
     );
+    expect(updateProduct).not.toHaveBeenCalled();
   });
 
   it("continua recusando decimal no estoque mínimo", async () => {

@@ -253,6 +253,8 @@ describe("dispararPagamentoPix", () => {
       metodo: "pix",
     });
     expect(onPix).toHaveBeenCalledWith({
+      paymentId: "pay-1",
+      aguardando: true,
       qrCodeBase64: "abc123",
       qrCode: "000201...",
       expiraEm: "2026-09-25T12:00:00.000Z",

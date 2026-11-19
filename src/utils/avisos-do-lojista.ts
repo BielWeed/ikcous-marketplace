@@ -412,7 +412,7 @@ export function montarAvisos(entrada: EntradaDeAvisos): Aviso[] {
     avisos.push({
       id: `recebimento:${recebimento.id}`,
       tipo: "recebimento",
-      titulo: `Pedido #${numeroDoPedido(recebimento.id)}${nome ? ` de ${nome}` : ""} entregue: você já recebeu o pagamento?`,
+      titulo: `Pedido #${numeroDoPedido(recebimento.id)}${nome ? ` de ${nome}` : ""} finalizado: você já recebeu o pagamento?`,
       detalhe: `${formatarReais(recebimento.total)} — marque para a cliente poder pedir devolução`,
       quando: recebimento.updated_at,
       destino: { view: "admin-orders", id: recebimento.id },

@@ -93,6 +93,13 @@ describe("nota do gráfico de categorias (par com a 20261063000000)", () => {
         vi.advanceTimersByTime(250);
       });
 
+      const legenda = hospedeiro.querySelector(
+        'section[aria-labelledby="crm-categorias-titulo"] header p',
+      );
+      expect(legenda?.textContent).toBe(
+        "Vendas desde o início da loja, agrupadas pela categoria atual dos produtos.",
+      );
+
       // SUJEITO AMARRADO AO PREDICADO (revisao 2350: uma frase solta no
       // textContent inteiro casa na cláusula ERRADA — um mutante que move a
       // cláusula para outra frase da tela passava). A nota é localizada pelo

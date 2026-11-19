@@ -79,7 +79,17 @@ function bancoFalso(tabelas: Record<string, Linha[]>, opts: { falharEm?: string 
             return Promise.resolve({ data: null, error: { message: `${tabela} fora do ar` } }).then(res, rej);
           }
           const saida = colunas
-            ? linhas.map((l) => Object.fromEntries(colunas!.map((c) => [c, campo(l, c)])))
+            ? linhas.map((l) =>
+              Object.fromEntries(colunas!.map((c) => {
+                if (c === "customer_data->>pickup_address") {
+                  const dados = campo(l, "customer_data") as
+                    | { pickup_address?: string }
+                    | undefined;
+                  return ["pickup_address", dados?.pickup_address ?? null];
+                }
+                return [c, campo(l, c)];
+              }))
+            )
             : linhas;
           return Promise.resolve({ data: saida, error: null }).then(res, rej);
         },
@@ -167,15 +177,94 @@ Deno.test("cliente cancelou pedido PAGO e NAO enviado -> 1 aviso, chave por even
   assertEquals(r.resumo, { candidatos: 1, avisados: 1, ignorados: 0, falhas: 0 });
 });
 
+Deno.test("cliente cancelou uma RETIRADA PRONTA já paga -> aviso orienta conferir o produto na loja", async () => {
+  const enderecoDaLoja = "Rua de Teste, 42";
+  const r = await rodar({
+    historico: [hist("h1", { old_status: "shipping" })],
+    pedidos: [
+      pedido({
+        cancelled_after_shipping: true,
+        customer_data: { pickup_address: enderecoDaLoja },
+      }),
+    ],
+    perfis,
+  });
+  assertEquals(r.avisos.length, 1);
+  const { body } = r.avisos[0].aviso;
+  assertStringIncludes(body, "pronto para retirada");
+  assertStringIncludes(body, "confirme que o produto está na loja");
+  assertStringIncludes(body, '"O produto voltou"');
+  for (const proibido of ["transporte", "automático", enderecoDaLoja]) {
+    assertEquals(body.includes(proibido), false, proibido);
+  }
+});
+
 Deno.test("cliente cancelou pedido JA ENVIADO (estava em shipping) -> aviso diz que o produto ja saiu", async () => {
   const r = await rodar({
     historico: [hist("h1", { old_status: "shipping" })],
-    pedidos: [pedido({ cancelled_after_shipping: true })],
+    pedidos: [
+      pedido({
+        cancelled_after_shipping: true,
+        customer_data: { pickup_address: "  " },
+      }),
+    ],
     perfis,
   });
   assertEquals(r.avisos.length, 1);
   assertStringIncludes(r.avisos[0].aviso.body, "o produto já saiu: avise o transporte");
   assertEquals(r.avisos[0].aviso.body.includes("automático"), false);
+});
+
+Deno.test("retirada paga cancelada em processing sem histórico de saída mantém o aviso de reembolso", async () => {
+  const r = await rodar({
+    historico: [hist("h1", { old_status: "processing" })],
+    pedidos: [pedido({ customer_data: { pickup_address: "Rua de Teste, 42" } })],
+    perfis,
+  });
+  assertEquals(r.avisos.length, 1);
+  assertEquals(
+    r.avisos[0].aviso.body,
+    "#4F5A6B · R$ 149,90 · Maria Silva — pago, o reembolso é automático",
+  );
+});
+
+Deno.test("retirada reativada para processing não vira aviso de transporte nem de retirada pronta", async () => {
+  const r = await rodar({
+    historico: [hist("h1", { old_status: "processing" })],
+    pedidos: [
+      pedido({
+        cancelled_after_shipping: true,
+        customer_data: { pickup_address: "Rua de Teste, 42" },
+      }),
+    ],
+    perfis,
+  });
+  assertEquals(r.avisos.length, 1);
+  const { body } = r.avisos[0].aviso;
+  assertStringIncludes(body, "pedido de retirada na loja");
+  assertStringIncludes(body, '"O produto voltou"');
+  for (const proibido of ["transporte", "pronto para retirada", "automático"]) {
+    assertEquals(body.includes(proibido), false, proibido);
+  }
+});
+
+Deno.test("retirada pronta com retorno já confirmado avisa do cancelamento sem pedir outro clique", async () => {
+  const r = await rodar({
+    historico: [hist("h1", { old_status: "shipping" })],
+    pedidos: [
+      pedido({
+        cancelled_after_shipping: true,
+        returned_to_seller_at: minutosAtras(1),
+        customer_data: { pickup_address: "Rua de Teste, 42" },
+      }),
+    ],
+    perfis,
+  });
+  assertEquals(r.avisos.length, 1);
+  const { body } = r.avisos[0].aviso;
+  assertStringIncludes(body, "pronto para retirada");
+  assertStringIncludes(body, "retorno do produto já foi confirmado");
+  assertEquals(body.includes("O produto voltou"), false);
 });
 
 Deno.test("flag de envio sozinha prova que o produto já saiu, mesmo com histórico em processing", () => {

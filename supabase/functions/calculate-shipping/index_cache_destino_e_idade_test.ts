@@ -95,7 +95,7 @@ Deno.test("cache de destino: cotação recente do CEP A não oferece preço nem 
 
 Deno.test("cache de idade: cotação assinada há mais de duas horas recota e renova preço e prazo", async () => {
     const { banco, linhas } = await prepararCache()
-    linhas[0].created_at = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString()
+    linhas[0].created_at = new Date(Date.now() - (2 * 60 + 15) * 60 * 1000).toISOString()
     const antiga = structuredClone(linhas[0])
     const antesDeRecotar = Date.now()
     const segunda = await rodar(cotacao({ cep: CEP_A }), { banco, rotas: { sf: novaOferta } })

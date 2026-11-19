@@ -45,6 +45,13 @@ const FILTROS_DA_PRIVACIDADE: Array<[string, unknown]> = [];
 // a consulta nova do sino, em `marketplace_orders`, distinguida da dos
 // pedidos pendentes pelo `.eq("status", "delivered")`.
 let RECEBIMENTOS_POR_MARCAR = 0;
+let TOTAIS_ZERADOS: {
+  id: string;
+  total: number;
+  subtotal: number;
+  discount: number;
+  shipping: number;
+}[] = [];
 // Politica de devolucao da loja (15/10/2026): a janela do sino segue o prazo
 // dela. `null` = a leitura nao trouxe nada (cai em 365 dias).
 let POLITICA_DA_LOJA: unknown = null;
@@ -78,6 +85,8 @@ function criarContagemBuilder(contagem: number, tabela = "") {
     return builder;
   });
   builder.gte = passa("gte");
+  builder.order = passa("order");
+  builder.range = passa("range");
   // biome-ignore lint/suspicious/noThenProperty: mock do query builder thenable do Supabase — mesmo padrão de dashboard-escuta-a-tabela-certa e admin-layout-cracha-pedidos-pendentes.
   builder.then = (resolve: any, reject?: any) => {
     if (tabela === "pedidos_de_privacidade" && FALHA_PRIVACIDADE) {
@@ -89,6 +98,12 @@ function criarContagemBuilder(contagem: number, tabela = "") {
     }
     if (ehRecebimento()) {
       FILTROS_DE_RECEBIMENTO.push(...calls);
+      if (calls.some((c) => c[0] === "eq" && c[1] === "total" && c[2] === 0)) {
+        return Promise.resolve({
+          data: TOTAIS_ZERADOS,
+          error: null,
+        }).then(resolve, reject);
+      }
       return Promise.resolve({
         count: RECEBIMENTOS_POR_MARCAR,
         error: null,
@@ -214,6 +229,7 @@ describe("AdminLayout — o sino abre as Notificações do lojista", () => {
     FALHA_PRIVACIDADE = null;
     FILTROS_DA_PRIVACIDADE.length = 0;
     RECEBIMENTOS_POR_MARCAR = 0;
+    TOTAIS_ZERADOS = [];
     POLITICA_DA_LOJA = null;
     FILTROS_DE_RECEBIMENTO.length = 0;
     vi.clearAllMocks();
@@ -433,6 +449,27 @@ describe("AdminLayout — o sino abre as Notificações do lojista", () => {
     // Sem configuracao da loja a janela e o teto do banco: 365 dias (o aviso
     // pode sobrar, nunca some para quem tem prazo longo).
     expect(gte?.[2]).toBe(inicioDaJanelaDeRecebimento(Date.now(), 365));
+  });
+
+  it("a bolinha ignora só o pedido zerado com a conta batendo", async () => {
+    RECEBIMENTOS_POR_MARCAR = 1;
+    const brinde = {
+      id: "brinde",
+      total: 0,
+      subtotal: 90,
+      discount: 90,
+      shipping: 0,
+    };
+    TOTAIS_ZERADOS = [brinde];
+    const { sino } = await montarPainel();
+    await esperarContagensChegarem();
+    expect(sino.querySelector("span")).toBeNull();
+
+    TOTAIS_ZERADOS = [{ ...brinde, discount: 0 }];
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    expect(sino.querySelector("span")).not.toBeNull();
   });
 
   it("a janela da bolinha segue o prazo de devolucao que a loja configurou", async () => {

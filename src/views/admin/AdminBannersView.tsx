@@ -3943,8 +3943,9 @@ export const AdminBannersView = memo(function AdminBannersView({
                   Status de Exibição
                 </div>
                 <p className="text-[11px] text-zinc-400">
-                  Suspenda ou ative a visibilidade de qualquer campanha
-                  instantaneamente usando o botão de alternar.
+                  Use o botão para ativar ou pausar o banner. Quando ativo, ele
+                  só aparece nas telas para as quais tem imagem e respeita as
+                  datas programadas, se houver.
                 </p>
               </div>
             </div>
@@ -4042,7 +4043,9 @@ export const AdminBannersView = memo(function AdminBannersView({
                 ` De ${new Date(bannerEmExclusao.startDate).toLocaleString("pt-BR")}.`}
               {bannerEmExclusao?.endDate &&
                 ` Até ${new Date(bannerEmExclusao.endDate).toLocaleString("pt-BR")}.`}{" "}
-              Esta ação não pode ser desfeita e removerá a campanha do catálogo.
+              A campanha sairá do catálogo. As artes de celular e computador que
+              não estiverem em uso em outro banner também poderão ser apagadas.
+              Não dá para desfazer.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="mt-4 gap-2">

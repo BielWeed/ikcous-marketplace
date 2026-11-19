@@ -25,15 +25,15 @@ describe("P12 — campanhas push no computador", () => {
   });
 
   it("preserva o celular, a árvore, os avisos e toda a lógica de envio da base", () => {
-    // Assinatura da fonte após corrigir só os três textos da r213 (público e
-    // aceite de envio), normalizada por espaços e variantes de PC.
+    // Assinatura da fonte com a validação do destino de produto,
+    // normalizada por espaços e variantes de PC.
     // Nova mudança em texto, handler ou classe móvel continua reprovando.
     const semComputador = fonte
       .replace(/\s+\b(?:lg|xl|2xl):[^\s"'\x60]+/g, "")
       .replace(/\s+/g, " ")
       .trim();
     expect(createHash("sha256").update(semComputador).digest("hex")).toBe(
-      "5ddee640dbf5136b7a1a6551a1d102b9b278e01a26df40fe5b976ba23d786ed8",
+      "6cc9ec3d34b6db4e49311c13ab985f6a318f497ae5afcbfa1012452f048a0013",
     );
   });
 

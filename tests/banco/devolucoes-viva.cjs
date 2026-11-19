@@ -4335,6 +4335,195 @@ PROVAS.push({
   },
 });
 
+async function prepararConclusao(
+  cliente,
+  sufixo,
+  { manual = false, reestocar = true } = {},
+) {
+  const pedidoId = `3eeeeeee-0000-0000-0000-0000000000${sufixo}`;
+  const itemId = `3fffffff-0000-0000-0000-0000000000${sufixo}`;
+  await pedidoCustom(cliente, pedidoId, {
+    userId: U_CLIENTE,
+    total: 47.25,
+    subtotal: 47.25,
+    paymentMethod: manual ? "cash" : "online",
+    paymentStatus: manual ? "recebido_na_entrega" : "pago",
+    paidAt: manual ? null : new Date(),
+    recebidoEm: manual ? new Date() : null,
+    gateway: manual ? null : `ORD-CONCLUSAO-${sufixo}`,
+    itemId,
+    productId: P_CAMISA,
+    qtd: 1,
+    preco: 47.25,
+    entregueHaDias: 2,
+  });
+  await logar(cliente, U_CLIENTE);
+  const d = await solicitar(
+    cliente,
+    pedidoId,
+    [{ order_item_id: itemId, quantidade: 1 }],
+    "desisti",
+    "reembolso",
+    "entrega_na_loja",
+  );
+  await ateRecebida(cliente, d.id);
+  const item = await valorUnico(
+    cliente,
+    "SELECT id FROM public.devolucao_itens WHERE devolucao_id = $1",
+    [d.id],
+  );
+  return {
+    pedidoId,
+    devolucaoId: d.id,
+    concluir: (valor = null) =>
+      rpc(
+        cliente,
+        "SELECT public.admin_devolucao_concluir($1::uuid, 'reembolso', $2::jsonb, $3::numeric) AS r",
+        [
+          d.id,
+          JSON.stringify([{ item_id: item, condicao: "nova", reestocar }]),
+          valor,
+        ],
+      ),
+  };
+}
+
+async function fotoConclusao(cliente, devolucaoId) {
+  const {
+    rows: [foto],
+  } = await cliente.query(
+    `SELECT o.status AS pedido_status, o.payment_status, p.estoque,
+            to_jsonb(d) AS devolucao, to_jsonb(i) AS item,
+            (SELECT count(*)::int FROM public.order_refunds r WHERE r.order_id = o.id) AS estornos
+       FROM public.devolucoes d
+       JOIN public.marketplace_orders o ON o.id = d.order_id
+       JOIN public.devolucao_itens i ON i.devolucao_id = d.id
+       JOIN public.produtos p ON p.id = i.product_id
+      WHERE d.id = $1`,
+    [devolucaoId],
+  );
+  return foto;
+}
+
+PROVAS.push({
+  nome: "conclusão recusa pagamento que virou NULL depois do recebimento",
+  corpo: async (cliente) => {
+    const { pedidoId, devolucaoId, concluir } = await prepararConclusao(
+      cliente,
+      "4b",
+    );
+    // A solicitação só foi possível enquanto havia pagamento. Na conclusão,
+    // NULL não pode passar pela guarda: NULL NOT IN (...) não é verdadeiro.
+    await cliente.query(
+      "UPDATE public.marketplace_orders SET payment_status = NULL WHERE id = $1",
+      [pedidoId],
+    );
+    const antes = await fotoConclusao(cliente, devolucaoId);
+    assert.equal(antes.pedido_status, "delivered");
+    assert.equal(antes.payment_status, null);
+    assert.equal(antes.devolucao.status, "recebida");
+    assert.equal(antes.estornos, 0);
+
+    await assert.rejects(() => concluir(), {
+      code: "22023",
+      message: /não tem pagamento registrado para devolver/,
+    });
+    assert.deepStrictEqual(await fotoConclusao(cliente, devolucaoId), antes);
+  },
+});
+
+PROVAS.push({
+  nome: "reembolso manual de R$ 0,004 arredonda a zero e desfaz o reestoque",
+  corpo: async (cliente) => {
+    const { devolucaoId, concluir } = await prepararConclusao(cliente, "4c", {
+      manual: true,
+    });
+    const antes = await fotoConclusao(cliente, devolucaoId);
+    assert.equal(antes.devolucao.status, "recebida");
+    assert.equal(antes.item.reestocado_em, null);
+    assert.equal(antes.estornos, 0);
+
+    // No caminho manual não há INSERT no ledger cuja própria CHECK rejeite zero.
+    await assert.rejects(() => concluir("0.004"), {
+      code: "22023",
+      message: /Informe o valor do reembolso/,
+    });
+    assert.deepStrictEqual(await fotoConclusao(cliente, devolucaoId), antes);
+  },
+});
+
+PROVAS.push({
+  nome: "180 dias exatos abrem estorno; um segundo a mais vira reembolso manual",
+  corpo: async (cliente) => {
+    await cliente.query("BEGIN");
+    try {
+      // now() é fixo na transação; UTC evita que a subtração de dias
+      // atravesse uma mudança de fuso e fuja dos 180 dias exatos.
+      await cliente.query("SET LOCAL TIME ZONE 'UTC'");
+      for (const [sufixo, segundosAlem, manual] of [
+        ["4d", 0, false],
+        ["4e", 1, true],
+      ]) {
+        const { pedidoId, devolucaoId, concluir } = await prepararConclusao(
+          cliente,
+          sufixo,
+          { reestocar: false },
+        );
+        const {
+          rows: [idade],
+        } = await cliente.query(
+          `UPDATE public.marketplace_orders
+              SET paid_at = now() - interval '180 days' - $2::int * interval '1 second'
+            WHERE id = $1
+            RETURNING EXTRACT(EPOCH FROM now() - paid_at) = $3::int AS exata`,
+          [pedidoId, segundosAlem, 15_552_000 + segundosAlem],
+        );
+        assert.equal(
+          idade.exata,
+          true,
+          "a idade do pagamento precisa ser exata",
+        );
+
+        const resultado = await concluir();
+        assert.equal(
+          resultado.reembolso_manual,
+          manual,
+          `180 dias + ${segundosAlem}s`,
+        );
+        const {
+          rows: [gravada],
+        } = await cliente.query(
+          `SELECT status, valor_reembolso::text AS valor_reembolso,
+                  reembolso_manual, refund_id
+             FROM public.devolucoes WHERE id = $1`,
+          [devolucaoId],
+        );
+        assert.deepStrictEqual(gravada, {
+          status: "concluida",
+          valor_reembolso: "47.25",
+          reembolso_manual: manual,
+          refund_id: resultado.refund_id,
+        });
+        const { rows: estornos } = await cliente.query(
+          "SELECT id, amount::text AS amount, status FROM public.order_refunds WHERE order_id = $1",
+          [pedidoId],
+        );
+        if (manual) {
+          assert.equal(resultado.refund_id, null);
+          assert.deepStrictEqual(estornos, []);
+        } else {
+          assert.ok(resultado.refund_id);
+          assert.deepStrictEqual(estornos, [
+            { id: resultado.refund_id, amount: "47.25", status: "solicitado" },
+          ]);
+        }
+      }
+    } finally {
+      await cliente.query("ROLLBACK");
+    }
+  },
+});
+
 async function main() {
   const url = lerDatabaseUrlEfemera();
   const cliente = new Client({ connectionString: url });

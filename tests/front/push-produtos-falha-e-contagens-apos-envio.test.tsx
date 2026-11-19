@@ -368,14 +368,21 @@ describe("Avisar clientes — produtos que falham e contagens depois do envio", 
       expect(corpo.url).toBe("/");
     });
 
-    it("recusa enviar um aviso para '/product-detail' sem produto", async () => {
+    it.each([
+      "/product-detail",
+      "/product-detail?utm_source=whatsapp",
+      "/product-detail?id=",
+      "/product-detail/?id=&utm_source=whatsapp",
+      "/product-detail?id=nao-e-uuid",
+      "/product-detail#?id=12345678-1234-4234-8234-123456789abc",
+    ])("recusa o destino %s antes de enviar", async (url) => {
       await abrirTela();
       await preencherMensagem();
 
       const campo =
         hospedeiro.querySelector<HTMLInputElement>("#push-custom-path")!;
       await act(async () => {
-        digitar(campo, "/product-detail");
+        digitar(campo, url);
       });
       await act(async () => {
         await esperar(260);
@@ -387,6 +394,29 @@ describe("Avisar clientes — produtos que falham e contagens depois do envio", 
         "Escolha o produto que o aviso vai abrir",
         expect.anything(),
       );
+    });
+  });
+
+  describe("B. destino de produto válido", () => {
+    const id = "12345678-1234-4234-8234-123456789abc";
+
+    it.each([
+      `/product-detail?id=${id}`,
+      `/product-detail?id=${id}&utm_source=whatsapp`,
+      `/product-detail?utm_source=whatsapp&id=${id}`,
+    ])("envia o endereço %s como foi digitado", async (url) => {
+      await abrirTela();
+      await preencherMensagem();
+
+      const campo =
+        hospedeiro.querySelector<HTMLInputElement>("#push-custom-path")!;
+      await act(async () => {
+        digitar(campo, url);
+      });
+      await enviar();
+
+      expect(invokeSendPush).toHaveBeenCalledTimes(1);
+      expect(invokeSendPush.mock.calls[0][1].body.url).toBe(url);
     });
   });
 

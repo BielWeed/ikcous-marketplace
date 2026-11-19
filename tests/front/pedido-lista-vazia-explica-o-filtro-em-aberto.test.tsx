@@ -133,14 +133,16 @@ describe("AdminOrdersView — lista vazia com 'Em Aberto' ligado junto de canal 
     return h3.parentElement.textContent ?? "";
   }
 
-  it("Em Aberto + Balcão: o aviso diz que 'Em Aberto' também está ligado, que a venda do balcão nasce Entregue e sugere 'Todos'", async () => {
+  it("Em Aberto + Balcão: o aviso diz que 'Em Aberto' também está ligado, que a venda do balcão já nasce finalizada e sugere 'Todos'", async () => {
     await montarVazio({
       admin_orders_filter_v2: "open",
       admin_orders_canal_filter: "presencial",
     });
     const texto = avisoDeListaVazia("Nenhum pedido nesse canal");
     expect(texto).toMatch(/Em Aberto/);
-    expect(texto).toMatch(/nascem? como Entregue/);
+    expect(texto).toContain(
+      "não mostra pedidos finalizados (vendas do balcão já nascem finalizadas)",
+    );
     expect(texto).toMatch(/Todos/);
   });
 

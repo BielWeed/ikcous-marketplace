@@ -15,7 +15,26 @@ const CREDITO_DO_CMV = Object.freeze({
     FROM pg_proc WHERE oid = to_regprocedure('public.fin_dre(date,date)'))
     = 'eafc6a2c4663e33f5459791c6601b848', false) AS sim`,
 });
+async function desfazerCustoDoCancelamentoNaTransacao(c) {
+  const { rows } = await c.query(
+    `SELECT md5(replace(prosrc, chr(13), '')) AS hash FROM pg_proc
+      WHERE oid = to_regprocedure('public.fin_dre(date,date)')`,
+  );
+  if (rows[0]?.hash !== "a27c9649621b3ac1502f458576120259") return false;
+  await c.query(
+    fs.readFileSync(
+      path.join(
+        __dirname,
+        "../../supabase/migrations/rollback-manual-20261405900000_o_custo_do_cancelamento_fica_no_mes_da_volta.sql",
+      ),
+      "utf8",
+    ),
+  );
+  return true;
+}
+
 async function desfazerCreditoDoCmvNaTransacao(c) {
+  await desfazerCustoDoCancelamentoNaTransacao(c);
   if ((await c.query(CREDITO_DO_CMV.noAr)).rows[0]?.sim !== true) return false;
   await c.query(
     fs.readFileSync(
@@ -32,4 +51,8 @@ async function desfazerCreditoDoCmvNaTransacao(c) {
   );
   return true;
 }
-module.exports = { CREDITO_DO_CMV, desfazerCreditoDoCmvNaTransacao };
+module.exports = {
+  CREDITO_DO_CMV,
+  desfazerCreditoDoCmvNaTransacao,
+  desfazerCustoDoCancelamentoNaTransacao,
+};

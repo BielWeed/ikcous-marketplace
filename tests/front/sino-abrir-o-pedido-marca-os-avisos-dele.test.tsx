@@ -125,6 +125,9 @@ vi.mock("@/lib/supabase", () => ({
       select: () => {
         const comOrdenacao = (proprias: boolean) => ({
           order: () => ({
+            order() {
+              return this;
+            },
             limit: () =>
               Promise.resolve({
                 data: linhasDoBanco().filter((l) =>

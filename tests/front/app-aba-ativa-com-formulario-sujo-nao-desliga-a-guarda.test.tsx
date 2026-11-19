@@ -87,10 +87,12 @@ vi.mock("@/components/layouts/AdminAreaGate", () => ({
     currentView,
     onNavigate,
     setIsAdminDirty,
+    setRascunhoDePedidoPendente,
   }: {
     readonly currentView: string;
     readonly onNavigate: (view: string, id?: string) => void;
     readonly setIsAdminDirty: (dirty: boolean) => void;
+    readonly setRascunhoDePedidoPendente?: (pendente: boolean) => void;
   }) => (
     <div data-testid="admin-area" data-view={currentView}>
       {/* Mesmo seletor que App.tsx consulta pra rolar o painel admin pro topo. */}
@@ -101,6 +103,20 @@ vi.mock("@/components/layouts/AdminAreaGate", () => ({
         onClick={() => setIsAdminDirty(true)}
       >
         Editar identidade
+      </button>
+      <button
+        type="button"
+        data-testid="digitar-na-ficha"
+        onClick={() => setRascunhoDePedidoPendente?.(true)}
+      >
+        Digitar na ficha
+      </button>
+      <button
+        type="button"
+        data-testid="encerrar-rascunho"
+        onClick={() => setRascunhoDePedidoPendente?.(false)}
+      >
+        Encerrar rascunho
       </button>
       <button
         type="button"
@@ -404,6 +420,36 @@ describe("tocar a aba já ativa do admin com formulário sujo não desliga a gua
     });
     await assentar();
   };
+
+  it("só impede recarregar enquanto a ficha tiver rascunho, mesmo em outra aba do painel", async () => {
+    await abrir();
+    const dispararRecarga = () => {
+      const evento = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(evento);
+      return evento.defaultPrevented;
+    };
+
+    expect(dispararRecarga()).toBe(false);
+    await clicar("tocar-pedidos");
+    expect(view()).toBe("admin-orders");
+
+    const registrar = vi.spyOn(window, "addEventListener");
+    const remover = vi.spyOn(window, "removeEventListener");
+    await clicar("digitar-na-ficha");
+    expect(registrar).toHaveBeenCalledWith(
+      "beforeunload",
+      expect.any(Function),
+    );
+    expect(dispararRecarga()).toBe(true);
+
+    await clicar("tocar-ajustes");
+    expect(view()).toBe("admin-settings");
+    expect(dispararRecarga()).toBe(true);
+
+    await clicar("encerrar-rascunho");
+    expect(remover).toHaveBeenCalledWith("beforeunload", expect.any(Function));
+    expect(dispararRecarga()).toBe(false);
+  });
 
   it("chega em admin-settings pela URL direta", async () => {
     await abrir();

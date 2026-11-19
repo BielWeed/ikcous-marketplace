@@ -28,6 +28,8 @@ import type { ArmazenamentoSimples } from "./chave-do-pedido";
 import { nomeTemConteudoVisivel } from "./nome-visivel";
 
 const CHAVE_DE_ARMAZENAMENTO = "ikcous-rascunho-do-checkout-v1";
+// Uma aba compartilhada não deve lembrar os dados do visitante indefinidamente.
+const VALIDADE_DOS_DADOS_DO_VISITANTE_MS = 2 * 60 * 60 * 1000;
 
 export interface RascunhoDoCheckout {
   nome: string;
@@ -60,6 +62,8 @@ export interface RascunhoDoCheckout {
    * compra (mesma pessoa). CEP e endereço também são dado pessoal.
    */
   contaDosDados?: string | null;
+  /** Epoch em ms da última edição pessoal feita pelo visitante na tela. */
+  dadosDoVisitanteAlteradosEm?: number;
 }
 
 /**
@@ -67,7 +71,7 @@ export interface RascunhoDoCheckout {
  * - dono `null` (convidado digitou): vale para convidado e para a conta que
  *   entrou no meio da compra;
  * - dono = id de conta: só para a MESMA conta;
- * - dono ausente (rascunho de antes deste campo): só para convidado.
+ * - dono ausente: só para convidado; a leitura já limpa os dados sem dono.
  */
 export function dadosDoRascunhoValemPara(
   dono: string | null | undefined,
@@ -134,7 +138,7 @@ function higienizar(cru: unknown): RascunhoDoCheckout | null {
         ? d.contaDoCupom
         : null,
     // `null` explícito = convidado; ausente/ilegível = desconhecido
-    // (`undefined`), que NUNCA vale como convidado — ver o tipo.
+    // (`undefined`); a leitura não restaura os dados de dono desconhecido.
     contaDosDados:
       typeof d.contaDosDados === "string" && d.contaDosDados !== ""
         ? d.contaDosDados
@@ -144,12 +148,39 @@ function higienizar(cru: unknown): RascunhoDoCheckout | null {
   };
 }
 
+function carimboDoVisitanteValido(carimbo: unknown): carimbo is number {
+  if (
+    typeof carimbo !== "number" ||
+    !Number.isSafeInteger(carimbo) ||
+    carimbo <= 0
+  )
+    return false;
+  const idade = Date.now() - carimbo;
+  return idade >= 0 && idade <= VALIDADE_DOS_DADOS_DO_VISITANTE_MS;
+}
+
+function semDadosPessoais(rascunho: RascunhoDoCheckout): RascunhoDoCheckout {
+  return {
+    ...rascunhoVazio(),
+    contaDosDados: rascunho.contaDosDados,
+    cupom: rascunho.cupom,
+    contaDoCupom: rascunho.contaDoCupom,
+  };
+}
+
 export function salvarRascunhoDoCheckout(
   armazenamento: ArmazenamentoSimples,
   rascunho: RascunhoDoCheckout,
 ): void {
   try {
-    armazenamento.setItem(CHAVE_DE_ARMAZENAMENTO, JSON.stringify(rascunho));
+    const podeGuardarDados =
+      typeof rascunho.contaDosDados === "string" ||
+      (rascunho.contaDosDados === null &&
+        carimboDoVisitanteValido(rascunho.dadosDoVisitanteAlteradosEm));
+    armazenamento.setItem(
+      CHAVE_DE_ARMAZENAMENTO,
+      JSON.stringify(podeGuardarDados ? rascunho : semDadosPessoais(rascunho)),
+    );
   } catch {
     // sessionStorage cheio/indisponível: rascunho é best-effort — a compra
     // nunca depende dele.
@@ -162,7 +193,22 @@ export function lerRascunhoDoCheckout(
   try {
     const cru = armazenamento.getItem(CHAVE_DE_ARMAZENAMENTO);
     if (!cru) return null;
-    return higienizar(JSON.parse(cru));
+    const bruto = JSON.parse(cru) as Desconhecido;
+    const rascunho = higienizar(bruto);
+    if (!rascunho || typeof rascunho.contaDosDados === "string")
+      return rascunho;
+
+    const carimbo = bruto.dadosDoVisitanteAlteradosEm;
+    if (rascunho.contaDosDados === null && carimboDoVisitanteValido(carimbo)) {
+      return { ...rascunho, dadosDoVisitanteAlteradosEm: carimbo };
+    }
+
+    // Descarta também no armazenamento, sem perder o cupom ou o dono dele.
+    const semDados = semDadosPessoais(rascunho);
+    if (cru !== JSON.stringify(semDados)) {
+      salvarRascunhoDoCheckout(armazenamento, semDados);
+    }
+    return semDados;
   } catch {
     return null;
   }

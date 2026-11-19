@@ -139,7 +139,7 @@ describe("detalhe do pedido no computador — P10", () => {
     }
   });
 
-  it("preserva a assinatura das 162 classes de celular, incluindo classes condicionais", () => {
+  it("preserva a assinatura das 163 classes de celular, incluindo classes condicionais", () => {
     const arvore = ts.createSourceFile(
       "OrderDetailsView.tsx",
       fonte,
@@ -164,7 +164,10 @@ describe("detalhe do pedido no computador — P10", () => {
       ts.forEachChild(no, visitar);
     }
     visitar(arvore);
-    expect(classes).toHaveLength(162);
+    expect(classes).toHaveLength(163);
+    // + 1.5.218 (19/11/2026): saem 2 `line-clamp-2` (código livre e nome do item: texto
+    // longo fica completo) e entra 1 parágrafo novo (orientação de devolução ou troca
+    // para quem não entrou na conta). Total 162 -> 163; nenhuma outra classe antiga mudou.
     // Base f04669a6a + parágrafo do horário de retirada (17/11/2026).
     // Única adição conferida: "text-xs text-zinc-500"; demais classes intactas.
     // + linha "Recebe: X" do cartão de endereço (18/11/2026): a única classe nova
@@ -172,6 +175,6 @@ describe("detalhe do pedido no computador — P10", () => {
     // + nome do comprador com `break-words` (18/11/2026): só essa classe entra no literal existente.
     expect(
       createHash("sha256").update(JSON.stringify(classes)).digest("hex"),
-    ).toBe("8c18c458178e8aa3c4c3c68ae617a226ad547b5fe17d7e3b046c70903d026a11");
+    ).toBe("7d72ef0f8dbf56ac9844e83aa90815b836d5625a20970c521d82c656f5db947a");
   });
 });

@@ -17,6 +17,7 @@ import { mapProductFromDB } from "@/lib/mappers";
 import { act, useEffect } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { comPaginacao } from "./duble-consulta-paginada";
 
 type Linha = {
   user_id: string;
@@ -74,13 +75,14 @@ vi.mock("@/lib/supabase", () => ({
                 error: null,
               };
             },
-            in: async (_coluna: string, ids: string[]) =>
+            in: comPaginacao(async (_coluna: string, ids: string[]) =>
               tabela === "product_variants"
                 ? { data: [], error: null }
                 : {
                     data: produtos.filter((p) => ids.includes(p.id)),
                     error: null,
                   },
+            ),
           },
         ),
     }),

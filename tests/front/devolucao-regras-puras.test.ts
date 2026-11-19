@@ -414,6 +414,27 @@ describe("mensagens de erro", () => {
     }
   });
 
+  it.each([
+    ["cancelled", "cancelado"],
+    ["new", "novo"],
+    ["pending", "pendente"],
+    ["processing", "em preparação"],
+    ["shipping", "em envio"],
+    ["delivered", "entregue"],
+    ["desconhecido", "desconhecido"],
+  ])("traduz o status %s só na mensagem de conclusão", (status, traducao) => {
+    const mensagem = (rotulo: string) =>
+      `O pedido desta devolução não está mais entregue (status atual: ${rotulo}). Fale com o financeiro antes de concluir.`;
+
+    expect(
+      mensagemDoErro({ code: "22023", message: mensagem(status) }, "x"),
+    ).toBe(mensagem(traducao));
+    const outroErro = `Outra validação (status atual: ${status}).`;
+    expect(mensagemDoErro({ code: "22023", message: outroErro }, "x")).toBe(
+      outroErro,
+    );
+  });
+
   it("tempo esgotado vira frase em português e manda conferir antes de repetir", () => {
     const frases = [
       mensagemDoErro(

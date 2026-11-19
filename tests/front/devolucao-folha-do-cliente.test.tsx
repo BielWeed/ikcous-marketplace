@@ -428,9 +428,11 @@ describe("SolicitarDevolucaoSheet — pedido de devolução do cliente", () => {
     expect(radio("reembolso")).toBeFalsy();
     expect(radio("troca")).toBeTruthy();
     expect(radio("vale")).toBeTruthy();
-    expect(folha()?.textContent).toContain(
-      "O prazo de arrependimento terminou",
+    const texto = folha()?.textContent ?? "";
+    expect(texto).toContain(
+      "O prazo de arrependimento terminou. Você pode solicitar uma troca. Se a loja oferecer vale-troca, essa opção aparece abaixo.",
     );
+    expect(texto).not.toContain("virar vale-troca");
   });
 
   it("compra de balcão com troca: o quadro da resolução não fala de um arrependimento que essa compra nunca teve", async () => {
@@ -453,8 +455,9 @@ describe("SolicitarDevolucaoSheet — pedido de devolução do cliente", () => {
     const texto = folha()?.textContent ?? "";
     expect(texto).not.toContain("prazo de arrependimento");
     expect(texto).toContain(
-      "Pela política da loja, este pedido pode ser trocado ou virar vale-troca.",
+      "Você pode solicitar uma troca. Se a loja oferecer vale-troca, essa opção aparece abaixo.",
     );
+    expect(texto).not.toContain("virar vale-troca");
   });
 
   it("online com troca desligada e arrependimento vencido: o motivo bloqueado fala em desistir, não que a loja não troca", async () => {

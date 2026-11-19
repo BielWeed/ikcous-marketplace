@@ -496,6 +496,10 @@ describe("AdminPushView — o envio não engole o aviso do app, e o histórico n
     const { toast } = await import("sonner");
     expect(toast.error).toHaveBeenCalledWith(
       "Nenhum destinatário encontrado para este segmento",
+      {
+        description:
+          "O número de aparelhos mudou de 1 para 0. Nada foi enviado ou registrado.",
+      },
     );
   });
 

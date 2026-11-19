@@ -1,4 +1,6 @@
+import { pedidoSemValorAPagar } from "@/lib/forma-de-pagamento";
 import { supabase } from "@/lib/supabase";
+import type { RecebimentoPorMarcar } from "@/utils/avisos-do-lojista";
 
 /**
  * "Recebimento por marcar" — pedido ENTREGUE, pago na entrega ou na retirada
@@ -124,4 +126,106 @@ export async function inicioDaJanelaDoSino(): Promise<string> {
     // Sem configuração: 365 (o teto do banco) — o aviso sobra, nunca some.
   }
   return inicioDaJanelaDeRecebimento(Date.now(), dias);
+}
+
+function consultaDeRecebimentos<Colunas extends string>(
+  desde: string,
+  colunas: Colunas,
+  opcoes?: { count: "exact"; head?: boolean },
+) {
+  return supabase
+    .from("marketplace_orders")
+    .select(colunas, opcoes)
+    .eq("status", "delivered")
+    .or(FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA)
+    .is("payment_status", null)
+    .gte("updated_at", desde);
+}
+
+const COLUNAS_DOS_VALORES = "total, subtotal, discount, shipping";
+
+function recebimentoSemValorAPagar(pedido: {
+  total: number;
+  subtotal: number;
+  discount: number | null;
+  shipping: number | null;
+}): boolean {
+  // A ficha lê desconto/frete nulos como zero (mapOrderFromDB).
+  return pedidoSemValorAPagar({
+    total: pedido.total,
+    subtotal: pedido.subtotal,
+    discount: pedido.discount ?? 0,
+    shipping: pedido.shipping ?? 0,
+  });
+}
+
+export async function buscarRecebimentosPorMarcar(): Promise<{
+  recebimentos: RecebimentoPorMarcar[];
+  truncou: boolean;
+}> {
+  const desde = await inicioDaJanelaDoSino();
+  const recebimentos: RecebimentoPorMarcar[] = [];
+  let lidos = 0;
+  let totalDeCandidatos: number | null = null;
+
+  do {
+    const consulta = consultaDeRecebimentos(
+      desde,
+      `id, customer_name, updated_at, ${COLUNAS_DOS_VALORES}`,
+      lidos === 0 ? { count: "exact" } : undefined,
+    )
+      .order("updated_at", { ascending: false })
+      .order("id", { ascending: true });
+    const { data, count, error } = await (lidos === 0
+      ? consulta.limit(TETO_DE_RECEBIMENTOS)
+      : consulta.range(lidos, lidos + TETO_DE_RECEBIMENTOS - 1));
+
+    if (error) throw error;
+    if (!data?.length) break;
+    if (lidos === 0) totalDeCandidatos = count;
+    lidos += data.length;
+    for (const pedido of data) {
+      if (recebimentoSemValorAPagar(pedido)) continue;
+      // Só sinaliza corte se encontrou mais um aviso real, não só um brinde.
+      if (recebimentos.length === TETO_DE_RECEBIMENTOS) {
+        return { recebimentos, truncou: true };
+      }
+      recebimentos.push(pedido);
+    }
+  } while (totalDeCandidatos !== null && lidos < totalDeCandidatos);
+
+  return { recebimentos, truncou: false };
+}
+
+export async function contarRecebimentosPorMarcar(): Promise<number> {
+  const desde = await inicioDaJanelaDoSino();
+  const { count, error } = await consultaDeRecebimentos(desde, "id", {
+    count: "exact",
+    head: true,
+  });
+  if (error) throw error;
+  if (count === null) throw new Error("Contagem de recebimentos indisponível");
+  if (count === 0) return 0;
+
+  // O banco grava total em centavos (numeric(10,2)). Só as linhas cujo total
+  // é zero precisam da conferência; não transfere os demais pedidos ao sino.
+  let brindes = 0;
+  let lidos = 0;
+  while (lidos < count) {
+    const candidatos = await consultaDeRecebimentos(desde, COLUNAS_DOS_VALORES)
+      .eq("total", 0)
+      .order("id", { ascending: true })
+      .range(lidos, lidos + TETO_DE_RECEBIMENTOS - 1);
+    if (candidatos.error) throw candidatos.error;
+    if (!candidatos.data)
+      throw new Error("Leitura de recebimentos indisponível");
+
+    for (const pedido of candidatos.data) {
+      if (recebimentoSemValorAPagar(pedido)) brindes++;
+    }
+    lidos += candidatos.data.length;
+    if (candidatos.data.length < TETO_DE_RECEBIMENTOS) break;
+  }
+  // Uma alteração entre as leituras não pode produzir crachá negativo.
+  return Math.max(0, count - brindes);
 }

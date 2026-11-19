@@ -298,7 +298,7 @@ const LinhaDeAviso = memo(function LinhaDeAviso({
   const recebimento =
     aviso.tipo === "recebimento"
       ? aviso.titulo
-          .replace(/ entregue: você já recebeu o pagamento\?$/, "")
+          .replace(/ finalizado: você já recebeu o pagamento\?$/, "")
           .split(/ de (.*)/s)
       : null;
   const orientacao =
@@ -311,7 +311,7 @@ const LinhaDeAviso = memo(function LinhaDeAviso({
       : "";
   // Cancelamento não ganha selo "Pago": o aviso não carrega o estado financeiro
   // do pedido (só a frase da situação), e o selo afirmaria o que ele não sabe.
-  const status = recebimento ? "Entregue" : "";
+  const status = recebimento ? "Finalizado" : "";
 
   return (
     <button
@@ -374,7 +374,7 @@ const LinhaDeAviso = memo(function LinhaDeAviso({
             Você já recebeu o pagamento?
           </p>
           <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-            {recebimento[0]} entregue
+            {recebimento[0]} finalizado
           </p>
           {recebimento[1] && (
             <p className="text-sm leading-relaxed text-muted-foreground">

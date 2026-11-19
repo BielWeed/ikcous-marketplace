@@ -148,6 +148,9 @@ const M203 = lerLF(ARQ_203);
 // A 20261399997000 (o pedido guarda quem vai receber) sucede a 397 nas funcoes v23/v24 e nao toca a validate: sai da base `pre` JUNTO com a 397 (o pre-voo dela exige o
 // corpo da 397 ou o dela). A base `cheio` a desfaz PRIMEIRO, pela cascata de o-desconto-do-cupom-posterior.cjs.
 const ARQ_3997 = "20261399997000_o_pedido_guarda_quem_vai_receber.sql";
+// A 20261405800000 (o cupom que nao da desconto nao vale) redefine a validate DEPOIS da 397: o pre-voo dela exige o corpo vivo da 397 ou o dela, entao sai da base `pre`
+// JUNTO com a 397 (nao ha corpo da 397 nessa base). A base `cheio` a desfaz PRIMEIRO, pela cascata de o-desconto-do-cupom-posterior.cjs.
+const ARQ_4058 = "20261405800000_o_cupom_que_nao_da_desconto_nao_vale.sql";
 const M397 = lerLF(ARQ_397);
 const CORPOS = {
   lista: corpoDoArquivo(
@@ -195,6 +198,13 @@ const CORPO_397 = corpoDoArquivo(
   "",
 );
 const H397 = { lf: sha(CORPO_397), crlf: sha(crlfDe(CORPO_397)) };
+// A validação da 20261405800000 (a sucessora da 397, recusa o cupom que não dá desconto): a 15a também a ACEITA (LF e CRLF).
+const CORPO_4058 = corpoDoArquivo(
+  lerLF(ARQ_4058),
+  "public.validate_coupon_secure_v2(p_code text, p_subtotal numeric)",
+  "",
+);
+const H4058 = { lf: sha(CORPO_4058), crlf: sha(crlfDe(CORPO_4058)) };
 // Os hashes que o brief da fase B fixou para a validação (conferidos aqui contra o arquivo)
 assert.equal(
   H.val.lf,
@@ -824,6 +834,8 @@ async function main() {
         ...Object.values(H).flatMap((x) => [x.lf, x.crlf]),
         H397.lf,
         H397.crlf,
+        H4058.lf,
+        H4058.crlf,
       ].sort(),
     );
     const hexB = [...SQL[B].matchAll(/'([0-9a-f]{64})'/g)].map((m) => m[1]);
@@ -847,7 +859,7 @@ async function main() {
   const pre = `pv_${SUF}_pre`.slice(0, 60);
   await montarBase(
     pre,
-    (f) => f !== ARQUIVO && f !== ARQ_397 && f !== ARQ_3997,
+    (f) => f !== ARQUIVO && f !== ARQ_397 && f !== ARQ_3997 && f !== ARQ_4058,
   );
   {
     const sonda = await usar(pre, async (c) => ({

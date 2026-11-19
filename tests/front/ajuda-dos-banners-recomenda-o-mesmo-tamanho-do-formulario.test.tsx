@@ -7,6 +7,14 @@ const ajuda = fonte
   ?.split("</AdminHelpModal>")[0];
 
 describe("ajuda dos banners por aparelho", () => {
+  it("explica que a visibilidade depende da imagem e das datas", () => {
+    const texto = ajuda?.replace(/\s+/g, " ");
+    expect(texto).toContain(
+      "Use o botão para ativar ou pausar o banner. Quando ativo, ele só aparece nas telas para as quais tem imagem e respeita as datas programadas, se houver.",
+    );
+    expect(texto).not.toMatch(/qualquer campanha instantaneamente/);
+  });
+
   it.each([
     "Celular · recomendado 1200 × 600 px (2:1).",
     "Computador · recomendado 1920 × 480 px (4:1).",

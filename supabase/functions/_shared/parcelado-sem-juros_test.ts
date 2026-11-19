@@ -47,6 +47,11 @@ Deno.test("sem juros: um centavo a menos que o total nunca confirma (a fronteira
   assertEquals(conferirValorDoPagamento(37.26, 37.27, o).provado, false);
 });
 
+Deno.test("com juros: duas parcelas de R$ 20,15 confirmam a captura de R$ 40,30", () => {
+  const duas = order("40.30", "40.30", 2, "20.15");
+  assertEquals(prova(duas, 37.27), { provado: true, valor: 40.30, valorPago: 40.30 });
+});
+
 // A soma das parcelas só pode diferir da captura em até (parcelas - 1) centavos,
 // um por parcela de arredondamento. Exatamente `parcelas` centavos já é recusa:
 // a folga não pode ser aumentada para `parcelas + 1`.

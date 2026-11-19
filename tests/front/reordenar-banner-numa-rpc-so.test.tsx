@@ -20,7 +20,9 @@ vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: () => ({
       select: () => ({
-        order: () => Promise.resolve({ data: h.linhas, error: null }),
+        order: () => ({
+          order: () => Promise.resolve({ data: h.linhas, error: null }),
+        }),
         eq: () => ({
           order: () => ({
             order: () => Promise.resolve({ data: h.linhas, error: null }),

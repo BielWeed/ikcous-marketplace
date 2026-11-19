@@ -168,6 +168,8 @@ interface AuthContextType {
   loading: boolean;
   isAdmin: boolean;
   adminStatus: AdminStatus;
+  /** Último veredito do servidor, sem esperar o próximo render. */
+  contaAindaTemAcessoAdmin: (id: string) => boolean;
   loginComGoogle: () => Promise<boolean>;
   mensagemRetornoGoogle: string | null;
   restaurarDestinoGoogle: () => void;
@@ -592,6 +594,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   // ativo (troca de conta no meio da checagem não pode gravar por cima).
   const activeUserIdRef = useRef<string | null>(
     cachedSession?.user?.id || null,
+  );
+  const contaAindaTemAcessoAdmin = useCallback(
+    (id: string) =>
+      activeUserIdRef.current === id && adminConfirmadoRef.current === id,
+    [],
   );
   // Uma resposta de cadastro iniciada antes de Sair não pode guardar CPF depois.
   const encerramentosDaSessaoRef = useRef(0);
@@ -1516,7 +1523,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           MENSAGEM_LOGIN_SEM_RESPOSTA,
         );
       } catch (erroDeRede) {
-        if (!ehConsultaSemResposta(erroDeRede)) throw erroDeRede;
+        if (!ehConsultaSemResposta(erroDeRede)) {
+          if (audience === "admin") throw erroDeRede;
+          return { success: false, message: MENSAGEM_ERRO_LOGIN_GENERICA };
+        }
         // Sem `error`: não há causa do servidor para traduzir, e as telas não
         // podem cair em "senha incorreta" nem em "e-mail não confirmado". Elas
         // mostram `message` quando `error` não vem (AuthView, AdminLoginView).
@@ -2022,6 +2032,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       loading,
       isAdmin,
       adminStatus,
+      contaAindaTemAcessoAdmin,
       login,
       signUp,
       resetPassword,
@@ -2050,6 +2061,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       loading,
       isAdmin,
       adminStatus,
+      contaAindaTemAcessoAdmin,
       login,
       signUp,
       resetPassword,

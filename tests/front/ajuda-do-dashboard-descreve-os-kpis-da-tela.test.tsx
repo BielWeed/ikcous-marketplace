@@ -175,6 +175,9 @@ describe("A ajuda do dashboard (hoje no Dashboard CRM) documenta os KPIs que a t
     );
 
     const texto = document.body.textContent ?? "";
+    expect(texto.replace(/\s+/g, " ")).toContain(
+      "A primeira compra válida é a primeira compra paga de cada cliente identificado, sem contar compras canceladas ou devolvidas.",
+    );
 
     // O que sobrou do Histórico completo (Divisão de faturamento,
     // Performance, Top 5) continua descrito.

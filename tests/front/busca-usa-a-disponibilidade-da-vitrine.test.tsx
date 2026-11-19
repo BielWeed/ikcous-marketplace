@@ -171,7 +171,7 @@ describe("busca: a mesma regra de disponibilidade do card e da Home", () => {
     );
   });
 
-  it("Sugestões do estado vazio: o esgotado de verdade não abre a lista", async () => {
+  it("Sugestões do estado vazio: o esgotado de verdade não entra na lista", async () => {
     catalogo = [
       esgotadoDeVerdade("esgotado", "Vestido Alfa", 9000),
       comEstoque("disponivel", "Vestido Beta", 1000),
@@ -192,6 +192,6 @@ describe("busca: a mesma regra de disponibilidade do card e da Home", () => {
     const ids = Array.from(
       host.querySelectorAll('[data-testid="resultado"]'),
     ).map((el) => el.textContent);
-    expect(ids).toEqual(["disponivel", "esgotado"]);
+    expect(ids).toEqual(["disponivel"]);
   });
 });

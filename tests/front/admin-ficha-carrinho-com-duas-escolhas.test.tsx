@@ -266,6 +266,9 @@ describe("AdminUserDetailView — carrinho da cliente com cor e tamanho separado
 
     const texto = document.body.textContent ?? "";
     expect(texto).toContain("Funções Administrativas");
+    expect(texto).toMatch(
+      /A data é a de criação do pedido, mesmo que ainda não tenha sido pago\./,
+    );
     expect(texto).not.toContain("bloqueios");
     expect(texto).not.toContain("fraudulento");
   });

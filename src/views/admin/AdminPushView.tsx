@@ -24,6 +24,7 @@ import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useVOR } from "@/hooks/useVOR";
 import {
   destinoDaUrl,
+  destinoDeProdutoSemIdValido,
   nomeDoDestino,
   urlDoDestino,
 } from "@/lib/destino-do-aviso";
@@ -976,9 +977,7 @@ export const AdminPushView = memo(function AdminPushView({
       toast.error("Preencha título e mensagem");
       return;
     }
-    // Segunda trava do produto sem id: "/product-detail" (ou "?id=" vazio)
-    // abre uma página sem produto no celular da cliente.
-    if (/^\/product-detail\/?(\?id=)?$/.test(notification.url)) {
+    if (destinoDeProdutoSemIdValido(notification.url)) {
       toast.error("Escolha o produto que o aviso vai abrir", {
         description:
           'Em "Ao tocar na mensagem", escolha um produto da lista ou outra tela.',
@@ -1014,30 +1013,37 @@ export const AdminPushView = memo(function AdminPushView({
       return;
     }
 
-    // Para TODOS os clientes ou para um GRUPO: depois de enviar não dá para
-    // desfazer, e o público "Todos" já vem marcado — então pergunta antes, com
-    // o número de aparelhos. Fica DEPOIS das travas acima (o lojista é avisado
-    // do que falta antes de ser perguntado) e ANTES de `setLoading`/de qualquer
-    // leitura do banco: "Voltar" não deixa rastro. Grupo também pergunta: uma
-    // loja nova pode ter quase toda a base em "Novos em 7 dias". Só o cliente
-    // específico não pergunta: é uma pessoa, escolhida de propósito.
-    if (segment === "all") {
-      const confirmado = await confirmar({
-        titulo: "Enviar para todos os clientes?",
-        valor: textoDeAlcanceEmAparelhos(subCount),
-        texto: `O aviso "${notification.title.trim()}" vai agora para todos os aparelhos inscritos nos avisos.\n\nDepois de enviar, não dá para desfazer.`,
+    // Campanhas pedem aceite antes de consultar os destinatários. Só o
+    // cliente específico não pergunta: é uma pessoa, escolhida de propósito.
+    const paraTodos = segment === "all";
+    const nomeDoGrupo = NOME_DO_PUBLICO_POR_ID.get(segment);
+    const confirmarCampanha = (total: number, mudanca?: string) =>
+      confirmar({
+        titulo: paraTodos
+          ? "Enviar para todos os clientes?"
+          : `Enviar para "${nomeDoGrupo}"?`,
+        valor: paraTodos
+          ? `Push para ${textoDeAlcanceEmAparelhos(total)} ${total === 1 ? "inscrito" : "inscritos"}`
+          : textoDeAlcanceEmAparelhos(total),
+        texto: [
+          mudanca,
+          paraTodos
+            ? `Aviso: "${notification.title.trim()}".`
+            : `O aviso "${notification.title.trim()}" vai agora para o grupo "${nomeDoGrupo}".`,
+          paraTodos
+            ? "Aviso no sino para as contas que já existem na loja, mesmo sem push."
+            : undefined,
+          "Depois de enviar, não dá para desfazer.",
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
         verbo: "Enviar agora",
       });
-      if (!confirmado) return;
-    } else if (NOME_DO_PUBLICO_POR_ID.has(segment)) {
-      const nomeDoGrupo = NOME_DO_PUBLICO_POR_ID.get(segment);
-      const confirmado = await confirmar({
-        titulo: `Enviar para "${nomeDoGrupo}"?`,
-        valor: textoDeAlcanceEmAparelhos(predictedReach),
-        texto: `O aviso "${notification.title.trim()}" vai agora para o grupo "${nomeDoGrupo}".\n\nDepois de enviar, não dá para desfazer.`,
-        verbo: "Enviar agora",
-      });
-      if (!confirmado) return;
+    let totalAceito: number | null = null;
+    if (paraTodos || nomeDoGrupo) {
+      if (reachExibido === null || reachExibido <= 0) return;
+      if (!(await confirmarCampanha(reachExibido))) return;
+      totalAceito = reachExibido;
     }
 
     // O objeto deste render é o instantâneo usado por todo o envio.
@@ -1100,6 +1106,24 @@ export const AdminPushView = memo(function AdminPushView({
       const targetList = intercalarPorServico(targets as any[]);
       const finalRecipientCount = targetList?.length || 0;
 
+      // Só a lista que acabou de ser lida pode sair após o novo aceite.
+      // Antes dele não há histórico, aviso no sino nem disparo de push.
+      const mudancaNoAlcance =
+        totalAceito !== null && finalRecipientCount !== totalAceito
+          ? `O número de aparelhos mudou de ${totalAceito} para ${finalRecipientCount}.`
+          : undefined;
+      if (
+        totalAceito !== null &&
+        finalRecipientCount > totalAceito &&
+        !(await confirmarCampanha(finalRecipientCount, mudancaNoAlcance))
+      ) {
+        return;
+      }
+      const avisoDeAlcanceMenor =
+        totalAceito !== null && finalRecipientCount < totalAceito
+          ? mudancaNoAlcance
+          : undefined;
+
       if (finalRecipientCount === 0) {
         // Achado 8 da auditoria de 20/08/2026: para "Mensagem para Cliente
         // Específico" (`targetUserId`), o `return` engolia até o aviso
@@ -1141,7 +1165,14 @@ export const AdminPushView = memo(function AdminPushView({
             );
           }
         } else {
-          toast.error("Nenhum destinatário encontrado para este segmento");
+          toast.error("Nenhum destinatário encontrado para este segmento", {
+            description: [
+              avisoDeAlcanceMenor,
+              "Nada foi enviado ou registrado.",
+            ]
+              .filter(Boolean)
+              .join(" "),
+          });
         }
         return;
       }
@@ -1285,8 +1316,12 @@ export const AdminPushView = memo(function AdminPushView({
       if (!envioConfirmado) {
         console.error("Envio de push não confirmado:", pushError);
         toast.error("Não foi possível confirmar o envio", {
-          description:
+          description: [
+            avisoDeAlcanceMenor,
             "Sua campanha foi mantida. Alguns clientes podem ter recebido. Se enviar de novo, eles podem receber a mensagem repetida.",
+          ]
+            .filter(Boolean)
+            .join(" "),
         });
       } else if (entregues === 0) {
         toast.error(
@@ -1294,7 +1329,12 @@ export const AdminPushView = memo(function AdminPushView({
             ? "O aparelho não recebeu o aviso"
             : `Nenhum dos ${finalRecipientCount} dispositivos recebeu`,
           {
-            description: `${detalheDaFalha ?? "A função não informou o motivo da falha."}${naoTentados > 0 ? ` ${naoTentados} ${naoTentados === 1 ? "dispositivo nem chegou a ser tentado" : "dispositivos nem chegaram a ser tentados"} porque o envio demorou demais.` : ""} Sua campanha foi mantida. Se reenviar, o aviso dentro do app também aparece de novo para os clientes.`,
+            description: [
+              avisoDeAlcanceMenor,
+              `${detalheDaFalha ?? "A função não informou o motivo da falha."}${naoTentados > 0 ? ` ${naoTentados} ${naoTentados === 1 ? "dispositivo nem chegou a ser tentado" : "dispositivos nem chegaram a ser tentados"} porque o envio demorou demais.` : ""} Sua campanha foi mantida. Se reenviar, o aviso dentro do app também aparece de novo para os clientes.`,
+            ]
+              .filter(Boolean)
+              .join(" "),
           },
         );
       } else if (falharam > 0 || naoTentados > 0) {
@@ -1303,6 +1343,7 @@ export const AdminPushView = memo(function AdminPushView({
           {
             description:
               [
+                avisoDeAlcanceMenor,
                 detalheDaFalha,
                 naoTentados > 0
                   ? `${naoTentados} ${naoTentados === 1 ? "dispositivo não recebeu" : "dispositivos não receberam"} porque o envio demorou demais. Se reenviar esta campanha, quem já recebeu pode receber a mensagem repetida.`
@@ -1315,8 +1356,11 @@ export const AdminPushView = memo(function AdminPushView({
         );
       } else {
         const mensagem = `Notificação entregue em ${entregues} ${entregues === 1 ? "dispositivo" : "dispositivos"}`;
-        if (avisoDoHistorico) {
-          toast.success(mensagem, { description: avisoDoHistorico });
+        const description = [avisoDeAlcanceMenor, avisoDoHistorico]
+          .filter(Boolean)
+          .join(" ");
+        if (description) {
+          toast.success(mensagem, { description });
         } else {
           toast.success(mensagem);
         }
@@ -1769,7 +1813,7 @@ export const AdminPushView = memo(function AdminPushView({
                       {
                         id: "all",
                         label: NOME_DO_PUBLICO.all,
-                        detalhe: "Quem aceitou receber avisos",
+                        detalhe: "Push para aparelhos inscritos",
                         count: subCount,
                         motivoDoZero: "nenhum aparelho cadastrado ainda",
                       },

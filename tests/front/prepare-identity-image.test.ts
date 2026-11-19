@@ -878,7 +878,12 @@ describe("SVG ICO e RIFF", () => {
         bytes = bytes.slice(0, 21);
         new DataView(bytes.buffer).setUint32(4, 13, true);
       }
-      await errorCode(blob(bytes), "IDENTITY_IMAGE_FORMAT");
+      await errorCode(
+        blob(bytes),
+        kind === "frames"
+          ? "IDENTITY_IMAGE_ANIMATED_WEBP"
+          : "IDENTITY_IMAGE_FORMAT",
+      );
     },
   );
   it("ANMF dentro de chunk desconhecido nao conta quadro", async () => {

@@ -171,7 +171,7 @@ describe("Inicio -- cartao 'Loja pronta' quando a leitura da loja falha", () => 
       await montar();
 
       expect(texto(hospedeiro)).toContain("Cadastrar um produto ativo");
-      expect(texto(hospedeiro)).toContain("Sua loja começa por aqui");
+      expect(texto(hospedeiro)).toContain("Próximo passo da sua loja");
     });
 
     it("catalogo FALHOU e a lista esta vazia: nao diz que falta cadastrar produto, nem nas boas-vindas", async () => {
@@ -179,7 +179,7 @@ describe("Inicio -- cartao 'Loja pronta' quando a leitura da loja falha", () => 
       await montar();
 
       expect(texto(hospedeiro)).not.toContain("Cadastrar um produto");
-      expect(texto(hospedeiro)).not.toContain("Sua loja começa por aqui");
+      expect(texto(hospedeiro)).not.toContain("Próximo passo da sua loja");
       expect(texto(hospedeiro)).toContain("Conferindo sua loja");
     });
 
@@ -237,7 +237,7 @@ describe("Inicio -- cartao 'Loja pronta' quando a leitura da loja falha", () => 
       expect(t).not.toContain("Cadastrar o endereço");
       expect(t).not.toContain("Cadastrar WhatsApp");
       expect(t).not.toContain("Configurar a entrega");
-      expect(t).not.toContain("Sua loja começa por aqui");
+      expect(t).not.toContain("Próximo passo da sua loja");
       expect(t).toContain("Conferindo sua loja");
     });
 

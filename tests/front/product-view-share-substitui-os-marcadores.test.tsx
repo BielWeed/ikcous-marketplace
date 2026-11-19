@@ -22,6 +22,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Product } from "@/types";
 
+const enderecoDoProduto = `${globalThis.location.origin}/product-detail?id=prod-101`;
 const getReviewsByProduct = vi.fn();
 const subscribeToReviews = vi.fn(() => () => {});
 
@@ -183,7 +184,7 @@ describe("ProductView — share substitui os marcadores que o painel promete", (
 
     expect(texto).toContain("Produto Compartilhavel");
     expect(texto).toContain("R$ 49,90");
-    expect(texto).toContain(globalThis.location.href);
+    expect(texto).toContain(enderecoDoProduto);
     expect(texto).not.toContain("[nome]");
     expect(texto).not.toContain("[preco]");
     expect(texto).not.toContain("[link]");
@@ -198,7 +199,7 @@ describe("ProductView — share substitui os marcadores que o painel promete", (
     // shareText + nome + "por R$" no formato pt-BR (milhar e virgula, como o
     // resto da tela), e o link colado no final pelo caminho do clipboard.
     expect(texto).toBe(
-      `Olha que achei na Loja X! Produto Compartilhavel por R$ 49,90 - ${globalThis.location.href}`,
+      `Olha que achei na Loja X! Produto Compartilhavel por R$ 49,90 - ${enderecoDoProduto}`,
     );
   });
 });

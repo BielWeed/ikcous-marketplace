@@ -33,6 +33,7 @@ const mundo = vi.hoisted(() => ({
   variacoes: [] as Array<Record<string, unknown>>,
   falhaNoCatalogo: false,
   falhaNasVariacoes: false,
+  paginaComFalha: null as number | null,
   leiturasDoCatalogo: 0,
   portao: null as null | Promise<void>,
   avisos: [] as string[],
@@ -61,10 +62,33 @@ vi.mock("@/lib/supabase", () => ({
             data: tabela === "cart_items" ? mundo.itensNoBanco : [],
             error: null,
           }),
-        in: async (coluna: string, ids: unknown) => {
-          if (tabela === "vw_produtos_public") {
-            mundo.leiturasDoCatalogo += 1;
-            if (mundo.portao) await mundo.portao;
+        in: (coluna: string, ids: unknown) => {
+          if (tabela === "product_variants") {
+            const buscar = async (de: number, ate: number) => {
+              if (mundo.falhaNasVariacoes || de === mundo.paginaComFalha) {
+                return { data: null, error: { message: "rede caiu" } };
+              }
+              const pedidos = idsDe(ids);
+              return {
+                data: mundo.variacoes
+                  .filter(
+                    (l) =>
+                      coluna === "product_id" &&
+                      pedidos.includes(String(l.product_id)),
+                  )
+                  .slice(de, ate + 1),
+                error: null,
+              };
+            };
+            return Object.assign(buscar(0, 999), {
+              order: () => ({ range: buscar }),
+            });
+          }
+          if (tabela !== "vw_produtos_public") {
+            return Promise.resolve({ data: [], error: null });
+          }
+          mundo.leiturasDoCatalogo += 1;
+          return Promise.resolve(mundo.portao).then(() => {
             if (mundo.falhaNoCatalogo) {
               return { data: null, error: { message: "rede caiu" } };
             }
@@ -75,22 +99,7 @@ vi.mock("@/lib/supabase", () => ({
               ),
               error: null,
             };
-          }
-          if (tabela === "product_variants") {
-            if (mundo.falhaNasVariacoes) {
-              return { data: null, error: { message: "rede caiu" } };
-            }
-            const pedidos = idsDe(ids);
-            return {
-              data: mundo.variacoes.filter(
-                (l) =>
-                  coluna === "product_id" &&
-                  pedidos.includes(String(l.product_id)),
-              ),
-              error: null,
-            };
-          }
-          return { data: [], error: null };
+          });
         },
       }),
     }),
@@ -221,6 +230,7 @@ describe("CartContext — relê o catálogo ao abrir o app", () => {
     mundo.variacoes = [];
     mundo.falhaNoCatalogo = false;
     mundo.falhaNasVariacoes = false;
+    mundo.paginaComFalha = null;
     mundo.leiturasDoCatalogo = 0;
     mundo.portao = null;
     mundo.avisos = [];
@@ -352,6 +362,37 @@ describe("CartContext — relê o catálogo ao abrir o app", () => {
       expect(atual.cart[0].variantId).toBe("var-P");
       expect(atual.cartTotal).toBeCloseTo(59.9, 2);
       expect(mundo.avisos).toEqual([]);
+    });
+
+    it.each([
+      {
+        caso: "com a variação na segunda página",
+        paginaComFalha: null,
+        total: 69.9,
+      },
+      {
+        caso: "quando a segunda página falha",
+        paginaComFalha: 1000,
+        total: 59.9,
+      },
+    ])("mantém a linha $caso", async ({ paginaComFalha, total }) => {
+      mundo.paginaComFalha = paginaComFalha;
+      const escolhida = variacao();
+      mundo.variacoes = [
+        ...Array.from({ length: 1000 }, (_, i) =>
+          variacao({ id: `outra-${String(i).padStart(4, "0")}` }),
+        ),
+        escolhida,
+      ];
+      await montar([
+        itemSalvo(produtoSalvo({}, [escolhida]), 1, {
+          variantId: "var-P",
+          variantNames: "Tamanho: P",
+        }),
+      ]);
+
+      expect(atual.cart.map((item) => item.variantId)).toEqual(["var-P"]);
+      expect(atual.cartTotal).toBeCloseTo(total, 2);
     });
 
     it("carrinho vazio: não faz leitura nenhuma", async () => {

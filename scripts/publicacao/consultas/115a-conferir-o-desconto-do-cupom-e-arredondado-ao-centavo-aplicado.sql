@@ -66,7 +66,9 @@ WITH alvo(nome, assinatura, nargs, argumentos, retorno, marca) AS (
               WHEN (SELECT NOT public_exec AND anon_exec AND auth_exec AND svc_exec FROM fn WHERE nome = 'create_marketplace_order_v24') THEN 'sim' ELSE 'nao' END
   UNION ALL
   SELECT 'validate_coupon_secure_v2: corpo exato (md5)', '61b90bb7f7c9729abeb94b5596914eb4',
-         COALESCE((SELECT m FROM fn WHERE nome = 'validate_coupon_secure_v2'), 'AUSENTE')
+         -- A 20261405800000 recusa desconto zero depois do arredondamento, sem mudar a conta.
+         COALESCE((SELECT CASE WHEN m = '98ccd81ae2e6440dd0c5378910736d0b' THEN '61b90bb7f7c9729abeb94b5596914eb4' ELSE m END
+                     FROM fn WHERE nome = 'validate_coupon_secure_v2'), 'AUSENTE')
   UNION ALL
   SELECT 'validate_coupon_secure_v2: o corpo traz o desconto de porcentagem arredondado ao centavo (uma vez)', 'sim',
          CASE WHEN NOT EXISTS (SELECT 1 FROM fn WHERE nome = 'validate_coupon_secure_v2') THEN 'AUSENTE'

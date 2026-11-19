@@ -231,6 +231,12 @@ describe("CheckoutView — troco para pagamento em dinheiro", () => {
     expect(finalizar().disabled).toBe(false);
   });
 
+  it("explica no campo que o valor para troco deve superar o total", async () => {
+    await montar();
+    await pedirTroco("");
+    expect(campo().placeholder).toBe("Valor maior que o total do pedido");
+  });
+
   it("não pergunta na retirada quando a loja só oferece Pix", async () => {
     formas = ["pix"];
     opcaoDeFrete = { ...entrega, id: "store-pickup", provider: "pickup" };

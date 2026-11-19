@@ -413,15 +413,24 @@ describe("AdminProductFormView — lista de fotos", () => {
     expect(textoDosAvisos()).not.toMatch(/30 MB/);
   });
 
-  it("com 8 já no produto e 3 escolhidas, entram 2 e o aviso diz que 1 ficou de fora", async () => {
+  it("aceita a 9ª e a 10ª fotos; só bloqueia novas fotos com a galeria cheia", async () => {
     await montar();
     await enviar([1, 2, 3, 4, 5, 6, 7, 8].map((n) => foto(`h${n}.jpg`)));
     expect(fotosNaTela()).toHaveLength(8);
+    mocks.uploadProductImages.mockClear();
 
-    await enviar([foto("i1.jpg"), foto("i2.jpg"), foto("i3.jpg")]);
+    await enviar([foto("nona.jpg"), foto("decima.jpg")]);
 
     expect(fotosNaTela()).toHaveLength(10);
-    expect(textoDosAvisos()).toMatch(/1 foto ficou de fora/);
+    expect(mocks.uploadProductImages).toHaveBeenCalledTimes(2);
+    expect(textoDosAvisos()).not.toMatch(/Limite de imagens/);
+    mocks.uploadProductImages.mockClear();
+
+    await enviar([foto("decima-primeira.jpg")]);
+
+    expect(fotosNaTela()).toHaveLength(10);
+    expect(mocks.uploadProductImages).not.toHaveBeenCalled();
+    expect(textoDosAvisos()).toMatch(/já tem 10 fotos/);
   });
 
   it("o aviso 'Deslize' só aparece quando a faixa de miniaturas realmente rola de lado, e não pisca", async () => {

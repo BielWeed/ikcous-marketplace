@@ -852,6 +852,28 @@ export function etapasDaDevolucao(d: {
   ];
 }
 
+// Mesmo evento e prazo de supabase/functions/melhor-envio-etiqueta/index.ts.
+export const NOTA_CODIGO_DE_POSTAGEM_GERADO =
+  "Código de postagem dos Correios gerado (válido por 7 dias)";
+const VALIDADE_DO_CODIGO_DE_POSTAGEM_MS = 7 * 24 * 60 * 60 * 1000;
+
+function fimDaValidadeDoCodigo(
+  eventos: readonly EventoDevolucao[] = [],
+): number | null {
+  let ultimaGeracao: number | null = null;
+  for (const evento of eventos) {
+    if (evento.nota !== NOTA_CODIGO_DE_POSTAGEM_GERADO) continue;
+    const geradoEm = Date.parse(evento.created_at);
+    if (!Number.isFinite(geradoEm)) return null;
+    if (ultimaGeracao === null || geradoEm > ultimaGeracao) {
+      ultimaGeracao = geradoEm;
+    }
+  }
+  return ultimaGeracao === null
+    ? null
+    : ultimaGeracao + VALIDADE_DO_CODIGO_DE_POSTAGEM_MS;
+}
+
 const TEXTO_REEMBOLSO_CONFIRMANDO_CLIENTE =
   "A loja está confirmando sua devolução com o Mercado Pago.";
 
@@ -878,9 +900,11 @@ export function instrucaoParaOCliente(
     | "resolucao_final"
     | "reembolso_manual"
     | "valor_reembolso"
-  >,
+  > &
+    Partial<Pick<DevolucaoDetalhe, "eventos">>,
   loja: { endereco?: string | null; horario?: string | null },
   statusDoReembolso: string | null = null,
+  agoraMs = Date.now(),
 ): string {
   switch (d.status) {
     case "solicitada":
@@ -903,13 +927,25 @@ export function instrucaoParaOCliente(
           if (!d.codigo_postagem) {
             return "A loja está gerando o código de postagem dos Correios. Ele aparece aqui assim que ficar pronto.";
           }
+          const fim = fimDaValidadeDoCodigo(d.eventos);
+          if (fim !== null && agoraMs > fim) {
+            return "Este código de postagem venceu. Fale com a loja para gerar outro.";
+          }
+          const validade =
+            fim === null
+              ? ""
+              : `, válido até ${formatarDataHoraBrasilia(
+                  new Date(fim).toISOString(),
+                  "curto",
+                )} (horário de Brasília)`;
+          const prazoSemData = validade ? "" : " em até 7 dias";
           // Achado A2 (revisão de risco de 26/09/2026): o código pode sair
           // ANTES da declaração de conteúdo (DC-e — R6). Sem `etiqueta_url`
           // o botão "Etiqueta" não existe (DevolucaoDoPedidoCard.tsx) — a
           // frase não pode prometê-lo enquanto isso.
           return d.etiqueta_url
-            ? "Imprima a declaração de conteúdo (botão Etiqueta) e leve o pacote a uma agência dos Correios em até 7 dias, informando o código de postagem abaixo — ele também é o rastreio da devolução. Depois de postar, toque em “Já postei”."
-            : "A loja está preparando a declaração de conteúdo (DC-e), obrigatória para postar. Ela aparece aqui como um botão “Etiqueta” assim que ficar pronta — vale a pena esperar antes de ir aos Correios com o código abaixo.";
+            ? `Imprima a declaração de conteúdo (botão Etiqueta) e leve o pacote a uma agência dos Correios${prazoSemData}, informando o código de postagem abaixo${validade} — ele também é o rastreio da devolução. Depois de postar, toque em “Já postei”.`
+            : `A loja está preparando a declaração de conteúdo (DC-e), obrigatória para postar. Ela aparece aqui como um botão “Etiqueta” assim que ficar pronta — vale a pena esperar antes de ir aos Correios com o código abaixo${validade}.`;
         }
         default: {
           // Envio próprio: quem posta de outra cidade precisa saber PARA ONDE.
@@ -1470,6 +1506,17 @@ const RE_PORTUGUES =
 const CODIGOS_ESCRITOS_A_MAO = new Set(["P0001", "P0002", "22023"]);
 const CODIGOS_DE_SESSAO = new Set(["42501", "PGRST301", "PGRST303"]);
 
+const STATUS_DO_PEDIDO_NA_CONCLUSAO = new Map([
+  ["cancelled", "cancelado"],
+  ["delivered", "entregue"],
+  ["new", "novo"],
+  ["pending", "pendente"],
+  ["processing", "em preparação"],
+  ["shipping", "em envio"],
+]);
+const RE_STATUS_DO_PEDIDO_NA_CONCLUSAO =
+  /^(O pedido desta devolução não está mais entregue \(status atual: )([^)]+)(\)\. Fale com o financeiro antes de concluir\.)$/;
+
 // Os dois textos moram em dinheiro (reembolso/estorno): mandam conferir se a
 // devolução já aparece antes de repetir, para não pedir duas vezes.
 const MSG_SESSAO_VENCEU =
@@ -1500,6 +1547,14 @@ export function mensagemDoErro(erro: unknown, generica: string): string {
     ehObjeto(erro) && typeof campo(erro, "code") === "string"
       ? String(campo(erro, "code"))
       : "";
+  if (code === "22023") {
+    const conclusao = msg.match(RE_STATUS_DO_PEDIDO_NA_CONCLUSAO);
+    if (conclusao) {
+      const [, antes, status, depois] = conclusao;
+      const traduzido = STATUS_DO_PEDIDO_NA_CONCLUSAO.get(status);
+      return traduzido ? `${antes}${traduzido}${depois}` : msg;
+    }
+  }
   if (CODIGOS_ESCRITOS_A_MAO.has(code)) return reaisComVirgula(msg);
   if (RE_SESSAO.test(msg)) return MSG_SESSAO_VENCEU;
   if (code === "57014" || RE_TEMPO.test(msg)) return MSG_TEMPO_ESGOTADO;

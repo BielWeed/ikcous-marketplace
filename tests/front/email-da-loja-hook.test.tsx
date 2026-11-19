@@ -119,6 +119,34 @@ describe("useEmailDaLoja", () => {
     expect(atual.status?.origem).toBe("painel");
   });
 
+  it.each([
+    ["status antigo", () => ({ data: STATUS_VAZIO, error: null })],
+    ["erro antigo", () => ({ data: null, error: erroHttp(404, {}) })],
+  ] as const)("a releitura mais nova prevalece sobre %s", async (_, antigo) => {
+    let resolverInicial!: (resposta: { data: unknown; error: unknown }) => void;
+    const inicial = new Promise<{ data: unknown; error: unknown }>(
+      (resolve) => {
+        resolverInicial = resolve;
+      },
+    );
+    invokeFalso
+      .mockReturnValueOnce(inicial)
+      .mockResolvedValueOnce({ data: STATUS_SALVO, error: null });
+    await montar();
+
+    await act(async () => {
+      await atual.recarregar();
+    });
+    expect(atual.status?.usuario).toBe("loja@gmail.com");
+
+    await act(async () => {
+      resolverInicial(antigo());
+    });
+    expect(atual.carga).toBe("pronto");
+    expect(atual.status?.usuario).toBe("loja@gmail.com");
+    expect(atual.mensagemDeCarga).toBeNull();
+  });
+
   it("H2 — 404: indisponível nesta loja", async () => {
     invokeFalso.mockResolvedValue({
       data: null,

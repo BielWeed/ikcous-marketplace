@@ -35,11 +35,13 @@ vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: () => ({
       select: (_colunas: string) => ({
-        order: () =>
-          Promise.resolve({
-            data: banco.linhas.map((b) => ({ ...b })),
-            error: null,
-          }),
+        order: () => ({
+          order: () =>
+            Promise.resolve({
+              data: banco.linhas.map((b) => ({ ...b })),
+              error: null,
+            }),
+        }),
         eq: (_campo: string, pos: string) => ({
           order: () => ({
             order: () =>

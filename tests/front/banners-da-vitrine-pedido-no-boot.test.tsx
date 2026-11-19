@@ -25,6 +25,7 @@ import type { Banner } from "@/types";
 
 const h = vi.hoisted(() => ({
   consultar: vi.fn(),
+  ordenar: vi.fn(),
   persistir: vi.fn(),
   de: vi.fn(),
 }));
@@ -33,7 +34,14 @@ vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: (tabela: string) => {
       h.de(tabela);
-      return { select: () => ({ order: h.consultar }) };
+      return {
+        select: () => ({
+          order: (campo: string, opcoes: { ascending: boolean }) => {
+            h.ordenar(campo, opcoes);
+            return { order: h.consultar };
+          },
+        }),
+      };
     },
   },
 }));
@@ -140,6 +148,7 @@ describe("banners da vitrine — pedido no boot", () => {
     h.consultar.mockReset();
     h.persistir.mockReset().mockResolvedValue(undefined);
     h.de.mockReset();
+    h.ordenar.mockReset();
     irParaRota("/");
     modulo = await import("@/lib/banners-da-vitrine");
     ({ useBanners } = await import("@/hooks/useBanners"));
@@ -163,6 +172,8 @@ describe("banners da vitrine — pedido no boot", () => {
     });
     expect(h.consultar).toHaveBeenCalledTimes(1);
     expect(h.de).toHaveBeenCalledWith("banners");
+    expect(h.ordenar).toHaveBeenNthCalledWith(1, "order", { ascending: true });
+    expect(h.consultar).toHaveBeenNthCalledWith(1, "id", { ascending: true });
     expect(modulo.bannersEmCache()?.map((b) => b.id)).toEqual(["a"]);
     // Mapeado como o hook sempre mapeou (image_url -> imageUrl).
     expect(modulo.bannersEmCache()?.[0].imageUrl).toBe(FOTO_REDIMENSIONAVEL);

@@ -122,11 +122,13 @@ function EtiquetaDoResultado({ resultado }: { readonly resultado: number }) {
 
 function CartaoDePrevistos({
   titulo,
+  legenda,
   totais,
   lado,
   aoVer,
 }: {
   readonly titulo: string;
+  readonly legenda?: string;
   readonly totais: TotaisPrevistos;
   readonly lado: LadoDosPrevistos;
   readonly aoVer: (lado: LadoDosPrevistos) => void;
@@ -181,6 +183,7 @@ function CartaoDePrevistos({
               className="whitespace-nowrap"
             />
           </p>
+          {legenda ? <p className="text-zinc-400">{legenda}</p> : null}
         </div>
         <span className="sr-only">Ver contas</span>
       </button>
@@ -504,7 +507,8 @@ export function AbaVisao({
           aoVer={verPrevistos}
         />
         <CartaoDePrevistos
-          titulo="A receber"
+          titulo="Contas lançadas a receber"
+          legenda="Pagamentos de pedidos ainda não registrados como recebidos ficam em Pedidos."
           totais={dados.aReceber}
           lado="entrada"
           aoVer={verPrevistos}

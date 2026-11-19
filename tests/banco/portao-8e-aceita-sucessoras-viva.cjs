@@ -168,6 +168,8 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     // modelo desta prova (que conta as 15 que ele conhece) e `noEstado` a desfaz antes (a-busca-de-devolucao-posterior.cjs), como a 392/3921.
     s.nome !==
       "20261395000000_a_busca_de_devolucao_acha_o_numero_do_pedido.sql" &&
+    // A 4058 também só redefine a conferência do cupom, fora da 8e.
+    s.nome !== "20261405800000_o_cupom_que_nao_da_desconto_nao_vale.sql" &&
     // A 20261397000000 (o desconto do cupom de porcentagem e' arredondado ao centavo) so redefine a v23, a v24 e a validate_coupon_secure_v2, em cima
     // da 394200, da 394000 e da 208; nenhuma e' funcao da 8e. Entra em sucessoras-da-99.cjs so para cair antes da 394200/394000/208
     // (o-desconto-do-cupom-posterior.cjs); aqui sai do rol pela mesma razao da 394200 e da 394000.
@@ -184,6 +186,9 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     // o-resultado-credita-o-custo-da-devolucao-posterior.cjs primeiro), como faz com a 382.
     s.nome !==
       "20261399600000_o_resultado_credita_o_custo_da_devolucao_de_outro_mes.sql" &&
+    // A 4059 tem prova própria; o helper da 3996 desfaz esta sucessora antes do estado histórico.
+    s.nome !==
+      "20261405900000_o_custo_do_cancelamento_fica_no_mes_da_volta.sql" &&
     // A 20261399900000 (a busca de Pedidos acha o telefone colado com o +55) e a SEGUNDA sucessora de get_admin_orders_paged (99 -> 387 -> 3999) e a 20261399910000
     // (a busca de devolucao ignora o acento) a SEGUNDA de admin_devolucoes_listar (99 -> 395 -> 3999100): tem a PROVA PROPRIA do que as consultas 125a/125b e 126a/126b
     // fazem com elas (a-busca-de-pedidos-acha-o-telefone-colado-com-o-55-viva.cjs e a-busca-de-devolucao-ignora-o-acento-viva.cjs); `noEstado` as desfaz antes

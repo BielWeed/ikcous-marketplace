@@ -19,7 +19,9 @@ WITH fn AS (
     CASE WHEN (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace) > 0 THEN 'sim' ELSE 'nao' END
   UNION ALL
   SELECT 'fin_dre: corpo exato (md5)', 'eafc6a2c4663e33f5459791c6601b848',
-    COALESCE((SELECT h FROM fn), 'AUSENTE')
+    -- A 20261405900000 preserva a regra de crédito e é sucessora conhecida.
+    COALESCE((SELECT CASE WHEN h = 'a27c9649621b3ac1502f458576120259'
+                          THEN 'eafc6a2c4663e33f5459791c6601b848' ELSE h END FROM fn), 'AUSENTE')
   UNION ALL
   SELECT 'fin_dre: assinatura e atributos conhecidos', 'sim',
     CASE WHEN COALESCE((SELECT atributos FROM fn), false) THEN 'sim' ELSE 'nao' END

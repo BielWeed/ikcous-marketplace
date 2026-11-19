@@ -45,7 +45,7 @@ function DivisaoAppBalcao({
 }
 
 /**
- * O destaque do dia: quanto entrou hoje, de onde veio, contra a semana
+ * O destaque do dia: vendas pagas hoje, de onde veio, contra a semana
  * passada e — havendo pedidos esperando — o único botão cheio do Início. A
  * data do dia mora no cabeçalho (acompanha o relógio lá).
  */
@@ -122,7 +122,7 @@ export function HojeNaLoja({
               >
                 <Package className="size-5 shrink-0" aria-hidden="true" />
                 <span className="min-w-0 flex-1 text-center">
-                  Preparar pedidos
+                  Ver pedidos em aberto
                 </span>
                 <ChevronRight className="size-5 shrink-0" aria-hidden="true" />
               </button>

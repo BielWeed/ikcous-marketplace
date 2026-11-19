@@ -443,6 +443,11 @@ prova(
           "cupomDescontoLegitimoSegue",
         ])
           assert.ok(!f.includes(k), `controle: ${k} ja funcionava antes`);
+        // A prova é da restrição na tabela. A sucessora já recusa o desconto negativo
+        // na conferência, então restauramos a conferência contemporânea da 20261400000000.
+        await require("./o-desconto-do-cupom-posterior.cjs").desfazerCupomSemDescontoNaTransacao(
+          P.conexao(),
+        );
         // o efeito: o cupom `fixed` de -20 entra e o servidor o trata como desconto -20 (acrescimo de R$20)
         await P.conexao().query(
           "INSERT INTO public.coupons (code, type, value, active) VALUES ('B14DEF', 'fixed', -20, true)",

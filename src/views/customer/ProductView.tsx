@@ -888,6 +888,8 @@ export const ProductView = React.memo(function ProductView({
     }, 750);
   };
 
+  const urlDoProduto = `${globalThis.location?.origin || "https://ickous-marketplace.vercel.app"}/product-detail?id=${encodeURIComponent(product.id)}`;
+
   const handleShare = async (e?: React.MouseEvent) => {
     e?.stopPropagation();
     e?.preventDefault();
@@ -901,12 +903,12 @@ export const ProductView = React.memo(function ProductView({
     } = montarMensagemDeCompartilhar(config.shareText, {
       nome: product.name,
       preco: reais(precoExibido),
-      link: globalThis.location.href,
+      link: urlDoProduto,
     });
     const shareData = {
       title: product.name,
       text: textoDoShare,
-      url: globalThis.location.href,
+      url: urlDoProduto,
     };
 
     const copiarOLink = async () => {
@@ -1029,7 +1031,7 @@ export const ProductView = React.memo(function ProductView({
       "og:description": metaDescription,
       "og:image": metaImage,
       "og:type": "product",
-      "og:url": `${globalThis.location?.origin || "https://ickous-marketplace.vercel.app"}/product-detail?id=${product.id}`,
+      "og:url": urlDoProduto,
     },
     jsonLd: structuredData,
     jsonLdId: "product-structured-data",

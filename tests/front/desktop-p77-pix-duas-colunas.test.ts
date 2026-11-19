@@ -9,11 +9,14 @@
 // botão de copiar e código de um lado; o QR do outro.
 //
 // O que esta trava garante, por AST sobre o fonte REAL (o jsdom não calcula
-// CSS; o que se prova aqui é ONDE cada classe está e que o celular não mudou):
+// CSS; o que se prova aqui é ONDE cada classe está e que a P77 não
+// muda o layout antigo no celular):
 //   - o literal de celular da seção do Pix, da figura do QR e da coluna do
 //     checkout é, byte a byte, o de antes da peça (congelado à mão), e só
 //     entram tokens `lg:` -- nenhum acompanhado de elemento, texto ou atributo
-//     novo, nem de ordem nova no DOM (assinaturas congeladas abaixo);
+//     novo, nem de ordem nova no DOM da interface original;
+//   - "Já paguei — verificar" entrou depois e tem teste de comportamento
+//     próprio; só esse componente fica fora das assinaturas congeladas;
 //   - o alargamento da coluna do checkout e a grade da seção só valem quando a
 //     tela TEM o QR (`has-[figure]`): o Pix sem imagem, o cartão e as telas de
 //     erro continuam na coluna estreita de sempre;
@@ -163,6 +166,7 @@ function elementos(fonte: string, tag: string): Achado[] {
     const atributos: string[] = [];
     const percorrer = (no: ts.Node) => {
       const nome = nomeDaTag(no);
+      if (nome === "VerificarPix") return;
       if (nome) tags.push(nome);
       if (ts.isJsxText(no)) {
         const t = no.text.replace(/\s+/g, " ").trim();
@@ -209,7 +213,7 @@ function elementos(fonte: string, tag: string): Achado[] {
 const hash = (v: unknown) =>
   createHash("sha256").update(JSON.stringify(v)).digest("hex");
 
-/** Assinatura de celular de todos os literais de className (método do P32). */
+/** Assinatura dos literais de className da interface original (método do P32). */
 function assinaturaDeCelular(fonte: string): string {
   const arvore = ts.createSourceFile(
     "arquivo.tsx",
@@ -220,6 +224,9 @@ function assinaturaDeCelular(fonte: string): string {
   );
   const valores: string[] = [];
   const visitar = (no: ts.Node) => {
+    if (ts.isFunctionDeclaration(no) && no.name?.text === "VerificarPix") {
+      return;
+    }
     if (ts.isJsxAttribute(no) && no.name.getText(arvore) === "className") {
       const coletar = (filho: ts.Node) => {
         if (ts.isStringLiteral(filho)) {

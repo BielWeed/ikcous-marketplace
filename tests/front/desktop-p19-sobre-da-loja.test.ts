@@ -6,7 +6,8 @@ import { classesDoCelular } from "./classes-do-celular";
 const caminho = "src/views/admin/AdminAboutStoreView.tsx";
 const fonte = readFileSync("src/views/admin/AdminAboutStoreView.tsx", "utf8");
 // Classes por ELEMENTO JSX (inclusive sem classe e com expressão não literal),
-// na ordem da árvore da base 84a35d769. O CI raso não precisa do histórico git.
+// na ordem da árvore da base 84a35d769, mais o aviso de frete identificado abaixo.
+// O CI raso não precisa do histórico git.
 const CLASSES_DO_CELULAR_NA_BASE = [
   "admin-glass rounded-2xl border border-admin-border p-4 shadow-2xl sm:p-6",
   "flex items-center gap-3",
@@ -23,10 +24,16 @@ const CLASSES_DO_CELULAR_NA_BASE = [
   "",
   "mx-auto max-w-4xl px-4 pt-4",
   "",
+  "sr-only", // Região viva, fora da grade.
   "mx-auto min-w-0 max-w-4xl space-y-4 px-4 pt-4",
   "flex select-none items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-xs font-bold uppercase tracking-wider text-red-400 duration-300 animate-in fade-in slide-in-from-top-2",
   "size-5 shrink-0 animate-pulse text-red-500",
   "",
+  // Aviso de frete: adição intencional, sem mudar as classes dos blocos antigos.
+  "flex flex-wrap items-center gap-3 rounded-2xl border border-admin-gold/20 bg-admin-gold/5 p-3",
+  "size-5 shrink-0 text-admin-gold",
+  "min-w-0 flex-1 text-sm leading-relaxed text-white",
+  "flex min-h-11 items-center rounded-xl border border-admin-gold/30 bg-admin-bg px-4 text-sm font-bold text-admin-gold transition-colors hover:border-admin-gold/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
   "flex flex-wrap items-center gap-2 rounded-2xl border border-admin-gold/20 bg-admin-gold/5 p-3",
   "text-sm font-bold text-white",
   "flex min-h-11 items-center rounded-xl border border-admin-gold/30 bg-admin-bg px-4 text-sm font-bold text-admin-gold transition-colors hover:border-admin-gold/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -155,6 +162,7 @@ describe("P19 — Minha loja no computador", () => {
     expect(filhos.map((no) => no.tagName.getText())).toEqual([
       "div",
       "div",
+      "div",
       ...Array(6).fill("BlocoNumerado"),
       "p",
     ]);
@@ -164,17 +172,20 @@ describe("P19 — Minha loja no computador", () => {
       expect(classes(no).split(/\s+/)).toContain("xl:col-span-2");
     }
     for (const offline of [false, true]) {
-      for (const pendencias of [false, true]) {
-        const visiveis = filhos.filter(
-          (_, indice) => indice > 1 || (indice === 0 ? offline : pendencias),
-        );
-        let coluna = 0;
-        for (const no of visiveis) {
-          const largura = classes(no).includes("xl:col-span-2") ? 2 : 1;
-          if (largura === 2) expect(coluna).toBe(0);
-          coluna = (coluna + largura) % 2;
+      for (const frete of [false, true]) {
+        for (const pendencias of [false, true]) {
+          const avisosVisiveis = [offline, frete, pendencias];
+          const visiveis = filhos.filter(
+            (_, indice) => avisosVisiveis.at(indice) ?? true,
+          );
+          let coluna = 0;
+          for (const no of visiveis) {
+            const largura = classes(no).includes("xl:col-span-2") ? 2 : 1;
+            if (largura === 2) expect(coluna).toBe(0);
+            coluna = (coluna + largura) % 2;
+          }
+          expect(coluna).toBe(0);
         }
-        expect(coluna).toBe(0);
       }
     }
   });
