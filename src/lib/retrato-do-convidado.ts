@@ -80,41 +80,66 @@ export function interpretarRetrato(
   return null;
 }
 
+let retratoEmMemoria: { consultadoEm: number; pedidos: Order[] } | null = null;
+// Se gravar ou apagar falhar, o aparelho pode ainda ter a consulta anterior.
+let aparelhoDesatualizado = false;
+
 /**
- * Lê o retrato do aparelho. Armazenamento bloqueado, lixo e retrato vencido (ou
- * sem horário) viram `null`. O vencido é apagado SEM o aviso de "limpo": quem
- * lê não pode esvaziar telas por efeito colateral de uma leitura.
+ * Lê o retrato do aparelho, com retaguarda na memória desta aba se o
+ * armazenamento falhar. O vencido é apagado sem emitir o aviso de "limpo".
  */
 export function lerRetratoDoConvidado(): RetratoDoConvidado | null {
+  if (
+    retratoEmMemoria &&
+    (!instanteValido(retratoEmMemoria.consultadoEm) ||
+      retratoVenceu(retratoEmMemoria.consultadoEm))
+  ) {
+    retratoEmMemoria = null;
+  }
+
+  let retrato: RetratoDoConvidado | null;
   try {
-    const retrato = interpretarRetrato(
-      sessionStorage.getItem(CHAVE_DO_RETRATO),
-    );
-    if (!retrato) return null;
-    const { consultadoEm } = retrato;
-    if (consultadoEm !== null && !retratoVenceu(consultadoEm)) {
-      return retrato;
-    }
+    retrato = interpretarRetrato(sessionStorage.getItem(CHAVE_DO_RETRATO));
+  } catch {
+    return retratoEmMemoria;
+  }
+  if (
+    retrato &&
+    (retrato.consultadoEm === null || retratoVenceu(retrato.consultadoEm))
+  ) {
     try {
       sessionStorage.removeItem(CHAVE_DO_RETRATO);
     } catch {
-      // Sem como apagar: a leitura devolve null do mesmo jeito.
+      // Sem como apagar: o retrato vencido não será devolvido.
     }
-    return null;
-  } catch {
-    return null;
+    retrato = null;
   }
+  if (aparelhoDesatualizado) return retratoEmMemoria;
+  if (!retrato) retratoEmMemoria = null;
+  return retrato;
 }
 
-/** Grava no formato novo. LANÇA se o armazenamento recusar: quem chama decide. */
+/** Guarda na aba e tenta persistir no formato de antes. LANÇA se a gravação falhar. */
 export function gravarRetratoDoConvidado(
   pedidos: Order[],
   consultadoEm: number = Date.now(),
 ): void {
-  sessionStorage.setItem(
-    CHAVE_DO_RETRATO,
-    JSON.stringify({ consultadoEm, pedidos }),
-  );
+  retratoEmMemoria = { consultadoEm, pedidos };
+  aparelhoDesatualizado = true;
+  sessionStorage.setItem(CHAVE_DO_RETRATO, JSON.stringify(retratoEmMemoria));
+  aparelhoDesatualizado = false;
+}
+
+/** Esquece a consulta, sem emitir evento (por exemplo, ao trocar de conta). */
+export function apagarRetratoDoConvidado(): void {
+  retratoEmMemoria = null;
+  aparelhoDesatualizado = true;
+  try {
+    sessionStorage.removeItem(CHAVE_DO_RETRATO);
+    aparelhoDesatualizado = false;
+  } catch {
+    // Mesmo se a remoção falhar, a aba não volta a ler a consulta apagada.
+  }
 }
 
 /**
@@ -123,11 +148,7 @@ export function gravarRetratoDoConvidado(
  * do mesmo jeito.
  */
 export function limparRetratoDoConvidado(): void {
-  try {
-    sessionStorage.removeItem(CHAVE_DO_RETRATO);
-  } catch {
-    // Armazenamento indisponível: nada a apagar que se possa alcançar.
-  }
+  apagarRetratoDoConvidado();
   globalThis.dispatchEvent(new Event(EVENTO_RETRATO_LIMPO));
 }
 

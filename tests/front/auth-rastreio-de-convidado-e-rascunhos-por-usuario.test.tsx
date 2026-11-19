@@ -122,6 +122,8 @@ describe("rastreio de convidado e rascunhos — por usuário", () => {
       raiz.unmount();
     });
     hospedeiro.remove();
+    sessionStorage.clear();
+    localStorage.clear();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
@@ -245,6 +247,33 @@ describe("rastreio de convidado e rascunhos — por usuário", () => {
 
     conferirLogout();
   });
+
+  it.each(["entrar", "sair"])(
+    "apaga a cópia do rastreio em memória ao %s na sessão",
+    async (acao) => {
+      const { entrar, sair } = await montarLogado();
+      if (acao === "sair") await entrar("user-a");
+      const { gravarRetratoDoConvidado, lerRetratoDoConvidado } = await import(
+        "@/lib/retrato-do-convidado"
+      );
+      const gravacao = vi
+        .spyOn(sessionStorage, "setItem")
+        .mockImplementation(() => {
+          throw new DOMException("Armazenamento bloqueado", "SecurityError");
+        });
+      const pedido = { id: "pedido-ficticio" } as never;
+      expect(() => gravarRetratoDoConvidado([pedido])).toThrow(
+        "Armazenamento bloqueado",
+      );
+      gravacao.mockRestore();
+      expect(lerRetratoDoConvidado()?.pedidos).toEqual([pedido]);
+
+      if (acao === "entrar") await entrar("user-a");
+      else await sair();
+
+      expect(lerRetratoDoConvidado()).toBeNull();
+    },
+  );
 
   it("visitante que ENTRA numa conta (sem nunca ter feito logout) esquece o rastreio da aba", async () => {
     const { entrar } = await montarLogado();
