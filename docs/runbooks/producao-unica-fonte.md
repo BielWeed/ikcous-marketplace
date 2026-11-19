@@ -71,7 +71,12 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
 
 3. **Levar o backend a cada assinante que bloqueou: um passo por vez.** Colar o que o passo 2
    imprimiu, esperar cada run terminar verde (`gh run watch <id>`) e rodar o passo 2 de novo; ele
-   imprime o passo seguinte. A regra que o comando aplica a cada lote de migrations
+   imprime o passo seguinte. **Excecao: para o lote `20261209`/`20261210`, NAO cole o comando de
+   aplicar o banco antes de comprovar `criar-pagamento` e `webhook-mercadopago` no ar em cada
+   loja.** O portao pode imprimir o apply sem exigir essa prova. Veja o
+   [roteiro do PIX anulado](publicar-pix-anulado-devolve-cupom.md).
+
+   A regra que o comando aplica a cada lote de migrations
    (`provasDeObjetos` em `scripts/frota/canais-de-backend.json`):
    1. **Ledger com lacuna nunca vira apply direto.** Primeiro a prova de objetos/corpos (ex.:
       `8e-conferir-92-a-202-aplicado`), so leitura.
@@ -127,8 +132,11 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
       ausente; ledger completo com a prova negativa): PARADO, sem comando — vai ao dono.
    5. **Versao ausente do ledger fora de qualquer lote declarado**: PARADA, sem comando
       automatico. Precisa de uma consulta de prova propria antes de entrar num lote.
-   6. Banco pronto, entao `publicar-functions.yml` com o `projeto` da loja e as functions que o
-      passo 2 apontou (o comando so aparece com o banco pronto: banco → functions → front). Por
+   6. Na ordem padrao, banco pronto, entao `publicar-functions.yml` com o `projeto` da loja e as
+      functions que o passo 2 apontou. **Para o lote `20261209`/`20261210`, NAO aplique o banco
+      antes de comprovar `criar-pagamento` e `webhook-mercadopago` no ar em cada loja.** O portao
+      so imprime o comando de functions depois do banco; para essa excecao, siga o
+      [roteiro do PIX anulado](publicar-pix-anulado-devolve-cupom.md). Por
       `ikcous-publicada` e `savy` saem as cinco financeiras mais a `send-order-confirmation`
       e mais as cinco nomeadas abaixo (a `send-order-confirmation` desde 09/10/2026: o comprovante do balcao divide `_shared/pedido.ts` e `comprovante.ts`
       com `criar-pagamento`, `webhook-mercadopago`, `reconciliar-pagamentos` e a propria
@@ -544,17 +552,17 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         esta cancelado, `aguardando`, com a vaga vazia e exatamente uma tentativa. No instante do clique
         NAO volta. Pedido cancelado ANTES da `20261209` nao tem foto e segue com o prazo de 24 h; pedido
         pago, enviado ou ja devolvido nunca devolve.
-      - **PRE-CONDICAO DA PUBLICACAO (o banco NAO prova): medir a versao das FUNCTIONS no ar em CADA
-        loja (IKCOUS e Savy)**, nao so o `version.json` do front. A pista rapida so e segura porque
-        `criar-pagamento` nunca manda cartao ao Mercado Pago sem ocupar antes a vaga de cobranca
-        (reserva antes do POST, de 02/10/2026) e `webhook-mercadopago` so adota cobranca para cartao
-        (teste no ramo `test/pix-anulado-webhook-20261009`, `supabase/functions/webhook-mercadopago/index_test.ts`).
-        Se a data no ar for anterior a do SHA da release, publicar essas functions ANTES do apply do
-        banco. Como medir, passo a passo, em
-        [publicar-pix-anulado-devolve-cupom.md](publicar-pix-anulado-devolve-cupom.md). O portao nao
-        impoe esta ordem (banco → functions → front): e passo do operador.
-      - **Ordem:** o banco de CADA loja primeiro (IKCOUS, depois Savy, FORA DO HORARIO DE PICO), o
-        site logo depois. Banco novo com site velho nada muda para quem compra. A `20261209` pega
+      - **PRE-CONDICAO DA PUBLICACAO: data nao e prova.** Antes do banco, confirme em CADA loja
+        (IKCOUS e Savy) que `criar-pagamento`, `webhook-mercadopago`, suas dependencias em
+        `_shared` e o `verify_jwt` de cada funcao correspondem ao commit da release. A pista rapida
+        so e segura porque `criar-pagamento` nunca manda cartao ao Mercado Pago sem ocupar antes a
+        vaga de cobranca (reserva antes do POST, de 02/10/2026) e `webhook-mercadopago` so adota
+        cobranca para cartao (teste em `supabase/functions/webhook-mercadopago/index_test.ts`).
+        **Sem essa prova, PARE**, mesmo que o portao ja imprima o comando de aplicar. Como conferir:
+        [publicar-pix-anulado-devolve-cupom.md](publicar-pix-anulado-devolve-cupom.md).
+      - **Ordem:** so depois de comprovar as duas funcoes em cada loja, aplique o banco (IKCOUS,
+        depois Savy, FORA DO HORARIO DE PICO) e publique o site. Banco novo com site velho nada muda
+        para quem compra. A `20261209` pega
         `marketplace_orders` em `SHARE ROW EXCLUSIVE` sem ficar na fila (tenta e dorme, ate 4 s): se um
         pedido em andamento nao terminar, ela FALHA sem gravar (55P03) e basta repetir. A `20261210`
         nao pede trava de tabela.

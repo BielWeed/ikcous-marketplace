@@ -285,7 +285,11 @@ escrita serial (salvo a exceção do `/paralelizar`, acima); quem escreveu não 
 
 ## Verificação — o que realmente cobra
 
-Os comandos do projeto são a fonte de verdade (é o que o CI roda, nesta ordem):
+A lista abaixo é a verificação local. A ordem de cada job do CI está no
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml). No job de build, depois do build com
+identidade fictícia (modo `fixture`), o CI também roda
+`npx vitest run --config vitest.porteiro.config.ts` para provar que dois endereços servem
+as lojas certas, antes de medir o tamanho.
 
 ```bash
 npm ci
@@ -404,9 +408,13 @@ duplicado, erro de geração de página; em falha de usuário, os logs de Edge F
 `version.json` e o service worker são regenerados no build — a atualização do PWA é com
 consentimento do usuário (`registerType: "prompt"`).
 
-**Publicação que cruza banco e edge (26/09/2026).** Ordem fixa: migrations pelo
-`aplicar-migrations.yml` → functions pelo `publicar-functions.yml` → front. O preview da
-Vercel fala com o banco da loja (ADR 0001), então tela nova que chama RPC nova só funciona no
+**Publicação que cruza banco e edge (26/09/2026).** Ordem padrão: banco pelo
+`aplicar-migrations.yml` → funções pelo `publicar-functions.yml` → site. **Exceção:** NÃO aplique o
+lote `20261209`/`20261210` até comprovar que `criar-pagamento` e `webhook-mercadopago` estão no ar
+em cada loja conforme a release, mesmo que `scripts/frota/publicar-release.mjs` já imprima o
+comando de aplicar.
+
+O preview da Vercel fala com o banco da loja (ADR 0001), então tela nova que chama RPC nova só funciona no
 preview depois das migrations. O
 [roteiro do PR #666](docs/runbooks/publicar-painel-cartao-devolucoes.md) é histórico.
 O procedimento vigente de publicação, conferência e rollback está em
