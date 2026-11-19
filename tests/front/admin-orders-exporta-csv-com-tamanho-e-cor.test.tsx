@@ -15,6 +15,11 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     rpc: mocks.rpc,
+    auth: {
+      getSession: async () => ({
+        data: { session: { user: { id: "admin-teste" } } },
+      }),
+    },
     from: mocks.from,
     channel: vi.fn(),
     removeChannel: vi.fn(),
@@ -22,7 +27,11 @@ vi.mock("@/lib/supabase", () => ({
   },
 }));
 vi.mock("@/hooks/useAuth", () => ({
-  useAuth: () => ({ user: null, isAdmin: true }),
+  useAuth: () => ({
+    user: { id: "admin-teste" },
+    isAdmin: true,
+    contaAindaTemAcessoAdmin: (id: string) => id === "admin-teste",
+  }),
 }));
 vi.mock("@/hooks/useLeaderElection", () => ({
   useLeaderElection: () => ({ isLeader: false }),

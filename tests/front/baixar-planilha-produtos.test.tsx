@@ -103,7 +103,7 @@ describe("botão de planilha", () => {
     await montar();
     await clicar();
     expect(aviso).toHaveBeenCalledWith(
-      "Não foi possível gerar o XLSX. Baixamos o catálogo completo em CSV, sem a formatação.",
+      "Não foi possível gerar o XLSX. Baixamos o catálogo completo em CSV, sem a formatação. Para não perder zeros à esquerda em SKU e código de barras, importe essas colunas como Texto.",
     );
     expect(sucesso).not.toHaveBeenCalled();
     expect(erro).not.toHaveBeenCalled();

@@ -25,6 +25,9 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/supabase", () => ({ supabase: {} }));
+vi.mock("@/hooks/useAuth", () => ({
+  useAuth: () => ({ user: { id: "admin-teste" }, isAdmin: true }),
+}));
 
 import {
   type ConsultaAdmin,

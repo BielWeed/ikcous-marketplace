@@ -43,6 +43,7 @@ import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useAnalytics } from "@/hooks/useAnalytics";
 import { useAnularVendaDoBalcao } from "@/hooks/useAnularVendaDoBalcao";
+import { useAuth } from "@/hooks/useAuth";
 import { useConfirmarAcao } from "@/hooks/useConfirmarAcao";
 import { useDevolucoesAbertas } from "@/hooks/useDevolucoesAdmin";
 import {
@@ -87,11 +88,13 @@ import { STATUS_PARA_PREPARAR } from "@/lib/pedidos-para-preparar";
 import {
   MENSAGEM_ACAO_DO_PEDIDO_SEM_RESPOSTA,
   PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+  PRAZO_DA_CONSULTA_DO_PAINEL_MS,
   aguardarComPrazo,
   ehConsultaSemResposta,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import { rotuloDaVariacao } from "@/lib/rotulo-da-variacao";
+import { sessaoAindaEhDoDono } from "@/lib/sessao-ainda-e-do-dono";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import {
@@ -128,7 +131,15 @@ import {
   WifiOff,
   X,
 } from "lucide-react";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { flushSync } from "react-dom";
 import { toast } from "sonner";
 
@@ -456,7 +467,12 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   );
   const [isTyping, setIsTyping] = useState(false);
   const [gerandoCsv, setGerandoCsv] = useState(false);
-  const exportacaoCsvEmCursoRef = useRef(false);
+  const exportacaoCsvEmCursoRef = useRef<AbortController | null>(null);
+  const { user, isAdmin, contaAindaTemAcessoAdmin } = useAuth();
+  const contaDoCsv = isAdmin ? user?.id : undefined;
+  useLayoutEffect(() => {
+    if (contaDoCsv) return () => exportacaoCsvEmCursoRef.current?.abort();
+  }, [contaDoCsv]);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [painelDeFiltros, setPainelDeFiltros] = useState<
     "ferramentas" | "filtros" | null
@@ -1537,8 +1553,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       : "Exportar CSV";
 
   const exportarCsv = async () => {
-    if (totalOrders === 0 || exportacaoCsvEmCursoRef.current) return;
-    exportacaoCsvEmCursoRef.current = true;
+    if (!contaDoCsv || totalOrders === 0 || exportacaoCsvEmCursoRef.current)
+      return;
+    const controle = new AbortController();
+    exportacaoCsvEmCursoRef.current = controle;
     setGerandoCsv(true);
     try {
       // O MESMO recorte da lista (loadAllData): a planilha não pode exportar
@@ -1554,6 +1572,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         // na tela quando o chip "Balcão" está ligado.
         canal: canalFilter,
       });
+      if (controle.signal.aborted) return;
       if (pedidosDoFiltro.length === 0) {
         toast.info("Nenhum pedido neste filtro para exportar.");
         return;
@@ -1566,6 +1585,19 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       const arquivo = new Blob([pedidosParaCsv(pedidosDoFiltro, rotulos)], {
         type: "text/csv;charset=utf-8;",
       });
+      if (controle.signal.aborted) return;
+      const sessaoValida = await aguardarComPrazo(
+        sessaoAindaEhDoDono(contaDoCsv),
+        PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+        () => erroDeConsultaSemResposta("A sessão não respondeu."),
+      );
+      if (controle.signal.aborted) return;
+      if (!sessaoValida || !contaAindaTemAcessoAdmin(contaDoCsv)) {
+        toast.error(
+          "A sessão mudou ou você perdeu o acesso ao painel. O CSV não foi baixado.",
+        );
+        return;
+      }
       const url = URL.createObjectURL(arquivo);
       const link = document.createElement("a");
       link.href = url;
@@ -1579,6 +1611,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         setTimeout(() => URL.revokeObjectURL(url), 1000);
       }
     } catch (erro) {
+      if (controle.signal.aborted) return;
       const codigo = (erro as { code?: string } | null)?.code;
       toast.error(
         codigo === "CSV_PEDIDOS_DEMAIS"
@@ -1590,7 +1623,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
               : "Não foi possível gerar o CSV. Tente de novo.",
       );
     } finally {
-      exportacaoCsvEmCursoRef.current = false;
+      exportacaoCsvEmCursoRef.current = null;
       setGerandoCsv(false);
     }
   };

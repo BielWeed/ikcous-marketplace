@@ -176,20 +176,20 @@ describe("XLSX mínimo, sem biblioteca e sem compressão", () => {
     {
       custos: true,
       produtos: [produto],
-      ref: "A1:AE2",
-      absoluto: "'Produtos'!$A$1:$AE$2",
+      ref: "A1:AD2",
+      absoluto: "'Produtos'!$A$1:$AD$2",
     },
     {
       custos: false,
       produtos: [produto, { ...produto, id: "p2" }],
-      ref: "A1:AB3",
-      absoluto: "'Produtos'!$A$1:$AB$3",
+      ref: "A1:AA3",
+      absoluto: "'Produtos'!$A$1:$AA$3",
     },
     {
       custos: false,
       produtos: [],
-      ref: "A1:AB1",
-      absoluto: "'Produtos'!$A$1:$AB$1",
+      ref: "A1:AA1",
+      absoluto: "'Produtos'!$A$1:$AA$1",
     },
   ])(
     "registra a vista e o filtro oculto do workbook na área $ref",
@@ -228,8 +228,8 @@ describe("XLSX mínimo, sem biblioteca e sem compressão", () => {
     expect(doc.querySelector("pane")?.getAttribute("state")).toBe("frozen");
     expect(doc.querySelector("pane")?.getAttribute("ySplit")).toBe("1");
     expect(doc.querySelector("pane")?.getAttribute("topLeftCell")).toBe("A2");
-    expect(doc.querySelector("autoFilter")?.getAttribute("ref")).toBe("A1:AE2");
-    expect(doc.querySelector('c[r="AE1"] t')?.textContent).toBe(
+    expect(doc.querySelector("autoFilter")?.getAttribute("ref")).toBe("A1:AD2");
+    expect(doc.querySelector('c[r="AD1"] t')?.textContent).toBe(
       "Atualizado em",
     );
     expect(doc.querySelector('c[r="A1"]')?.getAttribute("s")).toBe("1");
@@ -346,7 +346,7 @@ describe("XLSX mínimo, sem biblioteca e sem compressão", () => {
     const bytes = gerarXlsx(linhasDosProdutos([p], false));
     const doc = abrir(bytes).get("xl/worksheets/sheet1.xml")!;
     expect(doc.querySelectorAll("row")).toHaveLength(3);
-    expect(doc.querySelector("autoFilter")?.getAttribute("ref")).toBe("A1:AB3");
+    expect(doc.querySelector("autoFilter")?.getAttribute("ref")).toBe("A1:AA3");
     expect(doc.querySelector('c[r="E2"] v')?.textContent).toBe("0");
     expect(doc.querySelector('c[r="G2"] v')?.textContent).toBe("4");
     expect(doc.querySelector('c[r="G3"] v')?.textContent).toBe("9");
@@ -396,7 +396,7 @@ describe("XLSX mínimo, sem biblioteca e sem compressão", () => {
   it("catálogo vazio ainda tem cabeçalho congelado e filtro", () => {
     const doc = folha(linhasDosProdutos([], false));
     expect(doc.querySelectorAll("row")).toHaveLength(1);
-    expect(doc.querySelector("autoFilter")?.getAttribute("ref")).toBe("A1:AB1");
+    expect(doc.querySelector("autoFilter")?.getAttribute("ref")).toBe("A1:AA1");
   });
 
   it("recusa dados que não cabem no XLSX em vez de produzir arquivo corrompido", () => {
@@ -522,7 +522,7 @@ describe("o XLSX entrega o dado como ele é", () => {
     });
     expect(colunas).toEqual([...colunas].sort((a, b) => a - b));
     expect(new Set(colunas).size).toBe(colunas.length);
-    expect(doc.querySelector("dimension")?.getAttribute("ref")).toBe("A1:AE2");
+    expect(doc.querySelector("dimension")?.getAttribute("ref")).toBe("A1:AD2");
     // o que existe continua lá: preço e id.
     expect(
       celulaDa(doc, "Preço (R$)", 2)?.querySelector("v")?.textContent,

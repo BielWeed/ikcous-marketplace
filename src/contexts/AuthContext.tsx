@@ -168,6 +168,8 @@ interface AuthContextType {
   loading: boolean;
   isAdmin: boolean;
   adminStatus: AdminStatus;
+  /** Último veredito do servidor, sem esperar o próximo render. */
+  contaAindaTemAcessoAdmin: (id: string) => boolean;
   loginComGoogle: () => Promise<boolean>;
   mensagemRetornoGoogle: string | null;
   restaurarDestinoGoogle: () => void;
@@ -592,6 +594,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   // ativo (troca de conta no meio da checagem não pode gravar por cima).
   const activeUserIdRef = useRef<string | null>(
     cachedSession?.user?.id || null,
+  );
+  const contaAindaTemAcessoAdmin = useCallback(
+    (id: string) =>
+      activeUserIdRef.current === id && adminConfirmadoRef.current === id,
+    [],
   );
   // Uma resposta de cadastro iniciada antes de Sair não pode guardar CPF depois.
   const encerramentosDaSessaoRef = useRef(0);
@@ -2021,6 +2028,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       loading,
       isAdmin,
       adminStatus,
+      contaAindaTemAcessoAdmin,
       login,
       signUp,
       resetPassword,
@@ -2049,6 +2057,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       loading,
       isAdmin,
       adminStatus,
+      contaAindaTemAcessoAdmin,
       login,
       signUp,
       resetPassword,
