@@ -1,4 +1,43 @@
 {
+  "1.5.216": {
+    "titulo": "Endereço conferido e pedidos mais claros",
+    "novidades": [],
+    "correcoes": [
+      "Na lista de pedidos, só aparece o botão de rastreio quando há um código que pode ser usado.",
+      "No painel, a lista de perguntas e os números acompanham a busca e o filtro selecionados.",
+      "Em Perguntas e Avaliações, a taxa mostra um traço sem dados e “Quase 100%” se ainda falta responder.",
+      "No filtro de pedidos que aguardam pagamento, o total se atualiza quando um Pix é confirmado.",
+      "O painel explica por que não dá para desfazer o recebimento de um pedido que tem devolução em andamento ou concluída.",
+      "Ao tocar em “Ver todos os resultados” da busca, a lista não fica presa à categoria anterior.",
+      "O banner com destino “Carrinho” abre o carrinho, não a etapa de finalizar a compra.",
+      "Banners agendados podem aparecer com a vitrine aberta, sem precisar atualizar a página.",
+      "Nos favoritos de visitante, um produto deixa de aparecer quando a loja confirma que ele não está mais no catálogo.",
+      "Se outra pessoa alterar o mesmo dado de um endereço, a tela pede para conferir o novo valor antes de salvar.",
+      "Ao enviar uma nova compra para um endereço salvo, a loja confere o endereço. Se não conseguir confirmar, pede nova tentativa.",
+      "Trocar entre entrar e criar conta apaga a senha que estava digitada.",
+      "O painel avisa se o estoque novo de uma variação passar de 10.000. Se a quantidade já estava salva, ainda dá para editar os outros campos.",
+      "Editar um produto guarda o rascunho antes da conferência, para não perder as alterações se a sessão terminar nessa espera.",
+      "Ao finalizar a compra, o WhatsApp só preenche o perfil se o número ainda não estiver preenchido.",
+      "Se um pedido for cancelado com etiqueta paga, o painel orienta a verificar no Melhor Envio se ainda dá para cancelar e pedir reembolso.",
+      "Ao salvar o contato do mototáxi, o painel avisa se ele mudou em outro aparelho em vez de restaurar o número antigo.",
+      "Se a regra de frete grátis mudar em outro aparelho, o painel pede para revisar o valor mínimo digitado.",
+      "No balcão, só um celular brasileiro completo pode receber o recibo; a falta de um número válido não impede a venda.",
+      "Ao colar um link no rastreio manual, o painel explica que precisa apenas do código.",
+      "Na lista de quem pediu e não pagou, a mensagem só convida a finalizar a compra se ainda houver valor em aberto.",
+      "Se o horário de retirada for longo demais para caber na mensagem, ela orienta a confirmar com a loja, sem mostrar um horário cortado.",
+      "A ficha e o recibo mantêm os itens de pedidos antigos mesmo quando eles já não estão ligados a um produto.",
+      "A contagem de uso das categorias é atualizada ao voltar à aba e quando a exclusão de uma categoria em uso é recusada.",
+      "Espaços a mais na busca não tiram a prioridade de um nome que corresponde ao que foi digitado.",
+      "Consultar o rastreio de uma etiqueta não apaga o código já salvo quando ainda não há um novo."
+    ],
+    "melhorias": [
+      "Nos ajustes da conta, o WhatsApp fica formatado ao digitar e a tela avisa se o número estiver incompleto.",
+      "Ao abrir o caixa, o painel orienta a registrar antes o dinheiro que já saiu da gaveta.",
+      "Os nomes das sugestões de busca ficam mais legíveis ao passar o mouse.",
+      "Ao cadastrar um produto, é possível digitar o preço de venda em reais usando vírgula ou ponto.",
+      "Ao duplicar um produto, cada cópia ganha seu próprio nome e código interno."
+    ]
+  },
   "1.5.215": {
     "titulo": "Cancelar retirada pronta e painel que acompanha o relógio",
     "novidades": [],
