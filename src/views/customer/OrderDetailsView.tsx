@@ -2252,6 +2252,12 @@ export function OrderDetailsView({
               </div>
             )}
 
+          {order.status === "delivered" && !user && !authLoading && (
+            <p className="border-b border-zinc-100 px-5 py-3.5 text-sm text-zinc-600 last:border-b-0">
+              Para devolução ou troca, fale com a loja informando o número do
+              pedido.
+            </p>
+          )}
           {/* Devolução ou troca (CDC art. 49 e Decreto 7.962/2013: o cliente
               desiste pelo MESMO canal da compra). A linha só existe quando o
               servidor diz que pode (`devolucao_elegibilidade.pode`); quando
