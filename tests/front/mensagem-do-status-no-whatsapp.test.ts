@@ -38,7 +38,6 @@ describe("mensagemDoStatusNoWhatsapp", () => {
     expect(msg).toContain("Status: Em separação\n");
   });
 
-
   it.each([
     [
       enderecoDeRetirada,
