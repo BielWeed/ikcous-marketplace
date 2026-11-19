@@ -118,7 +118,7 @@ describe("Minha loja › Dados da empresa", () => {
   });
 
   const aviso =
-    "A lei pede que a loja mostre quem é: nome ou razão social, CNPJ ou CPF e e-mail. Sem isso, a cliente não sabe com quem compra.";
+    "A lei pede que a loja mostre quem é: nome ou razão social, CNPJ ou CPF, endereço físico e contato eletrônico (como e-mail). Sem isso, a cliente não sabe com quem compra.";
 
   it("orienta a lojista quando os três campos estão vazios", async () => {
     await abrir();

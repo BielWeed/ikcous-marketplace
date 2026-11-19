@@ -195,6 +195,13 @@ describe("ficha do pedido do convidado — sem 'Cancelar Pedido'", () => {
     expect(texto()).not.toContain(orientacao);
   });
 
+  it("pedido já cancelado sem sessão não orienta a cancelar de novo", async () => {
+    guardarRetratoDoConvidado("cancelled");
+    await abrir();
+    expect(texto()).toContain("Meu pedido");
+    expect(texto()).not.toContain(orientacao);
+  });
+
   it("não orienta cancelamento enquanto a sessão está carregando", async () => {
     estado.loading = true;
     guardarRetratoDoConvidado("processing");

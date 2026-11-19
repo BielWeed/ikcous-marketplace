@@ -296,8 +296,8 @@ export const DadosDaEmpresa = memo(function DadosDaEmpresa({
           !email.trim() && (
             <>
               <br />A lei pede que a loja mostre quem é: nome ou razão social,
-              CNPJ ou CPF e e-mail. Sem isso, a cliente não sabe com quem
-              compra.
+              CNPJ ou CPF, endereço físico e contato eletrônico (como e-mail).
+              Sem isso, a cliente não sabe com quem compra.
             </>
           )}
       </p>

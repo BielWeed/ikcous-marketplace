@@ -2255,7 +2255,7 @@ export function OrderDetailsView({
               </div>
             )}
 
-          {!user && !authLoading && (
+          {!user && !authLoading && order.status !== "cancelled" && (
             <p className="border-b border-zinc-100 px-5 py-3.5 text-sm text-zinc-600 last:border-b-0">
               {order.status === "delivered"
                 ? "Para devolução ou troca, fale com a loja informando o número do pedido."

@@ -78,9 +78,9 @@ export interface VersaoDosTextos {
 }
 
 export const VERSAO_DOS_TEXTOS: VersaoDosTextos = {
-  versao: 3,
+  versao: 4,
   atualizadoEm: "2026-11-19",
-  impressaoDoTexto: "7884e543",
+  impressaoDoTexto: "a9feb4a2",
 };
 
 /**
@@ -246,6 +246,7 @@ function montarPrivacidade(loja: DadosDaLoja): DocumentoDePolitica {
         titulo: "O que fica no seu aparelho",
         paragrafos: [
           "O app guarda no navegador dados para manter sua entrada na conta, lembrar o carrinho, endereços e preferências e salvar o rascunho da compra enquanto a aba estiver aberta. Também guarda mudanças nos favoritos feitas sem conexão para enviar quando a internet voltar e cópias de imagens e páginas para abrir partes do app sem internet. O app não usa rastreadores de propaganda.",
+          "O app também guarda uma cópia dos seus pedidos no navegador. Se você consultou um pedido sem conta, a cópia fica na aba em que você fez a consulta.",
         ],
       },
       {
@@ -253,6 +254,10 @@ function montarPrivacidade(loja: DadosDaLoja): DocumentoDePolitica {
         titulo: "Com quem dividimos",
         paragrafos: [
           "Só o necessário para a compra acontecer: o Mercado Pago, que processa o pagamento feito pelo app; os serviços de frete e as transportadoras, que recebem nome, endereço, WhatsApp, e-mail e, quando exigido, o CPF de quem recebe; e o serviço de e-mail que a loja usa para enviar o comprovante do pedido e o código de verificação. O CEP que você digita também é consultado em serviços de busca de CEP.",
+          "Ao abrir o formulário de cartão, o app carrega uma ferramenta de segurança do Mercado Pago. Ao enviar o pagamento, o app repassa ao Mercado Pago o identificador do aparelho, se estiver disponível, para ajudar a prevenir fraudes.",
+          "Ao tocar em Falar com a loja durante ou depois da compra, o WhatsApp recebe o telefone da loja e o texto sugerido para a mensagem, que pode incluir seu nome ou o número do pedido.",
+          "A opção Continuar com Google só aparece se a loja ativou a entrada pelo Google.",
+          "Se um produto não tiver foto, o app carrega a imagem Sem Imagem do serviço placehold.co.",
           "No seu Perfil, ao abrir os detalhes de um endereço, o mapa é carregado do Google Maps se houver conexão e dados suficientes para a busca. A equipe da loja também pode abrir o Google Maps pela ficha do pedido. Para localizar o endereço, enviamos rua, número, cidade e estado, quando disponíveis; o CEP pode acompanhar a busca e, se o endereço estiver incompleto, também o bairro e a indicação do país (Brasil) — nunca o seu nome nem o nome de quem recebe. No pedido sem rua nem CEP, a busca pode levar apenas bairro, cidade e estado.",
           "Se você permitir as notificações, o serviço de notificações do seu navegador ou aparelho entrega os avisos até você.",
           "A plataforma que hospeda o app e o banco de dados usa servidores de terceiros, que podem ficar fora do Brasil, e tem acesso técnico aos dados apenas para manter o serviço funcionando.",
@@ -264,7 +269,7 @@ function montarPrivacidade(loja: DadosDaLoja): DocumentoDePolitica {
         titulo: "Seus direitos",
         paragrafos: [
           "Pela LGPD, você pode pedir à loja: confirmar que guardamos dados seus, ver quais são, corrigir o que estiver errado e pedir a exclusão do que não precisamos manter. Você pode corrigir nome, WhatsApp e endereços no seu Perfil.",
-          "Se você tem conta, vá a Conta → Privacidade e meus dados para conferir o que a loja guarda e pedir a exclusão da conta. Para solicitar uma cópia dos seus dados ou se você comprou sem conta, fale com a loja pelo contato no fim desta página. Alguns dados, como os de pedidos já feitos, podem ter de ser mantidos por obrigação legal.",
+          "Se você tem conta, vá a Minha conta → Segurança e conta → Privacidade e meus dados para conferir o que a loja guarda e pedir a exclusão da conta. Para solicitar uma cópia dos seus dados ou se você comprou sem conta, fale com a loja pelo contato no fim desta página. Alguns dados, como os de pedidos já feitos, podem ter de ser mantidos por obrigação legal.",
         ],
       },
       {
@@ -424,7 +429,8 @@ function montarTrocas(
       // Quem comprou sem criar conta não tem "Meus pedidos" nem o botão: o
       // caminho dele é a conversa com a loja (contato no fim desta página).
       "Se você comprou sem criar conta, fale com a loja pelo contato no fim desta página e informe o número do pedido.",
-      "Para cancelar, fale com a loja informando o número do pedido.",
+      "Se você comprou sem conta e quer cancelar antes da entrega, fale com a loja informando o número do pedido.",
+      "Se você tem conta e quer cancelar antes da entrega, entre na conta, abra o pedido em Meus pedidos e toque em Cancelar Pedido, se o botão estiver disponível.",
     ],
   });
 
