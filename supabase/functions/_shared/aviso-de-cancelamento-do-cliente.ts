@@ -80,21 +80,45 @@ export type ResumoDosCancelamentos = {
 const SEM_RESUMO: ResumoDosCancelamentos = { candidatos: 0, avisados: 0, ignorados: 0, falhas: 0 };
 
 /**
- * O texto do aviso. Três frases, uma por situação do dinheiro, e nenhuma delas
- * promete o que o banco não faz:
+ * O texto do aviso não promete o que o banco não faz:
  *   - já enviado: a devolução do dinheiro é manual e só depois do produto voltar;
+ *   - retirada com histórico de saída: a loja só precisa confirmar o retorno se estiver pendente;
  *   - pago depois do cancelamento: não há devolução aberta por este caminho;
  *   - pago e não enviado: o banco abre a devolução e a rotina a faz sozinha.
  */
 export function montarAvisoDeCancelamento(
-  pedido: { id: string; customer_name?: unknown; total?: unknown; total_amount?: unknown; payment_status?: unknown; cancelled_after_shipping?: unknown },
+  pedido: {
+    id: string;
+    customer_name?: unknown;
+    total?: unknown;
+    total_amount?: unknown;
+    payment_status?: unknown;
+    cancelled_after_shipping?: unknown;
+    pickup_address?: unknown;
+    returned_to_seller_at?: string | null;
+  },
   historico: { old_status?: unknown },
 ): Aviso {
   const valor = pedido.total ?? pedido.total_amount;
   const cliente = String(pedido.customer_name ?? "").trim() || "cliente sem nome";
-  const jaSaiu = historico.old_status === "shipping" || pedido.cancelled_after_shipping === true;
+  const estavaNaEtapaDeSaida = historico.old_status === "shipping";
+  const jaSaiu = estavaNaEtapaDeSaida ||
+    pedido.cancelled_after_shipping === true;
+  const retiradaComHistoricoDeSaida = jaSaiu &&
+    typeof pedido.pickup_address === "string" &&
+    pedido.pickup_address.trim() !== "";
   const frase = !pedido.payment_status && !jaSaiu
     ? "sem pagamento pelo app: não separe nem envie"
+    : retiradaComHistoricoDeSaida
+    ? `${
+      estavaNaEtapaDeSaida
+        ? "o pedido estava pronto para retirada"
+        : "pedido de retirada na loja"
+    }: ${
+      pedido.returned_to_seller_at
+        ? "o retorno do produto já foi confirmado no painel"
+        : 'confirme que o produto está na loja antes de tocar em "O produto voltou"'
+    }`
     : jaSaiu
     ? "pago, o produto já saiu: avise o transporte"
     : pedido.payment_status === "pago_apos_expirar"
@@ -137,7 +161,9 @@ export async function avisarCancelamentosDoCliente(args: {
 
   const { data: pedidos, error: erroPedidos } = await supabase
     .from("marketplace_orders")
-    .select("id, user_id, customer_name, total, total_amount, payment_status, status, cancelled_after_shipping")
+    .select(
+      "id, user_id, customer_name, total, total_amount, payment_status, status, cancelled_after_shipping, returned_to_seller_at, customer_data->>pickup_address",
+    )
     .in("id", idsDosPedidos);
   if (erroPedidos) throw erroPedidos;
 
