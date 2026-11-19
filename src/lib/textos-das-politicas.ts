@@ -80,7 +80,7 @@ export interface VersaoDosTextos {
 export const VERSAO_DOS_TEXTOS: VersaoDosTextos = {
   versao: 4,
   atualizadoEm: "2026-11-19",
-  impressaoDoTexto: "fe1da4d3",
+  impressaoDoTexto: "965e8a58",
 };
 
 /**
@@ -246,7 +246,7 @@ function montarPrivacidade(loja: DadosDaLoja): DocumentoDePolitica {
         titulo: "O que fica no seu aparelho",
         paragrafos: [
           "O app guarda no navegador dados para manter sua entrada na conta, lembrar o carrinho, endereços e preferências e salvar o rascunho da compra enquanto a aba estiver aberta. Também guarda mudanças nos favoritos feitas sem conexão para enviar quando a internet voltar e cópias de imagens e páginas para abrir partes do app sem internet. O app não usa rastreadores de propaganda.",
-          "O app também guarda uma cópia dos seus pedidos no navegador. Se você consultou um pedido sem conta, a cópia fica na aba em que você fez a consulta.",
+          "O app também guarda uma cópia dos seus pedidos no navegador. Se você consultou um pedido sem conta, a cópia fica na aba em que você fez a consulta e deixa de valer depois de 15 minutos.",
         ],
       },
       {
