@@ -24,6 +24,7 @@ import { useMototaxi } from "@/hooks/useMototaxi";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import {
+  AVISO_DO_FRETE,
   transportadoraFicaSemPagamento,
   transportadoraVendeForaDaCidade,
 } from "@/lib/aviso-transportadora-sem-pagamento";
@@ -1417,8 +1418,8 @@ export const AdminShippingView = memo(function AdminShippingView({
                 {avisarTransportadoraSemPagamento && (
                   <div data-aviso-transportadora-sem-pagamento="">
                     <AvisoDaEntrega
-                      titulo="Transportadora só funciona com pagamento pelo app ligado."
-                      detalhe="Hoje seus clientes de fora da sua região não conseguem finalizar a compra."
+                      titulo={AVISO_DO_FRETE.titulo}
+                      detalhe={AVISO_DO_FRETE.detalhe}
                       botao="Ver pagamento pelo app"
                       onClick={
                         onNavigate

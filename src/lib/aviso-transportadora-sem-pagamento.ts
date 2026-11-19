@@ -46,7 +46,7 @@ export function transportadoraFicaSemPagamento(args: {
 export const AVISO_DO_FRETE = {
   titulo: "Transportadora só funciona com pagamento pelo app ligado.",
   detalhe:
-    "Hoje seus clientes de outras cidades não conseguem finalizar a compra. Ligue o pagamento pelo app para voltar a vender para fora da cidade.",
+    "Hoje seus clientes de fora da sua região não conseguem finalizar a compra.",
 } as const;
 
 /**

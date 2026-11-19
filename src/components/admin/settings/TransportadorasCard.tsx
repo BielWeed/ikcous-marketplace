@@ -1001,6 +1001,7 @@ export const TransportadorasSection = memo(function TransportadorasSection({
           return;
         }
 
+        window.dispatchEvent(new Event("admin:frete-salvo"));
         if (data.cache === "pendente") {
           toast.success("Transportadora salva!", {
             description:
@@ -1095,6 +1096,7 @@ export const TransportadorasSection = memo(function TransportadorasSection({
         }
         return false;
       }
+      window.dispatchEvent(new Event("admin:frete-salvo"));
       const confirmados = new Set<ProvedorFrete>(data.ligados ?? []);
       ligadosSalvosRef.current = confirmados;
       setLigadosSalvos(confirmados);

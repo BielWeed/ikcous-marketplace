@@ -85,6 +85,7 @@ export function useEmailDaLoja(): UseEmailDaLoja {
   const [status, setStatus] = useState<StatusDoEmail | null>(null);
   const [ocupado, setOcupado] = useState<OcupadoDoEmail>(null);
   const ocupadoRef = useRef<OcupadoDoEmail>(null);
+  const leituraDaVez = useRef(0);
 
   const chamar = useCallback(async (corpo: Record<string, unknown>) => {
     const { data, error } = await supabase.functions.invoke(FUNCAO, {
@@ -99,9 +100,11 @@ export function useEmailDaLoja(): UseEmailDaLoja {
    */
   const lerStatus = useCallback(
     async (silencioso: boolean) => {
+      const minha = ++leituraDaVez.current;
       setCarga((antes) => (antes === "pronto" ? antes : "carregando"));
       try {
         const { data, error } = await chamar({ acao: "status" });
+        if (minha !== leituraDaVez.current) return;
         if (error) throw error;
         const lido = lerStatusDoEmail(data);
         if (!lido) {
@@ -114,8 +117,9 @@ export function useEmailDaLoja(): UseEmailDaLoja {
         setMensagemDeCarga(null);
         setCarga("pronto");
       } catch (erro) {
-        if (silencioso) return;
+        if (silencioso || minha !== leituraDaVez.current) return;
         const traduzida = traduzirFalha(await lerFalha(erro), "status");
+        if (minha !== leituraDaVez.current) return;
         setMensagemDeCarga(traduzida.mensagem);
         setCarga(traduzida.indisponivel ? "indisponivel" : "erro");
       }
@@ -166,8 +170,12 @@ export function useEmailDaLoja(): UseEmailDaLoja {
         await lerStatus(true);
         return { ok: false, mensagem: MENSAGEM_RESPOSTA_TORTA };
       }
+      // O servidor já confirmou a alteração: uma leitura anterior não pode desfazê-la.
+      ++leituraDaVez.current;
       setStatus(lido);
+      setMensagemDeCarga(null);
       setCarga("pronto");
+      window.dispatchEvent(new Event("admin:email-salvo"));
       return { ok: true };
     },
     [lerStatus],

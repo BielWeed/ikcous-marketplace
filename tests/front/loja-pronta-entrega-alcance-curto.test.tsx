@@ -55,6 +55,20 @@ describe("estadoDaEntrega: o alcance entra na conta", () => {
     expect(estadoDaEntrega({ originCep: CEP_DE_RUA }, false)).toBe("pendente");
   });
 
+  it("faixa preenchida sem nenhum número deixa a entrega local pendente", () => {
+    expect(
+      estadoDaEntrega(
+        {
+          originCep: CEP_DE_RUA,
+          localCepRange: "abc",
+          localDeliveryEnabled: true,
+          enabledShippingMethods: [],
+        },
+        false,
+      ),
+    ).toBe("pendente");
+  });
+
   it("mesmo CEP de rua + alcance que cobre a cidade -> feito", () => {
     expect(
       estadoDaEntrega(

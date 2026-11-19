@@ -188,6 +188,7 @@ function ComRecomendados({
     pendentesRecomendados({
       email: lidos.email,
       pixOk: ligado && chaveOk,
+      pagamentoPeloAppLigado: ligado,
       nomesLigados: lidos.nomesLigados,
       config,
       configCarregando,

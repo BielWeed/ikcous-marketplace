@@ -22,6 +22,7 @@ function fatos(parcial: Partial<FatosDosRecomendados> = {}) {
   return {
     email: "configurado",
     pixOk: true,
+    pagamentoPeloAppLigado: true,
     nomesLigados: ["Melhor Envio"],
     config: { shippingCoverage: "national", localDeliveryEnabled: true },
     configCarregando: false,
@@ -72,6 +73,15 @@ describe("passos recomendados — pagamento pelo app", () => {
     const p = passo("pagamentoApp", { pixOk: false });
     expect(p?.estado).toBe("pendente");
     expect(p?.destino).toBe("admin-settings");
+  });
+
+  it("leitura de transportadora desconhecida mantém a recomendação anterior", () => {
+    const p = passo("pagamentoApp", {
+      pixOk: false,
+      pagamentoPeloAppLigado: false,
+      nomesLigados: null,
+    });
+    expect(p?.explicacaoPendente).toContain("só podem pagar na entrega");
   });
 
   it("config ainda carregando: carregando (a flag vem da config)", () => {

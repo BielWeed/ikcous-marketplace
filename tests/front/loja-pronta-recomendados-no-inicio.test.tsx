@@ -42,6 +42,7 @@ function fatos(parcial: Partial<FatosDosRecomendados> = {}) {
   return {
     email: "configurado",
     pixOk: true,
+    pagamentoPeloAppLigado: true,
     nomesLigados: ["Melhor Envio"],
     config: { shippingCoverage: "national" },
     configCarregando: false,
@@ -123,6 +124,22 @@ describe("Loja pronta — recomendados no Início", () => {
       );
     });
     expect(onNavigate).toHaveBeenLastCalledWith("admin-shipping");
+  });
+
+  it("avisa que clientes de fora não finalizam quando a transportadora está ligada sem pagamento pelo app", async () => {
+    await montar({
+      recomendados: pendentesRecomendados(
+        fatos({ pixOk: false, pagamentoPeloAppLigado: false }),
+      ),
+    });
+
+    expect(hospedeiro.textContent).toContain(
+      "Transportadora só funciona com pagamento pelo app ligado.",
+    );
+    expect(hospedeiro.textContent).toContain(
+      "Hoje seus clientes de fora da sua região não conseguem finalizar a compra.",
+    );
+    expect(hospedeiro.textContent).not.toContain("só podem pagar na entrega");
   });
 
   it("não muda a conta dos seis passos: 6 de 6 continua 6 de 6 com recomendados pendentes", async () => {

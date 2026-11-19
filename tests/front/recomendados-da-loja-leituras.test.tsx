@@ -122,16 +122,58 @@ describe("useRecomendadosDaLoja", () => {
     buscarConfiguracaoDeFrete.mockResolvedValue(resposta([], []));
     await montar(true);
     await montar(false);
+    vi.advanceTimersByTime(10_000);
     await montar(true);
     expect(buscarConfiguracaoDeFrete).toHaveBeenCalledTimes(1);
     expect(recarregar).not.toHaveBeenCalled();
 
     await montar(false);
-    vi.advanceTimersByTime(31_000);
+    vi.advanceTimersByTime(21_000);
     await montar(true);
     expect(buscarConfiguracaoDeFrete).toHaveBeenCalledTimes(2);
     expect(recarregar).toHaveBeenCalledTimes(1);
   });
+
+  it.each(["email", "frete"])(
+    "salvar %s e voltar em 10 s relê só o que mudou",
+    async (alvo) => {
+      buscarConfiguracaoDeFrete.mockResolvedValue(resposta([], []));
+      await montar(true);
+      await montar(false);
+      window.dispatchEvent(new Event(`admin:${alvo}-salvo`));
+      expect(buscarConfiguracaoDeFrete).toHaveBeenCalledTimes(1);
+      expect(recarregar).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(10_000);
+      await montar(true);
+      expect(buscarConfiguracaoDeFrete).toHaveBeenCalledTimes(
+        alvo === "frete" ? 2 : 1,
+      );
+      expect(recarregar).toHaveBeenCalledTimes(alvo === "email" ? 1 : 0);
+    },
+  );
+
+  it.each(["email", "frete"])(
+    "confirmação de %s depois de voltar em 10 s relê só o que mudou",
+    async (alvo) => {
+      buscarConfiguracaoDeFrete.mockResolvedValue(resposta([], []));
+      await montar(true);
+      await montar(false);
+      vi.advanceTimersByTime(10_000);
+      await montar(true);
+      expect(buscarConfiguracaoDeFrete).toHaveBeenCalledTimes(1);
+      expect(recarregar).not.toHaveBeenCalled();
+
+      await act(async () => {
+        window.dispatchEvent(new Event(`admin:${alvo}-salvo`));
+      });
+
+      expect(buscarConfiguracaoDeFrete).toHaveBeenCalledTimes(
+        alvo === "frete" ? 2 : 1,
+      );
+      expect(recarregar).toHaveBeenCalledTimes(alvo === "email" ? 1 : 0);
+    },
+  );
 
   it("e-mail sem remetente vira 'nao_configurado'; leitura indisponível, 'desconhecido'", async () => {
     buscarConfiguracaoDeFrete.mockResolvedValue(resposta([], []));

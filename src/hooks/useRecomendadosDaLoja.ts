@@ -14,9 +14,9 @@ import { useEffect, useRef, useState } from "react";
  * `calculate-shipping`) já fazem, e nenhuma devolve segredo (só "tem chave",
  * remetente e selo).
  *
- * O Início é aba mantida montada: a leitura se repete quando ele volta à vista
- * (depois de salvar o e-mail ou a transportadora em Ajustes/Frete), no máximo
- * uma vez a cada 30 s. `active === false` não lê.
+ * O Início é aba mantida montada: ao voltar à vista, a leitura se repete no
+ * máximo uma vez a cada 30 s. Um salvamento confirmado relê só o dado alterado:
+ * imediatamente se a aba estiver à vista, ou na próxima entrada.
  */
 
 const INTERVALO_ENTRE_LEITURAS_MS = 30_000;
@@ -44,21 +44,50 @@ export function useRecomendadosDaLoja(active?: boolean): RecomendadosLidos {
   }, []);
 
   useEffect(() => {
-    if (active === false) return;
-    const agora = Date.now();
-    if (agora - ultimaDoEmail.current >= INTERVALO_ENTRE_LEITURAS_MS) {
-      ultimaDoEmail.current = agora;
+    const visivel = active !== false;
+    const lerEmail = () => {
+      ultimaDoEmail.current = Date.now();
       void recarregar();
+    };
+    const lerFrete = () => {
+      ultimaDoFrete.current = Date.now();
+      const minha = ++leituraDaVez.current;
+      void buscarConfiguracaoDeFrete().then((resultado) => {
+        if (minha !== leituraDaVez.current) return;
+        setNomesLigados(
+          resultado.ok
+            ? nomesDasTransportadorasLigadas(resultado.config)
+            : null,
+        );
+      });
+    };
+
+    const aoSalvarEmail = () => {
+      if (visivel) lerEmail();
+      else ultimaDoEmail.current = Number.NEGATIVE_INFINITY;
+    };
+    const aoSalvarFrete = () => {
+      if (visivel) lerFrete();
+      else {
+        ultimaDoFrete.current = Number.NEGATIVE_INFINITY;
+        ++leituraDaVez.current;
+      }
+    };
+    window.addEventListener("admin:email-salvo", aoSalvarEmail);
+    window.addEventListener("admin:frete-salvo", aoSalvarFrete);
+
+    const agora = Date.now();
+    if (visivel) {
+      if (agora - ultimaDoEmail.current >= INTERVALO_ENTRE_LEITURAS_MS)
+        lerEmail();
+      if (agora - ultimaDoFrete.current >= INTERVALO_ENTRE_LEITURAS_MS)
+        lerFrete();
     }
-    if (agora - ultimaDoFrete.current < INTERVALO_ENTRE_LEITURAS_MS) return;
-    ultimaDoFrete.current = agora;
-    const minha = ++leituraDaVez.current;
-    void buscarConfiguracaoDeFrete().then((resultado) => {
-      if (minha !== leituraDaVez.current) return;
-      setNomesLigados(
-        resultado.ok ? nomesDasTransportadorasLigadas(resultado.config) : null,
-      );
-    });
+
+    return () => {
+      window.removeEventListener("admin:email-salvo", aoSalvarEmail);
+      window.removeEventListener("admin:frete-salvo", aoSalvarFrete);
+    };
   }, [active, recarregar]);
 
   return { email: fatoDoEmail(carga, status), nomesLigados };

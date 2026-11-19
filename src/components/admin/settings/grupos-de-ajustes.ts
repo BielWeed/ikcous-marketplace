@@ -4,6 +4,8 @@ import {
   type ChaveDosSeisPassos,
   type ConfigDosSeisPassos,
   type EstadoDoItem,
+  alcanceSemNumeros,
+  cepCompleto,
   entradaDosSeisPassos,
   entregaComAlcanceCurto,
   estadoDaEntrega,
@@ -176,7 +178,10 @@ function entregaEmAjustes(
           ? "Falta: endereço da loja"
           : entregaComAlcanceCurto(config)
             ? "Falta: confirmar até onde você entrega"
-            : "Falta: CEP da loja",
+            : cepCompleto(config.originCep) &&
+                alcanceSemNumeros(config.localCepRange)
+              ? "Falta: corrigir a faixa de CEP"
+              : "Falta: CEP da loja",
     };
   }
   const soNaCidade = (config.shippingCoverage || "national") === "local";

@@ -2,6 +2,11 @@ import {
   type StatusDoEmail,
   seloDoEmail,
 } from "@/components/admin/settings/email-da-loja-conteudo";
+import {
+  AVISO_DO_FRETE,
+  transportadoraFicaSemPagamento,
+  transportadoraVendeForaDaCidade,
+} from "@/lib/aviso-transportadora-sem-pagamento";
 import { modoDaEntregaNaCidade } from "@/lib/guarda-de-frete";
 import type { EstadoDoItem } from "@/lib/loja-pronta";
 import type { View } from "@/types";
@@ -12,7 +17,7 @@ import type { View } from "@/types";
  * dizem se a loja ABRE; estes três dizem se ela VENDE de verdade:
  *
  *  - e-mail da loja: sem remetente, o cliente não recebe e-mail do pedido;
- *  - pagamento pelo app (PIX): sem ele, só se paga na entrega;
+ *  - pagamento pelo app (PIX): sem ele, o envio por transportadora não finaliza;
  *  - transportadora: sem nenhuma ligada, quem é de fora não compra.
  *
  * Regras de convivência com o resto:
@@ -67,6 +72,8 @@ export interface FatosDosRecomendados {
   readonly email: FatoDoEmail;
   /** O mesmo `pixOk` dos seis passos: flag ligada E chave pública no deploy. */
   readonly pixOk: boolean;
+  /** Flag que a tela de Frete lê, sem confundir com a presença da chave PIX. */
+  readonly pagamentoPeloAppLigado: boolean;
   /** Nomes das transportadoras com cotação real ligada; `null` = não sei. */
   readonly nomesLigados: readonly string[] | null;
   readonly config: {
@@ -108,6 +115,16 @@ export function passosRecomendados(
     });
   }
 
+  const avisarTransportadoraSemPagamento =
+    !fatos.configCarregando &&
+    transportadoraFicaSemPagamento({
+      transportadoraVende: transportadoraVendeForaDaCidade({
+        cobertura: fatos.config.shippingCoverage,
+        nomesLigados: fatos.nomesLigados,
+      }),
+      pagamentoPeloAppLigado: fatos.pagamentoPeloAppLigado,
+    });
+
   passos.push({
     chave: "pagamentoApp",
     rotuloPendente: "Ligar o pagamento pelo app (PIX)",
@@ -118,7 +135,9 @@ export function passosRecomendados(
         ? "carregando"
         : "pendente",
     destino: "admin-settings",
-    explicacaoPendente: "Sem ele, seus clientes só podem pagar na entrega",
+    explicacaoPendente: avisarTransportadoraSemPagamento
+      ? `${AVISO_DO_FRETE.titulo} ${AVISO_DO_FRETE.detalhe}`
+      : "Sem ele, seus clientes só podem pagar na entrega",
   });
 
   if (fatos.nomesLigados !== null && lojaVendeParaFora(fatos.config)) {
