@@ -9,6 +9,10 @@ const s = vi.hoisted(() => ({
   rpc: vi.fn(),
   erroLeitura: false,
   leituraPendurada: false,
+  contatoSalvo: {
+    whatsapp: null as string | null,
+    nome: null as string | null,
+  },
   config: {
     freeShippingMin: 0,
     shippingCoverage: "national",
@@ -56,7 +60,7 @@ vi.mock("@/lib/supabase", () => ({
           maybeSingle: async () => {
             if (s.leituraPendurada) return new Promise<never>(() => {});
             return {
-              data: s.erroLeitura ? null : { whatsapp: null, nome: null },
+              data: s.erroLeitura ? null : { ...s.contatoSalvo },
               error: s.erroLeitura ? { message: "erro" } : null,
             };
           },
@@ -65,7 +69,9 @@ vi.mock("@/lib/supabase", () => ({
     }),
   },
 }));
-vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
+vi.mock("sonner", () => ({
+  toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn() },
+}));
 // @ts-expect-error flag interna do React
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root;
@@ -74,6 +80,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   s.erroLeitura = false;
   s.leituraPendurada = false;
+  s.contatoSalvo = { whatsapp: null, nome: null };
   s.update.mockResolvedValue(true);
   s.config.localDeliveryFee = 10;
   s.config.nationalShippingStrategy = "desligado";
@@ -81,10 +88,10 @@ beforeEach(() => {
   s.config.originCep = "01000-000";
   s.config.storeAddress = "Rua Fictícia, 1";
   s.config.enabledShippingMethods = ["sedex", "pac"];
-  s.rpc.mockImplementation(async (_nome, args) => ({
-    data: { whatsapp: args.p_whatsapp, nome: args.p_nome },
-    error: null,
-  }));
+  s.rpc.mockImplementation(async (_nome, args) => {
+    s.contatoSalvo = { whatsapp: args.p_whatsapp, nome: args.p_nome };
+    return { data: s.contatoSalvo, error: null };
+  });
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
@@ -118,6 +125,62 @@ const botao = () =>
   [...host.querySelectorAll("button")].find((b) =>
     /^(Salvar|Tentar de novo)$/.test(b.textContent?.trim() ?? ""),
   );
+it("não sobrescreve o número alterado enquanto o nome era editado", async () => {
+  s.contatoSalvo = { whatsapp: "5511987654321", nome: "Entrega" };
+  await abrir();
+  await digitar("#mototaxi-nome", "Entrega expressa");
+  s.contatoSalvo = { whatsapp: "5511965432109", nome: "Entrega" };
+
+  await act(async () => botao()?.click());
+
+  expect(s.rpc).not.toHaveBeenCalled();
+  expect(toast.warning).toHaveBeenCalledWith(
+    "O contato do mototáxi foi alterado em outro aparelho. Confira o número e salve de novo.",
+  );
+  expect(
+    host.querySelector<HTMLInputElement>("#mototaxi-whatsapp")?.value,
+  ).toBe("5511965432109");
+  expect(host.querySelector<HTMLInputElement>("#mototaxi-nome")?.value).toBe(
+    "Entrega expressa",
+  );
+
+  await act(async () => botao()?.click());
+  expect(s.rpc).toHaveBeenCalledExactlyOnceWith("salvar_config_mototaxi", {
+    p_whatsapp: "5511965432109",
+    p_nome: "Entrega expressa",
+  });
+});
+
+it("não grava quando não consegue conferir o contato e permite nova tentativa", async () => {
+  await abrir();
+  await digitar("#mototaxi-whatsapp", "11987654321");
+  s.erroLeitura = true;
+
+  await act(async () => botao()?.click());
+
+  expect(s.rpc).not.toHaveBeenCalled();
+  expect(toast.error).toHaveBeenCalledWith(
+    "Não deu para conferir o contato do mototáxi. Tente de novo.",
+  );
+  s.erroLeitura = false;
+  await act(async () => botao()?.click());
+  expect(s.rpc).toHaveBeenCalledTimes(1);
+});
+
+it("dois cliques no mesmo Salvar gravam o contato uma única vez", async () => {
+  await abrir();
+  await digitar("#mototaxi-whatsapp", "11987654321");
+
+  await act(async () => {
+    const salvar = botao();
+    expect(salvar?.disabled).toBe(false);
+    salvar?.click();
+    salvar?.click();
+  });
+
+  expect(s.rpc).toHaveBeenCalledTimes(1);
+});
+
 it("grava só o contato privado e mantém os outros blocos fora do payload de frete", async () => {
   await abrir();
   expect(host.textContent).toContain("O número fica só no painel");

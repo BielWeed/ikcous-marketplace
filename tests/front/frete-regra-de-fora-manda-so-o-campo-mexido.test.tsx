@@ -260,6 +260,30 @@ describe("Frete — regra de fora da cidade manda só o campo mexido", () => {
       expect(banco.nationalDiscountValue).toBe(5);
     });
 
+    it("uma estratégia nova não herda o mínimo que estava em edição", async () => {
+      await abrirComRegra({
+        ...GRATIS_ACIMA_DE_100,
+        nationalShippingMin: 200,
+      });
+      await digitar("frete-nacional-minimo", "100");
+
+      outroAparelhoGravaSemAvisar({
+        ...COM_DESCONTO_DE_20,
+        nationalShippingMin: 500,
+      });
+      await configNovoChegaATela();
+
+      expect(radio("Desconto no frete").getAttribute("aria-checked")).toBe(
+        "true",
+      );
+      expect(campo("frete-nacional-minimo").value).toBe("500");
+      expect(hospedeiro.textContent).toContain(
+        "A estratégia de frete foi alterada em outro aparelho; revise o valor mínimo antes de salvar.",
+      );
+      expect(botaoSalvar().disabled).toBe(true);
+      expect(updateConfig).not.toHaveBeenCalled();
+    });
+
     it("os dois mexeram no MESMO campo: vale o que ela digitou neste aparelho", async () => {
       await abrirComRegra(COM_DESCONTO_DE_20);
       await digitar("frete-nacional-valor-desconto", "8");
