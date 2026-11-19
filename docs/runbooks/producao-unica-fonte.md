@@ -69,8 +69,11 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
      `gh workflow run ...` com o SHA efetivo do topo do ramo em `expected_sha` e os nomes
      completos dos arquivos (nunca `<...>`). NADA foi promovido.
 
-3. **Levar o backend a cada assinante que bloqueou: um passo por vez.** Colar o que o passo 2
-   imprimiu, esperar cada run terminar verde (`gh run watch <id>`) e rodar o passo 2 de novo; ele
+3. **Levar o backend a cada assinante que bloqueou: um passo por vez.** Se a mudança mexe em OTP/login,
+   publique primeiro **só na IKCOUS de desenvolvimento** (`cafkrminfnokvgjqtkle`) e **pause**.
+   Vá à conferência de login em janela anônima do passo 4 antes de tocar em qualquer outra loja.
+   Só propague se a conferência passar. Para cada loja liberada, cole o que o passo 2
+   imprimiu, espere cada run terminar verde (`gh run watch <id>`) e rode o passo 2 de novo; ele
    imprime o passo seguinte. **Excecao: para o lote `20261209`/`20261210`, NAO cole o comando de
    aplicar o banco antes de comprovar `criar-pagamento` e `webhook-mercadopago` no ar em cada
    loja.** O portao pode imprimir o apply sem exigir essa prova. Veja o

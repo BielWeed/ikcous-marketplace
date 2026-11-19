@@ -646,7 +646,7 @@ compute, recorrente, para uma loja com 64 pedidos no total.
 **Decisão do Gabriel: não vale.** O que substitui está na seção seguinte, custa
 zero e cobre quase o mesmo risco.
 
-### A consequência real — e por que ela é menor do que parece
+### Exemplo histórico da IKCOUS — medição de 05/08/2026
 
 A frase "sem PITR você perde até 24 h de pedidos" está certa no pior caso e
 **errada na prática**, porque a janela de perda não é fixa em 24 h: ela é *o
@@ -667,16 +667,11 @@ compraria por US$ 1.200 ao ano.
 
 Quatro passos. Nenhum custa dinheiro.
 
-**1. Confirme que o backup de HOJE já saiu.** Não confie no horário: os backups
-variam ~8 minutos e um dia pode atrasar.
-
-```bash
-npx supabase backups list --project-ref cafkrminfnokvgjqtkle
-```
-
-Olhe o `inserted_at` mais recente. **Se não for de hoje, pare e espere.** Rodar
-migration antes do backup do dia é o que transforma 25 minutos de exposição em
-23 horas.
+**1. Confira o plano da loja e como desfazer a mudança.** O backup diário automático
+existe nos planos Pro, Team e Enterprise, não no Free. Se o plano oferece backup,
+confira a última cópia concluída em Supabase → Database → Backups. Não conte com
+backup do Supabase para desfazer migration que altera dados: confirme um procedimento
+de reversão antes de aplicar.
 
 **2. Fotografe as policies.**
 
@@ -698,9 +693,8 @@ Usá-lo como banco de ensaio não cria custo novo. É a `INFRA-270` (#131).
 **4. `pg_dump` completo antes da PRIMEIRA migration da série.** Com Docker no ar
 — ver a armadilha abaixo.
 
-Os quatro somados cobrem o risco real. O que o PITR daria a mais é reverter erro
-percebido **tarde** — e para isso o backup de 7 dias já serve, com granularidade
-pior.
+Não presuma retenção nem janela de recuperação: elas dependem do plano e das cópias
+que existem naquela loja. PITR (restauração para um ponto no tempo) é um adicional pago.
 
 ### Onde o snapshot vai parar
 
@@ -750,15 +744,15 @@ assim que a omissão apareceu: o dump "funcionou", e os números não bateram.
 
 ### Restauração
 
-Restaurar é pelo **painel do Supabase**, e só o dono da org (o Gabriel) tem
-acesso. O `supabase backups restore` existe no CLI mas serve ao PITR, que está
-desligado — com backup diário, o caminho é a interface.
+A restauração pelo **painel do Supabase** só está disponível se o plano da loja
+oferecer backup e houver uma cópia disponível. A pessoa responsável pela organização
+deve confirmar isso antes de planejar uma restauração.
 
 **Quanto tempo leva uma restauração continua não medido, e vai continuar.**
 Medir exigiria restaurar produção de verdade. É um desconhecido **aceito**: a
 mitigação foi desenhada justamente para não depender de restauração — o
-snapshot de policies resolve o caso provável sem restaurar nada, e o passo 1 do
-procedimento limita o caso improvável a minutos.
+snapshot de policies ajuda a recuperar políticas sem restaurar o banco, mas
+não recupera linhas de dados.
 
 ---
 

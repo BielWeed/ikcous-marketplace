@@ -157,7 +157,8 @@ antes de abrir o estorno automático do cancelamento. As functions novas continu
 - [ ] **Anote o alvo do rollback das functions**: o commit do último run verde do
   `publicar-functions.yml` na aba Actions. Na falta dele, use a base do PR.
 - [ ] **Confira o plano da loja.** O backup diário automático do Supabase é dos planos Pro, Team e
-  Enterprise, não do Free. Não conte com backup para desfazer migration que altera dados.
+  Enterprise, não do Free. PITR (restauração para um ponto no tempo) é um adicional pago.
+  Não conte com backup para desfazer migration que altera dados.
 - [ ] **Escolha um horário de pouco movimento** e faça os passos 1 e 2 na mesma sessão.
 - [ ] **Rode no SQL Editor do projeto da loja** e confira os valores esperados. É uma consulta
   só, porque o SQL Editor mostra apenas o último resultado:
