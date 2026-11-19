@@ -26,7 +26,7 @@ export const CHAVE_DO_RETRATO = "guest_tracked_orders";
 export const EVENTO_RETRATO_LIMPO = "retrato-do-convidado-limpo";
 
 /**
- * A cópia não pode durar mais que o código por e-mail que liberou a consulta.
+ * A cópia dura 15 minutos, o mesmo prazo do código por e-mail da consulta.
  * Ver supabase/migrations/20260820000000_otp_v2_devolve_o_codigo.sql:100.
  */
 export const PRAZO_DO_RETRATO_MS = 15 * 60_000;

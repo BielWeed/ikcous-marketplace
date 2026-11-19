@@ -28,9 +28,10 @@ import type { ArmazenamentoSimples } from "./chave-do-pedido";
 import { nomeTemConteudoVisivel } from "./nome-visivel";
 
 const CHAVE_DE_ARMAZENAMENTO = "ikcous-rascunho-do-checkout-v1";
-// Risco aceito: outra pessoa pode ver o rascunho do visitante na mesma aba de
-// um aparelho compartilhado. Reabrir a decisão se houver relato de dados de
-// outra pessoa ou se uma loja usar a vitrine em tablet de balcão.
+// O rascunho do checkout não é o retrato de um pedido já consultado: só o
+// retrato vence em 15 minutos. Risco aceito: outra pessoa pode ver o rascunho
+// na mesma aba de um aparelho compartilhado. Reabrir a decisão se houver
+// relato de dados de outra pessoa ou uso da vitrine em tablet de balcão.
 const VALIDADE_DOS_DADOS_DO_VISITANTE_MS = 2 * 60 * 60 * 1000;
 
 export interface RascunhoDoCheckout {

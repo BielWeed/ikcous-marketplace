@@ -881,7 +881,7 @@ export function OrderDetailsView({
     loadOrder();
   }, [loadOrder]);
 
-  // O retrato venceu (60 min) com o detalhe aberto: o pedido está nesta tela em
+  // O retrato venceu (15 min) com o detalhe aberto: o pedido está nesta tela em
   // estado, então endereço e dados da compra seguiam à vista de quem usar o
   // aparelho depois. Mesma régua e mesmos gatilhos da lista na CartView
   // (`retratoVenceu`; o relógio sozinho não basta, ele dorme com o aparelho):
