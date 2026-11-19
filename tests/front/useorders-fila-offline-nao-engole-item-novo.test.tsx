@@ -526,11 +526,10 @@ describe("useOrders — a fila offline não engole item novo", () => {
       await vi.advanceTimersByTimeAsync(1000);
     });
     expect(rpcMock).toHaveBeenCalledTimes(3);
-    expect(rpcMock).toHaveBeenNthCalledWith(3, "update_order_status_atomic", {
+    expect(rpcMock).toHaveBeenNthCalledWith(3, "cancelar_pedido_do_painel", {
       p_order_id: "pedido-3",
-      p_new_status: "cancelled",
+      p_status_esperado: "pending",
       p_notes: null,
-      p_silent: false,
     });
     expect(localStorage.getItem(chave)).toBeNull();
     expect(toast.error).not.toHaveBeenCalled();

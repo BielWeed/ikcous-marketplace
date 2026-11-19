@@ -31,7 +31,11 @@ vi.mock("@/lib/supabase", () => ({
           order: () => ({
             abortSignal: () => Promise.resolve({ data: [], error: null }),
           }),
-          single: () => Promise.resolve({ data: { total: 100 }, error: null }),
+          single: () =>
+            Promise.resolve({
+              data: { total: 100, status: "pending" },
+              error: null,
+            }),
         }),
       }),
     }),
@@ -65,7 +69,12 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const chave = "orders_offline_updates_queue:lojista-1";
 const toastId = "sincronizacao-fila-offline";
-const item = { orderId: "pedido-offline", status: "cancelled", silent: false };
+const item = {
+  orderId: "pedido-offline",
+  status: "cancelled",
+  statusEsperado: "pending",
+  silent: false,
+};
 
 let gancho: ReturnType<typeof useOrders>;
 function Sonda({ enabled = true }: { enabled?: boolean }) {
