@@ -859,8 +859,7 @@ async function main() {
   const pre = `pv_${SUF}_pre`.slice(0, 60);
   await montarBase(
     pre,
-    (f) =>
-      f !== ARQUIVO && f !== ARQ_397 && f !== ARQ_3997 && f !== ARQ_4058,
+    (f) => f !== ARQUIVO && f !== ARQ_397 && f !== ARQ_3997 && f !== ARQ_4058,
   );
   {
     const sonda = await usar(pre, async (c) => ({
