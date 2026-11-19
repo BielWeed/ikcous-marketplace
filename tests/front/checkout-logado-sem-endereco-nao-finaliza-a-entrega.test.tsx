@@ -14,6 +14,7 @@ import type { CartItem, Product, ShippingOption } from "@/types";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { comReleituraDeEnderecos } from "./duble-releitura-de-enderecos";
 
 const FRASE_DA_GUARDA =
   "Por favor, adicione ou selecione um endereço de entrega.";
@@ -79,13 +80,13 @@ function endereco(id: string, cep: string, principal: boolean) {
 }
 
 vi.mock("@/hooks/useAddresses", () => ({
-  useAddresses: () => ({
-    addresses: lista.atual,
-    fetchAddresses: vi.fn(),
-    addAddress: vi.fn(),
-    updateAddress: vi.fn(),
-    loading: false,
-  }),
+  useAddresses: () =>
+    comReleituraDeEnderecos({
+      addresses: lista.atual,
+      addAddress: vi.fn(),
+      updateAddress: vi.fn(),
+      loading: false,
+    }),
 }));
 
 // Referência ESTÁVEL de `user` (um objeto novo por render reabriria efeitos).

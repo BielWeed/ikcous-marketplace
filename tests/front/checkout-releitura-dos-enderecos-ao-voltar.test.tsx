@@ -14,6 +14,7 @@ import type { CartItem, Product } from "@/types";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { concluirBuscaDeCepSemEndereco } from "./duble-busca-de-cep";
 
 const onNavigate = vi.fn();
 const onSetBackOverride = vi.fn();
@@ -26,12 +27,24 @@ const ENTREGA_LOCAL = {
   provider: "local",
 };
 
+const RETIRADA = {
+  id: "store-pickup",
+  name: "Retirar na loja",
+  price: 0,
+  deliveryDays: 0,
+  provider: "pickup",
+};
+const AVISO_DE_ENDERECO_NAO_CONFIRMADO =
+  "Não consegui confirmar o endereço. Tente de novo.";
+let opcaoDeFrete = ENTREGA_LOCAL;
+
 const { conta, banco, escolha } = vi.hoisted(() => ({
   conta: { usuario: { id: "user-1" } as { id: string } | null },
   banco: {
     linhas: [] as Array<Record<string, unknown>>,
     leituras: 0,
     falharLeitura: false,
+    proximaLeitura: null as Promise<void> | null,
   },
   // O id do endereço escolhido, como o CartContext o guarda: UM valor, lido por
   // todos os que chamam `useCart` (o checkout e os hooks dele).
@@ -98,7 +111,7 @@ vi.mock("@/hooks/useCart", async () => {
       setSelectedShippingOption: vi.fn(),
       setShippingCep: vi.fn(),
       freteGratis: false,
-      selectedShippingOption: ENTREGA_LOCAL,
+      selectedShippingOption: opcaoDeFrete,
       freteIndefinido: false,
       enderecoSelecionadoId,
       setEnderecoSelecionadoId,
@@ -129,7 +142,11 @@ vi.mock("@/lib/supabase", () => ({
           const resposta = banco.falharLeitura
             ? { data: null, error: { message: "rede caiu" } }
             : { data: [...banco.linhas], error: null };
-          return Promise.resolve(resposta).then(ok, ko);
+          const espera = banco.proximaLeitura;
+          banco.proximaLeitura = null;
+          return Promise.resolve(espera)
+            .then(() => resposta)
+            .then(ok, ko);
         },
       };
       return cadeia;
@@ -245,6 +262,8 @@ describe("CheckoutView -- relê os endereços ao voltar ao app", () => {
     ];
     banco.leituras = 0;
     banco.falharLeitura = false;
+    banco.proximaLeitura = null;
+    opcaoDeFrete = ENTREGA_LOCAL;
     escolha.id = null;
     onNavigate.mockClear();
     onSetBackOverride.mockClear();
@@ -320,13 +339,14 @@ describe("CheckoutView -- relê os endereços ao voltar ao app", () => {
     expect(escolha.id).toBe("addr-x");
   });
 
-  async function prepararEntrega() {
+  async function prepararEntrega(campos: [string, string][] = []) {
     await montar();
-    await act(async () => {
-      for (const [id, valor] of [
-        ["checkout-name", "Cliente Teste"],
-        ["checkout-tel", "34999999999"],
-      ]) {
+    for (const [id, valor] of [
+      ["checkout-name", "Cliente Teste"],
+      ["checkout-tel", "34999999999"],
+      ...campos,
+    ]) {
+      await act(async () => {
         const campo = document.getElementById(id) as HTMLInputElement;
         const setter = Object.getOwnPropertyDescriptor(
           globalThis.HTMLInputElement.prototype,
@@ -334,14 +354,14 @@ describe("CheckoutView -- relê os endereços ao voltar ao app", () => {
         )!.set!;
         setter.call(campo, valor);
         campo.dispatchEvent(new Event("input", { bubbles: true }));
-      }
-    });
+      });
+    }
     await esperar(420);
   }
 
   async function finalizar(doisToques = false) {
-    const botao = [...document.body.querySelectorAll("button")].find((el) =>
-      el.textContent?.includes("Finalizar Pedido"),
+    const botao = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="Finalizar pedido"]',
     );
     expect(botao?.disabled).toBe(false);
     await act(async () => {
@@ -377,7 +397,15 @@ describe("CheckoutView -- relê os endereços ao voltar ao app", () => {
     expect(createOrder).toHaveBeenCalledTimes(1);
   });
 
-  it("falha da releitura antes de finalizar não bloqueia a compra", async () => {
+  function atrasarProximaLeitura() {
+    let liberar!: () => void;
+    banco.proximaLeitura = new Promise<void>((resolve) => {
+      liberar = resolve;
+    });
+    return liberar;
+  }
+
+  it("falha da releitura bloqueia a compra; Tentar de novo relê antes de enviar", async () => {
     const { toast } = await import("sonner");
     vi.mocked(toast.error).mockClear();
     await prepararEntrega();
@@ -387,8 +415,152 @@ describe("CheckoutView -- relê os endereços ao voltar ao app", () => {
     await finalizar();
 
     expect(banco.leituras).toBe(2);
+    expect(createOrder).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith(AVISO_DE_ENDERECO_NAO_CONFIRMADO);
+    const aviso = [...document.querySelectorAll('[role="alert"]')].find((el) =>
+      el.textContent?.includes(AVISO_DE_ENDERECO_NAO_CONFIRMADO),
+    );
+    const tentar = aviso?.querySelector("button");
+    expect(tentar?.textContent).toBe("Tentar de novo");
+
+    banco.falharLeitura = false;
+    await act(async () => tentar!.click());
+
+    expect(banco.leituras).toBe(3);
     expect(createOrder).toHaveBeenCalledTimes(1);
-    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it("aguarda durante a releitura e bloqueia o pedido só quando o prazo estoura", async () => {
+    await prepararEntrega();
+    const { PRAZO_DAS_CHAMADAS_DE_ENDERECO_MS } = await import(
+      "@/hooks/useAddresses"
+    );
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const agora = Date.now();
+    vi.useRealTimers();
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    vi.setSystemTime(agora);
+    const liberar = atrasarProximaLeitura();
+
+    await finalizar();
+    expect(banco.leituras).toBe(2);
+    await act(async () =>
+      vi.advanceTimersByTimeAsync(PRAZO_DAS_CHAMADAS_DE_ENDERECO_MS - 1),
+    );
+
+    expect(
+      document.querySelector<HTMLButtonElement>(
+        'button[aria-label="Finalizar pedido"]',
+      )?.disabled,
+    ).toBe(true);
+    expect(document.body.textContent).not.toContain(
+      AVISO_DE_ENDERECO_NAO_CONFIRMADO,
+    );
+    expect(createOrder).not.toHaveBeenCalled();
+
+    await act(async () => vi.advanceTimersByTimeAsync(1));
+    expect(createOrder).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain(
+      AVISO_DE_ENDERECO_NAO_CONFIRMADO,
+    );
+
+    await act(async () => liberar());
+    expect(createOrder).not.toHaveBeenCalled();
+  });
+
+  it("releitura superada pelo retorno ao app não confirma o endereço do clique", async () => {
+    await prepararEntrega();
+    const liberar = atrasarProximaLeitura();
+
+    await finalizar();
+    expect(banco.leituras).toBe(2);
+
+    // A consulta de fundo vence com a MESMA rua/número: só a falta da
+    // confirmação do clique explica a recusa.
+    await voltarDoSegundoPlano(40_000);
+    expect(banco.leituras).toBe(3);
+    expect(createOrder).not.toHaveBeenCalled();
+    await act(async () => liberar());
+
+    expect(createOrder).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain(
+      AVISO_DE_ENDERECO_NAO_CONFIRMADO,
+    );
+  });
+
+  it("só a referência mudou no outro aparelho: pede conferência antes de enviar", async () => {
+    const { toast } = await import("sonner");
+    vi.mocked(toast.error).mockClear();
+    await prepararEntrega();
+    banco.linhas[0] = { ...banco.linhas[0], reference: "Portão azul" };
+
+    await finalizar();
+
+    expect(createOrder).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith(
+      "O endereço de entrega foi alterado em outro aparelho. Confira o novo endereço e finalize de novo.",
+    );
+    expect(document.body.textContent).toContain("Portão azul");
+
+    await finalizar();
+    expect(createOrder).toHaveBeenCalledTimes(1);
+  });
+
+  it("referência nula e vazia são o mesmo endereço e não impedem o pedido", async () => {
+    await prepararEntrega();
+    banco.linhas[0] = { ...banco.linhas[0], reference: "" };
+
+    await finalizar();
+
+    expect(createOrder).toHaveBeenCalledTimes(1);
+  });
+
+  it("espaços nas pontas da referência não mudam o endereço", async () => {
+    banco.linhas[0] = { ...banco.linhas[0], reference: "Portão azul" };
+    await prepararEntrega();
+    banco.linhas[0] = { ...banco.linhas[0], reference: "  Portão azul  " };
+
+    await finalizar();
+
+    expect(createOrder).toHaveBeenCalledTimes(1);
+  });
+
+  it("retirada com conta não relê o endereço antes de criar o pedido", async () => {
+    opcaoDeFrete = RETIRADA;
+    await prepararEntrega();
+    banco.falharLeitura = true;
+
+    await finalizar();
+
+    expect(banco.leituras).toBe(1);
+    expect(createOrder).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ shippingOptionId: "store-pickup" }),
+      { comPagamentoOnline: false },
+    );
+  });
+
+  it("visitante envia o endereço digitado sem consultar endereço salvo", async () => {
+    conta.usuario = null;
+    concluirBuscaDeCepSemEndereco();
+    await prepararEntrega([
+      ["guest-cep", "38500000"],
+      ["guest-street", "Rua Teste"],
+      ["guest-number", "100"],
+      ["guest-neighborhood", "Centro"],
+      ["guest-city", "Monte Carmelo"],
+      ["guest-state", "MG"],
+    ]);
+
+    await finalizar();
+
+    expect(banco.leituras).toBe(0);
+    expect(createOrder).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        addressId: null,
+        addressData: expect.objectContaining({ street: "Rua Teste" }),
+      }),
+      { comPagamentoOnline: false },
+    );
   });
 
   it("visitante (sem conta): voltar ao app não consulta endereço nenhum", async () => {

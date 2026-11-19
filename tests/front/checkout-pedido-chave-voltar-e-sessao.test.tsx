@@ -30,6 +30,7 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { concluirBuscaDeCepSemEndereco } from "./duble-busca-de-cep";
+import { comReleituraDeEnderecos } from "./duble-releitura-de-enderecos";
 
 const { estado, produto } = vi.hoisted(() => {
   const produto = {
@@ -86,13 +87,13 @@ vi.mock("@/contexts/StoreContext", () => ({
 }));
 
 vi.mock("@/hooks/useAddresses", () => ({
-  useAddresses: () => ({
-    addresses: estado.enderecos,
-    fetchAddresses: vi.fn(),
-    addAddress: vi.fn(),
-    updateAddress: vi.fn(),
-    loading: false,
-  }),
+  useAddresses: () =>
+    comReleituraDeEnderecos({
+      addresses: estado.enderecos,
+      addAddress: vi.fn(),
+      updateAddress: vi.fn(),
+      loading: false,
+    }),
 }));
 
 vi.mock("@/hooks/useAuth", () => ({

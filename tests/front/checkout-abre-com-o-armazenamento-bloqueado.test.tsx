@@ -14,6 +14,7 @@
 import { act, useEffect } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { comReleituraDeEnderecos } from "./duble-releitura-de-enderecos";
 
 const produto = {
   id: "prod-1",
@@ -79,29 +80,29 @@ vi.mock("@/contexts/StoreContext", () => ({
   }),
 }));
 vi.mock("@/hooks/useAddresses", () => ({
-  useAddresses: () => ({
-    addresses: comprador
-      ? [
-          {
-            id: "addr-1",
-            user_id: comprador.id,
-            name: "Casa",
-            recipient_name: "Cliente Teste",
-            cep: "38500-000",
-            street: "Rua Teste",
-            number: "100",
-            neighborhood: "Centro",
-            city: "Monte Carmelo",
-            state: "MG",
-            is_default: true,
-          },
-        ]
-      : [],
-    fetchAddresses: vi.fn(),
-    addAddress: vi.fn(),
-    updateAddress: vi.fn(),
-    loading: false,
-  }),
+  useAddresses: () =>
+    comReleituraDeEnderecos({
+      addresses: comprador
+        ? [
+            {
+              id: "addr-1",
+              user_id: comprador.id,
+              name: "Casa",
+              recipient_name: "Cliente Teste",
+              cep: "38500-000",
+              street: "Rua Teste",
+              number: "100",
+              neighborhood: "Centro",
+              city: "Monte Carmelo",
+              state: "MG",
+              is_default: true,
+            },
+          ]
+        : [],
+      addAddress: vi.fn(),
+      updateAddress: vi.fn(),
+      loading: false,
+    }),
 }));
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({ user: comprador, profile: null, loading: false }),

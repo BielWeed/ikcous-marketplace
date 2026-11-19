@@ -326,7 +326,8 @@ describe("AdminQAView — página acompanha a lista após uma ação", () => {
       armazem.set("admin_qa_page", "0");
       h.perguntas = h.perguntas.slice(0, 3).map((q, i) => ({
         ...q,
-        question: ["vestido azul", "vestido verde", "saia preta"][i],
+        question:
+          ["vestido azul", "vestido verde", "saia preta"].at(i) ?? q.question,
       }));
       armazem.set("admin_qa_search_query", JSON.stringify("vestido"));
       let liberar!: (valor: boolean | null) => void;
@@ -429,7 +430,8 @@ describe("AdminQAView — página acompanha a lista após uma ação", () => {
       armazem.set("admin_qa_search_query", JSON.stringify("vestido"));
       h.perguntas = h.perguntas.slice(0, 3).map((q, i) => ({
         ...q,
-        question: ["vestido azul", "vestido verde", "saia preta"][i],
+        question:
+          ["vestido azul", "vestido verde", "saia preta"].at(i) ?? q.question,
       }));
       let liberar!: (valor: boolean) => void;
       h.aguardarExclusao = new Promise((resolve) => {

@@ -19,6 +19,7 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { concluirBuscaDeCepSemEndereco } from "./duble-busca-de-cep";
+import { comReleituraDeEnderecos } from "./duble-releitura-de-enderecos";
 
 const createOrder = vi
   .fn()
@@ -72,27 +73,27 @@ vi.mock("@/contexts/StoreContext", () => ({
 // salvos só renderiza com `user`), então mantê-lo sempre presente é
 // inofensivo para os testes de convidado.
 vi.mock("@/hooks/useAddresses", () => ({
-  useAddresses: () => ({
-    addresses: [
-      {
-        id: "addr-1",
-        user_id: "user-1",
-        name: "Casa",
-        recipient_name: "Cliente Teste",
-        cep: "38500-000",
-        street: "Rua Teste",
-        number: "100",
-        neighborhood: "Centro",
-        city: "Monte Carmelo",
-        state: "MG",
-        is_default: true,
-      },
-    ],
-    fetchAddresses: vi.fn(),
-    addAddress: vi.fn(),
-    updateAddress: vi.fn(),
-    loading: false,
-  }),
+  useAddresses: () =>
+    comReleituraDeEnderecos({
+      addresses: [
+        {
+          id: "addr-1",
+          user_id: "user-1",
+          name: "Casa",
+          recipient_name: "Cliente Teste",
+          cep: "38500-000",
+          street: "Rua Teste",
+          number: "100",
+          neighborhood: "Centro",
+          city: "Monte Carmelo",
+          state: "MG",
+          is_default: true,
+        },
+      ],
+      addAddress: vi.fn(),
+      updateAddress: vi.fn(),
+      loading: false,
+    }),
 }));
 
 // Mutável (16/08/2026, pagamento online exige conta): a maioria dos testes

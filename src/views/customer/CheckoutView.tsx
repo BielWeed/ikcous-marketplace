@@ -490,7 +490,8 @@ function mesmoEnderecoDeEntrega(a: Address, b: Address | undefined) {
     a.neighborhood === b.neighborhood &&
     a.city === b.city &&
     a.state === b.state &&
-    (a.recipient_name ?? "") === (b.recipient_name ?? "")
+    (a.recipient_name ?? "") === (b.recipient_name ?? "") &&
+    (a.reference ?? "").trim() === (b.reference ?? "").trim()
   );
 }
 
@@ -501,6 +502,11 @@ const MENSAGEM_SESSAO_EXPIRADA =
 /** A sessão não pôde ser conferida por falta de internet: o pedido não sai, mas a conta não caiu. */
 const MENSAGEM_SEM_CONEXAO_AO_FINALIZAR =
   "Sem conexão agora. Seu carrinho está guardado; tente de novo em instantes.";
+
+const RECUSA_ENDERECO_NAO_CONFIRMADO: RecusaDoPedido = {
+  acao: "tentar_de_novo",
+  mensagem: "Não consegui confirmar o endereço. Tente de novo.",
+};
 
 /**
  * A frase de quem compra SEM CONTA quando não se sabe se o pedido chegou. É
@@ -5045,14 +5051,13 @@ export function CheckoutViewDaConta({
     // Só uma compra NOVA com endereço de entrega salvo passa por aqui. O
     // pedido já existente é retomado com o endereço gravado nele.
     if (contaEsperada && !ehRetirada && enderecoEfetivo) {
-      let enderecoMudou = false;
+      // Só o callback prova que ESTA releitura respondeu e não foi superada.
+      // Uma lista vazia confirmada é diferente de não receber confirmação.
+      let enderecosConfirmados: Address[] | undefined;
       await fetchAddresses({
         silencioso: true,
         aoLer: (atualizados) => {
-          enderecoMudou = !mesmoEnderecoDeEntrega(
-            enderecoEfetivo,
-            atualizados.find((a) => a.id === selectedAddressId),
-          );
+          enderecosConfirmados = atualizados;
         },
       });
       if (!montadoRef.current || contaRef.current !== contaEsperada) {
@@ -5060,8 +5065,18 @@ export function CheckoutViewDaConta({
         travaDeEnvioRef.current.liberar();
         return;
       }
+      if (!enderecosConfirmados) {
+        toast.error(RECUSA_ENDERECO_NAO_CONFIRMADO.mensagem);
+        setRecusaDoUltimoClique(RECUSA_ENDERECO_NAO_CONFIRMADO);
+        setIsSubmitting(false);
+        travaDeEnvioRef.current.liberar();
+        return;
+      }
       if (
-        enderecoMudou ||
+        !mesmoEnderecoDeEntrega(
+          enderecoEfetivo,
+          enderecosConfirmados.find((a) => a.id === selectedAddressId),
+        ) ||
         !mesmoEnderecoDeEntrega(enderecoEfetivo, enderecoVivoRef.current)
       ) {
         setIdentificacaoAbertaManual(true);
@@ -5156,6 +5171,20 @@ export function CheckoutViewDaConta({
       enderecoDaRetirada: ehRetirada
         ? selectedShippingOption?.pickupAddress?.trim()
         : undefined,
+    });
+  };
+
+  const finalizarPedido = () => {
+    haptic.medium();
+    void handleSubmitEvent().catch((error: unknown) => {
+      // Protege também as exceções ANTES do try da RPC
+      // (ex.: Web Crypto ou sessionStorage indisponível).
+      setIsSubmitting(false);
+      travaDeEnvioRef.current.liberar();
+      console.error("Falha inesperada no checkout:", error);
+      const saida = decidirSaidaDoCheckout(error);
+      setRecusaDoUltimoClique(saida);
+      toast.error(`Falha no Pedido: ${saida.mensagem}`);
     });
   };
 
@@ -8532,22 +8561,7 @@ export function CheckoutViewDaConta({
 
                       <button
                         type="button"
-                        onClick={() => {
-                          haptic.medium();
-                          void handleSubmitEvent().catch((error: unknown) => {
-                            // Protege também as exceções ANTES do try da RPC
-                            // (ex.: Web Crypto ou sessionStorage indisponível).
-                            setIsSubmitting(false);
-                            travaDeEnvioRef.current.liberar();
-                            console.error(
-                              "Falha inesperada no checkout:",
-                              error,
-                            );
-                            const saida = decidirSaidaDoCheckout(error);
-                            setRecusaDoUltimoClique(saida);
-                            toast.error(`Falha no Pedido: ${saida.mensagem}`);
-                          });
-                        }}
+                        onClick={finalizarPedido}
                         disabled={botaoFinalizarDesabilitado}
                         aria-label="Finalizar pedido"
                         className={cn(
@@ -8856,10 +8870,25 @@ export function CheckoutViewDaConta({
                       <div className="mx-auto max-w-md">
                         <SaidaDaRecusa
                           recusa={recusaDoUltimoClique}
-                          onAgir={agirNaRecusa}
+                          // Só esta recusa é anterior ao envio: o novo clique
+                          // pode repetir o fluxo inteiro, incluindo a releitura.
+                          onAgir={
+                            recusaDoUltimoClique ===
+                            RECUSA_ENDERECO_NAO_CONFIRMADO
+                              ? () => {
+                                  if (!botaoFinalizarDesabilitado)
+                                    finalizarPedido();
+                                }
+                              : agirNaRecusa
+                          }
                           onFechar={() => {
-                            pedidoCongeladoRef.current = null;
-                            limparPedidoSemResposta();
+                            if (
+                              recusaDoUltimoClique !==
+                              RECUSA_ENDERECO_NAO_CONFIRMADO
+                            ) {
+                              pedidoCongeladoRef.current = null;
+                              limparPedidoSemResposta();
+                            }
                             setRecusaDoUltimoClique(null);
                           }}
                           onFalarComALoja={
