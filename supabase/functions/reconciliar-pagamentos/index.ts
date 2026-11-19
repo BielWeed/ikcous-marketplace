@@ -484,13 +484,13 @@ async function avisarDevolucoesQueNaoCabem(args: {
 
 // O pg_net já espera no máximo 120 s (20260808000100_reconciliacao.sql),
 // menos que os 150 s do limite de resposta do Supabase, em qualquer plano.
-// Deixamos 5 s para arranque/resposta. A reserva para contestações é de
-// dois GETs ao MP (order + caso); antes dela cabe mais um timeout do MP
-// para o último estorno admitido. A fila de pagamentos deixa ainda o teto
-// dos avisos e um timeout da última consulta em curso (antes: 100 s só
-// para iniciar pagamentos, sem dotação para as outras filas).
-// São limites de admissão, não de cancelamento: um item que já começou
-// ainda pode exigir várias chamadas ou levar mais tempo por causa do banco.
+// Os 115 s são o orçamento de admissão dos laços, descontados 5 s para
+// arranque/resposta. Os limites de início são 45 s para pagamentos e 70 s
+// para estornos; esses limites não cancelam itens já em andamento.
+// Os 30 s reservados para contestações servem só para a etapa final começar.
+// Ela reconsulta até 10 pedidos em sequência, com até dois GETs ao MP
+// de 15 s cada por pedido (order + caso), sem teto próprio de término.
+// Assim, o ciclo pode durar além da espera do pg_net.
 // https://supabase.com/docs/guides/functions/limits
 const ORCAMENTO_TOTAL_MS = 120_000 - 5_000;
 const RESERVA_DAS_CONTESTACOES_MS = 2 * TEMPO_LIMITE_MS;
