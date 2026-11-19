@@ -30,6 +30,9 @@ const path = require("node:path");
 
 const PASTA = path.join(__dirname, "..", "..", "supabase", "migrations");
 const NOME = "20261397000000_o_desconto_do_cupom_e_arredondado_ao_centavo.sql";
+const HASH_CUPOM_SEM_DESCONTO = "98ccd81ae2e6440dd0c5378910736d0b";
+const ROLLBACK_CUPOM_SEM_DESCONTO =
+  "rollback-manual-20261405800000_o_cupom_que_nao_da_desconto_nao_vale.sql";
 
 const ASSINATURA_PEDIDO =
   "(jsonb,numeric,numeric,text,uuid,text,text,text,text,jsonb,text,text,uuid)";
@@ -87,7 +90,8 @@ const DESCONTO_DO_CUPOM = Object.freeze({
     SELECT 1 FROM (VALUES
       ('${FUNCOES[0].assinatura}', '${FUNCOES[0].hashDesta}'),
       ('${FUNCOES[1].assinatura}', '${FUNCOES[1].hashDesta}'),
-      ('${FUNCOES[2].assinatura}', '${FUNCOES[2].hashDesta}')
+      ('${FUNCOES[2].assinatura}', '${FUNCOES[2].hashDesta}'),
+      ('${FUNCOES[2].assinatura}', '${HASH_CUPOM_SEM_DESCONTO}')
     ) v(assinatura, hash)
     WHERE (SELECT md5(replace(prosrc, chr(13), '')) FROM pg_proc WHERE oid = to_regprocedure(v.assinatura)) = v.hash
   ) AS sim`,
@@ -98,6 +102,7 @@ const DESCONTO_DO_CUPOM = Object.freeze({
  * Devolve quantas funcoes voltaram.
  */
 async function desfazerODescontoDoCupomNaTransacao(cliente) {
+  await desfazerCupomSemDescontoNaTransacao(cliente);
   // A 20261399997000 (o pedido guarda quem vai receber) sucede o corpo da v23 e da v24 desta migration: cai ANTES, senao o corpo vivo nao e o
   // desta e nada abaixo desfaz. Ver o-pedido-guarda-quem-vai-receber-posterior.cjs.
   await require("./o-pedido-guarda-quem-vai-receber-posterior.cjs").desfazerQuemVaiReceberNaTransacao(
@@ -122,6 +127,8 @@ async function desfazerODescontoDoCupomNaTransacao(cliente) {
  * acrescentam outra coisa e deixam a conta intacta (a 20261399997000 acrescenta uma chave a copia do endereco da v23 e da v24).
  */
 function hashesVivosDoDesconto(f) {
+  if (f.nome === "validate_coupon_secure_v2")
+    return [f.hashDesta, HASH_CUPOM_SEM_DESCONTO];
   const sucessora =
     require("./o-pedido-guarda-quem-vai-receber-posterior.cjs").QUEM_VAI_RECEBER.funcoes.find(
       (x) => x.nome === f.nome,
@@ -129,7 +136,20 @@ function hashesVivosDoDesconto(f) {
   return sucessora ? [f.hashDesta, sucessora.hashDesta] : [f.hashDesta];
 }
 
+// Só a prova que começa no corpo da 397 precisa derrubar a 4058 isoladamente.
+async function desfazerCupomSemDescontoNaTransacao(cliente) {
+  const conferencia = FUNCOES[2];
+  if ((await hashDe(cliente, conferencia)) !== HASH_CUPOM_SEM_DESCONTO)
+    return false;
+  await cliente.query(
+    fs.readFileSync(path.join(PASTA, ROLLBACK_CUPOM_SEM_DESCONTO), "utf8"),
+  );
+  assert.equal(await hashDe(cliente, conferencia), conferencia.hashDesta);
+  return true;
+}
+
 module.exports = {
+  desfazerCupomSemDescontoNaTransacao,
   DESCONTO_DO_CUPOM,
   desfazerODescontoDoCupomNaTransacao,
   hashesVivosDoDesconto,

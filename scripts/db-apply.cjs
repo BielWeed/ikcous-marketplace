@@ -1155,6 +1155,19 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // 20261405800000: a conferência recusa desconto zero após o teto.
+  "20261405800000_o_cupom_que_nao_da_desconto_nao_vale.sql": [
+    {
+      funcao: "validate_coupon_secure_v2",
+      esperado: [
+        { texto: "IF v_discount <= 0 THEN", vezes: 1 },
+        {
+          texto: "Este cupom não dá desconto em uma compra deste valor.",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
   "20261405900000_o_custo_do_cancelamento_fica_no_mes_da_volta.sql": {
     funcao: "fin_dre",
     esperado: [

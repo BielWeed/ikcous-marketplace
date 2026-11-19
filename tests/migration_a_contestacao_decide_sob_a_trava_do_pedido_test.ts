@@ -909,6 +909,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261400000000: valores negativos nao entram no banco (taxa de entrega local, preco do produto, preco da variacao e valor do cupom: CHECK >= 0 e <> NaN, criadas JA VALIDADAS;
     // 23514 em todas as portas, zero e NULL de variacao seguem, linha antiga ruim faz a migration se recusar (B1_BASELINE_DIVERGENT), 12 mutantes, reaplicar, rollback, falha no meio e lock_timeout).
     "tests/banco/valores-negativos-prova.cjs",
+    // 20261405800000: o cupom que nao da desconto nao vale (a RPC recusa desconto zerado pelo arredondamento).
+    "tests/banco/o-cupom-que-nao-da-desconto-nao-vale-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(

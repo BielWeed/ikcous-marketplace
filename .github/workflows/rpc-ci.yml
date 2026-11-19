@@ -297,6 +297,8 @@ on:
       - "scripts/publicacao/consultas/158b-antes-cancelar-retirada-pronta-base-vigente.sql"
       - "scripts/publicacao/consultas/159a-conferir-cancelar-pedido-do-painel-confere-a-etapa-aplicado.sql"
       - "scripts/publicacao/consultas/159b-antes-cancelar-pedido-do-painel-confere-a-etapa-base-vigente.sql"
+      - "scripts/publicacao/consultas/160a-conferir-o-cupom-que-nao-da-desconto-aplicado.sql"
+      - "scripts/publicacao/consultas/160b-antes-o-cupom-que-nao-da-desconto-base-vigente.sql"
       - "scripts/publicacao/consultas/161a-conferir-o-custo-do-cancelamento-fica-no-mes-da-volta-aplicado.sql"
       - "scripts/publicacao/consultas/161b-antes-o-custo-do-cancelamento-fica-no-mes-da-volta-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
@@ -569,6 +571,8 @@ on:
       - "scripts/publicacao/consultas/158b-antes-cancelar-retirada-pronta-base-vigente.sql"
       - "scripts/publicacao/consultas/159a-conferir-cancelar-pedido-do-painel-confere-a-etapa-aplicado.sql"
       - "scripts/publicacao/consultas/159b-antes-cancelar-pedido-do-painel-confere-a-etapa-base-vigente.sql"
+      - "scripts/publicacao/consultas/160a-conferir-o-cupom-que-nao-da-desconto-aplicado.sql"
+      - "scripts/publicacao/consultas/160b-antes-o-cupom-que-nao-da-desconto-base-vigente.sql"
       - "scripts/publicacao/consultas/161a-conferir-o-custo-do-cancelamento-fica-no-mes-da-volta-aplicado.sql"
       - "scripts/publicacao/consultas/161b-antes-o-custo-do-cancelamento-fica-no-mes-da-volta-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
@@ -1093,6 +1097,9 @@ jobs:
       - name: Prova viva do desconto do cupom arredondado ao centavo (20261397000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-desconto-do-cupom-e-arredondado-ao-centavo-viva.cjs
+      - name: Prova viva do cupom que não dá desconto (20261405800000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-cupom-que-nao-da-desconto-nao-vale-viva.cjs
       # O frete que o pedido grava (DINHEIRO): create_marketplace_order_v24 e v23 decidem no banco quanto de frete a cliente paga e recusam a
       # cotacao velha (FRETE_COTACAO_DESATUALIZADA: revisao das credenciais diferente, carimbo da estrategia nacional divergente, subtotal que
       # cruzou o minimo). Corpo VIVO das funcoes, migrations aplicadas do zero: limite positivo de frete gratis (um centavo abaixo, exato e

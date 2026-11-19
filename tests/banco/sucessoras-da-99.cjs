@@ -181,6 +181,8 @@ const NOMES = [
   // A devolucao integral com cupom nao perde o centavo: solicitar_devolucao sucede o corpo da 3992 (a CADEIA 175 -> 3992 -> 5400: o `hashVigente` da 5400 e o `hashDesta` da 3992). Nao e uma das
   // 42 da 99 (como a 397 e a 3997), mas o rollback da 3992 recusa com o corpo novo no ar: ela cai antes (e, na ordem inversa, primeiro).
   "20261405400000_a_devolucao_integral_nao_perde_o_centavo_do_cupom.sql",
+  // A conferência recusa desconto zero (208 -> 397 -> 4058), sem mudar os pedidos.
+  "20261405800000_o_cupom_que_nao_da_desconto_nao_vale.sql",
   // fin_dre: 99 -> 42 -> 382 -> 3996 -> 4059.
   "20261405900000_o_custo_do_cancelamento_fica_no_mes_da_volta.sql",
 ];

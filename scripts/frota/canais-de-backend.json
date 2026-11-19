@@ -768,6 +768,12 @@
       "_comentario": "Apply normal aditivo. Depois da 20261405600000: porta nova do painel confere a etapa sob as travas de estorno e pedido. App antigo e edge continuam usando as portas antigas. Banco antes do front. Rollback restaura a 20261405600000."
     },
     {
+      "consulta": "160a-conferir-o-cupom-que-nao-da-desconto-aplicado",
+      "versoes": ["20261405800000"],
+      "ausenciaConfirmadaPor": "160b-antes-o-cupom-que-nao-da-desconto-base-vigente",
+      "_comentario": "Apply normal aditivo. A conferência do cupom recusa desconto zero, sem alterar a criação do pedido. Rollback restaura a conferência da 20261397000000."
+    },
+    {
       "consulta": "161a-conferir-o-custo-do-cancelamento-fica-no-mes-da-volta-aplicado",
       "versoes": ["20261405900000"],
       "ausenciaConfirmadaPor": "161b-antes-o-custo-do-cancelamento-fica-no-mes-da-volta-base-vigente",

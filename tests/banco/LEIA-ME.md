@@ -994,6 +994,11 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   A mesma prova executa os portões `48a`/`48b` (antes/depois, rol fechado, corpo estranho, atributo e ACL)
   e confere que `45a`, `35a`, `17a` e `8e` continuam positivos com o corpo exato da 45.
 
+`o-cupom-que-nao-da-desconto-nao-vale-viva.cjs` (20261405800000), em clone
+próprio: a conferência recusa 1% sobre R$ 0,49 e valor fixo zero, aceita
+R$ 0,01 de desconto e preserva os demais motivos de recusa. O rollback
+restaura a resposta antiga, o corpo exato e as permissões.
+
 ## Como rodar
 
 **SÓ no CI** (regra do dono, 14/09: suíte de banco não roda na máquina do

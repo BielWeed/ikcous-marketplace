@@ -3194,6 +3194,7 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "157a-conferir-a-devolucao-integral-nao-perde-o-centavo-do-cupom-aplicado",
     "158a-conferir-cancelar-retirada-pronta-aplicado",
     "159a-conferir-cancelar-pedido-do-painel-confere-a-etapa-aplicado",
+    "160a-conferir-o-cupom-que-nao-da-desconto-aplicado",
     "161a-conferir-o-custo-do-cancelamento-fica-no-mes-da-volta-aplicado",
     // 156a (20261404000000) fica de fora de proposito: a 404 esta em migrationsForaDaRelease
     // e nao tem lote no canais; a consulta segue no menu para quando ela for aplicada a parte.

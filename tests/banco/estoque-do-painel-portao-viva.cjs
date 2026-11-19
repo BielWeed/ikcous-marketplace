@@ -1479,6 +1479,11 @@ async function main() {
         "20261405400000_a_devolucao_integral_nao_perde_o_centavo_do_cupom.sql",
         "public.solicitar_devolucao(uuid,jsonb,text,text,text,text,text[])",
       ],
+      // A 20261405800000 só muda a conferência do cupom, fora do painel de estoque.
+      [
+        "20261405800000_o_cupom_que_nao_da_desconto_nao_vale.sql",
+        "public.validate_coupon_secure_v2(text, numeric)",
+      ],
       // A 4059 só muda o custo no Resultado; a 17a não lê fin_dre.
       [
         "20261405900000_o_custo_do_cancelamento_fica_no_mes_da_volta.sql",

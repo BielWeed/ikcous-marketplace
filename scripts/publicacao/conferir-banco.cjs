@@ -3223,6 +3223,12 @@ const ROL_DA_158 = [
   "pedido__mudar_status: corpo exato (md5)",
   "pedido__mudar_status: assinatura, atributos e ACL interna",
 ];
+const ROL_DA_160 = [
+  "controle: funcoes de public visiveis a este papel",
+  "validate_coupon_secure_v2: corpo exato (md5)",
+  "validate_coupon_secure_v2: guarda de desconto zero",
+  "validate_coupon_secure_v2: assinatura e ACL esperadas",
+];
 const ROL_DA_159 = [
   "controle: funcoes de public visiveis a este papel",
   "pedido__mudar_status: corpo exato (md5)",
@@ -3241,6 +3247,8 @@ const ROL_FECHADO_POR_CONSULTA = {
     ROL_DA_159,
   "159b-antes-cancelar-pedido-do-painel-confere-a-etapa-base-vigente":
     ROL_DA_159,
+  "160a-conferir-o-cupom-que-nao-da-desconto-aplicado": ROL_DA_160,
+  "160b-antes-o-cupom-que-nao-da-desconto-base-vigente": ROL_DA_160,
   "161a-conferir-o-custo-do-cancelamento-fica-no-mes-da-volta-aplicado":
     ROL_DA_122,
   "161b-antes-o-custo-do-cancelamento-fica-no-mes-da-volta-base-vigente":

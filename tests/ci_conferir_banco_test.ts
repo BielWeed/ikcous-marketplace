@@ -5252,6 +5252,7 @@ const MIGRACAO_208 = `${MIGRATIONS_DIR}/20261208000000_o_checkout_mostra_os_cupo
 // A 20261397000000 (o desconto do cupom e' arredondado ao centavo) redefine a validação PARTINDO do corpo da 208, trocando uma linha;
 // o corpo dela (LF ou CRLF) também satisfaz a linha da validação da 10a e da 15a.
 const MIGRACAO_397 = `${MIGRATIONS_DIR}/20261397000000_o_desconto_do_cupom_e_arredondado_ao_centavo.sql`;
+const MIGRACAO_4058 = `${MIGRATIONS_DIR}/20261405800000_o_cupom_que_nao_da_desconto_nao_vale.sql`;
 
 /** Os hashes (sha256 do prosrc, LF e CRLF) que a migration 203 e o rollback-manual definem, recalculados dos ARQUIVOS. */
 async function hashesDaMigration203() {
@@ -5282,7 +5283,14 @@ async function hashesDaMigration203() {
     /CREATE OR REPLACE FUNCTION public\.validate_coupon_secure_v2\(p_code text, p_subtotal numeric\)[\s\S]*?AS \$\$([\s\S]*?)\$\$;/,
   );
   assert(val397, "não achei o corpo da validação na migration 20261397000000");
+  const m4058 = (await Deno.readTextFile(MIGRACAO_4058)).replace(/\r\n/g, "\n");
+  const val4058 = m4058.match(
+    /CREATE OR REPLACE FUNCTION public\.validate_coupon_secure_v2\(p_code text, p_subtotal numeric\)[\s\S]*?AS \$\$([\s\S]*?)\$\$;/,
+  );
+  assert(val4058, "não achei o corpo da validação na migration 20261405800000");
   return {
+    suc4058LF: sha(val4058[1]),
+    suc4058CRLF: sha(crlf(val4058[1])),
     suc397LF: sha(val397[1]),
     suc397CRLF: sha(crlf(val397[1])),
     suc208LF: sha(val208[1]),
@@ -5427,7 +5435,7 @@ Deno.test("10a/10b — os hashes (sha256 do prosrc, LF e CRLF) são EXATAMENTE o
       ),
     ].sort();
   await t.step(
-    "10a: os 4 hashes do estado FINAL da 203 (validate e gatilho, LF e CRLF) + os 2 da validação SUCESSORA da 20261208000000 (LF e CRLF)",
+    "10a: os hashes da 203 e das sucessoras 208, 397 e 4058 (LF e CRLF)",
     () => {
       assertEquals(
         hexDe(sql10a),
@@ -5440,6 +5448,8 @@ Deno.test("10a/10b — os hashes (sha256 do prosrc, LF e CRLF) são EXATAMENTE o
           h.suc208CRLF,
           h.suc397LF,
           h.suc397CRLF,
+          h.suc4058LF,
+          h.suc4058CRLF,
         ].sort(),
       );
       // o `esperado` é o LF; o CRLF só entra na lista de aceitos (o pré-voo da migration aceita os dois)
@@ -5451,7 +5461,7 @@ Deno.test("10a/10b — os hashes (sha256 do prosrc, LF e CRLF) são EXATAMENTE o
     },
   );
   await t.step(
-    "10a: a linha da validação aceita a 203 E a 208, mas o `esperado` continua o hash LF da 203 (e o baseline segue recusado)",
+    "10a: a linha da validação aceita a 203 e as sucessoras, mas espera o hash LF da 203 e recusa a base anterior",
     () => {
       const limpo = sqlSemComentarios(sql10a);
       const i = limpo.indexOf("'validate_coupon_secure_v2: corpo (sha256)'");
@@ -5464,6 +5474,8 @@ Deno.test("10a/10b — os hashes (sha256 do prosrc, LF e CRLF) são EXATAMENTE o
         h.suc208CRLF,
         h.suc397LF,
         h.suc397CRLF,
+        h.suc4058LF,
+        h.suc4058CRLF,
       ])
         assertStringIncludes(linha, `'${aceito}'`);
       assert(!linha.includes(h.baseLF) && !linha.includes(h.baseCRLF));
@@ -6820,24 +6832,24 @@ Deno.test("15a — os hashes (sha256 do prosrc, LF e CRLF) das 5 funções são 
   const todos = Object.values(hashes).flatMap((x) => [x.lf, x.crlf]);
   assertEquals(todos.length, 10);
   assertEquals(new Set(todos).size, 10, "os dez hashes são distintos");
-  // a validação também aceita o corpo da SUCESSORA 20261397000000 (LF e CRLF): são os dois hashes a mais
-  assertEquals(
-    [...new Set(hex)].sort(),
-    [...todos, h203.suc397LF, h203.suc397CRLF].sort(),
-  );
+  // A validação aceita os corpos de duas sucessoras (LF e CRLF).
+  const sucessoras = [
+    h203.suc397LF,
+    h203.suc397CRLF,
+    h203.suc4058LF,
+    h203.suc4058CRLF,
+  ];
+  assertEquals([...new Set(hex)].sort(), [...todos, ...sucessoras].sort());
   // cada função: o `esperado` é o LF e a linha aceita só os dois dela
   for (const [nome, x] of Object.entries(hashes)) {
     const i = limpo.indexOf(`'${nome}: corpo (sha256)'`);
     assert(i >= 0, `falta a linha do corpo de ${nome}`);
     const linha = limpo.slice(i, limpo.indexOf("UNION ALL", i));
-    const sucessora =
-      nome === "validate_coupon_secure_v2"
-        ? [h203.suc397LF, h203.suc397CRLF]
-        : [];
+    const sucessora = nome === "validate_coupon_secure_v2" ? sucessoras : [];
     assertEquals(
       [...linha.matchAll(/'([0-9a-f]{64})'/g)].map((m) => m[1]),
       [x.lf, x.lf, x.crlf, ...sucessora, x.lf],
-      `${nome}: esperado LF, aceitos LF e CRLF (e, na validação, os da 20261397000000), resultado LF`,
+      `${nome}: esperado LF, aceitos LF e CRLF (e só na validação, as sucessoras), resultado LF`,
     );
   }
   // a validação aceita SÓ o corpo da 208: o da 203 (e o do baseline antigo) reprovam aqui
