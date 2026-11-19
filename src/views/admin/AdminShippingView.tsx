@@ -1038,7 +1038,7 @@ export const AdminShippingView = memo(function AdminShippingView({
         toast.error(
           erroDaFaixa === "digitos-demais"
             ? "Confira a faixa de CEP: use até 8 dígitos por CEP."
-            : "Confira a faixa de CEP: separe os CEPs com vírgula.",
+            : "Confira a faixa de CEP: separe início e fim com vírgula: 01310-000, 01399-999.",
         );
         return;
       }

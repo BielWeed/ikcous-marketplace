@@ -34,12 +34,28 @@ function ehIntervalo(partes: string[]): boolean {
 export function erroDaFaixaDeCepLocal(
   faixa: string,
 ): "separador" | "digitos-demais" | null {
-  if (/[^\d,\s-]/.test(faixa)) return "separador";
+  // O ponto faz parte de uma grafia de CEP que o leitor já normaliza.
+  // Não aceitamos texto livre: "a" e "até" não separam os limites da faixa.
+  if (/[^\d,\s.-]/.test(faixa)) return "separador";
 
   for (const bruto of faixa.split(",")) {
     const partes = blocosDoItem(bruto);
     const longas = ehIntervalo(partes) ? partes : [partes.join("")];
-    if (longas.some((parte) => parte.length > 8)) return "digitos-demais";
+    if (!longas.some((parte) => parte.length > 8)) continue;
+
+    // Dois CEPs bem formados podem ter sido colados sem a vírgula.
+    // Só damos essa dica quando a leitura normal não funcionou.
+    const candidatos = bruto
+      .trim()
+      .split(/\s+/)
+      .filter((parte) => parte !== "-");
+    if (
+      candidatos.length > 1 &&
+      candidatos.every((cep) => cep.replace(/\D/g, "").length === 8)
+    ) {
+      return "separador";
+    }
+    return "digitos-demais";
   }
   return null;
 }

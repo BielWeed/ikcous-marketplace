@@ -192,20 +192,40 @@ describe("Frete — o Salvar manda só o que foi mexido neste aparelho", () => {
       },
     );
 
-    it.each(["01310-100", "013", "01310100, 01310200", "013101-013102", ""])(
-      "grava a faixa válida %j",
+    it.each(["01310-000 - 01399-999", "01310000 01399999"])(
+      "ensina como separar os dois CEPs em %s",
       async (faixa) => {
-        loja.atual.localCepRange = "38400";
         await desenhar();
         await digitar("local-cep-range", faixa);
         await salvar();
 
-        expect(updateConfig).toHaveBeenCalledWith(
-          { localCepRange: faixa },
-          { silentSuccess: true },
+        expect(updateConfig).not.toHaveBeenCalled();
+        expect(toastErro).toHaveBeenCalledWith(
+          expect.stringContaining(
+            "separe início e fim com vírgula: 01310-000, 01399-999",
+          ),
         );
       },
     );
+
+    it.each([
+      "01310-100",
+      "013",
+      "01310100, 01310200",
+      "013101-013102",
+      "01.310-000, 01.399-999",
+      "",
+    ])("grava a faixa válida %j", async (faixa) => {
+      loja.atual.localCepRange = "38400";
+      await desenhar();
+      await digitar("local-cep-range", faixa);
+      await salvar();
+
+      expect(updateConfig).toHaveBeenCalledWith(
+        { localCepRange: faixa },
+        { silentSuccess: true },
+      );
+    });
 
     it("salva a taxa sem regravar uma faixa antiga inválida", async () => {
       loja.atual.localCepRange = "013101000";
