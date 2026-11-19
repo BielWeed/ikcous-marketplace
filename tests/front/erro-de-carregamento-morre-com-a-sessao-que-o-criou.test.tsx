@@ -83,21 +83,22 @@ function respostaDaLeitura() {
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
-    from: () => ({
+    from: (tabela: string) => ({
       upsert: () => Promise.resolve({ data: [{}], error: null }),
       delete: () => ({
         eq: () => ({ eq: () => Promise.resolve({ error: null }) }),
       }),
-      // Favoritos: .select().eq()
-      // Notificações: .select().or().order().limit()
-      select: () => ({
-        eq: () => respostaDaLeitura(),
-        or: () => ({
-          order: () => ({
-            limit: () => respostaDaLeitura(),
-          }),
-        }),
-      }),
+      select: () => {
+        if (tabela !== "notificacoes") return { eq: respostaDaLeitura };
+
+        const ordenar = (limit: typeof respostaDaLeitura) => ({
+          order: () => ({ order: () => ({ limit }) }),
+        });
+        return {
+          eq: () => ordenar(respostaDaLeitura),
+          is: () => ordenar(() => Promise.resolve({ data: [], error: null })),
+        };
+      },
     }),
     channel: () => ({
       on() {

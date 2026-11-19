@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const h = vi.hoisted(() => ({ consultar: vi.fn() }));
 vi.mock("@/lib/supabase", () => ({
   supabase: {
-    from: () => ({ select: () => ({ order: h.consultar }) }),
+    from: () => ({ select: () => ({ order: () => ({ order: h.consultar }) }) }),
   },
 }));
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ isAdmin: false }) }));
@@ -82,9 +82,15 @@ describe("vitrine respeita a ordem dos banners definida no painel", () => {
     ).toEqual(["A", "B", "C"]);
   });
 
-  it("mantém a ordem de chegada entre banners empatados, sem desempatar pelo id", async () => {
-    expect(
-      await montar([banner("C", 2), banner("B", 1), banner("A", 1)]),
-    ).toEqual(["B", "A", "C"]);
-  });
+  it.each([
+    ["A", "B"],
+    ["B", "A"],
+  ])(
+    "desempata pelo id quando o cache chega como %s, %s",
+    async (primeiro, segundo) => {
+      expect(
+        await montar([banner("C", 2), banner(primeiro, 1), banner(segundo, 1)]),
+      ).toEqual(["A", "B", "C"]);
+    },
+  );
 });

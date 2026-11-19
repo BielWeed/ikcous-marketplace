@@ -29,13 +29,16 @@ const h = vi.hoisted(() => ({
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: (tabela: string) => ({
-      select: () => ({
-        order: () =>
-          Promise.resolve({
-            data: tabela === "banners" ? h.linhasBanner : h.linhasCupom,
-            error: null,
-          }),
-      }),
+      select: () => {
+        const lerBanners = () =>
+          Promise.resolve({ data: h.linhasBanner, error: null });
+        return tabela === "banners"
+          ? { order: () => ({ order: lerBanners }) }
+          : {
+              order: () =>
+                Promise.resolve({ data: h.linhasCupom, error: null }),
+            };
+      },
       update: () => ({
         eq: () => ({ select: () => Promise.resolve(h.gravacao) }),
       }),

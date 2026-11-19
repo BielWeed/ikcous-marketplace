@@ -22,11 +22,13 @@ vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: () => ({
       select: () => ({
-        order: async () => {
-          h.consultas++;
-          await h.rede;
-          return { data: [...h.noBanco], error: null };
-        },
+        order: () => ({
+          order: async () => {
+            h.consultas++;
+            await h.rede;
+            return { data: [...h.noBanco], error: null };
+          },
+        }),
       }),
     }),
   },

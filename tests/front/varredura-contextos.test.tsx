@@ -64,11 +64,15 @@ vi.mock("@/lib/supabase", () => ({
       return {
         select: () => ({
           eq: (_col: string, userId: string) => ({
-            order: () => ({ limit: () => consultaPresaPara(userId) }),
+            order: () => ({
+              order: () => ({ limit: () => consultaPresaPara(userId) }),
+            }),
           }),
           is: () => ({
             order: () => ({
-              limit: () => Promise.resolve({ data: [], error: null }),
+              order: () => ({
+                limit: () => Promise.resolve({ data: [], error: null }),
+              }),
             }),
           }),
         }),

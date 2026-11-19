@@ -50,7 +50,9 @@ vi.mock("@/lib/supabase", () => ({
       expect(tabela).toBe("banners");
       return {
         select: () => ({
-          order: () => Promise.resolve({ data: [linha], error: null }),
+          order: () => ({
+            order: () => Promise.resolve({ data: [linha], error: null }),
+          }),
           eq: (coluna: string, valor: string) => {
             expect([coluna, valor]).toEqual(["position", "home_top"]);
             return {

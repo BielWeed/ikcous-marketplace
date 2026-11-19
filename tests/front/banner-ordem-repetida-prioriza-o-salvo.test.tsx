@@ -25,15 +25,17 @@ vi.mock("@/lib/supabase", () => ({
     storage: { from: () => ({ remove: banco.remover }) },
     from: () => ({
       select: (_colunas: string) => ({
-        order: () => {
-          banco.consultar();
-          return Promise.resolve({
-            data: banco.falharLeitura
-              ? null
-              : banco.linhas.map((b) => ({ ...b })),
-            error: banco.falharLeitura ? new Error("Sem leitura") : null,
-          });
-        },
+        order: () => ({
+          order: () => {
+            banco.consultar();
+            return Promise.resolve({
+              data: banco.falharLeitura
+                ? null
+                : banco.linhas.map((b) => ({ ...b })),
+              error: banco.falharLeitura ? new Error("Sem leitura") : null,
+            });
+          },
+        }),
         eq: (_campo: string, pos: string) => ({
           order: () => ({
             order: () =>

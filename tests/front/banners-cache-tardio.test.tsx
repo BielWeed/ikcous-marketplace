@@ -22,7 +22,9 @@ vi.mock("@/lib/dataVault", () => ({
 }));
 vi.mock("@/lib/supabase", () => ({
   supabase: {
-    from: () => ({ select: () => ({ order: rede.consultar }) }),
+    from: () => ({
+      select: () => ({ order: () => ({ order: rede.consultar }) }),
+    }),
   },
 }));
 

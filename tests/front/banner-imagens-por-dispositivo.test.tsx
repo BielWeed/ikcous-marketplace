@@ -19,7 +19,7 @@ vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: () => ({
       select: () => ({
-        order: h.consultar,
+        order: () => ({ order: h.consultar }),
         eq: () => ({
           order: () => ({ order: async () => ({ data: [], error: null }) }),
         }),
@@ -120,8 +120,8 @@ describe("imagens de banner independentes", () => {
         ouvir.forEach((cb) => cb());
       });
       expect(atual.getBannersByPosition("home_top").map((b) => b.id)).toEqual([
-        "celular",
         "b1",
+        "celular",
       ]);
       await act(async () => {
         pc = true;
@@ -129,8 +129,8 @@ describe("imagens de banner independentes", () => {
       });
       await montar([soCelular, linha], true);
       expect(atual.getBannersByPosition("home_top").map((b) => b.id)).toEqual([
-        "celular",
         "b1",
+        "celular",
       ]);
     } finally {
       vi.unstubAllGlobals();

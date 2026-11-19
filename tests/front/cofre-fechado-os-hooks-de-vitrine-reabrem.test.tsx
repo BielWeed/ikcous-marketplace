@@ -51,7 +51,11 @@ vi.mock("@/lib/dataVault", () => ({
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     // A rede nunca responde: o que se mede é só o caminho do cofre.
-    from: () => ({ select: () => ({ order: () => new Promise(() => {}) }) }),
+    from: () => ({
+      select: () => ({
+        order: () => ({ order: () => new Promise(() => {}) }),
+      }),
+    }),
   },
 }));
 

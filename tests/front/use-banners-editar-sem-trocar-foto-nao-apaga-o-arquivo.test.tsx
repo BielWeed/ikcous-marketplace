@@ -41,7 +41,9 @@ vi.mock("@/lib/supabase", () => ({
       expect(tabela).toBe("banners");
       return {
         select: () => ({
-          order: async () => ({ data: [linha], error: null }),
+          order: () => ({
+            order: async () => ({ data: [linha], error: null }),
+          }),
         }),
         update: h.atualizar,
       };

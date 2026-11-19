@@ -18,17 +18,19 @@ vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: () => ({
       select: () => ({
-        order: () =>
-          Promise.resolve({
-            data: dados.rede?.map(
-              ({ imageUrl, desktopImageUrl, ...banner }) => ({
-                ...banner,
-                image_url: imageUrl,
-                desktop_image_url: desktopImageUrl,
-              }),
-            ),
-            error: dados.rede === null ? new Error("Offline de teste") : null,
-          }),
+        order: () => ({
+          order: () =>
+            Promise.resolve({
+              data: dados.rede?.map(
+                ({ imageUrl, desktopImageUrl, ...banner }) => ({
+                  ...banner,
+                  image_url: imageUrl,
+                  desktop_image_url: desktopImageUrl,
+                }),
+              ),
+              error: dados.rede === null ? new Error("Offline de teste") : null,
+            }),
+        }),
       }),
     }),
   },

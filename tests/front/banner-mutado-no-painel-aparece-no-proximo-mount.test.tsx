@@ -57,7 +57,9 @@ vi.mock("@/lib/supabase", () => ({
           // teste conta; normalizeBannersOrder usa select("id, order").
           trilha.push(colunas === "*" ? "select*" : "select-parcial");
           return {
-            order: () => Promise.resolve({ data: [...noBanco], error: null }),
+            order: () => ({
+              order: () => Promise.resolve({ data: [...noBanco], error: null }),
+            }),
             eq: () => ({
               order: () => ({
                 order: () => Promise.resolve({ data: [], error: null }),
