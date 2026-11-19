@@ -740,6 +740,63 @@ describe("middleware — o ramo de robô nunca pula decidirConcordancia (achado 
     expect(htmlNavegador).not.toContain(MARCA_DO_BUILD);
   });
 
+  it.each([
+    ["robo-sem-barra", UA_ROBO, "/product-detail", "produto"],
+    ["robo-uma-barra", UA_ROBO, "/product-detail/", "produto"],
+    ["robo-duas-barras", UA_ROBO, "/product-detail//", "app"],
+    ["robo-subrota", UA_ROBO, "/product-detail/x", "app"],
+    ["navegador-uma-barra", UA_NAVEGADOR, "/product-detail/", "app"],
+  ] as const)(
+    "%s em %s pede %s e recebe %s",
+    async (chave, ua, caminho, tipo) => {
+      const host = `${chave}.exemplo`;
+      const fetchDuble = criarFetchDeLojas(
+        [
+          {
+            host,
+            nome: "Loja de Roupas",
+            origem: origemDe(chave.replaceAll("-", "")),
+            produtos: {
+              tipo: "lista",
+              linhas: [
+                {
+                  nome: "Camisa de Linho",
+                  descricao: "Camisa leve",
+                  preco_venda: 89.9,
+                  imagem_url: "https://cdn.exemplo.com/camisa.jpg",
+                  imagem_urls: [],
+                },
+              ],
+            },
+          },
+        ],
+        [],
+      );
+      const resp = await comProcessEnv(ENV_FROTA, () =>
+        comFetch(fetchDuble, () =>
+          middleware(
+            new Request(`https://${host}${caminho}?id=1`, {
+              headers: { "user-agent": ua },
+            }),
+          ),
+        ),
+      );
+
+      expect(resp.status).toBe(200);
+      const html = await resp.text();
+      if (tipo === "produto") {
+        expect(html).toContain('<meta property="og:type" content="product" />');
+        expect(html).toContain('og:title" content="Camisa de Linho -');
+        expect(html).toContain(
+          'og:image" content="https://cdn.exemplo.com/camisa.jpg"',
+        );
+      } else {
+        expect(html).toContain("<title>Loja de Roupas</title>");
+        expect(html).not.toContain('content="product"');
+      }
+    },
+  );
+
   it("o ramo de robô usa normalizarHost: host com PONTO FINAL (FQDN) concorda com dominio_publico sem ponto", async () => {
     // `new URL(...)` NÃO remove o ponto final de FQDN (só normalizarHost o
     // faz — ver o comentário em `normalizarHost`, porteiro.ts). Se o ramo

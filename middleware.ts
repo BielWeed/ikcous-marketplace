@@ -263,7 +263,8 @@ export default async function middleware(
       userAgent,
     );
 
-  if (isBot && url.pathname === "/product-detail") {
+  const caminhoDaPrevia = url.pathname.replace(/\/$/, "");
+  if (isBot && caminhoDaPrevia === "/product-detail") {
     // Rodada C (11/09/2026, achado do revisor Opus): o ramo de robô
     // chamava `resolverConexao` POR FORA do porteiro, pulando
     // `decidirConcordancia` — com a caderneta apontando o host A para o
