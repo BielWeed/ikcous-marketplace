@@ -112,6 +112,15 @@ Deno.test("subtotalDoCarrinho: soma preco_venda × quantidade (quantidade ausent
     assertEquals(subtotalDoCarrinho(itens, PRODUTOS, VARIANTES), 59.9 * 2 + 10)
 })
 
+Deno.test("subtotalDoCarrinho: R$ 0,10 + R$ 0,20 dá exatamente R$ 0,30", () => {
+    const produtos = new Map([
+        ["p1", { id: "p1", preco_venda: 0.1 }],
+        ["p2", { id: "p2", preco_venda: 0.2 }],
+    ])
+    const itens = [{ product: { id: "p1" }, quantity: 1 }, { product: { id: "p2" }, quantity: 1 }]
+    assertEquals(subtotalDoCarrinho(itens, produtos, new Map()), 0.3)
+})
+
 Deno.test("subtotalDoCarrinho: price_override da variação vence preco_venda; null no override cai no preco_venda", () => {
     const comOverride = [{ product: { id: "p1" }, variantId: "v1", quantity: 1 }]
     assertEquals(subtotalDoCarrinho(comOverride, PRODUTOS, VARIANTES), 49.9)
@@ -252,6 +261,12 @@ Deno.test("acima_de_valor: um centavo abaixo de R$ 150,14 mantém o frete cheio"
     const opcoes = [opcao("a", 25.5)]
     const resultado = aplicarEstrategiaNacional(opcoes, estrategia({ estrategia: "acima_de_valor", minimo: 150.14 }), 150.13)
     assertEquals(resultado[0].price, 25.5)
+})
+
+Deno.test("acima_de_valor: subtotal igual ao mínimo de R$ 150,14 zera o frete", () => {
+    const opcoes = [opcao("a", 20)]
+    const resultado = aplicarEstrategiaNacional(opcoes, estrategia({ estrategia: "acima_de_valor", minimo: 150.14 }), 150.14)
+    assertEquals(resultado[0].price, 0)
 })
 
 Deno.test("acima_de_valor: subtotal igual ao mínimo (borda) → zera", () => {

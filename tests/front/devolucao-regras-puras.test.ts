@@ -1208,6 +1208,12 @@ describe("centavosDosItensQueNaoVieram — a parte do que não veio no valor do 
     ).toBe(14800);
   });
 
+  it("desconta 99 centavos quando a metade ausente vale 98,5 centavos", () => {
+    const a = linha(1, 1);
+    const b = linha(1, 1);
+    expect(centavosDosItensQueNaoVieram(197, [a, b], [a])).toBe(99);
+  });
+
   it("bordas: linhas de preço zero não dividem por zero; o desconto nunca passa do valor do servidor", () => {
     const gratis = linha(2, 0);
     const outra = linha(1, 0);
