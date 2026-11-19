@@ -382,19 +382,19 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
 
   if (loadError) {
     return (
-      <div className="pb-customer flex min-h-full flex-col items-center justify-center p-6 text-center">
+      <div className="pb-customer flex min-h-full flex-col items-center justify-center bg-card p-6 text-center">
         <div className="mb-4 flex size-16 items-center justify-center rounded-3xl bg-amber-50 text-amber-500">
           <User className="size-8" />
         </div>
-        <h3 className="text-lg font-bold text-zinc-900">
+        <h3 className="text-lg font-bold text-foreground">
           Não conseguimos carregar este perfil
         </h3>
-        <p className="mt-1 max-w-xs text-sm leading-relaxed text-zinc-500">
+        <p className="mt-1 max-w-xs text-sm leading-relaxed text-muted-foreground">
           Verifique sua conexão e tente de novo.
         </p>
         <button
           onClick={() => setTentativa((t) => t + 1)}
-          className="mt-6 flex items-center gap-2 rounded-full border border-zinc-200 px-6 py-3 text-xs font-bold uppercase tracking-wider text-zinc-900 shadow-sm transition-all hover:bg-zinc-50 active:scale-95"
+          className="mt-6 flex items-center gap-2 rounded-full border border-zinc-200 px-6 py-3 text-xs font-bold uppercase tracking-wider text-foreground shadow-sm transition-all hover:bg-muted active:scale-95"
         >
           Tentar de novo
         </button>
@@ -404,14 +404,14 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
 
   if (!profile) {
     return (
-      <div className="pb-customer flex min-h-full flex-col items-center justify-center p-6 text-center">
+      <div className="pb-customer flex min-h-full flex-col items-center justify-center bg-card p-6 text-center">
         <div className="mb-4 flex size-16 items-center justify-center rounded-3xl bg-red-50 text-red-500">
           <User className="size-8" />
         </div>
-        <h3 className="text-lg font-bold text-zinc-900">
+        <h3 className="text-lg font-bold text-foreground">
           Usuário não encontrado
         </h3>
-        <p className="mt-1 max-w-xs text-sm leading-relaxed text-zinc-500">
+        <p className="mt-1 max-w-xs text-sm leading-relaxed text-muted-foreground">
           O perfil público solicitado não está disponível ou o usuário foi
           removido.
         </p>
@@ -420,7 +420,7 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
             haptic.light();
             onNavigate("home");
           }}
-          className="mt-6 flex items-center gap-2 rounded-full border border-zinc-200 px-6 py-3 text-xs font-bold uppercase tracking-wider text-zinc-900 shadow-sm transition-all hover:bg-zinc-50 active:scale-95"
+          className="mt-6 flex items-center gap-2 rounded-full border border-zinc-200 px-6 py-3 text-xs font-bold uppercase tracking-wider text-foreground shadow-sm transition-all hover:bg-muted active:scale-95"
         >
           <ArrowLeft className="size-4" /> Voltar para o Início
         </button>

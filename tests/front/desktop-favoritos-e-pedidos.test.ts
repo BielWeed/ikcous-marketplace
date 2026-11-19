@@ -42,10 +42,10 @@ describe("Favoritos e pedidos no computador", () => {
     // Base 1.5.187; pedidos inclui a quebra do bairro sem espaços (17/11/2026).
     // Todos os literais de className na ordem da árvore.
     expect(classes(arquivos.favoritos)).toBe(
-      "4867b0736e2e22521d6e8479f6c7354e629bbf1e0727dda4f486833645300cb9",
+      "01c4f2611dc3321eaab592ad1e8eb651f00621e95352f0393f1c3baa9bb7e38e",
     );
     expect(classes(arquivos.carrinho)).toBe(
-      "4496dc40387eeeafe39b70316ec3ce53e3a8ae9d884b01c0897d391ac0e5254d",
+      "b510351dbdf198d99c9f309f35176c00139a11888891b03a63afb50d41c041e4",
     );
     expect(classes(arquivos.pedidos)).toBe(
       "25517ee6c392becb26e96a3c560aca5915539e126275ac1a930ad739be209bb6",

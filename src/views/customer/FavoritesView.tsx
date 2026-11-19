@@ -564,7 +564,7 @@ export const FavoritesView = React.memo(function FavoritesView({
           onTentarAgora={() => retentarPendentes({ avisarFalha: true })}
         />
 
-        <div className="flex flex-col items-center px-6 pb-6 pt-10 text-center lg:items-center lg:px-0 lg:py-12 lg:text-center">
+        <div className="flex flex-col items-center px-6 pb-6 pt-10 text-center lg:items-center lg:px-0 lg:py-12 lg:text-center [html[data-theme-mode=glass]_&]:bg-card">
           <div className="mb-6 grid size-28 place-items-center rounded-full bg-muted">
             <Heart
               aria-hidden="true"
@@ -585,7 +585,7 @@ export const FavoritesView = React.memo(function FavoritesView({
               haptic.medium();
               onNavigate("home");
             }}
-            className="mt-6 flex min-h-12 items-center gap-2 rounded-full bg-foreground px-8 text-sm font-semibold text-background active:scale-95"
+            className="mt-6 flex min-h-12 items-center gap-2 rounded-full bg-foreground px-8 text-sm font-semibold text-card active:scale-95"
           >
             Ver produtos
             <ArrowRight aria-hidden="true" className="size-4" />

@@ -1474,7 +1474,7 @@ function ConteudoDoCarrinho({
                               haptic.medium();
                               onNavigate("auth" as any);
                             }}
-                            className="flex h-[52px] w-full items-center justify-center gap-2.5 rounded-2xl bg-foreground text-[15px] font-semibold text-background transition-colors hover:bg-foreground/90 active:scale-[0.98]"
+                            className="flex h-[52px] w-full items-center justify-center gap-2.5 rounded-2xl bg-foreground text-[15px] font-semibold text-card transition-colors hover:bg-foreground/90 active:scale-[0.98]"
                           >
                             Identificar-se e Entrar
                             <ArrowRight className="size-5" />

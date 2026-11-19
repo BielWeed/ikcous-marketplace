@@ -131,7 +131,7 @@ describe("carrinho Tinta: toda classe vira regra no Tailwind do projeto", () => 
     expect(todas.size).toBeGreaterThan(150);
     for (const esperada of [
       "bg-foreground",
-      "text-background",
+      "text-card",
       "rounded-[18px]",
       "h-[52px]",
       "basis-[184px]",
@@ -166,10 +166,10 @@ describe("carrinho Tinta: toda classe vira regra no Tailwind do projeto", () => 
     }
   });
 
-  it("tinta é a cor do TEMA (foreground/background), não a cor da loja", async () => {
-    const { css } = await compilar(["bg-foreground", "text-background"]);
+  it("tinta é a cor do TEMA (foreground/card), não a cor da loja", async () => {
+    const { css } = await compilar(["bg-foreground", "text-card"]);
     expect(css).toMatch(/\.bg-foreground\s*\{[^}]*var\(--foreground\)/);
-    expect(css).toMatch(/\.text-background\s*\{[^}]*var\(--background\)/);
+    expect(css).toMatch(/\.text-card\s*\{[^}]*var\(--card\)/);
   }, 60_000);
 });
 
