@@ -104,6 +104,12 @@ const ICONE_DO_PASSO: Record<
   produto: Package,
 };
 
+const NOME_DA_FORMA_NA_ENTREGA = new Map<FormaDePagamentoNaEntrega, string>([
+  ["pix", "Pix"],
+  ["card", "Cartão"],
+  ["cash", "Dinheiro"],
+]);
+
 /** Ícone de cada passo recomendado. */
 const ICONE_DO_RECOMENDADO: Record<ChaveDoRecomendado, typeof Wallet> = {
   email: Mail,
@@ -361,6 +367,30 @@ export function LojaProntaEEstoqueBaixo({
                       />
                     </button>
                   )}
+                  {passo.chave === "recebe" &&
+                    passo.estado === "feito" &&
+                    formasNaEntrega.length > 0 && (
+                      <div className="pb-3 pl-12 text-sm text-zinc-300">
+                        <p>
+                          Ativos na entrega:{" "}
+                          {formasNaEntrega
+                            .map((forma) => NOME_DA_FORMA_NA_ENTREGA.get(forma))
+                            .join(", ")}
+                        </p>
+                        {formasNaEntrega.includes("card") && (
+                          <p>
+                            Sem maquininha? Desligue Cartão na entrega/retirada.
+                          </p>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => abrirPasso(passo)}
+                          className="min-h-11 font-semibold text-admin-gold underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-admin-gold"
+                        >
+                          Formas de pagamento
+                        </button>
+                      </div>
+                    )}
                 </li>
               );
             })}
