@@ -117,6 +117,27 @@ describe("Minha loja › Dados da empresa", () => {
     expect(onDirtyChange).toHaveBeenLastCalledWith(false);
   });
 
+  const aviso =
+    "A lei pede que a loja mostre quem é: nome ou razão social, CNPJ ou CPF e e-mail. Sem isso, a cliente não sabe com quem compra.";
+
+  it("orienta a lojista quando os três campos estão vazios", async () => {
+    await abrir();
+    expect(hospedeiro.textContent).toContain(aviso);
+  });
+
+  it.each([
+    { storeLegalName: "Loja da Ana Ltda" },
+    { storeLegalDocument: "11222333000181" },
+    { storeSupportEmail: "oi@loja.com" },
+  ])(
+    "não mostra o aviso quando algum dado já está preenchido (%o)",
+    async (config) => {
+      estado.config = config;
+      await abrir();
+      expect(hospedeiro.textContent).not.toContain(aviso);
+    },
+  );
+
   it("os campos têm nome visível e alvo de 44px (celular)", async () => {
     await abrir();
     for (const id of [

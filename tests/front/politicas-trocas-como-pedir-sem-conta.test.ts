@@ -61,6 +61,9 @@ describe("Trocas e devoluções — como pedir para quem comprou sem conta", () 
       expect(doConvidado).toMatch(/fale com a loja/i);
       expect(doConvidado).toMatch(/contato/i);
       expect(doConvidado).toMatch(/número do pedido/i);
+      expect(paragrafos).toContain(
+        "Para cancelar, fale com a loja informando o número do pedido.",
+      );
     },
   );
 });

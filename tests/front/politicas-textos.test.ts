@@ -129,9 +129,34 @@ describe("Política de Privacidade", () => {
     expect(texto).toMatch(/corrig/i);
   });
 
-  it("não vende dado e não promete o que o app não faz", () => {
+  it("diz que a loja não vende os dados e que o app não usa rastreadores de propaganda", () => {
     expect(texto).toMatch(/não vend/i);
-    expect(texto).not.toMatch(/anúncios|publicidade|rastre/i);
+    expect(texto).toContain("O app não usa rastreadores de propaganda.");
+  });
+
+  it("distingue o caminho para pedir acesso ou exclusão com e sem conta", () => {
+    const direitos = montarPolitica("privacidade", LOJA, POLITICA).secoes.find(
+      (s) => s.id === "seus-direitos",
+    )?.paragrafos;
+    expect(direitos?.join(" ")).toMatch(/Conta → Privacidade e meus dados/);
+    expect(direitos?.join(" ")).toMatch(/sem conta.*fale com a loja/);
+  });
+
+  it("explica o que o app guarda no navegador", () => {
+    const aparelho = montarPolitica("privacidade", LOJA, POLITICA)
+      .secoes.find((s) => s.titulo === "O que fica no seu aparelho")
+      ?.paragrafos.join(" ");
+    for (const item of [
+      "carrinho",
+      "entrada na conta",
+      "preferências",
+      "rascunho",
+      "favoritos",
+      "imagens",
+      "sem internet",
+    ]) {
+      expect(aparelho, item).toContain(item);
+    }
   });
 
   it("notificações só com o consentimento de quem usa", () => {

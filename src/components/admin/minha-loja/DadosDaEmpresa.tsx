@@ -290,6 +290,16 @@ export const DadosDaEmpresa = memo(function DadosDaEmpresa({
         Tudo aqui é opcional. O que você preencher aparece para quem compra nos
         Termos de uso, na Política de Privacidade, no contato e no rodapé do
         app. Deixe em branco o que não quiser mostrar.
+        {isLoaded &&
+          !razao.trim() &&
+          !soAlfanumerico(documento) &&
+          !email.trim() && (
+            <>
+              <br />A lei pede que a loja mostre quem é: nome ou razão social,
+              CNPJ ou CPF e e-mail. Sem isso, a cliente não sabe com quem
+              compra.
+            </>
+          )}
       </p>
 
       {!onRegistrarSalvamento && (

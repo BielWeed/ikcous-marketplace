@@ -145,6 +145,9 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+const orientacao =
+  "Para cancelar, fale com a loja informando o número do pedido.";
+
 describe("ficha do pedido do convidado — sem 'Cancelar Pedido'", () => {
   it.each(["pending", "processing", "shipping"] as const)(
     "convidado (sem conta) com pedido pago '%s' no retrato: a ficha abre, mas não há botão nem caixa de cancelar",
@@ -160,6 +163,7 @@ describe("ficha do pedido do convidado — sem 'Cancelar Pedido'", () => {
       expect(texto()).toContain("Meu pedido");
       expect(botao("Cancelar Pedido")).toBeUndefined();
       expect(texto()).not.toContain("Cancelar Pedido");
+      expect(texto()).toContain(orientacao);
       expect(caixaDeCancelar()).toBe(false);
     },
   );
@@ -172,6 +176,7 @@ describe("ficha do pedido do convidado — sem 'Cancelar Pedido'", () => {
 
       await abrir();
 
+      expect(texto()).not.toContain(orientacao);
       const cancelar = botao("Cancelar Pedido");
       expect(cancelar).toBeDefined();
       expect(caixaDeCancelar()).toBe(false);
@@ -182,6 +187,21 @@ describe("ficha do pedido do convidado — sem 'Cancelar Pedido'", () => {
       expect(caixaDeCancelar()).toBe(true);
     },
   );
+
+  it("pedido entregue sem sessão orienta devolução ou troca, não cancelamento", async () => {
+    guardarRetratoDoConvidado("delivered");
+    await abrir();
+    expect(texto()).toMatch(/Para devolução ou troca, fale com a loja/);
+    expect(texto()).not.toContain(orientacao);
+  });
+
+  it("não orienta cancelamento enquanto a sessão está carregando", async () => {
+    estado.loading = true;
+    guardarRetratoDoConvidado("processing");
+    await abrir();
+    expect(texto()).toContain("Meu pedido");
+    expect(texto()).not.toContain(orientacao);
+  });
 
   it("controle de borda: com conta aberta, pedido ENTREGUE não mostra 'Cancelar Pedido' (é devolução)", async () => {
     estado.user = { id: "u-1" };

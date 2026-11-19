@@ -78,9 +78,9 @@ export interface VersaoDosTextos {
 }
 
 export const VERSAO_DOS_TEXTOS: VersaoDosTextos = {
-  versao: 2,
-  atualizadoEm: "2026-11-18",
-  impressaoDoTexto: "c0582230",
+  versao: 3,
+  atualizadoEm: "2026-11-19",
+  impressaoDoTexto: "7884e543",
 };
 
 /**
@@ -237,8 +237,15 @@ function montarPrivacidade(loja: DadosDaLoja): DocumentoDePolitica {
         id: "para-que",
         titulo: "Para que usamos",
         paragrafos: [
-          "Para processar e entregar o seu pedido, avisar sobre o andamento dele, atender dúvidas, trocas e devoluções e cumprir obrigações legais da loja, como as fiscais.",
-          "Se você permitir as notificações, também avisamos sobre pedidos e novidades da loja. Você pode desligar quando quiser, nas configurações do aparelho ou do navegador.",
+          "Usamos seus dados de cadastro para identificar sua conta e entrar em contato. Usamos o endereço, os itens e os dados do pedido para preparar a compra, processar o pagamento, entregar o pedido e atender dúvidas, trocas e devoluções. Também guardamos o que a lei exige, como dados fiscais do pedido.",
+          "Se você permitir as notificações, usamos o identificador do aparelho para enviar avisos sobre pedidos e novidades da loja. Você pode desligar esses avisos nas configurações do aparelho ou do navegador.",
+        ],
+      },
+      {
+        id: "no-aparelho",
+        titulo: "O que fica no seu aparelho",
+        paragrafos: [
+          "O app guarda no navegador dados para manter sua entrada na conta, lembrar o carrinho, endereços e preferências e salvar o rascunho da compra enquanto a aba estiver aberta. Também guarda mudanças nos favoritos feitas sem conexão para enviar quando a internet voltar e cópias de imagens e páginas para abrir partes do app sem internet. O app não usa rastreadores de propaganda.",
         ],
       },
       {
@@ -257,7 +264,7 @@ function montarPrivacidade(loja: DadosDaLoja): DocumentoDePolitica {
         titulo: "Seus direitos",
         paragrafos: [
           "Pela LGPD, você pode pedir à loja: confirmar que guardamos dados seus, ver quais são, corrigir o que estiver errado e pedir a exclusão do que não precisamos manter. Você pode corrigir nome, WhatsApp e endereços no seu Perfil.",
-          "Para pedir a exclusão da conta ou dos dados, fale com a loja pelo contato no fim desta página. Alguns dados, como os de pedidos já feitos, podem ter de ser mantidos por obrigação legal.",
+          "Se você tem conta, vá a Conta → Privacidade e meus dados para conferir o que a loja guarda e pedir a exclusão da conta. Para solicitar uma cópia dos seus dados ou se você comprou sem conta, fale com a loja pelo contato no fim desta página. Alguns dados, como os de pedidos já feitos, podem ter de ser mantidos por obrigação legal.",
         ],
       },
       {
@@ -417,6 +424,7 @@ function montarTrocas(
       // Quem comprou sem criar conta não tem "Meus pedidos" nem o botão: o
       // caminho dele é a conversa com a loja (contato no fim desta página).
       "Se você comprou sem criar conta, fale com a loja pelo contato no fim desta página e informe o número do pedido.",
+      "Para cancelar, fale com a loja informando o número do pedido.",
     ],
   });
 
