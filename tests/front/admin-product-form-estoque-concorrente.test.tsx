@@ -253,6 +253,13 @@ async function salvar() {
     await new Promise((r) => setTimeout(r, 30));
   });
 }
+async function confirmarPrecoDigitado() {
+  const botao = [...host.querySelectorAll("button")].find(
+    (b) => b.textContent?.trim() === "Confirmar preço digitado",
+  );
+  expect(botao).toBeDefined();
+  await act(async () => botao!.click());
+}
 async function montar() {
   const { AdminProductFormView } = await import(
     "@/views/admin/AdminProductFormView"
@@ -552,7 +559,7 @@ describe("salvar estoque confere a versão lida na abertura", () => {
     expect(botao?.disabled).toBe(true);
   });
 
-  it("online sem mexer no estoque da grade não manda base nem o estoque velho", async () => {
+  it("online ao editar só o nome não manda base nem o estoque velho da grade", async () => {
     banco.variacoes = [
       {
         id: "v-1",
@@ -564,13 +571,14 @@ describe("salvar estoque confere a versão lida na abertura", () => {
       },
     ];
     await montar();
-    await digitar("product-sale-price", "60,00");
+    await digitar("product-name", "Camiseta de algodão");
     banco.variacoes[0].stock_increment = 9;
     banco.produto.estoque = 9;
     avancarVersao();
     await salvar();
     expect(banco.chamadasRpc).toHaveLength(1);
     expect(banco.chamadasRpc[0].p_base_atualizado_em).toBeNull();
+    expect(banco.produto.nome).toBe("Camiseta de algodão");
     // A variação não foi mexida: não viaja, e o estoque dela (9) fica o do banco.
     expect(banco.chamadasRpc[0].p_variantes).toEqual([]);
     expect(banco.produto.estoque).toBe(9);
@@ -714,6 +722,7 @@ describe("salvar estoque confere a versão lida na abertura", () => {
         .find((b) => b.textContent?.trim() === "Salvar variação")!
         .click();
     });
+    await confirmarPrecoDigitado();
     await salvar();
     expect(banco.gravacoes).toBe(1);
     expect(banco.variacoes[0].stock_increment).toBe(7);
@@ -914,6 +923,148 @@ describe("salvar estoque confere a versão lida na abertura", () => {
       "2026-10-21T13:00:00.123456+00:00",
     ]);
     expect(banco.toastError).not.toHaveBeenCalled();
+  });
+
+  describe("preço do produto com grade existente", () => {
+    beforeEach(() => {
+      banco.produto.preco_venda = 100;
+      banco.variacoes = [
+        {
+          id: "v-1",
+          product_id: "p-1",
+          name: "Cor",
+          value: "Rosa",
+          stock_increment: 10,
+          active: true,
+        },
+      ];
+    });
+
+    async function editarPrecoEmDuasAbas() {
+      await montar();
+      await digitar("product-sale-price", "110,00");
+      banco.produto.preco_venda = 120;
+      avancarVersao();
+      await salvar();
+    }
+
+    it("mostra os dois preços sem gravar e preserva o rascunho", async () => {
+      await editarPrecoEmDuasAbas();
+
+      expect(banco.produto.preco_venda).toBe(120);
+      expect(banco.gravacoes).toBe(0);
+      expect(banco.gravacoesDeVariacoes).toBe(0);
+      expect(banco.chamadasRpc[0].p_base_atualizado_em).toBe(
+        "2026-10-21T13:00:00.123456+00:00",
+      );
+      const aviso = host.querySelector('[role="alert"]');
+      expect(aviso?.textContent).toMatch(/Atual:.*120,00.*Digitado:.*110,00/s);
+      expect(
+        (document.getElementById("product-sale-price") as HTMLInputElement)
+          .value,
+      ).toBe("110,00");
+      expect(
+        JSON.parse(
+          localStorage.getItem(chaveDoRascunhoDoProduto("lojista-1", "p-1")!)!,
+        ).price,
+      ).toBe("110.00");
+      expect(navegar).not.toHaveBeenCalled();
+    });
+
+    it("grava o preço com a versão da abertura quando ninguém mais salvou", async () => {
+      await montar();
+      await digitar("product-sale-price", "110,00");
+      await salvar();
+
+      expect(banco.produto.preco_venda).toBe(110);
+      expect(banco.gravacoes).toBe(1);
+      expect(banco.chamadasRpc[0].p_base_atualizado_em).toBe(
+        "2026-10-21T13:00:00.123456+00:00",
+      );
+      expect(banco.toastError).not.toHaveBeenCalled();
+    });
+
+    it("grava só a descrição sem exigir versão nem repor o preço antigo", async () => {
+      await montar();
+      const campo = document.querySelector<HTMLTextAreaElement>(
+        "#product-description",
+      )!;
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(
+          HTMLTextAreaElement.prototype,
+          "value",
+        )!.set!.call(campo, "Algodão macio");
+        campo.dispatchEvent(new Event("input", { bubbles: true }));
+        await new Promise((r) => setTimeout(r, 300));
+      });
+      banco.produto.preco_venda = 120;
+      avancarVersao();
+      await salvar();
+
+      expect(banco.produto).toMatchObject({
+        descricao: "Algodão macio",
+        preco_venda: 120,
+      });
+      expect(banco.chamadasRpc[0]).toMatchObject({
+        p_base_atualizado_em: null,
+        p_produto: { descricao: "Algodão macio" },
+      });
+      expect(banco.chamadasRpc[0].p_produto).not.toHaveProperty("preco_venda");
+      expect(banco.toastError).not.toHaveBeenCalled();
+    });
+
+    it("segundo clique e envio por teclado não gravam o preço sem confirmação", async () => {
+      await editarPrecoEmDuasAbas();
+
+      const botao = [...host.querySelectorAll("button")].find(
+        (b) => b.textContent?.trim() === "Salvar alterações",
+      );
+      expect(botao?.disabled).toBe(true);
+      await act(async () => {
+        botao!.click();
+        host
+          .querySelector("form")!
+          .dispatchEvent(
+            new Event("submit", { bubbles: true, cancelable: true }),
+          );
+      });
+      expect(banco.produto.preco_venda).toBe(120);
+      expect(banco.gravacoes).toBe(0);
+      expect(banco.chamadasRpc).toHaveLength(1);
+    });
+
+    it("após confirmar, salva na versão exibida sem repor o custo que ela não editou", async () => {
+      banco.produto.custo = 20;
+      await montar();
+      await digitar("product-sale-price", "110,00");
+      Object.assign(banco.produto, { preco_venda: 120, custo: 25 });
+      avancarVersao();
+      await salvar();
+      const versaoConferida = banco.produto.ultima_atualizacao;
+      await confirmarPrecoDigitado();
+      expect(banco.gravacoes).toBe(0);
+      await salvar();
+
+      expect(banco.produto.preco_venda).toBe(110);
+      expect(banco.gravacoes).toBe(1);
+      expect(banco.chamadasRpc[1].p_base_atualizado_em).toBe(versaoConferida);
+      expect(banco.chamadasRpc[1].p_produto).not.toHaveProperty("custo");
+      expect(banco.produto.custo).toBe(25);
+    });
+
+    it("se outro preço chegar após o aviso, confirmar não dá permissão para sobrescrevê-lo", async () => {
+      await editarPrecoEmDuasAbas();
+      banco.produto.preco_venda = 130;
+      avancarVersao();
+      await confirmarPrecoDigitado();
+      await salvar();
+
+      expect(banco.produto.preco_venda).toBe(130);
+      expect(banco.gravacoes).toBe(0);
+      expect(host.querySelector('[role="alert"]')?.textContent).toMatch(
+        /Atual:.*130,00.*Digitado:.*110,00/s,
+      );
+    });
   });
 
   it("preço junto com estoque continua recusando a edição desatualizada", async () => {

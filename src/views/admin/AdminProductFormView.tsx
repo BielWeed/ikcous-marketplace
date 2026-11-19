@@ -924,6 +924,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // A recarga após conflito atualiza estoque, fotos e grade, mas não o
   // preço exibido. Não adote aquela versão como base para gravar preço.
   const versaoDosPrecosRef = useRef<string | undefined>(undefined);
+  const [conflitoDePrecosComGrade, setConflitoDePrecosComGrade] = useState<
+    | (Pick<ProductFormFields, "price" | "costPrice" | "originalPrice"> & {
+        updatedAt: string;
+      })
+    | null
+  >(null);
   const [showCategoryForm, setShowCategoryForm] = useState(false);
   const [gerenciandoCategorias, setGerenciandoCategorias] = useState(false);
   // A folha "Categoria" (o campo a controla; o formulário só precisa saber se
@@ -1570,6 +1576,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           setIsPromoActive(!!product.originalPrice);
           setCurrentProduct(product);
           versaoDosPrecosRef.current = product.updatedAt;
+          setConflitoDePrecosComGrade(null);
           salvarAnteriorGravouProdutoRef.current = false;
         } else {
           toast.error("Produto não encontrado");
@@ -3329,7 +3336,13 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     // sucesso e a navegação (1,5s) `isSubmitting` já voltou a false mas o
     // botão ainda mostra "Salvo" — sem checar showSuccess aqui, um segundo
     // clique nessa janela reentrava e criava um produto duplicado.
-    if (isSubmitting || showSuccess || precisaRecarregar) return;
+    if (
+      isSubmitting ||
+      showSuccess ||
+      precisaRecarregar ||
+      conflitoDePrecosComGrade
+    )
+      return;
     if (isOffline) {
       toast.error("Não é possível salvar alterações em modo offline.");
       return;
@@ -3489,6 +3502,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     const productData = { ...dadosDoFormulario, variants: formData.variants };
 
     const fim = marcarOperacaoSensivel("salvar-produto");
+    let conferiaPrecoComGrade = false;
     try {
       if (productId) {
         // 1. Atualizar produto principal. O estoque só vai se a lojista mexeu
@@ -3577,20 +3591,20 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         // que esta tela vai apagar, com estoque novo (o gatilho do banco avança
         // a versão do produto a cada mudança de variação).
         const excluiuVariacao = deletedVariantIds.length > 0;
-        const conferirPrecoNaGravacaoDireta =
+        const conferirPreco =
           navigator.onLine &&
-          !salvarEmTransacao &&
           (camposDoProduto.price !== undefined ||
             camposDoProduto.costPrice !== undefined ||
             camposDoProduto.originalPrice !== undefined);
+        conferiaPrecoComGrade = salvarEmTransacao && conferirPreco;
         const conferencia =
-          conferirPrecoNaGravacaoDireta ||
+          conferirPreco ||
           mexeuNoEstoque ||
           mexeuNasFotos ||
           mexeuNaGradeExistente ||
           excluiuVariacao
             ? {
-                baseUpdatedAt: conferirPrecoNaGravacaoDireta
+                baseUpdatedAt: conferirPreco
                   ? versaoDosPrecosRef.current
                   : currentProduct?.updatedAt,
               }
@@ -3853,7 +3867,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         // Na recuperação do estoque, pode usar a versão que recarregou o
         // estoque se os três preços que a lojista viu ao abrir ainda valem.
         // Uma recusa de preço por si só não revalida a edição.
-        if (
+        if (conferiaPrecoComGrade && atual.updatedAt) {
+          setConflitoDePrecosComGrade({
+            price,
+            costPrice,
+            originalPrice,
+            updatedAt: atual.updatedAt,
+          });
+        } else if (
+          !conferiaPrecoComGrade &&
           estoqueDoProdutoFoiMexido(formData, initialData) &&
           price === initialData.price &&
           costPrice === initialData.costPrice &&
@@ -4091,10 +4113,58 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         temErroNoCampo,
         promocaoSemPrecoOriginal,
       );
+  const mexeuNoValor = (digitado: string, anterior: string) =>
+    numeroOpcionalDoCampo(digitado) !== numeroOpcionalDoCampo(anterior);
+  const promocaoNaAbertura =
+    (numeroOpcionalDoCampo(initialData.originalPrice) ?? 0) > 0;
+  const mexeuNoPrecoDeAntes = (dados = formData) =>
+    mexeuNoValor(dados.originalPrice, initialData.originalPrice) ||
+    isPromoActive !== promocaoNaAbertura;
+  const textoDoPreco = (valor: string) => {
+    const numero = numeroOpcionalDoCampo(valor);
+    return numero == null ? "não informado" : formatCurrency(numero);
+  };
+  const linhaDoPrecoEmConflito = (
+    rotulo: string,
+    atual: string,
+    digitado: string,
+    mexeu: boolean,
+  ) =>
+    mexeu && (
+      <p>
+        {rotulo} · Atual: {textoDoPreco(atual)} · Digitado:{" "}
+        {textoDoPreco(digitado)}
+      </p>
+    );
+  const confirmarPrecosDoRascunho = () => {
+    if (!conflitoDePrecosComGrade) return;
+    const { updatedAt, ...precos } = conflitoDePrecosComGrade;
+    // Só confirma a versão mostrada. Outra escrita entre o aviso e Salvar
+    // volta a ser recusada. Os preços não editados passam a mostrar os do banco.
+    versaoDosPrecosRef.current = updatedAt;
+    setInitialData((anterior) => ({ ...anterior, ...precos }));
+    setFormData((anterior) => ({
+      ...anterior,
+      price: mexeuNoValor(anterior.price, initialData.price)
+        ? anterior.price
+        : precos.price,
+      costPrice: mexeuNoValor(anterior.costPrice, initialData.costPrice)
+        ? anterior.costPrice
+        : precos.costPrice,
+      originalPrice: mexeuNoPrecoDeAntes(anterior)
+        ? anterior.originalPrice
+        : precos.originalPrice,
+    }));
+    if (!mexeuNoPrecoDeAntes()) {
+      setIsPromoActive((numeroOpcionalDoCampo(precos.originalPrice) ?? 0) > 0);
+    }
+    setConflitoDePrecosComGrade(null);
+  };
   const botaoDeSalvarDesligado =
     isSubmitting ||
     showSuccess ||
     precisaRecarregar ||
+    conflitoDePrecosComGrade !== null ||
     isOffline ||
     motivoDoBloqueio !== null;
 
@@ -6747,6 +6817,38 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
       <AcaoDaBarra aria-label="Ações do produto">
         <div className="produto-acoes mx-auto w-full max-w-3xl space-y-1.5">
+          {conflitoDePrecosComGrade && (
+            <div className="space-y-1 px-1 text-xs text-amber-300">
+              <div role="alert">
+                <p>O produto mudou em outro aparelho. Nada foi salvo.</p>
+                {linhaDoPrecoEmConflito(
+                  "Preço de venda",
+                  conflitoDePrecosComGrade.price,
+                  formData.price,
+                  mexeuNoValor(formData.price, initialData.price),
+                )}
+                {linhaDoPrecoEmConflito(
+                  "Custo",
+                  conflitoDePrecosComGrade.costPrice,
+                  formData.costPrice,
+                  mexeuNoValor(formData.costPrice, initialData.costPrice),
+                )}
+                {linhaDoPrecoEmConflito(
+                  "Preço de antes",
+                  conflitoDePrecosComGrade.originalPrice,
+                  formData.originalPrice,
+                  mexeuNoPrecoDeAntes(),
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={confirmarPrecosDoRascunho}
+                className="min-h-11 rounded-full bg-admin-raised px-4 text-xs font-bold text-white"
+              >
+                Confirmar preço digitado
+              </button>
+            </div>
+          )}
           {precisaRecarregar && (
             <p
               data-testid="precisa-recarregar"
@@ -6800,21 +6902,24 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               )}
             </p>
           )}
-          {!motivoDoBloqueio && !isOffline && !precisaRecarregar && (
-            <p
-              className="produto-status flex items-center gap-2 px-1 text-xs font-bold text-emerald-300"
-              role="status"
-            >
-              <Check aria-hidden="true" className="size-4 shrink-0" />
-              {showSuccess
-                ? "Salvo · voltando à lista"
-                : isSubmitting
-                  ? "Salvando alterações…"
-                  : productId
-                    ? "Alterações prontas para salvar"
-                    : "Tudo pronto para publicar"}
-            </p>
-          )}
+          {!motivoDoBloqueio &&
+            !isOffline &&
+            !precisaRecarregar &&
+            !conflitoDePrecosComGrade && (
+              <p
+                className="produto-status flex items-center gap-2 px-1 text-xs font-bold text-emerald-300"
+                role="status"
+              >
+                <Check aria-hidden="true" className="size-4 shrink-0" />
+                {showSuccess
+                  ? "Salvo · voltando à lista"
+                  : isSubmitting
+                    ? "Salvando alterações…"
+                    : productId
+                      ? "Alterações prontas para salvar"
+                      : "Tudo pronto para publicar"}
+              </p>
+            )}
           <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
             {/* O botão cinza não recebe toque (pointer-events: none): o toque
                 cai neste invólucro e leva ao primeiro campo que falta. Pelo
