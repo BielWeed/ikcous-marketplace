@@ -264,11 +264,11 @@ describe("CheckoutView — total nunca negativo com o cupom velho na tela", () =
   let hospedeiro: HTMLDivElement;
   let slotDoHeader: HTMLDivElement;
 
-  const montar = async (subtotal: number, frete: number) => {
+  const montar = async (subtotal: number, frete: number, cart = CART) => {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     return (
       <CheckoutView
-        cart={CART}
+        cart={cart}
         subtotal={subtotal}
         shipping={frete}
         total={subtotal + frete}
@@ -283,10 +283,11 @@ describe("CheckoutView — total nunca negativo com o cupom velho na tela", () =
     subtotal: number,
     frete: number,
     desconto: number,
+    cart = CART,
   ) => {
     semearRascunhoComCupom("FIXO60");
     await act(async () => {
-      raiz.render(await montar(subtotal, frete));
+      raiz.render(await montar(subtotal, frete, cart));
     });
     await esperar(420);
     await preencherDados();
@@ -369,6 +370,22 @@ describe("CheckoutView — total nunca negativo com o cupom velho na tela", () =
       for (const total of totaisNaTela()) expect(total).toBe(esperado);
     },
   );
+
+  it("checkout envia o total exato em centavos ao criar o pedido", async () => {
+    await abrirComCupomConferido(0.3, 0, 0.1, [
+      { product: produto({ price: 0.3 }), quantity: 1 },
+    ]);
+
+    const botao = localizarBotaoFinalizar()!;
+    expect(botao.disabled).toBe(false);
+    await act(async () => {
+      botao.click();
+    });
+
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    // O texto formatado esconde a diferença entre 0.2 e 0.19999999999999998.
+    expect(createOrder.mock.calls[0][0].totalAmount).toBe(0.2);
+  });
 
   // Valores escritos À MÃO (nada de refazer a conta aqui): o checkout real
   // recebe produtos, frete e o desconto que a conferência do cupom devolveu, e

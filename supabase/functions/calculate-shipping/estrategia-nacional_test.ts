@@ -267,6 +267,13 @@ Deno.test("desconto_na_mais_barata: subtotal abaixo do mínimo → cheio", () =>
     assertEquals(resultado[0].price, 24.9)
 })
 
+Deno.test("desconto nacional vale exatamente no mínimo", () => {
+    const opcoes = [opcao("a", 24.9), opcao("b", 30)]
+    const e = estrategia({ estrategia: "desconto_na_mais_barata", minimo: 100, tipoDesconto: "fixo", valorDesconto: 5, alcance: "mais_barata" })
+    const resultado = aplicarEstrategiaNacional(opcoes, e, 100)
+    assertEquals(resultado.map((o) => o.price), [19.9, 30])
+})
+
 Deno.test("desconto_na_mais_barata com minimo 0 = sempre vale (subtotal 0 já bate)", () => {
     const opcoes = [opcao("a", 24.9)]
     const e = estrategia({ estrategia: "desconto_na_mais_barata", minimo: 0, tipoDesconto: "percentual", valorDesconto: 15, alcance: "mais_barata" })
