@@ -909,6 +909,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     imageUrl: "",
   });
   const [currentProduct, setCurrentProduct] = useState<any>(null);
+  // A recarga após conflito atualiza estoque, fotos e grade, mas não o
+  // preço exibido. Não adote aquela versão como base para gravar preço.
+  const versaoDosPrecosRef = useRef<string | undefined>(undefined);
   const [showCategoryForm, setShowCategoryForm] = useState(false);
   const [gerenciandoCategorias, setGerenciandoCategorias] = useState(false);
   // A folha "Categoria" (o campo a controla; o formulário só precisa saber se
@@ -1535,6 +1538,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           setInitialData(productFields);
           setIsPromoActive(!!product.originalPrice);
           setCurrentProduct(product);
+          versaoDosPrecosRef.current = product.updatedAt;
           salvarAnteriorGravouProdutoRef.current = false;
         } else {
           toast.error("Produto não encontrado");
@@ -3475,12 +3479,23 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         // que esta tela vai apagar, com estoque novo (o gatilho do banco avança
         // a versão do produto a cada mudança de variação).
         const excluiuVariacao = deletedVariantIds.length > 0;
+        const conferirPrecoNaGravacaoDireta =
+          navigator.onLine &&
+          !salvarEmTransacao &&
+          (camposDoProduto.price !== undefined ||
+            camposDoProduto.costPrice !== undefined ||
+            camposDoProduto.originalPrice !== undefined);
         const conferencia =
+          conferirPrecoNaGravacaoDireta ||
           mexeuNoEstoque ||
           mexeuNasFotos ||
           mexeuNaGradeExistente ||
           excluiuVariacao
-            ? { baseUpdatedAt: currentProduct?.updatedAt }
+            ? {
+                baseUpdatedAt: conferirPrecoNaGravacaoDireta
+                  ? versaoDosPrecosRef.current
+                  : currentProduct?.updatedAt,
+              }
             : undefined;
         let naoApagadas: string[] = [];
         let produtoSalvo: Product | undefined | null;
@@ -3576,6 +3591,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             setFormData(campos);
             setInitialData(campos);
             setCurrentProduct(doBanco);
+            versaoDosPrecosRef.current = doBanco.updatedAt;
             setIsPromoActive(!!doBanco.originalPrice);
           } else if (formData.variants.some((v) => v.id.startsWith("temp-"))) {
             setPrecisaRecarregar(true);
@@ -3732,7 +3748,21 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           stock,
           variants,
           images: fotosDoBanco,
+          price,
+          costPrice,
+          originalPrice,
         } = camposDoFormularioDoProduto(atual);
+        // Na recuperação do estoque, pode usar a versão que recarregou o
+        // estoque se os três preços que a lojista viu ao abrir ainda valem.
+        // Uma recusa de preço por si só não revalida a edição.
+        if (
+          estoqueDoProdutoFoiMexido(formData, initialData) &&
+          price === initialData.price &&
+          costPrice === initialData.costPrice &&
+          originalPrice === initialData.originalPrice
+        ) {
+          versaoDosPrecosRef.current = atual.updatedAt;
+        }
         // Troca o produto-base: o efeito do rascunho rodaria de novo e
         // ofereceria restaurar o que a lojista já tem na tela.
         pularOfertaDeRascunhoRef.current = true;

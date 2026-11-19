@@ -810,15 +810,95 @@ describe("salvar estoque confere a versão lida na abertura", () => {
     ]);
   });
 
-  it("só preço continua salvando mesmo com venda externa, sem conferir versão", async () => {
+  it.each([
+    ["product-sale-price", { preco_venda: 50 }, "105,00", { preco_venda: 120 }],
+    ["product-cost-price", { custo: 10 }, "15,00", { custo: 20 }],
+    [
+      "product-original-price",
+      { preco_original: 60 },
+      "105,00",
+      { preco_original: 120 },
+    ],
+  ])(
+    "editar só o campo %s na aba antiga não apaga o valor salvo pela outra pessoa",
+    async (campo, valoresNaAbertura, digitado, valoresConcorrentes) => {
+      Object.assign(banco.produto, valoresNaAbertura);
+      await montar();
+      await digitar(campo, digitado);
+      Object.assign(banco.produto, valoresConcorrentes);
+      avancarVersao();
+
+      await salvar();
+
+      expect(banco.produto).toMatchObject(valoresConcorrentes);
+      expect(banco.gravacoes).toBe(0);
+      expect(banco.filtros[0]).toContainEqual([
+        "ultima_atualizacao",
+        "2026-10-21T13:00:00.123456+00:00",
+      ]);
+      expect(banco.toastError).toHaveBeenCalledWith(
+        "Outra pessoa alterou este produto depois que você abriu. Recarregue e confira o preço antes de salvar.",
+      );
+      expect((document.getElementById(campo) as HTMLInputElement).value).toBe(
+        digitado,
+      );
+      expect(navegar).not.toHaveBeenCalled();
+
+      // Atualizar estoque e fotos no aviso não atualiza o preço na tela.
+      await salvar();
+      expect(banco.gravacoes).toBe(0);
+      expect(banco.produto).toMatchObject(valoresConcorrentes);
+    },
+  );
+
+  it("grava só o preço quando a versão ainda é a da abertura", async () => {
     await montar();
-    await digitar("product-sale-price", "60,00");
+    await digitar("product-sale-price", "105,00");
+
+    await salvar();
+
+    expect(banco.produto.preco_venda).toBe(105);
+    expect(banco.produto.estoque).toBe(10);
+    expect(banco.gravacoes).toBe(1);
+    expect(banco.filtros[0]).toContainEqual([
+      "ultima_atualizacao",
+      "2026-10-21T13:00:00.123456+00:00",
+    ]);
+    expect(banco.toastError).not.toHaveBeenCalled();
+  });
+
+  it("preço junto com estoque continua recusando a edição desatualizada", async () => {
+    await montar();
+    await digitar("product-sale-price", "105,00");
+    await digitar("product-stock", "8");
+    banco.produto.preco_venda = 120;
     banco.produto.estoque = 9;
     avancarVersao();
+
     await salvar();
-    expect(banco.produto.preco_venda).toBe(60);
+
+    expect(banco.gravacoes).toBe(0);
+    expect(banco.produto).toMatchObject({ preco_venda: 120, estoque: 9 });
+
+    await digitar("product-stock", "7");
+    await salvar();
+
+    expect(banco.gravacoes).toBe(0);
+    expect(banco.produto).toMatchObject({ preco_venda: 120, estoque: 9 });
+  });
+
+  it("outro campo continua salvando após uma venda sem repor estoque nem preço", async () => {
+    await montar();
+    await digitar("product-name", "Camiseta de algodão");
+    banco.produto.estoque = 9;
+    banco.produto.preco_venda = 120;
+    avancarVersao();
+
+    await salvar();
+
+    expect(banco.produto.nome).toBe("Camiseta de algodão");
     expect(banco.produto.estoque).toBe(9);
-    // Sem conferência de versão: só o id e o "não excluído".
+    expect(banco.produto.preco_venda).toBe(120);
     expect(banco.filtros[0]).toEqual([
       ["id", "p-1"],
       ["deleted_at", null],

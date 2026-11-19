@@ -333,20 +333,23 @@ describe("(A) mexer nas fotos confere a versão lida na abertura", () => {
     expect(banco.toastError).not.toHaveBeenCalled();
   });
 
-  it("mexer só no preço, sem fotos nem estoque, segue sem conferir versão (as fotos do outro ficam)", async () => {
+  it("na gravação direta, mexer só no preço também recusa a versão antiga após uma foto nova", async () => {
+    const precoInicial = banco.produto.preco_venda;
     await montar();
     await digitar("product-sale-price", "60,00");
     outroAparelhoAdicionaFoto(C);
     await salvar();
-    expect(banco.gravacoes).toBe(1);
-    expect(banco.produto.preco_venda).toBe(60);
+    expect(banco.gravacoes).toBe(0);
+    expect(banco.produto.preco_venda).toBe(precoInicial);
     expect(banco.produto.imagem_urls).toEqual([A, B, C]);
-    expect(banco.filtros[0]).toEqual([
-      ["id", "p-1"],
-      ["deleted_at", null],
+    expect(banco.filtros[0]).toContainEqual([
+      "ultima_atualizacao",
+      "2026-10-21T13:00:00.123456+00:00",
     ]);
     expect(banco.patches[0]).not.toHaveProperty("imagem_urls");
-    expect(banco.toastError).not.toHaveBeenCalled();
+    expect(banco.toastError).toHaveBeenCalledWith(
+      expect.stringContaining("confira o preço"),
+    );
   });
 });
 
