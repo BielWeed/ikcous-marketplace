@@ -1,3 +1,8 @@
+import {
+  codigoDeRastreioTemLetraOuDigito,
+  normalizarCodigoDeRastreio,
+} from "../../supabase/functions/_shared/normalizar-codigo-de-rastreio";
+
 /**
  * Endereço de rastreio de uma encomenda — UM lugar só, usado pelas quatro
  * telas que têm botão "Rastrear" (pedido do cliente, ficha do pedido no
@@ -20,16 +25,7 @@ const BASE_DO_RASTREIO = "https://www.melhorrastreio.com.br/rastreio/";
  * outros sites de rastreio, que recusam espaços. Devolve "" quando não sobra
  * nada.
  */
-export function normalizarCodigoDeRastreio(codigo: string): string {
-  return (codigo ?? "")
-    .replace(/[\p{Z}\p{Cc}\p{Cf}\u{2800}]+/gu, "")
-    .toUpperCase();
-}
-
-/** Recebe o código já limpo; pontuação pode fazer parte dele, mas não ser tudo. */
-export function codigoDeRastreioTemLetraOuDigito(codigoLimpo: string): boolean {
-  return /[\p{L}\p{Nd}]/u.test(codigoLimpo);
-}
+export { codigoDeRastreioTemLetraOuDigito, normalizarCodigoDeRastreio };
 
 export function linkDeRastreio(codigo: string): string {
   const limpo = normalizarCodigoDeRastreio(codigo);

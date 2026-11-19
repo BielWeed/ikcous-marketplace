@@ -2782,6 +2782,18 @@ export const OrderDetail = memo(function OrderDetail({
                 // ignora sem tocar no estado local se não bater com o pedido
                 // ATUAL. Independe de o card ainda existir na árvore.
                 if (orderIdDaResposta !== orderIdAtualRef.current) return;
+                const tela = rastreioDaTelaRef.current;
+                if (tela.editando && tela.digitado !== tela.salvo) {
+                  if (codigo === tela.salvo) return;
+                  if (codigo !== tela.digitado) {
+                    codigoDeForaRetidoRef.current = {
+                      novo: codigo,
+                      referencia: tela.salvo,
+                    };
+                    return;
+                  }
+                }
+                codigoDeForaRetidoRef.current = null;
                 setLocalTrackingCode(codigo);
                 setTrackingValue(codigo);
               }}

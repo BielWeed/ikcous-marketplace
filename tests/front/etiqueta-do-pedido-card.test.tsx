@@ -306,7 +306,7 @@ describe("EtiquetaDoPedidoCard", () => {
     });
   });
 
-  it("sucesso mostra rastreio + link e chama onTrackingAtualizado", async () => {
+  it("sucesso relê o pedido cancelado e mantém o rastreio e o link da etiqueta", async () => {
     invokeMock.mockResolvedValue({
       data: {
         success: true,
@@ -318,6 +318,12 @@ describe("EtiquetaDoPedidoCard", () => {
     });
     const onTrackingAtualizado = vi.fn();
     await abrirCard(undefined, { onTrackingAtualizado });
+    pedidoState.data = pedido({
+      status: "cancelled",
+      shipping_label_id: "lbl-1",
+      shipping_label_url: "https://melhorenvio.com.br/imprimir/abc",
+      tracking_code: "ME23002OWZ7BR",
+    });
 
     await act(async () => {
       botao("Gerar etiqueta")?.click();
@@ -347,6 +353,83 @@ describe("EtiquetaDoPedidoCard", () => {
     expect(hospedeiro.textContent).toContain(
       "Etiqueta gerada e vinculada ao pedido!",
     );
+    expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toMatch(
+      /^Este pedido foi cancelado\. Não envie/,
+    );
+  });
+
+  it("cancelado com etiqueta paga mesmo após falha de geração avisa ao reler e ao reabrir", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await abrirCard();
+    invokeMock.mockResolvedValue({
+      data: null,
+      error: {
+        context: new Response(
+          JSON.stringify({ error: "Falhou o arquivo", resgate: true }),
+          { status: 502 },
+        ),
+      },
+    });
+    pedidoState.data = pedido({
+      status: "cancelled",
+      shipping_label_id: "lbl-paga",
+    });
+    eventosState.data = [
+      {
+        event_type: "erro",
+        payload: { etapa: "generate", label_id: "lbl-paga" },
+      },
+    ];
+    await act(async () => botao("Gerar etiqueta")?.click());
+    await act(async () => {
+      botao("Confirmar e gerar")?.click();
+      await esperarMicrotarefas();
+    });
+
+    const aviso = () => hospedeiro.querySelector('[role="alert"]')?.textContent;
+    expect(aviso()).toMatch(/^Este pedido foi cancelado\. Não envie/);
+    expect(toast.success).not.toHaveBeenCalled();
+
+    act(() => raiz.unmount());
+    raiz = createRoot(hospedeiro);
+    await abrirCard();
+    expect(aviso()).toMatch(/^Este pedido foi cancelado\. Não envie/);
+    expect(botao("Gerar etiqueta")).toBeUndefined();
+  });
+
+  it("cancelar a etiqueta no provedor limpa o aviso ao consultar e ao reabrir, apesar da URL antiga", async () => {
+    pedidoState.data = pedido({
+      status: "cancelled",
+      shipping_label_id: "lbl-paga",
+      shipping_label_url: "https://imprimir.teste/etiqueta",
+    });
+    const aviso = () => hospedeiro.querySelector('[role="alert"]');
+    await abrirCard();
+    expect(aviso()).not.toBeNull();
+
+    invokeMock.mockResolvedValue({
+      data: {
+        success: true,
+        label_id: "lbl-paga",
+        status_etiqueta: "cancelled",
+      },
+    });
+    eventosState.data = [
+      {
+        event_type: "rastreio_consultado",
+        payload: { status_etiqueta: "cancelled", label_id: "lbl-paga" },
+      },
+    ];
+    await act(async () => {
+      botao("Atualizar rastreio")?.click();
+      await esperarMicrotarefas();
+    });
+    expect(aviso()).toBeNull();
+
+    act(() => raiz.unmount());
+    raiz = createRoot(hospedeiro);
+    await abrirCard();
+    expect(aviso()).toBeNull();
   });
 
   it("already: true — mostra que nada foi comprado de novo", async () => {
@@ -504,7 +587,7 @@ describe("EtiquetaDoPedidoCard", () => {
     expect(vi.mocked(toast.error)).toHaveBeenCalledWith(mensagemEnderecoMudou);
   });
 
-  it("resgate: refaz a leitura do pedido (cai em emitida) e NUNCA reapresenta 'Confirmar e gerar'", async () => {
+  it("resgate: refaz a leitura do pedido (mantém o vínculo) e NUNCA reapresenta 'Confirmar e gerar'", async () => {
     const mensagemResgate =
       "Já existe uma geração de etiqueta em andamento para este pedido.";
     invokeMock.mockResolvedValueOnce({
@@ -524,8 +607,7 @@ describe("EtiquetaDoPedidoCard", () => {
     await abrirCard();
 
     // Depois da resposta de resgate, a releitura do pedido devolve a
-    // etiqueta já vinculada por OUTRA corrida — é isso que faz cair em
-    // "emitida" sem novo clique de compra.
+    // etiqueta só reservada por OUTRA geração — ainda não é compra paga.
     pedidoState.data = pedido({
       shipping_label_id: "lbl-corrida",
       shipping_label_url: null,
@@ -548,6 +630,7 @@ describe("EtiquetaDoPedidoCard", () => {
     expect(
       hospedeiro.querySelector('[data-testid="erro-etiqueta"]')?.textContent,
     ).toBe(mensagemResgate);
+    expect(hospedeiro.textContent).toContain("Etiqueta emitida");
     expect(vi.mocked(toast.error)).toHaveBeenCalledWith(mensagemResgate);
   });
 
@@ -647,10 +730,53 @@ describe("EtiquetaDoPedidoCard", () => {
     );
   });
 
+  it("código já salvo continua na resposta sem anunciar nova gravação", async () => {
+    pedidoState.data = pedido({
+      shipping_label_id: "lbl-ja-existe",
+      shipping_label_url: "https://imprimir.teste/etiqueta",
+      tracking_code: "MANUAL-ANTIGO",
+    });
+    invokeMock.mockResolvedValue({
+      data: {
+        success: true,
+        tracking_code: "MANUAL-ANTIGO",
+        rastreio_atualizado: false,
+      },
+    });
+    const onTrackingAtualizado = vi.fn();
+    await abrirCard(undefined, { onTrackingAtualizado });
+
+    await act(async () => {
+      botao("Atualizar rastreio")?.click();
+      await esperarMicrotarefas();
+    });
+
+    expect(hospedeiro.textContent).toContain("MANUAL-ANTIGO");
+    expect(onTrackingAtualizado).not.toHaveBeenCalled();
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(toast.info).toHaveBeenCalledWith(
+      "O código de rastreio já está atualizado.",
+    );
+  });
+
+  it("só o id reservado mantém o rótulo anterior sem nova compra nem aviso de etiqueta paga", async () => {
+    pedidoState.data = pedido({
+      status: "cancelled",
+      shipping_label_id: "lbl-reservada",
+      tracking_code: "CODIGO-MANUAL",
+    });
+    await abrirCard();
+
+    expect(hospedeiro.textContent).toContain("Etiqueta emitida");
+    expect(hospedeiro.querySelector('[role="alert"]')).toBeNull();
+    expect(botao("Gerar etiqueta")).toBeUndefined();
+    expect(botao("Confirmar e gerar")).toBeUndefined();
+  });
+
   it("emitida: 'Atualizar rastreio' com erro de negócio mostra a mensagem do corpo no toast (herdado de admin-shipping-etiqueta-melhor-envio.test.tsx)", async () => {
     pedidoState.data = pedido({
       shipping_label_id: "lbl-ja-existe",
-      shipping_label_url: null,
+      shipping_label_url: "https://imprimir.teste/etiqueta",
       tracking_code: null,
     });
     invokeMock.mockResolvedValue({
@@ -688,7 +814,11 @@ describe("EtiquetaDoPedidoCard", () => {
     event_type: "erro",
     created_at: "2026-10-27T10:00:00Z",
     error_message: "Falha indeterminada no checkout/geração da etiqueta: x",
-    payload: { etapa: "checkout_indeterminado", ...extra },
+    payload: {
+      etapa: "checkout_indeterminado",
+      label_id: "lbl-incerta",
+      ...extra,
+    },
   });
 
   it("compra indeterminada: âmbar 'Conferindo a etiqueta no Melhor Envio' com 'Conferir de novo' — nunca 'Etiqueta emitida' em verde, nunca o botão de compra", async () => {
@@ -812,7 +942,9 @@ describe("EtiquetaDoPedidoCard", () => {
 
   it("compra CONFIRMADA (só o arquivo falhou) ou etiqueta gerada depois: segue 'Etiqueta emitida'", async () => {
     pedidoState.data = pedido({ shipping_label_id: "lbl-paga" });
-    eventosState.data = [eventoIndeterminado({ pago_confirmado: true })];
+    eventosState.data = [
+      eventoIndeterminado({ label_id: "lbl-paga", pago_confirmado: true }),
+    ];
     await abrirCard();
     expect(hospedeiro.textContent).toContain("Etiqueta emitida");
     expect(hospedeiro.textContent).not.toContain("Conferindo a etiqueta");
@@ -825,7 +957,71 @@ describe("EtiquetaDoPedidoCard", () => {
     expect(botao("Gerar etiqueta")).toBeTruthy();
   });
 
-  it("histórico ilegível (erro ou queda de rede): o card degrada para 'Etiqueta emitida', como sempre foi, e NUNCA reabre a compra", async () => {
+  it("a consulta confirma a etiqueta liberada mesmo que ainda não exista código de rastreio", async () => {
+    pedidoState.data = pedido({
+      status: "cancelled",
+      shipping_label_id: "lbl-paga",
+    });
+    eventosState.data = [eventoIndeterminado({ label_id: "lbl-paga" })];
+    invokeMock.mockResolvedValue({
+      data: {
+        success: true,
+        label_id: "lbl-paga",
+        status_etiqueta: "released",
+        tracking_code: null,
+        rastreio_atualizado: false,
+      },
+    });
+    await abrirCard();
+    await act(async () => {
+      botao("Conferir de novo")?.click();
+      await esperarMicrotarefas();
+    });
+
+    expect(hospedeiro.textContent).toContain("Etiqueta emitida");
+    expect(toast.success).toHaveBeenCalledWith(
+      "Etiqueta confirmada no Melhor Envio!",
+    );
+    expect(toast.success).not.toHaveBeenCalledWith("Rastreio atualizado!");
+    expect(hospedeiro.querySelector('[role="alert"]')).not.toBeNull();
+  });
+
+  it("releitura sem histórico preserva a confirmação do mesmo id, mas não de outra etiqueta", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    pedidoState.data = pedido({
+      status: "cancelled",
+      shipping_label_id: "lbl-paga",
+    });
+    eventosState.data = [
+      { event_type: "etiqueta_gerada", payload: { label_id: "lbl-paga" } },
+    ];
+    await abrirCard(undefined, {
+      status: "processing",
+      shippingLabelIdDaFicha: "lbl-paga",
+    });
+    const aviso = () => hospedeiro.querySelector('[role="alert"]');
+    expect(aviso()).not.toBeNull();
+
+    eventosState.error = { message: "histórico indisponível" };
+    await abrirCard(undefined, {
+      status: "shipping",
+      shippingLabelIdDaFicha: "lbl-paga",
+    });
+    expect(aviso()).not.toBeNull();
+
+    pedidoState.data = pedido({
+      status: "cancelled",
+      shipping_label_id: "lbl-nova",
+    });
+    await abrirCard(undefined, {
+      status: "shipping",
+      shippingLabelIdDaFicha: "lbl-nova",
+    });
+    expect(hospedeiro.textContent).toContain("Etiqueta emitida");
+    expect(aviso()).toBeNull();
+  });
+
+  it("histórico ilegível na primeira leitura: mantém o rótulo da base e NUNCA reabre a compra", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     pedidoState.data = pedido({ shipping_label_id: "lbl-incerta" });
     eventosState.error = { message: "sem permissão" };
@@ -853,6 +1049,7 @@ describe("EtiquetaDoPedidoCard", () => {
   it("offline desabilita 'Atualizar rastreio' no estado emitida", async () => {
     pedidoState.data = pedido({
       shipping_label_id: "lbl-ja-existe",
+      shipping_label_url: "https://imprimir.teste/etiqueta",
       tracking_code: "ME999",
     });
     await abrirCard(undefined, { isOffline: true });
@@ -1182,7 +1379,7 @@ describe("EtiquetaDoPedidoCard", () => {
   it("consultar_rastreio em voo + troca A→B: o rastreio de A NÃO aparece sobre B e onTrackingAtualizado nunca é chamado com ele", async () => {
     pedidoState.data = pedido({
       shipping_label_id: "lbl-A",
-      shipping_label_url: null,
+      shipping_label_url: "https://imprimir.teste/etiqueta-a",
       tracking_code: "ME-ANTIGO-A",
     });
     let resolverA: (v: unknown) => void = () => {};
@@ -1638,6 +1835,10 @@ describe("EtiquetaDoPedidoCard", () => {
         },
       });
       await abrirCard();
+      pedidoState.data = pedido({
+        shipping_label_id: "lbl-1",
+        tracking_code: "ME1",
+      });
       await act(async () => {
         botao("Gerar etiqueta")?.click();
       });

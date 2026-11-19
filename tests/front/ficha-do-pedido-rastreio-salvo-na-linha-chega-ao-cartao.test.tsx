@@ -22,7 +22,7 @@ const { linhaDoCartao, atualizacoes } = vi.hoisted(() => ({
     shipping_cost: null,
     tracking_code: "AAA111BR" as string | null,
     shipping_label_id: "12345",
-    shipping_label_url: null,
+    shipping_label_url: "https://imprimir.teste/etiqueta",
     notes: null,
     shipping_option_id: "melhor-envio-3",
     cpf: "52998224725",

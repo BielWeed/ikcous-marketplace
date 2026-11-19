@@ -257,9 +257,17 @@ describe("EtiquetaDoPedidoCard com a rede pendurada", () => {
 
       // O servidor, enfim, devolve o sucesso da chamada abandonada.
       h.pedidoState.data = pedido({
+        status: "cancelled",
         shipping_label_id: "lbl-tardia",
         tracking_code: "ME-TARDIO",
       });
+      h.eventos = [
+        {
+          event_type: "etiqueta_gerada",
+          payload: { label_id: "lbl-tardia" },
+          created_at: "2026-11-13T10:00:00Z",
+        },
+      ];
       await act(async () => {
         pendurada.resolver({
           data: {
@@ -282,6 +290,9 @@ describe("EtiquetaDoPedidoCard com a rede pendurada", () => {
       // O que a tela mostra agora vem da LEITURA do servidor, não da resposta.
       expect(h.leiturasDoPedido).toHaveLength(3);
       expect(hospedeiro.textContent).toMatch(/Etiqueta emitida/);
+      expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toMatch(
+        /^Este pedido foi cancelado\. Não envie/,
+      );
     });
 
     it("resposta tardia de ERRO depois do estouro: nada de toast de erro nem de aviso em dobro", async () => {
@@ -315,7 +326,7 @@ describe("EtiquetaDoPedidoCard com a rede pendurada", () => {
           success: true,
           already: true,
           tracking_code: "ME-J",
-          label_url: null,
+          label_url: "https://melhorenvio.example/imprimir/j",
           label_id: "lbl-j",
         },
       });
@@ -372,8 +383,14 @@ describe("EtiquetaDoPedidoCard com a rede pendurada", () => {
         },
       });
       await abrirCard();
+      h.pedidoState.data = pedido({
+        shipping_label_id: "lbl-ok",
+        shipping_label_url: "https://melhorenvio.example/imprimir/ok",
+        tracking_code: "ME-OK",
+      });
       await confirmarACompra();
 
+      expect(hospedeiro.querySelector('[role="alert"]')).toBeNull();
       expect(hospedeiro.textContent).toMatch(
         /Etiqueta gerada e vinculada ao pedido!/,
       );
@@ -474,7 +491,7 @@ describe("EtiquetaDoPedidoCard com a rede pendurada", () => {
       h.eventos = [
         {
           event_type: "erro",
-          payload: { etapa: "checkout_indeterminado" },
+          payload: { etapa: "checkout_indeterminado", label_id: "lbl-1" },
           error_message: "sem resposta do checkout",
           created_at: "2026-11-13T10:00:00Z",
         },

@@ -1,5 +1,6 @@
 import { cpfValido } from "@/lib/cpf-do-destinatario";
 import { ehRetiradaNaLoja } from "@/lib/guarda-de-frete";
+import { codigoDeRastreioTemLetraOuDigito } from "@/lib/link-de-rastreio";
 
 // ============================================================================
 // Elegibilidade da etiqueta de envio — extraído de `EtiquetasEnvioCard.tsx`
@@ -8,11 +9,8 @@ import { ehRetiradaNaLoja } from "@/lib/guarda-de-frete";
 // React: a régua de decisão vira função testável sem montar componente.
 //
 // A ORDEM é a própria regra de negócio, não um detalhe de implementação:
-//   1. já etiquetado          → emitida, SEMPRE (mesmo se cancelado depois —
-//                                a etiqueta paga continua visível); a única
-//                                exceção é a compra INDETERMINADA (lote 227):
-//                                o vínculo existe, mas o Melhor Envio não
-//                                confirmou o pagamento → conferindo
+//   1. com vínculo           → emitida; conferindo se houver compra
+//                                indeterminada sem link nem rastreio válido
 //   2. status morto p/ envio  → indisponível
 //   3. pagamento não confirmado → indisponível (a etiqueta usa saldo REAL)
 //   4. retirada na loja       → indisponível
@@ -50,14 +48,15 @@ export interface PedidoParaEtiqueta {
    * `to.document` para inserir o frete no carrinho.
    */
   cpf: string | null;
-  /**
-   * A compra da etiqueta ficou INDETERMINADA no último evento do histórico
-   * (`compraIndeterminadaPeloHistorico`): o pagamento deu tempo esgotado ou
-   * erro do Melhor Envio, e a edge manteve o vínculo para não comprar duas
-   * vezes. Ausente em pedido antigo.
-   */
-  compra_indeterminada?: boolean;
+  /** Situação da compra da etiqueta vinculada, não do pagamento do pedido. */
+  situacao_da_compra?: SituacaoDaCompraDaEtiqueta;
 }
+
+type SituacaoDaCompraDaEtiqueta =
+  | "confirmada"
+  | "indeterminada"
+  | "cancelada"
+  | "sem_prova";
 
 export type ElegibilidadeDaEtiqueta =
   | { estado: "emitida" }
@@ -182,16 +181,13 @@ export function motivoDoStatusSemEtiqueta(status: unknown): string | null {
 export function elegibilidadeDaEtiqueta(
   p: PedidoParaEtiqueta,
 ): ElegibilidadeDaEtiqueta {
-  // 1. já etiquetado vence QUALQUER outro motivo — a etiqueta PAGA continua
-  //    visível mesmo se o pedido foi cancelado depois. Compra INDETERMINADA
-  //    (sem link de impressão e sem rastreio, que só nascem depois do
-  //    pagamento): o vínculo fica, mas a tela NUNCA afirma "emitida" sem
-  //    confirmação — nem libera a compra de novo.
+  // O vínculo mantém a apresentação anterior e nunca oferece outra compra.
+  // O rótulo "emitida" sozinho NÃO comprova o pagamento para avisos.
   if (p.shipping_label_id) {
     if (
-      p.compra_indeterminada === true &&
-      !p.shipping_label_url &&
-      !p.tracking_code
+      p.situacao_da_compra === "indeterminada" &&
+      !p.shipping_label_url?.trim() &&
+      !codigoDeRastreioTemLetraOuDigito(p.tracking_code ?? "")
     ) {
       return { estado: "conferindo" };
     }
@@ -292,19 +288,52 @@ export function elegibilidadeDaEtiqueta(
   return { estado: "disponivel", servico };
 }
 
+// No Melhor Envio, "released" é o pagamento confirmado. Geração e
+// postagem vêm depois. Pendente, cancelada e estado desconhecido não provam
+// que a etiqueta saiu do carrinho com o saldo debitado.
+const STATUS_DA_ETIQUETA_PAGA = new Set([
+  "paid",
+  "released",
+  "generated",
+  "posted",
+  "delivered",
+  "undelivered",
+]);
+
+export function statusDaEtiquetaCancelada(status: unknown): boolean {
+  if (typeof status !== "string") return false;
+  const normalizado = status.trim().toLowerCase();
+  return normalizado === "canceled" || normalizado === "cancelled";
+}
+
+export function deveAvisarCancelamentoComEtiquetaPaga(
+  pedido: PedidoParaEtiqueta,
+): boolean {
+  return (
+    pedido.status === "cancelled" &&
+    !!pedido.shipping_label_id &&
+    pedido.situacao_da_compra !== "cancelada" &&
+    (!!pedido.shipping_label_url?.trim() ||
+      pedido.situacao_da_compra === "confirmada")
+  );
+}
+
+export function statusDaEtiquetaConfirmaCompra(status: unknown): boolean {
+  return (
+    typeof status === "string" &&
+    STATUS_DA_ETIQUETA_PAGA.has(status.trim().toLowerCase())
+  );
+}
+
 /**
- * O histórico de envio do pedido (`order_shipping_events`) diz que a última
- * compra de etiqueta ficou INDETERMINADA? Vale o evento mais recente entre:
- *   - `etiqueta_gerada`                       → compra confirmada (falso);
- *   - `erro` com `etapa: checkout_indeterminado` → indeterminada (verdadeiro),
- *     a não ser que a compra tenha FECHADO e só a finalização falhou
- *     (`pago_confirmado: true`, ou o texto antigo "Compra CONFIRMADA…" dos
- *     eventos gravados antes dessa marca existir).
- * Na dúvida (evento antigo sem a marca) fica indeterminada: a tela diz
- * "conferindo", nunca "emitida". Entrada de qualquer forma: lixo vira falso.
+ * Só o histórico da etiqueta ATUAL pode confirmar a compra. Ausência de
+ * evento não é confirmação: pode ser apenas a reserva, antes do débito.
  */
-export function compraIndeterminadaPeloHistorico(eventos: unknown): boolean {
-  if (!Array.isArray(eventos)) return false;
+export function situacaoDaCompraPeloHistorico(
+  eventos: unknown,
+  labelId: string,
+): SituacaoDaCompraDaEtiqueta {
+  if (!Array.isArray(eventos)) return "sem_prova";
   const lista = eventos
     .map((evento, ordem) => ({ evento, ordem }))
     .filter(
@@ -319,21 +348,41 @@ export function compraIndeterminadaPeloHistorico(eventos: unknown): boolean {
     (a, b) => quando(a.evento) - quando(b.evento) || a.ordem - b.ordem,
   );
 
-  let indeterminada = false;
+  let situacao: SituacaoDaCompraDaEtiqueta = "sem_prova";
   for (const { evento } of lista) {
-    if (evento.event_type === "etiqueta_gerada") {
-      indeterminada = false;
-      continue;
-    }
     const payload =
       evento.payload && typeof evento.payload === "object"
         ? (evento.payload as Record<string, unknown>)
         : null;
-    if (payload?.etapa !== "checkout_indeterminado") continue;
-    const compraFechou =
-      payload.pago_confirmado === true ||
-      String(evento.error_message ?? "").startsWith("Compra CONFIRMADA");
-    indeterminada = !compraFechou;
+    if (payload?.label_id !== labelId) continue;
+    if (
+      evento.event_type === "rastreio_consultado" &&
+      statusDaEtiquetaCancelada(payload.status_etiqueta)
+    ) {
+      // Uma etiqueta cancelada no provedor não volta a valer porque chegou
+      // depois um evento antigo de geração ou rastreio para o mesmo id.
+      return "cancelada";
+    }
+    if (
+      evento.event_type === "etiqueta_gerada" ||
+      (evento.event_type === "rastreio_consultado" &&
+        (statusDaEtiquetaConfirmaCompra(payload.status_etiqueta) ||
+          (typeof evento.tracking_code === "string" &&
+            codigoDeRastreioTemLetraOuDigito(evento.tracking_code)))) ||
+      // O generate só é chamado depois que o checkout confirma o débito.
+      (evento.event_type === "erro" &&
+        (payload.etapa === "generate" || payload.etapa === "gravacao"))
+    ) {
+      situacao = "confirmada";
+    } else if (
+      evento.event_type === "erro" &&
+      payload.etapa === "checkout_indeterminado"
+    ) {
+      const compraFechou =
+        payload.pago_confirmado === true ||
+        String(evento.error_message ?? "").startsWith("Compra CONFIRMADA");
+      situacao = compraFechou ? "confirmada" : "indeterminada";
+    }
   }
-  return indeterminada;
+  return situacao;
 }

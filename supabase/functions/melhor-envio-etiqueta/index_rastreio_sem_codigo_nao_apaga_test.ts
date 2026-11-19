@@ -117,7 +117,7 @@ function clienteFalso() {
                     if (acao === 'update') {
                         atualizacoes.push({ valores: { ...valores }, filtros: [...filtros] })
                         if (bate) Object.assign(pedidoAtual, valores)
-                        return { data: null, error: null }
+                        return { data: bate ? [{ id: pedidoAtual.id }] : [], error: null }
                     }
                     assertEquals(acao, 'select')
                     return { data: bate ? { ...pedidoAtual } : null, error: null }
@@ -176,8 +176,18 @@ Deno.test('handler - consulta sem código não apaga rastreio salvo nem envia UP
     await comAdminFalso(async () => {
         const { supa, corpo } = await consultarRastreio({ status: 'generated' })
         assertEquals(corpo.tracking_code, null)
+        assertEquals(corpo.rastreio_atualizado, false)
         assertEquals(supa.atualizacoes, [], 'Consulta sem código não deve enviar UPDATE de rastreio com null')
         assertEquals(supa.pedidoAtual.tracking_code, 'CODIGO-SALVO', 'O rastreio já salvo deve permanecer')
+    })
+})
+
+Deno.test('handler - consulta devolve código já salvo sem anunciar nova gravação', async () => {
+    await comAdminFalso(async () => {
+        const { supa, corpo } = await consultarRastreio({ tracking: 'CODIGO-SALVO', status: 'posted' })
+        assertEquals(corpo.tracking_code, 'CODIGO-SALVO')
+        assertEquals(corpo.rastreio_atualizado, false)
+        assertEquals(supa.atualizacoes, [])
     })
 })
 
@@ -185,6 +195,7 @@ Deno.test('handler - consulta com código novo atualiza o rastreio do pedido cor
     await comAdminFalso(async () => {
         const { supa, corpo } = await consultarRastreio({ tracking: 'CODIGO-NOVO', status: 'posted' })
         assertEquals(corpo.tracking_code, 'CODIGO-NOVO')
+        assertEquals(corpo.rastreio_atualizado, true)
         assertEquals(supa.atualizacoes, [{
             valores: { tracking_code: 'CODIGO-NOVO' },
             filtros: [['id', PEDIDO_ID]],

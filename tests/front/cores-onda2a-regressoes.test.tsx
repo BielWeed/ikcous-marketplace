@@ -267,16 +267,28 @@ describe("onda 2a — estados reais da etiqueta", () => {
       if (estado === "emitida") {
         consulta.data = pedidoDaEtiqueta({
           shipping_label_id: "etiqueta-teste",
+          shipping_label_url: "https://imprimir.teste/etiqueta",
         });
       } else {
         invoke.mockResolvedValue({
-          data: { label_id: "etiqueta-teste", already: estado === "already" },
+          data: {
+            success: true,
+            label_id: "etiqueta-teste",
+            label_url: "https://imprimir.teste/etiqueta",
+            already: estado === "already",
+          },
           error: null,
         });
       }
       await montar();
       if (estado !== "emitida") {
         await clicar("Gerar etiqueta");
+        if (estado === "sucesso") {
+          consulta.data = pedidoDaEtiqueta({
+            shipping_label_id: "etiqueta-teste",
+            shipping_label_url: "https://imprimir.teste/etiqueta",
+          });
+        }
         await clicar("Confirmar e gerar");
       }
       const titulo = [...host.querySelectorAll("span")].find(
