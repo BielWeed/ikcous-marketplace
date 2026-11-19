@@ -652,7 +652,15 @@ async function main() {
   // ----------------------------------------------------------- as bases
   const cheio = await clonar("cheio");
   const pre = `pv_${SUF}_pre`.slice(0, 60);
-  await montarBase(pre, (f) => f !== ARQUIVO);
+  // A 11b fotografa a rotina de status como era antes da anulação, não
+  // a sucessora da retirada pronta.
+  await montarBase(
+    pre,
+    (f) =>
+      f !== ARQUIVO &&
+      !f.startsWith("20261405600000_") &&
+      !f.startsWith("20261405700000_"),
+  );
   {
     const sonda = await usar(pre, async (c) => ({
       funcao: (
@@ -975,10 +983,14 @@ async function main() {
     await mutar(nome, rotulo, sqlMut, guarda);
     return nome;
   };
-  // B1 a função já existe (qualquer corpo)
-  await negativo(B, "B1 função já existe (árvore inteira)", cheio, [
-    LB.ausente,
-  ]);
+  // Na árvore inteira, a 11b deve recusar tanto a função já presente
+  // quanto o corpo sucessor. O clone aplicado isola a recusa por presença.
+  await negativo(
+    B,
+    "B1/B3 função existente e dependência sucessora (árvore inteira)",
+    cheio,
+    [LB.ausente, LB.mMudar],
+  );
   await negativo(B, "B1 função já existe (depois do apply)", aplicado, [
     LB.ausente,
   ]);
@@ -1077,7 +1089,7 @@ async function main() {
     "FALTA: marketplace_orders.estorno_manual_registrado_em",
   );
   ok(
-    "11b reprova EXATAMENTE a linha que divergiu: a função já existe (árvore inteira, depois do apply, ou de outro corpo), corpo da is_admin_atual e da pedido__mudar_status com 1 byte a mais, cada dependência ausente, tabela ausente (e as colunas dela) e coluna ausente",
+    "11b reprova EXATAMENTE as linhas que divergiram: função existente e dependência sucessora na árvore inteira; depois do apply ou com outro corpo reprova só a presença; também pega corpo da is_admin_atual e da pedido__mudar_status com 1 byte a mais, cada dependência ausente, tabela ausente (e as colunas dela) e coluna ausente",
   );
 
   // ----------------------------------------------------------- MUTANTES

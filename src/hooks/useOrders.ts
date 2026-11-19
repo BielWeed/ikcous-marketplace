@@ -314,6 +314,28 @@ export function cancelamentoVaiPelaEdge(order: Order | undefined): boolean {
   );
 }
 
+function cancelarPedidoDoPainel(
+  orderId: string,
+  statusEsperado: string,
+  notes?: string,
+) {
+  // Contrato local até a regeneração dos tipos do banco na integração.
+  return (
+    supabase.rpc as unknown as (
+      nome: "cancelar_pedido_do_painel",
+      args: {
+        p_order_id: string;
+        p_status_esperado: string;
+        p_notes: string | null;
+      },
+    ) => PromiseLike<{ error: unknown }>
+  )("cancelar_pedido_do_painel", {
+    p_order_id: orderId,
+    p_status_esperado: statusEsperado,
+    p_notes: notes || null,
+  });
+}
+
 /**
  * Lê a resposta de `functions.invoke("criar-pagamento", {metodo: "cancelar"})`.
  * O supabase-js v2 descarta o corpo de resposta não-2xx em `data` e o põe em
@@ -495,7 +517,9 @@ export function mesclarFilaOfflineAposPassada(
     })
     .map((item) => {
       const enviado = statusEnviados?.get(item.orderId);
-      return enviado !== undefined && item.statusEsperado !== undefined
+      return item.status !== "cancelled" &&
+        enviado !== undefined &&
+        item.statusEsperado !== undefined
         ? { ...item, statusEsperado: enviado }
         : item;
     });
@@ -626,6 +650,7 @@ async function processarFilaOfflineDePedidos(
     let falhasTransitorias = 0;
     let descartesTerminais = 0;
     let conflitosDeStatus = 0;
+    let cancelamentosSemEtapa = 0;
     let interrompida = false;
     if (!silenciosa) {
       toastId = toast.loading(
@@ -636,7 +661,7 @@ async function processarFilaOfflineDePedidos(
     }
 
     for (const [indice, item] of queue.entries()) {
-      const { orderId, status, notes, silent } = item;
+      const { orderId, status, notes } = item;
       let esperado = item.statusEsperado;
       // Itens antigos sem timestamp saem ao concluir; qualquer versão datada
       // que entrar durante a RPC continua sendo mais nova.
@@ -671,14 +696,17 @@ async function processarFilaOfflineDePedidos(
       // enfileirado offline (ex.: pending -> processing) aplicado por cima
       // de um cancelamento feito nesse meio-tempo reativa um pedido morto
       // sem re-debitar o estoque que `devolver_estoque` já devolveu.
-      // r136-d: o CANCELAMENTO também confere a etapa — a RPC só o guarda do
-      // lado não-admin; para admin, cancelar um pedido que outro aparelho
-      // já entregou o carimbaria `cancelled_after_shipping`. Só confere
-      // quando a fila gravou a etapa que a lojista via (`statusEsperado`):
-      // item legado sem ela sai como antes. Cancelar não "reativa nada", por
-      // isso `cancelled`/`delivered` só descartam AVANÇO; no cancelamento
-      // vale apenas a diferença para a etapa esperada.
-      const conferirEtapa = status !== "cancelled" || esperado !== undefined;
+      // Não inventa de qual etapa partiu uma confirmação antiga. Na
+      // gravação, a nova RPC confere a etapa de novo, já sob a trava.
+      const conferirEtapa =
+        status !== "cancelled" ||
+        (typeof esperado === "string" && esperado.length > 0);
+      if (!conferirEtapa) {
+        cancelamentosSemEtapa++;
+        descartesTerminais++;
+        processados.set(orderId, timestamp);
+        continue;
+      }
       if (conferirEtapa) {
         try {
           const { data: linhaAtual, error: erroReleitura } = await supabase
@@ -701,8 +729,9 @@ async function processarFilaOfflineDePedidos(
             // enquanto o avanço esperava na fila: aplicar agora reativaria
             // um pedido morto, ou reabriria um já concluído. Mesmo balde —
             // e mesmo toast honesto — que `erroDeSincronizacaoEhTerminal`
-            // usa para os descartes que a própria RPC recusa.
+            // usa para os descartes de avanço que a própria RPC recusa.
             descartesTerminais++;
+            if (status === "cancelled") cancelamentosSemEtapa++;
             processados.set(orderId, timestamp);
             continue;
           }
@@ -731,11 +760,7 @@ async function processarFilaOfflineDePedidos(
       // meio. Se a sessão já não é a dele, o envio NÃO sai: a passada
       // encerra, o que já saiu é tirado da fila DELE (abaixo, mesma
       // mescla), o resto continua lá, e nada é gravado em outra chave.
-      // Sem releitura (cancelamento legado) a conferência do topo já é a imediata.
-      if (
-        conferirEtapa &&
-        !(await sessaoAindaEhDoDono(userId, paradaPelaRedeNaSessao))
-      ) {
+      if (!(await sessaoAindaEhDoDono(userId, paradaPelaRedeNaSessao))) {
         interrompida = true;
         remainingQueue.push(...queue.slice(indice));
         break;
@@ -750,12 +775,7 @@ async function processarFilaOfflineDePedidos(
                 p_new_status: status,
                 p_notes: notes || null,
               })
-            : await (supabase.rpc as any)("update_order_status_atomic", {
-                p_order_id: orderId,
-                p_new_status: status,
-                p_notes: notes || null,
-                p_silent: silent || false,
-              });
+            : await cancelarPedidoDoPainel(orderId, esperado as string, notes);
 
         if (error) throw error;
         syncedAny = true;
@@ -828,6 +848,8 @@ async function processarFilaOfflineDePedidos(
       return syncedAny || descartesTerminais > 0;
     }
 
+    const avisoReconfirmar =
+      "Não foi possível conferir a etapa de um cancelamento offline. Abra o pedido e confirme o cancelamento novamente.";
     if (falhasTransitorias > 0) {
       toast.error(
         `Falha ao sincronizar ${pluralizar(falhasTransitorias, "alteração de pedido", "alterações de pedidos")}. Tentando novamente mais tarde.${
@@ -836,14 +858,16 @@ async function processarFilaOfflineDePedidos(
               ? " 1 alteração não se aplica mais ao estado atual do pedido."
               : ` ${descartesTerminais} alterações não se aplicam mais ao estado atual dos pedidos.`
             : ""
-        }`,
+        }${cancelamentosSemEtapa > 0 ? ` ${avisoReconfirmar}` : ""}`,
         { id: toastId },
       );
     } else if (descartesTerminais > 0) {
       toast.info(
-        conflitosDeStatus > 0
-          ? "O pedido mudou de situação enquanto você olhava. Atualize e tente de novo."
-          : "Fila de pedidos atualizada. Algumas alterações não se aplicam mais ao estado atual dos pedidos.",
+        cancelamentosSemEtapa > 0
+          ? avisoReconfirmar
+          : conflitosDeStatus > 0
+            ? "O pedido mudou de situação enquanto você olhava. Atualize e tente de novo."
+            : "Fila de pedidos atualizada. Algumas alterações não se aplicam mais ao estado atual dos pedidos.",
         { id: toastId },
       );
     } else if (final.length === 0) {
@@ -4650,9 +4674,10 @@ export function useOrders(
           );
           // Avancos offline seguintes mudam so o destino, nao a ultima origem
           // confirmada. Sem esse campo no legado, mantem a releitura ao reconectar.
-          const statusEsperadoNaFila = itemOriginal
-            ? itemOriginal.statusEsperado
-            : esperado;
+          const statusEsperadoNaFila =
+            status !== "cancelled" && itemOriginal
+              ? itemOriginal.statusEsperado
+              : esperado;
           const cleanQueue = queue.filter(
             (item: any) => item.orderId !== orderId,
           );
@@ -4682,19 +4707,21 @@ export function useOrders(
         if (isAdmin && !silent) marcarAcaoPropriaDoPedido(orderId, status);
         // Prazo só da espera da tela (rede pendurada). Estourou: o erro cai
         // no `catch` abaixo, que desfaz o otimista e conta que NÃO se sabe se
-        // gravou. Reenviar é seguro: a RPC de avanço confere o status de
-        // origem (`p_status_esperado`) e a de cancelamento é idempotente.
+        // gravou. As RPCs do painel conferem a etapa de origem antes de
+        // gravar, inclusive se a conexão cair e a lojista tentar novamente.
         const { error } = await aguardarComPrazo(
           // `rpc` devolve um "thenable", não uma Promise: sem isto o tipo do
           // retorno vira `unknown`.
           Promise.resolve(
-            isAdmin && status !== "cancelled"
-              ? supabase.rpc("avancar_status_do_pedido", {
-                  p_order_id: orderId,
-                  p_status_esperado: esperado as string,
-                  p_new_status: status,
-                  p_notes: notes || null,
-                })
+            isAdmin
+              ? status === "cancelled"
+                ? cancelarPedidoDoPainel(orderId, esperado as string, notes)
+                : supabase.rpc("avancar_status_do_pedido", {
+                    p_order_id: orderId,
+                    p_status_esperado: esperado as string,
+                    p_new_status: status,
+                    p_notes: notes || null,
+                  })
               : (supabase.rpc as any)("update_order_status_atomic", {
                   p_order_id: orderId,
                   p_new_status: status,

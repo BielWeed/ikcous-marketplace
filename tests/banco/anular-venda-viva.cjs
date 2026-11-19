@@ -65,6 +65,9 @@ const {
   lerDatabaseUrlEfemera,
   anexarAoSummary,
 } = require("./efemero.cjs");
+const {
+  desfazerCancelarRetiradaProntaNaTransacao,
+} = require("./cancelar-retirada-pronta-posterior.cjs");
 
 const PASTA = path.join(__dirname, "..", "..", "supabase", "migrations");
 const NOME = "20261204000000_a_venda_do_balcao_se_anula_no_mesmo_dia.sql";
@@ -1280,6 +1283,8 @@ prova(
     const antes = await defDaFuncao(c);
     assert.ok(antes);
     await emTx(c, async () => {
+      // O pré-voo histórico exige o corpo da 98, não o delegado da 5700.
+      await desfazerCancelarRetiradaProntaNaTransacao(c);
       await c.query(SQL_MIGRATION);
       await c.query(SQL_MIGRATION);
       assert.deepEqual(await defDaFuncao(c), antes);
@@ -1338,6 +1343,7 @@ prova("(11b) pré-voo recusa SEM gravar, com o nome do que falta", async (c) => 
   ];
   for (const [rotulo, quebra, esperado] of quebras) {
     await emTx(c, async () => {
+      await desfazerCancelarRetiradaProntaNaTransacao(c);
       await c.query(`DROP FUNCTION ${FN}`);
       await c.query(quebra);
       const r = await tentarSql(c, SQL_MIGRATION);
@@ -1353,6 +1359,7 @@ prova("(11b) pré-voo recusa SEM gravar, com o nome do que falta", async (c) => 
   }
   // Corpo vivo de is_admin_atual diferente do esperado.
   await emTx(c, async () => {
+    await desfazerCancelarRetiradaProntaNaTransacao(c);
     await c.query(`DROP FUNCTION ${FN}`);
     await c.query(
       "CREATE OR REPLACE FUNCTION public.is_admin_atual() RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$ SELECT true $$",
@@ -1363,6 +1370,7 @@ prova("(11b) pré-voo recusa SEM gravar, com o nome do que falta", async (c) => 
   });
   // Função com o mesmo nome e OUTRO corpo: não sobrescreve.
   await emTx(c, async () => {
+    await desfazerCancelarRetiradaProntaNaTransacao(c);
     await c.query(
       `CREATE OR REPLACE FUNCTION ${FN.replace("(uuid, text)", "(p_order_id uuid, p_motivo text)")} RETURNS jsonb LANGUAGE sql AS $$ SELECT '{}'::jsonb $$`,
     );
@@ -1400,14 +1408,19 @@ prova(
       // Rollback repetido é idempotente.
       await c.query(SQL_ROLLBACK);
       assert.equal(await defDaFuncao(c), null);
+      assert.deepEqual(await impressao(c), f0);
 
+      // O rollback acima é provado na árvore inteira. Só para reaplicar,
+      // fotografe de novo depois de voltar à base exigida pelo pré-voo.
+      await desfazerCancelarRetiradaProntaNaTransacao(c);
+      const fAntesDoApply = await impressao(c);
       await c.query(SQL_MIGRATION);
       assert.deepEqual(
         await defDaFuncao(c),
         def0,
         "reaplicar não voltou ao estado idêntico",
       );
-      assert.deepEqual(await impressao(c), f0);
+      assert.deepEqual(await impressao(c), fAntesDoApply);
 
       // A ACL do estado anterior à migration: sem a função, nada a conferir; com ela, só authenticated.
       const acl = (await defDaFuncao(c)).acl;

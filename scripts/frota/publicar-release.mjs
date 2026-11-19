@@ -729,6 +729,10 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "156b-antes-a-observacao-da-inspecao-so-a-loja-ve-base-vigente",
   "157a-conferir-a-devolucao-integral-nao-perde-o-centavo-do-cupom-aplicado",
   "157b-antes-a-devolucao-integral-nao-perde-o-centavo-do-cupom-base-vigente",
+  "158a-conferir-cancelar-retirada-pronta-aplicado",
+  "158b-antes-cancelar-retirada-pronta-base-vigente",
+  "159a-conferir-cancelar-pedido-do-painel-confere-a-etapa-aplicado",
+  "159b-antes-cancelar-pedido-do-painel-confere-a-etapa-base-vigente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

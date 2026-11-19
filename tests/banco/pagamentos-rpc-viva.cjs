@@ -79,6 +79,9 @@ const {
   lerDatabaseUrlEfemera,
   anexarAoSummary,
 } = require("./efemero.cjs");
+const {
+  desfazerCancelarRetiradaProntaNaTransacao,
+} = require("./cancelar-retirada-pronta-posterior.cjs");
 const { SUCESSORAS_DA_99 } = require("./sucessoras-da-99.cjs");
 const { REEMBOLSO_EM_DUVIDA } = require("./reembolso-em-duvida-posterior.cjs");
 const {
@@ -1867,6 +1870,8 @@ const POSTERIORES_A_97 = [
 ];
 
 async function desfazerPosterioresNaTransacao(c) {
+  // A 5700 usa is_admin_atual; retire 5700 → 5600 antes de desfazer a 98 abaixo.
+  await desfazerCancelarRetiradaProntaNaTransacao(c);
   // A 20261399400000 (o aviso da avaliacao respondida) sucede os corpos de reply_review_atomic da 1360: sai ANTES dela (o rollback da 1360 exige o corpo da 1360).
   await require("./a-cliente-e-avisada-avaliacao-posterior.cjs").desfazerAvisoDaAvaliacaoNaTransacao(
     c,

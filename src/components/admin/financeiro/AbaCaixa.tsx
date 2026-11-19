@@ -5,9 +5,13 @@ import { Plus } from "lucide-react";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/useAuth";
+import { useDiaDeSaoPaulo } from "@/hooks/useDiaDeSaoPaulo";
 import { useCaixaAtual, useHistoricoDoCaixa } from "@/hooks/useFinanceiro";
 import {
   diferencaDoFechamento,
+  formatarDataCurta,
+  formatarHora,
+  hojeEmSaoPaulo,
   paraCentavos,
   rotuloDaOrigem,
 } from "@/lib/financeiro";
@@ -76,15 +80,26 @@ function CaixaAberto({
   caixa,
   abrirFolha,
   aoNovoLancamento,
+  conferidoEm,
+  hoje,
+  atualizando,
+  aoAtualizar,
   desatualizado = false,
 }: {
   readonly caixa: CaixaAtual;
+  readonly conferidoEm?: string;
+  readonly hoje: string;
+  readonly atualizando: boolean;
+  readonly aoAtualizar: () => void;
   readonly abrirFolha: AbrirFolha;
   readonly aoNovoLancamento?: () => void;
   /** A última leitura do caixa falhou: o que está na tela é o valor de antes. */
   readonly desatualizado?: boolean;
 }) {
   const ocultos = useValoresEstaoOcultos();
+  const diaDaConferencia = conferidoEm
+    ? hojeEmSaoPaulo(new Date(conferidoEm))
+    : hoje;
   const esperadoNegativo = paraCentavos(caixa.esperado) < 0;
   const movimentar = (movimento: "sangria" | "suprimento") =>
     abrirFolha({
@@ -119,6 +134,25 @@ function CaixaAberto({
               esperadoNegativo ? classeDoTexto("negativo") : "text-white",
             )}
           />
+          <div className="flex flex-wrap items-center gap-x-3">
+            {conferidoEm ? (
+              <time dateTime={conferidoEm} className="text-xs text-zinc-400">
+                conferido
+                {diaDaConferencia !== hoje
+                  ? ` em ${formatarDataCurta(diaDaConferencia)}`
+                  : ""}{" "}
+                às {formatarHora(conferidoEm)}
+              </time>
+            ) : null}
+            <button
+              type="button"
+              className={CLASSE_BOTAO_DA_GAVETA}
+              disabled={atualizando}
+              onClick={aoAtualizar}
+            >
+              {atualizando ? "Atualizando…" : "Atualizar"}
+            </button>
+          </div>
           {desatualizado ? (
             <p className={cn("text-xs", classeDoTexto("atencao"))}>
               Valor de antes: pode estar desatualizado, não deu para atualizar.
@@ -457,6 +491,7 @@ export function AbaCaixa({
    */
   readonly caixaDaTela?: ReturnType<typeof useCaixaAtual>;
 }) {
+  const hoje = useDiaDeSaoPaulo(ativo);
   const propria = useCaixaAtual(ativo && !caixaDaTela, versao);
   const atual = caixaDaTela ?? propria;
   const historico = useHistoricoDoCaixa(ativo, versao);
@@ -501,6 +536,10 @@ export function AbaCaixa({
               caixa={atual.dados.sessao}
               abrirFolha={abrirFolha}
               aoNovoLancamento={aoNovoLancamento}
+              conferidoEm={atual.dados.conferidoEm}
+              hoje={hoje}
+              atualizando={atual.carregando}
+              aoAtualizar={atual.recarregar}
               desatualizado={Boolean(atual.erro)}
             />
           ) : (

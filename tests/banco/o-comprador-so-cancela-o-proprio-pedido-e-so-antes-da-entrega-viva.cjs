@@ -1,8 +1,8 @@
 "use strict";
 
 // Somente o clone Postgres descartavel de rodar-isolado.cjs, nunca banco de loja.
-// Corpo VIVO: pedido__mudar_status da 20261198000000 (a ULTIMA que a redefine; as 20261199/04/09/45 so a citam;
-// update_order_status_atomic e' a casca do front e cancelar_pedido_com_cobranca a da edge). Duas guardas do
+// Corpo VIVO: pedido__mudar_status_com_etapa (20261405700000), delegado pela casca de pedido__mudar_status,
+// usada tanto por update_order_status_atomic quanto por cancelar_pedido_com_cobranca. Duas guardas do
 // ramo "quem NAO e' admin", ate aqui sem prova viva:
 //   (1) POSSE: so o dono leva o pedido (convidado, user_id NULL, nao tem dono) -> 'permissao para alterar este pedido'.
 //   (2) ORIGEM: so pending/processing/shipping se cancelam; ENTREGUE e' devolucao -> 'nao pode mais ser cancelado por voce'.
@@ -15,7 +15,8 @@ const { assert, prova } = P;
 const ADMIN = "b115a000-0000-4000-8000-000000000001";
 const COMPRADOR_A = "b115a000-0000-4000-8000-000000000002";
 const COMPRADOR_B = "b115a000-0000-4000-8000-000000000003";
-const FN = "public.pedido__mudar_status(uuid,text,text,uuid,boolean,boolean)";
+const FN =
+  "public.pedido__mudar_status_com_etapa(uuid,text,text,uuid,boolean,boolean,text)";
 const QTD = 2;
 const ESTOQUE_INICIAL = 10;
 const MSG_POSSE =

@@ -1362,17 +1362,17 @@ export const AdminBannersView = memo(function AdminBannersView({
     return { titles: titleSuggestions, subtitles: subtitleSuggestions };
   }, [selectedProduct]);
 
-  // No painel o relógio de programação fica desligado (`adminMode`): sem o dia
-  // da loja, o filtro "Agendados"/"Expirados" e a contagem de "ligados" ficavam
-  // com a situação de ontem numa tela deixada aberta de um dia para o outro.
-  // A virada do dia redesenha (sem ler o banco) e refaz o filtro abaixo.
   const dia = useDiaDeSaoPaulo(active);
-  const filteredBannersList = useMemo(() => {
-    // `dia` não entra na conta: só invalida o memo na virada (o `now` abaixo
-    // é lido de novo junto).
+  // A virada do dia não basta: uma campanha pode entrar ou sair do ar a
+  // qualquer hora. Acorda só na próxima mudança, sem reler o banco.
+  const [viradaDaAgenda, marcarViradaDaAgenda] = useState(0);
+  const { filteredBannersList, instanteDoFiltro } = useMemo(() => {
+    // Relê o relógio na virada do dia, da agenda ou ao reabrir a tela.
     void dia;
+    void viradaDaAgenda;
+    void active;
     const now = new Date();
-    return banners.filter((b) => {
+    const lista = banners.filter((b) => {
       // Busca sem acento acha banner acentuado — mesma regra (normalizeText)
       // da busca da loja.
       const q = normalizeText(searchQueryList);
@@ -1397,7 +1397,38 @@ export const AdminBannersView = memo(function AdminBannersView({
 
       return matchesSearch && matchesStatus;
     });
-  }, [banners, searchQueryList, statusFilter, dia]);
+    return { filteredBannersList: lista, instanteDoFiltro: now.getTime() };
+  }, [banners, searchQueryList, statusFilter, dia, viradaDaAgenda, active]);
+
+  useEffect(() => {
+    if (!active) return;
+
+    const agora = Date.now();
+    let proxima = Number.POSITIVE_INFINITY;
+    let cruzouHorario = false;
+    for (const banner of banners) {
+      if (!banner.active) continue;
+      const inicio = banner.startDate
+        ? Date.parse(banner.startDate)
+        : Number.NaN;
+      // O fim é inclusivo: expira um milissegundo depois.
+      const fim = banner.endDate ? Date.parse(banner.endDate) + 1 : Number.NaN;
+      if (inicio > agora) proxima = Math.min(proxima, inicio);
+      else if (inicio > instanteDoFiltro) cruzouHorario = true;
+      if (fim > agora) proxima = Math.min(proxima, fim);
+      else if (fim > instanteDoFiltro) cruzouHorario = true;
+    }
+    const atualizar = () => marcarViradaDaAgenda((virada) => virada + 1);
+    if (cruzouHorario) {
+      atualizar();
+    } else if (Number.isFinite(proxima)) {
+      const timer = setTimeout(
+        atualizar,
+        Math.min(proxima - agora, 2_147_483_647),
+      );
+      return () => clearTimeout(timer);
+    }
+  }, [active, banners, instanteDoFiltro]);
 
   const computedTitleRatio = useMemo(() => {
     const textHex = formData.titleColor || "#FFFFFF";

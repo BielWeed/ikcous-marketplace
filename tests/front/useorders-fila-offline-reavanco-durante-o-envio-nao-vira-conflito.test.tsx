@@ -421,11 +421,10 @@ describe("useOrders — avancar de novo durante o envio nao vira conflito", () =
     localStorage.setItem(chave, JSON.stringify([cancelamentoA]));
     await montar();
     await reconectar();
-    expect(rpcMock).toHaveBeenNthCalledWith(1, "update_order_status_atomic", {
+    expect(rpcMock).toHaveBeenNthCalledWith(1, "cancelar_pedido_do_painel", {
       p_order_id: "pedido-p",
-      p_new_status: "cancelled",
+      p_status_esperado: "pending",
       p_notes: null,
-      p_silent: false,
     });
 
     await avancarDeNovoOffline();

@@ -357,11 +357,21 @@ Deno.test("nenhuma migration POSTERIOR redefine as funções desta (esta não re
   const definidoras = definem("update_order_status_atomic");
   assertEquals(definidoras[definidoras.length - 1], NOME);
   assert(definidoras.includes(NOME_80));
-  for (const nome of NOVAS)
-    assertEquals(
-      definem(nome),
-      nome === "pedido__saldo_a_estornar" ? [NOME, SUCESSORA] : [NOME],
-    );
+  // 5600 muda a retirada pronta; 5700 conserva esta assinatura interna
+  // como casca e leva a regra compartilhada para a rotina com etapa.
+  const sucessorasDoStatus = [
+    "20261405600000_cancelar_retirada_pronta.sql",
+    "20261405700000_cancelar_pedido_do_painel_confere_a_etapa.sql",
+  ];
+  for (const nome of NOVAS) {
+    const posteriores =
+      nome === "pedido__saldo_a_estornar"
+        ? [SUCESSORA]
+        : nome === "pedido__mudar_status"
+          ? sucessorasDoStatus
+          : [];
+    assertEquals(definem(nome), [NOME, ...posteriores]);
+  }
   const reemitir = definem("admin_devolucao_reemitir_reembolso").filter(
     (n) => n !== SUCESSORA,
   );

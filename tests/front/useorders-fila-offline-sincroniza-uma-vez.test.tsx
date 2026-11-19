@@ -28,7 +28,8 @@ vi.mock("@/lib/supabase", () => ({
           order: () => ({
             abortSignal: () => Promise.resolve({ data: [], error: null }),
           }),
-          single: () => Promise.resolve({ data: null, error: null }),
+          single: () =>
+            Promise.resolve({ data: { status: "pending" }, error: null }),
         }),
       }),
     }),
@@ -62,7 +63,12 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const chave = "orders_offline_updates_queue:lojista-1";
 const toastId = "sincronizacao-fila-offline";
-const item = { orderId: "pedido-offline", status: "cancelled", silent: false };
+const item = {
+  orderId: "pedido-offline",
+  status: "cancelled",
+  statusEsperado: "pending",
+  silent: false,
+};
 
 function Sonda({ enabled = true }: { enabled?: boolean }) {
   useOrders(enabled, false);
@@ -193,15 +199,11 @@ describe("useOrders — a fila offline sincroniza uma vez", () => {
       try {
         await reconectar();
         expect(supabase.rpc).toHaveBeenCalledTimes(1);
-        expect(supabase.rpc).toHaveBeenCalledWith(
-          "update_order_status_atomic",
-          {
-            p_order_id: "pedido-offline",
-            p_new_status: "cancelled",
-            p_notes: null,
-            p_silent: false,
-          },
-        );
+        expect(supabase.rpc).toHaveBeenCalledWith("cancelar_pedido_do_painel", {
+          p_order_id: "pedido-offline",
+          p_status_esperado: "pending",
+          p_notes: null,
+        });
       } finally {
         await act(async () => {
           concluir?.();

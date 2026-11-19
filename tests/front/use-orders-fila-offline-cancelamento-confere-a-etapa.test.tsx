@@ -77,8 +77,8 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const chave = "orders_offline_updates_queue:lojista-1";
 const toastId = "sincronizacao-fila-offline";
-const MENSAGEM_DE_DESCARTE =
-  "Fila de pedidos atualizada. Algumas alterações não se aplicam mais ao estado atual dos pedidos.";
+const MENSAGEM_DE_RECONFIRMACAO =
+  "Não foi possível conferir a etapa de um cancelamento offline. Abra o pedido e confirme o cancelamento novamente.";
 
 function cancelamento(orderId: string, statusEsperado?: string) {
   return {
@@ -168,7 +168,7 @@ describe("useOrders — cancelamento offline confere a etapa antes de enviar", (
       expect(fromMock).toHaveBeenCalledWith("marketplace_orders");
       expect(localStorage.getItem(chave)).toBeNull();
       expect(toast.error).not.toHaveBeenCalled();
-      expect(toast.info).toHaveBeenCalledWith(MENSAGEM_DE_DESCARTE, {
+      expect(toast.info).toHaveBeenCalledWith(MENSAGEM_DE_RECONFIRMACAO, {
         id: toastId,
       });
 
@@ -193,11 +193,10 @@ describe("useOrders — cancelamento offline confere a etapa antes de enviar", (
 
     expect(fromMock).toHaveBeenCalledWith("marketplace_orders");
     expect(rpcMock).toHaveBeenCalledTimes(1);
-    expect(rpcMock).toHaveBeenCalledWith("update_order_status_atomic", {
+    expect(rpcMock).toHaveBeenCalledWith("cancelar_pedido_do_painel", {
       p_order_id: "pedido-A",
-      p_new_status: "cancelled",
+      p_status_esperado: "processing",
       p_notes: null,
-      p_silent: false,
     });
     expect(localStorage.getItem(chave)).toBeNull();
     expect(toast.success).toHaveBeenCalledWith(
@@ -206,9 +205,7 @@ describe("useOrders — cancelamento offline confere a etapa antes de enviar", (
     );
   });
 
-  it("compatibilidade: item SEM statusEsperado (fila já gravada) segue sendo enviado, sem releitura", async () => {
-    // Mesmo com o servidor em 'delivered', o item legado sai como hoje: a
-    // fila antiga não sabe qual etapa a lojista via.
+  it("item legado sem a etapa não cancela e pede nova confirmação", async () => {
     releituraPorPedido.set("pedido-A", {
       data: { status: "delivered" },
       error: null,
@@ -219,13 +216,12 @@ describe("useOrders — cancelamento offline confere a etapa antes de enviar", (
     await reconectar();
 
     expect(fromMock).not.toHaveBeenCalled();
-    expect(rpcMock).toHaveBeenCalledWith("update_order_status_atomic", {
-      p_order_id: "pedido-A",
-      p_new_status: "cancelled",
-      p_notes: null,
-      p_silent: false,
-    });
+    expect(rpcMock).not.toHaveBeenCalled();
     expect(localStorage.getItem(chave)).toBeNull();
+    expect(toast.info).toHaveBeenCalledWith(
+      expect.stringContaining("confirme o cancelamento novamente"),
+      { id: toastId },
+    );
   });
 
   it("limite: cancelar de propósito um pedido que a lojista via 'delivered' continua valendo quando o servidor ainda está 'delivered'", async () => {
@@ -241,11 +237,10 @@ describe("useOrders — cancelamento offline confere a etapa antes de enviar", (
     await montar();
     await reconectar();
 
-    expect(rpcMock).toHaveBeenCalledWith("update_order_status_atomic", {
+    expect(rpcMock).toHaveBeenCalledWith("cancelar_pedido_do_painel", {
       p_order_id: "pedido-A",
-      p_new_status: "cancelled",
+      p_status_esperado: "delivered",
       p_notes: null,
-      p_silent: false,
     });
     expect(localStorage.getItem(chave)).toBeNull();
   });
@@ -300,11 +295,14 @@ describe("useOrders — cancelamento offline confere a etapa antes de enviar", (
 
     expect(rpcMock).toHaveBeenCalledTimes(1);
     expect(rpcMock).toHaveBeenCalledWith(
-      "update_order_status_atomic",
-      expect.objectContaining({ p_order_id: "pedido-B" }),
+      "cancelar_pedido_do_painel",
+      expect.objectContaining({
+        p_order_id: "pedido-B",
+        p_status_esperado: "pending",
+      }),
     );
     expect(localStorage.getItem(chave)).toBeNull();
-    expect(toast.info).toHaveBeenCalledWith(MENSAGEM_DE_DESCARTE, {
+    expect(toast.info).toHaveBeenCalledWith(MENSAGEM_DE_RECONFIRMACAO, {
       id: toastId,
     });
   });

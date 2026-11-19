@@ -328,13 +328,19 @@ export function useCategoriasFinanceiras(
 export function useCaixaAtual(
   ativo: boolean,
   versao: number,
-): ConsultaFinanceira<{ readonly sessao: CaixaAtual | null }> {
+): ConsultaFinanceira<{
+  readonly sessao: CaixaAtual | null;
+  readonly conferidoEm?: string;
+}> {
   return useConsultaFinanceira(
     ativo ? "caixa-atual" : null,
     async () => {
       const { data, error } = await supabase.rpc("fin_caixa_atual");
       if (error) throw error;
-      return { sessao: parseCaixaAtual(data) };
+      return {
+        sessao: parseCaixaAtual(data),
+        conferidoEm: new Date().toISOString(),
+      };
     },
     versao,
   );

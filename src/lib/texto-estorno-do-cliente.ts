@@ -53,11 +53,8 @@ const TEXTO_PAGO_NA_ENTREGA =
 const TEXTO_PAGO_NA_RETIRADA =
   "Você pagou este pedido na retirada. Se cancelar, combine a devolução do dinheiro diretamente com a loja. Tem certeza?";
 
-// Retirada na loja, já "Pronto para retirar" (gravado como `shipping`): a
-// cliente nunca levou produto nenhum, então não há o que "devolver". O banco
-// também não estorna sozinho nesse estado (cancelar em `shipping` não grava
-// linha em `order_refunds`; a loja confirma o reembolso à mão) — por isso o
-// texto não promete estorno automático nem prazo, só diz quem cuida.
+// Se a própria cliente cancela a retirada pronta, a loja ainda precisa
+// confirmar o que aconteceu no balcão. Não há estorno automático nessa etapa.
 const TEXTO_PAGO_RETIRADA_PRONTA =
   "Este pedido já está pronto para retirar na loja. Se cancelar, a loja cuida do reembolso do seu dinheiro e pode entrar em contato com você. Tem certeza?";
 
@@ -125,9 +122,8 @@ export function textoConfirmarCancelamento({
   // texto de "já enviado" que mandaria devolver um produto que a cliente
   // nunca levou). Pago na loja mantém o texto de combinar com a loja.
   if (retiradaPronta) {
-    return pagamentoNaEntrega
-      ? TEXTO_PAGO_NA_RETIRADA
-      : TEXTO_PAGO_RETIRADA_PRONTA;
+    if (pagamentoNaEntrega) return TEXTO_PAGO_NA_RETIRADA;
+    return TEXTO_PAGO_RETIRADA_PRONTA;
   }
   // Rodada 2 (laudo Opus PR#457, BLOQUEIA 2): `jaFoiEnviado` vem ANTES de
   // `pagamentoNaEntrega`. O estado é alcançável hoje pela interface

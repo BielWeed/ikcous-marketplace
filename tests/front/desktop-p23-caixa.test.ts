@@ -25,6 +25,10 @@ const classesDaBase = [
   '"flex w-full items-center justify-between gap-3"',
   "{CLASSE_ROTULO_CAIXA_ALTA}",
   '{cn( classeDoValorDoHeroi(caixa.esperado, ocultos), esperadoNegativo ? classeDoTexto("negativo") : "text-white")}',
+  // Linha da última conferência e botão de releitura.
+  '"flex flex-wrap items-center gap-x-3"',
+  '"text-xs text-zinc-400"',
+  "{CLASSE_BOTAO_DA_GAVETA}",
   '{cn("text-xs", classeDoTexto("atencao"))}',
   '"break-words text-sm text-zinc-400"',
   '"grid grid-cols-2 gap-2.5"',

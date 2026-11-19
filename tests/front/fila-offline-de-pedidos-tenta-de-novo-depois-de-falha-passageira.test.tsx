@@ -93,6 +93,7 @@ const S = 1000;
 const cancelamento = {
   orderId: "pedido-1",
   status: "cancelled",
+  statusEsperado: "pending",
   silent: false,
   timestamp: AGORA - HORA,
 };
@@ -331,7 +332,8 @@ describe("fila offline de pedidos — tenta de novo depois de falha passageira",
     const sessaoDe = (id: string) =>
       ({ data: { session: { user: { id } } }, error: null }) as never;
     vi.mocked(supabase.auth.getSession)
-      .mockResolvedValueOnce(sessaoDe("admin-a"))
+      .mockResolvedValueOnce(sessaoDe("admin-a")) // antes da releitura
+      .mockResolvedValueOnce(sessaoDe("admin-a")) // depois da releitura
       .mockResolvedValueOnce(sessaoDe("admin-b"));
 
     await renderizar();

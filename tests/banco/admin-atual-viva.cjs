@@ -52,6 +52,9 @@ const {
   lerDatabaseUrlEfemera,
   anexarAoSummary,
 } = require("./efemero.cjs");
+const {
+  desfazerCancelarRetiradaProntaNaTransacao,
+} = require("./cancelar-retirada-pronta-posterior.cjs");
 const { desfazerSucessorasDa99 } = require("./sucessoras-da-99.cjs");
 const {
   desfazerReembolsoEmDuvidaNaTransacao,
@@ -252,6 +255,7 @@ const CAMINHO_ROLLBACK_98 = path.join(
 // Só a 98, para os passos que NÃO desfazem a 97 (o preflight da 97 e do
 // rollback da 97 por cima de estado divergente medem a 97 sem a 98).
 async function desfazer98NaTransacao(cliente) {
+  await desfazerCancelarRetiradaProntaNaTransacao(cliente);
   assert.equal(
     (await catalogo(cliente, REEMITIR)).hash,
     HASH_98_REEMITIR,
@@ -455,6 +459,8 @@ async function desfazerPosterioresNaTransacao(cliente) {
     HASH_98_REEMITIR,
     "a 98 tem de estar no ar (pelo hash do reemitir que ela deixa)",
   );
+  // A 5700 usa is_admin_atual; retire 5700 → 5600 antes de desfazer a 98 abaixo.
+  await desfazerCancelarRetiradaProntaNaTransacao(cliente);
   // A 20261397000000 (o desconto do cupom e' arredondado ao centavo; sucede a validate da 208 e a v23/v24) sai antes de todas (so se no ar).
   await require("./o-desconto-do-cupom-posterior.cjs").desfazerODescontoDoCupomNaTransacao(
     cliente,
@@ -1629,6 +1635,9 @@ PROVAS.push({
     };
     const desfazer = async (i) => {
       const nome = POSTERIORES_A_97[i].nome;
+      // A 5700 também é dependente. Tire a cadeia de cancelamento antes
+      // de isolar as funções/políticas históricas nestes controles.
+      await desfazerCancelarRetiradaProntaNaTransacao(cliente);
       // A 20261397000000 (o desconto do cupom e' arredondado ao centavo) sucede o corpo da validate da 208 (e o da v23/v24): sai ANTES de todas
       // (so se no ar); sem isso o rollback da 208, que esta pilha desfaz primeiro, recusa com o corpo dela.
       await require("./o-desconto-do-cupom-posterior.cjs").desfazerODescontoDoCupomNaTransacao(

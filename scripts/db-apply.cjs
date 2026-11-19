@@ -76,6 +76,27 @@ function carregarClient() {
   }
 }
 
+const MARCADORES_RETIRADA_PRONTA = [
+  {
+    texto:
+      "COALESCE(customer_data ->> 'shipping_option_id', '') = 'store-pickup'",
+    vezes: 1,
+  },
+  {
+    texto: "v_old_status = 'shipping' AND NOT (v_retirada AND v_is_admin)",
+    vezes: 1,
+  },
+  {
+    texto: "v_old_status = 'shipping' AND v_retirada AND v_is_admin",
+    vezes: 1,
+  },
+  {
+    texto:
+      "v_old_status IS DISTINCT FROM 'shipping' OR (v_retirada AND v_is_admin)",
+    vezes: 1,
+  },
+];
+
 /** Marcadores que devem existir na função depois de aplicada. */
 const VERIFICACOES = {
   // 20261387: a busca de pedido pelo numero nao vira busca de telefone (get_admin_orders_paged). Os dois gates de admin, a regra "so e telefone
@@ -1132,6 +1153,40 @@ const VERIFICACOES = {
         },
         { texto: "v_cupom_den := v_o.subtotal;", vezes: 1 },
       ],
+    },
+  ],
+  // 20261405700000: RPC nova só para admin; a 159a confere corpo e ACL.
+  "20261405700000_cancelar_pedido_do_painel_confere_a_etapa.sql": [
+    {
+      funcao: "cancelar_pedido_do_painel",
+      esperado: [
+        { texto: "NOT public.is_admin_atual()", vezes: 1 },
+        { texto: "p_status_esperado IS NULL", vezes: 1 },
+        {
+          texto:
+            "'cancelled', p_notes, auth.uid(), true, false, p_status_esperado",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "pedido__mudar_status_com_etapa",
+      esperado: [
+        { texto: "v_old_status IS DISTINCT FROM p_status_esperado", vezes: 1 },
+        { texto: "pedido_status_mudou:", vezes: 1 },
+        ...MARCADORES_RETIRADA_PRONTA,
+      ],
+    },
+  ],
+  // 20261405600000: retirada pronta ganha exceção só no cancelamento pelo admin.
+  "20261405600000_cancelar_retirada_pronta.sql": [
+    {
+      funcao: "pedido__mudar_status",
+      esperado: MARCADORES_RETIRADA_PRONTA,
+      sucessora: {
+        funcao: "pedido__mudar_status_com_etapa",
+        delegacao: "RETURN public.pedido__mudar_status_com_etapa(",
+      },
     },
   ],
   // 20261404000000: a observacao da inspecao da devolucao e so da loja. devolucao_detalhe ganha SO a troca da linha do RETURN (a chave observacao_inspecao sai do JSON quando quem chama nao e o admin ATUAL); as duas
@@ -5718,6 +5773,13 @@ function montarTarefasDeVerificacao(arquivos, verificacoes) {
 async function buscarDef(client, checagem) {
   if (checagem === undefined) return undefined;
   const [def] = await definicaoAtual(client, checagem.funcao);
+  const { sucessora } = checagem;
+  // Quando o lote já instalou a casca da 5700, os marcadores da 5600
+  // vivem na rotina delegada. Não usa a sucessora se a casca não a chama.
+  if (sucessora && def?.includes(sucessora.delegacao)) {
+    const [defSucessora] = await definicaoAtual(client, sucessora.funcao);
+    return defSucessora;
+  }
   return def;
 }
 
@@ -6054,6 +6116,7 @@ module.exports = {
   resumirVerificacao,
   classificarChecagem,
   avaliarChecagem,
+  buscarDef,
   montarTarefasDeVerificacao,
   conferirMarcador,
   checagemBemFormada,

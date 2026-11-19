@@ -13,6 +13,34 @@ const base = {
   jaFoiEnviado: false,
 };
 
+describe("textoConfirmarCancelamento — retirada pronta", () => {
+  const pronta = { ...base, jaFoiEnviado: true, retiradaPronta: true };
+
+  it("paga online: a cliente é orientada a tratar o reembolso com a loja", () => {
+    const texto = textoConfirmarCancelamento(pronta);
+    expect(texto).toContain("a loja cuida do reembolso");
+    expect(texto).not.toContain("volta sozinho");
+    expect(texto).not.toContain("devolver o produto");
+  });
+
+  it("paga na retirada: mantém o combinado com a loja", () => {
+    const texto = textoConfirmarCancelamento({
+      ...pronta,
+      pagamentoNaEntrega: true,
+    });
+    expect(texto).toContain("combine a devolução do dinheiro");
+    expect(texto).not.toContain("sozinho");
+  });
+
+  it("com histórico de saída: não promete devolução automática", () => {
+    const texto = textoConfirmarCancelamento({
+      ...pronta,
+      cancelladoAposEnvio: true,
+    });
+    expect(texto).not.toContain("sozinho");
+  });
+});
+
 describe("textoConfirmarCancelamento — pedido que já saiu uma vez e foi reativado", () => {
   it("controle: pago e nunca enviado segue prometendo a devolução automática", () => {
     const texto = textoConfirmarCancelamento({ ...base });

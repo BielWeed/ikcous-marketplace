@@ -156,6 +156,8 @@ WITH corpos AS (
     ('update_order_status_atomic', 'c8df4feb3f53b90922a6c8398371e394'),
     ('upsert_store_config', '9c56a9c6953e1d774a1ee97d5d8a7e16')
 ), sucessoras(fn, h, versao) AS (VALUES
+    ('pedido__mudar_status', 'fea4db42491c2e229a5ac8ee9484d909', '20261405600000'),
+    ('pedido__mudar_status', '1c44358ad6c8d68b643a42b2ccdb6e96', '20261405700000'),
     ('get_admin_orders_paged', 'f06b1bc03cf7bcf1fbb9d7b2f7ff4fe6', '20261387000000'),
     ('get_admin_orders_paged', 'bf08545275eaa451a65e15feceb0ed8d', '20261399900000'),
     ('get_admin_orders_paged', 'b404a8397a6490c86fb192d85fd5b6c9', '20261399980000'),

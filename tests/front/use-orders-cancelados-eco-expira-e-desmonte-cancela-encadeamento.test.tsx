@@ -188,7 +188,7 @@ describe("pedidosCanceladosLocalmenteRef expira em 30s (ressalva 'a' da revisão
     const chamadasGetAdminOrdersPaged: any[] = [];
     rpc.mockReset();
     rpc.mockImplementation((nome: string) => {
-      if (nome === "update_order_status_atomic") {
+      if (nome === "cancelar_pedido_do_painel") {
         return Promise.resolve({ error: null });
       }
       if (nome === "get_admin_orders_cancelados_recentes") {
