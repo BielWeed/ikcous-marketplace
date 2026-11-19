@@ -3285,9 +3285,18 @@ const AppContent = () => {
   };
 
   const renderCustomerContent = () => {
-    const isMaintenanceMode = modoManutencao();
-    if (isMaintenanceMode) {
-      return <MaintenanceView />;
+    if (modoManutencao() && currentView !== "admin-login") {
+      // Sem sessão, a entrada pelo painel usa /auth e guarda o destino em
+      // `requested`. O /auth aberto pela vitrine continua em manutenção.
+      const entrada = currentView === "auth" ? globalThis.history.state : null;
+      const destino = entrada?.requested;
+      if (
+        entrada?.view !== "auth" ||
+        typeof destino !== "string" ||
+        !destino.startsWith("admin")
+      ) {
+        return <MaintenanceView />;
+      }
     }
 
     const adminViews: View[] = [
