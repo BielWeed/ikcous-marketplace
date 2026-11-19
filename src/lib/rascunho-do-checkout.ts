@@ -45,6 +45,8 @@ export interface RascunhoDoCheckout {
   estado: string;
   complemento: string;
   notas: string;
+  /** Ausente = Não; texto (mesmo vazio) = Sim, com o valor digitado. */
+  trocoPara?: string;
   /** Código do cupom aplicado — o desconto é revalidado no restore. */
   cupom: string | null;
   /**
@@ -57,7 +59,7 @@ export interface RascunhoDoCheckout {
   contaDoCupom?: string | null;
   /**
    * De QUEM é o rascunho INTEIRO: nome, WhatsApp, CEP, endereço e
-   * observações (id da conta; `null` = convidado digitou). Mesmo desenho de
+   * observações e troco (id da conta; `null` = convidado digitou). Mesmo desenho de
    * `contaDoCupom`, com UMA diferença de propósito: rascunho antigo, SEM o
    * campo (`undefined`), NÃO conta como convidado — dado de cliente nunca
    * passa para outra conta por omissão. O restore só devolve o rascunho para
@@ -135,6 +137,7 @@ function higienizar(cru: unknown): RascunhoDoCheckout | null {
     estado: eString(d.estado),
     complemento: eString(d.complemento),
     notas: eString(d.notas),
+    ...(typeof d.trocoPara === "string" ? { trocoPara: d.trocoPara } : {}),
     cupom: typeof cupom === "string" && cupom !== "" ? cupom : null,
     contaDoCupom:
       typeof d.contaDoCupom === "string" && d.contaDoCupom !== ""
@@ -241,6 +244,7 @@ export function rascunhoTemConteudo(r: RascunhoDoCheckout): boolean {
     r.estado !== "" ||
     nomeTemConteudoVisivel(r.complemento) ||
     nomeTemConteudoVisivel(r.notas) ||
+    r.trocoPara !== undefined ||
     r.cupom !== null
   );
 }

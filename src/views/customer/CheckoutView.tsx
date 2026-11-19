@@ -1484,6 +1484,38 @@ export function CheckoutViewDaConta({
     codigo: string;
     conta: string | null;
   } | null>(null);
+  const [troco, setTroco] = useState<{
+    valor: string;
+    restaurado: boolean;
+  } | null>(null);
+  const trocoParaRascunhoRef = useRef<string | undefined>(undefined);
+  const trocoPendenteDoRascunhoRef = useRef<{
+    valor: string;
+    conta: RascunhoDoCheckout["contaDosDados"];
+  } | null>(null);
+  const atualizarTroco = useCallback(
+    (valor: string | null, restaurado = false) => {
+      if (
+        valor === null &&
+        (trocoParaRascunhoRef.current !== undefined ||
+          trocoPendenteDoRascunhoRef.current !== null)
+      ) {
+        // Mesmo quando o troco era o único dado, não deixe o valor antigo voltar.
+        const armazenamento = sessionStorageSeguro();
+        const rascunho = lerRascunhoDoCheckout(armazenamento);
+        if (rascunho?.trocoPara !== undefined) {
+          salvarRascunhoDoCheckout(armazenamento, {
+            ...rascunho,
+            trocoPara: undefined,
+          });
+        }
+      }
+      trocoPendenteDoRascunhoRef.current = null;
+      trocoParaRascunhoRef.current = valor ?? undefined;
+      setTroco(valor === null ? null : { valor, restaurado });
+    },
+    [],
+  );
   const hasInitializedRef = useRef(false);
   // DE QUEM SÃO o nome e o WhatsApp que estão na tela (id da conta; `null` =
   // convidado; `undefined` = a autenticação ainda não disse quem é — nada é
@@ -1496,6 +1528,10 @@ export function CheckoutViewDaConta({
     if (donoDosDadosRef.current === null) {
       dadosDoVisitanteAlteradosEmRef.current = Date.now();
     }
+  };
+  const editarTroco = (valor: string | null) => {
+    marcarEdicaoDoVisitante();
+    atualizarTroco(valor);
   };
   // O rascunho (inteiro) de uma CONTA que chegou antes de a autenticação
   // dizer quem entrou: só se aplica se for a mesma conta.
@@ -1568,6 +1604,12 @@ export function CheckoutViewDaConta({
           const rascunhoVale =
             !adiarRascunho &&
             dadosDoRascunhoValemPara(donoDosDados, contaDeAgora);
+          if (rascunho.trocoPara !== undefined) {
+            trocoPendenteDoRascunhoRef.current = {
+              valor: rascunho.trocoPara,
+              conta: donoDosDados,
+            };
+          }
           const doRascunho = rascunhoVale
             ? rascunho
             : {
@@ -1605,6 +1647,7 @@ export function CheckoutViewDaConta({
           });
           if (rascunhoVale) {
             setNotes(rascunho.notas);
+            trocoParaRascunhoRef.current = rascunho.trocoPara;
             // O dono dos campos de endereço passa a ser o CEP do rascunho —
             // mesmo contrato da semente de `ikcous_last_shipping_cep` acima.
             if (rascunho.cep) {
@@ -1647,9 +1690,10 @@ export function CheckoutViewDaConta({
     cupomConferidoRef.current = null;
     setAppliedCoupon(null);
     setCouponError("");
+    atualizarTroco(null);
     // O código da conta que saiu não fica esperando no armazenamento da aba.
     esquecerCupomDoRascunho();
-  }, [authLoading, user]);
+  }, [authLoading, user, atualizarTroco]);
 
   // Cupom pendente do rascunho: devolvido só quando a conta é conhecida E é a
   // mesma que o aplicou. Declarado DEPOIS do efeito de init — no mesmo commit
@@ -1811,8 +1855,7 @@ export function CheckoutViewDaConta({
       ? "cartao"
       : "pix";
   const [notes, setNotes] = useState("");
-  // null = "Não"; texto vazio = "Sim", ainda sem valor.
-  const [valorParaTroco, setValorParaTroco] = useState<string | null>(null);
+  const valorParaTroco = troco?.valor ?? null;
   const trocoVivoRef = useRef<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   // A opção de frete VIVA, atualizada a cada render. O envio roda numa
@@ -3072,6 +3115,7 @@ export function CheckoutViewDaConta({
         estado: valores.state ?? "",
         complemento: valores.complement ?? "",
         notas: notasRef.current,
+        trocoPara: trocoParaRascunhoRef.current,
         // Cupom ainda pendente (auth carregando) não se perde numa gravação.
         cupom:
           cupomRef.current?.code ??
@@ -3109,7 +3153,7 @@ export function CheckoutViewDaConta({
     });
     return () => subscription.unsubscribe();
   }, [form]);
-  // Notas e cupom não passam pelo form.watch (estado próprio) — gravação
+  // Notas, cupom e troco não passam pelo form.watch (estado próprio) — gravação
   // própria, lendo o formulário atual via getValues. Mesmas duas travas.
   useEffect(() => {
     if (!hasInitializedRef.current) return;
@@ -3130,6 +3174,10 @@ export function CheckoutViewDaConta({
       estado: form.getValues("state") ?? "",
       complemento: form.getValues("complement") ?? "",
       notas: notes,
+      trocoPara:
+        troco !== null || trocoPendenteDoRascunhoRef.current !== null
+          ? trocoParaRascunhoRef.current
+          : undefined,
       cupom:
         appliedCoupon?.code ??
         cupomPendenteDoRascunhoRef.current?.codigo ??
@@ -3144,7 +3192,7 @@ export function CheckoutViewDaConta({
     )
       return;
     salvarRascunhoDoCheckout(sessionStorageSeguro(), rascunho);
-  }, [notes, appliedCoupon, form]);
+  }, [notes, appliedCoupon, form, troco]);
   // Achado 8 da revisão (17/08/2026): o painel precisa devolver o foco ao
   // botão que o abriu quando fecha (teclado) — `wasOpenRef` evita focar o
   // gatilho já na montagem (isSummaryPanelOpen começa `false`).
@@ -3777,6 +3825,49 @@ export function CheckoutViewDaConta({
     }
   }, [authLoading, user, form]);
 
+  const modalidadePermiteTroco =
+    !ehRetirada && (!selectedShippingOption || ehEntregaLocal);
+  const dinheiroNaEntregaDisponivel = formasPagamentoNaEntregaValidas(
+    config.formasPagamentoEntrega,
+  ).includes("cash");
+  useEffect(() => {
+    if (!storeConfigLoaded || authLoading || retomarPedidoId) return;
+    const pendente = trocoPendenteDoRascunhoRef.current;
+    if (pendente) {
+      if (
+        modalidadePermiteTroco &&
+        dinheiroNaEntregaDisponivel &&
+        dadosDoRascunhoValemPara(pendente.conta, contaDoCheckout)
+      ) {
+        // Só consome o rascunho depois de selecionar dinheiro: outra
+        // execução deste efeito pode ainda ver o Pix inicial.
+        if (paymentMethod !== "cash") {
+          setPaymentMethod("cash");
+          return;
+        }
+        atualizarTroco(pendente.valor, true);
+      } else {
+        atualizarTroco(null);
+      }
+    } else if (
+      trocoParaRascunhoRef.current !== undefined &&
+      (!modalidadePermiteTroco ||
+        !dinheiroNaEntregaDisponivel ||
+        paymentMethod !== "cash")
+    ) {
+      atualizarTroco(null);
+    }
+  }, [
+    storeConfigLoaded,
+    authLoading,
+    retomarPedidoId,
+    modalidadePermiteTroco,
+    dinheiroNaEntregaDisponivel,
+    contaDoCheckout,
+    paymentMethod,
+    atualizarTroco,
+  ]);
+
   // CEP QUE JÁ VEM NA TELA, ENDEREÇO QUE NÃO VEM: o campo CEP nasce de
   // `ikcous_last_shipping_cep` (visita anterior) ou do rascunho, mas a busca só
   // saía quando a pessoa DIGITAVA — voltar ao checkout mostrava o CEP completo
@@ -4327,8 +4418,13 @@ export function CheckoutViewDaConta({
     ) {
       avisoDeTroco =
         "Informe um valor em reais para o troco, com até 9 dígitos antes dos centavos.";
-    } else if (valorParaTrocoEmCentavos <= totalEmCentavos) {
-      avisoDeTroco = "Informe um valor maior que o total do pedido.";
+    } else if (
+      valorParaTrocoEmCentavos < totalEmCentavos ||
+      (valorParaTrocoEmCentavos === totalEmCentavos && !troco?.restaurado)
+    ) {
+      avisoDeTroco = troco?.restaurado
+        ? "O valor não cobre o total. Corrija o valor para o troco."
+        : "Informe um valor maior que o total do pedido.";
     } else {
       const pagamento = reais(valorParaTrocoEmCentavos / 100);
       const troco = reais((valorParaTrocoEmCentavos - totalEmCentavos) / 100);
@@ -5260,6 +5356,8 @@ export function CheckoutViewDaConta({
       gerenteDaChaveDe(pedido.contaEsperada).esquecer();
       pedidoCongeladoRef.current = null;
       limparPedidoSemResposta();
+      trocoParaRascunhoRef.current = undefined;
+      trocoPendenteDoRascunhoRef.current = null;
       limparRascunhoDoCheckout(sessionStorageSeguro());
       // Cancelar devolve só o que realmente saiu do carrinho.
       itensDoPedidoParaRestaurarRef.current = [];
@@ -6788,7 +6886,7 @@ export function CheckoutViewDaConta({
             onNavigate("auth");
             return;
           }
-          if (option.value !== paymentMethod) setValorParaTroco(null);
+          if (option.value !== paymentMethod) atualizarTroco(null);
           setPaymentMethod(option.value);
           if (option.metodoOnline) setMetodoOnline(option.metodoOnline);
         }}
@@ -8091,7 +8189,7 @@ export function CheckoutViewDaConta({
                       name="checkout-troco"
                       value="nao"
                       checked={!solicitaTroco}
-                      onChange={() => setValorParaTroco(null)}
+                      onChange={() => editarTroco(null)}
                     />
                     Não
                   </label>
@@ -8101,7 +8199,7 @@ export function CheckoutViewDaConta({
                       name="checkout-troco"
                       value="sim"
                       checked={solicitaTroco}
-                      onChange={() => setValorParaTroco("")}
+                      onChange={() => editarTroco("")}
                     />
                     Sim, para R$
                   </label>
@@ -8120,7 +8218,7 @@ export function CheckoutViewDaConta({
                       inputMode="decimal"
                       autoComplete="off"
                       value={valorParaTroco}
-                      onChange={(e) => setValorParaTroco(e.target.value)}
+                      onChange={(e) => editarTroco(e.target.value)}
                       placeholder="Valor maior que o total do pedido"
                       aria-invalid={!!avisoDeTroco}
                       aria-describedby="checkout-aviso-troco"

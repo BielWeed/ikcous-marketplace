@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { CheckoutView } from "@/views/customer/CheckoutView";
-import { act } from "react";
+import { StrictMode, act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { comReleituraDeEnderecos } from "./duble-releitura-de-enderecos";
@@ -11,6 +11,7 @@ const validateCoupon = vi.fn();
 const sessaoAindaEhDoDono = vi.fn();
 const onNavigate = vi.fn();
 const onSetBackOverride = vi.fn();
+const CHAVE_RASCUNHO = "ikcous-rascunho-do-checkout-v1";
 const entrega = {
   id: "local-delivery",
   name: "Entrega local",
@@ -91,6 +92,7 @@ vi.mock("@/hooks/useCart", async () => {
       selectedShippingOption: opcaoDeFrete,
       shippingCep: endereco.cep,
       clearCart: vi.fn(),
+      renovarCarrinhoPeloCatalogo: async () => {},
     })),
   };
 });
@@ -99,7 +101,8 @@ vi.mock("@/hooks/useCoupons", () => ({
   useCoupons: () => ({ validateCoupon }),
 }));
 
-vi.mock("@/hooks/useOrders", () => ({
+vi.mock("@/hooks/useOrders", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/hooks/useOrders")>()),
   useOrders: () => ({ createOrder }),
 }));
 
@@ -151,6 +154,7 @@ describe("CheckoutView — troco para pagamento em dinheiro", () => {
   const finalizar = () => botao("Finalizar Pedido", document.body);
 
   beforeEach(() => {
+    onNavigate.mockClear();
     total = 76.5;
     formas = ["pix", "cash"];
     cuponsLigados = false;
@@ -176,14 +180,15 @@ describe("CheckoutView — troco para pagamento em dinheiro", () => {
     vi.unstubAllGlobals();
   });
 
-  async function renderizar() {
+  async function renderizar(modoEstrito = false) {
+    const checkout = (
+      <CheckoutView
+        onNavigate={onNavigate}
+        onSetBackOverride={onSetBackOverride}
+      />
+    );
     await act(async () => {
-      raiz.render(
-        <CheckoutView
-          onNavigate={onNavigate}
-          onSetBackOverride={onSetBackOverride}
-        />,
-      );
+      raiz.render(modoEstrito ? <StrictMode>{checkout}</StrictMode> : checkout);
     });
   }
 
@@ -391,6 +396,107 @@ describe("CheckoutView — troco para pagamento em dinheiro", () => {
     expect(aviso().textContent).toBe("");
     const pedido = await enviar();
     expect(pedido.notes).toMatch(/^Troco para R\$ 100,00 \(levar R\$ 10,10\)/);
+  });
+
+  async function reabrirComTotal(novoTotal: number) {
+    act(() => raiz.unmount());
+    total = novoTotal;
+    raiz = createRoot(hospedeiro);
+    await renderizar(true);
+    await act(async () => vi.advanceTimersByTimeAsync(420));
+  }
+
+  it.each([
+    [60, "Troco para R$ 100,00 (levar R$ 40,00)"],
+    [100, "Troco para R$ 100,00 (levar R$ 0,00)"],
+  ])(
+    "restaura o troco e recalcula a nota para o total de %s",
+    async (preco, prefixo) => {
+      total = 80;
+      await montar();
+      await pedirTroco("100");
+      act(() => digitar(nota(), "Deixar na portaria."));
+
+      createOrder.mockRejectedValueOnce({
+        code: "P0001",
+        message: "Estoque insuficiente para o produto Teste",
+      });
+      await act(async () => {
+        finalizar().click();
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(createOrder).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        document
+          .querySelector<HTMLButtonElement>(
+            'button[data-acao="ajustar_estoque"]',
+          )!
+          .click();
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(onNavigate).toHaveBeenCalledWith("cart");
+      createOrder.mockClear();
+      await reabrirComTotal(preco);
+
+      expect(escolha("sim")?.checked).toBe(true);
+      expect(campo().value).toBe("100");
+      expect(aviso().textContent).toBe("");
+      expect(sessionStorage.getItem(CHAVE_RASCUNHO)).not.toBeNull();
+      expect(await enviar()).toMatchObject({
+        paymentMethod: "cash",
+        totalAmount: preco,
+        notes: expect.stringContaining(`${prefixo}\nDeixar na portaria.`),
+      });
+      expect(sessionStorage.getItem(CHAVE_RASCUNHO)).toBeNull();
+    },
+  );
+
+  it("pede para corrigir o troco restaurado se o valor não cobrir o novo total", async () => {
+    await montar();
+    await pedirTroco("100");
+
+    await reabrirComTotal(110);
+
+    expect(escolha("sim")?.checked).toBe(true);
+    expect(campo().value).toBe("100");
+    expect(campo().getAttribute("aria-invalid")).toBe("true");
+    expect(aviso().textContent).toMatch(/valor.*total/i);
+    expect(finalizar().disabled).toBe(true);
+    act(() => finalizar().click());
+    expect(createOrder).not.toHaveBeenCalled();
+  });
+
+  it("descarta o troco se dinheiro deixou de estar disponível", async () => {
+    await montar();
+    await pedirTroco("100");
+    expect(
+      JSON.parse(sessionStorage.getItem(CHAVE_RASCUNHO) ?? "{}"),
+    ).toMatchObject({
+      trocoPara: "100",
+    });
+    formas = ["pix"];
+
+    await reabrirComTotal(60);
+
+    expect(botao("Pix na Entrega").getAttribute("aria-checked")).toBe("true");
+    expect(campo()).toBeNull();
+    formas = ["pix", "cash"];
+    await reabrirComTotal(60);
+    await pedirTroco("");
+    expect(campo().value).toBe("");
+  });
+
+  it("não troca o pagamento ao reabrir um rascunho sem troco", async () => {
+    await montar();
+    act(() => digitar(nota(), "Deixar na portaria."));
+
+    await reabrirComTotal(60);
+
+    expect(botao("Pix na Entrega").getAttribute("aria-checked")).toBe("true");
+    expect(campo()).toBeNull();
+    const pedido = await enviar();
+    expect(pedido.notes).toMatch(/^Deixar na portaria\./);
+    expect(pedido.notes).not.toContain("Troco para");
   });
 
   it("reserva espaço na nota e preserva o prefixo mesmo com a nota já cheia", async () => {
