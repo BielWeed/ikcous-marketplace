@@ -24,6 +24,7 @@ import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useVOR } from "@/hooks/useVOR";
 import {
   destinoDaUrl,
+  destinoDeProdutoSemIdValido,
   nomeDoDestino,
   urlDoDestino,
 } from "@/lib/destino-do-aviso";
@@ -976,9 +977,7 @@ export const AdminPushView = memo(function AdminPushView({
       toast.error("Preencha título e mensagem");
       return;
     }
-    // Segunda trava do produto sem id: "/product-detail" (ou "?id=" vazio)
-    // abre uma página sem produto no celular da cliente.
-    if (/^\/product-detail\/?(\?id=)?$/.test(notification.url)) {
+    if (destinoDeProdutoSemIdValido(notification.url)) {
       toast.error("Escolha o produto que o aviso vai abrir", {
         description:
           'Em "Ao tocar na mensagem", escolha um produto da lista ou outra tela.',

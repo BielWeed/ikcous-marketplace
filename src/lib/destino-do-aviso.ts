@@ -11,6 +11,8 @@
  * painel simples): é mudança de produto, não de tela.
  */
 
+import { idDeProdutoDoPainel } from "./destinoPosLogin";
+
 export type TipoDeDestino =
   | "home"
   | "search"
@@ -55,6 +57,16 @@ export function urlDoDestino(
       // "home" e qualquer tipo desconhecido.
       return "/";
   }
+}
+
+/** Só o endereço interno de produto exige um id na consulta. */
+export function destinoDeProdutoSemIdValido(url: string): boolean {
+  const caminho = url.split(/[?#]/, 1)[0];
+  if (caminho !== "/product-detail" && caminho !== "/product-detail/") {
+    return false;
+  }
+  const { searchParams } = new URL(url, "https://loja.example");
+  return !idDeProdutoDoPainel(searchParams.get("id"));
 }
 
 export interface DestinoDaUrl {
