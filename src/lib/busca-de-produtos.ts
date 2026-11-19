@@ -50,7 +50,13 @@ import { normalizeText } from "@/lib/utils";
  */
 const APOSTROFOS = /['‘’ʼ´`]/g;
 export const normalizarParaBusca = (texto: string | null | undefined): string =>
-  normalizeText(texto).replace(APOSTROFOS, "").trim();
+  normalizeText(texto)
+    .replace(APOSTROFOS, "")
+    .replace(/(\d)[^\S\r\n]+%/g, "$1%")
+    .trim();
+
+const PERCENTUAL_COM_PONTUACAO = /^(\d+(?:[.,]\d+)*%)[^a-z0-9]*$/;
+const PERCENTUAL = /^\d+(?:[.,]\d+)*%$/;
 
 const TAMANHO_MINIMO_PARA_TIRAR_O_S = 4;
 /** Singular derivado menor que isto vira ruido ("mais" -> "mal" acharia "malha"). */
@@ -123,6 +129,9 @@ function formasNoPlural(palavra: string): FormaDaPalavra[] {
 
 /** Formas no singular que a palavra (JA normalizada, sem acento) pode ter. */
 function formasDaPalavra(palavra: string): FormaDaPalavra[] {
+  if (PERCENTUAL.test(palavra)) {
+    return [{ texto: palavra, palavraInteira: true }];
+  }
   if (
     palavra.length < TAMANHO_MINIMO_PARA_TIRAR_O_S ||
     !palavra.endsWith("s")
@@ -191,7 +200,13 @@ export function palavrasDaBusca(busca: string): FormaDaPalavra[][] {
     .filter(Boolean);
   const aparadas = palavras
     .flatMap((palavra) => palavra.split(/[-/]+/))
-    .map((palavra) => palavra.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, ""))
+    .map((palavra) => {
+      const semPontuacaoInicial = palavra.replace(/^[^a-z0-9]+/g, "");
+      return (
+        semPontuacaoInicial.match(PERCENTUAL_COM_PONTUACAO)?.[1] ??
+        semPontuacaoInicial.replace(/[^a-z0-9]+$/g, "")
+      );
+    })
     .filter(Boolean);
   // Sem nenhuma letra ou numero (so emoji ou simbolo) a busca segue como antes:
   // acha so quem tem aquilo no nome, nunca vira "lista inteira".
@@ -210,11 +225,23 @@ const ehLetraOuNumero = (caractere: string | undefined): boolean =>
  */
 export function formaAparece(texto: string, forma: FormaDaPalavra): boolean {
   if (!forma.palavraInteira) return texto.includes(forma.texto);
+  const percentual = PERCENTUAL.test(forma.texto);
   let posicao = texto.indexOf(forma.texto);
   while (posicao !== -1) {
     const antes = texto[posicao - 1];
     const depois = texto[posicao + forma.texto.length];
-    if (!ehLetraOuNumero(antes) && !ehLetraOuNumero(depois)) return true;
+    // "50%" não é uma palavra inteira em "1,50%" (nem em "150%").
+    const dentroDePercentual =
+      percentual &&
+      /[.,]/.test(antes ?? "") &&
+      /\d/.test(texto[posicao - 2] ?? "");
+    if (
+      !dentroDePercentual &&
+      !ehLetraOuNumero(antes) &&
+      !ehLetraOuNumero(depois)
+    ) {
+      return true;
+    }
     posicao = texto.indexOf(forma.texto, posicao + 1);
   }
   return false;

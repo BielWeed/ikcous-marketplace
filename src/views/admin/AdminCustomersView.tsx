@@ -229,9 +229,21 @@ export const AdminCustomersView = memo(function AdminCustomersView({
   // e gravar por cima (tela e cache de módulo). O padrão da casa é o
   // rodadaRef do useAvisosDoLojista.ts.
   const rodadaRef = useRef(0);
+  const termoAceitoRef = useRef("");
+
+  function aceitarTermoDeBusca(termo: string) {
+    if (termo === termoAceitoRef.current) return;
+    // A busca anterior perde a vez já na edição aceita, não 320 ms depois.
+    termoAceitoRef.current = termo;
+    rodadaRef.current += 1;
+    setLoading(true);
+    setChaveComErro(null);
+    setSearchTerm(termo);
+  }
 
   const fetchCustomers = useCallback(
     async (pageToFetch: number) => {
+      if (searchTerm !== termoAceitoRef.current) return;
       const rodada = ++rodadaRef.current;
       const chaveDaRodada = JSON.stringify([
         searchTerm,
@@ -291,8 +303,8 @@ export const AdminCustomersView = memo(function AdminCustomersView({
           setChaveComErro(null);
         }
       } catch (error) {
-        console.error("Error fetching customers:", error);
         if (rodada === rodadaRef.current) {
+          console.error("Error fetching customers:", error);
           setChaveComErro(chaveDaRodada);
           toast.error("Erro ao carregar clientes");
         }
@@ -543,7 +555,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
     sortField !== "total_spent" ||
     sortDirection !== "desc";
   const limparBuscaEOrdenacao = () => {
-    setSearchTerm("");
+    aceitarTermoDeBusca("");
     setSortField("total_spent");
     setSortDirection("desc");
     setPage(0);
@@ -634,7 +646,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
             placeholder="Buscar cliente, telefone…"
             value={searchTerm}
             onChange={(val) => {
-              setSearchTerm(val);
+              aceitarTermoDeBusca(val);
               setPage(0);
               shouldScrollToTop.current = true;
             }}
