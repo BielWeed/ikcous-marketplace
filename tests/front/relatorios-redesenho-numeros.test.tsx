@@ -186,10 +186,19 @@ it("Visão conserva os oito números e as três variações da renderização an
   ];
   expect(
     Object.fromEntries(
-      rotulos.map((r) => [
-        r,
-        numeros(texto(grupo(r))).filter((n) => n !== "30"),
-      ]),
+      rotulos.map((r) => {
+        const cartao = grupo(r);
+        if (r === "Clientes compradores") {
+          // O "1" de "1ª compra" é parte da legenda, não um indicador.
+          const total = texto(cartao?.querySelector(":scope > p") ?? null);
+          const rodape = texto(
+            cartao?.querySelector(":scope > div:last-child") ?? null,
+          );
+          const novos = rodape.match(/: (\d+)$/)?.[1];
+          return [r, [novos, total]];
+        }
+        return [r, numeros(texto(cartao)).filter((n) => n !== "30")];
+      }),
     ),
   ).toMatchSnapshot();
 });
