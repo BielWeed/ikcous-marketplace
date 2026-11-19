@@ -66,6 +66,7 @@ function Sonda({
       visao={lerVisaoDoCrm({
         kpis: {
           pedidos,
+          clientes_compradores: pedidos > 0 && comCompradores ? 2 : 0,
           ticket_medio: pedidos > 0 ? 25 : 0,
           taxa_recompra: comCompradores ? 0.5 : 0,
           receita_recorrente_pct: 0,
@@ -158,7 +159,9 @@ it("período sem venda: recompra preserva histórico mas não inventa percentual
   expect(cartao("Taxa de recompra").textContent).toContain(
     "Sem venda neste período",
   );
-  expect(host.textContent).not.toContain("0% da receita vem de quem volta");
+  expect(cartao("Taxa de recompra").textContent).not.toContain(
+    "vem de quem volta",
+  );
 });
 
 it("período sem venda e sem compradores no histórico: recompra mostra traço", async () => {
@@ -176,7 +179,28 @@ it("com venda: zero de devolução é medido e recompra histórica continua", as
     "Do valor vendido no período",
   );
   expect(cartao("Taxa de recompra").textContent).toContain("50%");
-  expect(host.textContent).toContain("0% da receita vem de quem volta");
+  expect(cartao("Taxa de recompra").textContent).toContain(
+    "0% da receita das vendas com cliente identificado vem de quem volta",
+  );
+});
+
+it("recompra não exibe percentual da receita quando só há vendas sem cliente identificado", async () => {
+  await montar(2, 0, false);
+  const texto = cartao("Taxa de recompra").textContent;
+  expect(texto).toContain("Sem vendas com cliente identificado neste período");
+  expect(texto).not.toContain("da receita");
+});
+
+it("ajuda da recompra explica que a taxa histórica só conta quem já comprou", async () => {
+  await montar(2);
+  const ajuda = cartao("Taxa de recompra").querySelector<HTMLButtonElement>(
+    'button[aria-label="Entender Taxa de recompra"]',
+  )!;
+  await act(async () => ajuda.click());
+  const dialogo = document.body.querySelector('[role="dialog"]');
+  expect(dialogo?.textContent).toContain(
+    "A taxa de recompra considera quem já comprou desde o início da loja e não muda quando você troca o período.",
+  );
 });
 
 it("devolveu tudo o que vendeu (pedidos 0, devolução 100%): mostra 100%, não 'Sem venda'", async () => {

@@ -184,7 +184,9 @@ export function VisaoGeralDoCrm({
           ? "Sem dado agora"
           : k?.pedidos === 0
             ? "Sem venda neste período"
-            : `${formatarPercentual(k.receitaRecorrentePct)} da receita vem de quem volta`,
+            : k.clientesCompradores === 0
+              ? "Sem vendas com cliente identificado neste período"
+              : `${formatarPercentual(k.receitaRecorrentePct)} da receita das vendas com cliente identificado vem de quem volta`,
     },
     {
       label: "Total já comprado por cliente (média)",
@@ -262,7 +264,8 @@ export function VisaoGeralDoCrm({
           ajuda: (
             <ExplicacaoDoRelatorio titulo="Números do período">
               Conta só venda que já foi paga, do app e do balcão. A seta compara
-              com os mesmos dias logo antes.
+              com os mesmos dias logo antes. Vendas de balcão sem cliente não
+              entram no percentual da receita de quem volta.
             </ExplicacaoDoRelatorio>
           ),
         }}
@@ -307,7 +310,9 @@ export function VisaoGeralDoCrm({
                   "Total já comprado por cliente (média)",
                 ].includes(card.label) ? (
                   <ExplicacaoDoRelatorio titulo={card.label}>
-                    {EXPLICACAO_HISTORICA}
+                    {card.label === "Taxa de recompra"
+                      ? "A taxa de recompra considera quem já comprou desde o início da loja e não muda quando você troca o período. O percentual da receita de quem volta acompanha o período escolhido."
+                      : EXPLICACAO_HISTORICA}
                   </ExplicacaoDoRelatorio>
                 ) : undefined
               }
