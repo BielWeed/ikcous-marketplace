@@ -2026,17 +2026,69 @@ O cadastro de UMA vez, na entrada do cliente:
    `instalar-chave-da-loja.yml` (script `scripts/publicacao/instalar-chave-da-loja.cjs`). Hoje o
    script aceita so IKCOUS e Savy: para a loja nova, acrescente o alvo dela ali e no workflow (mesmas
    travas) antes de rodar.
-   **Antes do primeiro acesso (inclusive o cadastro do passo 7) — NÃO ENSAIADO em loja nova:**
-   `public.store_config` nasce sem a linha `id = 1`. Sem essa linha ou sem dominio preenchido,
-   o porteiro mostra manutencao. Crie a linha `id = 1` com o dominio canonico da loja em
-   `dominio_publico`, pelo SQL Editor do projeto Supabase da loja, com o mesmo acesso
-   administrativo do passo 9. Confira que a leitura anonima de `public.v_store_config` para
-   `id = 1` responde HTTP 200 com uma unica ficha e o dominio da loja certa. Se nao der certo,
-   pare: nao abra excecao no porteiro.
+   **Antes do primeiro acesso — NÃO ENSAIADO em loja nova:** `public.store_config` nasce sem a
+   linha `id = 1`. Crie essa linha com o dominio canonico da loja em `dominio_publico`, pelo SQL
+   Editor do projeto Supabase da loja, com acesso administrativo. Confira que a
+   leitura anonima de `public.v_store_config` para `id = 1` responde HTTP 200 com uma unica ficha e
+   o dominio da loja certa. Isso prova so a ficha: **sem marca valida, a vitrine e o Cadastro
+   continuam em manutencao (HTTP 503)**. Se a ficha falhar, pare: nao abra excecao no porteiro.
 
    `public.dono_da_loja` tambem nasce vazia: sem dono cadastrado, ninguem define cargos.
    Nao promova dono automaticamente. Depois da primeira administradora (passo 8), siga o
    [roteiro para definir o dono da loja](definir-o-dono-da-loja.md).
+
+   **Passo 6A — Preparar e provar a marca da loja (antes do primeiro cadastro).**
+
+   - **Pre-requisitos:** no Supabase da loja nova, o bucket `branding` precisa estar publico
+     e `store_config.id = 1` precisa ter o dominio canonico conferido acima. Use o identificador
+     curto da loja (slug, em minusculas, com hifens se necessario). Se o projeto ja foi cadastrado
+     em `canais-de-backend.json` (passo 3), use o mesmo slug do alvo `migrations` dessa loja.
+     **Nao use `savy` nem outro alvo de loja existente como atalho.**
+   - **Kit da loja:** passe em `--valores` um JSON com `store_name` (nao vazio), as tres cores
+     `primary_color`, `secondary_color` e `accent_color` em `#RRGGBB` (a primaria nao pode
+     ser `#000000`), e `store_city` e `store_state` (use `null` se nao definidas; UF com duas
+     letras quando informada). A pasta `--kit` tem `<slug>/branding-assets.json` (versao 1) e
+     os arquivos reais em `objetos/<sha256>/<nome>`. O JSON descreve de 1 a 8 originais
+     (`originals`), logo do topo (`header`), logo de carregamento (`loader`), favicon
+     (`favicon`: PNG, SVG ou ICO), icone Apple (`apple_touch`: PNG 180 × 180), icones
+     `icon_192` e `icon_512` (PNG 192 × 192 e 512 × 512), icone com margem para recorte
+     (`maskable_512`: PNG 512 × 512) e imagem de compartilhamento (`og`: PNG 1200 × 630).
+     O utilitario confere tamanho e hash dos arquivos e monta `logo_url` pelo `header`, no
+     Storage da propria loja.
+   - **Simule primeiro.** Na raiz do repositorio, forneca no ambiente do terminal os valores do
+     projeto novo: `VITE_SUPABASE_URL` (`https://<ref>.supabase.co`), `VITE_SUPABASE_ANON_KEY`
+     (chave publica) e `SUPABASE_SERVICE_ROLE_KEY` (chave de servico, so no terminal confiavel;
+     nunca em comando, log, conversa ou no repositorio). O modo novo usa essa mesma URL para
+     banco e arquivos, nao usa `DATABASE_URL` nem o projeto linkado pelo CLI. Substitua os
+     marcadores entre aspas abaixo, usando o dominio sem `https://` e sem caminho:
+
+     ```powershell
+     node scripts/identidade-bootstrap.mjs --alvo-novo "<slug>" --ref "<ref>" --dominio "<dominio>" --kit "<pasta-do-kit>" --valores "<valores.json>"
+     ```
+
+     Prossiga so com saida 0 e plano `bootstrap` ou `nada` (identidade ja igual).
+     Se o plano for `bootstrap`, grave com os mesmos valores e um caminho novo para o relatorio:
+
+     ```powershell
+     node scripts/identidade-bootstrap.mjs --alvo-novo "<slug>" --ref "<ref>" --dominio "<dominio>" --kit "<pasta-do-kit>" --valores "<valores.json>" --aplicar --saida "<relatorio-novo.json>"
+     ```
+
+     Espere saida 0 e `prova: "ok"` para uma gravacao nova. A ferramenta so grava a identidade
+     depois que os arquivos podem ser lidos publicamente. Se der erro, pare e confira o estado
+     antes de repetir; o erro de prova pode ocorrer depois de a identidade ja ter sido gravada.
+   - **Prove no dominio real**, numa janela anonima nova, sem login e sem cache antigo:
+     1. Abra a vitrine e, a partir dela, a tela de **Cadastro**. As duas devem abrir com a marca
+        certa, sem a mensagem de manutencao.
+     2. Abra `/identidade.json` no mesmo dominio. Confira `host`, `identidade.publicUrl` e
+        `identidade.identity.storeName`, e compare `identidade.identity.projectRef` e
+        `conexao.supabaseUrl` com o projeto novo. Nao copie a ficha inteira para o relatorio.
+     3. Abra `/manifest.webmanifest`: deve devolver JSON, nao uma pagina HTML. Abra todas as
+        URLs `icons[].src` (relativas ao dominio, se for o caso) e confirme que carregam as
+        imagens da marca nova.
+
+     **Se qualquer uma dessas provas falhar, nao entregue o dominio e nao peca o primeiro
+     cadastro.** Abrir a vitrine e o Cadastro nao libera vendas: o aceite de vendas do
+     passo 11 continua separado.
 
 7. **E-mail do primeiro cadastro (antes da entrega; faca ANTES do passo 8):** o codigo que a
    `send-otp-email` manda e' o do PEDIDO (exige e-mail, whatsapp e fragmento do pedido,
@@ -2058,8 +2110,9 @@ O cadastro de UMA vez, na entrada do cliente:
    nao sai. `ativar` PARA com "Gmail ainda nao cadastrado no painel" enquanto isso faltar
    (`ativar-email-do-login.cjs:327-328`). NAO desligue a confirmacao por e-mail para "resolver": isso
    e' decisao de produto, nao deste roteiro.
-   (c) **Prova:** um cadastro real, pelo app da loja nova, com um e-mail FORA da equipe do projeto
-   Supabase (sem remetente proprio o envio padrao so entrega para a equipe). O e-mail tem de chegar e a
+   (c) **Prova (so depois do passo 6A):** um cadastro real, pelo app da loja nova, com um e-mail
+   FORA da equipe do projeto Supabase (sem remetente proprio o envio padrao so entrega para a equipe).
+   O e-mail tem de chegar e a
    confirmacao tem de abrir. O e-mail da futura administradora (passo 8) serve, se ela nao for da
    equipe; nao o copie para este repositorio nem para o relatorio.
 8. **Primeira administradora (sem isto o painel recusa todo mundo e o dono da loja nao pode ser
@@ -2093,7 +2146,7 @@ O cadastro de UMA vez, na entrada do cliente:
    `docs/runbooks/definir-o-dono-da-loja.md`, secao 3.3: tela diferente ou erro = pare e avise so o
    numero da tela, sem copiar a mensagem). Uma tela por vez:
 
-   **Tela P0. A conta existe.** Ela se cadastra no app da loja nova (tela de Cadastro) e confirma
+   **Tela P0. A conta existe.** Com a marca aprovada no passo 6A, ela se cadastra na tela de Cadastro e confirma
    o e-mail (passo 7). Deu certo se ela consegue entrar na loja. Se o e-mail de confirmacao nao chega,
    **pare e avise "Tela P0"**: o passo 7 nao esta pronto.
 
