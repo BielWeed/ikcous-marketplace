@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
 //
-// "Limite de uso" é uma coluna inteira: 2.5 ou 3000000000 passavam pela tela e
-// só quebravam (ou eram arredondados) no banco. Agora a tela recusa antes de
-// salvar, com a frase "O limite de uso precisa ser um número inteiro".
+// O limite chega inteiro ao banco. A tela aceita a colagem de milhares em
+// pt-BR e recusa números fracionários, malformados ou acima do teto.
 import type { Coupon } from "@/types";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -32,7 +31,7 @@ vi.mock("sonner", () => ({ toast }));
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const MENSAGEM = "O limite de uso precisa ser um número inteiro";
+const MENSAGEM = "Digite só números inteiros, por exemplo 1000 ou 1.000.";
 
 describe("AdminCouponFormView: limite de uso inteiro", () => {
   let raiz: Root;
@@ -60,7 +59,7 @@ describe("AdminCouponFormView: limite de uso inteiro", () => {
     hospedeiro.remove();
   });
 
-  async function limiteESalvar(texto: string) {
+  async function limiteESalvar(texto: string, sairDoCampo = true) {
     const { AdminCouponFormView } = await import(
       "@/views/admin/AdminCouponFormView"
     );
@@ -77,8 +76,16 @@ describe("AdminCouponFormView: limite de uso inteiro", () => {
     await act(async () => {
       campo.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
       setter?.call(campo, texto);
-      campo.dispatchEvent(new Event("input", { bubbles: true }));
-      campo.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+      campo.dispatchEvent(
+        new InputEvent("input", {
+          bubbles: true,
+          data: texto,
+          inputType: "insertFromPaste",
+        }),
+      );
+      if (sairDoCampo) {
+        campo.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+      }
     });
     const salvar = Array.from(document.body.querySelectorAll("button")).find(
       (b) => (b.textContent ?? "").includes("Salvar Cupom"),
@@ -98,6 +105,36 @@ describe("AdminCouponFormView: limite de uso inteiro", () => {
       expect(updateCoupon).not.toHaveBeenCalled();
     });
   }
+
+  it("salva 1.000 colado como mil usos, não como um uso", async () => {
+    await limiteESalvar("1.000");
+
+    expect(updateCoupon).toHaveBeenCalledTimes(1);
+    expect(updateCoupon.mock.calls[0][1].usageLimit).toBe(1000);
+    const campo = hospedeiro.querySelector<HTMLInputElement>(
+      "#coupon-usage-limit",
+    );
+    expect(campo?.value).toMatch(/^1\.?000$/);
+  });
+
+  it("mantém o texto decimal visível e orienta a corrigir antes de salvar", async () => {
+    await limiteESalvar("1.5");
+
+    expect(updateCoupon).not.toHaveBeenCalled();
+    expect(
+      hospedeiro.querySelector("#coupon-usage-limit-erro")?.textContent,
+    ).toBe(MENSAGEM);
+    expect(
+      hospedeiro.querySelector<HTMLInputElement>("#coupon-usage-limit")?.value,
+    ).toBe("1.5");
+  });
+
+  it("valida a colagem mesmo se Salvar for acionado sem sair do campo", async () => {
+    await limiteESalvar("1.5", false);
+
+    expect(updateCoupon).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith(MENSAGEM);
+  });
 
   it("aceita um inteiro dentro da faixa", async () => {
     await limiteESalvar("50");

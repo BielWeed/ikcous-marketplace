@@ -1,12 +1,8 @@
 // @vitest-environment jsdom
 //
-// Num campo de número, texto pela metade ("1e", "-") faz o navegador entregar
-// value "" com `validity.badInput`. O Number("") dava 0, e 0 em "Limite de uso"
-// quer dizer ILIMITADO (em "Mínimo de compra", sem mínimo): um cupom de 10%
-// limitado a 1 uso era salvo ilimitado, com "Cupom atualizado". Agora número
-// incompleto BARRA o salvar e avisa no campo. Zero digitado de propósito e
-// campos apagados de propósito (sem badInput) continuam valendo: vazio no
-// mínimo, agora texto pt-BR, também significa sem mínimo, não número inválido.
+// Um número incompleto não pode virar zero ao salvar. No limite, agora
+// campo de texto, "1e" permanece visível e é recusado. Zero e vazio de
+// propósito continuam significando sem limite ou sem mínimo.
 import type { Coupon } from "@/types";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -117,7 +113,7 @@ describe("AdminCouponFormView: número incompleto não vira zero", () => {
     });
   }
 
-  for (const c of ["usageLimit", "minPurchase", "value"] as const) {
+  for (const c of ["minPurchase", "value"] as const) {
     it(`${c}: texto incompleto (badInput) não salva e avisa no campo`, async () => {
       await abrirTela("c1");
       await digitar(c, "", true);
@@ -138,9 +134,15 @@ describe("AdminCouponFormView: número incompleto não vira zero", () => {
 
   it("o limite de 1 uso não vira ilimitado: depois de corrigir, salva o número certo", async () => {
     await abrirTela("c1");
-    await digitar("usageLimit", "", true);
+    await digitar("usageLimit", "1e");
     await salvar();
     expect(updateCoupon).not.toHaveBeenCalled();
+    expect(campo("usageLimit").value).toBe("1e");
+    expect(toast.error).toHaveBeenCalledWith(
+      "Digite só números inteiros, por exemplo 1000 ou 1.000.",
+    );
+    expect(campo("usageLimit").getAttribute("aria-invalid")).toBe("true");
+    expect(document.activeElement).toBe(campo("usageLimit"));
 
     await digitar("usageLimit", "3");
     expect(hospedeiro.querySelector("#coupon-usage-limit-erro")).toBeNull();
@@ -172,7 +174,7 @@ describe("AdminCouponFormView: número incompleto não vira zero", () => {
 
   it("os três incompletos: avisa um campo por vez, na ordem da tela", async () => {
     await abrirTela("c1");
-    await digitar("usageLimit", "", true);
+    await digitar("usageLimit", "1e");
     await digitar("minPurchase", "", true);
     await digitar("value", "", true);
     await salvar();

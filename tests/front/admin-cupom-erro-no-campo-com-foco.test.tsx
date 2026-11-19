@@ -296,8 +296,8 @@ describe("AdminCouponFormView: recusa do Salvar marca o campo e leva o foco", ()
   });
 
   it.each([
-    ["-1", "O limite de uso não pode ser negativo."],
-    ["2.5", "O limite de uso precisa ser um número inteiro"],
+    ["-1", "Digite só números inteiros, por exemplo 1000 ou 1.000."],
+    ["2.5", "Digite só números inteiros, por exemplo 1000 ou 1.000."],
     ["3000000000", "O limite de uso pode ir até 2.000.000.000"],
   ])("limite de uso %s: foco e marca no limite", async (texto, frase) => {
     await abrirTela();

@@ -37,6 +37,7 @@ import {
 import { porcentagem } from "@/lib/cupons-do-checkout";
 import { parseValorBR } from "@/lib/financeiro";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
+import { lerLimiteDeUsosDoCupom } from "@/lib/limite-de-usos-do-cupom";
 import { pluralizar } from "@/lib/pluralizar";
 import {
   PRAZO_DA_CONSULTA_DO_PAINEL_MS,
@@ -130,17 +131,11 @@ const AVISO_NUMERO_INCOMPLETO =
   "Número incompleto: termine de digitar ou apague o campo.";
 
 /**
- * Campos na ordem da tela: percentual e limite de uso ainda são numéricos.
- * Texto pela metade ("1e", "-") deixa o value vazio, com `validity.badInput`;
- * Number("") dava 0 (ilimitado no limite de uso). Confere o navegador NA HORA
- * de salvar. Os campos de dinheiro agora são texto: parseValorBR e a recusa
- * de NaN abaixo protegem inválidos; mínimo apagado de propósito significa zero.
+ * No campo numérico, texto pela metade ("1e", "-") pode deixar o value vazio
+ * com `validity.badInput`; confira o navegador NA HORA de salvar. Campos de
+ * texto são validados pelo conteúdo, não pela conversão nativa do navegador.
  */
-const CAMPOS_DE_NUMERO: readonly CampoDoCupom[] = [
-  "value",
-  "minPurchase",
-  "usageLimit",
-];
+const CAMPOS_DE_NUMERO: readonly CampoDoCupom[] = ["value", "minPurchase"];
 
 const numeroDigitadoIncompleto = (campo: CampoDoCupom): boolean =>
   (document.getElementById(idDoCampo(campo)) as HTMLInputElement | null)
@@ -222,6 +217,8 @@ function FormularioDoCupom({
   // Inválido permanece visível e vira NaN; só no mínimo vazio significa zero.
   const [textoValorFixo, setTextoValorFixo] = useState<string | null>(null);
   const [textoMinimo, setTextoMinimo] = useState<string | null>(null);
+  const [textoLimite, setTextoLimite] = useState<string | null>(null);
+  const limiteDigitadoRef = useRef<string | null>(null);
   // Validade que já passou: pergunta antes de salvar (como o editor de banner).
   const [confirmarVencido, setConfirmarVencido] = useState(false);
   const vencidoConfirmadoRef = useRef(false);
@@ -289,6 +286,9 @@ function FormularioDoCupom({
     alcance: "codigo",
   });
 
+  const textoDoLimite = textoLimite ?? String(formData.usageLimit || "");
+  const limiteDeUsos = lerLimiteDeUsosDoCupom(textoDoLimite);
+
   // Laudo 0109 (A4): a decisão editar×criar MORAVA na lista carregada
   // (`coupons.find`) — o fetch falhou, o salvamento virava INSERT, a
   // constraint de código único recusava, e trocando o código para
@@ -345,10 +345,8 @@ function FormularioDoCupom({
         Number(formData.minPurchase) !== 0
           ? formData.minPurchase
           : carregado.minPurchase,
-      usageLimit:
-        Number(formData.usageLimit) !== 0
-          ? formData.usageLimit
-          : carregado.usageLimit,
+      // Edições do limite ficam no rascunho de texto, não no dado carregado.
+      usageLimit: carregado.usageLimit,
       validUntil:
         formData.validUntil !== undefined
           ? formData.validUntil
@@ -438,14 +436,14 @@ function FormularioDoCupom({
       formData.type !== initialData.type ||
       Number(formData.value) !== Number(initialData.value) ||
       formData.active !== initialData.active ||
-      Number(formData.usageLimit) !== Number(initialData.usageLimit) ||
+      limiteDeUsos !== initialData.usageLimit ||
       Number(formData.minPurchase) !== Number(initialData.minPurchase) ||
       formData.validUntil !== initialData.validUntil ||
       formData.alcance !== initialData.alcance ||
       clientesMudaram;
 
     onSetDirty(isDirty);
-  }, [formData, initialData, onSetDirty, clientesMudaram]);
+  }, [formData, initialData, onSetDirty, clientesMudaram, limiteDeUsos]);
 
   const handleSubmit = async () => {
     // "Salvar mesmo assim" vale só para ESTA chamada: lida e zerada antes de
@@ -477,7 +475,6 @@ function FormularioDoCupom({
 
     const value = formData.value ?? 0;
     const minPurchase = formData.minPurchase ?? 0;
-    const usageLimit = formData.usageLimit ?? 0;
 
     if (value <= 0) {
       recusarCampo("value", "O valor do desconto deve ser maior que zero.");
@@ -554,21 +551,18 @@ function FormularioDoCupom({
       return;
     }
 
-    if (usageLimit < 0) {
-      recusarCampo("usageLimit", "O limite de uso não pode ser negativo.");
-      return;
-    }
-
-    // A coluna é inteira (até ~2,1 bilhões): 2.5 ou 3000000000 seriam recusados
-    // ou arredondados pelo banco depois do aviso de sucesso.
-    if (!Number.isInteger(usageLimit)) {
+    // O clique em Salvar pode chegar antes de o campo enviar o texto ao pai.
+    const usageLimit = lerLimiteDeUsosDoCupom(
+      limiteDigitadoRef.current ?? textoDoLimite,
+    );
+    if (usageLimit === "formato") {
       recusarCampo(
         "usageLimit",
-        "O limite de uso precisa ser um número inteiro",
+        "Digite só números inteiros, por exemplo 1000 ou 1.000.",
       );
       return;
     }
-    if (usageLimit > 2_000_000_000) {
+    if (usageLimit === "teto") {
       recusarCampo("usageLimit", "O limite de uso pode ir até 2.000.000.000");
       return;
     }
@@ -625,7 +619,7 @@ function FormularioDoCupom({
     // validade...) pode ter sido mudado em outro aparelho — mandar o
     // formulário inteiro desfazia isso e a tela dizia "Cupom atualizado".
     // Cupom novo manda tudo.
-    const remendoAtual = remendoDoCupom(formData, cleanCode);
+    const remendoAtual = remendoDoCupom({ ...formData, usageLimit }, cleanCode);
     const { validUntil: validadeMexida, ...mexidos } = couponId
       ? camposQueMudaram(remendoAtual, remendoDoCupom(lido, lido.code ?? ""))
       : {};
@@ -649,6 +643,7 @@ function FormularioDoCupom({
         }
       : {
           ...semAlcance,
+          usageLimit,
           code: cleanCode,
           ...(alcanceMudou ? { alcance } : {}),
         };
@@ -1206,18 +1201,20 @@ function FormularioDoCupom({
                   <LocalBufferedInput
                     id="coupon-usage-limit"
                     name="usageLimit"
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
                     autoComplete="off"
-                    min={0}
-                    value={formData.usageLimit || ""}
-                    onInput={() => limparErroDe("usageLimit")}
+                    value={textoDoLimite}
+                    onInput={(e) => {
+                      limiteDigitadoRef.current = e.currentTarget.value;
+                      limparErroDe("usageLimit");
+                    }}
                     {...ariaDoErro("usageLimit")}
-                    onFlush={(val) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        usageLimit: Number(val),
-                      }))
-                    }
+                    onFlush={(val) => {
+                      // Sair sem digitar não substitui o valor vindo do banco.
+                      if (val === limiteDigitadoRef.current)
+                        setTextoLimite(val);
+                    }}
                     useShadcn={true}
                     disabled={isOffline || isSubmitting}
                     placeholder="0 = Ilimitado"
@@ -1401,9 +1398,9 @@ function FormularioDoCupom({
                   }}
                   buscarClientes={buscarClientesParaCupom}
                   semLimiteNemValidade={
-                    !formData.validUntil && !Number(formData.usageLimit)
+                    !formData.validUntil && limiteDeUsos === 0
                   }
-                  semLimiteDeUso={!Number(formData.usageLimit)}
+                  semLimiteDeUso={limiteDeUsos === 0}
                   desabilitado={isOffline || isSubmitting}
                   erro={erroDe("clientes")}
                   regiaoId={ID_DA_REGIAO_DE_CLIENTES}
