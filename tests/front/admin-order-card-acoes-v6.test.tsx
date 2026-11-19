@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { AdminOrderCard } from "@/components/admin/orders/AdminOrderCard";
+import { mapOrderFromDB } from "@/lib/mappers";
 import { textoCancelamentoDoPainel } from "@/lib/texto-cancelamento-do-painel";
 import type { Order } from "@/types";
 import { act } from "react";
@@ -96,6 +97,50 @@ afterEach(() => {
   host.remove();
   vi.useRealTimers();
   vi.restoreAllMocks();
+});
+
+it.each([
+  ["processing", "aguardando", "pix", "2000-01-01T00:00:00Z", true],
+  ["shipping", "aguardando", "pix", "2000-01-01T00:00:00Z", true],
+  ["delivered", "aguardando", "pix", "2000-01-01T00:00:00Z", false],
+  ["processing", "pago", "pix", "2000-01-01T00:00:00Z", false],
+  ["processing", "aguardando", "credito", "2000-01-01T00:00:00Z", false],
+  ["pending", "aguardando", "pix", "2000-01-01T00:00:00Z", false],
+  ["processing", "aguardando", "pix", "2099-01-01T00:00:00Z", false],
+] as const)(
+  "aviso de Pix: %s, %s, %s, criado em %s",
+  (status, paymentStatus, metodoOnline, createdAt, mostraAviso) => {
+    montar(pedido({ status, paymentStatus, metodoOnline, createdAt }));
+    expect(host.textContent?.includes("O Pix deste pedido venceu")).toBe(
+      mostraAviso,
+    );
+  },
+);
+
+it("usa o vencimento gravado na cobrança, não a idade do pedido", () => {
+  const linha = {
+    id: "pedido-abc123",
+    status: "processing",
+    payment_method: "online",
+    payment_status: "aguardando",
+    metodo_online: "pix",
+    created_at: "2000-01-01T00:00:00Z",
+    expires_at: "2099-01-01T00:00:00Z",
+  } as Parameters<typeof mapOrderFromDB>[0];
+  montar(mapOrderFromDB(linha));
+  expect(host.textContent).not.toContain("O Pix deste pedido venceu");
+
+  montar(mapOrderFromDB({ ...linha, expires_at: "2000-01-01T00:30:00Z" }));
+  expect(host.textContent).toContain("O Pix deste pedido venceu");
+});
+
+it("explica a reserva antes de avançar um pedido no Pix", async () => {
+  montar(pedido({ paymentStatus: "aguardando", metodoOnline: "pix" }));
+  await clicar("Avançar mesmo assim");
+  expect(document.body.textContent).toContain(
+    "O estoque e o cupom ficam reservados até você cancelar o pedido ou o Pix ser pago.",
+  );
+  expect(avancar).not.toHaveBeenCalled();
 });
 
 it("a leitura segue status, identificação, cliente/produto, total/pagamento e ação; o nome longo não corta", () => {

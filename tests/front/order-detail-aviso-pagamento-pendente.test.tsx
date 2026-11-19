@@ -172,6 +172,37 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
     vi.restoreAllMocks();
   });
 
+  it.each([
+    ["processing", "aguardando", "pix", "2000-01-01T00:00:00Z", true],
+    ["shipping", "aguardando", "pix", "2000-01-01T00:00:00Z", true],
+    ["delivered", "aguardando", "pix", "2000-01-01T00:00:00Z", false],
+    ["processing", "pago", "pix", "2000-01-01T00:00:00Z", false],
+    ["processing", "aguardando", "credito", "2000-01-01T00:00:00Z", false],
+    ["pending", "aguardando", "pix", "2000-01-01T00:00:00Z", false],
+    ["processing", "aguardando", "pix", "2099-01-01T00:00:00Z", false],
+  ] as const)(
+    "aviso de Pix: %s, %s, %s, criado em %s",
+    async (status, paymentStatus, metodoOnline, createdAt, mostraAviso) => {
+      const { OrderDetail } = await import(
+        "@/components/admin/orders/OrderDetail"
+      );
+      const order: Order = {
+        ...pedidoFake(paymentStatus),
+        status,
+        paymentMethod: "online",
+        metodoOnline,
+        createdAt,
+      };
+
+      await act(async () => {
+        raiz.render(<OrderDetail order={order} onStatusChange={vi.fn()} />);
+      });
+      expect(
+        hospedeiro.textContent?.includes("O Pix deste pedido venceu"),
+      ).toBe(mostraAviso);
+    },
+  );
+
   it("mostra 'Aguardando pagamento' UMA vez, na seção Pagamento (redesenho 08/10/2026: o selo saiu do cabeçalho e da caixa 'Como vai ser pago')", async () => {
     const { OrderDetail } = await import(
       "@/components/admin/orders/OrderDetail"
@@ -211,7 +242,11 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
     const { OrderDetail } = await import(
       "@/components/admin/orders/OrderDetail"
     );
-    const order = pedidoFake("aguardando");
+    const order: Order = {
+      ...pedidoFake("aguardando"),
+      paymentMethod: "online",
+      metodoOnline: "pix",
+    };
     const onStatusChange = vi.fn();
 
     await act(async () => {
@@ -237,6 +272,9 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
     // venda se registra na tela Vender (nomes-do-painel.ts, admin-pdv).
     expect(hospedeiro.textContent).toContain(
       "Se a cliente pagou na loja, feche este aviso, cancele o pedido (botão Cancelar pedido) e registre a venda em Vender.",
+    );
+    expect(hospedeiro.textContent).toContain(
+      "O estoque e o cupom ficam reservados até você cancelar o pedido ou o Pix ser pago.",
     );
     expect(hospedeiro.textContent).not.toContain("balcão");
     expect(onStatusChange).not.toHaveBeenCalled();

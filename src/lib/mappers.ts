@@ -345,6 +345,7 @@ export function mapOrderFromDB(
     // Fiel à coluna: `null` continua `null`, não vira "sem_cobranca" aqui.
     // Quem traduz é o PaymentStatusBadge (src/components/admin/orders/OrderStatusBadge.tsx).
     paymentStatus: row.payment_status as PaymentStatus | null,
+    ...(row.expires_at ? { expiraEm: row.expires_at } : {}),
     status: (row.status as OrderStatus) || "pending",
     notes: row.notes || undefined,
     couponCode: row.coupon_code || undefined,
