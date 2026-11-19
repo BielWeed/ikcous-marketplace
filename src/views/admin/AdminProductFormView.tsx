@@ -7065,9 +7065,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               )}
               {renomearPendente?.emPedidos && (
                 <span className="block">
-                  {renomearPendente.todasAsOpcoes
-                    ? "Os pedidos já feitos continuam mostrando o nome anterior de cada opção."
-                    : "Os pedidos já feitos continuam mostrando o nome anterior. Se for outro tamanho ou outra cor, crie uma variação nova e desligue esta."}
+                  Os pedidos já feitos continuam mostrando, no painel e na conta
+                  da cliente, o nome anterior.
                 </span>
               )}
             </AlertDialogDescription>

@@ -44,6 +44,28 @@ async function conferirPortao(c, nome, positivo) {
   );
 }
 
+async function provarUpsert(c) {
+  const comprado = await item(c, OUTRA);
+  // Mesmo tipo de escrita de useProducts: a opção já existe, então grava pelo id.
+  const { rows: opcoes } = await c.query(
+    `INSERT INTO public.product_variants (id, product_id, name, value)
+     VALUES ($1, $2, 'Tom', 'Esmeralda')
+     ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, value = EXCLUDED.value
+     RETURNING name, value`,
+    [OUTRA, PRODUTO],
+  );
+  assert.deepEqual(opcoes, [{ name: "Tom", value: "Esmeralda" }]);
+
+  const {
+    rows: [rotulo],
+  } = await c.query(
+    `SELECT variacao_nome_na_compra AS n, variacao_valor_na_compra AS v
+       FROM public.marketplace_order_items WHERE id = $1`,
+    [comprado],
+  );
+  assert.deepEqual(rotulo, { n: "Cor", v: "Verde" });
+}
+
 async function provas(c) {
   const { rows: corpos } = await c.query(
     `SELECT oid, prosrc FROM pg_proc WHERE pronamespace = 'public'::regnamespace
@@ -124,6 +146,26 @@ async function provas(c) {
   console.log(
     "[2060] reaplicar 2x não perde o histórico; segunda troca só grava a compra nova",
   );
+
+  // O mutante fica só no banco descartável e não contamina a prova normal.
+  await c.query("SAVEPOINT mutante_upsert");
+  try {
+    await c.query(
+      `ALTER TABLE public.product_variants
+       DISABLE TRIGGER tr_product_variants_guarda_rotulo_no_pedido`,
+    );
+    await assert.rejects(provarUpsert(c), {
+      code: "ERR_ASSERTION",
+      actual: { n: null, v: null },
+      expected: { n: "Cor", v: "Verde" },
+    });
+    console.log("[2060] upsert sem gatilho: o item fica sem o nome e o valor");
+  } finally {
+    await c.query("ROLLBACK TO SAVEPOINT mutante_upsert");
+    await c.query("RELEASE SAVEPOINT mutante_upsert");
+  }
+  await provarUpsert(c);
+  console.log("[2060] upsert com gatilho: o item guarda Cor / Verde");
 
   const semRetrato = await item(c);
   await c.query(

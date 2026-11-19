@@ -215,8 +215,18 @@ describe("AdminProductFormView — renomear tipo ou valor reaproveita a variaç�
     });
 
   /** Salva a janela da variação e, se aparecer o aviso de troca, diz "sim". */
-  async function salvarVariacaoComSim() {
+  async function salvarVariacaoComSim(conferirAviso = false) {
     await clicar("Salvar variação");
+    if (conferirAviso) {
+      const aviso = document.querySelector('[role="alertdialog"]');
+      expect(
+        [...(aviso?.querySelectorAll("span") ?? [])].map((el) =>
+          el.textContent?.trim(),
+        ),
+      ).toContain(
+        "Os pedidos já feitos continuam mostrando, no painel e na conta da cliente, o nome anterior.",
+      );
+    }
     if (botaoComTexto("Trocar o nome")) await clicar("Trocar o nome");
   }
 
@@ -242,7 +252,7 @@ describe("AdminProductFormView — renomear tipo ou valor reaproveita a variaç�
     await renomearTipo("Cores");
     // Trocar a peça do tipo limpa o valor: ela o digita de novo.
     await digitarCampo("variant-value", "P");
-    await salvarVariacaoComSim();
+    await salvarVariacaoComSim(true);
 
     expect(mocks.toastError).not.toHaveBeenCalled();
     expect(naLista()).toEqual(["Cores: P", "Cores: M", "Cores: G"]);
@@ -272,7 +282,7 @@ describe("AdminProductFormView — renomear tipo ou valor reaproveita a variaç�
 
     await editar("P");
     await digitarCampo("variant-value", "Pequeno");
-    await salvarVariacaoComSim();
+    await salvarVariacaoComSim(true);
 
     expect(mocks.toastError).not.toHaveBeenCalled();
     expect(naLista()).toEqual(["Cor: Pequeno", "Cor: M", "Cor: G"]);
