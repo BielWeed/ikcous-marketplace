@@ -87,12 +87,13 @@ para o cliente), só que por WhatsApp em vez de e-mail.
 
 ## Ela está morta, e não por acidente
 
-Ela consulta `store_config.whatsapp_api_url`, `whatsapp_api_key` e
-`whatsapp_api_instance`. **As três colunas não existem.** O `configError` sobe,
-cai no catch, e a função devolve **500 em toda invocação**.
+A função não consulta `store_config.whatsapp_api_url`, `whatsapp_api_key` nem
+`whatsapp_api_instance`: as três colunas foram removidas. Quando uma chamada
+chega à etapa de configuração, a função devolve **503 — "WhatsApp não
+configurado nesta loja."**, sem tentar enviar.
 
 O motivo está no repositório, e a reconciliação do ledger (#42/#112) o encontrou:
-`supabase/migrations/20260601000001_remove_whatsapp_infrastructure.sql` **está
+`supabase/migrations/_arquivadas/20260601000001_remove_whatsapp_infrastructure.sql` **está
 aplicada**, e faz exatamente isto:
 
 ```sql

@@ -162,9 +162,11 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
    respondia `{ success: true }` para 100% de falha (PUSH-010, #80).
 
 2. Configurar os segredos (Secrets) no Supabase Dashboard para a função:
-   - `VAPID_PUBLIC_KEY`: Gerada no `vapid_keys.json`. **Tem de ser a mesma chave
-     que o front usa em `VITE_VAPID_PUBLIC_KEY`** — se as duas divergirem, o
-     navegador aceita a inscrição e o push service devolve 403 na entrega.
+   - `VAPID_PUBLIC_KEY`: Gerada no `vapid_keys.json`. Em produção, cadastre a
+     mesma chave pública em `public.store_config.vapid_public_key` (`id = 1`)
+     no banco da própria loja: é daí que o front recebe a chave. Siga o
+     passo de chaves VAPID do [runbook de produção](docs/runbooks/producao-unica-fonte.md).
+     `VITE_VAPID_PUBLIC_KEY` só vale no desenvolvimento local, sem porteiro.
    - `VAPID_PRIVATE_KEY`: Gerada no `vapid_keys.json`.
    - `VAPID_SUBJECT` (opcional): contato que o push service usa para avisar de
      problema com a aplicação, no formato `mailto:...` ou `https://...`. Sem
@@ -268,7 +270,7 @@ regra inteira está na §5.2.1 — leia-a antes de mexer em qualquer linha `MP_`
 | `MP_ACCESS_TOKEN` | Supabase → Edge Functions → Secrets | **RESERVA desde 15/09/2026**: só é usado quando o lojista NÃO cadastrou chave na tela (§5.2.1). O prefixo NÃO indica ambiente na Orders API (teste e produção começam com `APP_USR`, ver 5.1) — pegue-o na aba "Credenciais de teste" do painel; **nunca** com prefixo `VITE_`, senão vaza no bundle |
 | `MP_CHAVES_ENCRYPTION_KEY` | Supabase → Edge Functions → Secrets | **o COFRE**: 32 bytes em base64 (AES-256-GCM) com que a edge `credenciais-mercado-pago` cifra e decifra a chave do lojista em `app_settings`. Sem ele a tela não salva nem testa, e **a loja que já cadastrou chave para de cobrar** — é falha fechada de propósito (§5.2.1). Nunca com prefixo `VITE_`; nunca no banco (lá só moram ciphertext e iv). Trocá-lo torna ilegível o que já estava guardado: o lojista precisa colar as chaves de novo |
 | `MP_SANDBOX_PAYER_EMAIL` | Supabase → Edge Functions → Secrets | **opcional**, só faz sentido em ambiente de TESTE. Presente (e não vazia), `criar-pagamento` troca o e-mail do pagador do PIX por este valor e liga `payer.first_name = "APRO"` — o valor mágico que a doc de teste de PIX do MP exige para a order simular o fluxo completo. Desde 13/08/2026 uma string vazia já se comporta como ausente (achado de revisão: CHECKOUT-070), mas a forma CERTA de desligar o sandbox continua sendo **apagar o secret**, não deixar o campo em branco — é a única sem margem para engano |
-| `MP_WEBHOOK_SECRET` | Supabase → Secrets | a assinatura secreta do 5.1, também **RESERVA**: vale quando o lojista não cadastrou chave nenhuma e — sozinha entre as duas — também quando ele cadastrou o token mas deixou a "Chave de notificações" vazia (o campo é opcional na tela). Sem essa segunda reserva, notificação legítima viraria `401` e o pedido pago ficaria "aguardando" até expirar. O TOKEN não tem reserva nenhuma (§5.2.1) |
+| `MP_WEBHOOK_SECRET` | Supabase → Secrets | a assinatura secreta do 5.1, usada quando a origem das credenciais é a plataforma (§5.2.1). **Não substitui a Chave de notificações do lojista**: se ele cadastrou o token mas não tem chave de notificações própria, `criar-pagamento` recusa novas cobranças Pix ou cartão (`409`) e `webhook-mercadopago` devolve `500` para o Mercado Pago reenviar a notificação. Cadastre a chave própria da loja em Ajustes |
 | `RECONCILIACAO_SECRET` | Supabase → Secrets | **tem de bater** com o segredo homônimo no Vault |
 | `SUPABASE_ACCESS_TOKEN` | GitHub → Settings → Secrets and variables → Actions | **só para o workflow `publicar-functions`** (§5.3.2): token pessoal da conta do Supabase (avatar → Account → Access Tokens). Vale para **todos** os projetos da conta, não só a loja — por isso o workflow tem destino fechado (`ikcous-publicada`, `savy`, `sandbox` ou `loja`; `ikcous-publicada` e `savy` usam cada um o seu segredo próprio) e imprime o ref antes de publicar. Nunca em `.env`, nunca no código, nunca em Supabase → Secrets (lá não serve para nada). Revogar: na mesma página do Supabase; a partir daí o workflow falha no passo "Confere o segredo", antes de tocar em qualquer coisa |
 
@@ -290,7 +292,7 @@ quatro functions que falam com o Mercado Pago: `criar-pagamento`, `webhook-merca
 | o que existe no banco (`app_settings`, chave `pagamentos_mercado_pago`) | origem | o que acontece |
 | --- | --- | --- |
 | nenhum cadastro do lojista — ou registro pela metade, sem token cifrado | `ambiente` | usa `MP_ACCESS_TOKEN`/`MP_WEBHOOK_SECRET` dos secrets — o comportamento de sempre, para a loja que ainda roda pelas chaves da plataforma |
-| cadastro com token cifrado, cofre no lugar | `lojista` | decifra e cobra na conta **do lojista** |
+| cadastro com token cifrado, cofre no lugar | `lojista` | decifra o token; novas cobranças na conta **do lojista** exigem chave de notificações própria |
 | cadastro presente, mas `MP_CHAVES_ENCRYPTION_KEY` ausente/trocada ou ciphertext ilegível | `indisponivel` | **falha fechada: ninguém cobra.** Nunca cai no token da plataforma |
 | a leitura de `app_settings` falhou | `indisponivel` | também fecha — na dúvida sobre existir chave do lojista, usar a da plataforma é justamente o risco abaixo |
 
@@ -305,8 +307,8 @@ O que aparece quando fecha, por function: `criar-pagamento` responde `503` com
 credencial voltar ao lugar; `reconciliar-pagamentos` não chama o MP sem chave e conta cada
 candidato como `falhas`; `estornar-pagamento` recusa a devolução com recado ao lojista. Nos logs
 saem apenas `origem` e `motivo` (`cofre_ausente`, `token_ilegivel`, `registro_ilegivel`,
-`ambiente_sem_token`, e `webhook_ilegivel` para o segredo de notificação, que sozinho não
-derruba a cobrança) — **nenhum token, nenhum segredo, nunca**.
+`ambiente_sem_token`, e `webhook_ilegivel` para o segredo de notificação, que não invalida
+um token legível, mas impede novas cobranças do lojista) — **nenhum token, nenhum segredo, nunca**.
 
 **O pagamento pelo app liga SOZINHO (30/09/2026).** Em *Ajustes > Pagamentos > Mercado Pago* o
 lojista cola as três chaves (Public Key, Access Token e a Chave de notificações — a assinatura

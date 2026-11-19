@@ -42,7 +42,7 @@ Para simplificar e unificar a validação do projeto, o script portátil `Verifi
 2. **ESLint (Frontend):** Roda a verificação de regras e boas práticas do React/TypeScript.
 3. **TypeScript Typecheck:** Valida a consistência de tipos estáticos do frontend.
 4. **Deno Lint (Edge Functions):** Valida boas práticas de sintaxe e código Deno no diretório `supabase/functions/`.
-5. **Deno Test:** Roda a suite de testes unitários do Deno (ex: testes de cálculo de frete e regras de negócio).
+5. **Deno Test:** Roda apenas `supabase/functions/calculate-shipping/index_test.ts`, com os testes de cálculo de frete. Para as suítes Deno mais amplas, use `npm run test:edge` e `npm run test:unit`, definidos no `package.json`.
 6. **Verificação de Banco de Dados (Postgres):** Se o Docker Desktop estiver ativo, inicializa as verificações locais de integridade de esquema (`supabase db lint`) e testes SQL pgTAP (`supabase test db`).
 7. **Relatório de Saída:** Produz o arquivo `relatorio_verificacao.md` detalhando cada etapa executada e eventuais falhas detectadas.
 

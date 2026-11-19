@@ -27,8 +27,8 @@ Permanecem IKCOUS e Savy; as menções anteriores às lojas de teste registram o
   rebuild. E o unico jeito de publicar o front.
 - Lojas ASSINANTES (backend gerenciado): IKCOUS (`cafkrminfnokvgjqtkle`) e Savy
   (`gnjsrucsmjkajijrakzr`), com canal em `scripts/frota/canais-de-backend.json`.
-- Lojas de TESTE (Almeida, Brand Meliz, Space): banco e functions NAO se mexem (decisao do dono,
-  03/10/2026, em `scripts/frota/politica.json`); recebem so o front, que e o mesmo.
+- Almeida, Brand Meliz e Space sairam da politica de atualizacao em 16/10/2026, inclusive do
+  front. A lista de lojas que recebem so o front esta vazia em `scripts/frota/politica.json`.
 
 ## Publicar uma release (a sequencia inteira)
 
@@ -1937,7 +1937,9 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
    SHA (versao, isolamento e canonico de TODOS os enderecos, e a producao oficial = o deployment
    promovido). Saida 0 = publicado e conferido.
 
-   Preserve o PRIMEIRO JSON e use OUTRO nome de arquivo em cada repeticao para nao sobrescreve-lo.
+   O comando `--promover` impresso pelo ensaio vem sem `--json`: acrescente `--json <arquivo>`
+   antes de rodar a primeira promocao. Preserve o PRIMEIRO JSON e use OUTRO nome de arquivo
+   em cada repeticao para nao sobrescreve-lo.
    O ponto de volta e o `producaoAnterior` valido (nao nulo) do PRIMEIRO JSON. Se o arquivo nao
    existir ou o id for nulo ou invalido, recupere e anote o id que estava no ar antes da primeira
    promocao. Sem um desses dois ids validos, nao repita o `--promover`. Nao use o id do ultimo
@@ -2229,9 +2231,15 @@ O cadastro de UMA vez, na entrada do cliente:
   repita o `--promover`. Nao use o id do ultimo relatorio como substituto: ele pode ser o proprio
   candidato. Depois de um rollback a atribuicao automatica de dominios fica desligada ate o
   proximo `vercel promote`.
-- Functions: publicar de novo pelo workflow a partir do commit anterior.
-- Banco: `rollback-manual-<versao>` pelo `aplicar-migrations.yml`, do mais novo para o mais
-  antigo; ele apaga a linha da versao no ledger na mesma transacao.
+- Functions: reverta as mudancas em um commit NOVO do ramo principal e publique esse SHA pelo
+  workflow normal, como no caso da `send-order-confirmation` acima. O workflow usa o codigo do
+  proprio run; na IKCOUS e na Savy, `expected_sha` tem de ser igual ao SHA do run.
+- Banco: `rollback-manual-<versao>_<nome>.sql` pelo `aplicar-migrations.yml`, do mais novo para
+  o mais antigo; ele apaga a linha da versao no ledger na mesma transacao. O workflow so aceita
+  versoes de 14 digitos. Para um rollback com versao fora desse padrao (por exemplo,
+  `rollback-manual-2026110000000_o_estorno_nasce_no_ledger.sql`, com 13), nao renomeie o arquivo
+  nem dispare o workflow: pare e peca aprovacao do dono para um procedimento manual que trate
+  o SQL e a versao original no ledger.
 - NUNCA `vercel alias set` por endereco: e o que criou a divergencia de 05/10. Se for inevitavel
   numa emergencia, a conferencia da frota acusa (`ENDERECO_ANTIGO`) ate o proximo promote.
 
