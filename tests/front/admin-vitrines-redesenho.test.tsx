@@ -805,9 +805,10 @@ describe("Restaurar padrão pergunta antes", () => {
     expect(updateConfig).not.toHaveBeenCalled();
     const d = confirmacao();
     expect(d).not.toBeNull();
-    // diz o que vai acontecer: some a personalizada e os 2 produtos escolhidos
     expect(d?.textContent).toContain("Kits de presente");
-    expect(d?.textContent).toMatch(/2 produtos escolhidos/);
+    expect(d?.textContent).toContain(
+      "As escolhas manuais são removidas das vitrines. Os produtos continuam no catálogo.",
+    );
 
     await clicar(botaoComTexto("Restaurar", d as HTMLElement));
     expect(updateConfig).toHaveBeenCalledTimes(1);

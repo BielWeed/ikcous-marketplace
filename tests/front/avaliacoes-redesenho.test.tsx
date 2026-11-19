@@ -276,7 +276,9 @@ describe("AdminReviewsView — redesenho", () => {
     expect(
       document.getElementById(aviso.getAttribute("aria-labelledby")!)
         ?.textContent,
-    ).toBe("Excluir esta avaliação? Não dá para desfazer.");
+    ).toBe(
+      "Excluir esta avaliação e a resposta da loja? Não dá para desfazer.",
+    );
     const cancelar = cartao.querySelector<HTMLButtonElement>("button")!;
     expect(document.activeElement === cancelar).toBe(true);
     await tocar(cancelar);
@@ -561,19 +563,40 @@ describe("AdminReviewsView — redesenho", () => {
     expect(h.addMerchantReply).not.toHaveBeenCalled();
   });
 
+  it("excluir uma avaliação respondida avisa que a resposta da loja também será excluída", async () => {
+    await montar();
+    await tocar(
+      hospedeiro.querySelector<HTMLButtonElement>(
+        '[aria-label="Excluir avaliação de Marina"]',
+      )!,
+    );
+    expect(tela()).toContain(
+      "Excluir esta avaliação e a resposta da loja? Não dá para desfazer.",
+    );
+    expect(h.deleteReview).not.toHaveBeenCalled();
+    await tocar(botaoPorTexto("Excluir"));
+    expect(h.deleteReview).toHaveBeenCalledWith("r-3");
+  });
+
   it("excluir pede confirmação em frase e só apaga ao tocar em Excluir", async () => {
     await montar();
     const lixeiras = porRotulo("Excluir avaliação");
     expect(lixeiras).toHaveLength(3);
-    await tocar(lixeiras[2] as HTMLElement);
+    const excluirSemResposta =
+      '[aria-label="Excluir avaliação de Isadora Bernardes"]';
+    await tocar(
+      hospedeiro.querySelector<HTMLButtonElement>(excluirSemResposta)!,
+    );
     expect(tela()).toContain("Excluir esta avaliação? Não dá para desfazer.");
     expect(h.deleteReview).not.toHaveBeenCalled();
     await tocar(botaoPorTexto("Cancelar"));
     expect(tela()).not.toContain("Excluir esta avaliação?");
 
-    await tocar(porRotulo("Excluir avaliação")[2] as HTMLElement);
+    await tocar(
+      hospedeiro.querySelector<HTMLButtonElement>(excluirSemResposta)!,
+    );
     await tocar(botaoPorTexto("Excluir"));
-    expect(h.deleteReview).toHaveBeenCalledWith("r-3");
+    expect(h.deleteReview).toHaveBeenCalledWith("r-1");
   });
 
   it("sem nenhuma avaliação: 'Sem avaliações ainda'; com filtro ativo: 'Nenhuma avaliação encontrada' e um botão que limpa", async () => {

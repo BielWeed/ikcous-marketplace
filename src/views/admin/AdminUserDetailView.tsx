@@ -130,6 +130,8 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
     variantId?: string;
   } | null>(null);
   const [isClearingCart, setIsClearingCart] = useState(false);
+  const [limpezaEmAndamento, setLimpezaEmAndamento] = useState(false);
+  const limpezaEmAndamentoRef = useRef(false);
   const [copiedField, setCopiedField] = useState<
     "id" | "email" | "whatsapp" | null
   >(null);
@@ -506,17 +508,20 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
   };
 
   const handleClearUserCart = () => {
-    if (!fichaCarregada) return;
+    if (!fichaCarregada || limpezaEmAndamentoRef.current) return;
     setIsClearingCart(true);
   };
 
   const confirmClearUserCart = async () => {
-    if (!fichaCarregada || !idCarregado) return;
+    if (!fichaCarregada || !idCarregado || limpezaEmAndamentoRef.current)
+      return;
     const consulta = consultaFicha.current;
     if (isOffline) {
       toast.error("Operação negada: Você está offline.");
       return;
     }
+    limpezaEmAndamentoRef.current = true;
+    setLimpezaEmAndamento(true);
     try {
       const { data, error } = await aguardarComPrazo(
         Promise.resolve(
@@ -541,24 +546,26 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
         toast.error(
           "Nada foi removido. O carrinho pode já estar vazio, ou o app não tem permissão para alterar o carrinho de outra pessoa.",
         );
-        fetchUserData(true);
+        await fetchUserData(true);
         return;
       }
 
       toast.success("Carrinho limpo com sucesso!");
-      fetchUserData(true);
+      await fetchUserData(true);
     } catch (err) {
       if (consulta !== consultaFicha.current) return;
       console.error("Error clearing user cart:", err);
       if (ehConsultaSemResposta(err)) {
         // Mesmo caso do item único: a limpeza pode ter sido feita.
         toast.error(MENSAGEM_CARRINHO_SEM_RESPOSTA);
-        fetchUserData(true);
+        await fetchUserData(true);
       } else {
         toast.error("Erro ao limpar carrinho");
       }
     } finally {
-      if (consulta === consultaFicha.current) setIsClearingCart(false);
+      limpezaEmAndamentoRef.current = false;
+      setLimpezaEmAndamento(false);
+      setIsClearingCart(false);
     }
   };
 
@@ -1240,7 +1247,11 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                               variant="ghost"
                               size="sm"
                               onClick={handleClearUserCart}
-                              disabled={isOffline || !fichaCarregada}
+                              disabled={
+                                isOffline ||
+                                !fichaCarregada ||
+                                limpezaEmAndamento
+                              }
                               className="min-h-11 rounded-lg border border-red-500/20 bg-red-500/10 px-2.5 text-[11px] font-black uppercase tracking-widest text-red-500 shadow-sm transition-all hover:bg-red-500/20 disabled:pointer-events-none disabled:opacity-40"
                             >
                               Limpar Carrinho
@@ -1748,7 +1759,9 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
       {/* Diálogo de Confirmação de Limpeza de Carrinho */}
       <AlertDialog
         open={fichaCarregada && isClearingCart}
-        onOpenChange={(open) => !open && setIsClearingCart(false)}
+        onOpenChange={(open) => {
+          if (!open && !limpezaEmAndamentoRef.current) setIsClearingCart(false);
+        }}
       >
         <AlertDialogContent className="max-w-md rounded-3xl border border-admin-border bg-zinc-950">
           <AlertDialogHeader>
@@ -1761,15 +1774,21 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="mt-4 gap-2">
-            <AlertDialogCancel className="rounded-xl border border-0 border-admin-border bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white">
+            <AlertDialogCancel
+              disabled={limpezaEmAndamento}
+              className="rounded-xl border border-0 border-admin-border bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white"
+            >
               Cancelar
             </AlertDialogCancel>
             <AlertDialogAction
-              onClick={confirmClearUserCart}
-              disabled={isOffline || !fichaCarregada}
+              onClick={(event) => {
+                event.preventDefault();
+                void confirmClearUserCart();
+              }}
+              disabled={isOffline || !fichaCarregada || limpezaEmAndamento}
               className="min-h-11 rounded-xl border-0 bg-red-600 px-4 py-2 text-xs font-bold text-white hover:bg-red-700"
             >
-              Limpar Carrinho
+              {limpezaEmAndamento ? "Limpando…" : "Limpar Carrinho"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

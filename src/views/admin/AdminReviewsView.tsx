@@ -1114,7 +1114,11 @@ export const AdminReviewsView = memo(function AdminReviewsView({
         <div className="mt-3">
           {confirmDeleteId === review.id ? (
             <ConfirmarExclusao
-              frase="Excluir esta avaliação? Não dá para desfazer."
+              frase={
+                review.merchantReply
+                  ? "Excluir esta avaliação e a resposta da loja? Não dá para desfazer."
+                  : "Excluir esta avaliação? Não dá para desfazer."
+              }
               desabilitada={acoesBloqueadas}
               aoCancelar={() => {
                 focoPendente.current = () =>
