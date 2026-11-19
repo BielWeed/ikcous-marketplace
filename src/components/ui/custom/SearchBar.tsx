@@ -543,7 +543,7 @@ export function SearchBar({
                       key={item.id}
                       type="button"
                       onClick={() => handleSuggestionClick(item.name, item.id)}
-                      className="group flex w-full items-center justify-between rounded-xl px-2 py-2.5 text-left transition-colors hover:bg-zinc-50"
+                      className="group flex w-full items-center justify-between rounded-xl px-2 py-2.5 text-left transition-colors hover:bg-white"
                     >
                       <div className="flex min-w-0 items-center gap-3.5 pr-2">
                         <div className="shadow-2xs relative size-12 flex-shrink-0 overflow-hidden rounded-xl border border-zinc-200/80 bg-zinc-100">
@@ -592,7 +592,7 @@ export function SearchBar({
                           <span className="truncate text-[10px] font-extrabold uppercase tracking-wider text-zinc-600">
                             {item.category}
                           </span>
-                          <span className="truncate text-xs font-bold text-zinc-900 transition-colors group-hover:text-primary">
+                          <span className="truncate text-xs font-bold text-zinc-900 transition-colors group-hover:text-primary-legivel">
                             {item.name}
                           </span>
                           <span className="flex items-baseline gap-1.5">
