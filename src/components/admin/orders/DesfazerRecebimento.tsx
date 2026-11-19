@@ -17,7 +17,8 @@
 //    e, mesmo marcando como recebido de novo, a anulação fica recusada para
 //    sempre (o histórico guarda o "desfeito").
 //
-// A regra do banco não muda: esta peça só pergunta antes de chamar `aoDesfazer`.
+// A regra do banco não muda: a tela espelha a recusa por devolução e,
+// quando pode desfazer, pergunta antes de chamar `aoDesfazer`.
 // Cada frase da pergunta tem de ser provada por uma migration: nada de
 // promessa que o banco não cumpre.
 
@@ -32,35 +33,71 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { useDevolucoesDoPedidoAdmin } from "@/hooks/useDevolucoesDoPedidoAdmin";
 import { podeAnularVendaDoBalcao } from "@/lib/anulacao-do-balcao";
 import type { Order } from "@/types";
-import type { ReactElement } from "react";
+import { type ReactElement, useState } from "react";
+import { AvisoFalhaNaLeituraDasDevolucoes } from "./DevolucaoDoPedidoAdminCard";
 
 interface PropsDoDesfazerRecebimento {
   readonly order: Order;
+  readonly leituraDeDevolucoes?: ReturnType<typeof useDevolucoesDoPedidoAdmin>;
   readonly aoDesfazer: () => void;
   readonly disabled?: boolean;
   readonly className: string;
 }
 
+const MOTIVO_DEVOLUCAO =
+  "Este pedido tem devolução; o recebimento não pode ser desfeito.";
+
 export function DesfazerRecebimento({
   order,
+  leituraDeDevolucoes,
   aoDesfazer,
   disabled,
   className,
 }: PropsDoDesfazerRecebimento): ReactElement {
+  const [aberto, setAberto] = useState(false);
+  const naLista = leituraDeDevolucoes === undefined;
+  // A ficha já lê; na lista, só consultar ao abrir a confirmação deste pedido.
+  const leituraAoAbrir = useDevolucoesDoPedidoAdmin(
+    order.id,
+    naLista && aberto,
+  );
+  const { devolucoes, carregando, erro, recarregar } =
+    leituraDeDevolucoes ?? leituraAoAbrir;
+
+  // A RPC registrar_pagamento_recebido (20261243000000) só libera
+  // devoluções encerradas sem devolução de dinheiro ou troca. Se a leitura
+  // falhar, a ação continua disponível e a RPC ainda aplica a regra.
+  const devolucaoImpeditiva =
+    !carregando &&
+    !erro &&
+    devolucoes.some(
+      ({ status }) =>
+        status !== "recusada" &&
+        status !== "cancelada" &&
+        status !== "reprovada",
+    );
+  if (!naLista && devolucaoImpeditiva) {
+    return <p className="text-xs text-zinc-400">{MOTIVO_DEVOLUCAO}</p>;
+  }
+  const aguardando = carregando || (naLista && !aberto);
+  const podeConfirmar = !disabled && !aguardando && !devolucaoImpeditiva;
+
   const ehVendaDoBalcao = order.canal === "presencial";
   // "Use Anular" só quando ainda dá: depois do dia da venda o banco já recusa
   // a anulação, e mandar a lojista para um botão que não existe seria falso.
   const aindaSePodeAnular = ehVendaDoBalcao && podeAnularVendaDoBalcao(order);
 
   return (
-    <AlertDialog>
+    <AlertDialog onOpenChange={naLista ? setAberto : undefined}>
       <AlertDialogTrigger asChild>
         <button
           type="button"
           onClick={(e) => e.stopPropagation()}
-          disabled={disabled}
+          onKeyDown={(e) => e.stopPropagation()}
+          disabled={disabled || (!naLista && carregando)}
           className={className}
         >
           Desfazer
@@ -80,22 +117,36 @@ export function DesfazerRecebimento({
             {ehVendaDoBalcao ? "desta venda" : "deste pedido"}?
           </AlertDialogTitle>
           <AlertDialogDescription className="text-sm leading-relaxed text-zinc-400">
-            {ehVendaDoBalcao
-              ? `Depois de desfazer, esta venda não poderá mais ser anulada e o estoque não volta.${aindaSePodeAnular ? " Para cancelar de verdade, use Anular." : " A venda deixa de constar como recebida."}`
-              : "O valor sai das vendas, do lucro e do Financeiro, e a cliente não consegue pedir devolução."}
+            {devolucaoImpeditiva
+              ? MOTIVO_DEVOLUCAO
+              : aguardando
+                ? "Conferindo as devoluções deste pedido…"
+                : ehVendaDoBalcao
+                  ? `Depois de desfazer, esta venda não poderá mais ser anulada e o estoque não volta.${aindaSePodeAnular ? " Para cancelar de verdade, use Anular." : " A venda deixa de constar como recebida."}`
+                  : "O valor sai das vendas, do lucro e do Financeiro, e a cliente não consegue pedir devolução."}
           </AlertDialogDescription>
         </AlertDialogHeader>
+        {naLista && erro && (
+          <AvisoFalhaNaLeituraDasDevolucoes
+            carregando={carregando}
+            recarregar={recarregar}
+          />
+        )}
         <AlertDialogFooter className="mt-2 gap-2">
           {/* O Radix põe o foco no "Cancel" ao abrir: a ação padrão é voltar. */}
           <AlertDialogCancel className="h-11 rounded-xl border border-admin-border bg-white/5 px-4 text-sm font-semibold text-white hover:bg-white/10">
             Voltar
           </AlertDialogCancel>
-          <AlertDialogAction
-            onClick={() => aoDesfazer()}
-            className="h-11 rounded-xl border border-red-900/60 bg-transparent px-4 text-sm font-semibold text-red-300 hover:bg-red-950/40"
-          >
-            {ehVendaDoBalcao ? "Desfazer mesmo assim" : "Desfazer recebimento"}
-          </AlertDialogAction>
+          {podeConfirmar && (
+            <AlertDialogAction
+              onClick={() => aoDesfazer()}
+              className="h-11 rounded-xl border border-red-900/60 bg-transparent px-4 text-sm font-semibold text-red-300 hover:bg-red-950/40"
+            >
+              {ehVendaDoBalcao
+                ? "Desfazer mesmo assim"
+                : "Desfazer recebimento"}
+            </AlertDialogAction>
+          )}
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

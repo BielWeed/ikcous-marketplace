@@ -6,12 +6,13 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
   banners: [] as Banner[],
+  cacheFrio: false,
   pedir: vi.fn(),
   sincronizar: undefined as undefined | (() => Promise<void>),
 }));
 vi.mock("@/lib/banners-da-vitrine", () => ({
   acompanharBannersDoRealtime: vi.fn(),
-  bannersEmCache: () => h.banners,
+  bannersEmCache: () => (h.cacheFrio ? null : h.banners),
   horaDaUltimaConsultaDeBanners: () => Date.now(),
   consultaDeBannersEmVoo: () => null,
   geracaoDasMutacoesDeBanners: () => 0,
@@ -43,7 +44,9 @@ let raiz: ReturnType<typeof createRoot>;
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-11-07T12:00:00Z"));
-  h.pedir.mockClear();
+  h.pedir.mockReset();
+  h.cacheFrio = false;
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
   h.banners = [
     {
       id: "campanha",
@@ -80,6 +83,40 @@ async function montar(admin = false) {
   }
   await act(async () => raiz.render(<Sonda />));
 }
+it("relê quando o banner futuro foi omitido pela primeira leitura pública", async () => {
+  const campanha = { ...h.banners[0], endDate: null };
+  h.cacheFrio = true;
+  h.pedir.mockResolvedValueOnce([]).mockResolvedValueOnce([campanha]);
+
+  await montar();
+  expect(h.pedir).toHaveBeenCalledTimes(1);
+  expect(alvo.textContent).toBe("");
+  await act(async () => vi.advanceTimersByTimeAsync(60_000));
+  expect(h.pedir).toHaveBeenCalledTimes(2);
+  expect(alvo.textContent).toBe("Campanha");
+});
+
+it("não relê com a aba oculta e cancela o intervalo ao desmontar", async () => {
+  const visibilidade = vi.spyOn(document, "visibilityState", "get");
+  h.banners = [];
+  await montar();
+
+  visibilidade?.mockReturnValue("hidden");
+  await act(async () => document.dispatchEvent(new Event("visibilitychange")));
+  await act(async () => vi.advanceTimersByTimeAsync(120_000));
+  expect(h.pedir).not.toHaveBeenCalled();
+
+  visibilidade?.mockReturnValue("visible");
+  await act(async () => document.dispatchEvent(new Event("visibilitychange")));
+  await act(async () => vi.advanceTimersByTimeAsync(60_000));
+  expect(h.pedir).toHaveBeenCalledTimes(1);
+
+  act(() => raiz.unmount());
+  raiz = createRoot(alvo);
+  await act(async () => vi.advanceTimersByTimeAsync(120_000));
+  expect(h.pedir).toHaveBeenCalledTimes(1);
+});
+
 it("entra e sai no horário sem interação nem consulta à rede", async () => {
   await montar();
   expect(alvo.textContent).toBe("");

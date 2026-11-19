@@ -280,6 +280,29 @@ describe("AdminReviewsView — taxa sem dado não vira porcentagem inventada (A3
     expect(tela).not.toContain("—");
   });
 
+  it.each([
+    [499, "Quase 100%", "99%"],
+    [500, "100%", "100%"],
+    [0, "0%", "0%"],
+  ])(
+    "%i de 500 respostas: mostra %s e barra de %s",
+    async (respondidas, rotulo, largura) => {
+      h.estado.total = 500;
+      h.estado.globalTotal = 500;
+      h.estado.globalRepliedCount = respondidas;
+      h.estado.globalVerifiedCount = 499;
+      await montar();
+      await expandirResumo();
+
+      const cartao = Array.from(hospedeiro.querySelectorAll("span")).find(
+        (el) => el.textContent === "Taxa de resposta",
+      )?.parentElement;
+      expect(cartao?.textContent).toContain(rotulo);
+      expect(larguraDaBarra("Taxa de resposta")).toBe(largura);
+      expect(larguraDaBarra("Compras verificadas")).toBe("100%");
+    },
+  );
+
   it("10 avaliações, 5 verificadas: mostra '50%'", async () => {
     h.estado.total = 10;
     h.estado.globalTotal = 10;

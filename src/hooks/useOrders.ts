@@ -3517,14 +3517,10 @@ export function useOrders(
         (filtro === "open"
           ? !["cancelled", "delivered"].includes(updatedOrder.status)
           : updatedOrder.status === filtro);
-      const jaNaLista = ordersRef.current.some(
-        (pedido) => pedido.id === updatedOrder.id,
-      );
+      const jaNaLista = naTela !== undefined;
       // Pedido que o INSERT ainda está consultando (da cliente ou do painel):
       // guarda a linha mais nova para o INSERT aplicar quando o pedido entrar
-      // (ver `insertsEmVooRef`). Só guarda o que há de mais recente. Só pedido
-      // com INSERT em voo é guardado: UPDATE de pedido fora da lista e sem
-      // consulta em andamento continua sendo ignorado, no painel também.
+      // (ver `insertsEmVooRef`). Só guarda UPDATE para pedido com INSERT em voo.
       if (!jaNaLista && insertsEmVooRef.current.has(updatedOrder.id)) {
         const guardado = insertsEmVooRef.current.get(updatedOrder.id);
         const tGuardado = Date.parse(guardado?.updated_at);
@@ -3537,29 +3533,17 @@ export function useOrders(
           insertsEmVooRef.current.set(updatedOrder.id, updatedOrder);
         }
       }
-      // Ausente da memória, mas talvez presente na página ainda em voo: não
-      // há versão atual para a reconciliação preservar. Invalida essa leitura.
-      if (
-        isAdmin &&
-        filtroConhecido &&
-        !casaStatus &&
-        !jaNaLista &&
-        adminOrdersAbortControllerRef.current?.signal.aborted === false
-      ) {
-        recarregarAdminDepoisDoVooRef.current = true;
-      }
-      // Filtro de PAGAMENTO ligado (qualquer um) e um pedido que está na lista
-      // passou a outro pagamento: ele sai do recorte. O corte da página é no
-      // front, mas o total, o "1–12 de 15" e o CSV vêm do servidor — sem reler,
-      // ficavam velhos e o próximo pedido não entrava na vaga. `null` conta
-      // como "sem_cobranca", igual ao filtro; evento sem o campo não decide.
+      const consultaEmVoo =
+        adminOrdersAbortControllerRef.current?.signal.aborted === false;
+      // Filtro de PAGAMENTO: se um pedido passa a outro pagamento, o front
+      // pode tirá-lo da página, mas o total e a paginação vêm do servidor.
+      // `null` conta como "sem_cobranca"; evento sem o novo campo não decide.
       const filtroDePagamento = isAdmin
         ? ultimaConsultaAdminRef.current?.[7]
         : undefined;
-      const saiuDoFiltroDePagamento =
+      const pagamentoNovoForaDoFiltro =
         Boolean(filtroDePagamento) &&
         filtroDePagamento !== "all" &&
-        jaNaLista &&
         updatedOrder.payment_status !== undefined &&
         (updatedOrder.payment_status ?? "sem_cobranca") !== filtroDePagamento;
       // O inverso: filtro de PAGAMENTO ligado (qualquer um) e um pedido que NÃO
@@ -3606,36 +3590,64 @@ export function useOrders(
             ? !["cancelled", "delivered"].includes(statusAnterior)
             : statusAnterior === filtro
           : undefined;
-      // Com leitura em voo quem cuida é `recarregarAdminDepoisDoVooRef`, acima
-      // (invalida o retrato e relê depois do voo): um segundo agendamento aqui
-      // dispararia no meio dela.
+      const saiuDoStatusForaDaPagina =
+        isAdmin && filtroConhecido && !casaStatus && !jaNaLista;
+      // Com leitura em voo, o agendamento é diferido para depois da resposta.
       const saiuDoRecorteDeStatusFora =
-        isAdmin &&
-        filtroConhecido &&
-        !casaStatus &&
-        !jaNaLista &&
-        adminOrdersAbortControllerRef.current?.signal.aborted !== false &&
+        saiuDoStatusForaDaPagina &&
+        !consultaEmVoo &&
         (casavaOFiltroAntes ??
           (!ultimaConsultaAdminRef.current?.[3] &&
             (!filtroDePagamento || filtroDePagamento === "all")));
-      // A RPC existente recompõe página e total quando alguém entra ou sai
-      // do recorte. O mesmo debounce do INSERT absorve rajadas de eventos.
-      if (
-        (filtroConhecido && (casaStatus ? !jaNaLista : jaNaLista)) ||
-        saiuDoRecorteDeStatusFora ||
-        entrouNoFiltroDePagamento ||
-        saiuDoFiltroDePagamento ||
-        buscaPodeTerMudado
-      ) {
-        if (debounceRecarregarInsertRef.current) {
-          clearTimeout(debounceRecarregarInsertRef.current);
+      // Período (pela criação, não a atualização) e canal podem provar que
+      // o pedido nunca esteve no recorte. Campo ausente ou ilegível não é prova.
+      const [, , , , inicio, fim, , , canal] =
+        ultimaConsultaAdminRef.current ?? [];
+      const criadoEm = updatedOrder.created_at;
+      const foraDoPeriodo =
+        Boolean(inicio || fim) &&
+        typeof criadoEm === "string" &&
+        Number.isFinite(Date.parse(criadoEm)) &&
+        !instanteDentroDoPeriodo(criadoEm, inicio, fim);
+      const foraDoCanal =
+        Boolean(canal) &&
+        canal !== "all" &&
+        typeof updatedOrder.canal === "string" &&
+        updatedOrder.canal !== canal;
+      const pagamentoAnterior = oldOrder?.payment_status;
+      const saiuDoFiltroDePagamento =
+        pagamentoNovoForaDoFiltro &&
+        (jaNaLista ||
+          ((totalOrders > ordersRef.current.length || consultaEmVoo) &&
+            (!filtroConhecido || casavaOFiltroAntes !== false) &&
+            (pagamentoAnterior === undefined ||
+              (pagamentoAnterior ?? "sem_cobranca") === filtroDePagamento)));
+      // Um único recorte vale para toda releitura da lista, inclusive a
+      // agendada para depois da consulta em voo. A mescla local segue abaixo.
+      if (!foraDoPeriodo && !foraDoCanal) {
+        // A consulta em andamento pode trazer o pedido com o status anterior,
+        // mas ele não está na tela para a reconciliação preservar a mudança.
+        if (saiuDoStatusForaDaPagina && consultaEmVoo) {
+          recarregarAdminDepoisDoVooRef.current = true;
         }
-        debounceRecarregarInsertRef.current = setTimeout(() => {
-          debounceRecarregarInsertRef.current = null;
-          recarregarAposReconexaoRef
-            .current({ silencioso: true })
-            .catch(() => {});
-        }, DEBOUNCE_RECARREGAR_INSERT_MS);
+        // A RPC recompõe página e total. O debounce do INSERT absorve rajadas.
+        if (
+          (filtroConhecido && (casaStatus ? !jaNaLista : jaNaLista)) ||
+          saiuDoRecorteDeStatusFora ||
+          entrouNoFiltroDePagamento ||
+          saiuDoFiltroDePagamento ||
+          buscaPodeTerMudado
+        ) {
+          if (debounceRecarregarInsertRef.current) {
+            clearTimeout(debounceRecarregarInsertRef.current);
+          }
+          debounceRecarregarInsertRef.current = setTimeout(() => {
+            debounceRecarregarInsertRef.current = null;
+            recarregarAposReconexaoRef
+              .current({ silencioso: true })
+              .catch(() => {});
+          }, DEBOUNCE_RECARREGAR_INSERT_MS);
+        }
       }
       setOrders((prev) =>
         prev.flatMap((o) => {
@@ -3684,7 +3696,7 @@ export function useOrders(
         fetchPedidosCancelados().catch(() => {});
       }
     },
-    [isAdmin, fetchPedidosCancelados],
+    [isAdmin, fetchPedidosCancelados, totalOrders],
   );
 
   const handleRealtimeDelete = useCallback((oldId: string | undefined) => {

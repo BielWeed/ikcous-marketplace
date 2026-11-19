@@ -364,7 +364,27 @@ export function useBanners(adminMode = false) {
     }
   }, [fetchBanners, isLoaded, adminMode]);
 
-  // Só acorda na próxima mudança de agenda; não relê o banco.
+  // A leitura pública omite banners futuros: o relógio local não consegue
+  // exibir um banner que ainda não recebeu.
+  useEffect(() => {
+    if (adminMode) return;
+    let timer: number | undefined;
+    const acompanharVisibilidade = () => {
+      window.clearInterval(timer);
+      if (document.visibilityState !== "visible") return;
+      timer = window.setInterval(() => {
+        if (document.visibilityState === "visible") void fetchBanners();
+      }, FETCH_THROTTLE);
+    };
+    acompanharVisibilidade();
+    document.addEventListener("visibilitychange", acompanharVisibilidade);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", acompanharVisibilidade);
+    };
+  }, [adminMode, fetchBanners]);
+
+  // Para banners já conhecidos, acerta a troca no horário exato.
   const [agora, setAgora] = useState(Date.now);
   useEffect(() => {
     if (adminMode) return;

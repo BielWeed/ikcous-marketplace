@@ -223,6 +223,7 @@ describe("ficha do pedido — Anular venda do balcão", () => {
   });
 
   it("a ficha não perde o botão de 'Desfazer' do recebimento nem o resto do bloco do dinheiro", async () => {
+    rpcMock.mockResolvedValue({ data: [], error: null });
     const { OrderDetail } = await import(
       "@/components/admin/orders/OrderDetail"
     );

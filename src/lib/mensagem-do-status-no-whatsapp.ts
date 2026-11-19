@@ -109,7 +109,13 @@ export function mensagemDoStatusNoWhatsapp({
       orientacoesDeRetirada += `Retire em: ${limitarTrechoParaWhatsapp(enderecoDeRetirada, 300, 950)}\n`;
     }
     if (horarioDeAtendimento?.trim()) {
-      orientacoesDeRetirada += `Horário: ${limitarTrechoParaWhatsapp(horarioDeAtendimento, 200, 650)}\n`;
+      // Nunca corte o horário: o fim pode conter um dia fechado ou uma exceção.
+      const horarioCabe =
+        horarioDeAtendimento.length <= 200 &&
+        encodeURIComponent(horarioDeAtendimento).length <= 650;
+      orientacoesDeRetirada += horarioCabe
+        ? `Horário: ${horarioDeAtendimento}\n`
+        : "Confirme o horário de retirada com a loja antes de vir.\n";
     }
   }
   // Pedido cancelado não agradece a compra: avisa e deixa a conversa aberta

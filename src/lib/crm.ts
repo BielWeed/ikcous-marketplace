@@ -616,7 +616,11 @@ function primeiroNome(nome: string | null | undefined): string | null {
  */
 export function mensagemDoSegmento(
   segmento: SegmentoCrm | null,
-  { nome, loja }: { nome: string | null; loja: string },
+  {
+    nome,
+    loja,
+    valorEmAberto,
+  }: { nome: string | null; loja: string; valorEmAberto?: number | null },
 ): string {
   const quem = primeiroNome(nome);
   const oi = quem
@@ -640,11 +644,11 @@ export function mensagemDoSegmento(
     case "hibernando":
       return `${oi} Tudo bem? Faz tempo! Passando para te mostrar as novidades da loja.`;
     case "pediu_nao_pagou":
-      // Sem afirmar nada sobre pagamento (achado 3, revisão de risco): o
-      // grupo também inclui quem pagou e teve o pedido cancelado/estornado/
-      // devolvido depois — dizer "o pagamento não foi concluído" seria
-      // falso para essa gente.
-      return `${oi} Vi que você fez um pedido com a gente. Ficou alguma dúvida? Posso te ajudar a finalizar a compra?`;
+      // O grupo também inclui pedidos cancelados ou estornados: só sugira
+      // finalizar a compra quando ainda há um valor em aberto.
+      return (valorEmAberto ?? 0) > 0
+        ? `${oi} Vi que você fez um pedido com a gente. Ficou alguma dúvida? Posso te ajudar a finalizar a compra?`
+        : `${oi} Tudo bem? Passando para saber se posso te ajudar com alguma compra.`;
     case "nunca_comprou":
       return `${oi} Obrigado por criar sua conta na loja! Quando quiser dar uma olhada nos produtos, é só me chamar por aqui.`;
     default:

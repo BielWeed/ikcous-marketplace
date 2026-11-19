@@ -5,8 +5,53 @@
 // DDD) abria a conversa com um número inválido. A decisão "este número abre
 // conversa?" agora mora em UMA função pura, usada pelos DOIS pontos (lista
 // de pedidos e ficha do pedido).
-import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
+import {
+  linkWhatsappDoCliente,
+  linkWhatsappDoClienteDoBalcao,
+} from "@/lib/whatsapp-do-cliente";
 import { describe, expect, it } from "vitest";
+
+describe("linkWhatsappDoClienteDoBalcao", () => {
+  it.each([
+    ["11987654321", "5511987654321"],
+    ["1134567890", "551134567890"],
+    ["551134567890", "551134567890"],
+    ["5511987654321", "5511987654321"],
+    ["+55 (11) 98765-4321", "5511987654321"],
+    ["034 99999-1234", "5534999991234"],
+    ["0055 34 99999-1234", "5534999991234"],
+  ])("aceita o número brasileiro %s", (telefone, destino) => {
+    expect(linkWhatsappDoClienteDoBalcao(telefone)).toBe(
+      `https://wa.me/${destino}`,
+    );
+  });
+
+  it.each(["559132345678", "559123456789"])(
+    "não relê o DDD como código de país no número avulso %s",
+    (telefone) => {
+      expect(
+        linkWhatsappDoClienteDoBalcao(telefone, { jaNacional: true }),
+      ).toBeNull();
+    },
+  );
+
+  it("aceita um celular nacional completo do DDD 55", () => {
+    expect(
+      linkWhatsappDoClienteDoBalcao("55912345678", { jaNacional: true }),
+    ).toBe("https://wa.me/5555912345678");
+  });
+
+  it.each([
+    "",
+    "987654321",
+    "1198765432199",
+    "551198765432199",
+    "+55 55 11 98765-4321",
+    "+44 99999-1234",
+  ])("não abre recibo para o número inválido %j", (telefone) => {
+    expect(linkWhatsappDoClienteDoBalcao(telefone)).toBeNull();
+  });
+});
 
 describe("linkWhatsappDoCliente — null quando não abre conversa (laudo 0109, A-7)", () => {
   it("vazio, undefined e null: null", () => {

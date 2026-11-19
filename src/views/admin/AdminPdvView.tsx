@@ -70,6 +70,7 @@ import {
 import { rotuloDaVariacao } from "@/lib/rotulo-da-variacao";
 import { supabase } from "@/lib/supabase";
 import { prepararTextoDeBuscaDoPainel } from "@/lib/texto-de-busca-do-painel";
+import { linkWhatsappDoClienteDoBalcao } from "@/lib/whatsapp-do-cliente";
 import type { View } from "@/types";
 import { Keyboard, ScanBarcode, Search } from "lucide-react";
 import {
@@ -649,6 +650,8 @@ export function AdminPdvView({
     // já tinha sido gravada, o servidor devolve `ja_existia` em vez de
     // debitar o estoque de novo. A resposta que chegar depois do prazo é
     // descartada por `aguardarComPrazo`.
+    const whatsapp =
+      estado.cliente.tipo === "sem_cliente" ? null : estado.cliente.whatsapp;
     const desmarcar = marcarOperacaoSensivel("registro-de-venda-do-pdv");
     try {
       const { data, error } = await aguardarComPrazo(
@@ -666,13 +669,13 @@ export function AdminPdvView({
                 : null,
             p_cliente_nome:
               estado.cliente.tipo === "avulso" ? estado.cliente.nome : null,
-            // Avulso e CADASTRADO mandam o WhatsApp: o recibo liga o "Enviar
-            // por WhatsApp" a partir do que o banco gravou aqui. Sem cliente,
-            // ou cadastrado sem WhatsApp no perfil, vai null.
-            p_cliente_whatsapp:
-              estado.cliente.tipo === "sem_cliente"
-                ? null
-                : estado.cliente.whatsapp,
+            // O recibo lê este dado do pedido. Telefone ausente ou inválido
+            // não vira destinatário, mas também não impede a venda.
+            p_cliente_whatsapp: linkWhatsappDoClienteDoBalcao(whatsapp, {
+              jaNacional: estado.cliente.tipo === "avulso",
+            })
+              ? whatsapp
+              : null,
             p_desconto: estado.desconto,
             p_total_esperado: totalDaVenda(estado),
             p_observacao:

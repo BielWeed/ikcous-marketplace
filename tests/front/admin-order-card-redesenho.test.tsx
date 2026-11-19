@@ -13,6 +13,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
+vi.mock("@/hooks/useDevolucoesDoPedidoAdmin", () => ({
+  useDevolucoesDoPedidoAdmin: () => ({
+    devolucoes: [],
+    carregando: false,
+    erro: false,
+    recarregar: vi.fn(),
+  }),
+}));
+
 class ObserverStub {
   private callback: IntersectionObserverCallback;
   constructor(callback: IntersectionObserverCallback) {

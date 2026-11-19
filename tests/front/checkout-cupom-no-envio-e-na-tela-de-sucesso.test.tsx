@@ -15,6 +15,7 @@ import type { CartItem, Product, ShippingOption } from "@/types";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { comReleituraDeEnderecos } from "./duble-releitura-de-enderecos";
 
 /** Os props que o React guardou no nó: o handler real, mesmo com `disabled`. */
 function propsDoReact(el: Element): { onClick?: () => void } {
@@ -86,13 +87,13 @@ const mockAddresses = [
 ];
 
 vi.mock("@/hooks/useAddresses", () => ({
-  useAddresses: () => ({
-    addresses: mockAddresses,
-    fetchAddresses: vi.fn(),
-    addAddress: vi.fn(),
-    updateAddress: vi.fn(),
-    loading: false,
-  }),
+  useAddresses: () =>
+    comReleituraDeEnderecos({
+      addresses: mockAddresses,
+      addAddress: vi.fn(),
+      updateAddress: vi.fn(),
+      loading: false,
+    }),
 }));
 
 // Referência ESTÁVEL de `user` (um objeto novo por render reabriria efeitos).

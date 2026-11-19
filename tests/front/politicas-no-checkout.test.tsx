@@ -15,6 +15,7 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { comReleituraDeEnderecos } from "./duble-releitura-de-enderecos";
 
 import type { Address, CartItem, Product, ShippingOption } from "@/types";
 
@@ -102,13 +103,13 @@ vi.mock("@/contexts/StoreContext", () => ({
   }),
 }));
 vi.mock("@/hooks/useAddresses", () => ({
-  useAddresses: () => ({
-    addresses: estadoEnderecos.lista,
-    fetchAddresses: vi.fn(async () => {}),
-    addAddress: vi.fn(),
-    updateAddress: vi.fn(),
-    loading: false,
-  }),
+  useAddresses: () =>
+    comReleituraDeEnderecos({
+      addresses: estadoEnderecos.lista,
+      addAddress: vi.fn(),
+      updateAddress: vi.fn(),
+      loading: false,
+    }),
 }));
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({

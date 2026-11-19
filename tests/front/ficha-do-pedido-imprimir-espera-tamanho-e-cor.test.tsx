@@ -25,11 +25,19 @@ const { variacoesNoBanco, falhas, segurar } = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/supabase", () => {
+  const uuid = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
+
   function construtorDa(tabela: string) {
     const builder: Record<string, unknown> = {};
     builder.select = vi.fn(() => builder);
     builder.eq = vi.fn(() => builder);
     builder.in = vi.fn((_coluna: string, ids: string[]) => {
+      if (ids.some((id) => !uuid.test(id))) {
+        return Promise.resolve({
+          data: null,
+          error: { message: "UUID inválido" },
+        });
+      }
       const resposta = () =>
         falhas[tabela as keyof typeof falhas]
           ? { data: null, error: { message: "falha de rede" } }
@@ -77,7 +85,7 @@ type ItemDoPedido = Order["items"][number];
 
 function item(overrides: Partial<ItemDoPedido> = {}): ItemDoPedido {
   return {
-    productId: "prod-camiseta",
+    productId: "598044d0-9426-44d9-a0c9-000000000001",
     name: "Camiseta Básica",
     price: 50,
     quantity: 1,
@@ -166,15 +174,42 @@ describe("ficha do pedido — Imprimir espera o tamanho e a cor chegarem", () =>
       (b) => b.textContent?.includes("Tentar de novo"),
     );
 
+  it("pedido misto mantém os itens antigos e imprime com a variação válida", async () => {
+    const variantId = "c311a2c6-e8e5-4e1c-a587-b63dcadb6091";
+    variacoesNoBanco.push({ id: variantId, name: "Cor", value: "Verde" });
+
+    await renderizarFicha(
+      pedidoFake([
+        item({ productId: "", name: "Item sem produto" }),
+        item({
+          productId: "legado",
+          variantId: "inválida",
+          name: "Item legado",
+        }),
+        item({ productId: "c311a2c6-e8e5-4e1c-a587-b63dcadb6092", variantId }),
+      ]),
+    );
+
+    expect(hospedeiro.textContent).toContain("Cor Verde");
+    expect(hospedeiro.textContent).toContain("Item sem produto");
+    expect(botaoImprimir()?.disabled).toBe(false);
+    const recibo = document.body.querySelector("[data-tema-fixo]");
+    expect(recibo?.textContent).toContain("Cor Verde");
+    expect(recibo?.textContent).toContain("Item sem produto");
+    expect(recibo?.textContent).toContain("Item legado");
+  });
+
   it("leitura da variação falhou: Imprimir fica desligado e diz por quê", async () => {
     falhas.product_variants = true;
     variacoesNoBanco.push({
-      id: "var-imp-falha-1",
+      id: "598044d0-9426-44d9-a0c9-000000000002",
       name: "Tamanho",
       value: "M",
     });
 
-    await renderizarFicha(pedidoFake([item({ variantId: "var-imp-falha-1" })]));
+    await renderizarFicha(
+      pedidoFake([item({ variantId: "598044d0-9426-44d9-a0c9-000000000002" })]),
+    );
 
     expect(botaoImprimir()).not.toBeNull();
     expect(botaoImprimir()?.disabled).toBe(true);
@@ -185,13 +220,13 @@ describe("ficha do pedido — Imprimir espera o tamanho e a cor chegarem", () =>
   it("enquanto a leitura demora: desligado; quando chega, liga e o papel leva o tamanho", async () => {
     segurar.ligado = true;
     variacoesNoBanco.push({
-      id: "var-imp-espera-2",
+      id: "598044d0-9426-44d9-a0c9-000000000003",
       name: "Tamanho",
       value: "G",
     });
 
     await renderizarFicha(
-      pedidoFake([item({ variantId: "var-imp-espera-2" })]),
+      pedidoFake([item({ variantId: "598044d0-9426-44d9-a0c9-000000000003" })]),
     );
 
     expect(botaoImprimir()?.disabled).toBe(true);
@@ -210,13 +245,13 @@ describe("ficha do pedido — Imprimir espera o tamanho e a cor chegarem", () =>
   it("depois do 'Tentar de novo' bem-sucedido, Imprimir volta", async () => {
     falhas.product_variants = true;
     variacoesNoBanco.push({
-      id: "var-imp-tentar-3",
+      id: "598044d0-9426-44d9-a0c9-000000000004",
       name: "Cor",
       value: "Azul",
     });
 
     await renderizarFicha(
-      pedidoFake([item({ variantId: "var-imp-tentar-3" })]),
+      pedidoFake([item({ variantId: "598044d0-9426-44d9-a0c9-000000000004" })]),
     );
     expect(botaoImprimir()?.disabled).toBe(true);
 
@@ -235,7 +270,9 @@ describe("ficha do pedido — Imprimir espera o tamanho e a cor chegarem", () =>
     vi.stubGlobal("print", imprimir);
     falhas.product_variants = true;
 
-    await renderizarFicha(pedidoFake([item({ variantId: "var-imp-click-4" })]));
+    await renderizarFicha(
+      pedidoFake([item({ variantId: "598044d0-9426-44d9-a0c9-000000000005" })]),
+    );
     await act(async () => {
       botaoImprimir()?.click();
     });
@@ -244,9 +281,15 @@ describe("ficha do pedido — Imprimir espera o tamanho e a cor chegarem", () =>
   });
 
   it("CONTROLE: leitura ok -> Imprimir ligado e sem aviso", async () => {
-    variacoesNoBanco.push({ id: "var-imp-ok-5", name: "Tamanho", value: "P" });
+    variacoesNoBanco.push({
+      id: "598044d0-9426-44d9-a0c9-000000000006",
+      name: "Tamanho",
+      value: "P",
+    });
 
-    await renderizarFicha(pedidoFake([item({ variantId: "var-imp-ok-5" })]));
+    await renderizarFicha(
+      pedidoFake([item({ variantId: "598044d0-9426-44d9-a0c9-000000000006" })]),
+    );
 
     expect(botaoImprimir()?.disabled).toBe(false);
     expect(motivo()).not.toContain("tamanho e a cor dos itens");
@@ -254,7 +297,7 @@ describe("ficha do pedido — Imprimir espera o tamanho e a cor chegarem", () =>
 
   it("BORDA: variação apagada do catálogo (leitura deu certo e não achou) imprime como sempre", async () => {
     await renderizarFicha(
-      pedidoFake([item({ variantId: "var-imp-apagada-6" })]),
+      pedidoFake([item({ variantId: "598044d0-9426-44d9-a0c9-000000000007" })]),
     );
 
     expect(botaoImprimir()?.disabled).toBe(false);
@@ -264,7 +307,7 @@ describe("ficha do pedido — Imprimir espera o tamanho e a cor chegarem", () =>
     falhas.vw_produtos_admin = true;
 
     await renderizarFicha(
-      pedidoFake([item({ productId: "prod-imp-sem-var-7" })]),
+      pedidoFake([item({ productId: "598044d0-9426-44d9-a0c9-000000000008" })]),
     );
 
     expect(botaoImprimir()?.disabled).toBe(false);
@@ -275,7 +318,7 @@ describe("ficha do pedido — Imprimir espera o tamanho e a cor chegarem", () =>
     segurar.ligado = true;
 
     await renderizarFicha(
-      pedidoFake([item({ productId: "prod-imp-sem-var-8" })]),
+      pedidoFake([item({ productId: "598044d0-9426-44d9-a0c9-000000000009" })]),
     );
 
     expect(botaoImprimir()?.disabled).toBe(false);

@@ -16,6 +16,7 @@ import {
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
+import { taxaDeResposta } from "@/lib/taxa-de-resposta";
 import { TETO_DA_RESPOSTA_DA_LOJA } from "@/lib/teto-da-resposta-da-loja";
 import type { Database } from "@/types/database.types";
 import {
@@ -1196,7 +1197,7 @@ export function useQuestions() {
     const total = totalRes.count ?? 0;
     const pending = pendingRes.count ?? 0;
     const answered = Math.max(0, total - pending);
-    const rate = total > 0 ? Math.round((answered / total) * 100) : 0;
+    const { width: rate } = taxaDeResposta(answered, total);
 
     return {
       status: "ok",

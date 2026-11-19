@@ -28,8 +28,16 @@ vi.mock("@/lib/supabase", () => ({
                 data:
                   tabela === "product_variants"
                     ? [
-                        { id: "var-tamanho", name: "Tamanho", value: "M" },
-                        { id: "var-cor", name: "Cor", value: "Azul" },
+                        {
+                          id: "598044d3-9426-44d9-a0c9-000000000001",
+                          name: "Tamanho",
+                          value: "M",
+                        },
+                        {
+                          id: "598044d3-9426-44d9-a0c9-000000000002",
+                          name: "Cor",
+                          value: "Azul",
+                        },
                       ].filter((v) => ids.includes(v.id))
                     : [],
                 error: null,
@@ -69,20 +77,20 @@ function pedido(): Order {
     customer: { name: "Cliente Teste", whatsapp: "", address: "Rua Fictícia" },
     items: [
       {
-        productId: "prod-camiseta",
+        productId: "598044d3-9426-44d9-a0c9-000000000003",
         name: "Camiseta",
         price: 50,
         quantity: 1,
         image: "",
-        variantId: "var-tamanho",
+        variantId: "598044d3-9426-44d9-a0c9-000000000001",
       },
       {
-        productId: "prod-bone",
+        productId: "598044d3-9426-44d9-a0c9-000000000004",
         name: "Boné",
         price: 50,
         quantity: 1,
         image: "",
-        variantId: "var-cor",
+        variantId: "598044d3-9426-44d9-a0c9-000000000002",
       },
     ],
     subtotal: 100,

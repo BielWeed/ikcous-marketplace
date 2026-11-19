@@ -20,7 +20,7 @@ import { PreviaDoFrete } from "@/components/admin/shipping/PreviaDoFrete";
 import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
-import { useMototaxi } from "@/hooks/useMototaxi";
+import { lerContatoMototaxi, useMototaxi } from "@/hooks/useMototaxi";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import {
@@ -229,11 +229,13 @@ function mesclarFormularioNacional(
   atual: FormularioNacional,
   retrato: FormularioNacional,
   novo: FormularioNacional,
+  descartarMinimo: boolean,
 ): FormularioNacional {
   const mexeu = camposNacionaisMexidos(atual, retrato);
   return {
-    estrategia: mexeu.estrategia ? atual.estrategia : novo.estrategia,
-    minimo: mexeu.minimo ? atual.minimo : novo.minimo,
+    estrategia:
+      mexeu.estrategia && !descartarMinimo ? atual.estrategia : novo.estrategia,
+    minimo: mexeu.minimo && !descartarMinimo ? atual.minimo : novo.minimo,
     tipoDesconto: mexeu.tipoDesconto ? atual.tipoDesconto : novo.tipoDesconto,
     valorDesconto: mexeu.valorDesconto
       ? atual.valorDesconto
@@ -361,33 +363,38 @@ export const AdminShippingView = memo(function AdminShippingView({
   const configFalhou = configIndisponivel === true;
   const isOffline = useOnlineStatus();
   const mototaxi = useMototaxi(active);
-  const [contatoMototaxi, setContatoMototaxi] = useState({
-    whatsapp: "",
-    nome: "",
-  });
-  const mototaxiPendenteRef = useRef(false);
+  const [{ base: baseMototaxi, contato: contatoMototaxi }, setEdicaoMototaxi] =
+    useState(() => {
+      const vazio = { whatsapp: "", nome: "" };
+      return { base: vazio, contato: vazio };
+    });
   useEffect(() => {
-    if (mototaxi.config && !mototaxiPendenteRef.current) {
-      setContatoMototaxi({
+    if (mototaxi.config) {
+      const atual = {
         whatsapp: mototaxi.config.whatsapp ?? "",
         nome: mototaxi.config.nome ?? "",
-      });
+      };
+      // A base é o contato que a lojista viu antes de mexer, não o que o
+      // hook pode ter relido enquanto o rascunho ainda está na tela.
+      setEdicaoMototaxi((edicao) =>
+        edicao.contato.whatsapp === edicao.base.whatsapp &&
+        edicao.contato.nome === edicao.base.nome
+          ? { base: atual, contato: atual }
+          : edicao,
+      );
     }
   }, [mototaxi.config]);
   const mototaxiPendente =
-    !!mototaxi.config &&
-    (contatoMototaxi.whatsapp !== (mototaxi.config.whatsapp ?? "") ||
-      contatoMototaxi.nome !== (mototaxi.config.nome ?? ""));
+    contatoMototaxi.whatsapp !== baseMototaxi.whatsapp ||
+    contatoMototaxi.nome !== baseMototaxi.nome;
   const erroMototaxi =
     !!contatoMototaxi.whatsapp.trim() &&
     !normalizarNumeroMototaxi(contatoMototaxi.whatsapp);
-  useEffect(() => {
-    mototaxiPendenteRef.current = mototaxiPendente;
-  }, [mototaxiPendente]);
 
   const [showHelpModal, setShowHelpModal] = useState(false);
   useVoltarFechaAFolha(showHelpModal, () => setShowHelpModal(false), true);
   const [isSaving, setIsSaving] = useState(false);
+  const salvandoRef = useRef(false);
   const sincronizacaoSuspensaRef = useRef(false);
   const [falhaAoSalvar, setFalhaAoSalvar] = useState(false);
 
@@ -474,6 +481,8 @@ export const AdminShippingView = memo(function AdminShippingView({
     valorDesconto: 0,
     alcance: "mais_barata",
   });
+  const [minimoNacionalDescartado, setMinimoNacionalDescartado] =
+    useState(false);
   // O retrato de cada metade: o formulário como saiu do config (ou do último
   // Salvar). O Salvar manda só o que difere dele; ver `FormularioLocal`.
   const retratoLocalRef = useRef<FormularioLocal | null>(null);
@@ -600,11 +609,19 @@ export const AdminShippingView = memo(function AdminShippingView({
         // (que pode ter vindo do outro aparelho); o que ela digitou fica. O
         // retrato vira o config novo em TODOS os campos: o que sobrar diferente
         // na tela é edição dela e vai no Salvar.
+        const atual = formDataNacionalRef.current;
+        // O mínimo pertence à estratégia na qual foi digitado. Não o
+        // transfere para uma regra que mudou no outro aparelho.
+        const descartarMinimo =
+          novo.estrategia !== retrato.estrategia &&
+          !Object.is(atual.minimo, retrato.minimo);
         const mesclado = mesclarFormularioNacional(
-          formDataNacionalRef.current,
+          atual,
           retrato,
           novo,
+          descartarMinimo,
         );
+        if (descartarMinimo) setMinimoNacionalDescartado(true);
         retratoNacionalRef.current = novo;
         setFormDataNacional((prev) =>
           nacionalMudou(prev, mesclado) ? mesclado : prev,
@@ -840,7 +857,7 @@ export const AdminShippingView = memo(function AdminShippingView({
     // Segunda trava (a primeira é o botão desabilitado): com a leitura falha
     // a tela mostra a config de FÁBRICA e gravar dela apagaria a de verdade.
     if (configFalhou) return;
-    if (isSaving || erroMototaxi) return;
+    if (salvandoRef.current || erroMototaxi) return;
     if (!soMototaxiPendente && erroLocal) {
       setPainelAberto((prev) => ({ ...prev, estrategiasLocais: true }));
       setAbaGratis("local");
@@ -1014,11 +1031,40 @@ export const AdminShippingView = memo(function AdminShippingView({
     const gravaRegras =
       regrasMudaram && Object.keys(regrasParaGravar).length > 0;
 
+    salvandoRef.current = true;
     try {
       // Se esta gravação falhar, PARA AQUI (ADMIN-010, #94). O toast de
       // erro sai de dentro do `updateConfig`.
       let mototaxiSalvoNestaRodada = false;
       if (mototaxiPendente) {
+        let atual: typeof baseMototaxi;
+        try {
+          const lido = await lerContatoMototaxi();
+          atual = { whatsapp: lido?.whatsapp ?? "", nome: lido?.nome ?? "" };
+        } catch {
+          setFalhaAoSalvar(true);
+          toast.error(
+            "Não deu para conferir o contato do mototáxi. Tente de novo.",
+          );
+          return;
+        }
+        const mudouWhatsapp = atual.whatsapp !== baseMototaxi.whatsapp;
+        const mudouNome = atual.nome !== baseMototaxi.nome;
+        if (mudouWhatsapp || mudouNome) {
+          setEdicaoMototaxi({
+            base: atual,
+            contato: {
+              whatsapp: mudouWhatsapp
+                ? atual.whatsapp
+                : contatoMototaxi.whatsapp,
+              nome: mudouNome ? atual.nome : contatoMototaxi.nome,
+            },
+          });
+          toast.warning(
+            "O contato do mototáxi foi alterado em outro aparelho. Confira o número e salve de novo.",
+          );
+          return;
+        }
         const salvouMototaxi = await mototaxi.salvar(contatoMototaxi);
         if (!salvouMototaxi) {
           setFalhaAoSalvar(true);
@@ -1026,11 +1072,11 @@ export const AdminShippingView = memo(function AdminShippingView({
           return;
         }
         mototaxiSalvoNestaRodada = true;
-        mototaxiPendenteRef.current = false;
-        setContatoMototaxi({
+        const salvo = {
           whatsapp: normalizarNumeroMototaxi(contatoMototaxi.whatsapp) ?? "",
           nome: contatoMototaxi.nome.trim(),
-        });
+        };
+        setEdicaoMototaxi({ base: salvo, contato: salvo });
       }
       const salvou = !gravaRegras
         ? true
@@ -1169,6 +1215,7 @@ export const AdminShippingView = memo(function AdminShippingView({
           : "Erro ao salvar as configurações.",
       );
     } finally {
+      salvandoRef.current = false;
       setIsSaving(false);
     }
   };
@@ -1544,9 +1591,10 @@ export const AdminShippingView = memo(function AdminShippingView({
                     }
                     onChange={(e) => {
                       setFalhaAoSalvar(false);
-                      setContatoMototaxi((c) => ({
-                        ...c,
-                        whatsapp: e.target.value,
+                      const whatsapp = e.target.value;
+                      setEdicaoMototaxi((edicao) => ({
+                        ...edicao,
+                        contato: { ...edicao.contato, whatsapp },
                       }));
                     }}
                     className="min-h-11 w-full rounded-xl border border-admin-border bg-admin-surface px-3 text-sm text-zinc-100 disabled:opacity-50"
@@ -1577,9 +1625,10 @@ export const AdminShippingView = memo(function AdminShippingView({
                     value={contatoMototaxi.nome}
                     onChange={(e) => {
                       setFalhaAoSalvar(false);
-                      setContatoMototaxi((c) => ({
-                        ...c,
-                        nome: e.target.value,
+                      const nome = e.target.value;
+                      setEdicaoMototaxi((edicao) => ({
+                        ...edicao,
+                        contato: { ...edicao.contato, nome },
                       }));
                     }}
                     className="min-h-11 w-full rounded-xl border border-admin-border bg-admin-surface px-3 text-sm text-zinc-100 disabled:opacity-50"
@@ -1708,9 +1757,10 @@ export const AdminShippingView = memo(function AdminShippingView({
                   valorDesconto={formDataNacional.valorDesconto}
                   alcance={formDataNacional.alcance}
                   onEscolherEstrategia={escolherEstrategiaNacional}
-                  onMinimo={(minimo) =>
-                    atualizarFormDataNacional((prev) => ({ ...prev, minimo }))
-                  }
+                  onMinimo={(minimo) => {
+                    setMinimoNacionalDescartado(false);
+                    atualizarFormDataNacional((prev) => ({ ...prev, minimo }));
+                  }}
                   onTipoDesconto={(tipoDesconto) =>
                     atualizarFormDataNacional((prev) => ({
                       ...prev,
@@ -1731,8 +1781,11 @@ export const AdminShippingView = memo(function AdminShippingView({
                   }
                   desabilitado={isOffline || configFalhou}
                 />
-                {erroNacional && (
+                {(minimoNacionalDescartado || erroNacional) && (
                   <p role="alert" className="mt-2 text-[12.5px] text-red-300">
+                    {minimoNacionalDescartado &&
+                      "A estratégia de frete foi alterada em outro aparelho; revise o valor mínimo antes de salvar."}
+                    {minimoNacionalDescartado && erroNacional && <br />}
                     {erroNacional}
                   </p>
                 )}

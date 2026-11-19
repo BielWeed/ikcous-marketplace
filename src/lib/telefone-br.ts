@@ -107,7 +107,7 @@ const MAX_DIGITOS_COM_EXCEDENTE = 15;
  * continua exatamente o de antes (quem tem DDD 55 e erra um dígito não perde
  * nada). Colagem enorme é limitada a 15 dígitos, o que continua reprovando.
  */
-function digitosComExcedenteVisivel(
+export function digitosComExcedenteVisivel(
   digitos: string,
   anterior: string | undefined,
 ): string {

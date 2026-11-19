@@ -913,6 +913,7 @@ const AppContent = () => {
   }, [checkoutRetomadaId]);
 
   const [searchQuery, setSearchQuery] = useState("");
+  const [pedidoTodasCategorias, setPedidoTodasCategorias] = useState(0);
   // Categoria, ordem e faixa de preço da tela /search: ela é desmontada ao abrir
   // um produto, então os filtros moram aqui (como os da Home) e voltam com a
   // tela. Ref e não estado: a tela os lê só ao montar, ninguém precisa
@@ -1597,9 +1598,16 @@ const AppContent = () => {
   // a cliente já está na Home, e os seguintes só atualizam o termo, sem
   // empurrar uma entrada de histórico por letra. Termo vazio só limpa.
   const handleSearch = useCallback(
-    (query: string) => {
-      setSearchQuery(query);
+    (query: string, todasAsCategorias = false) => {
       const telaAtual = currentViewRef.current;
+      if (todasAsCategorias) {
+        if (telaAtual === "search") {
+          setPedidoTodasCategorias((n) => n + 1);
+        } else {
+          handleCategoryChange("Todas");
+        }
+      }
+      setSearchQuery(query);
       if (
         nomeTemConteudoVisivel(query) &&
         telaAtual !== "home" &&
@@ -1608,7 +1616,7 @@ const AppContent = () => {
         void handleNavigate("home");
       }
     },
-    [handleNavigate],
+    [handleCategoryChange, handleNavigate],
   );
 
   // O chip é uma categoria exata, não um termo. A referência da Home é
@@ -3254,6 +3262,7 @@ const AppContent = () => {
             props={{
               onNavigate: handleNavigate,
               initialQuery: searchQuery,
+              pedidoTodasCategorias,
               onBack: () => handleNavigate("home"),
               selectedProductId: selectedProductId || undefined,
               onQueryChange: setSearchQuery,

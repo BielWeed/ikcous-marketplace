@@ -20,6 +20,7 @@ import type { ReactElement, ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { SearchBar } from "@/components/ui/custom/SearchBar";
 import type { Product } from "@/types";
 import { SearchView } from "@/views/customer/SearchView";
 
@@ -109,16 +110,27 @@ describe("SearchView — busca nova vinda do topo nao herda a categoria", () => 
   /** Faz o papel do App: guarda o termo e o devolve como `initialQuery`. */
   function Pai({ inicial }: { inicial: string }) {
     const [termo, setTermo] = useState(inicial);
+    const [pedidoTodasCategorias, setPedidoTodasCategorias] = useState(0);
     useEffect(() => {
       mudarTermoDeFora = setTermo;
     }, []);
     return (
-      <SearchView
-        onNavigate={() => {}}
-        onBack={() => {}}
-        initialQuery={termo}
-        onQueryChange={setTermo}
-      />
+      <>
+        <SearchBar
+          value={termo}
+          onChange={(valor, todasAsCategorias) => {
+            setTermo(valor);
+            if (todasAsCategorias) setPedidoTodasCategorias((n) => n + 1);
+          }}
+        />
+        <SearchView
+          onNavigate={() => {}}
+          onBack={() => {}}
+          initialQuery={termo}
+          onQueryChange={setTermo}
+          pedidoTodasCategorias={pedidoTodasCategorias}
+        />
+      </>
     );
   }
 
@@ -219,6 +231,31 @@ describe("SearchView — busca nova vinda do topo nao herda a categoria", () => 
     await esperar(450);
 
     expect(botaoFiltros().textContent).toContain("(1)");
+  });
+
+  it("Ver todos os resultados tira a categoria sem trocar o termo", async () => {
+    mockedProducts = [
+      produto("p1", "Bolsa Preta", "Bolsas"),
+      produto("p2", "Sandália Preta", "Calçados"),
+    ];
+    await abrir("preta");
+    await escolherCategoria("Bolsas");
+    expect(mostraProduto("Bolsa Preta")).toBe(true);
+    expect(mostraProduto("Sandália Preta")).toBe(false);
+
+    const topo = hospedeiro.querySelector<HTMLInputElement>(
+      'input[name="search"]',
+    )!;
+    await act(async () => topo.focus());
+    expect(hospedeiro.textContent).toContain("Produtos (2)");
+    await clicar(
+      botoes().find((b) => b.textContent?.includes("Ver todos os resultados"))!,
+    );
+
+    expect(topo.value).toBe("preta");
+    expect(caixa().value).toBe("preta");
+    expect(mostraProduto("Bolsa Preta")).toBe(true);
+    expect(mostraProduto("Sandália Preta")).toBe(true);
   });
 
   it("controle: digitar na propria caixa da tela mantem a categoria escolhida", async () => {

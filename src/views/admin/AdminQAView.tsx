@@ -28,6 +28,7 @@ import { useRevalidarAoVoltar } from "@/hooks/useRevalidarAoVoltar";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { mensagemDeErroDeSessaoDoPainel } from "@/lib/erro-de-sessao-do-painel";
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
+import { taxaDeResposta } from "@/lib/taxa-de-resposta";
 import { classeDoTexto } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
@@ -43,7 +44,14 @@ import {
   Send,
   Trash2,
 } from "lucide-react";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 
 interface AdminQAViewProps {
@@ -57,7 +65,6 @@ let cachedQAStats: {
   total: number;
   pending: number;
   answered: number;
-  rate: number;
 } | null = null;
 
 // Scroll cache is managed by useScrollRestoration hook centrally
@@ -131,9 +138,6 @@ export const AdminQAView = memo(function AdminQAView({
   const [answeredCount, setAnsweredCount] = useState(
     () => cachedQAStats?.answered || 0,
   );
-  const [responseRate, setResponseRate] = useState(
-    () => cachedQAStats?.rate || 0,
-  );
   // A consulta de estatísticas falhou (e os números na tela podem ser
   // velhos — ou nunca terem chegado). Enquanto verdadeiro, o filtro, o resumo
   // e os cartões não podem dizer "0", "0%" nem "0 de 0": erro não é fila vazia.
@@ -149,6 +153,7 @@ export const AdminQAView = memo(function AdminQAView({
   const questionsLengthRef = useRef(questions.length);
   const wasOfflineRef = useRef(isOffline);
   const onQuestionEventRef = useRef<() => void>(() => {});
+  const recarregarListaAtual = useRef<() => void>(() => {});
 
   const pageSize = 10;
 
@@ -174,7 +179,6 @@ export const AdminQAView = memo(function AdminQAView({
       setTotalCount(stats.total);
       setPendingCount(stats.pending);
       setAnsweredCount(stats.answered);
-      setResponseRate(stats.rate);
       setStatsUnavailable(false);
     } catch (error) {
       if (rodada !== rodadaStatsRef.current) return;
@@ -185,6 +189,25 @@ export const AdminQAView = memo(function AdminQAView({
     }
   }, [getQAStats]);
 
+  // Como em Avaliações, voltar ao mesmo filtro depois de outra consulta
+  // não torna a lista anterior válida para a nova leitura.
+  const chaveDaConsulta = JSON.stringify([page, filter, searchQuery]);
+  const [consultaDaTela, setConsultaDaTela] = useState({
+    chave: chaveDaConsulta,
+  });
+  if (consultaDaTela.chave !== chaveDaConsulta) {
+    setConsultaDaTela({ chave: chaveDaConsulta });
+  }
+  const [consultaDaLista, setConsultaDaLista] = useState<
+    typeof consultaDaTela | null
+  >(null);
+  const listaAtual =
+    consultaDaTela.chave === chaveDaConsulta &&
+    consultaDaLista === consultaDaTela;
+  const acoesBloqueadas =
+    isOffline || isTyping || loading || !listaAtual || !!erroDaListagemAdmin;
+  const recargaAdiada = useRef<typeof consultaDaTela | null>(null);
+
   const loadQuestions = useCallback(
     (pageToFetch: number, silent = false) => {
       const rodada = ++rodadaListaRef.current;
@@ -193,6 +216,7 @@ export const AdminQAView = memo(function AdminQAView({
         .then((result) => {
           if (rodada !== rodadaListaRef.current) return;
           if (result && !result.falhou) {
+            setConsultaDaLista(consultaDaTela);
             setTotalQuestions(result.total);
             const maxPage = Math.max(0, Math.ceil(result.total / pageSize) - 1);
             if (pageToFetch > maxPage) {
@@ -208,7 +232,7 @@ export const AdminQAView = memo(function AdminQAView({
           leiturasEmVooRef.current -= 1;
         });
     },
-    [getAllQuestions, pageSize, filter, searchQuery, setPage],
+    [getAllQuestions, pageSize, filter, searchQuery, setPage, consultaDaTela],
   );
 
   useRevalidarAoVoltar(
@@ -217,12 +241,31 @@ export const AdminQAView = memo(function AdminQAView({
     () => leiturasEmVooRef.current === 0,
   );
 
-  // Keep ref up to date with latest loadQuestions and page state without recreating subcription effect
-  onQuestionEventRef.current = () => {
-    loadQuestions(page);
-    // Pergunta nova também mexe nos números do topo (Pendentes, Todas, %).
-    void fetchStats();
-  };
+  useLayoutEffect(() => {
+    recarregarListaAtual.current = () => {
+      if (isTyping) {
+        recargaAdiada.current = consultaDaTela;
+        return;
+      }
+      void loadQuestions(page);
+    };
+
+    if (!isTyping && recargaAdiada.current) {
+      const consultaAdiada = recargaAdiada.current;
+      recargaAdiada.current = null;
+      // Uma busca nova já terá a sua própria leitura. Se o texto voltou ao
+      // que já estava aplicado, só a recarga adiada atualiza a lista.
+      if (consultaAdiada === consultaDaTela) void loadQuestions(page);
+    }
+  }, [consultaDaTela, isTyping, loadQuestions, page]);
+
+  useLayoutEffect(() => {
+    onQuestionEventRef.current = () => {
+      void loadQuestions(page);
+      // Pergunta nova também mexe nos números do topo (Pendentes, Todas, %).
+      void fetchStats();
+    };
+  }, [loadQuestions, page, fetchStats]);
 
   // --- 4. EFFECTS ---
   // Scroll position is handled by useScrollRestoration hook
@@ -488,7 +531,7 @@ export const AdminQAView = memo(function AdminQAView({
       focoPendente.current = () => tituloListaRef.current;
       setConfirmDeleteId(null);
       setRefreshTrigger((prev) => prev + 1);
-      loadQuestions(page);
+      recarregarListaAtual.current();
       return;
     }
 
@@ -508,7 +551,7 @@ export const AdminQAView = memo(function AdminQAView({
     toast.success("Pergunta excluída");
     setConfirmDeleteId(null);
     setRefreshTrigger((prev) => prev + 1);
-    loadQuestions(page);
+    recarregarListaAtual.current();
   };
 
   const totalPages = Math.ceil(totalQuestions / pageSize);
@@ -533,6 +576,7 @@ export const AdminQAView = memo(function AdminQAView({
   // onde não há base para medir. A taxa 0 do hook fica como valor neutro; é
   // a tela que decide não mostrá-la.
   const semBase = !statsUnavailable && totalCount === 0;
+  const responseRate = taxaDeResposta(answeredCount, totalCount);
 
   const resumoNaLinha = statsUnavailable ? (
     <>
@@ -548,9 +592,9 @@ export const AdminQAView = memo(function AdminQAView({
   ) : (
     <>
       <span className="shrink-0 text-base font-bold tabular-nums text-white">
-        {responseRate}% respondidas
+        {responseRate.text} respondidas
       </span>
-      <BarraDeProporcao percentual={responseRate} />
+      <BarraDeProporcao percentual={responseRate.width} />
       <span className="shrink-0 text-sm tabular-nums text-zinc-300">
         {answeredCount} de {totalCount}
       </span>
@@ -718,6 +762,7 @@ export const AdminQAView = memo(function AdminQAView({
           {isConfirmingDelete ? (
             <ConfirmarExclusao
               frase="Excluir esta pergunta? As respostas dela também serão apagadas. Não dá para desfazer."
+              desabilitada={acoesBloqueadas}
               aoCancelar={() => {
                 focoPendente.current = () =>
                   botoesExcluir.current.get(q.id) ?? null;
@@ -734,7 +779,7 @@ export const AdminQAView = memo(function AdminQAView({
                   trilha (migration 20260812000000). */}
               <button
                 type="button"
-                disabled={isOffline}
+                disabled={acoesBloqueadas}
                 aria-label={`${isAnswered ? "Editar resposta" : "Responder"} a ${q.customerName}`}
                 onClick={() => setSelectedQuestion(q)}
                 className={cn(
@@ -747,7 +792,7 @@ export const AdminQAView = memo(function AdminQAView({
               </button>
               <button
                 type="button"
-                disabled={isOffline}
+                disabled={acoesBloqueadas}
                 onClick={() => setConfirmDeleteId(q.id)}
                 ref={(botao) => {
                   if (botao) botoesExcluir.current.set(q.id, botao);
@@ -899,10 +944,10 @@ export const AdminQAView = memo(function AdminQAView({
           />
           <CartaoDeNumero
             rotulo="Respondidas"
-            valor={statsUnavailable || semBase ? "—" : `${responseRate}%`}
+            valor={statsUnavailable ? "—" : responseRate.text}
             extra={
               statsUnavailable || semBase ? undefined : (
-                <BarraDeProporcao percentual={responseRate} />
+                <BarraDeProporcao percentual={responseRate.width} />
               )
             }
             rodape={

@@ -108,7 +108,9 @@ vi.mock("@/components/ui/alert-dialog", () => ({
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: (...args: unknown[]) => from(...args),
-    rpc: vi.fn(),
+    rpc: vi.fn((nome: string) =>
+      nome === "devolucoes_do_pedido" ? { data: [], error: null } : undefined,
+    ),
     functions: { invoke: vi.fn() },
     channel: vi.fn(),
     removeChannel: vi.fn(),

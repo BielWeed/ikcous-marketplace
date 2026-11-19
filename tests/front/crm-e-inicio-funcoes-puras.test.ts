@@ -759,14 +759,23 @@ describe("segmentos RFM e WhatsApp", () => {
     expect(infoDoSegmento("novos").descricao).toBe("Compra recente");
   });
 
-  it("pediu_nao_pagou: a mensagem não afirma nada sobre pagamento (o pedido pode ter sido pago e cancelado/estornado depois)", () => {
-    const texto = mensagemDoSegmento("pediu_nao_pagou", {
-      nome: "Ana",
-      loja: "Loja X",
-    });
-    expect(texto).not.toMatch(/pagamento|pagou|pago/i);
-    expect(texto).toMatch(/pedido/i);
-  });
+  it.each([null, 0, 15])(
+    "pediu_nao_pagou com valor em aberto %s: não afirma nada sobre pagamento",
+    (valorEmAberto) => {
+      const texto = mensagemDoSegmento("pediu_nao_pagou", {
+        nome: "Ana",
+        loja: "Loja X",
+        valorEmAberto,
+      });
+      expect(texto).not.toMatch(/pagamento|pagou|pago/i);
+      if (valorEmAberto) {
+        expect(texto).toMatch(/pedido/i);
+        expect(texto).toContain("finalizar a compra");
+      } else {
+        expect(texto).not.toMatch(/pedido|finalizar a compra/i);
+      }
+    },
+  );
 });
 
 describe("linhasDeDatasDaAssinatura", () => {

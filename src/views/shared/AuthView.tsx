@@ -210,10 +210,16 @@ export function AuthView({
         ? "forgot"
         : "login",
   );
+  const [password, setPassword] = useState("");
+  const [confirmaSenha, setConfirmaSenha] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   // Sair e voltar ao mesmo modo também começa outro fluxo.
   const fluxoDaTela = useRef(0);
   const setViewMode = useCallback((modo: typeof viewMode) => {
     fluxoDaTela.current += 1;
+    setPassword("");
+    setConfirmaSenha("");
+    setShowPassword(false);
     setViewModeAtual(modo);
   }, []);
 
@@ -333,8 +339,6 @@ export function AuthView({
   useLayoutEffect(() => {
     emailAtual.current = email;
   }, [email]);
-  const [password, setPassword] = useState("");
-  const [confirmaSenha, setConfirmaSenha] = useState("");
   const [fullName, setFullName] = useState("");
 
   useEffect(() => {
@@ -376,7 +380,6 @@ export function AuthView({
   const [nomeErro, setNomeErro] = useState(false);
   const [novaSenhaErro, setNovaSenhaErro] = useState(false);
   const [confirmacaoErro, setConfirmacaoErro] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const envioEmCurso = useRef(false);
   const [showConfirmation, setShowConfirmation] = useState(false);

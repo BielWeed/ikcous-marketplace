@@ -97,9 +97,22 @@ describe("OrderList — código de rastreio no cartão do pedido (#105)", () => 
     expect(hospedeiro.textContent).toContain("Rastreio AA123456789BR");
   });
 
-  it("código só com espaços conta como ausente", async () => {
-    await renderizar({ ...pedidoBase, trackingCode: "  " });
+  it.each(["...", "---", " "])(
+    "sem letra nem dígito (%j), mostra a próxima etapa no lugar do rastreio",
+    async (trackingCode) => {
+      await renderizar({ ...pedidoBase, trackingCode });
 
-    expect(hospedeiro.textContent).not.toContain("Rastreio");
-  });
+      expect(hospedeiro.textContent).not.toContain("Rastreio");
+      expect(hospedeiro.textContent).toContain("Próxima etapa: Entregue");
+    },
+  );
+
+  it.each(["AB123", "12345678"])(
+    "continua mostrando o código de rastreio %s",
+    async (trackingCode) => {
+      await renderizar({ ...pedidoBase, trackingCode });
+
+      expect(hospedeiro.textContent).toContain(`Rastreio ${trackingCode}`);
+    },
+  );
 });

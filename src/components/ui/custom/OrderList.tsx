@@ -3,7 +3,10 @@ import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { dataNoFusoDaLoja } from "@/lib/data-da-loja";
 import { rotuloDaFormaDoPedido } from "@/lib/forma-de-pagamento";
 import { usarImagemOriginal } from "@/lib/imageUrl";
-import { normalizarCodigoDeRastreio } from "@/lib/link-de-rastreio";
+import {
+  codigoDeRastreioTemLetraOuDigito,
+  normalizarCodigoDeRastreio,
+} from "@/lib/link-de-rastreio";
 import { miniaturaDeCompra } from "@/lib/miniatura-de-compra";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import {
@@ -617,9 +620,9 @@ export const OrderList = memo(function OrderList({
                   />
                 )}
 
-                {/* Código livre nunca é cortado; substitui a próxima etapa,
+                {/* Código válido nunca é cortado; substitui a próxima etapa,
                     sem esconder rastreio já existente no histórico. */}
-                {codigoDeRastreio ? (
+                {codigoDeRastreioTemLetraOuDigito(codigoDeRastreio) ? (
                   <div className="mt-2 flex min-w-0 items-start gap-1 text-xs leading-4 text-muted-foreground">
                     <Truck
                       aria-hidden="true"

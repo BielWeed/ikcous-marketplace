@@ -200,6 +200,16 @@ describe("getQAStats — falha de consulta nunca vira 'Fila Limpa'", () => {
     }
   });
 
+  it.each([
+    [1, 99],
+    [0, 100],
+    [500, 0],
+  ])("com %i pendentes de 500, a barra fica em %i", async (pendentes, rate) => {
+    h.respostas[0] = { count: 500, error: null };
+    h.respostas[1] = { count: pendentes, error: null };
+    expect(await chamar()).toMatchObject({ status: "ok", rate });
+  });
+
   it("CASO 3 — loja legitimamente vazia: zero de verdade chega como 'ok', sem cara de erro", async () => {
     h.respostas[0] = { count: 0, error: null };
     h.respostas[1] = { count: 0, error: null };

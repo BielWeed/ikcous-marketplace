@@ -3,6 +3,8 @@
  * Garante a integridade lógica dos dados no domínio do marketplace.
  */
 
+export const ESTOQUE_MAXIMO_DA_VARIACAO = 10_000;
+
 export interface VerificationReceipt {
   hash: string;
   timestamp: string;
@@ -304,7 +306,11 @@ export const TruthGate = {
     }
 
     // Axioma 2: Estoque da variante dentro do limite termodinâmico
-    if (stock !== undefined && stock !== null && stock > 10000) {
+    if (
+      stock !== undefined &&
+      stock !== null &&
+      stock > ESTOQUE_MAXIMO_DA_VARIACAO
+    ) {
       violations.push("Axiom violation: variant_stock_limit_exceeded");
     }
 

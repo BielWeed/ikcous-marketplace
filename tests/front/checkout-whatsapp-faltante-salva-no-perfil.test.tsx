@@ -6,20 +6,29 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { pararABuscaDeCep } from "./duble-busca-de-cep";
+import { comReleituraDeEnderecos } from "./duble-releitura-de-enderecos";
 
 type Perfil = { id: string; full_name: string; whatsapp: string | null };
-const { conta, createOrder, updateProfile, toastError, clearCart, online } =
-  vi.hoisted(() => ({
-    conta: {
-      user: { id: "user-1" } as { id: string } | null,
-      profile: null as Perfil | null,
-    },
-    createOrder: vi.fn(),
-    updateProfile: vi.fn(),
-    toastError: vi.fn(),
-    clearCart: vi.fn(),
-    online: { ligado: false },
-  }));
+const {
+  conta,
+  createOrder,
+  updateProfile,
+  fetchProfile,
+  toastError,
+  clearCart,
+  online,
+} = vi.hoisted(() => ({
+  conta: {
+    user: { id: "user-1" } as { id: string } | null,
+    profile: null as Perfil | null,
+  },
+  createOrder: vi.fn(),
+  updateProfile: vi.fn(),
+  fetchProfile: vi.fn(),
+  toastError: vi.fn(),
+  clearCart: vi.fn(),
+  online: { ligado: false },
+}));
 const onNavigate = vi.fn();
 const onSetBackOverride = vi.fn();
 const CARRINHO = [
@@ -68,30 +77,30 @@ vi.mock("@/contexts/StoreContext", () => ({
   }),
 }));
 vi.mock("@/hooks/useAddresses", () => ({
-  useAddresses: () => ({
-    addresses: [
-      {
-        id: "addr-1",
-        user_id: "user-1",
-        name: "Casa",
-        recipient_name: "Cliente Teste",
-        cep: "38500-000",
-        street: "Rua Teste",
-        number: "100",
-        neighborhood: "Centro",
-        city: "Monte Carmelo",
-        state: "MG",
-        is_default: true,
-      },
-    ],
-    fetchAddresses: vi.fn(),
-    addAddress: vi.fn(),
-    updateAddress: vi.fn(),
-    loading: false,
-  }),
+  useAddresses: () =>
+    comReleituraDeEnderecos({
+      addresses: [
+        {
+          id: "addr-1",
+          user_id: "user-1",
+          name: "Casa",
+          recipient_name: "Cliente Teste",
+          cep: "38500-000",
+          street: "Rua Teste",
+          number: "100",
+          neighborhood: "Centro",
+          city: "Monte Carmelo",
+          state: "MG",
+          is_default: true,
+        },
+      ],
+      addAddress: vi.fn(),
+      updateAddress: vi.fn(),
+      loading: false,
+    }),
 }));
 vi.mock("@/hooks/useAuth", () => ({
-  useAuth: () => ({ ...conta, loading: false, updateProfile }),
+  useAuth: () => ({ ...conta, loading: false, updateProfile, fetchProfile }),
 }));
 vi.mock("@/hooks/useCart", async () => {
   const { criarUseCartDeTeste } = await import("./duble-use-cart");
@@ -116,7 +125,22 @@ vi.mock("@/hooks/useCoupons", () => ({
 vi.mock("@/hooks/useOrders", () => ({
   useOrders: () => ({ createOrder, updateOrderStatus: vi.fn() }),
 }));
-vi.mock("@/lib/supabase", () => ({ supabase: {} }));
+const { from, update, eq, is, setHeader, rpc, getSession } = vi.hoisted(() => ({
+  from: vi.fn(),
+  update: vi.fn(),
+  eq: vi.fn(),
+  is: vi.fn(),
+  setHeader: vi.fn(),
+  rpc: vi.fn(),
+  getSession: vi.fn(),
+}));
+vi.mock("@/lib/supabase", () => ({
+  supabase: {
+    from,
+    rpc,
+    auth: { getSession },
+  },
+}));
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 vi.mock("@/hooks/useDeferredRender", () => ({
   useDeferredRender: () => true,
@@ -169,7 +193,18 @@ describe("CheckoutView — guarda o WhatsApp que faltava sem atrapalhar a compra
     createOrder
       .mockReset()
       .mockResolvedValue({ id: "pedido-1", totalAmount: 100 });
-    updateProfile.mockReset().mockResolvedValue(true);
+    updateProfile.mockReset();
+    fetchProfile.mockReset().mockResolvedValue(true);
+    rpc.mockReset();
+    from.mockReset().mockReturnValue({ update });
+    update.mockReset().mockReturnValue({ eq });
+    eq.mockReset().mockReturnValue({ eq, is, setHeader });
+    is.mockReset().mockReturnValue({ setHeader });
+    setHeader.mockReset().mockResolvedValue({ data: null, error: null });
+    getSession.mockReset().mockImplementation(async () => ({
+      data: { session: { user: conta.user, access_token: "token-de-teste" } },
+      error: null,
+    }));
     clearCart.mockReset();
     toastError.mockReset();
     pararABuscaDeCep();
@@ -237,34 +272,95 @@ describe("CheckoutView — guarda o WhatsApp que faltava sem atrapalhar a compra
     expect(clearCart).toHaveBeenCalledTimes(1);
     expect(document.body.textContent).toContain("Pedido recebido!");
     expect(toastError).not.toHaveBeenCalled();
+    expect(updateProfile).not.toHaveBeenCalled();
+    expect(
+      rpc.mock.calls.some(([nome]) => nome === "update_my_profile_secure"),
+    ).toBe(false);
+  }
+
+  function simularWhatsappNoBanco(whatsapp: string | null) {
+    const perfilNoBanco = { whatsapp };
+    setHeader.mockImplementation(async () => {
+      const filtro =
+        is.mock.calls.find(([coluna]) => coluna === "whatsapp") ??
+        eq.mock.calls.find(([coluna]) => coluna === "whatsapp");
+      if (filtro?.[1] === perfilNoBanco.whatsapp) {
+        perfilNoBanco.whatsapp = update.mock.calls[0][0].whatsapp;
+      }
+      return { data: null, error: null };
+    });
+    return perfilNoBanco;
   }
 
   it.each(["", null, "   "])(
     "grava só o WhatsApp no perfil vazio (%j), após criar o pedido",
     async (whatsapp) => {
       conta.profile!.whatsapp = whatsapp;
+      const perfilNoBanco = simularWhatsappNoBanco(whatsapp);
       const pedido = pendente<{ id: string; totalAmount: number }>();
       createOrder.mockReturnValue(pedido.promessa);
       await preencher();
       await enviar();
-      expect(updateProfile).not.toHaveBeenCalled();
+      expect(from).not.toHaveBeenCalled();
       await act(async () => {
         pedido.resolver({ id: "pedido-1", totalAmount: 100 });
         await esperar();
       });
-      expect(updateProfile).toHaveBeenCalledExactlyOnceWith(
-        { whatsapp: "(34) 99999-9999" },
-        { silencioso: true, contaEsperada: "user-1" },
+      expect(perfilNoBanco.whatsapp).toBe("(34) 99999-9999");
+      expect(from).toHaveBeenCalledExactlyOnceWith("profiles");
+      if (whatsapp === null) {
+        expect(eq).toHaveBeenCalledExactlyOnceWith("id", "user-1");
+        expect(is).toHaveBeenCalledExactlyOnceWith("whatsapp", null);
+      } else {
+        expect(eq.mock.calls).toEqual([
+          ["id", "user-1"],
+          ["whatsapp", whatsapp],
+        ]);
+        expect(is).not.toHaveBeenCalled();
+      }
+      expect(update).toHaveBeenCalledExactlyOnceWith({
+        whatsapp: "(34) 99999-9999",
+      });
+      expect(setHeader).toHaveBeenCalledExactlyOnceWith(
+        "Authorization",
+        "Bearer token-de-teste",
       );
+      expect(fetchProfile).toHaveBeenCalledExactlyOnceWith();
       compraConcluida();
     },
   );
+
+  it("não sobrescreve WhatsApp salvo por outro aparelho mesmo se a cópia local estiver vazia", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    conta.profile!.whatsapp = "   ";
+    const perfilNoBanco = simularWhatsappNoBanco("   ");
+    await preencher();
+    // Outro aparelho grava depois que este aqui já leu o perfil.
+    perfilNoBanco.whatsapp = "11988887777";
+    await enviar();
+
+    expect(from).toHaveBeenCalledExactlyOnceWith("profiles");
+    expect(update).toHaveBeenCalledExactlyOnceWith({
+      whatsapp: "(34) 99999-9999",
+    });
+    expect(eq.mock.calls).toEqual([
+      ["id", "user-1"],
+      ["whatsapp", "   "],
+    ]);
+    expect(setHeader).toHaveBeenCalledTimes(1);
+    expect(perfilNoBanco.whatsapp).toBe("11988887777");
+    expect(createOrder.mock.calls[0][0].customer.whatsapp).toBe(
+      "(34) 99999-9999",
+    );
+    expect(log).not.toHaveBeenCalled();
+    compraConcluida();
+  });
 
   it("não troca o número já salvo pelo número diferente desta entrega", async () => {
     conta.profile!.whatsapp = "11988887777";
     await preencher();
     await enviar();
-    expect(updateProfile).not.toHaveBeenCalled();
+    expect(from).not.toHaveBeenCalled();
     compraConcluida();
   });
 
@@ -273,7 +369,7 @@ describe("CheckoutView — guarda o WhatsApp que faltava sem atrapalhar a compra
     conta.profile = null;
     await preencher();
     await enviar();
-    expect(updateProfile).not.toHaveBeenCalled();
+    expect(from).not.toHaveBeenCalled();
     compraConcluida();
   });
 
@@ -290,7 +386,7 @@ describe("CheckoutView — guarda o WhatsApp que faltava sem atrapalhar a compra
             };
       await preencher();
       await enviar();
-      expect(updateProfile).not.toHaveBeenCalled();
+      expect(from).not.toHaveBeenCalled();
       compraConcluida();
     },
   );
@@ -299,28 +395,28 @@ describe("CheckoutView — guarda o WhatsApp que faltava sem atrapalhar a compra
     await preencher("3499999999");
     expect(finalizar().disabled).toBe(true);
     expect(createOrder).not.toHaveBeenCalled();
-    expect(updateProfile).not.toHaveBeenCalled();
+    expect(from).not.toHaveBeenCalled();
   });
 
   it("falha silenciosa ao gravar não desfaz nem bloqueia o pedido", async () => {
-    updateProfile.mockResolvedValue(false);
+    setHeader.mockResolvedValue({ data: null, error: { message: "sem rede" } });
     await preencher();
     await enviar();
-    expect(updateProfile).toHaveBeenCalledTimes(1);
+    expect(setHeader).toHaveBeenCalledTimes(1);
     compraConcluida();
   });
 
   it("gravação pendurada não atrasa a confirmação do pedido", async () => {
-    const gravacao = pendente<boolean>();
-    updateProfile.mockReturnValue(gravacao.promessa);
+    const gravacao = pendente<{ data: null; error: null }>();
+    setHeader.mockReturnValue(gravacao.promessa);
     try {
       await preencher();
       await enviar();
-      expect(updateProfile).toHaveBeenCalledTimes(1);
+      expect(setHeader).toHaveBeenCalledTimes(1);
       compraConcluida();
     } finally {
       await act(async () => {
-        gravacao.resolver(true);
+        gravacao.resolver({ data: null, error: null });
         await esperar();
       });
     }
@@ -328,10 +424,10 @@ describe("CheckoutView — guarda o WhatsApp que faltava sem atrapalhar a compra
 
   it("rejeição inesperada da gravação não vira erro de pedido nem expõe o número", async () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
-    updateProfile.mockRejectedValue(new Error("34999999999"));
+    setHeader.mockRejectedValue(new Error("34999999999"));
     await preencher();
     await enviar();
-    expect(updateProfile).toHaveBeenCalledTimes(1);
+    expect(setHeader).toHaveBeenCalledTimes(1);
     compraConcluida();
     expect(log).toHaveBeenCalledExactlyOnceWith(
       "[Checkout] Não foi possível salvar o WhatsApp no perfil.",
@@ -340,8 +436,8 @@ describe("CheckoutView — guarda o WhatsApp que faltava sem atrapalhar a compra
 
   it("libera o pagamento online enquanto a gravação do perfil não responde", async () => {
     online.ligado = true;
-    const gravacao = pendente<boolean>();
-    updateProfile.mockReturnValue(gravacao.promessa);
+    const gravacao = pendente<{ data: null; error: null }>();
+    setHeader.mockReturnValue(gravacao.promessa);
     try {
       await preencher();
       await act(async () => {
@@ -356,14 +452,14 @@ describe("CheckoutView — guarda o WhatsApp que faltava sem atrapalhar a compra
       expect(createOrder.mock.calls[0][1]).toEqual({
         comPagamentoOnline: true,
       });
-      expect(updateProfile).toHaveBeenCalledTimes(1);
+      expect(setHeader).toHaveBeenCalledTimes(1);
       expect(document.body.textContent).toContain(
         "Pagamento disponível: pedido-1",
       );
       expect(toastError).not.toHaveBeenCalled();
     } finally {
       await act(async () => {
-        gravacao.resolver(true);
+        gravacao.resolver({ data: null, error: null });
         await esperar();
       });
     }
@@ -371,7 +467,7 @@ describe("CheckoutView — guarda o WhatsApp que faltava sem atrapalhar a compra
 
   it("erro síncrono inesperado da gravação também não bloqueia o pedido", async () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
-    updateProfile.mockImplementation(() => {
+    update.mockImplementation(() => {
       throw new Error("34999999999");
     });
     await preencher();
@@ -387,7 +483,7 @@ describe("CheckoutView — guarda o WhatsApp que faltava sem atrapalhar a compra
     createOrder.mockRejectedValue(new Error("falha de teste"));
     await preencher();
     await enviar();
-    expect(updateProfile).not.toHaveBeenCalled();
+    expect(from).not.toHaveBeenCalled();
     expect(clearCart).not.toHaveBeenCalled();
   });
 
@@ -402,7 +498,20 @@ describe("CheckoutView — guarda o WhatsApp que faltava sem atrapalhar a compra
       pedido.resolver({ id: "pedido-1", totalAmount: 100 });
       await esperar();
     });
-    expect(updateProfile).not.toHaveBeenCalled();
+    expect(from).not.toHaveBeenCalled();
+    compraConcluida();
+  });
+
+  it("não grava o perfil se a sessão mudou depois do pedido", async () => {
+    getSession.mockResolvedValue({
+      data: {
+        session: { user: { id: "outra-conta" }, access_token: "outro-token" },
+      },
+      error: null,
+    });
+    await preencher();
+    await enviar();
+    expect(from).not.toHaveBeenCalled();
     compraConcluida();
   });
 });

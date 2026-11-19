@@ -170,7 +170,8 @@ export function ClienteDaVenda({
 
   const avisoWhatsappInvalido =
     whatsappAvulso.trim() !== "" &&
-    linkWhatsappDoClienteDoBalcao(whatsappAvulso) === null;
+    linkWhatsappDoClienteDoBalcao(whatsappAvulso, { jaNacional: true }) ===
+      null;
 
   return (
     <section className="pdv-layer" aria-label="Identificação da venda">
@@ -327,6 +328,8 @@ export function ClienteDaVenda({
                 id="whatsapp-do-cliente-avulso"
                 value={whatsappAvulso}
                 mask="phone"
+                preservarExcessoTelefone
+                ignorarTeclaExtraTelefone
                 onFlush={(valor) => {
                   setWhatsappAvulso(valor);
                   atualizarAvulso(nomeAvulso, valor);
@@ -352,7 +355,7 @@ export function ClienteDaVenda({
                   className="pdv-orange size-4 shrink-0"
                 />
                 {avisoWhatsappInvalido &&
-                  "Esse número não abre conversa no WhatsApp — o recibo não vai ter o botão de enviar disponível, mas a venda segue normal."}
+                  "Número inválido: não abre conversa no WhatsApp. A venda segue sem gravar esse número."}
               </p>
             </div>
             <Button

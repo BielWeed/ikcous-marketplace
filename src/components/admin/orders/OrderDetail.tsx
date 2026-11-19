@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { useAnularVendaDoBalcao } from "@/hooks/useAnularVendaDoBalcao";
 import { useConfirmarAcao } from "@/hooks/useConfirmarAcao";
 import { useDevolucaoConcluidaDoPedido } from "@/hooks/useDevolucaoConcluidaDoPedido";
+import { useDevolucoesDoPedidoAdmin } from "@/hooks/useDevolucoesDoPedidoAdmin";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import {
   DEPOIS_DO_DIA_COM_CLIENTE,
@@ -39,6 +40,7 @@ import {
   idadeDoPedidoPendente,
 } from "@/lib/idade-do-pedido-pendente";
 import {
+  codigoDeRastreioPareceLink,
   codigoDeRastreioTemLetraOuDigito,
   linkDeRastreioDeCodigoValido,
   normalizarCodigoDeRastreio,
@@ -80,7 +82,10 @@ import {
 } from "lucide-react";
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { DevolucaoDoPedidoAdminCard } from "./DevolucaoDoPedidoAdminCard";
+import {
+  AvisoFalhaNaLeituraDasDevolucoes,
+  DevolucaoDoPedidoAdminCard,
+} from "./DevolucaoDoPedidoAdminCard";
 import { EstornoCard } from "./EstornoCard";
 import { EtiquetaDoPedidoCard } from "./EtiquetaDoPedidoCard";
 import { OrderReceipt } from "./OrderReceipt";
@@ -299,6 +304,12 @@ interface OrderDetailProps {
 }
 
 const globalSkuCache: Record<string, string> = {};
+const UUID_DO_CATALOGO =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function ehIdDoCatalogo(id: string | null | undefined): id is string {
+  return typeof id === "string" && UUID_DO_CATALOGO.test(id);
+}
 // Rótulo da variação ("Cor Azul · Tamanho M") por id da variação, lido na
 // mesma consulta do código interno. O pedido só guarda o id (`variant_id`);
 // quem diz qual é a escolha é `product_variants`. "" = lida, sem texto.
@@ -1123,6 +1134,7 @@ interface OrderFinanceCardProps {
   order: Order;
   /** Prova de devolução concluída (ver `OrderHeaderProps.devolucaoConcluida`). */
   devolucaoConcluida: boolean;
+  leituraDeDevolucoes: ReturnType<typeof useDevolucoesDoPedidoAdmin>;
   /** Task 4b — `undefined` só nos testes que montam `<OrderDetail>` direto
    * sem a prop (ver `OrderDetailProps.onRegistrarPagamento`); nesse caso o
    * bloco de recebimento não renderiza (ver guarda no JSX abaixo). */
@@ -1153,6 +1165,7 @@ function anulacaoDoBalcaoPassouDoDia(order: Order): boolean {
 function OrderFinanceCard({
   order,
   devolucaoConcluida,
+  leituraDeDevolucoes,
   onRegistrarPagamento,
   registrandoPagamento,
 }: Readonly<OrderFinanceCardProps>) {
@@ -1266,7 +1279,9 @@ function OrderFinanceCard({
                 )}
               </span>
               <DesfazerRecebimento
+                key={order.id}
                 order={order}
+                leituraDeDevolucoes={leituraDeDevolucoes}
                 aoDesfazer={() => onRegistrarPagamento(order.id, false)}
                 disabled={registrandoPagamento}
                 className="h-11 shrink-0 rounded-xl border border-admin-border bg-white/5 px-4 text-sm font-medium text-zinc-300 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-50"
@@ -1282,6 +1297,13 @@ function OrderFinanceCard({
             />
           )}
         </div>
+      )}
+
+      {order.status !== "delivered" && leituraDeDevolucoes.erro && (
+        <AvisoFalhaNaLeituraDasDevolucoes
+          carregando={leituraDeDevolucoes.carregando}
+          recarregar={leituraDeDevolucoes.recarregar}
+        />
       )}
 
       {(anuladoId === order.id ||
@@ -2072,10 +2094,13 @@ export const OrderDetail = memo(function OrderDetail({
           productId: string;
           variantId: string | null;
         }[];
-        const productIds = itemsList.map((item) => item.productId);
+        // Itens antigos continuam no pedido; só IDs de catálogo vão ao banco.
+        const productIds = itemsList
+          .map((item) => item.productId)
+          .filter(ehIdDoCatalogo);
         const variantIds = itemsList
           .map((item) => item.variantId)
-          .filter((id): id is string => !!id);
+          .filter(ehIdDoCatalogo);
 
         setFalhaNaLeitura(false);
         const missingProductIds = productIds.filter(
@@ -2187,11 +2212,14 @@ export const OrderDetail = memo(function OrderDetail({
 
   const nextStatus = getNextStatus(order.status);
 
-  // O papel só leva "Tamanho M · Cor Azul" se a leitura chegou. Enquanto ela
-  // carrega, ou depois de falhar, e há item com variação sem rótulo, imprimir
-  // sairia sem a peça certa e sem aviso — então o botão espera.
+  // O papel espera a variação dos itens vinculados ao catálogo. Para itens
+  // sem produto, a leitura ainda é tentada, mas o papel usa os dados salvos
+  // se o rótulo não chegar.
   const faltaVariacaoNoPapel = order.items.some(
-    (i) => !!i.variantId && !variacoes[i.variantId],
+    (i) =>
+      ehIdDoCatalogo(i.productId) &&
+      ehIdDoCatalogo(i.variantId) &&
+      !variacoes[i.variantId],
   );
   let motivoDeNaoImprimir: string | null = null;
   // Pedido cancelado (e venda do balcão anulada) deixa de valer como
@@ -2275,6 +2303,10 @@ export const OrderDetail = memo(function OrderDetail({
   const handleSaveTracking = async () => {
     const pedidoId = order.id;
     const codigo = normalizarCodigoDeRastreio(trackingValue);
+    if (codigoDeRastreioPareceLink(codigo)) {
+      toast.error("Cole só o código de rastreio, não o link");
+      return;
+    }
     if (codigo && !codigoDeRastreioTemLetraOuDigito(codigo)) {
       toast.error(
         "O código de rastreio precisa ter pelo menos uma letra ou número.",
@@ -2611,6 +2643,13 @@ export const OrderDetail = memo(function OrderDetail({
   // Entregue + estornado: a devolução foi concluída por inteiro (selo neutro)
   // ou pode ser contestação perdida (selo de atenção)? Sem prova, atenção.
   const devolucaoConcluida = useDevolucaoConcluidaDoPedido(order);
+  const leituraDeDevolucoes = useDevolucoesDoPedidoAdmin(
+    order.id,
+    order.status === "delivered" ||
+      (!!onRegistrarPagamento &&
+        !!order.pagamentoRecebidoEm &&
+        podeRegistrarPagamento(order)),
+  );
 
   const handleWhatsAppDirect = () => {
     if (!whatsappUrl) return;
@@ -2663,6 +2702,7 @@ export const OrderDetail = memo(function OrderDetail({
         <OrderFinanceCard
           order={order}
           devolucaoConcluida={devolucaoConcluida}
+          leituraDeDevolucoes={leituraDeDevolucoes}
           onRegistrarPagamento={
             onRegistrarPagamento ? handleRegistrarPagamento : undefined
           }
@@ -2674,7 +2714,7 @@ export const OrderDetail = memo(function OrderDetail({
         {order.status === "delivered" && (
           <DevolucaoDoPedidoAdminCard
             key={`devolucao-do-produto-${order.id}`}
-            orderId={order.id}
+            leituraDeDevolucoes={leituraDeDevolucoes}
             onAbrirDevolucoes={onAbrirDevolucoes}
           />
         )}
@@ -2759,6 +2799,18 @@ export const OrderDetail = memo(function OrderDetail({
                 // ignora sem tocar no estado local se não bater com o pedido
                 // ATUAL. Independe de o card ainda existir na árvore.
                 if (orderIdDaResposta !== orderIdAtualRef.current) return;
+                const tela = rastreioDaTelaRef.current;
+                if (tela.editando && tela.digitado !== tela.salvo) {
+                  if (codigo === tela.salvo) return;
+                  if (codigo !== tela.digitado) {
+                    codigoDeForaRetidoRef.current = {
+                      novo: codigo,
+                      referencia: tela.salvo,
+                    };
+                    return;
+                  }
+                }
+                codigoDeForaRetidoRef.current = null;
                 setLocalTrackingCode(codigo);
                 setTrackingValue(codigo);
               }}

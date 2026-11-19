@@ -91,9 +91,15 @@ function iniciaisDoNome(nome: string): string {
 
 // Limpa "+55" e zero de tronco como o checkout. Se mesmo limpo passar de 11
 // dígitos, devolve o texto cru (o Salvar recusa), para não inventar número.
-function limparParaMascara(novo: string, anterior: string): string {
-  const digitos = digitosDoTelefoneDoCampo(novo, anterior);
-  return digitos.length > 11 ? novo : digitos;
+function mascararWhatsappDaConta(novo: string, anterior: string): string {
+  // Como no checkout, conserva o código do país enquanto é digitado.
+  const texto = novo.trim();
+  if (/^\+5{0,2}$/.test(texto)) return texto;
+  // Com parênteses, (55) é DDD também em colagens com dígitos a mais.
+  const digitos = texto.startsWith("(55)")
+    ? texto.replace(/\D/g, "")
+    : digitosDoTelefoneDoCampo(novo, anterior);
+  return digitos.length > 11 ? novo : formatarWhatsAppDigitando(digitos);
 }
 
 export function AccountSettingsView() {
@@ -123,6 +129,10 @@ export function AccountSettingsView() {
     relerCampos: boolean;
   } | null>(null);
   const [salvamentoIncerto, setSalvamentoIncerto] = useState(false);
+  const [avisoDeReleitura, setAvisoDeReleitura] = useState<{
+    contaId: string;
+    atualizando: boolean;
+  } | null>(null);
   const cargaRef = useRef(0);
   const [updatingPassword, setUpdatingPassword] = useState(false);
   const [activeTab, setActiveTab] = useState<"profile" | "security">("profile");
@@ -178,6 +188,7 @@ export function AccountSettingsView() {
     // O envio antigo não pode prender os controles da conta que entrou.
     setIsUpdatingAvatar(false);
     setIsUpdatingCover(false);
+    setAvisoDeReleitura(null);
   }, [user?.id]);
 
   const openAvatarModal = () => {
@@ -694,6 +705,28 @@ export function AccountSettingsView() {
     void comPrazo(Promise.resolve(fetchProfile()), 15_000).catch(() => {});
   };
 
+  const relerPerfilExibido = async () => {
+    try {
+      return await comPrazo(fetchProfile(), 15_000);
+    } catch {
+      return false;
+    }
+  };
+
+  const tentarAtualizarPerfilExibido = async (contaId: string) => {
+    if (contaAtualIdRef.current !== contaId || salvandoRef.current) return;
+    const rodada = rodadaSalvarRef.current;
+    setAvisoDeReleitura({ contaId, atualizando: true });
+    const releu = await relerPerfilExibido();
+    if (
+      contaAtualIdRef.current !== contaId ||
+      rodadaSalvarRef.current !== rodada
+    ) {
+      return;
+    }
+    setAvisoDeReleitura(releu ? null : { contaId, atualizando: false });
+  };
+
   const handleUpdateProfile = async () => {
     if (!user || salvandoRef.current) return;
     const contaDonaId = user.id;
@@ -742,13 +775,15 @@ export function AccountSettingsView() {
     // outro aparelho pode ter gravado um telefone novo nesse meio tempo.
     const whatsappMudou =
       whatsappEditado &&
-      profileData.phone.replace(/\D/g, "") !==
-        profileDataOriginal.phone.replace(/\D/g, "");
-    if (whatsappMudou) {
+      profileData.phone.replace(/[^\d+]/g, "") !==
+        profileDataOriginal.phone.replace(/[^\d+]/g, "");
+    if (whatsappMudou && profileData.phone.trim()) {
       const digitosWhatsapp = profileData.phone.replace(/\D/g, "");
+      // A máscara já tirou o código do país. Não deixe a validação
+      // reinterpretar um DDD 55 que ganhou dígitos demais.
       if (
-        digitosWhatsapp.length > 0 &&
-        !celularBrasileiroCompleto(profileData.phone)
+        digitosWhatsapp.length !== 11 ||
+        !celularBrasileiroCompleto(digitosWhatsapp)
       ) {
         setWhatsappErro(true);
         toast.error("WhatsApp inválido", {
@@ -799,6 +834,7 @@ export function AccountSettingsView() {
     let cpfPodeTerSidoGravado = false;
     setLoading(true);
     setSalvamentoIncerto(false);
+    setAvisoDeReleitura(null);
     const desmarcar = marcarOperacaoSensivel("salvar-conta");
     try {
       // `update_my_profile_secure` faz `whatsapp = COALESCE(p_whatsapp,
@@ -892,11 +928,15 @@ export function AccountSettingsView() {
         setCpfOriginal(digitosCpfAtual);
       }
 
-      // Refresh global profile in context (ZENITH v21.7)
-      await comPrazo(Promise.resolve(fetchProfile()), 15_000);
+      // A gravação está confirmada; só a atualização da tela pode falhar.
+      const releu = await relerPerfilExibido();
       if (!contaAindaEhDona()) return;
 
-      toast.success("Perfil atualizado com sucesso");
+      if (releu) {
+        toast.success("Perfil atualizado com sucesso");
+      } else {
+        setAvisoDeReleitura({ contaId: contaDonaId, atualizando: false });
+      }
     } catch (error) {
       if (!contaAindaEhDona()) return;
       if (error instanceof PrazoEsgotado) {
@@ -1193,6 +1233,28 @@ export function AccountSettingsView() {
                       </Button>
                     </div>
                   )}
+                  {avisoDeReleitura && avisoDeReleitura.contaId === userId && (
+                    <div className="space-y-2 rounded-[14px] border border-border p-4 text-sm">
+                      <p role="status">
+                        Salvamos, mas ainda não conseguimos atualizar o que
+                        aparece aqui.
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={loading || avisoDeReleitura.atualizando}
+                        onClick={() =>
+                          void tentarAtualizarPerfilExibido(
+                            avisoDeReleitura.contaId,
+                          )
+                        }
+                      >
+                        {avisoDeReleitura.atualizando
+                          ? "Atualizando…"
+                          : "Atualizar"}
+                      </Button>
+                    </div>
+                  )}
                   {profileLoadState === "loading" && (
                     <div className="flex items-center justify-center gap-2 rounded-[14px] border border-border py-6">
                       <Loader2 className="size-4 animate-spin text-muted-foreground" />
@@ -1271,19 +1333,9 @@ export function AccountSettingsView() {
                         if (whatsappErro) setWhatsappErro(false);
                         setProfileData((p) => ({
                           ...p,
-                          // CONTA-09 (auditoria de 26/08/2026, camada 5) —
-                          // `formatarWhatsApp` puro trunca e REINTERPRETA
-                          // dígitos acima de 11 em silêncio; usar a versão
-                          // com guarda para não fabricar um número
-                          // diferente do que a pessoa digitou/colou.
-                          //
-                          // Antes de mascarar, limpa o "+55" e o zero de
-                          // tronco ("034 ...") do mesmo jeito que o checkout
-                          // (digitação tecla a tecla nunca tira o 55; colagem
-                          // tira). O que continuar com mais de 11 dígitos
-                          // segue cru e o Salvar recusa.
-                          phone: formatarWhatsAppDigitando(
-                            limparParaMascara(e.target.value, p.phone),
+                          phone: mascararWhatsappDaConta(
+                            e.target.value,
+                            p.phone,
                           ),
                         }));
                       }}

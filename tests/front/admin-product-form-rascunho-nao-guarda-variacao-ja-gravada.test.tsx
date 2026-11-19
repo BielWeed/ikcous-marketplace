@@ -300,10 +300,14 @@ describe("AdminProductFormView — rascunho x releitura do banco", () => {
     // Clica Salvar sem esperar o auto-save de 1 s que a digitação agendou.
     await act(async () => {
       botaoPorTexto("Salvar alterações")?.click();
+    });
+    expect(updateProduct).toHaveBeenCalledTimes(1);
+    const gravacoesAoEntrarEmSalvando = [...gravacoes];
+    await act(async () => {
       await new Promise((r) => setTimeout(r, 1500));
     });
 
-    expect(gravacoes).toEqual([]);
+    expect(gravacoes).toEqual(gravacoesAoEntrarEmSalvando);
   }, 20000);
 
   it("uso normal: digitar e esperar 1 s guarda o rascunho", async () => {

@@ -6,13 +6,14 @@ import { escolherAtributo } from "./helpers/atributo-da-variacao";
 
 const mocks = vi.hoisted(() => ({
   fetchProduct: vi.fn(),
+  salvarProdutoComGrade: vi.fn(),
   toastErro: vi.fn(),
 }));
 vi.mock("@/hooks/useProducts", () => ({
   useProducts: () => ({
     addProduct: vi.fn(),
     updateProduct: vi.fn(),
-    salvarProdutoComGrade: vi.fn(),
+    salvarProdutoComGrade: mocks.salvarProdutoComGrade,
     upsertVariants: vi.fn(),
     deleteVariants: vi.fn(),
     uploadProductImages: vi.fn().mockResolvedValue([]),
@@ -68,6 +69,7 @@ let hospedeiro: HTMLDivElement;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.salvarProdutoComGrade.mockResolvedValue({ recusadas: [] });
   localStorage.clear();
   sessionStorage.clear();
   vi.stubGlobal("localStorage", {
@@ -86,13 +88,13 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-async function montar(existente: boolean) {
+async function montar(existente: boolean, ativa = true, estoque = 20) {
   mocks.fetchProduct.mockResolvedValue({
     id: "p-1",
     name: "Camiseta",
     description: "Algodão",
     price: 50,
-    stock: 20,
+    stock: existente && ativa ? estoque : 20,
     category: "Geral",
     images: [],
     freeShipping: false,
@@ -105,8 +107,8 @@ async function montar(existente: boolean) {
             productId: "p-1",
             name: "Tamanho",
             value: "GG",
-            stockIncrement: 20,
-            active: true,
+            stockIncrement: estoque,
+            active: ativa,
           },
         ]
       : [],
@@ -154,6 +156,160 @@ async function editar() {
   await act(async () => botao.click());
 }
 
+describe("AdminProductFormView — botões de estoque de uma variação existente", () => {
+  async function ajustarEstoque(botao: string, texto: string) {
+    const campo = document.querySelector<HTMLInputElement>("#variant-stock");
+    const controle = document.querySelector<HTMLButtonElement>(
+      `button[aria-label="${botao}"]`,
+    );
+    if (!campo || !controle) throw new Error("Controle de estoque ausente.");
+    await act(async () => {
+      campo.focus();
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )?.set?.call(campo, texto);
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    // Clique antes do debounce, sem depender de o navegador desfocar o campo.
+    await act(async () => controle.click());
+    return campo.value;
+  }
+
+  describe.each(["Diminuir estoque", "Aumentar estoque"])("%s", (botao) => {
+    it.each([
+      ["", /informe o estoque/i],
+      ["2.5", /números inteiros/i],
+      ["-5", /não pode ser negativo/i],
+    ])('preserva "%s" e avisa', async (texto, aviso) => {
+      await montar(true);
+      await editar();
+      expect(await ajustarEstoque(botao, texto)).toBe(texto);
+      expect(mocks.toastErro).toHaveBeenCalledExactlyOnceWith(
+        expect.stringMatching(aviso),
+      );
+    });
+  });
+
+  it.each([
+    ["Aumentar estoque", "999999999999"],
+    ["Aumentar estoque", "10000"],
+    ["Aumentar estoque", "10001"],
+    ["Diminuir estoque", "10001"],
+    ["Aumentar estoque", "9007199254740993"],
+  ])("%s não altera %s ao ultrapassar o limite", async (botao, texto) => {
+    await montar(true);
+    await editar();
+    expect(await ajustarEstoque(botao, texto)).toBe(texto);
+    expect(mocks.toastErro).toHaveBeenCalledExactlyOnceWith(
+      "O estoque máximo é 10.000",
+    );
+  });
+
+  it.each([
+    ["Aumentar estoque", "9999", "10000"],
+    ["Diminuir estoque", "10000", "9999"],
+    ["Diminuir estoque", "20", "19"],
+    ["Aumentar estoque", "20", "21"],
+    ["Diminuir estoque", "0", "0"],
+    ["Aumentar estoque", "0", "1"],
+  ])("%s: de %s para %s", async (botao, texto, resultado) => {
+    await montar(true);
+    await editar();
+    expect(await ajustarEstoque(botao, texto)).toBe(resultado);
+    expect(mocks.toastErro).not.toHaveBeenCalled();
+    await clicar("Salvar variação");
+    await editar();
+    expect(
+      document.querySelector<HTMLInputElement>("#variant-stock")?.value,
+    ).toBe(resultado);
+  });
+});
+
+describe("AdminProductFormView — estoque de variação acima do teto já no banco", () => {
+  it("salva o novo nome do produto sem regravar a variação de 10.002 unidades", async () => {
+    await montar(true, true, 10_002);
+    await digitarCampo("product-name", "Camiseta estampada");
+    await clicar("Salvar alterações");
+
+    expect(mocks.salvarProdutoComGrade).toHaveBeenCalledExactlyOnceWith(
+      "p-1",
+      expect.objectContaining({ name: "Camiseta estampada" }),
+      expect.objectContaining({ variantes: [] }),
+    );
+  });
+
+  it("exibe 10.002 e salva a edição do SKU sem alterar o estoque", async () => {
+    await montar(true, true, 10_002);
+    expect(
+      document
+        .querySelector('[data-testid="variante-cadastrada"]')
+        ?.closest("div.group")?.textContent,
+    ).toContain("10002 un.");
+    await editar();
+    expect(
+      document.querySelector<HTMLInputElement>("#variant-stock")?.value,
+    ).toBe("10002");
+    await digitarCampo("variant-sku", "CAM-GG");
+    await clicar("Salvar variação");
+    await clicar("Salvar alterações");
+
+    const variantes = mocks.salvarProdutoComGrade.mock.calls[0]?.[2].variantes;
+    expect(variantes).toEqual([
+      expect.objectContaining({ id: "v-1", sku: "CAM-GG" }),
+    ]);
+    expect(variantes[0]).not.toHaveProperty("stockIncrement");
+  });
+
+  it("recusa alterar o estoque de 10.002 para 10.003", async () => {
+    await montar(true, true, 10_002);
+    await editar();
+    await digitarCampo("variant-stock", "10003");
+    await clicar("Salvar variação");
+
+    expect(mocks.toastErro).toHaveBeenCalledExactlyOnceWith(
+      "O estoque máximo é 10.000",
+    );
+    expect(
+      document.querySelector<HTMLInputElement>("#variant-stock")?.value,
+    ).toBe("10003");
+  });
+
+  it("grava a redução de 10.002 para 9.999", async () => {
+    await montar(true, true, 10_002);
+    await editar();
+    await digitarCampo("variant-stock", "9999");
+    await clicar("Salvar variação");
+    await clicar("Salvar alterações");
+
+    expect(mocks.salvarProdutoComGrade).toHaveBeenCalledExactlyOnceWith(
+      "p-1",
+      expect.objectContaining({ stock: 9_999 }),
+      expect.objectContaining({
+        variantes: [
+          expect.objectContaining({ id: "v-1", stockIncrement: 9_999 }),
+        ],
+      }),
+    );
+  });
+
+  it("recusa incluir uma variação nova com 10.001 unidades", async () => {
+    await montar(false);
+    await clicar("+ Novo");
+    await escolherAtributo(0, "Tamanho", "variant-name", digitarCampo);
+    await digitarCampo("variant-value", "GG");
+    await digitarCampo("variant-stock", "10001");
+    await clicar("Salvar variação");
+
+    expect(mocks.toastErro).toHaveBeenCalledExactlyOnceWith(
+      "O estoque máximo é 10.000",
+    );
+    expect(
+      document.querySelector('[data-testid="variante-cadastrada"]'),
+    ).toBeNull();
+  });
+});
+
 describe("AdminProductFormView — apagar quantidade não esgota uma variação", () => {
   it("existente com 20: apagar avisa e mantém o modal e o estoque anterior", async () => {
     await montar(true);
@@ -184,6 +340,34 @@ describe("AdminProductFormView — apagar quantidade não esgota uma variação"
       (document.getElementById("variant-stock") as HTMLInputElement).value,
     ).toBe("0");
   });
+
+  it.each([
+    ["ligada", true],
+    ["desligada", false],
+  ])(
+    "Salvar variação %s recusa 10.001 e aceita 10.000",
+    async (_estado, ativa) => {
+      await montar(true, ativa);
+      await editar();
+      await digitarCampo("variant-stock", "10001");
+      await clicar("Salvar variação");
+
+      expect(mocks.toastErro).toHaveBeenCalledExactlyOnceWith(
+        "O estoque máximo é 10.000",
+      );
+      expect(
+        document.querySelector<HTMLInputElement>("#variant-stock")?.value,
+      ).toBe("10001");
+
+      await digitarCampo("variant-stock", "10000");
+      await clicar("Salvar variação");
+      expect(mocks.toastErro).toHaveBeenCalledTimes(1);
+      await editar();
+      expect(
+        document.querySelector<HTMLInputElement>("#variant-stock")?.value,
+      ).toBe("10000");
+    },
+  );
 
   it.each(["0", "5"])(
     "existente aceita quantidade explícita %s",

@@ -68,6 +68,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { adminAtualDaSessao } from "../_shared/admin-atual.ts"
+import { codigoDeRastreioTemLetraOuDigito, normalizarCodigoDeRastreio } from "../_shared/normalizar-codigo-de-rastreio.ts"
 import { ehRetiradaNaLoja } from "../_shared/retirada-na-loja.ts"
 import { camposRecusadosDoProvedor, cpfDoDestinatario, cpfValido, sanitizarDadosPessoaisDoTexto } from "./cpf.ts"
 import { MEDIDA_PADRAO_CM, medidaPositivaDoBanco, PESO_PADRAO_KG } from "../calculate-shipping/regua.ts"
@@ -686,8 +687,13 @@ export function normalizarTracking(data: Record<string, any>, labelId: string): 
     // warning novo — `.get()` devolve a mesma entrada do objeto chaveado
     // pelo id da etiqueta.
     const entrada = new Map(Object.entries(data ?? {})).get(labelId) ?? null
-    const tracking = entrada?.tracking || entrada?.melhorenvio_tracking || null
-    return { tracking: tracking ? String(tracking) : null, status: entrada?.status ? String(entrada.status) : null }
+    const limpar = (codigo: unknown): string => {
+        if (typeof codigo !== 'string' && typeof codigo !== 'number') return ''
+        const limpo = normalizarCodigoDeRastreio(String(codigo))
+        return codigoDeRastreioTemLetraOuDigito(limpo) ? limpo : ''
+    }
+    const tracking = limpar(entrada?.tracking) || limpar(entrada?.melhorenvio_tracking) || null
+    return { tracking, status: entrada?.status ? String(entrada.status) : null }
 }
 
 const MENSAGEM_DE_VOLUME_RECUSADO =
@@ -2474,10 +2480,10 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
             const data = await response.json()
             const { tracking, status } = normalizarTracking(data, labelId)
 
-            // Rastreio novo sobrescreve o código do pedido — é a sincronização
-            // que substitui a digitação manual. Rastreio vazio não apaga o que
-            // já existe (vazio é "ainda não saiu", não "não tem").
-            if (tracking && tracking !== pedido.tracking_code) {
+            // Mantém a regra original: um código novo substitui o código do
+            // pedido, e ausência de código não apaga o que já estava salvo.
+            const atualizado = tracking !== null && tracking !== pedido.tracking_code
+            if (atualizado) {
                 const { error: rastreioError } = await supabaseClient
                     .from('marketplace_orders')
                     .update({ tracking_code: tracking })
@@ -2490,13 +2496,16 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
                 order_id: orderId,
                 event_type: 'rastreio_consultado',
                 tracking_code: tracking,
-                payload: { status_etiqueta: status },
+                payload: { status_etiqueta: status, label_id: labelId },
             })
 
-            return new Response(
-                JSON.stringify({ success: true, tracking_code: tracking, status_etiqueta: status }),
-                { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-            )
+            return respostaJson({
+                success: true,
+                tracking_code: tracking,
+                rastreio_atualizado: atualizado,
+                status_etiqueta: status,
+                label_id: labelId,
+            })
         }
 
         // ── ACTION: gerar_etiqueta (default e única action restante) ────────

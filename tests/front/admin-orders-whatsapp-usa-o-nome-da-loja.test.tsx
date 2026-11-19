@@ -216,7 +216,7 @@ describe("AdminOrdersView — WhatsApp de status chama a loja pelo nome que a lo
     );
   });
 
-  it("retirada com horário longo abre uma URL curta sem cortar o emoji ao meio", async () => {
+  it("retirada com horário longo abre uma URL curta e pede para confirmar o horário, sem cortá-lo", async () => {
     nomeConfigurado = "Loja Teste";
     horarioConfigurado = `${"a".repeat(198)}👍🏽${"a".repeat(4798)}`;
     const mensagem = await tocarNoWhatsapp({
@@ -226,7 +226,13 @@ describe("AdminOrdersView — WhatsApp de status chama a loja pelo nome que a lo
     const url = abrirWhatsapp.mock.calls[0][0] as string;
     expect(url.length).toBeLessThan(2000);
     expect(new URL(url).searchParams.get("text")).toBe(mensagem);
-    expect(mensagem).toContain(`Horário: ${"a".repeat(198)}…\n`);
+    // Um horário cortado poderia esconder um dia fechado: a mensagem pede para
+    // confirmar com a loja e não leva pedaço nenhum do texto (nem emoji partido).
+    expect(mensagem).toContain(
+      "Confirme o horário de retirada com a loja antes de vir.",
+    );
+    expect(mensagem).not.toContain("Horário: ");
+    expect(mensagem).not.toContain("a".repeat(50));
   });
 
   it("sem nome configurado: cai no nome do app", async () => {

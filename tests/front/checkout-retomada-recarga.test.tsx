@@ -36,6 +36,7 @@ import {
   it,
   vi,
 } from "vitest";
+import { comReleituraDeEnderecos } from "./duble-releitura-de-enderecos";
 
 import { carregarSdkMercadoPago } from "@/components/checkout/sdk-mercado-pago";
 import {
@@ -77,27 +78,27 @@ vi.mock("@/contexts/StoreContext", () => ({
 }));
 
 vi.mock("@/hooks/useAddresses", () => ({
-  useAddresses: () => ({
-    addresses: [
-      {
-        id: "addr-1",
-        user_id: "user-1",
-        name: "Casa",
-        recipient_name: "Cliente Teste",
-        cep: "38500-000",
-        street: "Rua Teste",
-        number: "100",
-        neighborhood: "Centro",
-        city: "Monte Carmelo",
-        state: "MG",
-        is_default: true,
-      },
-    ],
-    fetchAddresses: vi.fn(),
-    addAddress: vi.fn(),
-    updateAddress: vi.fn(),
-    loading: false,
-  }),
+  useAddresses: () =>
+    comReleituraDeEnderecos({
+      addresses: [
+        {
+          id: "addr-1",
+          user_id: "user-1",
+          name: "Casa",
+          recipient_name: "Cliente Teste",
+          cep: "38500-000",
+          street: "Rua Teste",
+          number: "100",
+          neighborhood: "Centro",
+          city: "Monte Carmelo",
+          state: "MG",
+          is_default: true,
+        },
+      ],
+      addAddress: vi.fn(),
+      updateAddress: vi.fn(),
+      loading: false,
+    }),
 }));
 
 const USUARIO = { id: "user-1", email: "cliente@exemplo.com" };

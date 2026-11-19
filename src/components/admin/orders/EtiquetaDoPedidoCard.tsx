@@ -8,11 +8,18 @@ import {
 import {
   type ElegibilidadeDaEtiqueta,
   type PedidoParaEtiqueta,
-  compraIndeterminadaPeloHistorico,
+  deveAvisarCancelamentoComEtiquetaPaga,
   elegibilidadeDaEtiqueta,
   freteEfetivoDoPedido,
   motivoDoStatusSemEtiqueta,
+  situacaoDaCompraPeloHistorico,
+  statusDaEtiquetaCancelada,
+  statusDaEtiquetaConfirmaCompra,
 } from "@/lib/elegibilidade-da-etiqueta";
+import {
+  codigoDeRastreioTemLetraOuDigito,
+  normalizarCodigoDeRastreio,
+} from "@/lib/link-de-rastreio";
 import { mensagemAmigavelErroEdgeFunction } from "@/lib/mensagens-erro";
 import {
   MENSAGEM_COMPRA_DA_ETIQUETA_SEM_RESPOSTA,
@@ -290,16 +297,16 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
           return;
         }
         const linha = data as unknown as PedidoParaEtiqueta;
-        // A compra ficou INDETERMINADA? Só vale perguntar quando já existe
-        // vínculo com uma etiqueta, e é uma leitura À PARTE de propósito: se o
-        // histórico não puder ser lido, o card degrada para o que sempre
-        // mostrou ("Etiqueta emitida") em vez de sumir com a etiqueta.
-        let compraIndeterminada = false;
+        // A leitura é separada: falha no histórico não tira a URL de quem já
+        // pode imprimir, nem transforma um id reservado em compra confirmada.
+        let situacaoDaCompra: PedidoParaEtiqueta["situacao_da_compra"];
         if (linha.shipping_label_id) {
           try {
             const { data: eventos, error: eventosError } = await supabase
               .from("order_shipping_events")
-              .select("event_type, payload, error_message, created_at")
+              .select(
+                "event_type, payload, error_message, created_at, tracking_code",
+              )
               .eq("order_id", orderId);
             if (geracaoRef.current !== minhaGeracao) return;
             if (eventosError) {
@@ -308,7 +315,10 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
                 eventosError,
               );
             } else {
-              compraIndeterminada = compraIndeterminadaPeloHistorico(eventos);
+              situacaoDaCompra = situacaoDaCompraPeloHistorico(
+                eventos,
+                linha.shipping_label_id,
+              );
             }
           } catch (errEventos) {
             if (geracaoRef.current !== minhaGeracao) return;
@@ -318,7 +328,17 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
             );
           }
         }
-        setPedido({ ...linha, compra_indeterminada: compraIndeterminada });
+        setPedido((anterior) => ({
+          ...linha,
+          situacao_da_compra:
+            anterior &&
+            anterior.shipping_label_id === linha.shipping_label_id &&
+            (anterior.situacao_da_compra === "cancelada" ||
+              (anterior.situacao_da_compra === "confirmada" &&
+                situacaoDaCompra !== "cancelada"))
+              ? anterior.situacao_da_compra
+              : situacaoDaCompra,
+        }));
         setCargaFase("ok");
       } catch (err) {
         if (geracaoRef.current !== minhaGeracao) return;
@@ -352,8 +372,8 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
   //
   // COMPRA DESTE APARELHO EM VOO: a edge grava o id na reivindicação (antes de
   // pagar) e a url só no fim, então o id chega pela lista ao vivo no meio da
-  // compra. Reler aí derrubava o quadro "Gerando…" (o pedido já parece
-  // "emitido") e a leitura antiga podia terminar depois do resultado da compra
+  // compra. Reler aí derrubava o quadro "Gerando…" e a leitura antiga
+  // podia terminar depois do resultado da compra
   // e apagar a url/o rastreio. Durante o voo o id/url NÃO avançam no
   // "último visto": quando a compra termina (`emVoo` muda, o efeito reavalia) a
   // diferença ainda está lá e a releitura sai uma vez, sem perder a mudança.
@@ -462,6 +482,12 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
               ),
               shipping_label_url: data?.label_url ?? prev.shipping_label_url,
               tracking_code: data?.tracking_code ?? prev.tracking_code,
+              situacao_da_compra:
+                data?.success === true && data?.already !== true
+                  ? "confirmada"
+                  : data?.label_id === prev.shipping_label_id
+                    ? prev.situacao_da_compra
+                    : undefined,
             }
           : prev,
       );
@@ -478,6 +504,9 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
           ? "Este pedido já tinha etiqueta gerada — nada foi comprado de novo."
           : "Etiqueta gerada com sucesso!",
       );
+      if (data?.success === true && !data?.already && data.label_id) {
+        void fetchPedido({ silencioso: true });
+      }
       if (data?.tracking_code) {
         onTrackingAtualizado?.(orderIdDoClique, String(data.tracking_code));
       }
@@ -648,21 +677,55 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
         // que está mostrando — defesa nas DUAS pontas.
         if (orderIdAtualRef.current !== orderIdDoClique) return;
         if (error) throw error;
-        if (data?.tracking_code) {
-          const codigo = String(data.tracking_code);
-          // O código de rastreio só nasce depois que a etiqueta foi paga: é a
-          // confirmação que tira o card do "conferindo" (a edge já gravou o
-          // código no pedido; a próxima leitura traz o mesmo).
-          setPedido((prev) =>
-            prev ? { ...prev, tracking_code: codigo } : prev,
-          );
-          onTrackingAtualizado?.(orderIdDoClique, codigo);
-          toast.success(
-            modo === "conferencia"
-              ? "Etiqueta confirmada no Melhor Envio!"
-              : "Rastreio atualizado!",
-          );
+        // O código do provedor pode vir preenchido sem uma nova gravação.
+        const codigoDoProvedor =
+          typeof data?.tracking_code === "string"
+            ? normalizarCodigoDeRastreio(data.tracking_code)
+            : "";
+        const rastreioConfirmado =
+          codigoDeRastreioTemLetraOuDigito(codigoDoProvedor);
+        const atualizado =
+          rastreioConfirmado && data?.rastreio_atualizado !== false;
+        const cancelada = statusDaEtiquetaCancelada(data?.status_etiqueta);
+        const confirmado =
+          !cancelada &&
+          (rastreioConfirmado ||
+            statusDaEtiquetaConfirmaCompra(data?.status_etiqueta));
+        const etiquetaDaConsulta =
+          data?.label_id === undefined
+            ? pedido?.shipping_label_id
+            : data.label_id;
+        if (etiquetaDaConsulta !== pedido?.shipping_label_id) {
+          void fetchPedido({ silencioso: true });
+          return;
+        }
+        if (atualizado) {
+          onTrackingAtualizado?.(orderIdDoClique, codigoDoProvedor);
+        }
+        setPedido((prev) => {
+          if (!prev || etiquetaDaConsulta !== prev.shipping_label_id) {
+            return prev;
+          }
+          return {
+            ...prev,
+            tracking_code: atualizado ? codigoDoProvedor : prev.tracking_code,
+            situacao_da_compra: cancelada
+              ? "cancelada"
+              : confirmado && prev.situacao_da_compra !== "cancelada"
+                ? "confirmada"
+                : prev.situacao_da_compra,
+          };
+        });
+        if (cancelada) {
+          toast.info("A etiqueta está cancelada no Melhor Envio.");
+        } else if (modo === "conferencia" && confirmado) {
+          toast.success("Etiqueta confirmada no Melhor Envio!");
+        } else if (atualizado) {
+          toast.success("Rastreio atualizado!");
+        } else if (rastreioConfirmado) {
+          toast.info("O código de rastreio já está atualizado.");
         } else if (modo === "conferencia") {
+          void fetchPedido({ silencioso: true });
           // Sem código NÃO é prova de que não foi paga: só diz a verdade e
           // deixa o vínculo como está (soltar abriria a compra dupla).
           toast.info(
@@ -697,7 +760,13 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
         }
       }
     },
-    [isOffline, orderId, onTrackingAtualizado],
+    [
+      isOffline,
+      orderId,
+      onTrackingAtualizado,
+      fetchPedido,
+      pedido?.shipping_label_id,
+    ],
   );
 
   const abrirConfirmacao = useCallback(() => {
@@ -777,6 +846,16 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
 
       {cargaFase === "ok" && pedido && elegibilidade && (
         <div className="space-y-2.5">
+          {deveAvisarCancelamentoComEtiquetaPaga(pedido) && (
+            <p
+              role="alert"
+              className="rounded-xl border border-admin-border bg-admin-surface px-3 py-2 text-sm font-medium leading-snug text-amber-400"
+            >
+              Confira no Melhor Envio se ainda é possível cancelar a etiqueta e
+              solicitar o reembolso.
+            </p>
+          )}
+
           {mensagemResultado?.tipo === "erro" && (
             <p
               data-testid="erro-etiqueta"

@@ -1,3 +1,8 @@
+import {
+  codigoDeRastreioTemLetraOuDigito,
+  normalizarCodigoDeRastreio,
+} from "../../supabase/functions/_shared/normalizar-codigo-de-rastreio";
+
 /**
  * Endereço de rastreio de uma encomenda — UM lugar só, usado pelas quatro
  * telas que têm botão "Rastrear" (pedido do cliente, ficha do pedido no
@@ -10,7 +15,7 @@
  *
  * Tira TODOS os espaços e quebras de linha (inclusive do meio: "AA 123 456
  * 789 BR"), põe em maiúsculas e codifica para caber no caminho do endereço.
- * Devolve "" quando não sobra código — quem chama não mostra o botão.
+ * Devolve "" quando não sobra código ou o valor parece um link.
  */
 const BASE_DO_RASTREIO = "https://www.melhorrastreio.com.br/rastreio/";
 
@@ -20,20 +25,16 @@ const BASE_DO_RASTREIO = "https://www.melhorrastreio.com.br/rastreio/";
  * outros sites de rastreio, que recusam espaços. Devolve "" quando não sobra
  * nada.
  */
-export function normalizarCodigoDeRastreio(codigo: string): string {
-  return (codigo ?? "")
-    .replace(/[\p{Z}\p{Cc}\p{Cf}\u{2800}]+/gu, "")
-    .toUpperCase();
-}
+export { codigoDeRastreioTemLetraOuDigito, normalizarCodigoDeRastreio };
 
-/** Recebe o código já limpo; pontuação pode fazer parte dele, mas não ser tudo. */
-export function codigoDeRastreioTemLetraOuDigito(codigoLimpo: string): boolean {
-  return /[\p{L}\p{Nd}]/u.test(codigoLimpo);
+/** Recebe o código já limpo, em maiúsculas. */
+export function codigoDeRastreioPareceLink(codigoLimpo: string): boolean {
+  return codigoLimpo.startsWith("HTTP") || codigoLimpo.includes("/");
 }
 
 export function linkDeRastreio(codigo: string): string {
   const limpo = normalizarCodigoDeRastreio(codigo);
-  if (!limpo) return "";
+  if (!limpo || codigoDeRastreioPareceLink(limpo)) return "";
   return `${BASE_DO_RASTREIO}${encodeURIComponent(limpo)}`;
 }
 

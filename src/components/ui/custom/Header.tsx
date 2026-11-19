@@ -43,7 +43,7 @@ interface HeaderProps {
   onOpenNotifications?: () => void;
   hideSearch?: boolean;
   searchQuery?: string;
-  onSearch?: (query: string) => void;
+  onSearch?: (query: string, todasAsCategorias?: boolean) => void;
   onCategorySelect?: (category: string) => void;
   scrollProgress?: number;
 }

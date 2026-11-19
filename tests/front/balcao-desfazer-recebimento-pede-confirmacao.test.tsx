@@ -88,6 +88,9 @@ describe("Desfazer o recebimento de venda do balcão pede confirmação", () => 
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(AGORA);
     rpcMock.mockReset();
+    rpcMock.mockImplementation((nome: string) =>
+      nome === "devolucoes_do_pedido" ? { data: [], error: null } : undefined,
+    );
     aoRegistrar.mockReset();
     aoSelecionar.mockReset();
     hospedeiro = document.createElement("div");

@@ -215,6 +215,14 @@ describe("EtiquetaDoPedidoCard — relê o pedido quando o status ou o pagamento
     pedidoState.data = pedido({ status: "shipping" });
     await desenhar({ status: "shipping", onTrackingAtualizado: onTracking });
 
+    // A edge grava a etiqueta no pedido antes de responder; ao fim da compra o
+    // cartão relê o pedido e o banco já devolve o vínculo.
+    pedidoState.data = pedido({
+      status: "shipping",
+      shipping_label_id: "lbl-1",
+      shipping_label_url: "https://melhorenvio.com.br/imprimir/x",
+      tracking_code: "ME1",
+    });
     await act(async () => {
       resolver({
         data: {
