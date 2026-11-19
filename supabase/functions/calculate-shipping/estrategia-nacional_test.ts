@@ -248,6 +248,12 @@ Deno.test("acima_de_valor: subtotal abaixo do mínimo → cheio", () => {
     assertEquals(resultado[0].price, 25.5)
 })
 
+Deno.test("acima_de_valor: um centavo abaixo de R$ 150,14 mantém o frete cheio", () => {
+    const opcoes = [opcao("a", 25.5)]
+    const resultado = aplicarEstrategiaNacional(opcoes, estrategia({ estrategia: "acima_de_valor", minimo: 150.14 }), 150.13)
+    assertEquals(resultado[0].price, 25.5)
+})
+
 Deno.test("acima_de_valor: subtotal igual ao mínimo (borda) → zera", () => {
     const opcoes = [opcao("a", 25.5)]
     const resultado = aplicarEstrategiaNacional(opcoes, estrategia({ estrategia: "acima_de_valor", minimo: 200 }), 200)

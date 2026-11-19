@@ -662,6 +662,18 @@ Deno.test("podeCobrar recusa pedido fora do prazo", () => {
   assertEquals(r.acao, "recusar");
 });
 
+Deno.test("podeCobrar recusa nova cobrança no instante em que o prazo acaba", () => {
+  const r = podeCobrar(
+    {
+      payment_status: "aguardando",
+      expires_at: "2026-08-06T12:00:00.000Z",
+      gateway_payment_id: null,
+    },
+    AGORA,
+  );
+  assertEquals(r.acao, "recusar");
+});
+
 Deno.test("podeCobrar recusa qualquer payment_status que não seja aguardando", () => {
   for (const st of ["pago", "recusado", "expirado", "estornado", "pago_apos_expirar", null]) {
     const r = podeCobrar(
