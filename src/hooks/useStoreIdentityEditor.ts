@@ -503,15 +503,22 @@ export function useStoreIdentityEditor(active = true) {
         ...before,
         phase: "editing",
         message:
-          code === "IDENTITY_UPLOAD_SESSION"
-            ? "Sua sessão expirou. Entre de novo e tente enviar."
-            : code === "IDENTITY_UPLOAD_NETWORK" ||
-                code === "IDENTITY_UPLOAD_TIMEOUT" ||
-                code === "IDENTITY_UPLOAD_UNCONFIRMED"
-              ? "Não conseguimos enviar a imagem. Confira sua internet e tente de novo; o arquivo não tem problema."
-              : isOg && file.type !== "image/png"
-                ? "A arte de compartilhamento precisa ser PNG, 1200 x 630."
-                : "Não foi possível conferir esta imagem. Confira o formato e as dimensões e tente novamente.",
+          error instanceof Error &&
+          error.name === "IdentityImageError" &&
+          (error as Error & { code?: unknown }).code ===
+            "IDENTITY_IMAGE_ANIMATED_WEBP"
+            ? isOg
+              ? "Esse WebP é animado. Envie a arte de compartilhamento em PNG, 1200 × 630."
+              : "Esse WebP é animado. Envie uma versão estática (PNG, JPEG, WebP sem animação ou SVG)."
+            : code === "IDENTITY_UPLOAD_SESSION"
+              ? "Sua sessão expirou. Entre de novo e tente enviar."
+              : code === "IDENTITY_UPLOAD_NETWORK" ||
+                  code === "IDENTITY_UPLOAD_TIMEOUT" ||
+                  code === "IDENTITY_UPLOAD_UNCONFIRMED"
+                ? "Não conseguimos enviar a imagem. Confira sua internet e tente de novo; o arquivo não tem problema."
+                : isOg && file.type !== "image/png"
+                  ? "A arte de compartilhamento precisa ser PNG, 1200 x 630."
+                  : "Não foi possível conferir esta imagem. Confira o formato e as dimensões e tente novamente.",
       });
     }
   }

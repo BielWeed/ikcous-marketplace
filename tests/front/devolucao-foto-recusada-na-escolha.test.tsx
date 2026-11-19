@@ -199,6 +199,22 @@ describe("SolicitarDevolucaoSheet — foto ruim é barrada ao escolher", () => {
     expect(enviarFoto).not.toHaveBeenCalled();
   });
 
+  it("preenche as duas vagas restantes mesmo se a primeira foto não abrir", async () => {
+    await ateOPassoDasFotos();
+    await escolher(Array.from({ length: 4 }, boa));
+    imagemAbre.mockImplementation(
+      async (arquivo) => arquivo.name !== "ruim.jpg",
+    );
+    await escolher([
+      new File(["x"], "ruim.jpg", { type: "image/jpeg" }),
+      boa(),
+      boa(),
+    ]);
+
+    expect(fotosNaLista()).toBe(6);
+    expect(toast.info).not.toHaveBeenCalled();
+  });
+
   it("foto grande que não abre: recusada por não abrir, sem gastar a redução", async () => {
     imagemAbre.mockResolvedValue(false);
     await ateOPassoDasFotos();

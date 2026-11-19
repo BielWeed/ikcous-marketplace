@@ -306,6 +306,8 @@ interface FotoComFalha {
 class FotoIlegivel extends Error {}
 class EnvioCancelado extends Error {}
 
+const MAXIMO_DE_FOTOS_DO_PRODUTO = 10;
+
 export const compressProductImage = async (
   file: File,
   maxWidth = 1200,
@@ -2380,26 +2382,26 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
   const processAndUploadImages = useCallback(
     async (arquivos: File[]) => {
-      let files = arquivos;
-      if (files.length === 0 || cancelarEnvioRef.current) return;
+      if (arquivos.length === 0 || cancelarEnvioRef.current) return;
 
       // O tamanho conta por foto ORIGINAL; o total não, porque cada uma é
-      // reduzida antes de subir. A quantidade entra até o máximo de 10.
-      const legiveis = files.filter((file) => {
+      // reduzida antes de subir. A quantidade entra até o máximo de fotos da galeria.
+      const files = arquivos.filter((file) => {
         const recusa = recusaDeFoto(file);
         if (recusa) toast.error(recusa);
         return !recusa;
       });
-      const vagas = Math.max(0, 10 - formData.images.length);
-      if (legiveis.length > vagas) {
-        toast.error(
-          vagas === 0
-            ? "Limite de imagens atingido: o produto já tem 10 fotos. Remova uma para adicionar outra."
-            : `${legiveis.length - vagas} ${legiveis.length - vagas === 1 ? "foto ficou" : "fotos ficaram"} de fora: o máximo é 10 fotos por produto.`,
-        );
-      }
-      files = legiveis.slice(0, vagas);
+      const vagas = Math.max(
+        0,
+        MAXIMO_DE_FOTOS_DO_PRODUTO - formData.images.length,
+      );
       if (files.length === 0) return;
+      if (vagas === 0) {
+        toast.error(
+          `Limite de imagens atingido: o produto já tem ${MAXIMO_DE_FOTOS_DO_PRODUTO} fotos. Remova uma para adicionar outra.`,
+        );
+        return;
+      }
 
       setIsUploadingImages(true);
       setImageUploadStep("compressing");
@@ -2409,6 +2411,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       );
       const falhas: FotoComFalha[] = [];
       let enviadas = 0;
+      let sobras = 0;
       let envioCancelado = false;
       // Fotos que o aparelho não abriu: já têm o próprio aviso vermelho, mas
       // não são "falha de envio" (não adianta tentar de novo a mesma foto).
@@ -2419,6 +2422,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         // novo, sem acumular um prazo de espera por foto.
         for (const [indice, file] of files.entries()) {
           if (!montadoRef.current || envioCancelado) break;
+          if (enviadas === vagas) {
+            sobras = files.length - indice;
+            break;
+          }
           setProgressoDoEnvio({ atual: indice + 1, total: files.length });
           setImageUploadStep("compressing");
           // Marca o estouro para a continuação ATRASADA não iniciar o upload
@@ -2505,29 +2512,35 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           toast.dismiss(loadingToast);
           return;
         }
-        if (!envioCancelado && falhas.length === 0 && ilegiveis === 0) {
+        if (sobras > 0) {
+          toast.error(
+            `${sobras} ${sobras === 1 ? "foto ficou" : "fotos ficaram"} de fora: o máximo é ${MAXIMO_DE_FOTOS_DO_PRODUTO} fotos por produto.`,
+          );
+        }
+        const resumo = `${enviadas} de ${arquivos.length} fotos enviadas`;
+        if (enviadas === arquivos.length) {
           toast.success("Imagens processadas e enviadas com sucesso!", {
             id: loadingToast,
           });
         } else if (falhas.length === 0) {
-          // O vermelho de cada foto ilegível já está na tela: aqui só não se
-          // pode dizer "sucesso" por cima dele.
           if (enviadas > 0) {
-            toast.warning(
-              `${enviadas} de ${files.length} fotos enviadas; ${ilegiveis} ${ilegiveis === 1 ? "não abriu" : "não abriram"}.`,
-              { id: loadingToast },
-            );
+            const detalhe =
+              sobras > 0
+                ? `; o limite é ${MAXIMO_DE_FOTOS_DO_PRODUTO}`
+                : ilegiveis > 0
+                  ? `; ${ilegiveis} ${ilegiveis === 1 ? "não abriu" : "não abriram"}`
+                  : "";
+            toast.warning(`${resumo}${detalhe}.`, { id: loadingToast });
           } else {
             toast.dismiss(loadingToast);
           }
         } else {
           setFotosComFalha((prev) => [...prev, ...falhas]);
           toast.error(
-            `${pluralizar(falhas.length, "foto não subiu", "fotos não subiram")} (de ${files.length}).`,
+            `${pluralizar(falhas.length, "foto não subiu", "fotos não subiram")} (de ${files.length - sobras}).`,
             {
               id: loadingToast,
-              description:
-                "Veja o aviso abaixo das fotos: dá para tentar de novo, remover, ou publicar sem elas.",
+              description: `${enviadas > 0 ? `${resumo}. ` : ""}Veja o aviso abaixo das fotos: dá para tentar de novo, remover, ou publicar sem elas.`,
             },
           );
         }
@@ -2547,10 +2560,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     async (id: string) => {
       const falha = fotosComFalha.find((f) => f.id === id);
       if (!falha || isOffline) return;
-      if (formData.images.length >= 10) {
+      if (formData.images.length >= MAXIMO_DE_FOTOS_DO_PRODUTO) {
         // Mesma regra do envio: não some com a foto da lista sem ela caber.
         toast.error(
-          "O produto já tem 10 fotos. Remova uma foto antes de tentar de novo.",
+          `O produto já tem ${MAXIMO_DE_FOTOS_DO_PRODUTO} fotos. Remova uma foto antes de tentar de novo.`,
         );
         return;
       }
@@ -4796,8 +4809,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   </span>
                   <span className="mt-1 block text-xs text-zinc-400">
                     {formData.images.length
-                      ? `${formData.images.length} de 10 · Proporção ideal: 4:5`
-                      : "Opcional · até 10 fotos"}
+                      ? `${formData.images.length} de ${MAXIMO_DE_FOTOS_DO_PRODUTO} · Proporção ideal: 4:5`
+                      : `Opcional · até ${MAXIMO_DE_FOTOS_DO_PRODUTO} fotos`}
                   </span>
                 </span>
               </div>
@@ -5190,7 +5203,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               )}
               {formData.images.length > 0 && (
                 <p className="mt-3 text-[11px] text-zinc-400">
-                  Máx. 10 fotos · 12 MB cada. A ordem não muda por arraste.
+                  Máx. {MAXIMO_DE_FOTOS_DO_PRODUTO} fotos · 12 MB cada. A ordem
+                  não muda por arraste.
                 </p>
               )}
             </div>

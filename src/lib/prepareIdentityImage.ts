@@ -4,6 +4,7 @@ export type IdentityImageErrorCode =
   | "IDENTITY_IMAGE_INVALID"
   | "IDENTITY_IMAGE_SIZE"
   | "IDENTITY_IMAGE_FORMAT"
+  | "IDENTITY_IMAGE_ANIMATED_WEBP"
   | "IDENTITY_IMAGE_DIMENSIONS"
   | "IDENTITY_IMAGE_DECODE"
   | "IDENTITY_IMAGE_CANCELED"
@@ -64,7 +65,8 @@ function validateWebp(bytes: Uint8Array): void {
       bytes[offset + 3] === 70
     )
       frames++;
-    if (frames > 1) invalidFormat();
+    if (frames > 1)
+      throw new IdentityImageError("IDENTITY_IMAGE_ANIMATED_WEBP");
     offset = next;
   }
 }

@@ -853,6 +853,25 @@ describe("imagem original e fontes explícitas", () => {
     expect(h.upload).toHaveBeenCalledTimes(1);
     expect(host.textContent).not.toContain("PRIVATE");
   });
+  it("orienta a usar WebP estático e explica a recusa de animação", async () => {
+    h.prepare.mockRejectedValueOnce(
+      Object.assign(new Error(), {
+        name: "IdentityImageError",
+        code: "IDENTITY_IMAGE_ANIMATED_WEBP",
+      }),
+    );
+    await render();
+    expect(host.textContent).toContain("WebP estático");
+    await select(
+      "Trocar cabeçalho",
+      new File(["webp"], "logo.webp", { type: "image/webp" }),
+    );
+    expect(h.upload).not.toHaveBeenCalled();
+    expect(host.textContent).toContain(
+      "Esse WebP é animado. Envie uma versão estática (PNG, JPEG, WebP sem animação ou SVG).",
+    );
+  });
+
   describe("falha no envio da imagem diz a causa certa", () => {
     const SEM_REDE =
       "Não conseguimos enviar a imagem. Confira sua internet e tente de novo; o arquivo não tem problema.";
@@ -1010,6 +1029,26 @@ describe("imagem original e fontes explícitas", () => {
       "A arte de compartilhamento precisa ser PNG, 1200 x 630.",
     );
   });
+  it("WebP animado para compartilhamento pede PNG 1200 × 630", async () => {
+    h.prepare.mockRejectedValueOnce(
+      Object.assign(new Error(), {
+        name: "IdentityImageError",
+        code: "IDENTITY_IMAGE_ANIMATED_WEBP",
+      }),
+    );
+    await render();
+    await select(
+      "Trocar compartilhamento",
+      new File(["webp"], "cartaz.webp", { type: "image/webp" }),
+    );
+
+    expect(h.upload).not.toHaveBeenCalled();
+    expect(host.textContent).toContain(
+      "Esse WebP é animado. Envie a arte de compartilhamento em PNG, 1200 × 630.",
+    );
+    expect(host.textContent).not.toContain("Envie uma versão estática");
+  });
+
   it("arquivo não-PNG no cabeçalho não mostra a mensagem do papel de compartilhamento", async () => {
     await render();
     await select(

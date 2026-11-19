@@ -113,6 +113,7 @@ beforeEach(() => {
   descartarFotos.mockReset().mockResolvedValue(undefined);
   imagemAbre.mockReset().mockResolvedValue(true);
   vi.mocked(toast.error).mockClear();
+  vi.mocked(toast.info).mockClear();
   hospedeiro = document.createElement("div");
   document.body.appendChild(hospedeiro);
   raiz = createRoot(hospedeiro);
@@ -244,6 +245,9 @@ describe("Devolução — duas escolhas de foto sobrepostas respeitam o limite d
     await assentarTudo();
 
     expect(contador()).toBe("6");
+    expect(toast.info).toHaveBeenCalledExactlyOnceWith(
+      "2 fotos ficaram de fora. Envie no máximo 6 fotos.",
+    );
     await ateORevisar();
     await clicar(botaoFinal());
     expect(solicitar).toHaveBeenCalledTimes(1);
@@ -302,7 +306,7 @@ describe("Devolução — duas escolhas de foto sobrepostas respeitam o limite d
     await assentarTudo();
     expect(contador()).toBe("6");
     expect(vi.mocked(toast.info)).toHaveBeenCalledWith(
-      "Envie no máximo 6 fotos.",
+      "2 fotos ficaram de fora. Envie no máximo 6 fotos.",
     );
   });
 });

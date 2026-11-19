@@ -175,11 +175,65 @@ describe("AdminProductFormView — foto ilegível não diz 'sucesso'", () => {
   }
 
   async function enviar(arquivos: File[]) {
+    // O fim do lote atualiza ou dispensa o aviso de andamento. Um erro de
+    // uma foto isolada não é terminal: ainda pode haver fotos para ler.
+    const avisosFinais = () =>
+      [mocks.toastSuccess, mocks.toastWarning, mocks.toastError].reduce(
+        (total, aviso) =>
+          total +
+          aviso.mock.calls.filter(([, op]) => op?.id === ID_DO_AVISO).length,
+        mocks.toastDismiss.mock.calls.filter(([id]) => id === ID_DO_AVISO)
+          .length,
+      );
+    const antes = avisosFinais();
     await act(async () => {
       escolherFotos(arquivos);
-      await new Promise((r) => setTimeout(r, 0));
+      await vi.waitFor(() => expect(avisosFinais()).toBeGreaterThan(antes));
     });
   }
+
+  it("foto ilegível não toma uma das duas vagas da galeria", async () => {
+    await montar();
+    await enviar(Array.from({ length: 8 }, (_, i) => foto(`galeria-${i}.jpg`)));
+    mocks.uploadProductImages.mockClear();
+    await enviar([foto("ruim.jpg"), foto("boa-1.jpg"), foto("boa-2.jpg")]);
+
+    expect(
+      mocks.uploadProductImages.mock.calls.map(([files]) => files[0].name),
+    ).toEqual(["boa-1.jpg", "boa-2.jpg"]);
+    expect(textoDosErros()).not.toMatch(/ficou de fora/);
+  });
+
+  it("quando o primeiro envio falha, mantém as três fotos pendentes em vez de avisar limite", async () => {
+    await montar();
+    await enviar(Array.from({ length: 8 }, (_, i) => foto(`galeria-${i}.jpg`)));
+    mocks.uploadProductImages
+      .mockClear()
+      .mockRejectedValueOnce(new Error("sem rede"));
+    await enviar([foto("lote-a.jpg"), foto("lote-b.jpg"), foto("lote-c.jpg")]);
+
+    expect(mocks.uploadProductImages).toHaveBeenCalledTimes(1);
+    expect(textoDosErros()).not.toMatch(/ficou de fora/);
+    for (const nome of ["lote-a.jpg", "lote-b.jpg", "lote-c.jpg"]) {
+      expect(document.body.textContent).toContain(nome);
+    }
+  });
+
+  it("com uma vaga e duas fotos, informa que só uma subiu, sem anunciar sucesso total", async () => {
+    await montar();
+    await enviar(Array.from({ length: 9 }, (_, i) => foto(`galeria-${i}.jpg`)));
+    mocks.uploadProductImages.mockClear();
+    mocks.toastSuccess.mockClear();
+
+    await enviar([foto("decima.jpg"), foto("decima-primeira.jpg")]);
+
+    expect(mocks.uploadProductImages).toHaveBeenCalledTimes(1);
+    expect(mocks.toastSuccess).not.toHaveBeenCalled();
+    expect(mocks.toastWarning).toHaveBeenCalledWith(
+      "1 de 2 fotos enviadas; o limite é 10.",
+      { id: ID_DO_AVISO },
+    );
+  });
 
   const textoDosErros = () =>
     mocks.toastError.mock.calls.map((c) => String(c[0])).join(" | ");
