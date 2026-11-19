@@ -19,7 +19,8 @@ Deno.test("5700: compara a etapa só depois de autenticar e travar estornos e pe
     if (!(erro instanceof Deno.errors.NotFound)) throw erro;
     sql = ler(base);
   }
-  const rotina = definicao(sql, "pedido__mudar_status_com_etapa") ||
+  const rotina =
+    definicao(sql, "pedido__mudar_status_com_etapa") ||
     definicao(sql, "pedido__mudar_status");
   const banco = rotina.indexOf(
     "v_old_status IS DISTINCT FROM p_status_esperado",
@@ -67,21 +68,23 @@ Deno.test("5700: a lista reconhece só a porta autenticada do painel, não a rot
     "public.cancelar_pedido_do_painel(",
     "public.pedido__mudar_status_com_etapa(",
   ];
-  const portas = lista.funcoes.filter(({ funcao }) =>
-    nomes.some((nome) => funcao.startsWith(nome))
-  ).map(({ funcao, executa, tipo, secdef }) => ({
-    funcao,
-    executa,
-    tipo,
-    secdef,
-  }));
-  assert.deepEqual(portas, [{
-    funcao:
-      "public.cancelar_pedido_do_painel(p_order_id uuid, p_status_esperado text, p_notes text)",
-    executa: ["authenticated"],
-    tipo: "volatil",
-    secdef: true,
-  }]);
+  const portas = lista.funcoes
+    .filter(({ funcao }) => nomes.some((nome) => funcao.startsWith(nome)))
+    .map(({ funcao, executa, tipo, secdef }) => ({
+      funcao,
+      executa,
+      tipo,
+      secdef,
+    }));
+  assert.deepEqual(portas, [
+    {
+      funcao:
+        "public.cancelar_pedido_do_painel(p_order_id uuid, p_status_esperado text, p_notes text)",
+      executa: ["authenticated"],
+      tipo: "volatil",
+      secdef: true,
+    },
+  ]);
 });
 
 Deno.test("5700: BC do app antigo permanece e rollback restaura o corpo da 5600 byte a byte", () => {
