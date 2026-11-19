@@ -3,7 +3,6 @@ import {
   seloDoEmail,
 } from "@/components/admin/settings/email-da-loja-conteudo";
 import {
-  AVISO_DO_FRETE,
   transportadoraFicaSemPagamento,
   transportadoraVendeForaDaCidade,
 } from "@/lib/aviso-transportadora-sem-pagamento";
@@ -136,7 +135,7 @@ export function passosRecomendados(
         : "pendente",
     destino: "admin-settings",
     explicacaoPendente: avisarTransportadoraSemPagamento
-      ? `${AVISO_DO_FRETE.titulo} ${AVISO_DO_FRETE.detalhe}`
+      ? "Quem precisa de envio por transportadora não consegue finalizar a compra. Ligue o pagamento pelo app."
       : "Sem ele, seus clientes só podem pagar na entrega",
   });
 

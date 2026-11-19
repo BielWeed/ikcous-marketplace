@@ -126,21 +126,61 @@ describe("Loja pronta — recomendados no Início", () => {
     expect(onNavigate).toHaveBeenLastCalledWith("admin-shipping");
   });
 
-  it("avisa que clientes de fora não finalizam quando a transportadora está ligada sem pagamento pelo app", async () => {
+  it("explica como voltar a vender por transportadora, sem tirar o cadastro completo", async () => {
     await montar({
       recomendados: pendentesRecomendados(
         fatos({ pixOk: false, pagamentoPeloAppLigado: false }),
       ),
     });
 
-    expect(hospedeiro.textContent).toContain(
-      "Transportadora só funciona com pagamento pelo app ligado.",
+    const pagamento = botaoComTexto("Ligar o pagamento pelo app (PIX)");
+    expect(pagamento?.textContent).toContain(
+      "Quem precisa de envio por transportadora não consegue finalizar a compra. Ligue o pagamento pelo app.",
     );
-    expect(hospedeiro.textContent).toContain(
-      "Hoje seus clientes de fora da sua região não conseguem finalizar a compra.",
-    );
-    expect(hospedeiro.textContent).not.toContain("só podem pagar na entrega");
+    expect(pagamento?.textContent).not.toContain("só podem pagar na entrega");
+    expect(hospedeiro.textContent).toContain("6 de 6 passos concluídos");
+    expect(hospedeiro.textContent).toContain("Cadastro completo");
   });
+
+  it.each([
+    {
+      caso: "entrega só na região, mesmo com transportadora cadastrada",
+      parcial: { config: { shippingCoverage: "local" } },
+    },
+    {
+      caso: "só retirada",
+      parcial: {
+        config: {
+          shippingCoverage: "local",
+          localDeliveryEnabled: false,
+          enabledShippingMethods: ["store-pickup"],
+        },
+      },
+    },
+    {
+      caso: "pagamento pelo app ligado",
+      parcial: { pixOk: true, pagamentoPeloAppLigado: true },
+    },
+    {
+      caso: "config ainda carregando",
+      parcial: { configCarregando: true },
+    },
+    {
+      caso: "transportadoras ainda desconhecidas",
+      parcial: { nomesLigados: null },
+    },
+  ] satisfies { caso: string; parcial: Partial<FatosDosRecomendados> }[])(
+    "não avisa sobre compra por transportadora: $caso",
+    async ({ parcial }) => {
+      await montar({
+        recomendados: pendentesRecomendados(
+          fatos({ pixOk: false, pagamentoPeloAppLigado: false, ...parcial }),
+        ),
+      });
+
+      expect(hospedeiro.textContent).not.toMatch(/finaliza[rm] a compra/);
+    },
+  );
 
   it("não muda a conta dos seis passos: 6 de 6 continua 6 de 6 com recomendados pendentes", async () => {
     await montar({
