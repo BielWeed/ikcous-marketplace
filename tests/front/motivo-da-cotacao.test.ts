@@ -219,6 +219,15 @@ describe("motivoDaCotacao", () => {
     );
   });
 
+  it.each(['{"message":"Bad Gateway"}', "<html>Bad Gateway</html>"])(
+    "não mostra o corpo bruto no histórico quando falha ao salvar: %s",
+    (corpo) => {
+      expect(motivoDaCotacao(`Falha ao gravar a cotação: ${corpo}`)).toBe(
+        "A cotação foi calculada, mas não pôde ser salva.",
+      );
+    },
+  );
+
   it("vazio ou nulo devolve vazio (linha com campo nulo não derruba a seção)", () => {
     expect(motivoDaCotacao("")).toBe("");
     expect(motivoDaCotacao(null)).toBe("");
