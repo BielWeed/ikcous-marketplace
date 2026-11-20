@@ -118,6 +118,15 @@ it("remove a recomendação guardada só quando o catálogo confirma que o item 
       await desenhar({ ...semRecomendado, catalogoDaRedeAplicado: false }),
     ).toContain(recomendado.name);
     expect(await desenhar(semRecomendado)).not.toContain(recomendado.name);
+    expect(
+      await desenhar({
+        ...semRecomendado,
+        products: [produto, { ...recomendado, isActive: false }],
+      }),
+    ).not.toContain(recomendado.name);
+    expect(await desenhar({ ...semRecomendado, products: [] })).not.toContain(
+      recomendado.name,
+    );
   } finally {
     await act(async () => raiz.unmount());
     hospedeiro.remove();
