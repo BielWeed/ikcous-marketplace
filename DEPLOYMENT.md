@@ -180,10 +180,14 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
    precisam estar no mesmo formato — misturar é recusado com mensagem
    explícita, em vez de falhar depois com erro de curva.
 
-   **Como saber se está certo sem mandar notificação para cliente:** dispare uma
-   campanha para o seu próprio usuário pela tela de push do admin. Desde a
-   PUSH-010 (#80) a resposta traz `enviados` e `falharam`, e a tela mostra o
-   número real — antes disso o toast era verde mesmo com zero entrega.
+   **Como testar sem mandar notificação para cliente:**
+   1. No **Início** do painel, no cartão de avisos, clique em
+      **Ligar avisos neste aparelho** e aceite a permissão.
+   2. Quando aparecer **Avisos ligados neste aparelho**, clique em **Mandar um
+      aviso de teste** e confira se o aviso chegou nesse aparelho.
+   3. Não use a tela de campanhas para esse teste. Ela abre com o público
+      **Todos**: se você confirmar o envio geral, ele vai para todos os clientes,
+      não só para você.
 
 ### Banco de Dados (RLS)
 
@@ -646,13 +650,14 @@ Como ler o que voltar:
 
 | resposta | significa |
 | --- | --- |
-| `200` + `{"ok":true,"verificados":N,...}` | funcionando. `verificados: 0` é normal e frequente — só há candidato quando um PIX expira **tendo** cobrança criada |
+| `200` + `ok: true` + `degradado: false` | nenhuma etapa relatou falha nessa rodada. `verificados: 0` pode ser normal; para saber se todas as filas estavam vazias, confira `fila_vazia` no corpo completo |
+| `200` + `ok: true` + `degradado: true` | pelo menos uma etapa falhou nessa rodada. No Supabase da loja, abra os logs da função `reconciliar-pagamentos`, confira qual etapa falhou e corrija a causa. Confira de novo na próxima rodada automática (até 10 minutos) |
 | `401` | **o caso silencioso.** O `RECONCILIACAO_SECRET` do ambiente das functions não bate com o `reconciliacao_secret` do Vault. Ver §5.2 |
 | `404` | a função não está publicada. É o estado entre aplicar a migration e fazer o deploy |
 | `timed_out = true`, corpo vazio | o lote passou de 2 min. Ver o comentário sobre `timeout_milliseconds` na migration `20260808000100` — esse número e o `LIMIT 100` da `pagamentos_a_reconciliar` mudam juntos |
 
-**Medido em 11/08/2026, no deploy desta fase**, e serve de referência do que "funcionando"
-parece:
+**Medido em 11/08/2026, no deploy desta fase**, antes de a resposta trazer `degradado`.
+Este exemplo mostra a virada de função ausente para função acessível, não a saúde das etapas:
 
 ```
 02:50:00  HTTP 200  {"ok":true,"verificados":0,"confirmados":0,"ignorados":0,"falhas":0}

@@ -2210,45 +2210,62 @@ O cadastro de UMA vez, na entrada do cliente:
    discordam; decisao do dono do produto, nao se mexe aqui).
 
    **Tela P2. Tornar administradora.**
-   1. Apague o texto da caixa, cole o texto abaixo e troque `<e-mail-da-administradora>` (mantendo
-      as aspas simples). **Ele aparece DUAS vezes (no `UPDATE` e no `SELECT` final): troque nas duas,
-      pelo MESMO e-mail da Tela P1.** Trocar so no `UPDATE` da `0, 0, 0` no `SELECT`; trocar so no
-      `SELECT` da `1, 0, 0`. Clique em **Run**. (Aqui o marcador e' `<e-mail-da-administradora>`,
-      nao o `<e-mail-do-dono>` das Telas 3 e 4 do outro roteiro.)
+   1. No editor da loja certa, apague o texto da caixa e cole o bloco abaixo. Troque
+      `<e-mail-da-administradora>` uma unica vez, mantendo as aspas simples. Confira o
+      endereco com o que a pessoa usou no cadastro. Deixe `ROLLBACK;` na ultima linha
+      e clique em **Run**: este primeiro teste desfaz a mudanca.
 
       ```sql
       BEGIN;
       SET LOCAL ROLE postgres;
-      UPDATE public.profiles p
-         SET role = 'admin'
+      SET LOCAL ikcous.email_admin = '<e-mail-da-administradora>';
+
+      DO $$
+      DECLARE
+        email_alvo text := lower(current_setting('ikcous.email_admin'));
+        atualizados integer;
+      BEGIN
+        UPDATE public.profiles p
+           SET role = 'admin'
+          FROM auth.users u
+         WHERE u.id = p.id
+           AND lower(u.email) = email_alvo;
+        GET DIAGNOSTICS atualizados = ROW_COUNT;
+
+        IF atualizados <> 1 OR (
+          SELECT count(*) FROM auth.users u WHERE lower(u.email) = email_alvo
+        ) <> 1 OR NOT EXISTS (
+          SELECT 1 FROM auth.users u JOIN public.profiles p ON p.id = u.id
+           WHERE lower(u.email) = email_alvo
+             AND u.raw_app_meta_data ->> 'role' = 'admin'
+             AND p.role = 'admin'
+        ) THEN
+          RAISE EXCEPTION 'Tela P2: nao foi possivel confirmar uma unica conta nas duas fontes';
+        END IF;
+      END;
+      $$;
+
+      SELECT u.email, u.raw_app_meta_data ->> 'role' AS cargo_no_login, p.role AS cargo_no_perfil
         FROM auth.users u
-       WHERE u.id = p.id
-         AND lower(u.email) = lower('<e-mail-da-administradora>');
-      COMMIT;
-      SELECT count(*) AS contas_com_esse_email,
-             count(*) FILTER (WHERE (u.raw_app_meta_data ->> 'role') = 'admin') AS admin_em_auth_users,
-             count(*) FILTER (WHERE p.role = 'admin') AS admin_em_profiles
-        FROM auth.users u
-        LEFT JOIN public.profiles p ON p.id = u.id
-       WHERE lower(u.email) = lower('<e-mail-da-administradora>');
+        JOIN public.profiles p ON p.id = u.id
+       WHERE lower(u.email) = lower(current_setting('ikcous.email_admin'));
+      ROLLBACK;
       ```
 
-      - Vai aparecer: uma tabelinha com tres numeros.
-      - **Deu certo se** forem `1, 1, 1`. Nao rode de novo sem falar com o programador (ver a Tela P3).
-      - Se aparecer diferente, **pare e avise "Tela P2"**, sem rodar de novo:
-        - `1, 0, 0`: nada mudou. Causa provavel: a conta nao tem linha em `profiles` (o `UPDATE` casa
-          0 linhas e nao da erro); outra possibilidade e' um dos dois e-mails digitado diferente.
-        - um erro em vermelho com a frase **`You cannot change your own role`**: o editor nao rodou
-          como `postgres` e a execucao inteira foi desfeita, nada mudou;
-        - qualquer outro erro, `0, 0, 0`, `1, 1, 0` ou `1, 0, 1`.
-        Antes de tentar outra coisa, clique em **New query** para comecar numa consulta limpa.
+   2. Confira na tabela: deve vir **uma linha**, com o e-mail exato da pessoa e `admin`
+      nas duas colunas de cargo. Se vier diferente, der erro ou a tabela nao aparecer,
+      **pare e avise "Tela P2"**. Deixe o `ROLLBACK;` como esta e nao envie a tabela nem o erro.
+   3. Se estiver tudo certo, na mesma caixa troque **so** a ultima linha de `ROLLBACK;`
+      para `COMMIT;` e clique em **Run** para executar o bloco inteiro de novo. Nao
+      redigite o e-mail nem rode `COMMIT;` separado: cada clique executa um bloco
+      completo. O banco confere os dois cargos de novo antes de gravar. Sem erro,
+      siga para a Tela P3; se der erro, pare e avise "Tela P2", sem repetir.
 
    **Tela P3. Limpar o rastro e fechar.** Apague a consulta salva e feche a aba (Tela 5 da secao 3.3,
    passo 1). Ela **sai da conta e entra de novo**, para o login ler o cargo novo (o cargo
    guardado no login dura ate cerca de 1 hora, `20261383000000...:73`), e abre o painel. Se ela nao
-   entrar mesmo com `1, 1, 1` na Tela P2 (aparece "Acesso restrito a administradores"), **pare e
-   avise "Tela P3"**: pode ter sido promovida OUTRA conta (e-mail de outra pessoa da loja digitado
-   igual nas duas telas); **NAO repita a Tela P2**, senao uma conta alheia fica como administradora.
+   entrar mesmo depois de confirmar a Tela P2 (aparece "Acesso restrito a administradores"),
+   **pare e avise "Tela P3"**: e preciso conferir qual conta recebeu o cargo. **NAO repita a Tela P2.**
    Diga ao programador apenas "cadastrei a primeira administradora na loja X".
    Depois disto a conta cumpre o que o cadastro do dono pede: siga as Telas 3 a 5 de
    `definir-o-dono-da-loja.md` (secao 3.3) e a consulta 88c.
