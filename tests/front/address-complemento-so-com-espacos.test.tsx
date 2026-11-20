@@ -91,8 +91,7 @@ describe("AddressForm — complemento e referência só com espaços", () => {
     vi.restoreAllMocks();
   });
 
-  async function preencherEEnviar(extras: Record<string, string>) {
-    const onSubmit = vi.fn().mockResolvedValue(undefined);
+  async function abrirFormulario(onSubmit = vi.fn()) {
     const { AddressForm } = await import("@/components/ui/custom/AddressForm");
     await act(async () => {
       raiz.render(<AddressForm onSubmit={onSubmit} onCancel={vi.fn()} />);
@@ -104,12 +103,33 @@ describe("AddressForm — complemento e referência só com espaços", () => {
     );
     expect(outro).toBeDefined();
     await act(async () => outro!.click());
+  }
+
+  async function abrirReferencia() {
     // O ponto de referência só aparece depois de pedir pelo botão "+".
     const pedirReferencia = Array.from(
       hospedeiro.querySelectorAll("button"),
     ).find((botao) => botao.textContent?.trim() === "Ponto de referência");
     expect(pedirReferencia).toBeDefined();
-    await act(async () => pedirReferencia!.click());
+    await act(async () => {
+      pedirReferencia!.focus();
+      pedirReferencia!.click();
+    });
+  }
+
+  it("move o foco para o campo ao abrir Ponto de referência", async () => {
+    await abrirFormulario();
+    expect(document.getElementById("reference")).toBeNull();
+    await abrirReferencia();
+    const campo = document.getElementById("reference");
+    expect(campo).not.toBeNull();
+    expect(document.activeElement).toBe(campo);
+  });
+
+  async function preencherEEnviar(extras: Record<string, string>) {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    await abrirFormulario(onSubmit);
+    await abrirReferencia();
     await act(async () => {
       for (const [campo, valor] of Object.entries({
         ...OBRIGATORIOS,

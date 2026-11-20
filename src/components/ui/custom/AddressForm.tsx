@@ -359,6 +359,7 @@ export function AddressForm({
   const [referenciaAberta, setReferenciaAberta] = useState(
     !!initialData?.reference,
   );
+  const focarReferenciaAoAbrirRef = useRef(false);
 
   // Corrida, timeout e abort no desmonte ficam por conta do hook (#184,
   // #185, #186). Aqui: campo que o ViaCEP devolveu, escreve o valor dele;
@@ -628,6 +629,12 @@ export function AddressForm({
     else if (!rua) form.setFocus("street");
     else if (!bairro) form.setFocus("neighborhood");
   }, [resultadoCep, mostrarResto, mostrarCartao, rua, bairro, form]);
+
+  useEffect(() => {
+    if (!referenciaAberta || !focarReferenciaAoAbrirRef.current) return;
+    focarReferenciaAoAbrirRef.current = false;
+    form.setFocus("reference");
+  }, [referenciaAberta, form]);
 
   const handleSubmit = async (values: AddressFormValues) => {
     setLoading(true);
@@ -1068,7 +1075,10 @@ export function AddressForm({
               {!referenciaAberta && !referencia && (
                 <button
                   type="button"
-                  onClick={() => setReferenciaAberta(true)}
+                  onClick={() => {
+                    focarReferenciaAoAbrirRef.current = true;
+                    setReferenciaAberta(true);
+                  }}
                   disabled={loading}
                   className="inline-flex min-h-11 items-center gap-1.5 text-[13px] font-semibold text-foreground"
                 >
