@@ -152,6 +152,43 @@ describe("avisos — respostas atrasadas respeitam as ações da cliente", () =>
     expect(espelho.atual!.unreadCount).toBe(2);
   });
 
+  it("Marcar todas conclui a campanha quando o aviso pessoal é confirmado após o prazo", async () => {
+    vi.useFakeTimers();
+    try {
+      rede.campanhas = [aviso("campanha", null)];
+      await act(async () => {
+        await espelho.atual!.refresh();
+      });
+      expect(espelho.atual!.unreadCount).toBe(2);
+      const update = pendente<{ error: null }>();
+      rede.mutacao = update.promessa;
+      let acao: Promise<void> | undefined;
+      await act(async () => {
+        acao = espelho.atual!.markAllAsRead();
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000);
+      });
+      await acao;
+      expect(espelho.atual!.unreadCount).toBe(2);
+
+      rede.linhas = [{ ...aviso("antigo"), lida: true }];
+      await act(async () => {
+        update.resolver({ error: null });
+      });
+      expect(espelho.atual!.unreadCount).toBe(0);
+      await act(async () => {
+        await espelho.atual!.refresh();
+      });
+      expect(
+        espelho.atual!.notifications.find((n) => n.id === "campanha")?.read,
+      ).toBe(true);
+      expect(espelho.atual!.unreadCount).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it.each(["ler", "ler todas", "excluir", "ler campanha", "excluir campanha"])(
     "%s impede a consulta anterior de restaurar o retrato antigo",
     async (acao) => {
