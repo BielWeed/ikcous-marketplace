@@ -7,7 +7,6 @@ import { useStore } from "@/contexts/StoreContext";
 // única promessa segura de anunciar é a LOCAL — mas com o QUALIFICADOR "na
 // cidade" sempre que ela não empatar com a nacional (`!promessas.iguais`),
 // para nunca prometer grátis nacional que a loja não dá.
-import { atingiuOMinimo } from "@/lib/atingiu-o-minimo";
 import {
   promessasDeFrete,
   semMetaDeFreteGratis,
@@ -80,9 +79,14 @@ export function AvisoDeFreteGratis({
   // R$ 0,01" e "faltam R$ 0,01" — a loja que dá grátis SEMPRE não tem meta.
   const minShipping = config.freeShippingMin;
   const totalCartValue = cartTotal || 0;
-  const remaining = Math.max(0, minShipping - totalCartValue);
-  const isGoalReached = atingiuOMinimo(totalCartValue, minShipping);
-  const progressPercent = Math.min((totalCartValue / minShipping) * 100, 100);
+  // Use a mesma unidade do carrinho para que a barra e o selo concordem.
+  const totalEmCentavos = Math.round(totalCartValue * 100);
+  const metaEmCentavos = Math.round(minShipping * 100);
+  const remaining = Math.max(0, (metaEmCentavos - totalEmCentavos) / 100);
+  const isGoalReached = totalEmCentavos >= metaEmCentavos;
+  const progressPercent = isGoalReached
+    ? 100
+    : (totalEmCentavos / metaEmCentavos) * 100;
 
   if (config.freeShippingCardStyle === "compacto") {
     const sempre = preset === "sempre";

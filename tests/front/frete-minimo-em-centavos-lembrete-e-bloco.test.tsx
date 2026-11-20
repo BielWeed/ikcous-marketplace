@@ -111,6 +111,11 @@ describe("meta de frete grátis em centavos — lembrete e bloco da Home", () =>
     await montarBloco(10.1 + 10.2);
 
     expect(texto()).toContain("Liberado!");
+    expect(
+      hospedeiro
+        .querySelector('[role="progressbar"]')
+        ?.getAttribute("aria-valuenow"),
+    ).toBe("100");
   });
 
   it("FreeShippingBlock compacto também libera na soma em centavos", async () => {
