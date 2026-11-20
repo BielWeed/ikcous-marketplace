@@ -40,6 +40,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 let host: HTMLDivElement;
 let root: Root;
 beforeEach(() => {
+  h.analytics.stats.revenueHistory = [{ revenue: 100, orders: 1 }];
   h.analytics.categoryData = null;
   h.analytics.categoryError = null;
   host = document.createElement("div");
@@ -210,6 +211,25 @@ it("devolveu tudo o que vendeu (pedidos 0, devolução 100%): mostra 100%, não 
   expect(texto).toContain("100%");
   expect(texto).toContain("Do valor vendido no período");
   expect(texto).not.toContain("Sem venda neste período");
+});
+
+it("estorno integral sem vendas no histórico mantém os cartões dos relatórios", async () => {
+  h.analytics.stats.revenueHistory = [{ revenue: 0, orders: 0 }];
+  await montar(0, 1, false);
+
+  expect(cartao("Taxa de devolução").textContent).toContain("100%");
+  expect(host.textContent).not.toContain("Sua loja ainda não tem venda paga");
+  expect(host.textContent).not.toContain(
+    "Os relatórios começam na primeira venda",
+  );
+});
+
+it("loja sem vendas nem devoluções mantém o aviso de primeira venda", async () => {
+  h.analytics.stats.revenueHistory = [{ revenue: 0, orders: 0 }];
+  await montar(0, 0, false);
+
+  expect(host.textContent).toContain("Sua loja ainda não tem venda paga");
+  expect(host.textContent).toContain("Os relatórios começam na primeira venda");
 });
 
 it("devolução parcial sem pedido restante também aparece", async () => {
