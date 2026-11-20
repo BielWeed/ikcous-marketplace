@@ -23,6 +23,11 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useVOR } from "@/hooks/useVOR";
 import {
+  ehAparelhoDaApple,
+  estaComoAppInstalado,
+  passosParaLiberarOsAvisos,
+} from "@/lib/avisos-do-aparelho";
+import {
   destinoDaUrl,
   destinoDeProdutoSemIdValido,
   nomeDoDestino,
@@ -46,6 +51,7 @@ import {
   temMarcadorPendente,
 } from "@/lib/modelos-de-campanha";
 import { motivoDaFalhaEmPortugues } from "@/lib/motivo-da-falha-de-push";
+import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { intercalarPorServico } from "@/lib/ordem-do-envio-de-push";
 import {
@@ -528,7 +534,8 @@ export const AdminPushView = memo(function AdminPushView({
   };
 
   const { confirmar, dialogo } = useConfirmarAcao();
-  const { isSupported, subscribe, subscription } = usePushNotifications();
+  const { isSupported, permission, subscribe, subscription } =
+    usePushNotifications();
   const { recordAction } = useVOR();
   const [segment, setSegment] = useState("all");
   // O quinto contador (achado do revisor sobre a correção do quarto, em
@@ -2378,16 +2385,39 @@ export const AdminPushView = memo(function AdminPushView({
               {/* Liga os avisos NESTE aparelho (só inscreve — não manda aviso
                 de teste; quem manda é o cartão do Início). Some depois de
                 ligado, na mesma condição `isSupported && !subscription`. */}
-              {isSupported && !subscription && (
-                <button
-                  onClick={handleTestSubscription}
-                  disabled={isOffline}
-                  className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-solid border-admin-border bg-white/5 min-h-12 py-2 text-xs font-bold uppercase tracking-wider text-zinc-300 hover:bg-white/10 motion-safe:active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <Zap className="size-3 text-zinc-300" />
-                  Ligar avisos neste aparelho
-                </button>
-              )}
+              {isSupported &&
+                !subscription &&
+                (permission === "denied" ? (
+                  <div className="space-y-1 rounded-xl border border-admin-border bg-zinc-900/40 p-3">
+                    <p className="text-xs font-bold text-white">
+                      Avisos bloqueados neste aparelho
+                    </p>
+                    <p className="mt-1 text-xs leading-relaxed text-zinc-200">
+                      Sem isso, a loja só vê o pedido quando você abre o painel.
+                      Os avisos estão bloqueados neste aparelho. Para liberar:
+                    </p>
+                    <ol className="list-inside list-decimal space-y-1 text-xs text-zinc-200">
+                      {passosParaLiberarOsAvisos(
+                        {
+                          instalado: estaComoAppInstalado(),
+                          ehApple: ehAparelhoDaApple(),
+                        },
+                        nomeDaLoja(config),
+                      ).map((passo) => (
+                        <li key={passo}>{passo}</li>
+                      ))}
+                    </ol>
+                  </div>
+                ) : (
+                  <button
+                    onClick={handleTestSubscription}
+                    disabled={isOffline}
+                    className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-solid border-admin-border bg-white/5 min-h-12 py-2 text-xs font-bold uppercase tracking-wider text-zinc-300 hover:bg-white/10 motion-safe:active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <Zap className="size-3 text-zinc-300" />
+                    Ligar avisos neste aparelho
+                  </button>
+                ))}
             </div>
           </SecaoColapsavel>
         )}
