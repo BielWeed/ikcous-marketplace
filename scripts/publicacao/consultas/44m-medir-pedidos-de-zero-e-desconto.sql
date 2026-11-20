@@ -27,7 +27,8 @@
 -- dia >= hoje - (N - 1). "total" = o botao "Tudo" (JANELA_TUDO_DIAS = 3650 de src/hooks/useAnalytics.ts, que cobre a
 -- vida da loja). A mesma fronteira vale para a_*, d_* (por dia de created_at) e c_novo (por dia da primeira compra,
 -- o mesmo balde de fin__dia que o CRM usa nos clientes novos).
--- REGRA DE CLIENTE (texto IDENTICO a `crm__vendas`, 20261399990000: o corpo da 20261178000000 mais a CTE base_chave): venda
+-- REGRA DE CLIENTE HISTORICA: espelha `crm__vendas` da 20261399990000. Esta medicao anterior ao apply
+-- nao espelha a 20261412000000, que exclui venda integralmente reembolsada por devolucao manual. Aqui a venda
 -- reconhecida = payment_status reconhecido, status fora de cancelled/returned e COALESCE(pagamento_recebido_em, paid_at)
 -- preenchido; a chave da cliente = conta, senao a conta dona do mesmo WhatsApp, senao 'wa:' + digitos do WhatsApp, e o
 -- WhatsApp conta SEM o 55 do pais (12 ou 13 digitos comecando por 55): o mesmo numero com e sem o 55 e UMA cliente. Venda

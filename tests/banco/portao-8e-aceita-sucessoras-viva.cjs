@@ -159,6 +159,8 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     // antes (a-busca-de-clientes-posterior.cjs, o rollback dela devolve as duas de uma vez), como faz com a 3993.
     s.nome !==
       "20261403000000_o_total_comprado_do_cliente_e_o_mesmo_no_crm_na_lista_e_na_ficha.sql" &&
+    // A 412 tem prova própria (o-crm-ignora-reembolso-integral-viva.cjs).
+    s.nome !== "20261412000000_o_crm_ignora_reembolso_integral.sql" &&
     // A 20261394000000 (o pedido de visitante na entrega tem freio) so redefine a v23 e a v24, em cima da 350 e da 384; nenhuma das duas e' funcao
     // da 8e. Entra em sucessoras-da-99.cjs so para cair antes da 384 (pedido-pelo-app-exige-conta-posterior.cjs chama
     // o-pedido-de-visitante-na-entrega-posterior.cjs); aqui sai do rol pela mesma razao da 384 e da 350.

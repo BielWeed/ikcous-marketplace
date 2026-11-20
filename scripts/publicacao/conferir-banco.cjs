@@ -3277,7 +3277,21 @@ const ROL_DA_167A = [
   "cupom: grupos de codigos em colisao",
 ];
 const ROL_DA_167B = ["cupom: indice unico de codigo em maiusculas valido"];
+const ROL_DA_168 = [
+  "controle: funcoes de public visiveis a este papel",
+  "crm__vendas: corpo exato (md5)",
+  "crm__vendas: assinatura e atributos conhecidos",
+  "crm__vendas: sem EXECUTE para PUBLIC, anon ou authenticated",
+  "get_admin_customers_paged: corpo exato (md5)",
+  "get_admin_customers_paged: assinatura e atributos conhecidos",
+  "get_admin_customers_paged: EXECUTE permitido para authenticated e service_role, sem PUBLIC ou anon",
+  "get_admin_user_detail: corpo exato (md5)",
+  "get_admin_user_detail: assinatura e atributos conhecidos",
+  "get_admin_user_detail: EXECUTE permitido para authenticated e service_role, sem PUBLIC ou anon",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "168a-conferir-o-crm-ignora-reembolso-integral-aplicado": ROL_DA_168,
+  "168b-antes-o-crm-ignora-reembolso-integral-base-vigente": ROL_DA_168,
   "167a-antes-o-cupom-nao-repete-o-codigo-base-vigente": ROL_DA_167A,
   "167b-conferir-o-cupom-nao-repete-o-codigo-aplicado": ROL_DA_167B,
   "162a-conferir-o-pedido-guarda-o-nome-antigo-da-opcao-aplicado": ROL_DA_162,

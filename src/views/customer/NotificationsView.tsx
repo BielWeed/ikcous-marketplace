@@ -301,7 +301,7 @@ export function NotificationsView({
     <div className="pb-customer flex min-h-full flex-col bg-background">
       {/* Cabeçalho fixo: título, "marcar como lidas" e abas (Tinta) */}
       <div className="sticky top-[-2px] z-50 border-b border-border bg-background/90 px-4 pb-3 pt-4 backdrop-blur-xl lg:mx-auto lg:w-full lg:max-w-2xl">
-        <div className="flex items-end justify-between gap-3">
+        <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0">
             {counts.todas > 0 && (
               <p className="mb-1 font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
@@ -322,8 +322,7 @@ export function NotificationsView({
               title="Marcar todas como lidas"
             >
               <CheckCheck className="size-4" />
-              <span className="hidden xs:inline">Marcar como lidas</span>
-              <span className="xs:hidden">Lidas</span>
+              <span>Marcar como lidas</span>
             </Button>
           )}
         </div>

@@ -313,6 +313,8 @@ on:
       - "scripts/publicacao/consultas/166b-antes-a-lista-do-painel-e-o-rastreio-levam-o-nome-antigo-da-opcao-base-vigente.sql"
       - "scripts/publicacao/consultas/167a-antes-o-cupom-nao-repete-o-codigo-base-vigente.sql"
       - "scripts/publicacao/consultas/167b-conferir-o-cupom-nao-repete-o-codigo-aplicado.sql"
+      - "scripts/publicacao/consultas/168a-conferir-o-crm-ignora-reembolso-integral-aplicado.sql"
+      - "scripts/publicacao/consultas/168b-antes-o-crm-ignora-reembolso-integral-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -599,6 +601,8 @@ on:
       - "scripts/publicacao/consultas/166b-antes-a-lista-do-painel-e-o-rastreio-levam-o-nome-antigo-da-opcao-base-vigente.sql"
       - "scripts/publicacao/consultas/167a-antes-o-cupom-nao-repete-o-codigo-base-vigente.sql"
       - "scripts/publicacao/consultas/167b-conferir-o-cupom-nao-repete-o-codigo-aplicado.sql"
+      - "scripts/publicacao/consultas/168a-conferir-o-crm-ignora-reembolso-integral-aplicado.sql"
+      - "scripts/publicacao/consultas/168b-antes-o-crm-ignora-reembolso-integral-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -901,6 +905,9 @@ jobs:
       - name: Prova viva do código de cupom único em qualquer grafia (20261411000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-cupom-nao-repete-o-codigo-em-outra-grafia-viva.cjs
+      - name: Prova viva de reembolso integral fora das vendas do CRM (20261412000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-crm-ignora-reembolso-integral-viva.cjs
       - name: Prova viva cancelar pedido so abre estorno se pago de verdade
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/cancelar-pedido-so-abre-estorno-se-pago-viva.cjs

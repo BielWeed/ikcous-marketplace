@@ -744,6 +744,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "166b-antes-a-lista-do-painel-e-o-rastreio-levam-o-nome-antigo-da-opcao-base-vigente",
   "167a-antes-o-cupom-nao-repete-o-codigo-base-vigente",
   "167b-conferir-o-cupom-nao-repete-o-codigo-aplicado",
+  "168a-conferir-o-crm-ignora-reembolso-integral-aplicado",
+  "168b-antes-o-crm-ignora-reembolso-integral-base-vigente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

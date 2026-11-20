@@ -154,7 +154,7 @@ it("controle: permanecer no formulário envia as três e avisa sucesso", async (
   await enviarTres();
   expect(mocks.upload).toHaveBeenCalledTimes(3);
   expect(mocks.success).toHaveBeenCalledExactlyOnceWith(
-    "Imagens processadas e enviadas com sucesso!",
+    "Fotos enviadas com sucesso",
     { id: "envio" },
   );
   expect(mocks.remove).not.toHaveBeenCalled();

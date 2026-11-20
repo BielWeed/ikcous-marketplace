@@ -464,7 +464,9 @@ Deno.test("depois da 20261183000000 so este par redefine crm__nunca_comprou; dep
   assert.deepEqual(redefinem("get_admin_customers_paged", V_CLIENTES), [
     NOME,
     SUCESSORA_4030,
+    "20261412000000_o_crm_ignora_reembolso_integral.sql",
     `rollback-manual-${NOME}`,
     `rollback-manual-${SUCESSORA_4030}`,
+    "rollback-manual-20261412000000_o_crm_ignora_reembolso_integral.sql",
   ]);
 });

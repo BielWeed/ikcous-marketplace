@@ -383,6 +383,8 @@ on:
           - 166b-antes-a-lista-do-painel-e-o-rastreio-levam-o-nome-antigo-da-opcao-base-vigente
           - 167a-antes-o-cupom-nao-repete-o-codigo-base-vigente
           - 167b-conferir-o-cupom-nao-repete-o-codigo-aplicado
+          - 168a-conferir-o-crm-ignora-reembolso-integral-aplicado
+          - 168b-antes-o-crm-ignora-reembolso-integral-base-vigente
           - backups
       projeto:
         description: "Projeto de destino: loja, sandbox, ikcous-publicada (a CAF explicita) ou savy (a loja cliente explicita, mesmas travas): as duas exigem expected_sha; nunca texto livre — achado da rodada 2"

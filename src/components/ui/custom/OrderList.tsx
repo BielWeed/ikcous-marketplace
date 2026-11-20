@@ -296,6 +296,7 @@ interface OrderListProps {
   guestMessage?: string;
   emptyTitle?: string;
   emptyDescription?: string;
+  emptyAction?: { label: string; onClick: () => void };
   /**
    * A consulta dos pedidos FALHOU (rede/servidor) e ainda não foi refeita com
    * sucesso. Falha não é lista vazia: sem pedido nenhum em memória a lista
@@ -322,6 +323,7 @@ export const OrderList = memo(function OrderList({
   guestMessage,
   emptyTitle,
   emptyDescription,
+  emptyAction,
   loadError,
   onRetry,
   hasAnyOrders,
@@ -451,14 +453,14 @@ export const OrderList = memo(function OrderList({
               : guestMessage ||
                 "Seus pedidos são vinculados à sua conta. Acesse para visualizar seu histórico completo."
             : "Você ainda não fez nenhum pedido. Que tal começar a comprar?")}
-        {!isGuest && !compact && (
+        {!compact && (emptyAction || !isGuest) && (
           <span className="mt-6 block">
             <button
               type="button"
-              onClick={() => onNavigate("home")}
+              onClick={emptyAction?.onClick ?? (() => onNavigate("home"))}
               className="h-12 rounded-2xl border border-solid border-border px-6 text-[15px] font-semibold text-foreground transition-colors hover:bg-muted/40 active:scale-[0.98]"
             >
-              Ver produtos
+              {emptyAction?.label ?? "Ver produtos"}
             </button>
           </span>
         )}

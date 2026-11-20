@@ -1,4 +1,4 @@
--- 142a-conferir-o-crm-nao-duplica-o-comprador-com-e-sem-55-aplicado: DEPOIS da 20261399990000 (o desta migration, md5 bd683b55c36dff83eefa0282077d9a63).
+-- DEPOIS da 20261399990000. Aceita a sucessora 20261412000000, que preserva a fusao pelo WhatsApp.
 -- SO LEITURA, so catalogo; rol fechado de 4 linhas. Nao le nenhum pedido, perfil nem cliente e nao chama a crm__vendas.
 WITH fn AS (
   SELECT p.oid, md5(replace(p.prosrc, chr(13), '')) AS h,
@@ -17,7 +17,7 @@ WITH fn AS (
   SELECT 'controle: funcoes de public visiveis a este papel', 'sim',
     CASE WHEN (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace) > 0 THEN 'sim' ELSE 'nao' END
   UNION ALL
-  SELECT 'crm__vendas: corpo exato (md5)', 'bd683b55c36dff83eefa0282077d9a63',
+  SELECT 'crm__vendas: corpo exato (md5)', 'bd683b55c36dff83eefa0282077d9a63 ou 69e1f0af8874135e4a347266bebd2a63',
     COALESCE((SELECT h FROM fn), 'AUSENTE')
   UNION ALL
   SELECT 'crm__vendas: assinatura e atributos conhecidos (sql, STABLE, SECURITY INVOKER, search_path=public, uma so)', 'sim',
@@ -26,4 +26,8 @@ WITH fn AS (
   SELECT 'crm__vendas: sem EXECUTE para PUBLIC, anon ou authenticated', 'sim',
     CASE WHEN COALESCE((SELECT acl FROM fn), false) THEN 'sim' ELSE 'nao' END
 )
-SELECT item, esperado, vivo, vivo = esperado AS ok FROM itens ORDER BY ok, item;
+SELECT item, esperado, vivo,
+  CASE WHEN item = 'crm__vendas: corpo exato (md5)'
+       THEN vivo IN ('bd683b55c36dff83eefa0282077d9a63', '69e1f0af8874135e4a347266bebd2a63')
+       ELSE vivo = esperado END AS ok
+FROM itens ORDER BY ok, item;

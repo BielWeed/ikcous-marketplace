@@ -1502,6 +1502,18 @@ async function main() {
         "public.get_admin_orders_paged(text,text,text,text,integer,integer,text,text)",
       ],
       [ROTULOS_HISTORICOS, "public.get_orders_by_otp_v2(text,text,text,text)"],
+      [
+        "20261412000000_o_crm_ignora_reembolso_integral.sql",
+        "public.crm__vendas(timestamptz)",
+      ],
+      [
+        "20261412000000_o_crm_ignora_reembolso_integral.sql",
+        "public.get_admin_customers_paged(text,text,text,integer,integer)",
+      ],
+      [
+        "20261412000000_o_crm_ignora_reembolso_integral.sql",
+        "public.get_admin_user_detail(uuid)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

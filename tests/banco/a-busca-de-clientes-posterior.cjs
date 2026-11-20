@@ -12,6 +12,13 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const BUSCA_DE_CLIENTES_POSTERIOR = Object.freeze([
+  // 20261412000000: as tres telas usam a mesma base, sem reembolso integral.
+  Object.freeze({
+    nome: "20261412000000_o_crm_ignora_reembolso_integral.sql",
+    assinatura:
+      "public.get_admin_customers_paged(text,text,text,integer,integer)",
+    hashDesta: "bdac47c59600f44cf59ac6c74e44a55e",
+  }),
   // 20261403000000: a lista de clientes e a ficha somam o balcao do mesmo WhatsApp, como o CRM (get_admin_customers_paged e get_admin_user_detail; o mesmo arquivo
   // troca as DUAS, e o rollback dela devolve as duas juntas). Sucede o corpo da 20261399993000: o rollback da 3993 recusa com este no ar.
   Object.freeze({
@@ -88,6 +95,17 @@ async function desfazerListaDeEnderecoPrincipalNaTransacao(c) {
  * provas da 20261399993000 e da 20261392000000, que medem o corpo delas como TOPO. O rollback devolve os DOIS corpos (get_admin_customers_paged e get_admin_user_detail).
  */
 async function desfazerTotalDoClienteNaTransacao(c) {
+  const atual = BUSCA_DE_CLIENTES_POSTERIOR.find((x) =>
+    x.nome.startsWith("20261412000000_"),
+  );
+  const { rows } = await c.query(
+    `SELECT md5(replace(prosrc, chr(13), '')) AS hash
+       FROM pg_proc WHERE oid = to_regprocedure($1)`,
+    [atual.assinatura],
+  );
+  if (rows[0]?.hash === atual.hashDesta)
+    await c.query(ler(`rollback-manual-${atual.nome}`));
+
   const m = BUSCA_DE_CLIENTES_POSTERIOR.find((x) =>
     x.nome.startsWith("20261403000000_"),
   );

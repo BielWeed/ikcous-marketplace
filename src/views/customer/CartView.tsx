@@ -1849,8 +1849,26 @@ function ConteudoDoCarrinho({
                         emptyDescription={
                           orders.length > 0
                             ? ordersTab === "active"
-                              ? "Quando você comprar, o andamento do pedido aparece aqui."
-                              : "Quando um pedido for concluído ou cancelado, ele aparece aqui."
+                              ? "Seus pedidos concluídos ou cancelados estão em Histórico."
+                              : "Seus pedidos em andamento estão na aba Em andamento."
+                            : undefined
+                        }
+                        emptyAction={
+                          orders.length > 0
+                            ? {
+                                label:
+                                  ordersTab === "active"
+                                    ? "Ver histórico"
+                                    : "Ver pedidos em andamento",
+                                onClick: () => {
+                                  haptic.light();
+                                  trocarAbaDosPedidos(
+                                    ordersTab === "active"
+                                      ? "history"
+                                      : "active",
+                                  );
+                                },
+                              }
                             : undefined
                         }
                       />

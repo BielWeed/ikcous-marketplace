@@ -121,7 +121,7 @@ try {
   MIGRACAO_82_EXISTE = false;
 }
 
-Deno.test("167 — as consultas do cupom precisam de rol completo antes e depois do apply", async () => {
+Deno.test("167 e 168 — as consultas do cupom e do CRM precisam de rol completo antes e depois do apply", async () => {
   const {
     contarStatements,
     listarConsultas,
@@ -144,6 +144,36 @@ Deno.test("167 — as consultas do cupom precisam de rol completo antes e depois
     [
       "167b-conferir-o-cupom-nao-repete-o-codigo-aplicado",
       ["cupom: indice unico de codigo em maiusculas valido"],
+    ],
+    [
+      "168a-conferir-o-crm-ignora-reembolso-integral-aplicado",
+      [
+        "controle: funcoes de public visiveis a este papel",
+        "crm__vendas: corpo exato (md5)",
+        "crm__vendas: assinatura e atributos conhecidos",
+        "crm__vendas: sem EXECUTE para PUBLIC, anon ou authenticated",
+        "get_admin_customers_paged: corpo exato (md5)",
+        "get_admin_customers_paged: assinatura e atributos conhecidos",
+        "get_admin_customers_paged: EXECUTE permitido para authenticated e service_role, sem PUBLIC ou anon",
+        "get_admin_user_detail: corpo exato (md5)",
+        "get_admin_user_detail: assinatura e atributos conhecidos",
+        "get_admin_user_detail: EXECUTE permitido para authenticated e service_role, sem PUBLIC ou anon",
+      ],
+    ],
+    [
+      "168b-antes-o-crm-ignora-reembolso-integral-base-vigente",
+      [
+        "controle: funcoes de public visiveis a este papel",
+        "crm__vendas: corpo exato (md5)",
+        "crm__vendas: assinatura e atributos conhecidos",
+        "crm__vendas: sem EXECUTE para PUBLIC, anon ou authenticated",
+        "get_admin_customers_paged: corpo exato (md5)",
+        "get_admin_customers_paged: assinatura e atributos conhecidos",
+        "get_admin_customers_paged: EXECUTE permitido para authenticated e service_role, sem PUBLIC ou anon",
+        "get_admin_user_detail: corpo exato (md5)",
+        "get_admin_user_detail: assinatura e atributos conhecidos",
+        "get_admin_user_detail: EXECUTE permitido para authenticated e service_role, sem PUBLIC ou anon",
+      ],
     ],
   ] as const;
   for (const [consulta, itens] of casos) {
@@ -2287,7 +2317,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
     if (ultima < 0) return null;
     const resto = texto.slice(ultima);
     const abre = /\bAS\s+(\$[a-z_0-9]*\$)/i.exec(resto);
-    assert(abre, `${fn}: não achei o corpo`);
+    if (!abre) {
+      // O rollback da 412 conserva espaços de fim de linha com um literal E.
+      const literal = /\nAS E'((?:[^']|'')*)';/i.exec(resto);
+      assert(literal, `${fn}: não achei o corpo`);
+      return literal[1].replaceAll("''", "'").replaceAll("\\x20", " ");
+    }
     const ini = abre.index + abre[0].length;
     const fim = resto.indexOf(abre[1], ini);
     assert(fim > ini, `${fn}: não achei o fechamento do corpo`);
@@ -2540,6 +2575,11 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "309bbd903420f146423c7cf0512b91b3",
           versao: "20261403000000",
         },
+        {
+          fn: "get_admin_customers_paged",
+          h: "bdac47c59600f44cf59ac6c74e44a55e",
+          versao: "20261412000000",
+        },
         // 22/10/2026: o aviso de cancelados antigos conta só pendência real (só o bloco do fora_da_janela muda).
         {
           fn: "get_admin_orders_cancelados_recentes",
@@ -2580,6 +2620,11 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           fn: "get_admin_user_detail",
           h: "e7977d4d60b6114bb8247097b8ae3d4b",
           versao: "20261403000000",
+        },
+        {
+          fn: "get_admin_user_detail",
+          h: "169d114f0fac4786b3ed5d4ff8385b4d",
+          versao: "20261412000000",
         },
         {
           fn: "get_category_analytics",
@@ -2707,7 +2752,7 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
   );
 
   await t.step(
-    "8e — cada sucessora: o `final` é o corpo da 20261199, o preflight da sucessora cita (vigente na cadeia — a 99 para a primeira —, desta), e o rollback-manual dela exige o desta e devolve o corpo anterior na cadeia",
+    "8e — cada sucessora: o `final` é o corpo da 20261199, a sucessora declara os dois hashes e o rollback devolve o corpo anterior na cadeia",
     async () => {
       const sucessoras8e = lerSucessoras8e();
       assert(sucessoras8e.length > 0, "a 8e perdeu o CTE `sucessoras`");
@@ -2756,11 +2801,27 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
         );
         // o preflight do rollback exige o corpo desta: lista de VALUES (..., 'h') ou, quando e' uma
         // funcao so, a comparacao direta IS DISTINCT FROM 'h' (o desfazer da 20261239)
-        assert(
-          rb.includes(`', '${s.h}')`) ||
-            rb.includes(`IS DISTINCT FROM '${s.h}'`),
-          `rollback-manual-${arq[0]}: o preflight não exige o corpo desta`,
-        );
+        if (s.versao === "20261412000000") {
+          // Este lote contém só CREATE OR REPLACE; os dois gates ficam nas consultas.
+          for (const [consulta, hash] of [
+            ["168a-conferir-o-crm-ignora-reembolso-integral-aplicado", s.h],
+            [
+              "168b-antes-o-crm-ignora-reembolso-integral-base-vigente",
+              vigente,
+            ],
+          ] as const) {
+            const sql = await Deno.readTextFile(
+              `${CONSULTAS_DIR}/${consulta}.sql`,
+            );
+            assertStringIncludes(sql, `'${hash}'`);
+          }
+        } else {
+          assert(
+            rb.includes(`', '${s.h}')`) ||
+              rb.includes(`IS DISTINCT FROM '${s.h}'`),
+            `rollback-manual-${arq[0]}: o preflight não exige o corpo desta`,
+          );
+        }
         const corpoRb = corpoNoTexto(rb, s.fn);
         assert(
           corpoRb !== null,
@@ -15277,16 +15338,18 @@ Deno.test(`${NOME_44M} — no menu, UM SELECT so leitura de rol aberto, filtro e
     },
   );
   await t.step(
-    "a venda reconhecida e a chave da cliente sao IDENTICAS a crm__vendas (20261399990000, corpo vigente: o da 20261178000000 mais a chave sem o 55)",
+    "a medicao historica 44m preserva a regra da 20261399990000, distinta do CRM atual",
     async () => {
-      const vigente = await ultimaQueDefine("FUNCTION public.crm__vendas");
       assertEquals(
-        vigente,
-        "20261399990000_o_crm_nao_duplica_o_comprador_com_e_sem_55.sql",
-        "a crm__vendas mudou de corpo: refaca a regra de cliente da 44m contra o corpo novo",
+        await ultimaQueDefine("FUNCTION public.crm__vendas"),
+        "20261412000000_o_crm_ignora_reembolso_integral.sql",
+        "crm__vendas mudou: reavalie a diferenca da medicao historica 44m",
       );
+      assertStringIncludes(sql, "REGRA DE CLIENTE HISTORICA");
       const mig = normal(
-        await Deno.readTextFile(`${MIGRATIONS_DIR}/${vigente}`),
+        await Deno.readTextFile(
+          `${MIGRATIONS_DIR}/20261399990000_o_crm_nao_duplica_o_comprador_com_e_sem_55.sql`,
+        ),
       );
       const base = bloco("base AS (", "), base_chave AS (");
       const venda =
