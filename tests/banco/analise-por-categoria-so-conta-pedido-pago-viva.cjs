@@ -1,11 +1,11 @@
 "use strict";
 
 /**
- * get_category_analytics VIVA (20261199000000): pedido sem pagamento não
- * aumenta receita, contagem nem ticket da categoria. Admin atual autenticado.
- * Também o RATEIO: um pedido com itens de duas categorias (100 e 50, cupom 30,
- * frete 20, total 140) reparte o total entre elas (93,33 e 46,67) e a soma das
- * categorias é a receita do painel (get_admin_analytics_v2 executive.totalRevenue).
+ * get_category_analytics VIVA: pedido sem pagamento não aumenta receita,
+ * contagem nem ticket da categoria. Admin atual autenticado.
+ * Rateio: duas categorias (100 e 50, cupom 30, frete 20) recebem 93,33 e
+ * 46,67. A 20261409000000 inclui itens sem vínculo nessa mesma conta, sem
+ * mudar a receita diária nem a total do painel (get_admin_analytics_v2).
  * Só TESTE: mutante no clone prova_*, corpo original restaurado no finally.
  *
  * USO: node tests/banco/rodar-isolado.cjs tests/banco/analise-por-categoria-so-conta-pedido-pago-viva.cjs
@@ -362,6 +362,137 @@ async function provarRateio(original) {
   );
 }
 
+// Cada cenário roda em uma transação no clone sem outros pedidos.
+// Conferimos também a receita diária e total, por outra RPC.
+async function provarItensSemVinculo() {
+  const semProduto = "Sem produto vinculado";
+  for (const { nome, itens, frete, cupom, total, esperado } of [
+    {
+      nome: "pedido misto sem frete nem desconto",
+      itens: [
+        ["Vestidos", 60],
+        [null, 40],
+      ],
+      frete: 0,
+      cupom: 0,
+      total: 100,
+      esperado: [
+        ["Vestidos", 60, 1, 60],
+        [semProduto, 40, 1, 40],
+      ],
+    },
+    {
+      nome: "pedido misto com frete e cupom",
+      itens: [
+        ["Vestidos", 60],
+        [null, 40],
+      ],
+      frete: 20,
+      cupom: 30,
+      total: 90,
+      esperado: [
+        ["Vestidos", 54, 1, 54],
+        [semProduto, 36, 1, 36],
+      ],
+    },
+    {
+      nome: "pedido só com itens sem vínculo",
+      itens: [
+        [null, 30],
+        [null, 20],
+      ],
+      frete: 0,
+      cupom: 0,
+      total: 50,
+      esperado: [[semProduto, 50, 1, 50]],
+    },
+    {
+      nome: "pedido só com produtos vinculados, um deles sem categoria",
+      itens: [
+        ["Vestidos", 55],
+        ["Geral", 20],
+      ],
+      frete: 0,
+      cupom: 0,
+      total: 75,
+      esperado: [
+        ["Vestidos", 55, 1, 55],
+        ["Geral", 20, 1, 20],
+      ],
+    },
+  ]) {
+    await C.query("BEGIN");
+    try {
+      await semearUsuarios();
+      const id = randomUUID();
+      const subtotal = itens.reduce((soma, [, preco]) => soma + preco, 0);
+      await C.query(
+        `INSERT INTO public.marketplace_orders
+           (id, user_id, customer_name, customer_data, total, subtotal, shipping,
+            discount, status, canal, payment_method, payment_status, created_at)
+         VALUES ($1, $2, 'Pessoa fictícia R99', '{}'::jsonb, $3, $4, $5,
+                 $6, 'delivered', 'online', 'online', 'pago', now())`,
+        [id, CLIENTE, total, subtotal, frete, cupom],
+      );
+      for (const [categoria, preco] of itens) {
+        const produto = categoria === null ? null : randomUUID();
+        if (produto !== null) {
+          await C.query(
+            `INSERT INTO public.produtos
+               (id, nome, categoria, preco_venda, custo, estoque, ativo)
+             VALUES ($1, 'Produto fictício R99', $2, $3, 10, 100, true)`,
+            [produto, categoria === "Geral" ? null : categoria, preco],
+          );
+        }
+        await C.query(
+          `INSERT INTO public.marketplace_order_items
+             (order_id, product_id, product_name, quantity, price)
+           VALUES ($1, $2, 'Item fictício R99', 1, $3)`,
+          [id, produto, preco],
+        );
+      }
+      await C.query("SET LOCAL ROLE authenticated");
+      await C.query(
+        "SELECT set_config('app.rpc.user_id', $1, true), set_config('request.jwt.claims', $2, true)",
+        [ADMIN, CLAIMS],
+      );
+      const { rows } = await C.query(
+        `SELECT * FROM public.get_category_analytics(
+           now() - interval '1 hour', now() + interval '1 hour')`,
+      );
+      const valores = rows.map(({ name, value, orders, avg_ticket }) => [
+        name,
+        value === null ? null : Number(value),
+        Number(orders),
+        avg_ticket === null ? null : Number(avg_ticket),
+      ]);
+      assert.deepEqual(valores, esperado, `RATEIO_SEM_VINCULO: ${nome}`);
+
+      const painel = await C.query(
+        `SELECT public.get_admin_analytics_v2(30) AS r,
+                (now() AT TIME ZONE 'America/Sao_Paulo')::date::text AS dia`,
+      );
+      const { r, dia } = painel.rows[0];
+      const receita = r.executive.totalRevenue;
+      const diaria = r.revenueHistory.find(
+        (linha) => linha.date === dia,
+      )?.revenue;
+      assert.equal(receita, total, `TOTAL_DO_PAINEL: ${nome}`);
+      assert.equal(diaria, total, `RECEITA_DIARIA: ${nome}`);
+      assert.equal(
+        valores.reduce((soma, [, valor]) => soma + valor, 0),
+        receita,
+        `SOMA_DAS_CATEGORIAS: ${nome}`,
+      );
+      console.log(
+        `  VERDE    ${nome}: ${JSON.stringify(valores)}; dia e total = ${total}`,
+      );
+    } finally {
+      await C.query("ROLLBACK");
+    }
+  }
+}
+
 async function main() {
   C = new Client({
     connectionString: lerDatabaseUrlEfemera(),
@@ -382,6 +513,7 @@ async function main() {
     console.log(`Corpo VIVO de get_category_analytics: ${hash.rows[0].h}`);
     await provarGuarda(original);
     await provarRateio(original);
+    await provarItensSemVinculo();
     console.log(
       `\nanalise-por-categoria-so-conta-pedido-pago-viva: 1/1 controle do pagamento e ${MUTANTES_DO_RATEIO.length}/${MUTANTES_DO_RATEIO.length} do rateio mortos; verde/vermelho/verde`,
     );

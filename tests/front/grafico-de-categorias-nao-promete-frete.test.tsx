@@ -123,6 +123,10 @@ describe("nota do gráfico de categorias (par com a 20261063000000)", () => {
       // de desconto e COM frete.
       expect(nota).toContain("a receita total da loja");
       expect(nota).toContain("líquida de desconto e com frete");
+      expect(nota).toMatch(
+        /itens antigos sem produto vinculado aparecem em [“"]Sem produto vinculado[”"]/i,
+      );
+      expect(nota).not.toContain("produtos excluídos do catálogo");
 
       // Regressão: as duas frases antigas (uma por migration) não podem
       // voltar — a primeira mentia sobre frete, a segunda sobre desconto
