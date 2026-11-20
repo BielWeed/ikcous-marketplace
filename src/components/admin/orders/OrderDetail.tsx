@@ -1041,7 +1041,7 @@ function OrderItemsCard({
               <div className="size-12 shrink-0 overflow-hidden rounded-xl border border-admin-border">
                 <LazyImage
                   src={item.image}
-                  alt=""
+                  alt={item.name}
                   className="size-full object-cover"
                 />
               </div>
