@@ -308,6 +308,16 @@ describe("AdminShippingView — avisa quando a transportadora fica sem pagamento
     ).toContain("Só retirada · Grátis");
   });
 
+  it("promoção nacional com transportadora ligada: só avisa sobre a transportadora sem pagamento", async () => {
+    mockConfig.nationalShippingStrategy = "por_produto";
+    await abrirTela();
+
+    expect(aviso()?.textContent).toContain(
+      "Transportadora só funciona com pagamento pelo app ligado.",
+    );
+    expect(textoDaTela()).not.toContain(textoDaPromocao);
+  });
+
   it.each([
     "sem promoção",
     "só promoção local",
