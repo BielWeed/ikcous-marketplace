@@ -71,6 +71,7 @@ import {
 } from "@/lib/rotulo-da-variacao";
 import { supabase } from "@/lib/supabase";
 import { textoCancelamentoDoPainel } from "@/lib/texto-cancelamento-do-painel";
+import { textoSemControlesDeDirecao } from "@/lib/texto-sem-controles-de-direcao";
 import { tipoDeEntregaDoPedido } from "@/lib/tipo-de-entrega-do-pedido";
 import { cn } from "@/lib/utils";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
@@ -2242,17 +2243,25 @@ export const OrderDetail = memo(function OrderDetail({
       "Carregando o tamanho e a cor dos itens. Já dá para imprimir em instantes.";
   }
 
-  const displayAddress = [
-    order.customer.address && order.customer.number
-      ? `${order.customer.address}, ${order.customer.number}`
-      : order.customer.address || "",
-    order.customer.complement ? `Comp: ${order.customer.complement}` : "",
+  const [rua, numero, complemento, bairro, cidade, uf, cep, referencia] = [
+    order.customer.address,
+    order.customer.number,
+    order.customer.complement,
     order.customer.neighborhood,
-    [order.customer.city, order.customer.state].filter(Boolean).join(" - "),
-    order.customer.cep ? `CEP: ${order.customer.cep}` : "",
-    order.customer.reference ? `Ref: ${order.customer.reference}` : "",
+    order.customer.city,
+    order.customer.state,
+    order.customer.cep,
+    order.customer.reference,
+  ].map((parte) => textoSemControlesDeDirecao(parte ?? ""));
+  const displayAddress = [
+    rua && numero ? `${rua}, ${numero}` : rua,
+    complemento ? `Comp: ${complemento}` : "",
+    bairro,
+    [cidade, uf].filter(Boolean).join(" - "),
+    cep ? `CEP: ${cep}` : "",
+    referencia ? `Ref: ${referencia}` : "",
   ]
-    .map((parte) => (parte ?? "").trim())
+    .map((parte) => parte.trim())
     .filter(Boolean)
     .join(" - ");
 
