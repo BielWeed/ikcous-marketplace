@@ -626,7 +626,8 @@ describe("salvar estoque confere a versão lida na abertura", () => {
           .find((b) => b.textContent?.includes("+ Novo"))!
           .click();
       });
-      const estoque = document.querySelector<HTMLInputElement>("#variant-stock")!;
+      const estoque =
+        document.querySelector<HTMLInputElement>("#variant-stock")!;
       expect(estoque.value).toBe(String(inicial));
       // Entrar e sair do campo sem digitar não transforma a herança em edição.
       await act(async () => {

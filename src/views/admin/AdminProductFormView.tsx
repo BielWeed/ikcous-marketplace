@@ -6198,7 +6198,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             // Não trata um ajuste local do produto como saldo do banco.
                             [ESTOQUE_HERDADO]:
                               !!productId &&
-                              (formData.variants.length === 0 || estoqueHerdado > 0) &&
+                              (formData.variants.length === 0 ||
+                                estoqueHerdado > 0) &&
                               !estoqueDoProdutoFoiMexido(formData, initialData),
                             priceOverride: "",
                             active: true,
