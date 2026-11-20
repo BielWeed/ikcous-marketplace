@@ -29,6 +29,21 @@ function ehIntervalo(partes: string[]): boolean {
   return partes.length === 2 && partes[0].length >= 6 && partes[1].length >= 6;
 }
 
+// Só para os avisos do painel: itens vazios não contam na cotação, e uma
+// faixa explícita é diferente de um CEP avulso.
+export function perdeIntervaloDeCepLocal(faixa: string): boolean {
+  const itens = faixa
+    .split(",")
+    .map(blocosDoItem)
+    .filter((partes) => partes.length > 0);
+  return (
+    itens.length > 2 &&
+    itens
+      .slice(0, 2)
+      .every((partes) => !ehIntervalo(partes) && partes.join("").length === 8)
+  );
+}
+
 // Validação apenas da escrita nova no painel: não muda a interpretação de
 // faixas já gravadas, que continua espelhando o banco e a edge.
 export function erroDaFaixaDeCepLocal(

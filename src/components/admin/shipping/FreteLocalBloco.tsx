@@ -8,7 +8,7 @@ import {
   transportadoraFicaSemPagamento,
   transportadoraVendeForaDaCidade,
 } from "@/lib/aviso-transportadora-sem-pagamento";
-import { cepEhLocal } from "@/lib/cep-local";
+import { cepEhLocal, perdeIntervaloDeCepLocal } from "@/lib/cep-local";
 import { EXEMPLO_DE_INTERVALO_DE_CEP } from "@/lib/faixa-de-cep";
 import { parseValorBR } from "@/lib/financeiro";
 import type { ModoDaEntregaNaCidade } from "@/lib/guarda-de-frete";
@@ -287,7 +287,19 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
       vazio.
     </span>
   ) : (
-    dicaDoTexto(cepDaLoja)
+    <>
+      {dicaDoTexto(cepDaLoja)}
+      {perdeIntervaloDeCepLocal(faixa) && (
+        <>
+          <br />
+          <span role="note" className="mt-2 text-xs text-amber-300">
+            Ao acrescentar outra região neste campo, os CEPs entre o primeiro e
+            o último deixam de entrar. Para manter a faixa, use o botão «Incluir
+            a região».
+          </span>
+        </>
+      )}
+    </>
   );
   const campoDaFaixa = (
     <input
