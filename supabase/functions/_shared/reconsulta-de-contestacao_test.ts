@@ -370,6 +370,12 @@ Deno.test("caso ainda EM ANÁLISE: a decisão chega ao banco e a linha é 'tocad
   const r2 = await rodar(b, m2, { agora: () => AGORA + 10 * 60 * 1000 });
   assertEquals(r2.resumo.vistas, 0);
   assertEquals(m2.chamadas, []);
+
+  const antesDeSeisHoras = await rodar(b, m2, { agora: () => Date.parse("2026-10-04T17:59:59.999Z") });
+  assertEquals([antesDeSeisHoras.resumo.vistas, m2.chamadas], [0, []]);
+
+  const depoisDeSeisHoras = await rodar(b, m, { agora: () => Date.parse("2026-10-04T18:00:00.001Z") });
+  assertEquals(depoisDeSeisHoras.resumo.reconsultadas, 1);
 });
 
 // ── "sem decidir com retrato velho" ───────────────────────────────────────
@@ -448,7 +454,30 @@ Deno.test("falha TRANSITÓRIA no GET do caso (503): nenhuma RPC, a linha NÃO é
   assertEquals(b.registro.toques.map((t) => t.id), ["L2"], "só a linha resolvida gira; a que falhou volta no próximo ciclo");
 });
 
-Deno.test("dez GETs de order falham: os pedidos 11 e 12 são reconsultados no ciclo seguinte", async () => {
+for (const status of [0, 408, 429, 503]) {
+  Deno.test(`falha transitória no GET da order (${status}): volta a ficar elegível no próximo ciclo de 10 min`, async () => {
+    const b = banco({ linhas: [linhaPresa("L1", PEDIDO_A, 7)], pedidos: { [PEDIDO_A]: pedidoDe(ORDER_A) } });
+    const falha = mp({ orders: { [ORDER_A]: { status } } });
+    // O helper da order transforma o aborto de rede no status interno 0.
+    const fetchImpl = status === 0
+      ? () => Promise.reject(new DOMException("tempo esgotado", "AbortError"))
+      : falha.fetchImpl;
+    const primeira = await rodar(b, falha, { fetchImpl });
+    assertEquals([primeira.resumo.falhas, primeira.resumo.reconsultadas, b.registro.rpcs, primeira.avisos], [1, 0, [], []]);
+
+    const recuperado = mp({
+      orders: { [ORDER_A]: { status: 200, corpo: orderContestada() } },
+      casos: { CASE1: { status: 200, corpo: casoDoMp("CASE1", null) } },
+    });
+    const cedo = await rodar(b, recuperado, { agora: () => Date.parse("2026-10-04T12:09:59.998Z") });
+    assertEquals([cedo.resumo.vistas, recuperado.chamadas], [0, []]);
+
+    const proximoCiclo = await rodar(b, recuperado, { agora: () => Date.parse("2026-10-04T12:10:00.000Z") });
+    assertEquals(proximoCiclo.resumo.reconsultadas, 1);
+  });
+}
+
+Deno.test("dez GETs de order falham: os pedidos 11 e 12 vão antes das novas tentativas no ciclo seguinte", async () => {
   const ids = Array.from({ length: 12 }, (_, i) => ({
     pedido: `00000000-0000-4000-8000-${String(i + 1).padStart(12, "0")}`,
     order: `ORDTST${String(i + 1).padStart(6, "0")}`,
@@ -473,17 +502,19 @@ Deno.test("dez GETs de order falham: os pedidos 11 e 12 são reconsultados no ci
   assertEquals([primeira.resumo.vistas, primeira.resumo.falhas, b.registro.rpcs], [10, 10, []]);
   assertEquals(m.chamadas.map((u) => u.split("/").at(-1)), ids.slice(0, 10).map(({ order }) => order));
 
-  const segunda = await rodar(b, m, { agora: () => AGORA + 10 * 60 * 1000 });
+  const segunda = await rodar(b, m, { agora: () => AGORA + 10 * 60 * 1000, limitePedidos: 2 });
   assertEquals(m.chamadas.slice(10).filter((u) => u.includes("/v1/orders/")).map((u) => u.split("/").at(-1)), [
     ids[10].order,
     ids[11].order,
   ]);
   assertEquals(rpcsDoLedger(b).map((r) => r.args.p_order_id), [ids[10].pedido, ids[11].pedido]);
   assertEquals([segunda.resumo.vistas, segunda.resumo.falhas], [2, 0]);
-  assertEquals(linhas.slice(0, 10), antes.slice(0, 10).map((linha) => ({
-    ...linha,
-    updated_at: new Date(AGORA).toISOString(),
-  })), "nos pedidos com falha, só muda a data da tentativa");
+  for (const [i, linha] of linhas.slice(0, 10).entries()) {
+    const anterior = antes.at(i);
+    assert(anterior);
+    assert(linha.updated_at > anterior.updated_at, "a linha que falhou perde sua posição antiga na fila");
+    assertEquals({ ...linha, updated_at: anterior.updated_at }, anterior, "só muda a data usada no rodízio");
+  }
 });
 
 Deno.test("falha de rede no GET da order: só carimba as reservas que continuam presas", async () => {
@@ -505,7 +536,8 @@ Deno.test("falha de rede no GET da order: só carimba as reservas que continuam 
     },
   });
   assertEquals([r.resumo.falhas, b.registro.rpcs], [1, []]);
-  assertEquals(linhas.map((linha) => linha.updated_at), [ha(0), ha(7), ha(0.01), ha(7)]);
+  assert(linhas[0].updated_at > ha(7));
+  assertEquals(linhas.slice(1).map((linha) => linha.updated_at), [ha(7), ha(0.01), ha(7)]);
 });
 
 Deno.test("order NÃO EXISTE no MP (404): nada decidido, o admin é avisado UMA vez (chave estável) e a linha gira", async () => {
@@ -515,6 +547,9 @@ Deno.test("order NÃO EXISTE no MP (404): nada decidido, o admin é avisado UMA 
   assertEquals(r.avisos.map((a) => a.chave), [`contestacao_indefinida:${PEDIDO_A}:order_nao_encontrada`]);
   assertEquals(b.registro.toques.length, 1);
   assertEquals([r.resumo.conservadas, r.resumo.falhas], [1, 0]);
+
+  const proximoCiclo = await rodar(b, mp({}), { agora: () => Date.parse("2026-10-04T12:10:00.000Z") });
+  assertEquals(proximoCiclo.resumo.vistas, 0);
 });
 
 Deno.test("a order do MP NÃO está mais em 'charged_back': nada decidido (o gatilho é o MESMO do webhook), aviso uma vez, a linha gira", async () => {
