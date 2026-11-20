@@ -8,6 +8,7 @@ import { useOrders } from "@/hooks/useOrders";
 const rede = vi.hoisted(() => ({
   consultarPedido: vi.fn(),
   consultarLista: vi.fn(),
+  isLeader: true,
   receber: undefined as ((evento: unknown) => Promise<void>) | undefined,
 }));
 
@@ -38,7 +39,7 @@ vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({ user: { id: "admin-teste" }, isAdmin: true }),
 }));
 vi.mock("@/hooks/useLeaderElection", () => ({
-  useLeaderElection: () => ({ isLeader: true }),
+  useLeaderElection: () => ({ isLeader: rede.isLeader }),
 }));
 vi.mock("@/hooks/useAnalytics", () => ({ clearAnalyticsCache: () => {} }));
 
@@ -74,6 +75,7 @@ describe("pedido novo no painel", () => {
     vi.useFakeTimers();
     vi.stubGlobal("BroadcastChannel", undefined);
     avisar.mockClear();
+    rede.isLeader = true;
     rede.receber = undefined;
     rede.consultarPedido.mockReset();
     rede.consultarLista
@@ -136,6 +138,56 @@ describe("pedido novo no painel", () => {
     expect(rede.consultarLista).toHaveBeenLastCalledWith(
       expect.objectContaining({ p_page: 0, p_page_size: 12, p_status: "open" }),
     );
+  });
+
+  it("avisa e relê uma vez se a liderança muda enquanto o pedido espera pelo prazo", async () => {
+    rede.consultarPedido.mockReturnValue(new Promise(() => {}));
+    await act(async () => {
+      void rede.receber?.(evento);
+    });
+    expect(rede.consultarPedido).toHaveBeenCalledTimes(1);
+
+    // Só o efeito do realtime é refeito: mesma tela e mesma conta.
+    await act(async () => {
+      rede.isLeader = false;
+      raiz.render(<Sonda />);
+    });
+    expect(avisar).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20_500);
+    });
+    expect(avisar).toHaveBeenCalledExactlyOnceWith(evento);
+    expect(rede.consultarLista).toHaveBeenCalledTimes(2);
+    expect(painel.orders.map((pedido) => pedido.id)).toEqual([linha.id]);
+  });
+
+  it("ignora a resposta do pedido se a tela realmente desmonta", async () => {
+    const resposta = { data: linha, error: null };
+    let responder!: (valor: typeof resposta) => void;
+    rede.consultarPedido.mockReturnValue(
+      new Promise<typeof resposta>((resolve) => {
+        responder = resolve;
+      }),
+    );
+    let entrega: Promise<void> | undefined;
+    await act(async () => {
+      entrega = rede.receber?.(evento);
+    });
+    expect(rede.consultarPedido).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      raiz.render(null);
+    });
+    await act(async () => {
+      responder(resposta);
+      await entrega;
+      await vi.advanceTimersByTimeAsync(500);
+    });
+
+    expect(avisar).not.toHaveBeenCalled();
+    expect(rede.consultarLista).toHaveBeenCalledTimes(1);
+    expect(painel.orders).toEqual([]);
   });
 
   it("insere uma linha e avisa uma vez quando a consulta responde normalmente", async () => {

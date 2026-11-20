@@ -3896,7 +3896,8 @@ export function useOrders(
         "id" in payload.new
       ) {
         const acao = await handleRealtimeInsertRef.current(payload.new);
-        if (isUnmounting || userIdAtualRef.current !== user.id) return;
+        // Trocar a liderança refaz o efeito, mas não desmonta a tela.
+        if (desmontadoRef.current || userIdAtualRef.current !== user.id) return;
         if (acao === "recarregar") {
           // Uma rajada de INSERTs divide o mesmo timer. A recarga só atualiza
           // a lista; não reemite o INSERT nem repete o aviso abaixo.
