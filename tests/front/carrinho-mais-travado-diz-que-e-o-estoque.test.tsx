@@ -105,7 +105,7 @@ async function montarLista(cart: CartItem[]) {
 describe("QuantitySelector — o '+' travado pelo estoque diz o motivo", () => {
   it("estoque 5, quantidade 5: trava, não chama onChange e a dica diz 'Limite do estoque (5 unidades)'", () => {
     const onChange = montarSeletor(5, 5);
-    expect(mais().disabled).toBe(true);
+    expect(mais().getAttribute("aria-disabled")).toBe("true");
     act(() => mais().click());
     expect(onChange).not.toHaveBeenCalled();
     expect(mais().title).toBe("Limite do estoque (5 unidades)");
@@ -118,7 +118,7 @@ describe("QuantitySelector — o '+' travado pelo estoque diz o motivo", () => {
 
   it("um abaixo do estoque (4 de 5): o '+' sobe e a dica é a de sempre", () => {
     const onChange = montarSeletor(4, 5);
-    expect(mais().disabled).toBe(false);
+    expect(mais().getAttribute("aria-disabled")).toBe("false");
     expect(mais().title).toBe("Aumentar");
     act(() => mais().click());
     expect(onChange).toHaveBeenCalledWith(5);
@@ -131,7 +131,7 @@ describe("QuantitySelector — o '+' travado pelo estoque diz o motivo", () => {
 
   it("estoque zero: não inventa 'Limite do estoque (0 unidades)'", () => {
     montarSeletor(1, 0);
-    expect(mais().disabled).toBe(true);
+    expect(mais().getAttribute("aria-disabled")).toBe("true");
     expect(mais().title).toBe("Aumentar");
   });
 });
@@ -140,13 +140,13 @@ describe("CartItemsList — a linha diz quando o estoque inteiro já está no ca
   it("estoque 5, quantidade 5: 'Máximo disponível: 5' e o '+' travado", async () => {
     await montarLista([{ product: produto({ stock: 5 }), quantity: 5 }]);
     expect(texto()).toContain("Máximo disponível: 5");
-    expect(mais().disabled).toBe(true);
+    expect(mais().getAttribute("aria-disabled")).toBe("true");
   });
 
   it("estoque 5, quantidade 4: ainda cabe um, nenhum aviso", async () => {
     await montarLista([{ product: produto({ stock: 5 }), quantity: 4 }]);
     expect(texto()).not.toContain("Máximo disponível");
-    expect(mais().disabled).toBe(false);
+    expect(mais().getAttribute("aria-disabled")).toBe("false");
   });
 
   it("estoque 3, quantidade 3: segue só o 'Só 3 restantes' de sempre, sem frase repetida", async () => {

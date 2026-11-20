@@ -62,9 +62,9 @@ describe("QuantitySelector: cores da pílula", () => {
       montar(size);
       for (const botao of contedor.querySelectorAll("button")) {
         expect(botao.className, size).toContain(
-          "active:scale-90 disabled:cursor-not-allowed disabled:opacity-30",
+          "active:scale-90 aria-disabled:cursor-not-allowed aria-disabled:opacity-30",
         );
-        expect(botao.className, size).not.toMatch(/scale-90disabled/);
+        expect(botao.className, size).not.toMatch(/scale-90aria-disabled/);
       }
     }
   });

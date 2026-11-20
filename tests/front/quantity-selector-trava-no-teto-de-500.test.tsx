@@ -48,7 +48,7 @@ function montar(quantity: number, maxQuantity: number) {
 describe("QuantitySelector — teto de 500 por item", () => {
   it("estoque 800, em 500: o '+' trava, não chama onChange e explica o motivo", () => {
     const { mais, onChange } = montar(500, 800);
-    expect(mais.disabled).toBe(true);
+    expect(mais.getAttribute("aria-disabled")).toBe("true");
     act(() => mais.click());
     expect(onChange).not.toHaveBeenCalled();
     expect(mais.title).toBe("Máximo de 500 por pedido");
@@ -56,7 +56,7 @@ describe("QuantitySelector — teto de 500 por item", () => {
 
   it("estoque 800, em 499: o '+' ainda sobe para 500", () => {
     const { mais, onChange } = montar(499, 800);
-    expect(mais.disabled).toBe(false);
+    expect(mais.getAttribute("aria-disabled")).toBe("false");
     act(() => mais.click());
     expect(onChange).toHaveBeenCalledWith(500);
     expect(mais.title).toBe("Aumentar");
@@ -64,16 +64,16 @@ describe("QuantitySelector — teto de 500 por item", () => {
 
   it("controle, estoque 500, em 500: trava (o limite é o estoque, e a dica diz isso — não a do teto)", () => {
     const { mais, onChange } = montar(500, 500);
-    expect(mais.disabled).toBe(true);
+    expect(mais.getAttribute("aria-disabled")).toBe("true");
     act(() => mais.click());
     expect(onChange).not.toHaveBeenCalled();
     expect(mais.title).toBe("Limite do estoque (500 unidades)");
   });
 
   it("controle, estoque 3, em 3: trava; em 2 sobe para 3", () => {
-    expect(montar(3, 3).mais.disabled).toBe(true);
+    expect(montar(3, 3).mais.getAttribute("aria-disabled")).toBe("true");
     const { mais, onChange } = montar(2, 3);
-    expect(mais.disabled).toBe(false);
+    expect(mais.getAttribute("aria-disabled")).toBe("false");
     act(() => mais.click());
     expect(onChange).toHaveBeenCalledWith(3);
   });

@@ -148,15 +148,21 @@ describe("CartItemsList Tinta — a linha do carrinho continua fazendo tudo", ()
     await montarLista([{ product: produto({ stock: 2 }), quantity: 2 }], {
       onUpdateQuantity,
     });
-    expect(botao("Aumentar quantidade")?.disabled).toBe(true);
+    expect(botao("Aumentar quantidade")?.getAttribute("aria-disabled")).toBe(
+      "true",
+    );
     await act(async () => botao("Aumentar quantidade")?.click());
     expect(onUpdateQuantity).not.toHaveBeenCalled();
   });
 
   it("borda do desenho (3º cartão): estoque 1 e quantidade 1 trava os dois botões", async () => {
     await montarLista([{ product: produto({ stock: 1 }), quantity: 1 }]);
-    expect(botao("Aumentar quantidade")?.disabled).toBe(true);
-    expect(botao("Diminuir quantidade")?.disabled).toBe(true);
+    expect(botao("Aumentar quantidade")?.getAttribute("aria-disabled")).toBe(
+      "true",
+    );
+    expect(botao("Diminuir quantidade")?.getAttribute("aria-disabled")).toBe(
+      "true",
+    );
   });
 
   it("Remover (agora com o nome do produto) continua chamando onRemove com o produto e a variação", async () => {
