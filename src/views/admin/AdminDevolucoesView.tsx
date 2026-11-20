@@ -14,23 +14,85 @@ import { CartaoDaDevolucao } from "@/components/admin/devolucoes/CartaoDaDevoluc
 import { DetalheDaDevolucao } from "@/components/admin/devolucoes/DetalheDaDevolucao";
 import { conterTabNoDialogo } from "@/components/admin/primitivos/conterTabNoDialogo";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
-import { useDevolucoesAdmin } from "@/hooks/useDevolucoesAdmin";
+import {
+  type ListaDoPainel,
+  useDevolucoesAdmin,
+} from "@/hooks/useDevolucoesAdmin";
 import { instanteDoDia, useDiaDeSaoPaulo } from "@/hooks/useDiaDeSaoPaulo";
 import {
-  consumirPedidoDeDevolucoesSolicitadas,
-  haPedidoDeDevolucoesSolicitadas,
+  consumirFiltroDeDevolucoes,
+  espiarFiltroDeDevolucoes,
 } from "@/lib/aviso-leva-a-devolucoes-solicitadas";
 import {
+  STATUS_ABERTOS,
   STATUS_EM_ORDEM,
   contagemDe,
   rotuloStatus,
   rotuloStatusPlural,
+  totalAbertas,
   totalGeral,
 } from "@/lib/devolucao";
 import { ehEscapeSintetico } from "@/lib/escape-sintetico";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import type { StatusDevolucao } from "@/types/devolucao";
+
+type FiltroDeDevolucoes = StatusDevolucao | "abertas" | null;
+
+function useListaDeDevolucoes(
+  status: FiltroDeDevolucoes,
+  busca: string,
+  ativo: boolean,
+): ListaDoPainel {
+  const abertas = status === "abertas";
+  const lista = useDevolucoesAdmin({
+    status: abertas ? null : status,
+    busca,
+    ativo: ativo && !abertas,
+  });
+  // A RPC aceita um status por consulta. Paginar cada estado evita que
+  // devoluções encerradas escondam as abertas nas primeiras páginas.
+  const opcoes = { busca, ativo: ativo && abertas };
+  const solicitadas = useDevolucoesAdmin({
+    ...opcoes,
+    status: STATUS_ABERTOS[0],
+  });
+  const aprovadas = useDevolucoesAdmin({
+    ...opcoes,
+    status: STATUS_ABERTOS[1],
+  });
+  const emTransito = useDevolucoesAdmin({
+    ...opcoes,
+    status: STATUS_ABERTOS[2],
+  });
+  const recebidas = useDevolucoesAdmin({
+    ...opcoes,
+    status: STATUS_ABERTOS[3],
+  });
+  if (!abertas) return lista;
+
+  const grupos = [solicitadas, aprovadas, emTransito, recebidas];
+  // Uma devolução pode trocar de estado entre duas consultas.
+  const porId = new Map(
+    grupos.flatMap((g) => g.itens.map((i) => [i.id, i] as const)),
+  );
+  return {
+    itens: [...porId.values()].sort(
+      (a, b) => Date.parse(b.created_at) - Date.parse(a.created_at),
+    ),
+    total: grupos.reduce((soma, g) => soma + g.total, 0),
+    contagem: grupos.find((g) => g.contagem)?.contagem ?? null,
+    carregando: grupos.some((g) => g.carregando),
+    erro: grupos.some((g) => g.erro),
+    temMais: grupos.some((g) => g.temMais),
+    carregarMais: () => {
+      for (const grupo of grupos) if (grupo.temMais) grupo.carregarMais();
+    },
+    recarregar: () => {
+      for (const grupo of grupos) grupo.recarregar();
+    },
+  };
+}
 
 interface AdminDevolucoesViewProps {
   onNavigate: (view: View, id?: string, bypassDirtyCheck?: boolean) => void;
@@ -72,11 +134,10 @@ export function AdminDevolucoesView({
   onSetDirty,
   onSetBackOverride,
 }: AdminDevolucoesViewProps) {
-  // Tela por abrir pelo aviso de devolução: já nasce em "Solicitadas" (só
-  // espia o recado; quem o gasta é o efeito abaixo).
-  const [status, setStatus] = useState<StatusDevolucao | null>(() =>
-    active !== false && haPedidoDeDevolucoesSolicitadas() ? "solicitada" : null,
-  );
+  const [statusSalvo, setStatus] = useState<FiltroDeDevolucoes>(null);
+  // Consulta logo o filtro do atalho; o efeito abaixo guarda e gasta o recado.
+  const filtroDoAtalho = active !== false ? espiarFiltroDeDevolucoes() : null;
+  const status = filtroDoAtalho ?? statusSalvo;
   const [busca, setBusca] = useState("");
   const [digitando, setDigitando] = useState(false);
   // O roteador restaura o id da URL também no F5 e em links diretos.
@@ -101,20 +162,24 @@ export function AdminDevolucoesView({
     () => false,
   );
 
-  const lista = useDevolucoesAdmin({ status, busca, ativo: active !== false });
+  const lista = useListaDeDevolucoes(
+    status,
+    filtroDoAtalho ? "" : busca,
+    active !== false,
+  );
   const { recarregar } = lista;
 
   useEffect(() => {
     setSelecionada(selectedDevolucaoId ?? null);
   }, [selectedDevolucaoId]);
 
-  // Chegou pelo aviso "devolução esperando sua resposta": o aviso conta só as
-  // solicitadas, então a lista abre nelas e sem a busca que ficou escrita. A
-  // tela fica montada em segundo plano; abrir pelo menu não passa por aqui.
+  // O aviso conta só Solicitadas; o Início conta todas as Abertas. Nos dois
+  // casos, a busca da visita anterior não pode esconder o que foi contado.
   useEffect(() => {
     if (active === false) return;
-    if (!consumirPedidoDeDevolucoesSolicitadas()) return;
-    setStatus("solicitada");
+    const filtro = consumirFiltroDeDevolucoes();
+    if (!filtro) return;
+    setStatus(filtro);
     setBusca("");
   }, [active]);
 
@@ -230,12 +295,19 @@ export function AdminDevolucoesView({
   );
 
   const contagem = lista.contagem;
+  const rotuloDoFiltro =
+    status === "abertas" ? "Abertas" : status ? rotuloStatusPlural(status) : "";
   const chips: Array<{
-    chave: StatusDevolucao | null;
+    chave: FiltroDeDevolucoes;
     rotulo: string;
     n: number | null;
   }> = [
     { chave: null, rotulo: "Todas", n: contagem ? totalGeral(contagem) : null },
+    {
+      chave: "abertas",
+      rotulo: "Abertas",
+      n: contagem ? totalAbertas(contagem) : null,
+    },
     ...STATUS_EM_ORDEM.map((s) => ({
       chave: s,
       rotulo: rotuloStatusPlural(s),
@@ -359,9 +431,9 @@ export function AdminDevolucoesView({
                 </div>
                 <p className="text-sm font-black text-white">
                   {busca.trim()
-                    ? `Nada para “${busca.trim()}”${status ? ` em ${rotuloStatusPlural(status).toLowerCase()}` : ""}`
+                    ? `Nada para “${busca.trim()}”${status ? ` em ${rotuloDoFiltro.toLowerCase()}` : ""}`
                     : status
-                      ? `Nenhuma devolução ${rotuloStatus(status).toLowerCase()}`
+                      ? `Nenhuma devolução ${status === "abertas" ? "aberta" : rotuloStatus(status).toLowerCase()}`
                       : "Nenhuma devolução ainda"}
                 </p>
                 {busca.trim() ? (

@@ -1,3 +1,4 @@
+import { pedirDevolucoesAbertas } from "@/lib/aviso-leva-a-devolucoes-solicitadas";
 import { formatarInteiro, formatarMoeda } from "@/lib/crm";
 import {
   type TomDeEstado,
@@ -254,6 +255,9 @@ export function ParaFazer({
                 <button
                   type="button"
                   onClick={() => {
+                    if (item.chave === "devolucoes" && item.pendente) {
+                      pedirDevolucoesAbertas();
+                    }
                     if (
                       item.chave === "devolver-dinheiro" &&
                       aoAbrirCancelados

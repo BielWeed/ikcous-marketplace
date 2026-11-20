@@ -10,6 +10,7 @@
 // plano ou ainda por abrir) abre em "Solicitadas", sem busca. Quem abre
 // Devoluções pelo menu, ou escolhe outro chip depois, não é tocado.
 import type { View } from "@/types";
+import type { PainelInicio } from "@/types/painel";
 import { act, useEffect, useState } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -133,7 +134,10 @@ describe("aviso de devolução → lista de solicitadas", () => {
 
   // Mesmo desenho do painel: as abas ficam montadas, só uma ativa
   // (`emSegundoPlano`), ou a Devoluções só nasce ao ser aberta.
-  async function montar(opcoes: { emSegundoPlano: boolean }) {
+  async function montar(opcoes: {
+    emSegundoPlano: boolean;
+    abertasNoInicio?: number;
+  }) {
     const { montarAvisos } = await import("@/utils/avisos-do-lojista");
     h.avisos = montarAvisos({
       pedidos: [],
@@ -148,6 +152,7 @@ describe("aviso de devolução → lista de solicitadas", () => {
     const { AdminDevolucoesView } = await import(
       "@/views/admin/AdminDevolucoesView"
     );
+    const { ParaFazer } = await import("@/components/admin/inicio/ParaFazer");
     function Casa() {
       const [tela, setTela] = useState<View>("admin-notifications");
       useEffect(() => {
@@ -157,7 +162,21 @@ describe("aviso de devolução → lista de solicitadas", () => {
       const devolucoesAberta = tela === "admin-devolucoes";
       return (
         <>
-          <AdminNotificationsView onNavigate={(destino) => setTela(destino)} />
+          {opcoes.abertasNoInicio === undefined ? (
+            <AdminNotificationsView
+              onNavigate={(destino) => setTela(destino)}
+            />
+          ) : (
+            <ParaFazer
+              painel={
+                {
+                  pendencias: { devolucoesAbertas: opcoes.abertasNoInicio },
+                } as PainelInicio
+              }
+              carregando={false}
+              onNavigate={(destino) => setTela(destino)}
+            />
+          )}
           {(opcoes.emSegundoPlano || devolucoesAberta) && (
             <AdminDevolucoesView
               active={devolucoesAberta}
@@ -217,6 +236,50 @@ describe("aviso de devolução → lista de solicitadas", () => {
     vi.useRealTimers();
     await drenar();
   }
+
+  it("Devoluções abertas no Início troca Recusadas por Abertas e exclui as concluídas", async () => {
+    await montar({ emSegundoPlano: true, abertasNoInicio: 1 });
+    await abrirPeloMenu();
+    await escolherChip("Recusadas");
+    expect(ultimaConsulta().p_status).toBe("recusada");
+    expect(cartoes(hospedeiro)).toEqual([]);
+    await sair();
+
+    const atalho = [...hospedeiro.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("1 devolução aberta"),
+    );
+    expect(atalho).toBeDefined();
+    await act(async () => atalho?.click());
+    await drenar();
+
+    const chipAtivo = hospedeiro.querySelector(
+      '[aria-label="Filtrar por status"] button[aria-pressed="true"]',
+    );
+    expect(chipAtivo?.textContent).toMatch(/^Abertas/);
+    expect(cartoes(hospedeiro)).toEqual(["dev-solicitada"]);
+  });
+
+  it("Devoluções abertas na primeira visita pede os quatro estados em andamento", async () => {
+    await montar({ emSegundoPlano: false, abertasNoInicio: 4 });
+    const estados = ["solicitada", "aprovada", "em_transito", "recebida"];
+    h.rpc.mockImplementation(async (_nome, { p_status }) => ({
+      data: {
+        total: 1,
+        contagem: Object.fromEntries(estados.map((s) => [s, 1])),
+        itens: [linha(p_status ?? "fechada", "DEV-1", p_status ?? "concluida")],
+      },
+      error: null,
+    }));
+    const atalho = [...hospedeiro.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("4 devoluções abertas"),
+    );
+    expect(atalho).toBeDefined();
+    await act(async () => atalho?.click());
+    await drenar();
+
+    expect(h.rpc.mock.calls.map((c) => c[1].p_status)).toEqual(estados);
+    expect(cartoes(hospedeiro).sort()).toEqual([...estados].sort());
+  });
 
   it("tela já aberta em segundo plano em 'Todas': o aviso abre só a solicitada que ele contou", async () => {
     await montar({ emSegundoPlano: true });
@@ -319,14 +382,14 @@ describe("recado do aviso de devolução (vale uma vez, com validade)", () => {
     vi.resetModules();
     const lib = await import("@/lib/aviso-leva-a-devolucoes-solicitadas");
     lib.pedirDevolucoesSolicitadas(1_000);
-    expect(lib.consumirPedidoDeDevolucoesSolicitadas(1_500)).toBe(true);
-    expect(lib.consumirPedidoDeDevolucoesSolicitadas(1_600)).toBe(false);
+    expect(lib.consumirFiltroDeDevolucoes(1_500)).toBe("solicitada");
+    expect(lib.consumirFiltroDeDevolucoes(1_600)).toBeNull();
   });
 
   it("sem pedido nenhum, não muda nada", async () => {
     vi.resetModules();
     const lib = await import("@/lib/aviso-leva-a-devolucoes-solicitadas");
-    expect(lib.consumirPedidoDeDevolucoesSolicitadas(1_000)).toBe(false);
+    expect(lib.consumirFiltroDeDevolucoes(1_000)).toBeNull();
   });
 
   it("recado esquecido (a tela nunca abriu) vence: abrir pelo menu horas depois não filtra nada", async () => {
@@ -334,9 +397,7 @@ describe("recado do aviso de devolução (vale uma vez, com validade)", () => {
     const lib = await import("@/lib/aviso-leva-a-devolucoes-solicitadas");
     lib.pedirDevolucoesSolicitadas(1_000);
     const duasHorasDepois = 1_000 + 2 * 60 * 60 * 1000;
-    expect(lib.consumirPedidoDeDevolucoesSolicitadas(duasHorasDepois)).toBe(
-      false,
-    );
+    expect(lib.consumirFiltroDeDevolucoes(duasHorasDepois)).toBeNull();
   });
 
   // A validade é de 30 s. As duas horas acima venceriam até com 1 hora de
@@ -346,23 +407,19 @@ describe("recado do aviso de devolução (vale uma vez, com validade)", () => {
     vi.resetModules();
     const lib = await import("@/lib/aviso-leva-a-devolucoes-solicitadas");
     lib.pedirDevolucoesSolicitadas(1_000);
-    expect(lib.consumirPedidoDeDevolucoesSolicitadas(1_000 + 30_000)).toBe(
-      true,
-    );
+    expect(lib.consumirFiltroDeDevolucoes(1_000 + 30_000)).toBe("solicitada");
     lib.pedirDevolucoesSolicitadas(1_000);
-    expect(lib.consumirPedidoDeDevolucoesSolicitadas(1_000 + 30_001)).toBe(
-      false,
-    );
+    expect(lib.consumirFiltroDeDevolucoes(1_000 + 30_001)).toBeNull();
   });
 
   it("espiar (a tela que ainda vai abrir) respeita a mesma fronteira e não gasta o recado", async () => {
     vi.resetModules();
     const lib = await import("@/lib/aviso-leva-a-devolucoes-solicitadas");
     lib.pedirDevolucoesSolicitadas(1_000);
-    expect(lib.haPedidoDeDevolucoesSolicitadas(1_000 + 30_000)).toBe(true);
-    expect(lib.haPedidoDeDevolucoesSolicitadas(1_000 + 30_001)).toBe(false);
+    expect(lib.espiarFiltroDeDevolucoes(1_000 + 30_000)).toBe("solicitada");
+    expect(lib.espiarFiltroDeDevolucoes(1_000 + 30_001)).toBeNull();
     // Espiar não consome: dentro da validade o recado ainda está lá.
-    expect(lib.haPedidoDeDevolucoesSolicitadas(1_000 + 5_000)).toBe(true);
+    expect(lib.espiarFiltroDeDevolucoes(1_000 + 5_000)).toBe("solicitada");
   });
 
   describe("com o relógio de verdade (sem passar a hora na mão)", () => {
@@ -378,13 +435,13 @@ describe("recado do aviso de devolução (vale uma vez, com validade)", () => {
 
       lib.pedirDevolucoesSolicitadas();
       vi.advanceTimersByTime(29_000);
-      expect(lib.haPedidoDeDevolucoesSolicitadas()).toBe(true);
-      expect(lib.consumirPedidoDeDevolucoesSolicitadas()).toBe(true);
+      expect(lib.espiarFiltroDeDevolucoes()).toBe("solicitada");
+      expect(lib.consumirFiltroDeDevolucoes()).toBe("solicitada");
 
       lib.pedirDevolucoesSolicitadas();
       vi.advanceTimersByTime(31_000);
-      expect(lib.haPedidoDeDevolucoesSolicitadas()).toBe(false);
-      expect(lib.consumirPedidoDeDevolucoesSolicitadas()).toBe(false);
+      expect(lib.espiarFiltroDeDevolucoes()).toBeNull();
+      expect(lib.consumirFiltroDeDevolucoes()).toBeNull();
     });
   });
 });

@@ -17,11 +17,17 @@
 /** Tempo máximo entre o toque no aviso e a tela Devoluções ficar à vista. */
 const VALIDADE_DO_PEDIDO_MS = 30_000;
 
-let pedidoEm: number | null = null;
+type FiltroDoAtalho = "solicitada" | "abertas";
+let pedido: { desde: number; filtro: FiltroDoAtalho } | null = null;
 
 /** O aviso chama ao tocar, antes de navegar para Devoluções. */
 export function pedirDevolucoesSolicitadas(agora: number = Date.now()): void {
-  pedidoEm = agora;
+  pedido = { desde: agora, filtro: "solicitada" };
+}
+
+/** O Início conta todas as devoluções que ainda estão em andamento. */
+export function pedirDevolucoesAbertas(agora: number = Date.now()): void {
+  pedido = { desde: agora, filtro: "abertas" };
 }
 
 /**
@@ -29,20 +35,19 @@ export function pedirDevolucoesSolicitadas(agora: number = Date.now()): void {
  * chip certo, em vez de pedir a lista toda e trocar logo depois. Não escreve
  * nada (pode ser lida no render); quem gasta o recado é o `consumir...`.
  */
-export function haPedidoDeDevolucoesSolicitadas(
+export function espiarFiltroDeDevolucoes(
   agora: number = Date.now(),
-): boolean {
-  return pedidoEm !== null && agora - pedidoEm <= VALIDADE_DO_PEDIDO_MS;
+): FiltroDoAtalho | null {
+  return pedido && agora - pedido.desde <= VALIDADE_DO_PEDIDO_MS
+    ? pedido.filtro
+    : null;
 }
 
-/**
- * A tela Devoluções chama quando passa a estar à vista. Devolve `true` no
- * máximo UMA vez por pedido do aviso, e só se ele ainda estiver na validade.
- */
-export function consumirPedidoDeDevolucoesSolicitadas(
+/** A tela recebe o filtro uma vez e só enquanto o recado estiver válido. */
+export function consumirFiltroDeDevolucoes(
   agora: number = Date.now(),
-): boolean {
-  const desde = pedidoEm;
-  pedidoEm = null;
-  return desde !== null && agora - desde <= VALIDADE_DO_PEDIDO_MS;
+): FiltroDoAtalho | null {
+  const filtro = espiarFiltroDeDevolucoes(agora);
+  pedido = null;
+  return filtro;
 }
