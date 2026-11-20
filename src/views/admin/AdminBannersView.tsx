@@ -57,7 +57,10 @@ import {
   fimDoBannerEmTexto,
   problemaDasDatas,
 } from "@/lib/datas-do-banner";
-import { LINK_DA_PAGINA_DA_LOJA } from "@/lib/destino-do-banner";
+import {
+  LINK_DA_PAGINA_DA_LOJA,
+  destinoDoBanner,
+} from "@/lib/destino-do-banner";
 import { mensagemDeErroDeSessaoDoPainel } from "@/lib/erro-de-sessao-do-painel";
 import { chaveDoUsuario } from "@/lib/fila-offline-por-usuario";
 import { soFotosReais } from "@/lib/foto-do-produto";
@@ -425,14 +428,14 @@ const AVISO_PRODUTO_EXCLUIDO =
 const prefixoDoPreco = (vitrine: { aPartirDe: boolean }) =>
   vitrine.aPartirDe ? "A partir de" : "Por apenas";
 
-/** O id do produto no caminho relativo ou na URL completa do banner. */
+/** O id do produto quando o destino do banner é da própria loja. */
 function idDoProdutoDoLink(link: string | null | undefined): string | null {
-  if (!link) return null;
+  const destino = destinoDoBanner(link);
+  if (!destino) return null;
   try {
-    const url = link.startsWith("/product-detail?")
-      ? new URL(link, "https://loja.example")
-      : new URL(link);
+    const url = new URL(destino, window.location.origin);
     if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    if (url.host !== window.location.host) return null;
     if (url.pathname !== "/product-detail") return null;
     return url.searchParams.get("id") || null;
   } catch {

@@ -174,6 +174,13 @@ describe("pedido do balcão na conta da cliente", () => {
     return hospedeiro.textContent ?? "";
   }
 
+  function esperarSelo(rotulo: string) {
+    expect(
+      hospedeiro.querySelector('[data-testid="customer-payment-badge"]')
+        ?.textContent,
+    ).toBe(rotulo);
+  }
+
   describe("ficha do pedido", () => {
     it("balcão entregue: 'Compra na loja', sem envio, sem frete, sem endereço de entrega", async () => {
       const texto = await detalhe(doBalcao());
@@ -203,6 +210,7 @@ describe("pedido do balcão na conta da cliente", () => {
 
     it("balcão anulado e estornado: não afirma que o dinheiro foi devolvido", async () => {
       const texto = await detalhe(doBalcao(estornado));
+      esperarSelo("Venda anulada");
       expect(texto).toContain("anulada pela loja");
       expect(texto).toContain("combinada diretamente com a loja");
       expect(texto).not.toContain("o dinheiro foi devolvido");
@@ -210,6 +218,7 @@ describe("pedido do balcão na conta da cliente", () => {
 
     it("online cancelado e estornado (controle): a frase de sempre", async () => {
       const texto = await detalhe({ ...pedidoBase, ...estornado });
+      esperarSelo("Pagamento estornado");
       expect(texto).toContain(
         "Este pedido foi cancelado e o seu pagamento foi estornado: o dinheiro foi devolvido.",
       );
@@ -231,12 +240,14 @@ describe("pedido do balcão na conta da cliente", () => {
 
     it("balcão anulado e estornado: não diz que o dinheiro foi devolvido", async () => {
       const texto = await lista(doBalcao(estornado));
+      esperarSelo("Venda anulada");
       expect(texto).toContain("combinada com a loja");
       expect(texto).not.toContain("foi devolvido");
     });
 
     it("online cancelado e estornado (controle): 'foi devolvido' como antes", async () => {
       const texto = await lista({ ...pedidoBase, ...estornado });
+      esperarSelo("Pagamento estornado");
       expect(texto).toContain("O dinheiro deste pedido foi devolvido.");
     });
   });

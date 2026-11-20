@@ -344,9 +344,40 @@ describe("Painel — aviso de pedido atualizado (realtime UPDATE)", () => {
     expect(avisos).toEqual(["Pedido #3884BE foi atualizado"]);
   });
 
-  it.each(["presencial", "online"] as const)(
-    "INSERT %s: só pedido online ganha aviso de pedido novo",
-    async (canal) => {
+  it.each([
+    {
+      canal: "presencial",
+      payment_method: "cash",
+      payment_status: "recebido_na_entrega",
+      avisa: false,
+    },
+    {
+      canal: "online",
+      payment_method: "cash",
+      payment_status: null,
+      avisa: true,
+    },
+    {
+      canal: "online",
+      payment_method: "pix",
+      payment_status: null,
+      avisa: true,
+    },
+    {
+      canal: "online",
+      payment_method: "online",
+      payment_status: "aguardando",
+      avisa: false,
+    },
+    {
+      canal: "online",
+      payment_method: "online",
+      payment_status: "pago",
+      avisa: true,
+    },
+  ])(
+    "INSERT: respeita o canal e a confirmação do pagamento (%j)",
+    async ({ avisa, ...pedido }) => {
       await montar(pedidoBase);
       vi.mocked(toast.info).mockClear();
       carregarResumo.mockClear();
@@ -354,12 +385,12 @@ describe("Painel — aviso de pedido atualizado (realtime UPDATE)", () => {
       await act(async () => {
         eventoRealtime.atual?.({
           eventType: "INSERT",
-          new: { id: ID_DO_PEDIDO, canal, status: "delivered" },
+          new: { id: ID_DO_PEDIDO, status: "pending", ...pedido },
         });
       });
       expect(carregarResumo).toHaveBeenCalledWith(true);
       expect(recarregarNumeros).toHaveBeenCalledTimes(1);
-      if (canal === "presencial") {
+      if (!avisa) {
         expect(toast.info).not.toHaveBeenCalled();
       } else {
         expect(toast.info).toHaveBeenCalledWith(

@@ -19,6 +19,7 @@ import {
 import { supabase } from "@/lib/supabase";
 import { taxaDeResposta } from "@/lib/taxa-de-resposta";
 import { TETO_DA_RESPOSTA_DA_LOJA } from "@/lib/teto-da-resposta-da-loja";
+import { gerarUuidV4 } from "@/lib/uuid-v4";
 import type { Database } from "@/types/database.types";
 import {
   cachedQuestionsData,
@@ -508,12 +509,18 @@ export function useQuestions() {
     [isAdmin, user?.id],
   );
 
+  const perguntasSemConfirmacaoRef = useRef(new Map<string, string>());
+
   const addQuestion = useCallback(
     async (question: { productId: string; question: string }) => {
       const desmarcar = marcarOperacaoSensivel("envio-de-pergunta");
-      const idsAntesDoEnvio = new Set(
-        (getQuestionsCache(question.productId, false) || []).map((q) => q.id),
-      );
+      const pendentes = perguntasSemConfirmacaoRef.current;
+      const chave = JSON.stringify([
+        user?.id,
+        question.productId,
+        question.question,
+      ]);
+      let idDaPergunta: string | undefined;
       try {
         // ZENITH v21.7: Rely on AuthContext's verified user
         if (!user) {
@@ -521,11 +528,14 @@ export function useQuestions() {
           return null;
         }
 
+        // A chave primária decide qual envio grava, mesmo se os dois chegarem juntos.
+        idDaPergunta = pendentes.get(chave) ?? gerarUuidV4();
         const { data, error } = await aguardarComPrazo(
           Promise.resolve(
             supabase
               .from("questions" as any)
               .insert({
+                id: idDaPergunta,
                 product_id: question.productId,
                 user_id: user.id,
                 question: question.question,
@@ -539,6 +549,7 @@ export function useQuestions() {
 
         if (error) throw error;
 
+        pendentes.delete(chave);
         toast.success("Pergunta enviada com sucesso!");
         // A gravação já foi confirmada: mostre-a mesmo sem rede para reler.
         const gravada =
@@ -571,28 +582,36 @@ export function useQuestions() {
         return data;
       } catch (error: any) {
         console.error("Error adding question:", error);
+        const semResposta = ehConsultaSemResposta(error);
+        const repetiuId =
+          error?.code === "23505" &&
+          error?.message?.includes('"questions_pkey"');
+        const avisoDeDemora =
+          "A conexão está lenta. Sua pergunta pode ter sido recebida. Confira antes de tentar de novo.";
+        if (semResposta) toast.error(avisoDeDemora);
+        if (idDaPergunta && (semResposta || repetiuId)) {
+          pendentes.set(chave, idDaPergunta);
+          await getQuestionsByProduct(question.productId, { silencioso: true });
+          const confirmada = getQuestionsCache(question.productId, false)?.find(
+            (q) =>
+              q.id === idDaPergunta &&
+              q.userId === user?.id &&
+              q.question === question.question,
+          );
+          if (confirmada) {
+            pendentes.delete(chave);
+            if (repetiuId) toast.success("Pergunta enviada com sucesso!");
+            return confirmada;
+          }
+        }
+        if (semResposta) return null;
         toast.error(
-          ehConsultaSemResposta(error)
-            ? "A conexão está lenta. Sua pergunta pode ter sido recebida. Confira antes de tentar de novo."
+          repetiuId
+            ? avisoDeDemora
             : mensagemDeErroDeSessaoDoPainel(error)
               ? "Sua sessão expirou ou esta conta não tem permissão para enviar a pergunta. Se a pergunta ainda estiver na tela, copie o texto antes de sair da conta. Entre de novo e tente enviar a pergunta outra vez."
               : "Erro ao enviar pergunta.",
         );
-        if (ehConsultaSemResposta(error)) {
-          await getQuestionsByProduct(question.productId, {
-            silencioso: true,
-          });
-          const conferidas = getQuestionsCache(question.productId, false);
-          // Só a linha confirmada pelo servidor limpa o rascunho no formulário.
-          return (
-            conferidas?.find(
-              (q) =>
-                q.userId === user?.id &&
-                q.question === question.question &&
-                !idsAntesDoEnvio.has(q.id),
-            ) ?? null
-          );
-        }
         return null;
       } finally {
         desmarcar();

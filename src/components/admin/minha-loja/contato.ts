@@ -4,6 +4,7 @@
 // WhatsApp some da loja); preenchido, vale DDD + número (10 ou 11 dígitos) e o
 // +55 do Brasil entra sozinho na hora de gravar.
 
+import { cortarTexto } from "@/lib/cortar-texto";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { observacaoDaClienteNoRecibo } from "@/lib/observacao-da-cliente-no-recibo";
 import { quemVaiReceberSeForOutro } from "@/lib/quem-vai-receber";
@@ -63,6 +64,9 @@ export function normalizarNumeroMototaxi(
   return `55${numero}`;
 }
 
+// Prefixo do link do WhatsApp com o maior número brasileiro (ver mensagemMototaxi).
+const TAMANHO_DO_PREFIXO_DO_LINK = 33;
+
 /** Mensagem mínima: só os campos que o painel já mostra para entregar. */
 export function mensagemMototaxi(order: Order, loja: string): string {
   const c = order.customer;
@@ -73,6 +77,7 @@ export function mensagemMototaxi(order: Order, loja: string): string {
     .filter(Boolean)
     .join(", ");
   const referencia = limpar(c.reference);
+  const cep = limpar(c.cep);
   const quemRecebe = quemVaiReceberSeForOutro(c.name, c.recipientName);
   // "Deixar na portaria", "campainha estragada": o que a cliente escreveu no
   // checkout. `order.notes` e o mesmo campo que a ficha mostra como
@@ -103,7 +108,7 @@ export function mensagemMototaxi(order: Order, loja: string): string {
           : situacao === "cobrar"
             ? `Cobrar na entrega: R$ ${valor} (${forma})`
             : "Pagamento pelo app pendente — não cobrar na entrega";
-  return [
+  const dadosDaEntrega = [
     `Entrega — Pedido #${numeroDoPedido(order.id)}`,
     `Cliente: ${c.name}`,
     // Compra para presente/portaria: quem recebe na porta e outra pessoa, e o
@@ -113,19 +118,62 @@ export function mensagemMototaxi(order: Order, loja: string): string {
     `Endereço: ${endereco}`,
     [
       limpar(c.neighborhood),
-      [c.city, c.state].filter(Boolean).join("/"),
-      c.cep ? `CEP ${c.cep}` : "",
+      [c.city, c.state].map(limpar).filter(Boolean).join("/"),
+      cep ? `CEP ${cep}` : "",
     ]
       .filter(Boolean)
       .join(" · "),
     referencia ? `Referência: ${referencia}` : "",
-    observacao ? `Observações do pedido: ${observacao}` : "",
-    `Itens: ${order.items.map((i) => `${i.quantity}× ${i.name}`).join("; ")}`,
+  ].filter(Boolean);
+  const linhaDaNota = (nota: string) =>
+    nota ? `Observações do pedido: ${nota}` : "";
+  const itens = order.items.map((i) => `${i.quantity}× ${i.name}`);
+  const linhaDaLoja = `Loja: ${loja}`;
+  const juntar = (...linhas: string[]) => linhas.filter(Boolean).join("\n");
+  // Reserve o prefixo inteiro do link e o maior número brasileiro com DDI:
+  // 33 caracteres (esquema, endereço do WhatsApp, 55 + DDD + 9 dígitos e "?text=").
+  const cabeNoLink = (texto: string) =>
+    TAMANHO_DO_PREFIXO_DO_LINK + encodeURIComponent(texto).length <= 1800;
+  const completa = juntar(
+    ...dadosDaEntrega,
+    linhaDaNota(observacao),
+    `Itens: ${itens.join("; ")}`,
     pagamento,
-    `Loja: ${loja}`,
-  ]
-    .filter(Boolean)
-    .join("\n");
+    linhaDaLoja,
+  );
+  if (cabeNoLink(completa)) return completa;
+
+  const resumo = (omitidos: number) =>
+    `+ ${omitidos} ${omitidos === 1 ? "item" : "itens"} (veja o pedido no painel)`;
+  const essenciais = juntar(...dadosDaEntrega, pagamento, linhaDaLoja);
+  const montar = (nota: string, lista: string, omitidos: number) =>
+    juntar(
+      essenciais,
+      linhaDaNota(nota),
+      lista ? `Itens: ${lista}` : "",
+      omitidos > 0 ? resumo(omitidos) : "",
+    );
+
+  let nota = observacao;
+  // Observações multibyte podem consumir o orçamento mesmo sem a lista.
+  // Preserve os dados de entrega e encurte a nota com o helper de texto.
+  if (!cabeNoLink(montar(nota, "", itens.length))) {
+    nota = cortarTexto(nota, 80);
+    if (!cabeNoLink(montar(nota, "", itens.length))) {
+      nota = "Veja a observação no painel.";
+    }
+  }
+  let lista = "";
+  let mensagem = montar(nota, lista, itens.length);
+  for (const [indice, item] of itens.entries()) {
+    // Só entra um item inteiro: nunca corte uma palavra ou emoji do nome.
+    const candidata = lista ? `${lista}; ${item}` : item;
+    const proxima = montar(nota, candidata, itens.length - indice - 1);
+    if (!cabeNoLink(proxima)) break;
+    lista = candidata;
+    mensagem = proxima;
+  }
+  return mensagem;
 }
 
 /** Valida o número nacional tanto no campo quanto antes de gravar. */

@@ -162,11 +162,8 @@ export function AdminDevolucoesView({
     () => false,
   );
 
-  const lista = useListaDeDevolucoes(
-    status,
-    filtroDoAtalho ? "" : busca,
-    active !== false,
-  );
+  const buscaDaLista = filtroDoAtalho ? "" : busca;
+  const lista = useListaDeDevolucoes(status, buscaDaLista, active !== false);
   const { recarregar } = lista;
 
   useEffect(() => {
@@ -294,7 +291,8 @@ export function AdminDevolucoesView({
     [onNavigate, podeDescartar],
   );
 
-  const contagem = lista.contagem;
+  // Os números por status são da loja toda, não dos resultados da busca.
+  const contagem = buscaDaLista.trim() ? null : lista.contagem;
   const rotuloDoFiltro =
     status === "abertas" ? "Abertas" : status ? rotuloStatusPlural(status) : "";
   const chips: Array<{

@@ -2,6 +2,7 @@
 // Sem o filtro IS NULL, remover a linha simples apagaria também a com variante.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
+import { toast } from "sonner";
 import {
   afterEach,
   beforeAll,
@@ -26,6 +27,7 @@ interface Consulta extends Promise<Resultado> {
   select: () => Consulta;
   eq: (coluna: keyof Linha, valor: unknown) => Consulta;
   is: (coluna: keyof Linha, valor: null) => Consulta;
+  in: (coluna: keyof Linha, valores: string[]) => Consulta;
 }
 
 const { banco } = vi.hoisted(() => ({
@@ -46,7 +48,7 @@ const produto = {
       name: "Cor",
       value: "Azul",
       stock_increment: 5,
-      price_override: null,
+      price_override: 7,
       active: true,
     },
   ],
@@ -99,6 +101,14 @@ vi.mock("@/lib/supabase", () => ({
                 select: () => consulta,
                 eq: (coluna: keyof Linha, valor: unknown) => {
                   filtros.push((linha) => Reflect.get(linha, coluna) === valor);
+                  return consulta;
+                },
+                in: (coluna: keyof Linha, valores: string[]) => {
+                  filtros.push((linha) =>
+                    valores.some(
+                      (valor) => Reflect.get(linha, coluna) === valor,
+                    ),
+                  );
                   return consulta;
                 },
                 is: (coluna: keyof Linha, valor: null) => {
@@ -182,7 +192,7 @@ describe("Ficha da cliente — remoção preserva a outra linha do mesmo produto
     hospedeiro.remove();
   });
 
-  async function removerPelaTela(indice: number) {
+  async function abrirAbaCarrinho() {
     await act(async () => {
       raiz.render(
         <TelaFicha userId="cliente-1" onBack={vi.fn()} onNavigate={vi.fn()} />,
@@ -204,6 +214,10 @@ describe("Ficha da cliente — remoção preserva a outra linha do mesmo produto
         }),
       );
     });
+  }
+
+  async function removerPelaTela(indice: number) {
+    await abrirAbaCarrinho();
     const lixeiras = hospedeiro.querySelectorAll<HTMLButtonElement>(
       'button[title="Remover do Carrinho"]',
     );
@@ -221,6 +235,54 @@ describe("Ficha da cliente — remoção preserva a outra linha do mesmo produto
     });
   }
 
+  async function abrirLimpeza() {
+    await abrirAbaCarrinho();
+    const gatilho = [...hospedeiro.querySelectorAll("button")].find(
+      (botao) => botao.textContent?.trim() === "Limpar Carrinho",
+    );
+    if (!gatilho) throw new Error("Botão Limpar Carrinho não encontrado.");
+    await act(async () => gatilho.click());
+    const dialogo = document.querySelector('[role="alertdialog"]');
+    if (!dialogo) throw new Error("Confirmação de limpeza não abriu.");
+    return dialogo;
+  }
+
+  it.each([1, 2])(
+    "a confirmação descreve a remoção de %i linha(s) visível(is)",
+    async (quantidade) => {
+      banco.linhas = banco.linhas.slice(0, quantidade);
+      const dialogo = await abrirLimpeza();
+      expect(dialogo.textContent).toContain(
+        quantidade === 1
+          ? "remove 1 produto do carrinho"
+          : "remove 2 produtos do carrinho",
+      );
+    },
+  );
+
+  it("preserva a linha nova e informa quantas foram realmente removidas", async () => {
+    const dialogo = await abrirLimpeza();
+    const confirmar = [...dialogo.querySelectorAll("button")].find(
+      (botao) => botao.textContent?.trim() === "Limpar Carrinho",
+    );
+    if (!confirmar) throw new Error("Botão de confirmação não encontrado.");
+
+    // Entre abrir a confirmação e clicar, uma linha sai e outra chega.
+    banco.linhas = banco.linhas
+      .filter(({ id }) => id === "linha-com-variante")
+      .flatMap((linha) => [
+        linha,
+        { ...linha, id: "linha-nova", variant_id: null },
+      ]);
+    await act(async () => confirmar.click());
+
+    expect(banco.apagadas).toEqual(["linha-com-variante"]);
+    expect(banco.linhas.map(({ id }) => id)).toEqual(["linha-nova"]);
+    expect(toast.success).toHaveBeenCalledWith(
+      "1 produto removido do carrinho.",
+    );
+  });
+
   it("remover o item sem variante apaga só ele e preserva a linha com variante", async () => {
     await removerPelaTela(0);
 
@@ -231,6 +293,38 @@ describe("Ficha da cliente — remoção preserva a outra linha do mesmo produto
     ).toHaveLength(1);
     expect(hospedeiro.textContent).toContain("Cor: Azul");
   });
+
+  it.each([1, 2])(
+    "deixa %i linha(s) sem variação fora do total",
+    async (quantidade) => {
+      const removidas = ["variante-removida", "variante-azul~tamanho-removido"];
+      banco.linhas.push(
+        ...removidas.slice(0, quantidade).map((variant_id, i) => ({
+          id: `linha-indisponivel-${i}`,
+          user_id: "cliente-1",
+          product_id: "produto-1",
+          quantity: 3,
+          variant_id,
+        })),
+      );
+      await abrirAbaCarrinho();
+
+      const total = [...hospedeiro.querySelectorAll("tr")].find((linha) =>
+        linha.textContent?.includes("Total estimado"),
+      );
+      expect(total?.lastElementChild?.textContent?.replace(/\s/g, " ")).toBe(
+        "R$ 24,00",
+      );
+      expect(
+        hospedeiro.textContent?.match(/Esta variação não existe mais/g),
+      ).toHaveLength(quantidade);
+      expect(hospedeiro.textContent).toContain(
+        quantidade === 1
+          ? "1 item sem preço (variação removida) não entra na soma."
+          : "2 itens sem preço (variação removida) não entram na soma.",
+      );
+    },
+  );
 
   it("controle: remover o item com variante preserva a linha sem variante", async () => {
     await removerPelaTela(1);

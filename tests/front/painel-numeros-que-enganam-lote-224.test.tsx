@@ -119,9 +119,9 @@ describe("4. selo 'vs. 30 dias antes'", () => {
     profit: 0,
     cost_sold: 0,
   });
-  // 60 dias: os 30 primeiros são os "30 dias antes"; os 30 últimos, o período.
+  // Dois períodos fechados de 30 dias, seguidos do dia parcial.
   const historico = (antes: number, agora: number) =>
-    Array.from({ length: 60 }, (_, i) => dia(i, i < 30 ? antes : agora));
+    Array.from({ length: 61 }, (_, i) => dia(i, i < 30 ? antes : agora));
 
   async function montar(growth: number, revenueHistory: unknown[]) {
     const stats = {

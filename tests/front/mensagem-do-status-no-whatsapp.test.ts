@@ -77,6 +77,17 @@ describe("mensagemDoStatusNoWhatsapp", () => {
     },
   );
 
+  it("pede confirmação quando o endereço longo da loja perde o CEP no corte", () => {
+    const mensagem = mensagemDoStatusNoWhatsapp({
+      ...retiradaPronta,
+      enderecoDeRetirada: `Rua ${"das Flores ".repeat(10)}, 123, ${"Bloco Azul ".repeat(7)} — ${"Bairro Novo ".repeat(6)}, ${"Cidade Nova ".repeat(7)}/MG — CEP 38500-000`,
+      horarioDeAtendimento,
+    });
+    expect(mensagem).toMatch(
+      /Retire em: .*…\n\(endereço resumido — confirme com a loja\)\nHorário:/,
+    );
+  });
+
   it("limita o endereço sem enviar um horário cortado", () => {
     const mensagem = mensagemDoStatusNoWhatsapp({
       ...retiradaPronta,

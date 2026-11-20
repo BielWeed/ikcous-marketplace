@@ -2177,6 +2177,7 @@ export function OrderDetailsView({
               <CustomerPaymentBadge
                 paymentStatus={order.paymentStatus}
                 orderStatus={order.status}
+                noBalcao={noBalcao}
               />
               {/* T7 do plano-mãe de estorno pelo app, corrigido na rodada 3
                   (laudo Opus PR#457, BLOQUEIA A/B): o selo acima é NEUTRO

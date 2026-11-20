@@ -87,8 +87,9 @@ vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({ user: { id: usuario.id }, isAdmin: false }),
 }));
 
+const lideranca = vi.hoisted(() => ({ isLeader: true }));
 vi.mock("@/hooks/useLeaderElection", () => ({
-  useLeaderElection: () => ({ isLeader: true }),
+  useLeaderElection: () => lideranca,
 }));
 
 vi.mock("sonner", () => ({
@@ -170,6 +171,8 @@ describe("useOrders — recarrega a lista quando o canal volta depois de uma que
       root?.unmount();
     });
     root = null;
+    lideranca.isLeader = true;
+    vi.unstubAllGlobals();
     vi.useRealTimers();
     vi.restoreAllMocks();
   });
@@ -277,6 +280,60 @@ describe("useOrders — recarrega a lista quando o canal volta depois de uma que
     await avisar("CLOSED");
     await avisar("SUBSCRIBED");
     expect(aoReconciliar).toHaveBeenCalledTimes(2);
+  });
+
+  it("a aba que recebe o repasse pede recontagem so quando a conexao volta", async () => {
+    let receber: ((evento: MessageEvent) => void) | undefined;
+    vi.stubGlobal(
+      "BroadcastChannel",
+      class extends BroadcastChannelStub {
+        private nome: string;
+
+        constructor(nome: string) {
+          super();
+          this.nome = nome;
+        }
+
+        addEventListener(
+          tipo?: string,
+          listener?: (evento: MessageEvent) => void,
+        ) {
+          if (this.nome === "ikcous_orders_realtime" && tipo === "message") {
+            receber = listener;
+          }
+        }
+      },
+    );
+    lideranca.isLeader = false;
+    usuario.id = `${usuario.id}-aba-sem-canal`;
+    canal.aviso = null;
+    await act(async () => {
+      root!.render(<Alvo />);
+    });
+    expect(canal.aviso).toBeNull();
+    expect(receber).toBeTypeOf("function");
+
+    const repassar = async (status: string) => {
+      await act(async () => {
+        receber?.(
+          new MessageEvent("message", {
+            data: {
+              type: "conn_status",
+              channelId: `order_updates_${usuario.id}`,
+              status,
+            },
+          }),
+        );
+      });
+    };
+
+    await repassar("conectado");
+    await repassar("reconectando");
+    expect(aoReconciliar).not.toHaveBeenCalled();
+    await repassar("conectado");
+    expect(aoReconciliar).toHaveBeenCalledTimes(1);
+    await repassar("conectado");
+    expect(aoReconciliar).toHaveBeenCalledTimes(1);
   });
 
   it("queda (CHANNEL_ERROR) seguida de SUBSCRIBED recarrega EXATAMENTE uma vez", async () => {

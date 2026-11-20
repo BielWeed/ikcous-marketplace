@@ -28,6 +28,20 @@ describe("motivoDaCotacao", () => {
   ])("traduz a falha ao salvar: %s", (motivo, frase) => {
     expect(motivoDaCotacao(motivo)).toBe(frase);
   });
+  it.each([
+    "there is no unique or exclusion constraint matching the ON CONFLICT specification",
+    "ON CONFLICT DO UPDATE command cannot affect row a second time",
+    "duplicate key value violates unique constraint",
+    "new row violates check constraint",
+    'relation "shipping_quotes_cache" does not exist',
+    'column "cart_hash" does not exist',
+    "function salvar_cotacao() does not exist",
+  ])("traduz a falha do banco ao guardar a cotação: %s", (detalhe) => {
+    expect(motivoDaCotacao(`Falha ao gravar a cotação: ${detalhe}`)).toBe(
+      "A cotação foi calculada, mas não pôde ser salva. Algumas opções de frete podem não ter aparecido para a cliente.",
+    );
+  });
+
   it("frase em português que a edge escreveu passa igual", () => {
     const credencial =
       'Sem credencial cadastrada para o provedor "melhor_envio". Conecte a transportadora para cotar entregas fora da cidade.';

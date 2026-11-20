@@ -163,6 +163,7 @@ import {
   esquecerReciboDoCheckout,
   guardarReciboDoCheckout,
   lerReciboDoCheckout,
+  lerReciboDoCheckoutNaEntrada,
 } from "@/lib/recibo-do-checkout";
 import { cotacaoValeParaDestino, soDigitos } from "@/lib/reconciliacao-de-cep";
 import {
@@ -6537,11 +6538,9 @@ export function CheckoutViewDaConta({
             configDoCartao={configDoCartao}
             emailDoPagador={user?.email ?? null}
             cobrancaIncerta={pedidoTemCobrancaIncerta}
-            pedidoMortoNoServidor={
-              orderId !== "" && pedidoMortoNoServidorId === orderId
-            }
+            pedidoMortoNoServidor={pedidoMortoNaTela}
             onVerMeusPedidos={() => onNavigate("orders")}
-            // Lote 210: o PIX que venceu com a tela aberta volta ao carrinho
+            // Quando o pedido fecha com a tela aberta, volta ao carrinho
             // pelo MESMO mecanismo do "pagamento não concluído" — e só quando
             // o pedido nasceu NESTA tela (há itens para devolver).
             onVoltarAoCarrinho={
@@ -6693,11 +6692,11 @@ export function CheckoutViewDaConta({
   ) {
     const lendoOCarrinho = lendoOCarrinhoSalvo === true && !propCart;
     // F5 depois do pedido (12/11/2026): o carrinho vazio é o pedido já feito,
-    // não um carrinho esquecido. Só o recibo DESTA conta (ou do visitante)
-    // vale; sem recibo, a tela de sempre.
+    // não um carrinho esquecido. Para visitante, só vale na mesma entrada
+    // do histórico em que o pedido foi confirmado.
     const pedidoDoRecibo = lendoOCarrinho
       ? null
-      : lerReciboDoCheckout(user?.id);
+      : lerReciboDoCheckoutNaEntrada(user?.id);
     return (
       <div className="pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4 lg:min-h-0">
         {lendoOCarrinho ? (

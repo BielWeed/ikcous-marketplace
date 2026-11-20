@@ -4,7 +4,8 @@
  *
  * Por que existe: a tela Pedidos guarda no aparelho o filtro, a busca, o
  * período, o pagamento, o canal e a página da última visita (é conveniência
- * de quem abre Pedidos pelo menu e quer continuar de onde parou). Mas o
+ * de quem abre Pedidos pelo menu e quer continuar de onde parou; só com o
+ * selo de Pedidos positivo o menu também pede esta abertura limpa). Mas o
  * atalho "Ver pedidos em aberto" do Início abre a lista em "Em aberto" — se a
  * tela abrir com o "Finalizados" ou a busca de outro dia, a lojista vê uma
  * lista vazia e acha que os pedidos sumiram.

@@ -78,49 +78,30 @@ function SeloDeCrescimento({ valor }: { readonly valor: number }) {
   );
 }
 
-/** Dias de calendário de cada janela do selo (30 fechados e os 30 antes). */
-const DIAS_DA_JANELA_DO_SELO = 30;
+const DIAS_DA_JANELA = 30;
+
+/** A série já vem em dias consecutivos de Brasília e termina em hoje. */
+function ultimosTrintaDiasFechados(
+  historico: DashboardStats["revenueHistory"],
+) {
+  return historico.slice(-(DIAS_DA_JANELA + 1), -1);
+}
 
 /** Soma em centavos inteiros: `0.1 + 0.2` não pode virar dinheiro. */
 const somaEmCentavos = (dias: readonly { revenue?: number | null }[]) =>
   dias.reduce((soma, dia) => soma + Math.round((dia.revenue ?? 0) * 100), 0);
 
-/**
- * Crescimento que o selo mostra, ou `null` quando não há o que comparar.
- *
- * A RPC conta "últimos 30 dias até a HORA de agora", e o gráfico/resumo contam
- * DIAS DE CALENDÁRIO: uma venda na borda entre as duas janelas fazia o selo
- * dizer "+100%" ao lado de "R$ 0 e nenhum pedido". Por isso, com histórico
- * suficiente, o selo sai do PRÓPRIO histórico: 30 dias FECHADOS terminando
- * ontem contra os 30 anteriores. O último dia do histórico é hoje, ainda
- * parcial: contá-lo faria a loja de R$ 100 por dia, olhada às 09:00, mostrar
- * queda (−2,1%) em vez de 0%. Sem base (30 dias antes zerados, inclusive as
- * duas janelas zeradas) não é crescimento: sem selo, mesmo critério dos chips
- * de Receita/Pedidos do CRM.
- *
- * Com histórico curto (< 61 dias: hoje + 60 fechados) a RPC é a reserva, com
- * as guardas de sempre: +100 ("de zero para qualquer coisa") e 0 (nenhuma
- * venda nos 60 dias) só valem se o histórico disponível confirma a base.
- */
-function crescimentoDoSelo(stats: DashboardStats): number | null {
-  const historico = stats.revenueHistory ?? [];
-  if (historico.length >= 2 * DIAS_DA_JANELA_DO_SELO + 1) {
-    // O fim em -1 deixa hoje (parcial) de fora: sobram só dias fechados.
-    const janelas = historico.slice(-(2 * DIAS_DA_JANELA_DO_SELO + 1), -1);
-    const antes = somaEmCentavos(janelas.slice(0, DIAS_DA_JANELA_DO_SELO));
-    const agora = somaEmCentavos(janelas.slice(DIAS_DA_JANELA_DO_SELO));
-    if (antes <= 0) return null;
-    return ((agora - antes) / antes) * 100;
-  }
-  const { growth } = stats;
-  if (typeof growth !== "number" || !Number.isFinite(growth)) return null;
-  const temVenda = (dias: readonly { revenue?: number | null }[]) =>
-    dias.some((dia) => (dia.revenue ?? 0) > 0);
-  // growth 0 sem nenhuma venda nos 60 dias: a RPC devolve 0 quando as duas
-  // janelas são zero, e isso não é "0% de crescimento".
-  if (growth === 0) return temVenda(historico.slice(-60)) ? growth : null;
-  if (growth !== 100) return growth;
-  return temVenda(historico.slice(-60, -30)) ? growth : null;
+/** Sem 60 dias fechados ou sem vendas na base, não há comparação válida. */
+function crescimentoDoSelo(
+  historico: DashboardStats["revenueHistory"],
+  atual: DashboardStats["revenueHistory"],
+): number | null {
+  if (historico.length < 2 * DIAS_DA_JANELA + 1) return null;
+  const antes = somaEmCentavos(
+    historico.slice(-(2 * DIAS_DA_JANELA + 1), -(DIAS_DA_JANELA + 1)),
+  );
+  if (antes <= 0) return null;
+  return ((somaEmCentavos(atual) - antes) / antes) * 100;
 }
 
 /** Teto do percentual do cartão "Sobre o estoque de hoje": acima disso o
@@ -152,7 +133,6 @@ export const OperationalPerformanceChart = memo(
   }: OperationalPerformanceChartProps) {
     const indisponivel = Boolean(avisoDaConsulta) && !stats;
     const semCusto = produtosSemCusto(stats);
-    const crescimento = !loading && stats ? crescimentoDoSelo(stats) : null;
     const _isMobile = useMediaQuery("(max-width: 1023px)");
     const [mounted, setMounted] = useState(false);
     useEffect(() => {
@@ -188,14 +168,26 @@ export const OperationalPerformanceChart = memo(
 
     // Filter history based on timeframe before processing
     const revenueHistory = stats?.revenueHistory;
+    const diasFechados = useMemo(
+      () => (revenueHistory ? ultimosTrintaDiasFechados(revenueHistory) : []),
+      [revenueHistory],
+    );
+    const crescimento =
+      !loading && revenueHistory
+        ? crescimentoDoSelo(revenueHistory, diasFechados)
+        : null;
     const filteredRevenueHistory = useMemo(() => {
       if (!revenueHistory) return [];
-      if (timeframe === "30") return revenueHistory.slice(-30);
+      if (timeframe === "30") {
+        return chartMode === "revenue"
+          ? diasFechados
+          : revenueHistory.slice(-DIAS_DA_JANELA);
+      }
       if (timeframe === "90") return revenueHistory.slice(-90);
       // "Tudo": a janela cobre anos, então os dias zerados ANTES da
       // primeira venda são aparados — a loja não nasceu 10 anos atrás.
       return desdeOPrimeiroDiaDeMovimento(revenueHistory);
-    }, [revenueHistory, timeframe]);
+    }, [revenueHistory, timeframe, chartMode, diasFechados]);
     const mostrarAno = serieCobreMaisDeUmAno(filteredRevenueHistory);
 
     // Faturamento Total / Pedidos / Ticket Médio do bloco de resumo, somados
@@ -298,7 +290,8 @@ export const OperationalPerformanceChart = memo(
           {crescimento !== null && <SeloDeCrescimento valor={crescimento} />}
           <ExplicacaoDoRelatorio titulo="Histórico da loja">
             Conta pelo dia em que o pedido foi feito, por isso pode ficar um
-            pouco diferente da Receita lá de cima.
+            pouco diferente da Receita lá de cima. Em Vendas, a janela de 30
+            dias termina ontem, assim como a comparação do selo.
             {semCusto > 0 && (
               <div className="mt-3">
                 <p>{avisoProdutosSemCusto(semCusto)}</p>

@@ -1291,7 +1291,12 @@ export const AdminReviewsView = memo(function AdminReviewsView({
               valor: "pendente",
               rotulo: "Em moderação",
               // A contagem é a da fila inteira no banco (a mesma do cartão "para aprovar"), não a da página.
-              contagem: pendentesNoBanco ?? "—",
+              contagem:
+                pendentesNoBanco === null
+                  ? "—"
+                  : ratingFilter !== "all" || searchQuery.trim()
+                    ? `${pendentesNoBanco} (total)`
+                    : pendentesNoBanco,
               tomDaContagem:
                 pendentesNoBanco !== null && pendentesNoBanco > 0
                   ? "atencao"

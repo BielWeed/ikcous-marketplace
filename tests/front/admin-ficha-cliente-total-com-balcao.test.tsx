@@ -322,6 +322,11 @@ describe("AdminUserDetailView — o total com o balcão do mesmo WhatsApp, no ar
     expect(texto).toContain("Pedidos(1)");
     expect(texto).not.toContain("Pedidos(2)");
     expect(texto).toContain("-CONTA");
+    expect(
+      hospedeiro.querySelector('[role="tabpanel"]')?.textContent,
+    ).toContain(
+      "1 venda de balcão ou sem conta com o mesmo WhatsApp ficou fora da lista",
+    );
   });
 
   it("deixa o pedido devolvido no histórico, mas não no total nem no valor médio", async () => {
@@ -392,5 +397,36 @@ describe("AdminUserDetailView — o total com o balcão do mesmo WhatsApp, no ar
     expect((divisao()?.textContent ?? "").replace(/\s+/g, " ").trim()).toBe(
       "(R$ 0,00 pela conta + R$ 100,00 no balcão ou sem conta, com o mesmo WhatsApp)",
     );
+    const aba = hospedeiro.querySelector('[role="tabpanel"]')?.textContent;
+    expect(aba).toContain(
+      "1 venda de balcão ou sem conta com o mesmo WhatsApp ficou fora da lista",
+    );
+    expect(aba).not.toContain("Nenhum pedido ainda");
+  });
+
+  it("usa a quantidade do balcão, mesmo com pedidos cancelados no histórico", async () => {
+    estado.orders = [
+      { ...PEDIDO_DA_CONTA, id: "cancelado-1", status: "cancelled" },
+      { ...PEDIDO_DA_CONTA, id: "cancelado-2", status: "cancelled" },
+    ];
+    estado.balcao = { pedidos: 2, total: 100 };
+    await abrirFicha();
+
+    expect(pedidosFeitos()).toBe("2");
+    expect(hospedeiro.textContent).toContain("Pedidos(2)");
+    expect(
+      hospedeiro.querySelector('[role="tabpanel"]')?.textContent,
+    ).toContain(
+      "2 vendas de balcão ou sem conta com o mesmo WhatsApp ficaram fora da lista",
+    );
+  });
+
+  it("sem pedidos na conta e sem balcão, mantém a mensagem de lista vazia", async () => {
+    estado.orders = [];
+    await abrirFicha();
+
+    const aba = hospedeiro.querySelector('[role="tabpanel"]')?.textContent;
+    expect(aba).toContain("Nenhum pedido ainda");
+    expect(aba).not.toContain("WhatsApp");
   });
 });

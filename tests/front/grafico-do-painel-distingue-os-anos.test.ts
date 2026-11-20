@@ -73,6 +73,10 @@ it.each(["Vendas", "Retorno do estoque"])(
         [...hospedeiro.querySelectorAll("button")]
           .find((b) => b.textContent === modo)
           ?.click();
+        // Uma série de dois anos pertence a Tudo, não à janela de 30 dias.
+        [...hospedeiro.querySelectorAll("button")]
+          .find((b) => b.textContent === "Tudo")
+          ?.click();
       });
       for (const seletor of ["eixo", "balao"]) {
         const elemento = hospedeiro.querySelector(`[data-testid="${seletor}"]`);

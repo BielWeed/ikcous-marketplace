@@ -1461,7 +1461,15 @@ export function lerRespostaEtiquetaReversa(
   if (!ehObjeto(v)) return { ok: false, erro: ERRO_ETIQUETA, resgate: false };
   const erro = texto(campo(v, "error"));
   if (erro) {
-    return { ok: false, erro, resgate: campo(v, "resgate") === true };
+    const status =
+      /^Só devolução aprovada gera o código de postagem \(status atual: "([^"]+)"\)\.$/.exec(
+        erro,
+      )?.[1];
+    const rotulo = ROTULO_STATUS.get(status as StatusDevolucao);
+    const mensagem = status
+      ? `Só é possível gerar o código de postagem para devoluções aprovadas.${rotulo ? ` Situação atual: ${rotulo}.` : ""} Atualize a lista.`
+      : erro;
+    return { ok: false, erro: mensagem, resgate: campo(v, "resgate") === true };
   }
   const codigo = texto(campo(v, "codigo_postagem"));
   if (campo(v, "ok") !== true || !codigo) {

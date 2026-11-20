@@ -17,6 +17,7 @@ type ConsultaRemocao = Promise<Resultado> & {
   select: () => ConsultaRemocao;
   eq: (campo: string, id: string) => ConsultaRemocao;
   is: () => ConsultaRemocao;
+  in: () => ConsultaRemocao;
 };
 
 function adiar() {
@@ -60,6 +61,7 @@ vi.mock("@/lib/supabase", () => ({
             return consulta;
           },
           is: () => consulta,
+          in: () => consulta,
         });
         return consulta;
       },
@@ -81,7 +83,9 @@ function ficha(id: string): Resultado {
       },
       orders: [],
       addresses: [],
-      cart_items: [{ product_id: `produto-${id}`, quantity: 1 }],
+      cart_items: [
+        { id: `linha-${id}`, product_id: `produto-${id}`, quantity: 1 },
+      ],
     },
     error: null,
   };

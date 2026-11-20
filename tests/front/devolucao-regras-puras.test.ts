@@ -340,6 +340,24 @@ describe("leitores do jsonb das RPCs", () => {
     expect(lerRespostaEtiquetaReversa({ ok: true }).ok).toBe(false);
   });
 
+  it.each([
+    ["cancelada", "Cancelada"],
+    ["em_transito", "A caminho"],
+  ])(
+    "etiqueta reversa: mostra o rótulo do painel quando o status mudou para %s",
+    (status, rotulo) => {
+      expect(
+        lerRespostaEtiquetaReversa({
+          error: `Só devolução aprovada gera o código de postagem (status atual: "${status}").`,
+        }),
+      ).toEqual({
+        ok: false,
+        erro: `Só é possível gerar o código de postagem para devoluções aprovadas. Situação atual: ${rotulo}. Atualize a lista.`,
+        resgate: false,
+      });
+    },
+  );
+
   // Achado A2 (revisão de risco de 26/09/2026): os campos R6 (`dce_pendente`),
   // R8 (`expirado`) e o `aviso` novo de A1 chegavam na edge e o leitor os
   // descartava — o painel só via o toast de sucesso, nunca o aviso.

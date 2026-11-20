@@ -275,6 +275,7 @@ interface CustomerPaymentBadgeProps {
   // Opcional para não quebrar chamador nenhum: sem ela, o comportamento é
   // idêntico ao de antes desta correção.
   orderStatus?: OrderStatus | null;
+  noBalcao?: boolean;
   className?: string;
   /** `perfil`: mesmo selo da lista, com texto de 12 px (cartão do Perfil). */
   variant?: "lista" | "perfil";
@@ -288,10 +289,15 @@ interface CustomerPaymentBadgeProps {
 export const CustomerPaymentBadge = memo(function CustomerPaymentBadge({
   paymentStatus,
   orderStatus,
+  noBalcao = false,
   className,
   variant,
 }: Readonly<CustomerPaymentBadgeProps>) {
-  const entry = customerPaymentStatusEntry(paymentStatus, orderStatus);
+  // A anulação no balcão não devolve dinheiro pelo app.
+  const entry =
+    noBalcao && orderStatus === "cancelled" && paymentStatus === "estornado"
+      ? { ...ESTORNADO_RESOLVIDO, label: "Venda anulada" }
+      : customerPaymentStatusEntry(paymentStatus, orderStatus);
   if (!entry) return null;
   const styles = toneStyles[entry.tone];
   const Icon =

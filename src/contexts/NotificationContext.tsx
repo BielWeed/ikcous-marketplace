@@ -421,34 +421,21 @@ export function NotificationProvider({
     );
     const limite = Date.now() + PRAZO_DE_MARCAR_TODAS_COMO_LIDAS_MS;
     const semResposta = new Error("Prazo para marcar avisos como lidos");
-    try {
-      let error: unknown = null;
+    const concluirMarcacao = async () => {
       for (const lote of emLotes(idsPropriosNaoLidos)) {
-        const restante = limite - Date.now();
-        if (restante <= 0) throw semResposta;
-        const resposta = await aguardarComPrazo(
-          Promise.resolve(
-            supabase
-              .from("notificacoes")
-              .update({ lida: true })
-              .in("id", lote)
-              .eq("usuario_id", donoDaOperacao)
-              .eq("lida", false),
-          ),
-          restante,
-          () => semResposta,
-        );
-        if (resposta.error) {
-          error = resposta.error;
-          break;
-        }
+        // Não começa outro lote depois do prazo, mas aceita a confirmação
+        // tardia de todos os lotes já enviados (se não faltou nenhum).
+        if (Date.now() >= limite) throw semResposta;
+        const { error } = await supabase
+          .from("notificacoes")
+          .update({ lida: true })
+          .in("id", lote)
+          .eq("usuario_id", donoDaOperacao)
+          .eq("lida", false);
+        if (error) throw error;
       }
 
       const contaMudou = usuarioAtualIdRef.current !== donoDaOperacao;
-      if (error) {
-        if (contaMudou) return;
-        throw error;
-      }
 
       // O UPDATE acima só alcança as linhas da própria cliente. Os avisos de
       // campanha (usuario_id nulo) que ainda estavam não lidos ficam de fora
@@ -469,6 +456,15 @@ export function NotificationProvider({
       // agora, também no banco).
       setNotifications((prev) =>
         prev.map((n) => (idsNaoLidos.has(n.id) ? { ...n, read: true } : n)),
+      );
+    };
+
+    try {
+      // O prazo limita a espera do botão, não a conclusão da operação.
+      await aguardarComPrazo(
+        concluirMarcacao(),
+        PRAZO_DE_MARCAR_TODAS_COMO_LIDAS_MS,
+        () => semResposta,
       );
     } catch (err) {
       if (usuarioAtualIdRef.current !== donoDaOperacao) return;

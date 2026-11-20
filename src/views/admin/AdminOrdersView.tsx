@@ -67,7 +67,10 @@ import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import { caminhoDoPedidoNoAviso } from "@/lib/alvo-do-aviso";
 import { orientacaoDeDevolucao } from "@/lib/anulacao-do-balcao";
 import { consumirPedidoDePedidosSemFiltroAntigo } from "@/lib/atalho-do-inicio-para-pedidos";
-import { tipoDoAvisoDoPedido } from "@/lib/aviso-de-pedido-atualizado";
+import {
+  deveAvisarPedidoNovo,
+  tipoDoAvisoDoPedido,
+} from "@/lib/aviso-de-pedido-atualizado";
 import { formatarInteiro } from "@/lib/crm";
 import { mensagemDeErroDeSessaoDoPainel } from "@/lib/erro-de-sessao-do-painel";
 import {
@@ -449,9 +452,8 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     Record<string, "INSERT" | "UPDATE">
   >({});
   const onRealtimeEventRef = useRef<(payload: any) => void>(() => {});
-  // A conexão ao vivo reconfirmou e a lista foi relida (`onReconciliar`, em
-  // useOrders): os cartões do topo perderam os mesmos eventos. Ref pelo mesmo
-  // motivo do acima — `pedirRecargaDosNumeros` só existe depois deste hook.
+  // Após a reconexão, o topo e a ficha aberta por link precisam conferir os
+  // eventos perdidos. Os callbacks só existem depois de chamar useOrders.
   const aoReconciliarRef = useRef<() => void>(() => {});
   const {
     orders,
@@ -664,8 +666,9 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   // salvos no aparelho (conveniência de quem abre pelo menu), mas quem toca
   // num atalho para ver os pedidos em aberto e cai numa lista de
   // outro assunto acha que os pedidos sumiram. O recado é de uma vez só e tem
-  // validade (src/lib/atalho-do-inicio-para-pedidos.ts); abrir pelo menu não
-  // o gera, então a preferência salva de quem usa o menu não é tocada. Como a
+  // validade (src/lib/atalho-do-inicio-para-pedidos.ts); abrir pelo menu só o
+  // gera quando o selo de Pedidos está positivo (o menu então abre a lista que
+  // o selo conta); sem selo, a preferência salva não é tocada. Como a
   // tela fica montada atrás das outras abas, o gancho é `active` virar `true`
   // (vale também para a primeira abertura). As trocas abaixo cancelam a carga
   // com o filtro antigo que o efeito de carga já agendou (espera de 320 ms).
@@ -1133,14 +1136,16 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   // atualização dela, e ele se perde com a rede fora ou a aba em segundo plano.
   // Ao a rede voltar e ao a aba voltar a ficar visível, revalida em silêncio
   // pelo mesmo caminho do evento ao vivo (sem spinner, sem desmontar a ficha).
+  const revalidarFichaDeLink = useCallback(() => {
+    if (!active || !selectedOrderId) return;
+    if (resolvedOrderIdRef.current !== selectedOrderId) return;
+    if (orders.some((o) => o.id === selectedOrderId)) return;
+    revalidacaoSilenciosaRef.current = true;
+    setRevalidacaoDaFicha((n) => n + 1);
+  }, [active, selectedOrderId, orders]);
+
   useEffect(() => {
     if (!active || !selectedOrderId) return;
-    const revalidarFichaDeLink = () => {
-      if (resolvedOrderIdRef.current !== selectedOrderId) return;
-      if (orders.some((o) => o.id === selectedOrderId)) return;
-      revalidacaoSilenciosaRef.current = true;
-      setRevalidacaoDaFicha((n) => n + 1);
-    };
     const aoMudarAVisibilidade = () => {
       if (document.visibilityState === "visible") revalidarFichaDeLink();
     };
@@ -1150,7 +1155,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       globalThis.removeEventListener("online", revalidarFichaDeLink);
       document.removeEventListener("visibilitychange", aoMudarAVisibilidade);
     };
-  }, [active, selectedOrderId, orders]);
+  }, [active, selectedOrderId, revalidarFichaDeLink]);
 
   useEffect(() => {
     const container =
@@ -1528,8 +1533,11 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   }, [isOffline, active, currentPage, loadAllData, pedirRecargaDosNumeros]);
 
   useEffect(() => {
-    aoReconciliarRef.current = pedirRecargaDosNumeros;
-  }, [pedirRecargaDosNumeros]);
+    aoReconciliarRef.current = () => {
+      pedirRecargaDosNumeros();
+      revalidarFichaDeLink();
+    };
+  }, [pedirRecargaDosNumeros, revalidarFichaDeLink]);
 
   useEffect(() => {
     onRealtimeEventRef.current = (payload) => {
@@ -1563,9 +1571,9 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         setRodadaDaMedicaoAbsoluta((n) => n + 1);
       }
 
-      // Dispara aviso Toast
+      // Reserva online só ganha aviso na confirmação do pagamento (UPDATE).
       if (payload.eventType === "INSERT") {
-        if (payload.new?.canal !== "presencial") {
+        if (deveAvisarPedidoNovo(payload.new)) {
           const newId = payload.new?.id;
           toast.info(`Novo pedido recebido! #${numeroDoPedido(newId)}`, {
             duration: 10_000,

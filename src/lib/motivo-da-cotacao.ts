@@ -25,6 +25,19 @@ export type NomeDoProvedor = (id: string) => string | null | undefined;
 // há mais de uma transportadora ligada.
 const PREFIXO_DE_PROVEDOR = /^([a-z][a-z_]*): ([\s\S]*)$/;
 const PREFIXO_PARCIAL = /^Cotação parcial: /;
+const PREFIXO_FALHA_AO_GRAVAR = "Falha ao gravar a cotação: ";
+const FALHA_TECNICA_AO_GRAVAR =
+  /\b(?:ON CONFLICT|unique or exclusion constraint|duplicate key|violates)\b|^(?:relation|column|function) .+ does not exist\b/i;
+
+export function ehFalhaTecnicaAoGravarCotacao(
+  texto: string | null | undefined,
+): boolean {
+  return (
+    !!texto &&
+    texto.startsWith(PREFIXO_FALHA_AO_GRAVAR) &&
+    FALHA_TECNICA_AO_GRAVAR.test(texto.slice(PREFIXO_FALHA_AO_GRAVAR.length))
+  );
+}
 // "<Nome> API retornou <status>: <corpo>" (provedores.ts).
 const API_RETORNOU = /\bAPI retornou (\d{3})\b/;
 // Corpo que é JSON ou HTML, não frase.
@@ -106,6 +119,9 @@ export function motivoDaCotacao(
     )
   ) {
     return "A cotação foi calculada, mas o banco demorou demais para guardá-la.";
+  }
+  if (ehFalhaTecnicaAoGravarCotacao(texto)) {
+    return "A cotação foi calculada, mas não pôde ser salva. Algumas opções de frete podem não ter aparecido para a cliente.";
   }
   if (texto.startsWith("configuracao_mudou_durante_cotacao:")) {
     return "A configuração do frete mudou durante a cotação; nada foi guardado. Tente de novo.";

@@ -424,10 +424,9 @@ describe("AdminBannersView — produto do banner: preço da vitrine e produto pa
 
     it.each([
       ["caminho relativo", "/product-detail?id=p-pausado"],
-      ["URL completa", "https://loja.test/product-detail?id=p-pausado"],
       [
-        "URL completa de outro host com id codificado",
-        "https://outra-loja.test/product-detail?campanha=verao&id=p%2Dpausado#foto",
+        "URL completa do mesmo host com id codificado",
+        `${window.location.origin}/product-detail?campanha=verao&id=p%2Dpausado#foto`,
       ],
     ])("o cartão avisa que o toque leva à Home: %s", async (_, link) => {
       await montarBannerComLink(link);
@@ -435,7 +434,11 @@ describe("AdminBannersView — produto do banner: preço da vitrine e produto pa
     });
 
     it.each([
-      ["outra página externa", "https://loja.test/ofertas?id=p-pausado"],
+      [
+        "URL completa de outro host com o mesmo id",
+        "https://outra-loja.test/product-detail?campanha=verao&id=p%2Dpausado#foto",
+      ],
+      ["outra página", `${window.location.origin}/ofertas?id=p-pausado`],
       ["URL de produto com id vazio", "https://loja.test/product-detail?id="],
     ])("o cartão não avisa sobre produto pausado: %s", async (_, link) => {
       await montarBannerComLink(link);

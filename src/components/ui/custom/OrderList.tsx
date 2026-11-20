@@ -615,6 +615,7 @@ export const OrderList = memo(function OrderList({
                 <CustomerPaymentBadge
                   paymentStatus={order.paymentStatus}
                   orderStatus={order.status}
+                  noBalcao={noBalcao}
                   variant="perfil"
                   className="mt-2"
                 />

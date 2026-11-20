@@ -36,6 +36,7 @@ const { estado } = vi.hoisted(() => ({
     // Quantas linhas o `.delete().select("id")` do banco devolve. 0 == a
     // policy descartou tudo (RLS bloqueou); 1 == a policy deixou passar.
     linhasApagadas: 0 as number,
+    linhasNoCarrinho: 1,
   },
 }));
 
@@ -66,7 +67,12 @@ vi.mock("@/lib/supabase", () => ({
             },
           ],
           cart_items: [
-            { product_id: "produto-1", quantity: 2, variant_id: null },
+            ...Array.from({ length: estado.linhasNoCarrinho }, (_, i) => ({
+              id: `linha-${i}`,
+              product_id: `produto-${i + 1}`,
+              quantity: 2,
+              variant_id: null,
+            })),
           ],
           addresses: [],
         },
@@ -95,6 +101,7 @@ vi.mock("@/lib/supabase", () => ({
             builder.select = () => builder;
             builder.eq = () => builder;
             builder.is = () => builder;
+            builder.in = () => builder;
             return builder;
           },
         };
@@ -128,6 +135,7 @@ describe("AdminUserDetailView — o painel não mente sobre o carrinho nem o ped
   beforeEach(() => {
     vi.clearAllMocks();
     estado.linhasApagadas = 0;
+    estado.linhasNoCarrinho = 1;
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -306,13 +314,16 @@ describe("AdminUserDetailView — o painel não mente sobre o carrinho nem o ped
 
   it("controle negativo: limpar carrinho de DOIS itens mostra o sucesso", async () => {
     estado.linhasApagadas = 2;
+    estado.linhasNoCarrinho = 2;
     await abrirFicha();
     await abrirAbaCarrinho();
 
     await limparCarrinhoConfirmando();
 
     const { toast } = await import("sonner");
-    expect(toast.success).toHaveBeenCalledWith("Carrinho limpo com sucesso!");
+    expect(toast.success).toHaveBeenCalledWith(
+      "2 produtos removidos do carrinho.",
+    );
     expect(toast.error).not.toHaveBeenCalled();
   });
 

@@ -21,14 +21,15 @@
 //
 // sessionStorage, como o arquivo irmão: é coisa da ABA. Vale 2 horas; vencido,
 // a leitura o apaga. Um recibo por aba (o pedido novo substitui o anterior).
-// O recibo só aparece para quem o gravou: conta diferente, ou conta no lugar de
-// visitante (e o inverso), lê "nada guardado" — sem apagar, porque a sessão do
-// dono pode ainda estar a caminho (rede lenta).
+// Conta diferente (ou conta no lugar de visitante) lê "nada guardado".
+// Para visitante, a tela exige também a entrada do histórico da confirmação:
+// F5 preserva essa entrada, abrir outro checkout na aba não.
 //
 // Best-effort, como o irmão: storage cheio, modo privado ou SecurityError (até o
 // ACESSO a `globalThis.sessionStorage` pode lançar) nunca derrubam o checkout.
-// Quem apaga: o AuthContext (logout), a leitura do que venceu e o checkout
-// quando vê o cancelamento do pedido do recibo. NINGUÉM apaga por AUSÊNCIA de usuário.
+// Quem apaga: o logout, a leitura do que venceu e o cancelamento do pedido.
+// A navegação também descarta o recibo de visitante ao encerrar o checkout.
+// NINGUÉM apaga por AUSÊNCIA de usuário.
 
 const CHAVE_DO_RECIBO = "ikcous:checkout-recibo";
 
@@ -114,6 +115,12 @@ export function guardarReciboDoCheckout(
   };
   try {
     armazem()?.setItem(CHAVE_DO_RECIBO, JSON.stringify(recibo));
+    if (recibo.userId === null) {
+      globalThis.history.replaceState(
+        { ...globalThis.history.state, reciboVisitanteGravadoEm: agora },
+        "",
+      );
+    }
   } catch {
     // Sem recibo, o F5 cai na tela de sempre ("Seu carrinho está vazio").
     // Nunca impede o pedido.
@@ -128,6 +135,23 @@ export function lerReciboDoCheckout(
   const recibo = lerRegistro(agora);
   if (!recibo) return null;
   return recibo.userId === donoNormalizado(userId) ? recibo.pedidoId : null;
+}
+
+/** A mesma aba não identifica um visitante: só a entrada da confirmação vale. */
+export function lerReciboDoCheckoutNaEntrada(
+  userId: string | undefined,
+): string | null {
+  if (userId) return lerReciboDoCheckout(userId);
+  const recibo = lerRegistro(Date.now());
+  return recibo?.userId === null &&
+    globalThis.history.state?.reciboVisitanteGravadoEm === recibo.gravadoEm
+    ? recibo.pedidoId
+    : null;
+}
+
+/** Sair do checkout ou iniciar outro encerra a confirmação do visitante. */
+export function esquecerReciboDeVisitanteDoCheckout(): void {
+  if (lerRegistro(Date.now())?.userId === null) apagar();
 }
 
 /** Apaga o recibo (logout ou cancelamento do pedido do recibo). */

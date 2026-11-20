@@ -528,6 +528,19 @@ describe("CheckoutView — F5 depois do pedido diz 'Seu pedido já foi feito'", 
   });
 
   describe("quando a tela nova NÃO aparece: a tela de hoje continua igual", () => {
+    it("uma nova entrada no checkout não herda o recibo de visitante da entrada anterior", async () => {
+      await pagarNaEntregaComoVisitante();
+      const confirmacao = history.state;
+      try {
+        history.pushState({ view: "checkout" }, "");
+        await apertarF5();
+
+        expect(textoDaTela()).toContain(FRASE_DO_CARRINHO_VAZIO);
+        expect(textoDaTela()).not.toContain(NUMERO);
+      } finally {
+        history.replaceState(confirmacao, "");
+      }
+    });
     it("sem recibo: 'Seu carrinho está vazio' e 'Voltar ao carrinho'", async () => {
       mockCart = [];
       mockCartTotal = 0;

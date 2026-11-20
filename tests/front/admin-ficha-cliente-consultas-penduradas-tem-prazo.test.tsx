@@ -28,6 +28,7 @@ interface ConsultaDublada extends Promise<unknown> {
   select: () => ConsultaDublada;
   eq: () => ConsultaDublada;
   is: () => ConsultaDublada;
+  in: () => ConsultaDublada;
 }
 
 const h = vi.hoisted(() => ({
@@ -92,6 +93,7 @@ vi.mock("@/lib/supabase", () => ({
                 select: () => consulta,
                 eq: () => consulta,
                 is: () => consulta,
+                in: () => consulta,
               },
             );
             return consulta;

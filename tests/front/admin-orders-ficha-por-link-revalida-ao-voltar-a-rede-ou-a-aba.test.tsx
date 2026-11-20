@@ -23,6 +23,7 @@ const eqDaBuscaAvulsa = vi.fn();
 
 // `orders` do hook fica VAZIO: o pedido nunca está na página carregada.
 let mockOrders: Order[] = [];
+let aoReconciliar: (() => void) | undefined;
 
 vi.mock("@/hooks/useDevolucoesAdmin", () => ({
   useDevolucoesAbertas: () => ({ abertas: 0 }),
@@ -34,7 +35,12 @@ vi.mock("@/hooks/useOrders", async () => {
     );
   return {
     ErroPedidoMudou: real.ErroPedidoMudou,
-    useOrders: () => {
+    useOrders: (
+      _ativo: boolean,
+      _admin: boolean,
+      options: { onReconciliar?: () => void },
+    ) => {
+      aoReconciliar = options.onReconciliar;
       return {
         orders: mockOrders,
         loadOrders: vi.fn(),
@@ -369,6 +375,25 @@ describe("AdminOrdersView — ficha por link revalida ao voltar a rede ou a aba 
     expect(telaDeErro()).toBeFalsy();
     expect(spinnerDeCarregamento()).toBeFalsy();
     expect(hospedeiro.textContent).toContain("Cliente Teste");
+  });
+
+  it("a conexao ao vivo volta e a ficha mostra o status novo sem perder a anotacao", async () => {
+    await renderizar();
+    expect(botaoDeAvancar()).toContain("Em Trânsito");
+    await digitarUmaAnotacao("entregar depois das 18h");
+    from.mockImplementation(() =>
+      builderPedidoUnico({ ...linhaCruaDoDeepLink(), status: "shipping" }),
+    );
+
+    expect(aoReconciliar).toBeTypeOf("function");
+    await act(async () => {
+      aoReconciliar?.();
+    });
+    await assentar();
+
+    expect(botaoDeAvancar()).toContain("Finalizado");
+    expect(eqDaBuscaAvulsa).toHaveBeenCalledTimes(2);
+    expect(textareaDeNotas()?.value).toBe("entregar depois das 18h");
   });
 
   it("a rede volta e a ficha passa a mostrar o status novo (era o que ficava congelado)", async () => {
