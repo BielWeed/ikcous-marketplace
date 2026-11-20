@@ -156,6 +156,51 @@ describe("AdminCouponFormView — aviso do cupom que pode cobrir a compra inteir
     expect(texto).not.toBe(FRASE_PADRAO);
   });
 
+  it("R$ 30 sem mínimo na loja só-app: explica que a compra pode zerar", async () => {
+    mockFormasNaEntrega = [];
+    mockCoupons = [cupom({ type: "fixed", value: 30 })];
+    await abrirTela("c1");
+
+    expect(aviso()?.textContent ?? "").toMatch(
+      /compra de até R\$\s*30,00 pode ficar em R\$ 0,00/,
+    );
+    expect(aviso()?.textContent).toContain("Defina um valor mínimo");
+  });
+
+  it("R$ 30 sem mínimo com pagamento na entrega: sem aviso", async () => {
+    mockCoupons = [cupom({ type: "fixed", value: 30 })];
+    await abrirTela("c1");
+
+    expect(aviso()).toBeNull();
+  });
+
+  it("R$ 100 sem mínimo com pagamento na entrega: mantém o aviso padrão", async () => {
+    mockCoupons = [cupom({ type: "fixed", value: 100 })];
+    await abrirTela("c1");
+
+    expect(aviso()?.textContent).toBe(FRASE_PADRAO);
+  });
+
+  it.each([
+    [40, false],
+    [30, true],
+  ])(
+    "R$ 30 em loja só-app com mínimo de R$ %i: mantém a regra anterior",
+    async (minPurchase, deveAvisar) => {
+      mockFormasNaEntrega = [];
+      mockCoupons = [cupom({ type: "fixed", value: 30, minPurchase })];
+      await abrirTela("c1");
+
+      if (deveAvisar) {
+        expect(aviso()?.textContent).toContain(
+          "sua loja só recebe pagamento pelo app",
+        );
+      } else {
+        expect(aviso()).toBeNull();
+      }
+    },
+  );
+
   it("loja só-app mas cupom pequeno: nenhum aviso", async () => {
     mockFormasNaEntrega = [];
     mockCoupons = [cupom({ value: 10 })];

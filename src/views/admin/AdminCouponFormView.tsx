@@ -290,6 +290,14 @@ function FormularioDoCupom({
   });
 
   const textoDoLimite = textoLimite ?? String(formData.usageLimit || "");
+  const cupomPodeZerar = cupomPodeCobrirACompraInteira(formData);
+  const valorDoCupom = formData.value ?? 0;
+  const avisarCupomFixoSemMinimo =
+    lojaSoRecebePeloApp &&
+    formData.type === "fixed" &&
+    Number.isFinite(valorDoCupom) &&
+    valorDoCupom > 0 &&
+    (formData.minPurchase ?? 0) === 0;
   const limiteDeUsos = lerLimiteDeUsosDoCupom(textoDoLimite);
 
   // Laudo 0109 (A4): a decisão editar×criar MORAVA na lista carregada
@@ -1327,7 +1335,7 @@ function FormularioDoCupom({
             {/* CUPOM QUE COBRE A COMPRA INTEIRA (dono, 14/10/2026): aviso, nunca
                 bloqueio — o cupom salva normalmente. Mais forte quando a loja
                 só recebe pelo app: aí a cliente NÃO consegue fechar. */}
-            {cupomPodeCobrirACompraInteira(formData) && (
+            {(cupomPodeZerar || avisarCupomFixoSemMinimo) && (
               <div
                 role="note"
                 data-testid="aviso-cupom-cobre-a-compra"
@@ -1338,9 +1346,11 @@ function FormularioDoCupom({
                   className="mt-0.5 size-5 shrink-0 text-orange-300"
                 />
                 <p className="text-sm leading-relaxed text-orange-200">
-                  {lojaSoRecebePeloApp
-                    ? AVISO_CUPOM_PODE_COBRIR_E_LOJA_SO_NO_APP
-                    : AVISO_CUPOM_PODE_COBRIR_A_COMPRA}
+                  {avisarCupomFixoSemMinimo && !cupomPodeZerar
+                    ? `Sem valor mínimo e com frete grátis, uma compra de até ${formatCurrency(valorDoCupom)} pode ficar em R$ 0,00 e a cliente não consegue fechar pelo app. Defina um valor mínimo acima do desconto ou ligue uma forma de pagamento na retirada ou na entrega.`
+                    : lojaSoRecebePeloApp
+                      ? AVISO_CUPOM_PODE_COBRIR_E_LOJA_SO_NO_APP
+                      : AVISO_CUPOM_PODE_COBRIR_A_COMPRA}
                 </p>
               </div>
             )}
