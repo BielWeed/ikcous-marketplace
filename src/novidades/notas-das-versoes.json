@@ -1,4 +1,28 @@
 {
+  "1.5.224": {
+    "titulo": "Painel e checkout mais firmes com rede lenta",
+    "novidades": [],
+    "correcoes": [
+      "No painel, ao salvar um produto novo, se a resposta do servidor demorar, tentar de novo não cria o produto duas vezes. Isso vale também em aparelhos que não geram o identificador do jeito moderno.",
+      "No painel, ao salvar as transportadoras do Frete, a tela não fica presa em “Salvando” quando a rede não responde. O botão volta depois de 30 segundos e a tela orienta a sair do Frete e voltar para conferir o que ficou gravado, antes de tentar de novo.",
+      "Na configuração do Mercado Pago, a chave pública não aceita mais o token secreto colado por engano, e a tela explica que testar a conexão não confirma que os avisos de pagamento estão chegando.",
+      "Ao reabrir uma variação nova depois de um conflito de gravação, o estoque herdado da primeira variação é atualizado e não devolve à venda uma peça já vendida, sem apagar o que a lojista digitou.",
+      "No checkout, o cupom não é mais marcado como vencido só porque o relógio do aparelho está adiantado: a tela mostra a data de validade, mantém o botão e deixa a conferência final com o servidor.",
+      "O complemento e os demais textos do endereço deixam de aceitar caracteres invisíveis de direção do texto, que podiam embaralhar a ordem de “Apto 120”. A limpeza vale ao salvar o endereço, ao copiar o endereço do pedido, na mensagem ao mototáxi e nos pedidos de quem compra sem conta. Pedidos antigos também aparecem limpos na ficha e no recibo, sem perder letras, acentos nem emojis.",
+      "Quando a opção escolhida de um produto esgota e a seleção é desfeita, o preço mostrado volta ao da vitrine e a tela não anuncia o desconto da opção esgotada.",
+      "Em Relatórios, os cartões continuam aparecendo depois de um estorno integral quando há taxa de devolução, mesmo sem pedidos pagos no período.",
+      "Em Notificações, o botão “Marcar como lidas” bloqueia novos toques enquanto grava e volta com um aviso se o servidor não responder dentro do prazo. Os avisos continuam não lidos até a gravação ser confirmada.",
+      "Se a exclusão do endereço principal demorar além do prazo e for confirmada depois, o app relê a lista e promove um novo endereço principal pela regra normal, uma vez só.",
+      "Em Meu perfil, colar um texto sem números no CPF ou no WhatsApp não apaga mais o dado salvo: a tela mostra “CPF inválido” ou “WhatsApp inválido”. Apagar o campo de propósito e salvar continua removendo o dado.",
+      "No CSV de Pedidos, a venda de balcão sem valor a pagar sai como “Sem valor a pagar”, e não como “Recebido no balcão”.",
+      "No Início do painel, o atalho “Dinheiro a devolver” abre Pedidos em Cancelados, sem os filtros da visita anterior, e “Devoluções abertas” abre a lista com os quatro estados que o Início conta, sem carregar o filtro antigo.",
+      "Em Banners, o cartão avisa que o produto está pausado ou foi excluído também quando o link foi colado como o endereço completo do produto.",
+      "No checkout, ao fechar a edição de um endereço o foco volta ao botão que abriu a edição, e ao abrir “Ponto de referência” o foco vai para o campo novo, para quem usa teclado ou leitor de tela.",
+      "As datas de “Pedido em” e do histórico da devolução, e as datas das avaliações, aparecem no horário de Brasília mesmo que o aparelho use outro fuso. A regra de prazo da devolução não mudou. Nas notificações, “Hoje” e “Ontem” passam a valer pela data de Brasília e atualizam sozinhos na virada do dia.",
+      "Ao entrar depois de abrir a edição de um endereço do checkout, a pessoa volta a esse endereço, ou ao Perfil se ele não estiver na conta; e o login pelo link de Financeiro, em Pedidos, volta a essa tela."
+    ],
+    "melhorias": []
+  },
   "1.5.223": {
     "titulo": "Clientes e pedidos mais claros",
     "novidades": [],
