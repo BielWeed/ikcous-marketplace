@@ -119,6 +119,7 @@ describe("FreteLocalBloco: até onde você entrega", () => {
     { faixa: "01310-000, 01310-999", avisa: false },
     { faixa: "01310-000, 01310-999, ", avisa: false },
     { faixa: "01310-000", avisa: false },
+    { faixa: "01310-000, 01310, 01400", avisa: false },
     { faixa: "01310, 01311, 01400", avisa: false },
     { faixa: "01310000-01310999, 01400, 01500", avisa: false },
   ])(
