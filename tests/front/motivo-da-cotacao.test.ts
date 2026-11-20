@@ -220,9 +220,7 @@ describe("motivoDaCotacao", () => {
   it("distingue falha desconhecida ao salvar de falha ao calcular", () => {
     expect(
       motivoDaCotacao("Falha ao gravar a cotação: Unexpected response"),
-    ).toBe(
-      "A cotação foi calculada, mas não pôde ser salva. (Unexpected response)",
-    );
+    ).toBe("A cotação foi calculada, mas não pôde ser salva.");
   });
 
   it.each(['{"message":"Bad Gateway"}', "<html>Bad Gateway</html>"])(

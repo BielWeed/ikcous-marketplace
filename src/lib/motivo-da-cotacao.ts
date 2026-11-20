@@ -29,7 +29,7 @@ const PREFIXO_FALHA_AO_GRAVAR = "Falha ao gravar a cotação: ";
 const FALHA_TECNICA_AO_GRAVAR =
   /\b(?:ON CONFLICT|unique or exclusion constraint|duplicate key|violates)\b|^(?:relation|column|function) .+ does not exist\b/i;
 
-export function ehFalhaTecnicaAoGravarCotacao(
+function ehFalhaTecnicaAoGravarCotacao(
   texto: string | null | undefined,
 ): boolean {
   return (
@@ -152,9 +152,7 @@ export function motivoDaCotacao(
     return "A cotação foi calculada, mas não pôde ser salva. Algumas opções de frete podem não ter aparecido para a cliente.";
   }
   if (texto.startsWith(PREFIXO_FALHA_AO_GRAVAR)) {
-    const detalhe = texto.slice(PREFIXO_FALHA_AO_GRAVAR.length);
-    const frase = "A cotação foi calculada, mas não pôde ser salva.";
-    return CORPO_CRU.test(detalhe) ? frase : comDetalhe(frase, detalhe);
+    return "A cotação foi calculada, mas não pôde ser salva.";
   }
   if (texto.startsWith("configuracao_mudou_durante_cotacao:")) {
     return "A configuração do frete mudou durante a cotação; nada foi guardado. Tente de novo.";

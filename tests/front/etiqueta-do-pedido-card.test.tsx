@@ -712,10 +712,15 @@ describe("EtiquetaDoPedidoCard", () => {
     expect(botao("Gerar etiqueta")).toBeUndefined();
   });
 
-  it("indisponível (Frenet): sem botão de compra", async () => {
-    pedidoState.data = pedido({ shipping_option_id: "frenet-EXP01" });
+  it("indisponível (Frenet sem nota): orienta sem código interno nem botão de compra", async () => {
+    pedidoState.data = pedido({ shipping_option_id: "frenet-JTE_INT" });
     await abrirCard();
-    expect(hospedeiro.textContent).toMatch(/Frenet/);
+    const aviso = hospedeiro.querySelector(
+      '[data-testid="etiqueta-indisponivel"] p',
+    );
+    expect(aviso?.textContent).toBe(
+      "Frete cotado e cobrado pela Frenet — gere a etiqueta no site da Frenet.",
+    );
     expect(botao("Gerar etiqueta")).toBeUndefined();
   });
 

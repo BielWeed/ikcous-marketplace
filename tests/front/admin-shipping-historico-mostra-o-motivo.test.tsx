@@ -281,30 +281,36 @@ describe("HistoricoCotacoesSection — o selo vermelho passa a dizer o motivo", 
     expect(textoDoHistorico()).not.toMatch(/×\d/);
   });
 
-  it("explica a falha ao salvar a cotação e guarda o detalhe técnico na dica", async () => {
-    const detalhe =
-      "Falha ao gravar a cotação: there is no unique or exclusion constraint matching the ON CONFLICT specification";
-    logsState.data = [
-      {
-        id: "1",
-        created_at: new Date().toISOString(),
-        destination_cep: "38400000",
-        provider: "melhor_envio",
-        response_time_ms: 0,
-        status: "error",
-        error_message: detalhe,
-      },
-    ];
-    await abrirSecao();
+  it.each([
+    ["Failed to fetch", "A cotação foi calculada, mas não pôde ser salva."],
+    [
+      "duplicate key value violates unique constraint",
+      "A cotação foi calculada, mas não pôde ser salva. Algumas opções de frete podem não ter aparecido para a cliente.",
+    ],
+  ])(
+    "explica a falha ao salvar sem expor o erro técnico: %s",
+    async (erro, frase) => {
+      const detalhe = `Falha ao gravar a cotação: ${erro}`;
+      logsState.data = [
+        {
+          id: "1",
+          created_at: new Date().toISOString(),
+          destination_cep: "38400000",
+          provider: "melhor_envio",
+          response_time_ms: 0,
+          status: "error",
+          error_message: detalhe,
+        },
+      ];
+      await abrirSecao();
 
-    const motivo = [...hospedeiro.querySelectorAll("td[title]")].find((el) =>
-      el.getAttribute("title")?.includes(detalhe),
-    );
-    expect(motivo?.textContent).toContain(
-      "A cotação foi calculada, mas não pôde ser salva.",
-    );
-    expect(motivo?.textContent).not.toContain("ON CONFLICT");
-  });
+      const motivo = [...hospedeiro.querySelectorAll("td[title]")].find((el) =>
+        el.textContent?.startsWith("Motivo:"),
+      );
+      expect(motivo?.textContent).toBe(`Motivo: ${frase}`);
+      expect(motivo?.getAttribute("title")).toBe(frase);
+    },
+  );
 
   it("RODADA DE CORREÇÃO (achado ANTES DE CRESCER): motivo muito longo é cortado na tela, mas o texto completo vai para o title", async () => {
     // Uma frase já legível continua inteira na dica, mas não pode

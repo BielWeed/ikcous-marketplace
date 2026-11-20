@@ -242,12 +242,13 @@ export function elegibilidadeDaEtiqueta(
     );
   }
 
-  // 7. Frenet: mesma ideia — sempre tem um nome (nota, ou o código cru).
+  // 7. Frenet: só mostra o nome do serviço quando vem na nota.
   if (ehCotacaoDaFrenet(p.shipping_option_id)) {
-    const codigo = String(p.shipping_option_id).replace(/^frenet-/, "");
-    const nome = nomeDoFreteNaNota(p.notes) ?? codigo;
+    const nome = nomeDoFreteNaNota(p.notes);
     return indisponivel(
-      `Frete cotado e cobrado pela Frenet (${nome}) — gere a etiqueta no site da Frenet.`,
+      nome
+        ? `Frete cotado e cobrado pela Frenet (${nome}) — gere a etiqueta no site da Frenet.`
+        : "Frete cotado e cobrado pela Frenet — gere a etiqueta no site da Frenet.",
     );
   }
 
