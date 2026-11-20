@@ -259,8 +259,8 @@ export const AdminDashboardView = memo(function AdminDashboardView({
   // Toda saída do Início passa por aqui. Quem toca num atalho para Pedidos
   // ("Ver pedidos em aberto", a linha do Para fazer) quer ver os pedidos em
   // aberto, não o filtro e a busca que ficaram salvos da última visita à tela:
-  // o recado faz Pedidos abrir limpa (abrir pelo menu não passa por
-  // aqui e continua respeitando o que ela deixou). Com `id`, é a ficha de um
+  // o recado faz Pedidos abrir limpa (o menu tem o seu próprio caminho e só
+  // pede isso com o selo de Pedidos positivo). Com `id`, é a ficha de um
   // pedido, que não é lista. A aridade é preservada: `onNavigate(view)` sem
   // segundo argumento.
   const irPara = useCallback(
