@@ -11,6 +11,7 @@ import {
 } from "@/lib/config-do-cartao";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import type { MetodoOnline } from "@/lib/forma-de-pagamento";
+import { mensagemAmigavelErroEdgeFunction } from "@/lib/mensagens-erro";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { PRAZO_DA_CONSULTA_DO_CHECKOUT_MS } from "@/lib/prazo-da-requisicao";
 import { lerPrazoDoPixEmMs, prazoDoPixPassou } from "@/lib/prazo-do-pix";
@@ -363,7 +364,17 @@ export function dispararPagamentoPix({
       // (confirmacao-do-cartao.ts, achado M1): `terminal` com 409/404/403 e
       // sem status legível segue terminal como sempre foi.
       const terminal = err?.terminal === true && err?.httpStatus !== 503;
-      const mensagem = err?.message ?? "Não foi possível gerar a cobrança.";
+      // useOrders escreve `terminal` (mesmo quando false) nos erros cuja
+      // mensagem já tratou. Exceções cruas da chamada não têm esse campo.
+      const mensagem =
+        typeof err?.terminal === "boolean" &&
+        typeof err.message === "string" &&
+        err.message.trim()
+          ? err.message
+          : mensagemAmigavelErroEdgeFunction(err, {
+              reconhecerErroDeRedePorTexto: true,
+              mensagemGenerica: "Não foi possível gerar a cobrança.",
+            });
       const categoria = terminal ? "terminal" : "recuperavel";
       // Terceiro argumento OMITIDO quando não há sinal (não `undefined`
       // explícito): testes existentes fixam `onErro` com dois argumentos

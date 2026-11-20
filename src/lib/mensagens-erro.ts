@@ -56,6 +56,8 @@ export function mensagemAmigavelErroEdgeFunction(
     mensagensSeguras?: string[];
     /** Frase para toda causa sem tradução específica conhecida. */
     mensagemGenerica: string;
+    /** Também reconhece falhas que chegam sem a classe de erro do SDK. */
+    reconhecerErroDeRedePorTexto?: boolean;
     /**
      * Frase para "serviço não está no ar nesta instalação" — OPT-IN: quem
      * não passa, mantém o comportamento de sempre (o frete, por exemplo,
@@ -79,7 +81,13 @@ export function mensagemAmigavelErroEdgeFunction(
     return textoOriginal;
   }
 
-  if (nome === "FunctionsFetchError") {
+  if (
+    nome === "FunctionsFetchError" ||
+    (opcoes.reconhecerErroDeRedePorTexto &&
+      /failed to fetch|networkerror|network request failed|load failed|failed to send a request to the edge function/i.test(
+        textoOriginal,
+      ))
+  ) {
     if (opcoes.mensagemServicoInativo && navegadorOnline()) {
       return opcoes.mensagemServicoInativo;
     }
