@@ -63,7 +63,7 @@ vi.mock("@/hooks/useAddresses", () => ({
           user_id: "user-1",
           name: "Casa",
           recipient_name: "Cliente Teste",
-          cep: "38500-000",
+          cep: "38500000",
           street: "Rua Teste",
           number: "100",
           neighborhood: "Centro",
@@ -124,8 +124,8 @@ vi.mock("@/hooks/useCart", async () => {
       shippingFee: mockSelectedShippingOption?.price ?? 30,
       clearCart,
       selectedShippingOption: mockSelectedShippingOption,
-      // Mesmo CEP do endereço padrão — a reconciliação de CEP (onda 4 do
-      // laudo 3108) não é o que este arquivo prova.
+      // Mesmo destino, outra grafia: a divergência real exige nova cotação.
+      // O pedido deve levar o CEP da cotação, não o texto do endereço salvo.
       shippingCep: "38500-000",
       freteEscolhidoPelaCliente: mockEscolhidoPelaCliente,
       setSelectedShippingOption,
