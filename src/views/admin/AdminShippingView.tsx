@@ -1507,6 +1507,7 @@ export const AdminShippingView = memo(function AdminShippingView({
                 config={configDaPrevia}
                 nomesLigados={credsErro || !credsLidas ? null : nomesLigados}
                 pendente={isFormDirty}
+                pagamentoPeloAppLigado={pagamentoPeloAppLigado}
                 promocaoNacionalComPagamento={
                   avisarPromocaoNacionalComPagamento
                 }

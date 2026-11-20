@@ -47,12 +47,14 @@ export function PreviaDoFrete({
   config,
   nomesLigados,
   pendente,
+  pagamentoPeloAppLigado = false,
   promocaoNacionalComPagamento = false,
   promocaoNacionalSemPagamento = false,
 }: {
   readonly config: StoreConfig;
   readonly nomesLigados: readonly string[] | null;
   readonly pendente: boolean;
+  readonly pagamentoPeloAppLigado?: boolean;
   readonly promocaoNacionalComPagamento?: boolean;
   readonly promocaoNacionalSemPagamento?: boolean;
 }) {
@@ -167,32 +169,36 @@ export function PreviaDoFrete({
                 ? "Grátis se tiver produto marcado"
                 : promocaoNacionalSemPagamento
                   ? "Não finaliza pelo app"
-                  : soRetiro
-                    ? retiradaComEntregaPromocional
+                  : retiradaComEntregaPromocional
+                    ? pagamentoPeloAppLigado
                       ? "Retirada grátis; entrega grátis se o pedido tiver produto marcado"
-                      : "Só retirada · Grátis"
-                    : !fora
-                      ? "Não vende"
-                      : nomesLigados === null
-                        ? "A confirmar"
-                        : !nomesLigados.length
-                          ? "Não compra"
-                          : gratisNacional
-                            ? "Grátis"
-                            : "Na hora"
+                      : "Retirada grátis"
+                    : soRetiro
+                      ? "Só retirada · Grátis"
+                      : !fora
+                        ? "Não vende"
+                        : nomesLigados === null
+                          ? "A confirmar"
+                          : !nomesLigados.length
+                            ? "Não compra"
+                            : gratisNacional
+                              ? "Grátis"
+                              : "Na hora"
             }
             nota={
-              !fora || !nomesLigados?.length
-                ? ""
-                : gratisNacional
-                  ? config.nationalBenefitScope === "todas"
-                    ? "qualquer entrega"
-                    : "na opção mais barata"
-                  : nacional.estrategia === "por_produto"
-                    ? "grátis se tiver produto marcado"
-                    : descontoNacionalVale
-                      ? "desconto na opção mais barata"
-                      : "preço da transportadora"
+              retiradaComEntregaPromocional && !pagamentoPeloAppLigado
+                ? "Entrega grátis por produto exige o pagamento pelo app ligado."
+                : !fora || !nomesLigados?.length
+                  ? ""
+                  : gratisNacional
+                    ? config.nationalBenefitScope === "todas"
+                      ? "qualquer entrega"
+                      : "na opção mais barata"
+                    : nacional.estrategia === "por_produto"
+                      ? "grátis se tiver produto marcado"
+                      : descontoNacionalVale
+                        ? "desconto na opção mais barata"
+                        : "preço da transportadora"
             }
           />
         </>

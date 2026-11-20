@@ -307,25 +307,42 @@ describe("AdminShippingView — avisa quando a transportadora fica sem pagamento
     );
   });
 
-  it("só retirada com promoção nacional: a prévia também mostra a entrega grátis por produto", async () => {
-    mockConfig.localDeliveryEnabled = false;
-    mockConfig.enabledShippingMethods.push("store-pickup");
-    mockConfig.nationalShippingStrategy = "por_produto";
-    cenario.ligados = [];
-    await abrirTela();
+  it.each([false, true])(
+    "só retirada com promoção nacional e pagamento pelo app ligado = %s",
+    async (pagamentoLigado) => {
+      mockConfig.localDeliveryEnabled = false;
+      mockConfig.enabledShippingMethods.push("store-pickup");
+      mockConfig.nationalShippingStrategy = "por_produto";
+      cenario.ligados = [];
+      cenario.bootPagamentoLigado = pagamentoLigado;
+      await abrirTela();
 
-    expect(textoDaTela()).not.toContain(textoDaPromocao);
-    expect(textoDaTela()).not.toContain("não finaliza sem pagamento pelo app");
-    expect(textoDaTela()).not.toContain("quem é de fora não compra");
-    expect(textoDaTela()).not.toContain("Falta 1 coisa");
-    expect(textoDaTela()).toContain("Pronta para vender");
-    expect(
-      hospedeiro.querySelector('[aria-label="Como fica para o cliente"]')
-        ?.textContent,
-    ).toContain(
-      "Retirada grátis; entrega grátis se o pedido tiver produto marcado",
-    );
-  });
+      expect(textoDaTela()).not.toContain(textoDaPromocao);
+      expect(textoDaTela()).not.toContain(
+        "não finaliza sem pagamento pelo app",
+      );
+      expect(textoDaTela()).not.toContain("quem é de fora não compra");
+      expect(textoDaTela()).not.toContain("Falta 1 coisa");
+      expect(textoDaTela()).toContain("Pronta para vender");
+      const previa = hospedeiro.querySelector(
+        '[aria-label="Como fica para o cliente"]',
+      );
+      const linhas = [...(previa?.querySelectorAll("p") ?? [])].map(
+        (linha) => linha.textContent,
+      );
+      const promessa =
+        "Retirada grátis; entrega grátis se o pedido tiver produto marcado";
+      if (pagamentoLigado) {
+        expect(linhas).toContain(promessa);
+      } else {
+        expect(linhas).not.toContain(promessa);
+        expect(linhas).toContain("Retirada grátis");
+        expect(linhas).toContain(
+          "Entrega grátis por produto exige o pagamento pelo app ligado.",
+        );
+      }
+    },
+  );
 
   it("só retirada sem promoção nacional: a prévia só promete retirada", async () => {
     mockConfig.localDeliveryEnabled = false;
