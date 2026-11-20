@@ -148,7 +148,12 @@ export function ReciboDaVenda({
   // mandar "sua compra" por WhatsApp nem de imprimir o papel da venda.
   // Quem sabe se a venda foi anulada é a máquina (`recibo.anulada`), não esta tela.
   const anulada = recibo.anulada === true;
-  const [anulacaoLocal, setAnulacaoLocal] = useState<string | null>(null);
+  const [anulacaoLocal, setAnulacaoLocal] = useState<Pick<
+    ReciboDaVendaRegistrada,
+    "orderId" | "total" | "pagamento"
+  > | null>(null);
+  const anulacaoDesteRecibo =
+    anulacaoLocal?.orderId === recibo.orderId ? anulacaoLocal : null;
   // "Nova venda" apaga o cupom que estava na tela; depois de uma divergência
   // isso só acontece com a lojista sabendo (a pergunta abaixo).
   const [confirmandoNovaVenda, setConfirmandoNovaVenda] = useState(false);
@@ -365,14 +370,27 @@ export function ReciboDaVenda({
           )}
         </div>
       )}
-      {aoAnular && (!anulada || anulacaoLocal === recibo.orderId) && (
+      {aoAnular && (!anulada || anulacaoDesteRecibo) && (
         <AnularVendaDoBalcao
-          total={recibo.total}
-          forma={recibo.pagamento}
+          key={recibo.orderId}
+          total={anulacaoDesteRecibo?.total ?? recibo.total}
+          forma={anulacaoDesteRecibo?.pagamento ?? recibo.pagamento}
           clienteComConta={recibo.cliente.tipo === "cadastrado"}
-          aoAnular={aoAnular}
+          aoAnular={async (motivo) => {
+            const { orderId, total, pagamento } = recibo;
+            // A consulta pode ver a anulação antes da resposta. Preserve o
+            // formulário e os dados desta venda até ele mostrar o resultado.
+            setAnulacaoLocal({ orderId, total, pagamento });
+            try {
+              return await aoAnular(motivo);
+            } catch (erro) {
+              setAnulacaoLocal((atual) =>
+                atual?.orderId === orderId ? null : atual,
+              );
+              throw erro;
+            }
+          }}
           aoConcluir={(resultado) => {
-            setAnulacaoLocal(resultado.orderId);
             despachar({ tipo: "recibo_anulado", orderId: resultado.orderId });
           }}
         />
