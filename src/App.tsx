@@ -43,6 +43,7 @@ import {
 } from "@/lib/prazo-da-requisicao";
 import { descartarRascunhoDoProduto } from "@/lib/rascunho-do-produto";
 import { instalarReceptorDoPedidoDoAviso } from "@/lib/receptor-do-pedido-do-aviso";
+import { esquecerReciboDeVisitanteDoCheckout } from "@/lib/recibo-do-checkout";
 import { esquecerRolagemDoProdutoAberto } from "@/lib/rolagemDaEntradaNova";
 import { rolarAoCatalogo } from "@/lib/rolar-ao-catalogo";
 
@@ -754,6 +755,7 @@ const AppContent = () => {
       // A página carregou FORA do checkout: um registro que sobrou na aba
       // não tem mais tela para voltar.
       esquecerTodosOsPedidosPendentesDoCheckout();
+      esquecerReciboDeVisitanteDoCheckout();
     }
     setRecargaDoCheckoutDecidida(true);
   }, [
@@ -1166,6 +1168,10 @@ const AppContent = () => {
           : currentViewRef.current === "checkout"
       ) {
         esquecerTodosOsPedidosPendentesDoCheckout();
+      }
+
+      if (view === "checkout" || currentViewRef.current === "checkout") {
+        esquecerReciboDeVisitanteDoCheckout();
       }
 
       // Cancel pending timers from any previous transition
@@ -2503,6 +2509,7 @@ const AppContent = () => {
           targetView !== "checkout"
         ) {
           esquecerTodosOsPedidosPendentesDoCheckout();
+          esquecerReciboDeVisitanteDoCheckout();
         }
 
         if (

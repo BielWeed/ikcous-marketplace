@@ -25,6 +25,11 @@ import {
   lerPedidoPendenteDoCheckout,
 } from "@/lib/pedido-pendente-do-checkout";
 
+import {
+  guardarReciboDoCheckout,
+  lerReciboDoCheckoutNaEntrada,
+} from "@/lib/recibo-do-checkout";
+
 const PEDIDO = "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b";
 
 // Cada render do checkout, com as props que importam aqui.
@@ -508,6 +513,26 @@ describe("App — o checkout volta ao pedido pendente depois da recarga", () => 
 
     expect(naTela("home")).not.toBeNull();
     expect(lerPedidoPendenteDoCheckout("user-1")).toBeNull();
+  });
+
+  it("preserva o recibo de visitante na recarga, mas apaga ao voltar à vitrine", async () => {
+    estadoAuth.user = null;
+    globalThis.history.replaceState({ view: "checkout" }, "", "/checkout");
+    guardarReciboDoCheckout(null, PEDIDO);
+
+    await act(async () => {
+      raiz?.render(<App />);
+    });
+    await assentar();
+
+    expect(naTela("tela-checkout")).not.toBeNull();
+    expect(lerReciboDoCheckoutNaEntrada(undefined)).toBe(PEDIDO);
+    const confirmacao = globalThis.history.state;
+    await clicar("sair-do-checkout");
+
+    expect(naTela("home")).not.toBeNull();
+    globalThis.history.replaceState(confirmacao, "", "/checkout");
+    expect(lerReciboDoCheckoutNaEntrada(undefined)).toBeNull();
   });
 
   it("Voltar do navegador (popstate) saindo do checkout apaga o registro", async () => {
