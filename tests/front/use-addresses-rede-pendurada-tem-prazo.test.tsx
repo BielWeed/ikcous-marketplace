@@ -427,14 +427,37 @@ describe("useAddresses — rede pendurada tem prazo", () => {
       await responder(0, { data: null, error: null });
       expect(chamadas[2].op).toBe("select");
       await responder(2, { data: [restante], error: null });
-      expect(chamadas[3]?.op).toBe("update");
-      await responder(3, { data: null, error: null });
+      expect(chamadas[3]?.op).toBe("select");
+      await responder(3, { data: [restante], error: null });
+      expect(chamadas[4]?.op).toBe("update");
+      await responder(4, { data: null, error: null });
 
       expect(espelho.hook!.addresses).toEqual([
         { ...restante, is_default: true },
       ]);
       expect(chamadas.filter(({ op }) => op === "update")).toHaveLength(1);
       expect(toast.success).not.toHaveBeenCalled();
+    });
+
+    it("a exclusão tardia não troca o principal escolhido após a primeira releitura", async () => {
+      const outro: Address = { ...GRAVADO_A2, id: "end-a3" };
+      await renderizar();
+      await iniciar(() => espelho.hook!.deleteAddress(END_A.id));
+      await passar(PRAZO);
+      await responder(1, { data: [END_A, GRAVADO_A2, outro], error: null });
+      await responder(0, { data: null, error: null });
+
+      await responder(2, { data: [GRAVADO_A2, outro], error: null });
+      // Outro aparelho escolheu seu principal depois do retrato acima.
+      const escolhido = { ...outro, is_default: true };
+      if (chamadas[3]?.op === "select") {
+        await responder(3, { data: [escolhido, GRAVADO_A2], error: null });
+      }
+
+      expect(chamadas.filter(({ op }) => op === "update")).toHaveLength(0);
+      expect(espelho.hook!.addresses.find((a) => a.is_default)?.id).toBe(
+        outro.id,
+      );
     });
 
     it("promoção pendurada não prende a exclusão e a confirmação tardia relê o principal real", async () => {

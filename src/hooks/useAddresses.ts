@@ -691,7 +691,20 @@ export function useAddresses() {
           if (!resposta.error && usuarioAtualRef.current === idDaConta) {
             void fetchAddresses({
               aoLer: (lista) => {
-                void reconciliarExclusaoTardia(idDaConta, id, lista);
+                if (
+                  lista.length === 0 ||
+                  lista.some((a) => a.id === id || a.is_default)
+                ) {
+                  return;
+                }
+                // Confirma de novo antes de gravar: a primeira leitura pode
+                // ter perdido a escolha feita em outro aparelho.
+                void fetchAddresses({
+                  silencioso: true,
+                  aoLer: (confirmada) => {
+                    void reconciliarExclusaoTardia(idDaConta, id, confirmada);
+                  },
+                });
               },
             });
           }
