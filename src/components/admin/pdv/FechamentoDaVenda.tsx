@@ -33,6 +33,7 @@ import {
 import {
   type FalhaDaVendaTraduzida,
   MENSAGEM_DE_REDE_DA_VENDA,
+  ORIENTACAO_PARA_CONFERIR_VENDA_NO_BALCAO,
   efeitoDaFalhaNaDuvida,
   mensagemDaFalhaDaVenda,
 } from "@/lib/erro-da-venda-presencial";
@@ -203,7 +204,7 @@ export function FechamentoDaVenda({
   async function aoClicarComecarVendaNova(): Promise<void> {
     const confirmado = await confirmar({
       titulo: "Apagar a venda em andamento?",
-      texto: `Isso apaga a venda em andamento: ${estado.itens.length} ${estado.itens.length === 1 ? "item" : "itens"}, R$ ${reais(total)}.${estado.talvezGravada ? " Ela pode já ter sido registrada: confira em Pedidos antes de refazer." : ""} Apagar e começar outra?`,
+      texto: `Isso apaga a venda em andamento: ${estado.itens.length} ${estado.itens.length === 1 ? "item" : "itens"}, R$ ${reais(total)}.${estado.talvezGravada ? ` Ela pode já ter sido registrada. ${ORIENTACAO_PARA_CONFERIR_VENDA_NO_BALCAO}` : ""} Apagar e começar outra?`,
       verbo: "Apagar e começar outra",
       voltar: "Cancelar",
     });

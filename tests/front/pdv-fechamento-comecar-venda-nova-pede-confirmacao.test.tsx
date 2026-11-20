@@ -135,7 +135,7 @@ describe("FechamentoDaVenda — 'Começar uma venda nova' pede confirmação", (
     );
     expect(aviso).toContain("será preciso refazer a venda");
     expect(aviso).toContain(
-      "Confira em Pedidos se ela foi registrada antes de repetir",
+      "Em Pedidos, toque em “Limpar tudo” nos filtros, se aparecer, e escolha “Balcão” em “Canal da venda”. Confira se a venda já aparece antes de tentar de novo.",
     );
     expect(aviso).toContain("Saia e entre de novo na conta.");
   });
@@ -156,6 +156,26 @@ describe("FechamentoDaVenda — 'Começar uma venda nova' pede confirmação", (
     expect(texto).toContain("apaga a venda em andamento");
     expect(texto).toContain("2 itens");
     expect(texto).toContain("R$ 30,00");
+    expect(aoLimpar).not.toHaveBeenCalled();
+  });
+
+  it("antes de apagar o rascunho após perder a resposta, orienta a conferir o canal certo", async () => {
+    await falharORegistro("", "Failed to fetch");
+    await falharORegistro("PGRST301", "JWT expired");
+    expect(hospedeiro.textContent).toContain(
+      "Não sabemos se a venda foi registrada",
+    );
+
+    await act(async () => {
+      botaoDaTela("Começar uma venda nova")?.click();
+    });
+    await act(async () => {
+      await esperar(20);
+    });
+
+    expect(janela()?.textContent).toContain(
+      "Ela pode já ter sido registrada. Em Pedidos, toque em “Limpar tudo” nos filtros, se aparecer, e escolha “Balcão” em “Canal da venda”. Confira se a venda já aparece antes de tentar de novo.",
+    );
     expect(aoLimpar).not.toHaveBeenCalled();
   });
 

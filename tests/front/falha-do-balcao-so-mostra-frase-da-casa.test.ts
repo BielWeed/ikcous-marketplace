@@ -219,9 +219,9 @@ describe("mensagemDaFalhaDaVenda — nunca mostra o texto do banco que a casa n�
         haDuvida,
       );
       expect(falha.mensagem).toBe(MENSAGEM_DE_DEMORA_DA_VENDA);
-      expect(falha.mensagem).toContain("servidor demorou");
-      expect(falha.mensagem).toContain("Confira");
-      expect(falha.mensagem).toContain("antes de tentar de novo");
+      expect(falha.mensagem).toBe(
+        "O servidor demorou demais para responder. Em Pedidos, toque em “Limpar tudo” nos filtros, se aparecer, e escolha “Balcão” em “Canal da venda”. Confira se a venda já aparece antes de tentar de novo.",
+      );
       expect(falha.mensagem).not.toContain("não foi registrada");
       expect(falha.mensagem).not.toContain("estoque não foi descontado");
       expect(falha.mensagem).not.toMatch(JARGAO_TECNICO);

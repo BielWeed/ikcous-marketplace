@@ -38,11 +38,13 @@ export interface FalhaDaVendaTraduzida {
 export const MENSAGEM_DE_REDE_DA_VENDA =
   "Não consegui falar com o servidor. Mantenha esta tela aberta e tente de novo quando a conexão voltar.";
 
+export const ORIENTACAO_PARA_CONFERIR_VENDA_NO_BALCAO =
+  "Em Pedidos, toque em “Limpar tudo” nos filtros, se aparecer, e escolha “Balcão” em “Canal da venda”. Confira se a venda já aparece antes de tentar de novo.";
+
 /** O banco estourou o tempo (57014): não sabemos se a venda entrou. A tela não
  * afirma que falhou nem que gravou — manda CONFERIR e só então repetir (a
  * mesma chave devolve o recibo se ela já existir). */
-export const MENSAGEM_DE_DEMORA_DA_VENDA =
-  "O servidor demorou demais para responder. Confira em Pedidos, nas vendas do balcão, se esta venda já aparece antes de tentar de novo.";
+export const MENSAGEM_DE_DEMORA_DA_VENDA = `O servidor demorou demais para responder. ${ORIENTACAO_PARA_CONFERIR_VENDA_NO_BALCAO}`;
 
 const FRASE_ACESSO_NEGADO =
   "Acesso negado: só a loja registra venda no balcão.";
@@ -270,8 +272,7 @@ export function mensagemDaFalhaDaVenda(
   // chegou à função, nada foi gravado. Mesma saída do 42501 — entrar de novo.
   if (codigo === "PGRST301" || codigo === "PGRST302" || codigo === "PGRST303") {
     return {
-      mensagem:
-        "Sua sessão expirou. O rascunho só volta se o navegador conseguiu guardá-lo; se não, será preciso refazer a venda. Confira em Pedidos se ela foi registrada antes de repetir.",
+      mensagem: `Sua sessão expirou. O rascunho só volta se o navegador conseguiu guardá-lo; se não, será preciso refazer a venda. ${ORIENTACAO_PARA_CONFERIR_VENDA_NO_BALCAO}`,
       podeTentarDeNovo: false,
       precisaEntrarDeNovo: true,
     };

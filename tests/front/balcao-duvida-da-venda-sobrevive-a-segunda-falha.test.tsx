@@ -366,7 +366,9 @@ describe("Balcão — a dúvida da venda sobrevive à 2ª falha", () => {
       '[data-testid="confirmar-acao"]',
     );
     expect(janela?.textContent).toContain("Ela pode já ter sido registrada");
-    expect(janela?.textContent).toContain("confira em Pedidos");
+    expect(janela?.textContent).toContain(
+      "Em Pedidos, toque em “Limpar tudo” nos filtros, se aparecer, e escolha “Balcão” em “Canal da venda”. Confira se a venda já aparece antes de tentar de novo.",
+    );
   });
 
   it("(c) controle: 'Começar uma venda nova' SEM dúvida não ganha o aviso", async () => {
