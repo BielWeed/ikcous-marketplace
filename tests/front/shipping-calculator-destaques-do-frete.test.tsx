@@ -279,7 +279,7 @@ describe("ShippingCalculator — destaques na tela (release 1.5.7)", () => {
     expect(cartao?.textContent).not.toMatch(/até 0 dia/);
   });
 
-  it("recolher a lista não esconde a opção escolhida, mesmo estando em 'outras'", async () => {
+  it("abre as outras opções depois do botão e mantém a escolhida ao recolher", async () => {
     const meioTermo: ShippingOption = {
       id: "melhor-envio-3",
       name: "Correios — Meio",
@@ -323,13 +323,28 @@ describe("ShippingCalculator — destaques na tela (release 1.5.7)", () => {
     }
     await pintar();
 
-    // Expande e escolhe a que estava escondida ("Correios Meio", em "outras").
-    await act(async () => {
-      botaoDe("Ver outras opções")?.click();
-    });
-    await act(async () => {
-      botaoDe("Correios Meio")?.click();
-    });
+    // O foco fica no botão ao abrir; a ordem do DOM põe as novas opções
+    // no caminho do próximo Tab (o jsdom não executa o Tab nativo).
+    const toggle = botaoDe("Ver outras opções")!;
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    const lista = document.getElementById(
+      toggle.getAttribute("aria-controls") ?? "",
+    )!;
+    expect(lista).not.toBeNull();
+    act(() => toggle.focus());
+    await act(async () => toggle.click());
+    const outra = botaoDe("Correios Meio")!;
+    expect(document.activeElement).toBe(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    const depois = Node.DOCUMENT_POSITION_FOLLOWING;
+    expect(botaoDe("Entrega expressa")!.compareDocumentPosition(toggle)).toBe(
+      depois,
+    );
+    expect(toggle.compareDocumentPosition(lista)).toBe(depois);
+    expect(lista.contains(outra)).toBe(true);
+    expect(outra.disabled).toBe(false);
+    expect(outra.tabIndex).toBe(0);
+    await act(async () => outra.click());
     await pintar();
     expect(selecionada as ShippingOption | null).toMatchObject({
       id: "melhor-envio-3",
@@ -339,6 +354,7 @@ describe("ShippingCalculator — destaques na tela (release 1.5.7)", () => {
     await act(async () => {
       botaoDe("Ver menos opções")?.click();
     });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
     const cartaoEscolhido = botaoDe("Correios Meio");
     expect(cartaoEscolhido).toBeDefined();
     expect(cartaoEscolhido?.getAttribute("aria-pressed")).toBe("true");
