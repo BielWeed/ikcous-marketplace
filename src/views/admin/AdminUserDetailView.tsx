@@ -681,6 +681,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
     Clientes e ao CRM; só a ABA de pedidos continua com os pedidos da conta.
   */
   const resumo = calcularResumoFicha(orders, balcao, idsPagosDaConta);
+  const vendasSemConta = resumo.balcao.pedidos;
   const { pedidosDescartados } = resumo;
   // Número sem DDD+telefone (menos de 10 dígitos) não abre conversa: o botão
   // "Contato Direto" fica desabilitado em vez de abrir um link quebrado.
@@ -1097,21 +1098,36 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                       <h2 className="text-base font-bold tracking-tight text-white">
                         Extrato Histórico
                       </h2>
+                      {vendasSemConta > 0 && (
+                        <p className="mt-1 text-xs text-zinc-400">
+                          {vendasSemConta}{" "}
+                          {vendasSemConta === 1
+                            ? "venda de balcão ou sem conta com o mesmo WhatsApp ficou fora da lista"
+                            : "vendas de balcão ou sem conta com o mesmo WhatsApp ficaram fora da lista"}{" "}
+                          porque{" "}
+                          {vendasSemConta === 1
+                            ? "não está ligada"
+                            : "não estão ligadas"}{" "}
+                          à conta.
+                        </p>
+                      )}
                     </div>
                     <div className="p-0">
                       {orders.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center px-4 py-20 text-center">
-                          <div className="mb-4 flex size-16 items-center justify-center rounded-2xl border border-admin-border bg-zinc-900 shadow-inner">
-                            <Package className="size-6 text-zinc-700" />
+                        vendasSemConta === 0 && (
+                          <div className="flex flex-col items-center justify-center px-4 py-20 text-center">
+                            <div className="mb-4 flex size-16 items-center justify-center rounded-2xl border border-admin-border bg-zinc-900 shadow-inner">
+                              <Package className="size-6 text-zinc-700" />
+                            </div>
+                            <p className="text-sm font-bold text-zinc-500">
+                              Nenhum pedido ainda
+                            </p>
+                            <p className="mt-1 text-xs text-zinc-600">
+                              Quando este cliente comprar, os pedidos aparecem
+                              aqui.
+                            </p>
                           </div>
-                          <p className="text-sm font-bold text-zinc-500">
-                            Nenhum pedido ainda
-                          </p>
-                          <p className="mt-1 text-xs text-zinc-600">
-                            Quando este cliente comprar, os pedidos aparecem
-                            aqui.
-                          </p>
-                        </div>
+                        )
                       ) : (
                         <div className="min-w-0">
                           <Table {...papel("table")} className="block sm:table">
