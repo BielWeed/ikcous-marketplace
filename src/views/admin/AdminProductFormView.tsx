@@ -2774,7 +2774,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         quantidade > 0 &&
         !(await confirmarExclusaoDeFoto({
           titulo: "Excluir foto?",
-          texto: `Esta foto é usada em ${quantidade} ${quantidade === 1 ? "variação" : "variações"}. Ao salvar, esta foto sairá do produto e deixará de ser a foto dessas variações. As outras fotos do produto, se houver, continuarão visíveis. Remover esta foto?`,
+          texto: `Esta foto é usada em ${quantidade} ${quantidade === 1 ? "variação" : "variações"}. Ao salvar, esta foto sairá do produto e deixará de ser a foto ${quantidade === 1 ? "dessa variação" : "dessas variações"}. As outras fotos do produto, se houver, continuarão visíveis. Remover esta foto?`,
           verbo: "Excluir foto",
         }))
       ) {
