@@ -9286,8 +9286,9 @@ function AcompanharPedidoSemConta({
     <>
       {(aviso || !lojaTemWhatsappAgora) && (
         <p className="text-xs leading-relaxed text-zinc-500">
-          {aviso ??
-            "Guarde o número do pedido acima — é por ele que a loja localiza o seu pedido."}
+          {lojaTemWhatsappAgora
+            ? aviso
+            : "Guarde o número do pedido acima — é por ele que a loja localiza o seu pedido."}
         </p>
       )}
       {lojaTemWhatsappAgora && (
@@ -9468,7 +9469,7 @@ function SuccessView({
           <AcompanharPedidoSemConta
             orderId={orderId}
             classeDoBotao="h-16 whitespace-normal text-[11px] font-black uppercase leading-snug tracking-[0.3em]"
-            aviso="Este pedido não pode ser acompanhado pelo site. Guarde o número para informar à loja."
+            aviso="Guarde o número do pedido. Para acompanhar, fale com a loja pelo WhatsApp."
           />
         )}
       </div>
