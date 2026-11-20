@@ -1042,8 +1042,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     variacaoEmExclusao && formData.variants.length === 1 && formData.isActive
       ? Number(formData.stock)
       : 0;
-  // Trocar o nome de uma variação já gravada espera o "sim" da lojista: o pedido
-  // lê a variação ao vivo, então o nome novo aparece também nos pedidos antigos.
+  // Trocar o nome de uma variação já gravada espera a confirmação da lojista.
+  // O banco tenta guardar o nome e o valor anteriores nos itens ainda sem rótulo
+  // histórico. A lista do painel e o rastreio recebem esses campos; não há backfill.
   // `aplicar` é o fim do "Salvar variação", adiado até a confirmação.
   const [renomearPendente, setRenomearPendente] = useState<{
     aplicar: () => void;
