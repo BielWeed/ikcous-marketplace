@@ -31,7 +31,7 @@ describe("destinoPosLogin", () => {
     );
   });
 
-  it("from cart, sem requested, manda para cart (quem apertou 'Identificar-se e Entrar' no carrinho)", () => {
+  it("from cart, sem requested, manda para cart (quem apertou 'Entrar na conta' no carrinho)", () => {
     expect(destinoPosLogin({ view: "auth", from: "cart" })).toBe("cart");
   });
 

@@ -1498,7 +1498,7 @@ function ConteudoDoCarrinho({
                             </div>
                             <div className="min-w-0">
                               <p className="text-[13px] font-semibold text-foreground">
-                                Identificar-se (Entrar)
+                                Entrar na conta
                               </p>
                               <p className="mt-0.5 text-[13px] leading-snug text-muted-foreground">
                                 {/* FRETE V2 (onda D-1, 03/09): a promessa
@@ -1512,7 +1512,7 @@ function ConteudoDoCarrinho({
                                     Prometer ao convidado que o login
                                     libera o que ele JÁ ganha é promessa
                                     falsa. */}
-                                Faça login para salvar seus itens.
+                                Entre na sua conta para salvar seus itens.
                               </p>
                             </div>
                           </div>
@@ -1549,7 +1549,7 @@ function ConteudoDoCarrinho({
                             }}
                             className="flex h-[52px] w-full items-center justify-center gap-2.5 rounded-2xl bg-foreground text-[15px] font-semibold text-card transition-colors hover:bg-foreground/90 active:scale-[0.98]"
                           >
-                            Identificar-se e Entrar
+                            Entrar na conta
                             <ArrowRight className="size-5" />
                           </button>
 

@@ -5,8 +5,8 @@
 // cart-view-promessas-que-a-loja-nao-cumpre.test.tsx, que prendeu os selos do
 // rodapé e deixou este texto passar.
 //
-// Até 25/08/2026 o bloco dizia à convidada: "Faça login para salvar seus
-// itens, acumular pontos e ativar o frete grátis (acima de R$ 0,00)". Dois
+// Até 25/08/2026 o bloco dizia à convidada que entrar na conta salvaria seus
+// itens, renderia pontos e ativaria o frete grátis (acima de R$ 0,00). Dois
 // problemas: (1) não existe programa de pontos em lugar nenhum do app; (2)
 // com a regra de frete grátis DESLIGADA (freeShippingMin = 0 — "zero ou
 // menos = regra desligada", ver regra-de-frete.ts), o login não ativa frete
@@ -139,7 +139,7 @@ describe("CartView — bloco do convidado não promete pontos nem frete grátis 
 
     // Âncora: sem ela, as ausências abaixo passariam com o bloco inteiro
     // fora da árvore.
-    expect(texto).toContain("Identificar-se e Entrar");
+    expect(texto).toContain("Entrar na conta");
     expect(texto).toContain("Comprar como Convidado");
 
     expect(texto).not.toContain("acumular pontos");
@@ -157,8 +157,8 @@ describe("CartView — bloco do convidado não promete pontos nem frete grátis 
     configDaLoja = { shippingFee: 10, freeShippingMin: 100 };
     const texto = await renderizarCarrinho();
 
-    expect(texto).toContain("Identificar-se e Entrar");
-    expect(texto).toContain("Faça login para salvar seus itens");
+    expect(texto).toContain("Entrar na conta");
+    expect(texto).toContain("Entre na sua conta para salvar seus itens.");
     expect(texto).not.toContain("ativar o frete grátis");
     // O texto exato da promessa morta, com o valor da regra ligada.
     expect(texto).not.toContain("acima de R$ 100,00");

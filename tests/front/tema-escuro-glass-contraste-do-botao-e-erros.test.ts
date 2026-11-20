@@ -10,7 +10,7 @@ const casos = [
   {
     nome: "carrinho",
     arquivo: "src/views/customer/CartView.tsx",
-    trecho: /className="([^"]*)"\s*>\s*Identificar-se e Entrar/,
+    trecho: /className="([^"]*)"\s*>\s*Entrar na conta\s*<ArrowRight/,
     novas: ["bg-foreground", "text-card"],
     antigas: ["text-background"],
   },
