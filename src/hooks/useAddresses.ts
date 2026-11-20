@@ -422,7 +422,7 @@ export function useAddresses() {
       } else {
         toast.error(
           mensagemDeErroDeSessaoDoPainel(error)
-            ? "Sua sessão expirou. Se os dados do endereço ainda estiverem na tela, copie o que digitou antes de entrar de novo. Depois, salve o endereço outra vez."
+            ? "Sua sessão expirou ou esta conta não tem permissão para salvar o endereço. Se os dados do endereço ainda estiverem na tela, copie o que digitou antes de sair da conta. Entre de novo e tente salvar o endereço outra vez."
             : "Erro ao adicionar endereço",
         );
       }
@@ -626,7 +626,7 @@ export function useAddresses() {
       } else {
         toast.error(
           mensagemDeErroDeSessaoDoPainel(error)
-            ? "Sua sessão expirou. Se os dados do endereço ainda estiverem na tela, copie o que digitou antes de entrar de novo. Depois, salve o endereço outra vez."
+            ? "Sua sessão expirou ou esta conta não tem permissão para salvar o endereço. Se os dados do endereço ainda estiverem na tela, copie o que digitou antes de sair da conta. Entre de novo e tente salvar o endereço outra vez."
             : "Erro ao atualizar endereço",
         );
       }

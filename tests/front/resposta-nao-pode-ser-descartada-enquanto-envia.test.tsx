@@ -64,6 +64,7 @@ function botao(texto: string) {
 it.each([
   null,
   { message: "JWT expired", status: 401 },
+  { message: "permission denied", code: "42501" },
   { message: "Falha de rede" },
 ])(
   "preserva a resposta durante o envio e explica a falha %j",
@@ -133,8 +134,8 @@ it.each([
     expect(botao("Fechar").disabled).toBe(false);
     expect(campo.value).toBe("Sim, temos.");
     expect(h.toastError).toHaveBeenCalledWith(
-      causa && "status" in causa
-        ? "Sua sessão expirou. Se a resposta ainda estiver na tela, copie o texto antes de entrar de novo. Depois, publique a resposta."
+      causa && ("status" in causa || "code" in causa)
+        ? "Sua sessão expirou ou esta conta não tem permissão para publicar a resposta. Se a resposta ainda estiver na tela, copie o texto antes de sair da conta. Entre de novo e tente publicar a resposta outra vez."
         : "Não foi possível confirmar o envio da resposta. Confira na lista antes de tentar de novo.",
     );
     expect(h.toastError).toHaveBeenCalledTimes(1);

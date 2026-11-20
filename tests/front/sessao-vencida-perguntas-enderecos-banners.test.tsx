@@ -94,20 +94,29 @@ async function montar<T>(usar: () => T): Promise<() => T> {
   await act(async () => raiz.render(<Sonda />));
   return () => atual;
 }
-it("pergunta: explica sessão vencida sem confirmar o envio", async () => {
-  const hook = await montar(useQuestions);
-  let resultado: unknown;
-  await act(async () => {
-    resultado = await hook().addQuestion({
-      productId: "p",
-      question: "Tem azul?",
+const recusas = [
+  { message: "JWT expired", status: 401 },
+  { message: "permission denied", code: "42501" },
+];
+
+it.each(recusas)(
+  "pergunta: explica a recusa %j sem confirmar o envio",
+  async (erro) => {
+    h.erro = erro;
+    const hook = await montar(useQuestions);
+    let resultado: unknown;
+    await act(async () => {
+      resultado = await hook().addQuestion({
+        productId: "p",
+        question: "Tem azul?",
+      });
     });
-  });
-  expect(resultado).toBeNull();
-  expect(h.toast).toHaveBeenCalledWith(
-    "Sua sessão expirou. Se a pergunta ainda estiver na tela, copie o texto antes de entrar de novo. Depois, envie a pergunta.",
-  );
-});
+    expect(resultado).toBeNull();
+    expect(h.toast).toHaveBeenCalledWith(
+      "Sua sessão expirou ou esta conta não tem permissão para enviar a pergunta. Se a pergunta ainda estiver na tela, copie o texto antes de sair da conta. Entre de novo e tente enviar a pergunta outra vez.",
+    );
+  },
+);
 it("resposta silenciosa: mantém booleano e entrega a causa ao chamador", async () => {
   const hook = await montar(useQuestions);
   const onError = vi.fn();
@@ -122,50 +131,55 @@ it("resposta silenciosa: mantém booleano e entrega a causa ao chamador", async 
   expect(onError).toHaveBeenCalledWith(h.erro);
   expect(h.toast).not.toHaveBeenCalled();
 });
-it.each(["adicionar", "atualizar"])(
-  "endereço: %s explica sessão vencida",
-  async (acao) => {
-    const hook = await montar(useAddresses);
+it.each([
+  ...recusas.map((erro) => ({ acao: "adicionar", erro })),
+  ...recusas.map((erro) => ({ acao: "atualizar", erro })),
+])("endereço: $acao explica a recusa $erro", async ({ acao, erro }) => {
+  h.erro = erro;
+  const hook = await montar(useAddresses);
+  await act(async () => {
+    if (acao === "atualizar")
+      await hook().updateAddress("e", { street: "Rua Teste" });
+    else
+      await hook().addAddress({
+        name: "Casa",
+        recipient_name: "Pessoa Teste",
+        cep: "38500-000",
+        street: "Rua Teste",
+        number: "1",
+        complement: null,
+        neighborhood: "Centro",
+        city: "Cidade",
+        state: "MG",
+        reference: null,
+        is_default: false,
+      });
+  });
+  expect(h.toast).toHaveBeenCalledWith(
+    "Sua sessão expirou ou esta conta não tem permissão para salvar o endereço. Se os dados do endereço ainda estiverem na tela, copie o que digitou antes de sair da conta. Entre de novo e tente salvar o endereço outra vez.",
+  );
+});
+it.each(recusas)(
+  "banner: criação explica a recusa %j e preserva a causa",
+  async (erro) => {
+    h.erro = erro;
+    const hook = await montar(() => useBanners(true));
     await act(async () => {
-      if (acao === "atualizar")
-        await hook().updateAddress("e", { street: "Rua Teste" });
-      else
-        await hook().addAddress({
-          name: "Casa",
-          recipient_name: "Pessoa Teste",
-          cep: "38500-000",
-          street: "Rua Teste",
-          number: "1",
-          complement: null,
-          neighborhood: "Centro",
-          city: "Cidade",
-          state: "MG",
-          reference: null,
-          is_default: false,
-        });
+      await expect(
+        hook().addBanner({
+          imageUrl: "https://example.com/banner.png",
+          title: "Teste",
+          position: "home_top",
+          active: true,
+          order: 1,
+        }),
+      ).rejects.toBe(h.erro);
     });
     expect(h.toast).toHaveBeenCalledWith(
-      "Sua sessão expirou. Se os dados do endereço ainda estiverem na tela, copie o que digitou antes de entrar de novo. Depois, salve o endereço outra vez.",
+      "Sua sessão expirou ou esta conta não tem permissão para salvar o banner. Se os dados do banner ainda estiverem na tela, copie o que digitou antes de sair da conta. Entre de novo e tente salvar o banner outra vez.",
     );
   },
 );
-it("banner: criação explica sessão vencida e preserva a causa", async () => {
-  const hook = await montar(() => useBanners(true));
-  await act(async () => {
-    await expect(
-      hook().addBanner({
-        imageUrl: "https://example.com/banner.png",
-        title: "Teste",
-        position: "home_top",
-        active: true,
-        order: 1,
-      }),
-    ).rejects.toBe(h.erro);
-  });
-  expect(h.toast).toHaveBeenCalledWith(
-    "Sua sessão expirou. Se os dados do banner ainda estiverem na tela, copie o que digitou antes de entrar de novo. Depois, salve o banner outra vez.",
-  );
-});
 it("controle: falha comum na pergunta conserva a mensagem anterior", async () => {
   h.erro = { message: "Falha de rede" };
   const hook = await montar(useQuestions);
