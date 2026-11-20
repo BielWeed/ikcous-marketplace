@@ -91,6 +91,10 @@ const {
 const {
   desfazerEntregaNaCidadeNaTransacao,
 } = require("./a-loja-escolhe-como-entrega-posterior.cjs");
+const {
+  NOME_RELATORIO_DE_CATEGORIAS,
+  desfazerRelatorioDeCategoriasNaTransacao,
+} = require("./relatorio-de-categorias-posterior.cjs");
 // Esta prova mede as dez sucessoras originais, a 20261246 (fin_lancamento_salvar), a 20261249 (motivo privado do PDV), a 20261370 (fin_caixa_abrir), a 20261380 (get_admin_orders_cancelados_recentes) e a 20261387 (get_admin_orders_paged). A 20261242000000 (o custo do dia: sucessora de
 // get_admin_analytics_v2 e a primeira de fin_dre) tem a PROVA PRÓPRIA do que a 8e faz com ela em
 // tests/banco/custo-do-dia-portao-viva.cjs (item 8); aqui `noEstado` devolve o clone ao estado anterior a ela.
@@ -189,6 +193,9 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     // A 4059 tem prova própria; o helper da 3996 desfaz esta sucessora antes do estado histórico.
     s.nome !==
       "20261405900000_o_custo_do_cancelamento_fica_no_mes_da_volta.sql" &&
+    // A 1409 tem prova própria em analise-por-categoria-so-conta-pedido-pago-viva.cjs.
+    // O helper de categorias a desfaz antes de montar o estado histórico.
+    s.nome !== NOME_RELATORIO_DE_CATEGORIAS &&
     // A 1410 tem prova própria em rotulo-historico-na-lista-e-no-rastreio-viva.cjs.
     // O helper das listas do painel a desfaz antes de montar o estado histórico.
     s.nome !==
@@ -412,6 +419,7 @@ let C; // a conexão única com o clone do rodar-isolado
 async function noEstado(montar, textos = [SQL_8E]) {
   await C.query("BEGIN");
   try {
+    await desfazerRelatorioDeCategoriasNaTransacao(C);
     // A 20261404000000 (a observacao da inspecao e so da loja) sucede o corpo da 3992 (devolucao_detalhe) e o GRANT de public.devolucoes: sai ANTES da 3992 (so se no ar).
     await require("./a-observacao-da-inspecao-posterior.cjs").desfazerAObservacaoDaInspecaoNaTransacao(
       C,

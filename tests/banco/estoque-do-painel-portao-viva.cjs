@@ -1491,6 +1491,11 @@ async function main() {
         "20261405900000_o_custo_do_cancelamento_fica_no_mes_da_volta.sql",
         "public.fin_dre(date,date)",
       ],
+      // A 1409 só muda o relatório por categoria; a 17a não lê get_category_analytics.
+      [
+        "20261409000000_o_relatorio_de_categorias_nao_da_a_uma_categoria_o_dinheiro_de_item_sem_produto.sql",
+        "public.get_category_analytics(timestamp with time zone,timestamp with time zone)",
+      ],
       // A 1410 redefine duas funções que a 17a não lê.
       [
         ROTULOS_HISTORICOS,
