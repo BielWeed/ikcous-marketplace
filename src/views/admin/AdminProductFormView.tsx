@@ -2665,9 +2665,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         }
         const resumo = `${enviadas} de ${arquivos.length} fotos enviadas`;
         if (enviadas === arquivos.length) {
-          toast.success("Imagens processadas e enviadas com sucesso!", {
-            id: loadingToast,
-          });
+          toast.success(
+            enviadas === 1
+              ? "Foto enviada com sucesso"
+              : "Fotos enviadas com sucesso",
+            { id: loadingToast },
+          );
         } else if (falhas.length === 0) {
           if (enviadas > 0) {
             const detalhe =

@@ -296,7 +296,7 @@ describe("AdminProductFormView — foto ilegível não diz 'sucesso'", () => {
       expect(HTMLCanvasElement.prototype.getContext).not.toHaveBeenCalled();
       expect(mocks.toastError).not.toHaveBeenCalled();
       expect(mocks.toastSuccess).toHaveBeenCalledWith(
-        "Imagens processadas e enviadas com sucesso!",
+        "Foto enviada com sucesso",
         { id: ID_DO_AVISO },
       );
     },
@@ -358,7 +358,7 @@ describe("AdminProductFormView — foto ilegível não diz 'sucesso'", () => {
     await enviar([foto("a.jpg"), foto("b.jpg")]);
 
     expect(mocks.toastSuccess).toHaveBeenCalledWith(
-      "Imagens processadas e enviadas com sucesso!",
+      "Fotos enviadas com sucesso",
       { id: ID_DO_AVISO },
     );
     expect(mocks.toastWarning).not.toHaveBeenCalled();
