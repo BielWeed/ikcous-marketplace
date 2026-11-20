@@ -1015,7 +1015,11 @@ export const AdminPushView = memo(function AdminPushView({
     setLoading(true);
     anuncioDaContinuacao.current?.focus();
     setContinuacao(null);
-    setEstadoDaContinuacao("Enviando para os aparelhos não tentados…");
+    setEstadoDaContinuacao(
+      tokens.length === 1
+        ? "Enviando para o aparelho não tentado…"
+        : "Enviando para os aparelhos não tentados…",
+    );
 
     try {
       const { data: envio, error } = await enviarLotePush(mensagem, tokens);
@@ -1045,7 +1049,7 @@ export const AdminPushView = memo(function AdminPushView({
         });
       }
       setEstadoDaContinuacao(
-        `Continuação: envio aceito para ${enviados} de ${tokens.length} aparelhos; ${falharam} com falha e ${naoTentados} não tentados.`,
+        `Continuação: envio aceito para ${enviados} de ${tokens.length} ${tokens.length === 1 ? "aparelho" : "aparelhos"}; ${falharam} com falha e ${naoTentados} ${naoTentados === 1 ? "não tentado" : "não tentados"}.`,
       );
 
       if (enviados > 0) {
@@ -2281,7 +2285,7 @@ export const AdminPushView = memo(function AdminPushView({
           >
             {estadoDaContinuacao ||
               (lotePendente
-                ? `Aparelhos não tentados no aviso “${lotePendente.mensagem.title}”: ${lotePendente.tokens.length}.`
+                ? `${lotePendente.tokens.length === 1 ? "Aparelho não tentado" : "Aparelhos não tentados"} no aviso “${lotePendente.mensagem.title}”: ${lotePendente.tokens.length}.`
                 : "")}
           </p>
           {lotePendente && (
@@ -2291,7 +2295,9 @@ export const AdminPushView = memo(function AdminPushView({
               disabled={loading || isOffline}
               className="min-h-12 rounded-full border border-solid border-admin-border bg-white/5 px-4 py-2 text-sm font-bold text-zinc-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Continuar para os {lotePendente.tokens.length} não tentados
+              {lotePendente.tokens.length === 1
+                ? "Continuar para o aparelho não tentado"
+                : `Continuar para os ${lotePendente.tokens.length} não tentados`}
             </button>
           )}
         </div>

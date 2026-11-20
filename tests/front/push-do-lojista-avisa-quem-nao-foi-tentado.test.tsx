@@ -298,8 +298,54 @@ describe("Avisar clientes — destinatários não tentados", () => {
 
   const botaoDeContinuar = () =>
     [...hospedeiro.querySelectorAll("button")].find((botao) =>
-      botao.textContent?.includes("Continuar para os"),
+      botao.textContent?.startsWith("Continuar para "),
     );
+
+  it.each([
+    {
+      restantes: 1,
+      rotulo: "Continuar para o aparelho não tentado",
+      anuncio: `Aparelho não tentado no aviso “${TITULO}”: 1.`,
+      resultado:
+        "Continuação: envio aceito para 0 de 1 aparelho; 0 com falha e 1 não tentado.",
+    },
+    {
+      restantes: 2,
+      rotulo: "Continuar para os 2 não tentados",
+      anuncio: `Aparelhos não tentados no aviso “${TITULO}”: 2.`,
+      resultado:
+        "Continuação: envio aceito para 0 de 2 aparelhos; 0 com falha e 2 não tentados.",
+    },
+  ])(
+    "usa a concordância no botão e no anúncio com $restantes não tentado(s)",
+    async ({ restantes, rotulo, anuncio, resultado }) => {
+      publico.total = 1 + restantes;
+      invokeSendPush
+        .mockResolvedValueOnce({
+          data: { enviados: 1, falharam: 0, naoTentados: restantes },
+          error: null,
+        })
+        .mockResolvedValueOnce({
+          data: { enviados: 0, falharam: 0, naoTentados: restantes },
+          error: null,
+        });
+      await prepararCampanha();
+      await enviar();
+
+      const continuar = botaoDeContinuar();
+      expect.soft(continuar?.textContent).toBe(rotulo);
+      expect
+        .soft(hospedeiro.querySelector('[role="status"]')?.textContent)
+        .toBe(anuncio);
+      await act(async () => {
+        continuar!.click();
+      });
+
+      expect(hospedeiro.querySelector('[role="status"]')?.textContent).toBe(
+        resultado,
+      );
+    },
+  );
 
   it("continua com a mensagem original só para os aparelhos que não foram tentados", async () => {
     publico.total = 4;
