@@ -1000,7 +1000,7 @@ export function useReviews() {
           erro?.code === "42501" || erro?.status === 403
             ? MENSAGEM_SESSAO_OU_PERMISSAO
             : mensagemDeErroDeSessaoDoPainel(error)
-              ? "Sua sessão expirou. Entre de novo para enviar a resposta — o texto continua aqui."
+              ? "Sua sessão expirou. Se a resposta ainda estiver na tela, copie o texto antes de entrar de novo. Depois, publique a resposta."
               : ehConsultaSemResposta(error)
                 ? "Sem resposta da rede. Confira na lista antes de tentar de novo."
                 : "Erro ao enviar resposta.",

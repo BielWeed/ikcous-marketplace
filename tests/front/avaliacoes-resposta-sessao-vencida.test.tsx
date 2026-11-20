@@ -81,7 +81,10 @@ it.each([
     ("code" in erro && erro.code === "42501") ||
       ("status" in erro && erro.status === 403)
       ? MENSAGEM_SESSAO_OU_PERMISSAO
-      : "Sua sessão expirou. Entre de novo para enviar a resposta — o texto continua aqui.",
+      : "Sua sessão expirou. Se a resposta ainda estiver na tela, copie o texto antes de entrar de novo. Depois, publique a resposta.",
+  );
+  expect(toast.error).not.toHaveBeenCalledWith(
+    expect.stringContaining("o texto continua aqui"),
   );
 });
 

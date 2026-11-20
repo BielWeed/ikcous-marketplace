@@ -298,6 +298,22 @@ describe("'Já estornei': a espera da tela tem prazo", () => {
     );
   });
 
+  it.each([{ code: "PGRST301" }, { status: 401 }])(
+    "orienta a entrar de novo se o servidor recusar o registro: %j",
+    async (error) => {
+      gravacao = async () => ({ data: null, error });
+      await tocarJaEstornei("ped-sessao");
+      await avancarAte(() => vi.mocked(toast.error).mock.calls.length > 0);
+      expect(toast.error).toHaveBeenCalledExactlyOnceWith(
+        "Sua sessão expirou ou você não tem permissão para registrar o estorno. Saia da conta, entre de novo e tente registrar outra vez.",
+      );
+      expect(toast.success).not.toHaveBeenCalled();
+      expect(chamadasDoEstorno()).toEqual([
+        ["registrar_estorno_manual", { p_order_id: "ped-sessao" }],
+      ]);
+    },
+  );
+
   it("borda: o servidor responde com erro de verdade (antes do prazo): segue a frase de sempre, não a de 'sem resposta'", async () => {
     gravacao = async () => ({
       data: null,

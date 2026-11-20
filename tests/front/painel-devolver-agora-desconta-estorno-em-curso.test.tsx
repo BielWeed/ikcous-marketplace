@@ -1124,8 +1124,8 @@ describe("'Devolver agora' desconta o que o Mercado Pago já está devolvendo (L
         },
       );
 
-      it("erro que não é recusa de negócio (permissão/rede): continua o aviso genérico", async () => {
-        mockPedidosCancelados = [pedidoCanceladoPago({ id: "ped-rede" })];
+      it("recusa 42501 explica que pode ser sessão ou falta de permissão", async () => {
+        mockPedidosCancelados = [pedidoCanceladoPago({ id: "ped-permissao" })];
         rpcMock.mockResolvedValue({
           data: null,
           error: {
@@ -1135,13 +1135,14 @@ describe("'Devolver agora' desconta o que o Mercado Pago já está devolvendo (L
         });
 
         await montarEAbrir();
-        await esperarConferido("ped-rede");
+        await esperarConferido("ped-permissao");
         await clicarJaEstornei();
         await esperarAte(() => toastErrorMock.mock.calls.length > 0);
 
         expect(toastErrorMock).toHaveBeenCalledWith(
-          "Não consegui registrar o estorno. Tente de novo.",
+          "Sua sessão expirou ou você não tem permissão para registrar o estorno. Saia da conta, entre de novo e tente registrar outra vez.",
         );
+        expect(toastSuccessMock).not.toHaveBeenCalled();
       });
     });
   });
