@@ -300,10 +300,10 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
           <br />
           <span role="note" className="text-xs text-amber-300">
             {perdeuIntervalo &&
-              "Com três CEPs completos separados por vírgula, entram só esses três CEPs. Para manter a faixa e acrescentar outro CEP, una os dois limites com um hífen, sem espaços, e separe o próximo CEP por vírgula. Exemplo: 01310100-01310200, 01310300. O botão «Incluir a região» inclui todos os CEPs que começam com os 5 números mostrados no botão."}
+              "Com três ou mais itens, os dois primeiros CEPs completos deixam de indicar uma faixa: cada um cobre só o próprio CEP. Para manter a faixa, escreva cada limite com 8 dígitos, sem hífen dentro do CEP. Separe os limites com um hífen e os demais itens com vírgula. Exemplo: 01310100-01310200, 01310300. Um item avulso com menos de 8 dígitos vale como prefixo e cobre todos os CEPs que começam com esses números. O botão «Incluir a região» inclui todos os CEPs que começam com os 5 números mostrados no botão."}
             {perdeuIntervalo && prefixoDeSete && <br />}
             {prefixoDeSete &&
-              "Você digitou 7 números. Se for um CEP completo, confira se faltou um zero no começo. Do jeito que está, entram apenas os CEPs que começam com esses 7 números."}
+              "Você digitou 7 números. Se for um CEP completo, confira se faltou um zero no começo. Esse item é um prefixo e cobre todos os CEPs que começam com esses 7 números."}
           </span>
         </>
       )}
