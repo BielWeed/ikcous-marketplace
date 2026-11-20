@@ -295,7 +295,7 @@ describe("CartView — aba Meus Pedidos: falha de carregamento não é lista vaz
 
     expect(texto()).toContain("Nenhum pedido em andamento");
     expect(texto()).toContain(
-      "Quando você comprar, o andamento do pedido aparece aqui.",
+      "Seus pedidos concluídos ou cancelados estão em Histórico.",
     );
     expect(texto()).not.toContain(
       "Não conseguimos carregar seus pedidos agora",
@@ -303,5 +303,16 @@ describe("CartView — aba Meus Pedidos: falha de carregamento não é lista vaz
     // O vazio GENÉRICO ("Nenhum pedido", sem lista nenhuma) não pode aparecer:
     // o título da aba vazia começa igual, por isso a exclusão da continuação.
     expect(texto()).not.toMatch(/Nenhum pedido(?! em andamento)/);
+    expect(texto()).not.toContain("Ver produtos");
+    const atalho = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (b) => b.textContent?.trim() === "Ver histórico",
+    );
+    expect(atalho).toBeDefined();
+    await act(async () => {
+      atalho?.click();
+    });
+    expect(
+      hospedeiro.querySelector('button[aria-pressed="true"]')?.textContent,
+    ).toContain("Histórico (1)");
   });
 });

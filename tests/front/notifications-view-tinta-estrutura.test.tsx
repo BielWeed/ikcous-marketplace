@@ -152,6 +152,7 @@ describe("NotificationsView (Tinta): estrutura", () => {
     const marcar = host.querySelector<HTMLButtonElement>(
       'button[title="Marcar todas como lidas"]',
     );
+    expect(marcar?.textContent?.trim()).toBe("Marcar como lidas");
     await act(async () => {
       marcar?.click();
     });
