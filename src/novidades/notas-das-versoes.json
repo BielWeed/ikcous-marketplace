@@ -1,4 +1,24 @@
 {
+  "1.5.226": {
+    "titulo": "Valores colados, busca e balcão mais firmes",
+    "novidades": [],
+    "correcoes": [
+      "No painel, o preço próprio de uma variação aceita a vírgula digitada: 0,05 grava R$ 0,05, e um preço inválido é recusado com aviso em vez de salvar a variação sem preço próprio.",
+      "Nos campos de preço do painel, colar um valor com mais de duas casas decimais arredonda o centavo como no resto do app, e colar um valor acima do limite é recusado com o aviso do formulário.",
+      "Nos campos de valor do painel, colar “R$ 7 50” (com espaço no lugar da vírgula) não vira mais R$ 750: o valor é recusado e nada é salvo; valores com milhar separado por espaço, como “1 234,56”, continuam valendo.",
+      "No checkout, o campo de troco da entrega aceita o valor colado com “R$” na frente, como “R$ 100,00”.",
+      "Na Busca da loja, abrir um produto, ir ao Carrinho e voltar traz de volta o termo, os filtros e os resultados já carregados.",
+      "No balcão, a lista de produtos mostra o código de cada produto, para distinguir produtos com o mesmo nome.",
+      "Ao duplicar um produto, o aviso diz que o estoque do original (ou o de cada variação) também é copiado.",
+      "No cadastro de produto, o botão “Gerar grade” fica desabilitado enquanto algum atributo estiver sem opção marcada.",
+      "Quem abre um link de pedido sem o número do pedido vê que o link está incompleto e um botão para voltar aos pedidos, em vez de ser convidada a entrar na conta.",
+      "No painel de avisos, o resultado do envio mostra quantos aparelhos tiveram o envio aceito, sem afirmar que o aviso chegou ao aparelho.",
+      "No recibo do balcão que está aberto, a tela confere a venda a cada 10 segundos e mostra “Venda anulada” quando outra aba anula a venda, sem imprimir nem enviar WhatsApp.",
+      "No balcão, a venda de cliente avulso “Venda no balcão” com WhatsApp gravado mantém o cliente e o envio no recibo e na reimpressão.",
+      "O nome do arquivo CSV de pedidos usa a data no horário de Brasília, o mesmo fuso das datas dentro da planilha, em vez do fuso do aparelho."
+    ],
+    "melhorias": []
+  },
   "1.5.225": {
     "titulo": "Painel mais coerente com a loja",
     "novidades": [],
