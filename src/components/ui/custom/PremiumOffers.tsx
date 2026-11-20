@@ -568,6 +568,7 @@ function HeroOfferCard({
                 CLASSE_SELO_DESCONTO,
               )}
             >
+              {aPartirDe ? "até " : ""}
               {discount}% OFF
             </span>
           </div>
@@ -701,7 +702,8 @@ function HeroOfferCard({
               )}
               {savings > 0 && (
                 <div className="mb-0.5 rounded-md border border-emerald-200/30 bg-emerald-50 px-2 py-0.5 text-[11px] font-extrabold uppercase text-emerald-700">
-                  Economize {formatCurrency(savings)}
+                  Economize {aPartirDe ? "até " : ""}
+                  {formatCurrency(savings)}
                 </div>
               )}
             </div>

@@ -45,7 +45,7 @@ describe("texto de informação legível (contraste e tamanho)", () => {
     it("o selo de frete grátis e o 'Economize' têm 11 px, não 9", () => {
       for (const ancora of [
         /className="([^"]*)">\s*<Truck [^>]*\/>\s*<span>\{frase\}<\/span>/,
-        /className="([^"]*)">\s*Economize \{formatCurrency\(savings\)\}/,
+        /className="([^"]*)">\s*Economize\b/,
       ]) {
         const classes = classesDe(ofertas, ancora);
         expect(tem(classes, "text-[9px]")).toBe(false);
