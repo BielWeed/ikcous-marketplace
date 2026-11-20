@@ -14,6 +14,7 @@ import {
   TEXTO_JA_POR_FORA,
   acoesDaLinha,
   confirmouPorForaAposEspera,
+  linhaViva,
   textoReservado,
 } from "@/lib/reembolso-em-duvida";
 import { formatCurrency } from "@/lib/utils";
@@ -147,6 +148,31 @@ function textoDaLinha(linha: LinhaEstornoDoPedido): TextoDaLinha {
     texto: `A devolução de ${valor} foi recusada: ${linha.ultimo_erro ?? ""}${confirmando ? ` ${TEXTO_CONFIRMANDO}` : ""}`,
     podeTentarDeNovo: false,
   };
+}
+
+function avisoDeDevolucoesEmAndamento(linhas: LinhaEstornoDoPedido[]): string {
+  const emAndamento = linhas.filter(
+    (linha) =>
+      linha.mp_status !== "charged_back" &&
+      (linhaViva(linha.status) || acoesDaLinha(linha).confirmando),
+  );
+  if (emAndamento.length === 0) return "";
+
+  const devolucoes = emAndamento.map((linha) => {
+    const valor = formatCurrency(linha.amount);
+    const quando = formatarDataHoraBrasilia(linha.created_at, "curto");
+    if (emAndamento.length === 1) {
+      return `Já existe uma devolução de ${valor} em andamento neste pedido.${quando ? ` Solicitada em ${quando}.` : ""}`;
+    }
+    return quando ? `${valor} — ${quando}` : valor;
+  });
+  if (emAndamento.length > 1) {
+    devolucoes.unshift("Já existem devoluções em andamento neste pedido:");
+  }
+  devolucoes.push(
+    "Confirme só se esta for OUTRA devolução. Se a anterior ainda não aparece como concluída, aguarde alguns instantes antes de repetir.",
+  );
+  return devolucoes.join("\n");
 }
 
 type EstadoDoCartao =
@@ -302,11 +328,13 @@ export function EstornoCard({
   // então duas abas (ou duas pessoas) tocando na mesma linha não mandam dois pedidos ao Mercado Pago.
   async function pedirConfirmacaoEEnviar(amount: number, repetindo?: string) {
     const valor = formatCurrency(amount);
+    const aviso = repetindo ? "" : avisoDeDevolucoesEmAndamento(linhas);
     const confirmado = await confirmar({
       titulo: "Devolver o dinheiro ao cliente?",
       texto: `Devolver ${valor} ao cliente pelo Mercado Pago? O dinheiro sai da sua conta do Mercado Pago e não dá para desfazer.`,
-      verbo: `Devolver ${valor}`,
+      verbo: aviso ? "Confirmar devolução adicional" : `Devolver ${valor}`,
       valor,
+      aviso,
     });
     if (!confirmado) return;
     await solicitarEstorno({

@@ -15,6 +15,8 @@ export interface PedidoDeConfirmacao {
   titulo: string;
   /** O mesmo texto que a caixa nativa do navegador mostrava. */
   texto: string;
+  /** Aviso opcional destacado dentro da descrição. */
+  aviso?: string;
   /** O verbo da ação ("Devolver R$ 50,00"), nunca "OK". */
   verbo: string;
   /** Valor em destaque, já formatado em reais. */
@@ -79,6 +81,11 @@ export function useConfirmarAcao() {
           )}
           <AlertDialogDescription className="whitespace-pre-line text-sm leading-relaxed text-zinc-300">
             {pedido?.texto}
+            {pedido?.aviso ? (
+              <span className="mt-3 block font-bold text-amber-400">
+                {pedido.aviso}
+              </span>
+            ) : null}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter className="mt-2 gap-2">
