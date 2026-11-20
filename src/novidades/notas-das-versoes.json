@@ -3,17 +3,19 @@
     "titulo": "Pedidos, cupons e relatórios mais claros",
     "novidades": [],
     "correcoes": [
-      "No cartão, tocar para conferir de novo enquanto uma consulta está em andamento não gasta outra tentativa.",
+      "No pagamento com cartão, se a cliente tocar em “Verificar de novo” enquanto a consulta anterior ainda está em andamento, a tela pede para aguardar e não gasta outra tentativa.",
       "Se o desconto do cupom mudou em outro aparelho, o painel não sobrescreve a alteração e mostra o valor atual quando consegue consultá-lo.",
       "Se o painel recusar a faixa de CEP, ele reabre o campo para correção, mesmo com a loja só em retirada.",
-      "O Início avisa quando não conseguiu atualizar a receita dos últimos 14 dias."
+      "No Início, se não der para atualizar as vendas dos últimos 14 dias, o gráfico avisa em vez de dizer que não houve receita.",
+      "Se a cliente cancelar um pedido já pago na entrega ou na retirada, o sino e a notificação avisam que a devolução precisa ser combinada com ela.",
+      "Ao enviar fotos JPG pelo painel (produto, banner e logotipo), a localização gravada pelo celular é removida."
     ],
     "melhorias": [
-      "A lista de pedidos e o rastreio mostram o nome anterior da opção quando ele foi guardado no pedido.",
+      "Na lista de pedidos do painel e na consulta de pedido sem conta, uma opção renomeada depois da compra aparece com o nome que tinha no pedido.",
       "A vitrine mostra o nome abreviado em avaliações e perguntas. Antes de publicar, a cliente vê como ele vai aparecer.",
-      "O funil mostra separadamente os pedidos criados e os pagos no período, sem tratar a diferença como falta de pagamento.",
+      "O funil mostra lado a lado os pedidos criados e os pagos no período. A taxa de conversão e o aviso de pedidos que não viraram venda paga saíram, porque comparavam datas diferentes.",
       "O relatório de categorias separa as vendas de itens que não estão mais ligados a um produto.",
-      "Ficou mais fácil chegar pelo teclado à opção de Pix e às alternativas de frete."
+      "Nas alternativas de frete, a lista abre logo depois do botão que a mostra, o que facilita o uso pelo teclado. Para quem compra sem conta, aparece o botão “Entrar para pagar com Pix”."
     ]
   },
   "1.5.220": {
