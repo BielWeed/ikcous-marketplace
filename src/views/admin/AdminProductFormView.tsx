@@ -3036,6 +3036,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       return clean;
     };
 
+    if (Number.isNaN(Number(variantFormData.priceOverride))) {
+      toast.error("Use um preço válido para a variação, como 12,50.");
+      return;
+    }
     const sanitizedVarPrice = cleanNumberString(variantFormData.priceOverride);
     // O sinal de menos era arrancado em silêncio ("-5" virava 5, e o estoque
     // aparecia a mais). Estoque é número inteiro, zero ou mais: o que não for
@@ -4730,6 +4734,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                               id="variant-price"
                               name="variant-price"
                               mask="currency"
+                              decimalNaDigitacao
+                              inputMode="decimal"
                               zeroVazio
                               value={variantFormData.priceOverride}
                               onFlush={(val) =>

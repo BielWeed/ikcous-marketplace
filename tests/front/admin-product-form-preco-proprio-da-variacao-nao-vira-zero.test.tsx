@@ -276,6 +276,49 @@ describe("AdminProductFormView — preço próprio da variação nunca vira zero
     expect(precosNaLista()).toEqual(["R$ 49,90"]);
   });
 
+  async function digitarPrecoTeclaATecla(texto: string) {
+    const campo = document.getElementById("variant-price") as HTMLInputElement;
+    campo.focus();
+    for (const tecla of texto) {
+      await act(async () => {
+        const valor = campo.value + tecla;
+        Object.getOwnPropertyDescriptor(
+          globalThis.HTMLInputElement.prototype,
+          "value",
+        )?.set?.call(campo, valor);
+        campo.setSelectionRange(valor.length, valor.length);
+        campo.dispatchEvent(
+          new InputEvent("input", {
+            bubbles: true,
+            inputType: "insertText",
+            data: tecla,
+          }),
+        );
+      });
+    }
+    await act(async () => campo.blur());
+  }
+
+  it("digitar 12,5 tecla a tecla grava R$ 12,50 como no preço de venda", async () => {
+    await montar();
+    await abrirNovaVariacao("GG");
+    await digitarPrecoTeclaATecla("12,5");
+
+    expect(valorDoCampo("variant-price")).toBe("12,50");
+    await salvarVariacao();
+    expect(precosNaLista()).toEqual(["R$ 12,50"]);
+  });
+
+  it("um preço com mais de duas casas digitadas não salva uma variação com outro preço", async () => {
+    await montar();
+    await abrirNovaVariacao("GG");
+    await digitarPrecoTeclaATecla("12,555");
+
+    await salvarVariacao();
+    expect(precosNaLista()).toEqual([]);
+    expect(valorDoCampo("variant-price")).toBe("12,555");
+  });
+
   it("variação que JÁ está salva com preço zero aparece como R$ 0,00 na lista (não é escondida)", async () => {
     await montar([variacao("v1", "GG", 0), variacao("v2", "P")]);
 
