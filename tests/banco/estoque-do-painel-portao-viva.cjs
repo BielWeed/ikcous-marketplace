@@ -1151,6 +1151,8 @@ async function main() {
     [F.painel, F.analytics].map((f) => [f.arq, f.sig, f.md5.depois]).sort(),
     "as sucessoras da 99 deste lote deixaram de ser a 20261212 e a 20261214: reveja esta prova",
   );
+  const ROTULOS_HISTORICOS =
+    "20261410000000_a_lista_do_painel_e_o_rastreio_levam_o_nome_antigo_da_opcao.sql";
   assert.deepEqual(
     POSTERIORES.map((s) => [s.nome, s.assinatura]).sort(),
     [
@@ -1489,6 +1491,12 @@ async function main() {
         "20261405900000_o_custo_do_cancelamento_fica_no_mes_da_volta.sql",
         "public.fin_dre(date,date)",
       ],
+      // A 1410 redefine duas funções que a 17a não lê.
+      [
+        ROTULOS_HISTORICOS,
+        "public.get_admin_orders_paged(text,text,text,text,integer,integer,text,text)",
+      ],
+      [ROTULOS_HISTORICOS, "public.get_orders_by_otp_v2(text,text,text,text)"],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );
@@ -1521,7 +1529,10 @@ async function main() {
     for (const s of [...POSTERIORES].reverse()) {
       // As tres entradas da 3998 ja sairam ali em cima, de uma vez (o modulo confere os tres corpos anteriores byte a byte); depois da cadeia
       // do ex-admin (381/385/3992) o corpo de get_admin_products_paged ja nao e o da 3992, entao a conferencia por entrada nao se aplica.
-      if (s.nome === LISTAS_DO_PAINEL.nome) continue;
+      // O mesmo helper já desfez a 1410 e o rollback conferiu os dois corpos.
+      // Depois de desfazer a 3998, pedidos já não está no corpo intermediário.
+      if (s.nome === LISTAS_DO_PAINEL.nome || s.nome === ROTULOS_HISTORICOS)
+        continue;
       const vivo = (await c.query(`SELECT ${MD5_VIVO(s.assinatura)} AS h`))
         .rows[0].h;
       if (vivo === s.hashDesta) await c.query(lerLF(s.rollback));
