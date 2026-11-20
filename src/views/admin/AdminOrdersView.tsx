@@ -1446,7 +1446,9 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         }
         throw error;
       }
-      toast.success("Estorno registrado — o pedido saiu da lista.");
+      toast.success(
+        "Estorno registrado. Se o pedido ainda aparecer em “Devolver agora”, atualize a lista.",
+      );
       await fetchPedidosCancelados().catch(() => {});
     } catch (e) {
       console.error("Erro ao registrar estorno manual:", e);

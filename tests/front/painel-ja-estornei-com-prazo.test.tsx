@@ -294,7 +294,7 @@ describe("'Já estornei': a espera da tela tem prazo", () => {
       { p_order_id: "ped-2" },
     ]);
     expect(toast.success).toHaveBeenCalledWith(
-      "Estorno registrado — o pedido saiu da lista.",
+      "Estorno registrado. Se o pedido ainda aparecer em “Devolver agora”, atualize a lista.",
     );
   });
 
