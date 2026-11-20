@@ -1199,6 +1199,14 @@ const VERIFICACOES = {
         ],
       },
     ],
+  "20261412000000_o_crm_ignora_reembolso_integral.sql": {
+    funcao: "crm__vendas",
+    esperado: [
+      { texto: "AND d.status = 'concluida' AND d.reembolso_manual", vezes: 1 },
+      { texto: "HAVING sum(d.valor_reembolso) > 0", vezes: 1 },
+      { texto: "AND r.status = 'concluido'", vezes: 1 },
+    ],
+  },
   "20261406000000_o_pedido_guarda_o_nome_antigo_da_opcao.sql": {
     funcao: "guardar_rotulo_da_opcao_no_pedido",
     esperado: [

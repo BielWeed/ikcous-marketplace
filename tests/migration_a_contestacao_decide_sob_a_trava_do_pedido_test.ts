@@ -538,6 +538,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/rotulo-historico-na-lista-e-no-rastreio-viva.cjs",
     // 20261411000000: unicidade por upper(code), pre-voo, rollback e consultas 167a/167b.
     "tests/banco/o-cupom-nao-repete-o-codigo-em-outra-grafia-viva.cjs",
+    // 20261412000000: reembolso integral sai das vendas do CRM.
+    "tests/banco/o-crm-ignora-reembolso-integral-viva.cjs",
     // Onda 119: cancelar so abre order_refunds para pago/pago_apos_expirar com paid_at, em pending/processing; mutantes por MUTANTE_R130D.
     "tests/banco/cancelar-pedido-so-abre-estorno-se-pago-viva.cjs",
     // Onda 134: order_refunds, devolucao_itens e devolucao_eventos so se leem pela cliente (REVOKE de escrita + sem policy de escrita); mutantes por MUTANTE_R134D.

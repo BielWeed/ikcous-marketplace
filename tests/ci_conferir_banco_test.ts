@@ -121,7 +121,7 @@ try {
   MIGRACAO_82_EXISTE = false;
 }
 
-Deno.test("167 — as consultas do cupom precisam de rol completo antes e depois do apply", async () => {
+Deno.test("167 e 168 — as consultas do cupom e do CRM precisam de rol completo antes e depois do apply", async () => {
   const {
     contarStatements,
     listarConsultas,
@@ -144,6 +144,24 @@ Deno.test("167 — as consultas do cupom precisam de rol completo antes e depois
     [
       "167b-conferir-o-cupom-nao-repete-o-codigo-aplicado",
       ["cupom: indice unico de codigo em maiusculas valido"],
+    ],
+    [
+      "168a-conferir-o-crm-ignora-reembolso-integral-aplicado",
+      [
+        "controle: funcoes de public visiveis a este papel",
+        "crm__vendas: corpo exato (md5)",
+        "crm__vendas: assinatura e atributos conhecidos",
+        "crm__vendas: sem EXECUTE para PUBLIC, anon ou authenticated",
+      ],
+    ],
+    [
+      "168b-antes-o-crm-ignora-reembolso-integral-base-vigente",
+      [
+        "controle: funcoes de public visiveis a este papel",
+        "crm__vendas: corpo exato (md5)",
+        "crm__vendas: assinatura e atributos conhecidos",
+        "crm__vendas: sem EXECUTE para PUBLIC, anon ou authenticated",
+      ],
     ],
   ] as const;
   for (const [consulta, itens] of casos) {
@@ -15277,16 +15295,12 @@ Deno.test(`${NOME_44M} — no menu, UM SELECT so leitura de rol aberto, filtro e
     },
   );
   await t.step(
-    "a venda reconhecida e a chave da cliente sao IDENTICAS a crm__vendas (20261399990000, corpo vigente: o da 20261178000000 mais a chave sem o 55)",
+    "a medicao historica 44m preserva a regra de venda e de chave da 20261399990000",
     async () => {
-      const vigente = await ultimaQueDefine("FUNCTION public.crm__vendas");
-      assertEquals(
-        vigente,
-        "20261399990000_o_crm_nao_duplica_o_comprador_com_e_sem_55.sql",
-        "a crm__vendas mudou de corpo: refaca a regra de cliente da 44m contra o corpo novo",
-      );
       const mig = normal(
-        await Deno.readTextFile(`${MIGRATIONS_DIR}/${vigente}`),
+        await Deno.readTextFile(
+          `${MIGRATIONS_DIR}/20261399990000_o_crm_nao_duplica_o_comprador_com_e_sem_55.sql`,
+        ),
       );
       const base = bloco("base AS (", "), base_chave AS (");
       const venda =

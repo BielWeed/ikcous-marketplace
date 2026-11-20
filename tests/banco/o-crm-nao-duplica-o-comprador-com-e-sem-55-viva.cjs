@@ -445,6 +445,13 @@ async function main() {
   const c = new Client({ connectionString: lerDatabaseUrlEfemera() });
   await c.connect();
   try {
+    // O clone já tem a sucessora. Esta prova exercita o corpo histórico
+    // também em autocommit, então a troca precisa preceder o BEGIN.
+    await c.query(
+      ler(
+        "supabase/migrations/rollback-manual-20261412000000_o_crm_ignora_reembolso_integral.sql",
+      ),
+    );
     await c.query("BEGIN");
 
     // ---- 0. O topo instalado pelo CI e' o desta migration; o anterior e' o da 20261178000000. ----

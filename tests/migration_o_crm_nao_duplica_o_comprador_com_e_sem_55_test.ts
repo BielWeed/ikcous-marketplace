@@ -341,11 +341,12 @@ Deno.test("as consultas 142a e 142b leem o corpo certo (md5 de cada lado), so ca
       ),
     );
   }
-  // o resto das duas e' igual: so muda o md5 e o comentario
-  assert.equal(
-    a.split("\n").slice(2).join("\n").replace(H_NOVO, "X"),
-    b.split("\n").slice(2).join("\n").replace(H_VIGENTE, "X"),
-  );
+  // A 142a aceita o corpo sucessor exato; a 142b ainda exige só a base antiga.
+  const nova = "20261412000000_o_crm_ignora_reembolso_integral.sql";
+  const sucessora = md5(corpoDe(ler(nova)));
+  assert.equal(corpoDe(ler(`rollback-manual-${nova}`)), CORPO_NOVO);
+  assert.ok(a.includes(`THEN vivo IN ('${H_NOVO}', '${sucessora}')`));
+  assert.ok(!b.includes(sucessora));
   const conferir = Deno.readTextFileSync(
     new URL("scripts/publicacao/conferir-banco.cjs", DIR),
   );
@@ -371,7 +372,7 @@ Deno.test("as consultas 142a e 142b leem o corpo certo (md5 de cada lado), so ca
   assert.ok(entrada, "canais-de-backend.json sem a entrada da 142a");
 });
 
-Deno.test("depois da 20261178000000 so este par redefine crm__vendas", () => {
+Deno.test("depois da 20261178000000 so os pares conhecidos redefinem crm__vendas", () => {
   const todas = [...Deno.readDirSync(new URL("supabase/migrations/", DIR))]
     .map((e) => e.name)
     .filter((n) => n.endsWith(".sql") && !n.startsWith("_"));
@@ -384,5 +385,9 @@ Deno.test("depois da 20261178000000 so este par redefine crm__vendas", () => {
       )
     )
       posteriores.push(n);
-  assert.deepEqual(posteriores.sort(), [NOME, `rollback-manual-${NOME}`]);
+  const nova = "20261412000000_o_crm_ignora_reembolso_integral.sql";
+  assert.deepEqual(
+    posteriores.sort(),
+    [NOME, nova, `rollback-manual-${NOME}`, `rollback-manual-${nova}`].sort(),
+  );
 });
