@@ -279,7 +279,9 @@ describe("OrderDetailsView — copiar id e rastreio não mente", () => {
   it("o chip do número tem nome falado e área de toque de 44px (visual de 28px + ::after)", async () => {
     await renderizar();
     const chip = botaoIdPedido() as HTMLElement;
-    expect(chip.getAttribute("aria-label")).toBe("Copiar número do pedido");
+    expect(chip.getAttribute("aria-label")).toBe(
+      `Copiar número do pedido #${numeroDoPedido(pedidoBase.id)}`,
+    );
     expect(chip.className).toContain("after:-inset-y-2");
     expect(chip.className).toContain("border-solid");
   });
