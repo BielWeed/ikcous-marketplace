@@ -269,9 +269,11 @@ vi.mock("@/hooks/useAuth", () => ({
     isPasswordRecovery: false,
   }),
 }));
-vi.mock("@/hooks/useProducts", () => ({
-  useProducts: () => ({ products: [], loading: false }),
-}));
+vi.mock("@/hooks/useProducts", () => {
+  // Catálogo vazio não muda: preserva a identidade que o App usa nos efeitos.
+  const catalogo = { products: [], loading: false };
+  return { useProducts: () => catalogo };
+});
 vi.mock("@/hooks/useFavorites", () => ({
   useFavorites: () => ({
     favorites: [],
@@ -282,13 +284,14 @@ vi.mock("@/hooks/useFavorites", () => ({
 vi.mock("@/hooks/useAppBadge", () => ({
   useAppBadge: () => ({ setBadge: () => {}, clearBadge: () => {} }),
 }));
-vi.mock("@/hooks/usePrefetchOnHover", () => ({
-  usePrefetchOnHover: () => ({
+vi.mock("@/hooks/usePrefetchOnHover", () => {
+  const prefetch = {
     prefetchView: () => {},
     prefetchAll: () => {},
     prefetchViewPromise: () => Promise.resolve(),
-  }),
-}));
+  };
+  return { usePrefetchOnHover: () => prefetch };
+});
 vi.mock("@/hooks/useNetworkAdaptive", () => ({
   useNetworkAdaptive: () => ({ isSlow: () => false }),
 }));
@@ -366,8 +369,16 @@ function dubleDeArmazem() {
 describe("checkout: a seta Voltar com o painel de resumo aberto só fecha o painel no 1º toque", () => {
   let raiz: Root | null = null;
   let container: HTMLDivElement | null = null;
+  let prazoDasEsperas: number;
+  let entradaOriginal: { url: string; state: unknown };
 
   beforeEach(() => {
+    // Um orçamento para TODAS as esperas do caso, abaixo dos 5 s do CI.
+    prazoDasEsperas = performance.now() + 3500;
+    entradaOriginal = {
+      url: globalThis.location.href,
+      state: globalThis.history.state,
+    };
     vi.stubGlobal("localStorage", dubleDeArmazem());
     vi.stubGlobal("sessionStorage", dubleDeArmazem());
     vi.stubGlobal("IntersectionObserver", ObservadorDeInterseccao);
@@ -386,8 +397,7 @@ describe("checkout: a seta Voltar com o painel de resumo aberto só fecha o pain
       Element.prototype.scrollTo = () => {};
     }
 
-    // @ts-expect-error — bandeira interna do React para o `act`
-    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 
     globalThis.history.replaceState(null, "", "/checkout");
 
@@ -405,47 +415,47 @@ describe("checkout: a seta Voltar com o painel de resumo aberto só fecha o pain
     raiz = null;
     container = null;
     vi.restoreAllMocks();
+    globalThis.localStorage.clear();
+    globalThis.sessionStorage.clear();
+    globalThis.history.replaceState(
+      entradaOriginal.state,
+      "",
+      entradaOriginal.url,
+    );
     vi.unstubAllGlobals();
   });
 
-  const assentar = async (voltas = 10) => {
-    for (let i = 0; i < voltas; i++) {
-      await act(async () => {
-        await Promise.resolve();
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      });
-    }
-  };
-
-  // Peça 17 (14/09): sob carga (suíte inteira no CI, worker jsdom
-  // compartilhado), o assentar de voltas FIXAS às vezes não alcança o commit
-  // da tela — a espera é CONDICIONAL pelo estado real (padrão `esperarAte`
-  // da casa, copiado de account-settings-senha-usa-o-hook-traduzido), não
-  // contagem de voltas. A asserção de conteúdo continua depois dela.
-  const esperarAte = async (
-    condicao: () => boolean,
-    { timeoutMs = 10000, passoMs = 10 } = {},
-  ) => {
-    const inicio = Date.now();
-    while (!condicao()) {
-      if (Date.now() - inicio > timeoutMs) {
-        throw new Error(
-          `esperarAte: condição não ficou verdadeira em ${timeoutMs}ms`,
-        );
-      }
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, passoMs));
-      });
-    }
+  const esperarAte = async (verificar: () => void) => {
+    await vi.waitFor(
+      async () => {
+        // Deixa o React aplicar atualizações do popstate e dos imports lazy.
+        await act(async () => {});
+        verificar();
+      },
+      {
+        timeout: Math.max(1, prazoDasEsperas - performance.now()),
+        interval: 10,
+      },
+    );
   };
 
   const abrir = async () => {
     await act(async () => {
       raiz?.render(<App />);
     });
-    // O botão só existe depois que a tela assíncrona monta. Espere pela
-    // própria tela, com margem antes do limite de 5 s do teste no CI.
-    await esperarAte(() => naTelaDeCheckout() === true, { timeoutMs: 3000 });
+    await esperarAte(() => {
+      expect(naTelaDeCheckout(), "checkout não montou").toBe(true);
+      expect(
+        container?.querySelector('[data-testid="seta-voltar"]'),
+        "seta do cabeçalho não montou",
+      ).toBeTruthy();
+    });
+    // PreloadedOrLazy pode trocar o wrapper lazy pelo componente já carregado
+    // na primeira renderização seguinte. Faça essa atualização antes do clique
+    // para ela não remontar o dublê e apagar o estado local recém-aberto.
+    await act(async () => {
+      raiz?.render(<App />);
+    });
   };
 
   const clicar = async (testId: string) => {
@@ -456,13 +466,23 @@ describe("checkout: a seta Voltar com o painel de resumo aberto só fecha o pain
     await act(async () => {
       botao.click();
     });
-    await assentar();
   };
 
   const estadoDoPainel = () =>
     container?.querySelector('[data-testid="painel-estado"]')?.textContent;
   const naTelaDeCheckout = () =>
-    container?.querySelector('[data-testid="tela-checkout"]') !== null;
+    Boolean(container?.querySelector('[data-testid="tela-checkout"]'));
+
+  const esperarPainelFechado = async () => {
+    await esperarAte(() => {
+      // Se a seta sair do checkout, não espere por um painel que já sumiu.
+      if (naTelaDeCheckout()) {
+        expect(estadoDoPainel()).toBe("fechado");
+      }
+    });
+    expect(naTelaDeCheckout(), "o primeiro voltar saiu do checkout").toBe(true);
+    expect(estadoDoPainel()).toBe("fechado");
+  };
 
   it("chega no checkout pela URL direta", async () => {
     // Flaky medido no gate (peça 17, 14/09): a tela pinta por efeito
@@ -482,7 +502,7 @@ describe("checkout: a seta Voltar com o painel de resumo aberto só fecha o pain
 
     // A trava desta peça: antes da correção, este primeiro toque saía do
     // checkout inteiro (a seta ignorava o override e navegava para home).
-    await esperarAte(() => estadoDoPainel() === "fechado");
+    await esperarPainelFechado();
     expect(naTelaDeCheckout()).toBe(true);
     expect(estadoDoPainel()).toBe("fechado");
   });
@@ -491,12 +511,14 @@ describe("checkout: a seta Voltar com o painel de resumo aberto só fecha o pain
     await abrir();
     await clicar("abrir-painel");
     await clicar("seta-voltar"); // 1º toque: só fecha.
-    await esperarAte(() => estadoDoPainel() === "fechado");
+    await esperarPainelFechado();
     expect(estadoDoPainel()).toBe("fechado");
 
     await clicar("seta-voltar"); // 2º toque: volta de verdade.
 
-    await esperarAte(() => naTelaDeCheckout() === false);
+    await esperarAte(() =>
+      expect(naTelaDeCheckout(), "a seta não saiu do checkout").toBe(false),
+    );
     expect(naTelaDeCheckout()).toBe(false);
   });
 
@@ -506,7 +528,9 @@ describe("checkout: a seta Voltar com o painel de resumo aberto só fecha o pain
 
     await clicar("seta-voltar");
 
-    await esperarAte(() => naTelaDeCheckout() === false);
+    await esperarAte(() =>
+      expect(naTelaDeCheckout(), "a seta não saiu do checkout").toBe(false),
+    );
     expect(naTelaDeCheckout()).toBe(false);
   });
 
@@ -520,8 +544,7 @@ describe("checkout: a seta Voltar com o painel de resumo aberto só fecha o pain
     await act(async () => {
       globalThis.history.back();
     });
-    await esperarAte(() => estadoDoPainel() === "fechado");
-    await assentar();
+    await esperarPainelFechado();
 
     expect(naTelaDeCheckout()).toBe(true);
     expect(estadoDoPainel()).toBe("fechado");
@@ -535,7 +558,7 @@ describe("checkout: a seta Voltar com o painel de resumo aberto só fecha o pain
     expect(globalThis.history.state).toEqual({ modal: "checkout-summary" });
 
     await clicar("seta-voltar");
-    await esperarAte(() => estadoDoPainel() === "fechado");
+    await esperarPainelFechado();
     expect(naTelaDeCheckout()).toBe(true);
     expect(globalThis.location.pathname).toBe("/checkout");
     // Fechar só o painel visualmente deixaria a entrada dele no histórico.
@@ -543,7 +566,7 @@ describe("checkout: a seta Voltar com o painel de resumo aberto só fecha o pain
 
     await clicar("seta-voltar");
     await esperarAte(() =>
-      Boolean(container?.querySelector('[data-testid="home"]')),
+      expect(container?.querySelector('[data-testid="home"]')).not.toBeNull(),
     );
     expect(naTelaDeCheckout()).toBe(false);
     expect(globalThis.location.pathname).toBe("/");
@@ -566,7 +589,9 @@ describe("checkout: a seta Voltar com o painel de resumo aberto só fecha o pain
 
     await clicar("seta-voltar");
 
-    await esperarAte(() => naTelaDeCheckout() === false);
+    await esperarAte(() =>
+      expect(naTelaDeCheckout(), "a seta não saiu do checkout").toBe(false),
+    );
     expect(naTelaDeCheckout()).toBe(false);
     expect(historyBackSpy).not.toHaveBeenCalled();
   });
@@ -584,7 +609,7 @@ describe("checkout: a seta Voltar com o painel de resumo aberto só fecha o pain
 
     await clicar("seta-voltar");
 
-    await esperarAte(() => estadoDoPainel() === "fechado");
+    await esperarPainelFechado();
     expect(naTelaDeCheckout()).toBe(true);
     expect(estadoDoPainel()).toBe("fechado");
   });
