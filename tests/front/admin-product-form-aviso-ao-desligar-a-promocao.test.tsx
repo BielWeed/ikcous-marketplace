@@ -176,6 +176,27 @@ describe("AdminProductFormView — aviso ao desligar a promoção", () => {
     expect(aviso()).toBeUndefined();
   });
 
+  it("não mostra preço zerado como o preço que continua valendo", async () => {
+    await montarProduto(100);
+    await alternarPromocao();
+    expect(aviso()).toBeDefined();
+
+    await act(async () => {
+      const campo = document.getElementById(
+        "product-sale-price",
+      ) as HTMLInputElement;
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )?.set?.call(campo, "0");
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 300));
+    });
+
+    expect(aviso()).toBeUndefined();
+    expect(hospedeiro.textContent).not.toContain("continua R$ 0,00");
+  });
+
   it("some ao religar a promoção", async () => {
     await montarProduto(100);
     await alternarPromocao();

@@ -6006,10 +6006,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
                 {productId &&
                   !isPromoActive &&
-                  Number(initialData.originalPrice) > 0 &&
-                  formData.price !== "" &&
+                  Number(initialData.originalPrice) >
+                    Number(initialData.price) &&
+                  priceVal > 0 &&
                   priceVal < Number(initialData.originalPrice) && (
-                    <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-[11px] font-medium leading-relaxed text-amber-200/80">
+                    <p
+                      role="status"
+                      className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-[11px] font-medium leading-relaxed text-amber-200/80"
+                    >
                       Desligar a promoção só tira o preço riscado. O preço de
                       venda continua {formatCurrency(priceVal)}. Para voltar ao
                       preço de antes, ponha{" "}
