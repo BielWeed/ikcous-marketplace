@@ -320,7 +320,9 @@ export function ParaFazer({
                 <button
                   type="button"
                   className={`${LINHA_INICIO} text-sm text-zinc-400`}
-                  onClick={() => onNavigate("admin-products", aviso.produtoId)}
+                  onClick={() =>
+                    onNavigate("admin-product-form", aviso.produtoId)
+                  }
                 >
                   {aviso.texto} ({aviso.detalhe})
                 </button>

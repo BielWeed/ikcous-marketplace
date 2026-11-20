@@ -227,7 +227,7 @@ describe("aviso discreto no fim de Para fazer", () => {
       );
       expect(botao).toBeDefined();
       await act(async () => botao!.click());
-      expect(navegar).toHaveBeenLastCalledWith("admin-products", "rosa");
+      expect(navegar).toHaveBeenLastCalledWith("admin-product-form", "rosa");
     } finally {
       await act(async () => raiz.unmount());
     }
