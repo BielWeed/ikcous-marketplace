@@ -1162,8 +1162,9 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                 {config.mascara_webhook
                   ? null
                   : "Sem a senha dos avisos da sua loja, o pagamento pelo app não é liberado; a chave global do app não substitui a sua. "}
-                Testar conexão não confere os avisos. Para conferir o recebimento,
-                envie uma notificação de teste no painel do Mercado Pago.
+                Testar conexão não confere os avisos. Para conferir o
+                recebimento, envie uma notificação de teste no painel do Mercado
+                Pago.
               </p>
             </div>
 

@@ -485,7 +485,9 @@ describe("MercadoPagoSection — liberação automática do pagamento pelo app",
     const [titulo, opcoes] = toastSuccess.mock.calls[0];
     expect(titulo).toContain("salvas");
     expect(opcoes.description).toContain("Conexão com a conta OK");
-    expect(opcoes.description).toContain("Recebimento de avisos não verificado");
+    expect(opcoes.description).toContain(
+      "Recebimento de avisos não verificado",
+    );
     expect(opcoes.description).toContain("notificação de teste");
   });
 
