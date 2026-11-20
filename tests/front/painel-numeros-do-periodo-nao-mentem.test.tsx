@@ -31,7 +31,7 @@ class ResizeObserverStub {
 // dos vizinhos deste diretório.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-/** Um dia fora da janela de 30D (dia 45 atrás) com valores bem diferentes
+/** Um dia antigo fora da janela de 30D com valores bem diferentes
  * dos dias recentes, para que a soma "all-time" (`stats.executive`, que
  * inclui este dia) discorde da soma real da janela de 30D. */
 const DIA_FORA_DA_JANELA_30D = {
@@ -43,7 +43,7 @@ const DIA_FORA_DA_JANELA_30D = {
   cost_sold: 0,
 };
 
-/** 30 dias recentes, cada um com R$100 e 1 pedido — soma real da janela:
+/** 30 dias fechados até ontem, cada um com R$100 e 1 pedido — soma real da janela:
  * receita 3000, pedidos 30, ticket médio 100. */
 function trintaDiasRecentes() {
   const dias = [];
@@ -79,7 +79,19 @@ function statsComHistoricoDivergente(): DashboardStats {
       activeCustomers: 0,
       activeCustomersTrend: 0,
     },
-    revenueHistory: [DIA_FORA_DA_JANELA_30D, ...trintaDiasRecentes()],
+    revenueHistory: [
+      DIA_FORA_DA_JANELA_30D,
+      ...trintaDiasRecentes(),
+      // Hoje ainda está em andamento e não compõe a janela de 30 dias fechados.
+      {
+        date: "2026-08-23",
+        full_date: "23/08",
+        revenue: 0,
+        orders: 0,
+        profit: 0,
+        cost_sold: 0,
+      },
+    ],
     topProducts: [],
     inventoryAlerts: 0,
   };
