@@ -4,20 +4,19 @@
 -- Historico por mes de CRIACAO em Sao Paulo (nao o mes em que o pagamento entrou).
 -- O contexto conta pedidos pagos pelo app (payment_method = 'online'), incluindo os
 -- pagos apos expirar, no mesmo mes. Nao representa pagamentos ja mudados para estornado.
--- total_amount pode ser nulo: a soma usa apenas valores gravados e mostra quantos faltam.
--- Somente agregados, com datas sem horario e metodos de lista fechada. Sem dados pessoais.
+-- So contagens e datas sem horario, por metodos de lista fechada. Sem dados pessoais.
+-- Nenhum valor em reais sai no log publico; confira valores em consulta privada.
 WITH base AS (
   SELECT (o.created_at AT TIME ZONE 'America/Sao_Paulo')::date AS dia,
          CASE WHEN o.payment_method IN ('online', 'pix', 'card', 'cash') THEN o.payment_method
               WHEN o.payment_method IS NULL THEN 'nulo'
               ELSE 'outro' END AS metodo,
-         o.payment_status AS pagto,
-         o.total_amount AS valor
+         o.payment_status AS pagto
     FROM public.marketplace_orders o
    WHERE o.payment_status = 'pago_apos_expirar'
       OR (o.payment_method = 'online' AND o.payment_status = 'pago')
 ), mensal AS (
-  SELECT date_trunc('month', dia::timestamp)::date AS mes, dia, metodo, pagto, valor
+  SELECT date_trunc('month', dia::timestamp)::date AS mes, dia, metodo, pagto
     FROM base
 ), r AS (
   SELECT 0 AS ordem, 'controle' AS tipo, 'visibilidade' AS objeto,
@@ -26,8 +25,6 @@ WITH base AS (
   UNION ALL
   SELECT 1, 'pago_apos_expirar', to_char(mes, 'YYYY-MM') || ' | ' || metodo,
          'pedidos=' || count(*)::text
-         || '|soma_total_amount=' || COALESCE(sum(valor)::text, 'sem_valor')
-         || '|pedidos_sem_total_amount=' || (count(*) - count(valor))::text
          || '|primeira_data=' || to_char(min(dia), 'YYYY-MM-DD')
          || '|ultima_data=' || to_char(max(dia), 'YYYY-MM-DD')
     FROM mensal

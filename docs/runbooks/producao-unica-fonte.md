@@ -2364,14 +2364,16 @@ O cadastro de UMA vez, na entrada do cliente:
   entregues com `payment_status` nulo. **Ler a linha `controle` primeiro:** com a RLS valendo em qualquer das tres
   tabelas o numero sai baixo; a coerencia do desconto diz se a coluna `discount` e confiavel. Nao e portao.
 - **`45m-medir-pago-apos-expirar`**: conta os pedidos marcados como pagos depois de a reserva vencer (incluindo
-  cartao e PIX), por mes de criacao do pedido e metodo registrado. So leitura, com totais agrupados e sem
-  dados de clientes. No `conferir-banco-da-loja.yml`, selecione esta `consulta`, use `projeto=ikcous-publicada`
+  cartao e PIX), por mes de criacao do pedido e metodo registrado. Mostra contagens e a primeira e a ultima
+  data de criacao em cada grupo, sem dados de clientes nem valores em reais. Confira valores em consulta
+  privada. No `conferir-banco-da-loja.yml`, selecione esta `consulta`, use `projeto=ikcous-publicada`
   ou `projeto=savy` (uma loja por execucao), `gravar_ledger=nao` e o SHA completo do commit da execucao em
-  `expected_sha`. Nao e portao.
+  `expected_sha`. So leitura. Nao e portao.
 - **`46m-medir-produtos-com-variacoes-independentes`**: conta produtos ativos nao excluidos e os que tem mais
-  de um grupo de variacao, como no aviso do painel. Mostra ate 20 IDs e nomes com a soma do estoque
-  das variacoes ativas. Use os mesmos alvos e parametros da 45m, uma loja por execucao. Se algum
-  indicador de RLS for 1, o total pode estar incompleto. So leitura, sem dados de clientes. Nao e portao.
+  de um grupo de variacao, como no aviso do painel. A amostra mostra ate 20 IDs com o rotulo fixo
+  `variacoes_independentes`, sem nomes nem estoque. Use os mesmos alvos e parametros da 45m, uma loja por
+  execucao. Se algum indicador de RLS for 1, o total pode estar incompleto. So leitura, sem dados de
+  clientes. Nao e portao.
 
 ## Fora da release, de proposito
 

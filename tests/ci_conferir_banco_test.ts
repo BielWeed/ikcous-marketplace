@@ -15051,11 +15051,14 @@ Deno.test("45m — a medicao de pagamento apos expirar esta no menu e e uma leit
   const colunasLidas = [
     ...new Set(Array.from(limpo.matchAll(/\bo\.(\w+)/g), (m) => m[1])),
   ].sort();
+  assert(
+    !/total_amount|\bvalor\b|\bsum\s*\(/i.test(limpo),
+    "45m não pode ler valores nem somá-los no log público",
+  );
   assertEquals(colunasLidas, [
     "created_at",
     "payment_method",
     "payment_status",
-    "total_amount",
   ]);
   assert(!/\bSELECT\s+(?:o\.)?\*/i.test(limpo));
 });
@@ -15093,6 +15096,15 @@ Deno.test("46m — mede variacoes independentes no menu sem escrever nem ler dad
   assert(/\bp\.ativo IS TRUE\s+AND p\.deleted_at IS NULL\b/i.test(limpo));
   assert(/\bHAVING count\(DISTINCT chave\) > 1\b/i.test(limpo));
   assert(/\bLIMIT 20\b/i.test(limpo));
+  assert(
+    !/\b(?:nome|soma_estoque)\b/i.test(limpo),
+    "46m não pode ler nome de produto nem mostrar soma de estoque no log público",
+  );
+  assert(
+    /\bSELECT 1, 'produto', id::text,\s*'variacoes_independentes'\s+FROM amostra\b/i.test(
+      limpo,
+    ),
+  );
   assert(/\bSELECT tipo, objeto, detalhe\s+FROM r\b/i.test(limpo));
 });
 
