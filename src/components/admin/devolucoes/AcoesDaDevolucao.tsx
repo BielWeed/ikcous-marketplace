@@ -219,8 +219,18 @@ export function AcoesDaDevolucao({
     detalhe.itens,
     itensAusentes,
   );
-  const sugeridoCheio =
-    centavosDosItens - centavosAusentes + paraCentavos(detalhe.valor_frete_ida);
+  // A solicitação só guarda frete se a cobertura do pedido for integral,
+  // inclusive somando outras devoluções válidas. A inspeção confirma se todas
+  // as unidades desta solicitação voltaram ("Não veio" exclui a linha).
+  const todosOsItensVoltaram =
+    detalhe.itens.length > 0 &&
+    detalhe.itens.every((item) => {
+      const condicao = inspecao.get(item.id)?.condicao;
+      return !!condicao && condicao !== "ausente";
+    });
+  const centavosFrete = paraCentavos(detalhe.valor_frete_ida);
+  const freteIncluido = todosOsItensVoltaram ? centavosFrete : 0;
+  const sugeridoCheio = centavosDosItens - centavosAusentes + freteIncluido;
   const saldoEmCentavos = disponivel === null ? null : paraCentavos(disponivel);
   const limitadoAoSaldo =
     saldoEmCentavos !== null && saldoEmCentavos < sugeridoCheio;
@@ -837,8 +847,8 @@ export function AcoesDaDevolucao({
                   />
                   <p className="text-[11px] leading-relaxed text-zinc-500">
                     Itens {formatarReais(detalhe.valor_itens)}
-                    {detalhe.valor_frete_ida > 0 &&
-                      ` + frete de ida ${formatarReais(detalhe.valor_frete_ida)}${itensAusentes.length === 0 ? " (o pedido voltou inteiro)" : ""}`}
+                    {freteIncluido > 0 &&
+                      ` + frete de ida ${formatarReais(freteIncluido / 100)} (o pedido voltou inteiro)`}
                     .{" "}
                     {pagoPeloApp(detalhe)
                       ? "O dinheiro volta ao cliente pelo Mercado Pago (PIX ou cartão) se o pagamento tiver até 180 dias; depois disso você devolve em mãos ou por PIX e o app registra a saída."
@@ -858,8 +868,8 @@ export function AcoesDaDevolucao({
                           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
                           <span>
                             {`Você marcou ${itensAusentes.map((item) => nomeComVariacao(item, rotulosDasVariacoes, "Produto")).join(", ")} como "Não veio": o valor sugerido já desconta ${formatarReais(centavosAusentes / 100)} ${itensAusentes.length > 1 ? "desses itens" : "desse item"}.`}
-                            {detalhe.valor_frete_ida > 0 &&
-                              " O frete de ida continua somado: confira se deve devolvê-lo."}
+                            {centavosFrete > 0 &&
+                              " Frete não incluído: nem todos os itens voltaram."}
                           </span>
                         </p>
                       )}

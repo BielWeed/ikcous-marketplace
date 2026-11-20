@@ -45,7 +45,10 @@ function item(
   };
 }
 
-function detalheDe(over: Partial<DevolucaoDetalhe> = {}): DevolucaoDetalhe {
+function detalheDe(
+  over: Partial<DevolucaoDetalhe> = {},
+  pedido: Partial<NonNullable<DevolucaoDetalhe["pedido"]>> = {},
+): DevolucaoDetalhe {
   return {
     id: "d-1",
     protocolo: "DV261103-AAAAA",
@@ -96,6 +99,7 @@ function detalheDe(over: Partial<DevolucaoDetalhe> = {}): DevolucaoDetalhe {
       whatsapp: "34999990000",
       shipping_label_id: null,
       shipping_option_id: null,
+      ...pedido,
     },
     ...over,
   } as DevolucaoDetalhe;
@@ -287,24 +291,76 @@ describe("AcoesDaDevolucao — valor sugerido e itens que não voltaram", () => 
     expect(campoValor()?.value).toBe("200,00");
   });
 
-  it("o frete de ida continua na sugestão (decisão da lojista) e o aviso manda conferir", async () => {
-    await abrirConclusao(detalheDe({ valor_frete_ida: 20 }));
+  it("com um item 'Não veio', tira os R$ 20 de frete da sugestão e explica por quê", async () => {
+    await abrirConclusao(
+      detalheDe(
+        {
+          valor_itens: 100,
+          valor_frete_ida: 20,
+          itens: [
+            item("a", "Camiseta azul", 1, 50),
+            item("b", "Calça preta", 1, 50),
+          ],
+        },
+        { total: 120, shipping: 20 },
+      ),
+    );
     await clicar(condicaoDe("Camiseta azul", "Nova, sem uso"));
     await clicar(condicaoDe("Calça preta", "Não veio"));
 
-    expect(campoValor()?.value).toBe("120,00");
-    expect(aviso()?.textContent).toContain("frete");
-    // Com item que não veio, a tela não afirma que o pedido voltou inteiro.
-    expect(document.body.textContent).not.toContain("o pedido voltou inteiro");
-  });
+    expect(campoValor()?.value).toBe("50,00");
+    expect(hospedeiro.textContent).toContain(
+      "Frete não incluído: nem todos os itens voltaram.",
+    );
+    expect(hospedeiro.textContent).not.toContain("o pedido voltou inteiro");
 
-  it("com todos os itens recebidos, a linha do frete diz que o pedido voltou inteiro", async () => {
-    await abrirConclusao(detalheDe({ valor_frete_ida: 20 }));
-    await clicar(condicaoDe("Camiseta azul", "Nova, sem uso"));
     await clicar(condicaoDe("Calça preta", "Nova, sem uso"));
 
-    expect(document.body.textContent).toContain("o pedido voltou inteiro");
+    expect(campoValor()?.value).toBe("120,00");
+    expect(hospedeiro.textContent).not.toContain("Frete não incluído");
   });
+
+  it.each([
+    { cenario: "integral", total: 70, freteDaSolicitacao: 20, valor: "70,00" },
+    {
+      cenario: "que completa uma devolução anterior",
+      total: 120,
+      freteDaSolicitacao: 20,
+      valor: "70,00",
+    },
+    {
+      cenario: "parcial por escolha da cliente",
+      total: 120,
+      freteDaSolicitacao: 0,
+      valor: "50,00",
+    },
+  ])(
+    "devolução $cenario: segue o frete calculado na solicitação",
+    async ({ total, freteDaSolicitacao, valor }) => {
+      await abrirConclusao(
+        detalheDe(
+          {
+            valor_itens: 50,
+            valor_frete_ida: freteDaSolicitacao,
+            itens: [item("a", "Camiseta azul", 1, 50)],
+          },
+          { total, shipping: 20 },
+        ),
+      );
+
+      // Sem confirmar que o item voltou, ainda não soma o frete.
+      expect(campoValor()?.value).toBe("50,00");
+      await clicar(condicaoDe("Camiseta azul", "Nova, sem uso"));
+
+      expect(campoValor()?.value).toBe(valor);
+      expect(hospedeiro.textContent).not.toContain("Frete não incluído");
+      if (freteDaSolicitacao > 0) {
+        expect(hospedeiro.textContent).toContain("o pedido voltou inteiro");
+      } else {
+        expect(hospedeiro.textContent).not.toContain("frete de ida");
+      }
+    },
+  );
 
   it("item 'Danificada': o valor NÃO muda, mas o aviso aparece", async () => {
     await abrirConclusao(detalheDe());
