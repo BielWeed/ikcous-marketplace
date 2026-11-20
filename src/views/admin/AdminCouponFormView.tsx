@@ -321,7 +321,9 @@ function FormularioDoCupom({
   const cupomInicializadoRef = useRef<string | null>(null);
   // O cupom como o BANCO estava quando a tela o leu (antes da mesclagem com o
   // que ela já digitou): é contra ele que o salvar vê o que ela mexeu.
-  const lidoAoAbrirRef = useRef<Partial<Coupon> | null>(null);
+  const lidoAoAbrirRef = useRef<
+    (Partial<Coupon> & Pick<Coupon, "type" | "value">) | null
+  >(null);
   useEffect(() => {
     if (!couponId || coupons.length === 0) return;
     if (cupomInicializadoRef.current === couponId) return;
@@ -656,7 +658,8 @@ function FormularioDoCupom({
         // rede ou id inexistente) NÃO salva — nem como INSERT (o defeito
         // antigo), nem como UPDATE cego com os zeros de partida por cima
         // das regras reais do cupom. A tela conta o que acontece.
-        if (!editingCoupon) {
+        const lidoAoAbrir = lidoAoAbrirRef.current;
+        if (!editingCoupon || !lidoAoAbrir) {
           toast.error(
             loading
               ? "Aguarde: os dados do cupom ainda estão carregando."
@@ -740,38 +743,58 @@ function FormularioDoCupom({
           }
         }
         if (descontoMexido) {
-          const descontoLido = lidoAoAbrirRef.current;
           if (
             cupomInicializadoRef.current !== couponId ||
-            descontoLido?.type === undefined ||
-            descontoLido.value === undefined
+            lidoAoAbrirRef.current !== lidoAoAbrir ||
+            dataToSubmit.type === undefined ||
+            dataToSubmit.value === undefined
           ) {
             toast.error(
               "Não foi possível conferir o desconto deste cupom. Recarregue antes de salvar.",
             );
             return;
           }
-          await updateCoupon(
+          const desconto = {
+            type: dataToSubmit.type,
+            value: dataToSubmit.value,
+          };
+          const resultado = await updateCoupon(
             editingCoupon.id,
             dataToSubmit,
             clientesParaSalvar,
             {
-              descontoLido: {
-                type: descontoLido.type,
-                value: descontoLido.value,
-              },
-              aoGravarDesconto: (descontoGravado) => {
-                // Se só a lista falhar, a nova tentativa não trata o desconto
-                // que esta tela acabou de gravar como se fosse de outro aparelho.
-                if (lidoAoAbrirRef.current === descontoLido) {
-                  lidoAoAbrirRef.current = {
-                    ...descontoLido,
-                    ...descontoGravado,
-                  };
+              original: { type: lidoAoAbrir.type, value: lidoAoAbrir.value },
+              // Se só a lista falhar, a próxima tentativa não regrava
+              // o desconto que o banco já confirmou.
+              aoGravar: () => {
+                if (lidoAoAbrirRef.current === lidoAoAbrir) {
+                  lidoAoAbrirRef.current = { ...lidoAoAbrir, ...desconto };
                 }
               },
             },
           );
+          if (resultado) {
+            if (lidoAoAbrirRef.current !== lidoAoAbrir) return;
+            const atual = resultado.descontoNaoGravado;
+            if (atual) {
+              const descontoAtual = { type: atual.type, value: atual.value };
+              lidoAoAbrirRef.current = { ...lidoAoAbrir, ...descontoAtual };
+              setInitialData((anterior) => ({ ...anterior, ...descontoAtual }));
+              setFormData((anterior) => ({ ...anterior, ...descontoAtual }));
+              setTextoValorFixo(null);
+              recusarCampo(
+                "value",
+                "Este cupom foi alterado em outro aparelho. Nada foi salvo. Mostramos o desconto atual; confira os valores e salve de novo.",
+              );
+            } else {
+              toast.error(
+                atual === null
+                  ? "Este cupom não está mais disponível. Nada foi salvo."
+                  : "Não foi possível conferir o desconto atual. Nada foi salvo. Tente salvar de novo.",
+              );
+            }
+            return;
+          }
         } else if (clientesParaSalvar !== undefined) {
           await updateCoupon(
             editingCoupon.id,

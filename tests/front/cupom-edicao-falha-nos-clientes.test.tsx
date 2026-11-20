@@ -41,15 +41,29 @@ vi.mock("@/lib/supabase", () => ({
           return { data: [{ ...cupomNoBanco }], error: null };
         },
       }),
-      update: (patch: Record<string, unknown>) => ({
-        eq: () => ({
+      update: (patch: Record<string, unknown>) => {
+        const filtros = new Map<string, unknown>();
+        const consulta = {
+          eq: (coluna: string, valor: unknown) => {
+            filtros.set(coluna, valor);
+            return consulta;
+          },
           select: async () => {
+            const linha = new Map(Object.entries(cupomNoBanco));
+            if (
+              [...filtros].some(
+                ([coluna, valor]) => linha.get(coluna) !== valor,
+              )
+            ) {
+              return { data: [], error: null };
+            }
             const resposta = await gravarCupom(patch);
             if (!resposta.error) cupomNoBanco = { ...cupomNoBanco, ...patch };
-            return { data: [{ id: "c1" }], ...resposta };
+            return { data: [{ id: "cupom-1" }], ...resposta };
           },
-        }),
-      }),
+        };
+        return consulta;
+      },
     }),
     rpc: async (nome: string, args: { p_clientes?: string[] }) => {
       if (nome === "admin_cupom_clientes") {
@@ -213,6 +227,24 @@ function esperarFalhaSemPerderCampos(descricao?: string) {
 }
 
 describe("edição do cupom — confirmação das regras e dos clientes", () => {
+  it("não regrava o desconto já confirmado ao tentar salvar a lista de novo", async () => {
+    gravarClientes.mockRejectedValueOnce(new Error("rede"));
+    await montar();
+    await escolherBia();
+    await digitar("#coupon-value", "30");
+    await clicar("Salvar Cupom");
+
+    expect(cupomNoBanco.value).toBe(30);
+    expect(clientesNoBanco).toEqual(["u-ana"]);
+    expect(sucesso).not.toHaveBeenCalled();
+
+    await clicar("Salvar Cupom");
+
+    expect(gravarCupom).toHaveBeenCalledTimes(1);
+    expect(clientesNoBanco).toEqual(["u-ana", "u-bia"]);
+    expect(sucesso).toHaveBeenCalledExactlyOnceWith("Cupom atualizado");
+  });
+
   it.each(["erro do servidor", "rede caiu"])(
     "falha nos clientes (%s) mantém a edição e permite tentar de novo",
     async (falha) => {

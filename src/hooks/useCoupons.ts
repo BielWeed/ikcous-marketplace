@@ -26,12 +26,11 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
-type ParDoDesconto = Pick<Coupon, "type" | "value">;
+type DescontoDoCupom = Pick<Coupon, "type" | "value">;
 
-class ConflitoDeDescontoDoCupom extends Error {
-  constructor() {
-    super("Este cupom mudou em outro aparelho. Recarregue antes de salvar.");
-  }
+interface ControleDoDesconto {
+  original: DescontoDoCupom;
+  aoGravar: () => void;
 }
 
 const PRAZO_DA_GRAVACAO_DO_CUPOM_MS = 15_000;
@@ -338,15 +337,25 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
     }
   };
 
-  const updateCoupon = async (
+  function updateCoupon(
     id: string,
     updates: Partial<Coupon>,
     clientes?: readonly string[],
-    conferencia?: {
-      descontoLido: ParDoDesconto;
-      aoGravarDesconto: (desconto: ParDoDesconto) => void;
-    },
-  ) => {
+  ): Promise<void>;
+  function updateCoupon(
+    id: string,
+    updates: Partial<Coupon>,
+    clientes: readonly string[] | undefined,
+    controleDoDesconto: ControleDoDesconto,
+  ): Promise<
+    undefined | { descontoNaoGravado: DescontoDoCupom | null | undefined }
+  >;
+  async function updateCoupon(
+    id: string,
+    updates: Partial<Coupon>,
+    clientes?: readonly string[],
+    controleDoDesconto?: ControleDoDesconto,
+  ) {
     if (!isAdmin) {
       toast.error("Permissão negada");
       return;
@@ -409,29 +418,59 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
       // o do banco): o UPDATE sem coluna não altera linha nenhuma e viraria
       // "Nenhum cupom foi alterado" para uma tela que já está como ela quer.
       if (Object.keys(dbUpdates).length > 0) {
-        let gravacao = supabase.from("coupons").update(dbUpdates).eq("id", id);
-        // Compara o par lido na própria gravação, sem janela entre ler e
-        // gravar. O contador de usos nunca participa da conferência.
-        if (conferencia) {
-          const { type, value } = conferencia.descontoLido;
-          gravacao = gravacao.eq("type", type).eq("value", value);
-        }
+        const porId = supabase.from("coupons").update(dbUpdates).eq("id", id);
+        const original = controleDoDesconto?.original;
+        // A comparação tem de fazer parte do UPDATE: uma leitura separada
+        // deixaria o outro aparelho gravar entre a leitura e a escrita.
+        const consulta = original
+          ? porId.eq("type", original.type).eq("value", original.value)
+          : porId;
         const { data: gravadas, error } = await aguardarGravacaoDoCupom(
-          gravacao.select("id"),
+          consulta.select("id"),
         );
 
         if (error) throw error;
         if (!gravadas?.length) {
-          if (conferencia) throw new ConflitoDeDescontoDoCupom();
+          if (original) {
+            // Relê só o desconto, sem recarregar a lista de clientes do
+            // formulário por cima das escolhas que ainda não foram salvas.
+            let atual: DescontoDoCupom | null | undefined;
+            try {
+              const resposta = await aguardarComPrazo(
+                Promise.resolve(
+                  supabase
+                    .from("coupons")
+                    .select("type,value")
+                    .eq("id", id)
+                    .maybeSingle(),
+                ),
+                PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+                () => erroDeConsultaSemResposta(),
+              );
+              if (!resposta.error && resposta.data === null) atual = null;
+              const desconto = resposta.data;
+              if (
+                !resposta.error &&
+                (desconto?.type === "fixed" || desconto?.type === "percentage")
+              ) {
+                atual = { type: desconto.type, value: desconto.value };
+              }
+            } catch {
+              // Sem leitura confirmada, a tela não troca nem aceita o rascunho.
+            }
+            if (
+              !atual ||
+              atual.type !== original.type ||
+              atual.value !== original.value
+            ) {
+              return { descontoNaoGravado: atual };
+            }
+          }
+          // Zero linhas também pode ser permissão ou cupom removido.
           throw new Error("Nenhum cupom foi alterado.");
         }
         regrasJaGravadas = true;
-        if (updates.type !== undefined && updates.value !== undefined) {
-          conferencia?.aoGravarDesconto({
-            type: updates.type,
-            value: updates.value,
-          });
-        }
+        controleDoDesconto?.aoGravar();
       }
 
       if (clientes !== undefined) {
@@ -464,8 +503,6 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
             duration: 10000,
           },
         );
-      } else if (error instanceof ConflitoDeDescontoDoCupom) {
-        toast.error(error.message);
       } else if (ehConsultaSemResposta(error)) {
         toast.error(MENSAGEM_GRAVACAO_SEM_RESPOSTA);
         // Não espera a releitura para liberar quem está salvando. A escrita
@@ -483,7 +520,7 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
       }
       throw error;
     }
-  };
+  }
 
   const deleteCoupon = async (id: string) => {
     if (!isAdmin) {
