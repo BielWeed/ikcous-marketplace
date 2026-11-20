@@ -362,7 +362,7 @@ describe("OrderDetailsView — devolução ou troca do produto entregue", () => 
 
         expect(cartao?.textContent).toContain(AVISO_CODIGO_VENCIDO);
         expect(cartao?.textContent).not.toContain("leve o pacote");
-        expect(cartao?.textContent).not.toContain("vale a pena esperar");
+        expect(cartao?.textContent).not.toContain("A loja está preparando");
         expect(cartao?.textContent).not.toContain("válido até");
       },
     );
@@ -379,12 +379,59 @@ describe("OrderDetailsView — devolução ou troca do produto entregue", () => 
         "válido até 06/10 às 22:30 (horário de Brasília)",
       );
       expect(cartao?.textContent).toContain("A loja está preparando");
+      expect(cartao?.textContent).toContain("obrigatória para postar");
+      expect(cartao?.textContent).not.toContain("vale a pena esperar");
       expect(
         [...(cartao?.querySelectorAll("button") ?? [])].find((botao) =>
           botao.textContent?.includes("Já postei o pacote"),
         ),
-      ).toBeUndefined();
+      ).toBeDefined();
     });
+
+    it.each([
+      ["com código, sem link", camposDaReversa.codigo_postagem, null],
+      [
+        "com código e link",
+        camposDaReversa.codigo_postagem,
+        camposDaReversa.etiqueta_url,
+      ],
+      ["sem código", null, camposDaReversa.etiqueta_url],
+    ])(
+      "confirmação de postagem reversa %s",
+      async (_, codigo_postagem, etiqueta_url) => {
+        respostas.set("informar_envio_devolucao", {
+          id: DETALHE.id,
+          status: "em_transito",
+        });
+        const cartao = await mostrarDevolucao({
+          ...camposDaReversa,
+          codigo_postagem,
+          etiqueta_url,
+        });
+        const botao = [...(cartao?.querySelectorAll("button") ?? [])].find(
+          (acao) => acao.textContent?.trim() === "Já postei o pacote",
+        );
+        const etiqueta = [...(cartao?.querySelectorAll("a") ?? [])].find(
+          (link) => link.textContent?.trim() === "Etiqueta",
+        );
+
+        expect(etiqueta?.getAttribute("href")).toBe(
+          codigo_postagem && etiqueta_url ? etiqueta_url : undefined,
+        );
+        if (!codigo_postagem) {
+          expect(botao).toBeUndefined();
+          return;
+        }
+
+        expect(botao).toBeDefined();
+        expect(botao?.disabled).toBe(false);
+        await act(async () => botao?.click());
+        expect(rpc).toHaveBeenCalledWith("informar_envio_devolucao", {
+          p_id: DETALHE.id,
+          p_codigo_rastreio: codigo_postagem,
+        });
+      },
+    );
 
     it.each([
       ["sem o evento", []],

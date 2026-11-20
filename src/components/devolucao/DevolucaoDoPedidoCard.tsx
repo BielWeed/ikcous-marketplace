@@ -214,7 +214,7 @@ export function DevolucaoDoPedidoCard({
   const codigoDaEtiqueta =
     atual.metodo_retorno === "etiqueta_reversa" ? atual.codigo_postagem : null;
   const podeConfirmarPostagemDaEtiqueta =
-    acoes.includes("informar_envio") && codigoDaEtiqueta && atual.etiqueta_url;
+    acoes.includes("informar_envio") && codigoDaEtiqueta;
 
   const recargaBloqueada =
     (codigo !== "" && acoes.includes("informar_envio") && !codigoDaEtiqueta) ||

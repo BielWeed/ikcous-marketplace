@@ -947,7 +947,7 @@ export function instrucaoParaOCliente(
           // frase não pode prometê-lo enquanto isso.
           return d.etiqueta_url
             ? `Imprima a declaração de conteúdo (botão Etiqueta) e leve o pacote a uma agência dos Correios${prazoSemData}, informando o código de postagem abaixo${validade} — ele também é o rastreio da devolução. Depois de postar, toque em “Já postei”.`
-            : `A loja está preparando a declaração de conteúdo (DC-e), obrigatória para postar. Ela aparece aqui como um botão “Etiqueta” assim que ficar pronta — vale a pena esperar antes de ir aos Correios com o código abaixo${validade}.`;
+            : `A loja está preparando a declaração de conteúdo (DC-e), obrigatória para postar. Ela aparece aqui como um botão “Etiqueta” assim que ficar pronta. O código de postagem está abaixo${validade}. Se você já postou o pacote, toque em “Já postei”.`;
         }
         default: {
           // Envio próprio: quem posta de outra cidade precisa saber PARA ONDE.
