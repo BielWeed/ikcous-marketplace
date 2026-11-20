@@ -46,6 +46,9 @@ const bc = criarCanalDeAbas("ikcous_reviews_sync");
 // impede uma releitura silenciosa de terminar depois de fechar o formulário.
 const ultimaConsultaDoCachePorProduto = new Map<string, symbol>();
 
+const mensagemDeAvaliacaoRecebida =
+  "Recebemos sua avaliação! Ela aparece no produto após a aprovação da loja.";
+
 /**
  * Traduz a recusa crua do Postgres/PostgREST numa mensagem que o comprador
  * entende. Toda saída é string ESTÁTICA: nenhum trecho de error.message pode
@@ -407,9 +410,7 @@ export function useReviews() {
 
         if (error) throw error;
 
-        toast.success(
-          "Recebemos sua avaliação! Ela aparece no produto após a aprovação da loja.",
-        );
+        toast.success(mensagemDeAvaliacaoRecebida);
 
         // Refresh reviews, em segundo plano e sem aviso de erro: a avaliação
         // já está gravada. Esperar a releitura segurava a folha de avaliar
@@ -420,7 +421,6 @@ export function useReviews() {
         return data;
       } catch (error: any) {
         console.error("Error adding review:", error);
-        toast.error(mensagemAmigavelErroAvaliacao(error));
         if (ehConsultaSemResposta(error) && user) {
           try {
             const { data: conferida, error: erroDaConferencia } =
@@ -439,11 +439,15 @@ export function useReviews() {
               );
             // ReviewForm usa a confirmação para fechar a folha e marcar o item
             // como Avaliado no pedido, sem permitir reenviar o mesmo rascunho.
-            if (!erroDaConferencia && conferida) return conferida;
+            if (!erroDaConferencia && conferida) {
+              toast.success(mensagemDeAvaliacaoRecebida);
+              return conferida;
+            }
           } catch {
-            // O aviso de recebimento incerto continua valendo.
+            // Sem confirmação, ainda não sabemos se a avaliação foi recebida.
           }
         }
+        toast.error(mensagemAmigavelErroAvaliacao(error));
         return null;
       } finally {
         desmarcar();

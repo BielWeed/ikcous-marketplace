@@ -12,6 +12,7 @@ const h = vi.hoisted(() => ({
   falharLeitura: false,
   linhas: [] as unknown[],
   conferida: null as unknown,
+  falharConferencia: false,
   desmarcar: vi.fn(),
   gravarPergunta: null as
     | ((linha: {
@@ -78,7 +79,10 @@ vi.mock("@/lib/supabase", () => ({
                   error: null,
                 }
           : conferencia
-            ? { data: tabela === "reviews" ? h.conferida : null, error: null }
+            ? {
+                data: tabela === "reviews" ? h.conferida : null,
+                error: h.falharConferencia ? { message: "rede caiu" } : null,
+              }
             : h.pendurarLeitura
               ? new Promise(() => {})
               : h.falharLeitura
@@ -113,6 +117,7 @@ beforeEach(async () => {
   h.falharLeitura = false;
   h.linhas = [];
   h.conferida = null;
+  h.falharConferencia = false;
   h.gravarPergunta = null;
   vi.spyOn(console, "error").mockImplementation(() => {});
   host = document.createElement("div");
@@ -251,7 +256,37 @@ it("avaliação recebida após prazo devolve confirmação ao pedido em vez de o
     await vi.advanceTimersByTimeAsync(15001);
   });
   expect(resultado).toMatchObject({ id: "avaliacao-recebida" });
+  expect(toast.success).toHaveBeenCalledWith(
+    "Recebemos sua avaliação! Ela aparece no produto após a aprovação da loja.",
+  );
+  expect(toast.error).not.toHaveBeenCalled();
 });
+
+it.each(["sem resultado", "com erro"])(
+  "avaliação sem resposta mantém o aviso de dúvida quando a conferência termina %s",
+  async (conferencia) => {
+    h.pendurarEnvio = true;
+    h.falharConferencia = conferencia === "com erro";
+
+    let resultado: unknown;
+    await act(async () => {
+      const envio = reviews.addReview({
+        productId: "produto-sem-confirmacao",
+        rating: 5,
+        comment: "Bom",
+      });
+      await vi.advanceTimersByTimeAsync(15001);
+      resultado = await envio;
+    });
+
+    expect(resultado).toBeNull();
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledExactlyOnceWith(
+      "A conexão está lenta. Sua avaliação pode ter sido recebida. Confira antes de tentar de novo.",
+    );
+  },
+);
+
 it("carga inicial falhou: envio confirmado não esconde o erro nem guarda lista parcial", async () => {
   h.falharLeitura = true;
   await act(async () => {
