@@ -99,8 +99,10 @@ const sinalDaMoeda = (val: string, permiteNegativo: boolean) => {
 // Dígitos sem fim chegam a 1e21 (o `toFixed` devolveria "1e+21", lido depois
 // como 121) e a Infinity (a tela mostraria "∞"). O número é limitado antes de
 // virar texto; 1e18 continua acima de qualquer teto de preço.
+const LIMITE_REAIS_DA_MASCARA = 1e18;
+
 const reaisDosCentavos = (clean: string) =>
-  Math.min(Number.parseFloat(clean) / 100, 1e18);
+  Math.min(Number.parseFloat(clean) / 100, LIMITE_REAIS_DA_MASCARA);
 
 const formatCurrency = (val: string, permiteNegativo = false) => {
   const sinal = sinalDaMoeda(val, permiteNegativo);
@@ -183,7 +185,11 @@ const centavosDaColagem = (texto: string, permiteNegativo: boolean) => {
       n = `${grupos.join("") || 0}.${decimal || 0}`;
     else if (t === inteira && /^\d+\.\d{1,2}$/.test(t)) n = t;
   }
-  return n ? String(Math.round(Number(n) * 100)) : "";
+  if (!n) return "";
+  // O mesmo limite da digitação mantém o valor acima do teto do formulário,
+  // sem deixar o expoente virar dígitos de outro preço.
+  const reais = Math.min(Number(n), LIMITE_REAIS_DA_MASCARA);
+  return (reais * 100).toFixed(0);
 };
 
 // O valor que chega pela prop `value` já está em reais (ex.: 100 ou "100.00"),
