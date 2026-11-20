@@ -56,6 +56,7 @@ type Resposta =
 // Fila de respostas, uma por leitura de `order_refunds`; a última se repete.
 let respostas: Resposta[] = ["vazio"];
 let leiturasFeitas = 0;
+let statusDaLinhaEmCurso: "solicitado" | "em_processamento" = "solicitado";
 
 function proximaResposta(): Promise<{ data: unknown; error: unknown }> {
   const qual =
@@ -71,7 +72,7 @@ function proximaResposta(): Promise<{ data: unknown; error: unknown }> {
         data: [
           {
             amount: 100,
-            status: "solicitado",
+            status: statusDaLinhaEmCurso,
             solicitado_por: "sistema",
             concluido_em: null,
           },
@@ -142,6 +143,7 @@ describe("OrderDetailsView — pedido cancelado e pago não afirma nada da devol
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     respostas = ["vazio"];
     leiturasFeitas = 0;
+    statusDaLinhaEmCurso = "solicitado";
     pedidoAtual = pedidoBase;
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
@@ -162,8 +164,11 @@ describe("OrderDetailsView — pedido cancelado e pago não afirma nada da devol
     });
   }
 
-  async function renderizar(paymentStatus: PaymentStatus = "pago") {
-    pedidoAtual = { ...pedidoBase, paymentStatus };
+  async function renderizar(
+    paymentStatus: PaymentStatus = "pago",
+    metodoOnline?: Order["metodoOnline"],
+  ) {
+    pedidoAtual = { ...pedidoBase, paymentStatus, metodoOnline };
     const { OrderDetailsView } = await import(
       "@/views/customer/OrderDetailsView"
     );
@@ -259,6 +264,32 @@ describe("OrderDetailsView — pedido cancelado e pago não afirma nada da devol
     expect(texto()).not.toContain(FRASE_FALE_COM_A_LOJA);
     expect(texto()).not.toContain(CONFERINDO);
   });
+
+  it.each([
+    ["credito", "solicitado", "No crédito, consulte a fatura do cartão."],
+    ["debito", "em_processamento", "No débito, consulte o extrato da conta."],
+    ["pix", "solicitado", "No Pix, o valor volta para a conta de origem."],
+    [null, "em_processamento", ""],
+  ] as const)(
+    "devolução por %s (%s) orienta da mesma forma no aviso e no pagamento",
+    async (metodoOnline, status, orientacao) => {
+      respostas = ["com-linha-em-curso"];
+      statusDaLinhaEmCurso = status;
+
+      await renderizar("pago", metodoOnline);
+
+      const sufixo = orientacao ? ` ${orientacao}` : "";
+      const paragrafos = [...hospedeiro.querySelectorAll("p")].map(
+        (p) => p.textContent,
+      );
+      expect(paragrafos).toContain(
+        `Este pedido foi cancelado, mas o seu pagamento foi recebido. O dinheiro volta sozinho para você.${sufixo}`,
+      );
+      expect(paragrafos).toContain(
+        `Devolução: em andamento — o dinheiro volta sozinho.${sufixo}`,
+      );
+    },
+  );
 
   it("COM LINHA concluída: o valor devolvido, como antes", async () => {
     respostas = ["com-linha-concluida"];

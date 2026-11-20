@@ -173,7 +173,7 @@ describe("textoDevolucao — entrega x retirada, depois de cancelar", () => {
     ).toBeNull();
   });
 
-  it("retirada COM linha de estorno em andamento: o texto de sempre (esse já é verdade)", () => {
+  it("retirada COM estorno em andamento e sem forma conhecida: orienta sem presumir o destino", () => {
     expect(
       textoDevolucao({
         linhas: [
@@ -188,9 +188,7 @@ describe("textoDevolucao — entrega x retirada, depois de cancelar", () => {
         returnedToSellerAt: null,
         retiradaNaLoja: true,
       }),
-    ).toBe(
-      "Devolução: em andamento — o dinheiro volta sozinho (PIX na conta; cartão na fatura).",
-    );
+    ).toBe("Devolução: em andamento — o dinheiro volta sozinho.");
   });
 
   it("ENTREGA cancelada depois do envio, sem linha: o texto de sempre (controle)", () => {
