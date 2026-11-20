@@ -364,9 +364,11 @@ describe("CheckoutView — a opção marcada confere com a cotação na tela ant
       const pedido = createOrder.mock.calls[0][0] as {
         shippingOptionId: string;
         shippingCost: number;
+        destinationCep: string;
       };
       expect(pedido.shippingOptionId).toBe("melhorenvio-pac");
       expect(pedido.shippingCost).toBe(preco);
+      expect(pedido.destinationCep).toBe("38500-000");
       expect(toastError).not.toHaveBeenCalledWith(
         "O frete foi atualizado. Confira o total e finalize.",
       );
