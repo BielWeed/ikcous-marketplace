@@ -175,6 +175,24 @@ describe("LocalBufferedInput — zeroVazio", () => {
     },
   );
 
+  it.each([{ modo: "dois eventos", entradas: [",", "5"] }])(
+    "digitar ,5 no fim do zero salvo em $modo resulta em 0,50",
+    async ({ entradas }) => {
+      await montar({ value: "0", decimalNaDigitacao: true });
+      expect(campo().value).toBe("0,00");
+      await act(async () => campo().focus());
+      for (const entrada of entradas) {
+        await act(async () =>
+          digitar(campo(), campo().value + entrada, entrada),
+        );
+      }
+      await act(async () => campo().blur());
+
+      expect(campo().value).toBe("0,50");
+      expect(aoSalvar).toHaveBeenLastCalledWith("0.50");
+    },
+  );
+
   it.each([
     [2, ",", "12,00", "12.00"],
     [2, ",5", "12,50", "12.50"],

@@ -327,6 +327,7 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
             !digitouNestaEdicao.current &&
             fim === val.length &&
             localVal.includes(",") &&
+            /[1-9]/.test(localVal) &&
             val === localVal + data
           ) {
             return;
