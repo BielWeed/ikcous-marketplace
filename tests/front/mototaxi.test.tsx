@@ -117,6 +117,28 @@ it("leva apenas o necessário, com cobrança na entrega e texto pronto", () => {
     ].join("\n"),
   );
 });
+it("o endereço na mensagem sai sem controles invisíveis", () => {
+  const controle = String.fromCodePoint(0x202e);
+  const msg = contato.mensagemMototaxi(
+    {
+      ...pedido,
+      customer: {
+        ...pedido.customer,
+        address: `Rua ${controle}Inventada`,
+        number: `${controle}12`,
+        complement: `Apto ${controle}120`,
+        neighborhood: `Cen${controle}tro`,
+        reference: `portão ${controle}azul`,
+      },
+    },
+    "Loja fictícia",
+  );
+  expect(msg.split("\n").slice(3, 6)).toEqual([
+    "Endereço: Rua Inventada, 12, Apto 120",
+    "Centro · São Paulo/SP · CEP 01000-000",
+    "Referência: portão azul",
+  ]);
+});
 it("compra para outra pessoa leva o nome de quem recebe, logo depois do cliente", () => {
   const msg = contato.mensagemMototaxi(
     {

@@ -99,9 +99,13 @@ import { ehAnimada } from "@/lib/redimensiona-imagem";
 import { rotuloDaVariacao } from "@/lib/rotulo-da-variacao";
 import { textoVariacoesNaoExcluidas } from "@/lib/texto-variacoes-nao-excluidas";
 import { cn, formatCurrency } from "@/lib/utils";
+import { gerarUuidV4 } from "@/lib/uuid-v4";
 import type { Product, ProductVariant, View } from "@/types";
 import {
+  type ComEstoqueHerdado,
+  ESTOQUE_HERDADO,
   camposQueMudaram,
+  estoqueFoiHerdado,
   fotosAposConflito,
   variacaoMudou,
   variacoesAposConflito,
@@ -491,6 +495,8 @@ const containerVariants = {
 //   visible: { opacity: 1, y: 0 }
 // };
 
+type VariacaoDoFormulario = ProductVariant & ComEstoqueHerdado;
+
 interface ProductFormFields {
   name: string;
   description: string;
@@ -509,7 +515,7 @@ interface ProductFormFields {
   metaDescription: string;
   sku: string;
   codigoBarras: string;
-  variants: ProductVariant[];
+  variants: VariacaoDoFormulario[];
   weightKg: string;
   widthCm: string;
   heightCm: string;
@@ -954,15 +960,17 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // "Cor"+"Branca" com "Tamanho"+"PP") que viram UMA linha de variante com
   // estoque próprio — ver `variante-composta.ts`. O modal nasce com um par;
   // "+ Outra coisa que muda" empilha os demais.
-  const [variantFormData, setVariantFormData] = useState<{
-    pares: ParNoForm[];
-    sku: string;
-    codigoBarras: string;
-    stockIncrement: string;
-    priceOverride: string;
-    active: boolean;
-    imageUrl: string;
-  }>({
+  const [variantFormData, setVariantFormData] = useState<
+    ComEstoqueHerdado & {
+      pares: ParNoForm[];
+      sku: string;
+      codigoBarras: string;
+      stockIncrement: string;
+      priceOverride: string;
+      active: boolean;
+      imageUrl: string;
+    }
+  >({
     pares: [parNovo()],
     sku: "",
     codigoBarras: "",
@@ -1174,10 +1182,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // Fotos que estouraram o prazo ou falharam: ficam na tela com "Tentar de
   // novo"/"Remover" e NUNCA entram em `isValid` -- não impedem salvar.
   const [fotosComFalha, setFotosComFalha] = useState<FotoComFalha[]>([]);
-  // Ligado quando o produto novo JÁ foi criado e a lojista está sendo levada
-  // para a edição dele (a grade não gravou). Daí em diante o auto-save não pode
-  // mais escrever na chave de produto novo: recuperaria o rascunho sem id e o
-  // próximo "Publicar" criaria um segundo produto idêntico.
+  // A mesma montagem reutiliza o ID após um prazo sem resposta. A próxima
+  // tela de "Novo produto" começa sem ID, assim como antes do primeiro envio.
+  const idDoProdutoNovoRef = useRef<string | null>(null);
+  // Depois de confirmado, não publica nem escreve na chave de rascunho de novo.
   const produtoNovoJaCriadoRef = useRef(false);
   // O produto foi criado, mas as variações não gravaram: elas só existem no
   // rascunho. Enquanto não restaura (ou descarta), Salvar não finge sucesso e o
@@ -2186,7 +2194,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         return "";
       }
 
-      const idDoProprio = alvo === "produto" ? productId : idDaVariacao;
+      const idDoProprio =
+        alvo === "produto"
+          ? (productId ?? idDoProdutoNovoRef.current)
+          : idDaVariacao;
       const ehOProprio =
         alvo === "produto"
           ? resposta.origem === "produto" &&
@@ -2914,6 +2925,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     setVariantFormData((p) => ({
       ...p,
       stockIncrement: String(Math.max(0, atual + passo)),
+      [ESTOQUE_HERDADO]: false,
     }));
   };
 
@@ -3125,6 +3137,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       sku: sanitizedVarSku || undefined,
       codigoBarras: sanitizedVarCodigoBarras || undefined,
       stockIncrement: Number.parseInt(sanitizedVarStock) || 0,
+      [ESTOQUE_HERDADO]: estoqueFoiHerdado(variantFormData),
       priceOverride: parsedPriceOverride,
       active: variantFormData.active,
       imageUrl: variantFormData.imageUrl || undefined,
@@ -3218,7 +3231,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     setVariantToDelete(vId);
   }, []);
 
-  const handleEditVariant = useCallback((v: ProductVariant) => {
+  const handleEditVariant = useCallback((v: VariacaoDoFormulario) => {
     salvandoVariacaoRef.current = false;
     // Ressalva da revisão da C5.2: erros/avisos de código de barras da
     // edição ANTERIOR não podem atravessar para esta — se o código não
@@ -3238,6 +3251,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       stockIncrement: Number.isFinite(v.stockIncrement)
         ? v.stockIncrement.toString()
         : "",
+      [ESTOQUE_HERDADO]: estoqueFoiHerdado(v),
       priceOverride: v.priceOverride?.toString() || "",
       active: v.active,
       imageUrl: v.imageUrl || "",
@@ -3881,27 +3895,30 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             ? normalizarCodigoBarras(v.codigoBarras)
             : undefined,
         }));
-        const criado = await addProduct({
-          ...productData,
-          stock: Math.max(0, pStock),
-          sold: 0,
-          variants: variantsWithSanitizedSku,
-        });
-        // A lista de produtos lembra busca, categoria e página: avisa que há um
-        // produto novo para ela abrir na página 1, sem filtro, e mostrá-lo.
-        if (criado) avisarProdutoNovoCadastrado();
-
-        // O produto foi criado mas a grade NÃO gravou (o hook já avisou por
-        // toast). Dar "Salvo" e sair para a lista esconderia isso -- e ficar
-        // nesta tela deixaria o id do produto só no estado dela: recarregar o
-        // app, ou voltar em "Novo produto", recuperaria o rascunho SEM id e o
-        // "Publicar" criaria uma segunda cópia. Por isso o rascunho vai para a
-        // chave de EDIÇÃO do produto criado e a lojista é levada para a edição
-        // dele, onde "Salvar" atualiza a linha e regrava a grade.
-        if (criado?.variantesNaoSalvas) {
-          // ORDEM: primeiro trava o auto-save (um timer de 1 s pode estar
-          // agendado e reescreveria a chave de produto novo), depois move.
+        idDoProdutoNovoRef.current ??= gerarUuidV4();
+        const criado = await addProduct(
+          {
+            ...productData,
+            stock: Math.max(0, pStock),
+            sold: 0,
+            variants: variantsWithSanitizedSku,
+          },
+          { idDoFormulario: idDoProdutoNovoRef.current },
+        );
+        if (criado) {
+          // Trava o auto-save antes de tirar o rascunho de "Novo produto".
           produtoNovoJaCriadoRef.current = true;
+          // A lista abre na página 1, sem filtro, para mostrar a nova ficha.
+          avisarProdutoNovoCadastrado();
+        }
+
+        // A grade pode estar pendente, ou o reenvio só confirmou o primeiro
+        // INSERT. Leve o rascunho à edição: não diga "Salvo" sobre as mudanças
+        // feitas para o reenvio, nem deixe esses dados em "Novo produto".
+        if (
+          criado &&
+          (criado.variantesNaoSalvas || criado.recuperadoAposConflito)
+        ) {
           try {
             const chaveDeEdicao = chaveDoRascunhoDoProduto(userId, criado.id);
             if (chaveDeEdicao) {
@@ -3909,7 +3926,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 chaveDeEdicao,
                 serializarRascunhoDoProduto({
                   ...formData,
-                  variacoesPendentes: true,
+                  variacoesPendentes:
+                    !!criado.variantesNaoSalvas || formData.variants.length > 0,
                 }),
               );
             }
@@ -3923,13 +3941,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           }
           const chaveDoNovo = chaveDoRascunhoDoProduto(userId);
           if (chaveDoNovo) apagarRascunhoDoProdutoPelaChave(chaveDoNovo);
-          const motivo = criado.variantesNaoSalvas.motivo;
-          // Sem resposta da rede o hook já avisou, com a frase certa (não se
-          // sabe se as variações entraram: conferir antes de restaurar).
-          if (!criado.variantesNaoSalvas.semResposta) {
+          const grade = criado.variantesNaoSalvas;
+          // Sem resposta da rede o hook já avisou para conferir a grade.
+          if (criado.recuperadoAposConflito) {
+            toast.info("O produto já foi criado. Confira os dados na edição.");
+          } else if (grade && !grade.semResposta) {
             toast.error(
               `O produto foi criado, mas as variações NÃO foram salvas.${
-                motivo ? ` ${motivo}` : ""
+                grade.motivo ? ` ${grade.motivo}` : ""
               } Você está na edição dele: corrija e toque em Salvar para tentar de novo -- isso atualiza este produto, não cria outro.`,
               { duration: 30000 },
             );
@@ -4052,6 +4071,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           formData.variants,
           initialData.variants,
           variants,
+          estoqueQueAPrimeiraVariacaoHerda({ stock, variants }),
         );
         const gradeRecarregada = juntarVariacoesDeOutroAparelho(
           // As novas do banco entram pelo juntador para manter a conferência
@@ -4669,6 +4689,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                               name="variant-stock"
                               type="number"
                               value={variantFormData.stockIncrement}
+                              // O onFlush também roda só por sair do campo.
+                              onInput={() =>
+                                setVariantFormData((p) =>
+                                  estoqueFoiHerdado(p)
+                                    ? { ...p, [ESTOQUE_HERDADO]: false }
+                                    : p,
+                                )
+                              }
                               onFlush={(val) =>
                                 setVariantFormData((p) => ({
                                   ...p,
@@ -6156,6 +6184,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           // variação nova e inocente nunca abra bloqueada.
                           setVariantCodigoBarrasError("");
                           setVariantCodigoBarrasAvisoRede("");
+                          const estoqueHerdado =
+                            estoqueQueAPrimeiraVariacaoHerda(formData);
                           setVariantFormData({
                             pares: [parNovo()],
                             sku: "",
@@ -6164,9 +6194,13 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             // produto já tem: com variação o estoque do produto é
                             // a soma delas, e nascer com 0 zerava o produto no
                             // salvar. Ver `estoqueQueAPrimeiraVariacaoHerda`.
-                            stockIncrement: String(
-                              estoqueQueAPrimeiraVariacaoHerda(formData),
-                            ),
+                            stockIncrement: String(estoqueHerdado),
+                            // Não trata um ajuste local do produto como saldo do banco.
+                            [ESTOQUE_HERDADO]:
+                              !!productId &&
+                              (formData.variants.length === 0 ||
+                                estoqueHerdado > 0) &&
+                              !estoqueDoProdutoFoiMexido(formData, initialData),
                             priceOverride: "",
                             active: true,
                             imageUrl: "",

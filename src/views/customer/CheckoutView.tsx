@@ -189,6 +189,7 @@ import {
   NOTA_AUTOMATICA_DA_RETIRADA,
 } from "@/lib/texto-da-retirada";
 import { PAGAMENTO_RECEBIDO_PEDIDO_CANCELADO } from "@/lib/texto-estorno-do-cliente";
+import { textoSemControlesDeDirecao } from "@/lib/texto-sem-controles-de-direcao";
 import { criarTravaDeEnvio } from "@/lib/travaDeEnvio";
 import {
   normalizarUf,
@@ -3285,19 +3286,19 @@ export function CheckoutViewDaConta({
     globalThis.scrollTo(0, 0);
   }, [telaDePagamentoAberta, orderId, statusPagamentoPix]);
 
-  // Fechou a tela do endereço (Cancelar, Voltar ou salvar: todos desligam
-  // `isAddressModalOpen`) depois de aberta por "Novo": o foco volta ao "Novo".
-  // O botão sumiu junto com o formulário e voltou como elemento novo, então a
-  // busca é por id; se a seção recolheu no meio (endereço escolhido), cai no
-  // botão que assume o lugar dele, como em `focoAposAlternarRef`.
-  const focoDeVoltaAoNovoEnderecoRef = useRef(false);
+  // Cancelar, Voltar e salvar fecham a tela do endereço. O gatilho é
+  // remontado no checkout, então recuperamos seu botão pelo id.
+  const focoDeVoltaDoEnderecoRef = useRef<string | null>(null);
   useEffect(() => {
-    if (isAddressModalOpen || !focoDeVoltaAoNovoEnderecoRef.current) return;
-    focoDeVoltaAoNovoEnderecoRef.current = false;
+    const id = focoDeVoltaDoEnderecoRef.current;
+    if (isAddressModalOpen || id === null) return;
+    focoDeVoltaDoEnderecoRef.current = null;
+    const gatilho = document.getElementById(id);
     (
-      document.getElementById("checkout-novo-endereco") ??
+      (gatilho?.closest("[hidden]") ? null : gatilho) ??
       document.getElementById("resumo-trocar-endereco") ??
-      document.getElementById("resumo-editar-dados")
+      document.getElementById("resumo-editar-dados") ??
+      document.getElementById("cabecalho-dados-e-entrega")
     )?.focus();
   }, [isAddressModalOpen]);
 
@@ -4789,6 +4790,7 @@ export function CheckoutViewDaConta({
 
   const handleEditAddress = (address: Address) => {
     setEditingAddressId(address.id);
+    focoDeVoltaDoEnderecoRef.current = `checkout-editar-endereco-${address.id}`;
     setIsAddressModalOpen(true);
   };
 
@@ -5119,6 +5121,9 @@ export function CheckoutViewDaConta({
     const finalNotes =
       noteParts.length > 0 ? noteParts.join("\n\n") : undefined;
 
+    const limparCampoDeEndereco = (campo?: string) =>
+      campo === undefined ? undefined : textoSemControlesDeDirecao(campo);
+    const complemento = limparCampoDeEndereco(data.complement);
     const orderData: any = {
       customer: customerInfo,
       items: cart.map((item) => ({
@@ -5145,14 +5150,14 @@ export function CheckoutViewDaConta({
           ? null
           : {
               cep: data.cep,
-              street: data.street,
-              number: data.number,
-              neighborhood: data.neighborhood,
-              city: data.city,
+              street: limparCampoDeEndereco(data.street),
+              number: limparCampoDeEndereco(data.number),
+              neighborhood: limparCampoDeEndereco(data.neighborhood),
+              city: limparCampoDeEndereco(data.city),
               // getValues() lê o texto original; o pedido leva a sigla.
               state: normalizarUf(data.state ?? ""),
-              complement: nomeTemConteudoVisivel(data.complement)
-                ? data.complement?.trim()
+              complement: nomeTemConteudoVisivel(complemento)
+                ? complemento?.trim()
                 : undefined,
               ...(cpfParaRpc ? { cpf: cpfParaRpc } : {}),
             },
@@ -7851,7 +7856,8 @@ export function CheckoutViewDaConta({
                       size="sm"
                       onClick={() => {
                         setEditingAddressId(null);
-                        focoDeVoltaAoNovoEnderecoRef.current = true;
+                        focoDeVoltaDoEnderecoRef.current =
+                          "checkout-novo-endereco";
                         setIsAddressModalOpen(true);
                       }}
                       className="flex h-11 items-center gap-1 rounded-xl bg-zinc-900 px-3 text-[11px] font-bold uppercase tracking-wider text-white transition-all hover:bg-black"

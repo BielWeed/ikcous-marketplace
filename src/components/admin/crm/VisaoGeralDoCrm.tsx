@@ -103,12 +103,6 @@ export function VisaoGeralDoCrm({
     !!visao?.segmentos.some(
       (s) => s.segmento === "nao_pode_perder" && s.clientes > 0,
     );
-  // Só os dados do histórico podem distinguir loja nova de um período sem venda.
-  const lojaSemVenda =
-    !!visao &&
-    k?.pedidos === 0 &&
-    !!stats &&
-    stats.revenueHistory?.every((d) => !d.orders && !d.revenue);
   // O banco conta os pedidos estornados na taxa, mas não em `pedidos`: quem
   // devolveu tudo o que vendeu tem `pedidos` 0 e taxa 100 — isso é medido.
   const temDevolucao =
@@ -116,6 +110,12 @@ export function VisaoGeralDoCrm({
     Number.isFinite(k.taxaDevolucao) &&
     k.taxaDevolucao > 0;
   const semVendaNemDevolucao = k?.pedidos === 0 && !temDevolucao;
+  // Sem venda nem devolução no período, o histórico distingue uma loja nova.
+  const lojaSemVenda =
+    !!visao &&
+    semVendaNemDevolucao &&
+    !!stats &&
+    stats.revenueHistory?.every((d) => !d.orders && !d.revenue);
   // O KPI de compradores é do período; os segmentos contam todo o histórico.
   const compradoresNoHistorico = visao?.segmentos.reduce(
     (total, { segmento, clientes }) =>

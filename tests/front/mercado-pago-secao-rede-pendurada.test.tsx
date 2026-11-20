@@ -22,7 +22,7 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const TOKEN_FALSO = "token-falso-de-teste-0000";
-const PUBLICA_FALSA = "publica-falsa-de-teste-0000";
+const PUBLICA_FALSA = "APP_USR-11111111-1111-4111-8111-111111111111";
 
 type Resposta = { data: unknown; error: unknown };
 type Chamada = { acao: string };

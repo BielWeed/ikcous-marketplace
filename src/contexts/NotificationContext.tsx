@@ -37,6 +37,7 @@ function chaveEstadoLocalDaCampanha(userId: string): string {
 // cupom vencido), e o contador as contaria. Vale só a que saiu DEPOIS de a
 // conta existir e nos últimos 30 dias.
 const JANELA_DA_CAMPANHA_MS = 30 * 24 * 60 * 60 * 1000;
+const PRAZO_DE_MARCAR_TODAS_COMO_LIDAS_MS = 15_000;
 
 function campanhaValeParaACliente(
   criadaEm: string,
@@ -418,15 +419,25 @@ export function NotificationProvider({
     const idsPropriosNaoLidos = Array.from(idsNaoLidos).filter(
       (id) => !campanhaIdsRef.current.has(id),
     );
+    const limite = Date.now() + PRAZO_DE_MARCAR_TODAS_COMO_LIDAS_MS;
+    const semResposta = new Error("Prazo para marcar avisos como lidos");
     try {
       let error: unknown = null;
       for (const lote of emLotes(idsPropriosNaoLidos)) {
-        const resposta = await supabase
-          .from("notificacoes")
-          .update({ lida: true })
-          .in("id", lote)
-          .eq("usuario_id", donoDaOperacao)
-          .eq("lida", false);
+        const restante = limite - Date.now();
+        if (restante <= 0) throw semResposta;
+        const resposta = await aguardarComPrazo(
+          Promise.resolve(
+            supabase
+              .from("notificacoes")
+              .update({ lida: true })
+              .in("id", lote)
+              .eq("usuario_id", donoDaOperacao)
+              .eq("lida", false),
+          ),
+          restante,
+          () => semResposta,
+        );
         if (resposta.error) {
           error = resposta.error;
           break;
@@ -460,10 +471,12 @@ export function NotificationProvider({
         prev.map((n) => (idsNaoLidos.has(n.id) ? { ...n, read: true } : n)),
       );
     } catch (err) {
-      // Achado 4 da auditoria rodada 2 — mesmo motivo do markAsRead.
+      if (usuarioAtualIdRef.current !== donoDaOperacao) return;
       console.error("[Notifications] Mark all as read error:", err);
       toast.error(
-        "Não conseguimos marcar os avisos como lidos. Tente de novo.",
+        err === semResposta
+          ? "Não deu para marcar agora. Tente de novo."
+          : "Não conseguimos marcar os avisos como lidos. Tente de novo.",
       );
     }
   }, [user, notifications, invalidarConsultasEmVoo]);

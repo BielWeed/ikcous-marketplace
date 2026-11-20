@@ -88,7 +88,7 @@ vi.mock("@/hooks/useDevolucoesAdmin", async () => {
     status: "concluida",
     itens: [],
     eventos: [],
-    created_at: "2026-09-01T12:00:00Z",
+    created_at: "2026-09-02T01:30:00Z",
     prazo_ate: "2026-09-08T12:00:00Z",
   });
   if (!detalhe) throw new Error("devolução de teste inválida");
@@ -168,6 +168,33 @@ describe("Painel — o número do pedido é o mesmo que o cliente vê", () => {
       botao?.click();
     });
     expect(onAbrirPedido).toHaveBeenCalledWith(ID_DO_PEDIDO);
+  });
+
+  it("mostra a data e a hora da devolução em Brasília num aparelho em UTC", async () => {
+    vi.stubEnv("TZ", "UTC");
+    try {
+      expect(new Date("2026-09-02T01:30:00Z").getHours()).toBe(1);
+      const { DetalheDaDevolucao } = await import(
+        "@/components/admin/devolucoes/DetalheDaDevolucao"
+      );
+      await act(async () => {
+        raiz.render(
+          <DetalheDaDevolucao
+            id="dev-1"
+            onFechar={vi.fn()}
+            onMudou={vi.fn()}
+            onSujoMudou={vi.fn()}
+            onAbrirPedido={vi.fn()}
+          />,
+        );
+      });
+      const rotulo = [...hospedeiro.querySelectorAll("dt")].find(
+        (dt) => dt.textContent === "Pedido em",
+      );
+      expect(rotulo?.nextElementSibling?.textContent).toBe("01/09/2026, 22:30");
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   describe("ficha do cliente (extrato de pedidos)", () => {

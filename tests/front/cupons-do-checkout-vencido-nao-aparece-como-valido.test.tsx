@@ -2,14 +2,10 @@
 //
 // CUPOM QUE VENCEU COM A TELA ABERTA.
 //
-// A lista de cupons é lida uma vez; se a cliente deixa o checkout aberto e o
-// prazo de um cupom passa, o cartão continuava dizendo "Válido até <data que
-// já passou>", como se valesse. Agora o texto da validade diz "Vencido" para
-// prazo que passou. QUEM TIRA o cupom vencido da lista é o servidor (a lista é
-// relida ao abrir o checkout e a cada mudança de subtotal, e ele recusa o
-// vencido ao aplicar): a tela NÃO o esconde pelo relógio do aparelho — com o
-// celular adiantado, um cupom ainda válido (às vezes exclusivo, de código que
-// a cliente não sabe) sumiria da lista.
+// A lista pode ficar aberta até o prazo passar. Só o servidor sabe se o
+// cupom venceu: ele filtra a lista na busca e confere de novo ao aplicar.
+// Se a data parecer passada no aparelho, o cartão informa o prazo sem
+// afirmar que o cupom vale ou venceu.
 import { CuponsDoCheckout } from "@/components/checkout/CuponsDoCheckout";
 import {
   type CupomDisponivel,
@@ -25,24 +21,22 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 // 28/09 23:59:59.999 em Brasília.
 const FIM_DO_DIA_28 = "2026-09-29T02:59:59.999Z";
 
-describe("validadeDoCupom — prazo que já passou", () => {
-  it("diz Vencido, e não uma data como se ainda valesse", () => {
-    // 29/09 10:00 em Brasília: o cupom do dia 28 já venceu.
+describe("validadeDoCupom — prazo no passado pelo relógio do aparelho", () => {
+  it("informa a data sem afirmar que venceu", () => {
     const agora = new Date("2026-09-29T13:00:00.000Z");
-    expect(validadeDoCupom(FIM_DO_DIA_28, agora)).toBe("Vencido");
-    // Mesmo vencido há meses, nunca "Válido até".
+    expect(validadeDoCupom(FIM_DO_DIA_28, agora)).toBe("Validade: 28/09");
     expect(
       validadeDoCupom(FIM_DO_DIA_28, new Date("2027-03-01T12:00:00Z")),
-    ).toBe("Vencido");
+    ).toBe("Validade: 28/09/2026");
   });
 
-  it("no último instante o cupom ainda vence hoje (só depois vira Vencido)", () => {
+  it("mantém 'Vence hoje' no último instante e depois informa a data", () => {
     expect(
       validadeDoCupom(FIM_DO_DIA_28, new Date("2026-09-29T02:59:59.999Z")),
     ).toBe("Vence hoje");
     expect(
       validadeDoCupom(FIM_DO_DIA_28, new Date("2026-09-29T03:00:00.000Z")),
-    ).toBe("Vencido");
+    ).toBe("Validade: 28/09");
   });
 });
 
@@ -117,7 +111,7 @@ describe("CuponsDoCheckout — cupom que vence com a tela aberta", () => {
       `button[aria-label="Aplicar o cupom ${codigo}"]`,
     );
 
-  it("a virada acontece com a tela aberta: o cupom fica até a próxima busca, o texto diz Vencido e o servidor decide no toque", () => {
+  it("a virada acontece com a tela aberta: o cupom fica até a próxima busca e o servidor decide no toque", () => {
     const onApply = vi.fn();
     montar(onApply);
     expect(codigosNaTela().some((t) => t.includes("DOHOJE"))).toBe(true);
@@ -136,6 +130,15 @@ describe("CuponsDoCheckout — cupom que vence com a tela aberta", () => {
     expect(botao).not.toBeNull();
     act(() => botao?.click());
     expect(onApply).toHaveBeenCalledWith("DOHOJE");
+  });
+
+  it("relógio adiantado: mostra a data de validade sem marcar o cupom da lista como vencido", () => {
+    vi.setSystemTime(new Date("2026-10-02T13:00:00.000Z"));
+    montar();
+
+    const cartao = botaoDeAplicar("DOHOJE");
+    expect(cartao?.textContent).toContain("Validade: 28/09");
+    expect(cartao?.textContent).not.toContain("Vencido");
   });
 
   it("relógio do aparelho adiantado: o cupom que o servidor ainda lista como válido aparece, com o botão de aplicar", () => {

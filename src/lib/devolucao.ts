@@ -60,12 +60,14 @@ export const STATUS_EM_ORDEM: readonly StatusDevolucao[] = [
 ];
 
 /** Os quatro estados em andamento (o índice único do banco usa os mesmos). */
-export const STATUS_ABERTOS: readonly StatusDevolucao[] = [
+export const STATUS_ABERTOS = [
   "solicitada",
   "aprovada",
   "em_transito",
   "recebida",
-];
+] as const satisfies readonly StatusDevolucao[];
+
+const estadosAbertos: readonly StatusDevolucao[] = STATUS_ABERTOS;
 
 const TIPOS: readonly TipoDevolucao[] = ["arrependimento", "vicio", "troca"];
 
@@ -291,7 +293,7 @@ export const tomDoStatus = (s: StatusDevolucao): TomDoStatus =>
   TOM_DO_STATUS.get(s) ?? "andamento";
 
 export const ehStatusAberto = (s: StatusDevolucao) =>
-  STATUS_ABERTOS.includes(s);
+  estadosAbertos.includes(s);
 
 export const ehMotivoDeProblema = (m: MotivoDevolucao | null | undefined) =>
   !!m && MOTIVOS_DE_PROBLEMA.includes(m);

@@ -9,6 +9,7 @@ import { observacaoDaClienteNoRecibo } from "@/lib/observacao-da-cliente-no-reci
 import { quemVaiReceberSeForOutro } from "@/lib/quem-vai-receber";
 import { situacaoDoPagamentoNaEntrega } from "@/lib/situacao-do-pagamento-na-entrega";
 import { limparTelefoneBrasileiro } from "@/lib/telefone-br";
+import { textoSemControlesDeDirecao } from "@/lib/texto-sem-controles-de-direcao";
 import type { Order } from "@/types";
 
 /** Só os dígitos do que foi digitado ou salvo. */
@@ -65,6 +66,13 @@ export function normalizarNumeroMototaxi(
 /** Mensagem mínima: só os campos que o painel já mostra para entregar. */
 export function mensagemMototaxi(order: Order, loja: string): string {
   const c = order.customer;
+  const limpar = (campo: string | null | undefined) =>
+    textoSemControlesDeDirecao(campo ?? "");
+  const endereco = [c.address, c.number, c.complement]
+    .map(limpar)
+    .filter(Boolean)
+    .join(", ");
+  const referencia = limpar(c.reference);
   const quemRecebe = quemVaiReceberSeForOutro(c.name, c.recipientName);
   // "Deixar na portaria", "campainha estragada": o que a cliente escreveu no
   // checkout. `order.notes` e o mesmo campo que a ficha mostra como
@@ -102,15 +110,15 @@ export function mensagemMototaxi(order: Order, loja: string): string {
     // mototaxi precisa do nome dela (a ficha do painel ja mostra "Recebe: X").
     quemRecebe ? `Quem recebe: ${quemRecebe}` : "",
     `Telefone: ${c.whatsapp}`,
-    `Endereço: ${[c.address, c.number, c.complement].filter(Boolean).join(", ")}`,
+    `Endereço: ${endereco}`,
     [
-      c.neighborhood,
+      limpar(c.neighborhood),
       [c.city, c.state].filter(Boolean).join("/"),
       c.cep ? `CEP ${c.cep}` : "",
     ]
       .filter(Boolean)
       .join(" · "),
-    c.reference ? `Referência: ${c.reference}` : "",
+    referencia ? `Referência: ${referencia}` : "",
     observacao ? `Observações do pedido: ${observacao}` : "",
     `Itens: ${order.items.map((i) => `${i.quantity}× ${i.name}`).join("; ")}`,
     pagamento,

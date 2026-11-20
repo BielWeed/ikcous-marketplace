@@ -246,6 +246,20 @@ describe("AdminReviewsView — redesenho", () => {
     });
   }
 
+  it("mostra o dia da avaliação em Brasília num aparelho em UTC", async () => {
+    vi.stubEnv("TZ", "UTC");
+    try {
+      const createdAt = "2026-09-02T01:30:00Z";
+      expect(new Date(createdAt).getDate()).toBe(2);
+      h.estado.adminReviews = [{ ...PUBLICADA, createdAt }];
+      await montar();
+      expect(tela()).toContain("01/09/2026");
+      expect(tela()).not.toContain("02/09/2026");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("r66 abre resposta com cursor e devolve foco ao cancelar e publicar", async () => {
     await montar();
     await tocar(botaoPorTexto("Responder"));

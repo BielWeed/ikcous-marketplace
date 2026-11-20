@@ -208,12 +208,24 @@ describe("AdminBannersView — produto do banner: preço da vitrine e produto pa
     document.body.querySelector<HTMLInputElement>("#banner-subtitle")!.value;
 
   async function editarBannerDo(productId: string, ativo = true) {
+    await montarBannerComLink(
+      `/product-detail?id=${productId}`,
+      productId,
+      ativo,
+    );
+  }
+
+  async function montarBannerComLink(
+    link: string,
+    productId?: string,
+    ativo = true,
+  ) {
     lista.banners = [
       {
         id: "banner-1",
         imageUrl: "https://loja.test/banner.webp",
         title: "Campanha",
-        link: `/product-detail?id=${productId}`,
+        link,
         productId,
         position: "home_top",
         active: ativo,
@@ -410,9 +422,25 @@ describe("AdminBannersView — produto do banner: preço da vitrine e produto pa
       expect(linha("Camiseta simples").textContent).not.toContain("Pausado");
     });
 
-    it("o cartão do banner avisa que o toque leva à Home", async () => {
-      await editarBannerDo("p-pausado");
+    it.each([
+      ["caminho relativo", "/product-detail?id=p-pausado"],
+      ["URL completa", "https://loja.test/product-detail?id=p-pausado"],
+      [
+        "URL completa de outro host com id codificado",
+        "https://outra-loja.test/product-detail?campanha=verao&id=p%2Dpausado#foto",
+      ],
+    ])("o cartão avisa que o toque leva à Home: %s", async (_, link) => {
+      await montarBannerComLink(link);
       expect(textoDaTela()).toContain(AVISO_PAUSADO);
+    });
+
+    it.each([
+      ["outra página externa", "https://loja.test/ofertas?id=p-pausado"],
+      ["URL de produto com id vazio", "https://loja.test/product-detail?id="],
+    ])("o cartão não avisa sobre produto pausado: %s", async (_, link) => {
+      await montarBannerComLink(link);
+      expect(textoDaTela()).toContain("Campanha");
+      expect(textoDaTela()).not.toContain(AVISO_PAUSADO);
     });
 
     it("o formulário de edição avisa também", async () => {

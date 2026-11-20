@@ -54,7 +54,7 @@ function pedido(): Order {
       whatsapp: "34999999999",
       address: `Rua ${"c".repeat(150)}`,
       number: "123",
-      complement: `Bloco ${"d".repeat(150)}`,
+      complement: `Bloco \u{202E}${"d".repeat(150)}`,
       neighborhood: "Centro",
       city: "Patos de Minas",
       state: "MG",

@@ -13,6 +13,7 @@ import { pluralizar } from "@/lib/pluralizar";
 import {
   PRAZO_DA_CONSULTA_DO_PAINEL_MS,
   aguardarComPrazo,
+  ehConsultaSemResposta,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
@@ -134,6 +135,10 @@ const IDS_ME_QUE_EXIGEM_AGENCIA: ReadonlySet<string> = new Set([
 ]);
 const AVISO_ID_EXIGE_AGENCIA =
   "Vende no checkout, mas a etiqueta tem de ser feita no site do Melhor Envio.";
+
+// Mesmo prazo da geração de etiquetas: ligar pode consultar serviços
+// externos. Só encerra a espera da tela, não a gravação no servidor.
+const PRAZO_DE_SALVAR_TRANSPORTADORAS_MS = 30_000;
 
 /**
  * Chama uma ação da edge `calculate-shipping` e devolve o corpo da
@@ -1073,10 +1078,17 @@ export const TransportadorasSection = memo(function TransportadorasSection({
     setErroLigados(null);
     haptic.medium();
     try {
-      const { data, error } = await chamarEdgeDeFrete({
-        action: "save_active_providers",
-        ligados: Array.from(ligadosEscolhidos),
-      });
+      const { data, error } = await aguardarComPrazo(
+        chamarEdgeDeFrete({
+          action: "save_active_providers",
+          ligados: Array.from(enviados),
+        }),
+        PRAZO_DE_SALVAR_TRANSPORTADORAS_MS,
+        () =>
+          erroDeConsultaSemResposta(
+            "Não recebemos a resposta do servidor. Saia do Frete e entre de novo para ver o que ficou salvo antes de salvar outra vez.",
+          ),
+      );
       if (error) throw error;
       if (!data?.success) {
         haptic.error();
@@ -1137,6 +1149,11 @@ export const TransportadorasSection = memo(function TransportadorasSection({
       // `carregar`) — nenhum rascunho é tocado aqui.
       return true;
     } catch (err) {
+      if (err instanceof Error && ehConsultaSemResposta(err)) {
+        setErroLigados({ mensagem: err.message });
+        // Deixe o Salvar do cabeçalho avisar sem afirmar que não gravou.
+        throw err;
+      }
       console.error(
         "[TransportadorasCard] Erro ao salvar provedores ligados:",
         err,

@@ -112,7 +112,7 @@ const CHAVE_CIFRA_TESTE = btoa(
 );
 
 // Chaves FALSAS de mentira (legíveis de propósito — nada de chave real).
-const PUBLIC_KEY_FALSA = "APP_USR-publica-falsa-de-teste";
+const PUBLIC_KEY_FALSA = "APP_USR-11111111-1111-4111-8111-111111111111";
 const TOKEN_FALSO = "APP_USR-token-falso-de-teste-9999";
 const TOKEN_FALSO_2 = "APP_USR-token-falso-de-teste-trocado-8888";
 const WEBHOOK_FALSO = "segredo-falso-de-webhook-7777";
@@ -639,7 +639,7 @@ Deno.test("credenciais-mercado-pago", async (t) => {
             );
             const respostaSalvar = await comFetch(fetchAdminFalso, () =>
                 handler(
-                    requisicao({ acao: "salvar", public_key: "APP_USR-publica-falsa-de-teste-v2" }),
+                    requisicao({ acao: "salvar", public_key: "APP_USR-22222222-2222-4222-8222-222222222222" }),
                     { supabase: cliente },
                 )
             );
@@ -933,6 +933,133 @@ Deno.test("credenciais-mercado-pago", async (t) => {
         );
     }
 
+    // Os tokens são os dublês já usados nesta suíte. Um UUID usado como
+    // token falso prova a guarda de igualdade independentemente do formato.
+    const PUBLICA_UUID = "APP_USR-00000000-0000-4000-8000-000000000001";
+    const RECADO_TOKEN =
+        "A chave pública não pode ser o token secreto. Confira os campos.";
+
+    for (const [nome, novo, salvo, publica, recado] of [
+        [
+            "fora do formato público",
+            TOKEN_FALSO_2,
+            null,
+            TOKEN_FALSO,
+            "Copie a chave pública (Public Key) no painel do Mercado Pago. Confira se não colou o token secreto.",
+        ],
+        ["igual ao token novo", PUBLICA_UUID, null, PUBLICA_UUID, RECADO_TOKEN],
+        ["igual ao token salvo", undefined, PUBLICA_UUID, PUBLICA_UUID, RECADO_TOKEN],
+        [
+            "igual ao token salvo durante troca",
+            TOKEN_FALSO_2,
+            PUBLICA_UUID,
+            PUBLICA_UUID,
+            RECADO_TOKEN,
+        ],
+    ] as const) {
+        await t.step(`salvar rejeita chave pública ${nome} sem gravar nem ecoar a entrada`, async () => {
+            const desfazerEnv = prepararEnv();
+            try {
+                const { cliente, estado } = supabaseFalso();
+                const { buscar, anotacoes } = buscarMpFalso(200, OK_PRODUCAO);
+                if (salvo) {
+                    const inicial = await chamar(cliente, {
+                        ...TRES_CHAVES,
+                        access_token: salvo,
+                    }, buscar);
+                    assertEquals(inicial.status, 200);
+                    estado.upserts.length = 0;
+                    estado.updatesLoja.length = 0;
+                    anotacoes.length = 0;
+                }
+
+                const resposta = await chamar(cliente, {
+                    acao: "salvar",
+                    public_key: publica,
+                    access_token: novo,
+                }, buscar);
+                const texto = await resposta.text();
+                assertEquals(resposta.status, 400);
+                assertEquals(texto.includes(publica), false);
+                assertEquals(JSON.parse(texto), { erro: recado });
+                assertEquals(anotacoes.length, 0);
+                assertEquals(estado.updatesLoja.length, 0);
+                assertEquals(estado.upserts.length, 0);
+            } finally {
+                desfazerEnv();
+            }
+        });
+    }
+
+    for (const publica of [
+        PUBLICA_UUID,
+        "TEST-ABCDEF01-2345-4567-8ABC-DEF012345678",
+    ]) {
+        await t.step(`salvar aceita UUID com prefixo ${publica.split("-")[0]}`, async () => {
+            const desfazerEnv = prepararEnv();
+            try {
+                const { cliente, estado } = supabaseFalso();
+                const { buscar } = buscarMpFalso(200, OK_PRODUCAO);
+                const resposta = await chamar(cliente, {
+                    ...TRES_CHAVES,
+                    public_key: publica,
+                }, buscar);
+                assertEquals(resposta.status, 200);
+                assertEquals(estado.loja.mp_public_key, publica);
+            } finally {
+                desfazerEnv();
+            }
+        });
+    }
+
+    await t.step("uma chave legada fora do formato público não volta em ler nem é republicada ao retomar", async () => {
+        const desfazerEnv = prepararEnv();
+        try {
+            const { cliente, estado } = supabaseFalso();
+            await lojaLigada(cliente);
+            estado.valor = JSON.stringify({
+                ...JSON.parse(estado.valor!),
+                public_key: TOKEN_FALSO,
+                pagamento_pausado: true,
+            });
+            estado.loja = { pagamento_online: false, mp_public_key: null };
+            estado.updatesLoja.length = 0;
+
+            const leitura = await chamar(cliente, { acao: "ler" });
+            const corpo = await leitura.json();
+            assertEquals(corpo.public_key, null);
+            assertEquals(corpo.faltando.includes("public_key"), true);
+
+            const retomar = await chamar(cliente, { acao: "ligar_pix" });
+            assertEquals(retomar.status, 409);
+            assertEquals(estado.updatesLoja.length, 0);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("falha ao salvar não repõe na ficha uma chave legada fora do formato público", async () => {
+        const desfazerEnv = prepararEnv();
+        try {
+            const { cliente, estado } = supabaseFalso();
+            const { buscar } = await lojaLigada(cliente);
+            estado.loja.mp_public_key = TOKEN_FALSO;
+            estado.falhaNoUpsert = true;
+
+            const resposta = await chamar(cliente, {
+                acao: "salvar",
+                public_key: PUBLICA_UUID,
+            }, buscar);
+            const texto = await resposta.text();
+            assertEquals(resposta.status, 500);
+            assertEquals(estado.loja.mp_public_key, null);
+            assertEquals(texto.includes(TOKEN_FALSO), false);
+            assertEquals(JSON.parse(texto).erro.includes("retirada"), true);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
     /** MP dublê que estoura como a rede de verdade (nem chega a haver resposta). */
     function buscarMpRede() {
         const anotacoes: Array<{ url: string; bearer: string }> = [];
@@ -1150,7 +1277,7 @@ Deno.test("credenciais-mercado-pago", async (t) => {
             const mp = buscarMpFalso(401, { message: "invalid token" });
             const resposta = await chamar(
                 cliente,
-                { ...TRES_CHAVES, access_token: TOKEN_FALSO_2, public_key: "APP_USR-publica-falsa-nova-conta" },
+                { ...TRES_CHAVES, access_token: TOKEN_FALSO_2, public_key: "APP_USR-33333333-3333-4333-8333-333333333333" },
                 mp.buscar,
             );
             assertEquals(resposta.status, 409);
@@ -1517,7 +1644,7 @@ Deno.test("credenciais-mercado-pago", async (t) => {
             await lojaLigada(cliente);
             estado.updatesLoja.length = 0;
 
-            const PUBLIC_KEY_TROCADA = "APP_USR-publica-falsa-de-outra-conta";
+            const PUBLIC_KEY_TROCADA = "APP_USR-44444444-4444-4444-8444-444444444444";
             const mp = buscarMpFalso(401, { message: "invalid token" });
             const resposta = await chamar(
                 cliente,
@@ -1550,7 +1677,7 @@ Deno.test("credenciais-mercado-pago", async (t) => {
             // dominio_publico_so_muda_pela_frota caído, por exemplo).
             estado.falhaNaLojaAgora = true;
 
-            const PUBLIC_KEY_NOVA = "APP_USR-publica-falsa-de-outra-conta";
+            const PUBLIC_KEY_NOVA = "APP_USR-44444444-4444-4444-8444-444444444444";
             const resposta = await chamar(
                 cliente,
                 { acao: "salvar", public_key: PUBLIC_KEY_NOVA, access_token: TOKEN_FALSO_2 },
@@ -1630,7 +1757,7 @@ Deno.test("credenciais-mercado-pago", async (t) => {
 
             const resposta = await chamar(
                 cliente,
-                { acao: "salvar", public_key: "APP_USR-publica-falsa-de-outra-conta", access_token: TOKEN_FALSO_2 },
+                { acao: "salvar", public_key: "APP_USR-44444444-4444-4444-8444-444444444444", access_token: TOKEN_FALSO_2 },
                 buscarMpFalso(401, { message: "invalid token" }).buscar,
             );
             assertEquals(resposta.status, 500);
@@ -1656,7 +1783,7 @@ Deno.test("credenciais-mercado-pago", async (t) => {
             estado.falhaNoUpsert = true;
             const resposta = await chamar(
                 cliente,
-                { acao: "salvar", public_key: "APP_USR-publica-falsa-de-outra-conta" },
+                { acao: "salvar", public_key: "APP_USR-44444444-4444-4444-8444-444444444444" },
                 buscarMpFalso(200, OK_PRODUCAO).buscar,
             );
             assertEquals(resposta.status, 500);
@@ -1704,7 +1831,7 @@ Deno.test("credenciais-mercado-pago", async (t) => {
             };
             const resposta = await chamar(
                 cliente,
-                { acao: "salvar", public_key: "APP_USR-publica-falsa-de-outra-conta" },
+                { acao: "salvar", public_key: "APP_USR-44444444-4444-4444-8444-444444444444" },
                 buscarMpFalso(200, OK_PRODUCAO).buscar,
             );
             assertEquals(resposta.status, 500);

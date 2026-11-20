@@ -41,7 +41,7 @@ describe("formulario de endereco: alvos de toque", () => {
     expect(link).toContain("min-h-11");
     const botao =
       FORM_END.match(
-        /onClick=\{\(\) => setReferenciaAberta\(true\)\}[\s\S]*?>/,
+        /focarReferenciaAoAbrirRef\.current = true;\s*setReferenciaAberta\(true\);[\s\S]*?\n\s*>/,
       )?.[0] ?? "";
     expect(botao).toContain("min-h-11");
   });

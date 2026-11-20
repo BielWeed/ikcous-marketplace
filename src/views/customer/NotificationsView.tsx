@@ -12,7 +12,7 @@ import {
   Truck,
   X,
 } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 interface NotificationsViewProps {
   readonly onNavigate?: (view: any, id?: string) => void;
@@ -131,6 +131,12 @@ export function navegarPorUrl(
   }
 }
 
+// UTC só permite subtrair dias civis da loja sem depender do fuso do aparelho.
+function inicioDoDia(d: Date) {
+  const [dia, mes, ano] = dataNoFusoDaLoja(d).split("/").map(Number);
+  return Date.UTC(ano, mes - 1, dia);
+}
+
 export function NotificationsView({
   onNavigate,
   onCategoryChange,
@@ -148,43 +154,64 @@ export function NotificationsView({
   } = useNotificationCenter();
 
   const [activeTab, setActiveTab] = useState<TabType>("todas");
+  const [marcandoTodas, setMarcandoTodas] = useState(false);
+  const [hoje, setHoje] = useState(() => inicioDoDia(new Date()));
+
+  useEffect(() => {
+    // Recalcula na tela aberta e ao voltar de uma aba suspensa. Só muda
+    // o estado quando muda o dia civil, sem buscar os avisos novamente.
+    const atualizarDia = () => setHoje(inicioDoDia(new Date()));
+    const timer = window.setInterval(atualizarDia, 60_000);
+    document.addEventListener("visibilitychange", atualizarDia);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", atualizarDia);
+    };
+  }, []);
+
+  const marcarTodas = async () => {
+    if (marcandoTodas) return;
+    setMarcandoTodas(true);
+    try {
+      await markAllAsRead();
+    } finally {
+      setMarcandoTodas(false);
+    }
+  };
+
   // Visitante sem conta nunca receberá aviso de pedido: a caixa vazia dele
   // não pode dizer "tudo em ordem".
   const visitante = semConta === true;
 
   // Format date/time to be user friendly
-  const formatNotificationTime = useCallback((dateStr: string) => {
-    try {
-      const date = new Date(dateStr);
-      const now = new Date();
-      // Dia civil da loja, mesmo se o aparelho já estiver no dia seguinte.
-      // UTC aqui só permite subtrair os dias sem depender do fuso do aparelho.
-      const inicioDoDia = (d: Date) => {
-        const [dia, mes, ano] = dataNoFusoDaLoja(d).split("/").map(Number);
-        return Date.UTC(ano, mes - 1, dia);
-      };
-      const diffDays = Math.round(
-        (inicioDoDia(now) - inicioDoDia(date)) / (1000 * 60 * 60 * 24),
-      );
+  const formatNotificationTime = useCallback(
+    (dateStr: string) => {
+      try {
+        const date = new Date(dateStr);
+        const diffDays = Math.round(
+          (hoje - inicioDoDia(date)) / (1000 * 60 * 60 * 24),
+        );
 
-      if (diffDays === 0 || diffDays === 1) {
-        const hora = date.toLocaleTimeString("pt-BR", {
+        if (diffDays === 0 || diffDays === 1) {
+          const hora = date.toLocaleTimeString("pt-BR", {
+            hour: "2-digit",
+            minute: "2-digit",
+            timeZone: FUSO_DA_LOJA,
+          });
+          return `${diffDays === 0 ? "Hoje" : "Ontem"} às ${hora}`;
+        }
+        return dataNoFusoDaLoja(date, {
+          day: "2-digit",
+          month: "short",
           hour: "2-digit",
           minute: "2-digit",
-          timeZone: FUSO_DA_LOJA,
         });
-        return `${diffDays === 0 ? "Hoje" : "Ontem"} às ${hora}`;
+      } catch {
+        return "";
       }
-      return dataNoFusoDaLoja(date, {
-        day: "2-digit",
-        month: "short",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    } catch {
-      return "";
-    }
-  }, []);
+    },
+    [hoje],
+  );
 
   // Parse action_url or order_id and navigate
   const handleNotificationClick = useCallback(
@@ -317,7 +344,8 @@ export function NotificationsView({
             <Button
               variant="ghost"
               size="sm"
-              onClick={markAllAsRead}
+              onClick={marcarTodas}
+              disabled={marcandoTodas}
               className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl border border-solid border-border bg-background px-3 text-[13px] font-semibold text-foreground hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring"
               title="Marcar todas como lidas"
             >

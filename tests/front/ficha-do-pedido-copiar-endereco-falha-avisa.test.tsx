@@ -200,6 +200,30 @@ describe("OrderDetail — copiar endereço não finge sucesso (laudo 0109, A-8)"
     expect(botaoCopiarEndereco()?.textContent).not.toContain("Copiado");
   });
 
+  it("o endereço copiado sai sem controles invisíveis", async () => {
+    const controle = String.fromCodePoint(0x202e);
+    mockOrders = [
+      {
+        ...pedidoBase,
+        customer: {
+          ...pedidoBase.customer,
+          complement: `Apto ${controle}120`,
+          number: `${controle}123`,
+          reference: controle,
+        },
+      },
+    ];
+    await montarFicha();
+    const botao = botaoCopiarEndereco();
+    expect(botao).toBeTruthy();
+    await act(async () => {
+      botao!.click();
+    });
+    expect(clipboardWriteText).toHaveBeenCalledWith(
+      "Rua das Flores, 123 - Comp: Apto 120 - Centro - Monte Carmelo - MG - CEP: 38500-000",
+    );
+  });
+
   it("clipboard aceita: toast de sucesso e botão vira 'Copiado' (controle)", async () => {
     await montarFicha();
 

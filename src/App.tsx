@@ -19,6 +19,7 @@ import { instalarConsumidorDoAtalhoDoIcone } from "@/lib/atalho-do-icone";
 import { esquecerChaveDoPedidoDe } from "@/lib/chave-do-pedido";
 import {
   destinoPosLogin,
+  idDeEndereco,
   idDePedidoDoPainel,
   idDeProdutoDoPainel,
   idDoDestinoPosLogin,
@@ -1864,6 +1865,20 @@ const AppContent = () => {
     globalThis.scrollTo(0, 0);
   }, [handleNavigate]);
 
+  const handleEnderecoIndisponivel = useCallback(
+    (id: string, mensagem: string) => {
+      const state = globalThis.history.state;
+      // Só a edição retomada de um link sem tela anterior no app. No fluxo
+      // interno, o próprio formulário mantém o aviso e o Voltar de sempre.
+      if (state?.view !== "address-form" || state.id !== id || state.from) {
+        return;
+      }
+      toast.error(mensagem);
+      handleNavigate("profile", undefined, false, { substituirEntrada: true });
+    },
+    [handleNavigate],
+  );
+
   const handleSwipeBack = useCallback(() => {
     swipeBackActiveRef.current = true;
     handleBack();
@@ -1953,9 +1968,8 @@ const AppContent = () => {
         // "user-profile" sem o repasse montaria a view sem `userId` — skeleton
         // eterno; "product-detail" e "order-details" sem id idem. O repasse é
         // SÓ para elas (`idDoDestinoPosLogin`): id nas outras views criaria `?id`
-        // fantasma em URL que nunca o teve. `admin-orders` entra na lista com
-        // validação própria (uuid de pedido): é a ficha que o aviso de "Pedido
-        // novo" abre.
+        // fantasma em URL que nunca o teve. Pedidos e produtos do painel
+        // e endereços em edição só recebem ids no formato UUID.
         handleNavigate(
           destino,
           idDoDestinoPosLogin(destino, estadoNoLogin),
@@ -2278,9 +2292,24 @@ const AppContent = () => {
           !authLoading &&
           !user
         ) {
+          // O endereço em edição precisa atravessar o login com seu id.
+          // Se o parâmetro for inválido, o destino seguro continua o Perfil,
+          // não o formulário sem id (que é de cadastro).
+          const idDoEndereco =
+            targetView === "address-form"
+              ? idDeEndereco(
+                  new URLSearchParams(globalThis.location.search).get("id"),
+                )
+              : undefined;
           targetView = "auth";
           if (globalThis.location.pathname !== "/auth") {
-            globalThis.history.replaceState({ view: "auth" }, "", "/auth");
+            globalThis.history.replaceState(
+              idDoEndereco === undefined
+                ? { view: "auth" }
+                : { view: "auth", requested: "address-form", id: idDoEndereco },
+              "",
+              "/auth",
+            );
           }
         }
 
@@ -3256,6 +3285,7 @@ const AppContent = () => {
               key: user?.id ? `address-form-${user.id}` : "address-form-guest",
               addressId: selectedProductId,
               onBack: handleBack,
+              onEnderecoIndisponivel: handleEnderecoIndisponivel,
             }}
           />
         );

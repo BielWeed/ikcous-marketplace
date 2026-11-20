@@ -121,6 +121,21 @@ describe("voto Útil — um clique conta um voto, não dois", () => {
     expect(botaoUtil?.textContent).not.toContain("Útil (4)");
   });
 
+  it("mostra o dia da avaliação em Brasília num aparelho em UTC", async () => {
+    vi.stubEnv("TZ", "UTC");
+    try {
+      const createdAt = "2026-09-02T01:30:00Z";
+      expect(new Date(createdAt).getDate()).toBe(2);
+      await act(async () => {
+        raiz.render(<ReviewCard review={{ ...AVALIACAO_BASE, createdAt }} />);
+      });
+      expect(hospedeiro.textContent).toContain("1 de set. de 2026");
+      expect(hospedeiro.textContent).not.toContain("2 de set. de 2026");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("sem clique, o rótulo fica no valor que veio do banco", async () => {
     await act(async () => {
       raiz.render(<PaiComMarkHelpful revisao={AVALIACAO_BASE} />);

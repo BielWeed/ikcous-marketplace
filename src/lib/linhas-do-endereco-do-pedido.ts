@@ -1,3 +1,4 @@
+import { textoSemControlesDeDirecao } from "@/lib/texto-sem-controles-de-direcao";
 import type { Order } from "@/types";
 
 /**
@@ -11,8 +12,9 @@ import type { Order } from "@/types";
  * Campo vazio não deixa rastro: sem linha em branco, sem vírgula solta, sem
  * rótulo ("CEP:", "Ref:") sem valor.
  */
-export function linhasDoEndereco(cliente: Order["customer"]): string[] {
-  const texto = (valor: string | null | undefined) => (valor ?? "").trim();
+export function montarLinhasDoEndereco(cliente: Order["customer"]) {
+  const texto = (valor: string | null | undefined) =>
+    textoSemControlesDeDirecao(valor ?? "").trim();
   const ruaENumero = [texto(cliente.address), texto(cliente.number)]
     .filter(Boolean)
     .join(", ");
@@ -31,5 +33,10 @@ export function linhasDoEndereco(cliente: Order["customer"]): string[] {
   ]
     .filter(Boolean)
     .join(" • ");
+  return { primeira, segunda };
+}
+
+export function linhasDoEndereco(cliente: Order["customer"]): string[] {
+  const { primeira, segunda } = montarLinhasDoEndereco(cliente);
   return [primeira, segunda].filter(Boolean);
 }

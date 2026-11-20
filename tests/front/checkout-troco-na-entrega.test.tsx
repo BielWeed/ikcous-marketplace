@@ -254,7 +254,9 @@ describe("CheckoutView — troco para pagamento em dinheiro", () => {
   it.each([
     [76.5, "100", "Troco para R$ 100,00 (levar R$ 23,50)"],
     [19.9, "20", "Troco para R$ 20,00 (levar R$ 0,10)"],
-    [19.9, "20,10", "Troco para R$ 20,10 (levar R$ 0,20)"],
+    [19.9, "20,50", "Troco para R$ 20,50 (levar R$ 0,60)"],
+    [19.9, "20,5", "Troco para R$ 20,50 (levar R$ 0,60)"],
+    [19.9, "20.5", "Troco para R$ 20,50 (levar R$ 0,60)"],
     [19.9, "20.10", "Troco para R$ 20,10 (levar R$ 0,20)"],
     [10_000, "10.000,01", "Troco para R$ 10.000,01 (levar R$ 0,01)"],
   ])(
@@ -269,11 +271,11 @@ describe("CheckoutView — troco para pagamento em dinheiro", () => {
         totalAmount: preco,
         paymentMethod: "cash",
       });
-      expect(
-        pedido.notes.startsWith(
-          `${prefixo}\nTocar a campainha.\nO portão é azul.`,
-        ),
-      ).toBe(true);
+      expect(pedido.notes.split("\n").slice(0, 3)).toEqual([
+        prefixo,
+        "Tocar a campainha.",
+        "O portão é azul.",
+      ]);
     },
   );
 

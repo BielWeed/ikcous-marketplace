@@ -348,6 +348,44 @@ export function useAddresses() {
     }
   };
 
+  const promoverRestanteAposExclusao = async (
+    idDaConta: string,
+    lista: Address[],
+    aoEsgotarPrazo: () => void,
+  ) => {
+    const proximo = lista[0];
+    if (!proximo || lista.some((a) => a.is_default)) return null;
+    return (await promoverNoBanco(idDaConta, proximo.id, aoEsgotarPrazo))
+      ? proximo.id
+      : null;
+  };
+
+  const reconciliarExclusaoTardia = async (
+    idDaConta: string,
+    idExcluido: string,
+    lista: Address[],
+  ) => {
+    if (lista.some((a) => a.id === idExcluido)) return;
+    const estadoDaLeitura = estadoRef.current;
+    let promocaoSemResposta = false;
+    const promovidoId = await promoverRestanteAposExclusao(
+      idDaConta,
+      lista,
+      () => {
+        promocaoSemResposta = true;
+      },
+    );
+    if (usuarioAtualRef.current !== idDaConta) return;
+    if (
+      promocaoSemResposta ||
+      (promovidoId && estadoRef.current !== estadoDaLeitura)
+    ) {
+      void fetchAddresses();
+    } else if (promovidoId) {
+      gravarLista(idDaConta, comPromovidoNaFrente(lista, promovidoId), true);
+    }
+  };
+
   const addAddress = async (address: Omit<Address, "id" | "user_id">) => {
     if (!user) return null;
     if (!ufBrasileiraValida(address.state)) {
@@ -651,7 +689,11 @@ export function useAddresses() {
         (resposta) => {
           // DELETE sem select devolve data nulo mesmo quando foi confirmado.
           if (!resposta.error && usuarioAtualRef.current === idDaConta) {
-            void fetchAddresses();
+            void fetchAddresses({
+              aoLer: (lista) => {
+                void reconciliarExclusaoTardia(idDaConta, id, lista);
+              },
+            });
           }
         },
       );
@@ -673,17 +715,14 @@ export function useAddresses() {
       let promovidoId: string | null = null;
       let promocaoSemResposta = false;
       if (listaFresca) {
-        if (listaFresca.length > 0 && !listaFresca.some((a) => a.is_default)) {
-          const proximo = listaFresca[0];
-          if (
-            await promoverNoBanco(idDaConta, proximo.id, () => {
-              promocaoSemResposta = true;
-            })
-          ) {
-            promovidoId = proximo.id;
-          }
-          if (usuarioAtualRef.current !== idDaConta) return false;
-        }
+        promovidoId = await promoverRestanteAposExclusao(
+          idDaConta,
+          listaFresca,
+          () => {
+            promocaoSemResposta = true;
+          },
+        );
+        if (usuarioAtualRef.current !== idDaConta) return false;
       } else {
         const antes = estadoRef.current;
         const restantes =

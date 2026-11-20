@@ -425,14 +425,18 @@ const AVISO_PRODUTO_EXCLUIDO =
 const prefixoDoPreco = (vitrine: { aPartirDe: boolean }) =>
   vitrine.aPartirDe ? "A partir de" : "Por apenas";
 
-/** O id do produto de um link `/product-detail?id=<id>`; `null` nos demais. */
+/** O id do produto no caminho relativo ou na URL completa do banner. */
 function idDoProdutoDoLink(link: string | null | undefined): string | null {
-  const achado = /^\/product-detail\?id=([^&#]+)/.exec(link ?? "");
-  if (!achado) return null;
+  if (!link) return null;
   try {
-    return decodeURIComponent(achado[1]);
+    const url = link.startsWith("/product-detail?")
+      ? new URL(link, "https://loja.example")
+      : new URL(link);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    if (url.pathname !== "/product-detail") return null;
+    return url.searchParams.get("id") || null;
   } catch {
-    return achado[1];
+    return null;
   }
 }
 

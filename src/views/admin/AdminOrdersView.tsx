@@ -671,15 +671,16 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   // com o filtro antigo que o efeito de carga já agendou (espera de 320 ms).
   useEffect(() => {
     if (!active) return;
-    if (!consumirPedidoDePedidosSemFiltroAntigo()) return;
-    setFilter("open");
+    const filtroDoAtalho = consumirPedidoDePedidosSemFiltroAntigo();
+    if (!filtroDoAtalho) return;
+    setFilter(filtroDoAtalho);
     setPaymentFilter("all");
     setCanalFilter("all");
     setSearchQuery("");
     setDateRange({ start: "", end: "" });
     setCurrentPage(0);
     // A rolagem da última visita (devolvida antes deste efeito) também sai:
-    // a lista "Em aberto" abre no topo.
+    // a lista do atalho abre no topo.
     reiniciarScroll();
   }, [
     active,

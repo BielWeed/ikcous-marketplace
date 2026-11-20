@@ -84,10 +84,14 @@ vi.mock("@/lib/supabase", () => ({
             return cadeia;
           },
           select: () => {
-            const cadeia: any = {
-              eq: () => cadeia,
+            let filtro: [string, string] | undefined;
+            const cadeia = {
+              eq: (coluna: string, valor: string) => {
+                filtro = [coluna, valor];
+                return cadeia;
+              },
               is: () => cadeia,
-              single: () => banco.leProduto(),
+              single: () => banco.leProduto(filtro),
             };
             return cadeia;
           },
@@ -350,6 +354,71 @@ describe("Gravar e abrir produto no painel: a espera da tela tem prazo", () => {
           },
         ],
       });
+
+    const idDoFormulario = "2c54c53f-bcb9-46ca-80fb-12f7ed6dbabc";
+    const conflitoDaChave = {
+      code: "23505",
+      message: 'duplicate key value violates unique constraint "produtos_pkey"',
+    };
+
+    it("o INSERT usa o ID que o formulário reservou", async () => {
+      const { desfecho } = disparar(() =>
+        api.addProduct(dadosNovos(), { idDoFormulario }),
+      );
+      await passar(0);
+
+      expect(banco.insereProduto).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ id: idDoFormulario }),
+      );
+      expect(desfecho.valor).toBeDefined();
+    });
+
+    it("conflito da chave lê a ficha criada sem sobrescrevê-la nem inserir grade", async () => {
+      banco.insereProduto.mockResolvedValue({
+        data: null,
+        error: conflitoDaChave,
+      });
+      banco.leProduto.mockResolvedValue({
+        data: { ...linhaCriada(), id: idDoFormulario, estoque: 2 },
+        error: null,
+      });
+      const { desfecho } = disparar(() =>
+        api.addProduct(comGrade(), { idDoFormulario }),
+      );
+      await passar(0);
+
+      expect(desfecho.erro).toBeUndefined();
+      expect(desfecho.valor).toMatchObject({
+        id: idDoFormulario,
+        estoque: 2,
+        recuperadoAposConflito: true,
+      });
+      expect(banco.leProduto).toHaveBeenCalledExactlyOnceWith([
+        "id",
+        idDoFormulario,
+      ]);
+      expect(banco.insereProduto).toHaveBeenCalledTimes(1);
+      expect(banco.atualizaProduto).not.toHaveBeenCalled();
+      expect(banco.insereVariantes).not.toHaveBeenCalled();
+      expect(banco.erro).not.toHaveBeenCalled();
+    });
+
+    it("conflito de código de barras não é tratado como cadastro concluído", async () => {
+      const erro = {
+        code: "23505",
+        message:
+          'duplicate key value violates unique constraint "produtos_codigo_barras_unico"',
+      };
+      banco.insereProduto.mockResolvedValue({ data: null, error: erro });
+      const { desfecho } = disparar(() =>
+        api.addProduct(dadosNovos(), { idDoFormulario }),
+      );
+      await passar(0);
+
+      expect(desfecho.erro).toBe(erro);
+      expect(banco.leProduto).not.toHaveBeenCalled();
+      expect(banco.sucesso).not.toHaveBeenCalled();
+    });
 
     it("as variações penduradas depois do produto criado NÃO viram erro: devolve o produto (com o id) marcado como grade sem resposta", async () => {
       // Se lançasse erro a tela perderia o id e o "Publicar" criaria o produto

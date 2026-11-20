@@ -109,6 +109,23 @@ describe("NotificationsView — 'Hoje'/'Ontem' por dia civil, não por 24h", () 
     expect(texto).toContain("Hoje às 09:00");
   });
 
+  it("troca Hoje por Ontem sem sair da tela na virada em Brasília", async () => {
+    vi.useRealTimers();
+    vi.useFakeTimers({
+      now: new Date("2026-11-18T02:59:30Z"),
+      toFake: ["Date", "setInterval", "clearInterval"],
+    });
+    notificacaoDaVez = notificacaoCriadaEm(new Date("2026-11-18T01:30:00Z"));
+    expect(await renderizar()).toContain("Hoje às 22:30");
+
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+    });
+
+    expect(hospedeiro.textContent).toContain("Ontem às 22:30");
+    expect(hospedeiro.textContent).not.toContain("Hoje às");
+  });
+
   it("criada há dois dias: formato completo, sem 'Hoje' nem 'Ontem'", async () => {
     notificacaoDaVez = notificacaoCriadaEm(new Date("2026-11-16T15:00:00Z"));
     const texto = await renderizar();

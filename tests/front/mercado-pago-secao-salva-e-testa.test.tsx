@@ -23,7 +23,7 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const TOKEN_FALSO = "APP_USR-token-falso-de-teste-9999";
-const PUBLICA_FALSA = "APP_USR-publica-falsa-de-teste";
+const PUBLICA_FALSA = "APP_USR-11111111-1111-4111-8111-111111111111";
 
 type Chamada = { nome: string; corpo: Record<string, unknown> };
 const chamadas: Chamada[] = [];
@@ -209,6 +209,34 @@ describe("MercadoPagoSection — salva e testa as chaves do lojista", () => {
     ).toBe("");
     expect(document.body.textContent).toContain("••••9999");
     expect(document.body.textContent).not.toContain(TOKEN_FALSO);
+  });
+
+  it("barra um token fictício no campo público antes de enviar", async () => {
+    cenario.salvo = { ...CONFIGURADO };
+    raiz = await montarSecao();
+    await abrirExpansor("Suas chaves");
+
+    await act(async () => {
+      digitar("mp-public-key", TOKEN_FALSO);
+    });
+    await clique(botaoPorTexto("Salvar chaves"));
+
+    expect(chamadas.some((c) => c.corpo.acao === "salvar")).toBe(false);
+    expect(toastError).toHaveBeenCalledWith(
+      "Copie a chave pública (Public Key) no painel do Mercado Pago. Confira se não colou o token secreto.",
+    );
+  });
+
+  it("mostra que o teste não confere os avisos mesmo com senha salva", async () => {
+    cenario.salvo = { ...CONFIGURADO, mascara_webhook: "••••7777" };
+    raiz = await montarSecao();
+    await abrirExpansor("Suas chaves");
+
+    expect(document.body.textContent).toContain("salva: ••••7777");
+    expect(document.body.textContent).toContain(
+      "Testar conexão não confere os avisos",
+    );
+    expect(document.body.textContent).toContain("notificação de teste");
   });
 
   it("S3 — testar conexão fala com a edge e mostra o recado de sucesso", async () => {

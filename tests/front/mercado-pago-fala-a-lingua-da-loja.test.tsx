@@ -126,7 +126,7 @@ function rotuloDe(id: string): string {
 
 const SALVO = {
   configurado: true,
-  public_key: "APP_USR-publica-falsa-de-teste",
+  public_key: "APP_USR-11111111-1111-4111-8111-111111111111",
   mascara_token: "••••9999",
   mascara_webhook: "••••7777",
   ultimo_teste: null,
@@ -345,7 +345,7 @@ describe("MercadoPagoSection — as chaves com o nome que a loja entende", () =>
     );
 
     await act(async () => {
-      digitar("mp-public-key", "APP_USR-publica-falsa-de-teste");
+      digitar("mp-public-key", "APP_USR-11111111-1111-4111-8111-111111111111");
     });
     await act(async () => {
       botaoPorTexto("Salvar chaves").click();

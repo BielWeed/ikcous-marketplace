@@ -8,6 +8,7 @@ import {
   type PassosDoEndereco,
   passosDoEndereco,
 } from "@/lib/passos-do-endereco";
+import { textoSemControlesDeDirecao } from "@/lib/texto-sem-controles-de-direcao";
 import {
   normalizarUf,
   siglaDaUfColada,
@@ -358,6 +359,7 @@ export function AddressForm({
   const [referenciaAberta, setReferenciaAberta] = useState(
     !!initialData?.reference,
   );
+  const focarReferenciaAoAbrirRef = useRef(false);
 
   // Corrida, timeout e abort no desmonte ficam por conta do hook (#184,
   // #185, #186). Aqui: campo que o ViaCEP devolveu, escreve o valor dele;
@@ -628,19 +630,27 @@ export function AddressForm({
     else if (!bairro) form.setFocus("neighborhood");
   }, [resultadoCep, mostrarResto, mostrarCartao, rua, bairro, form]);
 
+  useEffect(() => {
+    if (!referenciaAberta || !focarReferenciaAoAbrirRef.current) return;
+    focarReferenciaAoAbrirRef.current = false;
+    form.setFocus("reference");
+  }, [referenciaAberta, form]);
+
   const handleSubmit = async (values: AddressFormValues) => {
     setLoading(true);
     try {
+      const complemento = textoSemControlesDeDirecao(values.complement ?? "");
+      const referencia = textoSemControlesDeDirecao(values.reference ?? "");
       const cleanData: DadosDoFormularioDeEndereco = {
-        name: values.name,
+        name: textoSemControlesDeDirecao(values.name),
         cep: values.cep,
-        street: values.street,
-        number: values.number,
-        complement: nomeTemConteudoVisivel(values.complement)
-          ? values.complement!.trim()
+        street: textoSemControlesDeDirecao(values.street),
+        number: textoSemControlesDeDirecao(values.number),
+        complement: nomeTemConteudoVisivel(complemento)
+          ? complemento.trim()
           : "",
-        neighborhood: values.neighborhood,
-        city: values.city,
+        neighborhood: textoSemControlesDeDirecao(values.neighborhood),
+        city: textoSemControlesDeDirecao(values.city),
         // UF vai para a etiqueta do Melhor Envio: sempre em maiúsculas.
         state: values.state.toUpperCase(),
         // Editando, o principal só vai se a pessoa mexeu nele: o valor do
@@ -649,10 +659,8 @@ export function AddressForm({
         ...(!initialData || principalTocadoRef.current
           ? { is_default: values.is_default }
           : {}),
-        reference: nomeTemConteudoVisivel(values.reference)
-          ? values.reference!.trim()
-          : "",
-        recipient_name: values.recipient_name,
+        reference: nomeTemConteudoVisivel(referencia) ? referencia.trim() : "",
+        recipient_name: textoSemControlesDeDirecao(values.recipient_name),
       };
       // Base: o endereço aplicado ou, antes da inicialização, aquele que já
       // preencheu os valores iniciais. Endereço novo não tem base.
@@ -1067,7 +1075,10 @@ export function AddressForm({
               {!referenciaAberta && !referencia && (
                 <button
                   type="button"
-                  onClick={() => setReferenciaAberta(true)}
+                  onClick={() => {
+                    focarReferenciaAoAbrirRef.current = true;
+                    setReferenciaAberta(true);
+                  }}
                   disabled={loading}
                   className="inline-flex min-h-11 items-center gap-1.5 text-[13px] font-semibold text-foreground"
                 >

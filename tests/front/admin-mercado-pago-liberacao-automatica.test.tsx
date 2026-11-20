@@ -47,7 +47,7 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const PUBLICA_FALSA = "APP_USR-publica-falsa-de-teste";
+const PUBLICA_FALSA = "APP_USR-11111111-1111-4111-8111-111111111111";
 
 type Chamada = { nome: string; corpo: Record<string, unknown> };
 const chamadas: Chamada[] = [];
@@ -481,11 +481,14 @@ describe("MercadoPagoSection — liberação automática do pagamento pelo app",
     expect(recebendo()).toBe(true);
     expect(document.body.textContent).toContain("Conectado! Conta");
     expect(onPixAlternado).toHaveBeenCalledWith(true, true);
-    // O toast conta que liberou (e não manda "teste a conexão" à mão).
+    // A conexão passou, mas não verificou o recebimento dos avisos.
     const [titulo, opcoes] = toastSuccess.mock.calls[0];
     expect(titulo).toContain("salvas");
-    expect(opcoes.description).toContain("liberado");
-    expect(opcoes.description).not.toContain("Teste a conexão");
+    expect(opcoes.description).toContain("Conexão com a conta OK");
+    expect(opcoes.description).toContain(
+      "Recebimento de avisos não verificado",
+    );
+    expect(opcoes.description).toContain("notificação de teste");
   });
 
   it("A9 — salvar com teste recusado: recado do teste, aviso do servidor e a lista do que falta", async () => {

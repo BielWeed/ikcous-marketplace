@@ -37,7 +37,7 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const PUBLICA_FALSA = "APP_USR-publica-falsa-de-teste";
+const PUBLICA_FALSA = "APP_USR-11111111-1111-4111-8111-111111111111";
 
 type Chamada = { nome: string; corpo: Record<string, unknown> };
 const chamadas: Chamada[] = [];

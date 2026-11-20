@@ -47,6 +47,8 @@ const NAO_E_CLASSE = new Set([
   "foto-de-perfil",
   "customer-payment-badge",
   "no-referrer-when-downgrade",
+  // prefixo do id do botão "Editar endereço" (o id do endereço vem depois)
+  "checkout-editar-endereco-",
 ]);
 
 const BOTOES_ANTIGOS_SEM_BORDA_SOLIDA = new Set<string>();

@@ -243,6 +243,33 @@ describe("Início → Pedidos: o atalho abre limpo, o menu respeita o que ficou 
     return { abrirPeloMenu: () => act(async () => menu.abrir()) };
   }
 
+  it("Devolver em Pedidos abre a lista de cancelados na primeira página", async () => {
+    h.respostas.set("painel_inicio", {
+      data: {
+        ...PAINEL_COM_PEDIDOS,
+        pendencias: {
+          ...PAINEL_COM_PEDIDOS.pendencias,
+          pedidos_para_preparar: 0,
+        },
+        dinheiro_a_devolver: { valor: 100, pedidos: 1 },
+      },
+      error: null,
+    });
+    salvarFiltrosAntigos();
+    await montarAsDuasTelas();
+    await esperarAte(() => texto(hospedeiro).includes("Devolver em Pedidos"));
+
+    await act(async () => {
+      botaoPorTexto(hospedeiro, "Devolver em Pedidos").click();
+    });
+    await esperarAte(() => h.cargas.length > 0);
+
+    expect(h.cargas.map((c) => c[2])).toEqual(["cancelled"]);
+    expect(h.cargas[0]?.[0]).toBe(0);
+    expect(h.cargas[0]?.[3] ?? "").toBe("");
+    expect(h.cargas[0]?.[7]).toBe("all");
+  });
+
   it("'Ver pedidos em aberto' do Início abre Pedidos em 'Em aberto', sem busca, período, pagamento nem canal salvos", async () => {
     h.respostas.set("painel_inicio", { data: PAINEL_COM_PEDIDOS, error: null });
     salvarFiltrosAntigos();
@@ -335,24 +362,24 @@ describe("pedido de 'abrir Pedidos limpo' (o recado do Início para a tela Pedid
   it("vale uma vez só", async () => {
     vi.resetModules();
     const lib = await import("@/lib/atalho-do-inicio-para-pedidos");
-    lib.pedirPedidosSemFiltroAntigo(1_000);
-    expect(lib.consumirPedidoDePedidosSemFiltroAntigo(1_500)).toBe(true);
-    expect(lib.consumirPedidoDePedidosSemFiltroAntigo(1_600)).toBe(false);
+    lib.pedirPedidosSemFiltroAntigo("open", 1_000);
+    expect(lib.consumirPedidoDePedidosSemFiltroAntigo(1_500)).toBe("open");
+    expect(lib.consumirPedidoDePedidosSemFiltroAntigo(1_600)).toBeNull();
   });
 
   it("sem pedido nenhum, não limpa nada", async () => {
     vi.resetModules();
     const lib = await import("@/lib/atalho-do-inicio-para-pedidos");
-    expect(lib.consumirPedidoDePedidosSemFiltroAntigo(1_000)).toBe(false);
+    expect(lib.consumirPedidoDePedidosSemFiltroAntigo(1_000)).toBeNull();
   });
 
   it("pedido esquecido (a tela nunca abriu) vence: abrir Pedidos pelo menu horas depois não limpa nada", async () => {
     vi.resetModules();
     const lib = await import("@/lib/atalho-do-inicio-para-pedidos");
-    lib.pedirPedidosSemFiltroAntigo(1_000);
+    lib.pedirPedidosSemFiltroAntigo("open", 1_000);
     const duasHorasDepois = 1_000 + 2 * 60 * 60 * 1000;
-    expect(lib.consumirPedidoDePedidosSemFiltroAntigo(duasHorasDepois)).toBe(
-      false,
-    );
+    expect(
+      lib.consumirPedidoDePedidosSemFiltroAntigo(duasHorasDepois),
+    ).toBeNull();
   });
 });

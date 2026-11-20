@@ -8,7 +8,7 @@
 //
 // Regra: ao abrir, o título da tela de endereço recebe o foco; ao fechar
 // (Cancelar, Voltar ou salvar — todos passam pelo mesmo estado), o foco volta
-// ao botão "Novo" que abriu.
+// ao botão "Novo" ou "Editar endereço" que abriu.
 //
 // Harness copiado de checkout-voltar-durante-salvar-endereco.test.tsx.
 import { act, useState } from "react";
@@ -59,35 +59,42 @@ vi.mock("@/components/ui/custom/AddressForm", () => ({
   AddressForm: ({
     onSubmit,
     initialData,
+    onCancel,
   }: {
+    onCancel: () => void;
     onSubmit: (
       data: Record<string, unknown>,
       alteracoes?: Record<string, unknown>,
     ) => Promise<void>;
     initialData?: { id: string };
   }) => (
-    <button
-      type="button"
-      data-testid="salvar-endereco-teste"
-      onClick={() => {
-        void onSubmit(
-          {
-            name: initialData ? "Editado" : "Novo",
-            recipient_name: "Cliente Teste",
-            cep: "01310-200",
-            street: "Rua Nova",
-            number: "200",
-            neighborhood: "Centro",
-            city: "Cidade Teste",
-            state: "SP",
-            is_default: false,
-          },
-          initialData ? estado.alteracoes : undefined,
-        );
-      }}
-    >
-      Salvar endereço (teste)
-    </button>
+    <>
+      <button type="button" onClick={onCancel}>
+        Cancelar
+      </button>
+      <button
+        type="button"
+        data-testid="salvar-endereco-teste"
+        onClick={() => {
+          void onSubmit(
+            {
+              name: initialData ? "Editado" : "Novo",
+              recipient_name: "Cliente Teste",
+              cep: "01310-200",
+              street: "Rua Nova",
+              number: "200",
+              neighborhood: "Centro",
+              city: "Cidade Teste",
+              state: "SP",
+              is_default: false,
+            },
+            initialData ? estado.alteracoes : undefined,
+          );
+        }}
+      >
+        Salvar endereço (teste)
+      </button>
+    </>
   ),
 }));
 
@@ -293,6 +300,9 @@ describe("CheckoutView — foco ao abrir e fechar a tela de endereço", () => {
   it('cancelar (Voltar): o foco volta ao botão "Novo" que abriu a tela', async () => {
     await abrirOApp();
     await act(async () => {
+      document.getElementById("resumo-editar-dados")!.click();
+    });
+    await act(async () => {
       botaoExato("Novo")!.click();
       await esperarMicrotarefas();
     });
@@ -303,6 +313,33 @@ describe("CheckoutView — foco ao abrir e fechar a tela de endereço", () => {
     const novo = botaoExato("Novo");
     expect(novo).toBeDefined();
     expect(document.activeElement).toBe(novo);
+  });
+
+  it('clicar em "Cancelar" devolve o foco ao botão "Editar endereço"', async () => {
+    await abrirOApp();
+    await act(async () => {
+      document.getElementById("resumo-editar-dados")!.click();
+    });
+    const editar = () =>
+      hospedeiro.querySelector<HTMLButtonElement>(
+        'button[aria-label="Editar endereço Casa"]',
+      );
+    const gatilho = editar();
+    expect(gatilho).not.toBeNull();
+    expect(gatilho!.closest("[hidden]")).toBeNull();
+    await act(async () => {
+      gatilho!.focus();
+      gatilho!.click();
+    });
+    expect(editar()).toBeNull();
+
+    await act(async () => botaoExato("Cancelar")!.click());
+    expect(globalThis.history.back).toHaveBeenCalledTimes(1);
+    await fecharPeloVoltar();
+
+    const gatilhoRemontado = editar();
+    expect(gatilhoRemontado).not.toBeNull();
+    expect(document.activeElement).toBe(gatilhoRemontado);
   });
 
   it('controle: sem abrir a tela de endereço, o foco não é puxado para o "Novo"', async () => {

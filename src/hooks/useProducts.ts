@@ -1680,8 +1680,14 @@ export function useProducts({
       // `avisarSucesso: false` = quem chama dá o próprio aviso de sucesso (a
       // duplicação diz "Produto Duplicado"): sem isto saíam dois avisos. O aviso
       // de FALHA nunca se cala.
-      opcoes?: { avisarSucesso?: boolean },
-    ) => {
+      opcoes?: { avisarSucesso?: boolean; idDoFormulario?: string },
+    ): Promise<
+      | (Product & {
+          recuperadoAposConflito?: true;
+          variantesNaoSalvas?: { motivo: string | null; semResposta?: boolean };
+        })
+      | undefined
+    > => {
       if (!isAdmin) {
         toast.error("Permissão negada");
         return;
@@ -1710,14 +1716,15 @@ export function useProducts({
         );
         if (recusaDeSku) throw new RecusaDoCadastroDeProduto(recusaDeSku);
 
-        // Com prazo: rede "pendurada" deixava o botão em "Salvando…" para sempre
-        // e o produto podia JÁ estar criado no servidor — repetir o cadastro o
-        // duplicava. Estourou: a frase manda conferir a lista (não afirma nada).
+        // O prazo solta a tela, não cancela o INSERT. O mesmo formulário
+        // pode tentar de novo, mas sempre com a mesma chave primária.
+        const idDoFormulario = opcoes?.idDoFormulario;
         const { data, error } = await aguardarComPrazo(
           Promise.resolve(
             supabase
               .from("vw_produtos_admin")
               .insert({
+                ...(idDoFormulario ? { id: idDoFormulario } : {}),
                 nome: productData.name,
                 descricao: productData.description,
                 preco_venda: productData.price,
@@ -1757,7 +1764,24 @@ export function useProducts({
           () => erroDeConsultaSemResposta(MENSAGEM_PRODUTO_NOVO_SEM_RESPOSTA),
         );
 
-        if (error) throw error;
+        if (error) {
+          if (
+            idDoFormulario &&
+            error.code === "23505" &&
+            error.message.includes('"produtos_pkey"')
+          ) {
+            // O primeiro INSERT gravou. Só leia a ficha: regravar o produto
+            // ou inserir a grade aqui poderia desfazer alterações ou duplicar.
+            const produto = await fetchProduct(idDoFormulario);
+            if (produto) {
+              versaoDaLista++;
+              clearAnalyticsCache();
+              await esperarOQueSobraDepoisDeGravar(() => refreshContext());
+              return { ...produto, recuperadoAposConflito: true };
+            }
+          }
+          throw error;
+        }
 
         if (data) {
           const newProduct = mapProductFromDB(data);
@@ -1878,16 +1902,9 @@ export function useProducts({
           if (!variantesFalharam && opcoes?.avisarSucesso !== false) {
             toast.success("Produto cadastrado com sucesso!");
           }
-          return (
-            gradeNaoSalva
-              ? { ...newProduct, variantesNaoSalvas: gradeNaoSalva }
-              : newProduct
-          ) as Product & {
-            variantesNaoSalvas?: {
-              motivo: string | null;
-              semResposta?: boolean;
-            };
-          };
+          return gradeNaoSalva
+            ? { ...newProduct, variantesNaoSalvas: gradeNaoSalva }
+            : newProduct;
         }
       } catch (err: any) {
         console.error("Error adding product:", err);
@@ -1895,7 +1912,7 @@ export function useProducts({
         throw err;
       }
     },
-    [isAdmin, refreshContext],
+    [fetchProduct, isAdmin, refreshContext],
   );
 
   const updateProduct = useCallback(

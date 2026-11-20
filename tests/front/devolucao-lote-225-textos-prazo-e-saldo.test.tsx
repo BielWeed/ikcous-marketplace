@@ -210,7 +210,7 @@ async function abrirFicha() {
   await clicar(hospedeiro.querySelector<HTMLElement>('[data-devolucao="d-1"]'));
 }
 
-it("só a coleta muda para Brasília: Pedido em e histórico conservam o horário do aparelho em UTC", async () => {
+it("Pedido em, coleta e histórico mostram Brasília num aparelho em UTC", async () => {
   const instante = "2026-11-19T01:30:00Z";
   const original = Date.prototype.toLocaleString;
   const relogio = vi
@@ -224,6 +224,7 @@ it("só a coleta muda para Brasília: Pedido em e histórico conservam o horári
       metodo_retorno: "coleta",
       created_at: instante,
       coleta_em: instante,
+      prazo_ate: "2026-11-18",
       eventos: [
         {
           id: "ev-1",
@@ -241,12 +242,15 @@ it("só a coleta muda para Brasília: Pedido em e histórico conservam o horári
       campos.find((campo) => campo.textContent === rotulo)?.nextElementSibling
         ?.textContent;
 
-    expect(valorDe("Pedido em")).toBe("19/11/2026, 01:30");
+    expect(valorDe("Pedido em")).toBe("18/11/2026, 22:30");
+    expect(valorDe("Prazo legal")).toBe(
+      "18/11/2026 · pedido feito dentro do prazo",
+    );
     const historico = Array.from(hospedeiro.querySelectorAll("section")).find(
       (secao) => secao.querySelector("h3")?.textContent === "Histórico",
     );
     expect(historico?.querySelector(".tabular-nums")?.textContent).toBe(
-      "19/11/2026, 01:30",
+      "18/11/2026, 22:30",
     );
     expect(valorDe("Coleta")).toBe("18/11/2026, 22:30");
   } finally {

@@ -99,7 +99,10 @@ function mascararWhatsappDaConta(novo: string, anterior: string): string {
   const digitos = texto.startsWith("(55)")
     ? texto.replace(/\D/g, "")
     : digitosDoTelefoneDoCampo(novo, anterior);
-  return digitos.length > 11 ? novo : formatarWhatsAppDigitando(digitos);
+  // Sem dígitos, conserva o texto para o Salvar não confundir com exclusão.
+  return digitos.length === 0 || digitos.length > 11
+    ? novo
+    : formatarWhatsAppDigitando(digitos);
 }
 
 export function AccountSettingsView() {
@@ -108,9 +111,11 @@ export function AccountSettingsView() {
   const contaAtualIdRef = useRef<string | null>(user?.id ?? null);
   // A identidade muda a cada edição. Uma resposta tardia só pode liberar
   // o rascunho que realmente foi enviado naquela tentativa.
-  const rascunhoCpfRef = useRef<{ contaId: string; digitos: string } | null>(
-    null,
-  );
+  // No rascunho, null nos dígitos é texto inválido; "" é exclusão.
+  const rascunhoCpfRef = useRef<{
+    contaId: string;
+    digitos: string | null;
+  } | null>(null);
   useEffect(() => {
     contaAtualIdRef.current = user?.id ?? null;
     return () => {
@@ -536,11 +541,13 @@ export function AccountSettingsView() {
     confirmPassword: "",
   });
 
+  const digitosCpfAtual = somenteDigitosDoCpf(cpf);
   const edicaoPendente =
     (profileLoadState === "loaded" &&
       (profileData.name !== profileDataOriginal.name ||
         profileData.phone !== profileDataOriginal.phone)) ||
-    somenteDigitosDoCpf(cpf) !== cpfOriginal ||
+    digitosCpfAtual !== cpfOriginal ||
+    (cpf !== "" && digitosCpfAtual === "") ||
     passwordData.newPassword !== "" ||
     passwordData.confirmPassword !== "";
   const recargaBloqueada = edicaoPendente || loading || updatingPassword;
@@ -776,11 +783,15 @@ export function AccountSettingsView() {
     // MUDOU: por dígitos, contra o número com que a tela abriu ou foi salva por
     // último. Quem mexe no telefone e o devolve ao mesmo número não o reenvia —
     // outro aparelho pode ter gravado um telefone novo nesse meio tempo.
+    const telefoneComparavel = profileData.phone.replace(/[^\d+]/g, "");
     const whatsappMudou =
       whatsappEditado &&
-      profileData.phone.replace(/[^\d+]/g, "") !==
-        profileDataOriginal.phone.replace(/[^\d+]/g, "");
-    if (whatsappMudou && profileData.phone.trim()) {
+      telefoneComparavel !== profileDataOriginal.phone.replace(/[^\d+]/g, "");
+    if (
+      whatsappEditado &&
+      profileData.phone !== "" &&
+      (whatsappMudou || telefoneComparavel === "")
+    ) {
       const digitosWhatsapp = profileData.phone.replace(/\D/g, "");
       // A máscara já tirou o código do país. Não deixe a validação
       // reinterpretar um DDD 55 que ganhou dígitos demais.
@@ -801,8 +812,7 @@ export function AccountSettingsView() {
     // CPF é OPCIONAL: campo vazio nunca bloqueia. Preenchido e inválido
     // marca erro NO CAMPO — mesma régua (`cpfValido`) do cadastro e do
     // checkout — e não chega a chamar a RPC.
-    const digitosCpfAtual = somenteDigitosDoCpf(cpf);
-    if (digitosCpfAtual && !cpfValido(digitosCpfAtual)) {
+    if (cpf !== "" && !cpfValido(digitosCpfAtual)) {
       setCpfErro(true);
       toast.error("CPF inválido", {
         description: "Confira os números ou deixe o campo em branco.",
@@ -1391,16 +1401,17 @@ export function AccountSettingsView() {
                       value={cpf}
                       disabled={profileLoadState !== "loaded"}
                       onChange={(e) => {
-                        const { limpo, formatado } = formatarCpf(
-                          e.target.value,
-                        );
+                        const bruto = e.target.value;
+                        const { limpo, formatado } = formatarCpf(bruto);
+                        const digitos =
+                          limpo === "" && bruto !== "" ? null : limpo;
                         rascunhoCpfRef.current =
                           userId &&
-                          (limpo !== cpfOriginal ||
+                          (digitos !== cpfOriginal ||
                             contaComCpfNoEnvioRef.current === userId)
-                            ? { contaId: userId, digitos: limpo }
+                            ? { contaId: userId, digitos }
                             : null;
-                        setCpf(formatado);
+                        setCpf(formatado || bruto);
                         if (cpfErro) setCpfErro(false);
                       }}
                       aria-invalid={cpfErro}

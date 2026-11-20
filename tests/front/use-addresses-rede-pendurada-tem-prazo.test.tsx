@@ -414,6 +414,29 @@ describe("useAddresses — rede pendurada tem prazo", () => {
       expect(toast.success).not.toHaveBeenCalled();
     });
 
+    it("delete confirmado fora do prazo promove o primeiro endereço restante uma vez", async () => {
+      await renderizar();
+      const { promessa } = await iniciar(() =>
+        espelho.hook!.deleteAddress(END_A.id),
+      );
+      const restante = { ...GRAVADO_A2, is_default: false };
+      await passar(PRAZO);
+      await expect(promessa).resolves.toBe(false);
+      await responder(1, { data: [END_A, restante], error: null });
+
+      await responder(0, { data: null, error: null });
+      expect(chamadas[2].op).toBe("select");
+      await responder(2, { data: [restante], error: null });
+      expect(chamadas[3]?.op).toBe("update");
+      await responder(3, { data: null, error: null });
+
+      expect(espelho.hook!.addresses).toEqual([
+        { ...restante, is_default: true },
+      ]);
+      expect(chamadas.filter(({ op }) => op === "update")).toHaveLength(1);
+      expect(toast.success).not.toHaveBeenCalled();
+    });
+
     it("promoção pendurada não prende a exclusão e a confirmação tardia relê o principal real", async () => {
       await renderizar();
       const { marca, promessa } = await iniciar(() =>

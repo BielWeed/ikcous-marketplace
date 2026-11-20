@@ -1,4 +1,4 @@
-import { destinoPosLogin } from "@/lib/destinoPosLogin";
+import { destinoPosLogin, idDoDestinoPosLogin } from "@/lib/destinoPosLogin";
 import { describe, expect, it } from "vitest";
 
 /**
@@ -52,6 +52,42 @@ describe("destinoPosLogin", () => {
         requested: "address-form",
       }),
     ).toBe("address-form");
+  });
+
+  const idDoEndereco = "2c13b20b-933f-418b-877f-84b3d85bd08b";
+
+  it("devolve o id do endereço em edição, no formato que a lista usa", () => {
+    const state = {
+      view: "auth",
+      requested: "address-form",
+      id: idDoEndereco.toUpperCase(),
+    };
+    expect(destinoPosLogin(state)).toBe("address-form");
+    expect(idDoDestinoPosLogin("address-form", state)).toBe(idDoEndereco);
+  });
+
+  it.each([
+    { id: "end-2" },
+    { id: "" },
+    { id: `${idDoEndereco}\n` },
+    { id: null },
+    { id: 42 },
+    { id: [idDoEndereco] },
+  ])(
+    "id inválido de edição ($id) cai no perfil, não em Novo endereço",
+    ({ id }) => {
+      const state = { view: "auth", requested: "address-form", id };
+      expect(destinoPosLogin(state)).toBe("profile");
+      expect(idDoDestinoPosLogin("address-form", state)).toBeUndefined();
+    },
+  );
+
+  it.each([
+    "https://example.invalid",
+    "//example.invalid",
+    "admin-desconhecido",
+  ])("destino fora da lista (%s) cai no perfil", (requested) => {
+    expect(destinoPosLogin({ view: "auth", requested })).toBe("profile");
   });
 
   it("state nulo (carregamento novo, ex.: link de confirmação de e-mail em outra aba) cai no perfil", () => {

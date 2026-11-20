@@ -356,6 +356,31 @@ describe("CheckoutView (visitante) — nome e campos de texto livre", () => {
     },
   );
 
+  it("o endereço de visitante chega limpo a createOrder", async () => {
+    const controle = String.fromCodePoint(0x202e);
+    createOrder.mockResolvedValue({ id: "ped-1" });
+    await montarEPreencher("Cliente Teste", () => {
+      digitar("guest-street", `Rua ${controle}Teste`);
+      digitar("guest-number", `${controle}100`);
+      digitar("guest-complement", ` Apto ${controle}120 `);
+      digitar("guest-neighborhood", `Cen${controle}tro`);
+      digitar("guest-city", `Cidade ${controle}Teste`);
+    });
+    expect(botaoFinalizar()!.disabled).toBe(false);
+    await act(async () => {
+      botaoFinalizar()!.click();
+      await esperarMicrotarefas();
+    });
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    expect(createOrder.mock.calls[0][0].addressData).toMatchObject({
+      street: "Rua Teste",
+      number: "100",
+      complement: "Apto 120",
+      neighborhood: "Centro",
+      city: "Cidade Teste",
+    });
+  });
+
   it("observação de exatamente 500 caracteres chega inteira ao pedido", async () => {
     const texto = `${"a".repeat(499)}z`;
     createOrder.mockResolvedValue({ id: "ped-1" });
