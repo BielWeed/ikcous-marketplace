@@ -364,11 +364,16 @@ describe("AdminProductFormView — modal Nova variante em grade (produto novo)",
 
     expect(toastError).toHaveBeenCalledTimes(1);
     expect(toastError.mock.calls[0][0]).toContain('" / "');
-    // O valor recusado não virou chip selecionado.
+    // O valor recusado não virou chip selecionado: sem nenhum valor, o botão
+    // de gerar fica desligado e o clique não faz nada.
+    const botaoGerar = [...document.querySelectorAll("button")].find((b) =>
+      casaOTexto(b.textContent, BOTAO_GERAR_GRADE),
+    );
+    expect(botaoGerar?.disabled).toBe(true);
     await act(async () => {
       clicarObrigatorio(BOTAO_GERAR_GRADE);
     });
-    expect(toastError.mock.calls[1]?.[0] ?? "").toContain("ao menos um valor");
+    expect(toastError).toHaveBeenCalledTimes(1);
   });
 });
 
