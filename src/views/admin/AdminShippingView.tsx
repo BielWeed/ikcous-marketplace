@@ -337,7 +337,7 @@ const ORDEM_DE_EXIBICAO: readonly ProvedorFrete[] = [
 ];
 
 interface AdminShippingViewProps {
-  onNavigate?: (view: View) => void;
+  onNavigate?: (view: View, id?: string) => void;
   active?: boolean;
   onSetDirty?: (dirty: boolean) => void;
   /**
@@ -1547,13 +1547,17 @@ export const AdminShippingView = memo(function AdminShippingView({
                 {avisarPromocaoNacionalSemPagamento && (
                   <AvisoDaEntrega
                     titulo="O frete grátis por produto pode aparecer fora da sua região, mas a cliente não consegue finalizar sem pagamento pelo app."
-                    detalhe="Ative o pagamento pelo app ou desative a promoção nacional."
+                    detalhe="Ative o pagamento pelo app ou desative a promoção nacional. Para entregar fora da sua região pedidos sem nenhum produto com frete grátis, ligue também uma transportadora."
                     botao="Ver pagamento pelo app"
                     onClick={
                       onNavigate
-                        ? () => onNavigate("admin-settings")
+                        ? () => onNavigate("admin-settings", "pagamentos")
                         : undefined
                     }
+                    acaoAdicional={{
+                      botao: "Configurar transportadoras",
+                      onClick: abrirTransportadoras,
+                    }}
                   />
                 )}
                 {faltaTransportadora && !avisarPromocaoNacionalSemPagamento && (
@@ -1997,12 +2001,16 @@ function AvisoDaEntrega({
   detalhe,
   botao,
   onClick,
+  acaoAdicional,
 }: {
   readonly titulo: string;
   readonly detalhe: string;
   readonly botao: string;
   readonly onClick?: () => void;
+  readonly acaoAdicional?: { botao: string; onClick: () => void };
 }) {
+  const acoes = [{ botao, onClick }];
+  if (acaoAdicional) acoes.push(acaoAdicional);
   return (
     <div
       role="status"
@@ -2013,14 +2021,18 @@ function AvisoDaEntrega({
         {titulo}
       </p>
       <p className="mt-1 text-[12.5px]">{detalhe}</p>
-      {onClick && (
-        <button
-          type="button"
-          onClick={onClick}
-          className="mt-2 min-h-11 rounded-lg border border-amber-500/30 px-3 text-xs font-bold"
-        >
-          {botao}
-        </button>
+      {acoes.map(
+        ({ botao, onClick }) =>
+          onClick && (
+            <button
+              key={botao}
+              type="button"
+              onClick={onClick}
+              className="mt-2 min-h-11 rounded-lg border border-amber-500/30 px-3 text-xs font-bold"
+            >
+              {botao}
+            </button>
+          ),
       )}
     </div>
   );

@@ -251,6 +251,45 @@ describe("AdminShippingView — avisa quando a transportadora fica sem pagamento
     },
   );
 
+  it("a promoção nacional leva direto à seção Pagamentos", async () => {
+    mockConfig.nationalShippingStrategy = "por_produto";
+    cenario.ligados = [];
+    await abrirTela();
+
+    const botao = [...hospedeiro.querySelectorAll("button")].find(
+      (b) => b.textContent === "Ver pagamento pelo app",
+    );
+    expect(botao).toBeDefined();
+    await act(async () => botao?.click());
+    expect(onNavigate).toHaveBeenCalledWith("admin-settings", "pagamentos");
+  });
+
+  it("a promoção nacional explica e abre a configuração de transportadoras", async () => {
+    mockConfig.nationalShippingStrategy = "por_produto";
+    cenario.ligados = [];
+    await abrirTela();
+
+    const painel = hospedeiro.querySelector("#painel-frete-nacional");
+    const controle = painel?.querySelector("button[aria-expanded]");
+    expect(controle?.getAttribute("aria-expanded")).toBe("false");
+    const botao = [...hospedeiro.querySelectorAll("button")].find(
+      (b) => b.textContent === "Configurar transportadoras",
+    );
+    expect(botao).toBeDefined();
+    const rolar = vi.fn();
+    Object.defineProperty(painel as HTMLElement, "scrollIntoView", {
+      value: rolar,
+    });
+    await act(async () => botao?.click());
+    await assentar();
+
+    expect(controle?.getAttribute("aria-expanded")).toBe("true");
+    expect(rolar).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
+    expect(textoDaTela()).toContain(
+      "Para entregar fora da sua região pedidos sem nenhum produto com frete grátis, ligue também uma transportadora.",
+    );
+  });
+
   it("só retirada com promoção nacional: quem é de fora pode buscar na loja", async () => {
     mockConfig.localDeliveryEnabled = false;
     mockConfig.enabledShippingMethods.push("store-pickup");
