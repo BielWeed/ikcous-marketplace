@@ -148,6 +148,18 @@ export function NotificationsView({
   } = useNotificationCenter();
 
   const [activeTab, setActiveTab] = useState<TabType>("todas");
+  const [marcandoTodas, setMarcandoTodas] = useState(false);
+
+  const marcarTodas = async () => {
+    if (marcandoTodas) return;
+    setMarcandoTodas(true);
+    try {
+      await markAllAsRead();
+    } finally {
+      setMarcandoTodas(false);
+    }
+  };
+
   // Visitante sem conta nunca receberá aviso de pedido: a caixa vazia dele
   // não pode dizer "tudo em ordem".
   const visitante = semConta === true;
@@ -317,7 +329,8 @@ export function NotificationsView({
             <Button
               variant="ghost"
               size="sm"
-              onClick={markAllAsRead}
+              onClick={marcarTodas}
+              disabled={marcandoTodas}
               className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl border border-solid border-border bg-background px-3 text-[13px] font-semibold text-foreground hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring"
               title="Marcar todas como lidas"
             >

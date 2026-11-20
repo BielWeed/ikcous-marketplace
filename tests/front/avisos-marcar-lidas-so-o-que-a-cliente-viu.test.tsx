@@ -247,7 +247,10 @@ describe("sino da cliente — marcar como lidas só alcança o que ela viu", () 
     vi.unstubAllGlobals();
   });
 
-  async function montar() {
+  async function montar(mostrarTela = false) {
+    const { NotificationsView } = await import(
+      "@/views/customer/NotificationsView"
+    );
     const { NotificationProvider } = await import(
       "@/contexts/NotificationContext"
     );
@@ -274,6 +277,7 @@ describe("sino da cliente — marcar como lidas só alcança o que ela viu", () 
       raiz.render(
         <NotificationProvider>
           <Sonda />
+          {mostrarTela ? <NotificationsView /> : null}
         </NotificationProvider>,
       );
     });
@@ -286,6 +290,36 @@ describe("sino da cliente — marcar como lidas só alcança o que ela viu", () 
     hospedeiro.querySelector('[data-testid="nao-lidas"]')?.textContent;
   const cortadaNaTela = () =>
     hospedeiro.querySelector('[data-testid="cortada"]')?.textContent;
+
+  it("bloqueia novos toques enquanto grava e libera o botão com aviso no prazo", async () => {
+    banco.linhas = [aviso("a1")];
+    await montar(true);
+    vi.useFakeTimers();
+    try {
+      banco.portao = new Promise<void>(() => {});
+      const botao = hospedeiro.querySelector<HTMLButtonElement>(
+        'button[title="Marcar todas como lidas"]',
+      )!;
+      await act(async () => botao.click());
+      expect(botao.disabled).toBe(true);
+      await act(async () => botao.click());
+      expect(banco.updates).toHaveLength(1);
+      expect(naoLidasNaTela()).toBe("1");
+
+      await act(async () => vi.advanceTimersByTimeAsync(15_000));
+      expect(toastErro).toHaveBeenCalledWith(
+        "Não deu para marcar agora. Tente de novo.",
+      );
+      expect(botao.disabled).toBe(false);
+      expect(naoLidasNaTela()).toBe("1");
+
+      banco.portao = null;
+      await act(async () => botao.click());
+      expect(naoLidasNaTela()).toBe("0");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
   it("o aviso que nasce durante o toque continua não lido NO BANCO", async () => {
     banco.linhas = [aviso("a1", { indice: 1 }), aviso("a2", { indice: 2 })];
