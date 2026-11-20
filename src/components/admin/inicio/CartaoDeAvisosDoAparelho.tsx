@@ -289,7 +289,8 @@ function CartaoInterno({
         ) : null}
         {teste === "sem-resposta" ? (
           <p role="alert" className="mt-3 text-xs text-red-400">
-            Sem resposta da rede. O aviso pode ter chegado: confira o aparelho antes de tentar de novo.
+            Sem resposta da rede. O aviso pode ter chegado: confira o aparelho
+            antes de tentar de novo.
           </p>
         ) : null}
         {teste === "sem-rede" ? (
