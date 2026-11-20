@@ -7,7 +7,7 @@
 //     venda na borda entre as duas janelas fazia o selo dizer "+100%" ao lado
 //     de "R$ 0 e nenhum pedido" (e escondia/errava um crescimento legítimo).
 //     Com 61 dias de histórico (60 FECHADOS + hoje), o selo sai do PRÓPRIO
-//     histórico; a RPC só serve de reserva quando o histórico é curto. O último
+//     histórico; sem 60 dias fechados, o selo não aparece. O último
 //     dia (hoje) ainda é parcial e fica fora das duas janelas: loja de R$ 100
 //     por dia, olhada às 09:00, não pode mostrar queda por causa das 09:00.
 //  2. "Valor médio" somava reais em ponto flutuante: 10,00 + 10,01 = 20,009999…
@@ -130,6 +130,12 @@ describe("Histórico da loja: selo e valor médio ao centavo", () => {
   const textoDoSelo = () => SEM_NBSP(selo()?.textContent);
 
   describe("selo de crescimento: concorda com o gráfico", () => {
+    it("inclui no gráfico a venda de 30 dias atrás que entra no selo", async () => {
+      await montar(stats(sessentaFechadosMaisHoje({ 0: 100, 30: 200 })));
+
+      expect(textoDoSelo()).toContain("+100,0%");
+      expect(SEM_NBSP(hospedeiro.textContent)).toContain("R$ 200,00");
+    });
     it("venda na borda que a RPC põe nos últimos 30 dias: nunca +100% ao lado de 'R$ 0'", async () => {
       // R$ 100 no ÚLTIMO dia dos "30 dias antes" (posição 29). Pelo relógio a
       // RPC a conta nos últimos 30 dias (growth 100); pelo calendário ela está
@@ -235,18 +241,17 @@ describe("Histórico da loja: selo e valor médio ao centavo", () => {
       expect(selo()).toBeNull();
     });
 
-    it("histórico curto (menos de 61 dias) cai na reserva da RPC", async () => {
+    it("20 dias de histórico não sustentam a comparação, mesmo com crescimento da RPC", async () => {
       await montar(stats(calendario(Array<number>(20).fill(50)), 8));
-      expect(textoDoSelo()).toContain("+8,0%");
+      expect(selo()).toBeNull();
     });
 
-    it("60 dias ainda é curto (tirando hoje sobram 59 fechados): a RPC manda", async () => {
-      // Pelo histórico, seria +100%; a RPC diz 8.
+    it("59 dias fechados ainda não bastam para comparar duas janelas de 30", async () => {
       const receitas = Array<number>(60).fill(0);
       receitas[10] = 100;
       receitas[50] = 200;
       await montar(stats(calendario(receitas), 8));
-      expect(textoDoSelo()).toContain("+8,0%");
+      expect(selo()).toBeNull();
     });
 
     it("61 dias é o mínimo para o histórico mandar", async () => {
@@ -257,16 +262,6 @@ describe("Histórico da loja: selo e valor médio ao centavo", () => {
       receitas[51] = 200;
       await montar(stats(calendario(receitas), 8));
       expect(textoDoSelo()).toContain("+100,0%");
-    });
-
-    it("reserva mantém a guarda: +100 da RPC sem venda antes no histórico curto, sem selo", async () => {
-      await montar(stats(calendario(Array<number>(20).fill(50)), 100));
-      expect(selo()).toBeNull();
-    });
-
-    it("reserva mantém a guarda: 0 da RPC com histórico curto sem venda, sem selo", async () => {
-      await montar(stats(calendario(Array<number>(20).fill(0)), 0));
-      expect(selo()).toBeNull();
     });
   });
 
@@ -285,13 +280,13 @@ describe("Histórico da loja: selo e valor médio ao centavo", () => {
     };
 
     it("R$ 10,00 e R$ 10,01 em dois pedidos: valor médio R$ 10,01, como o banco", async () => {
-      await montar(stats(calendario([10, 10.01])));
+      await montar(stats(calendario([10, 10.01, 0])));
       expect(valorMedio()).toBe("R$ 10,01");
       expect(faturamento()).toBe("R$ 20,01");
     });
 
     it("quatro pedidos em dois dias, R$ 99,99 + R$ 0,01: média exata de R$ 25,00", async () => {
-      const dias = calendario([99.99, 0.01]);
+      const dias = calendario([99.99, 0.01, 0]);
       dias[0].orders = 3;
       await montar(stats(dias));
       expect(faturamento()).toBe("R$ 100,00");
@@ -301,7 +296,7 @@ describe("Histórico da loja: selo e valor médio ao centavo", () => {
     it("meio centavo na média sobe, como o ROUND do banco: R$ 0,01 + R$ 0,58 em 2 pedidos = R$ 0,30", async () => {
       // 1 + 58 centavos = 59 ÷ 2 = 29,5 → 30. Em reais com vírgula flutuante
       // (0,01*100 + 0,58*100 = 58,99999999999999) a média caía para R$ 0,29.
-      await montar(stats(calendario([0.01, 0.58])));
+      await montar(stats(calendario([0.01, 0.58, 0])));
       expect(valorMedio()).toBe("R$ 0,30");
     });
 
@@ -311,7 +306,7 @@ describe("Histórico da loja: selo e valor médio ao centavo", () => {
     });
 
     it("valor médio redondo continua redondo", async () => {
-      await montar(stats(calendario([100, 50])));
+      await montar(stats(calendario([100, 50, 0])));
       expect(valorMedio()).toBe("R$ 75,00");
     });
   });

@@ -25,20 +25,19 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const texto = (el: Element | null) =>
   (el?.textContent ?? "").replace(/\s/g, " ");
 
-/** Dias recentes (últimos 30) com a receita e os pedidos dados no dia mais
- * recente; os demais dias vêm zerados. */
+/** 30 dias fechados e o dia parcial; só ontem tem receita e pedidos. */
 function statsComUmDia(revenue: number, orders: number): DashboardStats {
   const dias = [];
-  for (let i = 29; i >= 0; i--) {
+  for (let i = 30; i >= 0; i--) {
     const data = new Date();
     data.setUTCDate(data.getUTCDate() - i);
     const iso = data.toISOString().slice(0, 10);
-    const ultimo = i === 0;
+    const ultimoFechado = i === 1;
     dias.push({
       date: iso,
       full_date: iso.split("-").reverse().slice(0, 2).join("/"),
-      revenue: ultimo ? revenue : 0,
-      orders: ultimo ? orders : 0,
+      revenue: ultimoFechado ? revenue : 0,
+      orders: ultimoFechado ? orders : 0,
       profit: 0,
       cost_sold: 0,
     });

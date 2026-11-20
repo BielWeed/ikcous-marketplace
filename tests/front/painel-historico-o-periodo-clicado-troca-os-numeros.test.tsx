@@ -5,10 +5,7 @@
 // "90 dias" que continua mostrando os 30 dias deixa a lojista decidindo em
 // cima de um número que não é o que ela pediu.
 //
-// Os três períodos são desenhados para NUNCA coincidirem: 30 dias recentes
-// (R$ 100 e 1 pedido por dia), os 60 anteriores (R$ 70 e 2 pedidos) e os 60
-// mais antigos (R$ 20 e 3 pedidos). Os testes vizinhos só conferem os 30 dias
-// iniciais, ou clicam nos botões olhando o selo de crescimento.
+// Os 30 dias fechados terminam ontem; os 90 dias e Tudo incluem hoje.
 import { OperationalPerformanceChart } from "@/components/admin/dashboard/OperationalPerformanceChart";
 import type { DashboardStats } from "@/hooks/useAnalytics";
 import { act } from "react";
@@ -63,8 +60,8 @@ function stats(): DashboardStats {
     // Do mais antigo para o mais novo: 60 + 60 + 30 = 150 dias.
     revenueHistory: [
       ...periodo(60, 90, 20, 3),
-      ...periodo(60, 30, 70, 2),
-      ...periodo(30, 0, 100, 1),
+      ...periodo(59, 31, 70, 2),
+      ...periodo(31, 0, 100, 1),
     ],
     topProducts: [],
     inventoryAlerts: 0,
@@ -122,15 +119,15 @@ describe("Histórico da loja: o período clicado troca os números do resumo", (
     },
     {
       rotulo: "90 dias",
-      faturamento: "R$ 7.200,00", // 3.000 + 60 x 70
-      pedidos: "150", // 30 + 60 x 2
-      medio: "R$ 48,00",
+      faturamento: "R$ 7.230,00", // 31 x 100 + 59 x 70
+      pedidos: "149", // 31 + 59 x 2
+      medio: "R$ 48,52",
     },
     {
       rotulo: "Tudo",
-      faturamento: "R$ 8.400,00", // 7.200 + 60 x 20
-      pedidos: "330", // 150 + 60 x 3
-      medio: "R$ 25,45",
+      faturamento: "R$ 8.430,00", // 7.230 + 60 x 20
+      pedidos: "329", // 149 + 60 x 3
+      medio: "R$ 25,62",
     },
   ] as const;
 

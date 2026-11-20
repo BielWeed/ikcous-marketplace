@@ -35,8 +35,8 @@ class ObserverStub {
 
 function dias(valores: number[]) {
   return valores.map((revenue, i) => ({
-    date: `2026-10-${String(i + 1).padStart(2, "0")}`,
-    full_date: `${String(i + 1).padStart(2, "0")}/10`,
+    date: new Date(Date.UTC(2026, 9, i + 1)).toISOString().slice(0, 10),
+    full_date: "",
     revenue,
     orders: 1,
     profit: revenue * 0.4,
@@ -63,6 +63,15 @@ function stats(extra: Record<string, unknown>, receitas = [100, 200, 300]) {
     inventoryAlerts: 0,
     ...extra,
   } as unknown as DashboardStats;
+}
+
+function statsComComparacao(atual: number) {
+  return stats({}, [
+    1000,
+    ...Array<number>(29).fill(0),
+    atual,
+    ...Array<number>(30).fill(0),
+  ]);
 }
 
 describe("Histórico da loja: selo de crescimento e eixo em reais", () => {
@@ -115,7 +124,7 @@ describe("Histórico da loja: selo de crescimento e eixo em reais", () => {
 
   describe("selo de crescimento", () => {
     it("queda: vermelho, menos de verdade, vírgula e a base da comparação", async () => {
-      await montar(stats({ growth: -12.3 }));
+      await montar(statsComComparacao(877));
       const el = selo();
       expect(el).not.toBeNull();
       expect(el?.textContent).toContain("−12,3%");
@@ -126,7 +135,7 @@ describe("Histórico da loja: selo de crescimento e eixo em reais", () => {
     });
 
     it("alta: verde, com o + escrito", async () => {
-      await montar(stats({ growth: 8 }));
+      await montar(statsComComparacao(1080));
       const el = selo();
       expect(el?.textContent).toContain("+8,0%");
       expect(el?.innerHTML).toContain("text-emerald-");
@@ -134,7 +143,7 @@ describe("Histórico da loja: selo de crescimento e eixo em reais", () => {
     });
 
     it("zero (e o que arredonda para zero): neutro, sem sinal", async () => {
-      await montar(stats({ growth: 0 }));
+      await montar(statsComComparacao(1000));
       expect(selo()?.textContent).toContain("0,0%");
       expect(selo()?.textContent).not.toMatch(/[+−]0,0/);
       expect(selo()?.innerHTML).not.toContain("text-red-");
@@ -142,7 +151,7 @@ describe("Histórico da loja: selo de crescimento e eixo em reais", () => {
     });
 
     it("aparece também no celular (não é mais escondido abaixo de 640 px)", async () => {
-      await montar(stats({ growth: -3 }));
+      await montar(statsComComparacao(970));
       let no: HTMLElement | null = selo();
       while (no && no !== hospedeiro) {
         expect(no.className).not.toMatch(/(^|\s)hidden(\s|$)/);
@@ -169,7 +178,7 @@ describe("Histórico da loja: selo de crescimento e eixo em reais", () => {
     });
 
     it("não muda com os botões 30 dias / 90 dias / Tudo", async () => {
-      await montar(stats({ growth: -12.3 }));
+      await montar(statsComComparacao(877));
       for (const rotulo of ["90 dias", "Tudo", "30 dias"]) {
         const botao = [...hospedeiro.querySelectorAll("button")].find(
           (b) => b.textContent?.trim() === rotulo,
@@ -222,7 +231,7 @@ describe("Histórico da loja: selo de crescimento e eixo em reais", () => {
 
     it("o vazio respeita 30 dias; Tudo ainda mostra a venda antiga", async () => {
       const s = stats({
-        revenueHistory: dias([100, ...Array<number>(30).fill(0)]).map(
+        revenueHistory: dias([100, ...Array<number>(31).fill(0)]).map(
           (dia, i) => ({
             ...dia,
             orders: i === 0 ? 1 : 0,
