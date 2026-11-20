@@ -402,6 +402,42 @@ describe("Frete: as Transportadoras e as Consultas de frete moram aqui", () => {
       "Melhor Envio e SuperFrete cotam o frete na hora",
     );
   });
+  it("F5b — sem resposta das transportadoras, libera o botão e mantém a escolha", async () => {
+    await abrirFrete();
+    await clicar(linha("Ligar Melhor Envio"));
+    const invocar = invoke.getMockImplementation()!;
+    invoke.mockImplementation((nome, opcoes) =>
+      opcoes.body.action === "save_active_providers"
+        ? new Promise(() => {})
+        : invocar(nome, opcoes),
+    );
+    const { toast } = await import("sonner");
+
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await act(async () => botaoComTexto(/^Salvar$/)!.click());
+      expect(invoke).toHaveBeenLastCalledWith("calculate-shipping", {
+        body: { action: "save_active_providers", ligados: [] },
+      });
+      expect(botaoComTexto(/^Salvando…$/)?.disabled).toBe(true);
+
+      await act(async () => vi.advanceTimersByTimeAsync(30_000));
+
+      expect(botaoComTexto(/^Tentar de novo$/)?.disabled).toBe(false);
+      expect(linha("Ligar Melhor Envio").getAttribute("aria-checked")).toBe(
+        "false",
+      );
+      const aviso =
+        "Sem resposta da rede. Confira em Frete se as transportadoras ficaram como você escolheu antes de salvar de novo.";
+      expect(hospedeiro.textContent).toContain(aviso);
+      expect(toast.error).toHaveBeenCalledWith(aviso);
+      expect(toast.error).not.toHaveBeenCalledWith(
+        expect.stringContaining("não foram salvas"),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it("F6 — Ligar transportadora abre a única lista, sem sair da tela", async () => {
     estadoDoBanco.ligados = [];
     estadoDoBanco.provedores = {};

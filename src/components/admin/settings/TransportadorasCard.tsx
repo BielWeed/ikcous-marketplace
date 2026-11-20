@@ -13,6 +13,7 @@ import { pluralizar } from "@/lib/pluralizar";
 import {
   PRAZO_DA_CONSULTA_DO_PAINEL_MS,
   aguardarComPrazo,
+  ehConsultaSemResposta,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
@@ -1073,10 +1074,19 @@ export const TransportadorasSection = memo(function TransportadorasSection({
     setErroLigados(null);
     haptic.medium();
     try {
-      const { data, error } = await chamarEdgeDeFrete({
-        action: "save_active_providers",
-        ligados: Array.from(ligadosEscolhidos),
-      });
+      // Como na geração de etiquetas, espere 30 s: ligar pode consultar
+      // serviços externos. O prazo só encerra a espera, não a gravação.
+      const { data, error } = await aguardarComPrazo(
+        chamarEdgeDeFrete({
+          action: "save_active_providers",
+          ligados: Array.from(enviados),
+        }),
+        30_000,
+        () =>
+          erroDeConsultaSemResposta(
+            "Sem resposta da rede. Confira em Frete se as transportadoras ficaram como você escolheu antes de salvar de novo.",
+          ),
+      );
       if (error) throw error;
       if (!data?.success) {
         haptic.error();
@@ -1137,6 +1147,11 @@ export const TransportadorasSection = memo(function TransportadorasSection({
       // `carregar`) — nenhum rascunho é tocado aqui.
       return true;
     } catch (err) {
+      if (err instanceof Error && ehConsultaSemResposta(err)) {
+        setErroLigados({ mensagem: err.message });
+        // Deixe o Salvar do cabeçalho avisar sem afirmar que não gravou.
+        throw err;
+      }
       console.error(
         "[TransportadorasCard] Erro ao salvar provedores ligados:",
         err,
