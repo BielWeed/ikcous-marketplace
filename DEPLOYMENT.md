@@ -185,9 +185,15 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
       **Ligar avisos neste aparelho** e aceite a permissão.
    2. Quando aparecer **Avisos ligados neste aparelho**, clique em **Mandar um
       aviso de teste** e confira se o aviso chegou nesse aparelho.
-   3. Não use a tela de campanhas para esse teste. Ela abre com o público
-      **Todos**: se você confirmar o envio geral, ele vai para todos os clientes,
-      não só para você.
+   3. Se o cartão não aparecer porque os avisos já estão ligados, faça o teste
+      em outro aparelho compatível, ainda sem avisos ligados. Se você escolheu
+      **Agora não · ocultar por 7 dias**, espere o prazo acabar ou use outro
+      aparelho para testar. Se a intenção for só ligar os avisos sem esperar,
+      vá a **Avisar clientes → Ajustes → Ligar avisos neste aparelho**. Esse
+      botão só liga os avisos; não envia o aviso de teste.
+   4. Não use o envio de campanhas para testar. A tela abre com o público
+      **Todos os clientes**: se você confirmar o envio geral, ele vai para
+      todos os clientes, não só para você.
 
 ### Banco de Dados (RLS)
 
@@ -654,6 +660,7 @@ Como ler o que voltar:
 | `200` + `ok: true` + `degradado: true` | pelo menos uma etapa falhou nessa rodada. No Supabase da loja, abra os logs da função `reconciliar-pagamentos`, confira qual etapa falhou e corrija a causa. Confira de novo na próxima rodada automática (até 10 minutos) |
 | `401` | **o caso silencioso.** O `RECONCILIACAO_SECRET` do ambiente das functions não bate com o `reconciliacao_secret` do Vault. Ver §5.2 |
 | `404` | a função não está publicada. É o estado entre aplicar a migration e fazer o deploy |
+| `500` + `ok: false` | a função não conseguiu ler a fila de pagamentos; isso não significa fila vazia. Abra os logs de `reconciliar-pagamentos` no Supabase da loja, corrija a causa da falha de leitura e confira a próxima rodada automática (até 10 minutos) |
 | `timed_out = true`, corpo vazio | o lote passou de 2 min. Ver o comentário sobre `timeout_milliseconds` na migration `20260808000100` — esse número e o `LIMIT 100` da `pagamentos_a_reconciliar` mudam juntos |
 
 **Medido em 11/08/2026, no deploy desta fase**, antes de a resposta trazer `degradado`.

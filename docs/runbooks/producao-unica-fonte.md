@@ -2209,16 +2209,38 @@ O cadastro de UMA vez, na entrada do cliente:
    para a Tela P3; `1, 1, 0` ou `1, 0, 1` = **pare e avise "Tela P1"** (as duas fontes do cargo
    discordam; decisao do dono do produto, nao se mexe aqui).
 
-   **Tela P2. Tornar administradora.**
-   1. No editor da loja certa, apague o texto da caixa e cole o bloco abaixo. Troque
-      `<e-mail-da-administradora>` uma unica vez, mantendo as aspas simples. Confira o
-      endereco com o que a pessoa usou no cadastro. Deixe `ROLLBACK;` na ultima linha
-      e clique em **Run**: este primeiro teste desfaz a mudanca.
+   **Tela P2. Tornar administradora em duas rodadas.** Rode um bloco inteiro por vez:
+   o SQL Editor so mostra o resultado da ultima instrucao.
+
+   1. **Rodada A — conferir sem gravar.** No editor da loja certa, substitua o texto
+      pelo bloco abaixo. Troque o e-mail **so no ponto** `<e-mail-da-administradora>`
+      e mantenha as aspas simples em volta. Se o endereco tiver um apostrofo, digite-o
+      duas vezes dentro das aspas. Confira o endereco usado no cadastro e clique em **Run**.
+
+      ```sql
+      WITH alvo AS MATERIALIZED (
+        SELECT lower(set_config('ikcous.email_admin', '<e-mail-da-administradora>', true)) AS email
+      )
+      SELECT count(u.id) OVER () AS contas_encontradas,
+             u.email, u.raw_app_meta_data ->> 'role' AS cargo_no_login, p.role AS cargo_no_perfil
+        FROM alvo
+        LEFT JOIN auth.users u ON lower(u.email) = alvo.email
+        LEFT JOIN public.profiles p ON p.id = u.id;
+      ```
+
+      So siga se `contas_encontradas` for **1**, o e-mail for o da pessoa e os dois cargos
+      forem `customer` (cliente). Se vier diferente, der erro ou a tabela nao aparecer,
+      **pare e avise "Tela P2, rodada A"**. Nao envie a tabela nem a mensagem de erro.
+
+   2. **Rodada B — gravar e conferir.** Substitua o texto pelo bloco abaixo. A rodada A
+      nao guarda o endereco para a proxima: copie o **mesmo e-mail** no unico ponto
+      `<e-mail-da-administradora>`, seguindo a mesma regra das aspas. Confira novamente
+      o endereco e clique em **Run** uma vez, com o bloco inteiro, sem rodar linhas separadas.
 
       ```sql
       BEGIN;
       SET LOCAL ROLE postgres;
-      SET LOCAL ikcous.email_admin = '<e-mail-da-administradora>';
+      SET ikcous.email_admin = '<e-mail-da-administradora>';
 
       DO $$
       DECLARE
@@ -2229,7 +2251,10 @@ O cadastro de UMA vez, na entrada do cliente:
            SET role = 'admin'
           FROM auth.users u
          WHERE u.id = p.id
-           AND lower(u.email) = email_alvo;
+           AND lower(u.email) = email_alvo
+           AND p.role = 'customer'
+           AND u.raw_app_meta_data ->> 'role' = 'customer'
+           AND (SELECT count(*) FROM auth.users WHERE lower(email) = email_alvo) = 1;
         GET DIAGNOSTICS atualizados = ROW_COUNT;
 
         IF atualizados <> 1 OR (
@@ -2244,22 +2269,25 @@ O cadastro de UMA vez, na entrada do cliente:
         END IF;
       END;
       $$;
+      COMMIT;
 
+      -- Le o endereco mantido ate a conferencia e limpa a variavel da sessao.
+      WITH alvo AS MATERIALIZED (
+        SELECT lower(current_setting('ikcous.email_admin')) AS email
+      ), limpar AS MATERIALIZED (
+        SELECT email, set_config('ikcous.email_admin', '', false) AS valor FROM alvo
+      )
       SELECT u.email, u.raw_app_meta_data ->> 'role' AS cargo_no_login, p.role AS cargo_no_perfil
-        FROM auth.users u
-        JOIN public.profiles p ON p.id = u.id
-       WHERE lower(u.email) = lower(current_setting('ikcous.email_admin'));
-      ROLLBACK;
+        FROM limpar
+        LEFT JOIN auth.users u ON lower(u.email) = limpar.email
+        LEFT JOIN public.profiles p ON p.id = u.id
+       WHERE limpar.valor = '';
       ```
 
-   2. Confira na tabela: deve vir **uma linha**, com o e-mail exato da pessoa e `admin`
-      nas duas colunas de cargo. Se vier diferente, der erro ou a tabela nao aparecer,
-      **pare e avise "Tela P2"**. Deixe o `ROLLBACK;` como esta e nao envie a tabela nem o erro.
-   3. Se estiver tudo certo, na mesma caixa troque **so** a ultima linha de `ROLLBACK;`
-      para `COMMIT;` e clique em **Run** para executar o bloco inteiro de novo. Nao
-      redigite o e-mail nem rode `COMMIT;` separado: cada clique executa um bloco
-      completo. O banco confere os dois cargos de novo antes de gravar. Sem erro,
-      siga para a Tela P3; se der erro, pare e avise "Tela P2", sem repetir.
+      A tabela deve mostrar **uma linha** com o e-mail certo e `admin` nas duas colunas
+      de cargo. Se estiver certo, siga para a Tela P3. Se der erro, vier diferente ou a
+      tabela nao aparecer, **pare e avise "Tela P2, rodada B"**. Nao envie dados nem repita:
+      a gravacao pode ja ter acontecido antes da consulta final.
 
    **Tela P3. Limpar o rastro e fechar.** Apague a consulta salva e feche a aba (Tela 5 da secao 3.3,
    passo 1). Ela **sai da conta e entra de novo**, para o login ler o cargo novo (o cargo
