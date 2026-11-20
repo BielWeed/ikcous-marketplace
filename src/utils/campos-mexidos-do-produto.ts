@@ -105,19 +105,37 @@ export function variacoesQueMudaram<V extends VariacaoComparavel>(
   });
 }
 
+// Só na tela: o marcador acompanha a variação provisória sem ir para o JSON.
+export const ESTOQUE_HERDADO = Symbol("estoque herdado");
+
+export interface ComEstoqueHerdado {
+  [ESTOQUE_HERDADO]?: boolean;
+}
+
+export function estoqueFoiHerdado({
+  [ESTOQUE_HERDADO]: herdado,
+}: ComEstoqueHerdado): boolean {
+  return herdado === true;
+}
+
 /**
  * Depois de uma recusa, campo que a lojista não tocou acompanha o banco;
  * campo que ela editou fica. Comparar com a abertura ANTES de trocar a base
  * impede que o segundo salvar trate o preço velho da tela como edição dela.
- * Estoque existente sempre vem do banco; nova local mantém sua quantidade.
+ * Estoque existente vem do banco; a nova só é atualizada se ainda herda o
+ * saldo do produto. Zero também vale (a última peça pode ter sido vendida).
  */
 export function variacoesAposConflito<
-  V extends VariacaoComparavel & { stock?: number },
->(tela: V[], abertura: V[], banco: V[]): V[] {
+  V extends VariacaoComparavel & ComEstoqueHerdado & { stock?: number },
+>(tela: V[], abertura: V[], banco: V[], saldoHerdavel?: number): V[] {
   const antesPorId = new Map(abertura.map((v) => [v.id, v]));
   const hojePorId = new Map(banco.map((v) => [v.id, v]));
   const mescladas = tela.flatMap((v): V[] => {
-    if (v.id.startsWith("temp-")) return [v];
+    if (v.id.startsWith("temp-")) {
+      return estoqueFoiHerdado(v) && saldoHerdavel !== undefined
+        ? [{ ...v, stockIncrement: saldoHerdavel }]
+        : [v];
+    }
     const antes = antesPorId.get(v.id);
     const hoje = hojePorId.get(v.id);
     // Apagada em outro aparelho: sai da grade, editada ou não. Mantê-la

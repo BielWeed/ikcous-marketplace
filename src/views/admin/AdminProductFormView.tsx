@@ -102,7 +102,10 @@ import { cn, formatCurrency } from "@/lib/utils";
 import { gerarUuidV4 } from "@/lib/uuid-v4";
 import type { Product, ProductVariant, View } from "@/types";
 import {
+  type ComEstoqueHerdado,
+  ESTOQUE_HERDADO,
   camposQueMudaram,
+  estoqueFoiHerdado,
   fotosAposConflito,
   variacaoMudou,
   variacoesAposConflito,
@@ -492,6 +495,8 @@ const containerVariants = {
 //   visible: { opacity: 1, y: 0 }
 // };
 
+type VariacaoDoFormulario = ProductVariant & ComEstoqueHerdado;
+
 interface ProductFormFields {
   name: string;
   description: string;
@@ -510,7 +515,7 @@ interface ProductFormFields {
   metaDescription: string;
   sku: string;
   codigoBarras: string;
-  variants: ProductVariant[];
+  variants: VariacaoDoFormulario[];
   weightKg: string;
   widthCm: string;
   heightCm: string;
@@ -955,15 +960,17 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // "Cor"+"Branca" com "Tamanho"+"PP") que viram UMA linha de variante com
   // estoque próprio — ver `variante-composta.ts`. O modal nasce com um par;
   // "+ Outra coisa que muda" empilha os demais.
-  const [variantFormData, setVariantFormData] = useState<{
-    pares: ParNoForm[];
-    sku: string;
-    codigoBarras: string;
-    stockIncrement: string;
-    priceOverride: string;
-    active: boolean;
-    imageUrl: string;
-  }>({
+  const [variantFormData, setVariantFormData] = useState<
+    ComEstoqueHerdado & {
+      pares: ParNoForm[];
+      sku: string;
+      codigoBarras: string;
+      stockIncrement: string;
+      priceOverride: string;
+      active: boolean;
+      imageUrl: string;
+    }
+  >({
     pares: [parNovo()],
     sku: "",
     codigoBarras: "",
@@ -2918,6 +2925,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     setVariantFormData((p) => ({
       ...p,
       stockIncrement: String(Math.max(0, atual + passo)),
+      [ESTOQUE_HERDADO]: false,
     }));
   };
 
@@ -3129,6 +3137,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       sku: sanitizedVarSku || undefined,
       codigoBarras: sanitizedVarCodigoBarras || undefined,
       stockIncrement: Number.parseInt(sanitizedVarStock) || 0,
+      [ESTOQUE_HERDADO]: estoqueFoiHerdado(variantFormData),
       priceOverride: parsedPriceOverride,
       active: variantFormData.active,
       imageUrl: variantFormData.imageUrl || undefined,
@@ -3222,7 +3231,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     setVariantToDelete(vId);
   }, []);
 
-  const handleEditVariant = useCallback((v: ProductVariant) => {
+  const handleEditVariant = useCallback((v: VariacaoDoFormulario) => {
     salvandoVariacaoRef.current = false;
     // Ressalva da revisão da C5.2: erros/avisos de código de barras da
     // edição ANTERIOR não podem atravessar para esta — se o código não
@@ -3242,6 +3251,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       stockIncrement: Number.isFinite(v.stockIncrement)
         ? v.stockIncrement.toString()
         : "",
+      [ESTOQUE_HERDADO]: estoqueFoiHerdado(v),
       priceOverride: v.priceOverride?.toString() || "",
       active: v.active,
       imageUrl: v.imageUrl || "",
@@ -4061,6 +4071,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           formData.variants,
           initialData.variants,
           variants,
+          estoqueQueAPrimeiraVariacaoHerda({ stock, variants }),
         );
         const gradeRecarregada = juntarVariacoesDeOutroAparelho(
           // As novas do banco entram pelo juntador para manter a conferência
@@ -4678,6 +4689,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                               name="variant-stock"
                               type="number"
                               value={variantFormData.stockIncrement}
+                              // O onFlush também roda só por sair do campo.
+                              onInput={() =>
+                                setVariantFormData((p) =>
+                                  estoqueFoiHerdado(p)
+                                    ? { ...p, [ESTOQUE_HERDADO]: false }
+                                    : p,
+                                )
+                              }
                               onFlush={(val) =>
                                 setVariantFormData((p) => ({
                                   ...p,
@@ -6165,6 +6184,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           // variação nova e inocente nunca abra bloqueada.
                           setVariantCodigoBarrasError("");
                           setVariantCodigoBarrasAvisoRede("");
+                          const estoqueHerdado =
+                            estoqueQueAPrimeiraVariacaoHerda(formData);
                           setVariantFormData({
                             pares: [parNovo()],
                             sku: "",
@@ -6173,9 +6194,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             // produto já tem: com variação o estoque do produto é
                             // a soma delas, e nascer com 0 zerava o produto no
                             // salvar. Ver `estoqueQueAPrimeiraVariacaoHerda`.
-                            stockIncrement: String(
-                              estoqueQueAPrimeiraVariacaoHerda(formData),
-                            ),
+                            stockIncrement: String(estoqueHerdado),
+                            // Não trata um ajuste local do produto como saldo do banco.
+                            [ESTOQUE_HERDADO]:
+                              !!productId &&
+                              (formData.variants.length === 0 || estoqueHerdado > 0) &&
+                              !estoqueDoProdutoFoiMexido(formData, initialData),
                             priceOverride: "",
                             active: true,
                             imageUrl: "",

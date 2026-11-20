@@ -610,6 +610,57 @@ describe("salvar estoque confere a versão lida na abertura", () => {
     expect(JSON.parse(localStorage.getItem(chave) ?? "{}").price).toBe("60.00");
   });
 
+  it.each([
+    { inicial: 10, digitado: [], saldo: 9, esperado: 9 },
+    { inicial: 10, digitado: [], saldo: 0, esperado: 0 },
+    { inicial: 0, digitado: [], saldo: 9, esperado: 9 },
+    { inicial: 10, digitado: ["8"], saldo: 9, esperado: 8 },
+    { inicial: 10, digitado: ["8", "10"], saldo: 9, esperado: 10 },
+  ])(
+    "após conflito, usa $esperado na primeira variação e no produto (de $inicial para $saldo, digitado $digitado)",
+    async ({ inicial, digitado, saldo, esperado }) => {
+      banco.produto.estoque = inicial;
+      await montar();
+      await act(async () => {
+        [...host.querySelectorAll("button")]
+          .find((b) => b.textContent?.includes("+ Novo"))!
+          .click();
+      });
+      const estoque = document.querySelector<HTMLInputElement>("#variant-stock")!;
+      expect(estoque.value).toBe(String(inicial));
+      // Entrar e sair do campo sem digitar não transforma a herança em edição.
+      await act(async () => {
+        estoque.focus();
+        estoque.blur();
+      });
+      await escolherAtributo(0, "Cor", "variant-name", digitar);
+      await digitar("variant-value", "Rosa");
+      for (const quantidade of digitado) {
+        await digitar("variant-stock", quantidade);
+      }
+      await act(async () => {
+        [...document.querySelectorAll("button")]
+          .find((b) => b.textContent?.trim() === "Salvar variação")!
+          .click();
+      });
+
+      banco.produto.estoque = saldo;
+      avancarVersao();
+      await salvar();
+      expect(banco.gravacoes).toBe(0);
+      expect(banco.chamadasRpc).toHaveLength(1);
+      expect(
+        document.querySelector<HTMLInputElement>("#product-stock")?.value,
+      ).toBe(String(esperado));
+
+      await salvar();
+      expect(banco.gravacoes).toBe(1);
+      expect(banco.produto.estoque).toBe(esperado);
+      expect(banco.variacoes).toHaveLength(1);
+      expect(banco.variacoes[0].stock_increment).toBe(esperado);
+    },
+  );
+
   it("recusa estoque mexido após venda e avisa sem gravar produto nem variações", async () => {
     banco.variacoes = [
       {
