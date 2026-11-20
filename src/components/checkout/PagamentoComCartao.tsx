@@ -1334,6 +1334,7 @@ export function PagamentoComCartao({
   // em paralelo). Chamada que nunca volta: a cadência termina do mesmo jeito
   // no estado explícito "o banco ainda não confirmou", sem spinner.
   const consultaPendenteRef = useRef<Promise<unknown> | null>(null);
+  const [avisoDaPendente, setAvisoDaPendente] = useState<string | null>(null);
 
   useEffect(() => {
     if (!consultaAtiva || paradaAqui) return;
@@ -1474,6 +1475,7 @@ export function PagamentoComCartao({
       chamada.then((resultado) => {
         if (consultaPendenteRef.current === chamada) {
           consultaPendenteRef.current = null;
+          if (montadoRef.current) setAvisoDaPendente(null);
         }
         clearTimeout(limite);
         if (cancelado || !montadoRef.current) return;
@@ -1550,8 +1552,8 @@ export function PagamentoComCartao({
     rodadaAqui,
   ]);
 
-  // "Verificar de novo": uma rodada curta por toque, no máximo
-  // `RODADAS_MANUAIS_DA_CONFIRMACAO` por tentativa.
+  // "Verificar de novo": uma rodada curta por toque se nenhuma consulta
+  // estiver pendente, no máximo `RODADAS_MANUAIS_DA_CONFIRMACAO` por tentativa.
   const [toquesDeVerificar, setToquesDeVerificar] = useState<{
     readonly chave: string;
     readonly toques: number;
@@ -1560,8 +1562,18 @@ export function PagamentoComCartao({
     toquesDeVerificar.chave === chaveDaConsulta ? toquesDeVerificar.toques : 0;
   const podeVerificarDeNovo =
     paradaAqui && toquesAqui < RODADAS_MANUAIS_DA_CONFIRMACAO;
+  const avisoDaConsultaPendente =
+    paradaAqui && avisoDaPendente === chaveDaConsulta ? (
+      <span className="block">
+        Ainda estamos consultando seu pagamento; aguarde alguns segundos.
+      </span>
+    ) : null;
   const verificarDeNovo = () => {
     if (!podeVerificarDeNovo) return;
+    if (consultaPendenteRef.current !== null) {
+      setAvisoDaPendente(chaveDaConsulta);
+      return;
+    }
     setToquesDeVerificar({ chave: chaveDaConsulta, toques: toquesAqui + 1 });
     setConsultaParada(null);
     setRodadaDaConsulta({ chave: chaveDaConsulta, numero: rodadaAqui + 1 });
@@ -1820,6 +1832,7 @@ export function PagamentoComCartao({
               <span aria-live="polite">
                 {paradaAqui &&
                   "O banco ainda não deu a resposta final. Não pague de novo com cartão — se ele aprovar, a confirmação aparece aqui e em Meus pedidos."}
+                {avisoDaConsultaPendente}
               </span>
             }
           >
@@ -1857,6 +1870,7 @@ export function PagamentoComCartao({
                 {paradaAqui
                   ? 'Não pague de novo com cartão. Se o banco aprovar, a confirmação aparece aqui e em Meus pedidos. Se tocar em "Pagar com PIX", este pagamento é conferido com o banco antes: o PIX só é gerado se o banco confirmar que o pagamento com cartão foi cancelado.'
                   : "A confirmação aparece nesta tela. Se o banco não aprovar, você pode pagar com PIX."}
+                {avisoDaConsultaPendente}
               </span>
             }
           >
