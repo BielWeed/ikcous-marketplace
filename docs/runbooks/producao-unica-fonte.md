@@ -2363,6 +2363,11 @@ O cadastro de UMA vez, na entrada do cliente:
   com o filtro de status/`payment_status` IDENTICO ao da funcao) em 30 dias, 90 dias e total; e os pedidos de R$ 0
   entregues com `payment_status` nulo. **Ler a linha `controle` primeiro:** com a RLS valendo em qualquer das tres
   tabelas o numero sai baixo; a coerencia do desconto diz se a coluna `discount` e confiavel. Nao e portao.
+- **`45m-medir-pago-apos-expirar`**: conta os pedidos marcados como pagos depois de a reserva vencer (incluindo
+  cartao e PIX), por mes de criacao do pedido e metodo registrado. So leitura, com totais agrupados e sem
+  dados de clientes. No `conferir-banco-da-loja.yml`, selecione esta `consulta`, use `projeto=ikcous-publicada`
+  ou `projeto=savy` (uma loja por execucao), `gravar_ledger=nao` e o SHA completo do commit da execucao em
+  `expected_sha`. Nao e portao.
 
 ## Fora da release, de proposito
 
