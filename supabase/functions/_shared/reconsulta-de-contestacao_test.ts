@@ -469,11 +469,30 @@ for (const status of [0, 408, 429, 503]) {
       orders: { [ORDER_A]: { status: 200, corpo: orderContestada() } },
       casos: { CASE1: { status: 200, corpo: casoDoMp("CASE1", null) } },
     });
-    const cedo = await rodar(b, recuperado, { agora: () => Date.parse("2026-10-04T12:09:59.998Z") });
-    assertEquals([cedo.resumo.vistas, recuperado.chamadas], [0, []]);
+    const mesmoCorte = await rodar(b, recuperado);
+    assertEquals([mesmoCorte.resumo.vistas, recuperado.chamadas], [0, []]);
 
-    const proximoCiclo = await rodar(b, recuperado, { agora: () => Date.parse("2026-10-04T12:10:00.000Z") });
+    // A etapa pode começar um pouco mais cedo no segundo ciclo do cron.
+    const proximoCiclo = await rodar(b, recuperado, { agora: () => Date.parse("2026-10-04T12:09:55.000Z") });
     assertEquals(proximoCiclo.resumo.reconsultadas, 1);
+  });
+}
+
+for (const status of [400, 401]) {
+  Deno.test(`falha permanente no GET da order (${status}): espera 6 h, não volta no ciclo de 10 min`, async () => {
+    const b = banco({ linhas: [linhaPresa("L1", PEDIDO_A, 7)], pedidos: { [PEDIDO_A]: pedidoDe(ORDER_A) } });
+    const m = mp({ orders: { [ORDER_A]: { status } } });
+    const primeira = await rodar(b, m);
+    assertEquals([primeira.resumo.falhas, primeira.resumo.reconsultadas, b.registro.rpcs], [1, 0, []]);
+
+    const proximoCiclo = await rodar(b, m, { agora: () => Date.parse("2026-10-04T12:10:00.000Z") });
+    assertEquals([proximoCiclo.resumo.vistas, m.chamadas.length], [0, 1]);
+
+    const antesDeSeisHoras = await rodar(b, m, { agora: () => Date.parse("2026-10-04T17:59:59.999Z") });
+    assertEquals([antesDeSeisHoras.resumo.vistas, m.chamadas.length], [0, 1]);
+
+    const depoisDeSeisHoras = await rodar(b, m, { agora: () => Date.parse("2026-10-04T18:00:00.001Z") });
+    assertEquals([depoisDeSeisHoras.resumo.falhas, m.chamadas.length], [1, 2]);
   });
 }
 

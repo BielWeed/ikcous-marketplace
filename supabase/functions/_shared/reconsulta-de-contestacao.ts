@@ -67,10 +67,11 @@
  * `status = 'em_processamento'`, como o cron já faz nas linhas de estorno).
  * Caso ainda em análise não muda nada no banco — sem o toque, ele seria
  * reconsultado em TODO ciclo durante semanas e ocuparia a fila inteira. No
- * cron, falha transitória no GET da order reposiciona a linha na fila para
- * o próximo ciclo de 10 min, atrás das reservas elegíveis mais antigas.
- * Outras falhas desse GET mantêm o tratamento anterior (404 segue pelo caso
- * conhecido ou aviso; as demais esperam 6 h). Falhas no caso ou no banco não tocam a linha.
+ * cron, falha transitória no GET da order move a linha para o fim da fila
+ * elegível deste ciclo. Ela pode voltar no próximo ciclo mesmo que a etapa
+ * comece antes de se passarem 10 min. Outras falhas desse GET mantêm o
+ * tratamento anterior (404 segue pelo caso conhecido ou aviso; as demais
+ * esperam 6 h). Falhas no caso ou no banco não tocam a linha.
  *
  * O FRESH GATE (reler antes de agir): a lista do lote é um retrato velho
  * (o webhook pode concluir ou ajustar a linha entre a lista e a vez dela).
@@ -121,8 +122,6 @@ import { consultarOrder, idEhClassico, vagaEmVerificacao } from "./mercadopago.t
 /** N: quanto tempo uma reserva de contestação fica sem movimento antes de o
  * cron reconsultá-la. Justificativa no cabeçalho. */
 export const PRAZO_DA_RECONSULTA_MS = 6 * 60 * 60 * 1000;
-
-const INTERVALO_DO_CRON_MS = 10 * 60 * 1000;
 
 /** Teto de PEDIDOS por ciclo (2 GET ao MP cada, no mínimo): o cron roda a cada
  * 10 min e não pode virar uma varredura sem limite. */
@@ -213,17 +212,12 @@ function criarReconsultor(args: {
   ) => {
     for (const id of ids) {
       try {
-        const instante = agora();
-        // Sem coluna nova: avança a linha só o bastante para ceder a vez, sem
-        // carimbar como uma consulta concluída. Usa o corte do ciclo, não o
-        // fim do GET, para um timeout não perder o próximo ciclo. O -1 ms
-        // permite voltar na fronteira de 10 min mesmo com o filtro estrito (<).
-        const carimbo = falha?.transitoria
-          ? Math.min(instante, Date.parse(falha.limiteDeIdade) + INTERVALO_DO_CRON_MS - 1)
-          : instante;
+        // O filtro estrito (<) deixa o corte deste ciclo atrás de quem já
+        // estava elegível. Qualquer corte posterior já permite a nova tentativa.
+        const carimbo = falha?.transitoria ? falha.limiteDeIdade : new Date(agora()).toISOString();
         let atualizacao = supabase
           .from("order_refunds")
-          .update({ updated_at: new Date(carimbo).toISOString() })
+          .update({ updated_at: carimbo })
           .eq("id", id)
           .eq("status", "em_processamento");
         if (falha) {
