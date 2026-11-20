@@ -1,5 +1,10 @@
 import { caractereSemDesenho } from "@/lib/nome-visivel";
 
+/** Primeira consulta do checkout: compõe sinais colados sem tirar o acento. */
+export function codigoDigitadoDoCupom(valor: string): string {
+  return valor.trim().toUpperCase().normalize("NFC");
+}
+
 /**
  * Código do cupom como o painel grava: maiúsculas, sem espaço e SEM ACENTO.
  *

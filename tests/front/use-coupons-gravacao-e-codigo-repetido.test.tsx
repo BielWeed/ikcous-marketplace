@@ -151,7 +151,7 @@ describe("gravação real do hook de cupons", () => {
         await expect(gravacao).rejects.toBe(error);
       });
       expect(toast.error).toHaveBeenCalledExactlyOnceWith(
-        "Já existe um cupom com este código.",
+        "Já existe um cupom com esse código.",
       );
       expect(toast.success).not.toHaveBeenCalled();
     },
@@ -182,9 +182,10 @@ describe("mensagem de erro do cupom", () => {
   it.each([
     { code: "23505", message: "duplicate key value" },
     { message: 'duplicate key violates constraint "coupons_code_key"' },
+    { message: 'duplicate key violates constraint "coupons_code_upper_uidx"' },
   ])("reconhece duplicidade por código ou constraint: %j", (error) => {
     expect(mensagemDeErroDoCupom(error, "Mensagem padrão")).toBe(
-      "Já existe um cupom com este código.",
+      "Já existe um cupom com esse código.",
     );
   });
 

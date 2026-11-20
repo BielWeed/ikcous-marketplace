@@ -1,4 +1,7 @@
-import { normalizarCodigoDoCupom } from "@/lib/codigo-do-cupom";
+import {
+  codigoDigitadoDoCupom,
+  normalizarCodigoDoCupom,
+} from "@/lib/codigo-do-cupom";
 import { formatCurrency } from "@/lib/utils";
 import { Check, Tag, X } from "lucide-react";
 import { memo, useState } from "react";
@@ -43,7 +46,7 @@ export const CouponInput = memo(function CouponInput({
       // primeiro como digitado (um cupom antigo pode ter sido gravado com
       // acento e não pode quebrar) e a versão normalizada segue de reserva —
       // quem aplica só a usa se o servidor disser que o código não existe.
-      const digitado = code.trim().toUpperCase();
+      const digitado = codigoDigitadoDoCupom(code);
       const normalizado = normalizarCodigoDoCupom(code);
       if (normalizado && normalizado !== digitado) {
         onApply(digitado, normalizado);

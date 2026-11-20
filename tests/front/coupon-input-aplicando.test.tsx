@@ -84,6 +84,12 @@ describe("CouponInput", () => {
     expect(onApply).toHaveBeenCalledWith("VERÃO10", "VERAO10");
   });
 
+  it("compõe o til colado antes da primeira consulta e preserva a reserva sem acento", async () => {
+    const onApply = vi.fn();
+    await aplicarDigitando("  VERÃO10 ", onApply);
+    expect(onApply).toHaveBeenCalledExactlyOnceWith("VERÃO10", "VERAO10");
+  });
+
   it("'VERAO 10' (espaço no meio) vai como digitado e leva VERAO10 de reserva", async () => {
     const onApply = vi.fn();
     await aplicarDigitando("VERAO 10", onApply);
