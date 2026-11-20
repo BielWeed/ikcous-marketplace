@@ -11,6 +11,8 @@ export interface PedidoCongelado {
   readonly cpfParaRpc: string | undefined;
   readonly contaEsperada: string | null;
   readonly semConta: boolean;
+  /** Prazo da cotação enviada, só para a confirmação do pedido. */
+  readonly previsaoDeEntrega?: string;
   /** Endereço público da loja escolhido para a retirada; só para exibição. */
   readonly enderecoDaRetirada?: string;
 }

@@ -659,6 +659,22 @@ export const notaDoFreteEscolhido = (
   return `Frete Escolhido: ${option.name} (Prazo: ${prazo})`;
 };
 
+function previsaoDaOpcao(option: ShippingOption | null): string | undefined {
+  if (
+    !option ||
+    ehRetiradaNaLoja(option.id) ||
+    option.id === "free-shipping-promo" ||
+    option.provider === "free" ||
+    !Number.isInteger(option.deliveryDays) ||
+    option.deliveryDays < 0
+  ) {
+    return undefined;
+  }
+  return option.deliveryDays === 0
+    ? "no mesmo dia"
+    : `até ${prazoEmDiasDaNota(option)}`;
+}
+
 /**
  * EMENDA R3-4 (CONTRATO-1.5.7.md §9): a RPC recusa com este marcador exato
  * na mensagem quando a lojista mudou a configuração de frete DEPOIS que a
@@ -2205,14 +2221,18 @@ export function CheckoutViewDaConta({
   const [valorDoCarrinhoAntes, setValorDoCarrinhoAntes] = useState<
     number | null
   >(null);
-  // Lote 210: o que a tela de sucesso do pedido "pago na entrega/retirada"
-  // precisa saber e que o carrinho já esqueceu quando ela abre (limpar a
-  // compra derruba a opção de frete): forma e modalidade vêm da compra
-  // congelada no envio, não do carrinho atual.
-  const [resumoDoPedidoNaEntrega, setResumoDoPedidoNaEntrega] = useState<{
+  // Limpar a compra derruba a opção de frete. A confirmação usa a compra
+  // congelada no envio e só mostra a previsão para o pedido correspondente.
+  const [resumoDoPedido, setResumoDoPedido] = useState<{
+    id: string;
     paymentMethod: string | null;
     ehRetirada: boolean;
+    previsaoDeEntrega: string | undefined;
   } | null>(null);
+  const previsaoDeEntrega =
+    resumoDoPedido?.id === orderId
+      ? resumoDoPedido.previsaoDeEntrega
+      : undefined;
   // Mesmo motivo: o submétodo (PIX ou cartão) do pedido que JÁ nasceu. Sem
   // o congelamento, um efeito que mexe em `paymentMethod` depois do submit
   // (a sessão que cai rebaixa "online" para "pix") trocaria a tela do
@@ -5341,6 +5361,7 @@ export function CheckoutViewDaConta({
       cpfParaRpc,
       contaEsperada,
       semConta: !user,
+      previsaoDeEntrega: previsaoDaOpcao(selectedShippingOption),
     });
   };
 
@@ -5522,6 +5543,20 @@ export function CheckoutViewDaConta({
               Math.round(pedido.valor * 100),
           ) > 0,
       );
+      setResumoDoPedido({
+        id: order.id,
+        paymentMethod:
+          typeof orderData.paymentMethod === "string"
+            ? orderData.paymentMethod
+            : null,
+        ehRetirada:
+          typeof orderData.shippingOptionId === "string" &&
+          ehRetiradaNaLoja(orderData.shippingOptionId),
+        previsaoDeEntrega:
+          typeof pedido.previsaoDeEntrega === "string"
+            ? pedido.previsaoDeEntrega
+            : undefined,
+      });
       if (ehOnline) {
         // NÃO mostra sucesso e NÃO solta confete: o pedido só está reservado,
         // e quem confirma pagamento é o webhook (Fase 3). Chamar isso de
@@ -5531,15 +5566,6 @@ export function CheckoutViewDaConta({
         return;
       }
 
-      setResumoDoPedidoNaEntrega({
-        paymentMethod:
-          typeof orderData.paymentMethod === "string"
-            ? orderData.paymentMethod
-            : null,
-        ehRetirada:
-          typeof orderData.shippingOptionId === "string" &&
-          ehRetiradaNaLoja(orderData.shippingOptionId),
-      });
       setShowSuccess(true);
 
       // Trigger confetti celebration
@@ -6102,6 +6128,7 @@ export function CheckoutViewDaConta({
           orderId={orderId}
           valor={valorDoPedido}
           parcelamento={parcelamentoConfirmado}
+          previsaoDeEntrega={previsaoDeEntrega}
           onNavigate={onNavigate}
         />
       );
@@ -6666,8 +6693,9 @@ export function CheckoutViewDaConta({
         appliedCoupon={appliedCoupon}
         discount={discount}
         valor={valorDoPedido}
-        paymentMethod={resumoDoPedidoNaEntrega?.paymentMethod ?? null}
-        ehRetirada={resumoDoPedidoNaEntrega?.ehRetirada ?? false}
+        paymentMethod={resumoDoPedido?.paymentMethod ?? null}
+        ehRetirada={resumoDoPedido?.ehRetirada ?? false}
+        previsaoDeEntrega={previsaoDeEntrega}
         onNavigate={onNavigate}
       />
     );
@@ -9312,6 +9340,15 @@ function PedidoJaFeitoNaTela({
   );
 }
 
+function PrevisaoDeEntrega({ previsao }: Readonly<{ previsao?: string }>) {
+  if (!previsao) return null;
+  return (
+    <p className="text-sm font-medium leading-relaxed text-zinc-500">
+      {`Previsão de entrega: ${previsao}`}
+    </p>
+  );
+}
+
 interface SuccessViewProps {
   orderId: string;
   appliedCoupon: { code: string; discount: number } | null;
@@ -9321,6 +9358,7 @@ interface SuccessViewProps {
   /** Forma escolhida na entrega/retirada (`cash` | `pix` | `card`). */
   paymentMethod: string | null;
   ehRetirada: boolean;
+  previsaoDeEntrega?: string;
   onNavigate: (view: View, productId?: string) => void;
 }
 
@@ -9331,6 +9369,7 @@ function SuccessView({
   valor,
   paymentMethod,
   ehRetirada,
+  previsaoDeEntrega,
   onNavigate,
 }: Readonly<SuccessViewProps>) {
   // Quem não tem conta acompanha o pedido por `AcompanharPedidoSemConta`
@@ -9387,6 +9426,7 @@ function SuccessView({
               ? "Recebemos o seu pedido. A loja vai separar os itens para você retirar."
               : "Recebemos o seu pedido. A loja vai cuidar da entrega."}
           </p>
+          {!ehRetirada && <PrevisaoDeEntrega previsao={previsaoDeEntrega} />}
           {/* createOrder não retorna o endereço gravado; a cotação não o confirma. */}
           {ehRetirada && (
             <p className="mt-2 break-words text-sm font-medium text-zinc-700">
@@ -9474,6 +9514,7 @@ interface PagamentoConfirmadoViewProps {
   orderId: string;
   valor: number;
   parcelamento: ParcelamentoConfirmado;
+  previsaoDeEntrega?: string;
   onNavigate: (view: View, productId?: string) => void;
 }
 
@@ -9481,6 +9522,7 @@ function PagamentoConfirmadoView({
   orderId,
   valor,
   parcelamento,
+  previsaoDeEntrega,
   onNavigate,
 }: Readonly<PagamentoConfirmadoViewProps>) {
   // O F5 depois do Pix confirmado diz "Seu pedido já foi feito".
@@ -9518,6 +9560,7 @@ function PagamentoConfirmadoView({
             Seu pagamento foi confirmado. A loja vai iniciar a separação do seu
             pedido.
           </p>
+          <PrevisaoDeEntrega previsao={previsaoDeEntrega} />
         </div>
       </div>
 

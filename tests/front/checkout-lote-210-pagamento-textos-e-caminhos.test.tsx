@@ -24,7 +24,7 @@ import type {
   DadosAdicionaisDoBrick,
   DadosDoCartaoDoBrick,
 } from "@/components/checkout/PagamentoComCartao";
-import type { CartItem } from "@/types";
+import type { CartItem, ShippingOption } from "@/types";
 
 const createOrder = vi.fn();
 const updateOrderStatus = vi.fn().mockResolvedValue(undefined);
@@ -50,10 +50,11 @@ vi.mock("@/components/ui/custom/ShippingCalculator", () => ({
   ShippingCalculator: () => null,
 }));
 
+let coberturaDoFrete: "local" | "national" = "local";
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
     config: {
-      shippingCoverage: "local",
+      shippingCoverage: coberturaDoFrete,
       originCep: "38500-000",
       enableCoupons: false,
       whatsappNumber: "34999998888",
@@ -128,8 +129,7 @@ const novoItem = (): CartItem => ({
 let mockCart = [novoItem()];
 let mockCartTotal = 100;
 let mockShippingFee = 0;
-let mockOpcaoDeFrete: typeof ENTREGA_LOCAL | typeof RETIRADA | null =
-  ENTREGA_LOCAL;
+let mockOpcaoDeFrete: ShippingOption | null = ENTREGA_LOCAL;
 
 vi.mock("@/hooks/useCart", async () => {
   const { criarUseCartDeTeste } = await import("./duble-use-cart");
@@ -276,6 +276,7 @@ describe("CheckoutView — lote 210: textos e caminhos do pagamento", () => {
     mockCartTotal = 100;
     mockShippingFee = 0;
     mockOpcaoDeFrete = ENTREGA_LOCAL;
+    coberturaDoFrete = "local";
     Object.defineProperty(document, "visibilityState", {
       value: "visible",
       configurable: true,
@@ -311,6 +312,7 @@ describe("CheckoutView — lote 210: textos e caminhos do pagamento", () => {
   async function fecharPedidoCom(
     CheckoutViewComponente: TelaCheckout,
     formaDePagamento: string,
+    cpf?: string,
   ) {
     await act(async () => {
       raiz.render(
@@ -324,6 +326,7 @@ describe("CheckoutView — lote 210: textos e caminhos do pagamento", () => {
       botaoPorTexto(hospedeiro, formaDePagamento)!.click();
       digitar("checkout-name", "Cliente Teste");
       digitar("checkout-tel", "34999999999");
+      if (cpf) digitar("checkout-cpf", cpf);
       await vi.advanceTimersByTimeAsync(0);
       await vi.advanceTimersByTimeAsync(0);
     });
@@ -676,6 +679,31 @@ describe("CheckoutView — lote 210: textos e caminhos do pagamento", () => {
       expect(texto()).not.toContain("1234,50");
     });
 
+    it("mantém o prazo da transportadora na confirmação do PIX após limpar o carrinho", async () => {
+      coberturaDoFrete = "national";
+      mockOpcaoDeFrete = {
+        id: "melhor-envio-1",
+        name: "Envio expresso",
+        price: 15,
+        deliveryDays: 3,
+        provider: "melhor-envio",
+      };
+      mockShippingFee = 15;
+      const { CheckoutView } = await import("@/views/customer/CheckoutView");
+      await fecharPedidoCom(CheckoutView, "Pagar agora com PIX", "11144477735");
+
+      expect(mockOpcaoDeFrete).toBeNull();
+      expect(texto()).not.toContain("Previsão de entrega:");
+      await act(async () => {
+        onRealtimeEventCapturado?.({
+          eventType: "UPDATE",
+          new: { id: "ped-999", payment_status: "pago" },
+        });
+      });
+      expect(texto()).toContain("Pagamento Confirmado!");
+      expect(texto()).toContain("Previsão de entrega: até 3 dias úteis");
+    });
+
     it("pago fora do prazo: R$ 1.234,50 recebido", async () => {
       createOrder.mockResolvedValue({ id: "ped-999", totalAmount: 1234.5 });
       const { CheckoutView } = await import("@/views/customer/CheckoutView");
@@ -706,6 +734,31 @@ describe("CheckoutView — lote 210: textos e caminhos do pagamento", () => {
   });
 
   describe("tela de sucesso do pedido pago na entrega/retirada", () => {
+    it.each([
+      [2, "Previsão de entrega: até 2 dias"],
+      [0, "Previsão de entrega: no mesmo dia"],
+    ])(
+      "mostra o prazo local cotado (%i dias) na confirmação",
+      async (dias, previsao) => {
+        mockOpcaoDeFrete = { ...ENTREGA_LOCAL, deliveryDays: dias };
+        const { CheckoutView } = await import("@/views/customer/CheckoutView");
+        await fecharPedidoCom(CheckoutView, "Dinheiro na Entrega");
+
+        expect(mockOpcaoDeFrete).toBeNull();
+        expect(texto()).toContain("Pedido recebido!");
+        expect(texto()).toContain(previsao);
+      },
+    );
+
+    it("não inventa previsão para entrega local sem prazo", async () => {
+      mockOpcaoDeFrete = { ...ENTREGA_LOCAL, deliveryDays: Number.NaN };
+      const { CheckoutView } = await import("@/views/customer/CheckoutView");
+      await fecharPedidoCom(CheckoutView, "Dinheiro na Entrega");
+
+      expect(texto()).toContain("Pedido recebido!");
+      expect(texto()).not.toContain("Previsão de entrega:");
+    });
+
     it("entrega: mostra o total e a forma, em português simples, sem o texto de logística", async () => {
       mockCartTotal = 1100;
       mockShippingFee = 134.5;
@@ -750,6 +803,7 @@ describe("CheckoutView — lote 210: textos e caminhos do pagamento", () => {
       expect(texto()).toContain("Total a pagar na retirada: R$ 100,00");
       expect(texto()).toContain("Forma de pagamento: Cartão na retirada");
       expect(texto()).toContain("separar os itens para você retirar");
+      expect(texto()).not.toContain("Previsão de entrega:");
       expect(texto()).not.toContain("entrega");
       expect(texto()).not.toContain("logística");
     });
