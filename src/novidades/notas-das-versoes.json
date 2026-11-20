@@ -3,8 +3,7 @@
     "titulo": "Clientes e pedidos mais claros",
     "novidades": [],
     "correcoes": [
-      "No painel, uma venda totalmente reembolsada deixa de contar como receita no CRM.",
-      "A lista de Clientes e a ficha do cliente passam a mostrar o mesmo total comprado que o CRM, inclusive com as vendas de balcão.",
+      "No painel, uma venda totalmente reembolsada deixa de contar como venda no Início, no CRM, na lista de Clientes e na ficha do cliente.",
       "Na grade de variações do painel, se todas as combinações escolhidas já existem, o botão de gerar fica desativado e a tela explica que não há nada a criar.",
       "Ao enviar fotos de um produto pelo painel, a mensagem de sucesso diz “Foto enviada” ou “Fotos enviadas”, conforme a quantidade.",
       "Nas notificações da cliente, o botão sempre mostra o texto “Marcar como lidas”.",
