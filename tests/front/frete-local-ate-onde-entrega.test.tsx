@@ -131,7 +131,7 @@ describe("FreteLocalBloco: até onde você entrega", () => {
 
       expect(
         texto().includes(
-          "Ao acrescentar outra região neste campo, os CEPs entre o primeiro e o último deixam de entrar. Para manter a faixa, use o botão «Incluir a região».",
+          "Ao acrescentar uma região depois dos dois primeiros CEPs, os CEPs entre esses dois deixam de entrar. Para manter a faixa, apague a região acrescentada, teste um CEP dela acima e use «Incluir a região».",
         ),
       ).toBe(avisa);
       expect(gravados).toEqual([faixa]);

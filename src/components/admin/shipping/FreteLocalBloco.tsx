@@ -298,9 +298,9 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
       {(perdeuIntervalo || prefixoDeSete) && (
         <>
           <br />
-          <span role="note" className="mt-2 text-xs text-amber-300">
+          <span role="note" className="text-xs text-amber-300">
             {perdeuIntervalo &&
-              "Ao acrescentar outra região neste campo, os CEPs entre o primeiro e o último deixam de entrar. Para manter a faixa, use o botão «Incluir a região»."}
+              "Ao acrescentar uma região depois dos dois primeiros CEPs, os CEPs entre esses dois deixam de entrar. Para manter a faixa, apague a região acrescentada, teste um CEP dela acima e use «Incluir a região»."}
             {perdeuIntervalo && prefixoDeSete && <br />}
             {prefixoDeSete &&
               "Você digitou 7 números. Se for um CEP completo, confira se faltou um zero no começo. Do jeito que está, entram apenas os CEPs que começam com esses 7 números."}
