@@ -422,339 +422,20 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
   // integração das branches, as listas se SOMAM (união dos nomes) e a
   // contagem segue a lista; nenhuma prova pode sumir na soma.
   const PROVAS_DO_DINHEIRO = [
-    // Guardas vivas do Financeiro: categorias automaticas, conta de sistema e recusas da baixa.
-    "tests/banco/financeiro-recusas-da-baixa-conta-e-categoria-viva.cjs",
-    "tests/banco/avanco-status-esperado-viva.cjs",
-    // solicitar_estorno vivo: pagamento inelegivel, pedido nao cancelado e produto nao devolvido recusam sem linha; duas chamadas disputam o saldo (mutantes no clone).
-    "tests/banco/solicitar-estorno-recusas-e-corrida-viva.cjs",
-    "tests/banco/reembolso-manual-reserva-viva.cjs",
-    "tests/banco/analise-por-categoria-so-conta-pedido-pago-viva.cjs",
-    // get_admin_analytics_v2 (corpo da 20261399995000): o "Ticket medio" e o "Pedidos" do painel (loja vazia = 0, 5 e 6 pedidos que contam, centavos, o que nao conta fica fora; mutantes no clone).
-    "tests/banco/o-ticket-medio-e-a-contagem-de-pedidos-do-painel-viva.cjs",
-    // 20261347000000: o codigo de barras nao repete entre produto e variacao (gatilhos, corrida real com 2 conexoes, duplicata antiga, pre-voo e rollback sem tocar dado).
-    "tests/banco/codigo-de-barras-entre-tabelas-viva.cjs",
-    // 20261352000000: o produto e a grade salvam numa transacao so (travas da compra online, versao conferida, PRD01, mutantes, 2 conexoes reais, rollback e consultas 84a/84b).
-    "tests/banco/salvar-produto-com-grade-viva.cjs",
-    "tests/banco/variante-estoque-negativo-e-recusado-no-banco-viva.cjs",
-    "tests/banco/variante-sku-repetido-e-recusado-no-banco-viva.cjs",
-    // 20261351000000: a forma (path SVG) do icone da categoria, CHECK, ACL/RLS e rollback.
-    "tests/banco/forma-do-icone-viva.cjs",
-    // 20261350000000: a compra online trava o preco-base (OF v, p) e a mesma chave espera a primeira (advisory lock): duas conexoes reais, rollback, pre/pos-voo e consultas 81a/81b.
-    "tests/banco/compra-online-travas-viva.cjs",
-    // 20261349000000: o pedido entregue antes da confirmacao do PIX entra na fila de reconciliacao (borda, dados existentes, ACL, rollback, pre/pos-voo e consultas 80a/80b).
-    "tests/banco/reconciliacao-do-entregue-viva.cjs",
-    // 20261300000000: icones de categoria, CHECK, ACL/RLS e rollback sem perda.
-    "tests/banco/categorias-icones-viva.cjs",
-    // 20261330000000: contato do mototaxi privado, ACL/RLS e rollback sem perda.
-    "tests/banco/mototaxi-viva.cjs",
-    // 20261340000000: as politicas de perfil, endereco, carrinho, push, notificacao, analytics e credenciais de frete exigem o admin de agora (papeis reais, controle, sem recursao, rollback, consultas 64a/64b).
-    "tests/banco/admin-atual-perfis-viva.cjs",
-    "tests/banco/ex-admin-demais-tabelas-viva.cjs",
-    // 20261341000000 e 20261342000000: o codigo do convidado trava a linha na tentativa (corridas reais, controle) e o rastreio nao devolve a nota do pedido (rollback, pre-voo, consultas 65a/65b e 66a/66b).
-    "tests/banco/rastreio-do-convidado-viva.cjs",
-    // 20261252: sessao explicita, chave idempotente, corridas e mutantes do caixa.
-    "tests/banco/caixa-intencao-viva.cjs",
-    // 20261260000000: o cartao guarda o motivo da recusa (portao 56a/56b decide certo; so o Postgres efemero).
-    "tests/banco/motivo-da-recusa-portao-viva.cjs",
-    // 20261251: lucro por variante e cobertura do custo do estoque.
-    "tests/banco/lucro-do-estoque-viva.cjs",
-    // 20261250: faturamento do estoque e compatibilidade dos portões ancestrais.
-    "tests/banco/faturamento-potencial-viva.cjs",
-    "tests/banco/devolucoes-viva.cjs",
-    "tests/banco/cartao-online-viva.cjs",
-    // 20261370: conta de sistema, legado preservado e rollback do caixa.
-    "tests/banco/caixa-conta-da-loja-viva.cjs",
-    // 20261380: o aviso de cancelados antigos conta so pendencia real (pedido a pedido, mutantes, rollback e consultas 85a/85b).
-    "tests/banco/o-aviso-de-cancelados-antigos-viva.cjs",
-    // 20261381: o ex-admin perde o acesso na hora no resto do painel (21 politicas, 10 RPCs; 4 ex-admins, mutantes, rollback e consultas 86a/86b).
-    "tests/banco/admin-atual-endurecimento-viva.cjs",
-    // 20261382: o resultado mostra tarifa, juro e quebra como despesa (sinal das linhas do grupo financeiro; controle com o corpo anterior, mutantes, rollback e portoes 8e/45a/87a/87b).
-    "tests/banco/fin-dre-sinal-viva.cjs",
-    // 20261383: so o dono da loja define cargo (dono nomeia e remove, nomeado nao nomeia, ninguem rebaixa o dono, PATCH direto barrado, log, EXECUTE, concorrencia real, mutantes, rollback, consultas 88a/88b).
-    "tests/banco/definir-cargo-so-o-dono-viva.cjs",
-    // 20261384: o pedido pago pelo app exige conta (visitante sem conta recusado antes de reservar estoque; logado e pagar na entrega como hoje; retry; concorrencia real; mutantes; rollback; consultas 89a/89b).
-    "tests/banco/pedido-pelo-app-exige-conta-viva.cjs",
-    // 20261385: a busca de produtos do painel acha pelo codigo de barras e pelo codigo da variacao (controle com o corpo anterior, igualdade x parcial, total_count/paginacao, porta de admin, mutantes, rollback e consultas 90a/90b).
-    "tests/banco/busca-do-painel-por-codigo-viva.cjs",
-    // 20261386: o preco do produto deixa historico (trava de 5 s sem nada pela metade, a janela do salvamento no meio da migration, backfill sem data inventada, 12 caminhos do gatilho, mutantes, ACL/RLS por papel, rollbacks, consultas 91a/91b).
-    "tests/banco/o-preco-do-produto-deixa-historico-viva.cjs",
-    // 20261387: a busca de pedido pelo numero nao vira busca de telefone (o numero 3884BE acha o pedido e nao o telefone de outra pessoa, o pedido do numero vem primeiro, telefone/nome/rastreio seguem, total_count/paginacao/filtros iguais, mutantes, rollback e consultas 92a/92b).
-    "tests/banco/a-busca-de-pedido-pelo-numero-viva.cjs",
-    // 20261389000000: a cotacao de frete tem limite por origem (teto e janela, 12 conexoes simultaneas, ACL, limpeza, mutantes, rollback, consultas 95a/95b).
-    "tests/banco/o-frete-tem-limite-de-cotacoes-viva.cjs",
-    // 20261389100000: o estoque que volta tranca na mesma ordem da compra (40P01 do corpo antigo em 3 cenarios com 2 conexoes, matriz diferencial, mutantes, rollback, consultas 96a/96b).
-    "tests/banco/o-estoque-que-volta-tranca-na-mesma-ordem-viva.cjs",
-    // 20261390: o lucro estimado do Inicio conta o mes inteiro (igual ao Financeiro; fevereiro, 30 e 31 dias, virada de ano, controle com o corpo anterior, dados que ja existiam, pre-voo, rollback byte a byte, atomicidade, consultas 97a/97b e portoes 8e/17a/30a).
-    "tests/banco/o-lucro-do-inicio-conta-o-mes-inteiro-viva.cjs",
-    "tests/banco/financeiro-viva.cjs",
-    "tests/banco/pagamentos-rpc-viva.cjs",
-    "tests/banco/admin-atual-viva.cjs",
-    // 20261199000000: portas do painel.
-    "tests/banco/admin-atual-portas-viva.cjs",
-    // 20261200000000: a decisão da devolução exige o admin de agora.
-    "tests/banco/admin-atual-devolucao-viva.cjs",
-    // 20261202000000: as políticas de RLS do pedido, da devolução e do financeiro.
-    "tests/banco/admin-atual-rls-viva.cjs",
-    "tests/banco/contestacao-viva.cjs",
-    // 20261198000000: cancelar anula a cobrança.
-    "tests/banco/cancelar-pedido-viva.cjs",
-    // Ordem das travas COMPOSTA (96 x 98 x 97/94/89 x reemitir, ciclo de 3).
-    "tests/banco/ordem-das-travas-composta-viva.cjs",
-    // O envelope do aplicar-migrations.yml: impressão digital, gate de transporte e cadeia de rollback-manual.
-    "tests/banco/impressao-digital-viva.cjs",
-    "tests/banco/invariantes-dinheiro.cjs",
-    // send-order-whatsapp: cada select da edge executa no schema real.
-    "tests/banco/whatsapp-edge-consultas-viva.cjs",
-    // Lote 60-66: a consulta 9a reprova cada desvio e o backfill do ledger só grava com ela positiva.
-    "tests/banco/lote-60-66-viva.cjs",
-    // 8k: a conferência de subtotal do portão (a 8c com a prova de loja VAZIA) decide certo.
-    "tests/banco/subtotal-vazia-provada-viva.cjs",
-    // 20261203000000: cupons desligados não dão desconto (gatilho + validação).
-    "tests/banco/cupons-desligados-viva.cjs",
-    "tests/banco/cupom-ultima-vaga-corrida-viva.cjs",
-    // 20261203000000: o portão da release (consultas 10a e 10b do lote) decide certo.
-    "tests/banco/cupons-desligados-portao-viva.cjs",
-    // 20261204000000: a venda do balcão se anula no mesmo dia (só o admin de agora).
-    "tests/banco/anular-venda-viva.cjs",
-    // 20261204000000: o portão da release (consultas 11a e 11b do lote) decide certo.
-    "tests/banco/anular-venda-portao-viva.cjs",
-    // 20261205000000 e 20261206000000: o cupom preso diz quando a vaga volta, e a vaga do pedido nunca cobrado volta em 1 h.
-    "tests/banco/cupom-preso-viva.cjs",
-    // 20261205000000 e 20261206000000: o portao da release (consultas 12a e 12b do lote) decide certo.
-    "tests/banco/cupom-preso-portao-viva.cjs",
-    // Consulta 13a: o item dos dependentes da coluna do contador duplicado conta a coluna gerada que a cita.
-    "tests/banco/consulta-13a-contador-duplicado-viva.cjs",
-    // 20261207000000: a coluna duplicada de contagem de uso do cupom e apagada (recusas sem gravar, corrida, rollback).
-    "tests/banco/contador-duplicado-viva.cjs",
-    // 20261207000000: o portao da release (consultas 14a e 14b do lote) decide certo.
-    "tests/banco/contador-duplicado-portao-viva.cjs",
-    "tests/banco/cupom-tipo-invalido-e-recusado-no-banco-viva.cjs",
-    // 20261208000000: o checkout mostra os cupons da cliente (lista, exclusivo, gatilho com o atalho de retentativa, painel do admin atual, ida e volta).
-    "tests/banco/cupons-do-checkout-viva.cjs",
-    "tests/banco/cupons-do-checkout-portao-viva.cjs",
-    // 20261209000000: a foto da cobranca no cancelamento (gatilho, tabela fechada, envelope, ida e volta).
-    "tests/banco/cupom-pix-anulado-viva.cjs",
-    // 20261209000000 e 20261210000000: o portao da release (consultas 16a e 16b do lote) decide certo.
-    "tests/banco/cupom-pix-anulado-portao-viva.cjs",
-    // 20261212000000 a 20261214000000: estoque baixo numa regua so e o valor do estoque so com custo.
-    "tests/banco/estoque-baixo-uma-regra-viva.cjs",
-    "tests/banco/inventario-so-com-custo-viva.cjs",
-    // 8e (rol 92-202): aceita o corpo da 20261199 OU o da sucessora (20261212, 20261214), cada funcao por si.
-    "tests/banco/portao-8e-aceita-sucessoras-viva.cjs",
-    // 20261212000000 a 20261214000000: o portao da release (consultas 17a e 17b do lote) decide certo.
-    "tests/banco/estoque-do-painel-portao-viva.cjs",
-    // 20261215000000: o portao da release (consultas 19a e 19b do lote) decide certo.
-    "tests/banco/politica-devolucao-portao-viva.cjs",
-    // 20261216000000: o portao da release (consultas 20a e 20b do lote) decide certo.
-    "tests/banco/fotos-da-devolucao-portao-viva.cjs",
-    // 20261217000000: os tetos de e-mail e o codigo do convidado (comportamento) e o portao da
-    // release (consultas 21a e 21b do lote) decide certo.
-    "tests/banco/teto-de-email-viva.cjs",
-    "tests/banco/teto-de-email-portao-viva.cjs",
-    // 20261218000000, 20261218000100 e 20261219000000: as portas pequenas do banco (comportamento) e
-    // o portao da release (consultas 22a e 22b do lote) decide certo.
-    "tests/banco/portas-do-banco-viva.cjs",
-    "tests/banco/portas-do-banco-portao-viva.cjs",
-    // 20261408000000: o nome abreviado aparece nas duas views da vitrine (12 casos de nome; foto, moderacao,
-    // nome cadastrado e contrato das views preservados; pre-voo, rollback e consultas 165a/165b).
-    "tests/banco/o-nome-publico-da-vitrine-viva.cjs",
-    // 20261220000000: a consulta antiga de pedido por codigo fecha para o visitante (comportamento) e o
-    // portao da release (consultas 23a e 23b do lote) decide certo.
-    "tests/banco/consulta-antiga-de-pedido-viva.cjs",
-    "tests/banco/consulta-antiga-de-pedido-portao-viva.cjs",
-    // 20261221000000: a media de avaliacoes e o voto "util" fecham para o visitante (comportamento).
-    "tests/banco/avaliacoes-fechadas-ao-visitante-viva.cjs",
-    "tests/banco/avaliacoes-fechadas-ao-visitante-portao-viva.cjs",
-    // 20261222000000: a media de avaliacoes so responde ao administrador (corpo com is_admin(); comportamento e portao 25a/25b).
-    "tests/banco/media-de-avaliacoes-so-admin-viva.cjs",
-    "tests/banco/media-de-avaliacoes-so-admin-portao-viva.cjs",
-    // 20261223000000: o voto util so vale em avaliacao que o publico ve (corpo com status = 'publicada'; comportamento e portao 26a/26b).
-    "tests/banco/voto-util-so-em-avaliacao-publica-viva.cjs",
-    "tests/banco/voto-util-so-em-avaliacao-publica-portao-viva.cjs",
-    // 20261224000000: a avaliacao nasce sem a resposta da loja (gatilho BEFORE INSERT; comportamento e portao 27a/27b).
-    "tests/banco/avaliacao-nasce-sem-resposta-da-loja-viva.cjs",
-    "tests/banco/avaliacao-nasce-sem-resposta-da-loja-portao-viva.cjs",
-    // 20261227000000 e 20261228000000: os numeros do painel (a taxa de devolucao da mesma turma de vendas e o corte
-    // na mesma hora; comportamento e portao 30a/30b).
-    "tests/banco/numeros-do-painel-viva.cjs",
-    "tests/banco/numeros-do-painel-portao-viva.cjs",
-    // 20261232000000: a grade do CRM mede a recencia do mesmo instante da lista (so depois da 20261227; comportamento e portao 33a/33b).
-    "tests/banco/a-grade-do-crm-mede-a-recencia-viva.cjs",
-    "tests/banco/a-grade-do-crm-mede-a-recencia-portao-viva.cjs",
-    // 20261229000000: o endereco da compra fica no pedido (v23 e v24 copiam o endereco da conta; comportamento e portao 31a/31b).
-    "tests/banco/endereco-no-pedido-viva.cjs",
-    "tests/banco/endereco-no-pedido-portao-viva.cjs",
-    // 20261225000000: o reembolso da devolucao so e liberado quando o dinheiro sai (gatilho de aviso pelo estado real; comportamento e portao 28a/28b).
-    "tests/banco/reembolso-da-devolucao-viva.cjs",
-    "tests/banco/reembolso-da-devolucao-portao-viva.cjs",
-    // 20261226000000: a reemissao do reembolso consulta o MP antes de pagar de novo (gate de "nada saiu", adotar so linha incerta, devolucao pelo painel do MP, ator admin atual, ACL; comportamento e portao 29a/29b).
-    "tests/banco/reemissao-do-reembolso-viva.cjs",
-    "tests/banco/reemissao-do-reembolso-portao-viva.cjs",
-    // 20261230000000 e 20261231000000: a busca de clientes (get_admin_customers_paged acha pelo numero do WhatsApp; crm_clientes ignora acento; comportamento e portao 32a/32b).
-    "tests/banco/busca-de-clientes-viva.cjs",
-    "tests/banco/busca-de-clientes-portao-viva.cjs",
-    // 20261233000000: o sino do pedido de retirada fala de retirada (corpo da funcao de gatilho com o ramo da retirada; comportamento e portao 34a/34b).
-    "tests/banco/o-sino-do-pedido-de-retirada-viva.cjs",
-    "tests/banco/o-sino-do-pedido-de-retirada-portao-viva.cjs",
-    // 20261234000000: o lucro so conta produto com custo (get_admin_analytics_v2: lucro por dia e top 5 sem a margem inventada de produto sem custo; comportamento e portao 35a/35b).
-    "tests/banco/lucro-so-com-custo-viva.cjs",
-    "tests/banco/lucro-so-com-custo-portao-viva.cjs",
-    // 20261242000000: o lucro usa o custo do dia da venda (tabela lateral so do servidor, gatilho que nunca derruba a compra, get_admin_analytics_v2 e fin_dre leem o custo do dia; comportamento e portao 45a/45b/45m).
-    "tests/banco/custo-do-dia-viva.cjs",
-    "tests/banco/custo-do-dia-portao-viva.cjs",
-    // 20261245: o cupom desconta do lucro diário e do ranking; mantém a cadeia de custo do dia.
-    "tests/banco/lucro-com-desconto-viva.cjs",
-    // 20261235000000: a venda repetida do balcao devolve a venda feita (trava consultiva pela chave de idempotencia; comportamento com 2 conexoes e portao 36a/36b).
-    "tests/banco/venda-balcao-mesma-chave-viva.cjs",
-    "tests/banco/venda-balcao-mesma-chave-portao-viva.cjs",
-    // 20261243000000: desfazer o recebimento recusa pedido com devolucao viva (registrar_pagamento_recebido; comportamento com 2 conexoes, corrida nos dois sentidos, rollback e mutantes; o portao da release desta migration ainda nao existe).
-    "tests/banco/desfazer-recebimento-viva.cjs",
-    "tests/banco/desfazer-recebimento-portao-viva.cjs",
-    // 20261244000000: a loja escolhe como entrega na cidade e em quantos dias (v23, v24 e upsert_store_config; matriz das duas compras, trigger, rollbacks nos dois degraus e mutantes; e o portao 47a/47b).
-    "tests/banco/a-loja-escolhe-como-entrega-viva.cjs",
-    "tests/banco/a-loja-escolhe-como-entrega-portao-viva.cjs",
-    // 20261310000000: o estilo do card de frete preserva a escolha no upsert e na view; comportamento, rollback e mutantes.
-    "tests/banco/estilo-card-frete-viva.cjs",
-    // 20261246000000: o lancamento repetido nao duplica (chave de tentativa em fin_lancamento_salvar; corrida real, atomicidade, mutantes e o portao 49a/49b).
-    "tests/banco/lancamento-idempotente-viva.cjs",
-    // 20261247000000: a anotacao interna do pedido nao chega a cliente (tabela so do admin de agora; papeis reais, pre-voo, rollbacks, mutantes e o portao 50a/50b).
-    "tests/banco/nota-interna-do-pedido-viva.cjs",
-    // 20261248000000: a coluna notes do pedido fecha para a gravacao do painel (REVOKE UPDATE (notes) do authenticated; ACL de antes e de depois, pre-voo, conferencia final, atomicidade, mutantes e o portao 51a/51b).
-    "tests/banco/notes-do-pedido-fechada-viva.cjs",
-    // 20261249000000: o motivo do desconto fica na nota privada, preservando trava e idempotencia.
-    "tests/banco/pdv-motivo-privado-viva.cjs",
-    // 20261280000000: total conferido do balcão pelo servidor, com a assinatura nova e a anterior.
-    "tests/banco/pdv-total-conferido-viva.cjs",
-    // 20261236000000: a compra que da R$ 0,00 nao se paga pelo app (create_marketplace_order_v24 recusa o total zero pelo app antes de gravar pedido, estoque e cupom; comportamento pelo checkout real, ordem provada por sequencia, e portao 37a/37b).
-    "tests/banco/a-compra-que-da-zero-reais-nao-se-paga-pelo-app-viva.cjs",
-    "tests/banco/a-compra-que-da-zero-reais-nao-se-paga-pelo-app-portao-viva.cjs",
-    // 20261237000000: a lojista renomeia e apaga categoria sem deixar produto orfao (permissao e regra de devolucao; comportamento e portao 38a/38b).
-    "tests/banco/categorias-gestao-viva.cjs",
-    "tests/banco/categorias-gestao-portao-viva.cjs",
-    // 20261238000000: a cliente pede a exclusao da conta e a correcao do e-mail (tabela pedidos_de_privacidade, dado de cliente; comportamento, ensaio do roteiro de anonimizacao e portao 39a/39b).
-    "tests/banco/pedidos-de-privacidade-viva.cjs",
-    "tests/banco/anonimizar-conta-ensaio-viva.cjs",
-    "tests/banco/pedidos-de-privacidade-portao-viva.cjs",
-    // 20261239000000: a loja declara razao social, CNPJ/CPF e e-mail de atendimento (upsert_store_config, as tres colunas e a v_store_config; comportamento e portao 40a/40b).
-    "tests/banco/loja-declara-quem-e-viva.cjs",
-    "tests/banco/loja-declara-quem-e-portao-viva.cjs",
-    // 20261240000000: a cliente e avisada quando a loja responde a pergunta dela (answer_question_atomic, as duas sobrecargas: aviso no sino em vez da linha falsa no log de push; comportamento e portao 41a/41b).
-    "tests/banco/pergunta-respondida-avisa-viva.cjs",
-    "tests/banco/pergunta-respondida-avisa-portao-viva.cjs",
-    // 20261241000000: o reembolso em duvida prende o saldo (regra unica pode_ter_saido, saldo com o em duvida, as duas saidas de 7 dias pela mesma espera do painel, autorizar recusa a linha liberada por fora; comportamento com 2 conexoes e mutantes, e portao 43a/43b).
-    "tests/banco/reembolso-em-duvida-viva.cjs",
-    "tests/banco/reembolso-em-duvida-portao-viva.cjs",
-    // L8 (sem migration): funcao nova de banco nao nasce aberta ao visitante (so le o catalogo; lista versionada).
-    "tests/banco/portas-do-visitante-so-as-permitidas-viva.cjs",
-    // Onda I (so leitura): a receita do mes caracterizada e o estoque minimo editavel so pelo admin.
-    "tests/banco/receita-uma-regua-viva.cjs",
-    "tests/banco/estoque-minimo-editavel-viva.cjs",
-    // Lote 199: teto da foto/pergunta e extrato do balcao fiel ao app (a prova da analise sem escrita pela API fica no ramo
-    // fix-199-abuso-do-banco ate o dono aprovar a migration).
-    "tests/banco/a-foto-da-devolucao-e-a-pergunta-tem-teto-viva.cjs",
-    "tests/banco/o-financeiro-descreve-a-venda-do-balcao-viva.cjs",
-    // Lote 204: a lista de clientes nao repete ninguem entre as paginas e a busca do CRM acha o numero com o +55.
-    "tests/banco/a-lista-de-clientes-nao-repete-ninguem-viva.cjs",
-    "tests/banco/a-busca-do-crm-acha-o-numero-com-mais-55-viva.cjs",
-    "tests/banco/o-pix-pago-no-ultimo-minuto-nao-perde-o-pedido-viva.cjs",
-    "tests/banco/o-balcao-diz-inativo-para-a-variacao-desligada-viva.cjs",
-    // 20261394000000: o pedido de visitante na entrega tem freio (teto de 10 unidades, teto de 10 pedidos pendentes por loja sob o advisory lock,
-    // p_address_id sem sessao recusado, retentativa nunca recusada, 14 visitantes simultaneos, mutantes, rollback, pre/pos-voo e consultas 106a/106b).
-    "tests/banco/o-pedido-de-visitante-na-entrega-tem-freio-viva.cjs",
-    // 20261394100000: a lista de recomendacoes do produto tem teto (get_product_recommendations limita p_limit a 50 e trata NULL como 4; ate o teto a lista
-    // e' a de sempre; mutantes, rollback, pre/pos-voo e consultas 107a/107b e a 9a).
-    "tests/banco/a-lista-de-recomendacoes-do-produto-tem-teto-viva.cjs",
-    // 20261394200000: a v23 recusa o pagamento pelo app para todo mundo (anon e logado; pagar na entrega/retirada como antes; retentativa de pedido antigo devolve o mesmo id;
-    // mutante, rollback byte a byte, aplicar duas vezes, pre/pos-voo e consultas 111a/111b).
-    "tests/banco/a-v23-recusa-o-pagamento-pelo-app-viva.cjs",
-    // Lote 231 (20261395000000, 20261395100000, 20261395200000): a busca de devolucao acha o numero do pedido; a grade antiga nao ressuscita variacao
-    // excluida; a conclusao da devolucao tranca o estoque na mesma ordem da compra (cada uma com mutantes, rollback, pre/pos-voo e as consultas 108 a 110).
-    "tests/banco/a-busca-de-devolucao-acha-o-numero-do-pedido-viva.cjs",
-    "tests/banco/a-grade-antiga-nao-ressuscita-variacao-excluida-viva.cjs",
-    "tests/banco/a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-viva.cjs",
-    // 20261396000000: cada conta tem no maximo 10 aparelhos com aviso ligado (gatilho BEFORE INSERT em push_subscriptions; o re-registro do mesmo aparelho por upsert nao conta;
-    // duas conexoes reais, mutantes, rollback, pre/pos-voo e consultas 112a/112b).
-    "tests/banco/cada-conta-tem-no-maximo-10-aparelhos-viva.cjs",
-    // 20261396100000: a pergunta do produto nasce com a data de agora (gatilho BEFORE INSERT em questions troca created_at por now() para cliente que nao e' administrador;
-    // admin, service_role e sessao direta gravam como vierem; mutantes, rollback, pre/pos-voo e consultas 113a/113b).
-    "tests/banco/a-pergunta-nasce-com-a-data-de-agora-viva.cjs",
-    // 20261396200000: o texto da avaliacao tem teto no banco (CHECK de 1000 caracteres NOT VALID em reviews; 1001 recusado para todos; a migration se recusa se ja
-    // houver avaliacao acima do teto (o CHECK travaria o pagamento do pedido); mutantes, rollback, pre/pos-voo e consultas 114a/114b).
-    "tests/banco/o-texto-da-avaliacao-tem-teto-no-banco-viva.cjs",
-    // 20261397000000: o desconto do cupom de porcentagem e' arredondado ao centavo ANTES de subtrair (v23, v24 e validate_coupon_secure_v2; contas, controle, mutantes,
-    // dado antigo intacto, rollback byte a byte, aplicar duas vezes, pre/pos-voo e consultas 115a/115b).
-    "tests/banco/o-desconto-do-cupom-e-arredondado-ao-centavo-viva.cjs",
-    // sem migration: o frete que o pedido grava segue a regra viva da loja (limite de frete gratis, por produto, nacional e cotacao velha recusada; 58 cenarios e 2 controles).
-    "tests/banco/o-frete-do-pedido-segue-a-regra-da-loja-viva.cjs",
-    "tests/banco/cotacao-de-frete-de-outra-origem-ou-velha-nao-vira-preco-viva.cjs",
-    // 20261398000000: o Inicio compara o mes anterior ate a mesma hora (o ultimo dia dos mesmos dias do mes anterior corta na hora de agora; dia 1, 15, 28 a 31,
-    // fevereiro de 28 e 29 dias, virada de ano, hora exata, corte em UTC; oraculo em JS e 12 mutantes, controle com o corpo anterior, rollback, pre/pos-voo, leitor concorrente e consultas 116a/116b).
-    "tests/banco/o-inicio-compara-o-mes-anterior-ate-a-mesma-hora-viva.cjs",
-    // 20261399000000: as visitas da loja contam pelo porteiro (tabela selada; contar_entrada e' a unica porta nova do visitante: so anon e service_role, canal fora da lista = 22023,
-    // dia de Sao Paulo, teto de 50000 sem escrever nem travar a linha, lock_timeout, commit assincrono; crm_visitas so do admin atual, previa fora, no_teto; 50001 chamadas reais,
-    // corrida de duas conexoes, mutantes, rollback comum e destrutivo, pre/pos-voo e consultas 117a/117b).
-    "tests/banco/as-visitas-da-loja-viva.cjs",
-    // 20261399100000: o nome do perfil (e o WhatsApp) tem teto no banco (tres CHECKs NOT VALID: nome ate 120 em profiles e em public_profiles, WhatsApp ate 20; 121 e 2 milhoes
-    // recusados para todos e a vitrine nunca devolve nome acima de 120; a migration se recusa se ja houver perfil acima do teto (o CHECK travaria foto, CPF e cargo da conta);
-    // mutantes, rollback byte a byte, pre/pos-voo, atomicidade e lock_timeout nas duas tabelas).
-    "tests/banco/o-nome-do-perfil-tem-teto-no-banco-viva.cjs",
-    // 20261399940000: o cadastro cria o perfil em toda loja (gatilho on_auth_user_created so se ausente; reparo de quem ficou sem perfil sem rebaixar admin nem violar os tetos de nome e WhatsApp;
-    // controle sem o gatilho, papel sem EXECUTE, mutantes, rollback, pre-voo, atomicidade e consultas 149a/149b).
-    "tests/banco/o-cadastro-cria-o-perfil-em-toda-loja-viva.cjs",
-    // 20261399200000: a busca de produtos do painel e do balcao acha por palavras (todas as palavras, qualquer ordem, nome/codigo/SKU/nome e valor das variacoes ativas; codigo de barras por
-    // igualdade; % _ e barra valem como letras; controle com o corpo da 385; mutantes, rollback byte a byte, pre/pos-voo, atomicidade e consultas 119a/119b).
-    "tests/banco/a-busca-do-painel-acha-por-palavras-viva.cjs",
-    // 20261399300000: o estorno em andamento nao e conta vencida (painel_inicio.contas_vencidas e fin_resumo.a_pagar.vencido; a conta lancada segue; a_pagar_7d nao muda; controle com os corpos
-    // anteriores, mutantes, rollback byte a byte, pre/pos-voo, atomicidade e consultas 119a/119b).
-    "tests/banco/o-estorno-em-andamento-nao-e-conta-vencida-viva.cjs",
-    // 20261399400000: a cliente e avisada quando a loja responde a avaliacao dela (as duas sobrecargas de reply_review_atomic criam o aviso no sino; um por avaliacao; a falha do aviso nunca perde a resposta;
-    // a linha do log de push continua; controle com o corpo anterior, corrida real, mutantes, rollback byte a byte, pre/pos-voo e consultas 120a/120b).
-    "tests/banco/a-cliente-e-avisada-quando-a-loja-responde-a-avaliacao-viva.cjs",
-    // 20261399500000: as estrelas do produto aparecem na vitrine (gatilho em reviews recalcula produtos.rating e review_count so das publicadas; pendente nao conta; a falha da nota nunca
-    // perde a avaliacao; corrida real de duas avaliacoes, trocas cruzadas, compra segurando o produto, o pagamento nunca e a vitima do deadlock; mutantes, rollback, pre/pos-voo e consultas 121a/121b).
-    "tests/banco/as-estrelas-do-produto-aparecem-na-vitrine-viva.cjs",
-    // 20261399600000: o resultado credita o custo da devolucao de venda de outro mes (fin_dre deixa de cortar o CMV em zero; CMV negativo = credito de custo; a linha do CMV aparece quando nao e zero;
-    // controle com o corpo da 382 na mesma fixture, soma dos meses fecha com o periodo, mutantes, rollback byte a byte, pre/pos-voo e consultas 122a/122b).
-    "tests/banco/o-resultado-credita-o-custo-da-devolucao-de-outro-mes-viva.cjs",
-    // 20261405900000: o custo do cancelamento fica no mês da volta, sem duplicar devoluções.
-    "tests/banco/o-custo-do-cancelamento-fica-no-mes-da-volta-viva.cjs",
-    // 20261399700000: o painel de avaliacoes filtra o que esta em moderacao (get_admin_reviews_paged troca de 4 para 5 argumentos: p_status 'pendente' filtra a lista e o total_count; DROP da assinatura
-    // antiga sem sobrecarga ambigua; ACL, dono e atributos iguais aos de antes; controle com o corpo da 381 na mesma fixture, mutantes, rollback byte a byte, pre/pos-voo e consultas 123a/123b).
-    "tests/banco/o-painel-de-avaliacoes-filtra-o-que-esta-em-moderacao-viva.cjs",
-    // 20261399800000: as recomendacoes do produto contam o estoque das variacoes (get_product_recommendations julga o estoque pela soma das variacoes ativas, a regra da vitrine; o esgotado com grade
-    // nao ocupa vaga e quem tem saldo so na grade entra; controle com o corpo da 20261394100000 na mesma fixture, mutantes, rollback byte a byte, pre/pos-voo e consultas 124a/124b).
-    "tests/banco/as-recomendacoes-do-produto-contam-o-estoque-das-variacoes-viva.cjs",
-    // 20261399900000: a busca de Pedidos acha o telefone colado com o +55 (get_admin_orders_paged corta o 55 dos digitos da busca com 12 ou 13 digitos que comecam por 55; DDD 55 com 11 digitos nao perde o 55;
-    // controle com o corpo da 20261387000000 na mesma fixture, mutantes, rollback byte a byte, pre-voo e consultas 125a/125b).
-    "tests/banco/a-busca-de-pedidos-acha-o-telefone-colado-com-o-55-viva.cjs",
-    // 20261399910000: a busca de Devolucoes ignora o acento (admin_devolucoes_listar compara protocolo e nome do cliente com f_unaccent nos dois lados; controle com o corpo da 20261395000000 na mesma fixture,
-    // mutantes, rollback byte a byte, pre/pos-voo e consultas 126a/126b).
-    "tests/banco/a-busca-de-devolucao-ignora-o-acento-viva.cjs",
-    // 20261399920000: o sino do pedido vencido fala do vencimento (notifica_cliente_de_mudanca_de_status avisa "Prazo do pagamento terminou" no cancelamento com payment_status expirado, que a varredura grava junto;
-    // controle com o corpo da 20261233000000 na mesma fixture, a varredura real, mutantes, dado existente intacto, rollback byte a byte, pre/pos-voo e consultas 127a/127b).
-    "tests/banco/o-sino-do-pedido-vencido-fala-do-vencimento-viva.cjs",
-    // Auditoria 11/10: medicao (nao e portao, sai sempre 0) das portas que o anonimo abriria, em ROLLBACK.
-    "tests/banco/portas-anon-exploracao-dinheiro.cjs",
-    "tests/banco/portas-anon-exploracao-dados.cjs",
-    "tests/banco/portas-anon-exploracao-estoque-otp.cjs",
-    // solicitar_devolucao (pedido/item de outra conta, nao entregue) e create_marketplace_order_v24 direto (cupom vencido, abaixo do minimo): recusam sem efeito; mutantes no clone.
-    "tests/banco/solicitar-devolucao-e-cupom-recusas-viva.cjs",
     // Onda 100: permissao e dado de cliente (perfil, favoritos e avaliacao so da propria conta; carrinho so mexe no meu;
     // admin rebaixado recusado no balcao, na configuracao, na grade e no caixa; cupom sem contador negativo; analise por categoria); todas com mutante.
     "tests/banco/o-perfil-completo-so-devolve-a-propria-conta-viva.cjs",
     "tests/banco/os-favoritos-nao-passam-para-outra-conta-viva.cjs",
     // Onda 106-m: UNIQUE por conta/produto recusa duplicata e sustenta o upsert do app.
     "tests/banco/favorito-repetido-na-mesma-conta-e-recusado-no-banco-viva.cjs",
+    // Onda 1.5.207 (sem migration): o aviso de cobranca duplicada respeita o ciclo da reserva (7 provas, 2 mutantes).
+    "tests/banco/aviso-de-cobranca-duplicada-ciclo-de-reserva.cjs",
     "tests/banco/a-avaliacao-so-nasce-em-nome-da-propria-conta-viva.cjs",
     "tests/banco/avaliacao-nao-nasce-publicada-nem-verificada-viva.cjs",
     "tests/banco/analise-por-categoria-periodo-e-subtotal-zero-viva.cjs",
     "tests/banco/balcao-recusa-admin-rebaixado-viva.cjs",
     "tests/banco/configuracao-recusa-admin-rebaixado-viva.cjs",
     "tests/banco/grade-recusa-admin-rebaixado-viva.cjs",
-    "tests/banco/carrinho-nao-insere-no-carrinho-de-outra-conta-viva.cjs",
-    "tests/banco/carrinho-sincronizar-so-mexe-no-meu-viva.cjs",
-    "tests/banco/devolver-cupom-nao-deixa-contador-negativo-viva.cjs",
-    "tests/banco/caixa-abrir-recusa-quem-nao-e-admin-atual-viva.cjs",
     // Onda 100-y: onze guardas vivas; cada arquivo tem controle mutante no clone descartavel.
     "tests/banco/itens-do-pedido-so-do-comprador-viva.cjs",
     "tests/banco/endereco-principal-nao-desmarca-outra-conta-viva.cjs",
@@ -770,11 +451,14 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/estorno-preserva-data-informada-no-pedido-viva.cjs",
     "tests/banco/devolucao-encerrada-nao-reabre-viva.cjs",
     "tests/banco/lancamento-inativo-nao-grava-viva.cjs",
-    "tests/banco/caixa-contrapartida-inativa-nao-grava-viva.cjs",
-    "tests/banco/baixa-concorrente-impede-edicao-do-lancamento-viva.cjs",
     "tests/banco/cupom-inativo-e-teto-do-desconto-na-v24-viva.cjs",
     // sem migration: a v23 recusa o cupom vencido e a compra abaixo do minimo do cupom sem efeito; o mesmo cupom valido passa; mutantes no clone.
     "tests/banco/cupom-vencido-e-minimo-na-v23-viva.cjs",
+    "tests/banco/caixa-contrapartida-inativa-nao-grava-viva.cjs",
+    "tests/banco/perfil-alterar-so-o-nome-nao-apaga-o-whatsapp-viva.cjs",
+    // Onda 107-r: o CPF (dado pessoal) so e lido/gravado na propria conta; CPF03 sem linha em profiles; mutantes por MUTANTE_R107R.
+    "tests/banco/o-cpf-so-mexe-na-propria-conta-viva.cjs",
+    "tests/banco/baixa-concorrente-impede-edicao-do-lancamento-viva.cjs",
     // Onda 102-b: duas guardas vivas; cada arquivo tem controle mutante no clone descartavel.
     "tests/banco/comprador-nao-avanca-o-proprio-pedido-viva.cjs",
     "tests/banco/banner-vencido-nao-aparece-ao-visitante-viva.cjs",
@@ -782,9 +466,6 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/balcao-recusa-desconto-negativo-e-pagamento-invalido-viva.cjs",
     "tests/banco/reordenar-banners-com-id-invalido-nao-apaga-a-ordem-viva.cjs",
     "tests/banco/categoria-slug-repetido-e-recusado-no-banco-viva.cjs",
-    "tests/banco/perfil-alterar-so-o-nome-nao-apaga-o-whatsapp-viva.cjs",
-    // Onda 107-r: o CPF (dado pessoal) so e lido/gravado na propria conta; CPF03 sem linha em profiles; mutantes por MUTANTE_R107R.
-    "tests/banco/o-cpf-so-mexe-na-propria-conta-viva.cjs",
     // Onda 106-o: a v23 recusa a retirada sem endereco fisico da loja (NULL, vazio, so espacos) sem pedido nem baixa de estoque; controle com endereco; mutante no clone.
     "tests/banco/retirada-sem-endereco-da-loja-e-recusada-na-v23-viva.cjs",
     // Onda 108-a: o "total comprado" (LTV) do cliente e o global so somam pagamento reconhecido de pedido nao cancelado; mutantes por MUTANTE_R108A.
@@ -847,10 +528,16 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/o-estoque-do-produto-nunca-fica-negativo-viva.cjs",
     // Onda 118: o bucket devolucoes e privado, 5 MB e so JPG/PNG/WEBP; mutantes por MUTANTE_R125C.
     "tests/banco/o-bucket-das-fotos-de-devolucao-so-aceita-imagem-viva.cjs",
-    // Onda 119: cancelar so abre order_refunds para pago/pago_apos_expirar com paid_at, em pending/processing; mutantes por MUTANTE_R130D.
-    "tests/banco/cancelar-pedido-so-abre-estorno-se-pago-viva.cjs",
     "tests/banco/cancelar-retirada-pronta-viva.cjs",
     "tests/banco/cancelar-pedido-do-painel-confere-a-etapa-viva.cjs",
+    // 20261405900000: o custo do cancelamento fica no mês da volta, sem duplicar devoluções.
+    "tests/banco/o-custo-do-cancelamento-fica-no-mes-da-volta-viva.cjs",
+    // 20261406000000: o pedido guarda o nome antigo da opção após renomear a variação.
+    "tests/banco/o-pedido-guarda-o-nome-antigo-da-opcao-viva.cjs",
+    // 20261410000000: painel e rastreio por código devolvem os rótulos históricos.
+    "tests/banco/rotulo-historico-na-lista-e-no-rastreio-viva.cjs",
+    // Onda 119: cancelar so abre order_refunds para pago/pago_apos_expirar com paid_at, em pending/processing; mutantes por MUTANTE_R130D.
+    "tests/banco/cancelar-pedido-so-abre-estorno-se-pago-viva.cjs",
     // Onda 134: order_refunds, devolucao_itens e devolucao_eventos so se leem pela cliente (REVOKE de escrita + sem policy de escrita); mutantes por MUTANTE_R134D.
     "tests/banco/o-comprador-nao-escreve-no-ledger-de-estorno-viva.cjs",
     // Onda 134: vw_reviews_public so devolve avaliacao publicada e so as colunas esperadas (sem user_id nem status); mutantes por MUTANTE_R134D.
@@ -861,6 +548,139 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/os-numeros-do-inicio-e-do-funil-do-crm-viva.cjs",
     // Onda 136-c: o prazo legal da devolucao (arrependimento, troca, vicio) conta o dia do calendario de Sao Paulo na solicitacao e na elegibilidade (fronteiras 7/8, 30/31, 15/16 e entrega as 23:50); mutantes por MUTANTE_R136C.
     "tests/banco/o-prazo-da-devolucao-conta-dia-de-sao-paulo-viva.cjs",
+    "tests/banco/avanco-status-esperado-viva.cjs",
+    "tests/banco/reembolso-manual-reserva-viva.cjs",
+    "tests/banco/analise-por-categoria-so-conta-pedido-pago-viva.cjs",
+    // get_admin_analytics_v2 (corpo da 20261399995000): o "Ticket medio" e o "Pedidos" do painel (loja vazia = 0, 5 e 6 pedidos que contam, centavos, o que nao conta fica fora; mutantes no clone).
+    "tests/banco/o-ticket-medio-e-a-contagem-de-pedidos-do-painel-viva.cjs",
+    // 20261300000000: icones de categoria, CHECK, ACL/RLS e rollback sem perda.
+    "tests/banco/categorias-icones-viva.cjs",
+    // 20261351000000: a forma (path SVG) do icone da categoria, CHECK, ACL/RLS e rollback.
+    "tests/banco/forma-do-icone-viva.cjs",
+    // 20261252: sessao explicita, chave idempotente, corridas e mutantes do caixa.
+    "tests/banco/caixa-intencao-viva.cjs",
+    // 20261260000000: o cartao guarda o motivo da recusa (portao 56a/56b decide certo; so o Postgres efemero).
+    "tests/banco/motivo-da-recusa-portao-viva.cjs",
+    // 20261251: lucro por variante e cobertura do custo do estoque.
+    "tests/banco/lucro-do-estoque-viva.cjs",
+    // 20261250: faturamento do estoque e compatibilidade dos portões ancestrais.
+    "tests/banco/faturamento-potencial-viva.cjs",
+    "tests/banco/devolucoes-viva.cjs",
+    // solicitar_devolucao (pedido/item de outra conta, nao entregue) e create_marketplace_order_v24 direto (cupom vencido, abaixo do minimo): recusam sem efeito; mutantes no clone.
+    "tests/banco/solicitar-devolucao-e-cupom-recusas-viva.cjs",
+    "tests/banco/carrinho-nao-insere-no-carrinho-de-outra-conta-viva.cjs",
+    "tests/banco/carrinho-sincronizar-so-mexe-no-meu-viva.cjs",
+    "tests/banco/devolver-cupom-nao-deixa-contador-negativo-viva.cjs",
+    "tests/banco/caixa-abrir-recusa-quem-nao-e-admin-atual-viva.cjs",
+    "tests/banco/cartao-online-viva.cjs",
+    // 20261330000000: contato do mototaxi privado, ACL/RLS e rollback sem perda.
+    "tests/banco/mototaxi-viva.cjs",
+    "tests/banco/ex-admin-demais-tabelas-viva.cjs",
+    // 20261340000000: as politicas de perfil, endereco, carrinho, push, notificacao, analytics e credenciais de frete exigem o admin de agora (papeis reais, controle, sem recursao, rollback, consultas 64a/64b).
+    "tests/banco/admin-atual-perfis-viva.cjs",
+    // 20261341000000 e 20261342000000: o codigo do convidado trava a linha na tentativa (corridas reais, controle) e o rastreio nao devolve a nota do pedido (rollback, pre-voo, consultas 65a/65b e 66a/66b).
+    "tests/banco/rastreio-do-convidado-viva.cjs",
+    // 20261347000000: o codigo de barras nao repete entre produto e variacao (gatilhos, corrida real com 2 conexoes, duplicata antiga, pre-voo e rollback sem tocar dado).
+    "tests/banco/codigo-de-barras-entre-tabelas-viva.cjs",
+    // 20261310000000: o estilo do card de frete preserva a escolha no upsert e na view; comportamento, rollback e mutantes.
+    "tests/banco/estilo-card-frete-viva.cjs",
+    // 20261370: conta de sistema, legado preservado e rollback do caixa.
+    "tests/banco/caixa-conta-da-loja-viva.cjs",
+    // 20261382: o resultado mostra tarifa, juro e quebra como despesa (sinal das linhas do grupo financeiro; controle com o corpo anterior, mutantes, rollback e portoes 8e/45a/87a/87b).
+    "tests/banco/fin-dre-sinal-viva.cjs",
+    // 20261385: a busca de produtos do painel acha pelo codigo de barras e pelo codigo da variacao (controle com o corpo anterior, igualdade x parcial, total_count/paginacao, porta de admin, mutantes, rollback e consultas 90a/90b).
+    "tests/banco/busca-do-painel-por-codigo-viva.cjs",
+    // 20261386: o preco do produto deixa historico (trava de 5 s sem nada pela metade, a janela do salvamento no meio da migration, backfill sem data inventada, 12 caminhos do gatilho, mutantes, ACL/RLS por papel, rollbacks, consultas 91a/91b).
+    "tests/banco/o-preco-do-produto-deixa-historico-viva.cjs",
+    // 20261387: a busca de pedido pelo numero nao vira busca de telefone (o numero 3884BE acha o pedido e nao o telefone de outra pessoa, o pedido do numero vem primeiro, telefone/nome/rastreio seguem, total_count/paginacao/filtros iguais, mutantes, rollback e consultas 92a/92b).
+    "tests/banco/a-busca-de-pedido-pelo-numero-viva.cjs",
+    // 20261389000000: a cotacao de frete tem limite por origem (teto e janela, 12 conexoes simultaneas, ACL, limpeza, mutantes, rollback, consultas 95a/95b).
+    "tests/banco/o-frete-tem-limite-de-cotacoes-viva.cjs",
+    // 20261389100000: o estoque que volta tranca na mesma ordem da compra (40P01 do corpo antigo em 3 cenarios com 2 conexoes, matriz diferencial, mutantes, rollback, consultas 96a/96b).
+    "tests/banco/o-estoque-que-volta-tranca-na-mesma-ordem-viva.cjs",
+    // 20261390: o lucro estimado do Inicio conta o mes inteiro (igual ao Financeiro; fevereiro, 30 e 31 dias, virada de ano, controle com o corpo anterior, dados que ja existiam, pre-voo, rollback byte a byte, atomicidade, consultas 97a/97b e portoes 8e/17a/30a).
+    "tests/banco/o-lucro-do-inicio-conta-o-mes-inteiro-viva.cjs",
+    // Lote 199: teto da foto/pergunta e extrato do balcao fiel ao app (a prova da analise sem escrita pela API fica no ramo
+    // fix-199-abuso-do-banco ate o dono aprovar a migration).
+    "tests/banco/a-foto-da-devolucao-e-a-pergunta-tem-teto-viva.cjs",
+    "tests/banco/o-financeiro-descreve-a-venda-do-balcao-viva.cjs",
+    // Lote 204: a lista de clientes nao repete ninguem entre as paginas e a busca do CRM acha o numero com o +55.
+    "tests/banco/a-lista-de-clientes-nao-repete-ninguem-viva.cjs",
+    "tests/banco/a-busca-do-crm-acha-o-numero-com-mais-55-viva.cjs",
+    "tests/banco/o-pix-pago-no-ultimo-minuto-nao-perde-o-pedido-viva.cjs",
+    "tests/banco/o-balcao-diz-inativo-para-a-variacao-desligada-viva.cjs",
+    // 20261394000000: o pedido de visitante na entrega tem freio (teto de 10 unidades, teto de 10 pedidos pendentes por loja sob o advisory lock,
+    // p_address_id sem sessao recusado, retentativa nunca recusada, 14 visitantes simultaneos, mutantes, rollback, pre/pos-voo e consultas 106a/106b).
+    "tests/banco/o-pedido-de-visitante-na-entrega-tem-freio-viva.cjs",
+    // 20261394100000: a lista de recomendacoes do produto tem teto (get_product_recommendations limita p_limit a 50 e trata NULL como 4; ate o teto a lista
+    // e' a de sempre; mutantes, rollback, pre/pos-voo e consultas 107a/107b e a 9a).
+    "tests/banco/a-lista-de-recomendacoes-do-produto-tem-teto-viva.cjs",
+    // Lote 231 (20261395000000, 20261395100000, 20261395200000): a busca de devolucao acha o numero do pedido; a grade antiga nao ressuscita variacao
+    // excluida; a conclusao da devolucao tranca o estoque na mesma ordem da compra (cada uma com mutantes, rollback, pre/pos-voo e as consultas 108 a 110).
+    "tests/banco/a-busca-de-devolucao-acha-o-numero-do-pedido-viva.cjs",
+    "tests/banco/a-grade-antiga-nao-ressuscita-variacao-excluida-viva.cjs",
+    "tests/banco/a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-viva.cjs",
+    // 20261394200000: a v23 recusa o pagamento pelo app para todo mundo (anon e logado; pagar na entrega/retirada como antes; retentativa de pedido antigo devolve o mesmo id;
+    // mutante, rollback byte a byte, aplicar duas vezes, pre/pos-voo e consultas 111a/111b).
+    "tests/banco/a-v23-recusa-o-pagamento-pelo-app-viva.cjs",
+    // 20261399000000: as visitas da loja contam pelo porteiro (tabela selada; contar_entrada e' a unica porta nova do visitante: so anon e service_role, canal fora da lista = 22023,
+    // dia de Sao Paulo, teto de 50000 sem escrever nem travar a linha, lock_timeout, commit assincrono; crm_visitas so do admin atual, previa fora, no_teto; 50001 chamadas reais,
+    // corrida de duas conexoes, mutantes, rollback comum e destrutivo, pre/pos-voo e consultas 117a/117b).
+    "tests/banco/as-visitas-da-loja-viva.cjs",
+    // 20261398000000: o Inicio compara o mes anterior ate a mesma hora (o ultimo dia dos mesmos dias do mes anterior corta na hora de agora; dia 1, 15, 28 a 31,
+    // fevereiro de 28 e 29 dias, virada de ano, hora exata, corte em UTC; oraculo em JS e 12 mutantes, controle com o corpo anterior, rollback, pre/pos-voo, leitor concorrente e consultas 116a/116b).
+    "tests/banco/o-inicio-compara-o-mes-anterior-ate-a-mesma-hora-viva.cjs",
+    // 20261397000000: o desconto do cupom de porcentagem e' arredondado ao centavo ANTES de subtrair (v23, v24 e validate_coupon_secure_v2; contas, controle, mutantes,
+    // dado antigo intacto, rollback byte a byte, aplicar duas vezes, pre/pos-voo e consultas 115a/115b).
+    "tests/banco/o-desconto-do-cupom-e-arredondado-ao-centavo-viva.cjs",
+    // 20261405800000: o cupom que nao da desconto nao vale (a RPC recusa desconto zerado pelo arredondamento).
+    "tests/banco/o-cupom-que-nao-da-desconto-nao-vale-viva.cjs",
+    // sem migration: o frete que o pedido grava segue a regra viva da loja (limite de frete gratis, por produto, nacional e cotacao velha recusada; 58 cenarios e 2 controles).
+    "tests/banco/o-frete-do-pedido-segue-a-regra-da-loja-viva.cjs",
+    "tests/banco/cotacao-de-frete-de-outra-origem-ou-velha-nao-vira-preco-viva.cjs",
+    // 20261396000000: cada conta tem no maximo 10 aparelhos com aviso ligado (gatilho BEFORE INSERT em push_subscriptions; o re-registro do mesmo aparelho por upsert nao conta;
+    // duas conexoes reais, mutantes, rollback, pre/pos-voo e consultas 112a/112b).
+    "tests/banco/cada-conta-tem-no-maximo-10-aparelhos-viva.cjs",
+    // 20261396100000: a pergunta do produto nasce com a data de agora (gatilho BEFORE INSERT em questions troca created_at por now() para cliente que nao e' administrador;
+    // admin, service_role e sessao direta gravam como vierem; mutantes, rollback, pre/pos-voo e consultas 113a/113b).
+    "tests/banco/a-pergunta-nasce-com-a-data-de-agora-viva.cjs",
+    // 20261396200000: o texto da avaliacao tem teto no banco (CHECK de 1000 caracteres NOT VALID em reviews; 1001 recusado para todos; a migration se recusa se ja
+    // houver avaliacao acima do teto (o CHECK travaria o pagamento do pedido); mutantes, rollback, pre/pos-voo e consultas 114a/114b).
+    "tests/banco/o-texto-da-avaliacao-tem-teto-no-banco-viva.cjs",
+    // 20261399100000: o nome do perfil (e o WhatsApp) tem teto no banco (tres CHECKs NOT VALID: nome ate 120 em profiles e em public_profiles, WhatsApp ate 20; 121 e 2 milhoes
+    // recusados para todos e a vitrine nunca devolve nome acima de 120; a migration se recusa se ja houver perfil acima do teto (o CHECK travaria foto, CPF e cargo da conta);
+    // mutantes, rollback byte a byte, pre/pos-voo, atomicidade e lock_timeout nas duas tabelas).
+    "tests/banco/o-nome-do-perfil-tem-teto-no-banco-viva.cjs",
+    // 20261399200000: a busca de produtos do painel e do balcao acha por palavras (todas as palavras, qualquer ordem, nome/codigo/SKU/nome e valor das variacoes ativas; codigo de barras por
+    // igualdade; % _ e barra valem como letras; controle com o corpo da 385; mutantes, rollback byte a byte, pre/pos-voo, atomicidade e consultas 119a/119b).
+    "tests/banco/a-busca-do-painel-acha-por-palavras-viva.cjs",
+    // 20261399300000: o estorno em andamento nao e conta vencida (painel_inicio.contas_vencidas e fin_resumo.a_pagar.vencido; a conta lancada segue; a_pagar_7d nao muda; controle com os corpos
+    // anteriores, mutantes, rollback byte a byte, pre/pos-voo, atomicidade e consultas 119a/119b).
+    "tests/banco/o-estorno-em-andamento-nao-e-conta-vencida-viva.cjs",
+    // 20261399400000: a cliente e avisada quando a loja responde a avaliacao dela (as duas sobrecargas de reply_review_atomic criam o aviso no sino; um por avaliacao; a falha do aviso nunca perde a resposta;
+    // a linha do log de push continua; controle com o corpo anterior, corrida real, mutantes, rollback byte a byte, pre/pos-voo e consultas 120a/120b).
+    "tests/banco/a-cliente-e-avisada-quando-a-loja-responde-a-avaliacao-viva.cjs",
+    // 20261399500000: as estrelas do produto aparecem na vitrine (gatilho em reviews recalcula produtos.rating e review_count so das publicadas; pendente nao conta; a falha da nota nunca
+    // perde a avaliacao; corrida real de duas avaliacoes, trocas cruzadas, compra segurando o produto, o pagamento nunca e a vitima do deadlock; mutantes, rollback, pre/pos-voo e consultas 121a/121b).
+    "tests/banco/as-estrelas-do-produto-aparecem-na-vitrine-viva.cjs",
+    // 20261399600000: o resultado credita o custo da devolucao de venda de outro mes (fin_dre deixa de cortar o CMV em zero; CMV negativo = credito de custo; a linha do CMV aparece quando nao e zero;
+    // controle com o corpo da 382 na mesma fixture, soma dos meses fecha com o periodo, mutantes, rollback byte a byte, pre/pos-voo e consultas 122a/122b).
+    "tests/banco/o-resultado-credita-o-custo-da-devolucao-de-outro-mes-viva.cjs",
+    // 20261399700000: o painel de avaliacoes filtra o que esta em moderacao (get_admin_reviews_paged troca de 4 para 5 argumentos: p_status 'pendente' filtra a lista e o total_count; DROP da assinatura
+    // antiga sem sobrecarga ambigua; ACL, dono e atributos iguais aos de antes; controle com o corpo da 381 na mesma fixture, mutantes, rollback byte a byte, pre/pos-voo e consultas 123a/123b).
+    "tests/banco/o-painel-de-avaliacoes-filtra-o-que-esta-em-moderacao-viva.cjs",
+    // 20261399800000: as recomendacoes do produto contam o estoque das variacoes (get_product_recommendations julga o estoque pela soma das variacoes ativas, a regra da vitrine; o esgotado com grade
+    // nao ocupa vaga e quem tem saldo so na grade entra; controle com o corpo da 20261394100000 na mesma fixture, mutantes, rollback byte a byte, pre/pos-voo e consultas 124a/124b).
+    "tests/banco/as-recomendacoes-do-produto-contam-o-estoque-das-variacoes-viva.cjs",
+    // 20261399900000: a busca de Pedidos acha o telefone colado com o +55 (get_admin_orders_paged corta o 55 dos digitos da busca com 12 ou 13 digitos que comecam por 55; DDD 55 com 11 digitos nao perde o 55;
+    // controle com o corpo da 20261387000000 na mesma fixture, mutantes, rollback byte a byte, pre-voo e consultas 125a/125b).
+    "tests/banco/a-busca-de-pedidos-acha-o-telefone-colado-com-o-55-viva.cjs",
+    // 20261399910000: a busca de Devolucoes ignora o acento (admin_devolucoes_listar compara protocolo e nome do cliente com f_unaccent nos dois lados; controle com o corpo da 20261395000000 na mesma fixture,
+    // mutantes, rollback byte a byte, pre/pos-voo e consultas 126a/126b).
+    "tests/banco/a-busca-de-devolucao-ignora-o-acento-viva.cjs",
+    // 20261399920000: o sino do pedido vencido fala do vencimento (notifica_cliente_de_mudanca_de_status avisa "Prazo do pagamento terminou" no cancelamento com payment_status expirado, que a varredura grava junto;
+    // controle com o corpo da 20261233000000 na mesma fixture, a varredura real, mutantes, dado existente intacto, rollback byte a byte, pre/pos-voo e consultas 127a/127b).
+    "tests/banco/o-sino-do-pedido-vencido-fala-do-vencimento-viva.cjs",
     // 20261399930000: o caixa e a conta recusam NaN, infinito e acima do teto antes de escrever (controle com o corpo anterior, mutantes por MUTANTE_R150E, rollback e consultas 128a/128b).
     "tests/banco/o-caixa-e-a-conta-recusam-nan-viva.cjs",
     // 20261399970000: o ranking de lucro desconta a devolucao e o estorno (get_admin_analytics_v2: topProducts e o lucro do grafico diario; controle com o corpo da 251 na mesma fixture, JSON inteiro igual sem devolucao,
@@ -875,9 +695,6 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261399990000: o CRM nao duplica o comprador quando o WhatsApp vem com e sem o 55 (crm__vendas: chave e fusao pelo numero sem o 55; controle com o corpo da 20261178000000 na mesma fixture, bordas,
     // mutantes, rollback byte a byte, conexao sem BEGIN, pre/pos-voo e consultas 142a/142b).
     "tests/banco/o-crm-nao-duplica-o-comprador-com-e-sem-55-viva.cjs",
-    // 20261399993000: o CRM e a lista de clientes nao contam a mesma pessoa duas vezes (crm__nunca_comprou sem quem ja esta em "pediu e nao pagou"; get_admin_customers_paged com UM endereco principal;
-    // controle com os corpos da 183 e da 392, 12 mutantes, rollback byte a byte, conexao sem BEGIN e consultas 145a/145b).
-    "tests/banco/o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-viva.cjs",
     // 20261399994000: o item que a lojista marcou "Nao veio" fica com a cliente no ranking de lucro (get_admin_analytics_v2: topProducts e o lucro do grafico diario; controle com o corpo da 3997 na mesma fixture,
     // JSON inteiro igual sem item "Nao veio", 10 mutantes, rollback byte a byte, conexao sem BEGIN, pre/pos-voo e consultas 146a/146b).
     "tests/banco/o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-viva.cjs",
@@ -887,37 +704,220 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261399996000: o painel de avaliacoes filtra o que esta sem resposta (get_admin_reviews_paged, a mesma assinatura de 5 argumentos, ganha p_status = 'sem_resposta' = merchant_reply IS NULL, a regra do sino;
     // controle com o corpo da 3997 na mesma fixture, nula/vazia/so espaco/preenchida, paginacao, mutantes, rollback byte a byte, conexao sem BEGIN e consultas 148a/148b).
     "tests/banco/o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-viva.cjs",
-    // 20261399991000: repetir a devolucao que falhou nao paga duas vezes (solicitar_estorno_repetindo e order_refund_repeticao; controle com o caminho antigo, duas conexoes reais na mesma falhada, 17 recusas,
-    // permissao, 15 mutantes, reaplicar, pre-voo, rollback que recusa com marca, conexao sem BEGIN e consultas 143a/143b).
-    "tests/banco/repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-viva.cjs",
-    // Onda 150 (sem migration): o balcao recusa venda sem item e com itens demais (22023, frase exata, nada escrito; 200 entra; mutantes por MUTANTE_R150E).
-    "tests/banco/o-balcao-recusa-venda-sem-item-e-com-itens-demais-viva.cjs",
     // 20261399997000: o pedido guarda quem vai receber (v23 e v24 copiam o nome do endereco salvo para customer_data.address.recipient_name; so conta com endereco salvo, sem nome/retirada/
     // visitante/endereco digitado como antes, pedido antigo intacto, controle com o corpo da 397, mutantes, rollback byte a byte, aplicar duas vezes, pre/pos-voo e consultas 150a/150b).
     "tests/banco/o-pedido-guarda-quem-vai-receber-viva.cjs",
     // 20261399998000: a loja recebe o plano por uma porta unica (tabela assinatura_da_loja_chave selada com o hash da chave da loja, definir_chave so do service_role e a PORTA assinatura_da_loja_gravar para anon e
     // authenticated: autentica pelo hash ANTES de olhar os dados, lista branca de 10 campos, recursos e observacao nunca, mais velho ignorado, simular sem gravar; corrida de duas conexoes, 18 mutantes, rollback, pre/pos-voo e consultas 150c/150d).
     "tests/banco/a-loja-recebe-o-plano-por-porta-unica-viva.cjs",
-    // Onda 1.5.207 (sem migration): o aviso de cobranca duplicada respeita o ciclo da reserva (7 provas, 2 mutantes).
-    "tests/banco/aviso-de-cobranca-duplicada-ciclo-de-reserva.cjs",
-    // 20261402000000: o Inicio mostra o dinheiro a devolver e a margem do Financeiro (painel_inicio ganha dinheiro_a_devolver {valor, pedidos} e mes.receita_liquida; a conta da lista "Devolver agora" em
-    // centavos, cenarios compartilhados com o teste do front, JSON igual fora das duas chaves, 10 mutantes na rodada padrao, controle com o corpo anterior, rollback byte a byte, pre-voo, conferencia sabotada e consultas 154a/154b).
-    "tests/banco/o-inicio-dinheiro-a-devolver-viva.cjs",
+    // 20261399993000: o CRM e a lista de clientes nao contam a mesma pessoa duas vezes (crm__nunca_comprou sem quem ja esta em "pediu e nao pagou"; get_admin_customers_paged com UM endereco principal;
+    // controle com os corpos da 183 e da 392, 12 mutantes, rollback byte a byte, conexao sem BEGIN e consultas 145a/145b).
+    "tests/banco/o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-viva.cjs",
     // 20261403000000: o total comprado do cliente e o mesmo no CRM, na lista e na ficha (get_admin_customers_paged soma o balcao do mesmo WhatsApp e get_admin_user_detail ganha balcao_mesmo_whatsapp, ambos lidos de crm__vendas;
     // com e sem o 55, balcao cancelado e sem pagar fora, WhatsApp em duas contas conta uma vez, ordenacao estavel, controle com os corpos antigos, 13 mutantes, rollback byte a byte, conexao sem BEGIN, pre/pos-voo e consultas 155a/155b).
     "tests/banco/o-total-do-cliente-e-o-mesmo-nas-tres-telas-viva.cjs",
     // 20261404000000: a observacao da inspecao da devolucao e so da loja (devolucao_detalhe tira a chave para quem nao e o admin atual e authenticated perde o SELECT da tabela devolucoes inteira, ficando o SELECT
     // por coluna nas outras 34; a cliente dona sem a chave e com permission denied na coluna, admin atual com a nota, mutantes, rollback byte a byte, conexao sem BEGIN, pre/pos-voo e consultas 156a/156b).
     "tests/banco/a-observacao-da-inspecao-so-a-loja-ve-viva.cjs",
+    // 20261399991000: repetir a devolucao que falhou nao paga duas vezes (solicitar_estorno_repetindo e order_refund_repeticao; controle com o caminho antigo, duas conexoes reais na mesma falhada, 17 recusas,
+    // permissao, 15 mutantes, reaplicar, pre-voo, rollback que recusa com marca, conexao sem BEGIN e consultas 143a/143b).
+    "tests/banco/repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-viva.cjs",
+    // Onda 150 (sem migration): o balcao recusa venda sem item e com itens demais (22023, frase exata, nada escrito; 200 entra; mutantes por MUTANTE_R150E).
+    "tests/banco/o-balcao-recusa-venda-sem-item-e-com-itens-demais-viva.cjs",
+    // 20261399940000: o cadastro cria o perfil em toda loja (gatilho on_auth_user_created so se ausente; reparo de quem ficou sem perfil sem rebaixar admin nem violar os tetos de nome e WhatsApp;
+    // controle sem o gatilho, papel sem EXECUTE, mutantes, rollback, pre-voo, atomicidade e consultas 149a/149b).
+    "tests/banco/o-cadastro-cria-o-perfil-em-toda-loja-viva.cjs",
+    // 20261402000000: o Inicio mostra o dinheiro a devolver e a margem do Financeiro (painel_inicio ganha dinheiro_a_devolver {valor, pedidos} e mes.receita_liquida; a conta da lista "Devolver agora" em
+    // centavos, cenarios compartilhados com o teste do front, JSON igual fora das duas chaves, 10 mutantes na rodada padrao, controle com o corpo anterior, rollback byte a byte, pre-voo, conferencia sabotada e consultas 154a/154b).
+    "tests/banco/o-inicio-dinheiro-a-devolver-viva.cjs",
+    "tests/banco/financeiro-viva.cjs",
+    // Guardas vivas do Financeiro: categorias automaticas, conta de sistema e recusas da baixa.
+    "tests/banco/financeiro-recusas-da-baixa-conta-e-categoria-viva.cjs",
+    "tests/banco/pagamentos-rpc-viva.cjs",
+    // 20261349000000: o pedido entregue antes da confirmacao do PIX entra na fila de reconciliacao (borda, dados existentes, ACL, rollback, pre/pos-voo e consultas 80a/80b).
+    "tests/banco/reconciliacao-do-entregue-viva.cjs",
+    // 20261350000000: a compra online trava o preco-base (OF v, p) e a mesma chave espera a primeira (advisory lock): duas conexoes reais, rollback, pre/pos-voo e consultas 81a/81b.
+    "tests/banco/compra-online-travas-viva.cjs",
+    "tests/banco/cupom-tipo-invalido-e-recusado-no-banco-viva.cjs",
     // 20261400000000: valores negativos nao entram no banco (taxa de entrega local, preco do produto, preco da variacao e valor do cupom: CHECK >= 0 e <> NaN, criadas JA VALIDADAS;
     // 23514 em todas as portas, zero e NULL de variacao seguem, linha antiga ruim faz a migration se recusar (B1_BASELINE_DIVERGENT), 12 mutantes, reaplicar, rollback, falha no meio e lock_timeout).
     "tests/banco/valores-negativos-prova.cjs",
-    // 20261405800000: o cupom que nao da desconto nao vale (a RPC recusa desconto zerado pelo arredondamento).
-    "tests/banco/o-cupom-que-nao-da-desconto-nao-vale-viva.cjs",
-    // 20261406000000: o pedido guarda o nome antigo da opção após renomear a variação.
-    "tests/banco/o-pedido-guarda-o-nome-antigo-da-opcao-viva.cjs",
-    // 20261410000000: painel e rastreio por código devolvem os rótulos históricos.
-    "tests/banco/rotulo-historico-na-lista-e-no-rastreio-viva.cjs",
+    "tests/banco/cupom-ultima-vaga-corrida-viva.cjs",
+    // 20261352000000: o produto e a grade salvam numa transacao so (travas da compra online, versao conferida, PRD01, mutantes, 2 conexoes reais, rollback e consultas 84a/84b).
+    "tests/banco/salvar-produto-com-grade-viva.cjs",
+    "tests/banco/variante-estoque-negativo-e-recusado-no-banco-viva.cjs",
+    "tests/banco/variante-sku-repetido-e-recusado-no-banco-viva.cjs",
+    // 20261380: o aviso de cancelados antigos conta so pendencia real (pedido a pedido, mutantes, rollback e consultas 85a/85b).
+    "tests/banco/o-aviso-de-cancelados-antigos-viva.cjs",
+    // 20261381: o ex-admin perde o acesso na hora no resto do painel (21 politicas, 10 RPCs; 4 ex-admins, mutantes, rollback e consultas 86a/86b).
+    "tests/banco/admin-atual-endurecimento-viva.cjs",
+    // 20261383: so o dono da loja define cargo (dono nomeia e remove, nomeado nao nomeia, ninguem rebaixa o dono, PATCH direto barrado, log, EXECUTE, concorrencia real, mutantes, rollback, consultas 88a/88b).
+    "tests/banco/definir-cargo-so-o-dono-viva.cjs",
+    // 20261384: o pedido pago pelo app exige conta (visitante sem conta recusado antes de reservar estoque; logado e pagar na entrega como hoje; retry; concorrencia real; mutantes; rollback; consultas 89a/89b).
+    "tests/banco/pedido-pelo-app-exige-conta-viva.cjs",
+    "tests/banco/admin-atual-viva.cjs",
+    // 20261199000000: portas do painel.
+    "tests/banco/admin-atual-portas-viva.cjs",
+    // 20261200000000: a decisão da devolução exige o admin de agora.
+    "tests/banco/admin-atual-devolucao-viva.cjs",
+    // 20261202000000: as políticas de RLS do pedido, da devolução e do financeiro.
+    "tests/banco/admin-atual-rls-viva.cjs",
+    "tests/banco/contestacao-viva.cjs",
+    // 20261198000000: cancelar anula a cobrança.
+    "tests/banco/cancelar-pedido-viva.cjs",
+    // Ordem das travas COMPOSTA (96 x 98 x 97/94/89 x reemitir, ciclo de 3).
+    "tests/banco/ordem-das-travas-composta-viva.cjs",
+    // O envelope do aplicar-migrations.yml: impressão digital, gate de transporte e cadeia de rollback-manual.
+    "tests/banco/impressao-digital-viva.cjs",
+    // Lote 60-66: a consulta 9a reprova cada desvio e o backfill do ledger só grava com ela positiva.
+    "tests/banco/lote-60-66-viva.cjs",
+    // 8k: a conferência de subtotal do portão (a 8c com a prova de loja VAZIA) decide certo.
+    "tests/banco/subtotal-vazia-provada-viva.cjs",
+    // 20261203000000: cupons desligados não dão desconto (gatilho + validação).
+    "tests/banco/cupons-desligados-viva.cjs",
+    // 20261203000000: o portão da release (consultas 10a e 10b do lote) decide certo.
+    "tests/banco/cupons-desligados-portao-viva.cjs",
+    // 20261204000000: a venda do balcão se anula no mesmo dia (só o admin de agora).
+    "tests/banco/anular-venda-viva.cjs",
+    // 20261204000000: o portão da release (consultas 11a e 11b do lote) decide certo.
+    "tests/banco/anular-venda-portao-viva.cjs",
+    // 20261205000000 e 20261206000000: o cupom preso diz quando a vaga volta, e a vaga do pedido nunca cobrado volta em 1 h.
+    "tests/banco/cupom-preso-viva.cjs",
+    // 20261205000000 e 20261206000000: o portao da release (consultas 12a e 12b do lote) decide certo.
+    "tests/banco/cupom-preso-portao-viva.cjs",
+    // Consulta 13a: o item dos dependentes da coluna do contador duplicado conta a coluna gerada que a cita.
+    "tests/banco/consulta-13a-contador-duplicado-viva.cjs",
+    // 20261207000000: a coluna duplicada de contagem de uso do cupom e apagada (recusas sem gravar, corrida, rollback).
+    "tests/banco/contador-duplicado-viva.cjs",
+    // 20261207000000: o portao da release (consultas 14a e 14b do lote) decide certo.
+    "tests/banco/contador-duplicado-portao-viva.cjs",
+    // 20261208000000: o checkout mostra os cupons da cliente (lista, exclusivo, gatilho com o atalho de retentativa, painel do admin atual, ida e volta).
+    "tests/banco/cupons-do-checkout-viva.cjs",
+    "tests/banco/cupons-do-checkout-portao-viva.cjs",
+    // 20261209000000: a foto da cobranca no cancelamento (gatilho, tabela fechada, envelope, ida e volta).
+    "tests/banco/cupom-pix-anulado-viva.cjs",
+    // 20261209000000 e 20261210000000: o portao da release (consultas 16a e 16b do lote) decide certo.
+    "tests/banco/cupom-pix-anulado-portao-viva.cjs",
+    // 20261212000000 a 20261214000000: o portao da release (consultas 17a e 17b do lote) decide certo.
+    "tests/banco/estoque-do-painel-portao-viva.cjs",
+    // 20261215000000: o portao da release (consultas 19a e 19b do lote) decide certo.
+    "tests/banco/politica-devolucao-portao-viva.cjs",
+    // 20261216000000: o portao da release (consultas 20a e 20b do lote) decide certo.
+    "tests/banco/fotos-da-devolucao-portao-viva.cjs",
+    // 20261217000000: os tetos de e-mail e o codigo do convidado (comportamento) e o portao da
+    // release (consultas 21a e 21b do lote) decide certo.
+    "tests/banco/teto-de-email-viva.cjs",
+    "tests/banco/teto-de-email-portao-viva.cjs",
+    // 20261218000000, 20261218000100 e 20261219000000: as portas pequenas do banco (comportamento) e
+    // o portao da release (consultas 22a e 22b do lote) decide certo.
+    "tests/banco/portas-do-banco-viva.cjs",
+    // 20261408000000: o nome abreviado aparece nas duas views da vitrine (12 casos de nome; foto, moderacao,
+    // nome cadastrado e contrato das views preservados; pre-voo, rollback e consultas 165a/165b).
+    "tests/banco/o-nome-publico-da-vitrine-viva.cjs",
+    "tests/banco/portas-do-banco-portao-viva.cjs",
+    // 20261220000000: a consulta antiga de pedido por codigo fecha para o visitante (comportamento) e o
+    // portao da release (consultas 23a e 23b do lote) decide certo.
+    "tests/banco/consulta-antiga-de-pedido-viva.cjs",
+    "tests/banco/consulta-antiga-de-pedido-portao-viva.cjs",
+    // 20261221000000: a media de avaliacoes e o voto "util" fecham para o visitante (comportamento).
+    "tests/banco/avaliacoes-fechadas-ao-visitante-viva.cjs",
+    "tests/banco/avaliacoes-fechadas-ao-visitante-portao-viva.cjs",
+    // 20261222000000: a media de avaliacoes so responde ao administrador (corpo com is_admin(); comportamento e portao 25a/25b).
+    "tests/banco/media-de-avaliacoes-so-admin-viva.cjs",
+    "tests/banco/media-de-avaliacoes-so-admin-portao-viva.cjs",
+    // 20261223000000: o voto util so vale em avaliacao que o publico ve (corpo com status = 'publicada'; comportamento e portao 26a/26b).
+    "tests/banco/voto-util-so-em-avaliacao-publica-viva.cjs",
+    "tests/banco/voto-util-so-em-avaliacao-publica-portao-viva.cjs",
+    // 20261224000000: a avaliacao nasce sem a resposta da loja (gatilho BEFORE INSERT; comportamento e portao 27a/27b).
+    "tests/banco/avaliacao-nasce-sem-resposta-da-loja-viva.cjs",
+    "tests/banco/avaliacao-nasce-sem-resposta-da-loja-portao-viva.cjs",
+    // 20261229000000: o endereco da compra fica no pedido (v23 e v24 copiam o endereco da conta; comportamento e portao 31a/31b).
+    "tests/banco/endereco-no-pedido-viva.cjs",
+    "tests/banco/endereco-no-pedido-portao-viva.cjs",
+    // 20261232000000: a grade do CRM mede a recencia do mesmo instante da lista (so depois da 20261227; comportamento e portao 33a/33b).
+    "tests/banco/a-grade-do-crm-mede-a-recencia-viva.cjs",
+    "tests/banco/a-grade-do-crm-mede-a-recencia-portao-viva.cjs",
+    // 20261236000000: a compra que da R$ 0,00 nao se paga pelo app (create_marketplace_order_v24 recusa o total zero pelo app antes de gravar pedido, estoque e cupom; comportamento pelo checkout real, ordem provada por sequencia, e portao 37a/37b).
+    "tests/banco/a-compra-que-da-zero-reais-nao-se-paga-pelo-app-viva.cjs",
+    "tests/banco/a-compra-que-da-zero-reais-nao-se-paga-pelo-app-portao-viva.cjs",
+    // 20261227000000 e 20261228000000: os numeros do painel (a taxa de devolucao da mesma turma de vendas e o corte
+    // na mesma hora; comportamento e portao 30a/30b).
+    "tests/banco/numeros-do-painel-viva.cjs",
+    "tests/banco/numeros-do-painel-portao-viva.cjs",
+    // 20261225000000: o reembolso da devolucao so e liberado quando o dinheiro sai (gatilho de aviso pelo estado real; comportamento e portao 28a/28b).
+    "tests/banco/reembolso-da-devolucao-viva.cjs",
+    "tests/banco/reembolso-da-devolucao-portao-viva.cjs",
+    // 20261226000000: a reemissao do reembolso consulta o MP antes de pagar de novo (gate de "nada saiu", adotar so linha incerta, devolucao pelo painel do MP, ator admin atual, ACL; comportamento e portao 29a/29b).
+    "tests/banco/reemissao-do-reembolso-viva.cjs",
+    "tests/banco/reemissao-do-reembolso-portao-viva.cjs",
+    // 20261230000000 e 20261231000000: a busca de clientes (get_admin_customers_paged acha pelo numero do WhatsApp; crm_clientes ignora acento; comportamento e portao 32a/32b).
+    "tests/banco/busca-de-clientes-viva.cjs",
+    "tests/banco/busca-de-clientes-portao-viva.cjs",
+    // 20261234000000: o lucro so conta produto com custo (get_admin_analytics_v2: lucro por dia e top 5 sem a margem inventada de produto sem custo; comportamento e portao 35a/35b).
+    "tests/banco/lucro-so-com-custo-viva.cjs",
+    "tests/banco/lucro-so-com-custo-portao-viva.cjs",
+    // 20261240000000: a cliente e avisada quando a loja responde a pergunta dela (answer_question_atomic, as duas sobrecargas: aviso no sino em vez da linha falsa no log de push; comportamento e portao 41a/41b).
+    "tests/banco/pergunta-respondida-avisa-viva.cjs",
+    "tests/banco/pergunta-respondida-avisa-portao-viva.cjs",
+    // 20261241000000: o reembolso em duvida prende o saldo (regra unica pode_ter_saido, saldo com o em duvida, as duas saidas de 7 dias pela mesma espera do painel, autorizar recusa a linha liberada por fora; comportamento com 2 conexoes e mutantes, e portao 43a/43b).
+    "tests/banco/reembolso-em-duvida-viva.cjs",
+    // solicitar_estorno vivo: pagamento inelegivel, pedido nao cancelado e produto nao devolvido recusam sem linha; duas chamadas disputam o saldo (mutantes no clone).
+    "tests/banco/solicitar-estorno-recusas-e-corrida-viva.cjs",
+    "tests/banco/reembolso-em-duvida-portao-viva.cjs",
+    // 20261242000000: o lucro usa o custo do dia da venda (tabela lateral so do servidor, gatilho que nunca derruba a compra, get_admin_analytics_v2 e fin_dre leem o custo do dia; comportamento e portao 45a/45b/45m).
+    "tests/banco/custo-do-dia-viva.cjs",
+    "tests/banco/custo-do-dia-portao-viva.cjs",
+    // 20261245: o cupom desconta do lucro diário e do ranking; mantém a cadeia de custo do dia.
+    "tests/banco/lucro-com-desconto-viva.cjs",
+    // 20261233000000: o sino do pedido de retirada fala de retirada (corpo da funcao de gatilho com o ramo da retirada; comportamento e portao 34a/34b).
+    "tests/banco/o-sino-do-pedido-de-retirada-viva.cjs",
+    "tests/banco/o-sino-do-pedido-de-retirada-portao-viva.cjs",
+    // 20261235000000: a venda repetida do balcao devolve a venda feita (trava consultiva pela chave de idempotencia; comportamento com 2 conexoes e portao 36a/36b).
+    "tests/banco/venda-balcao-mesma-chave-viva.cjs",
+    "tests/banco/venda-balcao-mesma-chave-portao-viva.cjs",
+    // 20261243000000: desfazer o recebimento recusa pedido com devolucao viva (registrar_pagamento_recebido; comportamento com 2 conexoes, corrida nos dois sentidos, rollback e mutantes; o portao da release desta migration ainda nao existe).
+    "tests/banco/desfazer-recebimento-viva.cjs",
+    "tests/banco/desfazer-recebimento-portao-viva.cjs",
+    // 20261244000000: a loja escolhe como entrega na cidade e em quantos dias (v23, v24 e upsert_store_config; matriz das duas compras, trigger, rollbacks nos dois degraus e mutantes; e o portao 47a/47b).
+    "tests/banco/a-loja-escolhe-como-entrega-viva.cjs",
+    "tests/banco/a-loja-escolhe-como-entrega-portao-viva.cjs",
+    // 20261237000000: a lojista renomeia e apaga categoria sem deixar produto orfao (permissao e regra de devolucao; comportamento e portao 38a/38b).
+    "tests/banco/categorias-gestao-viva.cjs",
+    "tests/banco/categorias-gestao-portao-viva.cjs",
+    // 20261238000000: a cliente pede a exclusao da conta e a correcao do e-mail (tabela pedidos_de_privacidade, dado de cliente; comportamento, ensaio do roteiro de anonimizacao e portao 39a/39b).
+    "tests/banco/pedidos-de-privacidade-viva.cjs",
+    "tests/banco/anonimizar-conta-ensaio-viva.cjs",
+    "tests/banco/pedidos-de-privacidade-portao-viva.cjs",
+    // 20261239000000: a loja declara razao social, CNPJ/CPF e e-mail de atendimento (upsert_store_config, as tres colunas e a v_store_config; comportamento e portao 40a/40b).
+    "tests/banco/loja-declara-quem-e-viva.cjs",
+    "tests/banco/loja-declara-quem-e-portao-viva.cjs",
+    // L8 (sem migration): funcao nova de banco nao nasce aberta ao visitante (so le o catalogo; lista versionada).
+    "tests/banco/portas-do-visitante-so-as-permitidas-viva.cjs",
+    // 20261212000000 a 20261214000000: estoque baixo numa regua so e o valor do estoque so com custo.
+    "tests/banco/estoque-baixo-uma-regra-viva.cjs",
+    "tests/banco/inventario-so-com-custo-viva.cjs",
+    // 8e (rol 92-202): aceita o corpo da 20261199 OU o da sucessora (20261212, 20261214), cada funcao por si.
+    "tests/banco/portao-8e-aceita-sucessoras-viva.cjs",
+    // Onda I (so leitura): a receita do mes caracterizada e o estoque minimo editavel so pelo admin.
+    "tests/banco/receita-uma-regua-viva.cjs",
+    "tests/banco/estoque-minimo-editavel-viva.cjs",
+    // Auditoria 11/10: medicao (nao e portao, sai sempre 0) das portas que o anonimo abriria, em ROLLBACK.
+    "tests/banco/portas-anon-exploracao-dinheiro.cjs",
+    "tests/banco/portas-anon-exploracao-dados.cjs",
+    "tests/banco/portas-anon-exploracao-estoque-otp.cjs",
+    // 20261246000000: o lancamento repetido nao duplica (chave de tentativa em fin_lancamento_salvar; corrida real, atomicidade, mutantes e o portao 49a/49b).
+    "tests/banco/lancamento-idempotente-viva.cjs",
+    // 20261247000000: a anotacao interna do pedido nao chega a cliente (tabela so do admin de agora; papeis reais, pre-voo, rollbacks, mutantes e o portao 50a/50b).
+    "tests/banco/nota-interna-do-pedido-viva.cjs",
+    // 20261248000000: a coluna notes do pedido fecha para a gravacao do painel (REVOKE UPDATE (notes) do authenticated; ACL de antes e de depois, pre-voo, conferencia final, atomicidade, mutantes e o portao 51a/51b).
+    "tests/banco/notes-do-pedido-fechada-viva.cjs",
+    // 20261249000000: o motivo do desconto fica na nota privada, preservando trava e idempotencia.
+    "tests/banco/pdv-motivo-privado-viva.cjs",
+    // 20261280000000: total conferido do balcão pelo servidor, com a assinatura nova e a anterior.
+    "tests/banco/pdv-total-conferido-viva.cjs",
+    "tests/banco/invariantes-dinheiro.cjs",
+    // send-order-whatsapp: cada select da edge executa no schema real.
+    "tests/banco/whatsapp-edge-consultas-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(
@@ -937,6 +937,11 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     provas.length,
     PROVAS_DO_DINHEIRO.length,
     "uma prova por nome da lista",
+  );
+  assertEquals(
+    provas.flatMap(scriptsDeProva),
+    PROVAS_DO_DINHEIRO,
+    "a lista acompanha a ordem das provas no workflow",
   );
   for (const passo of provas) {
     assertStringIncludes(
