@@ -144,6 +144,7 @@ describe("createOrder manda ao banco o pedido inteiro, com cupom, variação e e
       expect.anything(),
     );
     const args = argumentosDaRpc();
+    expect(args.p_total_amount).toBe(80);
     expect(args.p_coupon_code).toBe("DEZ");
     expect(args.p_items).toEqual([
       { product_id: "prod-1", variant_id: "var-p", quantity: 2 },
