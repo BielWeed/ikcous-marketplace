@@ -3264,8 +3264,8 @@ const ROL_DO_NOME_PUBLICO = [
   "nome publico: vw_questions_public",
 ];
 const ROL_FECHADO_POR_CONSULTA = {
-  "163a-conferir-o-nome-publico-da-vitrine-aplicado": ROL_DO_NOME_PUBLICO,
-  "163b-antes-o-nome-publico-da-vitrine-base-vigente": ROL_DO_NOME_PUBLICO,
+  "165a-conferir-o-nome-publico-da-vitrine-aplicado": ROL_DO_NOME_PUBLICO,
+  "165b-antes-o-nome-publico-da-vitrine-base-vigente": ROL_DO_NOME_PUBLICO,
   "162a-conferir-o-pedido-guarda-o-nome-antigo-da-opcao-aplicado": ROL_DA_162,
   "162b-antes-o-pedido-guarda-o-nome-antigo-da-opcao-base-vigente": ROL_DA_162,
   "163a-conferir-chaves-de-frete-so-o-servidor-aplicado": ROL_DA_163,

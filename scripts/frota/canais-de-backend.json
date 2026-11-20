@@ -792,9 +792,9 @@
       "_comentario": "Apply normal aditivo. Só redefine a leitura de vendas por categoria, sem alterar dados ou privilégios. Banco antes do front. Rollback restaura o corpo da 20261199000000 byte a byte."
     },
     {
-      "consulta": "163a-conferir-o-nome-publico-da-vitrine-aplicado",
+      "consulta": "165a-conferir-o-nome-publico-da-vitrine-aplicado",
       "versoes": ["20261408000000"],
-      "ausenciaConfirmadaPor": "163b-antes-o-nome-publico-da-vitrine-base-vigente",
+      "ausenciaConfirmadaPor": "165b-antes-o-nome-publico-da-vitrine-base-vigente",
       "_comentario": "Apply aditivo. As duas views passam a exibir o nome abreviado e a coluna gerada acompanha o nome cadastrado, sem mudar grants nem dados existentes. Banco antes do front. Cliente logada ainda pode ler full_name diretamente nesta etapa."
     }
   ],

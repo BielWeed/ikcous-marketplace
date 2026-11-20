@@ -104,7 +104,7 @@ prova(
       await q(rollback);
       const corpoAnterior = await definicoesDasViews();
       assert.deepEqual(
-        await P.consulta("163b-antes-o-nome-publico-da-vitrine-base-vigente"),
+        await P.consulta("165b-antes-o-nome-publico-da-vitrine-base-vigente"),
         [],
       );
       await semear();
@@ -123,7 +123,7 @@ prova(
       await q(migration);
       assert.deepEqual(await catalogoDasViews(), anterior);
       assert.deepEqual(
-        await P.consulta("163a-conferir-o-nome-publico-da-vitrine-aplicado"),
+        await P.consulta("165a-conferir-o-nome-publico-da-vitrine-aplicado"),
         [],
       );
       await testarVitrine("Ana S.");
@@ -143,7 +143,7 @@ prova(
       await q(rollback);
       assert.deepEqual(await definicoesDasViews(), corpoAnterior);
       assert.deepEqual(
-        await P.consulta("163b-antes-o-nome-publico-da-vitrine-base-vigente"),
+        await P.consulta("165b-antes-o-nome-publico-da-vitrine-base-vigente"),
         [],
       );
       assert.deepEqual(await catalogoDasViews(), anterior);

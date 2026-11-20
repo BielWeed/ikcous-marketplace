@@ -10,6 +10,12 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const addReview = vi.fn();
+const CASOS_INVISIVEIS = [
+  "\u{200b}",
+  "\u{200e}\u{200e}",
+  "\u{2800}",
+  "\u{3164}",
+];
 
 it("mostra o nome que vai aparecer antes de enviar a avaliação", async () => {
   await montar(5);
@@ -116,7 +122,7 @@ describe("ReviewCard — avaliação só com estrelas", () => {
 
   // r150-f: `trim()` não tira U+200B/U+200E/U+2800/U+3164; uma avaliação antiga
   // gravada só com isso desenhava o parágrafo em branco.
-  it.each(["​", "‎‎", "⠀", "ㅤ"])(
+  it.each(CASOS_INVISIVEIS)(
     "comentário só de caractere invisível (%j) não desenha o parágrafo",
     async (comment) => {
       const { ReviewCard } = await import("@/components/ui/custom/ReviewCard");
@@ -205,7 +211,7 @@ describe("ReviewForm — comentário opcional", () => {
   // r150-f: comentário só de U+200B/U+200E/U+2800/U+3164 vira "" no envio (as
   // estrelas bastam) e NÃO conta como texto digitado (a folha não pergunta
   // "descartar texto?" nem segura a atualização do app por ele).
-  it.each(["​", "‎‎", "⠀", "ㅤ"])(
+  it.each(CASOS_INVISIVEIS)(
     "comentário só de caractere invisível (%j) vai como vazio e não conta como texto",
     async (invisivel) => {
       const { ReviewForm } = await import("@/components/ui/custom/ReviewForm");
