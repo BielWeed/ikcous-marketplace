@@ -103,6 +103,8 @@ describe("AddressForm — complemento e referência só com espaços", () => {
     );
     expect(outro).toBeDefined();
     await act(async () => outro!.click());
+    // Espere o foco agendado por "Outro" antes de simular o próximo clique.
+    await esperarAte(() => document.activeElement?.id === "name");
   }
 
   async function abrirReferencia() {
@@ -123,6 +125,8 @@ describe("AddressForm — complemento e referência só com espaços", () => {
     await abrirReferencia();
     const campo = document.getElementById("reference");
     expect(campo).not.toBeNull();
+    // O setFocus do formulário aplica o foco de forma assíncrona.
+    await esperarAte(() => document.activeElement === campo);
     expect(document.activeElement).toBe(campo);
   });
 
