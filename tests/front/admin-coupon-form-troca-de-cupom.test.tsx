@@ -138,7 +138,7 @@ describe("formulário de cupom — troca de identidade sem desmontar a tela", ()
       { type: "fixed", value: 30 },
       undefined,
       expect.objectContaining({
-        descontoLido: { type: "percentage", value: 30 },
+        original: { type: "percentage", value: 30 },
       }),
     ]);
   });
