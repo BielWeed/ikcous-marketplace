@@ -243,9 +243,10 @@ it.each(["antes", "depois"])(
   },
 );
 
-it("avaliação recebida após prazo devolve confirmação ao pedido em vez de oferecer reenviar", async () => {
+it("avaliação existente após prazo não confirma o envio atual", async () => {
+  h.falharLeitura = true;
   h.pendurarEnvio = true;
-  h.conferida = { id: "avaliacao-recebida" };
+  h.conferida = { id: "avaliacao-antiga" };
   let resultado: unknown = null;
   await act(async () => {
     void reviews
@@ -255,9 +256,9 @@ it("avaliação recebida após prazo devolve confirmação ao pedido em vez de o
       });
     await vi.advanceTimersByTimeAsync(15001);
   });
-  expect(resultado).toMatchObject({ id: "avaliacao-recebida" });
-  expect(toast.success).toHaveBeenCalledWith(
-    "Recebemos sua avaliação! Ela aparece no produto após a aprovação da loja.",
+  expect(resultado).toMatchObject({ id: "avaliacao-antiga" });
+  expect(toast.success).toHaveBeenCalledExactlyOnceWith(
+    "Já existe uma avaliação sua para este produto. Não conseguimos confirmar este envio.",
   );
   expect(toast.error).not.toHaveBeenCalled();
 });

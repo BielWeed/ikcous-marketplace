@@ -440,7 +440,9 @@ export function useReviews() {
             // ReviewForm usa a confirmação para fechar a folha e marcar o item
             // como Avaliado no pedido, sem permitir reenviar o mesmo rascunho.
             if (!erroDaConferencia && conferida) {
-              toast.success(mensagemDeAvaliacaoRecebida);
+              toast.success(
+                "Já existe uma avaliação sua para este produto. Não conseguimos confirmar este envio.",
+              );
               return conferida;
             }
           } catch {
