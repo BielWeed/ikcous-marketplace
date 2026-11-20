@@ -178,7 +178,7 @@ describe("Gerenciar categorias", () => {
     await abrir();
 
     expect(document.body.textContent?.replace(/\s+/g, " ")).toContain(
-      "Nenhuma categoria ainda. Feche esta janela, abra Novo produto e, no campo Categoria, escolha Nova categoria.",
+      "Nenhuma categoria ainda. Feche esta janela e, no cadastro do produto, escolha Nova categoria no campo Categoria.",
     );
   });
 
