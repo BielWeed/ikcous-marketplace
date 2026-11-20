@@ -47,6 +47,8 @@ export const TIMEOUT_BUSCA_CEP_MS = 8000;
  */
 export const TIMEOUT_TENTATIVA_CEP_MS = 3000;
 
+const ORIENTACAO_ENDERECO_MANUAL = "Preencha o endereço manualmente.";
+
 /**
  * Como a última busca TERMINOU, para a tela contar à cliente sem depender do
  * toast (some em 2,5 s, longe do campo que ela está olhando). `null` = nenhuma
@@ -226,12 +228,14 @@ export function useBuscaCep(
       if (naoExiste === PROVEDORES_DE_CEP.length) {
         // TODOS responderam que não existe: aí sim é CEP errado.
         setResultado({ tipo: "naoEncontrado" });
-        if (avisarPorToastRef.current) toast.error("CEP não encontrado");
+        if (avisarPorToastRef.current) {
+          toast.error(`CEP não encontrado. ${ORIENTACAO_ENDERECO_MANUAL}`);
+        }
       } else if (estourouOTeto || estourouTentativa) {
         setResultado({ tipo: "demorou" });
         if (avisarPorToastRef.current) {
           toast.error(
-            "A busca de CEP demorou demais. Preencha o endereço manualmente.",
+            `A busca de CEP demorou demais. ${ORIENTACAO_ENDERECO_MANUAL}`,
           );
         }
       } else {
@@ -243,7 +247,7 @@ export function useBuscaCep(
         setResultado({ tipo: "indisponivel" });
         if (avisarPorToastRef.current) {
           toast.error(
-            "Não foi possível buscar o CEP agora. Preencha o endereço manualmente.",
+            `Não foi possível buscar o CEP agora. ${ORIENTACAO_ENDERECO_MANUAL}`,
           );
         }
       }

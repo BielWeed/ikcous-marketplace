@@ -411,7 +411,12 @@ export function OrderSearch({
                       Este rastreio só encontra pedidos feitos com e-mail. Se
                       você comprou sem conta, fale com a loja e informe o
                       identificador do pedido (aparece ao finalizar a compra).
-                      Use o contato da loja que você já tem.
+                      Use o contato da loja que você já tem. Pedidos feitos sem
+                      e-mail, só com WhatsApp e pagamento na entrega, não
+                      aparecem aqui
+                      {lojaAtendePorWhatsapp
+                        ? "; fale com a loja pelo WhatsApp."
+                        : "."}
                     </p>
                     {lojaAtendePorWhatsapp && (
                       <BotaoWhatsapp

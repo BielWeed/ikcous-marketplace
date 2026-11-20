@@ -105,13 +105,18 @@ const PAULISTA = {
 };
 const CEP_A = "01310100";
 
-// Os três desfechos de falha do hook, e o aviso (toast) que cada um dá — o
-// aviso não muda neste trabalho; o teste só confirma que continua saindo.
+// Os três desfechos de falha do hook orientam a preencher o endereço à mão.
 type Falha = "naoEncontrado" | "demorou" | "indisponivel";
 const FALHAS: readonly (readonly [Falha, string])[] = [
-  ["naoEncontrado", "CEP não encontrado"],
-  ["demorou", "A busca de CEP demorou demais"],
-  ["indisponivel", "Não foi possível buscar o CEP agora"],
+  ["naoEncontrado", "CEP não encontrado. Preencha o endereço manualmente."],
+  [
+    "demorou",
+    "A busca de CEP demorou demais. Preencha o endereço manualmente.",
+  ],
+  [
+    "indisponivel",
+    "Não foi possível buscar o CEP agora. Preencha o endereço manualmente.",
+  ],
 ];
 
 function digitar(id: string, valor: string) {
@@ -297,7 +302,7 @@ describe("CheckoutView (convidado) — busca do CEP novo que falha não deixa o 
       await trocarParaOCepB();
       await falharABuscaDeB(falha);
 
-      expect(toastError).toHaveBeenCalledWith(expect.stringContaining(aviso));
+      expect(toastError).toHaveBeenCalledWith(aviso);
       expect(valor("guest-street")).toBe("");
       expect(valor("guest-neighborhood")).toBe("");
       expect(valor("guest-city")).toBe("");

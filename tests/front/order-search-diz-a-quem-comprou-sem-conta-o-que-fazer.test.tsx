@@ -115,6 +115,22 @@ describe("OrderSearch — aviso para quem comprou sem conta", () => {
     expect(recursos).toBe("noopener,noreferrer");
   });
 
+  it("explica antes dos campos que pedido sem e-mail deve ser consultado pelo WhatsApp", async () => {
+    await abrirRastrearSemConta("34999998888");
+
+    const aviso = [...host.querySelectorAll("p")].find((p) =>
+      p.textContent?.includes(
+        "Pedidos feitos sem e-mail, só com WhatsApp e pagamento na entrega, não aparecem aqui; fale com a loja pelo WhatsApp.",
+      ),
+    );
+    const email = host.querySelector('input[type="email"]');
+    expect(aviso).toBeDefined();
+    expect(email).not.toBeNull();
+    expect(
+      aviso!.compareDocumentPosition(email!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it.each([
     ["3884BE", "3884BE"],
     ["  3884BE  ", "3884BE"],

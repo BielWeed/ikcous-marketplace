@@ -86,10 +86,10 @@ describe("OrderList — contraste do texto no cartão do pedido (WCAG AA)", () =
   // sobre `bg-background`) é o mesmo degrau AA que o zinc-500 antigo, e acompanha
   // o escuro. O que importa aqui continua sendo: nenhum texto secundário cai
   // abaixo do AA, e o texto principal segue na cor cheia (`text-foreground`).
-  it("'Total': usa text-muted-foreground (contraste AA), nunca um zinc claro", async () => {
+  it("'Total do pedido': usa text-muted-foreground (contraste AA), nunca um zinc claro", async () => {
     await renderizar(pedidoBase);
 
-    const rotulo = acharSpanPorTexto("Total");
+    const rotulo = acharSpanPorTexto("Total do pedido");
     expect(rotulo).not.toBeUndefined();
     expect(rotulo?.classList.contains("text-muted-foreground")).toBe(true);
     expect(rotulo?.className).not.toMatch(/text-zinc-[1-4]00/);
@@ -148,14 +148,14 @@ describe("OrderList — contraste do texto no cartão do pedido (WCAG AA)", () =
 
   // O selo de pagamento é compartilhado e tem as suas próprias cores medidas:
   // o rótulo "Total" (secundário) coexiste fora dele sem emprestar classe.
-  it("colisão real com o selo 'expirado': o selo segue com text-zinc-600 e o 'Total' fica fora dele", async () => {
+  it("colisão real com o selo 'expirado': o selo segue com text-zinc-600 e o 'Total do pedido' fica fora dele", async () => {
     const pedidoExpirado: Order = {
       ...pedidoBase,
       paymentStatus: "expirado" as PaymentStatus,
     };
     await renderizar(pedidoExpirado);
 
-    const rotuloTotal = acharSpanPorTexto("Total");
+    const rotuloTotal = acharSpanPorTexto("Total do pedido");
     expect(rotuloTotal).not.toBeUndefined();
     expect(rotuloTotal?.classList.contains("text-muted-foreground")).toBe(true);
     expect(
