@@ -27,7 +27,8 @@ export function exifComGps(orientacao = 1, little = true) {
   return app1;
 }
 
-export const jpegSintetico = new Uint8Array([
+// JPEG baseline de 1×1, cinza, com um bloco de coeficientes zerados.
+export const cabecalhoJpegSintetico = new Uint8Array([
   0xff,
   0xd8,
   0xff,
@@ -36,6 +37,49 @@ export const jpegSintetico = new Uint8Array([
   67,
   0,
   ...Array<number>(64).fill(7),
+  // SOF0: 8 bits, 1×1, um componente.
+  0xff,
+  0xc0,
+  0,
+  11,
+  8,
+  0,
+  1,
+  0,
+  1,
+  1,
+  1,
+  0x11,
+  0,
+  // DHT: um código de 1 bit em cada tabela (DC zero e AC fim do bloco).
+  0xff,
+  0xc4,
+  0,
+  38,
+  0,
+  1,
+  ...Array<number>(15).fill(0),
+  0,
+  0x10,
+  1,
+  ...Array<number>(15).fill(0),
+  0,
+]);
+
+export const jpegSintetico = new Uint8Array([
+  ...cabecalhoJpegSintetico,
+  // SOS: um componente; dados 00 seguidos de seis bits de preenchimento.
+  0xff,
+  0xda,
+  0,
+  8,
+  1,
+  1,
+  0,
+  0,
+  63,
+  0,
+  0x3f,
   0xff,
   0xd9,
 ]);

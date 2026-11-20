@@ -1,6 +1,11 @@
 import { limparExifJpeg } from "@/lib/jpeg-sem-exif";
 import { describe, expect, it } from "vitest";
-import { comExif, exifComGps, jpegSintetico } from "./fixtures/jpeg-com-gps";
+import {
+  cabecalhoJpegSintetico,
+  comExif,
+  exifComGps,
+  jpegSintetico,
+} from "./fixtures/jpeg-com-gps";
 
 function segmento(marcador: number, conteudo: string) {
   const dados = new TextEncoder().encode(conteudo);
@@ -87,7 +92,8 @@ describe("JPEG sem metadados de localização", () => {
     const scan = [
       0xff, 0xda, 0, 8, 1, 1, 0, 0, 0, 0, 5, 0xff, 0, 0xe1, 0xff, 0xd0, 7,
     ];
-    const cabecalho = jpegSintetico.subarray(0, -2);
+    const cabecalho = cabecalhoJpegSintetico.slice();
+    cabecalho[cabecalho.indexOf(0xc0)] = 0xc2;
     const esperado = new Uint8Array([
       ...cabecalho,
       ...scan,
@@ -110,6 +116,105 @@ describe("JPEG sem metadados de localização", () => {
     const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
     expect(limparExifJpeg(png)).toBe(png);
     expect(limparExifJpeg(jpegSintetico)).toBe(jpegSintetico);
+  });
+
+  it.each([
+    ["só SOI e EOI", []],
+    ["um byte depois do EOI", [0]],
+    ["dois bytes depois do EOI", [1, 2]],
+  ] as const)("preserva a entrada sem imagem: %s", (_, sobra) => {
+    const original = new Uint8Array([0xff, 0xd8, 0xff, 0xd9, ...sobra]);
+    expect(limparExifJpeg(original)).toBe(original);
+  });
+
+  it.each([
+    ["APP0 vazio", [0xff, 0xe0, 0, 2]],
+    ["COM vazio", [0xff, 0xfe, 0, 2]],
+    ["SOS sem SOF", [0xff, 0xda, 0, 2]],
+    ["SOS com dados sem SOF", [0xff, 0xda, 0, 8, 1, 1, 0, 0, 63, 0, 0x3f]],
+  ] as const)("preserva a entrada sem quadro: %s", (_, segmento) => {
+    const original = new Uint8Array([
+      0xff,
+      0xd8,
+      ...segmento,
+      0xff,
+      0xd9,
+      0xab,
+    ]);
+    expect(limparExifJpeg(original)).toBe(original);
+  });
+
+  it.each([0xc4, 0xc8, 0xcc, 0xdd])(
+    "não confunde o marcador %i com SOF",
+    (marcador) => {
+      const original = new Uint8Array([
+        0xff,
+        0xd8,
+        0xff,
+        marcador,
+        0,
+        11,
+        8,
+        0,
+        1,
+        0,
+        1,
+        1,
+        1,
+        0x11,
+        0,
+        ...jpegSintetico.subarray(cabecalhoJpegSintetico.length),
+        0xab,
+      ]);
+      expect(limparExifJpeg(original)).toBe(original);
+    },
+  );
+
+  it("preserva o original se o cabeçalho SOF está vazio", () => {
+    const original = new Uint8Array([
+      0xff,
+      0xd8,
+      0xff,
+      0xc0,
+      0,
+      2,
+      ...jpegSintetico.subarray(cabecalhoJpegSintetico.length),
+      0xab,
+    ]);
+    expect(limparExifJpeg(original)).toBe(original);
+  });
+
+  it("preserva o original se o cabeçalho SOS está vazio, mesmo seguido de dados", () => {
+    const original = new Uint8Array([
+      ...cabecalhoJpegSintetico,
+      0xff,
+      0xda,
+      0,
+      2,
+      0x3f,
+      0xff,
+      0xd9,
+      0xab,
+    ]);
+    expect(limparExifJpeg(original)).toBe(original);
+  });
+
+  it("preserva o original se o quadro tem SOS mas nenhum dado de imagem", () => {
+    const original = new Uint8Array([
+      ...jpegSintetico.subarray(0, -3),
+      0xff,
+      0xd9,
+      0xab,
+    ]);
+    expect(limparExifJpeg(original)).toBe(original);
+  });
+
+  it("remove EXIF com GPS e corta um byte depois de um JPEG mínimo válido", () => {
+    const original = new Uint8Array([
+      ...comExif(jpegSintetico, exifComGps()),
+      0xab,
+    ]);
+    expect(limparExifJpeg(original)).toEqual(jpegSintetico);
   });
 
   it("devolve os próprios bytes quando um segmento posterior está truncado", () => {
