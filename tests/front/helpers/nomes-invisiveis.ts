@@ -27,7 +27,10 @@ export const nomesInvisiveis: ReadonlyArray<readonly [string, string]> = [
         String.fromCodePoint(codigo),
       ] as const,
   ),
-  ["mistura", " ​͏ㅤ⠀️\u{E0061}　"],
+  [
+    "mistura",
+    "\u{00A0}\u{200B}\u{034F}\u{3164}\u{2800}\u{FE0F}\u{E0061}\u{3000}",
+  ],
 ];
 
 export const nomesVisiveis = [

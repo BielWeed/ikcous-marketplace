@@ -10,12 +10,9 @@ import {
 import { describe, expect, it } from "vitest";
 
 function carregarCotacao() {
-  const caminho = new URL(
-    "../../supabase/functions/calculate-shipping/index.ts",
-    import.meta.url,
-  );
+  const caminho = "supabase/functions/calculate-shipping/index.ts";
   const fonte = createSourceFile(
-    caminho.pathname,
+    caminho,
     readFileSync(caminho, "utf8"),
     ScriptTarget.Latest,
   );
