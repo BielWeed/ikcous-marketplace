@@ -62,14 +62,14 @@ export function MaintenanceView() {
       </h1>
 
       <p className="mb-8 max-w-sm text-sm leading-relaxed text-zinc-400">
-        Estamos otimizando nossa infraestrutura para melhorar a velocidade e
-        estabilidade da sua experiência. Voltamos em alguns minutos!
+        A loja está temporariamente indisponível. Esta página tenta reabrir a
+        loja automaticamente.
       </p>
 
       <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2">
         <span className="size-2 animate-ping rounded-full bg-amber-400" />
         <span className="text-[10px] font-black uppercase tracking-widest text-zinc-300">
-          Atualizando Banco de Dados
+          Fora do ar por enquanto
         </span>
       </div>
 

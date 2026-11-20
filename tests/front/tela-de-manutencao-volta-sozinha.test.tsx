@@ -3,7 +3,7 @@
 // A tela "Servidor em Manutenção" sai do ar sozinha quando a loja volta, e tem
 // o botão "Tentar de novo" (06/11/2026). Antes ela não tinha botão nem nova
 // checagem: a ficha é lida uma vez por carregamento, e quem deixava o app
-// aberto ficava olhando "Voltamos em alguns minutos!" com a loja já aberta.
+// aberto continuava vendo o aviso de manutenção com a loja já aberta.
 //
 // O que este arquivo prova, com relógio falso e sem rede:
 //   - pergunta à ficha atual a cada 45 s ENQUANTO a tela existe (e só);
@@ -106,6 +106,13 @@ describe("tela de manutenção — o que a pessoa vê", () => {
   it("mostra o aviso e o botão 'Tentar de novo'", async () => {
     await montar();
     expect(hospedeiro.textContent).toContain("Servidor em Manutenção");
+    expect(hospedeiro.textContent).not.toMatch(
+      /alguns minutos|otimizando nossa infraestrutura|atualizando banco de dados/i,
+    );
+    expect(hospedeiro.textContent).toContain(
+      "Esta página tenta reabrir a loja automaticamente.",
+    );
+    expect(hospedeiro.textContent).toContain("Fora do ar por enquanto");
     const botao = hospedeiro.querySelector("button");
     expect(botao?.textContent).toBe("Tentar de novo");
     expect(botao?.getAttribute("type")).toBe("button");

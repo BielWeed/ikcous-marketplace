@@ -5,9 +5,8 @@
 // O defeito: `lojaSaiuDaManutencao` fazia `fetch("/identidade.json")` sem prazo.
 // Em rede lenta/conexão pendurada a pergunta nunca terminava, o flag
 // `perguntando` do hook ficava `true` para sempre e NENHUM intervalo seguinte
-// perguntava de novo: a tela ficava em "Voltamos em alguns minutos!" com a
-// loja já aberta (o defeito que a peça de 06/11 existe para curar, de volta
-// pela porta dos fundos).
+// perguntava de novo: o aviso de manutenção continuava na tela mesmo com a
+// loja já aberta (o mesmo problema resolvido em 06/11).
 //
 // Um `fetch` que honra o `signal` (como o de verdade) rejeita com AbortError
 // ao ser abortado — é o que `pendurado` simula. O irmão deste teste, para a
