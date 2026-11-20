@@ -129,11 +129,9 @@ describe("FreteLocalBloco: até onde você entrega", () => {
         hospedeiro.querySelector<HTMLInputElement>("#local-cep-range");
       digitar(campo, faixa);
 
-      expect(
-        texto().includes(
-          "Ao acrescentar uma região depois dos dois primeiros CEPs, os CEPs entre esses dois deixam de entrar. Para manter a faixa, apague a região acrescentada, teste um CEP dela acima e use «Incluir a região».",
-        ),
-      ).toBe(avisa);
+      expect(texto().includes("Exemplo: 01310000-01310999, 01400-123.")).toBe(
+        avisa,
+      );
       expect(gravados).toEqual([faixa]);
     },
   );

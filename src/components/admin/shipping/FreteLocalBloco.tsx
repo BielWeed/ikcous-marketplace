@@ -300,7 +300,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
           <br />
           <span role="note" className="text-xs text-amber-300">
             {perdeuIntervalo &&
-              "Ao acrescentar uma região depois dos dois primeiros CEPs, os CEPs entre esses dois deixam de entrar. Para manter a faixa, apague a região acrescentada, teste um CEP dela acima e use «Incluir a região»."}
+              "Com três CEPs completos separados por vírgula, entram só esses três CEPs. Para manter a faixa e incluir só mais um CEP, escreva os dois limites com 8 números cada, unidos por um hífen, e depois acrescente o CEP avulso. Exemplo: 01310000-01310999, 01400-123. Use «Incluir a região» apenas se quiser incluir todos os CEPs que começam com os 5 números mostrados no botão."}
             {perdeuIntervalo && prefixoDeSete && <br />}
             {prefixoDeSete &&
               "Você digitou 7 números. Se for um CEP completo, confira se faltou um zero no começo. Do jeito que está, entram apenas os CEPs que começam com esses 7 números."}
