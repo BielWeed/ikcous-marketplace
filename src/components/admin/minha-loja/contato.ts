@@ -64,6 +64,9 @@ export function normalizarNumeroMototaxi(
   return `55${numero}`;
 }
 
+// Prefixo do link do WhatsApp com o maior número brasileiro (ver mensagemMototaxi).
+const TAMANHO_DO_PREFIXO_DO_LINK = 33;
+
 /** Mensagem mínima: só os campos que o painel já mostra para entregar. */
 export function mensagemMototaxi(order: Order, loja: string): string {
   const c = order.customer;
@@ -127,11 +130,10 @@ export function mensagemMototaxi(order: Order, loja: string): string {
   const itens = order.items.map((i) => `${i.quantity}× ${i.name}`);
   const linhaDaLoja = `Loja: ${loja}`;
   const juntar = (...linhas: string[]) => linhas.filter(Boolean).join("\n");
-  // Reserve o prefixo inteiro do link e o maior número brasileiro com DDI.
+  // Reserve o prefixo inteiro do link e o maior número brasileiro com DDI:
+  // 33 caracteres (esquema, endereço do WhatsApp, 55 + DDD + 9 dígitos e "?text=").
   const cabeNoLink = (texto: string) =>
-    "https://wa.me/5511987654321?text=".length +
-      encodeURIComponent(texto).length <=
-    1800;
+    TAMANHO_DO_PREFIXO_DO_LINK + encodeURIComponent(texto).length <= 1800;
   const completa = juntar(
     ...dadosDaEntrega,
     linhaDaNota(observacao),
