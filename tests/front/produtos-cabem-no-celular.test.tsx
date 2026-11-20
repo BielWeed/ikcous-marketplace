@@ -541,7 +541,7 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
           el.getAttribute("aria-label"),
         ),
       ).toEqual([
-        "Custo conhecido em estoque",
+        "Custo conhecido em estoque de produtos ativos",
         "Lucro bruto potencial",
         "Venda prevista (com custo)",
         "Lucro líquido potencial",

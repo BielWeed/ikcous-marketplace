@@ -47,10 +47,16 @@ export function PreviaDoFrete({
   config,
   nomesLigados,
   pendente,
+  pagamentoPeloAppLigado = false,
+  promocaoNacionalComPagamento = false,
+  promocaoNacionalSemPagamento = false,
 }: {
   readonly config: StoreConfig;
   readonly nomesLigados: readonly string[] | null;
   readonly pendente: boolean;
+  readonly pagamentoPeloAppLigado?: boolean;
+  readonly promocaoNacionalComPagamento?: boolean;
+  readonly promocaoNacionalSemPagamento?: boolean;
 }) {
   const [subtotal, setSubtotal] = useState(100);
   const modo = modoDaEntregaNaCidade(config);
@@ -68,6 +74,11 @@ export function PreviaDoFrete({
     (config.shippingCoverage === "local" || nomesLigados?.length === 0);
   const fora = config.shippingCoverage !== "local" && !soRetiro;
   const nacional = promessas.nacional;
+  const retiradaComEntregaPromocional =
+    soRetiro &&
+    config.shippingCoverage === "national" &&
+    nomesLigados?.length === 0 &&
+    nacional.estrategia === "por_produto";
   const gratisNacional =
     nacional.estrategia === "sempre" ||
     (nacional.estrategia === "acima_de_valor" &&
@@ -139,41 +150,55 @@ export function PreviaDoFrete({
             icone={Truck}
             nome="Fora da sua região"
             detalhe={
-              soRetiro
-                ? "quem é de fora retira na loja"
-                : !fora
-                  ? "a loja não vende"
-                  : nomesLigados === null
-                    ? "transportadoras sem confirmar"
-                    : nomesLigados.length
-                      ? nomesLigados.join(" ou ")
-                      : "nenhuma transportadora ligada"
+              promocaoNacionalSemPagamento
+                ? "frete grátis se tiver produto marcado"
+                : soRetiro
+                  ? retiradaComEntregaPromocional
+                    ? "nenhuma transportadora ligada"
+                    : "quem é de fora retira na loja"
+                  : !fora
+                    ? "a loja não vende"
+                    : nomesLigados === null
+                      ? "transportadoras sem confirmar"
+                      : nomesLigados.length
+                        ? nomesLigados.join(" ou ")
+                        : "nenhuma transportadora ligada"
             }
             valor={
-              soRetiro
-                ? "Só retirada · Grátis"
-                : !fora
-                  ? "Não vende"
-                  : nomesLigados === null
-                    ? "A confirmar"
-                    : !nomesLigados.length
-                      ? "Não compra"
-                      : gratisNacional
-                        ? "Grátis"
-                        : "Na hora"
+              promocaoNacionalComPagamento
+                ? "Grátis se tiver produto marcado"
+                : promocaoNacionalSemPagamento
+                  ? "Não finaliza pelo app"
+                  : retiradaComEntregaPromocional
+                    ? pagamentoPeloAppLigado
+                      ? "Retirada grátis; entrega grátis se o pedido tiver produto marcado"
+                      : "Retirada grátis"
+                    : soRetiro
+                      ? "Só retirada · Grátis"
+                      : !fora
+                        ? "Não vende"
+                        : nomesLigados === null
+                          ? "A confirmar"
+                          : !nomesLigados.length
+                            ? "Não compra"
+                            : gratisNacional
+                              ? "Grátis"
+                              : "Na hora"
             }
             nota={
-              !fora || !nomesLigados?.length
-                ? ""
-                : gratisNacional
-                  ? config.nationalBenefitScope === "todas"
-                    ? "qualquer entrega"
-                    : "na opção mais barata"
-                  : nacional.estrategia === "por_produto"
-                    ? "grátis se tiver produto marcado"
-                    : descontoNacionalVale
-                      ? "desconto na opção mais barata"
-                      : "preço da transportadora"
+              retiradaComEntregaPromocional && !pagamentoPeloAppLigado
+                ? "Entrega grátis por produto exige o pagamento pelo app ligado."
+                : !fora || !nomesLigados?.length
+                  ? ""
+                  : gratisNacional
+                    ? config.nationalBenefitScope === "todas"
+                      ? "qualquer entrega"
+                      : "na opção mais barata"
+                    : nacional.estrategia === "por_produto"
+                      ? "grátis se tiver produto marcado"
+                      : descontoNacionalVale
+                        ? "desconto na opção mais barata"
+                        : "preço da transportadora"
             }
           />
         </>

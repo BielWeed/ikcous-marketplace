@@ -338,15 +338,15 @@ describe("ProductView — a combinação de atributos vira UMA opção com estoq
         .join("|");
     await tocar("PP");
     await tocar("Branca");
-    expect(avisos()).not.toContain("desmarcado");
+    expect(avisos()).not.toMatch(/Opç(?:ão desmarcada|ões desmarcadas):/);
     // Preta só existe no P: escolhê-la solta o PP.
     expect(botao("Preta").getAttribute("aria-label")).toBe(
       "Preta, indisponível com a sua escolha",
     );
     await tocar("Preta");
-    expect(avisos()).toContain("Tamanho PP desmarcado");
+    expect(avisos()).toContain("Opção desmarcada: Tamanho PP");
     // Escolha seguinte sem soltar nada: o aviso antigo não fica.
     await tocar("P");
-    expect(avisos()).not.toContain("desmarcado");
+    expect(avisos()).not.toMatch(/Opç(?:ão desmarcada|ões desmarcadas):/);
   });
 });

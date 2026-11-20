@@ -114,6 +114,55 @@ describe("FreteLocalBloco: até onde você entrega", () => {
     digitar(campoDeTeste(), cep);
   }
 
+  it.each([
+    { faixa: "01310-000, 01310-999, 01400", avisa: true },
+    { faixa: "01310-000, 01310-999", avisa: false },
+    { faixa: "01310-000, 01310-999, ", avisa: false },
+    { faixa: "01310-000", avisa: false },
+    { faixa: "01310-000, 01310, 01400", avisa: false },
+    { faixa: "01310, 01311, 01400", avisa: false },
+    { faixa: "01310000-01310999, 01400, 01500", avisa: false },
+  ])(
+    "avisa sobre a perda do intervalo em $faixa somente se ele deixa de valer",
+    ({ faixa, avisa }) => {
+      montar("01310-001, 01310-998");
+      const campo =
+        hospedeiro.querySelector<HTMLInputElement>("#local-cep-range");
+      digitar(campo, faixa);
+
+      expect(
+        texto().includes(
+          "Para manter a faixa, escreva cada limite com 8 dígitos, sem hífen dentro do CEP. Separe os limites com um hífen e os demais itens com vírgula. Exemplo: 01310100-01310200, 01310300. Um item avulso com menos de 8 dígitos vale como prefixo e cobre todos os CEPs que começam com esses números.",
+        ),
+      ).toBe(avisa);
+      expect(gravados).toEqual([faixa]);
+    },
+  );
+
+  it.each([
+    { faixa: "1310000", avisa: true },
+    { faixa: "1310000, 01400", avisa: true },
+    { faixa: "01310-000, 01310-999, 1310000", avisa: true },
+    { faixa: "13100", avisa: false },
+    { faixa: "01310-000", avisa: false },
+    { faixa: "0131000-0131099, 13100", avisa: false },
+  ])(
+    "avisa apenas para item avulso de sete números em $faixa",
+    ({ faixa, avisa }) => {
+      montar("01310-001, 01310-998");
+      const campo =
+        hospedeiro.querySelector<HTMLInputElement>("#local-cep-range");
+      digitar(campo, faixa);
+
+      expect(
+        texto().includes(
+          "Você digitou 7 números. Se for um CEP completo, confira se faltou um zero no começo. Esse item é um prefixo e cobre todos os CEPs que começam com esses 7 números.",
+        ),
+      ).toBe(avisa);
+      expect(gravados).toEqual([faixa]);
+    },
+  );
+
   it("mostra dia no singular para 01 sem alterar o valor do campo", () => {
     montar("", { dias: "01", onDias: () => undefined });
 

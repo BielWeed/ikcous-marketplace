@@ -383,15 +383,17 @@ function ConteudoDoCarrinho({
   // chave e o próximo "Finalizar" criaria um SEGUNDO pedido.
   const irAoCarrinhoRelido = useIrAoCarrinhoRelido();
   const indoAoCheckoutRef = useRef(false);
-  const [releituraTerminou, setReleituraTerminou] = useState(false);
+  const [estadoDaReleitura, setEstadoDaReleitura] = useState<
+    "ociosa" | "relendo" | "terminou"
+  >("ociosa");
   useEffect(() => {
-    if (!releituraTerminou) return;
-    setReleituraTerminou(false);
+    if (estadoDaReleitura !== "terminou") return;
+    setEstadoDaReleitura("ociosa");
     indoAoCheckoutRef.current = false;
     // A promessa pode resolver antes de o React aplicar a remoção dos itens.
     // Decide com o carrinho atualizado, sem arrastar quem já saiu desta tela.
     if (isActive && cart.length > 0) onNavigate("checkout");
-  }, [releituraTerminou, isActive, cart.length, onNavigate]);
+  }, [estadoDaReleitura, isActive, cart.length, onNavigate]);
   const irAoCheckout = () => {
     if (indoAoCheckoutRef.current) return;
     if (haChaveDoPedidoVigente(user?.id ?? null)) {
@@ -399,8 +401,9 @@ function ConteudoDoCarrinho({
       return;
     }
     indoAoCheckoutRef.current = true;
+    setEstadoDaReleitura("relendo");
     irAoCarrinhoRelido(() => {
-      setReleituraTerminou(true);
+      setEstadoDaReleitura("terminou");
     });
   };
 
@@ -1498,7 +1501,7 @@ function ConteudoDoCarrinho({
                             </div>
                             <div className="min-w-0">
                               <p className="text-[13px] font-semibold text-foreground">
-                                Identificar-se (Entrar)
+                                Entrar na conta
                               </p>
                               <p className="mt-0.5 text-[13px] leading-snug text-muted-foreground">
                                 {/* FRETE V2 (onda D-1, 03/09): a promessa
@@ -1512,7 +1515,7 @@ function ConteudoDoCarrinho({
                                     Prometer ao convidado que o login
                                     libera o que ele JÁ ganha é promessa
                                     falsa. */}
-                                Faça login para salvar seus itens.
+                                Entre na sua conta para salvar seus itens.
                               </p>
                             </div>
                           </div>
@@ -1549,7 +1552,7 @@ function ConteudoDoCarrinho({
                             }}
                             className="flex h-[52px] w-full items-center justify-center gap-2.5 rounded-2xl bg-foreground text-[15px] font-semibold text-card transition-colors hover:bg-foreground/90 active:scale-[0.98]"
                           >
-                            Identificar-se e Entrar
+                            Entrar na conta
                             <ArrowRight className="size-5" />
                           </button>
 
@@ -1977,6 +1980,7 @@ function ConteudoDoCarrinho({
               shipping={shipping}
               retiradaNaLoja={retiradaEscolhida}
               total={total}
+              conferindoCarrinho={estadoDaReleitura !== "ociosa"}
               onNavigate={(view) =>
                 view === "checkout" ? irAoCheckout() : onNavigate(view)
               }

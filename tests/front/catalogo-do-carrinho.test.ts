@@ -192,7 +192,7 @@ describe("linha SEM variação de produto que TEM variação ativa", () => {
     expect(aplicarCatalogoAoCarrinho(itens, catalogo, 5000)).toBe(itens);
   });
 
-  it("avisos: diz que falta escolher tamanho/cor e que a linha saiu — sem 'não está mais à venda' nem 'preço mudou'", async () => {
+  it("avisos: diz que falta escolher tamanho/cor e que a linha saiu — sem 'indisponível' nem 'preço mudou'", async () => {
     const itens = [item(linha({ nome: "Vestido Midi" }), 1)];
     const catalogo = montarCatalogo(
       ["a"],
@@ -204,7 +204,8 @@ describe("linha SEM variação de produto que TEM variação ativa", () => {
     expect(frases[0]).toContain('"Vestido Midi"');
     expect(frases[0]).toContain("tamanho");
     expect(frases[0]).toContain("saiu do seu carrinho");
-    expect(frases[0]).not.toContain("não está mais à venda");
+    // Falta escolher uma opção; o item não está indisponível.
+    expect(frases[0]).not.toContain("indisponível");
     expect(frases[0]).not.toContain("mudou de");
   });
 

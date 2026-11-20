@@ -191,6 +191,22 @@ describe("ProductView — 'Dúvidas no WhatsApp': variação, preço e endereço
     },
   );
 
+  it("encurta o nome de 2.000 emojis só na mensagem, sem partir emoji", async () => {
+    const emoji = "😀";
+    const nome = emoji.repeat(2000);
+    await renderizar(criarProduto({ name: nome, variants: variantes }));
+
+    await tocarWhatsapp();
+
+    expect(abrir).toHaveBeenCalledTimes(1);
+    const url: string = abrir.mock.calls[0][0];
+    expect(url.length).toBeLessThan(1500);
+    expect(textoDaMensagem(url)).toBe(
+      `Olá! Tenho interesse no produto: ${emoji.repeat(59)}…`,
+    );
+    expect(hospedeiro.querySelector("h1")?.textContent).toBe(nome);
+  });
+
   it.each([false, true])(
     "sem variação escolhida abre dúvidas com o produto, todas esgotadas=%s",
     async (esgotadas) => {
@@ -266,6 +282,38 @@ describe("ProductView — 'Dúvidas no WhatsApp': variação, preço e endereço
     expect(alvo).toBe("_blank");
     expect(recursos).toBe("noopener,noreferrer");
   });
+
+  it.each([
+    ["invisível", String.fromCodePoint(0x200b), ""],
+    ["visível", "Azul", " (Cor: Azul)"],
+  ])(
+    "com uma única cor %s, mantém o preço na mensagem",
+    async (_, valor, cor) => {
+      await renderizar(
+        criarProduto({
+          name: "Camiseta",
+          variants: [
+            {
+              id: "v-cor",
+              productId: "prod-pb",
+              name: "Cor",
+              value: valor,
+              stockIncrement: 5,
+              active: true,
+              priceOverride: 90,
+            },
+          ],
+        }),
+      );
+
+      await tocarWhatsapp();
+
+      expect(abrir).toHaveBeenCalledTimes(1);
+      expect(textoDaMensagem(abrir.mock.calls[0][0])).toBe(
+        `Olá! Tenho interesse no produto: Camiseta${cor} - R$ 90,00`,
+      );
+    },
+  );
 
   it("escolha incompleta em cadastro de dois grupos: a mensagem sai sem preço nenhum", async () => {
     const cor = (valor: string, id: string): ProductVariant => ({

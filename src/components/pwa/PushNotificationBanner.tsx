@@ -179,7 +179,9 @@ export function PushNotificationBanner({
         transition={{ type: "spring", stiffness: 380, damping: 28 }}
         className={cn(
           "fixed left-4 right-4 z-[999] mx-auto max-w-md",
-          "bottom-[calc(80px+var(--safe-area-bottom,0px))] md:bottom-6", // acima da BottomNav, mais a área segura do iPhone
+          "bottom-[calc(80px+var(--safe-area-bottom,0px))] lg:bottom-6",
+          // No tablet, soma as duas bordas de 1 px da barra e deixa 16 px de folga.
+          "md:bottom-[calc(var(--nav-height)+var(--safe-area-bottom,0px)+var(--customer-nav-offset)+2px+16px)]",
         )}
       >
         <div className="relative overflow-hidden rounded-2xl border border-secondary/25 bg-zinc-950/95 p-4 shadow-2xl backdrop-blur-2xl text-white">

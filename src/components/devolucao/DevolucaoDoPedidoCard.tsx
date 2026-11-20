@@ -213,6 +213,8 @@ export function DevolucaoDoPedidoCard({
   // manda ele mesmo. No envio próprio, o cliente digita o do comprovante.
   const codigoDaEtiqueta =
     atual.metodo_retorno === "etiqueta_reversa" ? atual.codigo_postagem : null;
+  const podeConfirmarPostagemDaEtiqueta =
+    acoes.includes("informar_envio") && codigoDaEtiqueta;
 
   const recargaBloqueada =
     (codigo !== "" && acoes.includes("informar_envio") && !codigoDaEtiqueta) ||
@@ -475,7 +477,7 @@ export function DevolucaoDoPedidoCard({
         </div>
       </dl>
 
-      {acoes.includes("informar_envio") && codigoDaEtiqueta && (
+      {podeConfirmarPostagemDaEtiqueta && (
         <button
           type="button"
           onClick={() => void informarEnvio()}

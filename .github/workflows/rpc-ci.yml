@@ -2041,7 +2041,7 @@ jobs:
       - name: Prova viva do desfazer recebimento que recusa devolucao viva (migration 20261243)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/desfazer-recebimento-viva.cjs
-      # E o PORTAO da release desse lote: as consultas 46a (DEPOIS, 6 linhas) e 46b (ANTES, 6 linhas). Nao ha medicao 46m: o lote nao le nem reescreve dado. BLOQUEANTE. CLONE proprio.
+      # E o PORTAO da release desse lote: as consultas 46a (DEPOIS, 6 linhas) e 46b (ANTES, 6 linhas). O lote 46a/46b nao tem medicao propria: nao le nem reescreve dado (a consulta 46m e de outro assunto). BLOQUEANTE. CLONE proprio.
       - name: Prova viva do portao do desfazer recebimento (consultas 46a e 46b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/desfazer-recebimento-portao-viva.cjs

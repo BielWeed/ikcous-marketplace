@@ -192,6 +192,15 @@ it("o cartão da direita termina na mesma borda do topo (folga de 20px)", async 
   expect(barra?.classList.contains("admin-acao-inline")).toBe(true);
 });
 
+it("limita a entrada do nome a 200 sem cortar um nome já salvo", async () => {
+  const nomeSalvo = "A".repeat(201);
+  fetchProduct.mockResolvedValue({ ...produto, name: nomeSalvo });
+  await montar();
+  const campo = hospedeiro.querySelector<HTMLInputElement>("#product-name");
+  expect(campo?.getAttribute("maxlength")).toBe("200");
+  expect(campo?.value).toBe(nomeSalvo);
+});
+
 // Mutantes em CÓPIA: a trava precisa reprovar, senão é decorativa.
 const BOA = `${CELULAR_DO_CONTAINER} lg:pb-12 xl:grid xl:grid-cols-[minmax(0,1fr)_380px] ${REGRAS_DO_CARTAO_QUE_JA_EXISTIAM.map((r) => `xl:[&>.admin-acao-inline]:${r}`).join(" ")} ${FOLGA_DA_DIREITA}`;
 

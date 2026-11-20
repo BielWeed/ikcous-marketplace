@@ -475,6 +475,7 @@ interface AdminProductFormViewProps {
   userId?: string;
 }
 
+const LIMITE_DO_NOME_DO_PRODUTO = 200;
 const ESTOQUE_MAXIMO_DO_PRODUTO = 10000;
 const ID_DO_AVISO_DA_GRADE_PENDENTE = "rascunho-da-grade-pendente";
 const ID_DA_OFERTA_DE_RASCUNHO_ANTIGO = "rascunho-antigo-do-produto";
@@ -2774,7 +2775,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         quantidade > 0 &&
         !(await confirmarExclusaoDeFoto({
           titulo: "Excluir foto?",
-          texto: `Esta foto é usada em ${quantidade} ${quantidade === 1 ? "variação" : "variações"}. Ao salvar, esta foto sairá do produto e deixará de ser a foto dessas variações. As outras fotos do produto, se houver, continuarão visíveis. Remover esta foto?`,
+          texto: `Esta foto é usada em ${quantidade} ${quantidade === 1 ? "variação" : "variações"}. Ao salvar, esta foto sairá do produto e deixará de ser a foto ${quantidade === 1 ? "dessa variação" : "dessas variações"}. As outras fotos do produto, se houver, continuarão visíveis. Remover esta foto?`,
           verbo: "Excluir foto",
         }))
       ) {
@@ -5778,6 +5779,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   id="product-name"
                   name="product-name"
                   type="text"
+                  maxLength={LIMITE_DO_NOME_DO_PRODUTO}
                   value={formData.name}
                   onFlush={(val) =>
                     setFormData((prev) => ({ ...prev, name: val }))
@@ -6001,6 +6003,27 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     className="size-5 cursor-pointer rounded border-admin-border bg-zinc-950 text-emerald-500 transition-all focus:ring-emerald-500/20"
                   />
                 </label>
+
+                {productId &&
+                  !isPromoActive &&
+                  Number(initialData.originalPrice) >
+                    Number(initialData.price) &&
+                  priceVal > 0 &&
+                  priceVal < Number(initialData.originalPrice) && (
+                    <p
+                      role="status"
+                      className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-[11px] font-medium leading-relaxed text-amber-200/80"
+                    >
+                      Desligar a promoção só tira o preço riscado. O preço de
+                      venda continua {formatCurrency(priceVal)}. Para voltar ao
+                      preço de antes, ponha{" "}
+                      {formatCurrency(Number(initialData.originalPrice))} no
+                      preço de venda
+                      {formData.variants.some((v) => v.priceOverride != null)
+                        ? " e confira o preço de cada opção."
+                        : "."}
+                    </p>
+                  )}
 
                 {isPromoActive && (
                   <div className="produto-campo space-y-1 duration-300 animate-in fade-in slide-in-from-top-2">

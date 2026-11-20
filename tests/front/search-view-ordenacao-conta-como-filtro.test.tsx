@@ -2,7 +2,7 @@
 //
 // ORDENAÇÃO ALTERADA CONTA COMO FILTRO (rodada 5, achado 4).
 //
-// Mudar só a ordenação ("Maior Preço") não aparecia no botão "Filtros" e o
+// Mudar só a ordenação ("Maior preço") não aparecia no botão "Filtros" e o
 // "Limpar Tudo" do painel não existia — embora ele zere a ordenação. Agora a
 // ordenação diferente do padrão ("Mais Novos") conta no número e libera o
 // "Limpar Tudo", que volta tudo ao padrão.
@@ -155,16 +155,16 @@ describe("SearchView — a ordenação conta como filtro e dá para limpar", () 
     expect(botaoPorTexto("Limpar Tudo")).toBeUndefined();
   });
 
-  it("escolher 'Maior Preço' mostra (1) em Filtros e libera o 'Limpar Tudo'", async () => {
+  it("escolher 'Maior preço' mostra (1) em Filtros e libera o 'Limpar Tudo'", async () => {
     await abrir();
-    await clicar(botaoPorTexto("Maior Preço") as HTMLElement);
+    await clicar(botaoPorTexto("Maior preço") as HTMLElement);
     expect(botaoFiltros().textContent).toContain("(1)");
     expect(botaoPorTexto("Limpar Tudo")).toBeDefined();
   });
 
   it("'Limpar Tudo' devolve a ordenação ao padrão e some", async () => {
     await abrir();
-    await clicar(botaoPorTexto("Maior Preço") as HTMLElement);
+    await clicar(botaoPorTexto("Maior preço") as HTMLElement);
     await clicar(botaoPorTexto("Limpar Tudo") as HTMLElement);
     expect(botaoFiltros().textContent).not.toContain("(");
     expect(botaoPorTexto("Limpar Tudo")).toBeUndefined();
@@ -182,7 +182,7 @@ describe("SearchView — a ordenação conta como filtro e dá para limpar", () 
 
   it("voltar a 'Mais Novos' à mão tira a contagem", async () => {
     await abrir();
-    await clicar(botaoPorTexto("Menor Preço") as HTMLElement);
+    await clicar(botaoPorTexto("Menor preço") as HTMLElement);
     expect(botaoFiltros().textContent).toContain("(1)");
     await clicar(botaoPorTexto("Mais Novos") as HTMLElement);
     expect(botaoFiltros().textContent).not.toContain("(");

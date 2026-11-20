@@ -35,6 +35,7 @@ const { cenario, mockConfig } = vi.hoisted(() => ({
       frenet: { tem_chave: false, sandbox: false, servicos: null },
     } as Record<string, Record<string, unknown>>,
     leituraFalha: false,
+    configIndisponivel: false,
     segurarLeitura: null as Promise<void> | null,
   },
   mockConfig: {
@@ -42,6 +43,8 @@ const { cenario, mockConfig } = vi.hoisted(() => ({
     shippingCoverage: "national" as "local" | "national",
     shippingProvider: "melhor_envio",
     originCep: "38500-000",
+    storeAddress: "Rua A, 10",
+    localDeliveryEnabled: true,
     enabledShippingMethods: ["sedex", "pac"] as string[],
     localDeliveryFee: 10,
     localCepRange: "",
@@ -57,6 +60,7 @@ vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
     config: mockConfig,
     isLoaded: true,
+    configIndisponivel: cenario.configIndisponivel,
     updateConfig: vi.fn(),
   }),
 }));
@@ -133,8 +137,13 @@ describe("AdminShippingView — avisa quando a transportadora fica sem pagamento
       frenet: { tem_chave: false, sandbox: false, servicos: null },
     };
     cenario.leituraFalha = false;
+    cenario.configIndisponivel = false;
     cenario.segurarLeitura = null;
     mockConfig.shippingCoverage = "national";
+    mockConfig.localDeliveryEnabled = true;
+    mockConfig.enabledShippingMethods = ["sedex", "pac"];
+    mockConfig.freeShippingMin = 0;
+    mockConfig.nationalShippingStrategy = "desligado";
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -158,14 +167,14 @@ describe("AdminShippingView — avisa quando a transportadora fica sem pagamento
     });
   }
 
-  async function abrirTela() {
+  async function abrirTela(ativa = true) {
     const { AdminShippingView } = await import(
       "@/views/admin/AdminShippingView"
     );
     await act(async () => {
       raiz.render(
         <AdminShippingView
-          active={true}
+          active={ativa}
           onSetDirty={vi.fn()}
           onNavigate={onNavigate}
         />,
@@ -191,7 +200,7 @@ describe("AdminShippingView — avisa quando a transportadora fica sem pagamento
     );
   });
 
-  it("F1b — o aviso leva a Ajustes, onde o pagamento pelo app se liga", async () => {
+  it("F1b — o aviso abre Ajustes direto em Pagamentos", async () => {
     await abrirTela();
     const botao = [...(aviso()?.querySelectorAll("button") ?? [])].find((b) =>
       /pagamento pelo app/i.test(b.textContent ?? ""),
@@ -200,7 +209,7 @@ describe("AdminShippingView — avisa quando a transportadora fica sem pagamento
     await act(async () => {
       botao?.click();
     });
-    expect(onNavigate).toHaveBeenCalledWith("admin-settings");
+    expect(onNavigate).toHaveBeenCalledWith("admin-settings", "pagamentos");
   });
 
   it("F2 — pagamento pelo app LIGADO: nenhum aviso", async () => {
@@ -213,6 +222,223 @@ describe("AdminShippingView — avisa quando a transportadora fica sem pagamento
     cenario.ligados = [];
     await abrirTela();
     expect(aviso()).toBeNull();
+  });
+
+  const textoDaPromocao =
+    "O frete grátis por produto pode aparecer fora da sua região, mas a cliente não consegue finalizar sem pagamento pelo app.";
+  const textoDaTela = () => hospedeiro.textContent ?? "";
+  const descricaoSoRetirada = () =>
+    [...hospedeiro.querySelectorAll('#painel-frete-local [role="radio"]')].find(
+      (opcao) => opcao.querySelector("span")?.textContent === "Só retirada",
+    )?.textContent;
+  const descricaoAntigaSoRetirada =
+    "Ninguém recebe em casa. Qualquer cliente, de qualquer lugar, busca na loja.";
+
+  it.each([false, true])(
+    "entrega local com retirada ligada=%s: a promoção nacional exige pagamento pelo app",
+    async (retirada) => {
+      if (retirada) mockConfig.enabledShippingMethods.push("store-pickup");
+      mockConfig.nationalShippingStrategy = "por_produto";
+      cenario.ligados = [];
+      await abrirTela();
+
+      expect(textoDaTela()).toContain(textoDaPromocao);
+      expect(textoDaTela()).toContain(
+        "Ative o pagamento pelo app ou desative a promoção nacional.",
+      );
+      expect(textoDaTela()).not.toContain(
+        "Ninguém de fora da sua região compra",
+      );
+      expect(textoDaTela()).not.toContain(
+        "Nenhuma transportadora ligada: quem é de fora não compra",
+      );
+      expect(
+        hospedeiro.querySelector('[aria-label="Como fica para o cliente"]')
+          ?.textContent,
+      ).toContain("Não finaliza pelo app");
+      expect(aviso()).toBeNull();
+    },
+  );
+
+  it("sem transportadora, com pagamento ligado: só pedidos com produto marcado têm entrega fora", async () => {
+    mockConfig.nationalShippingStrategy = "por_produto";
+    cenario.bootPagamentoLigado = true;
+    cenario.ligados = [];
+    await abrirTela();
+
+    expect(textoDaTela()).toContain(
+      "Fora da sua região, só pedidos com produto marcado têm entrega",
+    );
+    expect(textoDaTela()).not.toContain("Ninguém de fora da sua região compra");
+    expect(textoDaTela()).not.toContain("quem é de fora não compra");
+    expect(
+      hospedeiro.querySelector('[aria-label="Como fica para o cliente"]')
+        ?.textContent,
+    ).toContain("Grátis se tiver produto marcado");
+  });
+
+  it("a promoção nacional leva direto à seção Pagamentos", async () => {
+    mockConfig.nationalShippingStrategy = "por_produto";
+    cenario.ligados = [];
+    await abrirTela();
+
+    const botao = [...hospedeiro.querySelectorAll("button")].find(
+      (b) => b.textContent === "Ver pagamento pelo app",
+    );
+    expect(botao).toBeDefined();
+    await act(async () => botao?.click());
+    expect(onNavigate).toHaveBeenCalledWith("admin-settings", "pagamentos");
+  });
+
+  it("a promoção nacional explica e abre a configuração de transportadoras", async () => {
+    mockConfig.nationalShippingStrategy = "por_produto";
+    cenario.ligados = [];
+    await abrirTela();
+
+    const painel = hospedeiro.querySelector("#painel-frete-nacional");
+    const controle = painel?.querySelector("button[aria-expanded]");
+    expect(controle?.getAttribute("aria-expanded")).toBe("false");
+    const botao = [...hospedeiro.querySelectorAll("button")].find(
+      (b) => b.textContent === "Configurar transportadoras",
+    );
+    expect(botao).toBeDefined();
+    const rolar = vi.fn();
+    Object.defineProperty(painel as HTMLElement, "scrollIntoView", {
+      value: rolar,
+    });
+    await act(async () => botao?.click());
+    await assentar();
+
+    expect(controle?.getAttribute("aria-expanded")).toBe("true");
+    expect(rolar).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
+    expect(textoDaTela()).toContain(
+      "Para entregar fora da sua região pedidos sem nenhum produto com frete grátis, ligue também uma transportadora.",
+    );
+  });
+
+  it.each([false, true])(
+    "só retirada com promoção nacional e pagamento pelo app ligado = %s",
+    async (pagamentoLigado) => {
+      mockConfig.localDeliveryEnabled = false;
+      mockConfig.enabledShippingMethods.push("store-pickup");
+      mockConfig.nationalShippingStrategy = "por_produto";
+      cenario.ligados = [];
+      cenario.bootPagamentoLigado = pagamentoLigado;
+      await abrirTela();
+
+      expect(textoDaTela()).not.toContain(textoDaPromocao);
+      expect(textoDaTela()).not.toContain(
+        "não finaliza sem pagamento pelo app",
+      );
+      expect(textoDaTela()).not.toContain("quem é de fora não compra");
+      expect(textoDaTela()).not.toContain("Falta 1 coisa");
+      expect(textoDaTela()).toContain("Pronta para vender");
+      const previa = hospedeiro.querySelector(
+        '[aria-label="Como fica para o cliente"]',
+      );
+      const linhas = [...(previa?.querySelectorAll("p") ?? [])].map(
+        (linha) => linha.textContent,
+      );
+      const promessa =
+        "Retirada grátis; entrega grátis se o pedido tiver produto marcado";
+      if (pagamentoLigado) {
+        expect(linhas).toContain(promessa);
+        expect(descricaoSoRetirada()).toContain(
+          "Na sua região, só retirada. Fora dela, pedidos com produto marcado também podem ter entrega grátis.",
+        );
+      } else {
+        expect(descricaoSoRetirada()).toContain(descricaoAntigaSoRetirada);
+        expect(linhas).not.toContain(promessa);
+        expect(linhas).toContain("Retirada grátis");
+        expect(linhas).toContain(
+          "Entrega grátis por produto exige o pagamento pelo app ligado.",
+        );
+      }
+    },
+  );
+
+  it("só retirada sem promoção nacional: a prévia só promete retirada", async () => {
+    mockConfig.localDeliveryEnabled = false;
+    mockConfig.enabledShippingMethods.push("store-pickup");
+    mockConfig.nationalShippingStrategy = "desligado";
+    cenario.ligados = [];
+    cenario.bootPagamentoLigado = true;
+    await abrirTela();
+
+    expect(descricaoSoRetirada()).toContain(descricaoAntigaSoRetirada);
+    const previa = hospedeiro.querySelector(
+      '[aria-label="Como fica para o cliente"]',
+    )?.textContent;
+    expect(previa).toContain("Só retirada · Grátis");
+    expect(previa).not.toContain(
+      "entrega grátis se o pedido tiver produto marcado",
+    );
+  });
+
+  it("promoção nacional com transportadora ligada: só avisa sobre a transportadora sem pagamento", async () => {
+    mockConfig.nationalShippingStrategy = "por_produto";
+    await abrirTela();
+
+    expect(aviso()?.textContent).toContain(
+      "Transportadora só funciona com pagamento pelo app ligado.",
+    );
+    expect(textoDaTela()).not.toContain(textoDaPromocao);
+  });
+
+  it.each([
+    "sem promoção",
+    "só promoção local",
+    "pagamento pelo app ligado",
+    "cobertura local",
+    "leitura das transportadoras falhou",
+    "leitura da configuração da loja falhou",
+  ])("sem o novo aviso: %s", async (caso) => {
+    cenario.ligados = [];
+    mockConfig.nationalShippingStrategy =
+      caso === "sem promoção" || caso === "só promoção local"
+        ? "desligado"
+        : "por_produto";
+    mockConfig.freeShippingMin = caso === "só promoção local" ? -1 : 0;
+    cenario.bootPagamentoLigado = caso === "pagamento pelo app ligado";
+    if (caso === "cobertura local") mockConfig.shippingCoverage = "local";
+    cenario.leituraFalha = caso === "leitura das transportadoras falhou";
+    cenario.configIndisponivel =
+      caso === "leitura da configuração da loja falhou";
+
+    await abrirTela();
+
+    expect(textoDaTela()).not.toContain(textoDaPromocao);
+  });
+
+  it("a promoção não dispara o aviso enquanto a leitura está pendente", async () => {
+    let soltar: () => void = () => {};
+    cenario.ligados = [];
+    mockConfig.nationalShippingStrategy = "por_produto";
+    cenario.segurarLeitura = new Promise<void>((resolve) => {
+      soltar = resolve;
+    });
+
+    await abrirTela();
+    expect(textoDaTela()).not.toContain(textoDaPromocao);
+
+    await act(async () => {
+      soltar();
+    });
+    await assentar();
+    expect(textoDaTela()).toContain(textoDaPromocao);
+
+    cenario.segurarLeitura = new Promise<void>((resolve) => {
+      soltar = resolve;
+    });
+    await abrirTela(false);
+    await abrirTela();
+    expect(textoDaTela()).not.toContain(textoDaPromocao);
+
+    await act(async () => {
+      soltar();
+    });
+    await assentar();
+    expect(textoDaTela()).toContain(textoDaPromocao);
   });
 
   it("F4 — loja que atende SÓ a cidade: nenhum aviso", async () => {

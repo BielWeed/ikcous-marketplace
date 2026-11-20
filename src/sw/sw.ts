@@ -571,6 +571,10 @@ sw.addEventListener("fetch", (event: any) => {
   // `push` (lê o cache próprio) continuam como eram.
   if (url.pathname === CAMINHO_IDENTIDADE_JSON) return;
 
+  // O porteiro monta o manifesto com a marca atual da loja e manda no-store.
+  // Como a ficha acima, ele vai à rede nativa, sem passar pelo cache do SW.
+  if (url.pathname === "/manifest.webmanifest") return;
+
   // Avisos de licenças são um arquivo estático, não uma página offline do app.
   if (url.pathname === "/THIRD_PARTY_NOTICES.txt") return;
 
@@ -591,8 +595,12 @@ sw.addEventListener("fetch", (event: any) => {
   // useUpdateCheck, versão nova de app continua avisando pelo ciclo de
   // update do SW — a revalidação em segundo plano não contorna o aviso.
   if (event.request.mode === "navigate") {
+    // A busca global pode achar uma versão antiga antes da ativa.
+    const paginaExata = caches
+      .match(event.request, { cacheName: CACHE_NAME })
+      .then((atual) => atual ?? caches.match(event.request));
     event.respondWith(
-      caches.match(event.request).then((cached) => {
+      paginaExata.then((cached) => {
         if (cached) {
           event.waitUntil(
             fetch(event.request)
@@ -1135,7 +1143,13 @@ sw.addEventListener("notificationclick", (event: any) => {
     sw.clients
       .matchAll({ type: "window", includeUncontrolled: true })
       .then((clientList: any) => {
-        const absoluteUrl = new URL(targetUrl, sw.location.origin);
+        let absoluteUrl = new URL("/", sw.location.origin);
+        try {
+          const destino = new URL(targetUrl, absoluteUrl);
+          if (destino.origin === absoluteUrl.origin) absoluteUrl = destino;
+        } catch {
+          // Endereço malformado: mantém a vitrine como destino.
+        }
         // Laudo #2 (P-7): as janelas vivem em /?source=pwa (start_url do
         // manifest) e o alvo padrão é "/" — a comparação de URL inteira
         // nunca batia e TODO toque abria uma segunda janela da loja.

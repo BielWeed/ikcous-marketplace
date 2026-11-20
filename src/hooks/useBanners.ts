@@ -476,7 +476,10 @@ export function useBanners(adminMode = false) {
 
       const { error: uploadError } = await supabase.storage
         .from("banners")
-        .upload(filePath, pronto);
+        .upload(filePath, pronto, {
+          cacheControl: "31536000",
+          upsert: false,
+        });
 
       if (uploadError) throw uploadError;
 

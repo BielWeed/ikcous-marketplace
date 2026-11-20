@@ -261,6 +261,8 @@ describe("retirada na loja — 'Pronto para retirar' no lugar de 'Em Trânsito'"
       expect(texto).not.toContain("A caminho");
       expect(texto).not.toContain("Aguarde a confirmação da loja");
       expect(texto).toContain("Pedido retirado na loja.");
+      expect(texto).not.toContain("Retire em:");
+      expect(texto).toContain(`Local da retirada: ${ENDERECO_DA_LOJA}`);
       expect(texto).not.toContain(FRASE_DA_CLIENTE);
     });
 

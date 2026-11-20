@@ -93,9 +93,10 @@ describe("SearchBar — a miniatura da sugestão não baixa a foto original", ()
       await Promise.resolve();
     });
 
-    const miniatura = hospedeiro.querySelector<HTMLImageElement>(
-      'img[alt="Aliança Luxo"]',
+    const sugestao = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (botao) => botao.textContent?.includes("Aliança Luxo"),
     );
+    const miniatura = sugestao?.querySelector("img") ?? null;
     // Âncora: a sugestão apareceu com a miniatura.
     expect(miniatura).not.toBeNull();
     return miniatura as HTMLImageElement;

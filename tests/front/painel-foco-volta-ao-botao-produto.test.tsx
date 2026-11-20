@@ -24,7 +24,10 @@ vi.mock("@/hooks/useAnalytics", () => ({
 vi.mock("@/hooks/useCategories", () => ({
   useCategories: () => ({ categories: [] }),
 }));
-vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
+let offline = false;
+vi.mock("@/hooks/useOnlineStatus", () => ({
+  useOnlineStatus: () => offline,
+}));
 vi.mock("@/hooks/usePrefetchOnHover", () => ({
   usePrefetchOnHover: () => ({ prefetchView: vi.fn() }),
 }));
@@ -35,6 +38,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 let raiz: Root;
 let hospedeiro: HTMLDivElement;
 beforeEach(async () => {
+  offline = false;
   vi.stubGlobal(
     "IntersectionObserver",
     class {
@@ -59,9 +63,13 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it.each(["Escape", "Cancelar"])(
-  "devolve o foco ao menu do produto ao fechar por %s",
-  async (saida) => {
+it.each([
+  { saida: "Escape", caiConexao: false },
+  { saida: "Cancelar", caiConexao: false },
+  { saida: "Escape", caiConexao: true },
+])(
+  "restaura o foco ao fechar por $saida (queda de conexão: $caiConexao)",
+  async ({ saida, caiConexao }) => {
     const gatilho = hospedeiro.querySelector<HTMLButtonElement>(
       '[aria-label="Ações de Produto Um"]',
     )!;
@@ -85,6 +93,22 @@ it.each(["Escape", "Cancelar"])(
     const dialogo = document.querySelector('[role="alertdialog"]')!;
     expect(dialogo.textContent).toContain("Confirmar Duplicação");
     expect(document.querySelector('[role="menu"]')).toBeNull();
+
+    const titulo = hospedeiro.querySelector("header h1");
+    if (caiConexao) {
+      expect(titulo).toBeInstanceOf(HTMLElement);
+      expect(gatilho.disabled).toBe(false);
+      const { AdminProductsView } = await import(
+        "@/views/admin/AdminProductsView"
+      );
+      offline = true;
+      await act(async () =>
+        raiz.render(<AdminProductsView onNavigate={vi.fn()} active />),
+      );
+      expect(gatilho.isConnected).toBe(true);
+      expect(gatilho.disabled).toBe(true);
+      expect(document.querySelector('[role="alertdialog"]')).toBe(dialogo);
+    }
     await act(async () => {
       if (saida === "Escape") tecla(document.activeElement!, saida);
       else
@@ -93,6 +117,8 @@ it.each(["Escape", "Cancelar"])(
           ?.click();
     });
     expect(document.querySelector('[role="alertdialog"]')).toBeNull();
-    await vi.waitFor(() => expect(document.activeElement).toBe(gatilho));
+    await vi.waitFor(() =>
+      expect(document.activeElement).toBe(caiConexao ? titulo : gatilho),
+    );
   },
 );

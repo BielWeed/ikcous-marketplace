@@ -53,7 +53,10 @@ function criarSelfFalso() {
   return { selfFalso, listeners };
 }
 
-function criarCachesFalso(porCaminho: Map<string, Response | undefined>) {
+function criarCachesFalso(
+  porCaminho: Map<string, Response | undefined>,
+  daVersaoAtual: Map<string, Response>,
+) {
   const cacheFalso = {
     addAll: vi.fn().mockResolvedValue(undefined),
     put: vi.fn().mockResolvedValue(undefined),
@@ -64,12 +67,18 @@ function criarCachesFalso(porCaminho: Map<string, Response | undefined>) {
   const cachesFalso = {
     open: vi.fn().mockResolvedValue(cacheFalso),
     // Chave EXATA (caminho + query), como o Cache real.
-    match: vi.fn((chave: string | Request) => {
+    match: vi.fn((chave: string | Request, opcoes?: MultiCacheQueryOptions) => {
       const url = typeof chave === "string" ? chave : chave.url;
       const caminho = url.startsWith("http")
         ? new URL(url).pathname + new URL(url).search
         : url;
-      return Promise.resolve(porCaminho.get(caminho));
+      const anterior = porCaminho.get(caminho);
+      const atual = daVersaoAtual.get(caminho);
+      // Sem nome, a busca global encontra a gaveta mais antiga primeiro.
+      if (!opcoes?.cacheName) return Promise.resolve(anterior ?? atual);
+      return Promise.resolve(
+        opcoes.cacheName === "app-cache-versao-atual" ? atual : undefined,
+      );
     }),
     keys: vi.fn().mockResolvedValue([]),
     delete: vi.fn().mockResolvedValue(true),
@@ -130,9 +139,14 @@ describe("src/sw/sw.ts — navegação com rede lenta abre o app guardado", () =
   async function montar(
     porCaminho: Map<string, Response | undefined>,
     busca: typeof fetch,
+    daVersaoAtual: Map<string, Response>,
   ) {
     const { selfFalso, listeners } = criarSelfFalso();
-    const { cachesFalso, cacheFalso } = criarCachesFalso(porCaminho);
+    const { cachesFalso, cacheFalso } = criarCachesFalso(
+      porCaminho,
+      daVersaoAtual,
+    );
+    vi.stubGlobal("__APP_VERSION__", "versao-atual");
     vi.stubGlobal("self", selfFalso);
     vi.stubGlobal("caches", cachesFalso);
     vi.stubGlobal("fetch", busca);
@@ -154,8 +168,13 @@ describe("src/sw/sw.ts — navegação com rede lenta abre o app guardado", () =
     porCaminho: Map<string, Response | undefined>,
     busca: typeof fetch,
     caminho = "/?category=Bolsas",
+    daVersaoAtual = new Map<string, Response>(),
   ) {
-    const { fetchListener, cacheFalso } = await montar(porCaminho, busca);
+    const { fetchListener, cacheFalso } = await montar(
+      porCaminho,
+      busca,
+      daVersaoAtual,
+    );
     const event: EventoDeBusca = {
       request: navegacao(caminho),
       respondWith: vi.fn<(resposta: Promise<Response>) => void>(),
@@ -366,6 +385,31 @@ describe("src/sw/sw.ts — navegação com rede lenta abre o app guardado", () =
 
     expect(await (await resposta).text()).toContain(MARCADOR_OFFLINE);
   });
+
+  it.each([
+    { descricao: "nas duas versões", temAtual: true, esperado: "html-atual" },
+    {
+      descricao: "só na versão antiga",
+      temAtual: false,
+      esperado: "html-antigo",
+    },
+  ])(
+    "sem internet, rota guardada $descricao: serve $esperado",
+    async ({ temAtual, esperado }) => {
+      const caminho = "/?category=Bolsas";
+      const antiga = new Map([[caminho, htmlComFicha("html-antigo")]]);
+      const atual = temAtual
+        ? new Map([[caminho, htmlComFicha("html-atual")]])
+        : new Map<string, Response>();
+      const busca = vi
+        .fn<typeof fetch>()
+        .mockRejectedValue(new TypeError("Failed to fetch"));
+
+      const { resposta } = await navegar(antiga, busca, caminho, atual);
+
+      expect(await (await resposta).text()).toContain(esperado);
+    },
+  );
 
   it("página JÁ guardada (ramo do cache primeiro) -> responde na hora do cache, sem prazo nenhum", async () => {
     const { busca } = redePendurada();

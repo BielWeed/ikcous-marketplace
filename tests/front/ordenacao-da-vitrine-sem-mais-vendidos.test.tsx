@@ -185,10 +185,10 @@ describe("ordenação da vitrine sem Mais Vendidos", () => {
     await montar("price-asc");
     const filtros = hospedeiro.querySelector('button[aria-haspopup="listbox"]');
     expect(filtros?.getAttribute("aria-label")).toBe(
-      "Filtros, ordenado por Menor Preço",
+      "Filtros, ordenado por Menor preço",
     );
     expect(filtros?.getAttribute("title")).toBe(
-      "Filtros, ordenado por Menor Preço",
+      "Filtros, ordenado por Menor preço",
     );
     expect(
       filtros?.querySelector('[data-testid="ordenacao-ativa"]'),
@@ -223,7 +223,7 @@ describe("ordenação da vitrine sem Mais Vendidos", () => {
     const filtros = hospedeiro.querySelector('button[aria-haspopup="listbox"]');
     const opcao = [
       ...hospedeiro.querySelectorAll<HTMLButtonElement>('[role="option"]'),
-    ].find((botao) => botao.textContent?.includes("Menor Preço"))!;
+    ].find((botao) => botao.textContent?.includes("Menor preço"))!;
     await act(async () => opcao.focus());
     expect(document.activeElement).toBe(opcao);
     // jsdom não dispara o clique nativo de Enter no botão focado.
@@ -311,14 +311,14 @@ describe("ordenação da vitrine sem Mais Vendidos", () => {
     expect(aoMudar).not.toHaveBeenCalled();
   });
 
-  it("o menu oferece só Relevância, Menor Preço e Maior Preço", async () => {
+  it("o menu oferece só Relevância, Menor preço e Maior preço", async () => {
     await montar("default");
     await abrirMenu();
 
     expect(opcoes().map((opcao) => opcao.textContent?.trim())).toEqual([
       "Relevância",
-      "Menor Preço",
-      "Maior Preço",
+      "Menor preço",
+      "Maior preço",
     ]);
     expect(hospedeiro.textContent).not.toMatch(/mais vendidos?/i);
   });
@@ -327,7 +327,7 @@ describe("ordenação da vitrine sem Mais Vendidos", () => {
     const escolhas: SortOption[] = [];
     await montar("default", (ordem) => escolhas.push(ordem));
 
-    for (const rotulo of ["Relevância", "Menor Preço", "Maior Preço"]) {
+    for (const rotulo of ["Relevância", "Menor preço", "Maior preço"]) {
       await abrirMenu();
       const opcao = opcoes().find((o) => o.textContent?.trim() === rotulo);
       expect(opcao).toBeDefined();

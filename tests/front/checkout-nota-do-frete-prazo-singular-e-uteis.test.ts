@@ -1,5 +1,5 @@
 // Rodada 5, achado 10: a nota "Frete Escolhido: <nome> (Prazo: <prazo>)" vai
-// para as "Observações do pedido" da ficha, CRUA. Ela gravava `${dias} dias`:
+// para as "Observações do pedido" da ficha. O checkout gravava `${dias} dias`:
 // a entrega local de 1 dia (padrão da loja) saía "Prazo: 1 dias", e a
 // transportadora saía sem o "úteis" que o carrinho já dizia. Agora a nota
 // segue a mesma regra do `prazoDaOpcao` do carrinho: plural certo, "úteis"

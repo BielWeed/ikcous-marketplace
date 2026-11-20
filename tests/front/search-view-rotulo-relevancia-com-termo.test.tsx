@@ -130,17 +130,17 @@ describe("SearchView — rótulo da ordenação padrão acompanha o termo", () =
 
   it("com termo e preço escolhido mantém as opções e conta o filtro", async () => {
     await abrir("vestido");
-    await clicar(botaoPorTexto("Menor Preço"));
+    await clicar(botaoPorTexto("Menor preço"));
     for (const texto of [
-      "Menor Preço",
-      "Maior Preço",
+      "Menor preço",
+      "Maior preço",
       "Relevância",
       "Alfabética",
     ]) {
       expect(botaoPorTexto(texto)).toBeDefined();
     }
     expect(botaoPorTexto("Mais Novos")).toBeUndefined();
-    expect(botaoPorTexto("Menor Preço")?.getAttribute("aria-pressed")).toBe(
+    expect(botaoPorTexto("Menor preço")?.getAttribute("aria-pressed")).toBe(
       "true",
     );
     expect(botaoPorTexto("Relevância")?.getAttribute("aria-pressed")).toBe(

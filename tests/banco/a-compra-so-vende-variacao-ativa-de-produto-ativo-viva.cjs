@@ -255,7 +255,7 @@ async function vendida(rotulo, porta, r, esperado) {
     {
       product_id: esperado.produto,
       variant_id: esperado.variante,
-      quantity: 1,
+      quantity: esperado.quantidade ?? 1,
       price: esperado.preco,
     },
   ]);
@@ -396,6 +396,31 @@ for (const porta of ["v23", "v24"]) {
 
 // Os mesmos corpos VIVOS, sem reinstalar versoes historicas.
 for (const porta of ["v23", "v24"]) {
+  prova(
+    `${porta}: compra de duas unidades baixa duas do estoque da mesma variacao`,
+    () =>
+      P.emTransacao(async () => {
+        await semear();
+        await mutar(porta);
+        await vendida(
+          "DUAS_UNIDADES_DA_VARIACAO",
+          porta,
+          await comprar(porta, P_A, V_A, 180, {
+            itens: [{ product_id: P_A, variant_id: V_A, quantity: 2 }],
+          }),
+          {
+            produto: P_A,
+            variante: V_A,
+            quantidade: 2,
+            subtotal: "160.00",
+            total: "180.00",
+            preco: "80.00",
+            estoques: { produto: 50, variacao: 5 },
+          },
+        );
+      }),
+  );
+
   prova(
     `${porta}: variacao gratuita guarda subtotal e item zero, cobrando so o frete`,
     () =>

@@ -230,17 +230,30 @@ it.each([
 it.each(["aguardando", "recusado", "estornado"] as const)(
   "%s: avançar é secundário, não chama nada antes da confirmação e Voltar só fecha",
   async (paymentStatus) => {
-    montar(pedido({ paymentStatus }));
+    const status = paymentStatus === "estornado" ? "processing" : "pending";
+    montar(
+      pedido({
+        paymentStatus,
+        status,
+        ...(status === "processing" && { shippingLabelId: "etiqueta-teste" }),
+      }),
+    );
     expect(botao("Avançar mesmo assim")?.className).not.toContain("from-[#");
     await clicar("Avançar mesmo assim");
     expect(avancar).not.toHaveBeenCalled();
-    expect(document.body.textContent).toContain(
-      "depois de finalizado, não dá mais para cancelar e devolver ao estoque",
-    );
-    // Mesma orientação do aviso da ficha (OrderDetail): o "Voltar" daqui só fecha.
-    expect(document.body.textContent).toContain(
-      "Se a cliente pagou na loja, feche este aviso, cancele o pedido (botão Cancelar pedido) e registre a venda em Vender.",
-    );
+    if (paymentStatus === "estornado") {
+      expect(document.body.textContent).toContain(
+        "O pagamento deste pedido foi estornado. Se avançar, o pedido segue sem esse pagamento. Depois de finalizado, não dá mais para cancelar e devolver ao estoque.",
+      );
+      expect(document.body.textContent).not.toContain(
+        "O dinheiro deste pedido não entrou.",
+      );
+    } else {
+      expect(document.body.textContent).toContain(
+        "O dinheiro deste pedido não entrou. Se você avançar, a mercadoria caminha para sair mesmo assim — e, depois de finalizado, não dá mais para cancelar e devolver ao estoque. Se a cliente pagou na loja, feche este aviso, cancele o pedido (botão Cancelar pedido) e registre a venda em Vender.",
+      );
+    }
+    // Assim como na ficha, "Voltar" só fecha o aviso.
     await clicar("Voltar");
     expect(avancar).not.toHaveBeenCalled();
     await clicar("Avançar mesmo assim");
@@ -248,8 +261,8 @@ it.each(["aguardando", "recusado", "estornado"] as const)(
     expect(avancar).toHaveBeenCalledTimes(1);
     expect(avancar).toHaveBeenCalledWith(
       "pedido-abc123",
-      "processing",
-      "pending",
+      status === "processing" ? "shipping" : "processing",
+      status,
     );
     expect(selecionar).not.toHaveBeenCalled();
   },

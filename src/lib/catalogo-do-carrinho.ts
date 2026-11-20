@@ -275,7 +275,9 @@ export async function avisosDoCarrinho(
     for (const m of mudancas) {
       const nome = `"${comVariacao(m.nome, item.variantNames)}"`;
       if (m.tipo === "sumiu") {
-        frases.push(`${nome} não está mais à venda e saiu do seu carrinho.`);
+        frases.push(
+          `${nome} está indisponível e não aparece mais no seu carrinho.`,
+        );
       } else if (m.tipo === "estoque") {
         frases.push(
           (m.para ?? 0) <= 0

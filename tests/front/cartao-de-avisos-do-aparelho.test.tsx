@@ -312,7 +312,7 @@ describe("CartaoDeAvisosDoAparelho", () => {
       expect(botao(AGORA_NAO)).toBeDefined();
     });
 
-    it("permissão negada no app instalado aponta para as configurações do aparelho", async () => {
+    it("permissão negada no app instalado mostra onde liberar no computador e no celular", async () => {
       aparelhoSemAviso({ permission: "denied" });
       instaladoNaTela(true);
       await montar();
@@ -321,7 +321,9 @@ describe("CartaoDeAvisosDoAparelho", () => {
         .map((li) => li.textContent)
         .join(" ");
       expect(passos).toContain("Loja de Teste");
-      expect(passos).toContain("configurações do aparelho");
+      expect(passos).toContain("No computador:");
+      expect(passos).toContain("Configurações do site");
+      expect(passos).toContain("No celular: abra as configurações do aparelho");
     });
 
     it("iPhone fora do app instalado mostra Adicionar à Tela de Início, no lugar do botão", async () => {
@@ -402,9 +404,9 @@ describe("CartaoDeAvisosDoAparelho", () => {
 
     it("se o hook recusar com a frase traduzida, o cartão a deixa FIXA na tela", async () => {
       // É o erro que o hook lança: `.message` já é a instrução em português
-      // (aqui, o caso do Android com as notificações do app desligadas).
+      // (aqui, o caso do app instalado com as notificações bloqueadas).
       const frase =
-        "O aparelho está bloqueando as notificações deste app. Abra as configurações do aparelho → Apps → Loja de Teste → Notificações, ative e toque de novo.";
+        "O aparelho está bloqueando as notificações deste app. No computador, abra a loja no Chrome ou Edge: ícone ao lado do endereço → Configurações do site → Notificações → Permitir. No celular: Configurações → Apps → Loja de Teste → Notificações; ative os avisos. Depois, tente de novo.";
       hook.subscribe.mockRejectedValue(
         Object.assign(new Error(frase), { name: "PushSubscribeError" }),
       );
@@ -545,6 +547,55 @@ describe("CartaoDeAvisosDoAparelho", () => {
       expect(invoke).toHaveBeenCalledTimes(2);
       expect(hospedeiro.querySelector('[role="status"]')).not.toBeNull();
       expect(hospedeiro.querySelector('[role="alert"]')).toBeNull();
+    });
+
+    it("libera o teste sem resposta e ignora a resposta antiga durante a nova tentativa", async () => {
+      function envioPendente() {
+        type Resposta = { data: { enviados: number }; error: null };
+        let resolve!: (resposta: Resposta) => void;
+        const promise = new Promise<Resposta>((resolver) => {
+          resolve = resolver;
+        });
+        return { promise, resolve };
+      }
+      const primeira = envioPendente();
+      const segunda = envioPendente();
+      invoke
+        .mockReturnValueOnce(primeira.promise)
+        .mockReturnValueOnce(segunda.promise);
+      await montarJaLigado();
+      vi.useRealTimers();
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+
+      await tocar(TESTE);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(59_999);
+      });
+      expect(botao("Enviando...")?.disabled).toBe(true);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(botao(TESTE)?.disabled).toBe(false);
+      expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toContain(
+        "Sem resposta da rede. O aviso pode ter chegado: confira o aparelho antes de tentar de novo.",
+      );
+
+      await tocar(TESTE);
+      expect(invoke).toHaveBeenCalledTimes(2);
+      await act(async () => {
+        primeira.resolve({ data: { enviados: 1 }, error: null });
+      });
+      expect(botao("Enviando...")?.disabled).toBe(true);
+      expect(hospedeiro.querySelector('[role="status"]')).toBeNull();
+
+      await act(async () => {
+        segunda.resolve({ data: { enviados: 1 }, error: null });
+      });
+      expect(botao(TESTE)?.disabled).toBe(false);
+      expect(
+        hospedeiro.querySelector('[role="status"]')?.textContent,
+      ).toContain("Aviso de teste enviado");
     });
 
     it("'Pronto' fecha o cartão", async () => {

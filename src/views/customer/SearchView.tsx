@@ -541,8 +541,8 @@ export const SearchView = React.memo(function SearchView({
                     </p>
                     <div className="grid grid-cols-2 gap-3">
                       {[
-                        { label: "Menor Preço", value: "price_asc" },
-                        { label: "Maior Preço", value: "price_desc" },
+                        { label: "Menor preço", value: "price_asc" },
+                        { label: "Maior preço", value: "price_desc" },
                         {
                           label: query.trim() ? "Relevância" : "Mais Novos",
                           value: "newest",

@@ -9,9 +9,13 @@ import { act, useEffect } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { formatCurrency } from "@/lib/utils";
 import type { Product, ProductVariant } from "@/types";
 
 vi.mock("@/lib/supabase", () => ({ supabase: {} }));
+vi.mock("@/contexts/StoreContext", () => ({
+  useStore: () => ({ config: { enableReviews: false, freeShippingMin: 0 } }),
+}));
 
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -20,6 +24,20 @@ class ObservadorFalso {
   observe() {}
   unobserve() {}
   disconnect() {}
+}
+
+function stubGlobaisDeLayout() {
+  vi.stubGlobal("ResizeObserver", ObservadorFalso);
+  vi.stubGlobal("IntersectionObserver", ObservadorFalso);
+  vi.stubGlobal("matchMedia", (consulta: string) => ({
+    matches: false,
+    media: consulta,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  }));
 }
 
 const v = (
@@ -67,17 +85,7 @@ describe("ProductCard — anuncia o preço de vitrine", () => {
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
-    vi.stubGlobal("ResizeObserver", ObservadorFalso);
-    vi.stubGlobal("IntersectionObserver", ObservadorFalso);
-    vi.stubGlobal("matchMedia", (consulta: string) => ({
-      matches: false,
-      media: consulta,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      addListener: () => {},
-      removeListener: () => {},
-      dispatchEvent: () => false,
-    }));
+    stubGlobaisDeLayout();
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -158,6 +166,58 @@ describe("ProductCard — anuncia o preço de vitrine", () => {
     const faixa = selo.parentElement!;
     expect(faixa.className).toContain("flex-wrap");
     expect(faixa.contains(preco)).toBe(false);
+  });
+});
+
+describe("Cartão principal da faixa de ofertas — texto do desconto", () => {
+  async function conferirOferta(p: Product, conferir: (texto: string) => void) {
+    const { PremiumOffers } = await import(
+      "@/components/ui/custom/PremiumOffers"
+    );
+    stubGlobaisDeLayout();
+    const hospedeiro = document.createElement("div");
+    document.body.appendChild(hospedeiro);
+    const raiz = createRoot(hospedeiro);
+    try {
+      await act(async () => {
+        raiz.render(
+          <PremiumOffers
+            products={[p]}
+            favorites={[]}
+            onToggleFavorite={() => {}}
+            onProductClick={() => {}}
+          />,
+        );
+      });
+      conferir(hospedeiro.textContent ?? "");
+    } finally {
+      act(() => raiz.unmount());
+      hospedeiro.remove();
+      vi.unstubAllGlobals();
+    }
+  }
+
+  it("com opções em estoque de R$ 50 e R$ 100, anuncia o menor preço e qualifica o desconto", async () => {
+    await conferirOferta(
+      produto({
+        originalPrice: 100,
+        variants: [v("P"), v("G", { priceOverride: 100 })],
+      }),
+      (texto) => {
+        expect(texto).toContain(`A partir de${formatCurrency(50)}`);
+        expect(texto).toContain("até 50% OFF");
+        expect(texto).toContain(`Economize até ${formatCurrency(50)}`);
+      },
+    );
+  });
+
+  it("com um só preço, mantém o desconto sem 'até'", async () => {
+    await conferirOferta(produto({ originalPrice: 100 }), (texto) => {
+      expect(texto).toContain("50% OFF");
+      expect(texto).toContain(`Economize ${formatCurrency(50)}`);
+      expect(texto).not.toContain("até 50% OFF");
+      expect(texto).not.toContain("A partir de");
+    });
   });
 });
 

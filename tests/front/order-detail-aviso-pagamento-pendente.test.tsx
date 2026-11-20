@@ -271,7 +271,7 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
     // aviso só o fecha: o cancelamento é o botão Cancelar pedido da ficha, e a
     // venda se registra na tela Vender (nomes-do-painel.ts, admin-pdv).
     expect(hospedeiro.textContent).toContain(
-      "Se a cliente pagou na loja, feche este aviso, cancele o pedido (botão Cancelar pedido) e registre a venda em Vender.",
+      "O dinheiro deste pedido não entrou. Se você avançar, a mercadoria caminha para sair mesmo assim — e, depois de finalizado, não dá mais para cancelar e devolver ao estoque. Se a cliente pagou na loja, feche este aviso, cancele o pedido (botão Cancelar pedido) e registre a venda em Vender.",
     );
     expect(hospedeiro.textContent).toContain(
       "Avançar não confirma o Pix. Se você não recebeu por fora, confira com o cliente antes de seguir.",
@@ -509,11 +509,17 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
     expect(onStatusChange).not.toHaveBeenCalled();
   });
 
-  it("'estornado': clicar em Avançar abre a confirmação e NÃO muda o status ainda", async () => {
+  it("'estornado': o aviso distingue o estorno e ainda permite avançar após confirmar", async () => {
     const { OrderDetail } = await import(
       "@/components/admin/orders/OrderDetail"
     );
-    const order = pedidoFake("estornado");
+    const order: Order = {
+      ...pedidoFake("estornado"),
+      status: "processing",
+      shipping: 10,
+      total: 110,
+      shippingLabelId: "etiqueta-teste",
+    };
     const onStatusChange = vi.fn();
 
     await act(async () => {
@@ -534,7 +540,25 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
     expect(hospedeiro.textContent).toContain(
       "Este pedido não está com o pagamento confirmado",
     );
+    const descricao = hospedeiro.querySelector(
+      '[data-slot="alert-dialog-description"]',
+    )?.textContent;
+    expect(descricao).toBe(
+      "O pagamento deste pedido foi estornado. Se avançar, o pedido segue sem esse pagamento. Depois de finalizado, não dá mais para cancelar e devolver ao estoque.",
+    );
     expect(onStatusChange).not.toHaveBeenCalled();
+
+    const confirmar = localizarBotaoPorTexto(hospedeiro, "Avançar mesmo assim");
+    expect(confirmar).toBeDefined();
+    await act(async () => {
+      confirmar?.click();
+      await esperarMicrotarefas();
+    });
+    expect(onStatusChange).toHaveBeenCalledWith(
+      "ped-teste",
+      "shipping",
+      "processing",
+    );
   });
 
   it("botão 'Cancelar pedido' (era 'Abortar Operação') continua sendo uma porta separada do diálogo de pagamento — COM confirmação própria (laudo #2, L-1)", async () => {

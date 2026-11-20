@@ -18,14 +18,18 @@ interface CartFooterSummaryProps {
    *  calcular" no lugar do número, na MESMA linha — a altura da barra não
    *  muda quando o frete fica pronto. */
   total: number | null;
+  conferindoCarrinho?: boolean;
   onNavigate: (view: View) => void;
 }
+
+const ROTULO_DA_CONFERENCIA = "Conferindo preços e estoque…";
 
 export function CartFooterSummary({
   cartCount,
   shipping,
   retiradaNaLoja = false,
   total,
+  conferindoCarrinho = false,
   onNavigate,
 }: CartFooterSummaryProps) {
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
@@ -141,13 +145,24 @@ export function CartFooterSummary({
             </p>
           </div>
 
+          {/* O total tem um anúncio próprio; a conferência é anunciada fora do botão ocupado. */}
+          <span aria-live="polite" className="sr-only">
+            {conferindoCarrinho ? ROTULO_DA_CONFERENCIA : null}
+          </span>
           {/* Main Action */}
           <button
+            aria-busy={conferindoCarrinho || undefined}
             onClick={() => onNavigate("checkout")}
             className="flex h-[52px] min-w-0 flex-1 basis-[184px] items-center justify-center gap-3 rounded-2xl bg-foreground px-5 text-[15px] font-semibold text-background transition-colors hover:bg-foreground/90 active:scale-[0.98]"
           >
-            Finalizar compra
-            <ArrowRight className="size-5 shrink-0" />
+            {conferindoCarrinho ? (
+              <span className="leading-tight">{ROTULO_DA_CONFERENCIA}</span>
+            ) : (
+              <>
+                Finalizar compra
+                <ArrowRight className="size-5 shrink-0" />
+              </>
+            )}
           </button>
         </div>
       </motion.div>

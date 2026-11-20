@@ -33,6 +33,7 @@ import {
   CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
   CLASSE_SELO_DESCONTO,
 } from "@/lib/cor-do-preco-promocional";
+import { cortarTexto } from "@/lib/cortar-texto";
 import {
   chaveDaVariacao,
   ordenarPelaGrade,
@@ -48,11 +49,13 @@ import { imagemRedimensionada } from "@/lib/imageUrl";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { medirRodapeCliente } from "@/lib/medir-rodape-cliente";
 import { montarMensagemDeCompartilhar } from "@/lib/mensagem-de-compartilhar";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { percentualDeDesconto } from "@/lib/percentual-de-desconto";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import { resumoParaPrevia } from "@/lib/resumo-para-previa";
 import { limparTelefoneBrasileiro } from "@/lib/telefone-br";
 import { textoEstoqueBaixo, textoSoRestam } from "@/lib/texto-estoque-baixo";
+import { textoSemControlesDeDirecao } from "@/lib/texto-sem-controles-de-direcao";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product, ProductVariant, View } from "@/types";
 import { dividirEmAtributos } from "@/utils/atributos-da-variacao";
@@ -162,7 +165,7 @@ export const ProductView = React.memo(function ProductView({
     Record<string, string>
   >(() => escolhaDasOpcoesUnicas(product.variants));
   const [folhaAberta, setFolhaAberta] = useState(false);
-  // O que a última escolha SOLTOU do outro lado ("Tamanho P desmarcado"), para
+  // O que a última escolha SOLTOU do outro lado ("Opção desmarcada: Tamanho P"), para
   // o leitor de tela: a tela muda sozinha e quem não vê não perceberia.
   const [avisoDaEscolha, setAvisoDaEscolha] = useState("");
   // A pessoa tocou em "Adicionar" sem escolher a opção: a linha que falta (na
@@ -172,7 +175,13 @@ export const ProductView = React.memo(function ProductView({
   const escolhaDaBarraRef = useRef<HTMLButtonElement>(null);
   const [editandoPergunta, setEditandoPergunta] = useState(false);
 
-  const { config } = useStore();
+  const {
+    config,
+    products,
+    loadingProducts,
+    catalogoErro,
+    catalogoDaRedeAplicado,
+  } = useStore();
   const {
     reviews,
     loading: loadingReviews,
@@ -380,11 +389,51 @@ export const ProductView = React.memo(function ProductView({
   // busca reiniciava antes de concluir e a seção ficava em skeleton eterno.
   // O hook mantém o buscador por ref e diferencia "buscando" de "vazio".
   const {
-    recomendacoes: recommendations,
+    recomendacoes: recomendacoesGuardadas,
     carregando: loadingRecs,
     consultado: recsConsultado,
     recarregar: recarregarRecomendacoes,
   } = useRecomendacoesDeProduto(product.id, recsVisible, fetchRecommendations);
+
+  const catalogoConfirmado =
+    catalogoDaRedeAplicado && !loadingProducts && !catalogoErro;
+  const [idsDaReleitura, setIdsDaReleitura] = useState("");
+  const respostaJaRelida = useRef<Product[] | null>(null);
+
+  // Uma falha da própria releitura não reabilita os itens que a motivaram.
+  const recommendations = useMemo(() => {
+    if (!catalogoConfirmado && !idsDaReleitura) return recomendacoesGuardadas;
+    const ids = new Set(idsDaReleitura.split(","));
+    return recomendacoesGuardadas.filter(
+      (recomendado) =>
+        (!catalogoConfirmado && !ids.has(recomendado.id)) ||
+        products.some((p) => p.id === recomendado.id && p.isActive),
+    );
+  }, [catalogoConfirmado, idsDaReleitura, products, recomendacoesGuardadas]);
+
+  useEffect(() => {
+    if (
+      !catalogoConfirmado ||
+      recomendacoesGuardadas.length === recommendations.length ||
+      respostaJaRelida.current === recomendacoesGuardadas
+    )
+      return;
+
+    const visiveis = new Set(recommendations);
+    const chaveAusentes = recomendacoesGuardadas
+      .filter((item) => !visiveis.has(item))
+      .map((item) => item.id)
+      .join(",");
+    // Marcar antes da consulta: o catálogo pode mudar sem chegar outra resposta.
+    respostaJaRelida.current = recomendacoesGuardadas;
+    setIdsDaReleitura(chaveAusentes);
+    void fetchProducts();
+  }, [
+    catalogoConfirmado,
+    fetchProducts,
+    recomendacoesGuardadas,
+    recommendations,
+  ]);
 
   // A lojista pode pausar o produto, ou mudar preço/estoque, em outro aparelho
   // com a ficha aberta: ao voltar a ela, relê o catálogo (produto pausado/
@@ -706,8 +755,8 @@ export const ProductView = React.memo(function ProductView({
       soltas.length === 0
         ? ""
         : soltas.length === 1
-          ? `${soltas[0]} desmarcado`
-          : `${soltas.join(" e ")} desmarcados`,
+          ? `Opção desmarcada: ${soltas[0]}`
+          : `Opções desmarcadas: ${soltas.join(" e ")}`,
     );
     setSelectedVariants(proxima);
     const posicao = posicaoDaFotoDaEscolha(proxima);
@@ -963,13 +1012,21 @@ export const ProductView = React.memo(function ProductView({
 
   const handleWhatsApp = () => {
     const variantInfo = selectedVariantObjects
-      .map((v) => `${v.name}: ${v.value}`)
+      .flatMap((v) => {
+        const nome = textoSemControlesDeDirecao(v.name).trim();
+        const valor = textoSemControlesDeDirecao(v.value).trim();
+        if (!nomeTemConteudoVisivel(nome) || !nomeTemConteudoVisivel(valor)) {
+          return [];
+        }
+        return [`${nome}: ${valor}`];
+      })
       .join(", ");
     // Escolha incompleta: o preço da tela é "a partir de", que nenhuma
     // combinação paga. Por escrito à lojista só vai o preço de uma escolha
     // completa; antes disso a conversa é uma dúvida, sem preço.
     const precoNaMensagem = faltaAlgo ? "" : ` - ${reais(currentPrice)}`;
-    const message = `Olá! Tenho interesse no produto: ${product.name}${variantInfo ? ` (${variantInfo})` : ""}${precoNaMensagem}`;
+    const nomeNaMensagem = cortarTexto(product.name, 120);
+    const message = `Olá! Tenho interesse no produto: ${nomeNaMensagem}${variantInfo ? ` (${variantInfo})` : ""}${precoNaMensagem}`;
     let phone = limparTelefoneBrasileiro(config.whatsappNumber);
     if (phone.length === 11 || phone.length === 10) {
       phone = `55${phone}`;

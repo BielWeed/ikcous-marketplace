@@ -427,7 +427,7 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
     expect(hospedeiro.textContent).not.toContain("Configurar como você recebe");
   });
 
-  it("loja só na entrega: a lista aberta diz 'Pagamento na entrega configurado', não 'PIX'", async () => {
+  it("loja só na entrega: a lista confirma que o pagamento está ativo e convida a revisar", async () => {
     await montar({
       ligado: false,
       chaveOk: false,
@@ -437,7 +437,7 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
     await abrirALista();
 
     const recebe = linhasDaLista()[3].textContent ?? "";
-    expect(recebe).toMatch(/pagamento na entrega configurado/i);
+    expect(recebe).toContain("Pagamento na entrega ativo — revise as opções");
     expect(recebe).not.toMatch(/pix/i);
   });
 

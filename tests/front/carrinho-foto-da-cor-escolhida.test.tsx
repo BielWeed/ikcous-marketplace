@@ -125,11 +125,7 @@ describe("CartItemsList — a foto da linha é a da cor escolhida", () => {
       FOTO_AZUL,
       FOTO_ROSA,
     ]);
-    // O texto alternativo descreve a foto que está na tela.
-    expect(fotos.map((f) => f.getAttribute("alt"))).toEqual([
-      "Camiseta Teste - Cor: Azul",
-      "Camiseta Teste - Cor: Rosa",
-    ]);
+    expect(fotos.map((f) => f.getAttribute("alt"))).toEqual(["", ""]);
   });
 
   it("tenta a capa quando a foto da cor falha, antes de mostrar Sem foto", async () => {
@@ -142,6 +138,7 @@ describe("CartItemsList — a foto da linha é a da cor escolhida", () => {
 
     const [capa, rosa] = hospedeiro.querySelectorAll("img");
     expect(capa?.getAttribute("src")).toBe(FOTO_DO_PRODUTO);
+    expect(capa?.getAttribute("alt")).toBe("");
     expect(rosa?.getAttribute("src")).toBe(FOTO_ROSA);
     await act(async () => capa.dispatchEvent(new Event("error")));
 
@@ -163,11 +160,12 @@ describe("CartItemsList — a foto da linha é a da cor escolhida", () => {
     expect(fotos[0].getAttribute("src")).toBe(FOTO_DO_PRODUTO);
   });
 
-  it("linha sem variação continua com a foto do produto e o nome do produto no alt", async () => {
+  it("linha sem variação continua com a foto do produto sem repetir o nome do produto", async () => {
     const fotos = await renderizarCarrinho([
       { product: { ...camiseta, variants: [] }, quantity: 1 },
     ]);
     expect(fotos[0].getAttribute("src")).toBe(FOTO_DO_PRODUTO);
-    expect(fotos[0].getAttribute("alt")).toBe("Camiseta Teste");
+    expect(fotos[0].getAttribute("alt")).toBe("");
+    expect(hospedeiro.querySelector("h2")?.textContent).toBe("Camiseta Teste");
   });
 });

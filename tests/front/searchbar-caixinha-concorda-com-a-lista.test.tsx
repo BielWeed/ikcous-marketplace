@@ -101,7 +101,8 @@ describe("a caixinha de sugestoes concorda com a lista", () => {
 
   const nomesNaCaixinha = () =>
     Array.from(hospedeiro.querySelectorAll("button img")).map(
-      (img) => (img as HTMLImageElement).alt,
+      (img) =>
+        img.closest("button")?.querySelector("span + span")?.textContent ?? "",
     );
   const tituloDosProdutos = () =>
     Array.from(hospedeiro.querySelectorAll("span"))

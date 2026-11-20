@@ -173,6 +173,15 @@ describe("Gerenciar categorias", () => {
     });
   }
 
+  it("mostra onde criar a primeira categoria quando a lista está vazia", async () => {
+    rpcMock.mockResolvedValue({ data: [], error: null });
+    await abrir();
+
+    expect(document.body.textContent?.replace(/\s+/g, " ")).toContain(
+      "Nenhuma categoria ainda. Feche esta janela e, no cadastro do produto, escolha Nova categoria no campo Categoria.",
+    );
+  });
+
   it("oferece os clássicos e o catálogo, mostra a prévia e salva a escolha nas duas colunas de uma vez", async () => {
     await abrir();
     const linha = [...document.querySelectorAll("li")].find((li) =>

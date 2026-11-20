@@ -1,6 +1,10 @@
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import { AvisoDaLojaSemDados } from "@/components/admin/AvisoDaLojaSemDados";
-import { normalizarNumeroMototaxi } from "@/components/admin/minha-loja/contato";
+import {
+  normalizarNumeroMototaxi,
+  numeroParaOCampo,
+  soDigitos,
+} from "@/components/admin/minha-loja/contato";
 import { HistoricoCotacoesSection } from "@/components/admin/settings/HistoricoCotacoesCard";
 import {
   type ConfigDoProvedor,
@@ -333,7 +337,7 @@ const ORDEM_DE_EXIBICAO: readonly ProvedorFrete[] = [
 ];
 
 interface AdminShippingViewProps {
-  onNavigate?: (view: View) => void;
+  onNavigate?: (view: View, id?: string) => void;
   active?: boolean;
   onSetDirty?: (dirty: boolean) => void;
   /**
@@ -344,6 +348,23 @@ interface AdminShippingViewProps {
    * todos fechados (entrada normal por "admin-shipping").
    */
   painelInicial?: "local" | "nacional";
+}
+
+function normalizarWhatsappDoCampoMototaxi(valor: string): string | null {
+  const digitado = valor.trim();
+  const digitos = soDigitos(digitado);
+  if (digitado.includes("+")) {
+    // Com "+" explícito, não confundir um código de país estrangeiro com DDD.
+    if (!/^\+55[\d\s().-]*$/.test(digitado) || !/^55\d{10,11}$/.test(digitos)) {
+      return null;
+    }
+  }
+  // A limpeza da loja é mais permissiva: aqui só pode tirar um zero de
+  // discagem, nunca operadora, zeros internacionais, letras ou excedentes.
+  if (/^0[1-9]\d{9,10}$/.test(digitos) && /^[\d\s().-]+$/.test(digitado)) {
+    return normalizarNumeroMototaxi(numeroParaOCampo(digitado));
+  }
+  return normalizarNumeroMototaxi(digitado);
 }
 
 /** Perguntas da entrega; o contrato de gravação continua o mesmo. */
@@ -387,9 +408,10 @@ export const AdminShippingView = memo(function AdminShippingView({
   const mototaxiPendente =
     contatoMototaxi.whatsapp !== baseMototaxi.whatsapp ||
     contatoMototaxi.nome !== baseMototaxi.nome;
-  const erroMototaxi =
-    !!contatoMototaxi.whatsapp.trim() &&
-    !normalizarNumeroMototaxi(contatoMototaxi.whatsapp);
+  const whatsappMototaxi = normalizarWhatsappDoCampoMototaxi(
+    contatoMototaxi.whatsapp,
+  );
+  const erroMototaxi = !!contatoMototaxi.whatsapp.trim() && !whatsappMototaxi;
 
   const [showHelpModal, setShowHelpModal] = useState(false);
   useVoltarFechaAFolha(showHelpModal, () => setShowHelpModal(false), true);
@@ -541,6 +563,8 @@ export const AdminShippingView = memo(function AdminShippingView({
   // A leitura das transportadoras JÁ chegou ao menos uma vez? Antes disso as
   // listas vazias são "ainda não sei", não "nenhuma ligada".
   const [credsLidas, setCredsLidas] = useState(false);
+  const [transportadorasEmLeitura, setTransportadorasEmLeitura] =
+    useState(false);
 
   // A seção de Transportadoras avisa a cada leitura confirmada dela (ao
   // montar e depois de cada salvar): a faixa e "Fora da cidade" passam a
@@ -693,6 +717,28 @@ export const AdminShippingView = memo(function AdminShippingView({
     pagamentoPeloAppLigado,
   });
 
+  const promocaoNacionalSemTransportadora =
+    active !== false &&
+    isLoaded &&
+    !!config &&
+    !configFalhou &&
+    credsLidas &&
+    !credsErro &&
+    !transportadorasEmLeitura &&
+    formData.shippingCoverage === "national" &&
+    formDataNacional.estrategia === "por_produto" &&
+    nomesLigados.length === 0;
+  const avisarPromocaoNacionalSemPagamento =
+    formData.modo !== "so_retiro" &&
+    promocaoNacionalSemTransportadora &&
+    !pagamentoPeloAppLigado;
+  const promocaoNacionalComPagamento =
+    promocaoNacionalSemTransportadora && pagamentoPeloAppLigado;
+  const avisarPromocaoNacionalComPagamento =
+    formData.modo !== "so_retiro" && promocaoNacionalComPagamento;
+  const resumoDaPromocaoNacional =
+    "Fora da sua região, só pedidos com produto marcado têm entrega";
+
   const resumoPainelLocal = `${formData.modo === "so_retiro" ? "Só retirada na loja · qualquer cliente pode buscar" : formData.modo === "entrego_e_retiro" ? "Você entrega ou o cliente retira" : "Você entrega"}${formData.modo === "so_retiro" ? "" : cepCompleto(config?.originCep) ? ` · ${resumoDoAlcance(config?.originCep, formData.localCepRange)}` : " · até onde, depende do CEP da loja"}`;
   const resumoPainelNacional =
     formData.shippingCoverage === "local"
@@ -701,7 +747,13 @@ export const AdminShippingView = memo(function AdminShippingView({
         ? "Não deu para confirmar as transportadoras"
         : nomesLigados.length
           ? `${nomesLigados.join(" e ")} ${nomesLigados.length === 1 ? "cota" : "cotam"} o frete na hora`
-          : "Nenhuma transportadora ligada: quem é de fora não compra";
+          : formData.modo === "so_retiro"
+            ? "Quem é de fora pode retirar na loja"
+            : avisarPromocaoNacionalSemPagamento
+              ? "A promoção pode aparecer, mas não finaliza sem pagamento pelo app"
+              : avisarPromocaoNacionalComPagamento
+                ? resumoDaPromocaoNacional
+                : "Nenhuma transportadora ligada: quem é de fora não compra";
   const resumoGratisLocal =
     formData.preset === "desligado"
       ? "não dá"
@@ -1109,7 +1161,10 @@ export const AdminShippingView = memo(function AdminShippingView({
           );
           return;
         }
-        const salvouMototaxi = await mototaxi.salvar(contatoMototaxi);
+        const salvouMototaxi = await mototaxi.salvar({
+          ...contatoMototaxi,
+          whatsapp: whatsappMototaxi,
+        });
         if (!salvouMototaxi) {
           setFalhaAoSalvar(true);
           toast.error("Não foi possível salvar o mototáxi. Tente de novo.");
@@ -1117,7 +1172,7 @@ export const AdminShippingView = memo(function AdminShippingView({
         }
         mototaxiSalvoNestaRodada = true;
         const salvo = {
-          whatsapp: normalizarNumeroMototaxi(contatoMototaxi.whatsapp) ?? "",
+          whatsapp: whatsappMototaxi ?? "",
           nome: contatoMototaxi.nome.trim(),
         };
         setEdicaoMototaxi({ base: salvo, contato: salvo });
@@ -1455,6 +1510,13 @@ export const AdminShippingView = memo(function AdminShippingView({
                 config={configDaPrevia}
                 nomesLigados={credsErro || !credsLidas ? null : nomesLigados}
                 pendente={isFormDirty}
+                pagamentoPeloAppLigado={pagamentoPeloAppLigado}
+                promocaoNacionalComPagamento={
+                  avisarPromocaoNacionalComPagamento
+                }
+                promocaoNacionalSemPagamento={
+                  avisarPromocaoNacionalSemPagamento
+                }
               />
             )}
             {pendencias > 0 && (
@@ -1496,10 +1558,34 @@ export const AdminShippingView = memo(function AdminShippingView({
                     }
                   />
                 )}
-                {faltaTransportadora && (
+                {avisarPromocaoNacionalSemPagamento && (
                   <AvisoDaEntrega
-                    titulo="Ninguém de fora da sua região compra"
-                    detalhe="Nenhuma transportadora está ligada. Se só vende perto, tudo bem."
+                    titulo="O frete grátis por produto pode aparecer fora da sua região, mas a cliente não consegue finalizar sem pagamento pelo app."
+                    detalhe="Ative o pagamento pelo app ou desative a promoção nacional. Para entregar fora da sua região pedidos sem nenhum produto com frete grátis, ligue também uma transportadora."
+                    botao="Ver pagamento pelo app"
+                    onClick={
+                      onNavigate
+                        ? () => onNavigate("admin-settings", "pagamentos")
+                        : undefined
+                    }
+                    acaoAdicional={{
+                      botao: "Configurar transportadoras",
+                      onClick: abrirTransportadoras,
+                    }}
+                  />
+                )}
+                {faltaTransportadora && !avisarPromocaoNacionalSemPagamento && (
+                  <AvisoDaEntrega
+                    titulo={
+                      avisarPromocaoNacionalComPagamento
+                        ? resumoDaPromocaoNacional
+                        : "Ninguém de fora da sua região compra"
+                    }
+                    detalhe={
+                      avisarPromocaoNacionalComPagamento
+                        ? "Ligue uma transportadora para entregar também os pedidos sem produto marcado."
+                        : "Nenhuma transportadora está ligada. Se só vende perto, tudo bem."
+                    }
                     botao="Ligar transportadora"
                     onClick={abrirTransportadoras}
                   />
@@ -1512,7 +1598,7 @@ export const AdminShippingView = memo(function AdminShippingView({
                       botao="Ver pagamento pelo app"
                       onClick={
                         onNavigate
-                          ? () => onNavigate("admin-settings")
+                          ? () => onNavigate("admin-settings", "pagamentos")
                           : undefined
                       }
                     />
@@ -1601,6 +1687,7 @@ export const AdminShippingView = memo(function AdminShippingView({
                 onNavigate={onNavigate}
                 nomesLigados={credsErro || !credsLidas ? null : nomesLigados}
                 pagamentoPeloAppLigado={pagamentoPeloAppLigado}
+                promocaoNacionalComPagamento={promocaoNacionalComPagamento}
               />
               <fieldset
                 disabled={isOffline || isSaving || !mototaxi.config}
@@ -1650,7 +1737,8 @@ export const AdminShippingView = memo(function AdminShippingView({
                       role="alert"
                       className="text-xs text-amber-300"
                     >
-                      Informe DDD e número brasileiros válidos.
+                      Informe DDD e número brasileiros válidos. Exemplo: (11)
+                      98765-4321.
                     </p>
                   )}
                 </div>
@@ -1718,6 +1806,7 @@ export const AdminShippingView = memo(function AdminShippingView({
                 <TransportadorasSection
                   active={active}
                   onErroMudou={setCredsErro}
+                  onLeituraPendenteMudou={setTransportadorasEmLeitura}
                   onDirtyMudou={marcarTransportadorasPendentes}
                   onLigadosMudou={onLigadosDasTransportadorasMudou}
                   onSalvarMudou={registrarSalvarTransportadoras}
@@ -1935,12 +2024,16 @@ function AvisoDaEntrega({
   detalhe,
   botao,
   onClick,
+  acaoAdicional,
 }: {
   readonly titulo: string;
   readonly detalhe: string;
   readonly botao: string;
   readonly onClick?: () => void;
+  readonly acaoAdicional?: { botao: string; onClick: () => void };
 }) {
+  const acoes = [{ botao, onClick }];
+  if (acaoAdicional) acoes.push(acaoAdicional);
   return (
     <div
       role="status"
@@ -1951,14 +2044,18 @@ function AvisoDaEntrega({
         {titulo}
       </p>
       <p className="mt-1 text-[12.5px]">{detalhe}</p>
-      {onClick && (
-        <button
-          type="button"
-          onClick={onClick}
-          className="mt-2 min-h-11 rounded-lg border border-amber-500/30 px-3 text-xs font-bold"
-        >
-          {botao}
-        </button>
+      {acoes.map(
+        ({ botao, onClick }) =>
+          onClick && (
+            <button
+              key={botao}
+              type="button"
+              onClick={onClick}
+              className="mt-2 min-h-11 rounded-lg border border-amber-500/30 px-3 text-xs font-bold"
+            >
+              {botao}
+            </button>
+          ),
       )}
     </div>
   );

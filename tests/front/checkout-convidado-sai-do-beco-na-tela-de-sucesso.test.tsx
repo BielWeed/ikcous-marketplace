@@ -298,6 +298,9 @@ describe("CheckoutView — convidado sem beco na tela de sucesso (CheckoutView-3
     // O beco: OrderSearch exige e-mail que o convidado nunca informou —
     // este botão nunca poderia achar o pedido dele.
     expect(hospedeiro.textContent).not.toContain("Ver Meus Pedidos");
+    expect(hospedeiro.textContent).toContain(
+      "Guarde o número do pedido. Para acompanhar, fale com a loja pelo WhatsApp.",
+    );
 
     const openSpy = vi.fn();
     vi.stubGlobal("open", openSpy);
@@ -325,12 +328,13 @@ describe("CheckoutView — convidado sem beco na tela de sucesso (CheckoutView-3
 
     expect(hospedeiro.textContent).not.toContain("Ver Meus Pedidos");
     expect(localizarBotaoPorTexto(hospedeiro, "WhatsApp")).toBeUndefined();
-    // O identificador já aparece acima na tela (Número do pedido: #ED-999) —
-    // a instrução só reforça que ele é o que resta para acompanhar. A metade
-    // positiva também é cobrada: sem ela o convidado fica só com "Retornar à
-    // Vitrine" e nenhuma pista de como acompanhar.
     expect(hospedeiro.textContent).toContain("ED-999");
-    expect(hospedeiro.textContent).toContain("Guarde o número do pedido acima");
+    expect(hospedeiro.textContent).toContain(
+      "Guarde o número do pedido acima — é por ele que a loja localiza o seu pedido.",
+    );
+    expect(hospedeiro.textContent).not.toContain(
+      "fale com a loja pelo WhatsApp",
+    );
   });
 
   it("cliente com conta: 'Ver Meus Pedidos' continua existindo e leva para 'orders' — este caminho já funciona e não muda", async () => {
@@ -374,6 +378,7 @@ describe("CheckoutView — convidado sem beco na tela de sucesso (CheckoutView-3
       "Ver Meus Pedidos",
     );
     expect(botaoMeusPedidos).not.toBeUndefined();
+    expect(hospedeiro.textContent).not.toContain("Guarde o número do pedido");
 
     await act(async () => {
       botaoMeusPedidos!.click();

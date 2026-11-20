@@ -464,7 +464,7 @@ describe("AdminProductFormView — recortar ou excluir foto acerta a variação"
     const janela = document.querySelector('[data-testid="confirmar-acao"]');
     expect(janela).not.toBeNull();
     expect(janela?.textContent).toContain(
-      "Esta foto é usada em 1 variação. Ao salvar, esta foto sairá do produto e deixará de ser a foto dessas variações. As outras fotos do produto, se houver, continuarão visíveis. Remover esta foto?",
+      "Esta foto é usada em 1 variação. Ao salvar, esta foto sairá do produto e deixará de ser a foto dessa variação. As outras fotos do produto, se houver, continuarão visíveis. Remover esta foto?",
     );
     expect(
       document.querySelector('img[src="https://cdn/a.jpg"]'),

@@ -202,14 +202,14 @@ describe("SearchView — categoria, ordem e faixa de preço sobrevivem a abrir u
     await montar();
     await clicar(botaoFiltros());
     await clicar(botaoPorTexto("Vestidos") as HTMLElement);
-    await clicar(botaoPorTexto("Menor Preço") as HTMLElement);
+    await clicar(botaoPorTexto("Menor preço") as HTMLElement);
     expect(botaoFiltros().textContent).toContain("(2)");
 
     await abrirProdutoEVoltar();
 
     expect(botaoFiltros().textContent).toContain("(2)");
     await clicar(botaoFiltros());
-    expect(botaoPorTexto("Menor Preço")?.getAttribute("aria-pressed")).toBe(
+    expect(botaoPorTexto("Menor preço")?.getAttribute("aria-pressed")).toBe(
       "true",
     );
     expect(botaoPorTexto("Mais Novos")?.getAttribute("aria-pressed")).toBe(
@@ -229,7 +229,7 @@ describe("SearchView — categoria, ordem e faixa de preço sobrevivem a abrir u
     await montar();
     await clicar(botaoFiltros());
     await clicar(botaoPorTexto("Vestidos") as HTMLElement);
-    await clicar(botaoPorTexto("Maior Preço") as HTMLElement);
+    await clicar(botaoPorTexto("Maior preço") as HTMLElement);
     await clicar(botaoPorTexto("Limpar Tudo") as HTMLElement);
     expect(botaoFiltros().textContent).not.toContain("(");
 

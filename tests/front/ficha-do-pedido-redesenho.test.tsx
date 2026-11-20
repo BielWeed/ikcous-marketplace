@@ -847,6 +847,26 @@ describe("ficha do pedido (redesenho 08/10/2026)", () => {
       expect(botao("Adicionar anotação")).toBeDefined();
     });
 
+    it.each([
+      ["1 dias", "1 dia"],
+      ["11 dias", "11 dias"],
+      ["21 dias", "21 dias"],
+      ["10 dias", "10 dias"],
+    ])(
+      "mostra o prazo legado %s como %s nas observações",
+      async (prazo, exibido) => {
+        const prefixo = "Frete Escolhido: Correios — SEDEX (Prazo: ";
+        await renderizar(pedidoFake({ notes: `${prefixo}${prazo})` }));
+
+        const rotulo = Array.from(
+          porId("envio-lista")?.querySelectorAll("h3") ?? [],
+        ).find((h) => h.textContent?.trim() === "Observações do pedido");
+        expect(rotulo?.parentElement?.querySelector("p")?.textContent).toBe(
+          `${prefixo}${exibido})`,
+        );
+      },
+    );
+
     it("salvar uma anotação interna preserva a observação original e a linha 'Como vai'", async () => {
       await renderizar(
         pedidoFake({

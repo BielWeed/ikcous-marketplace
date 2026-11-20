@@ -112,14 +112,14 @@ function mensagemDaOrigem(origin: PushSubscribeErrorOrigin): string {
       // cai neste mesmo ramo, e é a palavra que a frase de `permissao_negada`
       // já usa. Nenhuma cita Android ou iOS pelo nome, e a mesma regra do
       // caso acima vale: sem nome de botão (esta frase sai no banner e no
-      // painel, com controles de nomes diferentes — "toque de novo" já aponta
-      // para o que a pessoa acabou de tocar).
+      // painel, com controles de nomes diferentes — a instrução é só tentar
+      // de novo).
       //
       // O nome do app é o do MANIFESTO (`branding.appName` — a mesma fotografia
       // que preparou o HTML e o manifesto): é com ele que o app aparece na
-      // lista de Apps do aparelho, e é lá que a pessoa vai procurá-lo. Não se
-      // adivinha o nome do navegador (o user agent de um Chromium qualquer
-      // diz "Chrome"): "o seu navegador" é verdade em qualquer um.
+      // lista de Apps do celular, e é lá que a pessoa vai procurá-lo. No
+      // computador, o caminho usa as configurações do site. Já na aba, não
+      // se adivinha o nome do navegador: "o seu navegador" vale para qualquer um.
       //
       // Medido no Android (Chrome e WebAPK). No iOS NÃO foi medido: lá a
       // permissão é do próprio web app instalado, e o Safari fora do modo
@@ -127,7 +127,7 @@ function mensagemDaOrigem(origin: PushSubscribeErrorOrigin): string {
       // inferência. Se chegar, a entrada "Apps" das Configurações só existe do
       // iOS 18 em diante.
       return estaComoAppInstalado()
-        ? `O aparelho está bloqueando as notificações deste app. Abra as configurações do aparelho → Apps → ${nomeDaLoja()} → Notificações, ative e toque de novo.`
+        ? `O aparelho está bloqueando as notificações deste app. No computador, abra a loja no Chrome ou Edge: ícone ao lado do endereço → Configurações do site → Notificações → Permitir. No celular: Configurações → Apps → ${nomeDaLoja()} → Notificações; ative os avisos. Depois, tente de novo.`
         : "O aparelho está bloqueando as notificações do navegador. Abra as configurações do aparelho → Apps → o seu navegador → Notificações, ative e toque de novo.";
     case "navegador":
       return "Não foi possível ativar as notificações neste navegador. Tente novamente ou use um navegador atualizado.";
@@ -184,7 +184,7 @@ function mensagemPorOrigem(error: unknown): string {
 }
 
 // As duas origens de PERMISSÃO cuja frase é uma INSTRUÇÃO de vários passos
-// ("abra as configurações → Apps → … → Notificações, ative e toque de novo").
+// (como liberar as notificações nas configurações do site ou do aparelho).
 // O `<Toaster>` do app fecha todo aviso em 2500 ms
 // (`src/components/ui/sonner.tsx`), e a pessoa não chega ao fim da frase
 // antes de ela sumir. `permissao_pendente` é uma linha só ("Toque de novo…")

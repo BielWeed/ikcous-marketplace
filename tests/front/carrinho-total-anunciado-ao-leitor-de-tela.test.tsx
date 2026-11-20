@@ -243,13 +243,19 @@ describe("CartView — o novo total é anunciado a quem usa leitor de tela", () 
   it("nenhuma outra linha do resumo (subtotal, frete) vira região viva", async () => {
     await renderizarCarrinho();
 
-    for (const resumo of [resumoDoComputador(), rodapeDoCelular()]) {
-      const vivas = Array.from(
-        resumo.querySelectorAll("[role='status'], [aria-live]"),
-      );
-      expect(vivas).toHaveLength(1);
-      expect(vivas[0]).toBe(valorDoTotalEm(resumo));
-    }
+    const computador = resumoDoComputador();
+    const celular = rodapeDoCelular();
+    const seletor = "[role='status'], [aria-live]";
+    expect(Array.from(computador.querySelectorAll(seletor))).toEqual([
+      valorDoTotalEm(computador),
+    ]);
+
+    const [total, avisoDaConferencia] = celular.querySelectorAll(seletor);
+    expect(celular.querySelectorAll(seletor)).toHaveLength(2);
+    expect(total).toBe(valorDoTotalEm(celular));
+    // O anúncio de ação é separado dos valores e não fala em repouso.
+    expect(avisoDaConferencia.getAttribute("aria-live")).toBe("polite");
+    expect(avisoDaConferencia.textContent).toBe("");
   });
 
   it("um resumo por vez fala: os dois se escondem com display:none (hidden / lg:hidden), nunca só sr-only", async () => {

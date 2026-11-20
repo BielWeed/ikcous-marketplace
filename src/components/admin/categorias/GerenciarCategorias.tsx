@@ -261,7 +261,8 @@ function ConteudoDaGestao() {
 
       {usos && usos.length === 0 && !erro ? (
         <p className="text-sm text-zinc-500">
-          Nenhuma categoria ainda. Crie a primeira ao cadastrar um produto.
+          Nenhuma categoria ainda. Feche esta janela e, no cadastro do produto,
+          escolha Nova categoria no campo Categoria.
         </p>
       ) : null}
 

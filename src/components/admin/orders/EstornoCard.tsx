@@ -170,25 +170,26 @@ function estadoDoCartao(
   reservado: number,
   tudoDevolvido: boolean,
 ): EstadoDoCartao {
-  // Pedido ENTREGUE não se cancela: "cancele antes" mandaria a lojista para um
-  // caminho que não existe. Com saldo, o caminho é a devolução do produto
-  // (seção Devoluções da ficha); sem saldo, vale o mesmo fechamento de sempre.
+  // Para entregues e cancelados, saldo zero também pode significar que o
+  // servidor já descontou uma devolução em curso ou em dúvida. Só os baldes
+  // do servidor fecham a conta: `valor_estornado` não inclui reembolso manual.
+  const estadoSemSaldo =
+    reservado > 0
+      ? "reservado"
+      : tudoDevolvido
+        ? "tudo_devolvido"
+        : "devolucao_em_andamento";
+
+  // Pedido ENTREGUE não se cancela: com saldo, o caminho é a devolução do
+  // produto (seção Devoluções da ficha).
   if (order.status === "delivered") {
-    if (disponivel > 0) return "bloqueado_entregue";
-    if (reservado > 0) return "reservado";
-    // Saldo zero também é o que sobra com a devolução ainda EM ANDAMENTO (o
-    // servidor já desconta o que está em curso) ou com valor em dúvida: nesses
-    // dois casos o pedido ainda não fechou, e a linha da devolução diz o
-    // andamento. A conta fechada vem dos baldes do servidor (nada em curso,
-    // nada em dúvida), NUNCA de `valor_estornado`: ele só soma estorno aprovado
-    // pelo Mercado Pago e não vê o que a lojista devolveu por fora.
-    return tudoDevolvido ? "tudo_devolvido" : "devolucao_em_andamento";
+    return disponivel > 0 ? "bloqueado_entregue" : estadoSemSaldo;
   }
   if (order.status !== "cancelled") return "bloqueado_status";
   if (order.cancelledAfterShipping && !order.returnedToSellerAt) {
     return "bloqueado_retorno";
   }
-  if (disponivel <= 0) return reservado > 0 ? "reservado" : "tudo_devolvido";
+  if (disponivel <= 0) return estadoSemSaldo;
   return "normal";
 }
 

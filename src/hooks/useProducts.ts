@@ -2783,7 +2783,10 @@ export function useProducts({
 
           const { error: uploadError } = await supabase.storage
             .from("products")
-            .upload(filePath, pronto);
+            .upload(filePath, pronto, {
+              cacheControl: "31536000",
+              upsert: false,
+            });
 
           if (uploadError) throw uploadError;
 

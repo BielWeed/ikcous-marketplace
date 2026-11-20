@@ -1860,7 +1860,7 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         - **`46b-antes-desfazer-recebimento-base-vigente`** (`ausenciaConfirmadaPor`) prova o ANTES: o corpo vigente
           da `20261197000000` (md5), os atributos, o `EXECUTE` de hoje, `is_admin()` e `is_admin_atual()` de pe e as
           14 colunas que o corpo le ou grava. Rode a `46b` em CADA loja ANTES do apply.
-        - Nao ha medicao `46m`: o lote nao le nem reescreve dado.
+        - O lote 46a/46b nao tem medicao propria: ele nao le nem reescreve dado (a consulta `46m` e de outro assunto).
       - **Caminho, uma loja por vez (IKCOUS, depois Savy):** `46a` (sai NEGATIVA) -> `46b` MAIS NOVA e POSITIVA ->
         UM comando `aplicar-migrations.yml` com a migration -> o ensaio pede a `46a` DE NOVO, que tem de sair
         POSITIVA. A `8e` segue POSITIVA depois do apply (o corpo novo entra como sucessor conhecido dela).
@@ -2363,6 +2363,17 @@ O cadastro de UMA vez, na entrada do cliente:
   com o filtro de status/`payment_status` IDENTICO ao da funcao) em 30 dias, 90 dias e total; e os pedidos de R$ 0
   entregues com `payment_status` nulo. **Ler a linha `controle` primeiro:** com a RLS valendo em qualquer das tres
   tabelas o numero sai baixo; a coerencia do desconto diz se a coluna `discount` e confiavel. Nao e portao.
+- **`45m-medir-pago-apos-expirar`**: conta os pedidos marcados como pagos depois de a reserva vencer (incluindo
+  cartao e PIX), por mes de criacao do pedido e metodo registrado. Mostra contagens e a primeira e a ultima
+  data de criacao em cada grupo, sem dados de clientes nem valores em reais. Confira valores em consulta
+  privada. No `conferir-banco-da-loja.yml`, selecione esta `consulta`, use `projeto=ikcous-publicada`
+  ou `projeto=savy` (uma loja por execucao), `gravar_ledger=nao` e o SHA completo do commit da execucao em
+  `expected_sha`. So leitura. Nao e portao.
+- **`46m-medir-produtos-com-variacoes-independentes`**: conta produtos ativos nao excluidos e os que tem mais
+  de um grupo de variacao, como no aviso do painel. A amostra mostra ate 20 IDs com o rotulo fixo
+  `variacoes_independentes`, sem nomes nem estoque. Use os mesmos alvos e parametros da 45m, uma loja por
+  execucao. Se algum indicador de RLS for 1, o total pode estar incompleto. So leitura, sem dados de
+  clientes. Nao e portao.
 
 ## Fora da release, de proposito
 

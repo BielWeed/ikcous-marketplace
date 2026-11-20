@@ -268,11 +268,39 @@ it("as travas do frete continuam quando contato e frete mudaram juntos", async (
   expect(s.rpc).not.toHaveBeenCalled();
   expect(s.update).not.toHaveBeenCalled();
 });
-it("número inválido não pode ser salvo", async () => {
+it.each(["011 99876-5432", "(11) 99876-5432", "+55 11 99876-5432"])(
+  "salva o WhatsApp %s no formato brasileiro com código do país",
+  async (numero) => {
+    await abrir();
+    await digitar("#mototaxi-whatsapp", numero);
+    expect(botao()?.disabled).toBe(false);
+    await act(async () => botao()?.click());
+    expect(s.rpc).toHaveBeenCalledExactlyOnceWith("salvar_config_mototaxi", {
+      p_whatsapp: "5511998765432",
+      p_nome: null,
+    });
+    expect(
+      host.querySelector<HTMLInputElement>("#mototaxi-whatsapp")?.value,
+    ).toBe("5511998765432");
+  },
+);
+it.each([
+  "11999",
+  "00 11 99876-5432",
+  "+34 612 345 678",
+  "+34 99876-5432",
+  "+1 212 555 0123",
+  "011 99876-54321",
+  "011 99876-5432 ramal",
+])("não salva o número inválido %s e mostra um exemplo", async (numero) => {
   await abrir();
-  await digitar("#mototaxi-whatsapp", "11999");
+  await digitar("#mototaxi-whatsapp", numero);
   expect(botao()?.disabled).toBe(true);
+  await act(async () => botao()?.click());
   expect(s.rpc).not.toHaveBeenCalled();
+  expect(host.querySelector("#mototaxi-erro")?.textContent).toBe(
+    "Informe DDD e número brasileiros válidos. Exemplo: (11) 98765-4321.",
+  );
 });
 it("falha de gravação não vira salvo", async () => {
   await abrir();

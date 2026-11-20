@@ -175,6 +175,13 @@ describe("OrderDetailsView — a foto do item nunca fica quebrada", () => {
       "https://exemplo.invalid/foto-boa.jpg",
       "https://exemplo.invalid/foto-boa.jpg",
     ]);
+    const nomeDoItem = hospedeiro.querySelector("h5");
+    expect(nomeDoItem?.textContent).toBe(pedidoBase.items[0].name);
+    expect(
+      nomeDoItem?.parentElement?.parentElement
+        ?.querySelector("img")
+        ?.getAttribute("alt"),
+    ).toBe("");
     expect(iconesDeSemFoto()).toHaveLength(0);
   });
 

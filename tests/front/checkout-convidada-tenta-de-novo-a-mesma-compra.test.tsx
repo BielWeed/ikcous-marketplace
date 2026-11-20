@@ -752,45 +752,62 @@ describe("CheckoutView — com conta o painel de 'conferir antes' continua exata
     vi.restoreAllMocks();
   });
 
-  it("logada, erro sem código: 'Ver meus pedidos' (conferir_antes), sem 'Tentar de novo' nem 'Falar com a loja', Finalizar travado", async () => {
-    createOrder.mockRejectedValueOnce({});
-    const { CheckoutView } = await import("@/views/customer/CheckoutView");
-    await act(async () => {
-      raiz.render(
-        <CheckoutView
-          onNavigate={onNavigate}
-          onSetBackOverride={onSetBackOverride}
-        />,
-      );
-    });
-    await act(async () => {
-      digitar("checkout-name", "Cliente Teste");
-      digitar("checkout-tel", "34999999999");
-      await esperarMicrotarefas();
-      await esperarMicrotarefas();
-    });
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 420));
-    });
-    await act(async () => {
-      botaoPorTexto("Dinheiro na Entrega")?.click();
-      await esperarMicrotarefas();
-    });
-    await act(async () => {
-      botaoFinalizar()!.click();
-      await esperarMicrotarefas();
-      await esperarMicrotarefas();
-    });
+  it.each([
+    {
+      caso: "erro sem código",
+      erro: {},
+      mensagem:
+        "Não conseguimos confirmar se o pedido foi enviado. Verifique se ele já apareceu antes de tentar de novo.",
+    },
+    {
+      caso: "servidor não respondeu",
+      erro: { code: "PEDIDO_SEM_RESPOSTA" },
+      mensagem:
+        "O servidor demorou para responder. O pedido pode ter sido criado: confira seus pedidos ou fale com a loja antes de tentar novamente.",
+    },
+  ])(
+    "logada, $caso: aviso sem prefixo, 'Ver meus pedidos' e Finalizar travado",
+    async ({ erro, mensagem }) => {
+      createOrder.mockRejectedValueOnce(erro);
+      const { CheckoutView } = await import("@/views/customer/CheckoutView");
+      await act(async () => {
+        raiz.render(
+          <CheckoutView
+            onNavigate={onNavigate}
+            onSetBackOverride={onSetBackOverride}
+          />,
+        );
+      });
+      await act(async () => {
+        digitar("checkout-name", "Cliente Teste");
+        digitar("checkout-tel", "34999999999");
+        await esperarMicrotarefas();
+        await esperarMicrotarefas();
+      });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 420));
+      });
+      await act(async () => {
+        botaoPorTexto("Dinheiro na Entrega")?.click();
+        await esperarMicrotarefas();
+      });
+      await act(async () => {
+        botaoFinalizar()!.click();
+        await esperarMicrotarefas();
+        await esperarMicrotarefas();
+      });
 
-    expect(createOrder).toHaveBeenCalledTimes(1);
-    expect(
-      document.querySelector('button[data-acao="conferir_antes"]'),
-    ).not.toBeNull();
-    expect(botaoTentarDeNovo()).toBeNull();
-    expect(botaoPorTexto("Falar com a loja")).toBeUndefined();
-    expect(document.body.textContent).toContain("Ver meus pedidos");
-    expect(botaoFinalizar()!.disabled).toBe(true);
-  });
+      expect(createOrder).toHaveBeenCalledTimes(1);
+      expect(
+        document.querySelector('button[data-acao="conferir_antes"]'),
+      ).not.toBeNull();
+      expect(botaoTentarDeNovo()).toBeNull();
+      expect(botaoPorTexto("Falar com a loja")).toBeUndefined();
+      expect(document.body.textContent).toContain("Ver meus pedidos");
+      expect(botaoFinalizar()!.disabled).toBe(true);
+      expect(toastError).toHaveBeenCalledWith(mensagem);
+    },
+  );
 
   it("logada, falha de rede: o aviso e o toast NÃO prometem 'não sai em dobro' e mandam conferir Meus pedidos", async () => {
     // A cliente com conta não tem compra congelada: se a resposta se perdeu
@@ -838,6 +855,9 @@ describe("CheckoutView — com conta o painel de 'conferir antes' continua exata
     expect(alerta).not.toContain("não sai em dobro");
     expect(alerta).toContain("Meus pedidos");
     const textoDoToast = String(toastError.mock.calls.at(-1)?.[0]);
+    expect(textoDoToast).toMatch(
+      /^Sem conexão — não sabemos se o pedido foi confirmado\./,
+    );
     expect(textoDoToast).not.toContain("não sai em dobro");
     expect(textoDoToast).toContain("Meus pedidos");
   });

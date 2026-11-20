@@ -7,6 +7,7 @@
 //  2. Um termo longo sem espaco (link colado) estourava a caixinha.
 //  3. Quem digitava o singular ('anel') nao via a categoria 'Anéis'.
 import { act } from "react";
+import { flushSync } from "react-dom";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -121,8 +122,13 @@ describe("SearchBar — catálogo carregando, falha, termo longo e plural", () =
       "value",
     )?.set;
     await act(async () => {
-      setter?.call(campo, "sapato");
-      campo.dispatchEvent(new Event("input", { bubbles: true }));
+      // Só confirma a digitação urgente; o resultado adiado ainda é o de bolsa.
+      flushSync(() => {
+        setter?.call(campo, "sapato");
+        campo.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      expect(campo.value).toBe("sapato");
+      expect(anuncio?.textContent).toBe("");
     });
     expect(anuncio?.textContent).toBe("Nenhum produto encontrado");
 
@@ -172,9 +178,9 @@ describe("SearchBar — catálogo carregando, falha, termo longo e plural", () =
     expect(hospedeiro.textContent).not.toContain(
       "Não conseguimos carregar a busca agora",
     );
-    expect(hospedeiro.querySelector("img")?.getAttribute("alt")).toBe(
-      "Bolsa Preta",
-    );
+    const miniatura = hospedeiro.querySelector("button img");
+    expect(miniatura).not.toBeNull();
+    expect(miniatura?.closest("button")?.textContent).toContain("Bolsa Preta");
   });
 
   it("catálogo que respondeu e não tem o termo continua dizendo 'Nenhum produto encontrado'", async () => {

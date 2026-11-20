@@ -68,7 +68,7 @@ function pedidoComDoisItens(): Order {
         name: "Item Com Vínculo",
         price: 20,
         quantity: 1,
-        image: "",
+        image: "https://example.com/item-com-vinculo.jpg",
       },
     ],
     subtotal: 30,
@@ -86,7 +86,16 @@ function pedidoComDoisItens(): Order {
 // LazyImage (usada no cartão de cada item) chama `new IntersectionObserver`
 // direto no mount — ausente no jsdom deste projeto.
 class IntersectionObserverStub {
-  observe() {}
+  private readonly aoObservar: IntersectionObserverCallback;
+  constructor(aoObservar: IntersectionObserverCallback) {
+    this.aoObservar = aoObservar;
+  }
+  observe(alvo: Element) {
+    this.aoObservar(
+      [{ isIntersecting: true, target: alvo } as IntersectionObserverEntry],
+      this as unknown as IntersectionObserver,
+    );
+  }
   unobserve() {}
   disconnect() {}
 }
@@ -136,5 +145,9 @@ describe("OrderDetail — item sem produto vinculado não mostra 'ID: #' vazio",
     });
 
     expect(hospedeiro.textContent).toContain("ID: #123456");
+    expect(hospedeiro.textContent).toContain("Item Com Vínculo");
+    expect(
+      hospedeiro.querySelector('img[alt="Item Com Vínculo"]'),
+    ).not.toBeNull();
   });
 });

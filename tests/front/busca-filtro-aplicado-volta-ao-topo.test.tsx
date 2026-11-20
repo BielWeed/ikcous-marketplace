@@ -219,7 +219,7 @@ describe("SearchView: aplicar filtro leva a lista de volta ao topo", () => {
     rolagem.mockClear();
 
     await clicar(botaoComTexto("Filtros", true));
-    await clicar(botaoComTexto("Menor Preço"));
+    await clicar(botaoComTexto("Menor preço"));
     await clicar(botaoComTexto("Aplicar Filtros"));
 
     expect(exibidos()).toBe(12);

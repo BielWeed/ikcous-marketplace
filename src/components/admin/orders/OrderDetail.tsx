@@ -2913,7 +2913,7 @@ export const OrderDetail = memo(function OrderDetail({
                 Observações do pedido
               </h3>
               <p className="whitespace-pre-line break-words text-sm leading-relaxed text-zinc-200">
-                {order.notes}
+                {order.notes.replace(/\(Prazo:\s*1 dias\)/g, "(Prazo: 1 dia)")}
               </p>
             </div>
           )}
@@ -3008,7 +3008,9 @@ export const OrderDetail = memo(function OrderDetail({
                 <AlertDialogDescription className="text-xs text-zinc-400">
                   {pendingAdvance?.motivo === "foraDoFluxo"
                     ? "Este pedido está marcado como pago fora do fluxo. Confirme que o pagamento foi conferido antes de avançar."
-                    : "O dinheiro deste pedido não entrou. Se você avançar, a mercadoria caminha para sair mesmo assim — e, depois de finalizado, não dá mais para cancelar e devolver ao estoque. Se a cliente pagou na loja, feche este aviso, cancele o pedido (botão Cancelar pedido) e registre a venda em Vender."}
+                    : order.paymentStatus === "estornado"
+                      ? "O pagamento deste pedido foi estornado. Se avançar, o pedido segue sem esse pagamento. Depois de finalizado, não dá mais para cancelar e devolver ao estoque."
+                      : "O dinheiro deste pedido não entrou. Se você avançar, a mercadoria caminha para sair mesmo assim — e, depois de finalizado, não dá mais para cancelar e devolver ao estoque. Se a cliente pagou na loja, feche este aviso, cancele o pedido (botão Cancelar pedido) e registre a venda em Vender."}
                   {pendingAdvance?.motivo === "naoPago" &&
                     aguardaPixOnline(order) &&
                     ` ${AVISO_DE_RESERVA_AO_AVANCAR_PIX}`}

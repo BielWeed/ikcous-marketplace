@@ -8,7 +8,11 @@ import {
   transportadoraFicaSemPagamento,
   transportadoraVendeForaDaCidade,
 } from "@/lib/aviso-transportadora-sem-pagamento";
-import { cepEhLocal } from "@/lib/cep-local";
+import {
+  cepEhLocal,
+  perdeIntervaloDeCepLocal,
+  temPrefixoDeSeteDigitos,
+} from "@/lib/cep-local";
 import { EXEMPLO_DE_INTERVALO_DE_CEP } from "@/lib/faixa-de-cep";
 import { parseValorBR } from "@/lib/financeiro";
 import type { ModoDaEntregaNaCidade } from "@/lib/guarda-de-frete";
@@ -140,6 +144,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
   mostrarCabecalho = true,
   nomesLigados,
   pagamentoPeloAppLigado,
+  promocaoNacionalComPagamento = false,
 }: {
   readonly valor: number;
   readonly onValor: (valor: number) => void;
@@ -180,6 +185,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
   /** Pagamento pelo app ligado (a transportadora só vende com ele). `null`/
    * ausente = não se sabe: a tela não promete a compra. */
   readonly pagamentoPeloAppLigado?: boolean | null;
+  readonly promocaoNacionalComPagamento?: boolean;
 }) {
   // O que está escrito no campo do valor. Só é reescrito quando o valor muda
   // POR FORA (config chegou, salvou) e o texto já não o produz — "7," digitado
@@ -279,6 +285,8 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
             ? "sem-pagamento"
             : "sim";
   const erroDaFaixa = faixaRecusada === faixa;
+  const perdeuIntervalo = perdeIntervaloDeCepLocal(faixa);
+  const prefixoDeSete = temPrefixoDeSeteDigitos(faixa);
   const dicaDaFaixaManual = erroDaFaixa ? (
     <span id="erro-faixa-de-cep" role="alert">
       Digite os números do CEP (sem letras) ou os números iniciais da região.
@@ -287,7 +295,21 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
       vazio.
     </span>
   ) : (
-    dicaDoTexto(cepDaLoja)
+    <>
+      {dicaDoTexto(cepDaLoja)}
+      {(perdeuIntervalo || prefixoDeSete) && (
+        <>
+          <br />
+          <span role="note" className="text-xs text-amber-300">
+            {perdeuIntervalo &&
+              "Com três ou mais itens, os dois primeiros CEPs completos deixam de indicar uma faixa: cada um cobre só o próprio CEP. Para manter a faixa, escreva cada limite com 8 dígitos, sem hífen dentro do CEP. Separe os limites com um hífen e os demais itens com vírgula. Exemplo: 01310100-01310200, 01310300. Um item avulso com menos de 8 dígitos vale como prefixo e cobre todos os CEPs que começam com esses números. O botão «Incluir a região» inclui todos os CEPs que começam com os 5 números mostrados no botão."}
+            {perdeuIntervalo && prefixoDeSete && <br />}
+            {prefixoDeSete &&
+              "Você digitou 7 números. Se for um CEP completo, confira se faltou um zero no começo. Esse item é um prefixo e cobre todos os CEPs que começam com esses 7 números."}
+          </span>
+        </>
+      )}
+    </>
   );
   const campoDaFaixa = (
     <input
@@ -353,11 +375,13 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
                 ativa={modo === r.modo}
                 titulo={r.titulo}
                 efeito={
-                  r.modo === "so_retiro" &&
-                  coverage !== "local" &&
-                  vendeFora !== false
-                    ? EFEITO_SO_RETIRADA_COM_TRANSPORTADORA
-                    : r.efeito
+                  r.modo !== "so_retiro"
+                    ? r.efeito
+                    : promocaoNacionalComPagamento
+                      ? "Na sua região, só retirada. Fora dela, pedidos com produto marcado também podem ter entrega grátis."
+                      : coverage !== "local" && vendeFora !== false
+                        ? EFEITO_SO_RETIRADA_COM_TRANSPORTADORA
+                        : r.efeito
                 }
                 desabilitado={desabilitado}
                 onEscolher={() => {

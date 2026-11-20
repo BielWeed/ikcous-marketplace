@@ -6,8 +6,8 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { confirmarEnvioSePerguntar } from "./confirma-envio-para-todos";
 
-const { invokeSendPush, inserts, ajustarLog, recordAction } = vi.hoisted(
-  () => ({
+const { invokeSendPush, inserts, ajustarLog, recordAction, publico } =
+  vi.hoisted(() => ({
     invokeSendPush: vi.fn(),
     inserts: {
       pushLog: [] as Record<string, unknown>[],
@@ -15,8 +15,8 @@ const { invokeSendPush, inserts, ajustarLog, recordAction } = vi.hoisted(
     },
     ajustarLog: vi.fn(),
     recordAction: vi.fn(),
-  }),
-);
+    publico: { total: 1 },
+  }));
 
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({ user: { id: "admin-1" } }),
@@ -73,7 +73,9 @@ vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: (tabela: string) => {
       if (tabela === "push_subscriptions") {
-        return { select: () => Promise.resolve({ count: 1, error: null }) };
+        return {
+          select: () => Promise.resolve({ count: publico.total, error: null }),
+        };
       }
       if (tabela === "push_notifications_log") {
         return {
@@ -122,15 +124,13 @@ vi.mock("@/lib/supabase", () => ({
           Promise.resolve({
             data:
               nome === "get_segmented_push_count"
-                ? 1
-                : [
-                    {
-                      user_id: "cliente-1",
-                      endpoint: "https://push.example/1",
-                      p256dh: "p1",
-                      auth: "a1",
-                    },
-                  ],
+                ? publico.total
+                : Array.from({ length: publico.total }, (_, i) => ({
+                    user_id: `cliente-${i + 1}`,
+                    endpoint: `https://push.example/${i + 1}`,
+                    p256dh: `p${i + 1}`,
+                    auth: `a${i + 1}`,
+                  })),
             error: null,
           }),
         null,
@@ -162,9 +162,10 @@ describe("Avisar clientes — destinatários não tentados", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    publico.total = 1;
     inserts.pushLog = [];
     inserts.notificacoes = [];
-    invokeSendPush.mockResolvedValue({
+    invokeSendPush.mockReset().mockResolvedValue({
       data: { enviados: 1, falharam: 0, falhas: [] },
       error: null,
     });
@@ -295,6 +296,241 @@ describe("Avisar clientes — destinatários não tentados", () => {
     );
   }
 
+  const botaoDeContinuar = () =>
+    [...hospedeiro.querySelectorAll("button")].find((botao) =>
+      botao.textContent?.startsWith("Continuar para "),
+    );
+
+  it.each([
+    {
+      restantes: 1,
+      rotulo: "Continuar para o aparelho não tentado",
+      anuncio: `Aparelho não tentado no aviso “${TITULO}”: 1.`,
+      progresso: "Enviando para o aparelho não tentado…",
+      resultado:
+        "Continuação: envio aceito para 0 de 1 aparelho; 0 com falha e 1 não tentado.",
+    },
+    {
+      restantes: 2,
+      rotulo: "Continuar para os 2 não tentados",
+      anuncio: `Aparelhos não tentados no aviso “${TITULO}”: 2.`,
+      progresso: "Enviando para os aparelhos não tentados…",
+      resultado:
+        "Continuação: envio aceito para 0 de 2 aparelhos; 0 com falha e 2 não tentados.",
+    },
+  ])(
+    "usa a concordância no botão e no anúncio com $restantes não tentado(s)",
+    async ({ restantes, rotulo, anuncio, progresso, resultado }) => {
+      publico.total = 1 + restantes;
+      let concluirEnvio!: () => void;
+      invokeSendPush
+        .mockResolvedValueOnce({
+          data: { enviados: 1, falharam: 0, naoTentados: restantes },
+          error: null,
+        })
+        .mockReturnValueOnce(
+          new Promise((resolve) => {
+            concluirEnvio = () =>
+              resolve({
+                data: { enviados: 0, falharam: 0, naoTentados: restantes },
+                error: null,
+              });
+          }),
+        );
+      await prepararCampanha();
+      await enviar();
+
+      const continuar = botaoDeContinuar();
+      expect.soft(continuar?.textContent).toBe(rotulo);
+      expect
+        .soft(hospedeiro.querySelector('[role="status"]')?.textContent)
+        .toBe(anuncio);
+      await act(async () => continuar!.click());
+      expect
+        .soft(hospedeiro.querySelector('[role="status"]')?.textContent)
+        .toBe(progresso);
+      await act(async () => concluirEnvio());
+
+      expect(hospedeiro.querySelector('[role="status"]')?.textContent).toBe(
+        resultado,
+      );
+    },
+  );
+
+  it("continua com a mensagem original só para os aparelhos que não foram tentados", async () => {
+    publico.total = 4;
+    invokeSendPush
+      .mockResolvedValueOnce({
+        data: { enviados: 1, falharam: 1, naoTentados: 2 },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: { enviados: 2, falharam: 0, naoTentados: 0 },
+        error: null,
+      });
+    await prepararCampanha();
+    expect(botaoDeContinuar()).toBeUndefined();
+    await enviar();
+
+    const continuar = botaoDeContinuar();
+    expect(continuar?.textContent).toBe("Continuar para os 2 não tentados");
+    await act(async () => {
+      digitar(campoTitulo(), "Outro rascunho");
+      continuar?.click();
+      continuar?.click();
+    });
+
+    expect(invokeSendPush).toHaveBeenCalledTimes(2);
+    expect(invokeSendPush).toHaveBeenLastCalledWith("send-push", {
+      body: {
+        title: TITULO,
+        body: MENSAGEM,
+        url: CAMINHO,
+        tokens: [
+          {
+            endpoint: "https://push.example/3",
+            keys: { p256dh: "p3", auth: "a3" },
+          },
+          {
+            endpoint: "https://push.example/4",
+            keys: { p256dh: "p4", auth: "a4" },
+          },
+        ],
+      },
+    });
+    expect(inserts.notificacoes).toHaveLength(1);
+    expect(inserts.pushLog).toHaveLength(1);
+    expect(ajustarLog).toHaveBeenLastCalledWith({ recipient_count: 3 });
+    expect(campoTitulo().value).toBe("Outro rascunho");
+    expect(botaoDeContinuar()).toBeUndefined();
+  });
+
+  it("continua um segundo envio parcial só com os tokens que ainda sobraram", async () => {
+    publico.total = 5;
+    invokeSendPush
+      .mockResolvedValueOnce({
+        data: { enviados: 1, falharam: 1, naoTentados: 3 },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: { enviados: 1, falharam: 0, naoTentados: 2 },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: { enviados: 2, falharam: 0 },
+        error: null,
+      });
+    await prepararCampanha();
+    await enviar();
+
+    expect(botaoDeContinuar()?.textContent).toBe(
+      "Continuar para os 3 não tentados",
+    );
+    await act(async () => botaoDeContinuar()!.click());
+    expect(botaoDeContinuar()?.textContent).toBe(
+      "Continuar para os 2 não tentados",
+    );
+    await act(async () => botaoDeContinuar()!.click());
+
+    expect(invokeSendPush).toHaveBeenCalledTimes(3);
+    expect(invokeSendPush).toHaveBeenNthCalledWith(3, "send-push", {
+      body: {
+        title: TITULO,
+        body: MENSAGEM,
+        url: CAMINHO,
+        tokens: [
+          {
+            endpoint: "https://push.example/4",
+            keys: { p256dh: "p4", auth: "a4" },
+          },
+          {
+            endpoint: "https://push.example/5",
+            keys: { p256dh: "p5", auth: "a5" },
+          },
+        ],
+      },
+    });
+    expect(ajustarLog).toHaveBeenLastCalledWith({ recipient_count: 4 });
+    expect(inserts.notificacoes).toHaveLength(1);
+    expect(botaoDeContinuar()).toBeUndefined();
+  });
+
+  it.each([
+    {
+      caso: "erro",
+      resposta: { data: null, error: new Error("Rede indisponível") },
+    },
+    {
+      caso: "soma divergente",
+      resposta: {
+        data: { enviados: 1, falharam: 0, naoTentados: 2 },
+        error: null,
+      },
+    },
+    { caso: "prazo excedido", resposta: null },
+  ])("não reabre a continuação após $caso", async ({ resposta }) => {
+    publico.total = 3;
+    invokeSendPush.mockResolvedValueOnce({
+      data: { enviados: 1, falharam: 0, naoTentados: 2 },
+      error: null,
+    });
+    await prepararCampanha();
+    await enviar();
+
+    const continuar = botaoDeContinuar();
+    expect(continuar).toBeDefined();
+    if (resposta) {
+      invokeSendPush.mockResolvedValueOnce(resposta);
+      await act(async () => continuar!.click());
+    } else {
+      const { PRAZO_DA_EDGE_DE_ENVIO_DE_PUSH_MS } = await import(
+        "@/lib/prazo-da-requisicao"
+      );
+      vi.useFakeTimers();
+      try {
+        let resolver!: (valor: unknown) => void;
+        invokeSendPush.mockReturnValueOnce(
+          new Promise((resolve) => {
+            resolver = resolve;
+          }),
+        );
+        await act(async () => continuar!.click());
+        expect(botaoDeContinuar()).toBeUndefined();
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(PRAZO_DA_EDGE_DE_ENVIO_DE_PUSH_MS);
+        });
+        expect(botaoDeContinuar()).toBeUndefined();
+
+        // Nem uma resposta parcial válida que chega tarde pode reabrir o botão.
+        await act(async () => {
+          resolver({
+            data: { enviados: 1, falharam: 0, naoTentados: 1 },
+            error: null,
+          });
+        });
+      } finally {
+        vi.useRealTimers();
+      }
+    }
+
+    expect(invokeSendPush).toHaveBeenCalledTimes(2);
+    expect(botaoDeContinuar()).toBeUndefined();
+    expect(hospedeiro.querySelector('[role="status"]')?.textContent).toMatch(
+      /Não foi possível confirmar a continuação.*duplicar o aviso/,
+    );
+  });
+
+  it("não oferece continuar quando todos os aparelhos já foram tentados", async () => {
+    publico.total = 2;
+    invokeSendPush.mockResolvedValueOnce({
+      data: { enviados: 1, falharam: 1, naoTentados: 0 },
+      error: null,
+    });
+    await prepararCampanha();
+    await enviar();
+    expect(botaoDeContinuar()).toBeUndefined();
+  });
+
   it.each([
     {
       naoTentados: 3,
@@ -333,6 +569,7 @@ describe("Avisar clientes — destinatários não tentados", () => {
       expect(toast.error).not.toHaveBeenCalled();
       conferirCampanhaLimpa();
       conferirRegistro("partial", 0, naoTentados);
+      expect(botaoDeContinuar()).toBeUndefined();
     },
   );
 
@@ -421,6 +658,7 @@ describe("Avisar clientes — destinatários não tentados", () => {
     expect(toast.success).not.toHaveBeenCalled();
     expect(toast.error).not.toHaveBeenCalled();
     conferirCampanhaLimpa();
+    expect(botaoDeContinuar()).toBeUndefined();
     expect(recordAction).toHaveBeenCalledTimes(1);
     expect(recordAction).toHaveBeenCalledWith(
       "PUSH_DISPATCH",
@@ -508,6 +746,7 @@ describe("Avisar clientes — destinatários não tentados", () => {
   );
 
   it("zero entregas com não tentados diz quantos dispositivos nem foram tentados", async () => {
+    publico.total = 5;
     invokeSendPush.mockResolvedValue({
       data: { enviados: 0, falharam: 1, naoTentados: 4, falhas: [] },
       error: null,
@@ -516,11 +755,15 @@ describe("Avisar clientes — destinatários não tentados", () => {
     await enviar();
 
     const { toast } = await import("sonner");
-    expect(toast.error).toHaveBeenCalledWith("O aparelho não recebeu o aviso", {
-      description: expect.stringContaining(
-        "4 dispositivos nem chegaram a ser tentados porque o envio demorou demais",
-      ),
-    });
+    expect(botaoDeContinuar()).toBeUndefined();
+    expect(toast.error).toHaveBeenCalledWith(
+      "Nenhum dos 5 dispositivos recebeu",
+      {
+        description: expect.stringContaining(
+          "4 dispositivos nem chegaram a ser tentados porque o envio demorou demais",
+        ),
+      },
+    );
     expect(recordAction).toHaveBeenCalledWith(
       "PUSH_DISPATCH",
       expect.anything(),

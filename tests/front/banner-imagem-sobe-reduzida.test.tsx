@@ -138,6 +138,26 @@ describe("foto do banner sobe reduzida", () => {
     return h.upload.mock.calls[0][1] as File;
   }
 
+  it("cada envio da foto do banner usa um endereço novo com cache de um ano", async () => {
+    decodificaComo(4000, 3000);
+    const foto = arquivoComPeso("banner.jpg", "image/jpeg", 5 * MB);
+
+    await act(async () => {
+      await uploadBannerImage(foto);
+      await uploadBannerImage(foto);
+    });
+
+    expect(h.upload).toHaveBeenCalledTimes(2);
+    const [[primeiro, , opcoes], [segundo, , outrasOpcoes]] =
+      h.upload.mock.calls;
+    expect(primeiro).not.toBe(segundo);
+    expect(opcoes).toMatchObject({ cacheControl: "31536000", upsert: false });
+    expect(outrasOpcoes).toMatchObject({
+      cacheControl: "31536000",
+      upsert: false,
+    });
+  });
+
   it("foto grande do celular (JPEG de 5 MB, 4000x3000) sai menor, em 1600 px e com tipo aceito", async () => {
     decodificaComo(4000, 3000);
     const original = arquivoComPeso("foto.jpg", "image/jpeg", 5 * MB);

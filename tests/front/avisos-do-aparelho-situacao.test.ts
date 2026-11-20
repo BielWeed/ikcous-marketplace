@@ -111,6 +111,20 @@ describe("passos escritos para quem não é do ramo", () => {
     expect(new Set([aba[0], android[0], apple[0]]).size).toBe(3);
   });
 
+  it("guia do app instalado fora do iOS inclui o caminho para liberar no computador", () => {
+    const passos = passosParaLiberarOsAvisos(
+      { instalado: true, ehApple: false },
+      "Loja X",
+    );
+    expect(passos).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(
+          /^No computador:.*Configurações do site.*Notificações.*Permitir/,
+        ),
+      ]),
+    );
+  });
+
   it("o último passo manda VOLTAR e ligar — não promete que o cartão some sozinho", () => {
     for (const onde of [
       { instalado: false, ehApple: false },

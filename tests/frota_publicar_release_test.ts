@@ -11099,8 +11099,10 @@ Deno.test("lote 20261243 — o canais-de-backend.json real o declara como lote d
   );
   assertStringIncludes(workflow, `- ${A46}`);
   assertStringIncludes(workflow, `- ${B46}`);
-  // não há medição 46m: o lote não lê nem reescreve dado
-  assert(!workflow.includes("46m-"));
+  // o lote não lê nem reescreve dado: a única 46m é a medição de produtos com
+  // variações independentes (r309), que não é medição deste lote
+  assert(workflow.includes("46m-medir-produtos-com-variacoes-independentes"));
+  assertEquals(workflow.match(/46m-/g)?.length, 1);
   // o lote vem DEPOIS do lote 45 no arquivo
   const consultas = lerCanais().provasDeObjetos.map((p: any) => p.consulta);
   assert(consultas.indexOf(A46) > consultas.indexOf(A45));

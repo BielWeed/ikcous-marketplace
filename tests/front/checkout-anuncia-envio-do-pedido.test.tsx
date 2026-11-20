@@ -193,7 +193,28 @@ async function clicarFinalizar() {
   });
 }
 
-it("anuncia o envio na mesma região de status e limpa quando a tentativa termina", async () => {
+async function verificarAnuncio(modo: "convidada" | "logada") {
+  const logada = modo === "logada";
+  estado.user = logada ? { id: "user-1" } : null;
+  estado.enderecos = logada
+    ? [
+        {
+          id: "addr-1",
+          user_id: "user-1",
+          name: "Casa",
+          recipient_name: "Cliente Teste",
+          cep: "01310-100",
+          street: "Rua Teste",
+          number: "100",
+          neighborhood: "Centro",
+          city: "Cidade Teste",
+          state: "SP",
+          is_default: true,
+        },
+      ]
+    : [];
+  sessaoAindaEhDoDono.mockResolvedValue(true);
+  createOrder.mockReset();
   const { CheckoutView } = await import("@/views/customer/CheckoutView");
   sessionStorage.clear();
   concluirBuscaDeCepSemEndereco();
@@ -229,7 +250,19 @@ it("anuncia o envio na mesma região de status e limpa quando a tentativa termin
         />,
       );
     });
-    await preencherComoConvidada();
+    if (logada) {
+      await act(async () => {
+        digitar("checkout-name", "Cliente Teste");
+        digitar("checkout-tel", "34999999999");
+        await esperarMicrotarefas();
+        await new Promise((resolve) => setTimeout(resolve, 420));
+      });
+      await act(async () => {
+        botaoPorTexto("Dinheiro na Entrega")?.click();
+      });
+    } else {
+      await preencherComoConvidada();
+    }
     const status = acharStatus();
     expect(status).toBeInstanceOf(HTMLElement);
     expect(status?.textContent).toBe("");
@@ -251,5 +284,12 @@ it("anuncia o envio na mesma região de status e limpa quando a tentativa termin
     hospedeiro.remove();
     sessionStorage.clear();
     vi.unstubAllGlobals();
+    estado.user = null;
+    estado.enderecos = [];
   }
-});
+}
+
+it.each(["convidada", "logada"] as const)(
+  "anuncia o envio para cliente %s na mesma região de status e limpa ao terminar",
+  verificarAnuncio,
+);

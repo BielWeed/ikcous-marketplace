@@ -432,6 +432,7 @@ const decidirSaidaDaTela = (error: unknown): RecusaDoPedido => {
   ) {
     return {
       acao: "conferir_antes",
+      resultado: "criado",
       mensagem:
         "O pedido foi criado, mas não conseguimos conferir o valor final. Abra Meus pedidos e retome o pagamento.",
     };
@@ -439,6 +440,7 @@ const decidirSaidaDaTela = (error: unknown): RecusaDoPedido => {
   if ((error as { code?: string } | null)?.code === "PEDIDO_SEM_RESPOSTA") {
     return {
       acao: "conferir_antes",
+      resultado: "incerto",
       mensagem:
         "O servidor demorou para responder. O pedido pode ter sido criado: confira seus pedidos ou fale com a loja antes de tentar novamente.",
     };
@@ -466,6 +468,7 @@ const decidirSaidaDaTela = (error: unknown): RecusaDoPedido => {
     // cria um segundo pedido. Por isso manda conferir Meus pedidos primeiro.
     return {
       acao: "tentar_de_novo",
+      resultado: "incerto",
       mensagem:
         "Sem conexão — não sabemos se o pedido foi confirmado. Antes de tentar de novo, confira em Meus pedidos se ele já aparece; se não aparecer, é só tentar de novo.",
     };
@@ -560,9 +563,15 @@ export const decidirSaidaDoCheckout = (
   if (bancoRespondeu) return saida;
   return {
     acao: "reenviar_mesma_compra",
+    resultado: "incerto",
     mensagem: MENSAGEM_DE_REENVIO_SEM_CONTA,
   };
 };
+
+const mensagemDoAvisoDePedido = (
+  saida: RecusaDoPedido,
+  mensagem = saida.mensagem,
+): string => (saida.resultado ? mensagem : `Falha no Pedido: ${mensagem}`);
 
 /**
  * Prova de que a falha é de REDE — o fetch nunca chegou a existir ou o
@@ -649,6 +658,22 @@ export const notaDoFreteEscolhido = (
         : prazoEmDiasDaNota(option);
   return `Frete Escolhido: ${option.name} (Prazo: ${prazo})`;
 };
+
+function previsaoDaOpcao(option: ShippingOption | null): string | undefined {
+  if (
+    !option ||
+    ehRetiradaNaLoja(option.id) ||
+    option.id === "free-shipping-promo" ||
+    option.provider === "free" ||
+    !Number.isInteger(option.deliveryDays) ||
+    option.deliveryDays < 0
+  ) {
+    return undefined;
+  }
+  return option.deliveryDays === 0
+    ? "no mesmo dia"
+    : `até ${prazoEmDiasDaNota(option)}`;
+}
 
 /**
  * EMENDA R3-4 (CONTRATO-1.5.7.md §9): a RPC recusa com este marcador exato
@@ -2196,14 +2221,18 @@ export function CheckoutViewDaConta({
   const [valorDoCarrinhoAntes, setValorDoCarrinhoAntes] = useState<
     number | null
   >(null);
-  // Lote 210: o que a tela de sucesso do pedido "pago na entrega/retirada"
-  // precisa saber e que o carrinho já esqueceu quando ela abre (limpar a
-  // compra derruba a opção de frete): forma e modalidade vêm da compra
-  // congelada no envio, não do carrinho atual.
-  const [resumoDoPedidoNaEntrega, setResumoDoPedidoNaEntrega] = useState<{
+  // Limpar a compra derruba a opção de frete. A confirmação usa a compra
+  // congelada no envio e só mostra a previsão para o pedido correspondente.
+  const [resumoDoPedido, setResumoDoPedido] = useState<{
+    id: string;
     paymentMethod: string | null;
     ehRetirada: boolean;
+    previsaoDeEntrega: string | undefined;
   } | null>(null);
+  const previsaoDeEntrega =
+    resumoDoPedido?.id === orderId
+      ? resumoDoPedido.previsaoDeEntrega
+      : undefined;
   // Mesmo motivo: o submétodo (PIX ou cartão) do pedido que JÁ nasceu. Sem
   // o congelamento, um efeito que mexe em `paymentMethod` depois do submit
   // (a sessão que cai rebaixa "online" para "pix") trocaria a tela do
@@ -5332,6 +5361,7 @@ export function CheckoutViewDaConta({
       cpfParaRpc,
       contaEsperada,
       semConta: !user,
+      previsaoDeEntrega: previsaoDaOpcao(selectedShippingOption),
     });
   };
 
@@ -5345,7 +5375,7 @@ export function CheckoutViewDaConta({
       console.error("Falha inesperada no checkout:", error);
       const saida = decidirSaidaDoCheckout(error);
       setRecusaDoUltimoClique(saida);
-      toast.error(`Falha no Pedido: ${saida.mensagem}`);
+      toast.error(mensagemDoAvisoDePedido(saida));
     });
   };
 
@@ -5513,6 +5543,20 @@ export function CheckoutViewDaConta({
               Math.round(pedido.valor * 100),
           ) > 0,
       );
+      setResumoDoPedido({
+        id: order.id,
+        paymentMethod:
+          typeof orderData.paymentMethod === "string"
+            ? orderData.paymentMethod
+            : null,
+        ehRetirada:
+          typeof orderData.shippingOptionId === "string" &&
+          ehRetiradaNaLoja(orderData.shippingOptionId),
+        previsaoDeEntrega:
+          typeof pedido.previsaoDeEntrega === "string"
+            ? pedido.previsaoDeEntrega
+            : undefined,
+      });
       if (ehOnline) {
         // NÃO mostra sucesso e NÃO solta confete: o pedido só está reservado,
         // e quem confirma pagamento é o webhook (Fase 3). Chamar isso de
@@ -5522,15 +5566,6 @@ export function CheckoutViewDaConta({
         return;
       }
 
-      setResumoDoPedidoNaEntrega({
-        paymentMethod:
-          typeof orderData.paymentMethod === "string"
-            ? orderData.paymentMethod
-            : null,
-        ehRetirada:
-          typeof orderData.shippingOptionId === "string" &&
-          ehRetiradaNaLoja(orderData.shippingOptionId),
-      });
       setShowSuccess(true);
 
       // Trigger confetti celebration
@@ -5595,9 +5630,8 @@ export function CheckoutViewDaConta({
       if (ehErroDeCuponsDesligados(error)) {
         refreshStoreConfig({ onlyConfig: true }).catch(() => {});
       }
-      // Este catch recebe o MESMO erro que useOrders.ts (createOrder) já
-      // relança depois do próprio toast interno — mesma tradução aqui, para
-      // não haver dois textos diferentes para a mesma falha.
+      // createOrder relança o erro sem avisar; a tradução para a cliente
+      // fica aqui, no toast e no painel.
       //
       // O alert() de emergência que existia aqui foi removido: a condição
       // era `if (!error.message)`, ou seja, disparava só quando NÃO havia
@@ -5612,14 +5646,15 @@ export function CheckoutViewDaConta({
       // num e "tente de novo" no outro, para a mesma falha, é a divergência que
       // recusa-e-toast-nao-divergem.test.ts proíbe entre as regras do banco.
       toast.error(
-        `Falha no Pedido: ${
+        mensagemDoAvisoDePedido(
+          saida,
           ehFalhaDeRedeAntesDoEnvio(error) ||
-          error?.code === "PEDIDO_SEM_RESPOSTA" ||
-          error?.code === "TOTAL_DO_PEDIDO_INDISPONIVEL" ||
-          saida.acao === "reenviar_mesma_compra"
+            error?.code === "PEDIDO_SEM_RESPOSTA" ||
+            error?.code === "TOTAL_DO_PEDIDO_INDISPONIVEL" ||
+            saida.acao === "reenviar_mesma_compra"
             ? saida.mensagem
-            : mensagemAmigavelErroPedido(error)
-        }`,
+            : mensagemAmigavelErroPedido(error),
+        ),
       );
       // O toast é o AVISO — ele alcança quem não está olhando esta parte da
       // tela. O painel abaixo é a AÇÃO. Os dois convivem de propósito: até
@@ -6093,6 +6128,7 @@ export function CheckoutViewDaConta({
           orderId={orderId}
           valor={valorDoPedido}
           parcelamento={parcelamentoConfirmado}
+          previsaoDeEntrega={previsaoDeEntrega}
           onNavigate={onNavigate}
         />
       );
@@ -6657,8 +6693,9 @@ export function CheckoutViewDaConta({
         appliedCoupon={appliedCoupon}
         discount={discount}
         valor={valorDoPedido}
-        paymentMethod={resumoDoPedidoNaEntrega?.paymentMethod ?? null}
-        ehRetirada={resumoDoPedidoNaEntrega?.ehRetirada ?? false}
+        paymentMethod={resumoDoPedido?.paymentMethod ?? null}
+        ehRetirada={resumoDoPedido?.ehRetirada ?? false}
+        previsaoDeEntrega={previsaoDeEntrega}
         onNavigate={onNavigate}
       />
     );
@@ -9222,7 +9259,8 @@ function useGuardarReciboDoPedido(orderId: string) {
 function AcompanharPedidoSemConta({
   orderId,
   classeDoBotao,
-}: Readonly<{ orderId: string; classeDoBotao: string }>) {
+  aviso,
+}: Readonly<{ orderId: string; classeDoBotao: string; aviso?: string }>) {
   const { config } = useStore();
   const lojaTemWhatsappAgora = lojaTemWhatsapp(config.whatsappNumber);
 
@@ -9244,18 +9282,21 @@ function AcompanharPedidoSemConta({
     globalThis.open(url, "_blank", "noopener,noreferrer");
   };
 
-  if (lojaTemWhatsappAgora) {
-    return (
-      <BotaoWhatsapp onClick={handleFalarComALoja} className={classeDoBotao}>
-        Acompanhar pelo WhatsApp
-      </BotaoWhatsapp>
-    );
-  }
   return (
-    <p className="text-xs leading-relaxed text-zinc-500">
-      Guarde o número do pedido acima — é por ele que a loja localiza o seu
-      pedido.
-    </p>
+    <>
+      {(aviso || !lojaTemWhatsappAgora) && (
+        <p className="text-xs leading-relaxed text-zinc-500">
+          {lojaTemWhatsappAgora
+            ? aviso
+            : "Guarde o número do pedido acima — é por ele que a loja localiza o seu pedido."}
+        </p>
+      )}
+      {lojaTemWhatsappAgora && (
+        <BotaoWhatsapp onClick={handleFalarComALoja} className={classeDoBotao}>
+          Acompanhar pelo WhatsApp
+        </BotaoWhatsapp>
+      )}
+    </>
   );
 }
 
@@ -9303,6 +9344,18 @@ function PedidoJaFeitoNaTela({
   );
 }
 
+function LinhaDePrevisaoDeEntrega({
+  previsao,
+}: Readonly<{ previsao?: string }>) {
+  if (!previsao) return null;
+  return (
+    <>
+      <br />
+      {`Previsão de entrega: ${previsao}`}
+    </>
+  );
+}
+
 interface SuccessViewProps {
   orderId: string;
   appliedCoupon: { code: string; discount: number } | null;
@@ -9312,6 +9365,7 @@ interface SuccessViewProps {
   /** Forma escolhida na entrega/retirada (`cash` | `pix` | `card`). */
   paymentMethod: string | null;
   ehRetirada: boolean;
+  previsaoDeEntrega?: string;
   onNavigate: (view: View, productId?: string) => void;
 }
 
@@ -9322,6 +9376,7 @@ function SuccessView({
   valor,
   paymentMethod,
   ehRetirada,
+  previsaoDeEntrega,
   onNavigate,
 }: Readonly<SuccessViewProps>) {
   // Quem não tem conta acompanha o pedido por `AcompanharPedidoSemConta`
@@ -9377,6 +9432,9 @@ function SuccessView({
             {ehRetirada
               ? "Recebemos o seu pedido. A loja vai separar os itens para você retirar."
               : "Recebemos o seu pedido. A loja vai cuidar da entrega."}
+            {!ehRetirada && (
+              <LinhaDePrevisaoDeEntrega previsao={previsaoDeEntrega} />
+            )}
           </p>
           {/* createOrder não retorna o endereço gravado; a cotação não o confirma. */}
           {ehRetirada && (
@@ -9411,6 +9469,7 @@ function SuccessView({
           <AcompanharPedidoSemConta
             orderId={orderId}
             classeDoBotao="h-16 whitespace-normal text-[11px] font-black uppercase leading-snug tracking-[0.3em]"
+            aviso="Guarde o número do pedido. Para acompanhar, fale com a loja pelo WhatsApp."
           />
         )}
       </div>
@@ -9465,6 +9524,7 @@ interface PagamentoConfirmadoViewProps {
   orderId: string;
   valor: number;
   parcelamento: ParcelamentoConfirmado;
+  previsaoDeEntrega?: string;
   onNavigate: (view: View, productId?: string) => void;
 }
 
@@ -9472,6 +9532,7 @@ function PagamentoConfirmadoView({
   orderId,
   valor,
   parcelamento,
+  previsaoDeEntrega,
   onNavigate,
 }: Readonly<PagamentoConfirmadoViewProps>) {
   // O F5 depois do Pix confirmado diz "Seu pedido já foi feito".
@@ -9508,6 +9569,7 @@ function PagamentoConfirmadoView({
           <p className="text-sm font-medium leading-relaxed text-zinc-500">
             Seu pagamento foi confirmado. A loja vai iniciar a separação do seu
             pedido.
+            <LinhaDePrevisaoDeEntrega previsao={previsaoDeEntrega} />
           </p>
         </div>
       </div>

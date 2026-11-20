@@ -150,6 +150,13 @@ describe("seletor Aparência do painel", () => {
     ]);
   });
 
+  it("descreve o tema Confortável com a concordância no plural", () => {
+    act(() => raiz.render(<AparenciaDoPainel />));
+    expect(
+      hospedeiro.querySelector('[data-tema-opcao="confortavel"]')?.textContent,
+    ).toContain("Tons quentes que cansam menos a vista");
+  });
+
   it("clicar escolhe, marca, aplica e guarda no aparelho", () => {
     act(() => raiz.render(<AparenciaDoPainel />));
     act(() => opcoes()[1].click());

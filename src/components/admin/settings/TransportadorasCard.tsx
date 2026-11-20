@@ -444,6 +444,7 @@ interface TransportadorasSectionProps {
   readonly onSalvarMudou?: (acao: SalvamentoDasTransportadoras) => void;
   readonly onEscolhaMudou?: (ligados: readonly ProvedorFrete[]) => void;
   readonly onErroMudou?: (erro: boolean) => void;
+  readonly onLeituraPendenteMudou?: (pendente: boolean) => void;
   readonly active?: boolean;
   readonly desabilitado?: boolean;
 
@@ -472,11 +473,13 @@ export const TransportadorasSection = memo(function TransportadorasSection({
   onSalvarMudou,
   onEscolhaMudou,
   onErroMudou,
+  onLeituraPendenteMudou,
   desabilitado = false,
   active,
 }: TransportadorasSectionProps) {
   const [carregado, setCarregado] = useState(false);
   const [erroCarga, setErroCarga] = useState(false);
+  const [leiturasPendentes, setLeiturasPendentes] = useState(0);
   const [provedoresSalvos, setProvedoresSalvos] = useState<
     ReadonlyMap<ProvedorFrete, ConfigDoProvedor>
   >(() => new Map());
@@ -554,7 +557,9 @@ export const TransportadorasSection = memo(function TransportadorasSection({
   const carregar = useCallback(
     async (resetarRascunhoDe: "tudo" | ProvedorFrete | "nenhum" = "tudo") => {
       setErroCarga(false);
+      setLeiturasPendentes((total) => total + 1);
       const resultado = await buscarConfiguracaoDeFrete();
+      setLeiturasPendentes((total) => total - 1);
       // Pedido efetivo desta leitura: o dela somado ao que ficou pendente.
       const reinicio = juntarReinicio(
         resetPendenteRef.current,
@@ -692,6 +697,11 @@ export const TransportadorasSection = memo(function TransportadorasSection({
     if (!carregado) return;
     onLigadosMudou?.(Array.from(ligadosSalvos), provedoresSalvos);
   }, [carregado, ligadosSalvos, provedoresSalvos, onLigadosMudou]);
+
+  // O pai recebe o fim da leitura junto com o resultado, não antes dele.
+  useEffect(() => {
+    onLeituraPendenteMudou?.(leiturasPendentes > 0);
+  }, [leiturasPendentes, onLeituraPendenteMudou]);
 
   const listarServicos = useCallback(
     async (provider: ProvedorFrete) => {

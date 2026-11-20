@@ -480,7 +480,7 @@ export function seisPassosDaLojaPronta(
       rotulo: "Como você recebe",
       rotuloFeito: pixOk
         ? "Pagamento PIX configurado"
-        : "Pagamento na entrega configurado",
+        : "Pagamento na entrega ativo — revise as opções",
       rotuloPendente: "Configurar como você recebe",
       estado: estados.recebe,
       destino: "admin-settings",

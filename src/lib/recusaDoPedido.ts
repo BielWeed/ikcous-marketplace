@@ -80,6 +80,8 @@ export type AcaoDeRecusa =
 
 export interface RecusaDoPedido {
   acao: AcaoDeRecusa;
+  /** Preenchido quando a mensagem não deve afirmar que a criação falhou. */
+  resultado?: "incerto" | "criado";
   /** A frase que a pessoa lê, normalmente vinda do banco. */
   mensagem: string;
   /** Nome do produto, quando a mensagem o nomeia. */
@@ -427,6 +429,7 @@ export const classificarRecusaDoPedido = (error: unknown): RecusaDoPedido => {
 
   return {
     acao: "conferir_antes",
+    resultado: "incerto",
     mensagem:
       "Não conseguimos confirmar se o pedido foi enviado. Verifique se ele já apareceu antes de tentar de novo.",
   };

@@ -160,12 +160,15 @@ describe("elegibilidadeDaEtiqueta", () => {
     });
   });
 
-  it("Frenet sem nota: usa o código cru", () => {
+  it("Frenet sem nota: orienta emitir no site sem exibir o código interno", () => {
     const r = elegibilidadeDaEtiqueta(
       pedido({ shipping_option_id: "frenet-EXP01" }),
     );
-    expect(r).toMatchObject({ motivo: expect.stringContaining("EXP01") });
-    expect((r as { motivo: string }).motivo).toContain("Frenet");
+    expect(r).toEqual({
+      estado: "indisponivel",
+      motivo:
+        "Frete cotado e cobrado pela Frenet — gere a etiqueta no site da Frenet.",
+    });
   });
 
   it("Frenet com nota do checkout: usa o nome 'Transportadora — Serviço'", () => {

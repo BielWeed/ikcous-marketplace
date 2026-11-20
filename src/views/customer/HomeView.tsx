@@ -445,8 +445,8 @@ export const HomeView = React.memo(function HomeView({
     icon: React.ElementType;
   }[] = [
     { value: "default", label: "Relevância", icon: SlidersHorizontal },
-    { value: "price-asc", label: "Menor Preço", icon: ArrowDown },
-    { value: "price-desc", label: "Maior Preço", icon: ArrowUp },
+    { value: "price-asc", label: "Menor preço", icon: ArrowDown },
+    { value: "price-desc", label: "Maior preço", icon: ArrowUp },
   ];
   const rotuloFiltros =
     sortBy === "default"

@@ -219,7 +219,7 @@ describe("AdminProductsView — resumo de custos que falhou", () => {
       "Não foi possível atualizar agora — exibindo a última atualização.";
     await montar();
     expect(hospedeiro.textContent).toContain(
-      "Todos os produtos em estoque têm custo cadastrado.",
+      "Todos os produtos ativos em estoque têm custo cadastrado.",
     );
     expect(hospedeiro.textContent).not.toContain("Custos não conferidos");
     expect(botaoTentar(hospedeiro)).toBeUndefined();

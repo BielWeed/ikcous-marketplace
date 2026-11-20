@@ -29,7 +29,7 @@ const PREFIXO_FALHA_AO_GRAVAR = "Falha ao gravar a cotação: ";
 const FALHA_TECNICA_AO_GRAVAR =
   /\b(?:ON CONFLICT|unique or exclusion constraint|duplicate key|violates)\b|^(?:relation|column|function) .+ does not exist\b/i;
 
-export function ehFalhaTecnicaAoGravarCotacao(
+function ehFalhaTecnicaAoGravarCotacao(
   texto: string | null | undefined,
 ): boolean {
   return (
@@ -68,11 +68,29 @@ function frase(status: string | null): string {
     : `${NAO_RESPONDEU_DIREITO} (erro ${status}). ${TENTE_DE_NOVO}`;
 }
 
+// Mensagens acionáveis que calculate-shipping já grava em português.
+const MOTIVO_JA_CLARO =
+  /^(?:Sem credencial cadastrada para o provedor|Não foi possível ler (?:os produtos|as credenciais|a revisão)|Nenhuma transportadora ligada|Loja sem transportadora conectada|As transportadoras ligadas estão sem chave|Falta o e-mail de contato técnico da SuperFrete|o corpo da resposta não pôde ser lido|(?:Melhor Envio|Frenet|SuperFrete)(?:: (?:resposta inesperada|a transportadora recusou a chave de acesso|credencial em modo de testes)| não consultad[oa]:))/;
+
+const LIMITE_DETALHE = 160;
+
+function comDetalhe(frase: string, texto: string): string {
+  if (!texto) return frase;
+  const detalhe =
+    texto.length > LIMITE_DETALHE
+      ? `${texto.slice(0, LIMITE_DETALHE)}…`
+      : texto;
+  return `${frase} (${detalhe})`;
+}
+
 function traduzirCorpo(texto: string): string {
   const retornou = API_RETORNOU.exec(texto);
   if (retornou) {
     const status = retornou[1] ?? null;
     if (status === "401" || status === "403") return FRASE_CHAVE_RECUSADA;
+    if (status === "429") {
+      return `A transportadora recebeu consultas demais. ${TENTE_DE_NOVO}`;
+    }
     if (status === "422" && texto.includes("cep_destino")) {
       return FRASE_CEP_RECUSADO;
     }
@@ -82,7 +100,16 @@ function traduzirCorpo(texto: string): string {
   if (FALHA_DE_REDE.test(texto)) return FRASE_SEM_CONEXAO;
   if (NAO_EH_JSON.test(texto)) return frase(null);
   if (CORPO_CRU.test(texto)) return frase(null);
-  return texto;
+  if (texto === "Nenhum método de envio retornado.") {
+    return "Nenhuma opção de envio ficou disponível para esta cotação.";
+  }
+  if (
+    /^Token (?:do Melhor Envio|da SuperFrete|da Frenet) ausente$/.test(texto)
+  ) {
+    return "Falta a chave de acesso. Salve a chave em Ajustes > Transportadoras.";
+  }
+  if (MOTIVO_JA_CLARO.test(texto)) return texto;
+  return comDetalhe("Não foi possível concluir a cotação.", texto);
 }
 
 /**
@@ -105,7 +132,8 @@ function partesDaMensagem(texto: string): string[] {
 /**
  * O motivo como a lojista lê. Frase em português passa igual; corpo bruto de
  * API (ou JSON/HTML) vira "A transportadora não respondeu direito (erro N).
- * Tente de novo mais tarde.". `nomeDe` troca o id do provedor que a edge põe
+ * Tente de novo mais tarde.". Motivo desconhecido mantém um trecho para o
+ * suporte. `nomeDe` troca o id do provedor que a edge põe
  * na frente quando há mais de um ligado ("melhor_envio: …" → "Melhor Envio: …").
  */
 export function motivoDaCotacao(
@@ -122,6 +150,9 @@ export function motivoDaCotacao(
   }
   if (ehFalhaTecnicaAoGravarCotacao(texto)) {
     return "A cotação foi calculada, mas não pôde ser salva. Algumas opções de frete podem não ter aparecido para a cliente.";
+  }
+  if (texto.startsWith(PREFIXO_FALHA_AO_GRAVAR)) {
+    return "A cotação foi calculada, mas não pôde ser salva.";
   }
   if (texto.startsWith("configuracao_mudou_durante_cotacao:")) {
     return "A configuração do frete mudou durante a cotação; nada foi guardado. Tente de novo.";

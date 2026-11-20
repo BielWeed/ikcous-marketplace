@@ -459,6 +459,23 @@ async function avisosDosCuponsCitados(
   }
 }
 
+type MensagemPush = { title: string; body: string; url: string };
+type TokenPush = { endpoint: string; keys: { p256dh: string; auth: string } };
+type ContinuacaoDePush = {
+  mensagem: MensagemPush;
+  tokens: TokenPush[];
+  administrador: string;
+  logId: string;
+  entregues: number;
+};
+
+function enviarLotePush(mensagem: MensagemPush, tokens: TokenPush[]) {
+  return gravarComPrazo(
+    supabase.functions.invoke("send-push", { body: { ...mensagem, tokens } }),
+    PRAZO_DA_EDGE_DE_ENVIO_DE_PUSH_MS,
+  ).catch((error: unknown) => ({ data: null, error }));
+}
+
 export const AdminPushView = memo(function AdminPushView({
   onNavigate,
   targetUserId,
@@ -498,6 +515,14 @@ export const AdminPushView = memo(function AdminPushView({
     }
   };
   const [loading, setLoading] = useState(false);
+  const envioEmAndamento = useRef(false);
+  const [continuacao, setContinuacao] = useState<ContinuacaoDePush | null>(
+    null,
+  );
+  const [estadoDaContinuacao, setEstadoDaContinuacao] = useState("");
+  const anuncioDaContinuacao = useRef<HTMLParagraphElement>(null);
+  const lotePendente =
+    continuacao?.administrador === user?.id ? continuacao : null;
   // Texto (título + corpo) para o qual a tela JÁ avisou que o cupom citado não
   // confere. O segundo toque no enviar, com o mesmo texto, segue: quem insiste
   // sabe o que faz (o aviso é de apoio, a leitura do texto é heurística).
@@ -983,6 +1008,73 @@ export const AdminPushView = memo(function AdminPushView({
     }
   };
 
+  const continuarEnvio = async () => {
+    if (!lotePendente || envioEmAndamento.current || isOffline) return;
+    const { mensagem, tokens, logId } = lotePendente;
+    envioEmAndamento.current = true;
+    setLoading(true);
+    anuncioDaContinuacao.current?.focus();
+    setContinuacao(null);
+    setEstadoDaContinuacao(
+      tokens.length === 1
+        ? "Enviando para o aparelho não tentado…"
+        : "Enviando para os aparelhos não tentados…",
+    );
+
+    try {
+      const { data: envio, error } = await enviarLotePush(mensagem, tokens);
+      const { enviados, falharam, naoTentados = 0 } = envio ?? {};
+      if (
+        error ||
+        !Number.isInteger(enviados) ||
+        enviados < 0 ||
+        !Number.isInteger(falharam) ||
+        falharam < 0 ||
+        !Number.isInteger(naoTentados) ||
+        naoTentados < 0 ||
+        enviados + falharam + naoTentados !== tokens.length
+      ) {
+        setEstadoDaContinuacao(
+          "Não foi possível confirmar a continuação. Alguns aparelhos podem ter recebido; reenviar pode duplicar o aviso.",
+        );
+        return;
+      }
+
+      const entregues = lotePendente.entregues + enviados;
+      if (naoTentados > 0) {
+        setContinuacao({
+          ...lotePendente,
+          entregues,
+          tokens: tokens.slice(-naoTentados),
+        });
+      }
+      setEstadoDaContinuacao(
+        `Continuação: envio aceito para ${enviados} de ${tokens.length} ${tokens.length === 1 ? "aparelho" : "aparelhos"}; ${falharam} com falha e ${naoTentados} ${naoTentados === 1 ? "não tentado" : "não tentados"}.`,
+      );
+
+      if (enviados > 0) {
+        const { error: ajusteError } = await gravarComPrazo(
+          supabase
+            .from("push_notifications_log")
+            .update({ recipient_count: entregues })
+            .eq("id", logId),
+        ).catch((error: unknown) => ({ error }));
+        if (ajusteError) {
+          toast.warning(
+            "O envio foi aceito, mas o número de aparelhos não foi atualizado no histórico.",
+          );
+        }
+      }
+      fetchHistory();
+      fetchSubscribers();
+      fetchSegmentCounts();
+      if (segment !== "all") calculateReach();
+    } finally {
+      envioEmAndamento.current = false;
+      setLoading(false);
+    }
+  };
+
   const handleSend = async () => {
     if (isOffline) {
       toast.error("Você está offline", {
@@ -1081,6 +1173,8 @@ export const AdminPushView = memo(function AdminPushView({
 
     // O objeto deste render é o instantâneo usado por todo o envio.
     const mensagemEnviada = notification;
+    if (envioEmAndamento.current) return;
+    envioEmAndamento.current = true;
     setLoading(true);
     try {
       if (!user) throw new Error("Administrador não autenticado");
@@ -1293,20 +1387,16 @@ export const AdminPushView = memo(function AdminPushView({
 
       // Sem resposta da edge (60 s) cai no mesmo caminho de "envio não
       // confirmado" abaixo: alguns clientes podem ter recebido.
-      const { data: envio, error: pushError } = await gravarComPrazo(
-        supabase.functions.invoke("send-push", {
-          body: {
-            title: notification.title,
-            body: notification.body,
-            url: notification.url,
-            tokens: targetList.map((t: any) => ({
-              endpoint: t.endpoint,
-              keys: { p256dh: t.p256dh, auth: t.auth },
-            })),
-          },
-        }),
-        PRAZO_DA_EDGE_DE_ENVIO_DE_PUSH_MS,
-      ).catch((error: unknown) => ({ data: null, error }));
+      const tokens: TokenPush[] = targetList.map((t: any) => ({
+        endpoint: t.endpoint,
+        keys: { p256dh: t.p256dh, auth: t.auth },
+      }));
+      setContinuacao(null);
+      setEstadoDaContinuacao("");
+      const { data: envio, error: pushError } = await enviarLotePush(
+        mensagemEnviada,
+        tokens,
+      );
 
       // A resposta agora traz contagem de verdade. Até 05/08/2026 a função
       // devolvia `{ success: true }` mesmo com todos os envios falhando, e esta
@@ -1325,6 +1415,25 @@ export const AdminPushView = memo(function AdminPushView({
       const detalheDaFalha = primeiraFalha
         ? `${primeiraFalha.quantidade}x ${motivoDaFalhaEmPortugues(primeiraFalha)}`
         : undefined;
+
+      // A send-push preserva a ordem dos tokens e para entre lotes. Só
+      // usamos o fim da lista se o resumo cobre exatamente o que enviamos.
+      if (
+        envioConfirmado &&
+        entregues > 0 &&
+        naoTentados > 0 &&
+        Number.isInteger(envio?.falharam) &&
+        falharam >= 0 &&
+        entregues + falharam + naoTentados === tokens.length
+      ) {
+        setContinuacao({
+          mensagem: mensagemEnviada,
+          tokens: tokens.slice(-naoTentados),
+          administrador: user.id,
+          logId: logRow.id,
+          entregues,
+        });
+      }
 
       let avisoDoHistorico: string | undefined;
       if (envioConfirmado && entregues > 0) {
@@ -1463,6 +1572,7 @@ export const AdminPushView = memo(function AdminPushView({
           : "Não foi possível preparar o envio. Tente de novo em instantes.",
       );
     } finally {
+      envioEmAndamento.current = false;
       setLoading(false);
     }
   };
@@ -2167,6 +2277,29 @@ export const AdminPushView = memo(function AdminPushView({
             <Shield aria-hidden="true" className="size-4 shrink-0" />
             Depois de enviar, não dá para desfazer.
           </p>
+          <p
+            ref={anuncioDaContinuacao}
+            role="status"
+            tabIndex={-1}
+            className="text-sm text-zinc-400"
+          >
+            {estadoDaContinuacao ||
+              (lotePendente
+                ? `${lotePendente.tokens.length === 1 ? "Aparelho não tentado" : "Aparelhos não tentados"} no aviso “${lotePendente.mensagem.title}”: ${lotePendente.tokens.length}.`
+                : "")}
+          </p>
+          {lotePendente && (
+            <button
+              type="button"
+              onClick={() => void continuarEnvio()}
+              disabled={loading || isOffline}
+              className="min-h-12 rounded-full border border-solid border-admin-border bg-white/5 px-4 py-2 text-sm font-bold text-zinc-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {lotePendente.tokens.length === 1
+                ? "Continuar para o aparelho não tentado"
+                : `Continuar para os ${lotePendente.tokens.length} não tentados`}
+            </button>
+          )}
         </div>
 
         {/* O que já foi ao ar — seção colapsável (consulta), nasce FECHADA.

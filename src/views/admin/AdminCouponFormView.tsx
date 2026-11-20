@@ -50,6 +50,7 @@ import { cn, formatCurrency } from "@/lib/utils";
 import type { ClienteDoCupom, Coupon, View } from "@/types";
 import { camposQueMudaram } from "@/utils/campos-mexidos-do-produto";
 import { haptic } from "@/utils/haptic";
+import { rotuloDoCupom } from "@/utils/status-do-cupom";
 import {
   dataEscolhidaParaValidade,
   validadeParaDataDoInput,
@@ -290,6 +291,14 @@ function FormularioDoCupom({
   });
 
   const textoDoLimite = textoLimite ?? String(formData.usageLimit || "");
+  const cupomPodeZerar = cupomPodeCobrirACompraInteira(formData);
+  const valorDoCupom = formData.value ?? 0;
+  const avisarCupomFixoSemMinimo =
+    lojaSoRecebePeloApp &&
+    formData.type === "fixed" &&
+    Number.isFinite(valorDoCupom) &&
+    valorDoCupom > 0 &&
+    (formData.minPurchase ?? 0) === 0;
   const limiteDeUsos = lerLimiteDeUsosDoCupom(textoDoLimite);
 
   // Laudo 0109 (A4): a decisão editar×criar MORAVA na lista carregada
@@ -887,6 +896,20 @@ function FormularioDoCupom({
     onNavigate("admin-coupons");
   };
 
+  const rotuloDaPrevia =
+    isEditing && (!editingCoupon || cupomInicializadoRef.current !== couponId)
+      ? null
+      : formData.active &&
+          (typeof limiteDeUsos !== "number" || rascunhoValidade !== null)
+        ? null
+        : rotuloDoCupom({
+            active: Boolean(formData.active),
+            validUntil: formData.validUntil,
+            usageLimit: typeof limiteDeUsos === "number" ? limiteDeUsos : null,
+            usageCount: editingCoupon?.usageCount,
+          });
+  const previaEstaAtiva = rotuloDaPrevia === "Ativo";
+
   return (
     <div className="pb-admin relative min-h-screen bg-admin-bg font-sans text-zinc-400 lg:pb-12">
       <div className="sticky top-0 z-20 bg-admin-bg/95 px-5 py-4 backdrop-blur-xl">
@@ -990,16 +1013,18 @@ function FormularioDoCupom({
                       />
                       PRÉVIA DO CUPOM
                     </span>
-                    <span
-                      className={cn(
-                        "rounded-full border px-3 py-1 text-xs font-bold",
-                        formData.active
-                          ? "border-emerald-300/20 bg-emerald-300/10 text-emerald-300"
-                          : "border-admin-border-strong bg-white/5 text-zinc-400",
-                      )}
-                    >
-                      {formData.active ? "Ativo" : "Inativo"}
-                    </span>
+                    {rotuloDaPrevia && (
+                      <span
+                        className={cn(
+                          "rounded-full border px-3 py-1 text-xs font-bold",
+                          previaEstaAtiva
+                            ? "border-emerald-300/20 bg-emerald-300/10 text-emerald-300"
+                            : "border-admin-border-strong bg-white/5 text-zinc-400",
+                        )}
+                      >
+                        {rotuloDaPrevia}
+                      </span>
+                    )}
                   </div>
                   <p className="break-all text-2xl font-bold uppercase text-zinc-50">
                     {formData.code || "CUPOMEXEMPLO"}
@@ -1327,7 +1352,7 @@ function FormularioDoCupom({
             {/* CUPOM QUE COBRE A COMPRA INTEIRA (dono, 14/10/2026): aviso, nunca
                 bloqueio — o cupom salva normalmente. Mais forte quando a loja
                 só recebe pelo app: aí a cliente NÃO consegue fechar. */}
-            {cupomPodeCobrirACompraInteira(formData) && (
+            {(cupomPodeZerar || avisarCupomFixoSemMinimo) && (
               <div
                 role="note"
                 data-testid="aviso-cupom-cobre-a-compra"
@@ -1338,9 +1363,11 @@ function FormularioDoCupom({
                   className="mt-0.5 size-5 shrink-0 text-orange-300"
                 />
                 <p className="text-sm leading-relaxed text-orange-200">
-                  {lojaSoRecebePeloApp
-                    ? AVISO_CUPOM_PODE_COBRIR_E_LOJA_SO_NO_APP
-                    : AVISO_CUPOM_PODE_COBRIR_A_COMPRA}
+                  {avisarCupomFixoSemMinimo && !cupomPodeZerar
+                    ? `Sem valor mínimo e com frete grátis, uma compra de até ${formatCurrency(valorDoCupom)} pode ficar em R$ 0,00. Com total zero, o pedido só fecha na entrega local ou na retirada, com uma forma de pagamento habilitada para essa opção; para envio por transportadora, defina um valor mínimo acima do desconto.`
+                    : lojaSoRecebePeloApp
+                      ? AVISO_CUPOM_PODE_COBRIR_E_LOJA_SO_NO_APP
+                      : AVISO_CUPOM_PODE_COBRIR_A_COMPRA}
                 </p>
               </div>
             )}

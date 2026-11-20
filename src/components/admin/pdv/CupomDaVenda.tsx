@@ -368,7 +368,7 @@ export function CupomDaVenda({
                     {item.imagem ? (
                       <ImagemComFallback
                         src={item.imagem}
-                        alt={item.nome}
+                        alt=""
                         className="pdv-item-image"
                         fallback={
                           <div className="pdv-item-image flex items-center justify-center bg-admin-raised">

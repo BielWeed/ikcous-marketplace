@@ -453,6 +453,12 @@ export const OrderList = memo(function OrderList({
               : guestMessage ||
                 "Seus pedidos são vinculados à sua conta. Acesse para visualizar seu histórico completo."
             : "Você ainda não fez nenhum pedido. Que tal começar a comprar?")}
+        {!isGuest && !temPedidosEmMemoria && !emptyDescription && (
+          <>
+            <br />
+            Comprou com outro e-mail? Entre com o usado na compra.
+          </>
+        )}
         {!compact && (emptyAction || !isGuest) && (
           <span className="mt-6 block">
             <button

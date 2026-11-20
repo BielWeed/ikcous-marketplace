@@ -11,6 +11,7 @@
 // (sem filtro nenhum, head count):
 //   - 0  → "Seus pedidos vão aparecer aqui" + convite da primeira venda;
 //   - >0 → as mensagens de filtro/busca de sempre (listas de verdade).
+import { PRAZO_DA_CONSULTA_DO_PAINEL_MS } from "@/lib/prazo-da-requisicao";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -117,6 +118,7 @@ describe("AdminOrdersView — loja sem pedido nenhum vs filtro vazio", () => {
       raiz.unmount();
     });
     hospedeiro.remove();
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     mockOrders = [];
     mockTotalOrders = 0;
@@ -134,6 +136,8 @@ describe("AdminOrdersView — loja sem pedido nenhum vs filtro vazio", () => {
       raiz.render(<AdminOrdersView onNavigate={vi.fn()} active />);
     });
 
+    expect(hospedeiro.textContent).toContain("Verificando se já há pedidos…");
+    expect(hospedeiro.textContent).not.toContain("Ver todos os pedidos");
     expect(hospedeiro.textContent).not.toContain("já foram atendidos");
     expect(hospedeiro.textContent).not.toContain(
       "Seus pedidos vão aparecer aqui",
@@ -142,6 +146,87 @@ describe("AdminOrdersView — loja sem pedido nenhum vs filtro vazio", () => {
     await act(async () => concluir());
     expect(hospedeiro.textContent).toContain("Seus pedidos vão aparecer aqui");
   });
+
+  it("espera a contagem geral antes de sugerir limpar a busca", async () => {
+    let concluir!: () => void;
+    esperaDaContagem = new Promise<void>((resolve) => {
+      concluir = resolve;
+    });
+    totalAbsolutoNoBanco = 83;
+    vi.stubGlobal("localStorage", {
+      getItem: (chave: string) =>
+        chave === "admin_orders_search_query"
+          ? JSON.stringify("pedido que não existe")
+          : null,
+      setItem: () => {},
+      removeItem: () => {},
+    });
+    const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
+    await act(async () => {
+      raiz.render(<AdminOrdersView onNavigate={vi.fn()} active />);
+    });
+
+    expect(hospedeiro.textContent).toContain("Verificando se já há pedidos…");
+    expect(hospedeiro.textContent).not.toContain("Nenhum pedido neste recorte");
+    expect(hospedeiro.textContent).not.toContain("Limpar busca e filtros");
+
+    await act(async () => concluir());
+    expect(hospedeiro.textContent).not.toContain(
+      "Verificando se já há pedidos…",
+    );
+    expect(hospedeiro.textContent).toContain("Nenhum pedido neste recorte");
+    expect(hospedeiro.textContent).toContain("Limpar busca e filtros");
+  });
+
+  it.each([
+    ["", "Ver todos os pedidos"],
+    ["pedido que não existe", "Limpar busca e filtros"],
+  ])(
+    "libera o atalho com busca %j quando a medição não termina",
+    async (busca, atalho) => {
+      let concluir!: () => void;
+      esperaDaContagem = new Promise<void>((resolve) => {
+        concluir = resolve;
+      });
+      vi.stubGlobal("localStorage", {
+        getItem: (chave: string) =>
+          chave === "admin_orders_search_query" ? JSON.stringify(busca) : null,
+        setItem: () => {},
+        removeItem: () => {},
+      });
+      const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
+      vi.useFakeTimers();
+      await act(async () => {
+        raiz.render(<AdminOrdersView onNavigate={vi.fn()} active />);
+      });
+
+      expect(hospedeiro.textContent).toContain("Verificando se já há pedidos…");
+      expect(hospedeiro.textContent).not.toContain(atalho);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(PRAZO_DA_CONSULTA_DO_PAINEL_MS + 1);
+      });
+
+      expect(hospedeiro.textContent).toContain(atalho);
+      expect(hospedeiro.textContent).not.toContain(
+        "Verificando se já há pedidos…",
+      );
+      expect(hospedeiro.textContent).not.toContain(
+        "Seus pedidos vão aparecer aqui",
+      );
+
+      // O banco responde zero, mas a tela já abandonou essa medição.
+      await act(async () => concluir());
+
+      expect(hospedeiro.textContent).toContain(atalho);
+      expect(hospedeiro.textContent).not.toContain(
+        "Verificando se já há pedidos…",
+      );
+      expect(hospedeiro.textContent).not.toContain(
+        "Seus pedidos vão aparecer aqui",
+      );
+    },
+  );
 
   it("Em Aberto usa texto neutro quando a contagem falha", async () => {
     totalAbsolutoNoBanco = null;

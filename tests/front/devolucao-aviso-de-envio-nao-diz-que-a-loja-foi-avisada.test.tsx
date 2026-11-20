@@ -165,6 +165,7 @@ describe("cartão da devolução — aviso depois de informar a postagem", () =>
       devolucaoDe({
         metodo_retorno: "etiqueta_reversa",
         codigo_postagem: "PP123456789BR",
+        etiqueta_url: "https://etiquetas.test/declaracao.pdf",
       }),
       onInformarEnvio,
     );
