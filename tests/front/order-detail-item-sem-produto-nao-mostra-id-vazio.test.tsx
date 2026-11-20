@@ -86,7 +86,10 @@ function pedidoComDoisItens(): Order {
 // LazyImage (usada no cartão de cada item) chama `new IntersectionObserver`
 // direto no mount — ausente no jsdom deste projeto.
 class IntersectionObserverStub {
-  constructor(private readonly aoObservar: IntersectionObserverCallback) {}
+  private readonly aoObservar: IntersectionObserverCallback;
+  constructor(aoObservar: IntersectionObserverCallback) {
+    this.aoObservar = aoObservar;
+  }
   observe(alvo: Element) {
     this.aoObservar(
       [{ isIntersecting: true, target: alvo } as IntersectionObserverEntry],
