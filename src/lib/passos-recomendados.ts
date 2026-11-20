@@ -38,6 +38,7 @@ export interface PassoRecomendado {
   readonly rotuloPendente: string;
   readonly estado: EstadoDoItem;
   readonly destino: View;
+  readonly destinoId?: string;
   /** Uma frase para a lojista: o que acontece enquanto o passo está pendente. */
   readonly explicacaoPendente: string;
 }
@@ -134,6 +135,7 @@ export function passosRecomendados(
         ? "carregando"
         : "pendente",
     destino: "admin-settings",
+    destinoId: "pagamentos",
     explicacaoPendente: avisarTransportadoraSemPagamento
       ? "Quem precisa de envio por transportadora não consegue finalizar a compra. Ligue o pagamento pelo app."
       : "Sem ele, seus clientes só podem pagar na entrega",
