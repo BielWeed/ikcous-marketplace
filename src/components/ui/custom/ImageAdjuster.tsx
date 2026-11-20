@@ -25,7 +25,13 @@ import {
   ZoomOut,
 } from "lucide-react";
 import type React from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 
@@ -981,12 +987,26 @@ export function ImageAdjuster({
   // disparava um segundo recorte e um segundo envio (arquivo órfão no
   // armazenamento). Um ref (e não estado) fecha a janela no mesmo instante.
   const cropEmAndamento = useRef(false);
+  // Cada saída invalida o recorte anterior, mesmo se o editor reabrir
+  // antes de o canvas terminar.
+  const geracaoDoRecorteRef = useRef(0);
+  useLayoutEffect(
+    () => () => {
+      geracaoDoRecorteRef.current += 1;
+    },
+    [isOpen, imageUrl],
+  );
+  const fecharEditor = () => {
+    geracaoDoRecorteRef.current += 1;
+    onClose();
+  };
 
   // Perform canvas cropping and submit
   const handleCrop = async () => {
-    if (!imageRef.current || loading) return;
+    if (!isOpen || !imageRef.current || loading) return;
     if (cropEmAndamento.current) return;
     cropEmAndamento.current = true;
+    const geracao = geracaoDoRecorteRef.current;
 
     try {
       const canvas = document.createElement("canvas");
@@ -1124,12 +1144,14 @@ export function ImageAdjuster({
         exportFormat,
         exportQuality / 100,
       );
+      if (geracao !== geracaoDoRecorteRef.current) return;
       if (blob) {
         await onConfirm(blob);
       } else {
         toast.error("Erro ao processar imagem final");
       }
     } catch (error) {
+      if (geracao !== geracaoDoRecorteRef.current) return;
       if (error instanceof PrazoEsgotado) {
         toast.error(
           "Não deu para carregar a foto agora. Tente salvar de novo.",
@@ -1157,7 +1179,7 @@ export function ImageAdjuster({
   // Diálogo de verdade: foco entra e volta, Esc fecha (menos durante o envio,
   // como o botão Voltar desabilitado) e o Tab não anda pela tela de baixo.
   const camadaRef = useCamadaDeTelaCheia<HTMLDivElement>(
-    onClose,
+    fecharEditor,
     !isSubmitting,
     isOpen,
   );
@@ -1206,7 +1228,7 @@ export function ImageAdjuster({
         <div className="flex items-center justify-between border-b border-white/5 bg-zinc-900/50 px-4 py-3 sm:px-6 sm:py-4 md:px-8 md:py-6">
           <div className="flex items-center gap-2 sm:gap-4">
             <button
-              onClick={onClose}
+              onClick={fecharEditor}
               className="flex size-8 min-h-11 min-w-11 items-center justify-center rounded-full border border-white/10 bg-zinc-900 text-white transition-all hover:border-white/20 hover:bg-zinc-800 active:scale-95 disabled:opacity-50 sm:w-auto sm:px-4 sm:py-2"
               disabled={isSubmitting}
               title="Voltar"
@@ -1924,7 +1946,7 @@ export function ImageAdjuster({
           <div className="flex w-full items-center gap-3 sm:w-auto">
             <button
               type="button"
-              onClick={onClose}
+              onClick={fecharEditor}
               disabled={isSubmitting}
               className="flex-1 justify-center rounded-xl border border-white/5 bg-zinc-950 px-5 py-2.5 text-[10px] font-black uppercase tracking-widest text-zinc-400 transition-all hover:border-white/10 hover:bg-zinc-900 hover:text-white active:scale-95 sm:flex-none"
             >

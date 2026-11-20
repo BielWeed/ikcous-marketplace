@@ -127,6 +127,24 @@ afterEach(() => {
 });
 
 describe("ImageAdjuster — Salvar Ajuste com a rede pendurada", () => {
+  it("não confirma se Cancelar for acionado enquanto o arquivo é gerado", async () => {
+    const onConfirm = vi.fn(async () => {});
+    let terminarArquivo: BlobCallback | undefined;
+    vi.mocked(HTMLCanvasElement.prototype.toBlob).mockImplementation((cb) => {
+      terminarArquivo = cb;
+    });
+    await abrir(onConfirm);
+    vi.useFakeTimers();
+    await tocarSalvar(100);
+    expect(terminarArquivo).toBeDefined();
+
+    await act(async () => {
+      botao("Cancelar")!.click();
+      terminarArquivo?.(new Blob(["x"], { type: "image/webp" }));
+    });
+
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
   it("passados 15 s a lojista é avisada e o toque seguinte tenta de novo", async () => {
     const onConfirm = vi.fn(async () => {});
     await abrir(onConfirm);

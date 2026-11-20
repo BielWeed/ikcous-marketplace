@@ -183,6 +183,7 @@ import {
 import React, {
   useState,
   useEffect,
+  useLayoutEffect,
   useCallback,
   useMemo,
   useRef,
@@ -1091,9 +1092,17 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   const montadoRef = useRef(true);
   const [isAdjusterOpen, setIsAdjusterOpen] = useState(false);
   const [adjustingImgUrl, setAdjustingImgUrl] = useState("");
-  const [adjustingImgIndex, setAdjustingImgIndex] = useState<number | null>(
-    null,
-  );
+  const [sessaoDoRecorte, setSessaoDoRecorte] = useState<symbol | null>(null);
+  const sessaoDoRecorteRef = useRef<symbol | null>(null);
+  const fotosAtuaisRef = useRef(formData.images);
+  useLayoutEffect(() => {
+    fotosAtuaisRef.current = formData.images;
+  }, [formData.images]);
+  const fecharRecorte = useCallback(() => {
+    sessaoDoRecorteRef.current = null;
+    setIsAdjusterOpen(false);
+    setSessaoDoRecorte(null);
+  }, []);
   const [isUploadingAdjusted, setIsUploadingAdjusted] = useState(false);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
   const cancelarEnvioRef = useRef<(() => void) | null>(null);
@@ -1255,8 +1264,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             );
             return;
           }
-          setIsAdjusterOpen(false);
-          setAdjustingImgIndex(null);
+          fecharRecorte();
         } else if (isPreviewOpen) setIsPreviewOpen(false);
         else if (showVariantForm) cancelarVariacao();
         else if (showGradeForm) setShowGradeForm(false);
@@ -1298,6 +1306,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     camadaAberta,
     leitorAberto,
     isAdjusterOpen,
+    fecharRecorte,
     isPreviewOpen,
     showVariantForm,
     showGradeForm,
@@ -1425,9 +1434,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     }
   }, [showVariantForm, showCategoryForm, showGradeForm]);
 
-  const openAdjuster = (url: string, index: number) => {
+  const openAdjuster = (url: string) => {
+    const sessao = Symbol();
+    sessaoDoRecorteRef.current = sessao;
+    setSessaoDoRecorte(sessao);
     setAdjustingImgUrl(url);
-    setAdjustingImgIndex(index);
     setIsAdjusterOpen(true);
   };
 
@@ -1439,7 +1450,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   const ajusteEmAndamentoRef = useRef(false);
 
   const handleAdjustConfirm = async (croppedBlob: Blob) => {
-    if (adjustingImgIndex === null) return;
+    const sessaoValida = () =>
+      montadoRef.current &&
+      sessaoDoRecorte !== null &&
+      sessaoDoRecorte === sessaoDoRecorteRef.current;
+    if (!sessaoValida()) return;
+    if (!fotosAtuaisRef.current.includes(adjustingImgUrl)) {
+      fecharRecorte();
+      return;
+    }
     if (ajusteEmAndamentoRef.current) return;
     ajusteEmAndamentoRef.current = true;
     // A foto original, medida ANTES do envio: o recorte é estirado até
@@ -1475,15 +1494,27 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       );
       if (urls && urls.length > 0) {
         const newUrl = urls[0];
+        if (
+          !sessaoValida() ||
+          !fotosAtuaisRef.current.includes(adjustingImgUrl)
+        ) {
+          toast.dismiss(loadingToast);
+          void descartarFotosDoProduto(urls);
+          if (sessaoValida()) fecharRecorte();
+          return;
+        }
         // Com aviso herdado, a URL nova entra como "já avaliada" ANTES de entrar
         // na lista: senão o efeito de avaliação (que roda a cada mudança de
         // `formData.images`) mede os pixels esticados e grava "Excelente" por
         // cima. Sem aviso herdado, ele a avalia sozinho.
         if (statusHerdado) evaluatedImagesRef.current.set(newUrl, null);
         setFormData((prev) => {
+          const indiceAtual = prev.images.indexOf(adjustingImgUrl);
+          if (indiceAtual < 0) return prev;
           const newImages = [...prev.images];
-          const fotoAntiga = prev.images.at(adjustingImgIndex);
-          newImages[adjustingImgIndex] = newUrl;
+          const fotoAntiga = adjustingImgUrl;
+          // eslint-disable-next-line security/detect-object-injection -- índice encontrado na própria lista.
+          newImages[indiceAtual] = newUrl;
           // A variação que usava a foto velha passa a usar a recortada: sem
           // isso ela seguiria apontando para a imagem antiga.
           const usavaAFoto =
@@ -1521,8 +1552,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         }
 
         toast.success("Imagem ajustada com sucesso!", { id: loadingToast });
-        setIsAdjusterOpen(false);
-        setAdjustingImgIndex(null);
+        fecharRecorte();
       } else {
         throw new Error("Upload returned empty list");
       }
@@ -5230,7 +5260,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                   type="button"
                                   onClick={() => {
                                     if (!acaoDeFotoLiberada(false)) return;
-                                    openAdjuster(image, indiceEmFoco);
+                                    openAdjuster(image);
                                   }}
                                   disabled={
                                     isImageUploading ||
@@ -6804,10 +6834,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         {isAdjusterOpen && (
           <ImageAdjuster
             isOpen={isAdjusterOpen}
-            onClose={() => {
-              setIsAdjusterOpen(false);
-              setAdjustingImgIndex(null);
-            }}
+            onClose={fecharRecorte}
             imageUrl={adjustingImgUrl}
             onConfirm={handleAdjustConfirm}
             isSubmitting={isUploadingAdjusted}

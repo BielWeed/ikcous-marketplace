@@ -14,6 +14,7 @@
 import { act } from "react";
 import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
+import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fetchProduct = vi.fn();
@@ -71,16 +72,39 @@ vi.mock("@/components/ui/select", () => ({
   ),
 }));
 
-// O recorte real precisa de canvas; o dublê só expõe o botão que o confirma.
+let concluirRecorteAtrasado: (() => void) | undefined;
+const blobRecortado = () => new Blob(["recorte"], { type: "image/webp" });
+
+// O dublê permite entregar um resultado mesmo depois que o editor fecha.
 vi.mock("@/components/ui/custom/ImageAdjuster", () => ({
-  ImageAdjuster: ({ onConfirm }: { onConfirm: (blob: Blob) => void }) => (
-    <button
-      type="button"
-      data-testid="confirmar-recorte"
-      onClick={() => onConfirm(new Blob(["recorte"], { type: "image/webp" }))}
-    >
-      Confirmar recorte
-    </button>
+  ImageAdjuster: ({
+    onConfirm,
+    onClose,
+  }: {
+    onConfirm: (blob: Blob) => void;
+    onClose: () => void;
+  }) => (
+    <>
+      <button
+        type="button"
+        data-testid="confirmar-recorte"
+        onClick={() => onConfirm(blobRecortado())}
+      >
+        Confirmar recorte
+      </button>
+      <button
+        type="button"
+        data-testid="iniciar-recorte"
+        onClick={() => {
+          concluirRecorteAtrasado = () => onConfirm(blobRecortado());
+        }}
+      >
+        Salvar Ajuste
+      </button>
+      <button type="button" data-testid="cancelar-recorte" onClick={onClose}>
+        Cancelar
+      </button>
+    </>
   ),
 }));
 
@@ -100,6 +124,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const FOTO_A = "https://cdn/a.jpg";
 const FOTO_B = "https://cdn/b.jpg";
+const FOTO_C = "https://cdn/c.jpg";
 const FOTO_A_RECORTADA = "https://cdn/a-recortada.webp";
 
 const variacao = (id: string, valor: string, imageUrl?: string) => ({
@@ -118,6 +143,7 @@ describe("AdminProductFormView — recortar ou excluir foto acerta a variação"
 
   beforeEach(() => {
     vi.clearAllMocks();
+    concluirRecorteAtrasado = undefined;
     vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
     upsertVariants.mockResolvedValue(undefined);
     uploadProductImages.mockResolvedValue([FOTO_A_RECORTADA]);
@@ -152,7 +178,7 @@ describe("AdminProductFormView — recortar ou excluir foto acerta a variação"
   });
 
   // Produto com 2 fotos; Rosa usa a foto A, Azul usa a B, Verde não usa foto.
-  async function montar(quantidadeDeVinculos = 1) {
+  async function montar(quantidadeDeVinculos = 1, comFotoC = false) {
     const produto = {
       id: "p-1",
       name: "Camiseta",
@@ -161,14 +187,18 @@ describe("AdminProductFormView — recortar ou excluir foto acerta a variação"
       stock: 10,
       sold: 0,
       category: "Geral",
-      images: [FOTO_A, FOTO_B],
+      images: comFotoC ? [FOTO_A, FOTO_B, FOTO_C] : [FOTO_A, FOTO_B],
       freeShipping: false,
       isBestseller: false,
       isActive: true,
       variants: [
         variacao("v1", "Rosa", quantidadeDeVinculos > 0 ? FOTO_A : undefined),
         variacao("v2", "Azul", FOTO_B),
-        variacao("v3", "Verde", quantidadeDeVinculos > 1 ? FOTO_A : undefined),
+        variacao(
+          "v3",
+          "Verde",
+          comFotoC ? FOTO_C : quantidadeDeVinculos > 1 ? FOTO_A : undefined,
+        ),
       ],
     };
     fetchProduct.mockResolvedValue(produto);
@@ -240,6 +270,63 @@ describe("AdminProductFormView — recortar ou excluir foto acerta a variação"
     await salvar();
 
     expect(fotosGravadasPorVariacao()).toEqual({ v1: FOTO_A_RECORTADA });
+  });
+
+  const clicar = async (seletor: string) => {
+    await act(async () => {
+      document.querySelector<HTMLButtonElement>(seletor)!.click();
+    });
+  };
+
+  it("ignora o recorte da foto B entregue depois de cancelar e excluir A", async () => {
+    await montar(0, true);
+    await clicar('button[aria-label^="Ver foto 2 de"]');
+    await clicar('button[title="Ajustar e Cortar"]');
+    await clicar('[data-testid="iniciar-recorte"]');
+    await clicar('[data-testid="cancelar-recorte"]');
+    await clicar('button[aria-label^="Ver foto 1 de"]');
+    await clicar('button[title="Excluir"]');
+
+    expect(concluirRecorteAtrasado).toBeDefined();
+    await act(async () => {
+      concluirRecorteAtrasado?.();
+    });
+    await salvar();
+
+    expect(updateProduct.mock.calls.at(-1)?.[1].images).toEqual([
+      FOTO_B,
+      FOTO_C,
+    ]);
+    expect(upsertVariants).not.toHaveBeenCalled();
+    expect(toast.success).not.toHaveBeenCalledWith(
+      "Imagem ajustada com sucesso!",
+      expect.anything(),
+    );
+    expect(uploadProductImages).not.toHaveBeenCalled();
+  });
+
+  it("o recorte em andamento segue a foto B quando A sai da galeria", async () => {
+    await montar(0, true);
+    const fotoBRecortada = "https://cdn/b-recortada.webp";
+    uploadProductImages.mockResolvedValue([fotoBRecortada]);
+
+    await clicar('button[aria-label^="Ver foto 2 de"]');
+    await clicar('button[title="Ajustar e Cortar"]');
+    await clicar('[data-testid="iniciar-recorte"]');
+    await clicar('button[aria-label^="Ver foto 1 de"]');
+    await clicar('button[title="Excluir"]');
+
+    expect(concluirRecorteAtrasado).toBeDefined();
+    await act(async () => {
+      concluirRecorteAtrasado?.();
+    });
+    await salvar();
+
+    expect(updateProduct.mock.calls.at(-1)?.[1].images).toEqual([
+      fotoBRecortada,
+      FOTO_C,
+    ]);
+    expect(fotosGravadasPorVariacao()).toEqual({ v2: fotoBRecortada });
   });
 
   it("conta todas as variações da foto e Voltar preserva a foto e os vínculos", async () => {
