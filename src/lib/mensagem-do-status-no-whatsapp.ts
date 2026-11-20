@@ -107,7 +107,11 @@ export function mensagemDoStatusNoWhatsapp({
   let orientacoesDeRetirada = "";
   if (retiradaNaLoja === true && status === "shipping") {
     if (enderecoDeRetirada?.trim()) {
-      orientacoesDeRetirada += `Retire em: ${limitarTrechoParaWhatsapp(enderecoDeRetirada, 300, 950)}\n`;
+      const endereco = limitarTrechoParaWhatsapp(enderecoDeRetirada, 300, 950);
+      orientacoesDeRetirada += `Retire em: ${endereco}\n`;
+      if (endereco !== enderecoDeRetirada) {
+        orientacoesDeRetirada += "(endereço resumido — confirme com a loja)\n";
+      }
     }
     // Nunca corte o horário: o fim pode conter um dia fechado ou uma exceção.
     const horarioCabe =
