@@ -114,6 +114,16 @@ describe("FreteLocalBloco: até onde você entrega", () => {
     digitar(campoDeTeste(), cep);
   }
 
+  it("mostra dia no singular para 01 sem alterar o valor do campo", () => {
+    montar("", { dias: "01", onDias: () => undefined });
+
+    const campo = hospedeiro.querySelector<HTMLInputElement>(
+      "#local-delivery-days",
+    );
+    expect(campo?.value).toBe("01");
+    expect(campo?.nextElementSibling?.textContent).toBe("dia");
+  });
+
   it("pergunta até onde entrega, diz o que vale hoje e oferece as duas respostas com o efeito escrito", () => {
     montar("");
     expect(texto()).toContain("Até onde você entrega?");

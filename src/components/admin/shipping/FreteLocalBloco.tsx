@@ -472,7 +472,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
                 className="w-10 bg-transparent text-right text-xl font-bold tabular-nums text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-0 disabled:opacity-50"
               />
               <span className="text-xs font-semibold text-zinc-400">
-                {dias === "1" ? "dia" : "dias"}
+                {Number(dias) === 1 ? "dia" : "dias"}
               </span>
             </label>
           )}
