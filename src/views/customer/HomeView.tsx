@@ -898,6 +898,7 @@ export const HomeView = React.memo(function HomeView({
                           onClick={() => {
                             onSortByChange(option.value);
                             setShowSortMenu(false);
+                            sortButtonRef.current?.focus();
                           }}
                           className={`flex min-h-11 w-full items-center justify-between rounded-2xl px-4 py-3 text-[11px] font-black uppercase tracking-widest transition-all ${
                             sortBy === option.value

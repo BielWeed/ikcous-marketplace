@@ -216,6 +216,24 @@ describe("ordenação da vitrine sem Mais Vendidos", () => {
     expect(filtros?.getAttribute("aria-expanded")).toBe("false");
   });
 
+  it("devolve o foco a Filtros após ativar uma ordem pelo teclado", async () => {
+    const aoMudar = vi.fn();
+    await montar("default", aoMudar);
+    await abrirMenu();
+    const filtros = hospedeiro.querySelector('button[aria-haspopup="listbox"]');
+    const opcao = [
+      ...hospedeiro.querySelectorAll<HTMLButtonElement>('[role="option"]'),
+    ].find((botao) => botao.textContent?.includes("Menor Preço"))!;
+    await act(async () => opcao.focus());
+    expect(document.activeElement).toBe(opcao);
+    // jsdom não dispara o clique nativo de Enter no botão focado.
+    await act(async () => opcao.click());
+
+    expect(aoMudar).toHaveBeenCalledWith("price-asc");
+    expect(hospedeiro.querySelector('[role="listbox"]')).toBeNull();
+    expect(document.activeElement).toBe(filtros);
+  });
+
   it("fecha Filtros quando Tab passa da última opção, sem roubar o foco", async () => {
     await montar("default");
     const filtros = hospedeiro.querySelector<HTMLButtonElement>(
