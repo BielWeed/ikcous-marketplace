@@ -97,7 +97,7 @@ const abas = [
     }) => (
       <FunilEPedidosDoCrm {...props} carregando={false} onNavigate={vi.fn()} />
     ),
-    "Pedidos criados7Pagos5",
+    /Pedidos criados no período\s*7.*Pedidos pagos no período\s*5/,
   ],
   [
     "Clientes",
@@ -252,7 +252,7 @@ it.each(abas)(
         expect(aviso?.textContent).toContain(
           "Não deu para atualizar · mostrando a última busca",
         );
-        expect(host.textContent).toContain(numero);
+        expect(host.textContent).toMatch(numero);
         const botao = [...aviso!.querySelectorAll("button")].find((b) =>
           b.textContent?.includes("Tentar de novo"),
         );
@@ -370,7 +370,7 @@ it.each(abas)(
           "Sem internet · números da última busca",
         );
         expect(host.textContent).not.toContain("Não deu para atualizar");
-        expect(host.textContent).toContain(numero);
+        expect(host.textContent).toMatch(numero);
       },
     );
   },

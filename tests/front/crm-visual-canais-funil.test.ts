@@ -3,8 +3,6 @@
 // Arquivo NOVO para não conflitar com `crm-e-inicio-funcoes-puras.test.ts`,
 // que outra dupla mexe em paralelo.
 import {
-  conversaoEmVenda,
-  conversaoEntreEtapas,
   diasPorExtenso,
   formatarMoeda,
   fraseLeituraDasFormas,
@@ -13,12 +11,10 @@ import {
   garantirAppELoja,
   idadePorExtenso,
   notaDeEtapasNaoMedidas,
-  pedidosSemVendaPaga,
   percentualDoTotal,
   pipelineEmAberto,
   rotuloDaFormaDePagamento,
   ticketPorForma,
-  tomDaTaxaDePagamento,
 } from "@/lib/crm";
 import { describe, expect, it } from "vitest";
 
@@ -98,84 +94,6 @@ describe("ticketPorForma", () => {
   it("arredonda para cima o centavo fracionado e preserva a divisão exata", () => {
     expect(ticketPorForma(100, 6)).toBe(16.67);
     expect(ticketPorForma(120, 6)).toBe(20);
-  });
-});
-
-describe("conversaoEntreEtapas", () => {
-  it("conversão > 100% vira null — um funil nunca mostra mais de 100%", () => {
-    expect(conversaoEntreEtapas(105, 100)).toBeNull();
-    expect(conversaoEntreEtapas(13, 2)).toBeNull(); // o caso real do "650%"
-  });
-
-  it("exatamente 100% é um valor válido", () => {
-    expect(conversaoEntreEtapas(40, 40)).toBe(100);
-  });
-
-  it("divisão por zero e etapas não medidas viram null", () => {
-    expect(conversaoEntreEtapas(10, 0)).toBeNull();
-    expect(conversaoEntreEtapas(null, 40)).toBeNull();
-    expect(conversaoEntreEtapas(40, null)).toBeNull();
-  });
-
-  it("arredonda a 1 casa decimal", () => {
-    expect(conversaoEntreEtapas(40, 60)).toBe(66.7);
-  });
-});
-
-describe("conversaoEmVenda", () => {
-  it("vendas pagas ÷ pedidos criados, mesma unidade (pedidos)", () => {
-    expect(conversaoEmVenda(60, 40)).toBe(66.7);
-  });
-
-  it("vendas > criados (janela de data) ainda vira null, nunca acima de 100%", () => {
-    expect(conversaoEmVenda(10, 12)).toBeNull();
-  });
-
-  it("sem pedidos criados: null, não 0%", () => {
-    expect(conversaoEmVenda(0, 0)).toBeNull();
-  });
-});
-
-describe("pedidosSemVendaPaga", () => {
-  it("etapa não medida vira null", () => {
-    expect(pedidosSemVendaPaga(null, 5)).toBeNull();
-    expect(pedidosSemVendaPaga(13, null)).toBeNull();
-  });
-
-  it("diferença entre criados e vendas pagas, nunca negativa", () => {
-    expect(pedidosSemVendaPaga(13, 0)).toBe(13);
-    expect(pedidosSemVendaPaga(60, 40)).toBe(20);
-    expect(pedidosSemVendaPaga(10, 12)).toBe(0);
-  });
-
-  it("conta também quem pagou e foi estornado depois (saiu de vendas, continua em criados)", () => {
-    // 12 pedidos criados no período; 12 chegaram a ser pagos, mas 3 foram
-    // estornados/cancelados depois — crm__vendas só tem os 9 que ficaram
-    // pagos, mas os 12 continuam "criados". O laudo original (achado 2):
-    // "N pedidos do app não foram pagos" dizia 0 aqui, quando na verdade 3
-    // pedidos criados nunca viraram venda que ficou paga.
-    expect(pedidosSemVendaPaga(12, 9)).toBe(3);
-  });
-});
-
-describe("tomDaTaxaDePagamento", () => {
-  it("sem taxa medida (etapa null): neutra", () => {
-    expect(tomDaTaxaDePagamento(null)).toBe("neutra");
-  });
-
-  it(">= 70%: boa (o destaque deixa de ser sempre verde, mas 70%+ merece verde)", () => {
-    expect(tomDaTaxaDePagamento(70)).toBe("boa");
-    expect(tomDaTaxaDePagamento(100)).toBe("boa");
-  });
-
-  it("30% a 69,9%: mediana (âmbar)", () => {
-    expect(tomDaTaxaDePagamento(30)).toBe("mediana");
-    expect(tomDaTaxaDePagamento(69.9)).toBe("mediana");
-  });
-
-  it("< 30%, inclusive 0%: baixa — o caso real (0% sempre verde) que motivou o achado", () => {
-    expect(tomDaTaxaDePagamento(0)).toBe("baixa");
-    expect(tomDaTaxaDePagamento(29.9)).toBe("baixa");
   });
 });
 

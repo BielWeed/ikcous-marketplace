@@ -704,13 +704,9 @@ describe("Dashboard CRM", () => {
     await act(async () => aba("Funil e pedidos").click());
     await esperarAte(() => texto(painel("funil")).includes("Pedidos pagos"));
     expect(painel("canais")?.hidden).toBe(true);
-    // Redesenho visual (27/09): a conversão "pagos ÷ criados" virou o
-    // destaque "Conversão em venda" (achado da revisão: "taxa de
-    // pagamento" ficava falso quando um pedido pago era estornado depois),
-    // não mais um "% do passo anterior" ao lado da etapa — o número (66,7%
-    // = 40 pagos ÷ 60 criados) é o mesmo.
-    expect(texto(painel("funil"))).toContain("Conversão em venda");
-    expect(texto(painel("funil"))).toContain("66,7%");
+    expect(texto(painel("funil"))).toContain("Pedidos criados no período");
+    expect(texto(painel("funil"))).toContain("Pedidos pagos no período");
+    expect(texto(painel("funil"))).not.toContain("66,7%");
     // visitas/produtos_vistos são SEMPRE null no banco de verdade — a nota
     // tem de citar os dois, não ficar muda (achado da revisão: a conta
     // antiga nunca comparava essas duas etapas).

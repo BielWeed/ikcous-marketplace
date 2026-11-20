@@ -93,12 +93,12 @@ describe("FunilEPedidosDoCrm — só afirma o que o dado prova", () => {
     expect(texto).not.toContain("1 de 1");
     expect(
       hospedeiro.querySelector(
-        '[aria-label="Funil do app"] [aria-label="Pedidos criados"] h3',
+        '[aria-label="Funil do app"] [aria-label="Pedidos criados no período"] h3',
       )?.textContent,
     ).toBe("1");
     expect(
       hospedeiro.querySelector(
-        '[aria-label="Funil do app"] [aria-label="Pagos"] h3',
+        '[aria-label="Funil do app"] [aria-label="Pedidos pagos no período"] h3',
       )?.textContent,
     ).toBe("1");
   });

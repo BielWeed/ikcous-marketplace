@@ -420,7 +420,7 @@ it("erro sem cache reserva o resumo e oferece nova busca; offline preserva os n�
   expect(texto(grupo("Receita"))).toContain("R$ 170,88");
 });
 
-it("Funil separa criados e pagos e conserva as etapas e as quantidades da fila", async () => {
+it("Funil separa as contagens do resumo e conserva as etapas e a fila", async () => {
   const { FunilEPedidosDoCrm } = await import(
     "@/components/admin/crm/FunilEPedidosDoCrm"
   );
@@ -438,8 +438,8 @@ it("Funil separa criados e pagos e conserva as etapas e as quantidades da fila",
     return [rotulo, texto(g).replace(rotulo, "").trim()];
   });
   expect(etapas).toEqual([
-    ["Pedidos criados", "7"],
-    ["Pagos", "5"],
+    ["Pedidos criados no período", "7"],
+    ["Pedidos pagos no período", "5"],
     ["Carrinhos", "6 pessoas"],
     ["Pedidos criados", "7 pedidos"],
     ["Pedidos pagos", "5 pagos"],

@@ -359,18 +359,21 @@ export function FunilEPedidosDoCrm({
       )}
       <MetricasDoPainel
         titulo="Funil do app"
-        legendasDoResumo={["Pedidos criados", "Pagos"]}
+        legendasDoResumo={[
+          "Pedidos criados no período",
+          "Pedidos pagos no período",
+        ]}
         loading={esqueleto}
         cards={[
           {
-            label: "Pedidos criados",
+            label: "Pedidos criados no período",
             value: formatarInteiro(criados),
             icon: ShoppingBag,
           },
           {
-            label: "Pagos",
+            label: "Pedidos pagos no período",
             value: formatarInteiro(pagos),
-            icon: ShoppingBag,
+            icon: PackageCheck,
           },
         ]}
         nota={
@@ -396,9 +399,9 @@ export function FunilEPedidosDoCrm({
             <ExplicacaoDoRelatorio titulo="Funil do app">
               {visitas?.visitas == null ? "Visitas e produtos" : "Produtos"}{" "}
               vistos ainda não são medidos. Carrinhos e pedidos só contam quem
-              entrou com conta. Cada pedido conta pela data em que foi criado.
-              Um pagamento conta na data em que foi confirmado, mesmo se o
-              pedido foi criado antes do período.
+              entrou com conta. Pedido criado conta pela data de criação; pedido
+              pago, pela data do pagamento, mesmo que tenha sido criado antes do
+              período.
             </ExplicacaoDoRelatorio>
           ),
         }}

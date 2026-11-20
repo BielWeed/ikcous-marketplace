@@ -40,6 +40,7 @@ const CLASSES_DO_CELULAR_NA_BASE = [
   "space-y-4",
   "flex items-center justify-between gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 text-xs text-amber-300",
   "min-h-11 shrink-0 px-2 font-bold",
+  // O botão do aviso por subtração saiu junto com a comparação incorreta.
   "text-admin-text",
   "min-h-[132px]",
   "premium-shimmer h-14 rounded-xl",
