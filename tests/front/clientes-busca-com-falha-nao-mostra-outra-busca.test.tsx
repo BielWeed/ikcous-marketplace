@@ -313,6 +313,24 @@ describe("Clientes — falha de leitura não vira vazio nem resultado de outra c
     expect(hospedeiro.textContent).not.toContain("Tentar de novo");
   });
 
+  it("loja vazia continua sem clientes ainda depois de ordenar por A–Z", async () => {
+    rpc.mockResolvedValue(sucesso([], 0));
+    await abrirTela();
+    const filtros = hospedeiro.querySelector<HTMLButtonElement>(
+      '[aria-label="Filtros"]',
+    )!;
+    await act(async () => filtros.click());
+    const folha = document.querySelector('[role="dialog"]')!;
+    const alfabetica = [...folha.querySelectorAll("button")].find(
+      (b) => b.textContent === "A–Z",
+    )!;
+    await act(async () => alfabetica.click());
+    await avancar(320);
+
+    expect(hospedeiro.textContent).toContain("Nenhum cliente ainda");
+    expect(hospedeiro.textContent).not.toContain("Revise os filtros");
+  });
+
   it("busca sem resultado continua pedindo para revisar a pesquisa", async () => {
     rpc.mockResolvedValue(sucesso([]));
     await abrirTela();

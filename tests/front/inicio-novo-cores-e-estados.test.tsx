@@ -347,12 +347,13 @@ describe("gráfico dos 14 dias", () => {
     receita: 10 + i,
   }));
   it.each([0, 10])(
-    "pico e total de 14 dias com receita diária %s ficam cinza só quando zero",
+    "pico e total de 14 dias com receita diária %s ficam cinza só quando zero (retrato salvo)",
     (receita) => {
       montar(
         <SerieDe14Dias
           serie={serie.map((p) => ({ ...p, receita }))}
           carregando={false}
+          falhou={receita === 0}
         />,
       );
       const valores = tela.querySelectorAll("dl dd");

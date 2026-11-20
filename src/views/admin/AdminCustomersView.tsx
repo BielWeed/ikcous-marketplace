@@ -550,10 +550,9 @@ export const AdminCustomersView = memo(function AdminCustomersView({
     </div>
   );
 
+  const temBusca = Boolean(searchTerm);
   const temBuscaOuOrdenacao =
-    Boolean(searchTerm) ||
-    sortField !== "total_spent" ||
-    sortDirection !== "desc";
+    temBusca || sortField !== "total_spent" || sortDirection !== "desc";
   const limparBuscaEOrdenacao = () => {
     aceitarTermoDeBusca("");
     setSortField("total_spent");
@@ -743,12 +742,12 @@ export const AdminCustomersView = memo(function AdminCustomersView({
                         className="size-10 rounded-xl border border-indigo-300/20 bg-indigo-300/10 p-2 text-indigo-300"
                       />
                       <p className="text-sm font-bold text-white">
-                        {temBuscaOuOrdenacao
+                        {temBusca
                           ? "Nenhum cliente retornado"
                           : "Nenhum cliente ainda"}
                       </p>
                       <p className="text-xs text-zinc-400">
-                        {temBuscaOuOrdenacao
+                        {temBusca
                           ? "Revise os filtros ou sua pesquisa."
                           : "Quando alguém criar uma conta na loja, ela aparece aqui."}
                       </p>

@@ -42,6 +42,10 @@ export function SerieDe14Dias({
   const [tabelaAberta, setTabelaAberta] = useState(false);
   const tabelaId = useId();
   const serieCompleta = completarSerieDe14Dias(serie);
+  const semReceita =
+    !carregando &&
+    !falhou &&
+    serieCompleta.every((ponto) => ponto.receita === 0);
   const total = serieCompleta.reduce((soma, ponto) => soma + ponto.receita, 0);
   const maximo = serieCompleta.reduce(
     (maior, ponto) => Math.max(maior, ponto.receita),
@@ -86,7 +90,7 @@ export function SerieDe14Dias({
           <div className="premium-shimmer h-24 rounded-xl" aria-hidden="true" />
           <p className="mt-3 text-sm text-zinc-400">Carregando as vendas…</p>
         </div>
-      ) : serieCompleta.length === 0 ? (
+      ) : serieCompleta.length === 0 || semReceita ? (
         falhou ? (
           <FalhaDoInicio onTentarDeNovo={onTentarDeNovo}>
             <p>Não consegui carregar as vendas dos últimos 14 dias.</p>
@@ -95,7 +99,7 @@ export function SerieDe14Dias({
         ) : (
           <div>
             <p className="text-base font-semibold text-white">
-              Sem vendas registradas nos últimos 14 dias.
+              Sem receita registrada nos últimos 14 dias.
             </p>
             <p className="mt-2 text-sm text-zinc-400">
               Os pagamentos confirmados aparecem aqui.

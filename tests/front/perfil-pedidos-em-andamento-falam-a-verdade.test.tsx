@@ -19,6 +19,7 @@ import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { podeRetomarPagamento } from "@/lib/pode-retomar-pagamento";
 
 let pedidosAtuais: Order[] = [];
+let erroDePedidos: string | null = null;
 
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({
@@ -43,6 +44,7 @@ vi.mock("@/hooks/useAddresses", () => ({
 vi.mock("@/hooks/useOrders", () => ({
   useOrders: () => ({
     orders: pedidosAtuais,
+    ordersLoadError: erroDePedidos,
     fetchUserOrders: async () => pedidosAtuais,
   }),
 }));
@@ -158,6 +160,7 @@ describe("ProfileView — cartão Pedidos em Andamento fala a verdade", () => {
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
+    erroDePedidos = null;
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -189,6 +192,16 @@ describe("ProfileView — cartão Pedidos em Andamento fala a verdade", () => {
       await Promise.resolve();
     });
   }
+
+  it("avisa da falha de atualização sem esconder o pedido salvo", async () => {
+    erroDePedidos = "Falha na consulta";
+    await renderizar([pedido({ paymentStatus: "aguardando" })], vi.fn());
+
+    expect(hospedeiro.querySelector('[role="status"]')?.textContent).toBe(
+      "Não foi possível atualizar agora. Mostrando o que já tínhamos.",
+    );
+    expect(hospedeiro.textContent).toContain("Retomar pagamento");
+  });
 
   it("detalhes e retomada identificam cada um dos dois pedidos", async () => {
     const pedidos = [
