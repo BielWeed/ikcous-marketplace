@@ -948,6 +948,7 @@ function ConteudoDoCarrinho({
   // para devolver o foco e ele cairia no body. Guardamos quem estava focado ao
   // abrir (o botão "Esvaziar carrinho") e o devolvemos em `onCloseAutoFocus`.
   const focoAoEsvaziarRef = useRef<HTMLElement | null>(null);
+  const confirmouEsvaziarRef = useRef(false);
   const handleClearCart = () => {
     const ativo = document.activeElement;
     focoAoEsvaziarRef.current = ativo instanceof HTMLElement ? ativo : null;
@@ -1929,10 +1930,16 @@ function ConteudoDoCarrinho({
           className="z-[130] sm:max-w-sm"
           onCloseAutoFocus={(evento) => {
             evento.preventDefault();
-            // Confirmou: o botão saiu junto com os itens (desconectado), e o
-            // foco não é forçado em elemento que não existe mais.
-            const botao = focoAoEsvaziarRef.current;
-            if (botao?.isConnected) botao.focus();
+            const confirmou = confirmouEsvaziarRef.current;
+            confirmouEsvaziarRef.current = false;
+            const vazio = confirmou
+              ? regiaoDoCarrinhoRef.current?.querySelector<HTMLElement>(
+                  "[data-carrinho-vazio]",
+                )
+              : null;
+            const origem = focoAoEsvaziarRef.current;
+            const destino = vazio ?? (origem?.isConnected ? origem : null);
+            destino?.focus();
           }}
         >
           <AlertDialogHeader>
@@ -1944,7 +1951,13 @@ function ConteudoDoCarrinho({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="min-h-11">Manter</AlertDialogCancel>
-            <AlertDialogAction className="min-h-11" onClick={() => clearCart()}>
+            <AlertDialogAction
+              className="min-h-11"
+              onClick={() => {
+                confirmouEsvaziarRef.current = true;
+                clearCart();
+              }}
+            >
               Esvaziar carrinho
             </AlertDialogAction>
           </AlertDialogFooter>
