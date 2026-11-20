@@ -379,6 +379,11 @@ describe("OrderDetailsView — devolução ou troca do produto entregue", () => 
         "válido até 06/10 às 22:30 (horário de Brasília)",
       );
       expect(cartao?.textContent).toContain("A loja está preparando");
+      expect(
+        [...(cartao?.querySelectorAll("button") ?? [])].find((botao) =>
+          botao.textContent?.includes("Já postei o pacote"),
+        ),
+      ).toBeUndefined();
     });
 
     it.each([
