@@ -4,7 +4,7 @@ import { assertEquals, assertNotEquals } from "https://deno.land/std@0.177.0/tes
 
 const URL_SUPA_TESTE = "https://supa-fake.local";
 const ID_ADMIN = "admin-chave-curta-fixture";
-const PUBLIC_KEY_FALSA = "APP_USR-publica-fixture-teste";
+const PUBLIC_KEY_FALSA = "APP_USR-11111111-1111-4111-8111-111111111111";
 const TOKEN_FALSO = "APP_USR-token-fixture-teste";
 const CHAVE_CIFRA_TESTE = btoa(
     String.fromCharCode(...Array.from({ length: 32 }, (_, i) => i + 1)),

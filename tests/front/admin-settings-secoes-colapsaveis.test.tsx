@@ -130,7 +130,7 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
         return Promise.resolve({
           data: {
             configurado: true,
-            public_key: "APP_USR-publica-falsa-de-teste",
+            public_key: "APP_USR-11111111-1111-4111-8111-111111111111",
             mascara_token: "••••9999",
             mascara_webhook: "••••7777",
             ultimo_teste: null,
@@ -344,7 +344,7 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
     const cabecalho = await abrirChavesDoMercadoPago();
 
     // Mexe na chave pública: pendência criada.
-    await digitarChavePublica("APP_USR-outra-publica-falsa");
+    await digitarChavePublica("APP_USR-22222222-2222-4222-8222-222222222222");
 
     // O aviso de pendência aparece no cabeçalho…
     expect(hospedeiro.textContent).toMatch(/salve antes de fechar/i);
@@ -408,7 +408,7 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
     await abrirChavesDoMercadoPago();
 
     // Mexe na chave pública: a guarda liga.
-    await digitarChavePublica("APP_USR-outra-publica-falsa");
+    await digitarChavePublica("APP_USR-22222222-2222-4222-8222-222222222222");
     expect(onSetDirty).toHaveBeenLastCalledWith(true);
 
     // Salva: a guarda desliga.

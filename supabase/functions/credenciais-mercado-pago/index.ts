@@ -131,6 +131,11 @@ import {
     registroTemChaveDeAssinatura,
     type UltimoTeste,
 } from "../_shared/credenciais-mp.ts";
+import {
+    ERRO_CHAVE_PUBLICA_IGUAL_AO_TOKEN_MP,
+    ERRO_FORMATO_CHAVE_PUBLICA_MP,
+    FORMATO_CHAVE_PUBLICA_MP,
+} from "../_shared/formato-chave-publica-mp.ts";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
@@ -139,11 +144,11 @@ const corsHeaders = {
 };
 
 /**
- * Formato RELAXADO das credenciais MP: prefixo APP_USR- (produção e teste
+ * Formato RELAXADO do Access Token: prefixo APP_USR- (produção e teste
  * hoje) ou TEST- (teste legado) + cauda longa. Formato não prova validade —
  * só pega erro de colar pela metade; a validade é do teste de conexão.
  */
-const FORMATO_CREDENCIAL = /^(APP_USR|TEST)-[A-Za-z0-9_-]{10,}$/;
+const FORMATO_ACCESS_TOKEN = /^(APP_USR|TEST)-[A-Za-z0-9_-]{10,}$/;
 
 // O formato do registro e o de UltimoTeste moram no módulo compartilhado
 // (quem cobra precisa do MESMO formato que esta tela grava); seguem saindo
@@ -198,7 +203,7 @@ export function faltasParaReceber(
     modoDeTesteDeclarado?: boolean,
 ): Falta[] {
     const faltas: Falta[] = [];
-    if (!FORMATO_CREDENCIAL.test(String(registro?.public_key ?? "").trim())) {
+    if (!FORMATO_CHAVE_PUBLICA_MP.test(String(registro?.public_key ?? "").trim())) {
         faltas.push("public_key");
     }
     if (!(registro?.token_cifrado && registro?.token_iv)) {
@@ -423,7 +428,7 @@ function publicKeyNaLoja(
     registro: RegistroComPix | null,
     ficha: FichaDaLoja,
 ): boolean {
-    return Boolean(registro?.public_key) &&
+    return FORMATO_CHAVE_PUBLICA_MP.test(String(registro?.public_key ?? "").trim()) &&
         ficha.mp_public_key === registro?.public_key;
 }
 
@@ -451,7 +456,7 @@ function respostaLer(
     }
     return {
         configurado: Boolean(registro.token_cifrado),
-        public_key: registro.public_key,
+        public_key: faltando.includes("public_key") ? null : registro.public_key,
         mascara_token: registro.mascara_token,
         mascara_webhook: registro.mascara_webhook,
         ultimo_teste: registro.ultimo_teste,
@@ -956,13 +961,10 @@ export async function handler(
             if (!publicKey) {
                 return json({ erro: "Cole a Public Key do Mercado Pago." }, 400);
             }
-            if (!FORMATO_CREDENCIAL.test(publicKey)) {
-                return json(
-                    { erro: "A Public Key do Mercado Pago começa com APP_USR- ou TEST-. Confira se copiou a chave inteira." },
-                    400,
-                );
+            if (publicKey === accessToken) {
+                return json({ erro: ERRO_CHAVE_PUBLICA_IGUAL_AO_TOKEN_MP }, 400);
             }
-            if (accessToken && !FORMATO_CREDENCIAL.test(accessToken)) {
+            if (accessToken && !FORMATO_ACCESS_TOKEN.test(accessToken)) {
                 return json(
                     { erro: "O Access Token começa com APP_USR- ou TEST-. Confira se copiou a chave inteira." },
                     400,
@@ -978,6 +980,23 @@ export async function handler(
             const registroAntigo = await lerRegistroMp(
                 supabase,
             ) as RegistroComPix | null;
+            const chave = await chaveDeCifra();
+            // Confere o segredo anterior mesmo quando veio um substituto:
+            // nenhum dos dois pode ir para a ficha pública como Public Key.
+            const tokenSalvo = chave && registroAntigo?.token_cifrado
+                ? await decifrar(
+                    registroAntigo.token_cifrado,
+                    registroAntigo.token_iv,
+                    chave,
+                ).catch(() => null)
+                : null;
+            if (publicKey === tokenSalvo) {
+                return json({ erro: ERRO_CHAVE_PUBLICA_IGUAL_AO_TOKEN_MP }, 400);
+            }
+            if (!FORMATO_CHAVE_PUBLICA_MP.test(publicKey)) {
+                return json({ erro: ERRO_FORMATO_CHAVE_PUBLICA_MP }, 400);
+            }
+
             if (!accessToken && !registroAntigo?.token_cifrado) {
                 return json(
                     { erro: "Cole também o Access Token — é a chave que processa os pagamentos." },
@@ -985,7 +1004,6 @@ export async function handler(
                 );
             }
 
-            const chave = await chaveDeCifra();
             if (!chave) {
                 return json(
                     { erro: "O cofre de chaves desta loja ainda não está configurado. Fale com o suporte." },
@@ -1013,20 +1031,7 @@ export async function handler(
                 null;
             let testeSemResposta = false;
             if (credencialMudou) {
-                let tokenDoTeste: string | null = accessToken || null;
-                if (tokenDoTeste === null) {
-                    try {
-                        // `!`: sem token no corpo, o 400 acima já garantiu
-                        // que o registro antigo tem token cifrado.
-                        tokenDoTeste = await decifrar(
-                            registroAntigo!.token_cifrado,
-                            registroAntigo!.token_iv,
-                            chave,
-                        );
-                    } catch {
-                        tokenDoTeste = null;
-                    }
-                }
+                const tokenDoTeste = accessToken || tokenSalvo;
                 if (tokenDoTeste === null) {
                     // Token salvo ilegível: o teste falha (nunca 500) e o
                     // recado é o mesmo do `testar`.
@@ -1182,12 +1187,18 @@ export async function handler(
                 // outra, ou o pagamento ligado sem as chaves por trás (na 1ª
                 // vez, sem registro nenhum: o criar-pagamento cairia nas
                 // chaves da PLATAFORMA). O registro antigo continua de pé, então
-                // a ficha é DEVOLVIDA ao que era (R2, revisão de 30/09) e o
-                // recado diz a verdade: nada mudou. Sem mudança na ficha, o
-                // catch geral já diz a coisa certa.
+                // a ficha é DEVOLVIDA ao que era (R2, revisão de 30/09), sem
+                // repor uma falsa Public Key legada. Sem mudança na ficha,
+                // o catch geral já diz a coisa certa.
                 const campos: Partial<FichaDaLoja> = {};
+                const chaveAnterior = fichaAntes.mp_public_key?.trim();
+                // Uma chave legada não validada não pode voltar à ficha
+                // pública no desfazer, nem mesmo se parecer uma Public Key.
+                const chaveAnteriorInsegura = chaveAnterior !== undefined &&
+                    (!FORMATO_CHAVE_PUBLICA_MP.test(chaveAnterior) ||
+                        chaveAnterior === tokenSalvo || chaveAnterior === accessToken);
                 if (fichaAntes.mp_public_key !== publicKey) {
-                    campos.mp_public_key = fichaAntes.mp_public_key;
+                    campos.mp_public_key = chaveAnteriorInsegura ? null : fichaAntes.mp_public_key;
                 }
                 if (mudarPagamento) {
                     campos.pagamento_online = fichaAntes.pagamento_online;
@@ -1212,7 +1223,9 @@ export async function handler(
                 }
                 return json(
                     {
-                        erro: "Não salvei as chaves novas: nada mudou — a loja segue com as chaves e o pagamento pelo app como estavam. Tente salvar de novo.",
+                        erro: chaveAnteriorInsegura
+                            ? "Não salvei as chaves novas. A chave pública anterior foi retirada da ficha porque não era válida. Confira os campos e salve de novo."
+                            : "Não salvei as chaves novas: nada mudou — a loja segue com as chaves e o pagamento pelo app como estavam. Tente salvar de novo.",
                     },
                     500,
                 );

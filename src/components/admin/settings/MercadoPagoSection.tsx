@@ -24,6 +24,11 @@ import {
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
+  ERRO_CHAVE_PUBLICA_IGUAL_AO_TOKEN_MP,
+  ERRO_FORMATO_CHAVE_PUBLICA_MP,
+  FORMATO_CHAVE_PUBLICA_MP,
+} from "../../../../supabase/functions/_shared/formato-chave-publica-mp";
+import {
   AVISO_BASE_CHAVES_DE_TESTE,
   AVISO_CHAVES_DE_TESTE,
   AVISO_CHAVE_DE_TESTE_EM_MODO_DE_TESTE,
@@ -515,11 +520,21 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
     }
     // Não salva no meio de um pausar/retomar (as duas gravações correm juntas).
     if (salvando || alternandoPix) return;
-    if (!publicKey.trim()) {
+    const chavePublica = publicKey.trim();
+    const tokenSecreto = accessToken.trim();
+    if (!chavePublica) {
       toast.error("Cole a chave pública do Mercado Pago.");
       return;
     }
-    if (!config.configurado && !accessToken.trim()) {
+    if (chavePublica === tokenSecreto) {
+      toast.error(ERRO_CHAVE_PUBLICA_IGUAL_AO_TOKEN_MP);
+      return;
+    }
+    if (!FORMATO_CHAVE_PUBLICA_MP.test(chavePublica)) {
+      toast.error(ERRO_FORMATO_CHAVE_PUBLICA_MP);
+      return;
+    }
+    if (!config.configurado && !tokenSecreto) {
       toast.error(
         "Cole também a chave secreta — é ela que processa os pagamentos.",
       );
@@ -534,9 +549,9 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
       // "mantém a salva" — o campo vazio nunca apaga chave de verdade.
       const corpo: Record<string, unknown> = {
         acao: "salvar",
-        public_key: publicKey.trim(),
+        public_key: chavePublica,
       };
-      if (accessToken.trim()) corpo.access_token = accessToken.trim();
+      if (tokenSecreto) corpo.access_token = tokenSecreto;
       if (webhookSecret.trim()) corpo.webhook_secret = webhookSecret.trim();
 
       const { data, error } = await chamarEdge(corpo, PRAZO_DE_GRAVAR_MS);
@@ -565,8 +580,8 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
       // Edge antiga (sem `faltando`/`testou`) não afirma nada além do salvo.
       toast.success("Chaves do Mercado Pago salvas!", {
         description: salva.pix_ligado
-          ? devolvido.testou === true
-            ? "O teste de conexão passou e o pagamento pelo app foi liberado."
+          ? devolvido.testou === true && salva.ultimo_teste?.conectado === true
+            ? "Conexão com a conta OK. Recebimento de avisos não verificado — envie uma notificação de teste no painel do Mercado Pago."
             : "As chaves foram salvas."
           : salva.pausado
             ? "As chaves foram salvas; o pagamento pelo app segue pausado até você retomar."
@@ -1143,13 +1158,13 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                 autoComplete="new-password"
                 className="h-11 w-full rounded-lg border border-admin-border bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-violet-300 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
               />
-              {!config.mascara_webhook && (
-                <p className="text-[11px] leading-relaxed text-orange-300">
-                  Sem a senha dos avisos da sua loja, o pagamento pelo app não é
-                  liberado. Testar conexão não confere os avisos; a chave global
-                  do app não substitui a sua.
-                </p>
-              )}
+              <p className="text-[11px] leading-relaxed text-orange-300">
+                {config.mascara_webhook
+                  ? null
+                  : "Sem a senha dos avisos da sua loja, o pagamento pelo app não é liberado; a chave global do app não substitui a sua. "}
+                Testar conexão não confere os avisos. Para conferir o recebimento,
+                envie uma notificação de teste no painel do Mercado Pago.
+              </p>
             </div>
 
             <div className="flex flex-wrap items-center gap-2 pt-1">
