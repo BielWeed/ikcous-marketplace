@@ -12,12 +12,30 @@ import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { escolherCategoriaDoProduto } from "./helpers/escolher-categoria-do-produto";
-import { nomesInvisiveis, nomesVisiveis } from "./helpers/nomes-invisiveis";
+import {
+  nomesInvisiveisRepresentativos,
+  nomesVisiveisRepresentativos,
+} from "./helpers/nomes-invisiveis";
 
 const addProduct = vi.fn();
 const updateProduct = vi.fn();
 const fetchProduct = vi.fn();
 const rpcDoSupabase = vi.fn();
+
+// Nenhum cenário abre esses painéis. A validação, o formulário e os
+// controles de texto continuam reais.
+vi.mock("@/components/admin/AdminHelpModal", () => ({
+  AdminHelpModal: () => null,
+}));
+vi.mock("@/components/admin/PhoneSimulator", () => ({
+  PhoneSimulator: () => null,
+}));
+vi.mock("@/components/admin/products/ModalVarianteGrade", () => ({
+  ModalVarianteGrade: () => null,
+}));
+vi.mock("@/components/ui/custom/ImageAdjuster", () => ({
+  ImageAdjuster: () => null,
+}));
 
 vi.mock("@/hooks/useProducts", () => ({
   useProducts: () => ({
@@ -118,7 +136,7 @@ const produtoDoBanco = {
   lengthCm: null,
 };
 
-const esperar = (ms: number) => new Promise((r) => setTimeout(r, ms));
+// O campo usa debounce; avançar o relógio mantém esse caminho real sem dormir.
 
 function digitar(id: string, valor: string) {
   const el = document.getElementById(id) as
@@ -136,7 +154,7 @@ function digitar(id: string, valor: string) {
 async function digitarCampo(id: string, valor: string) {
   await act(async () => {
     digitar(id, valor);
-    await esperar(300);
+    await vi.advanceTimersByTimeAsync(300);
   });
 }
 
@@ -147,7 +165,7 @@ async function preencherOBasico() {
   await digitarCampo("product-stock", "5");
   await act(async () => {
     escolherCategoriaDoProduto("Geral");
-    await esperar(50);
+    await vi.advanceTimersByTimeAsync(50);
   });
 }
 
@@ -163,6 +181,7 @@ describe("AdminProductFormView — nome e descrição só com espaços", () => {
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     vi.clearAllMocks();
     addProduct.mockResolvedValue({ id: "novo-1" });
     updateProduct.mockResolvedValue({ id: "prod-1" });
@@ -191,6 +210,7 @@ describe("AdminProductFormView — nome e descrição só com espaços", () => {
       raiz.unmount();
     });
     hospedeiro.remove();
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
@@ -211,76 +231,37 @@ describe("AdminProductFormView — nome e descrição só com espaços", () => {
     });
     if (productId) {
       await act(async () => {
-        await esperar(0);
-        await esperar(0);
-        await esperar(0);
+        await vi.advanceTimersByTimeAsync(0);
+        await vi.advanceTimersByTimeAsync(0);
+        await vi.advanceTimersByTimeAsync(0);
       });
     }
   }
 
-  it("controle: com tudo preenchido de verdade, o Publicar fica ligado e conta 5 de 5", async () => {
+  it("trava texto vazio, aceita a correção e publica a descrição aparada", async () => {
     await montar();
     await preencherOBasico();
     expect(botaoPorTexto("Publicar")?.disabled).toBe(false);
     expect(textoDaTela()).toContain("5 de 5 essenciais prontos");
-  });
 
-  it("descrição só com espaços: Publicar desligado, 'falta preencher: descrição' e 4 de 5", async () => {
-    await montar();
-    await preencherOBasico();
-    await digitarCampo("product-description", "   ");
-    expect(botaoPorTexto("Publicar")?.disabled).toBe(true);
-    expect(textoDaTela()).toContain("falta preencher: descrição");
-    expect(textoDaTela()).toContain("4 de 5 essenciais prontos");
-    expect(addProduct).not.toHaveBeenCalled();
-  });
+    for (const [rotulo, descricao] of [
+      ["espaço comum", "   "],
+      ["espaço não quebrável", "  "],
+    ]) {
+      await digitarCampo("product-description", descricao);
+      expect(botaoPorTexto("Publicar")?.disabled, rotulo).toBe(true);
+      expect(textoDaTela(), rotulo).toContain("falta preencher: descrição");
+      expect(textoDaTela(), rotulo).toContain("4 de 5 essenciais prontos");
+      expect(addProduct, rotulo).not.toHaveBeenCalled();
+    }
+    await digitarCampo("product-description", "  com espaços  ");
+    expect(botaoPorTexto("Publicar")?.disabled).toBe(false);
 
-  it("nome só com espaços: Publicar desligado, 'falta preencher: nome' e 4 de 5", async () => {
-    await montar();
-    await preencherOBasico();
     await digitarCampo("product-name", "   ");
     expect(botaoPorTexto("Publicar")?.disabled).toBe(true);
     expect(textoDaTela()).toContain("falta preencher: nome");
     expect(textoDaTela()).toContain("4 de 5 essenciais prontos");
-  });
 
-  async function montarComNome(nome: string) {
-    await montar("prod-1");
-    await digitarCampo("product-name", nome);
-  }
-
-  it.each(nomesInvisiveis)("recusa nome só com %s", async (_rotulo, nome) => {
-    await montarComNome(nome);
-    expect(botaoPorTexto("Salvar alterações")?.disabled).toBe(true);
-    expect(textoDaTela()).toContain("falta preencher: nome");
-    expect(textoDaTela()).toContain("4 de 5 essenciais prontos");
-    const formulario = document.getElementById("product-name")?.closest("form");
-    expect(formulario).not.toBeNull();
-    await act(async () => {
-      formulario?.dispatchEvent(
-        new Event("submit", { bubbles: true, cancelable: true }),
-      );
-    });
-    expect(updateProduct).not.toHaveBeenCalled();
-  });
-
-  it.each(nomesVisiveis)(
-    "salva nome visível sem alterar: %s",
-    async (_rotulo, nome) => {
-      await montarComNome(nome);
-      expect(botaoPorTexto("Salvar alterações")?.disabled).toBe(false);
-      await act(async () => {
-        botaoPorTexto("Salvar alterações")?.click();
-        await esperar(100);
-      });
-      expect(updateProduct).toHaveBeenCalledTimes(1);
-      expect(updateProduct.mock.calls[0]?.[1].name).toBe(nome);
-    },
-  );
-
-  it("nome invisível: nem o envio direto do formulário grava", async () => {
-    await montar();
-    await preencherOBasico();
     await digitarCampo("product-name", "​");
     const formulario = document.getElementById("product-name")?.closest("form");
     expect(formulario).not.toBeNull();
@@ -290,30 +271,57 @@ describe("AdminProductFormView — nome e descrição só com espaços", () => {
       );
     });
     expect(addProduct).not.toHaveBeenCalled();
-  });
 
-  it("espaço não-quebrável (colado de outro lugar) também conta como vazio", async () => {
-    await montar();
-    await preencherOBasico();
-    await digitarCampo("product-description", "  ");
-    expect(botaoPorTexto("Publicar")?.disabled).toBe(true);
-    expect(textoDaTela()).toContain("falta preencher: descrição");
-  });
-
-  it("borda: texto com espaços nas pontas continua valendo e é salvo aparado", async () => {
-    await montar();
-    await preencherOBasico();
-    await digitarCampo("product-description", "  com espaços  ");
+    await digitarCampo("product-name", "Produto Teste");
     expect(botaoPorTexto("Publicar")?.disabled).toBe(false);
     await act(async () => {
       botaoPorTexto("Publicar")?.click();
-      await esperar(100);
+      await vi.advanceTimersByTimeAsync(100);
     });
     expect(addProduct).toHaveBeenCalledTimes(1);
     expect(addProduct.mock.calls[0][0]).toMatchObject({
       description: "com espaços",
     });
   });
+
+  async function montarComNome(nome: string) {
+    await montar("prod-1");
+    await digitarCampo("product-name", nome);
+  }
+
+  it("recusa nomes só com caracteres invisíveis antes de gravar", async () => {
+    await montar("prod-1");
+    for (const [rotulo, nome] of nomesInvisiveisRepresentativos) {
+      await digitarCampo("product-name", nome);
+      expect(botaoPorTexto("Salvar alterações")?.disabled, rotulo).toBe(true);
+      expect(textoDaTela(), rotulo).toContain("falta preencher: nome");
+      expect(textoDaTela(), rotulo).toContain("4 de 5 essenciais prontos");
+      const formulario = document
+        .getElementById("product-name")
+        ?.closest("form");
+      expect(formulario).not.toBeNull();
+      await act(async () => {
+        formulario?.dispatchEvent(
+          new Event("submit", { bubbles: true, cancelable: true }),
+        );
+      });
+      expect(updateProduct, rotulo).not.toHaveBeenCalled();
+    }
+  });
+
+  it.each(nomesVisiveisRepresentativos)(
+    "salva nome visível sem alterar: %s",
+    async (_rotulo, nome) => {
+      await montarComNome(nome);
+      expect(botaoPorTexto("Salvar alterações")?.disabled).toBe(false);
+      await act(async () => {
+        botaoPorTexto("Salvar alterações")?.click();
+        await vi.advanceTimersByTimeAsync(100);
+      });
+      expect(updateProduct).toHaveBeenCalledTimes(1);
+      expect(updateProduct.mock.calls[0]?.[1].name).toBe(nome);
+    },
+  );
 
   it("editando: trocar a descrição existente por um espaço desliga o Salvar", async () => {
     await montar("prod-1");

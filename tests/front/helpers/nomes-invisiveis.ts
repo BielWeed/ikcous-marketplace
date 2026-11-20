@@ -39,3 +39,15 @@ export const nomesVisiveis = [
   ["emoji sozinho", "🍰"],
   ["emoji composto com ZWJ", "👩‍🍳"],
 ] as const;
+
+// As telas exercitam cada ramo da regra; a tabela completa roda na função pura.
+export const nomesInvisiveisRepresentativos = nomesInvisiveis.filter(
+  ([rotulo]) =>
+    ["U+2060", "U+034F", "U+3164", "U+2800", "U+00A0", "U+E0061"].includes(
+      rotulo,
+    ),
+);
+
+export const nomesVisiveisRepresentativos = nomesVisiveis.filter(([rotulo]) =>
+  ["U+2060", "emoji sozinho", "emoji composto com ZWJ"].includes(rotulo),
+);
