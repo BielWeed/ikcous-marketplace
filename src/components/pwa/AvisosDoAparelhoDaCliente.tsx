@@ -211,7 +211,8 @@ export function AvisosDoAparelhoDaCliente() {
             <p className="text-[14px] leading-5 text-muted-foreground">
               O iPhone só entrega o "Pedido a caminho" e os comunicados da loja
               ao app instalado na Tela de Início; no Safari eles só aparecem
-              aqui dentro. Para receber:
+              aqui dentro. Isso exige iOS/iPadOS 16.4 ou mais novo. Para
+              receber:
             </p>
             <ol className="mt-2 list-inside list-decimal space-y-1 text-[14px] leading-5 text-foreground">
               {PASSOS_PARA_INSTALAR_NO_IOS_DA_CLIENTE.map((passo) => (
@@ -220,6 +221,20 @@ export function AvisosDoAparelhoDaCliente() {
             </ol>
           </div>
         </div>
+      </section>
+    );
+  }
+
+  if (situacao === "ios-antigo") {
+    return (
+      <section
+        aria-label="Avisos neste aparelho"
+        className="mt-3 rounded-[18px] border border-solid border-border p-4"
+      >
+        <p className="text-[14px] leading-5 text-muted-foreground">
+          Este iPhone não recebe avisos por aqui (precisa do iOS 16.4 ou mais
+          novo). Você continua vendo as atualizações do pedido dentro da loja.
+        </p>
       </section>
     );
   }
