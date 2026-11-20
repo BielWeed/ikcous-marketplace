@@ -168,6 +168,29 @@ describe("Balcão — buscas com a rede pendurada", () => {
   }
 
   describe("produto", () => {
+    it("distingue resultados de mesmo nome pelo código, sem rotular produto sem código", async () => {
+      await abrirBuscaDeProduto();
+      await resolver(
+        0,
+        pagina(
+          [
+            { ...produto(1), nome: "Camiseta Básica", codigo: "CAM-A" },
+            { ...produto(2), nome: "Camiseta Básica", codigo: "CAM-B" },
+            { ...produto(3), nome: "Camiseta Básica", codigo: null },
+          ],
+          3,
+        ),
+      );
+
+      const linhas = [...hospedeiro.querySelectorAll("button")].filter((b) =>
+        b.textContent?.includes("Camiseta Básica"),
+      );
+      expect(linhas).toHaveLength(3);
+      expect(linhas[0].textContent).toContain("Código: CAM-A");
+      expect(linhas[1].textContent).toContain("Código: CAM-B");
+      expect(linhas[2].textContent).not.toContain("Código:");
+    });
+
     it("a lista base que não responde: depois do prazo sai de 'Buscando…' e mostra a falha com 'Tentar de novo'", async () => {
       await abrirBuscaDeProduto();
       expect(buscando()).toBe(true);
