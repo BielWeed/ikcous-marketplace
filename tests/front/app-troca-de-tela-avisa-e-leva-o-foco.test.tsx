@@ -10,9 +10,18 @@
 // inteiro, só as pontas dubladas).
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
-vi.mock("framer-motion", async () => {
+vi.mock("framer-motion", async (importOriginal) => {
+  const real = await importOriginal<typeof import("framer-motion")>();
   const React = await import("react");
   const PROPS_DE_ANIMACAO = new Set([
     "initial",
@@ -58,7 +67,14 @@ vi.mock("framer-motion", async () => {
       children as React.ReactNode,
     );
   }
-  return { motion, AnimatePresence, useReducedMotion: () => true };
+  return {
+    ...real,
+    motion,
+    AnimatePresence,
+    MotionConfig: AnimatePresence,
+    usePresence: () => [true],
+    useReducedMotion: () => true,
+  };
 });
 
 vi.mock("@/views/customer/HomeView", () => ({
@@ -160,9 +176,6 @@ vi.mock("@/components/layouts/AdminAreaGate", () => ({
   ),
 }));
 
-vi.mock("@/views/customer/CartView", () => ({
-  CartView: () => <div data-testid="tela-carrinho" />,
-}));
 vi.mock("@/views/customer/ProductView", () => ({
   // O botão "relacionado" é o card da faixa "você também pode gostar": abre
   // OUTRO produto sem sair da tela de produto (e, no App real, o ProductView
@@ -255,7 +268,7 @@ vi.mock("@/components/ui/alert-dialog", () => {
 vi.mock("@/contexts/StoreContext", () => ({
   StoreProvider: ({ children }: { readonly children?: unknown }) =>
     children as never,
-  useStore: () => ({ config: null }),
+  useStore: () => ({ config: {} }),
 }));
 vi.mock("@/contexts/CartContext", () => ({
   CartProvider: ({ children }: { readonly children?: unknown }) =>
@@ -270,7 +283,7 @@ vi.mock("@/contexts/FavoritesContext", () => ({
 }));
 
 vi.mock("@/hooks/useCart", () => ({
-  useCart: () => ({ cartCount: 0, addToCart: () => {} }),
+  useCart: () => ({ cart: [], cartCount: 0, addToCart: () => {} }),
   useCartState: () => ({ cartCount: 0 }),
   useCartActions: () => ({ addToCart: () => {} }),
 }));
@@ -308,6 +321,7 @@ vi.mock("@/hooks/useProducts", () => ({
     products: catalogo.products,
     loading: false,
     fetchProducts: () => catalogo.fetchProducts(),
+    getFreeShippingEligibleProducts: () => [],
   }),
 }));
 vi.mock("@/hooks/useFavorites", () => ({
@@ -408,6 +422,12 @@ describe("App — trocar de tela avisa em voz alta e leva o foco", () => {
   let raiz: Root | null = null;
   let container: HTMLDivElement | null = null;
 
+  beforeAll(async () => {
+    // Carrega o módulo real antes das navegações, sem esperar pela
+    // transformação da primeira importação dentro de cada teste.
+    await import("@/views/customer/CartView");
+  });
+
   beforeEach(() => {
     catalogo.products = [{ id: "produto-A" }];
     catalogo.fetchProducts = () => {};
@@ -501,9 +521,7 @@ describe("App — trocar de tela avisa em voz alta e leva o foco", () => {
   it("Home -> Carrinho por um botão da tela: o aviso diz 'Carrinho' e o foco vai para o <main>", async () => {
     await abrir();
     await tocar("carrinho");
-    expect(
-      container?.querySelector('[data-testid="tela-carrinho"]'),
-    ).not.toBeNull();
+    expect(container?.querySelector("#tab-cart")).not.toBeNull();
     expect(aviso()?.textContent).toBe("Carrinho");
     expect(document.activeElement).toBe(principal());
   });
@@ -543,6 +561,34 @@ describe("App — trocar de tela avisa em voz alta e leva o foco", () => {
     expect(document.activeElement).toBe(
       container?.querySelector('[data-testid="aba-carrinho"]'),
     );
+  });
+
+  it("setas no carrinho mudam a rota e deixam o foco na nova aba", async () => {
+    globalThis.history.replaceState(null, "", "/cart");
+    await abrir();
+    await vi.waitFor(() =>
+      expect(container?.querySelector("#tab-cart")).not.toBeNull(),
+    );
+    container?.querySelector<HTMLElement>("#tab-cart")?.focus();
+
+    for (const [tecla, id, rota] of [
+      ["ArrowRight", "tab-orders", "/orders"],
+      ["ArrowLeft", "tab-cart", "/cart"],
+    ] as const) {
+      const evento = new KeyboardEvent("keydown", {
+        key: tecla,
+        bubbles: true,
+        cancelable: true,
+      });
+      await act(async () => {
+        document.activeElement?.dispatchEvent(evento);
+      });
+      await assentar();
+      const aba = container?.querySelector(`#${id}`);
+      expect(globalThis.location.pathname).toBe(rota);
+      expect(aba?.getAttribute("aria-selected")).toBe("true");
+      expect(document.activeElement).toBe(aba);
+    }
   });
 
   const abrirPainel = async () => {

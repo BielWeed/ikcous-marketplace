@@ -1004,7 +1004,8 @@ const AppContent = () => {
   const mainRef = useRef<HTMLElement>(null);
   // Troca de tela: o foco vai para o <main> (a tela antiga some e o foco
   // cairia no <body>), exceto se a pessoa está digitando, está na barra de
-  // baixo ou há diálogo aberto. O nome da tela é falado pela região de aviso.
+  // baixo, num grupo de abas ou há diálogo aberto. O nome da tela é falado
+  // pela região de aviso.
   // Produto -> outro produto pela faixa de relacionados também é troca de tela:
   // o ProductView remonta (a `key` é o id) e o card focado some com ele.
   const chaveDaTela =
@@ -1025,7 +1026,7 @@ const AppContent = () => {
     if (
       ativo instanceof HTMLElement &&
       (ativo.isContentEditable ||
-        ativo.closest("input,textarea,select,nav,[role=dialog]"))
+        ativo.closest("input,textarea,select,nav,[role=dialog],[role=tablist]"))
     )
       return;
     if (document.querySelector("[role=dialog],[role=alertdialog]")) return;
