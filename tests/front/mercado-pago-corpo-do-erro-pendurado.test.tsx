@@ -83,7 +83,11 @@ it("avisa e libera Salvar chaves quando o corpo do erro de gravação não termi
     expect(salvar.disabled).toBe(true);
     expect(toastError).not.toHaveBeenCalled();
 
-    await act(async () => vi.advanceTimersByTimeAsync(21_000));
+    await act(async () => vi.advanceTimersByTimeAsync(19_000));
+    expect(salvar.disabled).toBe(true);
+    expect(toastError).not.toHaveBeenCalled();
+
+    await act(async () => vi.advanceTimersByTimeAsync(2_000));
 
     expect(toastError).toHaveBeenCalledWith(
       "Sem resposta da rede. Confira o estado das chaves na tela antes de tentar de novo.",
