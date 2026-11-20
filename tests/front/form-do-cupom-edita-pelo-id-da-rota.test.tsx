@@ -232,10 +232,16 @@ describe("código do cupom no painel", () => {
 
     await act(async () => acharBotao("Salvar Cupom")?.click());
 
-    expect(updateCoupon).toHaveBeenCalledWith(cupomReal.id, {
-      type: "percentage",
-      value: 15,
-    });
+    // O 3º argumento (validade) não mudou; o 4º leva o desconto original para
+    // a trava de concorrência do desconto.
+    expect(updateCoupon).toHaveBeenCalledWith(
+      cupomReal.id,
+      { type: "percentage", value: 15 },
+      undefined,
+      expect.objectContaining({
+        original: { type: "percentage", value: 25 },
+      }),
+    );
   });
 
   it("permite mudar só a validade de um cupom com colisão antiga de grafia", async () => {
