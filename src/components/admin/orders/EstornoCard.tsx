@@ -154,16 +154,22 @@ function avisoDeDevolucoesEmAndamento(linhas: LinhaEstornoDoPedido[]): string {
   const emAndamento = linhas.filter(
     (linha) =>
       linha.mp_status !== "charged_back" &&
-      (linhaViva(linha.status) || acoesDaLinha(linha).confirmando),
+      (linhaViva(linha.status) ||
+        (linha.status === "concluido" && linha.concluido_em === null) ||
+        acoesDaLinha(linha).confirmando),
   );
   if (emAndamento.length === 0) return "";
 
   const devolucoes = emAndamento.map((linha) => {
-    const valor = formatCurrency(linha.amount);
+    const valor =
+      Number.isFinite(linha.amount) && linha.amount >= VALOR_MINIMO
+        ? formatCurrency(linha.amount)
+        : "";
     const quando = formatarDataHoraBrasilia(linha.created_at, "curto");
     if (emAndamento.length === 1) {
-      return `Já existe uma devolução de ${valor} em andamento neste pedido.${quando ? ` Solicitada em ${quando}.` : ""}`;
+      return `Já existe uma devolução${valor ? ` de ${valor}` : ""} em andamento neste pedido.${quando ? ` Solicitada em ${quando}.` : ""}`;
     }
+    if (!valor) return quando || "Valor não informado";
     return quando ? `${valor} — ${quando}` : valor;
   });
   if (emAndamento.length > 1) {

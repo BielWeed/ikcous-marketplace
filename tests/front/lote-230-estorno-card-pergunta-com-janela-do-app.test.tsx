@@ -224,7 +224,52 @@ describe("lote 230 — Devolver R$ ... pergunta pela janela do app", () => {
     expect(botaoDa(j, "Confirmar devolução adicional")).toBeDefined();
   });
 
-  it("mantém a confirmação normal quando as linhas já concluíram ou falharam sem dúvida", async () => {
+  it("avisa sobre a devolução concluída no gateway, mas ainda sem data de confirmação", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({
+        linhas: [linhaEstorno({ status: "concluido", concluido_em: null })],
+        emCurso: 30,
+        disponivel: 70,
+      }),
+    );
+    await montar();
+    await tocar(botaoDa(hospedeiro, "Devolver R$ 70,00"));
+
+    const j = janela() as HTMLElement;
+    expect(normal(j.textContent)).toContain(
+      "Já existe uma devolução de R$ 30,00 em andamento neste pedido.",
+    );
+    expect(botaoDa(j, "Confirmar devolução adicional")).toBeDefined();
+  });
+
+  it.each([undefined, null])(
+    "não inventa valor na confirmação quando chega %s",
+    async (amount) => {
+      useEstornosDoPedidoMock.mockReturnValue(
+        hookPadrao({
+          linhas: [
+            linhaEstorno({
+              status: "solicitado",
+              // Simula um valor ausente na resposta, apesar do tipo declarado.
+              amount: amount as unknown as number,
+            }),
+          ],
+        }),
+      );
+      await montar();
+      await tocar(botaoDa(hospedeiro, "Devolver R$ 100,00"));
+
+      const j = janela() as HTMLElement;
+      const texto = normal(j.textContent);
+      expect(texto).toContain("em andamento neste pedido");
+      expect(texto).toContain("01/09 às 07:00");
+      expect(texto).not.toContain("NaN");
+      expect(texto).not.toContain("R$ 0,00");
+      expect(botaoDa(j, "Confirmar devolução adicional")).toBeDefined();
+    },
+  );
+
+  it("mantém a confirmação normal quando as linhas já concluíram, falharam sem dúvida ou são contestação", async () => {
     useEstornosDoPedidoMock.mockReturnValue(
       hookPadrao({
         linhas: [
@@ -235,6 +280,12 @@ describe("lote 230 — Devolver R$ ... pergunta pela janela do app", () => {
             concluido_em: "2026-09-01T10:10:00.000Z",
           }),
           linhaEstorno(),
+          linhaEstorno({
+            id: "contestacao",
+            status: "concluido",
+            mp_status: "charged_back",
+            concluido_em: null,
+          }),
         ],
         devolvido: 20,
         disponivel: 80,
