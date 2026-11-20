@@ -159,26 +159,10 @@ function mesmoDia(a: DiaDaLoja, b: DiaDaLoja): boolean {
 }
 
 /**
- * O prazo do cupom já passou? Instante contra instante (o servidor vence o
- * cupom assim). Sem prazo, ou prazo ilegível, não venceu.
- */
-export function cupomJaVenceu(
-  validoAte: string | null,
-  agora: Date = new Date(),
-): boolean {
-  if (!validoAte) return false;
-  const fim = new Date(validoAte).getTime();
-  return !Number.isNaN(fim) && fim < agora.getTime();
-}
-
-/**
- * "Vence hoje" / "Vence amanhã" / "Válido até 30/09" (com o ano quando não é
- * o ano corrente) — ou "Vencido" quando o prazo já passou (a tela pode ficar
- * aberta por horas: uma data velha não pode parecer validade). No calendário
- * da LOJA (America/Sao_Paulo), qualquer que seja o fuso do aparelho — o mesmo
- * do painel (`validade-do-cupom.ts`: a data escolhida vale até 23:59 do
- * horário da loja). Brasília está em UTC-3 o ano todo (sem horário de verão
- * desde 2019), então "amanhã" é +24 h.
+ * Mostra a validade no calendário da loja (America/Sao_Paulo), não no fuso do
+ * aparelho. Se o prazo parece ter passado, mostra só a data: o aparelho pode
+ * estar adiantado e só o servidor decide se o cupom ainda pode ser aplicado.
+ * Brasília está em UTC-3 o ano todo, então "amanhã" é +24 h.
  */
 export function validadeDoCupom(
   validoAte: string | null,
@@ -187,16 +171,19 @@ export function validadeDoCupom(
   if (!validoAte) return null;
   const fim = new Date(validoAte);
   if (Number.isNaN(fim.getTime())) return null;
-  if (cupomJaVenceu(validoAte, agora)) return "Vencido";
   const diaFim = diaDaLoja(fim);
   const diaHoje = diaDaLoja(agora);
+  const data =
+    diaFim.ano === diaHoje.ano
+      ? `${diaFim.dia}/${diaFim.mes}`
+      : `${diaFim.dia}/${diaFim.mes}/${diaFim.ano}`;
+  const agoraMs = agora.getTime();
+  if (fim.getTime() < agoraMs) return `Validade: ${data}`;
   if (mesmoDia(diaFim, diaHoje)) return "Vence hoje";
-  if (mesmoDia(diaFim, diaDaLoja(new Date(agora.getTime() + UM_DIA_EM_MS)))) {
+  if (mesmoDia(diaFim, diaDaLoja(new Date(agoraMs + UM_DIA_EM_MS)))) {
     return "Vence amanhã";
   }
-  return diaFim.ano === diaHoje.ano
-    ? `Válido até ${diaFim.dia}/${diaFim.mes}`
-    : `Válido até ${diaFim.dia}/${diaFim.mes}/${diaFim.ano}`;
+  return `Válido até ${data}`;
 }
 
 /**
