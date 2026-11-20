@@ -2368,6 +2368,10 @@ O cadastro de UMA vez, na entrada do cliente:
   dados de clientes. No `conferir-banco-da-loja.yml`, selecione esta `consulta`, use `projeto=ikcous-publicada`
   ou `projeto=savy` (uma loja por execucao), `gravar_ledger=nao` e o SHA completo do commit da execucao em
   `expected_sha`. Nao e portao.
+- **`46m-medir-produtos-com-variacoes-independentes`**: conta produtos ativos nao excluidos e os que tem mais
+  de um grupo de variacao, como no aviso do painel. Mostra ate 20 IDs e nomes com a soma do estoque
+  das variacoes ativas. Use os mesmos alvos e parametros da 45m, uma loja por execucao. Se algum
+  indicador de RLS for 1, o total pode estar incompleto. So leitura, sem dados de clientes. Nao e portao.
 
 ## Fora da release, de proposito
 

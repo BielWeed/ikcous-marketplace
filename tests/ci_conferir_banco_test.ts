@@ -15060,6 +15060,42 @@ Deno.test("45m — a medicao de pagamento apos expirar esta no menu e e uma leit
   assert(!/\bSELECT\s+(?:o\.)?\*/i.test(limpo));
 });
 
+Deno.test("46m — mede variacoes independentes no menu sem escrever nem ler dados de cliente", async () => {
+  const consulta = "46m-medir-produtos-com-variacoes-independentes";
+  const menu = await Deno.readTextFile(WORKFLOW);
+  assert(
+    menu.includes(`\n          - ${consulta}\n`),
+    `falta a opcao ${consulta} no workflow`,
+  );
+
+  const { contarStatements, ROL_FECHADO_POR_CONSULTA } = require(SCRIPT);
+  const { CONSULTAS_DE_ROL_FECHADO } = await import(
+    "../scripts/frota/publicar-release.mjs"
+  );
+  const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${consulta}.sql`);
+  const limpo = sqlSemComentarios(sql);
+  assertEquals(contarStatements(sql), 1);
+  assert(/^\s*WITH\b/i.test(limpo));
+  assert(
+    !/\b(INSERT|UPDATE|DELETE|MERGE|CREATE|ALTER|DROP|TRUNCATE|INTO)\b/i.test(
+      limpo,
+    ),
+  );
+  assert(!/\bAS ok\b/i.test(limpo));
+  assert(!Object.hasOwn(ROL_FECHADO_POR_CONSULTA, consulta));
+  assert(!CONSULTAS_DE_ROL_FECHADO.has(consulta));
+  assertEquals([...new Set(limpo.match(/\bpublic\.\w+/g))].sort(), [
+    "public.product_variants",
+    "public.produtos",
+  ]);
+  assert(!/\bSELECT\s+\*/i.test(limpo));
+  assert(!/\bSELECT\s+\w+\.\*/i.test(limpo));
+  assert(/\bp\.ativo IS TRUE\s+AND p\.deleted_at IS NULL\b/i.test(limpo));
+  assert(/\bHAVING count\(DISTINCT chave\) > 1\b/i.test(limpo));
+  assert(/\bLIMIT 20\b/i.test(limpo));
+  assert(/\bSELECT tipo, objeto, detalhe\s+FROM r\b/i.test(limpo));
+});
+
 // 44m — MEDICAO dos numeros enganosos por pedido de R$ 0,00 e por desconto (15/10/2026), ANTES de qualquer migration.
 // Consulta de LEITURA, de rol ABERTO (molde da 35m/42m: tipo/objeto/detalhe, sem coluna `ok`, nunca prova do portao).
 // O que este teste prende: o filtro do painel IDENTICO ao de get_admin_analytics_v2 (corpo vigente da 20261245000000),
