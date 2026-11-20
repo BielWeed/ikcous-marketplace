@@ -167,6 +167,21 @@ describe("produtos vetam atualização nas imagens e na fila offline", () => {
     });
   });
 
+  it("reenvios da mesma foto em chamadas separadas usam endereços diferentes", async () => {
+    await act(async () => raiz.render(<Sonda />));
+    rede.upload.mockResolvedValue({ error: null });
+    const foto = arquivoJpegComGps("image/jpeg");
+
+    await act(async () => {
+      await api.uploadProductImages([foto]);
+      await api.uploadProductImages([foto]);
+    });
+
+    expect(rede.upload).toHaveBeenCalledTimes(2);
+    const [[primeiro], [segundo]] = rede.upload.mock.calls;
+    expect(primeiro).not.toBe(segundo);
+  });
+
   it.each(["image/jpeg", "", "application/octet-stream"])(
     "JPEG de MIME %j sem passar pelo canvas chega ao Storage sem GPS",
     async (type) => {
