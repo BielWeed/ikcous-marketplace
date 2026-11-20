@@ -855,14 +855,14 @@ export const AdminProductsView = memo(function AdminProductsView({
     () => [
       {
         id: "capital-alocado",
-        label: "Custo conhecido em estoque",
+        label: "Custo conhecido em estoque de produtos ativos",
         value:
           financialStats.invested !== null
             ? `R$ ${financialStats.invested.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
             : "—",
         icon: Wallet,
         accent: "text-sky-300",
-        subValue: "Quanto custaram os produtos com custo cadastrado",
+        subValue: "Quanto custaram os produtos ativos com custo cadastrado",
       },
       {
         id: "lucro-potencial",
@@ -1484,7 +1484,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                       </SeloDeStatus>
                     </button>
                   ) : financialStats.semEstoque ? (
-                    "Nenhum produto com estoque ainda."
+                    "Nenhum produto ativo com estoque ainda."
                   ) : (
                     <span className="text-emerald-300">
                       Todos os produtos em estoque têm custo cadastrado.
@@ -2055,11 +2055,11 @@ export const AdminProductsView = memo(function AdminProductsView({
                 <div className="space-y-3">
                   {[
                     {
-                      titulo: "Custo conhecido em estoque",
+                      titulo: "Custo conhecido em estoque de produtos ativos",
                       icone: Wallet,
                       cor: "text-sky-300",
                       descricao:
-                        "Quanto você pagou pelas unidades que estão no estoque: o dinheiro que está parado no estoque, pelo preço de custo. A conta só considera produtos com custo cadastrado.",
+                        "Quanto você pagou pelas unidades em estoque dos produtos ativos. A conta só considera produtos ativos com custo cadastrado.",
                       formula: "Custo Unitário × Estoque",
                     },
                     {

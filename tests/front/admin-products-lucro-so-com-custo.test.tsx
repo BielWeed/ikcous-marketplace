@@ -170,14 +170,14 @@ describe("Produtos: o lucro do estoque diz que só conta produto com custo", () 
         .click(),
     );
     const tela = hospedeiro.textContent ?? "";
-    expect(tela).toContain("Custo conhecido em estoque");
+    expect(tela).toContain("Custo conhecido em estoque de produtos ativos");
     expect(tela).toContain("Lucro bruto potencial");
     expect(tela).toContain("Lucro líquido potencial");
     expect(tela).toContain("Não calculado");
     expect(
       folhasComTexto(
         hospedeiro,
-        "Quanto custaram os produtos com custo cadastrado",
+        "Quanto custaram os produtos ativos com custo cadastrado",
       ),
     ).toHaveLength(1);
     expect(
@@ -233,9 +233,9 @@ describe("Produtos: o lucro do estoque diz que só conta produto com custo", () 
     // O modal pode ir por portal para o body: mede a página inteira.
     const pagina = document.body.textContent ?? "";
     expect(pagina).toContain("Indicadores Financeiros Globais");
-    expect(pagina.split(AVISO_SO_COM_CUSTO).length - 1).toBe(2);
+    expect(pagina.split(AVISO_SO_COM_CUSTO).length - 1).toBe(1);
     expect(pagina).toContain(
-      "o dinheiro que está parado no estoque, pelo preço de custo",
+      "A conta só considera produtos ativos com custo cadastrado.",
     );
     // Jargão e a contradição com a conta (que deixa de fora quem não tem custo).
     expect(pagina).not.toContain("capital líquido imobilizado");

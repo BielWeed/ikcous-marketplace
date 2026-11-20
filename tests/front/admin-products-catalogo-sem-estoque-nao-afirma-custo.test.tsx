@@ -15,19 +15,25 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { Product } from "@/types";
+
 const h = vi.hoisted(() => ({
   stats: null as any,
+  produtos: [] as Product[],
   fetchExecutiveSummary: vi.fn(),
 }));
 
 vi.mock("@/hooks/useProducts", () => ({
   useProducts: () => ({
-    products: [],
+    products: h.produtos,
     loading: false,
     deleteProduct: vi.fn(),
     toggleProductStatus: vi.fn(),
     addProduct: vi.fn(),
-    loadProducts: vi.fn().mockResolvedValue({ products: [], total: 0 }),
+    loadProducts: vi.fn().mockResolvedValue({
+      products: h.produtos,
+      total: h.produtos.length,
+    }),
     loadProductsSemCusto: vi.fn().mockResolvedValue({ products: [], total: 0 }),
     copiarImagemParaDuplicacao: async (url: string) => url,
   }),
@@ -106,6 +112,7 @@ describe("Produtos sem nenhum produto com estoque", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    h.produtos = [];
     localStorage.clear();
     localStorage.setItem("admin_products_view_mode", "detailed");
     h.fetchExecutiveSummary.mockResolvedValue(null);
@@ -167,7 +174,7 @@ describe("Produtos sem nenhum produto com estoque", () => {
     await montar(SEM_ESTOQUE);
     expect(hospedeiro.textContent).not.toContain(TEXTO_VERDE);
     expect(hospedeiro.textContent).toContain(
-      "Nenhum produto com estoque ainda",
+      "Nenhum produto ativo com estoque ainda",
     );
     expect(hospedeiro.querySelector(".text-emerald-300")).toBeNull();
     await abrirValores();
@@ -180,7 +187,7 @@ describe("Produtos sem nenhum produto com estoque", () => {
   it("os cartões mostram '—' e nunca R$ 0,00 como se fosse medição", async () => {
     await montar(SEM_ESTOQUE);
     for (const rotulo of [
-      "Custo conhecido em estoque",
+      "Custo conhecido em estoque de produtos ativos",
       "Lucro bruto potencial",
       "Venda prevista (com custo)",
       "Lucro sobre o custo",
@@ -229,13 +236,54 @@ describe("Produtos sem nenhum produto com estoque", () => {
     },
   );
 
+  it("o produto pausado continua na lista, mas seu custo não aparece no indicador de ativos", async () => {
+    h.produtos = [
+      {
+        id: "pausado-com-saldo",
+        name: "Produto pausado com saldo",
+        description: "",
+        price: 50,
+        costPrice: 25,
+        images: [],
+        category: "Geral",
+        stock: 4,
+        sold: 0,
+        isActive: false,
+        isBestseller: false,
+        freeShipping: false,
+        createdAt: "2026-11-20T00:00:00.000Z",
+      },
+    ];
+    // O resumo do servidor exclui o produto pausado; a lista não.
+    await montar(SEM_ESTOQUE);
+    expect(hospedeiro.textContent).toContain("Produto pausado com saldo");
+    expect(metrica("Custo conhecido em estoque de produtos ativos")).toContain(
+      "—",
+    );
+    expect(hospedeiro.textContent).toContain(
+      "Nenhum produto ativo com estoque ainda.",
+    );
+    await act(async () =>
+      hospedeiro
+        .querySelector<HTMLButtonElement>(
+          'button[aria-label="Guia e simulador"]',
+        )!
+        .click(),
+    );
+    expect(document.body.textContent).toContain(
+      "A conta só considera produtos ativos com custo cadastrado.",
+    );
+  });
+
   it("com estoque e custo completo o aviso verde e os valores continuam iguais", async () => {
     await montar(COM_CUSTO);
     expect(hospedeiro.textContent).toContain(TEXTO_VERDE);
     expect(hospedeiro.textContent).not.toContain(
-      "Nenhum produto com estoque ainda",
+      "Nenhum produto ativo com estoque ainda",
     );
-    expect(metrica("Custo conhecido em estoque")).toContain("24,00");
+    expect(metrica("Custo conhecido em estoque de produtos ativos")).toContain(
+      "24,00",
+    );
     expect(metrica("Lucro bruto potencial")).toContain("36,00");
     expect(metrica("Venda prevista (com custo)")).toContain("60,00");
     await abrirValores();

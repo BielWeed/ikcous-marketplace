@@ -189,8 +189,9 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
     expect(h.rpc).toHaveBeenCalledTimes(1);
     expect(await faturamento()).toContain("—");
     expect(
-      caixa.querySelector('[aria-label="Custo conhecido em estoque"]')
-        ?.textContent,
+      caixa.querySelector(
+        '[aria-label="Custo conhecido em estoque de produtos ativos"]',
+      )?.textContent,
     ).toContain("20,00");
     await act(async () => {
       rede.resolver({ data: novo, error: null });
@@ -264,7 +265,9 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
     expect(rodape.textContent).toContain("Lucro sobre o custo");
     expect(rodape.textContent).toContain("60,0%");
     expect(rodape.textContent).toContain("Produtos no Catálogo");
-    expect(metrica("Custo conhecido em estoque")).toContain("100,00");
+    expect(metrica("Custo conhecido em estoque de produtos ativos")).toContain(
+      "100,00",
+    );
     expect(metrica("Lucro bruto potencial")).toContain("60,00");
     expect(caixa.textContent).toContain("1 produto sem custo");
     expect(caixa.textContent).not.toContain("460,00");
@@ -499,7 +502,9 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
       productsWithCost: 1,
     });
     expect(metrica("Venda prevista (com custo)")).toContain("160,00");
-    expect(metrica("Custo conhecido em estoque")).toContain("100,00");
+    expect(metrica("Custo conhecido em estoque de produtos ativos")).toContain(
+      "100,00",
+    );
     expect(metrica("Lucro bruto potencial")).toContain("60,00");
     expect(metrica("Lucro bruto potencial")).toContain("Parcial");
     expect(
