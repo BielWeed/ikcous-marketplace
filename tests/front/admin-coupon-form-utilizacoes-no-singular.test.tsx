@@ -101,12 +101,13 @@ it("a prévia diferencia cupom expirado, esgotado e ativo", async () => {
     HTMLInputElement.prototype,
     "value",
   )?.set;
+  const campoLimite: HTMLInputElement = limite;
   async function trocarLimite(texto: string) {
     await act(async () => {
-      limite.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
-      escrever?.call(limite, texto);
-      limite.dispatchEvent(new InputEvent("input", { bubbles: true }));
-      limite.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+      campoLimite.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+      escrever?.call(campoLimite, texto);
+      campoLimite.dispatchEvent(new InputEvent("input", { bubbles: true }));
+      campoLimite.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
     });
   }
 
