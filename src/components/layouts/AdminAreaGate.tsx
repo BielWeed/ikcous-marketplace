@@ -1,4 +1,5 @@
 import { TelaDeVerificacaoFalhou } from "@/components/layouts/TelaDeVerificacaoFalhou";
+import { aoVoltarAAba } from "@/lib/atualizar-ao-voltar-a-aba";
 import {
   aguardarComPrazo,
   erroDeConsultaSemResposta,
@@ -63,6 +64,20 @@ export interface AdminAreaGateProps extends PropsDaArea {
 // consulta barata, e mais que isso é rede pendurada, não servidor lento.
 const PRAZO_DA_VERIFICACAO_DE_ADMIN_MS = 15_000;
 
+async function cargoFoiRevogado(): Promise<boolean> {
+  try {
+    const { data, error } = await aguardarComPrazo(
+      Promise.resolve(supabase.rpc("rls_admin_atual")),
+      PRAZO_DA_VERIFICACAO_DE_ADMIN_MS,
+      () => erroDeConsultaSemResposta(),
+    );
+    return !error && data === false;
+  } catch {
+    // Estouro do prazo ou falta de rede não são um veredito.
+    return false;
+  }
+}
+
 type EstadoDoPortao = "verificando" | "liberado" | "negado" | "falhou";
 
 export function AdminAreaGate({ fallback, ...props }: AdminAreaGateProps) {
@@ -96,7 +111,10 @@ export function AdminAreaGate({ fallback, ...props }: AdminAreaGateProps) {
           setEstado("falhou");
           return;
         }
-        setEstado(data ? "liberado" : "negado");
+        // A porta antiga continua exigindo um sim. A consulta do cargo atual
+        // só veta com um não explícito, mesmo se o token ainda disser admin.
+        const revogado = data ? await cargoFoiRevogado() : false;
+        if (vivo) setEstado(data && !revogado ? "liberado" : "negado");
       } catch (err) {
         if (!vivo) return;
         console.error("[AdminAreaGate] Admin verification error:", err);
@@ -108,6 +126,20 @@ export function AdminAreaGate({ fallback, ...props }: AdminAreaGateProps) {
       vivo = false;
     };
   }, [tentativa]);
+
+  React.useEffect(() => {
+    if (estado !== "liberado") return;
+
+    let vivo = true;
+    const parar = aoVoltarAAba(async () => {
+      const revogado = await cargoFoiRevogado();
+      if (vivo && revogado) setEstado("negado");
+    });
+    return () => {
+      vivo = false;
+      parar();
+    };
+  }, [estado]);
 
   React.useEffect(() => {
     if (estado !== "negado") return;

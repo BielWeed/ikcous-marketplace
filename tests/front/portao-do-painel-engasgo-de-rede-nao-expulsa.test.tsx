@@ -39,7 +39,8 @@ vi.mock("sonner", () => ({
 
 // `respostaDoServidor` é lida a CADA chamada, não no import — é o que permite
 // o teste da retentativa falhar primeiro e ter sucesso depois.
-const { servidor } = vi.hoisted(() => ({
+const { servidor, consultarCargoAtual } = vi.hoisted(() => ({
+  consultarCargoAtual: vi.fn(),
   servidor: {
     resposta: "erro" as "erro" | "excecao" | "admin" | "nao-admin",
     chamadas: 0,
@@ -49,6 +50,7 @@ const { servidor } = vi.hoisted(() => ({
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     rpc: async (nome: string) => {
+      if (nome === "rls_admin_atual") return consultarCargoAtual();
       if (nome !== "is_admin") return { data: null, error: null };
       servidor.chamadas++;
       if (servidor.resposta === "excecao") throw new Error("fetch failed");
@@ -83,6 +85,9 @@ describe("Portão do painel — engasgo de rede não expulsa ninguém", () => {
     toastError.mockClear();
     servidor.resposta = "erro";
     servidor.chamadas = 0;
+    consultarCargoAtual
+      .mockReset()
+      .mockResolvedValue({ data: true, error: null });
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -94,6 +99,7 @@ describe("Portão do painel — engasgo de rede não expulsa ninguém", () => {
     });
     hospedeiro.remove();
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   async function abrirPortao() {
@@ -187,6 +193,94 @@ describe("Portão do painel — engasgo de rede não expulsa ninguém", () => {
     expect(
       hospedeiro.querySelector('[data-testid="painel-de-verdade"]'),
     ).toBeNull();
+  });
+
+  async function voltarAAba() {
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 31_000);
+    const visibilidade = vi.spyOn(document, "visibilityState", "get");
+    await act(async () => {
+      visibilidade.mockReturnValue("hidden");
+      document.dispatchEvent(new Event("visibilitychange"));
+      visibilidade.mockReturnValue("visible");
+      document.dispatchEvent(new Event("visibilitychange"));
+      window.dispatchEvent(new Event("focus"));
+    });
+  }
+
+  it("não abre quando o token ainda diz admin mas o banco já retirou o cargo", async () => {
+    servidor.resposta = "admin";
+    consultarCargoAtual.mockResolvedValue({ data: false, error: null });
+
+    await abrirPortao();
+
+    expect(onNavigate).toHaveBeenCalledWith("home");
+    expect(hospedeiro.textContent).not.toContain("PAINEL ABERTO");
+  });
+
+  it("fecha o painel se o banco confirmar a remoção do cargo na volta à aba", async () => {
+    servidor.resposta = "admin";
+    await abrirPortao();
+    expect(hospedeiro.textContent).toContain("PAINEL ABERTO");
+
+    consultarCargoAtual.mockResolvedValue({ data: false, error: null });
+    await voltarAAba();
+
+    expect(onNavigate).toHaveBeenCalledWith("home");
+    expect(toastError).toHaveBeenCalledWith(
+      "Acesso restrito a administradores.",
+    );
+    expect(hospedeiro.textContent).not.toContain("PAINEL ABERTO");
+  });
+
+  it("mantém o painel aberto se a consulta do cargo falhar na volta à aba", async () => {
+    servidor.resposta = "admin";
+    await abrirPortao();
+    consultarCargoAtual.mockResolvedValue({
+      data: null,
+      error: { message: "Failed to fetch", code: "", details: "", hint: "" },
+    });
+
+    await voltarAAba();
+
+    expect(consultarCargoAtual).toHaveBeenCalledTimes(2);
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(toastError).not.toHaveBeenCalled();
+    expect(hospedeiro.textContent).toContain("PAINEL ABERTO");
+  });
+
+  it("ignora um não que só chega depois do prazo da rechecagem", async () => {
+    servidor.resposta = "admin";
+    await abrirPortao();
+    vi.useFakeTimers();
+    let responder: (resposta: { data: boolean; error: null }) => void =
+      () => {};
+    consultarCargoAtual.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          responder = resolve;
+        }),
+    );
+
+    await voltarAAba();
+    expect(consultarCargoAtual).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_001);
+      responder({ data: false, error: null });
+    });
+
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(hospedeiro.textContent).toContain("PAINEL ABERTO");
+  });
+
+  it("mantém o painel se o cargo continua ativo e não duplica a consulta na volta", async () => {
+    servidor.resposta = "admin";
+    await abrirPortao();
+
+    await voltarAAba();
+
+    expect(consultarCargoAtual).toHaveBeenCalledTimes(2);
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(hospedeiro.textContent).toContain("PAINEL ABERTO");
   });
 
   it("admin de verdade entra no painel", async () => {
