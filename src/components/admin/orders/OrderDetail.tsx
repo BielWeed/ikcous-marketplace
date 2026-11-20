@@ -978,6 +978,7 @@ interface OrderItemsCardProps {
   order: Order;
   skus: Record<string, string>;
   variacoes: Record<string, string>;
+  variacoesVencidas: Record<string, string>;
   loadingSkus: boolean;
   avisoDeLeitura: string | null;
   onTentarDeNovo: () => void;
@@ -991,6 +992,7 @@ function OrderItemsCard({
   order,
   skus,
   variacoes,
+  variacoesVencidas,
   loadingSkus,
   avisoDeLeitura,
   onTentarDeNovo,
@@ -1022,9 +1024,14 @@ function OrderItemsCard({
           const itemSku = item.variantId
             ? skus[`var-${item.variantId}`] || skus[`prod-${item.productId}`]
             : skus[`prod-${item.productId}`];
-          const variacao =
+          const variacaoEmDia =
             rotuloDaVariacaoGuardada(item) ||
             (item.variantId ? variacoes[item.variantId] : "");
+          const variacaoVencida =
+            !variacaoEmDia && item.variantId
+              ? variacoesVencidas[item.variantId]
+              : undefined;
+          const variacao = variacaoEmDia || variacaoVencida;
 
           return (
             <div
@@ -1045,9 +1052,13 @@ function OrderItemsCard({
                 {variacao && (
                   <p
                     data-testid="variacao-do-item"
-                    className="mt-0.5 break-words text-xs font-medium text-zinc-200"
+                    className={cn(
+                      "mt-0.5 break-words text-xs font-medium text-zinc-200",
+                      variacaoVencida && "print:hidden",
+                    )}
                   >
                     {variacao}
+                    {variacaoVencida && " (atualize a ficha)"}
                   </p>
                 )}
                 <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -2217,7 +2228,8 @@ export const OrderDetail = memo(function OrderDetail({
   // O papel espera a variação dos itens vinculados ao catálogo. Para itens
   // sem produto, a leitura ainda é tentada, mas o papel usa os dados salvos
   // se o rótulo não chegar.
-  const variacoes: Record<string, string> = {};
+  const variacoesEmDia: Record<string, string> = {};
+  const variacoesVencidas: Record<string, string> = {};
   const agoraDasVariacoes = Date.now();
   let proximoVencimento = Number.POSITIVE_INFINITY;
   let faltaVariacaoNoPapel = false;
@@ -2231,11 +2243,14 @@ export const OrderDetail = memo(function OrderDetail({
       ? copia.lidoEm + VALIDADE_DO_ROTULO_DA_VARIACAO_MS
       : 0;
     if (copia && venceEm > agoraDasVariacoes) {
-      variacoes[item.variantId] = copia.rotulo;
+      variacoesEmDia[item.variantId] = copia.rotulo;
       proximoVencimento = Math.min(proximoVencimento, venceEm);
-    } else if (ehIdDoCatalogo(item.productId)) {
-      faltaVariacaoNoPapel = true;
-      if (copia) venceuVariacaoDoPapel = true;
+    } else {
+      if (copia) variacoesVencidas[item.variantId] = copia.rotulo;
+      if (ehIdDoCatalogo(item.productId)) {
+        faltaVariacaoNoPapel = true;
+        if (copia) venceuVariacaoDoPapel = true;
+      }
     }
   }
   useEffect(() => {
@@ -2805,7 +2820,8 @@ export const OrderDetail = memo(function OrderDetail({
         <OrderItemsCard
           order={order}
           skus={skus}
-          variacoes={variacoes}
+          variacoes={variacoesEmDia}
+          variacoesVencidas={variacoesVencidas}
           loadingSkus={loadingSkus}
           avisoDeLeitura={avisoDeLeitura}
           onTentarDeNovo={() => setTentativaSkus((n) => n + 1)}
@@ -2924,7 +2940,7 @@ export const OrderDetail = memo(function OrderDetail({
         <OrderReceipt
           order={order}
           storeName={storeName}
-          variacoes={variacoes}
+          variacoes={variacoesEmDia}
           valorEstornado={order.valorEstornado}
           valorReembolsadoManual={leituraDeDevolucoes.valorReembolsadoManual}
         />

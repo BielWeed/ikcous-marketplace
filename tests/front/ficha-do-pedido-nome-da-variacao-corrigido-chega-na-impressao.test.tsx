@@ -9,8 +9,8 @@
 //   - passou disso, abrir a ficha lê o cadastro de novo e o nome corrigido
 //     chega à tela e ao recibo.
 //
-// O Date.now é controlado pelo teste (sem fake timers: o React e o `act`
-// precisam dos timers de verdade).
+// O Date.now é controlado pelo teste. Só o caso do relógio da ficha
+// simula também o disparo do timeout.
 //
 // Molde: ficha-do-pedido-imprimir-espera-tamanho-e-cor.test.tsx.
 import type { Order } from "@/types";
@@ -134,11 +134,16 @@ describe("ficha do pedido — o nome da variação corrigido chega à impressão
     hospedeiro.remove();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   async function assentar() {
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
+      if (vi.isFakeTimers()) {
+        await vi.advanceTimersByTimeAsync(0);
+      } else {
+        await new Promise((r) => setTimeout(r, 0));
+      }
     });
   }
 
@@ -268,6 +273,34 @@ describe("ficha do pedido — o nome da variação corrigido chega à impressão
     expect(botaoImprimir()?.disabled).toBe(false);
     expect(papel()?.textContent).toContain("Tamanho M");
     expect(papel()?.textContent).not.toContain("Tamanho P");
+  });
+
+  it("ao vencer com a ficha aberta, o rótulo fica nos itens com aviso, mas não imprime", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const id = "598044d4-9426-44d9-a0c9-000000000009";
+    banco.push({ id, sku: "CAM-M", name: "Cor / Tamanho", value: "Azul / M" });
+    await abrirFicha(pedidoFake(id));
+
+    const rotuloNaFicha = () =>
+      hospedeiro.querySelector(
+        '[data-testid="bloco-itens"] [data-testid="variacao-do-item"]',
+      );
+    expect(rotuloNaFicha()?.textContent).toBe("Cor Azul · Tamanho M");
+    expect(papel()?.textContent).toContain("Cor Azul · Tamanho M");
+
+    agora += 60_000;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+
+    expect(botaoImprimir()?.disabled).toBe(true);
+    expect(papel()).toBeNull();
+    expect(rotuloNaFicha()?.textContent).toBe(
+      "Cor Azul · Tamanho M (atualize a ficha)",
+    );
+    // Sem o recibo montado, Ctrl+P ainda pode imprimir a página do painel.
+    expect(rotuloNaFicha()?.classList.contains("print:hidden")).toBe(true);
+    expect(consultas.product_variants).toBe(1);
   });
 
   it("Ctrl+P não leva uma cópia que acabou de vencer com a ficha aberta", async () => {
