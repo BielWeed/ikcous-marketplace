@@ -21,6 +21,7 @@ import {
   isViewTransitionSupported,
   useViewTransition,
 } from "@/hooks/useViewTransition";
+import { pedirPedidosSemFiltroAntigo } from "@/lib/atalho-do-inicio-para-pedidos";
 import { FILTRO_POSTGREST_AVALIACAO_PARA_ATENDER } from "@/lib/avaliacoes-para-atender";
 import { contagemDe, lerListaAdmin } from "@/lib/devolucao";
 import { marcarEscapeSintetico } from "@/lib/escape-sintetico";
@@ -714,6 +715,19 @@ export function AdminLayout({
     return () => clearTimeout(timer);
   }, [currentView]);
 
+  const navegarPelaAba = (view: View) => {
+    haptic.light();
+    // A tela consome o recado ao abrir; tocar a aba já ativa só rola ao topo.
+    if (
+      view === "admin-orders" &&
+      currentView !== view &&
+      pendingOrdersCount > 0
+    ) {
+      pedirPedidosSemFiltroAntigo();
+    }
+    onNavigate(view);
+  };
+
   const navItems = [
     {
       icon: Store,
@@ -1047,10 +1061,7 @@ export function AdminLayout({
                       ? `${item.label}, ${pendingOrdersCount} para preparar`
                       : item.label
                   }
-                  onClick={() => {
-                    haptic.light();
-                    onNavigate(item.view as View);
-                  }}
+                  onClick={() => navegarPelaAba(item.view as View)}
                   onMouseEnter={() => handleMouseEnter(item.view)}
                   onMouseLeave={handleMouseLeave}
                   onTouchStart={() => handleMouseEnter(item.view, true)}
@@ -1427,10 +1438,7 @@ export function AdminLayout({
                           ? `${item.label}, ${pendingOrdersCount} para preparar`
                           : item.label
                       }
-                      onClick={() => {
-                        haptic.light();
-                        onNavigate(item.view as View);
-                      }}
+                      onClick={() => navegarPelaAba(item.view as View)}
                       onMouseEnter={() => handleMouseEnter(item.view)}
                       onMouseLeave={handleMouseLeave}
                       onTouchStart={() => handleMouseEnter(item.view, true)}

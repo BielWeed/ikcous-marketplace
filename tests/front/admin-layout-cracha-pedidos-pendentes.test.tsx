@@ -33,6 +33,7 @@ const CONTAGEM_COM_PIX_AGUARDANDO = 7;
 // Conta da regra única "para preparar" (a mesma do Início).
 const CONTAGEM_PARA_PREPARAR = 5;
 
+let contagemParaPreparar = CONTAGEM_PARA_PREPARAR;
 let argumentosDoIn: unknown[] | null = null;
 let argumentoDoOr: string | null = null;
 
@@ -63,7 +64,7 @@ function criarOrdersCountBuilder() {
     // consulta de recebimentos também usa `.or`, com outro filtro.
     if (ehConsultaDeStatus) argumentoDoOr = filtro;
     if (filtro === FILTRO_POSTGREST_PARA_PREPARAR) {
-      contagemDesteBuilder = CONTAGEM_PARA_PREPARAR;
+      contagemDesteBuilder = contagemParaPreparar;
     }
     return builder;
   });
@@ -147,6 +148,7 @@ describe("AdminLayout — crachá de Pedidos conta os pedidos para preparar", ()
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
+    contagemParaPreparar = CONTAGEM_PARA_PREPARAR;
     argumentosDoIn = null;
     argumentoDoOr = null;
     vi.stubGlobal(
@@ -233,6 +235,53 @@ describe("AdminLayout — crachá de Pedidos conta os pedidos para preparar", ()
       `Pedidos${CONTAGEM_COM_PIX_AGUARDANDO}`,
     );
   });
+
+  it.each([
+    { contagem: CONTAGEM_PARA_PREPARAR, nome: "com crachá", filtro: "open" },
+    { contagem: 0, nome: "sem crachá", filtro: null },
+  ])(
+    "as duas abas $nome navegam com o recorte esperado",
+    async ({ contagem, filtro }) => {
+      contagemParaPreparar = contagem;
+      const { AdminLayout } = await import("@/components/layouts/AdminLayout");
+      const { consumirPedidoDePedidosSemFiltroAntigo } = await import(
+        "@/lib/atalho-do-inicio-para-pedidos"
+      );
+      const filtros: Array<string | null> = [];
+      const onNavigate = vi.fn((_destino: string) => {
+        filtros.push(consumirPedidoDePedidosSemFiltroAntigo());
+      });
+
+      await act(async () => {
+        raiz.render(
+          <AdminLayout currentView="admin-dashboard" onNavigate={onNavigate}>
+            <div />
+          </AdminLayout>,
+        );
+      });
+
+      const nomeDaAba = contagem
+        ? `Pedidos, ${contagem} para preparar`
+        : "Pedidos";
+      const seletor = `button[aria-label="${nomeDaAba}"]`;
+      await esperarAte(
+        () =>
+          argumentoDoOr !== null &&
+          hospedeiro.querySelectorAll(seletor).length === 2,
+      );
+      for (const botao of hospedeiro.querySelectorAll<HTMLButtonElement>(
+        seletor,
+      )) {
+        act(() => botao.click());
+      }
+
+      expect(onNavigate.mock.calls).toEqual([
+        ["admin-orders"],
+        ["admin-orders"],
+      ]);
+      expect(filtros).toEqual([filtro, filtro]);
+    },
+  );
 
   it("o nome acessível da aba diz 'para preparar'", async () => {
     await montarEAcharPedidos();
