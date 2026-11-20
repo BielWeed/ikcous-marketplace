@@ -31,14 +31,14 @@ describe("P12 — campanhas push no computador", () => {
     // as classes que já existiam continuam idênticas às da base.
     // Nova mudança em texto, handler ou classe móvel continua reprovando.
     // Os avisos de push descrevem o aceite, não a chegada ao aparelho.
-    // A continuação parcial acrescenta o anúncio e o botão, com classes da tela.
+    // O botão e o anúncio da continuação flexionam no singular, sem mudar as classes.
     const semComputador = fonte
       .replace(/\s+\b(?:lg|xl|2xl):[^\s"'\x60]+/g, "")
       .replace(/\s+/g, " ")
       .trim();
     expect(fonte.match(/\bclassName=/g)).toHaveLength(208);
     expect(createHash("sha256").update(semComputador).digest("hex")).toBe(
-      "28b5a61e9e5caf52921daf8b2ee01f6adad592f4896cf215a2679f909c809f26",
+      "e6e0309f12ff3abe9c5a3b10f9deacf920a9539b7df53f287a630d4539430249",
     );
   });
 
