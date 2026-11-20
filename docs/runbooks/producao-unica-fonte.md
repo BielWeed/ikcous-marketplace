@@ -1860,7 +1860,7 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         - **`46b-antes-desfazer-recebimento-base-vigente`** (`ausenciaConfirmadaPor`) prova o ANTES: o corpo vigente
           da `20261197000000` (md5), os atributos, o `EXECUTE` de hoje, `is_admin()` e `is_admin_atual()` de pe e as
           14 colunas que o corpo le ou grava. Rode a `46b` em CADA loja ANTES do apply.
-        - Nao ha medicao `46m`: o lote nao le nem reescreve dado.
+        - O lote 46a/46b nao tem medicao propria: ele nao le nem reescreve dado (a consulta `46m` e de outro assunto).
       - **Caminho, uma loja por vez (IKCOUS, depois Savy):** `46a` (sai NEGATIVA) -> `46b` MAIS NOVA e POSITIVA ->
         UM comando `aplicar-migrations.yml` com a migration -> o ensaio pede a `46a` DE NOVO, que tem de sair
         POSITIVA. A `8e` segue POSITIVA depois do apply (o corpo novo entra como sucessor conhecido dela).
