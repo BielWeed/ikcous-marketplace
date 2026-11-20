@@ -72,6 +72,7 @@ import {
   tipoDoAvisoDoPedido,
 } from "@/lib/aviso-de-pedido-atualizado";
 import { formatarInteiro } from "@/lib/crm";
+import { carimboLocalParaNomeDeArquivo } from "@/lib/data-local-csv";
 import { mensagemDeErroDeSessaoDoPainel } from "@/lib/erro-de-sessao-do-painel";
 import {
   periodoInvertido,
@@ -1669,10 +1670,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         return;
       }
       const rotulos = await lerRotulosDasVariacoes(pedidosDoFiltro);
-      const agora = new Date();
-      const doisDigitos = (numero: number) => String(numero).padStart(2, "0");
-      const data = `${agora.getFullYear()}-${doisDigitos(agora.getMonth() + 1)}-${doisDigitos(agora.getDate())}`;
-      const hora = `${doisDigitos(agora.getHours())}-${doisDigitos(agora.getMinutes())}`;
+      const carimbo = carimboLocalParaNomeDeArquivo(new Date());
       const arquivo = new Blob([pedidosParaCsv(pedidosDoFiltro, rotulos)], {
         type: "text/csv;charset=utf-8;",
       });
@@ -1692,7 +1690,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       const url = URL.createObjectURL(arquivo);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `pedidos-${data}-${hora}.csv`;
+      link.download = `pedidos-${carimbo}.csv`;
       document.body.appendChild(link);
       try {
         link.click();
