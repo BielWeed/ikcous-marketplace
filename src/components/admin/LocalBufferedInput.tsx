@@ -4,7 +4,7 @@ import {
   digitosComExcedenteVisivel,
   digitosDoTelefoneDoCampo,
 } from "@/lib/telefone-br";
-import { cn } from "@/lib/utils";
+import { arredondarParaCentavos, cn } from "@/lib/utils";
 import { AlertTriangle } from "lucide-react";
 import type React from "react";
 import { memo, useCallback, useEffect, useId, useRef, useState } from "react";
@@ -189,7 +189,9 @@ const centavosDaColagem = (texto: string, permiteNegativo: boolean) => {
   // O mesmo limite da digitação mantém o valor acima do teto do formulário,
   // sem deixar o expoente virar dígitos de outro preço.
   const reais = Math.min(Number(n), LIMITE_REAIS_DA_MASCARA);
-  return (reais * 100).toFixed(0);
+  const arredondado =
+    decimal.length > 2 ? arredondarParaCentavos(reais) : reais;
+  return (arredondado * 100).toFixed(0);
 };
 
 // O valor que chega pela prop `value` já está em reais (ex.: 100 ou "100.00"),
