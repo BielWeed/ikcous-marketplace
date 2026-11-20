@@ -193,6 +193,21 @@ describe("ProductView — a barra fixa escolhe a variação como a página", () 
     await tocar(botoes[botoes.length - 1]);
   }
 
+  it("o título da folha quebra um nome de 300 letras sem espaços", async () => {
+    const nome = "W".repeat(300);
+    await montar({
+      ...blusa([cor("v-verm", "Vermelha", 10), cor("v-azul", "Azul", 2)]),
+      name: nome,
+    });
+    await comprarPelaBarra();
+
+    const titulo = document.querySelector(
+      '[role="dialog"] [data-slot="sheet-title"]',
+    );
+    expect(titulo?.textContent).toBe(nome);
+    expect(titulo?.classList.contains("break-words")).toBe(true);
+  });
+
   it("a barra existe com a página rolada (o teste está de fato no caminho da barra)", async () => {
     await montar(
       blusa([cor("v-verm", "Vermelha", 10), cor("v-azul", "Azul", 2)]),

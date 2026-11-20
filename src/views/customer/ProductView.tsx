@@ -1896,7 +1896,9 @@ export const ProductView = React.memo(function ProductView({
             "lg:flex-1",
           )}
         >
-          <SheetTitle className="text-lg font-bold">{product.name}</SheetTitle>
+          <SheetTitle className="break-words text-lg font-bold">
+            {product.name}
+          </SheetTitle>
           <SheetDescription>
             Escolha as opções para adicionar ao carrinho.
           </SheetDescription>
