@@ -366,18 +366,18 @@ describe("Financeiro — DRE", () => {
         linha(chave).querySelector("td span")?.classList.contains("text-white"),
       ).toBe(true);
     }
-    for (const rotulo of [
-      "Lucro líquido",
-      "Lucro bruto",
-      "Sobra depois dos custos da venda",
+    for (const [rotulo, esperado] of [
+      ["Lucro líquido", "R$ 1.805,00"],
+      ["Lucro bruto", "R$ 5.700,00"],
+      ["Sobra depois dos custos da venda", "R$ 4.750,00"],
     ]) {
       const etiqueta = [...hospedeiro.querySelectorAll("span")].find(
         (el) => el.textContent === rotulo,
-      )!;
-      expect(etiqueta).toBeDefined();
-      expect(
-        etiqueta.nextElementSibling?.querySelector(".text-emerald-400"),
-      ).not.toBeNull();
+      );
+      expect(etiqueta, rotulo).toBeDefined();
+      const valor =
+        etiqueta?.nextElementSibling?.querySelector(".text-emerald-400");
+      expect(normalizar(valor?.textContent), rotulo).toBe(esperado);
     }
   });
 

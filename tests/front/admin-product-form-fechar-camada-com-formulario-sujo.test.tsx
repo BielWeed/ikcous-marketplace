@@ -91,9 +91,12 @@ const botaoPorTexto = (texto: string) =>
     b.textContent?.includes(texto),
   ) as HTMLButtonElement | undefined;
 
-const esperar = (ms = 40) =>
+const esperarPopstates = (quantidade: number) =>
   act(async () => {
-    await new Promise((r) => setTimeout(r, ms));
+    await vi.waitFor(() => expect(placar.popstates).toBe(quantidade), {
+      timeout: 4000,
+      interval: 20,
+    });
   });
 
 function digitar(id: string, valor: string) {
@@ -219,7 +222,9 @@ describe("AdminProductFormView — fechar a camada com o formulario ja mexido", 
     await act(async () => {
       raiz.render(<HospedeiroDoApp Tela={AdminProductFormView} />);
     });
-    await esperar();
+    await vi.waitFor(() => {
+      expect(document.getElementById("product-name")).not.toBeNull();
+    });
     await act(async () => {
       digitar("product-name", "Camiseta mexida");
       // O campo entrega o texto ao formulario depois de uma pausa curta.
@@ -249,7 +254,7 @@ describe("AdminProductFormView — fechar a camada com o formulario ja mexido", 
     expect(window.history.state).toMatchObject({ modal: "produto" });
 
     await fecharPeloBotao();
-    await esperar();
+    await esperarPopstates(1);
 
     expect(previaAberta()).toBe(false);
     // O navegador devolveu a entrada da camada (o popstate chegou)...
@@ -273,7 +278,7 @@ describe("AdminProductFormView — fechar a camada com o formulario ja mexido", 
     await act(async () => {
       window.history.back();
     });
-    await esperar();
+    await esperarPopstates(1);
 
     expect(previaAberta()).toBe(false);
     expect(placar.popstates).toBe(1);
@@ -287,10 +292,10 @@ describe("AdminProductFormView — fechar a camada com o formulario ja mexido", 
 
     await abrirPrevia();
     await fecharPeloBotao();
-    await esperar();
+    await esperarPopstates(1);
     await abrirPrevia();
     await fecharPeloBotao();
-    await esperar();
+    await esperarPopstates(2);
 
     expect(previaAberta()).toBe(false);
     expect(placar.popstates).toBe(2);
@@ -306,7 +311,11 @@ describe("AdminProductFormView — fechar a camada com o formulario ja mexido", 
     await abrirPrevia();
     expect(previaAberta()).toBe(true);
     expect(placar.desvioVigente).toBeInstanceOf(Function);
-    await esperar();
+    // A nova entrada pode substituir a navegação pendente no jsdom,
+    // então aqui não dá para exigir que o primeiro popstate chegue.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 40));
+    });
 
     // Seja qual for a ordem em que o navegador entregou as entradas, nunca abre
     // o aviso de descartar nem deixa um desvio de uso unico preso.
@@ -314,10 +323,11 @@ describe("AdminProductFormView — fechar a camada com o formulario ja mexido", 
     if (previaAberta()) {
       // A camada nova segue de pe: o Voltar dela fecha so ela.
       expect(placar.desvioVigente).toBeInstanceOf(Function);
+      const proximoPopstate = placar.popstates + 1;
       await act(async () => {
         window.history.back();
       });
-      await esperar();
+      await esperarPopstates(proximoPopstate);
       expect(previaAberta()).toBe(false);
     }
     // Deixa chegar o que ainda estiver a caminho (a devolucao da entrada que

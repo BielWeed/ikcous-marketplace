@@ -246,6 +246,7 @@ describe("AdminBannersView: datas sem sentido", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     act(() => {
       raiz.unmount();
     });
@@ -320,10 +321,12 @@ describe("AdminBannersView: datas sem sentido", () => {
   }
 
   it("ligar a programação MOSTRA que o fim ficou para amanhã, com a hora", async () => {
+    // Meio-dia local numa data fixa, longe da virada do dia.
+    vi.setSystemTime(new Date(2026, 1, 10, 12, 30));
     await abrirBannerNovoNoPasso3();
     expect(textoDaTela()).not.toMatch(/Termina amanhã/);
     await ligarProgramacao();
-    expect(textoDaTela()).toMatch(/Termina amanhã às \d{2}:\d{2}\./);
+    expect(textoDaTela()).toContain("Termina amanhã às 12:30.");
   });
 
   it("sem imagem: leva ao envio da foto e não salva", async () => {

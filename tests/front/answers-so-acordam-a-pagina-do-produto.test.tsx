@@ -17,7 +17,15 @@
 // conta quantas releituras o produto sofreu.
 import { act, useEffect } from "react";
 import { type Root, createRoot } from "react-dom/client";
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 const PERGUNTAS_DO_PRODUTO = [
   {
@@ -114,7 +122,7 @@ vi.mock("@/lib/supabase", () => ({
       canal.subscribe = vi.fn();
       return canal;
     }),
-    removeChannel: vi.fn(),
+    removeChannel: vi.fn().mockResolvedValue("ok"),
   },
 }));
 
@@ -177,6 +185,13 @@ describe("useQuestions — resposta de outro produto não acorda a página abert
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
+  });
+
+  afterEach(() => {
+    act(() => {
+      raiz.unmount();
+    });
+    hospedeiro.remove();
   });
 
   async function montarProva() {
