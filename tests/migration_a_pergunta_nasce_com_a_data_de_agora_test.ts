@@ -4,7 +4,7 @@
 // mutantes; reaplicar; rollback; pre-voo; consultas 113a/113b) e' provado em tests/banco/a-pergunta-nasce-com-a-data-de-agora-viva.cjs.
 // Aqui fica o que se prova so lendo o texto.
 //
-// Riscos: a migration so CRIA (nenhum DROP, nenhum dado lido ou escrito); o app grava so 3 colunas (nenhuma e' a data), entao trocar a
+// Riscos: a migration so CRIA (nenhum DROP, nenhum dado lido ou escrito); o app grava so 4 colunas (nenhuma e' a data), entao trocar a
 // data nao muda nada do uso legitimo; o gatilho nao pode RECUSAR (a pergunta tem de entrar).
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -130,10 +130,10 @@ Deno.test("1396100: o corpo NAO recusa (sem RAISE); troca so a data de quem e' c
   assert.ok(corpo.includes("RETURN NEW;"));
 });
 
-Deno.test("1396100: o app grava so 3 colunas (nenhuma e' a data) — e' por isso que trocar a data nao muda o uso legitimo", () => {
+Deno.test("1396100: o app grava so 4 colunas (nenhuma e' a data) — e' por isso que trocar a data nao muda o uso legitimo", () => {
   const hook = lerRepo("src/hooks/useQuestions.ts");
   assert.ok(
-    /\.insert\(\{\s*product_id: question\.productId,\s*user_id: user\.id,\s*question: question\.question,\s*\}\)/.test(
+    /\.insert\(\{\s*id: idDaPergunta,\s*product_id: question\.productId,\s*user_id: user\.id,\s*question: question\.question,\s*\}\)/.test(
       hook,
     ),
     "addQuestion passou a gravar outras colunas: revise o gatilho",

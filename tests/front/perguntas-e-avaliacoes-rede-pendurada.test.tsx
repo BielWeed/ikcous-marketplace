@@ -13,6 +13,14 @@ const h = vi.hoisted(() => ({
   linhas: [] as unknown[],
   conferida: null as unknown,
   desmarcar: vi.fn(),
+  gravarPergunta: null as
+    | ((linha: {
+        id?: string;
+        product_id: string;
+        user_id: string;
+        question: string;
+      }) => unknown)
+    | null,
 }));
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({ user: { id: "comprador-ficticio" }, isAdmin: false }),
@@ -47,24 +55,28 @@ vi.mock("@/lib/supabase", () => ({
         conferencia = true;
         return b;
       };
-      b.insert = () => {
+      let pergunta: Parameters<NonNullable<typeof h.gravarPergunta>>[0];
+      b.insert = (linha: typeof pergunta) => {
+        pergunta = linha;
         envio = true;
         return b;
       };
       // biome-ignore lint/suspicious/noThenProperty: builder Supabase simulado
       b.then = (resolve: any, reject: any) => {
         const resposta = envio
-          ? h.pendurarEnvio
-            ? new Promise(() => {})
-            : {
-                data: {
-                  id: "nova",
-                  product_id: "produto-rede",
-                  question: "Tem azul?",
-                  created_at: "2026-11-07T00:00:00Z",
-                },
-                error: null,
-              }
+          ? tabela === "questions" && h.gravarPergunta
+            ? h.gravarPergunta(pergunta)
+            : h.pendurarEnvio
+              ? new Promise(() => {})
+              : {
+                  data: {
+                    id: "nova",
+                    product_id: "produto-rede",
+                    question: "Tem azul?",
+                    created_at: "2026-11-07T00:00:00Z",
+                  },
+                  error: null,
+                }
           : conferencia
             ? { data: tabela === "reviews" ? h.conferida : null, error: null }
             : h.pendurarLeitura
@@ -101,6 +113,7 @@ beforeEach(async () => {
   h.falharLeitura = false;
   h.linhas = [];
   h.conferida = null;
+  h.gravarPergunta = null;
   vi.spyOn(console, "error").mockImplementation(() => {});
   host = document.createElement("div");
   raiz = createRoot(host);
@@ -129,17 +142,17 @@ it("pergunta confirmada na releitura após prazo limpa o campo e desliga o reenv
     )!.set!.call(input, "Tem azul?");
     input.dispatchEvent(new Event("input", { bubbles: true }));
   });
-  h.pendurarEnvio = true;
-  h.linhas = [
-    {
-      id: "pergunta-recebida-tela",
-      product_id: "produto-formulario-prazo",
-      user_id: "comprador-ficticio",
-      question: "Tem azul?",
-      created_at: "2026-11-07T00:00:00Z",
-      answers: [],
-    },
-  ];
+  h.gravarPergunta = ({ id }) => {
+    h.linhas = [{ ...linha, id }];
+    return new Promise(() => {});
+  };
+  const linha = {
+    product_id: "produto-formulario-prazo",
+    user_id: "comprador-ficticio",
+    question: "Tem azul?",
+    created_at: "2026-11-07T00:00:00Z",
+    answers: [],
+  };
   const enviar = host.querySelector<HTMLButtonElement>(
     '[aria-label="Enviar pergunta"]',
   )!;
@@ -152,17 +165,19 @@ it("pergunta confirmada na releitura após prazo limpa o campo e desliga o reenv
   expect(host.textContent).toContain("Tem azul?");
 });
 it("pergunta já recebida após prazo devolve confirmação para limpar o formulário", async () => {
-  h.pendurarEnvio = true;
-  h.linhas = [
-    {
-      id: "nova-recebida",
-      product_id: "produto-prazo-confirmado",
-      user_id: "comprador-ficticio",
-      question: "Tem azul?",
-      created_at: "2026-11-07T00:00:00Z",
-      answers: [],
-    },
-  ];
+  let idRecebido: string | undefined;
+  h.gravarPergunta = ({ id }) => {
+    idRecebido = id;
+    h.linhas = [{ ...linha, id }];
+    return new Promise(() => {});
+  };
+  const linha = {
+    product_id: "produto-prazo-confirmado",
+    user_id: "comprador-ficticio",
+    question: "Tem azul?",
+    created_at: "2026-11-07T00:00:00Z",
+    answers: [],
+  };
   let resultado: unknown = null;
   await act(async () => {
     void questions
@@ -175,9 +190,54 @@ it("pergunta já recebida após prazo devolve confirmação para limpar o formul
       });
     await vi.advanceTimersByTimeAsync(15001);
   });
-  expect(resultado).toMatchObject({ id: "nova-recebida" });
-  expect(questions.questions.map((q) => q.id)).toContain("nova-recebida");
+  expect(idRecebido).toEqual(expect.any(String));
+  expect(resultado).toMatchObject({ id: idRecebido });
+  expect(questions.questions.map((q) => q.id)).toContain(idRecebido);
 });
+it.each(["antes", "depois"])(
+  "primeiro envio gravando %s do reenvio deixa uma só linha",
+  async (ordem) => {
+    let concluirPrimeiro: (() => void) | undefined;
+    let envios = 0;
+    h.gravarPergunta = (linha) => {
+      const id = linha.id ?? String(++envios);
+      const gravar = () => {
+        if (h.linhas.some((q) => (q as { id: string }).id === id))
+          return {
+            data: null,
+            error: { code: "23505", message: 'violates "questions_pkey"' },
+          };
+        const data = { ...linha, id, created_at: "2026-11-07T00:00:00Z" };
+        h.linhas.push(data);
+        return { data, error: null };
+      };
+      if (!concluirPrimeiro)
+        return new Promise((resolve) => {
+          concluirPrimeiro = () => resolve(gravar());
+        });
+      return gravar();
+    };
+
+    const pergunta = { productId: "produto-reenvio", question: "Tem azul?" };
+    let primeiro: unknown;
+    await act(async () => {
+      void questions.addQuestion(pergunta).then((r) => {
+        primeiro = r;
+      });
+      await vi.advanceTimersByTimeAsync(15001);
+    });
+    expect(primeiro).toBeNull();
+    expect(h.linhas).toHaveLength(0);
+
+    await act(async () => {
+      if (ordem === "antes") concluirPrimeiro?.();
+      expect(await questions.addQuestion(pergunta)).toBeTruthy();
+      if (ordem === "depois") concluirPrimeiro?.();
+    });
+    expect(h.linhas).toHaveLength(1);
+  },
+);
+
 it("avaliação recebida após prazo devolve confirmação ao pedido em vez de oferecer reenviar", async () => {
   h.pendurarEnvio = true;
   h.conferida = { id: "avaliacao-recebida" };
