@@ -104,6 +104,28 @@ describe("OrderReceipt — a observação vai no papel", () => {
     expect(papel.textContent).not.toContain("OBSERVAÇÃO:");
   });
 
+  it.each([
+    "",
+    "\n\nFrete Escolhido: PAC (Prazo: 5 dias)",
+  ])(
+    "imprime a instrução da cliente que começa com o rótulo de frete (%s)",
+    async (sufixo) => {
+      const instrucao = "Frete Escolhido: deixar na portaria do bloco B";
+      const papel = await imprimir(pedidoBase({ notes: instrucao + sufixo }));
+      const rotulo = Array.from(papel.querySelectorAll("p")).find(
+        (p) => p.textContent === "OBSERVAÇÃO:",
+      );
+      expect(rotulo?.nextElementSibling?.textContent).toBe(instrucao);
+      expect(papel.textContent).not.toContain("PAC (Prazo: 5 dias)");
+    },
+  );
+
+  it("preserva uma instrução que continua depois do trecho de prazo", async () => {
+    const notes = "Frete Escolhido: PAC (Prazo: 5 dias) — ligar antes.";
+    const papel = await imprimir(pedidoBase({ notes }));
+    expect(papel.textContent).toContain(notes);
+  });
+
   it("separa a instrução da cliente da linha automática de frete", async () => {
     const papel = await imprimir(
       pedidoBase({
