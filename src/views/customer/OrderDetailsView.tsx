@@ -1190,9 +1190,10 @@ export function OrderDetailsView({
   useMarcarAvisosDoPedidoComoLidos(orderId, devolucaoDoProduto.aguardandoAviso);
   const [pedindoDevolucao, setPedindoDevolucao] = useState(false);
 
+  const linkIncompleto = !orderId.trim();
   // Sessão ainda sendo verificada e nenhum pedido na tela: não é "sem conta"
   // ainda, e o convite de login abaixo não pode piscar para quem está logada.
-  if (loading || (authLoading && !user && !order)) {
+  if (!linkIncompleto && (loading || (authLoading && !user && !order))) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center space-y-4 bg-zinc-50/30">
         <div className="size-12 animate-spin rounded-full border-4 border-zinc-900 border-t-transparent" />
@@ -1203,30 +1204,35 @@ export function OrderDetailsView({
     );
   }
 
-  if (!order) {
+  if (linkIncompleto || !order) {
     // Sem conta aberta (sessão vencida, aviso aberto em outro aparelho) o
     // pedido não é "inexistente": a lista dele só aparece para quem entrou.
     // O convidado que rastreou por código já achou o pedido no sessionStorage
     // acima e nem chega aqui. Falha de rede continua sendo falha de rede.
-    const semConta = !user && !ordersLoadError;
+    const falhaDeCarregamento = !linkIncompleto && ordersLoadError;
+    const semConta = !linkIncompleto && !user && !falhaDeCarregamento;
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-white p-8 text-center">
         <div className="mb-6 flex size-20 items-center justify-center rounded-[2.5rem] bg-zinc-100">
           <XCircle className="size-10 text-zinc-300" />
         </div>
         <h2 className="mb-2 text-xl font-black tracking-tighter text-zinc-900">
-          {ordersLoadError
-            ? "Não conseguimos carregar agora"
-            : semConta
-              ? "Entre na conta para ver este pedido"
-              : "Pedido não encontrado"}
+          {linkIncompleto
+            ? "Este link de pedido está incompleto"
+            : falhaDeCarregamento
+              ? "Não conseguimos carregar agora"
+              : semConta
+                ? "Entre na conta para ver este pedido"
+                : "Pedido não encontrado"}
         </h2>
         <p className="mb-8 text-sm font-medium leading-relaxed text-zinc-500">
-          {ordersLoadError
-            ? "Verifique sua conexão e tente de novo."
-            : semConta
-              ? "Seu pedido está salvo na sua conta. Entre para ver os detalhes."
-              : "Não conseguimos localizar as informações deste pedido em nosso sistema."}
+          {linkIncompleto
+            ? "Volte aos seus pedidos para encontrar a compra que procura."
+            : falhaDeCarregamento
+              ? "Verifique sua conexão e tente de novo."
+              : semConta
+                ? "Seu pedido está salvo na sua conta. Entre para ver os detalhes."
+                : "Não conseguimos localizar as informações deste pedido em nosso sistema."}
         </p>
         {semConta && (
           <button
@@ -1236,7 +1242,7 @@ export function OrderDetailsView({
             Entrar
           </button>
         )}
-        {ordersLoadError && (
+        {falhaDeCarregamento && (
           <button
             onClick={() => {
               void loadOrder();
