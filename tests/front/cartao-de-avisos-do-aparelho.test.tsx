@@ -549,6 +549,55 @@ describe("CartaoDeAvisosDoAparelho", () => {
       expect(hospedeiro.querySelector('[role="alert"]')).toBeNull();
     });
 
+    it("libera o teste sem resposta e ignora a resposta antiga durante a nova tentativa", async () => {
+      function envioPendente() {
+        type Resposta = { data: { enviados: number }; error: null };
+        let resolve!: (resposta: Resposta) => void;
+        const promise = new Promise<Resposta>((resolver) => {
+          resolve = resolver;
+        });
+        return { promise, resolve };
+      }
+      const primeira = envioPendente();
+      const segunda = envioPendente();
+      invoke
+        .mockReturnValueOnce(primeira.promise)
+        .mockReturnValueOnce(segunda.promise);
+      await montarJaLigado();
+      vi.useRealTimers();
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+
+      await tocar(TESTE);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(59_999);
+      });
+      expect(botao("Enviando...")?.disabled).toBe(true);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(botao(TESTE)?.disabled).toBe(false);
+      expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toContain(
+        "Não deu certo agora. Confira a conexão e tente de novo.",
+      );
+
+      await tocar(TESTE);
+      expect(invoke).toHaveBeenCalledTimes(2);
+      await act(async () => {
+        primeira.resolve({ data: { enviados: 1 }, error: null });
+      });
+      expect(botao("Enviando...")?.disabled).toBe(true);
+      expect(hospedeiro.querySelector('[role="status"]')).toBeNull();
+
+      await act(async () => {
+        segunda.resolve({ data: { enviados: 1 }, error: null });
+      });
+      expect(botao(TESTE)?.disabled).toBe(false);
+      expect(
+        hospedeiro.querySelector('[role="status"]')?.textContent,
+      ).toContain("Aviso de teste enviado");
+    });
+
     it("'Pronto' fecha o cartão", async () => {
       await montarJaLigado();
 

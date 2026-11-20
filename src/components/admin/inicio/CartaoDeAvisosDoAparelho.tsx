@@ -14,6 +14,12 @@ import {
   situacaoDosAvisos,
 } from "@/lib/avisos-do-aparelho";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
+import {
+  PRAZO_DA_EDGE_DE_ENVIO_DE_PUSH_MS,
+  aguardarComPrazo,
+  ehConsultaSemResposta,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import { classeDoTexto } from "@/lib/tons-de-estado";
 import { BellOff, BellRing, ChevronRight, RefreshCw } from "lucide-react";
@@ -23,7 +29,13 @@ import { BOTAO_INICIO } from "./visualDoInicio";
 const TILE_DO_AVISO =
   "flex size-10 shrink-0 items-center justify-center rounded-xl border border-admin-border bg-admin-raised";
 
-type EstadoDoTeste = "ocioso" | "enviando" | "enviado" | "falhou" | "sem-rede";
+type EstadoDoTeste =
+  | "ocioso"
+  | "enviando"
+  | "enviado"
+  | "falhou"
+  | "sem-rede"
+  | "sem-resposta";
 
 const BOTAO_PRIMARIO = BOTAO_INICIO;
 const BOTAO_SECUNDARIO = BOTAO_INICIO;
@@ -181,24 +193,28 @@ function CartaoInterno({
     setTeste("enviando");
     try {
       const { endpoint, keys } = alvo.toJSON();
-      const { data, error } = await supabase.functions.invoke("send-push", {
-        body: {
-          title: `Aviso de teste — ${nomeDoApp}`,
-          body: "Se você está lendo isto, o aviso de pedido novo chega neste aparelho.",
-          // A mesma tela que o aviso real de pedido novo abre
-          // (`notify-new-order`, `montarAviso`).
-          url: "/admin-orders",
-          tokens: [
-            { endpoint, keys: { p256dh: keys?.p256dh, auth: keys?.auth } },
-          ],
-        },
-      });
+      const { data, error } = await aguardarComPrazo(
+        supabase.functions.invoke("send-push", {
+          body: {
+            title: `Aviso de teste — ${nomeDoApp}`,
+            body: "Se você está lendo isto, o aviso de pedido novo chega neste aparelho.",
+            // A mesma tela que o aviso real de pedido novo abre
+            // (`notify-new-order`, `montarAviso`).
+            url: "/admin-orders",
+            tokens: [
+              { endpoint, keys: { p256dh: keys?.p256dh, auth: keys?.auth } },
+            ],
+          },
+        }),
+        PRAZO_DA_EDGE_DE_ENVIO_DE_PUSH_MS,
+        erroDeConsultaSemResposta,
+      );
       const enviados = Number(
         (data as { enviados?: unknown } | null)?.enviados,
       );
       setTeste(!error && enviados > 0 ? "enviado" : "falhou");
-    } catch {
-      setTeste("falhou");
+    } catch (erro) {
+      setTeste(ehConsultaSemResposta(erro) ? "sem-resposta" : "falhou");
     } finally {
       emVoo.current.teste = false;
     }
@@ -269,6 +285,11 @@ function CartaoInterno({
             O aviso de teste não foi enviado. Os avisos podem não estar chegando
             neste aparelho: toque em Mandar um aviso de teste de novo ou ligue
             os avisos outra vez.
+          </p>
+        ) : null}
+        {teste === "sem-resposta" ? (
+          <p role="alert" className="mt-3 text-xs text-red-400">
+            Não deu certo agora. Confira a conexão e tente de novo.
           </p>
         ) : null}
         {teste === "sem-rede" ? (
