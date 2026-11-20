@@ -331,7 +331,9 @@ describe("CheckoutView — cupom no envio e na tela de sucesso", () => {
     await esperar(50);
 
     expect(createOrder).toHaveBeenCalledTimes(1);
-    expect(createOrder.mock.calls[0][0].couponCode).toBe("DEZ");
+    const pedido = createOrder.mock.calls[0][0];
+    expect(pedido.couponCode).toBe("DEZ");
+    expect(pedido.totalAmount).toBe(70);
     // É a tela de sucesso.
     expect(document.body.textContent).toContain("Pedido recebido!");
     // O selo guarda o desconto do pedido, não o de uma conferência com R$ 0.
