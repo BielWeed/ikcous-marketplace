@@ -740,6 +740,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "164b-antes-o-relatorio-de-categorias-sem-produto-base-vigente",
   "165a-conferir-o-nome-publico-da-vitrine-aplicado",
   "165b-antes-o-nome-publico-da-vitrine-base-vigente",
+  "166a-conferir-a-lista-do-painel-e-o-rastreio-levam-o-nome-antigo-da-opcao-aplicado",
+  "166b-antes-a-lista-do-painel-e-o-rastreio-levam-o-nome-antigo-da-opcao-base-vigente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

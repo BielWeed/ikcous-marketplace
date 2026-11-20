@@ -379,6 +379,8 @@ on:
           - 164b-antes-o-relatorio-de-categorias-sem-produto-base-vigente
           - 165a-conferir-o-nome-publico-da-vitrine-aplicado
           - 165b-antes-o-nome-publico-da-vitrine-base-vigente
+          - 166a-conferir-a-lista-do-painel-e-o-rastreio-levam-o-nome-antigo-da-opcao-aplicado
+          - 166b-antes-a-lista-do-painel-e-o-rastreio-levam-o-nome-antigo-da-opcao-base-vigente
           - backups
       projeto:
         description: "Projeto de destino: loja, sandbox, ikcous-publicada (a CAF explicita) ou savy (a loja cliente explicita, mesmas travas): as duas exigem expected_sha; nunca texto livre — achado da rodada 2"

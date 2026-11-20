@@ -328,19 +328,19 @@ Deno.test("a ordem de desfazer esta declarada no cabecalho; a 92a, a 8e, a 9a, o
   );
   assert.ok(
     c9a.includes(
-      "('get_admin_orders_paged', 'b404a8397a6490c86fb192d85fd5b6c9')",
+      "('get_admin_orders_paged', 'bfef98c2eeeaf9014d92d3e4cd97764d')",
     ),
   );
   assert.ok(!c9a.includes(`('get_admin_orders_paged', '${H_NOVO}')`));
   assert.ok(!c9a.includes(`('get_admin_orders_paged', '${H_VIGENTE}')`));
   assert.ok(
     c9a.includes(
-      `(c.h = '${H_99}' OR c.h = '${H_VIGENTE}')\n              THEN 'b404a8397a6490c86fb192d85fd5b6c9'`,
+      `(c.h = '${H_99}' OR c.h = '${H_VIGENTE}')\n              THEN 'bfef98c2eeeaf9014d92d3e4cd97764d'`,
     ),
   );
   assert.ok(
     c9a.includes(
-      `WHEN f.fn = 'get_admin_orders_paged' AND c.h = '${H_NOVO}'\n              THEN 'b404a8397a6490c86fb192d85fd5b6c9'`,
+      `WHEN f.fn = 'get_admin_orders_paged' AND c.h = '${H_NOVO}'\n              THEN 'bfef98c2eeeaf9014d92d3e4cd97764d'`,
     ),
   );
   const sucessoras = lerRepo("tests/banco/sucessoras-da-99.cjs");
@@ -453,7 +453,7 @@ Deno.test("as consultas 125a/125b sao so de catalogo, quatro linhas fechadas, e 
   );
 });
 
-Deno.test("depois da 20261387000000 so este par redefine get_admin_orders_paged", () => {
+Deno.test("depois da 20261387000000 só os pares conhecidos redefinem get_admin_orders_paged", () => {
   const todas = [...Deno.readDirSync(new URL("supabase/migrations/", DIR))]
     .map((e) => e.name)
     .filter((n) => n.endsWith(".sql") && !n.startsWith("_"));
@@ -466,13 +466,13 @@ Deno.test("depois da 20261387000000 so este par redefine get_admin_orders_paged"
       )
     )
       posteriores.push(n);
-  // A 20261399980000 (as listas do painel desempatam por id) e' a unica depois desta: tem o proprio teste.
-  const SUCESSORA =
-    "20261399980000_as_listas_do_painel_nao_repetem_nem_escondem_ninguem_entre_as_paginas.sql";
-  assert.deepEqual(posteriores.sort(), [
+  const sucessoras = [
     NOME,
-    SUCESSORA,
-    `rollback-manual-${NOME}`,
-    `rollback-manual-${SUCESSORA}`,
-  ]);
+    "20261399980000_as_listas_do_painel_nao_repetem_nem_escondem_ninguem_entre_as_paginas.sql",
+    "20261410000000_a_lista_do_painel_e_o_rastreio_levam_o_nome_antigo_da_opcao.sql",
+  ];
+  assert.deepEqual(
+    posteriores.sort(),
+    sucessoras.flatMap((n) => [n, `rollback-manual-${n}`]).sort(),
+  );
 });

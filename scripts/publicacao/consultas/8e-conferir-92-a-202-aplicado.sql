@@ -161,6 +161,7 @@ WITH corpos AS (
     ('get_admin_orders_paged', 'f06b1bc03cf7bcf1fbb9d7b2f7ff4fe6', '20261387000000'),
     ('get_admin_orders_paged', 'bf08545275eaa451a65e15feceb0ed8d', '20261399900000'),
     ('get_admin_orders_paged', 'b404a8397a6490c86fb192d85fd5b6c9', '20261399980000'),
+    ('get_admin_orders_paged', 'bfef98c2eeeaf9014d92d3e4cd97764d', '20261410000000'),
     ('admin_devolucoes_listar', '989a6c6151eb35efc7c834c6cce20f01', '20261395000000'),
     ('admin_devolucoes_listar', '82d381944fb7b3337e7272a258b65260', '20261399910000'),
     ('get_admin_orders_cancelados_recentes', '9567454f17698f3f0624cca0b06458cd', '20261380000000'),

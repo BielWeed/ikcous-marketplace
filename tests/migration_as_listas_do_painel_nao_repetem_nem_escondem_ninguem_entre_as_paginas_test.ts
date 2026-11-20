@@ -386,7 +386,14 @@ Deno.test("a ordem de desfazer esta declarada no cabecalho; a 8e, a 9a, a 17a, a
     "scripts/publicacao/consultas/9a-conferir-60-a-66-aplicado.sql",
   );
   for (const f of FUNCOES.filter((x) => x.chave !== "produtos"))
-    assert.ok(c9a.includes(`('${f.nome}', '${f.hNovo}')`), `9a ${f.nome}`);
+    assert.ok(
+      c9a.includes(
+        f.chave === "pedidos"
+          ? `WHEN f.fn = '${f.nome}' AND c.h = '${f.hNovo}'`
+          : `('${f.nome}', '${f.hNovo}')`,
+      ),
+      `9a ${f.nome}`,
+    );
   // cada vizinha cita o md5 novo (a 17a cita o sha256 do corpo de produtos, conferido pelo ci_conferir_banco_test.ts)
   for (const [arq, hash] of [
     ["85a-conferir-aviso-de-cancelados-antigos-aplicado", FUNCOES[2].hNovo],
@@ -435,7 +442,7 @@ Deno.test("a ordem de desfazer esta declarada no cabecalho; a 8e, a 9a, a 17a, a
   );
 });
 
-Deno.test("depois da migration anterior de cada funcao so este par redefine essa funcao", () => {
+Deno.test("depois da migration anterior só os pares conhecidos redefinem cada função", () => {
   const todas = [
     ...Deno.readDirSync(new URL("../supabase/migrations/", import.meta.url)),
   ]
@@ -456,7 +463,16 @@ Deno.test("depois da migration anterior de cada funcao so este par redefine essa
         posteriores.push(n);
     assert.deepEqual(
       posteriores.sort(),
-      [NOME, `rollback-manual-${NOME}`],
+      [
+        NOME,
+        `rollback-manual-${NOME}`,
+        ...(f.chave === "pedidos"
+          ? [
+              "20261410000000_a_lista_do_painel_e_o_rastreio_levam_o_nome_antigo_da_opcao.sql",
+              "rollback-manual-20261410000000_a_lista_do_painel_e_o_rastreio_levam_o_nome_antigo_da_opcao.sql",
+            ]
+          : []),
+      ].sort(),
       f.nome,
     );
   }

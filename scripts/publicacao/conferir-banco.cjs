@@ -3263,15 +3263,28 @@ const ROL_DO_NOME_PUBLICO = [
   "nome publico: vw_reviews_public",
   "nome publico: vw_questions_public",
 ];
+const ROL_DA_166 = [
+  "historico da opcao: colunas de destino conhecidas",
+  "get_admin_orders_paged: corpo exato (md5)",
+  "get_admin_orders_paged: assinatura e atributos conhecidos",
+  "get_admin_orders_paged: EXECUTE preservado",
+  "get_orders_by_otp_v2: corpo exato (md5)",
+  "get_orders_by_otp_v2: assinatura e atributos conhecidos",
+  "get_orders_by_otp_v2: EXECUTE preservado",
+];
 const ROL_FECHADO_POR_CONSULTA = {
-  "165a-conferir-o-nome-publico-da-vitrine-aplicado": ROL_DO_NOME_PUBLICO,
-  "165b-antes-o-nome-publico-da-vitrine-base-vigente": ROL_DO_NOME_PUBLICO,
   "162a-conferir-o-pedido-guarda-o-nome-antigo-da-opcao-aplicado": ROL_DA_162,
   "162b-antes-o-pedido-guarda-o-nome-antigo-da-opcao-base-vigente": ROL_DA_162,
   "163a-conferir-chaves-de-frete-so-o-servidor-aplicado": ROL_DA_163,
   "163b-antes-chaves-de-frete-so-o-servidor-base-vigente": ROL_DA_163,
   "164a-conferir-o-relatorio-de-categorias-sem-produto-aplicado": ROL_DA_164,
   "164b-antes-o-relatorio-de-categorias-sem-produto-base-vigente": ROL_DA_164,
+  "165a-conferir-o-nome-publico-da-vitrine-aplicado": ROL_DO_NOME_PUBLICO,
+  "165b-antes-o-nome-publico-da-vitrine-base-vigente": ROL_DO_NOME_PUBLICO,
+  "166a-conferir-a-lista-do-painel-e-o-rastreio-levam-o-nome-antigo-da-opcao-aplicado":
+    ROL_DA_166,
+  "166b-antes-a-lista-do-painel-e-o-rastreio-levam-o-nome-antigo-da-opcao-base-vigente":
+    ROL_DA_166,
   "157a-conferir-a-devolucao-integral-nao-perde-o-centavo-do-cupom-aplicado":
     ROL_DA_157,
   "157b-antes-a-devolucao-integral-nao-perde-o-centavo-do-cupom-base-vigente":

@@ -58,7 +58,14 @@ class ObserverStub {
   disconnect() {}
 }
 
-function pedido(numero: number, variantId: string) {
+function pedido(
+  numero: number,
+  variantId: string,
+  historico?: {
+    variacao_nome_na_compra: string | null;
+    variacao_valor_na_compra: string | null;
+  },
+) {
   return {
     id: `pedido-${String(numero).padStart(6, "0")}`,
     customer_name: `Cliente ${numero}`,
@@ -67,6 +74,7 @@ function pedido(numero: number, variantId: string) {
       {
         product_id: "produto-1",
         variant_id: variantId,
+        ...historico,
         product_name: "Camiseta Básica",
         quantity: 1,
         price: 49.9,
@@ -229,6 +237,32 @@ describe("CSV de pedidos com tamanho e cor", () => {
     expect(baixar).toHaveBeenCalledTimes(1);
     expect(textoCsv).toContain("Camiseta Básica - Tamanho M (1 x 49,90)");
     expect(textoCsv).toContain("Camiseta Básica - Tamanho GG (1 x 49,90)");
+  });
+
+  it("exporta o rótulo guardado e só consulta o catálogo para o item sem histórico", async () => {
+    pedidosDoBanco = [
+      pedido(1, "var-m", {
+        variacao_nome_na_compra: "Cor original",
+        variacao_valor_na_compra: "Azul",
+      }),
+      pedido(2, "var-gg", {
+        variacao_nome_na_compra: null,
+        variacao_valor_na_compra: null,
+      }),
+    ];
+    await montarTela();
+    await act(async () => {
+      botao().click();
+    });
+    expect(mocks.em).toHaveBeenCalledExactlyOnceWith("product_variants", [
+      "var-gg",
+    ]);
+    expect(baixar).toHaveBeenCalledTimes(1);
+    expect(textoCsv).toContain(
+      "Camiseta Básica - Cor original Azul (1 x 49,90)",
+    );
+    expect(textoCsv).toContain("Camiseta Básica - Tamanho GG (1 x 49,90)");
+    expect(textoCsv).not.toContain("Tamanho M");
   });
 
   it("repete o mesmo variantId uma vez só e faz consultas de no máximo 100", async () => {

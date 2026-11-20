@@ -112,7 +112,9 @@ WITH alvo(nome, assinatura) AS (
                                             '7d9975446c2d09e51a07bf4d9ba7819b3dbdef85b80506ea5fd980badc27757c',
                                             'c1e5374e9ab92fa8cc23491bd3e132d018e85ae0b6be64438dc9c63945e41121',
                                             'a830cf0730526d73ef1c09b0036c9694e58d20edab17cb21ffb59b4b632b2212',
-                                            '196021b99e1f020356e31a72d9832e81ea074065613305833e06bb082dd594e6')
+                                            '196021b99e1f020356e31a72d9832e81ea074065613305833e06bb082dd594e6',
+                                            'cfb72d8d353a92560cf144c9d29465ebdf544a748f90a978431b8f6f82c467a3',
+                                            '571201678b8124f5c4400c11eb5c45ddf03a614c2460c7e6aa4d63f70a17788c')
                                THEN '36af86dd3249fb2da812afaff1a5edc4d0e8e1e09017f3be0ca4eac9f0c07862'
                                ELSE f.h END
                      FROM fn f WHERE f.nome = 'get_orders_by_otp_v2'), 'AUSENTE')

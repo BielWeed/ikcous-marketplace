@@ -916,6 +916,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/o-cupom-que-nao-da-desconto-nao-vale-viva.cjs",
     // 20261406000000: o pedido guarda o nome antigo da opção após renomear a variação.
     "tests/banco/o-pedido-guarda-o-nome-antigo-da-opcao-viva.cjs",
+    // 20261410000000: painel e rastreio por código devolvem os rótulos históricos.
+    "tests/banco/rotulo-historico-na-lista-e-no-rastreio-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(

@@ -130,14 +130,18 @@ const antes = async (c) => {
 };
 const comSucessoras = async (c) => {
   await c.query(MIGRATION);
-  // guarda: a v2 viva e' mesmo a da 20261342 (sem isso a prova mediria a 1217 e passaria por engano)
+  // Guarda: a v2 viva é a da 20261342 ou a sucessora dos rótulos, nunca a base 1217.
   const h = (
     await c.query(
       "SELECT md5(replace(prosrc, E'\\r', '')) AS h FROM pg_proc WHERE oid = to_regprocedure($1)",
       [V2],
     )
   ).rows[0].h;
-  assert.equal(h, CORPO_1342, "a arvore nao tem a 20261342 no ar");
+  const { RASTREIO } = require("./rotulo-historico-posterior.cjs");
+  assert.ok(
+    [CORPO_1342, RASTREIO.hash].includes(h),
+    "a árvore não tem a 20261342 nem a sucessora no ar",
+  );
 };
 
 const reprovadas = (linhas) =>

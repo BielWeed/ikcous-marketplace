@@ -307,6 +307,10 @@ on:
       - "scripts/publicacao/consultas/163b-antes-chaves-de-frete-so-o-servidor-base-vigente.sql"
       - "scripts/publicacao/consultas/164a-conferir-o-relatorio-de-categorias-sem-produto-aplicado.sql"
       - "scripts/publicacao/consultas/164b-antes-o-relatorio-de-categorias-sem-produto-base-vigente.sql"
+      - "scripts/publicacao/consultas/165a-conferir-o-nome-publico-da-vitrine-aplicado.sql"
+      - "scripts/publicacao/consultas/165b-antes-o-nome-publico-da-vitrine-base-vigente.sql"
+      - "scripts/publicacao/consultas/166a-conferir-a-lista-do-painel-e-o-rastreio-levam-o-nome-antigo-da-opcao-aplicado.sql"
+      - "scripts/publicacao/consultas/166b-antes-a-lista-do-painel-e-o-rastreio-levam-o-nome-antigo-da-opcao-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -587,6 +591,10 @@ on:
       - "scripts/publicacao/consultas/163b-antes-chaves-de-frete-so-o-servidor-base-vigente.sql"
       - "scripts/publicacao/consultas/164a-conferir-o-relatorio-de-categorias-sem-produto-aplicado.sql"
       - "scripts/publicacao/consultas/164b-antes-o-relatorio-de-categorias-sem-produto-base-vigente.sql"
+      - "scripts/publicacao/consultas/165a-conferir-o-nome-publico-da-vitrine-aplicado.sql"
+      - "scripts/publicacao/consultas/165b-antes-o-nome-publico-da-vitrine-base-vigente.sql"
+      - "scripts/publicacao/consultas/166a-conferir-a-lista-do-painel-e-o-rastreio-levam-o-nome-antigo-da-opcao-aplicado.sql"
+      - "scripts/publicacao/consultas/166b-antes-a-lista-do-painel-e-o-rastreio-levam-o-nome-antigo-da-opcao-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -883,6 +891,9 @@ jobs:
       - name: Prova viva do nome antigo da opção no pedido (20261406000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-pedido-guarda-o-nome-antigo-da-opcao-viva.cjs
+      - name: Prova viva do histórico da opção na lista e no rastreio (20261410000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/rotulo-historico-na-lista-e-no-rastreio-viva.cjs
       - name: Prova viva cancelar pedido so abre estorno se pago de verdade
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/cancelar-pedido-so-abre-estorno-se-pago-viva.cjs

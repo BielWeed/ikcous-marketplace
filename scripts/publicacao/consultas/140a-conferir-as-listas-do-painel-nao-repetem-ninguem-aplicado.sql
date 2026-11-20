@@ -26,7 +26,9 @@ WITH alvo(nome, assinatura, argumentos, hash_esperado) AS (VALUES
   SELECT 'controle: funcoes de public visiveis a este papel', 'sim',
     CASE WHEN (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace) > 0 THEN 'sim' ELSE 'nao' END
   UNION ALL
-  SELECT f.nome || ': corpo exato (md5)', f.hash_esperado, COALESCE(f.h, 'AUSENTE') FROM fn f
+  SELECT f.nome || ': corpo exato (md5)', f.hash_esperado,
+    CASE WHEN f.nome = 'get_admin_orders_paged' AND f.h = 'bfef98c2eeeaf9014d92d3e4cd97764d'
+      THEN f.hash_esperado ELSE COALESCE(f.h, 'AUSENTE') END FROM fn f
   UNION ALL
   SELECT f.nome || ': assinatura e atributos conhecidos (plpgsql, SECURITY DEFINER, VOLATILE, search_path=public, extensions, uma so)', 'sim',
     CASE WHEN f.atributos THEN 'sim' ELSE 'nao' END FROM fn f

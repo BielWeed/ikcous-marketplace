@@ -187,10 +187,16 @@ const NOMES = [
   "20261405900000_o_custo_do_cancelamento_fica_no_mes_da_volta.sql",
   // get_category_analytics: 99 -> 409. O rollback repõe a guarda da 99 byte a byte.
   "20261409000000_o_relatorio_de_categorias_nao_da_a_uma_categoria_o_dinheiro_de_item_sem_produto.sql",
+  // Histórico dos itens: pedidos do painel (3998) e rastreio do convidado (1342).
+  "20261410000000_a_lista_do_painel_e_o_rastreio_levam_o_nome_antigo_da_opcao.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).
 const PARES_POR_MIGRATION = new Map([
+  [
+    "20261410000000_a_lista_do_painel_e_o_rastreio_levam_o_nome_antigo_da_opcao.sql",
+    2,
+  ],
   ["20261242000000_o_lucro_usa_o_custo_do_dia_da_venda.sql", 2],
   ["20261244000000_a_loja_escolhe_como_entrega_na_cidade.sql", 3],
   [

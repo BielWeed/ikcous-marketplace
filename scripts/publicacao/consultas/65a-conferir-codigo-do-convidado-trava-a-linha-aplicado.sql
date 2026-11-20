@@ -11,7 +11,7 @@ WITH fn AS (
     CASE WHEN (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public') > 0 THEN '>0' ELSE '0' END
   UNION ALL
   SELECT 'get_orders_by_otp_v2: corpo trava a linha do codigo (20261341000000 ou sucessora, md5)', '34199947ecded0fd9400b5fd0276ea47',
-    COALESCE((SELECT CASE WHEN f.m IN ('34199947ecded0fd9400b5fd0276ea47', '02208ac9d2abe2e8b03790349d491ecb') THEN '34199947ecded0fd9400b5fd0276ea47' ELSE f.m END FROM fn f), 'AUSENTE')
+    COALESCE((SELECT CASE WHEN f.m IN ('34199947ecded0fd9400b5fd0276ea47', '02208ac9d2abe2e8b03790349d491ecb', '96f080db2a488d8887a2dfd959bd9862') THEN '34199947ecded0fd9400b5fd0276ea47' ELSE f.m END FROM fn f), 'AUSENTE')
   UNION ALL
   SELECT 'get_orders_by_otp_v2: assinatura, atributos e EXECUTE preservados', 'sim',
     CASE WHEN EXISTS (

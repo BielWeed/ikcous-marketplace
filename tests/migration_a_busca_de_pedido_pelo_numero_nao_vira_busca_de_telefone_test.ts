@@ -199,26 +199,21 @@ Deno.test("387: uma funcao so por arquivo, rollback e cabecalho identicos aos vi
   }
 });
 
-Deno.test("387: o corpo novo e o ANTEPENULTIMO da arvore (a 20261399900000, o corte do +55, e a 20261399980000, o desempate por id, o sucedem) e o db-apply exige todas as guardas", () => {
+Deno.test("387: a cadeia de sucessoras é conhecida e o db-apply exige todas as guardas", () => {
   const fontes = [...Deno.readDirSync(dir)]
     .map((e) => e.name)
     .filter((n) => /^\d{14}_.*\.sql$/.test(n))
     .sort()
     .map((n) => ler(`supabase/migrations/${n}`))
     .filter((s) => definicao(s));
-  // A sucessora (lote 40) tem o proprio teste: tests/migration_a_busca_de_pedidos_acha_o_telefone_colado_com_o_55_test.ts.
-  assert.equal(md5(corpo(fontes.at(-3)!)), md5(corpo(sql)));
-  assert.ok(
-    fontes
-      .at(-2)!
-      .includes("a busca de Pedidos acha o telefone colado com o +55"),
-  );
-  // A sucessora da 3999 (as listas do painel desempatam por id) tem o proprio teste:
-  // tests/migration_as_listas_do_painel_nao_repetem_nem_escondem_ninguem_entre_as_paginas_test.ts.
-  assert.ok(
-    fontes
-      .at(-1)!
-      .includes("as listas de Produtos, Pedidos e Cancelados do painel"),
+  assert.deepEqual(
+    fontes.slice(-4).map((s) => md5(corpo(s))),
+    [
+      md5(corpo(sql)),
+      "bf08545275eaa451a65e15feceb0ed8d", // 20261399900000: corta o +55
+      "b404a8397a6490c86fb192d85fd5b6c9", // 20261399980000: desempata por id
+      "bfef98c2eeeaf9014d92d3e4cd97764d", // 20261410000000: rótulos históricos
+    ],
   );
   const { VERIFICACOES, avaliarChecagem } = require("../scripts/db-apply.cjs");
   // eslint-disable-next-line security/detect-object-injection -- Nome literal desta migration, nunca entrada externa.
@@ -263,7 +258,7 @@ Deno.test("387: 8e e 9a conhecem o corpo novo (como sucessor e como corpo final)
     "scripts/publicacao/consultas/9a-conferir-60-a-66-aplicado.sql",
   );
   // O corpo FINAL da 9a e' o da sucessora da sucessora (20261399980000, o desempate por id); o da 99, o desta migration e o da 3999 ainda no ar aparecem como ele.
-  const sucessor = "b404a8397a6490c86fb192d85fd5b6c9";
+  const sucessor = "bfef98c2eeeaf9014d92d3e4cd97764d";
   assert.ok(a9.includes(`('get_admin_orders_paged', '${sucessor}')`));
   assert.ok(!a9.includes(`('get_admin_orders_paged', '${novo}')`));
   assert.ok(!a9.includes(`('get_admin_orders_paged', '${HASH_99}')`));
