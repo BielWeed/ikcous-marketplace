@@ -238,6 +238,32 @@ describe("código do cupom no painel", () => {
     });
   });
 
+  it("permite mudar só a validade de um cupom com colisão antiga de grafia", async () => {
+    estadoCoupons = {
+      coupons: [
+        {
+          ...cupomReal,
+          code: "Bemvindo",
+          validUntil: "2098-10-31T23:59:59.999Z",
+        },
+        { ...cupomReal, id: "cupom-2", code: "BEMVINDO" },
+      ],
+      loading: false,
+    };
+    await montar(cupomReal.id);
+
+    await act(async () => acharBotao("Limpar validade")?.click());
+    await act(async () => acharBotao("Salvar Cupom")?.click());
+
+    expect(
+      container?.querySelector("#coupon-code-erro")?.textContent,
+    ).toBeUndefined();
+    expect(updateCoupon).toHaveBeenCalledWith(cupomReal.id, {
+      validUntil: undefined,
+    });
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
   it("explica o limite de 40 caracteres sem gravar nem cortar o código", async () => {
     await montar();
     await digitarCodigo("A".repeat(41));

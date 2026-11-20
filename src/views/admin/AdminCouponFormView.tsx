@@ -482,6 +482,7 @@ function FormularioDoCupom({
     }
     const codigoEmMaiusculas = cleanCode.toUpperCase();
     if (
+      (!isEditing || cleanCode !== initialData.code) &&
       coupons.some(
         (cupom) =>
           cupom.id !== couponId &&

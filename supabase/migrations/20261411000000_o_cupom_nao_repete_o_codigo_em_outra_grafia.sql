@@ -44,8 +44,10 @@ BEGIN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: indice de codigo do cupom tem definicao inesperada.';
   END IF;
 EXCEPTION WHEN unique_violation THEN
-  -- Uma escrita entre a foto do aplicador (REPEATABLE READ) e o LOCK pode
-  -- escapar da consulta, mas nao do indice. Nao devolva o codigo no erro.
+  -- No workflow aplicar-migrations.yml (REPEATABLE READ), uma escrita entre
+  -- a foto da transacao e o LOCK pode escapar da consulta, mas nao do indice.
+  -- No db-apply.cjs (READ COMMITTED), a consulta ja ve as escritas confirmadas
+  -- antes de obter o LOCK. Nao devolva o codigo no erro.
   RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: trate as colisoes de codigos de cupom antes de aplicar a migration.';
 END;
 $preflight$;
