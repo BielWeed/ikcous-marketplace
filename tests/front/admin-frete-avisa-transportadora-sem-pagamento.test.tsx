@@ -35,6 +35,7 @@ const { cenario, mockConfig } = vi.hoisted(() => ({
       frenet: { tem_chave: false, sandbox: false, servicos: null },
     } as Record<string, Record<string, unknown>>,
     leituraFalha: false,
+    configIndisponivel: false,
     segurarLeitura: null as Promise<void> | null,
   },
   mockConfig: {
@@ -59,6 +60,7 @@ vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
     config: mockConfig,
     isLoaded: true,
+    configIndisponivel: cenario.configIndisponivel,
     updateConfig: vi.fn(),
   }),
 }));
@@ -135,6 +137,7 @@ describe("AdminShippingView — avisa quando a transportadora fica sem pagamento
       frenet: { tem_chave: false, sandbox: false, servicos: null },
     };
     cenario.leituraFalha = false;
+    cenario.configIndisponivel = false;
     cenario.segurarLeitura = null;
     mockConfig.shippingCoverage = "national";
     mockConfig.localDeliveryEnabled = true;
@@ -375,7 +378,8 @@ describe("AdminShippingView — avisa quando a transportadora fica sem pagamento
     "só promoção local",
     "pagamento pelo app ligado",
     "cobertura local",
-    "leitura falhou",
+    "leitura das transportadoras falhou",
+    "leitura da configuração da loja falhou",
   ])("sem o novo aviso: %s", async (caso) => {
     cenario.ligados = [];
     mockConfig.nationalShippingStrategy =
@@ -385,7 +389,9 @@ describe("AdminShippingView — avisa quando a transportadora fica sem pagamento
     mockConfig.freeShippingMin = caso === "só promoção local" ? -1 : 0;
     cenario.bootPagamentoLigado = caso === "pagamento pelo app ligado";
     if (caso === "cobertura local") mockConfig.shippingCoverage = "local";
-    cenario.leituraFalha = caso === "leitura falhou";
+    cenario.leituraFalha = caso === "leitura das transportadoras falhou";
+    cenario.configIndisponivel =
+      caso === "leitura da configuração da loja falhou";
 
     await abrirTela();
 
