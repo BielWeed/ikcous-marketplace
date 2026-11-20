@@ -316,7 +316,9 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
         val = sinalDaMoeda(colado, permiteNegativo) + centavos;
         editandoDecimal.current = false;
       } else if (decimalNaDigitacao) {
-        if (data && /\d/.test(data)) digitouNestaEdicao.current = true;
+        if (tipo?.startsWith("delete") || (data && /\d/.test(data))) {
+          digitouNestaEdicao.current = true;
+        }
         if ((data === "," || data === ".") && !editandoDecimal.current) {
           const fim = e.currentTarget.selectionEnd ?? val.length;
           // Não releia um preço já preenchido como reais só por acrescentar

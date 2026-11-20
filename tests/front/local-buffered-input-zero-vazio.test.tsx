@@ -18,18 +18,23 @@ import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-function digitar(el: HTMLInputElement, valor: string, tecla?: string) {
+function digitar(
+  el: HTMLInputElement,
+  valor: string,
+  tecla?: string,
+  tipo = tecla === undefined ? undefined : "insertText",
+) {
   Object.getOwnPropertyDescriptor(
     globalThis.HTMLInputElement.prototype,
     "value",
   )?.set?.call(el, valor);
   el.setSelectionRange(valor.length, valor.length);
   el.dispatchEvent(
-    tecla === undefined
+    tipo === undefined
       ? new Event("input", { bubbles: true })
       : new InputEvent("input", {
           bubbles: true,
-          inputType: "insertText",
+          inputType: tipo,
           data: tecla,
         }),
   );
@@ -167,6 +172,36 @@ describe("LocalBufferedInput — zeroVazio", () => {
 
       expect(aoSalvar.mock.calls).toEqual([["12.50"]]);
       expect(campo().value).toBe("12,50");
+    },
+  );
+
+  it.each([
+    [2, ",", "12,00", "12.00"],
+    [2, ",5", "12,50", "12.50"],
+    [1, ",", "125,00", "125.00"],
+  ])(
+    "apertar backspace %i vez(es) e digitar %j mostra %s e entrega %s",
+    async (apagadas, texto, exibido, salvo) => {
+      await montar({ value: "12.50", decimalNaDigitacao: true });
+      expect(campo().value).toBe("12,50");
+      await act(async () => campo().focus());
+      for (let i = 0; i < apagadas; i++) {
+        await act(async () =>
+          digitar(
+            campo(),
+            campo().value.slice(0, -1),
+            undefined,
+            "deleteContentBackward",
+          ),
+        );
+      }
+      for (const tecla of texto) {
+        await act(async () => digitar(campo(), campo().value + tecla, tecla));
+      }
+      await act(async () => campo().blur());
+
+      expect(aoSalvar).toHaveBeenLastCalledWith(salvo);
+      expect(campo().value).toBe(exibido);
     },
   );
 
