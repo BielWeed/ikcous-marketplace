@@ -275,13 +275,13 @@ describe("SearchView — acessibilidade e alvos", () => {
     await act(async () => {
       filtros!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
-    const menorPreco = botoes().find((b) => b.textContent === "Menor Preço");
+    const menorPreco = botoes().find((b) => b.textContent === "Menor preço");
     expect(menorPreco?.getAttribute("aria-pressed")).toBe("false");
     expect(menorPreco?.className).toContain("min-h-11");
     await act(async () => {
       menorPreco!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
-    const depois = botoes().find((b) => b.textContent === "Menor Preço");
+    const depois = botoes().find((b) => b.textContent === "Menor preço");
     expect(depois?.getAttribute("aria-pressed")).toBe("true");
     await act(async () => {
       botoes()

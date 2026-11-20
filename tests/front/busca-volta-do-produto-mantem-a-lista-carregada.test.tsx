@@ -364,7 +364,7 @@ describe("SearchView: voltar do produto mantém a lista já carregada", () => {
       botoes().find((b) => b.textContent?.startsWith("Filtros")) as HTMLElement,
     );
     await clicar(
-      botoes().find((b) => b.textContent === "Menor Preço") as HTMLElement,
+      botoes().find((b) => b.textContent === "Menor preço") as HTMLElement,
     );
 
     expect(exibidos()).toBe(12);
