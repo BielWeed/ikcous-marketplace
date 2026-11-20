@@ -46,8 +46,11 @@ describe("motivoDaCotacao", () => {
     const credencial =
       'Sem credencial cadastrada para o provedor "melhor_envio". Conecte a transportadora para cotar entregas fora da cidade.';
     expect(motivoDaCotacao(credencial)).toBe(credencial);
+  });
+
+  it("explica que nenhuma opção de envio ficou disponível", () => {
     expect(motivoDaCotacao("Nenhum método de envio retornado.")).toBe(
-      "Nenhum método de envio retornado.",
+      "Nenhuma opção de envio ficou disponível para esta cotação.",
     );
   });
 
@@ -176,6 +179,44 @@ describe("motivoDaCotacao", () => {
     const lido =
       "o corpo da resposta não pôde ser lido (tempo esgotado ou conexão caiu).";
     expect(motivoDaCotacao(lido)).toBe(lido);
+  });
+
+  it.each([
+    [
+      'SuperFrete API retornou 429: {"message":"falhou"}',
+      "A transportadora recebeu consultas demais. Tente de novo mais tarde.",
+    ],
+    [
+      "Token do Melhor Envio ausente",
+      "Falta a chave de acesso. Salve a chave em Ajustes > Transportadoras.",
+    ],
+    [
+      "Token da SuperFrete ausente",
+      "Falta a chave de acesso. Salve a chave em Ajustes > Transportadoras.",
+    ],
+    [
+      "Token da Frenet ausente",
+      "Falta a chave de acesso. Salve a chave em Ajustes > Transportadoras.",
+    ],
+  ])("explica o motivo conhecido: %s", (motivo, frase) => {
+    expect(motivoDaCotacao(motivo)).toBe(frase);
+  });
+
+  it("explica a falha desconhecida e conserva um trecho do original para o suporte", () => {
+    const original = "Unexpected response";
+    const frase = "Não foi possível concluir a cotação.";
+    expect(motivoDaCotacao(original)).toBe(`${frase} (${original})`);
+    expect(motivoDaCotacao("x".repeat(500))).toBe(
+      `${frase} (${"x".repeat(160)}…)`,
+    );
+  });
+
+  it("distingue falha desconhecida ao salvar de falha ao calcular", () => {
+    expect(
+      motivoDaCotacao("Falha ao gravar a cotação: Unexpected response"),
+    ).toBe(
+      "A cotação foi calculada, mas não pôde ser salva. (Unexpected response)",
+    );
   });
 
   it("vazio ou nulo devolve vazio (linha com campo nulo não derruba a seção)", () => {

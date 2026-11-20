@@ -309,8 +309,7 @@ describe("HistoricoCotacoesSection — o selo vermelho passa a dizer o motivo", 
   it("RODADA DE CORREÇÃO (achado ANTES DE CRESCER): motivo muito longo é cortado na tela, mas o texto completo vai para o title", async () => {
     // Uma frase já legível continua inteira na dica, mas não pode
     // empurrar o resto da tabela para fora da tela no celular.
-    const motivoGigante =
-      "Confira as opções de entrega da transportadora. ".repeat(53);
+    const motivoGigante = `Sem credencial cadastrada para o provedor. ${"Confira as opções de entrega da transportadora. ".repeat(53)}`;
     logsState.data = [
       {
         id: "1",
@@ -385,7 +384,9 @@ describe("HistoricoCotacoesSection — o selo vermelho passa a dizer o motivo", 
     expect(textoDoHistorico()).toContain(
       "Sem credencial cadastrada para o provedor.",
     );
-    expect(textoDoHistorico()).toContain("Nenhum método de envio retornado.");
+    expect(textoDoHistorico()).toContain(
+      "Nenhuma opção de envio ficou disponível para esta cotação.",
+    );
     expect(textoDoHistorico()).not.toMatch(/×\d/);
   });
 });
