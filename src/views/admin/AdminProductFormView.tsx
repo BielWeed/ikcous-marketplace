@@ -1174,10 +1174,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // Fotos que estouraram o prazo ou falharam: ficam na tela com "Tentar de
   // novo"/"Remover" e NUNCA entram em `isValid` -- não impedem salvar.
   const [fotosComFalha, setFotosComFalha] = useState<FotoComFalha[]>([]);
-  // Ligado quando o produto novo JÁ foi criado e a lojista está sendo levada
-  // para a edição dele (a grade não gravou). Daí em diante o auto-save não pode
-  // mais escrever na chave de produto novo: recuperaria o rascunho sem id e o
-  // próximo "Publicar" criaria um segundo produto idêntico.
+  // A mesma montagem reutiliza o ID após um prazo sem resposta. A próxima
+  // tela de "Novo produto" começa sem ID, assim como antes do primeiro envio.
+  const idDoProdutoNovoRef = useRef<string | null>(null);
+  // Depois de confirmado, não publica nem escreve na chave de rascunho de novo.
   const produtoNovoJaCriadoRef = useRef(false);
   // O produto foi criado, mas as variações não gravaram: elas só existem no
   // rascunho. Enquanto não restaura (ou descarta), Salvar não finge sucesso e o
@@ -2186,7 +2186,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         return "";
       }
 
-      const idDoProprio = alvo === "produto" ? productId : idDaVariacao;
+      const idDoProprio =
+        alvo === "produto"
+          ? (productId ?? idDoProdutoNovoRef.current)
+          : idDaVariacao;
       const ehOProprio =
         alvo === "produto"
           ? resposta.origem === "produto" &&
@@ -3881,27 +3884,30 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             ? normalizarCodigoBarras(v.codigoBarras)
             : undefined,
         }));
-        const criado = await addProduct({
-          ...productData,
-          stock: Math.max(0, pStock),
-          sold: 0,
-          variants: variantsWithSanitizedSku,
-        });
-        // A lista de produtos lembra busca, categoria e página: avisa que há um
-        // produto novo para ela abrir na página 1, sem filtro, e mostrá-lo.
-        if (criado) avisarProdutoNovoCadastrado();
-
-        // O produto foi criado mas a grade NÃO gravou (o hook já avisou por
-        // toast). Dar "Salvo" e sair para a lista esconderia isso -- e ficar
-        // nesta tela deixaria o id do produto só no estado dela: recarregar o
-        // app, ou voltar em "Novo produto", recuperaria o rascunho SEM id e o
-        // "Publicar" criaria uma segunda cópia. Por isso o rascunho vai para a
-        // chave de EDIÇÃO do produto criado e a lojista é levada para a edição
-        // dele, onde "Salvar" atualiza a linha e regrava a grade.
-        if (criado?.variantesNaoSalvas) {
-          // ORDEM: primeiro trava o auto-save (um timer de 1 s pode estar
-          // agendado e reescreveria a chave de produto novo), depois move.
+        idDoProdutoNovoRef.current ??= crypto.randomUUID();
+        const criado = await addProduct(
+          {
+            ...productData,
+            stock: Math.max(0, pStock),
+            sold: 0,
+            variants: variantsWithSanitizedSku,
+          },
+          { idDoFormulario: idDoProdutoNovoRef.current },
+        );
+        if (criado) {
+          // Trava o auto-save antes de tirar o rascunho de "Novo produto".
           produtoNovoJaCriadoRef.current = true;
+          // A lista abre na página 1, sem filtro, para mostrar a nova ficha.
+          avisarProdutoNovoCadastrado();
+        }
+
+        // A grade pode estar pendente, ou o reenvio só confirmou o primeiro
+        // INSERT. Leve o rascunho à edição: não diga "Salvo" sobre as mudanças
+        // feitas para o reenvio, nem deixe esses dados em "Novo produto".
+        if (
+          criado &&
+          (criado.variantesNaoSalvas || criado.recuperadoAposConflito)
+        ) {
           try {
             const chaveDeEdicao = chaveDoRascunhoDoProduto(userId, criado.id);
             if (chaveDeEdicao) {
@@ -3909,7 +3915,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 chaveDeEdicao,
                 serializarRascunhoDoProduto({
                   ...formData,
-                  variacoesPendentes: true,
+                  variacoesPendentes:
+                    !!criado.variantesNaoSalvas || formData.variants.length > 0,
                 }),
               );
             }
@@ -3923,13 +3930,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           }
           const chaveDoNovo = chaveDoRascunhoDoProduto(userId);
           if (chaveDoNovo) apagarRascunhoDoProdutoPelaChave(chaveDoNovo);
-          const motivo = criado.variantesNaoSalvas.motivo;
-          // Sem resposta da rede o hook já avisou, com a frase certa (não se
-          // sabe se as variações entraram: conferir antes de restaurar).
-          if (!criado.variantesNaoSalvas.semResposta) {
+          const grade = criado.variantesNaoSalvas;
+          // Sem resposta da rede o hook já avisou para conferir a grade.
+          if (criado.recuperadoAposConflito) {
+            toast.info("O produto já foi criado. Confira os dados na edição.");
+          } else if (grade && !grade.semResposta) {
             toast.error(
               `O produto foi criado, mas as variações NÃO foram salvas.${
-                motivo ? ` ${motivo}` : ""
+                grade.motivo ? ` ${grade.motivo}` : ""
               } Você está na edição dele: corrija e toque em Salvar para tentar de novo -- isso atualiza este produto, não cria outro.`,
               { duration: 30000 },
             );

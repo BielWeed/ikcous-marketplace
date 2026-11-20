@@ -237,6 +237,7 @@ describe("AdminProductFormView — #98 duplo clique cria produto duplicado", () 
     });
     expect(addProduct).toHaveBeenCalledWith(
       expect.objectContaining({ price: preco }),
+      expect.objectContaining({ idDoFormulario: expect.any(String) }),
     );
   });
 

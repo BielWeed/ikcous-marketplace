@@ -19,6 +19,7 @@ import {
   MENSAGEM_PRODUTO_LEITURA_SEM_RESPOSTA,
   MENSAGEM_PRODUTO_NOVO_GRADE_SEM_RESPOSTA,
   MENSAGEM_PRODUTO_NOVO_SEM_RESPOSTA,
+  PRAZO_DE_GRAVAR_O_PRODUTO_MS,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import { act } from "react";
@@ -261,6 +262,68 @@ describe("AdminProductFormView — rede sem resposta", () => {
     // reencontrar o que digitou depois de conferir a lista.
     expect(armazem.has(CHAVE_NOVO)).toBe(true);
     expect(JSON.parse(armazem.get(CHAVE_NOVO)!).name).toBe("Produto Teste");
+  });
+
+  it("reenvia o mesmo ID após o prazo e abre a edição da ficha recuperada", async () => {
+    addProduct
+      .mockImplementationOnce(
+        () =>
+          new Promise((_, rejeitar) =>
+            setTimeout(
+              () =>
+                rejeitar(
+                  erroDeConsultaSemResposta(MENSAGEM_PRODUTO_NOVO_SEM_RESPOSTA),
+                ),
+              PRAZO_DE_GRAVAR_O_PRODUTO_MS,
+            ),
+          ),
+      )
+      .mockImplementationOnce((_dados, opcoes) =>
+        Promise.resolve({
+          ...produtoDoBanco,
+          id: opcoes?.idDoFormulario,
+          recuperadoAposConflito: true,
+        }),
+      );
+    await montar();
+    await act(async () => {
+      digitarInput("product-name", "Produto Teste");
+      digitarTextarea("product-description", "Descrição de teste");
+      digitarInput("product-sale-price", "1000");
+      digitarInput("product-stock", "5");
+      escolherCategoriaDoProduto("Geral");
+      await vi.advanceTimersByTimeAsync(300);
+    });
+    await act(async () => botaoDaBarra("Publicar")!.click());
+    await passar(PRAZO_DE_GRAVAR_O_PRODUTO_MS);
+    expect(botaoDaBarra("Publicar")!.disabled).toBe(false);
+
+    await act(async () => {
+      digitarInput("product-name", "Nome ajustado após a demora");
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+    await act(async () => botaoDaBarra("Publicar")!.click());
+
+    expect(addProduct).toHaveBeenCalledTimes(2);
+    const id = addProduct.mock.calls[0][1]?.idDoFormulario;
+    expect(id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+    expect(addProduct.mock.calls[1][1]?.idDoFormulario).toBe(id);
+    expect(onNavigate).toHaveBeenCalledExactlyOnceWith(
+      "admin-product-form",
+      id,
+      true,
+    );
+    expect(armazem.has(CHAVE_NOVO)).toBe(false);
+    const chaveDeEdicao = `ikcous_product_form_draft_edit_${id}:lojista-1`;
+    expect(JSON.parse(armazem.get(chaveDeEdicao)!).name).toBe(
+      "Nome ajustado após a demora",
+    );
+
+    // A navegação ainda não desmontou o formulário neste teste.
+    await act(async () => botaoDaBarra("Publicar")?.click());
+    expect(addProduct).toHaveBeenCalledTimes(2);
   });
 
   it("Salvar a edição sem resposta solta o botão e mantém o rascunho da edição", async () => {
