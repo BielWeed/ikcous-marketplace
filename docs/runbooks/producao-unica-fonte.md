@@ -2037,7 +2037,13 @@ O cadastro de UMA vez, na entrada do cliente:
    Nao promova dono automaticamente. Depois da primeira administradora (passo 8), siga o
    [roteiro para definir o dono da loja](definir-o-dono-da-loja.md).
 
-   **Passo 6A — Preparar e provar a marca da loja (antes do primeiro cadastro).**
+   **Passo 6A — Preparar e provar a marca da loja (antes do primeiro acesso da lojista).**
+
+   Cadastrar o domínio não basta. Antes de passar o endereço para a lojista, prepare o nome,
+   as cores, o logo e o pacote de imagens da marca com `scripts/identidade-bootstrap.mjs`,
+   seguindo os comandos abaixo. Sem a marca completa, aparece **“Esta loja está em manutenção”**
+   e a lojista não consegue se cadastrar. Depois de preparar a marca, abra o domínio em uma janela
+   anônima e confirme que aparece a vitrine, não a tela de manutenção.
 
    - **Pre-requisitos:** no Supabase da loja nova, o bucket `branding` precisa estar publico
      e `store_config.id = 1` precisa ter o dominio canonico conferido acima. Use o identificador
