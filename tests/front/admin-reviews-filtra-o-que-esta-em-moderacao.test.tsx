@@ -224,6 +224,23 @@ describe("AdminReviewsView — filtro Em moderação", () => {
     expect(c.filtros.rating).toBe(4);
   });
 
+  it("identifica o total da loja quando a busca e a nota não encontram avaliações da fila", async () => {
+    h.estado.adminReviews = [];
+    h.estado.total = 0;
+    armazem.set("admin_reviews_status_filter", JSON.stringify("pendente"));
+    armazem.set("admin_reviews_rating_filter", JSON.stringify(1));
+    armazem.set("admin_reviews_search_query", JSON.stringify("sem resultado"));
+    await montar();
+
+    expect(ultimaChamada().filtros).toMatchObject({
+      status: "pendente",
+      rating: 1,
+      search: "sem resultado",
+    });
+    expect(tela()).toContain("Nada em moderação com essa busca ou essa nota.");
+    expect(norm(botaoEmModeracao().textContent)).toBe("Em moderação 3 (total)");
+  });
+
   it("a escolha sobrevive a recarregar a tela: já abre só com a fila", async () => {
     armazem.set("admin_reviews_status_filter", JSON.stringify("pendente"));
     await montar();
