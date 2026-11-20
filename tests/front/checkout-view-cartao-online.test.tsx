@@ -671,6 +671,8 @@ describe("CheckoutView — cartão pelo app", () => {
   );
 
   it("falha ao ler o total limpa a compra já criada sem abrir pagamento nem permitir finalizar de novo", async () => {
+    const { toast } = await import("sonner");
+    vi.mocked(toast.error).mockClear();
     createOrder.mockRejectedValueOnce(
       Object.assign(
         new Error("Não foi possível conferir o valor final do pedido."),
@@ -689,9 +691,10 @@ describe("CheckoutView — cartão pelo app", () => {
     expect(sessionStorage.getItem("ikcous-rascunho-do-checkout-v1")).toBeNull();
     expect(localStorage.getItem("ikcous-chave-do-pedido:user-1")).toBeNull();
     expect(propsDoPagamento).toHaveLength(0);
-    expect(document.body.textContent).toContain(
-      "O pedido foi criado, mas não conseguimos conferir o valor final. Abra Meus pedidos e retome o pagamento.",
-    );
+    const mensagem =
+      "O pedido foi criado, mas não conseguimos conferir o valor final. Abra Meus pedidos e retome o pagamento.";
+    expect(document.body.textContent).toContain(mensagem);
+    expect(toast.error).toHaveBeenCalledWith(mensagem);
     expect(botaoPorTexto(document.body, "Finalizar Pedido")!.disabled).toBe(
       true,
     );

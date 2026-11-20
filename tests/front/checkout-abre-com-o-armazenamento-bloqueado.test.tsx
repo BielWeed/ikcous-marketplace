@@ -358,9 +358,7 @@ describe("CheckoutView — armazenamento do navegador bloqueado", () => {
     expect(createOrder).toHaveBeenCalledWith(expect.anything(), {
       comPagamentoOnline: true,
     });
-    expect(avisarErro).not.toHaveBeenCalledWith(
-      expect.stringContaining("Falha no Pedido"),
-    );
+    expect(avisarErro).not.toHaveBeenCalled();
     expect(
       document.querySelector('[data-testid="pagamento-online"]')?.textContent,
     ).toBe("pix:ped-confirmado-1");

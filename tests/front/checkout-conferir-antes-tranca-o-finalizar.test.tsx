@@ -382,6 +382,9 @@ describe("CheckoutView — o botão Finalizar Pedido obedece o painel de conferi
       });
     });
     expect(createOrder).not.toHaveBeenCalled();
+    expect(toastError).toHaveBeenCalledWith(
+      "Não conseguimos confirmar se o pedido foi enviado. Verifique se ele já apareceu antes de tentar de novo.",
+    );
     expect(localizarBotaoFinalizar()?.textContent).toContain("Finalizar");
     expect(
       document.querySelector('button[data-acao="conferir_antes"]'),

@@ -237,7 +237,7 @@ describe("CheckoutView — o comprador para de ler o erro cru do banco ao fechar
     const mensagemMostrada = String(toastError.mock.calls[0][0]);
     expect(mensagemMostrada).not.toContain("constraint");
     expect(mensagemMostrada).not.toContain("duplicate key");
-    expect(mensagemMostrada).toContain("Falha no Pedido");
+    expect(mensagemMostrada).toMatch(/^Falha no Pedido: /);
     // A lógica ANTERIOR disparava o alert() de emergência exatamente quando
     // HAVIA um error.message cru (a condição era `if (!error.message)`, e
     // aqui error.message existe) — então o alert JÁ NÃO disparava neste caso
@@ -283,6 +283,7 @@ describe("CheckoutView — o comprador para de ler o erro cru do banco ao fechar
     // "Tentar de novo", que reenvia a MESMA compra sem sair em dobro. Quem tem
     // conta segue com "Verifique se ele já apareceu" (ver
     // checkout-convidada-tenta-de-novo-a-mesma-compra.test.tsx).
+    expect(mensagemMostrada).toMatch(/^O pedido não foi confirmado\./);
     expect(mensagemMostrada).toContain("Tentar de novo");
     expect(mensagemMostrada).toContain("não sai em dobro");
     expect(mensagemMostrada).not.toContain("Verifique se ele já apareceu");
@@ -315,33 +316,50 @@ describe("CheckoutView — o comprador para de ler o erro cru do banco ao fechar
 
     expect(toastError).toHaveBeenCalledTimes(1);
     const mensagemMostrada = String(toastError.mock.calls[0][0]);
-    expect(mensagemMostrada).toContain("não foi confirmado");
+    expect(mensagemMostrada).toMatch(/^O pedido não foi confirmado\./);
     expect(mensagemMostrada).toContain("não sai em dobro");
     expect(mensagemMostrada).not.toContain("Verifique se ele já apareceu");
   });
 
-  it("recusa de negócio (P0001, ex.: estoque insuficiente): o toast mostra o texto da RPC, já em português e específico", async () => {
-    createOrder.mockRejectedValueOnce({
-      code: "P0001",
-      message: "Estoque insuficiente para o produto Caneca Azul",
-    });
-    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+  it.each([
+    {
+      caso: "estoque insuficiente",
+      erro: {
+        code: "P0001",
+        message: "Estoque insuficiente para o produto Caneca Azul",
+      },
+      aviso: "Falha no Pedido: Estoque insuficiente para o produto Caneca Azul",
+    },
+    {
+      caso: "recusa explícita sem ação específica",
+      erro: { code: "P0001", message: "Uma recusa que a tela não conhece." },
+      aviso: "Falha no Pedido: Uma recusa que a tela não conhece.",
+    },
+    {
+      caso: "valor acima do máximo",
+      erro: { code: "22003", message: "numeric field overflow" },
+      aviso:
+        "Falha no Pedido: O valor deste pedido passa do máximo aceito. Reduza a quantidade ou divida em mais de um pedido.",
+    },
+  ])(
+    "recusa comprovada ($caso): o toast mantém Falha no Pedido",
+    async ({ erro, aviso }) => {
+      createOrder.mockRejectedValueOnce(erro);
+      const { CheckoutView } = await import("@/views/customer/CheckoutView");
 
-    await act(async () => {
-      raiz.render(
-        <CheckoutView
-          onNavigate={onNavigate}
-          onSetBackOverride={onSetBackOverride}
-        />,
-      );
-    });
+      await act(async () => {
+        raiz.render(
+          <CheckoutView
+            onNavigate={onNavigate}
+            onSetBackOverride={onSetBackOverride}
+          />,
+        );
+      });
 
-    await preencherEClicarFinalizar();
+      await preencherEClicarFinalizar();
 
-    expect(toastError).toHaveBeenCalledTimes(1);
-    const mensagemMostrada = String(toastError.mock.calls[0][0]);
-    expect(mensagemMostrada).toContain(
-      "Estoque insuficiente para o produto Caneca Azul",
-    );
-  });
+      expect(toastError).toHaveBeenCalledTimes(1);
+      expect(toastError).toHaveBeenCalledWith(aviso);
+    },
+  );
 });

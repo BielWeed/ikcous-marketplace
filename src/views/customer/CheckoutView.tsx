@@ -432,6 +432,7 @@ const decidirSaidaDaTela = (error: unknown): RecusaDoPedido => {
   ) {
     return {
       acao: "conferir_antes",
+      resultado: "criado",
       mensagem:
         "O pedido foi criado, mas não conseguimos conferir o valor final. Abra Meus pedidos e retome o pagamento.",
     };
@@ -439,6 +440,7 @@ const decidirSaidaDaTela = (error: unknown): RecusaDoPedido => {
   if ((error as { code?: string } | null)?.code === "PEDIDO_SEM_RESPOSTA") {
     return {
       acao: "conferir_antes",
+      resultado: "incerto",
       mensagem:
         "O servidor demorou para responder. O pedido pode ter sido criado: confira seus pedidos ou fale com a loja antes de tentar novamente.",
     };
@@ -466,6 +468,7 @@ const decidirSaidaDaTela = (error: unknown): RecusaDoPedido => {
     // cria um segundo pedido. Por isso manda conferir Meus pedidos primeiro.
     return {
       acao: "tentar_de_novo",
+      resultado: "incerto",
       mensagem:
         "Sem conexão — não sabemos se o pedido foi confirmado. Antes de tentar de novo, confira em Meus pedidos se ele já aparece; se não aparecer, é só tentar de novo.",
     };
@@ -560,9 +563,15 @@ export const decidirSaidaDoCheckout = (
   if (bancoRespondeu) return saida;
   return {
     acao: "reenviar_mesma_compra",
+    resultado: "incerto",
     mensagem: MENSAGEM_DE_REENVIO_SEM_CONTA,
   };
 };
+
+const mensagemDoAvisoDePedido = (
+  saida: RecusaDoPedido,
+  mensagem = saida.mensagem,
+): string => (saida.resultado ? mensagem : `Falha no Pedido: ${mensagem}`);
 
 /**
  * Prova de que a falha é de REDE — o fetch nunca chegou a existir ou o
@@ -5345,7 +5354,7 @@ export function CheckoutViewDaConta({
       console.error("Falha inesperada no checkout:", error);
       const saida = decidirSaidaDoCheckout(error);
       setRecusaDoUltimoClique(saida);
-      toast.error(`Falha no Pedido: ${saida.mensagem}`);
+      toast.error(mensagemDoAvisoDePedido(saida));
     });
   };
 
@@ -5595,9 +5604,8 @@ export function CheckoutViewDaConta({
       if (ehErroDeCuponsDesligados(error)) {
         refreshStoreConfig({ onlyConfig: true }).catch(() => {});
       }
-      // Este catch recebe o MESMO erro que useOrders.ts (createOrder) já
-      // relança depois do próprio toast interno — mesma tradução aqui, para
-      // não haver dois textos diferentes para a mesma falha.
+      // createOrder relança o erro sem avisar; a tradução para a cliente
+      // fica aqui, no toast e no painel.
       //
       // O alert() de emergência que existia aqui foi removido: a condição
       // era `if (!error.message)`, ou seja, disparava só quando NÃO havia
@@ -5612,14 +5620,15 @@ export function CheckoutViewDaConta({
       // num e "tente de novo" no outro, para a mesma falha, é a divergência que
       // recusa-e-toast-nao-divergem.test.ts proíbe entre as regras do banco.
       toast.error(
-        `Falha no Pedido: ${
+        mensagemDoAvisoDePedido(
+          saida,
           ehFalhaDeRedeAntesDoEnvio(error) ||
-          error?.code === "PEDIDO_SEM_RESPOSTA" ||
-          error?.code === "TOTAL_DO_PEDIDO_INDISPONIVEL" ||
-          saida.acao === "reenviar_mesma_compra"
+            error?.code === "PEDIDO_SEM_RESPOSTA" ||
+            error?.code === "TOTAL_DO_PEDIDO_INDISPONIVEL" ||
+            saida.acao === "reenviar_mesma_compra"
             ? saida.mensagem
-            : mensagemAmigavelErroPedido(error)
-        }`,
+            : mensagemAmigavelErroPedido(error),
+        ),
       );
       // O toast é o AVISO — ele alcança quem não está olhando esta parte da
       // tela. O painel abaixo é a AÇÃO. Os dois convivem de propósito: até
