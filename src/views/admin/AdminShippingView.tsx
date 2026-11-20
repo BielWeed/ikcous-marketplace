@@ -1276,9 +1276,13 @@ export const AdminShippingView = memo(function AdminShippingView({
       }
       if (acaoTransportadoras?.mudou && !(await acaoTransportadoras.salvar())) {
         setFalhaAoSalvar(true);
+        const partesSalvas = [];
+        if (mototaxiSalvoNestaRodada)
+          partesSalvas.push("o contato do mototáxi");
+        if (gravaRegras) partesSalvas.push("as regras");
         toast.error(
-          regrasMudaram
-            ? "As regras foram salvas, mas as transportadoras não. Toque em Tentar de novo."
+          partesSalvas.length
+            ? `Salvamos ${partesSalvas.join(" e ")}, mas as transportadoras não. Toque em Tentar de novo.`
             : "As transportadoras não foram salvas. Toque em Tentar de novo.",
         );
         return;

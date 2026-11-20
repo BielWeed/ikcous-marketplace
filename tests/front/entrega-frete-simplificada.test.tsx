@@ -6,11 +6,12 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { loja, updateConfig, invoke, erroToast, sucessoToast } = vi.hoisted(
+const { loja, updateConfig, invoke, rpc, erroToast, sucessoToast } = vi.hoisted(
   () => ({
     loja: { atual: {} as StoreConfig },
     updateConfig: vi.fn(),
     invoke: vi.fn(),
+    rpc: vi.fn(),
     erroToast: vi.fn(),
     sucessoToast: vi.fn(),
   }),
@@ -25,8 +26,12 @@ vi.mock("@/lib/pagamento-pelo-app-no-painel", () => ({
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     functions: { invoke },
+    rpc,
     from: () => ({
-      select: () => ({ order: () => ({ limit: async () => ({ data: [] }) }) }),
+      select: () => ({
+        eq: () => ({ maybeSingle: async () => ({ data: null }) }),
+        order: () => ({ limit: async () => ({ data: [] }) }),
+      }),
     }),
   },
 }));
@@ -98,6 +103,7 @@ describe("Entrega e frete — escolhas novas, valores antigos", () => {
       loja.atual = { ...loja.atual, ...patch };
       return true;
     });
+    rpc.mockResolvedValue({ data: { whatsapp: "5511987654321", nome: null } });
     invoke.mockImplementation(async (_: string, { body }: any) =>
       body.action === "ler_configuracao_frete"
         ? {
@@ -374,13 +380,44 @@ describe("Entrega e frete — escolhas novas, valores antigos", () => {
       { silentSuccess: true },
     );
     expect(erroToast).toHaveBeenCalledWith(
-      "As regras foram salvas, mas as transportadoras não. Toque em Tentar de novo.",
+      "Salvamos as regras, mas as transportadoras não. Toque em Tentar de novo.",
     );
     invoke.mockResolvedValue({ data: { success: true, ligados: [] } });
     await act(async () => salvar().click());
     expect(updateConfig).toHaveBeenCalledTimes(1);
     expect(sucessoToast).not.toHaveBeenCalledWith("Regras de frete salvas!");
   });
+
+  it.each([
+    [true, "o contato do mototáxi e as regras"],
+    [false, "o contato do mototáxi"],
+  ])(
+    "na falha das transportadoras com regras=%s, informa que salvou %s",
+    async (comRegras, salvo) => {
+      await montar();
+      await clicar("Na sua região", host.querySelector("#painel-frete-local")!);
+      await digitar("mototaxi-whatsapp", "11987654321");
+      if (comRegras) await digitar("local-delivery-fee", "12.5");
+      await clicar("Ligar Frenet");
+      invoke.mockImplementation(
+        async (_: string, { body }: { body: { action: string } }) =>
+          body.action === "save_active_providers"
+            ? { data: { success: false, error: "Falha simulada" } }
+            : { data: { success: true } },
+      );
+
+      await act(async () => salvar().click());
+
+      expect(rpc).toHaveBeenCalledExactlyOnceWith("salvar_config_mototaxi", {
+        p_whatsapp: "5511987654321",
+        p_nome: null,
+      });
+      expect(updateConfig).toHaveBeenCalledTimes(comRegras ? 1 : 0);
+      expect(erroToast).toHaveBeenCalledWith(
+        `Salvamos ${salvo}, mas as transportadoras não. Toque em Tentar de novo.`,
+      );
+    },
+  );
 
   it("salva transportadoras pelo topo; na falha parcial repete só a lista", async () => {
     await montar();
