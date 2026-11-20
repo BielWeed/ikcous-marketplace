@@ -1802,9 +1802,16 @@ export const AdminOrdersView = memo(function AdminOrdersView({
 
     async function medirTotalAbsoluto() {
       try {
-        const resultado = await supabase
-          .from("marketplace_orders")
-          .select("*", { count: "exact", head: true });
+        const resultado = await aguardarComPrazo(
+          Promise.resolve(
+            supabase
+              .from("marketplace_orders")
+              .select("*", { count: "exact", head: true }),
+          ),
+          PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+          () =>
+            erroDeConsultaSemResposta("A contagem de pedidos não respondeu."),
+        );
         if (cancelado) return;
         if (!resultado?.error && typeof resultado?.count === "number") {
           setTotalAbsolutoNaLoja(resultado.count);
