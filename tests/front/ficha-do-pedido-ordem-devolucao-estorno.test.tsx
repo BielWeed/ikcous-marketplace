@@ -22,7 +22,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     rpc: vi.fn(),
-    from: vi.fn(),
+    from: vi.fn(() => ({
+      select: vi.fn(() => ({
+        eq: vi.fn(() => ({
+          maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+        })),
+      })),
+    })),
     functions: { invoke: vi.fn() },
     channel: vi.fn(),
     removeChannel: vi.fn(),
@@ -165,6 +171,25 @@ describe("ficha do pedido — ordem Pagamento → Devolução do produto → Dev
     });
     hospedeiro.remove();
     vi.restoreAllMocks();
+  });
+
+  it("a devolução concluída identifica o valor dos itens, não o dinheiro devolvido", async () => {
+    devolucoesDoPedido.lista = [{ ...umaDevolucao, status: "concluida" }];
+    const { OrderDetail } = await import(
+      "@/components/admin/orders/OrderDetail"
+    );
+    await act(async () => {
+      raiz.render(
+        <OrderDetail order={pedidoEntreguePago} onStatusChange={vi.fn()} />,
+      );
+    });
+
+    const linha = Array.from(hospedeiro.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("DV260926-ABCDE"),
+    );
+    const texto = linha?.textContent?.replace(/\s+/g, " ");
+    expect(texto).toContain("Concluída");
+    expect(texto).toContain("Valor dos itens: R$ 50,00");
   });
 
   it("os títulos descem nesta ordem, e os dois cartões de devolução existem de verdade", async () => {

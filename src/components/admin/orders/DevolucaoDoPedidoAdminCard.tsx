@@ -109,7 +109,7 @@ export function DevolucaoDoPedidoAdminCard({
                     {rotuloResolucao(d.resolucao_desejada)} ·{" "}
                     {rotuloMetodo(d.metodo_retorno)} ·{" "}
                     <span className="tabular-nums">
-                      {formatarReais(d.valor_itens)}
+                      Valor dos itens: {formatarReais(d.valor_itens)}
                     </span>{" "}
                     · {formatarDia(d.created_at)}
                   </p>
