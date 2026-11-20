@@ -548,7 +548,7 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
       expect(caixa.textContent).not.toContain("produtos sem custo");
       await abrirValores();
       expect(document.body.textContent).toContain(
-        "Todos os produtos em estoque têm custo cadastrado",
+        "Todos os produtos ativos em estoque têm custo cadastrado",
       );
     },
   );

@@ -1487,7 +1487,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                     "Nenhum produto ativo com estoque ainda."
                   ) : (
                     <span className="text-emerald-300">
-                      Todos os produtos em estoque têm custo cadastrado.
+                      Todos os produtos ativos em estoque têm custo cadastrado.
                     </span>
                   )}
                 </span>
@@ -1622,7 +1622,9 @@ export const AdminProductsView = memo(function AdminProductsView({
                       estimativa.
                     </p>
                   ) : (
-                    <p>Todos os produtos em estoque têm custo cadastrado.</p>
+                    <p>
+                      Todos os produtos ativos em estoque têm custo cadastrado.
+                    </p>
                   )}
                   {financialStats.semNenhumCusto ? (
                     <p>
@@ -1879,7 +1881,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                 <p className="mt-3 text-sm text-zinc-400">
                   {temBuscaOuFiltro
                     ? `Nenhum produto sem custo combina com ${descricaoDoFiltro}.`
-                    : "Todos os produtos em estoque têm custo cadastrado."}
+                    : "Todos os produtos ativos em estoque têm custo cadastrado."}
                 </p>
                 {temBuscaOuFiltro && (
                   <button

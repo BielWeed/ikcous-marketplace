@@ -86,7 +86,7 @@ class ObserverStub {
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const TEXTO_VERDE = "Todos os produtos em estoque têm custo cadastrado";
+const TEXTO_VERDE = "Todos os produtos ativos em estoque têm custo cadastrado";
 
 const resumo = (inventory: Record<string, number>) => ({ inventory });
 const SEM_ESTOQUE = resumo({

@@ -299,7 +299,7 @@ describe("Produtos: tocar no selo 'sem custo' leva aos produtos sem custo", () =
     await montar();
     expect(botaoDoSelo()).toBeNull();
     expect(hospedeiro.textContent).toContain(
-      "Todos os produtos em estoque têm custo cadastrado.",
+      "Todos os produtos ativos em estoque têm custo cadastrado.",
     );
   });
 
