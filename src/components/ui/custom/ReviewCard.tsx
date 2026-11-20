@@ -1,5 +1,6 @@
 import { LazyImage } from "@/components/LazyImage";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { dataNoFusoDaLoja } from "@/lib/data-da-loja";
 import { nomePublicoDe } from "@/lib/nome-publico";
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { cn } from "@/lib/utils";
@@ -63,7 +64,7 @@ export function ReviewCard({
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleDateString("pt-BR", {
+    return dataNoFusoDaLoja(date, {
       day: "numeric",
       month: "short",
       year: "numeric",

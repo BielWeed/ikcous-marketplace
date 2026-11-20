@@ -27,6 +27,7 @@ import { useRevalidarAoVoltar } from "@/hooks/useRevalidarAoVoltar";
 import { useReviews } from "@/hooks/useReviews";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { FILTRO_POSTGREST_AVALIACAO_SEM_RESPOSTA } from "@/lib/avaliacoes-para-atender";
+import { dataNoFusoDaLoja } from "@/lib/data-da-loja";
 import { EVENTO_AVALIACAO_EXCLUIDA } from "@/lib/evento-avaliacao-excluida";
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { pluralizar } from "@/lib/pluralizar";
@@ -756,8 +757,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
     }
   };
 
-  const formatDate = (dateStr: string) =>
-    new Date(dateStr).toLocaleDateString("pt-BR");
+  const formatDate = (dateStr: string) => dataNoFusoDaLoja(new Date(dateStr));
 
   const detalhado = viewMode === "detailed";
   const soEmModeracao = statusFilter === "pendente";
