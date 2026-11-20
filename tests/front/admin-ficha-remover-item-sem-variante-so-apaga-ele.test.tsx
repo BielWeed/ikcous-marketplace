@@ -48,7 +48,7 @@ const produto = {
       name: "Cor",
       value: "Azul",
       stock_increment: 5,
-      price_override: null,
+      price_override: 7,
       active: true,
     },
   ],
@@ -291,6 +291,38 @@ describe("Ficha da cliente — remoção preserva a outra linha do mesmo produto
     ).toHaveLength(1);
     expect(hospedeiro.textContent).toContain("Cor: Azul");
   });
+
+  it.each([1, 2])(
+    "deixa %i linha(s) sem variação fora do total",
+    async (quantidade) => {
+      const removidas = ["variante-removida", "variante-azul~tamanho-removido"];
+      banco.linhas.push(
+        ...removidas.slice(0, quantidade).map((variant_id, i) => ({
+          id: `linha-indisponivel-${i}`,
+          user_id: "cliente-1",
+          product_id: "produto-1",
+          quantity: 3,
+          variant_id,
+        })),
+      );
+      await abrirAbaCarrinho();
+
+      const total = [...hospedeiro.querySelectorAll("tr")].find((linha) =>
+        linha.textContent?.includes("Total estimado"),
+      );
+      expect(total?.lastElementChild?.textContent?.replace(/\s/g, " ")).toBe(
+        "R$ 24,00",
+      );
+      expect(
+        hospedeiro.textContent?.match(/Esta variação não existe mais/g),
+      ).toHaveLength(quantidade);
+      expect(hospedeiro.textContent).toContain(
+        quantidade === 1
+          ? "1 item sem preço (variação removida) não entra na soma."
+          : "2 itens sem preço (variação removida) não entram na soma.",
+      );
+    },
+  );
 
   it("controle: remover o item com variante preserva a linha sem variante", async () => {
     await removerPelaTela(1);

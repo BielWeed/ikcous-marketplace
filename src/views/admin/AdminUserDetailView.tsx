@@ -763,6 +763,26 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
     </div>
   );
 
+  const itensComPreco = cartItems.map((item) => {
+    const variant = item.product.variants?.find((v) => v.id === item.variantId);
+    const outrasEscolhas = (item.outrasVariantIds ?? []).map((id) => ({
+      id,
+      variante: item.product.variants?.find((v) => v.id === id),
+    }));
+    const isVariantMissing =
+      (!!item.variantId && !variant) || outrasEscolhas.some((o) => !o.variante);
+    const unitPrice = isVariantMissing
+      ? null
+      : precoVendido(item.product, variant);
+    return { item, variant, outrasEscolhas, isVariantMissing, unitPrice };
+  });
+  let totalEstimado = 0;
+  let itensSemPreco = 0;
+  for (const { item, unitPrice } of itensComPreco) {
+    if (unitPrice === null) itensSemPreco += 1;
+    else totalEstimado += unitPrice * item.quantity;
+  }
+
   return (
     <div className="pb-admin mx-auto max-w-7xl space-y-6 px-4 duration-200 animate-in fade-in md:px-0 lg:px-6 lg:pb-12">
       {/* Header / Actions */}
@@ -1377,33 +1397,14 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                               {...papel("rowgroup")}
                               className="block sm:table-row-group sm:divide-y sm:divide-zinc-800/30"
                             >
-                              {cartItems.map((item, idx) => {
-                                const hasVariantId = !!item.variantId;
-                                const variant = hasVariantId
-                                  ? item.product.variants?.find(
-                                      (v) => v.id === item.variantId,
-                                    )
-                                  : null;
-                                const outrasEscolhas = (
-                                  item.outrasVariantIds ?? []
-                                ).map((id) => ({
-                                  id,
-                                  variante: item.product.variants?.find(
-                                    (v) => v.id === id,
-                                  ),
-                                }));
-                                const isVariantMissing =
-                                  hasVariantId &&
-                                  (!variant ||
-                                    outrasEscolhas.some((o) => !o.variante));
-                                // Laudo 31/08 (menor E): `||` tratava o
-                                // override ZERO como ausência e exibia o
-                                // preço cheio de uma variação-brinde.
-                                const unitPrice = precoVendido(
-                                  item.product,
+                              {itensComPreco.map((linha, idx) => {
+                                const {
+                                  item,
                                   variant,
-                                );
-
+                                  outrasEscolhas,
+                                  isVariantMissing,
+                                  unitPrice,
+                                } = linha;
                                 return (
                                   <tr
                                     key={idx}
@@ -1486,7 +1487,9 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                       <span className="font-normal sm:hidden">
                                         Preço:{" "}
                                       </span>
-                                      {formatCurrency(unitPrice)}
+                                      {unitPrice === null
+                                        ? "Sem preço"
+                                        : formatCurrency(unitPrice)}
                                     </td>
                                     <td
                                       {...papel("cell")}
@@ -1495,9 +1498,11 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                       <span className="block text-[11px] font-bold uppercase tracking-wide text-zinc-400 sm:hidden">
                                         Total
                                       </span>
-                                      {formatCurrency(
-                                        unitPrice * item.quantity,
-                                      )}
+                                      {unitPrice === null
+                                        ? "—"
+                                        : formatCurrency(
+                                            unitPrice * item.quantity,
+                                          )}
                                     </td>
                                     <td
                                       {...papel("cell")}
@@ -1537,24 +1542,18 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                   {...papel("cell")}
                                   className="block text-right text-lg font-black tracking-tighter text-green-500 sm:table-cell sm:px-6 sm:py-4"
                                 >
-                                  {formatCurrency(
-                                    cartItems.reduce((acc, item) => {
-                                      const variant = item.variantId
-                                        ? item.product.variants?.find(
-                                            (v) => v.id === item.variantId,
-                                          )
-                                        : null;
-                                      return (
-                                        acc +
-                                        precoVendido(item.product, variant) *
-                                          item.quantity
-                                      );
-                                    }, 0),
-                                  )}
+                                  {formatCurrency(totalEstimado)}
                                 </td>
                               </tr>
                             </tbody>
                           </table>
+                          {itensSemPreco > 0 && (
+                            <p className="p-4 text-xs text-zinc-400">
+                              {itensSemPreco === 1
+                                ? "1 item sem preço (variação removida) não entra na soma."
+                                : `${itensSemPreco} itens sem preço (variação removida) não entram na soma.`}
+                            </p>
+                          )}
                         </div>
                       )}
                     </div>
