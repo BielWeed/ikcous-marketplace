@@ -227,6 +227,12 @@ describe("AdminShippingView — avisa quando a transportadora fica sem pagamento
   const textoDaPromocao =
     "O frete grátis por produto pode aparecer fora da sua região, mas a cliente não consegue finalizar sem pagamento pelo app.";
   const textoDaTela = () => hospedeiro.textContent ?? "";
+  const descricaoSoRetirada = () =>
+    [...hospedeiro.querySelectorAll('#painel-frete-local [role="radio"]')].find(
+      (opcao) => opcao.querySelector("span")?.textContent === "Só retirada",
+    )?.textContent;
+  const descricaoAntigaSoRetirada =
+    "Ninguém recebe em casa. Qualquer cliente, de qualquer lugar, busca na loja.";
 
   it.each([false, true])(
     "entrega local com retirada ligada=%s: a promoção nacional exige pagamento pelo app",
@@ -337,7 +343,11 @@ describe("AdminShippingView — avisa quando a transportadora fica sem pagamento
         "Retirada grátis; entrega grátis se o pedido tiver produto marcado";
       if (pagamentoLigado) {
         expect(linhas).toContain(promessa);
+        expect(descricaoSoRetirada()).toContain(
+          "Na sua região, só retirada. Fora dela, pedidos com produto marcado também podem ter entrega grátis.",
+        );
       } else {
+        expect(descricaoSoRetirada()).toContain(descricaoAntigaSoRetirada);
         expect(linhas).not.toContain(promessa);
         expect(linhas).toContain("Retirada grátis");
         expect(linhas).toContain(
@@ -352,8 +362,10 @@ describe("AdminShippingView — avisa quando a transportadora fica sem pagamento
     mockConfig.enabledShippingMethods.push("store-pickup");
     mockConfig.nationalShippingStrategy = "desligado";
     cenario.ligados = [];
+    cenario.bootPagamentoLigado = true;
     await abrirTela();
 
+    expect(descricaoSoRetirada()).toContain(descricaoAntigaSoRetirada);
     const previa = hospedeiro.querySelector(
       '[aria-label="Como fica para o cliente"]',
     )?.textContent;

@@ -726,13 +726,16 @@ export const AdminShippingView = memo(function AdminShippingView({
     !credsErro &&
     !transportadorasEmLeitura &&
     formData.shippingCoverage === "national" &&
-    formData.modo !== "so_retiro" &&
     formDataNacional.estrategia === "por_produto" &&
     nomesLigados.length === 0;
   const avisarPromocaoNacionalSemPagamento =
-    promocaoNacionalSemTransportadora && !pagamentoPeloAppLigado;
-  const avisarPromocaoNacionalComPagamento =
+    formData.modo !== "so_retiro" &&
+    promocaoNacionalSemTransportadora &&
+    !pagamentoPeloAppLigado;
+  const promocaoNacionalComPagamento =
     promocaoNacionalSemTransportadora && pagamentoPeloAppLigado;
+  const avisarPromocaoNacionalComPagamento =
+    formData.modo !== "so_retiro" && promocaoNacionalComPagamento;
   const resumoDaPromocaoNacional =
     "Fora da sua região, só pedidos com produto marcado têm entrega";
 
@@ -1684,6 +1687,7 @@ export const AdminShippingView = memo(function AdminShippingView({
                 onNavigate={onNavigate}
                 nomesLigados={credsErro || !credsLidas ? null : nomesLigados}
                 pagamentoPeloAppLigado={pagamentoPeloAppLigado}
+                promocaoNacionalComPagamento={promocaoNacionalComPagamento}
               />
               <fieldset
                 disabled={isOffline || isSaving || !mototaxi.config}

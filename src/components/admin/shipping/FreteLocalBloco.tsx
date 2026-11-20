@@ -144,6 +144,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
   mostrarCabecalho = true,
   nomesLigados,
   pagamentoPeloAppLigado,
+  promocaoNacionalComPagamento = false,
 }: {
   readonly valor: number;
   readonly onValor: (valor: number) => void;
@@ -184,6 +185,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
   /** Pagamento pelo app ligado (a transportadora só vende com ele). `null`/
    * ausente = não se sabe: a tela não promete a compra. */
   readonly pagamentoPeloAppLigado?: boolean | null;
+  readonly promocaoNacionalComPagamento?: boolean;
 }) {
   // O que está escrito no campo do valor. Só é reescrito quando o valor muda
   // POR FORA (config chegou, salvou) e o texto já não o produz — "7," digitado
@@ -373,11 +375,13 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
                 ativa={modo === r.modo}
                 titulo={r.titulo}
                 efeito={
-                  r.modo === "so_retiro" &&
-                  coverage !== "local" &&
-                  vendeFora !== false
-                    ? EFEITO_SO_RETIRADA_COM_TRANSPORTADORA
-                    : r.efeito
+                  r.modo !== "so_retiro"
+                    ? r.efeito
+                    : promocaoNacionalComPagamento
+                      ? "Na sua região, só retirada. Fora dela, pedidos com produto marcado também podem ter entrega grátis."
+                      : coverage !== "local" && vendeFora !== false
+                        ? EFEITO_SO_RETIRADA_COM_TRANSPORTADORA
+                        : r.efeito
                 }
                 desabilitado={desabilitado}
                 onEscolher={() => {
