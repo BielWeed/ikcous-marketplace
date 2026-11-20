@@ -397,12 +397,13 @@ export function FunilEPedidosDoCrm({
           ),
           ajuda: (
             <ExplicacaoDoRelatorio titulo="Funil do app">
-              {visitas?.visitas == null ? "Visitas e produtos" : "Produtos"}{" "}
-              vistos ainda não são medidos. Carrinhos contam só quem tem conta.
-              Pedidos do app incluem compras com e sem conta. Os criados contam
-              pela data de criação; os pagos, pela data do pagamento, mesmo que
-              o pedido seja de antes do período. Pedidos cancelados, devolvidos
-              ou com pagamento estornado ficam fora dos pagos.
+              A etapa de visitas só aparece quando há um número disponível.
+              Produtos vistos ainda não são medidos. Carrinhos contam só quem
+              tem conta. Pedidos do app incluem compras com e sem conta. Os
+              criados contam pela data de criação; os pagos, pela data do
+              pagamento, mesmo que o pedido seja de antes do período. Pedidos
+              cancelados, devolvidos ou estornados por inteiro ficam fora dos
+              pagos.
             </ExplicacaoDoRelatorio>
           ),
         }}

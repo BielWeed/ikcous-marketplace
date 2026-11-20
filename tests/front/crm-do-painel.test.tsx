@@ -707,9 +707,8 @@ describe("Dashboard CRM", () => {
     expect(texto(painel("funil"))).toContain("Pedidos criados no período");
     expect(texto(painel("funil"))).toContain("Pedidos pagos no período");
     expect(texto(painel("funil"))).not.toContain("66,7%");
-    // visitas/produtos_vistos são SEMPRE null no banco de verdade — a nota
-    // tem de citar os dois, não ficar muda (achado da revisão: a conta
-    // antiga nunca comparava essas duas etapas).
+    // Sem número de visitas, a ajuda não confunde indisponibilidade com
+    // ausência de medição. Produtos vistos continuam sem medição.
     await act(async () =>
       painel("funil")!
         .querySelector<HTMLButtonElement>(
@@ -719,14 +718,16 @@ describe("Dashboard CRM", () => {
     );
     const ajudaDoFunil = texto(document.querySelector('[role="dialog"]'));
     expect(ajudaDoFunil).toContain(
-      "Visitas e produtos vistos ainda não são medidos.",
+      "A etapa de visitas só aparece quando há um número disponível.",
     );
+    expect(ajudaDoFunil).toContain("Produtos vistos ainda não são medidos.");
+    expect(ajudaDoFunil).not.toContain("Visitas e produtos vistos");
     expect(ajudaDoFunil).toContain("Carrinhos contam só quem tem conta.");
     expect(ajudaDoFunil).toContain(
       "Pedidos do app incluem compras com e sem conta.",
     );
     expect(ajudaDoFunil).toContain(
-      "Pedidos cancelados, devolvidos ou com pagamento estornado ficam fora dos pagos.",
+      "Pedidos cancelados, devolvidos ou estornados por inteiro ficam fora dos pagos.",
     );
     await act(async () =>
       [
