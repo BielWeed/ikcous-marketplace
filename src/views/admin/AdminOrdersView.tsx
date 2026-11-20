@@ -452,9 +452,8 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     Record<string, "INSERT" | "UPDATE">
   >({});
   const onRealtimeEventRef = useRef<(payload: any) => void>(() => {});
-  // A conexão ao vivo reconfirmou e a lista foi relida (`onReconciliar`, em
-  // useOrders): os cartões do topo perderam os mesmos eventos. Ref pelo mesmo
-  // motivo do acima — `pedirRecargaDosNumeros` só existe depois deste hook.
+  // Após a reconexão, o topo e a ficha aberta por link precisam conferir os
+  // eventos perdidos. Os callbacks só existem depois de chamar useOrders.
   const aoReconciliarRef = useRef<() => void>(() => {});
   const {
     orders,
@@ -1137,14 +1136,16 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   // atualização dela, e ele se perde com a rede fora ou a aba em segundo plano.
   // Ao a rede voltar e ao a aba voltar a ficar visível, revalida em silêncio
   // pelo mesmo caminho do evento ao vivo (sem spinner, sem desmontar a ficha).
+  const revalidarFichaDeLink = useCallback(() => {
+    if (!active || !selectedOrderId) return;
+    if (resolvedOrderIdRef.current !== selectedOrderId) return;
+    if (orders.some((o) => o.id === selectedOrderId)) return;
+    revalidacaoSilenciosaRef.current = true;
+    setRevalidacaoDaFicha((n) => n + 1);
+  }, [active, selectedOrderId, orders]);
+
   useEffect(() => {
     if (!active || !selectedOrderId) return;
-    const revalidarFichaDeLink = () => {
-      if (resolvedOrderIdRef.current !== selectedOrderId) return;
-      if (orders.some((o) => o.id === selectedOrderId)) return;
-      revalidacaoSilenciosaRef.current = true;
-      setRevalidacaoDaFicha((n) => n + 1);
-    };
     const aoMudarAVisibilidade = () => {
       if (document.visibilityState === "visible") revalidarFichaDeLink();
     };
@@ -1154,7 +1155,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       globalThis.removeEventListener("online", revalidarFichaDeLink);
       document.removeEventListener("visibilitychange", aoMudarAVisibilidade);
     };
-  }, [active, selectedOrderId, orders]);
+  }, [active, selectedOrderId, revalidarFichaDeLink]);
 
   useEffect(() => {
     const container =
@@ -1532,8 +1533,11 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   }, [isOffline, active, currentPage, loadAllData, pedirRecargaDosNumeros]);
 
   useEffect(() => {
-    aoReconciliarRef.current = pedirRecargaDosNumeros;
-  }, [pedirRecargaDosNumeros]);
+    aoReconciliarRef.current = () => {
+      pedirRecargaDosNumeros();
+      revalidarFichaDeLink();
+    };
+  }, [pedirRecargaDosNumeros, revalidarFichaDeLink]);
 
   useEffect(() => {
     onRealtimeEventRef.current = (payload) => {
