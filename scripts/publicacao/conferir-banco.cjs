@@ -3244,7 +3244,17 @@ const ROL_DA_162 = [
   "historico da opcao: funcao interna",
   "historico da opcao: gatilho de nome ou valor",
 ];
+const ROL_DA_163 = [
+  "store_shipping_credentials: anon",
+  "store_shipping_credentials: authenticated",
+  "store_shipping_credentials: service_role",
+  "store_shipping_credentials: postgres",
+  "store_shipping_credentials: PUBLIC sem privilegio de tabela ou coluna",
+  "store_shipping_credentials: RLS ligada",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "163a-conferir-chaves-de-frete-so-o-servidor-aplicado": ROL_DA_163,
+  "163b-antes-chaves-de-frete-so-o-servidor-base-vigente": ROL_DA_163,
   "162a-conferir-o-pedido-guarda-o-nome-antigo-da-opcao-aplicado": ROL_DA_162,
   "162b-antes-o-pedido-guarda-o-nome-antigo-da-opcao-base-vigente": ROL_DA_162,
   "157a-conferir-a-devolucao-integral-nao-perde-o-centavo-do-cupom-aplicado":

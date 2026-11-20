@@ -28,6 +28,11 @@
       "versao": "20261404000000",
       "motivo": "404 NAO e aditiva: tira de authenticated o SELECT da tabela devolucoes (REVOKE) e passa a dar SELECT por coluna; se aplica a parte, em hora calma, loja por loja, com a revisao Opus do SQL e depois de provar que nenhum codigo le a tabela inteira (ver o cabecalho da 404)",
       "conferencia": "156a (aplicado) e 156b (antes), por conferir-banco-da-loja, antes e depois do apply"
+    },
+    {
+      "versao": "20261407000000",
+      "motivo": "407 NAO e aditiva: tira todos os privilegios de anon e authenticated na tabela store_shipping_credentials (REVOKE); se aplica a parte, em hora calma, loja por loja, com a revisao Opus do SQL e so se os GRANTs anteriores forem os esperados (ver cabecalho da 407)",
+      "conferencia": "163b (antes) e 163a (aplicado), por conferir-banco-da-loja, antes e depois do apply"
     }
   ],
   "aliasesDePreview": ["^ickous-marketplace-git-.+\\.vercel\\.app$"],

@@ -2325,7 +2325,7 @@ O cadastro de UMA vez, na entrada do cliente:
   cron (cabecalho da propria migration); conferencia `8f-conferir-201`. Ela esta em
   `politica.json` (`migrationsForaDaRelease`) para o portao nao exigi-la.
 - Antes de liberar vendas na loja nova, confirme separadamente, conforme `migrationsForaDaRelease`
-  em `scripts/frota/politica.json`, as duas migrations aplicadas a parte, em hora calma, loja por loja:
+  em `scripts/frota/politica.json`, as migrations aplicadas a parte, em hora calma, loja por loja:
   - `20261400000000_valores_negativos_nao_entram_no_banco.sql`: antes de aplicar, a contagem do
     cabecalho tem de dar zero nas quatro colunas (negativos e `NaN`).
   - `20261404000000_a_observacao_da_inspecao_so_a_loja_ve.sql`: muda permissoes e nao e aditiva.
@@ -2333,6 +2333,11 @@ O cadastro de UMA vez, na entrada do cliente:
     inteira e rode `156b-antes-a-observacao-da-inspecao-so-a-loja-ve-base-vigente`. Depois, rode
     `156a-conferir-a-observacao-da-inspecao-so-a-loja-ve-aplicado`. As duas consultas sao do
     `conferir-banco-da-loja.yml`.
+  - `20261407000000_chaves_de_frete_so_o_servidor.sql`: revoga acesso direto a tabela de
+    credenciais de frete e nao e aditiva. Exija revisao Opus do SQL e rode
+    `163b-antes-chaves-de-frete-so-o-servidor-base-vigente` no `conferir-banco-da-loja.yml` antes de aplicar.
+    Se algum privilegio divergir, pare: o rollback manual restaura somente os GRANTs padrao.
+    Depois de aplicar, confirme com `163a-conferir-chaves-de-frete-so-o-servidor-aplicado`.
 
 ## Rollback
 

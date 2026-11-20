@@ -4796,10 +4796,9 @@ Deno.test("guarda: toda migration (fora rollback) com versão >= 20261192000000 
       assert(versoes.includes(v), `${l.consulta}: versão ${v} sem arquivo`);
 });
 
-// A 400 (valores negativos) e a 404 (observação da inspeção: REVOKE na tabela de devoluções)
-// não são aditivas e se aplicam a parte: o portão REAL (politica.json + os arquivos de
-// supabase/migrations) não as põe na release, e as aditivas 402 e 403 continuam nela.
-Deno.test("política real: a 400 e a 404 ficam FORA da release; a 402 e a 403 continuam DENTRO", async () => {
+// A 400 (valores negativos), a 404 (REVOKE em devoluções) e a 407 (REVOKE nas
+// credenciais de frete) se aplicam à parte. As aditivas 402 e 403 continuam na release.
+Deno.test("política real: a 400, a 404 e a 407 ficam FORA da release; a 402 e a 403 continuam DENTRO", async () => {
   const politicaReal = JSON.parse(
     await Deno.readTextFile("scripts/frota/politica.json"),
   );
@@ -4809,16 +4808,17 @@ Deno.test("política real: a 400 e a 404 ficam FORA da release; a 402 e a 403 co
   const naRelease = new Set(migrationsDaRelease(nomes, politicaReal));
   assertEquals(naRelease.has("20261400000000"), false);
   assertEquals(naRelease.has("20261404000000"), false);
+  assertEquals(naRelease.has("20261407000000"), false);
   assertEquals(naRelease.has("20261402000000"), true);
   assertEquals(naRelease.has("20261403000000"), true);
-  // e a 404 não tem lote no canais: estar fora da release e num lote ao mesmo tempo daria
-  // duas decisões para a mesma versão
+  // Estar fora da release e num lote ao mesmo tempo daria duas decisões.
   const lotes = lerCanais().provasDeObjetos;
-  assertEquals(
-    lotes.filter((l: any) => (l.versoes ?? []).includes("20261404000000"))
-      .length,
-    0,
-  );
+  for (const versao of ["20261404000000", "20261407000000"]) {
+    assertEquals(
+      lotes.filter((l: any) => (l.versoes ?? []).includes(versao)).length,
+      0,
+    );
+  }
 });
 
 // ===========================================================================
