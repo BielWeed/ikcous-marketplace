@@ -49,11 +49,13 @@ import { imagemRedimensionada } from "@/lib/imageUrl";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { medirRodapeCliente } from "@/lib/medir-rodape-cliente";
 import { montarMensagemDeCompartilhar } from "@/lib/mensagem-de-compartilhar";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { percentualDeDesconto } from "@/lib/percentual-de-desconto";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import { resumoParaPrevia } from "@/lib/resumo-para-previa";
 import { limparTelefoneBrasileiro } from "@/lib/telefone-br";
 import { textoEstoqueBaixo, textoSoRestam } from "@/lib/texto-estoque-baixo";
+import { textoSemControlesDeDirecao } from "@/lib/texto-sem-controles-de-direcao";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product, ProductVariant, View } from "@/types";
 import { dividirEmAtributos } from "@/utils/atributos-da-variacao";
@@ -985,7 +987,14 @@ export const ProductView = React.memo(function ProductView({
 
   const handleWhatsApp = () => {
     const variantInfo = selectedVariantObjects
-      .map((v) => `${v.name}: ${v.value}`)
+      .flatMap((v) => {
+        const nome = textoSemControlesDeDirecao(v.name).trim();
+        const valor = textoSemControlesDeDirecao(v.value).trim();
+        if (!nomeTemConteudoVisivel(nome) || !nomeTemConteudoVisivel(valor)) {
+          return [];
+        }
+        return [`${nome}: ${valor}`];
+      })
       .join(", ");
     // Escolha incompleta: o preço da tela é "a partir de", que nenhuma
     // combinação paga. Por escrito à lojista só vai o preço de uma escolha

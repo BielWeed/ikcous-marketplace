@@ -283,6 +283,38 @@ describe("ProductView — 'Dúvidas no WhatsApp': variação, preço e endereço
     expect(recursos).toBe("noopener,noreferrer");
   });
 
+  it.each([
+    ["invisível", String.fromCodePoint(0x200b), ""],
+    ["visível", "Azul", " (Cor: Azul)"],
+  ])(
+    "com uma única cor %s, mantém o preço na mensagem",
+    async (_, valor, cor) => {
+      await renderizar(
+        criarProduto({
+          name: "Camiseta",
+          variants: [
+            {
+              id: "v-cor",
+              productId: "prod-pb",
+              name: "Cor",
+              value: valor,
+              stockIncrement: 5,
+              active: true,
+              priceOverride: 90,
+            },
+          ],
+        }),
+      );
+
+      await tocarWhatsapp();
+
+      expect(abrir).toHaveBeenCalledTimes(1);
+      expect(textoDaMensagem(abrir.mock.calls[0][0])).toBe(
+        `Olá! Tenho interesse no produto: Camiseta${cor} - R$ 90,00`,
+      );
+    },
+  );
+
   it("escolha incompleta em cadastro de dois grupos: a mensagem sai sem preço nenhum", async () => {
     const cor = (valor: string, id: string): ProductVariant => ({
       id,
