@@ -117,6 +117,36 @@ it("leva apenas o necessário, com cobrança na entrega e texto pronto", () => {
     ].join("\n"),
   );
 });
+it("mantém cobrança e endereço antes dos itens completos em um link de pedido grande", () => {
+  const items = Array.from({ length: 40 }, (_, i) => ({
+    ...pedido.items[0],
+    name: `Caneca artesanal azul com pires e café ☕️ edição ${i + 1}`,
+  }));
+  const msg = contato.mensagemMototaxi({ ...pedido, items }, "Loja fictícia");
+  const link = `https://wa.me/5511987654321?text=${encodeURIComponent(msg)}`;
+  expect(link.length).toBeLessThanOrEqual(1800);
+  const linhas = msg.split("\n");
+  const indiceDosItens = linhas.findIndex((linha) =>
+    linha.startsWith("Itens: "),
+  );
+  expect(indiceDosItens).toBeGreaterThan(0);
+  for (const essencial of [
+    "Cobrar na entrega: R$ 58,00 (Dinheiro)",
+    "Endereço: Rua Inventada, 12, apto 4",
+    "Telefone: 11912345678",
+  ]) {
+    expect(linhas.slice(0, indiceDosItens)).toContain(essencial);
+  }
+  const exibidos = (linhas.at(indiceDosItens) ?? "")
+    .slice("Itens: ".length)
+    .split("; ");
+  expect(exibidos).toEqual(
+    items.slice(0, exibidos.length).map(({ name }) => `2× ${name}`),
+  );
+  expect(linhas.at(-1)).toBe(
+    `+ ${items.length - exibidos.length} itens (veja o pedido no painel)`,
+  );
+});
 it("o endereço na mensagem sai sem controles invisíveis", () => {
   const controle = String.fromCodePoint(0x202e);
   const msg = contato.mensagemMototaxi(
