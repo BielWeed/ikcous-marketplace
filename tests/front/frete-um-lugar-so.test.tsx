@@ -421,14 +421,16 @@ describe("Frete: as Transportadoras e as Consultas de frete moram aqui", () => {
       });
       expect(botaoComTexto(/^Salvando…$/)?.disabled).toBe(true);
 
-      await act(async () => vi.advanceTimersByTimeAsync(30_000));
+      await act(async () => vi.advanceTimersByTimeAsync(29_900));
+      expect(botaoComTexto(/^Salvando…$/)?.disabled).toBe(true);
 
+      await act(async () => vi.advanceTimersByTimeAsync(100));
       expect(botaoComTexto(/^Tentar de novo$/)?.disabled).toBe(false);
       expect(linha("Ligar Melhor Envio").getAttribute("aria-checked")).toBe(
         "false",
       );
       const aviso =
-        "Sem resposta da rede. Confira em Frete se as transportadoras ficaram como você escolheu antes de salvar de novo.";
+        "Não recebemos a resposta do servidor. Saia do Frete e entre de novo para ver o que ficou salvo antes de salvar outra vez.";
       expect(hospedeiro.textContent).toContain(aviso);
       expect(toast.error).toHaveBeenCalledWith(aviso);
       expect(toast.error).not.toHaveBeenCalledWith(

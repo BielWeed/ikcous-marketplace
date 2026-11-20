@@ -136,6 +136,10 @@ const IDS_ME_QUE_EXIGEM_AGENCIA: ReadonlySet<string> = new Set([
 const AVISO_ID_EXIGE_AGENCIA =
   "Vende no checkout, mas a etiqueta tem de ser feita no site do Melhor Envio.";
 
+// Mesmo prazo da geração de etiquetas: ligar pode consultar serviços
+// externos. Só encerra a espera da tela, não a gravação no servidor.
+const PRAZO_DE_SALVAR_TRANSPORTADORAS_MS = 30_000;
+
 /**
  * Chama uma ação da edge `calculate-shipping` e devolve o corpo da
  * resposta — nunca lança para quem chama tratar erro de rede como qualquer
@@ -1074,17 +1078,15 @@ export const TransportadorasSection = memo(function TransportadorasSection({
     setErroLigados(null);
     haptic.medium();
     try {
-      // Como na geração de etiquetas, espere 30 s: ligar pode consultar
-      // serviços externos. O prazo só encerra a espera, não a gravação.
       const { data, error } = await aguardarComPrazo(
         chamarEdgeDeFrete({
           action: "save_active_providers",
           ligados: Array.from(enviados),
         }),
-        30_000,
+        PRAZO_DE_SALVAR_TRANSPORTADORAS_MS,
         () =>
           erroDeConsultaSemResposta(
-            "Sem resposta da rede. Confira em Frete se as transportadoras ficaram como você escolheu antes de salvar de novo.",
+            "Não recebemos a resposta do servidor. Saia do Frete e entre de novo para ver o que ficou salvo antes de salvar outra vez.",
           ),
       );
       if (error) throw error;
