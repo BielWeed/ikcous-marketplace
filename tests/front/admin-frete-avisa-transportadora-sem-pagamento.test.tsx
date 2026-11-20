@@ -42,6 +42,8 @@ const { cenario, mockConfig } = vi.hoisted(() => ({
     shippingCoverage: "national" as "local" | "national",
     shippingProvider: "melhor_envio",
     originCep: "38500-000",
+    storeAddress: "Rua A, 10",
+    localDeliveryEnabled: true,
     enabledShippingMethods: ["sedex", "pac"] as string[],
     localDeliveryFee: 10,
     localCepRange: "",
@@ -135,6 +137,8 @@ describe("AdminShippingView — avisa quando a transportadora fica sem pagamento
     cenario.leituraFalha = false;
     cenario.segurarLeitura = null;
     mockConfig.shippingCoverage = "national";
+    mockConfig.localDeliveryEnabled = true;
+    mockConfig.enabledShippingMethods = ["sedex", "pac"];
     mockConfig.freeShippingMin = 0;
     mockConfig.nationalShippingStrategy = "desligado";
     hospedeiro = document.createElement("div");
@@ -221,24 +225,48 @@ describe("AdminShippingView — avisa quando a transportadora fica sem pagamento
     "O frete grátis por produto pode aparecer fora da sua região, mas a cliente não consegue finalizar sem pagamento pelo app.";
   const textoDaTela = () => hospedeiro.textContent ?? "";
 
-  it("promoção nacional por produto sem transportadora nem pagamento pelo app: explica a opção que a cliente vê", async () => {
+  it.each([false, true])(
+    "entrega local com retirada ligada=%s: a promoção nacional exige pagamento pelo app",
+    async (retirada) => {
+      if (retirada) mockConfig.enabledShippingMethods.push("store-pickup");
+      mockConfig.nationalShippingStrategy = "por_produto";
+      cenario.ligados = [];
+      await abrirTela();
+
+      expect(textoDaTela()).toContain(textoDaPromocao);
+      expect(textoDaTela()).toContain(
+        "Ative o pagamento pelo app ou desative a promoção nacional.",
+      );
+      expect(textoDaTela()).not.toContain(
+        "Ninguém de fora da sua região compra",
+      );
+      expect(textoDaTela()).not.toContain(
+        "Nenhuma transportadora ligada: quem é de fora não compra",
+      );
+      expect(
+        hospedeiro.querySelector('[aria-label="Como fica para o cliente"]')
+          ?.textContent,
+      ).toContain("Não finaliza pelo app");
+      expect(aviso()).toBeNull();
+    },
+  );
+
+  it("só retirada com promoção nacional: quem é de fora pode buscar na loja", async () => {
+    mockConfig.localDeliveryEnabled = false;
+    mockConfig.enabledShippingMethods.push("store-pickup");
     mockConfig.nationalShippingStrategy = "por_produto";
     cenario.ligados = [];
     await abrirTela();
 
-    expect(textoDaTela()).toContain(textoDaPromocao);
-    expect(textoDaTela()).toContain(
-      "Ative o pagamento pelo app ou desative a promoção nacional.",
-    );
-    expect(textoDaTela()).not.toContain("Ninguém de fora da sua região compra");
-    expect(textoDaTela()).not.toContain(
-      "Nenhuma transportadora ligada: quem é de fora não compra",
-    );
+    expect(textoDaTela()).not.toContain(textoDaPromocao);
+    expect(textoDaTela()).not.toContain("não finaliza sem pagamento pelo app");
+    expect(textoDaTela()).not.toContain("quem é de fora não compra");
+    expect(textoDaTela()).not.toContain("Falta 1 coisa");
+    expect(textoDaTela()).toContain("Pronta para vender");
     expect(
       hospedeiro.querySelector('[aria-label="Como fica para o cliente"]')
         ?.textContent,
-    ).toContain("Não finaliza pelo app");
-    expect(aviso()).toBeNull();
+    ).toContain("Só retirada · Grátis");
   });
 
   it.each([

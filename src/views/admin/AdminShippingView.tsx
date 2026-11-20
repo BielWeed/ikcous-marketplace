@@ -704,6 +704,7 @@ export const AdminShippingView = memo(function AdminShippingView({
     !credsErro &&
     !transportadorasEmLeitura &&
     formData.shippingCoverage === "national" &&
+    formData.modo !== "so_retiro" &&
     formDataNacional.estrategia === "por_produto" &&
     nomesLigados.length === 0 &&
     !pagamentoPeloAppLigado;
@@ -716,9 +717,11 @@ export const AdminShippingView = memo(function AdminShippingView({
         ? "Não deu para confirmar as transportadoras"
         : nomesLigados.length
           ? `${nomesLigados.join(" e ")} ${nomesLigados.length === 1 ? "cota" : "cotam"} o frete na hora`
-          : avisarPromocaoNacionalSemPagamento
-            ? "A promoção pode aparecer, mas não finaliza sem pagamento pelo app"
-            : "Nenhuma transportadora ligada: quem é de fora não compra";
+          : formData.modo === "so_retiro"
+            ? "Quem é de fora pode retirar na loja"
+            : avisarPromocaoNacionalSemPagamento
+              ? "A promoção pode aparecer, mas não finaliza sem pagamento pelo app"
+              : "Nenhuma transportadora ligada: quem é de fora não compra";
   const resumoGratisLocal =
     formData.preset === "desligado"
       ? "não dá"
@@ -1389,15 +1392,12 @@ export const AdminShippingView = memo(function AdminShippingView({
     faltaEndereco,
     faltaAlcance,
     confirmarTransportadoras,
-    pendencias: pendenciasDaEntrega,
+    pendencias,
   } = situacaoDaEntrega(
     configDaPrevia,
     credsErro || !credsLidas ? null : nomesLigados,
     avisarTransportadoraSemPagamento,
   );
-  const pendencias =
-    pendenciasDaEntrega +
-    Number(avisarPromocaoNacionalSemPagamento && !faltaTransportadora);
   const selo = isOffline
     ? "Sem internet"
     : confirmarTransportadoras
