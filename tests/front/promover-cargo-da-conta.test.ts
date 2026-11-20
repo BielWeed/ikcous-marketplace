@@ -83,6 +83,28 @@ describe("definirCargo: a chamada", () => {
 });
 
 describe("definirCargo: cada erro", () => {
+  it("traduz o tempo esgotado do banco e mantém o código no console", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      h.rpc.mockResolvedValue({
+        data: null,
+        error: {
+          code: "57014",
+          message: "canceling statement due to statement timeout",
+        },
+      });
+      expect(await definirCargo(ID, "admin")).toEqual({
+        ok: false,
+        codigo: "57014",
+        mensagem:
+          "A mudança de acesso demorou demais. Tente de novo em instantes.",
+      });
+      expect(log).toHaveBeenCalledWith(expect.any(String), "57014");
+    } finally {
+      log.mockRestore();
+    }
+  });
+
   it("42501 (só o dono): mostra a mensagem do servidor, como veio", async () => {
     h.rpc.mockResolvedValue({
       data: null,

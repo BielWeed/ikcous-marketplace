@@ -211,7 +211,7 @@ describe("campanha não sai quando a sessão termina com a tela aberta", () => {
     expect(h.aviso).not.toHaveBeenCalled();
     expect(h.invoke).not.toHaveBeenCalled();
     expect(h.erro).toHaveBeenCalledWith(
-      "Falha ao registrar notificação no banco",
+      "Não foi possível preparar o envio. Tente de novo em instantes.",
     );
     expect(console.error).toHaveBeenCalledWith(
       "Error sending push:",

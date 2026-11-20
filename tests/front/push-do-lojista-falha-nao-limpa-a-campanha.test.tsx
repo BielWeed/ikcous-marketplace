@@ -352,7 +352,7 @@ describe("Avisar clientes — falha não apaga a campanha", () => {
         },
       );
       expect(toast.error).not.toHaveBeenCalledWith(
-        "Falha ao registrar notificação no banco",
+        "Não foi possível preparar o envio. Tente de novo em instantes.",
       );
       expect(toast.success).not.toHaveBeenCalled();
     },

@@ -1440,7 +1440,7 @@ export const AdminPushView = memo(function AdminPushView({
       toast.error(
         error instanceof PrazoEsgotado
           ? "Demorou demais, tente de novo. Nada foi enviado; se o Histórico mostrar este aviso com 0 aparelhos, é só o registro."
-          : "Falha ao registrar notificação no banco",
+          : "Não foi possível preparar o envio. Tente de novo em instantes.",
       );
     } finally {
       setLoading(false);

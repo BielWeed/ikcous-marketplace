@@ -80,6 +80,15 @@ function falha(erro: unknown): ResultadoDoCargo {
       mensagem: MENSAGEM_CARGO_SEM_RESPOSTA,
     };
   }
+  if (codigo === "57014" && /statement timeout/i.test(mensagem)) {
+    console.error("Tempo esgotado ao mudar o acesso:", codigo);
+    return {
+      ok: false,
+      codigo,
+      mensagem:
+        "A mudança de acesso demorou demais. Tente de novo em instantes.",
+    };
+  }
   if (codigo === "PGRST202") {
     return { ok: false, codigo, mensagem: MENSAGEM_FUNCAO_INATIVA };
   }

@@ -339,7 +339,7 @@ describe("Avisar clientes: gravacoes do envio sem resposta", () => {
       }),
     );
     expect(toastError).not.toHaveBeenCalledWith(
-      "Falha ao registrar notificação no banco",
+      "Não foi possível preparar o envio. Tente de novo em instantes.",
     );
   });
 
