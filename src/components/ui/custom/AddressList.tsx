@@ -391,6 +391,11 @@ export const AddressList = memo(function AddressList({
                 {(onEdit || onDelete) && (
                   <div className="flex shrink-0 items-center gap-2">
                     <button
+                      id={
+                        selectable
+                          ? `checkout-editar-endereco-${address.id}`
+                          : undefined
+                      }
                       onClick={(e) => {
                         e.stopPropagation();
                         onEdit?.(address);
