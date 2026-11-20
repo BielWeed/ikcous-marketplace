@@ -24,7 +24,14 @@ vi.mock("@/contexts/StoreContext", () => ({
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn() } }));
 
-it("grava a frase sem o espaço não separável colado no fim", async () => {
+it.each([
+  ["Confira!\u{00a0}", "Confira!"],
+  ["Oi, 🧑\u{200d}🍳!<br>Confira", "Oi, 🧑\u{200d}🍳!\nConfira"],
+  ["Confira!<br>", "Confira!\n"],
+  ["Família 👨\u{200d}👩\u{200d}👧", "Família 👨\u{200d}👩\u{200d}👧"],
+  ["🏳\u{fe0f}\u{200d}🌈 oi", "🏳\u{fe0f}\u{200d}🌈 oi"],
+  ["a\u{200d}b", "ab"],
+])("normaliza apenas o necessário ao gravar %s", async (digitado, esperado) => {
   const caixa = document.createElement("div");
   const raiz = createRoot(caixa);
   let salvar: EditorDeMinhaLoja["salvar"] | undefined;
@@ -42,19 +49,19 @@ it("grava a frase sem o espaço não separável colado no fim", async () => {
       "#settings-share-message-editor",
     ) as HTMLElement;
     act(() => {
-      campo.textContent = "Confira!\u{00a0}";
+      campo.innerHTML = digitado;
       campo.dispatchEvent(new Event("input", { bubbles: true }));
     });
     await act(async () => {
       expect(await salvar?.()).toBe(true);
     });
-    expect(updateConfig).toHaveBeenCalledWith(
-      { shareText: "Confira!" },
+    expect(updateConfig).toHaveBeenLastCalledWith(
+      { shareText: esperado },
       { silentSuccess: true },
     );
-    config.shareText = "Confira!";
+    config.shareText = esperado;
     act(mostrarContato);
-    expect(campo.textContent).toBe("Confira!");
+    expect(campo.innerHTML).toBe(esperado.replaceAll("\n", "<br>"));
   } finally {
     act(() => raiz.unmount());
   }
@@ -67,4 +74,18 @@ it("usa um só espaço entre a frase antiga e o nome do produto", () => {
     link: "https://loja.exemplo/produto",
   });
   expect(mensagem.texto).toBe("Confira! Camiseta por R$ 49,90");
+});
+
+it("mantém o emoji, as quebras e o espaçamento interno da frase antiga", () => {
+  const mensagem = montarMensagemDeCompartilhar(
+    "Oi,  🧑\u{200d}🍳!\nConfira!\n",
+    {
+      nome: "Camiseta",
+      preco: "R$ 49,90",
+      link: "https://loja.exemplo/produto",
+    },
+  );
+  expect(mensagem.texto).toBe(
+    "Oi,  🧑\u{200d}🍳!\nConfira!\n Camiseta por R$ 49,90",
+  );
 });

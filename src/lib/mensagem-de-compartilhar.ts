@@ -2,6 +2,13 @@ import { semInvisiveis } from "@/lib/texto-sem-invisiveis";
 
 const TEM_MARCADOR = /\[(nome|preco|link)\]/i;
 
+function apararFimDoPrefixo(modelo: string): string {
+  // A vitrine não reescreve o texto salvo: só evita duplicar o separador.
+  let fim = modelo.length;
+  while (fim > 0 && /[ \t\xA0]/.test(modelo.charAt(fim - 1))) fim--;
+  return modelo.slice(0, fim);
+}
+
 /** A frase simples vira prefixo; o modelo completo mantém sua formatação. */
 export function normalizarFraseDeCompartilhar(modelo: string): string {
   return TEM_MARCADOR.test(modelo) ? modelo : semInvisiveis(modelo);
@@ -37,7 +44,7 @@ export function montarMensagemDeCompartilhar(
         if (tipo === "preco") return dados.preco;
         return dados.link;
       })
-    : `${semInvisiveis(modelo)} ${dados.nome} por ${dados.preco}`.trimStart();
+    : `${apararFimDoPrefixo(modelo)} ${dados.nome} por ${dados.preco}`.trimStart();
   return {
     texto,
     temLink,

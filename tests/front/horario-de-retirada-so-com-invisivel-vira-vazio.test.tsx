@@ -27,7 +27,14 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn() } }));
 
 const invisivel = "\u{200b}\u{200c}\u{200d}\u{2060}\u{feff}\u{00a0}";
 
-it("salva como ausente o horário que só tem caracteres invisíveis", async () => {
+it.each([
+  ["horário só de invisíveis", invisivel, null],
+  [
+    "horário com emoji composto",
+    "Seg a Sex 🧑\u{200d}🍳 8h",
+    "Seg a Sex 🧑\u{200d}🍳 8h",
+  ],
+])("salva corretamente: %s", async (_caso, digitado, esperado) => {
   const caixa = document.createElement("div");
   const raiz = createRoot(caixa);
   try {
@@ -37,12 +44,12 @@ it("salva como ausente o horário que só tem caracteres invisíveis", async () 
       Object.getOwnPropertyDescriptor(
         HTMLInputElement.prototype,
         "value",
-      )?.set?.call(campo, invisivel);
+      )?.set?.call(campo, digitado);
       campo.dispatchEvent(new Event("input", { bubbles: true }));
     });
     await act(async () => caixa.querySelector("button")?.click());
-    expect(updateConfig).toHaveBeenCalledWith(
-      { businessHours: null },
+    expect(updateConfig).toHaveBeenLastCalledWith(
+      { businessHours: esperado },
       expect.anything(),
     );
   } finally {
@@ -50,19 +57,22 @@ it("salva como ausente o horário que só tem caracteres invisíveis", async () 
   }
 });
 
-it("pede confirmação quando o horário antigo não tem texto visível", () => {
-  const mensagem = mensagemDoStatusNoWhatsapp({
-    nomeDoCliente: "Ana",
-    numeroDoPedido: "123",
-    rotuloDoStatus: "Pronto para retirar",
-    nomeDaLoja: "Loja Exemplo",
-    status: "shipping",
-    retiradaNaLoja: true,
-    horarioDeAtendimento: invisivel,
-  });
+it.each([invisivel, "\u{2800}", "\u{3164}"])(
+  "pede confirmação quando o horário antigo não tem texto visível (%j)",
+  (horario) => {
+    const mensagem = mensagemDoStatusNoWhatsapp({
+      nomeDoCliente: "Ana",
+      numeroDoPedido: "123",
+      rotuloDoStatus: "Pronto para retirar",
+      nomeDaLoja: "Loja Exemplo",
+      status: "shipping",
+      retiradaNaLoja: true,
+      horarioDeAtendimento: horario,
+    });
 
-  expect(mensagem).toContain(
-    "Confirme o horário de retirada com a loja antes de vir.",
-  );
-  expect(mensagem).not.toContain("Horário:");
-});
+    expect(mensagem).toContain(
+      "Confirme o horário de retirada com a loja antes de vir.",
+    );
+    expect(mensagem).not.toContain("Horário:");
+  },
+);
