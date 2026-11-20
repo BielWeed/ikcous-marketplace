@@ -9,12 +9,13 @@
       "O painel avisa quando o prazo do Pix passa e o pagamento de um pedido de entrega em separação ou a caminho ainda não consta.",
       "Se a compra da etiqueta não puder ser confirmada, o painel orienta a conferir o pedido antes de tentar de novo.",
       "O endereço aceita o nome do estado por extenso. Se a retirada estiver pronta e a loja não informou o horário, a ficha e a mensagem de WhatsApp orientam a confirmar antes de sair.",
-      "O painel avisa quando a faixa de CEP do frete local não pode ser usada, sem deixar o botão preso em “Salvando”."
+      "O painel avisa quando a faixa de CEP do frete local não pode ser usada, sem deixar o botão preso em “Salvando”.",
+      "Ao digitar ou colar “1.000” no limite de usos do cupom, o painel entende mil usos, não um."
     ],
     "melhorias": [
-      "A página de Privacidade explica que a consulta de pedido sem conta vale por 15 minutos na mesma aba e mantém o aviso sobre os dados do endereço enviados ao Google Maps.",
-      "Ao gerar a planilha de produtos, o painel orienta a conferir os downloads. A planilha inclui o estoque dos produtos sem variação.",
-      "A mensagem ao mototáxi e o recibo impresso continuam mostrando o nome de quem recebe quando é outra pessoa e a observação do pedido, quando informada. O recibo identifica os reembolsos feitos pelo Mercado Pago.",
+      "A página de Privacidade detalha o que fica guardado no aparelho e o que é enviado a cada serviço, e explica que a consulta de pedido sem conta vale por 15 minutos na mesma aba.",
+      "Ao gerar a planilha de produtos, o painel orienta a conferir os downloads.",
+      "O recibo identifica os reembolsos feitos pelo Mercado Pago.",
       "Na busca de pedido sem conta, dá para ver e copiar o WhatsApp da loja, se ela tiver um número cadastrado."
     ]
   },

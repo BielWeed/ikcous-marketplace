@@ -911,6 +911,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/valores-negativos-prova.cjs",
     // 20261405800000: o cupom que nao da desconto nao vale (a RPC recusa desconto zerado pelo arredondamento).
     "tests/banco/o-cupom-que-nao-da-desconto-nao-vale-viva.cjs",
+    // 20261406000000: o pedido guarda o nome antigo da opção após renomear a variação.
+    "tests/banco/o-pedido-guarda-o-nome-antigo-da-opcao-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(
