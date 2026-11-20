@@ -12,6 +12,11 @@ import {
 import { act, useEffect } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  arquivoJpegComGps,
+  jpegSintetico,
+  lerBytesNoJsdom,
+} from "../fixtures/jpeg-com-gps";
 import { adiar } from "./apoio";
 
 const rede = vi.hoisted(() => ({
@@ -141,6 +146,24 @@ describe("produtos vetam atualização nas imagens e na fila offline", () => {
       expect(haOperacaoSensivel()).toBe(false);
     },
   );
+
+  it("JPEG que não passou pelo canvas chega ao Storage sem GPS", async () => {
+    await act(async () => {
+      raiz.render(<Sonda />);
+    });
+    rede.upload.mockResolvedValue({ error: null });
+    await act(async () => {
+      expect(await api.uploadProductImages([arquivoJpegComGps()])).toEqual([
+        "copia.jpg",
+      ]);
+    });
+
+    expect(rede.upload).toHaveBeenCalledTimes(1);
+    const enviado: File = rede.upload.mock.calls[0][1];
+    expect(new Uint8Array(await lerBytesNoJsdom(enviado))).toEqual(
+      jpegSintetico,
+    );
+  });
 
   it.each([false, true])(
     "upload pendente veta e libera (erro=%s)",

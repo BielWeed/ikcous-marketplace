@@ -13,6 +13,11 @@ import { useBanners } from "@/hooks/useBanners";
 import { act, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  arquivoJpegComGps,
+  jpegSintetico,
+  lerBytesNoJsdom,
+} from "./fixtures/jpeg-com-gps";
 
 const h = vi.hoisted(() => ({
   upload: vi.fn(),
@@ -201,6 +206,25 @@ describe("foto do banner sobe reduzida", () => {
     });
 
     expect(arquivoEnviado()).toBe(original);
+    expect(canvasCriado).toBeNull();
+  });
+
+  it("JPEG leve chega ao Storage sem GPS, sem passar pelo canvas", async () => {
+    decodificaComo(4000, 3000);
+    const original = arquivoJpegComGps();
+    await act(async () => {
+      await uploadBannerImage(original);
+    });
+
+    const enviado = arquivoEnviado();
+    expect(new Uint8Array(await lerBytesNoJsdom(enviado))).toEqual(
+      jpegSintetico,
+    );
+    expect(enviado).toMatchObject({
+      name: "foto.jpg",
+      type: "image/jpeg",
+      lastModified: 42,
+    });
     expect(canvasCriado).toBeNull();
   });
 

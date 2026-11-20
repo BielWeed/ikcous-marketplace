@@ -540,12 +540,13 @@ describe("original preservado", () => {
     },
   );
   it.each(["jpeg", "webp"] as const)(
-    "biblioteca real mede %s bruto e preserva bytes",
+    "biblioteca real mede %s bruto e preserva bytes (JPEG sem EXIF)",
     async (format) => {
       const bytes = new Uint8Array(
-        await (format === "jpeg" ? sharp(png).jpeg() : sharp(png).webp())
-          .withMetadata({ orientation: 6 })
-          .toBuffer(),
+        await (format === "jpeg"
+          ? sharp(png).jpeg()
+          : sharp(png).webp().withMetadata({ orientation: 6 })
+        ).toBuffer(),
       );
       const result = await prepareIdentityImage(blob(bytes), {
         signal: signal(),
@@ -663,7 +664,7 @@ describe("JPEG com preenchimento entre segmentos", () => {
     expect(new Uint8Array(await result.blob.arrayBuffer())).toEqual(bytes);
   });
   it.each([1, 6, 8])(
-    "progressivo e EXIF %s medem bruto com preenchimento",
+    "progressivo com preenchimento mede bruto e mantém só a orientação %s",
     async (orientation) => {
       const original = new Uint8Array(
         await sharp(png)
@@ -675,12 +676,22 @@ describe("JPEG com preenchimento entre segmentos", () => {
       const result = await prepareIdentityImage(blob(bytes), {
         signal: signal(),
       });
+      const limpo = new Uint8Array(await result.blob.arrayBuffer());
       expect(result.asset).toMatchObject({
         width: 32,
         height: 16,
-        sha256: hash(bytes),
+        bytes: limpo.length,
+        sha256: hash(limpo),
       });
-      expect(new Uint8Array(await result.blob.arrayBuffer())).toEqual(bytes);
+      expect(limpo.length).toBeLessThan(bytes.length);
+      const metadados = await sharp(limpo).metadata();
+      expect(metadados.orientation).toBe(
+        orientation === 1 ? undefined : orientation,
+      );
+      expect(metadados.exif?.length).toBe(orientation === 1 ? undefined : 32);
+      expect(await sharp(limpo).autoOrient().raw().toBuffer()).toEqual(
+        await sharp(bytes).autoOrient().raw().toBuffer(),
+      );
     },
   );
   it.each([

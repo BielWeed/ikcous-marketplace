@@ -1,3 +1,4 @@
+import { limparExifJpeg } from "./jpeg-sem-exif";
 import type { IdentityAsset } from "./storeIdentity";
 
 export type IdentityImageErrorCode =
@@ -272,7 +273,8 @@ export async function prepareIdentityImage(
     }
     scope.check();
     const [mediaType, extension] = formats.get(format)!;
-    const blob = new Blob([bytes], { type: mediaType });
+    const bytesParaUpload = format === "jpeg" ? limparExifJpeg(bytes) : bytes;
+    const blob = new Blob([bytesParaUpload], { type: mediaType });
     await scope.wait(() => {
       url = URL.createObjectURL(blob);
       image = new Image();
@@ -286,7 +288,7 @@ export async function prepareIdentityImage(
     )
       throw new IdentityImageError("IDENTITY_IMAGE_DIMENSIONS");
     const digest = await scope.wait(
-      () => crypto.subtle.digest("SHA-256", bytes),
+      () => crypto.subtle.digest("SHA-256", bytesParaUpload),
       "IDENTITY_IMAGE_INVALID",
     );
     const sha256 = Array.from(new Uint8Array(digest), (byte) =>
@@ -299,7 +301,7 @@ export async function prepareIdentityImage(
       path: `v1/${sha256}/image.${extension}`,
       sha256,
       media_type: mediaType,
-      bytes: size,
+      bytes: blob.size,
       ...dimensions,
     });
     return Object.freeze({ blob, asset });
