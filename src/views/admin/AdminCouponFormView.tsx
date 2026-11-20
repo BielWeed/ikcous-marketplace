@@ -1347,7 +1347,7 @@ function FormularioDoCupom({
                 />
                 <p className="text-sm leading-relaxed text-orange-200">
                   {avisarCupomFixoSemMinimo && !cupomPodeZerar
-                    ? `Sem valor mínimo e com frete grátis, uma compra de até ${formatCurrency(valorDoCupom)} pode ficar em R$ 0,00 e a cliente não consegue fechar pelo app. Defina um valor mínimo acima do desconto ou ligue uma forma de pagamento na retirada ou na entrega.`
+                    ? `Sem valor mínimo e com frete grátis, uma compra de até ${formatCurrency(valorDoCupom)} pode ficar em R$ 0,00. Com total zero, o pedido só fecha na entrega local ou na retirada, com uma forma de pagamento habilitada para essa opção; para envio por transportadora, defina um valor mínimo acima do desconto.`
                     : lojaSoRecebePeloApp
                       ? AVISO_CUPOM_PODE_COBRIR_E_LOJA_SO_NO_APP
                       : AVISO_CUPOM_PODE_COBRIR_A_COMPRA}

@@ -164,7 +164,9 @@ describe("AdminCouponFormView — aviso do cupom que pode cobrir a compra inteir
     expect(aviso()?.textContent ?? "").toMatch(
       /compra de até R\$\s*30,00 pode ficar em R\$ 0,00/,
     );
-    expect(aviso()?.textContent).toContain("Defina um valor mínimo");
+    expect(aviso()?.textContent).toContain(
+      "Com total zero, o pedido só fecha na entrega local ou na retirada, com uma forma de pagamento habilitada para essa opção; para envio por transportadora, defina um valor mínimo acima do desconto.",
+    );
   });
 
   it("R$ 30 sem mínimo com pagamento na entrega: sem aviso", async () => {
