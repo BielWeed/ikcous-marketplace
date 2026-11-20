@@ -226,7 +226,7 @@
   ],
   "eslint": {
     "errors": 0,
-    "warnings": 300
+    "warnings": 299
   },
   "biome": {
     "errors": 13,
