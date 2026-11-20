@@ -717,8 +717,16 @@ describe("Dashboard CRM", () => {
         )!
         .click(),
     );
-    expect(texto(document.querySelector('[role="dialog"]'))).toContain(
+    const ajudaDoFunil = texto(document.querySelector('[role="dialog"]'));
+    expect(ajudaDoFunil).toContain(
       "Visitas e produtos vistos ainda não são medidos.",
+    );
+    expect(ajudaDoFunil).toContain("Carrinhos contam só quem tem conta.");
+    expect(ajudaDoFunil).toContain(
+      "Pedidos do app incluem compras com e sem conta.",
+    );
+    expect(ajudaDoFunil).toContain(
+      "Pedidos cancelados, devolvidos ou com pagamento estornado ficam fora dos pagos.",
     );
     await act(async () =>
       [
