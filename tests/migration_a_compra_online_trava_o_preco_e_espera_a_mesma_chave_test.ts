@@ -370,6 +370,7 @@ Deno.test("20261350 publicacao: lote unico de apply normal, DEPOIS da 244, vale 
       "161a-conferir-o-custo-do-cancelamento-fica-no-mes-da-volta-aplicado",
       "162a-conferir-o-pedido-guarda-o-nome-antigo-da-opcao-aplicado",
       "164a-conferir-o-relatorio-de-categorias-sem-produto-aplicado",
+      "165a-conferir-o-nome-publico-da-vitrine-aplicado",
     ],
     "os lotes posteriores à 81a são anexados no fim, sem reordenar lotes anteriores",
   );

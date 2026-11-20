@@ -555,6 +555,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // o portao da release (consultas 22a e 22b do lote) decide certo.
     "tests/banco/portas-do-banco-viva.cjs",
     "tests/banco/portas-do-banco-portao-viva.cjs",
+    // 20261408000000: o nome abreviado aparece nas duas views da vitrine (12 casos de nome; foto, moderacao,
+    // nome cadastrado e contrato das views preservados; pre-voo, rollback e consultas 165a/165b).
+    "tests/banco/o-nome-publico-da-vitrine-viva.cjs",
     // 20261220000000: a consulta antiga de pedido por codigo fecha para o visitante (comportamento) e o
     // portao da release (consultas 23a e 23b do lote) decide certo.
     "tests/banco/consulta-antiga-de-pedido-viva.cjs",
