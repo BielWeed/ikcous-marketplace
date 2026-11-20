@@ -10,6 +10,7 @@ import {
   ROTULO_RETIRADA_FEITA,
   ROTULO_RETIRADA_PRONTA,
 } from "@/lib/rotulos-das-etapas";
+import { semInvisiveis } from "@/lib/texto-sem-invisiveis";
 
 /**
  * O nome da etapa como a CLIENTE lê no app, para o que a lojista manda a ela
@@ -115,7 +116,8 @@ export function mensagemDoStatusNoWhatsapp({
     }
     // Nunca corte o horário: o fim pode conter um dia fechado ou uma exceção.
     const horarioCabe =
-      horarioDeAtendimento?.trim() &&
+      horarioDeAtendimento &&
+      semInvisiveis(horarioDeAtendimento) &&
       horarioDeAtendimento.length <= 200 &&
       encodeURIComponent(horarioDeAtendimento).length <= 650;
     orientacoesDeRetirada += horarioCabe

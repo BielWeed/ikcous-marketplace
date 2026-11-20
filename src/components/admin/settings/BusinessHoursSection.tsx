@@ -1,6 +1,7 @@
 import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { lerSupabaseUrl } from "@/lib/env-valores";
+import { semInvisiveis } from "@/lib/texto-sem-invisiveis";
 import { cn } from "@/lib/utils";
 import type { EditorDeMinhaLoja } from "@/views/admin/AdminAboutStoreView";
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -67,7 +68,7 @@ const BusinessHoursEditor = memo(function BusinessHoursEditor({
     const serial = ++life.serial;
     const isCurrent = () =>
       life.mounted && life.active && life.serial === serial;
-    const chosen = value.trim();
+    const chosen = semInvisiveis(value);
     setSaving(true);
     setError(false);
     try {
