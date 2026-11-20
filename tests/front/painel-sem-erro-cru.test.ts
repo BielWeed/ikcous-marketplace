@@ -90,6 +90,13 @@ const EXCECOES: Excecao[] = [
     motivo:
       "O ramo mostra mensagem curada de ErroDeCategoria (src/lib/gestao-de-categorias.ts) ou do timeout deste fluxo, criado por erroDeConsultaSemResposta(semRespostaDaCategoria(...)) em useCategories com frase própria de resultado desconhecido. Qualquer erro sem essas guardas cai em 'Erro ao salvar categoria'. A janela maior só alcança o await adicionar deste mesmo fluxo; arquivo, guarda de tipo e uso único continuam obrigatórios.",
   },
+  {
+    arquivo: "src/views/admin/AdminShippingView.tsx",
+    chamadaContem: "ehConsultaSemResposta(err)",
+    contexto: /Error saving configs/,
+    motivo:
+      "O ramo mostra só a frase própria de resultado desconhecido que a gravação com prazo do Frete cria (erroDeConsultaSemResposta, em palavras de lojista: pode ter gravado, saia do Frete e volte para conferir). Qualquer outro erro cai em 'Erro ao salvar as configurações.' e o texto cru fica no console.",
+  },
 ];
 
 function ehLinhaDeComentario(linha: string): boolean {

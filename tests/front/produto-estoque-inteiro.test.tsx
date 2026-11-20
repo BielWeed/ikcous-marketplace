@@ -295,6 +295,8 @@ describe("Produto — estoque inteiro", () => {
 
     expect(addProduct).toHaveBeenCalledWith(
       expect.objectContaining({ stock: 0, price: 50 }),
+      // 2º argumento: o identificador do formulário (idempotência do produto novo)
+      expect.objectContaining({ idDoFormulario: expect.any(String) }),
     );
     expect(updateProduct).not.toHaveBeenCalled();
   });
