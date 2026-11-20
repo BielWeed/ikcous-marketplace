@@ -27,6 +27,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 type DescontoDoCupom = Pick<Coupon, "type" | "value">;
+type DescontoNaoGravado = {
+  descontoNaoGravado: DescontoDoCupom | null | undefined;
+};
 
 interface ControleDoDesconto {
   original: DescontoDoCupom;
@@ -341,21 +344,19 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
     id: string,
     updates: Partial<Coupon>,
     clientes?: readonly string[],
-  ): Promise<void>;
+  ): Promise<undefined>;
   function updateCoupon(
     id: string,
     updates: Partial<Coupon>,
     clientes: readonly string[] | undefined,
     controleDoDesconto: ControleDoDesconto,
-  ): Promise<
-    undefined | { descontoNaoGravado: DescontoDoCupom | null | undefined }
-  >;
+  ): Promise<DescontoNaoGravado | undefined>;
   async function updateCoupon(
     id: string,
     updates: Partial<Coupon>,
     clientes?: readonly string[],
     controleDoDesconto?: ControleDoDesconto,
-  ) {
+  ): Promise<DescontoNaoGravado | undefined> {
     if (!isAdmin) {
       toast.error("Permissão negada");
       return;
