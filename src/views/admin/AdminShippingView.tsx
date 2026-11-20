@@ -1064,11 +1064,12 @@ export const AdminShippingView = memo(function AdminShippingView({
     if (gravaRegras && mexeu.alcance) {
       const erroDaFaixa = erroDaFaixaDeCepLocal(alcance);
       if (erroDaFaixa) {
+        setRecusaDaFaixa({ faixa: alcance });
         setPainelAberto((prev) => ({ ...prev, local: true }));
         toast.error(
           erroDaFaixa === "digitos-demais"
             ? "Confira a faixa de CEP: use até 8 dígitos por CEP."
-            : "Confira a faixa de CEP: separe início e fim com vírgula: 01310-000, 01399-999.",
+            : "Confira a faixa de CEP: use números, sem letras, e separe início e fim com vírgula: 01310-000, 01399-999.",
         );
         return;
       }

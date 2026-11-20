@@ -281,9 +281,10 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
   const erroDaFaixa = faixaRecusada === faixa;
   const dicaDaFaixaManual = erroDaFaixa ? (
     <span id="erro-faixa-de-cep" role="alert">
-      Digite um CEP ou os números iniciais da região. Para um intervalo, separe
-      o primeiro e o último CEP por vírgula: {EXEMPLO_DE_INTERVALO_DE_CEP}. Para
-      entregar perto da loja, deixe o campo vazio.
+      Digite os números do CEP (sem letras) ou os números iniciais da região.
+      Para um intervalo, separe o primeiro e o último CEP por vírgula:{" "}
+      {EXEMPLO_DE_INTERVALO_DE_CEP}. Para entregar perto da loja, deixe o campo
+      vazio.
     </span>
   ) : (
     dicaDoTexto(cepDaLoja)
