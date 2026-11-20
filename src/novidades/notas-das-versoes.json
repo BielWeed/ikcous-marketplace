@@ -8,14 +8,14 @@
       "Se o painel recusar a faixa de CEP, ele reabre o campo para correção, mesmo com a loja só em retirada.",
       "No Início, se não der para atualizar as vendas dos últimos 14 dias, o gráfico avisa em vez de dizer que não houve receita.",
       "Se a cliente cancelar um pedido já pago na entrega ou na retirada, o sino e a notificação avisam que a devolução precisa ser combinada com ela.",
-      "Ao enviar fotos JPG pelo painel (produto, banner e logotipo), a localização gravada pelo celular é removida."
+      "Ao enviar fotos JPG pelo painel (produto, banner e logotipo), a localização gravada pelo celular é removida. Se o arquivo estiver danificado e não der para limpar, ele segue como estava."
     ],
     "melhorias": [
-      "Na lista de pedidos do painel e na consulta de pedido sem conta, uma opção renomeada depois da compra aparece com o nome que tinha no pedido.",
+      "Na lista de pedidos do painel e na consulta de pedido sem conta, uma opção renomeada depois da compra aparece com o nome que tinha no pedido, quando esse nome foi guardado nele (renomeações a partir da 1.5.220).",
       "A vitrine mostra o nome abreviado em avaliações e perguntas. Antes de publicar, a cliente vê como ele vai aparecer.",
       "O funil mostra lado a lado os pedidos criados e os pagos no período. A taxa de conversão e o aviso de pedidos que não viraram venda paga saíram, porque comparavam datas diferentes.",
       "O relatório de categorias separa as vendas de itens que não estão mais ligados a um produto.",
-      "Nas alternativas de frete, a lista abre logo depois do botão que a mostra, o que facilita o uso pelo teclado. Para quem compra sem conta, aparece o botão “Entrar para pagar com Pix”."
+      "Nas alternativas de frete, a lista abre logo depois do botão que a mostra, o que facilita o uso pelo teclado. Quando a loja aceita Pix pelo app e pagamento na entrega, quem compra sem conta vê o botão “Entrar para pagar com Pix”."
     ]
   },
   "1.5.220": {
