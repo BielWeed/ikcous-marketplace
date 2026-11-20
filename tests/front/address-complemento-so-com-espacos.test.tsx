@@ -169,6 +169,30 @@ describe("AddressForm — complemento e referência só com espaços", () => {
     },
   );
 
+  it("remove controles invisíveis dos campos de texto antes de salvar", async () => {
+    const enviado = await preencherEEnviar({
+      name: "Ca\u{200B}sa",
+      street: "Rua do \u{202E}Parque",
+      number: "\u{200F}120",
+      complement: " Apto \u{202E}120 ",
+      neighborhood: "Jar\u{2060}dim",
+      city: "No\u{FEFF}va",
+      reference: " Perto do \u{2066}parque\u{2069} ",
+      recipient_name: "Pessoa \u{61C}de Teste",
+    });
+
+    expect(enviado).toMatchObject({
+      name: "Casa",
+      street: "Rua do Parque",
+      number: "120",
+      complement: "Apto 120",
+      neighborhood: "Jardim",
+      city: "Nova",
+      reference: "Perto do parque",
+      recipient_name: "Pessoa de Teste",
+    });
+  });
+
   it("complemento com texto real vai igual, só sem os espaços das pontas", async () => {
     const enviado = await preencherEEnviar({
       complement: " Apto 12 ",

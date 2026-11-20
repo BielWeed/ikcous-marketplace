@@ -45,6 +45,7 @@ import {
   fraseDeEsperaDoPedido,
   idadeDoPedidoPendente,
 } from "@/lib/idade-do-pedido-pendente";
+import { montarLinhasDoEndereco } from "@/lib/linhas-do-endereco-do-pedido";
 import {
   codigoDeRastreioPareceLink,
   codigoDeRastreioTemLetraOuDigito,
@@ -837,6 +838,8 @@ function OrderDeliveryCard({
       .map((parte) => (parte ?? "").trim())
       .every((parte) => parte === "");
 
+  const linhasDoEndereco = montarLinhasDoEndereco(order.customer);
+
   // "Recebe: X" só quando a cliente digitou OUTRA pessoa no endereço (presente, portaria): o nome de quem comprou já está no topo.
   const quemRecebe = quemVaiReceberSeForOutro(
     order.customer.name,
@@ -912,22 +915,9 @@ function OrderDeliveryCard({
               : "Endereço de entrega"}
           </p>
           <p className="break-words text-sm leading-relaxed text-zinc-200">
-            {order.customer.address}
-            {order.customer.number ? `, ${order.customer.number}` : ""}
-            {order.customer.complement?.trim()
-              ? ` - ${order.customer.complement.trim()}`
-              : ""}
+            {linhasDoEndereco.primeira}
             <br />
-            <span className="text-zinc-400">
-              {order.customer.neighborhood}
-              {order.customer.city
-                ? ` • ${order.customer.city}${order.customer.state ? `/${order.customer.state}` : ""}`
-                : ""}
-              {order.customer.cep ? ` • CEP: ${order.customer.cep}` : ""}
-              {order.customer.reference
-                ? ` • Ref: ${order.customer.reference}`
-                : ""}
-            </span>
+            <span className="text-zinc-400">{linhasDoEndereco.segunda}</span>
           </p>
           {quemRecebe && (
             <p

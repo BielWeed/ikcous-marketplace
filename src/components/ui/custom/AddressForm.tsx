@@ -8,6 +8,7 @@ import {
   type PassosDoEndereco,
   passosDoEndereco,
 } from "@/lib/passos-do-endereco";
+import { textoSemControlesDeDirecao } from "@/lib/texto-sem-controles-de-direcao";
 import {
   normalizarUf,
   siglaDaUfColada,
@@ -631,16 +632,18 @@ export function AddressForm({
   const handleSubmit = async (values: AddressFormValues) => {
     setLoading(true);
     try {
+      const complemento = textoSemControlesDeDirecao(values.complement ?? "");
+      const referencia = textoSemControlesDeDirecao(values.reference ?? "");
       const cleanData: DadosDoFormularioDeEndereco = {
-        name: values.name,
+        name: textoSemControlesDeDirecao(values.name),
         cep: values.cep,
-        street: values.street,
-        number: values.number,
-        complement: nomeTemConteudoVisivel(values.complement)
-          ? values.complement!.trim()
+        street: textoSemControlesDeDirecao(values.street),
+        number: textoSemControlesDeDirecao(values.number),
+        complement: nomeTemConteudoVisivel(complemento)
+          ? complemento.trim()
           : "",
-        neighborhood: values.neighborhood,
-        city: values.city,
+        neighborhood: textoSemControlesDeDirecao(values.neighborhood),
+        city: textoSemControlesDeDirecao(values.city),
         // UF vai para a etiqueta do Melhor Envio: sempre em maiúsculas.
         state: values.state.toUpperCase(),
         // Editando, o principal só vai se a pessoa mexeu nele: o valor do
@@ -649,10 +652,8 @@ export function AddressForm({
         ...(!initialData || principalTocadoRef.current
           ? { is_default: values.is_default }
           : {}),
-        reference: nomeTemConteudoVisivel(values.reference)
-          ? values.reference!.trim()
-          : "",
-        recipient_name: values.recipient_name,
+        reference: nomeTemConteudoVisivel(referencia) ? referencia.trim() : "",
+        recipient_name: textoSemControlesDeDirecao(values.recipient_name),
       };
       // Base: o endereço aplicado ou, antes da inicialização, aquele que já
       // preencheu os valores iniciais. Endereço novo não tem base.
