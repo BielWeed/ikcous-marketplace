@@ -8970,8 +8970,7 @@ export function CheckoutViewDaConta({
                         className="mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-700"
                       >
                         <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
-                        Sem conexão — nada foi enviado. Aguarde a internet
-                        voltar para finalizar
+                        Sem conexão — aguarde a internet voltar para continuar.
                       </p>
                     )}
                     {mostrarAvisoDeConta && (

@@ -376,6 +376,38 @@ describe("CheckoutView — sem rede não trava o botão nem manda conferir pedid
     expect(createOrder).not.toHaveBeenCalled();
   });
 
+  it("ao perder a conexão com o pedido em envio, o aviso não diz que nada foi enviado", async () => {
+    createOrder.mockImplementationOnce(() => new Promise(() => {}));
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    const renderizar = () =>
+      raiz.render(
+        <CheckoutView
+          onNavigate={onNavigate}
+          onSetBackOverride={onSetBackOverride}
+        />,
+      );
+
+    await act(async () => renderizar());
+    await preencherEClicarFinalizar();
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    expect(localizarAvisoDeRede()).toBeUndefined();
+
+    estadoDeRede.offline = true;
+    await act(async () => renderizar());
+
+    const botao = document.body.querySelector<HTMLButtonElement>(
+      'button[aria-label="Finalizar pedido"]',
+    );
+    expect(botao?.disabled).toBe(true);
+    expect(botao?.querySelector(".animate-spin")).not.toBeNull();
+    const aviso = localizarAvisoDeRede();
+    expect(aviso).toBeDefined();
+    expect(aviso?.textContent).not.toContain("nada foi enviado");
+    expect(aviso?.textContent?.trim()).toBe(
+      "Sem conexão — aguarde a internet voltar para continuar.",
+    );
+  });
+
   it("falha de rede DURANTE o clique: só o reenvio congelado fica disponível", async () => {
     createOrder.mockRejectedValueOnce({
       code: "",
