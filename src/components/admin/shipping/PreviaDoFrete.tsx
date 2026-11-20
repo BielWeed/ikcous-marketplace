@@ -47,11 +47,13 @@ export function PreviaDoFrete({
   config,
   nomesLigados,
   pendente,
+  promocaoNacionalComPagamento = false,
   promocaoNacionalSemPagamento = false,
 }: {
   readonly config: StoreConfig;
   readonly nomesLigados: readonly string[] | null;
   readonly pendente: boolean;
+  readonly promocaoNacionalComPagamento?: boolean;
   readonly promocaoNacionalSemPagamento?: boolean;
 }) {
   const [subtotal, setSubtotal] = useState(100);
@@ -154,19 +156,21 @@ export function PreviaDoFrete({
                         : "nenhuma transportadora ligada"
             }
             valor={
-              promocaoNacionalSemPagamento
-                ? "Não finaliza pelo app"
-                : soRetiro
-                  ? "Só retirada · Grátis"
-                  : !fora
-                    ? "Não vende"
-                    : nomesLigados === null
-                      ? "A confirmar"
-                      : !nomesLigados.length
-                        ? "Não compra"
-                        : gratisNacional
-                          ? "Grátis"
-                          : "Na hora"
+              promocaoNacionalComPagamento
+                ? "Grátis se tiver produto marcado"
+                : promocaoNacionalSemPagamento
+                  ? "Não finaliza pelo app"
+                  : soRetiro
+                    ? "Só retirada · Grátis"
+                    : !fora
+                      ? "Não vende"
+                      : nomesLigados === null
+                        ? "A confirmar"
+                        : !nomesLigados.length
+                          ? "Não compra"
+                          : gratisNacional
+                            ? "Grátis"
+                            : "Na hora"
             }
             nota={
               !fora || !nomesLigados?.length

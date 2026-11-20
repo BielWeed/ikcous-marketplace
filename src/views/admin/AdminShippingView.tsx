@@ -717,7 +717,7 @@ export const AdminShippingView = memo(function AdminShippingView({
     pagamentoPeloAppLigado,
   });
 
-  const avisarPromocaoNacionalSemPagamento =
+  const promocaoNacionalSemTransportadora =
     active !== false &&
     isLoaded &&
     !!config &&
@@ -728,8 +728,13 @@ export const AdminShippingView = memo(function AdminShippingView({
     formData.shippingCoverage === "national" &&
     formData.modo !== "so_retiro" &&
     formDataNacional.estrategia === "por_produto" &&
-    nomesLigados.length === 0 &&
-    !pagamentoPeloAppLigado;
+    nomesLigados.length === 0;
+  const avisarPromocaoNacionalSemPagamento =
+    promocaoNacionalSemTransportadora && !pagamentoPeloAppLigado;
+  const avisarPromocaoNacionalComPagamento =
+    promocaoNacionalSemTransportadora && pagamentoPeloAppLigado;
+  const resumoDaPromocaoNacional =
+    "Fora da sua região, só pedidos com produto marcado têm entrega";
 
   const resumoPainelLocal = `${formData.modo === "so_retiro" ? "Só retirada na loja · qualquer cliente pode buscar" : formData.modo === "entrego_e_retiro" ? "Você entrega ou o cliente retira" : "Você entrega"}${formData.modo === "so_retiro" ? "" : cepCompleto(config?.originCep) ? ` · ${resumoDoAlcance(config?.originCep, formData.localCepRange)}` : " · até onde, depende do CEP da loja"}`;
   const resumoPainelNacional =
@@ -743,7 +748,9 @@ export const AdminShippingView = memo(function AdminShippingView({
             ? "Quem é de fora pode retirar na loja"
             : avisarPromocaoNacionalSemPagamento
               ? "A promoção pode aparecer, mas não finaliza sem pagamento pelo app"
-              : "Nenhuma transportadora ligada: quem é de fora não compra";
+              : avisarPromocaoNacionalComPagamento
+                ? resumoDaPromocaoNacional
+                : "Nenhuma transportadora ligada: quem é de fora não compra";
   const resumoGratisLocal =
     formData.preset === "desligado"
       ? "não dá"
@@ -1500,6 +1507,9 @@ export const AdminShippingView = memo(function AdminShippingView({
                 config={configDaPrevia}
                 nomesLigados={credsErro || !credsLidas ? null : nomesLigados}
                 pendente={isFormDirty}
+                promocaoNacionalComPagamento={
+                  avisarPromocaoNacionalComPagamento
+                }
                 promocaoNacionalSemPagamento={
                   avisarPromocaoNacionalSemPagamento
                 }
@@ -1562,8 +1572,16 @@ export const AdminShippingView = memo(function AdminShippingView({
                 )}
                 {faltaTransportadora && !avisarPromocaoNacionalSemPagamento && (
                   <AvisoDaEntrega
-                    titulo="Ninguém de fora da sua região compra"
-                    detalhe="Nenhuma transportadora está ligada. Se só vende perto, tudo bem."
+                    titulo={
+                      avisarPromocaoNacionalComPagamento
+                        ? resumoDaPromocaoNacional
+                        : "Ninguém de fora da sua região compra"
+                    }
+                    detalhe={
+                      avisarPromocaoNacionalComPagamento
+                        ? "Ligue uma transportadora para entregar também os pedidos sem produto marcado."
+                        : "Nenhuma transportadora está ligada. Se só vende perto, tudo bem."
+                    }
                     botao="Ligar transportadora"
                     onClick={abrirTransportadoras}
                   />

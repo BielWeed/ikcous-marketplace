@@ -251,6 +251,23 @@ describe("AdminShippingView — avisa quando a transportadora fica sem pagamento
     },
   );
 
+  it("sem transportadora, com pagamento ligado: só pedidos com produto marcado têm entrega fora", async () => {
+    mockConfig.nationalShippingStrategy = "por_produto";
+    cenario.bootPagamentoLigado = true;
+    cenario.ligados = [];
+    await abrirTela();
+
+    expect(textoDaTela()).toContain(
+      "Fora da sua região, só pedidos com produto marcado têm entrega",
+    );
+    expect(textoDaTela()).not.toContain("Ninguém de fora da sua região compra");
+    expect(textoDaTela()).not.toContain("quem é de fora não compra");
+    expect(
+      hospedeiro.querySelector('[aria-label="Como fica para o cliente"]')
+        ?.textContent,
+    ).toContain("Grátis se tiver produto marcado");
+  });
+
   it("a promoção nacional leva direto à seção Pagamentos", async () => {
     mockConfig.nationalShippingStrategy = "por_produto";
     cenario.ligados = [];
