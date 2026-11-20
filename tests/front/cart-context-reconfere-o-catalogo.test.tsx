@@ -314,10 +314,8 @@ describe("CartContext — relê o catálogo ao abrir o app", () => {
       expect(atual.cart[0].quantity).toBe(3);
       expect(mundo.avisos).toHaveLength(1);
       expect(mundo.avisos[0]).toContain("Camiseta");
-      expect(mundo.avisos[0]).toContain("não aparece no seu carrinho");
-      expect(mundo.avisos[0]).toContain(
-        "ainda estiver salvo, pode reaparecer.",
-      );
+      expect(mundo.avisos[0]).toContain("saiu do seu carrinho");
+      expect(mundo.avisos[0]).toContain("será preciso adicionar de novo.");
     });
 
     it("SEM ESTOQUE: sai do carrinho com aviso claro", async () => {
@@ -437,10 +435,8 @@ describe("CartContext — relê o catálogo ao abrir o app", () => {
 
       expect(atual.cart.map((i) => i.product.id)).toEqual(["prod-2"]);
       expect(mundo.avisos).toHaveLength(1);
-      expect(mundo.avisos[0]).toContain("não aparece no seu carrinho");
-      expect(mundo.avisos[0]).toContain(
-        "ainda estiver salvo, pode reaparecer.",
-      );
+      expect(mundo.avisos[0]).toContain("saiu do seu carrinho");
+      expect(mundo.avisos[0]).toContain("será preciso adicionar de novo.");
     });
 
     it("item adicionado ENQUANTO a leitura estava em voo não é tratado como sumido", async () => {

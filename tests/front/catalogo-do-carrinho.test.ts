@@ -204,6 +204,7 @@ describe("linha SEM variação de produto que TEM variação ativa", () => {
     expect(frases[0]).toContain('"Vestido Midi"');
     expect(frases[0]).toContain("tamanho");
     expect(frases[0]).toContain("saiu do seu carrinho");
+    // Falta escolher uma opção; o item não está indisponível.
     expect(frases[0]).not.toContain("indisponível");
     expect(frases[0]).not.toContain("mudou de");
   });

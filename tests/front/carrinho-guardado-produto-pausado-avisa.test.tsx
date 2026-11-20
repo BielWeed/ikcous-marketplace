@@ -179,7 +179,7 @@ describe("CartContext — carrinho guardado com produto pausado ou excluído", (
     // A regra de quais itens entram não mudou: só o que está à venda.
     expect(idsNoCarrinho()).toEqual([A_VENDA]);
     expect(frasesDeAviso()).toEqual([
-      "Um item está indisponível e não aparece no seu carrinho. Se voltar à venda e ainda estiver salvo, pode reaparecer.",
+      "Um item do seu carrinho guardado está indisponível e saiu dele. Se voltar à venda, será preciso adicioná-lo de novo.",
     ]);
   });
 
@@ -195,7 +195,7 @@ describe("CartContext — carrinho guardado com produto pausado ou excluído", (
 
     expect(idsNoCarrinho()).toEqual([A_VENDA]);
     expect(frasesDeAviso()).toEqual([
-      "2 itens estão indisponíveis e não aparecem no seu carrinho. Se voltarem à venda e ainda estiverem salvos, podem reaparecer.",
+      "2 itens do seu carrinho guardado estão indisponíveis e saíram dele. Se voltarem à venda, será preciso adicioná-los de novo.",
     ]);
   });
 
@@ -227,7 +227,7 @@ describe("CartContext — carrinho guardado com produto pausado ou excluído", (
 
     expect(idsNoCarrinho()).toEqual([]);
     expect(frasesDeAviso()).toEqual([
-      `"Camiseta ${PAUSADO}" está indisponível e não aparece no seu carrinho. Se voltar à venda e ainda estiver salvo, pode reaparecer.`,
+      `"Camiseta ${PAUSADO}" está indisponível e saiu do seu carrinho. Se voltar à venda, será preciso adicionar de novo.`,
     ]);
   });
 
@@ -251,7 +251,7 @@ describe("CartContext — carrinho guardado com produto pausado ou excluído", (
     expect(idsNoCarrinho()).toEqual([]);
     expect(frasesDeAviso()).toHaveLength(2);
     expect(frasesDeAviso()).toContain(
-      "Um item está indisponível e não aparece no seu carrinho. Se voltar à venda e ainda estiver salvo, pode reaparecer.",
+      "Um item do seu carrinho guardado está indisponível e saiu dele. Se voltar à venda, será preciso adicioná-lo de novo.",
     );
   });
 });
