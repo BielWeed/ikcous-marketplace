@@ -236,7 +236,9 @@ describe("FavoritesContext — sync local->servidor não apaga o que não gravou
     expect(toast.success).not.toHaveBeenCalledWith(
       expect.stringContaining("sincronizados"),
     );
-    expect(toast.error).toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith(
+      "1 de 2 favoritos foi sincronizado. Os demais continuam salvos e vamos tentar de novo quando a conexão voltar.",
+    );
   });
 
   it("todos os produtos falham: localStorage continua com os dois, nada é apagado", async () => {

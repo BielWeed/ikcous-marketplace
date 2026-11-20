@@ -761,7 +761,7 @@ export function FavoritesProvider({
           } else if (sincronizados < total) {
             if (sincronizados > 0) {
               toast.error(
-                `${sincronizados} de ${total} favoritos foram sincronizados. Os demais continuam salvos e vamos tentar de novo quando a conexão voltar.`,
+                `${sincronizados} de ${total} favoritos ${sincronizados === 1 ? "foi sincronizado" : "foram sincronizados"}. Os demais continuam salvos e vamos tentar de novo quando a conexão voltar.`,
               );
             } else {
               toast.error(
