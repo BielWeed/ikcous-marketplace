@@ -78,6 +78,8 @@ import {
   inventariar,
   lerPolitica,
   problemasDoContrato,
+  problemasLojasNaoSondadas,
+  refDaLojaSondada,
   resolverCliVercel,
   validarVersao,
 } from "./conferir-frota.mjs";
@@ -347,20 +349,13 @@ export function lojasDoInventario(inventario, politica) {
   for (const sonda of inventario.sondas) {
     if (esperados.has(sonda.dominio)) continue;
     const f = sonda.ficha;
-    if (
-      !f ||
-      f.status !== 200 ||
-      f.caderneta !== "hit" ||
-      !Array.isArray(f.refs) ||
-      f.refs.length !== 1 ||
-      f.estavel === false
-    ) {
+    const ref = refDaLojaSondada(f);
+    if (ref === null) {
       problemas.push(
         `${sonda.dominio}: não é loja legível (status ${f?.status ?? "-"}, caderneta ${f?.caderneta ?? "-"}, refs ${(f?.refs ?? []).join(",") || "-"}${f?.estavel === false ? ", amostras divergentes" : ""})`,
       );
       continue;
     }
-    const ref = f.refs[0];
     if (!lojas.has(ref))
       lojas.set(ref, {
         ref,
@@ -1514,7 +1509,19 @@ export async function publicarRelease(opcoes, deps) {
   // 2. inventário oficial + identidade/isolamento/canônico antes do promote
   const inventario = await deps.inventariar(politica);
   const { lojas, problemas: probInv } = lojasDoInventario(inventario, politica);
-  for (const p of probInv) bloqueios.push({ alvo: "inventário", motivo: p });
+  const semBackend = new Set(
+    (politica.lojasSemBackendGerenciado ?? []).map((l) => l.ref),
+  );
+  // A lista de aliases pode vir completa segundo a Vercel e ainda omitir uma loja.
+  const lojasObrigatorias = Object.entries(canais.canais)
+    .filter(([ref]) => !semBackend.has(ref))
+    .map(([ref, canal]) => ({ ref, nome: canal.nome }));
+  const refsSondados = new Set(lojas.map((l) => l.ref));
+  for (const p of [
+    ...probInv,
+    ...problemasLojasNaoSondadas(lojasObrigatorias, refsSondados),
+  ])
+    bloqueios.push({ alvo: "inventário", motivo: p });
   const producaoAnterior = inventario.vercel?.producaoOficial ?? null;
   if (
     typeof producaoAnterior !== "string" ||
@@ -1526,7 +1533,9 @@ export async function publicarRelease(opcoes, deps) {
         "produção oficial do projeto não lida (sem ela não há rollback exato)",
     });
   }
-  const antes = await deps.conferirFrota(politica, sha, inventario);
+  const antes = await deps.conferirFrota(politica, sha, inventario, {
+    lojasObrigatorias,
+  });
   for (const p of problemasAntesDoPromote(antes, sha))
     bloqueios.push({ alvo: "frota (antes do promote)", motivo: p });
   linhas.push(
@@ -1535,9 +1544,6 @@ export async function publicarRelease(opcoes, deps) {
     "",
     "| Loja | Ref | Endereços | SHA servido | Backend |",
     "|---|---|---|---|---|",
-  );
-  const semBackend = new Set(
-    (politica.lojasSemBackendGerenciado ?? []).map((l) => l.ref),
   );
   for (const l of lojas) {
     const papel = semBackend.has(l.ref)
@@ -1750,7 +1756,10 @@ export async function publicarRelease(opcoes, deps) {
       producaoAnterior,
     };
   }
-  const pos = await deps.conferirFrota(politica, sha, null);
+  const pos = await deps.conferirFrota(politica, sha, null, {
+    lojasObrigatorias,
+    dominiosDeLojasAntes: lojas.flatMap((loja) => loja.dominios),
+  });
   const producaoDepois = pos.vercel?.producaoOficial ?? null;
   const ok = pos.ok === true && producaoDepois === deploymentId;
   linhas.push(
@@ -1903,8 +1912,9 @@ export function dependenciasReais() {
     vercelApi: executor,
     inventariar: (p) =>
       inventariar(p, { pedirVercel: true, executorVercel: executor }),
-    conferirFrota: (p, sha, inventarioPronto) =>
+    conferirFrota: (p, sha, inventarioPronto, cobertura) =>
       conferirFrota(p, {
+        ...cobertura,
         sha,
         pedirVercel: true,
         executorVercel: executor,
