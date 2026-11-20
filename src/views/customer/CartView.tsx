@@ -45,7 +45,14 @@ import {
   usePresence,
 } from "framer-motion";
 import { ArrowRight, ShieldCheck, Sparkles, Truck } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type KeyboardEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import {
   AlertDialog,
@@ -1015,6 +1022,34 @@ function ConteudoDoCarrinho({
     },
     [cart, propOnRemove, removeFromCart],
   );
+  function navegarAbasPeloTeclado(evento: KeyboardEvent<HTMLButtonElement>) {
+    let destino: string;
+    switch (evento.key) {
+      case "Home":
+        destino = "tab-cart";
+        break;
+      case "End":
+        destino = "tab-orders";
+        break;
+      case "ArrowLeft":
+      case "ArrowRight":
+        destino =
+          evento.currentTarget.id === "tab-cart" ? "tab-orders" : "tab-cart";
+        break;
+      default:
+        return;
+    }
+    evento.preventDefault();
+    const aba =
+      evento.currentTarget.parentElement?.querySelector<HTMLButtonElement>(
+        `#${destino}`,
+      );
+    if (aba && aba !== evento.currentTarget) {
+      aba.focus();
+      aba.click();
+    }
+  }
+
   // Caça 4 (C5): a retirada na loja chega com preço 0 por natureza -- os dois
   // resumos (computador e rodapé do celular) dizem "Retirada na loja" e não
   // anunciam "frete grátis", que seria promessa que a loja pode não ter.
@@ -1065,6 +1100,8 @@ function ConteudoDoCarrinho({
             role="tab"
             aria-selected={activeTab === "cart"}
             aria-controls="painel-cart"
+            tabIndex={activeTab === "cart" ? 0 : -1}
+            onKeyDown={navegarAbasPeloTeclado}
             onClick={() => {
               haptic.light();
               setActiveTab("cart");
@@ -1085,6 +1122,8 @@ function ConteudoDoCarrinho({
             role="tab"
             aria-selected={activeTab === "orders"}
             aria-controls="painel-orders"
+            tabIndex={activeTab === "orders" ? 0 : -1}
+            onKeyDown={navegarAbasPeloTeclado}
             onClick={() => {
               haptic.light();
               setActiveTab("orders");
