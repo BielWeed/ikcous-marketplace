@@ -475,6 +475,7 @@ interface AdminProductFormViewProps {
   userId?: string;
 }
 
+const LIMITE_DO_NOME_DO_PRODUTO = 200;
 const ESTOQUE_MAXIMO_DO_PRODUTO = 10000;
 const ID_DO_AVISO_DA_GRADE_PENDENTE = "rascunho-da-grade-pendente";
 const ID_DA_OFERTA_DE_RASCUNHO_ANTIGO = "rascunho-antigo-do-produto";
@@ -5778,6 +5779,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   id="product-name"
                   name="product-name"
                   type="text"
+                  maxLength={LIMITE_DO_NOME_DO_PRODUTO}
                   value={formData.name}
                   onFlush={(val) =>
                     setFormData((prev) => ({ ...prev, name: val }))
