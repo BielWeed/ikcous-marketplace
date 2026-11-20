@@ -169,6 +169,14 @@ describe("AdminCouponFormView — aviso do cupom que pode cobrir a compra inteir
     );
   });
 
+  it("R$ 0 de desconto fixo sem mínimo na loja só-app: sem aviso", async () => {
+    mockFormasNaEntrega = [];
+    mockCoupons = [cupom({ type: "fixed", value: 0, minPurchase: 0 })];
+    await abrirTela("c1");
+
+    expect(aviso()).toBeNull();
+  });
+
   it("R$ 30 sem mínimo com pagamento na entrega: sem aviso", async () => {
     mockCoupons = [cupom({ type: "fixed", value: 30 })];
     await abrirTela("c1");
