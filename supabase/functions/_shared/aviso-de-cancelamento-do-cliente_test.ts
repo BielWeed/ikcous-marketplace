@@ -296,6 +296,29 @@ Deno.test("pagamento que entrou DEPOIS do cancelamento (pago_apos_expirar) -> av
   assertEquals(r.avisos[0].aviso.body.includes("automático"), false);
 });
 
+Deno.test("pagamento recebido na entrega cancelado pela cliente -> push orienta combinar a devolução", async () => {
+  const r = await rodar({
+    historico: [hist("h1")],
+    pedidos: [pedido({ payment_status: "recebido_na_entrega" })],
+    perfis,
+  });
+  assertEquals(r.avisos.length, 1);
+  assertEquals(r.avisos[0].chave, "cancelado_pelo_cliente:h1");
+  assertStringIncludes(r.avisos[0].aviso.body, "devolução combinada com a cliente");
+  assertEquals(r.avisos[0].aviso.body.includes("automático"), false);
+});
+
+Deno.test("pagamento recebido na entrega após saída -> push mantém a orientação de transporte", async () => {
+  const r = await rodar({
+    historico: [hist("h1", { old_status: "shipping" })],
+    pedidos: [pedido({ payment_status: "recebido_na_entrega" })],
+    perfis,
+  });
+  assertEquals(r.avisos.length, 1);
+  assertStringIncludes(r.avisos[0].aviso.body, "avise o transporte");
+  assertStringIncludes(r.avisos[0].aviso.body, "devolução combinada com a cliente");
+});
+
 Deno.test("pedido ja estornado pelo cron antes do aviso (estornado) ainda avisa: foi o cliente quem cancelou", async () => {
   const r = await rodar({
     historico: [hist("h1")],

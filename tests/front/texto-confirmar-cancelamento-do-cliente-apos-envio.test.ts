@@ -42,9 +42,9 @@ describe("textoConfirmarCancelamento — retirada pronta", () => {
 });
 
 describe("textoConfirmarCancelamento — pedido que já saiu uma vez e foi reativado", () => {
-  it("controle: pago e nunca enviado segue prometendo a devolução automática", () => {
+  it("controle: pago e nunca enviado informa que a devolução será pedida", () => {
     const texto = textoConfirmarCancelamento({ ...base });
-    expect(texto).toContain("o dinheiro volta sozinho");
+    expect(texto).toContain("pediremos a devolução do valor");
   });
 
   it("pago, reativado e o produto ainda fora: não promete devolução automática e manda devolver o produto", () => {

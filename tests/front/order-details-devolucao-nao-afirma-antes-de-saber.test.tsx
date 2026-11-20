@@ -14,7 +14,7 @@
 //   erro       — continua "Conferindo…" enquanto há nova tentativa e, esgotadas
 //                as tentativas, "Não consegui conferir agora…";
 //   vazio      — leitura boa sem linha: a frase de sempre ("Fale com a loja");
-//   com linha  — leitura boa com devolução em curso: "volta sozinho".
+//   com linha  — leitura boa com devolução em curso: solicitação confirmada.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -189,7 +189,7 @@ describe("OrderDetailsView — pedido cancelado e pago não afirma nada da devol
   const texto = () => hospedeiro.textContent ?? "";
   const ocorrencias = (trecho: string) => texto().split(trecho).length - 1;
 
-  it("CARREGANDO: diz que está conferindo e não afirma 'fale com a loja' nem 'volta sozinho'", async () => {
+  it("CARREGANDO: diz que está conferindo e não afirma 'fale com a loja' nem que a devolução foi solicitada", async () => {
     respostas = ["nunca-volta"];
 
     await renderizar();
@@ -198,7 +198,9 @@ describe("OrderDetailsView — pedido cancelado e pago não afirma nada da devol
     // os dois esperam a leitura.
     expect(ocorrencias(CONFERINDO)).toBe(2);
     expect(texto()).not.toContain("Fale com a loja para resolver");
-    expect(texto()).not.toContain("volta sozinho");
+    expect(texto()).not.toMatch(
+      /A devolução do valor foi solicitada|volta sozinho/i,
+    );
     expect(texto()).not.toContain(NAO_CONSEGUI);
   });
 
@@ -221,7 +223,9 @@ describe("OrderDetailsView — pedido cancelado e pago não afirma nada da devol
     expect(ocorrencias(NAO_CONSEGUI)).toBe(2);
     expect(texto()).not.toContain(CONFERINDO);
     expect(texto()).not.toContain("Fale com a loja para resolver");
-    expect(texto()).not.toContain("volta sozinho");
+    expect(texto()).not.toMatch(
+      /A devolução do valor foi solicitada|volta sozinho/i,
+    );
 
     // Desistiu: não fica martelando o servidor.
     await passar(60_000);
@@ -235,7 +239,7 @@ describe("OrderDetailsView — pedido cancelado e pago não afirma nada da devol
     expect(texto()).toContain(CONFERINDO);
 
     await passar(4_000);
-    expect(texto()).toContain("O dinheiro volta sozinho para você");
+    expect(texto()).toContain("A devolução do valor foi solicitada");
     expect(texto()).not.toContain(CONFERINDO);
     expect(texto()).not.toContain(NAO_CONSEGUI);
   });
@@ -250,12 +254,12 @@ describe("OrderDetailsView — pedido cancelado e pago não afirma nada da devol
     expect(texto()).not.toContain(NAO_CONSEGUI);
   });
 
-  it("COM LINHA em curso: 'volta sozinho', como antes", async () => {
+  it("COM LINHA em curso: informa a solicitação, sem garantir a devolução", async () => {
     respostas = ["com-linha-em-curso"];
 
     await renderizar();
 
-    expect(texto()).toContain("O dinheiro volta sozinho para você");
+    expect(texto()).toContain("A devolução do valor foi solicitada");
     expect(texto()).not.toContain(FRASE_FALE_COM_A_LOJA);
     expect(texto()).not.toContain(CONFERINDO);
   });

@@ -147,8 +147,8 @@ describe("OrderDetailsView — cancelar pedido pela caixa de confirmação da lo
     expect(confirmSpy).not.toHaveBeenCalled();
     expect(caixa()).not.toBeNull();
     expect(caixa()!.textContent).toContain("Cancelar este pedido?");
-    // O texto é o de sempre sobre o dinheiro (pedido pago e não enviado).
-    expect(caixa()!.textContent).toContain("volta sozinho");
+    // Pedido pago e não enviado: informa que vai pedir a devolução.
+    expect(caixa()!.textContent).toContain("pediremos a devolução do valor");
     // Acima da barra de navegação da loja (z-120).
     expect(caixa()!.className).toContain("z-[130]");
     expect(updateOrderStatusMock).not.toHaveBeenCalled();
@@ -356,12 +356,16 @@ describe("OrderDetailsView — cancelar pedido pela caixa de confirmação da lo
     });
     await renderizarDeNovo();
     vigia.disconnect();
-    expect(textosVistos.join("|")).not.toContain("volta sozinho");
+    expect(textosVistos.join("|")).not.toMatch(
+      /pediremos a devolução|volta sozinho/i,
+    );
 
     // O botão "Cancelar Pedido" sumiu e a caixa foi junto.
     expect(botao(hospedeiro, "Cancelar Pedido")).toBeUndefined();
     expect(caixa()).toBeNull();
-    expect(document.body.textContent).not.toContain("volta sozinho");
+    expect(document.body.textContent).not.toMatch(
+      /pediremos a devolução|volta sozinho/i,
+    );
     const titulo = hospedeiro.querySelector("h1");
     expect(titulo).not.toBeNull();
     await vi.waitFor(() => expect(document.activeElement).toBe(titulo));
@@ -413,7 +417,7 @@ describe("OrderDetailsView — cancelar pedido pela caixa de confirmação da lo
 
   it("o texto do dinheiro acompanha o pedido enquanto a caixa está aberta", async () => {
     await abrirACaixa();
-    expect(caixa()!.textContent).toContain("volta sozinho");
+    expect(caixa()!.textContent).toContain("pediremos a devolução do valor");
 
     // A loja marca como enviado com a caixa aberta: o produto saiu.
     pedidoAtual = {
@@ -435,7 +439,9 @@ describe("OrderDetailsView — cancelar pedido pela caixa de confirmação da lo
     });
 
     expect(caixa()).not.toBeNull();
-    expect(caixa()!.textContent).not.toContain("volta sozinho");
+    expect(caixa()!.textContent).not.toMatch(
+      /pediremos a devolução|volta sozinho/i,
+    );
     expect(caixa()!.textContent?.toLowerCase()).toContain("produto");
   });
 });

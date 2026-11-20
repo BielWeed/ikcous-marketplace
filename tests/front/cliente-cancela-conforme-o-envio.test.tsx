@@ -184,7 +184,7 @@ describe("OrderDetailsView — o cancelamento segue se o produto SAIU, não se f
     //   - "toContain('a loja')": mantém CLARO quem executa a devolução.
     //   - "toContain('depois que o produto chegar de volta')": a condição
     //     física continua explícita, não sumiu na reescrita.
-    //   - "not.toMatch('volta sozinho')": o texto de quem NÃO enviou (T7)
+    //   - Sem o texto de solicitação de quem NÃO enviou (T7): ele
     //     não pode vazar para o ramo "já enviado" — são casos opostos.
     const confirmMock = vi.fn().mockReturnValue(true);
     vi.stubGlobal("confirm", confirmMock);
@@ -208,7 +208,7 @@ describe("OrderDetailsView — o cancelamento segue se o produto SAIU, não se f
     expect(texto).toContain("já foi enviado");
     expect(texto).toContain("a loja");
     expect(texto).toContain("depois que o produto chegar de volta");
-    expect(texto).not.toMatch(/volta sozinho/i);
+    expect(texto).not.toMatch(/pediremos a devolução|volta sozinho/i);
   });
 
   it("pedido cancelado depois de enviado e pago: o texto da ficha NÃO contradiz o aviso de confirmação — nenhum dos dois promete estorno automático", async () => {
@@ -265,7 +265,7 @@ describe("OrderDetailsView — o cancelamento segue se o produto SAIU, não se f
     });
 
     const texto = confirmMock.mock.calls[0][0] as string;
-    expect(texto).not.toMatch(/volta sozinho/i);
+    expect(texto).not.toMatch(/pediremos a devolução|volta sozinho/i);
     expect(texto).toContain("devolver o produto à loja");
   });
 
@@ -289,7 +289,7 @@ describe("OrderDetailsView — o cancelamento segue se o produto SAIU, não se f
     });
 
     const texto = confirmMock.mock.calls[0][0] as string;
-    expect(texto).not.toMatch(/volta sozinho/i);
+    expect(texto).not.toMatch(/pediremos a devolução|volta sozinho/i);
     expect(texto).not.toContain("devolver o produto");
     expect(texto).toContain("devolver o seu dinheiro");
   });

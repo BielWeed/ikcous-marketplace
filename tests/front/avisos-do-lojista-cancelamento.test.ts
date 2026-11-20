@@ -151,14 +151,42 @@ describe("selecionarCancelamentosDoCliente — so o que o CLIENTE cancelou e ja 
     }
   });
 
-  it("venda ja recebida na mao (recebido_na_entrega): nao entra, e outro assunto", () => {
-    expect(
-      selecionarCancelamentosDoCliente(
-        [linha({}, { payment_status: "recebido_na_entrega" })],
+  it.each([
+    ["pending", null, null, ""],
+    ["shipping", null, null, "avise o transporte"],
+    ["shipping", "Retirada na loja", null, "O produto voltou"],
+    ["shipping", null, "2026-10-14T12:00:00.000Z", ""],
+  ])(
+    "pagamento recebido na entrega (%s): o sino avisa da devolução combinada",
+    (old_status, pickup_address, returned_to_seller_at, orientacao) => {
+      const cancelamentos = selecionarCancelamentosDoCliente(
+        [
+          linha(
+            { old_status },
+            {
+              payment_status: "recebido_na_entrega",
+              pickup_address,
+              returned_to_seller_at,
+            },
+          ),
+        ],
         SEM_ADMIN,
-      ),
-    ).toEqual([]);
-  });
+      );
+      expect(cancelamentos).toHaveLength(1);
+      const [aviso] = montarAvisos({
+        ...VAZIO,
+        cancelamentosDoCliente: cancelamentos,
+      });
+      expect(aviso.detalhe).toContain("devolução combinada com a cliente");
+      expect(aviso.detalhe).not.toContain("automático");
+      if (orientacao) expect(aviso.detalhe).toContain(orientacao);
+      else
+        expect(aviso.detalhe).not.toMatch(
+          /O produto voltou|avise o transporte/,
+        );
+      expect(aviso.destino).toEqual({ view: "admin-orders", id: PEDIDO });
+    },
+  );
 
   it("pedido que a loja reativou (nao esta mais cancelado): nao entra", () => {
     expect(

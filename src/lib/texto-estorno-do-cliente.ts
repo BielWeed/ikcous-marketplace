@@ -9,10 +9,9 @@ import { formatCurrency } from "@/lib/utils";
  * Desde 07/09/2026 o cancelamento de um pedido PAGO e NÃO ENVIADO grava uma
  * linha em `order_refunds` na mesma transação (Task 1 do plano-mãe), e o
  * cron/edge (`estornar-pagamento`, `reconciliar-pagamentos`) tocam o
- * Mercado Pago sozinhos a partir dela — não existe mais "o dinheiro NÃO
- * volta automaticamente" para esse caso. O que ainda depende de alguém é
- * exatamente o caso oposto: pedido JÁ ENVIADO, onde a devolução física do
- * produto precisa acontecer antes de qualquer estorno fazer sentido.
+ * Mercado Pago a partir dela. A solicitação não garante que o reembolso
+ * será feito pelo app: pagamentos antigos, por exemplo, exigem a loja.
+ * Para pedido JÁ ENVIADO, a devolução física do produto vem antes do estorno.
  */
 
 /** Status possíveis de UMA linha de `order_refunds` (mesmo vocabulário de
@@ -40,7 +39,7 @@ const TEXTO_NAO_PAGO =
   "Tem certeza que deseja cancelar este pedido? Esta ação não pode ser desfeita.";
 
 const TEXTO_PAGO_NAO_ENVIADO =
-  "Você já pagou este pedido. Se cancelar, o dinheiro volta sozinho para você: PIX cai na sua conta; cartão aparece como crédito na fatura (o prazo é do seu banco). Tem certeza?";
+  "Você já pagou este pedido. Se cancelar, pediremos a devolução do valor. A loja confirma o retorno do dinheiro. Tem certeza?";
 
 const TEXTO_PAGO_JA_ENVIADO =
   "Este pedido já foi enviado. Se cancelar, você precisa devolver o produto à loja, e o dinheiro é devolvido pela loja depois que o produto chegar de volta. Tem certeza?";
@@ -151,7 +150,7 @@ export function textoConfirmarCancelamento({
 }
 
 const TEXTO_EM_ANDAMENTO =
-  "Devolução: em andamento — o dinheiro volta sozinho (PIX na conta; cartão na fatura).";
+  "Devolução: em andamento. A loja confirma o retorno do dinheiro.";
 
 const TEXTO_LOJA_FAZ_DEPOIS =
   "Devolução: a loja faz depois de receber o produto de volta.";

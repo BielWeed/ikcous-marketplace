@@ -421,8 +421,8 @@ function cancelledDescription(
     // predicado que `textoDevolucao` — nunca mais "existe linha?" sozinho
     // (rodada 3), que confundia `falhou`/`recusado` (dinheiro que o
     // automático já desistiu de mover) com "em movimento". EM CURSO: o
-    // processo já começou (a mesma linha que `textoDevolucao`, logo abaixo,
-    // narra em detalhe) — "o dinheiro volta sozinho" é verdade. CONCLUÍDA: o
+    // pedido de devolução já existe, mas isso não garante que o dinheiro
+    // volte pelo app (por exemplo, se o pagamento for antigo). CONCLUÍDA: o
     // card não fala de dinheiro — quem afirma o valor, no passado, é o
     // parágrafo `textoDevolucao` ("Devolução concluída: R$ X") logo abaixo.
     // SEM DEVOLUÇÃO AUTOMÁTICA (sem linha, ou só `falhou`/`recusado`): "fale
@@ -443,7 +443,7 @@ function cancelledDescription(
     }
     const desfecho = desfechoDaDevolucao(linhasDevolucao);
     if (desfecho === "em_curso") {
-      return "Este pedido foi cancelado, mas o seu pagamento foi recebido. O dinheiro volta sozinho para você: PIX cai na sua conta; cartão aparece como crédito na fatura (o prazo é do seu banco).";
+      return `${PAGAMENTO_RECEBIDO_PEDIDO_CANCELADO} A devolução do valor foi solicitada.`;
     }
     if (desfecho === "concluida") {
       return "Este pedido foi cancelado, mas o seu pagamento foi recebido.";
@@ -616,8 +616,8 @@ export function OrderDetailsView({
   // (`textoConfirmarCancelamento`, a fonte única do que acontece com o
   // dinheiro em cada caso), mas é calculado a cada render a partir do pedido
   // VIVO: se a loja marcar "enviado" com a caixa aberta, a frase muda junto.
-  // Guardar o texto no momento do clique deixaria "o dinheiro volta sozinho"
-  // na tela de um pedido que já saiu.
+  // Guardar o texto no clique manteria a orientação de um pedido ainda não
+  // enviado mesmo depois de o produto sair.
   const [perguntandoCancelar, setPerguntandoCancelar] = useState(false);
   const botaoCancelarPedidoRef = useRef<HTMLButtonElement>(null);
   const tituloDoPedidoRef = useRef<HTMLHeadingElement>(null);
@@ -655,12 +655,9 @@ export function OrderDetailsView({
     // O aviso, por sua vez, ainda depende do pagamento. Desde 07/09/2026
     // (Task 1 do plano-mãe `20260907-plano-estorno-pelo-app.md`) o
     // cancelamento de um pedido PAGO e NÃO ENVIADO grava a linha de
-    // devolução em `order_refunds` na MESMA transação, e o cron/edge
-    // (`estornar-pagamento`, `reconciliar-pagamentos`) tocam o Mercado Pago
-    // sozinhos a partir dela — a frase antiga ("o dinheiro NÃO volta
-    // automaticamente") deixou de ser verdade para esse caso. O que
-    // continua dependendo de alguém é o caso oposto: pedido JÁ ENVIADO,
-    // onde a loja só devolve o dinheiro depois que o PRODUTO físico voltar.
+    // devolução em `order_refunds` na MESMA transação. Isso não confirma que
+    // a devolução será feita pelo app. Em pedido JÁ ENVIADO, a loja só
+    // devolve o dinheiro depois que o PRODUTO físico voltar.
     // `textoConfirmarCancelamento` (texto-estorno-do-cliente.ts) é a fonte
     // única dos textos possíveis (não pago / pago não enviado / pago já
     // enviado / pago na entrega / pago com retirada pronta).
