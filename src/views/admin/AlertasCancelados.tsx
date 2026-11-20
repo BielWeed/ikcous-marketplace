@@ -46,6 +46,8 @@ import { useEffect, useRef, useState } from "react";
  * lista completa, nem o botão nasce (mesma regra dos blocos antigos).
  */
 
+const AVISO_ALERTAS_NAO_CONFERIDOS = "Não foi possível conferir os alertas";
+
 /** Valor em reais no formato da lista ("1.234,50"). */
 const reais = (valor: number) =>
   valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 });
@@ -69,6 +71,8 @@ interface AlertasCanceladosProps {
   readonly pagoCanceladoCount: number;
   /** Frase já no singular/plural certo, montada na view. */
   readonly avisoPagoAposCancelado: string;
+  /** Presente quando a contagem falhou e não há número conhecido. */
+  readonly onTentarConferirAlertas?: () => void;
   readonly pedidosEsperandoRetorno: readonly Order[];
   readonly pedidosParaDevolverAgora: readonly Order[];
   /** L3e': estorno que o Mercado Pago já está fazendo, por pedido de
@@ -104,6 +108,7 @@ interface AlertasCanceladosProps {
 export function AlertasCancelados({
   pagoCanceladoCount,
   avisoPagoAposCancelado,
+  onTentarConferirAlertas,
   pedidosEsperandoRetorno,
   pedidosParaDevolverAgora,
   estornosEmCurso,
@@ -180,11 +185,13 @@ export function AlertasCancelados({
     };
   }, [aberto, perguntaAberta]);
 
-  if (!temPendencia && !incompleto) return null;
+  if (!temPendencia && !incompleto && !onTentarConferirAlertas) return null;
 
   const titulo = temDinheiroPreso
     ? avisoPagoAposCancelado
-    : "Pedidos cancelados pendentes";
+    : !temPendencia && onTentarConferirAlertas
+      ? AVISO_ALERTAS_NAO_CONFERIDOS
+      : "Pedidos cancelados pendentes";
 
   const resumoBadges = [
     pedidosEsperandoRetorno.length > 0 &&
@@ -273,7 +280,7 @@ export function AlertasCancelados({
           // Sem pendência mas com lista incompleta: o sinal permanente é o
           // "!" pulsante — o botão não pode se parecer com um estado normal
           // justamente no único cenário em que as listas vazias são mentira.
-          incompleto && (
+          (incompleto || onTentarConferirAlertas) && (
             <span
               data-testid="alertas-cancelados-badge"
               className="absolute -right-1 -top-1 flex h-4 min-w-4 animate-pulse items-center justify-center rounded-full border border-black/20 bg-amber-500 px-1 text-[11px] font-black leading-none text-black"
@@ -309,6 +316,14 @@ export function AlertasCancelados({
           className="fixed inset-x-3 top-[10dvh] z-50 max-h-[70dvh] space-y-4 overflow-y-auto rounded-[2rem] border border-admin-border bg-zinc-950/95 p-4 shadow-2xl backdrop-blur-2xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-3 sm:max-h-[min(70vh,640px)] sm:w-[min(calc(100vw-3rem),640px)]"
         >
           {avisoIncompleto}
+          {onTentarConferirAlertas ? (
+            <div className="flex flex-wrap items-center gap-x-3 text-sm text-zinc-200">
+              <p role="alert">{AVISO_ALERTAS_NAO_CONFERIDOS}</p>
+              <Button variant="outline" onClick={onTentarConferirAlertas}>
+                Tentar de novo
+              </Button>
+            </div>
+          ) : null}
 
           {/* Pedidos cancelados há mais de {JANELA} dias que AINDA têm
               pendência (dinheiro a devolver ou produto que não voltou). A
