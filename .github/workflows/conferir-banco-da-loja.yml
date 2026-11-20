@@ -381,6 +381,8 @@ on:
           - 165b-antes-o-nome-publico-da-vitrine-base-vigente
           - 166a-conferir-a-lista-do-painel-e-o-rastreio-levam-o-nome-antigo-da-opcao-aplicado
           - 166b-antes-a-lista-do-painel-e-o-rastreio-levam-o-nome-antigo-da-opcao-base-vigente
+          - 167a-antes-o-cupom-nao-repete-o-codigo-base-vigente
+          - 167b-conferir-o-cupom-nao-repete-o-codigo-aplicado
           - backups
       projeto:
         description: "Projeto de destino: loja, sandbox, ikcous-publicada (a CAF explicita) ou savy (a loja cliente explicita, mesmas travas): as duas exigem expected_sha; nunca texto livre — achado da rodada 2"

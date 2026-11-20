@@ -918,6 +918,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/invariantes-dinheiro.cjs",
     // send-order-whatsapp: cada select da edge executa no schema real.
     "tests/banco/whatsapp-edge-consultas-viva.cjs",
+    // 20261411000000: unicidade por upper(code), pre-voo, rollback e consultas 167a/167b.
+    "tests/banco/o-cupom-nao-repete-o-codigo-em-outra-grafia-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(
