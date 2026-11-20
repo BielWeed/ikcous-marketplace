@@ -2,6 +2,7 @@ const SEM_LARGURA = ["\u{200b}", "\u{200c}", "\u{2060}", "\u{feff}"];
 const JOINER = "\u{200d}";
 const VARIANTE_EMOJI = "\u{fe0f}";
 const PICTOGRAFICO = /\p{Extended_Pictographic}/u;
+const MODIFICADOR_DE_TOM = /\p{Emoji_Modifier}/u;
 
 function removerJoinersSoltos(texto: string): string {
   if (!texto.includes(JOINER)) return texto;
@@ -9,8 +10,11 @@ function removerJoinersSoltos(texto: string): string {
   return [...texto]
     .filter((caractere, i, caracteres) => {
       if (caractere !== JOINER) return true;
-      const anterior = caracteres[i - 1];
-      const base = anterior === VARIANTE_EMOJI ? caracteres[i - 2] : anterior;
+      const anterior = caracteres[i - 1] ?? "";
+      const base =
+        anterior === VARIANTE_EMOJI || MODIFICADOR_DE_TOM.test(anterior)
+          ? caracteres[i - 2]
+          : anterior;
       return (
         PICTOGRAFICO.test(base ?? "") &&
         PICTOGRAFICO.test(caracteres[i + 1] ?? "")

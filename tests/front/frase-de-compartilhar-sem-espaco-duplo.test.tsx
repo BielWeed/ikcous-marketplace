@@ -24,8 +24,18 @@ vi.mock("@/contexts/StoreContext", () => ({
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn() } }));
 
+const cozinheira = "👩🏽\u{200d}🍳";
+const apertoDeMao = "🧑🏻\u{200d}🤝\u{200d}🧑🏿";
+const bandeira =
+  "\u{1f3f4}\u{e0067}\u{e0062}\u{e0065}\u{e006e}\u{e0067}\u{e007f}";
+const tecla = "#\u{fe0f}\u{20e3}";
+
 it.each([
   ["Confira!\u{00a0}", "Confira!"],
+  [cozinheira, cozinheira],
+  [apertoDeMao, apertoDeMao],
+  [bandeira, bandeira],
+  [tecla, tecla],
   ["Oi, 🧑\u{200d}🍳!<br>Confira", "Oi, 🧑\u{200d}🍳!\nConfira"],
   ["Confira!<br>", "Confira!\n"],
   ["Família 👨\u{200d}👩\u{200d}👧", "Família 👨\u{200d}👩\u{200d}👧"],
