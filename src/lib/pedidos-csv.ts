@@ -5,6 +5,8 @@ import {
 import { dataLocal } from "@/lib/data-local-csv";
 import {
   type FormaDoPedido,
+  ROTULO_SEM_VALOR_A_PAGAR,
+  pedidoSemValorAPagar,
   rotuloDaFormaDoPedido,
 } from "@/lib/forma-de-pagamento";
 import { rotuloDaVariacaoGuardada } from "@/lib/rotulo-da-variacao";
@@ -63,13 +65,15 @@ export function pedidosParaCsv(
       escaparCampo(rotuloDoStatus(pedido.status, pedido.retiradaNaLoja)),
       escaparCampo(rotuloDaFormaDePagamento(pedido)),
       escaparCampo(
-        rotuloDoPagamento(
-          pedido.paymentStatus,
-          pedido.status,
-          pedido.canal,
-          false,
-          pedido.retiradaNaLoja,
-        ),
+        pedidoSemValorAPagar(pedido)
+          ? ROTULO_SEM_VALOR_A_PAGAR
+          : rotuloDoPagamento(
+              pedido.paymentStatus,
+              pedido.status,
+              pedido.canal,
+              false,
+              pedido.retiradaNaLoja,
+            ),
       ),
       pedido.total.toFixed(2).replace(".", ","),
       escaparCampo(pedido.customer?.city ?? ""),

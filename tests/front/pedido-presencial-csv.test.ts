@@ -37,7 +37,14 @@ describe("pedidosParaCsv com a coluna Canal", () => {
   it("venda presencial vira 'Balcão' na coluna Canal e 'Recebido no balcão' na coluna de pagamento", () => {
     const csv = pedidosParaCsv([pedido({ canal: "presencial" })]);
     expect(canalDaLinha(csv)).toBe("Balcão");
-    expect(csv).toContain(";Recebido no balcão;");
+    expect(csv.split("\r\n")[1].split(";")[6]).toBe("Recebido no balcão");
+  });
+
+  it("venda de balcão zerada pelo desconto diz 'Sem valor a pagar' no status do pagamento", () => {
+    const csv = pedidosParaCsv([
+      pedido({ canal: "presencial", total: 0, discount: 1234.5 }),
+    ]);
+    expect(csv.split("\r\n")[1].split(";")[6]).toBe("Sem valor a pagar");
   });
 
   it("venda online vira 'Site' na coluna Canal e 'Recebido na entrega' na coluna de pagamento", () => {
