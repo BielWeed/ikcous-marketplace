@@ -25,10 +25,13 @@ const addAnswer = vi.fn();
 const getQuestionsByProduct = vi.fn();
 const subscribeToQuestions = vi.fn(() => () => {});
 
+const perfilConfirmado = { full_name: "Érica Álvares", avatar_url: null };
+let perfil: typeof perfilConfirmado | null = perfilConfirmado;
+
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({
     user: { id: "cliente-1", email: "cliente@ikcous.com" },
-    profile: { full_name: "Érica Álvares", avatar_url: null },
+    profile: perfil,
     isAdmin: false,
   }),
 }));
@@ -99,6 +102,7 @@ describe("ProductQA — Enter do teclado envia a pergunta (lote 221)", () => {
       raiz.unmount();
     });
     hospedeiro.remove();
+    perfil = perfilConfirmado;
   });
 
   const campo = () =>
@@ -119,6 +123,17 @@ describe("ProductQA — Enter do teclado envia a pergunta (lote 221)", () => {
       "Seu nome vai aparecer assim: Érica Á.",
     );
     expect(addQuestion).not.toHaveBeenCalled();
+  });
+
+  it("sem perfil, avisa que a prévia do nome não está disponível", async () => {
+    perfil = null;
+    await act(async () => {
+      raiz.render(<ProductQA productId="prod-1" />);
+    });
+
+    const previa = formulario()?.querySelector("#qa-public-name")?.textContent;
+    expect(previa).not.toContain("Cliente");
+    expect(previa).toBe("A prévia do seu nome não está disponível agora.");
   });
 
   it("não exibe o nome inteiro numa pergunta guardada pelo app anterior", () => {

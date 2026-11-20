@@ -81,7 +81,10 @@ describe("nota do gráfico de categorias (par com a 20261063000000)", () => {
       await act(async () => {
         raiz.render(
           <StrategicIntelligenceBlocks
-            categoryData={[{ name: "brinquedo", value: 253.1 }]}
+            categoryData={[
+              { name: "brinquedo", value: 253.1 },
+              { name: "Sem produto vinculado", value: 47.25 },
+            ]}
             loading={false}
             active={true}
           />,
@@ -99,6 +102,21 @@ describe("nota do gráfico de categorias (par com a 20261063000000)", () => {
       expect(legenda?.textContent).toBe(
         "Vendas desde o início da loja, agrupadas pela categoria atual dos produtos.",
       );
+
+      const linhaSemProduto = Array.from(
+        hospedeiro.querySelectorAll(
+          'section[aria-labelledby="crm-categorias-titulo"] li',
+        ),
+      ).find((linha) =>
+        Array.from(linha.querySelectorAll("span")).some(
+          (rotulo) => rotulo.textContent === "Sem produto vinculado",
+        ),
+      );
+      expect(
+        linhaSemProduto,
+        "a linha Sem produto vinculado deve aparecer",
+      ).toBeDefined();
+      expect(linhaSemProduto?.textContent).toMatch(/R\$\s47,25/);
 
       // SUJEITO AMARRADO AO PREDICADO (revisao 2350: uma frase solta no
       // textContent inteiro casa na cláusula ERRADA — um mutante que move a

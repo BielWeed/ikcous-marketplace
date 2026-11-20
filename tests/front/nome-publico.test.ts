@@ -8,6 +8,8 @@ describe("nome público na loja", () => {
     [" \t\u{a0}", "Cliente"],
     ["Madonna", "Madonna"],
     ["Ana de Souza", "Ana S."],
+    ["Ana Pereira de Souza", "Ana S."],
+    ["Maria Costa Lima", "Maria L."],
     ["Maria Alves dE DA Do DAS Dos E", "Maria A."],
     ["João   das   Neves", "João N."],
     ["Ana-Maria Souza-Lima", "Ana-Maria S."],

@@ -34,7 +34,7 @@ export function observacaoDaClienteNoRecibo(
   const linhas: string[] = [];
   for (const linha of texto.split(/\r?\n/)) {
     if (
-      /^\s*Frete Escolhido:/.test(linha) ||
+      /^\s*Frete Escolhido: \S.* \(Prazo: [^)\s][^)]*\)\s*$/.test(linha) ||
       (!endereco && /^\s*Retirada na loja(:|\s*$)/.test(linha))
     ) {
       continue;

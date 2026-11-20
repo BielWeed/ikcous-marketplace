@@ -67,9 +67,11 @@
  * `status = 'em_processamento'`, como o cron já faz nas linhas de estorno).
  * Caso ainda em análise não muda nada no banco — sem o toque, ele seria
  * reconsultado em TODO ciclo durante semanas e ocuparia a fila inteira. No
- * cron, falha no GET da order (exceto 404) também gira, sem decidir nada:
- * a próxima tentativa pelo cron espera 6 h, mas os outros pedidos ganham vez.
- * Falhas fora desse GET (consulta do caso, banco) não tocam a linha.
+ * cron, falha transitória no GET da order move a linha para o fim da fila
+ * elegível deste ciclo. Ela pode voltar no próximo ciclo mesmo que a etapa
+ * comece antes de se passarem 10 min. Outras falhas desse GET mantêm o
+ * tratamento anterior (404 segue pelo caso conhecido ou aviso; as demais
+ * esperam 6 h). Falhas no caso ou no banco não tocam a linha.
  *
  * O FRESH GATE (reler antes de agir): a lista do lote é um retrato velho
  * (o webhook pode concluir ou ajustar a linha entre a lista e a vez dela).
@@ -144,7 +146,7 @@ export interface ResumoDaReconsulta {
   resolvidasAntes: number;
   /** NADA decidido (só conserva e avisa o admin uma vez): ver o cabeçalho. */
   conservadas: number;
-  /** Falha de consulta ou de banco; erro no GET da order pode adiar o retry por 6 h. */
+  /** Falha de consulta ou de banco; o GET da order distingue falha transitória da permanente. */
   falhas: number;
 }
 
@@ -204,21 +206,27 @@ function criarReconsultor(args: {
 
   /** Renova o `updated_at` das linhas presas deste pedido — o rodízio. Só as
    * que o banco AINDA tem em `em_processamento`; nunca lança. */
-  const girar = async (ids: string[], limiteDeIdadeDaFalha?: string) => {
+  const girar = async (
+    ids: string[],
+    falha?: { limiteDeIdade: string; transitoria: boolean },
+  ) => {
     for (const id of ids) {
       try {
+        // O filtro estrito (<) deixa o corte deste ciclo atrás de quem já
+        // estava elegível. Qualquer corte posterior já permite a nova tentativa.
+        const carimbo = falha?.transitoria ? falha.limiteDeIdade : new Date(agora()).toISOString();
         let atualizacao = supabase
           .from("order_refunds")
-          .update({ updated_at: new Date(agora()).toISOString() })
+          .update({ updated_at: carimbo })
           .eq("id", id)
           .eq("status", "em_processamento");
-        if (limiteDeIdadeDaFalha) {
+        if (falha) {
           // O ledger renova updated_at ao vincular o caso. Não carimba uma
           // linha que o webhook mexeu enquanto o GET da order estava em voo.
           atualizacao = atualizacao
             .eq("solicitado_por", "sistema")
             .eq("mp_status", STATUS_DA_CONTESTACAO)
-            .lt("updated_at", limiteDeIdadeDaFalha);
+            .lt("updated_at", falha.limiteDeIdade);
         }
         const { error } = await atualizacao;
         if (error) throw error;
@@ -321,7 +329,11 @@ function criarReconsultor(args: {
       if (!consulta.ok) {
         if (consulta.status !== 404) {
           // Só o cron precisa girar a fila; o webhook segue devolvendo 500.
-          if (filtro.limiteDeIdade) await girar(ids, filtro.limiteDeIdade);
+          if (filtro.limiteDeIdade) {
+            const { status } = consulta;
+            const transitoria = status === 0 || status === 408 || status === 429 || status >= 500;
+            await girar(ids, { limiteDeIdade: filtro.limiteDeIdade, transitoria });
+          }
           throw new Error(`${rotulo}: consulta da order da contestação presa falhou (status ${consulta.status})`);
         }
         motivoSemOrder = "order_nao_encontrada";

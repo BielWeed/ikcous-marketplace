@@ -39,6 +39,7 @@ import { rotuloDaFormaDePagamento } from "@/lib/pedidos-csv";
 import { textoCancelamentoDoPainel } from "@/lib/texto-cancelamento-do-painel";
 import { classeDoTexto } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
+import { tempoSegurandoEstoque } from "@/lib/vagas-de-visitante";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 import type { Order, OrderStatus } from "@/types";
 import {
@@ -154,6 +155,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
   const numero = numeroDoPedido(order.id);
   const agora = useAgoraDoPainel();
   const tempo = horarioRelativo(order.createdAt, new Date(agora));
+  const tempoDeEstoque = tempoSegurandoEstoque(order, agora);
   const data = new Date(order.createdAt);
   const criadoEm = Number.isNaN(data.getTime())
     ? null
@@ -466,6 +468,11 @@ export const AdminOrderCard = memo(function AdminOrderCard({
           />
         </div>
       </div>
+      {tempoDeEstoque && (
+        <p className="mb-2 text-xs text-zinc-300">
+          segurando estoque há {tempoDeEstoque}
+        </p>
+      )}
       {aviso && (
         <p
           className={cn(

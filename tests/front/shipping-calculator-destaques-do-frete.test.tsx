@@ -330,12 +330,13 @@ describe("ShippingCalculator — destaques na tela (release 1.5.7)", () => {
     const lista = document.getElementById(
       toggle.getAttribute("aria-controls") ?? "",
     )!;
-    expect(lista).not.toBeNull();
+    expect(lista.hidden).toBe(true);
     act(() => toggle.focus());
     await act(async () => toggle.click());
     const outra = botaoDe("Correios Meio")!;
     expect(document.activeElement).toBe(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(lista.hidden).toBe(false);
     const depois = Node.DOCUMENT_POSITION_FOLLOWING;
     expect(botaoDe("Entrega expressa")!.compareDocumentPosition(toggle)).toBe(
       depois,
@@ -356,7 +357,7 @@ describe("ShippingCalculator — destaques na tela (release 1.5.7)", () => {
     });
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     const cartaoEscolhido = botaoDe("Correios Meio");
-    expect(cartaoEscolhido).toBeDefined();
+    expect(cartaoEscolhido?.closest("[hidden]")).toBeNull();
     expect(cartaoEscolhido?.getAttribute("aria-pressed")).toBe("true");
     // E o botão volta a oferecer "Ver outras opções" (ainda recolhido).
     expect(botaoDe("Ver outras opções")).toBeDefined();

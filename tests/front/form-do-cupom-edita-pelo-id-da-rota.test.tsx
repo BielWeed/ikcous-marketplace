@@ -188,6 +188,102 @@ afterEach(() => {
   root = null;
 });
 
+describe("código do cupom no painel", () => {
+  it("recusa criar um cupom com o código de outro, mesmo inativo e em minúsculas", async () => {
+    estadoCoupons = {
+      coupons: [{ ...cupomReal, code: "verao10", active: false }],
+      loading: false,
+    };
+    await montar();
+    await digitarCodigo("VERAO10");
+    await digitarValor("10");
+
+    await act(async () => acharBotao("Salvar Cupom")?.click());
+
+    expect(container?.querySelector("#coupon-code-erro")?.textContent).toBe(
+      "Já existe um cupom com esse código.",
+    );
+    expect(addCoupon).not.toHaveBeenCalled();
+  });
+
+  it("recusa mudar o código para o de outro cupom em outra grafia", async () => {
+    estadoCoupons = {
+      coupons: [cupomReal, { ...cupomReal, id: "cupom-2", code: "verao10" }],
+      loading: false,
+    };
+    await montar(cupomReal.id);
+    await digitarCodigo("VERAO10");
+
+    await act(async () => acharBotao("Salvar Cupom")?.click());
+
+    expect(container?.querySelector("#coupon-code-erro")?.textContent).toBe(
+      "Já existe um cupom com esse código.",
+    );
+    expect(updateCoupon).not.toHaveBeenCalled();
+  });
+
+  it("permite atualizar o próprio cupom sem mudar a grafia antiga", async () => {
+    estadoCoupons = {
+      coupons: [{ ...cupomReal, code: "verao10" }],
+      loading: false,
+    };
+    await montar(cupomReal.id);
+    await digitarValor("15");
+
+    await act(async () => acharBotao("Salvar Cupom")?.click());
+
+    // O 3º argumento (validade) não mudou; o 4º leva o desconto original para
+    // a trava de concorrência do desconto.
+    expect(updateCoupon).toHaveBeenCalledWith(
+      cupomReal.id,
+      { type: "percentage", value: 15 },
+      undefined,
+      expect.objectContaining({
+        original: { type: "percentage", value: 25 },
+      }),
+    );
+  });
+
+  it("permite mudar só a validade de um cupom com colisão antiga de grafia", async () => {
+    estadoCoupons = {
+      coupons: [
+        {
+          ...cupomReal,
+          code: "Bemvindo",
+          validUntil: "2098-10-31T23:59:59.999Z",
+        },
+        { ...cupomReal, id: "cupom-2", code: "BEMVINDO" },
+      ],
+      loading: false,
+    };
+    await montar(cupomReal.id);
+
+    await act(async () => acharBotao("Limpar validade")?.click());
+    await act(async () => acharBotao("Salvar Cupom")?.click());
+
+    expect(
+      container?.querySelector("#coupon-code-erro")?.textContent,
+    ).toBeUndefined();
+    expect(updateCoupon).toHaveBeenCalledWith(cupomReal.id, {
+      validUntil: undefined,
+    });
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it("explica o limite de 40 caracteres sem gravar nem cortar o código", async () => {
+    await montar();
+    await digitarCodigo("A".repeat(41));
+    await digitarValor("10");
+
+    await act(async () => acharBotao("Salvar Cupom")?.click());
+
+    expect(container?.querySelector("#coupon-code-erro")?.textContent).toBe(
+      "Use um código com até 40 caracteres.",
+    );
+    expect(addCoupon).not.toHaveBeenCalled();
+  });
+});
+
 describe("form de cupom — A4: a decisão é do couponId da rota", () => {
   it("cupom da rota que o fetch não trouxe NÃO vira INSERT", async () => {
     estadoCoupons = { coupons: [], loading: false };

@@ -607,7 +607,7 @@ export const SearchView = React.memo(function SearchView({
             anuncia o "nada encontrado" sem tirar o foco do campo. */}
         <p role="status" className="sr-only">
           {!(loadingProducts || tentandoBusca) &&
-          !(catalogoErro && allProducts.length === 0) &&
+          !catalogoErro &&
           filteredProducts.length === 0
             ? produtosAVenda.length === 0
               ? "A loja ainda não tem produtos."
@@ -624,7 +624,7 @@ export const SearchView = React.memo(function SearchView({
           >
             Carregando busca…
           </p>
-        ) : catalogoErro && allProducts.length === 0 ? (
+        ) : catalogoErro && filteredProducts.length === 0 ? (
           <div role="alert" className="py-20 text-center">
             <h2
               className={cn(
@@ -632,7 +632,9 @@ export const SearchView = React.memo(function SearchView({
                 CONTRASTE_ESCURO.texto,
               )}
             >
-              Não conseguimos carregar a busca agora
+              {allProducts.length > 0
+                ? "Não conseguimos atualizar a loja agora"
+                : "Não conseguimos carregar a busca agora"}
             </h2>
             <p
               className={cn(
@@ -640,7 +642,9 @@ export const SearchView = React.memo(function SearchView({
                 CONTRASTE_ESCURO.textoSecundario,
               )}
             >
-              Verifique sua conexão e tente de novo.
+              {allProducts.length > 0
+                ? "Pode haver produtos novos que ainda não aparecem. Toque em Tentar de novo."
+                : "Verifique sua conexão e tente de novo."}
             </p>
             <Button
               onClick={() => {

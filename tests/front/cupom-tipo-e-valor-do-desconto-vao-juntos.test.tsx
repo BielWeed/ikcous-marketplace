@@ -20,6 +20,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const remendos: Record<string, unknown>[] = [];
 const filtrosDeGravacao: Record<string, unknown>[] = [];
 let leituras: number;
+let falharNaReleitura: boolean;
 const navegar = vi.fn();
 const sucesso = vi.fn();
 const erro = vi.fn();
@@ -46,6 +47,9 @@ vi.mock("@/lib/supabase", () => ({
         eq: (coluna: string, valor: unknown) => ({
           maybeSingle: async () => {
             leituras++;
+            if (falharNaReleitura) {
+              return { data: null, error: { code: "57014" } };
+            }
             return {
               data:
                 coluna === "id" && cupomNoBanco.id === valor
@@ -118,6 +122,7 @@ beforeEach(() => {
   gravarClientes.mockReset().mockResolvedValue({ error: null });
   filtrosDeGravacao.length = 0;
   leituras = 0;
+  falharNaReleitura = false;
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   cupomNoBanco = {
     id: "cupom-1",
@@ -244,6 +249,43 @@ describe("editar cupom: tipo e valor do desconto vão juntos", () => {
       expect(sucesso).toHaveBeenCalledExactlyOnceWith("Cupom atualizado");
     },
   );
+  it.each([
+    ["cupom excluído", "Este cupom não está mais disponível. Nada foi salvo."],
+    [
+      "consulta que falhou",
+      "Não foi possível conferir o desconto atual. Nada foi salvo. Tente salvar de novo.",
+    ],
+  ] as const)(
+    "preserva o rascunho e orienta ao encontrar %s",
+    async (cenario, orientacao) => {
+      await abrir();
+      await digitar("#coupon-value", "30");
+      await digitar("#coupon-usage-limit", "250");
+
+      const valorDigitado =
+        tela.querySelector<HTMLInputElement>("#coupon-value")?.value;
+      expect(valorDigitado).toMatch(/^30(?:,00)?$/);
+      if (cenario === "cupom excluído") {
+        cupomNoBanco = {};
+      } else {
+        cupomNoBanco.value = 20;
+        falharNaReleitura = true;
+      }
+      await clicar("Salvar Cupom");
+
+      expect(erro).toHaveBeenCalledExactlyOnceWith(orientacao);
+      expect(sucesso).not.toHaveBeenCalled();
+      expect(navegar).not.toHaveBeenCalled();
+      expect(remendos).toHaveLength(0);
+      expect(tela.querySelector<HTMLInputElement>("#coupon-value")?.value).toBe(
+        valorDigitado,
+      );
+      expect(
+        tela.querySelector<HTMLInputElement>("#coupon-usage-limit")?.value,
+      ).toBe("250");
+    },
+  );
+
   it("depois que só a lista falha, a nova tentativa não regrava o desconto", async () => {
     cupomNoBanco.type = "fixed";
     gravarClientes.mockResolvedValueOnce({ error: { code: "42501" } });

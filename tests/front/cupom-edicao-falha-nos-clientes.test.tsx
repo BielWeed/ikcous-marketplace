@@ -303,7 +303,7 @@ describe("edição do cupom — confirmação das regras e dos clientes", () => 
     await digitar("#coupon-code", "VIPNOVO");
     await clicar("Salvar Cupom");
     expect(erro).toHaveBeenCalledTimes(1);
-    expect(erro).toHaveBeenCalledWith("Já existe um cupom com este código.");
+    expect(erro).toHaveBeenCalledWith("Já existe um cupom com esse código.");
     expect(sucesso).not.toHaveBeenCalled();
     expect(gravarClientes).not.toHaveBeenCalled();
     expect(navegar).not.toHaveBeenCalled();

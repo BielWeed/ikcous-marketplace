@@ -41,6 +41,7 @@ import { Input } from "@/components/ui/input";
 import { branding } from "@/config/branding";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
+import { useAgoraDoPainel } from "@/hooks/useAgoraDoPainel";
 import { useAnalytics } from "@/hooks/useAnalytics";
 import { useAnularVendaDoBalcao } from "@/hooks/useAnularVendaDoBalcao";
 import { useAuth } from "@/hooks/useAuth";
@@ -102,6 +103,12 @@ import {
 import { sessaoAindaEhDoDono } from "@/lib/sessao-ainda-e-do-dono";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
+import {
+  LIMITE_DE_VAGAS_DE_VISITANTE,
+  avisarVagasDeVisitante,
+  contarVagasDeVisitante,
+  primeiraPaginaCobreVagasDeVisitante,
+} from "@/lib/vagas-de-visitante";
 import {
   valorDevolverAgora,
   valorDevolverAgoraDescontandoLedger,
@@ -385,6 +392,33 @@ export function precisaConfirmarRetornoDoProduto(pedido: Order): boolean {
   );
 }
 
+function AvisoDeVagasDeVisitante({
+  pedidos,
+  total,
+  inicio,
+}: {
+  pedidos: readonly Order[];
+  total: number;
+  inicio?: string;
+}) {
+  const agora = useAgoraDoPainel();
+  if (!primeiraPaginaCobreVagasDeVisitante({ pedidos, total, inicio, agora })) {
+    return null;
+  }
+  const vagas = contarVagasDeVisitante(pedidos, agora);
+  return avisarVagasDeVisitante(vagas) ? (
+    <p
+      role="status"
+      className="mb-3 rounded-xl border border-admin-border bg-admin-raised px-3 py-2 text-sm text-zinc-200"
+    >
+      Cerca de {vagas} de {LIMITE_DE_VAGAS_DE_VISITANTE} vagas de compra sem
+      conta parecem ocupadas pelos pedidos carregados; ao chegar em{" "}
+      {LIMITE_DE_VAGAS_DE_VISITANTE}, quem compra sem conta precisa entrar na
+      conta. Confira os pedidos que vai atender e cancele os demais.
+    </p>
+  ) : null;
+}
+
 interface AdminOrdersViewProps {
   onNavigate: (view: View, id?: string) => void;
   active?: boolean;
@@ -601,6 +635,29 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     0,
   );
   const itemsPerPage = 12;
+  const [paginaLidaParaVagas, setPaginaLidaParaVagas] = useState<string>();
+  const chaveDosFiltrosParaVagas = JSON.stringify([
+    filter,
+    searchQuery,
+    dateRange.start,
+    dateRange.end,
+    paymentFilter,
+    canalFilter,
+  ]);
+  const recorteParaVagas = recorteDaListaDePedidos({ searchQuery, dateRange });
+  // Não use a lista em cache (ou a do filtro anterior enquanto a nova lê).
+  const podeConferirVagas =
+    active &&
+    !loading &&
+    !erroDaListagem &&
+    !isOffline &&
+    currentPage === 0 &&
+    paginaLidaParaVagas === `0:${chaveDosFiltrosParaVagas}` &&
+    (filter === "all" || filter === "open" || filter === "pending") &&
+    paymentFilter === "all" &&
+    canalFilter === "all" &&
+    !recorteParaVagas.searchQuery &&
+    !recorteParaVagas.endDate;
 
   // Atalho do Início ("Ver pedidos em aberto"): abre Pedidos LIMPO. O filtro,
   // a busca, o período, o pagamento, o canal e a página da última visita ficam
@@ -1121,7 +1178,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       // DIA DE BRASÍLIA (o banco roda em UTC e lia "14/10" como 21h de 13/10)
       // e a busca perde o "#" que o app mostra antes do número do pedido.
       const recorte = recorteDaListaDePedidos({ searchQuery, dateRange });
-      loadOrders(
+      void loadOrders(
         pageToFetch,
         itemsPerPage,
         filter,
@@ -1138,11 +1195,17 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         // C4.4: o chip "Balcão" também filtra NO BANCO — mesmo contrato do
         // filtro de pagamento acima.
         canalFilter,
-      );
+      )?.then((pagina) => {
+        // Aborto/erro também retornam vazio; vazio não é prova de cobertura.
+        if (pagina?.orders?.length) {
+          setPaginaLidaParaVagas(`${pageToFetch}:${chaveDosFiltrosParaVagas}`);
+        }
+      });
       loadStats();
     },
     [
       loadOrders,
+      chaveDosFiltrosParaVagas,
       itemsPerPage,
       filter,
       searchQuery,
@@ -2666,6 +2729,13 @@ export const AdminOrdersView = memo(function AdminOrdersView({
 
         {/* Orders List */}
         <div id="admin-pedidos-lista" className="admin-topo-lista relative">
+          {podeConferirVagas && (
+            <AvisoDeVagasDeVisitante
+              pedidos={orders}
+              total={totalOrders}
+              inicio={recorteParaVagas.startDate}
+            />
+          )}
           {avisoDaAnulacao && (
             <div
               role="status"

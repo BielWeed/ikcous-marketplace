@@ -372,6 +372,7 @@ Deno.test("20261350 publicacao: lote unico de apply normal, DEPOIS da 244, vale 
       "164a-conferir-o-relatorio-de-categorias-sem-produto-aplicado",
       "165a-conferir-o-nome-publico-da-vitrine-aplicado",
       "166a-conferir-a-lista-do-painel-e-o-rastreio-levam-o-nome-antigo-da-opcao-aplicado",
+      "167b-conferir-o-cupom-nao-repete-o-codigo-aplicado",
     ],
     "os lotes posteriores à 81a são anexados no fim, sem reordenar lotes anteriores",
   );

@@ -104,6 +104,7 @@ describe("HomeView — rede falhando não parece loja vazia", () => {
       products?: Product[];
       isLoading?: boolean;
       searchQuery?: string;
+      selectedCategory?: string;
     } = {},
   ) {
     const { HomeView } = await import("@/views/customer/HomeView");
@@ -117,7 +118,7 @@ describe("HomeView — rede falhando não parece loja vazia", () => {
           onNavigate={vi.fn()}
           searchQuery={props.searchQuery ?? ""}
           isLoading={props.isLoading ?? false}
-          selectedCategory="Todas"
+          selectedCategory={props.selectedCategory ?? "Todas"}
           onCategoryChange={vi.fn()}
           sortBy="default"
           onSortByChange={vi.fn()}
@@ -185,8 +186,26 @@ describe("HomeView — rede falhando não parece loja vazia", () => {
     expect(hospedeiro.textContent).not.toContain("Não conseguimos carregar");
   });
 
-  it("busca que não acha nada com produtos na loja continua 'Nenhum produto agora'", async () => {
+  it("categoria sem resultado na cópia salva oferece nova tentativa se a atualização falhou", async () => {
     loja.catalogoErro = true;
+    await montar({ products: [produto], selectedCategory: "Bolsas" });
+
+    expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toContain(
+      "Pode haver produtos novos que ainda não aparecem",
+    );
+    expect(hospedeiro.textContent).not.toContain("Nenhum produto agora");
+    expect(botaoTentar()).toBeDefined();
+  });
+
+  it("busca sem resultado na cópia salva também avisa da falha", async () => {
+    loja.catalogoErro = true;
+    await montar({ products: [produto], searchQuery: "zzzzzz" });
+
+    expect(hospedeiro.textContent).not.toContain("Nenhum produto agora");
+    expect(botaoTentar()).toBeDefined();
+  });
+
+  it("busca sem resultado com catálogo atualizado mantém a mensagem de sempre", async () => {
     await montar({ products: [produto], searchQuery: "zzzzzz" });
 
     expect(hospedeiro.textContent).toContain("Nenhum produto agora");

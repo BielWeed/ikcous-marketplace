@@ -8194,7 +8194,7 @@ export function CheckoutViewDaConta({
                   onClick={entrarParaPagarNoApp}
                   className="mt-2 min-h-11 w-full whitespace-normal text-zinc-700 underline"
                 >
-                  Entrar para pagar com Pix
+                  Entre para liberar o Pix no app
                 </Button>
               )}
             {mostraTroco && (

@@ -848,7 +848,9 @@ function OrderDeliveryCard({
       data-testid="bloco-entrega"
       className={cn(blocoDaFicha, "space-y-4 p-5 xl:self-stretch")}
     >
-      <h3 className={tituloDoBloco}>{ehBalcao ? "Cliente" : "Entrega"}</h3>
+      <h3 className={tituloDoBloco}>
+        {ehBalcao ? "Cliente" : order.retiradaNaLoja ? "Retirada" : "Entrega"}
+      </h3>
 
       {/* T3 (lote B, 12/09): a comanda é de coluna única — nome e WhatsApp
           empilhados, e o botão verde do WhatsApp à direita. */}
@@ -2662,7 +2664,18 @@ export const OrderDetail = memo(function OrderDetail({
       (!!onRegistrarPagamento &&
         !!order.pagamentoRecebidoEm &&
         podeRegistrarPagamento(order)),
+    order.status === "delivered" && active,
   );
+  // Enquanto o reembolso feito à mão ainda está sendo conferido, o papel
+  // sairia com "não conferidos" mesmo num pedido sem devolução nenhuma.
+  if (
+    !motivoDeNaoImprimir &&
+    leituraDeDevolucoes.valorReembolsadoManual === null &&
+    leituraDeDevolucoes.carregando
+  ) {
+    motivoDeNaoImprimir =
+      "Conferindo os reembolsos feitos à mão. Já dá para imprimir em instantes.";
+  }
 
   const handleWhatsAppDirect = () => {
     if (!whatsappUrl) return;
@@ -2881,6 +2894,7 @@ export const OrderDetail = memo(function OrderDetail({
           storeName={storeName}
           variacoes={variacoes}
           valorEstornado={order.valorEstornado}
+          valorReembolsadoManual={leituraDeDevolucoes.valorReembolsadoManual}
         />
       )}
 

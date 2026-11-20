@@ -35,6 +35,7 @@ import {
   cupomPodeCobrirACompraInteira,
 } from "@/lib/cupom-que-cobre-a-compra";
 import { porcentagem } from "@/lib/cupons-do-checkout";
+import { AVISO_CODIGO_DO_CUPOM_REPETIDO } from "@/lib/erro-do-cupom";
 import { parseValorBR } from "@/lib/financeiro";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import { lerLimiteDeUsosDoCupom } from "@/lib/limite-de-usos-do-cupom";
@@ -90,6 +91,8 @@ function remendoDoCupom(c: Partial<Coupon>, code: string) {
     active: c.active,
   };
 }
+
+const LIMITE_DO_CODIGO_DO_CUPOM = 40;
 
 const AVISO_VALIDADE_INCOMPLETA =
   "Digite a validade com o ano completo, ex.: 31/12/2027";
@@ -465,6 +468,28 @@ function FormularioDoCupom({
     const cleanCode = codigoDoCupomParaSalvar(formData.code, initialData.code);
     if (!cleanCode) {
       recusarCampo("code", "O código do cupom é obrigatório.");
+      return;
+    }
+    if (
+      cleanCode !== initialData.code &&
+      Array.from(cleanCode).length > LIMITE_DO_CODIGO_DO_CUPOM
+    ) {
+      recusarCampo(
+        "code",
+        `Use um código com até ${LIMITE_DO_CODIGO_DO_CUPOM} caracteres.`,
+      );
+      return;
+    }
+    const codigoEmMaiusculas = cleanCode.toUpperCase();
+    if (
+      (!isEditing || cleanCode !== initialData.code) &&
+      coupons.some(
+        (cupom) =>
+          cupom.id !== couponId &&
+          cupom.code.toUpperCase() === codigoEmMaiusculas,
+      )
+    ) {
+      recusarCampo("code", AVISO_CODIGO_DO_CUPOM_REPETIDO);
       return;
     }
 

@@ -3272,7 +3272,14 @@ const ROL_DA_166 = [
   "get_orders_by_otp_v2: assinatura e atributos conhecidos",
   "get_orders_by_otp_v2: EXECUTE preservado",
 ];
+const ROL_DA_167A = [
+  "cupom: indice de codigo em maiusculas ausente",
+  "cupom: grupos de codigos em colisao",
+];
+const ROL_DA_167B = ["cupom: indice unico de codigo em maiusculas valido"];
 const ROL_FECHADO_POR_CONSULTA = {
+  "167a-antes-o-cupom-nao-repete-o-codigo-base-vigente": ROL_DA_167A,
+  "167b-conferir-o-cupom-nao-repete-o-codigo-aplicado": ROL_DA_167B,
   "162a-conferir-o-pedido-guarda-o-nome-antigo-da-opcao-aplicado": ROL_DA_162,
   "162b-antes-o-pedido-guarda-o-nome-antigo-da-opcao-base-vigente": ROL_DA_162,
   "163a-conferir-chaves-de-frete-so-o-servidor-aplicado": ROL_DA_163,
