@@ -207,6 +207,9 @@ describe("Balcão — cupom de outro dia volta com aviso e a lojista decide", ()
     expect(etapaNaTela()).toBe("cupom");
     expect(aviso(), "o aviso tem de aparecer").toBeTruthy();
     expect(aviso()!.textContent).toContain("desde ontem, às 16:00");
+    expect(aviso()!.textContent).toContain(
+      "Em Pedidos, abra “Filtros e ferramentas” e toque em “Limpar tudo”, se aparecer. Depois, toque em “Abrir filtros”, escolha “Balcão” em “Canal da venda” e toque em “Fechar”. Confira se a venda já aparece na lista. Se ainda tiver dúvida, não refaça a venda.",
+    );
     expect(botao(hospedeiro, "Continuar esta venda")).toBeTruthy();
     expect(botao(hospedeiro, "Descartar e começar nova")).toBeTruthy();
     // A lojista vê o que está decidindo: o item e o cliente de ontem.
