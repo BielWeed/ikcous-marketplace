@@ -53,14 +53,15 @@ describe("textoConfirmarCancelamento — a tabela inteira", () => {
     );
   });
 
-  it("pago e NÃO enviado: pede a devolução sem garantir o meio ou o prazo", () => {
+  it("pago e NÃO enviado: o dinheiro volta sozinho (PIX/cartão)", () => {
     const texto = textoConfirmarCancelamento({
       pagamentoJaEntrou: true,
       jaFoiEnviado: false,
     });
-    expect(texto).toContain("pediremos a devolução do valor");
-    expect(texto).toContain("A loja confirma o retorno");
-    expect(texto).not.toMatch(/sozinho|automátic|PIX|fatura|prazo/i);
+    expect(texto).toContain("volta sozinho");
+    expect(texto).toContain("PIX cai na sua conta");
+    expect(texto).toContain("cartão aparece como crédito na fatura");
+    expect(texto).not.toContain("NÃO volta automaticamente");
   });
 
   it("pago e JÁ enviado: a loja devolve depois que o produto voltar", () => {
@@ -193,7 +194,7 @@ describe("textoDevolucao — a tabela inteira", () => {
       returnedToSellerAt: null,
     });
     expect(texto).toBe(
-      "Devolução: em andamento. A loja confirma o retorno do dinheiro.",
+      "Devolução: em andamento — o dinheiro volta sozinho (PIX na conta; cartão na fatura).",
     );
   });
 
@@ -211,7 +212,7 @@ describe("textoDevolucao — a tabela inteira", () => {
       returnedToSellerAt: null,
     });
     expect(texto).toBe(
-      "Devolução: em andamento. A loja confirma o retorno do dinheiro.",
+      "Devolução: em andamento — o dinheiro volta sozinho (PIX na conta; cartão na fatura).",
     );
   });
 
@@ -367,7 +368,7 @@ describe("textoDevolucao — a tabela inteira", () => {
       returnedToSellerAt: null,
     });
     expect(texto).toBe(
-      "Devolução: em andamento. A loja confirma o retorno do dinheiro.",
+      "Devolução: em andamento — o dinheiro volta sozinho (PIX na conta; cartão na fatura).",
     );
   });
 });
@@ -529,7 +530,7 @@ describe("OrderDetailsView — a tela do cliente diz a verdade sobre o dinheiro 
   }
 
   // C1
-  it("C1: processing pago — confirm explica que a devolução será pedida", async () => {
+  it("C1: processing pago — confirm 'volta sozinho' e NÃO 'NÃO volta automaticamente'", async () => {
     const confirmMock = vi.fn().mockReturnValue(true);
     vi.stubGlobal("confirm", confirmMock);
     pedidoAtual = pedidoComPagamento("processing", "pago");
@@ -538,8 +539,8 @@ describe("OrderDetailsView — a tela do cliente diz a verdade sobre o dinheiro 
     await clicarCancelar();
 
     const texto = confirmMock.mock.calls[0][0] as string;
-    expect(texto).toContain("pediremos a devolução do valor");
-    expect(texto).not.toMatch(/volta sozinho|automaticamente/i);
+    expect(texto).toContain("volta sozinho");
+    expect(texto).not.toContain("NÃO volta automaticamente");
   });
 
   // C2
@@ -646,9 +647,10 @@ describe("OrderDetailsView — a tela do cliente diz a verdade sobre o dinheiro 
     expect(texto).not.toContain("volta sozinho");
   });
 
-  // Uma solicitação não confirma o reembolso: o pagamento pode ter mais de
-  // 180 dias e exigir que a loja cuide da devolução.
-  it("cenário (b): pago cancelado com devolução solicitada não promete dinheiro de volta", async () => {
+  // Cenário (b): COM linha observada (a mesma linha que a RPC grava na
+  // transação do cancelamento) — a tela afirma "volta sozinho" em TODAS as
+  // superfícies, e nenhuma manda falar com a loja.
+  it("cenário (b): pago cancelado NÃO enviado, COM linha 'solicitado' — nenhuma superfície manda falar com a loja", async () => {
     linhasOrderRefundsMock = [
       {
         amount: 100,
@@ -667,12 +669,7 @@ describe("OrderDetailsView — a tela do cliente diz a verdade sobre o dinheiro 
     const texto = hospedeiro.textContent || "";
     expect(texto).not.toContain("fale com a loja");
     expect(texto).not.toContain("Fale com a loja");
-    expect(texto).toContain("A devolução do valor foi solicitada");
-    expect(texto).toContain("Devolução: em andamento");
-    expect(texto).toContain("A loja confirma o retorno");
-    expect(texto).not.toMatch(
-      /volta sozinho|reembolso é automático|PIX cai|crédito na fatura/i,
-    );
+    expect(texto).toContain("volta sozinho");
   });
 
   // Cancelado APÓS o envio, SEM linha — a RPC nunca grava para este caso
@@ -698,9 +695,12 @@ describe("OrderDetailsView — a tela do cliente diz a verdade sobre o dinheiro 
   // Caso-limite: cancelado APÓS o envio, mas COM linha (a lojista abriu um
   // estorno manual pelo painel depois de conversar com o cliente —
   // `solicitar_estorno_do_pedido`, fora da RPC automática). Prova que a
-  // mensagem depende do estado da solicitação, não da etapa em que
-  // cancelou. A loja já pediu a devolução, mas ela não está confirmada.
-  it("caso-limite: pago cancelado APÓS o envio, com devolução solicitada pela loja", async () => {
+  // regra é MESMO "existe linha?", nunca "`cancelledAfterShipping`
+  // disfarçado": uma vez que a linha existe, o processo automático (cron/
+  // edge) já está tocando o Mercado Pago, e a tela tem que dizer isso — não
+  // pode continuar mandando "fale com a loja" para um dinheiro que já está
+  // em movimento.
+  it("caso-limite: pago cancelado APÓS o envio, COM linha (estorno manual da loja) — 'volta sozinho', NUNCA 'fale com a loja'", async () => {
     linhasOrderRefundsMock = [
       {
         amount: 100,
@@ -719,12 +719,7 @@ describe("OrderDetailsView — a tela do cliente diz a verdade sobre o dinheiro 
     const texto = hospedeiro.textContent || "";
     expect(texto).not.toContain("fale com a loja");
     expect(texto).not.toContain("Fale com a loja");
-    expect(texto).toContain("A devolução do valor foi solicitada");
-    expect(texto).toContain("Devolução: em andamento");
-    expect(texto).toContain("A loja confirma o retorno");
-    expect(texto).not.toMatch(
-      /volta sozinho|reembolso é automático|PIX cai|crédito na fatura/i,
-    );
+    expect(texto).toContain("volta sozinho");
   });
 
   // (d) BLOQUEIA 1 do laudo rodada 3, agora fechado pela rodada 4: uma linha
@@ -803,8 +798,9 @@ describe("OrderDetailsView — a tela do cliente diz a verdade sobre o dinheiro 
 
   // (g) linha EM CURSO ao lado de uma linha MORTA: o automático ainda está
   // tentando (ex.: primeira tentativa `falhou`, o cron reabriu como
-  // `solicitado` para retry) — em curso vence, sem garantir o desfecho.
-  it("(g) cancelado + pago + linhas 'solicitado' e 'falhou' juntas: em curso vence, sem confirmar a devolução", async () => {
+  // `solicitado` para retry) — em curso vence, "volta sozinho" continua
+  // verdade.
+  it("(g) cancelado + pago + linhas 'solicitado' e 'falhou' juntas: card mostra 'volta sozinho' (em curso vence)", async () => {
     linhasOrderRefundsMock = [
       {
         amount: 100,
@@ -827,8 +823,8 @@ describe("OrderDetailsView — a tela do cliente diz a verdade sobre o dinheiro 
     await renderizar();
 
     const texto = hospedeiro.textContent || "";
-    expect(texto).toContain("A devolução do valor foi solicitada");
-    expect(texto).not.toMatch(/volta sozinho|Fale com a loja para resolver/i);
+    expect(texto).toContain("volta sozinho");
+    expect(texto).not.toContain("Fale com a loja para resolver");
   });
 
   // C9 — varredura do DOM em cada estado: nenhum indício de id do MP.

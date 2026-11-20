@@ -18,7 +18,7 @@
 // Mercado Pago sozinhos a partir dela — "o dinheiro NÃO volta
 // automaticamente" deixou de ser verdade para esse caso. As duas primeiras
 // asserções (`toContain("NÃO volta automaticamente")`) trocaram para o novo
-// texto da solicitação de devolução, vindo de
+// texto ("volta sozinho... PIX... cartão..."), vindo agora de
 // `textoConfirmarCancelamento` (texto-estorno-do-cliente.ts). A cobertura
 // completa da tabela nova mora em
 // cliente-cancela-pedido-pago-le-a-verdade.test.tsx (C1, C8); este arquivo
@@ -154,7 +154,7 @@ describe("OrderDetailsView — o aviso de cancelamento fala do dinheiro quando j
     });
   }
 
-  it("paymentStatus 'pago': o confirm explica que a devolução será pedida", async () => {
+  it("paymentStatus 'pago': o confirm diz que o dinheiro volta sozinho (PIX/cartão) — T7, 08/09", async () => {
     confirmMock = vi.fn().mockReturnValue(true);
     vi.stubGlobal("confirm", confirmMock);
     pedidoAtual = pedidoComPagamento("pago");
@@ -164,11 +164,11 @@ describe("OrderDetailsView — o aviso de cancelamento fala do dinheiro quando j
 
     expect(confirmMock).toHaveBeenCalledTimes(1);
     const texto = confirmMock.mock.calls[0][0] as string;
-    expect(texto).toContain("pediremos a devolução do valor");
-    expect(texto).not.toMatch(/volta sozinho|automaticamente/i);
+    expect(texto).toContain("volta sozinho");
+    expect(texto).not.toContain("NÃO volta automaticamente");
   });
 
-  it("paymentStatus 'pago_apos_expirar': o confirm não garante devolução automática", async () => {
+  it("paymentStatus 'pago_apos_expirar': o confirm diz que o dinheiro volta sozinho", async () => {
     confirmMock = vi.fn().mockReturnValue(true);
     vi.stubGlobal("confirm", confirmMock);
     pedidoAtual = pedidoComPagamento("pago_apos_expirar");
@@ -178,8 +178,8 @@ describe("OrderDetailsView — o aviso de cancelamento fala do dinheiro quando j
 
     expect(confirmMock).toHaveBeenCalledTimes(1);
     const texto = confirmMock.mock.calls[0][0] as string;
-    expect(texto).toContain("pediremos a devolução do valor");
-    expect(texto).not.toMatch(/volta sozinho|automaticamente/i);
+    expect(texto).toContain("volta sozinho");
+    expect(texto).not.toContain("NÃO volta automaticamente");
   });
 
   // Task 3b do plano docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md
@@ -187,7 +187,7 @@ describe("OrderDetailsView — o aviso de cancelamento fala do dinheiro quando j
   // na entrega lia o texto genérico de cancelamento, sem avisar que o
   // dinheiro já está com a loja. `recebido_na_entrega` nunca passou pelo
   // Mercado Pago — T7 (08/09) dá a ele um texto PRÓPRIO ("combine a
-  // devolução... com a loja"), distinto da solicitação para quem pagou
+  // devolução... com a loja"), distinto do "volta sozinho" de quem pagou
   // online.
   it("paymentStatus 'recebido_na_entrega': o confirm pede para combinar com a loja — T7, 08/09", async () => {
     confirmMock = vi.fn().mockReturnValue(true);

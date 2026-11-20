@@ -126,7 +126,7 @@ describe("textoConfirmarCancelamento — entrega x retirada x pagamento", () => 
       jaFoiEnviado: false,
       retiradaPronta: false,
     });
-    expect(texto).toContain("pediremos a devolução do valor");
+    expect(texto).toContain("volta sozinho");
   });
 
   it("ENTREGA enviada + pago: o texto de sempre, com o produto a devolver (controle)", () => {
@@ -188,7 +188,9 @@ describe("textoDevolucao — entrega x retirada, depois de cancelar", () => {
         returnedToSellerAt: null,
         retiradaNaLoja: true,
       }),
-    ).toBe("Devolução: em andamento. A loja confirma o retorno do dinheiro.");
+    ).toBe(
+      "Devolução: em andamento — o dinheiro volta sozinho (PIX na conta; cartão na fatura).",
+    );
   });
 
   it("ENTREGA cancelada depois do envio, sem linha: o texto de sempre (controle)", () => {
@@ -398,10 +400,10 @@ describe("OrderDetailsView — retirada pronta: cancelar e ficha do pedido cance
     expect(texto).toContain("pagou este pedido na entrega");
   });
 
-  it("retirada em separação (processing) e paga: informa que a devolução será pedida (ainda não está pronta)", async () => {
+  it("retirada em separação (processing) e paga: segue 'volta sozinho' (ainda não está pronta)", async () => {
     pedidoAtual = pedido("processing", "pago", { retiradaNaLoja: true });
     const texto = await textoDoConfirmAoCancelar();
-    expect(texto).toContain("pediremos a devolução do valor");
+    expect(texto).toContain("volta sozinho");
   });
 
   it("ENTREGA enviada (shipping) e paga: o aviso de sempre, com o produto a devolver (controle)", async () => {
