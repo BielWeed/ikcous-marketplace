@@ -48,6 +48,12 @@ describe("motivoDaCotacao", () => {
     expect(motivoDaCotacao(credencial)).toBe(credencial);
   });
 
+  it("preserva a orientação completa sobre loja sem transportadora conectada", () => {
+    const motivo =
+      "Loja sem transportadora conectada para entregas fora da cidade (o frete de taxa fixa foi descontinuado). Conecte Melhor Envio, Frenet ou SuperFrete para cotar o frete nacional.";
+    expect(motivoDaCotacao(motivo)).toBe(motivo);
+  });
+
   it("explica que nenhuma opção de envio ficou disponível", () => {
     expect(motivoDaCotacao("Nenhum método de envio retornado.")).toBe(
       "Nenhuma opção de envio ficou disponível para esta cotação.",
