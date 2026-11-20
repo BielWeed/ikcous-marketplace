@@ -307,7 +307,7 @@ describe("AdminShippingView — avisa quando a transportadora fica sem pagamento
     );
   });
 
-  it("só retirada com promoção nacional: quem é de fora pode buscar na loja", async () => {
+  it("só retirada com promoção nacional: a prévia também mostra a entrega grátis por produto", async () => {
     mockConfig.localDeliveryEnabled = false;
     mockConfig.enabledShippingMethods.push("store-pickup");
     mockConfig.nationalShippingStrategy = "por_produto";
@@ -322,7 +322,25 @@ describe("AdminShippingView — avisa quando a transportadora fica sem pagamento
     expect(
       hospedeiro.querySelector('[aria-label="Como fica para o cliente"]')
         ?.textContent,
-    ).toContain("Só retirada · Grátis");
+    ).toContain(
+      "Retirada grátis; entrega grátis se o pedido tiver produto marcado",
+    );
+  });
+
+  it("só retirada sem promoção nacional: a prévia só promete retirada", async () => {
+    mockConfig.localDeliveryEnabled = false;
+    mockConfig.enabledShippingMethods.push("store-pickup");
+    mockConfig.nationalShippingStrategy = "desligado";
+    cenario.ligados = [];
+    await abrirTela();
+
+    const previa = hospedeiro.querySelector(
+      '[aria-label="Como fica para o cliente"]',
+    )?.textContent;
+    expect(previa).toContain("Só retirada · Grátis");
+    expect(previa).not.toContain(
+      "entrega grátis se o pedido tiver produto marcado",
+    );
   });
 
   it("promoção nacional com transportadora ligada: só avisa sobre a transportadora sem pagamento", async () => {

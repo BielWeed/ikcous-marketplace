@@ -72,6 +72,11 @@ export function PreviaDoFrete({
     (config.shippingCoverage === "local" || nomesLigados?.length === 0);
   const fora = config.shippingCoverage !== "local" && !soRetiro;
   const nacional = promessas.nacional;
+  const retiradaComEntregaPromocional =
+    soRetiro &&
+    config.shippingCoverage === "national" &&
+    nomesLigados?.length === 0 &&
+    nacional.estrategia === "por_produto";
   const gratisNacional =
     nacional.estrategia === "sempre" ||
     (nacional.estrategia === "acima_de_valor" &&
@@ -146,7 +151,9 @@ export function PreviaDoFrete({
               promocaoNacionalSemPagamento
                 ? "frete grátis se tiver produto marcado"
                 : soRetiro
-                  ? "quem é de fora retira na loja"
+                  ? retiradaComEntregaPromocional
+                    ? "nenhuma transportadora ligada"
+                    : "quem é de fora retira na loja"
                   : !fora
                     ? "a loja não vende"
                     : nomesLigados === null
@@ -161,7 +168,9 @@ export function PreviaDoFrete({
                 : promocaoNacionalSemPagamento
                   ? "Não finaliza pelo app"
                   : soRetiro
-                    ? "Só retirada · Grátis"
+                    ? retiradaComEntregaPromocional
+                      ? "Retirada grátis; entrega grátis se o pedido tiver produto marcado"
+                      : "Só retirada · Grátis"
                     : !fora
                       ? "Não vende"
                       : nomesLigados === null
