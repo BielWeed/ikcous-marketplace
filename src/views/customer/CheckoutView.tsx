@@ -8506,7 +8506,9 @@ export function CheckoutViewDaConta({
                         // produto — a mesma regra do carrinho.
                         const fotoDaLinha = fotoDoItemDoCarrinho(item);
                         const capa = capaDeReservaDoItem(item, fotoDaLinha);
-                        const classeDaFoto =
+                        // Mesmas classes da foto da linha (que continua com o
+                        // literal no JSX, para o teste da assinatura do celular).
+                        const classeDaCapa =
                           "size-12 shrink-0 rounded-xl border border-zinc-100 bg-zinc-50 object-cover";
 
                         return (
@@ -8518,14 +8520,14 @@ export function CheckoutViewDaConta({
                               src={miniaturaDoResumo(fotoDaLinha, 144)}
                               original={fotoDaLinha}
                               alt=""
-                              className={classeDaFoto}
+                              className="size-12 shrink-0 rounded-xl border border-zinc-100 bg-zinc-50 object-cover"
                               fallback={
                                 capa ? (
                                   <ImagemComFallback
                                     src={miniaturaDoResumo(capa, 144)}
                                     original={capa}
                                     alt=""
-                                    className={classeDaFoto}
+                                    className={classeDaCapa}
                                   />
                                 ) : undefined
                               }
