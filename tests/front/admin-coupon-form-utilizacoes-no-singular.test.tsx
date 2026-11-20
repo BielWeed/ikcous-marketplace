@@ -73,6 +73,56 @@ async function editar(cupom: Coupon) {
   });
 }
 
+it("a prévia diferencia cupom expirado, esgotado e ativo", async () => {
+  for (const [cupom, rotulo] of [
+    [
+      { ...cupomUsado(5), id: "vencido", validUntil: "2020-01-01T00:00:00Z" },
+      "Expirado",
+    ],
+    [{ ...cupomUsado(5), id: "esgotado" }, "Esgotado"],
+    [{ ...cupomUsado(1), id: "ativo" }, "Ativo"],
+  ] as const) {
+    await editar(cupom);
+    const botao = tela.querySelector<HTMLButtonElement>(
+      'button[aria-controls="coupon-preview"]',
+    );
+    expect(botao).not.toBeNull();
+    if (botao?.getAttribute("aria-expanded") === "false") {
+      await act(async () => botao.click());
+    }
+    expect.soft(selosDaPrevia()).toContain(rotulo);
+    if (rotulo !== "Ativo") expect.soft(selosDaPrevia()).not.toContain("Ativo");
+  }
+
+  const limite = tela.querySelector<HTMLInputElement>("#coupon-usage-limit");
+  expect(limite).not.toBeNull();
+  if (!limite) return;
+  const escrever = Object.getOwnPropertyDescriptor(
+    HTMLInputElement.prototype,
+    "value",
+  )?.set;
+  async function trocarLimite(texto: string) {
+    await act(async () => {
+      limite.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+      escrever?.call(limite, texto);
+      limite.dispatchEvent(new InputEvent("input", { bubbles: true }));
+      limite.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+    });
+  }
+
+  await trocarLimite("1");
+  expect.soft(selosDaPrevia()).toContain("Esgotado");
+  await trocarLimite("1.5");
+  expect.soft(selosDaPrevia()).not.toContain("Ativo");
+  expect.soft(selosDaPrevia()).not.toContain("Esgotado");
+});
+
+function selosDaPrevia() {
+  return [...tela.querySelectorAll("#coupon-preview span")].map((selo) =>
+    selo.textContent?.trim(),
+  );
+}
+
 describe("formulário de cupom — contador de utilizações", () => {
   it("uma utilização: singular", async () => {
     await editar(cupomUsado(1));

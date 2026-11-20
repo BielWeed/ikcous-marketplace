@@ -50,6 +50,7 @@ import { cn, formatCurrency } from "@/lib/utils";
 import type { ClienteDoCupom, Coupon, View } from "@/types";
 import { camposQueMudaram } from "@/utils/campos-mexidos-do-produto";
 import { haptic } from "@/utils/haptic";
+import { rotuloDoCupom } from "@/utils/status-do-cupom";
 import {
   dataEscolhidaParaValidade,
   validadeParaDataDoInput,
@@ -895,6 +896,20 @@ function FormularioDoCupom({
     onNavigate("admin-coupons");
   };
 
+  const rotuloDaPrevia =
+    isEditing && (!editingCoupon || cupomInicializadoRef.current !== couponId)
+      ? null
+      : formData.active &&
+          (typeof limiteDeUsos !== "number" || rascunhoValidade !== null)
+        ? null
+        : rotuloDoCupom({
+            active: Boolean(formData.active),
+            validUntil: formData.validUntil,
+            usageLimit: typeof limiteDeUsos === "number" ? limiteDeUsos : null,
+            usageCount: editingCoupon?.usageCount,
+          });
+  const previaEstaAtiva = rotuloDaPrevia === "Ativo";
+
   return (
     <div className="pb-admin relative min-h-screen bg-admin-bg font-sans text-zinc-400 lg:pb-12">
       <div className="sticky top-0 z-20 bg-admin-bg/95 px-5 py-4 backdrop-blur-xl">
@@ -998,16 +1013,18 @@ function FormularioDoCupom({
                       />
                       PRÉVIA DO CUPOM
                     </span>
-                    <span
-                      className={cn(
-                        "rounded-full border px-3 py-1 text-xs font-bold",
-                        formData.active
-                          ? "border-emerald-300/20 bg-emerald-300/10 text-emerald-300"
-                          : "border-admin-border-strong bg-white/5 text-zinc-400",
-                      )}
-                    >
-                      {formData.active ? "Ativo" : "Inativo"}
-                    </span>
+                    {rotuloDaPrevia && (
+                      <span
+                        className={cn(
+                          "rounded-full border px-3 py-1 text-xs font-bold",
+                          previaEstaAtiva
+                            ? "border-emerald-300/20 bg-emerald-300/10 text-emerald-300"
+                            : "border-admin-border-strong bg-white/5 text-zinc-400",
+                        )}
+                      >
+                        {rotuloDaPrevia}
+                      </span>
+                    )}
                   </div>
                   <p className="break-all text-2xl font-bold uppercase text-zinc-50">
                     {formData.code || "CUPOMEXEMPLO"}
