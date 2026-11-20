@@ -1,4 +1,21 @@
 {
+  "1.5.222": {
+    "titulo": "Recibo, ficha e avisos mais fiéis",
+    "novidades": [],
+    "correcoes": [
+      "Na ficha do pedido do painel, o bloco aparece como “Retirada” quando o pedido é para retirar na loja, e não como “Entrega”.",
+      "No recibo impresso, só some a nota automática de frete. Uma instrução que a cliente escreveu começando com as mesmas palavras continua aparecendo.",
+      "O recibo impresso passa a mostrar o reembolso que a loja fez à mão. Se não der para conferir esses reembolsos, o recibo avisa que não foram conferidos, e o botão de imprimir espera a conferência terminar.",
+      "Se o Mercado Pago falhar por um instante ao conferir uma contestação, o sistema tenta de novo em cerca de 10 minutos, em vez de esperar 6 horas.",
+      "A tela de manutenção avisa que a indisponibilidade é temporária e que a loja tenta reabrir sozinha, sem prometer prazo nem inventar motivo.",
+      "Na busca e na vitrine, se o catálogo não pôde ser atualizado e a lista salva no aparelho não tem resultado, a tela avisa e oferece “Tentar de novo”, em vez de dizer que não há produtos.",
+      "Ao criar ou trocar o código de um cupom, o painel recusa um código que já existe em outra grafia (maiúsculas, minúsculas ou acentos compostos), mesmo em cupom desligado. Editar outro dado de um cupom antigo, sem mudar o código, continua possível.",
+      "Quando o perfil da cliente ainda não carregou, a pergunta sobre o produto avisa que a prévia do nome não está disponível agora, sem prometer qual nome vai aparecer. O botão para quem compra sem conta, quando a loja aceita Pix pelo app, passou a dizer “Entre para liberar o Pix no app”."
+    ],
+    "melhorias": [
+      "Na tela de Pedidos, o painel avisa quando 7 ou mais das 10 vagas de compra sem conta estão ocupadas por pedidos pendentes das últimas 72 horas, e mostra há quanto tempo cada pedido pendente de quem comprou sem conta segura estoque. A contagem é uma estimativa feita com os pedidos carregados na tela."
+    ]
+  },
   "1.5.221": {
     "titulo": "Pedidos, cupons e relatórios mais claros",
     "novidades": [],
