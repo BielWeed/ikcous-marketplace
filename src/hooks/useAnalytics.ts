@@ -346,11 +346,23 @@ export function useAnalytics() {
         return null;
       }
 
-      // Verify active session before calling RPC to avoid transient auth errors
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) {
+      // A espera pela sessão também tem prazo, antes de iniciar a consulta.
+      const consultaAnterior = ultimaChamadaExecutiva;
+      let sessao;
+      try {
+        const resposta = await aguardarComPrazo(
+          supabase.auth.getSession(),
+          PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+          erroDeConsultaSemResposta,
+        );
+        sessao = resposta.data.session;
+      } catch (err) {
+        if (consultaAnterior === ultimaChamadaExecutiva) {
+          setError(mensagemParaLojista(err, "carregar o resumo do painel"));
+        }
+        return null;
+      }
+      if (!sessao) {
         console.warn(
           "[useAnalytics] fetchExecutiveSummary bypassed: user session not active in client",
         );
@@ -520,11 +532,25 @@ export function useAnalytics() {
 
   const fetchCategoryAnalytics = useCallback(
     async (start: string, end: string, forceRefresh = false) => {
-      // Verify active session before calling RPC to avoid transient auth errors
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) {
+      // A espera pela sessão também tem prazo, antes de iniciar a consulta.
+      const consultaAnterior = ultimaChamadaDeCategorias;
+      let sessao;
+      try {
+        const resposta = await aguardarComPrazo(
+          supabase.auth.getSession(),
+          PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+          erroDeConsultaSemResposta,
+        );
+        sessao = resposta.data.session;
+      } catch (err) {
+        if (consultaAnterior === ultimaChamadaDeCategorias) {
+          setCategoryError(
+            mensagemParaLojista(err, "carregar os dados de categorias"),
+          );
+        }
+        return null;
+      }
+      if (!sessao) {
         console.warn(
           "[useAnalytics] fetchCategoryAnalytics bypassed: user session not active in client",
         );
