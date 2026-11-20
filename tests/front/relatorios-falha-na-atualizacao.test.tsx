@@ -97,7 +97,7 @@ const abas = [
     }) => (
       <FunilEPedidosDoCrm {...props} carregando={false} onNavigate={vi.fn()} />
     ),
-    "5 de 7",
+    "Pedidos criados7Pagos5",
   ],
   [
     "Clientes",
