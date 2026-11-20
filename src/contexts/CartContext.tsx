@@ -669,23 +669,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     cartRef.current = cart;
   }, [cart]);
 
-  // Só a transição para vazio encerra o troco da compra anterior, seja pela
-  // lixeira ou por outra remoção. Não equivale a "Limpar tudo": o cupom e a
-  // possibilidade de desfazer a lixeira continuam intactos.
-  const carrinhoVazio = cart.length === 0;
-  const estavaVazioRef = useRef(carrinhoVazio);
-  useEffect(() => {
-    const esvaziou = carrinhoVazio && !estavaVazioRef.current;
-    estavaVazioRef.current = carrinhoVazio;
-    if (!esvaziou) return;
-
-    const sessao = sessionStorageSeguro();
-    const rascunho = lerRascunhoDoCheckout(sessao);
-    if (rascunho?.trocoPara !== undefined) {
-      salvarRascunhoDoCheckout(sessao, { ...rascunho, trocoPara: undefined });
-    }
-  }, [carrinhoVazio]);
-
   // Visitante com o app em duas abas: cada aba grava o carrinho INTEIRO dela, e
   // a que mexe por último apagava o que a outra pôs. O navegador avisa (evento
   // "storage") só as OUTRAS abas quando o valor muda; aqui a aba adota o que a
