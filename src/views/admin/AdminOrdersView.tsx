@@ -2361,6 +2361,15 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                 cards={kpiCards}
               />
             </LocalErrorBoundary>
+            {filter === "open" && (
+              <p>
+                <small>
+                  Em Aberto também mostra pedidos aguardando pagamento, a
+                  caminho ou prontos para retirada. O número Para preparar não
+                  inclui esses pedidos.
+                </small>
+              </p>
+            )}
           </div>
         )}
         <BarraDeBusca
