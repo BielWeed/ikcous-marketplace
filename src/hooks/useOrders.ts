@@ -3816,6 +3816,7 @@ export function useOrders(
     // canal próprio já recebe tudo direto: ignora o repasse das outras abas
     // (senão o aviso tocaria duas vezes) e responde por elas.
     let ligado = false;
+    let ultimoStatusRepassado: EstadoConexaoRealtime | undefined;
     // Houve sinal de uma aba servindo esta tela desde a última pergunta?
     let temServidor = false;
     // Repasses já processados (chave -> quando). Com mais de uma aba servindo
@@ -3856,7 +3857,14 @@ export function useOrders(
           },
           definirStatus: (id, status) => {
             temServidor = true;
+            // Cada consumidor precisa receber a reconexão, mesmo que outra
+            // instância do hook já tenha atualizado o estado compartilhado.
+            const reconectou =
+              ultimoStatusRepassado === "reconectando" &&
+              status === "conectado";
+            ultimoStatusRepassado = status;
             definirStatusConexao(id, status);
+            if (reconectou) onReconciliarRef.current?.();
           },
           responderStatusAtual: () => {
             const atual = globalConnectionStatus.get(channelId)?.status;
