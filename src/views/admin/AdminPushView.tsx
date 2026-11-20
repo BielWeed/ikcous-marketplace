@@ -1318,7 +1318,7 @@ export const AdminPushView = memo(function AdminPushView({
         ).catch((error: unknown) => ({ error }));
         if (ajusteError) {
           avisoDoHistorico =
-            "O envio foi feito, mas não foi possível atualizar o histórico (mostra 0 entregas).";
+            "O envio foi aceito, mas o número de aparelhos não foi atualizado no histórico.";
           console.error(
             "Falha ao corrigir o recipient_count do log:",
             ajusteError,
@@ -1352,7 +1352,7 @@ export const AdminPushView = memo(function AdminPushView({
         );
       } else if (falharam > 0 || naoTentados > 0) {
         toast.warning(
-          `Entregue em ${entregues} de ${entregues + falharam + naoTentados}`,
+          `Envio aceito para ${entregues} de ${entregues + falharam + naoTentados} aparelhos`,
           {
             description:
               [
@@ -1368,7 +1368,7 @@ export const AdminPushView = memo(function AdminPushView({
           },
         );
       } else {
-        const mensagem = `Notificação entregue em ${entregues} ${entregues === 1 ? "dispositivo" : "dispositivos"}`;
+        const mensagem = `Envio aceito para ${entregues} ${entregues === 1 ? "aparelho" : "aparelhos"}`;
         const description = [avisoDeAlcanceMenor, avisoDoHistorico]
           .filter(Boolean)
           .join(" ");

@@ -574,6 +574,63 @@ describe("AdminProductFormView — #98 auto-save apaga rascunho ao abrir para ed
     });
   }
 
+  it.each([",", "."])(
+    "digitar %j no fim do preço de venda já salvo não envia mudança de preço",
+    async (separador) => {
+      armazem.delete(draftKey);
+      fetchProduct.mockResolvedValue({ ...produtoDoBanco, price: 12.5 });
+      updateProduct.mockResolvedValue(undefined);
+      await abrirProdutoParaEdicao();
+
+      const campo = document.getElementById(
+        "product-sale-price",
+      ) as HTMLInputElement;
+      expect(campo.value).toBe("12,50");
+      await act(async () => campo.focus());
+      await act(async () => {
+        const valor = campo.value + separador;
+        Object.getOwnPropertyDescriptor(
+          HTMLInputElement.prototype,
+          "value",
+        )!.set!.call(campo, valor);
+        campo.setSelectionRange(valor.length, valor.length);
+        campo.dispatchEvent(
+          new InputEvent("input", {
+            bubbles: true,
+            inputType: "insertText",
+            data: separador,
+          }),
+        );
+      });
+      await act(async () => campo.blur());
+      // Mudar o nome força um salvamento real; o preço não deve ir junto.
+      await act(async () => {
+        const nome = document.getElementById(
+          "product-name",
+        ) as HTMLInputElement;
+        nome.focus();
+        digitarInput("product-name", "Produto renomeado");
+      });
+      await act(async () => document.getElementById("product-name")?.blur());
+
+      const salvar = localizarBotaoPorTexto(
+        acoesDoProduto(),
+        "Salvar alterações",
+      )!;
+      await act(async () => {
+        salvar.click();
+        await esperarMicrotarefas();
+      });
+
+      expect(updateProduct).toHaveBeenCalledTimes(1);
+      const [id, alteracoes] = updateProduct.mock.calls[0];
+      expect(id).toBe("prod-edit-1");
+      expect(alteracoes).toMatchObject({ name: "Produto renomeado" });
+      expect(alteracoes).not.toHaveProperty("price");
+      expect(campo.value).toBe("12,50");
+    },
+  );
+
   it("o toast de rascunho pendente aparece ao abrir o produto", async () => {
     await abrirProdutoParaEdicao();
 

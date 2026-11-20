@@ -96,13 +96,17 @@ let hospedeiro: HTMLDivElement;
 const onBack = vi.fn();
 const onNavigate = vi.fn();
 
-async function abrir() {
+async function abrir(orderId = ID) {
   const { OrderDetailsView } = await import(
     "@/views/customer/OrderDetailsView"
   );
   await act(async () => {
     raiz.render(
-      <OrderDetailsView orderId={ID} onBack={onBack} onNavigate={onNavigate} />,
+      <OrderDetailsView
+        orderId={orderId}
+        onBack={onBack}
+        onNavigate={onNavigate}
+      />,
     );
   });
   for (let i = 0; i < 5; i++) {
@@ -139,6 +143,19 @@ afterEach(() => {
 });
 
 describe("pedido aberto sem conta aberta", () => {
+  it("explica o link sem identificador e deixa voltar, sem oferecer login", async () => {
+    await abrir("");
+
+    expect(texto()).toContain("Este link de pedido está incompleto");
+    expect(texto()).not.toContain("Seu pedido está salvo na sua conta");
+    expect(botao("Entrar")).toBeUndefined();
+
+    await act(async () => {
+      botao("Voltar aos pedidos")?.click();
+    });
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
   it("convida a entrar na conta, sem dizer que o pedido não existe", async () => {
     await abrir();
 

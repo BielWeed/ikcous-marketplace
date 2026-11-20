@@ -18,12 +18,26 @@ import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-function digitar(el: HTMLInputElement, valor: string) {
+function digitar(
+  el: HTMLInputElement,
+  valor: string,
+  tecla?: string,
+  tipo = tecla === undefined ? undefined : "insertText",
+) {
   Object.getOwnPropertyDescriptor(
     globalThis.HTMLInputElement.prototype,
     "value",
   )?.set?.call(el, valor);
-  el.dispatchEvent(new Event("input", { bubbles: true }));
+  el.setSelectionRange(valor.length, valor.length);
+  el.dispatchEvent(
+    tipo === undefined
+      ? new Event("input", { bubbles: true })
+      : new InputEvent("input", {
+          bubbles: true,
+          inputType: tipo,
+          data: tecla,
+        }),
+  );
 }
 
 describe("LocalBufferedInput — zeroVazio", () => {
@@ -53,6 +67,7 @@ describe("LocalBufferedInput — zeroVazio", () => {
     value?: string;
     mask?: "currency" | "phone";
     zeroVazio?: boolean;
+    decimalNaDigitacao?: boolean;
   }) {
     await act(async () => {
       raiz.render(
@@ -60,6 +75,7 @@ describe("LocalBufferedInput — zeroVazio", () => {
           value={props.value ?? ""}
           mask={props.mask ?? "currency"}
           zeroVazio={props.zeroVazio}
+          decimalNaDigitacao={props.decimalNaDigitacao}
           onFlush={aoSalvar}
         />,
       );
@@ -127,6 +143,118 @@ describe("LocalBufferedInput — zeroVazio", () => {
       campo().blur();
     });
     expect(aoSalvar).toHaveBeenLastCalledWith("");
+  });
+
+  it("no modo decimal, preserva o zero provisório enquanto digita e sai sem valor", async () => {
+    await montar({ zeroVazio: true, decimalNaDigitacao: true });
+    await act(async () => campo().focus());
+    for (const tecla of "0,0") {
+      await act(async () => digitar(campo(), campo().value + tecla, tecla));
+    }
+    expect(campo().value).toBe("0,0");
+    expect(aoSalvar).toHaveBeenLastCalledWith("");
+
+    await act(async () => campo().blur());
+    expect(campo().value).toBe("");
+    expect(aoSalvar).toHaveBeenLastCalledWith("");
+  });
+
+  it.each([",", "."])(
+    "ignora %j no fim de um preço salvo sem alterar o valor entregue",
+    async (separador) => {
+      await montar({ value: "12.50", decimalNaDigitacao: true });
+      expect(campo().value).toBe("12,50");
+      await act(async () => campo().focus());
+      await act(async () =>
+        digitar(campo(), campo().value + separador, separador),
+      );
+      await act(async () => campo().blur());
+
+      expect(aoSalvar.mock.calls).toEqual([["12.50"]]);
+      expect(campo().value).toBe("12,50");
+    },
+  );
+
+  it.each([{ modo: "dois eventos", entradas: [",", "5"] }])(
+    "digitar ,5 no fim do zero salvo em $modo resulta em 0,50",
+    async ({ entradas }) => {
+      await montar({ value: "0", decimalNaDigitacao: true });
+      expect(campo().value).toBe("0,00");
+      await act(async () => campo().focus());
+      for (const entrada of entradas) {
+        await act(async () =>
+          digitar(campo(), campo().value + entrada, entrada),
+        );
+      }
+      await act(async () => campo().blur());
+
+      expect(campo().value).toBe("0,50");
+      expect(aoSalvar).toHaveBeenLastCalledWith("0.50");
+    },
+  );
+
+  it.each([
+    [2, ",", "12,00", "12.00"],
+    [2, ",5", "12,50", "12.50"],
+    [1, ",", "125,00", "125.00"],
+  ])(
+    "apertar backspace %i vez(es) e digitar %j mostra %s e entrega %s",
+    async (apagadas, texto, exibido, salvo) => {
+      await montar({ value: "12.50", decimalNaDigitacao: true });
+      expect(campo().value).toBe("12,50");
+      await act(async () => campo().focus());
+      for (let i = 0; i < apagadas; i++) {
+        await act(async () =>
+          digitar(
+            campo(),
+            campo().value.slice(0, -1),
+            undefined,
+            "deleteContentBackward",
+          ),
+        );
+      }
+      for (const tecla of texto) {
+        await act(async () => digitar(campo(), campo().value + tecla, tecla));
+      }
+      await act(async () => campo().blur());
+
+      expect(aoSalvar).toHaveBeenLastCalledWith(salvo);
+      expect(campo().value).toBe(exibido);
+    },
+  );
+
+  it.each([
+    ["1250,", "1.250,00", "1250.00"],
+    ["12,", "12,00", "12.00"],
+  ])(
+    "digitar %j num campo vazio mostra %s e entrega %s",
+    async (texto, exibido, salvo) => {
+      await montar({ decimalNaDigitacao: true });
+      await act(async () => campo().focus());
+      for (const tecla of texto) {
+        await act(async () => digitar(campo(), campo().value + tecla, tecla));
+      }
+      await act(async () => campo().blur());
+
+      expect(campo().value).toBe(exibido);
+      expect(aoSalvar).toHaveBeenLastCalledWith(salvo);
+    },
+  );
+
+  it("selecionar o preço salvo e substituir por 7,5 entrega 7,50", async () => {
+    await montar({ value: "12.50", decimalNaDigitacao: true });
+    await act(async () => {
+      campo().focus();
+      campo().select();
+      digitar(campo(), "7", "7");
+    });
+    for (const tecla of ",5") {
+      await act(async () => digitar(campo(), campo().value + tecla, tecla));
+    }
+    await act(async () => campo().blur());
+
+    expect(campo().value).toBe("7,50");
+    expect(aoSalvar).toHaveBeenLastCalledWith("7.50");
   });
 
   it("a prop não vaza para o HTML da página", async () => {

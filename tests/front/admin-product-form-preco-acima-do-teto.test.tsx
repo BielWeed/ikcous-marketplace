@@ -91,7 +91,7 @@ vi.mock("sonner", () => ({
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-function digitar(id: string, valor: string) {
+function digitar(id: string, valor: string, tipo?: string) {
   const el = document.getElementById(id) as
     | HTMLInputElement
     | HTMLTextAreaElement
@@ -102,12 +102,12 @@ function digitar(id: string, valor: string) {
       ? globalThis.HTMLTextAreaElement.prototype
       : globalThis.HTMLInputElement.prototype;
   Object.getOwnPropertyDescriptor(proto, "value")?.set?.call(el, valor);
-  el.dispatchEvent(new Event("input", { bubbles: true }));
+  el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: tipo }));
 }
 
-async function digitarCampo(id: string, valor: string) {
+async function digitarCampo(id: string, valor: string, tipo?: string) {
   await act(async () => {
-    digitar(id, valor);
+    digitar(id, valor, tipo);
     // O campo só entrega o valor ao formulário depois de uma pausa.
     await new Promise((r) => setTimeout(r, 300));
   });
@@ -211,6 +211,22 @@ describe("AdminProductFormView — teto de R$ 9.999.999,99 nos campos de dinheir
       await salvar();
       expect(mocks.updateProduct).not.toHaveBeenCalled();
     });
+
+    it.each(["100000000000000000000", "9".repeat(400)])(
+      "colar um preço enorme dispara o mesmo aviso de limite da digitação",
+      async (colado) => {
+        await montar();
+        await digitarCampo("product-sale-price", colado, "insertFromPaste");
+
+        expect(textoDe("product-price-error")).toContain(
+          "passa do máximo de R$ 9.999.999,99",
+        );
+        expect(valorDoCampo("product-sale-price")).toMatch(/^[\d.]+,00$/);
+        expect(botaoPorTexto("Salvar alterações")?.disabled).toBe(true);
+        await salvar();
+        expect(mocks.updateProduct).not.toHaveBeenCalled();
+      },
+    );
 
     it("exatamente no teto: grava como antes", async () => {
       await montar();

@@ -373,13 +373,10 @@ describe("Avisar clientes: gravacoes do envio sem resposta", () => {
     await passar(PRAZO_DA_GRAVACAO_DO_ENVIO_DE_PUSH_MS);
 
     botaoVoltou();
-    expect(toastSuccess).toHaveBeenCalledWith(
-      "Notificação entregue em 3 dispositivos",
-      {
-        description:
-          "O envio foi feito, mas não foi possível atualizar o histórico (mostra 0 entregas).",
-      },
-    );
+    expect(toastSuccess).toHaveBeenCalledWith("Envio aceito para 3 aparelhos", {
+      description:
+        "O envio foi aceito, mas o número de aparelhos não foi atualizado no histórico.",
+    });
     expect(toastError).not.toHaveBeenCalled();
   });
 
@@ -439,13 +436,10 @@ describe("Avisar clientes: gravacoes do envio sem resposta", () => {
 
     botaoVoltou();
     expect(invokeSendPush).toHaveBeenCalledTimes(1);
-    expect(toastSuccess).toHaveBeenCalledWith(
-      "Notificação entregue em 3 dispositivos",
-      {
-        description:
-          "O envio foi feito, mas não foi possível atualizar o histórico (mostra 0 entregas).",
-      },
-    );
+    expect(toastSuccess).toHaveBeenCalledWith("Envio aceito para 3 aparelhos", {
+      description:
+        "O envio foi aceito, mas o número de aparelhos não foi atualizado no histórico.",
+    });
     expect(toastError).not.toHaveBeenCalled();
   });
 
@@ -456,9 +450,7 @@ describe("Avisar clientes: gravacoes do envio sem resposta", () => {
     });
 
     botaoVoltou();
-    expect(toastSuccess).toHaveBeenCalledWith(
-      "Notificação entregue em 3 dispositivos",
-    );
+    expect(toastSuccess).toHaveBeenCalledWith("Envio aceito para 3 aparelhos");
     expect(toastError).not.toHaveBeenCalled();
     expect(toastWarning).not.toHaveBeenCalled();
   });

@@ -239,6 +239,38 @@ describe("CSV de pedidos com tamanho e cor", () => {
     expect(textoCsv).toContain("Camiseta Básica - Tamanho GG (1 x 49,90)");
   });
 
+  it("nomeia o CSV pelo dia e pela hora de Brasília, mesmo se o aparelho já virou o mês", async () => {
+    await montarTela();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-12-01T01:07:00Z"));
+    // Simula os campos locais de um aparelho em UTC, independente do fuso
+    // da máquina que executa o teste.
+    vi.spyOn(Date.prototype, "getFullYear").mockImplementation(
+      Date.prototype.getUTCFullYear,
+    );
+    vi.spyOn(Date.prototype, "getMonth").mockImplementation(
+      Date.prototype.getUTCMonth,
+    );
+    vi.spyOn(Date.prototype, "getDate").mockImplementation(
+      Date.prototype.getUTCDate,
+    );
+    vi.spyOn(Date.prototype, "getHours").mockImplementation(
+      Date.prototype.getUTCHours,
+    );
+    vi.spyOn(Date.prototype, "getMinutes").mockImplementation(
+      Date.prototype.getUTCMinutes,
+    );
+
+    await act(async () => {
+      botao().click();
+    });
+
+    expect(baixar).toHaveBeenCalledTimes(1);
+    expect((baixar.mock.contexts[0] as HTMLAnchorElement).download).toBe(
+      "pedidos-2026-11-30-22-07.csv",
+    );
+  });
+
   it("exporta o rótulo guardado e só consulta o catálogo para o item sem histórico", async () => {
     pedidosDoBanco = [
       pedido(1, "var-m", {

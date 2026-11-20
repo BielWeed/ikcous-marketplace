@@ -76,7 +76,7 @@ const { estadoAuth } = vi.hoisted(() => ({
 const { FILTROS_ESCOLHIDOS } = vi.hoisted(() => ({
   FILTROS_ESCOLHIDOS: {
     category: "Acessórios",
-    minPrice: "" as number | "",
+    minPrice: 50 as number | "",
     maxPrice: "" as number | "",
     sort: "price_asc",
   },
@@ -106,19 +106,48 @@ vi.mock("@/views/customer/HomeView", () => ({
 vi.mock("@/views/customer/SearchView", () => ({
   SearchView: ({
     onNavigate,
+    initialQuery,
+    onQueryChange,
     filtrosIniciais,
     aoMudarFiltros,
+    quantidadeInicial,
+    aoMudarQuantidade,
   }: {
     readonly onNavigate: (view: string, id?: string) => void;
+    readonly initialQuery: string;
+    readonly onQueryChange: (termo: string) => void;
     readonly filtrosIniciais?: unknown;
     readonly aoMudarFiltros?: (filtros: unknown) => void;
+    readonly quantidadeInicial?: { termo: string; quantidade: number };
+    readonly aoMudarQuantidade: (valor: {
+      termo: string;
+      quantidade: number;
+    }) => void;
   }) => (
     <div
       data-testid="busca"
+      data-termo={initialQuery}
+      data-quantidade={quantidadeInicial?.quantidade}
       data-filtros={
         filtrosIniciais ? JSON.stringify(filtrosIniciais) : "padrao"
       }
     >
+      <button
+        type="button"
+        data-testid="digitar-termo"
+        onClick={() => onQueryChange("bolsa")}
+      >
+        Digitar termo
+      </button>
+      <button
+        type="button"
+        data-testid="carregar-mais"
+        onClick={() =>
+          aoMudarQuantidade({ termo: initialQuery, quantidade: 48 })
+        }
+      >
+        Carregar mais
+      </button>
       <button
         type="button"
         data-testid="escolher-filtros"
@@ -532,6 +561,35 @@ describe("A busca (/search) guarda categoria e ordem ao abrir um produto e volta
 
     expect(existe("busca")).toBe(true);
     expect(filtrosNaBusca()).toBe(JSON.stringify(FILTROS_ESCOLHIDOS));
+  });
+
+  it("do carrinho, dois passos no histórico restauram a busca anterior", async () => {
+    globalThis.history.replaceState(null, "", "/search");
+    await abrir();
+    await clicar("digitar-termo");
+    await clicar("escolher-filtros");
+    await clicar("carregar-mais");
+    await clicar("abrir-produto");
+    expect(existe("tela-produto")).toBe(true);
+
+    await clicar("ir-carrinho");
+    expect(existe("tela-carrinho")).toBe(true);
+
+    await act(async () => {
+      globalThis.history.back();
+    });
+    await assentar();
+    expect(existe("tela-produto")).toBe(true);
+
+    await act(async () => {
+      globalThis.history.back();
+    });
+    await assentar();
+    expect(existe("busca")).toBe(true);
+    expect(filtrosNaBusca()).toBe(JSON.stringify(FILTROS_ESCOLHIDOS));
+    const busca = container?.querySelector('[data-testid="busca"]');
+    expect(busca?.getAttribute("data-termo")).toBe("bolsa");
+    expect(busca?.getAttribute("data-quantidade")).toBe("48");
   });
 
   it("LIMITE: sair da busca de propósito (para o carrinho) larga os filtros — a próxima busca abre no padrão", async () => {

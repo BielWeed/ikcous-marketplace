@@ -692,9 +692,7 @@ describe("AdminPushView — o envio não engole o aviso do app, e o histórico n
       ).mock.calls.map((chamada: any[]) => chamada[0]);
       // O primeiro fato — o push saiu — não pode ser apagado pela falha do
       // segundo.
-      expect(
-        mensagensDeSucesso.some((m) => /entregue em \d+ dispositivo/i.test(m)),
-      ).toBe(true);
+      expect(mensagensDeSucesso).toContain("Envio aceito para 1 aparelho");
 
       // O segundo fato — o aviso dentro do app NÃO foi gravado — tem de
       // aparecer, separado do primeiro.
@@ -722,12 +720,12 @@ describe("AdminPushView — o envio não engole o aviso do app, e o histórico n
     });
   });
 
-  it("histórico com recipient_count > 0 continua dizendo que chegou, e conta 'aparelhos' (singular certo)", async () => {
+  it("histórico com recipient_count > 0 mostra aceite para envio e conta um aparelho", async () => {
     estadoDoBanco.historico = [
       {
         id: "h2",
         title: "Campanha ok",
-        body: "Um aparelho recebeu",
+        body: "Confira as novidades!",
         url: "/",
         recipient_count: 1,
         sent_at: new Date().toISOString(),
@@ -736,6 +734,7 @@ describe("AdminPushView — o envio não engole o aviso do app, e o histórico n
     await abrirTela();
     await abrirHistorico();
 
+    expect(texto()).toContain("Aceitos para envio");
     expect(texto()).toContain("1 aparelho");
     expect(texto()).not.toContain("1 clientes");
     expect(texto()).not.toContain("1 aparelhos");

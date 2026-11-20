@@ -14,10 +14,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const { rpcMock, invokeMock, registrarImplRef, anularImplRef } = vi.hoisted(
-  () => ({
+const { rpcMock, invokeMock, fromMock, registrarImplRef, anularImplRef } =
+  vi.hoisted(() => ({
     rpcMock: vi.fn(),
     invokeMock: vi.fn(),
+    fromMock: vi.fn(),
     registrarImplRef: {
       atual: null as
         | ((params: any) => Promise<{ data: unknown; error: unknown }>)
@@ -28,11 +29,10 @@ const { rpcMock, invokeMock, registrarImplRef, anularImplRef } = vi.hoisted(
         | ((params: any) => Promise<{ data: unknown; error: unknown }>)
         | null,
     },
-  }),
-);
+  }));
 
 vi.mock("@/lib/supabase", () => ({
-  supabase: { rpc: rpcMock, functions: { invoke: invokeMock } },
+  supabase: { rpc: rpcMock, from: fromMock, functions: { invoke: invokeMock } },
 }));
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({ config: { storeName: "Loja Teste" } }),
@@ -144,6 +144,7 @@ describe("tela Vender — anular a venda pelo recibo", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     localStorage.clear();
+    fromMock.mockReset();
     rpcMock.mockReset();
     rpcMock.mockImplementation(async (nome: string, params: any) => {
       if (nome === "buscar_por_codigo_barras") {
@@ -263,6 +264,78 @@ describe("tela Vender — anular a venda pelo recibo", () => {
     expect(botao(hospedeiro, "Enviar por WhatsApp")).toBeUndefined();
     await clicarNoCaixa("Nova venda");
     await registrarComoOutraVenda();
+  });
+
+  it("retira as ações do recibo quando o servidor confirma a anulação feita em outro caixa", async () => {
+    let status = "delivered";
+    const single = vi.fn(async () => ({ data: { status }, error: null }));
+    const eq = vi.fn(() => ({ single }));
+    fromMock.mockReturnValue({ select: () => ({ eq }) });
+    registrarImplRef.atual = async () =>
+      respostaDaVenda({
+        customer_name: "Cliente Teste",
+        customer_data: { whatsapp: "11999990000" },
+      });
+
+    await venderAteORecibo();
+    await avancar(10_000);
+    expect(hospedeiro.textContent).toContain("Venda registrada");
+    expect(botao(hospedeiro, "Enviar por WhatsApp")?.disabled).toBe(false);
+
+    status = "cancelled";
+    await avancar(10_000);
+    expect(hospedeiro.textContent).toContain("Venda anulada");
+    expect(botao(hospedeiro, "Imprimir")).toBeUndefined();
+    expect(botao(hospedeiro, "Enviar por WhatsApp")).toBeUndefined();
+    expect(botao(hospedeiro, "Anular venda")).toBeUndefined();
+    expect(hospedeiro.textContent).not.toContain("Devolva R$");
+    expect(eq).toHaveBeenCalledWith("id", ID);
+
+    const consultas = single.mock.calls.length;
+    await avancar(20_000);
+    expect(single).toHaveBeenCalledTimes(consultas);
+  });
+
+  it("orienta devolver R$ 80 em dinheiro quando a consulta vê a anulação antes da resposta", async () => {
+    registrarImplRef.atual = async () =>
+      respostaDaVenda({ total: 80, subtotal: 80 });
+    const { promise, resolve } = Promise.withResolvers<{
+      data: { order_id: string; ja_anulada: boolean };
+      error: null;
+    }>();
+    anularImplRef.atual = () => promise;
+    const single = vi.fn(async () => ({
+      data: { status: "cancelled" },
+      error: null,
+    }));
+    const eq = vi.fn(() => ({ single }));
+    fromMock.mockReturnValue({ select: () => ({ eq }) });
+
+    await venderAteORecibo();
+    await clicarNoCaixa("Anular venda");
+    await act(async () => digitarMotivo("cliente desistiu"));
+    await clicarNoCaixa("Confirmar anulação");
+    expect(botao(hospedeiro, "Anulando…")?.disabled).toBe(true);
+
+    await avancar(10_000);
+    expect(eq).toHaveBeenCalledWith("id", ID);
+    expect(hospedeiro.querySelector("h2")?.textContent).toBe("Venda anulada");
+    expect(hospedeiro.textContent).not.toContain("Devolva R$");
+    expect(botao(hospedeiro, "Anular venda")).toBeUndefined();
+
+    await act(async () => {
+      resolve({ data: { order_id: ID, ja_anulada: false }, error: null });
+    });
+    expect(hospedeiro.textContent).toMatch(/Devolva R\$\s80,00 em dinheiro/);
+    expect(botao(hospedeiro, "Anular venda")).toBeUndefined();
+    expect(
+      rpcMock.mock.calls.filter(([nome]) => nome === "anular_venda_presencial"),
+    ).toEqual([
+      [
+        "anular_venda_presencial",
+        { p_order_id: ID, p_motivo: "cliente desistiu" },
+      ],
+    ]);
   });
 
   it("servidor sem a função: o recibo continua como compra e a tela diz que a anulação não está liberada", async () => {

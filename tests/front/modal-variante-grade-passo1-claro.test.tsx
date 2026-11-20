@@ -128,6 +128,27 @@ async function montarCorETamanho() {
 }
 
 describe("passo 1 da grade — ajuda e cartões numerados", () => {
+  it("só habilita Gerar quando cada atributo tem uma opção marcada", async () => {
+    await abrir();
+    await tocarPeca(0, "Cor");
+    await escolher(0, "Preto");
+    expect(botaoExato("Gerar 1 opção")?.disabled).toBe(false);
+
+    await tocar(botaoExato("+ Adicionar outro atributo"));
+    await tocarPeca(1, "Tamanho");
+    await escolher(1, "M");
+    expect(botaoExato("Gerar 1 combinação")?.disabled).toBe(false);
+
+    await escolher(1, "M");
+    expect(texto(resumo())).toContain(
+      "Escolha pelo menos uma opção em cada atributo.",
+    );
+    expect(botaoExato("Gerar grade")?.disabled).toBe(true);
+
+    await escolher(1, "M");
+    expect(botaoExato("Gerar 1 combinação")?.disabled).toBe(false);
+  });
+
   it("abre com o texto de ajuda que ensina a juntar tamanho e cor", async () => {
     await abrir();
     expect(corpo()).toContain(

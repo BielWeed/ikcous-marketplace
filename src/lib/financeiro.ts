@@ -112,9 +112,9 @@ const UM_A_TRES_DIGITOS = /^\d{1,3}$/;
 const TRES_DIGITOS = /^\d{3}$/;
 const UM_OU_DOIS_DIGITOS = /^\d{1,2}$/;
 
-/** "1.234.567" — pontos só como separador de milhar bem formado. */
-function ehMilharComPonto(texto: string): boolean {
-  const [primeiro = "", ...grupos] = texto.split(".");
+/** "1.234.567" ou "1 234 567" — o primeiro grupo pode ter menos de 3 dígitos. */
+function ehMilhar(texto: string, separador: "." | RegExp): boolean {
+  const [primeiro = "", ...grupos] = texto.split(separador);
   return (
     grupos.length > 0 &&
     UM_A_TRES_DIGITOS.test(primeiro) &&
@@ -141,6 +141,7 @@ function ehDecimalComSeparador(texto: string, separador: "." | ","): boolean {
  * - "1.234"    → 1234 (três dígitos depois do ponto = milhar, como no BR);
  * - "1234.56"  → 1234.56 (o que o `LocalBufferedInput` com máscara de
  *   moeda devolve no `onFlush`);
+ * - "1 234,56" → 1234.56; espaço só entre grupos completos de milhar;
  * - "R$ 10"    → 10; vazio, letras ou mais de 2 casas → `null`.
  */
 export function parseValorBR(entrada: string | number | null | undefined) {
@@ -148,26 +149,35 @@ export function parseValorBR(entrada: string | number | null | undefined) {
     return Number.isFinite(entrada) ? deCentavos(paraCentavos(entrada)) : null;
   }
   if (typeof entrada !== "string") return null;
-  let texto = entrada.replace(/R\$/gi, "").replace(/\s/g, "");
+  let texto = entrada.trim().replace(/^([-−]?)\s*R\$\s*/i, "$1");
   let negativo = false;
   if (texto.startsWith("-") || texto.startsWith(SINAL_DE_MENOS)) {
     negativo = true;
-    texto = texto.slice(1);
+    texto = texto.slice(1).trimStart();
   }
   if (texto === "") return null;
 
   let normalizado: string;
-  if (texto.includes(",")) {
+  if (/\s/.test(texto)) {
+    const [inteira = "", ...decimais] = texto.split(/[.,]/);
+    // Um espaço (inclusive fino ou inseparável) só separa grupos de milhar.
+    const espacoDeMilhar = /\p{Zs}/u;
+    if (!ehMilhar(inteira, espacoDeMilhar)) return null;
+    normalizado = [inteira.split(espacoDeMilhar).join(""), ...decimais].join(
+      ".",
+    );
+    if (!ehDecimalComSeparador(normalizado, ".")) return null;
+  } else if (texto.includes(",")) {
     const semMilhar = texto.replace(/\./g, "");
     if (!ehDecimalComSeparador(semMilhar, ",")) return null;
     // Pontos só são aceitos como separador de milhar bem formado.
     const [parteInteira = ""] = texto.split(",");
-    if (parteInteira.includes(".") && !ehMilharComPonto(parteInteira)) {
+    if (parteInteira.includes(".") && !ehMilhar(parteInteira, ".")) {
       return null;
     }
     normalizado = semMilhar.replace(",", ".");
   } else if (texto.includes(".")) {
-    if (ehMilharComPonto(texto)) normalizado = texto.replace(/\./g, "");
+    if (ehMilhar(texto, ".")) normalizado = texto.replace(/\./g, "");
     else if (ehDecimalComSeparador(texto, ".")) normalizado = texto;
     else return null;
   } else if (SO_DIGITOS.test(texto)) {

@@ -346,6 +346,32 @@ describe("Tela de Frete unificada — painéis, botão Salvar do cabeçalho e sa
     expect(payload).toHaveProperty("nationalShippingStrategy", "sempre");
   });
 
+  it("avisa e não salva ao colar um valor da entrega com centavos separados por espaço", async () => {
+    await abrirTela();
+
+    const taxa = hospedeiro.querySelector<HTMLInputElement>(
+      "#local-delivery-fee",
+    )!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )?.set?.call(taxa, "R$ 7 50");
+      taxa.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    await act(async () => {
+      botaoSalvar()!.click();
+      await esperarMicrotarefas();
+    });
+
+    expect(taxa.getAttribute("aria-invalid")).toBe("true");
+    expect(
+      hospedeiro.querySelector("#erro-valor-da-entrega")?.textContent,
+    ).toContain("7,50");
+    expect(updateConfig).not.toHaveBeenCalled();
+  });
+
   it("mexendo nos DOIS lados, os dois saem na MESMA chamada (uma ação só)", async () => {
     await abrirTela();
 

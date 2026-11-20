@@ -2492,6 +2492,14 @@ export const AdminProductsView = memo(function AdminProductsView({
               <AlertDialogDescription className="text-xs text-zinc-400 [overflow-wrap:anywhere]">
                 Vamos criar “{planoDeCopia?.nome}”, desativada. Você revisa e
                 ativa quando quiser.
+                {planoDeCopia ? (
+                  <span className="mt-2 block">
+                    {planoDeCopia.origem.variants?.length
+                      ? "O estoque de cada variação também é copiado."
+                      : `O estoque do original (${planoDeCopia.origem.stock} ${planoDeCopia.origem.stock === 1 ? "unidade" : "unidades"}) também é copiado.`}{" "}
+                    Ajuste antes de ativar.
+                  </span>
+                ) : null}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter className="mt-4 gap-2">

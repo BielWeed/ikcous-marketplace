@@ -253,6 +253,8 @@ describe("CheckoutView — troco para pagamento em dinheiro", () => {
 
   it.each([
     [76.5, "100", "Troco para R$ 100,00 (levar R$ 23,50)"],
+    [65, "R$ 100,00", "Troco para R$ 100,00 (levar R$ 35,00)"],
+    [65, "R$100,00", "Troco para R$ 100,00 (levar R$ 35,00)"],
     [19.9, "20", "Troco para R$ 20,00 (levar R$ 0,10)"],
     [19.9, "20,50", "Troco para R$ 20,50 (levar R$ 0,60)"],
     [19.9, "20,5", "Troco para R$ 20,50 (levar R$ 0,60)"],
@@ -310,7 +312,16 @@ describe("CheckoutView — troco para pagamento em dinheiro", () => {
     );
   });
 
-  it.each(["", "0", "76.49", "76,50", "abc", "1000000000,00"])(
+  it.each([
+    "",
+    "0",
+    "76.49",
+    "76,50",
+    "abc",
+    "1000000000,00",
+    "R$ 100,001",
+    "R$1000000000,00",
+  ])(
     "bloqueia valor inválido (%j) e anuncia o motivo junto ao campo",
     async (valor) => {
       await montar();

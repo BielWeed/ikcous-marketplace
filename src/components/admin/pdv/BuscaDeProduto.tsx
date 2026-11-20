@@ -35,6 +35,7 @@ export interface VarianteEncontradaNaBusca {
 export interface ProdutoEncontradoNaBusca {
   readonly id: string;
   readonly nome: string;
+  readonly codigo?: string | null;
   readonly preco_venda: number;
   readonly estoque: number;
   readonly imagem_url: string | null;
@@ -428,6 +429,11 @@ export function BuscaDeProduto({
                           </span>
                         )}
                       </span>
+                      {produto.codigo ? (
+                        <span className="pdv-muted [overflow-wrap:anywhere]">
+                          Código: {produto.codigo}
+                        </span>
+                      ) : null}
                     </span>
                     {ativas.length > 0 ? (
                       <ChevronDown

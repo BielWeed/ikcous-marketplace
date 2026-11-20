@@ -318,9 +318,12 @@ describe("Avisar clientes — destinatários não tentados", () => {
 
       const { toast } = await import("sonner");
       expect(toast.warning).toHaveBeenCalledTimes(1);
-      expect(toast.warning).toHaveBeenCalledWith(`Entregue em 2 de ${total}`, {
-        description: expect.stringContaining(aviso),
-      });
+      expect(toast.warning).toHaveBeenCalledWith(
+        `Envio aceito para 2 de ${total} aparelhos`,
+        {
+          description: expect.stringContaining(aviso),
+        },
+      );
       expect(toast.warning).toHaveBeenCalledWith(expect.any(String), {
         description: expect.stringMatching(
           /reenviar.*quem já recebeu.*mensagem repetida/i,
@@ -362,7 +365,7 @@ describe("Avisar clientes — destinatários não tentados", () => {
 
       const { toast } = await import("sonner");
       expect(toast.success).toHaveBeenCalledWith(
-        "Notificação entregue em 2 dispositivos",
+        "Envio aceito para 2 aparelhos",
       );
       expect(toast.warning).not.toHaveBeenCalled();
       expect(toast.error).not.toHaveBeenCalled();
@@ -391,21 +394,30 @@ describe("Avisar clientes — destinatários não tentados", () => {
 
     const { toast } = await import("sonner");
     expect(toast.warning).toHaveBeenCalledTimes(1);
-    expect(toast.warning).toHaveBeenCalledWith("Entregue em 2 de 6", {
-      description: expect.stringContaining(
-        "1x o serviço de avisos está fora do ar agora",
-      ),
-    });
-    expect(toast.warning).toHaveBeenCalledWith("Entregue em 2 de 6", {
-      description: expect.stringContaining(
-        "3 dispositivos não receberam porque o envio demorou demais",
-      ),
-    });
-    expect(toast.warning).toHaveBeenCalledWith("Entregue em 2 de 6", {
-      description: expect.stringMatching(
-        /reenviar.*quem já recebeu.*mensagem repetida/i,
-      ),
-    });
+    expect(toast.warning).toHaveBeenCalledWith(
+      "Envio aceito para 2 de 6 aparelhos",
+      {
+        description: expect.stringContaining(
+          "1x o serviço de avisos está fora do ar agora",
+        ),
+      },
+    );
+    expect(toast.warning).toHaveBeenCalledWith(
+      "Envio aceito para 2 de 6 aparelhos",
+      {
+        description: expect.stringContaining(
+          "3 dispositivos não receberam porque o envio demorou demais",
+        ),
+      },
+    );
+    expect(toast.warning).toHaveBeenCalledWith(
+      "Envio aceito para 2 de 6 aparelhos",
+      {
+        description: expect.stringMatching(
+          /reenviar.*quem já recebeu.*mensagem repetida/i,
+        ),
+      },
+    );
     expect(toast.success).not.toHaveBeenCalled();
     expect(toast.error).not.toHaveBeenCalled();
     conferirCampanhaLimpa();

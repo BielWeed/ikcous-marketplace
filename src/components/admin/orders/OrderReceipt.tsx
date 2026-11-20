@@ -108,13 +108,15 @@ export const OrderReceipt = memo(function OrderReceipt({
   );
   // O banco grava este texto em `customer_name` quando a venda de balcão nasce
   // sem cliente (e quando a cliente cadastrada não tem nome no perfil). Ele não
-  // é nome de gente: sem conta vinculada o papel não leva o bloco CLIENTE; com
-  // conta diz "Cliente" — o mesmo que o recibo da tela Vender (ReciboDaVenda).
+  // é nome de gente quando não há conta nem WhatsApp no pedido. Com conta,
+  // diz "Cliente"; com WhatsApp de um avulso, preserva o nome que foi digitado.
   const nomeNoPapel =
     presencial && order.customer.name?.trim() === NOME_DE_VENDA_SEM_CLIENTE
       ? order.userId
         ? "Cliente"
-        : ""
+        : order.customer.whatsapp?.trim()
+          ? order.customer.name
+          : ""
       : order.customer.name;
   // Compra para presente ou entrega na portaria: a ficha mostra "Recebe: X" e o
   // papel que vai com o entregador tambem precisa do nome de quem esta na porta.

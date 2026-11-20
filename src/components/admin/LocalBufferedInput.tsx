@@ -4,7 +4,7 @@ import {
   digitosComExcedenteVisivel,
   digitosDoTelefoneDoCampo,
 } from "@/lib/telefone-br";
-import { cn } from "@/lib/utils";
+import { arredondarParaCentavos, cn } from "@/lib/utils";
 import { AlertTriangle } from "lucide-react";
 import type React from "react";
 import { memo, useCallback, useEffect, useId, useRef, useState } from "react";
@@ -32,7 +32,8 @@ interface LocalBufferedInputProps
    * Só com `mask="currency"`: o zero DIGITADO vira campo vazio. A máscara nunca
    * deixa o campo vazio sozinha (apagar o "0,05" com backspace dá "0,0", lido
    * como "00" e mostrado como "0,00"), e onde vazio quer dizer "sem preço
-   * próprio" esse "0,00" virava preço zero. O valor que já veio salvo (prop
+   * próprio" esse "0,00" virava preço zero. No modo decimal, só esvazia na
+   * tela ao sair, para permitir digitar "0,05". O valor que já veio salvo (prop
    * `value`) continua sendo mostrado como está, zero inclusive.
    */
   readonly zeroVazio?: boolean;
@@ -99,8 +100,10 @@ const sinalDaMoeda = (val: string, permiteNegativo: boolean) => {
 // Dígitos sem fim chegam a 1e21 (o `toFixed` devolveria "1e+21", lido depois
 // como 121) e a Infinity (a tela mostraria "∞"). O número é limitado antes de
 // virar texto; 1e18 continua acima de qualquer teto de preço.
+const LIMITE_REAIS_DA_MASCARA = 1e18;
+
 const reaisDosCentavos = (clean: string) =>
-  Math.min(Number.parseFloat(clean) / 100, 1e18);
+  Math.min(Number.parseFloat(clean) / 100, LIMITE_REAIS_DA_MASCARA);
 
 const formatCurrency = (val: string, permiteNegativo = false) => {
   const sinal = sinalDaMoeda(val, permiteNegativo);
@@ -183,7 +186,13 @@ const centavosDaColagem = (texto: string, permiteNegativo: boolean) => {
       n = `${grupos.join("") || 0}.${decimal || 0}`;
     else if (t === inteira && /^\d+\.\d{1,2}$/.test(t)) n = t;
   }
-  return n ? String(Math.round(Number(n) * 100)) : "";
+  if (!n) return "";
+  // O mesmo limite da digitação mantém o valor acima do teto do formulário,
+  // sem deixar o expoente virar dígitos de outro preço.
+  const reais = Math.min(Number(n), LIMITE_REAIS_DA_MASCARA);
+  const arredondado =
+    decimal.length > 2 ? arredondarParaCentavos(reais) : reais;
+  return (arredondado * 100).toFixed(0);
 };
 
 // O valor que chega pela prop `value` já está em reais (ex.: 100 ou "100.00"),
@@ -240,6 +249,8 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
   const onFlushRef = useRef(onFlush);
   const isFocusedRef = useRef(false);
   const editandoDecimal = useRef(false);
+  const digitouNestaEdicao = useRef(false);
+  const zeroDecimalSemValor = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -252,6 +263,7 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
       !(editandoDecimal.current && value === PRECO_DIGITADO_INVALIDO)
     ) {
       editandoDecimal.current = false;
+      digitouNestaEdicao.current = false;
       setLocalVal(formatValue(value));
       if (validate) {
         let rawVal = value.toString();
@@ -304,15 +316,31 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
         val = sinalDaMoeda(colado, permiteNegativo) + centavos;
         editandoDecimal.current = false;
       } else if (decimalNaDigitacao) {
+        if (tipo?.startsWith("delete") || (data && /\d/.test(data))) {
+          digitouNestaEdicao.current = true;
+        }
         if ((data === "," || data === ".") && !editandoDecimal.current) {
+          const fim = e.currentTarget.selectionEnd ?? val.length;
+          // Não releia um preço já preenchido como reais só por acrescentar
+          // um separador. Substituir uma seleção continua sendo uma edição.
+          if (
+            !digitouNestaEdicao.current &&
+            fim === val.length &&
+            localVal.includes(",") &&
+            /[1-9]/.test(localVal) &&
+            val === localVal + data
+          ) {
+            return;
+          }
           // A vírgula que a máscara mostrou NÃO foi digitada. Ex.: em
           // "0,12" + "," só a última vírgula separa reais de centavos.
-          const posicao = (e.currentTarget.selectionEnd ?? val.length) - 1;
+          const posicao = fim - 1;
           const antes = val.slice(0, posicao);
           const reais = antes.replace(/\D/g, "").replace(/^0+(?=\d)/, "");
           const fracao = val.slice(posicao + 1).replace(/\D/g, "");
           const sinal = sinalDaMoeda(val, permiteNegativo);
-          val = `${sinal}${reais}${data}${fracao}`;
+          const parteInteira = reais || (zeroVazio ? "0" : "");
+          val = `${sinal}${parteInteira}${data}${fracao}`;
           editandoDecimal.current = true;
         } else if (val === "") {
           // Sem o separador, um rascunho em reais continua em reais até
@@ -351,8 +379,12 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
         (tipo === undefined
           ? !textoBruto.includes(",")
           : !tipo.startsWith("delete"));
-      if (zeroVazio && !zeroEscrito && Number.parseFloat(rawVal) === 0) {
-        val = "";
+      const zeroViraVazio =
+        zeroVazio && !zeroEscrito && Number.parseFloat(rawVal) === 0;
+      zeroDecimalSemValor.current = zeroViraVazio && editandoDecimal.current;
+      if (zeroViraVazio) {
+        // Mantém "0,0" até a próxima tecla, sem salvar preço zero.
+        if (!zeroDecimalSemValor.current) val = "";
         rawVal = "";
       }
     }
@@ -381,6 +413,7 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
 
   const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
     isFocusedRef.current = true;
+    digitouNestaEdicao.current = false;
     if (props.onFocus) {
       props.onFocus(e);
     }
@@ -404,9 +437,17 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
         editandoDecimal.current && centavos === null
           ? PRECO_DIGITADO_INVALIDO
           : parseCurrencyToFloatString(centavos ?? val, permiteNegativo);
-      if (centavos !== null && !isFocusedRef.current) {
-        setLocalVal(formatCurrency(centavos, permiteNegativo));
-        editandoDecimal.current = false;
+      if (centavos !== null) {
+        if (zeroDecimalSemValor.current) rawVal = "";
+        if (!isFocusedRef.current) {
+          setLocalVal(
+            zeroDecimalSemValor.current
+              ? ""
+              : formatCurrency(centavos, permiteNegativo),
+          );
+          editandoDecimal.current = false;
+          zeroDecimalSemValor.current = false;
+        }
       }
     }
     onFlushRef.current(rawVal);

@@ -248,6 +248,14 @@ describe("AdminProductsView — duplicar: uma cópia, um aviso", () => {
     });
   }
 
+  it("avisa antes de confirmar que as 10 unidades do original serão copiadas", async () => {
+    await montarEAbrirConfirmacao();
+    expect(hospedeiro.textContent).toContain(
+      "O estoque do original (10 unidades) também é copiado. Ajuste antes de ativar.",
+    );
+    expect(addProduct).not.toHaveBeenCalled();
+  });
+
   it("enquanto copia, o botão diz 'Duplicando…', fica desligado e o 'Cancelar' também", async () => {
     await montarEAbrirConfirmacao();
     await confirmar();

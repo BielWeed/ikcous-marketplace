@@ -39,7 +39,7 @@ import {
 } from "@/utils/variante-composta";
 import { AnimatePresence, motion } from "framer-motion";
 import { Layers } from "lucide-react";
-import { type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { type KeyboardEvent, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 
@@ -586,6 +586,7 @@ export function ModalVarianteGrade({
   );
   const varios = grupos.length > 1;
   const faltaEscolher = porAtributo.some((n) => n === 0);
+  const idResumoDaGrade = useId();
   // Dois cartões com o mesmo nome (ex.: "Cor" e um "Outro" digitado "cor"): o
   // gerador recusa, então o resumo não promete número nenhum.
   const nomeRepetido = grupos
@@ -807,6 +808,7 @@ export function ModalVarianteGrade({
 
               {passo === 1 && (
                 <div
+                  id={idResumoDaGrade}
                   data-testid="resumo-da-grade"
                   className="space-y-1.5 rounded-[22px] border border-solid border-amber-400/30 bg-admin-surface p-4"
                 >
@@ -919,7 +921,8 @@ export function ModalVarianteGrade({
                 <button
                   type="button"
                   onClick={gerar}
-                  disabled={todasJaExistem}
+                  disabled={faltaEscolher || todasJaExistem}
+                  aria-describedby={faltaEscolher ? idResumoDaGrade : undefined}
                   className="min-h-14 flex-[2] rounded-2xl bg-gradient-to-b from-[#f8d658] to-[#e3ac16] p-3 text-sm font-bold text-[#211a07] disabled:opacity-50"
                 >
                   {rotuloDoGerar}
