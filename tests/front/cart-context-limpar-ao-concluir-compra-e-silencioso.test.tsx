@@ -148,6 +148,46 @@ describe("CartContext — 'Carrinho limpo' só aparece quando a pessoa esvazia",
     expect(rascunho?.trocoPara).toBeUndefined();
   });
 
+  it("a lixeira só limpa o troco ao tirar a última linha e ainda permite desfazer", async () => {
+    const outroProduto = { ...produto, id: "prod-2" };
+    await act(async () => {
+      atual.addToCart(outroProduto);
+    });
+    expect(atual.cart).toHaveLength(2);
+    salvarRascunhoDoCheckout(sessionStorage, {
+      ...rascunhoVazio(),
+      contaDosDados: null,
+      dadosDoVisitanteAlteradosEm: Date.now(),
+      notas: "Tocar a campainha.",
+      cupom: "CUPOM10",
+      trocoPara: "100",
+    });
+
+    await act(async () => {
+      atual.removeFromCart(outroProduto.id, undefined, { comDesfazer: true });
+    });
+    expect(atual.cart.map((item) => item.product.id)).toEqual([produto.id]);
+    expect(lerRascunhoDoCheckout(sessionStorage)?.trocoPara).toBe("100");
+
+    await act(async () => {
+      atual.removeFromCart(produto.id, undefined, { comDesfazer: true });
+    });
+    expect(atual.cart).toHaveLength(0);
+    const rascunho = lerRascunhoDoCheckout(sessionStorage);
+    expect(rascunho).toMatchObject({
+      notas: "Tocar a campainha.",
+      cupom: "CUPOM10",
+    });
+    expect(rascunho?.trocoPara).toBeUndefined();
+
+    const [{ action }] = toastInfo.mock.lastCall?.slice(1) ?? [];
+    expect(action.label).toBe("Desfazer");
+    await act(async () => {
+      action.onClick();
+    });
+    expect(atual.cart.map((item) => item.product.id)).toEqual([produto.id]);
+  });
+
   it("limpar por conclusão de compra (silencioso) esvazia sem nenhum aviso", async () => {
     expect(atual.cart).toHaveLength(1);
 
