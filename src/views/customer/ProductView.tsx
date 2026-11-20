@@ -395,19 +395,44 @@ export const ProductView = React.memo(function ProductView({
     recarregar: recarregarRecomendacoes,
   } = useRecomendacoesDeProduto(product.id, recsVisible, fetchRecommendations);
 
-  // Só um catálogo confirmado pode invalidar o que a recomendação guardou.
+  const catalogoConfirmado =
+    catalogoDaRedeAplicado && !loadingProducts && !catalogoErro;
+  const [idsDaReleitura, setIdsDaReleitura] = useState("");
+  const respostaJaRelida = useRef<Product[] | null>(null);
+
+  // Uma falha da própria releitura não reabilita os itens que a motivaram.
   const recommendations = useMemo(() => {
-    if (!catalogoDaRedeAplicado || loadingProducts || catalogoErro)
-      return recomendacoesGuardadas;
-    return recomendacoesGuardadas.filter((recomendado) =>
-      products.some((p) => p.id === recomendado.id && p.isActive),
+    if (!catalogoConfirmado && !idsDaReleitura) return recomendacoesGuardadas;
+    const ids = new Set(idsDaReleitura.split(","));
+    return recomendacoesGuardadas.filter(
+      (recomendado) =>
+        (!catalogoConfirmado && !ids.has(recomendado.id)) ||
+        products.some((p) => p.id === recomendado.id && p.isActive),
     );
+  }, [catalogoConfirmado, idsDaReleitura, products, recomendacoesGuardadas]);
+
+  useEffect(() => {
+    if (
+      !catalogoConfirmado ||
+      recomendacoesGuardadas.length === recommendations.length ||
+      respostaJaRelida.current === recomendacoesGuardadas
+    )
+      return;
+
+    const visiveis = new Set(recommendations);
+    const chaveAusentes = recomendacoesGuardadas
+      .filter((item) => !visiveis.has(item))
+      .map((item) => item.id)
+      .join(",");
+    // Marcar antes da consulta: o catálogo pode mudar sem chegar outra resposta.
+    respostaJaRelida.current = recomendacoesGuardadas;
+    setIdsDaReleitura(chaveAusentes);
+    void fetchProducts();
   }, [
-    catalogoDaRedeAplicado,
-    loadingProducts,
-    catalogoErro,
-    products,
+    catalogoConfirmado,
+    fetchProducts,
     recomendacoesGuardadas,
+    recommendations,
   ]);
 
   // A lojista pode pausar o produto, ou mudar preço/estoque, em outro aparelho
