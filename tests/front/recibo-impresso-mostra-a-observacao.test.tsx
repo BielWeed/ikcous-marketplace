@@ -104,10 +104,7 @@ describe("OrderReceipt — a observação vai no papel", () => {
     expect(papel.textContent).not.toContain("OBSERVAÇÃO:");
   });
 
-  it.each([
-    "",
-    "\n\nFrete Escolhido: PAC (Prazo: 5 dias)",
-  ])(
+  it.each(["", "\n\nFrete Escolhido: PAC (Prazo: 5 dias)"])(
     "imprime a instrução da cliente que começa com o rótulo de frete (%s)",
     async (sufixo) => {
       const instrucao = "Frete Escolhido: deixar na portaria do bloco B";

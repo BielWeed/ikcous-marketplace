@@ -119,7 +119,9 @@ describe("recibo da ficha — reembolso feito pela loja", () => {
     expect(linhaManual()?.nextElementSibling?.textContent).toBe("R$ 100,00");
     expect(textosDeParagrafos()).toContain("Estornado");
     expect(textosDeParagrafos()).not.toContain("Pago");
-    expect(rpc).not.toHaveBeenCalledWith("devolucao_detalhe", { p_id: "aberta" });
+    expect(rpc).not.toHaveBeenCalledWith("devolucao_detalhe", {
+      p_id: "aberta",
+    });
   });
 
   it("mostra apenas o valor manual parcial e não confunde com Mercado Pago", async () => {
@@ -155,7 +157,9 @@ describe("recibo da ficha — reembolso feito pela loja", () => {
     expect(papel()).not.toBeNull();
     expect(linhaManual()).toBeUndefined();
     expect(textosDeParagrafos()).toContain("Pago");
-    expect(rpc).not.toHaveBeenCalledWith("devolucao_detalhe", { p_id: "aberta" });
+    expect(rpc).not.toHaveBeenCalledWith("devolucao_detalhe", {
+      p_id: "aberta",
+    });
   });
 
   it("se faltar o detalhe de uma devolução, não imprime uma soma pela metade", async () => {
@@ -169,5 +173,34 @@ describe("recibo da ficha — reembolso feito pela loja", () => {
     expect(papel()?.textContent).toContain("Reembolsos manuais não conferidos");
     expect(textosDeParagrafos()).not.toContain("Estornado");
     expect(hospedeiro.textContent).toContain("DV-sem-resposta");
+  });
+
+  it("enquanto confere os reembolsos, o papel não sai com o aviso de não conferido", async () => {
+    let liberar!: (resposta: { data: unknown[]; error: null }) => void;
+    rpc.mockImplementation((nome: string) => {
+      if (nome === "devolucoes_do_pedido") {
+        return new Promise((resolve) => {
+          liberar = resolve;
+        });
+      }
+      throw new Error(`RPC inesperada: ${nome}`);
+    });
+    await montar();
+
+    expect(papel()).toBeNull();
+    expect(hospedeiro.textContent).toContain(
+      "Conferindo os reembolsos feitos à mão.",
+    );
+    expect(document.body.textContent).not.toContain(
+      "Reembolsos manuais não conferidos",
+    );
+
+    await act(async () => {
+      liberar({ data: [], error: null });
+    });
+
+    expect(papel()).not.toBeNull();
+    expect(hospedeiro.textContent).not.toContain("Conferindo os reembolsos");
+    expect(papel()?.textContent).not.toContain("não conferidos");
   });
 });

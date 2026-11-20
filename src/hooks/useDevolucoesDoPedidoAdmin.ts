@@ -99,9 +99,9 @@ export function useDevolucoesDoPedidoAdmin(
                 const detalheRpc = supabase.rpc("devolucao_detalhe", {
                   p_id: id,
                 });
-                const { data, error } = await (
-                  detalheRpc.abortSignal?.(controle.signal) ?? detalheRpc
-                );
+                const { data, error } = await (detalheRpc.abortSignal?.(
+                  controle.signal,
+                ) ?? detalheRpc);
                 const detalhe = error ? null : lerDevolucaoDetalhe(data);
                 if (
                   !detalhe ||

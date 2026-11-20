@@ -2666,6 +2666,16 @@ export const OrderDetail = memo(function OrderDetail({
         podeRegistrarPagamento(order)),
     order.status === "delivered" && active,
   );
+  // Enquanto o reembolso feito à mão ainda está sendo conferido, o papel
+  // sairia com "não conferidos" mesmo num pedido sem devolução nenhuma.
+  if (
+    !motivoDeNaoImprimir &&
+    leituraDeDevolucoes.valorReembolsadoManual === null &&
+    leituraDeDevolucoes.carregando
+  ) {
+    motivoDeNaoImprimir =
+      "Conferindo os reembolsos feitos à mão. Já dá para imprimir em instantes.";
+  }
 
   const handleWhatsAppDirect = () => {
     if (!whatsappUrl) return;
