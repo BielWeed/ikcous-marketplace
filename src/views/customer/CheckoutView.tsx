@@ -478,7 +478,7 @@ const LIMITE_DA_OBSERVACAO = 500;
 function lerValorParaTrocoEmCentavos(texto: string): number {
   // V\u00edrgula ou ponto para centavos; tamb\u00e9m aceita milhar no formato pt-BR.
   // Converte as duas partes separadamente, sem calcular com fra\u00e7\u00f5es de real.
-  const entrada = texto.trim();
+  const entrada = texto.trim().replace(/^R\$\s*/i, "");
   // eslint-disable-next-line security/detect-unsafe-regex -- Cada grupo de milhar tem um ponto e três dígitos, sem divisão ambígua.
   const normalizada = /^\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?$/.test(entrada)
     ? entrada.replace(/\./g, "")
