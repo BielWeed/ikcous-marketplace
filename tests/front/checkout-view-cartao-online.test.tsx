@@ -506,7 +506,10 @@ describe("CheckoutView — cartão pelo app", () => {
 
     const pixNoApp = botaoPorTexto(hospedeiro, "Pagar agora com PIX");
     expect(pixNoApp?.tabIndex).toBe(-1);
-    const entrar = botaoPorTexto(hospedeiro, "Entrar para pagar com Pix")!;
+    const entrar = botaoPorTexto(
+      hospedeiro,
+      "Entre para liberar o Pix no app",
+    )!;
     expect(entrar).toBeDefined();
     expect(entrar.tabIndex).toBe(0);
     expect(entrar.disabled).toBe(false);
@@ -540,7 +543,7 @@ describe("CheckoutView — cartão pelo app", () => {
       await montar(CheckoutView);
 
       expect(
-        botaoPorTexto(hospedeiro, "Entrar para pagar com Pix"),
+        botaoPorTexto(hospedeiro, "Entre para liberar o Pix no app"),
       ).toBeUndefined();
       if (semEntrega)
         expect(

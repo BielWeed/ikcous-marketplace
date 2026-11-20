@@ -226,7 +226,9 @@ export function ProductQA({
             {newQuestion.length}/500 caracteres
           </p>
           <p id="qa-public-name" className="text-xs text-muted-foreground">
-            Seu nome vai aparecer assim: {nomePublicoDe(profile?.full_name)}
+            {profile
+              ? `Seu nome vai aparecer assim: ${nomePublicoDe(profile.full_name)}`
+              : "Seu nome do cadastro vai aparecer abreviado."}
           </p>
         </form>
       ) : (
