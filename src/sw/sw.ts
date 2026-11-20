@@ -595,8 +595,12 @@ sw.addEventListener("fetch", (event: any) => {
   // useUpdateCheck, versão nova de app continua avisando pelo ciclo de
   // update do SW — a revalidação em segundo plano não contorna o aviso.
   if (event.request.mode === "navigate") {
+    // A busca global pode achar uma versão antiga antes da ativa.
+    const paginaExata = caches
+      .match(event.request, { cacheName: CACHE_NAME })
+      .then((atual) => atual ?? caches.match(event.request));
     event.respondWith(
-      caches.match(event.request).then((cached) => {
+      paginaExata.then((cached) => {
         if (cached) {
           event.waitUntil(
             fetch(event.request)
