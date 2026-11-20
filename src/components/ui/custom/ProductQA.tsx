@@ -228,7 +228,7 @@ export function ProductQA({
           <p id="qa-public-name" className="text-xs text-muted-foreground">
             {profile
               ? `Seu nome vai aparecer assim: ${nomePublicoDe(profile.full_name)}`
-              : "Seu nome do cadastro vai aparecer abreviado."}
+              : "A prévia do seu nome não está disponível agora."}
           </p>
         </form>
       ) : (

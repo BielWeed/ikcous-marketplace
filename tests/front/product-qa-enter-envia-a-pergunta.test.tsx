@@ -125,7 +125,7 @@ describe("ProductQA — Enter do teclado envia a pergunta (lote 221)", () => {
     expect(addQuestion).not.toHaveBeenCalled();
   });
 
-  it("sem perfil disponível, avisa que o nome do cadastro vai aparecer abreviado", async () => {
+  it("sem perfil, avisa que a prévia do nome não está disponível", async () => {
     perfil = null;
     await act(async () => {
       raiz.render(<ProductQA productId="prod-1" />);
@@ -133,7 +133,7 @@ describe("ProductQA — Enter do teclado envia a pergunta (lote 221)", () => {
 
     const previa = formulario()?.querySelector("#qa-public-name")?.textContent;
     expect(previa).not.toContain("Cliente");
-    expect(previa).toBe("Seu nome do cadastro vai aparecer abreviado.");
+    expect(previa).toBe("A prévia do seu nome não está disponível agora.");
   });
 
   it("não exibe o nome inteiro numa pergunta guardada pelo app anterior", () => {
