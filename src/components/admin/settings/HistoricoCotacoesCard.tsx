@@ -5,6 +5,7 @@ import {
 } from "@/components/admin/settings/TransportadorasCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  ehFalhaTecnicaAoGravarCotacao,
   motivoDaCotacao,
   nomeDoProvedorNoHistorico,
 } from "@/lib/motivo-da-cotacao";
@@ -362,7 +363,8 @@ export const HistoricoCotacoesSection = memo(
                           `error_message` não tem limite de tamanho — no ramo
                           de falha de API a edge concatena o corpo BRUTO da
                           resposta do provedor. `title` mostra o motivo
-                          completo em português; o
+                          completo em português, com o detalhe técnico da
+                          falha de gravação, quando houver; o
                           texto EXIBIDO é cortado em
                           `LIMITE_MOTIVO_EXIBIDO` caracteres para não empurrar
                           o resto da tabela para fora da tela no celular. */}
@@ -374,7 +376,11 @@ export const HistoricoCotacoesSection = memo(
                           <td
                             {...papel("cell")}
                             colSpan={5}
-                            title={motivo}
+                            title={
+                              ehFalhaTecnicaAoGravarCotacao(log.error_message)
+                                ? `${motivo}\n${log.error_message}`
+                                : motivo
+                            }
                             className="block break-words text-[11px] leading-relaxed text-zinc-400 sm:table-cell sm:px-2.5 sm:pb-2.5 sm:pt-0"
                           >
                             <span className="font-bold text-zinc-300">
