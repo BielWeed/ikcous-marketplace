@@ -26,6 +26,14 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
+type ParDoDesconto = Pick<Coupon, "type" | "value">;
+
+class ConflitoDeDescontoDoCupom extends Error {
+  constructor() {
+    super("Este cupom mudou em outro aparelho. Recarregue antes de salvar.");
+  }
+}
+
 const PRAZO_DA_GRAVACAO_DO_CUPOM_MS = 15_000;
 const MENSAGEM_GRAVACAO_SEM_RESPOSTA =
   "Sem resposta da rede. Confira se a mudança no cupom apareceu antes de tentar de novo.";
@@ -334,6 +342,10 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
     id: string,
     updates: Partial<Coupon>,
     clientes?: readonly string[],
+    conferencia?: {
+      descontoLido: ParDoDesconto;
+      aoGravarDesconto: (desconto: ParDoDesconto) => void;
+    },
   ) => {
     if (!isAdmin) {
       toast.error("Permissão negada");
@@ -397,15 +409,29 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
       // o do banco): o UPDATE sem coluna não altera linha nenhuma e viraria
       // "Nenhum cupom foi alterado" para uma tela que já está como ela quer.
       if (Object.keys(dbUpdates).length > 0) {
-        // `.select("id")`: o banco responde sucesso com 0 linhas quando a
-        // política de acesso barra o UPDATE (ou o cupom não existe mais).
+        let gravacao = supabase.from("coupons").update(dbUpdates).eq("id", id);
+        // Compara o par lido na própria gravação, sem janela entre ler e
+        // gravar. O contador de usos nunca participa da conferência.
+        if (conferencia) {
+          const { type, value } = conferencia.descontoLido;
+          gravacao = gravacao.eq("type", type).eq("value", value);
+        }
         const { data: gravadas, error } = await aguardarGravacaoDoCupom(
-          supabase.from("coupons").update(dbUpdates).eq("id", id).select("id"),
+          gravacao.select("id"),
         );
 
         if (error) throw error;
-        if (!gravadas?.length) throw new Error("Nenhum cupom foi alterado.");
+        if (!gravadas?.length) {
+          if (conferencia) throw new ConflitoDeDescontoDoCupom();
+          throw new Error("Nenhum cupom foi alterado.");
+        }
         regrasJaGravadas = true;
+        if (updates.type !== undefined && updates.value !== undefined) {
+          conferencia?.aoGravarDesconto({
+            type: updates.type,
+            value: updates.value,
+          });
+        }
       }
 
       if (clientes !== undefined) {
@@ -438,6 +464,8 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
             duration: 10000,
           },
         );
+      } else if (error instanceof ConflitoDeDescontoDoCupom) {
+        toast.error(error.message);
       } else if (ehConsultaSemResposta(error)) {
         toast.error(MENSAGEM_GRAVACAO_SEM_RESPOSTA);
         // Não espera a releitura para liberar quem está salvando. A escrita

@@ -739,7 +739,40 @@ function FormularioDoCupom({
             return;
           }
         }
-        if (clientesParaSalvar !== undefined) {
+        if (descontoMexido) {
+          const descontoLido = lidoAoAbrirRef.current;
+          if (
+            cupomInicializadoRef.current !== couponId ||
+            descontoLido?.type === undefined ||
+            descontoLido.value === undefined
+          ) {
+            toast.error(
+              "Não foi possível conferir o desconto deste cupom. Recarregue antes de salvar.",
+            );
+            return;
+          }
+          await updateCoupon(
+            editingCoupon.id,
+            dataToSubmit,
+            clientesParaSalvar,
+            {
+              descontoLido: {
+                type: descontoLido.type,
+                value: descontoLido.value,
+              },
+              aoGravarDesconto: (descontoGravado) => {
+                // Se só a lista falhar, a nova tentativa não trata o desconto
+                // que esta tela acabou de gravar como se fosse de outro aparelho.
+                if (lidoAoAbrirRef.current === descontoLido) {
+                  lidoAoAbrirRef.current = {
+                    ...descontoLido,
+                    ...descontoGravado,
+                  };
+                }
+              },
+            },
+          );
+        } else if (clientesParaSalvar !== undefined) {
           await updateCoupon(
             editingCoupon.id,
             dataToSubmit,

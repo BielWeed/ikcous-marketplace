@@ -136,6 +136,10 @@ describe("formulário de cupom — troca de identidade sem desmontar a tela", ()
     expect(atualizar.mock.calls[0]).toEqual([
       "cupom-b",
       { type: "fixed", value: 30 },
+      undefined,
+      expect.objectContaining({
+        descontoLido: { type: "percentage", value: 30 },
+      }),
     ]);
   });
 

@@ -241,7 +241,11 @@ describe("AdminCouponFormView: recusa do Salvar marca o campo e leva o foco", ()
       if (modo === "edição") {
         expect(updateCoupon).toHaveBeenCalledExactlyOnceWith(
           "c1",
-          expect.objectContaining({ value: 100 }),
+          expect.objectContaining({ type: "percentage", value: 100 }),
+          undefined,
+          expect.objectContaining({
+            descontoLido: { type: "percentage", value: 10 },
+          }),
         );
         expect(addCoupon).not.toHaveBeenCalled();
       } else {
