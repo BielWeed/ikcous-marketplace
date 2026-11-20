@@ -342,6 +342,22 @@ export function SearchBar({
     [allResults],
   );
 
+  let anuncioDaBusca = "";
+  // O resultado adiado ainda pertence ao termo anterior enquanto se digita.
+  if (
+    showDropdown &&
+    localValue === deferredLocalValue &&
+    !loadingProducts &&
+    !tentandoBusca &&
+    !(products.length === 0 && catalogoErro)
+  ) {
+    const total = allResults.length;
+    anuncioDaBusca =
+      total === 0
+        ? "Nenhum produto encontrado"
+        : `${total} ${total === 1 ? "resultado" : "resultados"}`;
+  }
+
   return (
     <div
       ref={containerRef}
@@ -425,6 +441,10 @@ export function SearchBar({
             <X className="size-3" />
           </button>
         )}
+      </div>
+
+      <div role="status" className="sr-only">
+        {anuncioDaBusca}
       </div>
 
       {/* Instant Predictive Search Floating Dropdown - ONLY SHOWS WHEN TYPING (localValue > 0) */}
