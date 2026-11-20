@@ -170,6 +170,32 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
   const [vitrineParaExcluir, setVitrineParaExcluir] =
     useState<SecaoDaHome | null>(null);
   const foco = useFocoAposExcluir();
+  const gatilhoDaNovaVitrine = useRef<HTMLButtonElement | null>(null);
+  const gatilhoDaEdicao = useRef<HTMLButtonElement | null>(null);
+
+  const abrirEdicao = useCallback((id: string, gatilho: HTMLButtonElement) => {
+    gatilhoDaEdicao.current = gatilho;
+    setEditingSectionId(id);
+  }, []);
+
+  const restaurarFocoDaFolha = (
+    evento: Event,
+    gatilho: HTMLButtonElement | null,
+  ) => {
+    evento.preventDefault();
+    // A edição pode ceder lugar à confirmação de exclusão ou de modo automático.
+    if (
+      document.activeElement?.closest(
+        '[role="alertdialog"][data-state="open"], [role="dialog"][data-state="open"]',
+      )
+    )
+      return;
+    if (gatilho?.isConnected && !gatilho.disabled) {
+      gatilho.focus({ preventScroll: true });
+    } else {
+      foco.propsDoTitulo.ref.current?.focus({ preventScroll: true });
+    }
+  };
 
   const defaultHomeSections = useMemo<SecaoDaHome[]>(
     () => [
@@ -838,7 +864,10 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
           </div>
           <button
             type="button"
-            onClick={() => setShowAddVitrineModal(true)}
+            onClick={(evento) => {
+              gatilhoDaNovaVitrine.current = evento.currentTarget;
+              setShowAddVitrineModal(true);
+            }}
             disabled={salvandoVitrines || configFalhou}
             className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-foreground px-6 text-[14.5px] font-extrabold text-background transition-all hover:opacity-90 active:scale-[0.99] disabled:opacity-60 sm:h-auto sm:w-56"
           >
@@ -898,7 +927,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
               produtosEmExibicao={previewProducts[sec.id] ?? []}
               foraDaFaixa={foraDasFaixas[sec.id] ?? null}
               escolhidos={soOsQueExistem(sec.productIds, idsDoCatalogo).length}
-              aoAbrir={setEditingSectionId}
+              aoAbrir={abrirEdicao}
               aoAlternarAtiva={handleToggleSectionActive}
               aoMover={moveSection}
               aoSoltar={handleSoltou}
@@ -917,6 +946,9 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
           aoMudarTitulo={setNewVitrineTitle}
           aoCriar={handleAddCustomVitrine}
           aoFechar={() => setShowAddVitrineModal(false)}
+          aoRestaurarFoco={(evento) =>
+            restaurarFocoDaFolha(evento, gatilhoDaNovaVitrine.current)
+          }
           criando={criandoVitrine || salvandoVitrines || configFalhou}
         />
       )}
@@ -930,6 +962,9 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
           idsEmExibicao={idsEmExibicaoNaEdicao}
           travado={salvandoVitrines || configFalhou}
           aoFechar={fecharFolha}
+          aoRestaurarFoco={(evento) =>
+            restaurarFocoDaFolha(evento, gatilhoDaEdicao.current)
+          }
           aoRenomear={(titulo) => handleRenameSection(secaoEmEdicao.id, titulo)}
           aoMudarQuantidade={(quantidade) =>
             handleUpdateMaxItems(secaoEmEdicao.id, quantidade)

@@ -27,6 +27,7 @@ export function FolhaEditarVitrine({
   produtos,
   idsEmExibicao,
   aoFechar,
+  aoRestaurarFoco,
   aoRenomear,
   aoMudarQuantidade,
   aoAlternarProduto,
@@ -41,6 +42,7 @@ export function FolhaEditarVitrine({
   /** Ids que aparecem hoje na loja: os escolhidos, ou os do modo automático. */
   readonly idsEmExibicao: readonly string[];
   readonly aoFechar: () => void;
+  readonly aoRestaurarFoco?: (evento: Event) => void;
   /** Devolve `true` quando o nome já está gravado (ou nada mudou). */
   readonly aoRenomear: (titulo: string) => Promise<boolean>;
   readonly aoMudarQuantidade: (quantidade: number) => void;
@@ -154,6 +156,7 @@ export function FolhaEditarVitrine({
           : `${rotulo} · oculta da loja`
       }
       aoFechar={aoFechar}
+      aoRestaurarFoco={aoRestaurarFoco}
       rodape={
         <>
           {aoPedirExclusao ? (

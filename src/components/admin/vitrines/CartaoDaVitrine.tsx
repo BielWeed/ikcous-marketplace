@@ -115,7 +115,7 @@ export function CartaoDaVitrine({
   readonly foraDaFaixa?: string | null;
   /** Quantos dos escolhidos ainda existem na loja (o excluído não conta). */
   readonly escolhidos?: number;
-  readonly aoAbrir: (id: string) => void;
+  readonly aoAbrir: (id: string, gatilho: HTMLButtonElement) => void;
   readonly aoAlternarAtiva: (id: string) => void;
   readonly aoMover: (indice: number, direcao: "up" | "down") => void;
   readonly aoSoltar: () => void;
@@ -168,7 +168,7 @@ export function CartaoDaVitrine({
         <button
           type="button"
           aria-label={`Editar vitrine ${titulo}`}
-          onClick={() => aoAbrir(secao.id)}
+          onClick={(evento) => aoAbrir(secao.id, evento.currentTarget)}
           disabled={travado}
           className="absolute inset-0 rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/60"
         />
