@@ -585,7 +585,7 @@ export function useBanners(adminMode = false) {
       if (!aoFicarSemResposta(error))
         toast.error(
           mensagemDeErroDeSessaoDoPainel(error)
-            ? "Sua sessão expirou. Entre de novo para salvar o banner — o que você digitou continua aqui."
+            ? "Sua sessão expirou. Se os dados do banner ainda estiverem na tela, copie o que digitou antes de entrar de novo. Depois, salve o banner outra vez."
             : "Erro ao adicionar banner.",
         );
       throw error;

@@ -459,7 +459,7 @@ export const AdminQAView = memo(function AdminQAView({
         // aparecer junto, os dois dizem a mesma coisa — conferir a lista.
         toast.error(
           mensagemDeErroDeSessaoDoPainel(erroDoEnvio)
-            ? "Sua sessão expirou. Entre de novo para enviar a resposta — o texto continua aqui."
+            ? "Sua sessão expirou. Se a resposta ainda estiver na tela, copie o texto antes de entrar de novo. Depois, publique a resposta."
             : "Não foi possível confirmar o envio da resposta. Confira na lista antes de tentar de novo.",
         );
         return;

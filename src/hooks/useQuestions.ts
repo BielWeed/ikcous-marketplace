@@ -574,7 +574,7 @@ export function useQuestions() {
           ehConsultaSemResposta(error)
             ? "A conexão está lenta. Sua pergunta pode ter sido recebida. Confira antes de tentar de novo."
             : mensagemDeErroDeSessaoDoPainel(error)
-              ? "Sua sessão expirou. Entre de novo para enviar a pergunta — o texto continua aqui."
+              ? "Sua sessão expirou. Se a pergunta ainda estiver na tela, copie o texto antes de entrar de novo. Depois, envie a pergunta."
               : "Erro ao enviar pergunta.",
         );
         if (ehConsultaSemResposta(error)) {

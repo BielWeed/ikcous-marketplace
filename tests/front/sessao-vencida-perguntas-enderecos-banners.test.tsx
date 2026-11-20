@@ -105,7 +105,7 @@ it("pergunta: explica sessão vencida sem confirmar o envio", async () => {
   });
   expect(resultado).toBeNull();
   expect(h.toast).toHaveBeenCalledWith(
-    "Sua sessão expirou. Entre de novo para enviar a pergunta — o texto continua aqui.",
+    "Sua sessão expirou. Se a pergunta ainda estiver na tela, copie o texto antes de entrar de novo. Depois, envie a pergunta.",
   );
 });
 it("resposta silenciosa: mantém booleano e entrega a causa ao chamador", async () => {
@@ -145,7 +145,7 @@ it.each(["adicionar", "atualizar"])(
         });
     });
     expect(h.toast).toHaveBeenCalledWith(
-      "Sua sessão expirou. Entre de novo para salvar o endereço — o que você digitou continua aqui.",
+      "Sua sessão expirou. Se os dados do endereço ainda estiverem na tela, copie o que digitou antes de entrar de novo. Depois, salve o endereço outra vez.",
     );
   },
 );
@@ -163,7 +163,7 @@ it("banner: criação explica sessão vencida e preserva a causa", async () => {
     ).rejects.toBe(h.erro);
   });
   expect(h.toast).toHaveBeenCalledWith(
-    "Sua sessão expirou. Entre de novo para salvar o banner — o que você digitou continua aqui.",
+    "Sua sessão expirou. Se os dados do banner ainda estiverem na tela, copie o que digitou antes de entrar de novo. Depois, salve o banner outra vez.",
   );
 });
 it("controle: falha comum na pergunta conserva a mensagem anterior", async () => {
