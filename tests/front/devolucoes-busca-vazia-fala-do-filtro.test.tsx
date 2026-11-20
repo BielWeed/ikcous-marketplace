@@ -132,6 +132,37 @@ describe("Devoluções — busca sem resultado", () => {
     ).toBe("");
   });
 
+  it("oculta os totais da loja durante a busca e os restaura ao limpar", async () => {
+    rpc.mockResolvedValue({
+      data: { total: 0, contagem: { solicitada: 2, aprovada: 1 }, itens: [] },
+      error: null,
+    });
+    await montar();
+    const chips = () =>
+      Array.from(
+        hospedeiro.querySelectorAll('[aria-label="Filtrar por status"] button'),
+      ).map((botao) => botao.textContent);
+
+    expect(chips()).toContain("Solicitadas2");
+    await buscar("  ");
+    expect(chips()).toContain("Solicitadas2");
+    await buscar("DEV-123");
+
+    expect(rpc.mock.calls.at(-1)?.[1]).toMatchObject({ p_busca: "DEV-123" });
+    expect(chips()).toEqual(
+      expect.arrayContaining(["Todas", "Abertas", "Solicitadas", "Aprovadas"]),
+    );
+    expect(chips().every((rotulo) => !/\d/.test(rotulo ?? ""))).toBe(true);
+    await escolherChip("Solicitadas");
+    expect(rpc.mock.calls.at(-1)?.[1]).toMatchObject({
+      p_status: "solicitada",
+      p_busca: "DEV-123",
+    });
+
+    await buscar("");
+    expect(chips()).toContain("Solicitadas2");
+  });
+
   it("sem status ativo, só nomeia a busca", async () => {
     await montar();
     await buscar("maria");
