@@ -54,6 +54,9 @@ export function ParaFazer({
   aoAbrirCancelados,
   preparoEmDestaque = false,
   produtos,
+  catalogoCarregando,
+  catalogoFalhou,
+  aoRecarregarCatalogo,
 }: Readonly<{
   painel: PainelInicio | null;
   carregando: boolean;
@@ -61,8 +64,12 @@ export function ParaFazer({
   aoAbrirCancelados?: () => void;
   preparoEmDestaque?: boolean;
   produtos?: readonly Product[];
+  catalogoCarregando?: boolean;
+  catalogoFalhou?: boolean;
+  aoRecarregarCatalogo?: () => void;
 }>) {
   const esgotadas = variacoesEsgotadas(produtos);
+  const catalogoPendente = catalogoCarregando || catalogoFalhou;
   const pend = painel?.pendencias;
   const preparar = pend?.pedidosParaPreparar ?? null;
   const devolucoes = pend?.devolucoesAbertas ?? null;
@@ -224,7 +231,10 @@ export function ParaFazer({
           </div>
         ) : (
           <ul className="divide-y divide-admin-border">
-            {painel && pendentes === 0 && esgotadas.length === 0 ? (
+            {painel &&
+            !catalogoPendente &&
+            pendentes === 0 &&
+            esgotadas.length === 0 ? (
               <li className="flex items-center gap-3 py-3">
                 <TileDoInicio icone={CheckCircle2} tom="positivo" />
                 <div className="min-w-0 flex-1">
@@ -323,6 +333,24 @@ export function ParaFazer({
             ) : null}
           </ul>
         )}
+        {catalogoPendente ? (
+          <div className="flex flex-wrap items-center gap-x-3 border-t border-admin-border py-3 text-sm text-zinc-400">
+            <p role={catalogoCarregando ? "status" : "alert"}>
+              {catalogoCarregando
+                ? "Conferindo variações…"
+                : "Não foi possível conferir as variações"}
+            </p>
+            {!catalogoCarregando && aoRecarregarCatalogo ? (
+              <button
+                type="button"
+                className="min-h-11 text-white underline"
+                onClick={aoRecarregarCatalogo}
+              >
+                Tentar de novo
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </section>
   );

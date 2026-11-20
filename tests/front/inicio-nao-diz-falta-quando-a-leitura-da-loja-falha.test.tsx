@@ -19,6 +19,8 @@ const h = vi.hoisted(() => ({
   fetchProducts: vi.fn(),
   refresh: vi.fn(),
   rpc: vi.fn(),
+  pedidosNoMes: 0,
+  devolucoesAbertas: 0,
 }));
 
 vi.mock("@/lib/supabase", () => ({
@@ -30,10 +32,14 @@ vi.mock("@/lib/supabase", () => ({
           nome === "painel_inicio"
             ? {
                 hoje: { receita: 0, online: 0, presencial: 0, pedidos: 0 },
-                mes: { receita: 0, receita_mes_anterior: 0, pedidos: 0 },
+                mes: {
+                  receita: 0,
+                  receita_mes_anterior: 0,
+                  pedidos: h.pedidosNoMes,
+                },
                 pendencias: {
                   pedidos_para_preparar: 0,
-                  devolucoes_abertas: 0,
+                  devolucoes_abertas: h.devolucoesAbertas,
                   caixa_aberto: false,
                   estoque_baixo: 0,
                 },
@@ -136,6 +142,8 @@ describe("Inicio -- cartao 'Loja pronta' quando a leitura da loja falha", () => 
     // O cache do Inicio e de modulo: cada teste parte de um modulo novo.
     vi.resetModules();
     vi.clearAllMocks();
+    h.pedidosNoMes = 0;
+    h.devolucoesAbertas = 0;
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -161,9 +169,11 @@ describe("Inicio -- cartao 'Loja pronta' quando a leitura da loja falha", () => 
   }
 
   const botao = (trecho: string) =>
-    Array.from(hospedeiro.querySelectorAll("button")).find((b) =>
-      texto(b).includes(trecho),
-    );
+    Array.from(
+      hospedeiro.querySelectorAll(
+        '[aria-labelledby="inicio-sua-loja-titulo"] button',
+      ),
+    ).find((b) => texto(b).includes(trecho));
 
   describe("catalogo", () => {
     it("CONTROLE: catalogo respondeu vazio de verdade -- o Inicio manda cadastrar o primeiro produto", async () => {
@@ -211,6 +221,63 @@ describe("Inicio -- cartao 'Loja pronta' quando a leitura da loja falha", () => 
       await montar();
 
       expect(texto(hospedeiro)).toContain("Cadastrar um produto ativo");
+    });
+  });
+
+  describe("Para fazer sem cópia do catálogo", () => {
+    const cartao = () =>
+      hospedeiro.querySelector(
+        'section[aria-labelledby="inicio-para-fazer-titulo"]',
+      );
+
+    it("não dá tudo em dia durante a consulta nem depois de uma falha", async () => {
+      h.pedidosNoMes = 1;
+      definirLoja({ products: [], loadingProducts: true });
+      await montar();
+
+      expect(texto(cartao())).not.toContain("Tudo em dia");
+      expect(texto(cartao())).toContain("Conferindo variações…");
+      expect(cartao()?.querySelector('[role="alert"]')).toBeNull();
+
+      definirLoja({ products: [], catalogoErro: true });
+      await montar();
+      expect(texto(cartao())).not.toContain("Tudo em dia");
+      expect(
+        texto(cartao()?.querySelector('[role="alert"]') ?? null),
+      ).toContain("Não foi possível conferir as variações");
+      const tentar = [...(cartao()?.querySelectorAll("button") ?? [])].find(
+        (botao) => texto(botao).trim() === "Tentar de novo",
+      );
+      expect(tentar).toBeDefined();
+      let concluirConsulta: (() => void) | undefined;
+      h.fetchProducts.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            concluirConsulta = resolve;
+          }),
+      );
+      await act(async () => tentar?.click());
+      expect(h.fetchProducts).toHaveBeenCalledOnce();
+      expect(texto(cartao())).toContain("Conferindo variações…");
+      expect(cartao()?.querySelector('[role="alert"]')).toBeNull();
+
+      definirLoja({ products: [] });
+      await act(async () => concluirConsulta?.());
+      await montar();
+      expect(texto(cartao())).toContain("Tudo em dia");
+      expect(cartao()?.querySelector('[role="alert"]')).toBeNull();
+    });
+
+    it("mantém a devolução conhecida e avisa que as variações não foram conferidas", async () => {
+      h.pedidosNoMes = 1;
+      h.devolucoesAbertas = 1;
+      definirLoja({ products: [], catalogoErro: true });
+      await montar();
+
+      expect(texto(cartao())).toContain("1 devolução aberta");
+      expect(texto(cartao())).toContain(
+        "Não foi possível conferir as variações",
+      );
     });
   });
 
