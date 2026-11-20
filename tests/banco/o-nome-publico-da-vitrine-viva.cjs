@@ -60,7 +60,7 @@ prova("12 nomes seguem a mesma matriz do formulário", () =>
     const casos = [
       [null, "Cliente"],
       ["", "Cliente"],
-      [" \t ", "Cliente"],
+      [" \t\u{a0}", "Cliente"],
       ["Madonna", "Madonna"],
       ["Ana de Souza", "Ana S."],
       ["Maria Alves dE DA Do DAS Dos E", "Maria A."],
