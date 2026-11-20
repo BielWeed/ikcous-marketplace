@@ -3252,11 +3252,17 @@ const ROL_DA_163 = [
   "store_shipping_credentials: PUBLIC sem privilegio de tabela ou coluna",
   "store_shipping_credentials: RLS ligada",
 ];
+const ROL_DA_164 = [
+  "get_category_analytics: corpo exato (md5)",
+  "get_category_analytics: assinatura e atributos conhecidos",
+];
 const ROL_FECHADO_POR_CONSULTA = {
-  "163a-conferir-chaves-de-frete-so-o-servidor-aplicado": ROL_DA_163,
-  "163b-antes-chaves-de-frete-so-o-servidor-base-vigente": ROL_DA_163,
   "162a-conferir-o-pedido-guarda-o-nome-antigo-da-opcao-aplicado": ROL_DA_162,
   "162b-antes-o-pedido-guarda-o-nome-antigo-da-opcao-base-vigente": ROL_DA_162,
+  "163a-conferir-chaves-de-frete-so-o-servidor-aplicado": ROL_DA_163,
+  "163b-antes-chaves-de-frete-so-o-servidor-base-vigente": ROL_DA_163,
+  "164a-conferir-o-relatorio-de-categorias-sem-produto-aplicado": ROL_DA_164,
+  "164b-antes-o-relatorio-de-categorias-sem-produto-base-vigente": ROL_DA_164,
   "157a-conferir-a-devolucao-integral-nao-perde-o-centavo-do-cupom-aplicado":
     ROL_DA_157,
   "157b-antes-a-devolucao-integral-nao-perde-o-centavo-do-cupom-base-vigente":

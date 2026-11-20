@@ -10,13 +10,16 @@ SET LOCAL statement_timeout = '30s';
 
 DO $preflight_20261409$
 DECLARE
-    v_corpo text;
+    v_corpo_conhecido boolean;
 BEGIN
-    SELECT md5(replace(prosrc, chr(13), '')) INTO v_corpo
-    FROM pg_catalog.pg_proc
-    WHERE oid = to_regprocedure('public.get_category_analytics(timestamp with time zone,timestamp with time zone)');
+    SELECT COALESCE(md5(replace(p.prosrc, chr(13), '')) IN (e.hash_vigente, e.hash_desta), false)
+      INTO v_corpo_conhecido
+    FROM (VALUES
+        ('public.get_category_analytics(timestamp with time zone,timestamp with time zone)', '9202ebd1aae8cc95e431fd3eb9bc7eb3', 'd7e1e413ac805f598d8657992f43c706')
+    ) AS e(assinatura, hash_vigente, hash_desta)
+    LEFT JOIN pg_catalog.pg_proc p ON p.oid = to_regprocedure(e.assinatura);
 
-    IF v_corpo IS NULL OR v_corpo NOT IN ('9202ebd1aae8cc95e431fd3eb9bc7eb3', 'd7e1e413ac805f598d8657992f43c706') THEN
+    IF NOT v_corpo_conhecido THEN
         RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: corpo de get_category_analytics ausente ou diferente das versões esperadas.';
     END IF;
 END;

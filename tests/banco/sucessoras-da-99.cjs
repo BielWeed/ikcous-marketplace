@@ -185,6 +185,8 @@ const NOMES = [
   "20261405800000_o_cupom_que_nao_da_desconto_nao_vale.sql",
   // fin_dre: 99 -> 42 -> 382 -> 3996 -> 4059.
   "20261405900000_o_custo_do_cancelamento_fica_no_mes_da_volta.sql",
+  // get_category_analytics: 99 -> 409. O rollback repõe a guarda da 99 byte a byte.
+  "20261409000000_o_relatorio_de_categorias_nao_da_a_uma_categoria_o_dinheiro_de_item_sem_produto.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).

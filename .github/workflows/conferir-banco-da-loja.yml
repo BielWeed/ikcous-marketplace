@@ -375,6 +375,8 @@ on:
           - 162b-antes-o-pedido-guarda-o-nome-antigo-da-opcao-base-vigente
           - 163a-conferir-chaves-de-frete-so-o-servidor-aplicado
           - 163b-antes-chaves-de-frete-so-o-servidor-base-vigente
+          - 164a-conferir-o-relatorio-de-categorias-sem-produto-aplicado
+          - 164b-antes-o-relatorio-de-categorias-sem-produto-base-vigente
           - backups
       projeto:
         description: "Projeto de destino: loja, sandbox, ikcous-publicada (a CAF explicita) ou savy (a loja cliente explicita, mesmas travas): as duas exigem expected_sha; nunca texto livre — achado da rodada 2"

@@ -3348,6 +3348,7 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "160a-conferir-o-cupom-que-nao-da-desconto-aplicado",
     "161a-conferir-o-custo-do-cancelamento-fica-no-mes-da-volta-aplicado",
     "162a-conferir-o-pedido-guarda-o-nome-antigo-da-opcao-aplicado",
+    "164a-conferir-o-relatorio-de-categorias-sem-produto-aplicado",
     // 156a (20261404000000) fica de fora de proposito: a 404 esta em migrationsForaDaRelease
     // e nao tem lote no canais; a consulta segue no menu para quando ela for aplicada a parte.
   ]);
