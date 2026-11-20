@@ -73,6 +73,7 @@ export function mensagemMototaxi(order: Order, loja: string): string {
     .filter(Boolean)
     .join(", ");
   const referencia = limpar(c.reference);
+  const cep = limpar(c.cep);
   const quemRecebe = quemVaiReceberSeForOutro(c.name, c.recipientName);
   // "Deixar na portaria", "campainha estragada": o que a cliente escreveu no
   // checkout. `order.notes` e o mesmo campo que a ficha mostra como
@@ -113,8 +114,8 @@ export function mensagemMototaxi(order: Order, loja: string): string {
     `Endereço: ${endereco}`,
     [
       limpar(c.neighborhood),
-      [c.city, c.state].filter(Boolean).join("/"),
-      c.cep ? `CEP ${c.cep}` : "",
+      [c.city, c.state].map(limpar).filter(Boolean).join("/"),
+      cep ? `CEP ${cep}` : "",
     ]
       .filter(Boolean)
       .join(" · "),
