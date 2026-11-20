@@ -1,4 +1,33 @@
 {
+  "1.5.225": {
+    "titulo": "Painel mais coerente com a loja",
+    "novidades": [],
+    "correcoes": [
+      "No painel, a venda de balcão anulada aparece com o selo “Venda anulada”.",
+      "No Início do painel, o gráfico e o selo de vendas usam os 30 dias completos até ontem, no horário de Brasília, e o selo de comparação some quando faltam dias para comparar os dois períodos.",
+      "Na loja, reenviar uma pergunta sobre o produto depois de uma demora não a publica duas vezes.",
+      "No checkout, o formulário do cartão fecha e volta ao carrinho quando o servidor confirma que o pedido já venceu, em vez de deixar enviar o cartão.",
+      "No painel, o aviso “Novo pedido recebido!” de uma compra online só aparece depois do pagamento confirmado; compras pagas na entrega continuam avisando na hora.",
+      "Ao excluir um endereço e a confirmação demorar, o endereço que vira principal depois confere a lista de novo e respeita a escolha mais nova da cliente.",
+      "Ao marcar avisos como lidos com resposta tardia, a campanha também é concluída.",
+      "No painel, o aviso de banner com produto pausado ou excluído só vale para links da própria loja; links externos são ignorados.",
+      "A mensagem ao mototáxi também limpa caracteres invisíveis de direção do texto na cidade, no estado e no CEP.",
+      "No histórico de cotações do Frete, a falha ao salvar uma cotação é explicada em português, sem prometer que o frete ficou intacto.",
+      "Ao negar o código de postagem de uma devolução, o painel explica o status com o nome que a tela usa e orienta atualizar a lista de devoluções.",
+      "Na confirmação do checkout, o recibo de quem comprou sem conta continua aparecendo ao recarregar a mesma tela e some ao sair ou ao abrir outro checkout.",
+      "Na ficha do cliente, as vendas de balcão ou sem conta com o mesmo WhatsApp, que ficam fora do histórico de pedidos, passam a ser explicadas, com a quantidade.",
+      "Na aba Devoluções do painel, o total da loja some das abas enquanto a lista está filtrada por uma busca.",
+      "A mensagem ao mototáxi de um pedido grande cabe no WhatsApp: traz os dados da entrega primeiro e resume a lista de itens indicando quantos ficaram de fora.",
+      "Na mensagem de retirada ao cliente, quando o endereço da loja é cortado por ser longo, a mensagem avisa “endereço resumido — confirme com a loja”.",
+      "Em Avaliações, com filtro de nota ou busca, o selo da fila de moderação mostra “(total)” para indicar que a contagem é a da loja inteira.",
+      "No painel, abrir Pedidos pelo menu com o selo de pedidos positivo abre a lista “Em aberto”, a que o selo conta.",
+      "Quando a conexão ao vivo do painel volta, a ficha de pedido aberta por link confere de novo o status do pedido, sem apagar a anotação que está sendo digitada.",
+      "Quando a conexão ao vivo volta, a aba do painel que só recebe os avisos de outra aba também atualiza os números do topo de Pedidos.",
+      "Na ficha do cliente, “Limpar Carrinho” diz quantos produtos serão removidos, remove só os que a ficha mostrava e informa quantos saíram.",
+      "Na ficha do cliente, itens do carrinho cuja variação foi excluída ficam fora do total estimado, e a ficha diz quantos ficaram de fora."
+    ],
+    "melhorias": []
+  },
   "1.5.224": {
     "titulo": "Painel e checkout mais firmes com rede lenta",
     "novidades": [],
