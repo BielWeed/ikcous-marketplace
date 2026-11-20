@@ -383,15 +383,17 @@ function ConteudoDoCarrinho({
   // chave e o próximo "Finalizar" criaria um SEGUNDO pedido.
   const irAoCarrinhoRelido = useIrAoCarrinhoRelido();
   const indoAoCheckoutRef = useRef(false);
-  const [releituraTerminou, setReleituraTerminou] = useState(false);
+  const [estadoDaReleitura, setEstadoDaReleitura] = useState<
+    "ociosa" | "relendo" | "terminou"
+  >("ociosa");
   useEffect(() => {
-    if (!releituraTerminou) return;
-    setReleituraTerminou(false);
+    if (estadoDaReleitura !== "terminou") return;
+    setEstadoDaReleitura("ociosa");
     indoAoCheckoutRef.current = false;
     // A promessa pode resolver antes de o React aplicar a remoção dos itens.
     // Decide com o carrinho atualizado, sem arrastar quem já saiu desta tela.
     if (isActive && cart.length > 0) onNavigate("checkout");
-  }, [releituraTerminou, isActive, cart.length, onNavigate]);
+  }, [estadoDaReleitura, isActive, cart.length, onNavigate]);
   const irAoCheckout = () => {
     if (indoAoCheckoutRef.current) return;
     if (haChaveDoPedidoVigente(user?.id ?? null)) {
@@ -399,8 +401,9 @@ function ConteudoDoCarrinho({
       return;
     }
     indoAoCheckoutRef.current = true;
+    setEstadoDaReleitura("relendo");
     irAoCarrinhoRelido(() => {
-      setReleituraTerminou(true);
+      setEstadoDaReleitura("terminou");
     });
   };
 
@@ -1977,6 +1980,7 @@ function ConteudoDoCarrinho({
               shipping={shipping}
               retiradaNaLoja={retiradaEscolhida}
               total={total}
+              conferindoCarrinho={estadoDaReleitura !== "ociosa"}
               onNavigate={(view) =>
                 view === "checkout" ? irAoCheckout() : onNavigate(view)
               }

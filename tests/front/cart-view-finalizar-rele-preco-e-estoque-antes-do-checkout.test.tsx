@@ -211,6 +211,81 @@ describe("CartView — Finalizar relê preço e estoque antes de abrir o checkou
     return () => terminar();
   }
 
+  it.each(["sucesso", "falha", "teto"] as const)(
+    "a barra do celular anuncia a conferência e volta a Finalizar compra após %s",
+    async (desfecho) => {
+      if (desfecho === "teto") vi.useFakeTimers();
+      let resolver!: () => void;
+      let rejeitar!: (erro: Error) => void;
+      renovar.mockImplementation(
+        () =>
+          new Promise<void>((resolve, reject) => {
+            resolver = resolve;
+            rejeitar = reject;
+          }),
+      );
+      conta.usuario = { id: "conta-a" };
+      await montar();
+
+      const finalizar = botao(BOTOES.barra);
+      const classes = finalizar.className;
+      const aviso = finalizar.parentElement?.querySelector(
+        '[aria-live="polite"]',
+      );
+      await tocar(BOTOES.barra);
+
+      expect(finalizar.textContent?.trim()).toBe(
+        "Conferindo preços e estoque…",
+      );
+      expect(finalizar.getAttribute("aria-busy")).toBe("true");
+      expect(aviso?.textContent).toBe(finalizar.textContent);
+      expect(finalizar.disabled).toBe(false);
+      expect(finalizar.querySelector("svg")).toBeNull();
+      expect(finalizar.className).toBe(classes);
+      await act(async () => {
+        finalizar.click();
+      });
+      expect(renovar).toHaveBeenCalledTimes(1);
+      expect(onNavigate).not.toHaveBeenCalled();
+
+      await act(async () => {
+        if (desfecho === "teto") {
+          await vi.advanceTimersByTimeAsync(TETO_DA_RELEITURA_DO_CARRINHO_MS);
+        } else if (desfecho === "falha") {
+          rejeitar(new Error("sem rede"));
+        } else {
+          resolver();
+        }
+      });
+      expect(finalizar.textContent?.trim()).toBe(BOTOES.barra);
+      expect(finalizar.getAttribute("aria-busy")).not.toBe("true");
+      expect(aviso?.textContent).toBe("");
+      expect(finalizar.querySelector("svg")).not.toBeNull();
+      expect(onNavigate).toHaveBeenCalledExactlyOnceWith("checkout");
+    },
+  );
+
+  it("uma conferência que termina após desmontar não afeta o próximo carrinho", async () => {
+    conta.usuario = { id: "conta-a" };
+    const terminar = releituraManual();
+    await montar();
+    const finalizar = botao(BOTOES.barra);
+    await tocar(BOTOES.barra);
+    expect(finalizar.getAttribute("aria-busy")).toBe("true");
+
+    await act(async () => {
+      raiz.render(null);
+    });
+    await montar();
+    await act(async () => {
+      terminar();
+    });
+
+    expect(finalizar.isConnected).toBe(false);
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(botao(BOTOES.barra).getAttribute("aria-busy")).not.toBe("true");
+  });
+
   const gravarChaveVigente = (dono: string) =>
     armazem.set(
       `${PREFIXO_DA_CHAVE_DO_PEDIDO}${dono}`,
