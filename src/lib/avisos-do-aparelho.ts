@@ -110,9 +110,8 @@ export const PASSOS_PARA_INSTALAR_NO_IOS_DA_CLIENTE: readonly string[] = [
 
 /**
  * Como liberar os avisos quando a pessoa escolheu Bloquear — nenhuma página
- * consegue desfazer isso por ela. O caminho depende de ONDE ela está: o app
- * instalado tem entrada própria nas configurações do aparelho; na aba, quem
- * tem a chave é o navegador.
+ * consegue desfazer isso por ela. Fora do iOS, saber que o app está instalado
+ * não distingue celular de computador, então o guia mostra os dois caminhos.
  */
 export function passosParaLiberarOsAvisos(
   onde: { readonly instalado: boolean; readonly ehApple: boolean },
@@ -130,9 +129,8 @@ export function passosParaLiberarOsAvisos(
   }
   if (onde.instalado) {
     return [
-      "Abra as configurações do aparelho.",
-      `Entre em Apps e escolha ${nomeDoApp}.`,
-      "Abra Notificações e ative.",
+      "No computador: abra a loja no Chrome ou Edge. Clique no ícone à esquerda do endereço, abra Configurações do site e mude Notificações para Permitir.",
+      `No celular: abra as configurações do aparelho, entre em Apps, escolha ${nomeDoApp} e ative as Notificações.`,
       voltar,
     ];
   }

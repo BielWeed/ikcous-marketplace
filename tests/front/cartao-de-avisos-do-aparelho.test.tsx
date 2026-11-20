@@ -312,7 +312,7 @@ describe("CartaoDeAvisosDoAparelho", () => {
       expect(botao(AGORA_NAO)).toBeDefined();
     });
 
-    it("permissão negada no app instalado aponta para as configurações do aparelho", async () => {
+    it("permissão negada no app instalado mostra onde liberar no computador e no celular", async () => {
       aparelhoSemAviso({ permission: "denied" });
       instaladoNaTela(true);
       await montar();
@@ -321,7 +321,9 @@ describe("CartaoDeAvisosDoAparelho", () => {
         .map((li) => li.textContent)
         .join(" ");
       expect(passos).toContain("Loja de Teste");
-      expect(passos).toContain("configurações do aparelho");
+      expect(passos).toContain("No computador:");
+      expect(passos).toContain("Configurações do site");
+      expect(passos).toContain("No celular: abra as configurações do aparelho");
     });
 
     it("iPhone fora do app instalado mostra Adicionar à Tela de Início, no lugar do botão", async () => {
