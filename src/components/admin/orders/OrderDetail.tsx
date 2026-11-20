@@ -2913,7 +2913,7 @@ export const OrderDetail = memo(function OrderDetail({
                 Observações do pedido
               </h3>
               <p className="whitespace-pre-line break-words text-sm leading-relaxed text-zinc-200">
-                {order.notes}
+                {order.notes.replace(/\b1 dias\b/g, "1 dia")}
               </p>
             </div>
           )}

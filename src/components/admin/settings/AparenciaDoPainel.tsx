@@ -6,7 +6,7 @@ import "./aparencia-do-painel.css";
 const TEMAS = [
   ["escuro", "Escuro", "Fundo preto, o padrão"],
   ["claro", "Claro", "Fundo claro, bom ao ar livre"],
-  ["confortavel", "Confortável", "Tons quentes, cansa menos a vista"],
+  ["confortavel", "Confortável", "Tons quentes que cansam menos a vista"],
 ] as const;
 
 /**
