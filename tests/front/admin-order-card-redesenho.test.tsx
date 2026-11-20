@@ -111,6 +111,18 @@ describe("AdminOrderCard — rodapé e leitura do pedido", () => {
       (b) => b.textContent?.trim() === texto,
     );
 
+  it("mostra há quanto tempo o pedido pendente sem conta segura estoque", () => {
+    desenhar(
+      pedido({ createdAt: new Date(Date.now() - 26 * 3600_000).toISOString() }),
+    );
+    expect(hospedeiro.textContent).toContain("segurando estoque há 1 dia");
+  });
+
+  it("não confunde pedido pendente online com estoque preso na entrega", () => {
+    desenhar(pedido({ paymentMethod: "online" }));
+    expect(hospedeiro.textContent).not.toContain("segurando estoque");
+  });
+
   it("miniatura de 44px informa o tamanho e carrega sem bloquear", () => {
     desenhar(
       pedido({

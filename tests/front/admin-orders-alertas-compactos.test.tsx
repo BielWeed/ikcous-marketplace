@@ -51,6 +51,10 @@ vi.mock("@/contexts/StoreContext", () => ({
 
 let mockOrders: Order[] = [];
 let mockTotalOrders = 0;
+const mockLoadOrders = vi.fn(async () => ({
+  orders: mockOrders,
+  total: mockTotalOrders,
+}));
 
 // `let` porque cada teste controla o que a consulta de cancelados devolve.
 let mockPedidosCancelados: Order[] = [];
@@ -63,7 +67,7 @@ let mockBuscarTambemAntigos = vi.fn(async () => []);
 vi.mock("@/hooks/useOrders", () => ({
   useOrders: () => ({
     orders: mockOrders,
-    loadOrders: vi.fn(),
+    loadOrders: mockLoadOrders,
     updateOrderStatus: vi.fn(),
     totalOrders: mockTotalOrders,
     isLoaded: true,
@@ -225,6 +229,7 @@ describe("AdminOrdersView — botão de alerta no header com dropdown de detalhe
     // `undefined`, não `delete`: regra noDelete do Biome que o CI cobra).
     (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView =
       undefined;
+    mockLoadOrders.mockClear();
     mockOrders = [];
     mockTotalOrders = 0;
     mockPedidosCancelados = [];
@@ -233,6 +238,42 @@ describe("AdminOrdersView — botão de alerta no header com dropdown de detalhe
     mockBuscarTambemAntigos = vi.fn(async () => []);
     mockAnalyticsStats = null;
   });
+
+  it.each([
+    { quantidade: 0, total: 0, mostra: false },
+    { quantidade: 6, total: 6, mostra: false },
+    { quantidade: 7, total: 7, mostra: true },
+    { quantidade: 10, total: 10, mostra: true },
+    { quantidade: 7, total: 21, mostra: false },
+  ])(
+    "aviso de vagas: $quantidade nesta página, $total no recorte",
+    async ({ quantidade, total, mostra }) => {
+      mockOrders = Array.from({ length: quantidade }, (_, i) => ({
+        ...canceladoFake({ id: `pedido-${i}` }),
+        status: "pending",
+        paymentMethod: "cash",
+        createdAt: new Date(Date.now() - 3600_000).toISOString(),
+      }));
+      mockTotalOrders = total;
+
+      const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
+      await act(async () => {
+        raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={true} />);
+      });
+      await esperarAte(() => mockLoadOrders.mock.calls.length > 0);
+      const avisos = Array.from(hospedeiro.querySelectorAll('[role="status"]'));
+      const aviso = avisos.find((p) =>
+        p.textContent?.includes("vagas de compra sem conta"),
+      );
+      if (mostra) {
+        expect(aviso?.textContent).toContain(
+          `${quantidade} de 10 vagas de compra sem conta ocupadas`,
+        );
+      } else {
+        expect(aviso).toBeUndefined();
+      }
+    },
+  );
 
   it("com dinheiro preso: botão com badge de contagem e a frase no aria-label, sem bloco nenhum na tela", async () => {
     mockAnalyticsStats = statsFake(2);
