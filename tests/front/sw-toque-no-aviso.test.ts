@@ -114,7 +114,12 @@ describe("toque no aviso (notificationclick)", () => {
     expect(openWindow).toHaveBeenCalledExactlyOnceWith(alvo);
   });
 
-  it.each(["https://exemplo.invalid/x", "https://["])(
+  it.each([
+    "https://exemplo.invalid/x",
+    "https://[",
+    `${ORIGEM}:8443/x`,
+    `http://${HOST}/x`,
+  ])(
     "aviso com destino externo ou inválido (%s): abre a vitrine",
     async (url) => {
       const { clique, openWindow } = await importar([]);
