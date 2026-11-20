@@ -171,7 +171,10 @@ function filhosDaGrade(texto: string) {
 }
 
 function conferirPreservacao(texto: string) {
-  const lista = literaisDeClasse(analisar(texto)).map(classesDoCelular);
+  const lista = literaisDeClasse(analisar(texto))
+    // A proteção do rótulo vencido só atua no papel, não na tela móvel.
+    .filter((literal) => literal !== "print:hidden")
+    .map(classesDoCelular);
   expect(lista, "A quantidade de literais de className mudou").toHaveLength(
     180,
   );

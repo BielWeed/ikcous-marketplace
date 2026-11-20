@@ -355,7 +355,8 @@ module.exports = [
     // 1900 B acima de 538 kB; um degrau de 4 kB autorizado no brief do dono.
     // 15/11/2026 (1.5.192): 542 -> 546 kB (planilha com datas do Excel e ajustes de classes de PC no painel; o painel mediu 542,08 kB, 84 B acima do teto; subo 4 kB, o mesmo passo de sempre). Regra do dono: o teto sobe.
     // 18/11/2026 (1.5.209): 546 -> 550 kB (o painel mediu 546,09 kB no build local, 87 B acima do teto; subo 4 kB, o mesmo passo de sempre). Regra do dono: o teto sobe.
-    limit: "550 kB",
+    // 20/11/2026 (1.5.228): 550 -> 554 kB (nota da versão com 26 frases, acessibilidade/foco no painel e limpeza de invisíveis; o painel mediu 550,27 kB, 274 B acima do teto; subo 4 kB, o mesmo passo de sempre). Regra do dono: o teto sobe.
+    limit: "554 kB",
     webpack: false,
   },
   { path: `${output}/assets/*.css`, limit: "100 kB", webpack: false },

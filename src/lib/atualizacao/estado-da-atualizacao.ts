@@ -12,6 +12,7 @@
  *   aguardando — há versão nova esperando o ponto de parada (a ilha NÃO
  *                precisa aparecer: ninguém é interrompido).
  *   instalando — a instalação começou; a página recarrega em instantes.
+ *   pendente   — há versão nova, mas a trava esgotou as tentativas.
  *   concluida  — o boot provou que o build trocou; dura ~3 s e volta sozinha
  *                a "nenhuma".
  */
@@ -21,6 +22,7 @@ export type FaseDaAtualizacao =
   | "nenhuma"
   | "aguardando"
   | "instalando"
+  | "pendente"
   | "concluida";
 
 export interface EstadoDaAtualizacao {

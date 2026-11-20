@@ -254,14 +254,14 @@ describe("ProductView — a quantidade acompanha o estoque da variação", () =>
 
       expect(quantidadeExibida()).toBe("1");
       for (let quantidade = 2; quantidade <= estoque; quantidade++) {
-        expect(mais?.disabled).toBe(false);
+        expect(mais?.getAttribute("aria-disabled")).toBe("false");
         await tocar(mais);
         expect(quantidadeExibida()).toBe(String(quantidade));
       }
       // Insistir no mais da PÁGINA, sem abrir a folha da barra fixa.
       await aumentar(2);
       expect(quantidadeExibida()).toBe(String(estoque));
-      expect(mais?.disabled).toBe(true);
+      expect(mais?.getAttribute("aria-disabled")).toBe("true");
       expect(await quantidadeQueVaiAoCarrinho()).toBe(estoque);
       expect(adicionarAoCarrinho.mock.calls[0][1]).toBe("v-azul~v-p");
     },

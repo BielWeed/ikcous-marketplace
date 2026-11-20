@@ -160,12 +160,40 @@ describe("avisos do aparelho na tela da cliente — iPhone fora do app instalado
     expect(texto()).toContain("Avisos desligados neste aparelho");
   });
 
-  it("CONTROLE — iPhone instalado mas com iOS velho (sem push) continua calado", () => {
-    definirNavegador({ userAgent: USER_AGENT_IPHONE });
+  it("iPhone antigo no Safari informa a versão mínima antes dos passos", () => {
+    definirNavegador({ userAgent: USER_AGENT_IPHONE.replace("17_4", "16_3") });
+    instaladoNaTela(false);
+    desenhar();
+
+    expect(texto()).toContain("iOS/iPadOS 16.4 ou mais novo");
+    expect(passos().join(" ")).toContain("Adicionar à Tela de Início");
+  });
+
+  it("iPhone instalado com iOS antigo explica onde acompanhar o pedido", () => {
+    definirNavegador({ userAgent: USER_AGENT_IPHONE.replace("17_4", "16_3") });
     instaladoNaTela(true);
     desenhar();
 
-    expect(texto()).toBe("");
+    expect(texto()).toContain(
+      "Os avisos não estão disponíveis neste aparelho agora. Você ainda pode acompanhar seu pedido dentro da loja.",
+    );
+    expect(texto()).not.toContain("16.4");
+    expect(hospedeiro.querySelector("button")).toBeNull();
+  });
+
+  it("iPad instalado com iPadOS antigo recebe orientação sem ser chamado de iPhone", () => {
+    definirNavegador({
+      userAgent:
+        "Mozilla/5.0 (iPad; CPU OS 15_7 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148",
+    });
+    instaladoNaTela(true);
+    desenhar();
+
+    expect(texto()).toContain(
+      "Os avisos não estão disponíveis neste aparelho agora.",
+    );
+    expect(texto()).not.toContain("16.4");
+    expect(texto()).not.toContain("iPhone");
   });
 
   it("CONTROLE — iPhone que já recebe os avisos não vê instruções de instalar (só o cartão de ligados)", () => {

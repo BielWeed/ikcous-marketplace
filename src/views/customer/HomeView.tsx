@@ -898,6 +898,7 @@ export const HomeView = React.memo(function HomeView({
                           onClick={() => {
                             onSortByChange(option.value);
                             setShowSortMenu(false);
+                            sortButtonRef.current?.focus();
                           }}
                           className={`flex min-h-11 w-full items-center justify-between rounded-2xl px-4 py-3 text-[11px] font-black uppercase tracking-widest transition-all ${
                             sortBy === option.value
@@ -962,9 +963,13 @@ export const HomeView = React.memo(function HomeView({
               Nenhum produto agora
             </h3>
             <p className="mx-auto max-w-[200px] text-sm leading-relaxed text-zinc-500">
-              {termoDaBusca || selectedCategory !== "Todas"
-                ? "Tente buscar por outro termo ou mudar a categoria."
-                : "Em breve novidades por aqui."}
+              {!termoDaBusca &&
+              selectedCategory !== "Todas" &&
+              categories.some((c) => c.isActive && c.name === selectedCategory)
+                ? "Ainda não há produtos nesta categoria."
+                : termoDaBusca || selectedCategory !== "Todas"
+                  ? "Tente buscar por outro termo ou mudar a categoria."
+                  : "Em breve novidades por aqui."}
             </p>
           </div>
         ) : (

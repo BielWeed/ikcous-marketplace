@@ -19,12 +19,14 @@ export function FolhaNovaVitrine({
   aoMudarTitulo,
   aoCriar,
   aoFechar,
+  aoRestaurarFoco,
   criando,
 }: {
   readonly titulo: string;
   readonly aoMudarTitulo: (titulo: string) => void;
   readonly aoCriar: () => void;
   readonly aoFechar: () => void;
+  readonly aoRestaurarFoco?: (evento: Event) => void;
   readonly criando: boolean;
 }) {
   return (
@@ -32,6 +34,7 @@ export function FolhaNovaVitrine({
       titulo="Nova vitrine"
       descricao="Entra no fim da lista, já visível."
       aoFechar={aoFechar}
+      aoRestaurarFoco={aoRestaurarFoco}
       rodape={
         <>
           <button

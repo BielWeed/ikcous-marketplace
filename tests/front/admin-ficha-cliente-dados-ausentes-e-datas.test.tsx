@@ -121,6 +121,22 @@ describe("AdminUserDetailView — dado ausente e datas", () => {
     expect(texto.match(/Não informado/g)).toHaveLength(2);
   });
 
+  it("exibe as iniciais sem tentar carregar uma foto externa", async () => {
+    const url = "https://exemplo.invalid/x.png";
+    const carregar = vi.spyOn(HTMLImageElement.prototype, "src", "set");
+    estado.profile = {
+      id: "cliente-1",
+      full_name: "Ana Luz",
+      role: "customer",
+      avatar_url: url,
+    };
+    await abrirFicha();
+    expect(
+      hospedeiro.querySelector('[data-slot="avatar-fallback"]')?.textContent,
+    ).toBe("AN");
+    expect(carregar).not.toHaveBeenCalledWith(url);
+  });
+
   it("o rótulo é 'E-mail', como no resto do painel", async () => {
     estado.profile = {
       id: "cliente-1",

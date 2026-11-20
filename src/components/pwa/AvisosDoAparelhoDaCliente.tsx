@@ -18,15 +18,16 @@ import { useRef, useState } from "react";
  * nenhuma tela dizia por que o "Pedido a caminho" não chegava no celular, nem
  * deixava ligar de novo.
  *
- * Só aparece quando há o que fazer: bloqueado (explica como liberar, porque
- * nenhuma página desfaz um bloqueio), iPhone/iPad no Safari fora do app
- * instalado (explica como instalar: é a única porta para o aviso chegar lá) ou
+ * Aparece quando há uma orientação ou ação útil: bloqueado (explica como
+ * liberar, porque nenhuma página desfaz um bloqueio), iPhone/iPad no Safari fora
+ * do app instalado (explica como instalar: é a única porta para o aviso chegar lá) ou
  * desligado mas liberado (um toque liga, pelo MESMO `subscribe()` do convite).
  * Quem já recebe vê "Avisos ligados" com o botão de desligar (pelo MESMO
  * `unsubscribe()` do hook, que tira a inscrição do navegador e do banco): pedir
  * e retirar o consentimento têm de ser simétricos, sem precisar sair da conta.
- * Quem não tem conta e quem está num navegador sem push (ou num iOS velho
- * demais) não vê nada: não há ação a oferecer.
+ * No app instalado em iOS/iPadOS antigo, explica a versão mínima e onde
+ * acompanhar o pedido. Quem não tem conta ou usa outro navegador sem push
+ * não vê o cartão.
  * Voltou das configurações já liberado? O hook relê a permissão ao voltar à
  * tela e o cartão troca sozinho de "bloqueado" para o botão de ligar.
  */
@@ -211,7 +212,8 @@ export function AvisosDoAparelhoDaCliente() {
             <p className="text-[14px] leading-5 text-muted-foreground">
               O iPhone só entrega o "Pedido a caminho" e os comunicados da loja
               ao app instalado na Tela de Início; no Safari eles só aparecem
-              aqui dentro. Para receber:
+              aqui dentro. Isso exige iOS/iPadOS 16.4 ou mais novo. Para
+              receber:
             </p>
             <ol className="mt-2 list-inside list-decimal space-y-1 text-[14px] leading-5 text-foreground">
               {PASSOS_PARA_INSTALAR_NO_IOS_DA_CLIENTE.map((passo) => (
@@ -220,6 +222,20 @@ export function AvisosDoAparelhoDaCliente() {
             </ol>
           </div>
         </div>
+      </section>
+    );
+  }
+
+  if (situacao === "ios-antigo") {
+    return (
+      <section
+        aria-label="Avisos neste aparelho"
+        className="mt-3 rounded-[18px] border border-solid border-border p-4"
+      >
+        <p className="text-[14px] leading-5 text-muted-foreground">
+          Os avisos não estão disponíveis neste aparelho agora. Você ainda pode
+          acompanhar seu pedido dentro da loja.
+        </p>
       </section>
     );
   }

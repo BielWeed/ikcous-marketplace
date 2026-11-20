@@ -115,7 +115,8 @@ export function mensagemDoStatusNoWhatsapp({
     }
     // Nunca corte o horário: o fim pode conter um dia fechado ou uma exceção.
     const horarioCabe =
-      horarioDeAtendimento?.trim() &&
+      horarioDeAtendimento &&
+      nomeTemConteudoVisivel(horarioDeAtendimento) &&
       horarioDeAtendimento.length <= 200 &&
       encodeURIComponent(horarioDeAtendimento).length <= 650;
     orientacoesDeRetirada += horarioCabe

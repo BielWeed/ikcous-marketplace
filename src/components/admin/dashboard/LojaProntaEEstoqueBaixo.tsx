@@ -298,7 +298,11 @@ export function LojaProntaEEstoqueBaixo({
               <button
                 key={passo.chave}
                 type="button"
-                onClick={() => onNavigate(passo.destino)}
+                onClick={() =>
+                  passo.destinoId
+                    ? onNavigate(passo.destino, passo.destinoId)
+                    : onNavigate(passo.destino)
+                }
                 className={LINHA_INICIO}
               >
                 <TileDoInicio

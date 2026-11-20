@@ -2,6 +2,7 @@ import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { mensagemDeErroDoPainel } from "@/lib/erro-do-painel";
+import { normalizarFraseDeCompartilhar } from "@/lib/mensagem-de-compartilhar";
 import type { EditorDeMinhaLoja } from "@/views/admin/AdminAboutStoreView";
 import { RefreshCw, Save } from "lucide-react";
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -44,6 +45,7 @@ export const ContatoDaLoja = memo(function ContatoDaLoja({
   const [texto, setTexto] = useState(baseTexto);
   const [carga, setCarga] = useState({ texto: baseTexto, id: 0 });
   const [salvando, setSalvando] = useState(false);
+  const fraseParaGravar = normalizarFraseDeCompartilhar(texto);
 
   // Config que chega depois (carga assíncrona, salvamento): o campo adota o
   // valor novo SÓ se a lojista não mexeu nele desde a base anterior — o que
@@ -58,15 +60,19 @@ export const ContatoDaLoja = memo(function ContatoDaLoja({
     if (numeroComPais(whatsapp) === numeroComPais(anterior.whatsapp)) {
       setWhatsapp(baseWhatsapp);
     }
-    if (texto === anterior.texto) {
+    if (
+      texto === anterior.texto ||
+      fraseParaGravar === anterior.texto ||
+      fraseParaGravar === baseTexto
+    ) {
       setTexto(baseTexto);
       setCarga((atual) => ({ texto: baseTexto, id: atual.id + 1 }));
     }
-  }, [baseWhatsapp, baseTexto, whatsapp, texto]);
+  }, [baseWhatsapp, baseTexto, whatsapp, texto, fraseParaGravar]);
 
+  const fraseMudou = texto !== baseTexto && fraseParaGravar !== baseTexto;
   const alterado =
-    numeroComPais(whatsapp) !== numeroComPais(baseWhatsapp) ||
-    texto !== baseTexto;
+    numeroComPais(whatsapp) !== numeroComPais(baseWhatsapp) || fraseMudou;
 
   // O sinal que liga a guarda do App: com alteração não salva (ou salvando) o
   // App sabe que há trabalho em aberto antes de a lojista sair da tela. Nada
@@ -121,7 +127,7 @@ export const ContatoDaLoja = memo(function ContatoDaLoja({
           // Só manda a frase se ela mudou: reenviar a de sempre "congelava" o
           // nome da loja nela (a leitura só acompanha o nome enquanto o texto
           // for o padrão).
-          ...(texto !== baseTexto ? { shareText: texto } : {}),
+          ...(fraseMudou ? { shareText: fraseParaGravar } : {}),
         },
         { silentSuccess: true },
       );

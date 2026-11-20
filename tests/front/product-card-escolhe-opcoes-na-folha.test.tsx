@@ -453,32 +453,32 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
     const mais = botaoQuantidade("Aumentar");
     // Nasce em 1: primeiro render, um span só — e "−" já desabilitado.
     expect(numeroDaQuantidade()).toBe("1");
-    expect(menos.disabled).toBe(true);
+    expect(menos.getAttribute("aria-disabled")).toBe("true");
 
     await act(async () => {
       mais.click();
     });
     // Andou: "−" volta a existir.
-    expect(menos.disabled).toBe(false);
+    expect(menos.getAttribute("aria-disabled")).toBe("false");
 
     await act(async () => {
       mais.click();
     });
     // Teto = estoque do item escolhido (M = 3): "+" desabilita.
-    expect(mais.disabled).toBe(true);
+    expect(mais.getAttribute("aria-disabled")).toBe("true");
 
     // Trocar para P (estoque 5) solta o teto: "+" volta a andar até 5.
     await act(async () => {
       chip("P").click();
     });
-    expect(mais.disabled).toBe(false);
+    expect(mais.getAttribute("aria-disabled")).toBe("false");
     await act(async () => {
       mais.click();
     });
     await act(async () => {
       mais.click();
     });
-    expect(mais.disabled).toBe(true);
+    expect(mais.getAttribute("aria-disabled")).toBe("true");
   });
 
   it("trocar para uma variação com MENOS estoque aperta a quantidade para caber", async () => {
@@ -504,7 +504,7 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
       mais.click();
     });
     // No teto do P (5): "+" travado.
-    expect(mais.disabled).toBe(true);
+    expect(mais.getAttribute("aria-disabled")).toBe("true");
 
     // Troca para M (estoque 3): a quantidade DESCE para 3 — a folha não
     // deixa pedir mais do que existe. Prova POR COMPORTAMENTO (o dígito
@@ -514,12 +514,12 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
     await act(async () => {
       chip("M").click();
     });
-    expect(mais.disabled).toBe(true);
+    expect(mais.getAttribute("aria-disabled")).toBe("true");
     await act(async () => {
       menos.click();
     });
-    expect(mais.disabled).toBe(false);
-    expect(menos.disabled).toBe(false);
+    expect(mais.getAttribute("aria-disabled")).toBe("false");
+    expect(menos.getAttribute("aria-disabled")).toBe("false");
   });
 
   it("'Adicionar' entrega a QUANTIDADE escolhida no 4º argumento (escolhe 3 → carrinho soma 3)", async () => {

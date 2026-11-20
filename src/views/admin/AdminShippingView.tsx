@@ -1748,7 +1748,39 @@ export const AdminShippingView = memo(function AdminShippingView({
                     id={`aba-gratis-${aba}`}
                     aria-controls={`gratis-${aba}`}
                     aria-selected={abaGratis === aba}
+                    tabIndex={abaGratis === aba ? 0 : -1}
                     onClick={() => setAbaGratis(aba)}
+                    onKeyDown={(evento) => {
+                      if (
+                        evento.altKey ||
+                        evento.ctrlKey ||
+                        evento.metaKey ||
+                        evento.shiftKey
+                      )
+                        return;
+                      let destino: typeof aba;
+                      switch (evento.key) {
+                        case "ArrowLeft":
+                        case "ArrowRight":
+                          destino = aba === "local" ? "nacional" : "local";
+                          break;
+                        case "Home":
+                          destino = "local";
+                          break;
+                        case "End":
+                          destino = "nacional";
+                          break;
+                        default:
+                          return;
+                      }
+                      evento.preventDefault();
+                      setAbaGratis(destino);
+                      evento.currentTarget.parentElement
+                        ?.querySelector<HTMLButtonElement>(
+                          `#aba-gratis-${destino}`,
+                        )
+                        ?.focus();
+                    }}
                     className={`min-h-11 min-w-0 flex-1 rounded-full px-2 text-xs font-bold ${abaGratis === aba ? "border border-solid border-foreground bg-admin-hover text-foreground" : "text-zinc-300"}`}
                   >
                     {aba === "local" ? "Na sua região" : "Fora da região"}

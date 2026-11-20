@@ -1,4 +1,37 @@
 {
+  "1.5.228": {
+    "titulo": "Atalho do PIX, avisos de erro e navegação por teclado",
+    "novidades": [],
+    "correcoes": [
+      "Em Relatórios, o resumo e os dados por categoria deixam de esperar indefinidamente se o app não conseguir confirmar sua sessão.",
+      "Em “Avançado: chaves do Mercado Pago”, o painel mostra um aviso mesmo quando os detalhes do erro não terminam de chegar.",
+      "Em “Fotos do cliente”, na ficha da devolução, uma foto que não responde deixa de prender as outras: depois de alguns segundos ela fica como “Foto indisponível” e as demais aparecem.",
+      "No Início do painel, “Ligar o pagamento pelo app (PIX)” abre Ajustes diretamente em Pagamentos.",
+      "Na vitrine, ao abrir uma categoria vazia sem fazer uma busca, aparece “Ainda não há produtos nesta categoria.”",
+      "Na lista e na ficha de clientes do painel, fotos de perfil hospedadas em outro site dão lugar às iniciais.",
+      "Nas sugestões de busca da vitrine, o leitor de tela informa quantos produtos foram encontrados ou avisa que não encontrou nenhum.",
+      "Na vitrine, depois de escolher a ordem dos produtos, você volta ao botão “Filtros” para continuar pelo teclado.",
+      "Nos detalhes do pedido, o leitor de tela diz qual é o número ao passar pelo botão “Copiar número do pedido”.",
+      "Ao cadastrar uma conta no Financeiro, o leitor de tela informa o erro junto ao campo “Nome”.",
+      "Em “Frete grátis”, as setas alternam entre “Na sua região” e “Fora da região”, sem tomar o lugar dos atalhos do navegador.",
+      "Ao editar uma variação, o leitor de tela anuncia o erro do campo “Código de barras”.",
+      "As setas do teclado alternam entre “Carrinho” e “Meus pedidos” e mantêm você na aba escolhida.",
+      "Ao confirmar “Esvaziar carrinho”, a navegação pelo teclado segue na área do carrinho vazio.",
+      "Ao atingir o mínimo ou o máximo de unidades, o teclado continua no botão de quantidade que você usou.",
+      "Ao finalizar a compra, o leitor de tela anuncia “Enviando pedido…” enquanto o envio está em andamento.",
+      "Em “Avisos neste aparelho”, o painel mostra como liberar os avisos quando eles estão bloqueados.",
+      "Em “Notificações”, a loja explica que os avisos no app instalado exigem iOS ou iPadOS 16.4 ou mais recente.",
+      "Se o app esgotar as tentativas de atualização, aparece “Atualização pendente — não foi possível concluir automaticamente”.",
+      "Ao fechar a confirmação de “Duplicar Produto”, a navegação pelo teclado volta ao botão de ações do produto, se ele ainda estiver disponível.",
+      "Em “Banner já terminou”, escolher “Voltar e ajustar” leva o teclado de volta a “Salvar Banner” ou “Salvar Alterações”, conforme o botão usado.",
+      "Ao fechar a criação de uma vitrine, o teclado volta a “Nova vitrine”, se o botão ainda estiver disponível.",
+      "Ao fechar a edição de uma vitrine sem abrir outra confirmação, o teclado volta ao botão “Editar vitrine”, se ele ainda estiver disponível.",
+      "Um “Horário de atendimento” preenchido só com espaços invisíveis é tratado como vazio, e a mensagem de retirada no WhatsApp pede para confirmar o horário com a loja.",
+      "A mensagem de compartilhamento não ganha espaços extras entre a frase simples da loja e o nome do produto.",
+      "Na ficha do pedido, cor e tamanho de pedidos antigos continuam aparecendo depois de um minuto, com o aviso “atualize a ficha”; o recibo segue bloqueado até a ficha ser atualizada."
+    ],
+    "melhorias": []
+  },
   "1.5.227": {
     "titulo": "Telas que avisam quando falham e fotos que não quebram",
     "novidades": [],

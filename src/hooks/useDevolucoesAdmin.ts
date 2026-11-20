@@ -358,9 +358,11 @@ async function assinarFotos(
   const pares = await Promise.all(
     caminhos.map(async (caminho) => {
       try {
-        const { data, error } = await supabase.storage
-          .from("devolucoes")
-          .createSignedUrl(caminho, 600);
+        const { data, error } = await aguardarComPrazo(
+          supabase.storage.from("devolucoes").createSignedUrl(caminho, 600),
+          PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+          erroDeConsultaSemResposta,
+        );
         return [caminho, error ? null : (data?.signedUrl ?? null)] as const;
       } catch {
         return [caminho, null] as const;

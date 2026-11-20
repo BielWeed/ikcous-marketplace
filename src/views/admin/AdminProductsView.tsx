@@ -303,6 +303,7 @@ export const AdminProductsView = memo(function AdminProductsView({
   const [simStock, setSimStock] = useState<string>("20");
   const [productToDelete, setProductToDelete] = useState<string | null>(null);
   const foco = useFocoAposExcluir();
+  const gatilhoDaCopia = useRef<HTMLButtonElement | null>(null);
   const [planoDeCopia, setPlanoDeCopia] = useState<{
     origem: any;
     nome: string;
@@ -1153,7 +1154,7 @@ export const AdminProductsView = memo(function AdminProductsView({
   }, [deleteProduct, productToDelete, isOffline, refreshFinancialStats]);
 
   const handleDuplicate = useCallback(
-    (product: Product) => {
+    (product: Product, gatilho: HTMLButtonElement | null) => {
       if (isOffline) {
         toast.error("Ação não permitida offline", {
           description: "Reconecte-se à internet para duplicar produtos.",
@@ -1178,6 +1179,7 @@ export const AdminProductsView = memo(function AdminProductsView({
       // nome e o SKU em outra página, após recarregar ou em outra aba.
       const codigo = gerarUuidV4().toUpperCase();
       const rotulo = codigo.replaceAll("-", "").slice(0, 12);
+      gatilhoDaCopia.current = gatilho;
       setPlanoDeCopia({
         origem: product,
         nome: `${product.name} (Cópia ${rotulo})`,
@@ -2480,7 +2482,25 @@ export const AdminProductsView = memo(function AdminProductsView({
             !open && !duplicandoRef.current && setPlanoDeCopia(null)
           }
         >
-          <AlertDialogContent className="produtos-confirmacao max-w-md rounded-3xl border border-admin-border bg-admin-raised">
+          <AlertDialogContent
+            onCloseAutoFocus={(evento) => {
+              evento.preventDefault();
+              const gatilho = gatilhoDaCopia.current;
+              gatilhoDaCopia.current = null;
+              if (
+                document.activeElement?.closest(
+                  '[role="alertdialog"][data-state="open"]',
+                )
+              )
+                return;
+              if (gatilho?.isConnected && !gatilho.disabled) {
+                gatilho.focus({ preventScroll: true });
+              } else {
+                foco.propsDoTitulo.ref.current?.focus({ preventScroll: true });
+              }
+            }}
+            className="produtos-confirmacao max-w-md rounded-3xl border border-admin-border bg-admin-raised"
+          >
             <AlertDialogHeader className="min-w-0">
               <AlertDialogTitle className="text-xl font-bold text-white">
                 <Copy
@@ -2564,7 +2584,10 @@ interface AdminProductCardProps {
     id: string,
     active: boolean,
   ) => Promise<void> | void;
-  readonly onDuplicate: (product: any) => void;
+  readonly onDuplicate: (
+    product: any,
+    gatilho: HTMLButtonElement | null,
+  ) => void;
   readonly onDelete: (id: string) => void;
   readonly isOffline?: boolean;
   readonly onPrefetch?: () => void;
@@ -2711,6 +2734,7 @@ function MenuDoProduto({
   readonly className: string;
 }) {
   const [aberto, setAberto] = useState(false);
+  const gatilho = useRef<HTMLButtonElement | null>(null);
   // O menu do Radix abre no primeiro contato do dedo, e como a área é grande
   // quem rola a lista em cima de uma foto abriria o menu sem querer. No toque
   // abrimos no clique (que o navegador não dispara depois de uma rolagem);
@@ -2722,6 +2746,7 @@ function MenuDoProduto({
         <button
           type="button"
           disabled={isOffline}
+          ref={gatilho}
           aria-label={`Ações de ${product.name}`}
           aria-haspopup="menu"
           aria-expanded={aberto}
@@ -2796,7 +2821,7 @@ function MenuDoProduto({
         </DropdownMenuItem>
         <DropdownMenuItem
           disabled={isOffline}
-          onClick={() => onDuplicate(product)}
+          onClick={() => onDuplicate(product, gatilho.current)}
           className="produto-menu-item"
         >
           <Copy aria-hidden="true" className="text-violet-300" />

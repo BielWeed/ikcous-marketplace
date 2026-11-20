@@ -27,16 +27,17 @@ describe("P12 — campanhas push no computador", () => {
   it("preserva o celular, a árvore, os avisos e toda a lógica de envio da base", () => {
     // A fonte inteira é assinada após normalizar espaços e variantes de PC.
     // O hash inclui a validação do link de pedido e o filtro do histórico no
-    // servidor. Os 202 className permanecem idênticos aos da base.
+    // servidor. O aviso fixo de permissão negada acrescenta 4 className;
+    // as classes que já existiam continuam idênticas às da base.
     // Nova mudança em texto, handler ou classe móvel continua reprovando.
     // Os avisos de push agora descrevem o aceite, não a chegada ao aparelho.
     const semComputador = fonte
       .replace(/\s+\b(?:lg|xl|2xl):[^\s"'\x60]+/g, "")
       .replace(/\s+/g, " ")
       .trim();
-    expect(fonte.match(/\bclassName=/g)).toHaveLength(202);
+    expect(fonte.match(/\bclassName=/g)).toHaveLength(206);
     expect(createHash("sha256").update(semComputador).digest("hex")).toBe(
-      "d5cc4a04ba6a23c4d822c67434481ddd5c70cd1920c3f579bf2849db7938718e",
+      "a03ef55df526b15c8c3b6d5545a42ef9dab79a797a35b7c854f60f9173053c72",
     );
   });
 

@@ -8696,12 +8696,14 @@ export function CheckoutViewDaConta({
                     {/* `max-w-md` (não `max-w-screen-md`) para o total e o botão
                         ficarem na mesma coluna dos cards do formulário. */}
                     <div className="checkout-barra mx-auto flex max-w-md flex-col gap-3">
-                      {/* Anuncia a espera e o motivo do frete SEM interromper
+                      {/* Anuncia o envio e o motivo do frete SEM interromper
                           (`status`, nunca `alert`) e SEM ocupar lugar
                           (`sr-only` fica fora do fluxo). A região existe
                           sempre, com o mesmo formato; só o texto entra e sai. */}
                       <span role="status" className="sr-only">
-                        {avisoDoFreteParaLeitorDeTela}
+                        {isSubmitting
+                          ? "Enviando pedido…"
+                          : avisoDoFreteParaLeitorDeTela}
                       </span>
                       <div
                         role="group"

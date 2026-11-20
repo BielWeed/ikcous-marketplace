@@ -62,6 +62,7 @@ import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import { formatCurrency } from "@/lib/utils";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 import type { Address, CartItem, Order, View } from "@/types";
+import { avatarSeguroDoPainel } from "@/utils/avatars";
 import { haptic } from "@/utils/haptic";
 import {
   Check,
@@ -849,7 +850,10 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
               <div className="relative shrink-0 rounded-full">
                 <Avatar className="size-16 rounded-full border border-admin-border">
                   <AvatarImage
-                    src={profile?.avatar_url || undefined}
+                    src={avatarSeguroDoPainel(
+                      profile?.avatar_url,
+                      window.location.href,
+                    )}
                     className="object-cover"
                   />
                   <AvatarFallback className="bg-zinc-800 text-xl font-bold text-zinc-300">

@@ -15,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { hook, selectDeInscritos } = vi.hoisted(() => ({
   hook: {
+    permission: "default" as NotificationPermission,
     subscription: null as unknown,
     subscribe: undefined as unknown as ReturnType<typeof vi.fn>,
   },
@@ -38,6 +39,7 @@ vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 vi.mock("@/hooks/usePushNotifications", () => ({
   usePushNotifications: () => ({
     isSupported: true,
+    permission: hook.permission,
     subscription: hook.subscription,
     subscribe: hook.subscribe,
   }),
@@ -124,6 +126,7 @@ describe("AdminPushView — 'Ligar avisos neste aparelho' segue a inscrição re
 
   beforeEach(() => {
     vi.clearAllMocks();
+    hook.permission = "default";
     hook.subscription = null;
     hook.subscribe = vi.fn();
     selectDeInscritos.vezes = 0;
@@ -198,6 +201,23 @@ describe("AdminPushView — 'Ligar avisos neste aparelho' segue a inscrição re
       botaoCom("Ajustes")!.click();
     });
     expect(texto()).toContain("Ligar avisos neste aparelho");
+  });
+
+  it("permissão bloqueada orienta como liberar e a permissão relida devolve o botão", async () => {
+    hook.permission = "denied";
+    await abrirTela();
+    await act(async () => {
+      botaoCom("Ajustes")!.click();
+    });
+    expect(texto()).toContain("Avisos bloqueados neste aparelho");
+    expect(hospedeiro.querySelectorAll("ol li").length).toBeGreaterThan(0);
+    expect(botaoCom("Ligar avisos neste aparelho")).toBeUndefined();
+    expect(hook.subscribe).not.toHaveBeenCalled();
+
+    hook.permission = "default";
+    await abrirTela();
+    expect(botaoCom("Ligar avisos neste aparelho")).toBeDefined();
+    expect(texto()).not.toContain("Avisos bloqueados neste aparelho");
   });
 
   it("subscribe() devolve undefined sem lançar (conta mudou no toque): o botão FICA, nada foi inscrito", async () => {

@@ -26,12 +26,14 @@ export function FolhaInferior({
   titulo,
   descricao,
   aoFechar,
+  aoRestaurarFoco,
   children,
   rodape,
 }: {
   readonly titulo: string;
   readonly descricao: ReactNode;
   readonly aoFechar: () => void;
+  readonly aoRestaurarFoco?: (evento: Event) => void;
   readonly children: ReactNode;
   readonly rodape: ReactNode;
 }) {
@@ -45,6 +47,7 @@ export function FolhaInferior({
       <SheetContent
         side="bottom"
         showCloseButton={false}
+        onCloseAutoFocus={aoRestaurarFoco}
         onOpenAutoFocus={(evento) => {
           evento.preventDefault();
           (evento.currentTarget as HTMLElement | null)?.focus();

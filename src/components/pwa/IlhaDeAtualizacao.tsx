@@ -41,6 +41,9 @@ export function IlhaDeAtualizacao({
   if (fase === "aguardando" && variante === "painel") {
     texto = "Atualização pronta";
   }
+  if (fase === "pendente") {
+    texto = "Atualização pendente — não foi possível concluir automaticamente";
+  }
   const Icone =
     fase === "instalando"
       ? LoaderCircle
@@ -64,6 +67,7 @@ export function IlhaDeAtualizacao({
             // primeiro paint; `motion-safe:` já respeita "menos movimento".
             "inline-flex min-h-9 min-w-0 max-w-full motion-safe:duration-300 motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-90 items-center gap-2 overflow-hidden rounded-full border border-zinc-700 bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 py-1.5 pl-2 pr-3.5 text-white shadow-[0_8px_25px_rgba(0,0,0,0.4)]",
             variante === "painel" && "min-h-6 gap-1 px-2 py-0.5 shadow-sm",
+            fase === "pendente" && "max-w-[min(9rem,40vw)]",
             className,
           )}
         >
@@ -79,8 +83,10 @@ export function IlhaDeAtualizacao({
           <span
             className={cn(
               "min-w-0 whitespace-normal text-[11px] font-bold leading-tight tracking-tight sm:text-xs",
+              variante === "painel" && "text-[10px] sm:text-[10px]",
               variante === "painel" &&
-                "whitespace-nowrap text-[10px] sm:text-[10px]",
+                fase !== "pendente" &&
+                "whitespace-nowrap",
             )}
           >
             {texto}

@@ -231,6 +231,17 @@ describe("HomeView — categoria que não existe cai em Todas", () => {
     expect(hospedeiro.textContent).toContain("Nenhum produto agora");
   });
 
+  it("explica que a categoria está vazia sem sugerir uma busca", async () => {
+    await montar("Em breve");
+    expect(marcados()).toEqual(["Selecionar categoria Em breve"]);
+    expect(hospedeiro.textContent).toContain(
+      "Ainda não há produtos nesta categoria.",
+    );
+    expect(hospedeiro.textContent).not.toContain(
+      "Tente buscar por outro termo ou mudar a categoria.",
+    );
+  });
+
   it("enquanto as categorias carregam, não decide nada (sem piscar em Todas)", async () => {
     cenario.categories = [];
     cenario.isLoading = true;

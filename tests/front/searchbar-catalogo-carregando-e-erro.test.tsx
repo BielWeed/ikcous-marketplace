@@ -91,6 +91,7 @@ describe("SearchBar — catálogo carregando, falha, termo longo e plural", () =
       raiz.render(<SearchBar value="" onChange={() => {}} />);
     });
     const campo = hospedeiro.querySelector("input") as HTMLInputElement;
+    const anuncio = hospedeiro.querySelector('[role="status"].sr-only');
     const setter = Object.getOwnPropertyDescriptor(
       window.HTMLInputElement.prototype,
       "value",
@@ -104,12 +105,40 @@ describe("SearchBar — catálogo carregando, falha, termo longo e plural", () =
     await act(async () => {
       await Promise.resolve();
     });
-    return campo;
+    return { campo, anuncio };
   }
+
+  it("anuncia os resultados do termo atual em uma região sempre montada", async () => {
+    estado.catalogo = [
+      produto("Bolsa Preta", "p1"),
+      produto("Bolsa Rosa", "p2"),
+    ];
+    const { campo, anuncio } = await digitar("bolsa");
+    expect(anuncio?.textContent).toBe("2 resultados");
+
+    const setter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    await act(async () => {
+      setter?.call(campo, "sapato");
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(anuncio?.textContent).toBe("Nenhum produto encontrado");
+
+    await act(async () => {
+      campo.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      );
+    });
+    expect(hospedeiro.querySelector('[role="status"].sr-only')).toBe(anuncio);
+    expect(anuncio?.textContent).toBe("");
+  });
 
   it("enquanto o catálogo carrega, diz 'Carregando busca…' e não 'Nenhum produto'", async () => {
     estado.loading = true;
-    await digitar("bolsa");
+    const { anuncio } = await digitar("bolsa");
+    expect(anuncio?.textContent).toBe("");
 
     expect(hospedeiro.textContent).toContain("Carregando busca");
     expect(hospedeiro.textContent).not.toContain("Nenhum produto encontrado");
@@ -118,7 +147,8 @@ describe("SearchBar — catálogo carregando, falha, termo longo e plural", () =
   it("com a carga falha e sem catálogo, avisa e oferece 'Tentar de novo'", async () => {
     estado.erro = true;
     estado.fetchProducts.mockResolvedValue(undefined);
-    await digitar("bolsa");
+    const { anuncio } = await digitar("bolsa");
+    expect(anuncio?.textContent).toBe("");
 
     expect(hospedeiro.textContent).toContain(
       "Não conseguimos carregar a busca agora",
@@ -177,7 +207,7 @@ describe("SearchBar — catálogo carregando, falha, termo longo e plural", () =
   });
 
   it("o campo limita o tamanho do que se digita", async () => {
-    const campo = await digitar("bolsa");
+    const { campo } = await digitar("bolsa");
     expect(campo.maxLength).toBe(100);
   });
 

@@ -240,6 +240,7 @@ async function erroAmigavel(
   error: unknown,
   generico: string,
   semResposta: string,
+  prazoDoCorpoMs = PRAZO_DE_GRAVAR_MS,
 ): Promise<string> {
   if (error instanceof PrazoEsgotado) return semResposta;
   try {
@@ -248,15 +249,19 @@ async function erroAmigavel(
       detalhes?.name === "FunctionsHttpError" &&
       detalhes.context instanceof Response
     ) {
-      const corpo = (await detalhes.context
-        .clone()
-        .json()
-        .catch(() => null)) as { erro?: unknown } | null;
+      const corpo = (await comPrazo(
+        detalhes.context.clone().json(),
+        prazoDoCorpoMs,
+      )) as { erro?: unknown } | null;
       if (corpo && typeof corpo.erro === "string" && corpo.erro) {
         return corpo.erro;
       }
     }
-  } catch {
+  } catch (err) {
+    if (err instanceof PrazoEsgotado) {
+      // Uma gravação sem resposta legível pode ter sido aplicada.
+      return prazoDoCorpoMs === PRAZO_DE_LER_MS ? generico : semResposta;
+    }
     // cai no tradutor da casa
   }
   return mensagemAmigavelErroEdgeFunction(error, {
@@ -467,6 +472,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
           err,
           "Não consegui ler as chaves salvas agora. Tente de novo em instantes.",
           SEM_RESPOSTA_AO_LER,
+          PRAZO_DE_LER_MS,
         ),
       );
     } finally {

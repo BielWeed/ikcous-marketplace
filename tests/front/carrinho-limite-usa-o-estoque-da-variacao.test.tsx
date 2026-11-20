@@ -106,7 +106,7 @@ describe("CartItemsList — o limite da linha é o estoque da VARIAÇÃO escolhi
       { product: camisa, quantity: 2, variantId: "var-p" },
     ]);
 
-    expect(mais(host).disabled).toBe(true);
+    expect(mais(host).getAttribute("aria-disabled")).toBe("true");
     expect(host.textContent).toContain("Só 2 restantes");
   });
 
@@ -115,7 +115,7 @@ describe("CartItemsList — o limite da linha é o estoque da VARIAÇÃO escolhi
       { product: camisa, quantity: 2, variantId: "var-m" },
     ]);
 
-    expect(mais(host).disabled).toBe(false);
+    expect(mais(host).getAttribute("aria-disabled")).toBe("false");
     expect(host.textContent).not.toContain("restante");
   });
 
@@ -124,7 +124,7 @@ describe("CartItemsList — o limite da linha é o estoque da VARIAÇÃO escolhi
       { product: { ...camisa, variants: undefined, stock: 2 }, quantity: 1 },
     ]);
 
-    expect(mais(host).disabled).toBe(false);
+    expect(mais(host).getAttribute("aria-disabled")).toBe("false");
     expect(host.textContent).toContain("Só 2 restantes");
   });
 
@@ -157,9 +157,9 @@ describe("CartItemsList — o limite da linha é o estoque da VARIAÇÃO escolhi
     const host = await renderizar([azulM, azulP]);
 
     // Azul-M: 5 azuis - 2 (da outra linha) = 3 -> já está no teto.
-    expect(mais(host, 0).disabled).toBe(true);
+    expect(mais(host, 0).getAttribute("aria-disabled")).toBe("true");
     // Azul-P: 5 - 3 = 2, mas P só tem 2 -> teto 2, já no limite.
-    expect(mais(host, 1).disabled).toBe(true);
+    expect(mais(host, 1).getAttribute("aria-disabled")).toBe("true");
     expect(host.textContent).toContain("Só 3 restantes");
     expect(host.textContent).toContain("Só 2 restantes");
   });

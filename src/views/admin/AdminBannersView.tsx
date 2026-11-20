@@ -913,6 +913,7 @@ export const AdminBannersView = memo(function AdminBannersView({
   // Fim da programação já passou: pede confirmação antes de salvar.
   const [confirmarFimVencido, setConfirmarFimVencido] = useState(false);
   const fimVencidoConfirmadoRef = useRef(false);
+  const botaoDoBannerVencido = useRef<HTMLButtonElement | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [anuncioDaOrdem, setAnuncioDaOrdem] = useState("");
   const movimentoPendente = useRef<{ id: string; indice: number } | null>(null);
@@ -2222,7 +2223,7 @@ export const AdminBannersView = memo(function AdminBannersView({
     });
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (gatilho: HTMLButtonElement | null = null) => {
     // A confirmação "Salvar mesmo assim" vale para ESTA chamada só: lida e
     // zerada antes de qualquer retorno antecipado (offline, salvando...),
     // senão sobraria `true` e pularia a pergunta no próximo banner vencido.
@@ -2290,6 +2291,7 @@ export const AdminBannersView = memo(function AdminBannersView({
           toast.error(MENSAGEM_FIM_ANTES_DO_INICIO);
           mostrarEFocarCampo("banner-end-date");
         } else {
+          botaoDoBannerVencido.current = gatilho;
           setConfirmarFimVencido(true);
         }
         setIsSubmitting(false);
@@ -3862,7 +3864,9 @@ export const AdminBannersView = memo(function AdminBannersView({
                 <div className="flex flex-col gap-2">
                   <Button
                     className="min-h-12 w-full rounded-2xl bg-white text-zinc-950 ring-1 ring-inset ring-admin-border-strong hover:ring-current hover:bg-white"
-                    onClick={handleSubmit}
+                    onClick={(evento) =>
+                      void handleSubmit(evento.currentTarget)
+                    }
                     disabled={ocupadoComImagem || isOffline}
                   >
                     {isOffline
@@ -3999,7 +4003,26 @@ export const AdminBannersView = memo(function AdminBannersView({
         open={confirmarFimVencido}
         onOpenChange={(open) => !open && setConfirmarFimVencido(false)}
       >
-        <AlertDialogContent className="max-w-md rounded-3xl border border-admin-border bg-admin-surface">
+        <AlertDialogContent
+          onCloseAutoFocus={(evento) => {
+            evento.preventDefault();
+            const gatilho = botaoDoBannerVencido.current;
+            botaoDoBannerVencido.current = null;
+            if (
+              !gatilho ||
+              document.activeElement?.closest(
+                '[role="alertdialog"][data-state="open"]',
+              )
+            )
+              return;
+            if (gatilho.isConnected && !gatilho.disabled) {
+              gatilho.focus({ preventScroll: true });
+            } else {
+              foco.propsDoTitulo.ref.current?.focus({ preventScroll: true });
+            }
+          }}
+          className="max-w-md rounded-3xl border border-admin-border bg-admin-surface"
+        >
           <AlertDialogHeader>
             <AlertDialogTitle className="text-lg font-black uppercase tracking-tight text-white">
               Banner já terminou
@@ -4014,6 +4037,7 @@ export const AdminBannersView = memo(function AdminBannersView({
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
+                botaoDoBannerVencido.current = null;
                 fimVencidoConfirmadoRef.current = true;
                 setConfirmarFimVencido(false);
                 handleSubmit();

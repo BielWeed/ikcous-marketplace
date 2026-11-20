@@ -4965,6 +4965,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                               type="text"
                               inputMode="text"
                               data-testid="codigo-barras-variacao"
+                              aria-invalid={
+                                variantCodigoBarrasError ? true : undefined
+                              }
+                              aria-describedby={
+                                variantCodigoBarrasError
+                                  ? "variant-codigo-barras-erro"
+                                  : undefined
+                              }
                               value={variantFormData.codigoBarras}
                               onFlush={(val) =>
                                 setVariantFormData((p) => ({
@@ -5003,7 +5011,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             variação; a tela Vender lê ele pela câmera.
                           </span>
                           {variantCodigoBarrasError && (
-                            <span className="ml-1 mt-1 block text-[11px] font-bold text-red-500">
+                            <span
+                              id="variant-codigo-barras-erro"
+                              role="alert"
+                              className="ml-1 mt-1 block text-[11px] font-bold text-red-500"
+                            >
                               {variantCodigoBarrasError}
                             </span>
                           )}

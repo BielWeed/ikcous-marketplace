@@ -18,6 +18,7 @@ import {
   vi,
 } from "vitest";
 
+import { IlhaDeAtualizacao } from "@/components/pwa/IlhaDeAtualizacao";
 import { AtualizacaoAdiada } from "@/lib/atualizacao/adiamento";
 import {
   JANELA_DE_CONSULTA_MS,
@@ -122,7 +123,7 @@ function Prova(props: Props) {
     gracaDeInicializacaoMs: 0,
     ...props,
   });
-  return null;
+  return <IlhaDeAtualizacao />;
 }
 
 describe("instalador no ponto de parada", () => {
@@ -536,7 +537,7 @@ describe("instalador no ponto de parada", () => {
   // ─── a trava anti-repetição ─────────────────────────────────────────────────
 
   describe("trava de 2 tentativas por versão-alvo", () => {
-    it("a 3ª tentativa para a MESMA versão-alvo não instala e a fase volta a 'nenhuma' (desiste em silêncio)", async () => {
+    it("depois de duas falhas, avisa sem instalar pela terceira vez nem oferecer recarga", async () => {
       instalar.mockImplementation(() => {
         throw new Error("o SW não assumiu");
       });
@@ -548,7 +549,10 @@ describe("instalador no ponto de parada", () => {
 
       await navegarPara("favorites");
       expect(instalar).toHaveBeenCalledTimes(2); // a terceira NÃO aconteceu
-      expect(obterEstadoDaAtualizacao().fase).toBe("nenhuma");
+      expect(host.textContent).toContain(
+        "Atualização pendente — não foi possível concluir automaticamente",
+      );
+      expect(host.querySelector("button")).toBeNull();
       // e não volta a tentar nas próximas paradas
       await navegarPara("home");
       expect(instalar).toHaveBeenCalledTimes(2);
@@ -568,7 +572,7 @@ describe("instalador no ponto de parada", () => {
       await navegarPara("favorites", novo);
       await navegarPara("home", novo);
       expect(instalar).toHaveBeenCalledTimes(2);
-      expect(obterEstadoDaAtualizacao().fase).toBe("nenhuma");
+      expect(host.textContent).toContain("Atualização pendente");
     });
 
     it("ALTERNAR a chave (versão real, desconhecida-de, lixo do realtime) NÃO dá tentativas a mais: teto de 2 saindo da mesma origem", async () => {
@@ -605,7 +609,7 @@ describe("instalador no ponto de parada", () => {
       expect(instalar).toHaveBeenCalledTimes(3);
     });
 
-    it("trava já esgotada ANTES de montar (recarregou 2x e a versão não entrou): nem arma a espera", async () => {
+    it("trava já esgotada ao abrir: só avisa enquanto houver atualização detectada", async () => {
       local.set(
         CHAVE_DA_TRAVA_DE_ATUALIZACAO,
         JSON.stringify({ alvo: "1.5.32-sha.novo", count: 2, ultimaEm: 1 }),
@@ -613,6 +617,10 @@ describe("instalador no ponto de parada", () => {
       montar();
       await navegarPara("favorites");
       expect(instalar).not.toHaveBeenCalled();
+      expect(host.textContent).toContain("Atualização pendente");
+
+      montar({ ativo: false });
+      expect(host.textContent).toBe("");
       expect(obterEstadoDaAtualizacao().fase).toBe("nenhuma");
     });
 

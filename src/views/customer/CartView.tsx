@@ -45,7 +45,14 @@ import {
   usePresence,
 } from "framer-motion";
 import { ArrowRight, ShieldCheck, Sparkles, Truck } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type KeyboardEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import {
   AlertDialog,
@@ -941,6 +948,7 @@ function ConteudoDoCarrinho({
   // para devolver o foco e ele cairia no body. Guardamos quem estava focado ao
   // abrir (o botão "Esvaziar carrinho") e o devolvemos em `onCloseAutoFocus`.
   const focoAoEsvaziarRef = useRef<HTMLElement | null>(null);
+  const confirmouEsvaziarRef = useRef(false);
   const handleClearCart = () => {
     const ativo = document.activeElement;
     focoAoEsvaziarRef.current = ativo instanceof HTMLElement ? ativo : null;
@@ -1015,6 +1023,36 @@ function ConteudoDoCarrinho({
     },
     [cart, propOnRemove, removeFromCart],
   );
+  function navegarAbasPeloTeclado(evento: KeyboardEvent<HTMLButtonElement>) {
+    if (evento.altKey || evento.ctrlKey || evento.metaKey || evento.shiftKey)
+      return;
+    let destino: string;
+    switch (evento.key) {
+      case "Home":
+        destino = "tab-cart";
+        break;
+      case "End":
+        destino = "tab-orders";
+        break;
+      case "ArrowLeft":
+      case "ArrowRight":
+        destino =
+          evento.currentTarget.id === "tab-cart" ? "tab-orders" : "tab-cart";
+        break;
+      default:
+        return;
+    }
+    evento.preventDefault();
+    const aba =
+      evento.currentTarget.parentElement?.querySelector<HTMLButtonElement>(
+        `#${destino}`,
+      );
+    if (aba && aba !== evento.currentTarget) {
+      aba.focus();
+      aba.click();
+    }
+  }
+
   // Caça 4 (C5): a retirada na loja chega com preço 0 por natureza -- os dois
   // resumos (computador e rodapé do celular) dizem "Retirada na loja" e não
   // anunciam "frete grátis", que seria promessa que a loja pode não ter.
@@ -1065,6 +1103,8 @@ function ConteudoDoCarrinho({
             role="tab"
             aria-selected={activeTab === "cart"}
             aria-controls="painel-cart"
+            tabIndex={activeTab === "cart" ? 0 : -1}
+            onKeyDown={navegarAbasPeloTeclado}
             onClick={() => {
               haptic.light();
               setActiveTab("cart");
@@ -1085,6 +1125,8 @@ function ConteudoDoCarrinho({
             role="tab"
             aria-selected={activeTab === "orders"}
             aria-controls="painel-orders"
+            tabIndex={activeTab === "orders" ? 0 : -1}
+            onKeyDown={navegarAbasPeloTeclado}
             onClick={() => {
               haptic.light();
               setActiveTab("orders");
@@ -1890,10 +1932,16 @@ function ConteudoDoCarrinho({
           className="z-[130] sm:max-w-sm"
           onCloseAutoFocus={(evento) => {
             evento.preventDefault();
-            // Confirmou: o botão saiu junto com os itens (desconectado), e o
-            // foco não é forçado em elemento que não existe mais.
-            const botao = focoAoEsvaziarRef.current;
-            if (botao?.isConnected) botao.focus();
+            const confirmou = confirmouEsvaziarRef.current;
+            confirmouEsvaziarRef.current = false;
+            const vazio = confirmou
+              ? regiaoDoCarrinhoRef.current?.querySelector<HTMLElement>(
+                  "[data-carrinho-vazio]",
+                )
+              : null;
+            const origem = focoAoEsvaziarRef.current;
+            const destino = vazio ?? (origem?.isConnected ? origem : null);
+            destino?.focus();
           }}
         >
           <AlertDialogHeader>
@@ -1905,7 +1953,13 @@ function ConteudoDoCarrinho({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="min-h-11">Manter</AlertDialogCancel>
-            <AlertDialogAction className="min-h-11" onClick={() => clearCart()}>
+            <AlertDialogAction
+              className="min-h-11"
+              onClick={() => {
+                confirmouEsvaziarRef.current = true;
+                clearCart();
+              }}
+            >
               Esvaziar carrinho
             </AlertDialogAction>
           </AlertDialogFooter>
