@@ -9259,7 +9259,8 @@ function useGuardarReciboDoPedido(orderId: string) {
 function AcompanharPedidoSemConta({
   orderId,
   classeDoBotao,
-}: Readonly<{ orderId: string; classeDoBotao: string }>) {
+  aviso,
+}: Readonly<{ orderId: string; classeDoBotao: string; aviso?: string }>) {
   const { config } = useStore();
   const lojaTemWhatsappAgora = lojaTemWhatsapp(config.whatsappNumber);
 
@@ -9281,18 +9282,20 @@ function AcompanharPedidoSemConta({
     globalThis.open(url, "_blank", "noopener,noreferrer");
   };
 
-  if (lojaTemWhatsappAgora) {
-    return (
-      <BotaoWhatsapp onClick={handleFalarComALoja} className={classeDoBotao}>
-        Acompanhar pelo WhatsApp
-      </BotaoWhatsapp>
-    );
-  }
   return (
-    <p className="text-xs leading-relaxed text-zinc-500">
-      Guarde o número do pedido acima — é por ele que a loja localiza o seu
-      pedido.
-    </p>
+    <>
+      {(aviso || !lojaTemWhatsappAgora) && (
+        <p className="text-xs leading-relaxed text-zinc-500">
+          {aviso ??
+            "Guarde o número do pedido acima — é por ele que a loja localiza o seu pedido."}
+        </p>
+      )}
+      {lojaTemWhatsappAgora && (
+        <BotaoWhatsapp onClick={handleFalarComALoja} className={classeDoBotao}>
+          Acompanhar pelo WhatsApp
+        </BotaoWhatsapp>
+      )}
+    </>
   );
 }
 
@@ -9460,6 +9463,7 @@ function SuccessView({
           <AcompanharPedidoSemConta
             orderId={orderId}
             classeDoBotao="h-16 whitespace-normal text-[11px] font-black uppercase leading-snug tracking-[0.3em]"
+            aviso="Este pedido não pode ser acompanhado pelo site. Guarde o número para informar à loja."
           />
         )}
       </div>

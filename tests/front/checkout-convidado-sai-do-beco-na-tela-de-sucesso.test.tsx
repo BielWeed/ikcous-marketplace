@@ -298,6 +298,9 @@ describe("CheckoutView — convidado sem beco na tela de sucesso (CheckoutView-3
     // O beco: OrderSearch exige e-mail que o convidado nunca informou —
     // este botão nunca poderia achar o pedido dele.
     expect(hospedeiro.textContent).not.toContain("Ver Meus Pedidos");
+    expect(hospedeiro.textContent).toContain(
+      "Este pedido não pode ser acompanhado pelo site. Guarde o número para informar à loja.",
+    );
 
     const openSpy = vi.fn();
     vi.stubGlobal("open", openSpy);
@@ -330,7 +333,9 @@ describe("CheckoutView — convidado sem beco na tela de sucesso (CheckoutView-3
     // positiva também é cobrada: sem ela o convidado fica só com "Retornar à
     // Vitrine" e nenhuma pista de como acompanhar.
     expect(hospedeiro.textContent).toContain("ED-999");
-    expect(hospedeiro.textContent).toContain("Guarde o número do pedido acima");
+    expect(hospedeiro.textContent).toContain(
+      "Este pedido não pode ser acompanhado pelo site. Guarde o número para informar à loja.",
+    );
   });
 
   it("cliente com conta: 'Ver Meus Pedidos' continua existindo e leva para 'orders' — este caminho já funciona e não muda", async () => {
@@ -374,6 +379,9 @@ describe("CheckoutView — convidado sem beco na tela de sucesso (CheckoutView-3
       "Ver Meus Pedidos",
     );
     expect(botaoMeusPedidos).not.toBeUndefined();
+    expect(hospedeiro.textContent).not.toContain(
+      "não pode ser acompanhado pelo site",
+    );
 
     await act(async () => {
       botaoMeusPedidos!.click();
