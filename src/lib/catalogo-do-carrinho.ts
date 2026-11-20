@@ -276,7 +276,7 @@ export async function avisosDoCarrinho(
       const nome = `"${comVariacao(m.nome, item.variantNames)}"`;
       if (m.tipo === "sumiu") {
         frases.push(
-          `${nome} está indisponível e saiu do seu carrinho. Se voltar à venda, será preciso adicionar de novo.`,
+          `${nome} está indisponível e não aparece mais no seu carrinho.`,
         );
       } else if (m.tipo === "estoque") {
         frases.push(

@@ -1005,11 +1005,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             ).length;
             if (saiuSemNome === 1) {
               avisos.push(
-                "Um item do seu carrinho guardado está indisponível e saiu dele. Se voltar à venda, será preciso adicioná-lo de novo.",
+                "Um item do seu carrinho guardado está indisponível e não aparece mais nele.",
               );
             } else if (saiuSemNome > 1) {
               avisos.push(
-                `${saiuSemNome} itens do seu carrinho guardado estão indisponíveis e saíram dele. Se voltarem à venda, será preciso adicioná-los de novo.`,
+                `${saiuSemNome} itens do seu carrinho guardado estão indisponíveis e não aparecem mais nele.`,
               );
             }
           }
