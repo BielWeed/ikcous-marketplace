@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
   chamadasPainel: 0,
+  mudarStatusDoCanal: undefined as ((status: string) => void) | undefined,
   // Como o banco responde ao painel_inicio.
   modo: "ok" as "ok" | "erro" | "rejeita" | "pendura",
   ultimo: null as null | {
@@ -44,6 +45,7 @@ vi.mock("@/lib/supabase", () => ({
       const canal: Record<string, unknown> = {
         on: () => canal,
         subscribe: (status?: (status: string) => void) => {
+          h.mudarStatusDoCanal = status;
           status?.("SUBSCRIBED");
           return canal;
         },
@@ -152,6 +154,7 @@ describe("Início — releitura silenciosa que falha", () => {
     // Meio-dia em São Paulo, fixo: o "Hoje" também muda com a virada do dia.
     vi.setSystemTime(new Date("2026-10-15T15:00:00Z"));
     h.chamadasPainel = 0;
+    h.mudarStatusDoCanal = undefined;
     h.modo = "ok";
     h.ultimo = null;
     vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -175,6 +178,24 @@ describe("Início — releitura silenciosa que falha", () => {
     await abrirInicio();
     expect(selo()).toContain("Ao vivo");
     expect(selo()).not.toContain("Sem atualizar");
+  });
+
+  it("se só o canal expira, o gráfico mantém o resultado da consulta bem-sucedida", async () => {
+    await abrirInicio();
+    const semReceita = "Sem receita registrada nos últimos 14 dias.";
+    expect(selo()).toContain("Ao vivo");
+    expect(hospedeiro.textContent).toContain(semReceita);
+
+    await act(async () => {
+      h.mudarStatusDoCanal?.("TIMED_OUT");
+    });
+
+    expect(h.chamadasPainel).toBe(1);
+    expect(selo()).toContain("Sem atualizar");
+    expect(hospedeiro.textContent).toContain(semReceita);
+    expect(hospedeiro.textContent).not.toContain(
+      "Não consegui carregar as vendas dos últimos 14 dias.",
+    );
   });
 
   it.each(["erro", "rejeita", "pendura"] as const)(
