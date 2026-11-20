@@ -1474,7 +1474,7 @@ export const AdminBannersView = memo(function AdminBannersView({
 
   const schedulingConflicts = useMemo(() => {
     if (!formData.startDate && !formData.endDate) {
-      return { list: [], level: "none" };
+      return { list: [], activeCount: 0 };
     }
 
     const start = formData.startDate ? new Date(formData.startDate) : null;
@@ -1516,14 +1516,10 @@ export const AdminBannersView = memo(function AdminBannersView({
       return false;
     });
 
-    const activeCount = conflicts.length + 1;
-    let level: "none" | "low" | "medium" | "high" = "none";
-    if (activeCount === 1) level = "low";
-    else if (activeCount === 2) level = "medium";
-    else if (activeCount >= 3) level = "high";
-
-    return { list: conflicts, level };
+    const activeCount = conflicts.length + ((formData.active ?? true) ? 1 : 0);
+    return { list: conflicts, activeCount };
   }, [
+    formData.active,
     formData.startDate,
     formData.endDate,
     formData.position,
@@ -3542,11 +3538,10 @@ export const AdminBannersView = memo(function AdminBannersView({
                               </p>
                             )
                           )}
-                          {schedulingConflicts.level !== "none" && (
+                          {schedulingConflicts.activeCount > 0 && (
                             <p className="text-sm">
-                              Neste período:{" "}
-                              {schedulingConflicts.list.length + 1} banners
-                              ligados neste setor.{" "}
+                              Neste período: {schedulingConflicts.activeCount}{" "}
+                              banners ligados neste setor.{" "}
                               {schedulingConflicts.list
                                 .map((b) => b.title || "Sem título")
                                 .join(", ")}

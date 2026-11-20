@@ -299,6 +299,26 @@ describe("AdminBannersView: datas sem sentido", () => {
     });
   }
 
+  it("a programação só conta o rascunho como ligado quando a chave está ligada", async () => {
+    h.banners[0].active = false;
+    await abrirBannerNovoNoPasso3();
+    await ligarProgramacao();
+
+    const chave = document.getElementById("banner-active");
+    expect(chave).not.toBeNull();
+    expect(textoDaTela()).toContain(
+      "Neste período: 1 banners ligados neste setor.",
+    );
+
+    await act(async () => chave?.click());
+    expect(textoDaTela()).not.toContain("Neste período:");
+
+    await act(async () => chave?.click());
+    expect(textoDaTela()).toContain(
+      "Neste período: 1 banners ligados neste setor.",
+    );
+  });
+
   async function escolherDatas(inicio: Date, fim: Date) {
     await act(async () => {
       digitar(
