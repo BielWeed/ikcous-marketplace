@@ -47,10 +47,12 @@ export function PreviaDoFrete({
   config,
   nomesLigados,
   pendente,
+  promocaoNacionalSemPagamento = false,
 }: {
   readonly config: StoreConfig;
   readonly nomesLigados: readonly string[] | null;
   readonly pendente: boolean;
+  readonly promocaoNacionalSemPagamento?: boolean;
 }) {
   const [subtotal, setSubtotal] = useState(100);
   const modo = modoDaEntregaNaCidade(config);
@@ -139,28 +141,32 @@ export function PreviaDoFrete({
             icone={Truck}
             nome="Fora da sua região"
             detalhe={
-              soRetiro
-                ? "quem é de fora retira na loja"
-                : !fora
-                  ? "a loja não vende"
-                  : nomesLigados === null
-                    ? "transportadoras sem confirmar"
-                    : nomesLigados.length
-                      ? nomesLigados.join(" ou ")
-                      : "nenhuma transportadora ligada"
+              promocaoNacionalSemPagamento
+                ? "frete grátis se tiver produto marcado"
+                : soRetiro
+                  ? "quem é de fora retira na loja"
+                  : !fora
+                    ? "a loja não vende"
+                    : nomesLigados === null
+                      ? "transportadoras sem confirmar"
+                      : nomesLigados.length
+                        ? nomesLigados.join(" ou ")
+                        : "nenhuma transportadora ligada"
             }
             valor={
-              soRetiro
-                ? "Só retirada · Grátis"
-                : !fora
-                  ? "Não vende"
-                  : nomesLigados === null
-                    ? "A confirmar"
-                    : !nomesLigados.length
-                      ? "Não compra"
-                      : gratisNacional
-                        ? "Grátis"
-                        : "Na hora"
+              promocaoNacionalSemPagamento
+                ? "Não finaliza pelo app"
+                : soRetiro
+                  ? "Só retirada · Grátis"
+                  : !fora
+                    ? "Não vende"
+                    : nomesLigados === null
+                      ? "A confirmar"
+                      : !nomesLigados.length
+                        ? "Não compra"
+                        : gratisNacional
+                          ? "Grátis"
+                          : "Na hora"
             }
             nota={
               !fora || !nomesLigados?.length

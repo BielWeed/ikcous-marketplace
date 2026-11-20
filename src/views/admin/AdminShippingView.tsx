@@ -541,6 +541,8 @@ export const AdminShippingView = memo(function AdminShippingView({
   // A leitura das transportadoras JÁ chegou ao menos uma vez? Antes disso as
   // listas vazias são "ainda não sei", não "nenhuma ligada".
   const [credsLidas, setCredsLidas] = useState(false);
+  const [transportadorasEmLeitura, setTransportadorasEmLeitura] =
+    useState(false);
 
   // A seção de Transportadoras avisa a cada leitura confirmada dela (ao
   // montar e depois de cada salvar): a faixa e "Fora da cidade" passam a
@@ -693,6 +695,19 @@ export const AdminShippingView = memo(function AdminShippingView({
     pagamentoPeloAppLigado,
   });
 
+  const avisarPromocaoNacionalSemPagamento =
+    active !== false &&
+    isLoaded &&
+    !!config &&
+    !configFalhou &&
+    credsLidas &&
+    !credsErro &&
+    !transportadorasEmLeitura &&
+    formData.shippingCoverage === "national" &&
+    formDataNacional.estrategia === "por_produto" &&
+    nomesLigados.length === 0 &&
+    !pagamentoPeloAppLigado;
+
   const resumoPainelLocal = `${formData.modo === "so_retiro" ? "Só retirada na loja · qualquer cliente pode buscar" : formData.modo === "entrego_e_retiro" ? "Você entrega ou o cliente retira" : "Você entrega"}${formData.modo === "so_retiro" ? "" : cepCompleto(config?.originCep) ? ` · ${resumoDoAlcance(config?.originCep, formData.localCepRange)}` : " · até onde, depende do CEP da loja"}`;
   const resumoPainelNacional =
     formData.shippingCoverage === "local"
@@ -701,7 +716,9 @@ export const AdminShippingView = memo(function AdminShippingView({
         ? "Não deu para confirmar as transportadoras"
         : nomesLigados.length
           ? `${nomesLigados.join(" e ")} ${nomesLigados.length === 1 ? "cota" : "cotam"} o frete na hora`
-          : "Nenhuma transportadora ligada: quem é de fora não compra";
+          : avisarPromocaoNacionalSemPagamento
+            ? "A promoção pode aparecer, mas não finaliza sem pagamento pelo app"
+            : "Nenhuma transportadora ligada: quem é de fora não compra";
   const resumoGratisLocal =
     formData.preset === "desligado"
       ? "não dá"
@@ -1372,12 +1389,15 @@ export const AdminShippingView = memo(function AdminShippingView({
     faltaEndereco,
     faltaAlcance,
     confirmarTransportadoras,
-    pendencias,
+    pendencias: pendenciasDaEntrega,
   } = situacaoDaEntrega(
     configDaPrevia,
     credsErro || !credsLidas ? null : nomesLigados,
     avisarTransportadoraSemPagamento,
   );
+  const pendencias =
+    pendenciasDaEntrega +
+    Number(avisarPromocaoNacionalSemPagamento && !faltaTransportadora);
   const selo = isOffline
     ? "Sem internet"
     : confirmarTransportadoras
@@ -1455,6 +1475,9 @@ export const AdminShippingView = memo(function AdminShippingView({
                 config={configDaPrevia}
                 nomesLigados={credsErro || !credsLidas ? null : nomesLigados}
                 pendente={isFormDirty}
+                promocaoNacionalSemPagamento={
+                  avisarPromocaoNacionalSemPagamento
+                }
               />
             )}
             {pendencias > 0 && (
@@ -1496,7 +1519,19 @@ export const AdminShippingView = memo(function AdminShippingView({
                     }
                   />
                 )}
-                {faltaTransportadora && (
+                {avisarPromocaoNacionalSemPagamento && (
+                  <AvisoDaEntrega
+                    titulo="O frete grátis por produto pode aparecer fora da sua região, mas a cliente não consegue finalizar sem pagamento pelo app."
+                    detalhe="Ative o pagamento pelo app ou desative a promoção nacional."
+                    botao="Ver pagamento pelo app"
+                    onClick={
+                      onNavigate
+                        ? () => onNavigate("admin-settings")
+                        : undefined
+                    }
+                  />
+                )}
+                {faltaTransportadora && !avisarPromocaoNacionalSemPagamento && (
                   <AvisoDaEntrega
                     titulo="Ninguém de fora da sua região compra"
                     detalhe="Nenhuma transportadora está ligada. Se só vende perto, tudo bem."
@@ -1718,6 +1753,7 @@ export const AdminShippingView = memo(function AdminShippingView({
                 <TransportadorasSection
                   active={active}
                   onErroMudou={setCredsErro}
+                  onLeituraPendenteMudou={setTransportadorasEmLeitura}
                   onDirtyMudou={marcarTransportadorasPendentes}
                   onLigadosMudou={onLigadosDasTransportadorasMudou}
                   onSalvarMudou={registrarSalvarTransportadoras}
