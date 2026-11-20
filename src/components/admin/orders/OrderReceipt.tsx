@@ -42,6 +42,8 @@ interface OrderReceiptProps {
   variacoes?: Record<string, string>;
   /** Valor do estorno já confirmado pelo Mercado Pago, em reais. */
   valorEstornado?: number;
+  /** Reembolso manual conferido, em reais; null se não pôde ser conferido. */
+  valorReembolsadoManual?: number | null;
 }
 
 // O recibo e o unico documento desta tela que sai IMPRESSO e vai para a mao
@@ -65,6 +67,7 @@ export const OrderReceipt = memo(function OrderReceipt({
   storeName: storeNameProp,
   variacoes,
   valorEstornado = 0,
+  valorReembolsadoManual,
 }: OrderReceiptProps) {
   const storeName = storeNameProp ?? branding.appName;
   const totalEmCentavos = Math.max(0, Math.round(order.total * 100));
@@ -72,9 +75,17 @@ export const OrderReceipt = memo(function OrderReceipt({
     Math.round(valorEstornado * 100),
     totalEmCentavos,
   );
+  const manualEmCentavos =
+    order.status === "cancelled"
+      ? 0
+      : Math.round((valorReembolsadoManual ?? 0) * 100);
+  const reembolsoIntegralComManual =
+    manualEmCentavos > 0 &&
+    totalEmCentavos > 0 &&
+    manualEmCentavos + reembolsadoEmCentavos >= totalEmCentavos;
   const { situacao, valor } = situacaoDoPagamentoNaEntrega(order);
   const situacaoNoPapel =
-    situacao === "estornado"
+    situacao === "estornado" || reembolsoIntegralComManual
       ? "Estornado"
       : order.status === "cancelled"
         ? "Cancelado · nada a receber"
@@ -249,10 +260,22 @@ export const OrderReceipt = memo(function OrderReceipt({
               </div>
             </>
           ) : null}
+          {manualEmCentavos > 0 && (
+            <div className="flex justify-between gap-2 text-xs">
+              <span>Devolvido ao cliente (manual):</span>
+              <span className="shrink-0 whitespace-nowrap">
+                R$ {reais(manualEmCentavos / 100)}
+              </span>
+            </div>
+          )}
           <p className="mt-2 text-xs">
             Pagamento: {rotuloDaFormaDoPedido(order)}
           </p>
-          <p className="text-xs">{situacaoNoPapel}</p>
+          <p className="text-xs">
+            {situacaoNoPapel}
+            {valorReembolsadoManual === null &&
+              " · Reembolsos manuais não conferidos"}
+          </p>
         </div>
 
         <div className="mt-8 border-t border-dashed border-black pt-4 text-center">

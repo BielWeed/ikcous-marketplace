@@ -2664,6 +2664,7 @@ export const OrderDetail = memo(function OrderDetail({
       (!!onRegistrarPagamento &&
         !!order.pagamentoRecebidoEm &&
         podeRegistrarPagamento(order)),
+    order.status === "delivered" && active,
   );
 
   const handleWhatsAppDirect = () => {
@@ -2883,6 +2884,7 @@ export const OrderDetail = memo(function OrderDetail({
           storeName={storeName}
           variacoes={variacoes}
           valorEstornado={order.valorEstornado}
+          valorReembolsadoManual={leituraDeDevolucoes.valorReembolsadoManual}
         />
       )}
 
