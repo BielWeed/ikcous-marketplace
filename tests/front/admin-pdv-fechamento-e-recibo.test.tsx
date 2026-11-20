@@ -364,12 +364,12 @@ describe("FechamentoDaVenda (C3.2)", () => {
     // O título não pode afirmar "Venda salva", e também não "ainda não foi
     // registrada": a rede pode cair DEPOIS de o banco gravar (defeito 3 da
     // caçada do balcão). O aviso pede para manter a tela aberta e diz que o
-    // recibo aparece se a venda já tinha entrado.
+    // recibo pode ser recuperado se a venda entrou e não foi anulada.
     expect(hospedeiro.textContent).toContain("Mantenha esta tela aberta");
     expect(hospedeiro.textContent).not.toContain("Venda salva");
     expect(hospedeiro.textContent).not.toMatch(/n[ãa]o foi registrada/i);
     expect(hospedeiro.textContent).toContain(
-      "o recibo aparece ao tentar de novo",
+      "Se a venda já foi registrada e não foi anulada, reenviar o mesmo cupom sem limpar a tela pode recuperar o recibo.",
     );
     const botao = localizarBotaoPorTexto(
       hospedeiro,

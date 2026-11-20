@@ -23,7 +23,7 @@ const OUTRA_VENDA =
 const GENERICA =
   "Não foi possível registrar a venda agora. Confira a conexão e tente de novo; se continuar, avise o suporte.";
 const ENTRAR_DE_NOVO =
-  "Sua sessão expirou. O rascunho só volta se o navegador conseguiu guardá-lo; se não, será preciso refazer a venda. Em Pedidos, toque em “Limpar tudo” nos filtros, se aparecer, e escolha “Balcão” em “Canal da venda”. Confira se a venda já aparece antes de tentar de novo.";
+  "Sua sessão expirou. O rascunho só volta se o navegador conseguiu guardá-lo. Em Pedidos, abra “Filtros e ferramentas” e toque em “Limpar tudo”, se aparecer. Depois, toque em “Abrir filtros”, escolha “Balcão” em “Canal da venda” e toque em “Fechar”. Confira se a venda já aparece na lista. Se ainda tiver dúvida, não refaça a venda.";
 
 const INGLES_DO_POSTGRES = [
   "deadlock detected",

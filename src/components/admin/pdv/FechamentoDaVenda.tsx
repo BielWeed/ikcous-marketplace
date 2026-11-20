@@ -57,6 +57,9 @@ import {
 import { type ReactElement, useEffect, useRef, useState } from "react";
 import "./pdv.css";
 
+const AVISO_DE_RECUPERACAO_DO_RECIBO =
+  "Se a venda já foi registrada e não foi anulada, reenviar o mesmo cupom sem limpar a tela pode recuperar o recibo.";
+
 export interface PropsDoFechamentoDaVenda {
   readonly estado: EstadoDaVenda;
   readonly despachar: (acao: AcaoDaVenda) => void;
@@ -265,8 +268,7 @@ export function FechamentoDaVenda({
             </p>
             <p className="pdv-muted">
               {estado.erro}
-              {talvezTenhaEntrado &&
-                " Se a venda já tinha entrado, o recibo aparece ao tentar de novo."}
+              {talvezTenhaEntrado && ` ${AVISO_DE_RECUPERACAO_DO_RECIBO}`}
               {ultimaFalha?.precisaEntrarDeNovo &&
                 " Saia e entre de novo na conta."}
             </p>
@@ -292,8 +294,8 @@ export function FechamentoDaVenda({
             </p>
             <p className="pdv-muted">
               Sem internet agora. Mantenha esta tela aberta e registre a venda
-              quando a conexão voltar. Se você já tinha tocado em Registrar, ela
-              pode ter entrado: o recibo aparece ao tentar de novo.
+              quando a conexão voltar. Se você já tinha tocado em Registrar, a
+              venda pode ter entrado. {AVISO_DE_RECUPERACAO_DO_RECIBO}
             </p>
           </div>
         )}

@@ -1476,7 +1476,7 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
   // chave de idempotência (caso 3) faz a nova tentativa devolver o recibo.
   const NAO_FOI_REGISTRADA = /n[ãa]o foi registrada/i;
 
-  it("caso 12 — rede caiu na resposta: a tela não afirma 'não foi registrada' e diz que o recibo aparece se já entrou", async () => {
+  it("caso 12 — rede caiu na resposta: a tela não afirma 'não foi registrada' e explica quando o recibo pode ser recuperado", async () => {
     // O formato REAL do supabase-js/postgrest-js quando o fetch falha: não
     // lança, devolve `error` com `code: ""` (nunca um TypeError solto).
     const chaves: string[] = [];
@@ -1503,7 +1503,9 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
     expect(aviso.textContent).toContain(
       "Não sabemos se a venda foi registrada",
     );
-    expect(aviso.textContent).toContain("recibo");
+    expect(aviso.textContent).toContain(
+      "Se a venda já foi registrada e não foi anulada, reenviar o mesmo cupom sem limpar a tela pode recuperar o recibo.",
+    );
     expect(aviso.textContent).toContain("tente de novo");
 
     // A saída é TENTAR DE NOVO com a mesma chave — nunca "Começar uma venda

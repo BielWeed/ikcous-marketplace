@@ -371,7 +371,7 @@ describe("Balcão — cancelar a venda limpa o cupom inteiro", () => {
     await clicar("Limpar a tela da venda");
 
     expect(hospedeiro.textContent).toContain(
-      "Isso não anula uma venda já registrada. Se não tiver certeza de que a venda foi registrada, confira em Pedidos antes de refazer.",
+      "Isso não anula uma venda já registrada. Em Pedidos, abra “Filtros e ferramentas” e toque em “Limpar tudo”, se aparecer. Depois, toque em “Abrir filtros”, escolha “Balcão” em “Canal da venda” e toque em “Fechar”. Confira se a venda já aparece na lista. Se ainda tiver dúvida, não refaça a venda.",
     );
     expect(hospedeiro.textContent).not.toContain("Nada é registrado");
   });
@@ -410,7 +410,7 @@ describe("Balcão — cancelar a venda limpa o cupom inteiro", () => {
 
     await clicar("Limpar a tela da venda");
     expect(hospedeiro.textContent).toContain(
-      "Isso não anula uma venda já registrada. Se não tiver certeza de que a venda foi registrada, confira em Pedidos antes de refazer.",
+      "Isso não anula uma venda já registrada. Em Pedidos, abra “Filtros e ferramentas” e toque em “Limpar tudo”, se aparecer. Depois, toque em “Abrir filtros”, escolha “Balcão” em “Canal da venda” e toque em “Fechar”. Confira se a venda já aparece na lista. Se ainda tiver dúvida, não refaça a venda.",
     );
     expect(hospedeiro.textContent).not.toContain("Nada é registrado");
   });

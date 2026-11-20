@@ -133,9 +133,9 @@ describe("FechamentoDaVenda — 'Começar uma venda nova' pede confirmação", (
     expect(aviso).toContain(
       "O rascunho só volta se o navegador conseguiu guardá-lo",
     );
-    expect(aviso).toContain("será preciso refazer a venda");
+    expect(aviso).not.toContain("será preciso refazer a venda");
     expect(aviso).toContain(
-      "Em Pedidos, toque em “Limpar tudo” nos filtros, se aparecer, e escolha “Balcão” em “Canal da venda”. Confira se a venda já aparece antes de tentar de novo.",
+      "Em Pedidos, abra “Filtros e ferramentas” e toque em “Limpar tudo”, se aparecer. Depois, toque em “Abrir filtros”, escolha “Balcão” em “Canal da venda” e toque em “Fechar”. Confira se a venda já aparece na lista. Se ainda tiver dúvida, não refaça a venda.",
     );
     expect(aviso).toContain("Saia e entre de novo na conta.");
   });
@@ -174,7 +174,7 @@ describe("FechamentoDaVenda — 'Começar uma venda nova' pede confirmação", (
     });
 
     expect(janela()?.textContent).toContain(
-      "Ela pode já ter sido registrada. Em Pedidos, toque em “Limpar tudo” nos filtros, se aparecer, e escolha “Balcão” em “Canal da venda”. Confira se a venda já aparece antes de tentar de novo.",
+      "Ela pode já ter sido registrada. Em Pedidos, abra “Filtros e ferramentas” e toque em “Limpar tudo”, se aparecer. Depois, toque em “Abrir filtros”, escolha “Balcão” em “Canal da venda” e toque em “Fechar”. Confira se a venda já aparece na lista. Se ainda tiver dúvida, não refaça a venda.",
     );
     expect(aoLimpar).not.toHaveBeenCalled();
   });

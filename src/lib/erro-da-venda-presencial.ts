@@ -39,7 +39,7 @@ export const MENSAGEM_DE_REDE_DA_VENDA =
   "Não consegui falar com o servidor. Mantenha esta tela aberta e tente de novo quando a conexão voltar.";
 
 export const ORIENTACAO_PARA_CONFERIR_VENDA_NO_BALCAO =
-  "Em Pedidos, toque em “Limpar tudo” nos filtros, se aparecer, e escolha “Balcão” em “Canal da venda”. Confira se a venda já aparece antes de tentar de novo.";
+  "Em Pedidos, abra “Filtros e ferramentas” e toque em “Limpar tudo”, se aparecer. Depois, toque em “Abrir filtros”, escolha “Balcão” em “Canal da venda” e toque em “Fechar”. Confira se a venda já aparece na lista. Se ainda tiver dúvida, não refaça a venda.";
 
 /** O banco estourou o tempo (57014): não sabemos se a venda entrou. A tela não
  * afirma que falhou nem que gravou — manda CONFERIR e só então repetir (a
@@ -272,7 +272,7 @@ export function mensagemDaFalhaDaVenda(
   // chegou à função, nada foi gravado. Mesma saída do 42501 — entrar de novo.
   if (codigo === "PGRST301" || codigo === "PGRST302" || codigo === "PGRST303") {
     return {
-      mensagem: `Sua sessão expirou. O rascunho só volta se o navegador conseguiu guardá-lo; se não, será preciso refazer a venda. ${ORIENTACAO_PARA_CONFERIR_VENDA_NO_BALCAO}`,
+      mensagem: `Sua sessão expirou. O rascunho só volta se o navegador conseguiu guardá-lo. ${ORIENTACAO_PARA_CONFERIR_VENDA_NO_BALCAO}`,
       podeTentarDeNovo: false,
       precisaEntrarDeNovo: true,
     };

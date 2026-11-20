@@ -220,7 +220,7 @@ describe("mensagemDaFalhaDaVenda — nunca mostra o texto do banco que a casa n�
       );
       expect(falha.mensagem).toBe(MENSAGEM_DE_DEMORA_DA_VENDA);
       expect(falha.mensagem).toBe(
-        "O servidor demorou demais para responder. Em Pedidos, toque em “Limpar tudo” nos filtros, se aparecer, e escolha “Balcão” em “Canal da venda”. Confira se a venda já aparece antes de tentar de novo.",
+        "O servidor demorou demais para responder. Em Pedidos, abra “Filtros e ferramentas” e toque em “Limpar tudo”, se aparecer. Depois, toque em “Abrir filtros”, escolha “Balcão” em “Canal da venda” e toque em “Fechar”. Confira se a venda já aparece na lista. Se ainda tiver dúvida, não refaça a venda.",
       );
       expect(falha.mensagem).not.toContain("não foi registrada");
       expect(falha.mensagem).not.toContain("estoque não foi descontado");
