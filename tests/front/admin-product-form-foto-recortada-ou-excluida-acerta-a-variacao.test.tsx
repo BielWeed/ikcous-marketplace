@@ -178,7 +178,11 @@ describe("AdminProductFormView — recortar ou excluir foto acerta a variação"
   });
 
   // Produto com 2 fotos; Rosa usa a foto A, Azul usa a B, Verde não usa foto.
-  async function montar(quantidadeDeVinculos = 1, comFotoC = false) {
+  async function montar(
+    quantidadeDeVinculos = 1,
+    comFotoC = false,
+    fotos = comFotoC ? [FOTO_A, FOTO_B, FOTO_C] : [FOTO_A, FOTO_B],
+  ) {
     const produto = {
       id: "p-1",
       name: "Camiseta",
@@ -187,7 +191,7 @@ describe("AdminProductFormView — recortar ou excluir foto acerta a variação"
       stock: 10,
       sold: 0,
       category: "Geral",
-      images: comFotoC ? [FOTO_A, FOTO_B, FOTO_C] : [FOTO_A, FOTO_B],
+      images: fotos,
       freeShipping: false,
       isBestseller: false,
       isActive: true,
@@ -327,6 +331,88 @@ describe("AdminProductFormView — recortar ou excluir foto acerta a variação"
       FOTO_C,
     ]);
     expect(fotosGravadasPorVariacao()).toEqual({ v2: fotoBRecortada });
+  });
+
+  it("recorta só a segunda miniatura quando duas fotos têm a mesma URL", async () => {
+    await montar(1, false, [FOTO_A, FOTO_A, FOTO_B]);
+    await clicar('button[aria-label^="Ver foto 2 de"]');
+    await clicar('button[title="Ajustar e Cortar"]');
+    await clicar('[data-testid="confirmar-recorte"]');
+    await salvar();
+
+    expect(updateProduct.mock.calls.at(-1)?.[1].images).toEqual([
+      FOTO_A,
+      FOTO_A_RECORTADA,
+      FOTO_B,
+    ]);
+    expect(upsertVariants).not.toHaveBeenCalled();
+  });
+
+  it("o recorte segue a segunda cópia mesmo que a primeira seja excluída", async () => {
+    await montar(0, false, [FOTO_A, FOTO_A, FOTO_B]);
+    await clicar('button[aria-label^="Ver foto 2 de"]');
+    await clicar('button[title="Ajustar e Cortar"]');
+    await clicar('[data-testid="iniciar-recorte"]');
+    await clicar('button[aria-label^="Ver foto 1 de"]');
+    await clicar('button[title="Excluir"]');
+
+    expect(concluirRecorteAtrasado).toBeDefined();
+    await act(async () => {
+      concluirRecorteAtrasado?.();
+    });
+    await salvar();
+
+    expect(updateProduct.mock.calls.at(-1)?.[1].images).toEqual([
+      FOTO_A_RECORTADA,
+      FOTO_B,
+    ]);
+    expect(upsertVariants).not.toHaveBeenCalled();
+  });
+
+  it("o recorte segue a segunda cópia quando ela vira a capa", async () => {
+    await montar(1, false, [FOTO_A, FOTO_A, FOTO_B]);
+    await clicar('button[aria-label^="Ver foto 2 de"]');
+    await clicar('button[title="Ajustar e Cortar"]');
+    await clicar('[data-testid="iniciar-recorte"]');
+    await clicar('button[aria-label^="Tornar principal: foto 2 de"]');
+
+    expect(concluirRecorteAtrasado).toBeDefined();
+    await act(async () => {
+      concluirRecorteAtrasado?.();
+    });
+    await salvar();
+
+    expect(updateProduct.mock.calls.at(-1)?.[1].images).toEqual([
+      FOTO_A_RECORTADA,
+      FOTO_A,
+      FOTO_B,
+    ]);
+    expect(upsertVariants).not.toHaveBeenCalled();
+  });
+
+  it("descarta o recorte se a miniatura escolhida sair, mesmo se a URL ficar", async () => {
+    await montar(1, false, [FOTO_A, FOTO_A, FOTO_B]);
+    await clicar('button[aria-label^="Ver foto 2 de"]');
+    await clicar('button[title="Ajustar e Cortar"]');
+    await clicar('[data-testid="iniciar-recorte"]');
+    await clicar('button[title="Excluir"]');
+
+    expect(concluirRecorteAtrasado).toBeDefined();
+    await act(async () => {
+      concluirRecorteAtrasado?.();
+    });
+    await salvar();
+
+    expect(updateProduct.mock.calls.at(-1)?.[1].images).toEqual([
+      FOTO_A,
+      FOTO_B,
+    ]);
+    expect(upsertVariants).not.toHaveBeenCalled();
+    expect(uploadProductImages).not.toHaveBeenCalled();
+    expect(toast.success).not.toHaveBeenCalledWith(
+      "Imagem ajustada com sucesso!",
+      expect.anything(),
+    );
   });
 
   it("conta todas as variações da foto e Voltar preserva a foto e os vínculos", async () => {
