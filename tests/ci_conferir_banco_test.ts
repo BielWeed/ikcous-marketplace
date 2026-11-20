@@ -15417,10 +15417,10 @@ Deno.test(`${NOME_44M} — no menu, UM SELECT so leitura de rol aberto, filtro e
       const grafico = await Deno.readTextFile(
         `${RAIZ}/src/components/admin/dashboard/OperationalPerformanceChart.tsx`,
       );
-      assertStringIncludes(
-        grafico,
-        'if (timeframe === "30") return revenueHistory.slice(-30);',
-      );
+      // 30 dias: em Vendas, os 30 dias fechados (sem hoje); no modo de estoque, os 30 ultimos
+      assertStringIncludes(grafico, 'if (timeframe === "30") {');
+      assertStringIncludes(grafico, "? diasFechados");
+      assertStringIncludes(grafico, ": revenueHistory.slice(-DIAS_DA_JANELA);");
       assertStringIncludes(
         grafico,
         'if (timeframe === "90") return revenueHistory.slice(-90);',
