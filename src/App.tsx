@@ -921,6 +921,10 @@ const AppContent = () => {
   }, [checkoutRetomadaId]);
 
   const [searchQuery, setSearchQuery] = useState("");
+  const searchQueryRef = useRef(searchQuery);
+  useLayoutEffect(() => {
+    searchQueryRef.current = searchQuery;
+  }, [searchQuery]);
   const [pedidoTodasCategorias, setPedidoTodasCategorias] = useState(0);
   // Categoria, ordem e faixa de preço da tela /search: ela é desmontada ao abrir
   // um produto, então os filtros moram aqui (como os da Home) e voltam com a
@@ -1358,6 +1362,26 @@ const AppContent = () => {
           } catch (e) {
             console.warn("[App] Failed to skip active transition:", e);
           }
+        }
+
+        // Guarda na entrada que vai ficar para trás, sem mudar sua URL nem
+        // o caminho de quem abre uma busca nova pelo app.
+        if (
+          fromView === "search" &&
+          /^\/search\/?$/i.test(globalThis.location.pathname) &&
+          !opts?.substituirEntrada
+        ) {
+          globalThis.history.replaceState(
+            {
+              ...globalThis.history.state,
+              busca: {
+                termo: searchQueryRef.current,
+                filtros: filtrosDaBuscaRef.current,
+                quantidade: quantidadeDaBuscaRef.current,
+              },
+            },
+            "",
+          );
         }
 
         if (isTabToTabAdmin) {
@@ -2521,6 +2545,21 @@ const AppContent = () => {
           return;
         }
 
+        if (origem === "popstate" && targetView === "search") {
+          const busca = globalThis.history.state?.busca as
+            | {
+                termo: string;
+                filtros: FiltrosDaBusca | null;
+                quantidade: QuantidadeDaBusca | null;
+              }
+            | undefined;
+          if (busca) {
+            setSearchQuery(busca.termo);
+            filtrosDaBuscaRef.current = busca.filtros;
+            quantidadeDaBuscaRef.current = busca.quantidade;
+          }
+        }
+
         const isCartOrdersTransition =
           (currentViewRef.current === "cart" && targetView === "orders") ||
           (currentViewRef.current === "orders" && targetView === "cart");
@@ -2790,7 +2829,8 @@ const AppContent = () => {
       currentView !== "product-detail"
     ) {
       setSearchQuery("");
-      // Saiu da busca de propósito: os filtros vão junto com o termo.
+      // Limpa a busca corrente. Uma entrada anterior ainda pode restaurar
+      // seu próprio termo e filtros pelo Voltar do aparelho.
       filtrosDaBuscaRef.current = null;
       quantidadeDaBuscaRef.current = null;
     }
