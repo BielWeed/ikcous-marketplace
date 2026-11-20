@@ -203,6 +203,19 @@ describe("ProfileView — cartão Pedidos em Andamento fala a verdade", () => {
     expect(hospedeiro.textContent).toContain("Retomar pagamento");
   });
 
+  it.each(["delivered", "cancelled"] as const)(
+    "não diz que mostra dados salvos quando só há um pedido %s",
+    async (status) => {
+      erroDePedidos = "Falha na consulta";
+      await renderizar([pedido({ status })]);
+
+      expect(hospedeiro.textContent).not.toContain(
+        "Mostrando o que já tínhamos",
+      );
+      expect(hospedeiro.textContent).not.toContain("Pedidos em andamento");
+    },
+  );
+
   it("detalhes e retomada identificam cada um dos dois pedidos", async () => {
     const pedidos = [
       pedido({

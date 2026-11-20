@@ -42,10 +42,7 @@ export function SerieDe14Dias({
   const [tabelaAberta, setTabelaAberta] = useState(false);
   const tabelaId = useId();
   const serieCompleta = completarSerieDe14Dias(serie);
-  const semReceita =
-    !carregando &&
-    !falhou &&
-    serieCompleta.every((ponto) => ponto.receita === 0);
+  const semReceita = serieCompleta.every((ponto) => ponto.receita === 0);
   const total = serieCompleta.reduce((soma, ponto) => soma + ponto.receita, 0);
   const maximo = serieCompleta.reduce(
     (maior, ponto) => Math.max(maior, ponto.receita),
@@ -75,7 +72,7 @@ export function SerieDe14Dias({
   return (
     <section
       aria-labelledby="inicio-serie-titulo"
-      aria-busy={carregando && serieCompleta.length === 0}
+      aria-busy={carregando && semReceita}
       className="min-w-0 border-t border-admin-border pt-3"
     >
       <h3
@@ -85,13 +82,16 @@ export function SerieDe14Dias({
         Últimos 14 dias
         <span className="sr-only"> · vendas pagas por dia</span>
       </h3>
-      {carregando && serieCompleta.length === 0 ? (
-        <div>
-          <div className="premium-shimmer h-24 rounded-xl" aria-hidden="true" />
-          <p className="mt-3 text-sm text-zinc-400">Carregando as vendas…</p>
-        </div>
-      ) : serieCompleta.length === 0 || semReceita ? (
-        falhou ? (
+      {semReceita ? (
+        carregando ? (
+          <div>
+            <div
+              className="premium-shimmer h-24 rounded-xl"
+              aria-hidden="true"
+            />
+            <p className="mt-3 text-sm text-zinc-400">Carregando as vendas…</p>
+          </div>
+        ) : falhou ? (
           <FalhaDoInicio onTentarDeNovo={onTentarDeNovo}>
             <p>Não consegui carregar as vendas dos últimos 14 dias.</p>
             <p aria-live="polite">—</p>

@@ -683,7 +683,7 @@ export function ProfileView({
           </motion.section>
         )}
 
-        {ordersLoadError && orders.length > 0 && (
+        {ordersLoadError && activeOrders.length > 0 && (
           <p
             role="status"
             className="text-sm text-muted-foreground lg:col-start-2 lg:min-w-0"

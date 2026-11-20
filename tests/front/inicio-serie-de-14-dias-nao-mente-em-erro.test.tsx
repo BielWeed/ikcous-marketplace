@@ -26,7 +26,10 @@ vi.mock("@/lib/supabase", () => ({
     channel: () => {
       const canal: Record<string, unknown> = {
         on: () => canal,
-        subscribe: () => canal,
+        subscribe: (status: (status: string) => void) => {
+          status("SUBSCRIBED");
+          return canal;
+        },
       };
       return canal;
     },
@@ -99,6 +102,18 @@ describe("SerieDe14Dias — a peça sozinha", () => {
       raiz.render(<SerieDe14Dias serie={[]} carregando={false} falhou />),
     );
     expect(hospedeiro.querySelector("p[aria-live]")?.textContent).toBe("—");
+  });
+
+  it("com falha e uma série zerada em mãos, mostra o aviso em vez do gráfico de zeros", async () => {
+    const serie = [{ dia: "2026-10-14", receita: 0 }];
+    await act(async () =>
+      raiz.render(<SerieDe14Dias serie={serie} carregando={false} falhou />),
+    );
+    expect(hospedeiro.textContent).toContain(FALHOU);
+    expect(hospedeiro.textContent).not.toContain(SEM_VENDAS);
+    expect(
+      hospedeiro.querySelector('[data-testid="serie-14d-barras"]'),
+    ).toBeNull();
   });
 
   it("mostra o estado sem receita quando todos os 14 dias estão zerados", async () => {

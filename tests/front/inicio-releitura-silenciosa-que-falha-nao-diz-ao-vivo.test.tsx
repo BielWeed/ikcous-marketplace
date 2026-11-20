@@ -211,16 +211,23 @@ describe("Início — releitura silenciosa que falha", () => {
     expect(h.ultimo?.desatualizado).toBe(true); // mas o selo é avisado
   });
 
-  it("uma releitura que dá certo depois volta o selo para 'Ao vivo'", async () => {
+  it("uma releitura bem-sucedida restaura o selo e confirma de novo que não há receita", async () => {
+    const semReceita = "Sem receita registrada nos últimos 14 dias.";
     await abrirInicio();
+    expect(hospedeiro.textContent).toContain(semReceita);
     h.modo = "erro";
     await voltarAoApp();
     expect(selo()).toContain("Sem atualizar");
+    expect(hospedeiro.textContent).not.toContain(semReceita);
+    expect(hospedeiro.textContent).toContain(
+      "Não consegui carregar as vendas dos últimos 14 dias.",
+    );
 
     h.modo = "ok";
     await voltarAoApp();
 
     expect(h.chamadasPainel).toBe(3);
+    expect(hospedeiro.textContent).toContain(semReceita);
     expect(selo()).toContain("Ao vivo");
     expect(selo()).not.toContain("Sem atualizar");
   });

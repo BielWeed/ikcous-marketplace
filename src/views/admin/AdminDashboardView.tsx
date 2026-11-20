@@ -445,8 +445,10 @@ export const AdminDashboardView = memo(function AdminDashboardView({
                     <LocalErrorBoundary>
                       <SerieDe14Dias
                         serie={painel?.serie14d ?? []}
-                        carregando={semNumeros}
-                        falhou={erro !== null}
+                        carregando={
+                          carregando || (!painel && erro === null && !isOffline)
+                        }
+                        falhou={erro !== null || desatualizado || isOffline}
                         onTentarDeNovo={() => void atualizar()}
                       />
                     </LocalErrorBoundary>
