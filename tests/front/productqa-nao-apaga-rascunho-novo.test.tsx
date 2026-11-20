@@ -163,8 +163,9 @@ describe("ProductQA — conclusão pertence ao rascunho enviado", () => {
     digitar("qa-new-question", "  Minha dúvida  ");
     const contador = hospedeiro.querySelector('[aria-live="polite"]');
     expect(contador?.textContent).toContain("16/500");
-    expect(campo("qa-new-question").getAttribute("aria-describedby")).toBe(
-      contador?.id,
+    // O campo também aponta para a prévia do nome público (qa-public-name).
+    expect(campo("qa-new-question").getAttribute("aria-describedby")).toContain(
+      contador?.id ?? "sem-contador",
     );
     clicar("Enviar pergunta");
     expect(addQuestion).toHaveBeenCalledWith({

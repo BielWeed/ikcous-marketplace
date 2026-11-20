@@ -470,11 +470,11 @@ describe("3. iniciais do avatar", () => {
     createdAt: new Date(0).toISOString(),
   });
 
-  it("ReviewCard: nome só com espaços cai no 'U'", async () => {
+  it("ReviewCard: nome só com espaços aparece como 'Cliente' e a inicial é 'C'", async () => {
     const { ReviewCard } = await import("@/components/ui/custom/ReviewCard");
     await montar(<ReviewCard review={review("   ")} />);
     const fallback = hospedeiro.querySelector(".select-none.font-bold");
-    expect(fallback?.textContent).toBe("U");
+    expect(fallback?.textContent).toBe("C");
   });
 
   it("ReviewCard: emoji no começo não é partido ao meio", async () => {
@@ -484,7 +484,7 @@ describe("3. iniciais do avatar", () => {
     expect(fallback?.textContent).toBe("😀A");
   });
 
-  it("ProductQA: autor de pergunta com nome em branco cai no 'U'", async () => {
+  it("ProductQA: autor de pergunta com nome em branco aparece como 'Cliente' e a inicial é 'C'", async () => {
     perguntas = [
       {
         id: "q1",
@@ -500,15 +500,15 @@ describe("3. iniciais do avatar", () => {
     const iniciais = Array.from(
       hospedeiro.querySelectorAll(".select-none.font-bold"),
     ).map((e) => e.textContent);
-    // [0] = avatar do compositor (e-mail "cliente@teste.com" -> "C"), [1] = autor
-    expect(iniciais).toContain("U");
+    // O autor com nome em branco vira "Cliente" (nomePublicoDe): inicial "C".
+    expect(iniciais).toContain("C");
     expect(iniciais.every((i) => i !== "")).toBe(true);
   });
 
-  it("UserProfileView: nome só com espaços cai no 'U'", async () => {
+  it("UserProfileView: nome público só com espaços cai no 'U'", async () => {
     perfilPublico = {
       id: "user-alvo",
-      full_name: "   ",
+      nome_publico: "   ",
       avatar_url: null,
       created_at: new Date().toISOString(),
       cover_url: null,
