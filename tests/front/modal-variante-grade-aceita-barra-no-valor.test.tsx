@@ -133,8 +133,8 @@ describe("ModalVarianteGrade — barra dentro do valor", () => {
       // Redigitar o valor usado seleciona o chip, sem criar outro.
       await adicionarValor(0, valor);
       await tocar(botaoDoAtributo(1, "Preto"));
-      await tocar(botao("Gerar grade"));
-      expect(h.info).toHaveBeenCalledWith(
+      expect(botao("Gerar grade").disabled).toBe(true);
+      expect(document.body.textContent).toContain(
         "Essas combinações já existem — nada a criar.",
       );
       expect(h.efetivar).toHaveBeenCalledTimes(1);

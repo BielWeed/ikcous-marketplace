@@ -359,12 +359,11 @@ describe("AdminProductFormView — completar a grade e reaproveitar valores", ()
       clicarChipObrigatorio("P");
     });
 
-    await act(async () => {
-      clicarObrigatorio(BOTAO_GERAR_GRADE);
-    });
-
     // "Branca / P" já existe (mesmo inativa) — nada a criar, nada reativado.
-    expect(toastInfo).toHaveBeenCalledWith(
+    expect(botaoPorTexto(document.body, BOTAO_GERAR_GRADE)?.disabled).toBe(
+      true,
+    );
+    expect(document.body.textContent).toContain(
       "Essas combinações já existem — nada a criar.",
     );
     expect(linhasDaGrade()).toEqual([]);

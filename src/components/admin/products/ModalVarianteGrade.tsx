@@ -599,6 +599,7 @@ export function ModalVarianteGrade({
     !faltaEscolher &&
     !nomeRepetido &&
     variantesExistentes.length + novas > MAX_LINHAS_DA_GRADE;
+  const todasJaExistem = !faltaEscolher && !nomeRepetido && novas === 0;
   const palavraDoTotal = (n: number) =>
     varios
       ? n === 1
@@ -840,6 +841,11 @@ export function ModalVarianteGrade({
                           : `${contagemComSubstantivo(porAtributo.at(0) ?? 0, grupos.at(0)?.nome ?? "")} `}
                         = {novas} {palavraDoTotal(novas)}
                       </p>
+                      {todasJaExistem && (
+                        <p className="text-sm text-zinc-300">
+                          Essas combinações já existem — nada a criar.
+                        </p>
+                      )}
                       {passouDoLimite && (
                         <p className="text-sm text-red-300">
                           {variantesExistentes.length > 0
@@ -847,11 +853,13 @@ export function ModalVarianteGrade({
                             : `Passou do limite de ${MAX_LINHAS_DA_GRADE} combinações: tire alguma opção.`}
                         </p>
                       )}
-                      <p className="text-xs leading-relaxed text-zinc-400">
-                        Cada {varios ? "combinação" : "opção"} terá o seu
-                        próprio estoque. No próximo passo você coloca a
-                        quantidade de cada uma.
-                      </p>
+                      {!todasJaExistem && (
+                        <p className="text-xs leading-relaxed text-zinc-400">
+                          Cada {varios ? "combinação" : "opção"} terá o seu
+                          próprio estoque. No próximo passo você coloca a
+                          quantidade de cada uma.
+                        </p>
+                      )}
                     </>
                   )}
                 </div>
@@ -911,7 +919,8 @@ export function ModalVarianteGrade({
                 <button
                   type="button"
                   onClick={gerar}
-                  className="min-h-14 flex-[2] rounded-2xl bg-gradient-to-b from-[#f8d658] to-[#e3ac16] p-3 text-sm font-bold text-[#211a07]"
+                  disabled={todasJaExistem}
+                  className="min-h-14 flex-[2] rounded-2xl bg-gradient-to-b from-[#f8d658] to-[#e3ac16] p-3 text-sm font-bold text-[#211a07] disabled:opacity-50"
                 >
                   {rotuloDoGerar}
                 </button>
