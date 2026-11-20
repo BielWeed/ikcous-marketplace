@@ -99,6 +99,7 @@ import { ehAnimada } from "@/lib/redimensiona-imagem";
 import { rotuloDaVariacao } from "@/lib/rotulo-da-variacao";
 import { textoVariacoesNaoExcluidas } from "@/lib/texto-variacoes-nao-excluidas";
 import { cn, formatCurrency } from "@/lib/utils";
+import { gerarUuidV4 } from "@/lib/uuid-v4";
 import type { Product, ProductVariant, View } from "@/types";
 import {
   camposQueMudaram,
@@ -3884,7 +3885,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             ? normalizarCodigoBarras(v.codigoBarras)
             : undefined,
         }));
-        idDoProdutoNovoRef.current ??= crypto.randomUUID();
+        idDoProdutoNovoRef.current ??= gerarUuidV4();
         const criado = await addProduct(
           {
             ...productData,

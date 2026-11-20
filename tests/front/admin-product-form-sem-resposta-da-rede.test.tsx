@@ -264,7 +264,7 @@ describe("AdminProductFormView — rede sem resposta", () => {
     expect(JSON.parse(armazem.get(CHAVE_NOVO)!).name).toBe("Produto Teste");
   });
 
-  it("reenvia o mesmo ID após o prazo e abre a edição da ficha recuperada", async () => {
+  async function reenviarDepoisDoPrazo() {
     addProduct
       .mockImplementationOnce(
         () =>
@@ -295,6 +295,11 @@ describe("AdminProductFormView — rede sem resposta", () => {
       await vi.advanceTimersByTimeAsync(300);
     });
     await act(async () => botaoDaBarra("Publicar")!.click());
+    expect(addProduct).toHaveBeenCalledTimes(1);
+    const id = addProduct.mock.calls[0][1]?.idDoFormulario;
+    expect(id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
     await passar(PRAZO_DE_GRAVAR_O_PRODUTO_MS);
     expect(botaoDaBarra("Publicar")!.disabled).toBe(false);
 
@@ -305,10 +310,6 @@ describe("AdminProductFormView — rede sem resposta", () => {
     await act(async () => botaoDaBarra("Publicar")!.click());
 
     expect(addProduct).toHaveBeenCalledTimes(2);
-    const id = addProduct.mock.calls[0][1]?.idDoFormulario;
-    expect(id).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
-    );
     expect(addProduct.mock.calls[1][1]?.idDoFormulario).toBe(id);
     expect(onNavigate).toHaveBeenCalledExactlyOnceWith(
       "admin-product-form",
@@ -324,6 +325,20 @@ describe("AdminProductFormView — rede sem resposta", () => {
     // A navegação ainda não desmontou o formulário neste teste.
     await act(async () => botaoDaBarra("Publicar")?.click());
     expect(addProduct).toHaveBeenCalledTimes(2);
+  }
+
+  it(
+    "reenvia o mesmo ID após o prazo e abre a edição da ficha recuperada",
+    reenviarDepoisDoPrazo,
+  );
+
+  it("sem randomUUID, Publicar envia UUID v4 e o reenvio usa o mesmo ID", async () => {
+    vi.spyOn(globalThis.crypto, "randomUUID");
+    Object.defineProperty(globalThis.crypto, "randomUUID", {
+      configurable: true,
+      value: undefined,
+    });
+    await reenviarDepoisDoPrazo();
   });
 
   it("Salvar a edição sem resposta solta o botão e mantém o rascunho da edição", async () => {
