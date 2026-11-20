@@ -253,6 +253,8 @@ export function ContaFolha({
         <Campo id="fin-conta-nome" rotulo="Nome" erro={erros.nome}>
           <LocalBufferedInput
             id="fin-conta-nome"
+            aria-invalid={erros.nome ? true : undefined}
+            aria-describedby={erros.nome ? "fin-conta-nome-erro" : undefined}
             onKeyDown={(e) => {
               if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
               e.preventDefault();
