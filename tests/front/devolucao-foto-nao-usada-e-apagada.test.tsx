@@ -175,6 +175,14 @@ async function ateARevisaoComFoto() {
 }
 
 describe("SolicitarDevolucaoSheet — foto enviada e não usada é apagada", () => {
+  it("enquanto sobe uma única foto, o botão mostra o progresso no singular", async () => {
+    enviarFoto.mockReturnValue(new Promise(() => {}));
+    await ateARevisaoComFoto();
+    await clicar(botao("Confirmar devolução"));
+
+    expect(botao("Enviando foto (1 de 1)…")?.disabled).toBe(true);
+  });
+
   it("recusa do servidor e a folha fecha: a foto que subiu é apagada", async () => {
     solicitar.mockResolvedValue({
       ok: false,

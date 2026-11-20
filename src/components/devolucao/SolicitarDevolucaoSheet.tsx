@@ -603,7 +603,9 @@ function FluxoDaDevolucao({
           caminhos.push(foto.caminho);
           continue;
         }
-        setProgresso(`Enviando fotos (${indice + 1} de ${fotos.length})…`);
+        setProgresso(
+          `Enviando ${fotos.length === 1 ? "foto" : "fotos"} (${indice + 1} de ${fotos.length})…`,
+        );
         const envio = await enviarFoto(foto.arquivo, userId);
         if (!envio.ok) {
           setErro(envio.erro);
