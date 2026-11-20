@@ -544,7 +544,7 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
       '[data-slot="alert-dialog-description"]',
     )?.textContent;
     expect(descricao).toBe(
-      "O pagamento deste pedido foi estornado. Se avançar, o pedido segue sem esse pagamento.",
+      "O pagamento deste pedido foi estornado. Se avançar, o pedido segue sem esse pagamento. Depois de finalizado, não dá mais para cancelar e devolver ao estoque.",
     );
     expect(onStatusChange).not.toHaveBeenCalled();
 

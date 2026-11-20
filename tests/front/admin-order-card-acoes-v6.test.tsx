@@ -243,7 +243,7 @@ it.each(["aguardando", "recusado", "estornado"] as const)(
     expect(avancar).not.toHaveBeenCalled();
     if (paymentStatus === "estornado") {
       expect(document.body.textContent).toContain(
-        "O pagamento deste pedido foi estornado. Se avançar, o pedido segue sem esse pagamento.",
+        "O pagamento deste pedido foi estornado. Se avançar, o pedido segue sem esse pagamento. Depois de finalizado, não dá mais para cancelar e devolver ao estoque.",
       );
       expect(document.body.textContent).not.toContain(
         "O dinheiro deste pedido não entrou.",
