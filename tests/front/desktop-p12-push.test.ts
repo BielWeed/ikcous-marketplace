@@ -30,14 +30,15 @@ describe("P12 — campanhas push no computador", () => {
     // servidor. O aviso fixo de permissão negada acrescenta 4 className;
     // as classes que já existiam continuam idênticas às da base.
     // Nova mudança em texto, handler ou classe móvel continua reprovando.
-    // Os avisos de push agora descrevem o aceite, não a chegada ao aparelho.
+    // Os avisos de push descrevem o aceite, não a chegada ao aparelho.
+    // A continuação parcial acrescenta o anúncio e o botão, com classes da tela.
     const semComputador = fonte
       .replace(/\s+\b(?:lg|xl|2xl):[^\s"'\x60]+/g, "")
       .replace(/\s+/g, " ")
       .trim();
-    expect(fonte.match(/\bclassName=/g)).toHaveLength(206);
+    expect(fonte.match(/\bclassName=/g)).toHaveLength(208);
     expect(createHash("sha256").update(semComputador).digest("hex")).toBe(
-      "a03ef55df526b15c8c3b6d5545a42ef9dab79a797a35b7c854f60f9173053c72",
+      "28b5a61e9e5caf52921daf8b2ee01f6adad592f4896cf215a2679f909c809f26",
     );
   });
 

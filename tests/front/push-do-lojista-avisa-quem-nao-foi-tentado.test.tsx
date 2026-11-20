@@ -6,8 +6,8 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { confirmarEnvioSePerguntar } from "./confirma-envio-para-todos";
 
-const { invokeSendPush, inserts, ajustarLog, recordAction } = vi.hoisted(
-  () => ({
+const { invokeSendPush, inserts, ajustarLog, recordAction, publico } =
+  vi.hoisted(() => ({
     invokeSendPush: vi.fn(),
     inserts: {
       pushLog: [] as Record<string, unknown>[],
@@ -15,8 +15,8 @@ const { invokeSendPush, inserts, ajustarLog, recordAction } = vi.hoisted(
     },
     ajustarLog: vi.fn(),
     recordAction: vi.fn(),
-  }),
-);
+    publico: { total: 1 },
+  }));
 
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({ user: { id: "admin-1" } }),
@@ -73,7 +73,9 @@ vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: (tabela: string) => {
       if (tabela === "push_subscriptions") {
-        return { select: () => Promise.resolve({ count: 1, error: null }) };
+        return {
+          select: () => Promise.resolve({ count: publico.total, error: null }),
+        };
       }
       if (tabela === "push_notifications_log") {
         return {
@@ -122,15 +124,13 @@ vi.mock("@/lib/supabase", () => ({
           Promise.resolve({
             data:
               nome === "get_segmented_push_count"
-                ? 1
-                : [
-                    {
-                      user_id: "cliente-1",
-                      endpoint: "https://push.example/1",
-                      p256dh: "p1",
-                      auth: "a1",
-                    },
-                  ],
+                ? publico.total
+                : Array.from({ length: publico.total }, (_, i) => ({
+                    user_id: `cliente-${i + 1}`,
+                    endpoint: `https://push.example/${i + 1}`,
+                    p256dh: `p${i + 1}`,
+                    auth: `a${i + 1}`,
+                  })),
             error: null,
           }),
         null,
@@ -162,9 +162,10 @@ describe("Avisar clientes — destinatários não tentados", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    publico.total = 1;
     inserts.pushLog = [];
     inserts.notificacoes = [];
-    invokeSendPush.mockResolvedValue({
+    invokeSendPush.mockReset().mockResolvedValue({
       data: { enviados: 1, falharam: 0, falhas: [] },
       error: null,
     });
@@ -294,6 +295,70 @@ describe("Avisar clientes — destinatários não tentados", () => {
       },
     );
   }
+
+  const botaoDeContinuar = () =>
+    [...hospedeiro.querySelectorAll("button")].find((botao) =>
+      botao.textContent?.includes("Continuar para os"),
+    );
+
+  it("continua com a mensagem original só para os aparelhos que não foram tentados", async () => {
+    publico.total = 4;
+    invokeSendPush
+      .mockResolvedValueOnce({
+        data: { enviados: 1, falharam: 1, naoTentados: 2 },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: { enviados: 2, falharam: 0, naoTentados: 0 },
+        error: null,
+      });
+    await prepararCampanha();
+    expect(botaoDeContinuar()).toBeUndefined();
+    await enviar();
+
+    const continuar = botaoDeContinuar();
+    expect(continuar?.textContent).toBe("Continuar para os 2 não tentados");
+    await act(async () => {
+      digitar(campoTitulo(), "Outro rascunho");
+      continuar?.click();
+      continuar?.click();
+    });
+
+    expect(invokeSendPush).toHaveBeenCalledTimes(2);
+    expect(invokeSendPush).toHaveBeenLastCalledWith("send-push", {
+      body: {
+        title: TITULO,
+        body: MENSAGEM,
+        url: CAMINHO,
+        tokens: [
+          {
+            endpoint: "https://push.example/3",
+            keys: { p256dh: "p3", auth: "a3" },
+          },
+          {
+            endpoint: "https://push.example/4",
+            keys: { p256dh: "p4", auth: "a4" },
+          },
+        ],
+      },
+    });
+    expect(inserts.notificacoes).toHaveLength(1);
+    expect(inserts.pushLog).toHaveLength(1);
+    expect(ajustarLog).toHaveBeenLastCalledWith({ recipient_count: 3 });
+    expect(campoTitulo().value).toBe("Outro rascunho");
+    expect(botaoDeContinuar()).toBeUndefined();
+  });
+
+  it("não oferece continuar quando todos os aparelhos já foram tentados", async () => {
+    publico.total = 2;
+    invokeSendPush.mockResolvedValueOnce({
+      data: { enviados: 1, falharam: 1, naoTentados: 0 },
+      error: null,
+    });
+    await prepararCampanha();
+    await enviar();
+    expect(botaoDeContinuar()).toBeUndefined();
+  });
 
   it.each([
     {
