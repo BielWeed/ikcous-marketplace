@@ -42,8 +42,9 @@ import type { Order } from "@/types";
  *   então isto é defesa: o servidor filtra por `returned` na lista, e as
  *   contagens têm de continuar iguais no dia em que o status aparecer.
  *
- *   3. Dinheiro reconhecido (PEDIDO CANCELADO NÃO ENTRA NO TOTAL GASTO):
- *   o total só soma pedidos que contam (regra 1) E com cobrança confirmada.
+ *   3. Dinheiro reconhecido: os IDs vêm do banco, pela mesma base de
+ *   vendas do CRM (inclusive a exclusão de reembolso integral manual).
+ *   A regra por status abaixo só é usada com um banco anterior à 20261412000000.
  *   A migration `20260823000000` (`ltv_do_cliente_conta_so_dinheiro_reconhecido`)
  *   trouxe o filtro de cobrança; a `20261021000000`
  *   (`receita_conta_so_dinheiro_que_entrou`) mudou a lista final: contam
@@ -154,14 +155,17 @@ export interface ResumoFichaCliente {
 export function calcularResumoFicha(
   orders: Order[],
   balcaoDoMesmoWhatsapp: BalcaoDoMesmoWhatsapp = SEM_BALCAO,
+  idsPagosDaConta: ReadonlySet<string> | null = null,
 ): ResumoFichaCliente {
   const balcao = lerBalcaoDoMesmoWhatsapp(balcaoDoMesmoWhatsapp);
   const pedidosQueContam = orders.filter(
     (o) => o.status !== "cancelled" && (o.status as string) !== "returned",
   );
 
-  const pedidosPagos = pedidosQueContam.filter((o) =>
-    DINHEIRO_RECONHECIDO.includes(o.paymentStatus ?? ""),
+  const pedidosPagos = pedidosQueContam.filter(
+    (o) =>
+      idsPagosDaConta?.has(o.id) ??
+      DINHEIRO_RECONHECIDO.includes(o.paymentStatus ?? ""),
   );
 
   const totalDaConta = pedidosPagos.reduce((sum, o) => sum + o.total, 0);

@@ -118,6 +118,8 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [idsPagosDaConta, setIdsPagosDaConta] =
+    useState<ReadonlySet<string> | null>(null);
   // Vendas de balcão (sem conta) com o mesmo WhatsApp, que o CRM atribui a esta pessoa
   // (campo `balcao_mesmo_whatsapp`, 20261403000000). Zero quando o banco é antigo.
   const [balcao, setBalcao] = useState<BalcaoDoMesmoWhatsapp>(
@@ -282,6 +284,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
         setIdCarregado(null);
         setProfile(null);
         setOrders([]);
+        setIdsPagosDaConta(null);
         setBalcao(lerBalcaoDoMesmoWhatsapp(null));
         setAddresses([]);
         setCartItems([]);
@@ -312,6 +315,14 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
         }
         setProfile(payload.profile as Profile);
         setOrders(payload.orders?.map(mapOrderFromDB) || []);
+        const idsPagos: unknown = payload.pedidos_pagos_da_conta;
+        setIdsPagosDaConta(
+          Array.isArray(idsPagos)
+            ? new Set(
+                idsPagos.filter((id): id is string => typeof id === "string"),
+              )
+            : null,
+        );
         setBalcao(lerBalcaoDoMesmoWhatsapp(payload.balcao_mesmo_whatsapp));
         setAddresses(payload.addresses || []);
 
@@ -669,7 +680,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
     pessoa) soma no total, nos pedidos e no valor médio, igual à lista de
     Clientes e ao CRM; só a ABA de pedidos continua com os pedidos da conta.
   */
-  const resumo = calcularResumoFicha(orders, balcao);
+  const resumo = calcularResumoFicha(orders, balcao, idsPagosDaConta);
   const { pedidosDescartados } = resumo;
   // Número sem DDD+telefone (menos de 10 dígitos) não abre conversa: o botão
   // "Contato Direto" fica desabilitado em vez de abrir um link quebrado.

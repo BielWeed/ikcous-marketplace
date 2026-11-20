@@ -3282,6 +3282,12 @@ const ROL_DA_168 = [
   "crm__vendas: corpo exato (md5)",
   "crm__vendas: assinatura e atributos conhecidos",
   "crm__vendas: sem EXECUTE para PUBLIC, anon ou authenticated",
+  "get_admin_customers_paged: corpo exato (md5)",
+  "get_admin_customers_paged: assinatura e atributos conhecidos",
+  "get_admin_customers_paged: EXECUTE permitido para authenticated e service_role, sem PUBLIC ou anon",
+  "get_admin_user_detail: corpo exato (md5)",
+  "get_admin_user_detail: assinatura e atributos conhecidos",
+  "get_admin_user_detail: EXECUTE permitido para authenticated e service_role, sem PUBLIC ou anon",
 ];
 const ROL_FECHADO_POR_CONSULTA = {
   "168a-conferir-o-crm-ignora-reembolso-integral-aplicado": ROL_DA_168,

@@ -330,9 +330,11 @@ Deno.test("depois da 20261230000000 so este par redefine get_admin_customers_pag
       NOME,
       SUCESSORA,
       SUCESSORA_4030,
+      "20261412000000_o_crm_ignora_reembolso_integral.sql",
       `rollback-manual-${NOME}`,
       `rollback-manual-${SUCESSORA}`,
       `rollback-manual-${SUCESSORA_4030}`,
+      "rollback-manual-20261412000000_o_crm_ignora_reembolso_integral.sql",
     ].sort(),
   );
 });

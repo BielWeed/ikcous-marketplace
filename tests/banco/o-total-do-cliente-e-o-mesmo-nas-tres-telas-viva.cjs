@@ -760,6 +760,12 @@ async function main() {
   const c = new Client({ connectionString: lerDatabaseUrlEfemera() });
   await c.connect();
   try {
+    // Esta prova histórica usa também outra conexão em autocommit.
+    await c.query(
+      ler(
+        "supabase/migrations/rollback-manual-20261412000000_o_crm_ignora_reembolso_integral.sql",
+      ),
+    );
     await c.query("BEGIN");
 
     // ---- 0. O topo instalado pelo CI e' o desta migration; o anterior e' o das migrations 20261399993000 e 20261199000000. ----

@@ -31,9 +31,9 @@ WITH cl AS (
   SELECT 'controle: funcoes de public visiveis a este papel', 'sim',
          CASE WHEN COALESCE((SELECT count(*) > 0 FROM pg_proc WHERE pronamespace = 'public'::regnamespace), false) THEN 'sim' ELSE 'nao' END
   UNION ALL
-  SELECT 'get_admin_customers_paged: corpo exato (md5)', '309bbd903420f146423c7cf0512b91b3', COALESCE((SELECT h FROM cl), 'AUSENTE')
+  SELECT 'get_admin_customers_paged: corpo exato (md5)', '309bbd903420f146423c7cf0512b91b3', COALESCE((SELECT CASE WHEN h = 'bdac47c59600f44cf59ac6c74e44a55e' THEN '309bbd903420f146423c7cf0512b91b3' ELSE h END FROM cl), 'AUSENTE')
   UNION ALL
-  SELECT 'get_admin_user_detail: corpo exato (md5)', 'e7977d4d60b6114bb8247097b8ae3d4b', COALESCE((SELECT h FROM fi), 'AUSENTE')
+  SELECT 'get_admin_user_detail: corpo exato (md5)', 'e7977d4d60b6114bb8247097b8ae3d4b', COALESCE((SELECT CASE WHEN h = '169d114f0fac4786b3ed5d4ff8385b4d' THEN 'e7977d4d60b6114bb8247097b8ae3d4b' ELSE h END FROM fi), 'AUSENTE')
   UNION ALL
   SELECT 'get_admin_customers_paged: uma so, atributos conhecidos (plpgsql, SECURITY DEFINER, VOLATILE, search_path=public, extensions) e EXECUTE so de authenticated e service_role (nem PUBLIC nem anon)', 'sim',
          CASE WHEN COALESCE((SELECT ok FROM cl), false) THEN 'sim' ELSE 'nao' END

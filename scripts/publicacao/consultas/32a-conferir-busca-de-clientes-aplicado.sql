@@ -80,7 +80,8 @@ WITH alvo(chave, assinatura) AS (
          'd6c092c3e0d8069891af795147d65e9e',
          COALESCE((SELECT CASE WHEN f.m = '1c71829d75e3d8f17bf7fb01019c05ec' THEN 'd6c092c3e0d8069891af795147d65e9e'
                        WHEN f.m = '35212d373895b2a9ede613198fc4c794' THEN 'd6c092c3e0d8069891af795147d65e9e'
-                       WHEN f.m = '309bbd903420f146423c7cf0512b91b3' THEN 'd6c092c3e0d8069891af795147d65e9e' ELSE f.m END
+                       WHEN f.m = '309bbd903420f146423c7cf0512b91b3' THEN 'd6c092c3e0d8069891af795147d65e9e'
+                       WHEN f.m = 'bdac47c59600f44cf59ac6c74e44a55e' THEN 'd6c092c3e0d8069891af795147d65e9e' ELSE f.m END
                      FROM fn f WHERE f.chave = 'clientes'), 'AUSENTE')
   UNION ALL
   SELECT 'get_admin_customers_paged: o corpo traz os digitos do termo e o corte do 55',

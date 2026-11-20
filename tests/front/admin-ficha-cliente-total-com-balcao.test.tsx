@@ -174,7 +174,11 @@ describe("calcularResumoFicha — o balcão do mesmo WhatsApp entra como o CRM e
 // ---- Parte 2: a tela --------------------------------------------------------
 
 const { estado } = vi.hoisted(() => ({
-  estado: { orders: [] as any[], balcao: undefined as unknown },
+  estado: {
+    orders: [] as any[],
+    balcao: undefined as unknown,
+    pedidosPagos: undefined as string[] | undefined,
+  },
 }));
 
 vi.mock("@/hooks/useAuth", () => ({
@@ -203,6 +207,7 @@ vi.mock("@/lib/supabase", () => ({
           })),
           cart_items: [],
           addresses: [],
+          pedidos_pagos_da_conta: estado.pedidosPagos,
           // `undefined` some do JSON: é o banco antigo, sem o campo.
           ...(estado.balcao === undefined
             ? {}
@@ -213,6 +218,7 @@ vi.mock("@/lib/supabase", () => ({
     from: () => ({
       select: () => ({
         in: () => Promise.resolve({ data: [], error: null }),
+        eq: () => ({ order: () => Promise.resolve({ data: [], error: null }) }),
       }),
       delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
     }),
@@ -243,6 +249,7 @@ describe("AdminUserDetailView — o total com o balcão do mesmo WhatsApp, no ar
     vi.clearAllMocks();
     estado.orders = [PEDIDO_DA_CONTA];
     estado.balcao = undefined;
+    estado.pedidosPagos = undefined;
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -315,6 +322,28 @@ describe("AdminUserDetailView — o total com o balcão do mesmo WhatsApp, no ar
     expect(texto).toContain("Pedidos(1)");
     expect(texto).not.toContain("Pedidos(2)");
     expect(texto).toContain("-CONTA");
+  });
+
+  it("deixa o pedido devolvido no histórico, mas não no total nem no valor médio", async () => {
+    estado.orders = [
+      PEDIDO_DA_CONTA,
+      { ...PEDIDO_DA_CONTA, id: "pedido-reembolsado", total: 300 },
+    ];
+    estado.pedidosPagos = [PEDIDO_DA_CONTA.id];
+    await abrirFicha();
+
+    expect(valorDoCard("Total já comprado")).toBe("R$ 100,00");
+    expect(valorDoCard("Valor médio por venda")).toBe("R$ 100,00");
+    expect(hospedeiro.textContent).toContain("Pedidos(2)");
+  });
+
+  it("lista vazia do banco é zero e não aciona a regra antiga", async () => {
+    estado.pedidosPagos = [];
+    await abrirFicha();
+
+    expect(valorDoCard("Total já comprado")).toBe("R$ 0,00");
+    expect(valorDoCard("Valor médio por venda")).toBe("R$ 0,00");
+    expect(hospedeiro.textContent).toContain("Pedidos(1)");
   });
 
   it("sem o campo (banco antigo): a ficha é a de sempre, sem a frase da divisão", async () => {

@@ -185,6 +185,8 @@ WITH corpos AS (
     ('get_admin_customers_paged', '35212d373895b2a9ede613198fc4c794', '20261399993000'),
     ('get_admin_customers_paged', '309bbd903420f146423c7cf0512b91b3', '20261403000000'),
     ('get_admin_user_detail', 'e7977d4d60b6114bb8247097b8ae3d4b', '20261403000000'),
+    ('get_admin_customers_paged', 'bdac47c59600f44cf59ac6c74e44a55e', '20261412000000'),
+    ('get_admin_user_detail', '169d114f0fac4786b3ed5d4ff8385b4d', '20261412000000'),
     ('crm_clientes', '39a2a6de59041e09b6f1e466a6782dca', '20261392100000'),
     ('crm_visao', '0dfda3ea5129c6f8aabfcf0052fd2936', '20261232000000'),
     ('get_admin_analytics_v2', '05eac70f6bd4360c1f71fd373747ad0e', '20261234000000'),

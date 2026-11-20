@@ -379,10 +379,12 @@ Deno.test("so a baseline, a 20261199000000 e este par definem get_admin_customer
       SUCESSORA,
       SUCESSORA_3993,
       SUCESSORA_4030,
+      "20261412000000_o_crm_ignora_reembolso_integral.sql",
       `rollback-manual-${NOME}`,
       `rollback-manual-${SUCESSORA}`,
       `rollback-manual-${SUCESSORA_3993}`,
       `rollback-manual-${SUCESSORA_4030}`,
+      "rollback-manual-20261412000000_o_crm_ignora_reembolso_integral.sql",
     ].sort(),
   );
 });

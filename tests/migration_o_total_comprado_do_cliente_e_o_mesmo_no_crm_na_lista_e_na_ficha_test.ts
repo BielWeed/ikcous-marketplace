@@ -510,12 +510,13 @@ Deno.test("depois da 20261399993000 so este par redefine get_admin_customers_pag
       )
       .sort();
   };
-  assert.deepEqual(redefinem("get_admin_customers_paged", V_LISTA), [
+  const sucessora = "20261412000000_o_crm_ignora_reembolso_integral.sql";
+  const esperadas = [
     NOME,
+    sucessora,
     `rollback-manual-${NOME}`,
-  ]);
-  assert.deepEqual(redefinem("get_admin_user_detail", V_FICHA), [
-    NOME,
-    `rollback-manual-${NOME}`,
-  ]);
+    `rollback-manual-${sucessora}`,
+  ];
+  assert.deepEqual(redefinem("get_admin_customers_paged", V_LISTA), esperadas);
+  assert.deepEqual(redefinem("get_admin_user_detail", V_FICHA), esperadas);
 });

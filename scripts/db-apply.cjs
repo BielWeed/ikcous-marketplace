@@ -1199,14 +1199,36 @@ const VERIFICACOES = {
         ],
       },
     ],
-  "20261412000000_o_crm_ignora_reembolso_integral.sql": {
-    funcao: "crm__vendas",
-    esperado: [
-      { texto: "AND d.status = 'concluida' AND d.reembolso_manual", vezes: 1 },
-      { texto: "HAVING sum(d.valor_reembolso) > 0", vezes: 1 },
-      { texto: "AND r.status = 'concluido'", vezes: 1 },
-    ],
-  },
+  "20261412000000_o_crm_ignora_reembolso_integral.sql": [
+    {
+      funcao: "crm__vendas",
+      esperado: [
+        {
+          texto: "AND d.status = 'concluida' AND d.reembolso_manual",
+          vezes: 1,
+        },
+        { texto: "HAVING sum(d.valor_reembolso) > 0", vezes: 1 },
+        { texto: "AND r.status = 'concluido'", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "get_admin_customers_paged",
+      esperado: [
+        { texto: "FROM public.crm__vendas(now()) v", vezes: 1 },
+        { texto: "COALESCE(c.total, 0) as total_spent", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "get_admin_user_detail",
+      esperado: [
+        { texto: "FROM public.crm__vendas(now()) v", vezes: 1 },
+        {
+          texto: "'pedidos_pagos_da_conta', v_pedidos_pagos_da_conta",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
   "20261406000000_o_pedido_guarda_o_nome_antigo_da_opcao.sql": {
     funcao: "guardar_rotulo_da_opcao_no_pedido",
     esperado: [

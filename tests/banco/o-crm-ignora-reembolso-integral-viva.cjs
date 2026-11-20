@@ -23,7 +23,7 @@ async function conferir(c, consulta, valida) {
   const { rows } = await c.query(
     ler(`scripts/publicacao/consultas/${consulta}.sql`),
   );
-  assert.equal(rows.length, 4);
+  assert.equal(rows.length, 10);
   assert.equal(
     rows.every((linha) => linha.ok === true),
     valida,
@@ -32,24 +32,46 @@ async function conferir(c, consulta, valida) {
 
 async function estado(c) {
   const { rows } = await c.query(
-    `SELECT oid, prosrc, proacl, proowner, proconfig
-       FROM pg_proc WHERE oid = 'public.crm__vendas(timestamptz)'::regprocedure`,
+    `SELECT proname, oid, prosrc, proacl, proowner, proconfig
+       FROM pg_proc WHERE oid IN (
+         'public.crm__vendas(timestamptz)'::regprocedure,
+         'public.get_admin_customers_paged(text,text,text,integer,integer)'::regprocedure,
+         'public.get_admin_user_detail(uuid)'::regprocedure
+       )
+       ORDER BY proname`,
   );
-  return rows[0];
+  assert.equal(rows.length, 3);
+  return rows;
 }
 
 async function somas(c) {
   const { rows } = await c.query(
     `SELECT public.crm_visao($1::date, $1::date) AS visao,
-            public.crm_clientes(NULL, 'crm224cliente', 50, 0) AS lista`,
-    [DIA],
+            public.crm_clientes(NULL, 'crm224cliente', 50, 0) AS lista,
+            public.get_admin_customers_paged('crm224cliente') AS clientes,
+            public.get_admin_user_detail($2::uuid) AS ficha`,
+    [DIA, CLIENTE],
   );
-  const { visao, lista } = rows[0];
+  const { visao, lista, clientes, ficha } = rows[0];
   assert.equal(lista.total, 1);
+  assert.equal(clientes.total_count, 1);
+  assert.equal(clientes.data[0].id, CLIENTE);
+  assert.equal(ficha.profile.id, CLIENTE);
+  assert.equal(ficha.orders.length, 7, "a ficha preserva o histórico");
   const [cliente] = lista.clientes;
+  // No controle antigo não havia IDs e todos os sete pedidos da fixture
+  // pareciam pagos para a ficha. No novo corpo, o vazio já é um dado válido.
+  const ids = ficha.pedidos_pagos_da_conta ?? ficha.orders.map((o) => o.id);
+  const totalDaFicha = ficha.orders
+    .filter((o) => ids.includes(o.id))
+    .reduce((total, o) => total + Number(o.total), 0);
+  assert.equal(ficha.balcao_mesmo_whatsapp.total, 0);
   return {
     clienteReceita: cliente.receita,
     clientePedidos: cliente.pedidos,
+    totalClientes: clientes.data[0].total_spent,
+    totalFicha: totalDaFicha,
+    idsDaFicha: ids.slice().sort(),
     receita: visao.kpis.receita,
     pedidos: visao.kpis.pedidos,
     pagos: visao.funil.pedidos_pagos,
@@ -126,47 +148,93 @@ async function fixture(c) {
   const naoManual = await pedido(100);
   await devolver(naoManual, 100, "concluida", false);
   const brinde = await pedido(0);
-  return [parcial, emAberto, naoManual, brinde].sort();
+  return {
+    mantidos: [parcial, emAberto, naoManual, brinde].sort(),
+    historico: [
+      integral,
+      emDuas,
+      misto,
+      parcial,
+      emAberto,
+      naoManual,
+      brinde,
+    ].sort(),
+  };
 }
 
 async function provas(c) {
   await conferir(c, DEPOIS, true);
   const nova = await estado(c);
-  const idsMantidos = await fixture(c);
+  const { mantidos, historico } = await fixture(c);
   const { rows } = await c.query(
     "SELECT order_id FROM public.crm__vendas(now()) WHERE user_id = $1 ORDER BY order_id",
     [CLIENTE],
   );
   assert.deepEqual(
     rows.map(({ order_id }) => order_id),
-    idsMantidos,
+    mantidos,
   );
   const controles = { criados: 7, taxa: 0.6667 };
   const depois = {
     ...controles,
     clienteReceita: 300,
     clientePedidos: 4,
+    totalClientes: 300,
+    totalFicha: 300,
+    idsDaFicha: mantidos,
     receita: 300,
     pedidos: 4,
     pagos: 4,
   };
   assert.deepEqual(await somas(c), depois);
   console.log(
-    "[21412] Integral manual e misto saem da lista e do funil; parcial, pendente e brinde continuam.",
+    "[21412] CRM, Clientes e ficha: R$ 300; parcial, pendente e brinde continuam.",
   );
+
+  // Mutante: somente a lista volta a confiar no status do pagamento.
+  // A consulta precisa executar normalmente e errar o total, não dar erro de SQL.
+  await c.query("SAVEPOINT sem_exclusao_na_lista");
+  const definicao = (
+    await c.query(
+      `SELECT pg_get_functiondef(
+         'public.get_admin_customers_paged(text,text,text,integer,integer)'::regprocedure
+       ) AS corpo`,
+    )
+  ).rows[0].corpo;
+  const mutante = definicao.replace(
+    "COALESCE(c.total, 0) as total_spent",
+    `COALESCE(SUM(o.total) FILTER (
+      WHERE o.payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega')
+    ), 0) as total_spent`,
+  );
+  assert.notEqual(mutante, definicao);
+  await c.query(mutante);
+  assert.deepEqual(await somas(c), { ...depois, totalClientes: 600 });
+  await c.query("ROLLBACK TO SAVEPOINT sem_exclusao_na_lista");
+  await c.query("RELEASE SAVEPOINT sem_exclusao_na_lista");
+  assert.deepEqual(await somas(c), depois);
 
   await c.query(ler(`supabase/migrations/rollback-manual-${MIGRACAO}`));
   await conferir(c, ANTES, true);
   await conferir(c, DEPOIS, false);
   const antiga = await estado(c);
-  const { prosrc: corpoNovo, ...atributosNovos } = nova;
-  const { prosrc: corpoAntigo, ...atributosAntigos } = antiga;
-  assert.notEqual(corpoNovo, corpoAntigo);
-  assert.deepEqual(atributosNovos, atributosAntigos);
+  assert.deepEqual(
+    nova.map(({ prosrc, ...atributos }) => atributos),
+    antiga.map(({ prosrc, ...atributos }) => atributos),
+  );
+  for (const item of antiga) {
+    assert.notEqual(
+      nova.find((r) => r.proname === item.proname).prosrc,
+      item.prosrc,
+    );
+  }
   assert.deepEqual(await somas(c), {
     ...controles,
     clienteReceita: 600,
     clientePedidos: 7,
+    totalClientes: 600,
+    totalFicha: 600,
+    idsDaFicha: historico,
     receita: 600,
     pedidos: 7,
     pagos: 7,
