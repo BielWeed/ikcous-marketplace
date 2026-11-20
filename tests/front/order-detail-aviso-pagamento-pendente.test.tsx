@@ -203,6 +203,26 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
     },
   );
 
+  it("avisa na ficha que o Pix venceu quando a retirada está pronta", async () => {
+    const { OrderDetail } = await import(
+      "@/components/admin/orders/OrderDetail"
+    );
+    const order: Order = {
+      ...pedidoFake("aguardando"),
+      status: "shipping",
+      canal: "online",
+      retiradaNaLoja: true,
+      paymentMethod: "online",
+      metodoOnline: "pix",
+      expiraEm: "2000-01-01T00:00:00Z",
+    };
+
+    await act(async () => {
+      raiz.render(<OrderDetail order={order} onStatusChange={vi.fn()} />);
+    });
+    expect(hospedeiro.textContent).toContain("O Pix deste pedido venceu");
+  });
+
   it("mostra 'Aguardando pagamento' UMA vez, na seção Pagamento (redesenho 08/10/2026: o selo saiu do cabeçalho e da caixa 'Como vai ser pago')", async () => {
     const { OrderDetail } = await import(
       "@/components/admin/orders/OrderDetail"

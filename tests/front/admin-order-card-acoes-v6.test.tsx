@@ -135,27 +135,73 @@ it("usa o vencimento gravado na cobrança, não a idade do pedido", () => {
 });
 
 it.each([
+  ["Em Separação", "processing"],
+  ["Pronto para retirar", "shipping"],
+] as const)("avisa do Pix vencido na retirada em %s", (_, status) => {
+  montar(
+    pedido({
+      status,
+      canal: "online",
+      retiradaNaLoja: true,
+      paymentStatus: "aguardando",
+      metodoOnline: "pix",
+      expiraEm: "2000-01-01T00:00:00Z",
+    }),
+  );
+  expect(host.textContent).toContain("O Pix deste pedido venceu");
+  expect(host.textContent).toContain(
+    "Se você não recebeu por fora e a peça continua na loja, use Cancelar pedido para liberar o estoque.",
+  );
+});
+
+it.each([
+  { caso: "Pix já pago", dados: { paymentStatus: "pago" } },
   {
-    status: "processing",
-    retiradaNaLoja: true,
-    expiraEm: "2000-01-01T00:00:00Z",
+    caso: "Pix pago com atraso",
+    dados: { paymentStatus: "pago_apos_expirar" },
+  },
+  { caso: "Pix na retirada", dados: { paymentMethod: "pix" } },
+  {
+    caso: "venda de balcão",
+    dados: { canal: "presencial", retiradaNaLoja: false },
+  },
+  { caso: "prazo futuro", dados: { expiraEm: "2099-01-01T00:00:00Z" } },
+  {
+    caso: "entrega sem prazo",
+    dados: { retiradaNaLoja: false, expiraEm: undefined },
   },
   {
-    status: "shipping",
-    retiradaNaLoja: true,
-    expiraEm: "2000-01-01T00:00:00Z",
+    caso: "entrega com prazo ilegível",
+    dados: { retiradaNaLoja: false, expiraEm: "data ilegível" },
   },
-  { status: "processing", expiraEm: undefined },
-  { status: "processing", expiraEm: "data ilegível" },
-] as const)(
-  "não mostra aviso para $status com $expiraEm sem prazo ou em retirada",
-  (dados) => {
-    montar(
-      pedido({ paymentStatus: "aguardando", metodoOnline: "pix", ...dados }),
-    );
-    expect(host.textContent).not.toContain("O Pix deste pedido venceu");
-  },
-);
+] as const)("não mostra aviso de Pix vencido: $caso", ({ dados }) => {
+  montar(
+    pedido({
+      status: "processing",
+      retiradaNaLoja: true,
+      paymentStatus: "aguardando",
+      metodoOnline: "pix",
+      expiraEm: "2000-01-01T00:00:00Z",
+      ...dados,
+    }),
+  );
+  expect(host.textContent).not.toContain("O Pix deste pedido venceu");
+});
+
+it("avisa do Pix vencido sem prometer reposição em retirada com histórico de saída", () => {
+  montar(
+    pedido({
+      status: "shipping",
+      retiradaNaLoja: true,
+      cancelledAfterShipping: true,
+      paymentStatus: "aguardando",
+      metodoOnline: "pix",
+      expiraEm: "2000-01-01T00:00:00Z",
+    }),
+  );
+  expect(host.textContent).toContain("O Pix deste pedido venceu");
+  expect(host.textContent).not.toContain("para liberar o estoque");
+});
 
 it("avisa no instante exato do vencimento com fração de segundo e fuso", () => {
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -181,6 +227,22 @@ it("explica que avançar não confirma um pedido no Pix", async () => {
   expect(document.body.textContent).toContain(
     "Avançar não confirma o Pix. Se você não recebeu por fora, confira com o cliente antes de seguir.",
   );
+  expect(avancar).not.toHaveBeenCalled();
+});
+
+it("mantém a confirmação de avanço da retirada sem acrescentar o aviso de reserva", async () => {
+  montar(
+    pedido({
+      retiradaNaLoja: true,
+      paymentStatus: "aguardando",
+      metodoOnline: "pix",
+    }),
+  );
+  await clicar("Avançar mesmo assim");
+  expect(document.body.textContent).toContain(
+    "Este pedido não está com o pagamento confirmado",
+  );
+  expect(document.body.textContent).not.toContain("Avançar não confirma o Pix");
   expect(avancar).not.toHaveBeenCalled();
 });
 
