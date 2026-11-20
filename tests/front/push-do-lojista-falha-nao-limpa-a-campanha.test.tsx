@@ -286,7 +286,7 @@ describe("Avisar clientes — falha não apaga a campanha", () => {
       expect(ajustarLog).toHaveBeenCalledWith({ recipient_count: 1 });
       const { toast } = await import("sonner");
       expect(toast.success).toHaveBeenCalledWith(
-        "Notificação entregue em 1 dispositivo",
+        "Envio aceito para 1 aparelho",
       );
     },
   );
@@ -371,8 +371,11 @@ describe("Avisar clientes — falha não apaga a campanha", () => {
     expect(campoCaminho().value).toBe("");
     expect(seletorDestino().value).toBe("home");
     const { toast } = await import("sonner");
-    expect(toast.warning).toHaveBeenCalledWith("Entregue em 1 de 2", {
-      description: undefined,
-    });
+    expect(toast.warning).toHaveBeenCalledWith(
+      "Envio aceito para 1 de 2 aparelhos",
+      {
+        description: undefined,
+      },
+    );
   });
 });

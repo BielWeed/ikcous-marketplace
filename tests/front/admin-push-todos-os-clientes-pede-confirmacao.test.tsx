@@ -418,10 +418,9 @@ describe("AdminPushView — enviar para TODOS os clientes pede confirmação", (
       { endpoint: alvo(3).endpoint, keys: { p256dh: "p3", auth: "a3" } },
     ]);
     const { toast } = await import("sonner");
-    expect(toast.success).toHaveBeenCalledWith(
-      "Notificação entregue em 1 dispositivo",
-      { description: "O número de aparelhos mudou de 8 para 1." },
-    );
+    expect(toast.success).toHaveBeenCalledWith("Envio aceito para 1 aparelho", {
+      description: "O número de aparelhos mudou de 8 para 1.",
+    });
   });
 
   it("Todos: se o alcance zerou, avisa e não envia nem grava o aviso no sino", async () => {

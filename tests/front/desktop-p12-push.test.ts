@@ -29,14 +29,14 @@ describe("P12 — campanhas push no computador", () => {
     // O hash inclui a validação do link de pedido e o filtro do histórico no
     // servidor. Os 202 className permanecem idênticos aos da base.
     // Nova mudança em texto, handler ou classe móvel continua reprovando.
-    // 1.5.221: a falha de preparo do envio ganhou texto próprio (e2a5919ee).
+    // Os avisos de push agora descrevem o aceite, não a chegada ao aparelho.
     const semComputador = fonte
       .replace(/\s+\b(?:lg|xl|2xl):[^\s"'\x60]+/g, "")
       .replace(/\s+/g, " ")
       .trim();
     expect(fonte.match(/\bclassName=/g)).toHaveLength(202);
     expect(createHash("sha256").update(semComputador).digest("hex")).toBe(
-      "e2f751ef7562c804698bda9c4a93669c58fc0710bd626a6d0243c148b66f785d",
+      "20a357a190e2f95e986d648af4a1863a5ee5327317b6147a40b6bc8f5070455f",
     );
   });
 
