@@ -318,6 +318,20 @@ describe("AdminProductFormView — preço próprio da variação nunca vira zero
     expect(precosNaLista()).toEqual([`R$ ${preco}`]);
   });
 
+  it.each([",", "."])(
+    "digitar %j no fim do preço próprio já salvo não altera o preço da variação",
+    async (separador) => {
+      await montar([variacao("v1", "GG", 12.5)]);
+      await editar("GG");
+      expect(valorDoCampo("variant-price")).toBe("12,50");
+
+      await digitarPrecoTeclaATecla(separador);
+      await salvarVariacao();
+
+      expect(precosNaLista()).toEqual(["R$ 12,50"]);
+    },
+  );
+
   it("um preço com mais de duas casas digitadas não salva uma variação com outro preço", async () => {
     await montar();
     await abrirNovaVariacao("GG");

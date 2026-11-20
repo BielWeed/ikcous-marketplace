@@ -249,6 +249,7 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
   const onFlushRef = useRef(onFlush);
   const isFocusedRef = useRef(false);
   const editandoDecimal = useRef(false);
+  const digitouNestaEdicao = useRef(false);
   const zeroDecimalSemValor = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -262,6 +263,7 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
       !(editandoDecimal.current && value === PRECO_DIGITADO_INVALIDO)
     ) {
       editandoDecimal.current = false;
+      digitouNestaEdicao.current = false;
       setLocalVal(formatValue(value));
       if (validate) {
         let rawVal = value.toString();
@@ -314,10 +316,22 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
         val = sinalDaMoeda(colado, permiteNegativo) + centavos;
         editandoDecimal.current = false;
       } else if (decimalNaDigitacao) {
+        if (data && /\d/.test(data)) digitouNestaEdicao.current = true;
         if ((data === "," || data === ".") && !editandoDecimal.current) {
+          const fim = e.currentTarget.selectionEnd ?? val.length;
+          // Não releia um preço já preenchido como reais só por acrescentar
+          // um separador. Substituir uma seleção continua sendo uma edição.
+          if (
+            !digitouNestaEdicao.current &&
+            fim === val.length &&
+            localVal.includes(",") &&
+            val === localVal + data
+          ) {
+            return;
+          }
           // A vírgula que a máscara mostrou NÃO foi digitada. Ex.: em
           // "0,12" + "," só a última vírgula separa reais de centavos.
-          const posicao = (e.currentTarget.selectionEnd ?? val.length) - 1;
+          const posicao = fim - 1;
           const antes = val.slice(0, posicao);
           const reais = antes.replace(/\D/g, "").replace(/^0+(?=\d)/, "");
           const fracao = val.slice(posicao + 1).replace(/\D/g, "");
@@ -396,6 +410,7 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
 
   const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
     isFocusedRef.current = true;
+    digitouNestaEdicao.current = false;
     if (props.onFocus) {
       props.onFocus(e);
     }
