@@ -290,7 +290,7 @@ export function FechamentoDaVenda({
               Sem internet
             </p>
             <p className="pdv-muted">
-              Sem internet agora. A venda fica salva aqui; registre a venda
+              Sem internet agora. Mantenha esta tela aberta e registre a venda
               quando a conexão voltar. Se você já tinha tocado em Registrar, ela
               pode ter entrado: o recibo aparece ao tentar de novo.
             </p>

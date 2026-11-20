@@ -22,7 +22,8 @@ const OUTRA_VENDA =
   "Outra venda estava mexendo nos mesmos produtos. Toque em Registrar venda de novo.";
 const GENERICA =
   "Não foi possível registrar a venda agora. Confira a conexão e tente de novo; se continuar, avise o suporte.";
-const ENTRAR_DE_NOVO = "A sua sessão expirou; a venda fica salva aqui.";
+const ENTRAR_DE_NOVO =
+  "Sua sessão expirou. O rascunho só volta se o navegador conseguiu guardá-lo; se não, será preciso refazer a venda. Confira em Pedidos se ela foi registrada antes de repetir.";
 
 const INGLES_DO_POSTGRES = [
   "deadlock detected",

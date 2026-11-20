@@ -126,6 +126,20 @@ describe("FechamentoDaVenda — 'Começar uma venda nova' pede confirmação", (
     });
   }
 
+  it("sessão vencida: distingue rascunho de pedido antes de orientar a entrar de novo", async () => {
+    await falharORegistro("PGRST301", "JWT expired");
+
+    const aviso = hospedeiro.querySelector('[role="alert"]')?.textContent;
+    expect(aviso).toContain(
+      "O rascunho só volta se o navegador conseguiu guardá-lo",
+    );
+    expect(aviso).toContain("será preciso refazer a venda");
+    expect(aviso).toContain(
+      "Confira em Pedidos se ela foi registrada antes de repetir",
+    );
+    expect(aviso).toContain("Saia e entre de novo na conta.");
+  });
+
   it("sessão vencida: o toque abre a pergunta com o que se perde e NADA é apagado ainda", async () => {
     await falharORegistro("PGRST301", "JWT expired");
 

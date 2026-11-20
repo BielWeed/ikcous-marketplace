@@ -204,7 +204,7 @@ describe("mensagemDaFalhaDaVenda (função pura, C3.4)", () => {
   it("erro sem `code` (rede caindo) vira a frase honesta do D3 e convida a tentar de novo", () => {
     expect(mensagemDaFalhaDaVenda(new TypeError("Failed to fetch"))).toEqual({
       mensagem:
-        "Não consegui falar com o servidor. O cupom está salvo aqui; tente de novo quando a conexão voltar.",
+        "Não consegui falar com o servidor. Mantenha esta tela aberta e tente de novo quando a conexão voltar.",
       podeTentarDeNovo: true,
       precisaEntrarDeNovo: false,
     });
@@ -220,7 +220,7 @@ describe("mensagemDaFalhaDaVenda (função pura, C3.4)", () => {
       }),
     ).toEqual({
       mensagem:
-        "Não consegui falar com o servidor. O cupom está salvo aqui; tente de novo quando a conexão voltar.",
+        "Não consegui falar com o servidor. Mantenha esta tela aberta e tente de novo quando a conexão voltar.",
       podeTentarDeNovo: true,
       precisaEntrarDeNovo: false,
     });

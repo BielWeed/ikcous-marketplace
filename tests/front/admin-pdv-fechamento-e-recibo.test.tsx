@@ -363,8 +363,9 @@ describe("FechamentoDaVenda (C3.2)", () => {
     expect(hospedeiro.textContent).toContain("Sem internet agora");
     // O título não pode afirmar "Venda salva", e também não "ainda não foi
     // registrada": a rede pode cair DEPOIS de o banco gravar (defeito 3 da
-    // caçada do balcão). A frase honesta diz que o cupom está salvo e que o
+    // caçada do balcão). O aviso pede para manter a tela aberta e diz que o
     // recibo aparece se a venda já tinha entrado.
+    expect(hospedeiro.textContent).toContain("Mantenha esta tela aberta");
     expect(hospedeiro.textContent).not.toContain("Venda salva");
     expect(hospedeiro.textContent).not.toMatch(/n[ãa]o foi registrada/i);
     expect(hospedeiro.textContent).toContain(
