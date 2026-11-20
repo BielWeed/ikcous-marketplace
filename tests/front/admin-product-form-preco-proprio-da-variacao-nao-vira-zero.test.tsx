@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => ({
     .fn()
     .mockResolvedValue({ produto: undefined, recusadas: [] }),
   upsertVariants: vi.fn(),
+  toastError: vi.fn(),
 }));
 
 vi.mock("@/hooks/useProducts", () => ({
@@ -85,7 +86,7 @@ vi.mock("sonner", () => ({
   toast: {
     info: vi.fn(),
     success: vi.fn(),
-    error: vi.fn(),
+    error: mocks.toastError,
     warning: vi.fn(),
     loading: vi.fn(),
   },
@@ -299,14 +300,22 @@ describe("AdminProductFormView — preço próprio da variação nunca vira zero
     await act(async () => campo.blur());
   }
 
-  it("digitar 12,5 tecla a tecla grava R$ 12,50 como no preço de venda", async () => {
+  it.each([
+    ["0,05", "0,05"],
+    ["0,09", "0,09"],
+    ["0,01", "0,01"],
+    ["0,5", "0,50"],
+    ["0,50", "0,50"],
+    ["1,05", "1,05"],
+    ["12,5", "12,50"],
+  ])("digitar %s mostra e salva R$ %s na variação", async (texto, preco) => {
     await montar();
     await abrirNovaVariacao("GG");
-    await digitarPrecoTeclaATecla("12,5");
+    await digitarPrecoTeclaATecla(texto);
 
-    expect(valorDoCampo("variant-price")).toBe("12,50");
+    expect(valorDoCampo("variant-price")).toBe(preco);
     await salvarVariacao();
-    expect(precosNaLista()).toEqual(["R$ 12,50"]);
+    expect(precosNaLista()).toEqual([`R$ ${preco}`]);
   });
 
   it("um preço com mais de duas casas digitadas não salva uma variação com outro preço", async () => {
@@ -317,6 +326,9 @@ describe("AdminProductFormView — preço próprio da variação nunca vira zero
     await salvarVariacao();
     expect(precosNaLista()).toEqual([]);
     expect(valorDoCampo("variant-price")).toBe("12,555");
+    expect(mocks.toastError).toHaveBeenCalledWith(
+      "Use um preço válido para a variação, como 12,50.",
+    );
   });
 
   it("variação que JÁ está salva com preço zero aparece como R$ 0,00 na lista (não é escondida)", async () => {

@@ -18,12 +18,21 @@ import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-function digitar(el: HTMLInputElement, valor: string) {
+function digitar(el: HTMLInputElement, valor: string, tecla?: string) {
   Object.getOwnPropertyDescriptor(
     globalThis.HTMLInputElement.prototype,
     "value",
   )?.set?.call(el, valor);
-  el.dispatchEvent(new Event("input", { bubbles: true }));
+  el.setSelectionRange(valor.length, valor.length);
+  el.dispatchEvent(
+    tecla === undefined
+      ? new Event("input", { bubbles: true })
+      : new InputEvent("input", {
+          bubbles: true,
+          inputType: "insertText",
+          data: tecla,
+        }),
+  );
 }
 
 describe("LocalBufferedInput — zeroVazio", () => {
@@ -53,6 +62,7 @@ describe("LocalBufferedInput — zeroVazio", () => {
     value?: string;
     mask?: "currency" | "phone";
     zeroVazio?: boolean;
+    decimalNaDigitacao?: boolean;
   }) {
     await act(async () => {
       raiz.render(
@@ -60,6 +70,7 @@ describe("LocalBufferedInput — zeroVazio", () => {
           value={props.value ?? ""}
           mask={props.mask ?? "currency"}
           zeroVazio={props.zeroVazio}
+          decimalNaDigitacao={props.decimalNaDigitacao}
           onFlush={aoSalvar}
         />,
       );
@@ -126,6 +137,20 @@ describe("LocalBufferedInput — zeroVazio", () => {
     await act(async () => {
       campo().blur();
     });
+    expect(aoSalvar).toHaveBeenLastCalledWith("");
+  });
+
+  it("no modo decimal, preserva o zero provisório enquanto digita e sai sem valor", async () => {
+    await montar({ zeroVazio: true, decimalNaDigitacao: true });
+    await act(async () => campo().focus());
+    for (const tecla of "0,0") {
+      await act(async () => digitar(campo(), campo().value + tecla, tecla));
+    }
+    expect(campo().value).toBe("0,0");
+    expect(aoSalvar).toHaveBeenLastCalledWith("");
+
+    await act(async () => campo().blur());
+    expect(campo().value).toBe("");
     expect(aoSalvar).toHaveBeenLastCalledWith("");
   });
 

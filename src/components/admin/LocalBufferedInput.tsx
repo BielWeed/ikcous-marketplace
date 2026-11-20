@@ -32,7 +32,8 @@ interface LocalBufferedInputProps
    * Só com `mask="currency"`: o zero DIGITADO vira campo vazio. A máscara nunca
    * deixa o campo vazio sozinha (apagar o "0,05" com backspace dá "0,0", lido
    * como "00" e mostrado como "0,00"), e onde vazio quer dizer "sem preço
-   * próprio" esse "0,00" virava preço zero. O valor que já veio salvo (prop
+   * próprio" esse "0,00" virava preço zero. No modo decimal, só esvazia na
+   * tela ao sair, para permitir digitar "0,05". O valor que já veio salvo (prop
    * `value`) continua sendo mostrado como está, zero inclusive.
    */
   readonly zeroVazio?: boolean;
@@ -248,6 +249,7 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
   const onFlushRef = useRef(onFlush);
   const isFocusedRef = useRef(false);
   const editandoDecimal = useRef(false);
+  const zeroDecimalSemValor = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -320,7 +322,8 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
           const reais = antes.replace(/\D/g, "").replace(/^0+(?=\d)/, "");
           const fracao = val.slice(posicao + 1).replace(/\D/g, "");
           const sinal = sinalDaMoeda(val, permiteNegativo);
-          val = `${sinal}${reais}${data}${fracao}`;
+          const parteInteira = reais || (zeroVazio ? "0" : "");
+          val = `${sinal}${parteInteira}${data}${fracao}`;
           editandoDecimal.current = true;
         } else if (val === "") {
           // Sem o separador, um rascunho em reais continua em reais até
@@ -359,8 +362,12 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
         (tipo === undefined
           ? !textoBruto.includes(",")
           : !tipo.startsWith("delete"));
-      if (zeroVazio && !zeroEscrito && Number.parseFloat(rawVal) === 0) {
-        val = "";
+      const zeroViraVazio =
+        zeroVazio && !zeroEscrito && Number.parseFloat(rawVal) === 0;
+      zeroDecimalSemValor.current = zeroViraVazio && editandoDecimal.current;
+      if (zeroViraVazio) {
+        // Mantém "0,0" até a próxima tecla, sem salvar preço zero.
+        if (!zeroDecimalSemValor.current) val = "";
         rawVal = "";
       }
     }
@@ -412,9 +419,17 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
         editandoDecimal.current && centavos === null
           ? PRECO_DIGITADO_INVALIDO
           : parseCurrencyToFloatString(centavos ?? val, permiteNegativo);
-      if (centavos !== null && !isFocusedRef.current) {
-        setLocalVal(formatCurrency(centavos, permiteNegativo));
-        editandoDecimal.current = false;
+      if (centavos !== null) {
+        if (zeroDecimalSemValor.current) rawVal = "";
+        if (!isFocusedRef.current) {
+          setLocalVal(
+            zeroDecimalSemValor.current
+              ? ""
+              : formatCurrency(centavos, permiteNegativo),
+          );
+          editandoDecimal.current = false;
+          zeroDecimalSemValor.current = false;
+        }
       }
     }
     onFlushRef.current(rawVal);
