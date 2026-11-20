@@ -28,7 +28,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const perfil = {
   id: "user-alvo",
-  full_name: "Cliente Teste",
+  nome_publico: "Cliente T.",
   avatar_url: null,
   created_at: new Date().toISOString(),
   cover_url: null,
@@ -154,7 +154,7 @@ describe("UserProfileView — falha de rede não é 'usuário foi removido'", ()
     reviewsQuebram = true;
     await renderizar();
 
-    expect(hospedeiro.textContent).toContain("Cliente Teste");
+    expect(hospedeiro.textContent).toContain("Cliente T.");
     const rotuloAvaliacoes = [...hospedeiro.querySelectorAll("span")].find(
       (el) => el.textContent?.trim() === "Avaliações",
     );
