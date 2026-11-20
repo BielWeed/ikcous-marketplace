@@ -428,6 +428,10 @@ export const AdminDashboardView = memo(function AdminDashboardView({
                   painel={painel}
                   carregando={semNumeros}
                   onNavigate={irPara}
+                  aoAbrirCancelados={() => {
+                    pedirPedidosSemFiltroAntigo("cancelled");
+                    onNavigate("admin-orders");
+                  }}
                   preparoEmDestaque
                 />
               </LocalErrorBoundary>

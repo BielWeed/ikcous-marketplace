@@ -50,12 +50,14 @@ export function ParaFazer({
   painel,
   carregando,
   onNavigate,
+  aoAbrirCancelados,
   preparoEmDestaque = false,
   produtos,
 }: Readonly<{
   painel: PainelInicio | null;
   carregando: boolean;
   onNavigate: (view: View, id?: string) => void;
+  aoAbrirCancelados?: () => void;
   preparoEmDestaque?: boolean;
   produtos?: readonly Product[];
 }>) {
@@ -251,11 +253,18 @@ export function ParaFazer({
               <li key={item.chave}>
                 <button
                   type="button"
-                  onClick={() =>
-                    item.alvo
-                      ? onNavigate(item.destino, item.alvo)
-                      : onNavigate(item.destino)
-                  }
+                  onClick={() => {
+                    if (
+                      item.chave === "devolver-dinheiro" &&
+                      aoAbrirCancelados
+                    ) {
+                      aoAbrirCancelados();
+                    } else if (item.alvo) {
+                      onNavigate(item.destino, item.alvo);
+                    } else {
+                      onNavigate(item.destino);
+                    }
+                  }}
                   aria-label={`${item.rotulo}: ${item.titulo}. ${item.descricao}`}
                   className={cn(LINHA_INICIO, "hover:bg-white/[0.02]")}
                 >

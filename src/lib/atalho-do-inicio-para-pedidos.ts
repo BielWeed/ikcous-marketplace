@@ -24,21 +24,28 @@
 /** Tempo máximo entre o toque no atalho e a tela Pedidos ficar à vista. */
 const VALIDADE_DO_PEDIDO_MS = 30_000;
 
-let pedidoEm: number | null = null;
+type FiltroDoAtalho = "open" | "cancelled";
+
+let pedido: { desde: number; filtro: FiltroDoAtalho } | null = null;
 
 /** O Início chama ao tocar num atalho que leva a Pedidos. */
-export function pedirPedidosSemFiltroAntigo(agora: number = Date.now()): void {
-  pedidoEm = agora;
+export function pedirPedidosSemFiltroAntigo(
+  filtro: FiltroDoAtalho = "open",
+  agora: number = Date.now(),
+): void {
+  pedido = { desde: agora, filtro };
 }
 
 /**
- * A tela Pedidos chama quando passa a estar à vista. Devolve `true` no máximo
- * UMA vez por pedido do Início, e só se ele ainda estiver dentro da validade.
+ * A tela Pedidos recebe o filtro no máximo UMA vez por atalho do Início,
+ * e só se ele ainda estiver dentro da validade.
  */
 export function consumirPedidoDePedidosSemFiltroAntigo(
   agora: number = Date.now(),
-): boolean {
-  const desde = pedidoEm;
-  pedidoEm = null;
-  return desde !== null && agora - desde <= VALIDADE_DO_PEDIDO_MS;
+): FiltroDoAtalho | null {
+  const recado = pedido;
+  pedido = null;
+  return recado && agora - recado.desde <= VALIDADE_DO_PEDIDO_MS
+    ? recado.filtro
+    : null;
 }
