@@ -17,7 +17,10 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 interface AddressFormViewProps {
   addressId?: string | null;
   onBack: () => void;
+  onEnderecoIndisponivel?: (id: string, mensagem: string) => void;
 }
+
+const ENDERECO_INDISPONIVEL = "Este endereço não existe mais.";
 
 // Texto guardado na conta (`user_metadata`): só vale string com conteúdo;
 // qualquer outra coisa vira "sem valor" e a tela cai no próximo plano.
@@ -25,7 +28,11 @@ function textoDaConta(valor: unknown): string {
   return typeof valor === "string" ? valor.trim() : "";
 }
 
-export function AddressFormView({ addressId, onBack }: AddressFormViewProps) {
+export function AddressFormView({
+  addressId,
+  onBack,
+  onEnderecoIndisponivel,
+}: AddressFormViewProps) {
   const { config } = useStore();
   const { user, profile } = useAuth();
   const {
@@ -70,6 +77,19 @@ export function AddressFormView({ addressId, onBack }: AddressFormViewProps) {
     };
   }, [presente]);
 
+  useEffect(() => {
+    if (presente && addressId && buscou && !editingAddress && !erroAoCarregar) {
+      onEnderecoIndisponivel?.(addressId, ENDERECO_INDISPONIVEL);
+    }
+  }, [
+    addressId,
+    buscou,
+    editingAddress,
+    erroAoCarregar,
+    onEnderecoIndisponivel,
+    presente,
+  ]);
+
   const handleSubmit = async (
     data: DadosDoFormularioDeEndereco,
     alteracoes?: AlteracoesDoEndereco,
@@ -110,7 +130,7 @@ export function AddressFormView({ addressId, onBack }: AddressFormViewProps) {
             ? "Carregando…"
             : erroAoCarregar
               ? "Não conseguimos carregar este endereço."
-              : "Este endereço não existe mais."}
+              : ENDERECO_INDISPONIVEL}
         </p>
         {buscou && (
           <button

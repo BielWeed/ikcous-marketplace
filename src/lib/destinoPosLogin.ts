@@ -33,8 +33,9 @@ import type { View } from "@/types";
  * reencontrar a edição. O produto leva o `id` (uuid, validado por
  * `idDeProdutoDoPainel`); os Ajustes não têm id. A permissão segue sendo do
  * portão do App (`isAdmin`) e do servidor: quem entra e não é admin vai à
- * vitrine com "Acesso restrito", como com `admin-orders`. A lista continua
- * FECHADA: as demais telas do painel pedem entrada, mas não viram destino.
+ * vitrine com "Acesso restrito", como com `admin-orders`. O Financeiro
+ * também pode ser retomado e não recebe id. As demais telas do painel
+ * continuam fora da lista fechada.
  */
 const VIEWS_REDIRECIONAVEIS = new Set<string>([
   "user-profile",
@@ -45,6 +46,7 @@ const VIEWS_REDIRECIONAVEIS = new Set<string>([
   "admin",
   "admin-settings",
   "admin-product-form",
+  "admin-financeiro",
   // Quem pediu login pelas "Perguntas ao vendedor" volta ao produto. Como o
   // "user-profile", só vale COM o id do produto no state (ver abaixo).
   "product-detail",
@@ -109,11 +111,11 @@ const DESTINOS_QUE_RECEBEM_ID = new Set<string>([
  * Maiúsculas passam (o banco aceita o uuid do link em maiúsculas); a âncora
  * `$` do JS só casa no fim da entrada, então `uuid\n` NÃO passa.
  */
-const UUID_DO_PAINEL =
+const UUID_DE_REGISTRO =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function idDePedidoDoPainel(valor: unknown): string | undefined {
-  return typeof valor === "string" && UUID_DO_PAINEL.test(valor)
+  return typeof valor === "string" && UUID_DE_REGISTRO.test(valor)
     ? valor
     : undefined;
 }
@@ -125,8 +127,18 @@ export function idDePedidoDoPainel(valor: unknown): string | undefined {
  * duas portas de entrada que o pedido (`syncWithUrl` e `idDoDestinoPosLogin`).
  */
 export function idDeProdutoDoPainel(valor: unknown): string | undefined {
-  return typeof valor === "string" && UUID_DO_PAINEL.test(valor)
+  return typeof valor === "string" && UUID_DE_REGISTRO.test(valor)
     ? valor
+    : undefined;
+}
+
+/**
+ * Endereços da conta têm UUID. A lista da conta compara o id como texto,
+ * então links com maiúsculas também precisam voltar no formato do banco.
+ */
+export function idDeEndereco(valor: unknown): string | undefined {
+  return typeof valor === "string" && UUID_DE_REGISTRO.test(valor)
+    ? valor.toLowerCase()
     : undefined;
 }
 
@@ -134,7 +146,8 @@ export function idDeProdutoDoPainel(valor: unknown): string | undefined {
  * O `id` que `handleAuthSuccess` (App.tsx) repassa a `handleNavigate` junto do
  * destino. Lê o state do login (precisa ser chamado ANTES de navegar, que o
  * sobrescreve). `undefined` para toda view fora de `DESTINOS_QUE_RECEBEM_ID`,
- * `admin-orders` e `admin-product-form`, e para id ausente, vazio ou que não é string.
+ * `admin-orders`, `admin-product-form` e `address-form`, e para id ausente,
+ * vazio ou que não é string.
  *
  * `admin-orders` (17/11/2026) é a exceção que valida: o aviso de "Pedido novo"
  * abre a ficha pelo id, e a lojista que entra depois de a sessão vencer tem de
@@ -148,6 +161,11 @@ export function idDoDestinoPosLogin(
   state: unknown,
 ): string | undefined {
   const registro = comoRegistro(state);
+  if (destino === "address-form") {
+    return registro?.requested === "address-form"
+      ? idDeEndereco(registro.id)
+      : undefined;
+  }
   if (destino === "admin-orders") {
     return idDePedidoDoPainel(registro?.id);
   }
@@ -217,11 +235,19 @@ export function destinoPosLogin(state: unknown): View | null {
 
   const requested = registro?.requested;
   if (typeof requested === "string" && VIEWS_REDIRECIONAVEIS.has(requested)) {
+    // Um id inválido não transforma uma edição em cadastro. Sem id, a
+    // navegação interna que pediu explicitamente um endereço novo continua.
+    if (
+      requested === "address-form" &&
+      registro?.id !== undefined &&
+      idDeEndereco(registro.id) === undefined
+    ) {
+      return "profile";
+    }
     // `user-profile` sem id utilizável é tela morta: a view só desenha com
     // `userId`, e honrar o pedido sem id trocaria o login por um skeleton
     // eterno (o "product-detail" idem: produto sem id). Sem id, ignora o `requested` e segue para as regras
-    // seguintes — o pior caso volta a ser o comportamento de antes. As
-    // outras três views não carregam id.
+    // seguintes — o pior caso volta a ser o comportamento de antes.
     if (
       (requested !== "user-profile" && requested !== "product-detail") ||
       idUtilizavel(registro)

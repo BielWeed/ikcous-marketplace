@@ -64,7 +64,12 @@ vi.mock("framer-motion", async () => {
       children as React.ReactNode,
     );
   }
-  return { motion, AnimatePresence, useReducedMotion: () => true };
+  return {
+    motion,
+    AnimatePresence,
+    useReducedMotion: () => true,
+    useIsPresent: () => true,
+  };
 });
 
 // Mutável de propósito: cada teste escolhe visitante, logada ou admin no ato.
@@ -119,6 +124,21 @@ vi.mock("@/views/customer/CartView", () => ({
 }));
 vi.mock("@/views/customer/ProductView", () => ({
   ProductView: () => <div data-testid="tela-produto" />,
+}));
+vi.mock("@/hooks/useAddresses", () => {
+  const fetchAddresses = () => Promise.resolve();
+  return {
+    useAddresses: () => ({
+      addresses: [{ id: "2c13b20b-933f-418b-877f-84b3d85bd08b" }],
+      erroAoCarregar: false,
+      fetchAddresses,
+    }),
+  };
+});
+vi.mock("@/components/ui/custom/AddressForm", () => ({
+  AddressForm: ({ initialData }: { initialData?: { id: string } }) => (
+    <form data-testid="formulario-endereco" data-id={initialData?.id} />
+  ),
 }));
 vi.mock("@/views/customer/ProfileView", () => ({
   ProfileView: () => <div data-testid="tela-perfil-proprio" />,
@@ -642,6 +662,68 @@ describe("o pedido do aviso atravessa o login até a ficha", () => {
     expect(globalThis.location.pathname).toBe("/admin-settings");
     expect(globalThis.location.search).toBe("");
     expect(globalThis.history.state?.id ?? null).toBeNull();
+  });
+
+  it("sessão vencida no Financeiro: admin volta à tela, sem id", async () => {
+    await abrirEm(`/admin-financeiro?id=${PEDIDO}`);
+    expect(globalThis.location.pathname).toBe("/auth");
+
+    await entrarEmDoisPassos(true);
+
+    expect(tela("painel")?.getAttribute("data-tela")).toBe("admin-financeiro");
+    expect(globalThis.location.pathname).toBe("/admin-financeiro");
+    expect(globalThis.location.search).toBe("");
+    expect(idDaFicha()).toBe("");
+  });
+
+  it("cliente que entra pelo link do Financeiro não vê o painel", async () => {
+    await abrirEm("/admin-financeiro");
+
+    await entrarEmDoisPassos(false);
+
+    expect(tela("painel")).toBeNull();
+    expect(tela("home")).not.toBeNull();
+    expect(avisoErro).toHaveBeenCalledWith(
+      "Acesso restrito a administradores.",
+    );
+  });
+
+  it("o link de edição reabre o mesmo endereço da conta depois do login", async () => {
+    const endereco = "2c13b20b-933f-418b-877f-84b3d85bd08b";
+    await abrirEm(`/address-form?id=${endereco}`);
+    expect(globalThis.location.pathname).toBe("/auth");
+    expect(globalThis.history.state?.id).toBe(endereco);
+
+    await entrarEmDoisPassos(false);
+
+    expect(tela("formulario-endereco")?.getAttribute("data-id")).toBe(endereco);
+    expect(globalThis.location.pathname + globalThis.location.search).toBe(
+      `/address-form?id=${endereco}`,
+    );
+  });
+
+  it("endereço fora da lista da conta leva à lista com aviso, sem abrir cadastro", async () => {
+    const endereco = "2c13b20b-933f-418b-877f-84b3d85bd08c";
+    await abrirEm(`/address-form?id=${endereco}`);
+    expect(globalThis.location.pathname).toBe("/auth");
+    const idGuardado = globalThis.history.state?.id;
+
+    await entrarEmDoisPassos(false);
+
+    expect(idGuardado).toBe(endereco);
+    expect(avisoErro).toHaveBeenCalledWith("Este endereço não existe mais.");
+    expect(tela("formulario-endereco")).toBeNull();
+    expect(tela("tela-perfil-proprio")).not.toBeNull();
+    expect(globalThis.location.pathname).toBe("/profile");
+  });
+
+  it("id malformado em link de edição não abre cadastro novo", async () => {
+    await abrirEm("/address-form?id=");
+
+    await entrarEmDoisPassos(false);
+
+    expect(tela("tela-perfil-proprio")).not.toBeNull();
+    expect(tela("formulario-endereco")).toBeNull();
   });
 
   it("(d) outra tela do painel (/admin-dashboard?id=…) segue FORA da lista: depois de entrar vai ao perfil, sem id", async () => {
