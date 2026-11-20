@@ -136,5 +136,9 @@ describe("OrderDetail — item sem produto vinculado não mostra 'ID: #' vazio",
     });
 
     expect(hospedeiro.textContent).toContain("ID: #123456");
+    expect(hospedeiro.textContent).toContain("Item Com Vínculo");
+    expect(
+      hospedeiro.querySelector('[role="img"][aria-label="Item Com Vínculo"]'),
+    ).toBeNull();
   });
 });

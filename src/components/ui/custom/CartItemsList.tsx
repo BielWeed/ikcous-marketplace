@@ -92,9 +92,6 @@ const CartItemCard = memo(function CartItemCard({
   // A foto é a da cor escolhida (quando tem) ou a do produto.
   const fotoDaLinha = fotoDoItemDoCarrinho(item);
   const capa = capaDeReservaDoItem(item, fotoDaLinha);
-  const alt = variantText
-    ? `${item.product.name} - ${variantText}`
-    : item.product.name;
   const semFoto = (
     <div className="flex size-full items-center justify-center px-2 text-center text-xs font-medium text-muted-foreground">
       Sem foto
@@ -138,14 +135,14 @@ const CartItemCard = memo(function CartItemCard({
                 : miniaturaDeCompra(fotoDaLinha)
             }
             original={fotoDaLinha}
-            alt={alt}
+            alt=""
             className="size-full object-cover"
             fallback={
               capa ? (
                 <ImagemComFallback
                   src={miniaturaDeCompra(capa)}
                   original={capa}
-                  alt={item.product.name}
+                  alt=""
                   className="size-full object-cover"
                   fallback={semFoto}
                 />

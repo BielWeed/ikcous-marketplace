@@ -1982,7 +1982,7 @@ export function OrderDetailsView({
                 <div className="relative flex size-14 flex-shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-zinc-100 bg-zinc-50">
                   <FotoDoItemDoPedido
                     src={item.image}
-                    alt={item.name}
+                    alt=""
                     className="transition-transform duration-500 group-hover:scale-105"
                   />
                 </div>

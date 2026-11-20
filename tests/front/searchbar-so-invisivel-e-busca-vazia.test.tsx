@@ -88,10 +88,8 @@ describe("SearchBar — busca só com invisível é busca vazia", () => {
     });
   }
 
-  const nomesNaCaixinha = () =>
-    Array.from(hospedeiro.querySelectorAll("button img")).map(
-      (img) => (img as HTMLImageElement).alt,
-    );
+  const miniaturasNaCaixinha = () =>
+    Array.from(hospedeiro.querySelectorAll("button img"));
 
   it.each(["\u200B", "\u2060", "\u200E", "\u2800", "\u3164", " \u200B\u3164 "])(
     "busca só com invisível %j: a caixinha não abre",
@@ -99,18 +97,24 @@ describe("SearchBar — busca só com invisível é busca vazia", () => {
       await digitar(busca);
       expect(hospedeiro.textContent).not.toContain("Nenhum produto encontrado");
       expect(hospedeiro.textContent).not.toContain("Produtos (");
-      expect(nomesNaCaixinha()).toEqual([]);
+      expect(miniaturasNaCaixinha()).toEqual([]);
     },
   );
 
   it("CONTROLE: texto real abre a caixinha com o produto", async () => {
     await digitar("bolsa");
-    expect(nomesNaCaixinha()).toEqual(["Bolsa Preta"]);
+    const fotos = miniaturasNaCaixinha();
+    expect(fotos).toHaveLength(1);
+    expect(fotos[0].closest("button")?.textContent).toContain("Bolsa Preta");
+    expect(fotos[0].getAttribute("alt")).toBe("");
   });
 
   it("CONTROLE: texto real com invisível colado nas pontas ainda acha o produto", async () => {
     await digitar("\u200Bbolsa\u2060");
-    expect(nomesNaCaixinha()).toEqual(["Bolsa Preta"]);
+    const fotos = miniaturasNaCaixinha();
+    expect(fotos).toHaveLength(1);
+    expect(fotos[0].closest("button")?.textContent).toContain("Bolsa Preta");
+    expect(fotos[0].getAttribute("alt")).toBe("");
   });
 
   it("CONTROLE: termo sem resultado ainda diz 'Nenhum produto encontrado'", async () => {

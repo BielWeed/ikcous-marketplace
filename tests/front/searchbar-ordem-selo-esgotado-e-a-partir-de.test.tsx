@@ -135,16 +135,19 @@ describe("SearchBar — ordem, selo Esgotado e 'A partir de' na sugestão", () =
 
   /** As sugestoes de produto, na ordem da tela (cada uma e' um botao com o nome). */
   function sugestoes(nomes: string[]): string[] {
-    return [...hospedeiro.querySelectorAll("button")]
-      .filter((botao) =>
-        nomes.some((nome) => botao.querySelector("img")?.alt === nome),
-      )
-      .map((botao) => botao.querySelector("img")?.alt ?? "");
+    return [...hospedeiro.querySelectorAll("button img")]
+      .map((img) => {
+        const botao = img.closest("button");
+        return botao?.querySelector("span + span")?.textContent ?? "";
+      })
+      .filter((nome) => nomes.includes(nome));
   }
 
   function botaoDa(nome: string): HTMLButtonElement {
     const botao = [...hospedeiro.querySelectorAll("button")].find(
-      (b) => b.querySelector("img")?.alt === nome,
+      (b) =>
+        b.querySelector("img") &&
+        b.querySelector("span + span")?.textContent === nome,
     );
     expect(botao).toBeTruthy();
     return botao as HTMLButtonElement;

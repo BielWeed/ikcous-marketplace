@@ -172,9 +172,9 @@ describe("SearchBar — catálogo carregando, falha, termo longo e plural", () =
     expect(hospedeiro.textContent).not.toContain(
       "Não conseguimos carregar a busca agora",
     );
-    expect(hospedeiro.querySelector("img")?.getAttribute("alt")).toBe(
-      "Bolsa Preta",
-    );
+    const miniatura = hospedeiro.querySelector("button img");
+    expect(miniatura).not.toBeNull();
+    expect(miniatura?.closest("button")?.textContent).toContain("Bolsa Preta");
   });
 
   it("catálogo que respondeu e não tem o termo continua dizendo 'Nenhum produto encontrado'", async () => {

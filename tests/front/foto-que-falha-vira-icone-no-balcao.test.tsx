@@ -85,6 +85,8 @@ it("CupomDaVenda troca imagem que falha pelo ícone original", async () => {
     const linha = hospedeiro.querySelector(".pdv-item")!;
     const foto = linha.querySelector("img")!;
     expect(foto).not.toBeNull();
+    expect(foto.getAttribute("alt")).toBe("");
+    expect(linha.textContent).toContain("Vestido");
     await act(async () => foto.dispatchEvent(new Event("error")));
     expect(linha.querySelector("img")).toBeNull();
     expect(linha.querySelector("svg.lucide-package-plus")).not.toBeNull();
