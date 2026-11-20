@@ -922,7 +922,7 @@ export const HomeView = React.memo(function HomeView({
           </div>
         </div>
 
-        {catalogoErro && products.length === 0 && !isLoading ? (
+        {catalogoErro && filteredProducts.length === 0 && !isLoading ? (
           <div
             role="alert"
             className="relative z-10 mt-16 rounded-[2.5rem] border border-zinc-100 bg-zinc-50/50 px-4 py-20 text-center"
@@ -931,10 +931,14 @@ export const HomeView = React.memo(function HomeView({
               <PackageSearch className="size-10 text-zinc-300" />
             </div>
             <h3 className="mb-2 text-xl font-bold tracking-tight text-zinc-900">
-              Não conseguimos carregar os produtos
+              {products.length > 0
+                ? "Não conseguimos atualizar a loja agora"
+                : "Não conseguimos carregar os produtos"}
             </h3>
             <p className="mx-auto mb-6 max-w-[240px] text-sm leading-relaxed text-zinc-500">
-              Confira sua internet e tente de novo.
+              {products.length > 0
+                ? "Pode haver produtos novos que ainda não aparecem. Toque em Tentar de novo."
+                : "Confira sua internet e tente de novo."}
             </p>
             <button
               type="button"
