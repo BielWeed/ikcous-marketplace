@@ -162,7 +162,7 @@ export const ProductView = React.memo(function ProductView({
     Record<string, string>
   >(() => escolhaDasOpcoesUnicas(product.variants));
   const [folhaAberta, setFolhaAberta] = useState(false);
-  // O que a última escolha SOLTOU do outro lado ("Tamanho P desmarcado"), para
+  // O que a última escolha SOLTOU do outro lado ("Opção desmarcada: Tamanho P"), para
   // o leitor de tela: a tela muda sozinha e quem não vê não perceberia.
   const [avisoDaEscolha, setAvisoDaEscolha] = useState("");
   // A pessoa tocou em "Adicionar" sem escolher a opção: a linha que falta (na
@@ -727,8 +727,8 @@ export const ProductView = React.memo(function ProductView({
       soltas.length === 0
         ? ""
         : soltas.length === 1
-          ? `${soltas[0]} desmarcado`
-          : `${soltas.join(" e ")} desmarcados`,
+          ? `Opção desmarcada: ${soltas[0]}`
+          : `Opções desmarcadas: ${soltas.join(" e ")}`,
     );
     setSelectedVariants(proxima);
     const posicao = posicaoDaFotoDaEscolha(proxima);
