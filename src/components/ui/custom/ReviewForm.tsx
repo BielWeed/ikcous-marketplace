@@ -10,6 +10,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useReviews } from "@/hooks/useReviews";
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
+import { nomePublicoDe } from "@/lib/nome-publico";
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { cn } from "@/lib/utils";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -49,6 +50,7 @@ function proximaNota(tecla: string, de: number): number | null {
 
 interface ReviewFormProps {
   productId: string;
+  nomeCadastrado?: string | null;
   onSuccess?: () => void;
   // Redesenho 25/09/2026 (cartão "O que achou da compra?" em
   // OrderDetailsView): quem toca numa estrela do cartão já chega aqui com a
@@ -69,6 +71,7 @@ const AVISO_DO_COMENTARIO = 900;
 
 export function ReviewForm({
   productId,
+  nomeCadastrado,
   onSuccess,
   initialRating,
   temTextoRef,
@@ -243,6 +246,9 @@ export function ReviewForm({
             )}
           />
 
+          <p className="text-xs text-muted-foreground">
+            Seu nome vai aparecer assim: {nomePublicoDe(nomeCadastrado)}
+          </p>
           <Button
             type="submit"
             disabled={isSubmitting}

@@ -11,6 +11,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const addReview = vi.fn();
 
+it("mostra o nome que vai aparecer antes de enviar a avaliação", async () => {
+  await montar(5);
+  expect(hospedeiro.textContent).toContain(
+    "Seu nome vai aparecer assim: Ana S.",
+  );
+  expect(addReview).not.toHaveBeenCalled();
+});
+
 vi.mock("@/hooks/useReviews", () => ({
   useReviews: () => ({ addReview }),
 }));
@@ -41,6 +49,7 @@ async function montar(initialRating?: number, onSuccess = vi.fn()) {
     raiz.render(
       <ReviewForm
         productId="p-1"
+        nomeCadastrado="Ana de Souza"
         initialRating={initialRating}
         onSuccess={onSuccess}
       />,
@@ -59,6 +68,28 @@ async function enviar() {
 }
 
 describe("ReviewCard — avaliação só com estrelas", () => {
+  it("uma avaliação guardada pelo app anterior mostra o nome abreviado", async () => {
+    const { ReviewCard } = await import("@/components/ui/custom/ReviewCard");
+    await act(async () => {
+      raiz.render(
+        <ReviewCard
+          review={{
+            id: "r-antiga",
+            productId: "p-1",
+            customerName: "Ana de Souza",
+            rating: 5,
+            comment: "",
+            helpful: 0,
+            verified: true,
+            createdAt: "2026-09-28T12:00:00Z",
+          }}
+        />,
+      );
+    });
+    expect(hospedeiro.textContent).toContain("Ana S.");
+    expect(hospedeiro.textContent).not.toContain("Ana de Souza");
+  });
+
   it("sem comentário não desenha o parágrafo vazio", async () => {
     const { ReviewCard } = await import("@/components/ui/custom/ReviewCard");
     await act(async () => {
@@ -85,7 +116,7 @@ describe("ReviewCard — avaliação só com estrelas", () => {
 
   // r150-f: `trim()` não tira U+200B/U+200E/U+2800/U+3164; uma avaliação antiga
   // gravada só com isso desenhava o parágrafo em branco.
-  it.each(["\u200b", "\u200e\u200e", "\u2800", "\u3164"])(
+  it.each(["​", "‎‎", "⠀", "ㅤ"])(
     "comentário só de caractere invisível (%j) não desenha o parágrafo",
     async (comment) => {
       const { ReviewCard } = await import("@/components/ui/custom/ReviewCard");
@@ -174,7 +205,7 @@ describe("ReviewForm — comentário opcional", () => {
   // r150-f: comentário só de U+200B/U+200E/U+2800/U+3164 vira "" no envio (as
   // estrelas bastam) e NÃO conta como texto digitado (a folha não pergunta
   // "descartar texto?" nem segura a atualização do app por ele).
-  it.each(["\u200b", "\u200e\u200e", "\u2800", "\u3164"])(
+  it.each(["​", "‎‎", "⠀", "ㅤ"])(
     "comentário só de caractere invisível (%j) vai como vazio e não conta como texto",
     async (invisivel) => {
       const { ReviewForm } = await import("@/components/ui/custom/ReviewForm");

@@ -78,9 +78,9 @@ export interface VersaoDosTextos {
 }
 
 export const VERSAO_DOS_TEXTOS: VersaoDosTextos = {
-  versao: 4,
-  atualizadoEm: "2026-11-19",
-  impressaoDoTexto: "965e8a58",
+  versao: 5,
+  atualizadoEm: "2026-11-20",
+  impressaoDoTexto: "fa688fd2",
 };
 
 /**
@@ -239,6 +239,7 @@ function montarPrivacidade(loja: DadosDaLoja): DocumentoDePolitica {
         paragrafos: [
           "Usamos seus dados de cadastro para identificar sua conta e entrar em contato. Usamos o endereço, os itens e os dados do pedido para preparar a compra, processar o pagamento, entregar o pedido e atender dúvidas, trocas e devoluções. Também guardamos o que a lei exige, como dados fiscais do pedido.",
           "Se você permitir as notificações, usamos o identificador do aparelho para enviar avisos sobre pedidos e novidades da loja. Você pode desligar esses avisos nas configurações do aparelho ou do navegador.",
+          "As avaliações publicadas e as perguntas ficam públicas na loja e aparecem com seu primeiro nome, a inicial do último sobrenome e sua foto de perfil, se você tiver uma.",
         ],
       },
       {

@@ -28,14 +28,22 @@ const subscribeToQuestions = vi.fn(() => () => {});
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({
     user: { id: "cliente-1", email: "cliente@ikcous.com" },
-    profile: { full_name: "Cliente", avatar_url: null },
+    profile: { full_name: "Érica Álvares", avatar_url: null },
     isAdmin: false,
   }),
 }));
 
 vi.mock("@/hooks/useQuestions", () => ({
   useQuestions: () => ({
-    questions: [],
+    questions: [
+      {
+        id: "q-anterior",
+        customerName: "Maria de Souza",
+        question: "Tem em azul?",
+        createdAt: "2026-10-01T10:00:00Z",
+        answers: [],
+      },
+    ],
     loading: false,
     getQuestionsByProduct,
     addQuestion,
@@ -104,6 +112,18 @@ describe("ProductQA — Enter do teclado envia a pergunta (lote 221)", () => {
       'button[aria-label="Enviar pergunta"]',
     )!;
     expect(botao.type).toBe("submit");
+  });
+
+  it("mostra o nome que vai aparecer antes de enviar a pergunta", () => {
+    expect(formulario()?.textContent).toContain(
+      "Seu nome vai aparecer assim: Érica Á.",
+    );
+    expect(addQuestion).not.toHaveBeenCalled();
+  });
+
+  it("não exibe o nome inteiro numa pergunta guardada pelo app anterior", () => {
+    expect(hospedeiro.textContent).toContain("Maria S.");
+    expect(hospedeiro.textContent).not.toContain("Maria de Souza");
   });
 
   it("Enter (envio do formulário) manda a pergunta e limpa o campo", async () => {

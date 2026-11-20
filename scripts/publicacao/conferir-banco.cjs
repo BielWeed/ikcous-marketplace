@@ -3256,7 +3256,16 @@ const ROL_DA_164 = [
   "get_category_analytics: corpo exato (md5)",
   "get_category_analytics: assinatura e atributos conhecidos",
 ];
+const ROL_DO_NOME_PUBLICO = [
+  "nome publico: perfil de origem",
+  "nome publico: coluna gerada",
+  "nome publico: funcao pura",
+  "nome publico: vw_reviews_public",
+  "nome publico: vw_questions_public",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "163a-conferir-o-nome-publico-da-vitrine-aplicado": ROL_DO_NOME_PUBLICO,
+  "163b-antes-o-nome-publico-da-vitrine-base-vigente": ROL_DO_NOME_PUBLICO,
   "162a-conferir-o-pedido-guarda-o-nome-antigo-da-opcao-aplicado": ROL_DA_162,
   "162b-antes-o-pedido-guarda-o-nome-antigo-da-opcao-base-vigente": ROL_DA_162,
   "163a-conferir-chaves-de-frete-so-o-servidor-aplicado": ROL_DA_163,

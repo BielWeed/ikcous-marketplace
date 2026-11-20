@@ -350,7 +350,35 @@ Deno.test("a condicao de 'avaliacao que o publico ve' e' a MESMA da vitrine e da
   );
   const moderacao = ler("20261031000000_a_moderacao_ativa_e_real.sql");
   assert.ok(moderacao.includes("CHECK (status IN ('publicada', 'pendente'))"));
-  // nenhuma migration viva muda a vitrine ou a policy depois dessas duas
+  // A única alteração permitida na vitrine é a coluna do nome, sem tocar
+  // no filtro de moderação nem no restante do contrato das duas views.
+  const nomePublico =
+    "20261408000000_o_nome_de_quem_avalia_aparece_abreviado.sql";
+  const anterior = vitrine
+    .slice(iView, vitrine.indexOf("\n-- GRANT explícito", iView))
+    .trim()
+    .replaceAll("CREATE VIEW", "CREATE OR REPLACE VIEW");
+  const novo = ler(nomePublico);
+  const iNovo = novo.indexOf("CREATE OR REPLACE VIEW public.vw_reviews_public");
+  assert.ok(iNovo >= 0);
+  assert.equal(
+    novo.slice(iNovo).trim(),
+    anterior.replaceAll(
+      "pp.full_name AS author_name",
+      "COALESCE(pp.nome_publico, 'Cliente') AS author_name",
+    ),
+  );
+  const rollback = ler(`rollback-manual-${nomePublico}`);
+  const iRollback = rollback.indexOf(
+    "CREATE OR REPLACE VIEW public.vw_reviews_public",
+  );
+  assert.ok(iRollback >= 0);
+  assert.equal(
+    rollback.slice(iRollback, iRollback + anterior.length),
+    anterior,
+  );
+
+  // nenhuma outra migration viva muda a vitrine ou a policy
   const todas = [...Deno.readDirSync(new URL("supabase/migrations/", DIR))]
     .map((e) => e.name)
     .filter((n) => n.endsWith(".sql") && !n.startsWith("_"));
@@ -358,11 +386,14 @@ Deno.test("a condicao de 'avaliacao que o publico ve' e' a MESMA da vitrine e da
     if (n.startsWith("rollback-manual-")) continue;
     const c = limpo(ler(n)).toLowerCase();
     if (
-      /create (?:or replace )?view public\.vw_reviews_public/.test(c) &&
+      /create (?:or replace )?view public\.vw_(reviews|questions)_public/.test(
+        c,
+      ) &&
+      n !== nomePublico &&
       n !==
         "20261110000000_o_visitante_le_avaliacoes_e_perguntas_pela_vitrine.sql"
     )
-      assert.fail(`${n} redefine vw_reviews_public`);
+      assert.fail(`${n} redefine uma view pública de avaliações ou perguntas`);
     if (
       c.includes("create policy reviews_select_policy") &&
       !/^(20261031000000|20261111000000|20260806000000)/.test(n)

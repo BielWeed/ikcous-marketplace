@@ -8,6 +8,7 @@ import {
   gravarCopiaPorProduto,
 } from "@/lib/copias-por-produto";
 import { mensagemDeErroDeSessaoDoPainel } from "@/lib/erro-de-sessao-do-painel";
+import { nomePublicoDe } from "@/lib/nome-publico";
 import {
   PRAZO_DAS_ACOES_DO_PEDIDO_MS,
   PRAZO_DA_CONSULTA_DO_PAINEL_MS,
@@ -295,7 +296,7 @@ export function useQuestions() {
             productId: item.product_id,
             productName: productInfo?.nome,
             productImage: productInfo?.imagem_url,
-            customerName: item.author_name || "Usuário Anônimo",
+            customerName: item.author_name || "Cliente",
             customerAvatar: item.author_avatar_url || undefined,
             question: item.question,
             createdAt: item.created_at,
@@ -332,13 +333,13 @@ export function useQuestions() {
         const selectQuery = isAdmin
           ? `
           *,
-          user:public_profiles(full_name, avatar_url),
+          user:public_profiles(nome_publico, avatar_url),
           product:produtos(nome, imagem_url),
           answers:answers(*)
         `
           : `
           *,
-          user:public_profiles(full_name, avatar_url),
+          user:public_profiles(nome_publico, avatar_url),
           answers:answers(*)
         `;
 
@@ -426,7 +427,7 @@ export function useQuestions() {
           productImage: isAdmin
             ? item.product?.imagem_url
             : productInfo?.imagem_url,
-          customerName: item.user?.full_name || "Usuário Anônimo",
+          customerName: item.user?.nome_publico || "Cliente",
           customerAvatar: item.user?.avatar_url || undefined,
           question: item.question,
           createdAt: item.created_at,
@@ -546,7 +547,7 @@ export function useQuestions() {
           id: gravada.id,
           userId: user.id,
           productId: question.productId,
-          customerName: profile?.full_name || "Usuário Anônimo",
+          customerName: nomePublicoDe(profile?.full_name),
           question: gravada.question,
           createdAt: gravada.created_at,
           answers: [],

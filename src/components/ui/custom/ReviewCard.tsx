@@ -1,5 +1,6 @@
 import { LazyImage } from "@/components/LazyImage";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { nomePublicoDe } from "@/lib/nome-publico";
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { cn } from "@/lib/utils";
 import type { Review, View } from "@/types";
@@ -28,6 +29,8 @@ export function ReviewCard({
   onHelpful,
   onNavigate,
 }: ReviewCardProps) {
+  // Uma cópia guardada no navegador antes desta versão ainda pode ter o nome completo.
+  const nomePublico = nomePublicoDe(review.customerName);
   const [votoLocal, setHasMarkedHelpful] = useState(jaVotou ?? false);
   // A leitura do hook acompanha login/logout e remontagem. O estado local
   // continua atendendo os chamadores que não fornecem a marcação do banco.
@@ -106,7 +109,7 @@ export function ReviewCard({
                 className="object-cover"
               />
               <AvatarFallback className="flex select-none items-center justify-center bg-gradient-to-br from-zinc-100 to-zinc-200 text-xs font-bold text-zinc-700">
-                {getInitials(review.customerName)}
+                {getInitials(nomePublico)}
               </AvatarFallback>
             </Avatar>
           </div>
@@ -128,7 +131,7 @@ export function ReviewCard({
                 }}
                 className={`min-w-0 truncate text-sm font-bold tracking-tight text-zinc-900 ${onNavigate && review.userId ? "cursor-pointer hover:underline" : ""}`}
               >
-                {review.customerName}
+                {nomePublico}
               </span>
               {review.verified && (
                 <span className="flex shrink-0 items-center gap-0.5 rounded-md border border-emerald-100/50 bg-emerald-50/70 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-700">

@@ -1752,6 +1752,9 @@ jobs:
       - name: Prova viva das portas pequenas do banco (migrations 20261218 e 20261219)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/portas-do-banco-viva.cjs
+      - name: Prova viva do nome abreviado na vitrine (migration 20261408000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-nome-publico-da-vitrine-viva.cjs
       - name: Prova viva do portao das portas pequenas do banco (consultas 22a e 22b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/portas-do-banco-portao-viva.cjs

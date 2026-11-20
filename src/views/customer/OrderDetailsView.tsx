@@ -501,7 +501,7 @@ export function OrderDetailsView({
     reenviarComprovante,
   } = useOrders(true, false);
   const { config } = useStore();
-  const { user, loading: authLoading } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
   const [order, setOrder] = useState<Order | null>(null);
   // O pedido na tela veio do RETRATO do rastreio sem conta (sessionStorage), e
   // não do servidor: o status é o de quando a pessoa consultou e não atualiza
@@ -2456,6 +2456,7 @@ export function OrderDetailsView({
 
               <ReviewForm
                 productId={reviewingItem.productId}
+                nomeCadastrado={profile?.full_name}
                 initialRating={reviewingItem.rating}
                 temTextoRef={avaliacaoTemTextoRef}
                 enviandoRef={avaliacaoEnviandoRef}

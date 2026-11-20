@@ -10,6 +10,7 @@ const h = vi.hoisted(() => ({
   falharLote: false,
   rejeitarLote: false,
   chamadas: [] as { tabela: string; coluna: string; ids: string[] }[],
+  projecoes: new Map<string, string>(),
 }));
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({ user: h.user, isAdmin: false }),
@@ -41,6 +42,9 @@ vi.mock("@/lib/supabase", () => ({
               question: "Tem azul?",
               created_at: "2026-11-07T12:00:00Z",
               answers: [],
+              user: h.projecoes.get(tabela)?.includes("nome_publico")
+                ? { nome_publico: "Ana S." }
+                : { full_name: "Ana de Souza" },
             })),
             error: null,
           };
@@ -68,7 +72,8 @@ vi.mock("@/lib/supabase", () => ({
         return { data, error: null };
       };
       const query = {
-        select() {
+        select(projecao: string) {
+          h.projecoes.set(tabela, projecao);
           return this;
         },
         eq() {
@@ -125,6 +130,7 @@ beforeEach(() => {
   h.falharLote = false;
   h.rejeitarLote = false;
   h.chamadas = [];
+  h.projecoes.clear();
   vi.spyOn(console, "error").mockImplementation(() => {});
   host = document.createElement("div");
   document.body.appendChild(host);
@@ -142,6 +148,26 @@ async function montar() {
 function lotes(tabela: string) {
   return h.chamadas.filter((c) => c.tabela === tabela).map((c) => c.ids);
 }
+
+it("na vitrine logada, inclusive para a própria autora, só recebe o nome público", async () => {
+  h.user = { id: "user-0" };
+  h.quantidade = 1;
+  await montar();
+  await act(async () => {
+    await avaliacoes.getReviewsByProduct("nome-publico");
+    await perguntas.getQuestionsByProduct("nome-publico");
+  });
+  expect(avaliacoes.reviews[0]).toMatchObject({
+    userId: "user-0",
+    customerName: "Ana S.",
+  });
+  expect(perguntas.questions[0]).toMatchObject({
+    userId: "user-0",
+    customerName: "Ana S.",
+  });
+  expect(h.projecoes.get("reviews")).not.toContain("full_name");
+  expect(h.projecoes.get("questions")).not.toContain("full_name");
+});
 
 it.each([0, 1, 100, 101, 205])(
   "votos de %i avaliações: lê todos sem endereço enorme",

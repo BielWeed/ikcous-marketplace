@@ -218,7 +218,7 @@ export function useReviews() {
                   .from("reviews" as any)
                   .select(`
           *,
-          user:public_profiles(full_name, avatar_url)
+          user:public_profiles(nome_publico, avatar_url)
         `)
                   .eq("product_id", productId)
                   .order("created_at", { ascending: false }),
@@ -235,7 +235,7 @@ export function useReviews() {
             ? {
                 id: item.id,
                 productId: item.product_id,
-                customerName: item.author_name || "Usuário Anônimo",
+                customerName: item.author_name || "Cliente",
                 customerAvatar: item.author_avatar_url || undefined,
                 rating: item.rating,
                 comment: item.comment,
@@ -248,7 +248,7 @@ export function useReviews() {
                 id: item.id,
                 productId: item.product_id,
                 userId: item.user_id,
-                customerName: item.user?.full_name || "Usuário Anônimo",
+                customerName: item.user?.nome_publico || "Cliente",
                 customerAvatar: item.user?.avatar_url || undefined,
                 rating: item.rating,
                 comment: item.comment,

@@ -284,7 +284,7 @@ async function vitrineSoTemAPublicada(quem) {
   assert.deepEqual(pub, {
     comment: TEXTO_PUB,
     rating: 5,
-    author_name: NOME_PUB,
+    author_name: "Autora F.",
   });
 }
 

@@ -18,7 +18,7 @@
  *  3. A faz INSERT de linha com o id da B e com um id novo: 42501 (a RLS recusa antes da chave e da FK) e a tabela igual;
  *  4. A nem altera nem apaga a PROPRIA linha (o caminho certo e' profiles + gatilho): recusado, linha igual;
  *  5. o visitante (anon, que tem o privilegio padrao mas nenhuma policy) tambem nao escreve: recusado, tabela igual;
- *  6. depois de tudo isso, como anon, `vw_reviews_public.author_name` da B continua o nome real e a foto continua a dela;
+ *  6. depois de tudo isso, como anon, `vw_reviews_public.author_name` da B continua o nome abreviado dela e a foto continua a dela;
  *  7. controle: UPDATE em `profiles` (o caminho legitimo, pela dona) PROPAGA pelo gatilho para public_profiles e para a vitrine,
  *     o que mostra que a tabela nao esta so "congelada" e que as recusas acima sao da RLS;
  *  8. camadas: a unica policy viva de public_profiles e' a de leitura, FOR SELECT TO authenticated, e a RLS esta ligada
@@ -50,6 +50,7 @@ const U_NOVO = "b134d000-0000-4000-8000-0000000002c3"; // sem conta nenhuma: o i
 const PRODUTO = "b134d000-0000-4000-8000-0000000002d1";
 const R_B = "b134d000-0000-4000-8000-0000000002e1";
 const NOME_B = "Autora B Ficticia";
+const NOME_PUBLICO_B = "Autora F.";
 const FOTO_B = "data:image/svg+xml;utf8,<svg/>";
 
 const POLITICA = "public_profiles_select_policy";
@@ -312,7 +313,7 @@ prova(
     cenario(async () => {
       assert.deepEqual(
         await vitrineDaB(),
-        [{ author_name: NOME_B, author_avatar_url: FOTO_B }],
+        [{ author_name: NOME_PUBLICO_B, author_avatar_url: FOTO_B }],
         "controle: antes",
       );
       await recusada("UPDATE da linha da B", "authenticated", A, UPD, [U_B]);
@@ -325,7 +326,7 @@ prova(
       await recusada("DELETE da linha da B", "authenticated", A, DEL, [U_B]);
       assert.deepEqual(
         await vitrineDaB(),
-        [{ author_name: NOME_B, author_avatar_url: FOTO_B }],
+        [{ author_name: NOME_PUBLICO_B, author_avatar_url: FOTO_B }],
         "a vitrine mostra outro nome ou outra foto da B",
       );
     }),
@@ -358,7 +359,7 @@ prova(
         "o gatilho nao propagou o nome para public_profiles",
       );
       assert.deepEqual(await vitrineDaB(), [
-        { author_name: "Autora B Renomeada", author_avatar_url: FOTO_B },
+        { author_name: "Autora R.", author_avatar_url: FOTO_B },
       ]);
     }),
 );
