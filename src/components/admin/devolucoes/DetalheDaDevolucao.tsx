@@ -16,7 +16,6 @@ import { useRotulosDasVariacoes } from "@/hooks/useRotulosDasVariacoes";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { formatarDataHoraBrasilia } from "@/lib/data-da-loja";
 import {
-  formatarDataHora,
   formatarDia,
   formatarReais,
   pedidoDentroDoPrazo,
@@ -494,7 +493,7 @@ export function DetalheDaDevolucao({
                         {" "}
                         · {rotuloAtor(evento.ator)} ·{" "}
                         <span className="tabular-nums">
-                          {formatarDataHora(evento.created_at)}
+                          {formatarDataHoraBrasilia(evento.created_at)}
                         </span>
                       </span>
                     </p>
