@@ -117,16 +117,16 @@ describe("createOrder manda ao banco o pedido inteiro, com cupom, variação e e
     });
   });
 
-  it("o mesmo vale quando o pagamento é online (a outra versão da função do banco)", async () => {
+  it("no pagamento online, envia o total do cliente e devolve o total do banco", async () => {
     vi.mocked(supabase.from).mockReturnValue({
       select: () => ({
         eq: () => ({
-          single: () => Promise.resolve({ data: { total: 80 }, error: null }),
+          single: () => Promise.resolve({ data: { total: 90 }, error: null }),
         }),
       }),
     } as never);
     const { createOrder } = useOrders(false, false);
-    await createOrder(
+    const pedido = await createOrder(
       {
         items: [{ productId: "prod-1", variantId: "var-p", quantity: 2 }],
         totalAmount: 80,
@@ -145,6 +145,7 @@ describe("createOrder manda ao banco o pedido inteiro, com cupom, variação e e
     );
     const args = argumentosDaRpc();
     expect(args.p_total_amount).toBe(80);
+    expect(pedido.totalAmount).toBe(90);
     expect(args.p_coupon_code).toBe("DEZ");
     expect(args.p_items).toEqual([
       { product_id: "prod-1", variant_id: "var-p", quantity: 2 },
