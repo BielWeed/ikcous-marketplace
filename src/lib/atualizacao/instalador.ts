@@ -50,14 +50,35 @@ import {
   haOperacaoSensivel,
 } from "./operacao-sensivel";
 import {
+  MAX_TENTATIVAS_POR_VERSAO,
   devolverTentativa,
   podeTentarAtualizar,
   reservarTentativa,
+  tentativasDaOrigem,
+  tentativasFeitas,
 } from "./trava-anti-repeticao";
 import {
   assinarVetoDeRecarga,
   definirAvaliadorDeMomentoSeguro,
 } from "./veto-de-recarga";
+
+// Só apresenta o aviso; armazenamento indisponível também barra a instalação,
+// mas não comprova que as duas tentativas foram gastas.
+function anunciarLimiteDeTentativas({
+  alvo,
+  origem,
+  versaoNova,
+}: Pick<OpcoesDoInstalador, "alvo" | "origem" | "versaoNova">): boolean {
+  const daOrigem = origem === undefined ? 0 : tentativasDaOrigem(origem);
+  if (
+    tentativasFeitas(alvo) < MAX_TENTATIVAS_POR_VERSAO &&
+    daOrigem < MAX_TENTATIVAS_POR_VERSAO
+  ) {
+    return false;
+  }
+  definirEstadoDaAtualizacao({ fase: "pendente", versaoNova });
+  return true;
+}
 
 /** Se a recarga não aconteceu neste prazo (beforeunload cancelou, o SW não
  * assumiu, página congelada), a fase volta a "aguardando". */
@@ -187,6 +208,10 @@ export function useInstaladorNoPontoDeParada(opcoes: OpcoesDoInstalador): void {
     );
 
     const soltarFase = () => {
+      if (obterEstadoDaAtualizacao().fase === "pendente") {
+        definirEstadoDaAtualizacao({ fase: "nenhuma", versaoNova: null });
+        return;
+      }
       // Só mexe no estado global se foi ESTA instância que o armou.
       if (!armou.current) return;
       const fase = obterEstadoDaAtualizacao().fase;
@@ -196,10 +221,8 @@ export function useInstaladorNoPontoDeParada(opcoes: OpcoesDoInstalador): void {
     };
 
     const desistir = () => {
-      // Trava esgotada (ou sem como contar): desiste em silêncio. O app segue
-      // na versão que tem.
       desistiu = true;
-      soltarFase();
+      if (!anunciarLimiteDeTentativas(vivo.current)) soltarFase();
     };
 
     const encerrar = (execucao: Execucao) => {
@@ -405,6 +428,9 @@ export function useInstaladorNoPontoDeParada(opcoes: OpcoesDoInstalador): void {
     opcoes;
   useEffect(() => {
     if (!ativo) {
+      if (obterEstadoDaAtualizacao().fase === "pendente") {
+        definirEstadoDaAtualizacao({ fase: "nenhuma", versaoNova: null });
+      }
       if (armou.current) {
         const fase = obterEstadoDaAtualizacao().fase;
         if (fase === "aguardando")
@@ -414,11 +440,13 @@ export function useInstaladorNoPontoDeParada(opcoes: OpcoesDoInstalador): void {
       return;
     }
     acoes.current?.rearmar();
-    // Trava já esgotada (ou sem como contar): nem arma, a pessoa não vê nada.
     if (modo === "instalar" && !podeTentarAtualizar(alvo, origem)) {
-      // Se já estava armada (versão-alvo nova que cai no teto da origem), solta
-      // a fase: desiste em silêncio, a ilha não fica esperando o que não vem.
-      if (armou.current && obterEstadoDaAtualizacao().fase === "aguardando") {
+      const fase = obterEstadoDaAtualizacao().fase;
+      if (
+        fase !== "instalando" &&
+        !anunciarLimiteDeTentativas({ alvo, origem, versaoNova }) &&
+        ((armou.current && fase === "aguardando") || fase === "pendente")
+      ) {
         definirEstadoDaAtualizacao({ fase: "nenhuma" });
       }
       armou.current = false;

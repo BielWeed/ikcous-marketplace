@@ -315,8 +315,8 @@ describe("PWAUpdateGate orquestra a atualização", () => {
       await navegarPara("favorites");
       expect(aplicar).toHaveBeenCalledTimes(2);
       await navegarPara("home");
-      expect(aplicar).toHaveBeenCalledTimes(2); // desistiu em silêncio
-      expect(obterEstadoDaAtualizacao().fase).toBe("nenhuma");
+      expect(aplicar).toHaveBeenCalledTimes(2); // não houve terceira tentativa
+      expect(obterEstadoDaAtualizacao().fase).toBe("pendente");
     });
   });
 
@@ -338,7 +338,7 @@ describe("PWAUpdateGate orquestra a atualização", () => {
       await navegarPara("home");
       expect(aplicar).not.toHaveBeenCalled();
       expect(local.get("pwa_instalando")).toBeUndefined();
-      expect(obterEstadoDaAtualizacao().fase).toBe("nenhuma");
+      expect(obterEstadoDaAtualizacao().fase).toBe("pendente");
     });
 
     it("controle: origem DIFERENTE esgotada não impede este build de tentar", async () => {
