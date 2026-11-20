@@ -411,10 +411,10 @@ function AvisoDeVagasDeVisitante({
       role="status"
       className="mb-3 rounded-xl border border-admin-border bg-admin-raised px-3 py-2 text-sm text-zinc-200"
     >
-      {vagas} de {LIMITE_DE_VAGAS_DE_VISITANTE} vagas de compra sem conta
-      ocupadas; ao chegar em {LIMITE_DE_VAGAS_DE_VISITANTE}, quem compra sem
-      conta precisa entrar na conta. Confirme ou cancele os pedidos que não vão
-      sair.
+      Cerca de {vagas} de {LIMITE_DE_VAGAS_DE_VISITANTE} vagas de compra sem
+      conta parecem ocupadas pelos pedidos carregados; ao chegar em{" "}
+      {LIMITE_DE_VAGAS_DE_VISITANTE}, quem compra sem conta precisa entrar na
+      conta. Confira os pedidos que vai atender e cancele os demais.
     </p>
   ) : null;
 }

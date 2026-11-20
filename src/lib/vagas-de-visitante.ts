@@ -25,6 +25,8 @@ function pendenteDeVisitante(pedido: PedidoParaVaga): boolean {
   );
 }
 
+// Estimativa: o painel atualiza o relógio do aparelho a cada minuto;
+// o banco aplica o corte de 72 horas pelo relógio do servidor.
 export function contarVagasDeVisitante(
   pedidos: readonly PedidoParaVaga[],
   agora: number,

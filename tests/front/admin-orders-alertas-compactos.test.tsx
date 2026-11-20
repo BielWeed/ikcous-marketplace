@@ -266,8 +266,8 @@ describe("AdminOrdersView — botão de alerta no header com dropdown de detalhe
         p.textContent?.includes("vagas de compra sem conta"),
       );
       if (mostra) {
-        expect(aviso?.textContent).toContain(
-          `${quantidade} de 10 vagas de compra sem conta ocupadas`,
+        expect(aviso?.textContent?.replace(/\s+/g, " ").trim()).toBe(
+          `Cerca de ${quantidade} de 10 vagas de compra sem conta parecem ocupadas pelos pedidos carregados; ao chegar em 10, quem compra sem conta precisa entrar na conta. Confira os pedidos que vai atender e cancele os demais.`,
         );
       } else {
         expect(aviso).toBeUndefined();

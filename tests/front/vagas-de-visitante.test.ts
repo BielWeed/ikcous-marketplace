@@ -35,7 +35,7 @@ describe("vagas de compra sem conta", () => {
     ).toBe(0);
   });
 
-  it("exclui cancelado, pago/confirmado, entregue, online e pedido com conta", () => {
+  it("exclui cancelado, em preparação, entregue, online e pedido com conta", () => {
     expect(
       contarVagasDeVisitante(
         [
@@ -48,6 +48,15 @@ describe("vagas de compra sem conta", () => {
         agora,
       ),
     ).toBe(0);
+  });
+
+  it("recebimento registrado não libera vaga enquanto a etapa é pendente", () => {
+    const recebido = {
+      ...pendente,
+      paymentStatus: "recebido_na_entrega",
+      pagamentoRecebidoEm: "2026-11-20T11:00:00Z",
+    };
+    expect(contarVagasDeVisitante([recebido], agora)).toBe(1);
   });
 
   it("página incompleta só cobre a janela quando alcança o corte", () => {
