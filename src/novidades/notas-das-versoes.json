@@ -1,4 +1,17 @@
 {
+  "1.5.223": {
+    "titulo": "Clientes e pedidos mais claros",
+    "novidades": [],
+    "correcoes": [
+      "No painel, uma venda totalmente reembolsada deixa de contar como receita no CRM.",
+      "A lista de Clientes e a ficha do cliente passam a mostrar o mesmo total comprado que o CRM, inclusive com as vendas de balcão.",
+      "Na grade de variações do painel, se todas as combinações escolhidas já existem, o botão de gerar fica desativado e a tela explica que não há nada a criar.",
+      "Ao enviar fotos de um produto pelo painel, a mensagem de sucesso diz “Foto enviada” ou “Fotos enviadas”, conforme a quantidade.",
+      "Nas notificações da cliente, o botão sempre mostra o texto “Marcar como lidas”.",
+      "Em Meus pedidos, quando a aba aberta está vazia mas a outra tem pedidos, a tela diz onde eles estão e oferece o botão para ir até lá."
+    ],
+    "melhorias": []
+  },
   "1.5.222": {
     "titulo": "Recibo, ficha e avisos mais fiéis",
     "novidades": [],
