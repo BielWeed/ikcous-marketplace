@@ -100,7 +100,7 @@ function ultimoEstado(
 // O nome da loja é o do MANIFESTO (`branding.appName`, a mesma fotografia
 // que preparou o HTML e o manifesto): é com ele que o app aparece na lista
 // de Apps do Android, que é onde a pessoa vai procurá-lo.
-const MENSAGEM_DO_APP = `O aparelho está bloqueando as notificações deste app. Abra as configurações do aparelho → Apps → ${branding.appName} → Notificações, ative e toque de novo.`;
+const MENSAGEM_DO_APP = `O aparelho está bloqueando as notificações deste app. No computador, abra a loja no Chrome ou Edge: ícone ao lado do endereço → Configurações do site → Notificações → Permitir. No celular: Configurações → Apps → ${branding.appName} → Notificações; ative os avisos. Depois, tente de novo.`;
 const MENSAGEM_DA_ABA =
   "O aparelho está bloqueando as notificações do navegador. Abra as configurações do aparelho → Apps → o seu navegador → Notificações, ative e toque de novo.";
 const MENSAGEM_NAVEGADOR =

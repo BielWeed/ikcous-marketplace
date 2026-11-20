@@ -404,9 +404,9 @@ describe("CartaoDeAvisosDoAparelho", () => {
 
     it("se o hook recusar com a frase traduzida, o cartão a deixa FIXA na tela", async () => {
       // É o erro que o hook lança: `.message` já é a instrução em português
-      // (aqui, o caso do Android com as notificações do app desligadas).
+      // (aqui, o caso do app instalado com as notificações bloqueadas).
       const frase =
-        "O aparelho está bloqueando as notificações deste app. Abra as configurações do aparelho → Apps → Loja de Teste → Notificações, ative e toque de novo.";
+        "O aparelho está bloqueando as notificações deste app. No computador, abra a loja no Chrome ou Edge: ícone ao lado do endereço → Configurações do site → Notificações → Permitir. No celular: Configurações → Apps → Loja de Teste → Notificações; ative os avisos. Depois, tente de novo.";
       hook.subscribe.mockRejectedValue(
         Object.assign(new Error(frase), { name: "PushSubscribeError" }),
       );
