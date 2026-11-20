@@ -578,7 +578,7 @@ describe("CartaoDeAvisosDoAparelho", () => {
       });
       expect(botao(TESTE)?.disabled).toBe(false);
       expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toContain(
-        "Não deu certo agora. Confira a conexão e tente de novo.",
+        "Sem resposta da rede. O aviso pode ter chegado: confira o aparelho antes de tentar de novo.",
       );
 
       await tocar(TESTE);
