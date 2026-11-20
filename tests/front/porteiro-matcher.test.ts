@@ -19,7 +19,7 @@ import {
 describe("matcher — os três padrões exportados para config.matcher", () => {
   it("tem exatamente os três padrões do desenho (rodada 2, correção do achado 1: offline.html e google*.html entram na lista de raiz)", () => {
     expect(matcher).toEqual([
-      "/((?!assets/|store-identity/|icons/|images/|fonts/|logos/|branding/|sw\\.js$|workbox-[^/]*\\.js$|version\\.json$|favicon\\.ico$|favicon\\.svg$|logo\\.svg$|apple-touch-icon\\.png$|og-image\\.png$|silent-guardian\\.js$|loading\\.css$|404\\.html$|index\\.html$|registerSW\\.js$|offline\\.html$|google[A-Za-z0-9]*\\.html$).*)",
+      "/((?!assets/|store-identity/|icons/|images/|fonts/|logos/|branding/|sw\\.js$|workbox-[^/]*\\.js$|version\\.json$|favicon\\.ico$|favicon\\.svg$|logo\\.svg$|apple-touch-icon\\.png$|og-image\\.png$|silent-guardian\\.js$|loading\\.css$|404\\.html$|index\\.html$|registerSW\\.js$|offline\\.html$|THIRD_PARTY_NOTICES\\.txt$|google[A-Za-z0-9]*\\.html$).*)",
       "/identidade.json",
       "/manifest.webmanifest",
     ]);

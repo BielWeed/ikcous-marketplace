@@ -1,3 +1,4 @@
+import { MiniaturaDoItemDevolvido } from "@/components/devolucao/MiniaturaDoItemDevolvido";
 import {
   AlertTriangle,
   Camera,
@@ -706,9 +707,9 @@ function FluxoDaDevolucao({
                   >
                     <div className="size-14 shrink-0 overflow-hidden rounded-xl border border-zinc-100 bg-zinc-50">
                       {item.image_url && (
-                        <img
-                          src={item.image_url}
-                          alt=""
+                        <MiniaturaDoItemDevolvido
+                          key={item.image_url}
+                          url={item.image_url}
                           className="size-full object-cover"
                         />
                       )}

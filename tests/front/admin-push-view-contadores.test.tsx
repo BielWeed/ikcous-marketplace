@@ -66,6 +66,10 @@ vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
 }));
 
+const lerHistorico = vi.hoisted(() =>
+  vi.fn(async () => ({ data: [], error: null })),
+);
+
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: (tabela: string) => {
@@ -77,8 +81,14 @@ vi.mock("@/lib/supabase", () => ({
               : Promise.resolve({ count: estadoDoBanco.subCount, error: null }),
         };
       }
-      // push_notifications_log, vw_produtos_public, public_profiles: sem
-      // linha nenhuma — não é o que este teste mede.
+      if (tabela === "push_notifications_log") {
+        return {
+          select: () => ({
+            not: () => ({ order: () => ({ limit: lerHistorico }) }),
+          }),
+        };
+      }
+      // vw_produtos_public, public_profiles: sem linha — não é o que o teste mede.
       return {
         select: () => ({
           order: () => ({
@@ -204,6 +214,8 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
     await act(async () => {
       await esperar(50);
     });
+    expect(lerHistorico).toHaveBeenCalledWith(100);
+    expect(lerHistorico).toHaveResolvedWith({ data: [], error: null });
   }
 
   const texto = () => hospedeiro.textContent ?? "";

@@ -1143,7 +1143,7 @@
     grid-column: 2;
     grid-row: 7;
   }
-  /* Avisos e a pergunta "Descartar esta venda?" flutuam sobre a tela: na
+  /* Avisos e a pergunta "Limpar a tela da venda?" flutuam sobre a tela: na
      largura toda ficavam com 1300 px de texto curto. Presos à direita, e no
      máximo na metade direita: com 36rem cheios invadiam a coluna da esquerda
      em 1280 px (92 px) e em 1366 px (49 px). */

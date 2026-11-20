@@ -41,6 +41,10 @@ vi.mock("sonner", () => ({
   },
 }));
 
+const lerHistorico = vi.hoisted(() =>
+  vi.fn(async () => ({ data: [], error: null })),
+);
+
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: (tabela: string) => {
@@ -55,9 +59,7 @@ vi.mock("@/lib/supabase", () => ({
       if (tabela === "push_notifications_log") {
         return {
           select: () => ({
-            order: () => ({
-              limit: () => Promise.resolve({ data: [], error: null }),
-            }),
+            not: () => ({ order: () => ({ limit: lerHistorico }) }),
           }),
         };
       }
@@ -95,6 +97,7 @@ describe("Avisar clientes — acompanha a virada do dia", () => {
     rpc.mockReset();
     rpc.mockResolvedValue({ data: 2, error: null });
     lerAparelhos.mockReset();
+    lerHistorico.mockClear();
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
     vi.setSystemTime(new Date(ANTES_DA_MEIA_NOITE));
     const armazem = new Map<string, string>();
@@ -139,6 +142,8 @@ describe("Avisar clientes — acompanha a virada do dia", () => {
       raiz.render(<AdminPushView onNavigate={vi.fn()} />);
     });
     await avancar(100);
+    expect(lerHistorico).toHaveBeenCalledWith(100);
+    expect(lerHistorico).toHaveResolvedWith({ data: [], error: null });
   }
 
   it("com a tela aberta na virada do dia, os grupos e o total de aparelhos são medidos de novo", async () => {

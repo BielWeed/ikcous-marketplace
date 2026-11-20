@@ -1,5 +1,6 @@
 import { branding } from "@/config/branding";
 import type { StoreIdentityIntent } from "@/lib/adminStoreIdentity";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import type { VerifiedPublicIdentityAsset } from "@/lib/publicStoreIdentity";
 import {
   type BrandingAssets,
@@ -67,6 +68,7 @@ export type IdentityDraftChange =
 export type IdentityDraftErrorCode =
   | "IDENTITY_DRAFT_INVALID"
   | "IDENTITY_DRAFT_INCOMPLETE"
+  | "IDENTITY_DRAFT_NAME_REQUIRED"
   | "IDENTITY_DRAFT_SOURCE_LIMIT"
   | "IDENTITY_DRAFT_SOURCE_REQUIRED"
   | "IDENTITY_DRAFT_SOURCE_DUPLICATE";
@@ -398,6 +400,13 @@ export function buildIdentityEditorIntent(
 ): StoreIdentityIntent {
   const origin = checked(() => normalizeSupabaseOrigin(supabaseUrl));
   const copy = draftFrom(draft, origin);
+  const previous = createIdentityEditorDraft(copy.expected, origin);
+  if (
+    copy.fields.storeName !== previous.fields.storeName &&
+    !nomeTemConteudoVisivel(copy.fields.storeName)
+  ) {
+    throw new IdentityDraftError("IDENTITY_DRAFT_NAME_REQUIRED");
+  }
   const identity = checked(() =>
     parseStoreIdentity(
       {
@@ -413,7 +422,6 @@ export function buildIdentityEditorIntent(
       origin,
     ),
   );
-  const previous = createIdentityEditorDraft(copy.expected, origin);
   const desired = parseRawStoreIdentity({
     store_name: identity.storeName,
     store_city: identity.city,

@@ -320,7 +320,14 @@ export function mapOrderFromDB(
           // por ele); sem id a chave nem existe, como era antes.
           ...(item.id ? { id: item.id } : {}),
           productId: item.product_id || "",
-          variantId: (item as any).variant_id || undefined,
+          variantId: item.variant_id || undefined,
+          ...(item.variacao_nome_na_compra != null &&
+          item.variacao_valor_na_compra != null
+            ? {
+                variacaoNomeNaCompra: item.variacao_nome_na_compra,
+                variacaoValorNaCompra: item.variacao_valor_na_compra,
+              }
+            : {}),
           name: item.product_name || "",
           price: Number(item.price || 0),
           quantity: Number(item.quantity || 1),
@@ -338,6 +345,7 @@ export function mapOrderFromDB(
     // Fiel à coluna: `null` continua `null`, não vira "sem_cobranca" aqui.
     // Quem traduz é o PaymentStatusBadge (src/components/admin/orders/OrderStatusBadge.tsx).
     paymentStatus: row.payment_status as PaymentStatus | null,
+    ...(row.expires_at ? { expiraEm: row.expires_at } : {}),
     status: (row.status as OrderStatus) || "pending",
     notes: row.notes || undefined,
     couponCode: row.coupon_code || undefined,

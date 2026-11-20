@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { AdminOrderCard } from "@/components/admin/orders/AdminOrderCard";
+import { mapOrderFromDB } from "@/lib/mappers";
 import { textoCancelamentoDoPainel } from "@/lib/texto-cancelamento-do-painel";
 import type { Order } from "@/types";
 import { act } from "react";
@@ -96,6 +97,91 @@ afterEach(() => {
   host.remove();
   vi.useRealTimers();
   vi.restoreAllMocks();
+});
+
+it.each([
+  ["processing", "aguardando", "pix", "2000-01-01T00:00:00Z", true],
+  ["shipping", "aguardando", "pix", "2000-01-01T00:00:00Z", true],
+  ["delivered", "aguardando", "pix", "2000-01-01T00:00:00Z", false],
+  ["processing", "pago", "pix", "2000-01-01T00:00:00Z", false],
+  ["processing", "aguardando", "credito", "2000-01-01T00:00:00Z", false],
+  ["pending", "aguardando", "pix", "2000-01-01T00:00:00Z", false],
+  ["processing", "aguardando", "pix", "2099-01-01T00:00:00Z", false],
+] as const)(
+  "aviso de Pix: %s, %s, %s, vence em %s",
+  (status, paymentStatus, metodoOnline, expiraEm, mostraAviso) => {
+    montar(pedido({ status, paymentStatus, metodoOnline, expiraEm }));
+    expect(host.textContent?.includes("O Pix deste pedido venceu")).toBe(
+      mostraAviso,
+    );
+  },
+);
+
+it("usa o vencimento gravado na cobrança, não a idade do pedido", () => {
+  const linha = {
+    id: "pedido-abc123",
+    status: "processing",
+    payment_method: "online",
+    payment_status: "aguardando",
+    metodo_online: "pix",
+    created_at: "2000-01-01T00:00:00Z",
+    expires_at: "2099-01-01T00:00:00Z",
+  } as Parameters<typeof mapOrderFromDB>[0];
+  montar(mapOrderFromDB(linha));
+  expect(host.textContent).not.toContain("O Pix deste pedido venceu");
+
+  montar(mapOrderFromDB({ ...linha, expires_at: "2000-01-01T00:30:00Z" }));
+  expect(host.textContent).toContain("O Pix deste pedido venceu");
+});
+
+it.each([
+  {
+    status: "processing",
+    retiradaNaLoja: true,
+    expiraEm: "2000-01-01T00:00:00Z",
+  },
+  {
+    status: "shipping",
+    retiradaNaLoja: true,
+    expiraEm: "2000-01-01T00:00:00Z",
+  },
+  { status: "processing", expiraEm: undefined },
+  { status: "processing", expiraEm: "data ilegível" },
+] as const)(
+  "não mostra aviso para $status com $expiraEm sem prazo ou em retirada",
+  (dados) => {
+    montar(
+      pedido({ paymentStatus: "aguardando", metodoOnline: "pix", ...dados }),
+    );
+    expect(host.textContent).not.toContain("O Pix deste pedido venceu");
+  },
+);
+
+it("avisa no instante exato do vencimento com fração de segundo e fuso", () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-11-19T15:00:00.123Z"));
+  montar(
+    pedido({
+      status: "shipping",
+      paymentStatus: "aguardando",
+      metodoOnline: "pix",
+      expiraEm: "2026-11-19T12:00:00.123456-03:00",
+    }),
+  );
+  expect(host.textContent).toContain("O Pix deste pedido venceu");
+  expect(host.textContent).toContain(
+    "Se decidir desistir, use Cancelar pedido.",
+  );
+  expect(host.textContent).not.toContain("liberar a reserva");
+});
+
+it("explica que avançar não confirma um pedido no Pix", async () => {
+  montar(pedido({ paymentStatus: "aguardando", metodoOnline: "pix" }));
+  await clicar("Avançar mesmo assim");
+  expect(document.body.textContent).toContain(
+    "Avançar não confirma o Pix. Se você não recebeu por fora, confira com o cliente antes de seguir.",
+  );
+  expect(avancar).not.toHaveBeenCalled();
 });
 
 it("a leitura segue status, identificação, cliente/produto, total/pagamento e ação; o nome longo não corta", () => {

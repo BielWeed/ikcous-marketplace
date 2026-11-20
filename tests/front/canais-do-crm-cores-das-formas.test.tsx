@@ -277,11 +277,10 @@ describe("CanaisDoCrm — desenho novo do cartão de métrica", () => {
 
   it("o título diz a régua do CRM e não repete o do Financeiro", async () => {
     await montar();
-    expect(
-      hospedeiro.querySelector(
-        'section[aria-label="Vendas que ficaram: app × loja"]',
-      ),
-    ).not.toBeNull();
+    const tituloCrm = hospedeiro
+      .querySelector('section[aria-label^="Vendas que ficaram:"]')
+      ?.getAttribute("aria-label");
+    expect(tituloCrm).toBe("Vendas que ficaram: app × loja");
     expect(
       hospedeiro.querySelector('section[aria-label="App × loja física"]'),
     ).toBeNull();
@@ -291,9 +290,16 @@ describe("CanaisDoCrm — desenho novo do cartão de métrica", () => {
         '[aria-label="Entender Vendas que ficaram: app × loja"]',
       ),
     ).not.toBeNull();
-    expect("Vendas que ficaram: app × loja").not.toBe(
-      "Recebido: app × loja (antes de estornos)",
+    const { readFileSync } = await import("node:fs");
+    const fonteFinanceiro = readFileSync(
+      "src/components/admin/financeiro/AbaVisao.tsx",
+      "utf8",
     );
+    const tituloFinanceiro = fonteFinanceiro.match(
+      /function AppVersusLoja\b.*?<CartaoSecao\s+titulo="([^"]+)"/s,
+    )?.[1];
+    expect(tituloFinanceiro).toBeTruthy();
+    expect(tituloFinanceiro).not.toBe(tituloCrm);
   });
 
   it("a ajuda só promete o que a conta faz: tira as canceladas, não as devolvidas", async () => {

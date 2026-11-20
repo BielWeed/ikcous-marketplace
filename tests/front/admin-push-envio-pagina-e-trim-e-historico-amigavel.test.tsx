@@ -56,9 +56,11 @@ vi.mock("@/lib/supabase", () => ({
       if (tabela === "push_notifications_log") {
         return {
           select: () => ({
-            order: () => ({
-              limit: () =>
-                Promise.resolve({ data: estado.historico, error: null }),
+            not: () => ({
+              order: () => ({
+                limit: () =>
+                  Promise.resolve({ data: estado.historico, error: null }),
+              }),
             }),
           }),
           insert: () => ({
@@ -210,6 +212,26 @@ describe("Avisar clientes: envio paginado, texto em branco e historico amigavel"
       await esperar(80);
     });
   }
+
+  it.each(["/order-details?id=abc", "/order-details/"])(
+    "não envia um aviso com link de pedido inválido: %s",
+    async (caminho) => {
+      await abrirTela();
+      await escrever("Seu pedido", "Veja os detalhes");
+      await act(async () => botao("Ao tocar na mensagem")!.click());
+      await act(async () => botao("Avançado: abrir outra página")!.click());
+      await act(async () => {
+        digitar(
+          hospedeiro.querySelector<HTMLInputElement>("#push-custom-path")!,
+          caminho,
+        );
+      });
+      await enviar();
+
+      expect(invokeSendPush).not.toHaveBeenCalled();
+      expect(toastError).toHaveBeenCalledWith("Link de pedido inválido");
+    },
+  );
 
   it("B2: titulo e mensagem so com espacos nao saem", async () => {
     await abrirTela();

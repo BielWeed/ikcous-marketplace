@@ -63,7 +63,12 @@ function lerFavoritosPendentes(userId: string): Product[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(getPendingFavoritesKey(userId));
-    return raw ? (JSON.parse(raw) as Product[]) : [];
+    const lista: unknown = raw ? JSON.parse(raw) : null;
+    if (!Array.isArray(lista)) return [];
+    return lista.filter(
+      (entrada: unknown): entrada is Product =>
+        typeof entrada !== "string" && entradaLocalValida(entrada),
+    );
   } catch (err) {
     console.error("Failed to read pending favorites", err);
     return [];

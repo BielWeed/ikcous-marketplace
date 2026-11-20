@@ -115,10 +115,14 @@ describe("retirada — horário e aviso de cancelamento", () => {
   });
 
   it.each([undefined, "", "   "])(
-    "sem horário (%s), não deixa linha vazia",
+    "sem horário (%s), pede para confirmar antes de ir",
     async (horario) => {
       estado.horario = horario;
-      expect(await renderizar()).not.toContain("Horário:");
+      const texto = await renderizar();
+      expect(texto).toContain(
+        "Confirme o horário de retirada com a loja antes de vir.",
+      );
+      expect(texto).not.toContain("Horário:");
     },
   );
 

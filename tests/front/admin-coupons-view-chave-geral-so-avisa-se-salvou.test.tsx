@@ -135,6 +135,22 @@ describe("AdminCouponsView — chave geral só avisa o que foi gravado", () => {
     );
   });
 
+  it("chave desligada: avisa que os cupons foram ativados após salvar", async () => {
+    estado.config = { enableCoupons: false };
+    estado.updateConfig.mockResolvedValue(true);
+    await abrirTela();
+
+    await act(async () => chave()?.click());
+
+    expect(estado.updateConfig).toHaveBeenCalledExactlyOnceWith(
+      { enableCoupons: true },
+      { silentSuccess: true },
+    );
+    expect(estado.toast.success).toHaveBeenCalledExactlyOnceWith(
+      "Cupons de desconto ativados no aplicativo",
+    );
+  });
+
   it("dois toques com a gravação no ar: grava UMA vez e a chave fica em 'Salvando...'", async () => {
     let terminar!: (salvou: boolean) => void;
     estado.updateConfig.mockReturnValue(

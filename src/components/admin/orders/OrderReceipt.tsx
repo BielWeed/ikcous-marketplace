@@ -8,6 +8,7 @@ import { linhasDoEndereco } from "@/lib/linhas-do-endereco-do-pedido";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { observacaoDaClienteNoRecibo } from "@/lib/observacao-da-cliente-no-recibo";
 import { quemVaiReceberSeForOutro } from "@/lib/quem-vai-receber";
+import { rotuloDaVariacaoGuardada } from "@/lib/rotulo-da-variacao";
 import { situacaoDoPagamentoNaEntrega } from "@/lib/situacao-do-pagamento-na-entrega";
 import type { Order } from "@/types";
 import { memo } from "react";
@@ -173,24 +174,29 @@ export const OrderReceipt = memo(function OrderReceipt({
         <div className="mb-4">
           <p className="mb-1 border-b border-black font-bold">ITENS:</p>
           <div className="space-y-1">
-            {order.items.map((item, i) => (
-              <div
-                key={i}
-                className="flex justify-between print:break-inside-avoid"
-              >
-                <span className="min-w-0 flex-1 break-words">
-                  {item.quantity}x {item.name}
-                  {item.variantId && variacoes?.[item.variantId] && (
-                    <span className="block break-words pl-4 text-xs">
-                      {variacoes[item.variantId]}
-                    </span>
-                  )}
-                </span>
-                <span className="shrink-0 whitespace-nowrap">
-                  R$ {reais((item.price || 0) * (item.quantity || 0))}
-                </span>
-              </div>
-            ))}
+            {order.items.map((item, i) => {
+              const rotulo =
+                rotuloDaVariacaoGuardada(item) ||
+                (item.variantId ? variacoes?.[item.variantId] : "");
+              return (
+                <div
+                  key={i}
+                  className="flex justify-between print:break-inside-avoid"
+                >
+                  <span className="min-w-0 flex-1 break-words">
+                    {item.quantity}x {item.name}
+                    {rotulo && (
+                      <span className="block break-words pl-4 text-xs">
+                        {rotulo}
+                      </span>
+                    )}
+                  </span>
+                  <span className="shrink-0 whitespace-nowrap">
+                    R$ {reais((item.price || 0) * (item.quantity || 0))}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -230,13 +236,13 @@ export const OrderReceipt = memo(function OrderReceipt({
           {valorEstornado > 0 && order.status !== "cancelled" ? (
             <>
               <div className="flex justify-between gap-2 text-xs">
-                <span>Reembolsado:</span>
+                <span>Reembolsado pelo Mercado Pago:</span>
                 <span className="shrink-0 whitespace-nowrap">
                   R$ {reais(reembolsadoEmCentavos / 100)}
                 </span>
               </div>
               <div className="flex justify-between gap-2 text-xs">
-                <span>Total após reembolso:</span>
+                <span>Total menos reembolso do Mercado Pago:</span>
                 <span className="shrink-0 whitespace-nowrap">
                   R$ {reais((totalEmCentavos - reembolsadoEmCentavos) / 100)}
                 </span>

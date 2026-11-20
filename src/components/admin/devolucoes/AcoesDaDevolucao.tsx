@@ -76,12 +76,18 @@ export function pagoPeloApp(detalhe: DevolucaoDetalhe): boolean {
  * cores/tamanhos diferentes só se distinguem pela variação ("Camiseta (Cor
  * Azul · Tamanho P)"). Sem variação lida, o nome é o de sempre. */
 const nomeComVariacao = (
-  item: { product_name: string | null; variant_id: string | null },
+  item: {
+    product_name: string | null;
+    variant_id: string | null;
+    order_item_id: string;
+  },
   rotulos: Readonly<Record<string, string>>,
   padrao: string,
 ) => {
   const nome = item.product_name || padrao;
-  const rotulo = item.variant_id ? rotulos[item.variant_id] : undefined;
+  const chave = item.order_item_id || item.variant_id;
+  // eslint-disable-next-line security/detect-object-injection -- a chave é o id (UUID) do item do pedido, nunca texto digitado
+  const rotulo = chave ? rotulos[chave] : undefined;
   return rotulo ? `${nome} (${rotulo})` : nome;
 };
 
@@ -156,11 +162,12 @@ export function AcoesDaDevolucao({
   const itensParaRotular = useMemo(
     () =>
       detalhe.itens.map((item) => ({
+        id: item.order_item_id ?? undefined,
         variantId: item.variant_id ?? undefined,
       })),
     [detalhe.itens],
   );
-  const rotulosDasVariacoes = useRotulosDasVariacoes(itensParaRotular);
+  const rotulosDasVariacoes = useRotulosDasVariacoes(itensParaRotular, true);
   // O que o servidor ainda deixa devolver deste pedido (a mesma conta que ele
   // faz ao concluir). `null` = ainda não lido, ou ilegível: aí vale o padrão.
   const [disponivel, setDisponivel] = useState<number | null>(null);
@@ -729,12 +736,18 @@ export function AcoesDaDevolucao({
                       {item.quantidade}× {item.product_name || "Produto"}
                     </p>
                     {item.variant_id &&
-                      rotulosDasVariacoes[item.variant_id] && (
+                      rotulosDasVariacoes[
+                        item.order_item_id || item.variant_id
+                      ] && (
                         <p
                           data-testid="variacao-do-item-a-conferir"
                           className="break-words text-[11px] text-zinc-400"
                         >
-                          {rotulosDasVariacoes[item.variant_id]}
+                          {
+                            rotulosDasVariacoes[
+                              item.order_item_id || item.variant_id
+                            ]
+                          }
                         </p>
                       )}
                     <div

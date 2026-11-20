@@ -1047,7 +1047,12 @@ function variacoesParaBanco(variants: Array<any>, productId?: string) {
 export function useProducts({
   autoFetch = true,
   onSincronizado,
-}: { autoFetch?: boolean; onSincronizado?: () => void } = {}) {
+  semFilaOffline = false,
+}: {
+  autoFetch?: boolean;
+  onSincronizado?: () => void;
+  semFilaOffline?: boolean;
+} = {}) {
   const onSincronizadoRef = useRef(onSincronizado);
   useEffect(() => {
     onSincronizadoRef.current = onSincronizado;
@@ -1903,8 +1908,13 @@ export function useProducts({
         return;
       }
 
-      // Check if offline
       if (typeof navigator !== "undefined" && !navigator.onLine) {
+        if (semFilaOffline) {
+          toast.error(
+            "Sem conexão: o produto não foi salvo. Suas alterações continuam nesta tela.",
+          );
+          return;
+        }
         // L10 — a fila é por dono (`products_offline_updates_queue:<uid>`).
         // Sem usuário identificado não há de quem ser a alteração: recusa
         // ANTES de pintar ou guardar qualquer coisa (um item sem dono seria
@@ -2148,6 +2158,7 @@ export function useProducts({
       backupStorageFile,
       fetchProduct,
       user?.id,
+      semFilaOffline,
     ],
   );
 
@@ -2184,14 +2195,20 @@ export function useProducts({
         );
         if (recusaDeSku) throw new RecusaDoCadastroDeProduto(recusaDeSku);
 
-        // A base ausente só é permitida quando nenhum estoque foi enviado.
+        const gravaPreco =
+          updates.price !== undefined ||
+          updates.costPrice !== undefined ||
+          updates.originalPrice !== undefined;
         if (
           !baseUpdatedAt &&
-          (updates.stock !== undefined ||
+          (gravaPreco ||
+            updates.stock !== undefined ||
             variantes.some((v) => v.stockIncrement !== undefined))
         ) {
           throw new RecusaDoCadastroDeProduto(
-            "Não consegui conferir a versão do estoque. Recarregue o produto antes de salvar de novo.",
+            gravaPreco
+              ? "Não consegui conferir a versão do preço. Recarregue o produto antes de salvar de novo."
+              : "Não consegui conferir a versão do estoque. Recarregue o produto antes de salvar de novo.",
           );
         }
         // Leitura antes de gravar (nada foi escrito ainda): com prazo, para a
@@ -2238,7 +2255,9 @@ export function useProducts({
           const produtoAtual = await fetchProduct(id).catch(() => null);
           throw Object.assign(
             new RecusaDoCadastroDeProduto(
-              "O produto mudou enquanto você editava. Recarregue a página e confira antes de salvar de novo.",
+              gravaPreco && produtoAtual?.updatedAt
+                ? "O produto mudou enquanto você editava. Confira os valores antes de salvar de novo."
+                : "O produto mudou enquanto você editava. Recarregue a página e confira antes de salvar de novo.",
             ),
             { produtoAtual },
           );

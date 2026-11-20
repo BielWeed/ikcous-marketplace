@@ -2,6 +2,11 @@ import { LazyImage } from "@/components/LazyImage";
 import { ConfirmarRecebimento } from "@/components/admin/orders/ConfirmarRecebimento";
 import { DesfazerRecebimento } from "@/components/admin/orders/DesfazerRecebimento";
 import { EnviarAoMototaxi } from "@/components/admin/orders/EnviarAoMototaxi";
+import {
+  AVISO_DE_RESERVA_AO_AVANCAR_PIX,
+  aguardaPixOnline,
+  avisoDePixVencido,
+} from "@/components/admin/orders/aviso-de-pix-vencido";
 import { AnularVendaDoBalcao } from "@/components/admin/pdv/AnularVendaDoBalcao";
 import {
   AlertDialog,
@@ -15,6 +20,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useAgoraDoPainel } from "@/hooks/useAgoraDoPainel";
 import { useAnularVendaDoBalcao } from "@/hooks/useAnularVendaDoBalcao";
 import { useConfirmarAcao } from "@/hooks/useConfirmarAcao";
 import { useDevolucaoConcluidaDoPedido } from "@/hooks/useDevolucaoConcluidaDoPedido";
@@ -58,7 +64,10 @@ import {
 } from "@/lib/prazo-da-requisicao";
 import { quemVaiReceberSeForOutro } from "@/lib/quem-vai-receber";
 import { buscaDoMapaDoEndereco } from "@/lib/query-maps-do-endereco";
-import { rotuloDaVariacao } from "@/lib/rotulo-da-variacao";
+import {
+  rotuloDaVariacao,
+  rotuloDaVariacaoGuardada,
+} from "@/lib/rotulo-da-variacao";
 import { supabase } from "@/lib/supabase";
 import { textoCancelamentoDoPainel } from "@/lib/texto-cancelamento-do-painel";
 import { tipoDeEntregaDoPedido } from "@/lib/tipo-de-entrega-do-pedido";
@@ -311,8 +320,8 @@ function ehIdDoCatalogo(id: string | null | undefined): id is string {
   return typeof id === "string" && UUID_DO_CATALOGO.test(id);
 }
 // Rótulo da variação ("Cor Azul · Tamanho M") por id da variação, lido na
-// mesma consulta do código interno. O pedido só guarda o id (`variant_id`);
-// quem diz qual é a escolha é `product_variants`. "" = lida, sem texto.
+// mesma consulta do código interno. Vale como reserva quando a linha do
+// pedido ainda não tem retrato. "" = lida, sem texto.
 //
 // A cópia VENCE em 60 s (`lidoEm`): a lojista corrige o nome da opção no
 // produto e volta ao pedido, e o papel não pode sair com o nome antigo (a
@@ -1025,7 +1034,9 @@ function OrderItemsCard({
           const itemSku = item.variantId
             ? skus[`var-${item.variantId}`] || skus[`prod-${item.productId}`]
             : skus[`prod-${item.productId}`];
-          const variacao = item.variantId ? variacoes[item.variantId] : "";
+          const variacao =
+            rotuloDaVariacaoGuardada(item) ||
+            (item.variantId ? variacoes[item.variantId] : "");
 
           return (
             <div
@@ -2219,6 +2230,7 @@ export const OrderDetail = memo(function OrderDetail({
     (i) =>
       ehIdDoCatalogo(i.productId) &&
       ehIdDoCatalogo(i.variantId) &&
+      !rotuloDaVariacaoGuardada(i) &&
       !variacoes[i.variantId],
   );
   let motivoDeNaoImprimir: string | null = null;
@@ -2636,9 +2648,10 @@ export const OrderDetail = memo(function OrderDetail({
   // Laudo #2 (L-8): pedido pendente não expira nunca (decisão deliberada —
   // venda fechada por fora) — o que faltava era o SINAL de idade. Sem ele, o
   // fantasma afunda na lista e prende o estoque sobre a memória do lojista.
-  const avisoDeEspera = fraseDeEsperaDoPedido(
-    idadeDoPedidoPendente(order.createdAt, order.status),
-  );
+  const agora = useAgoraDoPainel();
+  const avisoDeEspera =
+    avisoDePixVencido(order, agora) ??
+    fraseDeEsperaDoPedido(idadeDoPedidoPendente(order.createdAt, order.status));
 
   // Entregue + estornado: a devolução foi concluída por inteiro (selo neutro)
   // ou pode ser contestação perdida (selo de atenção)? Sem prova, atenção.
@@ -2934,6 +2947,9 @@ export const OrderDetail = memo(function OrderDetail({
                   {pendingAdvance?.motivo === "foraDoFluxo"
                     ? "Este pedido está marcado como pago fora do fluxo. Confirme que o pagamento foi conferido antes de avançar."
                     : "O dinheiro deste pedido não entrou. Se você avançar, a mercadoria caminha para sair mesmo assim — e, depois de finalizado, não dá mais para cancelar e devolver ao estoque. Se a cliente pagou na loja, feche este aviso, cancele o pedido (botão Cancelar pedido) e registre a venda em Vender."}
+                  {pendingAdvance?.motivo === "naoPago" &&
+                    aguardaPixOnline(order) &&
+                    ` ${AVISO_DE_RESERVA_AO_AVANCAR_PIX}`}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter className="mt-4 gap-2">

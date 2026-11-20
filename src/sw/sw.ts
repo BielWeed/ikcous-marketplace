@@ -571,6 +571,9 @@ sw.addEventListener("fetch", (event: any) => {
   // `push` (lê o cache próprio) continuam como eram.
   if (url.pathname === CAMINHO_IDENTIDADE_JSON) return;
 
+  // Avisos de licenças são um arquivo estático, não uma página offline do app.
+  if (url.pathname === "/THIRD_PARTY_NOTICES.txt") return;
+
   // 2. NAVEGAÇÃO: CACHE PRIMEIRO, REVALIDAÇÃO EM SEGUNDO PLANO
   // (laudo ofensiva 3108, achado N4)
   //

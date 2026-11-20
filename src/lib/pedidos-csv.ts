@@ -7,6 +7,7 @@ import {
   type FormaDoPedido,
   rotuloDaFormaDoPedido,
 } from "@/lib/forma-de-pagamento";
+import { rotuloDaVariacaoGuardada } from "@/lib/rotulo-da-variacao";
 import {
   type TipoDeEntregaDoPedido,
   tipoDeEntregaDoPedido,
@@ -45,9 +46,8 @@ function escaparCampo(valor: string): string {
 }
 
 /** Exporta somente os pedidos recebidos, na mesma ordem, sem alterar a lista.
- * `rotulos` (variantId -> "Tamanho M") é o que o pedido NÃO grava: o nome do
- * item é só o do produto, e quem separa a mercadoria pela planilha precisa do
- * tamanho e da cor. Item sem rótulo no mapa sai como sempre saiu. */
+ * O retrato da linha vence. `rotulos` (variantId -> "Tamanho M") é a reserva
+ * para as compras que ainda não viram uma troca de nome ou de valor. */
 export function pedidosParaCsv(
   pedidos: Pedido[],
   rotulos: Readonly<Record<string, string>> = {},
@@ -77,7 +77,9 @@ export function pedidosParaCsv(
       escaparCampo(
         pedido.items
           .map((item) => {
-            const rotulo = item.variantId ? rotulos[item.variantId] : "";
+            const rotulo =
+              rotuloDaVariacaoGuardada(item) ||
+              (item.variantId ? rotulos[item.variantId] : "");
             return `${item.name}${rotulo ? ` - ${rotulo}` : ""} (${item.quantity} x ${item.price.toFixed(2).replace(".", ",")})`;
           })
           .join(" | "),

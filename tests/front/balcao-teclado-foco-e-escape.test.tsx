@@ -153,11 +153,12 @@ it.each(["variacao", "cancelamento"])(
     await act(async () =>
       root.render(<CupomComEstado inicial={inicial} limpar={limpar} />),
     );
-    if (camada === "cancelamento") act(() => botao("Cancelar").click());
+    if (camada === "cancelamento")
+      act(() => botao("Limpar a tela da venda").click());
     const seletor =
       camada === "variacao"
         ? '[aria-label="Escolher variação"]'
-        : '[aria-label="Cancelar venda"]';
+        : '[aria-label="Limpar a tela da venda"]';
     const folha = host.querySelector(seletor)!;
     expect(folha).not.toBeNull();
     const controle = folha.querySelector("button")!;

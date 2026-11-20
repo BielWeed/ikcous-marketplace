@@ -71,7 +71,7 @@ import { resumoParaPrevia } from "./src/lib/resumo-para-previa";
 // (`atenderPorteiro` -> `atenderMapaDoSite`, `src/hospedagem/porteiro.ts`).
 export const config = {
   matcher: [
-    "/((?!assets/|store-identity/|icons/|images/|fonts/|logos/|branding/|sw\\.js$|workbox-[^/]*\\.js$|version\\.json$|favicon\\.ico$|favicon\\.svg$|logo\\.svg$|apple-touch-icon\\.png$|og-image\\.png$|silent-guardian\\.js$|loading\\.css$|404\\.html$|index\\.html$|registerSW\\.js$|offline\\.html$|google[A-Za-z0-9]*\\.html$).*)",
+    "/((?!assets/|store-identity/|icons/|images/|fonts/|logos/|branding/|sw\\.js$|workbox-[^/]*\\.js$|version\\.json$|favicon\\.ico$|favicon\\.svg$|logo\\.svg$|apple-touch-icon\\.png$|og-image\\.png$|silent-guardian\\.js$|loading\\.css$|404\\.html$|index\\.html$|registerSW\\.js$|offline\\.html$|THIRD_PARTY_NOTICES\\.txt$|google[A-Za-z0-9]*\\.html$).*)",
     "/identidade.json",
     "/manifest.webmanifest",
   ],

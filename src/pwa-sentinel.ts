@@ -2,6 +2,7 @@ import {
   momentoSeguroAgora,
   recarregarSeSeguro,
 } from "@/lib/atualizacao/veto-de-recarga";
+import { criarCanalDeAbas } from "@/lib/canal-de-abas";
 import { gravaMotivoDeRecarga } from "@/lib/motivo-de-recarga";
 /**
  * PWA Sentinel — The Guardian
@@ -73,12 +74,9 @@ export const initSentinel = () => {
   );
 
   let lastHeartbeat = Date.now();
-  // Safari antigo (iOS <= 15.3) não tem BroadcastChannel: sem ele o canal
-  // some, mas o pulso segue pela resposta direta do service worker.
-  const channel =
-    typeof BroadcastChannel === "undefined"
-      ? null
-      : new BroadcastChannel("sw-heartbeat");
+  // Se o navegador não oferecer ou bloquear o canal, o pulso segue pela
+  // resposta direta do service worker.
+  const channel = criarCanalDeAbas("sw-heartbeat");
 
   const handleHeartbeatAck = (data: any) => {
     if (data === "HEARTBEAT_ACK") {

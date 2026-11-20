@@ -1,8 +1,13 @@
 import { BotaoWhatsapp } from "@/components/ui/custom/BotaoWhatsapp";
 import { useOrders } from "@/hooks/useOrders";
+import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { gravarRetratoDoConvidado } from "@/lib/retrato-do-convidado";
-import { limparTelefoneBrasileiro, mascaraWhatsappBr } from "@/lib/telefone-br";
+import {
+  limparTelefoneBrasileiro,
+  mascaraWhatsappBr,
+  telefoneDaLojaParaExibicao,
+} from "@/lib/telefone-br";
 import { cn } from "@/lib/utils";
 import type { Order, View } from "@/types";
 import { haptic } from "@/utils/haptic";
@@ -152,6 +157,27 @@ export function OrderSearch({
   };
 
   const lojaAtendePorWhatsapp = lojaTemWhatsapp(whatsappDaLoja);
+  const numeroDaLoja = telefoneDaLojaParaExibicao(whatsappDaLoja);
+  const textoDoNumeroDaLoja = useRef<HTMLSpanElement>(null);
+
+  const copiarNumeroDaLoja = async () => {
+    if (await copiarParaClipboard(numeroDaLoja)) {
+      toast.success("Copiado!");
+      return;
+    }
+
+    const texto = textoDoNumeroDaLoja.current;
+    const selecao = document.getSelection();
+    if (texto && selecao) {
+      const intervalo = document.createRange();
+      intervalo.selectNodeContents(texto);
+      selecao.removeAllRanges();
+      selecao.addRange(intervalo);
+    }
+    toast.error(
+      "Não foi possível copiar automaticamente. Copie o número manualmente.",
+    );
+  };
 
   // Quem comprou SEM conta não tem e-mail gravado no pedido (a compra da
   // convidada nunca o coleta), então o rastreio abaixo nunca o acha — o aviso
@@ -385,9 +411,7 @@ export function OrderSearch({
                       Este rastreio só encontra pedidos feitos com e-mail. Se
                       você comprou sem conta, fale com a loja e informe o
                       identificador do pedido (aparece ao finalizar a compra).
-                      {lojaAtendePorWhatsapp
-                        ? ""
-                        : " Use o contato da loja que você já tem."}
+                      Use o contato da loja que você já tem.
                     </p>
                     {lojaAtendePorWhatsapp && (
                       <BotaoWhatsapp
@@ -399,6 +423,21 @@ export function OrderSearch({
                       >
                         Falar com a loja no WhatsApp
                       </BotaoWhatsapp>
+                    )}
+                    {lojaAtendePorWhatsapp && (
+                      <div className="space-y-1.5">
+                        <p className="text-sm leading-relaxed text-muted-foreground">
+                          WhatsApp da loja:{" "}
+                          <span ref={textoDoNumeroDaLoja}>{numeroDaLoja}</span>
+                        </p>
+                        <button
+                          type="button"
+                          className="min-h-11 w-full text-center text-sm font-semibold text-foreground underline underline-offset-4"
+                          onClick={() => void copiarNumeroDaLoja()}
+                        >
+                          Copiar número
+                        </button>
+                      </div>
                     )}
                   </div>
 

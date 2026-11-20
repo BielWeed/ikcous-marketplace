@@ -184,6 +184,8 @@ export interface OrderItem {
   id?: string;
   productId: string;
   variantId?: string;
+  variacaoNomeNaCompra?: string | null;
+  variacaoValorNaCompra?: string | null;
   name: string;
   price: number;
   quantity: number;
@@ -219,6 +221,8 @@ export interface Order {
    * PaymentStatusBadge para a tradução de exibição.
    */
   paymentStatus?: PaymentStatus | null;
+  /** Vencimento da cobrança online, quando presente na leitura. */
+  expiraEm?: string;
   notes?: string;
   couponCode?: string;
   createdAt: string;

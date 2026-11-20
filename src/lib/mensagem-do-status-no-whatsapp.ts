@@ -1,9 +1,10 @@
+import { branding } from "@/config/branding";
 import { cortarTexto } from "@/lib/cortar-texto";
 import {
   linkDeRastreioDeCodigoValido,
   normalizarCodigoDeRastreio,
 } from "@/lib/link-de-rastreio";
-import { nomeOuReserva } from "@/lib/nome-visivel";
+import { nomeOuReserva, nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import {
   ROTULOS_DAS_ETAPAS,
   ROTULO_RETIRADA_FEITA,
@@ -108,21 +109,20 @@ export function mensagemDoStatusNoWhatsapp({
     if (enderecoDeRetirada?.trim()) {
       orientacoesDeRetirada += `Retire em: ${limitarTrechoParaWhatsapp(enderecoDeRetirada, 300, 950)}\n`;
     }
-    if (horarioDeAtendimento?.trim()) {
-      // Nunca corte o horário: o fim pode conter um dia fechado ou uma exceção.
-      const horarioCabe =
-        horarioDeAtendimento.length <= 200 &&
-        encodeURIComponent(horarioDeAtendimento).length <= 650;
-      orientacoesDeRetirada += horarioCabe
-        ? `Horário: ${horarioDeAtendimento}\n`
-        : "Confirme o horário de retirada com a loja antes de vir.\n";
-    }
+    // Nunca corte o horário: o fim pode conter um dia fechado ou uma exceção.
+    const horarioCabe =
+      horarioDeAtendimento?.trim() &&
+      horarioDeAtendimento.length <= 200 &&
+      encodeURIComponent(horarioDeAtendimento).length <= 650;
+    orientacoesDeRetirada += horarioCabe
+      ? `Horário: ${horarioDeAtendimento}\n`
+      : "Confirme o horário de retirada com a loja antes de vir.\n";
   }
   // Pedido cancelado não agradece a compra: avisa e deixa a conversa aberta
   // para a lojista explicar o motivo.
   const fecho =
     status === "cancelled"
       ? "Qualquer dúvida sobre o cancelamento, é só responder esta mensagem."
-      : `Obrigado por comprar na ${nomeDaLoja}!`;
+      : `Obrigado por comprar na ${nomeTemConteudoVisivel(nomeDaLoja) ? nomeDaLoja : branding.appName}!`;
   return `Olá ${nomeOuReserva(nomeDoCliente, "Cliente")}!\n\nSeu pedido #${numeroDoPedido} foi atualizado.\nStatus: ${rotuloDoStatus}\n${rastreio}${orientacoesDeRetirada}\n${fecho}`;
 }

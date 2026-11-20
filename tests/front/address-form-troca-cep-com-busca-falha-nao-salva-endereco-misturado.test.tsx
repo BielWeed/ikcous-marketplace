@@ -118,6 +118,9 @@ describe("AddressForm — trocar o CEP com a busca fora do ar não salva endere�
       digitar("neighborhood", "Bairro do CEP A");
       digitar("city", "Cidade A");
       digitar("state", "mg");
+      document
+        .getElementById("state")!
+        .dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
       digitar("number", "77");
       digitar("complement", "Fundos");
     });

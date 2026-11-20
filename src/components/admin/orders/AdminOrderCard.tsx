@@ -6,6 +6,11 @@ import {
   PaymentStatusBadge,
   rotuloDoStatus,
 } from "@/components/admin/orders/OrderStatusBadge";
+import {
+  AVISO_DE_RESERVA_AO_AVANCAR_PIX,
+  aguardaPixOnline,
+  avisoDePixVencido,
+} from "@/components/admin/orders/aviso-de-pix-vencido";
 import { podeRegistrarPagamento } from "@/components/admin/orders/podeRegistrarPagamento";
 import { AnularVendaDoBalcao } from "@/components/admin/pdv/AnularVendaDoBalcao";
 import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
@@ -200,7 +205,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
               : "Pagamento estornado · pedido aberto"
             : order.paymentStatus === "expirado"
               ? "Pagamento expirado · pagamento não recebido"
-              : avisoDeEspera;
+              : (avisoDePixVencido(order, agora) ?? avisoDeEspera);
 
   useEffect(() => {
     if (
@@ -819,6 +824,9 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                   : painel === "avancar"
                     ? "O dinheiro deste pedido não entrou. Se você avançar, a mercadoria caminha para sair mesmo assim — e, depois de finalizado, não dá mais para cancelar e devolver ao estoque. Se a cliente pagou na loja, feche este aviso, cancele o pedido (botão Cancelar pedido) e registre a venda em Vender."
                     : `Pedido de pagamento na ${momentoDoPagamentoNaMao(order.retiradaNaLoja)}. Se você já recebeu o dinheiro na mão, confirme abaixo — o registro fica salvo no pedido.`}
+                {painel === "avancar" &&
+                  aguardaPixOnline(order) &&
+                  ` ${AVISO_DE_RESERVA_AO_AVANCAR_PIX}`}
               </p>
               <div className="flex flex-col gap-3">
                 <button

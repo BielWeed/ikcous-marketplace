@@ -6,6 +6,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { canais } from "../../scripts/frota/canais-de-backend.json";
 // Achado A1 da revisao A11: o lancador (.mjs) nao tinha nenhuma cobertura --
 // nem o mutante 2 do revisor ("--desfazer" volta a executar sempre porque
 // `aplicar: argumentos.aplicar` virou `aplicar: true`) derrubava a suite
@@ -71,7 +72,7 @@ let dir: string;
 // (o docblock da tarefa autoriza "reuse ou copie"): importar as funcoes de um
 // arquivo .test.ts faria o vitest recolher os describe/it de la' outra vez,
 // como um segundo arquivo -- copiar e' o jeito seguro de reusar o molde.
-async function kitSintetico(loja: "ikcous" | "savy" = "ikcous") {
+async function kitSintetico(loja = "ikcous") {
   const fixture = await createIdentityBuildFixture("aurora");
   const kitRoot = path.join(dir, "kit");
   await fs.mkdir(path.join(kitRoot, loja), { recursive: true });
@@ -224,6 +225,224 @@ async function prepararValores() {
   await fs.writeFile(valoresPath, JSON.stringify(valoresBase));
   return valoresPath;
 }
+
+const REF_NOVA = "abcdefghijklmnopqrst";
+const SLUG_NOVO = "loja-ensaio";
+const DOMINIO_NOVO = "loja-ensaio.example";
+const CHAVE_SERVICO_FALSA = "chave-privilegiada-ficticia";
+
+async function prepararAlvoNovo(slug = SLUG_NOVO, ref = REF_NOVA) {
+  await kitSintetico(slug);
+  return [
+    "--alvo-novo",
+    slug,
+    "--ref",
+    ref,
+    "--dominio",
+    DOMINIO_NOVO,
+    "--kit",
+    path.join(dir, "kit"),
+    "--valores",
+    await prepararValores(),
+  ];
+}
+
+function apiFalsa(
+  dominio: string | null = DOMINIO_NOVO,
+  inicial = linhaNula,
+  chavePublica = ANON_KEY,
+) {
+  const f = portasFalsas(inicial);
+  const leituras: string[] = [];
+  const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+    const req = new Request(input, init);
+    const url = new URL(req.url);
+    expect(url.origin).toBe(SUPABASE_URL);
+    const branding = "/storage/v1/object/branding/";
+    if (req.method === "POST" && url.pathname.startsWith(branding)) {
+      expect(init?.redirect).toBe("error");
+      expect(req.headers.get("apikey")).toBe(CHAVE_SERVICO_FALSA);
+      expect(req.headers.get("x-upsert")).toBe("false");
+      const path = url.pathname.slice(branding.length);
+      f.bucket.set(path, {
+        bytes: new Uint8Array(await req.arrayBuffer()),
+        mime: req.headers.get("content-type") ?? "",
+      });
+      f.chamadas.push(`subir:${path}`);
+      return Response.json({ Key: `branding/${path}`, Id: "falso" });
+    }
+    if (url.pathname === "/rest/v1/rpc/save_store_identity") {
+      expect(req.method).toBe("POST");
+      expect(init?.redirect).toBe("error");
+      expect(req.headers.get("apikey")).toBe(CHAVE_SERVICO_FALSA);
+      const { expected_revision, expected_identity, desired_identity } =
+        await req.json();
+      expect(expected_revision).toBe(f.linha().revision);
+      expect(expected_identity).toEqual(f.linha().identity);
+      return Response.json(
+        await f.portas.banco.gravar(
+          expected_revision,
+          expected_identity,
+          desired_identity,
+        ),
+      );
+    }
+    if (url.pathname === "/rest/v1/rpc/read_store_identity") {
+      expect(req.headers.get("apikey")).toBe(CHAVE_SERVICO_FALSA);
+      leituras.push("identidade");
+      return Response.json(await f.portas.banco.ler());
+    }
+    if (
+      url.pathname === "/rest/v1/v_store_config" &&
+      url.searchParams.get("select") === "dominio_publico"
+    ) {
+      expect(req.method).toBe("GET");
+      expect(url.searchParams.get("id")).toBe("eq.1");
+      expect(req.headers.get("apikey")).toBe(chavePublica);
+      leituras.push("dominio");
+      return Response.json(
+        dominio === null ? [] : [{ dominio_publico: dominio }],
+      );
+    }
+    expect(req.method).toBe("GET");
+    return f.portas.fetchImpl(input, init);
+  });
+  const legado = vi.fn(() => {
+    throw new Error("alvo novo não usa a conexão ou o CLI legados");
+  });
+  const erros: string[] = [];
+  const rodarNovo = async (argv: string[], supabaseUrl = SUPABASE_URL) => {
+    const logs = vi.spyOn(console, "log").mockImplementation(() => {});
+    const stderr = vi
+      .spyOn(console, "error")
+      .mockImplementation((linha) => erros.push(String(linha)));
+    try {
+      return await principal(
+        argv,
+        {
+          VITE_SUPABASE_URL: supabaseUrl,
+          VITE_SUPABASE_ANON_KEY: chavePublica,
+          SUPABASE_SERVICE_ROLE_KEY: CHAVE_SERVICO_FALSA,
+        },
+        { fetchImpl, portaBanco: legado, portaStorage: legado },
+      );
+    } finally {
+      logs.mockRestore();
+      stderr.mockRestore();
+    }
+  };
+  return { ...f, leituras, rodarNovo, legado, fetchImpl, erros };
+}
+
+const opcaoAplicar = (arquivo = "prova.json") => [
+  "--aplicar",
+  "--saida",
+  path.join(dir, arquivo),
+];
+
+describe("bootstrap de um alvo novo", () => {
+  it("simula por padrão no projeto certo, sem escrever", async () => {
+    const argv = await prepararAlvoNovo();
+    const api = apiFalsa();
+    expect(await api.rodarNovo(argv)).toBe(CODIGOS_DE_SAIDA.ok);
+    expect(api.leituras).toContain("dominio");
+    expect(api.leituras).toContain("identidade");
+    expect(api.legado).not.toHaveBeenCalled();
+    expect(api.bucket.size).toBe(0);
+    expect(api.linha()).toEqual(linhaNula);
+  });
+
+  it("confere o alvo, grava a marca no mesmo projeto e permite repetir sem escrever", async () => {
+    const argv = await prepararAlvoNovo();
+    const api = apiFalsa();
+    expect(await api.rodarNovo([...argv, ...opcaoAplicar()])).toBe(
+      CODIGOS_DE_SAIDA.ok,
+    );
+    expect(api.legado).not.toHaveBeenCalled();
+    expect(api.bucket.size).toBeGreaterThan(0);
+    expect(api.linha().identity.store_name).toBe("Loja Ensaio");
+    expect(api.chamadas.at(-1)).toBe("consulta:v_store_config");
+    const escritas = (chamada: string) =>
+      chamada === "gravar" || chamada.startsWith("subir:");
+    const antes = api.chamadas.filter(escritas);
+    expect(
+      await api.rodarNovo([...argv, ...opcaoAplicar("segunda-prova.json")]),
+    ).toBe(CODIGOS_DE_SAIDA.ok);
+    expect(api.chamadas.filter(escritas)).toEqual(antes);
+  });
+
+  it("não sobrescreve uma identidade diferente", async () => {
+    const argv = await prepararAlvoNovo();
+    const atual = {
+      revision: "1",
+      identity: { ...linhaNula.identity, store_name: "Outra marca" },
+    };
+    const api = apiFalsa(DOMINIO_NOVO, atual);
+    expect(await api.rodarNovo([...argv, ...opcaoAplicar()])).toBe(
+      CODIGOS_DE_SAIDA.recusa,
+    );
+    expect(api.bucket.size).toBe(0);
+    expect(api.linha()).toEqual(atual);
+  });
+
+  it("recusa antes de acessar a API quando o ref e a URL não batem", async () => {
+    const argv = await prepararAlvoNovo(SLUG_NOVO, "bcdefghijklmnopqrstu");
+    const api = apiFalsa();
+    expect(await api.rodarNovo([...argv, ...opcaoAplicar()])).toBe(
+      CODIGOS_DE_SAIDA.entrada,
+    );
+    expect(api.erros.join(" ")).toContain("projetos diferentes");
+    expect(api.fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it.each(["outra-loja.example", null])(
+    "recusa antes de escrever com domínio diferente ou ausente: %s",
+    async (dominio) => {
+      const argv = await prepararAlvoNovo();
+      const api = apiFalsa(dominio);
+      expect(await api.rodarNovo([...argv, ...opcaoAplicar()])).toBe(
+        CODIGOS_DE_SAIDA.recusa,
+      );
+      expect(api.leituras).toContain("dominio");
+      expect(api.bucket.size).toBe(0);
+      expect(api.linha()).toEqual(linhaNula);
+    },
+  );
+
+  it.each(["ikcous", "savy"])("não admite %s como alvo novo", async (loja) => {
+    const argv = await prepararAlvoNovo(loja);
+    const api = apiFalsa();
+    expect(await api.rodarNovo([...argv, ...opcaoAplicar()])).toBe(
+      CODIGOS_DE_SAIDA.entrada,
+    );
+    expect(api.erros.join(" ")).toContain("outra loja conhecida");
+    expect(api.fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("recusa chave privilegiada no lugar da pública antes de escrever", async () => {
+    const argv = await prepararAlvoNovo();
+    const api = apiFalsa(DOMINIO_NOVO, linhaNula, CHAVE_SERVICO_FALSA);
+    expect(await api.rodarNovo([...argv, ...opcaoAplicar()])).toBe(
+      CODIGOS_DE_SAIDA.entrada,
+    );
+    expect(api.erros.join(" ")).not.toContain(CHAVE_SERVICO_FALSA);
+    expect(api.fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("não admite o ref de uma loja já conhecida com outro nome", async () => {
+    const refConhecido = Object.keys(canais)[0];
+    const argv = await prepararAlvoNovo(SLUG_NOVO, refConhecido);
+    const api = apiFalsa();
+    expect(
+      await api.rodarNovo(
+        [...argv, ...opcaoAplicar()],
+        `https://${refConhecido}.supabase.co`,
+      ),
+    ).toBe(CODIGOS_DE_SAIDA.entrada);
+    expect(api.erros.join(" ")).toContain("outra loja conhecida");
+    expect(api.fetchImpl).not.toHaveBeenCalled();
+  });
+});
 
 // Tarefa A11e: o "npx" quotado ENTRE ASPAS e SEM CAMINHO (o que a `cli()` do
 // lancador fazia antes desta tarefa) faz o cmd.exe expandir %~dp0 do atalho
@@ -421,34 +640,37 @@ describe("interpretarResultadoCp", () => {
 });
 
 describe("principal (lancador)", () => {
-  it("dry-run bootstrap: exit 0, nenhuma porta de escrita chamada", async () => {
-    await kitSintetico();
-    const kitRoot = path.join(dir, "kit");
-    const valoresPath = await prepararValores();
-    const f = portasFalsas(linhaNula);
-    const { exit, logs } = await rodar(
-      [
-        "--kit",
-        kitRoot,
-        "--loja",
-        "ikcous",
-        "--valores",
-        valoresPath,
-        "--workdir-supabase",
-        path.join(dir, "workdir"),
-      ],
-      envFalso(),
-      f,
-    );
-    expect(exit).toBe(CODIGOS_DE_SAIDA.ok);
-    expect(
-      f.chamadas.filter(
-        (c) =>
-          c.startsWith("subir") || c === "gravar" || c.startsWith("remover"),
-      ),
-    ).toEqual([]);
-    expect(logs.some((l) => l.includes('"acao": "bootstrap"'))).toBe(true);
-  });
+  it.each(["ikcous", "savy"])(
+    "dry-run de %s não chama porta de escrita",
+    async (loja) => {
+      await kitSintetico(loja);
+      const kitRoot = path.join(dir, "kit");
+      const valoresPath = await prepararValores();
+      const f = portasFalsas(linhaNula);
+      const { exit, logs } = await rodar(
+        [
+          "--kit",
+          kitRoot,
+          "--loja",
+          loja,
+          "--valores",
+          valoresPath,
+          "--workdir-supabase",
+          path.join(dir, "workdir"),
+        ],
+        envFalso(),
+        f,
+      );
+      expect(exit).toBe(CODIGOS_DE_SAIDA.ok);
+      expect(
+        f.chamadas.filter(
+          (c) =>
+            c.startsWith("subir") || c === "gravar" || c.startsWith("remover"),
+        ),
+      ).toEqual([]);
+      expect(logs.some((l) => l.includes('"acao": "bootstrap"'))).toBe(true);
+    },
+  );
 
   it("--desfazer sem --aplicar: exit 0, banco NAO gravado (mutante 2 do revisor: aplicar fixo em true derruba isto)", async () => {
     await kitSintetico();

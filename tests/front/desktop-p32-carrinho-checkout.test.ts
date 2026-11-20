@@ -155,7 +155,9 @@ describe("P32: alinhamento e resumo alcançável no computador", () => {
       [
         caminhos.checkout,
         // 1.5.214: troco e seus avisos, pedido cancelado e resumo do parcelamento.
-        "8492ebf8d43a766373c28f7faabd9f46f740a6ecd0aa17529895dcf9d44fdf2e",
+        // Selo Pix de ao menos 24 px visíveis (manual do BCB): 388 → 389
+        // literais. Só entra a caixa Pix de 25 px; os outros mantêm size-5.
+        "401f7da15839c6e737bf52055f52be42b29ccb00b7c2c3a1b769578db6bc0391",
       ],
       [
         caminhos.favoritos,
@@ -167,7 +169,8 @@ describe("P32: alinhamento e resumo alcançável no computador", () => {
         // ("text-sm text-destructive", elemento novo) e o campo ganha a borda de
         // erro só quando inválido ("aria-invalid:border-destructive"). Nenhuma
         // outra classe de celular mudou (conferido contra a base 8dccb46f7).
-        "e1482db0c15a17189670b6bea1484bbc37ab4763c2b9dc526ee787e15fa315f4",
+        // Bloco do número da loja no rastreio.
+        "b54ccc1c64b801b86974f3632b7af77fc10885f4c935fa45069ed3744e22e5f0",
       ],
     ]) {
       // Extração independente dos atributos agrupados, para preservar condicionais.

@@ -31,7 +31,12 @@ export function percentualDeDesconto(
   if (originalEmCentavos <= 0 || atualEmCentavos >= originalEmCentavos) {
     return 0;
   }
-  return Math.round(
-    ((originalEmCentavos - atualEmCentavos) * 100) / originalEmCentavos,
+  if (precoAtual < 0) return 0;
+  if (precoAtual === 0) return 100;
+  return Math.min(
+    99,
+    Math.round(
+      ((originalEmCentavos - atualEmCentavos) * 100) / originalEmCentavos,
+    ),
   );
 }

@@ -95,6 +95,7 @@ function FotoDaFaixa({
 }: FotoDaFaixaProps) {
   const { ciclo, desistiu, aoFalhar, tentarDeNovo } =
     useFotoQueTentaDeNovo(foto);
+  const [cicloCarregado, setCicloCarregado] = useState<number | null>(null);
   if (!foto || ehMarcadorDeFoto(foto)) {
     return (
       <div
@@ -125,7 +126,11 @@ function FotoDaFaixa({
           sizes="(min-width: 1024px) 720px, 100vw"
           alt={nome}
           draggable={false}
-          onError={(event) => aoFalhar(event.currentTarget)}
+          onLoad={() => setCicloCarregado(ciclo)}
+          onError={(event) => {
+            setCicloCarregado(null);
+            aoFalhar(event.currentTarget);
+          }}
           className="main-product-image h-full w-auto max-w-full select-none object-contain"
           // Só a primeira foto é pedida já; as outras esperam a faixa
           // chegar perto delas.
@@ -133,9 +138,10 @@ function FotoDaFaixa({
           fetchPriority={posicao === 0 ? "high" : "auto"}
           decoding="async"
           style={
-            (comTransicao
-              ? { viewTransitionName: "product-image" }
-              : undefined) as CSSProperties
+            {
+              viewTransitionName: comTransicao ? "product-image" : undefined,
+              opacity: cicloCarregado === ciclo ? undefined : 0,
+            } as CSSProperties
           }
         />
       )}

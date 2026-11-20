@@ -1,4 +1,5 @@
 import { useLeaderElection } from "@/hooks/useLeaderElection";
+import { criarCanalDeAbas } from "@/lib/canal-de-abas";
 import { supabase } from "@/lib/supabase";
 import { useEffect, useRef } from "react";
 
@@ -45,10 +46,7 @@ export function useRealtimeUpdate(
     let setupTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
     // Shared BroadcastChannel for cross-tab realtime synchronization
-    const bc =
-      typeof BroadcastChannel === "undefined"
-        ? null
-        : new BroadcastChannel("ikcous_realtime_updates");
+    const bc = criarCanalDeAbas("ikcous_realtime_updates");
 
     if (isLeader || !bc) {
       console.log(

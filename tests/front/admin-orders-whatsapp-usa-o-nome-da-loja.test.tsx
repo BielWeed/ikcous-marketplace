@@ -216,6 +216,19 @@ describe("AdminOrdersView — WhatsApp de status chama a loja pelo nome que a lo
     );
   });
 
+  it("retirada pronta sem horário pede para confirmar antes de ir", async () => {
+    const mensagem = await tocarNoWhatsapp({
+      status: "shipping",
+      retiradaNaLoja: true,
+      enderecoDeRetirada: "Rua São José, #42 & Cia",
+    });
+    expect(mensagem).toContain("Retire em: Rua São José, #42 & Cia\n");
+    expect(mensagem).toContain(
+      "Confirme o horário de retirada com a loja antes de vir.",
+    );
+    expect(mensagem).not.toContain("Horário: ");
+  });
+
   it("retirada com horário longo abre uma URL curta e pede para confirmar o horário, sem cortá-lo", async () => {
     nomeConfigurado = "Loja Teste";
     horarioConfigurado = `${"a".repeat(198)}👍🏽${"a".repeat(4798)}`;

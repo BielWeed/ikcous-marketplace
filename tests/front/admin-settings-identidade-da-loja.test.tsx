@@ -3,6 +3,10 @@ import type { StoreIdentityIntent } from "@/lib/adminStoreIdentity";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  nomesInvisiveisRepresentativos,
+  nomesVisiveisRepresentativos,
+} from "./helpers/nomes-invisiveis";
 
 const h = vi.hoisted(() => ({
   read: vi.fn(),
@@ -114,7 +118,7 @@ let host: HTMLDivElement;
 let mounted = true;
 async function flush() {
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await vi.advanceTimersByTimeAsync(0);
   });
 }
 // A identidade (IdentitySettingsSection) e o horário (BusinessHoursSection)
@@ -174,6 +178,7 @@ async function type(id: string, value: string) {
   });
 }
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   vi.clearAllMocks();
   h.read.mockReset();
   h.save.mockReset();
@@ -210,10 +215,35 @@ beforeEach(() => {
 afterEach(() => {
   if (mounted) act(() => root.unmount());
   host.remove();
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
 describe("Sobre a Loja — identidade da loja pela RPC protegida", () => {
+  it("recusa nomes só com caracteres invisíveis antes de gravar", async () => {
+    await render();
+    for (const [rotulo, nome] of nomesInvisiveisRepresentativos) {
+      await type("store-name", nome);
+      await click("Salvar alterações");
+      expect(h.save, rotulo).not.toHaveBeenCalled();
+      expect(input("store-name").getAttribute("aria-invalid"), rotulo).toBe(
+        "true",
+      );
+      expect(host.textContent, rotulo).toContain("Escreva o nome da loja");
+    }
+  });
+
+  it.each(nomesVisiveisRepresentativos)(
+    "salva nome visível sem alterar: %s",
+    async (_rotulo, nome) => {
+      await render();
+      await type("store-name", nome);
+      await click("Salvar alterações");
+      expect(h.save).toHaveBeenCalledTimes(1);
+      expect(h.save.mock.calls[0]?.[0].desired.store_name).toBe(nome);
+    },
+  );
+
   it("salvar identidade não limpa horário que falhou; nova tentativa grava só o horário", async () => {
     await render();
     await type("store-name", "Novo nome");

@@ -6,12 +6,11 @@
  * mas no ramo de falha de API o motivo é o corpo BRUTO que a transportadora
  * devolveu: "Melhor Envio API retornou 422: {…}", JSON ou até uma página HTML
  * de gateway. Isso a lojista não lê. Aqui o corpo bruto vira uma frase; a
- * tela guarda o texto inteiro no `title`, então nada se perde.
+ * tela guarda a frase inteira no `title`, sem o corte da tabela.
  *
  * Por que não `mensagemDeErroDoPainel`: ela trocaria por frase genérica
  * também o motivo acionável que a edge escreve em português ("Conecte a
- * transportadora…"). Aqui só o que é corpo de API é traduzido; frase em
- * português passa igual.
+ * transportadora…"). Aqui as frases acionáveis passam sem alteração.
  *
  * Funções puras: sem hook, sem Supabase e sem importar componente.
  */
@@ -41,8 +40,7 @@ const FRASE_CEP_RECUSADO = "A transportadora não aceitou o CEP do cliente.";
 
 // Falhas de rede da edge (`chamarComTempo` e `lerJson`, provedores.ts): o texto
 // depois do "tempo esgotado: " / "falha de rede: " é a mensagem do runtime em
-// inglês ("The signal has been aborted"), que a lojista não lê. O texto inteiro
-// continua no `title` da tela.
+// inglês ("The signal has been aborted"), que a lojista não lê.
 const TEMPO_ESGOTADO = /^tempo esgotado:/i;
 const FALHA_DE_REDE = /^falha de rede:/i;
 const NAO_EH_JSON = /resposta não é JSON válido/i;
@@ -102,6 +100,16 @@ export function motivoDaCotacao(
   nomeDe?: NomeDoProvedor,
 ): string {
   if (!texto) return "";
+  if (
+    texto.startsWith(
+      "Falha ao gravar a cotação: canceling statement due to statement timeout",
+    )
+  ) {
+    return "A cotação foi calculada, mas o banco demorou demais para guardá-la.";
+  }
+  if (texto.startsWith("configuracao_mudou_durante_cotacao:")) {
+    return "A configuração do frete mudou durante a cotação; nada foi guardado. Tente de novo.";
+  }
   const parcial = PREFIXO_PARCIAL.test(texto);
   const resultado = partesDaMensagem(texto.replace(PREFIXO_PARCIAL, ""))
     .map((parte) => {

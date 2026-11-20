@@ -21,7 +21,10 @@ import { useDevolucaoCliente } from "@/hooks/useDevolucaoCliente";
 import { useDevolucaoDoPedidoCliente } from "@/hooks/useDevolucaoDoPedidoCliente";
 import { useMarcarAvisosDoPedidoComoLidos } from "@/hooks/useMarcarAvisosDoPedidoComoLidos";
 import { ErroCancelamentoNaoConcluido, useOrders } from "@/hooks/useOrders";
-import { useRotulosDasVariacoes } from "@/hooks/useRotulosDasVariacoes";
+import {
+  chaveDoRotuloDaVariacao,
+  useRotulosDasVariacoes,
+} from "@/hooks/useRotulosDasVariacoes";
 import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import { avisoDeCartaoNoPedidoVencido } from "@/lib/aviso-de-cartao-no-pedido-vencido";
@@ -502,16 +505,14 @@ export function OrderDetailsView({
   const [retratoDoConvidado, setRetratoDoConvidado] = useState<{
     consultadoEm: number | null;
   } | null>(null);
-  // Qual cor/tamanho cada linha do pedido e (o pedido so guarda o id).
+  // Qual cor/tamanho cada linha do pedido mostrava na compra.
   const rotulosDasVariacoes = useRotulosDasVariacoes(order?.items);
   // O mesmo texto, por id da LINHA do pedido: é a chave que a folha de devolução
   // usa (`order_item_id`) para distinguir duas linhas do mesmo produto.
   const rotulosPorLinhaDoPedido = useMemo(() => {
     const porLinha: Record<string, string> = {};
     for (const linha of order?.items ?? []) {
-      const rotulo = linha.variantId
-        ? rotulosDasVariacoes[linha.variantId]
-        : undefined;
+      const rotulo = rotulosDasVariacoes[chaveDoRotuloDaVariacao(linha)];
       if (linha.id && rotulo) porLinha[linha.id] = rotulo;
     }
     return porLinha;
@@ -881,7 +882,7 @@ export function OrderDetailsView({
     loadOrder();
   }, [loadOrder]);
 
-  // O retrato venceu (60 min) com o detalhe aberto: o pedido está nesta tela em
+  // O retrato venceu (15 min) com o detalhe aberto: o pedido está nesta tela em
   // estado, então endereço e dados da compra seguiam à vista de quem usar o
   // aparelho depois. Mesma régua e mesmos gatilhos da lista na CartView
   // (`retratoVenceu`; o relógio sozinho não basta, ele dorme com o aparelho):
@@ -1343,8 +1344,8 @@ export function OrderDetailsView({
   const rotulosDoProduto = (productId: string): string[] => {
     const vistos = new Set<string>();
     for (const linha of order.items) {
-      if (linha.productId !== productId || !linha.variantId) continue;
-      const rotulo = rotulosDasVariacoes[linha.variantId];
+      if (linha.productId !== productId) continue;
+      const rotulo = rotulosDasVariacoes[chaveDoRotuloDaVariacao(linha)];
       if (rotulo) vistos.add(rotulo);
     }
     return [...vistos];
@@ -1978,12 +1979,12 @@ export function OrderDetailsView({
                   <h5 className="break-words text-sm font-bold leading-tight text-zinc-900 transition-colors group-hover:text-zinc-650">
                     {item.name}
                   </h5>
-                  {item.variantId && rotulosDasVariacoes[item.variantId] && (
+                  {rotulosDasVariacoes[chaveDoRotuloDaVariacao(item)] && (
                     <p
                       data-testid="variacao-do-item"
                       className="mt-0.5 break-words text-xs font-medium text-zinc-600"
                     >
-                      {rotulosDasVariacoes[item.variantId]}
+                      {rotulosDasVariacoes[chaveDoRotuloDaVariacao(item)]}
                     </p>
                   )}
                   <p className="mt-0.5 text-xs font-medium text-zinc-500">
@@ -2110,9 +2111,11 @@ export function OrderDetailsView({
                       {avisoDaRetirada(order.status)}
                     </p>
                   )}
-                  {prontoParaRetirar && config.businessHours?.trim() && (
+                  {prontoParaRetirar && (
                     <p className="text-xs text-zinc-500">
-                      Horário: {config.businessHours}
+                      {config.businessHours?.trim()
+                        ? `Horário: ${config.businessHours}`
+                        : "Confirme o horário de retirada com a loja antes de vir."}
                     </p>
                   )}
                   {temEnderecoDoPedido && (
@@ -2252,10 +2255,11 @@ export function OrderDetailsView({
               </div>
             )}
 
-          {order.status === "delivered" && !user && !authLoading && (
+          {!user && !authLoading && order.status !== "cancelled" && (
             <p className="border-b border-zinc-100 px-5 py-3.5 text-sm text-zinc-600 last:border-b-0">
-              Para devolução ou troca, fale com a loja informando o número do
-              pedido.
+              {order.status === "delivered"
+                ? "Para devolução ou troca, fale com a loja informando o número do pedido."
+                : "Para cancelar, fale com a loja informando o número do pedido."}
             </p>
           )}
           {/* Devolução ou troca (CDC art. 49 e Decreto 7.962/2013: o cliente

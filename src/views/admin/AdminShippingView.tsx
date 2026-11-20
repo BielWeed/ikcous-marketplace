@@ -28,12 +28,14 @@ import {
   transportadoraFicaSemPagamento,
   transportadoraVendeForaDaCidade,
 } from "@/lib/aviso-transportadora-sem-pagamento";
+import { erroDaFaixaDeCepLocal } from "@/lib/cep-local";
 import { formatarCepDaLoja } from "@/lib/endereco-da-loja";
 import {
   erroDoFormularioNacional,
   estrategiaTemAlcanceEditavel,
   resumoDaEstrategiaNacional,
 } from "@/lib/estrategias-de-frete";
+import { faixaDeCepReconhecida } from "@/lib/faixa-de-cep";
 import {
   DIAS_DA_ENTREGA_PROPRIA_PADRAO,
   type ModoDaEntregaNaCidade,
@@ -398,6 +400,18 @@ export const AdminShippingView = memo(function AdminShippingView({
   const salvandoRef = useRef(false);
   const sincronizacaoSuspensaRef = useRef(false);
   const [falhaAoSalvar, setFalhaAoSalvar] = useState(false);
+  const [recusaDaFaixa, setRecusaDaFaixa] = useState<{ faixa: string } | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (!recusaDaFaixa) return;
+    // O painel já abriu neste render. Abra também o texto livre antes do foco.
+    const campo = document.getElementById("local-cep-range");
+    const detalhes = campo?.closest("details");
+    if (detalhes) detalhes.open = true;
+    campo?.focus();
+  }, [recusaDaFaixa]);
 
   // Painéis recolhíveis (pedido do dono, 23/09/2026): todos nascem
   // FECHADOS, exceto "Fora da cidade" quando a entrada veio pela rota
@@ -916,10 +930,6 @@ export const AdminShippingView = memo(function AdminShippingView({
       return;
     }
 
-    sincronizacaoSuspensaRef.current = true;
-    setIsSaving(true);
-    haptic.medium();
-
     const retiradaMudou =
       (formData.modo !== "entrego") !==
       retiradaLigadaNaLista(config?.enabledShippingMethods);
@@ -969,6 +979,23 @@ export const AdminShippingView = memo(function AdminShippingView({
         nacionalAjustado,
       ),
     };
+    // A mesma diferença usada para gravar poupa quem só mexeu no preço ou
+    // no prazo de uma faixa antiga inválida. Ao religar, ela volta a valer.
+    const religouEntrega =
+      retratoLocal?.modo === "so_retiro" && formData.modo !== "so_retiro";
+    if (
+      regrasMudaram &&
+      (mexeu.alcance || religouEntrega) &&
+      alcance.trim() !== "" &&
+      !faixaDeCepReconhecida(alcance)
+    ) {
+      setRecusaDaFaixa({ faixa: alcance });
+      setPainelAberto((prev) => ({ ...prev, local: true }));
+      return;
+    }
+
+    setRecusaDaFaixa(null);
+
     // Só chega aqui com valor inválido se o campo está ESCONDIDO ("Só
     // retirada": as duas travas acima não valem). Virar R$ 0 seria entrega
     // grátis sem aviso e perderia o valor de antes: o valor gravado fica, o
@@ -1032,6 +1059,24 @@ export const AdminShippingView = memo(function AdminShippingView({
     const gravaRegras =
       regrasMudaram && Object.keys(regrasParaGravar).length > 0;
 
+    // Valida só a faixa que este Salvar gravaria, não uma faixa antiga que
+    // ficou intocada enquanto a lojista ajustava outra regra.
+    if (gravaRegras && mexeu.alcance) {
+      const erroDaFaixa = erroDaFaixaDeCepLocal(alcance);
+      if (erroDaFaixa) {
+        setPainelAberto((prev) => ({ ...prev, local: true }));
+        toast.error(
+          erroDaFaixa === "digitos-demais"
+            ? "Confira a faixa de CEP: use até 8 dígitos por CEP."
+            : "Confira a faixa de CEP: separe início e fim com vírgula: 01310-000, 01399-999.",
+        );
+        return;
+      }
+    }
+
+    sincronizacaoSuspensaRef.current = true;
+    setIsSaving(true);
+    haptic.medium();
     salvandoRef.current = true;
     try {
       // Se esta gravação falhar, PARA AQUI (ADMIN-010, #94). O toast de
@@ -1531,6 +1576,7 @@ export const AdminShippingView = memo(function AdminShippingView({
                   }))
                 }
                 faixa={formData.localCepRange}
+                faixaRecusada={recusaDaFaixa?.faixa}
                 onFaixa={(faixa) =>
                   atualizarFormData((prev) => ({
                     ...prev,

@@ -58,7 +58,7 @@ describe("recibo impresso — somente o estorno confirmado", () => {
     act(() => raiz.render(<OrderReceipt {...props} />));
   }
 
-  function conferirTotais(reembolsado: string, retido: string) {
+  function conferirTotais(reembolsado: string, totalMenosReembolsoMP: string) {
     const rotulo = [...(papel()?.querySelectorAll("span") ?? [])].find(
       (elemento) => elemento.textContent === "TOTAL",
     );
@@ -73,24 +73,29 @@ describe("recibo impresso — somente o estorno confirmado", () => {
     );
     expect(linhas.slice(linhas.indexOf("TOTAL R$ 100,00"), -2)).toEqual([
       "TOTAL R$ 100,00",
-      `Reembolsado: R$ ${reembolsado}`,
-      `Total após reembolso: R$ ${retido}`,
+      `Reembolsado pelo Mercado Pago: R$ ${reembolsado}`,
+      `Total menos reembolso do Mercado Pago: R$ ${totalMenosReembolsoMP}`,
     ]);
   }
 
-  it("reimprime pela ficha com o total original, R$ 30,00 reembolsados e R$ 70,00 retidos", async () => {
+  it("reimprime pela ficha sem apresentar o desconto só do Mercado Pago como saldo final", async () => {
     const { OrderDetail } = await import(
       "@/components/admin/orders/OrderDetail"
     );
     await act(async () => {
       raiz.render(
         <OrderDetail
-          order={{ ...pedido, retiradaNaLoja: true, valorEstornado: 30 }}
+          order={{
+            ...pedido,
+            retiradaNaLoja: true,
+            valorEstornado: 20,
+            valorDevolvidoPorDevolucao: 30,
+          }}
           onStatusChange={vi.fn()}
         />,
       );
     });
-    conferirTotais("30,00", "70,00");
+    conferirTotais("20,00", "80,00");
   });
 
   it.each([
@@ -98,19 +103,17 @@ describe("recibo impresso — somente o estorno confirmado", () => {
     [100, "100,00", "0,00"],
     [130, "100,00", "0,00"],
   ])(
-    "de R$ 100,00 com estorno de %s, imprime R$ %s e retém R$ %s",
-    (estorno, reembolsado, retido) => {
+    "de R$ 100,00 com estorno de %s, imprime R$ %s reembolsados pelo Mercado Pago e R$ %s após descontar apenas esse valor",
+    (estorno, reembolsado, totalMenosReembolsoMP) => {
       renderizar(pedido, estorno);
-      conferirTotais(reembolsado, retido);
+      conferirTotais(reembolsado, totalMenosReembolsoMP);
     },
   );
 
-  it("não imprime os valores de reembolso nem de retenção em pedido cancelado", () => {
+  it("não imprime as linhas de reembolso em pedido cancelado", () => {
     renderizar({ ...pedido, status: "cancelled" }, 30);
     expect(papel()?.textContent).toContain("Cancelado · nada a receber");
-    expect(papel()?.textContent).not.toMatch(
-      /Reembolsado:|Total após reembolso:/,
-    );
+    expect(papel()?.textContent).not.toMatch(/Reembolsado|Total .*reembolso/);
   });
 
   it.each([undefined, 0])(

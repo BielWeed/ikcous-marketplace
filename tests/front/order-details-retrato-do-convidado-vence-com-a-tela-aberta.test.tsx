@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 //
 // Privacidade do rastreio sem conta: a lista do convidado sai da tela quando o
-// retrato vence (60 min), mas "Ver detalhes" guardava o pedido em estado e
+// retrato vence (15 min), mas "Ver detalhes" guardava o pedido em estado e
 // seguia mostrando endereço e dados da compra com a tela esquecida aberta. Agora
 // o detalhe do convidado solta o pedido no mesmo instante em que o retrato
 // vence, apaga o retrato do aparelho e volta para a consulta.
@@ -142,7 +142,7 @@ afterEach(() => {
 });
 
 describe("detalhes do pedido rastreado sem conta: o prazo vale com a tela aberta", () => {
-  it("antes do prazo o pedido segue na tela; passado 1 h + 1 s ele some, o aparelho solta o retrato e volta para a consulta", async () => {
+  it("antes do prazo o pedido segue na tela; passados 15 min e 1 s ele some, o aparelho solta o retrato e volta para a consulta", async () => {
     guardarRetrato();
     await abrir();
     expect(avisoDoRetrato()).not.toBeNull();

@@ -105,7 +105,7 @@ it("acompanha a troca interna entre Carrinho e Meus pedidos e a rota", async () 
   expect(document.title).toBe("Carrinho — Loja Fictícia");
 });
 
-it.each([undefined, "", "   "])(
+it.each([undefined, "", "   ", "​"])(
   "usa a identidade da loja quando o nome é %s",
   async (nome) => {
     config.storeName = nome;

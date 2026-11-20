@@ -1,6 +1,6 @@
 // O WhatsApp da loja aparecia CRU nas páginas de política ("WhatsApp
-// 5534998028216", medido em 30/10/2026 na Savy): o número é guardado com o 55
-// do país (13 dígitos) e a máscara de exibição só formata até 11 dígitos, então
+// 5534988880016", formato de um celular brasileiro de exemplo): o número é
+// guardado com o 55 do país (13 dígitos) e a máscara de exibição só formata até 11 dígitos, então
 // devolvia o texto como veio. A exibição da LOJA agora tira o 55 e formata;
 // número que não se reconhece continua como está (nada de inventar dígito).
 import { describe, expect, it } from "vitest";
@@ -9,9 +9,9 @@ import { telefoneDaLojaParaExibicao } from "@/lib/telefone-br";
 
 describe("telefoneDaLojaParaExibicao", () => {
   it("celular guardado com o 55 do país vira (DDD) NNNNN-NNNN", () => {
-    expect(telefoneDaLojaParaExibicao("5534998028216")).toBe("(34) 99802-8216");
-    expect(telefoneDaLojaParaExibicao("+55 34 99802-8216")).toBe(
-      "(34) 99802-8216",
+    expect(telefoneDaLojaParaExibicao("5534988880016")).toBe("(34) 98888-0016");
+    expect(telefoneDaLojaParaExibicao("+55 34 98888-0016")).toBe(
+      "(34) 98888-0016",
     );
   });
 
@@ -20,7 +20,7 @@ describe("telefoneDaLojaParaExibicao", () => {
   });
 
   it("número só com DDD já formata, sem mexer no DDD", () => {
-    expect(telefoneDaLojaParaExibicao("34998028216")).toBe("(34) 99802-8216");
+    expect(telefoneDaLojaParaExibicao("34988880016")).toBe("(34) 98888-0016");
     expect(telefoneDaLojaParaExibicao("3433331234")).toBe("(34) 3333-1234");
   });
 

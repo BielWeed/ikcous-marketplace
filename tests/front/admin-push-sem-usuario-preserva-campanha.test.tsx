@@ -30,6 +30,10 @@ vi.mock("@/hooks/useVOR", () => ({
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: h.erro, warning: vi.fn() },
 }));
+const lerHistorico = vi.hoisted(() =>
+  vi.fn(async () => ({ data: [], error: null })),
+);
+
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: (tabela: string) => {
@@ -54,9 +58,7 @@ vi.mock("@/lib/supabase", () => ({
       if (tabela === "push_notifications_log") {
         return {
           select: () => ({
-            order: () => ({
-              limit: async () => ({ data: [], error: null }),
-            }),
+            not: () => ({ order: () => ({ limit: lerHistorico }) }),
           }),
           insert: h.log,
           update: () => ({ eq: async () => ({ error: null }) }),
@@ -127,6 +129,8 @@ async function montarCampanha() {
   });
   await desenhar();
   await act(async () => esperar(80));
+  expect(lerHistorico).toHaveBeenCalledWith(100);
+  expect(lerHistorico).toHaveResolvedWith({ data: [], error: null });
   const titulo = host.querySelector<HTMLInputElement>("#push-title");
   const corpo = host.querySelector<HTMLTextAreaElement>("#push-body");
   if (!titulo || !corpo) throw new Error("Campos da campanha ausentes");

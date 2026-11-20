@@ -71,8 +71,10 @@ tudo `fetch`.
 
 RLS em toda tabela de dado de usuário · SECURITY DEFINER com `search_path =
 public` explícito · regenerar tipos quando o schema muda · **nunca `supabase db
-push`** (ADR 0002) · migration sem `BEGIN`/`COMMIT` · backup diário sem PITR ·
-nunca `--no-verify` no commit.
+push`** (ADR 0002) · migration sem `BEGIN`/`COMMIT` · nunca `--no-verify` no commit.
+O backup diário automático do Supabase é dos planos Pro, Team e Enterprise, não do Free.
+PITR (restauração para um ponto no tempo) é um adicional pago.
+Confira o plano de cada loja e não conte com backup para desfazer migration que altera dados.
 
 ## Arquiteturas agênticas da Galeria ZCode (18/09/2026)
 

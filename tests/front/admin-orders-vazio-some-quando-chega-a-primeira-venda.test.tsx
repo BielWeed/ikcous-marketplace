@@ -11,6 +11,7 @@
 // vazia só diz "ainda não há pedidos" se a contagem NO MOMENTO for 0.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
+import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 let mockOrders: any[] = [];
@@ -135,6 +136,34 @@ describe("AdminOrdersView — a primeira venda desfaz o 'ainda não há pedidos'
       await new Promise((r) => setTimeout(r, 50));
     });
   }
+
+  it("pedido online novo dispara aviso de 10 s com o botão Ver", async () => {
+    const aviso = vi.spyOn(toast, "info").mockReturnValue("aviso-teste");
+    try {
+      await montarEEsperarAMedicao();
+      expect(aoChegarEventoDeTempoReal).toBeTypeOf("function");
+
+      await act(async () => {
+        aoChegarEventoDeTempoReal?.({
+          eventType: "INSERT",
+          new: { id: "pedido-online-1", canal: "online", status: "pending" },
+        });
+      });
+
+      expect(aviso).toHaveBeenCalledWith(
+        expect.stringMatching(/^Novo pedido recebido! #/),
+        expect.objectContaining({
+          duration: 10_000,
+          action: expect.objectContaining({
+            label: "Ver",
+            onClick: expect.any(Function),
+          }),
+        }),
+      );
+    } finally {
+      aviso.mockRestore();
+    }
+  });
 
   it("loja nova: antes da venda o convite aparece (sem regressão)", async () => {
     await montarEEsperarAMedicao();

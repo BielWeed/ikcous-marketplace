@@ -98,9 +98,8 @@ describe("gravar / ler / limpar no sessionStorage", () => {
     });
     afterEach(() => vi.useRealTimers());
 
-    it("o prazo é de 30 a 60 minutos", () => {
-      expect(PRAZO_DO_RETRATO_MS).toBeGreaterThanOrEqual(30 * 60_000);
-      expect(PRAZO_DO_RETRATO_MS).toBeLessThanOrEqual(60 * 60_000);
+    it("o prazo é de 15 minutos, como o do código por e-mail", () => {
+      expect(PRAZO_DO_RETRATO_MS).toBe(15 * 60_000);
     });
 
     it("dentro do prazo: devolve o retrato e não apaga nada", () => {

@@ -21,6 +21,7 @@
  */
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
+import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // @ts-expect-error flag interna do React, sem tipo público — mesmo padrão dos
@@ -66,6 +67,8 @@ describe("OrderSearch — aviso para quem comprou sem conta", () => {
       raiz.unmount();
     });
     host.remove();
+    document.getSelection()?.removeAllRanges();
+    vi.clearAllMocks();
     vi.unstubAllGlobals();
   });
 
@@ -169,6 +172,33 @@ describe("OrderSearch — aviso para quem comprou sem conta", () => {
     expect(botao?.className.split(/\s+/)).toContain("min-h-12");
   });
 
+  it("mostra o número da loja e permite copiá-lo sem abrir outra aba", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    await abrirRastrearSemConta("+55 34 99999-8888");
+
+    expect(host.textContent).toContain("(34) 99999-8888");
+    expect(host.textContent).toContain(
+      "Use o contato da loja que você já tem.",
+    );
+    await act(async () => botaoPorTexto(host, "Copiar número")?.click());
+
+    expect(writeText).toHaveBeenCalledWith("(34) 99999-8888");
+    expect(toast.success).toHaveBeenCalledWith("Copiado!");
+  });
+
+  it("seleciona o número sem anunciar cópia quando a área de transferência falha", async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error("Bloqueado"));
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    await abrirRastrearSemConta("34999998888");
+
+    await act(async () => botaoPorTexto(host, "Copiar número")?.click());
+
+    expect(writeText).toHaveBeenCalledWith("(34) 99999-8888");
+    expect(document.getSelection()?.toString()).toBe("(34) 99999-8888");
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
   it("loja SEM WhatsApp: instrução honesta, nunca um botão morto", async () => {
     await abrirRastrearSemConta(undefined);
 
@@ -176,6 +206,8 @@ describe("OrderSearch — aviso para quem comprou sem conta", () => {
     expect(host.textContent).toContain("contato da loja");
     expect(botaoPorTexto(host, BOTAO)).toBeUndefined();
     expect(botaoPorTexto(host, "WhatsApp")).toBeUndefined();
+    expect(botaoPorTexto(host, "Copiar número")).toBeUndefined();
+    expect(host.textContent).not.toContain("WhatsApp da loja:");
   });
 
   it("número curto demais não vira botão (mesma régua do resto do app)", async () => {

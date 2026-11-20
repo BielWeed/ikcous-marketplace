@@ -61,13 +61,15 @@ vi.mock("@/lib/supabase", () => ({
       if (tabela === "push_notifications_log") {
         return {
           select: () => ({
-            order: () => ({
-              limit: () => {
-                controle.chamadas += 1;
-                return new Promise<RespostaDoLog>((resolve) => {
-                  controle.consultas.push(resolve);
-                });
-              },
+            not: () => ({
+              order: () => ({
+                limit: () => {
+                  controle.chamadas += 1;
+                  return new Promise<RespostaDoLog>((resolve) => {
+                    controle.consultas.push(resolve);
+                  });
+                },
+              }),
             }),
           }),
         };

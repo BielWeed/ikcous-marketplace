@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 //
-// Balcão — "Cancelar venda". Quando a cliente desiste no meio da conta, a
+// Balcão — "Limpar a tela da venda". Quando a cliente desiste no meio da conta, a
 // lojista tinha de apagar item por item, e o cliente e a forma de pagamento já
 // escolhidos ficavam para a PRÓXIMA venda: a venda seguinte entrava na conta da
 // cliente anterior, que ainda recebia o comprovante por e-mail. Agora o cupom
-// tem "Cancelar venda": pergunta antes (é um toque a menos de uma perda) e, ao
+// tem "Limpar a tela da venda": pergunta antes (é um toque a menos de uma perda) e, ao
 // confirmar, volta o caixa ao zero — itens, desconto, cliente, forma de
 // pagamento e rascunho salvo.
 //
@@ -199,17 +199,17 @@ describe("Balcão — cancelar a venda limpa o cupom inteiro", () => {
     await clicar("Confirmar cliente avulso");
   }
 
-  it("cupom vazio não oferece 'Cancelar venda' (não há o que cancelar)", async () => {
+  it("cupom vazio não oferece 'Limpar a tela da venda' (não há o que cancelar)", async () => {
     await montar();
-    expect(botao(hospedeiro, "Cancelar venda")).toBeUndefined();
+    expect(botao(hospedeiro, "Limpar a tela da venda")).toBeUndefined();
   });
 
   it("pergunta antes e 'Voltar' deixa tudo como estava", async () => {
     await montar();
     await bipar();
 
-    await clicar("Cancelar venda");
-    expect(hospedeiro.textContent).toContain("Descartar esta venda?");
+    await clicar("Limpar a tela da venda");
+    expect(hospedeiro.textContent).toContain("Limpar a tela da venda?");
     expect(hospedeiro.textContent).toContain(
       "Os itens e o cliente escolhido serão limpos",
     );
@@ -219,9 +219,9 @@ describe("Balcão — cancelar a venda limpa o cupom inteiro", () => {
     expect(document.activeElement).toBe(botao(hospedeiro, "Voltar"));
 
     await clicar("Voltar");
-    expect(hospedeiro.textContent).not.toContain("Descartar esta venda?");
+    expect(hospedeiro.textContent).not.toContain("Limpar a tela da venda?");
     expect(hospedeiro.textContent).toContain("Camiseta Lisa");
-    expect(botao(hospedeiro, "Cancelar venda")).toBeTruthy();
+    expect(botao(hospedeiro, "Limpar a tela da venda")).toBeTruthy();
   });
 
   it("confirmar limpa itens, cliente, forma de pagamento e o rascunho salvo", async () => {
@@ -235,8 +235,8 @@ describe("Balcão — cancelar a venda limpa o cupom inteiro", () => {
     expect(hospedeiro.textContent).toContain("Cliente: Fulano de Tal");
     expect(armazem.has(CHAVE_DO_RASCUNHO)).toBe(true);
 
-    await clicar("Cancelar venda");
-    await clicar("Sim, cancelar venda");
+    await clicar("Limpar a tela da venda");
+    await clicar("Limpar esta venda da tela");
     await avancar(400);
 
     expect(hospedeiro.textContent).toContain("Bipe o primeiro produto");
@@ -263,11 +263,11 @@ describe("Balcão — cancelar a venda limpa o cupom inteiro", () => {
   it("some o botão quando o cupom volta a ficar vazio", async () => {
     await montar();
     await bipar();
-    await clicar("Cancelar venda");
-    await clicar("Sim, cancelar venda");
+    await clicar("Limpar a tela da venda");
+    await clicar("Limpar esta venda da tela");
 
-    expect(botao(hospedeiro, "Cancelar venda")).toBeUndefined();
-    expect(hospedeiro.textContent).not.toContain("Descartar esta venda?");
+    expect(botao(hospedeiro, "Limpar a tela da venda")).toBeUndefined();
+    expect(hospedeiro.textContent).not.toContain("Limpar a tela da venda?");
   });
 
   it("só cliente escolhido (sem item) também pode ser cancelado", async () => {
@@ -275,8 +275,8 @@ describe("Balcão — cancelar a venda limpa o cupom inteiro", () => {
     await escolherClienteAvulso();
     expect(hospedeiro.textContent).toContain("Cliente: Fulano de Tal");
 
-    await clicar("Cancelar venda");
-    await clicar("Sim, cancelar venda");
+    await clicar("Limpar a tela da venda");
+    await clicar("Limpar esta venda da tela");
 
     expect(hospedeiro.textContent).not.toContain("Fulano de Tal");
     expect(botao(hospedeiro, "Cliente (opcional)")).toBeTruthy();
@@ -290,7 +290,7 @@ describe("Balcão — cancelar a venda limpa o cupom inteiro", () => {
     await clicar("Dinheiro");
     await clicar("Registrar venda");
 
-    expect(botao(hospedeiro, "Cancelar venda")!.disabled).toBe(true);
+    expect(botao(hospedeiro, "Limpar a tela da venda")!.disabled).toBe(true);
   });
 
   it("com a pergunta já aberta, começar a gravar a venda fecha a pergunta e a tela não é zerada", async () => {
@@ -301,16 +301,16 @@ describe("Balcão — cancelar a venda limpa o cupom inteiro", () => {
       });
     await montar();
     await bipar();
-    await clicar("Cancelar venda");
-    expect(hospedeiro.textContent).toContain("Descartar esta venda?");
+    await clicar("Limpar a tela da venda");
+    expect(hospedeiro.textContent).toContain("Limpar a tela da venda?");
 
     await clicar("Fechar venda");
     await clicar("Dinheiro");
     await clicar("Registrar venda");
 
     // A venda está no ar: nada de "Sim, cancelar" para zerar a tela por cima.
-    expect(botao(hospedeiro, "Sim, cancelar venda")).toBeUndefined();
-    expect(hospedeiro.textContent).not.toContain("Descartar esta venda?");
+    expect(botao(hospedeiro, "Limpar esta venda da tela")).toBeUndefined();
+    expect(hospedeiro.textContent).not.toContain("Limpar a tela da venda?");
     expect(hospedeiro.textContent).toContain("Camiseta Lisa");
 
     await act(async () => {
@@ -348,10 +348,10 @@ describe("Balcão — cancelar a venda limpa o cupom inteiro", () => {
   it("a pergunta só diz 'Nada é registrado' quando não houve falha de envio", async () => {
     await montar();
     await bipar();
-    await clicar("Cancelar venda");
+    await clicar("Limpar a tela da venda");
     expect(hospedeiro.textContent).toContain("Nada é registrado");
     expect(hospedeiro.textContent).not.toContain(
-      "Se a venda chegou a ser gravada",
+      "Isso não anula uma venda já registrada",
     );
   });
 
@@ -368,10 +368,10 @@ describe("Balcão — cancelar a venda limpa o cupom inteiro", () => {
       "Não consegui falar com o servidor",
     );
 
-    await clicar("Cancelar venda");
+    await clicar("Limpar a tela da venda");
 
     expect(hospedeiro.textContent).toContain(
-      "Se a venda chegou a ser gravada, ela está em Pedidos.",
+      "Isso não anula uma venda já registrada. Se não tiver certeza de que a venda foi registrada, confira em Pedidos antes de refazer.",
     );
     expect(hospedeiro.textContent).not.toContain("Nada é registrado");
   });
@@ -408,9 +408,9 @@ describe("Balcão — cancelar a venda limpa o cupom inteiro", () => {
       "Não consegui falar com o servidor",
     );
 
-    await clicar("Cancelar venda");
+    await clicar("Limpar a tela da venda");
     expect(hospedeiro.textContent).toContain(
-      "Se a venda chegou a ser gravada, ela está em Pedidos.",
+      "Isso não anula uma venda já registrada. Se não tiver certeza de que a venda foi registrada, confira em Pedidos antes de refazer.",
     );
     expect(hospedeiro.textContent).not.toContain("Nada é registrado");
   });
@@ -440,7 +440,7 @@ describe("Balcão — cancelar a venda limpa o cupom inteiro", () => {
     raiz = createRoot(hospedeiro);
     await montar();
 
-    await clicar("Cancelar venda");
+    await clicar("Limpar a tela da venda");
     expect(hospedeiro.textContent).toContain("Nada é registrado");
   });
 

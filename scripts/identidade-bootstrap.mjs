@@ -13,7 +13,9 @@ import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { createClient } from "@supabase/supabase-js";
 import esbuild from "esbuild";
+import frota from "./frota/canais-de-backend.json" with { type: "json" };
 
 const raiz = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const mascarar = (texto) =>
@@ -297,6 +299,124 @@ function portaStorage(workdir, nucleo) {
   };
 }
 
+// O modo novo usa a mesma origem para as RPCs e para o bucket. Não usa a
+// DATABASE_URL nem o CLI --linked, que poderiam apontar para projetos distintos.
+const alvosReservados = new Set([
+  "ikcous",
+  "ikcous-publicada",
+  "savy",
+  "loja",
+  "sandbox",
+]);
+const canaisPorRef = new Map(Object.entries(frota.canais));
+
+function conferirAlvoNovo({ loja, alvoNovo }, origin, BootstrapError) {
+  if (origin !== `https://${alvoNovo.ref}.supabase.co`)
+    throw new BootstrapError(
+      "VALORES",
+      "--ref e VITE_SUPABASE_URL apontam para projetos diferentes",
+    );
+  if (
+    alvosReservados.has(loja) ||
+    (canaisPorRef.has(alvoNovo.ref) &&
+      canaisPorRef.get(alvoNovo.ref).migrations !== loja) ||
+    [...canaisPorRef].some(
+      ([ref, canal]) => canal.migrations === loja && ref !== alvoNovo.ref,
+    )
+  )
+    throw new BootstrapError(
+      "VALORES",
+      "--alvo-novo nao pode usar o alvo ou projeto de outra loja conhecida",
+    );
+}
+
+function portasAlvoNovo(
+  origin,
+  chavePublica,
+  chaveServico,
+  fetchImpl,
+  BootstrapError,
+) {
+  const cliente = (chave) =>
+    createClient(origin, chave, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
+      global: {
+        fetch: (input, init) =>
+          fetchImpl(input, { ...init, redirect: "error" }),
+      },
+    });
+  const admin = cliente(chaveServico);
+  const branding = admin.storage.from("branding");
+  return {
+    async conferirDominio(esperado) {
+      // A view projeta store_config.dominio_publico de id=1. A leitura
+      // anônima também prova a chave pública antes de qualquer escrita.
+      const { data, error } = await cliente(chavePublica)
+        .from("v_store_config")
+        .select("dominio_publico")
+        .eq("id", 1)
+        .limit(2)
+        .retry(false);
+      if (error || data?.length !== 1 || data[0].dominio_publico !== esperado)
+        throw new BootstrapError(
+          "ESTADO",
+          "a ficha publica store_config.id=1 falta, nao pode ser lida ou nao bate com --dominio",
+        );
+    },
+    banco: {
+      async ler() {
+        const { data, error } = await admin
+          .rpc("read_store_identity", {}, { get: true })
+          .retry(false);
+        if (error || !data)
+          throw new BootstrapError(
+            "ESTADO",
+            "nao foi possivel ler a identidade com a chave de servico deste projeto",
+          );
+        return data;
+      },
+      async gravar(rev, expected, desired) {
+        const { data, error } = await admin
+          .rpc("save_store_identity", {
+            expected_revision: rev,
+            expected_identity: expected,
+            desired_identity: desired,
+          })
+          .retry(false);
+        if (error?.code === "P0001" && error.message === "IDENTITY_CONFLICT")
+          throw new BootstrapError("CONFLITO", "IDENTITY_CONFLICT");
+        if (error || !data)
+          throw new Error(
+            "nao foi possivel confirmar a gravacao; confira o banco antes de repetir",
+          );
+        return data;
+      },
+    },
+    storage: {
+      async subir(objeto) {
+        const { error } = await branding.upload(
+          objeto.path,
+          await fs.readFile(objeto.arquivo),
+          {
+            contentType: objeto.mime,
+            cacheControl: "31536000",
+            upsert: false,
+          },
+        );
+        if (error)
+          throw new BootstrapError(
+            "UPLOAD",
+            "falha ao subir objeto no bucket branding; banco ainda nao gravado",
+          );
+      },
+    },
+  };
+}
+
 // principal(argv, env, fabricas) -- exportado para o teste do lancador
 // (tests/front/identidade-bootstrap-lancador.test.ts, achado A1 da revisao
 // A11) rodar contra portas falsas em memoria, sem tocar banco, Storage nem
@@ -347,14 +467,29 @@ export async function principal(argv, env, fabricas = {}) {
   }
 
   const { DATABASE_URL, VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY } = env;
-  if (!DATABASE_URL || !VITE_SUPABASE_URL || !VITE_SUPABASE_ANON_KEY) {
+  const { alvoNovo } = argumentos;
+  const chaveServico = alvoNovo ? env.SUPABASE_SERVICE_ROLE_KEY : undefined;
+  if (
+    alvoNovo &&
+    (!VITE_SUPABASE_URL || !VITE_SUPABASE_ANON_KEY || !chaveServico)
+  ) {
+    console.error(
+      "alvo novo exige VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY e SUPABASE_SERVICE_ROLE_KEY",
+    );
+    return CODIGOS_DE_SAIDA.entrada;
+  }
+  if (
+    !alvoNovo &&
+    (!DATABASE_URL || !VITE_SUPABASE_URL || !VITE_SUPABASE_ANON_KEY)
+  ) {
     console.error(
       "faltam DATABASE_URL, VITE_SUPABASE_URL ou VITE_SUPABASE_ANON_KEY no ambiente",
     );
     return CODIGOS_DE_SAIDA.entrada;
   }
+  let origin;
   try {
-    nucleo.normalizeSupabaseOrigin(VITE_SUPABASE_URL);
+    origin = nucleo.normalizeSupabaseOrigin(VITE_SUPABASE_URL);
   } catch {
     // Mensagem propria em vez de deixar montarIdentidade confundir isto com
     // um valor de identidade ruim (ANOTADO da revisao A11: "VALORES: o build
@@ -362,6 +497,20 @@ export async function principal(argv, env, fabricas = {}) {
     // valores quando o defeito e' o ambiente). Nunca imprime a URL inteira.
     console.error("VITE_SUPABASE_URL invalida");
     return CODIGOS_DE_SAIDA.entrada;
+  }
+
+  if (alvoNovo) {
+    try {
+      conferirAlvoNovo(argumentos, origin, BootstrapError);
+      nucleo.assertPublicSupabaseKey(VITE_SUPABASE_ANON_KEY);
+    } catch (error) {
+      console.error(
+        error instanceof BootstrapError
+          ? error.message
+          : "VITE_SUPABASE_ANON_KEY invalida: use a chave publica deste projeto",
+      );
+      return CODIGOS_DE_SAIDA.entrada;
+    }
   }
 
   // --aplicar (bootstrap) exige --saida e recusa ANTES de tocar rede/banco:
@@ -379,13 +528,6 @@ export async function principal(argv, env, fabricas = {}) {
     }
   }
 
-  const portas = {
-    banco: fabricaPortaBanco(DATABASE_URL, nucleo),
-    storage: fabricaPortaStorage(argumentos.workdirSupabase, nucleo),
-    fetchImpl,
-    supabaseUrl: VITE_SUPABASE_URL,
-    chavePublica: VITE_SUPABASE_ANON_KEY,
-  };
   // "modo" vem de aplicado, nunca da flag nem de acao: em dry-run, desfazer
   // ainda devolve acao "desfeito" com aplicado false (ANOTADO 1 da revisao
   // A11b) -- ler acao sozinho mentiria sobre o que aconteceu.
@@ -403,6 +545,23 @@ export async function principal(argv, env, fabricas = {}) {
   try {
     const kit = await nucleo.lerKit(argumentos.kit, argumentos.loja);
     const valores = JSON.parse(await fs.readFile(argumentos.valores, "utf8"));
+    const portas = {
+      ...(alvoNovo
+        ? portasAlvoNovo(
+            origin,
+            VITE_SUPABASE_ANON_KEY,
+            chaveServico,
+            fetchImpl,
+            BootstrapError,
+          )
+        : {
+            banco: fabricaPortaBanco(DATABASE_URL, nucleo),
+            storage: fabricaPortaStorage(argumentos.workdirSupabase, nucleo),
+          }),
+      fetchImpl,
+      supabaseUrl: VITE_SUPABASE_URL,
+      chavePublica: VITE_SUPABASE_ANON_KEY,
+    };
     let relatorio;
     if (argumentos.desfazer) {
       let removerPaths = [];
@@ -459,6 +618,7 @@ export async function principal(argv, env, fabricas = {}) {
       });
     } else {
       const desired = nucleo.montarIdentidade(kit, valores, VITE_SUPABASE_URL);
+      if (alvoNovo) await portas.conferirDominio(alvoNovo.dominio);
       const atual = await portas.banco.ler();
       const plano = nucleo.planejar(desired, atual, kit);
       console.log(

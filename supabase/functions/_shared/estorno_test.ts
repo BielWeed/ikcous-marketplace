@@ -263,6 +263,17 @@ Deno.test("E2b - guarda do saldo em centavos: 1 centavo acima do saldo (49,72 de
   assertEquals(guardaAntesDeChamar(linhaCom({ amount: 49.71 }), pedido, AGORA).ok, true);
 });
 
+Deno.test("guardaAntesDeChamar: recusa R$ 0,29 quando sobram R$ 0,28", () => {
+  assertEquals(
+    guardaAntesDeChamar(
+      linhaCom({ amount: 0.29 }),
+      pedidoPagoCom({ total: 50, valor_estornado: 49.72 }),
+      AGORA,
+    ),
+    { ok: false, motivo: "valor maior que o disponível para devolver" },
+  );
+});
+
 Deno.test("E3 - montar: id numerico vai para a Payments classica, com chave de idempotencia da linha e header de contingencia PIX", () => {
   const linha = linhaCom();
   const pedido = pedidoPagoCom({ gateway_payment_id: "123456789" });

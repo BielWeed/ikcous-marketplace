@@ -48,6 +48,7 @@ import type { View } from "@/types";
 // mesma tela, repete rótulos como "Grátis acima de um valor").
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
+import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { estadoDaLoja, estadoDoBanco, updateConfig, invoke } = vi.hoisted(
@@ -60,6 +61,7 @@ const { estadoDaLoja, estadoDoBanco, updateConfig, invoke } = vi.hoisted(
         enabledShippingMethods: ["sedex", "pac"] as string[],
         localDeliveryFee: 10,
         localCepRange: "",
+        localDeliveryEnabled: true,
         storeCity: "Uberlândia" as string | null,
         storeState: "MG" as string | null,
       },
@@ -167,6 +169,7 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
       enabledShippingMethods: ["sedex", "pac"],
       localDeliveryFee: 10,
       localCepRange: "",
+      localDeliveryEnabled: true,
       storeCity: "Uberlândia",
       storeState: "MG",
     };
@@ -281,6 +284,157 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
       await esperarMicrotarefas();
     });
   }
+
+  describe("Salvar o alcance da entrega própria", () => {
+    const campoDaFaixa = () =>
+      hospedeiro.querySelector<HTMLInputElement>("#local-cep-range")!;
+
+    const botaoDoPainelLocal = () =>
+      hospedeiro.querySelector<HTMLButtonElement>(
+        'button[aria-controls="painel-frete-local-conteudo"]',
+      )!;
+
+    async function abrirPainelLocal() {
+      const botao = botaoDoPainelLocal();
+      if (botao.getAttribute("aria-expanded") !== "true") {
+        await act(async () => botao.click());
+      }
+    }
+
+    async function editarFaixa(textoDaFaixa: string) {
+      await abrirPainelLocal();
+      const detalhes = campoDaFaixa().closest("details")!;
+      if (!detalhes.open) {
+        await act(async () => detalhes.querySelector("summary")!.click());
+      }
+      await digitarNoCampo(campoDaFaixa(), textoDaFaixa);
+      expect(campoDaFaixa().value).toBe(textoDaFaixa);
+    }
+
+    function conferirRecusaDaFaixa() {
+      expect(updateConfig).not.toHaveBeenCalled();
+      const campo = campoDaFaixa();
+      expect(campo.closest("[hidden]")).toBeNull();
+      expect(campo.closest("details")?.open).toBe(true);
+      expect(document.activeElement).toBe(campo);
+      expect(campo.getAttribute("aria-invalid")).toBe("true");
+      const erro = document.getElementById(
+        campo.getAttribute("aria-describedby") ?? "",
+      );
+      expect(erro?.getAttribute("role")).toBe("alert");
+      expect(erro?.textContent).toMatch(/CEP.*deixe.*vazio/i);
+    }
+
+    it("recusa texto sem CEP, reabre o painel e a faixa manual e foca o campo com erro", async () => {
+      estadoDaLoja.atual.localCepRange = "38400-000, 38400-999";
+      await abrirTela();
+      await editarFaixa("centro");
+      await act(async () => {
+        campoDaFaixa().closest("details")!.querySelector("summary")!.click();
+        botaoDoPainelLocal().click();
+      });
+      expect(campoDaFaixa().closest("[hidden]")).not.toBeNull();
+      expect(campoDaFaixa().closest("details")?.open).toBe(false);
+
+      await salvar();
+
+      conferirRecusaDaFaixa();
+    });
+
+    it("recusa religar a entrega própria com uma faixa antiga sem CEP", async () => {
+      estadoDaLoja.atual.localDeliveryEnabled = false;
+      estadoDaLoja.atual.localCepRange = "centro";
+      await abrirTela();
+      await abrirPainelLocal();
+      await act(async () => botaoComTexto(/^Eu entregoVocê leva/)!.click());
+      expect(campoDaFaixa().value).toBe("centro");
+
+      await salvar();
+
+      conferirRecusaDaFaixa();
+    });
+
+    it("recusa intervalo com 'a' e ensina o formato que a cotação usa", async () => {
+      await abrirTela();
+      await editarFaixa("38500-000 a 38599-999");
+      await salvar();
+
+      conferirRecusaDaFaixa();
+      expect(document.getElementById("erro-faixa-de-cep")?.textContent).toMatch(
+        /38500-000, 38599-999/,
+      );
+    });
+
+    it("recusa o segundo CEP com nove dígitos sem travar o salvamento", async () => {
+      await abrirTela();
+      await editarFaixa("38500, 385000000");
+      await salvar();
+
+      expect(toast.error).toHaveBeenCalledWith(
+        expect.stringMatching(/faixa de CEP.*até 8 dígitos/i),
+      );
+      expect(updateConfig).not.toHaveBeenCalled();
+      expect(botaoSalvar()?.textContent?.trim()).toBe("Salvar");
+      expect(botaoSalvar()?.disabled).toBe(false);
+
+      // Simula a chegada de um config atualizado pelo outro aparelho.
+      estadoDaLoja.atual = { ...estadoDaLoja.atual, localDeliveryFee: 15 };
+      await abrirTela();
+      expect(
+        hospedeiro.querySelector<HTMLInputElement>("#local-delivery-fee")
+          ?.value,
+      ).toBe("15,00");
+      expect(campoDaFaixa().value).toBe("38500, 385000000");
+    });
+
+    it.each(["38501-123", "38500-000, 38599-999", ""])(
+      "salva a nova faixa %j (reconhecida pela cotação ou vazia)",
+      async (faixa) => {
+        estadoDaLoja.atual.localCepRange = "38400-000, 38400-999";
+        await abrirTela();
+        await editarFaixa(faixa);
+
+        await salvar();
+
+        expect(updateConfig).toHaveBeenCalledOnce();
+        expect(updateConfig.mock.calls[0][0]).toEqual({ localCepRange: faixa });
+      },
+    );
+
+    it("salva só o preço quando a faixa antiga sem CEP não foi alterada", async () => {
+      estadoDaLoja.atual.localCepRange = "centro";
+      await abrirTela();
+      await abrirPainelLocal();
+      await digitarNoCampo(
+        hospedeiro.querySelector<HTMLInputElement>("#local-delivery-fee")!,
+        "12,50",
+      );
+
+      await salvar();
+
+      expect(updateConfig).toHaveBeenCalledOnce();
+      expect(updateConfig.mock.calls[0][0]).toEqual({ localDeliveryFee: 12.5 });
+    });
+
+    it("voltar à faixa salva limpa a recusa e libera a mudança de preço", async () => {
+      estadoDaLoja.atual.localCepRange = "38400-000, 38400-999";
+      await abrirTela();
+      await editarFaixa("centro");
+      await salvar();
+      expect(updateConfig).not.toHaveBeenCalled();
+
+      await editarFaixa("38400-000, 38400-999");
+      expect(campoDaFaixa().getAttribute("aria-invalid")).not.toBe("true");
+      await digitarNoCampo(
+        hospedeiro.querySelector<HTMLInputElement>("#local-delivery-fee")!,
+        "12,50",
+      );
+      await salvar();
+
+      expect(updateConfig).toHaveBeenCalledOnce();
+      expect(updateConfig.mock.calls[0][0]).toEqual({ localDeliveryFee: 12.5 });
+    });
+  });
 
   it("a faixa descreve o estado REAL salvo: local com cidade, nacional ligado, grátis pelo preset", async () => {
     await abrirTela();

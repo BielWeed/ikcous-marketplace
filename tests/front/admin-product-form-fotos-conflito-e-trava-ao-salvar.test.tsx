@@ -383,13 +383,19 @@ describe("(A) o mesmo com grade (uma só RPC que confere a versão)", () => {
     expect(fotosNaTela()).toEqual([B, C]);
   });
 
-  it("mexer só no preço, com grade, continua indo sem versão para conferir", async () => {
+  it("mexer só no nome, com grade, não exige versão nem apaga a foto nova", async () => {
     await montar();
-    await digitar("product-sale-price", "60,00");
+    await digitar("product-name", "Camiseta de algodão");
+    outroAparelhoAdicionaFoto(C);
+
     await salvar();
+
     expect(banco.chamadasRpc).toHaveLength(1);
     expect(banco.chamadasRpc[0].p_base_atualizado_em).toBeNull();
+    expect(banco.chamadasRpc[0].p_produto).not.toHaveProperty("imagem_urls");
     expect(banco.gravacoes).toBe(1);
+    expect(banco.produto.nome).toBe("Camiseta de algodão");
+    expect(banco.produto.imagem_urls).toEqual([A, B, C]);
   });
 });
 

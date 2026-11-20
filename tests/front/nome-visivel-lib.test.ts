@@ -6,6 +6,7 @@ import { nomeOuReserva, nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 // `nomeTemConteudoVisivel` é a régua única da tela de Ajustes da conta e do
 // cadastro.
 import { describe, expect, it } from "vitest";
+import { nomesInvisiveis, nomesVisiveis } from "./helpers/nomes-invisiveis";
 
 describe("nomeTemConteudoVisivel", () => {
   it.each([
@@ -43,6 +44,16 @@ describe("nomeTemConteudoVisivel", () => {
     ["nome em outro alfabeto", "山田"],
   ])("aceita %s", (_descricao, texto) => {
     expect(nomeTemConteudoVisivel(texto)).toBe(true);
+  });
+});
+
+describe("régua de visibilidade compartilhada pelo painel da loja e do produto", () => {
+  it.each(nomesInvisiveis)("recusa nome só com %s", (_rotulo, nome) => {
+    expect(nomeTemConteudoVisivel(nome)).toBe(false);
+  });
+
+  it.each(nomesVisiveis)("aceita nome visível com %s", (_rotulo, nome) => {
+    expect(nomeTemConteudoVisivel(nome)).toBe(true);
   });
 });
 

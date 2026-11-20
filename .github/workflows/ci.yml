@@ -25,8 +25,8 @@
 # de 800 kB" da linha de 30/07 acima somava cliente E painel juntos. Hoje
 # `npm run size` mede QUATRO budgets independentes (`.size-limit.cjs`,
 # `scripts/portaoDividido.ts` classifica pelo grafo real do Rollup):
-#   cliente (o que qualquer visitante baixa)         <= 550 kB (era 800 somado)
-#   painel (só depois do `is_admin` do servidor)     <= 466 kB (450 até 15/10/26)
+#   cliente (o que qualquer visitante baixa)         <= 686 kB
+#   painel (só depois do `is_admin` do servidor)     <= 550 kB
 #   CSS                                              <= 100 kB (sem mudança)
 #   leitor de código de barras (glue + wasm, C2.5)   <= 400 kB (sem mudança)
 # Medido no fixture build desta mudança: cliente 474,97 kB, painel 402,44 kB

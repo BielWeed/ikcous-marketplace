@@ -180,6 +180,21 @@ export function linhasDosItens(itens: Array<Record<string, unknown>>): string {
  *
  * O formato "<name>: <value>" e' o mesmo do carrinho (`CartItemsList`).
  */
+function formatarVariacaoDoComprovante(nomeCru: unknown, valorCru: unknown): string {
+  const nome = String(nomeCru ?? "").trim();
+  const valor = String(valorCru ?? "").trim();
+  // Sem valor não há o que dizer; sem nome, o valor ainda informa.
+  return valor && nome ? `${nome}: ${valor}` : valor;
+}
+
+function variacaoGuardadaDoItem(item: Record<string, unknown>): string {
+  if (item.variacao_nome_na_compra == null) return "";
+  return formatarVariacaoDoComprovante(
+    item.variacao_nome_na_compra,
+    item.variacao_valor_na_compra,
+  );
+}
+
 export async function variacoesDosItens(
   supabase: ReturnType<typeof createClient>,
   itens: Array<Record<string, unknown>>,
@@ -189,6 +204,7 @@ export async function variacoesDosItens(
     const ids = [
       ...new Set(
         (itens ?? [])
+          .filter((item) => !variacaoGuardadaDoItem(item))
           .map((item) => String(item?.variant_id ?? "").trim())
           .filter(Boolean),
       ),
@@ -207,12 +223,8 @@ export async function variacoesDosItens(
       return variacoes;
     }
     for (const linha of Array.isArray(data) ? data : []) {
-      const nome = String(linha?.name ?? "").trim();
-      const valor = String(linha?.value ?? "").trim();
-      // Sem valor nao ha o que dizer ("Tamanho: " solto seria pior que nada);
-      // sem nome, o proprio valor ainda informa ("M", "Azul").
-      if (!valor) continue;
-      variacoes.set(String(linha.id), nome ? `${nome}: ${valor}` : valor);
+      const rotulo = formatarVariacaoDoComprovante(linha?.name, linha?.value);
+      if (rotulo) variacoes.set(String(linha.id), rotulo);
     }
   } catch (e) {
     console.warn(
@@ -646,7 +658,7 @@ export async function enviarComprovantePedido(args: {
 
   const { data: itens, error: erroItens } = await supabase
     .from("marketplace_order_items")
-    .select("product_name, quantity, price, variant_id")
+    .select("product_name, quantity, price, variant_id, variacao_nome_na_compra, variacao_valor_na_compra")
     .eq("order_id", orderId);
 
   if (erroItens) {
@@ -662,7 +674,8 @@ export async function enviarComprovantePedido(args: {
   const listaDeItens = itens ?? [];
   const variacoes = await variacoesDosItens(supabase, listaDeItens);
   const itensComVariacao = listaDeItens.map((item) => {
-    const variacao = variacoes.get(String(item?.variant_id ?? ""));
+    const variacao = variacaoGuardadaDoItem(item) ||
+      variacoes.get(String(item?.variant_id ?? "").trim());
     return variacao ? { ...item, variacao } : item;
   });
 

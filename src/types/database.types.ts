@@ -1187,6 +1187,8 @@ export type Database = {
           product_id: string | null;
           product_name: string | null;
           quantity: number;
+          variacao_nome_na_compra: string | null;
+          variacao_valor_na_compra: string | null;
           variant_id: string | null;
         };
         Insert: {
@@ -1198,6 +1200,8 @@ export type Database = {
           product_id?: string | null;
           product_name?: string | null;
           quantity: number;
+          variacao_nome_na_compra?: string | null;
+          variacao_valor_na_compra?: string | null;
           variant_id?: string | null;
         };
         Update: {
@@ -1209,6 +1213,8 @@ export type Database = {
           product_id?: string | null;
           product_name?: string | null;
           quantity?: number;
+          variacao_nome_na_compra?: string | null;
+          variacao_valor_na_compra?: string | null;
           variant_id?: string | null;
         };
         Relationships: [

@@ -216,11 +216,11 @@ it("salvar grade preserva preço próprio zero", async () => {
   expect(parametros.p_variantes[0].price_override).toBe(0);
 });
 
-it("sem estoque mexido manda base nula e omite stock_increment, sem preencher com null", async () => {
+it("sem estoque ou preço mexido manda base nula e omite stock_increment", async () => {
   await act(async () => {
     await api.salvarProdutoComGrade(
       "p-1",
-      { price: 60 },
+      { name: "Camiseta leve" },
       {
         variantes: [variante()],
         apagar: [],
@@ -232,6 +232,21 @@ it("sem estoque mexido manda base nula e omite stock_increment, sem preencher co
   expect(parametros.p_produto).not.toHaveProperty("estoque");
   expect(parametros.p_variantes[0]).not.toHaveProperty("stock_increment");
 });
+
+it.each([{ price: 60 }, { costPrice: 15 }, { originalPrice: null }])(
+  "não chama a gravação conjunta sem versão ao alterar %o",
+  async (updates) => {
+    await act(async () => {
+      await expect(
+        api.salvarProdutoComGrade("p-1", updates, {
+          variantes: [],
+          apagar: [],
+        }),
+      ).rejects.toThrow(/versão do preço/);
+    });
+    expect(banco.rpc).not.toHaveBeenCalled();
+  },
+);
 
 it("PRD01 vira recusa de versão com produtoAtual e não prossegue com efeitos de sucesso", async () => {
   banco.rpc.mockResolvedValue({ data: null, error: { code: "PRD01" } });

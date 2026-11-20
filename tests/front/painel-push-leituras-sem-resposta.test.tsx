@@ -48,7 +48,11 @@ vi.mock("@/lib/supabase", () => ({
             }),
           }),
         };
-      return { select: () => ({ order: () => ({ limit: h.historico }) }) };
+      return {
+        select: () => ({
+          not: () => ({ order: () => ({ limit: h.historico }) }),
+        }),
+      };
     },
     rpc: h.contar,
     functions: { invoke: vi.fn() },

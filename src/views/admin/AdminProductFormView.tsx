@@ -48,6 +48,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useAoMudarCategoria } from "@/hooks/useAoMudarCategoria";
+import { useCamadaDeTelaCheia } from "@/hooks/useCamadaDeTelaCheia";
 import { useCategories } from "@/hooks/useCategories";
 import { useConfirmarAcao } from "@/hooks/useConfirmarAcao";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
@@ -75,6 +76,7 @@ import {
   mesmaCategoria,
 } from "@/lib/gestao-de-categorias";
 import { imagemAbre } from "@/lib/imagem-abre";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { percentualComUmaCasa } from "@/lib/percentual";
 import { pluralizar } from "@/lib/pluralizar";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
@@ -800,7 +802,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     // conta nesse meio-tempo. `= () => undefined`: consumidor que não expõe a
     // leitura (testes de contrato da tela) fica sem a trava, como antes.
     idDaContaViva = () => undefined,
-  } = useProducts({ autoFetch: false });
+  } = useProducts({ autoFetch: false, semFilaOffline: true });
 
   // O SKU da variação é UNIQUE na loja INTEIRA, não por produto. A grade gera
   // códigos previsíveis (base reaproveitada, sufixo por valor), então a
@@ -922,6 +924,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // A recarga após conflito atualiza estoque, fotos e grade, mas não o
   // preço exibido. Não adote aquela versão como base para gravar preço.
   const versaoDosPrecosRef = useRef<string | undefined>(undefined);
+  const [conflitoDePrecosComGrade, setConflitoDePrecosComGrade] = useState<
+    | (Pick<ProductFormFields, "price" | "costPrice" | "originalPrice"> & {
+        updatedAt: string;
+      })
+    | null
+  >(null);
   const [showCategoryForm, setShowCategoryForm] = useState(false);
   const [gerenciandoCategorias, setGerenciandoCategorias] = useState(false);
   // A folha "Categoria" (o campo a controla; o formulário só precisa saber se
@@ -1032,6 +1040,17 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   const [leitorAberto, setLeitorAberto] = useState<
     "produto" | "variacao" | null
   >(null);
+  const fecharLeitor = () => setLeitorAberto(null);
+  const camadaDoLeitorRef = useCamadaDeTelaCheia<HTMLDivElement>(
+    fecharLeitor,
+    true,
+    leitorAberto !== null,
+  );
+  function abrirLeitor(alvo: "produto" | "variacao", botao: HTMLButtonElement) {
+    // Nem todo navegador foca um botão clicado; o hook restaura o foco daqui.
+    botao.focus({ preventScroll: true });
+    setLeitorAberto(alvo);
+  }
   const [priceError, setPriceError] = useState("");
   const [costError, setCostError] = useState("");
   const [originalPriceError, setOriginalPriceError] = useState("");
@@ -1557,6 +1576,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           setIsPromoActive(!!product.originalPrice);
           setCurrentProduct(product);
           versaoDosPrecosRef.current = product.updatedAt;
+          setConflitoDePrecosComGrade(null);
           salvarAnteriorGravouProdutoRef.current = false;
         } else {
           toast.error("Produto não encontrado");
@@ -3249,7 +3269,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // "tudo pronto". O botão, a frase do que falta e o contador usam ESTA cópia.
   const camposObrigatorios = {
     ...formData,
-    name: formData.name.trim(),
+    name: nomeTemConteudoVisivel(formData.name) ? formData.name.trim() : "",
     description: formData.description.trim(),
   };
 
@@ -3316,9 +3336,20 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     // sucesso e a navegação (1,5s) `isSubmitting` já voltou a false mas o
     // botão ainda mostra "Salvo" — sem checar showSuccess aqui, um segundo
     // clique nessa janela reentrava e criava um produto duplicado.
-    if (isSubmitting || showSuccess || precisaRecarregar) return;
+    if (
+      isSubmitting ||
+      showSuccess ||
+      precisaRecarregar ||
+      conflitoDePrecosComGrade
+    )
+      return;
     if (isOffline) {
       toast.error("Não é possível salvar alterações em modo offline.");
+      return;
+    }
+    if (!camposObrigatorios.name) {
+      toast.error("Escreva o nome do produto.");
+      mostrarEFocarCampo("product-name");
       return;
     }
     // Produto criado, variações ainda só no rascunho: salvar agora não grava
@@ -3471,6 +3502,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     const productData = { ...dadosDoFormulario, variants: formData.variants };
 
     const fim = marcarOperacaoSensivel("salvar-produto");
+    let conferiaPrecoComGrade = false;
     try {
       if (productId) {
         // 1. Atualizar produto principal. O estoque só vai se a lojista mexeu
@@ -3531,9 +3563,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             ? normalizarCodigoBarras(v.codigoBarras)
             : undefined,
         }));
-        // O mesmo critério do `updateProduct` (que só enfileira com `!navigator.onLine`): a sonda de rede
-        // (`isOffline`) pode dizer "fora" por até 15 s com o navegador online, e aí o caminho antigo gravaria
-        // produto e grade em requisições separadas — a janela que esta RPC fecha.
+        // A sonda de rede (`isOffline`) pode dizer "fora" por até 15 s com
+        // o navegador online. Nesse caso, produto e grade ainda devem ser
+        // gravados juntos, sem passar pelo caminho de requisições separadas.
         const salvarEmTransacao =
           navigator.onLine &&
           (formData.variants.length > 0 || deletedVariantIds.length > 0);
@@ -3559,20 +3591,20 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         // que esta tela vai apagar, com estoque novo (o gatilho do banco avança
         // a versão do produto a cada mudança de variação).
         const excluiuVariacao = deletedVariantIds.length > 0;
-        const conferirPrecoNaGravacaoDireta =
+        const conferirPreco =
           navigator.onLine &&
-          !salvarEmTransacao &&
           (camposDoProduto.price !== undefined ||
             camposDoProduto.costPrice !== undefined ||
             camposDoProduto.originalPrice !== undefined);
+        conferiaPrecoComGrade = salvarEmTransacao && conferirPreco;
         const conferencia =
-          conferirPrecoNaGravacaoDireta ||
+          conferirPreco ||
           mexeuNoEstoque ||
           mexeuNasFotos ||
           mexeuNaGradeExistente ||
           excluiuVariacao
             ? {
-                baseUpdatedAt: conferirPrecoNaGravacaoDireta
+                baseUpdatedAt: conferirPreco
                   ? versaoDosPrecosRef.current
                   : currentProduct?.updatedAt,
               }
@@ -3835,7 +3867,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         // Na recuperação do estoque, pode usar a versão que recarregou o
         // estoque se os três preços que a lojista viu ao abrir ainda valem.
         // Uma recusa de preço por si só não revalida a edição.
-        if (
+        if (conferiaPrecoComGrade && atual.updatedAt) {
+          setConflitoDePrecosComGrade({
+            price,
+            costPrice,
+            originalPrice,
+            updatedAt: atual.updatedAt,
+          });
+        } else if (
+          !conferiaPrecoComGrade &&
           estoqueDoProdutoFoiMexido(formData, initialData) &&
           price === initialData.price &&
           costPrice === initialData.costPrice &&
@@ -4073,10 +4113,58 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         temErroNoCampo,
         promocaoSemPrecoOriginal,
       );
+  const mexeuNoValor = (digitado: string, anterior: string) =>
+    numeroOpcionalDoCampo(digitado) !== numeroOpcionalDoCampo(anterior);
+  const promocaoNaAbertura =
+    (numeroOpcionalDoCampo(initialData.originalPrice) ?? 0) > 0;
+  const mexeuNoPrecoDeAntes = (dados = formData) =>
+    mexeuNoValor(dados.originalPrice, initialData.originalPrice) ||
+    isPromoActive !== promocaoNaAbertura;
+  const textoDoPreco = (valor: string) => {
+    const numero = numeroOpcionalDoCampo(valor);
+    return numero == null ? "não informado" : formatCurrency(numero);
+  };
+  const linhaDoPrecoEmConflito = (
+    rotulo: string,
+    atual: string,
+    digitado: string,
+    mexeu: boolean,
+  ) =>
+    mexeu && (
+      <p>
+        {rotulo} · Atual: {textoDoPreco(atual)} · Digitado:{" "}
+        {textoDoPreco(digitado)}
+      </p>
+    );
+  const confirmarPrecosDoRascunho = () => {
+    if (!conflitoDePrecosComGrade) return;
+    const { updatedAt, ...precos } = conflitoDePrecosComGrade;
+    // Só confirma a versão mostrada. Outra escrita entre o aviso e Salvar
+    // volta a ser recusada. Os preços não editados passam a mostrar os do banco.
+    versaoDosPrecosRef.current = updatedAt;
+    setInitialData((anterior) => ({ ...anterior, ...precos }));
+    setFormData((anterior) => ({
+      ...anterior,
+      price: mexeuNoValor(anterior.price, initialData.price)
+        ? anterior.price
+        : precos.price,
+      costPrice: mexeuNoValor(anterior.costPrice, initialData.costPrice)
+        ? anterior.costPrice
+        : precos.costPrice,
+      originalPrice: mexeuNoPrecoDeAntes(anterior)
+        ? anterior.originalPrice
+        : precos.originalPrice,
+    }));
+    if (!mexeuNoPrecoDeAntes()) {
+      setIsPromoActive((numeroOpcionalDoCampo(precos.originalPrice) ?? 0) > 0);
+    }
+    setConflitoDePrecosComGrade(null);
+  };
   const botaoDeSalvarDesligado =
     isSubmitting ||
     showSuccess ||
     precisaRecarregar ||
+    conflitoDePrecosComGrade !== null ||
     isOffline ||
     motivoDoBloqueio !== null;
 
@@ -4751,7 +4839,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             {temCameraDisponivel() && (
                               <button
                                 type="button"
-                                onClick={() => setLeitorAberto("variacao")}
+                                onClick={(evento) =>
+                                  abrirLeitor("variacao", evento.currentTarget)
+                                }
                                 className="flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 text-[11px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95"
                                 title="Ler com a câmera"
                               >
@@ -6550,7 +6640,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         {temCameraDisponivel() && (
                           <button
                             type="button"
-                            onClick={() => setLeitorAberto("produto")}
+                            onClick={(evento) =>
+                              abrirLeitor("produto", evento.currentTarget)
+                            }
                             className="flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 text-[11px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95 sm:rounded-2xl"
                             title="Ler com a câmera"
                           >
@@ -6725,6 +6817,41 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
       <AcaoDaBarra aria-label="Ações do produto">
         <div className="produto-acoes mx-auto w-full max-w-3xl space-y-1.5">
+          {conflitoDePrecosComGrade && (
+            <div className="space-y-1 px-1 text-xs text-amber-300">
+              <div role="alert">
+                <p>
+                  Este produto mudou depois que você abriu a tela. Nada foi
+                  salvo.
+                </p>
+                {linhaDoPrecoEmConflito(
+                  "Preço de venda",
+                  conflitoDePrecosComGrade.price,
+                  formData.price,
+                  mexeuNoValor(formData.price, initialData.price),
+                )}
+                {linhaDoPrecoEmConflito(
+                  "Custo",
+                  conflitoDePrecosComGrade.costPrice,
+                  formData.costPrice,
+                  mexeuNoValor(formData.costPrice, initialData.costPrice),
+                )}
+                {linhaDoPrecoEmConflito(
+                  "Preço de antes",
+                  conflitoDePrecosComGrade.originalPrice,
+                  formData.originalPrice,
+                  mexeuNoPrecoDeAntes(),
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={confirmarPrecosDoRascunho}
+                className="min-h-11 rounded-full bg-admin-raised px-4 text-xs font-bold text-white"
+              >
+                Confirmar preço digitado
+              </button>
+            </div>
+          )}
           {precisaRecarregar && (
             <p
               data-testid="precisa-recarregar"
@@ -6778,21 +6905,24 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               )}
             </p>
           )}
-          {!motivoDoBloqueio && !isOffline && !precisaRecarregar && (
-            <p
-              className="produto-status flex items-center gap-2 px-1 text-xs font-bold text-emerald-300"
-              role="status"
-            >
-              <Check aria-hidden="true" className="size-4 shrink-0" />
-              {showSuccess
-                ? "Salvo · voltando à lista"
-                : isSubmitting
-                  ? "Salvando alterações…"
-                  : productId
-                    ? "Alterações prontas para salvar"
-                    : "Tudo pronto para publicar"}
-            </p>
-          )}
+          {!motivoDoBloqueio &&
+            !isOffline &&
+            !precisaRecarregar &&
+            !conflitoDePrecosComGrade && (
+              <p
+                className="produto-status flex items-center gap-2 px-1 text-xs font-bold text-emerald-300"
+                role="status"
+              >
+                <Check aria-hidden="true" className="size-4 shrink-0" />
+                {showSuccess
+                  ? "Salvo · voltando à lista"
+                  : isSubmitting
+                    ? "Salvando alterações…"
+                    : productId
+                      ? "Alterações prontas para salvar"
+                      : "Tudo pronto para publicar"}
+              </p>
+            )}
           <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
             {/* O botão cinza não recebe toque (pointer-events: none): o toque
                 cai neste invólucro e leva ao primeiro campo que falta. Pelo
@@ -7049,9 +7179,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               )}
               {renomearPendente?.emPedidos && (
                 <span className="block">
-                  {renomearPendente.todasAsOpcoes
-                    ? "Estas opções podem estar em pedidos já feitos, e o nome novo vai aparecer neles também."
-                    : "Esta variação pode estar em pedidos já feitos. Trocar o nome muda o que eles mostram. Se for outro tamanho ou outra cor, crie uma variação nova e desligue esta."}
+                  Os pedidos já feitos continuam mostrando, no painel e na conta
+                  da cliente, o nome anterior.
                 </span>
               )}
             </AlertDialogDescription>
@@ -7081,13 +7210,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           `fallback={null}` porque a abertura já é o clique do lojista. */}
       {leitorAberto !== null && (
         <div
+          ref={camadaDoLeitorRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Ler o código de barras"
+          tabIndex={-1}
           data-testid="container-do-leitor"
           className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 p-4"
         >
-          <LimiteDePedaco
-            pedacos={[LeitorDeCodigo]}
-            aoFechar={() => setLeitorAberto(null)}
-          >
+          <LimiteDePedaco pedacos={[LeitorDeCodigo]} aoFechar={fecharLeitor}>
             <Suspense fallback={null}>
               <LeitorDeCodigo
                 aberto
@@ -7095,7 +7226,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 titulo="Ler o código de barras"
                 dica="Aponte para o código da embalagem"
                 aoLer={aoLerCodigoDeBarras}
-                aoFechar={() => setLeitorAberto(null)}
+                aoFechar={fecharLeitor}
               />
             </Suspense>
           </LimiteDePedaco>

@@ -63,8 +63,10 @@ vi.mock("@/lib/supabase", () => ({
       if (tabela === "notificacoes") return { insert: avisos };
       return {
         select: () => ({
-          order: () => ({
-            limit: () => Promise.resolve({ data: [], error: null }),
+          not: () => ({
+            order: () => ({
+              limit: () => Promise.resolve({ data: [], error: null }),
+            }),
           }),
           eq: () => ({
             order: () =>

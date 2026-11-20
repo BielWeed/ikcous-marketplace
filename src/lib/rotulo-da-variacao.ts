@@ -22,3 +22,13 @@ export function rotuloDaVariacao(
     .map((par) => `${par.name.trim()} ${par.value.trim()}`.trim())
     .join(" · ");
 }
+
+export function rotuloDaVariacaoGuardada(item: {
+  variacaoNomeNaCompra?: string | null;
+  variacaoValorNaCompra?: string | null;
+}): string {
+  return rotuloDaVariacao(
+    item.variacaoNomeNaCompra,
+    item.variacaoValorNaCompra,
+  );
+}

@@ -78,9 +78,9 @@ export interface VersaoDosTextos {
 }
 
 export const VERSAO_DOS_TEXTOS: VersaoDosTextos = {
-  versao: 2,
-  atualizadoEm: "2026-11-18",
-  impressaoDoTexto: "c0582230",
+  versao: 4,
+  atualizadoEm: "2026-11-19",
+  impressaoDoTexto: "965e8a58",
 };
 
 /**
@@ -237,8 +237,16 @@ function montarPrivacidade(loja: DadosDaLoja): DocumentoDePolitica {
         id: "para-que",
         titulo: "Para que usamos",
         paragrafos: [
-          "Para processar e entregar o seu pedido, avisar sobre o andamento dele, atender dúvidas, trocas e devoluções e cumprir obrigações legais da loja, como as fiscais.",
-          "Se você permitir as notificações, também avisamos sobre pedidos e novidades da loja. Você pode desligar quando quiser, nas configurações do aparelho ou do navegador.",
+          "Usamos seus dados de cadastro para identificar sua conta e entrar em contato. Usamos o endereço, os itens e os dados do pedido para preparar a compra, processar o pagamento, entregar o pedido e atender dúvidas, trocas e devoluções. Também guardamos o que a lei exige, como dados fiscais do pedido.",
+          "Se você permitir as notificações, usamos o identificador do aparelho para enviar avisos sobre pedidos e novidades da loja. Você pode desligar esses avisos nas configurações do aparelho ou do navegador.",
+        ],
+      },
+      {
+        id: "no-aparelho",
+        titulo: "O que fica no seu aparelho",
+        paragrafos: [
+          "O app guarda no navegador dados para manter sua entrada na conta, lembrar o carrinho, endereços e preferências e salvar o rascunho da compra enquanto a aba estiver aberta. Também guarda mudanças nos favoritos feitas sem conexão para enviar quando a internet voltar e cópias de imagens e páginas para abrir partes do app sem internet. O app não usa rastreadores de propaganda.",
+          "O app também guarda uma cópia dos seus pedidos no navegador. Se você consultou um pedido sem conta, a cópia fica na aba em que você fez a consulta e deixa de valer depois de 15 minutos.",
         ],
       },
       {
@@ -246,6 +254,10 @@ function montarPrivacidade(loja: DadosDaLoja): DocumentoDePolitica {
         titulo: "Com quem dividimos",
         paragrafos: [
           "Só o necessário para a compra acontecer: o Mercado Pago, que processa o pagamento feito pelo app; os serviços de frete e as transportadoras, que recebem nome, endereço, WhatsApp, e-mail e, quando exigido, o CPF de quem recebe; e o serviço de e-mail que a loja usa para enviar o comprovante do pedido e o código de verificação. O CEP que você digita também é consultado em serviços de busca de CEP.",
+          "Ao abrir o formulário de cartão, o app carrega uma ferramenta de segurança do Mercado Pago. Ao enviar o pagamento, o app repassa ao Mercado Pago o identificador do aparelho, se estiver disponível, para ajudar a prevenir fraudes.",
+          "Ao tocar em Falar com a loja durante ou depois da compra, o WhatsApp recebe o telefone da loja e o texto sugerido para a mensagem, que pode incluir seu nome ou o número do pedido. Ao tocar em Combinar entrega pelo WhatsApp no cálculo do frete, o WhatsApp recebe o telefone da loja e uma mensagem com o CEP informado.",
+          "A opção Continuar com Google só aparece se a loja ativou a entrada pelo Google. Ao usar essa opção, a loja recebe do Google o nome e o e-mail da sua conta Google.",
+          "Se um produto não tiver foto, o app carrega a imagem Sem Imagem do serviço placehold.co.",
           "No seu Perfil, ao abrir os detalhes de um endereço, o mapa é carregado do Google Maps se houver conexão e dados suficientes para a busca. A equipe da loja também pode abrir o Google Maps pela ficha do pedido. Para localizar o endereço, enviamos rua, número, cidade e estado, quando disponíveis; o CEP pode acompanhar a busca e, se o endereço estiver incompleto, também o bairro e a indicação do país (Brasil) — nunca o seu nome nem o nome de quem recebe. No pedido sem rua nem CEP, a busca pode levar apenas bairro, cidade e estado.",
           "Se você permitir as notificações, o serviço de notificações do seu navegador ou aparelho entrega os avisos até você.",
           "A plataforma que hospeda o app e o banco de dados usa servidores de terceiros, que podem ficar fora do Brasil, e tem acesso técnico aos dados apenas para manter o serviço funcionando.",
@@ -257,7 +269,7 @@ function montarPrivacidade(loja: DadosDaLoja): DocumentoDePolitica {
         titulo: "Seus direitos",
         paragrafos: [
           "Pela LGPD, você pode pedir à loja: confirmar que guardamos dados seus, ver quais são, corrigir o que estiver errado e pedir a exclusão do que não precisamos manter. Você pode corrigir nome, WhatsApp e endereços no seu Perfil.",
-          "Para pedir a exclusão da conta ou dos dados, fale com a loja pelo contato no fim desta página. Alguns dados, como os de pedidos já feitos, podem ter de ser mantidos por obrigação legal.",
+          "Se você tem conta, vá a Perfil → Segurança e conta → Privacidade e meus dados para conferir o que a loja guarda e pedir a exclusão da conta. Para solicitar uma cópia dos seus dados ou se você comprou sem conta, fale com a loja pelo contato no fim desta página. Alguns dados, como os de pedidos já feitos, podem ter de ser mantidos por obrigação legal.",
         ],
       },
       {
@@ -416,7 +428,8 @@ function montarTrocas(
       "Depois que o pedido for entregue, entre na sua conta, abra o pedido em Meus pedidos e toque em Solicitar devolução ou troca. Você recebe um protocolo e acompanha o andamento por lá.",
       // Quem comprou sem criar conta não tem "Meus pedidos" nem o botão: o
       // caminho dele é a conversa com a loja (contato no fim desta página).
-      "Se você comprou sem criar conta, fale com a loja pelo contato no fim desta página e informe o número do pedido.",
+      "Se você comprou sem criar conta, fale com a loja para cancelar antes da entrega ou para pedir devolução ou troca depois da entrega. Use o contato no fim desta página e informe o número do pedido.",
+      "Se você tem conta e quer cancelar antes da entrega, entre na conta, abra o pedido em Meus pedidos e toque em Cancelar Pedido, se o botão estiver disponível.",
     ],
   });
 

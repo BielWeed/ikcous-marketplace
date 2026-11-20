@@ -61,6 +61,11 @@ describe("Trocas e devoluções — como pedir para quem comprou sem conta", () 
       expect(doConvidado).toMatch(/fale com a loja/i);
       expect(doConvidado).toMatch(/contato/i);
       expect(doConvidado).toMatch(/número do pedido/i);
+      expect(doConvidado).toMatch(/cancelar antes da entrega/i);
+      expect(doConvidado).toMatch(/devolução ou troca depois da entrega/i);
+      expect(paragrafos).toContain(
+        "Se você tem conta e quer cancelar antes da entrega, entre na conta, abra o pedido em Meus pedidos e toque em Cancelar Pedido, se o botão estiver disponível.",
+      );
     },
   );
 });

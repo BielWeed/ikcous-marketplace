@@ -28,7 +28,11 @@ describe("Contato da loja — celular sem o 9 depois do DDD", () => {
   it.each([
     ["11987654321", "5511987654321"],
     ["5511987654321", "5511987654321"],
+    ["1122345678", "551122345678"],
     ["1132345678", "551132345678"],
+    ["1142345678", "551142345678"],
+    ["1152345678", "551152345678"],
+    ["(11) 6765-4321", "551167654321"],
   ])("preserva o celular ou fixo válido %s", (numero, valor) => {
     expect(whatsappParaGravar(numero)).toEqual({ valido: true, valor });
   });
@@ -69,7 +73,7 @@ describe("Contato da loja — celular sem o 9 depois do DDD", () => {
     },
   );
 
-  it.each(["11987654321", "1132345678", ""])(
+  it.each(["11987654321", "1132345678", "1167654321", ""])(
     "não acusa erro no número válido ou opcional %s",
     (numero) => {
       const campo = abrir(numero);

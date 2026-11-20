@@ -288,9 +288,9 @@ describe("Balcão — a dúvida da venda sobrevive à 2ª falha", () => {
 
     expect(hospedeiro.textContent).toContain("Caneca Azul");
     expect(hospedeiro.textContent).toContain(TITULO_DA_DUVIDA);
-    await clicar("Cancelar venda");
+    await clicar("Limpar a tela da venda");
     expect(hospedeiro.textContent).toContain(
-      "Se a venda chegou a ser gravada, ela está em Pedidos.",
+      "Isso não anula uma venda já registrada. Se não tiver certeza de que a venda foi registrada, confira em Pedidos antes de refazer.",
     );
     expect(hospedeiro.textContent).not.toContain("Nada é registrado");
   });
@@ -334,7 +334,7 @@ describe("Balcão — a dúvida da venda sobrevive à 2ª falha", () => {
     expect(armazem.get(CHAVE_DO_RASCUNHO)).not.toContain("talvezGravada");
 
     await recarregar();
-    await clicar("Cancelar venda");
+    await clicar("Limpar a tela da venda");
     expect(hospedeiro.textContent).toContain("Nada é registrado");
   });
 
@@ -350,7 +350,7 @@ describe("Balcão — a dúvida da venda sobrevive à 2ª falha", () => {
     expect(armazem.get(CHAVE_DO_RASCUNHO)).not.toContain("talvezGravada");
 
     await recarregar();
-    await clicar("Cancelar venda");
+    await clicar("Limpar a tela da venda");
     expect(hospedeiro.textContent).toContain("Nada é registrado");
   });
 
@@ -381,7 +381,7 @@ describe("Balcão — a dúvida da venda sobrevive à 2ª falha", () => {
   });
 });
 
-describe("Cancelar venda — a pergunta olha a dúvida, não só o texto do erro", () => {
+describe("Limpar a tela da venda — a pergunta olha a dúvida, não só o texto do erro", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
@@ -431,7 +431,7 @@ describe("Cancelar venda — a pergunta olha a dúvida, não só o texto do erro
       );
     });
     await act(async () => {
-      botao(hospedeiro, "Cancelar venda")!.click();
+      botao(hospedeiro, "Limpar a tela da venda")!.click();
     });
     return hospedeiro.textContent ?? "";
   }
@@ -441,7 +441,7 @@ describe("Cancelar venda — a pergunta olha a dúvida, não só o texto do erro
       talvezGravada: true,
       erro: null,
     });
-    expect(texto).toContain("Se a venda chegou a ser gravada");
+    expect(texto).toContain("Isso não anula uma venda já registrada");
     expect(texto).not.toContain("Nada é registrado");
   });
 

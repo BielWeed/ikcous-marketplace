@@ -1,9 +1,6 @@
 // @vitest-environment jsdom
 //
-// Colar " SP " no campo "Estado" do convidado. Com `maxLength={2}` o navegador
-// guardava " S" (cortava antes de tirar os espaços) e a cliente via "Estado
-// inválido" por ter copiado uma UF válida. O corte em 2 letras agora é do
-// `onChange`, depois de normalizar.
+// Colar uma UF ou nome no checkout de convidado não deve truncar o texto.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -135,22 +132,43 @@ describe("CheckoutView — UF do convidado colada com espaço", () => {
     vi.restoreAllMocks();
   });
 
-  it.each([" sp ", "SP ", " SP", "s p"])(
-    "colar %j deixa 'SP' no campo",
-    async (colado) => {
+  it.each([
+    [" sp ", "SP"],
+    ["SP ", "SP"],
+    [" SP", "SP"],
+    ["s p", "SP"],
+    ["Mato Grosso do Sul", "MS"],
+  ])("colar %j deixa %s no campo", async (colado, sigla) => {
+    const campo = await abrir();
+    await act(async () => {
+      const evento = new Event("paste", { bubbles: true, cancelable: true });
+      Object.defineProperty(evento, "clipboardData", {
+        value: { getData: () => colado },
+      });
+      expect(campo.dispatchEvent(evento)).toBe(false);
+    });
+    expect(campo.value).toBe(sigla);
+  });
+
+  it.each([
+    ["Mato Grosso do Sul", "MS"],
+    ["Paraíba", "PB"],
+    ["Paraná", "PR"],
+  ])(
+    "preserva %s durante a digitação e mostra %s ao sair",
+    async (nome, sigla) => {
       const campo = await abrir();
-      await digitar(campo, colado);
-      expect(campo.value).toBe("SP");
+      await act(async () => campo.focus());
+      for (const letra of nome) {
+        await digitar(campo, campo.value + letra);
+        expect(document.getElementById("erro-guest-state")).toBeNull();
+      }
+      expect(campo.value).toBe(nome);
+      await act(async () => campo.blur());
+      expect(campo.value).toBe(sigla);
+      expect(document.getElementById("erro-guest-state")).toBeNull();
     },
   );
-
-  it("digitar normalmente continua igual: 'mg' vira 'MG' e o excesso é cortado em 2 letras", async () => {
-    const campo = await abrir();
-    await digitar(campo, "mg");
-    expect(campo.value).toBe("MG");
-    await digitar(campo, "mgx");
-    expect(campo.value).toBe("MG");
-  });
 
   it("o campo não tem `maxLength`: o navegador cortaria o texto colado ANTES da limpeza (o jsdom não reproduz esse corte, por isso a trava é no atributo)", async () => {
     const campo = await abrir();

@@ -27,8 +27,8 @@ Permanecem IKCOUS e Savy; as menções anteriores às lojas de teste registram o
   rebuild. E o unico jeito de publicar o front.
 - Lojas ASSINANTES (backend gerenciado): IKCOUS (`cafkrminfnokvgjqtkle`) e Savy
   (`gnjsrucsmjkajijrakzr`), com canal em `scripts/frota/canais-de-backend.json`.
-- Lojas de TESTE (Almeida, Brand Meliz, Space): banco e functions NAO se mexem (decisao do dono,
-  03/10/2026, em `scripts/frota/politica.json`); recebem so o front, que e o mesmo.
+- Almeida, Brand Meliz e Space sairam da politica de atualizacao em 16/10/2026, inclusive do
+  front. A lista de lojas que recebem so o front esta vazia em `scripts/frota/politica.json`.
 
 ## Publicar uma release (a sequencia inteira)
 
@@ -69,8 +69,11 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
      `gh workflow run ...` com o SHA efetivo do topo do ramo em `expected_sha` e os nomes
      completos dos arquivos (nunca `<...>`). NADA foi promovido.
 
-3. **Levar o backend a cada assinante que bloqueou: um passo por vez.** Colar o que o passo 2
-   imprimiu, esperar cada run terminar verde (`gh run watch <id>`) e rodar o passo 2 de novo; ele
+3. **Levar o backend a cada assinante que bloqueou: um passo por vez.** Se a mudança mexe em OTP/login,
+   publique primeiro **só na IKCOUS de desenvolvimento** (`cafkrminfnokvgjqtkle`) e **pause**.
+   Vá à conferência de login em janela anônima do passo 4 antes de tocar em qualquer outra loja.
+   Só propague se a conferência passar. Para cada loja liberada, cole o que o passo 2
+   imprimiu, espere cada run terminar verde (`gh run watch <id>`) e rode o passo 2 de novo; ele
    imprime o passo seguinte. **Excecao: para o lote `20261209`/`20261210`, NAO cole o comando de
    aplicar o banco antes de comprovar `criar-pagamento` e `webhook-mercadopago` no ar em cada
    loja.** O portao pode imprimir o apply sem exigir essa prova. Veja o
@@ -1929,6 +1932,11 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
 
 4. **Promover UM front e conferir a frota.**
 
+   **Conferência pós-publicação de OTP/login:** no passo 3, publique a mudança de backend primeiro só na loja de desenvolvimento
+   [IKCOUS](https://ickous-marketplace.vercel.app) (`cafkrminfnokvgjqtkle`). Só depois de ela estar no ar nessa loja, teste
+   em janela anônima se o código chega por e-mail e permite entrar. Se falhar, **pare a propagação para as demais lojas**
+   e reverta pelo [caminho de desfazer](#rollback). Só retome o passo 3 e promova o front após o teste passar.
+
    ```powershell
    node scripts/frota/publicar-release.mjs --sha <sha40> --deployment <dpl_...> --promover --json <arquivo-da-primeira-tentativa>
    ```
@@ -1937,7 +1945,9 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
    SHA (versao, isolamento e canonico de TODOS os enderecos, e a producao oficial = o deployment
    promovido). Saida 0 = publicado e conferido.
 
-   Preserve o PRIMEIRO JSON e use OUTRO nome de arquivo em cada repeticao para nao sobrescreve-lo.
+   O comando `--promover` impresso pelo ensaio vem sem `--json`: acrescente `--json <arquivo>`
+   antes de rodar a primeira promocao. Preserve o PRIMEIRO JSON e use OUTRO nome de arquivo
+   em cada repeticao para nao sobrescreve-lo.
    O ponto de volta e o `producaoAnterior` valido (nao nulo) do PRIMEIRO JSON. Se o arquivo nao
    existir ou o id for nulo ou invalido, recupere e anote o id que estava no ar antes da primeira
    promocao. Sem um desses dois ids validos, nao repita o `--promover`. Nao use o id do ultimo
@@ -2016,17 +2026,120 @@ O cadastro de UMA vez, na entrada do cliente:
    `instalar-chave-da-loja.yml` (script `scripts/publicacao/instalar-chave-da-loja.cjs`). Hoje o
    script aceita so IKCOUS e Savy: para a loja nova, acrescente o alvo dela ali e no workflow (mesmas
    travas) antes de rodar.
-   **Antes do primeiro acesso (inclusive o cadastro do passo 7) — NÃO ENSAIADO em loja nova:**
-   `public.store_config` nasce sem a linha `id = 1`. Sem essa linha ou sem dominio preenchido,
-   o porteiro mostra manutencao. Crie a linha `id = 1` com o dominio canonico da loja em
-   `dominio_publico`, pelo SQL Editor do projeto Supabase da loja, com o mesmo acesso
-   administrativo do passo 9. Confira que a leitura anonima de `public.v_store_config` para
-   `id = 1` responde HTTP 200 com uma unica ficha e o dominio da loja certa. Se nao der certo,
-   pare: nao abra excecao no porteiro.
+   **Antes do primeiro acesso — NÃO ENSAIADO em loja nova:** `public.store_config` nasce sem a
+   linha `id = 1`. Crie essa linha com o dominio canonico da loja em `dominio_publico`, pelo SQL
+   Editor do projeto Supabase da loja, com acesso administrativo. Confira que a
+   leitura anonima de `public.v_store_config` para `id = 1` responde HTTP 200 com uma unica ficha e
+   o dominio da loja certa. Isso prova so a ficha: **sem marca valida, a vitrine e o Cadastro
+   continuam em manutencao (HTTP 503)**. Se a ficha falhar, pare: nao abra excecao no porteiro.
 
    `public.dono_da_loja` tambem nasce vazia: sem dono cadastrado, ninguem define cargos.
    Nao promova dono automaticamente. Depois da primeira administradora (passo 8), siga o
    [roteiro para definir o dono da loja](definir-o-dono-da-loja.md).
+
+   **Passo 6A — Preparar e provar a marca da loja (antes do primeiro acesso da lojista).**
+
+   Cadastrar o domínio não basta. Antes de passar o endereço para a lojista, prepare o nome,
+   as cores, o logo e o pacote de imagens da marca com `scripts/identidade-bootstrap.mjs`,
+   seguindo os comandos abaixo. Sem a marca completa, aparece **“Esta loja está em manutenção”**
+   e a lojista não consegue se cadastrar. Depois de preparar a marca, abra o domínio em uma janela
+   anônima e confirme que aparece a vitrine, não a tela de manutenção.
+
+   - **Pre-requisitos:** no Supabase da loja nova, o bucket `branding` precisa estar publico
+     e `store_config.id = 1` precisa ter o dominio canonico conferido acima. Use o identificador
+     curto da loja (slug, em minusculas, com hifens se necessario). Se o projeto ja foi cadastrado
+     em `canais-de-backend.json` (passo 3), use o mesmo slug do alvo `migrations` dessa loja.
+     **Nao use `savy` nem outro alvo de loja existente como atalho.**
+   - **Kit da loja:** passe em `--valores` um JSON com `store_name` (nao vazio), as tres cores
+     `primary_color`, `secondary_color` e `accent_color` em `#RRGGBB` (a primaria nao pode
+     ser `#000000`), e `store_city` e `store_state` (use `null` se nao definidas; UF com duas
+     letras quando informada). A pasta `--kit` tem `<slug>/branding-assets.json` (versao 1) e
+     os arquivos reais em `objetos/<sha256>/<nome>`. O JSON descreve de 1 a 8 originais
+     (`originals`), logo do topo (`header`), logo de carregamento (`loader`), favicon
+     (`favicon`: PNG, SVG ou ICO), icone Apple (`apple_touch`: PNG 180 × 180), icones
+     `icon_192` e `icon_512` (PNG 192 × 192 e 512 × 512), icone com margem para recorte
+     (`maskable_512`: PNG 512 × 512) e imagem de compartilhamento (`og`: PNG 1200 × 630).
+     O utilitario confere tamanho e hash dos arquivos e monta `logo_url` pelo `header`, no
+     Storage da propria loja.
+   - **Simule primeiro.** Use a mesma janela de um Windows PowerShell 5.1 confiavel, na raiz
+     do repositorio, do inicio ao fim. O modo novo usa a mesma URL para banco e arquivos,
+     nao usa `DATABASE_URL` nem o projeto linkado pelo CLI.
+
+     1. Substitua os marcadores pelos valores do projeto novo e execute:
+
+        ```powershell
+        $env:VITE_SUPABASE_URL = 'https://<ref>.supabase.co'
+        $env:VITE_SUPABASE_ANON_KEY = '<chave-publica>'
+        ```
+
+        O terminal volta ao prompt sem mostrar nada. Se aparecer erro, corrija antes de
+        continuar. A chave de servico nao vai nesse bloco.
+     2. Execute o bloco abaixo sem editar. Quando aparecer `Chave de servico da loja nova:`,
+        o dono ou operador digita a chave ali e pressiona Enter, nunca cola a chave em
+        conversa com agente. A entrada e mascarada e nao entra no historico de comandos;
+        nao escreva a chave em comando, log ou arquivo.
+
+        ```powershell
+        $chaveProtegida = Read-Host 'Chave de servico da loja nova' -AsSecureString
+        try {
+          if ($chaveProtegida.Length -eq 0) { throw 'Nenhuma chave informada.' }
+          $env:SUPABASE_SERVICE_ROLE_KEY = [System.Net.NetworkCredential]::new('', $chaveProtegida).Password
+          Write-Host 'Chave carregada nesta sessao.'
+        } finally {
+          $chaveProtegida.Dispose()
+          Remove-Variable chaveProtegida
+        }
+        ```
+
+        So prossiga se aparecer `Chave carregada nesta sessao.`, sem erro e sem exibir a chave.
+        Caso contrario, va direto ao passo 5 e depois refaca a entrada.
+     3. Simule com o comando abaixo. Substitua os marcadores entre aspas; use o dominio
+        sem `https://` e sem caminho.
+
+        ```powershell
+        node scripts/identidade-bootstrap.mjs --alvo-novo "<slug>" --ref "<ref>" --dominio "<dominio>" --kit "<pasta-do-kit>" --valores "<valores.json>"
+        $LASTEXITCODE
+        ```
+
+        O terminal deve mostrar o plano e, na ultima linha, `0`. Se o plano for `nada`
+        (identidade ja igual), va ao passo 5. So va ao passo 4 com plano `bootstrap` e codigo
+        `0`. Qualquer outra saida: nao grave; va ao passo 5 e investigue o erro.
+     4. Grave com os mesmos valores e um caminho novo para o relatorio:
+
+        ```powershell
+        node scripts/identidade-bootstrap.mjs --alvo-novo "<slug>" --ref "<ref>" --dominio "<dominio>" --kit "<pasta-do-kit>" --valores "<valores.json>" --aplicar --saida "<relatorio-novo.json>"
+        $LASTEXITCODE
+        ```
+
+        Espere codigo `0` e confira `"prova": "ok"` no relatorio para uma gravacao nova.
+        A ferramenta so grava a identidade depois que os arquivos podem ser lidos publicamente.
+        Se der erro, va ao passo 5 e confira o estado antes de repetir: um erro de prova
+        pode ocorrer depois de a identidade ja ter sido gravada.
+     5. Ao terminar, inclusive se deu erro ou se voce cancelou, remova a chave na mesma janela:
+
+        ```powershell
+        Remove-Item Env:SUPABASE_SERVICE_ROLE_KEY -ErrorAction SilentlyContinue
+        Test-Path Env:SUPABASE_SERVICE_ROLE_KEY
+        ```
+
+        Tem de aparecer `False`: a chave saiu do ambiente desta sessao. Se aparecer `True`
+        ou houver erro na conferencia, feche essa janela antes de continuar.
+   - **Prove no dominio real**, numa janela anonima nova, sem login e sem cache antigo:
+     1. Abra a vitrine e, a partir dela, a tela de **Cadastro**. As duas devem abrir com a marca
+        certa, sem a mensagem de manutencao.
+     2. Abra `/identidade.json` no mesmo dominio. Confira `host`, `identidade.publicUrl` e
+        `identidade.identity.storeName`, e compare `identidade.identity.projectRef` e
+        `conexao.supabaseUrl` com o projeto novo. Nao copie a ficha inteira para o relatorio.
+     3. Abra `/manifest.webmanifest`: deve devolver JSON, nao uma pagina HTML. Em `icons`,
+        abra os enderecos `src` no mesmo dominio se forem relativos. Os tres icones de marca
+        (192x192, 512x512 e 512x512 com `purpose: "maskable"`) devem carregar as imagens
+        da marca nova. O quarto, 96x96 com `purpose: "monochrome"`, deve carregar
+        `/icons/badge-96x96.png`: e um PNG neutro, branco com transparencia, de proposito.
+        Ele nao mostrar a marca nova nao e falha.
+
+     **Se qualquer uma dessas provas falhar, nao entregue o dominio e nao peca o primeiro
+     cadastro.** Abrir a vitrine e o Cadastro nao libera vendas: o aceite de vendas do
+     passo 11 continua separado.
 
 7. **E-mail do primeiro cadastro (antes da entrega; faca ANTES do passo 8):** o codigo que a
    `send-otp-email` manda e' o do PEDIDO (exige e-mail, whatsapp e fragmento do pedido,
@@ -2048,8 +2161,9 @@ O cadastro de UMA vez, na entrada do cliente:
    nao sai. `ativar` PARA com "Gmail ainda nao cadastrado no painel" enquanto isso faltar
    (`ativar-email-do-login.cjs:327-328`). NAO desligue a confirmacao por e-mail para "resolver": isso
    e' decisao de produto, nao deste roteiro.
-   (c) **Prova:** um cadastro real, pelo app da loja nova, com um e-mail FORA da equipe do projeto
-   Supabase (sem remetente proprio o envio padrao so entrega para a equipe). O e-mail tem de chegar e a
+   (c) **Prova (so depois do passo 6A):** um cadastro real, pelo app da loja nova, com um e-mail
+   FORA da equipe do projeto Supabase (sem remetente proprio o envio padrao so entrega para a equipe).
+   O e-mail tem de chegar e a
    confirmacao tem de abrir. O e-mail da futura administradora (passo 8) serve, se ela nao for da
    equipe; nao o copie para este repositorio nem para o relatorio.
 8. **Primeira administradora (sem isto o painel recusa todo mundo e o dono da loja nao pode ser
@@ -2083,7 +2197,7 @@ O cadastro de UMA vez, na entrada do cliente:
    `docs/runbooks/definir-o-dono-da-loja.md`, secao 3.3: tela diferente ou erro = pare e avise so o
    numero da tela, sem copiar a mensagem). Uma tela por vez:
 
-   **Tela P0. A conta existe.** Ela se cadastra no app da loja nova (tela de Cadastro) e confirma
+   **Tela P0. A conta existe.** Com a marca aprovada no passo 6A, ela se cadastra na tela de Cadastro e confirma
    o e-mail (passo 7). Deu certo se ela consegue entrar na loja. Se o e-mail de confirmacao nao chega,
    **pare e avise "Tela P0"**: o passo 7 nao esta pronto.
 
@@ -2229,9 +2343,15 @@ O cadastro de UMA vez, na entrada do cliente:
   repita o `--promover`. Nao use o id do ultimo relatorio como substituto: ele pode ser o proprio
   candidato. Depois de um rollback a atribuicao automatica de dominios fica desligada ate o
   proximo `vercel promote`.
-- Functions: publicar de novo pelo workflow a partir do commit anterior.
-- Banco: `rollback-manual-<versao>` pelo `aplicar-migrations.yml`, do mais novo para o mais
-  antigo; ele apaga a linha da versao no ledger na mesma transacao.
+- Functions: reverta as mudancas em um commit NOVO do ramo principal e publique esse SHA pelo
+  workflow normal, como no caso da `send-order-confirmation` acima. O workflow usa o codigo do
+  proprio run; na IKCOUS e na Savy, `expected_sha` tem de ser igual ao SHA do run.
+- Banco: `rollback-manual-<versao>_<nome>.sql` pelo `aplicar-migrations.yml`, do mais novo para
+  o mais antigo; ele apaga a linha da versao no ledger na mesma transacao. O workflow so aceita
+  versoes de 14 digitos. Para um rollback com versao fora desse padrao (por exemplo,
+  `rollback-manual-2026110000000_o_estorno_nasce_no_ledger.sql`, com 13), nao renomeie o arquivo
+  nem dispare o workflow: pare e peca aprovacao do dono para um procedimento manual que trate
+  o SQL e a versao original no ledger.
 - NUNCA `vercel alias set` por endereco: e o que criou a divergencia de 05/10. Se for inevitavel
   numa emergencia, a conferencia da frota acusa (`ENDERECO_ANTIGO`) ate o proximo promote.
 

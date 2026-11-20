@@ -1,4 +1,24 @@
 {
+  "1.5.220": {
+    "titulo": "Pedidos mais fiéis e preços protegidos",
+    "novidades": [],
+    "correcoes": [
+      "A partir desta versão, ao renomear uma opção de variação, os pedidos já feitos mantêm o nome que a opção tinha antes da troca. Nomes trocados antes desta atualização não voltam.",
+      "Ao salvar o preço de um produto com variações, o painel avisa se o produto mudou em outro aparelho e pede que você confira os valores antes de salvar de novo.",
+      "Ao voltar do carrinho para finalizar a compra na mesma aba, o valor informado para troco é mantido se ainda for possível pagar em dinheiro na entrega. Se o valor recuperado for exato, o pedido não leva aviso de troco.",
+      "O painel avisa quando o prazo do Pix passa e o pagamento de um pedido de entrega em separação ou a caminho ainda não consta.",
+      "Se a compra da etiqueta não puder ser confirmada, o painel orienta a conferir o pedido antes de tentar de novo.",
+      "O endereço aceita o nome do estado por extenso. Se a retirada estiver pronta e a loja não informou o horário, a ficha e a mensagem de WhatsApp orientam a confirmar antes de sair.",
+      "O painel avisa quando a faixa de CEP do frete local não pode ser usada, sem deixar o botão preso em “Salvando”.",
+      "Ao digitar ou colar “1.000” no limite de usos do cupom, o painel entende mil usos, não um."
+    ],
+    "melhorias": [
+      "A página de Privacidade detalha o que fica guardado no aparelho e o que é enviado a cada serviço, e explica que a consulta de pedido sem conta vale por 15 minutos na mesma aba.",
+      "Ao gerar a planilha de produtos, o painel orienta a conferir os downloads.",
+      "O recibo identifica os reembolsos feitos pelo Mercado Pago.",
+      "Na busca de pedido sem conta, dá para ver e copiar o WhatsApp da loja, se ela tiver um número cadastrado."
+    ]
+  },
   "1.5.219": {
     "titulo": "Rastreio e retirada mais fiéis",
     "novidades": [],

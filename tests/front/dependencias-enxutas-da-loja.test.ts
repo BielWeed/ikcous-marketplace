@@ -439,7 +439,7 @@ describe("zod enxuto — regras reais de formulários", () => {
 import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { cpfValido } from "@/lib/cpf";
-import { ufBrasileiraValida } from "@/lib/uf-brasileira";
+import { normalizarUf, ufBrasileiraValida } from "@/lib/uf-brasileira";
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { celularBrasileiroCompleto, mensagemDeWhatsappIncompleto } from "@/lib/telefone-br";
 const addressSchema = ${endereco};
@@ -450,7 +450,7 @@ const address = {name:"Casa fictícia",cep:"12345-678",street:"Rua de teste",num
 const compra = {name:"Pessoa fictícia",whatsapp:"11987654321",cep:"12345-678",street:"Rua de teste",number:"10",neighborhood:"Bairro fictício",city:"Cidade de teste",state:"SP",cpf:"52998224725"};
 export async function validar() {
  const cenarios = [
-  [addressSchema, [address,{}, {...address,cep:"12345-67"}, {...address,name:" ",number:" ",recipient_name:" "}, {...address,extra:"retirado"},null]],
+  [addressSchema, [address,{}, {...address,cep:"12345-67"}, {...address,name:" ",number:" ",recipient_name:" "}, {...address,extra:"retirado"},null,{...address,state:"Minas Gerais"}]],
   [reviewSchema,[{rating:5,comment:"Ótimo"},{rating:1,comment:""}, {rating:0,comment:" "}, {rating:"5",comment:"teste"},{}]],
  ];
  for (const user of [null, {id:"pessoa-ficticia"}]) {

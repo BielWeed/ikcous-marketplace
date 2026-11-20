@@ -65,6 +65,7 @@ import {
   recuperacaoEmAndamento,
   vincularRecuperacao,
 } from "@/lib/recuperacao-de-senha-em-andamento";
+import { apagarRetratoDoConvidado } from "@/lib/retrato-do-convidado";
 import { supabase } from "@/lib/supabase";
 import { limparCachesDeAdmin } from "@/utils/admin_cache";
 import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
@@ -261,11 +262,7 @@ let initPromise: Promise<any> | null = null;
 // conta no meio): isso pede validade do registro e é outro achado.
 function esquecerRastreioDeConvidado() {
   if (typeof window === "undefined") return;
-  try {
-    sessionStorage.removeItem("guest_tracked_orders");
-  } catch {
-    // sessionStorage indisponível: nada a apagar que se possa alcançar.
-  }
+  apagarRetratoDoConvidado();
 }
 
 // O atalho "é lojista?" (`ikcous_is_admin_<uid>`) no `localStorage`. Navegador

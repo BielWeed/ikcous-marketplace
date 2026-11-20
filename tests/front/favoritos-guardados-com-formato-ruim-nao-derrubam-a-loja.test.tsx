@@ -36,13 +36,22 @@ vi.mock("@/hooks/useProducts", () => ({
   useProducts: () => ({ products: productsDaLoja, loading: false }),
 }));
 
+const conta = { id: "conta-teste" };
+let temConta = false;
 vi.mock("@/hooks/useAuth", () => ({
-  useAuth: () => ({ user: null }),
+  useAuth: () => ({ user: temConta ? conta : null }),
 }));
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: () => {
+      if (temConta) {
+        return {
+          select: () => ({
+            eq: () => Promise.resolve({ data: [], error: null }),
+          }),
+        };
+      }
       throw new Error("visitante sem conta não deveria tocar o servidor");
     },
     channel: () => ({
@@ -143,6 +152,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   productsDaLoja = [produto("a"), produto("b"), produto("p1")];
   ultimoContexto = undefined;
+  temConta = false;
   storageFake = criarStorageFake();
   vi.stubGlobal("localStorage", storageFake);
   vi.stubGlobal(
@@ -217,6 +227,19 @@ describe("FavoritesContext — favoritos guardados com formato ruim não derruba
       "p1",
     ]);
   });
+
+  it.each(["null", "{}", '"x"', "[null, {}, 1]"])(
+    "a conta monta sem favoritos pendentes quando a fila contém %s",
+    async (guardado) => {
+      temConta = true;
+      storageFake.setItem(`ikcous_favorites_pendentes:${conta.id}`, guardado);
+
+      const ctx = await montar();
+
+      expect(ctx?.pendingCount).toBe(0);
+      expect(ctx?.favorites).toEqual([]);
+    },
+  );
 
   it("lista só de ids continua igual", async () => {
     storageFake.setItem(FAVORITES_KEY, JSON.stringify(["a", "b"]));

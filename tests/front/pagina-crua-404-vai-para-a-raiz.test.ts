@@ -62,10 +62,14 @@ describe("vercel.json: /404.html não serve a página crua", () => {
   });
 
   it("a regra que manda as rotas do app ao índice continua lá, sem cobrir /assets/", () => {
-    expect(vercel.rewrites).toContainEqual({
-      source: "/((?!assets/).*)",
-      destination: "/index.html",
-    });
+    const regra = (vercel.rewrites ?? []).find(
+      (regra) => regra.destination === "/index.html",
+    );
+    expect(regra).toBeDefined();
+    // eslint-disable-next-line security/detect-non-literal-regexp -- padrão do vercel.json versionado
+    const padrao = new RegExp(`^${regra?.source}$`);
+    expect(padrao.test("/carrinho")).toBe(true);
+    expect(padrao.test("/assets/chunk.js")).toBe(false);
   });
 });
 

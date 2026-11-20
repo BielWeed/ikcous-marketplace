@@ -25,7 +25,7 @@
  *       duas etapas, com números fechados); o CMV da DRE idem, e a devolução credita o custo da venda;
  *   (3) produto sem custo vende normal e sem aviso; o custo apagado depois da venda não tira a venda do lucro;
  *   (4) o custo NÃO vaza: cliente dono do pedido, outra cliente, anon, admin e service_role não leem nem
- *       escrevem a tabela; os itens do cliente seguem com as mesmas 9 colunas; nenhuma função de cliente a cita;
+ *       escrevem a tabela; os itens do cliente não expõem o custo; nenhuma função de cliente a cita;
  *   (5) o gatilho com falha simulada (tabela sumida, tabela que recusa a linha) NÃO impede a compra, avisa, e
  *       o erro legítimo da venda (estoque) continua sendo erro;
  *   (6) mesmas chaves nos dois relatórios, e em dataset sem registros os MESMOS números do corpo vivo anterior,
@@ -706,7 +706,7 @@ PROVAS.push({
           );
         }
       }
-      // O cliente dono do pedido lê os PRÓPRIOS itens: mesmas 9 colunas, nenhuma de custo, e o número do custo não aparece.
+      // O cliente lê os PRÓPRIOS itens: nenhuma coluna de custo nem o valor do custo.
       const cols = await c.query(
         `SELECT array_agg(column_name::text ORDER BY column_name) AS cols FROM information_schema.columns
           WHERE table_schema = 'public' AND table_name = 'marketplace_order_items'`,
@@ -720,6 +720,8 @@ PROVAS.push({
         "product_id",
         "product_name",
         "quantity",
+        "variacao_nome_na_compra",
+        "variacao_valor_na_compra",
         "variant_id",
       ]);
       const meus = await como(

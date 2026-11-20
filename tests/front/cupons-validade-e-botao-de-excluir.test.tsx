@@ -131,5 +131,8 @@ describe("Cupons: validade e exclusão", () => {
     expect(excluir?.className).not.toBe(cancelar?.className);
     expect(document.activeElement).toBe(cancelar);
     expect(document.body.textContent).toContain("Excluir cupom?");
+    expect(document.body.textContent).toContain(
+      "Cupom que já foi usado em pedidos não pode ser excluído; para impedir novos usos, desligue o cupom na lista.",
+    );
   });
 });

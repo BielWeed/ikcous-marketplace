@@ -26,6 +26,7 @@ import {
   MENSAGEM_COMPRA_DA_ETIQUETA_SEM_RESPOSTA,
   PRAZO_DA_COMPRA_DA_ETIQUETA_MS,
   PRAZO_DA_CONSULTA_DO_RASTREIO_MS,
+  PRAZO_DE_LER_O_CORPO_DO_ERRO_MS,
   aguardarComPrazo,
   ehConsultaSemResposta,
   erroDeConsultaSemResposta,
@@ -66,9 +67,12 @@ import { toast } from "sonner";
 type CargaFase = "carregando" | "erro" | "vazio" | "ok";
 type CompraFase = "ocioso" | "confirmar" | "gerando";
 
+const MENSAGEM_COMPRA_DA_ETIQUETA_NAO_CONFIRMADA =
+  "Não foi possível confirmar a compra da etiqueta. Confira o pedido antes de tentar de novo.";
+
 interface MensagemResultado {
-  // `sem_resposta`: a rede não respondeu à compra dentro do prazo. NÃO é erro e
-  // NÃO é sucesso: a etiqueta pode ter sido comprada (ver handleGerarEtiqueta).
+  // `sem_resposta`: não houve resposta conclusiva. A etiqueta pode ter sido
+  // comprada (ver handleGerarEtiqueta).
   tipo: "sucesso" | "already" | "erro" | "sem_resposta";
   texto: string;
 }
@@ -453,6 +457,15 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
     // poder ouvir a resposta TARDIA dela (só para reler, nunca para aplicar).
     let invocacao: Promise<unknown> | undefined;
     const fim = marcarOperacaoSensivel("compra-de-etiqueta");
+    const avisarCompraNaoConfirmada = () => {
+      const texto = MENSAGEM_COMPRA_DA_ETIQUETA_NAO_CONFIRMADA;
+      setMensagemResultado({ tipo: "sem_resposta", texto });
+      setCompraFase("confirmar");
+      haptic.error();
+      toast.warning(texto, { duration: 15_000 });
+      // A releitura não compra nem mantém a trava da tela se a rede pendurar.
+      void fetchPedido({ silencioso: true });
+    };
     try {
       // PRAZO DA ESPERA DA TELA (não da compra): rede que conecta e não
       // responde deixava "Gerando…" para sempre, com a trava do pedido presa.
@@ -475,20 +488,27 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
       // pra baixo.
       if (orderIdAtualRef.current !== orderIdDoClique) return;
       if (error) throw error;
+      const labelId = data?.label_id;
+      if (
+        data?.success !== true ||
+        typeof labelId !== "string" ||
+        labelId.trim() === ""
+      ) {
+        avisarCompraNaoConfirmada();
+        return;
+      }
 
       setPedido((prev) =>
         prev
           ? {
               ...prev,
-              shipping_label_id: String(
-                data?.label_id || prev.shipping_label_id || "",
-              ),
-              shipping_label_url: data?.label_url ?? prev.shipping_label_url,
-              tracking_code: data?.tracking_code ?? prev.tracking_code,
+              shipping_label_id: labelId,
+              shipping_label_url: data.label_url ?? prev.shipping_label_url,
+              tracking_code: data.tracking_code ?? prev.tracking_code,
               situacao_da_compra:
-                data?.success === true && data?.already !== true
+                data.already !== true
                   ? "confirmada"
-                  : data?.label_id === prev.shipping_label_id
+                  : labelId === prev.shipping_label_id
                     ? prev.situacao_da_compra
                     : undefined,
             }
@@ -507,7 +527,7 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
           ? "Este pedido já tinha etiqueta gerada — nada foi comprado de novo."
           : "Etiqueta gerada com sucesso!",
       );
-      if (data?.success === true && !data?.already && data.label_id) {
+      if (!data.already) {
         void fetchPedido({ silencioso: true });
       }
       if (data?.tracking_code) {
@@ -547,22 +567,27 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
         return;
       }
       console.error("[EtiquetaDoPedido] Erro na geração:", err);
-      const {
-        mensagem: mensagemDoServidor,
-        resgate,
-        precisaCpf,
-      } = await mensagemDeErroInvocacao(err, {
-        mensagemGenerica:
-          "Não foi possível falar com o servidor de etiquetas. Tente de novo.",
-      });
+      // A invocação já terminou ao receber o erro HTTP, mas o corpo pode
+      // continuar pendurado. Não espere por ele além do prazo de leitura.
+      const falha = await aguardarComPrazo(
+        mensagemDeErroInvocacao(err, {
+          mensagemGenerica:
+            "Não foi possível falar com o servidor de etiquetas. Tente de novo.",
+        }),
+        PRAZO_DE_LER_O_CORPO_DO_ERRO_MS,
+        () => new Error("corpo do erro sem resposta"),
+      ).catch(() => null);
+      if (orderIdAtualRef.current !== orderIdDoClique) return;
+      if (!falha) {
+        avisarCompraNaoConfirmada();
+        return;
+      }
+      const { mensagem: mensagemDoServidor, resgate, precisaCpf } = falha;
       // Recusa por status (pedido cancelado/entregue/devolvido depois que a
       // tela leu o pedido): o servidor diz o status cru em inglês -- a
       // lojista lê o mesmo motivo que o cartão mostraria com a tela em dia.
       const motivoPorStatus = traducaoDaRecusaPorStatus(mensagemDoServidor);
       const detalhe = motivoPorStatus ?? mensagemDoServidor;
-      // `mensagemDeErroInvocacao` também tem `await` (lê o corpo da
-      // resposta) — checa de novo antes de qualquer efeito visível.
-      if (orderIdAtualRef.current !== orderIdDoClique) return;
       setMensagemResultado({ tipo: "erro", texto: detalhe });
       if (resgate || precisaCpf || motivoPorStatus) {
         // A etiqueta já existe/está paga (ou o estado é indeterminado): a

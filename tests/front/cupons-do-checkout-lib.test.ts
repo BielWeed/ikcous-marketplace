@@ -41,6 +41,11 @@ describe("lerCuponsDoCheckout", () => {
     ]);
   });
 
+  it("preserva desconto positivo menor que um real", () => {
+    const [c] = lerCuponsDoCheckout([linha({ desconto: 0.5 })]);
+    expect(c.desconto).toBe(0.5);
+  });
+
   it("descarta linha fora do contrato em vez de consertar", () => {
     const lidos = lerCuponsDoCheckout([
       null,
@@ -162,6 +167,14 @@ describe("melhorCupom e progresso", () => {
   it("um cupom só, ou nenhum valendo, não tem 'melhor'", () => {
     expect(melhorCupom(cupons.slice(0, 1))).toBeNull();
     expect(melhorCupom([cupons[2], cupons[2]])).toBeNull();
+  });
+
+  it("não destaca cupom com desconto zero como melhor opção", () => {
+    const semEconomia = lerCuponsDoCheckout([
+      linha({ codigo: "A", aplica: true, desconto: 0 }),
+      linha({ codigo: "B", aplica: false, desconto: 0 }),
+    ]);
+    expect(melhorCupom(semEconomia)).toBeNull();
   });
 
   it("empate de desconto: a ordem da lista decide, fica o primeiro", () => {
