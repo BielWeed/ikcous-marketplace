@@ -462,7 +462,10 @@ async function main() {
   await c.connect();
   const abertas = [c];
   try {
-    // ---- 0. O topo instalado pelo CI e' o desta migration; o anterior e' o das tres migrations anteriores. ----
+    await require("./rotulo-historico-posterior.cjs").prepararCloneSemRotulosHistoricos(
+      c,
+    );
+    // ---- 0. O topo instalado neste clone e' o desta migration; o anterior e' o das tres migrations anteriores. ----
     const topo = await todas(c);
     for (const k of CHAVES) {
       const f = FUNCOES[k];

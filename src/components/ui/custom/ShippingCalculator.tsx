@@ -46,7 +46,7 @@ import {
   Store,
   Truck,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 /**
  * Janela de debounce para recotar após mudança no carrinho (produto,
@@ -462,6 +462,7 @@ export function ShippingCalculator({
   // abaixo, na hora de montar a lista): contrato §6, "recolher não troca a
   // escolha".
   const [outrasExpandidas, setOutrasExpandidas] = useState(false);
+  const idDasOutrasOpcoes = useId();
   // MODO RESUMO (checkout compacto): começa recolhido — `podeResumir`,
   // calculado mais abaixo (depende de `status`), é quem decide se o resumo
   // chega a aparecer. `Trocar` abre; escolher uma opção nova na lista
@@ -1635,7 +1636,6 @@ export function ShippingCalculator({
             >
               {opcaoDeRetirada && renderizarCartaoDeOpcao(opcaoDeRetirada)}
               {cartoesDeDestaque.map(renderizarCartaoDeOpcao)}
-              {outrasVisiveis.map(renderizarCartaoDeOpcao)}
               {/* "+ Ver outras opções" — discreto de propósito (o pedido do
                   dono): não compete visualmente com os cartões de destaque.
                   Só aparece quando existe algo além dos destaques/retirada.
@@ -1644,6 +1644,8 @@ export function ShippingCalculator({
               {destaques.outras.length > 0 && (
                 <button
                   type="button"
+                  aria-expanded={outrasExpandidas}
+                  aria-controls={idDasOutrasOpcoes}
                   onClick={() => setOutrasExpandidas((v) => !v)}
                   className={
                     modoResumo
@@ -1655,6 +1657,15 @@ export function ShippingCalculator({
                     ? "Ver menos opções"
                     : `+ Ver outras opções (${destaques.outras.length})`}
                 </button>
+              )}
+              {destaques.outras.length > 0 && (
+                <div
+                  id={idDasOutrasOpcoes}
+                  hidden={outrasVisiveis.length === 0}
+                  className="space-y-2"
+                >
+                  {outrasVisiveis.map(renderizarCartaoDeOpcao)}
+                </div>
               )}
             </motion.div>
           )}

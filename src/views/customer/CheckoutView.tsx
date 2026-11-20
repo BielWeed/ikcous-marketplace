@@ -6854,6 +6854,11 @@ export function CheckoutViewDaConta({
           opcao.metodoOnline === metodoOnlineEfetivo),
     ) ?? opcoesDePagamentoVisiveis[0];
 
+  function entrarParaPagarNoApp() {
+    haptic.light();
+    onNavigate("auth");
+  }
+
   // Extraído do `.map()` que existia antes da separação em grupos — o
   // corpo do botão não mudou UMA linha, só passou a ser chamado duas vezes
   // (uma por grupo) em vez de uma.
@@ -6885,8 +6890,7 @@ export function CheckoutViewDaConta({
         data-pagamento-bloqueado={bloqueadaPorFaltaDeConta || undefined}
         onClick={() => {
           if (bloqueadaPorFaltaDeConta) {
-            haptic.light();
-            onNavigate("auth");
+            entrarParaPagarNoApp();
             return;
           }
           if (option.value !== paymentMethod) atualizarTroco(null);
@@ -8180,6 +8184,19 @@ export function CheckoutViewDaConta({
                   </div>
                 )}
             </div>
+            {!user &&
+              appOferecidoNestaCompra &&
+              podePagarNaEntrega &&
+              opcoesNaEntrega.length > 0 && (
+                <Button
+                  type="button"
+                  variant="link"
+                  onClick={entrarParaPagarNoApp}
+                  className="mt-2 min-h-11 w-full whitespace-normal text-zinc-700 underline"
+                >
+                  Entrar para pagar com Pix
+                </Button>
+              )}
             {mostraTroco && (
               <fieldset className="mt-4 rounded-xl bg-zinc-50 px-3 pb-1">
                 <legend className="text-sm font-semibold text-zinc-900">

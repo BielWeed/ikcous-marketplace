@@ -13,6 +13,7 @@ import {
   migrarFilaLegada,
   separarItensVencidos,
 } from "@/lib/fila-offline-por-usuario";
+import { arquivoJpegSemExif } from "@/lib/jpeg-sem-exif";
 import { mapProductFromDB } from "@/lib/mappers";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import {
@@ -2756,7 +2757,9 @@ export function useProducts({
           // MB) ia inteiro ao bucket e era servido a quem escapar do pipeline
           // de render. Redimensiona ANTES do upload — e `redimensionarImagem`
           // é fail-open: na falha volta o próprio arquivo, o upload segue.
-          const pronto = await redimensionarImagem(file);
+          const pronto = await arquivoJpegSemExif(
+            await redimensionarImagem(file),
+          );
           const fileExt = pronto.name.split(".").pop();
           const fileName = `${gerarUuidV4()}.${fileExt}`;
           const filePath = `${fileName}`;

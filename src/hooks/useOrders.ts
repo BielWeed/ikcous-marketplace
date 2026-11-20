@@ -3350,8 +3350,8 @@ export function useOrders(
    * (id -> última linha de UPDATE que chegou nesse meio-tempo, ou `null`). Sem isto o
    * UPDATE de um pedido AINDA AUSENTE da lista era descartado, e a consulta —
    * um retrato anterior a ele — entrava velha (o PIX confirmado no meio do
-   * voo ficava "aguardando"). Entrada nasce no início do INSERT e sai logo
-   * que a consulta responde (`finally`): nada fica guardado para sempre.
+   * voo ficava "aguardando"). A entrada nasce no início do INSERT e sai ao
+   * terminar a espera (`finally`), mesmo se o prazo se esgotar.
    */
   const insertsEmVooRef = useRef(new Map<string, any>());
 
@@ -3366,18 +3366,27 @@ export function useOrders(
       let consulta;
       let updateDoMeioDoVoo: any = null;
       try {
-        consulta = await supabase
+        const leitura = supabase
           .from("marketplace_orders")
           .select(
             "*, items:marketplace_order_items(*, product:produtos(imagem_url, imagem_urls)), address:user_addresses(*)",
           )
           .eq("id", newPayload.id)
           .single();
+        consulta = isAdmin
+          ? await aguardarComPrazo(
+              Promise.resolve(leitura),
+              PRAZO_DA_LISTA_DO_PAINEL_MS,
+              () => erroDeConsultaSemResposta(),
+            )
+          : await leitura;
+      } catch (erro) {
+        if (!isAdmin) throw erro;
       } finally {
         updateDoMeioDoVoo = emVoo.get(newPayload.id) ?? null;
         emVoo.delete(newPayload.id);
       }
-      const { data, error } = consulta;
+      const { data, error } = consulta ?? {};
 
       // A consulta levou tempo: a cliente pode ter saído, trocado de conta ou
       // a tela pode ter fechado. Nenhum efeito (lista, aviso, consulta
@@ -3385,6 +3394,10 @@ export function useOrders(
       if (desmontadoRef.current || userIdAtualRef.current !== donoNaChamada) {
         return;
       }
+
+      // O INSERT já é prova do pedido novo. Sem a linha completa, relê a
+      // lista em vez de inserir dados parciais; o próprio evento ainda avisa.
+      if (isAdmin && (error || !data)) return "recarregar";
 
       if (!error && data) {
         if (!isAdmin && data.user_id !== user?.id) return;
@@ -3444,22 +3457,7 @@ export function useOrders(
             // ela está vendo. Repete a última consulta (mesmo mecanismo de
             // `escolherRecargaDeReconexao`) pra trazer o total certo sem
             // mexer na lista visível.
-            //
-            // Debounce TRAILING (item 5, ver o docstring de
-            // `debounceRecarregarInsertRef`, acima): uma rajada de INSERTs
-            // que caem todos em "recarregar" (rajada de PIX) reagenda o
-            // MESMO timer em vez de disparar uma recarga por evento —
-            // só a última reagendada de fato dispara, depois que a rajada
-            // termina.
-            if (debounceRecarregarInsertRef.current) {
-              clearTimeout(debounceRecarregarInsertRef.current);
-            }
-            debounceRecarregarInsertRef.current = setTimeout(() => {
-              debounceRecarregarInsertRef.current = null;
-              recarregarAposReconexaoRef
-                .current({ silencioso: true })
-                .catch(() => {});
-            }, DEBOUNCE_RECARREGAR_INSERT_MS);
+            return "recarregar";
           }
           // "ignorar": o pedido não pertence a esta visão — nem a lista
           // nem o total dela mudam.
@@ -3897,7 +3895,25 @@ export function useOrders(
         payload.new &&
         "id" in payload.new
       ) {
-        await handleRealtimeInsertRef.current(payload.new);
+        const acao = await handleRealtimeInsertRef.current(payload.new);
+        // Trocar a liderança refaz o efeito, mas não desmonta a tela.
+        if (desmontadoRef.current || userIdAtualRef.current !== user.id) return;
+        if (acao === "recarregar") {
+          // Uma rajada de INSERTs divide o mesmo timer. A recarga só atualiza
+          // a lista; não reemite o INSERT nem repete o aviso abaixo.
+          if (debounceRecarregarInsertRef.current) {
+            clearTimeout(debounceRecarregarInsertRef.current);
+          }
+          debounceRecarregarInsertRef.current = setTimeout(() => {
+            debounceRecarregarInsertRef.current = null;
+            if (desmontadoRef.current || userIdAtualRef.current !== user.id) {
+              return;
+            }
+            recarregarAposReconexaoRef
+              .current({ silencioso: true })
+              .catch(() => {});
+          }, DEBOUNCE_RECARREGAR_INSERT_MS);
+        }
       } else if (payload.eventType === "UPDATE" && payload.new) {
         handleRealtimeUpdateRef.current(payload.new, payload.old);
       } else if (payload.eventType === "DELETE") {

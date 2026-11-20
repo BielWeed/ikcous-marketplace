@@ -282,7 +282,7 @@ describe("Avisar clientes: leitura dos aparelhos sem resposta", () => {
     });
 
     expect(toastError).toHaveBeenCalledWith(
-      "Falha ao registrar notificação no banco",
+      "Não foi possível preparar o envio. Tente de novo em instantes.",
     );
     expect(invokeSendPush).not.toHaveBeenCalled();
     expect(botao("Enviar agora para")!.disabled).toBe(false);

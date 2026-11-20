@@ -19,6 +19,7 @@ import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { podeRetomarPagamento } from "@/lib/pode-retomar-pagamento";
 
 let pedidosAtuais: Order[] = [];
+let erroDePedidos: string | null = null;
 
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({
@@ -43,6 +44,7 @@ vi.mock("@/hooks/useAddresses", () => ({
 vi.mock("@/hooks/useOrders", () => ({
   useOrders: () => ({
     orders: pedidosAtuais,
+    ordersLoadError: erroDePedidos,
     fetchUserOrders: async () => pedidosAtuais,
   }),
 }));
@@ -158,6 +160,7 @@ describe("ProfileView — cartão Pedidos em Andamento fala a verdade", () => {
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
+    erroDePedidos = null;
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -189,6 +192,29 @@ describe("ProfileView — cartão Pedidos em Andamento fala a verdade", () => {
       await Promise.resolve();
     });
   }
+
+  it("avisa da falha de atualização sem esconder o pedido salvo", async () => {
+    erroDePedidos = "Falha na consulta";
+    await renderizar([pedido({ paymentStatus: "aguardando" })], vi.fn());
+
+    expect(hospedeiro.querySelector('[role="status"]')?.textContent).toBe(
+      "Não foi possível atualizar agora. Mostrando o que já tínhamos.",
+    );
+    expect(hospedeiro.textContent).toContain("Retomar pagamento");
+  });
+
+  it.each(["delivered", "cancelled"] as const)(
+    "não diz que mostra dados salvos quando só há um pedido %s",
+    async (status) => {
+      erroDePedidos = "Falha na consulta";
+      await renderizar([pedido({ status })]);
+
+      expect(hospedeiro.textContent).not.toContain(
+        "Mostrando o que já tínhamos",
+      );
+      expect(hospedeiro.textContent).not.toContain("Pedidos em andamento");
+    },
+  );
 
   it("detalhes e retomada identificam cada um dos dois pedidos", async () => {
     const pedidos = [

@@ -193,9 +193,7 @@ describe("textoDevolucao — a tabela inteira", () => {
       cancelledAfterShipping: false,
       returnedToSellerAt: null,
     });
-    expect(texto).toBe(
-      "Devolução: em andamento — o dinheiro volta sozinho (PIX na conta; cartão na fatura).",
-    );
+    expect(texto).toBe("Devolução: em andamento — o dinheiro volta sozinho.");
   });
 
   it("linha em_processamento: em andamento", () => {
@@ -211,9 +209,7 @@ describe("textoDevolucao — a tabela inteira", () => {
       cancelledAfterShipping: false,
       returnedToSellerAt: null,
     });
-    expect(texto).toBe(
-      "Devolução: em andamento — o dinheiro volta sozinho (PIX na conta; cartão na fatura).",
-    );
+    expect(texto).toBe("Devolução: em andamento — o dinheiro volta sozinho.");
   });
 
   it("linha concluido de 100: soma e formata em R$", () => {
@@ -367,9 +363,7 @@ describe("textoDevolucao — a tabela inteira", () => {
       cancelledAfterShipping: false,
       returnedToSellerAt: null,
     });
-    expect(texto).toBe(
-      "Devolução: em andamento — o dinheiro volta sozinho (PIX na conta; cartão na fatura).",
-    );
+    expect(texto).toBe("Devolução: em andamento — o dinheiro volta sozinho.");
   });
 });
 

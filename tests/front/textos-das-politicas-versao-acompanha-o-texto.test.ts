@@ -43,6 +43,15 @@ describe("a versão dos textos acompanha o texto-base", () => {
     ).toBe(atual);
   });
 
+  it("a privacidade informa o que a loja exibe com avaliações e perguntas", () => {
+    const texto = textoCorrido(
+      montarPolitica("privacidade", LOJA_DE_TESTE, null),
+    );
+    expect(texto).toContain(
+      "As avaliações publicadas e as perguntas ficam públicas na loja e aparecem com seu primeiro nome, a inicial do último sobrenome e sua foto de perfil, se você tiver uma.",
+    );
+  });
+
   it("a impressão enxerga uma palavra trocada (a trava não é cega)", () => {
     const base = textoBaseDosDoisTextos();
     expect(base).toContain("Mercado Pago");

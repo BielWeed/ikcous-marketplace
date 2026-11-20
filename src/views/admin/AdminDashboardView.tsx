@@ -250,6 +250,7 @@ export const AdminDashboardView = memo(function AdminDashboardView({
     carregando,
     erro,
     erroAssinatura,
+    releituraFalhou,
     desatualizado,
     atualizar,
   } = usePainelInicio(ativo);
@@ -445,8 +446,8 @@ export const AdminDashboardView = memo(function AdminDashboardView({
                     <LocalErrorBoundary>
                       <SerieDe14Dias
                         serie={painel?.serie14d ?? []}
-                        carregando={semNumeros}
-                        falhou={painel === null && erro !== null}
+                        carregando={carregando || (!painel && erro === null)}
+                        falhou={erro !== null || releituraFalhou}
                         onTentarDeNovo={() => void atualizar()}
                       />
                     </LocalErrorBoundary>

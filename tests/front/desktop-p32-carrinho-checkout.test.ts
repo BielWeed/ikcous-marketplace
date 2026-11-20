@@ -157,7 +157,9 @@ describe("P32: alinhamento e resumo alcançável no computador", () => {
         // 1.5.214: troco e seus avisos, pedido cancelado e resumo do parcelamento.
         // Selo Pix de ao menos 24 px visíveis (manual do BCB): 388 → 389
         // literais. Só entra a caixa Pix de 25 px; os outros mantêm size-5.
-        "401f7da15839c6e737bf52055f52be42b29ccb00b7c2c3a1b769578db6bc0391",
+        // Botão de login por Tab para pagar com Pix: 389 → 390.
+        // Comparado com 9d8c38a69: só o literal do novo botão entrou.
+        "26db86af3a4634b751b94b729c92cce01316f521bbf1929dc5e0f46338dea446",
       ],
       [
         caminhos.favoritos,

@@ -4,6 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useQuestions } from "@/hooks/useQuestions";
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { iniciaisDaLoja } from "@/lib/iniciais-da-loja";
+import { nomePublicoDe } from "@/lib/nome-publico";
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { tempoRelativo } from "@/lib/tempo-relativo";
 import {
@@ -42,7 +43,7 @@ export function ProductQA({
     addAnswer,
     subscribeToQuestions,
   } = useQuestions();
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, profile } = useAuth();
   const [newQuestion, setNewQuestion] = useState("");
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [replyText, setReplyText] = useState("");
@@ -198,7 +199,7 @@ export function ProductQA({
               placeholder="Escreva sua dúvida sobre o produto..."
               maxLength={500}
               aria-label="Sua dúvida sobre o produto"
-              aria-describedby="qa-question-count"
+              aria-describedby="qa-question-count qa-public-name"
               enterKeyHint="send"
               className="min-h-[52px] w-full rounded-full border border-border bg-background px-4 py-3 pr-16 text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring md:text-sm"
             />
@@ -223,6 +224,9 @@ export function ProductQA({
             )}
           >
             {newQuestion.length}/500 caracteres
+          </p>
+          <p id="qa-public-name" className="text-xs text-muted-foreground">
+            Seu nome vai aparecer assim: {nomePublicoDe(profile?.full_name)}
           </p>
         </form>
       ) : (
@@ -332,7 +336,7 @@ export function ProductQA({
                         className="object-cover"
                       />
                       <AvatarFallback className="flex select-none items-center justify-center bg-gradient-to-br from-zinc-100 to-zinc-200 text-xs font-bold text-zinc-700">
-                        {getInitials(q.customerName)}
+                        {getInitials(nomePublicoDe(q.customerName))}
                       </AvatarFallback>
                     </Avatar>
                   </div>
@@ -358,7 +362,7 @@ export function ProductQA({
                         }}
                         className={`min-w-0 truncate text-sm font-bold tracking-tight text-zinc-900 ${onNavigate && q.userId ? "cursor-pointer hover:underline" : ""}`}
                       >
-                        {q.customerName}
+                        {nomePublicoDe(q.customerName)}
                       </span>
                       {q.isVerified && (
                         <span className="flex shrink-0 items-center gap-0.5 rounded-md border border-emerald-100/50 bg-emerald-50/70 px-1.5 py-0.5 text-xs font-bold uppercase tracking-wider text-emerald-700">

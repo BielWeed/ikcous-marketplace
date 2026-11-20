@@ -26,8 +26,9 @@
  * um re-cancelamento), `created_by` é o próprio DONO do pedido, esse usuário
  * não é admin (admin que compra na própria loja não é "cliente cancelando"), o
  * pedido segue cancelado, e o pagamento entrou (pago, pago depois de
- * expirar, ou já estornado) OU o pedido não tinha pagamento online (nulo ou
- * vazio: pagar na entrega) e o produto ainda não saiu — a mesma regra do sino
+ * expirar, já estornado ou recebido na entrega) OU o pedido não tinha
+ * pagamento online (nulo ou vazio: pagar na entrega) e o produto ainda não
+ * saiu — a mesma regra do sino
  * do painel (`src/utils/avisos-do-lojista.ts`). Expiração do PIX e recusa
  * cancelam pedido com pagamento online NÃO pago e não avisam.
  *
@@ -68,7 +69,8 @@ export const TETO_DO_PASSO_MS = 10000;
 export const LIMITE_POR_RODADA = 100;
 
 /** `pago_apos_expirar` e `estornado` entram: ver o cabeçalho. */
-const PAGAMENTO_QUE_ENTROU = ["pago", "pago_apos_expirar", "estornado"];
+const PAGAMENTO_QUE_ENTROU = ["pago", "pago_apos_expirar", "estornado", "recebido_na_entrega"];
+const DEVOLUCAO_COMBINADA = "devolução combinada com a cliente";
 
 export type ResumoDosCancelamentos = {
   candidatos: number;
@@ -83,6 +85,7 @@ const SEM_RESUMO: ResumoDosCancelamentos = { candidatos: 0, avisados: 0, ignorad
  * O texto do aviso não promete o que o banco não faz:
  *   - já enviado: a devolução do dinheiro é manual e só depois do produto voltar;
  *   - retirada com histórico de saída: a loja só precisa confirmar o retorno se estiver pendente;
+ *   - recebido na entrega: devolução combinada com a cliente;
  *   - pago depois do cancelamento: não há devolução aberta por este caminho;
  *   - pago e não enviado: o banco abre a devolução e a rotina a faz sozinha.
  */
@@ -107,6 +110,7 @@ export function montarAvisoDeCancelamento(
   const retiradaComHistoricoDeSaida = jaSaiu &&
     typeof pedido.pickup_address === "string" &&
     pedido.pickup_address.trim() !== "";
+  const recebidoNaEntrega = pedido.payment_status === "recebido_na_entrega";
   const frase = !pedido.payment_status && !jaSaiu
     ? "sem pagamento pelo app: não separe nem envie"
     : retiradaComHistoricoDeSaida
@@ -119,14 +123,19 @@ export function montarAvisoDeCancelamento(
         ? "o retorno do produto já foi confirmado no painel"
         : 'confirme que o produto está na loja antes de tocar em "O produto voltou"'
     }`
-    : jaSaiu
+    : jaSaiu && !(recebidoNaEntrega && pedido.returned_to_seller_at)
     ? "pago, o produto já saiu: avise o transporte"
+    : recebidoNaEntrega
+    ? ""
     : pedido.payment_status === "pago_apos_expirar"
     ? "pago depois do cancelamento: confira o pedido"
     : "pago, o reembolso é automático";
+  const orientacao = recebidoNaEntrega
+    ? (frase ? `${frase}; ${DEVOLUCAO_COMBINADA}` : DEVOLUCAO_COMBINADA)
+    : frase;
   return {
     title: "Cliente cancelou o pedido",
-    body: `${numeroDoPedido(pedido.id)} · ${formatarBRL(valor)} · ${cliente} — ${frase}`,
+    body: `${numeroDoPedido(pedido.id)} · ${formatarBRL(valor)} · ${cliente} — ${orientacao}`,
     url: `/admin-orders?id=${encodeURIComponent(pedido.id)}`,
   };
 }

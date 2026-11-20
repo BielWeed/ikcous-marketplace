@@ -13,11 +13,13 @@ const DIA_DA_ABERTURA = "2026-11-12";
 // @ts-expect-error flag interna do React.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-describe("Registrar recebimento com a folha aberta na virada do dia", () => {
+describe("Financeiro — dia da baixa de um recebimento", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
+  const aoSalvar = vi.fn();
 
   beforeEach(async () => {
+    aoSalvar.mockClear();
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-11-13T02:55:00Z")); // 23h55 em SP
     rpc.mockReset().mockResolvedValue({
@@ -41,7 +43,7 @@ describe("Registrar recebimento com a folha aberta na virada do dia", () => {
           hoje={DIA_DA_ABERTURA}
           contas={[]}
           aoFechar={vi.fn()}
-          aoSalvar={vi.fn()}
+          aoSalvar={aoSalvar}
           aoMudarSujo={vi.fn()}
         />,
       );
@@ -69,30 +71,41 @@ describe("Registrar recebimento com a folha aberta na virada do dia", () => {
     });
   }
 
-  async function confirmarDepoisDaVirada() {
-    vi.setSystemTime(new Date("2026-11-13T03:05:00Z")); // 00h05 em SP
-    const confirmar = [...document.querySelectorAll("button")].find(
+  async function confirmar() {
+    const botao = [...document.querySelectorAll("button")].find(
       (botao) => botao.textContent?.trim() === "Confirmar baixa",
     );
-    const dataExibida = campoData().value;
-    await act(async () => confirmar!.click());
-    return dataExibida;
+    await act(async () => botao!.click());
   }
 
-  it("grava a data que o campo mostra ao confirmar depois da virada", async () => {
-    const dataExibida = await confirmarDepoisDaVirada();
-    expect(dataExibida).toBe(DIA_DA_ABERTURA);
+  async function alternarDataManual() {
+    const caixa = document.querySelector<HTMLInputElement>(
+      "#fin-baixa-outra-data",
+    );
+    if (!caixa) throw new Error("Não encontrei a opção de escolher outra data");
+    await act(async () => caixa.click());
+  }
+
+  it.each([
+    ["o aparelho está no mês errado", "2026-10-01T12:00:00Z"],
+    ["a folha ficou aberta na virada do dia", "2026-11-13T03:05:00Z"],
+  ])("deixa o servidor datar a baixa quando %s", async (_, instante) => {
+    vi.setSystemTime(new Date(instante));
+    await confirmar();
+
     expect(rpc).toHaveBeenCalledExactlyOnceWith("fin_lancamento_baixar", {
       p_id: "recebimento-1",
-      p_data: dataExibida,
       p_conta_id: null,
     });
+    expect(aoSalvar).toHaveBeenCalledWith("Recebimento registrado.");
   });
 
-  it("respeita a data escolhida, inclusive quando volta ao dia da abertura", async () => {
+  it("envia a data escolhida mesmo se ela parecer futura no aparelho", async () => {
+    await alternarDataManual();
     await digitarData("2026-11-11");
     await digitarData(DIA_DA_ABERTURA);
-    await confirmarDepoisDaVirada();
+    vi.setSystemTime(new Date("2026-10-01T12:00:00Z"));
+    await confirmar();
     expect(rpc).toHaveBeenCalledExactlyOnceWith("fin_lancamento_baixar", {
       p_id: "recebimento-1",
       p_data: DIA_DA_ABERTURA,
@@ -100,12 +113,45 @@ describe("Registrar recebimento com a folha aberta na virada do dia", () => {
     });
   });
 
-  it("continua recusando uma data futura", async () => {
-    await digitarData("2026-11-14");
-    await confirmarDepoisDaVirada();
+  it("não baixa automaticamente se a opção manual está ativa mas sem data", async () => {
+    await alternarDataManual();
+    await confirmar();
+
     expect(rpc).not.toHaveBeenCalled();
     expect(
       document.getElementById("fin-baixa-data-erro")?.textContent,
-    ).toContain("a data não pode ser no futuro");
+    ).toContain("Informe a data.");
+
+    await alternarDataManual();
+    await confirmar();
+    expect(rpc).toHaveBeenCalledExactlyOnceWith("fin_lancamento_baixar", {
+      p_id: "recebimento-1",
+      p_conta_id: null,
+    });
+  });
+
+  it("mostra a recusa do servidor para data futura sem confirmar o recebimento", async () => {
+    rpc.mockResolvedValueOnce({
+      data: null,
+      error: {
+        code: "22023",
+        message: "A baixa não pode ter data no futuro.",
+        details: null,
+        hint: null,
+      },
+    });
+    await alternarDataManual();
+    await digitarData("2026-11-14");
+    await confirmar();
+
+    expect(rpc).toHaveBeenCalledExactlyOnceWith("fin_lancamento_baixar", {
+      p_id: "recebimento-1",
+      p_data: "2026-11-14",
+      p_conta_id: null,
+    });
+    expect(aoSalvar).not.toHaveBeenCalled();
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain(
+      "A baixa não pode ter data no futuro.",
+    );
   });
 });

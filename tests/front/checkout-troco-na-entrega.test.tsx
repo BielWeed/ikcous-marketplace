@@ -88,7 +88,7 @@ vi.mock("@/hooks/useCart", async () => {
         },
       ],
       cartTotal: total,
-      shippingFee: 0,
+      shippingFee: opcaoDeFrete.price,
       selectedShippingOption: opcaoDeFrete,
       shippingCep: endereco.cep,
       clearCart: vi.fn(),
@@ -276,6 +276,37 @@ describe("CheckoutView — troco para pagamento em dinheiro", () => {
       ).toBe(true);
     },
   );
+
+  it("inclui o frete pago e o desconto do cupom no troco da entrega", async () => {
+    total = 80;
+    opcaoDeFrete = { ...entrega, price: 12 };
+    cuponsLigados = true;
+    validateCoupon.mockResolvedValue({ valid: true, discount: 10 });
+    await montar();
+
+    await act(async () => {
+      digitar(
+        hospedeiro.querySelector<HTMLInputElement>("#coupon-code-input")!,
+        "CUPOM10",
+      );
+    });
+    await act(async () => {
+      botao("Aplicar").click();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    await pedirTroco("100");
+    const pedido = await enviar();
+    expect(pedido).toMatchObject({
+      totalAmount: 82,
+      shippingCost: 12,
+      couponCode: "CUPOM10",
+      paymentMethod: "cash",
+    });
+    expect(pedido.notes.split("\n")[0]).toBe(
+      "Troco para R$ 100,00 (levar R$ 18,00)",
+    );
+  });
 
   it.each(["", "0", "76.49", "76,50", "abc", "1000000000,00"])(
     "bloqueia valor inválido (%j) e anuncia o motivo junto ao campo",

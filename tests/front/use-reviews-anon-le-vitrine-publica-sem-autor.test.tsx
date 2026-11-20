@@ -216,7 +216,7 @@ describe("getReviewsByProduct — o visitante anônimo lê a vitrine pública, s
         verified: false,
         status: "publicada",
         merchant_reply: null,
-        user: { full_name: "Rafa", avatar_url: null },
+        user: { nome_publico: "Rafa", avatar_url: null },
       },
     ];
 

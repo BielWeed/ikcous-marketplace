@@ -183,6 +183,7 @@ import {
 import React, {
   useState,
   useEffect,
+  useLayoutEffect,
   useCallback,
   useMemo,
   useRef,
@@ -515,6 +516,56 @@ interface ProductFormFields {
   lengthCm: string;
 }
 
+type FotoDaGaleria = { id: number; url: string };
+type AlvoDaFoto = { id: number; lote: string[] };
+type GaleriaLocal = {
+  imagens: string[];
+  lote: string[];
+  itens: FotoDaGaleria[];
+  proximoId: number;
+};
+// A chave Symbol atravessa os spreads do formulário, mas fica fora do JSON.
+const GALERIA_LOCAL = Symbol("galeria local");
+type FormularioComGaleria = ProductFormFields & {
+  [GALERIA_LOCAL]?: GaleriaLocal;
+};
+
+function galeriaDoFormulario({
+  images,
+  [GALERIA_LOCAL]: galeriaLocal,
+}: Pick<FormularioComGaleria, "images" | typeof GALERIA_LOCAL>): GaleriaLocal {
+  // Uma lista lida do banco ou do rascunho é outro lote. Os IDs são locais
+  // ao formulário e não entram no produto nem no rascunho.
+  return galeriaLocal?.imagens === images
+    ? galeriaLocal
+    : {
+        imagens: images,
+        lote: images,
+        itens: images.map((url, id) => ({ id, url })),
+        proximoId: images.length,
+      };
+}
+
+function comGaleria(
+  form: FormularioComGaleria,
+  galeria: GaleriaLocal,
+  itens: FotoDaGaleria[],
+  proximoId = galeria.proximoId,
+): FormularioComGaleria {
+  const images = itens.map((foto) => foto.url);
+  return {
+    ...form,
+    images,
+    [GALERIA_LOCAL]: { ...galeria, imagens: images, itens, proximoId },
+  };
+}
+
+function indiceDaFoto(galeria: GaleriaLocal, alvo: AlvoDaFoto) {
+  return galeria.lote === alvo.lote
+    ? galeria.itens.findIndex((foto) => foto.id === alvo.id)
+    : -1;
+}
+
 const AVISO_COMBINACAO_JA_CRIADA =
   "Outro aparelho já criou essa combinação; mantivemos a dele, confira o estoque.";
 
@@ -832,7 +883,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   } = useTopoCompacto();
 
   const [isLoading, setIsLoading] = useState(!!productId);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<FormularioComGaleria>({
     name: "",
     description: "",
     price: "",
@@ -991,8 +1042,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     variacaoEmExclusao && formData.variants.length === 1 && formData.isActive
       ? Number(formData.stock)
       : 0;
-  // Trocar o nome de uma variação já gravada espera o "sim" da lojista: o pedido
-  // lê a variação ao vivo, então o nome novo aparece também nos pedidos antigos.
+  // Trocar o nome de uma variação já gravada espera a confirmação da lojista.
+  // O banco tenta guardar o nome e o valor anteriores nos itens ainda sem rótulo
+  // histórico. A lista do painel e o rastreio recebem esses campos; não há backfill.
   // `aplicar` é o fim do "Salvar variação", adiado até a confirmação.
   const [renomearPendente, setRenomearPendente] = useState<{
     aplicar: () => void;
@@ -1090,10 +1142,27 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const montadoRef = useRef(true);
   const [isAdjusterOpen, setIsAdjusterOpen] = useState(false);
-  const [adjustingImgUrl, setAdjustingImgUrl] = useState("");
-  const [adjustingImgIndex, setAdjustingImgIndex] = useState<number | null>(
-    null,
+  const [destinoDoRecorte, setDestinoDoRecorte] = useState<
+    (AlvoDaFoto & FotoDaGaleria) | null
+  >(null);
+  const adjustingImgUrl = destinoDoRecorte?.url ?? "";
+  const [sessaoDoRecorte, setSessaoDoRecorte] = useState<symbol | null>(null);
+  const sessaoDoRecorteRef = useRef<symbol | null>(null);
+  const { images, [GALERIA_LOCAL]: galeriaLocal } = formData;
+  const galeriaAtual = useMemo(
+    () => galeriaDoFormulario({ images, [GALERIA_LOCAL]: galeriaLocal }),
+    [images, galeriaLocal],
   );
+  const galeriaAtualRef = useRef(galeriaAtual);
+  useLayoutEffect(() => {
+    galeriaAtualRef.current = galeriaAtual;
+  }, [galeriaAtual]);
+  const fecharRecorte = useCallback(() => {
+    sessaoDoRecorteRef.current = null;
+    setIsAdjusterOpen(false);
+    setSessaoDoRecorte(null);
+    setDestinoDoRecorte(null);
+  }, []);
   const [isUploadingAdjusted, setIsUploadingAdjusted] = useState(false);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
   const cancelarEnvioRef = useRef<(() => void) | null>(null);
@@ -1255,8 +1324,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             );
             return;
           }
-          setIsAdjusterOpen(false);
-          setAdjustingImgIndex(null);
+          fecharRecorte();
         } else if (isPreviewOpen) setIsPreviewOpen(false);
         else if (showVariantForm) cancelarVariacao();
         else if (showGradeForm) setShowGradeForm(false);
@@ -1298,6 +1366,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     camadaAberta,
     leitorAberto,
     isAdjusterOpen,
+    fecharRecorte,
     isPreviewOpen,
     showVariantForm,
     showGradeForm,
@@ -1425,9 +1494,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     }
   }, [showVariantForm, showCategoryForm, showGradeForm]);
 
-  const openAdjuster = (url: string, index: number) => {
-    setAdjustingImgUrl(url);
-    setAdjustingImgIndex(index);
+  const openAdjuster = (foto: FotoDaGaleria) => {
+    const sessao = Symbol();
+    sessaoDoRecorteRef.current = sessao;
+    setSessaoDoRecorte(sessao);
+    setDestinoDoRecorte({ ...foto, lote: galeriaAtual.lote });
     setIsAdjusterOpen(true);
   };
 
@@ -1439,7 +1510,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   const ajusteEmAndamentoRef = useRef(false);
 
   const handleAdjustConfirm = async (croppedBlob: Blob) => {
-    if (adjustingImgIndex === null) return;
+    const sessaoValida = () =>
+      montadoRef.current &&
+      sessaoDoRecorte !== null &&
+      sessaoDoRecorte === sessaoDoRecorteRef.current;
+    if (!sessaoValida() || !destinoDoRecorte) return;
+    if (indiceDaFoto(galeriaAtualRef.current, destinoDoRecorte) < 0) {
+      fecharRecorte();
+      return;
+    }
     if (ajusteEmAndamentoRef.current) return;
     ajusteEmAndamentoRef.current = true;
     // A foto original, medida ANTES do envio: o recorte é estirado até
@@ -1475,26 +1554,39 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       );
       if (urls && urls.length > 0) {
         const newUrl = urls[0];
+        if (
+          !sessaoValida() ||
+          indiceDaFoto(galeriaAtualRef.current, destinoDoRecorte) < 0
+        ) {
+          toast.dismiss(loadingToast);
+          void descartarFotosDoProduto(urls);
+          if (sessaoValida()) fecharRecorte();
+          return;
+        }
         // Com aviso herdado, a URL nova entra como "já avaliada" ANTES de entrar
         // na lista: senão o efeito de avaliação (que roda a cada mudança de
         // `formData.images`) mede os pixels esticados e grava "Excelente" por
         // cima. Sem aviso herdado, ele a avalia sozinho.
         if (statusHerdado) evaluatedImagesRef.current.set(newUrl, null);
         setFormData((prev) => {
-          const newImages = [...prev.images];
-          const fotoAntiga = prev.images.at(adjustingImgIndex);
-          newImages[adjustingImgIndex] = newUrl;
-          // A variação que usava a foto velha passa a usar a recortada: sem
-          // isso ela seguiria apontando para a imagem antiga.
-          const usavaAFoto =
-            !!fotoAntiga &&
-            prev.variants.some((v) => v.imageUrl === fotoAntiga);
+          const galeria = galeriaDoFormulario(prev);
+          const indiceAtual = indiceDaFoto(galeria, destinoDoRecorte);
+          if (indiceAtual < 0) return prev;
+          const itens = galeria.itens.map((foto, indice) =>
+            indice === indiceAtual ? { ...foto, url: newUrl } : foto,
+          );
+          // A variação guarda a URL, não a miniatura. Se outra cópia da
+          // mesma URL ficou na galeria, o vínculo continua como estava.
+          const moverVinculos = !itens.some(
+            (foto) => foto.url === adjustingImgUrl,
+          );
           return {
-            ...prev,
-            images: newImages,
-            variants: usavaAFoto
+            ...comGaleria(prev, galeria, itens),
+            variants: moverVinculos
               ? prev.variants.map((v) =>
-                  v.imageUrl === fotoAntiga ? { ...v, imageUrl: newUrl } : v,
+                  v.imageUrl === adjustingImgUrl
+                    ? { ...v, imageUrl: newUrl }
+                    : v,
                 )
               : prev.variants,
           };
@@ -1521,8 +1613,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         }
 
         toast.success("Imagem ajustada com sucesso!", { id: loadingToast });
-        setIsAdjusterOpen(false);
-        setAdjustingImgIndex(null);
+        fecharRecorte();
       } else {
         throw new Error("Upload returned empty list");
       }
@@ -2515,10 +2606,16 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 estourou = true;
               },
             );
-            setFormData((prev) => ({
-              ...prev,
-              images: [...prev.images, url],
-            }));
+            setFormData((prev) => {
+              const galeria = galeriaDoFormulario(prev);
+              const id = galeria.proximoId;
+              return comGaleria(
+                prev,
+                galeria,
+                [...galeria.itens, { id, url }],
+                id + 1,
+              );
+            });
             enviadas += 1;
           } catch (error) {
             console.error("[Upload] Process error:", error, file.name);
@@ -2654,10 +2751,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   const { confirmar: confirmarExclusaoDeFoto, dialogo: dialogoDeExcluirFoto } =
     useConfirmarAcao();
   const removeImage = useCallback(
-    async (imagem: string) => {
-      const quantidade = formData.variants.filter(
-        (v) => v.imageUrl === imagem,
-      ).length;
+    async (alvo: AlvoDaFoto & FotoDaGaleria) => {
+      const quantidade =
+        formData.images.filter((url) => url === alvo.url).length === 1
+          ? formData.variants.filter((v) => v.imageUrl === alvo.url).length
+          : 0;
       if (
         quantidade > 0 &&
         !(await confirmarExclusaoDeFoto({
@@ -2669,19 +2767,23 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         return;
       }
       focarNasAcoesRef.current = true;
-      setFormData((prev) => ({
-        ...prev,
-        images: prev.images.filter((u) => u !== imagem),
-        // A variação que usava esta foto volta a usar a galeria normal, em vez
-        // de apontar para uma imagem que o produto não tem mais.
-        variants: prev.variants.some((v) => v.imageUrl === imagem)
-          ? prev.variants.map((v) =>
-              v.imageUrl === imagem ? { ...v, imageUrl: undefined } : v,
-            )
-          : prev.variants,
-      }));
+      setFormData((prev) => {
+        const galeria = galeriaDoFormulario(prev);
+        const indice = indiceDaFoto(galeria, alvo);
+        const removida = indice < 0 ? undefined : galeria.itens.at(indice);
+        if (removida?.url !== alvo.url) return prev;
+        const itens = galeria.itens.filter((foto) => foto.id !== alvo.id);
+        return {
+          ...comGaleria(prev, galeria, itens),
+          variants: itens.some((foto) => foto.url === alvo.url)
+            ? prev.variants
+            : prev.variants.map((v) =>
+                v.imageUrl === alvo.url ? { ...v, imageUrl: undefined } : v,
+              ),
+        };
+      });
     },
-    [formData.variants, confirmarExclusaoDeFoto],
+    [formData.images, formData.variants, confirmarExclusaoDeFoto],
   );
 
   // `images[0]` é a foto do cartão da vitrine (e vira `imagem_url` ao salvar),
@@ -2689,8 +2791,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // o começo; as outras mantêm a ordem entre si. Nada é reenviado: as URLs são
   // as mesmas, só a ordem muda.
   //
-  // A foto EM FOCO (a grande, com as ações dela) é guardada pela URL, não pela
-  // posição: "Tornar principal" move a foto para o começo e ela continua em
+  // A foto EM FOCO é guardada pelo ID local da miniatura, não pela URL nem
+  // pela posição: "Tornar principal" move a foto para o começo e ela continua em
   // foco sozinha. Se a foto em foco sai da lista (excluída), o foco fica na
   // mesma posição — a seguinte, ou a anterior quando era a última.
   const fotoEmFocoRef = useRef<HTMLDivElement>(null);
@@ -2706,9 +2808,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       travaDasAcoesAteRef.current = agora + TRAVA_DAS_ACOES_DE_FOTO_MS;
     return true;
   };
-  const [urlEmFoco, setUrlEmFoco] = useState<string | null>(null);
+  const [fotoEmFoco, setFotoEmFoco] = useState<AlvoDaFoto | null>(null);
   const indiceAnteriorDoFocoRef = useRef(0);
-  const achadoDoFoco = urlEmFoco ? formData.images.indexOf(urlEmFoco) : 0;
+  const achadoDoFoco = fotoEmFoco ? indiceDaFoto(galeriaAtual, fotoEmFoco) : 0;
   const indiceEmFoco =
     formData.images.length === 0
       ? 0
@@ -2718,11 +2820,18 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   useEffect(() => {
     indiceAnteriorDoFocoRef.current = indiceEmFoco;
     if (formData.images.length === 0) {
-      if (urlEmFoco !== null) setUrlEmFoco(null);
+      if (fotoEmFoco !== null) setFotoEmFoco(null);
     } else if (achadoDoFoco < 0) {
-      setUrlEmFoco(formData.images.at(indiceEmFoco) ?? null);
+      const foto = galeriaAtual.itens.at(indiceEmFoco);
+      if (foto) setFotoEmFoco({ id: foto.id, lote: galeriaAtual.lote });
     }
-  }, [indiceEmFoco, achadoDoFoco, formData.images, urlEmFoco]);
+  }, [
+    indiceEmFoco,
+    achadoDoFoco,
+    formData.images.length,
+    fotoEmFoco,
+    galeriaAtual,
+  ]);
 
   // A faixa de miniaturas só rola de lado quando as fotos não cabem: a frase
   // "Deslize para o lado" só aparece nesse caso (antes aparecia com 3 fotos,
@@ -2742,19 +2851,21 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     return () => observador.disconnect();
   }, [formData.images.length, isUploadingImages]);
 
-  const tornarPrincipal = useCallback((index: number) => {
+  const tornarPrincipal = (index: number, alvo: AlvoDaFoto) => {
     if (index <= 0) return;
     focarNasAcoesRef.current = true;
     setFormData((prev) => {
-      const [escolhida] = prev.images.slice(index, index + 1);
-      if (!escolhida) return prev;
-      return {
-        ...prev,
-        images: [escolhida, ...prev.images.filter((_, i) => i !== index)],
-      };
+      const galeria = galeriaDoFormulario(prev);
+      const indice = indiceDaFoto(galeria, alvo);
+      if (indice <= 0) return prev;
+      const [escolhida] = galeria.itens.slice(indice, indice + 1);
+      return comGaleria(prev, galeria, [
+        escolhida,
+        ...galeria.itens.filter((foto) => foto.id !== alvo.id),
+      ]);
     });
     toast.success(`Foto ${index + 1} agora é a principal.`);
-  }, []);
+  };
   useEffect(() => {
     // Roda quando a lista muda (`formData.images`); só age se foi "Excluir" ou
     // "Tornar principal" quem mudou.
@@ -5147,12 +5258,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       className="produto-foto-foco"
                     >
                       {(() => {
-                        const image = formData.images.at(indiceEmFoco) ?? "";
+                        const foto = galeriaAtual.itens.at(indiceEmFoco);
+                        if (!foto) return null;
+                        const image = foto.url;
+                        const alvo = { ...foto, lote: galeriaAtual.lote };
                         const meta = imageMetadata[image];
                         const isCover = indiceEmFoco === 0;
                         return (
                           <>
-                            <React.Fragment key={image}>
+                            <React.Fragment key={`${foto.id}:${image}`}>
                               <div className="produto-foto-foco-coluna">
                                 <div className="produto-foto-foco-imagem">
                                   {meta?.status === "erro" ? (
@@ -5230,7 +5344,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                   type="button"
                                   onClick={() => {
                                     if (!acaoDeFotoLiberada(false)) return;
-                                    openAdjuster(image, indiceEmFoco);
+                                    openAdjuster(foto);
                                   }}
                                   disabled={
                                     isImageUploading ||
@@ -5252,7 +5366,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                   type="button"
                                   onClick={() => {
                                     if (!acaoDeFotoLiberada(true)) return;
-                                    removeImage(image);
+                                    removeImage(alvo);
                                   }}
                                   disabled={
                                     isImageUploading ||
@@ -5270,7 +5384,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                     type="button"
                                     onClick={() => {
                                       if (!acaoDeFotoLiberada(true)) return;
-                                      tornarPrincipal(indiceEmFoco);
+                                      tornarPrincipal(indiceEmFoco, alvo);
                                     }}
                                     disabled={isImageUploading || isSubmitting}
                                     aria-label={`Tornar principal: foto ${indiceEmFoco + 1} de ${formData.images.length}`}
@@ -5294,15 +5408,20 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       aria-label="Galeria de fotos do produto"
                       className="produto-fotos-faixa"
                     >
-                      {formData.images.map((image, index) => (
+                      {galeriaAtual.itens.map((foto, index) => (
                         <button
-                          key={image}
+                          key={foto.id}
                           type="button"
                           aria-pressed={index === indiceEmFoco}
                           aria-label={`Ver foto ${index + 1} de ${formData.images.length}${index === 0 ? " (principal)" : ""}`}
-                          onClick={() => setUrlEmFoco(image)}
+                          onClick={() =>
+                            setFotoEmFoco({
+                              id: foto.id,
+                              lote: galeriaAtual.lote,
+                            })
+                          }
                         >
-                          <img src={image} alt="" />
+                          <img src={foto.url} alt="" />
                         </button>
                       ))}
                       {isUploadingImages && (
@@ -6804,10 +6923,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         {isAdjusterOpen && (
           <ImageAdjuster
             isOpen={isAdjusterOpen}
-            onClose={() => {
-              setIsAdjusterOpen(false);
-              setAdjustingImgIndex(null);
-            }}
+            onClose={fecharRecorte}
             imageUrl={adjustingImgUrl}
             onConfirm={handleAdjustConfirm}
             isSubmitting={isUploadingAdjusted}

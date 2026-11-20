@@ -1,4 +1,5 @@
 import { formatCurrency } from "@/lib/utils";
+import type { Order } from "@/types";
 
 /**
  * Textos do estorno pelo app NA TELA DO CLIENTE (T7 do plano-mãe
@@ -151,7 +152,23 @@ export function textoConfirmarCancelamento({
 }
 
 const TEXTO_EM_ANDAMENTO =
-  "Devolução: em andamento — o dinheiro volta sozinho (PIX na conta; cartão na fatura).";
+  "Devolução: em andamento — o dinheiro volta sozinho.";
+
+export function comOrientacaoDaDevolucao(
+  texto: string,
+  metodoOnline: Order["metodoOnline"],
+): string {
+  switch (metodoOnline) {
+    case "pix":
+      return `${texto} No Pix, o valor volta para a conta de origem.`;
+    case "credito":
+      return `${texto} No crédito, consulte a fatura do cartão.`;
+    case "debito":
+      return `${texto} No débito, consulte o extrato da conta.`;
+    default:
+      return texto;
+  }
+}
 
 const TEXTO_LOJA_FAZ_DEPOIS =
   "Devolução: a loja faz depois de receber o produto de volta.";
@@ -203,6 +220,7 @@ interface ParametrosTextoDevolucao {
   linhas: LinhaDevolucaoDoCliente[];
   cancelledAfterShipping: boolean;
   returnedToSellerAt?: string | null;
+  metodoOnline?: Order["metodoOnline"];
   /** `Order.retiradaNaLoja`: a cliente buscaria na loja — não há produto de
    * volta a esperar. Opcional e aditivo (ausente = entrega, como antes). */
   retiradaNaLoja?: boolean;
@@ -221,11 +239,14 @@ export function textoDevolucao({
   linhas,
   cancelledAfterShipping,
   returnedToSellerAt,
+  metodoOnline,
   retiradaNaLoja = false,
 }: ParametrosTextoDevolucao): string | null {
   const desfecho = desfechoDaDevolucao(linhas);
 
-  if (desfecho === "em_curso") return TEXTO_EM_ANDAMENTO;
+  if (desfecho === "em_curso") {
+    return comOrientacaoDaDevolucao(TEXTO_EM_ANDAMENTO, metodoOnline);
+  }
 
   if (desfecho === "concluida") {
     const concluidas = linhas.filter((linha) => linha.status === "concluido");

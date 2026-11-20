@@ -126,6 +126,20 @@ describe("FechamentoDaVenda — 'Começar uma venda nova' pede confirmação", (
     });
   }
 
+  it("sessão vencida: distingue rascunho de pedido antes de orientar a entrar de novo", async () => {
+    await falharORegistro("PGRST301", "JWT expired");
+
+    const aviso = hospedeiro.querySelector('[role="alert"]')?.textContent;
+    expect(aviso).toContain(
+      "O rascunho só volta se o navegador conseguiu guardá-lo",
+    );
+    expect(aviso).not.toContain("será preciso refazer a venda");
+    expect(aviso).toContain(
+      "Em Pedidos, abra “Filtros e ferramentas” e toque em “Limpar tudo”, se aparecer. Depois, toque em “Abrir filtros”, escolha “Balcão” em “Canal da venda” e toque em “Fechar”. Confira se a venda já aparece na lista. Se ainda tiver dúvida, não refaça a venda.",
+    );
+    expect(aviso).toContain("Saia e entre de novo na conta.");
+  });
+
   it("sessão vencida: o toque abre a pergunta com o que se perde e NADA é apagado ainda", async () => {
     await falharORegistro("PGRST301", "JWT expired");
 
@@ -142,6 +156,26 @@ describe("FechamentoDaVenda — 'Começar uma venda nova' pede confirmação", (
     expect(texto).toContain("apaga a venda em andamento");
     expect(texto).toContain("2 itens");
     expect(texto).toContain("R$ 30,00");
+    expect(aoLimpar).not.toHaveBeenCalled();
+  });
+
+  it("antes de apagar o rascunho após perder a resposta, orienta a conferir o canal certo", async () => {
+    await falharORegistro("", "Failed to fetch");
+    await falharORegistro("PGRST301", "JWT expired");
+    expect(hospedeiro.textContent).toContain(
+      "Não sabemos se a venda foi registrada",
+    );
+
+    await act(async () => {
+      botaoDaTela("Começar uma venda nova")?.click();
+    });
+    await act(async () => {
+      await esperar(20);
+    });
+
+    expect(janela()?.textContent).toContain(
+      "Ela pode já ter sido registrada. Em Pedidos, abra “Filtros e ferramentas” e toque em “Limpar tudo”, se aparecer. Depois, toque em “Abrir filtros”, escolha “Balcão” em “Canal da venda” e toque em “Fechar”. Confira se a venda já aparece na lista. Se ainda tiver dúvida, não refaça a venda.",
+    );
     expect(aoLimpar).not.toHaveBeenCalled();
   });
 

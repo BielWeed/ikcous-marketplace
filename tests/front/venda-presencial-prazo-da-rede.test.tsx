@@ -5,7 +5,7 @@
 // habilitado — então a chamada `registrar_venda_presencial` precisa de PRAZO
 // PRÓPRIO, senão o clique gira por minutos. Ao estourar o prazo:
 //   - a MESMA frase de rede de sempre ("Não consegui falar com o servidor…
-//     cupom salvo"), botão de volta, cupom e chave de idempotência mantidos;
+//     mantenha esta tela aberta"), botão de volta, cupom e chave de idempotência mantidos;
 //   - prazo estourado NÃO prova que a venda não chegou ao servidor: a chave
 //     de idempotência é quem impede a venda dupla (2º clique devolve
 //     `ja_existia`, sem debitar estoque duas vezes).
@@ -206,7 +206,7 @@ describe("AdminPdvView — o registro da venda tem prazo próprio", () => {
     expect(hospedeiro.textContent).toContain(
       "Não consegui falar com o servidor",
     );
-    expect(hospedeiro.textContent).toContain("cupom está salvo");
+    expect(hospedeiro.textContent).toContain("Mantenha esta tela aberta");
     const botao = botaoPorTexto(hospedeiro, "Registrar venda");
     expect(botao?.disabled).toBe(false);
     // Cupom e rascunho intactos.

@@ -104,10 +104,20 @@ describe("retirada — horário e aviso de cancelamento", () => {
     expect(texto).not.toContain("não será entregue");
   });
 
+  it("retirada cancelada mantém o endereço como registro, sem mandar retirar", async () => {
+    estado.pedido.status = "cancelled";
+
+    const texto = await renderizar();
+
+    expect(texto).toContain("Local de retirada original: Rua Fictícia, 100");
+    expect(texto).not.toContain("Retire em:");
+  });
+
   it("mostra o horário junto do endereço quando já pode retirar", async () => {
-    await renderizar();
-    const endereco = [...hospedeiro.querySelectorAll("p")].find((p) =>
-      p.textContent?.includes("Retire em:"),
+    const texto = await renderizar();
+    expect(texto).not.toContain("Local de retirada original:");
+    const endereco = [...hospedeiro.querySelectorAll("p")].find(
+      (p) => p.textContent === "Retire em: Rua Fictícia, 100",
     );
     expect(endereco?.parentElement?.textContent).toContain(
       "Horário: Segunda a sexta, 9h às 18h",

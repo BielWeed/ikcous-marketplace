@@ -26,6 +26,16 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
+type DescontoDoCupom = Pick<Coupon, "type" | "value">;
+type DescontoNaoGravado = {
+  descontoNaoGravado: DescontoDoCupom | null | undefined;
+};
+
+interface ControleDoDesconto {
+  original: DescontoDoCupom;
+  aoGravar: () => void;
+}
+
 const PRAZO_DA_GRAVACAO_DO_CUPOM_MS = 15_000;
 const MENSAGEM_GRAVACAO_SEM_RESPOSTA =
   "Sem resposta da rede. Confira se a mudança no cupom apareceu antes de tentar de novo.";
@@ -330,11 +340,23 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
     }
   };
 
-  const updateCoupon = async (
+  function updateCoupon(
     id: string,
     updates: Partial<Coupon>,
     clientes?: readonly string[],
-  ) => {
+  ): Promise<undefined>;
+  function updateCoupon(
+    id: string,
+    updates: Partial<Coupon>,
+    clientes: readonly string[] | undefined,
+    controleDoDesconto: ControleDoDesconto,
+  ): Promise<DescontoNaoGravado | undefined>;
+  async function updateCoupon(
+    id: string,
+    updates: Partial<Coupon>,
+    clientes?: readonly string[],
+    controleDoDesconto?: ControleDoDesconto,
+  ): Promise<DescontoNaoGravado | undefined> {
     if (!isAdmin) {
       toast.error("Permissão negada");
       return;
@@ -397,15 +419,59 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
       // o do banco): o UPDATE sem coluna não altera linha nenhuma e viraria
       // "Nenhum cupom foi alterado" para uma tela que já está como ela quer.
       if (Object.keys(dbUpdates).length > 0) {
-        // `.select("id")`: o banco responde sucesso com 0 linhas quando a
-        // política de acesso barra o UPDATE (ou o cupom não existe mais).
+        const porId = supabase.from("coupons").update(dbUpdates).eq("id", id);
+        const original = controleDoDesconto?.original;
+        // A comparação tem de fazer parte do UPDATE: uma leitura separada
+        // deixaria o outro aparelho gravar entre a leitura e a escrita.
+        const consulta = original
+          ? porId.eq("type", original.type).eq("value", original.value)
+          : porId;
         const { data: gravadas, error } = await aguardarGravacaoDoCupom(
-          supabase.from("coupons").update(dbUpdates).eq("id", id).select("id"),
+          consulta.select("id"),
         );
 
         if (error) throw error;
-        if (!gravadas?.length) throw new Error("Nenhum cupom foi alterado.");
+        if (!gravadas?.length) {
+          if (original) {
+            // Relê só o desconto, sem recarregar a lista de clientes do
+            // formulário por cima das escolhas que ainda não foram salvas.
+            let atual: DescontoDoCupom | null | undefined;
+            try {
+              const resposta = await aguardarComPrazo(
+                Promise.resolve(
+                  supabase
+                    .from("coupons")
+                    .select("type,value")
+                    .eq("id", id)
+                    .maybeSingle(),
+                ),
+                PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+                () => erroDeConsultaSemResposta(),
+              );
+              if (!resposta.error && resposta.data === null) atual = null;
+              const desconto = resposta.data;
+              if (
+                !resposta.error &&
+                (desconto?.type === "fixed" || desconto?.type === "percentage")
+              ) {
+                atual = { type: desconto.type, value: desconto.value };
+              }
+            } catch {
+              // Sem leitura confirmada, a tela não troca nem aceita o rascunho.
+            }
+            if (
+              !atual ||
+              atual.type !== original.type ||
+              atual.value !== original.value
+            ) {
+              return { descontoNaoGravado: atual };
+            }
+          }
+          // Zero linhas também pode ser permissão ou cupom removido.
+          throw new Error("Nenhum cupom foi alterado.");
+        }
         regrasJaGravadas = true;
+        controleDoDesconto?.aoGravar();
       }
 
       if (clientes !== undefined) {
@@ -455,7 +521,7 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
       }
       throw error;
     }
-  };
+  }
 
   const deleteCoupon = async (id: string) => {
     if (!isAdmin) {

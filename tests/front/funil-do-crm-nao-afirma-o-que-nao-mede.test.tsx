@@ -87,15 +87,26 @@ describe("FunilEPedidosDoCrm — só afirma o que o dado prova", () => {
     expect(texto).not.toContain("Todo pedido criado virou venda paga");
   });
 
-  it("pagas = criadas (podem ser de dias diferentes): não promete que todo pedido foi pago", async () => {
-    const texto = await montar(visao(2, 2));
-    expect(texto).not.toContain("Todo pedido criado virou venda paga");
+  it("um pedido criado hoje e o pagamento de outro pedido não significam 100%", async () => {
+    const texto = await montar(visao(1, 1));
+    expect(texto).not.toContain("100%");
+    expect(texto).not.toContain("1 de 1");
+    expect(
+      hospedeiro.querySelector(
+        '[aria-label="Funil do app"] [aria-label="Pedidos criados no período"] h3',
+      )?.textContent,
+    ).toBe("1");
+    expect(
+      hospedeiro.querySelector(
+        '[aria-label="Funil do app"] [aria-label="Pedidos pagos no período"] h3',
+      )?.textContent,
+    ).toBe("1");
   });
 
-  it("controle: menos vendas do que pedidos mantém '1 de 2' e o aviso de pedido sem venda", async () => {
+  it("não usa a diferença entre as contagens para afirmar que um pedido ficou sem pagar", async () => {
     const texto = await montar(visao(2, 1));
-    expect(texto).toContain("1 de 2");
-    expect(texto).toContain("1 pedido não virou venda paga");
+    expect(texto).not.toContain("1 de 2");
+    expect(texto).not.toContain("1 pedido não virou venda paga");
   });
 
   it("fila vazia: não diz que não há pedido esperando pagamento", async () => {

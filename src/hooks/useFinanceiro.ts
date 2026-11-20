@@ -426,13 +426,13 @@ export async function salvarLancamento(
 
 export async function baixarLancamento(args: {
   id: string;
-  data: DataIso;
+  data?: DataIso;
   contaId: string | null;
 }): Promise<void> {
   const { error } = await comPrazo(
     supabase.rpc("fin_lancamento_baixar", {
       p_id: args.id,
-      p_data: args.data,
+      ...(args.data === undefined ? {} : { p_data: args.data }),
       p_conta_id: args.contaId,
     }),
     "a baixa foi registrada",

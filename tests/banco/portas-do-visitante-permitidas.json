@@ -699,6 +699,14 @@
       "porque": "Funcao de gatilho de pedidos (retorna trigger, nao e' chamavel como RPC); aberta por heranca do PUBLIC."
     },
     {
+      "funcao": "public.nome_publico_de(p_nome text)",
+      "executa": ["anon", "authenticated"],
+      "tipo": "leitura",
+      "secdef": false,
+      "situacao": "auxiliar",
+      "porque": "Funcao pura usada pela coluna gerada: abrevia somente o texto recebido, sem ler nenhuma tabela."
+    },
+    {
       "funcao": "public.notifica_cliente_de_mudanca_de_pagamento()",
       "executa": ["PUBLIC", "anon", "authenticated"],
       "tipo": "gatilho",

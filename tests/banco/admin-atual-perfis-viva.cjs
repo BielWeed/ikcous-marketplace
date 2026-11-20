@@ -13,7 +13,7 @@
  * `is_admin()` (JWT, vale ~1 h depois do rebaixamento). O ex-admin lia e ALTERAVA direto pelo PostgREST os
  * dados de todas as clientes.
  *
- * O QUE SE PROVA, para CADA uma das 13 políticas (por tabela e operação):
+ * O QUE SE PROVA, por tabela e operação (credenciais de frete têm prova própria):
  *   (a) ex-admin rebaixado só no profiles e ex-admin rebaixado só no auth.users (JWT ainda dizendo admin)
  *       LEEM 0 linhas e NÃO escrevem (UPDATE/DELETE afetam 0 linhas; INSERT recusa com 42501 da RLS);
  *       CONTROLE: com a política ANTIGA (ALTER POLICY do rollback, dentro da transação) os dois leem a linha
@@ -31,6 +31,7 @@
  *       pré-voo recusa (sem escrever) política divergente (expressão, comando, papel), função divergente,
  *       FORCE e dono diferente; o rollback recusa sobre estado divergente;
  *   (f) a consulta de "papel contraditório" do cabeçalho acha os dois rebaixados da fixture e nenhum dos outros.
+ *   (g) as credenciais de frete só circulam pelo servidor: o acesso direto é recusado, inclusive ao admin atual.
  *
  * Toda chamada roda numa transação DESFEITA no fim.
  *
@@ -450,30 +451,42 @@ const CASOS = [
     escritas: () => ({}),
     dono: false,
   },
-  {
-    nome: 'store_shipping_credentials ("Admins have full access to shipping credentials", ALL)',
-    politicas: ["Admins have full access to shipping credentials"],
-    ler: () => [
-      "SELECT count(*)::int AS n FROM public.store_shipping_credentials WHERE provider = 'perfis_teste'",
-      [],
-    ],
-    escritas: () => ({
-      update: [
-        "UPDATE public.store_shipping_credentials SET credentials = '{}'::jsonb WHERE provider = 'perfis_teste'",
-        [],
-      ],
-      delete: [
-        "DELETE FROM public.store_shipping_credentials WHERE provider = 'perfis_teste'",
-        [],
-      ],
-      insert: [
-        "INSERT INTO public.store_shipping_credentials (provider, credentials) VALUES ('novo_' || gen_random_uuid()::text, '{}'::jsonb)",
-        [],
-      ],
-    }),
-    dono: false,
-  },
 ];
+
+// A chave só circula pelo servidor: nem o admin atual pode ler ou gravar direto.
+PROVAS.push({
+  nome: "(g) store_shipping_credentials: acesso direto recusado a anon e authenticated (admin ou não)",
+  corpo: async (c) => {
+    // Sem WHERE no UPDATE/DELETE, a falta de SELECT não mascara um privilégio de escrita.
+    // Todos os passos rodam só no clone efêmero e a transação sempre é desfeita.
+    const passos = [
+      ["select", "SELECT credentials FROM public.store_shipping_credentials"],
+      [
+        "insert",
+        "INSERT INTO public.store_shipping_credentials (provider, credentials) VALUES ('novo_' || gen_random_uuid()::text, '{}'::jsonb)",
+      ],
+      [
+        "update",
+        "UPDATE public.store_shipping_credentials SET credentials = '{}'::jsonb",
+      ],
+      ["delete", "DELETE FROM public.store_shipping_credentials"],
+    ];
+    for (const quem of ["admin", "terceira", "anon"]) {
+      const r = await como(c, quem, passos);
+      for (const [op] of passos) {
+        const contexto = `store_shipping_credentials: ${quem} ${op}`;
+        assert.equal(r[op].ok, false, `${contexto}: acesso permitido`);
+        assert.equal(r[op].code, "42501", contexto);
+        // INSERT barrado pela política também pode dar 42501; aqui a tabela em si deve recusar.
+        assert.match(
+          r[op].message,
+          /^permission denied for table store_shipping_credentials$/,
+          contexto,
+        );
+      }
+    }
+  },
+});
 
 const RLS_INSERT = /new row violates row-level security policy/;
 
@@ -804,7 +817,11 @@ PROVAS.push({
 // (d) corpo vivo, rollback, idempotência, preflight
 // ---------------------------------------------------------------------------
 
-const TROCADAS = CASOS.flatMap((x) => x.politicas);
+// A política de frete ainda integra a prova histórica da 20261340000000.
+const TROCADAS = [
+  ...CASOS.flatMap((x) => x.politicas),
+  "Admins have full access to shipping credentials",
+];
 const ehPolitica = (k) =>
   k.startsWith("pol public.") && TROCADAS.some((p) => k.endsWith(`.${p}`));
 

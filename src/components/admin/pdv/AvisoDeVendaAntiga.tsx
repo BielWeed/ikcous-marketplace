@@ -7,6 +7,7 @@
 // REGRA DE OURO da pasta: nada de Supabase aqui.
 
 import { Button } from "@/components/ui/button";
+import { ORIENTACAO_PARA_CONFERIR_VENDA_NO_BALCAO } from "@/lib/erro-da-venda-presencial";
 import { hojeEmSaoPaulo } from "@/lib/financeiro";
 import { AlertTriangle } from "lucide-react";
 import type { ReactElement } from "react";
@@ -70,9 +71,10 @@ export function AvisoDeVendaAntiga({
         Esta venda está aberta {quandoFoiAberta(salvoEm, lidoEm)}.
       </p>
       <p className="pdv-muted">
-        Confira os itens e o cliente antes de continuar. Se for de outra pessoa,
-        descarte e comece uma nova. Se tiver dúvida se ela já foi registrada,
-        veja em Pedidos. Nada foi registrado por este aviso.
+        Confira os itens e o cliente antes de continuar. Se não souber se a
+        venda já foi registrada, confira antes de descartar:{" "}
+        {ORIENTACAO_PARA_CONFERIR_VENDA_NO_BALCAO} Nada foi registrado por este
+        aviso.
       </p>
       <div className="pdv-actions">
         <Button

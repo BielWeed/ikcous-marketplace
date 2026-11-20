@@ -373,6 +373,14 @@ on:
           - 161b-antes-o-custo-do-cancelamento-fica-no-mes-da-volta-base-vigente
           - 162a-conferir-o-pedido-guarda-o-nome-antigo-da-opcao-aplicado
           - 162b-antes-o-pedido-guarda-o-nome-antigo-da-opcao-base-vigente
+          - 163a-conferir-chaves-de-frete-so-o-servidor-aplicado
+          - 163b-antes-chaves-de-frete-so-o-servidor-base-vigente
+          - 164a-conferir-o-relatorio-de-categorias-sem-produto-aplicado
+          - 164b-antes-o-relatorio-de-categorias-sem-produto-base-vigente
+          - 165a-conferir-o-nome-publico-da-vitrine-aplicado
+          - 165b-antes-o-nome-publico-da-vitrine-base-vigente
+          - 166a-conferir-a-lista-do-painel-e-o-rastreio-levam-o-nome-antigo-da-opcao-aplicado
+          - 166b-antes-a-lista-do-painel-e-o-rastreio-levam-o-nome-antigo-da-opcao-base-vigente
           - backups
       projeto:
         description: "Projeto de destino: loja, sandbox, ikcous-publicada (a CAF explicita) ou savy (a loja cliente explicita, mesmas travas): as duas exigem expected_sha; nunca texto livre — achado da rodada 2"

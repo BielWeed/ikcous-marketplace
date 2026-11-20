@@ -327,7 +327,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
       },
       {
         id: "uso",
-        label: "Uso Total",
+        label: "Usos contabilizados",
         icon: Users,
         iconClass: "text-sky-400",
         iconBg: "bg-zinc-900 border-admin-border",
@@ -335,7 +335,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
           "hover:border-sky-500/30 hover:shadow-[0_0_30px_rgba(14,165,233,0.05)]",
         value: totalUsage,
         accent: "text-sky-400",
-        footer: "Utilizações acumuladas",
+        footer: "Inclui reservas de pedidos ainda não pagos",
       },
       {
         id: "desconto",

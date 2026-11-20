@@ -43,6 +43,9 @@ const md5Vivo = async (c) =>
 async function desfazerRastreioDoConvidadoNaTransacao(c) {
   if (process.env.CI_BANCO_EFEMERO !== "1")
     throw new Error("Exige banco efemero");
+  await require("./rotulo-historico-posterior.cjs").desfazerRotulosHistoricosNaTransacao(
+    c,
+  );
   let h = await md5Vivo(c);
   let desfez = false;
   if (h === M1342) {

@@ -154,8 +154,9 @@ vi.mock("sonner", () => ({
   toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() },
 }));
 
+let mockPagamentoOnlineLigado = true;
 vi.mock("@/lib/flags", () => ({
-  pagamentoOnlineLigado: () => true,
+  pagamentoOnlineLigado: () => mockPagamentoOnlineLigado,
   lerFlagPagamentoOnline: (v: string | undefined) => v === "true",
 }));
 
@@ -270,6 +271,7 @@ describe("CheckoutView — cartão pelo app", () => {
     mockShippingFee = 20;
     mockSelectedShippingOption = { ...ENTREGA_LOCAL };
     mockConfigDoCartao = { credito: true, debito: true, parcelasMax: 6 };
+    mockPagamentoOnlineLigado = true;
     mockFormasPagamentoEntrega = undefined;
     const armazem = new Map<string, string>();
     vi.stubGlobal("localStorage", {
@@ -492,6 +494,60 @@ describe("CheckoutView — cartão pelo app", () => {
     expect(radios[4].getAttribute("aria-checked")).toBe("true");
     expect(onNavigate).not.toHaveBeenCalled();
   });
+
+  it("oferece ao convidado um botão na ordem de Tab para entrar e pagar com Pix", async () => {
+    mockUser = null;
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await montar(CheckoutView);
+
+    const naEntrega = botaoPorTexto(hospedeiro, "Pix na Entrega");
+    expect(naEntrega?.getAttribute("aria-checked")).toBe("true");
+    expect(naEntrega?.tabIndex).toBe(0);
+
+    const pixNoApp = botaoPorTexto(hospedeiro, "Pagar agora com PIX");
+    expect(pixNoApp?.tabIndex).toBe(-1);
+    const entrar = botaoPorTexto(hospedeiro, "Entrar para pagar com Pix")!;
+    expect(entrar).toBeDefined();
+    expect(entrar.tabIndex).toBe(0);
+    expect(entrar.disabled).toBe(false);
+    expect(entrar.closest('[role="radiogroup"]')).toBeNull();
+    await clicar(entrar);
+    expect(onNavigate.mock.calls).toEqual([["auth"]]);
+    expect(naEntrega?.getAttribute("aria-checked")).toBe("true");
+  });
+
+  it.each([
+    { cenario: "cliente logado" },
+    { cenario: "loja sem Pix no app", semPixOnline: true },
+    { cenario: "loja sem formas na entrega", semEntrega: true },
+    { cenario: "envio por transportadora", transportadora: true },
+  ])(
+    "não oferece o botão de entrar para pagar com Pix: $cenario",
+    async ({ semPixOnline, semEntrega, transportadora }) => {
+      if (semPixOnline || semEntrega || transportadora) mockUser = null;
+      if (semPixOnline) mockPagamentoOnlineLigado = false;
+      if (semEntrega) mockFormasPagamentoEntrega = [];
+      if (transportadora) {
+        mockSelectedShippingOption = {
+          id: "melhor-envio-CorreiosSedex",
+          name: "Sedex",
+          price: 20,
+          deliveryDays: 3,
+          provider: "melhor_envio",
+        };
+      }
+      const { CheckoutView } = await import("@/views/customer/CheckoutView");
+      await montar(CheckoutView);
+
+      expect(
+        botaoPorTexto(hospedeiro, "Entrar para pagar com Pix"),
+      ).toBeUndefined();
+      if (semEntrega)
+        expect(
+          botaoPorTexto(hospedeiro, "Entrar ou criar conta"),
+        ).toBeDefined();
+    },
+  );
 
   it("com crédito e débito ligados, 'No app' mostra PIX e 'Cartão de crédito ou débito', nessa ordem, antes da entrega", async () => {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");

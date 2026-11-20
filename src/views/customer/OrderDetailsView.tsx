@@ -71,6 +71,7 @@ import { motivoDaDevolucaoIndisponivel } from "@/lib/texto-devolucao-indisponive
 import {
   type LinhaDevolucaoDoCliente,
   PAGAMENTO_RECEBIDO_PEDIDO_CANCELADO,
+  comOrientacaoDaDevolucao,
   desfechoDaDevolucao,
   textoConfirmarCancelamento,
   textoDevolucao,
@@ -443,7 +444,10 @@ function cancelledDescription(
     }
     const desfecho = desfechoDaDevolucao(linhasDevolucao);
     if (desfecho === "em_curso") {
-      return "Este pedido foi cancelado, mas o seu pagamento foi recebido. O dinheiro volta sozinho para você: PIX cai na sua conta; cartão aparece como crédito na fatura (o prazo é do seu banco).";
+      return comOrientacaoDaDevolucao(
+        `${PAGAMENTO_RECEBIDO_PEDIDO_CANCELADO} O dinheiro volta sozinho para você.`,
+        metodoOnline,
+      );
     }
     if (desfecho === "concluida") {
       return "Este pedido foi cancelado, mas o seu pagamento foi recebido.";
@@ -497,7 +501,7 @@ export function OrderDetailsView({
     reenviarComprovante,
   } = useOrders(true, false);
   const { config } = useStore();
-  const { user, loading: authLoading } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
   const [order, setOrder] = useState<Order | null>(null);
   // O pedido na tela veio do RETRATO do rastreio sem conta (sessionStorage), e
   // não do servidor: o status é o de quando a pessoa consultou e não atualiza
@@ -1331,6 +1335,7 @@ export function OrderDetailsView({
               linhas: linhasDevolucao,
               cancelledAfterShipping: order.cancelledAfterShipping,
               returnedToSellerAt: order.returnedToSellerAt,
+              metodoOnline: order.metodoOnline,
               retiradaNaLoja: order.retiradaNaLoja === true,
             });
 
@@ -2104,7 +2109,10 @@ export function OrderDetailsView({
                 // o pedido está separado.
                 <div className="mt-1 space-y-0.5">
                   <p className="break-words text-sm font-bold text-zinc-900">
-                    Retire em: {order.enderecoDeRetirada}
+                    {order.status === "cancelled"
+                      ? "Local de retirada original:"
+                      : "Retire em:"}{" "}
+                    {order.enderecoDeRetirada}
                   </p>
                   {avisoDaRetirada(order.status) && (
                     <p className="text-xs font-medium leading-relaxed text-zinc-500">
@@ -2448,6 +2456,7 @@ export function OrderDetailsView({
 
               <ReviewForm
                 productId={reviewingItem.productId}
+                nomeCadastrado={profile?.full_name}
                 initialRating={reviewingItem.rating}
                 temTextoRef={avaliacaoTemTextoRef}
                 enviandoRef={avaliacaoEnviandoRef}

@@ -1217,6 +1217,7 @@ export function montarRelatorio({
   vercel,
   vercelPedido,
   politica,
+  problemasDeCobertura = [],
 }) {
   const linhas = [];
   const ok = resultados.filter((r) => r.classe === "OK").length;
@@ -1234,6 +1235,12 @@ export function montarRelatorio({
     );
   }
   linhas.push(`**Resultado: ${ok} de ${resultados.length} endereços OK.**`, "");
+  if (problemasDeCobertura.length) {
+    linhas.push("## Cobertura da frota — FALHOU", "");
+    for (const problema of problemasDeCobertura)
+      linhas.push(`- ${celula(problema)}`);
+    linhas.push("");
+  }
   linhas.push("## Grupos por versão servida", "");
   if (grupos.length === 0)
     linhas.push("- (nenhum endereço respondeu version.json)");
@@ -1342,8 +1349,36 @@ export function montarRelatorio({
 
 // ---------------------------------------------------------------- orquestração
 
+/** Ref de uma loja cuja ficha foi lida e identificou um único backend. */
+export function refDaLojaSondada(ficha) {
+  if (
+    ficha?.status !== 200 ||
+    ficha.caderneta !== "hit" ||
+    !Array.isArray(ficha.refs) ||
+    ficha.refs.length !== 1 ||
+    ficha.estavel === false
+  )
+    return null;
+  return ficha.refs[0];
+}
+
+export function problemasLojasNaoSondadas(lojasObrigatorias, refsSondados) {
+  return lojasObrigatorias
+    .filter(({ ref }) => !refsSondados.has(ref))
+    .map(
+      ({ ref, nome }) =>
+        `a loja ${nome ?? ref} está cadastrada mas não foi sondada`,
+    );
+}
+
 export async function conferirFrota(politica, opcoes = {}) {
-  const { sha, pedirVercel = false, inventarioPronto = null } = opcoes;
+  const {
+    sha,
+    pedirVercel = false,
+    inventarioPronto = null,
+    lojasObrigatorias = [],
+    dominiosDeLojasAntes = [],
+  } = opcoes;
   if (!RE_SHA.test(String(sha)))
     throw new Error("--sha precisa ter 40 caracteres hexadecimais");
   const inventario =
@@ -1387,7 +1422,23 @@ export async function conferirFrota(politica, opcoes = {}) {
         deploymentEsperado: ctx.vercel?.deploymentEsperado,
       }
     : inventario.vercel;
+  const refsSondados = new Set(
+    resultados
+      .filter((r) => !declarados.has(r.dominio))
+      .map((r) => refDaLojaSondada(r.ficha)),
+  );
+  const dominiosSondados = new Set(resultados.map((r) => r.dominio));
+  const problemasDeCobertura = [
+    ...problemasLojasNaoSondadas(lojasObrigatorias, refsSondados),
+    ...dominiosDeLojasAntes
+      .filter((dominio) => !dominiosSondados.has(dominio))
+      .map(
+        (dominio) =>
+          `${dominio}: endereço de loja sondado antes do promote, mas não depois`,
+      ),
+  ];
   const ok =
+    problemasDeCobertura.length === 0 &&
     resultados.every((r) => r.classe === "OK") &&
     (!pedirVercel || (inventario.vercel?.ok === true && inventario.completo));
   const relatorio = montarRelatorio({
@@ -1398,6 +1449,7 @@ export async function conferirFrota(politica, opcoes = {}) {
     vercel: vercelInfo,
     vercelPedido: pedirVercel,
     politica,
+    problemasDeCobertura,
   });
   return {
     ok,

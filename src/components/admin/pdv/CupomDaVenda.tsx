@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { ImagemComFallback } from "@/components/ui/custom/ImagemComFallback";
 import type { AcaoDaVenda, EstadoDaVenda } from "@/hooks/useVendaPresencial";
 import { guardarCodigoParaCadastro } from "@/lib/codigo-para-cadastro";
+import { ORIENTACAO_PARA_CONFERIR_VENDA_NO_BALCAO } from "@/lib/erro-da-venda-presencial";
 import {
   type FeedbackDoLeitor,
   criarFeedbackDoLeitor,
@@ -489,7 +490,7 @@ export function CupomDaVenda({
             Os itens e o cliente escolhido serão limpos, e o caixa volta ao
             começo.{" "}
             {estado.erro || estado.talvezGravada
-              ? "Isso não anula uma venda já registrada. Se não tiver certeza de que a venda foi registrada, confira em Pedidos antes de refazer."
+              ? `Isso não anula uma venda já registrada. ${ORIENTACAO_PARA_CONFERIR_VENDA_NO_BALCAO}`
               : "Nada é registrado."}
           </p>
           <div className="pdv-annul-actions">

@@ -218,7 +218,7 @@ export function useReviews() {
                   .from("reviews" as any)
                   .select(`
           *,
-          user:public_profiles(full_name, avatar_url)
+          user:public_profiles(nome_publico, avatar_url)
         `)
                   .eq("product_id", productId)
                   .order("created_at", { ascending: false }),
@@ -235,7 +235,7 @@ export function useReviews() {
             ? {
                 id: item.id,
                 productId: item.product_id,
-                customerName: item.author_name || "Usuário Anônimo",
+                customerName: item.author_name || "Cliente",
                 customerAvatar: item.author_avatar_url || undefined,
                 rating: item.rating,
                 comment: item.comment,
@@ -248,7 +248,7 @@ export function useReviews() {
                 id: item.id,
                 productId: item.product_id,
                 userId: item.user_id,
-                customerName: item.user?.full_name || "Usuário Anônimo",
+                customerName: item.user?.nome_publico || "Cliente",
                 customerAvatar: item.user?.avatar_url || undefined,
                 rating: item.rating,
                 comment: item.comment,
@@ -1000,7 +1000,7 @@ export function useReviews() {
           erro?.code === "42501" || erro?.status === 403
             ? MENSAGEM_SESSAO_OU_PERMISSAO
             : mensagemDeErroDeSessaoDoPainel(error)
-              ? "Sua sessão expirou. Entre de novo para enviar a resposta — o texto continua aqui."
+              ? "Sua sessão expirou. Se a resposta ainda estiver na tela, copie o texto antes de entrar de novo. Depois, publique a resposta."
               : ehConsultaSemResposta(error)
                 ? "Sem resposta da rede. Confira na lista antes de tentar de novo."
                 : "Erro ao enviar resposta.",

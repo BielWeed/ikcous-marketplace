@@ -608,6 +608,37 @@ describe("Painel — chave 'Permitir retirada na loja' e a seção de Transporta
     expect(botaoSalvar()?.disabled).toBe(true);
   });
 
+  it("Só retirada reabre e foca a faixa recusada no Salvar, sem apagar o rascunho", async () => {
+    estadoDaLoja.atual = {
+      originCep: "38500-000",
+      storeAddress: ENDERECO_FICTICIO,
+      localCepRange: "38500",
+    };
+    await renderizarFrete();
+    expect(chaveDaRetirada("Eu entrego").getAttribute("aria-checked")).toBe(
+      "true",
+    );
+    digitar("#local-cep-range", "CEP 38500");
+    await clicar(chaveDaRetirada("Só retirada"));
+    expect(hospedeiro.querySelector("#local-cep-range")).toBeNull();
+
+    await clicar(botaoSalvar());
+
+    expect(updateConfig).not.toHaveBeenCalled();
+    expect(chaveDaRetirada("Só retirada").getAttribute("aria-checked")).toBe(
+      "true",
+    );
+    const campo =
+      hospedeiro.querySelector<HTMLInputElement>("#local-cep-range");
+    expect(campo?.value).toBe("CEP 38500");
+    expect(document.activeElement).toBe(campo);
+    expect(campo?.getAttribute("aria-invalid")).toBe("true");
+    const aviso = hospedeiro.querySelector("#erro-faixa-de-cep");
+    expect(campo?.getAttribute("aria-describedby")).toBe(aviso?.id);
+    expect(aviso?.textContent).toContain("sem letras");
+    expect(aviso?.textContent).toContain("38500-000, 38599-999");
+  });
+
   it("CEP mudou enquanto editava: salvar acompanha o novo CEP sem perder serviços atuais", async () => {
     estadoDaLoja.atual = {
       originCep: "38500-000",

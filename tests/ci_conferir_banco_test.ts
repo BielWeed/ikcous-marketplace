@@ -2500,11 +2500,21 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "b404a8397a6490c86fb192d85fd5b6c9",
           versao: "20261399980000",
         },
+        {
+          fn: "get_admin_orders_paged",
+          h: "bfef98c2eeeaf9014d92d3e4cd97764d",
+          versao: "20261410000000",
+        },
         // 17/11/2026: a ficha do cliente mostra o balcao do mesmo WhatsApp em campo separado (99 -> 4030).
         {
           fn: "get_admin_user_detail",
           h: "e7977d4d60b6114bb8247097b8ae3d4b",
           versao: "20261403000000",
+        },
+        {
+          fn: "get_category_analytics",
+          h: "d7e1e413ac805f598d8657992f43c706",
+          versao: "20261409000000",
         },
         {
           fn: "painel_inicio",
@@ -3941,7 +3951,7 @@ Deno.test("9a — todo md5 de corpo é o da migration MAIS NOVA da árvore que d
       assertEquals(dono, {
         buscar_por_codigo_barras: "20261393100000",
         get_admin_orders_cancelados_recentes: "20261399980000",
-        get_admin_orders_paged: "20261399980000",
+        get_admin_orders_paged: "20261410000000",
         get_product_recommendations: "20261399800000",
         limpar_cotacoes_fora_da_janela: "20261166000000",
         registrar_venda_presencial: "20261280000000",
@@ -10521,6 +10531,7 @@ async function hashesDoLote21() {
   for (const arq of [
     "20261341000000_o_codigo_do_convidado_trava_a_linha_na_tentativa.sql",
     "20261342000000_o_rastreio_do_convidado_nao_devolve_a_nota_do_pedido.sql",
+    "20261410000000_a_lista_do_painel_e_o_rastreio_levam_o_nome_antigo_da_opcao.sql",
   ])
     sucessorasDaV2.push(
       tres(
@@ -10626,13 +10637,14 @@ Deno.test("21a/21b — os hashes são EXATAMENTE os dos corpos que os arquivos d
     ...new Set([...sql.matchAll(/'([0-9a-f]{64})'/g)].map((m) => m[1])),
   ];
   await t.step(
-    "21a: só os 12 sha256 do DEPOIS (LF e CRLF) mais os 4 das sucessoras da v2 (1341 e 1342), cada linha [LF, LF, CRLF, LF] (a da v2 [LF, LF, CRLF, 1341 LF, 1341 CRLF, 1342 LF, 1342 CRLF, LF])",
+    "21a: só os 12 sha256 posteriores e os 6 das sucessoras da v2 (1341, 1342 e 1410; LF e CRLF)",
     () => {
       assertEquals(
         sucessorasDaV2.map((x: { md5: string }) => x.md5),
         [
           "34199947ecded0fd9400b5fd0276ea47",
           "02208ac9d2abe2e8b03790349d491ecb",
+          "96f080db2a488d8887a2dfd959bd9862",
         ],
       );
       const suc = sucessorasDaV2.flatMap((x: { lf: string; crlf: string }) => [

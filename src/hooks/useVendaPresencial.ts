@@ -1755,10 +1755,9 @@ export function useVendaPresencial(
 
   // GRAVA AO SAIR. O atraso acima evita escrever a cada toque, mas o cleanup
   // dele cancela o relógio — e sair da tela (o balcão fecha) ou esconder/fechar
-  // a página dentro desse atraso deixava o último bipe só na memória, quando a
-  // tela promete que "a venda fica guardada e volta ao reabrir". Aqui a gravação
-  // que ainda estava pendente é adiantada. É só o que estava pendente: o que já
-  // foi gravado (ou apagado, no cupom vazio) não é tocado.
+  // a página dentro desse atraso deixava o último bipe só na memória. Aqui a
+  // gravação pendente é adiantada, mas pode falhar se o armazenamento estiver
+  // indisponível. O que já foi gravado ou apagado não é tocado.
   useEffect(() => {
     const gravarAgora = () => gravacaoPendenteRef.current?.();
     window.addEventListener("pagehide", gravarAgora);

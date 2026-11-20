@@ -33,17 +33,18 @@ export interface FalhaDaVendaTraduzida {
   readonly precisaEntrarDeNovo: boolean;
 }
 
-/** Mensagem honesta de D3: sem rede (ou sem forma de saber o motivo), a
- * venda é RECUSADA e o cupom fica salvo — nunca "tente de novo" escondendo
- * um erro que não vai se resolver sozinho, e nunca "deu erro" seco. */
+/** Sem resposta do servidor, não sabemos se a venda foi registrada nem se
+ * o rascunho foi salvo. O aviso orienta a manter a tela aberta. */
 export const MENSAGEM_DE_REDE_DA_VENDA =
-  "Não consegui falar com o servidor. O cupom está salvo aqui; tente de novo quando a conexão voltar.";
+  "Não consegui falar com o servidor. Mantenha esta tela aberta e tente de novo quando a conexão voltar.";
+
+export const ORIENTACAO_PARA_CONFERIR_VENDA_NO_BALCAO =
+  "Em Pedidos, abra “Filtros e ferramentas” e toque em “Limpar tudo”, se aparecer. Depois, toque em “Abrir filtros”, escolha “Balcão” em “Canal da venda” e toque em “Fechar”. Confira se a venda já aparece na lista. Se ainda tiver dúvida, não refaça a venda.";
 
 /** O banco estourou o tempo (57014): não sabemos se a venda entrou. A tela não
  * afirma que falhou nem que gravou — manda CONFERIR e só então repetir (a
  * mesma chave devolve o recibo se ela já existir). */
-export const MENSAGEM_DE_DEMORA_DA_VENDA =
-  "O servidor demorou demais para responder. Confira em Pedidos, nas vendas do balcão, se esta venda já aparece antes de tentar de novo.";
+export const MENSAGEM_DE_DEMORA_DA_VENDA = `O servidor demorou demais para responder. ${ORIENTACAO_PARA_CONFERIR_VENDA_NO_BALCAO}`;
 
 const FRASE_ACESSO_NEGADO =
   "Acesso negado: só a loja registra venda no balcão.";
@@ -152,8 +153,8 @@ export function precosDaVendaRecusada(erro: unknown): {
  * A REGRA, por `erro.code`:
  *  · SEM `code` (string) — inclui `TypeError`, `DOMException` e qualquer
  *    erro que não veio do Postgres/PostgREST — é a mesma frase de "sem
- *    rede" do D3: não sabemos o motivo real, e a coisa honesta é dizer que
- *    o cupom está salvo e convidar a tentar de novo. Isto também cobre o
+ *    rede" do D3: orienta a manter a tela aberta e tentar de novo quando a
+ *    conexão voltar, sem prometer que o cupom foi salvo. Isto também cobre o
  *    caso específico citado na tarefa, `TypeError: Failed to fetch`.
  *  · "PGRST202" — a RPC não existe neste servidor (schema cache sem a
  *    função — sintoma exato de uma migration não aplicada). Mensagem
@@ -271,7 +272,7 @@ export function mensagemDaFalhaDaVenda(
   // chegou à função, nada foi gravado. Mesma saída do 42501 — entrar de novo.
   if (codigo === "PGRST301" || codigo === "PGRST302" || codigo === "PGRST303") {
     return {
-      mensagem: "A sua sessão expirou; a venda fica salva aqui.",
+      mensagem: `Sua sessão expirou. O rascunho só volta se o navegador conseguiu guardá-lo. ${ORIENTACAO_PARA_CONFERIR_VENDA_NO_BALCAO}`,
       podeTentarDeNovo: false,
       precisaEntrarDeNovo: true,
     };

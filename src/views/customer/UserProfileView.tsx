@@ -26,7 +26,7 @@ import { useEffect, useMemo, useState } from "react";
 
 interface PublicProfile {
   id: string;
-  full_name: string | null;
+  nome_publico: string;
   avatar_url: string | null;
   created_at: string | null;
   cover_url: string | null;
@@ -196,7 +196,7 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
             Promise.resolve(
               supabase
                 .from("public_profiles")
-                .select("*")
+                .select("id, nome_publico, avatar_url, created_at, cover_url")
                 .eq("id", userId)
                 .single(),
             ),
@@ -455,18 +455,18 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
             {profile.avatar_url ? (
               <img
                 src={profile.avatar_url}
-                alt={profile.full_name || "Avatar"}
+                alt={profile.nome_publico || "Cliente"}
                 className="size-full object-cover duration-300 animate-in fade-in"
               />
             ) : (
               <div className="flex size-full select-none items-center justify-center bg-gradient-to-br from-zinc-100 to-zinc-200 text-xl font-bold text-zinc-700 duration-300 animate-in fade-in">
-                {getInitials(profile.full_name || "")}
+                {getInitials(profile.nome_publico || "Cliente")}
               </div>
             )}
           </div>
 
           <h1 className="flex items-center justify-center gap-1.5 text-2xl font-black leading-none tracking-tighter text-zinc-900">
-            {profile.full_name || "Usuário do App"}
+            {profile.nome_publico || "Cliente"}
           </h1>
 
           {formattedMemberSince && (

@@ -2209,46 +2209,91 @@ O cadastro de UMA vez, na entrada do cliente:
    para a Tela P3; `1, 1, 0` ou `1, 0, 1` = **pare e avise "Tela P1"** (as duas fontes do cargo
    discordam; decisao do dono do produto, nao se mexe aqui).
 
-   **Tela P2. Tornar administradora.**
-   1. Apague o texto da caixa, cole o texto abaixo e troque `<e-mail-da-administradora>` (mantendo
-      as aspas simples). **Ele aparece DUAS vezes (no `UPDATE` e no `SELECT` final): troque nas duas,
-      pelo MESMO e-mail da Tela P1.** Trocar so no `UPDATE` da `0, 0, 0` no `SELECT`; trocar so no
-      `SELECT` da `1, 0, 0`. Clique em **Run**. (Aqui o marcador e' `<e-mail-da-administradora>`,
-      nao o `<e-mail-do-dono>` das Telas 3 e 4 do outro roteiro.)
+   **Tela P2. Tornar administradora em duas rodadas.** Rode um bloco inteiro por vez:
+   o SQL Editor so mostra o resultado da ultima instrucao.
+
+   1. **Rodada A — conferir sem gravar.** No editor da loja certa, substitua o texto
+      pelo bloco abaixo. Troque o e-mail **so no ponto** `<e-mail-da-administradora>`
+      e mantenha as aspas simples em volta. Se o endereco tiver um apostrofo, digite-o
+      duas vezes dentro das aspas. Confira o endereco usado no cadastro e clique em **Run**.
+
+      ```sql
+      WITH alvo AS MATERIALIZED (
+        SELECT lower(set_config('ikcous.email_admin', '<e-mail-da-administradora>', true)) AS email
+      )
+      SELECT count(u.id) OVER () AS contas_encontradas,
+             u.email, u.raw_app_meta_data ->> 'role' AS cargo_no_login, p.role AS cargo_no_perfil
+        FROM alvo
+        LEFT JOIN auth.users u ON lower(u.email) = alvo.email
+        LEFT JOIN public.profiles p ON p.id = u.id;
+      ```
+
+      So siga se `contas_encontradas` for **1**, o e-mail for o da pessoa e os dois cargos
+      forem `customer` (cliente). Se vier diferente, der erro ou a tabela nao aparecer,
+      **pare e avise "Tela P2, rodada A"**. Nao envie a tabela nem a mensagem de erro.
+
+   2. **Rodada B — gravar e conferir.** Substitua o texto pelo bloco abaixo. A rodada A
+      nao guarda o endereco para a proxima: copie o **mesmo e-mail** no unico ponto
+      `<e-mail-da-administradora>`, seguindo a mesma regra das aspas. Confira novamente
+      o endereco e clique em **Run** uma vez, com o bloco inteiro, sem rodar linhas separadas.
 
       ```sql
       BEGIN;
       SET LOCAL ROLE postgres;
-      UPDATE public.profiles p
-         SET role = 'admin'
-        FROM auth.users u
-       WHERE u.id = p.id
-         AND lower(u.email) = lower('<e-mail-da-administradora>');
+      SET ikcous.email_admin = '<e-mail-da-administradora>';
+
+      DO $$
+      DECLARE
+        email_alvo text := lower(current_setting('ikcous.email_admin'));
+        atualizados integer;
+      BEGIN
+        UPDATE public.profiles p
+           SET role = 'admin'
+          FROM auth.users u
+         WHERE u.id = p.id
+           AND lower(u.email) = email_alvo
+           AND p.role = 'customer'
+           AND u.raw_app_meta_data ->> 'role' = 'customer'
+           AND (SELECT count(*) FROM auth.users WHERE lower(email) = email_alvo) = 1;
+        GET DIAGNOSTICS atualizados = ROW_COUNT;
+
+        IF atualizados <> 1 OR (
+          SELECT count(*) FROM auth.users u WHERE lower(u.email) = email_alvo
+        ) <> 1 OR NOT EXISTS (
+          SELECT 1 FROM auth.users u JOIN public.profiles p ON p.id = u.id
+           WHERE lower(u.email) = email_alvo
+             AND u.raw_app_meta_data ->> 'role' = 'admin'
+             AND p.role = 'admin'
+        ) THEN
+          RAISE EXCEPTION 'Tela P2: nao foi possivel confirmar uma unica conta nas duas fontes';
+        END IF;
+      END;
+      $$;
       COMMIT;
-      SELECT count(*) AS contas_com_esse_email,
-             count(*) FILTER (WHERE (u.raw_app_meta_data ->> 'role') = 'admin') AS admin_em_auth_users,
-             count(*) FILTER (WHERE p.role = 'admin') AS admin_em_profiles
-        FROM auth.users u
+
+      -- Le o endereco mantido ate a conferencia e limpa a variavel da sessao.
+      WITH alvo AS MATERIALIZED (
+        SELECT lower(current_setting('ikcous.email_admin')) AS email
+      ), limpar AS MATERIALIZED (
+        SELECT email, set_config('ikcous.email_admin', '', false) AS valor FROM alvo
+      )
+      SELECT u.email, u.raw_app_meta_data ->> 'role' AS cargo_no_login, p.role AS cargo_no_perfil
+        FROM limpar
+        LEFT JOIN auth.users u ON lower(u.email) = limpar.email
         LEFT JOIN public.profiles p ON p.id = u.id
-       WHERE lower(u.email) = lower('<e-mail-da-administradora>');
+       WHERE limpar.valor = '';
       ```
 
-      - Vai aparecer: uma tabelinha com tres numeros.
-      - **Deu certo se** forem `1, 1, 1`. Nao rode de novo sem falar com o programador (ver a Tela P3).
-      - Se aparecer diferente, **pare e avise "Tela P2"**, sem rodar de novo:
-        - `1, 0, 0`: nada mudou. Causa provavel: a conta nao tem linha em `profiles` (o `UPDATE` casa
-          0 linhas e nao da erro); outra possibilidade e' um dos dois e-mails digitado diferente.
-        - um erro em vermelho com a frase **`You cannot change your own role`**: o editor nao rodou
-          como `postgres` e a execucao inteira foi desfeita, nada mudou;
-        - qualquer outro erro, `0, 0, 0`, `1, 1, 0` ou `1, 0, 1`.
-        Antes de tentar outra coisa, clique em **New query** para comecar numa consulta limpa.
+      A tabela deve mostrar **uma linha** com o e-mail certo e `admin` nas duas colunas
+      de cargo. Se estiver certo, siga para a Tela P3. Se der erro, vier diferente ou a
+      tabela nao aparecer, **pare e avise "Tela P2, rodada B"**. Nao envie dados nem repita:
+      a gravacao pode ja ter acontecido antes da consulta final.
 
    **Tela P3. Limpar o rastro e fechar.** Apague a consulta salva e feche a aba (Tela 5 da secao 3.3,
    passo 1). Ela **sai da conta e entra de novo**, para o login ler o cargo novo (o cargo
    guardado no login dura ate cerca de 1 hora, `20261383000000...:73`), e abre o painel. Se ela nao
-   entrar mesmo com `1, 1, 1` na Tela P2 (aparece "Acesso restrito a administradores"), **pare e
-   avise "Tela P3"**: pode ter sido promovida OUTRA conta (e-mail de outra pessoa da loja digitado
-   igual nas duas telas); **NAO repita a Tela P2**, senao uma conta alheia fica como administradora.
+   entrar mesmo depois de confirmar a Tela P2 (aparece "Acesso restrito a administradores"),
+   **pare e avise "Tela P3"**: e preciso conferir qual conta recebeu o cargo. **NAO repita a Tela P2.**
    Diga ao programador apenas "cadastrei a primeira administradora na loja X".
    Depois disto a conta cumpre o que o cadastro do dono pede: siga as Telas 3 a 5 de
    `definir-o-dono-da-loja.md` (secao 3.3) e a consulta 88c.
@@ -2325,7 +2370,7 @@ O cadastro de UMA vez, na entrada do cliente:
   cron (cabecalho da propria migration); conferencia `8f-conferir-201`. Ela esta em
   `politica.json` (`migrationsForaDaRelease`) para o portao nao exigi-la.
 - Antes de liberar vendas na loja nova, confirme separadamente, conforme `migrationsForaDaRelease`
-  em `scripts/frota/politica.json`, as duas migrations aplicadas a parte, em hora calma, loja por loja:
+  em `scripts/frota/politica.json`, as migrations aplicadas a parte, em hora calma, loja por loja:
   - `20261400000000_valores_negativos_nao_entram_no_banco.sql`: antes de aplicar, a contagem do
     cabecalho tem de dar zero nas quatro colunas (negativos e `NaN`).
   - `20261404000000_a_observacao_da_inspecao_so_a_loja_ve.sql`: muda permissoes e nao e aditiva.
@@ -2333,6 +2378,11 @@ O cadastro de UMA vez, na entrada do cliente:
     inteira e rode `156b-antes-a-observacao-da-inspecao-so-a-loja-ve-base-vigente`. Depois, rode
     `156a-conferir-a-observacao-da-inspecao-so-a-loja-ve-aplicado`. As duas consultas sao do
     `conferir-banco-da-loja.yml`.
+  - `20261407000000_chaves_de_frete_so_o_servidor.sql`: revoga acesso direto a tabela de
+    credenciais de frete e nao e aditiva. Exija revisao Opus do SQL e rode
+    `163b-antes-chaves-de-frete-so-o-servidor-base-vigente` no `conferir-banco-da-loja.yml` antes de aplicar.
+    Se algum privilegio divergir, pare: o rollback manual restaura somente os GRANTs padrao.
+    Depois de aplicar, confirme com `163a-conferir-chaves-de-frete-so-o-servidor-aplicado`.
 
 ## Rollback
 

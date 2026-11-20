@@ -7,7 +7,7 @@
 // (banco: percentual/10). O aparelho B ainda tem a tela antiga (fixo/10); ela
 // muda SÓ o valor para 50 e salva. Só `value` viajava, e o banco terminava em
 // 50% embora a tela de B tenha confirmado "R$ 50". Agora, se tipo OU valor
-// mudou, os dois vão juntos.
+// mudou, os dois vão juntos, mas só se o banco ainda tiver o par original.
 //
 // Formulário e hook REAIS; só a fronteira com o banco é simulada, com
 // causalidade: o "banco" aplica o remendo por cima do que tinha.
@@ -18,9 +18,12 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const remendos: Record<string, unknown>[] = [];
+const filtrosDeGravacao: Record<string, unknown>[] = [];
+let leituras: number;
 const navegar = vi.fn();
 const sucesso = vi.fn();
 const erro = vi.fn();
+const gravarClientes = vi.fn();
 let cupomNoBanco: Record<string, unknown>;
 
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ isAdmin: true }) }));
@@ -40,19 +43,53 @@ vi.mock("@/lib/supabase", () => ({
       select: () => ({
         limit: async () => ({ error: null }),
         order: async () => ({ data: [{ ...cupomNoBanco }], error: null }),
+        eq: (coluna: string, valor: unknown) => ({
+          maybeSingle: async () => {
+            leituras++;
+            return {
+              data:
+                coluna === "id" && cupomNoBanco.id === valor
+                  ? { ...cupomNoBanco }
+                  : null,
+              error: null,
+            };
+          },
+        }),
       }),
-      update: (remendo: Record<string, unknown>) => ({
-        eq: () => ({
+      update: (remendo: Record<string, unknown>) => {
+        const filtros = new Map<string, unknown>();
+        const consulta = {
+          eq: (coluna: string, valor: unknown) => {
+            filtros.set(coluna, valor);
+            return consulta;
+          },
           select: async () => {
+            filtrosDeGravacao.push(Object.fromEntries(filtros));
+            const linha = new Map(Object.entries(cupomNoBanco));
+            if (
+              [...filtros].some(
+                ([coluna, valor]) => linha.get(coluna) !== valor,
+              )
+            ) {
+              return { data: [], error: null };
+            }
             remendos.push(remendo);
             cupomNoBanco = { ...cupomNoBanco, ...remendo };
             return { data: [{ id: "cupom-1" }], error: null };
           },
-        }),
-      }),
+        };
+        return consulta;
+      },
     }),
     rpc: async (nome: string) => {
       if (nome === "admin_cupom_clientes") return { data: [], error: null };
+      if (nome === "admin_cupom_definir_clientes") return gravarClientes();
+      if (nome === "get_admin_customers_paged") {
+        return {
+          data: { data: [{ id: "u-ana", full_name: "Ana", email: null }] },
+          error: null,
+        };
+      }
       throw new Error(`RPC inesperada: ${nome}`);
     },
   },
@@ -78,12 +115,14 @@ let tela: HTMLDivElement;
 beforeEach(() => {
   vi.clearAllMocks();
   remendos.length = 0;
+  gravarClientes.mockReset().mockResolvedValue({ error: null });
+  filtrosDeGravacao.length = 0;
+  leituras = 0;
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  // O banco de AGORA: no aparelho A ela já trocou o tipo para percentual.
   cupomNoBanco = {
     id: "cupom-1",
     code: "TESTE10",
-    type: "percentage",
+    type: "fixed",
     value: 10,
     min_purchase: 0,
     usage_limit: 100,
@@ -147,19 +186,89 @@ function botao(nome: string): HTMLButtonElement {
 const clicar = (nome: string) => act(async () => botao(nome).click());
 
 describe("editar cupom: tipo e valor do desconto vão juntos", () => {
-  it("muda SÓ o valor (R$ 10 -> R$ 50): o tipo que ela viu vai junto e o banco não vira 50%", async () => {
+  it("muda SÓ o valor (R$ 10 -> R$ 50) mesmo se o contador de usos avançou", async () => {
+    cupomNoBanco.type = "fixed";
     await abrir();
     await digitar("#coupon-value", "50");
+    cupomNoBanco.usage_count = 1;
     await clicar("Salvar Cupom");
 
     expect(remendos).toEqual([{ type: "fixed", value: 50 }]);
-    // O banco de verdade: R$ 50, como a tela confirmou — nunca 50%.
+    expect(filtrosDeGravacao).toEqual([
+      { id: "cupom-1", type: "fixed", value: 10 },
+    ]);
     expect(cupomNoBanco.type).toBe("fixed");
     expect(cupomNoBanco.value).toBe(50);
-    expect(sucesso).toHaveBeenCalledTimes(1);
+    expect(cupomNoBanco.usage_count).toBe(1);
+    expect(sucesso).toHaveBeenCalledExactlyOnceWith("Cupom atualizado");
+    expect(navegar).toHaveBeenCalledWith("admin-coupons");
+  });
+
+  it.each([
+    ["tipo", { type: "percentage", value: 10 }],
+    ["valor", { type: "fixed", value: 20 }],
+  ] as const)(
+    "recusa sobrescrever o %s alterado em outro aparelho e recarrega o desconto",
+    async (_campo, descontoDoBanco) => {
+      await abrir();
+      const leiturasAoAbrir = leituras;
+      cupomNoBanco = { ...cupomNoBanco, ...descontoDoBanco };
+      await digitar("#coupon-value", "30");
+      await digitar("#coupon-usage-limit", "250");
+      await clicar("Salvar Cupom");
+
+      expect(cupomNoBanco).toMatchObject({
+        ...descontoDoBanco,
+        usage_limit: 100,
+      });
+      expect(sucesso).not.toHaveBeenCalled();
+      expect(navegar).not.toHaveBeenCalled();
+      expect(erro).toHaveBeenCalledExactlyOnceWith(
+        expect.stringContaining("alterado em outro aparelho"),
+      );
+      expect(leituras).toBe(leiturasAoAbrir + 1);
+      expect(tela.querySelector<HTMLInputElement>("#coupon-value")?.value).toBe(
+        descontoDoBanco.type === "percentage" ? "10" : "20,00",
+      );
+      expect(
+        tela.querySelector<HTMLInputElement>("#coupon-usage-limit")?.value,
+      ).toBe("250");
+
+      await digitar("#coupon-value", "35");
+      await clicar("Salvar Cupom");
+      expect(cupomNoBanco).toMatchObject({
+        type: descontoDoBanco.type,
+        value: 35,
+        usage_limit: 250,
+      });
+      expect(sucesso).toHaveBeenCalledExactlyOnceWith("Cupom atualizado");
+    },
+  );
+  it("depois que só a lista falha, a nova tentativa não regrava o desconto", async () => {
+    cupomNoBanco.type = "fixed";
+    gravarClientes.mockResolvedValueOnce({ error: { code: "42501" } });
+    await abrir();
+    await clicar("Clientes escolhidos");
+    await digitar("#coupon-clientes-busca", "an");
+    await clicar("Ana");
+    await digitar("#coupon-value", "20");
+    await clicar("Salvar Cupom");
+
+    expect(cupomNoBanco.value).toBe(20);
+    expect(gravarClientes).toHaveBeenCalledTimes(1);
+    expect(sucesso).not.toHaveBeenCalled();
+
+    cupomNoBanco.value = 30; // Outro aparelho editou após o primeiro salvar.
+    await clicar("Salvar Cupom");
+
+    expect(cupomNoBanco.value).toBe(30);
+    expect(remendos.filter((remendo) => "value" in remendo)).toHaveLength(1);
+    expect(gravarClientes).toHaveBeenCalledTimes(2);
+    expect(navegar).toHaveBeenCalledWith("admin-coupons");
   });
 
   it("muda SÓ o tipo (fixo -> percentual): o valor que ela viu vai junto", async () => {
+    cupomNoBanco.type = "fixed";
     await abrir();
     await clicar("% Percentual");
     await clicar("Salvar Cupom");
@@ -168,6 +277,7 @@ describe("editar cupom: tipo e valor do desconto vão juntos", () => {
   });
 
   it("muda tipo E valor: vão os dois, sem chave repetida", async () => {
+    cupomNoBanco.type = "fixed";
     await abrir();
     await clicar("% Percentual");
     await digitar("#coupon-value", "15");
@@ -176,18 +286,22 @@ describe("editar cupom: tipo e valor do desconto vão juntos", () => {
     expect(remendos).toEqual([{ type: "percentage", value: 15 }]);
   });
 
-  it("muda só o limite de uso: NEM tipo NEM valor viajam (o banco de A fica como está)", async () => {
+  it("muda só o limite de uso: não envia nem filtra pelo desconto antigo", async () => {
     await abrir();
+    cupomNoBanco = { ...cupomNoBanco, type: "percentage" };
     await digitar("#coupon-usage-limit", "250");
     await clicar("Salvar Cupom");
 
     expect(remendos).toEqual([{ usage_limit: 250 }]);
+    expect(filtrosDeGravacao).toEqual([{ id: "cupom-1" }]);
+    expect(sucesso).toHaveBeenCalledExactlyOnceWith("Cupom atualizado");
     expect(cupomNoBanco.type).toBe("percentage");
     expect(cupomNoBanco.value).toBe(10);
   });
 
   it("nada mudou: não faz update e não manda tipo nem valor", async () => {
     await abrir();
+    cupomNoBanco = { ...cupomNoBanco, type: "percentage" };
     await clicar("Salvar Cupom");
 
     expect(remendos).toHaveLength(0);
@@ -205,6 +319,7 @@ describe("editar cupom: tipo e valor do desconto vão juntos", () => {
   });
 
   it("valor mexido + limite mexido: o par vai e o resto só o que mexeu", async () => {
+    cupomNoBanco.type = "fixed";
     await abrir();
     await digitar("#coupon-value", "50");
     await digitar("#coupon-usage-limit", "250");

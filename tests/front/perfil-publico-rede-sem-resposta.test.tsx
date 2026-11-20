@@ -4,12 +4,13 @@ import { type ReactNode, act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-const { single, rpc } = vi.hoisted(() => ({ single: vi.fn(), rpc: vi.fn() }));
+const { single, rpc, select } = vi.hoisted(() => ({
+  single: vi.fn(),
+  rpc: vi.fn(),
+  select: vi.fn(),
+}));
 vi.mock("@/lib/supabase", () => ({
-  supabase: {
-    from: () => ({ select: () => ({ eq: () => ({ single }) }) }),
-    rpc,
-  },
+  supabase: { from: () => ({ select }), rpc },
 }));
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({ config: {} }),
@@ -27,10 +28,12 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.spyOn(console, "error").mockImplementation(() => {});
+  select.mockReset().mockReturnValue({ eq: () => ({ single }) });
   single.mockReset().mockResolvedValue({
     data: {
       id: "autor",
       full_name: "Perfil preservado",
+      nome_publico: "Perfil P.",
       created_at: "2026-01-01T12:00:00Z",
     },
     error: null,
@@ -53,6 +56,11 @@ it("quando a lista pública está vazia, informa que não há avaliações publi
     raiz.render(<UserProfileView userId="autor" onNavigate={() => {}} />),
   );
 
+  expect(select).toHaveBeenCalledWith(
+    "id, nome_publico, avatar_url, created_at, cover_url",
+  );
+  expect(hospedeiro.textContent).toContain("Perfil P.");
+  expect(hospedeiro.textContent).not.toContain("Perfil preservado");
   expect(rpc).toHaveBeenCalledWith("perfil_publico_avaliacoes", {
     p_autor: "autor",
   });
@@ -95,7 +103,7 @@ it.each(["perfil", "avaliações", "perguntas"])(
     }
     expect(hospedeiro.textContent).toContain("Tentar de novo");
     if (consulta !== "perfil") {
-      expect(hospedeiro.textContent).toContain("Perfil preservado");
+      expect(hospedeiro.textContent).toContain("Perfil P.");
       expect(hospedeiro.textContent).toContain("Não conseguimos carregar");
     }
   },

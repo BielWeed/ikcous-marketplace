@@ -111,6 +111,16 @@ describe("AdminCouponsView — Desconto Médio só dos cupons ativos", () => {
 
   const textoDaTela = () => (hospedeiro.textContent ?? "").replace(/\s+/g, " ");
 
+  it("explica que o total de usos inclui reservas de pedidos não pagos", async () => {
+    mockCoupons = [cupom({ usageCount: 2 })];
+    await abrirTela();
+    await abrirMetricas();
+    expect(textoDaTela()).toMatch(/Usos contabilizados\s*2/);
+    expect(textoDaTela()).toContain(
+      "Inclui reservas de pedidos ainda não pagos",
+    );
+  });
+
   it("vencido e desligado não entram na média: só o cupom ativo conta", async () => {
     mockCoupons = [
       cupom({ id: "a", code: "ATIVO10", value: 10 }),

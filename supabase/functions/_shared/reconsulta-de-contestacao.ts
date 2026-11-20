@@ -66,9 +66,10 @@
  * O RODÍZIO: reconsultada a reserva, `updated_at` é renovado (UPDATE condicional
  * `status = 'em_processamento'`, como o cron já faz nas linhas de estorno).
  * Caso ainda em análise não muda nada no banco — sem o toque, ele seria
- * reconsultado em TODO ciclo durante semanas e ocuparia a fila inteira. Falha
- * transitória (rede, 429, 5xx, deadlock) NÃO toca: a linha volta no próximo
- * ciclo (10 min), não em 6 h.
+ * reconsultado em TODO ciclo durante semanas e ocuparia a fila inteira. No
+ * cron, falha no GET da order (exceto 404) também gira, sem decidir nada:
+ * a próxima tentativa pelo cron espera 6 h, mas os outros pedidos ganham vez.
+ * Falhas fora desse GET (consulta do caso, banco) não tocam a linha.
  *
  * O FRESH GATE (reler antes de agir): a lista do lote é um retrato velho
  * (o webhook pode concluir ou ajustar a linha entre a lista e a vez dela).
@@ -143,7 +144,7 @@ export interface ResumoDaReconsulta {
   resolvidasAntes: number;
   /** NADA decidido (só conserva e avisa o admin uma vez): ver o cabeçalho. */
   conservadas: number;
-  /** Falha transitória ou de banco: volta no próximo ciclo. */
+  /** Falha de consulta ou de banco; erro no GET da order pode adiar o retry por 6 h. */
   falhas: number;
 }
 
@@ -203,14 +204,23 @@ function criarReconsultor(args: {
 
   /** Renova o `updated_at` das linhas presas deste pedido — o rodízio. Só as
    * que o banco AINDA tem em `em_processamento`; nunca lança. */
-  const girar = async (ids: string[]) => {
+  const girar = async (ids: string[], limiteDeIdadeDaFalha?: string) => {
     for (const id of ids) {
       try {
-        const { error } = await supabase
+        let atualizacao = supabase
           .from("order_refunds")
           .update({ updated_at: new Date(agora()).toISOString() })
           .eq("id", id)
           .eq("status", "em_processamento");
+        if (limiteDeIdadeDaFalha) {
+          // O ledger renova updated_at ao vincular o caso. Não carimba uma
+          // linha que o webhook mexeu enquanto o GET da order estava em voo.
+          atualizacao = atualizacao
+            .eq("solicitado_por", "sistema")
+            .eq("mp_status", STATUS_DA_CONTESTACAO)
+            .lt("updated_at", limiteDeIdadeDaFalha);
+        }
+        const { error } = await atualizacao;
         if (error) throw error;
       } catch (erro) {
         console.error(
@@ -310,6 +320,8 @@ function criarReconsultor(args: {
       const consulta = await consultarOrder({ token, orderId: idMp, fetchImpl, corpoNoLog: false });
       if (!consulta.ok) {
         if (consulta.status !== 404) {
+          // Só o cron precisa girar a fila; o webhook segue devolvendo 500.
+          if (filtro.limiteDeIdade) await girar(ids, filtro.limiteDeIdade);
           throw new Error(`${rotulo}: consulta da order da contestação presa falhou (status ${consulta.status})`);
         }
         motivoSemOrder = "order_nao_encontrada";
@@ -465,9 +477,9 @@ export async function reconsultarContestacoesPresas(args: {
       else if (desfecho === "resolvida_antes") resumo.resolvidasAntes++;
       else resumo.conservadas++; // conservada ou ambígua: nada decidido, admin avisado
     } catch (erro) {
-      // Um pedido não custa a vez do seguinte; a linha NÃO é tocada, então
-      // volta já no próximo ciclo.
-      console.error(`${rotulo}: reconsulta da contestação presa falhou — o próximo ciclo repete`, { orderId, erro });
+      // Um pedido não custa a vez do seguinte. Só a falha no GET da order
+      // tenta carimbar a linha antes de chegar aqui.
+      console.error(`${rotulo}: reconsulta da contestação presa falhou`, { orderId, erro });
       resumo.falhas++;
     }
   }

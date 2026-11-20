@@ -93,6 +93,7 @@ const itemVariants = {
 import { useStore } from "@/contexts/StoreContext";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
+import { AVISO_DE_PEDIDOS_SALVOS } from "@/lib/aviso-de-pedidos-salvos";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { podeRetomarPagamento } from "@/lib/pode-retomar-pagamento";
@@ -680,6 +681,15 @@ export function ProfileView({
               Tentar de novo
             </Button>
           </motion.section>
+        )}
+
+        {ordersLoadError && activeOrders.length > 0 && (
+          <p
+            role="status"
+            className="text-sm text-muted-foreground lg:col-start-2 lg:min-w-0"
+          >
+            {AVISO_DE_PEDIDOS_SALVOS}
+          </p>
         )}
 
         {/* Pedidos em andamento: o que o cliente mais quer ver vem primeiro */}

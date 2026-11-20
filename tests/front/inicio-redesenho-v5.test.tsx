@@ -101,13 +101,13 @@ it("o perfil conserva nome e responsável longos sem truncar", () => {
 it("distingue vazio, erro e carregamento sem inventar vendas", () => {
   act(() => raiz.render(<SerieDe14Dias serie={[]} carregando={false} />));
   expect(tela.textContent).toContain(
-    "Sem vendas registradas nos últimos 14 dias.",
+    "Sem receita registrada nos últimos 14 dias.",
   );
   act(() =>
     raiz.render(<SerieDe14Dias serie={[]} carregando={false} falhou />),
   );
   expect(tela.textContent).toContain("Falha Operacional");
-  expect(tela.textContent).not.toContain("Sem vendas registradas");
+  expect(tela.textContent).not.toContain("Sem receita registrada");
   expect(tela.textContent).not.toMatch(/R\$\s*0,00/);
   act(() => raiz.render(<SerieDe14Dias serie={[]} carregando />));
   expect(tela.querySelector('[aria-busy="true"]')).not.toBeNull();

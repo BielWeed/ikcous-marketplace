@@ -66,6 +66,7 @@ const { estadoDoBanco } = vi.hoisted(() => ({
     // aqui é "insert vai dar certo"; preencher é "o banco recusou esta
     // linha".
     erroDoInsertNotificacoes: null as null | { message: string },
+    erroDoInsertDoHistorico: null as null | { message: string },
   },
 }));
 
@@ -149,7 +150,10 @@ vi.mock("@/lib/supabase", () => ({
             return {
               select: () => ({
                 single: () =>
-                  Promise.resolve({ data: { id: registrado.id }, error: null }),
+                  Promise.resolve({
+                    data: { id: registrado.id },
+                    error: estadoDoBanco.erroDoInsertDoHistorico,
+                  }),
               }),
             };
           },
@@ -444,6 +448,22 @@ describe("AdminPushView — o envio não engole o aviso do app, e o histórico n
       (call: any[]) => /aparelho/i.test(call[0]),
     );
     expect(chamada).toBeTruthy();
+  });
+
+  it("quando o registro no histórico falha, orienta a tentar de novo sem jargão", async () => {
+    await abrirTela();
+    await preencherMensagem("Oferta especial", "Corre que acaba hoje!");
+    estadoDoBanco.erroDoInsertDoHistorico = { message: "write failed" };
+    try {
+      await clicarEnviar();
+      const { toast } = await import("sonner");
+      expect(toast.error).toHaveBeenCalledWith(
+        "Não foi possível preparar o envio. Tente de novo em instantes.",
+      );
+      expect(invokeSendPush).not.toHaveBeenCalled();
+    } finally {
+      estadoDoBanco.erroDoInsertDoHistorico = null;
+    }
   });
 
   it("cliente específico COM aparelho: continua criando o log de envio e o aviso no app (sem regressão)", async () => {

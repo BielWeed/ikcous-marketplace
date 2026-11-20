@@ -61,9 +61,9 @@ export interface PedidoPendente {
 }
 
 /**
- * Um pedido que o CLIENTE cancelou (14/10/2026): depois de pagar online, ou
- * (desde o mesmo dia) um pedido a pagar na entrega/retirada que a loja ainda
- * nao tinha enviado. Uma linha por EVENTO de cancelamento (`id` e o da linha
+ * Um pedido que o CLIENTE cancelou (14/10/2026): depois de pagar online ou
+ * na entrega/retirada, ou sem pagamento quando o produto ainda nao saiu.
+ * Uma linha por EVENTO de cancelamento (`id` e o da linha
  * do historico do pedido), nao por pedido: quem reativou e cancelou de novo
  * gerou outro evento.
  *
@@ -78,6 +78,9 @@ export interface PedidoPendente {
  *     transporte. O banco trata como "ja saiu" (nao repoe o estoque nem abre o
  *     reembolso), entao o passo "O produto voltou" continua sendo da loja;
  *   - pago_depois: o pagamento entrou DEPOIS do cancelamento;
+ *   - devolucao_combinada: pagamento recebido na entrega/retirada, sem
+ *     devolucao pelo app; se o produto ainda nao voltou, `devolucaoCombinada`
+ *     complementa a orientacao de transporte ou retirada;
  *   - sem_pagamento_online: nao havia pagamento online (dinheiro/cartao na
  *     entrega ou na retirada) e o produto nao tinha saido — nao ha dinheiro
  *     para devolver; o aviso existe para a loja NAO separar nem enviar uma
@@ -88,6 +91,7 @@ export type SituacaoDoCancelamento =
   | "ja_saiu"
   | "retirada_pronta"
   | "pago_depois"
+  | "devolucao_combinada"
   | "sem_pagamento_online";
 
 export interface CancelamentoDoCliente {
@@ -97,6 +101,8 @@ export interface CancelamentoDoCliente {
   total: number | null;
   created_at: string;
   situacao: SituacaoDoCancelamento;
+  /** Combinar a devolucao ainda e necessario, alem de conferir o produto. */
+  devolucaoCombinada?: true;
 }
 
 /** Quanto tempo depois do cancelamento o aviso segue na tela (e no push). */
@@ -136,7 +142,12 @@ export interface LinhaDeCancelamento {
 
 // `estornado` entra na leitura (o cancelamento foi do cliente), mas o aviso so
 // fica se ainda faltar algo: ver `selecionarCancelamentosDoCliente`.
-const PAGAMENTO_QUE_ENTROU = ["pago", "pago_apos_expirar", "estornado"];
+const PAGAMENTO_QUE_ENTROU = [
+  "pago",
+  "pago_apos_expirar",
+  "estornado",
+  "recebido_na_entrega",
+];
 
 function ehRetirada(pedido: PedidoDoCancelamento): boolean {
   return (
@@ -165,6 +176,8 @@ function ehRetirada(pedido: PedidoDoCancelamento): boolean {
  * marcado como "voltou" (`returned_to_seller_at`), ou produto que nao saiu e
  * cujo dinheiro ja foi devolvido (`payment_status` = estornado). Produto que
  * saiu e foi estornado mas nao voltou continua: o retorno ainda falta.
+ * Para pagamento recebido na entrega, o retorno do produto nao resolve a
+ * devolucao do dinheiro: o aviso continua, mas sem pedir outro clique.
  * (O push da rotina de 10 minutos nao precisa disto: sai na hora do cancelamento.)
  *
  * Autor ausente de `admins` conta como nao-admin: so admin tem papel para
@@ -195,8 +208,14 @@ export function selecionarCancelamentosDoCliente(
     } else if (!PAGAMENTO_QUE_ENTROU.includes(pagamento)) {
       continue;
     }
-    // Ja resolvido pela lojista: o aviso nao manda fazer de novo o que foi feito.
-    if (jaSaiu ? !!pedido.returned_to_seller_at : pagamento === "estornado") {
+    const recebidoNaEntrega = pagamento === "recebido_na_entrega";
+    const retornoConfirmado = jaSaiu && !!pedido.returned_to_seller_at;
+    // Confirmar o retorno do produto nao confirma a devolucao paga na mao.
+    if (
+      jaSaiu
+        ? retornoConfirmado && !recebidoNaEntrega
+        : pagamento === "estornado"
+    ) {
       continue;
     }
     escolhidos.push({
@@ -207,26 +226,34 @@ export function selecionarCancelamentosDoCliente(
       created_at: linha.created_at,
       situacao: !pagamento
         ? "sem_pagamento_online"
-        : jaSaiu
+        : jaSaiu && !retornoConfirmado
           ? ehRetirada(pedido)
             ? "retirada_pronta"
             : "ja_saiu"
-          : pagamento === "pago_apos_expirar"
-            ? "pago_depois"
-            : "reembolso_automatico",
+          : recebidoNaEntrega
+            ? "devolucao_combinada"
+            : pagamento === "pago_apos_expirar"
+              ? "pago_depois"
+              : "reembolso_automatico",
+      ...(recebidoNaEntrega && jaSaiu && !retornoConfirmado
+        ? { devolucaoCombinada: true }
+        : {}),
     });
   }
   return escolhidos;
 }
 
+const DEVOLUCAO_COMBINADA = "devolução combinada com a cliente";
+const CONFIRMAR_RETORNO_DA_RETIRADA =
+  'pago, o produto não saiu da loja: toque em "O produto voltou" para repor o estoque';
 const FRASE_DO_DINHEIRO: Record<
   Exclude<SituacaoDoCancelamento, "sem_pagamento_online">,
   string
 > = {
   reembolso_automatico: "pago, o reembolso é automático",
   ja_saiu: "pago, o produto já saiu: avise o transporte",
-  retirada_pronta:
-    'pago, o produto não saiu da loja: toque em "O produto voltou" para repor o estoque e liberar a devolução do dinheiro',
+  retirada_pronta: `${CONFIRMAR_RETORNO_DA_RETIRADA} e liberar a devolução do dinheiro`,
+  devolucao_combinada: DEVOLUCAO_COMBINADA,
   pago_depois: "pago depois do cancelamento: confira o pedido",
 };
 
@@ -348,6 +375,12 @@ export function montarAvisos(entrada: EntradaDeAvisos): Aviso[] {
   for (const cancelamento of entrada.cancelamentosDoCliente ?? []) {
     const nome = (cancelamento.customer_name ?? "").trim() || "Cliente";
     const numero = numeroDoPedido(cancelamento.order_id);
+    const orientacao =
+      cancelamento.situacao === "sem_pagamento_online"
+        ? "Não precisa separar nem enviar."
+        : cancelamento.devolucaoCombinada
+          ? `${cancelamento.situacao === "retirada_pronta" ? CONFIRMAR_RETORNO_DA_RETIRADA : FRASE_DO_DINHEIRO[cancelamento.situacao]}; ${DEVOLUCAO_COMBINADA}`
+          : FRASE_DO_DINHEIRO[cancelamento.situacao];
     avisos.push({
       id: `cancelamento:${cancelamento.id}`,
       tipo: "cancelamento",
@@ -359,8 +392,8 @@ export function montarAvisos(entrada: EntradaDeAvisos): Aviso[] {
           : `${nome} cancelou o pedido #${numero}`,
       detalhe:
         cancelamento.situacao === "sem_pagamento_online"
-          ? "Não precisa separar nem enviar."
-          : `${formatarReais(cancelamento.total)} — ${FRASE_DO_DINHEIRO[cancelamento.situacao]}`,
+          ? orientacao
+          : `${formatarReais(cancelamento.total)} — ${orientacao}`,
       quando: cancelamento.created_at,
       destino: { view: "admin-orders", id: cancelamento.order_id },
       // NAO conta no cracha, como o estoque: o aviso nao tem "feito" que o

@@ -89,8 +89,8 @@ export const StrategicIntelligenceBlocks = memo(
           <ExplicacaoDoRelatorio titulo="Vendas por categoria">
             <p>
               Total desta lista = a receita total da loja (rateada por
-              categoria, já líquida de desconto e com frete). Só fica abaixo se
-              algum pedido tiver todos os produtos excluídos do catálogo.
+              categoria, já líquida de desconto e com frete). Itens antigos sem
+              produto vinculado aparecem em “Sem produto vinculado”.
             </p>
             <p>
               A média usa só o valor desta categoria e só os pedidos que têm

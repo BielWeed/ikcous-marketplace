@@ -24,7 +24,11 @@ import {
   assertStringIncludes,
   assertThrows,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
-import { resolverCliVercel } from "../scripts/frota/conferir-frota.mjs";
+import {
+  conferirFrota,
+  inventariar,
+  resolverCliVercel,
+} from "../scripts/frota/conferir-frota.mjs";
 import {
   CONSULTAS_DE_ROL_FECHADO,
   argumentosDoPromote,
@@ -1931,6 +1935,153 @@ Deno.test("--promover pronto: promove UMA vez o deployment e confere a frota ant
   assertEquals(chamadas.conferir, ["antes", "depois"]);
 });
 
+// A lista oficial e o HTTP são falsos; inventariar e conferirFrota são reais.
+const DOM_IKCOUS = "ickous-marketplace.vercel.app";
+const DOM_SAVY = "savycollection.vercel.app";
+const DOM_SAVY_EXTRA = "outra-vitrine.example";
+
+function releaseComSondasReais({ aliasesAntes, aliasesDepois, falha = false }) {
+  const { d, chamadas } = deps();
+  const conferencias = [];
+  d.politica = {
+    ...d.politica,
+    enderecosEsperados: [],
+    enderecosDeReserva: [DOM_IKCOUS, DOM_SAVY],
+    lojasSemBackendGerenciado: [{ ref: TESTE, nome: "Loja de teste" }],
+  };
+  d.canais = {
+    ...d.canais,
+    canais: {
+      ...d.canais.canais,
+      [TESTE]: { nome: "Loja de teste" },
+    },
+  };
+  const lojas = new Map([
+    [DOM_IKCOUS, { ref: CAF, titulo: "IKCOUS", canonico: DOM_IKCOUS }],
+    [DOM_SAVY, { ref: SAVY, titulo: "Savy", canonico: DOM_SAVY }],
+    [DOM_SAVY_EXTRA, { ref: SAVY, titulo: "Savy", canonico: DOM_SAVY }],
+  ]);
+  const opcoesDeSonda = {
+    pedirVercel: true,
+    executorVercel: async (caminho) => {
+      if (falha) throw new Error("consulta oficial indisponível");
+      const depois = chamadas.promover.length > 0;
+      const deploymentId = depois ? DPL : DPL_ANTERIOR;
+      if (caminho.startsWith("/v9/projects/"))
+        return { targets: { production: { id: deploymentId } } };
+      if (!caminho.startsWith("/v4/aliases?projectId="))
+        throw new Error(`consulta inesperada: ${caminho}`);
+      return {
+        aliases: (depois ? aliasesDepois : aliasesAntes).map((alias) => ({
+          alias,
+          deploymentId,
+          projectId: "prj_X",
+        })),
+        pagination: { next: null },
+      };
+    },
+    fetchImpl: async (url) => {
+      const { hostname, pathname } = new URL(url);
+      const loja = lojas.get(hostname);
+      if (!loja) throw new Error(`sonda inesperada: ${url}`);
+      if (pathname === "/version.json") return new Response(versao());
+      if (pathname !== "/") throw new Error(`sonda inesperada: ${url}`);
+      const ficha = JSON.stringify({
+        schemaVersion: 2,
+        identidade: { publicUrl: `https://${loja.canonico}` },
+      });
+      return new Response(
+        `<title>${loja.titulo}</title><script type="application/json" id="ikcous-loja">${ficha}</script><script src="https://${loja.ref}.supabase.co/x.js"></script>`,
+        {
+          headers: {
+            "x-ikcous-caderneta": "hit",
+            "x-ikcous-porteiro": "ok",
+          },
+        },
+      );
+    },
+  };
+  d.inventariar = (p) => inventariar(p, opcoesDeSonda);
+  d.conferirFrota = async (p, sha, inventarioPronto, opcoes) => {
+    const r = await conferirFrota(p, {
+      ...opcoesDeSonda,
+      ...opcoes,
+      sha,
+      inventarioPronto,
+    });
+    conferencias.push(r);
+    return r;
+  };
+  return { d, chamadas, conferencias };
+}
+
+for (const fase of ["antes", "depois"]) {
+  Deno.test(`lista oficial completa sem Savy ${fase} do promote reprova a cobertura`, async () => {
+    const { d, chamadas, conferencias } = releaseComSondasReais({
+      aliasesAntes: fase === "antes" ? [DOM_IKCOUS] : [DOM_IKCOUS, DOM_SAVY],
+      aliasesDepois: [DOM_IKCOUS],
+    });
+    const r = await executar(d, true);
+    const conferencia = conferencias.at(-1);
+    assertEquals(conferencia.inventario.completo, true);
+    assertEquals(
+      conferencia.resultados.map(({ dominio, classe }) => [dominio, classe]),
+      [[DOM_IKCOUS, "OK"]],
+    );
+    assertEquals(conferencia.ok, false);
+    assertEquals(r.codigo, 1, r.relatorio);
+    assertStringIncludes(
+      r.relatorio,
+      "a loja Savy está cadastrada mas não foi sondada",
+    );
+    assertEquals(chamadas.promover, fase === "antes" ? [] : [DPL]);
+  });
+}
+
+Deno.test("pós-promote reprova alias desaparecido mesmo quando a Savy ainda responde em outro endereço", async () => {
+  const { d, chamadas, conferencias } = releaseComSondasReais({
+    aliasesAntes: [DOM_IKCOUS, DOM_SAVY, DOM_SAVY_EXTRA],
+    aliasesDepois: [DOM_IKCOUS, DOM_SAVY],
+  });
+  const r = await executar(d, true);
+  assertEquals(conferencias[0].ok, true, conferencias[0].relatorio);
+  assertEquals(chamadas.promover, [DPL]);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertStringIncludes(r.relatorio, DOM_SAVY_EXTRA);
+  assertStringIncludes(r.relatorio, "antes do promote, mas não depois");
+});
+
+Deno.test("lista oficial com todas as lojas reais aprova sem exigir a loja de teste", async () => {
+  const aliases = [DOM_IKCOUS, DOM_SAVY, DOM_SAVY_EXTRA];
+  const { d, chamadas, conferencias } = releaseComSondasReais({
+    aliasesAntes: aliases,
+    aliasesDepois: aliases,
+  });
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 0, r.relatorio);
+  assertEquals(chamadas.promover, [DPL]);
+  assertEquals(
+    conferencias.map((c) => c.ok),
+    [true, true],
+  );
+});
+
+Deno.test("consulta oficial indisponível ainda sonda a reserva, sem liberar a promoção", async () => {
+  const { d, chamadas, conferencias } = releaseComSondasReais({ falha: true });
+  const r = await executar(d, true);
+  assertEquals(conferencias[0].inventario.origem, "reserva");
+  assertEquals(
+    conferencias[0].resultados.map(({ dominio, classe }) => [dominio, classe]),
+    [
+      [DOM_IKCOUS, "OK"],
+      [DOM_SAVY, "OK"],
+    ],
+  );
+  assert(!r.relatorio.includes("cadastrada mas não foi sondada"));
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(chamadas.promover, []);
+});
+
 Deno.test("pós-promote com frota falhando: código 1 e rollback exato para a produção anterior", async () => {
   const { d } = deps({ posOk: false });
   const r = await executar(d, true);
@@ -3197,6 +3348,9 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "160a-conferir-o-cupom-que-nao-da-desconto-aplicado",
     "161a-conferir-o-custo-do-cancelamento-fica-no-mes-da-volta-aplicado",
     "162a-conferir-o-pedido-guarda-o-nome-antigo-da-opcao-aplicado",
+    "164a-conferir-o-relatorio-de-categorias-sem-produto-aplicado",
+    "165a-conferir-o-nome-publico-da-vitrine-aplicado",
+    "166a-conferir-a-lista-do-painel-e-o-rastreio-levam-o-nome-antigo-da-opcao-aplicado",
     // 156a (20261404000000) fica de fora de proposito: a 404 esta em migrationsForaDaRelease
     // e nao tem lote no canais; a consulta segue no menu para quando ela for aplicada a parte.
   ]);
@@ -4645,10 +4799,9 @@ Deno.test("guarda: toda migration (fora rollback) com versão >= 20261192000000 
       assert(versoes.includes(v), `${l.consulta}: versão ${v} sem arquivo`);
 });
 
-// A 400 (valores negativos) e a 404 (observação da inspeção: REVOKE na tabela de devoluções)
-// não são aditivas e se aplicam a parte: o portão REAL (politica.json + os arquivos de
-// supabase/migrations) não as põe na release, e as aditivas 402 e 403 continuam nela.
-Deno.test("política real: a 400 e a 404 ficam FORA da release; a 402 e a 403 continuam DENTRO", async () => {
+// A 400 (valores negativos), a 404 (REVOKE em devoluções) e a 407 (REVOKE nas
+// credenciais de frete) se aplicam à parte. As aditivas 402 e 403 continuam na release.
+Deno.test("política real: a 400, a 404 e a 407 ficam FORA da release; a 402 e a 403 continuam DENTRO", async () => {
   const politicaReal = JSON.parse(
     await Deno.readTextFile("scripts/frota/politica.json"),
   );
@@ -4658,16 +4811,17 @@ Deno.test("política real: a 400 e a 404 ficam FORA da release; a 402 e a 403 co
   const naRelease = new Set(migrationsDaRelease(nomes, politicaReal));
   assertEquals(naRelease.has("20261400000000"), false);
   assertEquals(naRelease.has("20261404000000"), false);
+  assertEquals(naRelease.has("20261407000000"), false);
   assertEquals(naRelease.has("20261402000000"), true);
   assertEquals(naRelease.has("20261403000000"), true);
-  // e a 404 não tem lote no canais: estar fora da release e num lote ao mesmo tempo daria
-  // duas decisões para a mesma versão
+  // Estar fora da release e num lote ao mesmo tempo daria duas decisões.
   const lotes = lerCanais().provasDeObjetos;
-  assertEquals(
-    lotes.filter((l: any) => (l.versoes ?? []).includes("20261404000000"))
-      .length,
-    0,
-  );
+  for (const versao of ["20261404000000", "20261407000000"]) {
+    assertEquals(
+      lotes.filter((l: any) => (l.versoes ?? []).includes(versao)).length,
+      0,
+    );
+  }
 });
 
 // ===========================================================================

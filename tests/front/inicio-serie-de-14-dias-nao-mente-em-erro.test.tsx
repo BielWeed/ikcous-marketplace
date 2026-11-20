@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 //
 // Quando o carregamento do Início falha e não há retrato nenhum, o gráfico de
-// 14 dias dizia "Sem vendas registradas nos últimos 14 dias" — uma afirmação
+// 14 dias dizia "Sem receita registrada nos últimos 14 dias" — uma afirmação
 // sobre a loja que ninguém conferiu (o erro estava só no aviso lá em cima).
 // Com erro, o gráfico diz que não conseguiu carregar; sem vendas de verdade
 // (retrato que chegou, série vazia) segue dizendo "Sem vendas".
@@ -26,7 +26,10 @@ vi.mock("@/lib/supabase", () => ({
     channel: () => {
       const canal: Record<string, unknown> = {
         on: () => canal,
-        subscribe: () => canal,
+        subscribe: (status: (status: string) => void) => {
+          status("SUBSCRIBED");
+          return canal;
+        },
       };
       return canal;
     },
@@ -57,7 +60,7 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const FALHOU = "Não consegui carregar as vendas dos últimos 14 dias.";
-const SEM_VENDAS = "Sem vendas registradas nos últimos 14 dias.";
+const SEM_VENDAS = "Sem receita registrada nos últimos 14 dias.";
 
 async function esperarAte(condicao: () => boolean, timeoutMs = 3000) {
   const inicio = Date.now();
@@ -91,7 +94,7 @@ describe("SerieDe14Dias — a peça sozinha", () => {
       raiz.render(<SerieDe14Dias serie={[]} carregando={false} falhou />),
     );
     expect(hospedeiro.textContent).toContain(FALHOU);
-    expect(hospedeiro.textContent).not.toContain("Sem vendas registradas");
+    expect(hospedeiro.textContent).not.toContain("Sem receita registrada");
   });
 
   it("falhou: o total do cabeçalho vira '—', nunca R$ 0,00", async () => {
@@ -99,6 +102,35 @@ describe("SerieDe14Dias — a peça sozinha", () => {
       raiz.render(<SerieDe14Dias serie={[]} carregando={false} falhou />),
     );
     expect(hospedeiro.querySelector("p[aria-live]")?.textContent).toBe("—");
+  });
+
+  it("com falha e uma série zerada em mãos, mostra o aviso em vez do gráfico de zeros", async () => {
+    const serie = [{ dia: "2026-10-14", receita: 0 }];
+    await act(async () =>
+      raiz.render(<SerieDe14Dias serie={serie} carregando={false} falhou />),
+    );
+    expect(hospedeiro.textContent).toContain(FALHOU);
+    expect(hospedeiro.textContent).not.toContain(SEM_VENDAS);
+    expect(
+      hospedeiro.querySelector('[data-testid="serie-14d-barras"]'),
+    ).toBeNull();
+  });
+
+  it("mostra o estado sem receita quando todos os 14 dias estão zerados", async () => {
+    const serie = Array.from({ length: 14 }, (_, i) => ({
+      dia: `2026-10-${String(i + 1).padStart(2, "0")}`,
+      receita: 0,
+    }));
+    await act(async () =>
+      raiz.render(<SerieDe14Dias serie={serie} carregando={false} />),
+    );
+    expect(hospedeiro.textContent).toContain(
+      "Sem receita registrada nos últimos 14 dias.",
+    );
+    expect(
+      hospedeiro.querySelector('[data-testid="serie-14d-barras"]'),
+    ).toBeNull();
+    expect(hospedeiro.textContent).not.toContain("Deslize no gráfico");
   });
 
   it("controle: série vazia SEM falha segue dizendo que não houve vendas", async () => {
@@ -114,7 +146,7 @@ describe("SerieDe14Dias — a peça sozinha", () => {
       raiz.render(<SerieDe14Dias serie={[]} carregando falhou={false} />),
     );
     expect(hospedeiro.textContent).not.toContain("Não consegui");
-    expect(hospedeiro.textContent).not.toContain("Sem vendas registradas");
+    expect(hospedeiro.textContent).not.toContain("Sem receita registrada");
   });
 
   it("falhou, mas a série velha ainda está em mãos: o gráfico aparece, sem a frase de erro", async () => {
@@ -162,7 +194,7 @@ describe("Início — a fiação do erro até o gráfico", () => {
     h.resposta = { data: null, error: { message: "boom" } };
     await abrirInicio();
     await esperarAte(() => hospedeiro.textContent?.includes(FALHOU) ?? false);
-    expect(hospedeiro.textContent).not.toContain("Sem vendas registradas");
+    expect(hospedeiro.textContent).not.toContain("Sem receita registrada");
   });
 
   it("painel_inicio chegou sem vendas: o gráfico diz que não houve vendas", async () => {

@@ -262,6 +262,8 @@ interface EstadoDoPainelInicio {
   readonly carregando: boolean;
   readonly erro: string | null;
   readonly erroAssinatura: string | null;
+  /** A consulta de fundo falhou e os números da busca anterior foram mantidos. */
+  readonly releituraFalhou: boolean;
   /**
    * O canal não está confirmado, a releitura após a queda ainda não terminou,
    * ou a última releitura de fundo falhou. O selo deixa de dizer "Ao vivo"
@@ -497,6 +499,7 @@ export function usePainelInicio(active: boolean): EstadoDoPainelInicio {
   // rodar, e o primeiro desenho da manhã mostraria o número de ontem.
   const retratoDeHoje =
     retrato && diaDaLeitura(retrato) === hojeEmSaoPaulo() ? retrato : null;
+  const releituraFalhou = retratoDeHoje?.releituraFalhou === true;
 
   return {
     painel: retratoDeHoje?.painel ?? null,
@@ -507,7 +510,8 @@ export function usePainelInicio(active: boolean): EstadoDoPainelInicio {
     carregando: carregando || (retratoDeHoje === null && active && temSessao),
     erro: retrato?.erroPainel ?? null,
     erroAssinatura: retrato?.erroAssinatura ?? null,
-    desatualizado: !canalVivo || retratoDeHoje?.releituraFalhou === true,
+    releituraFalhou,
+    desatualizado: !canalVivo || releituraFalhou,
     atualizar,
   };
 }

@@ -10,8 +10,8 @@ const fonte = readFileSync(
   "utf8",
 );
 // Classes do celular de cada literal de className, na ordem da árvore, como estavam
-// na base 1.5.187. Literal fixo: o CI clona só o último commit, então o teste
-// não pode ler o histórico do git.
+// na base 1.5.187, sem o botão do aviso que inferia pedidos sem pagamento.
+// Literal fixo: o CI clona só o último commit.
 const CLASSES_DO_CELULAR_NA_BASE = [
   "flex items-stretch gap-1",
   "flex min-w-0 flex-1 items-center gap-1",
@@ -40,7 +40,7 @@ const CLASSES_DO_CELULAR_NA_BASE = [
   "space-y-4",
   "flex items-center justify-between gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 text-xs text-amber-300",
   "min-h-11 shrink-0 px-2 font-bold",
-  "min-h-11 shrink-0 font-bold",
+  // O botão do aviso por subtração saiu junto com a comparação incorreta.
   "text-admin-text",
   "min-h-[132px]",
   "premium-shimmer h-14 rounded-xl",
@@ -231,7 +231,7 @@ function conferirEstados(texto: string) {
 }
 
 describe("P24 — Funil e pedidos no computador", () => {
-  it("preserva classes móveis, conteúdo, cálculos e ordem da árvore", () => {
+  it("preserva as classes móveis do funil e da fila", () => {
     conferirPreservacao(fonte);
     expect(() =>
       conferirPreservacao(

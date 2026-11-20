@@ -11,7 +11,7 @@ WITH fn AS (
     CASE WHEN (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public') > 0 THEN '>0' ELSE '0' END
   UNION ALL
   SELECT 'get_orders_by_otp_v2: corpo sem a nota do pedido (20261342000000, md5)', '02208ac9d2abe2e8b03790349d491ecb',
-    COALESCE((SELECT CASE WHEN f.m IN ('02208ac9d2abe2e8b03790349d491ecb') THEN '02208ac9d2abe2e8b03790349d491ecb' ELSE f.m END FROM fn f), 'AUSENTE')
+    COALESCE((SELECT CASE WHEN f.m IN ('02208ac9d2abe2e8b03790349d491ecb', '96f080db2a488d8887a2dfd959bd9862') THEN '02208ac9d2abe2e8b03790349d491ecb' ELSE f.m END FROM fn f), 'AUSENTE')
   UNION ALL
   SELECT 'get_orders_by_otp_v2: assinatura, atributos e EXECUTE preservados', 'sim',
     CASE WHEN EXISTS (

@@ -1139,7 +1139,10 @@ async function main() {
   }
   const falhas = [];
   try {
-    // As provas medem a arvore COM as duas migrations no ar (o banco do rpc-ci vem de todas as migrations aplicadas).
+    await require("./rotulo-historico-posterior.cjs").prepararCloneSemRotulosHistoricos(
+      C,
+    );
+    // As provas medem o estado das duas migrations, sem a sucessora dos rótulos.
     assert.equal(
       await estadoDoCorpo(),
       "1342",

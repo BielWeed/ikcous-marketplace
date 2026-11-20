@@ -1168,6 +1168,37 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20261410000000_a_lista_do_painel_e_o_rastreio_levam_o_nome_antigo_da_opcao.sql":
+    [
+      {
+        funcao: "get_admin_orders_paged",
+        esperado: [
+          {
+            texto: "'variacao_nome_na_compra', oi.variacao_nome_na_compra,",
+            vezes: 1,
+          },
+          {
+            texto: "'variacao_valor_na_compra', oi.variacao_valor_na_compra,",
+            vezes: 1,
+          },
+          { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        ],
+      },
+      {
+        funcao: "get_orders_by_otp_v2",
+        esperado: [
+          {
+            texto: "'variacao_nome_na_compra', oi.variacao_nome_na_compra,",
+            vezes: 1,
+          },
+          {
+            texto: "'variacao_valor_na_compra', oi.variacao_valor_na_compra,",
+            vezes: 1,
+          },
+          { texto: "FOR UPDATE OF v", vezes: 1 },
+        ],
+      },
+    ],
   "20261406000000_o_pedido_guarda_o_nome_antigo_da_opcao.sql": {
     funcao: "guardar_rotulo_da_opcao_no_pedido",
     esperado: [

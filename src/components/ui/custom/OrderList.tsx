@@ -1,5 +1,6 @@
 import { CustomerPaymentBadge } from "@/components/ui/custom/CustomerPaymentBadge";
 import { avisoDeCartaoNoPedidoVencido } from "@/lib/aviso-de-cartao-no-pedido-vencido";
+import { AVISO_DE_PEDIDOS_SALVOS } from "@/lib/aviso-de-pedidos-salvos";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { dataNoFusoDaLoja } from "@/lib/data-da-loja";
 import { rotuloDaFormaDoPedido } from "@/lib/forma-de-pagamento";
@@ -413,9 +414,7 @@ export const OrderList = memo(function OrderList({
         role="status"
         className="mb-3 flex items-center justify-between gap-3 rounded-[14px] border border-border px-3 py-2 text-left text-xs font-medium text-amber-700 dark:text-amber-400"
       >
-        <span>
-          Não foi possível atualizar agora. Mostrando o que já tínhamos.
-        </span>
+        <span>{AVISO_DE_PEDIDOS_SALVOS}</span>
         {onRetry && (
           <button
             type="button"

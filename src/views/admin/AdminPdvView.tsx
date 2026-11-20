@@ -645,8 +645,8 @@ export function AdminPdvView({
     // quando a rede está pendurada, e o botão segue habilitado — sem prazo,
     // o clique giraria por minutos. Estourar NÃO prova que a venda não
     // chegou ao servidor: o erro sai SEM `code`, então a tradução do
-    // fechamento mostra a frase de rede de sempre (cupom salvo, tentar de
-    // novo), e a retentativa leva a MESMA chave de idempotência — se a venda
+    // fechamento orienta a manter a tela aberta e tentar de novo. A
+    // retentativa leva a MESMA chave de idempotência — se a venda
     // já tinha sido gravada, o servidor devolve `ja_existia` em vez de
     // debitar o estoque de novo. A resposta que chegar depois do prazo é
     // descartada por `aguardarComPrazo`.

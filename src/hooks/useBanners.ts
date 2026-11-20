@@ -19,6 +19,7 @@ import {
   imagemDoBannerParaTela,
   imagensDoBanner,
 } from "@/lib/imagens-do-banner";
+import { arquivoJpegSemExif } from "@/lib/jpeg-sem-exif";
 import {
   aguardarComPrazo,
   ehConsultaSemResposta,
@@ -459,15 +460,16 @@ export function useBanners(adminMode = false) {
       // a foto crua do celular (vários MB) iria inteira a toda cliente na
       // tela inicial. Reduz ANTES do envio, como a foto de produto — o
       // utilitário é fail-open (falha ou formato intocável = o original).
-      const pronto = await redimensionarImagem(file);
+      const redimensionada = await redimensionarImagem(file);
       // Reduzida de verdade = a imagem abriu. Se voltou o mesmo arquivo, nada
       // provou isso (o redimensionamento falha em silêncio): confere aqui, em
       // vez de publicar um banner quebrado como "enviado com sucesso".
-      if (pronto === file && !(await imagemAbre(file))) {
+      if (redimensionada === file && !(await imagemAbre(file))) {
         const ilegivel = new Error("A imagem não abre neste aparelho.");
         ilegivel.name = "FotoIlegivel";
         throw ilegivel;
       }
+      const pronto = await arquivoJpegSemExif(redimensionada);
       const fileExt = pronto.name.split(".").pop();
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
       const filePath = `${fileName}`;
@@ -585,7 +587,7 @@ export function useBanners(adminMode = false) {
       if (!aoFicarSemResposta(error))
         toast.error(
           mensagemDeErroDeSessaoDoPainel(error)
-            ? "Sua sessão expirou. Entre de novo para salvar o banner — o que você digitou continua aqui."
+            ? "Sua sessão expirou ou esta conta não tem permissão para salvar o banner. Se os dados do banner ainda estiverem na tela, copie o que digitou antes de sair da conta. Entre de novo e tente salvar o banner outra vez."
             : "Erro ao adicionar banner.",
         );
       throw error;

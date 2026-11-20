@@ -271,7 +271,7 @@ describe("Balcão — a dúvida da venda sobrevive à 2ª falha", () => {
       "o estoque não foi descontado",
     );
     expect(hospedeiro.textContent).toContain(
-      "recibo aparece ao tentar de novo",
+      "Se a venda já foi registrada e não foi anulada, reenviar o mesmo cupom sem limpar a tela pode recuperar o recibo.",
     );
     // e a lojista pode tentar de novo (a chave é a mesma)
     expect(botao(hospedeiro, "Registrar venda")!.disabled).toBe(false);
@@ -290,7 +290,7 @@ describe("Balcão — a dúvida da venda sobrevive à 2ª falha", () => {
     expect(hospedeiro.textContent).toContain(TITULO_DA_DUVIDA);
     await clicar("Limpar a tela da venda");
     expect(hospedeiro.textContent).toContain(
-      "Isso não anula uma venda já registrada. Se não tiver certeza de que a venda foi registrada, confira em Pedidos antes de refazer.",
+      "Isso não anula uma venda já registrada. Em Pedidos, abra “Filtros e ferramentas” e toque em “Limpar tudo”, se aparecer. Depois, toque em “Abrir filtros”, escolha “Balcão” em “Canal da venda” e toque em “Fechar”. Confira se a venda já aparece na lista. Se ainda tiver dúvida, não refaça a venda.",
     );
     expect(hospedeiro.textContent).not.toContain("Nada é registrado");
   });
@@ -366,7 +366,9 @@ describe("Balcão — a dúvida da venda sobrevive à 2ª falha", () => {
       '[data-testid="confirmar-acao"]',
     );
     expect(janela?.textContent).toContain("Ela pode já ter sido registrada");
-    expect(janela?.textContent).toContain("confira em Pedidos");
+    expect(janela?.textContent).toContain(
+      "Em Pedidos, abra “Filtros e ferramentas” e toque em “Limpar tudo”, se aparecer. Depois, toque em “Abrir filtros”, escolha “Balcão” em “Canal da venda” e toque em “Fechar”. Confira se a venda já aparece na lista. Se ainda tiver dúvida, não refaça a venda.",
+    );
   });
 
   it("(c) controle: 'Começar uma venda nova' SEM dúvida não ganha o aviso", async () => {

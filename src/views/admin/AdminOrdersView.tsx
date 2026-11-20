@@ -68,6 +68,7 @@ import { orientacaoDeDevolucao } from "@/lib/anulacao-do-balcao";
 import { consumirPedidoDePedidosSemFiltroAntigo } from "@/lib/atalho-do-inicio-para-pedidos";
 import { tipoDoAvisoDoPedido } from "@/lib/aviso-de-pedido-atualizado";
 import { formatarInteiro } from "@/lib/crm";
+import { mensagemDeErroDeSessaoDoPainel } from "@/lib/erro-de-sessao-do-painel";
 import {
   periodoInvertido,
   recorteDaListaDePedidos,
@@ -1362,7 +1363,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         // devolvendo… faça-a pelo painel do Mercado Pago, nunca por outro
         // caminho" (C-S, 20261189) ou "não tem mais nada a devolver"
         // (20261176). Trocar isso por "Tente de novo" empurrava o lojista
-        // a pagar por fora. O resto (rede, permissão) segue genérico.
+        // a pagar por fora.
         if (
           (error as { code?: string }).code === "22023" &&
           typeof error.message === "string" &&
@@ -1387,7 +1388,11 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         toast.error(MENSAGEM_ACAO_DO_PEDIDO_SEM_RESPOSTA);
         void fetchPedidosCancelados().catch(() => {});
       } else {
-        toast.error("Não consegui registrar o estorno. Tente de novo.");
+        toast.error(
+          mensagemDeErroDeSessaoDoPainel(e)
+            ? "Sua sessão expirou ou você não tem permissão para registrar o estorno. Saia da conta, entre de novo e tente registrar outra vez."
+            : "Não consegui registrar o estorno. Tente de novo.",
+        );
       }
     } finally {
       setEstornandoId(null);

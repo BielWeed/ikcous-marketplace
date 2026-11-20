@@ -7,15 +7,11 @@ import {
 } from "@/components/admin/crm/PecasDoCrm";
 import { useAgoraDoPainel } from "@/hooks/useAgoraDoPainel";
 import {
-  conversaoEmVenda,
   estadoDasVisitas,
   formatarInteiro,
-  formatarPercentual,
   idadePorExtenso,
-  pedidosSemVendaPaga,
   pipelineEmAberto,
   rotuloDoStatusDoPedido,
-  tomDaTaxaDePagamento,
 } from "@/lib/crm";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
@@ -150,33 +146,6 @@ function estiloDoStatus(status: string): {
       };
   }
 }
-
-/**
- * Superfície do destaque "Conversão em venda" por tom — a cor reage ao
- * valor medido (`tomDaTaxaDePagamento`), nunca é sempre verde: o dono via
- * 0% pintado da mesma cor de sucesso do resto do painel.
- */
-const CLASSES_DO_DESTAQUE_DE_PAGAMENTO: Record<
-  ReturnType<typeof tomDaTaxaDePagamento>,
-  { readonly caixa: string; readonly rotulo: string }
-> = {
-  boa: {
-    caixa: "border-emerald-500/20 bg-emerald-500/[0.06]",
-    rotulo: "text-emerald-300",
-  },
-  mediana: {
-    caixa: "border-amber-500/20 bg-amber-500/[0.06]",
-    rotulo: "text-amber-300",
-  },
-  baixa: {
-    caixa: "border-rose-500/20 bg-rose-500/[0.06]",
-    rotulo: "text-rose-300",
-  },
-  neutra: {
-    caixa: "border-admin-border bg-admin-raised",
-    rotulo: "text-zinc-400",
-  },
-};
 
 function FunilEmEtapas({ medidas }: Readonly<{ medidas: EtapaMedida[] }>) {
   return (
@@ -350,14 +319,6 @@ export function FunilEPedidosDoCrm({
   const funil = visao?.funil;
   const criados = funil?.pedidosCriados ?? null;
   const pagos = funil?.pedidosPagos ?? null;
-  const conversao =
-    criados == null || pagos == null ? null : conversaoEmVenda(criados, pagos);
-  const semVenda =
-    criados == null || pagos == null
-      ? null
-      : pedidosSemVendaPaga(criados, pagos);
-  const estilo =
-    CLASSES_DO_DESTAQUE_DE_PAGAMENTO[tomDaTaxaDePagamento(conversao)];
   const esqueleto = carregando && !visao;
   const falha = !esqueleto && !visao && (!!erro || offline);
   const estado =
@@ -398,59 +359,34 @@ export function FunilEPedidosDoCrm({
       )}
       <MetricasDoPainel
         titulo="Funil do app"
-        legendasDoResumo={["Conversão em venda", "Pedidos pagos"]}
+        legendasDoResumo={[
+          "Pedidos criados no período",
+          "Pedidos pagos no período",
+        ]}
         loading={esqueleto}
         cards={[
           {
-            label: "Conversão em venda",
-            value: formatarPercentual(conversao),
+            label: "Pedidos criados no período",
+            value: formatarInteiro(criados),
             icon: ShoppingBag,
-            accent: estilo.rotulo,
           },
           {
-            label: "Pedidos pagos",
-            value:
-              pagos == null || criados == null
-                ? "—"
-                : pagos > criados
-                  ? formatarInteiro(pagos)
-                  : `${formatarInteiro(pagos)} de ${formatarInteiro(criados)}`,
-            icon: ShoppingBag,
+            label: "Pedidos pagos no período",
+            value: formatarInteiro(pagos),
+            icon: PackageCheck,
           },
         ]}
         nota={
-          falha ? (
-            "Os números não carregaram"
-          ) : offline ? (
-            "Sem internet · números da última busca"
-          ) : semVenda != null && semVenda > 0 ? (
-            <>
-              <span>
-                {formatarInteiro(semVenda)}{" "}
-                {semVenda === 1
-                  ? "pedido não virou venda paga"
-                  : "pedidos não viraram venda paga"}
-              </span>
-              <button
-                type="button"
-                onClick={() => onNavigate("admin-orders")}
-                className="min-h-11 shrink-0 font-bold"
-              >
-                Ver pedidos ›
-              </button>
-            </>
-          ) : (
-            "Só o app · neste período"
-          )
+          falha
+            ? "Os números não carregaram"
+            : offline
+              ? "Sem internet · números da última busca"
+              : "Só o app · neste período"
         }
         relatorio={{
           erro: falha,
           aoTentar,
-          tom: falha
-            ? "erro"
-            : offline || (semVenda != null && semVenda > 0)
-              ? "atencao"
-              : undefined,
+          tom: falha ? "erro" : offline ? "atencao" : undefined,
           rodape: (
             <>
               Pessoas com carrinho{" "}
@@ -461,11 +397,13 @@ export function FunilEPedidosDoCrm({
           ),
           ajuda: (
             <ExplicacaoDoRelatorio titulo="Funil do app">
-              {visitas?.visitas == null ? "Visitas e produtos" : "Produtos"}{" "}
-              vistos ainda não são medidos. Carrinhos e pedidos só contam quem
-              entrou com conta. A conversão é vendas pagas ÷ pedidos criados.
-              Pedido conta pela data em que foi criado; venda paga, pela data do
-              pagamento.
+              A etapa de visitas só aparece quando há um número disponível.
+              Produtos vistos ainda não são medidos. Carrinhos contam só quem
+              tem conta. Pedidos do app incluem compras com e sem conta. Os
+              criados contam pela data de criação; os pagos, pela data do
+              pagamento, mesmo que o pedido seja de antes do período. Pedidos
+              cancelados, devolvidos ou estornados por inteiro ficam fora dos
+              pagos.
             </ExplicacaoDoRelatorio>
           ),
         }}

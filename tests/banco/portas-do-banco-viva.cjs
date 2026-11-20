@@ -319,7 +319,7 @@ prova(
 );
 
 prova(
-  "PERFIS: a vitrine do visitante (views) continua com nome e foto do autor",
+  "PERFIS: a vitrine do visitante (views) mostra nome abreviado e mantém a foto do autor",
   () =>
     emTransacao(async () => {
       await semear();
@@ -335,7 +335,7 @@ prova(
       assert.ok(av.ok, av.message);
       assert.deepEqual(av.rows, [
         {
-          author_name: "Autor Publicada",
+          author_name: "Autor P.",
           author_avatar_url: "data:image/svg+xml;utf8,<svg/>",
         },
       ]);
@@ -345,7 +345,7 @@ prova(
         [Q_PERG],
       );
       assert.ok(pe.ok, pe.message);
-      assert.deepEqual(pe.rows, [{ author_name: "Autor Pergunta" }]);
+      assert.deepEqual(pe.rows, [{ author_name: "Autor P." }]);
     }),
 );
 

@@ -299,8 +299,9 @@ Deno.test("20261350 publicacao: lote unico de apply normal, DEPOIS da 244, vale 
     1,
     "a 81a entra uma vez",
   );
+  const consultas = canais.provasDeObjetos.map((p) => p.consulta);
   assertEquals(
-    canais.provasDeObjetos.slice(-66).map((p) => p.consulta),
+    consultas.slice(consultas.indexOf(A81)),
     [
       A81,
       "82a-conferir-ex-admin-sem-acesso-nas-demais-tabelas",
@@ -368,8 +369,11 @@ Deno.test("20261350 publicacao: lote unico de apply normal, DEPOIS da 244, vale 
       "160a-conferir-o-cupom-que-nao-da-desconto-aplicado",
       "161a-conferir-o-custo-do-cancelamento-fica-no-mes-da-volta-aplicado",
       "162a-conferir-o-pedido-guarda-o-nome-antigo-da-opcao-aplicado",
+      "164a-conferir-o-relatorio-de-categorias-sem-produto-aplicado",
+      "165a-conferir-o-nome-publico-da-vitrine-aplicado",
+      "166a-conferir-a-lista-do-painel-e-o-rastreio-levam-o-nome-antigo-da-opcao-aplicado",
     ],
-    "As 66 conferências de 81a até 162a, inclusive a 162a recém-anexada, ficam no fim, sem reordenar os lotes anteriores",
+    "os lotes posteriores à 81a são anexados no fim, sem reordenar lotes anteriores",
   );
   for (const loja of ["IKCOUS", "Savy"])
     assert(

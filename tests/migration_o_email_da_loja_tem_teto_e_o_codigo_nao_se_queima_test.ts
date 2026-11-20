@@ -293,6 +293,7 @@ Deno.test("v2: sem DEFAULT (nenhuma sobrecarga ambigua no PostgREST) e so ela te
   assert.doesNotMatch(cabecalho(depois.get_orders_by_otp_v2), /\bDEFAULT\b/i);
   // So ha UMA assinatura (os 4 text, sem DEFAULT): a 20261217 a cria e as sucessoras 20261341/20261342 (e os rollbacks
   // delas, que devolvem o corpo anterior) so a REDEFINEM com a mesma lista de argumentos — nenhuma sobrecarga nova.
+  // A 20261410 (nome antigo da opcao no rastreio) e o rollback dela tambem so a redefinem, com os mesmos 4 text.
   const definicoes: Record<string, string> = {};
   for (const e of Deno.readDirSync(new URL("supabase/migrations/", DIR))) {
     if (!e.isFile || !e.name.endsWith(".sql")) continue;
@@ -306,8 +307,10 @@ Deno.test("v2: sem DEFAULT (nenhuma sobrecarga ambigua no PostgREST) e so ela te
     "20261217000000_o_email_da_loja_tem_teto_e_o_codigo_nao_se_queima.sql",
     "20261341000000_o_codigo_do_convidado_trava_a_linha_na_tentativa.sql",
     "20261342000000_o_rastreio_do_convidado_nao_devolve_a_nota_do_pedido.sql",
+    "20261410000000_a_lista_do_painel_e_o_rastreio_levam_o_nome_antigo_da_opcao.sql",
     "rollback-manual-20261341000000_o_codigo_do_convidado_trava_a_linha_na_tentativa.sql",
     "rollback-manual-20261342000000_o_rastreio_do_convidado_nao_devolve_a_nota_do_pedido.sql",
+    "rollback-manual-20261410000000_a_lista_do_painel_e_o_rastreio_levam_o_nome_antigo_da_opcao.sql",
   ]);
   assert.equal(
     new Set(Object.values(definicoes)).size,

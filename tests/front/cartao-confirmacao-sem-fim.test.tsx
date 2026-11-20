@@ -300,6 +300,45 @@ describe("Confirmação do cartão depois do 3DS: nunca mais um spinner sem fim"
     nenhumOutroPostDeCartao();
   });
 
+  it("Verificar de novo avisa sobre a consulta pendente sem gastar um dos cinco toques", async () => {
+    await chegarAoConfirmando();
+    const pendurada = adiada<unknown>();
+    criarPagamento
+      .mockImplementationOnce(() => pendurada.promessa)
+      .mockRejectedValue(new Error("Failed to fetch"));
+    await avancar(10 * 60_000);
+
+    await act(async () => {
+      botao("Verificar de novo")?.click();
+    });
+
+    const aviso =
+      "Ainda estamos consultando seu pagamento; aguarde alguns segundos.";
+    expect(hospedeiro.textContent).toContain(aviso);
+    expect(girando()).toBe(false);
+    expect(chamadasVerificar()).toBe(1);
+
+    await act(async () => {
+      pendurada.resolver(undefined);
+    });
+    expect(hospedeiro.textContent).not.toContain(aviso);
+    expect(chamadasVerificar()).toBe(1);
+
+    for (let toque = 1; toque <= 5; toque++) {
+      expect(botao("Verificar de novo")).toBeDefined();
+      const antes = chamadasVerificar();
+      await act(async () => {
+        botao("Verificar de novo")?.click();
+      });
+      await avancar(
+        ESPERAS_DA_RODADA_MANUAL_MS.reduce((a, b) => a + b, 0) + 5_000,
+      );
+      expect(chamadasVerificar()).toBe(antes + 3);
+    }
+    expect(botao("Verificar de novo")).toBeUndefined();
+    nenhumOutroPostDeCartao();
+  });
+
   it("resposta TARDIA (depois do limite da tela) não faz a tela regredir para o spinner", async () => {
     await chegarAoConfirmando();
     const pendurada = adiada<unknown>();

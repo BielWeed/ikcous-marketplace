@@ -1,13 +1,16 @@
 import { createHash } from "node:crypto";
 import { inspect } from "node:util";
+import sharp from "sharp";
 import type { Upload } from "tus-js-client";
 import { afterEach, expect, it, vi } from "vitest";
 import { IdentityUploadHttpError } from "../../src/lib/identityUploadHttp";
+import { prepareIdentityImage } from "../../src/lib/prepareIdentityImage";
 import {
   IdentityImageUploadError,
+  type UploadIdentityImageOptions,
   uploadIdentityImage,
 } from "../../src/lib/uploadIdentityImage";
-import type { UploadIdentityImageOptions } from "../../src/lib/uploadIdentityImage";
+import { comExif, exifComGps } from "./fixtures/jpeg-com-gps";
 type TusOptions = ConstructorParameters<typeof Upload>[1];
 type Fake = {
   file: Blob;
@@ -62,6 +65,7 @@ vi.mock("tus-js-client", () => ({
 }));
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   vi.useRealTimers();
   control.instances.length = 0;
   control.start = undefined;
@@ -166,6 +170,56 @@ it("sucesso duplicado e erro tardio preservam verificacao em andamento", async (
   wait.resolve(response());
   expect((await pending).asset.path).toBe(image.asset.path);
 });
+it.each(["image/jpeg", "", "application/octet-stream"])(
+  "JPEG de MIME %j da identidade chega sem GPS e conserva o hash dos bytes limpos",
+  async (type) => {
+    const jpeg = new Uint8Array(
+      await sharp({
+        create: { width: 32, height: 16, channels: 3, background: "red" },
+      })
+        .jpeg()
+        .toBuffer(),
+    );
+    vi.stubGlobal(
+      "Image",
+      class {
+        src = "";
+        async decode() {}
+        removeAttribute() {}
+      },
+    );
+    const prepared = await prepareIdentityImage(
+      new File([comExif(jpeg, exifComGps())], "marca.jpg", { type }),
+      { signal: new AbortController().signal },
+    );
+    const hashLimpo = createHash("sha256").update(jpeg).digest("hex");
+    const result = await uploadIdentityImage(
+      prepared,
+      options({
+        fetchImpl: async () => {
+          const enviado = control.instances[0].file;
+          const res = new Response(enviado, {
+            headers: { "content-type": "image/jpeg" },
+          });
+          Object.defineProperty(res, "url", {
+            value: `${origin}/storage/v1/object/public/branding/${prepared.asset.path}`,
+          });
+          return res;
+        },
+      }),
+    );
+
+    expect(
+      new Uint8Array(await control.instances[0].file.arrayBuffer()),
+    ).toEqual(jpeg);
+    expect(result.asset).toMatchObject({
+      bytes: jpeg.length,
+      path: `v1/${hashLimpo}/image.jpg`,
+      sha256: hashLimpo,
+    });
+  },
+);
+
 it("configura chunks confirmados sem overwrite e congela resultado", async () => {
   const sent: RequestInit[] = [];
   const result = await uploadIdentityImage(

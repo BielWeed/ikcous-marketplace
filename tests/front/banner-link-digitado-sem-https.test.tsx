@@ -292,7 +292,7 @@ describe("AdminBannersView: o link digitado chega corrigido ao salvar", () => {
     "falha ao criar banner: sessão vencida=%j preserva o editor e não duplica aviso",
     async (sessao) => {
       const mensagem =
-        "Sua sessão expirou. Entre de novo para salvar o banner — o que você digitou continua aqui.";
+        "Sua sessão expirou ou esta conta não tem permissão para salvar o banner. Se os dados do banner ainda estiverem na tela, copie o que digitou antes de sair da conta. Entre de novo e tente salvar o banner outra vez.";
       addBanner.mockImplementation(async () => {
         // A mensagem emitida pelo hook é comprovada no teste do hook real.
         h.toastError(sessao ? mensagem : "Erro ao adicionar banner.");

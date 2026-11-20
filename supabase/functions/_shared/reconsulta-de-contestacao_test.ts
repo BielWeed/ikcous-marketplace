@@ -114,16 +114,24 @@ function banco(opts: {
           select: (colunas: string) => construtor(colunas),
           update(valores: Record<string, unknown>) {
             const filtros: Array<[string, unknown]> = [];
+            const cortes: Array<[string, string]> = [];
             const q = {
               eq(coluna: string, valor: unknown) {
                 filtros.push([coluna, valor]);
+                return q;
+              },
+              lt(coluna: string, valor: string) {
+                cortes.push([coluna, valor]);
                 return q;
               },
               then(res: (v: unknown) => void, rej?: (e: unknown) => void) {
                 registro.toques.push({ id: filtros.find(([c]) => c === "id")?.[1], valores, filtros: [...filtros] });
                 if (opts.erroToque) return Promise.resolve({ data: null, error: { message: "falhou" } }).then(res, rej);
                 for (const l of opts.linhas) {
-                  if (filtros.every(([c, v]) => Reflect.get(l, c) === v)) Object.assign(l, valores);
+                  if (
+                    filtros.every(([c, v]) => Reflect.get(l, c) === v) &&
+                    cortes.every(([c, v]) => String(Reflect.get(l, c)) < v)
+                  ) Object.assign(l, valores);
                 }
                 return Promise.resolve({ data: null, error: null }).then(res, rej);
               },
@@ -440,11 +448,64 @@ Deno.test("falha TRANSITÓRIA no GET do caso (503): nenhuma RPC, a linha NÃO é
   assertEquals(b.registro.toques.map((t) => t.id), ["L2"], "só a linha resolvida gira; a que falhou volta no próximo ciclo");
 });
 
-Deno.test("GET da order falha (503): falha contada, nada decidido, linha NÃO tocada", async () => {
-  const b = banco({ linhas: [linhaPresa("L1", PEDIDO_A, 7)], pedidos: { [PEDIDO_A]: pedidoDe(ORDER_A) } });
-  const m = mp({ orders: { [ORDER_A]: { status: 503 } } });
-  const r = await rodar(b, m);
-  assertEquals([r.resumo.falhas, b.registro.rpcs.length, b.registro.toques.length], [1, 0, 0]);
+Deno.test("dez GETs de order falham: os pedidos 11 e 12 são reconsultados no ciclo seguinte", async () => {
+  const ids = Array.from({ length: 12 }, (_, i) => ({
+    pedido: `00000000-0000-4000-8000-${String(i + 1).padStart(12, "0")}`,
+    order: `ORDTST${String(i + 1).padStart(6, "0")}`,
+  }));
+  const linhas = ids.map(({ pedido }, i) => ({ ...linhaPresa(`L${i + 1}`, pedido, 24 - i), amount: 149.9 }));
+  const antes = linhas.map((linha) => ({ ...linha }));
+  const b = banco({
+    linhas,
+    pedidos: Object.fromEntries(ids.map(({ pedido, order }) => [pedido, pedidoDe(order, { id: pedido })])),
+  });
+  const m = mp({
+    orders: Object.fromEntries(ids.map(({ pedido, order }, i) => [
+      order,
+      i < 10
+        ? { status: 503 }
+        : { status: 200, corpo: orderContestada({ id: order, ref: pedido, detalhePagamento: "reimbursed" }) },
+    ])),
+    casos: { CASE1: { status: 200, corpo: casoDoMp("CASE1", true) } },
+  });
+
+  const primeira = await rodar(b, m);
+  assertEquals([primeira.resumo.vistas, primeira.resumo.falhas, b.registro.rpcs], [10, 10, []]);
+  assertEquals(m.chamadas.map((u) => u.split("/").at(-1)), ids.slice(0, 10).map(({ order }) => order));
+
+  const segunda = await rodar(b, m, { agora: () => AGORA + 10 * 60 * 1000 });
+  assertEquals(m.chamadas.slice(10).filter((u) => u.includes("/v1/orders/")).map((u) => u.split("/").at(-1)), [
+    ids[10].order,
+    ids[11].order,
+  ]);
+  assertEquals(rpcsDoLedger(b).map((r) => r.args.p_order_id), [ids[10].pedido, ids[11].pedido]);
+  assertEquals([segunda.resumo.vistas, segunda.resumo.falhas], [2, 0]);
+  assertEquals(linhas.slice(0, 10), antes.slice(0, 10).map((linha) => ({
+    ...linha,
+    updated_at: new Date(AGORA).toISOString(),
+  })), "nos pedidos com falha, só muda a data da tentativa");
+});
+
+Deno.test("falha de rede no GET da order: só carimba as reservas que continuam presas", async () => {
+  const linhas = [
+    linhaPresa("L-presa", PEDIDO_A, 7),
+    linhaPresa("L-liberada", PEDIDO_A, 7),
+    linhaPresa("L-vinculada", PEDIDO_A, 7),
+    linhaPresa("L-outro-estado-mp", PEDIDO_A, 7),
+  ];
+  const b = banco({ linhas, pedidos: { [PEDIDO_A]: pedidoDe(ORDER_A) } });
+  const m = mp({});
+  const r = await rodar(b, m, {
+    fetchImpl: () => {
+      // O webhook pode mudar o ledger entre a releitura e a falha do GET.
+      linhas[1].status = "liberado";
+      Object.assign(linhas[2], { mp_chargeback_case_id: "CASE1", updated_at: ha(0.01) });
+      linhas[3].mp_status = "refunded";
+      return Promise.reject(new TypeError("falha de rede"));
+    },
+  });
+  assertEquals([r.resumo.falhas, b.registro.rpcs], [1, []]);
+  assertEquals(linhas.map((linha) => linha.updated_at), [ha(0), ha(7), ha(0.01), ha(7)]);
 });
 
 Deno.test("order NÃO EXISTE no MP (404): nada decidido, o admin é avisado UMA vez (chave estável) e a linha gira", async () => {

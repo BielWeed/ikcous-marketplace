@@ -803,6 +803,9 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   a 20261406000000 conserva nome e valor, por item, quando a opção muda. A prova separa compras de antes e entre duas
   trocas, exige que estoque/preço não gravem rótulo, simula erro de escrita, confere 162a/162b e repete a aplicação
   e o rollback sem apagar rótulos existentes. Não toca o banco de nenhuma loja.
+- **rótulo da compra na lista e no rastreio (`rotulo-historico-na-lista-e-no-rastreio-viva.cjs`, via `rodar-isolado.cjs`)**:
+  a 20261410000000 devolve nome e valor gravados nos itens do painel e do pedido acessado por código. A prova
+  confere também itens sem histórico, acesso de admin/convidado, as consultas 166a/166b e o rollback, só no clone.
 - **o lucro usa o custo do dia da venda (`custo-do-dia-viva.cjs`, via `rodar-isolado.cjs`)**: a migration
   `20261242000000` (DINHEIRO e dado de cliente), com o gatilho real, as portas reais de venda (loja e balcão) e os papéis
   reais num Postgres efêmero. A venda grava o custo do dia numa tabela lateral só do servidor (o custo não vai para o

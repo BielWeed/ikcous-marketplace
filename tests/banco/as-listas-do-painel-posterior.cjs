@@ -36,6 +36,9 @@ const hashVivo = `SELECT md5(replace(prosrc, chr(13), '')) AS h FROM pg_proc WHE
 
 /** Desfaz a 20261399980000 na transação aberta, se ALGUMA das três funções está no corpo dela; repetir é no-op. Devolve true se desfez. */
 async function desfazerListasDoPainelNaTransacao(c) {
+  await require("./rotulo-historico-posterior.cjs").desfazerRotulosHistoricosNaTransacao(
+    c,
+  );
   let noAr = false;
   for (const [assinatura, [, hashDesta]] of Object.entries(CORPOS))
     if ((await c.query(hashVivo, [assinatura])).rows[0]?.h === hashDesta)

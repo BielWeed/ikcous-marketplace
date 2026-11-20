@@ -2045,6 +2045,7 @@ export type Database = {
           created_at: string | null;
           full_name: string | null;
           id: string;
+          nome_publico: string;
         };
         Insert: {
           avatar_url?: string | null;
@@ -2052,6 +2053,7 @@ export type Database = {
           created_at?: string | null;
           full_name?: string | null;
           id: string;
+          nome_publico?: never;
         };
         Update: {
           avatar_url?: string | null;
@@ -2059,6 +2061,7 @@ export type Database = {
           created_at?: string | null;
           full_name?: string | null;
           id?: string;
+          nome_publico?: never;
         };
         Relationships: [
           {
@@ -3847,6 +3850,7 @@ export type Database = {
         };
         Returns: number;
       };
+      nome_publico_de: { Args: { p_nome: string }; Returns: string };
       order_refund__liberavel_apos_espera: {
         Args: { p_refund_id: string };
         Returns: boolean;
