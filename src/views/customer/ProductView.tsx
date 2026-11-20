@@ -172,7 +172,13 @@ export const ProductView = React.memo(function ProductView({
   const escolhaDaBarraRef = useRef<HTMLButtonElement>(null);
   const [editandoPergunta, setEditandoPergunta] = useState(false);
 
-  const { config } = useStore();
+  const {
+    config,
+    products,
+    loadingProducts,
+    catalogoErro,
+    catalogoDaRedeAplicado,
+  } = useStore();
   const {
     reviews,
     loading: loadingReviews,
@@ -380,11 +386,26 @@ export const ProductView = React.memo(function ProductView({
   // busca reiniciava antes de concluir e a seção ficava em skeleton eterno.
   // O hook mantém o buscador por ref e diferencia "buscando" de "vazio".
   const {
-    recomendacoes: recommendations,
+    recomendacoes: recomendacoesGuardadas,
     carregando: loadingRecs,
     consultado: recsConsultado,
     recarregar: recarregarRecomendacoes,
   } = useRecomendacoesDeProduto(product.id, recsVisible, fetchRecommendations);
+
+  // Só um catálogo confirmado pode invalidar o que a recomendação guardou.
+  const recommendations = useMemo(() => {
+    if (!catalogoDaRedeAplicado || loadingProducts || catalogoErro)
+      return recomendacoesGuardadas;
+    return recomendacoesGuardadas.filter((recomendado) =>
+      products.some((p) => p.id === recomendado.id && p.isActive),
+    );
+  }, [
+    catalogoDaRedeAplicado,
+    loadingProducts,
+    catalogoErro,
+    products,
+    recomendacoesGuardadas,
+  ]);
 
   // A lojista pode pausar o produto, ou mudar preço/estoque, em outro aparelho
   // com a ficha aberta: ao voltar a ela, relê o catálogo (produto pausado/
