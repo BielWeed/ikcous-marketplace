@@ -105,6 +105,39 @@ describe("toque no aviso (notificationclick)", () => {
     );
   });
 
+  it("aviso com endereço absoluto da própria loja: abre a página indicada", async () => {
+    const { clique, openWindow } = await importar([]);
+    const alvo = `${ORIGEM}/order-details?id=A`;
+
+    await tocar(clique, { url: alvo });
+
+    expect(openWindow).toHaveBeenCalledExactlyOnceWith(alvo);
+  });
+
+  it.each(["https://exemplo.invalid/x", "https://["])(
+    "aviso com destino externo ou inválido (%s): abre a vitrine",
+    async (url) => {
+      const { clique, openWindow } = await importar([]);
+
+      await tocar(clique, { url });
+
+      expect(openWindow).toHaveBeenCalledExactlyOnceWith(`${ORIGEM}/`);
+    },
+  );
+
+  it("aviso com destino externo foca só a vitrine da loja", async () => {
+    const url = "https://exemplo.invalid/x";
+    const externa = janela(url);
+    const vitrine = janela(`${ORIGEM}/?source=pwa`);
+    const { clique, openWindow } = await importar([externa, vitrine]);
+
+    await tocar(clique, { url });
+
+    expect(vitrine.focus).toHaveBeenCalledOnce();
+    expect(externa.focus).not.toHaveBeenCalled();
+    expect(openWindow).not.toHaveBeenCalled();
+  });
+
   it("janela que não aceita navegar (rejeita): abre o pedido em janela nova", async () => {
     const navegarPara = vi
       .fn()

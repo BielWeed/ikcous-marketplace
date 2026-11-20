@@ -1139,7 +1139,13 @@ sw.addEventListener("notificationclick", (event: any) => {
     sw.clients
       .matchAll({ type: "window", includeUncontrolled: true })
       .then((clientList: any) => {
-        const absoluteUrl = new URL(targetUrl, sw.location.origin);
+        let absoluteUrl = new URL("/", sw.location.origin);
+        try {
+          const destino = new URL(targetUrl, absoluteUrl);
+          if (destino.origin === absoluteUrl.origin) absoluteUrl = destino;
+        } catch {
+          // Endereço malformado: mantém a vitrine como destino.
+        }
         // Laudo #2 (P-7): as janelas vivem em /?source=pwa (start_url do
         // manifest) e o alvo padrão é "/" — a comparação de URL inteira
         // nunca batia e TODO toque abria uma segunda janela da loja.
