@@ -347,22 +347,29 @@ describe("CheckoutView — a opção marcada confere com a cotação na tela ant
     expect(forcouNovaCotacao()).toBe(true);
   });
 
-  it("controle: opção marcada confere com a cotação (id e preço): o pedido nasce com o frete dela", async () => {
-    await gravarEnvelope(REVISAO);
-    revisaoBate();
-    createOrder.mockResolvedValueOnce({ id: "ped-1" });
+  it.each([30, 26.41])(
+    "controle: opção marcada confere com a cotação: o pedido nasce com frete de R$ %s",
+    async (preco) => {
+      mockSelectedShippingOption = {
+        ...mockSelectedShippingOption!,
+        price: preco,
+      };
+      await gravarEnvelope(REVISAO);
+      revisaoBate();
+      createOrder.mockResolvedValueOnce({ id: "ped-1" });
 
-    await montarEFinalizar();
+      await montarEFinalizar();
 
-    expect(createOrder).toHaveBeenCalledTimes(1);
-    const pedido = createOrder.mock.calls[0][0] as {
-      shippingOptionId: string;
-      shippingCost: number;
-    };
-    expect(pedido.shippingOptionId).toBe("melhorenvio-pac");
-    expect(pedido.shippingCost).toBe(30);
-    expect(toastError).not.toHaveBeenCalledWith(
-      "O frete foi atualizado. Confira o total e finalize.",
-    );
-  });
+      expect(createOrder).toHaveBeenCalledTimes(1);
+      const pedido = createOrder.mock.calls[0][0] as {
+        shippingOptionId: string;
+        shippingCost: number;
+      };
+      expect(pedido.shippingOptionId).toBe("melhorenvio-pac");
+      expect(pedido.shippingCost).toBe(preco);
+      expect(toastError).not.toHaveBeenCalledWith(
+        "O frete foi atualizado. Confira o total e finalize.",
+      );
+    },
+  );
 });
