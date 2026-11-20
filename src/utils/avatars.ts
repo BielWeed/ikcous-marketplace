@@ -1,3 +1,35 @@
+/** Valida o endereço antes que o Avatar tente carregar a imagem. */
+export function avatarSeguroDoPainel(
+  url: string | null | undefined,
+  pagina: string,
+): string | undefined {
+  const src = url?.trim();
+  if (!src) return undefined;
+
+  // SVG embutido é exibido apenas como imagem, nunca como documento.
+  if (
+    /^data:image\/(?:(?:jpeg|png|webp|svg\+xml);base64|svg\+xml(?:;utf8)?),./i.test(
+      src,
+    )
+  ) {
+    return src;
+  }
+
+  try {
+    const base = new URL(pagina);
+    const imagem = new URL(src, base);
+    if (
+      (imagem.protocol === "https:" || imagem.protocol === "http:") &&
+      imagem.origin === base.origin
+    ) {
+      return imagem.href;
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
 export interface PredefinedAvatar {
   id: string;
   emoji: string;

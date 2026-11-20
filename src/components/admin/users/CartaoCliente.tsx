@@ -9,6 +9,7 @@ import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import type { Customer } from "@/utils/admin_cache";
+import { avatarSeguroDoPainel } from "@/utils/avatars";
 import {
   Bell,
   Calendar,
@@ -46,7 +47,10 @@ function IdentidadeCliente({
       <div className="relative shrink-0">
         <Avatar className={detalhado ? "size-12" : "size-10"}>
           <AvatarImage
-            src={customer.avatar_url}
+            src={avatarSeguroDoPainel(
+              customer.avatar_url,
+              window.location.href,
+            )}
             alt=""
             className="object-cover"
           />
