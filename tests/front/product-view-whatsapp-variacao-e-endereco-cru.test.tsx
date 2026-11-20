@@ -191,6 +191,22 @@ describe("ProductView — 'Dúvidas no WhatsApp': variação, preço e endereço
     },
   );
 
+  it("encurta o nome de 2.000 emojis só na mensagem, sem partir emoji", async () => {
+    const emoji = "😀";
+    const nome = emoji.repeat(2000);
+    await renderizar(criarProduto({ name: nome, variants: variantes }));
+
+    await tocarWhatsapp();
+
+    expect(abrir).toHaveBeenCalledTimes(1);
+    const url: string = abrir.mock.calls[0][0];
+    expect(url.length).toBeLessThan(1500);
+    expect(textoDaMensagem(url)).toBe(
+      `Olá! Tenho interesse no produto: ${emoji.repeat(59)}…`,
+    );
+    expect(hospedeiro.querySelector("h1")?.textContent).toBe(nome);
+  });
+
   it.each([false, true])(
     "sem variação escolhida abre dúvidas com o produto, todas esgotadas=%s",
     async (esgotadas) => {

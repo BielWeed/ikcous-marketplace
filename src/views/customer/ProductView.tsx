@@ -33,6 +33,7 @@ import {
   CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
   CLASSE_SELO_DESCONTO,
 } from "@/lib/cor-do-preco-promocional";
+import { cortarTexto } from "@/lib/cortar-texto";
 import {
   chaveDaVariacao,
   ordenarPelaGrade,
@@ -990,7 +991,8 @@ export const ProductView = React.memo(function ProductView({
     // combinação paga. Por escrito à lojista só vai o preço de uma escolha
     // completa; antes disso a conversa é uma dúvida, sem preço.
     const precoNaMensagem = faltaAlgo ? "" : ` - ${reais(currentPrice)}`;
-    const message = `Olá! Tenho interesse no produto: ${product.name}${variantInfo ? ` (${variantInfo})` : ""}${precoNaMensagem}`;
+    const nomeNaMensagem = cortarTexto(product.name, 120);
+    const message = `Olá! Tenho interesse no produto: ${nomeNaMensagem}${variantInfo ? ` (${variantInfo})` : ""}${precoNaMensagem}`;
     let phone = limparTelefoneBrasileiro(config.whatsappNumber);
     if (phone.length === 11 || phone.length === 10) {
       phone = `55${phone}`;
