@@ -397,6 +397,8 @@ const CLASSES_CELULAR_DO_BLOCO_BASE = [
   "block text-sm font-bold text-white",
   "block text-[11px] font-medium text-zinc-500",
   "size-5 cursor-pointer rounded border-admin-border bg-zinc-950 text-emerald-500 transition-all focus:ring-emerald-500/20",
+  // 1.5.229: aviso novo ao desligar a promoção (elemento novo; o resto do bloco segue congelado).
+  "rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-[11px] font-medium leading-relaxed text-amber-200/80",
   "produto-campo space-y-1 duration-300 animate-in fade-in slide-in-from-top-2",
   "ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-widest text-zinc-500",
   "group relative",
@@ -561,7 +563,7 @@ const CLASSES_CELULAR_DO_BLOCO_BASE = [
   "produto-prever flex min-h-11 min-w-11 items-center justify-center rounded-full border border-solid border-admin-border-strong bg-admin-surface px-4 text-sm font-bold",
 ];
 const SHA256_CLASSES_CELULAR_BASE =
-  "a315f55c67ffc6a584fcc774803512c7aeca6c66bfe7a35cc5ec61330f29ac56";
+  "46cadf708c9c74099f5add434126ab4f7f0145764b94d628a6c43d2d39407b5c";
 const TOKENS_LG_DA_BASE = [
   "lg:grid-cols-12",
   "lg:col-span-8",
