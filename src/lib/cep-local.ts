@@ -44,6 +44,13 @@ export function perdeIntervaloDeCepLocal(faixa: string): boolean {
   );
 }
 
+export function temPrefixoDeSeteDigitos(faixa: string): boolean {
+  return faixa.split(",").some((bruto) => {
+    const partes = blocosDoItem(bruto);
+    return !ehIntervalo(partes) && partes.join("").length === 7;
+  });
+}
+
 // Validação apenas da escrita nova no painel: não muda a interpretação de
 // faixas já gravadas, que continua espelhando o banco e a edge.
 export function erroDaFaixaDeCepLocal(

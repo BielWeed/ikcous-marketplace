@@ -138,6 +138,29 @@ describe("FreteLocalBloco: até onde você entrega", () => {
     },
   );
 
+  it.each([
+    { faixa: "1310000", avisa: true },
+    { faixa: "01310-000, 01310-999, 1310000", avisa: true },
+    { faixa: "13100", avisa: false },
+    { faixa: "01310-000", avisa: false },
+    { faixa: "0131000-0131099, 13100", avisa: false },
+  ])(
+    "avisa apenas para item avulso de sete números em $faixa",
+    ({ faixa, avisa }) => {
+      montar("01310-001, 01310-998");
+      const campo =
+        hospedeiro.querySelector<HTMLInputElement>("#local-cep-range");
+      digitar(campo, faixa);
+
+      expect(
+        texto().includes(
+          "Você digitou 7 números. Se for um CEP completo, confira se faltou um zero no começo. Do jeito que está, entram apenas os CEPs que começam com esses 7 números.",
+        ),
+      ).toBe(avisa);
+      expect(gravados).toEqual([faixa]);
+    },
+  );
+
   it("mostra dia no singular para 01 sem alterar o valor do campo", () => {
     montar("", { dias: "01", onDias: () => undefined });
 

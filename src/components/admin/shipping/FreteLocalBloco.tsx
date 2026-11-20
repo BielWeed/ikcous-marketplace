@@ -8,7 +8,11 @@ import {
   transportadoraFicaSemPagamento,
   transportadoraVendeForaDaCidade,
 } from "@/lib/aviso-transportadora-sem-pagamento";
-import { cepEhLocal, perdeIntervaloDeCepLocal } from "@/lib/cep-local";
+import {
+  cepEhLocal,
+  perdeIntervaloDeCepLocal,
+  temPrefixoDeSeteDigitos,
+} from "@/lib/cep-local";
 import { EXEMPLO_DE_INTERVALO_DE_CEP } from "@/lib/faixa-de-cep";
 import { parseValorBR } from "@/lib/financeiro";
 import type { ModoDaEntregaNaCidade } from "@/lib/guarda-de-frete";
@@ -279,6 +283,8 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
             ? "sem-pagamento"
             : "sim";
   const erroDaFaixa = faixaRecusada === faixa;
+  const perdeuIntervalo = perdeIntervaloDeCepLocal(faixa);
+  const prefixoDeSete = temPrefixoDeSeteDigitos(faixa);
   const dicaDaFaixaManual = erroDaFaixa ? (
     <span id="erro-faixa-de-cep" role="alert">
       Digite os números do CEP (sem letras) ou os números iniciais da região.
@@ -289,13 +295,15 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
   ) : (
     <>
       {dicaDoTexto(cepDaLoja)}
-      {perdeIntervaloDeCepLocal(faixa) && (
+      {(perdeuIntervalo || prefixoDeSete) && (
         <>
           <br />
           <span role="note" className="mt-2 text-xs text-amber-300">
-            Ao acrescentar outra região neste campo, os CEPs entre o primeiro e
-            o último deixam de entrar. Para manter a faixa, use o botão «Incluir
-            a região».
+            {perdeuIntervalo &&
+              "Ao acrescentar outra região neste campo, os CEPs entre o primeiro e o último deixam de entrar. Para manter a faixa, use o botão «Incluir a região»."}
+            {perdeuIntervalo && prefixoDeSete && <br />}
+            {prefixoDeSete &&
+              "Você digitou 7 números. Se for um CEP completo, confira se faltou um zero no começo. Do jeito que está, entram apenas os CEPs que começam com esses 7 números."}
           </span>
         </>
       )}
