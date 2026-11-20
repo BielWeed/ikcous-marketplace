@@ -9343,12 +9343,15 @@ function PedidoJaFeitoNaTela({
   );
 }
 
-function PrevisaoDeEntrega({ previsao }: Readonly<{ previsao?: string }>) {
+function LinhaDePrevisaoDeEntrega({
+  previsao,
+}: Readonly<{ previsao?: string }>) {
   if (!previsao) return null;
   return (
-    <p className="text-sm font-medium leading-relaxed text-zinc-500">
+    <>
+      <br />
       {`Previsão de entrega: ${previsao}`}
-    </p>
+    </>
   );
 }
 
@@ -9428,8 +9431,10 @@ function SuccessView({
             {ehRetirada
               ? "Recebemos o seu pedido. A loja vai separar os itens para você retirar."
               : "Recebemos o seu pedido. A loja vai cuidar da entrega."}
+            {!ehRetirada && (
+              <LinhaDePrevisaoDeEntrega previsao={previsaoDeEntrega} />
+            )}
           </p>
-          {!ehRetirada && <PrevisaoDeEntrega previsao={previsaoDeEntrega} />}
           {/* createOrder não retorna o endereço gravado; a cotação não o confirma. */}
           {ehRetirada && (
             <p className="mt-2 break-words text-sm font-medium text-zinc-700">
@@ -9563,8 +9568,8 @@ function PagamentoConfirmadoView({
           <p className="text-sm font-medium leading-relaxed text-zinc-500">
             Seu pagamento foi confirmado. A loja vai iniciar a separação do seu
             pedido.
+            <LinhaDePrevisaoDeEntrega previsao={previsaoDeEntrega} />
           </p>
-          <PrevisaoDeEntrega previsao={previsaoDeEntrega} />
         </div>
       </div>
 
