@@ -2117,7 +2117,9 @@ export function OrderDetailsView({
                   <p className="break-words text-sm font-bold text-zinc-900">
                     {order.status === "cancelled"
                       ? "Local de retirada original:"
-                      : "Retire em:"}{" "}
+                      : order.status === "delivered"
+                        ? "Local da retirada:"
+                        : "Retire em:"}{" "}
                     {order.enderecoDeRetirada}
                   </p>
                   {avisoDaRetirada(order.status) && (
