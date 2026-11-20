@@ -745,9 +745,55 @@ describe("EstornoCard — o lojista devolve o dinheiro do pedido pelo painel", (
     expect(dom).not.toContain("R$ 0,00");
   });
 
-  it("AC4-A (mutação A): disponível zero (100% estornado) NÃO mostra botão de devolver", async () => {
+  it.each([
+    {
+      estado: "em andamento",
+      status: "em_processamento",
+      emCurso: 100,
+      emDuvida: 0,
+      aviso: "Devolução de R$ 100,00 em andamento",
+    },
+    {
+      estado: "em dúvida",
+      status: "falhou",
+      emCurso: 0,
+      emDuvida: 100,
+      aviso: "Em confirmação: R$ 100,00",
+    },
+  ] as const)(
+    "pedido cancelado com todo o estorno $estado não diz que o dinheiro já voltou",
+    async ({ status, emCurso, emDuvida, aviso }) => {
+      useEstornosDoPedidoMock.mockReturnValue(
+        hookPadrao({
+          emCurso,
+          emDuvida,
+          disponivel: 0,
+          linhas: [
+            linhaDeExemplo({
+              amount: 100,
+              status,
+              pode_ter_saido: emDuvida > 0,
+            }),
+          ],
+        }),
+      );
+
+      await montar();
+
+      expect(texto()).toContain(aviso);
+      expect(texto()).not.toContain("Todo o valor pago já foi devolvido.");
+      expect(botaoComTexto("Devolver R$")).toBeUndefined();
+      expect(botaoComTexto("Tentar de novo")).toBeUndefined();
+    },
+  );
+
+  it("AC4-A (mutação A): cancelado com estorno concluído de 100% confirma a devolução e não oferece novo estorno", async () => {
     useEstornosDoPedidoMock.mockReturnValue(
-      hookPadrao({ pago: 100, devolvido: 100, disponivel: 0 }),
+      hookPadrao({
+        devolvido: 100,
+        disponivel: 0,
+        linhas: [linhaDeExemplo({ amount: 100, status: "concluido" })],
+      }),
     );
 
     await montar();
