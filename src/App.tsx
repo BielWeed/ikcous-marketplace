@@ -1004,8 +1004,8 @@ const AppContent = () => {
   const mainRef = useRef<HTMLElement>(null);
   // Troca de tela: o foco vai para o <main> (a tela antiga some e o foco
   // cairia no <body>), exceto se a pessoa está digitando, está na barra de
-  // baixo, num grupo de abas ou há diálogo aberto. O nome da tela é falado
-  // pela região de aviso.
+  // baixo, alterna entre Carrinho e Meus pedidos ou há diálogo aberto.
+  // O nome da tela é falado pela região de aviso.
   // Produto -> outro produto pela faixa de relacionados também é troca de tela:
   // o ProductView remonta (a `key` é o id) e o card focado some com ele.
   const chaveDaTela =
@@ -1014,8 +1014,12 @@ const AppContent = () => {
       : currentView;
   const vistaAnteriorRef = useRef(chaveDaTela);
   useEffect(() => {
-    if (vistaAnteriorRef.current === chaveDaTela) return;
-    const veioDoPainel = vistaAnteriorRef.current.startsWith("admin");
+    const anterior = vistaAnteriorRef.current;
+    if (anterior === chaveDaTela) return;
+    const veioDoPainel = anterior.startsWith("admin");
+    const trocouEntreAbasDoCarrinho =
+      (anterior === "cart" && currentView === "orders") ||
+      (anterior === "orders" && currentView === "cart");
     vistaAnteriorRef.current = chaveDaTela;
     if (currentView.startsWith("admin") && !veioDoPainel) return;
     // Abrir o app direto num endereço (/cart, /orders...) também "troca de
@@ -1026,7 +1030,8 @@ const AppContent = () => {
     if (
       ativo instanceof HTMLElement &&
       (ativo.isContentEditable ||
-        ativo.closest("input,textarea,select,nav,[role=dialog],[role=tablist]"))
+        ativo.closest("input,textarea,select,nav,[role=dialog]") ||
+        (trocouEntreAbasDoCarrinho && ativo.closest("[role=tablist]")))
     )
       return;
     if (document.querySelector("[role=dialog],[role=alertdialog]")) return;

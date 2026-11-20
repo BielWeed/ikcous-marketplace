@@ -591,6 +591,25 @@ describe("App — trocar de tela avisa em voz alta e leva o foco", () => {
     }
   });
 
+  it("ao voltar de Meus pedidos para o início, leva o foco ao conteúdo", async () => {
+    globalThis.history.replaceState({ view: "home" }, "", "/");
+    globalThis.history.pushState({ view: "orders" }, "", "/orders");
+    await abrir();
+    const aba = container?.querySelector<HTMLElement>("#tab-orders");
+    expect(aba?.getAttribute("aria-selected")).toBe("true");
+    aba?.focus();
+    expect(document.activeElement).toBe(aba);
+
+    await act(async () => {
+      globalThis.history.back();
+    });
+    await assentar();
+
+    expect(globalThis.location.pathname).toBe("/");
+    expect(aviso()?.textContent).toBe("Início");
+    expect(document.activeElement).toBe(principal());
+  });
+
   const abrirPainel = async () => {
     estadoDoLink.admin = true;
     globalThis.history.replaceState(null, "", "/admin-customers");
