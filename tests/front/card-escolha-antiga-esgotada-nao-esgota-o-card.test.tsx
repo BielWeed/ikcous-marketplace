@@ -110,6 +110,8 @@ describe("ProductCard — escolha antiga esgotada não esgota o card", () => {
     ).find(
       (b) =>
         b.getAttribute("aria-label") === tamanhoEscolhido ||
+        b.getAttribute("aria-label") ===
+          `${tamanhoEscolhido}, última unidade` ||
         b.textContent?.trim() === tamanhoEscolhido,
     )!;
     await act(async () => chip.click());
@@ -134,6 +136,28 @@ describe("ProductCard — escolha antiga esgotada não esgota o card", () => {
         expect(texto).not.toContain("Sem estoque");
         expect(texto).not.toContain("0!");
         expect(texto).toContain("Estoque: 8");
+      });
+
+      it("troca o preço e o desconto quando o tamanho escolhido acaba", async () => {
+        const camisaComPrecos = (estoqueP: number): Product => ({
+          ...camisa(estoqueP, 5),
+          price: 89.9,
+          originalPrice: 89.9,
+          variants: [
+            { ...tamanho("P", estoqueP), priceOverride: 49.9 },
+            { ...tamanho("M", 5), priceOverride: 89.9 },
+          ],
+        });
+
+        await renderizar(camisaComPrecos(1), layout);
+        await escolherEFechar("P");
+        expect(hospedeiro.textContent).toContain("49,90");
+        expect(hospedeiro.textContent).toContain("% OFF");
+
+        await renderizar(camisaComPrecos(0), layout);
+        expect(hospedeiro.textContent).toContain("89,90");
+        expect(hospedeiro.textContent).not.toContain("49,90");
+        expect(hospedeiro.textContent).not.toContain("% OFF");
       });
 
       it("controle: o produto inteiro sem estoque continua Esgotado", async () => {

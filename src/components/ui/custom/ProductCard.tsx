@@ -491,15 +491,19 @@ export const ProductCard = memo(function ProductCard({
   // O riscado, o "% OFF" e a economia só existem se o preço mostrado for menor
   // que o "De". Só exibição: o que se cobra segue o servidor, por variação.
   // Escolha parcial (tamanho sem a cor): só as combinações que ainda cabem.
+  // Escolha esgotada: volta ao mesmo anúncio de quando nada foi escolhido.
   const vitrine = useMemo(
     () =>
       precoDeVitrine({
         ...product,
-        variants: variantesCompativeis(modeloDeEixos, escolhasDosEixos),
+        variants: variantesCompativeis(
+          modeloDeEixos,
+          escolhaMortaNoCard ? new Map() : escolhasDosEixos,
+        ),
       }),
-    [product, modeloDeEixos, escolhasDosEixos],
+    [product, modeloDeEixos, escolhasDosEixos, escolhaMortaNoCard],
   );
-  const escolhendo = selecionadasObjs.length > 0;
+  const escolhendo = selecionadasObjs.length > 0 && !escolhaMortaNoCard;
   const precoMostrado = escolhendo ? precoAtual : vitrine.preco;
   const aPartirDe = !escolhendo && vitrine.aPartirDe;
   const precoOriginalMostrado = escolhendo
