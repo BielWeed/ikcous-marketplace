@@ -132,6 +132,9 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
     variantId?: string;
   } | null>(null);
   const [idsParaLimpar, setIdsParaLimpar] = useState<string[] | null>(null);
+  // Guarda a contagem mostrada no diálogo para a animação de saída não piscar
+  // "remove  produtos" quando os ids já foram zerados.
+  const quantidadeNoDialogoRef = useRef(0);
   const [limpezaEmAndamento, setLimpezaEmAndamento] = useState(false);
   const limpezaEmAndamentoRef = useRef(false);
   const [copiedField, setCopiedField] = useState<
@@ -529,6 +532,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
       );
       return;
     }
+    quantidadeNoDialogoRef.current = ids.length;
     setIdsParaLimpar(ids);
   };
 
@@ -1815,8 +1819,8 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
               Limpar Carrinho?
             </AlertDialogTitle>
             <AlertDialogDescription className="text-xs text-zinc-400">
-              Esta ação remove {idsParaLimpar?.length}{" "}
-              {idsParaLimpar?.length === 1 ? "produto" : "produtos"} do
+              Esta ação remove {quantidadeNoDialogoRef.current}{" "}
+              {quantidadeNoDialogoRef.current === 1 ? "produto" : "produtos"} do
               carrinho.
             </AlertDialogDescription>
           </AlertDialogHeader>

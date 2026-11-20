@@ -253,7 +253,9 @@ describe("Ficha da cliente — remoção preserva a outra linha do mesmo produto
       banco.linhas = banco.linhas.slice(0, quantidade);
       const dialogo = await abrirLimpeza();
       expect(dialogo.textContent).toContain(
-        quantidade === 1 ? "remove 1 produto" : "remove 2 produtos",
+        quantidade === 1
+          ? "remove 1 produto do carrinho"
+          : "remove 2 produtos do carrinho",
       );
     },
   );
