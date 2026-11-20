@@ -209,24 +209,27 @@ describe("foto do banner sobe reduzida", () => {
     expect(canvasCriado).toBeNull();
   });
 
-  it("JPEG leve chega ao Storage sem GPS, sem passar pelo canvas", async () => {
-    decodificaComo(4000, 3000);
-    const original = arquivoJpegComGps();
-    await act(async () => {
-      await uploadBannerImage(original);
-    });
+  it.each(["image/jpeg", "", "application/octet-stream"])(
+    "JPEG leve de MIME %j chega ao Storage sem GPS, sem passar pelo canvas",
+    async (type) => {
+      decodificaComo(4000, 3000);
+      const original = arquivoJpegComGps(type);
+      await act(async () => {
+        await uploadBannerImage(original);
+      });
 
-    const enviado = arquivoEnviado();
-    expect(new Uint8Array(await lerBytesNoJsdom(enviado))).toEqual(
-      jpegSintetico,
-    );
-    expect(enviado).toMatchObject({
-      name: "foto.jpg",
-      type: "image/jpeg",
-      lastModified: 42,
-    });
-    expect(canvasCriado).toBeNull();
-  });
+      const enviado = arquivoEnviado();
+      expect(new Uint8Array(await lerBytesNoJsdom(enviado))).toEqual(
+        jpegSintetico,
+      );
+      expect(enviado).toMatchObject({
+        name: "foto.jpg",
+        type,
+        lastModified: 42,
+      });
+      expect(canvasCriado).toBeNull();
+    },
+  );
 
   it("se a redução não encolhe o arquivo, sobe o original", async () => {
     decodificaComo(4000, 3000);

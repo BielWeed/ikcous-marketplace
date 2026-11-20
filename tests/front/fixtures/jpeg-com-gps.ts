@@ -58,15 +58,21 @@ export function lerBytesNoJsdom(blob: Blob): Promise<ArrayBuffer> {
   });
 }
 
-export function arquivoJpegComGps() {
+export function arquivoJpegComGps(type = "image/jpeg") {
   const original = new File(
     [comExif(jpegSintetico, exifComGps())],
     "foto.jpg",
     {
-      type: "image/jpeg",
+      type,
       lastModified: 42,
     },
   );
   original.arrayBuffer = () => lerBytesNoJsdom(original);
+  const slice = original.slice.bind(original);
+  original.slice = (...args) => {
+    const parte = slice(...args);
+    parte.arrayBuffer = () => lerBytesNoJsdom(parte);
+    return parte;
+  };
   return original;
 }

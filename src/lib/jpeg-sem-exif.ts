@@ -1,4 +1,25 @@
 const EXIF = [69, 120, 105, 102, 0, 0]; // "Exif\0\0"
+const APP_TECNICOS = new Map([
+  [0xe0, [74, 70, 73, 70, 0]], // JFIF
+  [0xe2, [73, 67, 67, 95, 80, 82, 79, 70, 73, 76, 69, 0]], // ICC_PROFILE
+  [0xee, [65, 100, 111, 98, 101]], // Adobe
+]);
+
+function ehJpeg(bytes: Uint8Array): boolean {
+  return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+}
+
+function temAssinatura(
+  bytes: Uint8Array,
+  inicio: number,
+  fim: number,
+  assinatura: readonly number[],
+): boolean {
+  return (
+    inicio + assinatura.length <= fim &&
+    assinatura.every((valor, i) => bytes.at(inicio + i) === valor)
+  );
+}
 
 function lerOrientacao(tiff: DataView): number | undefined {
   if (tiff.byteLength < 8) return;
@@ -30,16 +51,16 @@ function exifSoComOrientacao(valor: number) {
   return new Uint8Array([...app1, ...tiff, ...ifd]);
 }
 
-/** Tira APP1 Exif sem recodificar a foto; mantém só a orientação se necessária. */
+/** Publica só o JPEG principal, com orientação e metadados técnicos de exibição. */
 export function limparExifJpeg(
   bytes: Uint8Array<ArrayBuffer>,
 ): Uint8Array<ArrayBuffer> {
-  if (bytes[0] !== 0xff || bytes[1] !== 0xd8) return bytes;
+  if (!ehJpeg(bytes)) return bytes;
 
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const remocoes: Array<{ inicio: number; fim: number }> = [];
   let orientacao: number | undefined;
-  let tamanho = bytes.length;
+  let retirados = 0;
   let pos = 2;
   let emScan = false;
   while (pos < bytes.length) {
@@ -49,12 +70,14 @@ export function limparExifJpeg(
     const marcador = bytes.at(pos++);
     if (marcador === undefined) break;
     if (marcador === 0xd9) {
-      if (remocoes.length === 0) return bytes;
+      // MPF e outros contêineres podem anexar imagens com EXIF próprio.
+      if (remocoes.length === 0)
+        return pos === bytes.length ? bytes : bytes.slice(0, pos);
       const exif =
         orientacao && orientacao !== 1
           ? exifSoComOrientacao(orientacao)
           : undefined;
-      const limpo = new Uint8Array(tamanho + (exif?.length ?? 0));
+      const limpo = new Uint8Array(pos - retirados + (exif?.length ?? 0));
       let lido = 0;
       let escrito = 0;
       for (const { inicio, fim } of remocoes) {
@@ -66,7 +89,7 @@ export function limparExifJpeg(
         }
         lido = fim;
       }
-      limpo.set(bytes.subarray(lido), escrito);
+      limpo.set(bytes.subarray(lido, pos), escrito);
       return limpo;
     }
     // Em dados comprimidos, FF00 é um byte escapado; RST não encerra o scan.
@@ -85,18 +108,20 @@ export function limparExifJpeg(
     if (comprimento < 2 || fim > bytes.length) break;
     const dados = pos + 2;
 
-    if (
-      marcador === 0xe1 &&
-      dados + EXIF.length <= fim &&
-      EXIF.every((valor, i) => bytes.at(dados + i) === valor)
-    ) {
+    if (marcador === 0xe1 && temAssinatura(bytes, dados, fim, EXIF)) {
       const tiff = dados + EXIF.length;
       orientacao ??= lerOrientacao(
         new DataView(bytes.buffer, bytes.byteOffset + tiff, fim - tiff),
       );
-      const inicio = pos - 2;
-      remocoes.push({ inicio, fim });
-      tamanho -= fim - inicio;
+    }
+    if ((marcador >= 0xe0 && marcador <= 0xef) || marcador === 0xfe) {
+      // XMP, IPTC, COM, MPF e APP desconhecidos não são necessários à exibição.
+      const assinatura = APP_TECNICOS.get(marcador);
+      if (!assinatura || !temAssinatura(bytes, dados, fim, assinatura)) {
+        const inicio = pos - 2;
+        remocoes.push({ inicio, fim });
+        retirados += fim - inicio;
+      }
     }
     emScan = marcador === 0xda;
     pos = fim;
@@ -106,8 +131,10 @@ export function limparExifJpeg(
 }
 
 export async function arquivoJpegSemExif(file: File): Promise<File> {
-  if (file.type !== "image/jpeg") return file;
   try {
+    // MIME vazio ou genérico também é aceito pela extensão no formulário.
+    const inicio = new Uint8Array(await file.slice(0, 3).arrayBuffer());
+    if (!ehJpeg(inicio)) return file;
     const bytes = new Uint8Array(await file.arrayBuffer());
     const limpo = limparExifJpeg(bytes);
     if (limpo === bytes) return file;

@@ -2,14 +2,66 @@ import { limparExifJpeg } from "@/lib/jpeg-sem-exif";
 import { describe, expect, it } from "vitest";
 import { comExif, exifComGps, jpegSintetico } from "./fixtures/jpeg-com-gps";
 
-describe("JPEG sem localização EXIF", () => {
-  it("retira todos os EXIF, inclusive o GPS, sem tocar no SOI, DQT, APP1 não-EXIF e EOI", () => {
-    const outroApp1 = new Uint8Array([0xff, 0xe1, 0, 5, 1, 2, 3]);
-    const semExif = comExif(jpegSintetico, outroApp1);
-    const original = comExif(semExif, exifComGps(), exifComGps(1, false));
-    expect(limparExifJpeg(original)).toEqual(semExif);
+function segmento(marcador: number, conteudo: string) {
+  const dados = new TextEncoder().encode(conteudo);
+  const tamanho = dados.length + 2;
+  return new Uint8Array([
+    0xff,
+    marcador,
+    tamanho >> 8,
+    tamanho & 255,
+    ...dados,
+  ]);
+}
+
+describe("JPEG sem metadados de localização", () => {
+  it("retira todos os EXIF, inclusive o GPS, sem tocar em SOI, DQT e EOI", () => {
+    const original = comExif(jpegSintetico, exifComGps(), exifComGps(1, false));
+    expect(limparExifJpeg(original)).toEqual(jpegSintetico);
     expect(original[4]).toBe(0);
     expect(original[5]).toBe(88);
+  });
+
+  it("remove XMP, IPTC, comentário e APP desconhecido, preservando JFIF, ICC e Adobe", () => {
+    const jfif = segmento(0xe0, "JFIF\0\x01\x02\0\0\x01\0\x01\0\0");
+    const perfil = segmento(0xe2, "ICC_PROFILE\0\x01\x01perfil");
+    const adobe = segmento(0xee, "Adobe\0\x64\0\0\0\0\x01");
+    const xmp = segmento(
+      0xe1,
+      "http://ns.adobe.com/xap/1.0/\0<exif:GPSLatitude>12,34N</exif:GPSLatitude>",
+    );
+    const iptc = segmento(0xed, "Photoshop 3.0\0Rua Exemplo, 42");
+    const comentario = segmento(0xfe, "Rua Exemplo, 42");
+    const outroApp = segmento(0xe3, "Rua Exemplo, 42");
+    const original = comExif(
+      jpegSintetico,
+      jfif,
+      xmp,
+      perfil,
+      iptc,
+      adobe,
+      comentario,
+      outroApp,
+    );
+
+    const limpo = limparExifJpeg(original);
+    expect(limpo).toEqual(comExif(jpegSintetico, jfif, perfil, adobe));
+    const texto = new TextDecoder().decode(limpo);
+    expect(texto).not.toContain("GPSLatitude");
+    expect(texto).not.toContain("Rua Exemplo, 42");
+  });
+
+  it("descarta o índice MPF e a segunda imagem com GPS", () => {
+    const mpf = segmento(0xe2, "MPF\0MM\0*");
+    const principal = comExif(jpegSintetico, mpf);
+    const adicional = comExif(jpegSintetico, exifComGps());
+    const original = new Uint8Array([...principal, ...adicional]);
+    expect(limparExifJpeg(original)).toEqual(jpegSintetico);
+  });
+
+  it("descarta bytes depois do primeiro EOI mesmo sem índice MPF", () => {
+    const original = new Uint8Array([...jpegSintetico, ...exifComGps()]);
+    expect(limparExifJpeg(original)).toEqual(jpegSintetico);
   });
 
   it.each([true, false])(

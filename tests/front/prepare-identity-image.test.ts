@@ -631,11 +631,11 @@ describe("JPEG com preenchimento entre segmentos", () => {
     });
     expect(new Uint8Array(await result.blob.arrayBuffer())).toEqual(paddedJpeg);
   });
-  it.each([1, 4])("preserva %s FF antes de APP DQT e SOF", async (count) => {
+  it.each([1, 4])("limpa APP/COM e conserva %s FF", async (count) => {
     const fill = Array<number>(count).fill(255);
     const sof = insertJpeg(baselineJpeg, 140, fill);
     const dqt = insertJpeg(sof, 2, fill);
-    // APP15 with a payload that includes FF FF, followed by COM with FF FF.
+    // APP15 e COM têm FF FF no conteúdo, que não conta como preenchimento.
     const bytes = insertJpeg(dqt, 2, [
       ...fill,
       255,
@@ -656,12 +656,14 @@ describe("JPEG com preenchimento entre segmentos", () => {
     const result = await prepareIdentityImage(blob(bytes), {
       signal: signal(),
     });
+    // Tira os segmentos completos, preservando FF de preenchimento antes deles.
+    const esperado = insertJpeg(dqt, 2, fill);
     expect(result.asset).toMatchObject({
       width: 32,
       height: 16,
-      sha256: hash(bytes),
+      sha256: hash(esperado),
     });
-    expect(new Uint8Array(await result.blob.arrayBuffer())).toEqual(bytes);
+    expect(new Uint8Array(await result.blob.arrayBuffer())).toEqual(esperado);
   });
   it.each([1, 6, 8])(
     "progressivo com preenchimento mede bruto e mantém só a orientação %s",
@@ -743,8 +745,9 @@ describe("JPEG com preenchimento entre segmentos", () => {
     );
     const result = await prepare(blob(input), { signal: signal() });
     expect(received).toEqual(expectedQuery);
-    expect(new Uint8Array(await result.blob.arrayBuffer())).toEqual(input);
-    expect(result.asset.sha256).toBe(hash(input));
+    const esperado = insertJpeg(tail, 2, [255, 255]);
+    expect(new Uint8Array(await result.blob.arrayBuffer())).toEqual(esperado);
+    expect(result.asset.sha256).toBe(hash(esperado));
   });
 });
 

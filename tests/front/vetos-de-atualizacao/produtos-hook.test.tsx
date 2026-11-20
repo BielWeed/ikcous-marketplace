@@ -147,23 +147,26 @@ describe("produtos vetam atualização nas imagens e na fila offline", () => {
     },
   );
 
-  it("JPEG que não passou pelo canvas chega ao Storage sem GPS", async () => {
-    await act(async () => {
-      raiz.render(<Sonda />);
-    });
-    rede.upload.mockResolvedValue({ error: null });
-    await act(async () => {
-      expect(await api.uploadProductImages([arquivoJpegComGps()])).toEqual([
-        "copia.jpg",
-      ]);
-    });
+  it.each(["image/jpeg", "", "application/octet-stream"])(
+    "JPEG de MIME %j sem passar pelo canvas chega ao Storage sem GPS",
+    async (type) => {
+      await act(async () => {
+        raiz.render(<Sonda />);
+      });
+      rede.upload.mockResolvedValue({ error: null });
+      await act(async () => {
+        expect(
+          await api.uploadProductImages([arquivoJpegComGps(type)]),
+        ).toEqual(["copia.jpg"]);
+      });
 
-    expect(rede.upload).toHaveBeenCalledTimes(1);
-    const enviado: File = rede.upload.mock.calls[0][1];
-    expect(new Uint8Array(await lerBytesNoJsdom(enviado))).toEqual(
-      jpegSintetico,
-    );
-  });
+      expect(rede.upload).toHaveBeenCalledTimes(1);
+      const enviado: File = rede.upload.mock.calls[0][1];
+      expect(new Uint8Array(await lerBytesNoJsdom(enviado))).toEqual(
+        jpegSintetico,
+      );
+    },
+  );
 
   it.each([false, true])(
     "upload pendente veta e libera (erro=%s)",
