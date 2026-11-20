@@ -761,6 +761,7 @@ export function ProfileView({
                           <CustomerPaymentBadge
                             paymentStatus={order.paymentStatus}
                             orderStatus={order.status}
+                            noBalcao={order.canal === "presencial"}
                             variant="perfil"
                             className="mt-1 border-transparent bg-transparent px-0"
                           />
