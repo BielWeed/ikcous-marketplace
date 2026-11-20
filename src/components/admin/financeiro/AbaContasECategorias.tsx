@@ -294,14 +294,41 @@ export function AbaContasECategorias({
           />
         }
       >
-        {categorias.erro && !categorias.dados ? (
+        {categorias.erro ? (
           <EstadoDeErro
-            mensagem={categorias.erro}
+            mensagem={
+              !categorias.dados
+                ? categorias.erro
+                : categorias.dados.length === 0
+                  ? "Não foi possível atualizar as categorias."
+                  : "Não foi possível atualizar as categorias. A lista pode estar desatualizada."
+            }
             aoTentarDeNovo={categorias.recarregar}
           />
-        ) : !categorias.dados ? (
+        ) : null}
+        {categorias.dados?.length ? (
+          <div
+            className={
+              categorias.erro
+                ? "mt-4 flex flex-col gap-5"
+                : "flex flex-col gap-5"
+            }
+          >
+            <ListaDeCategorias
+              categorias={categorias.dados}
+              natureza="despesa"
+              abrirFolha={abrirFolha}
+            />
+            <ListaDeCategorias
+              categorias={categorias.dados}
+              natureza="receita"
+              abrirFolha={abrirFolha}
+            />
+          </div>
+        ) : categorias.erro ? null : !categorias.dados ||
+          categorias.carregando ? (
           <EsqueletoDeLista linhas={5} />
-        ) : categorias.dados.length === 0 ? (
+        ) : (
           <EstadoVazio
             icone={Tags}
             titulo="Nenhuma categoria"
@@ -315,19 +342,6 @@ export function AbaContasECategorias({
               />
             }
           />
-        ) : (
-          <div className="flex flex-col gap-5">
-            <ListaDeCategorias
-              categorias={categorias.dados}
-              natureza="despesa"
-              abrirFolha={abrirFolha}
-            />
-            <ListaDeCategorias
-              categorias={categorias.dados}
-              natureza="receita"
-              abrirFolha={abrirFolha}
-            />
-          </div>
         )}
       </CartaoSecao>
     </div>

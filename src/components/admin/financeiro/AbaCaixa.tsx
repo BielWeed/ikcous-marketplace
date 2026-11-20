@@ -566,15 +566,25 @@ export function AbaCaixa({
       ) : null}
 
       <CartaoSecao titulo="Histórico do caixa" subtitulo="Últimas 30 sessões">
-        {historico.erro && !historico.dados ? (
+        {historico.erro ? (
           <EstadoDeErro
-            mensagem={historico.erro}
+            mensagem={
+              !historico.dados
+                ? historico.erro
+                : historico.dados.length === 0
+                  ? "Não foi possível atualizar o histórico."
+                  : "Não foi possível atualizar o histórico. A lista pode estar desatualizada."
+            }
             aoTentarDeNovo={historico.recarregar}
           />
-        ) : !historico.dados ? (
-          <EsqueletoDeLista linhas={2} />
+        ) : null}
+        {!historico.dados ||
+        (historico.dados.length === 0 && historico.carregando) ? (
+          !historico.erro && <EsqueletoDeLista linhas={2} />
         ) : historico.dados.length === 0 ? (
-          <p className="text-xs text-zinc-400">Nenhum caixa fechado ainda.</p>
+          !historico.erro && (
+            <p className="text-xs text-zinc-400">Nenhum caixa fechado ainda.</p>
+          )
         ) : (
           <ul className="flex flex-col">
             {historico.dados.map((sessao) => (
