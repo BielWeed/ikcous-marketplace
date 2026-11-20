@@ -41,6 +41,20 @@ export function completarOldDoEvento<T extends EventoDePedido>(
 
 const PAGAMENTO_CONFIRMADO = new Set(["pago", "pago_apos_expirar"]);
 
+function pagamentoConfirmado(valor: unknown): boolean {
+  return typeof valor === "string" && PAGAMENTO_CONFIRMADO.has(valor);
+}
+
+/** Como no push, pagamento na entrega já nasce válido; a reserva online não. */
+export function deveAvisarPedidoNovo(pedido: EventoDePedido["new"]): boolean {
+  if (!pedido || pedido.canal === "presencial") return false;
+  return (
+    pagamentoConfirmado(pedido.payment_status) ||
+    (pedido.payment_method !== "online" &&
+      pedido.payment_status !== "aguardando")
+  );
+}
+
 /**
  * "pagamento": o pagamento passou a pago agora. "status": o status mudou (e não
  * foi a própria lojista que acabou de pedir). `null`: nada novo para contar.
@@ -58,8 +72,7 @@ export function tipoDoAvisoDoPedido(
     antes &&
     antes.payment_status !== undefined &&
     antes.payment_status !== pagamentoNovo &&
-    typeof pagamentoNovo === "string" &&
-    PAGAMENTO_CONFIRMADO.has(pagamentoNovo)
+    pagamentoConfirmado(pagamentoNovo)
   ) {
     return "pagamento";
   }

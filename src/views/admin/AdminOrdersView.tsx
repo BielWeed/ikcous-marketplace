@@ -67,7 +67,10 @@ import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import { caminhoDoPedidoNoAviso } from "@/lib/alvo-do-aviso";
 import { orientacaoDeDevolucao } from "@/lib/anulacao-do-balcao";
 import { consumirPedidoDePedidosSemFiltroAntigo } from "@/lib/atalho-do-inicio-para-pedidos";
-import { tipoDoAvisoDoPedido } from "@/lib/aviso-de-pedido-atualizado";
+import {
+  deveAvisarPedidoNovo,
+  tipoDoAvisoDoPedido,
+} from "@/lib/aviso-de-pedido-atualizado";
 import { formatarInteiro } from "@/lib/crm";
 import { mensagemDeErroDeSessaoDoPainel } from "@/lib/erro-de-sessao-do-painel";
 import {
@@ -1563,9 +1566,9 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         setRodadaDaMedicaoAbsoluta((n) => n + 1);
       }
 
-      // Dispara aviso Toast
+      // Reserva online só ganha aviso na confirmação do pagamento (UPDATE).
       if (payload.eventType === "INSERT") {
-        if (payload.new?.canal !== "presencial") {
+        if (deveAvisarPedidoNovo(payload.new)) {
           const newId = payload.new?.id;
           toast.info(`Novo pedido recebido! #${numeroDoPedido(newId)}`, {
             duration: 10_000,
