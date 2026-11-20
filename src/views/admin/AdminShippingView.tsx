@@ -1751,6 +1751,13 @@ export const AdminShippingView = memo(function AdminShippingView({
                     tabIndex={abaGratis === aba ? 0 : -1}
                     onClick={() => setAbaGratis(aba)}
                     onKeyDown={(evento) => {
+                      if (
+                        evento.altKey ||
+                        evento.ctrlKey ||
+                        evento.metaKey ||
+                        evento.shiftKey
+                      )
+                        return;
                       let destino: typeof aba;
                       switch (evento.key) {
                         case "ArrowLeft":

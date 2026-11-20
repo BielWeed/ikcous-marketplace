@@ -138,6 +138,18 @@ describe("Abas de frete grátis", () => {
     )!;
 
     local.focus();
+    const atalho = new KeyboardEvent("keydown", {
+      key: "ArrowRight",
+      altKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    await act(async () => local.dispatchEvent(atalho));
+    expect(atalho.defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(local);
+    expect(local.getAttribute("aria-selected")).toBe("true");
+    expect(nacional.getAttribute("aria-selected")).toBe("false");
+
     for (const [tecla, atual, outra] of [
       ["ArrowRight", nacional, local],
       ["ArrowRight", local, nacional],
