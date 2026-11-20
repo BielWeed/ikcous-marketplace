@@ -140,6 +140,7 @@ describe("FreteLocalBloco: até onde você entrega", () => {
 
   it.each([
     { faixa: "1310000", avisa: true },
+    { faixa: "1310000, 01400", avisa: true },
     { faixa: "01310-000, 01310-999, 1310000", avisa: true },
     { faixa: "13100", avisa: false },
     { faixa: "01310-000", avisa: false },
