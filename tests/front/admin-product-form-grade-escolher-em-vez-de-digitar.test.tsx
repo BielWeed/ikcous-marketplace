@@ -264,11 +264,16 @@ describe("AdminProductFormView — grade: escolher em vez de digitar", () => {
       (document.getElementById("grade-valor-0") as HTMLInputElement).value,
     ).toBe("");
 
-    // Sem nenhum valor a grade não gera: o aviso de sempre.
+    // Sem nenhum valor a grade não gera: o botão fica desligado (o clique
+    // não faz nada) e nenhuma linha aparece.
+    const botaoGerar = [...document.querySelectorAll("button")].find((b) =>
+      casaOTexto(b.textContent, BOTAO_GERAR_GRADE),
+    );
+    expect(botaoGerar?.disabled).toBe(true);
     await act(async () => {
       clicarTexto(BOTAO_GERAR_GRADE);
     });
-    expect(toastError).toHaveBeenCalledTimes(1);
+    expect(toastError).not.toHaveBeenCalled();
     expect(linhasDaGrade()).toEqual([]);
   });
 
