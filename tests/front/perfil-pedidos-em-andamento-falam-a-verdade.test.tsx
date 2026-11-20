@@ -193,6 +193,22 @@ describe("ProfileView — cartão Pedidos em Andamento fala a verdade", () => {
     });
   }
 
+  it("mostra o pacote quando a foto do pedido não carrega", async () => {
+    const ordem = pedido({});
+    ordem.items[0].image = "https://fotos.test/blusa.jpg";
+    await renderizar([ordem]);
+
+    const foto = hospedeiro.querySelector<HTMLImageElement>(
+      'img[alt="Blusa Teste"]',
+    );
+    if (!foto) throw new Error("Foto do pedido não foi renderizada");
+    const moldura = foto.parentElement;
+    await act(async () => foto.dispatchEvent(new Event("error")));
+
+    expect(moldura?.querySelector("img")).toBeNull();
+    expect(moldura?.querySelector(".lucide-package")).not.toBeNull();
+  });
+
   it("avisa da falha de atualização sem esconder o pedido salvo", async () => {
     erroDePedidos = "Falha na consulta";
     await renderizar([pedido({ paymentStatus: "aguardando" })], vi.fn());

@@ -723,18 +723,17 @@ export function ProfileView({
                     >
                       <div className="flex items-center gap-3">
                         <div className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-muted">
-                          {firstItemImage ? (
-                            <img
-                              src={firstItemImage}
-                              alt={firstItemName}
-                              className="size-full object-cover"
-                            />
-                          ) : (
-                            <Package
-                              aria-hidden="true"
-                              className="size-6 text-muted-foreground"
-                            />
-                          )}
+                          <ImagemComFallback
+                            src={firstItemImage}
+                            alt={firstItemName}
+                            className="size-full object-cover"
+                            fallback={
+                              <Package
+                                aria-hidden="true"
+                                className="size-6 text-muted-foreground"
+                              />
+                            }
+                          />
                         </div>
                         <div className="min-w-0 flex-1">
                           <h3 className="truncate text-base font-bold text-foreground">
