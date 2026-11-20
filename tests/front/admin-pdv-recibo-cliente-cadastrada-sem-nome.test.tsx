@@ -207,6 +207,18 @@ describe("AdminPdvView — recibo de cliente cadastrada sem nome no perfil", () 
     expect(papel().textContent).not.toContain("Venda no balcão");
   });
 
+  it("avulso chamado 'Venda no balcão' mantém o WhatsApp gravado", async () => {
+    await registrarComPedido({ user_id: null });
+
+    expect(bloco().textContent).toContain("Venda no balcão · cliente avulso");
+    expect(bloco().textContent).toContain("WhatsApp · 34999990000");
+    expect(
+      localizarBotaoPorTexto(hospedeiro, "Enviar por WhatsApp")?.disabled,
+    ).toBe(false);
+    expect(papel().textContent).toContain("CLIENTE:");
+    expect(papel().textContent).toContain("Venda no balcão");
+  });
+
   it("venda SEM cliente (sem user_id) segue como 'Venda no balcão' na tela e sem título no papel", async () => {
     await registrarComPedido({
       user_id: null,

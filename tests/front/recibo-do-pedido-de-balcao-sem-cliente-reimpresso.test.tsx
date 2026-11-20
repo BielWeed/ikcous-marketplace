@@ -98,6 +98,22 @@ describe("papel da ficha: venda de balcão sem cliente", () => {
     expect(papel().textContent).toContain("11988887777");
   });
 
+  it("imprime o nome 'Venda no balcão' quando há WhatsApp do cliente avulso", async () => {
+    await act(async () => {
+      raiz.render(
+        <OrderReceipt
+          order={pedido({
+            customer: { name: " Venda no balcão ", whatsapp: "11988887777" },
+          })}
+          storeName="L"
+        />,
+      );
+    });
+    expect(papel().textContent).toContain("CLIENTE:");
+    expect(papel().textContent).toContain("Venda no balcão");
+    expect(papel().textContent).toContain("11988887777");
+  });
+
   it("controle: pedido online chamado 'Venda no balcão' (nome digitado) não é escondido", async () => {
     await act(async () => {
       raiz.render(

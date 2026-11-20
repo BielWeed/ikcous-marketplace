@@ -291,6 +291,52 @@ export function AdminPdvView({
     return marcarOperacaoSensivel("venda-em-andamento-do-pdv");
   }, [vendaEmAndamento]);
 
+  const reciboAbertoId =
+    estado.etapa === "recibo" && !estado.recibo?.anulada
+      ? estado.recibo?.orderId
+      : undefined;
+  useEffect(() => {
+    if (!reciboAbertoId || active === false) return;
+    const orderId = reciboAbertoId;
+    let encerrou = false;
+    let consultando = false;
+
+    // O aviso local de anulação não chega a outra aba ou aparelho.
+    // Releia só o status deste pedido enquanto o recibo estiver visível.
+    async function conferirAnulacao() {
+      if (encerrou || consultando || document.hidden) return;
+      consultando = true;
+      try {
+        const { data, error } = await aguardarComPrazo(
+          Promise.resolve(
+            supabase
+              .from("marketplace_orders")
+              .select("status")
+              .eq("id", orderId)
+              .single(),
+          ),
+          PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+          erroDeConsultaSemResposta,
+        );
+        if (!encerrou && !error && data?.status === "cancelled") {
+          despachar({ tipo: "recibo_anulado", orderId });
+        }
+      } catch {
+        // Uma falha de leitura não anula a venda. A próxima consulta tenta de novo.
+      } finally {
+        consultando = false;
+      }
+    }
+
+    const intervalo = setInterval(conferirAnulacao, 10_000);
+    document.addEventListener("visibilitychange", conferirAnulacao);
+    return () => {
+      encerrou = true;
+      clearInterval(intervalo);
+      document.removeEventListener("visibilitychange", conferirAnulacao);
+    };
+  }, [active, despachar, reciboAbertoId]);
+
   // O recibo vive SÓ em memória (useVendaPresencial não o grava no rascunho
   // de propósito) e a marca da venda em andamento cai quando ele aparece —
   // então, sozinho, nada
@@ -516,7 +562,7 @@ export function AdminPdvView({
         whatsapp,
       };
     }
-    if (nome === "" || nome === NOME_DE_VENDA_SEM_CLIENTE) {
+    if (!whatsapp && (nome === "" || nome === NOME_DE_VENDA_SEM_CLIENTE)) {
       return { tipo: "sem_cliente" };
     }
     return { tipo: "avulso", nome, whatsapp: whatsapp ?? "" };
