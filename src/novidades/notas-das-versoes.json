@@ -5,7 +5,7 @@
     "correcoes": [
       "Em Relatórios, o resumo e os dados por categoria deixam de esperar indefinidamente se o app não conseguir confirmar sua sessão.",
       "Em “Avançado: chaves do Mercado Pago”, o painel mostra um aviso mesmo quando os detalhes do erro não terminam de chegar.",
-      "Em “Fotos do cliente”, na ficha da devolução, uma foto que demora demais fica como “Foto indisponível” sem impedir que as outras apareçam.",
+      "Em “Fotos do cliente”, na ficha da devolução, uma foto que não responde deixa de prender as outras: depois de alguns segundos ela fica como “Foto indisponível” e as demais aparecem.",
       "No Início do painel, “Ligar o pagamento pelo app (PIX)” abre Ajustes diretamente em Pagamentos.",
       "Na vitrine, ao abrir uma categoria vazia sem fazer uma busca, aparece “Ainda não há produtos nesta categoria.”",
       "Na lista e na ficha de clientes do painel, fotos de perfil hospedadas em outro site dão lugar às iniciais.",
@@ -21,7 +21,7 @@
       "Ao finalizar a compra, o leitor de tela anuncia “Enviando pedido…” enquanto o envio está em andamento.",
       "Em “Avisos neste aparelho”, o painel mostra como liberar os avisos quando eles estão bloqueados.",
       "Em “Notificações”, a loja explica que os avisos no app instalado exigem iOS ou iPadOS 16.4 ou mais recente.",
-      "Se o app esgotar as tentativas de atualização, aparece “Atualização pendente — feche e abra o app para concluir”.",
+      "Se o app esgotar as tentativas de atualização, aparece “Atualização pendente — não foi possível concluir automaticamente”.",
       "Ao fechar a confirmação de “Duplicar Produto”, a navegação pelo teclado volta ao botão de ações do produto, se ele ainda estiver disponível.",
       "Em “Banner já terminou”, escolher “Voltar e ajustar” leva o teclado de volta a “Salvar Banner” ou “Salvar Alterações”, conforme o botão usado.",
       "Ao fechar a criação de uma vitrine, o teclado volta a “Nova vitrine”, se o botão ainda estiver disponível.",

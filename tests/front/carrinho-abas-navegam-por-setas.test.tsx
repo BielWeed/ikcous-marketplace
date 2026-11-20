@@ -66,6 +66,33 @@ afterEach(() => {
   hospedeiro.remove();
 });
 
+it.each([
+  { key: "ArrowLeft", altKey: true },
+  { key: "ArrowRight", ctrlKey: true },
+])("preserva o atalho com $key e modificador", async (atalho) => {
+  const { CartView } = await import("@/views/customer/CartView");
+  const onNavigate = vi.fn();
+  await act(async () => raiz.render(<CartView onNavigate={onNavigate} />));
+  const carrinho = hospedeiro.querySelector<HTMLButtonElement>("#tab-cart")!;
+  const pedidos = hospedeiro.querySelector<HTMLButtonElement>("#tab-orders")!;
+  carrinho.focus();
+
+  const evento = new KeyboardEvent("keydown", {
+    ...atalho,
+    bubbles: true,
+    cancelable: true,
+  });
+  await act(async () => {
+    carrinho.dispatchEvent(evento);
+  });
+
+  expect(evento.defaultPrevented).toBe(false);
+  expect(document.activeElement).toBe(carrinho);
+  expect(carrinho.getAttribute("aria-selected")).toBe("true");
+  expect(pedidos.getAttribute("aria-selected")).toBe("false");
+  expect(onNavigate).not.toHaveBeenCalled();
+});
+
 it("só a aba ativa recebe Tab; setas, Home e End movem o foco e selecionam", async () => {
   const { CartView } = await import("@/views/customer/CartView");
   const onNavigate = vi.fn();

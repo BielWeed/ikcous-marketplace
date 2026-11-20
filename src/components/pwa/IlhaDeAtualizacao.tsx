@@ -42,7 +42,7 @@ export function IlhaDeAtualizacao({
     texto = "Atualização pronta";
   }
   if (fase === "pendente") {
-    texto = "Atualização pendente — feche e abra o app para concluir";
+    texto = "Atualização pendente — não foi possível concluir automaticamente";
   }
   const Icone =
     fase === "instalando"

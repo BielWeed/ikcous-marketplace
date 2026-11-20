@@ -550,7 +550,7 @@ describe("instalador no ponto de parada", () => {
       await navegarPara("favorites");
       expect(instalar).toHaveBeenCalledTimes(2); // a terceira NÃO aconteceu
       expect(host.textContent).toContain(
-        "Atualização pendente — feche e abra o app para concluir",
+        "Atualização pendente — não foi possível concluir automaticamente",
       );
       expect(host.querySelector("button")).toBeNull();
       // e não volta a tentar nas próximas paradas

@@ -175,11 +175,9 @@ describe("avisos do aparelho na tela da cliente — iPhone fora do app instalado
     desenhar();
 
     expect(texto()).toContain(
-      "Este aparelho não recebe avisos por aqui (precisa do iOS/iPadOS 16.4 ou mais novo).",
+      "Os avisos não estão disponíveis neste aparelho agora. Você ainda pode acompanhar seu pedido dentro da loja.",
     );
-    expect(texto()).toContain(
-      "Você continua vendo as atualizações do pedido dentro da loja.",
-    );
+    expect(texto()).not.toContain("16.4");
     expect(hospedeiro.querySelector("button")).toBeNull();
   });
 
@@ -191,8 +189,10 @@ describe("avisos do aparelho na tela da cliente — iPhone fora do app instalado
     instaladoNaTela(true);
     desenhar();
 
-    expect(texto()).toContain("Este aparelho não recebe avisos por aqui");
-    expect(texto()).toContain("iOS/iPadOS 16.4 ou mais novo");
+    expect(texto()).toContain(
+      "Os avisos não estão disponíveis neste aparelho agora.",
+    );
+    expect(texto()).not.toContain("16.4");
     expect(texto()).not.toContain("iPhone");
   });
 

@@ -233,9 +233,8 @@ export function AvisosDoAparelhoDaCliente() {
         className="mt-3 rounded-[18px] border border-solid border-border p-4"
       >
         <p className="text-[14px] leading-5 text-muted-foreground">
-          Este aparelho não recebe avisos por aqui (precisa do iOS/iPadOS 16.4
-          ou mais novo). Você continua vendo as atualizações do pedido dentro da
-          loja.
+          Os avisos não estão disponíveis neste aparelho agora. Você ainda pode
+          acompanhar seu pedido dentro da loja.
         </p>
       </section>
     );

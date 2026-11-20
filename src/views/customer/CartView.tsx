@@ -1024,6 +1024,8 @@ function ConteudoDoCarrinho({
     [cart, propOnRemove, removeFromCart],
   );
   function navegarAbasPeloTeclado(evento: KeyboardEvent<HTMLButtonElement>) {
+    if (evento.altKey || evento.ctrlKey || evento.metaKey || evento.shiftKey)
+      return;
     let destino: string;
     switch (evento.key) {
       case "Home":
