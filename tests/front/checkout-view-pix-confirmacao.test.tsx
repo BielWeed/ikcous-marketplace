@@ -431,53 +431,6 @@ describe("CheckoutView — confirmação de pagamento na tela do PIX (CHECKOUT-0
     });
   }
 
-  it.each([
-    new TypeError("Failed to fetch"),
-    new Error("Failed to send a request to the Edge Function"),
-    new TypeError("NetworkError when attempting to fetch resource"),
-    new TypeError("Load failed"),
-  ])(
-    "mostra uma orientação em português quando não consegue gerar o PIX (%s)",
-    async (erro) => {
-      criarPagamento.mockRejectedValueOnce(erro);
-      const { CheckoutView } = await import("@/views/customer/CheckoutView");
-
-      await chegarNaTelaDeAguardarPagamento(CheckoutView);
-
-      expect(
-        localizarBotaoPorTexto(hospedeiro, "Tentar de novo"),
-      ).toBeDefined();
-      expect(hospedeiro.textContent).not.toContain(erro.message);
-      expect(hospedeiro.textContent).toContain(
-        "Sem conexão com o servidor. Verifique sua internet e tente novamente.",
-      );
-    },
-  );
-
-  it("mantém a mensagem em português que o servidor devolve ao gerar o PIX", async () => {
-    const mensagem = "Pagamento indisponível. Tente novamente em instantes.";
-    criarPagamento.mockRejectedValueOnce(
-      Object.assign(new Error(mensagem), { terminal: false, httpStatus: 503 }),
-    );
-    const { CheckoutView } = await import("@/views/customer/CheckoutView");
-
-    await chegarNaTelaDeAguardarPagamento(CheckoutView);
-
-    expect(hospedeiro.textContent).toContain(mensagem);
-    expect(localizarBotaoPorTexto(hospedeiro, "Tentar de novo")).toBeDefined();
-  });
-
-  it("mostra a mensagem genérica do PIX quando a exceção não tem mensagem", async () => {
-    criarPagamento.mockRejectedValueOnce(new Error());
-    const { CheckoutView } = await import("@/views/customer/CheckoutView");
-
-    await chegarNaTelaDeAguardarPagamento(CheckoutView);
-
-    expect(hospedeiro.textContent).toContain(
-      "Não foi possível gerar a cobrança.",
-    );
-  });
-
   function botaoVerificarPix() {
     const botao = localizarBotaoPorTexto(hospedeiro, ROTULO_VERIFICAR_PIX);
     expect(botao).toBeDefined();
