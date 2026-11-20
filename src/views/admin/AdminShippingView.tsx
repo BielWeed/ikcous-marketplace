@@ -1,6 +1,10 @@
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import { AvisoDaLojaSemDados } from "@/components/admin/AvisoDaLojaSemDados";
-import { normalizarNumeroMototaxi } from "@/components/admin/minha-loja/contato";
+import {
+  normalizarNumeroMototaxi,
+  numeroParaOCampo,
+  soDigitos,
+} from "@/components/admin/minha-loja/contato";
 import { HistoricoCotacoesSection } from "@/components/admin/settings/HistoricoCotacoesCard";
 import {
   type ConfigDoProvedor,
@@ -346,6 +350,23 @@ interface AdminShippingViewProps {
   painelInicial?: "local" | "nacional";
 }
 
+function normalizarWhatsappDoCampoMototaxi(valor: string): string | null {
+  const digitado = valor.trim();
+  const digitos = soDigitos(digitado);
+  if (digitado.includes("+")) {
+    // Com "+" explícito, não confundir um código de país estrangeiro com DDD.
+    if (!/^\+55[\d\s().-]*$/.test(digitado) || !/^55\d{10,11}$/.test(digitos)) {
+      return null;
+    }
+  }
+  // A limpeza da loja é mais permissiva: aqui só pode tirar um zero de
+  // discagem, nunca operadora, zeros internacionais, letras ou excedentes.
+  if (/^0[1-9]\d{9,10}$/.test(digitos) && /^[\d\s().-]+$/.test(digitado)) {
+    return normalizarNumeroMototaxi(numeroParaOCampo(digitado));
+  }
+  return normalizarNumeroMototaxi(digitado);
+}
+
 /** Perguntas da entrega; o contrato de gravação continua o mesmo. */
 export const AdminShippingView = memo(function AdminShippingView({
   onNavigate,
@@ -387,9 +408,10 @@ export const AdminShippingView = memo(function AdminShippingView({
   const mototaxiPendente =
     contatoMototaxi.whatsapp !== baseMototaxi.whatsapp ||
     contatoMototaxi.nome !== baseMototaxi.nome;
-  const erroMototaxi =
-    !!contatoMototaxi.whatsapp.trim() &&
-    !normalizarNumeroMototaxi(contatoMototaxi.whatsapp);
+  const whatsappMototaxi = normalizarWhatsappDoCampoMototaxi(
+    contatoMototaxi.whatsapp,
+  );
+  const erroMototaxi = !!contatoMototaxi.whatsapp.trim() && !whatsappMototaxi;
 
   const [showHelpModal, setShowHelpModal] = useState(false);
   useVoltarFechaAFolha(showHelpModal, () => setShowHelpModal(false), true);
@@ -1129,7 +1151,10 @@ export const AdminShippingView = memo(function AdminShippingView({
           );
           return;
         }
-        const salvouMototaxi = await mototaxi.salvar(contatoMototaxi);
+        const salvouMototaxi = await mototaxi.salvar({
+          ...contatoMototaxi,
+          whatsapp: whatsappMototaxi,
+        });
         if (!salvouMototaxi) {
           setFalhaAoSalvar(true);
           toast.error("Não foi possível salvar o mototáxi. Tente de novo.");
@@ -1137,7 +1162,7 @@ export const AdminShippingView = memo(function AdminShippingView({
         }
         mototaxiSalvoNestaRodada = true;
         const salvo = {
-          whatsapp: normalizarNumeroMototaxi(contatoMototaxi.whatsapp) ?? "",
+          whatsapp: whatsappMototaxi ?? "",
           nome: contatoMototaxi.nome.trim(),
         };
         setEdicaoMototaxi({ base: salvo, contato: salvo });
@@ -1685,7 +1710,8 @@ export const AdminShippingView = memo(function AdminShippingView({
                       role="alert"
                       className="text-xs text-amber-300"
                     >
-                      Informe DDD e número brasileiros válidos.
+                      Informe DDD e número brasileiros válidos. Exemplo: (11)
+                      98765-4321.
                     </p>
                   )}
                 </div>
