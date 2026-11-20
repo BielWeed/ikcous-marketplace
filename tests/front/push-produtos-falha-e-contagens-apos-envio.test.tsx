@@ -344,8 +344,8 @@ describe("Avisar clientes — produtos que falham e contagens depois do envio", 
       await escolher(seletorDoDestino(), "product");
       expect(seletorDoDestino().value).toBe("product");
       expect([...seletorDoProduto()!.options].map((o) => o.value)).toEqual([
-        "p-corrida",
         "p-casual",
+        "p-corrida",
       ]);
     });
 

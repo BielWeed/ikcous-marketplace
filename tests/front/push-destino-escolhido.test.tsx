@@ -25,6 +25,8 @@ const PRODUTOS = [
   { id: "00000000-0000-4000-8000-00000000000b", nome: "Tênis Casual" },
   { id: "00000000-0000-4000-8000-00000000000c", nome: "Bota de Couro" },
   { id: "00000000-0000-4000-8000-00000000000d", nome: "Camiseta Básica" },
+  { id: "kit-10", nome: "Kit 10" },
+  { id: "kit-2", nome: "Kit 2" },
 ];
 
 const inserts = vi.hoisted(() => ({
@@ -314,6 +316,16 @@ describe("Avisar clientes — destino escolhido por lista", () => {
     );
   }
 
+  it("mostra Kit 2 antes de Kit 10 no seletor de produtos", async () => {
+    await abrirTela();
+    await escolher(seletorDoDestino(), "product");
+
+    const kits = [...seletorDoProduto()!.options]
+      .map((o) => o.textContent)
+      .filter((nome) => nome?.startsWith("Kit "));
+    expect(kits).toEqual(["Kit 2", "Kit 10"]);
+  });
+
   it("a lista de destinos não tem 'Outra Página' — são as 7 telas com nome", async () => {
     await abrirTela();
 
@@ -399,8 +411,8 @@ describe("Avisar clientes — destino escolhido por lista", () => {
     });
 
     expect([...seletorDoProduto()!.options].map((o) => o.textContent)).toEqual([
-      "Tênis Corrida",
       "Tênis Casual",
+      "Tênis Corrida",
     ]);
 
     await escolher(seletorDoProduto()!, "00000000-0000-4000-8000-00000000000b");
@@ -423,8 +435,8 @@ describe("Avisar clientes — destino escolhido por lista", () => {
     });
 
     expect([...seletorDoProduto()!.options].map((o) => o.textContent)).toEqual([
-      "Tênis Corrida",
       "Tênis Casual",
+      "Tênis Corrida",
     ]);
   });
 
