@@ -223,7 +223,7 @@ describe("ordenação da vitrine sem Mais Vendidos", () => {
     const filtros = hospedeiro.querySelector('button[aria-haspopup="listbox"]');
     const opcao = [
       ...hospedeiro.querySelectorAll<HTMLButtonElement>('[role="option"]'),
-    ].find((botao) => botao.textContent?.includes("Menor Preço"))!;
+    ].find((botao) => botao.textContent?.includes("Menor preço"))!;
     await act(async () => opcao.focus());
     expect(document.activeElement).toBe(opcao);
     // jsdom não dispara o clique nativo de Enter no botão focado.
