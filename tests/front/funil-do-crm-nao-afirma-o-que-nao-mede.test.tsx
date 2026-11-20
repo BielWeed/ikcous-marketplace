@@ -85,6 +85,16 @@ describe("FunilEPedidosDoCrm — só afirma o que o dado prova", () => {
     const texto = await montar(visao(2, 3));
     expect(texto).not.toContain("3 de 2");
     expect(texto).not.toContain("Todo pedido criado virou venda paga");
+    expect(
+      hospedeiro.querySelector(
+        '[aria-label="Funil do app"] [aria-label="Pedidos criados no período"] h3',
+      )?.textContent,
+    ).toBe("2");
+    expect(
+      hospedeiro.querySelector(
+        '[aria-label="Funil do app"] [aria-label="Pedidos pagos no período"] h3',
+      )?.textContent,
+    ).toBe("3");
   });
 
   it("um pedido criado hoje e o pagamento de outro pedido não significam 100%", async () => {
