@@ -197,7 +197,7 @@ describe("AdminShippingView — avisa quando a transportadora fica sem pagamento
     );
   });
 
-  it("F1b — o aviso leva a Ajustes, onde o pagamento pelo app se liga", async () => {
+  it("F1b — o aviso abre Ajustes direto em Pagamentos", async () => {
     await abrirTela();
     const botao = [...(aviso()?.querySelectorAll("button") ?? [])].find((b) =>
       /pagamento pelo app/i.test(b.textContent ?? ""),
@@ -206,7 +206,7 @@ describe("AdminShippingView — avisa quando a transportadora fica sem pagamento
     await act(async () => {
       botao?.click();
     });
-    expect(onNavigate).toHaveBeenCalledWith("admin-settings");
+    expect(onNavigate).toHaveBeenCalledWith("admin-settings", "pagamentos");
   });
 
   it("F2 — pagamento pelo app LIGADO: nenhum aviso", async () => {

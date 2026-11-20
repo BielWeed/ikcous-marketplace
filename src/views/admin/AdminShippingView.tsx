@@ -1547,7 +1547,7 @@ export const AdminShippingView = memo(function AdminShippingView({
                       botao="Ver pagamento pelo app"
                       onClick={
                         onNavigate
-                          ? () => onNavigate("admin-settings")
+                          ? () => onNavigate("admin-settings", "pagamentos")
                           : undefined
                       }
                     />
