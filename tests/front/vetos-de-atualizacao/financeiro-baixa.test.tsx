@@ -79,7 +79,6 @@ describe("baixa financeira com valores padrão também veta a atualização", ()
       act(() => botao?.click());
       expect(baixar).toHaveBeenCalledWith({
         id: "lancamento-teste",
-        data: "2026-10-16",
         contaId: null,
       });
       expect(motivosDeOperacaoSensivel()).toEqual(["baixa-financeira"]);

@@ -24,7 +24,6 @@ import {
   ehDataIso,
   ehLancamentoJaResolvido,
   formatarData,
-  hojeEmSaoPaulo,
   mensagemDeErroFinanceiro,
   origemVemDoPedido,
   rotuloDaForma,
@@ -273,7 +272,7 @@ export function BaixarLancamentoFolha({
   const [dataInicial] = useState(hoje);
   const [dataEditada, setDataEditada] = useState<string | null>(null);
   const recebimento = alvo.lado === "entrada";
-  const data = dataEditada ?? (recebimento ? hoje : dataInicial);
+  const data = dataEditada ?? (recebimento ? null : dataInicial);
   const [contaEscolhida, setContaEscolhida] = useState<string | null>(null);
   const [erroData, setErroData] = useState<string | null>(null);
   const [erroDoServidor, setErroDoServidor] = useState<string | null>(null);
@@ -291,20 +290,20 @@ export function BaixarLancamentoFolha({
   const contaId = contaEscolhida ?? contaInicial;
   const faltaEscolherConta = contaOriginalDesativada && contaId === "";
 
-  const sujo = data !== hoje || contaId !== contaInicial;
+  const sujo =
+    (recebimento ? data !== null : data !== hoje) || contaId !== contaInicial;
   useEffect(() => {
     aoMudarSujo(sujo);
   }, [sujo, aoMudarSujo]);
 
   async function confirmar() {
     if (enviandoRef.current || faltaEscolherConta) return;
-    // O relógio atual só valida o limite; a baixa usa a data exibida.
-    const hojeDoEnvio = recebimento ? hojeEmSaoPaulo() : hoje;
-    if (!ehDataIso(data)) {
+    // No recebimento, só o servidor pode decidir o dia e recusar data futura.
+    if (data !== null && !ehDataIso(data)) {
       setErroData("Informe a data.");
       return;
     }
-    if (data > hojeDoEnvio) {
+    if (!recebimento && data !== null && data > hoje) {
       setErroData(
         "A baixa é do que já aconteceu: a data não pode ser no futuro.",
       );
@@ -319,7 +318,7 @@ export function BaixarLancamentoFolha({
     try {
       await baixarLancamento({
         id: alvo.id,
-        data,
+        ...(data === null ? {} : { data }),
         contaId: contaId || null,
       });
       confirmarVisualmente({
@@ -331,10 +330,14 @@ export function BaixarLancamentoFolha({
         valor: alvo.valor,
         sentido: alvo.lado === "entrada" ? 1 : -1,
         linhas: [
-          {
-            rotulo: alvo.lado === "entrada" ? "Recebido em" : "Pago em",
-            texto: formatarData(data),
-          },
+          ...(data === null
+            ? []
+            : [
+                {
+                  rotulo: recebimento ? "Recebido em" : "Pago em",
+                  texto: formatarData(data),
+                },
+              ]),
           {
             rotulo: alvo.lado === "entrada" ? "Entrou em" : "Saiu de",
             texto:
@@ -405,22 +408,50 @@ export function BaixarLancamentoFolha({
             </p>
           ) : null}
         </div>
-        <Campo
-          id="fin-baixa-data"
-          rotulo={alvo.lado === "entrada" ? "Recebido em" : "Pago em"}
-          erro={erroData ?? undefined}
-          ajuda="A baixa é do que já aconteceu. A data não pode ser futura."
-        >
-          <input
+        {recebimento ? (
+          <div>
+            {data === null ? (
+              <p className="mb-2 text-sm text-zinc-400">
+                A baixa usa o dia de Brasília no momento da confirmação.
+              </p>
+            ) : null}
+            <label
+              htmlFor="fin-baixa-outra-data"
+              className="flex items-center gap-2 text-sm"
+            >
+              <input
+                id="fin-baixa-outra-data"
+                type="checkbox"
+                checked={data !== null}
+                disabled={enviando}
+                onChange={(e) => {
+                  setDataEditada(e.target.checked ? "" : null);
+                  setErroData(null);
+                  setErroDoServidor(null);
+                }}
+              />
+              Escolher outra data
+            </label>
+          </div>
+        ) : null}
+        {data !== null ? (
+          <Campo
             id="fin-baixa-data"
-            disabled={enviando}
-            type="date"
-            value={data}
-            max={hoje}
-            onChange={(e) => setDataEditada(e.target.value)}
-            className={CLASSE_CAMPO}
-          />
-        </Campo>
+            rotulo={recebimento ? "Recebido em" : "Pago em"}
+            erro={erroData ?? undefined}
+            ajuda="A baixa é do que já aconteceu. A data não pode ser futura."
+          >
+            <input
+              id="fin-baixa-data"
+              disabled={enviando}
+              type="date"
+              value={data}
+              max={recebimento ? undefined : hoje}
+              onChange={(e) => setDataEditada(e.target.value)}
+              className={CLASSE_CAMPO}
+            />
+          </Campo>
+        ) : null}
         <Campo
           id="fin-baixa-conta"
           rotulo={alvo.lado === "entrada" ? "Entrou em" : "Saiu de"}
