@@ -6537,11 +6537,9 @@ export function CheckoutViewDaConta({
             configDoCartao={configDoCartao}
             emailDoPagador={user?.email ?? null}
             cobrancaIncerta={pedidoTemCobrancaIncerta}
-            pedidoMortoNoServidor={
-              orderId !== "" && pedidoMortoNoServidorId === orderId
-            }
+            pedidoMortoNoServidor={pedidoMortoNaTela}
             onVerMeusPedidos={() => onNavigate("orders")}
-            // Lote 210: o PIX que venceu com a tela aberta volta ao carrinho
+            // Quando o pedido fecha com a tela aberta, volta ao carrinho
             // pelo MESMO mecanismo do "pagamento não concluído" — e só quando
             // o pedido nasceu NESTA tela (há itens para devolver).
             onVoltarAoCarrinho={

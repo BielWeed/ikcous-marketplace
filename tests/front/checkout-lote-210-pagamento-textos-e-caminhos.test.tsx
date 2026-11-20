@@ -20,6 +20,10 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { comReleituraDeEnderecos } from "./duble-releitura-de-enderecos";
 
+import type {
+  DadosAdicionaisDoBrick,
+  DadosDoCartaoDoBrick,
+} from "@/components/checkout/PagamentoComCartao";
 import type { CartItem } from "@/types";
 
 const createOrder = vi.fn();
@@ -206,12 +210,19 @@ vi.mock("@/lib/flags", () => ({
   lerFlagPagamentoOnline: (v: string | undefined) => v === "true",
 }));
 
+const CONFIG_CARTAO = { credito: true, debito: false, parcelasMax: 1 };
+let cartaoLigadoNoTeste = false;
 vi.mock("@/hooks/useConfigDoCartao", async () => {
-  const { ESTADO_PRONTO_SEM_CARTAO } = await import(
-    "./duble-use-config-do-cartao"
-  );
-  return { useConfigDoCartao: () => ESTADO_PRONTO_SEM_CARTAO };
+  const { estadoPronto } = await import("./duble-use-config-do-cartao");
+  return {
+    useConfigDoCartao: () =>
+      estadoPronto(cartaoLigadoNoTeste ? CONFIG_CARTAO : null),
+  };
 });
+
+vi.mock("@/components/checkout/sdk-mercado-pago", () => ({
+  carregarSdkMercadoPago: async () => {},
+}));
 
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -256,6 +267,7 @@ describe("CheckoutView — lote 210: textos e caminhos do pagamento", () => {
     addToCart.mockClear();
     onNavigate.mockClear();
     onRealtimeEventCapturado = null;
+    cartaoLigadoNoTeste = false;
     mockRespostaPoll = {
       data: { payment_status: "aguardando", expires_at: null },
       error: null,
@@ -291,6 +303,7 @@ describe("CheckoutView — lote 210: textos e caminhos do pagamento", () => {
     hospedeiro.remove();
     vi.useRealTimers();
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 
@@ -335,6 +348,125 @@ describe("CheckoutView — lote 210: textos e caminhos do pagamento", () => {
       await vi.advanceTimersByTimeAsync(10_000);
     });
   }
+
+  async function abrirFormularioDeCartao() {
+    cartaoLigadoNoTeste = true;
+    vi.stubEnv("VITE_MP_PUBLIC_KEY", "TEST-000000-0000-0000-0000-000000000000");
+    const create = vi.fn(
+      async (
+        _tipo: string,
+        _id: string,
+        opcoes: {
+          callbacks: {
+            onReady: () => void;
+            onSubmit: (
+              dados: DadosDoCartaoDoBrick,
+              adicionais: DadosAdicionaisDoBrick,
+            ) => Promise<void>;
+          };
+        },
+      ) => {
+        opcoes.callbacks.onReady();
+        return { unmount: vi.fn() };
+      },
+    );
+    vi.stubGlobal("MercadoPago", function MercadoPagoDeTeste() {
+      return { bricks: () => ({ create }) };
+    });
+
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await fecharPedidoCom(CheckoutView, "Cartão de crédito");
+    expect(create).toHaveBeenCalledTimes(1);
+    const [, id, { callbacks }] = create.mock.calls[0];
+    const formulario = document.getElementById(id)!;
+    expect(formulario.hidden).toBe(false);
+
+    return {
+      formulario,
+      enviar: () =>
+        callbacks.onSubmit(
+          {
+            token: "tok-teste",
+            payment_method_id: "master",
+            installments: 1,
+            payer: {
+              email: "cliente@exemplo.com",
+              identification: { type: "CPF", number: "11144477735" },
+            },
+          },
+          { paymentTypeId: "credit_card" },
+        ),
+    };
+  }
+
+  it.each([
+    ["vencido", { payment_status: "expirado", status: "pending" }],
+    ["cancelado", { payment_status: "aguardando", status: "cancelled" }],
+  ] as const)(
+    "cartão aberto: pedido %s fecha o formulário e permite refazer o pedido",
+    async (caso, resposta) => {
+      const { formulario, enviar } = await abrirFormularioDeCartao();
+      expect(texto()).toContain("Finalize o pagamento");
+      expect(botaoPorTexto(hospedeiro, "Voltar ao carrinho")).toBeUndefined();
+
+      if (caso === "vencido") {
+        await act(async () => {
+          onRealtimeEventCapturado?.({
+            eventType: "UPDATE",
+            new: { id: "ped-999", ...resposta },
+          });
+        });
+      } else {
+        await lerOServidor({ ...resposta, gateway_payment_id: null });
+      }
+
+      expect(texto()).not.toContain("Finalize o pagamento");
+      expect(formulario.hidden || !formulario.isConnected).toBe(true);
+      expect(texto()).toContain("Este pedido não está aguardando pagamento");
+      await act(async () => {
+        await expect(enviar()).rejects.toThrow();
+      });
+      expect(criarPagamento).not.toHaveBeenCalled();
+
+      await act(async () => {
+        botaoPorTexto(hospedeiro, "Voltar ao carrinho")!.click();
+      });
+      expect(addToCart).toHaveBeenCalledTimes(1);
+      expect(onNavigate).toHaveBeenCalledWith("cart");
+    },
+  );
+
+  it("não oferece refazer o pedido enquanto um envio anterior do cartão aguarda resposta", async () => {
+    const { formulario, enviar } = await abrirFormularioDeCartao();
+    let responder!: (resposta: unknown) => void;
+    criarPagamento.mockReturnValueOnce(
+      new Promise((resolve) => {
+        responder = resolve;
+      }),
+    );
+    let envio: Promise<void> | undefined;
+    await act(async () => {
+      envio = enviar();
+    });
+    expect(criarPagamento).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      onRealtimeEventCapturado?.({
+        eventType: "UPDATE",
+        new: { id: "ped-999", payment_status: "expirado" },
+      });
+    });
+
+    expect(formulario.hidden || !formulario.isConnected).toBe(true);
+    expect(botaoPorTexto(hospedeiro, "Voltar ao carrinho")).toBeUndefined();
+
+    await act(async () => {
+      responder({ statusPagamento: "aguardando", paymentId: "pay-1" });
+      await envio;
+    });
+    expect(texto()).toContain("Não pague de novo");
+    expect(botaoPorTexto(hospedeiro, "Voltar ao carrinho")).toBeUndefined();
+  });
 
   describe("PIX que venceu com a tela aberta", () => {
     it("CONTROLE: com o pedido vivo o topo reserva o pedido, sem '30 minutos' fixos e sem 'Voltar ao carrinho'", async () => {

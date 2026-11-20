@@ -915,7 +915,14 @@ export function montarBrickDeCartao({
             onSubmit: (
               dados: DadosDoCartaoDoBrick,
               adicionais?: DadosAdicionaisDoBrick,
-            ) => onEnviar(dados, adicionais),
+            ) => {
+              if (cancelado || abandonado) {
+                return Promise.reject(
+                  new Error("Formulário de pagamento encerrado."),
+                );
+              }
+              return onEnviar(dados, adicionais);
+            },
           },
         }),
       );
@@ -981,6 +988,8 @@ export function PagamentoComCartao({
   cartaoEncerrado = null,
   onCartaoEncerradoPelaConsulta,
   onVerMeusPedidos,
+  onVoltarAoCarrinho,
+  pedidoMortoNoServidor = false,
   sessaoAtiva = true,
   onEntrarDeNovo,
   cobrancaIncerta = false,
@@ -1025,6 +1034,8 @@ export function PagamentoComCartao({
   onCartaoEncerradoPelaConsulta?: (cartao: CartaoEmCurso) => void;
   // Ausente = o botão "Ver meus pedidos" não aparece.
   onVerMeusPedidos?: () => void;
+  onVoltarAoCarrinho?: () => void;
+  pedidoMortoNoServidor?: boolean;
   // `false` = o cliente perdeu a sessão: a edge recusa a consulta (404 de
   // dono) e a verificação periódica do pai nem roda. A tela pede para entrar
   // de novo — nunca oferece PIX nem outro cartão (cobrança nova) nesse
@@ -1093,7 +1104,11 @@ export function PagamentoComCartao({
   const idTitulo = useId();
 
   const { credito, debito, parcelasMax } = config;
-  const formularioAtivo = etapa.tipo === "formulario";
+  const formularioAtivo = etapa.tipo === "formulario" && !pedidoMortoNoServidor;
+  const semNovoEnvio =
+    pedidoMortoNoServidor &&
+    (etapa.tipo === "formulario" || etapa.tipo === "recusado");
+  const [enviosEmCurso, setEnviosEmCurso] = useState(0);
 
   // Redesenho (16/10/2026): o aviso que mora ACIMA do formulário com o Brick
   // montado. É o lugar de tudo que antes subia ao pai e derrubava o Brick: a
@@ -1156,7 +1171,10 @@ export function PagamentoComCartao({
       onEnviar: async (dados, adicionais) => {
         // Um novo envio apaga o aviso do envio anterior: o painel velho não
         // convive com um pagamento em andamento.
-        if (montadoRef.current) setAviso(null);
+        if (montadoRef.current) {
+          setAviso(null);
+          setEnviosEmCurso((n) => n + 1);
+        }
         const resultado = await enviarPagamentoComCartao({
           orderId,
           dados,
@@ -1166,6 +1184,8 @@ export function PagamentoComCartao({
           // Lido NO ENVIO: a coleta do security.js é assíncrona e termina
           // enquanto o cliente digita; ausente, o pagamento segue sem ele.
           deviceId: lerDeviceIdDoMercadoPago(),
+        }).finally(() => {
+          if (montadoRef.current) setEnviosEmCurso((n) => n - 1);
         });
         if (!montadoRef.current) return;
         if (resultado.tipo === "forma-desligada") {
@@ -1746,7 +1766,31 @@ export function PagamentoComCartao({
           </PainelDoCartao>
         )}
 
-        {etapa.tipo === "recusado" && (
+        {semNovoEnvio && (
+          <PainelDoCartao
+            tom="alerta"
+            focarNoTitulo
+            titulo="Este pedido não está aguardando pagamento"
+            detalhe={
+              enviosEmCurso > 0
+                ? "Aguarde a resposta do pagamento que você já enviou."
+                : undefined
+            }
+          >
+            {enviosEmCurso === 0 && !cobrancaIncerta && onVoltarAoCarrinho && (
+              <BotaoDoCartao variante="primario" onClick={onVoltarAoCarrinho}>
+                Voltar ao carrinho
+              </BotaoDoCartao>
+            )}
+            {onVerMeusPedidos && (
+              <BotaoDoCartao onClick={onVerMeusPedidos}>
+                Ver meus pedidos
+              </BotaoDoCartao>
+            )}
+          </PainelDoCartao>
+        )}
+
+        {etapa.tipo === "recusado" && !semNovoEnvio && (
           // A recusa que a tela descobre DEPOIS (o desafio 3DS expirou, ou a
           // consulta soltou a vaga): o Brick já tinha saído de cena — o
           // formulário volta limpo em "Tentar outro cartão". A frase é a que o

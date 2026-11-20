@@ -434,18 +434,17 @@ export function PagamentoOnline({
   configDoCartao?: ConfigDoCartao | null;
   emailDoPagador?: string | null;
   cobrancaIncerta?: boolean;
-  // F1 (04/10/2026): o SERVIDOR já gravou o pedido como morto (`expirado`, ou
-  // `aguardando` + `cancelled`). Só o PIX o lê: o código deixa de aparecer
-  // como válido. Nunca é inferido do relógio do aparelho.
+  // O SERVIDOR já gravou o pedido como morto (`expirado`, ou `aguardando` +
+  // `cancelled`). Encerra o código Pix e o formulário de cartão, sem
+  // inferir o vencimento pelo relógio do aparelho.
   pedidoMortoNoServidor?: boolean;
   // Achado 2, rodada 4 da revisão de risco pré-publicação (26/09/2026):
   // repassa se o cartão ainda podia estar vivo NO MOMENTO da troca — ver o
   // comentário grande em `PagamentoComCartao`'s `onPagarComPix`.
   onTrocarParaPix?: (cartaoAindaVivo: boolean) => void;
   onVerMeusPedidos?: () => void;
-  // Lote 210: saída do PIX que venceu com a tela aberta — devolve os itens ao
-  // carrinho. Só o pai sabe se há itens para devolver (o pedido nasceu nesta
-  // tela); ausente = o botão não aparece (nunca um botão mudo).
+  // Só o pai sabe se há itens para devolver ao carrinho (o pedido nasceu
+  // nesta tela); ausente = o botão não aparece (nunca um botão mudo).
   onVoltarAoCarrinho?: () => void;
   // C5 (front B2): repassado à tela do cartão — ver `PagamentoComCartao`.
   onCobrancaEmDuvida?: (pontoDePartida: PontoDePartidaDaVerificacao) => void;
@@ -532,6 +531,8 @@ export function PagamentoOnline({
           cartaoEncerrado={cartaoEncerrado}
           onCartaoEncerradoPelaConsulta={onCartaoEncerradoPelaConsulta}
           onVerMeusPedidos={onVerMeusPedidos}
+          onVoltarAoCarrinho={onVoltarAoCarrinho}
+          pedidoMortoNoServidor={pedidoMortoNoServidor}
           sessaoAtiva={sessaoAtiva}
           onEntrarDeNovo={onEntrarDeNovo}
           // A falha de carga do formulário agora é da tela do cartão (antes
