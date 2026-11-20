@@ -175,12 +175,25 @@ describe("avisos do aparelho na tela da cliente — iPhone fora do app instalado
     desenhar();
 
     expect(texto()).toContain(
-      "Este iPhone não recebe avisos por aqui (precisa do iOS 16.4 ou mais novo).",
+      "Este aparelho não recebe avisos por aqui (precisa do iOS/iPadOS 16.4 ou mais novo).",
     );
     expect(texto()).toContain(
       "Você continua vendo as atualizações do pedido dentro da loja.",
     );
     expect(hospedeiro.querySelector("button")).toBeNull();
+  });
+
+  it("iPad instalado com iPadOS antigo recebe orientação sem ser chamado de iPhone", () => {
+    definirNavegador({
+      userAgent:
+        "Mozilla/5.0 (iPad; CPU OS 15_7 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148",
+    });
+    instaladoNaTela(true);
+    desenhar();
+
+    expect(texto()).toContain("Este aparelho não recebe avisos por aqui");
+    expect(texto()).toContain("iOS/iPadOS 16.4 ou mais novo");
+    expect(texto()).not.toContain("iPhone");
   });
 
   it("CONTROLE — iPhone que já recebe os avisos não vê instruções de instalar (só o cartão de ligados)", () => {
