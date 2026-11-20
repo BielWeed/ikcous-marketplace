@@ -3,7 +3,7 @@
 // ACHADO (06/11/2026): produto pausado ou excluído SUMIA do carrinho guardado
 // na conta sem nenhum aviso. A cliente deixa a peça no carrinho, entra de novo
 // (ou abre em outro aparelho) e a peça simplesmente não está lá. O aviso
-// "não está mais à venda e saiu do seu carrinho" só olhava o carrinho DESTE
+// de indisponibilidade só olhava o carrinho DESTE
 // aparelho e os itens do banco que ainda tinham produto na vitrine — o item do
 // banco sem produto era descartado antes de chegar ao aviso.
 //
@@ -179,7 +179,7 @@ describe("CartContext — carrinho guardado com produto pausado ou excluído", (
     // A regra de quais itens entram não mudou: só o que está à venda.
     expect(idsNoCarrinho()).toEqual([A_VENDA]);
     expect(frasesDeAviso()).toEqual([
-      "Um item do seu carrinho guardado não está mais à venda e saiu dele.",
+      "Um item está indisponível e não aparece no seu carrinho. Se voltar à venda e ainda estiver salvo, pode reaparecer.",
     ]);
   });
 
@@ -195,7 +195,7 @@ describe("CartContext — carrinho guardado com produto pausado ou excluído", (
 
     expect(idsNoCarrinho()).toEqual([A_VENDA]);
     expect(frasesDeAviso()).toEqual([
-      "2 itens do seu carrinho guardado não estão mais à venda e saíram dele.",
+      "2 itens estão indisponíveis e não aparecem no seu carrinho. Se voltarem à venda e ainda estiverem salvos, podem reaparecer.",
     ]);
   });
 
@@ -227,7 +227,7 @@ describe("CartContext — carrinho guardado com produto pausado ou excluído", (
 
     expect(idsNoCarrinho()).toEqual([]);
     expect(frasesDeAviso()).toEqual([
-      `"Camiseta ${PAUSADO}" não está mais à venda e saiu do seu carrinho.`,
+      `"Camiseta ${PAUSADO}" está indisponível e não aparece no seu carrinho. Se voltar à venda e ainda estiver salvo, pode reaparecer.`,
     ]);
   });
 
@@ -251,7 +251,7 @@ describe("CartContext — carrinho guardado com produto pausado ou excluído", (
     expect(idsNoCarrinho()).toEqual([]);
     expect(frasesDeAviso()).toHaveLength(2);
     expect(frasesDeAviso()).toContain(
-      "Um item do seu carrinho guardado não está mais à venda e saiu dele.",
+      "Um item está indisponível e não aparece no seu carrinho. Se voltar à venda e ainda estiver salvo, pode reaparecer.",
     );
   });
 });
