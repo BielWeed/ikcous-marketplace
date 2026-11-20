@@ -63,21 +63,32 @@ export function limparExifJpeg(
   let retirados = 0;
   let pos = 2;
   let emScan = false;
-  let componentesDoQuadro = 0;
-  let viuDadosDeImagem = false;
+  const componentesDoQuadro = new Set<number>();
+  let alturaPendente = false;
+  let viuDadosNoScan = false;
   while (pos < bytes.length) {
     if (emScan) {
       const proximoMarcador = bytes.indexOf(0xff, pos);
-      if (proximoMarcador > pos) viuDadosDeImagem = true;
+      if (proximoMarcador > pos) viuDadosNoScan = true;
       pos = proximoMarcador;
     }
     if (pos < 0 || bytes.at(pos) !== 0xff) break;
     while (bytes.at(pos) === 0xff) pos++;
     const marcador = bytes.at(pos++);
     if (marcador === undefined) break;
-    if (emScan && marcador === 0) viuDadosDeImagem = true;
+    if (emScan) {
+      // FF00 representa um byte de imagem; RST não encerra o scan nem conta como dado.
+      if (marcador === 0) {
+        viuDadosNoScan = true;
+        continue;
+      }
+      if (marcador >= 0xd0 && marcador <= 0xd7) continue;
+      if (!viuDadosNoScan) break;
+      // Se o SOF deixou a altura em aberto, o DNL deve encerrar o primeiro scan.
+      if (alturaPendente && marcador !== 0xdc) break;
+    }
     if (marcador === 0xd9) {
-      if (!viuDadosDeImagem) return bytes;
+      if (!viuDadosNoScan || alturaPendente) return bytes;
       // MPF e outros contêineres podem anexar imagens com EXIF próprio.
       if (remocoes.length === 0)
         return pos === bytes.length ? bytes : bytes.slice(0, pos);
@@ -100,10 +111,10 @@ export function limparExifJpeg(
       limpo.set(bytes.subarray(lido, pos), escrito);
       return limpo;
     }
-    // Em dados comprimidos, FF00 é um byte escapado; RST não encerra o scan.
-    if (emScan && (marcador === 0 || (marcador >= 0xd0 && marcador <= 0xd7)))
-      continue;
-    if (marcador === 1) continue; // TEM é um marcador sem comprimento.
+    if (marcador === 1) {
+      emScan = false;
+      continue; // TEM é um marcador sem comprimento.
+    }
     if (
       marcador < 0xc0 ||
       marcador === 0xd8 ||
@@ -115,6 +126,11 @@ export function limparExifJpeg(
     const fim = pos + comprimento;
     if (comprimento < 2 || fim > bytes.length) break;
     const dados = pos + 2;
+
+    if (marcador === 0xdc && emScan && alturaPendente) {
+      if (comprimento !== 4 || view.getUint16(dados) === 0) break;
+      alturaPendente = false;
+    }
 
     // SOF0–SOF15, exceto DHT, JPG (reservado) e DAC.
     if (
@@ -128,17 +144,26 @@ export function limparExifJpeg(
       const componentes = view.getUint8(dados + 5);
       if (componentes === 0 || comprimento !== 8 + 3 * componentes) break;
       if (view.getUint16(dados + 3) === 0) break; // largura obrigatória
-      componentesDoQuadro = componentes;
+      alturaPendente = view.getUint16(dados + 1) === 0;
+      componentesDoQuadro.clear();
+      for (let i = dados + 6; i < fim; i += 3) {
+        componentesDoQuadro.add(view.getUint8(i));
+      }
     }
     if (marcador === 0xda) {
-      if (componentesDoQuadro === 0 || comprimento < 8) break;
+      if (componentesDoQuadro.size === 0 || comprimento < 8) break;
       const componentes = view.getUint8(dados);
       if (
         componentes === 0 ||
-        componentes > componentesDoQuadro ||
+        componentes > componentesDoQuadro.size ||
         comprimento !== 6 + 2 * componentes
       )
         break;
+      for (let i = 0; i < componentes; i++) {
+        if (!componentesDoQuadro.has(view.getUint8(dados + 1 + 2 * i)))
+          return bytes;
+      }
+      viuDadosNoScan = false;
     }
 
     if (marcador === 0xe1 && temAssinatura(bytes, dados, fim, EXIF)) {

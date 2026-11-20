@@ -217,6 +217,59 @@ describe("JPEG sem metadados de localização", () => {
     expect(limparExifJpeg(original)).toEqual(jpegSintetico);
   });
 
+  it.each([
+    ["ausente", []],
+    ["vazio", [0xff, 0xdc, 0, 2]],
+    ["com altura zero", [0xff, 0xdc, 0, 4, 0, 0]],
+  ] as const)("preserva a altura zero com DNL %s", (_, dnl) => {
+    const jpeg = jpegSintetico.slice();
+    jpeg[jpeg.indexOf(0xc0) + 5] = 0; // byte baixo da altura no SOF
+    const original = comExif(
+      new Uint8Array([...jpeg.subarray(0, -2), ...dnl, 0xff, 0xd9]),
+      exifComGps(),
+    );
+    expect(limparExifJpeg(original)).toBe(original);
+  });
+
+  it("limpa JPEG com altura declarada por DNL após o primeiro scan", () => {
+    const jpeg = jpegSintetico.slice();
+    jpeg[jpeg.indexOf(0xc0) + 5] = 0;
+    const dnl = [0xff, 0xdc, 0, 4, 0, 1];
+    const esperado = new Uint8Array([
+      ...jpeg.subarray(0, -2),
+      ...dnl,
+      0xff,
+      0xd9,
+    ]);
+    expect(limparExifJpeg(comExif(esperado, exifComGps()))).toEqual(esperado);
+  });
+
+  it("preserva o original quando SOS aponta para componente fora do quadro", () => {
+    const jpeg = jpegSintetico.slice();
+    jpeg[cabecalhoJpegSintetico.length + 5] = 2;
+    const original = comExif(jpeg, exifComGps());
+    expect(limparExifJpeg(original)).toBe(original);
+  });
+
+  it.each([
+    ["vazio", []],
+    ["só com marcador de reinício", [0xff, 0xd0]],
+  ] as const)("preserva JPEG com segundo scan %s", (_, dados) => {
+    const segundoSos = jpegSintetico.subarray(
+      cabecalhoJpegSintetico.length,
+      -3,
+    );
+    const jpeg = new Uint8Array([
+      ...jpegSintetico.subarray(0, -2),
+      ...segundoSos,
+      ...dados,
+      0xff,
+      0xd9,
+    ]);
+    const original = comExif(jpeg, exifComGps());
+    expect(limparExifJpeg(original)).toBe(original);
+  });
+
   it("devolve os próprios bytes quando um segmento posterior está truncado", () => {
     const original = comExif(jpegSintetico, exifComGps()).slice(0, 105);
     expect(limparExifJpeg(original)).toBe(original);
