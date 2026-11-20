@@ -125,13 +125,13 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
   const [balcao, setBalcao] = useState<BalcaoDoMesmoWhatsapp>(
     lerBalcaoDoMesmoWhatsapp(null),
   );
-  const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [cartItems, setCartItems] = useState<(CartItem & { id: string })[]>([]);
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [cartItemToRemove, setCartItemToRemove] = useState<{
     productId: string;
     variantId?: string;
   } | null>(null);
-  const [isClearingCart, setIsClearingCart] = useState(false);
+  const [idsParaLimpar, setIdsParaLimpar] = useState<string[] | null>(null);
   const [limpezaEmAndamento, setLimpezaEmAndamento] = useState(false);
   const limpezaEmAndamentoRef = useRef(false);
   const [copiedField, setCopiedField] = useState<
@@ -289,7 +289,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
         setAddresses([]);
         setCartItems([]);
         setCartItemToRemove(null);
-        setIsClearingCart(false);
+        setIdsParaLimpar(null);
         setCopiedField(null);
       }
       try {
@@ -345,7 +345,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
           if (consulta !== consultaFicha.current) return;
           if (prodError) throw prodError;
 
-          const reconstructedCart: CartItem[] = (payload.cart_items || []).map(
+          const reconstructedCart = (payload.cart_items || []).map(
             (dbItem: any) => {
               const product = products?.find((p) => p.id === dbItem.product_id);
               let itemProduct: any;
@@ -386,7 +386,8 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                 }
               }
 
-              const item: CartItem = {
+              const item: CartItem & { id: string } = {
+                id: dbItem.id,
                 product: itemProduct,
                 quantity: dbItem.quantity,
               };
@@ -519,12 +520,25 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
   };
 
   const handleClearUserCart = () => {
-    if (!fichaCarregada || limpezaEmAndamentoRef.current) return;
-    setIsClearingCart(true);
+    if (!fichaCarregada || limpezaEmAndamentoRef.current || !cartItems.length)
+      return;
+    const ids = cartItems.map((item) => item.id);
+    if (ids.some((id) => typeof id !== "string" || !id)) {
+      toast.error(
+        "Não foi possível identificar os itens. Atualize a ficha e tente novamente.",
+      );
+      return;
+    }
+    setIdsParaLimpar(ids);
   };
 
   const confirmClearUserCart = async () => {
-    if (!fichaCarregada || !idCarregado || limpezaEmAndamentoRef.current)
+    if (
+      !fichaCarregada ||
+      !idCarregado ||
+      !idsParaLimpar?.length ||
+      limpezaEmAndamentoRef.current
+    )
       return;
     const consulta = consultaFicha.current;
     if (isOffline) {
@@ -540,7 +554,8 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
             .from("cart_items")
             .delete()
             .select("id")
-            .eq("user_id", idCarregado),
+            .eq("user_id", idCarregado)
+            .in("id", idsParaLimpar),
         ),
         PRAZO_DAS_ACOES_DO_PEDIDO_MS,
         erroDeConsultaSemResposta,
@@ -561,7 +576,11 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
         return;
       }
 
-      toast.success("Carrinho limpo com sucesso!");
+      toast.success(
+        data.length === 1
+          ? "1 produto removido do carrinho."
+          : `${data.length} produtos removidos do carrinho.`,
+      );
       await fetchUserData(true);
     } catch (err) {
       if (consulta !== consultaFicha.current) return;
@@ -576,7 +595,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
     } finally {
       limpezaEmAndamentoRef.current = false;
       setLimpezaEmAndamento(false);
-      setIsClearingCart(false);
+      setIdsParaLimpar(null);
     }
   };
 
@@ -1786,9 +1805,9 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
 
       {/* Diálogo de Confirmação de Limpeza de Carrinho */}
       <AlertDialog
-        open={fichaCarregada && isClearingCart}
+        open={fichaCarregada && idsParaLimpar !== null}
         onOpenChange={(open) => {
-          if (!open && !limpezaEmAndamentoRef.current) setIsClearingCart(false);
+          if (!open && !limpezaEmAndamentoRef.current) setIdsParaLimpar(null);
         }}
       >
         <AlertDialogContent className="max-w-md rounded-3xl border border-admin-border bg-zinc-950">
@@ -1797,8 +1816,9 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
               Limpar Carrinho?
             </AlertDialogTitle>
             <AlertDialogDescription className="text-xs text-zinc-400">
-              Tem certeza que deseja limpar completamente o carrinho deste
-              cliente? Esta ação removerá todos os produtos adicionados.
+              Esta ação remove {idsParaLimpar?.length}{" "}
+              {idsParaLimpar?.length === 1 ? "produto" : "produtos"} do
+              carrinho.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="mt-4 gap-2">
