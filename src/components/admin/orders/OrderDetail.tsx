@@ -92,6 +92,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { toast } from "sonner";
 import {
   AvisoFalhaNaLeituraDasDevolucoes,
@@ -331,10 +332,8 @@ function ehIdDoCatalogo(id: string | null | undefined): id is string {
 // ficha reaproveita, para abrir pedidos em sequência sem piscar nem repetir
 // consulta. Vencida = conta como "ainda não lida" e a ficha lê de novo.
 const VALIDADE_DO_ROTULO_DA_VARIACAO_MS = 60_000;
-const globalVariacaoCache = new Map<
-  string,
-  { rotulo: string; lidoEm: number }
->();
+type CopiaDoRotuloDaVariacao = { rotulo: string; lidoEm: number };
+const globalVariacaoCache = new Map<string, CopiaDoRotuloDaVariacao>();
 const rotuloDaVariacaoEmDia = (id: string): boolean => {
   const copia = globalVariacaoCache.get(id);
   return (
@@ -980,8 +979,7 @@ interface OrderItemsCardProps {
   skus: Record<string, string>;
   variacoes: Record<string, string>;
   loadingSkus: boolean;
-  /** A leitura de tamanho/cor/código falhou: não é "item sem variação". */
-  falhaNaLeitura: boolean;
+  avisoDeLeitura: string | null;
   onTentarDeNovo: () => void;
 }
 
@@ -994,7 +992,7 @@ function OrderItemsCard({
   skus,
   variacoes,
   loadingSkus,
-  falhaNaLeitura,
+  avisoDeLeitura,
   onTentarDeNovo,
 }: Readonly<OrderItemsCardProps>) {
   const { items } = order;
@@ -1008,15 +1006,12 @@ function OrderItemsCard({
           {totalUnits} {totalUnits === 1 ? "unidade" : "unidades"}
         </span>
       </div>
-      {falhaNaLeitura && (
+      {avisoDeLeitura && (
         <div
           role="alert"
           className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-amber-500/40 px-3 py-2 text-xs text-amber-400"
         >
-          <p className="min-w-0 flex-1">
-            Não deu para carregar tamanho e cor desses itens. Recarregue antes
-            de separar o pedido.
-          </p>
+          <p className="min-w-0 flex-1">{avisoDeLeitura}</p>
           <Button variant="ghost" size="sm" onClick={onTentarDeNovo}>
             Tentar de novo
           </Button>
@@ -1780,7 +1775,10 @@ export const OrderDetail = memo(function OrderDetail({
   useEffect(() => () => onRascunhoPendente?.(false), [onRascunhoPendente]);
 
   const [skus, setSkus] = useState<Record<string, string>>({});
-  const [variacoes, setVariacoes] = useState<Record<string, string>>({});
+  const [copiasDasVariacoes, setCopiasDasVariacoes] = useState<
+    Record<string, CopiaDoRotuloDaVariacao>
+  >({});
+  const [, atualizarValidadeDasVariacoes] = useState(0);
   const [loadingSkus, setLoadingSkus] = useState(false);
   const [falhaNaLeitura, setFalhaNaLeitura] = useState(false);
   const [tentativaSkus, setTentativaSkus] = useState(0);
@@ -2116,13 +2114,13 @@ export const OrderDetail = memo(function OrderDetail({
         const variacoesLidas = () =>
           Object.fromEntries(
             variantIds.flatMap((id) => {
-              const rotulo = globalVariacaoCache.get(id)?.rotulo;
-              return rotulo ? [[id, rotulo] as const] : [];
+              const copia = globalVariacaoCache.get(id);
+              return copia?.rotulo ? [[id, copia] as const] : [];
             }),
           );
 
         if (missingProductIds.length === 0 && missingVariantIds.length === 0) {
-          setVariacoes(variacoesLidas());
+          setCopiasDasVariacoes(variacoesLidas());
           const cachedSkus: Record<string, string> = {};
           productIds.forEach((id) => {
             cachedSkus[`prod-${id}`] = globalSkuCache[`prod-${id}`];
@@ -2186,7 +2184,7 @@ export const OrderDetail = memo(function OrderDetail({
             lidoEm: Date.now(),
           });
         });
-        setVariacoes(variacoesLidas());
+        setCopiasDasVariacoes(variacoesLidas());
 
         const resultSkus: Record<string, string> = {};
         productIds.forEach((id) => {
@@ -2219,13 +2217,48 @@ export const OrderDetail = memo(function OrderDetail({
   // O papel espera a variação dos itens vinculados ao catálogo. Para itens
   // sem produto, a leitura ainda é tentada, mas o papel usa os dados salvos
   // se o rótulo não chegar.
-  const faltaVariacaoNoPapel = order.items.some(
-    (i) =>
-      ehIdDoCatalogo(i.productId) &&
-      ehIdDoCatalogo(i.variantId) &&
-      !rotuloDaVariacaoGuardada(i) &&
-      !variacoes[i.variantId],
-  );
+  const variacoes: Record<string, string> = {};
+  const agoraDasVariacoes = Date.now();
+  let proximoVencimento = Number.POSITIVE_INFINITY;
+  let faltaVariacaoNoPapel = false;
+  let venceuVariacaoDoPapel = false;
+  for (const item of order.items) {
+    if (!ehIdDoCatalogo(item.variantId) || rotuloDaVariacaoGuardada(item)) {
+      continue;
+    }
+    const copia = copiasDasVariacoes[item.variantId];
+    const venceEm = copia
+      ? copia.lidoEm + VALIDADE_DO_ROTULO_DA_VARIACAO_MS
+      : 0;
+    if (copia && venceEm > agoraDasVariacoes) {
+      variacoes[item.variantId] = copia.rotulo;
+      proximoVencimento = Math.min(proximoVencimento, venceEm);
+    } else if (ehIdDoCatalogo(item.productId)) {
+      faltaVariacaoNoPapel = true;
+      if (copia) venceuVariacaoDoPapel = true;
+    }
+  }
+  useEffect(() => {
+    if (!active || proximoVencimento === Number.POSITIVE_INFINITY) return;
+    const atualizar = () => atualizarValidadeDasVariacoes((n) => n + 1);
+    const relogio = setTimeout(atualizar, proximoVencimento - Date.now());
+    // Ctrl+P pode chegar antes do relógio (ex.: aba que estava em segundo
+    // plano). O navegador precisa do DOM atualizado antes de copiar o papel.
+    const antesDeImprimir = () => {
+      if (Date.now() >= proximoVencimento) flushSync(atualizar);
+    };
+    window.addEventListener("beforeprint", antesDeImprimir);
+    return () => {
+      clearTimeout(relogio);
+      window.removeEventListener("beforeprint", antesDeImprimir);
+    };
+  }, [active, proximoVencimento]);
+
+  const avisoDeLeitura = falhaNaLeitura
+    ? "Não deu para carregar tamanho e cor desses itens. Recarregue antes de separar o pedido."
+    : venceuVariacaoDoPapel && !loadingSkus
+      ? "A cópia do tamanho e da cor venceu. Recarregue antes de separar o pedido."
+      : null;
   let motivoDeNaoImprimir: string | null = null;
   // Pedido cancelado (e venda do balcão anulada) deixa de valer como
   // comprovante de compra: o papel não lê o status e sairia igual ao de uma
@@ -2235,7 +2268,7 @@ export const OrderDetail = memo(function OrderDetail({
   if (pedidoCancelado) {
     motivoDeNaoImprimir =
       "Pedido cancelado: o papel não sai, porque deixou de valer como comprovante de compra.";
-  } else if (faltaVariacaoNoPapel && falhaNaLeitura) {
+  } else if (faltaVariacaoNoPapel && avisoDeLeitura) {
     motivoDeNaoImprimir =
       "Para imprimir, carregue antes o tamanho e a cor dos itens (use “Tentar de novo”).";
   } else if (faltaVariacaoNoPapel && loadingSkus) {
@@ -2774,7 +2807,7 @@ export const OrderDetail = memo(function OrderDetail({
           skus={skus}
           variacoes={variacoes}
           loadingSkus={loadingSkus}
-          falhaNaLeitura={falhaNaLeitura}
+          avisoDeLeitura={avisoDeLeitura}
           onTentarDeNovo={() => setTentativaSkus((n) => n + 1)}
         />
 

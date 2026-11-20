@@ -110,7 +110,10 @@ import {
   rotuloDaFormaDoPedido,
 } from "@/lib/forma-de-pagamento";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
-import { fotoDoItemDoCarrinho } from "@/lib/foto-do-item-do-carrinho";
+import {
+  capaDeReservaDoItem,
+  fotoDoItemDoCarrinho,
+} from "@/lib/foto-do-item-do-carrinho";
 import { ehMarcadorDeFoto } from "@/lib/foto-do-produto";
 import {
   conferirFreteEscolhidoComACotacao,
@@ -8502,6 +8505,11 @@ export function CheckoutViewDaConta({
                         // A foto da cor escolhida (quando tem), senão a do
                         // produto — a mesma regra do carrinho.
                         const fotoDaLinha = fotoDoItemDoCarrinho(item);
+                        const capa = capaDeReservaDoItem(item, fotoDaLinha);
+                        // Mesmas classes da foto da linha (que continua com o
+                        // literal no JSX, para o teste da assinatura do celular).
+                        const classeDaCapa =
+                          "size-12 shrink-0 rounded-xl border border-zinc-100 bg-zinc-50 object-cover";
 
                         return (
                           <li
@@ -8513,6 +8521,16 @@ export function CheckoutViewDaConta({
                               original={fotoDaLinha}
                               alt=""
                               className="size-12 shrink-0 rounded-xl border border-zinc-100 bg-zinc-50 object-cover"
+                              fallback={
+                                capa ? (
+                                  <ImagemComFallback
+                                    src={miniaturaDoResumo(capa, 144)}
+                                    original={capa}
+                                    alt=""
+                                    className={classeDaCapa}
+                                  />
+                                ) : undefined
+                              }
                             />
                             <div className="min-w-0 flex-1">
                               <p className="line-clamp-2 break-words text-sm font-medium text-zinc-800">
@@ -8970,8 +8988,7 @@ export function CheckoutViewDaConta({
                         className="mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-700"
                       >
                         <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
-                        Sem conexão — nada foi enviado. Aguarde a internet
-                        voltar para finalizar
+                        Sem conexão — aguarde a internet voltar para continuar.
                       </p>
                     )}
                     {mostrarAvisoDeConta && (

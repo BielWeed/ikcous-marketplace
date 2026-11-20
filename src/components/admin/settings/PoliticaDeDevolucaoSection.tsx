@@ -476,7 +476,7 @@ export function PoliticaDeDevolucaoSection({
       ...categories.map((c) => c.name).filter(Boolean),
       ...form.categorias_sem_troca,
     ]),
-  ).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  ).sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true }));
 
   return (
     <fieldset

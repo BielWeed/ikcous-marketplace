@@ -148,16 +148,22 @@ describe("ficha do pedido — o nome da variação corrigido chega à impressão
       raiz?.unmount();
     });
     raiz = createRoot(hospedeiro);
+    await mostrarPedido(raiz, order);
+  }
+
+  async function mostrarPedido(raizDaFicha: Root, order: Order) {
     const { OrderDetail } = await import(
       "@/components/admin/orders/OrderDetail"
     );
-    const dela = raiz;
     await act(async () => {
-      dela.render(<OrderDetail order={order} onStatusChange={vi.fn()} />);
+      raizDaFicha.render(
+        <OrderDetail order={order} onStatusChange={vi.fn()} />,
+      );
     });
     await assentar();
   }
 
+  const papel = () => document.body.querySelector("[data-tema-fixo]");
   const botaoImprimir = () =>
     hospedeiro.querySelector<HTMLButtonElement>(
       'button[title="Imprimir Pedido"]',
@@ -229,6 +235,79 @@ describe("ficha do pedido — o nome da variação corrigido chega à impressão
     expect(hospedeiro.textContent).not.toContain("Tamanho XG");
     // Leitura que deu certo e não achou: imprime como sempre.
     expect(botaoImprimir()?.disabled).toBe(false);
+  });
+
+  it("na troca de pedido sem desmontar, a releitura que falha bloqueia o papel com rótulo vencido", async () => {
+    const id = "598044d4-9426-44d9-a0c9-000000000006";
+    banco.push({ id, sku: "CAM-P", name: "Tamanho", value: "P" });
+    const antigo = pedidoFake(id);
+    await abrirFicha(antigo);
+    expect(papel()?.textContent).toContain("Tamanho P");
+    expect(botaoImprimir()?.disabled).toBe(false);
+
+    banco[0].value = "M";
+    agora += 60_000;
+    consultas.falhar = true;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const outro = { ...pedidoFake(id), id: "ped-validade-654321" };
+    if (!raiz) throw new Error("A primeira ficha não foi montada");
+    await mostrarPedido(raiz, outro);
+
+    expect(consultas.product_variants).toBe(2);
+    expect(botaoImprimir()?.disabled).toBe(true);
+    expect(papel()).toBeNull();
+    const tentar = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (botao) => botao.textContent === "Tentar de novo",
+    );
+    expect(tentar).toBeDefined();
+
+    consultas.falhar = false;
+    await act(async () => tentar?.click());
+    await assentar();
+
+    expect(botaoImprimir()?.disabled).toBe(false);
+    expect(papel()?.textContent).toContain("Tamanho M");
+    expect(papel()?.textContent).not.toContain("Tamanho P");
+  });
+
+  it("Ctrl+P não leva uma cópia que acabou de vencer com a ficha aberta", async () => {
+    const id = "598044d4-9426-44d9-a0c9-000000000007";
+    banco.push({ id, sku: "CAM-P", name: "Tamanho", value: "P" });
+    await abrirFicha(pedidoFake(id));
+
+    agora += 59_999;
+    act(() => {
+      window.dispatchEvent(new Event("beforeprint"));
+      expect(papel()?.textContent).toContain("Tamanho P");
+    });
+
+    agora += 1;
+    act(() => {
+      window.dispatchEvent(new Event("beforeprint"));
+      // O navegador tira a foto do papel antes de devolver o controle ao React.
+      expect(papel()).toBeNull();
+    });
+    expect(botaoImprimir()?.disabled).toBe(true);
+  });
+
+  it("preserva no papel a variação gravada na compra, mesmo se o catálogo falhar", async () => {
+    const id = "598044d4-9426-44d9-a0c9-000000000008";
+    banco.push({ id, sku: "CAM-P", name: "Tamanho", value: "P" });
+    await abrirFicha(pedidoFake(id));
+
+    agora += 60_000;
+    consultas.falhar = true;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const outro = { ...pedidoFake(id), id: "ped-validade-765432" };
+    outro.items[0].variacaoNomeNaCompra = "Tamanho";
+    outro.items[0].variacaoValorNaCompra = "G";
+    if (!raiz) throw new Error("A primeira ficha não foi montada");
+    await mostrarPedido(raiz, outro);
+
+    expect(consultas.product_variants).toBe(2);
+    expect(botaoImprimir()?.disabled).toBe(false);
+    expect(papel()?.textContent).toContain("Tamanho G");
+    expect(papel()?.textContent).not.toContain("Tamanho P");
   });
 
   it("se a releitura falha, o aviso aparece (a cópia vencida não finge estar em dia)", async () => {

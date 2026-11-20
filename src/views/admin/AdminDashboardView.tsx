@@ -224,8 +224,26 @@ function PerfilDaLojaComDados({
 
 /** Usa o catálogo já carregado, isolando o contexto no boundary do cartão. */
 function ParaFazerComProdutos(props: Parameters<typeof ParaFazer>[0]) {
-  const { products } = useStore();
-  return <ParaFazer {...props} produtos={products} />;
+  const { products, catalogoErro, loadingProducts, fetchProducts } = useStore();
+  const [recarregando, setRecarregando] = useState(false);
+  const recarregarCatalogo = async () => {
+    setRecarregando(true);
+    try {
+      await fetchProducts();
+    } finally {
+      setRecarregando(false);
+    }
+  };
+
+  return (
+    <ParaFazer
+      {...props}
+      produtos={products}
+      catalogoCarregando={loadingProducts || recarregando}
+      catalogoFalhou={catalogoErro && products.length === 0}
+      aoRecarregarCatalogo={recarregarCatalogo}
+    />
+  );
 }
 
 /**

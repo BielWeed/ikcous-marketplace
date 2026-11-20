@@ -1,9 +1,12 @@
+import { ImagemComFallback } from "@/components/ui/custom/ImagemComFallback";
 import { QuantitySelector } from "@/components/ui/custom/QuantitySelector";
 import { useStore } from "@/contexts/StoreContext";
 import { chaveDaLinha, estoqueDaLinha } from "@/lib/escolhas-do-item";
-import { fotoDoItemDoCarrinho } from "@/lib/foto-do-item-do-carrinho";
+import {
+  capaDeReservaDoItem,
+  fotoDoItemDoCarrinho,
+} from "@/lib/foto-do-item-do-carrinho";
 import { ehMarcadorDeFoto } from "@/lib/foto-do-produto";
-import { usarImagemOriginal } from "@/lib/imageUrl";
 import { miniaturaDeCompra } from "@/lib/miniatura-de-compra";
 import { percentualDeDesconto } from "@/lib/percentual-de-desconto";
 import { pluralizar } from "@/lib/pluralizar";
@@ -13,7 +16,7 @@ import type { CartItem } from "@/types";
 import { haptic } from "@/utils/haptic";
 import { AnimatePresence, motion } from "framer-motion";
 import { Trash2 } from "lucide-react";
-import { memo, useState } from "react";
+import { memo } from "react";
 
 interface CartItemCardProps {
   item: CartItem;
@@ -88,7 +91,15 @@ const CartItemCard = memo(function CartItemCard({
 
   // A foto é a da cor escolhida (quando tem) ou a do produto.
   const fotoDaLinha = fotoDoItemDoCarrinho(item);
-  const [urlQueFalhou, setUrlQueFalhou] = useState<string | null>(null);
+  const capa = capaDeReservaDoItem(item, fotoDaLinha);
+  const alt = variantText
+    ? `${item.product.name} - ${variantText}`
+    : item.product.name;
+  const semFoto = (
+    <div className="flex size-full items-center justify-center px-2 text-center text-xs font-medium text-muted-foreground">
+      Sem foto
+    </div>
+  );
 
   const variant = item.variantId
     ? item.product.variants?.find((v) => v.id === item.variantId)
@@ -120,27 +131,29 @@ const CartItemCard = memo(function CartItemCard({
         )}
       >
         <div className="size-16 flex-shrink-0 overflow-hidden rounded-xl bg-muted min-[380px]:size-20">
-          {!fotoDaLinha ||
-          ehMarcadorDeFoto(fotoDaLinha) ||
-          fotoDaLinha === urlQueFalhou ? (
-            <div className="flex size-full items-center justify-center px-2 text-center text-xs font-medium text-muted-foreground">
-              Sem foto
-            </div>
-          ) : (
-            <img
-              src={miniaturaDeCompra(fotoDaLinha)}
-              onError={(e) => {
-                if (!usarImagemOriginal(e.currentTarget, fotoDaLinha))
-                  setUrlQueFalhou(fotoDaLinha);
-              }}
-              alt={
-                variantText
-                  ? `${item.product.name} - ${variantText}`
-                  : item.product.name
-              }
-              className="size-full object-cover"
-            />
-          )}
+          <ImagemComFallback
+            src={
+              ehMarcadorDeFoto(fotoDaLinha)
+                ? undefined
+                : miniaturaDeCompra(fotoDaLinha)
+            }
+            original={fotoDaLinha}
+            alt={alt}
+            className="size-full object-cover"
+            fallback={
+              capa ? (
+                <ImagemComFallback
+                  src={miniaturaDeCompra(capa)}
+                  original={capa}
+                  alt={item.product.name}
+                  className="size-full object-cover"
+                  fallback={semFoto}
+                />
+              ) : (
+                semFoto
+              )
+            }
+          />
         </div>
 
         <div className="flex min-w-0 flex-1 flex-col">

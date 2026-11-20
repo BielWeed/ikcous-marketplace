@@ -49,11 +49,13 @@ vi.mock("@/contexts/StoreContext", () => ({
 }));
 
 let mockOrders: Order[] = [];
+let mockPedidosCancelados: Order[] = [];
 let mockTotalOrders = 0;
 
 vi.mock("@/hooks/useOrders", () => ({
   useOrders: () => ({
     orders: mockOrders,
+    pedidosCancelados: mockPedidosCancelados,
     loadOrders: vi.fn(),
     updateOrderStatus: vi.fn(),
     totalOrders: mockTotalOrders,
@@ -64,11 +66,14 @@ vi.mock("@/hooks/useOrders", () => ({
 
 // `let` porque cada teste controla o que a RPC "devolveu".
 let mockAnalyticsStats: any = null;
+let mockAnalyticsError: string | null = null;
+const fetchExecutiveSummary = vi.fn();
 
 vi.mock("@/hooks/useAnalytics", () => ({
   useAnalytics: () => ({
     stats: mockAnalyticsStats,
-    fetchExecutiveSummary: vi.fn(),
+    error: mockAnalyticsError,
+    fetchExecutiveSummary,
   }),
 }));
 
@@ -200,8 +205,11 @@ describe("AdminOrdersView — Finalizados e aviso de pago após cancelado", () =
     hospedeiro.remove();
     vi.unstubAllGlobals();
     mockOrders = [];
+    mockPedidosCancelados = [];
     mockTotalOrders = 0;
     mockAnalyticsStats = null;
+    mockAnalyticsError = null;
+    fetchExecutiveSummary.mockReset();
   });
 
   it("cartão 'Finalizados' mostra deliveredTotal, não month.count", async () => {
@@ -243,6 +251,96 @@ describe("AdminOrdersView — Finalizados e aviso de pago após cancelado", () =
     const cartao = rotulo!.parentElement!.parentElement!;
     expect(cartao.querySelector("h3")?.textContent).toBe("—");
     expect(cartao.querySelector("h3")?.textContent).not.toBe("0");
+  });
+
+  async function montarComAlerta() {
+    const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
+    await act(async () => {
+      raiz.render(<AdminOrdersView onNavigate={vi.fn()} active />);
+    });
+  }
+
+  const alavancaDeAlertas = () =>
+    hospedeiro.querySelector<HTMLButtonElement>(
+      'button[data-testid="alertas-cancelados-alavanca"]',
+    );
+
+  it("sem contagem e com erro, abre o aviso e permite buscar o número novamente", async () => {
+    mockAnalyticsError = "Não foi possível carregar o resumo do painel.";
+    await montarComAlerta();
+
+    const aviso = "Não foi possível conferir os alertas";
+    const alavanca = alavancaDeAlertas();
+    expect(alavanca?.getAttribute("aria-label") ?? "").toContain(aviso);
+    expect(
+      alavanca?.querySelector('[data-testid="alertas-cancelados-badge"]')
+        ?.textContent,
+    ).toBe("!");
+    await act(async () => alavanca?.click());
+    const painel = hospedeiro.querySelector("#alertas-cancelados-conteudo");
+    expect(painel?.textContent).toContain(aviso);
+
+    const tentar = [...(painel?.querySelectorAll("button") ?? [])].find(
+      (botao) => botao.textContent?.trim() === "Tentar de novo",
+    );
+    expect(tentar).toBeDefined();
+    fetchExecutiveSummary.mockClear();
+    await act(async () => tentar?.click());
+    expect(fetchExecutiveSummary).toHaveBeenCalledWith(true);
+
+    mockAnalyticsError = null;
+    mockAnalyticsStats = statsFake({ monthCount: 0, paidOnCancelled: 0 });
+    await montarComAlerta();
+    expect(alavancaDeAlertas()).toBeNull();
+  });
+
+  it("mantém a mercadoria esperando retorno encontrada na consulta separada", async () => {
+    mockAnalyticsError = "Não foi possível carregar o resumo do painel.";
+    mockPedidosCancelados = [
+      {
+        id: "pedido-produto-voltando",
+        customer: { name: "Cliente de teste", whatsapp: "" },
+        items: [],
+        subtotal: 100,
+        shipping: 0,
+        discount: 0,
+        total: 100,
+        paymentMethod: "pix",
+        status: "cancelled",
+        paymentStatus: "aguardando",
+        createdAt: "2026-11-20T09:30:00Z",
+        updatedAt: "2026-11-20T09:30:00Z",
+        cancelledAfterShipping: true,
+      },
+    ];
+    await montarComAlerta();
+
+    expect(
+      alavancaDeAlertas()?.querySelector(
+        '[data-testid="alertas-cancelados-badge"]',
+      )?.textContent,
+    ).toBe("1");
+    await act(async () => alavancaDeAlertas()?.click());
+    const painel = hospedeiro.querySelector("#alertas-cancelados-conteudo");
+    expect(painel?.textContent).toContain("Esperando o produto voltar (1)");
+    expect(painel?.textContent).toContain(
+      "Não foi possível conferir os alertas",
+    );
+  });
+
+  it("preserva o número conhecido mesmo quando a releitura falha", async () => {
+    mockAnalyticsError =
+      "Não foi possível atualizar agora — exibindo a última atualização.";
+    mockAnalyticsStats = statsFake({ monthCount: 1, paidOnCancelled: 1 });
+    await montarComAlerta();
+
+    expect(alavancaDeAlertas()?.getAttribute("aria-label")).toContain(
+      "1 pedido recebeu pagamento e está cancelado",
+    );
+    await act(async () => alavancaDeAlertas()?.click());
+    expect(
+      hospedeiro.querySelector("#alertas-cancelados-conteudo")?.textContent,
+    ).not.toContain("Não foi possível conferir os alertas");
   });
 
   it("sem pedidos pagos após cancelado, nenhum aviso aparece", async () => {

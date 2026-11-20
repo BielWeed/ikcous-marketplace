@@ -217,6 +217,34 @@ describe("CheckoutView — o resumo do pedido mostra a foto da cor escolhida", (
     expect(linhas[1].texto).toContain("2 × R$ 50,00");
   });
 
+  it("tenta a capa no resumo quando a miniatura e a original da cor falham", async () => {
+    const fotoDaCor =
+      "https://xyz.supabase.co/storage/v1/object/public/produtos/azul.jpg";
+    const produto = {
+      ...camiseta,
+      variants: [{ ...camiseta.variants![0], imageUrl: fotoDaCor }],
+    };
+    const linhas = await abrirOResumo(
+      [{ product: produto, quantity: 1, variantId: "var-azul" }],
+      50,
+    );
+    expect(linhas[0].foto).toContain("/storage/v1/render/image/public/");
+    const painel = document.querySelector('[aria-label="Resumo do pedido"]');
+    if (!painel) throw new Error("Resumo do pedido não foi renderizado");
+    const foto = painel.querySelector("li img");
+    if (!foto) throw new Error("Foto da variação não foi renderizada");
+
+    await act(async () => foto.dispatchEvent(new Event("error")));
+    expect(foto.getAttribute("src")).toBe(fotoDaCor);
+    await act(async () => foto.dispatchEvent(new Event("error")));
+
+    const capa = painel.querySelector("li img");
+    expect(capa?.getAttribute("src")).toBe(FOTO_DO_PRODUTO);
+    if (!capa) throw new Error("Capa não foi renderizada");
+    await act(async () => capa.dispatchEvent(new Event("error")));
+    expect(painel.querySelector("li")?.textContent).toContain("Sem foto");
+  });
+
   it("cor sem foto própria e linha sem variação seguem com a foto do produto", async () => {
     const linhas = await abrirOResumo(
       [

@@ -1,4 +1,23 @@
 {
+  "1.5.227": {
+    "titulo": "Telas que avisam quando falham e fotos que não quebram",
+    "novidades": [],
+    "correcoes": [
+      "No checkout, quando falta internet, o aviso diz “Sem conexão — aguarde a internet voltar para continuar.”, sem afirmar que nada foi enviado.",
+      "No painel, depois de registrar um estorno, o aviso orienta: se o pedido ainda aparecer em “Devolver agora”, atualize a lista.",
+      "Na ficha do pedido, o recibo não sai com tamanho e cor lidos do catálogo há mais de um minuto: a ficha pede para recarregar (“Tentar de novo”) antes de imprimir. O nome da variação registrado na compra continua valendo sem recarregar.",
+      "Na página inicial e no carrinho, a barra de frete grátis mostra 100% quando a meta é atingida, de acordo com o selo, mesmo em valores com centavos.",
+      "Em Avisar clientes, a lista de produtos do destino do aviso aparece em ordem natural: “Produto 2” vem antes de “Produto 10”.",
+      "Na política de devolução, as categorias com números no nome aparecem em ordem natural: “Categoria 2” vem antes de “Categoria 10”.",
+      "Na tela Entrega e frete, um prazo digitado com zero à esquerda, como 01, mostra “dia” no singular.",
+      "No Financeiro, na aba Caixa e em Contas e categorias (botão “Contas” do topo), quando a atualização das listas falha, a tela avisa e oferece “Tentar de novo”, em vez de dizer que a lista está vazia.",
+      "No Início do painel, quando não é possível conferir o catálogo, o “Para fazer” avisa e oferece nova tentativa, em vez de mostrar “Tudo em dia”.",
+      "Na tela de Pedidos, quando não é possível conferir os pedidos pagos e cancelados, o alerta avisa e oferece nova tentativa, mantendo os avisos já conhecidos.",
+      "No Perfil da cliente, quando a foto de um pedido em andamento não carrega, aparece o ícone de pacote em vez da imagem quebrada.",
+      "No carrinho e no resumo do checkout, quando a foto da variação não carrega, a tela mostra a capa do produto antes de cair no “Sem foto”."
+    ],
+    "melhorias": []
+  },
   "1.5.226": {
     "titulo": "Valores colados, busca e balcão mais firmes",
     "novidades": [],

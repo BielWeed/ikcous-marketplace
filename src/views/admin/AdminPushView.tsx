@@ -91,7 +91,7 @@ import {
   Users,
   Zap,
 } from "lucide-react";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 /** Selo de ícone neutro: a cor fica para o que significa algo. */
@@ -665,13 +665,26 @@ export const AdminPushView = memo(function AdminPushView({
       setCustomPath("");
   }, [notification.url]);
 
+  // A consulta mantém a ordem estável para paginar. Só a lista exibida
+  // muda de ordem, sem trocar o produto escolhido por padrão.
+  const produtosOrdenados = useMemo(
+    () =>
+      [...products].sort((a, b) =>
+        a.nome.localeCompare(b.nome, "pt-BR", {
+          numeric: true,
+          sensitivity: "base",
+        }),
+      ),
+    [products],
+  );
+
   // Produtos que o filtro por nome deixa à vista. O produto já escolhido fica
   // sempre na lista: sem ele o seletor ficaria vazio enquanto o aviso sairia
   // com aquele produto.
   const produtosVisiveis = (() => {
     const termo = normalizeText(filtroDeProduto);
-    if (!termo) return products;
-    return products.filter(
+    if (!termo) return produtosOrdenados;
+    return produtosOrdenados.filter(
       (p) =>
         p.id === selectedProductId || normalizeText(p.nome).includes(termo),
     );

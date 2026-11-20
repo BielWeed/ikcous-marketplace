@@ -149,6 +149,19 @@ function listaGravada(): unknown {
   return chamada?.[1]?.p?.categorias_sem_troca;
 }
 
+it("mostra Tamanho 2 antes de Tamanho 10 nas categorias sem troca", async () => {
+  maybeSingle.mockResolvedValue({
+    data: { ...LINHA, categorias_sem_troca: ["Tamanho 10", "Tamanho 2"] },
+    error: null,
+  });
+  await montar();
+
+  const tamanhos = [...hospedeiro.querySelectorAll("button[aria-pressed]")]
+    .map((b) => b.textContent?.trim())
+    .filter((nome) => nome?.startsWith("Tamanho "));
+  expect(tamanhos).toEqual(["Tamanho 2", "Tamanho 10"]);
+});
+
 describe("renomear categoria com a aba Ajustes aberta por baixo", () => {
   it("salvar um prazo depois da renomeacao NAO regrava o nome antigo na regra", async () => {
     await montar();

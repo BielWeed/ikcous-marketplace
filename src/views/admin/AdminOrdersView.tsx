@@ -486,7 +486,11 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     onRealtimeEvent: (payload) => onRealtimeEventRef.current(payload),
     onReconciliar: () => aoReconciliarRef.current(),
   });
-  const { stats: analyticsStats, fetchExecutiveSummary } = useAnalytics();
+  const {
+    stats: analyticsStats,
+    error: analyticsError,
+    fetchExecutiveSummary,
+  } = useAnalytics();
   // Os três números do fluxo no topo (onda F, F3); `null` = "—". O hook
   // carrega sozinho ao ficar ativo; daqui só se pede recarga (coalescida na
   // janela de 1 s) por tempo real, ação na tela ou volta da conexão — nunca
@@ -742,7 +746,9 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   // Task 3c). O único sinal disso antes era a etiqueta no cartão da lista,
   // que rola para fora de vista conforme chegam pedidos novos — daqui vem
   // o aviso fixo logo abaixo dos cartões de métrica.
-  const paidOnCancelledCount = analyticsStats?.paidOnCancelled ?? 0;
+  const paidOnCancelledCount = analyticsStats?.paidOnCancelled ?? null;
+  const alertasNaoConferidos =
+    paidOnCancelledCount === null && Boolean(analyticsError);
   const avisoPagoAposCancelado =
     paidOnCancelledCount === 1
       ? "1 pedido recebeu pagamento e está cancelado"
@@ -1446,7 +1452,9 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         }
         throw error;
       }
-      toast.success("Estorno registrado — o pedido saiu da lista.");
+      toast.success(
+        "Estorno registrado. Se o pedido ainda aparecer em “Devolver agora”, atualize a lista.",
+      );
       await fetchPedidosCancelados().catch(() => {});
     } catch (e) {
       console.error("Erro ao registrar estorno manual:", e);
@@ -2285,8 +2293,11 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           </button>
           <div className="[&_.text-amber-500]:text-orange-300 [&_.text-zinc-500]:text-zinc-400 [&_.tracking-widest]:tracking-normal [&_.truncate]:overflow-visible [&_.truncate]:text-clip [&_.truncate]:whitespace-normal [&_.uppercase]:normal-case [&_[data-testid=alertas-cancelados-alavanca]]:size-11 [&_[data-testid=alertas-cancelados-alavanca]]:rounded-2xl [&_[data-testid=alertas-cancelados-alavanca]]:border-admin-border-strong [&_[data-testid=alertas-cancelados-alavanca]]:bg-admin-raised [&_[data-testid=alertas-cancelados-alavanca]]:text-red-300 [&_[data-testid=alertas-cancelados-badge]]:bg-red-300 [&_[id=alertas-cancelados-conteudo]]:rounded-[24px] [&_[id=alertas-cancelados-conteudo]]:bg-admin-raised [&_button]:min-h-11">
             <AlertasCancelados
-              pagoCanceladoCount={paidOnCancelledCount}
+              pagoCanceladoCount={paidOnCancelledCount ?? 0}
               avisoPagoAposCancelado={avisoPagoAposCancelado}
+              onTentarConferirAlertas={
+                alertasNaoConferidos ? loadStats : undefined
+              }
               pedidosEsperandoRetorno={pedidosEsperandoRetorno}
               pedidosParaDevolverAgora={pedidosParaDevolverAgora}
               estornosEmCurso={estornosEmCurso}

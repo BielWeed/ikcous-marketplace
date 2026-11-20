@@ -132,6 +132,25 @@ describe("CartItemsList — a foto da linha é a da cor escolhida", () => {
     ]);
   });
 
+  it("tenta a capa quando a foto da cor falha, antes de mostrar Sem foto", async () => {
+    const [foto] = await renderizarCarrinho([
+      { product: camiseta, quantity: 1, variantId: "var-azul" },
+      { product: camiseta, quantity: 1, variantId: "var-rosa" },
+    ]);
+    expect(foto.getAttribute("src")).toBe(FOTO_AZUL);
+    await act(async () => foto.dispatchEvent(new Event("error")));
+
+    const [capa, rosa] = hospedeiro.querySelectorAll("img");
+    expect(capa?.getAttribute("src")).toBe(FOTO_DO_PRODUTO);
+    expect(rosa?.getAttribute("src")).toBe(FOTO_ROSA);
+    await act(async () => capa.dispatchEvent(new Event("error")));
+
+    expect(hospedeiro.textContent).toContain("Sem foto");
+    expect(hospedeiro.querySelector("img")?.getAttribute("src")).toBe(
+      FOTO_ROSA,
+    );
+  });
+
   it("cor sem foto própria continua com a foto do produto", async () => {
     const fotos = await renderizarCarrinho([
       {
