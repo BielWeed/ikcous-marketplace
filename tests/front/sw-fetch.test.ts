@@ -88,6 +88,7 @@ describe("src/sw/sw.ts — listener de fetch", () => {
   /** Importa sw.ts com os globais falsos montados e devolve o listener de fetch. */
   async function importarComGlobaisFalsos(
     { cachesFalso } = criarCachesFalso(),
+    qualidade?: "slow",
   ) {
     const { selfFalso, listeners } = criarSelfFalso();
     fetchMock = vi.fn().mockResolvedValue(new Response("ok", { status: 200 }));
@@ -105,6 +106,11 @@ describe("src/sw/sw.ts — listener de fetch", () => {
 
     await import("@/sw/sw");
 
+    if (qualidade) {
+      const [mensagem] = listeners.get("message") ?? [];
+      expect(mensagem).toBeTypeOf("function");
+      mensagem({ data: { type: "SET_NETWORK_QUALITY", quality: qualidade } });
+    }
     const fetchListeners = listeners.get("fetch") ?? [];
     expect(fetchListeners.length).toBe(1);
     return fetchListeners[0];
@@ -162,6 +168,38 @@ describe("src/sw/sw.ts — listener de fetch", () => {
     fetchListener(event);
 
     expect(event.respondWith).toHaveBeenCalledTimes(1);
+  });
+
+  it("com rede lenta e manifesto antigo guardado, o navegador recebe a marca nova do porteiro", async () => {
+    const gavetas = criarCachesFalso();
+    gavetas.cachesFalso.match.mockResolvedValue(
+      Response.json({ name: "Marca antiga" }),
+    );
+    const fetchListener = await importarComGlobaisFalsos(gavetas, "slow");
+    fetchMock.mockImplementationOnce(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      return new Response(JSON.stringify({ name: "Marca nova" }), {
+        headers: {
+          "content-type": "application/manifest+json",
+          "cache-control": "no-store",
+        },
+      });
+    });
+    const request = new Request(
+      "https://loja.exemplo.com/manifest.webmanifest",
+    );
+    const event = criarFetchEvent(request);
+
+    fetchListener(event);
+    // Sem respondWith, o navegador (não o SW) executa o pedido de rede.
+    const resposta = await (event.respondWith.mock.calls[0]?.[0] ??
+      fetch(request));
+
+    expect(await resposta.json()).toEqual({ name: "Marca nova" });
+    expect(event.respondWith).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith(request);
+    expect(gavetas.cachesFalso.match).not.toHaveBeenCalled();
+    expect(gavetas.cacheFalso.put).not.toHaveBeenCalled();
   });
 
   it("ignora requisição não-GET", async () => {
