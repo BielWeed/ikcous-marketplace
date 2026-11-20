@@ -962,9 +962,13 @@ export const HomeView = React.memo(function HomeView({
               Nenhum produto agora
             </h3>
             <p className="mx-auto max-w-[200px] text-sm leading-relaxed text-zinc-500">
-              {termoDaBusca || selectedCategory !== "Todas"
-                ? "Tente buscar por outro termo ou mudar a categoria."
-                : "Em breve novidades por aqui."}
+              {!termoDaBusca &&
+              selectedCategory !== "Todas" &&
+              categories.some((c) => c.isActive && c.name === selectedCategory)
+                ? "Ainda não há produtos nesta categoria."
+                : termoDaBusca || selectedCategory !== "Todas"
+                  ? "Tente buscar por outro termo ou mudar a categoria."
+                  : "Em breve novidades por aqui."}
             </p>
           </div>
         ) : (
