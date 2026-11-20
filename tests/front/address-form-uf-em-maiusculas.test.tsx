@@ -87,6 +87,7 @@ describe("AddressForm — UF sempre em MAIÚSCULAS", () => {
     );
     expect(outro).toBeDefined();
     await act(async () => outro!.click());
+    await esperarAte(() => document.activeElement?.id === "name");
     return onSubmit;
   }
 
@@ -109,21 +110,30 @@ describe("AddressForm — UF sempre em MAIÚSCULAS", () => {
     recipient_name: "Pessoa Teste",
   };
 
-  it("digitar 'mg' mostra 'MG' no campo e grava 'MG' (a etiqueta do Melhor Envio exige maiúsculas)", async () => {
-    const onSubmit = await abrirFormulario();
-    await act(async () => {
-      for (const [campo, valor] of Object.entries(completos))
-        digitar(campo, valor);
-      digitar("state", "mg");
-    });
-    expect((document.getElementById("state") as HTMLInputElement).value).toBe(
-      "MG",
-    );
-    await enviar();
-    await esperarAte(() => onSubmit.mock.calls.length > 0);
-    expect(onSubmit).toHaveBeenCalledTimes(1);
-    expect(onSubmit.mock.calls[0]?.[0].state).toBe("MG");
-  });
+  it.each(["mg", "Minas Gerais"])(
+    'digitar %j mantém o texto até sair do campo e grava "MG"',
+    async (uf) => {
+      const onSubmit = await abrirFormulario();
+      const campoUf = document.getElementById("state") as HTMLInputElement;
+      await act(async () => {
+        for (const [campo, valor] of Object.entries(completos))
+          digitar(campo, valor);
+      });
+      await act(async () => campoUf.focus());
+      for (const letra of uf) {
+        await act(async () => digitar("state", campoUf.value + letra));
+        expect(document.activeElement).toBe(campoUf);
+      }
+      expect(campoUf.value).toBe(uf);
+
+      await act(async () => campoUf.blur());
+      expect(campoUf.value).toBe("MG");
+      await enviar();
+      await esperarAte(() => onSubmit.mock.calls.length > 0);
+      expect(onSubmit).toHaveBeenCalledTimes(1);
+      expect(onSubmit.mock.calls[0]?.[0].state).toBe("MG");
+    },
+  );
 
   it("controle: 'MG' digitado em maiúsculas continua 'MG'", async () => {
     const onSubmit = await abrirFormulario();

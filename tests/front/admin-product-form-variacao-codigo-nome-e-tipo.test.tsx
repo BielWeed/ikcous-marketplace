@@ -301,7 +301,9 @@ describe("AdminProductFormView — código de barras, nome e tipo da variação"
       const texto =
         confirmacaoAberta()?.textContent?.replace(/\s+/g, " ") ?? "";
       expect(texto).toContain("pedidos já feitos");
-      expect(texto).toMatch(/crie uma variação nova/i);
+      expect(texto).toMatch(
+        /os pedidos já feitos continuam mostrando.+o nome anterior/is,
+      );
       // Ainda é o P: nada mudou enquanto a lojista não confirma.
       expect(naLista()).toEqual(["Tamanho: P", "Tamanho: M"]);
       expect(janelaAberta()).toBe(true);
