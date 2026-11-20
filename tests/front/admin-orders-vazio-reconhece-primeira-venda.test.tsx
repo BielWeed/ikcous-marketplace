@@ -134,6 +134,8 @@ describe("AdminOrdersView — loja sem pedido nenhum vs filtro vazio", () => {
       raiz.render(<AdminOrdersView onNavigate={vi.fn()} active />);
     });
 
+    expect(hospedeiro.textContent).toContain("Verificando se já há pedidos…");
+    expect(hospedeiro.textContent).not.toContain("Ver todos os pedidos");
     expect(hospedeiro.textContent).not.toContain("já foram atendidos");
     expect(hospedeiro.textContent).not.toContain(
       "Seus pedidos vão aparecer aqui",
@@ -141,6 +143,37 @@ describe("AdminOrdersView — loja sem pedido nenhum vs filtro vazio", () => {
 
     await act(async () => concluir());
     expect(hospedeiro.textContent).toContain("Seus pedidos vão aparecer aqui");
+  });
+
+  it("espera a contagem geral antes de sugerir limpar a busca", async () => {
+    let concluir!: () => void;
+    esperaDaContagem = new Promise<void>((resolve) => {
+      concluir = resolve;
+    });
+    totalAbsolutoNoBanco = 83;
+    vi.stubGlobal("localStorage", {
+      getItem: (chave: string) =>
+        chave === "admin_orders_search_query"
+          ? JSON.stringify("pedido que não existe")
+          : null,
+      setItem: () => {},
+      removeItem: () => {},
+    });
+    const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
+    await act(async () => {
+      raiz.render(<AdminOrdersView onNavigate={vi.fn()} active />);
+    });
+
+    expect(hospedeiro.textContent).toContain("Verificando se já há pedidos…");
+    expect(hospedeiro.textContent).not.toContain("Nenhum pedido neste recorte");
+    expect(hospedeiro.textContent).not.toContain("Limpar busca e filtros");
+
+    await act(async () => concluir());
+    expect(hospedeiro.textContent).not.toContain(
+      "Verificando se já há pedidos…",
+    );
+    expect(hospedeiro.textContent).toContain("Nenhum pedido neste recorte");
+    expect(hospedeiro.textContent).toContain("Limpar busca e filtros");
   });
 
   it("Em Aberto usa texto neutro quando a contagem falha", async () => {

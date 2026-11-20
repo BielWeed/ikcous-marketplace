@@ -1793,6 +1793,8 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   const [falhaNaMedicaoAbsoluta, setFalhaNaMedicaoAbsoluta] = useState(false);
   const [rodadaDaMedicaoAbsoluta, setRodadaDaMedicaoAbsoluta] = useState(0);
   const listaVazia = active && isLoaded && paginatedOrders.length === 0;
+  const medicaoAbsolutaPendente =
+    listaVazia && totalAbsolutoNaLoja === null && !falhaNaMedicaoAbsoluta;
   useEffect(() => {
     if (!listaVazia || totalAbsolutoNaLoja !== null) return;
     let cancelado = false;
@@ -2866,7 +2868,11 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                   <div className="mb-4 rounded-2xl border border-indigo-300/20 bg-indigo-300/10 p-3 text-indigo-300">
                     <Package aria-hidden="true" className="size-6" />
                   </div>
-                  {totalAbsolutoNaLoja === 0 ? (
+                  {medicaoAbsolutaPendente ? (
+                    <p role="status" className="text-sm text-zinc-400">
+                      Verificando se já há pedidos…
+                    </p>
+                  ) : totalAbsolutoNaLoja === 0 ? (
                     // O COUNT sem filtro nenhum voltou ZERO: a loja não tem
                     // venda nenhuma. Falar de filtro/busca para quem ainda
                     // não tem o primeiro pedido é receita de confusão (relato
@@ -2940,22 +2946,18 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                     searchQuery.trim() === "" &&
                     !dateRange.start &&
                     !dateRange.end ? (
-                    // Em Aberto vazio não informa se a loja já teve pedidos.
-                    // Enquanto mede, não mostramos texto de lista vazia.
-                    totalAbsolutoNaLoja !== null || falhaNaMedicaoAbsoluta ? (
-                      <>
-                        <h3 className="text-lg font-bold leading-snug text-zinc-100">
-                          Nada para preparar agora
-                        </h3>
-                        {totalAbsolutoNaLoja !== null &&
-                          totalAbsolutoNaLoja > 0 && (
-                            <p className="mt-2 max-w-md text-sm leading-relaxed text-zinc-400">
-                              Todos os pedidos em aberto já foram atendidos. Os
-                              finalizados e cancelados continuam em Todos.
-                            </p>
-                          )}
-                      </>
-                    ) : null
+                    <>
+                      <h3 className="text-lg font-bold leading-snug text-zinc-100">
+                        Nada para preparar agora
+                      </h3>
+                      {totalAbsolutoNaLoja !== null &&
+                        totalAbsolutoNaLoja > 0 && (
+                          <p className="mt-2 max-w-md text-sm leading-relaxed text-zinc-400">
+                            Todos os pedidos em aberto já foram atendidos. Os
+                            finalizados e cancelados continuam em Todos.
+                          </p>
+                        )}
+                    </>
                   ) : filter !== "all" ||
                     searchQuery.trim() !== "" ||
                     dateRange.start ||
@@ -2985,7 +2987,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                       Seus pedidos vão aparecer aqui
                     </h3>
                   )}
-                  {totalAbsolutoNaLoja !== 0 && (
+                  {!medicaoAbsolutaPendente && totalAbsolutoNaLoja !== 0 && (
                     <div className="mt-4 flex w-full max-w-sm flex-col gap-3">
                       {(dateRange.start || dateRange.end) && (
                         <button
