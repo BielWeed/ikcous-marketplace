@@ -110,7 +110,10 @@ import {
   rotuloDaFormaDoPedido,
 } from "@/lib/forma-de-pagamento";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
-import { fotoDoItemDoCarrinho } from "@/lib/foto-do-item-do-carrinho";
+import {
+  capaDeReservaDoItem,
+  fotoDoItemDoCarrinho,
+} from "@/lib/foto-do-item-do-carrinho";
 import { ehMarcadorDeFoto } from "@/lib/foto-do-produto";
 import {
   conferirFreteEscolhidoComACotacao,
@@ -8502,6 +8505,9 @@ export function CheckoutViewDaConta({
                         // A foto da cor escolhida (quando tem), senão a do
                         // produto — a mesma regra do carrinho.
                         const fotoDaLinha = fotoDoItemDoCarrinho(item);
+                        const capa = capaDeReservaDoItem(item, fotoDaLinha);
+                        const classeDaFoto =
+                          "size-12 shrink-0 rounded-xl border border-zinc-100 bg-zinc-50 object-cover";
 
                         return (
                           <li
@@ -8512,7 +8518,17 @@ export function CheckoutViewDaConta({
                               src={miniaturaDoResumo(fotoDaLinha, 144)}
                               original={fotoDaLinha}
                               alt=""
-                              className="size-12 shrink-0 rounded-xl border border-zinc-100 bg-zinc-50 object-cover"
+                              className={classeDaFoto}
+                              fallback={
+                                capa ? (
+                                  <ImagemComFallback
+                                    src={miniaturaDoResumo(capa, 144)}
+                                    original={capa}
+                                    alt=""
+                                    className={classeDaFoto}
+                                  />
+                                ) : undefined
+                              }
                             />
                             <div className="min-w-0 flex-1">
                               <p className="line-clamp-2 break-words text-sm font-medium text-zinc-800">

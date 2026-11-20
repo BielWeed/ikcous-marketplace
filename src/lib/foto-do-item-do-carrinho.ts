@@ -1,3 +1,4 @@
+import { ehMarcadorDeFoto } from "@/lib/foto-do-produto";
 import type { CartItem } from "@/types";
 import { criarEixosDaVariacao, eixoEhCor } from "@/utils/eixos-da-variacao";
 
@@ -37,4 +38,20 @@ export function fotoDoItemDoCarrinho(item: CartItem): string | undefined {
     if (foto) return foto;
   }
   return item.product.images?.[0];
+}
+
+/** Só tenta a capa se for uma foto real e diferente da primeira escolha. */
+export function capaDeReservaDoItem(
+  item: CartItem,
+  fotoDaLinha: string | undefined,
+): string | undefined {
+  const capa = item.product.images?.[0];
+  if (
+    capa?.trim() &&
+    capa.trim() !== fotoDaLinha?.trim() &&
+    !ehMarcadorDeFoto(capa)
+  ) {
+    return capa;
+  }
+  return undefined;
 }
