@@ -20,6 +20,14 @@ describe("motivoDaFalhaEmPortugues", () => {
     [{ status: 413 }, "mensagem grande demais"],
     [{ status: 429 }, "muitos envios, tente daqui a pouco"],
     [{ status: 503 }, "o serviço de avisos está fora do ar agora"],
+    [
+      {
+        status: null,
+        motivo:
+          "Sem resposta do serviço de push dentro do prazo; o aviso pode ter chegado ao aparelho mesmo assim",
+      },
+      "o aviso ainda pode chegar; confira antes de reenviar",
+    ],
   ])("traduz %j", (falha, esperado) => {
     expect(motivoDaFalhaEmPortugues(falha)).toBe(esperado);
   });

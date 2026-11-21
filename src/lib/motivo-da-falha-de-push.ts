@@ -1,3 +1,16 @@
+export const AVISO_PUSH_PODE_CHEGAR =
+  "O aviso ainda pode chegar; confira antes de reenviar";
+
+export function falhaDePushSemConfirmacao(falha: {
+  motivo?: unknown;
+}): boolean {
+  // O motivo vem de esperarComLimite (webpush.ts), sem código HTTP.
+  return (
+    typeof falha.motivo === "string" &&
+    falha.motivo.startsWith("Sem resposta do serviço de push dentro do prazo;")
+  );
+}
+
 // O motivo gravado vem em inglês técnico da função de envio (ex.: "push
 // service respondeu 410 Gone"). Aqui só se traduz para exibir; o dado não muda.
 // Usado por Avisar clientes e pelo aviso de status do pedido.
@@ -6,6 +19,9 @@ export function motivoDaFalhaEmPortugues(falha: {
   motivo?: unknown;
   quantidade?: unknown;
 }): string {
+  if (falhaDePushSemConfirmacao(falha))
+    return AVISO_PUSH_PODE_CHEGAR.toLowerCase();
+
   // A função de envio já manda o código numérico; o texto em inglês só serve
   // de reserva.
   const status =

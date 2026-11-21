@@ -86,7 +86,11 @@ import {
   mensagemDoStatusNoWhatsapp,
   rotuloDoStatusParaACliente,
 } from "@/lib/mensagem-do-status-no-whatsapp";
-import { motivoDaFalhaEmPortugues } from "@/lib/motivo-da-falha-de-push";
+import {
+  AVISO_PUSH_PODE_CHEGAR,
+  falhaDePushSemConfirmacao,
+  motivoDaFalhaEmPortugues,
+} from "@/lib/motivo-da-falha-de-push";
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { CAMPO_DO_CARIMBO_DO_AVISO } from "@/lib/ordem-do-aviso-do-pedido";
@@ -1891,6 +1895,14 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         envio.enviados === 0 &&
         envio.total !== 0
       ) {
+        if (envio.falhas?.some(falhaDePushSemConfirmacao)) {
+          toast.warning(
+            "Status atualizado, mas não foi possível confirmar o envio do aviso",
+            { description: `${AVISO_PUSH_PODE_CHEGAR}.` },
+          );
+          return;
+        }
+
         // O motivo cru vem em inglês técnico ("push service respondeu 410
         // Gone"): a lojista lê a tradução, com a inicial maiúscula.
         const motivo = envio?.falhas?.[0]

@@ -50,7 +50,11 @@ import {
   problemaDoCupom,
   temMarcadorPendente,
 } from "@/lib/modelos-de-campanha";
-import { motivoDaFalhaEmPortugues } from "@/lib/motivo-da-falha-de-push";
+import {
+  AVISO_PUSH_PODE_CHEGAR,
+  falhaDePushSemConfirmacao,
+  motivoDaFalhaEmPortugues,
+} from "@/lib/motivo-da-falha-de-push";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { intercalarPorServico } from "@/lib/ordem-do-envio-de-push";
@@ -1466,14 +1470,20 @@ export const AdminPushView = memo(function AdminPushView({
             .join(" "),
         });
       } else if (entregues === 0) {
+        const semConfirmacao = envio?.falhas?.some(falhaDePushSemConfirmacao);
+        const motivo = semConfirmacao
+          ? `${AVISO_PUSH_PODE_CHEGAR}.`
+          : (detalheDaFalha ?? "A função não informou o motivo da falha.");
         toast.error(
-          finalRecipientCount === 1
-            ? "O aparelho não recebeu o aviso"
-            : `Nenhum dos ${finalRecipientCount} dispositivos recebeu`,
+          semConfirmacao
+            ? "Não foi possível confirmar o envio"
+            : finalRecipientCount === 1
+              ? "O aparelho não recebeu o aviso"
+              : `Nenhum dos ${finalRecipientCount} dispositivos recebeu`,
           {
             description: [
               avisoDeAlcanceMenor,
-              `${detalheDaFalha ?? "A função não informou o motivo da falha."}${naoTentados > 0 ? ` ${naoTentados} ${naoTentados === 1 ? "dispositivo nem chegou a ser tentado" : "dispositivos nem chegaram a ser tentados"} porque o envio demorou demais.` : ""} Sua campanha foi mantida. Se reenviar, o aviso dentro do app também aparece de novo para os clientes.`,
+              `${motivo}${naoTentados > 0 ? ` ${naoTentados} ${naoTentados === 1 ? "dispositivo nem chegou a ser tentado" : "dispositivos nem chegaram a ser tentados"} porque o envio demorou demais.` : ""} Sua campanha foi mantida. Se reenviar, o aviso dentro do app também aparece de novo para os clientes.`,
             ]
               .filter(Boolean)
               .join(" "),
