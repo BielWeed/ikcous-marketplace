@@ -88,6 +88,7 @@ describe("cartão recebe e exibe o valor arredondado do pedido", () => {
       expect(
         hospedeiro.querySelector("header")?.textContent?.replace(/\s/g, ""),
       ).toContain("R$9,60");
+      expect(criarBrick.mock.calls.at(-1)?.[2].initialization.amount).toBe(9.6);
     } finally {
       await act(async () => raiz.unmount());
       hospedeiro.remove();
