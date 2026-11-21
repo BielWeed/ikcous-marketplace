@@ -4491,12 +4491,22 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   const precoDeVendaSalvo = productId
     ? (numeroOpcionalDoCampo(String(initialData.price ?? "")) ?? 0)
     : 0;
+  // Os dois valores do aviso saem do MESMO leitor que grava o produto
+  // (`numeroOpcionalDoCampo`): "14,90" vale 14,9 aqui e no salvar, e um número
+  // vindo de rascunho antigo não quebra. `priceVal`/`costPriceVal` acima leem
+  // "14,90" como 14 e ficam só para as outras contas da tela.
+  const precoParaAviso = productId
+    ? (numeroOpcionalDoCampo(String(formData.price ?? "")) ?? 0)
+    : 0;
+  const custoParaAviso = productId
+    ? (numeroOpcionalDoCampo(String(formData.costPrice ?? "")) ?? 0)
+    : 0;
   const avisaPrecoDeVenda =
     !!productId &&
     precoDeVendaDigitado &&
     !priceError &&
-    priceVal > 0 &&
-    priceVal !== precoDeVendaSalvo;
+    precoParaAviso > 0 &&
+    precoParaAviso !== precoDeVendaSalvo;
   const avisosDaBarra = {
     frete: avisaMedidasPadrao
       ? "Se o frete for calculado por transportadora, peso em branco ou zero usa 0,3 kg; cada medida em branco ou zero usa 15 cm."
@@ -4504,12 +4514,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     queda:
       avisaPrecoDeVenda &&
       precoDeVendaSalvo > 0 &&
-      priceVal < precoDeVendaSalvo / 2
-        ? `Confira: o preço vai cair de ${formatCurrency(precoDeVendaSalvo)} para ${formatCurrency(priceVal)}.`
+      precoParaAviso < precoDeVendaSalvo / 2
+        ? `Confira: o preço vai cair de ${formatCurrency(precoDeVendaSalvo)} para ${formatCurrency(precoParaAviso)}.`
         : "",
     abaixoDoCusto:
-      avisaPrecoDeVenda && priceVal < costPriceVal
-        ? `Confira: o preço de venda (${formatCurrency(priceVal)}) está abaixo do custo (${formatCurrency(costPriceVal)}).`
+      avisaPrecoDeVenda && precoParaAviso < custoParaAviso
+        ? `Confira: o preço de venda (${formatCurrency(precoParaAviso)}) está abaixo do custo (${formatCurrency(custoParaAviso)}).`
         : "",
   };
   // Indicadores de apresentação, a partir dos mesmos campos da validação.
