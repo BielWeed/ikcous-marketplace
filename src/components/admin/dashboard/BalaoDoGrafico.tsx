@@ -27,6 +27,7 @@ type PropsLucro = {
   data: string;
   lucroAcumulado: number;
   estoqueInvestido: number;
+  estoqueEstimado: boolean;
 };
 
 const CAIXA =
@@ -73,7 +74,7 @@ export function BalaoDoGrafico(props: PropsVendas | PropsLucro) {
     );
   }
 
-  const { data, lucroAcumulado, estoqueInvestido } = props;
+  const { data, lucroAcumulado, estoqueInvestido, estoqueEstimado } = props;
   return (
     <div className={cn(CAIXA, "max-w-[230px]")}>
       <span className="whitespace-nowrap text-xs font-medium">{data}</span>
@@ -83,10 +84,18 @@ export function BalaoDoGrafico(props: PropsVendas | PropsLucro) {
         cor="bg-emerald-500"
       />
       <LinhaDeValor
-        rotulo="Estoque investido"
+        rotulo={
+          estoqueEstimado ? "Estoque investido (estimado)" : "Estoque investido"
+        }
         valor={reais(estoqueInvestido)}
         cor="bg-amber-500"
       />
+      {estoqueEstimado && (
+        <p className="text-admin-text-soft text-xs">
+          Estimativa: não considera entradas nem ajustes de estoque feitos
+          depois.
+        </p>
+      )}
     </div>
   );
 }

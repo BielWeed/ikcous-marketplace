@@ -189,6 +189,8 @@ export const OperationalPerformanceChart = memo(
       return desdeOPrimeiroDiaDeMovimento(revenueHistory);
     }, [revenueHistory, timeframe, chartMode, diasFechados]);
     const mostrarAno = serieCobreMaisDeUmAno(filteredRevenueHistory);
+    // A série termina no dia de hoje, no calendário de Brasília.
+    const diaDoEstoqueAtual = revenueHistory?.at(-1)?.date;
 
     // Faturamento Total / Pedidos / Ticket Médio do bloco de resumo, somados
     // a partir dos MESMOS dias que alimentam as barras (`filteredRevenueHistory`).
@@ -638,6 +640,7 @@ export const OperationalPerformanceChart = memo(
                             }
                             lucroAcumulado={data.cumulativeProfit}
                             estoqueInvestido={data.inventoryCost}
+                            estoqueEstimado={data.date !== diaDoEstoqueAtual}
                           />
                         );
                       }
@@ -676,7 +679,7 @@ export const OperationalPerformanceChart = memo(
                       stroke: "#fff",
                       strokeWidth: 1.5,
                     }}
-                    name="Valor Investido (Estoque)"
+                    name="Estoque investido (estimado)"
                     isAnimationActive={!isMobile}
                   />
                 </AreaChart>

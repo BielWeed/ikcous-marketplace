@@ -68,13 +68,14 @@ describe("BalaoDoGrafico - vendas", () => {
 });
 
 describe("BalaoDoGrafico - lucro e estoque", () => {
-  it("mostra os dois valores com 2 casas", () => {
+  it("no ponto de hoje mostra os valores com 2 casas, sem aviso de estimativa", () => {
     const { container } = render(
       <BalaoDoGrafico
         tipo="lucro"
         data="22/10/2026"
         lucroAcumulado={1500.5}
         estoqueInvestido={320}
+        estoqueEstimado={false}
       />,
     );
     const t = texto(container).replace(/\u00a0/g, " ");
@@ -83,6 +84,25 @@ describe("BalaoDoGrafico - lucro e estoque", () => {
     expect(t).toContain("R$ 1.500,50");
     expect(t).toContain("Estoque investido");
     expect(t).toContain("R$ 320,00");
+    expect(t).not.toContain("(estimado)");
+    expect(t).not.toContain("Estimativa:");
+  });
+
+  it("no ponto de um dia passado indica que o estoque é estimado e explica o limite", () => {
+    const { container } = render(
+      <BalaoDoGrafico
+        tipo="lucro"
+        data="21/10/2026"
+        lucroAcumulado={0}
+        estoqueInvestido={200}
+        estoqueEstimado
+      />,
+    );
+    const t = texto(container);
+    expect(t).toContain("Estoque investido (estimado)");
+    expect(t).toContain(
+      "Estimativa: não considera entradas nem ajustes de estoque feitos depois.",
+    );
   });
 });
 
@@ -97,6 +117,7 @@ describe("BalaoDoGrafico - apresentacao", () => {
         data="d"
         lucroAcumulado={1}
         estoqueInvestido={2}
+        estoqueEstimado={false}
       />,
     );
     for (const c of [a.container, b.container]) {
