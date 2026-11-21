@@ -1,9 +1,12 @@
 {
   "1.5.230": {
-    "titulo": "Avisos mais claros em devoluções, frete e pergunta pública, e loja abrindo em mais aparelhos",
+    "titulo": "Pedidos, pagamentos e devoluções mais claros, e loja abrindo em mais aparelhos",
     "novidades": [
       "No painel, ao confirmar uma devolução de dinheiro em um pedido que já tem outra em andamento, aparece o aviso “Já existe uma devolução de R$ X em andamento neste pedido.” com a data da solicitação, ou a lista de valores e datas quando há mais de uma; o botão passa a dizer “Confirmar devolução adicional”.",
-      "A loja volta a abrir em iPhone com iOS 15.0 a 15.3: os recursos do navegador que faltam nesses aparelhos ganham uma reserva, usada só quando o aparelho não os tem."
+      "A loja volta a abrir em iPhone com iOS 15.0 a 15.3: os recursos do navegador que faltam nesses aparelhos ganham uma reserva, usada só quando o aparelho não os tem.",
+      "No fim da planilha de pedidos, aparecem as colunas “Estorno pelo Mercado Pago” e “Total menos estorno do Mercado Pago”; elas ficam em branco quando o valor devolvido não é conhecido.",
+      "Em Sobre a Loja, quando há um e-mail cadastrado para atendimento, ele aparece em “E-mail de atendimento” e abre o aplicativo de e-mail ao tocar.",
+      "Na ficha do pedido, se a configuração do mototáxi não tem um WhatsApp válido, aparece “Cadastre o WhatsApp do mototáxi em Entrega e frete para enviar este pedido.”"
     ],
     "correcoes": [
       "No painel, o aviso de Pix vencido aparece em pedidos pelo app em processamento ou envio quando o pagamento ainda não consta; na retirada na loja, a orientação de cancelar para liberar o estoque só aparece se não houve cancelamento depois da saída e vale se você não recebeu por fora e a peça continua na loja.",
@@ -18,11 +21,37 @@
       "Ao recarregar a tela de pagamento, se a conta demora a ser reconhecida, o app ainda pode retomar o mesmo pedido guardado para aquela conta, desde que a cliente não tenha saído da tela nem começado outra compra.",
       "Em Avisar clientes, se nenhum aparelho tem envio aceito e o serviço demora a responder, o painel diz que não foi possível confirmar o envio e orienta a conferir se o aviso chegou antes de reenviar.",
       "Em Minha loja, ao alterar os contatos, o painel recusa WhatsApp com só zeros depois do DDD e e-mail com parte vazia depois do @, como “nome@loja..com”; deixar um desses contatos antigos como está não impede salvar outras alterações.",
-      "Em Avisar clientes, se o envio foi aceito para parte dos aparelhos, o resumo mostra as recusas confirmadas junto do aviso de que os envios sem confirmação ainda podem chegar, quando os dois casos ocorrem."
+      "Em Avisar clientes, se o envio foi aceito para parte dos aparelhos, o resumo mostra as recusas confirmadas junto do aviso de que os envios sem confirmação ainda podem chegar, quando os dois casos ocorrem.",
+      "Quando um pedido com etiqueta emitida é cancelado, a ficha troca “Abrir etiqueta” pelo aviso “Pedido cancelado — não postar”, desde que a etiqueta ainda não tenha sido cancelada no Melhor Envio.",
+      "Ao buscar na vitrine pelo código completo de um produto ou de uma variação, o produto com aquele código aparece antes dos que só combinam pelo texto.",
+      "A busca de produtos encontra tanto o singular quanto o plural em pares como “fácil” e “fáceis”, “útil” e “úteis”, “frágil” e “frágeis” e “versátil” e “versáteis”.",
+      "Se a situação do pedido ou do pagamento mudar enquanto a confirmação de avanço está aberta no painel, a janela fecha para a lojista conferir o pedido antes de continuar.",
+      "No pagamento com cartão, a tela de confirmação do banco pode abrir em mais casos.",
+      "Se um aviso no sino da loja aponta para o formulário de endereço, tocar nele abre esse formulário em vez de mandar a cliente para a vitrine."
     ],
     "melhorias": [
       "No cadastro de produto, o campo de estoque do produto e o da variação passam a se chamar “Disponível para venda”, com uma ajuda que explica que as peças reservadas para pedidos não entram nessa quantidade.",
-      "No cadastro de produto, se peso ou medida está em branco ou zero, um aviso explica que, se o frete for calculado por transportadora, o peso padrão é 0,3 kg e cada medida faltante ou zerada usa 15 cm; se todas as variações estiverem desligadas e o estoque estiver preenchido corretamente, outro aviso diz se o produto fica esgotado ou é vendido sem escolha de variação."
+      "No cadastro de produto, se peso ou medida está em branco ou zero, um aviso explica que, se o frete for calculado por transportadora, o peso padrão é 0,3 kg e cada medida faltante ou zerada usa 15 cm; se todas as variações estiverem desligadas e o estoque estiver preenchido corretamente, outro aviso diz se o produto fica esgotado ou é vendido sem escolha de variação.",
+      "Na confirmação do cadastro, o aviso explica “Se você recebeu o e-mail, use o link do e-mail mais recente: só o último vale.”",
+      "Na manutenção, a tela avisa “Se você já pagou, não pague de novo.” e orienta a conferir em Meus pedidos quando a loja voltar ou, se comprou sem conta, a informar o número do pedido à loja.",
+      "Na tela do Pix com código vencido, o aviso diz “Já pagou? Não faça outro pedido.” e, quando os atalhos estão disponíveis, destaca “Ver meus pedidos” antes de “Voltar ao carrinho”.",
+      "Na ficha da cliente, um pedido pendente com Pix aguardando confirmação ou cancelado porque o prazo venceu mostra “Já pagou? Não faça outro pedido. Se a confirmação não aparecer, fale com a loja.”",
+      "No painel, o botão “Avançar sem pagamento confirmado” deixa explícito que o pagamento não consta, e a confirmação orienta “Não despache até aparecer “Pago”.” quando o pagamento ainda está sendo confirmado.",
+      "Antes de avançar um pedido para envio sem código salvo, a lista e a ficha do painel avisam “Sem código salvo, a cliente vê “A caminho”, mas não consegue rastrear. Se já tem o código, salve antes de avançar.”",
+      "Se o código salvo não for válido, a lista e a ficha também avisam antes do envio, por exemplo: “O código de rastreio salvo (“-”) não é válido: a cliente não consegue rastrear. Corrija o código antes de avançar.”",
+      "Se uma devolução anterior do mesmo pedido ficou sem confirmação no Mercado Pago, a janela de devolução adicional pode orientar “Antes de repetir, confira no painel do Mercado Pago se a anterior saiu.”",
+      "Ao cancelar um pedido pago que ainda não saiu para entrega e cuja devolução será solicitada automaticamente, a confirmação avisa “Os itens voltam ao estoque ao cancelar.”",
+      "No cadastro de produto com todas as variações desligadas, quando há estoque e a opção “Aparece na loja” está desligada, o aviso explica que o produto fica oculto ao salvar e o que fazer para vendê-lo sem escolha de variação.",
+      "No painel de banners, a ajuda explica que “Abrir Produto” e “Página da Loja” preenchem o destino automaticamente ao escolher um item ou categoria e que endereços externos vão em “Link / URL”.",
+      "Se a vitrine está vazia, sem busca nem filtro de categoria, ela mostra “Nenhum produto disponível agora”, sem prometer novidades.",
+      "O WhatsApp brasileiro aparece formatado na ficha do pedido, no cartão e na ficha da cliente e no recibo do balcão, quando o número está salvo só com DDD e telefone.",
+      "Nos ajustes do painel, a situação da conexão aparece como “Conexão · Indisponível” quando ela não está disponível, sem afirmar que a lojista está sem internet.",
+      "Na tela de cupons, o painel diz que os cupons são usados “Na finalização da compra” e explica que desativá-los afeta pedidos novos, não os já feitos.",
+      "Na ficha do pedido, os controles de etiqueta e o atalho “devolver outro valor” têm áreas de toque maiores.",
+      "Na lista “Devolver agora”, o nome comprido da cliente não esconde mais o valor a devolver.",
+      "Em Avaliações, as respostas prontas ganham os nomes “Agradecer avaliação” e “Avaliação positiva”.",
+      "Ao ajustar a imagem de um banner, o formato largo passa a se chamar “Computador (4:1)”.",
+      "Na escolha de aparência do painel, o tema “Confortável” passa a ser descrito como “Tons quentes que cansam menos os olhos”."
     ]
   },
   "1.5.229": {
