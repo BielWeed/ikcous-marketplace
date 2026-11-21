@@ -1,4 +1,23 @@
 {
+  "1.5.230": {
+    "titulo": "Avisos mais claros em devoluções, frete e pergunta pública, e loja abrindo em mais aparelhos",
+    "novidades": [
+      "No painel, ao confirmar uma devolução de dinheiro em um pedido que já tem outra em andamento, aparece o aviso “Já existe uma devolução de R$ X em andamento neste pedido.” com a data da solicitação, ou a lista de valores e datas quando há mais de uma; o botão passa a dizer “Confirmar devolução adicional”.",
+      "A loja volta a abrir em iPhone com iOS 15.0 a 15.3: os recursos do navegador que faltam nesses aparelhos ganham uma reserva, usada só quando o aparelho não os tem."
+    ],
+    "correcoes": [
+      "No painel, um pedido de retirada na loja com o Pix vencido e o pagamento ainda sem constar mostra o aviso “O Pix deste pedido venceu pelo horário previsto, mas o pagamento ainda não consta.”, que orienta conferir com o cliente e, se a peça continua na loja, usar Cancelar pedido para liberar o estoque.",
+      "Na lista de pedidos da cliente, o valor passa a se chamar “Total do pedido”.",
+      "Na busca de pedidos, a orientação para quem comprou sem conta diz que pedidos feitos sem e-mail, só com WhatsApp e pagamento na entrega, não aparecem ali e, quando a loja tem WhatsApp, manda falar com a loja por ele.",
+      "Quando o CEP não é encontrado, o aviso diz “CEP não encontrado. Preencha o endereço manualmente.”; quando a busca falha, diz “Não foi possível buscar o CEP agora. Preencha o endereço manualmente.”",
+      "Na sugestão de valor do reembolso de uma devolução, o frete de ida só entra quando todos os itens foram conferidos e voltaram; se algum item foi marcado como “Não veio”, o aviso diz “Frete não incluído: nem todos os itens voltaram.”",
+      "Em Frete, quando o contato do mototáxi ou as regras foram salvos e as transportadoras não, o aviso diz o que foi salvo, como “Salvamos o contato do mototáxi e as regras, mas as transportadoras não. Toque em Tentar de novo.”",
+      "No gráfico do painel, o estoque dos dias anteriores aparece como “Estoque (estimado)”, com a nota “Estimativa: não considera entradas nem ajustes de estoque feitos depois.”; o dia de hoje continua “Estoque investido”.",
+      "Na pergunta feita no produto, aparece o aviso “Sua pergunta fica visível para todos que visitam este produto. Não escreva telefone, e-mail nem outros dados pessoais.”",
+      "Quando o link da loja é aberto dentro do próprio navegador do WhatsApp, a loja abre normalmente; só o robô que monta a prévia do link (foto e nome) recebe a página de prévia."
+    ],
+    "melhorias": []
+  },
   "1.5.229": {
     "titulo": "Avisos mais claros no painel, nas ofertas e na compra",
     "novidades": [
