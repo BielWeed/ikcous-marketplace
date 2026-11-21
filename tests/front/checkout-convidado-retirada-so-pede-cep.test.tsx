@@ -284,6 +284,29 @@ describe("CheckoutView — visitante que retira na loja só informa nome, WhatsA
     "guest-state": "MG",
   };
 
+  it.each([
+    {
+      nome: "retirada",
+      opcao: OPCAO.retirada,
+      mensagem: "CEP não encontrado. Confira os números.",
+    },
+    {
+      nome: "entrega",
+      opcao: OPCAO.entregaLocal,
+      mensagem: "CEP não encontrado. Preencha o endereço manualmente.",
+    },
+  ])(
+    "avisa o que fazer com CEP não encontrado na $nome",
+    async ({ opcao, mensagem }) => {
+      estado.opcao = opcao;
+      await renderizar();
+      await preencher({ "guest-cep": "12345-678" });
+
+      expect(toastError).toHaveBeenCalledTimes(1);
+      expect(toastError).toHaveBeenCalledWith(mensagem);
+    },
+  );
+
   // (a) o caso que doía.
   it("(a) visitante: entrega local trava; trocar para retirada com só nome, WhatsApp e CEP libera o Finalizar e o pedido sai sem endereço", async () => {
     estado.opcao = OPCAO.entregaLocal;

@@ -71,6 +71,8 @@ export interface OpcoesBuscaCep {
    * dentro da tela, a partir de `resultado`.
    */
   avisarPorToast?: boolean;
+  /** Permite à tela orientar sem sugerir campos que ela não mostra. */
+  mensagemCepNaoEncontrado?: string;
 }
 
 /** Formata "38500000" em "38500-000". Os dois chamadores fazem isto igual. */
@@ -100,6 +102,8 @@ export function useBuscaCep(
   // Lido por ref pelo mesmo motivo de `aoEncontrar`: `buscar` não é recriada.
   const avisarPorToastRef = useRef(opcoes?.avisarPorToast !== false);
   avisarPorToastRef.current = opcoes?.avisarPorToast !== false;
+  const mensagemCepNaoEncontradoRef = useRef(opcoes?.mensagemCepNaoEncontrado);
+  mensagemCepNaoEncontradoRef.current = opcoes?.mensagemCepNaoEncontrado;
 
   // Lido por ref para que o chamador não precise memoizar a callback e
   // `buscar` não precise ser recriada a cada render.
@@ -229,7 +233,10 @@ export function useBuscaCep(
         // TODOS responderam que não existe: aí sim é CEP errado.
         setResultado({ tipo: "naoEncontrado" });
         if (avisarPorToastRef.current) {
-          toast.error(`CEP não encontrado. ${ORIENTACAO_ENDERECO_MANUAL}`);
+          toast.error(
+            mensagemCepNaoEncontradoRef.current ??
+              `CEP não encontrado. ${ORIENTACAO_ENDERECO_MANUAL}`,
+          );
         }
       } else if (estourouOTeto || estourouTentativa) {
         setResultado({ tipo: "demorou" });

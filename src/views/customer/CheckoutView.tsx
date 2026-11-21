@@ -1813,29 +1813,36 @@ export function CheckoutViewDaConta({
     buscando: isSearchingCep,
     buscar: buscarCep,
     resultado: resultadoCep,
-  } = useBuscaCep((endereco) => {
-    const cepDaResposta = cepEmBuscaRef.current;
-    const eraDeOutroCep =
-      cepAssociadoRef.current !== null &&
-      cepAssociadoRef.current !== cepDaResposta;
+  } = useBuscaCep(
+    (endereco) => {
+      const cepDaResposta = cepEmBuscaRef.current;
+      const eraDeOutroCep =
+        cepAssociadoRef.current !== null &&
+        cepAssociadoRef.current !== cepDaResposta;
 
-    const escrever = escreverCampoDoCep;
+      const escrever = escreverCampoDoCep;
 
-    if (endereco.logradouro) {
-      escrever("street", endereco.logradouro);
-    } else if (eraDeOutroCep) {
-      escrever("street", "");
-    }
-    if (endereco.bairro) {
-      escrever("neighborhood", endereco.bairro);
-    } else if (eraDeOutroCep) {
-      escrever("neighborhood", "");
-    }
-    if (endereco.localidade) escrever("city", endereco.localidade);
-    if (endereco.uf) escrever("state", endereco.uf);
+      if (endereco.logradouro) {
+        escrever("street", endereco.logradouro);
+      } else if (eraDeOutroCep) {
+        escrever("street", "");
+      }
+      if (endereco.bairro) {
+        escrever("neighborhood", endereco.bairro);
+      } else if (eraDeOutroCep) {
+        escrever("neighborhood", "");
+      }
+      if (endereco.localidade) escrever("city", endereco.localidade);
+      if (endereco.uf) escrever("state", endereco.uf);
 
-    cepAssociadoRef.current = cepDaResposta;
-  });
+      cepAssociadoRef.current = cepDaResposta;
+    },
+    {
+      mensagemCepNaoEncontrado: ehRetirada
+        ? "CEP não encontrado. Confira os números."
+        : undefined,
+    },
+  );
 
   // A busca do CEP NOVO falhou (não achou, demorou ou está fora do ar): o que
   // estava em rua/bairro/cidade/UF veio da busca do CEP ANTERIOR (ou de um

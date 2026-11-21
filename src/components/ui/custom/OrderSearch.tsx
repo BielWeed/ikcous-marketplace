@@ -412,11 +412,10 @@ export function OrderSearch({
                       você comprou sem conta, fale com a loja e informe o
                       identificador do pedido (aparece ao finalizar a compra).
                       Use o contato da loja que você já tem. Pedidos feitos sem
-                      e-mail, só com WhatsApp e pagamento na entrega, não
-                      aparecem aqui
+                      e-mail não aparecem aqui, seja para entrega ou retirada.
                       {lojaAtendePorWhatsapp
-                        ? "; fale com a loja pelo WhatsApp."
-                        : "."}
+                        ? " Fale com a loja pelo WhatsApp."
+                        : null}
                     </p>
                     {lojaAtendePorWhatsapp && (
                       <BotaoWhatsapp

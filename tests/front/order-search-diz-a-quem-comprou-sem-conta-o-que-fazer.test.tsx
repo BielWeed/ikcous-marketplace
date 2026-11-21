@@ -120,7 +120,7 @@ describe("OrderSearch — aviso para quem comprou sem conta", () => {
 
     const aviso = [...host.querySelectorAll("p")].find((p) =>
       p.textContent?.includes(
-        "Pedidos feitos sem e-mail, só com WhatsApp e pagamento na entrega, não aparecem aqui; fale com a loja pelo WhatsApp.",
+        "Pedidos feitos sem e-mail não aparecem aqui, seja para entrega ou retirada. Fale com a loja pelo WhatsApp.",
       ),
     );
     const email = host.querySelector('input[type="email"]');
@@ -225,9 +225,9 @@ describe("OrderSearch — aviso para quem comprou sem conta", () => {
     expect(botaoPorTexto(host, "Copiar número")).toBeUndefined();
     expect(host.textContent).not.toContain("WhatsApp da loja:");
     expect(host.textContent).toContain(
-      "Pedidos feitos sem e-mail, só com WhatsApp e pagamento na entrega, não aparecem aqui",
+      "Pedidos feitos sem e-mail não aparecem aqui, seja para entrega ou retirada.",
     );
-    expect(host.textContent).not.toContain("fale com a loja pelo WhatsApp");
+    expect(host.textContent).not.toContain("Fale com a loja pelo WhatsApp.");
   });
 
   it("número curto demais não vira botão (mesma régua do resto do app)", async () => {
