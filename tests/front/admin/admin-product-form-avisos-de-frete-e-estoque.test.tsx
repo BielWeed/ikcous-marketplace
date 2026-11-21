@@ -58,7 +58,7 @@ const variacao = (id: string, value: string, active: boolean) => ({
   active,
 });
 
-describe("AdminProductFormView — avisos de frete e estoque", () => {
+describe("AdminProductFormView — avisos do formulário", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
@@ -82,8 +82,11 @@ describe("AdminProductFormView — avisos de frete e estoque", () => {
 
   async function montar(
     campos: Partial<typeof produto> & {
+      costPrice?: number;
+      originalPrice?: number;
       variants?: ReturnType<typeof variacao>[];
     } = {},
+    produtoNovo = false,
   ) {
     fetchProduct.mockResolvedValue({ ...produto, variants: [], ...campos });
     const { AdminProductFormView } = await import(
@@ -92,7 +95,7 @@ describe("AdminProductFormView — avisos de frete e estoque", () => {
     await act(async () => {
       raiz.render(
         <AdminProductFormView
-          productId={produto.id}
+          productId={produtoNovo ? undefined : produto.id}
           onNavigate={vi.fn()}
           onSetDirty={vi.fn()}
         />,
@@ -116,6 +119,80 @@ describe("AdminProductFormView — avisos de frete e estoque", () => {
     )?.set?.call(campo, valor);
     campo.dispatchEvent(new Event("input", { bubbles: true }));
   }
+
+  async function digitarPreco(valor: string) {
+    await act(async () => {
+      digitar("product-sale-price", valor);
+      await new Promise((resolver) => setTimeout(resolver, 300));
+    });
+  }
+
+  function avisosDePrecoNaBarra() {
+    return [...hospedeiro.querySelectorAll('.produto-acoes [role="status"]')]
+      .map((el) => el.textContent?.replace(/\s+/g, " ").trim())
+      .filter((texto) => texto?.startsWith("Confira: o preço"));
+  }
+
+  const avisoDeQueda = "Confira: o preço vai cair de R$ 149,90 para R$ 14,90.";
+
+  it("avisa na barra ao editar o preço de 149,90 para 14,90 sem desabilitar Salvar", async () => {
+    await montar({ price: 149.9 });
+    await digitarPreco("14,90");
+
+    expect(avisosDePrecoNaBarra()).toEqual([avisoDeQueda]);
+    expect(
+      hospedeiro.querySelector<HTMLButtonElement>(".produto-salvar")?.disabled,
+    ).toBe(false);
+  });
+
+  it.each(["99,90", "74,95", "0,00", ""])(
+    "não avisa sobre a queda de 149,90 para %j",
+    async (preco) => {
+      await montar({ price: 149.9, costPrice: 10 });
+      await digitarPreco(preco);
+
+      expect(avisosDePrecoNaBarra()).toEqual([]);
+    },
+  );
+
+  it("avisa quando o preço digitado fica abaixo do custo mesmo sem cair pela metade", async () => {
+    await montar({ price: 149.9, costPrice: 100 });
+    await digitarPreco("99,90");
+
+    expect(avisosDePrecoNaBarra()).toEqual([
+      "Confira: o preço de venda (R$ 99,90) está abaixo do custo (R$ 100,00).",
+    ]);
+  });
+
+  it("avisa a queda e o prejuízo separadamente, usando o preço de venda da promoção, não o De", async () => {
+    await montar({ price: 149.9, costPrice: 20, originalPrice: 199.9 });
+    await digitarPreco("14,90");
+
+    expect(avisosDePrecoNaBarra()).toEqual([
+      avisoDeQueda,
+      "Confira: o preço de venda (R$ 14,90) está abaixo do custo (R$ 20,00).",
+    ]);
+  });
+
+  it("não avisa ao digitar o preço de um produto novo", async () => {
+    await montar({}, true);
+    await digitarPreco("14,90");
+
+    expect(avisosDePrecoNaBarra()).toEqual([]);
+  });
+
+  it("não avisa se o preço carregado é zero", async () => {
+    await montar({ price: 0, costPrice: 20 });
+    await digitarPreco("14,90");
+
+    expect(avisosDePrecoNaBarra()).toEqual([]);
+  });
+
+  it("não avisa antes de mexer no preço salvo, mesmo que esteja abaixo do custo", async () => {
+    await montar({ price: 14.9, costPrice: 20 });
+
+    expect(avisosDePrecoNaBarra()).toEqual([]);
+  });
 
   it("mostra o aviso condicional com peso em branco e sem provedor no cadastro da loja", async () => {
     await montar({ weightKg: undefined });

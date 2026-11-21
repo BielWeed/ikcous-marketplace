@@ -956,6 +956,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // da grade" fica sob o campo até a lojista mudar o valor. Não vai para o
   // rascunho — é só um recado da tela, o preço em si fica no `formData`.
   const [precoVeioDaGrade, setPrecoVeioDaGrade] = useState(false);
+  const [precoDeVendaDigitado, setPrecoDeVendaDigitado] = useState(false);
   const [editingVariant, setEditingVariant] = useState<ProductVariant | null>(
     null,
   );
@@ -4484,6 +4485,28 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     formData.widthCm,
     formData.heightCm,
   ].some((medida) => Number(medida) === 0);
+  // O "Por" da promoção é o próprio preço de venda; o "De" é só riscado.
+  const precoDeVendaSalvo = numeroOpcionalDoCampo(initialData.price) ?? 0;
+  const avisaPrecoDeVenda =
+    !!productId &&
+    precoDeVendaDigitado &&
+    !priceError &&
+    precoDeVendaSalvo > 0 &&
+    priceVal > 0 &&
+    priceVal !== precoDeVendaSalvo;
+  const avisosDaBarra = {
+    frete: avisaMedidasPadrao
+      ? "Se o frete for calculado por transportadora, peso em branco ou zero usa 0,3 kg; cada medida em branco ou zero usa 15 cm."
+      : "",
+    queda:
+      avisaPrecoDeVenda && priceVal < precoDeVendaSalvo / 2
+        ? `Confira: o preço vai cair de ${formatCurrency(precoDeVendaSalvo)} para ${formatCurrency(priceVal)}.`
+        : "",
+    abaixoDoCusto:
+      avisaPrecoDeVenda && priceVal < costPriceVal
+        ? `Confira: o preço de venda (${formatCurrency(priceVal)}) está abaixo do custo (${formatCurrency(costPriceVal)}).`
+        : "",
+  };
   // Indicadores de apresentação, a partir dos mesmos campos da validação.
   const preenchidos = [
     camposObrigatorios.name,
@@ -5887,6 +5910,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     permiteNegativo
                     inputMode="decimal"
                     value={formData.price}
+                    onInput={() => setPrecoDeVendaDigitado(true)}
                     onFlush={(val) => {
                       // Sair do campo sem mexer também chama o onFlush: só
                       // um valor DIFERENTE tira a frase "veio da grade".
@@ -7160,17 +7184,17 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       : "Tudo pronto para publicar"}
               </p>
             )}
-          {avisaMedidasPadrao && (
-            <p
-              role="status"
-              className="flex items-start gap-2 px-1 text-xs font-medium text-amber-300"
-            >
-              <AlertTriangle aria-hidden="true" className="size-4 shrink-0" />
-              <span className="min-w-0 whitespace-normal">
-                Se o frete for calculado por transportadora, peso em branco ou
-                zero usa 0,3 kg; cada medida em branco ou zero usa 15 cm.
-              </span>
-            </p>
+          {Object.entries(avisosDaBarra).map(([tipo, aviso]) =>
+            aviso ? (
+              <p
+                key={tipo}
+                role="status"
+                className="flex items-start gap-2 px-1 text-xs font-medium text-amber-300"
+              >
+                <AlertTriangle aria-hidden="true" className="size-4 shrink-0" />
+                <span className="min-w-0 whitespace-normal">{aviso}</span>
+              </p>
+            ) : null,
           )}
           <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
             {/* O botão cinza não recebe toque (pointer-events: none): o toque
