@@ -4486,7 +4486,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     formData.heightCm,
   ].some((medida) => Number(medida) === 0);
   // O "Por" da promoção é o próprio preço de venda; o "De" é só riscado.
-  const precoDeVendaSalvo = numeroOpcionalDoCampo(initialData.price) ?? 0;
+  // Rascunho antigo pode trazer o preço como número, não como texto: lê como
+  // texto para não quebrar a tela ao reabrir um produto novo.
+  const precoDeVendaSalvo = productId
+    ? (numeroOpcionalDoCampo(String(initialData.price ?? "")) ?? 0)
+    : 0;
   const avisaPrecoDeVenda =
     !!productId &&
     precoDeVendaDigitado &&
