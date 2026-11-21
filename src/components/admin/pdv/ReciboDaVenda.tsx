@@ -71,6 +71,10 @@ function whatsappDoCliente(cliente: ClienteDaVenda): string | null {
   return null;
 }
 
+function nomeDoItemNoRecibo(nome: string | undefined): string {
+  return nome?.trim() ? nome : "Produto";
+}
+
 /** Monta um `Order` mínimo só para o `OrderReceipt` imprimir — os campos que
  * a venda de balcão não tem (endereço, bairro…) ficam vazios de propósito:
  * eles simplesmente não aparecem no papel (divergência da tarefa). */
@@ -82,14 +86,17 @@ function construirOrderParaImpressao(recibo: ReciboDaVendaRegistrada): Order {
       name: recibo.cliente.tipo === "sem_cliente" ? "" : recibo.cliente.nome,
       whatsapp: whatsappDoCliente(recibo.cliente) ?? "",
     },
-    items: recibo.itens.map((item) => ({
-      productId: item.productId,
-      variantId: item.variantId ?? undefined,
-      name: item.variacao ? `${item.nome} - ${item.variacao}` : item.nome,
-      price: item.preco,
-      quantity: item.quantidade,
-      image: item.imagem,
-    })),
+    items: recibo.itens.map((item) => {
+      const nome = nomeDoItemNoRecibo(item.nome);
+      return {
+        productId: item.productId,
+        variantId: item.variantId ?? undefined,
+        name: item.variacao ? `${nome} - ${item.variacao}` : nome,
+        price: item.preco,
+        quantity: item.quantidade,
+        image: item.imagem,
+      };
+    }),
     subtotal: recibo.subtotal,
     shipping: 0,
     discount: recibo.desconto,
@@ -292,7 +299,7 @@ export function ReciboDaVenda({
           {recibo.itens.map((item) => (
             <li key={item.chave} className="pdv-receipt-line">
               <span>
-                <span className="block">{item.nome}</span>
+                <span className="block">{nomeDoItemNoRecibo(item.nome)}</span>
                 <span className="pdv-muted">
                   {item.variacao ? `${item.variacao} · ` : ""}
                   {item.quantidade} un. × R$ {reais(item.preco)}
