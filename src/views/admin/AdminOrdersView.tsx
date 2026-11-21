@@ -1898,7 +1898,12 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         if (envio.falhas?.some(falhaDePushSemConfirmacao)) {
           toast.warning(
             "Status atualizado, mas não foi possível confirmar o envio do aviso",
-            { description: descricaoDePushSemConfirmacao(envio.falhas) },
+            {
+              description: descricaoDePushSemConfirmacao(
+                envio.falhas,
+                "O aviso ainda pode chegar à cliente",
+              ),
+            },
           );
           return;
         }
