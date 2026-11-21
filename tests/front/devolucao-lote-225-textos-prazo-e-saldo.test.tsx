@@ -597,10 +597,10 @@ describe("item 8 — valor sugerido limitado ao saldo ainda devolvível", () => 
     );
   });
 
-  it("saldo maior que itens + frete: o padrão continua sendo itens + frete", async () => {
+  it("saldo maior que os itens: o padrão não é cortado pelo saldo (o frete só entra quando todos os itens voltam)", async () => {
     respostas.set("pedido_reembolsos_e_saldo", SALDO(500));
     await abrirConclusao();
-    expect(campoDoValor().value).toMatch(/219,80/);
+    expect(campoDoValor().value).toMatch(/199,80/);
     const form = hospedeiro.querySelector('[data-testid="form-concluir"]');
     expect(form?.textContent).not.toContain("ainda pode ser devolvido deste");
   });
@@ -608,7 +608,7 @@ describe("item 8 — valor sugerido limitado ao saldo ainda devolvível", () => 
   it("saldo ilegível ou falha na leitura: nada muda (o servidor continua sendo a guarda)", async () => {
     respostas.set("pedido_reembolsos_e_saldo", { lixo: true });
     await abrirConclusao();
-    expect(campoDoValor().value).toMatch(/219,80/);
+    expect(campoDoValor().value).toMatch(/199,80/);
   });
 
   it("o erro do servidor com número americano chega ao lojista em real brasileiro", async () => {
