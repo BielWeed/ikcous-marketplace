@@ -172,11 +172,18 @@ describe("PagamentoOnline (PIX) — pedido morto no servidor", () => {
     expect(criarPagamento).toHaveBeenCalledTimes(1);
   });
 
-  it("avisa junto da saída para o carrinho que quem já pagou não deve fazer novo pedido", async () => {
+  it("associa o aviso de não fazer outro pedido ao botão Voltar ao carrinho", async () => {
     await renderizar(true, vi.fn(), vi.fn());
 
+    const botao = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (b) => (b.textContent ?? "").trim() === "Voltar ao carrinho",
+    );
+    const idAviso = botao?.getAttribute("aria-describedby") ?? "";
+    const aviso = document.getElementById(idAviso);
+    expect(aviso?.textContent?.trim()).toBe(
+      "Volte ao carrinho só se não pagou.",
+    );
     expect(texto()).toContain(AVISO);
-    expect(texto()).toContain("Volte ao carrinho só se não pagou.");
     expect(texto()).not.toContain("nesta tela");
   });
 

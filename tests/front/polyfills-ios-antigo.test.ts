@@ -1,13 +1,24 @@
 import { readFileSync } from "node:fs";
 import { FICHA_DA_LOJA_ID } from "@/config/fichaDaLojaContract";
 import { parseStoreIdentity } from "@/lib/storeIdentity";
+import ts from "typescript";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { pacoteDeMarca } from "./fixtures/branding-assets";
 import { criarBuildIdentity } from "./fixtures/build-identity";
 
-const importPolyfill = 'import "./polyfills-ios-antigo";';
-const importsDoMain: string[] =
-  readFileSync("src/main.tsx", "utf8").match(/^import\s+(?!\().+$/gm) ?? [];
+const importPolyfill = "./polyfills-ios-antigo";
+const main = ts.createSourceFile(
+  "src/main.tsx",
+  readFileSync("src/main.tsx", "utf8"),
+  ts.ScriptTarget.Latest,
+);
+const primeiraInstrucao = main.statements[0];
+const polyfillAbreOMain =
+  primeiraInstrucao !== undefined &&
+  ts.isImportDeclaration(primeiraInstrucao) &&
+  primeiraInstrucao.importClause === undefined &&
+  ts.isStringLiteral(primeiraInstrucao.moduleSpecifier) &&
+  primeiraInstrucao.moduleSpecifier.text === importPolyfill;
 const apis = [
   [Object, "hasOwn"],
   [Array.prototype, "at"],
@@ -34,7 +45,7 @@ function prepararIosAntigo() {
 }
 
 async function carregarPrimeiroImport() {
-  if (importsDoMain[0] === importPolyfill) {
+  if (polyfillAbreOMain) {
     const caminho = "../../src/polyfills-ios-antigo.ts";
     await import(/* @vite-ignore */ caminho);
   }
@@ -118,11 +129,23 @@ function injetarFichaValida() {
   return root;
 }
 
-it("executa o polyfill como primeiro import, antes de conferir a identidade", () => {
-  expect(importsDoMain[0]).toBe(importPolyfill);
-  expect(
-    importsDoMain.indexOf('import "@/config/buildIdentity";'),
-  ).toBeGreaterThan(0);
+it("carrega o polyfill na primeira instrução, antes de React, App e identidade", () => {
+  expect(polyfillAbreOMain).toBe(true);
+  for (const modulo of [
+    "react",
+    "react-dom/client",
+    "./App.tsx",
+    "@/config/buildIdentity",
+  ]) {
+    const posicao = main.statements.findIndex(
+      (instrucao) =>
+        ts.isImportDeclaration(instrucao) &&
+        !instrucao.importClause?.isTypeOnly &&
+        ts.isStringLiteral(instrucao.moduleSpecifier) &&
+        instrucao.moduleSpecifier.text === modulo,
+    );
+    expect(posicao, modulo).toBeGreaterThan(0);
+  }
 });
 
 async function prepararAbertura() {
