@@ -37,6 +37,7 @@ import {
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { rotuloDaFormaDePagamento } from "@/lib/pedidos-csv";
 import { textoCancelamentoDoPainel } from "@/lib/texto-cancelamento-do-painel";
+import { tipoDeEntregaDoPedido } from "@/lib/tipo-de-entrega-do-pedido";
 import { classeDoTexto } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import { tempoSegurandoEstoque } from "@/lib/vagas-de-visitante";
@@ -600,6 +601,17 @@ export const AdminOrderCard = memo(function AdminOrderCard({
           </button>
         )}
       </div>
+      {!acaoPrincipal &&
+        proximo === "shipping" &&
+        onStatusChange &&
+        !pagoForaDoFluxo &&
+        tipoDeEntregaDoPedido(order) === "envio" &&
+        !order.trackingCode && (
+          <p className="mt-2 text-xs text-zinc-400">
+            Sem código salvo, a cliente vê “A caminho”, mas não consegue
+            rastrear. Se já tem o código, salve antes de avançar.
+          </p>
+        )}
       {(pagamentoNaoConfirmado ||
         order.paymentStatus === "pago_apos_expirar") &&
         podeCancelar &&
