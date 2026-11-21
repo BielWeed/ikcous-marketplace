@@ -554,7 +554,7 @@ export function AlertasCancelados({
                             NOME encurta com reticência; o valor nunca some
                             (no celular de 360px, nome longo escondia o R$). */}
                         <span className="flex min-w-0 items-baseline gap-1 text-[11px] font-bold uppercase text-zinc-500">
-                          <span className="min-w-0 truncate">
+                          <span className="min-w-0 truncate [overflow-wrap:anywhere]">
                             {pedido.customer?.name || "Cliente"} ·
                           </span>{" "}
                           <span

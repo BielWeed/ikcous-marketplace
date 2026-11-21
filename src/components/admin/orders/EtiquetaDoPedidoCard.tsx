@@ -965,7 +965,7 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
                     href={pedido.shipping_label_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex h-10 items-center gap-1.5 rounded-xl border border-solid border-admin-border-strong bg-admin-raised px-3 text-sm font-medium text-foreground transition-colors hover:bg-admin-hover active:scale-95"
+                    className="flex min-h-11 items-center gap-1.5 rounded-xl border border-solid border-admin-border-strong bg-admin-raised px-3 text-sm font-medium text-foreground transition-colors hover:bg-admin-hover active:scale-95"
                   >
                     <ExternalLink className="size-4" />
                     <span>Abrir etiqueta</span>
@@ -975,7 +975,7 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
                   type="button"
                   onClick={() => handleConsultarRastreio()}
                   disabled={consultandoRastreio || isOffline}
-                  className="flex h-10 items-center gap-1.5 rounded-xl border border-admin-border bg-white/5 px-3 text-sm font-medium text-zinc-300 transition-colors hover:text-white active:scale-95 disabled:opacity-40"
+                  className="flex min-h-11 items-center gap-1.5 rounded-xl border border-admin-border bg-white/5 px-3 text-sm font-medium text-zinc-300 transition-colors hover:text-white active:scale-95 disabled:opacity-40"
                 >
                   <RefreshCw
                     className={`size-4 ${consultandoRastreio ? "animate-spin" : ""}`}

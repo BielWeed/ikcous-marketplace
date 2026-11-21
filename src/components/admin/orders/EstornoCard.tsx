@@ -413,6 +413,7 @@ export function EstornoCard({
               type="button"
               variant="link"
               size="sm"
+              className="min-h-11"
               onClick={() => setCampoAberto(true)}
             >
               devolver outro valor
