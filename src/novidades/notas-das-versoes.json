@@ -11,8 +11,8 @@
     "correcoes": [
       "No painel, o aviso de Pix vencido aparece em pedidos pelo app em processamento ou envio quando o pagamento ainda não consta; na retirada na loja, a orientação de cancelar para liberar o estoque só aparece se não houve cancelamento depois da saída e vale se você não recebeu por fora e a peça continua na loja.",
       "Na lista de pedidos da cliente, o valor passa a se chamar “Total do pedido”.",
-      "Na busca de pedidos, a orientação para quem comprou sem conta diz que pedidos feitos sem e-mail, só com WhatsApp e pagamento na entrega, não aparecem ali e, quando a loja tem WhatsApp, manda falar com a loja por ele.",
-      "A busca de CEP distingue “CEP não encontrado”, “A busca de CEP demorou demais” e “Não foi possível buscar o CEP agora”; nos três casos, orienta a preencher o endereço manualmente.",
+      "Na busca de pedidos, a orientação para quem comprou sem conta diz que pedidos feitos sem e-mail não aparecem ali, seja para entrega ou retirada, e, quando a loja tem WhatsApp, manda falar com a loja por ele.",
+      "A busca de CEP distingue “CEP não encontrado”, “A busca de CEP demorou demais” e “Não foi possível buscar o CEP agora”; na entrega, os três casos orientam a preencher o endereço manualmente; na retirada na loja, onde o endereço não aparece, a orientação é conferir os números ou tentar de novo.",
       "Na sugestão de valor do reembolso de uma devolução, o frete de ida só entra quando todos os itens foram conferidos e voltaram; se algum item foi marcado como “Não veio” e havia frete a devolver, o aviso diz “Frete não incluído: nem todos os itens voltaram.”",
       "Em Frete, quando o contato do mototáxi ou as regras foram salvos e as transportadoras não, o aviso diz o que foi salvo, como “Salvamos o contato do mototáxi e as regras, mas as transportadoras não. Toque em Tentar de novo.”",
       "No gráfico do painel, o estoque dos dias anteriores aparece como “Estoque (estimado)”, com a nota “Estimativa: não considera entradas nem ajustes de estoque feitos depois.”; o dia de hoje continua “Estoque investido”.",
@@ -30,7 +30,8 @@
       "Se um aviso no sino da loja aponta para o formulário de endereço, tocar nele abre esse formulário em vez de mandar a cliente para a vitrine.",
       "Ao editar um produto, o painel avisa quando o novo preço de venda é menos da metade do preço salvo e quando fica abaixo do custo informado; o custo digitado com vírgula, como 14,90, é lido inteiro.",
       "No painel, o rótulo do Extrato com filtro de tipo diz “Resultado do dia, sem o filtro de tipo” e quebra linha em telas estreitas sem cortar os valores.",
-      "Em Avisar clientes e na ficha do pedido, o aviso de envio sem confirmação deixa de falar em reenviar onde não há botão para isso; na ficha do pedido diz só que o aviso ainda pode chegar à cliente."
+      "Na tela do Pix, o aviso “Ainda não confirmado” manda quem já pagou não pagar de novo e conferir em Meus pedidos, na aba Em andamento ou no Histórico; ao voltar para um Pix em aberto, o aviso também manda não fazer outro pedido, e só toca em Retomar pagamento quem ainda não pagou.",
+    "Em Avisar clientes e na ficha do pedido, o aviso de envio sem confirmação deixa de falar em reenviar onde não há botão para isso; na ficha do pedido diz só que o aviso ainda pode chegar à cliente."
     ],
     "melhorias": [
       "No cadastro de produto, o campo de estoque do produto e o da variação passam a se chamar “Disponível para venda”, com uma ajuda que explica que as peças reservadas para pedidos não entram nessa quantidade.",
@@ -52,7 +53,8 @@
       "Na tela de cupons, o painel diz que os cupons são usados “Na finalização da compra” e explica que desativá-los afeta pedidos novos, não os já feitos.",
       "Na ficha do pedido, os controles de etiqueta e o atalho “devolver outro valor” têm áreas de toque maiores.",
       "Na lista “Devolver agora”, o nome comprido da cliente não esconde mais o valor a devolver.",
-      "Em Avaliações, as respostas prontas ganham os nomes “Agradecer avaliação” e “Avaliação positiva”.",
+      "No recibo impresso do pedido e no recibo da venda no balcão, o item sem nome aparece como “Produto”; endereços e nomes longos quebram a linha na confirmação de cancelamento e no cálculo de frete em vez de passar da tela.",
+    "Em Avaliações, as respostas prontas ganham os nomes “Agradecer avaliação” e “Avaliação positiva”.",
       "Ao ajustar a imagem de um banner, o formato largo passa a se chamar “Computador (4:1)”.",
       "Na escolha de aparência do painel, o tema “Confortável” passa a ser descrito como “Tons quentes que cansam menos os olhos”."
     ]
