@@ -601,8 +601,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
           </button>
         )}
       </div>
-      {!acaoPrincipal &&
-        proximo === "shipping" &&
+      {proximo === "shipping" &&
         onStatusChange &&
         !pagoForaDoFluxo &&
         tipoDeEntregaDoPedido(order) === "envio" &&
