@@ -238,6 +238,20 @@ it.each([true, false])(
   },
 );
 
+it("AbortSignal.timeout aguarda o último trecho além do limite do timer", async () => {
+  vi.useFakeTimers();
+  prepararIosAntigo();
+  await carregarPrimeiroImport();
+
+  const limite = 0x7fffffff;
+  const sinal = AbortSignal.timeout(limite + 1);
+  vi.advanceTimersByTime(limite);
+  expect(sinal.aborted).toBe(false);
+  vi.advanceTimersByTime(1);
+  expect(sinal.aborted).toBe(true);
+  expect(sinal.reason).toMatchObject({ name: "TimeoutError" });
+});
+
 it("throwIfAborted preserva o motivo nativo e funciona no Safari sem reason", async () => {
   prepararIosAntigo();
   await carregarPrimeiroImport();
@@ -256,13 +270,26 @@ it("throwIfAborted preserva o motivo nativo e funciona no Safari sem reason", as
 
 it("randomUUID usa bytes do gerador seguro e marca versão e variante RFC", async () => {
   prepararIosAntigo();
-  vi.spyOn(crypto, "getRandomValues").mockImplementation((bytes) => {
-    if (bytes instanceof Uint8Array) bytes.fill(255);
-    return bytes;
-  });
-  await carregarPrimeiroImport();
+  const aleatorio = vi
+    .spyOn(crypto, "getRandomValues")
+    .mockImplementationOnce((bytes) => {
+      if (bytes instanceof Uint8Array) bytes.fill(255);
+      return bytes;
+    })
+    .mockImplementationOnce((bytes) => {
+      if (bytes instanceof Uint8Array) {
+        bytes.set([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+      }
+      return bytes;
+    });
+  try {
+    await carregarPrimeiroImport();
 
-  expect(crypto.randomUUID()).toBe("ffffffff-ffff-4fff-bfff-ffffffffffff");
+    expect(crypto.randomUUID()).toBe("ffffffff-ffff-4fff-bfff-ffffffffffff");
+    expect(crypto.randomUUID()).toBe("00010203-0405-4607-8809-0a0b0c0d0e0f");
+  } finally {
+    aleatorio.mockRestore();
+  }
 });
 
 it("não habilita randomUUID fora de contexto seguro", async () => {

@@ -148,6 +148,15 @@ describe("ProductQA — Enter do teclado envia a pergunta (lote 221)", () => {
     expect(formulario()?.textContent).toContain(
       "Seu nome vai aparecer assim: Érica Á.",
     );
+    const previa = formulario()!.querySelector("p#qa-public-name");
+    expect(previa).not.toBeNull();
+    expect(campo().getAttribute("aria-describedby")?.split(/\s+/)).toEqual(
+      expect.arrayContaining([
+        "qa-question-privacy",
+        "qa-question-count",
+        previa?.id,
+      ]),
+    );
     expect(addQuestion).not.toHaveBeenCalled();
   });
 

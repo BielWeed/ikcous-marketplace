@@ -224,6 +224,34 @@ describe("lote 230 — Devolver R$ ... pergunta pela janela do app", () => {
     expect(botaoDa(j, "Confirmar devolução adicional")).toBeDefined();
   });
 
+  it("identifica a devolução sem valor nem horário na confirmação com duas em curso", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({
+        linhas: [
+          linhaEstorno({
+            id: "sem-dados",
+            status: "solicitado",
+            amount: undefined as unknown as number,
+            created_at: "",
+          }),
+          linhaEstorno({
+            id: "com-valor",
+            status: "em_processamento",
+            amount: 20,
+          }),
+        ],
+        emCurso: 20,
+        disponivel: 80,
+      }),
+    );
+    await montar();
+    await tocar(botaoDa(hospedeiro, "Devolver R$ 80,00"));
+
+    const texto = normal(janela()?.textContent);
+    expect(texto).toContain("Valor não informado");
+    expect(texto).toContain("R$ 20,00");
+  });
+
   it("avisa sobre a devolução concluída no gateway, mas ainda sem data de confirmação", async () => {
     useEstornosDoPedidoMock.mockReturnValue(
       hookPadrao({

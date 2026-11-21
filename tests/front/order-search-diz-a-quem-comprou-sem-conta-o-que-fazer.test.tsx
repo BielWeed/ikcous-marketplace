@@ -224,6 +224,10 @@ describe("OrderSearch — aviso para quem comprou sem conta", () => {
     expect(botaoPorTexto(host, "WhatsApp")).toBeUndefined();
     expect(botaoPorTexto(host, "Copiar número")).toBeUndefined();
     expect(host.textContent).not.toContain("WhatsApp da loja:");
+    expect(host.textContent).toContain(
+      "Pedidos feitos sem e-mail, só com WhatsApp e pagamento na entrega, não aparecem aqui",
+    );
+    expect(host.textContent).not.toContain("fale com a loja pelo WhatsApp");
   });
 
   it("número curto demais não vira botão (mesma régua do resto do app)", async () => {

@@ -419,6 +419,28 @@ describe("Entrega e frete — escolhas novas, valores antigos", () => {
     },
   );
 
+  it("não anuncia regras salvas quando só a taxa descartada mudou e as transportadoras falham", async () => {
+    loja.atual.localDeliveryEnabled = false;
+    loja.atual.enabledShippingMethods = ["pac", "sedex", "store-pickup"];
+    await montar();
+    await clicar("Na sua região", host.querySelector("#painel-frete-local")!);
+    await escolher("#bloco-frete-local", "Eu entrego");
+    await digitar("local-delivery-fee", "-5");
+    await escolher("#bloco-frete-local", "Só retirada");
+    await clicar("Ligar Frenet");
+    invoke.mockResolvedValue({
+      data: { success: false, error: "Falha simulada" },
+    });
+
+    await clicar("Salvar");
+
+    expect(updateConfig).not.toHaveBeenCalled();
+    expect(erroToast).toHaveBeenCalledWith(
+      "As transportadoras não foram salvas. Toque em Tentar de novo.",
+    );
+    expect(sucessoToast).not.toHaveBeenCalled();
+  });
+
   it("salva transportadoras pelo topo; na falha parcial repete só a lista", async () => {
     await montar();
     const chave = host.querySelector<HTMLButtonElement>(
