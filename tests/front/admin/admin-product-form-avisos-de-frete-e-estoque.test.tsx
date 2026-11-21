@@ -200,7 +200,7 @@ describe("AdminProductFormView — avisos de frete e estoque", () => {
 
     expect(status()).not.toContain(avisoDeEstoquePositivo);
     expect(status()).toContain(
-      "Este produto não aparece na loja. Ao ligar “Aparece na loja”, ele poderá ser vendido sem escolha de variação.",
+      "Com “Aparece na loja” desligado, o produto fica oculto ao salvar. Para vendê-lo sem escolha de variação, ligue a opção e salve.",
     );
 
     const interruptor = hospedeiro.querySelector<HTMLButtonElement>(

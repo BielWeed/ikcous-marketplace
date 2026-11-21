@@ -4475,7 +4475,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         ? "Com estoque 0, o produto ficará esgotado."
         : formData.isActive
           ? "Com estoque acima de 0, o produto será vendido sem escolha de variação."
-          : "Este produto não aparece na loja. Ao ligar “Aparece na loja”, ele poderá ser vendido sem escolha de variação."
+          : "Com “Aparece na loja” desligado, o produto fica oculto ao salvar. Para vendê-lo sem escolha de variação, ligue a opção e salve."
       : "";
 
   const avisaMedidasPadrao = [
