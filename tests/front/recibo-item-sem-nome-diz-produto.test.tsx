@@ -23,6 +23,7 @@ it.each(["", "   ", undefined])(
         },
       ],
       subtotal: 10,
+      discount: 0,
       shipping: 0,
       total: 10,
       paymentMethod: "pix",
