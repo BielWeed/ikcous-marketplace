@@ -378,6 +378,42 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
     expect(onStatusChange).not.toHaveBeenCalled();
   });
 
+  it.each(["pago", "recusado"] as const)(
+    "fecha a confirmação se o pagamento ficar %s sem mudar a etapa",
+    async (paymentStatus) => {
+      const { OrderDetail } = await import(
+        "@/components/admin/orders/OrderDetail"
+      );
+      const order = pedidoFake("aguardando");
+      const onStatusChange = vi.fn();
+      await act(async () =>
+        raiz.render(
+          <OrderDetail order={order} onStatusChange={onStatusChange} />,
+        ),
+      );
+      await act(async () =>
+        localizarBotaoPorTexto(hospedeiro, "Avançar →")!.click(),
+      );
+      expect(hospedeiro.textContent).toContain(
+        "Este pedido não está com o pagamento confirmado",
+      );
+
+      await act(async () =>
+        raiz.render(
+          <OrderDetail
+            order={{ ...order, paymentStatus }}
+            onStatusChange={onStatusChange}
+          />,
+        ),
+      );
+
+      expect(hospedeiro.textContent).not.toContain(
+        "Este pedido não está com o pagamento confirmado",
+      );
+      expect(onStatusChange).not.toHaveBeenCalled();
+    },
+  );
+
   it("O1: confirmação envia a situação de origem mesmo depois de outro render", async () => {
     const { OrderDetail } = await import(
       "@/components/admin/orders/OrderDetail"

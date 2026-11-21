@@ -1817,20 +1817,22 @@ export const OrderDetail = memo(function OrderDetail({
     orderId: string;
     status: OrderStatus;
     statusOrigem: OrderStatus;
+    pagamentoOrigem: Order["paymentStatus"];
     motivo: "naoPago" | "foraDoFluxo" | "recebimento";
   } | null>(null);
 
+  const avancoDesatualizado =
+    pendingAdvance !== null &&
+    (pendingAdvance.orderId !== order.id ||
+      pendingAdvance.statusOrigem !== order.status ||
+      pendingAdvance.pagamentoOrigem !== order.paymentStatus);
+
   useEffect(() => {
-    if (
-      pendingAdvance &&
-      (pendingAdvance.orderId !== order.id ||
-        pendingAdvance.statusOrigem !== order.status ||
-        (pendingAdvance.motivo === "foraDoFluxo" && !pagoForaDoFluxo))
-    ) {
+    if (avancoDesatualizado) {
       setPendingAdvance(null);
       toast.warning("O pedido mudou de situação. Confira antes de avançar.");
     }
-  }, [pendingAdvance, order.id, order.status, pagoForaDoFluxo]);
+  }, [avancoDesatualizado]);
 
   const handleStatusChange = async (
     orderId: string,
@@ -1903,6 +1905,7 @@ export const OrderDetail = memo(function OrderDetail({
         orderId,
         status: nextStatus,
         statusOrigem: order.status,
+        pagamentoOrigem: order.paymentStatus,
         motivo: pagoForaDoFluxo ? "foraDoFluxo" : "naoPago",
       });
       return;
@@ -1941,6 +1944,7 @@ export const OrderDetail = memo(function OrderDetail({
         orderId,
         status: nextStatus,
         statusOrigem: order.status,
+        pagamentoOrigem: order.paymentStatus,
         motivo: "recebimento",
       });
       return;
@@ -1954,6 +1958,7 @@ export const OrderDetail = memo(function OrderDetail({
     if (!pendingAdvance) return;
     const { orderId, status, statusOrigem } = pendingAdvance;
     setPendingAdvance(null);
+    if (avancoDesatualizado) return;
     handleStatusChange(orderId, status, statusOrigem);
   };
 
@@ -1962,6 +1967,7 @@ export const OrderDetail = memo(function OrderDetail({
     if (!pendingAdvance) return;
     const { orderId, status, statusOrigem } = pendingAdvance;
     setPendingAdvance(null);
+    if (avancoDesatualizado) return;
     await registrarRecebimentoEAvancar(orderId, status, statusOrigem);
   };
 

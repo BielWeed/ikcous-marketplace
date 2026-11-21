@@ -128,6 +128,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
   const [destinoConfirmado, setDestinoConfirmado] = useState<{
     status: OrderStatus;
     statusOrigem: OrderStatus;
+    pagamentoOrigem: Order["paymentStatus"];
   }>();
   const [cancelamentoFoto, setCancelamentoFoto] = useState<{
     status: OrderStatus;
@@ -209,16 +210,18 @@ export const AdminOrderCard = memo(function AdminOrderCard({
               ? "Pagamento expirado · pagamento não recebido"
               : (avisoDePixVencido(order, agora) ?? avisoDeEspera);
 
+  const avancoDesatualizado =
+    (painel === "avancar" || painel === "entregar") &&
+    destinoConfirmado !== undefined &&
+    (destinoConfirmado.statusOrigem !== order.status ||
+      destinoConfirmado.pagamentoOrigem !== order.paymentStatus);
+
   useEffect(() => {
-    if (
-      (painel === "avancar" || painel === "entregar") &&
-      destinoConfirmado &&
-      destinoConfirmado.statusOrigem !== order.status
-    ) {
+    if (avancoDesatualizado) {
       setPainel(null);
       toast.warning("O pedido mudou de situação. Confira antes de avançar.");
     }
-  }, [painel, destinoConfirmado, order.status]);
+  }, [avancoDesatualizado]);
 
   useEffect(() => {
     if (
@@ -279,9 +282,26 @@ export const AdminOrderCard = memo(function AdminOrderCard({
     }
   }
 
+  function confirmarAvanco(receber: boolean) {
+    if (!destinoConfirmado) return;
+    if (avancoDesatualizado) {
+      setPainel(null);
+      return;
+    }
+    void executar(
+      destinoConfirmado.status,
+      receber,
+      destinoConfirmado.statusOrigem,
+    );
+  }
+
   function avancar() {
     if (!proximo || bloqueado) return;
-    setDestinoConfirmado({ status: proximo, statusOrigem: order.status });
+    setDestinoConfirmado({
+      status: proximo,
+      statusOrigem: order.status,
+      pagamentoOrigem: order.paymentStatus,
+    });
     if (pagamentoNaoConfirmado) {
       setPainel("avancar");
       return;
@@ -842,11 +862,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                   type="button"
                   onClick={() =>
                     painel === "entregar"
-                      ? void executar(
-                          destinoConfirmado?.status,
-                          false,
-                          destinoConfirmado?.statusOrigem,
-                        )
+                      ? confirmarAvanco(false)
                       : setPainel(null)
                   }
                   className={SECUNDARIO}
@@ -865,11 +881,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                   onClick={() =>
                     painel === "cancelar"
                       ? confirmarCancelamento()
-                      : void executar(
-                          destinoConfirmado?.status,
-                          painel === "entregar",
-                          destinoConfirmado?.statusOrigem,
-                        )
+                      : confirmarAvanco(painel === "entregar")
                   }
                   className={
                     painel === "cancelar"

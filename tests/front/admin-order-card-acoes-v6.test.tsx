@@ -462,6 +462,20 @@ it.each(casosDeConfirmacao)(
   },
 );
 
+it.each(["pago", "recusado"] as const)(
+  "fecha a confirmação se o pagamento ficar %s sem mudar a etapa",
+  async (paymentStatus) => {
+    const order = pedido({ paymentStatus: "aguardando", metodoOnline: "pix" });
+    await abrirConfirmacao(order);
+
+    montar({ ...order, paymentStatus });
+
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(avancar).not.toHaveBeenCalled();
+    expect(receber).not.toHaveBeenCalled();
+  },
+);
+
 it.each(casosDeConfirmacao)(
   "O1: confirmação legítima em $status envia a origem capturada",
   async (sobre) => {
