@@ -119,7 +119,8 @@ export const DadosDaEmpresa = memo(function DadosDaEmpresa({
     const conferido = identidadeLegalParaGravar({
       razaoSocial: razao,
       documento,
-      email,
+      // Um e-mail legado intocado não faz parte deste salvamento.
+      email: emailMudou ? email : "",
     });
     if (!conferido.valido) {
       // Nada é gravado: cada campo errado mostra o que corrigir e o foco vai

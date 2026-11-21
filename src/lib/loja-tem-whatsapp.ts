@@ -1,4 +1,5 @@
 import { limparTelefoneBrasileiro } from "@/lib/telefone-br";
+import { telefoneNacionalZerado } from "@/lib/telefone-nacional-zerado";
 
 // Laudo caça-bugs 31/08 (C1/C2): a decisão de 30/08 ("WhatsApp é opcional —
 // sem número, o botão some") vivia colada no ProductView, e as telas de
@@ -14,5 +15,6 @@ import { limparTelefoneBrasileiro } from "@/lib/telefone-br";
 // "(34) 99999-9999" e "34999999999" valem igual; quem monta o link `wa.me/`
 // adiciona o prefixo 55 quando cabe.
 export function lojaTemWhatsapp(numero: string | null | undefined): boolean {
-  return limparTelefoneBrasileiro(numero).length >= 10;
+  const nacional = limparTelefoneBrasileiro(numero);
+  return nacional.length >= 10 && !telefoneNacionalZerado(nacional);
 }

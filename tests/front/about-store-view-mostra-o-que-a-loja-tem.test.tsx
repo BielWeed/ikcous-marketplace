@@ -98,6 +98,13 @@ describe("AboutStoreView — a página mostra o que a loja tem e omite o resto",
     );
   }
 
+  it("não mostra o botão se o número salvo só tem zeros após o DDD", async () => {
+    configAtual = { ...LOJA_COMPLETA, whatsappNumber: "1100000000" };
+    await renderizarPagina();
+
+    expect(botaoWhatsapp()).toBeNull();
+  });
+
   it("WhatsApp flutuante fica FORA do container da tela (portal no body), senão rola junto com o conteúdo", async () => {
     configAtual = LOJA_COMPLETA;
 
