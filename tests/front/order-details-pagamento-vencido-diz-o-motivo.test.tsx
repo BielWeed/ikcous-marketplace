@@ -77,7 +77,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 // aviso: a confirmação do Mercado Pago pode chegar minutos depois do
 // vencimento, e comprar na hora seria pagar duas vezes.
 const AVISO_DE_QUEM_JA_PAGOU =
-  "Se você já pagou, aguarde alguns minutos antes de comprar de novo.";
+  "Já pagou? Não faça outro pedido. Se a confirmação não aparecer, fale com a loja.";
 const FRASE_DO_VENCIMENTO = `O prazo do pagamento terminou e o pedido foi cancelado. ${AVISO_DE_QUEM_JA_PAGOU} Se não pagou, é só comprar de novo.`;
 const FRASE_GENERICA = "Este pedido foi cancelado e não seguirá para entrega.";
 
@@ -199,6 +199,14 @@ describe("OrderDetailsView — pedido cancelado porque o pagamento venceu diz o 
       expect(botaoDaLoja()).toBeUndefined();
     },
   );
+
+  it("Pix pendente: orienta quem já pagou a não fazer outro pedido", async () => {
+    await renderizar("pending", "aguardando", undefined, "pix");
+
+    expect(texto()).toContain(
+      `Aguardando confirmação de pagamento para iniciar a separação. ${AVISO_DE_QUEM_JA_PAGOU}`,
+    );
+  });
 
   it("pedido pendente com pagamento vencido (ainda não cancelado): não mostra o botão de vitrine", async () => {
     await renderizar("pending", "expirado");
