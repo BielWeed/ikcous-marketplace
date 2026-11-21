@@ -117,6 +117,10 @@ export function AboutStoreView() {
     .join(", ");
   const temWhatsapp = lojaTemWhatsapp(config.whatsappNumber);
   const email = identidadeLegalDaLoja(config)?.email ?? null;
+  const separadorDoEmail = email?.lastIndexOf("@") ?? -1;
+  const hrefDoEmail = email
+    ? `mailto:${encodeURIComponent(email.slice(0, separadorDoEmail))}@${encodeURIComponent(email.slice(separadorDoEmail + 1))}`
+    : undefined;
   // Só LÊ o estado (não registra a tela como participante de saída, o que
   // exigiria chamar safeToRemove). Fora de um AnimatePresence é sempre true; dentro dele vira
   // false quando a tela está saindo — aí o botão (portalado) some junto.
@@ -348,7 +352,7 @@ export function AboutStoreView() {
               E-mail de atendimento
             </p>
             <a
-              href={`mailto:${email.replaceAll("%", "%25")}`}
+              href={hrefDoEmail}
               className="flex min-h-11 w-full items-center gap-2 break-all text-sm font-semibold text-foreground underline underline-offset-2"
             >
               {email}

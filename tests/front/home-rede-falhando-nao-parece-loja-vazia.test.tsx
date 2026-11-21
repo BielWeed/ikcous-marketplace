@@ -139,10 +139,12 @@ describe("HomeView — rede falhando não parece loja vazia", () => {
     loja.catalogoErro = true;
     await montar();
 
+    expect(hospedeiro.textContent).not.toContain(
+      "Nenhum produto disponível agora",
+    );
     expect(hospedeiro.textContent).toContain(
       "Não conseguimos carregar os produtos",
     );
-    expect(hospedeiro.textContent).not.toContain("Nenhum produto agora");
     expect(botaoTentar()).toBeDefined();
   });
 
@@ -179,11 +181,15 @@ describe("HomeView — rede falhando não parece loja vazia", () => {
     ).not.toBeNull();
   });
 
-  it("enquanto ainda carrega, não mostra o aviso de erro", async () => {
+  it("enquanto ainda carrega, não mostra erro nem diz que a loja está vazia", async () => {
     loja.catalogoErro = true;
     await montar({ isLoading: true });
 
+    expect(hospedeiro.textContent).not.toContain(
+      "Nenhum produto disponível agora",
+    );
     expect(hospedeiro.textContent).not.toContain("Não conseguimos carregar");
+    expect(hospedeiro.textContent).toContain("Carregando produtos");
   });
 
   it("categoria sem resultado na cópia salva oferece nova tentativa se a atualização falhou", async () => {
