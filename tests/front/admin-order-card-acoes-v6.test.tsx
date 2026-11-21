@@ -360,6 +360,11 @@ it.each([
       clienteSemConta: !order.userId,
     });
     expect(document.body.textContent).toContain(texto);
+    if (order.status === "shipping") {
+      expect(document.querySelector('[role="dialog"]')?.textContent).toContain(
+        "Esperando o produto voltar",
+      );
+    }
     expect(avancar).not.toHaveBeenCalled();
     await clicar("Manter pedido");
     expect(avancar).not.toHaveBeenCalled();

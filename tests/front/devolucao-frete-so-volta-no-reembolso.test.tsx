@@ -143,13 +143,15 @@ async function escolherFoto() {
   });
 }
 
-/** Pedido INTEIRO (as 2 unidades) por defeito, até a revisão, com a solução dada. */
+/** Devolução por defeito, até a revisão, com a quantidade e a solução dadas. */
 async function ateARevisaoComDefeito(
   resolucao: "reembolso" | "troca" | "vale",
+  quantidade = 2,
 ) {
   await montar();
-  await clicar(botao("Aumentar Tênis"));
-  await clicar(botao("Aumentar Tênis"));
+  for (let i = 0; i < quantidade; i++) {
+    await clicar(botao("Aumentar Tênis"));
+  }
   await clicar(botao("Continuar"));
   await clicar(radio("defeito"));
   await escolherFoto();
@@ -166,6 +168,11 @@ describe("SolicitarDevolucaoSheet — o frete só volta no reembolso", () => {
   it("defeito, pedido inteiro, REEMBOLSO: promete o frete de volta", async () => {
     const texto = await ateARevisaoComDefeito("reembolso");
     expect(texto).toContain(FRASE_DO_FRETE);
+  });
+
+  it("defeito, uma de duas unidades, REEMBOLSO: não promete frete de volta", async () => {
+    const texto = await ateARevisaoComDefeito("reembolso", 1);
+    expect(texto).not.toContain(FRASE_DO_FRETE);
   });
 
   it("defeito, pedido inteiro, TROCA: não promete frete de volta e explica a regra", async () => {

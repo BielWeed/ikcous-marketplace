@@ -55,6 +55,7 @@ describe("pedidosParaCsv", () => {
     ],
     ["desconhecido", 100, undefined, "100,00", "", ""],
     ["ilegível", 100, Number.NaN, "100,00", "", ""],
+    ["negativo", 100, -5, "100,00", "", ""],
   ])(
     "exporta o estorno %s sem mudar o Total original",
     (_, total, valorEstornado, totalOriginal, estorno, restante) => {
