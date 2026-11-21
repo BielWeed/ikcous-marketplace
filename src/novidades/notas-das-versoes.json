@@ -30,7 +30,7 @@
       "Se um aviso no sino da loja aponta para o formulário de endereço, tocar nele abre esse formulário em vez de mandar a cliente para a vitrine.",
       "Ao editar um produto, o painel avisa quando o novo preço de venda é menos da metade do preço salvo e quando fica abaixo do custo informado; o custo digitado com vírgula, como 14,90, é lido inteiro.",
       "No painel, o rótulo do Extrato com filtro de tipo diz “Resultado do dia, sem o filtro de tipo” e quebra linha em telas estreitas sem cortar os valores.",
-      "Na tela do Pix, o aviso “Ainda não confirmado” manda quem já pagou não pagar de novo e conferir em Meus pedidos, na aba Em andamento ou no Histórico; ao voltar para um Pix em aberto, o aviso também manda não fazer outro pedido, e só toca em Retomar pagamento quem ainda não pagou.",
+      "Na tela do Pix, o aviso “Ainda não confirmado” manda quem já pagou não pagar de novo e conferir em Meus pedidos, na aba Em andamento ou no Histórico; ao tocar em Voltar com o Pix em aberto, um aviso manda não fazer outro pedido e conferir em Meus pedidos.",
       "Em Avisar clientes e na ficha do pedido, o aviso de envio sem confirmação deixa de falar em reenviar onde não há botão para isso; na ficha do pedido diz só que o aviso ainda pode chegar à cliente."
     ],
     "melhorias": [
