@@ -185,9 +185,8 @@ describe("lote 230 — Devolver R$ ... pergunta pela janela do app", () => {
     );
     expect(normal(j.textContent)).toContain("01/09 às 07:00");
     expect(normal(j.textContent)).toContain(
-      "Confirme só se esta for OUTRA devolução",
+      "Confirme apenas se quiser devolver um valor adicional. Se estiver tentando repetir a devolução anterior, feche esta janela e acompanhe o andamento dela na ficha do pedido.",
     );
-    expect(normal(j.textContent)).toContain("aguarde alguns instantes");
     expect(solicitarEstorno).not.toHaveBeenCalled();
 
     await tocar(botaoDa(j, "Confirmar devolução adicional"));

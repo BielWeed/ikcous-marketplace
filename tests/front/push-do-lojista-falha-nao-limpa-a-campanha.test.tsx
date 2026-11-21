@@ -318,7 +318,8 @@ describe("Avisar clientes — falha não apaga a campanha", () => {
       motivo:
         "Sem resposta do serviço de push dentro do prazo; o aviso pode ter chegado ao aparelho mesmo assim",
       titulo: "Não foi possível confirmar o envio",
-      detalhe: "O aviso ainda pode chegar; confira antes de reenviar.",
+      detalhe:
+        "O aviso ainda pode chegar. Se reenviar agora, quem já recebeu pode receber a mesma mensagem de novo.",
     },
   ])(
     "zero aceites preserva a campanha: $titulo",

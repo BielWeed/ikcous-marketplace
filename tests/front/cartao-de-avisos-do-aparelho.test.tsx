@@ -556,7 +556,7 @@ describe("CartaoDeAvisosDoAparelho", () => {
       const alerta = hospedeiro.querySelector('[role="alert"]')?.textContent;
       expect(alerta).toContain("Não foi possível confirmar o envio");
       expect(alerta).toContain(
-        "O aviso ainda pode chegar; confira antes de reenviar.",
+        "Confira se o aviso apareceu neste aparelho antes de mandar outro teste.",
       );
       expect(alerta).not.toContain("não foi enviado");
     });

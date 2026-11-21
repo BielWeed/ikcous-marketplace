@@ -33,7 +33,7 @@ describe("descricaoDePushSemConfirmacao", () => {
         falha,
       ]),
     ).toBe(
-      "O aviso ainda pode chegar; confira antes de reenviar. Outras falhas: 1 aparelho.",
+      "O aviso ainda pode chegar. Se reenviar agora, quem já recebeu pode receber a mesma mensagem de novo. Outras falhas: 1 aparelho.",
     );
   });
 });

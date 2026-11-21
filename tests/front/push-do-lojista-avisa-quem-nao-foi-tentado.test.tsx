@@ -709,7 +709,7 @@ describe("Avisar clientes — destinatários não tentados", () => {
       "Não foi possível confirmar o envio",
       {
         description: expect.stringContaining(
-          "O aviso ainda pode chegar; confira antes de reenviar. Recusas confirmadas: 2x esses aparelhos não recebem mais avisos (as inscrições venceram).",
+          "O aviso ainda pode chegar. Se reenviar agora, quem já recebeu pode receber a mesma mensagem de novo. Recusas confirmadas: 2x esses aparelhos não recebem mais avisos (as inscrições venceram).",
         ),
       },
     );

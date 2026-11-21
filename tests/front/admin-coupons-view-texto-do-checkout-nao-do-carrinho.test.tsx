@@ -119,9 +119,13 @@ describe("AdminCouponsView — o cupom é usado no checkout, não no carrinho", 
 
     const texto = (hospedeiro.textContent ?? "").replace(/\s+/g, " ");
     expect(texto).toContain("Cupons na finalização da compra");
-    expect(texto).toContain("na finalização da compra para receber descontos");
+    expect(texto).toContain(
+      "Com esta opção ligada, seus clientes podem usar um código como GANHE10 para receber desconto na finalização da compra.",
+    );
+    expect(texto).toContain(
+      "Se você desligar a opção, o campo de cupom some e os pedidos novos deixam de receber esse desconto, mesmo que a cliente já tenha aplicado o cupom. Pedidos já feitos não mudam.",
+    );
     expect(texto).not.toMatch(/no carrinho/i);
-    expect(texto).toContain("descontos especiais");
     expect(texto).not.toMatch(/\bdiscounts\b/i);
   });
 

@@ -566,15 +566,13 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                   Cupons na finalização da compra
                 </h3>
                 <p>
-                  Ativando esta opção, seus clientes poderão digitar códigos de
-                  cupom (ex: GANHE10) na finalização da compra para receber
-                  descontos especiais.
+                  Com esta opção ligada, seus clientes podem usar um código como
+                  GANHE10 para receber desconto na finalização da compra.
                 </p>
                 <p>
-                  Se desativado, o campo de cupom some da finalização da compra
-                  e nenhum desconto de cupom é aplicado em pedidos novos — nem
-                  para quem já tinha aplicado um cupom antes. Pedidos já feitos
-                  não mudam.
+                  Se você desligar a opção, o campo de cupom some e os pedidos
+                  novos deixam de receber esse desconto, mesmo que a cliente já
+                  tenha aplicado o cupom. Pedidos já feitos não mudam.
                 </p>
                 <p>
                   Use isso para criar campanhas promocionais e incentivar novas

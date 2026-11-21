@@ -186,7 +186,7 @@ function avisoDeDevolucoesEmAndamento(linhas: LinhaEstornoDoPedido[]): string {
   devolucoes.push(
     temDevolucaoTravada
       ? "Confirme só se esta for OUTRA devolução. Antes de repetir, confira no painel do Mercado Pago se a anterior saiu."
-      : "Confirme só se esta for OUTRA devolução. Se a anterior ainda não aparece como concluída, aguarde alguns instantes antes de repetir.",
+      : "Confirme apenas se quiser devolver um valor adicional. Se estiver tentando repetir a devolução anterior, feche esta janela e acompanhe o andamento dela na ficha do pedido.",
   );
   return devolucoes.join("\n");
 }

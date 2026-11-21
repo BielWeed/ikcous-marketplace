@@ -13,10 +13,7 @@ import {
   passosParaLiberarOsAvisos,
   situacaoDosAvisos,
 } from "@/lib/avisos-do-aparelho";
-import {
-  AVISO_PUSH_PODE_CHEGAR,
-  falhaDePushSemConfirmacao,
-} from "@/lib/motivo-da-falha-de-push";
+import { falhaDePushSemConfirmacao } from "@/lib/motivo-da-falha-de-push";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import {
   PRAZO_DA_EDGE_DE_ENVIO_DE_PUSH_MS,
@@ -298,8 +295,8 @@ function CartaoInterno({
         ) : null}
         {teste === "sem-confirmacao" ? (
           <p role="alert" className="mt-3 text-xs text-red-400">
-            Não foi possível confirmar o envio do aviso de teste.{" "}
-            {AVISO_PUSH_PODE_CHEGAR}.
+            Não foi possível confirmar o envio do aviso de teste. Confira se o
+            aviso apareceu neste aparelho antes de mandar outro teste.
           </p>
         ) : null}
         {teste === "sem-resposta" ? (

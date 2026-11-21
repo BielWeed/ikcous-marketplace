@@ -1,5 +1,5 @@
 export const AVISO_PUSH_PODE_CHEGAR =
-  "O aviso ainda pode chegar; confira antes de reenviar";
+  "O aviso ainda pode chegar. Se reenviar agora, quem já recebeu pode receber a mesma mensagem de novo";
 
 type FalhaDePush = {
   status?: unknown;

@@ -284,7 +284,7 @@ describe("Painel — aviso de push que não chegou", () => {
       "Status atualizado, mas não foi possível confirmar o envio do aviso",
       {
         description:
-          "O aviso ainda pode chegar; confira antes de reenviar. Recusas confirmadas: 2x esses aparelhos não recebem mais avisos (as inscrições venceram).",
+          "O aviso ainda pode chegar. Se reenviar agora, quem já recebeu pode receber a mesma mensagem de novo. Recusas confirmadas: 2x esses aparelhos não recebem mais avisos (as inscrições venceram).",
       },
     );
   });
