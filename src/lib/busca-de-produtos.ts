@@ -24,7 +24,8 @@
  *   - -oes/-aes:           cordoes -> cordao, paes -> pao
  *   - vogal + is:          aneis -> anel, lencois -> lencol, azuis -> azul
  *   - e/i/o/u + ns:        batons -> batom, bombons -> bombom
- *   (refis -> refi ja acha "Refil": o "-il" nao precisa de regra de ida)
+ *   - pares em -il/-eis:  faceis <-> facil, so como palavra inteira
+ *   (refis -> refi ja acha "Refil", sem regra de ida para -is)
  * E o caminho de volta, para quem digita o singular e o cadastro esta no
  * plural irregular (palavra inteira): anel -> aneis, refil -> refis, batom -> batons,
  * cartao -> cartoes/cartaes/cartaos, pao -> paes/paos.
@@ -102,8 +103,8 @@ function formasNoPlural(palavra: string): FormaDaPalavra[] {
   ) {
     plurais.push(`${palavra.slice(0, -1)}is`);
   }
-  // refil -> refis, funil -> funis, fuzil -> fuzis (consoante + il). Vogal + il
-  // ("facil") nao entra: o plural dela ("faceis") e outro.
+  // refil -> refis, funil -> funis, fuzil -> fuzis (consoante + il).
+  // Os pares em -eis sao tratados separadamente em formasDaPalavra.
   if (
     palavra.length >= TAMANHO_MINIMO_DO_SINGULAR_EM_L &&
     /[^aeiou]il$/.test(palavra)
@@ -129,16 +130,33 @@ function formasNoPlural(palavra: string): FormaDaPalavra[] {
   return plurais.map(inteira);
 }
 
-/** Formas no singular que a palavra (JA normalizada, sem acento) pode ter. */
+// Sem acentos, trocar o sufixo cegamente faria "anéis" achar "anil".
+const PARES_EM_IL_EIS = new Map<string, string>(
+  [
+    ["facil", "faceis"],
+    ["util", "uteis"],
+    ["fragil", "frageis"],
+    ["versatil", "versateis"],
+  ].flatMap<[string, string]>(([singular, plural]) => [
+    [singular, plural],
+    [plural, singular],
+  ]),
+);
+
+/** Formas que a palavra (JA normalizada, sem acento) pode ter. */
 function formasDaPalavra(palavra: string): FormaDaPalavra[] {
   if (PERCENTUAL.test(palavra)) {
     return [{ texto: palavra, palavraInteira: true }];
   }
+  const parEmIlEis = PARES_EM_IL_EIS.get(palavra);
+  const par: FormaDaPalavra[] = parEmIlEis
+    ? [{ texto: parEmIlEis, palavraInteira: true }]
+    : [];
   if (
     palavra.length < TAMANHO_MINIMO_PARA_TIRAR_O_S ||
     !palavra.endsWith("s")
   ) {
-    return [porTrecho(palavra), ...formasNoPlural(palavra)];
+    return [porTrecho(palavra), ...formasNoPlural(palavra), ...par];
   }
   // A forma "sem o s" mantem o comportamento de sempre: por trecho.
   const formas = new Map<string, FormaDaPalavra>([
@@ -163,7 +181,7 @@ function formasDaPalavra(palavra: string): FormaDaPalavra[] {
   // batons, bombons, homens (sem "a": "jeans" nao vira "jeam")
   if (/[eiou]ns$/.test(palavra)) adicionar(`${palavra.slice(0, -2)}m`);
 
-  return [...formas.values()];
+  return [...formas.values(), ...par];
 }
 
 const PALAVRAS_DE_LIGACAO = new Set([

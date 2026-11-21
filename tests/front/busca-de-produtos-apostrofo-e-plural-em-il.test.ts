@@ -160,3 +160,46 @@ describe("plural em -il: refil/refis, funil/funis, fuzil/fuzis", () => {
     expect(produtoCombinaComBusca(produto("Mis en Place"), "mil")).toBe(false);
   });
 });
+
+describe("plural em -eis de palavras como fácil e útil", () => {
+  it.each([
+    ["tênis fáceis de calçar", "Tênis Fácil de Calçar"],
+    ["fácil", "Tênis Fáceis de Calçar"],
+    ["faceis", "Facil de Calcar"],
+    ["facil", "Faceis de Calcar"],
+    ["úteis", "Utensílio Útil"],
+    ["útil", "Utensílios Úteis"],
+    ["frágeis", "Toque Frágil"],
+    ["frágil", "Peças Frágeis"],
+    ["versáteis", "Mochila Versátil"],
+    ["versátil", "Mochilas Versáteis"],
+  ])("%s acha %s", (busca, nome) => {
+    expect(produtoCombinaComBusca(produto(nome), busca)).toBe(true);
+  });
+
+  it.each([
+    ["fáceis", "Facilidade de Calçar"],
+    ["fácil", "Faceister"],
+    ["fácil", "Superfaceis"],
+    ["fáceis", "Superfacil"],
+    ["anéis", "Anil"],
+  ])("%s não acha %s", (busca, nome) => {
+    expect(produtoCombinaComBusca(produto(nome), busca)).toBe(false);
+  });
+
+  it.each([
+    ["anéis", "Anel", true],
+    ["anel", "Anéis", true],
+    ["papéis", "Papel", true],
+    ["papel", "Papéis", true],
+    ["jornais", "Jornal", true],
+    ["jornal", "Jornais", true],
+    ["móveis", "Móvel", true],
+    ["móvel", "Móveis", true],
+    ["mel", "Mel Silvestre", true],
+    ["mel", "Meis", false],
+    ["meis", "Mel Silvestre", false],
+  ])("%s mantém a busca por %s (%s)", (busca, nome, esperado) => {
+    expect(produtoCombinaComBusca(produto(nome), busca)).toBe(esperado);
+  });
+});
