@@ -390,6 +390,7 @@ const CLASSES_CELULAR_DO_BLOCO_BASE = [
   "size-5",
   "ml-1 text-xs text-zinc-400", // Ajuda sobre peças reservadas.
   "ml-1 mt-1 block text-[11px] font-bold text-red-500",
+  "ml-1 text-[11px] font-medium text-amber-300",
   "ml-1 mt-1 block text-[11px] font-bold text-red-500",
   "produto-rotulo-secao col-span-2 -mb-1 mt-3",
   "col-span-2 space-y-3",
@@ -553,6 +554,9 @@ const CLASSES_CELULAR_DO_BLOCO_BASE = [
   "sr-only",
   "produto-status flex items-center gap-2 px-1 text-xs font-bold text-emerald-300",
   "size-4 shrink-0",
+  "flex items-start gap-2 px-1 text-xs font-medium text-amber-300",
+  "size-4 shrink-0",
+  "min-w-0 whitespace-normal",
   "grid grid-cols-[minmax(0,1fr)_auto] gap-2",
   "min-w-0",
   "produto-salvar flex min-h-11 w-full min-w-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-3 text-base font-bold transition-colors disabled:pointer-events-none",
@@ -564,7 +568,7 @@ const CLASSES_CELULAR_DO_BLOCO_BASE = [
   "produto-prever flex min-h-11 min-w-11 items-center justify-center rounded-full border border-solid border-admin-border-strong bg-admin-surface px-4 text-sm font-bold",
 ];
 const SHA256_CLASSES_CELULAR_BASE =
-  "abe76a6cc44e906b9265c27edc790d025630ca589df1ea0fdc5633fc767a2791";
+  "5e7cb73c312d69b6b98958cb50da1251a82bf89e80a6750d707a4a94c21ea4b8";
 const TOKENS_LG_DA_BASE = [
   "lg:grid-cols-12",
   "lg:col-span-8",
