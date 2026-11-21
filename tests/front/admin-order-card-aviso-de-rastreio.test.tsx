@@ -1,5 +1,9 @@
 // @vitest-environment jsdom
 import { AdminOrderCard } from "@/components/admin/orders/AdminOrderCard";
+import {
+  linkDeRastreioDeCodigoValido,
+  normalizarCodigoDeRastreio,
+} from "@/lib/link-de-rastreio";
 import type { Order } from "@/types";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -95,6 +99,18 @@ it.each([
 
   expect(host.textContent).not.toContain("a cliente não consegue rastrear");
   expect(host.textContent).not.toContain(aviso);
+});
+
+it("não avisa quando a ficha da cliente gera link após normalizar o código", () => {
+  const trackingCode = "ͅ";
+  const linkDaCliente = linkDeRastreioDeCodigoValido(
+    normalizarCodigoDeRastreio(trackingCode),
+  );
+
+  expect(linkDaCliente).toContain(encodeURIComponent("Ι"));
+  montar({ trackingCode });
+
+  expect(host.textContent).not.toContain("não consegue rastrear");
 });
 
 it("avisa também quando o Avançar fica no menu porque falta registrar o pagamento", () => {

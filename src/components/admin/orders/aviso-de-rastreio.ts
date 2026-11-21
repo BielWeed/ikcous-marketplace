@@ -1,11 +1,17 @@
-import { linkDeRastreioDeCodigoValido } from "@/lib/link-de-rastreio";
+import {
+  linkDeRastreioDeCodigoValido,
+  normalizarCodigoDeRastreio,
+} from "@/lib/link-de-rastreio";
 
 export function avisoDeRastreio(codigo?: string | null): string {
+  if (linkDeRastreioDeCodigoValido(normalizarCodigoDeRastreio(codigo ?? ""))) {
+    return "";
+  }
+
   const salvo = codigo?.trim() ?? "";
   if (!salvo) {
     return "Sem código salvo, a cliente vê “A caminho”, mas não consegue rastrear. Se já tem o código, salve antes de avançar.";
   }
-  if (linkDeRastreioDeCodigoValido(salvo)) return "";
 
   const caracteres = Array.from(salvo);
   const trecho =
