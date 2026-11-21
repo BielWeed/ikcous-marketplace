@@ -11,6 +11,7 @@ import {
   aguardaPixOnline,
   avisoDePixVencido,
 } from "@/components/admin/orders/aviso-de-pix-vencido";
+import { avisoDeRastreio } from "@/components/admin/orders/aviso-de-rastreio";
 import { podeRegistrarPagamento } from "@/components/admin/orders/podeRegistrarPagamento";
 import { AnularVendaDoBalcao } from "@/components/admin/pdv/AnularVendaDoBalcao";
 import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
@@ -338,6 +339,13 @@ export const AdminOrderCard = memo(function AdminOrderCard({
     if (painel === "receber" && semValorAPagar) setPainel(null);
   }, [painel, semValorAPagar]);
   const pagoForaDoFluxo = order.paymentStatus === "pago_apos_expirar";
+  const mensagemDeRastreio =
+    proximo === "shipping" &&
+    onStatusChange &&
+    !pagoForaDoFluxo &&
+    tipoDeEntregaDoPedido(order) === "envio"
+      ? avisoDeRastreio(order.trackingCode)
+      : "";
   const estiloPrincipal =
     destaquePrimario &&
     !pagamentoNaoConfirmado &&
@@ -601,16 +609,9 @@ export const AdminOrderCard = memo(function AdminOrderCard({
           </button>
         )}
       </div>
-      {proximo === "shipping" &&
-        onStatusChange &&
-        !pagoForaDoFluxo &&
-        tipoDeEntregaDoPedido(order) === "envio" &&
-        !order.trackingCode && (
-          <p className="mt-2 text-xs text-zinc-400">
-            Sem código salvo, a cliente vê “A caminho”, mas não consegue
-            rastrear. Se já tem o código, salve antes de avançar.
-          </p>
-        )}
+      {mensagemDeRastreio && (
+        <p className="mt-2 text-xs text-zinc-400">{mensagemDeRastreio}</p>
+      )}
       {(pagamentoNaoConfirmado ||
         order.paymentStatus === "pago_apos_expirar") &&
         podeCancelar &&

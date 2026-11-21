@@ -7,6 +7,7 @@ import {
   aguardaPixOnline,
   avisoDePixVencido,
 } from "@/components/admin/orders/aviso-de-pix-vencido";
+import { avisoDeRastreio } from "@/components/admin/orders/aviso-de-rastreio";
 import { AnularVendaDoBalcao } from "@/components/admin/pdv/AnularVendaDoBalcao";
 import {
   AlertDialog,
@@ -593,7 +594,7 @@ interface OrderActionBarProps {
   nextStatus: OrderStatus | null;
   /** Retirada na loja: o avanço para `shipping` se lê "Pronto para retirar". */
   retiradaNaLoja?: boolean;
-  mostrarAvisoDeRastreio?: boolean;
+  mensagemDeRastreio?: string;
   isOffline: boolean;
   isUpdatingStatus: boolean;
   pagoForaDoFluxo: boolean;
@@ -625,7 +626,7 @@ function OrderActionBar({
   orderStatus,
   nextStatus,
   retiradaNaLoja,
-  mostrarAvisoDeRastreio,
+  mensagemDeRastreio,
   isOffline,
   isUpdatingStatus,
   pagoForaDoFluxo,
@@ -691,10 +692,9 @@ function OrderActionBar({
           </Button>
         )}
       </div>
-      {podeAvancar && mostrarAvisoDeRastreio && (
+      {podeAvancar && mensagemDeRastreio && (
         <p className="mx-auto w-full max-w-[600px] px-4 pb-3 text-xs text-zinc-400 xl:max-w-none xl:px-6">
-          Sem código salvo, a cliente vê “A caminho”, mas não consegue rastrear.
-          Se já tem o código, salve antes de avançar.
+          {mensagemDeRastreio}
         </p>
       )}
     </div>
@@ -2764,10 +2764,10 @@ export const OrderDetail = memo(function OrderDetail({
         orderStatus={order.status}
         nextStatus={nextStatus}
         retiradaNaLoja={order.retiradaNaLoja}
-        mostrarAvisoDeRastreio={
-          nextStatus === "shipping" &&
-          tipoDeEntregaDoPedido(order) === "envio" &&
-          !localTrackingCode
+        mensagemDeRastreio={
+          nextStatus === "shipping" && tipoDeEntregaDoPedido(order) === "envio"
+            ? avisoDeRastreio(localTrackingCode)
+            : undefined
         }
         isOffline={isOffline}
         isUpdatingStatus={isUpdatingStatus}

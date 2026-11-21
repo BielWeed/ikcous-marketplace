@@ -181,7 +181,29 @@ describe("ficha do pedido por tipo de entrega", () => {
   });
 
   it.each([
-    { ...TIPOS.envio, trackingCode: "AA123456789BR" },
+    [
+      "-",
+      "O código de rastreio salvo (“-”) não é válido: a cliente não consegue rastrear. Corrija o código antes de avançar.",
+    ],
+    ["  ", avisoSemRastreio],
+  ])(
+    "avisa sobre o código salvo %j sem impedir o avanço",
+    async (trackingCode, mensagem) => {
+      await renderizar(
+        pedido({ ...TIPOS.envio, status: "processing", trackingCode }),
+      );
+      const avancar = [...hospedeiro.querySelectorAll("button")].find(
+        (botao) => botao.textContent?.trim() === "Avançar → Em Trânsito",
+      );
+      expect(avancar?.disabled).toBe(false);
+      expect(avancar?.parentElement?.parentElement?.textContent).toContain(
+        mensagem,
+      );
+    },
+  );
+
+  it.each([
+    { ...TIPOS.envio, trackingCode: "BR123456789BR" },
     TIPOS.retirada,
     TIPOS["entrega-local"],
     TIPOS.balcao,
@@ -189,6 +211,9 @@ describe("ficha do pedido por tipo de entrega", () => {
     { ...TIPOS.envio, status: "shipping" as const },
   ])("não avisa fora do despacho de um envio sem código: %j", async (dados) => {
     await renderizar(pedido({ status: "processing", ...dados }));
+    expect(hospedeiro.textContent).not.toContain(
+      "a cliente não consegue rastrear",
+    );
     expect(hospedeiro.textContent).not.toContain(avisoSemRastreio);
   });
 

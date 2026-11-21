@@ -67,13 +67,33 @@ it("avisa quando o próximo passo do pedido pago é o envio sem código salvo", 
 });
 
 it.each([
-  ["código já salvo", { trackingCode: "AB123456789BR" }],
+  [
+    "-",
+    "O código de rastreio salvo (“-”) não é válido: a cliente não consegue rastrear. Corrija o código antes de avançar.",
+  ],
+  ["  ", aviso],
+  [
+    `  ${"-".repeat(40)}  `,
+    `O código de rastreio salvo (“${"-".repeat(29)}…”) não é válido`,
+  ],
+])(
+  "mostra o aviso correspondente ao código salvo %j",
+  (trackingCode, mensagem) => {
+    montar({ trackingCode });
+
+    expect(host.textContent).toContain(mensagem);
+  },
+);
+
+it.each([
+  ["código já salvo", { trackingCode: "BR123456789BR" }],
   ["retirada na loja", { retiradaNaLoja: true }],
   ["entrega local", { shippingOptionId: "local-delivery" }],
   ["próximo passo diferente de envio", { status: "pending" }],
 ] as const)("não mostra o aviso de rastreio: %s", (_caso, sobre) => {
   montar(sobre);
 
+  expect(host.textContent).not.toContain("a cliente não consegue rastrear");
   expect(host.textContent).not.toContain(aviso);
 });
 
