@@ -75,7 +75,6 @@ describe("BalaoDoGrafico - lucro e estoque", () => {
         data="22/10/2026"
         lucroAcumulado={1500.5}
         estoqueInvestido={320}
-        estoqueEstimado={false}
       />,
     );
     const t = texto(container).replace(/\u00a0/g, " ");
@@ -94,13 +93,21 @@ describe("BalaoDoGrafico - lucro e estoque", () => {
         tipo="lucro"
         data="21/10/2026"
         lucroAcumulado={0}
-        estoqueInvestido={200}
+        estoqueInvestido={1234567}
         estoqueEstimado
       />,
     );
-    const t = texto(container);
-    expect(t).toContain("Estoque investido (estimado)");
-    expect(t).toContain(
+    const rotulo = "Estoque investido (estimado)";
+    const linha = Array.from(container.querySelectorAll("span")).find(
+      (span) => span.textContent === rotulo,
+    );
+    expect(linha?.classList.contains("min-w-0")).toBe(true);
+    expect(linha?.classList.contains("whitespace-normal")).toBe(true);
+    const valor = linha?.nextElementSibling;
+    expect(valor?.textContent?.replace(/\s+/g, " ")).toBe("R$ 1.234.567,00");
+    expect(valor?.classList.contains("shrink-0")).toBe(true);
+    expect(valor?.classList.contains("whitespace-nowrap")).toBe(true);
+    expect(texto(container)).toContain(
       "Estimativa: não considera entradas nem ajustes de estoque feitos depois.",
     );
   });

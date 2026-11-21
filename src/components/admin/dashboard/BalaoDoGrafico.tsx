@@ -44,11 +44,11 @@ function LinhaDeValor({
 }: { rotulo: string; valor: string; cor: string }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <span className="text-admin-text-soft flex items-center gap-1.5 whitespace-nowrap text-xs">
+      <span className="text-admin-text-soft flex min-w-0 items-center gap-1.5 whitespace-normal text-xs">
         <span className={cn("size-2 shrink-0 rounded-full", cor)} />
         {rotulo}
       </span>
-      <span className="whitespace-nowrap text-sm font-semibold tabular-nums">
+      <span className="shrink-0 whitespace-nowrap text-sm font-semibold tabular-nums">
         {valor}
       </span>
     </div>
