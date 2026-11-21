@@ -1533,7 +1533,7 @@ export function ShippingCalculator({
             )}
           </div>
           {destinoValido && resumo && (
-            <p className="text-sm leading-snug text-zinc-600">
+            <p className="break-words text-sm leading-snug text-zinc-600">
               <span className="font-semibold text-zinc-800">{titulo}</span>
               {" · "}
               {resumo}
@@ -1545,11 +1545,11 @@ export function ShippingCalculator({
           <div className="flex min-w-0 items-start gap-2">
             <MapPin className="mt-0.5 size-4 shrink-0 text-zinc-500" />
             <div className="min-w-0">
-              <span className="block text-[11px] font-black uppercase tracking-wider text-zinc-700">
+              <span className="block break-words text-[11px] font-black uppercase tracking-wider text-zinc-700">
                 {titulo}
               </span>
               {destinoValido && resumo && (
-                <span className="mt-0.5 block text-[11px] font-medium leading-snug text-zinc-500">
+                <span className="mt-0.5 block break-words text-[11px] font-medium leading-snug text-zinc-500">
                   {resumo}
                 </span>
               )}

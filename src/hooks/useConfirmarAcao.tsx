@@ -71,7 +71,7 @@ export function useConfirmarAcao() {
         className="z-[130] max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md overflow-y-auto rounded-3xl border border-admin-border bg-zinc-950"
       >
         <AlertDialogHeader>
-          <AlertDialogTitle className="text-lg font-black tracking-tight text-white">
+          <AlertDialogTitle className="text-lg font-black tracking-tight text-white [overflow-wrap:anywhere]">
             {pedido?.titulo}
           </AlertDialogTitle>
           {pedido?.valor && (
