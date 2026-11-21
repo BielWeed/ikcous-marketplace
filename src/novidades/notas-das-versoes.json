@@ -6,14 +6,14 @@
       "A loja volta a abrir em iPhone com iOS 15.0 a 15.3: os recursos do navegador que faltam nesses aparelhos ganham uma reserva, usada só quando o aparelho não os tem.",
       "No fim da planilha de pedidos, aparecem as colunas “Estorno pelo Mercado Pago” e “Total menos estorno do Mercado Pago”; elas ficam em branco quando o valor devolvido não é conhecido.",
       "Em Sobre a Loja, quando há um e-mail cadastrado para atendimento, ele aparece em “E-mail de atendimento” e abre o aplicativo de e-mail ao tocar.",
-      "Na ficha do pedido, se a configuração do mototáxi não tem um WhatsApp válido, aparece “Cadastre o WhatsApp do mototáxi em Entrega e frete para enviar este pedido.”"
+      "Na ficha do pedido, se a configuração do mototáxi não tem um WhatsApp válido, aparece “Para enviar este pedido ao mototáxi pelo WhatsApp, cadastre o número em Entrega e frete.”"
     ],
     "correcoes": [
       "No painel, o aviso de Pix vencido aparece em pedidos pelo app em processamento ou envio quando o pagamento ainda não consta; na retirada na loja, a orientação de cancelar para liberar o estoque só aparece se não houve cancelamento depois da saída e vale se você não recebeu por fora e a peça continua na loja.",
       "Na lista de pedidos da cliente, o valor passa a se chamar “Total do pedido”.",
       "Na busca de pedidos, a orientação para quem comprou sem conta diz que pedidos feitos sem e-mail, só com WhatsApp e pagamento na entrega, não aparecem ali e, quando a loja tem WhatsApp, manda falar com a loja por ele.",
       "A busca de CEP distingue “CEP não encontrado”, “A busca de CEP demorou demais” e “Não foi possível buscar o CEP agora”; nos três casos, orienta a preencher o endereço manualmente.",
-      "Na sugestão de valor do reembolso de uma devolução, o frete de ida só entra quando todos os itens foram conferidos e voltaram; se algum item foi marcado como “Não veio”, o aviso diz “Frete não incluído: nem todos os itens voltaram.”",
+      "Na sugestão de valor do reembolso de uma devolução, o frete de ida só entra quando todos os itens foram conferidos e voltaram; se algum item foi marcado como “Não veio” e havia frete a devolver, o aviso diz “Frete não incluído: nem todos os itens voltaram.”",
       "Em Frete, quando o contato do mototáxi ou as regras foram salvos e as transportadoras não, o aviso diz o que foi salvo, como “Salvamos o contato do mototáxi e as regras, mas as transportadoras não. Toque em Tentar de novo.”",
       "No gráfico do painel, o estoque dos dias anteriores aparece como “Estoque (estimado)”, com a nota “Estimativa: não considera entradas nem ajustes de estoque feitos depois.”; o dia de hoje continua “Estoque investido”.",
       "Na pergunta feita no produto, aparece o aviso “Sua pergunta fica visível para todos que visitam este produto. Não escreva telefone, e-mail nem outros dados pessoais.”",
@@ -23,11 +23,14 @@
       "Em Minha loja, ao alterar os contatos, o painel recusa WhatsApp com só zeros depois do DDD e e-mail com parte vazia depois do @, como “nome@loja..com”; deixar um desses contatos antigos como está não impede salvar outras alterações.",
       "Em Avisar clientes, se o envio foi aceito para parte dos aparelhos, o resumo mostra as recusas confirmadas junto do aviso de que os envios sem confirmação ainda podem chegar, quando os dois casos ocorrem.",
       "Quando um pedido com etiqueta emitida é cancelado, a ficha troca “Abrir etiqueta” pelo aviso “Pedido cancelado — não postar”, desde que a etiqueta ainda não tenha sido cancelada no Melhor Envio.",
-      "Ao buscar na vitrine pelo código completo de um produto ou de uma variação, o produto com aquele código aparece antes dos que só combinam pelo texto.",
+      "Ao buscar na vitrine pelo código completo de um produto ou de uma variação, o produto com aquele código sobe na ordem por relevância; os produtos disponíveis continuam aparecendo antes dos esgotados.",
       "A busca de produtos encontra tanto o singular quanto o plural em pares como “fácil” e “fáceis”, “útil” e “úteis”, “frágil” e “frágeis” e “versátil” e “versáteis”.",
       "Se a situação do pedido ou do pagamento mudar enquanto a confirmação de avanço está aberta no painel, a janela fecha para a lojista conferir o pedido antes de continuar.",
       "No pagamento com cartão, a tela de confirmação do banco pode abrir em mais casos.",
-      "Se um aviso no sino da loja aponta para o formulário de endereço, tocar nele abre esse formulário em vez de mandar a cliente para a vitrine."
+      "Se um aviso no sino da loja aponta para o formulário de endereço, tocar nele abre esse formulário em vez de mandar a cliente para a vitrine.",
+      "Ao editar um produto, o painel avisa quando o novo preço de venda é menos da metade do preço salvo e quando fica abaixo do custo informado; o custo digitado com vírgula, como 14,90, é lido inteiro.",
+      "No painel, o rótulo do Extrato com filtro de tipo diz “Resultado do dia, sem o filtro de tipo” e quebra linha em telas estreitas sem cortar os valores.",
+      "Em Avisar clientes e na ficha do pedido, o aviso de envio sem confirmação deixa de falar em reenviar onde não há botão para isso; na ficha do pedido diz só que o aviso ainda pode chegar à cliente."
     ],
     "melhorias": [
       "No cadastro de produto, o campo de estoque do produto e o da variação passam a se chamar “Disponível para venda”, com uma ajuda que explica que as peças reservadas para pedidos não entram nessa quantidade.",
