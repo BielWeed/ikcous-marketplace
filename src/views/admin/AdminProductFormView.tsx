@@ -4473,7 +4473,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     !stockError
       ? Number(formData.stock) === 0
         ? "Com estoque 0, o produto ficará esgotado."
-        : "Com estoque acima de 0, o produto será vendido sem escolha de variação."
+        : formData.isActive
+          ? "Com estoque acima de 0, o produto será vendido sem escolha de variação."
+          : "Este produto não aparece na loja. Ao ligar “Aparece na loja”, ele poderá ser vendido sem escolha de variação."
       : "";
 
   const avisaMedidasPadrao = [

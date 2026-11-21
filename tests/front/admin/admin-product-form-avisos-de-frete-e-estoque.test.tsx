@@ -191,6 +191,27 @@ describe("AdminProductFormView — avisos de frete e estoque", () => {
     expect(aviso?.closest(".produto-acoes, .produto-status")).toBeNull();
   });
 
+  it("só anuncia venda sem escolha de variação quando o produto aparece na loja", async () => {
+    await montar({
+      isActive: false,
+      stock: 5,
+      variants: [variacao("v1", "Rosa", false), variacao("v2", "Azul", false)],
+    });
+
+    expect(status()).not.toContain(avisoDeEstoquePositivo);
+    expect(status()).toContain(
+      "Este produto não aparece na loja. Ao ligar “Aparece na loja”, ele poderá ser vendido sem escolha de variação.",
+    );
+
+    const interruptor = hospedeiro.querySelector<HTMLButtonElement>(
+      '[role="switch"][aria-label="Aparece na loja"]',
+    );
+    expect(interruptor?.getAttribute("aria-checked")).toBe("false");
+    act(() => interruptor?.click());
+    expect(interruptor?.getAttribute("aria-checked")).toBe("true");
+    expect(status()).toContain(avisoDeEstoquePositivo);
+  });
+
   it("não avisa sobre estoque sem variação quando alguma está ligada", async () => {
     await montar({
       variants: [variacao("v1", "Rosa", false), variacao("v2", "Azul", true)],
