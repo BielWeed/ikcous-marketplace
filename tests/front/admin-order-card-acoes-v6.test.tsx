@@ -223,7 +223,7 @@ it("avisa no instante exato do vencimento com fração de segundo e fuso", () =>
 
 it("explica que avançar não confirma um pedido no Pix", async () => {
   montar(pedido({ paymentStatus: "aguardando", metodoOnline: "pix" }));
-  await clicar("Avançar mesmo assim");
+  await clicar("Avançar sem pagamento confirmado");
   expect(document.body.textContent).toContain(
     "Avançar não confirma o Pix. Se você não recebeu por fora, confira com o cliente antes de seguir.",
   );
@@ -238,7 +238,7 @@ it("mantém a confirmação de avanço da retirada sem acrescentar o aviso de re
       metodoOnline: "pix",
     }),
   );
-  await clicar("Avançar mesmo assim");
+  await clicar("Avançar sem pagamento confirmado");
   expect(document.body.textContent).toContain(
     "Este pedido não está com o pagamento confirmado",
   );
@@ -300,8 +300,10 @@ it.each(["aguardando", "recusado", "estornado"] as const)(
         ...(status === "processing" && { shippingLabelId: "etiqueta-teste" }),
       }),
     );
-    expect(botao("Avançar mesmo assim")?.className).not.toContain("from-[#");
-    await clicar("Avançar mesmo assim");
+    expect(botao("Avançar sem pagamento confirmado")?.className).not.toContain(
+      "from-[#",
+    );
+    await clicar("Avançar sem pagamento confirmado");
     expect(avancar).not.toHaveBeenCalled();
     if (paymentStatus === "estornado") {
       expect(document.body.textContent).toContain(
@@ -312,14 +314,19 @@ it.each(["aguardando", "recusado", "estornado"] as const)(
       );
     } else {
       expect(document.body.textContent).toContain(
-        "O dinheiro deste pedido não entrou. Se você avançar, a mercadoria caminha para sair mesmo assim — e, depois de finalizado, não dá mais para cancelar e devolver ao estoque. Se a cliente pagou na loja, feche este aviso, cancele o pedido (botão Cancelar pedido) e registre a venda em Vender.",
+        paymentStatus === "aguardando"
+          ? "O pagamento ainda não foi confirmado. Não despache até aparecer “Pago”."
+          : "O dinheiro deste pedido não entrou.",
+      );
+      expect(document.body.textContent).toContain(
+        "Se você avançar, a mercadoria caminha para sair mesmo assim — e, depois de finalizado, não dá mais para cancelar e devolver ao estoque. Se a cliente pagou na loja, feche este aviso, cancele o pedido (botão Cancelar pedido) e registre a venda em Vender.",
       );
     }
     // Assim como na ficha, "Voltar" só fecha o aviso.
     await clicar("Voltar");
     expect(avancar).not.toHaveBeenCalled();
-    await clicar("Avançar mesmo assim");
-    await clicar("Avançar mesmo assim");
+    await clicar("Avançar sem pagamento confirmado");
+    await clicar("Avançar sem pagamento confirmado");
     expect(avancar).toHaveBeenCalledTimes(1);
     expect(avancar).toHaveBeenCalledWith(
       "pedido-abc123",
@@ -433,7 +440,7 @@ async function abrirConfirmacao(order: Order) {
     await abrirAcoes();
     await clicar("Avançar → Finalizado");
   } else {
-    await clicar("Avançar mesmo assim");
+    await clicar("Avançar sem pagamento confirmado");
   }
   expect(document.querySelector('[role="dialog"]')).not.toBeNull();
 }
@@ -462,7 +469,9 @@ it.each(casosDeConfirmacao)(
     await abrirConfirmacao(order);
     montar({ ...order, total: 19 });
     await clicar(
-      order.status === "shipping" ? "Recebi" : "Avançar mesmo assim",
+      order.status === "shipping"
+        ? "Recebi"
+        : "Avançar sem pagamento confirmado",
     );
     expect(avancar).toHaveBeenCalledWith(
       order.id,

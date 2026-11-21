@@ -593,6 +593,7 @@ interface OrderActionBarProps {
   nextStatus: OrderStatus | null;
   /** Retirada na loja: o avanço para `shipping` se lê "Pronto para retirar". */
   retiradaNaLoja?: boolean;
+  mostrarAvisoDeRastreio?: boolean;
   isOffline: boolean;
   isUpdatingStatus: boolean;
   pagoForaDoFluxo: boolean;
@@ -624,6 +625,7 @@ function OrderActionBar({
   orderStatus,
   nextStatus,
   retiradaNaLoja,
+  mostrarAvisoDeRastreio,
   isOffline,
   isUpdatingStatus,
   pagoForaDoFluxo,
@@ -689,6 +691,12 @@ function OrderActionBar({
           </Button>
         )}
       </div>
+      {podeAvancar && mostrarAvisoDeRastreio && (
+        <p className="mx-auto w-full max-w-[600px] px-4 pb-3 text-xs text-zinc-400 xl:max-w-none xl:px-6">
+          Sem código salvo, a cliente vê “A caminho”, mas não consegue rastrear.
+          Se já tem o código, salve antes de avançar.
+        </p>
+      )}
     </div>
   );
 }
@@ -2750,6 +2758,11 @@ export const OrderDetail = memo(function OrderDetail({
         orderStatus={order.status}
         nextStatus={nextStatus}
         retiradaNaLoja={order.retiradaNaLoja}
+        mostrarAvisoDeRastreio={
+          nextStatus === "shipping" &&
+          tipoDeEntregaDoPedido(order) === "envio" &&
+          !localTrackingCode
+        }
         isOffline={isOffline}
         isUpdatingStatus={isUpdatingStatus}
         pagoForaDoFluxo={pagoForaDoFluxo}
@@ -3013,7 +3026,7 @@ export const OrderDetail = memo(function OrderDetail({
                     ? "Este pedido está marcado como pago fora do fluxo. Confirme que o pagamento foi conferido antes de avançar."
                     : order.paymentStatus === "estornado"
                       ? "O pagamento deste pedido foi estornado. Se avançar, o pedido segue sem esse pagamento. Depois de finalizado, não dá mais para cancelar e devolver ao estoque."
-                      : "O dinheiro deste pedido não entrou. Se você avançar, a mercadoria caminha para sair mesmo assim — e, depois de finalizado, não dá mais para cancelar e devolver ao estoque. Se a cliente pagou na loja, feche este aviso, cancele o pedido (botão Cancelar pedido) e registre a venda em Vender."}
+                      : `${order.paymentStatus === "aguardando" ? "O pagamento ainda não foi confirmado. Não despache até aparecer “Pago”." : "O dinheiro deste pedido não entrou."} Se você avançar, a mercadoria caminha para sair mesmo assim — e, depois de finalizado, não dá mais para cancelar e devolver ao estoque. Se a cliente pagou na loja, feche este aviso, cancele o pedido (botão Cancelar pedido) e registre a venda em Vender.`}
                   {pendingAdvance?.motivo === "naoPago" &&
                     aguardaPixOnline(order) &&
                     ` ${AVISO_DE_RESERVA_AO_AVANCAR_PIX}`}
@@ -3027,7 +3040,9 @@ export const OrderDetail = memo(function OrderDetail({
                   onClick={confirmPendingAdvance}
                   className="min-h-11 rounded-xl border-0 bg-foreground px-4 py-2 text-xs font-bold text-background hover:opacity-90"
                 >
-                  Avançar mesmo assim
+                  {pendingAdvance?.motivo === "foraDoFluxo"
+                    ? "Avançar mesmo assim"
+                    : "Avançar sem pagamento confirmado"}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </>

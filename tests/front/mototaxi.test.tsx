@@ -373,6 +373,15 @@ it("mostra o botão na ficha local com link exclusivamente wa.me e mensagem codi
     "Abre o WhatsApp do mototáxi com a mensagem pronta",
   );
 });
+it("orienta onde cadastrar o número ausente, sem oferecer envio", async () => {
+  estado.numero = null;
+  await abrir();
+  expect(host.querySelector('[aria-label="Enviar ao mototáxi"]')).toBeNull();
+  expect(host.textContent).toContain(
+    "Cadastre o WhatsApp do mototáxi em Entrega e frete para enviar este pedido.",
+  );
+});
+
 it.each(["pending", "processing", "shipping"] as const)(
   "oferece envio ao mototáxi para entrega local em dinheiro: %s",
   async (status) => {
@@ -548,6 +557,7 @@ it("leitura pendurada avisa depois do prazo e permite reler o contato", async ()
   estado.leituraPendurada = true;
   await abrirMototaxi();
   expect(host.querySelector('[role="alert"]')).toBeNull();
+  expect(host.textContent).not.toContain("Cadastre o WhatsApp do mototáxi");
   await act(async () => {
     await vi.advanceTimersByTimeAsync(20_000);
   });

@@ -291,7 +291,10 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
     // aviso só o fecha: o cancelamento é o botão Cancelar pedido da ficha, e a
     // venda se registra na tela Vender (nomes-do-painel.ts, admin-pdv).
     expect(hospedeiro.textContent).toContain(
-      "O dinheiro deste pedido não entrou. Se você avançar, a mercadoria caminha para sair mesmo assim — e, depois de finalizado, não dá mais para cancelar e devolver ao estoque. Se a cliente pagou na loja, feche este aviso, cancele o pedido (botão Cancelar pedido) e registre a venda em Vender.",
+      "O pagamento ainda não foi confirmado. Não despache até aparecer “Pago”.",
+    );
+    expect(hospedeiro.textContent).toContain(
+      "Se você avançar, a mercadoria caminha para sair mesmo assim — e, depois de finalizado, não dá mais para cancelar e devolver ao estoque. Se a cliente pagou na loja, feche este aviso, cancele o pedido (botão Cancelar pedido) e registre a venda em Vender.",
     );
     expect(hospedeiro.textContent).toContain(
       "Avançar não confirma o Pix. Se você não recebeu por fora, confira com o cliente antes de seguir.",
@@ -323,7 +326,7 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
 
     const botaoConfirmar = localizarBotaoPorTexto(
       hospedeiro,
-      "Avançar mesmo assim",
+      "Avançar sem pagamento confirmado",
     )!;
     expect(botaoConfirmar).toBeDefined();
 
@@ -356,7 +359,7 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
       localizarBotaoPorTexto(hospedeiro, "Avançar →")!.click(),
     );
     expect(
-      localizarBotaoPorTexto(hospedeiro, "Avançar mesmo assim"),
+      localizarBotaoPorTexto(hospedeiro, "Avançar sem pagamento confirmado"),
     ).toBeDefined();
     await act(async () =>
       raiz.render(
@@ -367,7 +370,7 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
       ),
     );
     expect(
-      localizarBotaoPorTexto(hospedeiro, "Avançar mesmo assim"),
+      localizarBotaoPorTexto(hospedeiro, "Avançar sem pagamento confirmado"),
     ).toBeUndefined();
     expect(aviso).toHaveBeenCalledWith(
       "O pedido mudou de situação. Confira antes de avançar.",
@@ -398,7 +401,10 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
       ),
     );
     await act(async () =>
-      localizarBotaoPorTexto(hospedeiro, "Avançar mesmo assim")!.click(),
+      localizarBotaoPorTexto(
+        hospedeiro,
+        "Avançar sem pagamento confirmado",
+      )!.click(),
     );
     expect(onStatusChange).toHaveBeenCalledWith(
       "ped-teste",
@@ -568,7 +574,10 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
     );
     expect(onStatusChange).not.toHaveBeenCalled();
 
-    const confirmar = localizarBotaoPorTexto(hospedeiro, "Avançar mesmo assim");
+    const confirmar = localizarBotaoPorTexto(
+      hospedeiro,
+      "Avançar sem pagamento confirmado",
+    );
     expect(confirmar).toBeDefined();
     await act(async () => {
       confirmar?.click();

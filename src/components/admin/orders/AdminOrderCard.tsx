@@ -330,7 +330,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
       : painel === "cancelar"
         ? "Cancelar pedido"
         : painel === "avancar"
-          ? "Avançar mesmo assim"
+          ? "Avançar sem pagamento confirmado"
           : "Confirmar recebimento";
   const textoCancelamento = textoCancelamentoDoPainel({
     status: order.status,
@@ -567,7 +567,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
             {processando
               ? "Processando..."
               : pagamentoNaoConfirmado
-                ? "Avançar mesmo assim"
+                ? "Avançar sem pagamento confirmado"
                 : `Avançar → ${rotuloDoStatus(proximo, order.retiradaNaLoja)}`}
           </button>
         ) : (
@@ -831,7 +831,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                   : painel === "avancar"
                     ? order.paymentStatus === "estornado"
                       ? "O pagamento deste pedido foi estornado. Se avançar, o pedido segue sem esse pagamento. Depois de finalizado, não dá mais para cancelar e devolver ao estoque."
-                      : "O dinheiro deste pedido não entrou. Se você avançar, a mercadoria caminha para sair mesmo assim — e, depois de finalizado, não dá mais para cancelar e devolver ao estoque. Se a cliente pagou na loja, feche este aviso, cancele o pedido (botão Cancelar pedido) e registre a venda em Vender."
+                      : `${order.paymentStatus === "aguardando" ? "O pagamento ainda não foi confirmado. Não despache até aparecer “Pago”." : "O dinheiro deste pedido não entrou."} Se você avançar, a mercadoria caminha para sair mesmo assim — e, depois de finalizado, não dá mais para cancelar e devolver ao estoque. Se a cliente pagou na loja, feche este aviso, cancele o pedido (botão Cancelar pedido) e registre a venda em Vender.`
                     : `Pedido de pagamento na ${momentoDoPagamentoNaMao(order.retiradaNaLoja)}. Se você já recebeu o dinheiro na mão, confirme abaixo — o registro fica salvo no pedido.`}
                 {painel === "avancar" &&
                   aguardaPixOnline(order) &&
@@ -882,7 +882,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                   {painel === "cancelar" ? (
                     "Cancelar pedido"
                   ) : painel === "avancar" ? (
-                    "Avançar mesmo assim"
+                    "Avançar sem pagamento confirmado"
                   ) : (
                     <>
                       <Check aria-hidden="true" className="size-5" />

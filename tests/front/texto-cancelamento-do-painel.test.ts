@@ -73,6 +73,7 @@ describe("textoCancelamentoDoPainel — pago e ainda não saiu: o app devolve so
         expect(texto).toContain("Mercado Pago");
         expect(texto).toContain("sozinho");
         expect(texto).toContain("em alguns minutos");
+        expect(texto).toContain("Os itens voltam ao estoque ao cancelar.");
         expect(texto).toContain("NÃO devolva");
         expect(texto).toContain("duas vezes");
         expect(texto).toContain("Já estornei no Mercado Pago");
@@ -196,7 +197,7 @@ describe("textoCancelamentoDoPainel — devolução parcial anterior já conclu�
 
   it("valorEstornado 0 (ou ausente) não muda nada: o texto do caso 100% automático, literal", () => {
     const LITERAL =
-      'Este pedido está PAGO e ainda não saiu para entrega. Ao cancelar, o app pede sozinho ao Mercado Pago, em alguns minutos, que devolva o valor ao cliente. NÃO devolva o dinheiro por outro meio (PIX, dinheiro, transferência): o cliente receberia duas vezes. Se você já devolveu por fora, toque em "Já estornei no Mercado Pago" na lista "Devolver agora" logo depois de cancelar. Cancelar mesmo assim?';
+      'Este pedido está PAGO e ainda não saiu para entrega. Os itens voltam ao estoque ao cancelar. Ao cancelar, o app pede sozinho ao Mercado Pago, em alguns minutos, que devolva o valor ao cliente. NÃO devolva o dinheiro por outro meio (PIX, dinheiro, transferência): o cliente receberia duas vezes. Se você já devolveu por fora, toque em "Já estornei no Mercado Pago" na lista "Devolver agora" logo depois de cancelar. Cancelar mesmo assim?';
     for (const valorEstornado of [0, null, undefined, -5]) {
       const texto = textoCancelamentoDoPainel({
         status: "processing",

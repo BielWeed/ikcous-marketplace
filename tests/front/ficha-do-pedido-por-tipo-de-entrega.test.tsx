@@ -166,6 +166,32 @@ describe("ficha do pedido por tipo de entrega", () => {
     expect(envio().textContent).toContain("Adicionar");
   });
 
+  const avisoSemRastreio =
+    "Sem código salvo, a cliente vê “A caminho”, mas não consegue rastrear. Se já tem o código, salve antes de avançar.";
+
+  it("avisa junto ao avanço para A caminho sem tornar o código obrigatório", async () => {
+    await renderizar(pedido({ ...TIPOS.envio, status: "processing" }));
+    const avancar = [...hospedeiro.querySelectorAll("button")].find(
+      (botao) => botao.textContent?.trim() === "Avançar → Em Trânsito",
+    );
+    expect(avancar?.disabled).toBe(false);
+    expect(avancar?.parentElement?.parentElement?.textContent).toContain(
+      avisoSemRastreio,
+    );
+  });
+
+  it.each([
+    { ...TIPOS.envio, trackingCode: "AA123456789BR" },
+    TIPOS.retirada,
+    TIPOS["entrega-local"],
+    TIPOS.balcao,
+    { ...TIPOS.envio, status: "pending" as const },
+    { ...TIPOS.envio, status: "shipping" as const },
+  ])("não avisa fora do despacho de um envio sem código: %j", async (dados) => {
+    await renderizar(pedido({ status: "processing", ...dados }));
+    expect(hospedeiro.textContent).not.toContain(avisoSemRastreio);
+  });
+
   const passos = () => [
     ...hospedeiro.querySelectorAll('[aria-label="Etapas do pedido"] li'),
   ];
