@@ -20,6 +20,7 @@ import {
   montarConsultaDeVariacoes,
   precoDaPrevia,
 } from "./src/hospedagem/precoDaPrevia";
+import { VARY_DA_PREVIA, ehRoboDaPrevia } from "./src/hospedagem/roboDaPrevia";
 import { resumoParaPrevia } from "./src/lib/resumo-para-previa";
 
 // O `matcher` PRECISA ser um array-LITERAL bem aqui — a Vercel/Next lê
@@ -255,16 +256,11 @@ export default async function middleware(
     process.env as AmbientePorteiro,
     context,
   );
-  const userAgent = request.headers.get("user-agent") || "";
-
-  // Detect if the request is from a crawler bot (WhatsApp, Facebook, Twitter, Telegram, etc.)
-  const isBot =
-    /whatsapp|facebookexternalhit|twitterbot|telegrambot|slackbot|googlebot|bingbot|baiduspider|yandexbot/i.test(
-      userAgent,
-    );
-
   const caminhoDaPrevia = url.pathname.replace(/\/$/, "");
-  if (isBot && caminhoDaPrevia === "/product-detail") {
+  if (
+    caminhoDaPrevia === "/product-detail" &&
+    ehRoboDaPrevia(request.headers)
+  ) {
     // Rodada C (11/09/2026, achado do revisor Opus): o ramo de robô
     // chamava `resolverConexao` POR FORA do porteiro, pulando
     // `decidirConcordancia` — com a caderneta apontando o host A para o
@@ -287,12 +283,9 @@ export default async function middleware(
     // encontrado", mais abaixo, segue a mesma regra: `semProduto`.)
     if (resultado.tipo === "manutencao") return resultado.resposta;
     const { ficha, caderneta: estadoCaderneta } = resultado;
-    // Contador de visitas, pelo MESMO classificador do documento: este ramo casa
-    // /whatsapp/ e entrega HTML de robo tambem a pessoa no navegador embutido do
-    // WhatsApp, que conta como pessoa/whatsapp; robo inequivoco (e o robo do
-    // WhatsApp, sem Sec-Fetch) segue `previa`. O roteamento do ramo nao muda. A
-    // conexao e' a da ficha validada acima, a mesma que serve o produto; loja
-    // em manutencao nao conta.
+    // Contador de visitas, pelo MESMO classificador do documento. O robô do
+    // WhatsApp (sem Sec-Fetch) conta como `previa`; o navegador embutido segue
+    // pelo documento normal abaixo. Loja em manutenção não conta.
     if (gravarEntrada !== undefined && !ficha.configuracao.manutencao) {
       const entrada = classificarEntrada({
         metodo: request.method,
@@ -481,6 +474,7 @@ export default async function middleware(
             return new Response(html, {
               headers: {
                 "content-type": "text/html; charset=utf-8",
+                vary: VARY_DA_PREVIA,
                 "x-ikcous-og": "produto",
                 "x-ikcous-caderneta": estadoCaderneta,
               },

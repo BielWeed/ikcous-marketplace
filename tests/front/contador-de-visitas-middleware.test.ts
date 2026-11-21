@@ -323,7 +323,7 @@ describe("middleware + contador -- ISOLAMENTO entre lojas", () => {
   });
 });
 
-describe("middleware + contador -- o ramo de robo de /product-detail usa o MESMO classificador", () => {
+describe("middleware + contador -- /product-detail usa o MESMO classificador nos dois ramos", () => {
   const UA_WHATSAPP_EMBUTIDO = `${UA_CHROME} WhatsApp/2.24.1`;
 
   async function gravadoPara(
@@ -352,14 +352,14 @@ describe("middleware + contador -- o ramo de robo de /product-detail usa o MESMO
     };
   }
 
-  it("pessoa no navegador embutido do WhatsApp (o ramo casa /whatsapp/ e entrega HTML de robo) conta como pessoa/whatsapp, nao como previa", async () => {
+  it("navegador embutido do WhatsApp recebe o app e conta como pessoa/whatsapp", async () => {
     const { canais, resposta } = await gravadoPara("pessoa", (host) =>
       navegador(host, "/product-detail?id=1", {
         "user-agent": UA_WHATSAPP_EMBUTIDO,
       }),
     );
-    // O roteamento antigo do ramo nao mudou: a resposta continua sendo a de robo.
-    expect(resposta.headers.get("x-ikcous-og")).toBe("produto");
+    expect(resposta.headers.get("x-ikcous-og")).toBeNull();
+    expect(resposta.headers.get("x-ikcous-porteiro")).toBe("ok");
     expect(canais).toEqual(["whatsapp"]);
   });
 
