@@ -99,7 +99,7 @@ describe("ficha do pedido por tipo de entrega", () => {
     expect(entrega().textContent).toContain("Cliente");
     expect(entrega().textContent).not.toContain("Entrega");
     expect(entrega().textContent).toContain("Maria da Silva");
-    expect(entrega().textContent).toContain("34999998888");
+    expect(entrega().textContent).toContain("(34) 99999-8888");
     expect(
       entrega().querySelector('[aria-label="Conversar no WhatsApp"]'),
     ).not.toBeNull();
