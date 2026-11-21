@@ -79,6 +79,7 @@ describe("ficha do pedido: WhatsApp usa o nome do cliente tratado", () => {
         <OrderDetail order={pedido(nome)} onStatusChange={vi.fn()} />,
       );
     });
+    expect(hospedeiro.textContent).toContain("(34) 99999-8888");
     const botao = hospedeiro.querySelector(
       '[aria-label="Conversar no WhatsApp"]',
     ) as HTMLButtonElement;

@@ -58,6 +58,7 @@ import {
 import { precoVendido } from "@/lib/preco-vendido";
 import { primeiraLetra } from "@/lib/primeira-letra";
 import { supabase } from "@/lib/supabase";
+import { telefoneDaLojaParaExibicao } from "@/lib/telefone-br";
 import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import { formatCurrency } from "@/lib/utils";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
@@ -933,7 +934,11 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                         Telefone / WhatsApp
                       </span>
                       <span className="break-all font-semibold text-zinc-300">
-                        {profile?.whatsapp || "Não informado"}
+                        {profile?.whatsapp
+                          ? /^[1-9]\d{9,10}$/.test(profile.whatsapp)
+                            ? telefoneDaLojaParaExibicao(profile.whatsapp)
+                            : profile.whatsapp
+                          : "Não informado"}
                       </span>
                     </div>
                   </div>

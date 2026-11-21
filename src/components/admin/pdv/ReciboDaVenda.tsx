@@ -23,6 +23,7 @@ import {
   pedidoSemValorAPagar,
 } from "@/lib/forma-de-pagamento";
 import { pluralizar } from "@/lib/pluralizar";
+import { telefoneDaLojaParaExibicao } from "@/lib/telefone-br";
 import { gerarUuidV4 } from "@/lib/uuid-v4";
 import { linkWhatsappDoClienteDoBalcao } from "@/lib/whatsapp-do-cliente";
 import type { Order } from "@/types";
@@ -277,7 +278,14 @@ export function ReciboDaVenda({
               {nomeDoCliente(recibo.cliente)}
               {recibo.cliente.tipo === "avulso" && " · cliente avulso"}
             </p>
-            {whatsapp && <p className="pdv-muted">WhatsApp · {whatsapp}</p>}
+            {whatsapp && (
+              <p className="pdv-muted">
+                WhatsApp ·{" "}
+                {/^[1-9]\d{9,10}$/.test(whatsapp)
+                  ? telefoneDaLojaParaExibicao(whatsapp)
+                  : whatsapp}
+              </p>
+            )}
           </div>
         </div>
         <ul className="pdv-receipt-lines pdv-divider">

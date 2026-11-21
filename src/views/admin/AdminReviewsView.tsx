@@ -71,15 +71,15 @@ import { toast } from "sonner";
 // perderam o emoji (a tela é neutra).
 const RESPOSTAS_RAPIDAS = [
   {
-    label: "Agradecer feedback",
-    text: "Muito obrigado pela sua avaliação! Feedbacks como o seu nos motivam a continuar oferecendo a melhor qualidade.",
+    label: "Agradecer avaliação",
+    text: "Muito obrigado pela sua avaliação! Avaliações como a sua nos motivam a continuar oferecendo a melhor qualidade.",
   },
   {
     label: "Dar suporte",
     text: "Olá! Lamentamos muito que sua experiência não tenha sido ideal. Já estamos cientes do seu relato e entraremos em contato via WhatsApp para resolver isso o quanto antes.",
   },
   {
-    label: "Feedback positivo",
+    label: "Avaliação positiva",
     text: "Que excelente notícia! Ficamos muito satisfeitos em saber que o produto atendeu suas expectativas. Conte sempre conosco!",
   },
   {

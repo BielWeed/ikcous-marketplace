@@ -1442,14 +1442,14 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                       desktop={desktop}
                       selecionada={grupoSelecionado === "ferramentas"}
                       chave="ferramentas"
-                      subtituloExtra={`Conexão · ${isOffline ? "Offline" : "Online"}`}
+                      subtituloExtra={`Conexão · ${isOffline ? "Sem internet" : "Conectada"}`}
                       onNavigate={onNavigate}
                       subtitulos={subtitulos}
                     >
                       {(aberta) => (
                         <>
                           <p className="text-xs text-zinc-400">
-                            Conexão · {isOffline ? "Offline" : "Online"}
+                            Conexão · {isOffline ? "Sem internet" : "Conectada"}
                           </p>
                           {/* Status de funcionamento — COLAPSADA por padrão (pedido do
                   Gabriel, 02/09: status é consulta rara, não porta de

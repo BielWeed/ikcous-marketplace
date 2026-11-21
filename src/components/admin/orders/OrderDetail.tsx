@@ -70,6 +70,7 @@ import {
   rotuloDaVariacaoGuardada,
 } from "@/lib/rotulo-da-variacao";
 import { supabase } from "@/lib/supabase";
+import { telefoneDaLojaParaExibicao } from "@/lib/telefone-br";
 import { textoCancelamentoDoPainel } from "@/lib/texto-cancelamento-do-painel";
 import { textoSemControlesDeDirecao } from "@/lib/texto-sem-controles-de-direcao";
 import { tipoDeEntregaDoPedido } from "@/lib/tipo-de-entrega-do-pedido";
@@ -863,7 +864,9 @@ function OrderDeliveryCard({
             {order.customer.name}
           </p>
           <p className="mt-0.5 text-sm tabular-nums text-zinc-400">
-            {order.customer.whatsapp}
+            {/^[1-9]\d{9,10}$/.test(order.customer.whatsapp)
+              ? telefoneDaLojaParaExibicao(order.customer.whatsapp)
+              : order.customer.whatsapp}
           </p>
         </div>
         {whatsappUrl && (

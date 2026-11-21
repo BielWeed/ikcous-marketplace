@@ -517,9 +517,9 @@ describe("AdminReviewsView — redesenho", () => {
     await tocar(botaoPorTexto("Responder", 0));
     expect(tela()).toContain("Resposta rápida");
     for (const nome of [
-      "Agradecer feedback",
+      "Agradecer avaliação",
       "Dar suporte",
-      "Feedback positivo",
+      "Avaliação positiva",
       "Esclarecer produto",
     ]) {
       expect(botaoPorTexto(nome)).toBeTruthy();
@@ -527,9 +527,9 @@ describe("AdminReviewsView — redesenho", () => {
     const publicar = botaoPorTexto("Publicar resposta");
     expect(publicar.disabled).toBe(true);
 
-    await tocar(botaoPorTexto("Agradecer feedback"));
+    await tocar(botaoPorTexto("Agradecer avaliação"));
     const campo = hospedeiro.querySelector<HTMLTextAreaElement>("textarea");
-    expect(campo?.value).toContain("Muito obrigado pela sua avaliação");
+    expect(campo?.value).toContain("Avaliações como a sua nos motivam");
     expect(publicar.disabled).toBe(false);
 
     await digitar(campo as HTMLTextAreaElement, "Obrigado, Isadora!");

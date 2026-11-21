@@ -160,6 +160,7 @@ describe("AdminUserDetailView — dado ausente e datas", () => {
     };
     const texto = await abrirFicha();
     expect(texto).toContain("Cliente desde 07/02/2026");
+    expect(texto).toContain("(34) 99999-9999");
     // Último pedido (sem cancelados ou devolvidos) e linha do extrato: o mesmo pedido.
     expect(texto.match(/10\/08\/2026/g)?.length).toBeGreaterThanOrEqual(2);
     expect(texto).not.toMatch(/10 ago|07 de fev/i);

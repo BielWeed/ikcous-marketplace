@@ -95,17 +95,17 @@ describe("AdminCouponsView — o cupom é usado no checkout, não no carrinho", 
     });
   }
 
-  it("a frase curta ao lado da chavinha diz checkout, não carrinho", async () => {
+  it("a frase curta ao lado da chavinha diz finalização da compra, não carrinho", async () => {
     await abrirTela();
 
     const texto = (hospedeiro.textContent ?? "").replace(/\s+/g, " ");
     expect(texto).toContain(
-      "Permitir que clientes usem cupons no checkout.",
+      "Permitir que clientes usem cupons na finalização da compra.",
     );
     expect(texto).not.toMatch(/usem cupons no carrinho/i);
   });
 
-  it("o texto expandido de 'Saiba mais' diz checkout, em português, sem 'discounts'", async () => {
+  it("o texto expandido de 'Saiba mais' diz finalização da compra, em português, sem 'discounts'", async () => {
     await abrirTela();
 
     const botaoSaibaMais = Array.from(
@@ -118,7 +118,8 @@ describe("AdminCouponsView — o cupom é usado no checkout, não no carrinho", 
     });
 
     const texto = (hospedeiro.textContent ?? "").replace(/\s+/g, " ");
-    expect(texto).toContain("no checkout");
+    expect(texto).toContain("Cupons na finalização da compra");
+    expect(texto).toContain("na finalização da compra para receber descontos");
     expect(texto).not.toMatch(/no carrinho/i);
     expect(texto).toContain("descontos especiais");
     expect(texto).not.toMatch(/\bdiscounts\b/i);
@@ -137,10 +138,7 @@ describe("AdminCouponsView — o cupom é usado no checkout, não no carrinho", 
     });
 
     // O modal é montado via createPortal em document.body, fora de `hospedeiro`.
-    const textoDoModal = (document.body.textContent ?? "").replace(
-      /\s+/g,
-      " ",
-    );
+    const textoDoModal = (document.body.textContent ?? "").replace(/\s+/g, " ");
     expect(textoDoModal).toContain("deixa de ser aceito no checkout");
     expect(textoDoModal).not.toMatch(/aceito no carrinho/i);
   });

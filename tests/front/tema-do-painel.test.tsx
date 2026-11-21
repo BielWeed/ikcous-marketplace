@@ -154,7 +154,7 @@ describe("seletor Aparência do painel", () => {
     act(() => raiz.render(<AparenciaDoPainel />));
     expect(
       hospedeiro.querySelector('[data-tema-opcao="confortavel"]')?.textContent,
-    ).toContain("Tons quentes que cansam menos a vista");
+    ).toContain("Tons quentes que cansam menos os olhos");
   });
 
   it("clicar escolhe, marca, aplica e guarda no aparelho", () => {

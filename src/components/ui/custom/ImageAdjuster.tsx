@@ -69,7 +69,7 @@ const PRESET_LABELS: Record<AspectRatioPreset, string> = {
   "4:5": "Vitrine (4:5)",
   "1:1": "Detalhe (1:1)",
   "2:1": "Celular (2:1)",
-  "4:1": "Desktop (4:1)",
+  "4:1": "Computador (4:1)",
   free: "Livre",
 };
 

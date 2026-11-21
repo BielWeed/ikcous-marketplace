@@ -89,6 +89,16 @@ describe("CartaoCliente — dado ausente", () => {
     },
   );
 
+  it.each([
+    ["11912345678", "(11) 91234-5678"],
+    ["+1 202 555 0147", "+1 202 555 0147"],
+  ])(
+    "exibe o telefone %s sem alterar números estrangeiros",
+    async (phone, esperado) => {
+      expect(await mostrar(cliente({ phone }))).toContain(esperado);
+    },
+  );
+
   it("com os dados, mostra e-mail e datas em dd/MM/aaaa", async () => {
     const texto = await mostrar(
       cliente({ last_order_date: "2026-08-10T12:00:00Z" }),
