@@ -78,7 +78,7 @@ it.each([
 });
 
 it("avisa também quando o Avançar fica no menu porque falta registrar o pagamento", () => {
-  montar({ paymentMethod: "dinheiro", paymentStatus: "pendente" });
+  montar({ paymentMethod: "cash", paymentStatus: null });
 
   expect(host.textContent).toContain(aviso);
 });
