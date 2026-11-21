@@ -167,7 +167,8 @@ function CabecalhoDoDia({
         {tituloDoDia(grupo.dia, hoje, formatarDiaPorExtenso(grupo.dia))}
       </h3>
       <p className="flex flex-wrap items-baseline justify-end gap-x-3 text-sm text-zinc-400">
-        <span className="whitespace-nowrap">
+        {/* Com a frase longa do filtro, o texto quebra linha; o valor, não. */}
+        <span className={comFiltroDeTipo ? "min-w-0" : "whitespace-nowrap"}>
           {comFiltroDeTipo ? "Resultado do dia, sem o filtro de tipo" : "Dia"}{" "}
           <Dinheiro
             valor={grupo.resultado}
