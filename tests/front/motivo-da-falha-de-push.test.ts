@@ -3,7 +3,40 @@
 // status do pedido.
 import { describe, expect, it } from "vitest";
 
-import { motivoDaFalhaEmPortugues } from "@/lib/motivo-da-falha-de-push";
+import {
+  descricaoDePushSemConfirmacao,
+  motivoDaFalhaEmPortugues,
+} from "@/lib/motivo-da-falha-de-push";
+
+describe("descricaoDePushSemConfirmacao", () => {
+  it.each([
+    {
+      status: null,
+      motivo:
+        "endpoint_invalido: o endereço do aparelho não é de um serviço de push público (https)",
+      quantidade: 1,
+    },
+    {
+      status: 400,
+      motivo: "push service respondeu 400 Bad Request",
+      quantidade: 1,
+    },
+  ])("não omite outra falha quando houve demora: $motivo", (falha) => {
+    expect(
+      descricaoDePushSemConfirmacao([
+        {
+          status: null,
+          motivo:
+            "Sem resposta do serviço de push dentro do prazo; o aviso pode ter chegado ao aparelho mesmo assim",
+          quantidade: 1,
+        },
+        falha,
+      ]),
+    ).toBe(
+      "O aviso ainda pode chegar; confira antes de reenviar. Outras falhas: 1 aparelho.",
+    );
+  });
+});
 
 describe("motivoDaFalhaEmPortugues", () => {
   it.each([

@@ -43,14 +43,37 @@ export function motivoDaFalhaEmPortugues(falha: FalhaDePush): string {
 export function descricaoDePushSemConfirmacao(
   falhas: readonly FalhaDePush[],
 ): string {
-  const recusas = falhas
-    .filter((falha) =>
-      [401, 403, 404, 410, 413, 429].includes(statusDaFalha(falha)),
-    )
-    .map((falha) => `${falha.quantidade}x ${motivoDaFalhaEmPortugues(falha)}`);
-  return recusas.length
-    ? `${AVISO_PUSH_PODE_CHEGAR}. Recusas confirmadas: ${recusas.join("; ")}.`
-    : `${AVISO_PUSH_PODE_CHEGAR}.`;
+  const recusas: string[] = [];
+  let outrasFalhas = 0;
+  let outrasSemContagem = false;
+  for (const falha of falhas) {
+    if (falhaDePushSemConfirmacao(falha)) continue;
+    if ([401, 403, 404, 410, 413, 429].includes(statusDaFalha(falha))) {
+      recusas.push(`${falha.quantidade}x ${motivoDaFalhaEmPortugues(falha)}`);
+    } else {
+      const { quantidade } = falha;
+      if (
+        typeof quantidade === "number" &&
+        Number.isSafeInteger(quantidade) &&
+        quantidade > 0
+      ) {
+        outrasFalhas += quantidade;
+      } else {
+        outrasSemContagem = true;
+      }
+    }
+  }
+  const descricao = [`${AVISO_PUSH_PODE_CHEGAR}.`];
+  if (recusas.length)
+    descricao.push(`Recusas confirmadas: ${recusas.join("; ")}.`);
+  if (outrasSemContagem) {
+    descricao.push("Também houve outras falhas de envio.");
+  } else if (outrasFalhas > 0) {
+    descricao.push(
+      `Outras falhas: ${outrasFalhas} ${outrasFalhas === 1 ? "aparelho" : "aparelhos"}.`,
+    );
+  }
+  return descricao.join(" ");
 }
 
 export function contarPushSemConfirmacao(
