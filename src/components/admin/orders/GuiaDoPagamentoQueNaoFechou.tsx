@@ -272,8 +272,8 @@ export function GuiaDoPagamentoQueNaoFechou() {
             Para enviar o produto: o painel não reabre pedido cancelado. O envio
             fica por sua conta, fora do app: o pedido continua cancelado aqui, e
             a peça já voltou ao estoque — tire as unidades enviadas à mão no
-            cadastro do produto (campo “Estoque”; se o produto tem variações,
-            abra a variação e use o campo “Quantidade”). Esse pedido vai
+            cadastro do produto (campo “Disponível para venda”; se o produto tem
+            variações, use esse campo dentro da variação). Esse pedido vai
             continuar no aviso de pedidos cancelados como “Devolver ao cliente”
             (mesmo com esse nome, não é para devolver), e a ficha dele vai
             continuar mostrando o botão “Devolver R$ …”. Não toque nele: depois

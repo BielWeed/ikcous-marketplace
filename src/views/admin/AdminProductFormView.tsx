@@ -477,6 +477,8 @@ interface AdminProductFormViewProps {
 
 const LIMITE_DO_NOME_DO_PRODUTO = 200;
 const ESTOQUE_MAXIMO_DO_PRODUTO = 10000;
+const AJUDA_DO_ESTOQUE_DISPONIVEL =
+  "Já desconta as peças reservadas por Pix em andamento. Ao conferir o estoque, não conte as peças reservadas.";
 const ID_DO_AVISO_DA_GRADE_PENDENTE = "rascunho-da-grade-pendente";
 const ID_DA_OFERTA_DE_RASCUNHO_ANTIGO = "rascunho-antigo-do-produto";
 
@@ -4678,7 +4680,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             htmlFor="variant-stock"
                             className="ml-1 text-xs text-zinc-400"
                           >
-                            Quantidade
+                            Disponível para venda
                           </label>
                           <div className="flex items-center gap-1.5">
                             <button
@@ -4692,6 +4694,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             <LocalBufferedInput
                               id="variant-stock"
                               name="variant-stock"
+                              aria-describedby="variant-stock-help"
                               type="number"
                               value={variantFormData.stockIncrement}
                               // O onFlush também roda só por sair do campo.
@@ -4719,6 +4722,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                               <Plus className="size-4" />
                             </button>
                           </div>
+                          <p
+                            id="variant-stock-help"
+                            className="ml-1 text-xs text-zinc-400"
+                          >
+                            {AJUDA_DO_ESTOQUE_DISPONIVEL}
+                          </p>
                         </div>
                         <div className="min-w-0 space-y-1.5">
                           <label
@@ -5743,11 +5752,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       <li className="flex items-start gap-2.5">
                         <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
                         <span>
-                          <b className="text-zinc-350">Estoque Base:</b>{" "}
-                          Quantidade física disponível quando o produto não tem
-                          variação ativa. Com qualquer variação ativa, o estoque
-                          do produto passa a ser a SOMA das variações ativas e
-                          este campo fica travado.
+                          <b className="text-zinc-350">
+                            Disponível para venda:
+                          </b>{" "}
+                          {AJUDA_DO_ESTOQUE_DISPONIVEL} Com qualquer variação
+                          ativa, o estoque do produto passa a ser a SOMA das
+                          variações ativas e este campo fica travado.
                         </span>
                       </li>
                       <li className="flex items-start gap-2.5">
@@ -5905,7 +5915,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   htmlFor="product-stock"
                   className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-widest text-zinc-500"
                 >
-                  Estoque *
+                  Disponível para venda *
                 </label>
                 <div className="group relative">
                   <LocalBufferedInput
@@ -5916,8 +5926,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       hasActiveVariants
                         ? "product-stock-info"
                         : stockError
-                          ? "product-stock-error"
-                          : undefined
+                          ? "product-stock-error product-stock-help"
+                          : "product-stock-help"
                     }
                     name="stock"
                     type="number"
@@ -5933,6 +5943,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     <Package className="size-5" />
                   </div>
                 </div>
+                {!hasActiveVariants && (
+                  <p
+                    id="product-stock-help"
+                    className="ml-1 text-xs text-zinc-400"
+                  >
+                    {AJUDA_DO_ESTOQUE_DISPONIVEL}
+                  </p>
+                )}
                 {hasActiveVariants ? (
                   <DicaExpansivel
                     idDoTexto="product-stock-info"
@@ -6337,14 +6355,13 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                 <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
                                 <span>
                                   <b className="text-zinc-350">
-                                    Estoque da Variação:
+                                    Disponível para venda:
                                   </b>{" "}
-                                  Informe o estoque físico real desta variação —
-                                  não é um extra somado ao estoque do produto.
-                                  Assim que qualquer variação estiver ativa, o
-                                  estoque do produto acima passa a ser a{" "}
-                                  <b>soma</b> de todas as variações ativas, e o
-                                  campo dele fica travado enquanto isso.
+                                  {AJUDA_DO_ESTOQUE_DISPONIVEL} Assim que
+                                  qualquer variação estiver ativa, o estoque do
+                                  produto acima passa a ser a <b>soma</b> de
+                                  todas as variações ativas, e o campo dele fica
+                                  travado enquanto isso.
                                 </span>
                               </li>
                               <li className="flex items-start gap-2.5">
