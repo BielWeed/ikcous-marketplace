@@ -6,7 +6,7 @@ import { pacoteDeMarca } from "./fixtures/branding-assets";
 import { criarBuildIdentity } from "./fixtures/build-identity";
 
 const importPolyfill = 'import "./polyfills-ios-antigo";';
-const importsDoMain =
+const importsDoMain: string[] =
   readFileSync("src/main.tsx", "utf8").match(/^import\s+(?!\().+$/gm) ?? [];
 const apis = [
   [Object, "hasOwn"],
