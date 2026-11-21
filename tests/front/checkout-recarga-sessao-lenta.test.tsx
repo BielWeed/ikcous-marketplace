@@ -19,8 +19,9 @@
 //   1. Sessão que chega depois dos 3 s: nada é apagado, o App ESPERA a
 //      sessão (não monta checkout vazio), e quando ela chega o MESMO pedido
 //      é retomado; um segundo carregamento ainda acha o registro.
-//   2. A sessão não chega dentro do teto: o checkout abre como sempre, mas o
-//      registro NÃO é apagado — nem quando a sessão chega depois do teto.
+//   2. O teto libera o checkout sem apagar o registro. Se a sessão chega
+//      depois, o mesmo pedido volta como Pix ou confirmação, desde que a
+//      cliente não tenha saído do checkout nem começado outra compra.
 //   3. Sem registro nenhum, o checkout abre no mesmo instante de sempre
 //      (nenhum quadro em branco a mais no caminho normal).
 import { setTimeout as esperaReal } from "node:timers/promises";
@@ -34,10 +35,29 @@ import {
   guardarPedidoPendenteDoCheckout,
   lerPedidoPendenteDoCheckout,
 } from "@/lib/pedido-pendente-do-checkout";
+import type { CartItem } from "@/types";
 
 const PEDIDO = "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b";
 const QR_DO_PEDIDO = "00020126-copia-e-cola-do-pedido";
 const FINALIZE = "Finalize o pagamento";
+const PAGAMENTO_CONFIRMADO = "Pagamento Confirmado!";
+const ITEM_DE_OUTRA_COMPRA: CartItem = {
+  quantity: 1,
+  product: {
+    id: "item-de-teste",
+    name: "Produto da nova compra",
+    description: "",
+    price: 20,
+    images: [],
+    category: "categoria-de-teste",
+    stock: 5,
+    sold: 0,
+    isActive: true,
+    isBestseller: false,
+    freeShipping: false,
+    createdAt: "2026-01-01T00:00:00Z",
+  },
+};
 
 const { criarPagamento, createOrder, banco } = vi.hoisted(() => ({
   criarPagamento: vi.fn(),
@@ -240,19 +260,50 @@ const {
     BADGE: { setBadge: semAcao, clearBadge: semAcao },
   };
 });
-vi.mock("@/hooks/useCart", async () => {
-  const { criarUseCartDeTeste } = await import("./duble-use-cart");
+const carrinhoDaAba = vi.hoisted(() => {
+  let cart: CartItem[] = [];
+  const ouvintes = new Set<() => void>();
   return {
-    useCart: criarUseCartDeTeste(() => ({
-      cart: CARRINHO_VAZIO,
-      cartTotal: 0,
+    ler: () => cart,
+    mudar: (itens: CartItem[]) => {
+      cart = itens;
+      for (const avisar of ouvintes) avisar();
+    },
+    inscrever: (avisar: () => void) => {
+      ouvintes.add(avisar);
+      return () => {
+        ouvintes.delete(avisar);
+      };
+    },
+  };
+});
+vi.mock("@/hooks/useCart", async () => {
+  const { useSyncExternalStore } = await import("react");
+  const { criarUseCartDeTeste } = await import("./duble-use-cart");
+  function useCarrinhoDaAba() {
+    return useSyncExternalStore(carrinhoDaAba.inscrever, carrinhoDaAba.ler);
+  }
+  function useDadosDoCarrinho() {
+    const cart = useCarrinhoDaAba();
+    return {
+      cart,
+      cartTotal: cart.reduce(
+        (total, item) => total + item.product.price * item.quantity,
+        0,
+      ),
       shippingFee: 0,
       clearCart: SEM_ACAO,
       addToCart: SEM_ACAO,
       selectedShippingOption: null,
       shippingCep: "38500-000",
-    })),
-    useCartState: () => ({ cartCount: 0 }),
+    };
+  }
+  return {
+    useCart: criarUseCartDeTeste(useDadosDoCarrinho),
+    useCartState: function useCartState() {
+      const cart = useCarrinhoDaAba();
+      return { cart, cartCount: cart.length };
+    },
     useCartActions: () => ({ addToCart: () => {} }),
   };
 });
@@ -325,8 +376,12 @@ vi.mock("@/lib/flags", () => ({
 
 // O banco: o AuthProvider e o CheckoutView falam com o MESMO dublê.
 vi.mock("@/lib/supabase", () => {
-  const leituraDoPedido = () => ({
-    maybeSingle: () => Promise.resolve({ data: banco.pedido, error: null }),
+  const leituraDoPedido = (id: unknown) => ({
+    maybeSingle: () =>
+      Promise.resolve({
+        data: id === PEDIDO ? banco.pedido : null,
+        error: null,
+      }),
     single: () =>
       Promise.resolve({
         data: banco.pedido ?? { payment_status: "aguardando" },
@@ -358,9 +413,9 @@ vi.mock("@/lib/supabase", () => {
       rpc: vi.fn(() => Promise.resolve({ data: null, error: null })),
       from: vi.fn((tabela: string) => ({
         select: () => ({
-          eq: () =>
+          eq: (_coluna: string, valor: unknown) =>
             tabela === "marketplace_orders"
-              ? leituraDoPedido()
+              ? leituraDoPedido(valor)
               : {
                   single: () =>
                     Promise.resolve({
@@ -424,6 +479,7 @@ describe("App + AuthProvider — o PIX pendente sobrevive à recarga com a sess�
   let sessao: ReturnType<typeof dubleDeArmazem>;
 
   beforeEach(() => {
+    carrinhoDaAba.mudar([]);
     criarPagamento.mockReset().mockResolvedValue({
       paymentId: "mp-pix-1",
       statusPagamento: "aguardando",
@@ -631,27 +687,139 @@ describe("App + AuthProvider — o PIX pendente sobrevive à recarga com a sess�
     expect(lerPedidoPendenteDoCheckout("user-1")).toBe(PEDIDO);
   });
 
-  it("a sessão NÃO chega dentro do teto: o checkout abre como sempre, mas o registro fica — também quando a sessão chega depois do teto", async () => {
+  it("a sessão chega depois do teto: confirma o mesmo pedido já pago sem pedir cobrança", async () => {
     guardarPedidoPendenteDoCheckout("user-1", PEDIDO);
+    banco.pedido = {
+      ...banco.pedido,
+      status: "processing",
+      payment_status: "pago",
+    };
 
     await carregarEm("/checkout");
-    await avancar(3000);
-    expect(checkoutVazioNaTela()).toBe(false);
+    await avancar(PRAZO_DA_SESSAO_NA_RECARGA_MS - 1);
     expect(carregandoNaTela()).toBe(true);
+    expect(checkoutVazioNaTela()).toBe(false);
 
-    // O teto vence sem sessão: o checkout de sempre (vazio), SEM retomada.
-    await avancar(PRAZO_DA_SESSAO_NA_RECARGA_MS);
+    await avancar(1);
     expect(checkoutVazioNaTela()).toBe(true);
     expect(carregandoNaTela()).toBe(false);
     expect(lerPedidoPendenteDoCheckout("user-1")).toBe(PEDIDO);
+    expect(criarPagamento).not.toHaveBeenCalled();
 
-    // A sessão chega tarde, com o checkout vazio já montado: a ausência de
-    // decisão NÃO apaga o registro, e nada é cobrado.
+    const ler = vi.spyOn(sessao, "getItem");
     await sessaoChega();
-    expect(lerPedidoPendenteDoCheckout("user-1")).toBe(PEDIDO);
+
+    expect(textoDaTela()).toContain(PAGAMENTO_CONFIRMADO);
+    expect(textoDaTela()).toContain("Pedido: #4F5A6B");
+    expect(checkoutVazioNaTela()).toBe(false);
+    expect(
+      ler.mock.calls.filter(
+        ([chave]) => chave === chaveDoPedidoPendenteDoCheckout("user-1"),
+      ),
+    ).toHaveLength(1);
     expect(criarPagamento).not.toHaveBeenCalled();
     expect(createOrder).not.toHaveBeenCalled();
   });
+
+  it("a sessão chega depois do teto: volta ao Pix pendente com o mesmo QR do mesmo pedido", async () => {
+    guardarPedidoPendenteDoCheckout("user-1", PEDIDO);
+
+    await carregarEm("/checkout");
+    await avancar(PRAZO_DA_SESSAO_NA_RECARGA_MS);
+    expect(checkoutVazioNaTela()).toBe(true);
+    expect(criarPagamento).not.toHaveBeenCalled();
+    expect(lerPedidoPendenteDoCheckout("user-1")).toBe(PEDIDO);
+
+    await sessaoChega();
+
+    expect(checkoutVazioNaTela()).toBe(false);
+    await esperarAte(pagamentoRetomadoNaTela);
+    expect(pagamentoRetomadoNaTela()).toBe(true);
+    // O pedido já tem uma cobrança. A chamada que devolve o QR é a
+    // reconsulta da edge para aquele pedido, não a criação de outro.
+    expect(criarPagamento).toHaveBeenCalledExactlyOnceWith({
+      orderId: PEDIDO,
+      metodo: "pix",
+    });
+    expect(createOrder).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { caminho: "saiu do checkout", reabreCheckout: false },
+    { caminho: "abriu outro checkout", reabreCheckout: true },
+  ])(
+    "a sessão tardia não restaura o pedido quando a cliente $caminho",
+    async ({ reabreCheckout }) => {
+      guardarPedidoPendenteDoCheckout("user-1", PEDIDO);
+      // A limpeza é best-effort. O registro sobrevivente não pode tomar a
+      // tela, mesmo quando a aba não conseguiu apagá-lo na navegação.
+      vi.spyOn(sessao, "removeItem").mockImplementation(() => {});
+
+      await carregarEm("/checkout");
+      await avancar(PRAZO_DA_SESSAO_NA_RECARGA_MS);
+      expect(checkoutVazioNaTela()).toBe(true);
+
+      await clicar("ir-para-carrinho");
+      await esperarAte(() => naTela("tela-carrinho") !== null);
+      if (reabreCheckout) {
+        await clicar("ir-para-checkout");
+        await esperarAte(checkoutVazioNaTela);
+      }
+
+      expect(lerPedidoPendenteDoCheckout("user-1")).toBe(PEDIDO);
+      const ler = vi.spyOn(sessao, "getItem");
+      await sessaoChega();
+
+      if (reabreCheckout) {
+        expect(checkoutVazioNaTela()).toBe(true);
+      } else {
+        expect(globalThis.location.pathname).toBe("/cart");
+        expect(naTela("tela-carrinho")).not.toBeNull();
+      }
+      expect(ler).not.toHaveBeenCalledWith(
+        chaveDoPedidoPendenteDoCheckout("user-1"),
+      );
+      expect(criarPagamento).not.toHaveBeenCalled();
+      expect(createOrder).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    { estado: "ainda tem itens", esvazia: false },
+    { estado: "foi esvaziado depois", esvazia: true },
+  ])(
+    "a sessão tardia não toma a tela se o novo carrinho $estado",
+    async ({ esvazia }) => {
+      guardarPedidoPendenteDoCheckout("user-1", PEDIDO);
+
+      await carregarEm("/checkout");
+      await avancar(PRAZO_DA_SESSAO_NA_RECARGA_MS);
+      expect(checkoutVazioNaTela()).toBe(true);
+
+      await act(async () => {
+        carrinhoDaAba.mudar([ITEM_DE_OUTRA_COMPRA]);
+      });
+      expect(checkoutVazioNaTela()).toBe(false);
+      if (esvazia) {
+        await act(async () => {
+          carrinhoDaAba.mudar([]);
+        });
+        expect(checkoutVazioNaTela()).toBe(true);
+      }
+
+      const ler = vi.spyOn(sessao, "getItem");
+      await sessaoChega();
+
+      expect(globalThis.location.pathname).toBe("/checkout");
+      expect(checkoutVazioNaTela()).toBe(esvazia);
+      expect(pagamentoRetomadoNaTela()).toBe(false);
+      expect(ler).not.toHaveBeenCalledWith(
+        chaveDoPedidoPendenteDoCheckout("user-1"),
+      );
+      expect(criarPagamento).not.toHaveBeenCalled();
+      expect(createOrder).not.toHaveBeenCalled();
+    },
+  );
 
   it("o cliente navega DURANTE a espera da sessão e abre um checkout novo: ele abre na hora, sem esperar a sessão nem o teto", async () => {
     guardarPedidoPendenteDoCheckout("user-1", PEDIDO);
