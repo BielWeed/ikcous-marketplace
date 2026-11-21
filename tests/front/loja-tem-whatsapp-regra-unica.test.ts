@@ -43,9 +43,8 @@ describe("lojaTemWhatsapp — a régua dos 10 dígitos, em um lugar só", () => 
     "+55 (11) 0000-0000",
     "551100000000",
     "5500000000",
-  ])(
-    "não considera %s um WhatsApp disponível",
-    (numero) => expect(lojaTemWhatsapp(numero)).toBe(false),
+  ])("não considera %s um WhatsApp disponível", (numero) =>
+    expect(lojaTemWhatsapp(numero)).toBe(false),
   );
 
   it("número formatado com pontuação vale igual ao cru", () => {
