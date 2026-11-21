@@ -164,7 +164,7 @@ describe("AdminProductFormView — guia diz a regra real do estoque de variaçã
         .replace(/\s+/g, " ")
         .trim();
       expect(ajuda ?? "").toContain(
-        "Já desconta as peças reservadas por Pix em andamento. Ao conferir o estoque, não conte as peças reservadas.",
+        "As peças reservadas para pedidos não entram nesse número. Ao conferir a prateleira, não conte essas peças.",
       );
     },
   );

@@ -478,7 +478,7 @@ interface AdminProductFormViewProps {
 const LIMITE_DO_NOME_DO_PRODUTO = 200;
 const ESTOQUE_MAXIMO_DO_PRODUTO = 10000;
 const AJUDA_DO_ESTOQUE_DISPONIVEL =
-  "Já desconta as peças reservadas por Pix em andamento. Ao conferir o estoque, não conte as peças reservadas.";
+  "As peças reservadas para pedidos não entram nesse número. Ao conferir a prateleira, não conte essas peças.";
 const ID_DO_AVISO_DA_GRADE_PENDENTE = "rascunho-da-grade-pendente";
 const ID_DA_OFERTA_DE_RASCUNHO_ANTIGO = "rascunho-antigo-do-produto";
 
@@ -5845,7 +5845,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               {/* Preço de venda: sobe da antiga "Precificação" para o básico —
                 é o que toda lojista preenche. Só mudou de lugar no JSX; o
                 estado, o `id` e a validação (`priceError`) são os de sempre. */}
-              <div className="produto-campo space-y-1">
+              <div className="produto-campo space-y-1 max-[480px]:col-span-2">
                 <label
                   htmlFor="product-sale-price"
                   className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-widest text-zinc-500"
@@ -5910,7 +5910,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   )}
               </div>
 
-              <div className="produto-campo space-y-1">
+              <div className="produto-campo space-y-1 max-[480px]:col-span-2">
                 <label
                   htmlFor="product-stock"
                   className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-widest text-zinc-500"
@@ -5983,8 +5983,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
               {/* Promoção (De/Por): a única parte do preço que o CLIENTE vê, por
                 isso mora aqui, junto do Preço de venda, e não no cartão
-                privado "Custo e lucro". Preço e Estoque dividem a linha de
-                cima; este bloco ocupa a linha inteira logo abaixo deles. O
+                privado "Custo e lucro". Este bloco ocupa a linha inteira
+                logo abaixo do Preço e do Estoque. O
                 estado (`isPromoActive`), o `id` e a validação
                 (`originalPriceError`) são os de sempre: só mudou de lugar. */}
               <h2 className="produto-rotulo-secao col-span-2 -mb-1 mt-3">
