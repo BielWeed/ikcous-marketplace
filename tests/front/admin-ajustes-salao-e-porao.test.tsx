@@ -595,12 +595,12 @@ describe("Ajustes — o estado mora no subtítulo de cada grupo, sem cartão", (
     expect(hospedeiro.textContent).not.toContain("Melhor Envio");
   });
 
-  it("offline: Conexão diz Sem internet, em Ferramentas", async () => {
+  it("offline: Conexão diz Indisponível, em Ferramentas", async () => {
     mockOnline.useOnlineStatus.mockReturnValue(true);
     await renderizar();
     const ferramentas = secaoDoGrupo("Ferramentas").textContent ?? "";
     expect(ferramentas).toContain("Conexão");
-    expect(ferramentas).toContain("Conexão · Sem internet");
+    expect(ferramentas).toContain("Conexão · Indisponível");
     expect(hospedeiro.textContent).not.toContain("Conexão · Conectada");
   });
 });
