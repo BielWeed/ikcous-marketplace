@@ -4466,6 +4466,28 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         }
       : null;
   const hasActiveVariants = formData.variants.some((v) => v.active);
+  const avisoDeEstoqueSemVariacao =
+    formData.variants.length > 0 &&
+    !hasActiveVariants &&
+    formData.stock.trim() !== "" &&
+    !stockError
+      ? Number(formData.stock) === 0
+        ? "Com estoque 0, o produto ficará esgotado."
+        : "Com estoque acima de 0, o produto será vendido sem escolha de variação."
+      : "";
+
+  const provedorDeFrete = config?.shippingProvider;
+  const avisaMedidasPadrao =
+    !isLocalShipping &&
+    (provedorDeFrete === "melhor_envio" ||
+      provedorDeFrete === "frenet" ||
+      provedorDeFrete === "superfrete") &&
+    [
+      formData.weightKg,
+      formData.lengthCm,
+      formData.widthCm,
+      formData.heightCm,
+    ].some((medida) => Number(medida) === 0);
   // Indicadores de apresentação, a partir dos mesmos campos da validação.
   const preenchidos = [
     camposObrigatorios.name,
@@ -5970,6 +5992,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     </span>
                   )
                 )}
+                {avisoDeEstoqueSemVariacao && (
+                  <p
+                    role="status"
+                    className="ml-1 text-[11px] font-medium text-amber-300"
+                  >
+                    {avisoDeEstoqueSemVariacao}
+                  </p>
+                )}
                 {hasActiveVariants && stockError && (
                   <span
                     id="product-stock-error"
@@ -7134,6 +7164,18 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       : "Tudo pronto para publicar"}
               </p>
             )}
+          {avisaMedidasPadrao && (
+            <p
+              role="status"
+              className="produto-status flex items-center gap-2 px-1 text-xs font-medium text-amber-300"
+            >
+              <AlertTriangle aria-hidden="true" className="size-4 shrink-0" />
+              <span>
+                No frete automático, peso em branco ou zero usa 0,3 kg; cada
+                medida em branco ou zero usa 15 cm.
+              </span>
+            </p>
+          )}
           <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
             {/* O botão cinza não recebe toque (pointer-events: none): o toque
                 cai neste invólucro e leva ao primeiro campo que falta. Pelo
