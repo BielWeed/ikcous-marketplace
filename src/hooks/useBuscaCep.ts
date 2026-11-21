@@ -71,8 +71,11 @@ export interface OpcoesBuscaCep {
    * dentro da tela, a partir de `resultado`.
    */
   avisarPorToast?: boolean;
-  /** Permite à tela orientar sem sugerir campos que ela não mostra. */
-  mensagemCepNaoEncontrado?: string;
+  /**
+   * A tela não mostra rua, bairro nem cidade (ex.: retirada na loja): os avisos
+   * orientam a conferir o CEP ou tentar de novo, não a preencher o endereço.
+   */
+  semCamposDeEndereco?: boolean;
 }
 
 /** Formata "38500000" em "38500-000". Os dois chamadores fazem isto igual. */
@@ -102,8 +105,8 @@ export function useBuscaCep(
   // Lido por ref pelo mesmo motivo de `aoEncontrar`: `buscar` não é recriada.
   const avisarPorToastRef = useRef(opcoes?.avisarPorToast !== false);
   avisarPorToastRef.current = opcoes?.avisarPorToast !== false;
-  const mensagemCepNaoEncontradoRef = useRef(opcoes?.mensagemCepNaoEncontrado);
-  mensagemCepNaoEncontradoRef.current = opcoes?.mensagemCepNaoEncontrado;
+  const semCamposDeEnderecoRef = useRef(opcoes?.semCamposDeEndereco === true);
+  semCamposDeEnderecoRef.current = opcoes?.semCamposDeEndereco === true;
 
   // Lido por ref para que o chamador não precise memoizar a callback e
   // `buscar` não precise ser recriada a cada render.
@@ -234,15 +237,22 @@ export function useBuscaCep(
         setResultado({ tipo: "naoEncontrado" });
         if (avisarPorToastRef.current) {
           toast.error(
-            mensagemCepNaoEncontradoRef.current ??
-              `CEP não encontrado. ${ORIENTACAO_ENDERECO_MANUAL}`,
+            `CEP não encontrado. ${
+              semCamposDeEnderecoRef.current
+                ? "Confira os números."
+                : ORIENTACAO_ENDERECO_MANUAL
+            }`,
           );
         }
       } else if (estourouOTeto || estourouTentativa) {
         setResultado({ tipo: "demorou" });
         if (avisarPorToastRef.current) {
           toast.error(
-            `A busca de CEP demorou demais. ${ORIENTACAO_ENDERECO_MANUAL}`,
+            `A busca de CEP demorou demais. ${
+              semCamposDeEnderecoRef.current
+                ? "Tente de novo."
+                : ORIENTACAO_ENDERECO_MANUAL
+            }`,
           );
         }
       } else {
@@ -254,7 +264,11 @@ export function useBuscaCep(
         setResultado({ tipo: "indisponivel" });
         if (avisarPorToastRef.current) {
           toast.error(
-            `Não foi possível buscar o CEP agora. ${ORIENTACAO_ENDERECO_MANUAL}`,
+            `Não foi possível buscar o CEP agora. ${
+              semCamposDeEnderecoRef.current
+                ? "Tente de novo."
+                : ORIENTACAO_ENDERECO_MANUAL
+            }`,
           );
         }
       }

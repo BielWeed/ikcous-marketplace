@@ -1837,11 +1837,7 @@ export function CheckoutViewDaConta({
 
       cepAssociadoRef.current = cepDaResposta;
     },
-    {
-      mensagemCepNaoEncontrado: ehRetirada
-        ? "CEP não encontrado. Confira os números."
-        : undefined,
-    },
+    { semCamposDeEndereco: ehRetirada },
   );
 
   // A busca do CEP NOVO falhou (não achou, demorou ou está fora do ar): o que

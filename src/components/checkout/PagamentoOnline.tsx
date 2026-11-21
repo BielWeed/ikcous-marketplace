@@ -781,7 +781,7 @@ function VerificarPix({
       <p aria-live="polite" className="text-sm text-zinc-600">
         {semConfirmacao &&
           !esgotou &&
-          "Ainda não confirmado. Se você já pagou no banco, não pague de novo: aguarde aqui ou confira em Meus pedidos (se o pedido não estiver na aba inicial, veja Histórico)."}
+          "Ainda não confirmado. Se você já pagou no banco, não pague de novo: aguarde aqui ou confira em Meus pedidos, na aba Em andamento ou no Histórico."}
       </p>
       {esgotou && !verificando && (
         <p className="text-sm text-zinc-600">
