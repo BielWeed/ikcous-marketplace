@@ -361,9 +361,9 @@ describe("painel: o link que a dona digita só é gravado se o banner puder abri
     expect(avisoDoLinkDigitado(digitado)).toBeNull();
   });
 
-  it("o aviso é o texto combinado", () => {
+  it("o aviso indica como abrir um site, uma categoria ou um produto", () => {
     expect(AVISO_DE_LINK_RECUSADO).toBe(
-      "Use um endereço que comece com https:// ou um caminho do app como /categoria",
+      "Use um endereço que comece com https:// ou escolha uma categoria ou um produto no painel.",
     );
   });
 });

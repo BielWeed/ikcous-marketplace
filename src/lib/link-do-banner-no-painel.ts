@@ -30,7 +30,7 @@ function pareceEnderecoDeSite(trecho: string): boolean {
 
 /** O que a dona vê quando o link do banner é recusado ao salvar. */
 export const AVISO_DE_LINK_RECUSADO =
-  "Use um endereço que comece com https:// ou um caminho do app como /categoria";
+  "Use um endereço que comece com https:// ou escolha uma categoria ou um produto no painel.";
 
 /**
  * O que o painel grava quando a dona digita o link: a MESMA regra de caminho

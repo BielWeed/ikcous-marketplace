@@ -98,6 +98,30 @@ describe("AboutStoreView — a página mostra o que a loja tem e omite o resto",
     );
   }
 
+  it("com só o e-mail de atendimento, mostra o contato e não diz que a página está vazia", async () => {
+    configAtual = {
+      ...LOJA_VAZIA,
+      storeSupportEmail: " ajuda%loja@example.com ",
+    };
+
+    const texto = await renderizarPagina();
+    const link = hospedeiro.querySelector("a[href^='mailto:']");
+    expect(link?.textContent).toBe("ajuda%loja@example.com");
+    expect(link?.getAttribute("href")).toBe("mailto:ajuda%25loja@example.com");
+    expect(texto).not.toContain("Volte em breve");
+  });
+
+  it("não mostra e-mail inválido nem o conta como contato cadastrado", async () => {
+    configAtual = {
+      ...LOJA_VAZIA,
+      storeSupportEmail: "ajuda@example.com?subject=x",
+    };
+
+    const texto = await renderizarPagina();
+    expect(hospedeiro.querySelector("a[href^='mailto:']")).toBeNull();
+    expect(texto).toContain("Volte em breve");
+  });
+
   it("não mostra o botão se o número salvo só tem zeros após o DDD", async () => {
     configAtual = { ...LOJA_COMPLETA, whatsappNumber: "1100000000" };
     await renderizarPagina();

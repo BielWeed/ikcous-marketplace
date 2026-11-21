@@ -161,12 +161,12 @@ describe("HomeView — rede falhando não parece loja vazia", () => {
     loja.catalogoErro = false;
     await montar();
 
-    expect(hospedeiro.textContent).toContain("Nenhum produto agora");
     expect(hospedeiro.textContent).not.toContain("Não conseguimos carregar");
     expect(botaoTentar()).toBeUndefined();
     // Sem busca nem categoria escolhida, não manda "buscar outro termo".
     expect(hospedeiro.textContent).not.toContain("Tente buscar");
-    expect(hospedeiro.textContent).toContain("Em breve novidades por aqui");
+    expect(hospedeiro.textContent).toContain("Nenhum produto disponível agora");
+    expect(hospedeiro.textContent).not.toContain("novidades");
   });
 
   it("com produtos na tela (cópia salva) o aviso NÃO aparece, mesmo com erro", async () => {

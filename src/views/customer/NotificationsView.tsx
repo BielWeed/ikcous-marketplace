@@ -108,6 +108,7 @@ export function navegarPorUrl(
       "orders",
       "order-details",
       "account-settings",
+      "address-form",
       // Páginas públicas que o App aceita como entrada e que a lojista pode
       // digitar no "Avançado" do painel (o push do celular já as abre). As
       // telas `admin-*` ficam de fora: a cliente não vai ao painel pelo sino.

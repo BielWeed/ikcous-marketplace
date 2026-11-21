@@ -121,7 +121,7 @@ describe("SearchView — vitrine vazia não promete produtos", () => {
 
   // Quem abre a busca numa loja sem produto não buscou nada nem ligou filtro:
   // "Ué, nenhum resultado?" e "Limpar Tudo" mentem (não há o que limpar). A
-  // Home já separa os dois casos ("Em breve novidades por aqui").
+  // Home já separa os dois casos ("Nenhum produto disponível agora").
   it("loja sem produto à venda: diz que a loja ainda não tem produtos, sem 'nenhum resultado' nem 'Limpar Tudo'", async () => {
     catalogo = [];
     const host = await renderizarBusca();
