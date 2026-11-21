@@ -1498,13 +1498,21 @@ export const AdminPushView = memo(function AdminPushView({
           },
         );
       } else if (falharam > 0 || naoTentados > 0) {
+        const falhas = envio?.falhas ?? [];
+        const detalheParcial =
+          falhas.length > 1 && falhas.some(falhaDePushSemConfirmacao)
+            ? descricaoDePushSemConfirmacao(
+                falhas,
+                "O aviso sem confirmação ainda pode chegar",
+              )
+            : detalheDaFalha;
         toast.warning(
           `Envio aceito para ${entregues} de ${entregues + falharam + naoTentados} aparelhos`,
           {
             description:
               [
                 avisoDeAlcanceMenor,
-                detalheDaFalha,
+                detalheParcial,
                 naoTentados > 0
                   ? `${naoTentados} ${naoTentados === 1 ? "dispositivo não recebeu" : "dispositivos não receberam"} porque o envio demorou demais. Se reenviar esta campanha, quem já recebeu pode receber a mensagem repetida.`
                   : undefined,

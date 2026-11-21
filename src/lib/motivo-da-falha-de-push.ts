@@ -42,6 +42,7 @@ export function motivoDaFalhaEmPortugues(falha: FalhaDePush): string {
 
 export function descricaoDePushSemConfirmacao(
   falhas: readonly FalhaDePush[],
+  aviso = AVISO_PUSH_PODE_CHEGAR,
 ): string {
   const recusas: string[] = [];
   let outrasFalhas = 0;
@@ -63,7 +64,7 @@ export function descricaoDePushSemConfirmacao(
       }
     }
   }
-  const descricao = [`${AVISO_PUSH_PODE_CHEGAR}.`];
+  const descricao = [`${aviso}.`];
   if (recusas.length)
     descricao.push(`Recusas confirmadas: ${recusas.join("; ")}.`);
   if (outrasSemContagem) {

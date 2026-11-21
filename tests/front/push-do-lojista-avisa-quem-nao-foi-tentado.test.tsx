@@ -731,6 +731,29 @@ describe("Avisar clientes — destinatários não tentados", () => {
     );
   });
 
+  it("envio parcial mostra a recusa e o aviso que ainda pode chegar", async () => {
+    publico.total = 3;
+    invokeSendPush.mockResolvedValue({
+      data: {
+        enviados: 1,
+        falharam: 2,
+        falhas: [inscricaoVencida, demoraDoServico],
+      },
+      error: null,
+    });
+    await prepararCampanha();
+    await enviar();
+
+    const { toast } = await import("sonner");
+    expect(toast.warning).toHaveBeenCalledWith(
+      "Envio aceito para 1 de 3 aparelhos",
+      {
+        description:
+          "O aviso sem confirmação ainda pode chegar. Recusas confirmadas: 1x esse aparelho não recebe mais avisos (a inscrição venceu).",
+      },
+    );
+  });
+
   it("continuação separa demora de falha e não reenvia para quem já foi tentado", async () => {
     publico.total = 5;
     invokeSendPush
