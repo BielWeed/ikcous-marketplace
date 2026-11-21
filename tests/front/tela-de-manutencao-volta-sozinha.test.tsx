@@ -120,6 +120,15 @@ describe("tela de manutenção — o que a pessoa vê", () => {
   });
 });
 
+describe("tela de manutenção — orientação sobre pagamento", () => {
+  it("orienta quem já pagou a não pagar de novo e a conferir Meus pedidos", async () => {
+    await montar();
+    expect(hospedeiro.textContent).toContain(
+      "Se você já pagou, não pague de novo. Quando a loja voltar, confira em Meus pedidos.",
+    );
+  });
+});
+
 describe("tela de manutenção — checagem automática", () => {
   it("não pergunta nada antes do primeiro intervalo", async () => {
     await montar();

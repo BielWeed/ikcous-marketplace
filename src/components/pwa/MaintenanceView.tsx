@@ -63,7 +63,8 @@ export function MaintenanceView() {
 
       <p className="mb-8 max-w-sm text-sm leading-relaxed text-zinc-400">
         A loja está temporariamente indisponível. Esta página tenta reabrir a
-        loja automaticamente.
+        loja automaticamente. Se você já pagou, não pague de novo. Quando a loja
+        voltar, confira em Meus pedidos.
       </p>
 
       <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2">
