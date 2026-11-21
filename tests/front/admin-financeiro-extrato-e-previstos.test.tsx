@@ -280,6 +280,16 @@ describe("Financeiro — extrato e a pagar", () => {
       "Resultado do dia, sem o filtro de tipo +R$ 70,00",
     );
 
+    const resultado = [...(dia20?.querySelectorAll("span") ?? [])].find(
+      (el) =>
+        normalizar(el.textContent) ===
+        "Resultado do dia, sem o filtro de tipo +R$ 70,00",
+    );
+    expect(resultado?.classList.contains("whitespace-nowrap")).toBe(false);
+    const valor = resultado?.querySelector("span");
+    expect(normalizar(valor?.textContent)).toBe("+R$ 70,00");
+    expect(valor?.classList.contains("whitespace-nowrap")).toBe(true);
+
     await clicar(botaoEm(hospedeiro, "Tudo"));
     expect(normalizar(dia20?.textContent)).toContain("Dia +R$ 70,00");
   });

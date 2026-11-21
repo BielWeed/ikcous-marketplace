@@ -47,6 +47,8 @@ it.each([
       "Confira: o preço de venda (R$ 14,50) está abaixo do custo (R$ 14,90).",
     ],
   },
+  // O preço salvo (R$ 20,00) precisa ser diferente do digitado para comparar.
+  { preco: "14,90", avisos: [] },
   { preco: "15,00", avisos: [] },
 ])(
   "com custo de R$ 14,90 restaurado, compara o preço de R$ $preco",

@@ -66,6 +66,9 @@ it("reabre um rascunho de produto novo com preço numérico sem avisar sobre mud
     expect(
       hospedeiro.querySelector<HTMLInputElement>("#product-name")?.value,
     ).toBe("Vestido do rascunho");
+    expect(
+      hospedeiro.querySelector<HTMLInputElement>("#product-sale-price")?.value,
+    ).toBe("14,90");
     const avisos = [...hospedeiro.querySelectorAll('[role="status"]')].map(
       (el) => el.textContent,
     );

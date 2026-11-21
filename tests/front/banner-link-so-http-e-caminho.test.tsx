@@ -578,13 +578,34 @@ describe("AdminBannersView: o painel recusa o link perigoso ao salvar", () => {
     });
   }
 
-  /** Abre o banner, vai ao passo "Destino", escolhe "Link customizado" e digita. */
-  async function digitarOLink(link: string) {
+  async function montarPainel() {
     const { AdminBannersView } = await import("@/views/admin/AdminBannersView");
     await act(async () => {
       raiz.render(<AdminBannersView onNavigate={vi.fn()} active={true} />);
     });
     await espera(0);
+  }
+
+  it("a ajuda do destino distingue links automáticos e endereços externos", async () => {
+    await montarPainel();
+    await clicar(
+      hospedeiro.querySelector<HTMLElement>(
+        'button[title="Como usar os Banners"]',
+      ),
+    );
+    const rotulo = [
+      ...document.body.querySelectorAll('[role="dialog"] div'),
+    ].find((el) => el.textContent?.trim() === "Link de Destino");
+    expect(
+      rotulo?.nextElementSibling?.textContent?.replace(/\s+/g, " ").trim(),
+    ).toBe(
+      "Escolha um item em “Abrir Produto” ou uma categoria em “Página da Loja”. O painel preenche o link automaticamente. Para um site externo, cole o endereço em “Link / URL”.",
+    );
+  });
+
+  /** Abre o banner, vai ao passo "Destino", escolhe "Link customizado" e digita. */
+  async function digitarOLink(link: string) {
+    await montarPainel();
     await clicar(
       document.body.querySelector<HTMLElement>('button[title="Editar"]'),
     );
