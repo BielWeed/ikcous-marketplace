@@ -24,7 +24,7 @@ vi.mock("@/hooks/useOrders", () => ({
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const AVISO =
-  "Este código não vale mais. Se você já pagou, fique nesta tela: a confirmação aparece aqui. Se ainda não pagou, faça um pedido novo.";
+  "Este código não vale mais. Já pagou? Não faça outro pedido. Confira em Meus pedidos se o pagamento foi confirmado.";
 
 let raiz: Root;
 let hospedeiro: HTMLDivElement;
@@ -175,9 +175,9 @@ describe("PagamentoOnline (PIX) — pedido morto no servidor", () => {
   it("avisa junto da saída para o carrinho que quem já pagou não deve fazer novo pedido", async () => {
     await renderizar(true, vi.fn(), vi.fn());
 
-    expect(texto()).toContain(
-      "Já pagou? Não faça outro pedido. Aguarde a confirmação. Volte ao carrinho só se não pagou.",
-    );
+    expect(texto()).toContain(AVISO);
+    expect(texto()).toContain("Volte ao carrinho só se não pagou.");
+    expect(texto()).not.toContain("nesta tela");
   });
 
   it("põe Meus pedidos antes do carrinho e destaca só Meus pedidos", async () => {
@@ -192,9 +192,13 @@ describe("PagamentoOnline (PIX) — pedido morto no servidor", () => {
     ]);
   });
 
-  it("CONTROLE: pedido morto SEM a saída do carrinho (retomada: não há itens locais) não nasce botão mudo", async () => {
+  it("na retomada sem itens locais, orienta a não refazer o pedido sem oferecer volta ao carrinho", async () => {
     await renderizar(true, vi.fn());
+    expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toContain(
+      AVISO,
+    );
     expect(texto()).not.toContain("Voltar ao carrinho");
+    expect(texto()).not.toContain("Volte ao carrinho");
   });
 
   it("CONTROLE: com o pedido vivo o 'Voltar ao carrinho' não aparece, mesmo com a saída conhecida", async () => {

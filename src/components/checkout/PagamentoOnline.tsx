@@ -638,7 +638,7 @@ export function AvisoDePixEncerrado({
         <p className="text-sm text-amber-800">
           {pagamentoNaoConcluido
             ? "Este pagamento não foi concluído. Confira em Meus pedidos antes de fazer um novo pedido."
-            : "Este código não vale mais. Se você já pagou, fique nesta tela: a confirmação aparece aqui. Se ainda não pagou, faça um pedido novo."}
+            : "Este código não vale mais. Já pagou? Não faça outro pedido. Confira em Meus pedidos se o pagamento foi confirmado."}
         </p>
       </div>
       {onVerMeusPedidos && (
@@ -654,8 +654,7 @@ export function AvisoDePixEncerrado({
         <div className="space-y-2">
           {!pagamentoNaoConcluido && (
             <p id={idAvisoDoCarrinho} className="text-sm text-zinc-700">
-              Já pagou? Não faça outro pedido. Aguarde a confirmação. Volte ao
-              carrinho só se não pagou.
+              Volte ao carrinho só se não pagou.
             </p>
           )}
           <Button
