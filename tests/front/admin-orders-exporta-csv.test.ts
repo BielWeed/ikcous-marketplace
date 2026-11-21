@@ -11,6 +11,7 @@ import { describe, expect, it, vi } from "vitest";
 const CABECALHO =
   "Número do pedido;Data;Cliente;Telefone;Status;Forma de pagamento;Status do pagamento;Total;Cidade;UF;Itens;Subtotal;Frete;Desconto;Canal;Entrega";
 
+const CABECALHO_COM_ESTORNO = `${CABECALHO};Estorno pelo Mercado Pago;Total menos estorno do Mercado Pago`;
 const CRLF = "\r\n";
 
 function pedido(alteracoes: Partial<Pedido> = {}): Pedido {
@@ -38,6 +39,56 @@ function pedido(alteracoes: Partial<Pedido> = {}): Pedido {
 }
 
 describe("pedidosParaCsv", () => {
+  it.each([
+    ["parcial", 100, 30, "100,00", "30,00", "70,00"],
+    ["nenhum confirmado", 100, 0, "100,00", "0,00", "100,00"],
+    ["integral", 100, 100, "100,00", "100,00", "0,00"],
+    ["maior que o pedido", 100, 130, "100,00", "100,00", "0,00"],
+    ["com centavos", 100.23, 30.09, "100,23", "30,09", "70,14"],
+    [
+      "arredondado antes da subtração",
+      100.006,
+      30.004,
+      "100,01",
+      "30,00",
+      "70,01",
+    ],
+    ["desconhecido", 100, undefined, "100,00", "", ""],
+    ["ilegível", 100, Number.NaN, "100,00", "", ""],
+  ])(
+    "exporta o estorno %s sem mudar o Total original",
+    (_, total, valorEstornado, totalOriginal, estorno, restante) => {
+      const colunas = pedidosParaCsv([
+        pedido({ total, valorEstornado, paymentStatus: "pago" }),
+      ])
+        .split(CRLF)[1]
+        .split(";");
+
+      expect(colunas[7]).toBe(totalOriginal);
+      expect(colunas.slice(16)).toEqual([estorno, restante]);
+    },
+  );
+
+  it.each([0, undefined])(
+    "não informa valores de estorno para pagamento estornado com acumulado %s",
+    (valorEstornado) => {
+      const colunas = pedidosParaCsv([
+        pedido({
+          total: 37.27,
+          paymentMethod: "online",
+          paymentStatus: "estornado",
+          status: "delivered",
+          valorEstornado,
+        }),
+      ])
+        .split(CRLF)[1]
+        .split(";");
+
+      expect(colunas[7]).toBe("37,27");
+      expect(colunas.slice(16)).toEqual(["", ""]);
+    },
+  );
+
   it("não usa o relógio local de um aparelho em UTC", () => {
     vi.spyOn(Date.prototype, "getDate").mockImplementation(function (
       this: Date,
@@ -124,7 +175,7 @@ describe("pedidosParaCsv", () => {
     });
     const antes = structuredClone(original);
     const csv = pedidosParaCsv([original]);
-    expect(csv.split("\r\n")[0]).toBe(`\uFEFF${CABECALHO}`);
+    expect(csv.split(CRLF)[0]).toBe(`\uFEFF${CABECALHO_COM_ESTORNO}`);
     expect(csv).toContain(
       ';131,25;São Paulo;SP;"Café; ""Seleção""\n250 g (2 x 12,34) | Chá de maçã (1 x 5,60)";123,45;16,70;8,90',
     );
@@ -170,16 +221,16 @@ describe("pedidosParaCsv", () => {
   it("gera BOM UTF-8, colunas na ordem contratada, ponto e vírgula e CRLF", () => {
     const csv = pedidosParaCsv([pedido()]);
     expect(csv.charCodeAt(0)).toBe(0xfeff);
-    // ";Site;Envio" no fim: o fixture `pedido()` não declara `canal`, e pedido
+    // O fixture `pedido()` não declara `canal`, e pedido
     // sem canal é tratado como online (lote C4 — C4.1/C4.3); sem retirada nem
     // entrega local declaradas, a coluna Entrega é "Envio".
     expect(csv).toBe(
-      `\uFEFF${CABECALHO}\r\n#ABC123;08/09/2026 09:07;João Silva;11987654321;Novo Pedido;PIX Instantâneo;Aguardando pagamento;1234,50;São Paulo;SP;;1234,50;0,00;0,00;Site;Envio`,
+      `\uFEFF${CABECALHO_COM_ESTORNO}\r\n#ABC123;08/09/2026 09:07;João Silva;11987654321;Novo Pedido;PIX Instantâneo;Aguardando pagamento;1234,50;São Paulo;SP;;1234,50;0,00;0,00;Site;Envio;;`,
     );
   });
 
   it("lista vazia devolve somente BOM e cabeçalho", () => {
-    expect(pedidosParaCsv([])).toBe(`\uFEFF${CABECALHO}`);
+    expect(pedidosParaCsv([])).toBe(`\uFEFF${CABECALHO_COM_ESTORNO}`);
   });
 
   it.each([
@@ -276,13 +327,13 @@ describe("pedidosParaCsv", () => {
       ).toBe("Outro");
     });
 
-    it("o texto novo não mexe no resto da linha: mesmas 16 colunas, mesmo canal", () => {
+    it("a forma de pagamento não desloca a coluna Canal", () => {
       const colunas = pedidosParaCsv([
         pedido({ paymentMethod: "card", canal: "presencial" }),
       ])
         .split(CRLF)[1]
         .split(";");
-      expect(colunas).toHaveLength(16);
+      expect(colunas).toHaveLength(18);
       expect(colunas[14]).toBe("Balcão");
     });
   });

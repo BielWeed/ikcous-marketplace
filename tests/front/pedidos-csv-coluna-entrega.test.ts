@@ -1,4 +1,4 @@
-// A planilha de pedidos ganha a coluna "Entrega" (a última, depois de Canal,
+// A planilha de pedidos tem a coluna "Entrega" (depois de Canal,
 // para não deslocar planilha salva por posição): a lojista separa o que busca,
 // o que entrega ela mesma e o que vai por transportadora.
 import { pedidosParaCsv } from "@/lib/pedidos-csv";
@@ -35,12 +35,11 @@ function pedido(alteracoes: Partial<Pedido> = {}): Pedido {
 const colunasDaLinha = (csv: string) => csv.split("\r\n")[1].split(";");
 
 describe("pedidosParaCsv com a coluna Entrega", () => {
-  it("o cabeçalho antigo continua idêntico até 'Canal' e 'Entrega' vem por último", () => {
+  it("o cabeçalho mantém as posições de Canal e Entrega", () => {
     const cabecalho = pedidosParaCsv([pedido()])
       .slice(1) /* tira o BOM */
       .split("\r\n")[0];
-    expect(cabecalho.startsWith(`${CABECALHO_ATE_CANAL};`)).toBe(true);
-    expect(cabecalho).toBe(`${CABECALHO_ATE_CANAL};Entrega`);
+    expect(cabecalho.startsWith(`${CABECALHO_ATE_CANAL};Entrega;`)).toBe(true);
   });
 
   it("retirada na loja sai como 'Retirada na loja'", () => {
@@ -48,7 +47,7 @@ describe("pedidosParaCsv com a coluna Entrega", () => {
       pedido({ retiradaNaLoja: true, shippingOptionId: "store-pickup" }),
     ]);
     const colunas = colunasDaLinha(csv);
-    expect(colunas).toHaveLength(16);
+    expect(colunas).toHaveLength(18);
     expect(colunas[15]).toBe("Retirada na loja");
     expect(colunas[14]).toBe("Site");
   });
@@ -80,7 +79,7 @@ describe("pedidosParaCsv com a coluna Entrega", () => {
     expect("retiradaNaLoja" in antigo).toBe(false);
     expect("shippingOptionId" in antigo).toBe(false);
     const colunas = colunasDaLinha(pedidosParaCsv([antigo]));
-    expect(colunas).toHaveLength(16);
+    expect(colunas).toHaveLength(18);
     expect(colunas[15]).toBe("Envio");
   });
 
