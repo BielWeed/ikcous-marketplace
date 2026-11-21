@@ -31,7 +31,7 @@
       "Ao editar um produto, o painel avisa quando o novo preço de venda é menos da metade do preço salvo e quando fica abaixo do custo informado; o custo digitado com vírgula, como 14,90, é lido inteiro.",
       "No painel, o rótulo do Extrato com filtro de tipo diz “Resultado do dia, sem o filtro de tipo” e quebra linha em telas estreitas sem cortar os valores.",
       "Na tela do Pix, o aviso “Ainda não confirmado” manda quem já pagou não pagar de novo e conferir em Meus pedidos, na aba Em andamento ou no Histórico; ao voltar para um Pix em aberto, o aviso também manda não fazer outro pedido, e só toca em Retomar pagamento quem ainda não pagou.",
-    "Em Avisar clientes e na ficha do pedido, o aviso de envio sem confirmação deixa de falar em reenviar onde não há botão para isso; na ficha do pedido diz só que o aviso ainda pode chegar à cliente."
+      "Em Avisar clientes e na ficha do pedido, o aviso de envio sem confirmação deixa de falar em reenviar onde não há botão para isso; na ficha do pedido diz só que o aviso ainda pode chegar à cliente."
     ],
     "melhorias": [
       "No cadastro de produto, o campo de estoque do produto e o da variação passam a se chamar “Disponível para venda”, com uma ajuda que explica que as peças reservadas para pedidos não entram nessa quantidade.",
@@ -54,7 +54,7 @@
       "Na ficha do pedido, os controles de etiqueta e o atalho “devolver outro valor” têm áreas de toque maiores.",
       "Na lista “Devolver agora”, o nome comprido da cliente não esconde mais o valor a devolver.",
       "No recibo impresso do pedido e no recibo da venda no balcão, o item sem nome aparece como “Produto”; endereços e nomes longos quebram a linha na confirmação de cancelamento e no cálculo de frete em vez de passar da tela.",
-    "Em Avaliações, as respostas prontas ganham os nomes “Agradecer avaliação” e “Avaliação positiva”.",
+      "Em Avaliações, as respostas prontas ganham os nomes “Agradecer avaliação” e “Avaliação positiva”.",
       "Ao ajustar a imagem de um banner, o formato largo passa a se chamar “Computador (4:1)”.",
       "Na escolha de aparência do painel, o tema “Confortável” passa a ser descrito como “Tons quentes que cansam menos os olhos”."
     ]
