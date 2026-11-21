@@ -27,7 +27,7 @@ type PropsLucro = {
   data: string;
   lucroAcumulado: number;
   estoqueInvestido: number;
-  estoqueEstimado: boolean;
+  estoqueEstimado?: boolean;
 };
 
 const CAIXA =

@@ -679,7 +679,7 @@ export const OperationalPerformanceChart = memo(
                       stroke: "#fff",
                       strokeWidth: 1.5,
                     }}
-                    name="Estoque investido (estimado)"
+                    name="Estoque investido (dias anteriores estimados)"
                     isAnimationActive={!isMobile}
                   />
                 </AreaChart>
