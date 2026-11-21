@@ -436,6 +436,9 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
     ? elegibilidadeDaEtiqueta(pedido)
     : null;
   const etiquetaCancelada = pedido?.situacao_da_compra === "cancelada";
+  // A ficha pode saber do cancelamento antes da releitura do cartão.
+  const pedidoCancelado =
+    status === "cancelled" || pedido?.status === "cancelled";
 
   const handleGerarEtiqueta = useCallback(async () => {
     const orderIdDoClique = orderId;
@@ -877,15 +880,19 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
 
       {cargaFase === "ok" && pedido && elegibilidade && (
         <div className="space-y-2.5">
-          {deveAvisarCancelamentoComEtiquetaPaga(pedido) && (
-            <p
-              role="alert"
-              className="rounded-xl border border-admin-border bg-admin-surface px-3 py-2 text-sm font-medium leading-snug text-amber-400"
-            >
-              Confira no Melhor Envio se ainda é possível cancelar a etiqueta e
-              solicitar o reembolso.
-            </p>
-          )}
+          {pedidoCancelado &&
+            deveAvisarCancelamentoComEtiquetaPaga({
+              ...pedido,
+              status: "cancelled",
+            }) && (
+              <p
+                role="alert"
+                className="rounded-xl border border-admin-border bg-admin-surface px-3 py-2 text-sm font-medium leading-snug text-amber-400"
+              >
+                Confira no Melhor Envio se ainda é possível cancelar a etiqueta
+                e solicitar o reembolso.
+              </p>
+            )}
 
           {mensagemResultado?.tipo === "erro" && (
             <p
@@ -949,7 +956,7 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                {pedido.status === "cancelled" ? (
+                {pedidoCancelado ? (
                   <p className="text-sm font-medium text-amber-400">
                     Pedido cancelado — não postar
                   </p>
