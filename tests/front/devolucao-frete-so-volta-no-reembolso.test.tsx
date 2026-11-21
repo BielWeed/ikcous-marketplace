@@ -160,7 +160,8 @@ async function ateARevisaoComDefeito(
   await clicar(radio("etiqueta_reversa"));
   await clicar(botao("Continuar"));
   const revisao = folha()?.querySelector('[data-testid="passo-revisao"]');
-  expect(revisao).not.toBeNull();
+  expect(revisao).toBeTruthy();
+  expect(revisao?.textContent).toContain("Tênis");
   return revisao?.textContent ?? "";
 }
 
