@@ -16,7 +16,9 @@ vi.mock("@/hooks/useCategories", () => ({
 
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 
-const config = { shippingCoverage: "national", shippingProvider: "frenet" };
+let config: { shippingCoverage: string; shippingProvider?: string } = {
+  shippingCoverage: "national",
+};
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({ config }),
 }));
@@ -25,7 +27,7 @@ vi.mock("@/contexts/StoreContext", () => ({
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const avisoDeFrete =
-  "No frete automático, peso em branco ou zero usa 0,3 kg; cada medida em branco ou zero usa 15 cm.";
+  "Se o frete for calculado por transportadora, peso em branco ou zero usa 0,3 kg; cada medida em branco ou zero usa 15 cm.";
 const avisoDeEstoqueZero = "Com estoque 0, o produto ficará esgotado.";
 const avisoDeEstoquePositivo =
   "Com estoque acima de 0, o produto será vendido sem escolha de variação.";
@@ -61,8 +63,7 @@ describe("AdminProductFormView — avisos de frete e estoque", () => {
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
-    config.shippingCoverage = "national";
-    config.shippingProvider = "frenet";
+    config = { shippingCoverage: "national" };
     vi.stubGlobal("localStorage", {
       getItem: () => null,
       setItem: () => undefined,
@@ -116,7 +117,7 @@ describe("AdminProductFormView — avisos de frete e estoque", () => {
     campo.dispatchEvent(new Event("input", { bubbles: true }));
   }
 
-  it("avisa que o frete automático usa o peso padrão quando o peso está em branco", async () => {
+  it("mostra o aviso condicional com peso em branco e sem provedor no cadastro da loja", async () => {
     await montar({ weightKg: undefined });
 
     expect(status()).toContain(avisoDeFrete);
@@ -147,18 +148,22 @@ describe("AdminProductFormView — avisos de frete e estoque", () => {
     expect(status()).not.toContain(avisoDeFrete);
   });
 
-  it("não avisa sobre medidas padrão se a loja cobra taxa fixa", async () => {
-    config.shippingProvider = "flat_fee";
-    await montar({ weightKg: undefined });
-
-    expect(status()).not.toContain(avisoDeFrete);
-  });
-
-  it("não avisa sobre medidas padrão se a loja só entrega localmente", async () => {
+  it("mantém o aviso condicional mesmo se a loja só entrega localmente", async () => {
     config.shippingCoverage = "local";
     await montar({ weightKg: undefined });
 
-    expect(status()).not.toContain(avisoDeFrete);
+    expect(status()).toContain(avisoDeFrete);
+  });
+
+  it("mantém o aviso perto do botão, fora da linha de estado que corta o texto", async () => {
+    config.shippingProvider = "frenet";
+    await montar({ weightKg: undefined });
+
+    const aviso = [
+      ...hospedeiro.querySelectorAll('.produto-acoes [role="status"]'),
+    ].find((el) => el.textContent?.includes("peso em branco ou zero"));
+    expect(aviso).toBeDefined();
+    expect(aviso?.closest(".produto-status")).toBeNull();
   });
 
   it("avisa que o produto ficará esgotado se não há variações ligadas e o estoque é zero", async () => {
@@ -180,6 +185,10 @@ describe("AdminProductFormView — avisos de frete e estoque", () => {
 
     expect(status()).toContain(avisoDeEstoquePositivo);
     expect(status()).not.toContain(avisoDeEstoqueZero);
+    const aviso = [...hospedeiro.querySelectorAll('[role="status"]')].find(
+      (el) => el.textContent?.includes(avisoDeEstoquePositivo),
+    );
+    expect(aviso?.closest(".produto-acoes, .produto-status")).toBeNull();
   });
 
   it("não avisa sobre estoque sem variação quando alguma está ligada", async () => {

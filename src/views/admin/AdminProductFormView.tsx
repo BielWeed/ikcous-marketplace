@@ -4476,18 +4476,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         : "Com estoque acima de 0, o produto será vendido sem escolha de variação."
       : "";
 
-  const provedorDeFrete = config?.shippingProvider;
-  const avisaMedidasPadrao =
-    !isLocalShipping &&
-    (provedorDeFrete === "melhor_envio" ||
-      provedorDeFrete === "frenet" ||
-      provedorDeFrete === "superfrete") &&
-    [
-      formData.weightKg,
-      formData.lengthCm,
-      formData.widthCm,
-      formData.heightCm,
-    ].some((medida) => Number(medida) === 0);
+  const avisaMedidasPadrao = [
+    formData.weightKg,
+    formData.lengthCm,
+    formData.widthCm,
+    formData.heightCm,
+  ].some((medida) => Number(medida) === 0);
   // Indicadores de apresentação, a partir dos mesmos campos da validação.
   const preenchidos = [
     camposObrigatorios.name,
@@ -7167,12 +7161,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           {avisaMedidasPadrao && (
             <p
               role="status"
-              className="produto-status flex items-center gap-2 px-1 text-xs font-medium text-amber-300"
+              className="flex items-start gap-2 px-1 text-xs font-medium text-amber-300"
             >
               <AlertTriangle aria-hidden="true" className="size-4 shrink-0" />
-              <span>
-                No frete automático, peso em branco ou zero usa 0,3 kg; cada
-                medida em branco ou zero usa 15 cm.
+              <span className="min-w-0 whitespace-normal">
+                Se o frete for calculado por transportadora, peso em branco ou
+                zero usa 0,3 kg; cada medida em branco ou zero usa 15 cm.
               </span>
             </p>
           )}
