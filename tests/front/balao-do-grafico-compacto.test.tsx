@@ -97,7 +97,7 @@ describe("BalaoDoGrafico - lucro e estoque", () => {
         estoqueEstimado
       />,
     );
-    const rotulo = "Estoque investido (estimado)";
+    const rotulo = "Estoque (estimado)";
     const linha = Array.from(container.querySelectorAll("span")).find(
       (span) => span.textContent === rotulo,
     );

@@ -84,9 +84,7 @@ export function BalaoDoGrafico(props: PropsVendas | PropsLucro) {
         cor="bg-emerald-500"
       />
       <LinhaDeValor
-        rotulo={
-          estoqueEstimado ? "Estoque investido (estimado)" : "Estoque investido"
-        }
+        rotulo={estoqueEstimado ? "Estoque (estimado)" : "Estoque investido"}
         valor={reais(estoqueInvestido)}
         cor="bg-amber-500"
       />
