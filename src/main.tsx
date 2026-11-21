@@ -1,3 +1,4 @@
+import "./polyfills-ios-antigo";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
