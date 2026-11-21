@@ -4,8 +4,9 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fetchProduct = vi.fn();
+const updateProduct = vi.fn();
 vi.mock("@/hooks/useProducts", () => ({
-  useProducts: () => ({ fetchProduct }),
+  useProducts: () => ({ fetchProduct, updateProduct }),
 }));
 
 vi.mock("@/hooks/useCategories", () => ({
@@ -145,6 +146,39 @@ describe("AdminProductFormView — avisos do formulário", () => {
     ).toBe(false);
   });
 
+  it("retira o aviso de queda ao voltar ao preço salvo", async () => {
+    await montar({ price: 149.9 });
+    await digitarPreco("14,90");
+    expect(avisosDePrecoNaBarra()).toEqual([avisoDeQueda]);
+
+    await digitarPreco("149,90");
+
+    expect(avisosDePrecoNaBarra()).toEqual([]);
+  });
+
+  it("retira o aviso de queda assim que o novo preço é salvo na mesma tela", async () => {
+    await montar({ price: 149.9 });
+    updateProduct.mockResolvedValueOnce({
+      ...produto,
+      price: 14.9,
+      variants: [],
+    });
+    await digitarPreco("14,90");
+    expect(avisosDePrecoNaBarra()).toEqual([avisoDeQueda]);
+
+    const salvar =
+      hospedeiro.querySelector<HTMLButtonElement>(".produto-salvar");
+    await act(async () => salvar?.click());
+
+    expect(salvar?.textContent?.trim()).toBe("Salvo");
+    expect(updateProduct).toHaveBeenCalledWith(
+      produto.id,
+      expect.objectContaining({ price: 14.9 }),
+      expect.anything(),
+    );
+    expect(avisosDePrecoNaBarra()).toEqual([]);
+  });
+
   it.each(["99,90", "74,95", "0,00", ""])(
     "não avisa sobre a queda de 149,90 para %j",
     async (preco) => {
@@ -181,11 +215,13 @@ describe("AdminProductFormView — avisos do formulário", () => {
     expect(avisosDePrecoNaBarra()).toEqual([]);
   });
 
-  it("não avisa se o preço carregado é zero", async () => {
+  it("avisa só sobre o custo quando o preço carregado é zero", async () => {
     await montar({ price: 0, costPrice: 20 });
     await digitarPreco("14,90");
 
-    expect(avisosDePrecoNaBarra()).toEqual([]);
+    expect(avisosDePrecoNaBarra()).toEqual([
+      "Confira: o preço de venda (R$ 14,90) está abaixo do custo (R$ 20,00).",
+    ]);
   });
 
   it("não avisa antes de mexer no preço salvo, mesmo que esteja abaixo do custo", async () => {

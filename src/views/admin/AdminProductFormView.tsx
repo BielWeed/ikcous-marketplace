@@ -4491,7 +4491,6 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     !!productId &&
     precoDeVendaDigitado &&
     !priceError &&
-    precoDeVendaSalvo > 0 &&
     priceVal > 0 &&
     priceVal !== precoDeVendaSalvo;
   const avisosDaBarra = {
@@ -4499,7 +4498,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       ? "Se o frete for calculado por transportadora, peso em branco ou zero usa 0,3 kg; cada medida em branco ou zero usa 15 cm."
       : "",
     queda:
-      avisaPrecoDeVenda && priceVal < precoDeVendaSalvo / 2
+      avisaPrecoDeVenda &&
+      precoDeVendaSalvo > 0 &&
+      priceVal < precoDeVendaSalvo / 2
         ? `Confira: o preço vai cair de ${formatCurrency(precoDeVendaSalvo)} para ${formatCurrency(priceVal)}.`
         : "",
     abaixoDoCusto:
