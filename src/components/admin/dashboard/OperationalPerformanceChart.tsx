@@ -293,7 +293,10 @@ export const OperationalPerformanceChart = memo(
           <ExplicacaoDoRelatorio titulo="Histórico da loja">
             Conta pelo dia em que o pedido foi feito, por isso pode ficar um
             pouco diferente da Receita lá de cima. Em Vendas, a janela de 30
-            dias termina ontem, assim como a comparação do selo.
+            dias termina ontem, assim como a comparação do selo. O Histórico
+            pode incluir vendas reembolsadas por inteiro quando a devolução do
+            dinheiro foi registrada como manual. Para conferir o que entrou e
+            saiu, use o Extrato do Financeiro.
             {semCusto > 0 && (
               <div className="mt-3">
                 <p>{avisoProdutosSemCusto(semCusto)}</p>

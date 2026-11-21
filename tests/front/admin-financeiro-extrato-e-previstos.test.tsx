@@ -266,6 +266,24 @@ describe("Financeiro — extrato e a pagar", () => {
     expect(folha()).toBeNull();
   });
 
+  it("com filtro de tipo, explica que o resultado do dia inclui as linhas ocultas", async () => {
+    await irPara("Extrato");
+    const dia20 = hospedeiro.querySelector(
+      'section[aria-label*="20 de setembro"]',
+    );
+    expect(normalizar(dia20?.textContent)).toContain("Dia +R$ 70,00");
+
+    await clicar(botaoEm(hospedeiro, "Saídas"));
+    expect(normalizar(dia20?.textContent)).toContain("−R$ 80,00");
+    expect(normalizar(dia20?.textContent)).not.toContain("+R$ 150,00");
+    expect(normalizar(dia20?.textContent)).toContain(
+      "Resultado do dia, sem o filtro de tipo +R$ 70,00",
+    );
+
+    await clicar(botaoEm(hospedeiro, "Tudo"));
+    expect(normalizar(dia20?.textContent)).toContain("Dia +R$ 70,00");
+  });
+
   it("a pagar: o botão do estorno diz o número do pedido como o cliente vê (#999XYZ) e abre pelo id inteiro", async () => {
     await irPara("Pagar e receber");
 

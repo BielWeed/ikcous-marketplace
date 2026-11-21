@@ -153,11 +153,13 @@ function CabecalhoDoDia({
   grupo,
   hoje,
   comSaldoPorDia,
+  comFiltroDeTipo,
 }: {
   readonly grupo: DiaDoExtrato;
   readonly hoje: DataIso;
   /** A tela sabe reconstruir o saldo por dia (conta escolhida, período até hoje). */
   readonly comSaldoPorDia: boolean;
+  readonly comFiltroDeTipo?: boolean;
 }) {
   return (
     <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 pb-2 pt-4">
@@ -166,7 +168,7 @@ function CabecalhoDoDia({
       </h3>
       <p className="flex flex-wrap items-baseline justify-end gap-x-3 text-sm text-zinc-400">
         <span className="whitespace-nowrap">
-          Dia{" "}
+          {comFiltroDeTipo ? "Resultado do dia, sem o filtro de tipo" : "Dia"}{" "}
           <Dinheiro
             valor={grupo.resultado}
             comSinal
@@ -421,6 +423,7 @@ export function AbaExtrato({
                   grupo={grupo}
                   hoje={hoje}
                   comSaldoPorDia={saldoAtual !== null}
+                  comFiltroDeTipo={filtro !== "todos"}
                 />
                 <ul className="flex flex-col">
                   {linhas.map((linha) => (
