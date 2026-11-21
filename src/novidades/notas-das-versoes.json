@@ -6,17 +6,24 @@
       "A loja volta a abrir em iPhone com iOS 15.0 a 15.3: os recursos do navegador que faltam nesses aparelhos ganham uma reserva, usada só quando o aparelho não os tem."
     ],
     "correcoes": [
-      "No painel, um pedido de retirada na loja com o Pix vencido e o pagamento ainda sem constar mostra o aviso “O Pix deste pedido venceu pelo horário previsto, mas o pagamento ainda não consta.”, que orienta conferir com o cliente e, se a peça continua na loja, usar Cancelar pedido para liberar o estoque.",
+      "No painel, o aviso de Pix vencido aparece em pedidos pelo app em processamento ou envio quando o pagamento ainda não consta; na retirada na loja, a orientação de cancelar para liberar o estoque só aparece se não houve cancelamento depois da saída e vale se você não recebeu por fora e a peça continua na loja.",
       "Na lista de pedidos da cliente, o valor passa a se chamar “Total do pedido”.",
       "Na busca de pedidos, a orientação para quem comprou sem conta diz que pedidos feitos sem e-mail, só com WhatsApp e pagamento na entrega, não aparecem ali e, quando a loja tem WhatsApp, manda falar com a loja por ele.",
-      "Quando o CEP não é encontrado, o aviso diz “CEP não encontrado. Preencha o endereço manualmente.”; quando a busca falha, diz “Não foi possível buscar o CEP agora. Preencha o endereço manualmente.”",
+      "A busca de CEP distingue “CEP não encontrado”, “A busca de CEP demorou demais” e “Não foi possível buscar o CEP agora”; nos três casos, orienta a preencher o endereço manualmente.",
       "Na sugestão de valor do reembolso de uma devolução, o frete de ida só entra quando todos os itens foram conferidos e voltaram; se algum item foi marcado como “Não veio”, o aviso diz “Frete não incluído: nem todos os itens voltaram.”",
       "Em Frete, quando o contato do mototáxi ou as regras foram salvos e as transportadoras não, o aviso diz o que foi salvo, como “Salvamos o contato do mototáxi e as regras, mas as transportadoras não. Toque em Tentar de novo.”",
       "No gráfico do painel, o estoque dos dias anteriores aparece como “Estoque (estimado)”, com a nota “Estimativa: não considera entradas nem ajustes de estoque feitos depois.”; o dia de hoje continua “Estoque investido”.",
       "Na pergunta feita no produto, aparece o aviso “Sua pergunta fica visível para todos que visitam este produto. Não escreva telefone, e-mail nem outros dados pessoais.”",
-      "Quando o link da loja é aberto dentro do próprio navegador do WhatsApp, a loja abre normalmente; só o robô que monta a prévia do link (foto e nome) recebe a página de prévia."
+      "Ao tocar no link da loja no WhatsApp, a loja abre no lugar da prévia quando o navegador do WhatsApp indica que está abrindo uma página; a prévia do link na conversa continua igual.",
+      "Ao recarregar a tela de pagamento, se a conta demora a ser reconhecida, o app ainda pode retomar o mesmo pedido guardado para aquela conta, desde que a cliente não tenha saído da tela nem começado outra compra.",
+      "Em Avisar clientes, se nenhum aparelho tem envio aceito e o serviço demora a responder, o painel diz que não foi possível confirmar o envio e orienta a conferir se o aviso chegou antes de reenviar.",
+      "Em Minha loja, ao alterar os contatos, o painel recusa WhatsApp com só zeros depois do DDD e e-mail com parte vazia depois do @, como “nome@loja..com”; deixar um desses contatos antigos como está não impede salvar outras alterações.",
+      "Em Avisar clientes, se o envio foi aceito para parte dos aparelhos, o resumo mostra as recusas confirmadas junto do aviso de que os envios sem confirmação ainda podem chegar, quando os dois casos ocorrem."
     ],
-    "melhorias": []
+    "melhorias": [
+      "No cadastro de produto, o campo de estoque do produto e o da variação passam a se chamar “Disponível para venda”, com uma ajuda que explica que as peças reservadas para pedidos não entram nessa quantidade.",
+      "No cadastro de produto, se peso ou medida está em branco ou zero, um aviso explica que, se o frete for calculado por transportadora, o peso padrão é 0,3 kg e cada medida faltante ou zerada usa 15 cm; se todas as variações estiverem desligadas e o estoque estiver preenchido corretamente, outro aviso diz se o produto fica esgotado ou é vendido sem escolha de variação."
+    ]
   },
   "1.5.229": {
     "titulo": "Avisos mais claros no painel, nas ofertas e na compra",
