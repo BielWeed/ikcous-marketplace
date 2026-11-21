@@ -203,7 +203,8 @@ module.exports = [
     // 20/11/2026 (1.5.221): 686 -> 688 kB (o lote mediu 686,83 kB no CI, 834 B acima de 686 kB; subo 2 kB para ficar com folga acima do ruido de hash dos chunks). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
     // 20/11/2026 (1.5.225): 690 -> 693 kB (o lote mediu 690,84 kB no build local, 839 B acima de 690 kB; subo 3 kB para ficar com folga acima do ruido de hash dos chunks). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
     // 20/11/2026 (1.5.229): 693 -> 696 kB (o lote mediu 693,64 kB no CI, 641 B acima de 693 kB; subo 3 kB para ficar com folga acima do ruido de hash dos chunks). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
-    limit: "696 kB",
+    // 21/11/2026 (1.5.230): 696 -> 700 kB (o CI mediu 697,13 kB, 1,13 kB acima de 696 kB, depois das frases novas da nota e dos avisos de texto). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
+    limit: "700 kB",
     webpack: false,
     // Sem medida de TEMPO: o plugin `@size-limit/time` (que rodava o bundle em
     // Chrome headless e puxava o `extract-zip`) saiu das dependencias, entao
