@@ -342,7 +342,7 @@ describe("CheckoutView — visitante que retira na loja só informa nome, WhatsA
   });
 
   // (b) controle: a entrega continua exigindo tudo.
-  it("(b) controle: visitante + entrega local + só o CEP continua travado em 'Número é obrigatório'", async () => {
+  it("(b) visitante com só o CEP recebe a orientação sobre o número na entrega local", async () => {
     estado.opcao = OPCAO.entregaLocal;
     await renderizar();
     await preencher(SO_CEP);
@@ -350,7 +350,9 @@ describe("CheckoutView — visitante que retira na loja só informa nome, WhatsA
     expect(botaoFinalizar().disabled).toBe(true);
     expect(texto()).not.toContain(FRASE);
     await tocarNaPendencia();
-    expect(texto()).toContain("Número é obrigatório");
+    expect(texto()).toContain(
+      "Número do imóvel. Se não tiver número, digite S/N.",
+    );
     expect(texto()).toContain("Rua é obrigatória");
     expect(createOrder).not.toHaveBeenCalled();
   });
@@ -404,7 +406,9 @@ describe("CheckoutView — visitante que retira na loja só informa nome, WhatsA
     expect(campo("guest-number")?.value).toBe("");
     expect(botaoFinalizar().disabled).toBe(true);
     await tocarNaPendencia();
-    expect(texto()).toContain("Número é obrigatório");
+    expect(texto()).toContain(
+      "Número do imóvel. Se não tiver número, digite S/N.",
+    );
   });
 
   // (d) controle: quem tem conta não mudou.

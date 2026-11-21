@@ -996,6 +996,7 @@ describe("CheckoutView — o pagamento pendente sobrevive à recarga da página"
     expect(aviso).toContain("continua reservado");
     expect(aviso).toContain("Retomar pagamento");
     expect(aviso).toContain("Meus pedidos");
+    expect(aviso).toContain("Se já pagou, não repita o Pix.");
     // A frase é longa: fica na tela mais que os 4,5 s de padrão do app.
     expect(toastInfo.mock.calls[0][1]).toMatchObject({ duration: 8000 });
     expect(onNavigate).toHaveBeenCalledWith("home");

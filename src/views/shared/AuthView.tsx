@@ -857,6 +857,9 @@ export function AuthView({
                 {emailDaConfirmacao}
               </span>
               <br />
+              <br />O endereço acima está errado? Toque em "Retornar ao Login",
+              abra o cadastro novamente e corrija o e-mail.
+              <br />
               <br />
               Se você recebeu o e-mail, use o link do e-mail mais recente: só o
               último vale. Depois de confirmar seu e-mail, volte para a aba ou

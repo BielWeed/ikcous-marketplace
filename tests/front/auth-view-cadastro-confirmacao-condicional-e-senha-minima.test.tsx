@@ -111,6 +111,9 @@ describe("AuthView — cadastro: texto condicional e senha mínima", () => {
       expect(texto).toContain("Verifique seu e-mail");
       expect(texto).toMatch(/se este e-?mail ainda não tinha conta/i);
       expect(texto).toMatch(/se você já tem conta/i);
+      expect(texto).toMatch(
+        /pessoa@example\.com\s*O endereço acima está errado\? Toque em "Retornar ao Login",\s+abra o cadastro novamente e corrija o e-mail\./,
+      );
       // Link no spam: reenviar não resolve, então a tela manda olhar lá.
       expect(texto).toMatch(/pasta de spam ou lixo\s+eletrônico/i);
       // O endereço continua visível (ajuda quem digitou errado).
@@ -126,7 +129,7 @@ describe("AuthView — cadastro: texto condicional e senha mínima", () => {
 
       const texto = hospedeiro.textContent?.replace(/\s+/g, " ");
       expect(texto).toMatch(
-        /pessoa@example\.com\s*Se você recebeu o e-mail, use o link do e-mail mais recente: só o último vale\. Depois de confirmar seu e-mail, volte para a aba ou para o app em que estava; se estava comprando, continue a compra por lá\. Se ainda aparecer esta tela, toque em "Retornar ao Login" e entre com o e-mail e a senha do cadastro\./,
+        /Se você recebeu o e-mail, use o link do e-mail mais recente: só o último vale\. Depois de confirmar seu e-mail, volte para a aba ou para o app em que estava; se estava comprando, continue a compra por lá\. Se ainda aparecer esta tela, toque em "Retornar ao Login" e entre com o e-mail e a senha do cadastro\./,
       );
     });
 

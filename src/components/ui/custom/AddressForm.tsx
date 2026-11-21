@@ -52,7 +52,10 @@ const addressSchema = z.object({
   // de entrega. O que valida CEP é a contagem de DÍGITOS: sempre 8.
   cep: z
     .string()
-    .refine((v) => v.replace(/\D/g, "").length === 8, "CEP inválido"),
+    .refine(
+      (v) => v.replace(/\D/g, "").length === 8,
+      "Digite os 8 números do CEP.",
+    ),
   street: z
     .string()
     .max(200, "Máximo de 200 caracteres")
@@ -713,7 +716,10 @@ export function AddressForm({
   if (buscandoCep) {
     avisoDoCep = { tom: "mudo", texto: "Procurando o endereço deste CEP…" };
   } else if (erros.cep) {
-    avisoDoCep = { tom: "erro", texto: erros.cep.message ?? "CEP inválido" };
+    avisoDoCep = {
+      tom: "erro",
+      texto: erros.cep.message ?? "Digite os 8 números do CEP.",
+    };
   } else if (resultadoCep?.tipo === "naoEncontrado") {
     avisoDoCep = {
       tom: "erro",

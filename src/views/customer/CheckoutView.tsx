@@ -1295,7 +1295,7 @@ export function CheckoutViewDaConta({
           if (!data.cep || data.cep.replace(/\D/g, "").length !== 8) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
-              message: "CEP inválido",
+              message: "Digite os 8 números do CEP.",
               path: ["cep"],
             });
           }
@@ -1326,7 +1326,7 @@ export function CheckoutViewDaConta({
           if (!data.number || !nomeTemConteudoVisivel(data.number)) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
-              message: "Número é obrigatório",
+              message: "Número do imóvel. Se não tiver número, digite S/N.",
               path: ["number"],
             });
           } else if (data.number.length > TETO_NUMERO_DO_CHECKOUT) {
@@ -7674,7 +7674,7 @@ export function CheckoutViewDaConta({
                             id="guest-number"
                             maxLength={TETO_NUMERO_DO_CHECKOUT}
                             {...form.register("number")}
-                            placeholder="123"
+                            placeholder="123 ou S/N"
                             aria-invalid={
                               erroDoCampo("number") ? true : undefined
                             }

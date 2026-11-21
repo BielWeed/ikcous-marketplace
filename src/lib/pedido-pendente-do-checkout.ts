@@ -37,7 +37,7 @@
  * refazia a compra.
  */
 export const AVISO_PIX_CONTINUA_ABERTO_AO_VOLTAR =
-  "Seu pedido continua reservado, aguardando o Pix. Para pagar ou conferir, abra o pedido em Meus pedidos e toque em Retomar pagamento.";
+  "Seu pedido continua reservado, aguardando o Pix. Se já pagou, não repita o Pix. Para pagar ou conferir, abra o pedido em Meus pedidos e toque em Retomar pagamento.";
 
 const PREFIXO_DA_CHAVE = "ikcous:checkout-pedido-pendente:";
 

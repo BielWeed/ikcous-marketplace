@@ -17,7 +17,7 @@ const verificarPix = vi.fn();
 let tentativaPix = 0;
 const ROTULO_VERIFICAR_PIX = "Já paguei — verificar";
 const PIX_AINDA_NAO_CONFIRMADO =
-  "Ainda não confirmado. Tente de novo em instantes.";
+  "Ainda não confirmado. Se você já pagou no banco, não pague de novo: aguarde aqui ou confira em Meus pedidos.";
 
 const createOrder = vi
   .fn()
