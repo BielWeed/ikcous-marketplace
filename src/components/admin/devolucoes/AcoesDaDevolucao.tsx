@@ -8,7 +8,7 @@ import {
   Unlock,
   X,
 } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   LocalBufferedInput,
@@ -237,8 +237,8 @@ export function AcoesDaDevolucao({
   const valorPadrao = (
     (limitadoAoSaldo ? saldoEmCentavos : sugeridoCheio) / 100
   ).toFixed(2);
-  // Só o que a lojista DIGITOU; sem edição o campo segue o padrão (que muda
-  // quando o saldo chega).
+  // O valor digitado não pode subir sozinho, mesmo se era igual à sugestão.
+  const editouValor = useRef(false);
   const [valorDigitado, setValorDigitado] = useState<string | null>(null);
   const valor = valorDigitado ?? valorPadrao;
   const [observacao, setObservacao] = useState("");
@@ -840,14 +840,26 @@ export function AcoesDaDevolucao({
                     mask="currency"
                     inputMode="numeric"
                     value={valor}
-                    onFlush={(v) =>
-                      setValorDigitado(v === valorPadrao ? null : v)
-                    }
+                    onInput={() => {
+                      editouValor.current = true;
+                    }}
+                    onFlush={(v) => {
+                      if (editouValor.current) setValorDigitado(v);
+                    }}
+                    normalizarAoSair={(texto) => {
+                      if (editouValor.current) return texto;
+                      // O saldo pode chegar enquanto o campo está em foco.
+                      return formatarReais(Number(valorPadrao)).replace(
+                        /^R\$\s*/,
+                        "",
+                      );
+                    }}
                     className={cn(CAMPO, "h-11 py-0 tabular-nums")}
                   />
                   <p className="text-[11px] leading-relaxed text-zinc-500">
                     Itens {formatarReais(detalhe.valor_itens)}
-                    {freteIncluido > 0 &&
+                    {valorDigitado === null &&
+                      freteIncluido > 0 &&
                       ` + frete de ida ${formatarReais(freteIncluido / 100)} (o pedido voltou inteiro)`}
                     .{" "}
                     {pagoPeloApp(detalhe)
