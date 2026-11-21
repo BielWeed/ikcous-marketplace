@@ -534,6 +534,33 @@ describe("CartaoDeAvisosDoAparelho", () => {
       expect(hospedeiro.querySelector('[role="status"]')).toBeNull();
     });
 
+    it("demora do serviço não é recusa do aviso de teste", async () => {
+      invoke.mockResolvedValue({
+        data: {
+          enviados: 0,
+          falharam: 1,
+          falhas: [
+            {
+              status: null,
+              motivo:
+                "Sem resposta do serviço de push dentro do prazo; o aviso pode ter chegado ao aparelho mesmo assim",
+              quantidade: 1,
+            },
+          ],
+        },
+        error: null,
+      });
+      await montarJaLigado();
+      await tocar(TESTE);
+
+      const alerta = hospedeiro.querySelector('[role="alert"]')?.textContent;
+      expect(alerta).toContain("Não foi possível confirmar o envio");
+      expect(alerta).toContain(
+        "Confira se o aviso apareceu neste aparelho antes de mandar outro teste.",
+      );
+      expect(alerta).not.toContain("não foi enviado");
+    });
+
     it("a chamada que lança (rede caiu) é falha, e dá para tentar de novo", async () => {
       invoke
         .mockRejectedValueOnce(new Error("rede"))

@@ -196,6 +196,9 @@ exports[`P1 preserva cada classe de celular da base > sobre 1`] = `
   "flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground",
   "size-4 shrink-0",
   "mt-2 break-words text-base leading-relaxed text-foreground",
+  "rounded-[18px] border border-border bg-muted/30 p-4",
+  "flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground",
+  "flex min-h-11 w-full items-center gap-2 break-all text-sm font-semibold text-foreground underline underline-offset-2",
   "rounded-[18px] border border-border bg-muted/30 p-4 text-base leading-relaxed text-muted-foreground",
   "fixed left-1/2 z-[115] h-[52px] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 shadow-lg",
 ]

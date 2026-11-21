@@ -93,7 +93,7 @@ describe("AdminSettingsView — disclosure do diagnóstico de conexão", () => {
       (s) => s.getAttribute("aria-label") === "Ferramentas",
     );
     expect(ferramentas?.textContent).toContain("Diagnóstico de Conexão");
-    expect(ferramentas?.textContent).toContain("Online");
+    expect(ferramentas?.textContent).toContain("Conectada");
     expect(hospedeiro.textContent).not.toContain("Como está sua loja");
 
     // O painel do diagnóstico NASCE ABERTO (isOpen=true): o estado tem de

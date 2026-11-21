@@ -10,6 +10,7 @@ import { observacaoDaClienteNoRecibo } from "@/lib/observacao-da-cliente-no-reci
 import { quemVaiReceberSeForOutro } from "@/lib/quem-vai-receber";
 import { situacaoDoPagamentoNaEntrega } from "@/lib/situacao-do-pagamento-na-entrega";
 import { limparTelefoneBrasileiro } from "@/lib/telefone-br";
+import { telefoneNacionalZerado } from "@/lib/telefone-nacional-zerado";
 import { textoSemControlesDeDirecao } from "@/lib/texto-sem-controles-de-direcao";
 import type { Order } from "@/types";
 
@@ -188,6 +189,9 @@ export function validarWhatsappDaLoja(digitado: string): string | null {
   }
   if (!dddBrasileiroValido(digitos.slice(0, 2))) {
     return "Confira o DDD: esse DDD não existe.";
+  }
+  if (telefoneNacionalZerado(digitos)) {
+    return "Esse número de WhatsApp não parece válido. Confira o DDD e o número.";
   }
   if (digitos.length === 11 && digitos[2] !== "9") {
     return "Confira o WhatsApp: celular precisa começar com 9 depois do DDD.";

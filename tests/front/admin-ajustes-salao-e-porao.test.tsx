@@ -480,14 +480,14 @@ describe("Ajustes — o estado mora no subtítulo de cada grupo, sem cartão", (
     expect(subtituloDoGrupo("Regras de troca e devolução")).toBe(
       "Prazos, formas de devolver e política",
     );
-    expect(subtituloDoGrupo("Ferramentas")).toBe("Conexão · Online");
+    expect(subtituloDoGrupo("Ferramentas")).toBe("Conexão · Conectada");
   });
 
-  it("'Conexão' mora em Ferramentas, junto de 'Minha loja está no ar?': Online", async () => {
+  it("'Conexão' mora em Ferramentas, junto de 'Minha loja está no ar?': Conectada", async () => {
     await renderizar();
     const ferramentas = secaoDoGrupo("Ferramentas");
     expect(ferramentas.textContent).toContain("Conexão");
-    expect(ferramentas.textContent).toContain("Online");
+    expect(ferramentas.textContent).toContain("Conexão · Conectada");
     expect(ferramentas.textContent).toContain("Minha loja está no ar?");
     // E só lá: nenhum outro grupo carrega o indicador.
     for (const outro of [
@@ -595,13 +595,13 @@ describe("Ajustes — o estado mora no subtítulo de cada grupo, sem cartão", (
     expect(hospedeiro.textContent).not.toContain("Melhor Envio");
   });
 
-  it("offline: Conexão diz Offline, em Ferramentas", async () => {
+  it("offline: Conexão diz Indisponível, em Ferramentas", async () => {
     mockOnline.useOnlineStatus.mockReturnValue(true);
     await renderizar();
     const ferramentas = secaoDoGrupo("Ferramentas").textContent ?? "";
     expect(ferramentas).toContain("Conexão");
-    expect(ferramentas).toContain("Offline");
-    expect(hospedeiro.textContent).not.toContain("Online");
+    expect(ferramentas).toContain("Conexão · Indisponível");
+    expect(hospedeiro.textContent).not.toContain("Conexão · Conectada");
   });
 });
 

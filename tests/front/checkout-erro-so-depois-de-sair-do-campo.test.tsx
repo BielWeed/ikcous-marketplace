@@ -470,7 +470,9 @@ describe("CheckoutView (convidado) — o erro de um campo só aparece depois que
     const erros = errosNaTela();
     expect(erros["erro-checkout-name"]).toBe("Nome é obrigatório");
     expect(erros["erro-checkout-tel"]).toContain("WhatsApp");
-    expect(erros["erro-guest-number"]).toBe("Número é obrigatório");
+    expect(erros["erro-guest-number"]).toBe(
+      "Número do imóvel. Se não tiver número, digite S/N.",
+    );
     // O CEP de Monte Carmelo não traz rua nem bairro.
     expect(erros["erro-guest-street"]).toBe("Rua é obrigatória");
     expect(erros["erro-guest-neighborhood"]).toBe("Bairro é obrigatório");
@@ -498,7 +500,9 @@ describe("CheckoutView (convidado) — o erro de um campo só aparece depois que
     const erros = errosNaTela();
     expect(erros["erro-checkout-name"]).toBe("Nome é obrigatório");
     expect(erros["erro-checkout-tel"]).toContain("WhatsApp");
-    expect(erros["erro-guest-number"]).toBe("Número é obrigatório");
+    expect(erros["erro-guest-number"]).toBe(
+      "Número do imóvel. Se não tiver número, digite S/N.",
+    );
     expect(erros["erro-guest-street"]).toBe("Rua é obrigatória");
     expect(erros["erro-guest-neighborhood"]).toBe("Bairro é obrigatório");
     expect(marcadoInvalido("checkout-name")).toBe(true);

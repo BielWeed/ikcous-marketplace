@@ -270,17 +270,24 @@ const TIMELINE_STEPS: Array<{
   },
 ];
 
+const AVISO_DE_QUEM_JA_PAGOU =
+  "Já pagou? Não faça outro pedido. Se a confirmação não aparecer, fale com a loja.";
+
+function ePixOnline({
+  paymentMethod,
+  metodoOnline,
+}: Pick<Order, "paymentMethod" | "metodoOnline">): boolean {
+  return (
+    paymentMethod === "pix" ||
+    (paymentMethod === "online" && metodoOnline === "pix")
+  );
+}
+
 /**
- * Só o estado `pending` (esteira do pedido) muda de texto conforme o
- * `payment_status` (se o dinheiro entrou) — processing/shipping/delivered/
- * cancelled continuam com a description fixa do `statusConfig`, porque a
- * esteira já avançou e a pergunta "o dinheiro entrou?" já foi respondida
- * pela lojista. É por isso que este é um `switch` pequeno em cima de
- * `paymentStatusKey` (a ÚNICA fonte que decide "null vira sem_cobranca"),
- * não um segundo emaranhado de `if` dentro de `statusConfig`.
+ * Em `pending`, a descrição explica o estado do pagamento a partir de
+ * `paymentStatusKey`. A loja pode avançar o pedido sem confirmar o Pix:
+ * nesse caso, o aviso de quem já pagou também acompanha a descrição da etapa.
  *
- * `aguardando` cai no `default`: devolve o texto que já estava certo, sem
- * mudar uma vírgula.
  *
  * `sem_cobranca` NÃO é "falta pagar": a compra "na entrega" grava
  * `payment_status` nulo (RPC v23, sem cobrança online nenhuma), e a frase de
@@ -298,6 +305,7 @@ function pendingDescription(
   paymentStatus: PaymentStatus | null | undefined,
   forma: {
     paymentMethod: Order["paymentMethod"];
+    metodoOnline?: Order["metodoOnline"];
     retiradaNaLoja?: boolean;
     total?: number | null;
     subtotal?: number | null;
@@ -326,6 +334,11 @@ function pendingDescription(
       // a loja confirmou o recebimento na entrega — mesmo tratamento de
       // `pago`.
       return "Pagamento confirmado. A loja vai iniciar a separação.";
+    case "aguardando":
+      if (ePixOnline(forma)) {
+        return `${statusConfig.pending.description} ${AVISO_DE_QUEM_JA_PAGOU}`;
+      }
+      return statusConfig.pending.description;
     case "recusado":
       return "O pagamento não foi aprovado. Tente novamente ou fale com a loja.";
     case "expirado":
@@ -480,7 +493,7 @@ function cancelledDescription(
     // Pagou no fim do prazo e o vencimento passou antes da confirmação do
     // Mercado Pago: o pedido fica minutos como `expirado` e só depois vira
     // `pago_apos_expirar`. Comprar de novo na hora seria pagar duas vezes.
-    return "O prazo do pagamento terminou e o pedido foi cancelado. Se você já pagou, aguarde alguns minutos antes de comprar de novo. Se não pagou, é só comprar de novo.";
+    return `O prazo do pagamento terminou e o pedido foi cancelado. ${AVISO_DE_QUEM_JA_PAGOU} Se não pagou, é só comprar de novo.`;
   }
   return retiradaNaLoja
     ? "Este pedido foi cancelado e não seguirá para retirada."
@@ -1297,6 +1310,7 @@ export function OrderDetailsView({
     order.status === "pending"
       ? pendingDescription(order.paymentStatus, {
           paymentMethod: order.paymentMethod,
+          metodoOnline: order.metodoOnline,
           retiradaNaLoja: order.retiradaNaLoja,
           total: order.total,
           subtotal: order.subtotal,
@@ -1312,7 +1326,11 @@ export function OrderDetailsView({
             order.retiradaNaLoja,
             order.metodoOnline,
           )
-        : currentStatus.description;
+        : (order.status === "processing" || order.status === "shipping") &&
+            chaveDoPagamento === "aguardando" &&
+            ePixOnline(order)
+          ? `${currentStatus.description} ${AVISO_DE_QUEM_JA_PAGOU}`
+          : currentStatus.description;
   // Estornado: o dinheiro já voltou, então só a linha CONCLUÍDA tem o que dizer
   // (o valor). "Em andamento", "a loja faz depois" e "cuidando disso" seriam
   // falsos aqui, e sem linha (chargeback, "Já estornei") a descrição acima basta.

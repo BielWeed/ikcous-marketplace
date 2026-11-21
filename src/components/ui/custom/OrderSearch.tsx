@@ -411,7 +411,11 @@ export function OrderSearch({
                       Este rastreio só encontra pedidos feitos com e-mail. Se
                       você comprou sem conta, fale com a loja e informe o
                       identificador do pedido (aparece ao finalizar a compra).
-                      Use o contato da loja que você já tem.
+                      Use o contato da loja que você já tem. Pedidos feitos sem
+                      e-mail não aparecem aqui, seja para entrega ou retirada.
+                      {lojaAtendePorWhatsapp
+                        ? " Fale com a loja pelo WhatsApp."
+                        : null}
                     </p>
                     {lojaAtendePorWhatsapp && (
                       <BotaoWhatsapp
@@ -497,7 +501,7 @@ export function OrderSearch({
                         htmlFor={idFragmento}
                         className="block text-sm font-medium text-foreground"
                       >
-                        6 últimos caracteres do ID do pedido
+                        Código do pedido
                       </label>
                       <div className="relative">
                         <Hash className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -517,7 +521,8 @@ export function OrderSearch({
                         id={idDicaFragmento}
                         className="text-xs text-muted-foreground"
                       >
-                        É o código que aparece no comprovante da compra.
+                        Digite os 6 caracteres que aparecem depois de # no
+                        comprovante da compra.
                       </p>
                     </div>
                   </div>

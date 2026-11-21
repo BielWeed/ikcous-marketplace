@@ -328,7 +328,15 @@ describe("EstornoCard — o lojista devolve o dinheiro do pedido pelo painel", (
     await montar();
 
     expect(texto()).toContain("Devolvido: R$ 30,00 · Disponível: R$ 70,00");
-    expect(botaoComTexto("Devolver R$ 70,00")).toBeDefined();
+    const botao = botaoComTexto("Devolver R$ 70,00");
+    expect(botao).toBeDefined();
+    vi.stubGlobal("confirm", vi.fn().mockReturnValue(true));
+    await act(async () => {
+      botao?.click();
+    });
+    expect(solicitarEstornoMock.mock.calls).toEqual([
+      [{ amount: 70, motivo: "" }],
+    ]);
   });
 
   // Lote 232: o Devolvido do resumo (`valor_estornado`) só vê o que o Mercado

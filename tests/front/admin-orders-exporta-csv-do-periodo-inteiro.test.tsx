@@ -67,6 +67,7 @@ function pedido(numero: number, pagamento = "aguardando") {
     customer_data: { whatsapp: "11999999999" },
     items: [],
     total: 100,
+    valor_estornado: numero === 15 ? 30 : 0,
     status: "pending",
     payment_status: pagamento,
     payment_method: "pix",
@@ -289,6 +290,10 @@ describe("CSV de todos os pedidos do filtro", () => {
       });
       expect(textoCsv.split("\r\n").slice(1)).toHaveLength(15);
       expect(textoCsv).toContain("#000015");
+      const linha = textoCsv
+        .split("\r\n")
+        .find((l) => l.startsWith("#000015;"));
+      expect(linha?.split(";").slice(-2)).toEqual(["30,00", "70,00"]);
       expect(baixar).toHaveBeenCalledTimes(1);
       expect(chamadasExportacao().map(([, args]) => args)).toEqual(
         [0, 1].map((pagina) => ({

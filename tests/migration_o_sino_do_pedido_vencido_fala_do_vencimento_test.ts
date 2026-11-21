@@ -75,7 +75,7 @@ Deno.test("3999200: o corpo anterior e' o da 20261233000000; esta migration troc
   assert.equal(rb.match(/CREATE OR REPLACE FUNCTION/g)?.length, 1);
 });
 
-Deno.test("3999200: a regra — so payment_status 'expirado' (IS NOT DISTINCT FROM, NULL nunca e vencido) fala do vencimento, com a frase padrão da tela do pedido; o ELSE e' a frase de hoje", () => {
+Deno.test("3999200: a regra — so payment_status 'expirado' (IS NOT DISTINCT FROM, NULL nunca e vencido) fala do vencimento com o motivo mostrado na ficha; o ELSE mantém o aviso genérico", () => {
   const c = corpo(sql);
   assert.equal(
     c.split("IF NEW.payment_status IS NOT DISTINCT FROM 'expirado' THEN")
@@ -90,12 +90,12 @@ Deno.test("3999200: a regra — so payment_status 'expirado' (IS NOT DISTINCT FR
   );
   assert.equal(c.split("Pedido cancelado").length - 1, 1);
   assert.equal(c.split("Prazo do pagamento terminou").length - 1, 1);
-  // O sino mantém a frase padrão da tela, sem o aviso específico de cartão.
+  // A notificação histórica e a ficha explicam o mesmo motivo. A orientação
+  // de quem já pagou na ficha é coberta pelos testes de renderização do front.
+  const motivo = "O prazo do pagamento terminou e o pedido foi cancelado.";
   const tela = ler("src/views/customer/OrderDetailsView.tsx");
-  assert.ok(
-    tela.includes(`return "${FRASE_VENCIDO}";`),
-    "a frase do sino deixou de ser a frase padrão da tela do pedido",
-  );
+  assert.ok(FRASE_VENCIDO.startsWith(motivo));
+  assert.ok(tela.includes(motivo));
   // O ELSE traz o mesmo INSERT de antes (so a indentacao muda).
   const velho = RAMO_VELHO.split("\n")
     .slice(1)

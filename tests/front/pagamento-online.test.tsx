@@ -408,6 +408,13 @@ describe("dispararPagamentoPix", () => {
     await esperarMicrotarefas();
 
     expect(onPix).toHaveBeenCalledTimes(1);
+    expect(onPix).toHaveBeenCalledWith({
+      paymentId: "pay-1",
+      aguardando: false,
+      qrCodeBase64: "abc123",
+      qrCode: "000201...",
+      expiraEm: "2026-09-25T12:00:00.000Z",
+    });
   });
 
   // Rede de segurança: sem QR (os dois campos ausentes) é recuperável, MESMO

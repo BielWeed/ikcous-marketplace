@@ -322,7 +322,7 @@ describe("AdminProductFormView — rótulos na língua da loja (G3)", () => {
       {
         seletor: '[title="Ajuda / Guia de Variações"]',
         titulo: "Como usar as Variações",
-        conteudo: "Estoque da Variação",
+        conteudo: "Disponível para venda:",
       },
       {
         seletor: '[title="Ajuda / Guia de Precificação"]',

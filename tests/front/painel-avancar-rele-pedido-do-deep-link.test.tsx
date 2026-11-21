@@ -372,7 +372,7 @@ describe("AdminOrdersView — a ficha aberta por DEEP LINK reflete o status VERD
 
     function botaoConfirmarAvancoMesmoAssim() {
       return Array.from(hospedeiro.querySelectorAll("button")).find((b) =>
-        b.textContent?.includes("Avançar mesmo assim"),
+        b.textContent?.includes("Avançar sem pagamento confirmado"),
       );
     }
 

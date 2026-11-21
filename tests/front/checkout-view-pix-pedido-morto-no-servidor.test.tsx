@@ -198,7 +198,10 @@ describe("CheckoutView — pedido morto no servidor chega ao PagamentoOnline", (
       expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toContain(
         "Este pagamento não foi concluído.",
       );
-      expect(hospedeiro.textContent).not.toContain("confirmação aparece aqui");
+      expect(hospedeiro.textContent).not.toContain("Aguarde a confirmação");
+      expect(hospedeiro.textContent).not.toContain(
+        "se o pagamento foi confirmado",
+      );
       expect(hospedeiro.querySelector("img, textarea, a")).toBeNull();
       expect(hospedeiro.textContent).not.toContain("Copiar código Pix");
       expect(hospedeiro.textContent).not.toContain("Seu pedido está reservado");
@@ -231,7 +234,10 @@ describe("CheckoutView — pedido morto no servidor chega ao PagamentoOnline", (
       expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toContain(
         "Este pagamento não foi concluído.",
       );
-      expect(hospedeiro.textContent).not.toContain("confirmação aparece aqui");
+      expect(hospedeiro.textContent).not.toContain("Aguarde a confirmação");
+      expect(hospedeiro.textContent).not.toContain(
+        "se o pagamento foi confirmado",
+      );
       expect(hospedeiro.querySelector("img, textarea, a")).toBeNull();
       expect(hospedeiro.textContent).not.toContain("Copiar código Pix");
     },

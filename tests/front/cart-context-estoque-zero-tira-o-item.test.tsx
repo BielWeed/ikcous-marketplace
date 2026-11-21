@@ -156,6 +156,11 @@ describe("CartContext — estoque 0 tira o item do carrinho, não deixa zumbi", 
 
     expect(cartAtual).toHaveLength(0);
     expect(toastError).toHaveBeenCalled();
+    expect(
+      JSON.parse(
+        localStorage.getItem("marketplace_cart_tombstones_v1") ?? "null",
+      ),
+    ).toEqual([{ key: "prod-1-", deletedAt: expect.any(Number) }]);
   });
 
   it("estoque 3 com pedido de 10: item continua, com a quantidade clampada em 3", async () => {

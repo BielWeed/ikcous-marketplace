@@ -375,20 +375,22 @@ const CLASSES_CELULAR_DO_BLOCO_BASE = [
   "produto-campo col-span-2 space-y-1",
   "ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500",
   "w-full resize-none rounded-2xl border border-admin-border bg-zinc-950/50 px-4 py-3.5 text-sm font-medium leading-relaxed text-zinc-300 transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-3xl sm:px-6 sm:py-5",
-  "produto-campo space-y-1",
+  "produto-campo space-y-1 max-[480px]:col-span-2",
   "ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-widest text-zinc-500",
   "group relative",
   "absolute left-0 top-1/2 -translate-y-1/2 text-sm text-zinc-300",
   "w-full rounded-xl border border-emerald-500/20 bg-zinc-950 py-3 pl-11 pr-4 text-base font-black tabular-nums text-emerald-500 shadow-inner transition-all focus:outline-none focus:ring-4 focus:ring-emerald-500/10 sm:rounded-2xl sm:py-5 sm:pl-14 sm:pr-6 sm:text-lg",
   "ml-1 mt-1 block text-[11px] font-bold text-red-500",
   "ml-1 mt-1 block text-[11px] font-bold text-emerald-500",
-  "produto-campo space-y-1",
+  "produto-campo space-y-1 max-[480px]:col-span-2",
   "ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-widest text-zinc-500",
   "group relative",
   "w-full rounded-xl border border-admin-border bg-zinc-950/50 px-4 py-3 text-sm font-black tabular-nums text-white transition-all focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 disabled:cursor-not-allowed disabled:text-zinc-400 disabled:opacity-50 sm:rounded-2xl sm:px-6 sm:py-5",
   "pointer-events-none absolute right-0 top-1/2 -translate-y-1/2 text-zinc-400",
   "size-5",
+  "ml-1 text-xs text-zinc-400", // Ajuda sobre peças reservadas.
   "ml-1 mt-1 block text-[11px] font-bold text-red-500",
+  "ml-1 text-[11px] font-medium text-amber-300",
   "ml-1 mt-1 block text-[11px] font-bold text-red-500",
   "produto-rotulo-secao col-span-2 -mb-1 mt-3",
   "col-span-2 space-y-3",
@@ -552,6 +554,9 @@ const CLASSES_CELULAR_DO_BLOCO_BASE = [
   "sr-only",
   "produto-status flex items-center gap-2 px-1 text-xs font-bold text-emerald-300",
   "size-4 shrink-0",
+  "flex items-start gap-2 px-1 text-xs font-medium text-amber-300",
+  "size-4 shrink-0",
+  "min-w-0 whitespace-normal",
   "grid grid-cols-[minmax(0,1fr)_auto] gap-2",
   "min-w-0",
   "produto-salvar flex min-h-11 w-full min-w-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-3 text-base font-bold transition-colors disabled:pointer-events-none",
@@ -563,7 +568,7 @@ const CLASSES_CELULAR_DO_BLOCO_BASE = [
   "produto-prever flex min-h-11 min-w-11 items-center justify-center rounded-full border border-solid border-admin-border-strong bg-admin-surface px-4 text-sm font-bold",
 ];
 const SHA256_CLASSES_CELULAR_BASE =
-  "46cadf708c9c74099f5add434126ab4f7f0145764b94d628a6c43d2d39407b5c";
+  "5e7cb73c312d69b6b98958cb50da1251a82bf89e80a6750d707a4a94c21ea4b8";
 const TOKENS_LG_DA_BASE = [
   "lg:grid-cols-12",
   "lg:col-span-8",

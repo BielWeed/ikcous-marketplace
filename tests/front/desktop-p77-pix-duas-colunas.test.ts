@@ -47,10 +47,12 @@ const FIGURA_CELULAR = "space-y-2";
 const COLUNA_CELULAR =
   "pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4";
 // Assinatura de TODOS os literais de className do PagamentoOnline.tsx tirando
-// os tokens lg/xl/2xl (mesmo método do P32): 52 literais não vazios.
-// 17/11: só entrou o sr-only do anúncio de Pix pronto; os 51 anteriores são iguais.
+// os tokens lg/xl/2xl (mesmo método do P32): 54 literais não vazios.
+// 17/11: entrou o sr-only do anúncio de Pix pronto.
+// r346: só mudaram as ações e o aviso de Pix encerrado. Os 43 literais fora
+// desse aviso, incluindo os do QR, continuam idênticos.
 const ASSINATURA_CELULAR_DO_PIX =
-  "04101647a8fde13dffb7e6afc21202d89647ce397d4c8529338c14f534280930";
+  "12f9b7005b6fc0110146872050cd909688a5565b0a7f6fb7cfbe46818f36a4e4";
 // Os elementos da seção do Pix, na ordem do DOM (o QR vem DEPOIS do botão de
 // copiar e continua vindo; a ordem visual muda só por grade, no computador).
 const TAGS_DA_SECAO_DO_PIX = [

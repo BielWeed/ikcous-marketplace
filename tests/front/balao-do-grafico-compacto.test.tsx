@@ -68,7 +68,7 @@ describe("BalaoDoGrafico - vendas", () => {
 });
 
 describe("BalaoDoGrafico - lucro e estoque", () => {
-  it("mostra os dois valores com 2 casas", () => {
+  it("no ponto de hoje mostra os valores com 2 casas, sem aviso de estimativa", () => {
     const { container } = render(
       <BalaoDoGrafico
         tipo="lucro"
@@ -83,6 +83,33 @@ describe("BalaoDoGrafico - lucro e estoque", () => {
     expect(t).toContain("R$ 1.500,50");
     expect(t).toContain("Estoque investido");
     expect(t).toContain("R$ 320,00");
+    expect(t).not.toContain("(estimado)");
+    expect(t).not.toContain("Estimativa:");
+  });
+
+  it("no ponto de um dia passado indica que o estoque é estimado e explica o limite", () => {
+    const { container } = render(
+      <BalaoDoGrafico
+        tipo="lucro"
+        data="21/10/2026"
+        lucroAcumulado={0}
+        estoqueInvestido={1234567}
+        estoqueEstimado
+      />,
+    );
+    const rotulo = "Estoque (estimado)";
+    const linha = Array.from(container.querySelectorAll("span")).find(
+      (span) => span.textContent === rotulo,
+    );
+    expect(linha?.classList.contains("min-w-0")).toBe(true);
+    expect(linha?.classList.contains("whitespace-normal")).toBe(true);
+    const valor = linha?.nextElementSibling;
+    expect(valor?.textContent?.replace(/\s+/g, " ")).toBe("R$ 1.234.567,00");
+    expect(valor?.classList.contains("shrink-0")).toBe(true);
+    expect(valor?.classList.contains("whitespace-nowrap")).toBe(true);
+    expect(texto(container)).toContain(
+      "Estimativa: não considera entradas nem ajustes de estoque feitos depois.",
+    );
   });
 });
 
@@ -97,6 +124,7 @@ describe("BalaoDoGrafico - apresentacao", () => {
         data="d"
         lucroAcumulado={1}
         estoqueInvestido={2}
+        estoqueEstimado={false}
       />,
     );
     for (const c of [a.container, b.container]) {

@@ -118,9 +118,44 @@ describe("ProductQA — Enter do teclado envia a pergunta (lote 221)", () => {
     expect(botao.type).toBe("submit");
   });
 
+  it("avisa que a pergunta é pública antes e durante a digitação", async () => {
+    const texto =
+      "Sua pergunta fica visível para todos que visitam este produto. Não escreva telefone, e-mail nem outros dados pessoais.";
+    const conferirAviso = () => {
+      const aviso = Array.from(formulario()!.querySelectorAll("p")).find(
+        (p) => p.textContent?.trim() === texto,
+      );
+      expect(
+        aviso,
+        "O aviso público deve aparecer no formulário",
+      ).toBeDefined();
+      expect(aviso?.closest("[hidden], .sr-only")).toBeNull();
+      expect(campo().getAttribute("aria-describedby")?.split(/\s+/)).toContain(
+        aviso?.id,
+      );
+    };
+
+    expect(campo().value).toBe("");
+    conferirAviso();
+    await act(async () => {
+      digitar("qa-new-question", "Qual o prazo?");
+    });
+    expect(campo().value).toBe("Qual o prazo?");
+    conferirAviso();
+  });
+
   it("mostra o nome que vai aparecer antes de enviar a pergunta", () => {
     expect(formulario()?.textContent).toContain(
       "Seu nome vai aparecer assim: Érica Á.",
+    );
+    const previa = formulario()!.querySelector("p#qa-public-name");
+    expect(previa).not.toBeNull();
+    expect(campo().getAttribute("aria-describedby")?.split(/\s+/)).toEqual(
+      expect.arrayContaining([
+        "qa-question-privacy",
+        "qa-question-count",
+        previa?.id,
+      ]),
     );
     expect(addQuestion).not.toHaveBeenCalled();
   });

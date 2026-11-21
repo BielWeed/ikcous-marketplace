@@ -14,6 +14,7 @@ import {
   TEXTO_JA_POR_FORA,
   acoesDaLinha,
   confirmouPorForaAposEspera,
+  linhaViva,
   textoReservado,
 } from "@/lib/reembolso-em-duvida";
 import { formatCurrency } from "@/lib/utils";
@@ -49,6 +50,10 @@ function paraNumero(valorBruto: string): number {
     return Number(texto.replace(",", "."));
   }
   return Number.NaN;
+}
+
+function atingiuTetoDeTentativas(linha: LinhaEstornoDoPedido): boolean {
+  return linha.status === "em_processamento" && linha.tentativas >= 5;
 }
 
 interface TextoDaLinha {
@@ -96,7 +101,7 @@ function textoDaLinha(linha: LinhaEstornoDoPedido): TextoDaLinha {
   // `em_processamento` para sempre em vez de arriscar pagar duas vezes. NÃO
   // existe "Tentar de novo" aqui; a única saída é a dos 7 dias (lote R1), que
   // aparece abaixo da linha quando o SERVIDOR a libera.
-  if (linha.status === "em_processamento" && linha.tentativas >= 5) {
+  if (atingiuTetoDeTentativas(linha)) {
     return {
       texto: `A devolução de ${valor} não foi confirmada pelo Mercado Pago depois de 5 tentativas. Confira no painel do Mercado Pago se ela saiu; o valor fica reservado aqui até isso se resolver.`,
       podeTentarDeNovo: false,
@@ -147,6 +152,43 @@ function textoDaLinha(linha: LinhaEstornoDoPedido): TextoDaLinha {
     texto: `A devolução de ${valor} foi recusada: ${linha.ultimo_erro ?? ""}${confirmando ? ` ${TEXTO_CONFIRMANDO}` : ""}`,
     podeTentarDeNovo: false,
   };
+}
+
+function avisoDeDevolucoesEmAndamento(linhas: LinhaEstornoDoPedido[]): string {
+  const emAndamento = linhas.filter(
+    (linha) =>
+      linha.mp_status !== "charged_back" &&
+      (linhaViva(linha.status) ||
+        (linha.status === "concluido" && linha.concluido_em === null) ||
+        acoesDaLinha(linha).confirmando),
+  );
+  if (emAndamento.length === 0) return "";
+
+  const devolucoes = emAndamento.map((linha) => {
+    const valor =
+      Number.isFinite(linha.amount) && linha.amount >= VALOR_MINIMO
+        ? formatCurrency(linha.amount)
+        : "";
+    const quando = formatarDataHoraBrasilia(linha.created_at, "curto");
+    if (emAndamento.length === 1) {
+      return `Já existe uma devolução${valor ? ` de ${valor}` : ""} em andamento neste pedido.${quando ? ` Solicitada em ${quando}.` : ""}`;
+    }
+    if (!valor) return quando || "Valor não informado";
+    return quando ? `${valor} — ${quando}` : valor;
+  });
+  if (emAndamento.length > 1) {
+    devolucoes.unshift("Já existem devoluções em andamento neste pedido:");
+  }
+  const temDevolucaoTravada = emAndamento.some(
+    (linha) =>
+      atingiuTetoDeTentativas(linha) || acoesDaLinha(linha).confirmando,
+  );
+  devolucoes.push(
+    temDevolucaoTravada
+      ? "Confirme só se esta for OUTRA devolução. Antes de repetir, confira no painel do Mercado Pago se a anterior saiu."
+      : "Confirme apenas se quiser devolver um valor adicional. Se estiver tentando repetir a devolução anterior, feche esta janela e acompanhe o andamento dela na ficha do pedido.",
+  );
+  return devolucoes.join("\n");
 }
 
 type EstadoDoCartao =
@@ -302,11 +344,13 @@ export function EstornoCard({
   // então duas abas (ou duas pessoas) tocando na mesma linha não mandam dois pedidos ao Mercado Pago.
   async function pedirConfirmacaoEEnviar(amount: number, repetindo?: string) {
     const valor = formatCurrency(amount);
+    const aviso = repetindo ? "" : avisoDeDevolucoesEmAndamento(linhas);
     const confirmado = await confirmar({
       titulo: "Devolver o dinheiro ao cliente?",
       texto: `Devolver ${valor} ao cliente pelo Mercado Pago? O dinheiro sai da sua conta do Mercado Pago e não dá para desfazer.`,
-      verbo: `Devolver ${valor}`,
+      verbo: aviso ? "Confirmar devolução adicional" : `Devolver ${valor}`,
       valor,
+      aviso,
     });
     if (!confirmado) return;
     await solicitarEstorno({
@@ -379,6 +423,7 @@ export function EstornoCard({
               type="button"
               variant="link"
               size="sm"
+              className="min-h-11"
               onClick={() => setCampoAberto(true)}
             >
               devolver outro valor

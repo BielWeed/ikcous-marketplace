@@ -982,7 +982,7 @@ describe("CheckoutView — o pagamento pendente sobrevive à recarga da página"
     return ultima!();
   }
 
-  it("Voltar com o Pix aberto: avisa que o pedido continua esperando e onde retomar, e DEPOIS leva ao Início", async () => {
+  it("Voltar com o Pix aberto: distingue conferir de retomar, e DEPOIS leva ao Início", async () => {
     linhaDoPedido();
     const toastInfo = vi.spyOn(toast, "info").mockImplementation(() => 1);
     onSetBackOverride.mockClear();
@@ -993,9 +993,9 @@ describe("CheckoutView — o pagamento pendente sobrevive à recarga da página"
 
     expect(toastInfo).toHaveBeenCalledTimes(1);
     const aviso = String(toastInfo.mock.calls[0][0]);
-    expect(aviso).toContain("continua reservado");
-    expect(aviso).toContain("Retomar pagamento");
-    expect(aviso).toContain("Meus pedidos");
+    expect(aviso).toBe(
+      "Se você já pagou, não pague de novo nem faça outro pedido. Abra o pedido em Meus pedidos para conferir a confirmação. Se ainda não pagou e o botão estiver disponível, toque em Retomar pagamento.",
+    );
     // A frase é longa: fica na tela mais que os 4,5 s de padrão do app.
     expect(toastInfo.mock.calls[0][1]).toMatchObject({ duration: 8000 });
     expect(onNavigate).toHaveBeenCalledWith("home");
@@ -1026,7 +1026,7 @@ describe("CheckoutView — o pagamento pendente sobrevive à recarga da página"
     expect(onNavigate).toHaveBeenCalledWith("home");
   });
 
-  it("Voltar com o erro terminal 'o prazo acabou' na tela (a rotina do banco ainda não marcou o pedido): sem aviso de 'continua reservado'", async () => {
+  it("Voltar com o erro terminal 'o prazo acabou' na tela (a rotina do banco ainda não marcou o pedido): sem aviso de Pix pendente", async () => {
     // O pedido segue `pending`/`aguardando` no banco (a rotina que vence
     // pedido roda de tempos em tempos), mas a edge já respondeu 409 terminal.
     linhaDoPedido();
@@ -1049,7 +1049,7 @@ describe("CheckoutView — o pagamento pendente sobrevive à recarga da página"
     expect(onNavigate).toHaveBeenCalledWith("home");
   });
 
-  it("Voltar depois de o pedido VENCER no servidor: sem aviso de 'continua reservado' (seria mentira)", async () => {
+  it("Voltar depois de o pedido VENCER no servidor: sem aviso de Pix pendente", async () => {
     linhaDoPedido();
     const toastInfo = vi.spyOn(toast, "info").mockImplementation(() => 1);
     onSetBackOverride.mockClear();
@@ -1070,8 +1070,8 @@ describe("CheckoutView — o pagamento pendente sobrevive à recarga da página"
     expect(onNavigate).toHaveBeenCalledWith("home");
   });
 
-  // r140-e, achado 1: o aviso do Voltar fala de PIX ("o Pix continua
-  // reservado... Retomar pagamento"). Num pedido de CARTÃO essa frase seria
+  // r140-e, achado 1: o aviso do Voltar fala de PIX (não pagar de novo,
+  // conferir ou retomar). Num pedido de CARTÃO essa frase seria
   // mentira: a cliente nunca viu um Pix. O Voltar leva ao Início em silêncio;
   // o par com Pix aberto é o primeiro teste desta seção. Cartão com a tela de
   // pagamento aberta = pedido de cartão SEM order na vaga (formulário), o único

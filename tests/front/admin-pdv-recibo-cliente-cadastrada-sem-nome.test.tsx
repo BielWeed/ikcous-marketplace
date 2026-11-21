@@ -175,7 +175,7 @@ describe("AdminPdvView — recibo de cliente cadastrada sem nome no perfil", () 
     // O primeiro <p> é o rótulo só-leitor-de-tela; o segundo é o nome mostrado.
     expect(bloco().querySelectorAll("p")[1].textContent).toBe("Cliente");
     expect(bloco().textContent).not.toContain("Venda no balcão");
-    expect(bloco().textContent).toContain("WhatsApp · 34999990000");
+    expect(bloco().textContent).toContain("WhatsApp · (34) 99999-0000");
 
     expect(papel().textContent).toContain("CLIENTE:");
     expect(papel().textContent).not.toContain("Venda no balcão");
@@ -211,7 +211,7 @@ describe("AdminPdvView — recibo de cliente cadastrada sem nome no perfil", () 
     await registrarComPedido({ user_id: null });
 
     expect(bloco().textContent).toContain("Venda no balcão · cliente avulso");
-    expect(bloco().textContent).toContain("WhatsApp · 34999990000");
+    expect(bloco().textContent).toContain("WhatsApp · (34) 99999-0000");
     expect(
       localizarBotaoPorTexto(hospedeiro, "Enviar por WhatsApp")?.disabled,
     ).toBe(false);

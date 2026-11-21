@@ -117,6 +117,8 @@ describe("CartItemsList — o limite da linha é o estoque da VARIAÇÃO escolhi
 
     expect(mais(host).getAttribute("aria-disabled")).toBe("false");
     expect(host.textContent).not.toContain("restante");
+    act(() => mais(host).click());
+    expect(onUpdateQuantity.mock.calls).toEqual([[camisa.id, 3, "var-m"]]);
   });
 
   it("produto sem variação segue igual: limite e aviso vêm do estoque do produto", async () => {

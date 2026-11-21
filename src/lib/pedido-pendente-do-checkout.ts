@@ -31,13 +31,12 @@
 
 /**
  * O que a cliente lê quando toca em Voltar com o Pix ainda aberto (r55-d): o
- * Voltar larga a tela e o registro da recarga (de propósito — ver o App), mas o
- * PEDIDO continua reservado no servidor e retomável. Sem o aviso, quem já
- * copiou o código e está pagando no banco achava que o pedido se perdeu e
- * refazia a compra.
+ * Voltar larga a tela e o registro da recarga (de propósito — ver o App).
+ * A tela pode ainda não ter recebido a confirmação. Quem já pagou consulta
+ * o pedido; só quem ainda não pagou usa o botão se estiver disponível.
  */
 export const AVISO_PIX_CONTINUA_ABERTO_AO_VOLTAR =
-  "Seu pedido continua reservado, aguardando o Pix. Para pagar ou conferir, abra o pedido em Meus pedidos e toque em Retomar pagamento.";
+  "Se você já pagou, não pague de novo nem faça outro pedido. Abra o pedido em Meus pedidos para conferir a confirmação. Se ainda não pagou e o botão estiver disponível, toque em Retomar pagamento.";
 
 const PREFIXO_DA_CHAVE = "ikcous:checkout-pedido-pendente:";
 

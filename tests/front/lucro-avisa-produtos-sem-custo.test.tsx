@@ -133,6 +133,29 @@ describe("tela do lucro avisa produtos sem custo", () => {
   }
 
   describe("OperationalPerformanceChart", () => {
+    it("a ajuda do Histórico explica o reembolso manual e orienta a conferir o Extrato", async () => {
+      await act(async () =>
+        raiz.render(
+          <OperationalPerformanceChart
+            stats={stats({})}
+            loading={false}
+            active
+          />,
+        ),
+      );
+      const ajuda = hospedeiro.querySelector<HTMLButtonElement>(
+        'button[aria-label="Entender Histórico da loja"]',
+      );
+      expect(ajuda).not.toBeNull();
+      await act(async () => ajuda?.click());
+
+      const dialogo = document.querySelector('[role="dialog"]');
+      expect(dialogo).not.toBeNull();
+      expect(dialogo?.textContent?.replace(/\s+/g, " ")).toContain(
+        "O Histórico pode incluir vendas reembolsadas por inteiro quando a devolução do dinheiro foi registrada como manual. Para conferir o que entrou e saiu, use o Extrato do Financeiro.",
+      );
+    });
+
     it.each([undefined, 0, 3])(
       "o lucro avisa visivelmente que desconta devolução e estorno mesmo com %s produtos sem custo",
       async (semCusto) => {

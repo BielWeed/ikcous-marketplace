@@ -98,6 +98,55 @@ describe("AboutStoreView — a página mostra o que a loja tem e omite o resto",
     );
   }
 
+  it("com só o e-mail de atendimento, mostra o contato e não diz que a página está vazia", async () => {
+    configAtual = {
+      ...LOJA_VAZIA,
+      storeSupportEmail: " ajuda%loja@example.com ",
+    };
+
+    const texto = await renderizarPagina();
+    const link = hospedeiro.querySelector("a[href^='mailto:']");
+    expect(link?.textContent).toBe("ajuda%loja@example.com");
+    expect(link?.getAttribute("href")).toBe("mailto:ajuda%25loja@example.com");
+    expect(texto).not.toContain("Volte em breve");
+  });
+
+  it.each([
+    ["vendas/online@example.com", "vendas%2Fonline@example.com"],
+    ["a+b@example.com", "a%2Bb@example.com"],
+    ["a=b@example.com", "a%3Db@example.com"],
+  ])(
+    "codifica %s no link sem alterar o texto visível",
+    async (email, destino) => {
+      configAtual = { ...LOJA_VAZIA, storeSupportEmail: email };
+      await renderizarPagina();
+
+      const link = hospedeiro.querySelector("a[href^='mailto:']");
+      const href = link?.getAttribute("href");
+      expect(link?.textContent).toBe(email);
+      expect(href).toBe(`mailto:${destino}`);
+      expect(href).not.toMatch(/[?]|&cc=/);
+    },
+  );
+
+  it.each(["ajuda@example.com?subject=x", "a&cc=x@example.com"])(
+    "não mostra o e-mail rejeitado %s nem o conta como contato cadastrado",
+    async (email) => {
+      configAtual = { ...LOJA_VAZIA, storeSupportEmail: email };
+
+      const texto = await renderizarPagina();
+      expect(hospedeiro.querySelector("a[href^='mailto:']")).toBeNull();
+      expect(texto).toContain("Volte em breve");
+    },
+  );
+
+  it("não mostra o botão se o número salvo só tem zeros após o DDD", async () => {
+    configAtual = { ...LOJA_COMPLETA, whatsappNumber: "1100000000" };
+    await renderizarPagina();
+
+    expect(botaoWhatsapp()).toBeNull();
+  });
+
   it("WhatsApp flutuante fica FORA do container da tela (portal no body), senão rola junto com o conteúdo", async () => {
     configAtual = LOJA_COMPLETA;
 

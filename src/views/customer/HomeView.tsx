@@ -960,17 +960,20 @@ export const HomeView = React.memo(function HomeView({
               <PackageSearch className="size-10 text-zinc-300" />
             </div>
             <h3 className="mb-2 text-xl font-bold tracking-tight text-zinc-900">
-              Nenhum produto agora
+              {termoDaBusca || selectedCategory !== "Todas"
+                ? "Nenhum produto agora"
+                : "Nenhum produto disponível agora"}
             </h3>
-            <p className="mx-auto max-w-[200px] text-sm leading-relaxed text-zinc-500">
-              {!termoDaBusca &&
-              selectedCategory !== "Todas" &&
-              categories.some((c) => c.isActive && c.name === selectedCategory)
-                ? "Ainda não há produtos nesta categoria."
-                : termoDaBusca || selectedCategory !== "Todas"
-                  ? "Tente buscar por outro termo ou mudar a categoria."
-                  : "Em breve novidades por aqui."}
-            </p>
+            {(termoDaBusca || selectedCategory !== "Todas") && (
+              <p className="mx-auto max-w-[200px] text-sm leading-relaxed text-zinc-500">
+                {!termoDaBusca &&
+                categories.some(
+                  (c) => c.isActive && c.name === selectedCategory,
+                )
+                  ? "Ainda não há produtos nesta categoria."
+                  : "Tente buscar por outro termo ou mudar a categoria."}
+              </p>
+            )}
           </div>
         ) : (
           <ProductList

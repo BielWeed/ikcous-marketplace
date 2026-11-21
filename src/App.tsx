@@ -661,8 +661,11 @@ const AppContent = () => {
 
   const { addToCart } = useCartActions();
   const carrinhoAtualRef = useRef<readonly CartItem[]>([]);
+  // Esvaziar o carrinho de novo não desfaz o início de outra compra.
+  const carrinhoJaTeveItensRef = useRef(false);
   const guardarCarrinhoAtual = useCallback((cart: readonly CartItem[]) => {
     carrinhoAtualRef.current = cart;
+    if (cart?.length) carrinhoJaTeveItensRef.current = true;
   }, []);
   const {
     favorites,
@@ -707,12 +710,12 @@ const AppContent = () => {
       typeof window !== "undefined" &&
       globalThis.location.pathname.replace(/\/$/, "") === "/checkout",
   );
-  // Até o App decidir (sessão conhecida), o checkout da carga não monta —
-  // senão um checkout de carrinho vazio montaria antes da retomada.
-  const [recargaDoCheckoutDecidida, setRecargaDoCheckoutDecidida] =
+  // Liberar a tela no prazo não encerra a retomada: a conta ainda pode chegar.
+  const [checkoutDaRecargaLiberado, setCheckoutDaRecargaLiberado] =
     useState(false);
-  // O cliente navegou antes da decisão: a carga deixou de ser "o F5 no
-  // checkout", e nada é restaurado por cima da navegação dele.
+  const retomadaDaRecargaConcluidaRef = useRef(false);
+  // O cliente navegou: a carga deixou de ser "o F5 no checkout", e nada é
+  // restaurado por cima da navegação dele.
   const navegouAntesDaRecargaRef = useRef(false);
   const idDoUsuarioDaRecarga = user?.id;
   // Sessão ATRASADA (rede lenta: o `getSession` perde a corrida de 3 s do
@@ -720,8 +723,8 @@ const AppContent = () => {
   // aba e SEM usuário ainda não é "não há pedido" — é "não sei de quem é o
   // registro". O App espera a sessão (o estado do AuthContext, sem sondagem)
   // por no máximo PRAZO_DA_SESSAO_NA_RECARGA_MS; vencido, o checkout abre
-  // como hoje, sem retomada e SEM apagar o registro. Sem registro na carga,
-  // nada espera: o caminho normal não ganha nenhum quadro em branco a mais.
+  // sem retomada nesse instante e SEM apagar o registro. Sem registro na
+  // carga, nada espera: o caminho normal não ganha nenhum quadro em branco.
   const [haRegistroNaCarga] = useState(
     () => cargaNoCheckout && existeAlgumPedidoPendenteDoCheckout(),
   );
@@ -729,23 +732,43 @@ const AppContent = () => {
   const aguardaASessaoDaRecarga =
     haRegistroNaCarga && !idDoUsuarioDaRecarga && !prazoDaSessaoVencido;
   useEffect(() => {
-    if (!aguardaASessaoDaRecarga || recargaDoCheckoutDecidida) return;
+    if (!aguardaASessaoDaRecarga || checkoutDaRecargaLiberado) return;
     const relogio = setTimeout(
       () => setPrazoDaSessaoVencido(true),
       PRAZO_DA_SESSAO_NA_RECARGA_MS,
     );
     return () => clearTimeout(relogio);
-  }, [aguardaASessaoDaRecarga, recargaDoCheckoutDecidida]);
+  }, [aguardaASessaoDaRecarga, checkoutDaRecargaLiberado]);
   useEffect(() => {
-    if (recargaDoCheckoutDecidida || authLoading) return;
-    if (aguardaASessaoDaRecarga) return;
+    if (
+      retomadaDaRecargaConcluidaRef.current ||
+      authLoading ||
+      aguardaASessaoDaRecarga
+    ) {
+      return;
+    }
+    setCheckoutDaRecargaLiberado(true);
+    if (
+      haRegistroNaCarga &&
+      !idDoUsuarioDaRecarga &&
+      !navegouAntesDaRecargaRef.current
+    ) {
+      return;
+    }
+    retomadaDaRecargaConcluidaRef.current = true;
+    // Depois do prazo, só a tela original e sem outra compra pode voltar ao
+    // pedido. A URL também protege a saída cuja transição ainda não terminou.
+    const podeRetomar =
+      !navegouAntesDaRecargaRef.current &&
+      (!prazoDaSessaoVencido ||
+        (currentView === "checkout" &&
+          globalThis.location.pathname.replace(/\/$/, "") === "/checkout" &&
+          !carrinhoJaTeveItensRef.current));
     // Só o dono do registro o lê (a chave tem o id dele); visitante não tem
     // pedido online. Nada aqui decide se o pedido ainda é cobrável: isso é
     // a leitura do pedido no CheckoutView, sob RLS, antes de montar nada.
     const pedido =
-      cargaNoCheckout &&
-      idDoUsuarioDaRecarga &&
-      !navegouAntesDaRecargaRef.current
+      cargaNoCheckout && idDoUsuarioDaRecarga && podeRetomar
         ? lerPedidoPendenteDoCheckout(idDoUsuarioDaRecarga)
         : null;
     if (pedido) {
@@ -757,13 +780,14 @@ const AppContent = () => {
       esquecerTodosOsPedidosPendentesDoCheckout();
       esquecerReciboDeVisitanteDoCheckout();
     }
-    setRecargaDoCheckoutDecidida(true);
   }, [
-    recargaDoCheckoutDecidida,
     authLoading,
     aguardaASessaoDaRecarga,
     cargaNoCheckout,
+    currentView,
+    haRegistroNaCarga,
     idDoUsuarioDaRecarga,
+    prazoDaSessaoVencido,
   ]);
   // Troca DIRETA de conta na mesma aba (A → B sem SIGNED_OUT no meio — o
   // logout já limpa pelo AuthContext): o registro de A sai junto com A.
@@ -1141,7 +1165,7 @@ const AppContent = () => {
       // mais decisão a esperar — nem a sessão atrasada pode segurar o
       // checkout novo que ele acabou de abrir. (Carga fora do checkout não
       // passa por aqui de propósito: ali a decisão apaga o registro velho.)
-      if (cargaNoCheckout) setRecargaDoCheckoutDecidida(true);
+      if (cargaNoCheckout) setCheckoutDaRecargaLiberado(true);
       // App-743: tocar a própria aba/view JÁ ativa é sempre só scroll-to-top
       // (ramo espelhado abaixo, em 834-842) — não há "para onde ir", então
       // isso precisa vencer o gate de formulário sujo, nunca abrir o
@@ -2538,6 +2562,7 @@ const AppContent = () => {
           currentViewRef.current === "checkout" &&
           targetView !== "checkout"
         ) {
+          navegouAntesDaRecargaRef.current = true;
           esquecerTodosOsPedidosPendentesDoCheckout();
           esquecerReciboDeVisitanteDoCheckout();
         }
@@ -3199,9 +3224,8 @@ const AppContent = () => {
         );
       }
       case "checkout": {
-        // Recarga: o checkout da CARGA da página espera o App decidir se há
-        // pedido a retomar (um quadro, depois da sessão conhecida).
-        if (cargaNoCheckout && !recargaDoCheckoutDecidida) return null;
+        // Na carga, a tela espera a primeira decisão do App ou o prazo.
+        if (cargaNoCheckout && !checkoutDaRecargaLiberado) return null;
         return (
           <PreloadedOrLazy
             component={CheckoutView}
@@ -3428,7 +3452,7 @@ const AppContent = () => {
     const esperandoARecargaDoCheckout =
       currentView === "checkout" &&
       cargaNoCheckout &&
-      !recargaDoCheckoutDecidida;
+      !checkoutDaRecargaLiberado;
 
     if ((authLoading && isPrivateView) || esperandoARecargaDoCheckout) {
       return (

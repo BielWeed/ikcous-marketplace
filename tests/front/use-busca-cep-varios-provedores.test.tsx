@@ -32,7 +32,8 @@ vi.mock("sonner", () => ({
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const MSG_NAO_ENCONTRADO = "CEP não encontrado";
+const MSG_NAO_ENCONTRADO =
+  "CEP não encontrado. Preencha o endereço manualmente.";
 const MSG_FALHA =
   "Não foi possível buscar o CEP agora. Preencha o endereço manualmente.";
 const MSG_DEMOROU =

@@ -572,7 +572,7 @@ export const OrderList = memo(function OrderList({
 
                 <div className="flex-shrink-0 text-right">
                   <span className="block font-mono text-xs uppercase tracking-[0.12em] text-muted-foreground">
-                    Total
+                    Total do pedido
                   </span>
                   <span className="mt-0.5 block text-lg font-bold leading-6 tracking-tight text-foreground">
                     R${" "}

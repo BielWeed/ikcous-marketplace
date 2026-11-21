@@ -77,7 +77,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 // aviso: a confirmação do Mercado Pago pode chegar minutos depois do
 // vencimento, e comprar na hora seria pagar duas vezes.
 const AVISO_DE_QUEM_JA_PAGOU =
-  "Se você já pagou, aguarde alguns minutos antes de comprar de novo.";
+  "Já pagou? Não faça outro pedido. Se a confirmação não aparecer, fale com a loja.";
 const FRASE_DO_VENCIMENTO = `O prazo do pagamento terminou e o pedido foi cancelado. ${AVISO_DE_QUEM_JA_PAGOU} Se não pagou, é só comprar de novo.`;
 const FRASE_GENERICA = "Este pedido foi cancelado e não seguirá para entrega.";
 
@@ -103,9 +103,11 @@ describe("OrderDetailsView — pedido cancelado porque o pagamento venceu diz o 
     pagamento: PaymentStatus | null,
     onNavigate: (view: string) => void = () => {},
     metodoOnline?: Order["metodoOnline"],
+    opcoes?: Pick<Order, "paymentMethod" | "retiradaNaLoja">,
   ) {
     pedidoAtual = {
       ...pedidoBase,
+      ...opcoes,
       status,
       paymentStatus: pagamento,
       metodoOnline,
@@ -199,6 +201,67 @@ describe("OrderDetailsView — pedido cancelado porque o pagamento venceu diz o 
       expect(botaoDaLoja()).toBeUndefined();
     },
   );
+
+  it("Pix pendente: orienta quem já pagou a não fazer outro pedido", async () => {
+    await renderizar("pending", "aguardando", undefined, "pix");
+
+    expect(texto()).toContain(
+      `Aguardando confirmação de pagamento para iniciar a separação. ${AVISO_DE_QUEM_JA_PAGOU}`,
+    );
+  });
+
+  it("Pix aguardando em separação: mantém a descrição e orienta quem já pagou", async () => {
+    await renderizar("processing", "aguardando", undefined, "pix");
+
+    expect(texto()).toContain(
+      "Seu pedido está sendo preparado com todo cuidado e atenção.",
+    );
+    expect(texto()).toContain(AVISO_DE_QUEM_JA_PAGOU);
+  });
+
+  it.each([false, true])(
+    "Pix aguardando após a separação (retirada: %s): orienta quem já pagou",
+    async (retiradaNaLoja) => {
+      await renderizar("shipping", "aguardando", undefined, "pix", {
+        paymentMethod: "online",
+        retiradaNaLoja,
+      });
+
+      expect(texto()).toContain(
+        retiradaNaLoja
+          ? "Seu pedido está pronto! Venha retirar na loja."
+          : "Seu pedido já saiu para entrega e chegará em breve.",
+      );
+      expect(texto()).toContain(AVISO_DE_QUEM_JA_PAGOU);
+    },
+  );
+
+  it("Pix pago em separação: não mostra o aviso", async () => {
+    await renderizar("processing", "pago", undefined, "pix");
+
+    expect(texto()).not.toContain(AVISO_DE_QUEM_JA_PAGOU);
+  });
+
+  it("cartão online aguardando em separação: não mostra o aviso", async () => {
+    await renderizar("processing", "aguardando", undefined, "credito");
+
+    expect(texto()).not.toContain(AVISO_DE_QUEM_JA_PAGOU);
+  });
+
+  it("dinheiro na entrega em separação: não mostra o aviso", async () => {
+    await renderizar("processing", null, undefined, undefined, {
+      paymentMethod: "cash",
+    });
+
+    expect(texto()).not.toContain(AVISO_DE_QUEM_JA_PAGOU);
+  });
+
+  it("Pix aguardando em pedido cancelado: orienta a não pagar, sem o aviso de Pix ativo", async () => {
+    await renderizar("cancelled", "aguardando", undefined, "pix");
+
+    expect(texto()).toContain("não pague.");
+    expect(texto()).not.toContain(AVISO_DE_QUEM_JA_PAGOU);
+  });
 
   it("pedido pendente com pagamento vencido (ainda não cancelado): não mostra o botão de vitrine", async () => {
     await renderizar("pending", "expirado");

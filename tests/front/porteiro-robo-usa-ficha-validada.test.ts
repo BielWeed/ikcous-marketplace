@@ -18,7 +18,9 @@ import { SELECT_CONFIGURACAO_PUBLICA } from "@/hospedagem/porteiro";
 import middleware from "../../middleware";
 
 const UA_ROBO = "WhatsApp/2.23.20.0 A";
-const UA_NAVEGADOR = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)";
+const UA_NAVEGADOR =
+  "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36";
+const UA_WHATSAPP_EMBUTIDO = `${UA_NAVEGADOR} WhatsApp/2.23.20.0`;
 
 // `vi.stubEnv`/`vi.unstubAllEnvs` — mesma convenção do resto do repo
 // (`tests/front/env-publishable-key-com-fallback-para-legada.test.ts` etc.)
@@ -135,6 +137,7 @@ const HTML_DO_BUILD = `<!DOCTYPE html>
 </head>
 <body>
 <div class="cinematic-text">${MARCA_DO_BUILD}</div>
+<script type="module" src="/assets/app.js"></script>
 </body>
 </html>`;
 
@@ -684,7 +687,7 @@ describe("middleware — o ramo de robô nunca pula decidirConcordancia (achado 
     },
   );
 
-  it("produto ATIVO continua com a prévia do produto (não baixa o documento) e a pessoa no navegador continua recebendo o documento da loja", async () => {
+  it("robô do WhatsApp sem Sec-Fetch recebe a prévia e Chrome comum recebe o app", async () => {
     const host = "loja-ativo.exemplo";
     const chamadas: string[] = [];
     const fetchDuble = criarFetchDeLojas(
@@ -720,6 +723,11 @@ describe("middleware — o ramo de robô nunca pula decidirConcordancia (achado 
       'og:title" content="Vestido Floral - R$ 129,90 | Loja Nova Da Maria"',
     );
     expect(html).not.toContain(MARCA_DO_BUILD);
+    expect(html).not.toContain("<script");
+    expect(resp.headers.get("vary")).toBe(
+      "user-agent, sec-fetch-dest, sec-fetch-mode",
+    );
+    expect(resp.headers.get("cache-control")).toBeNull();
     // Prévia de produto não depende do documento do build.
     expect(chamadas).not.toContain(`${host}/index.html`);
 
@@ -736,19 +744,50 @@ describe("middleware — o ramo de robô nunca pula decidirConcordancia (achado 
     expect(navegador.headers.get("x-ikcous-porteiro")).toBe("ok");
     expect(navegador.headers.get("x-ikcous-og")).toBeNull();
     const htmlNavegador = await navegador.text();
+    expect(htmlNavegador).toContain('type="module" src="/assets/app.js"');
     expect(htmlNavegador).toContain("<title>Loja Nova Da Maria</title>");
     expect(htmlNavegador).not.toContain(MARCA_DO_BUILD);
   });
 
   it.each([
-    ["robo-sem-barra", UA_ROBO, "/product-detail", "produto"],
-    ["robo-uma-barra", UA_ROBO, "/product-detail/", "produto"],
-    ["robo-duas-barras", UA_ROBO, "/product-detail//", "app"],
-    ["robo-subrota", UA_ROBO, "/product-detail/x", "app"],
-    ["navegador-uma-barra", UA_NAVEGADOR, "/product-detail/", "app"],
+    ["robo-sem-barra", UA_ROBO, "/product-detail", "produto", {}],
+    ["robo-uma-barra", UA_ROBO, "/product-detail/", "produto", {}],
+    ["facebook", "facebookexternalhit/1.1", "/product-detail", "produto", {}],
+    ["google", "Googlebot/2.1", "/product-detail", "produto", {}],
+    ["robo-duas-barras", UA_ROBO, "/product-detail//", "app", {}],
+    ["robo-subrota", UA_ROBO, "/product-detail/x", "app", {}],
+    ["navegador-uma-barra", UA_NAVEGADOR, "/product-detail/", "app", {}],
+    [
+      "whatsapp-navegando",
+      UA_WHATSAPP_EMBUTIDO,
+      "/product-detail",
+      "app",
+      { "sec-fetch-mode": "navigate", "sec-fetch-dest": "document" },
+    ],
+    [
+      "whatsapp-so-dest",
+      UA_WHATSAPP_EMBUTIDO,
+      "/product-detail",
+      "app",
+      { "sec-fetch-dest": "document" },
+    ],
+    [
+      "whatsapp-so-mode",
+      UA_WHATSAPP_EMBUTIDO,
+      "/product-detail",
+      "produto",
+      { "sec-fetch-mode": "navigate" },
+    ],
+    [
+      "whatsapp-cors",
+      UA_WHATSAPP_EMBUTIDO,
+      "/product-detail",
+      "produto",
+      { "sec-fetch-mode": "cors", "sec-fetch-dest": "document" },
+    ],
   ] as const)(
-    "%s em %s pede %s e recebe %s",
-    async (chave, ua, caminho, tipo) => {
+    "%s com UA %s em %s recebe %s",
+    async (chave, ua, caminho, tipo, secFetch) => {
       const host = `${chave}.exemplo`;
       const fetchDuble = criarFetchDeLojas(
         [
@@ -776,7 +815,7 @@ describe("middleware — o ramo de robô nunca pula decidirConcordancia (achado 
         comFetch(fetchDuble, () =>
           middleware(
             new Request(`https://${host}${caminho}?id=1`, {
-              headers: { "user-agent": ua },
+              headers: { "user-agent": ua, ...secFetch },
             }),
           ),
         ),
@@ -791,6 +830,9 @@ describe("middleware — o ramo de robô nunca pula decidirConcordancia (achado 
           'og:image" content="https://cdn.exemplo.com/camisa.jpg"',
         );
       } else {
+        expect(resp.headers.get("x-ikcous-porteiro")).toBe("ok");
+        expect(resp.headers.get("x-ikcous-og")).toBeNull();
+        expect(html).toContain('type="module" src="/assets/app.js"');
         expect(html).toContain("<title>Loja de Roupas</title>");
         expect(html).not.toContain('content="product"');
       }

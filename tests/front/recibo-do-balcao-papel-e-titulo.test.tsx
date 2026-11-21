@@ -195,6 +195,7 @@ describe("recibo da venda de balcão — papel e título", () => {
     expect(papel().textContent).toContain("CLIENTE:");
     expect(papel().textContent).toContain("Lia");
     expect(papel().textContent).toContain("11999990000");
+    expect(hospedeiro.textContent).toContain("WhatsApp · (11) 99999-0000");
   });
 
   it("o subtítulo do recibo é só 'Recibo' (sem o número 3 que nenhuma outra etapa tem)", async () => {

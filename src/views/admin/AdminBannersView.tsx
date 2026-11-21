@@ -3927,8 +3927,9 @@ export const AdminBannersView = memo(function AdminBannersView({
                   Link de Destino
                 </div>
                 <p className="text-[11px] text-zinc-400">
-                  A página do app para onde o cliente será levado ao tocar no
-                  banner (por exemplo, um produto ou uma categoria).
+                  Escolha um item em “Abrir Produto” ou uma categoria em “Página
+                  da Loja”. O painel preenche o link automaticamente. Para um
+                  site externo, cole o endereço em “Link / URL”.
                 </p>
               </div>
 

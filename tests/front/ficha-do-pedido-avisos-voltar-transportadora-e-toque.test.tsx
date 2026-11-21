@@ -8,7 +8,7 @@
 //  8. O link de rastreio serve a todas as transportadoras, mas a ficha falava
 //     só dos Correios ("cole o código dos Correios", "Rastrear nos Correios").
 //  4. Os botões das duas janelas da ficha ("Ainda não", "Recebi", "Voltar",
-//     "Avançar mesmo assim") tinham altura de 36px: abaixo do alvo de toque de
+//     "Avançar sem pagamento confirmado") tinham altura de 36px: abaixo do alvo de toque de
 //     44px (min-h-11).
 //
 // O alert-dialog é substituído por um dublê que PASSA o className adiante
@@ -187,7 +187,7 @@ describe("ficha — janela de pagamento não confirmado: o botão que só fecha 
       );
     });
     await act(async () => {
-      botaoComTexto("Avançar mesmo assim", hospedeiro)?.click();
+      botaoComTexto("Avançar sem pagamento confirmado", hospedeiro)?.click();
       await esperar();
     });
 
@@ -219,14 +219,14 @@ describe("ficha — cupom comprido não empurra o desconto", () => {
 });
 
 describe("ficha — alvos de toque das janelas de confirmação", () => {
-  it("pagamento não confirmado: 'Voltar' e 'Avançar mesmo assim' têm 44px de altura mínima", async () => {
+  it("pagamento não confirmado: 'Voltar' e 'Avançar sem pagamento confirmado' têm 44px de altura mínima", async () => {
     await montarFicha(pedidoFake());
     await clicarAvancar();
 
     expect(botaoComTexto("Voltar")?.className).toContain("min-h-11");
-    expect(botaoComTexto("Avançar mesmo assim")?.className).toContain(
-      "min-h-11",
-    );
+    expect(
+      botaoComTexto("Avançar sem pagamento confirmado")?.className,
+    ).toContain("min-h-11");
   });
 
   it("pergunta de recebimento: os botões de finalizar e de receber têm 44px de altura mínima", async () => {

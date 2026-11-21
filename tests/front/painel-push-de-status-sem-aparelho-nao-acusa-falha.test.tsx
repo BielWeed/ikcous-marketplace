@@ -260,6 +260,35 @@ describe("Painel — aviso de push que não chegou", () => {
     );
   });
 
+  it("zero aceites e demora em outro aparelho não afirmam que o aviso não chegou", async () => {
+    const aviso = await avancarComResposta({
+      total: 3,
+      enviados: 0,
+      falharam: 3,
+      falhas: [
+        {
+          status: 410,
+          motivo: "push service respondeu 410 Gone",
+          quantidade: 2,
+        },
+        {
+          status: null,
+          motivo:
+            "Sem resposta do serviço de push dentro do prazo; o aviso pode ter chegado ao aparelho mesmo assim",
+          quantidade: 1,
+        },
+      ],
+    });
+    expect(aviso).toHaveBeenCalledTimes(1);
+    expect(aviso).toHaveBeenCalledWith(
+      "Status atualizado, mas não foi possível confirmar o envio do aviso",
+      {
+        description:
+          "O aviso ainda pode chegar à cliente. Recusas confirmadas: 2x esses aparelhos não recebem mais avisos (as inscrições venceram).",
+      },
+    );
+  });
+
   it("resposta sem a contagem total (função antiga) e enviados 0: continua avisando, com o texto de reserva", async () => {
     const aviso = await avancarComResposta({ enviados: 0, falhas: [] });
     expect(aviso).toHaveBeenCalledTimes(1);

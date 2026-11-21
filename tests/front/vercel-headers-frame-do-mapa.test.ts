@@ -22,6 +22,13 @@ const FRAME_SRC_APROVADO = [
   "https://*.mercadopago.com.br",
   "https://*.mercadolivre.com",
   "https://*.mercadolivre.com.br",
+  // 1.5.230: o curinga não casa o domínio puro, e o app aceita o desafio 3-D
+  // Secure também em https://mercadopago.com.br (sem subdomínio).
+  "https://mercadopago.com",
+  "https://mercadolibre.com",
+  "https://mercadopago.com.br",
+  "https://mercadolivre.com",
+  "https://mercadolivre.com.br",
 ];
 
 function frameSrcDaCsp(csp: string): string[] {

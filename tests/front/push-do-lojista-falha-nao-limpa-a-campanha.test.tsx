@@ -306,23 +306,44 @@ describe("Avisar clientes — falha não apaga a campanha", () => {
     expect(toast.success).not.toHaveBeenCalled();
   });
 
-  it("zero entregas preserva a campanha e informa que ninguém recebeu", async () => {
-    invokeSendPush.mockResolvedValue({
-      data: { enviados: 0, falharam: 1, falhas: [] },
-      error: null,
-    });
-    await prepararCampanha();
-    await enviar();
+  it.each([
+    {
+      status: 410,
+      motivo: "push service respondeu 410 Gone",
+      titulo: "O aparelho não recebeu o aviso",
+      detalhe: "a inscrição venceu",
+    },
+    {
+      status: null,
+      motivo:
+        "Sem resposta do serviço de push dentro do prazo; o aviso pode ter chegado ao aparelho mesmo assim",
+      titulo: "Não foi possível confirmar o envio",
+      detalhe:
+        "O aviso ainda pode chegar. Se reenviar agora, quem já recebeu pode receber a mesma mensagem de novo.",
+    },
+  ])(
+    "zero aceites preserva a campanha: $titulo",
+    async ({ status, motivo, titulo, detalhe }) => {
+      invokeSendPush.mockResolvedValue({
+        data: {
+          enviados: 0,
+          falharam: 1,
+          falhas: [{ status, motivo, quantidade: 1 }],
+        },
+        error: null,
+      });
+      await prepararCampanha();
+      await enviar();
 
-    conferirCampanhaPreservada();
-    expect(ajustarLog).not.toHaveBeenCalled();
-    const { toast } = await import("sonner");
-    expect(toast.error).toHaveBeenCalledWith(
-      "O aparelho não recebeu o aviso",
-      expect.any(Object),
-    );
-    expect(toast.success).not.toHaveBeenCalled();
-  });
+      conferirCampanhaPreservada();
+      expect(ajustarLog).not.toHaveBeenCalled();
+      const { toast } = await import("sonner");
+      expect(toast.error).toHaveBeenCalledWith(titulo, {
+        description: expect.stringContaining(detalhe),
+      });
+      expect(toast.success).not.toHaveBeenCalled();
+    },
+  );
 
   it.each(["erro de rede retornado", "promessa rejeitada", "sem contagem"])(
     "%s preserva a campanha e avisa que reenviar pode repetir a mensagem",

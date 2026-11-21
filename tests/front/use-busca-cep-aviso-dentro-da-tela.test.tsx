@@ -201,7 +201,7 @@ describe("useBuscaCep — desfecho em `resultado` e aviso dentro da tela", () =>
     expect(resultado()).toBe("achou");
   });
 
-  it("PADRÃO: 'não encontrado' continua sendo toast.error com a frase de sempre", async () => {
+  it("PADRÃO: 'não encontrado' orienta a preencher o endereço manualmente no toast", async () => {
     const { toast } = await import("sonner");
     todosOsProvedoresDizem((url) =>
       url.includes("viacep")
@@ -215,7 +215,9 @@ describe("useBuscaCep — desfecho em `resultado` e aviso dentro da tela", () =>
     clicar("buscar");
     await esvaziar();
 
-    expect(toast.error).toHaveBeenCalledWith("CEP não encontrado");
+    expect(toast.error).toHaveBeenCalledWith(
+      "CEP não encontrado. Preencha o endereço manualmente.",
+    );
     expect(resultado()).toBe("naoEncontrado");
   });
 

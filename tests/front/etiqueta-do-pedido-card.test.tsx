@@ -309,7 +309,7 @@ describe("EtiquetaDoPedidoCard", () => {
     });
   });
 
-  it("sucesso relê o pedido cancelado e mantém o rastreio e o link da etiqueta", async () => {
+  it("sucesso relê o pedido cancelado e mantém o rastreio sem oferecer postagem", async () => {
     invokeMock.mockResolvedValue({
       data: {
         success: true,
@@ -345,10 +345,9 @@ describe("EtiquetaDoPedidoCard", () => {
     const linkEtiqueta = hospedeiro.querySelector<HTMLAnchorElement>(
       'a[href="https://melhorenvio.com.br/imprimir/abc"]',
     );
-    expect(linkEtiqueta).toBeTruthy();
-    // Link externo abre em aba nova sem entregar a janela abridora
-    // (tabnabbing) — mesma checagem do card antigo.
-    expect(linkEtiqueta?.getAttribute("rel")).toMatch(/noopener/);
+    expect(linkEtiqueta).toBeNull();
+    expect(hospedeiro.textContent).not.toContain("Abrir etiqueta");
+    expect(hospedeiro.textContent).toContain("Pedido cancelado — não postar");
     expect(onTrackingAtualizado).toHaveBeenCalledWith(
       "11111111-1111-1111-1111-111111111111",
       "ME23002OWZ7BR",
@@ -446,6 +445,10 @@ describe("EtiquetaDoPedidoCard", () => {
     await abrirCard();
     expect(hospedeiro.textContent).toContain("Etiqueta emitida");
     expect(linkDaEtiqueta()?.textContent).toBe("Abrir etiqueta");
+    expect(linkDaEtiqueta()?.getAttribute("rel")).toMatch(/noopener/);
+    expect(hospedeiro.textContent).not.toContain(
+      "Pedido cancelado — não postar",
+    );
     expect(botao("Atualizar rastreio")).toBeTruthy();
 
     const resultado = {

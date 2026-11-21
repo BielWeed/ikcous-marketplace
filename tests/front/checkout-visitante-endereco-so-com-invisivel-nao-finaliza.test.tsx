@@ -170,8 +170,8 @@ const CAMPOS = [
   {
     id: "guest-number",
     campo: "número",
-    mensagem: "Número é obrigatório",
-    valido: "100",
+    mensagem: "Número do imóvel. Se não tiver número, digite S/N.",
+    valido: "S/N",
   },
   {
     id: "guest-neighborhood",

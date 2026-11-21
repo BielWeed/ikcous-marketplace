@@ -138,6 +138,37 @@ describe("AdminProductFormView — guia diz a regra real do estoque de variaçã
     });
   }
 
+  it.each([
+    { id: "product-stock", rotulo: "Disponível para venda *", variacao: false },
+    { id: "variant-stock", rotulo: "Disponível para venda", variacao: true },
+  ])(
+    "$id explica o saldo disponível para venda",
+    async ({ id, rotulo, variacao }) => {
+      await montar();
+      if (variacao) {
+        const novo = [...hospedeiro.querySelectorAll("button")].find(
+          (botao) => botao.textContent?.trim() === "+ Novo",
+        );
+        if (!novo) throw new Error("Botão de nova variação não está na tela.");
+        await act(async () => novo.click());
+      }
+
+      const campo = document.querySelector<HTMLInputElement>(`#${id}`);
+      expect(campo).not.toBeNull();
+      expect.soft(campo?.labels?.[0]?.textContent?.trim()).toBe(rotulo);
+      const ajuda = campo
+        ?.getAttribute("aria-describedby")
+        ?.split(" ")
+        .map((ref) => document.getElementById(ref)?.textContent)
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim();
+      expect(ajuda ?? "").toContain(
+        "As peças reservadas para pedidos não entram nesse número. Ao conferir a prateleira, não conte essas peças.",
+      );
+    },
+  );
+
   it("o guia de variações NÃO ensina 'incremento' como acréscimo ao estoque do produto", async () => {
     await montar();
 

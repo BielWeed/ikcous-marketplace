@@ -284,6 +284,29 @@ describe("CheckoutView — visitante que retira na loja só informa nome, WhatsA
     "guest-state": "MG",
   };
 
+  it.each([
+    {
+      nome: "retirada",
+      opcao: OPCAO.retirada,
+      mensagem: "CEP não encontrado. Confira os números.",
+    },
+    {
+      nome: "entrega",
+      opcao: OPCAO.entregaLocal,
+      mensagem: "CEP não encontrado. Preencha o endereço manualmente.",
+    },
+  ])(
+    "avisa o que fazer com CEP não encontrado na $nome",
+    async ({ opcao, mensagem }) => {
+      estado.opcao = opcao;
+      await renderizar();
+      await preencher({ "guest-cep": "12345-678" });
+
+      expect(toastError).toHaveBeenCalledTimes(1);
+      expect(toastError).toHaveBeenCalledWith(mensagem);
+    },
+  );
+
   // (a) o caso que doía.
   it("(a) visitante: entrega local trava; trocar para retirada com só nome, WhatsApp e CEP libera o Finalizar e o pedido sai sem endereço", async () => {
     estado.opcao = OPCAO.entregaLocal;
@@ -342,7 +365,7 @@ describe("CheckoutView — visitante que retira na loja só informa nome, WhatsA
   });
 
   // (b) controle: a entrega continua exigindo tudo.
-  it("(b) controle: visitante + entrega local + só o CEP continua travado em 'Número é obrigatório'", async () => {
+  it("(b) visitante com só o CEP recebe a orientação sobre o número na entrega local", async () => {
     estado.opcao = OPCAO.entregaLocal;
     await renderizar();
     await preencher(SO_CEP);
@@ -350,7 +373,9 @@ describe("CheckoutView — visitante que retira na loja só informa nome, WhatsA
     expect(botaoFinalizar().disabled).toBe(true);
     expect(texto()).not.toContain(FRASE);
     await tocarNaPendencia();
-    expect(texto()).toContain("Número é obrigatório");
+    expect(texto()).toContain(
+      "Número do imóvel. Se não tiver número, digite S/N.",
+    );
     expect(texto()).toContain("Rua é obrigatória");
     expect(createOrder).not.toHaveBeenCalled();
   });
@@ -404,7 +429,9 @@ describe("CheckoutView — visitante que retira na loja só informa nome, WhatsA
     expect(campo("guest-number")?.value).toBe("");
     expect(botaoFinalizar().disabled).toBe(true);
     await tocarNaPendencia();
-    expect(texto()).toContain("Número é obrigatório");
+    expect(texto()).toContain(
+      "Número do imóvel. Se não tiver número, digite S/N.",
+    );
   });
 
   // (d) controle: quem tem conta não mudou.

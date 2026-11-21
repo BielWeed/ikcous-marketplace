@@ -39,11 +39,14 @@ describe("conferirFreteEscolhidoComACotacao", () => {
     });
   });
 
-  it("preço ilegível na lista: tratado como sumiu (nunca como confere)", () => {
-    expect(
-      conferirFreteEscolhidoComACotacao(pac, [{ id: pac.id, price: "25.31" }]),
-    ).toEqual({ tipo: "sumiu" });
-  });
+  it.each(["25.31", Number.NaN])(
+    "preço ilegível na lista (%s): tratado como sumiu (nunca como confere)",
+    (price) => {
+      expect(
+        conferirFreteEscolhidoComACotacao(pac, [{ id: pac.id, price }]),
+      ).toEqual({ tipo: "sumiu" });
+    },
+  );
 
   it("sem lista legível: sem evidência (não bloqueia)", () => {
     for (const bruto of [undefined, null, [], "x", { opcoes: [] }]) {

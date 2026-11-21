@@ -127,7 +127,11 @@ export function emailDeAtendimentoValido(
   valor: string | null | undefined,
 ): boolean {
   const email = (valor ?? "").trim();
-  return email.length <= LIMITE_DO_EMAIL && FORMA_DO_EMAIL.test(email);
+  if (email.length > LIMITE_DO_EMAIL || !FORMA_DO_EMAIL.test(email)) {
+    return false;
+  }
+  const dominio = email.slice(email.indexOf("@") + 1);
+  return !dominio.split(".").includes("");
 }
 
 function aparar(valor: string | null | undefined): string {

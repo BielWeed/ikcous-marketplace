@@ -98,7 +98,16 @@ export function EnviarAoMototaxi({
       </div>
     );
   // Se não havia número ao abrir, reabra a ficha para reler o contato.
-  if (!normalizarNumeroMototaxi(config?.whatsapp)) return null;
+  if (!config) return null;
+  if (!normalizarNumeroMototaxi(config.whatsapp))
+    return (
+      <div className="border-t border-admin-border pt-4">
+        <p className="text-center text-xs text-zinc-500">
+          Para enviar este pedido ao mototáxi pelo WhatsApp, cadastre o número
+          em Entrega e frete.
+        </p>
+      </div>
+    );
   return (
     <div className="space-y-2 border-t border-admin-border pt-4">
       <button

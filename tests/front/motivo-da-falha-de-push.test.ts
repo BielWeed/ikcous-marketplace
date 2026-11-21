@@ -3,7 +3,40 @@
 // status do pedido.
 import { describe, expect, it } from "vitest";
 
-import { motivoDaFalhaEmPortugues } from "@/lib/motivo-da-falha-de-push";
+import {
+  descricaoDePushSemConfirmacao,
+  motivoDaFalhaEmPortugues,
+} from "@/lib/motivo-da-falha-de-push";
+
+describe("descricaoDePushSemConfirmacao", () => {
+  it.each([
+    {
+      status: null,
+      motivo:
+        "endpoint_invalido: o endereço do aparelho não é de um serviço de push público (https)",
+      quantidade: 1,
+    },
+    {
+      status: 400,
+      motivo: "push service respondeu 400 Bad Request",
+      quantidade: 1,
+    },
+  ])("não omite outra falha quando houve demora: $motivo", (falha) => {
+    expect(
+      descricaoDePushSemConfirmacao([
+        {
+          status: null,
+          motivo:
+            "Sem resposta do serviço de push dentro do prazo; o aviso pode ter chegado ao aparelho mesmo assim",
+          quantidade: 1,
+        },
+        falha,
+      ]),
+    ).toBe(
+      "O aviso ainda pode chegar. Se reenviar agora, quem já recebeu pode receber a mesma mensagem de novo. Outras falhas: 1 aparelho.",
+    );
+  });
+});
 
 describe("motivoDaFalhaEmPortugues", () => {
   it.each([
@@ -20,6 +53,14 @@ describe("motivoDaFalhaEmPortugues", () => {
     [{ status: 413 }, "mensagem grande demais"],
     [{ status: 429 }, "muitos envios, tente daqui a pouco"],
     [{ status: 503 }, "o serviço de avisos está fora do ar agora"],
+    [
+      {
+        status: null,
+        motivo:
+          "Sem resposta do serviço de push dentro do prazo; o aviso pode ter chegado ao aparelho mesmo assim",
+      },
+      "envio sem confirmação",
+    ],
   ])("traduz %j", (falha, esperado) => {
     expect(motivoDaFalhaEmPortugues(falha)).toBe(esperado);
   });
