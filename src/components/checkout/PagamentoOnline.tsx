@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import type {
   ArgsCriarPagamento,
   RespostaCriarPagamento,
@@ -607,6 +608,7 @@ export function AvisoDePixEncerrado({
   pagamentoNaoConcluido?: boolean;
 }) {
   const idTitulo = useId();
+  const idAvisoDoCarrinho = useId();
   return (
     <section
       aria-labelledby={idTitulo}
@@ -639,23 +641,35 @@ export function AvisoDePixEncerrado({
             : "Este código não vale mais. Se você já pagou, fique nesta tela: a confirmação aparece aqui. Se ainda não pagou, faça um pedido novo."}
         </p>
       </div>
-      {onVoltarAoCarrinho && (
-        <button
-          type="button"
-          onClick={onVoltarAoCarrinho}
-          className="flex min-h-12 w-full items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white active:bg-zinc-700"
-        >
-          Voltar ao carrinho
-        </button>
-      )}
       {onVerMeusPedidos && (
-        <button
+        <Button
           type="button"
           onClick={onVerMeusPedidos}
-          className="flex min-h-12 w-full items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white active:bg-zinc-700"
+          className="min-h-12 w-full rounded-xl bg-zinc-900 font-bold text-white hover:bg-zinc-800 active:bg-zinc-700"
         >
           Ver meus pedidos
-        </button>
+        </Button>
+      )}
+      {onVoltarAoCarrinho && (
+        <div className="space-y-2">
+          {!pagamentoNaoConcluido && (
+            <p id={idAvisoDoCarrinho} className="text-sm text-zinc-700">
+              Já pagou? Não faça outro pedido. Aguarde a confirmação. Volte ao
+              carrinho só se não pagou.
+            </p>
+          )}
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onVoltarAoCarrinho}
+            aria-describedby={
+              pagamentoNaoConcluido ? undefined : idAvisoDoCarrinho
+            }
+            className="min-h-12 w-full rounded-xl border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 hover:text-zinc-900"
+          >
+            Voltar ao carrinho
+          </Button>
+        </div>
       )}
     </section>
   );

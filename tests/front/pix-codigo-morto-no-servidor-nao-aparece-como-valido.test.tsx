@@ -172,6 +172,26 @@ describe("PagamentoOnline (PIX) — pedido morto no servidor", () => {
     expect(criarPagamento).toHaveBeenCalledTimes(1);
   });
 
+  it("avisa junto da saída para o carrinho que quem já pagou não deve fazer novo pedido", async () => {
+    await renderizar(true, vi.fn(), vi.fn());
+
+    expect(texto()).toContain(
+      "Já pagou? Não faça outro pedido. Aguarde a confirmação. Volte ao carrinho só se não pagou.",
+    );
+  });
+
+  it("põe Meus pedidos antes do carrinho e destaca só Meus pedidos", async () => {
+    await renderizar(true, vi.fn(), vi.fn());
+
+    const botoes = Array.from(hospedeiro.querySelectorAll("button"));
+    expect(
+      botoes.map((botao) => [botao.textContent?.trim(), botao.dataset.variant]),
+    ).toEqual([
+      ["Ver meus pedidos", "default"],
+      ["Voltar ao carrinho", "outline"],
+    ]);
+  });
+
   it("CONTROLE: pedido morto SEM a saída do carrinho (retomada: não há itens locais) não nasce botão mudo", async () => {
     await renderizar(true, vi.fn());
     expect(texto()).not.toContain("Voltar ao carrinho");
