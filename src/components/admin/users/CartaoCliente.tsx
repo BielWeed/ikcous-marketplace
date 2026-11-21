@@ -5,6 +5,7 @@ import { formatarData, formatarInteiro } from "@/lib/crm";
 import { nomeOuReserva } from "@/lib/nome-visivel";
 import { rotuloDoPapel } from "@/lib/papel-da-conta";
 import { primeiraLetra } from "@/lib/primeira-letra";
+import { telefoneDaLojaParaExibicao } from "@/lib/telefone-br";
 import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
@@ -203,7 +204,9 @@ export const CartaoCliente = memo(function CartaoCliente({
               className="mt-0.5 size-3 shrink-0 text-sky-300"
             />
             <span className="break-words [overflow-wrap:anywhere]">
-              {customer.phone}
+              {/^[1-9]\d{9,10}$/.test(customer.phone)
+                ? telefoneDaLojaParaExibicao(customer.phone)
+                : customer.phone}
             </span>
           </span>
         )}

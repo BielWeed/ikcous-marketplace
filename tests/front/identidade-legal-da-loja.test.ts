@@ -89,6 +89,9 @@ describe("formatarDocumento — máscara para mostrar", () => {
 describe("emailDeAtendimentoValido", () => {
   it.each([
     "atendimento@loja.com.br",
+    "a@loja.com.br",
+    "a@mail.loja.com",
+    "a..b@loja.com",
     "a@b.co",
     "oi+loja@dominio.com",
     "Atendimento@Loja.COM.br",
@@ -145,6 +148,9 @@ describe("emailDeAtendimentoValido", () => {
     expect(emailDeAtendimentoValido(`${"a".repeat(249)}@b.com`)).toBe(false);
   });
   it.each([
+    "a@loja..com",
+    "a@.loja.com",
+    "a@loja.com.",
     "sem-arroba.com",
     "a@b",
     "a@@b.com",

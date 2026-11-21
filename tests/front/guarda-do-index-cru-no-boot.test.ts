@@ -119,9 +119,13 @@ describe("buildIdentity: guarda da página crua", () => {
       posicao: m.index ?? 0,
     }));
     const antes = imports.filter((i) => i.posicao < guarda).map((i) => i.linha);
-    // Só React vem antes: nenhum módulo do app (nem o do banco) avalia primeiro.
-    expect(antes.every((l) => /from "react(-dom\/client)?"/.test(l))).toBe(
-      true,
-    );
+    // Só o polyfill e o React vêm antes: nem o banco nem as telas avaliam primeiro.
+    expect(
+      antes.every(
+        (l) =>
+          l === 'import "./polyfills-ios-antigo";' ||
+          /from "react(-dom\/client)?"/.test(l),
+      ),
+    ).toBe(true);
   });
 });

@@ -24,11 +24,12 @@ export function rotuloDaFormaDePagamento(pedido: FormaDoPedido): string {
   return rotuloDaFormaDoPedido(pedido);
 }
 
-// "Canal" e "Entrega" entram NO FIM, nunca no meio: quem já tem planilha
+// Colunas novas entram NO FIM, nunca no meio: quem já tem planilha
 // salva com fórmula por posição de coluna perde tudo se as colunas antigas
 // andarem de lugar (lote C4, item 15).
 const CABECALHO =
   "Número do pedido;Data;Cliente;Telefone;Status;Forma de pagamento;Status do pagamento;Total;Cidade;UF;Itens;Subtotal;Frete;Desconto;Canal;Entrega";
+const CABECALHO_COM_ESTORNO = `${CABECALHO};Estorno pelo Mercado Pago;Total menos estorno do Mercado Pago`;
 
 // Mesma classificação da ficha do pedido (`tipoDeEntregaDoPedido`), em
 // português para quem abre a planilha. Balcão repete "Balcão": a venda
@@ -45,6 +46,35 @@ function escaparCampo(valor: string): string {
   const seguro =
     /^[\t\r\n]/.test(valor) || /^[\s]*[=+@-]/.test(valor) ? `'${valor}` : valor;
   return /[;"\r\n]/.test(seguro) ? `"${seguro.replaceAll('"', '""')}"` : seguro;
+}
+
+function colunasDeEstorno({
+  total,
+  valorEstornado,
+  paymentStatus,
+}: Pedido): [string, string] {
+  // Um pagamento estornado pode ter acumulado zero (ex.: cartão financiado).
+  // O recibo diz "Estornado", mas não imprime um valor de reembolso nesse caso.
+  if (
+    typeof valorEstornado !== "number" ||
+    !Number.isFinite(valorEstornado) ||
+    valorEstornado < 0 ||
+    (paymentStatus === "estornado" && valorEstornado === 0)
+  ) {
+    return ["", ""];
+  }
+
+  // Como no recibo, limita o valor exibido ao total e faz a conta em centavos.
+  const totalEmCentavos = Math.max(0, Math.round(total * 100));
+  const estornoEmCentavos = Math.min(
+    Math.round(valorEstornado * 100),
+    totalEmCentavos,
+  );
+  const restanteEmCentavos = totalEmCentavos - estornoEmCentavos;
+  return [
+    (estornoEmCentavos / 100).toFixed(2).replace(".", ","),
+    (restanteEmCentavos / 100).toFixed(2).replace(".", ","),
+  ];
 }
 
 /** Exporta somente os pedidos recebidos, na mesma ordem, sem alterar a lista.
@@ -96,7 +126,8 @@ export function pedidosParaCsv(
       // painel usa para o mesmo canal (OrderDetail.tsx, "Pago no site").
       escaparCampo(pedido.canal === "presencial" ? "Balcão" : "Site"),
       escaparCampo(ROTULO_DA_ENTREGA[tipoDeEntregaDoPedido(pedido)]),
+      ...colunasDeEstorno(pedido),
     ].join(";"),
   );
-  return `\uFEFF${[CABECALHO, ...linhas].join("\r\n")}`;
+  return `\uFEFF${[CABECALHO_COM_ESTORNO, ...linhas].join("\r\n")}`;
 }

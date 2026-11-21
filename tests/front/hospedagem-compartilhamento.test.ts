@@ -145,23 +145,43 @@ describe("worker", () => {
     expect(await resposta.text()).toBe("<html>app</html>");
   });
 
-  it("navegador em /product-detail recebe o documento da raiz, URL preservada, x-ikcous-og: passa", async () => {
-    const { env, pedidos } = ambiente();
-    const { impl } = fetchComProduto([produto]);
-    const worker = criarWorker(config(), { fetchImpl: impl });
-    const resposta = await worker.fetch(
-      new Request(`https://loja.exemplo/product-detail?id=${ID}`, {
-        headers: NAVEGADOR,
-      }),
-      env,
-    );
-    expect(pedidos[0].url).toBe("https://loja.exemplo/");
-    expect(resposta.headers.get("x-ikcous-og")).toBe("passa");
-    expect(resposta.headers.get("x-ikcous-delivery")).toBe("1.26.0+a.b.c");
-    expect(resposta.headers.get("x-frame-options")).toBe("DENY");
-    expect(await resposta.text()).toBe("<html>app</html>");
-    expect(impl).not.toHaveBeenCalled();
-  });
+  it.each([
+    ["Chrome comum", NAVEGADOR],
+    [
+      "Chrome embutido no WhatsApp com mode e dest",
+      {
+        "user-agent": `${NAVEGADOR["user-agent"]} WhatsApp/2.23.20.0`,
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-dest": "document",
+      },
+    ],
+    [
+      "Chrome embutido no WhatsApp só com dest",
+      {
+        "user-agent": `${NAVEGADOR["user-agent"]} WhatsApp/2.23.20.0`,
+        "sec-fetch-dest": "document",
+      },
+    ],
+  ] as const)(
+    "%s em /product-detail recebe o documento da raiz e preserva a URL",
+    async (_, headers) => {
+      const { env, pedidos } = ambiente();
+      const { impl } = fetchComProduto([produto]);
+      const worker = criarWorker(config(), { fetchImpl: impl });
+      const resposta = await worker.fetch(
+        new Request(`https://loja.exemplo/product-detail?id=${ID}`, {
+          headers,
+        }),
+        env,
+      );
+      expect(resposta.headers.get("x-ikcous-og")).toBe("passa");
+      expect(pedidos[0].url).toBe("https://loja.exemplo/");
+      expect(resposta.headers.get("x-ikcous-delivery")).toBe("1.26.0+a.b.c");
+      expect(resposta.headers.get("x-frame-options")).toBe("DENY");
+      expect(await resposta.text()).toBe("<html>app</html>");
+      expect(impl).not.toHaveBeenCalled();
+    },
+  );
 
   it.each(["/product-detail", "/product-detail/"])(
     "robô com produto em %s recebe a prévia com cabeçalhos de segurança e no-store",
@@ -178,6 +198,9 @@ describe("worker", () => {
       expect(resposta.status).toBe(200);
       expect(resposta.headers.get("x-ikcous-og")).toBe("produto");
       expect(resposta.headers.get("cache-control")).toBe("no-store");
+      expect(resposta.headers.get("vary")).toBe(
+        "user-agent, sec-fetch-dest, sec-fetch-mode",
+      );
       expect(resposta.headers.get("x-frame-options")).toBe("DENY");
       expect(resposta.headers.get("content-type")).toBe(
         "text/html; charset=utf-8",

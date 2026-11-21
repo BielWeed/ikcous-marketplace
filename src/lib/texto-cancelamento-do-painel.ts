@@ -158,7 +158,7 @@ function textoBaseDoCancelamento(
       : "ainda não saiu para entrega";
     const avisoEstoque = retiradaPronta
       ? "Ao cancelar, o app repõe o estoque. "
-      : "";
+      : "Os itens voltam ao estoque ao cancelar. ";
     if (jaDevolveuParte(pedido)) {
       return `Este pedido está PAGO, ${situacao} e uma parte do valor já foi devolvida. ${avisoEstoque}Ao cancelar, o app pede sozinho ao Mercado Pago, em alguns minutos, a devolução do que ainda falta devolver (não do valor total do pedido). NÃO devolva o restante por outro meio (PIX, dinheiro, transferência): o cliente receberia duas vezes. Antes de qualquer devolução por fora, confira na lista "Devolver agora" o valor que ainda falta e se há devolução em andamento. Se você já devolveu o restante por fora, toque em "Já estornei no Mercado Pago" logo depois de cancelar. Cancelar mesmo assim?`;
     }

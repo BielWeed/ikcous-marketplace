@@ -7,6 +7,7 @@ import {
   aguardaPixOnline,
   avisoDePixVencido,
 } from "@/components/admin/orders/aviso-de-pix-vencido";
+import { avisoDeRastreio } from "@/components/admin/orders/aviso-de-rastreio";
 import { AnularVendaDoBalcao } from "@/components/admin/pdv/AnularVendaDoBalcao";
 import {
   AlertDialog,
@@ -70,6 +71,7 @@ import {
   rotuloDaVariacaoGuardada,
 } from "@/lib/rotulo-da-variacao";
 import { supabase } from "@/lib/supabase";
+import { telefoneDaLojaParaExibicao } from "@/lib/telefone-br";
 import { textoCancelamentoDoPainel } from "@/lib/texto-cancelamento-do-painel";
 import { textoSemControlesDeDirecao } from "@/lib/texto-sem-controles-de-direcao";
 import { tipoDeEntregaDoPedido } from "@/lib/tipo-de-entrega-do-pedido";
@@ -592,6 +594,7 @@ interface OrderActionBarProps {
   nextStatus: OrderStatus | null;
   /** Retirada na loja: o avanço para `shipping` se lê "Pronto para retirar". */
   retiradaNaLoja?: boolean;
+  mensagemDeRastreio?: string;
   isOffline: boolean;
   isUpdatingStatus: boolean;
   pagoForaDoFluxo: boolean;
@@ -623,6 +626,7 @@ function OrderActionBar({
   orderStatus,
   nextStatus,
   retiradaNaLoja,
+  mensagemDeRastreio,
   isOffline,
   isUpdatingStatus,
   pagoForaDoFluxo,
@@ -688,6 +692,11 @@ function OrderActionBar({
           </Button>
         )}
       </div>
+      {podeAvancar && mensagemDeRastreio && (
+        <p className="mx-auto w-full max-w-[600px] px-4 pb-3 text-xs text-zinc-400 xl:max-w-none xl:px-6">
+          {mensagemDeRastreio}
+        </p>
+      )}
     </div>
   );
 }
@@ -863,7 +872,9 @@ function OrderDeliveryCard({
             {order.customer.name}
           </p>
           <p className="mt-0.5 text-sm tabular-nums text-zinc-400">
-            {order.customer.whatsapp}
+            {/^[1-9]\d{9,10}$/.test(order.customer.whatsapp)
+              ? telefoneDaLojaParaExibicao(order.customer.whatsapp)
+              : order.customer.whatsapp}
           </p>
         </div>
         {whatsappUrl && (
@@ -1806,20 +1817,22 @@ export const OrderDetail = memo(function OrderDetail({
     orderId: string;
     status: OrderStatus;
     statusOrigem: OrderStatus;
+    pagamentoOrigem: Order["paymentStatus"];
     motivo: "naoPago" | "foraDoFluxo" | "recebimento";
   } | null>(null);
 
+  const avancoDesatualizado =
+    pendingAdvance !== null &&
+    (pendingAdvance.orderId !== order.id ||
+      pendingAdvance.statusOrigem !== order.status ||
+      pendingAdvance.pagamentoOrigem !== order.paymentStatus);
+
   useEffect(() => {
-    if (
-      pendingAdvance &&
-      (pendingAdvance.orderId !== order.id ||
-        pendingAdvance.statusOrigem !== order.status ||
-        (pendingAdvance.motivo === "foraDoFluxo" && !pagoForaDoFluxo))
-    ) {
+    if (avancoDesatualizado) {
       setPendingAdvance(null);
       toast.warning("O pedido mudou de situação. Confira antes de avançar.");
     }
-  }, [pendingAdvance, order.id, order.status, pagoForaDoFluxo]);
+  }, [avancoDesatualizado]);
 
   const handleStatusChange = async (
     orderId: string,
@@ -1892,6 +1905,7 @@ export const OrderDetail = memo(function OrderDetail({
         orderId,
         status: nextStatus,
         statusOrigem: order.status,
+        pagamentoOrigem: order.paymentStatus,
         motivo: pagoForaDoFluxo ? "foraDoFluxo" : "naoPago",
       });
       return;
@@ -1930,6 +1944,7 @@ export const OrderDetail = memo(function OrderDetail({
         orderId,
         status: nextStatus,
         statusOrigem: order.status,
+        pagamentoOrigem: order.paymentStatus,
         motivo: "recebimento",
       });
       return;
@@ -1943,6 +1958,7 @@ export const OrderDetail = memo(function OrderDetail({
     if (!pendingAdvance) return;
     const { orderId, status, statusOrigem } = pendingAdvance;
     setPendingAdvance(null);
+    if (avancoDesatualizado) return;
     handleStatusChange(orderId, status, statusOrigem);
   };
 
@@ -1951,6 +1967,7 @@ export const OrderDetail = memo(function OrderDetail({
     if (!pendingAdvance) return;
     const { orderId, status, statusOrigem } = pendingAdvance;
     setPendingAdvance(null);
+    if (avancoDesatualizado) return;
     await registrarRecebimentoEAvancar(orderId, status, statusOrigem);
   };
 
@@ -2747,6 +2764,11 @@ export const OrderDetail = memo(function OrderDetail({
         orderStatus={order.status}
         nextStatus={nextStatus}
         retiradaNaLoja={order.retiradaNaLoja}
+        mensagemDeRastreio={
+          nextStatus === "shipping" && tipoDeEntregaDoPedido(order) === "envio"
+            ? avisoDeRastreio(localTrackingCode)
+            : undefined
+        }
         isOffline={isOffline}
         isUpdatingStatus={isUpdatingStatus}
         pagoForaDoFluxo={pagoForaDoFluxo}
@@ -3010,7 +3032,7 @@ export const OrderDetail = memo(function OrderDetail({
                     ? "Este pedido está marcado como pago fora do fluxo. Confirme que o pagamento foi conferido antes de avançar."
                     : order.paymentStatus === "estornado"
                       ? "O pagamento deste pedido foi estornado. Se avançar, o pedido segue sem esse pagamento. Depois de finalizado, não dá mais para cancelar e devolver ao estoque."
-                      : "O dinheiro deste pedido não entrou. Se você avançar, a mercadoria caminha para sair mesmo assim — e, depois de finalizado, não dá mais para cancelar e devolver ao estoque. Se a cliente pagou na loja, feche este aviso, cancele o pedido (botão Cancelar pedido) e registre a venda em Vender."}
+                      : `${order.paymentStatus === "aguardando" ? "O pagamento ainda não foi confirmado. Não despache até aparecer “Pago”." : "O dinheiro deste pedido não entrou."} Se você avançar, a mercadoria caminha para sair mesmo assim — e, depois de finalizado, não dá mais para cancelar e devolver ao estoque. Se a cliente pagou na loja, feche este aviso, cancele o pedido (botão Cancelar pedido) e registre a venda em Vender.`}
                   {pendingAdvance?.motivo === "naoPago" &&
                     aguardaPixOnline(order) &&
                     ` ${AVISO_DE_RESERVA_AO_AVANCAR_PIX}`}
@@ -3024,7 +3046,9 @@ export const OrderDetail = memo(function OrderDetail({
                   onClick={confirmPendingAdvance}
                   className="min-h-11 rounded-xl border-0 bg-foreground px-4 py-2 text-xs font-bold text-background hover:opacity-90"
                 >
-                  Avançar mesmo assim
+                  {pendingAdvance?.motivo === "foraDoFluxo"
+                    ? "Avançar mesmo assim"
+                    : "Avançar sem pagamento confirmado"}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </>

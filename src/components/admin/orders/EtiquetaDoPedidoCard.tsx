@@ -436,6 +436,9 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
     ? elegibilidadeDaEtiqueta(pedido)
     : null;
   const etiquetaCancelada = pedido?.situacao_da_compra === "cancelada";
+  // A ficha pode saber do cancelamento antes da releitura do cartão.
+  const pedidoCancelado =
+    status === "cancelled" || pedido?.status === "cancelled";
 
   const handleGerarEtiqueta = useCallback(async () => {
     const orderIdDoClique = orderId;
@@ -877,15 +880,19 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
 
       {cargaFase === "ok" && pedido && elegibilidade && (
         <div className="space-y-2.5">
-          {deveAvisarCancelamentoComEtiquetaPaga(pedido) && (
-            <p
-              role="alert"
-              className="rounded-xl border border-admin-border bg-admin-surface px-3 py-2 text-sm font-medium leading-snug text-amber-400"
-            >
-              Confira no Melhor Envio se ainda é possível cancelar a etiqueta e
-              solicitar o reembolso.
-            </p>
-          )}
+          {pedidoCancelado &&
+            deveAvisarCancelamentoComEtiquetaPaga({
+              ...pedido,
+              status: "cancelled",
+            }) && (
+              <p
+                role="alert"
+                className="rounded-xl border border-admin-border bg-admin-surface px-3 py-2 text-sm font-medium leading-snug text-amber-400"
+              >
+                Confira no Melhor Envio se ainda é possível cancelar a etiqueta
+                e solicitar o reembolso.
+              </p>
+            )}
 
           {mensagemResultado?.tipo === "erro" && (
             <p
@@ -949,22 +956,26 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                {pedido.shipping_label_url && (
+                {pedidoCancelado ? (
+                  <p className="text-sm font-medium text-amber-400">
+                    Pedido cancelado — não postar
+                  </p>
+                ) : pedido.shipping_label_url ? (
                   <a
                     href={pedido.shipping_label_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex h-10 items-center gap-1.5 rounded-xl border border-solid border-admin-border-strong bg-admin-raised px-3 text-sm font-medium text-foreground transition-colors hover:bg-admin-hover active:scale-95"
+                    className="flex min-h-11 items-center gap-1.5 rounded-xl border border-solid border-admin-border-strong bg-admin-raised px-3 text-sm font-medium text-foreground transition-colors hover:bg-admin-hover active:scale-95"
                   >
                     <ExternalLink className="size-4" />
                     <span>Abrir etiqueta</span>
                   </a>
-                )}
+                ) : null}
                 <button
                   type="button"
                   onClick={() => handleConsultarRastreio()}
                   disabled={consultandoRastreio || isOffline}
-                  className="flex h-10 items-center gap-1.5 rounded-xl border border-admin-border bg-white/5 px-3 text-sm font-medium text-zinc-300 transition-colors hover:text-white active:scale-95 disabled:opacity-40"
+                  className="flex min-h-11 items-center gap-1.5 rounded-xl border border-admin-border bg-white/5 px-3 text-sm font-medium text-zinc-300 transition-colors hover:text-white active:scale-95 disabled:opacity-40"
                 >
                   <RefreshCw
                     className={`size-4 ${consultandoRastreio ? "animate-spin" : ""}`}

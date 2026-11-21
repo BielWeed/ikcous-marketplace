@@ -50,7 +50,12 @@ import {
   problemaDoCupom,
   temMarcadorPendente,
 } from "@/lib/modelos-de-campanha";
-import { motivoDaFalhaEmPortugues } from "@/lib/motivo-da-falha-de-push";
+import {
+  contarPushSemConfirmacao,
+  descricaoDePushSemConfirmacao,
+  falhaDePushSemConfirmacao,
+  motivoDaFalhaEmPortugues,
+} from "@/lib/motivo-da-falha-de-push";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { intercalarPorServico } from "@/lib/ordem-do-envio-de-push";
@@ -1048,8 +1053,15 @@ export const AdminPushView = memo(function AdminPushView({
           tokens: tokens.slice(-naoTentados),
         });
       }
+      const semConfirmacao = Math.min(
+        falharam,
+        contarPushSemConfirmacao(envio?.falhas ?? []),
+      );
+      const resultadoDasFalhas = semConfirmacao
+        ? `${falharam - semConfirmacao} com falha, ${semConfirmacao} sem confirmação`
+        : `${falharam} com falha`;
       setEstadoDaContinuacao(
-        `Continuação: envio aceito para ${enviados} de ${tokens.length} ${tokens.length === 1 ? "aparelho" : "aparelhos"}; ${falharam} com falha e ${naoTentados} ${naoTentados === 1 ? "não tentado" : "não tentados"}.`,
+        `Continuação: envio aceito para ${enviados} de ${tokens.length} ${tokens.length === 1 ? "aparelho" : "aparelhos"}; ${resultadoDasFalhas} e ${naoTentados} ${naoTentados === 1 ? "não tentado" : "não tentados"}.`,
       );
 
       if (enviados > 0) {
@@ -1466,27 +1478,41 @@ export const AdminPushView = memo(function AdminPushView({
             .join(" "),
         });
       } else if (entregues === 0) {
+        const semConfirmacao = envio?.falhas?.some(falhaDePushSemConfirmacao);
+        const motivo = semConfirmacao
+          ? descricaoDePushSemConfirmacao(envio.falhas)
+          : (detalheDaFalha ?? "A função não informou o motivo da falha.");
         toast.error(
-          finalRecipientCount === 1
-            ? "O aparelho não recebeu o aviso"
-            : `Nenhum dos ${finalRecipientCount} dispositivos recebeu`,
+          semConfirmacao
+            ? "Não foi possível confirmar o envio"
+            : finalRecipientCount === 1
+              ? "O aparelho não recebeu o aviso"
+              : `Nenhum dos ${finalRecipientCount} dispositivos recebeu`,
           {
             description: [
               avisoDeAlcanceMenor,
-              `${detalheDaFalha ?? "A função não informou o motivo da falha."}${naoTentados > 0 ? ` ${naoTentados} ${naoTentados === 1 ? "dispositivo nem chegou a ser tentado" : "dispositivos nem chegaram a ser tentados"} porque o envio demorou demais.` : ""} Sua campanha foi mantida. Se reenviar, o aviso dentro do app também aparece de novo para os clientes.`,
+              `${motivo}${naoTentados > 0 ? ` ${naoTentados} ${naoTentados === 1 ? "dispositivo nem chegou a ser tentado" : "dispositivos nem chegaram a ser tentados"} porque o envio demorou demais.` : ""} Sua campanha foi mantida. Se reenviar, o aviso dentro do app também aparece de novo para os clientes.`,
             ]
               .filter(Boolean)
               .join(" "),
           },
         );
       } else if (falharam > 0 || naoTentados > 0) {
+        const falhas = envio?.falhas ?? [];
+        const detalheParcial =
+          falhas.length > 1 && falhas.some(falhaDePushSemConfirmacao)
+            ? descricaoDePushSemConfirmacao(
+                falhas,
+                "O aviso sem confirmação ainda pode chegar",
+              )
+            : detalheDaFalha;
         toast.warning(
           `Envio aceito para ${entregues} de ${entregues + falharam + naoTentados} aparelhos`,
           {
             description:
               [
                 avisoDeAlcanceMenor,
-                detalheDaFalha,
+                detalheParcial,
                 naoTentados > 0
                   ? `${naoTentados} ${naoTentados === 1 ? "dispositivo não recebeu" : "dispositivos não receberam"} porque o envio demorou demais. Se reenviar esta campanha, quem já recebeu pode receber a mensagem repetida.`
                   : undefined,

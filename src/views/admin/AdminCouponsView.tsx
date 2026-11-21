@@ -522,11 +522,14 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                     config.enableCoupons ? "text-teal-300" : "text-zinc-400",
                   )}
                 >
-                  No checkout · {config.enableCoupons ? "Ativo" : "Inativo"}
+                  Na finalização da compra ·{" "}
+                  {config.enableCoupons ? "Ativo" : "Inativo"}
                 </p>
               </div>
               <div className="flex flex-col items-center">
-                <span className="text-[11px] text-zinc-400">Checkout</span>
+                <span className="text-[11px] text-zinc-400">
+                  Na finalização da compra
+                </span>
                 <Switch
                   id="enable-coupons-switch"
                   checked={config.enableCoupons}
@@ -546,7 +549,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
               </button>
             </div>
             <p className="sr-only">
-              Permitir que clientes usem cupons no checkout.
+              Permitir que clientes usem cupons na finalização da compra.
             </p>
             {isUpdatingConfig && (
               <p role="status" className="mt-3 text-sm text-sky-300">
@@ -559,16 +562,17 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                 id="coupon-settings-help"
                 className="mt-4 space-y-3 border-t border-admin-border pt-4 text-sm leading-relaxed text-zinc-400"
               >
-                <h3 className="font-bold text-zinc-50">Cupons no checkout</h3>
+                <h3 className="font-bold text-zinc-50">
+                  Cupons na finalização da compra
+                </h3>
                 <p>
-                  Ativando esta opção, seus clientes poderão digitar códigos de
-                  cupom (ex: GANHE10) no checkout para receber descontos
-                  especiais.
+                  Com esta opção ligada, seus clientes podem usar um código como
+                  GANHE10 para receber desconto na finalização da compra.
                 </p>
                 <p>
-                  Se desativado, o campo de cupom some do checkout e nenhum
-                  desconto de cupom é aplicado em pedidos novos — nem para quem
-                  já tinha aplicado um cupom antes. Pedidos já feitos não mudam.
+                  Se você desligar a opção, o campo de cupom some e os pedidos
+                  novos deixam de receber esse desconto, mesmo que a cliente já
+                  tenha aplicado o cupom. Pedidos já feitos não mudam.
                 </p>
                 <p>
                   Use isso para criar campanhas promocionais e incentivar novas

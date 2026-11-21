@@ -1,4 +1,4 @@
-// C4.3 — o CSV do painel ganha a coluna Canal (última, para não deslocar
+// C4.3 — o CSV do painel ganha a coluna Canal (depois de Desconto, para não deslocar
 // planilha salva por posição) e a coluna "Status do pagamento" passa a dizer
 // "Recebido no balcão" numa venda presencial, em vez de mentir "na entrega".
 // Molde: tests/front/admin-orders-exporta-csv.test.ts.
@@ -58,13 +58,13 @@ describe("pedidosParaCsv com a coluna Canal", () => {
     expect(canalDaLinha(csv)).toBe("Site");
   });
 
-  it("o cabeçalho e a linha têm o mesmo número de separadores (15 ';', 16 colunas)", () => {
+  it("o cabeçalho e a linha têm o mesmo número de separadores (17 ';', 18 colunas)", () => {
     const csv = pedidosParaCsv([pedido({ canal: "presencial" })]);
     const [cabecalho, linha] = csv.split("\r\n");
     const separadoresDoCabecalho = cabecalho.split(";").length - 1;
     const separadoresDaLinha = linha.split(";").length - 1;
-    expect(separadoresDoCabecalho).toBe(15);
-    expect(separadoresDaLinha).toBe(15);
+    expect(separadoresDoCabecalho).toBe(17);
+    expect(separadoresDaLinha).toBe(17);
   });
 
   it("'Balcão' com acento não quebra o escape CSV nem o BOM", () => {

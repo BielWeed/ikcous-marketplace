@@ -189,6 +189,8 @@ export const OperationalPerformanceChart = memo(
       return desdeOPrimeiroDiaDeMovimento(revenueHistory);
     }, [revenueHistory, timeframe, chartMode, diasFechados]);
     const mostrarAno = serieCobreMaisDeUmAno(filteredRevenueHistory);
+    // A série termina no dia de hoje, no calendário de Brasília.
+    const diaDoEstoqueAtual = revenueHistory?.at(-1)?.date;
 
     // Faturamento Total / Pedidos / Ticket Médio do bloco de resumo, somados
     // a partir dos MESMOS dias que alimentam as barras (`filteredRevenueHistory`).
@@ -291,7 +293,10 @@ export const OperationalPerformanceChart = memo(
           <ExplicacaoDoRelatorio titulo="Histórico da loja">
             Conta pelo dia em que o pedido foi feito, por isso pode ficar um
             pouco diferente da Receita lá de cima. Em Vendas, a janela de 30
-            dias termina ontem, assim como a comparação do selo.
+            dias termina ontem, assim como a comparação do selo. O Histórico
+            pode incluir vendas reembolsadas por inteiro quando a devolução do
+            dinheiro foi registrada como manual. Para conferir o que entrou e
+            saiu, use o Extrato do Financeiro.
             {semCusto > 0 && (
               <div className="mt-3">
                 <p>{avisoProdutosSemCusto(semCusto)}</p>
@@ -638,6 +643,7 @@ export const OperationalPerformanceChart = memo(
                             }
                             lucroAcumulado={data.cumulativeProfit}
                             estoqueInvestido={data.inventoryCost}
+                            estoqueEstimado={data.date !== diaDoEstoqueAtual}
                           />
                         );
                       }
@@ -676,7 +682,7 @@ export const OperationalPerformanceChart = memo(
                       stroke: "#fff",
                       strokeWidth: 1.5,
                     }}
-                    name="Valor Investido (Estoque)"
+                    name="Estoque investido"
                     isAnimationActive={!isMobile}
                   />
                 </AreaChart>

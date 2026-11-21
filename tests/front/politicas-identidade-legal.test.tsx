@@ -268,11 +268,14 @@ describe("identidade legal nas políticas", () => {
       );
     });
 
-    it("e-mail gravado sem forma de e-mail não vira link", async () => {
-      configAtual.valor = { storeName: "L", storeSupportEmail: "lixo" };
-      await montarPagina("privacidade");
-      expect(hospedeiro.querySelector('a[href^="mailto:"]')).toBeNull();
-    });
+    it.each(["lixo", "atendimento@loja..com"])(
+      "e-mail gravado sem forma de e-mail (%s) não vira link",
+      async (email) => {
+        configAtual.valor = { storeName: "L", storeSupportEmail: email };
+        await montarPagina("privacidade");
+        expect(hospedeiro.querySelector('a[href^="mailto:"]')).toBeNull();
+      },
+    );
   });
 
   describe("a folha (checkout, produto, cadastro)", () => {

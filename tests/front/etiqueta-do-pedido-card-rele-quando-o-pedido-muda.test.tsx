@@ -15,11 +15,14 @@ import { type Root, createRoot } from "react-dom/client";
 import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { invokeMock, pedidoState, eqChamadas } = vi.hoisted(() => ({
-  invokeMock: vi.fn(),
-  pedidoState: { data: null as any },
-  eqChamadas: [] as string[],
-}));
+const { invokeMock, lerPedidoMock, pedidoState, eqChamadas } = vi.hoisted(
+  () => ({
+    invokeMock: vi.fn(),
+    lerPedidoMock: vi.fn(),
+    pedidoState: { data: null as any },
+    eqChamadas: [] as string[],
+  }),
+);
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
@@ -36,8 +39,7 @@ vi.mock("@/lib/supabase", () => ({
           eq: (_coluna: string, valor: string) => {
             eqChamadas.push(valor);
             return {
-              maybeSingle: () =>
-                Promise.resolve({ data: pedidoState.data, error: null }),
+              maybeSingle: lerPedidoMock,
             };
           },
         }),
@@ -85,6 +87,11 @@ describe("EtiquetaDoPedidoCard — relê o pedido quando o status ou o pagamento
     vi.clearAllMocks();
     eqChamadas.length = 0;
     pedidoState.data = pedido();
+    lerPedidoMock.mockReset();
+    lerPedidoMock.mockImplementation(async () => ({
+      data: pedidoState.data,
+      error: null,
+    }));
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -143,6 +150,56 @@ describe("EtiquetaDoPedidoCard — relê o pedido quando o status ou o pagamento
       hospedeiro.querySelector('[data-testid="etiqueta-indisponivel"]')
         ?.textContent,
     ).toContain("Pedido cancelado — não gera etiqueta.");
+  });
+
+  const urlDaEtiqueta = "https://imprimir.teste/etiqueta";
+  const linkDaEtiqueta = () =>
+    hospedeiro.querySelector(`a[href="${urlDaEtiqueta}"]`);
+
+  it("não reoferece abrir a etiqueta se a ficha diz cancelado e a releitura falha", async () => {
+    pedidoState.data = pedido({
+      shipping_label_id: "lbl-emitida",
+      shipping_label_url: urlDaEtiqueta,
+    });
+    await desenhar();
+    expect(linkDaEtiqueta()?.textContent).toBe("Abrir etiqueta");
+
+    lerPedidoMock.mockRejectedValueOnce(new Error("Rede indisponível"));
+    await desenhar({ status: "cancelled" });
+
+    expect(eqChamadas).toHaveLength(2);
+    expect(linkDaEtiqueta()).toBeNull();
+    expect(hospedeiro.textContent).toContain("Pedido cancelado — não postar");
+    expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toContain(
+      "solicitar o reembolso",
+    );
+  });
+
+  it("remove o atalho assim que a ficha cancela o pedido, antes da releitura terminar", async () => {
+    const pedidoAtivo = pedido({
+      shipping_label_id: "lbl-emitida",
+      shipping_label_url: urlDaEtiqueta,
+    });
+    pedidoState.data = pedidoAtivo;
+    await desenhar();
+    expect(linkDaEtiqueta()?.textContent).toBe("Abrir etiqueta");
+
+    const { promise, resolve } = Promise.withResolvers<{
+      data: typeof pedidoAtivo;
+      error: null;
+    }>();
+    lerPedidoMock.mockReturnValueOnce(promise);
+    await desenhar({ status: "cancelled" });
+
+    expect(eqChamadas).toHaveLength(2);
+    expect(linkDaEtiqueta()).toBeNull();
+    expect(hospedeiro.textContent).toContain("Pedido cancelado — não postar");
+
+    await act(async () => {
+      resolve({ data: pedidoAtivo, error: null });
+      await esperarMicrotarefas();
+    });
+    expect(linkDaEtiqueta()).toBeNull();
   });
 
   it("pedido concluído na ficha: o botão some com o motivo 'já entregue'", async () => {

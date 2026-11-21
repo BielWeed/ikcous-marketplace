@@ -203,6 +203,26 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
     },
   );
 
+  it("avisa na ficha que o Pix venceu quando a retirada está pronta", async () => {
+    const { OrderDetail } = await import(
+      "@/components/admin/orders/OrderDetail"
+    );
+    const order: Order = {
+      ...pedidoFake("aguardando"),
+      status: "shipping",
+      canal: "online",
+      retiradaNaLoja: true,
+      paymentMethod: "online",
+      metodoOnline: "pix",
+      expiraEm: "2000-01-01T00:00:00Z",
+    };
+
+    await act(async () => {
+      raiz.render(<OrderDetail order={order} onStatusChange={vi.fn()} />);
+    });
+    expect(hospedeiro.textContent).toContain("O Pix deste pedido venceu");
+  });
+
   it("mostra 'Aguardando pagamento' UMA vez, na seção Pagamento (redesenho 08/10/2026: o selo saiu do cabeçalho e da caixa 'Como vai ser pago')", async () => {
     const { OrderDetail } = await import(
       "@/components/admin/orders/OrderDetail"
@@ -271,7 +291,10 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
     // aviso só o fecha: o cancelamento é o botão Cancelar pedido da ficha, e a
     // venda se registra na tela Vender (nomes-do-painel.ts, admin-pdv).
     expect(hospedeiro.textContent).toContain(
-      "O dinheiro deste pedido não entrou. Se você avançar, a mercadoria caminha para sair mesmo assim — e, depois de finalizado, não dá mais para cancelar e devolver ao estoque. Se a cliente pagou na loja, feche este aviso, cancele o pedido (botão Cancelar pedido) e registre a venda em Vender.",
+      "O pagamento ainda não foi confirmado. Não despache até aparecer “Pago”.",
+    );
+    expect(hospedeiro.textContent).toContain(
+      "Se você avançar, a mercadoria caminha para sair mesmo assim — e, depois de finalizado, não dá mais para cancelar e devolver ao estoque. Se a cliente pagou na loja, feche este aviso, cancele o pedido (botão Cancelar pedido) e registre a venda em Vender.",
     );
     expect(hospedeiro.textContent).toContain(
       "Avançar não confirma o Pix. Se você não recebeu por fora, confira com o cliente antes de seguir.",
@@ -303,7 +326,7 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
 
     const botaoConfirmar = localizarBotaoPorTexto(
       hospedeiro,
-      "Avançar mesmo assim",
+      "Avançar sem pagamento confirmado",
     )!;
     expect(botaoConfirmar).toBeDefined();
 
@@ -336,7 +359,7 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
       localizarBotaoPorTexto(hospedeiro, "Avançar →")!.click(),
     );
     expect(
-      localizarBotaoPorTexto(hospedeiro, "Avançar mesmo assim"),
+      localizarBotaoPorTexto(hospedeiro, "Avançar sem pagamento confirmado"),
     ).toBeDefined();
     await act(async () =>
       raiz.render(
@@ -347,13 +370,49 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
       ),
     );
     expect(
-      localizarBotaoPorTexto(hospedeiro, "Avançar mesmo assim"),
+      localizarBotaoPorTexto(hospedeiro, "Avançar sem pagamento confirmado"),
     ).toBeUndefined();
     expect(aviso).toHaveBeenCalledWith(
       "O pedido mudou de situação. Confira antes de avançar.",
     );
     expect(onStatusChange).not.toHaveBeenCalled();
   });
+
+  it.each(["pago", "recusado"] as const)(
+    "fecha a confirmação se o pagamento ficar %s sem mudar a etapa",
+    async (paymentStatus) => {
+      const { OrderDetail } = await import(
+        "@/components/admin/orders/OrderDetail"
+      );
+      const order = pedidoFake("aguardando");
+      const onStatusChange = vi.fn();
+      await act(async () =>
+        raiz.render(
+          <OrderDetail order={order} onStatusChange={onStatusChange} />,
+        ),
+      );
+      await act(async () =>
+        localizarBotaoPorTexto(hospedeiro, "Avançar →")!.click(),
+      );
+      expect(hospedeiro.textContent).toContain(
+        "Este pedido não está com o pagamento confirmado",
+      );
+
+      await act(async () =>
+        raiz.render(
+          <OrderDetail
+            order={{ ...order, paymentStatus }}
+            onStatusChange={onStatusChange}
+          />,
+        ),
+      );
+
+      expect(hospedeiro.textContent).not.toContain(
+        "Este pedido não está com o pagamento confirmado",
+      );
+      expect(onStatusChange).not.toHaveBeenCalled();
+    },
+  );
 
   it("O1: confirmação envia a situação de origem mesmo depois de outro render", async () => {
     const { OrderDetail } = await import(
@@ -378,7 +437,10 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
       ),
     );
     await act(async () =>
-      localizarBotaoPorTexto(hospedeiro, "Avançar mesmo assim")!.click(),
+      localizarBotaoPorTexto(
+        hospedeiro,
+        "Avançar sem pagamento confirmado",
+      )!.click(),
     );
     expect(onStatusChange).toHaveBeenCalledWith(
       "ped-teste",
@@ -548,7 +610,10 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
     );
     expect(onStatusChange).not.toHaveBeenCalled();
 
-    const confirmar = localizarBotaoPorTexto(hospedeiro, "Avançar mesmo assim");
+    const confirmar = localizarBotaoPorTexto(
+      hospedeiro,
+      "Avançar sem pagamento confirmado",
+    );
     expect(confirmar).toBeDefined();
     await act(async () => {
       confirmar?.click();

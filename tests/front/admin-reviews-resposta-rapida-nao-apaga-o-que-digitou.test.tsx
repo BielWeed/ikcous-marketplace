@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// Lote 205: tocar numa resposta rápida ("Agradecer feedback") substituía o
+// Lote 205: tocar numa resposta rápida ("Agradecer avaliação") substituía o
 // texto que a lojista já tinha digitado. Agora a sugestão entra no fim; com o
 // campo vazio, entra sozinha.
 import { act } from "react";
@@ -132,7 +132,7 @@ describe("AdminReviewsView — resposta rápida", () => {
   it("com texto já digitado, a sugestão entra no fim e o texto fica", async () => {
     await abrirFormulario();
     await digitar("Oi, Ana!");
-    await act(async () => botao("Agradecer feedback").click());
+    await act(async () => botao("Agradecer avaliação").click());
     expect(
       valor().startsWith("Oi, Ana! Muito obrigado pela sua avaliação"),
     ).toBe(true);
@@ -140,7 +140,7 @@ describe("AdminReviewsView — resposta rápida", () => {
 
   it("com o campo vazio, a sugestão entra sozinha", async () => {
     await abrirFormulario();
-    await act(async () => botao("Agradecer feedback").click());
+    await act(async () => botao("Agradecer avaliação").click());
     expect(valor().startsWith("Muito obrigado pela sua avaliação")).toBe(true);
   });
 });

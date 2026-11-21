@@ -136,16 +136,19 @@ describe("AddressForm — CEP de 7 dígitos é recusado", () => {
     });
     // Âncora de que a validação RODOU: a mensagem de outro campo obrigatório
     // (vazio) prova que o submit percorreu o zod — sem esperar por ela, a
-    // ausência de "CEP inválido" não distinguiria regra certa de validação
+    // ausência de "Digite os 8 números do CEP." não distinguiria regra certa de validação
     // que nem chegou a rodar.
     await esperarAte(() => hospedeiro.textContent?.includes(ancora) ?? false);
     return hospedeiro.textContent ?? "";
   }
 
-  it("7 dígitos (máscara conta o hífen): mostra 'CEP inválido' e não deixa salvar", async () => {
-    const texto = await renderizarEEnviar("1234567", "CEP inválido");
+  it("pede os 8 números do CEP e não deixa salvar se um deles falta", async () => {
+    const texto = await renderizarEEnviar(
+      "1234567",
+      "Digite os 8 números do CEP.",
+    );
 
-    expect(texto).toContain("CEP inválido");
+    expect(texto).toContain("Digite os 8 números do CEP.");
     expect(document.activeElement).toBe(document.getElementById("cep"));
   });
 
@@ -158,6 +161,6 @@ describe("AddressForm — CEP de 7 dígitos é recusado", () => {
     // Âncora: as mensagens dos campos obrigatórios vazios provam que o
     // submit rodou a validação — sem ela, a ausência abaixo não provaria nada.
     expect(texto).toContain("Logradouro é obrigatório");
-    expect(texto).not.toContain("CEP inválido");
+    expect(texto).not.toContain("Digite os 8 números do CEP.");
   });
 });

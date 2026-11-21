@@ -1295,7 +1295,7 @@ export function CheckoutViewDaConta({
           if (!data.cep || data.cep.replace(/\D/g, "").length !== 8) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
-              message: "CEP inválido",
+              message: "Digite os 8 números do CEP.",
               path: ["cep"],
             });
           }
@@ -1326,7 +1326,7 @@ export function CheckoutViewDaConta({
           if (!data.number || !nomeTemConteudoVisivel(data.number)) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
-              message: "Número é obrigatório",
+              message: "Número do imóvel. Se não tiver número, digite S/N.",
               path: ["number"],
             });
           } else if (data.number.length > TETO_NUMERO_DO_CHECKOUT) {
@@ -1813,29 +1813,32 @@ export function CheckoutViewDaConta({
     buscando: isSearchingCep,
     buscar: buscarCep,
     resultado: resultadoCep,
-  } = useBuscaCep((endereco) => {
-    const cepDaResposta = cepEmBuscaRef.current;
-    const eraDeOutroCep =
-      cepAssociadoRef.current !== null &&
-      cepAssociadoRef.current !== cepDaResposta;
+  } = useBuscaCep(
+    (endereco) => {
+      const cepDaResposta = cepEmBuscaRef.current;
+      const eraDeOutroCep =
+        cepAssociadoRef.current !== null &&
+        cepAssociadoRef.current !== cepDaResposta;
 
-    const escrever = escreverCampoDoCep;
+      const escrever = escreverCampoDoCep;
 
-    if (endereco.logradouro) {
-      escrever("street", endereco.logradouro);
-    } else if (eraDeOutroCep) {
-      escrever("street", "");
-    }
-    if (endereco.bairro) {
-      escrever("neighborhood", endereco.bairro);
-    } else if (eraDeOutroCep) {
-      escrever("neighborhood", "");
-    }
-    if (endereco.localidade) escrever("city", endereco.localidade);
-    if (endereco.uf) escrever("state", endereco.uf);
+      if (endereco.logradouro) {
+        escrever("street", endereco.logradouro);
+      } else if (eraDeOutroCep) {
+        escrever("street", "");
+      }
+      if (endereco.bairro) {
+        escrever("neighborhood", endereco.bairro);
+      } else if (eraDeOutroCep) {
+        escrever("neighborhood", "");
+      }
+      if (endereco.localidade) escrever("city", endereco.localidade);
+      if (endereco.uf) escrever("state", endereco.uf);
 
-    cepAssociadoRef.current = cepDaResposta;
-  });
+      cepAssociadoRef.current = cepDaResposta;
+    },
+    { semCamposDeEndereco: ehRetirada },
+  );
 
   // A busca do CEP NOVO falhou (não achou, demorou ou está fora do ar): o que
   // estava em rua/bairro/cidade/UF veio da busca do CEP ANTERIOR (ou de um
@@ -7674,7 +7677,7 @@ export function CheckoutViewDaConta({
                             id="guest-number"
                             maxLength={TETO_NUMERO_DO_CHECKOUT}
                             {...form.register("number")}
-                            placeholder="123"
+                            placeholder="123 ou S/N"
                             aria-invalid={
                               erroDoCampo("number") ? true : undefined
                             }

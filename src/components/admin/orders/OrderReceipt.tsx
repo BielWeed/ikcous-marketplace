@@ -197,7 +197,7 @@ export const OrderReceipt = memo(function OrderReceipt({
                   className="flex justify-between print:break-inside-avoid"
                 >
                   <span className="min-w-0 flex-1 break-words">
-                    {item.quantity}x {item.name}
+                    {item.quantity}x {item.name?.trim() || "Produto"}
                     {rotulo && (
                       <span className="block break-words pl-4 text-xs">
                         {rotulo}

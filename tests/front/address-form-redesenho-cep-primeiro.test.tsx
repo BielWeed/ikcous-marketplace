@@ -715,7 +715,7 @@ describe("AddressForm — redesenho: CEP primeiro, cartão, botões, aviso na te
 
     await salvar();
     await esperarAte(() =>
-      (hospedeiro.textContent ?? "").includes("CEP inválido"),
+      (hospedeiro.textContent ?? "").includes("Digite os 8 números do CEP."),
     );
     expect(onSubmit).not.toHaveBeenCalled();
   });

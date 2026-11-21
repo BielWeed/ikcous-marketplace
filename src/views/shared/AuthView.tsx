@@ -857,6 +857,16 @@ export function AuthView({
                 {emailDaConfirmacao}
               </span>
               <br />
+              <br />O endereço acima está errado? Toque em "Retornar ao Login",
+              abra o cadastro novamente e corrija o e-mail.
+              <br />
+              <br />
+              Se você recebeu o e-mail, use o link do e-mail mais recente: só o
+              último vale. Depois de confirmar seu e-mail, volte para a aba ou
+              para o app em que estava; se estava comprando, continue a compra
+              por lá. Se ainda aparecer esta tela, toque em "Retornar ao Login"
+              e entre com o e-mail e a senha do cadastro.
+              <br />
               <br />
               Se você já tem conta, não precisa esperar: toque em "Retornar ao
               Login" e entre. Se não lembra a senha, use "Esqueceu?".

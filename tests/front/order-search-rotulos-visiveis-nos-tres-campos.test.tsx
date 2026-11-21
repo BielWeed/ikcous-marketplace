@@ -74,9 +74,7 @@ describe("OrderSearch — rótulos visíveis nos três campos do rastreio", () =
 
     expect(rotuloDo(email)?.textContent?.trim()).toBe("E-mail");
     expect(rotuloDo(zap)?.textContent?.trim()).toBe("WhatsApp com DDD");
-    expect(rotuloDo(fragmento)?.textContent?.trim()).toBe(
-      "6 últimos caracteres do ID do pedido",
-    );
+    expect(rotuloDo(fragmento)?.textContent?.trim()).toBe("Código do pedido");
   });
 
   it("o rótulo é visível (não é sr-only) e aparece ANTES do campo", () => {
@@ -114,7 +112,9 @@ describe("OrderSearch — rótulos visíveis nos três campos do rastreio", () =
     const idDaDica = fragmento.getAttribute("aria-describedby");
     expect(idDaDica).toBeTruthy();
     const dica = document.getElementById(idDaDica!);
-    expect(dica?.textContent).toMatch(/comprovante da compra/i);
+    expect(dica?.textContent?.trim()).toBe(
+      "Digite os 6 caracteres que aparecem depois de # no comprovante da compra.",
+    );
   });
 
   it("os ícones ficam dentro de um wrapper relative que contém só o input (não descentralizam)", () => {

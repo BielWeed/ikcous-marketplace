@@ -62,7 +62,7 @@ describe("OrderSearch — campos com nome e teclado certos", () => {
     expect(zap.getAttribute("autocomplete")).toBe("tel");
     expect(zap.getAttribute("inputmode")).toBe("tel");
 
-    expect(nomeDe(fragmento)).toBe("6 últimos caracteres do ID do pedido");
+    expect(nomeDe(fragmento)).toBe("Código do pedido");
     // o ID do pedido tem letras (hexadecimal): NÃO pode forçar teclado numérico
     expect(fragmento.getAttribute("inputmode")).toBeNull();
   });

@@ -13,6 +13,7 @@ import {
   passosParaLiberarOsAvisos,
   situacaoDosAvisos,
 } from "@/lib/avisos-do-aparelho";
+import { falhaDePushSemConfirmacao } from "@/lib/motivo-da-falha-de-push";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import {
   PRAZO_DA_EDGE_DE_ENVIO_DE_PUSH_MS,
@@ -35,6 +36,7 @@ type EstadoDoTeste =
   | "enviado"
   | "falhou"
   | "sem-rede"
+  | "sem-confirmacao"
   | "sem-resposta";
 
 const BOTAO_PRIMARIO = BOTAO_INICIO;
@@ -209,10 +211,14 @@ function CartaoInterno({
         PRAZO_DA_EDGE_DE_ENVIO_DE_PUSH_MS,
         erroDeConsultaSemResposta,
       );
-      const enviados = Number(
-        (data as { enviados?: unknown } | null)?.enviados,
-      );
-      setTeste(!error && enviados > 0 ? "enviado" : "falhou");
+      const enviados = Number(data?.enviados);
+      if (!error && enviados > 0) {
+        setTeste("enviado");
+      } else if (!error && data?.falhas?.some(falhaDePushSemConfirmacao)) {
+        setTeste("sem-confirmacao");
+      } else {
+        setTeste("falhou");
+      }
     } catch (erro) {
       setTeste(ehConsultaSemResposta(erro) ? "sem-resposta" : "falhou");
     } finally {
@@ -285,6 +291,12 @@ function CartaoInterno({
             O aviso de teste não foi enviado. Os avisos podem não estar chegando
             neste aparelho: toque em Mandar um aviso de teste de novo ou ligue
             os avisos outra vez.
+          </p>
+        ) : null}
+        {teste === "sem-confirmacao" ? (
+          <p role="alert" className="mt-3 text-xs text-red-400">
+            Não foi possível confirmar o envio do aviso de teste. Confira se o
+            aviso apareceu neste aparelho antes de mandar outro teste.
           </p>
         ) : null}
         {teste === "sem-resposta" ? (

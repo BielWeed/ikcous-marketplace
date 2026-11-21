@@ -249,10 +249,10 @@ describe("AdminProductFormView — textos, avisos e botões (u179)", () => {
   }
 
   describe("1. rótulo do estoque", () => {
-    it("é curto: 'Estoque *' (o longo quebrava em duas linhas sobre o número)", async () => {
+    it("mostra 'Disponível para venda *' no lugar de 'Quantidade em Estoque'", async () => {
       await montar();
       const rotulo = document.querySelector('label[for="product-stock"]');
-      expect(rotulo?.textContent?.trim()).toBe("Estoque *");
+      expect(rotulo?.textContent?.trim()).toBe("Disponível para venda *");
       expect(document.body.textContent).not.toContain("Quantidade em Estoque");
     });
   });

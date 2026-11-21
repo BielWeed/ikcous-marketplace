@@ -207,7 +207,7 @@ describe("CheckoutView (convidado) — só compra com entrega local", () => {
     expect(texto).not.toContain("Entrega fora da cidade é só com conta");
   });
 
-  it("CEP de convidado com 7 dígitos ('1234-678') acusa CEP inválido", async () => {
+  it("pede os 8 números quando o CEP de convidado tem 7 dígitos", async () => {
     await montar();
 
     act(() => {
@@ -217,7 +217,7 @@ describe("CheckoutView (convidado) — só compra com entrega local", () => {
       await Promise.resolve();
     });
     // O erro do campo só aparece depois que a pessoa SAI dele (30/10/2026).
-    expect(hospedeiro.textContent).not.toContain("CEP inválido");
+    expect(hospedeiro.textContent).not.toContain("Digite os 8 números do CEP.");
     await act(async () => {
       document.getElementById("guest-cep")?.focus();
     });
@@ -225,6 +225,6 @@ describe("CheckoutView (convidado) — só compra com entrega local", () => {
       document.getElementById("guest-cep")?.blur();
     });
 
-    expect(hospedeiro.textContent).toContain("CEP inválido");
+    expect(hospedeiro.textContent).toContain("Digite os 8 números do CEP.");
   });
 });

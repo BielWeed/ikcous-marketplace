@@ -200,7 +200,9 @@ describe("useBuscaCep", () => {
     }
 
     expect(toast.error).toHaveBeenCalledTimes(1);
-    expect(toast.error).toHaveBeenCalledWith("CEP não encontrado");
+    expect(toast.error).toHaveBeenCalledWith(
+      "CEP não encontrado. Preencha o endereço manualmente.",
+    );
     expect(aoEncontrar).not.toHaveBeenCalled();
     expect(buscando()).toBe("false");
   });

@@ -254,6 +254,26 @@ describe("Minha loja › Dados da empresa", () => {
     expect(enviado).not.toHaveProperty("storeLegalDocument");
   });
 
+  it.each(["a@loja..com", "isso-nao-e-email"])(
+    "editar só a razão social não bloqueia nem reenvia o e-mail legado %s",
+    async (emailLegado) => {
+      estado.config = {
+        storeLegalName: "Loja antiga",
+        storeSupportEmail: emailLegado,
+      };
+      await abrir();
+      await digitar(razao(), "Loja nova Ltda");
+      await salvar();
+
+      expect(updateConfig).toHaveBeenCalledTimes(1);
+      expect(updateConfig).toHaveBeenCalledWith(
+        { storeLegalName: "Loja nova Ltda" },
+        { silentSuccess: true },
+      );
+      expect(email().value).toBe(emailLegado);
+    },
+  );
+
   it("editar só o e-mail manda só o e-mail", async () => {
     estado.config = {
       storeLegalName: "Loja da Ana Ltda",

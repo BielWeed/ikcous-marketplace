@@ -82,8 +82,27 @@ describe("CSP libera o Card Payment Brick e o desafio 3-D Secure", () => {
         "https://*.mercadopago.com.br",
         "https://*.mercadolivre.com",
         "https://*.mercadolivre.com.br",
+        // O curinga não casa o domínio puro; hostDoMercadoPago, em
+        // PagamentoComCartao.tsx, aceita tanto o domínio puro quanto subdomínios.
+        "https://mercadopago.com",
+        "https://mercadolibre.com",
+        "https://mercadopago.com.br",
+        "https://mercadolivre.com",
+        "https://mercadolivre.com.br",
       ]),
     );
+  });
+
+  it.each([
+    "mercadopago.com",
+    "mercadopago.com.br",
+    "mercadolibre.com",
+    "mercadolivre.com",
+    "mercadolivre.com.br",
+  ])("frame-src tem o domínio puro e o curinga para %s", (dominio) => {
+    const frames = diretiva(csp, "frame-src");
+    expect(frames).toContain(`https://${dominio}`);
+    expect(frames).toContain(`https://*.${dominio}`);
   });
 
   it("form-action continua 'self': o 3DS abre por iframe com a URL pronta, sem POST do nosso documento", () => {

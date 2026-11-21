@@ -4,6 +4,7 @@ import { useStore } from "@/contexts/StoreContext";
 import { useDocumentMeta } from "@/hooks/useDocumentMeta";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
+import { identidadeLegalDaLoja } from "@/lib/identidade-legal-da-loja";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { primeiraLetra } from "@/lib/primeira-letra";
@@ -115,6 +116,11 @@ export function AboutStoreView() {
     .filter(Boolean)
     .join(", ");
   const temWhatsapp = lojaTemWhatsapp(config.whatsappNumber);
+  const email = identidadeLegalDaLoja(config)?.email ?? null;
+  const separadorDoEmail = email?.lastIndexOf("@") ?? -1;
+  const hrefDoEmail = email
+    ? `mailto:${encodeURIComponent(email.slice(0, separadorDoEmail))}@${encodeURIComponent(email.slice(separadorDoEmail + 1))}`
+    : undefined;
   // Só LÊ o estado (não registra a tela como participante de saída, o que
   // exigiria chamar safeToRemove). Fora de um AnimatePresence é sempre true; dentro dele vira
   // false quando a tela está saindo — aí o botão (portalado) some junto.
@@ -340,10 +346,22 @@ export function AboutStoreView() {
           </motion.div>
         )}
 
-        {/* Loja que ainda não preencheu mapa, história, horário nem WhatsApp:
-            a página não fica só com o cabeçalho (parece quebrada). A frase diz
-            a verdade e não inventa dado. */}
-        {!queryMaps && !descricaoHtml && !horario && !temWhatsapp && (
+        {email && (
+          <div className="rounded-[18px] border border-border bg-muted/30 p-4">
+            <p className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+              E-mail de atendimento
+            </p>
+            <a
+              href={hrefDoEmail}
+              className="flex min-h-11 w-full items-center gap-2 break-all text-sm font-semibold text-foreground underline underline-offset-2"
+            >
+              {email}
+            </a>
+          </div>
+        )}
+
+        {/* Sem mapa, história, horário ou contato, explica por que só há cabeçalho. */}
+        {!queryMaps && !descricaoHtml && !horario && !temWhatsapp && !email && (
           <p className="rounded-[18px] border border-border bg-muted/30 p-4 text-base leading-relaxed text-muted-foreground">
             A loja ainda não preencheu estas informações. Volte em breve.
           </p>

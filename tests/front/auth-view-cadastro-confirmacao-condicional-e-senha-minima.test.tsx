@@ -111,6 +111,9 @@ describe("AuthView — cadastro: texto condicional e senha mínima", () => {
       expect(texto).toContain("Verifique seu e-mail");
       expect(texto).toMatch(/se este e-?mail ainda não tinha conta/i);
       expect(texto).toMatch(/se você já tem conta/i);
+      expect(texto).toMatch(
+        /pessoa@example\.com\s*O endereço acima está errado\? Toque em "Retornar ao Login",\s+abra o cadastro novamente e corrija o e-mail\./,
+      );
       // Link no spam: reenviar não resolve, então a tela manda olhar lá.
       expect(texto).toMatch(/pasta de spam ou lixo\s+eletrônico/i);
       // O endereço continua visível (ajuda quem digitou errado).
@@ -118,6 +121,16 @@ describe("AuthView — cadastro: texto condicional e senha mínima", () => {
       // A frase antiga afirmava o envio de forma categórica.
       expect(texto).not.toMatch(/foi enviado para/i);
       expect(texto).not.toMatch(/link de acesso exclusivo/i);
+    });
+
+    it("orienta quem recebeu o e-mail, sem presumir compra em andamento", async () => {
+      await abrirCadastro();
+      await preencherEEnviar("senha12345");
+
+      const texto = hospedeiro.textContent?.replace(/\s+/g, " ");
+      expect(texto).toMatch(
+        /Se você recebeu o e-mail, use o link do e-mail mais recente: só o último vale\. Depois de confirmar seu e-mail, volte para a aba ou para o app em que estava; se estava comprando, continue a compra por lá\. Se ainda aparecer esta tela, toque em "Retornar ao Login" e entre com o e-mail e a senha do cadastro\./,
+      );
     });
 
     it("limite: o texto não depende do e-mail digitado (não vira oráculo de quem tem conta)", async () => {

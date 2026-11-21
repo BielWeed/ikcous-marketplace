@@ -92,9 +92,12 @@ describe("OrderList — card do pedido redesenhado", () => {
     expect(resumo.classList.contains("[overflow-wrap:anywhere]")).toBe(true);
     expect(resumo.parentElement?.classList.contains("min-w-0")).toBe(true);
     const total = [...hospedeiro.querySelectorAll("span")].find(
-      (el) => el.textContent === "Total",
-    )!;
-    expect(total.parentElement?.classList.contains("flex-shrink-0")).toBe(true);
+      (el) => el.textContent === "Total do pedido",
+    );
+    expect(total).toBeDefined();
+    expect(total?.parentElement?.classList.contains("flex-shrink-0")).toBe(
+      true,
+    );
   });
 
   it("os detalhes de dois pedidos têm nomes distintos para o leitor de tela", async () => {

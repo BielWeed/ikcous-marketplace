@@ -213,7 +213,7 @@ describe("Minha loja — bloco Contato (WhatsApp e mensagem de compartilhar)", (
     },
   );
 
-  it.each(["3432123456", "34988880016", "55991234567"])(
+  it.each(["1133334444", "3432123456", "34988880016", "55991234567"])(
     "número nacional %s digitado tecla a tecla salva sem trocar o DDD",
     async (numero) => {
       await abrirTela();
@@ -257,6 +257,15 @@ describe("Minha loja — bloco Contato (WhatsApp e mensagem de compartilhar)", (
         (b.textContent ?? "").includes("Editar em Atendimento"),
       ),
     ).toBe(false);
+  });
+
+  it("WhatsApp com todos os dígitos após o DDD zerados não grava", async () => {
+    await abrirTela();
+    await digitarWhatsApp("1100000000");
+    await clicarSalvarContato();
+
+    expect(updateConfigMock).not.toHaveBeenCalled();
+    expect(hospedeiro.textContent).toContain("Confira o DDD e o número.");
   });
 
   it("WhatsApp com 9 dígitos: 'WhatsApp inválido' e nada é gravado", async () => {

@@ -115,6 +115,22 @@ describe("OrderSearch — aviso para quem comprou sem conta", () => {
     expect(recursos).toBe("noopener,noreferrer");
   });
 
+  it("explica antes dos campos que pedido sem e-mail deve ser consultado pelo WhatsApp", async () => {
+    await abrirRastrearSemConta("34999998888");
+
+    const aviso = [...host.querySelectorAll("p")].find((p) =>
+      p.textContent?.includes(
+        "Pedidos feitos sem e-mail não aparecem aqui, seja para entrega ou retirada. Fale com a loja pelo WhatsApp.",
+      ),
+    );
+    const email = host.querySelector('input[type="email"]');
+    expect(aviso).toBeDefined();
+    expect(email).not.toBeNull();
+    expect(
+      aviso!.compareDocumentPosition(email!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it.each([
     ["3884BE", "3884BE"],
     ["  3884BE  ", "3884BE"],
@@ -208,6 +224,10 @@ describe("OrderSearch — aviso para quem comprou sem conta", () => {
     expect(botaoPorTexto(host, "WhatsApp")).toBeUndefined();
     expect(botaoPorTexto(host, "Copiar número")).toBeUndefined();
     expect(host.textContent).not.toContain("WhatsApp da loja:");
+    expect(host.textContent).toContain(
+      "Pedidos feitos sem e-mail não aparecem aqui, seja para entrega ou retirada.",
+    );
+    expect(host.textContent).not.toContain("Fale com a loja pelo WhatsApp.");
   });
 
   it("número curto demais não vira botão (mesma régua do resto do app)", async () => {

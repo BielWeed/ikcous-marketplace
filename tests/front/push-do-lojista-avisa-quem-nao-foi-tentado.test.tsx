@@ -679,6 +679,128 @@ describe("Avisar clientes — destinatários não tentados", () => {
     );
   });
 
+  const demoraDoServico = {
+    status: null,
+    motivo:
+      "Sem resposta do serviço de push dentro do prazo; o aviso pode ter chegado ao aparelho mesmo assim",
+    quantidade: 1,
+  };
+  const inscricaoVencida = {
+    status: 410,
+    motivo: "push service respondeu 410 Gone",
+    quantidade: 1,
+  };
+
+  it("zero aceites mantém o aviso de demora e mostra recusas confirmadas", async () => {
+    publico.total = 3;
+    invokeSendPush.mockResolvedValue({
+      data: {
+        enviados: 0,
+        falharam: 3,
+        falhas: [demoraDoServico, { ...inscricaoVencida, quantidade: 2 }],
+      },
+      error: null,
+    });
+    await prepararCampanha();
+    await enviar();
+
+    const { toast } = await import("sonner");
+    expect(toast.error).toHaveBeenCalledWith(
+      "Não foi possível confirmar o envio",
+      {
+        description: expect.stringContaining(
+          "O aviso ainda pode chegar. Se reenviar agora, quem já recebeu pode receber a mesma mensagem de novo. Recusas confirmadas: 2x esses aparelhos não recebem mais avisos (as inscrições venceram).",
+        ),
+      },
+    );
+  });
+
+  it("envio parcial aceito relata demora sem orientar reenvio", async () => {
+    publico.total = 2;
+    invokeSendPush.mockResolvedValue({
+      data: { enviados: 1, falharam: 1, falhas: [demoraDoServico] },
+      error: null,
+    });
+    await prepararCampanha();
+    await enviar();
+
+    const { toast } = await import("sonner");
+    expect(toast.warning).toHaveBeenCalledWith(
+      "Envio aceito para 1 de 2 aparelhos",
+      { description: "1x envio sem confirmação" },
+    );
+  });
+
+  it("envio parcial mostra a recusa e o aviso que ainda pode chegar", async () => {
+    publico.total = 3;
+    invokeSendPush.mockResolvedValue({
+      data: {
+        enviados: 1,
+        falharam: 2,
+        falhas: [inscricaoVencida, demoraDoServico],
+      },
+      error: null,
+    });
+    await prepararCampanha();
+    await enviar();
+
+    const { toast } = await import("sonner");
+    expect(toast.warning).toHaveBeenCalledWith(
+      "Envio aceito para 1 de 3 aparelhos",
+      {
+        description:
+          "O aviso sem confirmação ainda pode chegar. Recusas confirmadas: 1x esse aparelho não recebe mais avisos (a inscrição venceu).",
+      },
+    );
+  });
+
+  it("continuação separa demora de falha e não reenvia para quem já foi tentado", async () => {
+    publico.total = 5;
+    invokeSendPush
+      .mockResolvedValueOnce({
+        data: { enviados: 1, falharam: 0, naoTentados: 4 },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: {
+          enviados: 0,
+          falharam: 2,
+          naoTentados: 2,
+          falhas: [demoraDoServico, inscricaoVencida],
+        },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: { enviados: 2, falharam: 0, naoTentados: 0 },
+        error: null,
+      });
+    await prepararCampanha();
+    await enviar();
+    await act(async () => botaoDeContinuar()!.click());
+
+    expect(hospedeiro.querySelector('[role="status"]')?.textContent).toBe(
+      "Continuação: envio aceito para 0 de 4 aparelhos; 1 com falha, 1 sem confirmação e 2 não tentados.",
+    );
+    expect(botaoDeContinuar()?.textContent).toBe(
+      "Continuar para os 2 não tentados",
+    );
+    await act(async () => botaoDeContinuar()!.click());
+    expect(invokeSendPush).toHaveBeenNthCalledWith(3, "send-push", {
+      body: expect.objectContaining({
+        tokens: [
+          {
+            endpoint: "https://push.example/4",
+            keys: { p256dh: "p4", auth: "a4" },
+          },
+          {
+            endpoint: "https://push.example/5",
+            keys: { p256dh: "p5", auth: "a5" },
+          },
+        ],
+      }),
+    });
+  });
+
   it("zero entregas avisa que reenviar repete o aviso dentro do app", async () => {
     invokeSendPush.mockResolvedValue({
       data: { enviados: 0, falharam: 1, falhas: [] },

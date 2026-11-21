@@ -171,9 +171,16 @@ function filhosDaGrade(texto: string) {
 }
 
 function conferirPreservacao(texto: string) {
+  // Este parágrafo condicional é novo: não existia na lista de 180 literais.
+  // A lista original continua protegida pelo mesmo hash, sem mudar a base.
+  const classeDoAvisoDeRastreio =
+    "mx-auto w-full max-w-[600px] px-4 pb-3 text-xs text-zinc-400 xl:max-w-none xl:px-6";
   const lista = literaisDeClasse(analisar(texto))
-    // A proteção do rótulo vencido só atua no papel, não na tela móvel.
-    .filter((literal) => literal !== "print:hidden")
+    .filter(
+      // A proteção do rótulo vencido só atua no papel, não na tela móvel.
+      (literal) =>
+        literal !== "print:hidden" && literal !== classeDoAvisoDeRastreio,
+    )
     .map(classesDoCelular);
   expect(lista, "A quantidade de literais de className mudou").toHaveLength(
     180,

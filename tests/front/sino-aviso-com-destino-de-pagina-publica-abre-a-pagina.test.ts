@@ -50,6 +50,12 @@ describe("navegarPorUrl — páginas públicas da loja", () => {
     );
   });
 
+  it("abre o formulário de endereço aceito pelo painel de avisos", () => {
+    const navegar = destinoDe("/address-form/?origem=push");
+    expect(navegar).toHaveBeenCalledTimes(1);
+    expect(navegar).toHaveBeenCalledWith("address-form", undefined);
+  });
+
   it("CONTROLE — tela do painel nunca abre pelo sino da cliente", () => {
     expect(destinoDe("/admin-orders")).toHaveBeenCalledWith("home");
     expect(destinoDe("/admin-about-store")).toHaveBeenCalledWith("home");

@@ -525,7 +525,7 @@ describe("AdminPdvView — Voltar por camada e dirty (C3.3)", () => {
     expect(hospedeiro.textContent).toContain("Compra na loja");
     // …com o cliente DA RESPOSTA do banco (nome E whatsapp)…
     expect(hospedeiro.textContent).toContain("Maria gravada no banco");
-    expect(hospedeiro.textContent).toContain("11777777777");
+    expect(hospedeiro.textContent).toContain("(11) 77777-7777");
     // …e NADA do cliente que ficou na tela.
     expect(hospedeiro.textContent).not.toContain("Maria digitada na tela");
   });

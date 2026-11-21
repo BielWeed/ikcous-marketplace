@@ -477,6 +477,8 @@ interface AdminProductFormViewProps {
 
 const LIMITE_DO_NOME_DO_PRODUTO = 200;
 const ESTOQUE_MAXIMO_DO_PRODUTO = 10000;
+const AJUDA_DO_ESTOQUE_DISPONIVEL =
+  "As peças reservadas para pedidos não entram nesse número. Ao conferir a prateleira, não conte essas peças.";
 const ID_DO_AVISO_DA_GRADE_PENDENTE = "rascunho-da-grade-pendente";
 const ID_DA_OFERTA_DE_RASCUNHO_ANTIGO = "rascunho-antigo-do-produto";
 
@@ -954,6 +956,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // da grade" fica sob o campo até a lojista mudar o valor. Não vai para o
   // rascunho — é só um recado da tela, o preço em si fica no `formData`.
   const [precoVeioDaGrade, setPrecoVeioDaGrade] = useState(false);
+  const [precoDeVendaDigitado, setPrecoDeVendaDigitado] = useState(false);
   const [editingVariant, setEditingVariant] = useState<ProductVariant | null>(
     null,
   );
@@ -4464,6 +4467,61 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         }
       : null;
   const hasActiveVariants = formData.variants.some((v) => v.active);
+  const avisoDeEstoqueSemVariacao =
+    formData.variants.length > 0 &&
+    !hasActiveVariants &&
+    formData.stock.trim() !== "" &&
+    !stockError
+      ? Number(formData.stock) === 0
+        ? "Com estoque 0, o produto ficará esgotado."
+        : formData.isActive
+          ? "Com estoque acima de 0, o produto será vendido sem escolha de variação."
+          : "Com “Aparece na loja” desligado, o produto fica oculto ao salvar. Para vendê-lo sem escolha de variação, ligue a opção e salve."
+      : "";
+
+  const avisaMedidasPadrao = [
+    formData.weightKg,
+    formData.lengthCm,
+    formData.widthCm,
+    formData.heightCm,
+  ].some((medida) => Number(medida) === 0);
+  // O "Por" da promoção é o próprio preço de venda; o "De" é só riscado.
+  // Rascunho antigo pode trazer o preço como número, não como texto: lê como
+  // texto para não quebrar a tela ao reabrir um produto novo.
+  const precoDeVendaSalvo = productId
+    ? (numeroOpcionalDoCampo(String(initialData.price ?? "")) ?? 0)
+    : 0;
+  // Os dois valores do aviso saem do MESMO leitor que grava o produto
+  // (`numeroOpcionalDoCampo`): "14,90" vale 14,9 aqui e no salvar, e um número
+  // vindo de rascunho antigo não quebra. `priceVal`/`costPriceVal` acima leem
+  // "14,90" como 14 e ficam só para as outras contas da tela.
+  const precoParaAviso = productId
+    ? (numeroOpcionalDoCampo(String(formData.price ?? "")) ?? 0)
+    : 0;
+  const custoParaAviso = productId
+    ? (numeroOpcionalDoCampo(String(formData.costPrice ?? "")) ?? 0)
+    : 0;
+  const avisaPrecoDeVenda =
+    !!productId &&
+    precoDeVendaDigitado &&
+    !priceError &&
+    precoParaAviso > 0 &&
+    precoParaAviso !== precoDeVendaSalvo;
+  const avisosDaBarra = {
+    frete: avisaMedidasPadrao
+      ? "Se o frete for calculado por transportadora, peso em branco ou zero usa 0,3 kg; cada medida em branco ou zero usa 15 cm."
+      : "",
+    queda:
+      avisaPrecoDeVenda &&
+      precoDeVendaSalvo > 0 &&
+      precoParaAviso < precoDeVendaSalvo / 2
+        ? `Confira: o preço vai cair de ${formatCurrency(precoDeVendaSalvo)} para ${formatCurrency(precoParaAviso)}.`
+        : "",
+    abaixoDoCusto:
+      avisaPrecoDeVenda && precoParaAviso < custoParaAviso
+        ? `Confira: o preço de venda (${formatCurrency(precoParaAviso)}) está abaixo do custo (${formatCurrency(custoParaAviso)}).`
+        : "",
+  };
   // Indicadores de apresentação, a partir dos mesmos campos da validação.
   const preenchidos = [
     camposObrigatorios.name,
@@ -4678,7 +4736,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             htmlFor="variant-stock"
                             className="ml-1 text-xs text-zinc-400"
                           >
-                            Quantidade
+                            Disponível para venda
                           </label>
                           <div className="flex items-center gap-1.5">
                             <button
@@ -4692,6 +4750,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             <LocalBufferedInput
                               id="variant-stock"
                               name="variant-stock"
+                              aria-describedby="variant-stock-help"
                               type="number"
                               value={variantFormData.stockIncrement}
                               // O onFlush também roda só por sair do campo.
@@ -4719,6 +4778,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                               <Plus className="size-4" />
                             </button>
                           </div>
+                          <p
+                            id="variant-stock-help"
+                            className="ml-1 text-xs text-zinc-400"
+                          >
+                            {AJUDA_DO_ESTOQUE_DISPONIVEL}
+                          </p>
                         </div>
                         <div className="min-w-0 space-y-1.5">
                           <label
@@ -5743,11 +5808,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       <li className="flex items-start gap-2.5">
                         <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
                         <span>
-                          <b className="text-zinc-350">Estoque Base:</b>{" "}
-                          Quantidade física disponível quando o produto não tem
-                          variação ativa. Com qualquer variação ativa, o estoque
-                          do produto passa a ser a SOMA das variações ativas e
-                          este campo fica travado.
+                          <b className="text-zinc-350">
+                            Disponível para venda:
+                          </b>{" "}
+                          {AJUDA_DO_ESTOQUE_DISPONIVEL} Com qualquer variação
+                          ativa, o estoque do produto passa a ser a SOMA das
+                          variações ativas e este campo fica travado.
                         </span>
                       </li>
                       <li className="flex items-start gap-2.5">
@@ -5835,7 +5901,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               {/* Preço de venda: sobe da antiga "Precificação" para o básico —
                 é o que toda lojista preenche. Só mudou de lugar no JSX; o
                 estado, o `id` e a validação (`priceError`) são os de sempre. */}
-              <div className="produto-campo space-y-1">
+              <div className="produto-campo space-y-1 max-[480px]:col-span-2">
                 <label
                   htmlFor="product-sale-price"
                   className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-widest text-zinc-500"
@@ -5859,6 +5925,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     permiteNegativo
                     inputMode="decimal"
                     value={formData.price}
+                    onInput={() => setPrecoDeVendaDigitado(true)}
                     onFlush={(val) => {
                       // Sair do campo sem mexer também chama o onFlush: só
                       // um valor DIFERENTE tira a frase "veio da grade".
@@ -5900,12 +5967,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   )}
               </div>
 
-              <div className="produto-campo space-y-1">
+              <div className="produto-campo space-y-1 max-[480px]:col-span-2">
                 <label
                   htmlFor="product-stock"
                   className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-widest text-zinc-500"
                 >
-                  Estoque *
+                  Disponível para venda *
                 </label>
                 <div className="group relative">
                   <LocalBufferedInput
@@ -5916,8 +5983,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       hasActiveVariants
                         ? "product-stock-info"
                         : stockError
-                          ? "product-stock-error"
-                          : undefined
+                          ? "product-stock-error product-stock-help"
+                          : "product-stock-help"
                     }
                     name="stock"
                     type="number"
@@ -5933,6 +6000,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     <Package className="size-5" />
                   </div>
                 </div>
+                {!hasActiveVariants && (
+                  <p
+                    id="product-stock-help"
+                    className="ml-1 text-xs text-zinc-400"
+                  >
+                    {AJUDA_DO_ESTOQUE_DISPONIVEL}
+                  </p>
+                )}
                 {hasActiveVariants ? (
                   <DicaExpansivel
                     idDoTexto="product-stock-info"
@@ -5952,6 +6027,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     </span>
                   )
                 )}
+                {avisoDeEstoqueSemVariacao && (
+                  <p
+                    role="status"
+                    className="ml-1 text-[11px] font-medium text-amber-300"
+                  >
+                    {avisoDeEstoqueSemVariacao}
+                  </p>
+                )}
                 {hasActiveVariants && stockError && (
                   <span
                     id="product-stock-error"
@@ -5965,8 +6048,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
               {/* Promoção (De/Por): a única parte do preço que o CLIENTE vê, por
                 isso mora aqui, junto do Preço de venda, e não no cartão
-                privado "Custo e lucro". Preço e Estoque dividem a linha de
-                cima; este bloco ocupa a linha inteira logo abaixo deles. O
+                privado "Custo e lucro". Este bloco ocupa a linha inteira
+                logo abaixo do Preço e do Estoque. O
                 estado (`isPromoActive`), o `id` e a validação
                 (`originalPriceError`) são os de sempre: só mudou de lugar. */}
               <h2 className="produto-rotulo-secao col-span-2 -mb-1 mt-3">
@@ -6337,14 +6420,13 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                 <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
                                 <span>
                                   <b className="text-zinc-350">
-                                    Estoque da Variação:
+                                    Disponível para venda:
                                   </b>{" "}
-                                  Informe o estoque físico real desta variação —
-                                  não é um extra somado ao estoque do produto.
-                                  Assim que qualquer variação estiver ativa, o
-                                  estoque do produto acima passa a ser a{" "}
-                                  <b>soma</b> de todas as variações ativas, e o
-                                  campo dele fica travado enquanto isso.
+                                  {AJUDA_DO_ESTOQUE_DISPONIVEL} Assim que
+                                  qualquer variação estiver ativa, o estoque do
+                                  produto acima passa a ser a <b>soma</b> de
+                                  todas as variações ativas, e o campo dele fica
+                                  travado enquanto isso.
                                 </span>
                               </li>
                               <li className="flex items-start gap-2.5">
@@ -7117,6 +7199,18 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       : "Tudo pronto para publicar"}
               </p>
             )}
+          {Object.entries(avisosDaBarra).map(([tipo, aviso]) =>
+            aviso ? (
+              <p
+                key={tipo}
+                role="status"
+                className="flex items-start gap-2 px-1 text-xs font-medium text-amber-300"
+              >
+                <AlertTriangle aria-hidden="true" className="size-4 shrink-0" />
+                <span className="min-w-0 whitespace-normal">{aviso}</span>
+              </p>
+            ) : null,
+          )}
           <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
             {/* O botão cinza não recebe toque (pointer-events: none): o toque
                 cai neste invólucro e leva ao primeiro campo que falta. Pelo

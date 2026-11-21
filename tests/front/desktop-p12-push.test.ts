@@ -32,13 +32,15 @@ describe("P12 — campanhas push no computador", () => {
     // Nova mudança em texto, handler ou classe móvel continua reprovando.
     // Os avisos de push descrevem o aceite, não a chegada ao aparelho.
     // O botão e o anúncio da continuação flexionam no singular, sem mudar as classes.
+    // 1.5.230: o resumo do envio separa recusa de aviso sem confirmação e mostra
+    // a demora; só texto e lógica de resumo, as 208 classes ficam iguais.
     const semComputador = fonte
       .replace(/\s+\b(?:lg|xl|2xl):[^\s"'\x60]+/g, "")
       .replace(/\s+/g, " ")
       .trim();
     expect(fonte.match(/\bclassName=/g)).toHaveLength(208);
     expect(createHash("sha256").update(semComputador).digest("hex")).toBe(
-      "e6e0309f12ff3abe9c5a3b10f9deacf920a9539b7df53f287a630d4539430249",
+      "891696d633d36aec583ecd6a90ec208c94dcc17990a7cff2616b4fb0d2e30173",
     );
   });
 

@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import type {
   ArgsCriarPagamento,
   RespostaCriarPagamento,
@@ -607,6 +608,7 @@ export function AvisoDePixEncerrado({
   pagamentoNaoConcluido?: boolean;
 }) {
   const idTitulo = useId();
+  const idAvisoDoCarrinho = useId();
   return (
     <section
       aria-labelledby={idTitulo}
@@ -636,26 +638,37 @@ export function AvisoDePixEncerrado({
         <p className="text-sm text-amber-800">
           {pagamentoNaoConcluido
             ? "Este pagamento não foi concluído. Confira em Meus pedidos antes de fazer um novo pedido."
-            : "Este código não vale mais. Se você já pagou, fique nesta tela: a confirmação aparece aqui. Se ainda não pagou, faça um pedido novo."}
+            : "Este código não vale mais. Já pagou? Não faça outro pedido. Confira em Meus pedidos se o pagamento foi confirmado."}
         </p>
       </div>
-      {onVoltarAoCarrinho && (
-        <button
-          type="button"
-          onClick={onVoltarAoCarrinho}
-          className="flex min-h-12 w-full items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white active:bg-zinc-700"
-        >
-          Voltar ao carrinho
-        </button>
-      )}
       {onVerMeusPedidos && (
-        <button
+        <Button
           type="button"
           onClick={onVerMeusPedidos}
-          className="flex min-h-12 w-full items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white active:bg-zinc-700"
+          className="min-h-12 w-full rounded-xl bg-zinc-900 font-bold text-white hover:bg-zinc-800 active:bg-zinc-700"
         >
           Ver meus pedidos
-        </button>
+        </Button>
+      )}
+      {onVoltarAoCarrinho && (
+        <div className="space-y-2">
+          {!pagamentoNaoConcluido && (
+            <p id={idAvisoDoCarrinho} className="text-sm text-zinc-700">
+              Volte ao carrinho só se não pagou.
+            </p>
+          )}
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onVoltarAoCarrinho}
+            aria-describedby={
+              pagamentoNaoConcluido ? undefined : idAvisoDoCarrinho
+            }
+            className="min-h-12 w-full rounded-xl border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 hover:text-zinc-900"
+          >
+            Voltar ao carrinho
+          </Button>
+        </div>
       )}
     </section>
   );
@@ -768,7 +781,7 @@ function VerificarPix({
       <p aria-live="polite" className="text-sm text-zinc-600">
         {semConfirmacao &&
           !esgotou &&
-          "Ainda não confirmado. Tente de novo em instantes."}
+          "Ainda não confirmado. Se você já pagou no banco, não pague de novo: aguarde aqui ou confira em Meus pedidos, na aba Em andamento ou no Histórico."}
       </p>
       {esgotou && !verificando && (
         <p className="text-sm text-zinc-600">

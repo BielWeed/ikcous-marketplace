@@ -10,10 +10,26 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const { atualizar } = vi.hoisted(() => ({ atualizar: vi.fn() }));
+
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     rpc: vi.fn(),
-    from: vi.fn(),
+    from: (tabela: string) => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({ data: null, error: null }),
+        }),
+      }),
+      update: (valores: unknown) => {
+        atualizar(tabela, valores);
+        const gravacao = {
+          eq: () => gravacao,
+          select: async () => ({ data: [{ id: "ped-tipo-1" }], error: null }),
+        };
+        return gravacao;
+      },
+    }),
     functions: { invoke: vi.fn() },
     channel: vi.fn(),
     removeChannel: vi.fn(),
@@ -99,7 +115,7 @@ describe("ficha do pedido por tipo de entrega", () => {
     expect(entrega().textContent).toContain("Cliente");
     expect(entrega().textContent).not.toContain("Entrega");
     expect(entrega().textContent).toContain("Maria da Silva");
-    expect(entrega().textContent).toContain("34999998888");
+    expect(entrega().textContent).toContain("(34) 99999-8888");
     expect(
       entrega().querySelector('[aria-label="Conversar no WhatsApp"]'),
     ).not.toBeNull();
@@ -164,6 +180,93 @@ describe("ficha do pedido por tipo de entrega", () => {
     expect(itens().textContent).toContain("Frete");
     expect(envio().textContent).toContain("Código de rastreio");
     expect(envio().textContent).toContain("Adicionar");
+  });
+
+  const avisoSemRastreio =
+    "Sem código salvo, a cliente vê “A caminho”, mas não consegue rastrear. Se já tem o código, salve antes de avançar.";
+
+  it("avisa junto ao avanço para A caminho sem tornar o código obrigatório", async () => {
+    await renderizar(pedido({ ...TIPOS.envio, status: "processing" }));
+    const avancar = [...hospedeiro.querySelectorAll("button")].find(
+      (botao) => botao.textContent?.trim() === "Avançar → Em Trânsito",
+    );
+    expect(avancar?.disabled).toBe(false);
+    expect(avancar?.parentElement?.parentElement?.textContent).toContain(
+      avisoSemRastreio,
+    );
+  });
+
+  it.each([
+    [
+      "-",
+      "O código de rastreio salvo (“-”) não é válido: a cliente não consegue rastrear. Corrija o código antes de avançar.",
+    ],
+    ["  ", avisoSemRastreio],
+  ])(
+    "avisa sobre o código salvo %j sem impedir o avanço",
+    async (trackingCode, mensagem) => {
+      await renderizar(
+        pedido({ ...TIPOS.envio, status: "processing", trackingCode }),
+      );
+      const avancar = [...hospedeiro.querySelectorAll("button")].find(
+        (botao) => botao.textContent?.trim() === "Avançar → Em Trânsito",
+      );
+      expect(avancar?.disabled).toBe(false);
+      expect(avancar?.parentElement?.parentElement?.textContent).toContain(
+        mensagem,
+      );
+    },
+  );
+
+  it.each([
+    { ...TIPOS.envio, trackingCode: "BR123456789BR" },
+    TIPOS.retirada,
+    TIPOS["entrega-local"],
+    TIPOS.balcao,
+    { ...TIPOS.envio, status: "pending" as const },
+    { ...TIPOS.envio, status: "shipping" as const },
+  ])("não avisa fora do despacho de um envio sem código: %j", async (dados) => {
+    await renderizar(pedido({ status: "processing", ...dados }));
+    expect(hospedeiro.textContent).not.toContain(
+      "a cliente não consegue rastrear",
+    );
+    expect(hospedeiro.textContent).not.toContain(avisoSemRastreio);
+  });
+
+  it("remove o aviso ao salvar um rastreio válido na mesma ficha", async () => {
+    const avisoInvalido = "O código de rastreio salvo (“-”) não é válido";
+    await renderizar(
+      pedido({ ...TIPOS.envio, status: "processing", trackingCode: "-" }),
+    );
+    expect(hospedeiro.textContent).toContain(avisoInvalido);
+
+    function clicar(texto: string) {
+      const botao = [...hospedeiro.querySelectorAll("button")].find(
+        (b) => b.textContent === texto || b.title === texto,
+      );
+      if (!botao) throw new Error(`Botão ausente: ${texto}`);
+      act(() => botao.click());
+    }
+
+    clicar("Editar Código");
+    const campo = hospedeiro.querySelector<HTMLInputElement>("#tracking-input");
+    const definirValor = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    if (!campo || !definirValor) throw new Error("Campo de rastreio ausente");
+    act(() => {
+      definirValor.call(campo, "AA123456789BR");
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(hospedeiro.textContent).toContain(avisoInvalido);
+    await act(async () => clicar("Salvar"));
+
+    expect(atualizar).toHaveBeenCalledWith("marketplace_orders", {
+      tracking_code: "AA123456789BR",
+    });
+    expect(envio().textContent).toContain("AA123456789BR");
+    expect(hospedeiro.textContent).not.toContain("não consegue rastrear");
   });
 
   const passos = () => [

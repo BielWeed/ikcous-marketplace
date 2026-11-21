@@ -173,7 +173,7 @@ describe("AdminOrderCard — as perguntas do cartão e o Voltar do celular", () 
     expect(aoMudarStatus).not.toHaveBeenCalled();
   });
 
-  it.each(["Avançar mesmo assim", "Cancelar pedido"])(
+  it.each(["Avançar sem pagamento confirmado", "Cancelar pedido"])(
     "o Voltar devolve o foco ao botão direto %s",
     async (rotulo) => {
       await montar(["pedido-a"], { paymentStatus: "aguardando" });

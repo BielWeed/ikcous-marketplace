@@ -10,12 +10,11 @@ import type {
   MotivoOg,
 } from "./contrato";
 import { montarConsultaDeVariacoes, precoDaPrevia } from "./precoDaPrevia";
+import { VARY_DA_PREVIA, ehRoboDaPrevia } from "./roboDaPrevia";
 
 export const PRAZO_MS = 2500;
 export const CORPO_MAXIMO = 64 * 1024;
 
-const ROBOS =
-  /whatsapp|facebookexternalhit|twitterbot|telegrambot|slackbot|googlebot|bingbot|baiduspider|yandexbot/i;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CAMINHOS_DE_PRODUTO = new Set(["/product-detail", "/product-detail/"]);
 const COLUNAS = "id,nome,descricao,preco_venda,imagem_url,imagem_urls";
@@ -33,10 +32,6 @@ export interface ProdutoPublico {
 export interface OpcoesDoWorker {
   readonly fetchImpl?: typeof fetch;
   readonly prazoMs?: number;
-}
-
-export function ehRobo(userAgent: string | null): boolean {
-  return ROBOS.test(userAgent ?? "");
 }
 
 export function idValido(id: string | null): id is string {
@@ -321,6 +316,7 @@ function previa(
   );
   cabecalhos.set("content-type", "text/html; charset=utf-8");
   cabecalhos.set("Cache-Control", "no-store");
+  cabecalhos.append("Vary", VARY_DA_PREVIA);
   return new Response(request.method === "HEAD" ? null : html, {
     status: 200,
     headers: cabecalhos,
@@ -353,8 +349,8 @@ export function criarWorker(
           headers: cabecalhos,
         });
       }
-      const robo = ehRobo(request.headers.get("user-agent"));
-      if (!robo) return documentoDaLoja(request, env, config, "passa");
+      if (!ehRoboDaPrevia(request.headers))
+        return documentoDaLoja(request, env, config, "passa");
       const id = url.searchParams.get("id");
       if (!idValido(id) || config.conexao.kind !== "database")
         return documentoDaLoja(request, env, config, "sem-produto");
