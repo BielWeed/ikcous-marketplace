@@ -273,16 +273,21 @@ const TIMELINE_STEPS: Array<{
 const AVISO_DE_QUEM_JA_PAGOU =
   "Já pagou? Não faça outro pedido. Se a confirmação não aparecer, fale com a loja.";
 
+function ePixOnline({
+  paymentMethod,
+  metodoOnline,
+}: Pick<Order, "paymentMethod" | "metodoOnline">): boolean {
+  return (
+    paymentMethod === "pix" ||
+    (paymentMethod === "online" && metodoOnline === "pix")
+  );
+}
+
 /**
- * Só o estado `pending` (esteira do pedido) muda de texto conforme o
- * `payment_status` (se o dinheiro entrou) — processing/shipping/delivered/
- * cancelled continuam com a description fixa do `statusConfig`, porque a
- * esteira já avançou e a pergunta "o dinheiro entrou?" já foi respondida
- * pela lojista. É por isso que este é um `switch` pequeno em cima de
- * `paymentStatusKey` (a ÚNICA fonte que decide "null vira sem_cobranca"),
- * não um segundo emaranhado de `if` dentro de `statusConfig`.
+ * Em `pending`, a descrição explica o estado do pagamento a partir de
+ * `paymentStatusKey`. A loja pode avançar o pedido sem confirmar o Pix:
+ * nesse caso, o aviso de quem já pagou também acompanha a descrição da etapa.
  *
- * No Pix aguardando confirmação, o texto também orienta quem já pagou.
  *
  * `sem_cobranca` NÃO é "falta pagar": a compra "na entrega" grava
  * `payment_status` nulo (RPC v23, sem cobrança online nenhuma), e a frase de
@@ -330,10 +335,7 @@ function pendingDescription(
       // `pago`.
       return "Pagamento confirmado. A loja vai iniciar a separação.";
     case "aguardando":
-      if (
-        forma.paymentMethod === "pix" ||
-        (forma.paymentMethod === "online" && forma.metodoOnline === "pix")
-      ) {
+      if (ePixOnline(forma)) {
         return `${statusConfig.pending.description} ${AVISO_DE_QUEM_JA_PAGOU}`;
       }
       return statusConfig.pending.description;
@@ -1324,7 +1326,11 @@ export function OrderDetailsView({
             order.retiradaNaLoja,
             order.metodoOnline,
           )
-        : currentStatus.description;
+        : (order.status === "processing" || order.status === "shipping") &&
+            chaveDoPagamento === "aguardando" &&
+            ePixOnline(order)
+          ? `${currentStatus.description} ${AVISO_DE_QUEM_JA_PAGOU}`
+          : currentStatus.description;
   // Estornado: o dinheiro já voltou, então só a linha CONCLUÍDA tem o que dizer
   // (o valor). "Em andamento", "a loja faz depois" e "cuidando disso" seriam
   // falsos aqui, e sem linha (chargeback, "Já estornei") a descrição acima basta.
