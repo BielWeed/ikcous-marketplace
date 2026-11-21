@@ -87,7 +87,7 @@ import {
   rotuloDoStatusParaACliente,
 } from "@/lib/mensagem-do-status-no-whatsapp";
 import {
-  AVISO_PUSH_PODE_CHEGAR,
+  descricaoDePushSemConfirmacao,
   falhaDePushSemConfirmacao,
   motivoDaFalhaEmPortugues,
 } from "@/lib/motivo-da-falha-de-push";
@@ -1898,7 +1898,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         if (envio.falhas?.some(falhaDePushSemConfirmacao)) {
           toast.warning(
             "Status atualizado, mas não foi possível confirmar o envio do aviso",
-            { description: `${AVISO_PUSH_PODE_CHEGAR}.` },
+            { description: descricaoDePushSemConfirmacao(envio.falhas) },
           );
           return;
         }

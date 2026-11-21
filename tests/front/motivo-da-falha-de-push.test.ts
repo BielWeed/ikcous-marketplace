@@ -26,7 +26,7 @@ describe("motivoDaFalhaEmPortugues", () => {
         motivo:
           "Sem resposta do serviço de push dentro do prazo; o aviso pode ter chegado ao aparelho mesmo assim",
       },
-      "o aviso ainda pode chegar; confira antes de reenviar",
+      "envio sem confirmação",
     ],
   ])("traduz %j", (falha, esperado) => {
     expect(motivoDaFalhaEmPortugues(falha)).toBe(esperado);

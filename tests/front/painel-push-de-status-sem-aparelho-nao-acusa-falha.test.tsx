@@ -282,7 +282,10 @@ describe("Painel — aviso de push que não chegou", () => {
     expect(aviso).toHaveBeenCalledTimes(1);
     expect(aviso).toHaveBeenCalledWith(
       "Status atualizado, mas não foi possível confirmar o envio do aviso",
-      { description: "O aviso ainda pode chegar; confira antes de reenviar." },
+      {
+        description:
+          "O aviso ainda pode chegar; confira antes de reenviar. Recusas confirmadas: 2x esses aparelhos não recebem mais avisos (as inscrições venceram).",
+      },
     );
   });
 

@@ -51,7 +51,8 @@ import {
   temMarcadorPendente,
 } from "@/lib/modelos-de-campanha";
 import {
-  AVISO_PUSH_PODE_CHEGAR,
+  contarPushSemConfirmacao,
+  descricaoDePushSemConfirmacao,
   falhaDePushSemConfirmacao,
   motivoDaFalhaEmPortugues,
 } from "@/lib/motivo-da-falha-de-push";
@@ -1052,8 +1053,15 @@ export const AdminPushView = memo(function AdminPushView({
           tokens: tokens.slice(-naoTentados),
         });
       }
+      const semConfirmacao = Math.min(
+        falharam,
+        contarPushSemConfirmacao(envio?.falhas ?? []),
+      );
+      const resultadoDasFalhas = semConfirmacao
+        ? `${falharam - semConfirmacao} com falha, ${semConfirmacao} sem confirmação`
+        : `${falharam} com falha`;
       setEstadoDaContinuacao(
-        `Continuação: envio aceito para ${enviados} de ${tokens.length} ${tokens.length === 1 ? "aparelho" : "aparelhos"}; ${falharam} com falha e ${naoTentados} ${naoTentados === 1 ? "não tentado" : "não tentados"}.`,
+        `Continuação: envio aceito para ${enviados} de ${tokens.length} ${tokens.length === 1 ? "aparelho" : "aparelhos"}; ${resultadoDasFalhas} e ${naoTentados} ${naoTentados === 1 ? "não tentado" : "não tentados"}.`,
       );
 
       if (enviados > 0) {
@@ -1472,7 +1480,7 @@ export const AdminPushView = memo(function AdminPushView({
       } else if (entregues === 0) {
         const semConfirmacao = envio?.falhas?.some(falhaDePushSemConfirmacao);
         const motivo = semConfirmacao
-          ? `${AVISO_PUSH_PODE_CHEGAR}.`
+          ? descricaoDePushSemConfirmacao(envio.falhas)
           : (detalheDaFalha ?? "A função não informou o motivo da falha.");
         toast.error(
           semConfirmacao
