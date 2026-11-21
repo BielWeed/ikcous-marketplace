@@ -103,8 +103,8 @@ export function EnviarAoMototaxi({
     return (
       <div className="border-t border-admin-border pt-4">
         <p className="text-center text-xs text-zinc-500">
-          Cadastre o WhatsApp do mototáxi em Entrega e frete para enviar este
-          pedido.
+          Para enviar este pedido ao mototáxi pelo WhatsApp, cadastre o número
+          em Entrega e frete.
         </p>
       </div>
     );
