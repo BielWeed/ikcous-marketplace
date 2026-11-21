@@ -949,7 +949,11 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                {pedido.shipping_label_url && (
+                {pedido.status === "cancelled" ? (
+                  <p className="text-sm font-medium text-amber-400">
+                    Pedido cancelado — não postar
+                  </p>
+                ) : pedido.shipping_label_url ? (
                   <a
                     href={pedido.shipping_label_url}
                     target="_blank"
@@ -959,7 +963,7 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
                     <ExternalLink className="size-4" />
                     <span>Abrir etiqueta</span>
                   </a>
-                )}
+                ) : null}
                 <button
                   type="button"
                   onClick={() => handleConsultarRastreio()}
