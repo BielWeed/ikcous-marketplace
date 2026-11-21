@@ -90,6 +90,16 @@ describe("pedidosParaCsv", () => {
     },
   );
 
+  it("exporta o valor confirmado mesmo quando o pagamento está estornado", () => {
+    const colunas = pedidosParaCsv([
+      pedido({ total: 100, valorEstornado: 100, paymentStatus: "estornado" }),
+    ])
+      .split(CRLF)[1]
+      .split(";");
+
+    expect(colunas.slice(16)).toEqual(["100,00", "0,00"]);
+  });
+
   it("não usa o relógio local de um aparelho em UTC", () => {
     vi.spyOn(Date.prototype, "getDate").mockImplementation(function (
       this: Date,

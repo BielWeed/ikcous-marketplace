@@ -258,6 +258,9 @@ describe("lote 230 — Devolver R$ ... pergunta pela janela do app", () => {
     const j = janela() as HTMLElement;
     expect(normal(j.textContent)).toContain("R$ 12,00");
     expect(normal(j.textContent)).toContain("R$ 20,00");
+    expect(normal(j.textContent)).toContain(
+      "Antes de repetir, confira no painel do Mercado Pago se a anterior saiu.",
+    );
     expect(normal(j.textContent)).not.toContain("Invalid Date");
     expect(botaoDa(j, "Confirmar devolução adicional")).toBeDefined();
   });

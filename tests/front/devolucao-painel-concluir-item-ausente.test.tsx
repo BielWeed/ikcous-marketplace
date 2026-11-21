@@ -467,6 +467,30 @@ describe("AcoesDaDevolucao — valor sugerido e itens que não voltaram", () => 
     );
   });
 
+  it("conclui o reembolso sem somar o frete quando um item não voltou", async () => {
+    await abrirConclusao(
+      detalheDe(
+        {
+          valor_itens: 100,
+          valor_frete_ida: 20,
+          itens: [
+            item("a", "Camiseta azul", 1, 50),
+            item("b", "Calça preta", 1, 50),
+          ],
+        },
+        { total: 120, shipping: 20 },
+      ),
+    );
+    await clicar(condicaoDe("Camiseta azul", "Nova, sem uso"));
+    await clicar(condicaoDe("Calça preta", "Não veio"));
+    expect(campoValor()?.value).toBe("50,00");
+    await clicar(botao("Concluir devolução"));
+
+    expect(concluir).toHaveBeenCalledWith(
+      expect.objectContaining({ valorReembolso: 50 }),
+    );
+  });
+
   it("troca ou vale: não há campo de valor, então não há aviso de reembolso", async () => {
     await abrirConclusao(detalheDe());
     await clicar(condicaoDe("Calça preta", "Não veio"));
