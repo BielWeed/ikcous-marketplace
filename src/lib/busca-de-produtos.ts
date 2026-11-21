@@ -340,6 +340,9 @@ export function pontuadorDaBusca(busca: string) {
   const codigoBuscado = normalizarParaBusca(busca);
   const query = codigoBuscado.replace(/\s+/g, " ");
   const palavras = palavrasDaBusca(busca);
+  // Acima da soma máxima sem código exato: nome (100), categoria (40),
+  // descrição (5), código parcial (5) e nome/categoria por palavra (20 + 15).
+  const bonusCodigoExato = 151 + 35 * palavras.length;
 
   return (produto: {
     name: string;
@@ -386,9 +389,8 @@ export function pontuadorDaBusca(busca: string) {
     ]
       .map(normalizarParaBusca)
       .filter(Boolean);
-    // Codigo exato vem antes de uma simples mencao na descricao (5 pontos).
     if (codigoBuscado && codigos.some((codigo) => codigo === codigoBuscado))
-      score += 40;
+      score += bonusCodigoExato;
     else if (
       codigoBuscado &&
       codigos.some((codigo) => codigo.includes(codigoBuscado))

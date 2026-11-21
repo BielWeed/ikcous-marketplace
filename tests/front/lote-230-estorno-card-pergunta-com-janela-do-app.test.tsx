@@ -197,6 +197,44 @@ describe("lote 230 — Devolver R$ ... pergunta pela janela do app", () => {
     });
   });
 
+  it.each([
+    {
+      caso: "em processamento no teto de tentativas",
+      linha: linhaEstorno({
+        status: "em_processamento",
+        tentativas: 5,
+        ultimo_erro: null,
+      }),
+      emCurso: 30,
+      emDuvida: 0,
+    },
+    {
+      caso: "parada sem confirmação do Mercado Pago",
+      linha: linhaEstorno({ pode_ter_saido: true }),
+      emCurso: 0,
+      emDuvida: 30,
+    },
+  ])(
+    "orienta a conferir no Mercado Pago quando a devolução anterior está $caso",
+    async ({ linha, emCurso, emDuvida }) => {
+      useEstornosDoPedidoMock.mockReturnValue(
+        hookPadrao({ linhas: [linha], emCurso, emDuvida, disponivel: 70 }),
+      );
+      await montar();
+      await tocar(botaoDa(hospedeiro, "Devolver R$ 70,00"));
+
+      const texto = normal(janela()?.textContent);
+      expect(texto).toContain(
+        "Já existe uma devolução de R$ 30,00 em andamento neste pedido.",
+      );
+      expect(texto).toContain(
+        "Confirme só se esta for OUTRA devolução. Antes de repetir, confira no painel do Mercado Pago se a anterior saiu.",
+      );
+      expect(texto).not.toContain("aguarde alguns instantes");
+      expect(solicitarEstorno).not.toHaveBeenCalled();
+    },
+  );
+
   it("lista cada devolução em processamento ou em dúvida, mesmo sem horário", async () => {
     useEstornosDoPedidoMock.mockReturnValue(
       hookPadrao({

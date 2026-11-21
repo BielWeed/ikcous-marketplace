@@ -127,6 +127,13 @@ describe("tela de manutenção — orientação sobre pagamento", () => {
       "Se você já pagou, não pague de novo. Quando a loja voltar, confira em Meus pedidos.",
     );
   });
+
+  it("orienta quem comprou sem conta a falar com a loja com o número do pedido", async () => {
+    await montar();
+    expect(hospedeiro.textContent).toContain(
+      "Se comprou sem conta, fale com a loja e informe o número do pedido.",
+    );
+  });
 });
 
 describe("tela de manutenção — checagem automática", () => {

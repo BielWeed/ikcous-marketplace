@@ -52,6 +52,10 @@ function paraNumero(valorBruto: string): number {
   return Number.NaN;
 }
 
+function atingiuTetoDeTentativas(linha: LinhaEstornoDoPedido): boolean {
+  return linha.status === "em_processamento" && linha.tentativas >= 5;
+}
+
 interface TextoDaLinha {
   texto: string;
   /** Só `falhou` oferece nova tentativa — as demais (em andamento, teto,
@@ -97,7 +101,7 @@ function textoDaLinha(linha: LinhaEstornoDoPedido): TextoDaLinha {
   // `em_processamento` para sempre em vez de arriscar pagar duas vezes. NÃO
   // existe "Tentar de novo" aqui; a única saída é a dos 7 dias (lote R1), que
   // aparece abaixo da linha quando o SERVIDOR a libera.
-  if (linha.status === "em_processamento" && linha.tentativas >= 5) {
+  if (atingiuTetoDeTentativas(linha)) {
     return {
       texto: `A devolução de ${valor} não foi confirmada pelo Mercado Pago depois de 5 tentativas. Confira no painel do Mercado Pago se ela saiu; o valor fica reservado aqui até isso se resolver.`,
       podeTentarDeNovo: false,
@@ -175,8 +179,14 @@ function avisoDeDevolucoesEmAndamento(linhas: LinhaEstornoDoPedido[]): string {
   if (emAndamento.length > 1) {
     devolucoes.unshift("Já existem devoluções em andamento neste pedido:");
   }
+  const temDevolucaoTravada = emAndamento.some(
+    (linha) =>
+      atingiuTetoDeTentativas(linha) || acoesDaLinha(linha).confirmando,
+  );
   devolucoes.push(
-    "Confirme só se esta for OUTRA devolução. Se a anterior ainda não aparece como concluída, aguarde alguns instantes antes de repetir.",
+    temDevolucaoTravada
+      ? "Confirme só se esta for OUTRA devolução. Antes de repetir, confira no painel do Mercado Pago se a anterior saiu."
+      : "Confirme só se esta for OUTRA devolução. Se a anterior ainda não aparece como concluída, aguarde alguns instantes antes de repetir.",
   );
   return devolucoes.join("\n");
 }

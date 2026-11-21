@@ -162,6 +162,18 @@ describe("plural em -il: refil/refis, funil/funis, fuzil/fuzis", () => {
 });
 
 describe("plural em -eis de palavras como fácil e útil", () => {
+  it("põe o código exato antes de um resultado por singular no nome e na categoria", () => {
+    const busca = "UTEIS-FACEIS";
+    const porPalavras = produto("Organizador Útil e Fácil", "Casa Fácil");
+    const porCodigo = { ...produto("Organizador"), sku: busca };
+    const pontuar = pontuadorDaBusca(busca);
+    const sugestoes = [porPalavras, porCodigo]
+      .filter((p) => produtoCombinaComBusca(p, busca))
+      .sort((a, b) => pontuar(b) - pontuar(a));
+
+    expect(sugestoes).toEqual([porCodigo, porPalavras]);
+  });
+
   it.each([
     ["tênis fáceis de calçar", "Tênis Fácil de Calçar"],
     ["fácil", "Tênis Fáceis de Calçar"],
