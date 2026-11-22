@@ -8,6 +8,7 @@ import {
   CHAVE_DO_ADIAMENTO_DOS_AVISOS,
   type EntradaDaSituacao,
   PASSOS_PARA_INSTALAR_NO_IOS,
+  PASSOS_PARA_INSTALAR_NO_IOS_DA_CLIENTE,
   PRAZO_DO_ADIAMENTO_DOS_AVISOS_MS,
   adiamentoEstaValendo,
   adiarOsAvisos,
@@ -82,11 +83,20 @@ describe("situacaoDosAvisos", () => {
 });
 
 describe("passos escritos para quem não é do ramo", () => {
-  it("o caminho do iPhone cita Compartilhar e Adicionar à Tela de Início", () => {
-    const todos = PASSOS_PARA_INSTALAR_NO_IOS.join(" ");
-    expect(todos).toContain("Compartilhar");
-    expect(todos).toContain("Adicionar à Tela de Início");
-  });
+  it.each([
+    ["painel", PASSOS_PARA_INSTALAR_NO_IOS],
+    ["loja", PASSOS_PARA_INSTALAR_NO_IOS_DA_CLIENTE],
+  ])(
+    "o guia do iPhone (%s) orienta a abrir como app da web",
+    (_guia, passos) => {
+      expect(passos.join(" ")).toContain("Compartilhar");
+      const adicionar = passos.indexOf("Escolha Adicionar à Tela de Início.");
+      expect(adicionar).toBeGreaterThanOrEqual(0);
+      expect(passos[adicionar + 1]).toBe(
+        "Se aparecer «Abrir como App da Web», deixe a opção ligada e toque em «Adicionar».",
+      );
+    },
+  );
 
   it("cada lugar tem o seu caminho, e o do app instalado leva o nome da loja", () => {
     const aba = passosParaLiberarOsAvisos(

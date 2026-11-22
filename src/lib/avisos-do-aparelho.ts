@@ -94,6 +94,7 @@ export const PASSOS_PARA_INSTALAR_NO_IOS: readonly string[] = [
   "Abra este painel no Safari.",
   "Toque em Compartilhar (o quadrado com a seta para cima).",
   "Escolha Adicionar à Tela de Início.",
+  "Se aparecer «Abrir como App da Web», deixe a opção ligada e toque em «Adicionar».",
   "Abra o app pelo novo ícone, toque em Perfil e depois em Acessar painel.",
 ];
 
@@ -105,6 +106,7 @@ export const PASSOS_PARA_INSTALAR_NO_IOS_DA_CLIENTE: readonly string[] = [
   "Abra a loja no Safari.",
   "Toque em Compartilhar (o quadrado com a seta para cima).",
   "Escolha Adicionar à Tela de Início.",
+  "Se aparecer «Abrir como App da Web», deixe a opção ligada e toque em «Adicionar».",
   "Abra o app pelo novo ícone, volte à tela de notificações e toque em Ligar avisos neste aparelho.",
 ];
 

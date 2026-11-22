@@ -1,4 +1,15 @@
 {
+  "1.5.231": {
+    "titulo": "Perfil, nova senha e avisos do iPhone mais claros",
+    "novidades": [],
+    "correcoes": [
+      "No Perfil, o WhatsApp deixa de mostrar o número antigo do cadastro enquanto os dados da conta chegam: aparece “Carregando…” e, se a busca falhar, “Não conseguimos confirmar seu WhatsApp” com o botão “Tentar de novo”.",
+      "Na tela de nova senha aberta por um link, tocar em “Entrar” encerra a sessão aberta pelo link e leva ao login (ou ao login do painel, quando o link veio de lá), sem cair no Perfil.",
+      "Na ficha do pedido, o código do produto agora se chama “Código atual do cadastro”, porque ele mostra o código de hoje e não o que valia no dia da compra.",
+      "Nos passos para instalar no iPhone, a loja e o painel avisam: se aparecer “Abrir como App da Web”, deixe a opção ligada e toque em “Adicionar”."
+    ],
+    "melhorias": []
+  },
   "1.5.230": {
     "titulo": "Pedidos, pagamentos e devoluções mais claros, e loja abrindo em mais aparelhos",
     "novidades": [

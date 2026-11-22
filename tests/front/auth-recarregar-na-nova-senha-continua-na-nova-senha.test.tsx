@@ -190,6 +190,80 @@ describe("AuthProvider — a tela Nova senha sobrevive ao recarregamento", () =>
     expect(aoNavegar).not.toHaveBeenCalledWith("profile");
   });
 
+  it.each(["/", "/?origem=painel"])(
+    "ao tocar em Entrar em Nova Senha (%s), encerra a sessão antes de mostrar o login",
+    async (endereco) => {
+      await montar({ comTela: true });
+      await emitir("PASSWORD_RECOVERY", "conta-a");
+      window.history.replaceState({}, "", endereco);
+      expect(host.textContent).toContain("Nova Senha");
+      expect(host.textContent).toContain("Lembrou a senha?");
+      const entrar = [...host.querySelectorAll("button")].find(
+        (botao) => botao.textContent === "Entrar",
+      );
+      expect(entrar).toBeDefined();
+      const { supabase } = await import("@/lib/supabase");
+      let confirmarSaida = () => {};
+      vi.mocked(supabase.auth.signOut).mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            confirmarSaida = () => resolve({ error: null });
+          }),
+      );
+
+      await act(async () => entrar?.click());
+      expect(aoNavegar).not.toHaveBeenCalled();
+      expect(host.textContent).toContain("Nova Senha");
+      expect(supabase.auth.signOut).toHaveBeenCalledWith({ scope: "local" });
+
+      await act(async () => confirmarSaida());
+      expect(aoNavegar).not.toHaveBeenCalledWith("profile");
+      if (endereco === "/") {
+        expect(host.textContent).toContain("ENTRAR AGORA");
+        expect(host.textContent).not.toContain("Nova Senha");
+        expect(
+          host.querySelector<HTMLButtonElement>('button[type="submit"]')
+            ?.disabled,
+        ).toBe(false);
+        expect(entrar?.disabled).toBe(false);
+      } else {
+        // O navegador do teste não desmonta a tela: simula o login do painel
+        // ainda carregando, já sem sessão nem modo de recuperação.
+        expect(aoNavegar).toHaveBeenCalledWith("admin-login");
+        expect(sonda.isPasswordRecovery).toBe(false);
+        expect(host.textContent).not.toContain("SOLICITAR LINK");
+        expect(host.textContent).toContain("Nova Senha");
+      }
+    },
+  );
+
+  it("libera os botões após 8 s se a ida ao painel não desmontar a tela", async () => {
+    await montar({ comTela: true });
+    await emitir("PASSWORD_RECOVERY", "conta-a");
+    window.history.replaceState({}, "", "/?origem=painel");
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const entrar = [...host.querySelectorAll("button")].find(
+      (botao) => botao.textContent === "Entrar",
+    )!;
+
+    await act(async () => entrar.click());
+    expect(aoNavegar).toHaveBeenCalledWith("admin-login");
+
+    await act(async () => vi.advanceTimersByTime(7_999));
+    expect(entrar.disabled).toBe(true);
+    expect(host.textContent).toContain("Nova Senha");
+
+    await act(async () => vi.advanceTimersByTime(1));
+    expect(entrar.disabled).toBe(false);
+    expect(host.textContent).toContain("SOLICITAR LINK");
+    expect(host.textContent).not.toContain("Este link expirou");
+    expect(
+      host.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled,
+    ).toBe(false);
+    await act(async () => entrar.click());
+    expect(aoNavegar).toHaveBeenCalledTimes(2);
+  });
+
   it("controle na tela: com sessão comum (sem marca) o app segue para o Perfil como sempre", async () => {
     guardarSessao("conta-a");
     aoNavegar.mockClear();

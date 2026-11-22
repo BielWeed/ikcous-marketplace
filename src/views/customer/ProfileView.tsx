@@ -441,11 +441,9 @@ export function ProfileView({
     }
   };
 
-  // O cadastro grava `full_name` e `phone` na conta (não `name`). Enquanto o
-  // perfil não chega (rede ruim), é de lá, da conta ATUAL, que vêm o nome e o
-  // WhatsApp — antes a tela mostrava o pedaço do e-mail como se fosse o nome.
+  // Enquanto o perfil não chega, o nome pode vir da conta. O telefone do
+  // cadastro não acompanha as edições do perfil e não confirma o WhatsApp.
   const nomeDoCadastro = textoDoCadastro(user?.user_metadata?.full_name);
-  const telefoneDoCadastro = textoDoCadastro(user?.user_metadata?.phone);
   const profileName = useMemo(() => {
     if (!user) return "Seu Nome";
     return (
@@ -483,14 +481,33 @@ export function ProfileView({
   // endereços enquanto ela estava escondida ou o app em segundo plano.
   useReleituraDosEnderecosAoVoltar(user?.id, isActive, fetchAddresses);
 
-  // Perfil que não veio (rede ruim ao entrar): pede de novo ao abrir a aba — uma
-  // tentativa por abertura, com o prazo do resto do app. Depende só do ID da
-  // conta e de "tem perfil ou não": se a busca falhar nada muda e nada repete.
+  // Pede o perfil ao abrir a aba; só repete após falhar se a pessoa pedir
+  // ou voltar à aba. Uma resposta antiga não muda o aviso da conta atual.
   const semPerfil = !profile;
+  const [tentativaDoPerfil, setTentativaDoPerfil] = useState(0);
+  const [contaComFalhaNoPerfil, setContaComFalhaNoPerfil] = useState<
+    string | null
+  >(null);
   useEffect(() => {
     if (!usuarioId || authLoading || !isActive || !semPerfil) return;
-    void comPrazo(Promise.resolve(fetchProfile()), 15_000).catch(() => {});
-  }, [usuarioId, authLoading, isActive, semPerfil, fetchProfile]);
+    let ativa = true;
+    setContaComFalhaNoPerfil(null);
+    void comPrazo(Promise.resolve(fetchProfile()), 15_000)
+      .catch(() => false)
+      .then((carregou) => {
+        if (ativa && !carregou) setContaComFalhaNoPerfil(usuarioId);
+      });
+    return () => {
+      ativa = false;
+    };
+  }, [
+    usuarioId,
+    authLoading,
+    isActive,
+    semPerfil,
+    fetchProfile,
+    tentativaDoPerfil,
+  ]);
 
   // Sem sessão, o login só aparece quando o Perfil é a aba VISÍVEL (o botão
   // Sair, ou o visitante que toca em Perfil). A aba fica montada escondida
@@ -528,11 +545,7 @@ export function ProfileView({
       .replace(".", "");
     return `${mes}/${data.getFullYear()}`;
   }, [user, profile]);
-  // Perfil carregado manda (mesmo sem WhatsApp: aí é "Adicionar"). Só enquanto
-  // ele não veio é que vale o telefone do cadastro.
-  const whatsapp = profile
-    ? String(profile.whatsapp ?? "").trim()
-    : telefoneDoCadastro;
+  const whatsapp = String(profile?.whatsapp ?? "").trim();
 
   if (authLoading) {
     return <ProfileSkeleton />;
@@ -857,32 +870,54 @@ export function ProfileView({
                 {profileName}
               </p>
             </div>
-            {(profile || whatsapp) &&
-              (whatsapp ? (
-                <div className="py-3.5">
-                  <p className={ROTULO}>WhatsApp</p>
-                  <p className="mt-1 text-[15px] text-foreground">
-                    {formatarWhatsAppParaExibicao(whatsapp)}
-                  </p>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => onNavigate("account-settings")}
-                  className="flex min-h-11 w-full items-center justify-between gap-3 py-3.5 text-left"
+            {!profile ? (
+              <div className="py-3.5">
+                <p className={ROTULO}>WhatsApp</p>
+                <p
+                  role="status"
+                  className="mt-1 text-[15px] text-muted-foreground"
                 >
-                  <span>
-                    <span className={`${ROTULO} block`}>WhatsApp</span>
-                    <span className="mt-1 block text-[15px] text-muted-foreground">
-                      Adicionar WhatsApp
-                    </span>
+                  {contaComFalhaNoPerfil === usuarioId
+                    ? "Não conseguimos confirmar seu WhatsApp"
+                    : "Carregando…"}
+                </p>
+                {contaComFalhaNoPerfil === usuarioId && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setTentativaDoPerfil((tentativa) => tentativa + 1)
+                    }
+                    className="min-h-11 text-[15px] font-semibold text-foreground underline"
+                  >
+                    Tentar de novo
+                  </button>
+                )}
+              </div>
+            ) : whatsapp ? (
+              <div className="py-3.5">
+                <p className={ROTULO}>WhatsApp</p>
+                <p className="mt-1 text-[15px] text-foreground">
+                  {formatarWhatsAppParaExibicao(whatsapp)}
+                </p>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onNavigate("account-settings")}
+                className="flex min-h-11 w-full items-center justify-between gap-3 py-3.5 text-left"
+              >
+                <span>
+                  <span className={`${ROTULO} block`}>WhatsApp</span>
+                  <span className="mt-1 block text-[15px] text-muted-foreground">
+                    Adicionar WhatsApp
                   </span>
-                  <ChevronRight
-                    aria-hidden="true"
-                    className="size-5 shrink-0 text-muted-foreground"
-                  />
-                </button>
-              ))}
+                </span>
+                <ChevronRight
+                  aria-hidden="true"
+                  className="size-5 shrink-0 text-muted-foreground"
+                />
+              </button>
+            )}
             <div className="py-3.5">
               <p className={ROTULO}>E-mail</p>
               <p className="mt-1 break-all text-[15px] text-foreground">

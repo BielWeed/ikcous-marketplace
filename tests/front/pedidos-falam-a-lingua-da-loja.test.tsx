@@ -388,7 +388,7 @@ describe("pedidos e dinheiro — o que a lojista lê", () => {
     },
   );
 
-  it("ficha do pedido: o código do produto aparece como “Código interno:”, sem “SKU”", async () => {
+  it("ficha do pedido: o código do produto aparece como “Código atual do cadastro:”, sem “SKU”", async () => {
     const { OrderDetail } = await import(
       "@/components/admin/orders/OrderDetail"
     );
@@ -428,7 +428,9 @@ describe("pedidos e dinheiro — o que a lojista lê", () => {
     await act(async () => {
       await Promise.resolve();
     });
-    expect(hospedeiro.textContent).toContain("Código interno: CAM-01");
+    expect(hospedeiro.textContent).toContain(
+      "Código atual do cadastro: CAM-01",
+    );
     expect(hospedeiro.textContent).not.toMatch(/\bSKU\b/);
   });
 

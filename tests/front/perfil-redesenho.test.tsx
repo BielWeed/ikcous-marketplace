@@ -32,6 +32,7 @@ const estado = {
   orders: [] as Order[],
 };
 const logout = vi.fn();
+const fetchProfile = () => new Promise<boolean>(() => {});
 const fetchAddresses = vi.fn(async () => {});
 const deleteAddress = vi.fn(async () => true);
 
@@ -44,7 +45,7 @@ vi.mock("@/hooks/useAuth", () => ({
       created_at: estado.userCriadoEm,
     },
     profile: estado.profile,
-    fetchProfile: async () => {},
+    fetchProfile,
     logout,
     isAdmin: estado.isAdmin,
     loading: false,
@@ -305,6 +306,7 @@ describe("ProfileView — redesenho aprovado", () => {
     it("perfil ainda não chegou: não afirma que falta WhatsApp", async () => {
       estado.profile = null;
       await renderizar();
+      expect(textos()).toContain("Carregando…");
       expect(textos()).not.toContain("Adicionar WhatsApp");
     });
   });
