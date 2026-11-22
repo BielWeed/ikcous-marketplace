@@ -190,6 +190,43 @@ describe("AuthProvider — a tela Nova senha sobrevive ao recarregamento", () =>
     expect(aoNavegar).not.toHaveBeenCalledWith("profile");
   });
 
+  it.each(["/", "/?origem=painel"])(
+    "ao tocar em Entrar em Nova Senha (%s), encerra a sessão antes de mostrar o login",
+    async (endereco) => {
+      await montar({ comTela: true });
+      await emitir("PASSWORD_RECOVERY", "conta-a");
+      window.history.replaceState({}, "", endereco);
+      expect(host.textContent).toContain("Nova Senha");
+      expect(host.textContent).toContain("Lembrou a senha?");
+      const entrar = [...host.querySelectorAll("button")].find(
+        (botao) => botao.textContent === "Entrar",
+      );
+      expect(entrar).toBeDefined();
+      const { supabase } = await import("@/lib/supabase");
+      let confirmarSaida = () => {};
+      vi.mocked(supabase.auth.signOut).mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            confirmarSaida = () => resolve({ error: null });
+          }),
+      );
+
+      await act(async () => entrar?.click());
+      expect(aoNavegar).not.toHaveBeenCalled();
+      expect(host.textContent).toContain("Nova Senha");
+      expect(supabase.auth.signOut).toHaveBeenCalledWith({ scope: "local" });
+
+      await act(async () => confirmarSaida());
+      expect(aoNavegar).not.toHaveBeenCalledWith("profile");
+      if (endereco === "/") {
+        expect(host.textContent).toContain("ENTRAR AGORA");
+        expect(host.textContent).not.toContain("Nova Senha");
+      } else {
+        expect(aoNavegar).toHaveBeenCalledWith("admin-login");
+      }
+    },
+  );
+
   it("controle na tela: com sessão comum (sem marca) o app segue para o Perfil como sempre", async () => {
     guardarSessao("conta-a");
     aoNavegar.mockClear();

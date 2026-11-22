@@ -171,6 +171,7 @@ export function AuthView({
     signUp,
     resetPassword,
     updatePassword,
+    logout,
     resendConfirmationEmail,
     isPasswordRecovery,
     setIsPasswordRecovery,
@@ -213,6 +214,7 @@ export function AuthView({
   const [password, setPassword] = useState("");
   const [confirmaSenha, setConfirmaSenha] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [saindoDaRecuperacao, setSaindoDaRecuperacao] = useState(false);
   // Sair e voltar ao mesmo modo também começa outro fluxo.
   const fluxoDaTela = useRef(0);
   const setViewMode = useCallback((modo: typeof viewMode) => {
@@ -258,6 +260,7 @@ export function AuthView({
     // da sessão de um link válido. Cobre também a saída em outra aba.
     if (
       viewMode === "new-password" &&
+      !saindoDaRecuperacao &&
       !isPasswordRecovery &&
       (linkDeRecuperacaoVencido || !temUsuario)
     ) {
@@ -266,6 +269,7 @@ export function AuthView({
     }
   }, [
     viewMode,
+    saindoDaRecuperacao,
     isPasswordRecovery,
     linkDeRecuperacaoVencido,
     temUsuario,
@@ -1597,7 +1601,11 @@ export function AuthView({
                 whileHover={reduzirMovimento ? undefined : { scale: 1.01 }}
                 whileTap={reduzirMovimento ? undefined : { scale: 0.98 }}
                 type="submit"
-                disabled={enviandoFormulario || aguardandoNoFormulario}
+                disabled={
+                  enviandoFormulario ||
+                  aguardandoNoFormulario ||
+                  saindoDaRecuperacao
+                }
                 className="group mt-2 flex h-14 w-full items-center justify-center gap-3 rounded-2xl bg-zinc-900 text-xs font-black uppercase tracking-[0.2em] text-white shadow-lg shadow-zinc-200/50 disabled:opacity-70 sm:mt-4 sm:rounded-3xl"
               >
                 {enviandoFormulario ? (
@@ -1638,11 +1646,32 @@ export function AuthView({
                   : "Lembrou a senha?"}
             </span>
             <button
-              onClick={() => {
+              disabled={
+                saindoDaRecuperacao ||
+                (viewMode === "new-password" && isLoading)
+              }
+              onClick={async () => {
                 if (loginError) setLoginError(null);
                 if (emailNaoConfirmado) setEmailNaoConfirmado(false);
                 setAvisoDoLink(null);
-                if (viewMode === "forgot" || viewMode === "new-password") {
+                if (viewMode === "new-password") {
+                  if (envioEmCurso.current) return;
+                  envioEmCurso.current = true;
+                  setSaindoDaRecuperacao(true);
+                  try {
+                    // O link já abriu a sessão. Desligar só o modo de
+                    // recuperação deixaria o redirecionamento abrir o Perfil.
+                    await logout();
+                    voltarDaRecuperacao();
+                  } catch {
+                    toast.error("Não foi possível sair. Tente de novo.");
+                  } finally {
+                    envioEmCurso.current = false;
+                    setSaindoDaRecuperacao(false);
+                  }
+                  return;
+                }
+                if (viewMode === "forgot") {
                   voltarDaRecuperacao();
                   setIsPasswordRecovery(false);
                 } else setViewMode(isLogin ? "signup" : "login");

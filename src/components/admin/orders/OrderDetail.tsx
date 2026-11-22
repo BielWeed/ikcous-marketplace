@@ -446,7 +446,7 @@ function ItemSkuBadge({
   if (itemSku) {
     return (
       <span className="rounded bg-admin-gold/10 px-1.5 py-0.5 font-mono text-xs text-admin-gold">
-        Código interno: {itemSku}
+        Código atual do cadastro: {itemSku}
       </span>
     );
   }

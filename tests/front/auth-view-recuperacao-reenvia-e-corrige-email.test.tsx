@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const resetPassword = vi.fn();
+const logout = vi.fn().mockResolvedValue(undefined);
 const recuperacao = { ativa: false };
 
 vi.mock("@/hooks/useAuth", () => ({
@@ -25,6 +26,7 @@ vi.mock("@/hooks/useAuth", () => ({
     signUp: vi.fn(),
     resetPassword,
     updatePassword: vi.fn(),
+    logout,
     resendConfirmationEmail: vi.fn(),
     isPasswordRecovery: recuperacao.ativa,
     setIsPasswordRecovery: vi.fn(),
@@ -88,6 +90,7 @@ describe("AuthView — recuperação: reenviar, spam e corrigir o e-mail", () =>
     // real. A contagem do reenvio lê a hora (`Date`), então ela anda junto.
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
     resetPassword.mockReset().mockResolvedValue(SUCESSO);
+    logout.mockClear();
     vi.mocked(toast.error).mockClear();
     vi.mocked(toast.success).mockClear();
     hospedeiro = document.createElement("div");
@@ -154,10 +157,12 @@ describe("AuthView — recuperação: reenviar, spam e corrigir o e-mail", () =>
       await act(async () => botaoQueComeca("SOLICITAR LINK")!.click());
       await voltarAoPainel("Voltar para o Login");
 
+      expect(logout).not.toHaveBeenCalled();
       recuperacao.ativa = true;
       await abrir("nova-senha", "/auth?origem=painel");
       expect(hospedeiro.textContent).toContain("Nova Senha");
       await voltarAoPainel("Entrar");
+      expect(logout).toHaveBeenCalledTimes(1);
 
       recuperacao.ativa = false;
       await abrir("vitrine", "/auth");

@@ -1,12 +1,8 @@
 // @vitest-environment jsdom
 //
-// Rede ruim: a conta entrou, mas o perfil (nome, WhatsApp, foto) ainda não
-// veio. O Perfil mostrava a parte do e-mail antes do @ como NOME, escondia o
-// WhatsApp e nunca pedia o perfil de novo. O cadastro guarda `full_name` e
-// `phone` na conta (não `name`): enquanto o perfil não chega, a tela lê dali
-// (da conta ATUAL) e, ao abrir, pede o perfil mais uma vez (uma tentativa por
-// abertura, sem laço). RENDER DE VERDADE da ProfileView; hooks de dados são
-// dublês. Dados inventados.
+// O nome pode vir do cadastro enquanto o perfil não chega. O WhatsApp pode
+// ter mudado desde então: só o perfil confirma o número atual. RENDER DE
+// VERDADE da ProfileView; hooks de dados são dublês. Dados inventados.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -17,7 +13,7 @@ const estado = {
   profile: null as Record<string, unknown> | null,
   authLoading: false,
 };
-const fetchProfile = vi.fn<(...args: unknown[]) => Promise<void>>();
+const fetchProfile = vi.fn<() => Promise<boolean>>();
 
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({
@@ -80,7 +76,7 @@ describe("ProfileView — perfil que não carregou", () => {
     estado.profile = null;
     estado.authLoading = false;
     fetchProfile.mockReset();
-    fetchProfile.mockResolvedValue(undefined);
+    fetchProfile.mockResolvedValue(false);
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -124,13 +120,15 @@ describe("ProfileView — perfil que não carregou", () => {
     ).toBe("M");
   });
 
-  it("sem perfil, o WhatsApp vem do cadastro (phone) em vez de sumir", async () => {
+  it("enquanto o perfil carrega, não mostra o número antigo do cadastro", async () => {
     estado.metadata = { full_name: "Maria", phone: "(34) 98888-7777" };
+    fetchProfile.mockImplementationOnce(() => new Promise(() => {}));
     await abrir();
 
-    expect(hospedeiro.textContent).toContain("WhatsApp");
-    expect(hospedeiro.textContent).toContain("(34) 98888-7777");
+    expect(hospedeiro.textContent).not.toContain("(34) 98888-7777");
     expect(hospedeiro.textContent).not.toContain("Adicionar WhatsApp");
+    expect(hospedeiro.textContent).toContain("WhatsApp");
+    expect(hospedeiro.textContent).toContain("Carregando…");
   });
 
   it("sem perfil e sem nada no cadastro: segue o e-mail e não inventa 'Adicionar WhatsApp'", async () => {
@@ -138,7 +136,6 @@ describe("ProfileView — perfil que não carregou", () => {
 
     expect(nomeMostrado()).toBe("maria.conta");
     expect(hospedeiro.textContent).not.toContain("Adicionar WhatsApp");
-    expect(hospedeiro.textContent).not.toContain("WhatsApp");
   });
 
   it("com o perfil carregado, ele manda: o cadastro não sobrescreve nome nem WhatsApp", async () => {
@@ -199,15 +196,40 @@ describe("ProfileView — perfil que não carregou", () => {
     expect(fetchProfile).not.toHaveBeenCalled();
   });
 
-  it("se a busca do perfil falhar, a tela segue de pé e não repete sozinha", async () => {
-    fetchProfile.mockRejectedValue(new Error("sem rede"));
-    estado.metadata = { full_name: "Maria da Conta Silva" };
+  it("se a busca falhar, avisa e só tenta novamente ao tocar em Tentar de novo", async () => {
+    fetchProfile.mockImplementationOnce(() => Promise.resolve(false));
+    fetchProfile.mockRejectedValueOnce(new Error("sem rede"));
+    estado.metadata = {
+      full_name: "Maria da Conta Silva",
+      phone: "(34) 98888-7777",
+    };
     await abrir();
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
-    });
 
     expect(nomeMostrado()).toBe("Maria da Conta Silva");
+    expect(hospedeiro.textContent).not.toContain("(34) 98888-7777");
+    expect(hospedeiro.textContent).toContain(
+      "Não conseguimos confirmar seu WhatsApp",
+    );
     expect(fetchProfile).toHaveBeenCalledTimes(1);
+
+    const tentar = [...hospedeiro.querySelectorAll("button")].find(
+      (botao) => botao.textContent === "Tentar de novo",
+    );
+    expect(tentar).toBeDefined();
+    await act(async () => tentar?.click());
+    expect(fetchProfile).toHaveBeenCalledTimes(2);
+    expect(hospedeiro.textContent).toContain(
+      "Não conseguimos confirmar seu WhatsApp",
+    );
+  });
+
+  it("com o perfil carregado, mostra o número atual, não o do cadastro", async () => {
+    estado.metadata = { phone: "(34) 98888-7777" };
+    estado.profile = { whatsapp: "34987654321" };
+    await abrir();
+
+    expect(hospedeiro.textContent).toContain("(34) 98765-4321");
+    expect(hospedeiro.textContent).not.toContain("(34) 98888-7777");
+    expect(hospedeiro.textContent).not.toContain("Carregando…");
   });
 });
