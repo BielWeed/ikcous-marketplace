@@ -109,6 +109,7 @@ function subtituloBoasVindas(storeName: string | undefined | null): string {
 // tempo do servidor: o limite dele só dispara para quem tem conta, e ecoar
 // esse tempo na tela reabriria a enumeração de e-mails (#120).
 const INTERVALO_REENVIO_RECUPERACAO_S = 60;
+const PRAZO_PARA_ABRIR_LOGIN_DO_PAINEL_MS = 8_000;
 const AVISO_DO_LINK_DE_RECUPERACAO =
   "Este link expirou ou já foi usado. Se você pediu mais de um, só vale o do e-mail mais recente. Se precisar, peça um novo abaixo (pode ser preciso esperar 1 minuto entre um pedido e outro).";
 
@@ -215,6 +216,18 @@ export function AuthView({
   const [confirmaSenha, setConfirmaSenha] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [saindoDaRecuperacao, setSaindoDaRecuperacao] = useState(false);
+  const telaMontada = useRef(false);
+  const prazoDaSaida = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useLayoutEffect(() => {
+    telaMontada.current = true;
+    return () => {
+      telaMontada.current = false;
+      if (prazoDaSaida.current !== null) {
+        clearTimeout(prazoDaSaida.current);
+        prazoDaSaida.current = null;
+      }
+    };
+  }, []);
   // Sair e voltar ao mesmo modo também começa outro fluxo.
   const fluxoDaTela = useRef(0);
   const setViewMode = useCallback((modo: typeof viewMode) => {
@@ -231,9 +244,10 @@ export function AuthView({
     );
     if (origem === "painel") {
       onNavigate("admin-login");
-    } else {
-      setViewMode("login");
+      return true;
     }
+    setViewMode("login");
+    return false;
   };
 
   useEffect(() => {
@@ -1658,16 +1672,38 @@ export function AuthView({
                   if (envioEmCurso.current) return;
                   envioEmCurso.current = true;
                   setSaindoDaRecuperacao(true);
+                  const liberarSaida = () => {
+                    envioEmCurso.current = false;
+                    setSaindoDaRecuperacao(false);
+                  };
+                  let indoParaOPainel = false;
                   try {
                     // O link já abriu a sessão. Desligar só o modo de
                     // recuperação deixaria o redirecionamento abrir o Perfil.
                     await logout();
-                    voltarDaRecuperacao();
+                    if (telaMontada.current) {
+                      indoParaOPainel = voltarDaRecuperacao();
+                    }
                   } catch {
-                    toast.error("Não foi possível sair. Tente de novo.");
+                    if (telaMontada.current) {
+                      toast.error("Não foi possível sair. Tente de novo.");
+                    }
                   } finally {
-                    envioEmCurso.current = false;
-                    setSaindoDaRecuperacao(false);
+                    if (telaMontada.current) {
+                      if (indoParaOPainel) {
+                        const fluxoDaSaida = fluxoDaTela.current;
+                        // O login do painel carrega antes de trocar de tela.
+                        // Se não abrir, permite tentar de novo sem dizer que
+                        // o link venceu: a pessoa saiu por escolha própria.
+                        prazoDaSaida.current = setTimeout(() => {
+                          prazoDaSaida.current = null;
+                          if (fluxoDaTela.current === fluxoDaSaida) {
+                            setViewMode("forgot");
+                          }
+                          liberarSaida();
+                        }, PRAZO_PARA_ABRIR_LOGIN_DO_PAINEL_MS);
+                      } else liberarSaida();
+                    }
                   }
                   return;
                 }
