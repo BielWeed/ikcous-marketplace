@@ -223,6 +223,68 @@ describe("ProfileView — perfil que não carregou", () => {
     );
   });
 
+  it("mantém o foco em Tentar de novo se a retentativa do WhatsApp falhar", async () => {
+    const { promise: retentativa, resolve: concluir } =
+      Promise.withResolvers<boolean>();
+    fetchProfile.mockResolvedValueOnce(false).mockReturnValueOnce(retentativa);
+    await abrir();
+
+    const tentar = [...hospedeiro.querySelectorAll("button")].find(
+      (botao) => botao.textContent === "Tentar de novo",
+    );
+    if (!tentar) throw new Error("Não encontrou Tentar de novo");
+    tentar.focus();
+    expect(document.activeElement).toBe(tentar);
+
+    await act(async () => tentar.click());
+    expect(hospedeiro.textContent).toContain("Carregando…");
+    expect(document.activeElement).toBe(tentar);
+    expect(tentar.getAttribute("aria-disabled")).toBe("true");
+    await act(async () => tentar.click());
+    expect(fetchProfile).toHaveBeenCalledTimes(2);
+
+    await act(async () => concluir(false));
+    expect(hospedeiro.textContent).toContain(
+      "Não conseguimos confirmar seu WhatsApp",
+    );
+    expect(document.activeElement).toBe(tentar);
+    expect(tentar.getAttribute("aria-disabled")).not.toBe("true");
+  });
+
+  it("não mostra a retentativa ou o erro da conta que já saiu do Perfil", async () => {
+    const anterior = Promise.withResolvers<boolean>();
+    const atual = Promise.withResolvers<boolean>();
+    fetchProfile
+      .mockResolvedValueOnce(false)
+      .mockReturnValueOnce(anterior.promise)
+      .mockReturnValueOnce(atual.promise);
+    await abrir();
+
+    const tentar = () =>
+      [...hospedeiro.querySelectorAll("button")].find(
+        (botao) => botao.textContent === "Tentar de novo",
+      );
+    const botaoAnterior = tentar();
+    if (!botaoAnterior) throw new Error("Não encontrou Tentar de novo");
+    await act(async () => botaoAnterior.click());
+    expect(botaoAnterior.getAttribute("aria-disabled")).toBe("true");
+
+    estado.userId = "user-2";
+    await abrir();
+    expect(hospedeiro.textContent).toContain("Carregando…");
+    expect(tentar()).toBeUndefined();
+
+    await act(async () => anterior.resolve(false));
+    expect(hospedeiro.textContent).toContain("Carregando…");
+    expect(tentar()).toBeUndefined();
+
+    await act(async () => atual.resolve(false));
+    expect(hospedeiro.textContent).toContain(
+      "Não conseguimos confirmar seu WhatsApp",
+    );
+    expect(tentar()).toBeDefined();
+  });
+
   it("com o perfil carregado, mostra o número atual, não o do cadastro", async () => {
     estado.metadata = { phone: "(34) 98888-7777" };
     estado.profile = { whatsapp: "34987654321" };

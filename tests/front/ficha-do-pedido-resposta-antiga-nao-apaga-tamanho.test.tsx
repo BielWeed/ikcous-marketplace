@@ -203,14 +203,14 @@ describe("ficha do pedido — resposta antiga não apaga tamanho e código", () 
     await act(async () => b.responder(tamanho("invertida-b", "M")));
     expect(variacoes()).toEqual(["Tamanho M"]);
     expect(itens()?.textContent).toContain(
-      "Código atual do cadastro: SKU-invertida-b",
+      "Código do cadastro: SKU-invertida-b",
     );
     expect(recibo()?.textContent).toContain("Tamanho M");
 
     await act(async () => a.responder(tamanho("invertida-a", "P")));
     expect(variacoes()).toEqual(["Tamanho M"]);
     expect(itens()?.textContent).toContain(
-      "Código atual do cadastro: SKU-invertida-b",
+      "Código do cadastro: SKU-invertida-b",
     );
     expect(recibo()?.textContent).toContain("Tamanho M");
     expect(hospedeiro.textContent).not.toContain("Tamanho P");
@@ -236,7 +236,7 @@ describe("ficha do pedido — resposta antiga não apaga tamanho e código", () 
     );
     expect(variacoes()).toEqual(["Cor Azul · Tamanho M"]);
     expect(recibo()?.textContent).toContain("Cor Azul · Tamanho M");
-    expect(itens()?.textContent).toContain("Código atual do cadastro: AZUL-M");
+    expect(itens()?.textContent).toContain("Código do cadastro: AZUL-M");
     expect(itens()?.textContent).not.toContain("Carregando código…");
   });
 
@@ -258,7 +258,7 @@ describe("ficha do pedido — resposta antiga não apaga tamanho e código", () 
     await act(async () => a.responder(tamanho("mesmos-itens", "P")));
     expect(variacoes()).toEqual(["Tamanho M"]);
     expect(itens()?.textContent).toContain(
-      "Código atual do cadastro: SKU-mesmos-itens",
+      "Código do cadastro: SKU-mesmos-itens",
     );
   });
 
@@ -279,9 +279,7 @@ describe("ficha do pedido — resposta antiga não apaga tamanho e código", () 
 
     await act(async () => b.responder(tamanho("loading-b", "M")));
     expect(itens()?.textContent).not.toContain("Carregando código…");
-    expect(itens()?.textContent).toContain(
-      "Código atual do cadastro: SKU-loading-b",
-    );
+    expect(itens()?.textContent).toContain("Código do cadastro: SKU-loading-b");
     expect(variacoes()).toEqual(["Tamanho M"]);
   });
 
@@ -296,9 +294,7 @@ describe("ficha do pedido — resposta antiga não apaga tamanho e código", () 
 
     await renderizar(pedidoB);
     expect(itens()?.textContent).not.toContain("Carregando código…");
-    expect(itens()?.textContent).toContain(
-      "Código atual do cadastro: SKU-cache-b",
-    );
+    expect(itens()?.textContent).toContain("Código do cadastro: SKU-cache-b");
     await act(async () => a.responder(tamanho("cache-a", "P")));
     expect(variacoes()).toEqual(["Tamanho M"]);
   });
@@ -326,7 +322,7 @@ describe("ficha do pedido — resposta antiga não apaga tamanho e código", () 
     );
     expect(variacoes()).toEqual(["Tamanho M"]);
     expect(itens()?.textContent).toContain(
-      "Código atual do cadastro: SKU-produto-lento-b",
+      "Código do cadastro: SKU-produto-lento-b",
     );
     expect(recibo()?.textContent).toContain("Tamanho M");
   });
