@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
+import { useConteudoAteASaida } from "@/hooks/useConteudoAteASaida";
 import { useFocoAposExcluir } from "@/hooks/useFocoAposExcluir";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
@@ -160,6 +161,10 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
   useVoltarFechaAFolha(showAddVitrineModal, () =>
     setShowAddVitrineModal(false),
   );
+  // A folha segue montada até a animação de saída terminar (fechar não pode
+  // fazê-la sumir seca); `showAddVitrineModal` continua sendo o estado real.
+  const { chave: novaVitrineMontada, abertura: aberturaDaNovaVitrine } =
+    useConteudoAteASaida(showAddVitrineModal ? "aberta" : null);
   const [criandoVitrine, setCriandoVitrine] = useState(false);
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
   const [confirmarRestaurar, setConfirmarRestaurar] = useState(false);
@@ -730,6 +735,14 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
     return homeSections.find((s) => s.id === editingSectionId) ?? null;
   }, [editingSectionId, homeSections]);
 
+  // Ao fechar, a folha de editar segue montada com a ÚLTIMA vitrine (achada
+  // pelo id, sempre atual) até a saída animar; `secaoEmEdicao` continua sendo o estado real.
+  const { chave: idDaSecaoExibida, abertura: aberturaDaEdicao } =
+    useConteudoAteASaida(secaoEmEdicao?.id);
+  const secaoExibida = idDaSecaoExibida
+    ? (homeSections.find((s) => s.id === idDaSecaoExibida) ?? null)
+    : null;
+
   const fecharFolha = useCallback(() => setEditingSectionId(null), []);
   const folhaAberta = secaoEmEdicao !== null;
   const jaFechouPeloVoltarRef = useRef(false);
@@ -940,8 +953,10 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
       </div>
 
       {/* Painel: nova vitrine */}
-      {showAddVitrineModal && (
+      {novaVitrineMontada !== null && (
         <FolhaNovaVitrine
+          key={aberturaDaNovaVitrine}
+          aberta={showAddVitrineModal}
           titulo={newVitrineTitle}
           aoMudarTitulo={setNewVitrineTitle}
           aoCriar={handleAddCustomVitrine}
@@ -954,10 +969,12 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
       )}
 
       {/* Painel: editar vitrine (nome, quantidade e produtos) */}
-      {secaoEmEdicao && (
+      {secaoExibida && (
         <FolhaEditarVitrine
-          secao={secaoEmEdicao}
-          posicao={homeSections.findIndex((s) => s.id === secaoEmEdicao.id) + 1}
+          key={aberturaDaEdicao}
+          aberta={secaoEmEdicao !== null}
+          secao={secaoExibida}
+          posicao={homeSections.findIndex((s) => s.id === secaoExibida.id) + 1}
           produtos={products}
           idsEmExibicao={idsEmExibicaoNaEdicao}
           travado={salvandoVitrines || configFalhou}
@@ -965,28 +982,28 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
           aoRestaurarFoco={(evento) =>
             restaurarFocoDaFolha(evento, gatilhoDaEdicao.current)
           }
-          aoRenomear={(titulo) => handleRenameSection(secaoEmEdicao.id, titulo)}
+          aoRenomear={(titulo) => handleRenameSection(secaoExibida.id, titulo)}
           aoMudarQuantidade={(quantidade) =>
-            handleUpdateMaxItems(secaoEmEdicao.id, quantidade)
+            handleUpdateMaxItems(secaoExibida.id, quantidade)
           }
           aoAlternarProduto={(idDoProduto) =>
-            handleToggleProductInCuration(secaoEmEdicao.id, idDoProduto)
+            handleToggleProductInCuration(secaoExibida.id, idDoProduto)
           }
           aoVoltarAoAutomatico={() => {
-            if (!secaoEmEdicao.productIds?.length) return;
-            setVitrineParaAutomatico(secaoEmEdicao.id);
+            if (!secaoExibida.productIds?.length) return;
+            setVitrineParaAutomatico(secaoExibida.id);
             setEditingSectionId(null);
           }}
           aoEscolherManualmente={() =>
-            handleEscolherManualmente(secaoEmEdicao.id)
+            handleEscolherManualmente(secaoExibida.id)
           }
           aoPedirExclusao={
-            secaoEmEdicao.isCustom
+            secaoExibida.isCustom
               ? () => {
                   // O painel fecha ANTES do diálogo abrir: o clique no
                   // diálogo (portal fora do painel) seria engolido pelo
                   // guardião do clique fora da folha.
-                  setVitrineParaExcluir(secaoEmEdicao);
+                  setVitrineParaExcluir(secaoExibida);
                   setEditingSectionId(null);
                 }
               : undefined

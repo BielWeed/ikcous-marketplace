@@ -167,7 +167,7 @@ export function SaidaDaRecusa({
           type="button"
           onClick={onFechar}
           aria-label="Fechar o aviso"
-          className="shrink-0 rounded p-1 text-amber-800 transition-colors hover:text-amber-900"
+          className="-m-2.5 shrink-0 rounded p-3.5 text-amber-800 transition-colors hover:text-amber-900"
         >
           <X className="size-4" aria-hidden="true" />
         </button>

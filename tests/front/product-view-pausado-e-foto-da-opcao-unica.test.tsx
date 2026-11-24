@@ -14,6 +14,7 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { INTERVALO_MINIMO_AO_VOLTAR_MS } from "@/lib/atualizar-ao-voltar-a-aba";
 import type { Product, ProductVariant } from "@/types";
 
 const h = vi.hoisted(() => ({
@@ -108,6 +109,8 @@ describe("ProductView — produto pausado e foto da opção única", () => {
   beforeEach(() => {
     h.reler.mockReset();
     h.reler.mockResolvedValue(undefined);
+    // Só o relógio (Date) é falso, para andar além da janela de 30 s.
+    vi.useFakeTimers({ toFake: ["Date"] });
     vi.stubGlobal("IntersectionObserver", IntersectionObserverStub);
     vi.stubGlobal("CSS", { escape: (v: string) => v });
     const armazem = new Map<string, string>();
@@ -131,6 +134,7 @@ describe("ProductView — produto pausado e foto da opção única", () => {
     });
     hospedeiro.remove();
     document.getElementById("product-structured-data")?.remove();
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     // biome-ignore lint/performance/noDelete: tirar o dublê da instância.
     delete (document as { visibilityState?: string }).visibilityState;
@@ -195,10 +199,16 @@ describe("ProductView — produto pausado e foto da opção única", () => {
   it("a cliente volta à ficha (aba visível): o catálogo é relido; aba escondida não relê", async () => {
     await montar(produto());
     expect(h.reler).not.toHaveBeenCalled();
+    // A releitura respeita a janela de 30 s (`aoVoltarAAba`): conta da montagem.
+    vi.setSystemTime(Date.now() + INTERVALO_MINIMO_AO_VOLTAR_MS + 1_000);
 
     await dizerQueAbaEstaComo("hidden");
     expect(h.reler).not.toHaveBeenCalled();
 
+    await dizerQueAbaEstaComo("visible");
+    expect(h.reler).toHaveBeenCalledTimes(1);
+
+    // Voltar de novo dentro da mesma janela não relê o catálogo inteiro outra vez.
     await dizerQueAbaEstaComo("visible");
     expect(h.reler).toHaveBeenCalledTimes(1);
   });

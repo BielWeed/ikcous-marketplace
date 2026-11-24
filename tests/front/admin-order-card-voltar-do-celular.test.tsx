@@ -17,7 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const esperar = (ms = 60) => new Promise<void>((r) => setTimeout(r, ms));
+const esperar = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 let raiz: Root;
 let hospedeiro: HTMLDivElement;
@@ -139,9 +139,13 @@ async function abrirCancelamentoPeloMenu() {
   await clicar(botaoDe("Cancelar pedido", janela() ?? document));
 }
 async function apertarVoltar() {
+  const estadoAnterior = globalThis.history.state;
   await act(async () => {
     globalThis.history.back();
-    await esperar();
+    // Aguarda a travessia dentro do act para processar o React após o popstate.
+    await vi.waitFor(() => {
+      expect(globalThis.history.state).not.toBe(estadoAnterior);
+    });
   });
 }
 
@@ -164,8 +168,10 @@ describe("AdminOrderCard — as perguntas do cartão e o Voltar do celular", () 
     await clicar(gatilho);
     await apertarVoltar();
 
-    expect(janela()).toBeNull();
-    expect(document.activeElement).toBe(gatilho);
+    await vi.waitFor(() => {
+      expect(janela()).toBeNull();
+      expect(document.activeElement).toBe(gatilho);
+    });
     expect(navegacoesDoApp).toEqual([]);
     expect(globalThis.location.pathname).toBe("/pedidos");
     expect(globalThis.history.state?.view).toBe("admin-orders");
@@ -184,8 +190,10 @@ describe("AdminOrderCard — as perguntas do cartão e o Voltar do celular", () 
 
       await apertarVoltar();
 
-      expect(janela()).toBeNull();
-      expect(document.activeElement).toBe(gatilho);
+      await vi.waitFor(() => {
+        expect(janela()).toBeNull();
+        expect(document.activeElement).toBe(gatilho);
+      });
       expect(aoMudarStatus).not.toHaveBeenCalled();
     },
   );
@@ -201,12 +209,14 @@ describe("AdminOrderCard — as perguntas do cartão e o Voltar do celular", () 
 
     await apertarVoltar();
 
-    expect(janela()).toBeNull();
     const acoes = hospedeiro.querySelector(
       'button[aria-label^="Ações do pedido"]',
     );
     expect(acoes).not.toBeNull();
-    expect(document.activeElement).toBe(acoes);
+    await vi.waitFor(() => {
+      expect(janela()).toBeNull();
+      expect(document.activeElement).toBe(acoes);
+    });
   });
 
   it("o Voltar fecha SÓ a pergunta de cancelar aberta pelo menu: nada é cancelado", async () => {
@@ -217,7 +227,7 @@ describe("AdminOrderCard — as perguntas do cartão e o Voltar do celular", () 
 
     await apertarVoltar();
 
-    expect(janela()).toBeNull();
+    await vi.waitFor(() => expect(janela()).toBeNull());
     expect(navegacoesDoApp).toEqual([]);
     expect(globalThis.history.state?.view).toBe("admin-orders");
     expect(aoMudarStatus).not.toHaveBeenCalled();
@@ -225,14 +235,17 @@ describe("AdminOrderCard — as perguntas do cartão e o Voltar do celular", () 
 
   it("fechar pelo X devolve a entrada: o Voltar seguinte é do roteador", async () => {
     await montar(["pedido-a"]);
-    await abrirRecebimento();
-    await act(async () => {
-      botaoDe("Fechar ações do pedido")?.click();
-      await esperar(200);
-    });
+    const gatilho = botaoDe("Marcar como recebido", hospedeiro);
+    expect(gatilho).toBeDefined();
+    await clicar(gatilho);
+    expect(globalThis.history.state?.folhaDePolitica).toBe(true);
+    await clicar(botaoDe("Fechar ações do pedido"));
 
-    expect(janela()).toBeNull();
-    expect(globalThis.history.state?.folhaDePolitica).not.toBe(true);
+    await vi.waitFor(() => {
+      expect(janela()).toBeNull();
+      expect(document.activeElement).toBe(gatilho);
+      expect(globalThis.history.state?.folhaDePolitica).not.toBe(true);
+    });
     expect(navegacoesDoApp).toEqual([]);
 
     await apertarVoltar();
@@ -248,7 +261,7 @@ describe("AdminOrderCard — as perguntas do cartão e o Voltar do celular", () 
     expect(globalThis.history.length).toBe(antes + 1);
 
     await apertarVoltar();
-    expect(janela()).toBeNull();
+    await vi.waitFor(() => expect(janela()).toBeNull());
     expect(navegacoesDoApp).toEqual([]);
   });
 
@@ -265,19 +278,62 @@ describe("AdminOrderCard — as perguntas do cartão e o Voltar do celular", () 
     expect(globalThis.history.length).toBe(antes);
     expect(globalThis.history.state?.folhaDePolitica).not.toBe(true);
   });
+
+  it("'Ver detalhes' dentro do menu navega de verdade e o Voltar da ficha volta DIRETO para a lista (sem entrada-fantasma da folha)", async () => {
+    // O App faz pushState ao abrir a ficha. Com uma entrada da folha no meio o
+    // histórico viraria [lista, folha, ficha]: o Voltar da ficha cairia na
+    // entrada da folha e o seguinte "não faria nada".
+    const aoSelecionar = vi.fn(() => {
+      globalThis.history.pushState(
+        { view: "admin-order-detail" },
+        "",
+        "/pedidos?id=pedido-a",
+      );
+    });
+    await act(async () => {
+      raiz.render(
+        <AdminOrderCard
+          order={pedido("pedido-a")}
+          viewMode="compact"
+          onSelect={aoSelecionar}
+          onWhatsApp={vi.fn()}
+          onRegistrarPagamento={aoReceber}
+          registrandoPagamento={false}
+          onStatusChange={aoMudarStatus}
+          onReceberAntesDeAvancar={vi.fn()}
+        />,
+      );
+      await esperar(0);
+    });
+    const antes = globalThis.history.length;
+    await clicar(
+      hospedeiro.querySelector<HTMLButtonElement>(
+        'button[aria-label^="Ações do pedido"]',
+      ) ?? undefined,
+    );
+    await clicar(botaoDe("Ver detalhes", janela() ?? document));
+    expect(aoSelecionar).toHaveBeenCalledTimes(1);
+    // só a entrada da ficha foi empurrada: nenhuma da folha
+    expect(globalThis.history.length).toBe(antes + 1);
+    expect(globalThis.history.state?.view).toBe("admin-order-detail");
+
+    await apertarVoltar();
+    // um Voltar da ficha cai na LISTA, não numa entrada da folha
+    expect(globalThis.history.state?.view).toBe("admin-orders");
+    expect(globalThis.history.state?.folhaDePolitica).not.toBe(true);
+  });
 });
 
 describe("AdminOrderCard — o que não muda", () => {
   it("'Recebi' na pergunta grava como antes e fecha sem sobrar entrada de histórico", async () => {
     await montar(["pedido-a"]);
     await abrirRecebimento();
-    await act(async () => {
-      botaoDe("Recebi")?.click();
-      await esperar(200);
-    });
+    await clicar(botaoDe("Recebi"));
 
-    expect(aoReceber).toHaveBeenCalledWith("pedido-a", true);
-    expect(janela()).toBeNull();
-    expect(globalThis.history.state?.folhaDePolitica).not.toBe(true);
+    await vi.waitFor(() => {
+      expect(aoReceber).toHaveBeenCalledWith("pedido-a", true);
+      expect(janela()).toBeNull();
+      expect(globalThis.history.state?.folhaDePolitica).not.toBe(true);
+    });
   });
 });

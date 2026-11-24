@@ -61,6 +61,18 @@ describe("percentualDeDesconto — a conta em centavos", () => {
     expect(percentualDeDesconto(null, 10)).toBe(0);
     expect(percentualDeDesconto(10, undefined)).toBe(0);
   });
+
+  // Preço atual NEGATIVO com original válido: sem a guarda `precoAtual < 0` a
+  // conta em centavos daria (10000 + 500) * 100 / 10000 = 105 (e 100 para
+  // -0,001, que arredonda para -0 centavo), travados em 99 pelo `Math.min` --
+  // um selo "99% OFF" para um preço que nem existe. Devolve 0: sem selo.
+  it("preço atual negativo não vira selo: devolve 0, não 99", () => {
+    expect(percentualDeDesconto(100, -5)).toBe(0);
+    expect(percentualDeDesconto(100, -0.001)).toBe(0);
+    expect(percentualDeDesconto(100, -0.01)).toBe(0);
+    // Vizinho do limite: zero de verdade continua sendo 100% (de graça).
+    expect(percentualDeDesconto(100, 0)).toBe(100);
+  });
 });
 
 const produto = (price: number, originalPrice: number): Product => ({

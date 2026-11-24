@@ -565,6 +565,45 @@ describe("CheckoutView — o pagamento pendente sobrevive à recarga da página"
     expect(lerPedidoPendenteDoCheckout(USUARIO.id)).toBeNull();
   });
 
+  // Teste de MUTAÇÃO (24/11/2026): tirar `situacao !== "cancelled"` da leitura
+  // da recarga não derrubava nenhum teste. O dinheiro entrou, mas a loja
+  // cancelou o pedido: "Pagamento Confirmado!" prometeria uma separação que
+  // não vai acontecer (a mesma promessa falsa que o polling já recusa em
+  // checkout-pedido-cancelado-depois-de-pago-nao-promete-separacao).
+  it("pago, mas o pedido está CANCELADO: a recarga não promete separação — mostra que o pedido não aguarda pagamento, nada cobra", async () => {
+    linhaDoPedido({ payment_status: "pago", status: "cancelled" });
+    guardarPedidoPendenteDoCheckout(USUARIO.id, PEDIDO);
+
+    await recarregar();
+
+    expect(hospedeiro.textContent).not.toContain("Pagamento Confirmado!");
+    expect(hospedeiro.textContent).toContain(
+      "Este pedido não está aguardando pagamento",
+    );
+    expect(hospedeiro.textContent).not.toContain(FINALIZE);
+    expect(criarPagamento).not.toHaveBeenCalled();
+    expect(lerPedidoPendenteDoCheckout(USUARIO.id)).toBeNull();
+  });
+
+  // Teste de MUTAÇÃO (24/11/2026): o ramo `recebido_na_entrega` da recarga só
+  // era provado com `payment_status` nulo (que já cai em "não é string").
+  it("pedido com pagamento marcado como recebido na entrega: descartado calado, sem o aviso de 'não aguarda pagamento'", async () => {
+    linhaDoPedido({
+      payment_status: "recebido_na_entrega",
+      status: "processing",
+      metodo_online: null,
+      gateway_payment_id: null,
+    });
+    guardarPedidoPendenteDoCheckout(USUARIO.id, PEDIDO);
+
+    await recarregar();
+
+    semPagamentoNaTela();
+    expect(hospedeiro.textContent).not.toContain("Pagamento Confirmado!");
+    expect(criarPagamento).not.toHaveBeenCalled();
+    expect(lerPedidoPendenteDoCheckout(USUARIO.id)).toBeNull();
+  });
+
   it("cartão em análise (order real na vaga): a recarga volta à VERIFICAÇÃO, nunca ao formulário que cobra de novo", async () => {
     linhaDoPedido({
       metodo_online: "credito",

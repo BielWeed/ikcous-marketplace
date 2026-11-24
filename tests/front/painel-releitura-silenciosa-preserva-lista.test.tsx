@@ -19,6 +19,13 @@ const h = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/supabase", () => ({
   supabase: {
+    // Aba seguidora do painel assina o PRÓPRIO canal de tempo real: aqui o
+    // canal é mudo (a prova é sobre a lista, não sobre o canal).
+    channel: () => {
+      const canal: any = { on: () => canal, subscribe: () => canal };
+      return canal;
+    },
+    removeChannel: () => Promise.resolve("ok"),
     rpc: (...args: unknown[]) => {
       const promessa = h.rpc(...args);
       return Object.assign(promessa, { abortSignal: () => promessa });

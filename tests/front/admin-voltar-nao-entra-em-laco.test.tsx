@@ -152,7 +152,7 @@ describe("AdminLayout — o Voltar nunca prende a pessoa num par de telas", () =
   }
 
   const sino = () =>
-    hospedeiro.querySelector('header button[aria-label="Notificações"]');
+    hospedeiro.querySelector('header button[aria-label^="Notificações"]');
   const voltar = () =>
     Array.from(hospedeiro.querySelectorAll("header button")).find((b) =>
       b.textContent?.includes("Voltar"),

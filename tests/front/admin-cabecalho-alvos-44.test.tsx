@@ -126,7 +126,7 @@ describe("AdminLayout — Voltar e sino do cabeçalho móvel têm alvo de 44px",
   it("o sino (Notificações) tem min-h-11 e min-w-11", async () => {
     const cabecalho = await montarCabecalho();
     const sino = cabecalho.querySelector(
-      'button[aria-label="Notificações"]',
+      'button[aria-label^="Notificações"]',
     ) as HTMLButtonElement | null;
     expect(sino).toBeTruthy();
     const classes = sino!.className.split(/\s+/);

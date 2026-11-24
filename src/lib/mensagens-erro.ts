@@ -1,3 +1,4 @@
+import { MENSAGEM_SESSAO_OU_PERMISSAO } from "@/lib/erro-de-sessao-do-painel";
 import {
   PRAZO_DE_LER_O_CORPO_DO_ERRO_MS,
   aguardarComPrazo,
@@ -64,6 +65,13 @@ export function mensagemAmigavelErroEdgeFunction(
      * vira fetch error por falta de CORS — histórico no comentário acima).
      */
     mensagemServicoInativo?: string;
+    /**
+     * OPT-IN, para o PAINEL: resposta HTTP 401/403 vira a frase de "sessão
+     * expirou ou sem permissão" (a lojista que perdeu o cargo com o login
+     * ainda vivo lia "falar com o servidor" e tentava de novo para sempre).
+     * Quem não liga mantém o comportamento de sempre.
+     */
+    mensagemSessaoOuPermissao?: boolean;
   },
 ): string {
   const detalhes = (error ?? {}) as {
@@ -91,6 +99,14 @@ export function mensagemAmigavelErroEdgeFunction(
       detalhes.context instanceof Response ? detalhes.context.status : null;
     if (status === 404 || status === 503) {
       return opcoes.mensagemServicoInativo;
+    }
+  }
+
+  if (nome === "FunctionsHttpError" && opcoes.mensagemSessaoOuPermissao) {
+    const status =
+      detalhes.context instanceof Response ? detalhes.context.status : null;
+    if (status === 401 || status === 403) {
+      return MENSAGEM_SESSAO_OU_PERMISSAO;
     }
   }
 

@@ -103,3 +103,46 @@ describe("mapOrderFromDB — canal e vendedorId (C4.1)", () => {
     expect(o.vendedorId).not.toBeUndefined();
   });
 });
+
+describe("mapOrderFromDB — canal no pedido do código por e-mail (get_orders_by_otp_v2)", () => {
+  // A RPC do código não devolve a coluna `canal`, mas devolve `customer_data`,
+  // onde a venda de balcão grava `canal: 'presencial'` (migration 20261280000000).
+  const semColunaCanal = (extra: Partial<OrderRow> = {}) =>
+    pedido({ canal: undefined as unknown as "online", ...extra });
+
+  it("sem a coluna canal, customer_data.canal 'presencial' vira presencial", () => {
+    const o = mapOrderFromDB(
+      semColunaCanal({ customer_data: { canal: "presencial" } }),
+    );
+    expect(o.canal).toBe("presencial");
+  });
+
+  it("sem a coluna canal e sem o campo no customer_data (pedido online) continua online", () => {
+    const o = mapOrderFromDB(
+      semColunaCanal({ customer_data: { whatsapp: "34999998888" } }),
+    );
+    expect(o.canal).toBe("online");
+  });
+
+  it("a coluna canal 'presencial' continua valendo com customer_data vazio", () => {
+    expect(mapOrderFromDB(pedido({ canal: "presencial" })).canal).toBe(
+      "presencial",
+    );
+  });
+
+  it("customer_data nulo ou fora de formato não quebra e vira online", () => {
+    expect(mapOrderFromDB(semColunaCanal({ customer_data: null })).canal).toBe(
+      "online",
+    );
+    expect(
+      mapOrderFromDB(semColunaCanal({ customer_data: "texto" as never })).canal,
+    ).toBe("online");
+  });
+
+  it("customer_data.canal fora de 'presencial' (lixo) continua online", () => {
+    expect(
+      mapOrderFromDB(semColunaCanal({ customer_data: { canal: "balcao" } }))
+        .canal,
+    ).toBe("online");
+  });
+});

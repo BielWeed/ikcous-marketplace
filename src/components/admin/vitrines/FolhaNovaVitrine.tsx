@@ -20,6 +20,7 @@ export function FolhaNovaVitrine({
   aoCriar,
   aoFechar,
   aoRestaurarFoco,
+  aberta = true,
   criando,
 }: {
   readonly titulo: string;
@@ -27,6 +28,8 @@ export function FolhaNovaVitrine({
   readonly aoCriar: () => void;
   readonly aoFechar: () => void;
   readonly aoRestaurarFoco?: (evento: Event) => void;
+  /** `false` = saindo: segue montada só até a animação de saída terminar. */
+  readonly aberta?: boolean;
   readonly criando: boolean;
 }) {
   return (
@@ -35,6 +38,7 @@ export function FolhaNovaVitrine({
       descricao="Entra no fim da lista, já visível."
       aoFechar={aoFechar}
       aoRestaurarFoco={aoRestaurarFoco}
+      aberta={aberta}
       rodape={
         <>
           <button

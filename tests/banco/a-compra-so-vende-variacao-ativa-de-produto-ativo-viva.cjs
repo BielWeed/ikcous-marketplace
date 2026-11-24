@@ -69,6 +69,27 @@ for (const porta of ["v23", "v24"]) {
     trecho: "WHERE id = v_product_id AND estoque >= v_quantity;",
     substituto: "WHERE id = v_product_id;",
   };
+  // As bordas do ESTOQUE na compra (provas (e) e (f) abaixo). Cada mutante tira UMA coisa e a prova que o nomeia tem de cair:
+  //  - estoque-exato-recusa: `<` vira `<=` na conferencia -> a compra de EXATAMENTE o estoque (3 de 3) passa a ser recusada;
+  //  - sem-recusa-por-estoque-na-conferencia: a conferencia some -> a recusa continua (a baixa segura), mas SEM o
+  //    "(Disponível: N, Solicitado: M)" que a tela le para dizer "Ainda há N unidades";
+  //  - sem-guarda-do-estoque-repetido-da-variacao: a baixa da VARIACAO perde o `AND stock_increment >= v_quantity` -> quem
+  //    segura passa a ser a CHECK (23514 cru), nao a recusa em portugues (P0001).
+  MUTANTES[`${porta}-estoque-exato-recusa`] = {
+    porta,
+    trecho: "IF v_db_stock < v_quantity THEN",
+    substituto: "IF v_db_stock <= v_quantity THEN",
+  };
+  MUTANTES[`${porta}-sem-recusa-por-estoque-na-conferencia`] = {
+    porta,
+    trecho: "IF v_db_stock < v_quantity THEN",
+    substituto: "IF false THEN",
+  };
+  MUTANTES[`${porta}-sem-guarda-do-estoque-repetido-da-variacao`] = {
+    porta,
+    trecho: "WHERE id = v_variant_id AND stock_increment >= v_quantity;",
+    substituto: "WHERE id = v_variant_id;",
+  };
 }
 const MUTANTE = process.env.MUTANTE_R112B || "";
 if (MUTANTE && !Object.hasOwn(MUTANTES, MUTANTE)) {
@@ -514,6 +535,164 @@ for (const porta of ["v23", "v24"]) {
             )
           ).rows[0].estoque,
           1,
+        );
+      }),
+  );
+}
+
+// AS BORDAS DO ESTOQUE NA COMPRA ONLINE E NA ENTREGA (so teste; nenhum SQL de producao muda). A tela de recusa le o numero que o
+// banco escreve ("Ainda ha N unidades" sai de `(Disponível: N, Solicitado: M)`), e a venda da ULTIMA unidade tem de passar:
+//  (e1/e2) estoque = quantidade vende e zera; quantidade + 1 recusa dizendo quanto ha; com estoque 0 diz "Disponível: 0" -- na
+//      variacao e no produto simples. Estoques de 3 (e nao 10 ou 30) para ficar abaixo do teto de 10 unidades do visitante (v23).
+//  (f) a MESMA variacao em duas linhas disputa a ultima unidade: cada linha cabe sozinha, a segunda falha na baixa. Quem segura
+//      tem de ser a recusa em portugues (P0001), nao a CHECK da coluna (23514); a prova do produto simples ja existia (acima).
+// NAO EXECUTADA na maquina de quem escreveu (so o CI sobe o Postgres efemero): as asserções seguem o padrao das provas vizinhas.
+for (const porta of ["v23", "v24"]) {
+  // As recusas vem ANTES da venda dentro de cada prova: `recusada` exige que NENHUM pedido exista (contar() = 0) e a venda cria um.
+  prova(
+    `${porta}: (e1) variacao: um a mais recusa dizendo quanto ha, estoque zero diz "Disponível: 0", estoque igual a quantidade vende e zera`,
+    () =>
+      P.emTransacao(async () => {
+        await semear();
+        await P.conexao().query(
+          "UPDATE public.product_variants SET stock_increment=3 WHERE id=$1",
+          [V_A],
+        );
+        await mutar(porta);
+
+        // Quantidade + 1 (4 de 3): recusa e nao toca em nada.
+        let antes = await foto();
+        await recusada(
+          "VARIACAO_UM_A_MAIS",
+          porta,
+          await comprar(porta, P_A, V_A, 340, {
+            itens: [{ product_id: P_A, variant_id: V_A, quantity: 4 }],
+          }),
+          /^Estoque insuficiente para o produto Produto ficticio R112B A \(Disponível: 3, Solicitado: 4\)$/,
+          antes,
+        );
+        // Tamanho zerado: o cliente que chega depois leva "Disponível: 0" (a tela diz "Acabou o estoque").
+        await P.conexao().query(
+          "UPDATE public.product_variants SET stock_increment=0 WHERE id=$1",
+          [V_A],
+        );
+        antes = await foto();
+        await recusada(
+          "VARIACAO_ZERADA",
+          porta,
+          await comprar(porta, P_A, V_A, 100),
+          /^Estoque insuficiente para o produto Produto ficticio R112B A \(Disponível: 0, Solicitado: 1\)$/,
+          antes,
+        );
+        // Estoque = quantidade (3 de 3): vende e zera o tamanho; o agregado do produto nao e' tocado.
+        await P.conexao().query(
+          "UPDATE public.product_variants SET stock_increment=3 WHERE id=$1",
+          [V_A],
+        );
+        await vendida(
+          "VARIACAO_ESTOQUE_EXATO",
+          porta,
+          await comprar(porta, P_A, V_A, 260, {
+            itens: [{ product_id: P_A, variant_id: V_A, quantity: 3 }],
+          }),
+          {
+            produto: P_A,
+            variante: V_A,
+            quantidade: 3,
+            subtotal: "240.00",
+            total: "260.00",
+            preco: "80.00",
+            estoques: { produto: 50, variacao: 0 },
+          },
+        );
+      }),
+  );
+
+  prova(
+    `${porta}: (e2) produto simples: um a mais recusa dizendo quanto ha, estoque zero diz "Disponível: 0", estoque igual a quantidade vende e zera`,
+    () =>
+      P.emTransacao(async () => {
+        await semear();
+        // P_B so tem variacao INATIVA: a venda usa o estoque do produto.
+        await P.conexao().query(
+          "UPDATE public.produtos SET estoque=3 WHERE id=$1",
+          [P_B],
+        );
+        await mutar(porta);
+
+        let antes = await foto();
+        await recusada(
+          "PRODUTO_UM_A_MAIS",
+          porta,
+          await comprar(porta, P_B, null, 420, {
+            itens: [{ product_id: P_B, variant_id: null, quantity: 4 }],
+          }),
+          /^Estoque insuficiente para o produto Produto ficticio R112B B \(Disponível: 3, Solicitado: 4\)$/,
+          antes,
+        );
+        await P.conexao().query(
+          "UPDATE public.produtos SET estoque=0 WHERE id=$1",
+          [P_B],
+        );
+        antes = await foto();
+        await recusada(
+          "PRODUTO_ZERADO",
+          porta,
+          await comprar(porta, P_B, null, 120),
+          /^Estoque insuficiente para o produto Produto ficticio R112B B \(Disponível: 0, Solicitado: 1\)$/,
+          antes,
+        );
+        await P.conexao().query(
+          "UPDATE public.produtos SET estoque=3 WHERE id=$1",
+          [P_B],
+        );
+        await vendida(
+          "PRODUTO_ESTOQUE_EXATO",
+          porta,
+          await comprar(porta, P_B, null, 320, {
+            itens: [{ product_id: P_B, variant_id: null, quantity: 3 }],
+          }),
+          {
+            produto: P_B,
+            variante: null,
+            quantidade: 3,
+            subtotal: "300.00",
+            total: "320.00",
+            preco: "100.00",
+            estoques: { produto: 0, variacao: 7 },
+          },
+        );
+      }),
+  );
+
+  prova(
+    `${porta}: (f) a mesma variacao em duas linhas disputa a ultima unidade e recusa por estoque, nao pela CHECK`,
+    () =>
+      P.emTransacao(async () => {
+        await semear();
+        await P.conexao().query(
+          "UPDATE public.product_variants SET stock_increment=1 WHERE id=$1",
+          [V_A],
+        );
+        await mutar(porta);
+        const antes = await foto();
+        const item = { product_id: P_A, variant_id: V_A, quantity: 1 };
+        await recusada(
+          "ULTIMA_UNIDADE_DA_VARIACAO_REPETIDA",
+          porta,
+          await comprar(porta, P_A, V_A, 180, { itens: [item, item] }),
+          /^Estoque insuficiente para o produto Produto ficticio R112B A$/,
+          antes,
+        );
+        assert.equal(
+          (
+            await P.conexao().query(
+              "SELECT stock_increment FROM public.product_variants WHERE id=$1",
+              [V_A],
+            )
+          ).rows[0].stock_increment,
+          1,
+          "a recusa deixou o tamanho com a unidade que tinha",
         );
       }),
   );

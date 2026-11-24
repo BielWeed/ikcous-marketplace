@@ -311,24 +311,16 @@ export function ProductQA({
               {/* Question Header */}
               <div className="flex items-start justify-between gap-2">
                 <div className="flex min-w-0 flex-1 items-center gap-3">
+                  {/* Decorativo: o botão do nome ao lado é o caminho do teclado
+                      e do leitor de tela para o mesmo perfil; o clique do
+                      mouse na foto continua levando até lá. */}
                   <div
+                    aria-hidden="true"
                     onClick={() =>
                       onNavigate &&
                       q.userId &&
                       onNavigate("user-profile", q.userId)
                     }
-                    role={onNavigate && q.userId ? "button" : undefined}
-                    tabIndex={onNavigate && q.userId ? 0 : undefined}
-                    onKeyDown={(e) => {
-                      if (
-                        onNavigate &&
-                        q.userId &&
-                        (e.key === "Enter" || e.key === " ")
-                      ) {
-                        e.preventDefault();
-                        onNavigate("user-profile", q.userId);
-                      }
-                    }}
                     className={
                       onNavigate && q.userId
                         ? "shrink-0 cursor-pointer select-none transition-transform duration-200 active:scale-95"
@@ -366,7 +358,7 @@ export function ProductQA({
                             onNavigate("user-profile", q.userId);
                           }
                         }}
-                        className={`min-w-0 truncate text-sm font-bold tracking-tight text-zinc-900 ${onNavigate && q.userId ? "cursor-pointer hover:underline" : ""}`}
+                        className={`min-w-0 truncate text-sm font-bold tracking-tight text-zinc-900 ${onNavigate && q.userId ? "-my-1 min-h-11 cursor-pointer leading-[2.75rem] hover:underline" : ""}`}
                       >
                         {nomePublicoDe(q.customerName)}
                       </span>

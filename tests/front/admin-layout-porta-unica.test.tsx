@@ -139,10 +139,10 @@ describe("AdminLayout — uma porta por função", () => {
     await montar("admin-dashboard");
 
     expect(
-      hospedeiro.querySelector('aside button[aria-label="Notificações"]'),
+      hospedeiro.querySelector('aside button[aria-label^="Notificações"]'),
     ).toBeTruthy();
     expect(
-      hospedeiro.querySelector('header button[aria-label="Notificações"]'),
+      hospedeiro.querySelector('header button[aria-label^="Notificações"]'),
     ).toBeTruthy();
   });
 

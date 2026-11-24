@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { AlcaDaFolha } from "@/components/admin/primitivos/AlcaDaFolha";
+import { type CSSProperties, type ReactNode, useEffect } from "react";
 
 import {
   Sheet,
@@ -9,6 +10,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { useAlturaDoTeclado } from "@/hooks/useAlturaDoTeclado";
 import { X } from "lucide-react";
 
 /**
@@ -27,6 +29,7 @@ export function FolhaInferior({
   descricao,
   aoFechar,
   aoRestaurarFoco,
+  aberta = true,
   children,
   rodape,
 }: {
@@ -34,12 +37,54 @@ export function FolhaInferior({
   readonly descricao: ReactNode;
   readonly aoFechar: () => void;
   readonly aoRestaurarFoco?: (evento: Event) => void;
+  /**
+   * `false` = a folha está SAINDO: continua montada só para a animação de saída
+   * rodar (quem a monta por condição a desmonta depois, ver
+   * `useConteudoAteASaida`). Sem a prop, é a folha aberta de sempre.
+   */
+  readonly aberta?: boolean;
   readonly children: ReactNode;
   readonly rodape: ReactNode;
 }) {
+  // O teclado do celular se SOBREPÕE à página (não a redimensiona): a folha sobe
+  // acima dele e cabe na área visível, para o botão principal do rodapé (Criar,
+  // Salvar) não ficar escondido ao digitar o nome ou buscar produto. Vai por
+  // variável CSS lida só nas classes do celular: a gaveta do computador (`lg:`)
+  // não muda, e um `bottom` inline venceria o `lg:bottom-auto`.
+  const { altura: teclado, alturaVisivel } = useAlturaDoTeclado();
+  // Ao focar um campo, traz ele à vista dentro do corpo que rola (o teclado
+  // leva um tempo para abrir: o segundo efeito refaz a rolagem).
+  useEffect(() => {
+    let timer: number | undefined;
+    const aoFocar = (evento: FocusEvent) => {
+      const alvo = evento.target;
+      if (!(alvo instanceof HTMLElement)) return;
+      if (alvo.tagName !== "INPUT" && alvo.tagName !== "TEXTAREA") return;
+      if (!alvo.closest("[data-folha-inferior]")) return;
+      window.clearTimeout(timer);
+      // `?.`: o jsdom dos testes não tem a função.
+      timer = window.setTimeout(
+        () => alvo.scrollIntoView?.({ block: "nearest" }),
+        150,
+      );
+    };
+    document.addEventListener("focusin", aoFocar);
+    return () => {
+      document.removeEventListener("focusin", aoFocar);
+      window.clearTimeout(timer);
+    };
+  }, []);
+  useEffect(() => {
+    if (teclado === 0) return;
+    const ativo = document.activeElement;
+    if (!(ativo instanceof HTMLElement)) return;
+    if (ativo.tagName !== "INPUT" && ativo.tagName !== "TEXTAREA") return;
+    if (!ativo.closest("[data-folha-inferior]")) return;
+    ativo.scrollIntoView?.({ block: "nearest" });
+  }, [teclado]);
   return (
     <Sheet
-      open
+      open={aberta}
       onOpenChange={(aberta) => {
         if (!aberta) aoFechar();
       }}
@@ -52,12 +97,22 @@ export function FolhaInferior({
           evento.preventDefault();
           (evento.currentTarget as HTMLElement | null)?.focus();
         }}
-        className="mx-auto max-h-[92dvh] w-full gap-0 rounded-t-[28px] border-admin-border bg-zinc-950 p-0 text-white sm:max-w-xl"
+        data-folha-inferior=""
+        style={
+          teclado > 0
+            ? ({
+                "--teclado-da-folha": `${teclado}px`,
+                "--altura-da-folha": `calc(${alturaVisivel}px - 1rem)`,
+              } as CSSProperties)
+            : undefined
+        }
+        className="bottom-[var(--teclado-da-folha,0px)] mx-auto max-h-[min(92dvh,var(--altura-da-folha,92dvh))] w-full gap-0 rounded-t-[28px] border-admin-border bg-zinc-950 p-0 text-white sm:max-w-xl"
       >
         <SheetHeader className="px-5 pb-1 pt-3 text-left">
-          <span
-            aria-hidden="true"
-            className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/15"
+          <AlcaDaFolha
+            aoFechar={aoFechar}
+            className="-mb-1"
+            barra="bg-white/15"
           />
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">

@@ -495,6 +495,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     error: analyticsError,
     fetchExecutiveSummary,
   } = useAnalytics();
+  const devolucoesBotaoRef = useRef<HTMLButtonElement>(null);
   // Os três números do fluxo no topo (onda F, F3); `null` = "—". O hook
   // carrega sozinho ao ficar ativo; daqui só se pede recarga (coalescida na
   // janela de 1 s) por tempo real, ação na tela ou volta da conexão — nunca
@@ -2301,6 +2302,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         <div className="flex shrink-0 items-center gap-2 max-[360px]:contents min-[361px]:max-[390px]:gap-1">
           <button
             type="button"
+            ref={devolucoesBotaoRef}
             aria-label={`Devoluções${devolucoesAbertas ? `, ${devolucoesAbertas} em andamento` : ""}`}
             title="Devoluções"
             onClick={() => abrirDevolucoes()}
@@ -2324,6 +2326,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
               onTentarConferirAlertas={
                 alertasNaoConferidos ? loadStats : undefined
               }
+              focoSemAlertasRef={devolucoesBotaoRef}
               pedidosEsperandoRetorno={pedidosEsperandoRetorno}
               pedidosParaDevolverAgora={pedidosParaDevolverAgora}
               estornosEmCurso={estornosEmCurso}
@@ -2479,7 +2482,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         >
           <DialogContent
             showCloseButton={false}
-            className="bottom-0 left-1/2 top-auto z-[80] max-h-[90dvh] max-w-full -translate-x-1/2 translate-y-0 gap-5 overflow-y-auto rounded-b-none rounded-t-[28px] border-admin-border-strong bg-admin-raised p-5 pb-[max(20px,env(safe-area-inset-bottom))] text-zinc-100 sm:bottom-auto sm:top-1/2 sm:max-w-lg sm:-translate-y-1/2 sm:rounded-[28px]"
+            className="bottom-0 left-1/2 top-auto z-[80] max-h-[90dvh] max-w-full -translate-x-1/2 translate-y-0 gap-5 overflow-y-auto rounded-b-none rounded-t-[28px] border-admin-border-strong bg-admin-raised p-5 pb-[max(20px,env(safe-area-inset-bottom))] text-zinc-100 data-[state=closed]:slide-out-to-left-1/2 data-[state=open]:slide-in-from-left-1/2 sm:bottom-auto sm:top-1/2 sm:max-w-lg sm:-translate-y-1/2 sm:rounded-[28px] sm:data-[state=closed]:slide-out-to-top-1/2 sm:data-[state=open]:slide-in-from-top-1/2"
           >
             <div className="flex items-center justify-between gap-3">
               <DialogTitle className="text-xl font-bold">

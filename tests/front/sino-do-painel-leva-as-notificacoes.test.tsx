@@ -281,7 +281,7 @@ describe("AdminLayout — o sino abre as Notificações do lojista", () => {
     // O botão do sino é o envoltório de 44px (A3); o `size-7` agora mora no
     // círculo de dentro. O cabeçalho é o do celular — a lateral tem outra porta.
     const sino = hospedeiro.querySelector(
-      'header button[aria-label="Notificações"]',
+      'header button[aria-label^="Notificações"]',
     );
     expect(sino).toBeTruthy();
     return { onNavigate, sino: sino as HTMLButtonElement };

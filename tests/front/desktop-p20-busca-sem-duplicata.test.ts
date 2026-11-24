@@ -67,6 +67,6 @@ describe("P20 — busca sem controles duplicados no computador", () => {
     // Mesma assinatura da base P13/P8: só literais de className, em ordem de DOM.
     expect(
       createHash("sha256").update(JSON.stringify(celular)).digest("hex"),
-    ).toBe("2d4a0f2418a56c4965b213a645693a3225ab4ec3fbcc5a222392149774b9d90a");
+    ).toBe("01e1f5d484ea7f385d52faf402087b19a749350f1f176f5109bf18a6de09f6ea");
   });
 });

@@ -142,6 +142,11 @@ function produtoDoCofre(): Product {
   };
 }
 
+// Desde a 1.5.232 a config da loja também grava carimbo ("store_config") no cofre;
+// este arquivo conta só os carimbos do CATÁLOGO ("products").
+const carimbosDe = (chave: string) =>
+  controle.setLastSync.mock.calls.filter(([c]) => c === chave).length;
+
 describe("StoreContext — resposta superada e catálogo vazio no cache", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
@@ -340,7 +345,7 @@ describe("StoreContext — resposta superada e catálogo vazio no cache", () => 
     ]);
     expect(controle.produtosNoCofre).toEqual(retrato.products);
     expect(controle.replaceAll).toHaveBeenCalledTimes(1);
-    expect(controle.setLastSync).toHaveBeenCalledTimes(1);
+    expect(carimbosDe("products")).toBe(1);
     expect(retrato.loadingProducts).toBe(false);
     expect(retrato.catalogoErro).toBe(false);
   });
@@ -391,7 +396,7 @@ describe("StoreContext — resposta superada e catálogo vazio no cache", () => 
     });
     await assentar();
     expect(controle.replaceAll).toHaveBeenCalledTimes(1);
-    expect(controle.setLastSync).toHaveBeenCalledTimes(1);
+    expect(carimbosDe("products")).toBe(1);
   });
 
   it.each([true, false])(
@@ -423,7 +428,7 @@ describe("StoreContext — resposta superada e catálogo vazio no cache", () => 
     expect(retrato.products).toEqual(salvos);
     expect(controle.produtosNoCofre).toEqual(salvos);
     expect(controle.replaceAll).not.toHaveBeenCalled();
-    expect(controle.setLastSync).not.toHaveBeenCalled();
+    expect(carimbosDe("products")).toBe(0);
     expect(retrato.catalogoErro).toBe(true);
     expect(retrato.loadingProducts).toBe(false);
   });

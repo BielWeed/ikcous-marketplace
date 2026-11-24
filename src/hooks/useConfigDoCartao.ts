@@ -1,11 +1,12 @@
 import { chavePublicaMercadoPago } from "@/config/configuracaoDaLoja";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import {
   type ConfigDoCartao,
   cartaoLigado,
   esquecerConfigDoCartao,
   lerConfigDoCartao,
 } from "@/lib/config-do-cartao";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /**
  * O que o checkout sabe, num instante, sobre o cartão pelo app. Antes era
@@ -112,6 +113,22 @@ export function useConfigDoCartao(ativo: boolean): EstadoDaConfigDoCartao {
   }, []);
 
   const leitura = resultado?.chave === chave ? resultado.leitura : CARREGANDO;
+
+  // A internet VOLTOU (offline -> online) com a leitura em `erro`: refaz pelo
+  // MESMO caminho do botão (`tentarDeNovo`), UMA vez por virada. Sem laço: a
+  // releitura que falhar de novo volta a `erro`, mas `offline` não mudou, então
+  // este efeito não dispara outra vez — só a PRÓXIMA virada tenta. Em
+  // `carregando` e `pronto` não faz nada (já há leitura no ar, ou resposta
+  // definitiva), e com `ativo` falso/sem Public Key `emErro` é sempre falso.
+  const emErro = ativo && temChavePublica && leitura.estado === "erro";
+  const offline = useOnlineStatus();
+  const estavaOfflineRef = useRef(offline);
+  useEffect(() => {
+    const voltou = estavaOfflineRef.current && !offline;
+    estavaOfflineRef.current = offline;
+    if (voltou && emErro) tentarDeNovo();
+  }, [offline, emErro, tentarDeNovo]);
+
   const estado = useMemo<EstadoDaConfigDoCartao>(
     () =>
       leitura.estado === "erro" ? { estado: "erro", tentarDeNovo } : leitura,

@@ -278,11 +278,18 @@ export function SearchBar({
     // termo que a regra unica da busca acha em algum produto a venda (o termo
     // vira a busca ao toque; palavra de nome com hifen, por exemplo, perde o
     // hifen aqui e deixaria de achar o proprio produto).
-    return Array.from(termSet)
-      .filter((termo) =>
-        products.some((p) => p.isActive && produtoCombinaComBusca(p, termo)),
-      )
-      .slice(0, 4);
+    // So 4 sao mostrados: o laco PARA ao juntar 4 (testar o resto varreria o
+    // catalogo inteiro por termo, a cada letra digitada). Mesma ordem de antes.
+    const sugeridos: string[] = [];
+    for (const termo of termSet) {
+      if (
+        products.some((p) => p.isActive && produtoCombinaComBusca(p, termo))
+      ) {
+        sugeridos.push(termo);
+        if (sugeridos.length === 4) break;
+      }
+    }
+    return sugeridos;
   }, [products, deferredLocalValue, escondidas]);
 
   // Matching categories

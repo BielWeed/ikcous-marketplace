@@ -20,6 +20,7 @@ import { StarRating } from "@/components/ui/custom/StarRating";
 import { SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { branding } from "@/config/branding";
 import { useStore } from "@/contexts/StoreContext";
+import { useArrastarParaFechar } from "@/hooks/useArrastarParaFechar";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
 import { useDocumentMeta } from "@/hooks/useDocumentMeta";
 import { useFavorites } from "@/hooks/useFavorites";
@@ -28,6 +29,7 @@ import { useProducts } from "@/hooks/useProducts";
 import { useRecomendacoesDeProduto } from "@/hooks/useRecomendacoesDeProduto";
 import { useReviews } from "@/hooks/useReviews";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
+import { aoVoltarAAba } from "@/lib/atualizar-ao-voltar-a-aba";
 import {
   CLASSE_PRECO_PROMOCIONAL_TEXTO_GRANDE,
   CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
@@ -165,6 +167,12 @@ export const ProductView = React.memo(function ProductView({
     Record<string, string>
   >(() => escolhaDasOpcoesUnicas(product.variants));
   const [folhaAberta, setFolhaAberta] = useState(false);
+  // A barrinha da folha também arrasta para baixo (o gesto de todas as folhas).
+  const arrastoDaAlca = useArrastarParaFechar(() => setFolhaAberta(false));
+  const { zerarGuarda: zerarGuardaDaAlca } = arrastoDaAlca;
+  useEffect(() => {
+    if (folhaAberta) zerarGuardaDaAlca();
+  }, [folhaAberta, zerarGuardaDaAlca]);
   // O que a última escolha SOLTOU do outro lado ("Opção desmarcada: Tamanho P"), para
   // o leitor de tela: a tela muda sozinha e quem não vê não perceberia.
   const [avisoDaEscolha, setAvisoDaEscolha] = useState("");
@@ -440,15 +448,17 @@ export const ProductView = React.memo(function ProductView({
   // removido sai da tela) E as recomendações — elas moram em estado próprio do
   // hook e, sem isto, os cards seguiam com o preço de antes, inclusive para
   // comprar. `recarregarRecomendacoes` é estável (ref no hook): não reinscreve.
-  useEffect(() => {
-    const aoVoltar = () => {
-      if (document.visibilityState !== "visible") return;
-      void fetchProducts();
-      recarregarRecomendacoes();
-    };
-    document.addEventListener("visibilitychange", aoVoltar);
-    return () => document.removeEventListener("visibilitychange", aoVoltar);
-  }, [fetchProducts, recarregarRecomendacoes]);
+  // No máximo uma vez por janela de 30 s: `fetchProducts` relê o catálogo
+  // inteiro, e alternar de app várias vezes não pode refazer isso a cada volta.
+  useEffect(
+    () =>
+      aoVoltarAAba(() => {
+        const releitura = fetchProducts();
+        recarregarRecomendacoes();
+        return releitura;
+      }),
+    [fetchProducts, recarregarRecomendacoes],
+  );
 
   useEffect(() => {
     setRecsVisible(false);
@@ -1879,11 +1889,9 @@ export const ProductView = React.memo(function ProductView({
             {/* Recommendations - Magazine Style. Defeito da prova de rua (01/09):
             busca concluída e vazia esconde a seção INTEIRA — título com
             grid vazio convidava a nada. */}
+            <div ref={recsRef} aria-hidden="true" />
             {(!recsConsultado || recommendations.length > 0) && (
-              <div
-                ref={recsRef}
-                className="mt-20 border-t border-zinc-100 pt-10"
-              >
+              <div className="mt-20 border-t border-zinc-100 pt-10">
                 <div
                   className={cn(
                     "mb-10 flex flex-col items-center text-center",
@@ -1942,8 +1950,12 @@ export const ProductView = React.memo(function ProductView({
         <button
           type="button"
           aria-label="Fechar opções"
-          onClick={() => setFolhaAberta(false)}
-          className="flex min-h-11 w-full shrink-0 items-center justify-center"
+          onClick={() => {
+            if (arrastoDaAlca.engoliuClique()) return;
+            setFolhaAberta(false);
+          }}
+          onPointerDown={arrastoDaAlca.aoApertar}
+          className="flex min-h-11 w-full shrink-0 touch-none items-center justify-center"
         >
           <span className="h-1 w-10 rounded-full bg-muted-foreground/40" />
         </button>

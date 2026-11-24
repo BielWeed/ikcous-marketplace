@@ -607,6 +607,21 @@ describe("FechamentoDaVenda (C3.2)", () => {
     expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toContain(
       "1 peça a mais do que a tela: Camiseta Lisa Tamanho G.",
     );
+    // Com a divergência ainda por anular o papel não existe na página (não há
+    // comprovante a imprimir); a variação no papel se confere na venda sem ela.
+    expect(document.querySelector("[data-tema-fixo]")).toBeNull();
+    await act(async () => {
+      raiz.render(
+        <ReciboDaVenda
+          recibo={{ ...recibo, divergenciaComATela: undefined }}
+          despachar={vi.fn()}
+          limparCupom={vi.fn()}
+          storeName="Loja Teste"
+          aoAnular={vi.fn()}
+        />,
+      );
+    });
+    await avancar();
     expect(document.querySelector("[data-tema-fixo]")?.textContent).toContain(
       "Camiseta Lisa - Tamanho G",
     );

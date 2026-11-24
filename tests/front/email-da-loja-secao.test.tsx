@@ -33,6 +33,17 @@ vi.mock("@/hooks/useEmailDaLoja", () => ({
 vi.mock("@/hooks/useOnlineStatus", () => ({
   useOnlineStatus: () => offlineFalso.valor,
 }));
+// Só o dono da loja troca o e-mail (24/11/2026): este arquivo fala da seção em
+// si, então quem usa É o dono (a trava tem arquivo próprio:
+// credenciais-so-o-dono-troca.test.tsx).
+vi.mock("@/hooks/useDonoDaLoja", () => ({
+  useDonoDaLoja: () => ({
+    souODono: true,
+    carregando: false,
+    donoId: "dono-teste",
+    leituraFalhou: false,
+  }),
+}));
 
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;

@@ -1114,23 +1114,26 @@ export function ShippingCalculator({
     const isSelected = selectedOption?.id === option.id;
     // CHECKOUT (modoResumo, redesenho de 22/10/2026): marca NEUTRA — a opção
     // marcada ganha borda forte + bolinha escura com check, nunca o fundo da
-    // cor da marca; o apoio sobe de 9px/zinc-400 para 11px/zinc-600. O
-    // carrinho (sem `modoResumo`) segue exatamente como era.
+    // cor da marca. Legibilidade (apoio de 11px/zinc-600, "Grátis" em
+    // emerald-700) vale para os DOIS desenhos; o carrinho (sem `modoResumo`)
+    // só mantém a opção marcada com a cor da marca.
     const neutro = !!modoResumo;
     const comCorDaMarca = isSelected && !neutro;
-    const tamanhoApoio = neutro ? "text-[11px]" : "text-[9px]";
+    const tamanhoApoio = "text-[11px]";
     const corApoio = comCorDaMarca
       ? "text-primary-foreground"
       : "text-zinc-500";
     const corFraca = comCorDaMarca
       ? "text-primary-foreground"
-      : neutro
-        ? "text-zinc-600"
-        : "text-zinc-400";
+      : "text-zinc-600";
     const corDoAviso = comCorDaMarca
       ? "text-primary-foreground"
       : "text-zinc-600";
-    const verdeDoPreco = neutro ? "text-emerald-700" : "text-emerald-500";
+    // Marcada com a cor da marca (carrinho), o fundo é escuro: emerald-700 ali
+    // cairia a 3,2:1; vale o mesmo texto claro dos demais apoios do cartão.
+    const verdeDoPreco = comCorDaMarca
+      ? "text-primary-foreground"
+      : "text-emerald-700";
     // RETIRADA NA LOJA (release 1.5.3): sem prazo de entrega (não
     // há entrega) e sem "pronto agora" — o endereço REAL da loja
     // que a edge mandou e o aviso neutro de esperar a loja.
@@ -1286,9 +1289,7 @@ export function ShippingCalculator({
               <>
                 {option.pickupAddress && (
                   <span
-                    className={`mt-0.5 block leading-snug ${
-                      neutro ? "text-[11px]" : "text-[10px]"
-                    } ${corApoio}`}
+                    className={`mt-0.5 block text-[11px] leading-snug ${corApoio}`}
                   >
                     Retire em: {option.pickupAddress}
                   </span>
@@ -1331,9 +1332,9 @@ export function ShippingCalculator({
             <div className="flex items-center gap-1">
               <Sparkles
                 className={`size-3 ${
-                  neutro
-                    ? "fill-emerald-700/20 text-emerald-700"
-                    : "fill-emerald-500/20 text-emerald-500"
+                  comCorDaMarca
+                    ? "fill-primary-foreground/20 text-primary-foreground"
+                    : "fill-emerald-700/20 text-emerald-700"
                 }`}
               />
               <span
@@ -1615,7 +1616,7 @@ export function ShippingCalculator({
                   type="button"
                   onClick={tentarDeNovo}
                   disabled={loading || bloqueado}
-                  className="flex min-h-10 shrink-0 select-none items-center gap-1 rounded-xl bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-amber-800 shadow-sm disabled:opacity-40"
+                  className={`flex ${modoResumo ? "min-h-10" : "min-h-11"} shrink-0 select-none items-center gap-1 rounded-xl bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-amber-800 shadow-sm disabled:opacity-40`}
                 >
                   <RefreshCw className="size-3" />
                   Tentar de novo

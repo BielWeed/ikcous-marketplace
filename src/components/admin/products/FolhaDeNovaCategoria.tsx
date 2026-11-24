@@ -1,8 +1,10 @@
 import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
+import { PerguntaDeDescarte } from "@/components/admin/atendimento/PerguntaDeDescarte";
 import {
   type EscolhaDeIcone,
   SeletorDeIcone,
 } from "@/components/admin/categorias/SeletorDeIcone";
+import { AlcaDaFolha } from "@/components/admin/primitivos/AlcaDaFolha";
 import {
   Sheet,
   SheetClose,
@@ -12,6 +14,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { useFolhaSobeComOTeclado } from "@/hooks/useFolhaSobeComOTeclado";
 import {
   ErroDeCategoria,
   LIMITE_DO_NOME_DA_CATEGORIA,
@@ -37,7 +40,12 @@ const BOTAO =
  *
  * Só existe montada enquanto está aberta: o formulário a baixa sob demanda
  * (`lazy`) e fechar a desmonta, então nome e ícone escolhidos nascem vazios
- * a cada abertura. Fechar é SEMPRE `aoFechar` (X, Cancelar, Esc e toque fora).
+ * a cada abertura. `aberta={false}` é a folha SAINDO: o formulário a mantém
+ * montada só até a animação de saída terminar (`useConteudoAteASaida`).
+ *
+ * Fechar (X, Cancelar, Esc e toque fora) com nome ou ícone já escolhidos
+ * PERGUNTA antes de descartar (a mesma pergunta da folha de Responder
+ * pergunta); sem nada escolhido, fecha direto. Só `aoFechar` fecha de fato.
  *
  * Criar é em dois passos, de propósito:
  *  1. `adicionar` cria a categoria SEM ícone (não grava as colunas de ícone: uma
@@ -52,6 +60,7 @@ export function FolhaDeNovaCategoria({
   atualizarIcone,
   aoCriada,
   aoFechar,
+  aberta = true,
 }: {
   /** As categorias que já existem (para avisar nome parecido ANTES de criar). */
   readonly categoriasDaLoja: ReadonlyArray<{
@@ -72,6 +81,8 @@ export function FolhaDeNovaCategoria({
   /** A categoria existe: o formulário a escolhe (recebe o nome). */
   readonly aoCriada: (nome: string) => void;
   readonly aoFechar: () => void;
+  /** `false` = saindo: segue montada só até a animação de saída terminar. */
+  readonly aberta?: boolean;
 }) {
   const [nome, setNome] = useState("");
   const [escolha, setEscolha] = useState<EscolhaDeIcone>({
@@ -102,10 +113,34 @@ export function FolhaDeNovaCategoria({
 
   const nomeLimpo = nome.trim();
 
+  // O que está no campo AGORA: o campo só entrega o texto à folha 150 ms depois
+  // de digitar (ou ao sair dele), e Esc/toque fora chegam antes disso.
+  const nomeAoVivoRef = useRef("");
+  const [perguntandoDescarte, setPerguntandoDescarte] = useState(false);
+  const algoDigitado = () =>
+    nomeAoVivoRef.current.trim() !== "" ||
+    escolha.icone !== null ||
+    escolha.forma !== null;
+
   const fechar = () => {
     if (criandoRef.current) return;
+    // Com a pergunta já na tela, Esc/toque fora = "continuar editando".
+    if (perguntandoDescarte) {
+      setPerguntandoDescarte(false);
+      return;
+    }
+    if (algoDigitado()) {
+      setPerguntandoDescarte(true);
+      return;
+    }
     aoFechar();
   };
+
+  // O teclado do celular se sobrepõe à página: a folha sobe acima dele e o
+  // botão "Criar categoria" não fica escondido ao digitar o nome.
+  const estiloDoTeclado = useFolhaSobeComOTeclado(
+    "data-folha-de-nova-categoria",
+  );
 
   const criar = async (nomeDigitado = nome) => {
     const nomeLimpo = nomeDigitado.trim();
@@ -185,7 +220,7 @@ export function FolhaDeNovaCategoria({
 
   return (
     <Sheet
-      open
+      open={aberta}
       onOpenChange={(aberta) => {
         if (!aberta) fechar();
       }}
@@ -208,100 +243,115 @@ export function FolhaDeNovaCategoria({
           evento.preventDefault();
           document.getElementById("product-category")?.focus();
         }}
-        className="mx-auto max-h-[92dvh] w-full gap-0 rounded-t-[28px] border-admin-border bg-admin-bg p-0 text-foreground sm:max-w-xl"
+        data-folha-de-nova-categoria=""
+        style={estiloDoTeclado}
+        className="bottom-[var(--teclado-da-folha,0px)] mx-auto max-h-[min(92dvh,var(--altura-da-folha,92dvh))] w-full gap-0 rounded-t-[28px] border-admin-border bg-admin-bg p-0 text-foreground sm:max-w-xl"
       >
-        <SheetHeader className="gap-0 px-5 pb-3 pt-0 text-left">
-          <div
-            aria-hidden="true"
-            className="flex h-7 items-center justify-center"
-          >
-            <span className="h-1 w-10 rounded-full bg-muted-foreground/40" />
-          </div>
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <SheetTitle className="text-[22px] font-bold leading-7 tracking-tight text-foreground">
-                Nova categoria
-              </SheetTitle>
-              <SheetDescription className="mt-0.5 text-[13px] text-muted-foreground">
-                O ícone é opcional: sem escolher, a loja usa um pelo nome.
-              </SheetDescription>
+        <div
+          inert={perguntandoDescarte}
+          className="flex min-h-0 flex-1 flex-col"
+        >
+          <SheetHeader className="gap-0 px-5 pb-3 pt-0 text-left">
+            <AlcaDaFolha
+              aoFechar={fechar}
+              className="mt-0 h-7 items-center"
+              barra="mt-0 bg-muted-foreground/40"
+            />
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <SheetTitle className="text-[22px] font-bold leading-7 tracking-tight text-foreground">
+                  Nova categoria
+                </SheetTitle>
+                <SheetDescription className="mt-0.5 text-[13px] text-muted-foreground">
+                  O ícone é opcional: sem escolher, a loja usa um pelo nome.
+                </SheetDescription>
+              </div>
+              <SheetClose
+                aria-label="Fechar"
+                disabled={criando}
+                className="flex size-11 shrink-0 items-center justify-center rounded-full bg-admin-raised text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
+              >
+                <X aria-hidden="true" className="size-5" />
+              </SheetClose>
             </div>
-            <SheetClose
-              aria-label="Fechar"
-              disabled={criando}
-              className="flex size-11 shrink-0 items-center justify-center rounded-full bg-admin-raised text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
-            >
-              <X aria-hidden="true" className="size-5" />
-            </SheetClose>
-          </div>
-        </SheetHeader>
+          </SheetHeader>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 pb-4">
-          <div className="space-y-1.5">
-            <label
-              htmlFor="cat-name"
-              className="ml-1 block text-[13px] font-semibold text-muted-foreground"
-            >
-              Nome da categoria
-            </label>
-            <LocalBufferedInput
-              id="cat-name"
-              name="categoryName"
-              type="text"
-              delay={150}
-              value={nome}
-              onFlush={setNome}
-              readOnly={criando}
-              maxLength={LIMITE_DO_NOME_DA_CATEGORIA}
-              autoComplete="off"
-              enterKeyHint="done"
-              onKeyDown={(e) => {
-                if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
-                e.preventDefault();
-                // O buffer foi descarregado, mas o estado ainda pode ser o
-                // anterior neste evento: use o nome que está no campo.
-                void criar(e.currentTarget.value);
-              }}
-              className="min-h-11 w-full rounded-xl border border-solid border-admin-border bg-admin-surface px-4 py-3 text-base font-semibold text-foreground placeholder:font-normal placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              placeholder="Ex.: Vestuário"
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 pb-4">
+            <div className="space-y-1.5">
+              <label
+                htmlFor="cat-name"
+                className="ml-1 block text-[13px] font-semibold text-muted-foreground"
+              >
+                Nome da categoria
+              </label>
+              <LocalBufferedInput
+                id="cat-name"
+                name="categoryName"
+                type="text"
+                delay={150}
+                value={nome}
+                onFlush={setNome}
+                readOnly={criando}
+                maxLength={LIMITE_DO_NOME_DA_CATEGORIA}
+                autoComplete="off"
+                enterKeyHint="done"
+                onInput={(e) => {
+                  nomeAoVivoRef.current = e.currentTarget.value;
+                }}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+                  e.preventDefault();
+                  // O buffer foi descarregado, mas o estado ainda pode ser o
+                  // anterior neste evento: use o nome que está no campo.
+                  void criar(e.currentTarget.value);
+                }}
+                className="min-h-11 w-full rounded-xl border border-solid border-admin-border bg-admin-surface px-4 py-3 text-base font-semibold text-foreground placeholder:font-normal placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                placeholder="Ex.: Vestuário"
+              />
+            </div>
+
+            <SeletorDeIcone
+              modo="direto"
+              nomeDaCategoria={nomeLimpo || "nova categoria"}
+              nomeParaSugerir={nomeLimpo}
+              gravado={{ icone: escolha.icone, forma: escolha.forma }}
+              desabilitado={criando}
+              aoEscolher={setEscolha}
             />
           </div>
 
-          <SeletorDeIcone
-            modo="direto"
-            nomeDaCategoria={nomeLimpo || "nova categoria"}
-            nomeParaSugerir={nomeLimpo}
-            gravado={{ icone: escolha.icone, forma: escolha.forma }}
-            desabilitado={criando}
-            aoEscolher={setEscolha}
-          />
+          <SheetFooter className="mt-0 flex-row gap-3 border-t border-admin-border px-5 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] pt-3">
+            <button
+              type="button"
+              onClick={fechar}
+              disabled={criando}
+              className={`${BOTAO} flex-1 border-admin-border-strong bg-admin-raised text-foreground hover:bg-admin-hover`}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={() => void criar()}
+              disabled={criando}
+              // Nome vazio: só `aria-disabled`, sem `disabled`. O nome digitado
+              // chega à folha quando o campo perde o foco, e o toque neste botão
+              // é quem tira o foco: um `disabled` aqui engoliria esse primeiro toque.
+              aria-disabled={!nomeLimpo}
+              className={`${BOTAO} flex-[2] border-foreground bg-foreground text-background hover:opacity-90 aria-disabled:cursor-not-allowed aria-disabled:opacity-40`}
+            >
+              {criando ? (
+                <Loader2 aria-hidden="true" className="size-4 animate-spin" />
+              ) : null}
+              Criar categoria
+            </button>
+          </SheetFooter>
         </div>
-
-        <SheetFooter className="mt-0 flex-row gap-3 border-t border-admin-border px-5 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] pt-3">
-          <button
-            type="button"
-            onClick={fechar}
-            disabled={criando}
-            className={`${BOTAO} flex-1 border-admin-border-strong bg-admin-raised text-foreground hover:bg-admin-hover`}
-          >
-            Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={() => void criar()}
-            disabled={criando}
-            // Nome vazio: só `aria-disabled`, sem `disabled`. O nome digitado
-            // chega à folha quando o campo perde o foco, e o toque neste botão
-            // é quem tira o foco: um `disabled` aqui engoliria esse primeiro toque.
-            aria-disabled={!nomeLimpo}
-            className={`${BOTAO} flex-[2] border-foreground bg-foreground text-background hover:opacity-90 aria-disabled:cursor-not-allowed aria-disabled:opacity-40`}
-          >
-            {criando ? (
-              <Loader2 aria-hidden="true" className="size-4 animate-spin" />
-            ) : null}
-            Criar categoria
-          </button>
-        </SheetFooter>
+        {perguntandoDescarte ? (
+          <PerguntaDeDescarte
+            aoContinuar={() => setPerguntandoDescarte(false)}
+            aoDescartar={aoFechar}
+          />
+        ) : null}
       </SheetContent>
     </Sheet>
   );

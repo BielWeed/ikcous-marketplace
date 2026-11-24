@@ -91,6 +91,17 @@ vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({ config: {}, isLoaded: true, updateConfig: vi.fn() }),
 }));
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
+// Só o dono da loja troca as chaves (24/11/2026): este arquivo fala do painel do
+// PIX, não do dono, então o admin do teste É o dono (a trava tem arquivo próprio:
+// credenciais-so-o-dono-troca.test.tsx).
+vi.mock("@/hooks/useDonoDaLoja", () => ({
+  useDonoDaLoja: () => ({
+    souODono: true,
+    carregando: false,
+    donoId: "admin-a",
+    leituraFalhou: false,
+  }),
+}));
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({
     user: { id: "admin-a" },

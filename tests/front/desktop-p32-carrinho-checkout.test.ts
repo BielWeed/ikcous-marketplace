@@ -159,7 +159,10 @@ describe("P32: alinhamento e resumo alcançável no computador", () => {
         // literais. Só entra a caixa Pix de 25 px; os outros mantêm size-5.
         // Botão de login por Tab para pagar com Pix: 389 → 390.
         // Comparado com 9d8c38a69: só o literal do novo botão entrou.
-        "26db86af3a4634b751b94b729c92cce01316f521bbf1929dc5e0f46338dea446",
+        // 1.5.232: contraste de texto de informação (só a COR muda, nenhuma classe
+        // de layout): "Número do pedido"/"Pedido" zinc-400 → zinc-600 e o aviso
+        // "Seus dados estão seguros" zinc-300 → zinc-600 (dark:zinc-300).
+        "9ff8c5b04061724e9250166cc7d79e5c4bce189bfabd8d2fff450695cb01ad6a",
       ],
       [
         caminhos.favoritos,

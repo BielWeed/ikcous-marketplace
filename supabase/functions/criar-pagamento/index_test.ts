@@ -684,6 +684,28 @@ Deno.test("podeCobrar recusa qualquer payment_status que não seja aguardando", 
   }
 });
 
+// Teste de MUTAÇÃO (24/11/2026): o cancelamento do PRÓPRIO cliente grava
+// `status = 'cancelled'` sem tocar `payment_status` (continua 'aguardando'), e
+// tirar o ramo `cancelled` de `podeCobrar` não derrubava nenhum teste (o
+// handler tem outras travas, `.neq("status","cancelled")`, que escondiam o
+// buraco). A regra pura tem de recusar sozinha: pedido cancelado nunca vira
+// "criar" (cobrança nova) nem "reconsultar" (devolver o QR de um pedido morto).
+Deno.test("podeCobrar recusa pedido CANCELADO mesmo aguardando e no prazo, com ou sem cobrança", () => {
+  for (const gateway_payment_id of [null, "ORD-1"]) {
+    const r = podeCobrar(
+      {
+        payment_status: "aguardando",
+        expires_at: "2026-08-06T12:20:00.000Z",
+        gateway_payment_id,
+        status: "cancelled",
+      },
+      AGORA,
+    );
+    assertEquals(r.acao, "recusar", `gateway_payment_id=${gateway_payment_id}`);
+    if (r.acao === "recusar") assertEquals(r.motivo, "Este pedido foi cancelado.");
+  }
+});
+
 Deno.test("podeCobrar recusa pedido sem prazo carimbado", () => {
   // Pedido criado pela v23 (flag desligada) não tem expires_at. Cobrar um
   // desses criaria cobrança que a expiração nunca varre.

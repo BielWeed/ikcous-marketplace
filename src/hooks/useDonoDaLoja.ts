@@ -22,6 +22,13 @@ export interface EstadoDoDono {
   readonly carregando: boolean;
   /** Id do dono, quando se sabe. */
   readonly donoId: string | null;
+  /**
+   * A leitura terminou SEM resposta de verdade (erro, tabela ausente ou negada,
+   * rede, prazo estourado). Distingue "não consegui ler" de "a loja não tem dono
+   * cadastrado" (tabela vazia, `donoId: null` com `leituraFalhou: false`): quem
+   * TRAVA algo para quem não é o dono não pode destravar na dúvida.
+   */
+  readonly leituraFalhou: boolean;
 }
 
 // A tabela ainda não está em src/types/database.types.ts (gerado e
@@ -50,16 +57,19 @@ const CODIGOS_DEFINITIVOS = new Set(["PGRST205", "42P01", "42501"]);
 // descartada.
 const PRAZO_DA_LEITURA_DO_DONO_MS = 12_000;
 
-interface Leitura {
-  readonly uid: string;
+interface DonoLido {
   readonly donoId: string | null;
+  readonly falhou: boolean;
+}
+
+interface Leitura extends DonoLido {
+  readonly uid: string;
 }
 
 // Cache de módulo, guardado COM o id de quem leu: outra conta que entra na
 // mesma aba nunca herda a resposta da anterior, e o logout apaga tudo.
 let leituraFeita: Leitura | null = null;
-let leituraEmVoo: { uid: string; promessa: Promise<string | null> } | null =
-  null;
+let leituraEmVoo: { uid: string; promessa: Promise<DonoLido> } | null = null;
 
 /** Esquece o que foi lido (logout / troca de conta / testes). */
 export function limparDonoDaLoja(): void {
@@ -67,9 +77,11 @@ export function limparDonoDaLoja(): void {
   leituraEmVoo = null;
 }
 
-async function lerDono(uid: string): Promise<string | null> {
+async function lerDono(uid: string): Promise<DonoLido> {
   let donoId: string | null = null;
   let definitivo = false;
+  // Só vira `false` quando o banco RESPONDEU sem erro (inclusive "tabela vazia").
+  let falhou = true;
   try {
     const { data, error } = await aguardarComPrazo(
       // A consulta devolve um "thenable", não uma Promise.
@@ -89,19 +101,25 @@ async function lerDono(uid: string): Promise<string | null> {
     } else {
       donoId = typeof data?.user_id === "string" ? data.user_id : null;
       definitivo = true;
+      falhou = false;
     }
   } catch {
     // Rede caiu, estourou o prazo, ou cliente sem a consulta: sem dono, e nada
     // gravado.
   }
   if (definitivo && leituraEmVoo?.uid === uid) {
-    leituraFeita = { uid, donoId };
+    leituraFeita = { uid, donoId, falhou };
   }
-  return donoId;
+  return { donoId, falhou };
 }
 
-function carregarDono(uid: string): Promise<string | null> {
-  if (leituraFeita?.uid === uid) return Promise.resolve(leituraFeita.donoId);
+function carregarDono(uid: string): Promise<DonoLido> {
+  if (leituraFeita?.uid === uid) {
+    return Promise.resolve({
+      donoId: leituraFeita.donoId,
+      falhou: leituraFeita.falhou,
+    });
+  }
   if (leituraEmVoo?.uid === uid) return leituraEmVoo.promessa;
   const promessa = lerDono(uid).finally(() => {
     if (leituraEmVoo?.promessa === promessa) leituraEmVoo = null;
@@ -117,15 +135,21 @@ function carregarDono(uid: string): Promise<string | null> {
 interface Resolvido {
   readonly uid: string | null;
   readonly donoId: string | null;
+  readonly falhou: boolean;
   readonly carregando: boolean;
 }
 
 function resolvidoInicial(uid: string | null): Resolvido {
-  if (!uid) return { uid, donoId: null, carregando: false };
+  if (!uid) return { uid, donoId: null, falhou: false, carregando: false };
   if (leituraFeita?.uid === uid) {
-    return { uid, donoId: leituraFeita.donoId, carregando: false };
+    return {
+      uid,
+      donoId: leituraFeita.donoId,
+      falhou: leituraFeita.falhou,
+      carregando: false,
+    };
   }
-  return { uid, donoId: null, carregando: true };
+  return { uid, donoId: null, falhou: false, carregando: true };
 }
 
 export function useDonoDaLoja(): EstadoDoDono {
@@ -138,17 +162,22 @@ export function useDonoDaLoja(): EstadoDoDono {
     if (!uid) {
       // Saiu da conta: apaga o que a sessão anterior leu.
       limparDonoDaLoja();
-      setResolvido({ uid, donoId: null, carregando: false });
+      setResolvido({ uid, donoId: null, falhou: false, carregando: false });
       return;
     }
     if (leituraFeita?.uid === uid) {
-      setResolvido({ uid, donoId: leituraFeita.donoId, carregando: false });
+      setResolvido({
+        uid,
+        donoId: leituraFeita.donoId,
+        falhou: leituraFeita.falhou,
+        carregando: false,
+      });
       return;
     }
     let vivo = true;
-    setResolvido({ uid, donoId: null, carregando: true });
-    carregarDono(uid).then((donoId) => {
-      if (vivo) setResolvido({ uid, donoId, carregando: false });
+    setResolvido({ uid, donoId: null, falhou: false, carregando: true });
+    carregarDono(uid).then(({ donoId, falhou }) => {
+      if (vivo) setResolvido({ uid, donoId, falhou, carregando: false });
     });
     return () => {
       vivo = false;
@@ -157,13 +186,26 @@ export function useDonoDaLoja(): EstadoDoDono {
 
   // Resolvido para OUTRO usuário (troca de conta ainda não processada pelo
   // efeito) vale como "carregando": nunca herda o dono da conta anterior.
-  if (!uid) return { souODono: false, carregando: false, donoId: null };
+  if (!uid) {
+    return {
+      souODono: false,
+      carregando: false,
+      donoId: null,
+      leituraFalhou: false,
+    };
+  }
   if (resolvido.uid !== uid || resolvido.carregando) {
-    return { souODono: false, carregando: true, donoId: null };
+    return {
+      souODono: false,
+      carregando: true,
+      donoId: null,
+      leituraFalhou: false,
+    };
   }
   return {
     souODono: resolvido.donoId !== null && resolvido.donoId === uid,
     carregando: false,
     donoId: resolvido.donoId,
+    leituraFalhou: resolvido.falhou,
   };
 }

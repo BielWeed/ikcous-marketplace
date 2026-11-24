@@ -241,8 +241,8 @@ describe("StoreContext — o motor de tempo real liga quando o cofre chega tarde
     await deixarOCofreFicarPronto();
 
     expect(motor.start).toHaveBeenCalledTimes(1);
-    // Visitante sem login: o 4o argumento (temSessao) é falso, e o motor não
-    // abre canal de tempo real.
+    // Visitante sem login: o 4o argumento (canal de catálogo) é falso, e o
+    // motor não abre canal de tempo real.
     expect(motor.start).toHaveBeenCalledWith(
       controle.cofre,
       false,
@@ -273,7 +273,7 @@ describe("StoreContext — o motor de tempo real liga quando o cofre chega tarde
     expect(controle.desligar).not.toHaveBeenCalled();
   });
 
-  it("(d) tempo real só com sessão — a cliente logada liga o motor com canal (4o argumento verdadeiro)", async () => {
+  it("(d) canal de catálogo só do lojista — a cliente logada liga o motor SEM canal (4o argumento falso)", async () => {
     controle.usuario = { id: "cliente-1" };
     await montar();
     await deixarOCofreFicarPronto();
@@ -284,7 +284,7 @@ describe("StoreContext — o motor de tempo real liga quando o cofre chega tarde
       controle.cofre,
       false,
       false,
-      true,
+      false,
     );
   });
 
@@ -296,6 +296,76 @@ describe("StoreContext — o motor de tempo real liga quando o cofre chega tarde
     await deixarARedeResponder();
 
     expect(motor.start).toHaveBeenCalledWith(controle.cofre, false, true, true);
+  });
+
+  async function remontarComOPapelNovo() {
+    await act(async () => {
+      raiz.render(
+        <StoreProvider>
+          <Capturador />
+        </StoreProvider>,
+      );
+    });
+    await assentar();
+  }
+
+  it("(f) BORDA — a cliente entra e sai (login/logout): o motor NÃO reinicia, continua sem canal", async () => {
+    await montar();
+    await deixarOCofreFicarPronto();
+    await deixarARedeResponder();
+    expect(motor.start).toHaveBeenCalledTimes(1);
+
+    controle.usuario = { id: "cliente-1" }; // login
+    await remontarComOPapelNovo();
+    controle.usuario = null; // logout
+    await remontarComOPapelNovo();
+
+    expect(motor.start).toHaveBeenCalledTimes(1);
+    expect(controle.desligar).not.toHaveBeenCalled();
+    expect(motor.start).toHaveBeenLastCalledWith(
+      controle.cofre,
+      false,
+      false,
+      false,
+    );
+  });
+
+  it("(g) BORDA — o papel muda de cliente para lojista e volta: solta o motor anterior e liga o novo, um por vez", async () => {
+    controle.usuario = { id: "dono-1" };
+    await montar();
+    await deixarOCofreFicarPronto();
+    await deixarARedeResponder();
+    expect(motor.start).toHaveBeenCalledTimes(1);
+    expect(motor.start).toHaveBeenLastCalledWith(
+      controle.cofre,
+      false,
+      false,
+      false,
+    );
+
+    // O papel de lojista chega (o `user` já estava lá): ganha o canal.
+    controle.ehAdmin = true;
+    await remontarComOPapelNovo();
+    expect(controle.desligar).toHaveBeenCalledTimes(1);
+    expect(motor.start).toHaveBeenCalledTimes(2);
+    expect(motor.start).toHaveBeenLastCalledWith(
+      controle.cofre,
+      false,
+      true,
+      true,
+    );
+
+    // Sai do painel: solta o canal e volta ao caminho sem canal.
+    controle.ehAdmin = false;
+    await remontarComOPapelNovo();
+    expect(controle.desligar).toHaveBeenCalledTimes(2);
+    expect(motor.start).toHaveBeenCalledTimes(3);
+    expect(motor.start).toHaveBeenLastCalledWith(
+      controle.cofre,
+      false,
+      false,
+      false,
+    );
   });
 
   it("(c) O CONTROLE — o cofre nunca fica pronto: o motor não liga, e a tela não trava", async () => {

@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import {
+  type CSSProperties,
   type ReactNode,
   useCallback,
   useEffect,
@@ -28,6 +29,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { useAlturaDoTeclado } from "@/hooks/useAlturaDoTeclado";
 import type { DadosDaSolicitacao, Desfecho } from "@/hooks/useDevolucaoCliente";
 import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
@@ -167,6 +169,40 @@ export function SolicitarDevolucaoSheet(props: SolicitarDevolucaoSheetProps) {
   const [pergunta, setPergunta] = useState<EstadoDoRascunho>("nenhum");
   const botaoDeContinuarRef = useRef<HTMLButtonElement>(null);
   const focoAnteriorRef = useRef<HTMLElement | null>(null);
+  // O teclado do celular se SOBREPÕE à página: a folha sobe acima dele e cabe
+  // na área visível, para o "Continuar" do rodapé não ficar escondido. Vai por
+  // variável CSS lida só nas classes do celular: a janela centrada (`sm:`) não
+  // muda, e um `bottom` inline venceria o `sm:bottom-auto`.
+  const { altura: teclado, alturaVisivel } = useAlturaDoTeclado();
+  // Ao focar a caixa de texto, traz ela à vista dentro do corpo que rola (o
+  // teclado leva um tempo para abrir: o segundo efeito refaz a rolagem).
+  useEffect(() => {
+    if (!aberto) return;
+    let timer: number | undefined;
+    const aoFocar = (evento: FocusEvent) => {
+      const alvo = evento.target;
+      if (!(alvo instanceof HTMLElement) || alvo.tagName !== "TEXTAREA") return;
+      if (!alvo.closest('[data-testid="folha-devolucao"]')) return;
+      window.clearTimeout(timer);
+      // `?.`: o jsdom dos testes não tem a função.
+      timer = window.setTimeout(
+        () => alvo.scrollIntoView?.({ block: "nearest" }),
+        150,
+      );
+    };
+    document.addEventListener("focusin", aoFocar);
+    return () => {
+      document.removeEventListener("focusin", aoFocar);
+      window.clearTimeout(timer);
+    };
+  }, [aberto]);
+  useEffect(() => {
+    if (!aberto || teclado === 0) return;
+    const ativo = document.activeElement;
+    if (!(ativo instanceof HTMLElement) || ativo.tagName !== "TEXTAREA") return;
+    if (!ativo.closest('[data-testid="folha-devolucao"]')) return;
+    ativo.scrollIntoView?.({ block: "nearest" });
+  }, [aberto, teclado]);
   const pedirParaMudar = (abrir: boolean) => {
     if (!abrir && rascunhoRef.current !== "nenhum") {
       if (pergunta === "nenhum") {
@@ -239,8 +275,16 @@ export function SolicitarDevolucaoSheet(props: SolicitarDevolucaoSheetProps) {
             continuarNaFolha();
           }
         }}
+        style={
+          teclado > 0
+            ? ({
+                "--teclado-da-folha": `${teclado}px`,
+                "--altura-da-folha": `calc(${alturaVisivel}px - 1rem)`,
+              } as CSSProperties)
+            : undefined
+        }
         className={cn(
-          "mx-auto flex max-h-[92dvh] flex-col gap-0 rounded-t-3xl bg-white p-0 text-zinc-900",
+          "bottom-[var(--teclado-da-folha,0px)] mx-auto flex max-h-[min(92dvh,var(--altura-da-folha,92dvh))] flex-col gap-0 rounded-t-3xl bg-background p-0 text-foreground",
           "sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:max-h-[85dvh] sm:w-full sm:max-w-lg sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-3xl sm:border",
           "sm:data-[state=closed]:slide-out-to-left-1/2 sm:data-[state=open]:slide-in-from-left-1/2",
         )}
@@ -257,12 +301,12 @@ export function SolicitarDevolucaoSheet(props: SolicitarDevolucaoSheetProps) {
             aria-labelledby="descartar-devolucao-titulo"
             aria-describedby="descartar-devolucao-texto"
             data-testid="descartar-devolucao"
-            className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-5 rounded-[inherit] bg-white p-6 text-center"
+            className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-5 rounded-[inherit] bg-background p-6 text-center"
           >
             <div className="space-y-2">
               <h2
                 id="descartar-devolucao-titulo"
-                className="text-lg font-black tracking-tight text-zinc-950"
+                className="text-lg font-black tracking-tight text-foreground"
               >
                 {pergunta === "enviando"
                   ? "Estamos enviando o seu pedido"
@@ -270,7 +314,7 @@ export function SolicitarDevolucaoSheet(props: SolicitarDevolucaoSheetProps) {
               </h2>
               <p
                 id="descartar-devolucao-texto"
-                className="text-sm text-zinc-600"
+                className="text-sm text-foreground/70"
               >
                 {pergunta === "enviando"
                   ? "Aguarde um instante: o pedido já está sendo registrado. Quando terminar, você vê o protocolo aqui."
@@ -282,7 +326,7 @@ export function SolicitarDevolucaoSheet(props: SolicitarDevolucaoSheetProps) {
                 ref={botaoDeContinuarRef}
                 type="button"
                 onClick={continuarNaFolha}
-                className="h-12 rounded-2xl bg-zinc-900 text-sm font-bold text-white"
+                className="h-12 rounded-2xl bg-primary text-sm font-bold text-primary-foreground"
               >
                 {pergunta === "enviando" ? "Aguardar" : "Continuar preenchendo"}
               </button>
@@ -294,7 +338,7 @@ export function SolicitarDevolucaoSheet(props: SolicitarDevolucaoSheetProps) {
                     setPergunta("nenhum");
                     onAbertoMudou(false);
                   }}
-                  className="h-12 rounded-2xl border border-zinc-200 text-sm font-bold text-red-600"
+                  className="h-12 rounded-2xl border border-border text-sm font-bold text-red-600 dark:text-red-400"
                 >
                   Descartar
                 </button>
@@ -659,11 +703,11 @@ function FluxoDaDevolucao({
 
   return (
     <>
-      <SheetHeader className="shrink-0 border-b border-zinc-100 px-5 pb-3 pr-12 pt-5">
-        <p className="text-[11px] font-semibold text-zinc-500">
+      <SheetHeader className="shrink-0 border-b border-border/50 px-5 pb-3 pr-12 pt-5">
+        <p className="text-[11px] font-semibold text-muted-foreground">
           Devolução ou troca · Passo {passo} de 4
         </p>
-        <SheetTitle className="text-lg font-black tracking-tight text-zinc-950">
+        <SheetTitle className="text-lg font-black tracking-tight text-foreground">
           {TITULO_DO_PASSO.get(passo)}
         </SheetTitle>
         <SheetDescription className="sr-only">
@@ -675,7 +719,7 @@ function FluxoDaDevolucao({
               key={p}
               className={cn(
                 "h-1 flex-1 rounded-full",
-                p <= passo ? "bg-zinc-900" : "bg-zinc-200",
+                p <= passo ? "bg-foreground" : "bg-border",
               )}
             />
           ))}
@@ -703,11 +747,11 @@ function FluxoDaDevolucao({
                     className={cn(
                       "flex items-center gap-3 rounded-2xl border p-3 transition-colors",
                       qtd > 0
-                        ? "border-zinc-900 bg-zinc-50"
-                        : "border-zinc-100 bg-white",
+                        ? "border-foreground bg-muted/50"
+                        : "border-border/50 bg-background",
                     )}
                   >
-                    <div className="size-14 shrink-0 overflow-hidden rounded-xl border border-zinc-100 bg-zinc-50">
+                    <div className="size-14 shrink-0 overflow-hidden rounded-xl border border-border/50 bg-muted/50">
                       {item.image_url && (
                         <MiniaturaDoItemDevolvido
                           key={item.image_url}
@@ -717,18 +761,18 @@ function FluxoDaDevolucao({
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="line-clamp-2 break-words text-sm font-bold text-zinc-900">
+                      <p className="line-clamp-2 break-words text-sm font-bold text-foreground">
                         {nome}
                       </p>
                       {variacao && (
                         <p
                           data-testid="variacao-do-item-elegivel"
-                          className="break-words text-xs font-semibold text-zinc-700"
+                          className="break-words text-xs font-semibold text-foreground/80"
                         >
                           {variacao}
                         </p>
                       )}
-                      <p className="text-xs text-zinc-500">
+                      <p className="text-xs text-muted-foreground">
                         {formatarReais(item.valor_unitario)} · pode devolver{" "}
                         {item.disponivel}
                       </p>
@@ -741,7 +785,7 @@ function FluxoDaDevolucao({
                         onClick={() =>
                           mudarQuantidade(item.order_item_id, qtd - 1)
                         }
-                        className="flex size-11 items-center justify-center rounded-xl border border-zinc-200 text-zinc-700 transition-colors active:scale-95 disabled:opacity-40"
+                        className="flex size-11 items-center justify-center rounded-xl border border-border text-foreground/80 transition-colors active:scale-95 disabled:opacity-40"
                       >
                         <Minus className="size-4" />
                       </button>
@@ -758,7 +802,7 @@ function FluxoDaDevolucao({
                         onClick={() =>
                           mudarQuantidade(item.order_item_id, qtd + 1)
                         }
-                        className="flex size-11 items-center justify-center rounded-xl border border-zinc-200 text-zinc-700 transition-colors active:scale-95 disabled:opacity-40"
+                        className="flex size-11 items-center justify-center rounded-xl border border-border text-foreground/80 transition-colors active:scale-95 disabled:opacity-40"
                       >
                         <Plus className="size-4" />
                       </button>
@@ -774,7 +818,7 @@ function FluxoDaDevolucao({
           <div className="space-y-4" data-testid="passo-motivo">
             {GRUPOS_DE_MOTIVO.map((grupo) => (
               <fieldset key={grupo.titulo} className="space-y-2">
-                <legend className="mb-1 text-xs font-bold text-zinc-500">
+                <legend className="mb-1 text-xs font-bold text-muted-foreground">
                   {grupo.titulo}
                 </legend>
                 {grupo.motivos.map((m) => {
@@ -805,7 +849,7 @@ function FluxoDaDevolucao({
             <div className="space-y-1.5">
               <label
                 htmlFor="devolucao-detalhe"
-                className="text-xs font-bold text-zinc-500"
+                className="text-xs font-bold text-muted-foreground"
               >
                 {motivo === "outro"
                   ? "Conte o que aconteceu"
@@ -818,23 +862,23 @@ function FluxoDaDevolucao({
                 rows={3}
                 onChange={(e) => setDetalhe(e.target.value)}
                 placeholder="Ex.: a costura abriu na primeira lavagem."
-                className="w-full rounded-2xl border border-zinc-200 bg-white p-3 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-zinc-900"
+                className="w-full rounded-2xl border border-border bg-background p-3 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-foreground"
               />
             </div>
 
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">
-                <p className="text-xs font-bold text-zinc-500">
+                <p className="text-xs font-bold text-muted-foreground">
                   Fotos{" "}
                   {exigeFotos ? (
-                    <span className="text-red-700">
+                    <span className="text-red-700 dark:text-red-400">
                       (obrigatório para problema no produto)
                     </span>
                   ) : (
                     "(opcional)"
                   )}
                 </p>
-                <span className="text-xs tabular-nums text-zinc-500">
+                <span className="text-xs tabular-nums text-muted-foreground">
                   {fotos.length}/{MAXIMO_DE_FOTOS}
                 </span>
               </div>
@@ -842,7 +886,7 @@ function FluxoDaDevolucao({
                 {fotos.map((foto) => (
                   <div
                     key={foto.chave}
-                    className="relative aspect-square overflow-hidden rounded-xl border border-zinc-100 bg-zinc-100"
+                    className="relative aspect-square overflow-hidden rounded-xl border border-border/50 bg-muted"
                   >
                     {foto.previa && (
                       <img
@@ -867,7 +911,7 @@ function FluxoDaDevolucao({
                   <button
                     type="button"
                     onClick={() => entradaDeFotoRef.current?.click()}
-                    className="flex aspect-square flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-zinc-300 text-xs font-bold text-zinc-600 transition-colors hover:border-zinc-400 active:scale-95"
+                    className="flex aspect-square flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-muted-foreground/30 text-xs font-bold text-foreground/70 transition-colors hover:border-muted-foreground/60 active:scale-95"
                   >
                     <Camera className="size-5" />
                     Adicionar
@@ -892,11 +936,11 @@ function FluxoDaDevolucao({
         {passo === 3 && (
           <div className="space-y-5" data-testid="passo-resolucao">
             <fieldset className="space-y-2">
-              <legend className="mb-1 text-xs font-bold text-zinc-500">
+              <legend className="mb-1 text-xs font-bold text-muted-foreground">
                 Como prefere resolver?
               </legend>
               {tipo === "troca" && (
-                <p className="rounded-2xl bg-zinc-50 p-3 text-xs leading-relaxed text-zinc-600">
+                <p className="rounded-2xl bg-muted/50 p-3 text-xs leading-relaxed text-foreground/70">
                   {prazos.arrependimento_ate
                     ? "O prazo de arrependimento terminou. Você pode solicitar uma troca. Se a loja oferecer vale-troca, essa opção aparece abaixo."
                     : "Você pode solicitar uma troca. Se a loja oferecer vale-troca, essa opção aparece abaixo."}
@@ -919,7 +963,7 @@ function FluxoDaDevolucao({
             </fieldset>
 
             <fieldset className="space-y-2">
-              <legend className="mb-1 text-xs font-bold text-zinc-500">
+              <legend className="mb-1 text-xs font-bold text-muted-foreground">
                 Como o produto volta para a loja?
               </legend>
               {metodos.map((m) => (
@@ -936,7 +980,7 @@ function FluxoDaDevolucao({
                   }}
                 >
                   {m === "envio_proprio" && (
-                    <span className="mt-2 flex gap-2 rounded-xl bg-zinc-50 p-2.5 text-xs text-zinc-600">
+                    <span className="mt-2 flex gap-2 rounded-xl bg-muted/50 p-2.5 text-xs text-foreground/70">
                       <MapPin className="mt-0.5 size-3.5 shrink-0" />
                       <span>
                         {enderecoParaEntregar
@@ -947,7 +991,7 @@ function FluxoDaDevolucao({
                   )}
                   {m === "entrega_na_loja" &&
                     (enderecoParaEntregar || horarioDaLoja) && (
-                      <span className="mt-2 flex gap-2 rounded-xl bg-zinc-50 p-2.5 text-xs text-zinc-600">
+                      <span className="mt-2 flex gap-2 rounded-xl bg-muted/50 p-2.5 text-xs text-foreground/70">
                         <MapPin className="mt-0.5 size-3.5 shrink-0" />
                         <span>
                           {enderecoParaEntregar}
@@ -964,7 +1008,7 @@ function FluxoDaDevolucao({
 
         {passo === 4 && motivo && (
           <div className="space-y-4" data-testid="passo-revisao">
-            <div className="space-y-2 rounded-2xl border border-zinc-100 p-4">
+            <div className="space-y-2 rounded-2xl border border-border/50 p-4">
               {itens
                 .filter((item) => (selecao.get(item.order_item_id) ?? 0) > 0)
                 .map((item) => (
@@ -972,12 +1016,12 @@ function FluxoDaDevolucao({
                     key={item.order_item_id}
                     className="flex justify-between gap-3 text-sm"
                   >
-                    <span className="line-clamp-2 min-w-0 break-words text-zinc-700">
+                    <span className="line-clamp-2 min-w-0 break-words text-foreground/80">
                       {selecao.get(item.order_item_id)}× {item.product_name}
                       {rotulosDosItens?.[item.order_item_id] && (
                         <span
                           data-testid="variacao-do-item-na-revisao"
-                          className="block break-words text-xs text-zinc-500"
+                          className="block break-words text-xs text-muted-foreground"
                         >
                           {rotulosDosItens[item.order_item_id]}
                         </span>
@@ -991,7 +1035,7 @@ function FluxoDaDevolucao({
                     </span>
                   </div>
                 ))}
-              <div className="border-t border-dashed border-zinc-200 pt-2">
+              <div className="border-t border-dashed border-border pt-2">
                 <LinhaDeRevisao rotulo="Motivo" valor={rotuloMotivo(motivo)} />
                 {resolucaoValida && (
                   <LinhaDeRevisao
@@ -1033,8 +1077,8 @@ function FluxoDaDevolucao({
             />
 
             {textoDaPolitica && (
-              <details className="rounded-2xl bg-zinc-50 p-3 text-xs text-zinc-600">
-                <summary className="cursor-pointer font-bold text-zinc-700">
+              <details className="rounded-2xl bg-muted/50 p-3 text-xs text-foreground/70">
+                <summary className="cursor-pointer font-bold text-foreground/80">
                   Ler a política de trocas da loja
                 </summary>
                 <p className="mt-2 whitespace-pre-line break-words leading-relaxed">
@@ -1058,13 +1102,13 @@ function FluxoDaDevolucao({
         )}
       </div>
 
-      <div className="flex shrink-0 gap-2 border-t border-zinc-100 bg-white px-5 pb-[calc(0.75rem+var(--safe-area-bottom,env(safe-area-inset-bottom,0px)))] pt-3">
+      <div className="flex shrink-0 gap-2 border-t border-border/50 bg-background px-5 pb-[calc(0.75rem+var(--safe-area-bottom,env(safe-area-inset-bottom,0px)))] pt-3">
         {passo > 1 && (
           <button
             type="button"
             onClick={voltar}
             disabled={enviando}
-            className="flex h-12 items-center justify-center gap-1 rounded-2xl border border-zinc-200 px-4 text-sm font-bold text-zinc-700 transition-all active:scale-95 disabled:opacity-50"
+            className="flex h-12 items-center justify-center gap-1 rounded-2xl border border-border px-4 text-sm font-bold text-foreground/80 transition-all active:scale-95 disabled:opacity-50"
           >
             <ChevronLeft className="size-4" />
             Voltar
@@ -1074,7 +1118,7 @@ function FluxoDaDevolucao({
           <button
             type="button"
             onClick={avancar}
-            className="flex h-12 flex-1 items-center justify-center rounded-2xl bg-zinc-900 text-sm font-bold text-white transition-all active:scale-[0.98]"
+            className="flex h-12 flex-1 items-center justify-center rounded-2xl bg-primary text-sm font-bold text-primary-foreground transition-all active:scale-[0.98]"
           >
             Continuar
           </button>
@@ -1083,7 +1127,7 @@ function FluxoDaDevolucao({
             type="button"
             onClick={() => void confirmar()}
             disabled={enviando || preparando > 0}
-            className="flex h-12 flex-1 items-center justify-center gap-2 rounded-2xl bg-zinc-900 text-sm font-bold text-white transition-all active:scale-[0.98] disabled:opacity-60"
+            className="flex h-12 flex-1 items-center justify-center gap-2 rounded-2xl bg-primary text-sm font-bold text-primary-foreground transition-all active:scale-[0.98] disabled:opacity-60"
           >
             {(enviando || preparando > 0) && (
               <Loader2 className="size-4 animate-spin" />
@@ -1129,17 +1173,19 @@ function Prazos({
   }
   if (linhas.length === 0) return null;
   return (
-    <ul className="space-y-1.5 rounded-2xl bg-zinc-50 p-3" aria-label="Prazos">
+    <ul className="space-y-1.5 rounded-2xl bg-muted/50 p-3" aria-label="Prazos">
       {linhas.map((linha) => (
         <li
           key={linha.rotulo}
           className="flex items-center justify-between gap-3 text-xs"
         >
-          <span className="text-zinc-600">{linha.rotulo}</span>
+          <span className="text-foreground/70">{linha.rotulo}</span>
           <span
             className={cn(
               "shrink-0 font-bold tabular-nums",
-              linha.aberta ? "text-emerald-700" : "text-zinc-500 line-through",
+              linha.aberta
+                ? "text-emerald-700 dark:text-emerald-400"
+                : "text-muted-foreground line-through",
             )}
           >
             até {formatarDia(linha.ate)}
@@ -1173,8 +1219,10 @@ function OpcaoDeRadio({
   return (
     <label
       className={cn(
-        "flex min-h-11 cursor-pointer gap-3 rounded-2xl border p-3 transition-colors focus-within:ring-2 focus-within:ring-zinc-900/20",
-        marcado ? "border-zinc-900 bg-zinc-50" : "border-zinc-100 bg-white",
+        "flex min-h-11 cursor-pointer gap-3 rounded-2xl border p-3 transition-colors focus-within:ring-2 focus-within:ring-ring/20",
+        marcado
+          ? "border-foreground bg-muted/50"
+          : "border-border/50 bg-background",
         desabilitado && "cursor-not-allowed opacity-50",
       )}
     >
@@ -1192,16 +1240,18 @@ function OpcaoDeRadio({
         className={cn(
           "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border",
           marcado
-            ? "border-zinc-900 bg-zinc-900 text-white"
-            : "border-zinc-300",
+            ? "border-foreground bg-foreground text-background"
+            : "border-muted-foreground/30",
         )}
       >
         {marcado && <Check className="size-3" />}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block text-sm font-bold text-zinc-900">{titulo}</span>
+        <span className="block text-sm font-bold text-foreground">
+          {titulo}
+        </span>
         {explicacao && (
-          <span className="mt-0.5 block text-xs leading-relaxed text-zinc-500">
+          <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
             {explicacao}
           </span>
         )}
@@ -1217,8 +1267,8 @@ function LinhaDeRevisao({
 }: Readonly<{ rotulo: string; valor: string }>) {
   return (
     <div className="flex justify-between gap-3 py-0.5 text-sm">
-      <span className="text-zinc-500">{rotulo}</span>
-      <span className="text-right font-semibold text-zinc-900">{valor}</span>
+      <span className="text-muted-foreground">{rotulo}</span>
+      <span className="text-right font-semibold text-foreground">{valor}</span>
     </div>
   );
 }
@@ -1278,26 +1328,26 @@ function Sucesso({
       <div className="flex size-14 items-center justify-center rounded-full bg-emerald-50">
         <CheckCircle className="size-7 text-emerald-700" />
       </div>
-      <SheetTitle className="text-xl font-black tracking-tight text-zinc-950">
+      <SheetTitle className="text-xl font-black tracking-tight text-foreground">
         Pedido de devolução enviado
       </SheetTitle>
-      <SheetDescription className="text-sm leading-relaxed text-zinc-600">
+      <SheetDescription className="text-sm leading-relaxed text-foreground/70">
         Guarde o protocolo. A resposta da loja aparece aqui no pedido e nas suas
         notificações.
       </SheetDescription>
       <button
         type="button"
         onClick={() => void copiar()}
-        className="mt-1 flex min-h-11 items-center gap-2 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-2 font-mono text-lg font-black tracking-wider text-zinc-900"
+        className="mt-1 flex min-h-11 items-center gap-2 rounded-2xl border border-border bg-muted/50 px-4 py-2 font-mono text-lg font-black tracking-wider text-foreground"
         aria-label={`Copiar protocolo ${resultado.protocolo}`}
       >
         {resultado.protocolo}
-        <Copy className="size-4 text-zinc-500" />
+        <Copy className="size-4 text-muted-foreground" />
       </button>
       <button
         type="button"
         onClick={onFechar}
-        className="mt-3 flex h-12 w-full items-center justify-center rounded-2xl bg-zinc-900 text-sm font-bold text-white transition-all active:scale-[0.98]"
+        className="mt-3 flex h-12 w-full items-center justify-center rounded-2xl bg-primary text-sm font-bold text-primary-foreground transition-all active:scale-[0.98]"
       >
         Fechar
       </button>

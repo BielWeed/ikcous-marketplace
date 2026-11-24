@@ -348,6 +348,38 @@ describe("AdminProductsView — achado 546: duplicar duas vezes preserva a grade
     expect(copiarImagemParaDuplicacao).not.toHaveBeenCalled();
   });
 
+  it("duplicar produto de nome com 190 caracteres: o nome da cópia cabe em 200 e mantém o rótulo", async () => {
+    const nomeDeOrigem = produtoTeste.name;
+    produtoTeste.name = "N".repeat(190);
+    try {
+      await montar();
+      await duplicar();
+    } finally {
+      produtoTeste.name = nomeDeOrigem;
+    }
+
+    expect(addProduct).toHaveBeenCalledTimes(1);
+    const { name } = addProduct.mock.calls[0][0];
+    expect(name.length).toBeLessThanOrEqual(200);
+    expect(name).toMatch(/^N+ \(Cópia [A-F0-9]{12}\)$/);
+  });
+
+  it("duplicar uma cópia: o código troca o '-COPIA-<uuid>' em vez de empilhar outro", async () => {
+    const skuDeOrigem = produtoTeste.sku;
+    produtoTeste.sku = "CAM-01-COPIA-3F2504E0-4F89-41D3-9A0C-0305E82C3301";
+    try {
+      await montar();
+      await duplicar();
+    } finally {
+      produtoTeste.sku = skuDeOrigem;
+    }
+
+    expect(addProduct).toHaveBeenCalledTimes(1);
+    const { sku } = addProduct.mock.calls[0][0];
+    expect(sku).toMatch(/^CAM-01-COPIA-[A-F0-9-]{36}$/);
+    expect(sku).not.toContain("3F2504E0-4F89-41D3-9A0C-0305E82C3301");
+  });
+
   it("duplicar o MESMO produto duas vezes: os SKUs de variante enviados nas duas duplicações nunca colidem", async () => {
     await montar();
 

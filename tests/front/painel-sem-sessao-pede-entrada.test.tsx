@@ -740,6 +740,30 @@ describe("painel sem sessão pede entrada (aviso de pedido novo)", () => {
     expect(tela("home")).not.toBeNull();
   });
 
+  // Mutação (24/11/2026): sem a guarda de `handleNavigate`, o clique ABRIA a rota
+  // do painel (entrada /admin-orders no histórico) e só a tela de "acesso
+  // restrito" a desfazia, com aviso. O teste acima passava igual; este fixa que
+  // a logada comum é barrada ANTES de a rota do painel ser gravada.
+  it("(c) logada e NÃO admin clicando para o painel: a rota do painel nem chega a abrir (nenhuma entrada /admin no histórico, nenhum aviso)", async () => {
+    estadoAuth.user = { id: "pessoa-logada" };
+    await abrirNaVitrine();
+    avisoErro.mockClear();
+    const empurrar = vi.spyOn(globalThis.history, "pushState");
+    try {
+      await clicar("ir-para-pedidos-do-painel");
+
+      for (const [, , endereco] of empurrar.mock.calls) {
+        expect(String(endereco)).not.toContain("admin");
+      }
+      expect(globalThis.location.pathname).not.toContain("admin");
+      expect(avisoErro).not.toHaveBeenCalled();
+      expect(tela("home")).not.toBeNull();
+      expect(tela("painel")).toBeNull();
+    } finally {
+      empurrar.mockRestore();
+    }
+  });
+
   it("(c) admin já logada abrindo /admin-orders: chega direto no painel, sem passar pela entrada", async () => {
     estadoAuth.user = { id: "lojista" };
     estadoAuth.isAdmin = true;

@@ -62,8 +62,16 @@ Deno.test("SW - a revalidacao NAO grava HTML novo com update pendente (ressalva 
   const inicio = sw.indexOf('event.request.mode === "navigate"');
   const fim = sw.indexOf("// Se for Supabase");
   const trecho = norm(sw.slice(inicio, fim));
-  const posGuard = trecho.indexOf(
-    "if (sw.registration.waiting || sw.registration.installing) return;",
+  // A guarda agora e o helper `haAtualizacaoAChegar()` (usado tambem na primeira
+  // visita e no aquecimento): o ramo chama o helper e o helper olha as duas
+  // coisas, `waiting` e `installing`.
+  const posGuard = trecho.indexOf("if (haAtualizacaoAChegar()) return;");
+  const helper = norm(sw);
+  assert(
+    helper.includes(
+      "function haAtualizacaoAChegar(): boolean { return Boolean(sw.registration?.waiting || sw.registration?.installing); }",
+    ),
+    "o helper haAtualizacaoAChegar tem de olhar waiting E installing",
   );
   const posPut = trecho.indexOf("cache.put(event.request, copy)");
   assert(

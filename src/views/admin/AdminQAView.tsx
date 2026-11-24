@@ -381,9 +381,14 @@ export const AdminQAView = memo(function AdminQAView({
   // Subscribe to realtime questions updates
   useEffect(() => {
     if (!active) return;
-    const unsubscribe = subscribeToQuestions(() => {
-      onQuestionEventRef.current();
-    });
+    const unsubscribe = subscribeToQuestions(
+      () => {
+        onQuestionEventRef.current();
+      },
+      undefined,
+      // Tela do painel: assina o próprio canal mesmo numa aba seguidora.
+      { independenteDaLideranca: true },
+    );
     return () => unsubscribe();
   }, [subscribeToQuestions, active]);
 
@@ -983,7 +988,10 @@ export const AdminQAView = memo(function AdminQAView({
               acao={
                 <button
                   type="button"
-                  onClick={() => loadQuestions(page)}
+                  onClick={() => {
+                    void loadQuestions(page);
+                    if (statsUnavailable) void fetchStats();
+                  }}
                   disabled={loading}
                   className={cn(BOTAO_NEUTRO, "self-start")}
                 >

@@ -244,7 +244,7 @@ async function montarPainel(
   });
 
   const sino = hospedeiro.querySelector(
-    'header button[aria-label="Notificações"]',
+    'header button[aria-label^="Notificações"]',
   );
   expect(sino).toBeTruthy();
   return sino as HTMLButtonElement;

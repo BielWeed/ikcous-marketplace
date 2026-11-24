@@ -1,3 +1,4 @@
+import { AlcaDaFolha } from "@/components/admin/primitivos/AlcaDaFolha";
 import {
   Sheet,
   SheetClose,
@@ -7,6 +8,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { useFolhaSobeComOTeclado } from "@/hooks/useFolhaSobeComOTeclado";
 import { useIconesPeloNome } from "@/hooks/useIconesPeloNome";
 import { IconeDaCategoria, iconeDaCategoria } from "@/lib/icones-de-categoria";
 import { cn, normalizeText } from "@/lib/utils";
@@ -75,6 +77,8 @@ export function CampoDeCategoria({
     aoMudarAberta?.(valor);
   };
   const [busca, setBusca] = useState("");
+  // O teclado da busca não pode cobrir as categorias de baixo.
+  const estiloDoTeclado = useFolhaSobeComOTeclado("data-folha-de-categoria");
   const botaoRef = useRef<HTMLButtonElement | null>(null);
   // "Nova categoria" e "Organizar" abrem OUTRA folha no mesmo instante: devolver
   // o foco ao botão do campo, depois, roubaria o foco dela.
@@ -206,15 +210,16 @@ export function CampoDeCategoria({
             evento.preventDefault();
             if (devolverFocoRef.current) botaoRef.current?.focus();
           }}
-          className="mx-auto max-h-[85dvh] w-full gap-0 rounded-t-[28px] border-admin-border bg-admin-bg p-0 text-foreground sm:max-w-xl"
+          data-folha-de-categoria=""
+          style={estiloDoTeclado}
+          className="bottom-[var(--teclado-da-folha,0px)] mx-auto max-h-[min(85dvh,var(--altura-da-folha,85dvh))] w-full gap-0 rounded-t-[28px] border-admin-border bg-admin-bg p-0 text-foreground sm:max-w-xl"
         >
           <SheetHeader className="gap-0 px-5 pb-3 pt-0 text-left">
-            <div
-              aria-hidden="true"
-              className="flex h-7 items-center justify-center"
-            >
-              <span className="h-1 w-10 rounded-full bg-muted-foreground/40" />
-            </div>
+            <AlcaDaFolha
+              aoFechar={() => mudarAberta(false)}
+              className="mt-0 h-7 items-center"
+              barra="mt-0 bg-muted-foreground/40"
+            />
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <SheetTitle className="text-[22px] font-bold leading-7 tracking-tight text-foreground">

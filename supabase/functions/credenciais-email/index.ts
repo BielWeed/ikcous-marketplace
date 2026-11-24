@@ -10,7 +10,11 @@
 // (`resolverRemetente`) — o login por código, o comprovante e o aviso de
 // pagamento atrasado passam por lá.
 //
-// Ações (POST, corpo JSON `{ acao, ... }`), TODAS só para o admin de AGORA:
+// Ações (POST, corpo JSON `{ acao, ... }`), todas só para o admin de AGORA.
+// MUDAR o e-mail (salvar, remover) exige ainda ser o DONO da loja
+// (`dono_da_loja`, 24/11/2026): o e-mail de login e de recuperação sai por este
+// Gmail, e quem o troca recebe o link de troca de senha de qualquer cliente.
+// `status` e `testar` ficam abertos a qualquer admin (não mudam o destino).
 //   status  -> o que a tela mostra: Gmail, se há senha guardada, quem está
 //              enviando de fato (`origem`), se o cofre está pronto, o último
 //              teste e a SAÚDE do envio. Nunca a senha.
@@ -52,6 +56,7 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { adminAtualDaSessao } from "../_shared/admin-atual.ts";
 import { chaveDeCifra, cifrar, decifrar } from "../_shared/credenciais-mp.ts";
+import { conferirDono, lerDonoDaLoja } from "../_shared/dono-da-loja.ts";
 import {
   avaliarLimiteDeTeste,
   classificarFalhaDeEnvio,
@@ -108,6 +113,12 @@ export type CredenciaisEmailDeps = {
   supabase?: any;
   /** Devolve o uid do admin de AGORA, ou null. */
   adminAtual?: (authorization: string | null) => Promise<string | null>;
+  /**
+   * Devolve o uid do DONO da loja (`dono_da_loja`), `null` se a loja não tem
+   * dono cadastrado, ou LANÇA se não deu para ler. Padrão: lê a tabela pelo
+   * client de serviço.
+   */
+  donoAtual?: () => Promise<string | null>;
   /** Só para a porta real de admin (`adminAtualDaSessao`): o fetch do Auth/PostgREST. */
   fetchImpl?: typeof fetch;
   env?: { get(chave: string): string | undefined };
@@ -128,6 +139,15 @@ const MENSAGEM_SEM_COFRE =
   "O cofre de chaves desta loja ainda não está configurado. Fale com o suporte.";
 const MENSAGEM_FALHA_INTERNA =
   "Algo saiu do previsto aqui dentro. Tente de novo em instantes.";
+const MENSAGEM_SEM_CONFERIR_O_DONO =
+  "Não consegui conferir agora quem é o dono da loja, então nada foi alterado. Tente de novo em instantes.";
+
+/**
+ * As únicas ações que um administrador NOMEADO pode fazer: ver o estado e
+ * mandar o e-mail de teste (que só vai para o Gmail JÁ cadastrado). Nenhuma
+ * delas muda para onde o e-mail da loja sai.
+ */
+const ACOES_ABERTAS_AO_ADMIN = new Set<unknown>(["status", "testar"]);
 
 export async function handler(
   req: Request,
@@ -177,6 +197,26 @@ export async function handler(
   }
 
   const supabase = deps.supabase ?? createClient(supabaseUrl, serviceRoleKey);
+
+  // Porta do DONO (24/11/2026): quem MUDA o e-mail da loja é só o dono. Só
+  // `status` e `testar` ficam abertos a qualquer admin — a lista é das ações
+  // ABERTAS, não das fechadas: ação nova ou desconhecida nasce restrita.
+  if (!ACOES_ABERTAS_AO_ADMIN.has(corpo?.acao)) {
+    const permissao = await conferirDono(
+      uidAdmin,
+      deps.donoAtual ?? (() => lerDonoDaLoja(supabase)),
+      "[credenciais-email]",
+    );
+    if (permissao === "so_o_dono") {
+      return json(
+        { erro: "Não autorizado: só o dono da loja mexe no e-mail da loja." },
+        403,
+      );
+    }
+    if (permissao === "indisponivel") {
+      return json({ erro: MENSAGEM_SEM_CONFERIR_O_DONO }, 503);
+    }
+  }
 
   // ── o que a tela mostra ───────────────────────────────────────────────────
   async function montarStatus() {

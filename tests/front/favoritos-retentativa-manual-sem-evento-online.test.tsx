@@ -183,6 +183,39 @@ describe("FavoritesContext — retentativa manual da fila (sem evento online)", 
     expect(ultimoContexto?.pendingCount).toBe(1);
   });
 
+  it("avisa que 1 dos 2 favoritos foi salvo na tentativa manual", async () => {
+    usuarioDaVez = { id: "userA" };
+    storageFake.setItem(
+      pendingKeyDe("userA"),
+      JSON.stringify([{ id: "p1" }, { id: "p2" }]),
+    );
+    const { FavoritesProvider, FavoritesContext } = await import(
+      "@/contexts/FavoritesContext"
+    );
+    await act(async () => {
+      raiz.render(
+        <FavoritesProvider>
+          <Sonda contexto={FavoritesContext} />
+        </FavoritesProvider>,
+      );
+    });
+    await flush();
+    chamadasUpsert = [];
+    primeiroEmEspera = true;
+    let tentativa: Promise<void> | undefined;
+    await act(async () => {
+      tentativa = ultimoContexto?.retentarPendentes({ avisarFalha: true });
+    });
+    await act(async () => {
+      segurarPrimeiro?.();
+      await tentativa;
+    });
+    const { toast } = await import("sonner");
+    expect(toast.error).toHaveBeenCalledWith(
+      "1 dos 2 favoritos foi salvo. Tente de novo para salvar o restante.",
+    );
+  });
+
   it("espera o primeiro favorito ser salvo antes de mandar o próximo no login", async () => {
     storageFake.setItem(FAVORITES_KEY, JSON.stringify(["p1", "p2", "p3"]));
     const { FavoritesProvider, FavoritesContext } = await import(
@@ -210,6 +243,10 @@ describe("FavoritesContext — retentativa manual da fila (sem evento online)", 
       segurarPrimeiro?.();
     });
     await flush();
+    const { toast } = await import("sonner");
+    expect(toast.success).toHaveBeenCalledWith(
+      "Seus favoritos locais foram sincronizados!",
+    );
     expect(enviadosAntesDeConfirmar).toEqual(["p1"]);
     expect(chamadasUpsert.map((p) => p.product_id)).toEqual(["p1", "p2", "p3"]);
   });
@@ -246,6 +283,10 @@ describe("FavoritesContext — retentativa manual da fila (sem evento online)", 
     });
     await flush();
 
+    const { toast } = await import("sonner");
+    expect(toast.success).toHaveBeenCalledWith(
+      "Seu favorito foi sincronizado.",
+    );
     expect(chamadasUpsert).toHaveLength(2);
     expect(chamadasUpsert[1]).toEqual({ user_id: "userA", product_id: "p1" });
     expect(ultimoContexto?.pendingCount).toBe(0);

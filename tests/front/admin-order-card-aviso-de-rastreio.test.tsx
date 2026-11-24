@@ -1,9 +1,5 @@
 // @vitest-environment jsdom
 import { AdminOrderCard } from "@/components/admin/orders/AdminOrderCard";
-import {
-  linkDeRastreioDeCodigoValido,
-  normalizarCodigoDeRastreio,
-} from "@/lib/link-de-rastreio";
 import type { Order } from "@/types";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -33,6 +29,31 @@ const pedido: Order = {
   cancelledAfterShipping: false,
 };
 
+let pedidosDaCliente: Order[] = [];
+const buscarPedidos = vi.fn(async () => pedidosDaCliente);
+
+vi.mock("@/hooks/useOrders", () => ({
+  useOrders: () => ({
+    orders: pedidosDaCliente,
+    fetchUserOrders: buscarPedidos,
+  }),
+}));
+vi.mock("@/hooks/useAuth", () => ({
+  useAuth: () => ({ user: { id: "cliente-1" } }),
+}));
+vi.mock("@/contexts/StoreContext", () => ({
+  useStore: () => ({ config: { enableReviews: false, whatsappNumber: "" } }),
+}));
+vi.mock("@/lib/supabase", () => ({
+  supabase: {
+    from: () => ({
+      select: () => ({
+        eq: () => ({ in: () => Promise.resolve({ data: [], error: null }) }),
+      }),
+    }),
+  },
+}));
+
 let host: HTMLDivElement;
 let root: Root;
 
@@ -45,6 +66,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount());
   host.remove();
+  pedidosDaCliente = [];
 });
 
 function montar(sobre: Partial<Order> = {}) {
@@ -101,16 +123,29 @@ it.each([
   expect(host.textContent).not.toContain(aviso);
 });
 
-it("não avisa quando a ficha da cliente gera link após normalizar o código", () => {
+it("não avisa quando a ficha da cliente gera link após normalizar o código", async () => {
   const trackingCode = "ͅ";
-  const linkDaCliente = linkDeRastreioDeCodigoValido(
-    normalizarCodigoDeRastreio(trackingCode),
-  );
-
-  expect(linkDaCliente).toContain(encodeURIComponent("Ι"));
   montar({ trackingCode });
-
   expect(host.textContent).not.toContain("não consegue rastrear");
+
+  pedidosDaCliente = [{ ...pedido, status: "shipping", trackingCode }];
+  const { OrderDetailsView } = await import(
+    "@/views/customer/OrderDetailsView"
+  );
+  await act(async () => {
+    root.render(
+      <OrderDetailsView
+        orderId={pedido.id}
+        onBack={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    );
+  });
+
+  const link = host.querySelector('a[title="Rastrear entrega"]');
+  expect(link?.getAttribute("href")).toBe(
+    "https://www.melhorrastreio.com.br/rastreio/%CE%99",
+  );
 });
 
 it("avisa também quando o Avançar fica no menu porque falta registrar o pagamento", () => {

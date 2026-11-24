@@ -19,7 +19,13 @@ import {
 } from "@/lib/valor-devolver-agora";
 import type { CanalDaVenda, Order } from "@/types";
 import { AlertTriangle } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import {
+  type RefObject,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 /**
  * Botão de alerta do header + dropdown de detalhes (pedido do Gabriel de
@@ -72,7 +78,8 @@ interface AlertasCanceladosProps {
   /** Frase já no singular/plural certo, montada na view. */
   readonly avisoPagoAposCancelado: string;
   /** Presente quando a contagem falhou e não há número conhecido. */
-  readonly onTentarConferirAlertas?: () => void;
+  readonly onTentarConferirAlertas?: () => void | Promise<void>;
+  readonly focoSemAlertasRef?: RefObject<HTMLButtonElement | null>;
   readonly pedidosEsperandoRetorno: readonly Order[];
   readonly pedidosParaDevolverAgora: readonly Order[];
   /** L3e': estorno que o Mercado Pago já está fazendo, por pedido de
@@ -109,6 +116,7 @@ export function AlertasCancelados({
   pagoCanceladoCount,
   avisoPagoAposCancelado,
   onTentarConferirAlertas,
+  focoSemAlertasRef,
   pedidosEsperandoRetorno,
   pedidosParaDevolverAgora,
   estornosEmCurso,
@@ -136,6 +144,11 @@ export function AlertasCancelados({
   const [perguntaAberta, setPerguntaAberta] = useState(false);
   const raizRef = useRef<HTMLDivElement>(null);
   const alavancaRef = useRef<HTMLButtonElement>(null);
+  const tentarRef = useRef<HTMLButtonElement>(null);
+  const consultaEmCurso = useRef(false);
+  const [retentativa, setRetentativa] = useState<
+    "tentando" | "concluida" | null
+  >(null);
   // O botão da linha que abriu a pergunta: o AlertDialog não tem gatilho, então
   // o Radix não sabe para onde devolver o foco e ele cairia no body.
   const origemDaPerguntaRef = useRef<HTMLElement | null>(null);
@@ -185,12 +198,36 @@ export function AlertasCancelados({
     };
   }, [aberto, perguntaAberta]);
 
-  if (!temPendencia && !incompleto && !onTentarConferirAlertas) return null;
+  const temOutrosAlertas = temPendencia || incompleto;
+  const conferindo = retentativa !== null;
+  const mostrarRetentativa = Boolean(onTentarConferirAlertas) || conferindo;
+
+  useLayoutEffect(() => {
+    if (retentativa !== "concluida") return;
+    if (!onTentarConferirAlertas) {
+      // Mova o foco antes de retirar o botão, sem tomar o foco de outro controle.
+      if (tentarRef.current && document.activeElement === tentarRef.current) {
+        (temOutrosAlertas ? alavancaRef : focoSemAlertasRef)?.current?.focus();
+      }
+      if (!temOutrosAlertas) setAberto(false);
+    }
+    consultaEmCurso.current = false;
+    setRetentativa(null);
+  }, [
+    retentativa,
+    onTentarConferirAlertas,
+    temOutrosAlertas,
+    focoSemAlertasRef,
+  ]);
+
+  if (!temOutrosAlertas && !mostrarRetentativa) return null;
 
   const titulo = temDinheiroPreso
     ? avisoPagoAposCancelado
-    : !temPendencia && onTentarConferirAlertas
-      ? AVISO_ALERTAS_NAO_CONFERIDOS
+    : !temPendencia && mostrarRetentativa
+      ? conferindo
+        ? "Conferindo alertas…"
+        : AVISO_ALERTAS_NAO_CONFERIDOS
       : "Pedidos cancelados pendentes";
 
   const resumoBadges = [
@@ -280,7 +317,7 @@ export function AlertasCancelados({
           // Sem pendência mas com lista incompleta: o sinal permanente é o
           // "!" pulsante — o botão não pode se parecer com um estado normal
           // justamente no único cenário em que as listas vazias são mentira.
-          (incompleto || onTentarConferirAlertas) && (
+          (incompleto || mostrarRetentativa) && (
             <span
               data-testid="alertas-cancelados-badge"
               className="absolute -right-1 -top-1 flex h-4 min-w-4 animate-pulse items-center justify-center rounded-full border border-black/20 bg-amber-500 px-1 text-[11px] font-black leading-none text-black"
@@ -316,10 +353,31 @@ export function AlertasCancelados({
           className="fixed inset-x-3 top-[10dvh] z-50 max-h-[70dvh] space-y-4 overflow-y-auto rounded-[2rem] border border-admin-border bg-zinc-950/95 p-4 shadow-2xl backdrop-blur-2xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-3 sm:max-h-[min(70vh,640px)] sm:w-[min(calc(100vw-3rem),640px)]"
         >
           {avisoIncompleto}
-          {onTentarConferirAlertas ? (
+          {mostrarRetentativa ? (
             <div className="flex flex-wrap items-center gap-x-3 text-sm text-zinc-200">
-              <p role="alert">{AVISO_ALERTAS_NAO_CONFERIDOS}</p>
-              <Button variant="outline" onClick={onTentarConferirAlertas}>
+              <p role="status" className={conferindo ? undefined : "sr-only"}>
+                {conferindo ? "Conferindo…" : null}
+              </p>
+              {!conferindo && (
+                <p role="alert">{AVISO_ALERTAS_NAO_CONFERIDOS}</p>
+              )}
+              <Button
+                type="button"
+                ref={tentarRef}
+                variant="outline"
+                aria-disabled={conferindo}
+                onClick={async () => {
+                  if (!onTentarConferirAlertas || consultaEmCurso.current)
+                    return;
+                  consultaEmCurso.current = true;
+                  setRetentativa("tentando");
+                  try {
+                    await onTentarConferirAlertas();
+                  } finally {
+                    setRetentativa("concluida");
+                  }
+                }}
+              >
                 Tentar de novo
               </Button>
             </div>

@@ -7,6 +7,7 @@ import {
   lerGeracaoDaVisaoDoCrm,
 } from "@/lib/cache-da-visao-do-crm";
 import { criarCanalDeAbas } from "@/lib/canal-de-abas";
+import { assinarEnquantoVisivel } from "@/lib/canal-do-painel-independente";
 import {
   lerClientesDoCrm,
   lerVisaoDoCrm,
@@ -391,7 +392,7 @@ export function useDashboardClassico(
   /** O dia de hoje da loja (`useDiaDeSaoPaulo`); a virada relê o resumo. */
   dia?: string,
 ): EstadoDoDashboardClassico {
-  const { session } = useAuth();
+  const { session, isAdmin } = useAuth();
   // Só "há sessão ou não": o AuthContext troca o OBJETO a cada SIGNED_IN
   // (reanunciado ao voltar ao app) e isso recriaria os 4 canais ao vivo.
   const temSessao = Boolean(session);
@@ -469,6 +470,66 @@ export function useDashboardClassico(
   useEffect(() => {
     if (!temSessao || !active) return;
 
+    // Quem abre a Visão geral é sempre o PAINEL. Sendo admin numa aba
+    // SEGUIDORA, ela assina os próprios canais enquanto estiver visível, em vez
+    // de esperar o repasse da líder (que pode ser a vitrine e nunca avisar). A
+    // líder segue pelo ramo de baixo, que não muda: um conjunto de canais por
+    // aba. Nomes com sufixo `-painel` não colidem com os da líder quando a aba
+    // vira líder e os canais velhos ainda estão fechando. Ao voltar a aparecer
+    // (`reabertura`) relê uma vez: o que mudou com a aba escondida não chegou por
+    // evento, e a trava de 30 s do `useRevalidarAoVoltar` pode não deixar reler.
+    if (isAdmin && !isLeader) {
+      return assinarEnquantoVisivel((reabertura) => {
+        const aoMudar = () => triggerRealtimeRefresh();
+        if (reabertura) triggerRealtimeRefresh();
+        const canais = [
+          supabase
+            .channel("admin-dashboard-orders-painel")
+            .on(
+              "postgres_changes",
+              { event: "*", schema: "public", table: "marketplace_orders" },
+              aoMudar,
+            )
+            .subscribe(),
+          supabase
+            .channel("admin-dashboard-products-painel")
+            .on(
+              "postgres_changes",
+              { event: "*", schema: "public", table: "produtos" },
+              aoMudar,
+            )
+            .subscribe(),
+          supabase
+            .channel("admin-dashboard-reviews-painel")
+            .on(
+              "postgres_changes",
+              { event: "*", schema: "public", table: "reviews" },
+              aoMudar,
+            )
+            .subscribe(),
+          supabase
+            .channel("admin-dashboard-qa-painel")
+            .on(
+              "postgres_changes",
+              { event: "*", schema: "public", table: "questions" },
+              aoMudar,
+            )
+            .on(
+              "postgres_changes",
+              { event: "*", schema: "public", table: "answers" },
+              aoMudar,
+            )
+            .subscribe(),
+        ];
+        return () => {
+          for (const canal of canais) supabase.removeChannel(canal);
+          if (debounceTimerRef.current) {
+            clearTimeout(debounceTimerRef.current);
+          }
+        };
+      });
+    }
+
     const bc = criarCanalDeAbas("ikcous_admin_dashboard_realtime");
     let ordersChannel: ReturnType<typeof supabase.channel> | null = null;
     let productsChannel: ReturnType<typeof supabase.channel> | null = null;
@@ -539,7 +600,7 @@ export function useDashboardClassico(
         clearTimeout(debounceTimerRef.current);
       }
     };
-  }, [temSessao, active, isLeader, triggerRealtimeRefresh]);
+  }, [temSessao, active, isLeader, isAdmin, triggerRealtimeRefresh]);
 
   const categorias = useMemo<CategoriaDoDashboard[]>(() => {
     if (!categoryData) return [];

@@ -778,8 +778,13 @@ describe("de ponta a ponta com o hook", () => {
     expect(ultimo.estado.recibo?.orderId).toBe(OUTRO_ORDER_ID);
     expect(ultimo.estado.recibo?.anulada).toBeUndefined();
     expect(hospedeiro.textContent).not.toContain("Venda anulada");
-    expect(botao(hospedeiro, "Enviar por WhatsApp")).toBeDefined();
-    expect(botao(hospedeiro, "Imprimir")).toBeDefined();
+    // B segue divergente e NÃO anulada: os botões existem, mas desligados até
+    // a caixa anular (nada de comprovante com total diferente do cobrado).
+    expect(botao(hospedeiro, "Enviar por WhatsApp")?.disabled).toBe(true);
+    expect(botao(hospedeiro, "Imprimir")?.disabled).toBe(true);
+    expect(hospedeiro.textContent).toContain(
+      "Anule esta venda antes de enviar ou imprimir.",
+    );
     expect(
       botao(hospedeiro, "Registrar de novo com os itens da tela"),
     ).toBeUndefined();

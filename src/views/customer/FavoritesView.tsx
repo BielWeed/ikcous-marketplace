@@ -22,6 +22,7 @@ import React, {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -206,6 +207,15 @@ export const FavoritesView = React.memo(function FavoritesView({
   const idBase = useId();
   const listaRef = useRef<HTMLDivElement>(null);
   const [comDesconto, setComDesconto] = useState(false);
+  const tituloDaListaRef = useRef<HTMLHeadingElement>(null);
+  const focarListaAposLimpar = useRef(false);
+
+  useLayoutEffect(() => {
+    if (comDesconto || !focarListaAposLimpar.current) return;
+    focarListaAposLimpar.current = false;
+    tituloDaListaRef.current?.focus();
+  }, [comDesconto]);
+
   const [ordem, setOrdem] = useState("original");
   const [expandidas, setExpandidas] = useState<ReadonlySet<string>>(
     () => new Set(),
@@ -734,7 +744,9 @@ export const FavoritesView = React.memo(function FavoritesView({
       )}
 
       <p role="status" className="sr-only">
-        {total} {total === 1 ? "produto encontrado" : "produtos encontrados"}
+        {total === 0
+          ? "Nenhum favorito com esses filtros."
+          : `${total} ${total === 1 ? "produto encontrado" : "produtos encontrados"}`}
       </p>
       {total === 0 && (
         <div className="px-4 py-10 text-center text-sm">
@@ -744,7 +756,10 @@ export const FavoritesView = React.memo(function FavoritesView({
           <button
             type="button"
             className="mt-3 min-h-11 rounded-full border border-border bg-card px-5 font-semibold text-card-foreground"
-            onClick={() => setComDesconto(false)}
+            onClick={() => {
+              focarListaAposLimpar.current = true;
+              setComDesconto(false);
+            }}
           >
             Limpar filtros
           </button>
@@ -772,6 +787,8 @@ export const FavoritesView = React.memo(function FavoritesView({
               <div className="flex items-baseline justify-between gap-3">
                 <h2
                   id={idTitulo}
+                  ref={indice === 0 ? tituloDaListaRef : undefined}
+                  tabIndex={indice === 0 ? -1 : undefined}
                   className="min-w-0 break-words text-lg font-bold"
                 >
                   {secao.nome}

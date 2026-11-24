@@ -201,7 +201,7 @@ describe("AdminPdvView — peça gravada que a tela não tem mais (achado 6)", (
     await avancar();
   }
 
-  it("a peça gravada que a tela não tem sai COM o tamanho: na linha do recibo, no aviso vermelho e no papel", async () => {
+  it("a peça gravada que a tela não tem sai COM o tamanho: na linha do recibo, e no aviso vermelho (o papel nem existe até anular)", async () => {
     await registrar();
 
     const linhas = [...hospedeiro.querySelectorAll(".pdv-receipt-lines li")];
@@ -214,8 +214,9 @@ describe("AdminPdvView — peça gravada que a tela não tem mais (achado 6)", (
       "1 peça a mais do que a tela: Camiseta Tamanho G.",
     );
 
-    const papel = document.querySelector("[data-tema-fixo]");
-    expect(papel?.textContent).toContain("Camiseta - Tamanho G");
+    // Com divergência por anular, o papel nem existe na página (1.5.232): nada
+    // imprime e Ctrl+P não contorna. O tamanho continua na linha e no aviso.
+    expect(document.querySelector("[data-tema-fixo]")).toBeNull();
   });
 
   it("só pergunta ao banco pelas peças que a tela NÃO explica (a M já tem rótulo no cupom)", async () => {

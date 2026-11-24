@@ -486,10 +486,10 @@ export const SearchView = React.memo(function SearchView({
               </SheetTrigger>
               <SheetContent
                 side="bottom"
-                className={cn(
-                  "max-h-[90vh] overflow-y-auto rounded-t-[3rem] p-8",
-                  "lg:overflow-hidden",
-                )}
+                // Cabeçalho fixo, miolo que rola, rodapé fixo (o "Aplicar
+                // Filtros" nunca cai abaixo da dobra) com folga da barra do
+                // iPhone. `dvh`: `vh` ignora a barra do navegador que sobe.
+                className="max-h-[90dvh] overflow-hidden rounded-t-[3rem] p-8 pb-[calc(2rem+env(safe-area-inset-bottom,0px))]"
               >
                 <SheetHeader className={cn("mb-8", "lg:px-8 lg:pt-8 lg:pr-14")}>
                   <div className="flex items-center justify-between">
@@ -507,12 +507,7 @@ export const SearchView = React.memo(function SearchView({
                   </div>
                 </SheetHeader>
 
-                <div
-                  className={cn(
-                    "space-y-8 pb-10",
-                    "lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:px-8 lg:pb-8",
-                  )}
-                >
+                <div className="min-h-0 flex-1 space-y-8 overflow-y-auto overscroll-contain pb-4 lg:px-8">
                   <div>
                     <p className="mb-4 text-[10px] font-black uppercase tracking-widest text-zinc-600 dark:text-zinc-400">
                       Categorias
@@ -526,7 +521,7 @@ export const SearchView = React.memo(function SearchView({
                           className={`min-h-11 rounded-2xl border px-5 py-2.5 text-[11px] font-bold transition-all ${
                             category === catName
                               ? "scale-105 border-primary bg-primary text-primary-foreground shadow-lg shadow-black/10"
-                              : "border-zinc-100 bg-zinc-50 text-zinc-600 hover:border-zinc-300"
+                              : "border-zinc-100 bg-zinc-50 text-zinc-600 hover:border-zinc-300 dark:border-border dark:bg-muted dark:text-muted-foreground"
                           }`}
                         >
                           {catName}
@@ -556,7 +551,7 @@ export const SearchView = React.memo(function SearchView({
                           className={`min-h-11 rounded-2xl border px-4 py-3 text-[11px] font-bold transition-all ${
                             sort === option.value
                               ? "border-primary bg-primary text-primary-foreground"
-                              : "border-zinc-100 bg-zinc-50 text-zinc-600 hover:border-zinc-300"
+                              : "border-zinc-100 bg-zinc-50 text-zinc-600 hover:border-zinc-300 dark:border-border dark:bg-muted dark:text-muted-foreground"
                           }`}
                         >
                           {option.label}
@@ -564,13 +559,12 @@ export const SearchView = React.memo(function SearchView({
                       ))}
                     </div>
                   </div>
+                </div>
 
+                <div className="shrink-0 lg:px-8 lg:pb-8">
                   <Button
                     onClick={() => setIsFilterOpen(false)}
-                    className={cn(
-                      "h-14 w-full rounded-2xl bg-primary text-xs font-black uppercase tracking-widest text-primary-foreground shadow-2xl shadow-black/10 transition-all hover:bg-primary/90",
-                      "lg:sticky lg:bottom-0 lg:z-10",
-                    )}
+                    className="h-14 w-full rounded-2xl bg-primary text-xs font-black uppercase tracking-widest text-primary-foreground shadow-2xl shadow-black/10 transition-all hover:bg-primary/90"
                   >
                     Aplicar Filtros
                   </Button>

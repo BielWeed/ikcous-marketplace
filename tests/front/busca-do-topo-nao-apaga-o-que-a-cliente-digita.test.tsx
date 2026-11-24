@@ -9,6 +9,8 @@
 // voltar e comparar. Trocar de aba continua limpando.
 //
 // Aqui o App roda de verdade, com a SearchBar de verdade no lugar do Header.
+
+import { RodapeDasPoliticas } from "@/components/politicas/RodapeDasPoliticas";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -100,8 +102,12 @@ vi.mock("@/views/customer/HomeView", () => ({
       >
         Busca
       </button>
+      <RodapeDasPoliticas onNavigate={onNavigate} />
     </div>
   ),
+}));
+vi.mock("@/views/customer/AboutStoreView", () => ({
+  AboutStoreView: () => <div data-testid="tela-sobre-a-loja" />,
 }));
 vi.mock("@/views/customer/SearchView", () => ({
   SearchView: () => <div data-testid="tela-busca" />,
@@ -237,12 +243,15 @@ const catalogo = vi.hoisted(() => [
     freeShipping: false,
   },
 ]);
-vi.mock("@/hooks/useCategories", () => ({
-  useCategories: () => ({
-    categories: [{ id: "vestidos", name: "Vestidos", isActive: true }],
-    isLoading: false,
-  }),
-}));
+vi.mock("@/hooks/useCategories", () => {
+  const categories = [
+    { id: "vestidos", name: "Vestidos", isActive: true, icone: "moda" },
+  ];
+  return {
+    categoriasEmMemoria: () => categories,
+    useCategories: () => ({ categories, isLoading: false }),
+  };
+});
 vi.mock("@/hooks/useProducts", () => ({
   useProducts: () => ({ products: catalogo, loading: false }),
 }));
@@ -608,6 +617,75 @@ describe("a busca do topo nao apaga o que a cliente digita fora da Home", () => 
       expect(campo().value).toBe("");
       expect(termoDaHome()).toBe("");
     });
+  });
+
+  const aguardarNoSobre = async () => {
+    await aguardar(() => {
+      expect(caminho()).toBe("/about-store");
+      expect(
+        container?.querySelector('[data-testid="tela-sobre-a-loja"]'),
+      ).not.toBeNull();
+      expect(campo().value).toBe("");
+    });
+  };
+
+  const irAoSobreEVoltar = async () => {
+    const link = Array.from(
+      container?.querySelectorAll<HTMLButtonElement>(
+        '[data-testid="rodape-das-politicas"] button',
+      ) ?? [],
+    ).find((botao) => botao.textContent?.trim() === "Sobre a loja");
+    if (!link) throw new Error("Sobre a loja não encontrado no rodapé");
+    await act(async () => link.click());
+    await aguardarNoSobre();
+    await act(async () => globalThis.history.back());
+  };
+
+  const buscarVestidoNaHome = async () => {
+    await digitar("vestido");
+    await act(async () => {
+      campo().dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+      );
+    });
+    await aguardarNaHomeCom("vestido");
+  };
+
+  it("voltar de Sobre a loja devolve a busca à Home sem reviver termo apagado", async () => {
+    await abrir();
+    await buscarVestidoNaHome();
+
+    await irAoSobreEVoltar();
+    await aguardarNaHomeCom("vestido");
+    expect(globalThis.location.search).toBe("");
+
+    // O primeiro Voltar pode criar a trava já existente da Home. Nesta nova
+    // ida o termo fica na entrada que será reutilizada no teste do vazio.
+    await irAoSobreEVoltar();
+    await aguardarNaHomeCom("vestido");
+
+    await digitarEEsperar("");
+    await irAoSobreEVoltar();
+    await aguardarNaHomeCom("");
+  });
+
+  it("Avançar para Sobre a loja e voltar não revive o termo apagado na Home", async () => {
+    await abrir();
+    await buscarVestidoNaHome();
+
+    // O primeiro Voltar pode criar a trava da Home e descartar o Avançar.
+    // A segunda ida e volta usa a entrada já protegida.
+    await irAoSobreEVoltar();
+    await aguardarNaHomeCom("vestido");
+    await irAoSobreEVoltar();
+    await aguardarNaHomeCom("vestido");
+
+    await digitarEEsperar("");
+    await act(async () => globalThis.history.forward());
+    await aguardarNoSobre();
+    await act(async () => globalThis.history.back());
+
+    await aguardarNaHomeCom("");
   });
 
   it.each([

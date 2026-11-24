@@ -338,7 +338,9 @@ describe("CampoDeCategoria — a folha de baixo", () => {
     await montar({ valor: "" });
     await abrir();
     for (const b of botoesDaFolha()) expect(b.type).toBe("button");
-    expect(folha()?.className).toContain("max-h-[85dvh]");
+    expect(folha()?.className).toContain(
+      "max-h-[min(85dvh,var(--altura-da-folha,85dvh))]",
+    );
     expect(folha()?.className).toContain("rounded-t-[28px]");
     // O corpo (grade) rola; o rodapé "Organizar categorias" fica fora dele.
     const corpo = cartao("Calçados")?.closest(".overflow-y-auto");

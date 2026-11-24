@@ -398,9 +398,9 @@ export const HistoricoCotacoesSection = memo(
                 // Sem agrupamento nesta leitura: uma linha de dado por
                 // consulta, então a contagem crua já é a verdade da tela.
                 <>
-                  Exibindo {logs.length === 1 ? "a" : "as"} {logs.length}{" "}
-                  {logs.length === 1 ? "consulta" : "consultas"} mais recente
-                  {logs.length === 1 ? "" : "s"}
+                  {logs.length === 1
+                    ? "Exibindo a consulta mais recente"
+                    : `Exibindo as ${logs.length} consultas mais recentes`}
                 </>
               ) : (
                 // RODADA DE CORREÇÃO (achado ANOTADO): com agrupamento a

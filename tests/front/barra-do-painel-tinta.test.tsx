@@ -281,7 +281,7 @@ describe("AdminLayout — cabeçalho do celular", () => {
   }
 
   const sinoDe = (cab: HTMLElement) =>
-    cab.querySelector<HTMLButtonElement>('button[aria-label="Notificações"]')!;
+    cab.querySelector<HTMLButtonElement>('button[aria-label^="Notificações"]')!;
 
   it("Voltar/Perfil: retângulo de raio 16 com contorno sólido e texto visível", async () => {
     for (const [view, rotulo] of [
@@ -331,7 +331,9 @@ describe("AdminLayout — cabeçalho do celular", () => {
     expect(ponto!.className).toContain("ring-admin-nav");
     expect(ponto!.textContent).toBe("");
     expect(sino.getAttribute("title")).toBe("Há avisos para conferir");
-    expect(sino.getAttribute("aria-label")).toBe("Notificações");
+    expect(sino.getAttribute("aria-label")).toBe(
+      "Notificações, há avisos para conferir",
+    );
   });
 
   it("conferência que FALHA: o sino mostra '!' e fica com contorno de erro", async () => {

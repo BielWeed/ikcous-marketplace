@@ -598,6 +598,25 @@ describe("Notificações v5 — funções preservadas", () => {
     expect(container?.querySelector('[role="alert"]')).toBeNull();
   });
 
+  it("cancelamentos cortados: diz que sao os mais recentes e manda ver o resto em Pedidos (24/11/2026)", async () => {
+    // Pedido pago cancelado = dinheiro a devolver: o aviso nao pode aparecer
+    // como caixa vazia (texto `undefined`) nem faltar.
+    LISTAS_CORTADAS = ["cancelamento"];
+    await montar();
+
+    const aviso = container?.querySelector(
+      '[data-lista-cortada="cancelamento"]',
+    );
+    expect(aviso?.textContent).toContain(
+      "Há mais cancelamentos nas últimas 24 horas do que cabem nesta tela",
+    );
+    expect(aviso?.textContent).toContain("os mais recentes");
+    expect(aviso?.textContent).toContain("Pedidos");
+    expect(aviso?.textContent).not.toContain("undefined");
+    expect(aviso?.querySelector("button")).toBeNull();
+    expect(container?.querySelector('[role="alert"]')).toBeNull();
+  });
+
   it("lista cortada: o rodape nao afirma 'no total' (a conta seria falsa); sem corte, continua 'no total'", async () => {
     await montar();
     expect(container?.textContent).toContain("4 avisos no total");

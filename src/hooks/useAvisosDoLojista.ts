@@ -51,6 +51,13 @@ const TETO_DE_SEGURANCA_DE_PRODUTOS = 2000;
 const TETO_DE_AVALIACOES = 100;
 
 /**
+ * Quantos cancelamentos das ultimas 24 h a leitura traz (os MAIS NOVOS). Conta
+ * clientes E admin: o admin so sai depois, na selecao. Passando disto a leitura
+ * devolve `truncou` e a tela avisa que a lista esta cortada.
+ */
+const TETO_DE_CANCELAMENTOS = 100;
+
+/**
  * Quanto a tela espera CADA fonte antes de contar que ela nao respondeu.
  * Rede "pendurada" conecta e nao responde: sem prazo, uma fonte parada segurava
  * a lista inteira em "Atualizando os avisos..." (nem a falha aparecia, porque
@@ -215,27 +222,46 @@ async function buscarAvaliacoesSemResposta(): Promise<LeituraDeAvaliacoes> {
 // pela politica de SELECT do historico. O papel dos autores vem de
 // `profiles`: sem ele nao ha como excluir o admin que cancelou, entao a
 // falha dele e falha da FONTE (lanca), nunca "nenhum cancelamento".
-async function buscarCancelamentosDoCliente(): Promise<
-  CancelamentoDoCliente[]
-> {
+//
+// 24/11/2026: o corte em 100 acontece ANTES de tirar os cancelamentos do admin.
+// Com mais de 100 cancelamentos em 24 h (clientes + admin), o mais antigo de um
+// pedido pago (dinheiro a devolver) ficava fora da leitura e nada avisava. Agora
+// a consulta pede `count: "exact"` e a leitura devolve `truncou`, que vira o
+// aviso de lista cortada, igual as avaliacoes e os recebimentos.
+interface LeituraDeCancelamentos {
+  cancelamentos: CancelamentoDoCliente[];
+  /** Havia mais cancelamentos na janela que o teto: esta lista traz so os mais novos. */
+  truncou: boolean;
+}
+
+async function buscarCancelamentosDoCliente(): Promise<LeituraDeCancelamentos> {
   const desde = new Date(
     Date.now() - JANELA_DE_CANCELAMENTO_HORAS * 3600 * 1000,
   ).toISOString();
 
-  const { data, error } = await supabase
+  const { data, error, count } = await supabase
     .from("marketplace_order_history")
     .select(
       "id, order_id, old_status, created_by, created_at, marketplace_orders(id, user_id, customer_name, total, payment_status, status, cancelled_after_shipping, returned_to_seller_at, customer_data->>pickup_address)",
+      { count: "exact" },
     )
     .eq("new_status", "cancelled")
     .not("created_by", "is", null)
     .gte("created_at", desde)
     .order("created_at", { ascending: false })
-    .limit(100);
+    .limit(TETO_DE_CANCELAMENTOS);
   if (error) throw error;
 
   const linhas = (data ?? []) as unknown as LinhaDeCancelamento[];
-  if (linhas.length === 0) return [];
+  // Comparado com as linhas LIDAS (antes de tirar as do admin): o teto e limite
+  // da leitura. Sem numero na resposta, lista cheia conta como cortada: aqui ha
+  // dinheiro a devolver, e falso alarme custa uma linha, omissao custa um
+  // reembolso que ninguem viu.
+  const truncou =
+    typeof count === "number"
+      ? count > linhas.length
+      : linhas.length >= TETO_DE_CANCELAMENTOS;
+  if (linhas.length === 0) return { cancelamentos: [], truncou };
 
   const autores = [
     ...new Set(
@@ -253,7 +279,10 @@ async function buscarCancelamentosDoCliente(): Promise<
       .filter((perfil) => perfil.role === "admin")
       .map((perfil) => perfil.id),
   );
-  return selecionarCancelamentosDoCliente(linhas, admins);
+  return {
+    cancelamentos: selecionarCancelamentosDoCliente(linhas, admins),
+    truncou,
+  };
 }
 
 interface LeituraDeProdutos {
@@ -404,7 +433,9 @@ export function useAvisosDoLojista(): AvisosDoLojista {
     if (rDevolucoes.status === "rejected") falhas.push("devolucao");
 
     const cancelamentosDoCliente =
-      rCancelamentos.status === "fulfilled" ? rCancelamentos.value : [];
+      rCancelamentos.status === "fulfilled"
+        ? rCancelamentos.value.cancelamentos
+        : [];
     if (rCancelamentos.status === "rejected") falhas.push("cancelamento");
 
     const pedidosDePrivacidadeAbertos =
@@ -417,6 +448,11 @@ export function useAvisosDoLojista(): AvisosDoLojista {
     if (rRecebimentos.status === "rejected") falhas.push("recebimento");
 
     const cortadas: TipoDeAviso[] = [];
+    // Mais cancelamentos na janela de 24 h que o teto: a lista traz os mais
+    // novos, e o que ficou de fora pode ser um pedido pago a devolver.
+    if (rCancelamentos.status === "fulfilled" && rCancelamentos.value.truncou) {
+      cortadas.push("cancelamento");
+    }
     // Mais pagamentos por marcar que o teto: a lista traz os mais recentes e a
     // tela precisa dizer isso (o sino conta todos).
     if (rRecebimentos.status === "fulfilled" && rRecebimentos.value.truncou) {

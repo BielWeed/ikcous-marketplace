@@ -9,8 +9,10 @@
 // configuração). Passando do teto, o painel do lojista pode ficar sem vaga e
 // deixar de ver o pedido novo.
 //
-// A REGRA: tempo real só para o painel e para a cliente logada. Visitante sem
-// login atualiza ao VOLTAR À ABA, com intervalo mínimo entre rodadas.
+// A REGRA (atualizada em 24/11/2026): o canal de catálogo é só do painel (o
+// StoreContext passa `isAdmin` no 4o argumento). Visitante E cliente logada
+// atualizam ao VOLTAR À ABA, com intervalo mínimo entre rodadas. O motor só
+// enxerga o booleano: aqui "sem sessão" quer dizer "sem canal de catálogo".
 //
 // O QUE ESTA SUÍTE TRAVA (motor da vitrine, src/lib/realtimeSyncEngine.ts):
 //   (a) sem sessão nenhum `channel()` é criado;
@@ -22,7 +24,9 @@
 //       o SUBSCRIBED do canal que a disparava);
 //   (e) borda: um segundo `start` com o primeiro ainda de pé é barrado (sem
 //       canal não havia mais `_channel` para o guarda enxergar), e `parar()`
-//       solta os ouvintes de aba.
+//       solta os ouvintes de aba;
+//   (f) borda: troca de papel (lojista -> cliente -> lojista) solta o canal
+//       antigo e nunca deixa canal vazado nem duplicado.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const JANELA_MINIMA_MS = 60_000;
@@ -211,6 +215,52 @@ describe("motor da vitrine — visitante sem login não abre canal", () => {
     expect(espiao).toHaveBeenCalledTimes(antes);
     expect(canaisCriados).toEqual([]);
 
+    espiao.mockRestore();
+  });
+
+  it("(f) troca de papel: lojista -> cliente solta o canal e não abre outro; cliente -> lojista abre um só", async () => {
+    const { engine, espiao } = await carregarMotor();
+    const { supabase } = await import("@/lib/supabase");
+    // O dublê é compartilhado entre os testes do arquivo: conta só os daqui.
+    vi.mocked(supabase.removeChannel).mockClear();
+
+    // Lojista no painel: canal de catálogo aberto.
+    const pararLojista = engine.start(
+      dubleDeCofreVazio() as any,
+      true,
+      true,
+      true,
+    );
+    expect(canaisCriados).toEqual(["datavault-sync"]);
+
+    // O mesmo aparelho passa a ser uma cliente (o StoreContext para o motor e
+    // sobe de novo com `comCanalDeCatalogo = isAdmin = false`).
+    pararLojista();
+    expect(supabase.removeChannel).toHaveBeenCalledTimes(1);
+    const rodadasAntes = espiao.mock.calls.length;
+    const pararCliente = engine.start(
+      dubleDeCofreVazio() as any,
+      true,
+      false,
+      false,
+    );
+    expect(canaisCriados).toEqual(["datavault-sync"]); // nenhum canal novo
+    // Sem canal a rodada da subida vem do `start` (era o SUBSCRIBED).
+    expect(espiao).toHaveBeenCalledTimes(rodadasAntes + 1);
+
+    // E de volta ao painel: exatamente um canal novo (o antigo já foi solto).
+    pararCliente();
+    expect(supabase.removeChannel).toHaveBeenCalledTimes(1);
+    const pararDeNovo = engine.start(
+      dubleDeCofreVazio() as any,
+      true,
+      true,
+      true,
+    );
+    expect(canaisCriados).toEqual(["datavault-sync", "datavault-sync"]);
+
+    pararDeNovo();
+    expect(supabase.removeChannel).toHaveBeenCalledTimes(2);
     espiao.mockRestore();
   });
 });

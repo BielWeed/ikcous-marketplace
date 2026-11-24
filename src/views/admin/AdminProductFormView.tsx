@@ -51,6 +51,7 @@ import { useAoMudarCategoria } from "@/hooks/useAoMudarCategoria";
 import { useCamadaDeTelaCheia } from "@/hooks/useCamadaDeTelaCheia";
 import { useCategories } from "@/hooks/useCategories";
 import { useConfirmarAcao } from "@/hooks/useConfirmarAcao";
+import { useConteudoAteASaida } from "@/hooks/useConteudoAteASaida";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
 // Só o TIPO da resposta da RPC do PDV — import "type" some da build, então
@@ -76,6 +77,10 @@ import {
   mesmaCategoria,
 } from "@/lib/gestao-de-categorias";
 import { imagemAbre } from "@/lib/imagem-abre";
+import {
+  LIMITE_DA_DESCRICAO_DO_PRODUTO,
+  LIMITE_DO_NOME_DO_PRODUTO,
+} from "@/lib/limites-do-produto";
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { percentualComUmaCasa } from "@/lib/percentual";
 import { pluralizar } from "@/lib/pluralizar";
@@ -475,7 +480,6 @@ interface AdminProductFormViewProps {
   userId?: string;
 }
 
-const LIMITE_DO_NOME_DO_PRODUTO = 200;
 const ESTOQUE_MAXIMO_DO_PRODUTO = 10000;
 const AJUDA_DO_ESTOQUE_DISPONIVEL =
   "As peças reservadas para pedidos não entram nesse número. Ao conferir a prateleira, não conte essas peças.";
@@ -994,6 +998,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     | null
   >(null);
   const [showCategoryForm, setShowCategoryForm] = useState(false);
+  // A folha "Nova categoria" segue montada até a animação de saída terminar
+  // (fechar não pode fazê-la sumir seca); `showCategoryForm` é o estado real.
+  const { chave: folhaDeCategoriaMontada, abertura: aberturaDaCategoria } =
+    useConteudoAteASaida(showCategoryForm ? "aberta" : null);
   const [gerenciandoCategorias, setGerenciandoCategorias] = useState(false);
   // A folha "Categoria" (o campo a controla; o formulário só precisa saber se
   // está aberta, para o Voltar do celular fechá-la).
@@ -4589,13 +4597,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         </LimiteDePedaco>
       )}
 
-      {showCategoryForm && (
+      {folhaDeCategoriaMontada !== null && (
         <LimiteDePedaco
           pedacos={[FolhaDeNovaCategoria]}
           aoFechar={() => setShowCategoryForm(false)}
         >
           <Suspense fallback={null}>
             <FolhaDeNovaCategoria
+              key={aberturaDaCategoria}
+              aberta={showCategoryForm}
               categoriasDaLoja={dbCategories}
               adicionar={addCategory}
               atualizarIcone={updateCategory}
@@ -5865,6 +5875,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 <LocalBufferedTextarea
                   id="product-description"
                   name="product-description"
+                  maxLength={LIMITE_DA_DESCRICAO_DO_PRODUTO}
                   value={formData.description}
                   onFlush={(val) =>
                     setFormData((prev) => ({ ...prev, description: val }))

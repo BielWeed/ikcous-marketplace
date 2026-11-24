@@ -1,6 +1,7 @@
 import { LazyImage } from "@/components/LazyImage";
 import { BotaoDeFavorito } from "@/components/ui/custom/BotaoDeFavorito";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { useArrastarParaFechar } from "@/hooks/useArrastarParaFechar";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { isViewTransitionSupported } from "@/hooks/useViewTransition";
 import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
@@ -243,53 +244,25 @@ export const ProductCard = memo(function ProductCard({
 
   // ── Arrasto da alça da folha (peça 03, 13/09 — pedido do dono ao vivo) ──
   // Puxar a barrinha para baixo arrasta a folha junto; soltar além de 64px
-  // fecha, soltar antes devolve ao lugar. Os listeners de move/up moram na
-  // JANELA (não em setPointerCapture): o gesto continua mesmo com o dedo
-  // saindo da alça, e dispensa API que o jsdom não tem. O clique simples é
-  // outro caminho (onClick); depois de um arrasto de verdade o clique
-  // sintético do navegador é engolido (`movimentou`) para um arrasto curto
-  // que voltou ao lugar não fechar por acidente.
-  const arrastoDaAlcaRef = useRef({ y: 0, ativo: false, movimentou: false });
-  // A guarda `movimentou` (clique sintético pós-arrasto) só era limpa no
-  // próximo pointerdown — mas ativação por TECLADO (Enter/Espaço num button)
+  // fecha, soltar antes devolve ao lugar. O gesto mora no hook compartilhado
+  // `useArrastarParaFechar` (o mesmo de todas as folhas inferiores): listeners
+  // na JANELA, sem setPointerCapture, e a folha desce da posição em que o dedo
+  // a largou. O clique simples é outro caminho (onClick); depois de um arrasto
+  // de verdade o clique sintético do navegador é engolido (`engoliuClique`)
+  // para um arrasto curto que voltou ao lugar não fechar por acidente.
+  const arrastoDaAlca = useArrastarParaFechar(() =>
+    setFolhaOpcoesAberta(false),
+  );
+  // A guarda (clique sintético pós-arrasto) só era limpa no próximo
+  // pointerdown — mas ativação por TECLADO (Enter/Espaço num button)
   // dispara click SEM pointerdown: logo depois de um arrasto-que-fechou,
   // reabrir a folha e dar Enter na alça era engolido na primeira tentativa.
   // Limpar o marcador quando a folha ABRE cobre todos os caminhos de
   // abertura; o arrasto corrente dentro da sessão continua guardado.
+  const { zerarGuarda } = arrastoDaAlca;
   useEffect(() => {
-    if (folhaOpcoesAberta) arrastoDaAlcaRef.current.movimentou = false;
-  }, [folhaOpcoesAberta]);
-  const aoPuxarAlcaDaFolha = (e: React.PointerEvent<HTMLButtonElement>) => {
-    const folhaEl = e.currentTarget.closest<HTMLElement>(
-      '[data-slot="sheet-content"]',
-    );
-    if (!folhaEl) return;
-    arrastoDaAlcaRef.current = { y: e.clientY, ativo: true, movimentou: false };
-    // A folha segue o dedo SEM transição — a classe base carrega
-    // `transition` para abrir/fechar, e durante o arrasto ela viraria atraso.
-    folhaEl.style.transition = "none";
-    const aoMover = (ev: PointerEvent) => {
-      if (!arrastoDaAlcaRef.current.ativo) return;
-      const dy = Math.max(0, ev.clientY - arrastoDaAlcaRef.current.y);
-      if (dy > 8) arrastoDaAlcaRef.current.movimentou = true;
-      folhaEl.style.transform = `translateY(${dy}px)`;
-    };
-    const aoSoltar = (ev: PointerEvent) => {
-      window.removeEventListener("pointermove", aoMover);
-      window.removeEventListener("pointerup", aoSoltar);
-      window.removeEventListener("pointercancel", aoSoltar);
-      arrastoDaAlcaRef.current.ativo = false;
-      // Limpa o transform ANTES de fechar para a animação de saída
-      // (slide-out-to-bottom) partir do lugar certo.
-      folhaEl.style.transition = "";
-      folhaEl.style.transform = "";
-      const dy = ev.clientY - arrastoDaAlcaRef.current.y;
-      if (dy > 64) setFolhaOpcoesAberta(false);
-    };
-    window.addEventListener("pointermove", aoMover);
-    window.addEventListener("pointerup", aoSoltar);
-    window.addEventListener("pointercancel", aoSoltar);
-  };
+    if (folhaOpcoesAberta) zerarGuarda();
+  }, [folhaOpcoesAberta, zerarGuarda]);
 
   const variantGroups = useMemo(() => {
     const grupos = new Map<string, ProductVariant[]>();
@@ -1314,13 +1287,10 @@ export const ProductCard = memo(function ProductCard({
               data-testid="product-card-options-handle"
               aria-label="Fechar (arraste para baixo)"
               onClick={() => {
-                if (arrastoDaAlcaRef.current.movimentou) {
-                  arrastoDaAlcaRef.current.movimentou = false;
-                  return;
-                }
+                if (arrastoDaAlca.engoliuClique()) return;
                 setFolhaOpcoesAberta(false);
               }}
-              onPointerDown={aoPuxarAlcaDaFolha}
+              onPointerDown={arrastoDaAlca.aoApertar}
               className="focus:outline-hidden absolute left-1/2 top-0 z-10 flex h-11 w-20 -translate-x-1/2 cursor-pointer touch-none items-start justify-center rounded-full pt-2 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               <span

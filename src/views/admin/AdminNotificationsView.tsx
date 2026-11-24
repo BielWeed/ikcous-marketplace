@@ -117,6 +117,11 @@ const TEXTO_DE_LISTA_CORTADA = new Map<TipoDeAviso, string>([
     "Há mais avaliações sem resposta do que cabem nesta tela: aqui estão as mais novas. Veja o resto em Avaliações.",
   ],
   [
+    // Pedido pago cancelado = dinheiro a devolver: o resto precisa ser visto.
+    "cancelamento",
+    "Há mais cancelamentos nas últimas 24 horas do que cabem nesta tela: aqui estão os mais recentes. Veja o resto em Pedidos, principalmente os que já estavam pagos.",
+  ],
+  [
     // O sino conta todos os pagamentos por marcar; a lista traz os mais recentes.
     "recebimento",
     "Há mais pagamentos por marcar do que cabem nesta tela: aqui estão os mais recentes. Quando você marcar estes, os mais antigos aparecem.",

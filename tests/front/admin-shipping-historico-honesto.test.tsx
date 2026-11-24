@@ -220,7 +220,7 @@ describe("HistoricoCotacoesSection — o histórico de cotações para de mentir
     );
     expect(textoDoHistorico()).not.toMatch(/Sem transportadora conectada/i);
     expect(textoDoHistorico()).not.toMatch(/Não foi possível/i);
-    expect(textoDoHistorico()).toMatch(/Exibindo a 1 consulta mais recente/i);
+    expect(textoDoHistorico()).toMatch(/Exibindo a consulta mais recente/i);
   });
 
   it("lote E: a seção veste o idioma visual do novo Ajustes (o card é da casca, não do conteúdo)", async () => {

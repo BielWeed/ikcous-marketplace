@@ -285,8 +285,12 @@ describe("Favoritos — lista vertical por categoria", () => {
   it("sem nenhum produto em promoção o filtro continua lá e leva a 'Limpar filtros'", () => {
     montar([favoritos[2]]);
     expect(container.textContent).toContain("1 produto que você salvou");
+    const anuncio = () =>
+      container.querySelector('[role="status"]')?.textContent;
+    expect(anuncio()).toBe("1 produto encontrado");
     tocar("Com desconto");
     expect(nomes()).toEqual([]);
+    expect(anuncio()).toBe("Nenhum favorito com esses filtros.");
     expect(container.textContent).toContain(
       "Nenhum favorito com esses filtros.",
     );

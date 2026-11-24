@@ -729,6 +729,7 @@ export const TransportadorasSection = memo(function TransportadorasSection({
                 typeof data?.error === "string" && data.error
                   ? data.error
                   : "Não foi possível carregar os serviços desta transportadora.",
+              mensagemSessaoOuPermissao: true,
             }),
           );
           return;
@@ -775,6 +776,7 @@ export const TransportadorasSection = memo(function TransportadorasSection({
           mensagemAmigavelErroEdgeFunction(err as Error, {
             mensagemGenerica:
               "Não foi possível carregar os serviços desta transportadora.",
+            mensagemSessaoOuPermissao: true,
           }),
         );
       }
@@ -894,6 +896,7 @@ export const TransportadorasSection = memo(function TransportadorasSection({
             mensagem: mensagemAmigavelErroEdgeFunction(err as Error, {
               mensagemGenerica:
                 "Não deu para falar com o servidor agora. Tente de novo em instantes.",
+              mensagemSessaoOuPermissao: true,
             }),
           },
         });
@@ -1056,6 +1059,7 @@ export const TransportadorasSection = memo(function TransportadorasSection({
           description: mensagemAmigavelErroEdgeFunction(err as Error, {
             mensagemGenerica:
               "Não foi possível falar com o servidor. Tente de novo em instantes.",
+            mensagemSessaoOuPermissao: true,
           }),
         });
         atualizarRascunho(provider, { salvando: false });
@@ -1172,6 +1176,7 @@ export const TransportadorasSection = memo(function TransportadorasSection({
       const descricao = mensagemAmigavelErroEdgeFunction(err as Error, {
         mensagemGenerica:
           "Não foi possível falar com o servidor. Tente de novo em instantes.",
+        mensagemSessaoOuPermissao: true,
       });
       setErroLigados({
         mensagem: "Erro ao salvar os provedores ligados.",

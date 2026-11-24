@@ -144,7 +144,7 @@ describe("ilha do painel sem deslocar o PDV", () => {
     expect(regiao().querySelector("button, [tabindex]")).toBeNull();
     expect(header?.className).toBe(classesDoHeader);
     expect(
-      host.querySelector('header button[aria-label="Notificações"]'),
+      host.querySelector('header button[aria-label^="Notificações"]'),
     ).not.toBeNull();
   });
 
