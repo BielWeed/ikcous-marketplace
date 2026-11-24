@@ -18,6 +18,9 @@ const h = vi.hoisted(() => {
     usuario: { id: "admin" },
     offline: false,
     canal,
+    // Aviso do banco no canal de tempo real que a aba (seguidora) do painel
+    // assina por conta própria: é o que "outro aparelho mudou" vira aqui.
+    avisoDoBanco: null as (() => void) | null,
   };
 });
 vi.mock("@/lib/canal-de-abas", () => ({
@@ -26,6 +29,18 @@ vi.mock("@/lib/canal-de-abas", () => ({
 }));
 vi.mock("@/lib/supabase", () => ({
   supabase: {
+    // Aba seguidora do painel assina o PRÓPRIO canal de tempo real.
+    channel: () => {
+      const canal: any = {
+        on: (_tipo: string, _filtro: unknown, aviso: () => void) => {
+          h.avisoDoBanco = aviso;
+          return canal;
+        },
+        subscribe: () => canal,
+      };
+      return canal;
+    },
+    removeChannel: () => Promise.resolve("ok"),
     rpc: h.rpc,
     from: () => ({
       select: () => ({
@@ -70,6 +85,7 @@ let raiz: Root;
 let host: HTMLDivElement;
 beforeEach(() => {
   h.offline = false;
+  h.avisoDoBanco = null;
   h.rpc.mockReset();
   h.gravarCache.mockClear();
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -203,9 +219,7 @@ it("falha da releitura de outro aparelho não libera a lista do filtro anterior"
   await montar();
   await filtrarSemResposta();
   await act(async () => {
-    h.canal.dispatchEvent(
-      new MessageEvent("message", { data: { type: "reviews_change" } }),
-    );
+    h.avisoDoBanco?.();
   });
   expect(h.rpc).toHaveBeenCalledTimes(3);
   expect(paginas()).toBeNull();
@@ -254,9 +268,7 @@ it("voltar ao filtro A não valida a lista antiga de A se a releitura falhar", a
   expect(paginas()).toBeNull();
 
   await act(async () => {
-    h.canal.dispatchEvent(
-      new MessageEvent("message", { data: { type: "reviews_change" } }),
-    );
+    h.avisoDoBanco?.();
   });
   expect(h.rpc).toHaveBeenCalledTimes(4);
   expect

@@ -381,9 +381,14 @@ export const AdminQAView = memo(function AdminQAView({
   // Subscribe to realtime questions updates
   useEffect(() => {
     if (!active) return;
-    const unsubscribe = subscribeToQuestions(() => {
-      onQuestionEventRef.current();
-    });
+    const unsubscribe = subscribeToQuestions(
+      () => {
+        onQuestionEventRef.current();
+      },
+      undefined,
+      // Tela do painel: assina o próprio canal mesmo numa aba seguidora.
+      { independenteDaLideranca: true },
+    );
     return () => unsubscribe();
   }, [subscribeToQuestions, active]);
 

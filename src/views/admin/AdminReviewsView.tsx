@@ -553,9 +553,14 @@ export const AdminReviewsView = memo(function AdminReviewsView({
     if (!active) return;
     loadReviews(page, false);
 
-    const unsubscribe = subscribeToReviews(() => {
-      loadReviews(page, true);
-    });
+    const unsubscribe = subscribeToReviews(
+      () => {
+        loadReviews(page, true);
+      },
+      undefined,
+      // Tela do painel: assina o próprio canal mesmo numa aba seguidora.
+      { independenteDaLideranca: true },
+    );
 
     return () => {
       unsubscribe();

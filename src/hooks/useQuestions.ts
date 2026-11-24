@@ -4,6 +4,11 @@ import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { aoVoltarAAba } from "@/lib/atualizar-ao-voltar-a-aba";
 import { criarCanalDeAbas } from "@/lib/canal-de-abas";
 import {
+  type OpcoesDaAssinaturaDoPainel,
+  aoMudarOStatusDoCanalDoPainel,
+  assinarEnquantoVisivel,
+} from "@/lib/canal-do-painel-independente";
+import {
   PREFIXO_DE_PERGUNTAS,
   gravarCopiaPorProduto,
 } from "@/lib/copias-por-produto";
@@ -976,7 +981,11 @@ export function useQuestions() {
   );
 
   const subscribeToQuestions = useCallback(
-    (onChange?: () => void, productId?: string) => {
+    (
+      onChange?: () => void,
+      productId?: string,
+      opcoes?: OpcoesDaAssinaturaDoPainel,
+    ) => {
       const channelId = productId
         ? `questions_prod_${productId}`
         : "questions_all";
@@ -994,6 +1003,49 @@ export function useQuestions() {
             return getQuestionsByProduct(productId);
           }
           return getAllQuestions();
+        });
+      }
+
+      // Tela do PAINEL (lista de todas as perguntas) numa aba SEGUIDORA: abre o
+      // próprio canal em vez de esperar o repasse da líder, que pode ser a
+      // vitrine (na página de um produto ela assina com filtro de produto e o
+      // aviso não serve a este painel). Só admin, só sem produto, só com a aba
+      // visível; a líder segue pelo ramo de baixo (um canal só por aba). Nome
+      // próprio: não colide com o `questions_all` da líder quando a aba vira
+      // líder e o canal velho ainda está sendo fechado.
+      if (
+        opcoes?.independenteDaLideranca &&
+        isAdmin &&
+        !productId &&
+        !isLeader
+      ) {
+        return assinarEnquantoVisivel((reabertura) => {
+          const nomeDoCanal = "questions_all_painel";
+          const reler = () => {
+            if (onChange) {
+              onChange();
+            } else {
+              getAllQuestions();
+            }
+          };
+          const canalDoPainel = supabase
+            .channel(nomeDoCanal)
+            .on(
+              "postgres_changes",
+              { event: "*", schema: "public", table: "questions" },
+              reler,
+            )
+            .on(
+              "postgres_changes",
+              { event: "*", schema: "public", table: "answers" },
+              reler,
+            )
+            .subscribe(
+              aoMudarOStatusDoCanalDoPainel(nomeDoCanal, reler, reabertura),
+            );
+          return () => {
+            supabase.removeChannel(canalDoPainel).catch(() => {});
+          };
         });
       }
 
@@ -1176,7 +1228,7 @@ export function useQuestions() {
         }
       };
     },
-    [temSessao, isLeader, getQuestionsByProduct, getAllQuestions],
+    [temSessao, isLeader, isAdmin, getQuestionsByProduct, getAllQuestions],
   );
 
   useEffect(() => {

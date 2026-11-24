@@ -9,6 +9,11 @@ import {
 } from "@/lib/cache-de-avaliacoes";
 import { criarCanalDeAbas } from "@/lib/canal-de-abas";
 import {
+  type OpcoesDaAssinaturaDoPainel,
+  aoMudarOStatusDoCanalDoPainel,
+  assinarEnquantoVisivel,
+} from "@/lib/canal-do-painel-independente";
+import {
   MENSAGEM_SESSAO_OU_PERMISSAO,
   mensagemDeErroDeSessaoDoPainel,
 } from "@/lib/erro-de-sessao-do-painel";
@@ -1018,7 +1023,11 @@ export function useReviews() {
   );
 
   const subscribeToReviews = useCallback(
-    (onChange?: () => void, productId?: string) => {
+    (
+      onChange?: () => void,
+      productId?: string,
+      opcoes?: OpcoesDaAssinaturaDoPainel,
+    ) => {
       const channelId = productId ? `reviews_prod_${productId}` : "reviews_all";
 
       // Visitante SEM LOGIN não abre canal de tempo real (teto de conexões do
@@ -1034,6 +1043,43 @@ export function useReviews() {
             return getReviewsByProduct(productId);
           }
           return getAllReviews(0, 20, { silent: true });
+        });
+      }
+
+      // Tela do PAINEL (todas as avaliações) numa aba SEGUIDORA: abre o próprio
+      // canal em vez de esperar o repasse da líder (que pode ser a vitrine; o
+      // AdminLayout não tem canal de avaliações). Só admin, só sem produto, só
+      // com a aba visível; a líder segue pelo ramo de baixo (um canal só por
+      // aba). Nome próprio: não colide com o `reviews_all` da líder quando a
+      // aba vira líder e o canal velho ainda está sendo fechado.
+      if (
+        opcoes?.independenteDaLideranca &&
+        isAdmin &&
+        !productId &&
+        !isLeader
+      ) {
+        return assinarEnquantoVisivel((reabertura) => {
+          const nomeDoCanal = "reviews_all_painel";
+          const reler = () => {
+            if (onChange) {
+              onChange();
+            } else {
+              getAllReviews(0, 20, { silent: true });
+            }
+          };
+          const canalDoPainel = supabase
+            .channel(nomeDoCanal)
+            .on(
+              "postgres_changes",
+              { event: "*", schema: "public", table: "reviews" },
+              reler,
+            )
+            .subscribe(
+              aoMudarOStatusDoCanalDoPainel(nomeDoCanal, reler, reabertura),
+            );
+          return () => {
+            supabase.removeChannel(canalDoPainel).catch(() => {});
+          };
         });
       }
 
@@ -1154,7 +1200,7 @@ export function useReviews() {
         }
       };
     },
-    [temSessao, isLeader, getReviewsByProduct, getAllReviews],
+    [temSessao, isLeader, isAdmin, getReviewsByProduct, getAllReviews],
   );
 
   return {
