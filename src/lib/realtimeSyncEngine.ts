@@ -262,9 +262,10 @@ const _produtosParaReconciliar = new Set<string>();
 // `start`). Rodadas por outros caminhos (inscrição no canal, chamada direta)
 // não passam pela janela.
 const JANELA_MINIMA_ENTRE_GATILHOS_MS = 60_000;
-// Visitante sem login: a aba secundária não lê o banco nem tem canal; ao
-// voltar à aba ela manda este aviso pelo BroadcastChannel e a líder faz a
-// rodada (pela janela acima). Mensagem sem corpo: nenhum dado trafega.
+// Sem canal de catálogo (visitante e cliente logada): a aba secundária não lê
+// o banco nem tem canal; ao voltar à aba ela manda este aviso pelo
+// BroadcastChannel e a líder faz a rodada (pela janela acima). Mensagem sem
+// corpo: nenhum dado trafega.
 const PEDIDO_DE_RODADA_ENTRE_ABAS = "pede_rodada";
 let _ultimoGatilhoDeRodada = 0;
 let _connectivityListeners: (() => void) | null = null;
@@ -335,19 +336,21 @@ export const RealtimeSyncEngine = {
    * @param vault — The DataVault instance to apply changes to
    * @param isLeader — Whether this tab is the leader tab
    * @param isAdmin — Whether this user is an admin
-   * @param comSessao — Whether there is a logged-in session (painel or cliente).
-   *   Without one the leader tab opens NO realtime channel (connection cap of
-   *   the Supabase plan) and the catalog refreshes via catchUp rounds instead.
-   *   Default `true` keeps every older caller opening the channel as before.
+   * @param comCanalDeCatalogo — Whether this device may hold the catalog
+   *   realtime channel. The StoreContext passes `isAdmin`: only the shop owner
+   *   does. Without it (visitor AND logged-in customer) the leader tab opens
+   *   NO channel (message-rate cap of the Supabase plan) and the catalog
+   *   refreshes via catchUp rounds instead. Default `true` keeps every older
+   *   caller opening the channel as before.
    * @returns cleanup function to unsubscribe
    */
   start(
     vault: DataVault,
     isLeader: boolean,
     isAdmin = false,
-    comSessao = true,
+    comCanalDeCatalogo = true,
   ): () => void {
-    // `_connectivityListeners` entra no guarda: sem canal (visitante) o líder
+    // `_connectivityListeners` entra no guarda: sem canal (não é lojista) o líder
     // não tem `_channel`, e sem isto um segundo start empilharia ouvintes.
     if (_channel || _bcListener || _connectivityListeners) {
       console.warn("[RealtimeSyncEngine] Already running. Call stop() first.");
@@ -359,13 +362,14 @@ export const RealtimeSyncEngine = {
     );
 
     if (isLeader) {
-      // Visitante SEM LOGIN não abre canal de tempo real (Black Friday
-      // 27/11/2026): o plano do Supabase limita as conexões simultâneas e o
-      // painel do lojista divide esse teto com a vitrine. Sem sessão a vitrine
-      // se atualiza pelas rodadas de catchUp (subida, volta à aba, `online`),
-      // que já passam pela janela mínima abaixo; com sessão (painel e cliente
-      // logada) o canal abre como sempre.
-      if (comSessao) {
+      // Só o LOJISTA abre o canal de catálogo (Black Friday 27/11/2026): cada
+      // venda gera 2 alterações (estoque da variação + marca do produto) e
+      // cada uma vira mensagem para CADA aparelho conectado; o plano grátis do
+      // Supabase limita as mensagens por segundo, e estourar derruba todas as
+      // conexões, inclusive a do painel. Visitante e cliente logada se
+      // atualizam pelas rodadas de catchUp (subida, volta à aba, `online`),
+      // que já passam pela janela mínima abaixo.
+      if (comCanalDeCatalogo) {
         // Build a single channel with all table subscriptions
         let channel = supabase.channel("datavault-sync");
 
@@ -450,7 +454,7 @@ export const RealtimeSyncEngine = {
         _channel = channel;
       } else {
         console.log(
-          "[RealtimeSyncEngine] Sem sessão: sem canal de tempo real; a vitrine atualiza ao voltar à aba.",
+          "[RealtimeSyncEngine] Sem canal de catálogo (não é lojista): atualiza ao voltar à aba.",
         );
         // Quem disparava a primeira rodada era o SUBSCRIBED do canal.
         this.catchUp(vault, isAdmin).catch((err) => {
@@ -475,8 +479,8 @@ export const RealtimeSyncEngine = {
         // janela, cobre o resto (a rede que volta dentro da janela não
         // fica sem rodada). Um só timer: gatilhos seguintes não o empilham.
         let rodadaFinal: ReturnType<typeof setTimeout> | null = null;
-        // Visitante sem login: a rodada final pode ter sido pedida por uma aba
-        // IRMÃ (a secundária que o visitante está olhando). Aí a aba da líder
+        // Sem canal de catálogo: a rodada final pode ter sido pedida por uma aba
+        // IRMÃ (a secundária que a pessoa está olhando). Aí a aba da líder
         // costuma estar escondida e o "só se visível" abaixo engoliria o
         // pedido: quem precisa do dado está visível, em outra aba.
         let pedidoDeAbaIrma = false;
@@ -528,13 +532,13 @@ export const RealtimeSyncEngine = {
         window.addEventListener("online", handleOnline);
         document.addEventListener("visibilitychange", handleVisibilityChange);
 
-        // Sem sessão não há canal para repassar às abas secundárias: elas
-        // pedem a rodada por aqui (ver o ramo secundário) e a líder atende
-        // pela MESMA janela e pelo MESMO timer de rodada final, de modo que
-        // várias abas pedindo juntas viram uma leitura só. Com sessão o canal
-        // abre e a secundária recebe ao vivo: pedido nenhum é atendido.
+        // Sem canal de catálogo não há o que repassar às abas secundárias:
+        // elas pedem a rodada por aqui (ver o ramo secundário) e a líder
+        // atende pela MESMA janela e pelo MESMO timer de rodada final, de modo
+        // que várias abas pedindo juntas viram uma leitura só. Com canal
+        // (lojista) a secundária recebe ao vivo: pedido nenhum é atendido.
         const atenderPedidoDeAbaIrma =
-          !comSessao && bc
+          !comCanalDeCatalogo && bc
             ? (evento: MessageEvent) => {
                 if (evento.data?.type !== PEDIDO_DE_RODADA_ENTRE_ABAS) return;
                 rodadaPorGatilho("Pedido de aba secundária", true);
@@ -639,16 +643,17 @@ export const RealtimeSyncEngine = {
           "[RealtimeSyncEngine] Secondary tab listening via BroadcastChannel.",
         );
 
-        // Visitante SEM LOGIN: a líder não tem canal e só refaz o catálogo
-        // quando ELA volta à aba; a secundária que o visitante está olhando
-        // ficaria com preço, estoque e banner velhos. Ao voltar à aba (ou à
-        // rede) ela NÃO lê o banco: avisa a líder, que roda a rodada pela
-        // janela mínima dela e repassa o resultado por este mesmo canal.
-        // Com sessão a líder tem canal e repassa ao vivo: nada disto liga.
-        if (!comSessao && typeof window !== "undefined") {
+        // Sem canal de catálogo (visitante ou cliente logada): a líder não tem
+        // canal e só refaz o catálogo quando ELA volta à aba; a secundária que
+        // a pessoa está olhando ficaria com preço, estoque e banner velhos. Ao
+        // voltar à aba (ou à rede) ela NÃO lê o banco: avisa a líder, que roda
+        // a rodada pela janela mínima dela e repassa o resultado por este
+        // mesmo canal. Com canal (lojista) a líder repassa ao vivo: nada
+        // disto liga.
+        if (!comCanalDeCatalogo && typeof window !== "undefined") {
           const pedirRodadaALider = (motivo: string) => {
             console.log(
-              `[RealtimeSyncEngine] ${motivo} (sem sessão): pedindo a rodada à aba líder.`,
+              `[RealtimeSyncEngine] ${motivo} (sem canal de catálogo): pedindo a rodada à aba líder.`,
             );
             try {
               bc.postMessage({ type: PEDIDO_DE_RODADA_ENTRE_ABAS });
