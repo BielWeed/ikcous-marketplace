@@ -295,16 +295,6 @@ const ESPERA_BASE_REENVIO_MS = 2_000;
 const ESPERA_MAX_REENVIO_MS = 30_000;
 // Voltar do segundo plano relê o catálogo no máximo a cada 15 s.
 const INTERVALO_MIN_RENOVAR_VISIVEL_MS = 15_000;
-// Canal ao vivo do carrinho: a gravação apaga e reinsere todas as linhas, então
-// devolve ≥ n eventos à PRÓPRIA cliente, e o Realtime os entrega logo depois da
-// resposta da gravação. Evento em voo ou nessa janela pode ser o eco dela OU de
-// outro aparelho (não dá para distinguir): nunca é descartado, é JUNTADO numa
-// única releitura depois do fim da gravação + janela (1 por gravação, em vez de
-// n × 3 consultas), então o que o outro aparelho pôs nesse meio tempo aparece.
-const JANELA_DO_ECO_DA_GRAVACAO_MS = 1_500;
-// Eventos de fora (outro aparelho) em rajada viram uma leitura, esta espera
-// depois do último (mesma junção do sino de Notificações).
-const ESPERA_DA_RAJADA_DO_CARRINHO_MS = 500;
 const CART_STORAGE_KEY = "marketplace_cart_v1";
 // A chave antiga não distinguia visitante de conta. Nenhuma marca dela
 // pode apagar uma linha da conta, inclusive depois de atualizar o app.
@@ -735,21 +725,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   // Gravação do carrinho no banco: uma por vez (`syncPending`), com o retrato
   // do último carrinho enviado (`lastSyncedCart`, o JSON inteiro).
   const syncPending = useRef(false);
-  // Quando a última gravação terminou (com ou sem sucesso): o canal ao vivo usa
-  // para reconhecer o eco dela (ver `JANELA_DO_ECO_DA_GRAVACAO_MS`).
-  const gravacaoTerminouEm = useRef(0);
-  // O canal ao vivo se registra aqui para ser avisado quando uma gravação
-  // termina (com sucesso, falha ou estouro de prazo) e agendar a releitura que
-  // juntou os eventos recebidos enquanto ela durava.
-  const aoFimDaGravacaoRef = useRef<() => void>(() => {});
-  // O canal ao vivo também se registra aqui para o efeito que GRAVA: com um
-  // aviso do banco ainda sem releitura (a rajada espera 500 ms, ou o fim da
-  // janela do eco), gravar primeiro apagaria no banco o que o outro aparelho
-  // acabou de pôr (a RPC substitui o carrinho salvo). Devolve a leitura que
-  // acabou de começar, ou `null` se não havia nada devido.
-  const lerAgoraALeituraDevidaRef = useRef<() => Promise<void> | null>(
-    () => null,
-  );
   const lastSyncedCart = useRef<string>("");
   // Retrato (ver `retratoDoCarrinho`) do último carrinho que o BANCO confirmou
   // ter igual ao daqui: o que este aparelho enviou com sucesso, ou o que leu e
@@ -1407,63 +1382,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       let jaAssinou = false;
       let caiu = false;
       let cancelado = false;
-      let esperaDaRajada: ReturnType<typeof setTimeout> | null = null;
-      // Há evento recebido que ainda não virou leitura.
-      let leituraDevida = false;
-
-      // Evento do banco. Eventos de uma rajada viram UMA leitura, 500 ms depois
-      // do último. Os que chegam com uma gravação daqui em voo, ou logo depois
-      // dela (o eco dela, que não se distingue de um evento de outro aparelho),
-      // esperam o fim da gravação + a janela: a leitura é uma só e NUNCA se
-      // perde o que o outro aparelho gravou nesse meio tempo.
-      const lerAgora = () => {
-        leituraDevida = false;
-        // 1. Fetch fresh cart from DB
-        const leitura = syncFromDBRef.current(true);
-        // 2. Notify other tabs
-        cartBc?.postMessage({ type: "cart_update" });
-        return leitura;
-      };
-      const agendarLeitura = () => {
-        if (esperaDaRajada) clearTimeout(esperaDaRajada);
-        esperaDaRajada = null;
-        // Gravação em voo: quem reagenda é `aoFimDaGravacaoRef`, ao terminar
-        // (sucesso, falha ou estouro do prazo).
-        if (syncPending.current) return;
-        const restoDaJanela =
-          gravacaoTerminouEm.current +
-          JANELA_DO_ECO_DA_GRAVACAO_MS -
-          Date.now();
-        esperaDaRajada = setTimeout(
-          () => {
-            esperaDaRajada = null;
-            // Outra gravação começou no meio: espera o fim dela também.
-            if (syncPending.current) return;
-            void lerAgora();
-          },
-          Math.max(ESPERA_DA_RAJADA_DO_CARRINHO_MS, restoDaJanela),
-        );
-      };
-      const aoEventoDoBanco = (payload: any) => {
-        console.log(
-          "[CartContext-Realtime] Cart changed in database:",
-          payload?.eventType,
-        );
-        leituraDevida = true;
-        agendarLeitura();
-      };
-      aoFimDaGravacaoRef.current = () => {
-        if (leituraDevida && !cancelado) agendarLeitura();
-      };
-      // O efeito que grava chama isto antes de gravar (ver a declaração do ref):
-      // a leitura que estava esperando passa a valer agora, e a espera que
-      // ficou agendada deixa de existir (1 leitura por aviso, nunca 2).
-      lerAgoraALeituraDevidaRef.current = () => {
-        if (!leituraDevida || cancelado || syncPending.current) return null;
-        if (esperaDaRajada) clearTimeout(esperaDaRajada);
-        esperaDaRajada = null;
-        return lerAgora();
-      };
 
       if (isLeader) {
         console.log(
@@ -1479,7 +1397,16 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
               table: "cart_items",
               filter: `user_id=eq.${userId}`,
             },
-            aoEventoDoBanco,
+            (payload: any) => {
+              console.log(
+                "[CartContext-Realtime] Cart changed in database:",
+                payload.eventType,
+              );
+              // 1. Fetch fresh cart from DB
+              syncFromDB(true);
+              // 2. Notify other tabs
+              cartBc?.postMessage({ type: "cart_update" });
+            },
           )
           .subscribe((status: string) => {
             if (cancelado) return;
@@ -1517,10 +1444,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
       return () => {
         cancelado = true;
-        if (esperaDaRajada) clearTimeout(esperaDaRajada);
-        leituraDevida = false;
-        aoFimDaGravacaoRef.current = () => {};
-        lerAgoraALeituraDevidaRef.current = () => null;
         if (channel) {
           supabase.removeChannel(channel).catch(() => {});
         }
@@ -1675,8 +1598,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         agendarReenvioAposFalha();
       } finally {
         geracaoDaGravacao.current += 1;
-        gravacaoTerminouEm.current = Date.now();
-        aoFimDaGravacaoRef.current();
       }
     },
     [user, authLoading, pedirReenvioSeDevido, agendarReenvioAposFalha],
@@ -1694,24 +1615,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       if (!syncPending.current) {
-        // Aviso do canal ao vivo ainda sem releitura (pode ser item que outro
-        // aparelho acabou de pôr): gravar já apagaria esse item no banco, e a
-        // releitura de depois leria o banco sem ele -- o item sumiria dos DOIS
-        // aparelhos. Relê no lugar de gravar; a junção acrescenta o item de
-        // fora sem tocar na edição daqui (nada pendente é perdido), e a
-        // gravação seguinte leva os dois. O `finally` reabre o efeito mesmo se
-        // a leitura falhar ou não mudar o carrinho: a edição daqui nunca fica
-        // refém dela (e o que já está igual ao banco não é gravado de novo).
-        const leitura = lerAgoraALeituraDevidaRef.current();
-        if (leitura) {
-          void leitura
-            .catch(() => {})
-            .finally(() => {
-              reenvioDevido.current = true;
-              pedirReenvioSeDevido();
-            });
-          return;
-        }
         syncToDB(cart);
       } else {
         reenvioDevido.current = true;
@@ -1720,7 +1623,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
     return () => clearTimeout(timer);
     // `reenvio` reabre o efeito quando o sync em voo termina (ver acima).
-  }, [cart, syncToDB, reenvio, syncFromDB, user, pedirReenvioSeDevido]);
+  }, [cart, syncToDB, reenvio, syncFromDB, user]);
 
   const addToCart = useCallback(
     (

@@ -373,11 +373,7 @@ it("tirar a camiseta M da conta apaga a linha e a segunda aba não a devolve", a
 
     // A outra aba relê antes do envio: o servidor ainda traz a linha velha.
     expect(mundo.rpc).not.toHaveBeenCalled();
-    // O evento de fora relê 500 ms depois (rajada junta numa leitura só).
-    await act(async () => {
-      mundo.evento({ eventType: "UPDATE" });
-      await vi.advanceTimersByTimeAsync(550);
-    });
+    await act(async () => mundo.evento({ eventType: "UPDATE" }));
     expect(outraAba?.cart).toEqual([]);
 
     await sincronizar();
