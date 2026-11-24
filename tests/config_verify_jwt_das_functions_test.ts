@@ -71,6 +71,7 @@ const COM_JWT = [
   "criar-pagamento",
   "estornar-pagamento",
   "credenciais-mercado-pago",
+  "credenciais-email",
   "send-push",
 ];
 

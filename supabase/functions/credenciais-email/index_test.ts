@@ -847,7 +847,7 @@ Deno.test("A9 — o uid do dono se compara sem diferenciar maiúscula de minúsc
   assertEquals((await chamar(c, SALVAR_BOM)).status, 200);
 });
 
-Deno.test("A9 — loja SEM dono cadastrado (tabela vazia): qualquer admin segue como hoje (nenhum nomeado pode existir sem dono)", async () => {
+Deno.test("A9 — loja SEM dono cadastrado (tabela vazia): qualquer admin segue como hoje (o furo só fecha depois de cadastrar o dono)", async () => {
   for (const [nome, corpo] of AS_QUE_MUDAM) {
     const c = cenario({ dono: null });
     const r = await chamar(c, corpo);

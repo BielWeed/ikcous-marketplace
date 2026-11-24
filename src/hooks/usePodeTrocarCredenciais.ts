@@ -7,8 +7,8 @@
 //
 // Regra (a mesma do servidor, para a tela não prometer o que ele recusa):
 //   - é o dono                                  -> liberado
-//   - a loja não tem dono cadastrado (tabela    -> liberado (como antes: nenhum
-//     lida e vazia)                                nomeado existe sem dono)
+//   - a loja não tem dono cadastrado (tabela    -> liberado (como antes; o furo só
+//     lida e vazia)                                fecha depois de cadastrar o dono)
 //   - há dono e não sou eu                      -> TRAVADO, "Só o dono da loja…"
 //   - ainda lendo                               -> TRAVADO, sem frase: não destrava
 //                                                  por engano nem acusa o dono

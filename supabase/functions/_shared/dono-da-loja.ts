@@ -15,9 +15,10 @@
  *
  * As três respostas possíveis de `conferirDono` (e o que cada uma faz):
  *   - "pode": o chamador é o dono, OU a loja ainda não tem dono cadastrado
- *     (tabela vazia). Sem dono não pode existir nomeado (só o dono nomeia), e
- *     recusar todo mundo trancaria a loja fora das próprias chaves: segue
- *     como era antes desta regra.
+ *     (tabela vazia). Recusar todo mundo trancaria a loja fora das próprias
+ *     chaves: segue como era antes desta regra. ATENÇÃO: nesse estado um
+ *     admin nomeado ainda consegue trocar as chaves — o furo só fecha depois
+ *     que o dono é cadastrado (docs/runbooks/definir-o-dono-da-loja.md).
  *   - "so_o_dono": há dono e não é quem chamou.
  *   - "indisponivel": NÃO foi possível ler a tabela (erro de banco, tabela
  *     ausente porque a migration 20261383 não foi aplicada nesta loja, forma
