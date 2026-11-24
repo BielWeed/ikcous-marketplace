@@ -2,6 +2,7 @@ import { useSyncListener } from "@/hooks/useDataVault";
 import { publicarMudancaDeCategoria } from "@/lib/avisos-de-categoria";
 import { compararNomes } from "@/lib/comparar-nomes";
 import { DataVault } from "@/lib/dataVault";
+import { mensagemDeErroDeSessaoDoPainel } from "@/lib/erro-de-sessao-do-painel";
 import {
   ErroDeCategoria,
   type ResultadoDoApagar,
@@ -502,7 +503,8 @@ export function useCategories() {
           toast.error(
             ehConsultaSemResposta(error)
               ? (error as Error).message
-              : "Erro ao criar categoria",
+              : (mensagemDeErroDeSessaoDoPainel(error) ??
+                  "Erro ao criar categoria"),
           );
         throw error;
       }
@@ -717,7 +719,8 @@ export function useCategories() {
           toast.error(
             error instanceof ErroDeCategoria || ehConsultaSemResposta(error)
               ? (error as Error).message
-              : "Erro ao atualizar categoria",
+              : (mensagemDeErroDeSessaoDoPainel(error) ??
+                  "Erro ao atualizar categoria"),
           );
         throw error;
       }
