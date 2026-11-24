@@ -106,7 +106,7 @@ describe("CRM — sessão pendurada tem prazo", () => {
       useEffect(() => {
         ultimo = lido;
       });
-      return null;
+      return <p>{lido.erroDeCategoria}</p>;
     }
     await act(async () => raiz.render(<Sonda />));
 
@@ -119,11 +119,14 @@ describe("CRM — sessão pendurada tem prazo", () => {
 
     expect(ultimo.carregando).toBe(false);
     expect(ultimo.erro).toContain("carregar o resumo do painel");
-    expect(ultimo.erroDeCategoria).toContain("carregar os dados de categorias");
+    const trechoDoAviso = "carregar os dados de categorias";
+    expect(hospedeiro.textContent).toContain(trechoDoAviso);
 
     await passar(15_000);
     await act(async () => ultimo.carregar(true));
     await passar(1000);
     expect(quantas("get_admin_analytics_v2")).toBeGreaterThan(0);
+    expect(quantas("get_category_analytics")).toBeGreaterThan(0);
+    expect(hospedeiro.textContent).not.toContain(trechoDoAviso);
   });
 });

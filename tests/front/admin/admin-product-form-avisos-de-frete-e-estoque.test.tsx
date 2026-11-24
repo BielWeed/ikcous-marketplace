@@ -277,6 +277,16 @@ describe("AdminProductFormView — avisos do formulário", () => {
     ].find((el) => el.textContent?.includes("peso em branco ou zero"));
     expect(aviso).toBeDefined();
     expect(aviso?.closest(".produto-status")).toBeNull();
+
+    // O jsdom só confere as classes; o layout real se mede no Chromium.
+    const texto = aviso?.querySelector("span");
+    expect(texto).not.toBeNull();
+    const classes = [...(texto?.classList ?? [])];
+    expect(classes).toContain("whitespace-normal");
+    expect(classes).not.toContain("truncate");
+    expect(classes.some((classe) => classe.startsWith("line-clamp"))).toBe(
+      false,
+    );
   });
 
   it("avisa que o produto ficará esgotado se não há variações ligadas e o estoque é zero", async () => {
