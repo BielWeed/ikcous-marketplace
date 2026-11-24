@@ -1,3 +1,5 @@
+import { textoSemControlesDeDirecao } from "@/lib/texto-sem-controles-de-direcao";
+
 const UFS = new Set(
   "AC AL AP AM BA CE DF ES GO MA MT MS MG PA PB PR PE PI RJ RN RS RO RR SC SP SE TO".split(
     " ",
@@ -34,7 +36,8 @@ const SIGLAS_POR_NOME = new Map([
   ["tocantins", "TO"],
 ]);
 
-export function normalizarUf(valor: string): string {
+export function normalizarUf(entrada: string): string {
+  const valor = textoSemControlesDeDirecao(entrada);
   const semEspacos = valor.replace(/\s+/g, "");
   if (/^[a-z]{0,2}$/i.test(semEspacos)) return semEspacos.toUpperCase();
 

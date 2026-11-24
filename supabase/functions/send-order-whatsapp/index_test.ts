@@ -405,6 +405,44 @@ Deno.test("servidor legítimo: a mensagem sai com telefone, nome, total e forma 
   assertEquals(corpoEnviado.includes(TELEFONE_DE_OUTRA_PESSOA), false);
 });
 
+// O número que sai para a Evolution decide pelo TAMANHO, não pelo começo: com 10
+// ou 11 dígitos é número brasileiro SEM país e leva o 55 na frente -- mesmo que
+// o DDD seja o 55 (interior do RS). Antes, "(55) 99999-1234" era tratado como se
+// já trouxesse o país e saía sem ele, e a Evolution recusava o envio.
+// Com 12 ou 13 dígitos o país já está lá e o número fica como veio.
+// Todos os números abaixo são inventados.
+for (
+  const [descricao, digitado, esperado] of [
+    ["DDD 55, celular", "(55) 99999-1234", "5555999991234"],
+    ["DDD 55, fixo", "(55) 3333-4444", "555533334444"],
+    ["país + DDD 55, celular", "+55 (55) 99999-1234", "5555999991234"],
+    ["país + DDD 55 sem formatação", "5555999991234", "5555999991234"],
+    ["DDD 34, celular (não pode mudar)", "(34) 98877-6655", "5534988776655"],
+    ["país + DDD 34 (não pode mudar)", "+55 34 98877-6655", "5534988776655"],
+    ["DDD 11, fixo (não pode mudar)", "11 3333-4444", "551133334444"],
+  ] as const
+) {
+  Deno.test(`número enviado à Evolution: ${descricao} (${digitado}) sai como ${esperado}`, async () => {
+    const evolution = evolutionFalsa();
+    const resposta = await processar(
+      requisicao(`Bearer ${CHAVE_DE_SERVICO}`, { order_id: ID_REAL }),
+      {
+        supabase: bancoFalso({
+          ...PEDIDO_DO_BANCO,
+          customer_data: { whatsapp: digitado },
+        }),
+        fetchImpl: evolution.fetchImpl,
+        chavesDeServico: [CHAVE_DE_SERVICO],
+        configDaEvolution: configInjetada,
+      },
+    );
+    assertEquals(resposta.status, 200);
+    assertEquals(evolution.chamadas.length, 1);
+    const { number } = JSON.parse(String(evolution.chamadas[0].init.body));
+    assertEquals(number, esperado);
+  });
+}
+
 // O pedido de RETIRADA é reconhecido pelo id que a RPC gravou em
 // `customer_data.shipping_option_id` (o mesmo contrato do e-mail).
 for (

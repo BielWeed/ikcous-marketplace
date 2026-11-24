@@ -181,11 +181,12 @@ export async function processar(req: Request, deps: Dependencias): Promise<Respo
         // 6. Enviar para a Evolution API
         let formattedNumber = String(customerWhatsapp).replace(/\D/g, '')
 
-        // Formatação para Brasil (55)
+        // Formatação para Brasil (55): o TAMANHO decide, não o começo. Com 10 ou
+        // 11 dígitos o número não traz o país (DDD + número) e leva o 55 sempre --
+        // o DDD 55 (interior do RS) começa com "55" e não é o código do país.
+        // Com 12 ou 13 dígitos o país já está lá.
         if (formattedNumber.length === 11 || formattedNumber.length === 10) {
-            if (!formattedNumber.startsWith('55')) {
-                formattedNumber = '55' + formattedNumber
-            }
+            formattedNumber = '55' + formattedNumber
         }
 
         const response = await fetchImpl(`${config.url}/message/sendText/${config.instancia}`, {
