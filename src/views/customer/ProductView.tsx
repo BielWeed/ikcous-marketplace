@@ -28,6 +28,7 @@ import { useProducts } from "@/hooks/useProducts";
 import { useRecomendacoesDeProduto } from "@/hooks/useRecomendacoesDeProduto";
 import { useReviews } from "@/hooks/useReviews";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
+import { aoVoltarAAba } from "@/lib/atualizar-ao-voltar-a-aba";
 import {
   CLASSE_PRECO_PROMOCIONAL_TEXTO_GRANDE,
   CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
@@ -440,15 +441,17 @@ export const ProductView = React.memo(function ProductView({
   // removido sai da tela) E as recomendações — elas moram em estado próprio do
   // hook e, sem isto, os cards seguiam com o preço de antes, inclusive para
   // comprar. `recarregarRecomendacoes` é estável (ref no hook): não reinscreve.
-  useEffect(() => {
-    const aoVoltar = () => {
-      if (document.visibilityState !== "visible") return;
-      void fetchProducts();
-      recarregarRecomendacoes();
-    };
-    document.addEventListener("visibilitychange", aoVoltar);
-    return () => document.removeEventListener("visibilitychange", aoVoltar);
-  }, [fetchProducts, recarregarRecomendacoes]);
+  // No máximo uma vez por janela de 30 s: `fetchProducts` relê o catálogo
+  // inteiro, e alternar de app várias vezes não pode refazer isso a cada volta.
+  useEffect(
+    () =>
+      aoVoltarAAba(() => {
+        const releitura = fetchProducts();
+        recarregarRecomendacoes();
+        return releitura;
+      }),
+    [fetchProducts, recarregarRecomendacoes],
+  );
 
   useEffect(() => {
     setRecsVisible(false);

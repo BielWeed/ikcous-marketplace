@@ -202,10 +202,13 @@ async function andar() {
     await vi.advanceTimersByTimeAsync(50);
   });
 }
+// O evento relê 500 ms depois (rajada junta numa leitura); se cai na janela de
+// 1,5 s da gravação daqui, espera o fim dela: ver
+// carrinho-eco-da-propria-gravacao-nao-rele-o-banco.test.tsx.
 async function chegaEventoDoBanco() {
   await act(async () => {
     mundo.evento({ eventType: "UPDATE" });
-    await vi.advanceTimersByTimeAsync(50);
+    await vi.advanceTimersByTimeAsync(2100);
   });
 }
 async function redeVoltou() {

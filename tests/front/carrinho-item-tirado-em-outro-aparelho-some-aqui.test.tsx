@@ -158,11 +158,15 @@ async function sincronizar() {
     await vi.advanceTimersByTimeAsync(1100);
   });
 }
-// O evento ao vivo do banco ("o carrinho mudou") e a releitura que ele dispara.
+// O evento ao vivo do banco ("o carrinho mudou") e a releitura que ele dispara
+// (eventos em rajada viram uma leitura só, 500 ms depois do último; se caem na
+// janela de 1,5 s da gravação daqui, esperam o fim dela -- nenhum é descartado,
+// ver carrinho-eco-da-propria-gravacao-nao-rele-o-banco.test.tsx). Quem chama
+// vem logo depois de uma gravação, então o evento cai na janela de propósito.
 async function chegaEventoDoBanco() {
   await act(async () => {
     mundo.evento({ eventType: "DELETE" });
-    await vi.advanceTimersByTimeAsync(50);
+    await vi.advanceTimersByTimeAsync(2100);
   });
 }
 function linhaDoBanco(productId: string, quantity = 1) {

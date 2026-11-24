@@ -139,7 +139,11 @@ it("a marca de exclusão de outra aba tira o item local da mesclagem e do próxi
       marcas: [{ key: "p1-", deletedAt: Date.now() }],
     }),
   );
-  await act(async () => mundo.aoMudar({ eventType: "DELETE" }));
+  // O evento de fora relê 500 ms depois (rajada junta numa leitura só).
+  await act(async () => {
+    mundo.aoMudar({ eventType: "DELETE" });
+    await vi.advanceTimersByTimeAsync(550);
+  });
   expect(atual().cart).toEqual([]);
   await avancar();
   expect(mundo.rpc).toHaveBeenLastCalledWith("sync_cart_atomic", {
