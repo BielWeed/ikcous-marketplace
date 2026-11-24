@@ -173,12 +173,15 @@ describe("folha de baixo no computador — gaveta sem mudar o celular", () => {
 
   it("mantém os literais do celular nos corpos e torna as ações persistentes no PC", () => {
     const busca = fonte("views/customer/SearchView.tsx");
+    // Filtros da busca: cabeçalho fixo, miolo que rola e rodapé fixo com o
+    // "Aplicar Filtros" (no celular e no computador, sem `sticky`).
     expect(busca).toContain(
-      '"max-h-[90vh] overflow-y-auto rounded-t-[3rem] p-8"',
+      '"max-h-[90dvh] overflow-hidden rounded-t-[3rem] p-8 pb-[calc(2rem+env(safe-area-inset-bottom,0px))]"',
     );
-    expect(busca).toContain('"space-y-8 pb-10"');
-    expect(busca.includes("lg:min-h-0 lg:flex-1")).toBe(true);
-    expect(busca.includes("lg:sticky lg:bottom-0")).toBe(true);
+    expect(busca).toContain(
+      '"min-h-0 flex-1 space-y-8 overflow-y-auto overscroll-contain pb-4 lg:px-8"',
+    );
+    expect(busca).toContain('"shrink-0 lg:px-8 lg:pb-8"');
     const produto = fonte("views/customer/ProductView.tsx");
     expect(produto).toContain(
       '"min-h-0 space-y-4 overflow-y-auto overscroll-contain px-5 pb-[calc(20px+var(--safe-area-bottom,0px))]"',

@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import {
+  type CSSProperties,
   type ReactNode,
   useCallback,
   useEffect,
@@ -28,6 +29,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { useAlturaDoTeclado } from "@/hooks/useAlturaDoTeclado";
 import type { DadosDaSolicitacao, Desfecho } from "@/hooks/useDevolucaoCliente";
 import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
@@ -167,6 +169,40 @@ export function SolicitarDevolucaoSheet(props: SolicitarDevolucaoSheetProps) {
   const [pergunta, setPergunta] = useState<EstadoDoRascunho>("nenhum");
   const botaoDeContinuarRef = useRef<HTMLButtonElement>(null);
   const focoAnteriorRef = useRef<HTMLElement | null>(null);
+  // O teclado do celular se SOBREPÕE à página: a folha sobe acima dele e cabe
+  // na área visível, para o "Continuar" do rodapé não ficar escondido. Vai por
+  // variável CSS lida só nas classes do celular: a janela centrada (`sm:`) não
+  // muda, e um `bottom` inline venceria o `sm:bottom-auto`.
+  const { altura: teclado, alturaVisivel } = useAlturaDoTeclado();
+  // Ao focar a caixa de texto, traz ela à vista dentro do corpo que rola (o
+  // teclado leva um tempo para abrir: o segundo efeito refaz a rolagem).
+  useEffect(() => {
+    if (!aberto) return;
+    let timer: number | undefined;
+    const aoFocar = (evento: FocusEvent) => {
+      const alvo = evento.target;
+      if (!(alvo instanceof HTMLElement) || alvo.tagName !== "TEXTAREA") return;
+      if (!alvo.closest('[data-testid="folha-devolucao"]')) return;
+      window.clearTimeout(timer);
+      // `?.`: o jsdom dos testes não tem a função.
+      timer = window.setTimeout(
+        () => alvo.scrollIntoView?.({ block: "nearest" }),
+        150,
+      );
+    };
+    document.addEventListener("focusin", aoFocar);
+    return () => {
+      document.removeEventListener("focusin", aoFocar);
+      window.clearTimeout(timer);
+    };
+  }, [aberto]);
+  useEffect(() => {
+    if (!aberto || teclado === 0) return;
+    const ativo = document.activeElement;
+    if (!(ativo instanceof HTMLElement) || ativo.tagName !== "TEXTAREA") return;
+    if (!ativo.closest('[data-testid="folha-devolucao"]')) return;
+    ativo.scrollIntoView?.({ block: "nearest" });
+  }, [aberto, teclado]);
   const pedirParaMudar = (abrir: boolean) => {
     if (!abrir && rascunhoRef.current !== "nenhum") {
       if (pergunta === "nenhum") {
@@ -239,8 +275,16 @@ export function SolicitarDevolucaoSheet(props: SolicitarDevolucaoSheetProps) {
             continuarNaFolha();
           }
         }}
+        style={
+          teclado > 0
+            ? ({
+                "--teclado-da-folha": `${teclado}px`,
+                "--altura-da-folha": `calc(${alturaVisivel}px - 1rem)`,
+              } as CSSProperties)
+            : undefined
+        }
         className={cn(
-          "mx-auto flex max-h-[92dvh] flex-col gap-0 rounded-t-3xl bg-white p-0 text-zinc-900",
+          "bottom-[var(--teclado-da-folha,0px)] mx-auto flex max-h-[min(92dvh,var(--altura-da-folha,92dvh))] flex-col gap-0 rounded-t-3xl bg-white p-0 text-zinc-900",
           "sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:max-h-[85dvh] sm:w-full sm:max-w-lg sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-3xl sm:border",
           "sm:data-[state=closed]:slide-out-to-left-1/2 sm:data-[state=open]:slide-in-from-left-1/2",
         )}

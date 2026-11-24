@@ -147,7 +147,7 @@ describe("P31 — faixas no fluxo e busca alinhada no computador", () => {
     [
       "SearchView",
       busca,
-      "2d4a0f2418a56c4965b213a645693a3225ab4ec3fbcc5a222392149774b9d90a",
+      "01e1f5d484ea7f385d52faf402087b19a749350f1f176f5109bf18a6de09f6ea",
     ],
   ])(
     "preserva a lista inteira de classes do celular de %s",

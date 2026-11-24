@@ -36,7 +36,7 @@ describe("Busca — grade no computador", () => {
   it("preserva todas as classes do celular e tablet, inclusive a gaveta P8", () => {
     // Assinatura anterior à P13: literais na ordem da árvore, sem lg:/xl:/2xl:.
     expect(assinaturaDoCelular()).toBe(
-      "2d4a0f2418a56c4965b213a645693a3225ab4ec3fbcc5a222392149774b9d90a",
+      "01e1f5d484ea7f385d52faf402087b19a749350f1f176f5109bf18a6de09f6ea",
     );
   });
 
