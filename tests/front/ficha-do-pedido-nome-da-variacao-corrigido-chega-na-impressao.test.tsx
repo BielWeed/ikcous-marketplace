@@ -295,6 +295,12 @@ describe("ficha do pedido — o nome da variação corrigido chega à impressão
 
     expect(botaoImprimir()?.disabled).toBe(true);
     expect(papel()).toBeNull();
+    // O aviso aponta o botão que existe ("Tentar de novo"), não o F5.
+    const aviso = hospedeiro.querySelector('[role="alert"]')?.textContent;
+    expect(aviso).toContain(
+      "A cópia do tamanho e da cor venceu. Toque em Tentar de novo antes de separar o pedido.",
+    );
+    expect(aviso).not.toContain("Recarregue");
     expect(rotuloNaFicha()?.textContent).toBe(
       "Cor Azul · Tamanho M (atualize a ficha)",
     );

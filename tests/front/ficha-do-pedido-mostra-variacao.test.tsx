@@ -300,8 +300,10 @@ describe("ficha do pedido e recibo — mostram a variação de cada item", () =>
 
       expect(blocoDeItens()?.textContent).toContain(AVISO);
       expect(blocoDeItens()?.textContent).toContain(
-        "Recarregue antes de separar",
+        "Toque em Tentar de novo antes de separar o pedido",
       );
+      // O botão ao lado diz "Tentar de novo": o aviso não manda dar F5.
+      expect(blocoDeItens()?.textContent).not.toContain("Recarregue");
       expect(variacoesDaFicha()).toEqual([]);
       expect(botaoTentar()).toBeDefined();
     });

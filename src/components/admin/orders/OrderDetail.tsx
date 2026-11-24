@@ -2287,9 +2287,9 @@ export const OrderDetail = memo(function OrderDetail({
   }, [active, proximoVencimento]);
 
   const avisoDeLeitura = falhaNaLeitura
-    ? "Não deu para carregar tamanho e cor desses itens. Recarregue antes de separar o pedido."
+    ? "Não deu para carregar tamanho e cor desses itens. Toque em Tentar de novo antes de separar o pedido."
     : venceuVariacaoDoPapel && !loadingSkus
-      ? "A cópia do tamanho e da cor venceu. Recarregue antes de separar o pedido."
+      ? "A cópia do tamanho e da cor venceu. Toque em Tentar de novo antes de separar o pedido."
       : null;
   let motivoDeNaoImprimir: string | null = null;
   // Pedido cancelado (e venda do balcão anulada) deixa de valer como
