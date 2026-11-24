@@ -49,6 +49,7 @@ import {
   type KeyboardEvent,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -485,6 +486,21 @@ function ConteudoDoCarrinho({
   useEffect(() => {
     if (isActive) setActiveTab(initialTab);
   }, [initialTab, isActive]);
+
+  const faixaDeAbasRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const faixa = faixaDeAbasRef.current;
+    if (!isActive || !faixa) return;
+
+    // Voltar/Avançar troca a seleção sem remontar a faixa. Só acompanha
+    // a troca se a aba que ficou inativa ainda estiver com o foco.
+    const inativa = faixa.querySelector('[role="tab"][aria-selected="false"]');
+    if (inativa === document.activeElement) {
+      faixa
+        .querySelector<HTMLButtonElement>(`#tab-${activeTab}`)
+        ?.focus({ preventScroll: true });
+    }
+  }, [activeTab, isActive]);
 
   const [removingId, setRemovingId] = useState<string | null>(null);
 
@@ -1089,6 +1105,7 @@ function ConteudoDoCarrinho({
         <div
           className="relative flex overflow-hidden rounded-2xl bg-muted/60 p-1"
           role="tablist"
+          ref={faixaDeAbasRef}
         >
           <motion.div
             aria-hidden="true"
