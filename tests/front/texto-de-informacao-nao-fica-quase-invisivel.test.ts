@@ -61,7 +61,9 @@ describe("texto de informação legível (contraste e tamanho)", () => {
         /comCorDaMarca\s*\?\s*"(text-primary-foreground[^"]*)"/g,
       ),
     ].map(([, classe]) => classe);
-    expect(coresDaMarca).toEqual(Array(4).fill("text-primary-foreground"));
+    // 5: a quinta é `verdeDoPreco` (o "Grátis" do cartão marcado), que antes
+    // ficava verde e perdia contraste sobre a cor da marca.
+    expect(coresDaMarca).toEqual(Array(5).fill("text-primary-foreground"));
   });
 
   describe("ProductView", () => {

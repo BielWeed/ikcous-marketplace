@@ -23,9 +23,10 @@
 # Medido em 24/11/2026, run 45396219487 (a suíte front cresceu 6x desde então):
 #   front 3.109 arquivos; com 2 shards cada um levava ~14-15 min
 #   (shard 1: 1.555 arquivos / 814 s; shard 2: 1.554 / 854 s; ~2,8 workers
-#   em paralelo por runner). Por isso o front roda em 4 shards (job
-#   `test-front`, matriz), ~777 arquivos e ~7-8 min cada (estimado). O PRÓXIMO número
-#   a medir é o do CI real depois desta mudança: só ele prova o shard.
+#   em paralelo por runner). Quatro shards encurtariam a espera (~777 arquivos,
+#   ~7-8 min cada, estimado), MAS os nomes das verificações exigidas pelo GitHub
+#   são `Testes front (shard 1/2)` e `(shard 2/2)`: passar a 4 exige trocar as
+#   duas regras (rulesets) do repositório no mesmo instante. Fica para depois da BF.
 # Medido em 26/09/2026, depois do portão de tamanho DIVIDIDO (decisão do dono,
 # respondendo "o portão soma TODO o JS num teto só — como resolver?"): o "515 kB
 # de 800 kB" da linha de 30/07 acima somava cliente E painel juntos. Hoje
@@ -115,7 +116,7 @@ jobs:
       #
       # `npm test` (na máquina do dev) continua sendo a mesma linha com os
       # três conjuntos; aqui eles dividem jobs: test-deno (este) e test-front
-      # (matriz de 4 shards). Medido em 14/09/2026: edge 539 casos (~2 s) + unit
+      # (matriz de 2 shards). Medido em 14/09/2026: edge 539 casos (~2 s) + unit
       # 380 casos (~4 s) + front 498 arquivos de vitest (278,35 s, 88% do
       # antigo job único de 317 s — o número que motivou a divisão). Se você
       # mexer na suíte, MEDA de novo em vez de somar a diferença no número
@@ -142,7 +143,7 @@ jobs:
       # entraria no `tsc -b` e quebraria o job de tipos com os globais do Deno.
 
   test-front:
-    name: Testes front (shard ${{ matrix.shard }}/4)
+    name: Testes front (shard ${{ matrix.shard }}/2)
     runs-on: ubuntu-latest
     strategy:
       # Cada shard é um job independente, como eram os dois jobs antigos: um
@@ -151,7 +152,7 @@ jobs:
       # esconde um defeito real que caiu em outro shard).
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -164,18 +165,18 @@ jobs:
       # EXPIROU: medido em 14/09/2026, o job levava 317 s, dos quais 278,35 s
       # eram vitest front (498 arquivos) = 88%. O `npm test` LOCAL não muda:
       # continua a mesma linha que o dev roda na máquina. Aqui a suíte front
-      # roda em 4 shards porque o vitest reparte os arquivos de forma
-      # determinística pelo NOME DO ARQUIVO — os 4 shards somados cobrem
-      # 100% da suíte, nada fica fora — e cada runner carrega um quarto da
+      # roda em 2 shards porque o vitest reparte os arquivos de forma
+      # determinística pelo NOME DO ARQUIVO — os 2 shards somados cobrem
+      # 100% da suíte, nada fica fora — e cada runner carrega metade da
       # carga, o que ataca a causa física do timeout documentado abaixo.
       #
-      # Por que 4 e não 2: a suíte cresceu de 498 para 3.109 arquivos e, medido
+      # Por que NÃO 4 (ainda): a suíte cresceu de 498 para 3.109 arquivos e, medido
       # em 24/11/2026 (run 45396219487), os 2 shards levavam 814 s (1.555
       # arquivos) e 854 s (1.554 arquivos), com ~2,8 workers em paralelo por
       # runner. O tempo cai quase linear com o número de shards (o `npm ci` e
-      # o cache não encolhem): 4 shards = ~777 arquivos e, por estimativa, ~7-8 min cada.
+      # o cache não encolhem): 4 shards seriam ~777 arquivos e ~7-8 min cada (estimado), mas as regras do GitHub exigem os nomes `shard 1/2` e `2/2`.
       # Trocar o número exige trocar os DOIS lugares deste job: a lista da
-      # matriz e o `/4` do comando. Medir de novo depois de mexer.
+      # matriz e o `/2` do comando. Medir de novo depois de mexer.
       #
       # O `--retry=1` existe SÓ no CI, por causa do flaky medido em
       # 14/09/2026: 5 runs vermelhos em 2 horas (develop 2x, main 1x, PRs 2x),
@@ -199,7 +200,7 @@ jobs:
       # defeito: vermelho de test:front nesta maquina nao distingue codigo
       # quebrado de PC ocupado, e verde tambem nao prova muito. Quem cobra e'
       # o CI, no Linux.
-      - run: npm run test:front -- --shard=${{ matrix.shard }}/4 --retry=1
+      - run: npm run test:front -- --shard=${{ matrix.shard }}/2 --retry=1
 
   build:
     name: Build e tamanho
