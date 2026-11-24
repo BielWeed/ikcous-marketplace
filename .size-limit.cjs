@@ -204,7 +204,8 @@ module.exports = [
     // 20/11/2026 (1.5.225): 690 -> 693 kB (o lote mediu 690,84 kB no build local, 839 B acima de 690 kB; subo 3 kB para ficar com folga acima do ruido de hash dos chunks). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
     // 20/11/2026 (1.5.229): 693 -> 696 kB (o lote mediu 693,64 kB no CI, 641 B acima de 693 kB; subo 3 kB para ficar com folga acima do ruido de hash dos chunks). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
     // 21/11/2026 (1.5.230): 696 -> 700 kB (o CI mediu 697,13 kB, 1,13 kB acima de 696 kB, depois das frases novas da nota e dos avisos de texto). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
-    limit: "700 kB",
+    // 24/11/2026 (1.5.232): 700 -> 704 kB (o build medi 701,09 kB, 1,09 kB acima de 700 kB, depois de folhas que arrastam, busca do topo e textos novos). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
+    limit: "704 kB",
     webpack: false,
     // Sem medida de TEMPO: o plugin `@size-limit/time` (que rodava o bundle em
     // Chrome headless e puxava o `extract-zip`) saiu das dependencias, entao
@@ -359,7 +360,8 @@ module.exports = [
     // 18/11/2026 (1.5.209): 546 -> 550 kB (o painel mediu 546,09 kB no build local, 87 B acima do teto; subo 4 kB, o mesmo passo de sempre). Regra do dono: o teto sobe.
     // 20/11/2026 (1.5.228): 550 -> 554 kB (nota da versão com 26 frases, acessibilidade/foco no painel e limpeza de invisíveis; o painel mediu 550,27 kB, 274 B acima do teto; subo 4 kB, o mesmo passo de sempre). Regra do dono: o teto sobe.
     // 21/11/2026 (1.5.230): 554 -> 558 kB (avisos de rastreio, estorno, Pix e textos do painel; o painel mediu 554,15 kB no CI, 153 B acima do teto; subo 4 kB, o mesmo passo de sempre). Regra do dono: o teto sobe.
-    limit: "558 kB",
+    // 24/11/2026 (1.5.232): 558 -> 562 kB (o build mediu 558,7 kB, 700 B acima do teto, depois das folhas novas do painel e dos avisos de permissao; subo 4 kB, o mesmo passo de sempre). Regra do dono: o teto sobe.
+    limit: "562 kB",
     webpack: false,
   },
   { path: `${output}/assets/*.css`, limit: "100 kB", webpack: false },
