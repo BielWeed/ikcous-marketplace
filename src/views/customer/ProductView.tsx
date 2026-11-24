@@ -20,6 +20,7 @@ import { StarRating } from "@/components/ui/custom/StarRating";
 import { SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { branding } from "@/config/branding";
 import { useStore } from "@/contexts/StoreContext";
+import { useArrastarParaFechar } from "@/hooks/useArrastarParaFechar";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
 import { useDocumentMeta } from "@/hooks/useDocumentMeta";
 import { useFavorites } from "@/hooks/useFavorites";
@@ -166,6 +167,12 @@ export const ProductView = React.memo(function ProductView({
     Record<string, string>
   >(() => escolhaDasOpcoesUnicas(product.variants));
   const [folhaAberta, setFolhaAberta] = useState(false);
+  // A barrinha da folha também arrasta para baixo (o gesto de todas as folhas).
+  const arrastoDaAlca = useArrastarParaFechar(() => setFolhaAberta(false));
+  const { zerarGuarda: zerarGuardaDaAlca } = arrastoDaAlca;
+  useEffect(() => {
+    if (folhaAberta) zerarGuardaDaAlca();
+  }, [folhaAberta, zerarGuardaDaAlca]);
   // O que a última escolha SOLTOU do outro lado ("Opção desmarcada: Tamanho P"), para
   // o leitor de tela: a tela muda sozinha e quem não vê não perceberia.
   const [avisoDaEscolha, setAvisoDaEscolha] = useState("");
@@ -1943,8 +1950,12 @@ export const ProductView = React.memo(function ProductView({
         <button
           type="button"
           aria-label="Fechar opções"
-          onClick={() => setFolhaAberta(false)}
-          className="flex min-h-11 w-full shrink-0 items-center justify-center"
+          onClick={() => {
+            if (arrastoDaAlca.engoliuClique()) return;
+            setFolhaAberta(false);
+          }}
+          onPointerDown={arrastoDaAlca.aoApertar}
+          className="flex min-h-11 w-full shrink-0 touch-none items-center justify-center"
         >
           <span className="h-1 w-10 rounded-full bg-muted-foreground/40" />
         </button>

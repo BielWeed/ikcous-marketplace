@@ -3,6 +3,7 @@ import {
   type EscolhaDeIcone,
   SeletorDeIcone,
 } from "@/components/admin/categorias/SeletorDeIcone";
+import { AlcaDaFolha } from "@/components/admin/primitivos/AlcaDaFolha";
 import {
   Sheet,
   SheetClose,
@@ -211,12 +212,11 @@ export function FolhaDeNovaCategoria({
         className="mx-auto max-h-[92dvh] w-full gap-0 rounded-t-[28px] border-admin-border bg-admin-bg p-0 text-foreground sm:max-w-xl"
       >
         <SheetHeader className="gap-0 px-5 pb-3 pt-0 text-left">
-          <div
-            aria-hidden="true"
-            className="flex h-7 items-center justify-center"
-          >
-            <span className="h-1 w-10 rounded-full bg-muted-foreground/40" />
-          </div>
+          <AlcaDaFolha
+            aoFechar={fechar}
+            className="mt-0 h-7 items-center"
+            barra="mt-0 bg-muted-foreground/40"
+          />
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <SheetTitle className="text-[22px] font-bold leading-7 tracking-tight text-foreground">

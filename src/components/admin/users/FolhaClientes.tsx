@@ -1,3 +1,4 @@
+import { AlcaDaFolha } from "@/components/admin/primitivos/AlcaDaFolha";
 import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import * as Dialog from "@radix-ui/react-dialog";
 import { HelpCircle } from "lucide-react";
@@ -37,15 +38,12 @@ export function FolhaClientes({
     <Dialog.Root open={aberta} onOpenChange={aoMudar}>
       <Dialog.Trigger asChild>{gatilho}</Dialog.Trigger>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-[100] bg-black/80" />
+        <Dialog.Overlay className="fixed inset-0 z-[100] bg-black/80 data-[state=closed]:duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=open]:[animation-duration:250ms]" />
         <Dialog.Content
           aria-describedby={undefined}
-          className="fixed inset-x-0 bottom-0 z-[100] flex max-h-[90dvh] flex-col rounded-t-3xl border border-admin-border bg-admin-raised p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))] text-zinc-100 shadow-2xl outline-none sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-full sm:max-w-xl sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-3xl"
+          className="fixed inset-x-0 bottom-0 z-[100] flex max-h-[90dvh] flex-col rounded-t-3xl border border-admin-border bg-admin-raised p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))] text-zinc-100 shadow-2xl outline-none data-[state=closed]:duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom data-[state=open]:[animation-duration:250ms] sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-full sm:max-w-xl sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-3xl sm:data-[state=closed]:fade-out-0 sm:data-[state=open]:fade-in-0 sm:data-[state=closed]:zoom-out-95 sm:data-[state=open]:zoom-in-95 sm:data-[state=closed]:slide-out-to-left-1/2 sm:data-[state=closed]:slide-out-to-top-1/2 sm:data-[state=open]:slide-in-from-left-1/2 sm:data-[state=open]:slide-in-from-top-1/2"
         >
-          <span
-            aria-hidden="true"
-            className="mx-auto mb-4 h-1 w-10 shrink-0 rounded-full bg-zinc-500 sm:hidden"
-          />
+          <AlcaDaFolha aoFechar={() => aoMudar(false)} className="sm:hidden" />
           <Dialog.Title className="mb-5 flex shrink-0 items-center gap-3 text-xl font-bold">
             {ajuda && (
               <HelpCircle

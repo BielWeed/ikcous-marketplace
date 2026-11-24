@@ -1496,11 +1496,15 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
         new MouseEvent("pointermove", { bubbles: true, clientY: 130 }),
       );
     });
-    // A folha acompanhou o dedo...
+    // A folha acompanhou o dedo (a escrita é agrupada por quadro: espera o
+    // próximo)...
     const conteudo = document.querySelector<HTMLElement>(
       '[data-slot="sheet-content"]',
     )!;
-    expect(conteudo.style.transform).toBe("translateY(30px)");
+    await act(async () => {
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+    });
+    expect(conteudo.style.transform).toBe("translate3d(0,30px,0)");
 
     // ...até o sistema cancelar o gesto (rolagem assumida pelo navegador,
     // chamada interrompida). Cancelar NÃO é gesto de fechar — e tem de

@@ -265,7 +265,7 @@ describe("AdminOrderCard — as perguntas do cartão e o Voltar do celular", () 
     expect(navegacoesDoApp).toEqual([]);
   });
 
-  it("o menu 'Ações do pedido' continua sem entrada de histórico (Ver detalhes navega de dentro dele)", async () => {
+  it("o menu 'Ações do pedido' ganha entrada de histórico e o Voltar fecha SÓ o menu", async () => {
     await montar(["pedido-a"]);
     const antes = globalThis.history.length;
     await clicar(
@@ -275,8 +275,53 @@ describe("AdminOrderCard — as perguntas do cartão e o Voltar do celular", () 
     );
 
     expect(janela()?.textContent).toContain("Ações do pedido");
-    expect(globalThis.history.length).toBe(antes);
-    expect(globalThis.history.state?.folhaDePolitica).not.toBe(true);
+    expect(globalThis.history.length).toBe(antes + 1);
+    expect(globalThis.history.state?.folhaDePolitica).toBe(true);
+
+    await apertarVoltar();
+    await vi.waitFor(() => expect(janela()).toBeNull());
+    expect(navegacoesDoApp).toEqual([]);
+    expect(globalThis.history.state?.view).toBe("admin-orders");
+  });
+
+  it("'Ver detalhes' dentro do menu navega e NÃO deixa entrada de histórico para trás", async () => {
+    const aoSelecionar = vi.fn();
+    await act(async () => {
+      raiz.render(
+        <AdminOrderCard
+          order={pedido("pedido-a")}
+          viewMode="compact"
+          onSelect={aoSelecionar}
+          onWhatsApp={vi.fn()}
+          onRegistrarPagamento={aoReceber}
+          registrandoPagamento={false}
+          onStatusChange={aoMudarStatus}
+          onReceberAntesDeAvancar={vi.fn()}
+        />,
+      );
+      await esperar(0);
+    });
+    await clicar(
+      hospedeiro.querySelector<HTMLButtonElement>(
+        'button[aria-label^="Ações do pedido"]',
+      ) ?? undefined,
+    );
+    expect(globalThis.history.state?.folhaDePolitica).toBe(true);
+    const voltar = vi.spyOn(globalThis.history, "back");
+    await clicar(botaoDe("Ver detalhes", janela() ?? document));
+    expect(aoSelecionar).toHaveBeenCalledTimes(1);
+    // A navegação troca a tela com a folha aberta: o hook NÃO pode mexer no
+    // histórico no meio da transição (um history.back() desfaria a ida para a
+    // ficha). Guarda de regressão: com a tela desmontando o hook já se cala
+    // sozinho; a chamada a `sairDaFolhaPorNavegacao` cobre o cartão que
+    // continuar montado depois de navegar.
+    await act(async () => {
+      raiz.render(null);
+      await esperar(0);
+    });
+    expect(voltar).not.toHaveBeenCalled();
+    expect(navegacoesDoApp).toEqual([]);
+    voltar.mockRestore();
   });
 });
 

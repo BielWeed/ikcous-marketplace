@@ -149,8 +149,11 @@ describe("folha de baixo no computador — gaveta sem mudar o celular", () => {
     const folha = document.querySelector<HTMLElement>(
       '[data-slot="sheet-content"]',
     )!;
+    // O teclado do celular (folha-inferior-teclado.test.tsx) troca `bottom-0` e
+    // o `max-h` por variáveis CSS com fallback idêntico ao antigo: sem teclado
+    // o resultado é o mesmo, e o `lg:` da gaveta continua mandando no desktop.
     expect(classesDoCelular(folha.className)).toBe(
-      `${BASE.replace("gap-4 ", "")} ${DE_BAIXO} mx-auto max-h-[92dvh] w-full gap-0 rounded-t-[28px] border-admin-border bg-zinc-950 p-0 text-white sm:max-w-xl`.replace(
+      `${BASE.replace("gap-4 ", "")} ${DE_BAIXO.replace("bottom-0 ", "")} bottom-[var(--teclado-da-folha,0px)] mx-auto max-h-[min(92dvh,var(--altura-da-folha,92dvh))] w-full gap-0 rounded-t-[28px] border-admin-border bg-zinc-950 p-0 text-white sm:max-w-xl`.replace(
         "bg-background ",
         "",
       ),

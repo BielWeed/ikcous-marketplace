@@ -14,6 +14,7 @@ import {
 import { avisoDeRastreio } from "@/components/admin/orders/aviso-de-rastreio";
 import { podeRegistrarPagamento } from "@/components/admin/orders/podeRegistrarPagamento";
 import { AnularVendaDoBalcao } from "@/components/admin/pdv/AnularVendaDoBalcao";
+import { AlcaDaFolha } from "@/components/admin/primitivos/AlcaDaFolha";
 import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import {
   Dialog,
@@ -119,11 +120,12 @@ export const AdminOrderCard = memo(function AdminOrderCard({
   const [painel, setPainel] = useState<
     "acoes" | "cancelar" | "receber" | "avancar" | "entregar" | null
   >(null);
-  // O Voltar do aparelho fecha só a pergunta de dinheiro/cancelar e a lista de
-  // Pedidos fica. O menu "Ações do pedido" fica de fora: "Ver detalhes" navega
-  // para a ficha de dentro dele, e a entrada de histórico da janela sobraria
-  // atrás da ficha (um Voltar "sem efeito").
-  useVoltarFechaAFolha(painel !== null && painel !== "acoes", () =>
+  // O Voltar do aparelho fecha só a folha aberta (o menu "Ações do pedido" e as
+  // perguntas de dinheiro/cancelar) e a lista de Pedidos fica. "Ver detalhes"
+  // navega para a ficha de dentro do menu: ele devolve `sairDaFolhaPorNavegacao`
+  // antes, para a entrada de histórico da folha não sobrar atrás da ficha (um
+  // Voltar "sem efeito").
+  const sairDaFolhaPorNavegacao = useVoltarFechaAFolha(painel !== null, () =>
     setPainel(null),
   );
   const [processando, setProcessando] = useState(false);
@@ -352,13 +354,22 @@ export const AdminOrderCard = memo(function AdminOrderCard({
     order.paymentStatus !== "pago_apos_expirar"
       ? PRINCIPAL
       : `${SECUNDARIO} min-h-14`;
+  // Durante a saída da folha o painel já é null: sem lembrar o último, o conteúdo
+  // sumia na hora e a janela encolhia ANTES de descer (medido no Chromium).
+  const ultimoPainel = useRef(painel);
+  if (painel !== null) ultimoPainel.current = painel;
+  const painelExibido = painel ?? ultimoPainel.current;
   const abrirFicha = () => onSelect(order);
+  // Fechar de qualquer caminho (X, véu, Esc, alça): fica parado enquanto grava.
+  const fecharPainel = () => {
+    if (!emVoo.current && !anulando) setPainel(null);
+  };
   const titulo =
-    painel === "acoes"
+    painelExibido === "acoes"
       ? "Ações do pedido"
-      : painel === "cancelar"
+      : painelExibido === "cancelar"
         ? "Cancelar pedido"
-        : painel === "avancar"
+        : painelExibido === "avancar"
           ? "Avançar sem pagamento confirmado"
           : "Confirmar recebimento";
   const textoCancelamento = textoCancelamentoDoPainel({
@@ -639,7 +650,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
       <Dialog
         open={painel !== null}
         onOpenChange={(aberto) => {
-          if (!aberto && !emVoo.current && !anulando) setPainel(null);
+          if (!aberto) fecharPainel();
         }}
       >
         <DialogContent
@@ -654,12 +665,9 @@ export const AdminOrderCard = memo(function AdminOrderCard({
               menuRef.current?.focus();
             }
           }}
-          className="fixed bottom-0 left-1/2 top-auto z-[80] max-h-[90dvh] w-full max-w-full -translate-x-1/2 translate-y-0 gap-5 overflow-y-auto rounded-b-none rounded-t-[28px] border-admin-border-strong bg-admin-raised p-5 pb-[max(20px,env(safe-area-inset-bottom))] text-zinc-100 sm:bottom-auto sm:top-1/2 sm:max-w-lg sm:-translate-y-1/2 sm:rounded-[28px]"
+          className="fixed bottom-0 left-1/2 top-auto z-[80] max-h-[90dvh] w-full max-w-full -translate-x-1/2 translate-y-0 gap-5 overflow-y-auto rounded-b-none rounded-t-[28px] border-admin-border-strong bg-admin-raised p-5 pb-[max(20px,env(safe-area-inset-bottom))] text-zinc-100 data-[state=closed]:duration-200 data-[state=closed]:zoom-out-100 data-[state=open]:zoom-in-100 data-[state=closed]:slide-out-to-bottom data-[state=closed]:slide-out-to-left-1/2 data-[state=open]:slide-in-from-bottom data-[state=open]:slide-in-from-left-1/2 data-[state=open]:[animation-duration:250ms] sm:bottom-auto sm:top-1/2 sm:max-w-lg sm:-translate-y-1/2 sm:rounded-[28px] sm:data-[state=closed]:zoom-out-95 sm:data-[state=open]:zoom-in-95 sm:data-[state=closed]:slide-out-to-top-1/2 sm:data-[state=open]:slide-in-from-top-1/2"
         >
-          <span
-            aria-hidden="true"
-            className="mx-auto h-1 w-10 rounded-full bg-zinc-500 sm:hidden"
-          />
+          <AlcaDaFolha aoFechar={fecharPainel} className="-mb-4 sm:hidden" />
           <div className="flex items-center justify-between gap-3">
             <DialogTitle className="text-xl font-bold">{titulo}</DialogTitle>
             <button
@@ -675,7 +683,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
           <DialogDescription className="break-words text-sm text-zinc-400">
             {nome} · #{numero} · R$ {total}
           </DialogDescription>
-          {painel === "acoes" ? (
+          {painelExibido === "acoes" ? (
             <div className="space-y-2 border-t border-admin-border pt-2">
               {[
                 {
@@ -683,7 +691,10 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                   motivo: "Abre a ficha completa do pedido.",
                   Icone: Package,
                   cor: "text-indigo-300",
-                  clicar: abrirFicha,
+                  clicar: () => {
+                    sairDaFolhaPorNavegacao();
+                    abrirFicha();
+                  },
                   disabled: false,
                 },
                 {
@@ -825,7 +836,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                 </button>
               )}
             </div>
-          ) : painel === "receber" ? (
+          ) : painelExibido === "receber" ? (
             <PerguntaDoRecebimento
               total={order.total || 0}
               disabled={bloqueado || !faltaReceber}
@@ -836,9 +847,9 @@ export const AdminOrderCard = memo(function AdminOrderCard({
           ) : (
             <>
               <h3 className="text-lg font-bold">
-                {painel === "cancelar"
+                {painelExibido === "cancelar"
                   ? `Cancelar o pedido #${numero}?`
-                  : painel === "avancar"
+                  : painelExibido === "avancar"
                     ? "Este pedido não está com o pagamento confirmado"
                     : `Recebeu os R$ ${total} deste pedido?`}
               </h3>
@@ -846,9 +857,9 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                 className={cn(
                   "rounded-2xl border border-admin-border p-4 text-sm leading-relaxed",
                   classeDoTexto(
-                    painel === "cancelar"
+                    painelExibido === "cancelar"
                       ? "negativo"
-                      : painel === "avancar"
+                      : painelExibido === "avancar"
                         ? "atencao"
                         : "positivo",
                   ),
@@ -858,14 +869,14 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                   aria-hidden="true"
                   className="mr-2 inline size-4 align-text-bottom"
                 />
-                {painel === "cancelar"
+                {painelExibido === "cancelar"
                   ? textoCancelamento
-                  : painel === "avancar"
+                  : painelExibido === "avancar"
                     ? order.paymentStatus === "estornado"
                       ? "O pagamento deste pedido foi estornado. Se avançar, o pedido segue sem esse pagamento. Depois de finalizado, não dá mais para cancelar e devolver ao estoque."
                       : `${order.paymentStatus === "aguardando" ? "O pagamento ainda não foi confirmado. Não despache até aparecer “Pago”." : "O dinheiro deste pedido não entrou."} Se você avançar, a mercadoria caminha para sair mesmo assim — e, depois de finalizado, não dá mais para cancelar e devolver ao estoque. Se a cliente pagou na loja, feche este aviso, cancele o pedido (botão Cancelar pedido) e registre a venda em Vender.`
                     : `Pedido de pagamento na ${momentoDoPagamentoNaMao(order.retiradaNaLoja)}. Se você já recebeu o dinheiro na mão, confirme abaixo — o registro fica salvo no pedido.`}
-                {painel === "avancar" &&
+                {painelExibido === "avancar" &&
                   aguardaPixOnline(order) &&
                   ` ${AVISO_DE_RESERVA_AO_AVANCAR_PIX}`}
               </p>
@@ -873,39 +884,39 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                 <button
                   type="button"
                   onClick={() =>
-                    painel === "entregar"
+                    painelExibido === "entregar"
                       ? confirmarAvanco(false)
                       : setPainel(null)
                   }
                   className={SECUNDARIO}
                 >
-                  {painel === "cancelar"
+                  {painelExibido === "cancelar"
                     ? "Manter pedido"
-                    : painel === "avancar"
+                    : painelExibido === "avancar"
                       ? "Voltar"
                       : "Finalizar sem registrar recebimento"}
                 </button>
                 <button
                   type="button"
                   disabled={
-                    bloqueado || (painel === "cancelar" && !podeCancelar)
+                    bloqueado || (painelExibido === "cancelar" && !podeCancelar)
                   }
                   onClick={() =>
-                    painel === "cancelar"
+                    painelExibido === "cancelar"
                       ? confirmarCancelamento()
-                      : confirmarAvanco(painel === "entregar")
+                      : confirmarAvanco(painelExibido === "entregar")
                   }
                   className={
-                    painel === "cancelar"
+                    painelExibido === "cancelar"
                       ? `${PERIGO} min-h-14`
-                      : painel === "avancar"
+                      : painelExibido === "avancar"
                         ? `${SECUNDARIO} min-h-14`
                         : PRINCIPAL
                   }
                 >
-                  {painel === "cancelar" ? (
+                  {painelExibido === "cancelar" ? (
                     "Cancelar pedido"
-                  ) : painel === "avancar" ? (
+                  ) : painelExibido === "avancar" ? (
                     "Avançar sem pagamento confirmado"
                   ) : (
                     <>
