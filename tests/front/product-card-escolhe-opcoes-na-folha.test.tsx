@@ -1473,12 +1473,12 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
     expect(folha()).not.toBeNull();
 
     // LIMPEZA do gesto: soltar devolve a folha ao lugar sem resquício —
-    // sem transform inline (senão ela ficava deslocada para sempre) e com a
+    // sem deslocamento inline (senão ela ficava deslocada para sempre) e com a
     // transição de volta ("" e nunca "none": é ela que anima abrir/fechar).
     const conteudo = document.querySelector<HTMLElement>(
       '[data-slot="sheet-content"]',
     )!;
-    expect(conteudo.style.transform).toBe("");
+    expect(conteudo.style.translate).toBe("");
     expect(conteudo.style.transition).toBe("");
   });
 
@@ -1504,7 +1504,7 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
     await act(async () => {
       await new Promise((r) => requestAnimationFrame(() => r(null)));
     });
-    expect(conteudo.style.transform).toBe("translate3d(0,30px,0)");
+    expect(conteudo.style.translate).toBe("0 30px");
 
     // ...até o sistema cancelar o gesto (rolagem assumida pelo navegador,
     // chamada interrompida). Cancelar NÃO é gesto de fechar — e tem de
@@ -1518,14 +1518,14 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
     expect(folha()).not.toBeNull();
     // Estilo restaurado — "" e não "none".
     expect(conteudo.style.transition).toBe("");
-    expect(conteudo.style.transform).toBe("");
+    expect(conteudo.style.translate).toBe("");
     // Listeners removidos: pointermove seguinte é INERTE.
     await act(async () => {
       window.dispatchEvent(
         new MouseEvent("pointermove", { bubbles: true, clientY: 400 }),
       );
     });
-    expect(conteudo.style.transform).toBe("");
+    expect(conteudo.style.translate).toBe("");
   });
 
   it("o clique sintético logo após um arrasto curto NÃO fecha (guarda movimentou)", async () => {

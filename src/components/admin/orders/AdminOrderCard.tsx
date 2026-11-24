@@ -120,12 +120,13 @@ export const AdminOrderCard = memo(function AdminOrderCard({
   const [painel, setPainel] = useState<
     "acoes" | "cancelar" | "receber" | "avancar" | "entregar" | null
   >(null);
-  // O Voltar do aparelho fecha só a folha aberta (o menu "Ações do pedido" e as
-  // perguntas de dinheiro/cancelar) e a lista de Pedidos fica. "Ver detalhes"
-  // navega para a ficha de dentro do menu: ele devolve `sairDaFolhaPorNavegacao`
-  // antes, para a entrada de histórico da folha não sobrar atrás da ficha (um
-  // Voltar "sem efeito").
-  const sairDaFolhaPorNavegacao = useVoltarFechaAFolha(painel !== null, () =>
+  // O Voltar do aparelho fecha só a pergunta de dinheiro/cancelar e a lista de
+  // Pedidos fica. O menu "Ações do pedido" fica de fora: "Ver detalhes" navega
+  // para a ficha de dentro dele, e a entrada de histórico da janela sobraria
+  // atrás da ficha (histórico [lista, folha, ficha]: o Voltar da ficha cairia
+  // na entrada da folha e o seguinte não faria nada visível — o roteador só faz
+  // replaceState para carrinho -> address-form, não para admin-orders).
+  useVoltarFechaAFolha(painel !== null && painel !== "acoes", () =>
     setPainel(null),
   );
   const [processando, setProcessando] = useState(false);
@@ -691,10 +692,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                   motivo: "Abre a ficha completa do pedido.",
                   Icone: Package,
                   cor: "text-indigo-300",
-                  clicar: () => {
-                    sairDaFolhaPorNavegacao();
-                    abrirFicha();
-                  },
+                  clicar: abrirFicha,
                   disabled: false,
                 },
                 {

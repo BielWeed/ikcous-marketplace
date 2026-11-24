@@ -11,8 +11,19 @@ import { type PointerEvent as EventoDeToque, useCallback, useRef } from "react";
 const LIMIAR_PX = 64;
 const MS_DA_SAIDA = 220;
 const MS_DA_VOLTA = 180;
-const LUGAR = "translate3d(0,0,0)";
-const FORA = "translate3d(0,100%,0)";
+// O deslocamento vai na propriedade individual `translate`, NUNCA em
+// `transform`: o `-translate-x-1/2` do Tailwind v3 (folha centrada com
+// `left-1/2`, como o Dialog de "Ações do pedido") mora em `transform`, e
+// escrever `transform` o SUBSTITUI — a folha pulava de lado no arrasto. As duas
+// propriedades se compõem (translate, depois transform), então o X do elemento
+// fica intacto e só o Y muda. Chrome 104+, Safari 14.1+, Firefox 72+.
+const LUGAR = "0 0";
+const FORA = "0 100%";
+const emPx = (dy: number) => `0 ${dy}px`;
+const suportaTranslate = () =>
+  typeof CSS === "undefined" ||
+  !CSS.supports ||
+  CSS.supports("translate", "0 0");
 
 type Gesto = { y: number; movimentou: boolean };
 
@@ -37,7 +48,9 @@ export function useArrastarParaFechar(aoFechar: () => void) {
   fechar.current = aoFechar;
 
   const aoApertar = (e: EventoDeToque<HTMLElement>) => {
-    if (e.button > 0) return;
+    // Só o dedo que apertou a alça: um segundo dedo não inicia outro gesto.
+    if (e.button > 0 || e.isPrimary === false) return;
+    if (!suportaTranslate()) return; // sem a propriedade: só o toque fecha
     const folha = e.currentTarget.closest<HTMLElement>('[role="dialog"]');
     if (!folha || folha.dataset.state === "closed") return;
     // Gaveta lateral do computador (altura toda, colada no topo): puxar para
@@ -46,11 +59,11 @@ export function useArrastarParaFechar(aoFechar: () => void) {
     const g = (gesto.current = { y: e.clientY, movimentou: false });
     const id = e.pointerId;
     const veu = folha.previousElementSibling;
-    // A entrada (animate-in) ainda rodando ganharia do transform inline.
+    // A entrada (animate-in) ainda rodando ganharia do deslocamento inline.
     for (const a of folha.getAnimations?.() ?? []) a.finish();
     // Camada própria só durante o gesto; sem transição para não virar atraso.
     folha.style.transitionProperty = "none";
-    folha.style.willChange = "transform";
+    folha.style.willChange = "translate";
     let dy = 0;
     let quadro = 0;
     const aoMover = (ev: PointerEvent) => {
@@ -60,21 +73,21 @@ export function useArrastarParaFechar(aoFechar: () => void) {
       // Uma escrita por quadro, não uma por evento de toque.
       quadro ||= requestAnimationFrame(() => {
         quadro = 0;
-        folha.style.transform = `translate3d(0,${dy}px,0)`;
+        folha.style.translate = emPx(dy);
       });
     };
     const limpar = () => {
       folha.style.transitionProperty = "";
-      folha.style.transform = "";
+      folha.style.translate = "";
       folha.style.willChange = "";
     };
     // Volta ao lugar a partir de `de`. A transição CSS da folha fica desligada
-    // até a animação acabar: ligada, ela disputava o mesmo transform.
+    // até a animação acabar: ligada, ela disputava o mesmo deslocamento.
     const voltar = (de: string) => {
-      folha.style.transform = "";
+      folha.style.translate = "";
       const volta = deslizar(
         folha,
-        [{ transform: de }, { transform: LUGAR }],
+        [{ translate: de }, { translate: LUGAR }],
         MS_DA_VOLTA,
         false,
       );
@@ -88,14 +101,14 @@ export function useArrastarParaFechar(aoFechar: () => void) {
       window.removeEventListener("pointercancel", aoSoltar);
       cancelAnimationFrame(quadro);
       dy = Math.max(0, ev.clientY - g.y);
-      const aqui = `translate3d(0,${dy}px,0)`;
+      const aqui = emPx(dy);
       if (ev.type === "pointercancel" || dy <= LIMIAR_PX) return voltar(aqui);
       // Desce da posição em que o dedo largou (não do repouso), e o véu some
       // junto; só no fim a folha "fecha" de verdade.
-      folha.style.transform = aqui;
+      folha.style.translate = aqui;
       const descida = deslizar(
         folha,
-        [{ transform: aqui }, { transform: FORA }],
+        [{ translate: aqui }, { translate: FORA }],
         MS_DA_SAIDA,
         true,
       );

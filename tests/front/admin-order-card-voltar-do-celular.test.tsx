@@ -265,7 +265,7 @@ describe("AdminOrderCard — as perguntas do cartão e o Voltar do celular", () 
     expect(navegacoesDoApp).toEqual([]);
   });
 
-  it("o menu 'Ações do pedido' ganha entrada de histórico e o Voltar fecha SÓ o menu", async () => {
+  it("o menu 'Ações do pedido' continua sem entrada de histórico (Ver detalhes navega de dentro dele)", async () => {
     await montar(["pedido-a"]);
     const antes = globalThis.history.length;
     await clicar(
@@ -275,17 +275,21 @@ describe("AdminOrderCard — as perguntas do cartão e o Voltar do celular", () 
     );
 
     expect(janela()?.textContent).toContain("Ações do pedido");
-    expect(globalThis.history.length).toBe(antes + 1);
-    expect(globalThis.history.state?.folhaDePolitica).toBe(true);
-
-    await apertarVoltar();
-    await vi.waitFor(() => expect(janela()).toBeNull());
-    expect(navegacoesDoApp).toEqual([]);
-    expect(globalThis.history.state?.view).toBe("admin-orders");
+    expect(globalThis.history.length).toBe(antes);
+    expect(globalThis.history.state?.folhaDePolitica).not.toBe(true);
   });
 
-  it("'Ver detalhes' dentro do menu navega e NÃO deixa entrada de histórico para trás", async () => {
-    const aoSelecionar = vi.fn();
+  it("'Ver detalhes' dentro do menu navega de verdade e o Voltar da ficha volta DIRETO para a lista (sem entrada-fantasma da folha)", async () => {
+    // O App faz pushState ao abrir a ficha. Com uma entrada da folha no meio o
+    // histórico viraria [lista, folha, ficha]: o Voltar da ficha cairia na
+    // entrada da folha e o seguinte "não faria nada".
+    const aoSelecionar = vi.fn(() => {
+      globalThis.history.pushState(
+        { view: "admin-order-detail" },
+        "",
+        "/pedidos?id=pedido-a",
+      );
+    });
     await act(async () => {
       raiz.render(
         <AdminOrderCard
@@ -301,27 +305,22 @@ describe("AdminOrderCard — as perguntas do cartão e o Voltar do celular", () 
       );
       await esperar(0);
     });
+    const antes = globalThis.history.length;
     await clicar(
       hospedeiro.querySelector<HTMLButtonElement>(
         'button[aria-label^="Ações do pedido"]',
       ) ?? undefined,
     );
-    expect(globalThis.history.state?.folhaDePolitica).toBe(true);
-    const voltar = vi.spyOn(globalThis.history, "back");
     await clicar(botaoDe("Ver detalhes", janela() ?? document));
     expect(aoSelecionar).toHaveBeenCalledTimes(1);
-    // A navegação troca a tela com a folha aberta: o hook NÃO pode mexer no
-    // histórico no meio da transição (um history.back() desfaria a ida para a
-    // ficha). Guarda de regressão: com a tela desmontando o hook já se cala
-    // sozinho; a chamada a `sairDaFolhaPorNavegacao` cobre o cartão que
-    // continuar montado depois de navegar.
-    await act(async () => {
-      raiz.render(null);
-      await esperar(0);
-    });
-    expect(voltar).not.toHaveBeenCalled();
-    expect(navegacoesDoApp).toEqual([]);
-    voltar.mockRestore();
+    // só a entrada da ficha foi empurrada: nenhuma da folha
+    expect(globalThis.history.length).toBe(antes + 1);
+    expect(globalThis.history.state?.view).toBe("admin-order-detail");
+
+    await apertarVoltar();
+    // um Voltar da ficha cai na LISTA, não numa entrada da folha
+    expect(globalThis.history.state?.view).toBe("admin-orders");
+    expect(globalThis.history.state?.folhaDePolitica).not.toBe(true);
   });
 });
 

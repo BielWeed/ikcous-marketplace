@@ -2,7 +2,7 @@
 //
 // O gesto compartilhado de arrastar a alça de uma folha inferior
 // (src/hooks/useArrastarParaFechar.ts). Defeito medido no Chromium (toque real,
-// 24/11/2026): soltar além do limite zerava o transform ANTES de fechar e a
+// 24/11/2026): soltar além do limite zerava o deslocamento ANTES de fechar e a
 // folha PULAVA de volta ao repouso (660 -> 510 px) antes de descer. O jsdom não
 // desenha, então o teste prova a ORDEM e a POSIÇÃO com um `animate` de mentira:
 // a descida parte de onde o dedo largou, o `aoFechar` só roda no fim dela, e
@@ -122,7 +122,7 @@ describe("useArrastarParaFechar — sem animação disponível (jsdom)", () => {
       window.dispatchEvent(evento("pointerup", 164));
     });
     expect(aoFechar).not.toHaveBeenCalled();
-    expect(folha().style.transform).toBe("");
+    expect(folha().style.translate).toBe("");
     expect(folha().style.transitionProperty).toBe("");
     expect(folha().style.willChange).toBe("");
   });
@@ -135,7 +135,7 @@ describe("useArrastarParaFechar — sem animação disponível (jsdom)", () => {
       window.dispatchEvent(evento("pointercancel", 400));
     });
     expect(aoFechar).not.toHaveBeenCalled();
-    expect(folha().style.transform).toBe("");
+    expect(folha().style.translate).toBe("");
   });
 
   it("o clique sintético pós-arrasto é engolido uma vez só; o teclado seguinte fecha", async () => {
@@ -173,7 +173,7 @@ describe("useArrastarParaFechar — sem animação disponível (jsdom)", () => {
     });
     const el = folha();
     const mo = new MutationObserver(() => {
-      escritas.push(el.style.transform);
+      escritas.push(el.style.translate);
     });
     mo.observe(el, { attributes: true, attributeFilter: ["style"] });
     await act(async () => {
@@ -184,9 +184,7 @@ describe("useArrastarParaFechar — sem animação disponível (jsdom)", () => {
     await proximoQuadro();
     await Promise.resolve();
     mo.disconnect();
-    expect(escritas.filter((t) => t.startsWith("translate3d"))).toEqual([
-      "translate3d(0,40px,0)",
-    ]);
+    expect(escritas.filter((t) => t.startsWith("0 "))).toEqual(["0 40px"]);
     await act(async () => window.dispatchEvent(evento("pointerup", 100)));
   });
 
@@ -199,7 +197,7 @@ describe("useArrastarParaFechar — sem animação disponível (jsdom)", () => {
     });
     await proximoQuadro();
     expect(folha().style.willChange).toBe("");
-    expect(folha().style.transform).toBe("");
+    expect(folha().style.translate).toBe("");
   });
 });
 
@@ -214,7 +212,7 @@ describe("useArrastarParaFechar — com animação (navegador de verdade)", () =
       alca().dispatchEvent(evento("pointerdown", 100));
       window.dispatchEvent(evento("pointermove", 250));
     });
-    expect(folha().style.willChange).toBe("transform");
+    expect(folha().style.willChange).toBe("translate");
     await act(async () => window.dispatchEvent(evento("pointerup", 250)));
 
     const descida = chamadas.find((c) =>
@@ -223,7 +221,7 @@ describe("useArrastarParaFechar — com animação (navegador de verdade)", () =
     expect(descida).toBeDefined();
     // parte de 150px, não de 0 — o pulo de volta ao repouso era o defeito.
     expect(descida!.quadros[0]).toEqual({
-      transform: "translate3d(0,150px,0)",
+      translate: "0 150px",
     });
     expect(descida!.opcoes.fill).toBe("forwards");
     // o véu some junto
@@ -286,8 +284,8 @@ describe("useArrastarParaFechar — com animação (navegador de verdade)", () =
     expect(folha().style.animationName).toBe("");
     const volta = chamadas[chamadas.length - 1];
     expect(volta.quadros).toEqual([
-      { transform: "translate3d(0,100%,0)" },
-      { transform: "translate3d(0,0,0)" },
+      { translate: "0 100%" },
+      { translate: "0 0" },
     ]);
     expect(volta.opcoes.fill).toBe("none");
   });
@@ -301,11 +299,93 @@ describe("useArrastarParaFechar — com animação (navegador de verdade)", () =
     });
     expect(aoFechar).not.toHaveBeenCalled();
     const volta = chamadas[chamadas.length - 1];
-    expect(volta.quadros[0]).toEqual({ transform: "translate3d(0,40px,0)" });
+    expect(volta.quadros[0]).toEqual({ translate: "0 40px" });
     expect(volta.opcoes.fill).toBe("none");
     expect(folha().style.transitionProperty).toBe("none");
     await act(async () => terminar[0]());
     expect(folha().style.transitionProperty).toBe("");
     expect(folha().style.willChange).toBe("");
+  });
+});
+
+describe("useArrastarParaFechar — o X da folha centrada fica intacto", () => {
+  // O `-translate-x-1/2` do Tailwind v3 mora em `transform`. Escrever
+  // `transform` o substituía e a folha centrada ("Ações do pedido") pulava de
+  // lado no arrasto. O teste não olha nome de classe: dá ao elemento um
+  // transform de verdade e exige que o hook jamais o toque.
+  const CENTRADA = "translate(-50%, 0px)";
+  const prepararCentrada = () => {
+    folha().style.transform = CENTRADA;
+  };
+
+  it("sem animação (jsdom): move, solta curto e fecha sem nunca mexer no transform", async () => {
+    await montar();
+    prepararCentrada();
+    await act(async () => {
+      alca().dispatchEvent(evento("pointerdown", 100));
+      window.dispatchEvent(evento("pointermove", 140));
+    });
+    await proximoQuadro();
+    expect(folha().style.translate).toBe("0 40px");
+    expect(folha().style.transform).toBe(CENTRADA);
+    await act(async () => window.dispatchEvent(evento("pointerup", 140)));
+    expect(folha().style.transform).toBe(CENTRADA);
+    expect(folha().style.translate).toBe("");
+
+    await act(async () => {
+      alca().dispatchEvent(evento("pointerdown", 100));
+      window.dispatchEvent(evento("pointermove", 300));
+      window.dispatchEvent(evento("pointerup", 300));
+    });
+    expect(aoFechar).toHaveBeenCalledTimes(1);
+    expect(folha().style.transform).toBe(CENTRADA);
+  });
+
+  it("com animação: nenhum quadro de descida, volta ou recusa carrega `transform` — só `translate`", async () => {
+    vi.useFakeTimers();
+    instalarAnimateFalso();
+    await montar();
+    prepararCentrada();
+    // arrasto curto (volta)
+    await act(async () => {
+      alca().dispatchEvent(evento("pointerdown", 100));
+      window.dispatchEvent(evento("pointermove", 140));
+      window.dispatchEvent(evento("pointerup", 140));
+    });
+    // arrasto longo (desce, fecha e a mãe recusa -> volta de novo)
+    await act(async () => {
+      alca().dispatchEvent(evento("pointerdown", 100));
+      window.dispatchEvent(evento("pointermove", 300));
+      window.dispatchEvent(evento("pointerup", 300));
+    });
+    await act(async () => {
+      for (const t of terminar) t();
+      vi.advanceTimersByTime(400);
+    });
+    const quadros = chamadas.flatMap((c) => c.quadros);
+    expect(quadros.length).toBeGreaterThanOrEqual(4);
+    // o véu anima só opacidade; a folha só translate
+    for (const q of quadros) {
+      expect(Object.keys(q)).not.toContain("transform");
+    }
+    expect(folha().style.transform).toBe(CENTRADA);
+  });
+
+  it("segundo dedo (pointerdown não primário) não inicia gesto", async () => {
+    await montar();
+    const dedo2 = new MouseEvent("pointerdown", {
+      bubbles: true,
+      clientY: 100,
+    });
+    Object.defineProperty(dedo2, "isPrimary", { value: false });
+    await act(async () => {
+      alca().dispatchEvent(dedo2);
+      window.dispatchEvent(evento("pointermove", 300));
+    });
+    await proximoQuadro();
+    expect(folha().style.translate).toBe("");
+    expect(folha().style.willChange).toBe("");
+    await act(async () => window.dispatchEvent(evento("pointerup", 300)));
+    expect(aoFechar).not.toHaveBeenCalled();
   });
 });

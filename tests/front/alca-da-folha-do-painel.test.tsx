@@ -100,7 +100,7 @@ describe("Gestão de Cliente — a barrinha é alça de verdade", () => {
     expect(janela()).toBeNull();
   });
 
-  it("puxar pouco devolve: continua aberta, sem resíduo de transform nem will-change", async () => {
+  it("puxar pouco devolve: continua aberta, sem resíduo de deslocamento nem will-change", async () => {
     await abrirGestao();
     await act(async () => {
       alca()!.dispatchEvent(evento("pointerdown", 100));
@@ -108,7 +108,7 @@ describe("Gestão de Cliente — a barrinha é alça de verdade", () => {
       window.dispatchEvent(evento("pointerup", 140));
     });
     expect(janela()).not.toBeNull();
-    expect(janela()!.style.transform).toBe("");
+    expect(janela()!.style.translate).toBe("");
     expect(janela()!.style.willChange).toBe("");
   });
 
