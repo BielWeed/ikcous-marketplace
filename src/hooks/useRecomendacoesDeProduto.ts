@@ -1,4 +1,3 @@
-import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import {
   PREFIXO_DE_RECOMENDACOES,
   gravarCopiaPorProduto,
@@ -140,8 +139,6 @@ export function useRecomendacoesDeProduto(
   // voltava. Ref, e não estado: só o efeito da volta da rede lê, e mudar isto
   // não deve render nada.
   const falhouRef = useRef(false);
-  const offline = useOnlineStatus();
-  const estavaOfflineRef = useRef(offline);
 
   useEffect(() => {
     if (!visivel) return;
@@ -210,19 +207,24 @@ export function useRecomendacoesDeProduto(
     };
   }, [productId, visivel]);
 
-  // A internet VOLTOU (offline -> online) depois de uma falha, com a seção já
-  // pedida: refaz a consulta UMA vez. Zerar `falhouRef` ANTES de reler é o que
-  // impede o laço: se a releitura falhar de novo, ela mesma volta a marcar a
-  // falha, mas só a PRÓXIMA virada offline -> online tenta outra vez. Sucesso
-  // e rede que nunca caiu não passam por aqui (`falhouRef` falso / sem virada).
+  // A internet VOLTOU (evento `online` do navegador) depois de uma falha, com a
+  // seção já pedida: refaz a consulta UMA vez. Zerar `falhouRef` ANTES de reler
+  // é o que impede o laço: se a releitura falhar de novo, ela mesma volta a
+  // marcar a falha, mas só o PRÓXIMO evento `online` tenta outra vez. Sucesso e
+  // rede que nunca caiu não passam por aqui (`falhouRef` falso). Ouvimos o
+  // evento direto, e não `useOnlineStatus`: aquele hook liga uma sonda de rede
+  // a cada 15 s em toda página de produto, e aqui só a volta da rede importa.
   // Vem DEPOIS do efeito da busca para que `releituraRef` já esteja publicada.
   useEffect(() => {
-    const voltou = estavaOfflineRef.current && !offline;
-    estavaOfflineRef.current = offline;
-    if (!voltou || !visivel || !falhouRef.current) return;
-    falhouRef.current = false;
-    releituraRef.current?.();
-  }, [offline, visivel]);
+    if (!visivel) return;
+    const aoVoltarARede = () => {
+      if (!falhouRef.current) return;
+      falhouRef.current = false;
+      releituraRef.current?.();
+    };
+    window.addEventListener("online", aoVoltarARede);
+    return () => window.removeEventListener("online", aoVoltarARede);
+  }, [visivel]);
 
   return { recomendacoes, carregando, consultado, recarregar };
 }

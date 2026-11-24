@@ -10,38 +10,14 @@
 // caiu não consulta de novo, e uma releitura que falha de novo não vira laço
 // (só a PRÓXIMA virada offline -> online tenta outra vez).
 //
-// A fonte de "está offline?" (`useOnlineStatus`, que por dentro é uma sonda de
-// latência) é dublê controlado pelo teste; o hook de recomendações é o real.
-import { act, useSyncExternalStore } from "react";
+// A volta da internet é o evento `online` do navegador, disparado pelo teste;
+// o hook de recomendações é o real.
+import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useRecomendacoesDeProduto } from "@/hooks/useRecomendacoesDeProduto";
 import type { Product } from "@/types";
-
-const { rede } = vi.hoisted(() => {
-  let offline = false;
-  const ouvintes = new Set<() => void>();
-  return {
-    rede: {
-      offline: () => offline,
-      definir: (valor: boolean) => {
-        offline = valor;
-        for (const ouvinte of ouvintes) ouvinte();
-      },
-      assinar: (ouvinte: () => void) => {
-        ouvintes.add(ouvinte);
-        return () => {
-          ouvintes.delete(ouvinte);
-        };
-      },
-    },
-  };
-});
-
-vi.mock("@/hooks/useOnlineStatus", () => ({
-  useOnlineStatus: () => useSyncExternalStore(rede.assinar, rede.offline),
-}));
 
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -94,9 +70,15 @@ async function montar(
   };
 }
 
+// Só uma virada offline -> online dispara o evento `online` do navegador:
+// "continuar online" não emite nada.
+let estaOffline = false;
 const virarRede = async (offline: boolean) => {
+  const eraOffline = estaOffline;
+  estaOffline = offline;
+  if (offline || !eraOffline) return;
   await act(async () => {
-    rede.definir(offline);
+    window.dispatchEvent(new Event("online"));
   });
 };
 
@@ -118,7 +100,7 @@ beforeEach(() => {
     },
   });
   vi.spyOn(console, "error").mockImplementation(() => {});
-  rede.definir(false);
+  estaOffline = false;
   hospedeiro = document.createElement("div");
   document.body.appendChild(hospedeiro);
   raiz = createRoot(hospedeiro);
@@ -317,7 +299,7 @@ describe("useRecomendacoesDeProduto — a volta da internet refaz a consulta que
 
   it("começar a página já offline e a consulta falhar: a primeira volta da internet refaz", async () => {
     const id = idNovo();
-    rede.definir(true);
+    estaOffline = true;
     const buscar = vi
       .fn<(id: string) => Promise<Product[]>>()
       .mockImplementationOnce(falha)
