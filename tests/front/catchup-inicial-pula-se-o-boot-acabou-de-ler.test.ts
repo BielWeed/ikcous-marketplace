@@ -38,6 +38,7 @@ vi.mock("@/lib/supabase", () => {
   const builder = (tabela: string): any => {
     const consulta: any = {};
     for (const metodo of ["is", "in", "order", "limit", "eq", "gt", "select"]) {
+      // eslint-disable-next-line security/detect-object-injection -- chave de um mapa fixo do próprio teste
       consulta[metodo] = vi.fn(() => consulta);
     }
     consulta.single = vi.fn(() => Promise.resolve({ data: null, error: null }));

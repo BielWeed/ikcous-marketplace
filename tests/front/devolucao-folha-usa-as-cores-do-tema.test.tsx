@@ -137,6 +137,7 @@ const botao = (texto: string) =>
 
 // Cor fixa de tema claro: branco/zinc em fundo, texto, borda, anel ou placeholder.
 const COR_FIXA =
+  // eslint-disable-next-line security/detect-unsafe-regex -- regex fixa do próprio teste, sem entrada de usuário
   /(?:^|[\s:])(?:bg-white|(?:bg|text|border|ring|divide|placeholder:text)-zinc-\d+(?:\/\d+)?)(?=$|\s)/;
 
 function classesComCorFixa(raizDoDom: ParentNode): string[] {
@@ -182,6 +183,7 @@ describe("folha de devolução da vitrine: cores do tema, não branco fixo", () 
       // `text-white` sobre o `bg-black/60` do botão de remover foto fica: é
       // ícone sobre a foto, não superfície do tema.
       .filter(({ linha }) =>
+        // eslint-disable-next-line security/detect-unsafe-regex -- regex fixa do próprio teste, sem entrada de usuário
         /(?:^|[\s"'`:])(?:bg-white|(?:bg|text|border|ring|divide|placeholder:text)-zinc-\d+(?:\/\d+)?)(?=$|[\s"'`])/.test(
           linha,
         ),

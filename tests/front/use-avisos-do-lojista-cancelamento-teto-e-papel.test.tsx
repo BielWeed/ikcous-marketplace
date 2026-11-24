@@ -50,6 +50,7 @@ function construir(tabela: string) {
     "range",
     "contains",
   ]) {
+    // eslint-disable-next-line security/detect-object-injection -- chave de uma lista fixa de métodos do dublê
     b[nome] = registra(nome);
   }
   b.maybeSingle = vi.fn(() => Promise.resolve({ data: null, error: null }));

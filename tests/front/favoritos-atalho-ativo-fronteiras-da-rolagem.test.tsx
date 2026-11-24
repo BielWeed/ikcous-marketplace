@@ -112,6 +112,7 @@ function rolar(topos: number[], scrollTop: number) {
   const secoes = [...container.querySelectorAll("section")];
   secoes.forEach((sec, i) => {
     sec.getBoundingClientRect = () =>
+      // eslint-disable-next-line security/detect-object-injection -- índice de uma lista fixa do próprio teste
       ({ top: topos[i], bottom: topos[i] + 100, height: 100 }) as DOMRect;
   });
   const alvo = document.documentElement;
@@ -164,6 +165,7 @@ describe("Favoritos — fronteiras do atalho ativo", () => {
     const topos = [-400, 100, 700, 1000];
     secoes.forEach((sec, i) => {
       sec.getBoundingClientRect = () =>
+        // eslint-disable-next-line security/detect-object-injection -- índice de uma lista fixa do próprio teste
         ({ top: topos[i], bottom: topos[i] + 100, height: 100 }) as DOMRect;
     });
     Object.defineProperty(alvo, "scrollHeight", {
