@@ -1,4 +1,43 @@
 {
+  "1.5.232": {
+    "titulo": "Chaves de pagamento só do dono, janelas que arrastam e telas mais legíveis",
+    "novidades": [
+      "No painel, só quem está cadastrado como dono da loja salva ou remove as chaves do Mercado Pago e o Gmail da loja. Para os outros administradores esses campos ficam travados, com o aviso “Só o dono da loja troca estas chaves.” ou “Só o dono da loja troca o e-mail da loja.” Ver a situação, testar a conexão, mandar o e-mail de teste e pausar ou retomar o Pix continuam abertos a qualquer administrador. Se a loja ainda não tem um dono cadastrado, nada muda por enquanto.",
+      "Se o app não conseguir conferir quem é o dono da loja, esses campos também ficam travados e o aviso pede para recarregar a página; se o servidor não conseguir conferir na hora de salvar, nada é gravado e a mensagem diz que nada foi alterado.",
+      "No celular, a barrinha do alto das janelas “Gestão de Cliente” e “Ações do pedido” passa a funcionar: puxar para baixo fecha a janela, que acompanha o dedo, e tocar na barrinha também fecha. Em “Ações do pedido” a janela não se desloca para o lado ao ser puxada e mantém o conteúdo até terminar de descer.",
+      "No painel, as janelas “Nova vitrine”, “Editar vitrine” e “Nova categoria” passam a fechar com animação e a subir acima do teclado no celular. Em “Nova categoria”, se já há nome ou ícone escolhido, fechar pergunta “Descartar o que você escreveu?” antes de perder o que foi digitado."
+    ],
+    "correcoes": [
+      "A confirmação do pedido por WhatsApp passa a chegar para clientes com DDD 55 (interior do Rio Grande do Sul), que antes não a recebiam.",
+      "No balcão, quando a internet cai no registro e a venda guardada ficou diferente da que estava na tela, os botões “Enviar por WhatsApp” e “Imprimir” ficam desligados, o papel também não sai com Ctrl+P, e aparece “Anule esta venda antes de enviar ou imprimir.” Venda normal e venda anulada ficam como eram.",
+      "Na ficha do pedido, quando a cópia do tamanho e da cor dos itens vence ou a leitura falha, o aviso agora manda tocar em “Tentar de novo”, e não recarregar a página. O botão Imprimir continua desligado até a leitura dar certo, para o papel não sair com o nome antigo da opção.",
+      "Em Entrega e frete e em Categorias, quando a sessão expirou ou a pessoa perdeu a permissão, a mensagem passa a dizer “Sua sessão expirou ou você não tem permissão para salvar. Saia da conta, entre de novo e tente outra vez.”, em vez de “Tente de novo em instantes” ou “Erro ao criar categoria”.",
+      "No painel aberto em mais de uma aba do navegador, as perguntas, as avaliações e a Visão geral do CRM passam a atualizar sozinhas também na segunda aba enquanto ela estiver visível; ao voltar a uma aba que estava escondida, essas telas conferem os dados de novo.",
+      "A tela “Servidor em Manutenção” passa a usar as cores do tema da loja. Nas lojas de tema claro, o padrão, o título aparecia branco sobre branco e o botão “Tentar de novo” ficava invisível.",
+      "Em “Escolher opções”, no cartão do produto e na página do produto, a janela deixa de dar um salto antes de descer quando se solta a barrinha: ela desce de onde o dedo parou, ou volta ao lugar se o arrasto foi curto. Na página do produto a barrinha também passou a arrastar.",
+      "A janela “Filtros” de Pedidos e da barra de busca do painel deixa de deslizar de lado ao abrir e ao fechar.",
+      "Na vitrine, em “Refinar Busca” no celular, o botão “Aplicar Filtros” fica fixo no rodapé, com folga da barra de baixo do iPhone, e só a lista de opções rola; as opções não escolhidas também acompanham o tema escuro.",
+      "Na devolução ou troca pedida pela cliente, a janela sobe acima do teclado quando ela escreve na caixa de texto e o botão “Continuar” continua à vista; no computador a janela centralizada segue igual. A janela também passa a usar as cores do tema da loja, claro ou escuro, com os botões principais na cor da marca.",
+      "No endereço, a sigla do estado colada de outro lugar com caracteres invisíveis, como o espaço de largura zero, deixa de dar “Estado inválido”.",
+      "Quem acompanha pelo código uma venda de balcão, sem estar logada, passa a ver a venda como de balcão, e não mais “Frete: Grátis”, endereço de entrega vazio e “Cartão na entrega”.",
+      "Na tela de avisos do painel, quando há mais cancelamentos nas últimas 24 horas do que cabem na lista, aparece o aviso para conferir o resto em Pedidos, principalmente os que já estavam pagos.",
+      "Em Pedidos, no aviso de alertas que não deu para conferir, o botão “Tentar de novo” fica no lugar enquanto confere, mostra “Conferindo alertas…” e o foco do teclado não se perde. Em Perguntas, “Tentar de novo” também recarrega os números de Pendentes quando eles tinham falhado junto com a lista.",
+      "Na página do produto, se a busca das sugestões “Você também pode gostar” falhou por falta de internet, ela é refeita uma vez quando a internet volta. No checkout, o aviso “Não foi possível conferir se o cartão está disponível agora.” também é refeito sozinho quando a internet volta, sem precisar tocar em “Tentar de novo”.",
+      "Na Home, apagar a busca e depois ir a “Sobre a loja” e voltar (ou avançar) deixa de trazer de volta o termo apagado; a busca que não foi apagada continua lá.",
+      "No carrinho, ao usar Voltar ou Avançar do navegador, o foco do teclado acompanha a aba selecionada.",
+      "Com um só favorito ou uma só consulta, os avisos concordam no singular, como “Seu favorito foi sincronizado.” e “Exibindo a consulta mais recente”. Na lista de Favoritos, ao limpar os filtros o foco vai para o primeiro título da lista, e o leitor de tela diz “Nenhum favorito com esses filtros.” quando a lista fica vazia.",
+      "No cadastro de produto, a descrição aceita até 5.000 caracteres ao digitar ou colar, e produtos antigos com texto maior abrem e salvam como estão. Ao duplicar um produto de nome longo, o nome da cópia encolhe para caber no limite e o código da cópia não cresce a cada duplicação.",
+      "Quando o app já baixou uma versão nova e espera para trocar, abrir uma tela pela primeira vez deixa de guardar uma página da versão nova misturada com a antiga; sem internet, a tela deixa de abrir faltando pedaços."
+    ],
+    "melhorias": [
+      "Quem está logada como cliente deixa de manter uma conexão ao vivo com o catálogo, que fica só para o painel da loja, para não ocupar as conexões em dias de muito movimento. Preço, estoque e vitrine novos aparecem ao abrir o app, ao voltar para a aba ou quando a internet volta, no máximo uma vez por minuto.",
+      "A caixinha de busca do topo deixa de percorrer o catálogo inteiro a cada letra digitada nas sugestões, o que deixa a digitação mais leve em lojas com muitos produtos; as sugestões e a ordem são as mesmas.",
+      "A foto do banner do topo que o app baixa antes da vitrine abrir passa a valer só para o banner que está no ar. Um banner agendado para começar depois, ou já vencido e ainda ligado, não gasta mais a internet da primeira visita.",
+      "No checkout, o aviso de pedido recusado ganha botão de fechar com área de toque de 44 px. Os textos “Número do pedido” e “Pedido” da confirmação ficam mais escuros, e o aviso “Seus dados estão seguros…” da escolha do endereço fica legível também nas lojas de tema escuro.",
+      "No carrinho, o cálculo de frete usa textos de apoio maiores e o “Grátis” em verde mais escuro (ou em texto claro quando a opção marcada tem fundo escuro), e o botão “Tentar de novo” do frete ganha área de toque de 44 px.",
+      "Nas perguntas dos produtos, o nome de quem perguntou fica com área de toque maior e a foto deixa de repetir o botão para quem usa leitor de tela. No painel, o sino avisa “Notificações, há avisos para conferir” quando há avisos confirmados. Na lista de notificações da cliente, cada botão de excluir diz qual notificação apaga."
+    ]
+  },
   "1.5.231": {
     "titulo": "Perfil, nova senha e avisos do iPhone mais claros",
     "novidades": [],
