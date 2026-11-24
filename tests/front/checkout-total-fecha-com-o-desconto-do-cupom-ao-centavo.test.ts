@@ -10,6 +10,12 @@ import { describe, expect, it } from "vitest";
  * ATENCAO: este arquivo exercita so o `arredondarParaCentavos` e o desconto do servidor (a conta e' refeita aqui);
  * NAO exercita o `finalTotal` do CheckoutView. Quem prova o total que a tela mostra (com numeros escritos a mao, e
  * reprova se `total - discount` virar `total + discount`) e' tests/front/checkout-total-nunca-negativo-com-cupom-velho.
+ *
+ * LIMITE HONESTO: `descontoDoServidorEmCentavos` abaixo e' um MODELO escrito dentro deste teste, nao o servidor. Se o SQL
+ * do desconto mudar, este arquivo continua verde. A prova do servidor de verdade (as RPCs `create_marketplace_order_v23`,
+ * `create_marketplace_order_v24` e `validate_coupon_secure_v2` num Postgres real) vive em
+ * tests/banco/o-desconto-do-cupom-e-arredondado-ao-centavo-viva.cjs, que roda no rpc-ci. Aqui so se prova a aritmetica
+ * do lado da tela, dado que o servidor devolve centavos inteiros.
  */
 
 /** O desconto como o servidor o devolve agora: inteiro de centavos, metade para cima (numeric round(.., 2)). */

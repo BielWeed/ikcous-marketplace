@@ -468,6 +468,9 @@ Deno.test("397: as consultas 115a/115b tem treze linhas fechadas, so catalogo, r
 });
 
 Deno.test("397: a conta do desconto em centavos (modelo exato em inteiros do round(numeric,2) do Postgres) fecha a ficha nos casos medidos", () => {
+  // LIMITE HONESTO: `descontoEmCentavos` abaixo e' um MODELO local do round(numeric, 2), nao o SQL da migration. Ele prova a
+  // aritmetica esperada, mas continua verde se o SQL mudar. O desconto que as RPCs gravam de verdade e' provado num Postgres
+  // real em tests/banco/o-desconto-do-cupom-e-arredondado-ao-centavo-viva.cjs (roda no rpc-ci).
   // round(x, 2) do Postgres em numeric: metade para LONGE do zero, exato (sem ponto flutuante). Aqui em centavos inteiros:
   // desconto = round(subtotal_centavos * pct / 100) com pct em centesimos (10% = 1000); resto >= metade sobe.
   const descontoEmCentavos = (subtotal: number, pctEmCentesimos: number) => {

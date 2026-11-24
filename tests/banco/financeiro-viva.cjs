@@ -442,6 +442,70 @@ PROVAS.push({
         ]),
       /destino/,
     );
+
+    // Parcelar 100,01 em 3 (20261246000000, `trunc(v_valor / v_parcelas, 2)`): o
+    // caso de 100 em 3 acima NÃO distingue trunc de round (os dois dão 33,33).
+    // Aqui 100,01 / 3 = 33,3366…: trunc dá 33,33 e a última fecha em 33,35;
+    // round daria 33,34 / 33,34 / 33,33. O vetor está escrito à mão, nunca
+    // calculado pela mesma conta que o servidor faz.
+    const dentroDaConta = (
+      await cliente.query(
+        "SELECT trunc(100.01::numeric / 3, 2) AS t, round(100.01::numeric / 3, 2) AS r",
+      )
+    ).rows[0];
+    assert.equal(
+      num(dentroDaConta.t),
+      33.33,
+      "o caso distingue: trunc(100,01 / 3) = 33,33",
+    );
+    assert.equal(
+      num(dentroDaConta.r),
+      33.34,
+      "o caso distingue: round(100,01 / 3) = 33,34 (outro vetor)",
+    );
+    const centavos = await rpc(
+      cliente,
+      "SELECT public.fin_lancamento_salvar($1::jsonb) AS r",
+      [
+        JSON.stringify({
+          tipo: "saida",
+          valor: 100.01,
+          conta_id: BANCO,
+          categoria_id: CAT_SISTEMAS,
+          descricao: "Sistema centavos",
+          status: "previsto",
+          parcelas: 3,
+          data_vencimento: estado.hoje,
+        }),
+      ],
+    );
+    assert.equal(centavos.ids.length, 3);
+    const parcelasCentavos = (
+      await cliente.query(
+        "SELECT valor, parcela FROM public.fin_lancamentos WHERE id = ANY($1::uuid[]) ORDER BY parcela",
+        [centavos.ids],
+      )
+    ).rows;
+    assert.deepEqual(
+      parcelasCentavos.map((r) => num(r.valor)),
+      [33.33, 33.33, 33.35],
+      "100,01 em 3: trunc nas duas primeiras, o resto (33,35) na última",
+    );
+    assert.equal(
+      num(parcelasCentavos.reduce((soma, r) => soma + Number(r.valor), 0)),
+      100.01,
+      "as parcelas somam o total ao centavo",
+    );
+    // Sai da lista como as outras parcelas canceladas (previsto não mexe no
+    // saldo; o cancelamento só limpa o que esta prova criou).
+    for (const id of centavos.ids) {
+      await rpc(
+        cliente,
+        "SELECT public.fin_lancamento_cancelar($1::uuid, 'prova do trunc') AS r",
+        [id],
+      );
+    }
+    assert.equal(await saldo(BANCO), 10, "o saldo do banco não mexeu");
   },
 });
 

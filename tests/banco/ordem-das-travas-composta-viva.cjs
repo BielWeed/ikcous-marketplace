@@ -49,6 +49,9 @@
  *       em L1 — ninguém segura o pedido esperando linha — e as três terminam
  *       sem 40P01. CONTROLE: C3 com o pedido primeiro fecha o ciclo
  *       C1 -> C3 -> C2 -> C1 e dá 40P01.
+ *   (k) a FRASE da recusa do estorno manual (não é trava, é regra): linha do
+ *       lojista em_processamento -> "já está devolvendo"; só a do sistema ->
+ *       a da disputa; as duas -> a do lojista vence; sem gravar nada.
  *   (h) a ordem dos rollbacks: da última migration até a 96, na ordem
  *       inversa (hoje 201 -> 200 -> 99 -> 98 -> 97 -> 96), passa; a 97 antes
  *       da 98 recusa sem gravar nada.
@@ -1251,6 +1254,150 @@ PROVAS.push({
         assert.deepEqual(estado.linhas, [[30, "concluido", "lojista"]]);
       },
     });
+  },
+});
+
+// ---------------------------------------------------------------------------
+// (k) A RECUSA do estorno manual com o POST já pedido ao MP: a FRASE, não só o
+// código. Os pares (b1/b2/b3) só olham o 22023, e o 22023 também é o código da
+// recusa "disputa em curso": apagar `IF v_em_processamento` faria o b3 (linha do
+// LOJISTA + reserva do sistema) cair na frase da disputa, ainda 22023, e o b3
+// seguiria verde; e o pedido só com linha do lojista (k1) passaria e gravaria
+// 'estornado' — nenhum par acima cobre esse último caso.
+// ---------------------------------------------------------------------------
+
+const FRASE_JA_ESTA_DEVOLVENDO =
+  "O Mercado Pago já está devolvendo este dinheiro ao cliente";
+const FRASE_DISPUTA_EM_CURSO =
+  "Há uma disputa ou devolução do Mercado Pago em andamento";
+
+/** Pedido pago e CANCELADO com UMA linha do lojista em_processamento (30) e
+ * NENHUMA linha do sistema: o POST do reembolso já saiu com a chave da linha. */
+async function fxCanceladoComEstornoEmVoo(cliente) {
+  const pedido = await pedidoPago(cliente, { status: "cancelled" });
+  const l = await linha(cliente, pedido, {
+    valor: 30,
+    status: "em_processamento",
+  });
+  return { pedido, linhaEmVoo: l };
+}
+
+/** `registrar_estorno_manual` como o admin ATUAL, numa conexão própria e SEM
+ * transação aberta: a recusa desfaz o próprio comando, o sucesso comita. */
+async function chamarManualComoAdmin(url, pedido) {
+  const con = await conectar(url);
+  try {
+    await sessao(con, "admin");
+    return await desfecho(RPC.manual.chamar(con, RPC.manual.nome, { pedido }));
+  } finally {
+    await con.end().catch(() => {});
+  }
+}
+
+/** A recusa da regra (22023) com a frase esperada, SEM tocar em nada: o estado
+ * do pedido e das linhas é idêntico ao de antes da chamada. */
+async function recusaSemGravarNada(cliente, url, pedido, frase, rotulo) {
+  const antes = await estadoDoPedido(cliente, pedido);
+  const d = await chamarManualComoAdmin(url, pedido);
+  RECUSA_DE_NEGOCIO(d, "22023", rotulo);
+  assert.ok(
+    d.mensagem.includes(frase),
+    `${rotulo}: a frase devia ser "${frase}" (veio: ${d.mensagem})`,
+  );
+  assert.deepEqual(
+    await estadoDoPedido(cliente, pedido),
+    antes,
+    `${rotulo}: a recusa não gravou nada`,
+  );
+  console.log(`    [${rotulo}] ${resumo(d)}`);
+  return d;
+}
+
+PROVAS.push({
+  nome: "(k) estorno manual (94/97): linha do lojista em_processamento recusa com a frase 'já está devolvendo' (nunca a da disputa), sem gravar nada; a linha do sistema sozinha recusa com a frase da disputa; as duas juntas, a do lojista vence; linha só 'solicitado' passa",
+  corpo: async (cliente, url) => {
+    await prepararPessoas(cliente);
+
+    // 1. O caso que dói: pago + cancelado, UMA linha do lojista em_processamento
+    //    e NENHUMA do sistema. Sem o `IF v_em_processamento` este caso passaria
+    //    e gravaria 'estornado' — o cliente receberia duas vezes.
+    const x = await fxCanceladoComEstornoEmVoo(cliente);
+    const d1 = await recusaSemGravarNada(
+      cliente,
+      url,
+      x.pedido,
+      FRASE_JA_ESTA_DEVOLVENDO,
+      "k1 lojista em processamento",
+    );
+    assert.ok(
+      !d1.mensagem.includes(FRASE_DISPUTA_EM_CURSO),
+      "k1: não é a frase da disputa (não há linha do sistema)",
+    );
+    const e1 = await estadoDoPedido(cliente, x.pedido);
+    assert.equal(e1.status, "cancelled", "k1: o pedido segue cancelado");
+    assert.equal(e1.pagamento, "pago", "k1: payment_status segue 'pago'");
+    assert.equal(e1.estornado, 0, "k1: valor_estornado segue 0");
+    assert.deepEqual(
+      e1.linhas,
+      [[30, "em_processamento", "lojista"]],
+      "k1: a linha do POST segue em_processamento",
+    );
+    const marca = (
+      await cliente.query(
+        "SELECT estorno_manual_registrado_em AS m FROM public.marketplace_orders WHERE id = $1",
+        [x.pedido],
+      )
+    ).rows[0].m;
+    assert.equal(marca, null, "k1: nada foi registrado como feito por fora");
+    // Rodar de novo (retentativa do painel): a MESMA recusa, ainda sem gravar.
+    await recusaSemGravarNada(
+      cliente,
+      url,
+      x.pedido,
+      FRASE_JA_ESTA_DEVOLVENDO,
+      "k1 de novo",
+    );
+
+    // 2. Só a linha do SISTEMA (contestação): a recusa é da disputa, com a
+    //    frase própria — a fronteira entre as duas recusas.
+    const s = await fxContestacao(cliente);
+    const d2 = await recusaSemGravarNada(
+      cliente,
+      url,
+      s.pedido,
+      FRASE_DISPUTA_EM_CURSO,
+      "k2 só o sistema",
+    );
+    assert.ok(
+      !d2.mensagem.includes(FRASE_JA_ESTA_DEVOLVENDO),
+      "k2: não é a frase do 'já está devolvendo'",
+    );
+
+    // 3. As DUAS juntas (reserva do sistema + POST do lojista): a regra do
+    //    POST já pedido vence a da disputa (a ordem dos dois IF).
+    const m = await fxContestacaoComPost(cliente);
+    await recusaSemGravarNada(
+      cliente,
+      url,
+      m.pedido,
+      FRASE_JA_ESTA_DEVOLVENDO,
+      "k3 lojista e sistema",
+    );
+
+    // 4. CONTROLE: a linha do lojista ainda só 'solicitado' (ninguém pediu ao
+    //    MP) NÃO recusa — o registro passa e tira a linha da fila. Sem isto a
+    //    recusa podia ser incondicional e os casos acima passariam do mesmo jeito.
+    const c = await fxSolicitada(cliente);
+    const d4 = await chamarManualComoAdmin(url, c.pedido);
+    OK(d4, "k4 controle (solicitado)");
+    assert.equal(d4.r.payment_status, "estornado", "k4: registrou o estorno");
+    const e4 = await estadoDoPedido(cliente, c.pedido);
+    assert.equal(e4.pagamento, "estornado", "k4: o pedido virou 'estornado'");
+    assert.deepEqual(
+      e4.linhas.map(([, s2]) => s2),
+      ["recusado"],
+      "k4: a linha solicitada saiu da fila",
+    );
   },
 });
 
