@@ -56,7 +56,7 @@ export function useArrastarParaFechar(aoFechar: () => void) {
     // Gaveta lateral do computador (altura toda, colada no topo): puxar para
     // baixo não tem sentido — quem fecha ali é o X.
     if (getComputedStyle(folha).top === "0px") return;
-    const g = (gesto.current = { y: e.clientY, movimentou: false });
+    const g: Gesto = (gesto.current = { y: e.clientY, movimentou: false });
     const id = e.pointerId;
     const veu = folha.previousElementSibling;
     // A entrada (animate-in) ainda rodando ganharia do deslocamento inline.

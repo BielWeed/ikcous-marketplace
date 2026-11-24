@@ -27,7 +27,7 @@ const notificacoes: Notification[] = [
     id: "notif-2",
     title: "Pedido enviado",
     message: "Seu pedido saiu para entrega.",
-    type: "info",
+    type: "delivery",
     read: false,
     created_at: new Date(0).toISOString(),
     order_id: "pedido-2",

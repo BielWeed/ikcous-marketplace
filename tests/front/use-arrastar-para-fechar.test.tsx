@@ -9,7 +9,15 @@
 // folha que o dono recusa fechar volta ao lugar em vez de sumir da tela.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  type Mock,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import { useArrastarParaFechar } from "@/hooks/useArrastarParaFechar";
 
@@ -70,7 +78,7 @@ function instalarAnimateFalso() {
 
 let hospedeiro: HTMLElement;
 let raiz: Root;
-let aoFechar: ReturnType<typeof vi.fn>;
+let aoFechar: Mock<() => void>;
 
 const alca = () => document.querySelector<HTMLElement>('[data-testid="alca"]')!;
 const folha = () =>

@@ -173,7 +173,9 @@ describe("AdminCarouselsView — a saída das folhas anima", () => {
 
   async function montar() {
     simularSaidaAnimada();
-    await act(async () => raiz.render(createElement(AdminCarouselsView, {})));
+    await act(async () =>
+      raiz.render(createElement(AdminCarouselsView, { onNavigate: vi.fn() })),
+    );
   }
 
   it("Nova vitrine: Cancelar mantém a folha na tela até a saída terminar", async () => {
