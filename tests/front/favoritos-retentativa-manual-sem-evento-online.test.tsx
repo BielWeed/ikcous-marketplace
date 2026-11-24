@@ -284,7 +284,9 @@ describe("FavoritesContext — retentativa manual da fila (sem evento online)", 
     await flush();
 
     const { toast } = await import("sonner");
-    expect(toast.success).toHaveBeenCalledWith("Seu favorito foi sincronizado.");
+    expect(toast.success).toHaveBeenCalledWith(
+      "Seu favorito foi sincronizado.",
+    );
     expect(chamadasUpsert).toHaveLength(2);
     expect(chamadasUpsert[1]).toEqual({ user_id: "userA", product_id: "p1" });
     expect(ultimoContexto?.pendingCount).toBe(0);
