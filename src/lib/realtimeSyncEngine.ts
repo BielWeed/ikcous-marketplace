@@ -327,6 +327,21 @@ async function lerComPrazo<T extends { data: unknown; error: unknown }>(
   }
 }
 
+/**
+ * O catálogo foi sincronizado há menos de 60 s? Qualquer dúvida (nunca
+ * carimbado, relógio que andou para trás, cofre sem `getLastSync` ou que
+ * falha) responde "não": a rodada roda como sempre rodou.
+ */
+async function bootAcabouDeLer(vault: DataVault): Promise<boolean> {
+  try {
+    if (typeof vault.getLastSync !== "function") return false;
+    const idade = Date.now() - (await vault.getLastSync("products"));
+    return idade >= 0 && idade < JANELA_MINIMA_ENTRE_GATILHOS_MS;
+  } catch {
+    return false;
+  }
+}
+
 export const RealtimeSyncEngine = {
   /**
    * Start listening to ALL monitored tables.
@@ -456,8 +471,10 @@ export const RealtimeSyncEngine = {
         console.log(
           "[RealtimeSyncEngine] Sem canal de catálogo (não é lojista): atualiza ao voltar à aba.",
         );
-        // Quem disparava a primeira rodada era o SUBSCRIBED do canal.
-        this.catchUp(vault, isAdmin).catch((err) => {
+        // Quem disparava a primeira rodada era o SUBSCRIBED do canal. O boot do
+        // StoreContext acabou de ler config, banners, categorias e catálogo:
+        // `rodadaInicial` deixa a rodada pular se o cofre foi carimbado há < 60 s.
+        this.catchUp(vault, isAdmin, { rodadaInicial: true }).catch((err) => {
           console.error(
             "[RealtimeSyncEngine] Catch-up inicial (sem canal) falhou:",
             err,
@@ -957,8 +974,17 @@ export const RealtimeSyncEngine = {
 
   /**
    * Run delta synchronization / catch-up reconciliation with Supabase.
+   *
+   * `opcoes.rodadaInicial` (só a subida SEM canal de catálogo: visitante e
+   * cliente): o boot acabou de ler tudo; se os produtos foram carimbados há
+   * menos de 60 s a rodada não lê nada. Reconexão do canal, volta à aba e
+   * `online` chamam sem a opção e rodam completos.
    */
-  async catchUp(vault: DataVault, isAdmin: boolean): Promise<void> {
+  async catchUp(
+    vault: DataVault,
+    isAdmin: boolean,
+    opcoes?: { rodadaInicial?: boolean },
+  ): Promise<void> {
     // K1: a geração é anotada AQUI, antes de qualquer espera. Depois de cada
     // espera e antes de cada escrita no cofre, `caducou()` confere; se o motor
     // parou ou o "Sair" esqueceu o cofre no meio, a rodada se descarta (volta
@@ -991,6 +1017,17 @@ export const RealtimeSyncEngine = {
       if (catalogoEmVoo()) {
         await esperarCatalogoEmVoo();
         if (caducou()) return;
+      }
+      // Depois da espera acima: o boot grava o carimbo no FIM do download.
+      if (opcoes?.rodadaInicial) {
+        const recente = await bootAcabouDeLer(vault);
+        if (caducou()) return;
+        if (recente) {
+          console.log(
+            `[RealtimeSyncEngine] Rodada inicial pulada: o boot leu há menos de ${JANELA_MINIMA_ENTRE_GATILHOS_MS / 1000}s.`,
+          );
+          return;
+        }
       }
       console.log("[RealtimeSyncEngine] 🔄 Running catchUp/reconciliation...");
       const tableSourceConfig = isAdmin ? "store_config" : "v_store_config";
