@@ -328,15 +328,26 @@ async function lerComPrazo<T extends { data: unknown; error: unknown }>(
 }
 
 /**
- * O catálogo foi sincronizado há menos de 60 s? Qualquer dúvida (nunca
- * carimbado, relógio que andou para trás, cofre sem `getLastSync` ou que
- * falha) responde "não": a rodada roda como sempre rodou.
+ * O catálogo E a configuração foram lidos da rede há menos de 60 s? O boot só
+ * carimba `store_config` quando a resposta do servidor chegou (nunca pela cópia
+ * do aparelho): se a config falhou no boot com a cópia antiga na tela, o
+ * StoreContext não insiste, e é esta rodada que a relê. Qualquer dúvida (um dos
+ * dois nunca carimbado, relógio que andou para trás, cofre sem `getLastSync` ou
+ * que falha) responde "não": a rodada roda como sempre rodou.
  */
 async function bootAcabouDeLer(vault: DataVault): Promise<boolean> {
   try {
     if (typeof vault.getLastSync !== "function") return false;
-    const idade = Date.now() - (await vault.getLastSync("products"));
-    return idade >= 0 && idade < JANELA_MINIMA_ENTRE_GATILHOS_MS;
+    const [produtos, config] = await Promise.all([
+      vault.getLastSync("products"),
+      vault.getLastSync("store_config"),
+    ]);
+    const agora = Date.now();
+    const recente = (carimbo: number) => {
+      const idade = agora - carimbo;
+      return idade >= 0 && idade < JANELA_MINIMA_ENTRE_GATILHOS_MS;
+    };
+    return recente(produtos) && recente(config);
   } catch {
     return false;
   }
@@ -473,7 +484,8 @@ export const RealtimeSyncEngine = {
         );
         // Quem disparava a primeira rodada era o SUBSCRIBED do canal. O boot do
         // StoreContext acabou de ler config, banners, categorias e catálogo:
-        // `rodadaInicial` deixa a rodada pular se o cofre foi carimbado há < 60 s.
+        // `rodadaInicial` deixa a rodada pular se produtos E config foram
+        // carimbados há < 60 s.
         this.catchUp(vault, isAdmin, { rodadaInicial: true }).catch((err) => {
           console.error(
             "[RealtimeSyncEngine] Catch-up inicial (sem canal) falhou:",
@@ -976,9 +988,9 @@ export const RealtimeSyncEngine = {
    * Run delta synchronization / catch-up reconciliation with Supabase.
    *
    * `opcoes.rodadaInicial` (só a subida SEM canal de catálogo: visitante e
-   * cliente): o boot acabou de ler tudo; se os produtos foram carimbados há
-   * menos de 60 s a rodada não lê nada. Reconexão do canal, volta à aba e
-   * `online` chamam sem a opção e rodam completos.
+   * cliente): o boot acabou de ler tudo; se os produtos E a configuração foram
+   * carimbados há menos de 60 s a rodada não lê nada. Reconexão do canal,
+   * volta à aba e `online` chamam sem a opção e rodam completos.
    */
   async catchUp(
     vault: DataVault,

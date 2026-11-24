@@ -71,8 +71,14 @@ vi.mock("@/lib/supabase", () => {
 
 const JANELA_MS = 60_000;
 
-/** Cofre cujo carimbo de produtos o teste define. */
-function dubleDeCofre(ultimaSincronizacao: () => number | Promise<number>) {
+/**
+ * Cofre cujos carimbos o teste define. A função recebe a gaveta perguntada
+ * (`products`, `store_config`); quem a ignora devolve o mesmo carimbo para
+ * todas.
+ */
+function dubleDeCofre(
+  ultimaSincronizacao: (loja: string) => number | Promise<number>,
+) {
   return {
     isClosed: () => false,
     getAllOrThrow: vi.fn(async (_loja?: string) => [] as unknown[]),
@@ -83,7 +89,7 @@ function dubleDeCofre(ultimaSincronizacao: () => number | Promise<number>) {
     setLastSync: vi.fn(),
     replaceAll: vi.fn(async () => {}),
     getByIndex: vi.fn(async () => [] as unknown[]),
-    getLastSync: vi.fn(async (_loja: string) => ultimaSincronizacao()),
+    getLastSync: vi.fn(async (loja: string) => ultimaSincronizacao(loja)),
   };
 }
 
@@ -247,7 +253,10 @@ describe("rodada inicial do catchUp não repete o que o boot acabou de ler", () 
     fechar();
     await rodada;
 
-    expect(cofre.getLastSync).toHaveBeenCalledTimes(1);
+    // Uma pergunta por gaveta (produtos e configuração), ambas depois da espera.
+    expect(cofre.getLastSync).toHaveBeenCalledTimes(2);
+    expect(cofre.getLastSync).toHaveBeenCalledWith("products");
+    expect(cofre.getLastSync).toHaveBeenCalledWith("store_config");
     expect(supabase.from).not.toHaveBeenCalled(); // pulou: carimbo fresco
   });
 
@@ -285,6 +294,149 @@ describe("rodada inicial do catchUp não repete o que o boot acabou de ler", () 
 
     expect(tabelasConsultadas[0]).toBe("store_config");
     expect(tabelasConsultadas).toContain("produtos");
+  });
+
+  // REVISÃO OPUS (24/11): conferir só o carimbo dos PRODUTOS deixava passar a
+  // configuração velha. Se a leitura da config no boot falha uma vez (prazo,
+  // 5xx) mas o catálogo chega, e a cliente tem uma cópia antiga da config no
+  // aparelho, o StoreContext não tenta de novo (já há config na tela) -- era a
+  // rodada inicial que consertava, relendo a config. O pulo agora exige os DOIS
+  // carimbos recentes; o boot só carimba `store_config` quando LEU da rede.
+  describe("a configuração também precisa ter sido lida agora", () => {
+    const carimbos =
+      (produtos: () => number, config: () => number) => (loja: string) => {
+        if (loja === "products") return produtos();
+        if (loja === "store_config") return config();
+        throw new Error(`gaveta inesperada: ${loja}`);
+      };
+
+    it("(7) config FALHOU no boot (nunca carimbada) e catálogo ok: NÃO pula, relê a config", async () => {
+      const { engine } = await carregar();
+      const cofre = dubleDeCofre(
+        carimbos(
+          () => Date.now() - 2_000,
+          () => 0,
+        ),
+      );
+
+      await engine.catchUp(cofre as any, false, PEDIDO_INICIAL);
+
+      expect(tabelasConsultadas).toEqual([
+        "v_store_config",
+        "categorias",
+        "banners",
+        "vw_produtos_public",
+      ]);
+    });
+
+    it("(7b) config falhou no boot com carimbo de uma sessão antiga (10 min) e catálogo ok: NÃO pula", async () => {
+      const { engine } = await carregar();
+      const cofre = dubleDeCofre(
+        carimbos(
+          () => Date.now() - 2_000,
+          () => Date.now() - 10 * JANELA_MS,
+        ),
+      );
+
+      await engine.catchUp(cofre as any, false, PEDIDO_INICIAL);
+
+      expect(tabelasConsultadas).toContain("v_store_config");
+    });
+
+    it("(7c) config e catálogo lidos agora (ambos < 60 s): pula, zero leituras", async () => {
+      const { engine, supabase } = await carregar();
+      const cofre = dubleDeCofre(
+        carimbos(
+          () => Date.now() - 2_000,
+          () => Date.now() - 3_000,
+        ),
+      );
+
+      await engine.catchUp(cofre as any, false, PEDIDO_INICIAL);
+
+      expect(supabase.from).not.toHaveBeenCalled();
+      expect(cofre.setLastSync).not.toHaveBeenCalled();
+    });
+
+    it("(7d) config lida agora mas catálogo antigo: NÃO pula", async () => {
+      const { engine } = await carregar();
+      const cofre = dubleDeCofre(
+        carimbos(
+          () => Date.now() - (JANELA_MS + 1_000),
+          () => Date.now() - 2_000,
+        ),
+      );
+
+      await engine.catchUp(cofre as any, false, PEDIDO_INICIAL);
+
+      expect(tabelasConsultadas).toContain("v_store_config");
+      expect(tabelasConsultadas).toContain("vw_produtos_public");
+    });
+
+    it("(7e) config com carimbo no FUTURO e catálogo ok: NÃO pula", async () => {
+      const { engine } = await carregar();
+      const cofre = dubleDeCofre(
+        carimbos(
+          () => Date.now() - 2_000,
+          () => Date.now() + 30_000,
+        ),
+      );
+
+      await engine.catchUp(cofre as any, false, PEDIDO_INICIAL);
+
+      expect(tabelasConsultadas).toContain("v_store_config");
+    });
+
+    it("(7f) cofre falha só na pergunta da config: NÃO pula", async () => {
+      const { engine } = await carregar();
+      const cofre = dubleDeCofre(
+        carimbos(
+          () => Date.now() - 2_000,
+          () => {
+            throw new Error("leitura do carimbo da config falhou");
+          },
+        ),
+      );
+
+      await engine.catchUp(cofre as any, false, PEDIDO_INICIAL);
+
+      expect(tabelasConsultadas).toContain("v_store_config");
+    });
+
+    it("(7g) limite: config de exatamente 60 s já NÃO pula", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-11-24T12:00:00.000Z"));
+      const { engine } = await carregar();
+      const cofre = dubleDeCofre(
+        carimbos(
+          () => Date.now() - 2_000,
+          () => Date.now() - JANELA_MS,
+        ),
+      );
+
+      await engine.catchUp(cofre as any, false, PEDIDO_INICIAL);
+
+      expect(tabelasConsultadas).toContain("v_store_config");
+    });
+
+    it("(7h) pelo start() sem canal: config não lida no boot faz a subida ler as 4 de sempre", async () => {
+      const { engine } = await carregar();
+      const cofre = dubleDeCofre(
+        carimbos(
+          () => Date.now() - 2_000,
+          () => 0,
+        ),
+      );
+
+      const parar = engine.start(cofre as any, true, false, false);
+      await soltar();
+      await soltar();
+
+      expect(tabelasConsultadas).toContain("v_store_config");
+      expect(tabelasConsultadas).toContain("vw_produtos_public");
+
+      parar();
+    });
   });
 
   describe("pelo start()", () => {

@@ -1115,6 +1115,23 @@ export function StoreProvider({
         });
         applyBranding(corPrimariaEfetiva(mapped));
         configResolvidaRef.current = true;
+        // Carimbo de "config lida da REDE agora" -- só aqui, nunca pela cópia
+        // do aparelho nem na falha. A rodada inicial do motor (visitante e
+        // cliente) só pula se produtos E config foram carimbados há < 60 s:
+        // com a config falhando no boot e a cópia antiga na tela, ninguém aqui
+        // tenta de novo, e é aquela rodada que a relê. Fora do `setConfig`
+        // (vale também quando a resposta é igual à tela e nada se regrava).
+        DataVault.init()
+          .then((vault) => {
+            if (geracao !== geracaoDaConfigRef.current) return;
+            return vault.setLastSync("store_config");
+          })
+          .catch((err) =>
+            console.warn(
+              "[StoreContext] carimbo da config não gravado no cofre:",
+              err,
+            ),
+          );
       }
     } catch (err) {
       if (geracao !== geracaoDaConfigRef.current) {
