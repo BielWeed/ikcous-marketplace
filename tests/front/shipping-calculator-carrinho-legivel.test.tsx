@@ -159,11 +159,15 @@ describe("ShippingCalculator — carrinho legível (baixa visão e dedo grosso)"
       error: null,
     });
     await montar(undefined);
+    // Só os cartões NÃO marcados: o marcado tem fundo escuro da marca e lê em
+    // texto claro (teste próprio abaixo).
     const gratis = [...hospedeiro.querySelectorAll("span")].filter(
-      (s) => s.textContent?.trim().toLowerCase() === "grátis",
+      (s) =>
+        s.textContent?.trim().toLowerCase() === "grátis" &&
+        s.closest("button[aria-pressed]")?.getAttribute("aria-pressed") !==
+          "true",
     );
-    // Retirada ("Grátis") e entrega local ("GRÁTIS") aparecem as duas.
-    expect(gratis.length).toBeGreaterThanOrEqual(2);
+    expect(gratis.length).toBeGreaterThanOrEqual(1);
     for (const marca of gratis) {
       expect(marca.className).toContain("text-emerald-700");
       expect(marca.className).not.toContain("text-emerald-500");
@@ -197,5 +201,35 @@ describe("ShippingCalculator — carrinho legível (baixa visão e dedo grosso)"
     await montar(undefined);
     expect(botaoDe("Tentar de novo")?.className).toContain("min-h-11");
     expect(botaoDe("Tentar de novo")?.className).not.toContain("min-h-10");
+  });
+
+  it("opção grátis MARCADA no carrinho (fundo da marca, escuro) lê em texto claro, não em verde-700", async () => {
+    invoke.mockResolvedValue({
+      data: {
+        options: [RETIRADA, LOCAL_GRATIS, PAC],
+        cotacaoIncompleta: false,
+      },
+      error: null,
+    });
+    await montar(undefined);
+    const cartaoLocal = cartoes().find((c) =>
+      c.textContent?.includes("Entrega local"),
+    );
+    expect(cartaoLocal).toBeDefined();
+    await act(async () => {
+      cartaoLocal?.click();
+    });
+    await drenar();
+    const marcado = cartoes().find(
+      (c) => c.getAttribute("aria-pressed") === "true",
+    );
+    expect(marcado).toBeDefined();
+    const gratis = [...(marcado?.querySelectorAll("span") ?? [])].find(
+      (s) => s.textContent?.trim().toLowerCase() === "grátis",
+    );
+    expect(gratis).toBeDefined();
+    // emerald-700 sobre o fundo escuro da marca dá ~3,2:1 (abaixo de AA).
+    expect(gratis?.className).toContain("text-primary-foreground");
+    expect(gratis?.className).not.toContain("text-emerald-700");
   });
 });

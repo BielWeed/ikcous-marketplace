@@ -1129,7 +1129,11 @@ export function ShippingCalculator({
     const corDoAviso = comCorDaMarca
       ? "text-primary-foreground"
       : "text-zinc-600";
-    const verdeDoPreco = "text-emerald-700";
+    // Marcada com a cor da marca (carrinho), o fundo é escuro: emerald-700 ali
+    // cairia a 3,2:1; vale o mesmo texto claro dos demais apoios do cartão.
+    const verdeDoPreco = comCorDaMarca
+      ? "text-primary-foreground"
+      : "text-emerald-700";
     // RETIRADA NA LOJA (release 1.5.3): sem prazo de entrega (não
     // há entrega) e sem "pronto agora" — o endereço REAL da loja
     // que a edge mandou e o aviso neutro de esperar a loja.
@@ -1326,7 +1330,13 @@ export function ShippingCalculator({
             </span>
           ) : gratisDesteCartao ? (
             <div className="flex items-center gap-1">
-              <Sparkles className="size-3 fill-emerald-700/20 text-emerald-700" />
+              <Sparkles
+                className={`size-3 ${
+                  comCorDaMarca
+                    ? "fill-primary-foreground/20 text-primary-foreground"
+                    : "fill-emerald-700/20 text-emerald-700"
+                }`}
+              />
               <span
                 className={`text-xs font-black uppercase tracking-wider ${verdeDoPreco}`}
               >

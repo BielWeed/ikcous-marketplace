@@ -9780,7 +9780,7 @@ function AddressSelectionView({
         </div>
 
         <div className="mt-8 px-6 text-center">
-          <p className="text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600">
+          <p className="text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600 dark:text-zinc-300">
             Seus dados estão seguros e serão usados apenas para a logística de
             entrega.
           </p>
