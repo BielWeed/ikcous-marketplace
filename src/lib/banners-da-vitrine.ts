@@ -1,4 +1,5 @@
 import { ehTelaDeComputador } from "@/hooks/useTelaDeComputador";
+import { estaNoAr } from "@/lib/datas-do-banner";
 import { DataVault } from "@/lib/dataVault";
 import { atributosDeImagem } from "@/lib/imageUrl";
 import { IMAGEM_DO_BANNER } from "@/lib/imagem-do-banner";
@@ -92,7 +93,7 @@ export function preCarregarFotoDoTopo(items: Banner[]): void {
   const topBanner = items.find(
     (b) =>
       b.position === "home_top" &&
-      b.active &&
+      estaNoAr(b) &&
       imagemDoBannerParaTela(b, computador),
   );
   const imagem = topBanner && imagemDoBannerParaTela(topBanner, computador);
@@ -125,7 +126,7 @@ function preCarregarFotoNoBoot(items: Banner[]): void {
   const topBanner = items.find(
     (b) =>
       b.position === "home_top" &&
-      b.active &&
+      estaNoAr(b) &&
       imagemDoBannerParaTela(b, computador),
   );
   const imagem = topBanner && imagemDoBannerParaTela(topBanner, computador);
