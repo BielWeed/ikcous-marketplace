@@ -364,7 +364,12 @@ export function mapOrderFromDB(
     // das quatro linhas acima, estas duas JÁ estão tipadas em OrderRow, então
     // o acesso é direto: o compilador é a trava se a coluna mudar de nome.
     // Qualquer valor fora de "presencial" (inclusive ausência) vira "online".
-    canal: row.canal === "presencial" ? "presencial" : "online",
+    // get_orders_by_otp_v2 não devolve a coluna, mas a venda de balcão grava
+    // `customer_data.canal` (20261280000000) e esse campo chega: vale também.
+    canal:
+      row.canal === "presencial" || customerData.canal === "presencial"
+        ? "presencial"
+        : "online",
     vendedorId: row.vendedor_id ?? null,
     shippingOptionId:
       typeof customerData.shipping_option_id === "string"
