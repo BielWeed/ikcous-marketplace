@@ -1399,6 +1399,133 @@ describe("useAvisosDoLojista — o aviso de cancelamento ja resolvido (08/11/202
   });
 });
 
+// 24/11/2026: com mais de 100 cancelamentos em 24 h (clientes + admin), a leitura
+// do historico trazia so os 100 mais novos e cortava o resto em silencio. O
+// cancelamento mais antigo de um pedido PAGO (dinheiro a devolver) sumia do sino
+// e nada dizia que a lista estava cortada. Mesmo mecanismo das outras fontes:
+// `count: "exact"` + `listasCortadas`.
+describe("useAvisosDoLojista — mais cancelamentos em 24 h do que o teto (24/11/2026)", () => {
+  const CLIENTE = "c1111111-1111-4111-8111-111111111111";
+  const ADMIN = "a1111111-1111-4111-8111-111111111111";
+
+  function cancelamentos(quantidade: number, autor = CLIENTE) {
+    return Array.from({ length: quantidade }, (_, i) => {
+      const pedido = `3f2a1b8c-4d5e-4f60-9a7b-${String(i).padStart(12, "0")}`;
+      return {
+        id: `h${i}`,
+        order_id: pedido,
+        old_status: "pending",
+        created_by: autor,
+        created_at: "2026-11-24T11:00:00.000Z",
+        marketplace_orders: {
+          id: pedido,
+          user_id: CLIENTE,
+          customer_name: "Maria Silva",
+          total: 149.9,
+          payment_status: "pago",
+          status: "cancelled",
+          cancelled_after_shipping: false,
+        },
+      };
+    });
+  }
+
+  beforeEach(() => {
+    RESPOSTA_PERFIS = {
+      data: [
+        { id: CLIENTE, role: "customer" },
+        { id: ADMIN, role: "admin" },
+      ],
+      error: null,
+    };
+  });
+
+  it("a consulta do historico pede a contagem exata (sem ela o corte e invisivel)", async () => {
+    RESPOSTA_CANCELAMENTOS = { data: cancelamentos(1), count: 1, error: null };
+
+    await montarSonda();
+
+    const select = FILTROS_DO_HISTORICO.find((f) => f[0] === "select");
+    expect(select?.[2]).toEqual({ count: "exact" });
+  });
+
+  it("100 cancelamentos lidos de 130: o aviso mostra os 100 e a lista fica marcada como cortada, sem acusar falha", async () => {
+    RESPOSTA_CANCELAMENTOS = {
+      data: cancelamentos(100),
+      count: 130,
+      error: null,
+    };
+
+    const { atual } = await montarSonda();
+
+    expect(
+      atual().avisos.filter((a) => a.tipo === "cancelamento"),
+    ).toHaveLength(100);
+    expect(atual().listasCortadas).toEqual(["cancelamento"]);
+    expect(atual().fontesComFalha).toEqual([]);
+  });
+
+  it("o caso que doi: os 100 mais novos sao do ADMIN, nenhum vira aviso, e a tela AINDA assim avisa que ha cancelamento fora da leitura", async () => {
+    RESPOSTA_CANCELAMENTOS = {
+      data: cancelamentos(100, ADMIN),
+      count: 101,
+      error: null,
+    };
+
+    const { atual } = await montarSonda();
+
+    expect(atual().avisos.map((a) => a.tipo)).not.toContain("cancelamento");
+    expect(atual().listasCortadas).toEqual(["cancelamento"]);
+  });
+
+  it("contagem igual ao que veio nao e lista cortada", async () => {
+    RESPOSTA_CANCELAMENTOS = {
+      data: cancelamentos(100),
+      count: 100,
+      error: null,
+    };
+
+    const { atual } = await montarSonda();
+
+    expect(atual().listasCortadas).toEqual([]);
+  });
+
+  it("sem contagem na resposta: lista cheia (100) e tratada como cortada, lista curta nao", async () => {
+    // Dinheiro a devolver: na duvida o aviso aparece. Falso alarme custa uma
+    // linha na tela; omissao custa um reembolso que ninguem viu.
+    RESPOSTA_CANCELAMENTOS = { data: cancelamentos(100), error: null };
+    const cheia = await montarSonda();
+    expect(cheia.atual().listasCortadas).toEqual(["cancelamento"]);
+
+    RESPOSTA_CANCELAMENTOS = { data: cancelamentos(3), error: null };
+    const curta = await montarSonda();
+    expect(curta.atual().listasCortadas).toEqual([]);
+  });
+
+  it("historico vazio: nem consulta papeis, nem marca corte", async () => {
+    RESPOSTA_CANCELAMENTOS = { data: [], count: 0, error: null };
+
+    const { atual } = await montarSonda();
+
+    expect(atual().listasCortadas).toEqual([]);
+    expect(tabelasConsultadas).not.toContain("profiles");
+  });
+
+  it("papeis ilegiveis com lista cortada: so a falha aparece (a leitura nao ficou completa de qualquer forma)", async () => {
+    RESPOSTA_CANCELAMENTOS = {
+      data: cancelamentos(100),
+      count: 130,
+      error: null,
+    };
+    RESPOSTA_PERFIS = { data: null, error: { message: "profiles caiu" } };
+
+    const { atual } = await montarSonda();
+
+    expect(atual().fontesComFalha).toEqual(["cancelamento"]);
+    expect(atual().listasCortadas).toEqual([]);
+  });
+});
+
 describe("useAvisosDoLojista — mais pagamentos por marcar do que o teto (08/11/2026)", () => {
   function cemRecebimentos(quantidade = TETO_DE_RECEBIMENTOS) {
     return Array.from({ length: quantidade }, (_, i) => ({
