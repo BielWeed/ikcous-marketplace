@@ -16,7 +16,7 @@ argument-hint: [arquivos que você alterou]
   `"files": []` e checa zero arquivo — esse defeito já foi corrigido, INFRA-020).
   Pode usar `npm run typecheck` sem medo.
 - **CI real existe** em `.github/workflows/ci.yml`: jobs `typecheck`, `test-deno`,
-  `test-front-a`/`test-front-b` (a suíte front dividida em 2 shards), `build`
+  `test-front` (a suíte front dividida em 4 shards, por matriz), `build`
   (build + `size-limit`), `secrets` (secretlint no diff), `lint` (catraca contra
   `.lint-baseline.json`: eslint com 0 erro tolerado e teto de warnings; biome
   também tem teto de erros/warnings), `docs` (`lint:links`) e `objetos` (código x
