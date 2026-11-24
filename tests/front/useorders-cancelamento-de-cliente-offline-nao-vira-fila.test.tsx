@@ -246,6 +246,9 @@ describe("useOrders — cancelamento de cliente offline não vira fila (achado 1
 
   it.each([
     ["delivered", "cancelled", "Este pedido não pode mais ser cancelado"],
+    // Cancelar o que já está cancelado também é recusado na tela: o servidor
+    // recusa igual, mas a tela não pode nem pintar nem chamar a RPC antes.
+    ["cancelled", "cancelled", "Este pedido não pode mais ser cancelado"],
     ["shipping", "delivered", "Usuários só podem cancelar pedidos"],
     ["pending", "processing", "Usuários só podem cancelar pedidos"],
   ] as const)(

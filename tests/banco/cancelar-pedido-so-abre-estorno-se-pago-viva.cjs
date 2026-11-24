@@ -31,6 +31,10 @@
  *   C5  shipping, 'pago', paid_at preenchido, cancelled_after_shipping ainda
  *       false (o estado ANTES do cancelamento) -> 0 linhas; o produto saiu, o
  *       estorno espera o lojista
+ *   C6  processing, payment_status 'estornado' (o dinheiro JÁ voltou; com
+ *       paid_at preenchido e valor_estornado 0: só a forma do pagamento barra)
+ *       -> 0 linhas. O painel oferece "Cancelar pedido" neste estado ("Pagamento
+ *       estornado · pedido aberto"): cancelar não pode devolver o dinheiro 2x.
  *   K1  CONTROLE: processing, 'pago', paid_at preenchido -> EXATAMENTE 1 linha
  *       (valor do total, 'solicitado', 'lojista')
  *   K2  CONTROLE: pending, 'pago_apos_expirar', paid_at preenchido -> 1 linha
@@ -87,6 +91,13 @@ const MUTANTES = {
     verde: ["C1", "C3", "C4", "C5", "K1", "K2"],
     de: DE_PAGO,
     para: "AND (v_payment_status IN ('pago', 'pago_apos_expirar') OR v_payment_status IS NULL)",
+  },
+  "estornado-tambem": {
+    // Pedido cujo dinheiro já foi devolvido passa a abrir uma 2ª devolução.
+    espera: ["C6"],
+    verde: ["C1", "C2", "C3", "C4", "C5", "K1", "K2"],
+    de: DE_PAGO,
+    para: "AND v_payment_status IN ('pago', 'pago_apos_expirar', 'estornado')",
   },
   "shipping-na-lista-de-status": {
     // Pedido que já saiu passa a abrir estorno sem a peça voltar.
@@ -303,6 +314,17 @@ CENARIOS.push({
       paidAt: AGORA(),
     });
   },
+});
+
+CENARIOS.push({
+  id: "C6",
+  nome: "C6: processing 'estornado' (dinheiro já devolvido) com paid_at preenchido -> cancela, 0 linhas de estorno",
+  corpo: (c) =>
+    semEstorno(c, "C6", {
+      status: "processing",
+      paymentStatus: "estornado",
+      paidAt: AGORA(),
+    }),
 });
 
 CENARIOS.push({
