@@ -15,7 +15,15 @@
 // (teto de conexões do plano).
 import { act, useEffect, useState } from "react";
 import { type Root, createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  type Mock,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 type CanalRegistrado = {
   nome: string;
@@ -144,7 +152,7 @@ describe.each(casos)(
   (caso) => {
     let raiz: Root;
     let hospedeiro: HTMLDivElement;
-    let aoMudar: ReturnType<typeof vi.fn>;
+    let aoMudar: Mock<() => void>;
     let recarregar: () => void;
 
     beforeEach(() => {

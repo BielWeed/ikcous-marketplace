@@ -75,11 +75,16 @@ it("busca uma substituta ao rolar quando a única sugestão guardada saiu do cat
     "IntersectionObserver",
     class {
       private alvo?: Element;
+      private readonly notificar: IntersectionObserverCallback;
+      private readonly opcoes?: IntersectionObserverInit;
 
       constructor(
-        private readonly notificar: IntersectionObserverCallback,
-        private readonly opcoes?: IntersectionObserverInit,
-      ) {}
+        notificar: IntersectionObserverCallback,
+        opcoes?: IntersectionObserverInit,
+      ) {
+        this.notificar = notificar;
+        this.opcoes = opcoes;
+      }
 
       observe(target: Element) {
         if (this.opcoes?.rootMargin !== "300px") return;

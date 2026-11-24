@@ -475,11 +475,13 @@ export function useDashboardClassico(
     // de esperar o repasse da líder (que pode ser a vitrine e nunca avisar). A
     // líder segue pelo ramo de baixo, que não muda: um conjunto de canais por
     // aba. Nomes com sufixo `-painel` não colidem com os da líder quando a aba
-    // vira líder e os canais velhos ainda estão fechando. Voltar a aparecer não
-    // força releitura aqui: `useRevalidarAoVoltar` já relê em silêncio.
+    // vira líder e os canais velhos ainda estão fechando. Ao voltar a aparecer
+    // (`reabertura`) relê uma vez: o que mudou com a aba escondida não chegou por
+    // evento, e a trava de 30 s do `useRevalidarAoVoltar` pode não deixar reler.
     if (isAdmin && !isLeader) {
-      return assinarEnquantoVisivel(() => {
+      return assinarEnquantoVisivel((reabertura) => {
         const aoMudar = () => triggerRealtimeRefresh();
+        if (reabertura) triggerRealtimeRefresh();
         const canais = [
           supabase
             .channel("admin-dashboard-orders-painel")

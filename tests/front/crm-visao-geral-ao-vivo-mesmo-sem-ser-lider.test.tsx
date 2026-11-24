@@ -8,7 +8,15 @@
 // mesmo seguidora — como as bolinhas do `AdminLayout`. Aba escondida fecha.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  type Mock,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 type CanalRegistrado = {
   nome: string;
@@ -96,7 +104,7 @@ function definirVisibilidade(estado: "visible" | "hidden") {
 describe("Visão geral do CRM — tempo real sem depender da liderança", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
-  let atualizar: ReturnType<typeof vi.fn>;
+  let atualizar: Mock<() => void>;
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -242,6 +250,23 @@ describe("Visão geral do CRM — tempo real sem depender da liderança", () => 
     definirVisibilidade("visible");
     expect(vivos()).toHaveLength(4);
     expect(h.canais).toHaveLength(8);
+  });
+
+  it("ao VOLTAR a aba escondida relê uma vez (o que mudou sem canal não chegou por evento)", async () => {
+    await montar();
+    // Abrir a tela não relê: a tela acabou de ler.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(atualizar).toHaveBeenCalledTimes(0);
+
+    definirVisibilidade("hidden");
+    definirVisibilidade("visible");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+
+    expect(atualizar).toHaveBeenCalledTimes(1);
   });
 
   it("desmontar a tela fecha os quatro canais", async () => {
