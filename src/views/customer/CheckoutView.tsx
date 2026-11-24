@@ -9407,7 +9407,7 @@ function SuccessView({
       </TituloQueRecebeOFoco>
 
       <div className="mb-12 space-y-4 duration-1000 animate-in fade-in slide-in-from-bottom-8">
-        <p className="text-sm font-black uppercase tracking-[0.2em] text-zinc-400">
+        <p className="text-sm font-black uppercase tracking-[0.2em] text-zinc-600">
           Número do pedido:{" "}
           <span className="text-zinc-900">#{numeroDoPedido(orderId)}</span>
         </p>
@@ -9559,7 +9559,7 @@ function PagamentoConfirmadoView({
       </TituloQueRecebeOFoco>
 
       <div className="mb-12 space-y-4 duration-1000 animate-in fade-in slide-in-from-bottom-8">
-        <p className="text-sm font-black uppercase tracking-[0.2em] text-zinc-400">
+        <p className="text-sm font-black uppercase tracking-[0.2em] text-zinc-600">
           Pedido:{" "}
           <span className="text-zinc-900">#{numeroDoPedido(orderId)}</span>
         </p>
@@ -9669,7 +9669,7 @@ function PagamentoForaDoPrazoView({
       </h2>
 
       <div className="mb-12 space-y-4 duration-1000 animate-in fade-in slide-in-from-bottom-8">
-        <p className="text-sm font-black uppercase tracking-[0.2em] text-zinc-400">
+        <p className="text-sm font-black uppercase tracking-[0.2em] text-zinc-600">
           Pedido:{" "}
           <span className="text-zinc-900">#{numeroDoPedido(orderId)}</span>
         </p>
@@ -9780,7 +9780,7 @@ function AddressSelectionView({
         </div>
 
         <div className="mt-8 px-6 text-center">
-          <p className="text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-300">
+          <p className="text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600">
             Seus dados estão seguros e serão usados apenas para a logística de
             entrega.
           </p>

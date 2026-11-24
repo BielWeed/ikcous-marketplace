@@ -790,6 +790,14 @@ export function AdminLayout({
     privacidadeAbertosCount > 0 ||
     recebimentosPorMarcarCount > 0;
 
+  // A bolinha é `aria-hidden`: sem isto o leitor de tela ouve "Notificações"
+  // igual com pedido esperando e com nada. Só avisos CONFIRMADOS entram no
+  // nome — a dúvida (`naoConseguiuConferirAvisos`) fica no `title` dela.
+  const nomeDoSino =
+    temAvisoNoSino && !naoConseguiuConferirAvisos
+      ? "Notificações, há avisos para conferir"
+      : "Notificações";
+
   const { isOffline, latency, quality } = useConnectionDiagnostics();
   const [showSyncFlash, setShowSyncFlash] = React.useState(false);
   const prevOfflineRef = React.useRef(isOffline);
@@ -1117,7 +1125,7 @@ export function AdminLayout({
           </Button>
           <Button
             variant="ghost"
-            aria-label="Notificações"
+            aria-label={nomeDoSino}
             title={
               naoConseguiuConferirAvisos
                 ? "Falha ao conferir avisos"
@@ -1194,7 +1202,7 @@ export function AdminLayout({
               <Button
                 variant="ghost"
                 size="icon"
-                aria-label="Notificações"
+                aria-label={nomeDoSino}
                 title={
                   naoConseguiuConferirAvisos
                     ? "Falha ao conferir avisos"

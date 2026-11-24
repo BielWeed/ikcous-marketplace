@@ -504,6 +504,7 @@ export function NotificationsView({
                       }}
                       className="absolute bottom-2 right-0 flex size-11 items-center justify-center rounded-xl text-muted-foreground opacity-100 transition-all after:absolute after:-inset-2 after:content-[''] hover:bg-muted/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring hover-hover:opacity-0 hover-hover:focus-visible:opacity-100 hover-hover:group-hover:opacity-100"
                       title="Excluir notificação"
+                      aria-label={`Excluir notificação: ${notif.title}`}
                     >
                       <X className="size-4" />
                     </button>

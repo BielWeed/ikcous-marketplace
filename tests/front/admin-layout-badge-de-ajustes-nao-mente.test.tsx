@@ -170,7 +170,7 @@ describe("AdminLayout — a engrenagem de Ajustes não carrega badge de pergunta
     await new Promise((r) => setTimeout(r, 50));
 
     const sino = hospedeiro.querySelector<HTMLButtonElement>(
-      'button[aria-label="Notificações"]',
+      'button[aria-label^="Notificações"]',
     );
     expect(sino).toBeTruthy();
     // O dot vermelho de aviso — o caminho verdadeiro para as 2 perguntas.

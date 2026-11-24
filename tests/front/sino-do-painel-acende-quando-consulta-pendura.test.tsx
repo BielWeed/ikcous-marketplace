@@ -99,7 +99,7 @@ async function montarPainel(raiz: Root, hospedeiro: HTMLDivElement) {
     );
   });
   const sino = hospedeiro.querySelector(
-    'header button[aria-label="Notificações"]',
+    'header button[aria-label^="Notificações"]',
   );
   expect(sino).toBeTruthy();
   return sino as HTMLButtonElement;
@@ -178,7 +178,7 @@ describe("AdminLayout — o sino acende quando uma consulta nunca responde", () 
 
     expect(consultasDePedidos).toBeGreaterThan(antes);
     const sino = hospedeiro.querySelector(
-      'header button[aria-label="Notificações"]',
+      'header button[aria-label^="Notificações"]',
     );
     expect(sino?.querySelector("span")?.textContent).not.toBe("!");
   });

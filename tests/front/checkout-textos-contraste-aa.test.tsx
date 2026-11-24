@@ -40,6 +40,7 @@ const { estado, usuario } = vi.hoisted(() => ({
     logada: false,
     cobertura: "national",
     carrinhoVazio: false,
+    enderecos: [] as unknown[],
   },
 }));
 
@@ -61,12 +62,17 @@ vi.mock("@/contexts/StoreContext", () => ({
 
 vi.mock("@/hooks/useAddresses", () => ({
   useAddresses: () => ({
-    addresses: [],
+    addresses: estado.enderecos,
     fetchAddresses: vi.fn(),
     addAddress: vi.fn(),
     updateAddress: vi.fn(),
     loading: false,
   }),
+}));
+
+// O formulário de endereço tem mil campos e não é o que se mede aqui.
+vi.mock("@/components/ui/custom/AddressForm", () => ({
+  AddressForm: () => null,
 }));
 
 vi.mock("@/hooks/useAuth", () => ({
@@ -193,6 +199,7 @@ describe("CheckoutView — textos do convidado e da logada (contraste AA)", () =
     estado.logada = false;
     estado.cobertura = "national";
     estado.carrinhoVazio = false;
+    estado.enderecos = [];
     const armazem = new Map<string, string>();
     vi.stubGlobal("localStorage", {
       getItem: (chave: string) => armazem.get(chave) ?? null,
@@ -314,6 +321,81 @@ describe("CheckoutView — textos do convidado e da logada (contraste AA)", () =
   });
 });
 
+describe("CheckoutView — aviso de privacidade da tela de endereço (contraste AA)", () => {
+  let raiz: Root;
+  let hospedeiro: HTMLDivElement;
+
+  beforeEach(() => {
+    estado.logada = true;
+    estado.cobertura = "national";
+    estado.carrinhoVazio = false;
+    estado.enderecos = [
+      {
+        id: "addr-1",
+        user_id: "user-1",
+        name: "Casa",
+        recipient_name: "Cliente Teste",
+        cep: "01310-100",
+        street: "Rua Teste",
+        number: "100",
+        neighborhood: "Centro",
+        city: "Cidade Teste",
+        state: "SP",
+        is_default: true,
+      },
+    ];
+    vi.stubGlobal("localStorage", {
+      getItem: () => null,
+      setItem: () => {},
+      removeItem: () => {},
+    });
+    vi.stubGlobal("scrollTo", vi.fn());
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise(() => {})),
+    );
+    hospedeiro = document.createElement("div");
+    document.body.appendChild(hospedeiro);
+    raiz = createRoot(hospedeiro);
+  });
+
+  afterEach(() => {
+    act(() => {
+      raiz.unmount();
+    });
+    hospedeiro.remove();
+    estado.enderecos = [];
+    vi.unstubAllGlobals();
+  });
+
+  it("'Seus dados estão seguros...' passa de 4,5:1 sobre o branco", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await act(async () => {
+      raiz.render(
+        <CheckoutView onNavigate={() => {}} onSetBackOverride={() => {}} />,
+      );
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    await act(async () => {
+      (
+        [...document.body.querySelectorAll("button")].find(
+          (b) => b.textContent?.trim() === "Novo",
+        ) as HTMLButtonElement
+      ).click();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    const aviso = [...document.querySelectorAll("p")].find((p) =>
+      p.textContent?.includes("Seus dados estão seguros"),
+    ) as HTMLElement;
+    expect(aviso).toBeDefined();
+    expect(
+      razaoDoTexto(aviso, BRANCO),
+      `aviso de privacidade (${aviso.className})`,
+    ).toBeGreaterThanOrEqual(AA);
+  });
+});
+
 describe("CheckoutView — pagamento recebido fora do prazo (contraste AA)", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
@@ -341,7 +423,10 @@ describe("CheckoutView — pagamento recebido fora do prazo (contraste AA)", () 
     vi.useRealTimers();
   });
 
-  async function chegarNaTelaForaDoPrazo() {
+  async function chegarNaTelaForaDoPrazo(
+    paymentStatus = "pago_apos_expirar",
+    status = "cancelled",
+  ) {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await act(async () => {
       raiz.render(
@@ -357,8 +442,8 @@ describe("CheckoutView — pagamento recebido fora do prazo (contraste AA)", () 
     });
     lerPoll.mockResolvedValue({
       data: {
-        payment_status: "pago_apos_expirar",
-        status: "cancelled",
+        payment_status: paymentStatus,
+        status,
         gateway_payment_id: "pay-1",
         expires_at: null,
       },
@@ -368,7 +453,11 @@ describe("CheckoutView — pagamento recebido fora do prazo (contraste AA)", () 
       await vi.advanceTimersByTimeAsync(10_000);
     });
     // A armadilha precisa estar de fato presente.
-    expect(hospedeiro.textContent).toContain("prazo de reserva venceu");
+    expect(hospedeiro.textContent).toContain(
+      paymentStatus === "pago"
+        ? "Pagamento Confirmado"
+        : "prazo de reserva venceu",
+    );
   }
 
   it("o valor 'R$ ... recebido' passa de 4,5:1 sobre o branco", async () => {
@@ -381,6 +470,32 @@ describe("CheckoutView — pagamento recebido fora do prazo (contraste AA)", () 
     expect(
       razaoDoTexto(valor, BRANCO),
       `valor recebido (${valor.className})`,
+    ).toBeGreaterThanOrEqual(AA);
+  });
+
+  it("o rótulo 'Pedido:' passa de 4,5:1 sobre o branco", async () => {
+    await chegarNaTelaForaDoPrazo();
+
+    const rotulo = [...hospedeiro.querySelectorAll("p")].find((p) =>
+      p.textContent?.startsWith("Pedido:"),
+    ) as HTMLElement;
+    expect(rotulo).toBeDefined();
+    expect(
+      razaoDoTexto(rotulo, BRANCO),
+      `rótulo (${rotulo.className})`,
+    ).toBeGreaterThanOrEqual(AA);
+  });
+
+  it("na tela de pagamento confirmado, o rótulo 'Pedido:' também passa de 4,5:1", async () => {
+    await chegarNaTelaForaDoPrazo("pago", "pending");
+
+    const rotulo = [...hospedeiro.querySelectorAll("p")].find((p) =>
+      p.textContent?.startsWith("Pedido:"),
+    ) as HTMLElement;
+    expect(rotulo).toBeDefined();
+    expect(
+      razaoDoTexto(rotulo, BRANCO),
+      `rótulo (${rotulo.className})`,
     ).toBeGreaterThanOrEqual(AA);
   });
 
