@@ -1879,11 +1879,9 @@ export const ProductView = React.memo(function ProductView({
             {/* Recommendations - Magazine Style. Defeito da prova de rua (01/09):
             busca concluída e vazia esconde a seção INTEIRA — título com
             grid vazio convidava a nada. */}
+            <div ref={recsRef} aria-hidden="true" />
             {(!recsConsultado || recommendations.length > 0) && (
-              <div
-                ref={recsRef}
-                className="mt-20 border-t border-zinc-100 pt-10"
-              >
+              <div className="mt-20 border-t border-zinc-100 pt-10">
                 <div
                   className={cn(
                     "mb-10 flex flex-col items-center text-center",
