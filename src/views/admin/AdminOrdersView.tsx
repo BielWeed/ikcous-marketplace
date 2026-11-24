@@ -495,6 +495,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     error: analyticsError,
     fetchExecutiveSummary,
   } = useAnalytics();
+  const devolucoesBotaoRef = useRef<HTMLButtonElement>(null);
   // Os três números do fluxo no topo (onda F, F3); `null` = "—". O hook
   // carrega sozinho ao ficar ativo; daqui só se pede recarga (coalescida na
   // janela de 1 s) por tempo real, ação na tela ou volta da conexão — nunca
@@ -2301,6 +2302,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         <div className="flex shrink-0 items-center gap-2 max-[360px]:contents min-[361px]:max-[390px]:gap-1">
           <button
             type="button"
+            ref={devolucoesBotaoRef}
             aria-label={`Devoluções${devolucoesAbertas ? `, ${devolucoesAbertas} em andamento` : ""}`}
             title="Devoluções"
             onClick={() => abrirDevolucoes()}
@@ -2324,6 +2326,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
               onTentarConferirAlertas={
                 alertasNaoConferidos ? loadStats : undefined
               }
+              focoSemAlertasRef={devolucoesBotaoRef}
               pedidosEsperandoRetorno={pedidosEsperandoRetorno}
               pedidosParaDevolverAgora={pedidosParaDevolverAgora}
               estornosEmCurso={estornosEmCurso}
