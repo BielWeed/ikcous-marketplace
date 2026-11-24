@@ -43,7 +43,7 @@ describe("estoqueDaVariacaoValido: as bordas", () => {
     expect(estoqueDaVariacaoValido(estoque)).toBe(true);
   });
 
-  it.each([
+  it.each<[string | number | null | undefined, string]>([
     [MAX + 1, "um acima do máximo"],
     [-1, "negativo"],
     [1.5, "fracionário"],
