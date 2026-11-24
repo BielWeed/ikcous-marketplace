@@ -12,6 +12,9 @@ import { useState } from "react";
  * "Tentar de novo" para quem não quer esperar. O botão apaga a cópia da página
  * guardada pelo service worker e recarrega: sem apagá-la, recarregar devolveria
  * a mesma tela de manutenção. Ver `src/lib/volta-da-manutencao.ts`.
+ *
+ * Cores: tokens do tema (foreground, muted), nunca branco/zinc fixos — a loja de
+ * tema claro (o padrão) tinha título branco sobre branco e o botão invisível.
  */
 export function MaintenanceView() {
   useVoltaDaManutencao();
@@ -57,20 +60,20 @@ export function MaintenanceView() {
         </div>
       </div>
 
-      <h1 className="mb-3 text-2xl font-black uppercase tracking-tighter text-white md:text-3xl">
+      <h1 className="mb-3 text-2xl font-black uppercase tracking-tighter text-foreground md:text-3xl">
         Servidor em Manutenção
       </h1>
 
-      <p className="mb-8 max-w-sm text-sm leading-relaxed text-zinc-400">
+      <p className="mb-8 max-w-sm text-sm leading-relaxed text-muted-foreground">
         A loja está temporariamente indisponível. Esta página tenta reabrir a
         loja automaticamente. Se você já pagou, não pague de novo. Quando a loja
         voltar, confira em Meus pedidos. Se comprou sem conta, fale com a loja e
         informe o número do pedido.
       </p>
 
-      <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2">
+      <div className="flex items-center gap-2 rounded-full border border-border bg-muted px-4 py-2">
         <span className="size-2 animate-ping rounded-full bg-amber-400" />
-        <span className="text-[10px] font-black uppercase tracking-widest text-zinc-300">
+        <span className="text-[10px] font-black uppercase tracking-widest text-foreground">
           Fora do ar por enquanto
         </span>
       </div>
@@ -79,7 +82,7 @@ export function MaintenanceView() {
         type="button"
         onClick={tentarDeNovo}
         disabled={tentando}
-        className="mt-6 min-h-11 rounded-full border border-white/10 bg-white/5 px-6 text-xs font-black uppercase tracking-widest text-zinc-200 transition-colors hover:bg-white/10 disabled:opacity-60"
+        className="mt-6 min-h-11 rounded-full border border-border bg-muted px-6 text-xs font-black uppercase tracking-widest text-foreground transition-colors hover:bg-muted/70 disabled:opacity-60"
       >
         {tentando ? "Verificando..." : "Tentar de novo"}
       </button>
