@@ -948,7 +948,19 @@ const AppContent = () => {
   const searchQueryRef = useRef(searchQuery);
   useLayoutEffect(() => {
     searchQueryRef.current = searchQuery;
-  }, [searchQuery]);
+    // Atualiza a própria entrada da Home, inclusive quando a cliente apaga
+    // o termo antes de usar Avançar (que não passa por handleNavigate).
+    if (currentView !== "home") return;
+    const { pathname } = globalThis.location;
+    if (pathname !== "/" && !/^\/home\/?$/i.test(pathname)) return;
+    const state = globalThis.history.state;
+    if ((state?.termoDaBuscaNaHome ?? "") !== searchQuery) {
+      globalThis.history.replaceState(
+        { ...state, termoDaBuscaNaHome: searchQuery },
+        "",
+      );
+    }
+  }, [currentView, searchQuery]);
   const [pedidoTodasCategorias, setPedidoTodasCategorias] = useState(0);
   // Categoria, ordem e faixa de preço da tela /search: ela é desmontada ao abrir
   // um produto, então os filtros moram aqui (como os da Home) e voltam com a
@@ -2589,6 +2601,13 @@ const AppContent = () => {
             filtrosDaBuscaRef.current = busca.filtros;
             quantidadeDaBuscaRef.current = busca.quantidade;
           }
+        } else if (
+          origem === "popstate" &&
+          currentViewRef.current === "about-store" &&
+          targetView === "home"
+        ) {
+          const termo = globalThis.history.state?.termoDaBuscaNaHome;
+          if (typeof termo === "string") setSearchQuery(termo);
         }
 
         const isCartOrdersTransition =
