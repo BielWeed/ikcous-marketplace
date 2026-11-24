@@ -485,17 +485,27 @@ export function ProfileView({
   // ou voltar à aba. Uma resposta antiga não muda o aviso da conta atual.
   const semPerfil = !profile;
   const [tentativaDoPerfil, setTentativaDoPerfil] = useState(0);
-  const [contaComFalhaNoPerfil, setContaComFalhaNoPerfil] = useState<
-    string | null
-  >(null);
+  const [estadoDoBotaoDePerfil, setEstadoDoBotaoDePerfil] = useState<{
+    conta: string;
+    estado: "falha" | "tentando";
+  } | null>(null);
   useEffect(() => {
     if (!usuarioId || authLoading || !isActive || !semPerfil) return;
     let ativa = true;
-    setContaComFalhaNoPerfil(null);
+    // Na retentativa manual, preserve o botão para não perder o foco.
+    setEstadoDoBotaoDePerfil((anterior) =>
+      anterior?.conta === usuarioId && anterior.estado === "tentando"
+        ? anterior
+        : null,
+    );
     void comPrazo(Promise.resolve(fetchProfile()), 15_000)
       .catch(() => false)
       .then((carregou) => {
-        if (ativa && !carregou) setContaComFalhaNoPerfil(usuarioId);
+        if (ativa) {
+          setEstadoDoBotaoDePerfil(
+            carregou ? null : { conta: usuarioId, estado: "falha" },
+          );
+        }
       });
     return () => {
       ativa = false;
@@ -555,6 +565,10 @@ export function ProfileView({
     return null;
   }
 
+  const estadoDoBotaoDaConta =
+    estadoDoBotaoDePerfil?.conta === user.id
+      ? estadoDoBotaoDePerfil.estado
+      : null;
   return (
     <div className="pb-customer min-h-full bg-background text-foreground">
       <div className="relative h-[120px] w-full overflow-hidden bg-muted lg:rounded-3xl">
@@ -877,16 +891,22 @@ export function ProfileView({
                   role="status"
                   className="mt-1 text-[15px] text-muted-foreground"
                 >
-                  {contaComFalhaNoPerfil === usuarioId
+                  {estadoDoBotaoDaConta === "falha"
                     ? "Não conseguimos confirmar seu WhatsApp"
                     : "Carregando…"}
                 </p>
-                {contaComFalhaNoPerfil === usuarioId && (
+                {estadoDoBotaoDaConta !== null && (
                   <button
                     type="button"
-                    onClick={() =>
-                      setTentativaDoPerfil((tentativa) => tentativa + 1)
-                    }
+                    aria-disabled={estadoDoBotaoDaConta === "tentando"}
+                    onClick={() => {
+                      if (estadoDoBotaoDaConta !== "falha") return;
+                      setEstadoDoBotaoDePerfil({
+                        conta: user.id,
+                        estado: "tentando",
+                      });
+                      setTentativaDoPerfil((tentativa) => tentativa + 1);
+                    }}
                     className="min-h-11 text-[15px] font-semibold text-foreground underline"
                   >
                     Tentar de novo
