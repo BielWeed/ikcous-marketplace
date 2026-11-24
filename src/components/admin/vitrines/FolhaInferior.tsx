@@ -29,6 +29,7 @@ export function FolhaInferior({
   descricao,
   aoFechar,
   aoRestaurarFoco,
+  aberta = true,
   children,
   rodape,
 }: {
@@ -36,6 +37,12 @@ export function FolhaInferior({
   readonly descricao: ReactNode;
   readonly aoFechar: () => void;
   readonly aoRestaurarFoco?: (evento: Event) => void;
+  /**
+   * `false` = a folha está SAINDO: continua montada só para a animação de saída
+   * rodar (quem a monta por condição a desmonta depois, ver
+   * `useConteudoAteASaida`). Sem a prop, é a folha aberta de sempre.
+   */
+  readonly aberta?: boolean;
   readonly children: ReactNode;
   readonly rodape: ReactNode;
 }) {
@@ -77,7 +84,7 @@ export function FolhaInferior({
   }, [teclado]);
   return (
     <Sheet
-      open
+      open={aberta}
       onOpenChange={(aberta) => {
         if (!aberta) aoFechar();
       }}

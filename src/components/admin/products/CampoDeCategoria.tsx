@@ -8,6 +8,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { useFolhaSobeComOTeclado } from "@/hooks/useFolhaSobeComOTeclado";
 import { useIconesPeloNome } from "@/hooks/useIconesPeloNome";
 import { IconeDaCategoria, iconeDaCategoria } from "@/lib/icones-de-categoria";
 import { cn, normalizeText } from "@/lib/utils";
@@ -76,6 +77,8 @@ export function CampoDeCategoria({
     aoMudarAberta?.(valor);
   };
   const [busca, setBusca] = useState("");
+  // O teclado da busca não pode cobrir as categorias de baixo.
+  const estiloDoTeclado = useFolhaSobeComOTeclado("data-folha-de-categoria");
   const botaoRef = useRef<HTMLButtonElement | null>(null);
   // "Nova categoria" e "Organizar" abrem OUTRA folha no mesmo instante: devolver
   // o foco ao botão do campo, depois, roubaria o foco dela.
@@ -207,7 +210,9 @@ export function CampoDeCategoria({
             evento.preventDefault();
             if (devolverFocoRef.current) botaoRef.current?.focus();
           }}
-          className="mx-auto max-h-[85dvh] w-full gap-0 rounded-t-[28px] border-admin-border bg-admin-bg p-0 text-foreground sm:max-w-xl"
+          data-folha-de-categoria=""
+          style={estiloDoTeclado}
+          className="bottom-[var(--teclado-da-folha,0px)] mx-auto max-h-[min(85dvh,var(--altura-da-folha,85dvh))] w-full gap-0 rounded-t-[28px] border-admin-border bg-admin-bg p-0 text-foreground sm:max-w-xl"
         >
           <SheetHeader className="gap-0 px-5 pb-3 pt-0 text-left">
             <AlcaDaFolha

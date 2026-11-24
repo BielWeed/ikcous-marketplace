@@ -207,6 +207,10 @@ describe("Nova categoria — rede pendurada com hook real", () => {
           );
         });
       } else await tocar(saida);
+      // Com "Jogos" digitado, sair PERGUNTA antes de descartar; "Descartar" fecha.
+      expect(h.fechou).not.toHaveBeenCalled();
+      expect(document.querySelector('[role="alertdialog"]')).not.toBeNull();
+      await tocar("Descartar");
       expect(document.querySelector('[role="dialog"]')).toBeNull();
       await tocar("Nova categoria");
       await digitar("Outra categoria");

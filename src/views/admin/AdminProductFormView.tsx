@@ -51,6 +51,7 @@ import { useAoMudarCategoria } from "@/hooks/useAoMudarCategoria";
 import { useCamadaDeTelaCheia } from "@/hooks/useCamadaDeTelaCheia";
 import { useCategories } from "@/hooks/useCategories";
 import { useConfirmarAcao } from "@/hooks/useConfirmarAcao";
+import { useConteudoAteASaida } from "@/hooks/useConteudoAteASaida";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
 // Só o TIPO da resposta da RPC do PDV — import "type" some da build, então
@@ -997,6 +998,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     | null
   >(null);
   const [showCategoryForm, setShowCategoryForm] = useState(false);
+  // A folha "Nova categoria" segue montada até a animação de saída terminar
+  // (fechar não pode fazê-la sumir seca); `showCategoryForm` é o estado real.
+  const { chave: folhaDeCategoriaMontada, abertura: aberturaDaCategoria } =
+    useConteudoAteASaida(showCategoryForm ? "aberta" : null);
   const [gerenciandoCategorias, setGerenciandoCategorias] = useState(false);
   // A folha "Categoria" (o campo a controla; o formulário só precisa saber se
   // está aberta, para o Voltar do celular fechá-la).
@@ -4592,13 +4597,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         </LimiteDePedaco>
       )}
 
-      {showCategoryForm && (
+      {folhaDeCategoriaMontada !== null && (
         <LimiteDePedaco
           pedacos={[FolhaDeNovaCategoria]}
           aoFechar={() => setShowCategoryForm(false)}
         >
           <Suspense fallback={null}>
             <FolhaDeNovaCategoria
+              key={aberturaDaCategoria}
+              aberta={showCategoryForm}
               categoriasDaLoja={dbCategories}
               adicionar={addCategory}
               atualizarIcone={updateCategory}

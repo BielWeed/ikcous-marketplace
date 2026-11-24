@@ -11,6 +11,10 @@ import { ErroDeCategoria } from "@/lib/gestao-de-categorias";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  simularSaidaAnimada,
+  terminarSaida,
+} from "./duble-saida-animada-da-folha";
 
 const CATALOGO: { chave: string; nome: string; grupo: string; d: string }[] =
   JSON.parse(
@@ -425,11 +429,14 @@ describe("AdminProductFormView — folha de 'Nova categoria'", () => {
     await digitarNome("Calçados");
     await tocarEm(botaoPorRotulo("Ícone Casa para Calçados"));
 
+    // Com nome e ícone escolhidos, Esc PERGUNTA antes de descartar.
     await act(async () => {
       document.dispatchEvent(
         new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
       );
     });
+    expect(folha()).not.toBeNull();
+    await tocarEm(botaoPorTexto("Descartar", folha() ?? document));
     expect(folha()).toBeNull();
     expect(addCategory).not.toHaveBeenCalled();
 
@@ -452,16 +459,42 @@ describe("AdminProductFormView — folha de 'Nova categoria'", () => {
   it("o X (Fechar) e o Cancelar fecham sem criar, e a categoria que estava escolhida segue escolhida", async () => {
     await abrirNovaCategoria();
     await digitarNome("Calçados");
+    // Com nome digitado, o X pergunta antes; "Descartar" é quem fecha.
     await tocarEm(botaoFechar() ?? undefined);
+    expect(folha()).not.toBeNull();
+    await tocarEm(botaoPorTexto("Descartar", folha() ?? document));
     expect(folha()).toBeNull();
     expect(addCategory).not.toHaveBeenCalled();
     expect(textoDoCampoDeCategoria()).toBe("Escolher categoria");
 
+    // Sem nada digitado, Cancelar fecha direto.
     await abrirNovaCategoria();
     await tocarEm(botaoCancelar());
     expect(folha()).toBeNull();
     expect(addCategory).not.toHaveBeenCalled();
     expect(textoDoCampoDeCategoria()).toBe("Escolher categoria");
+  });
+
+  it("fechar anima a saída: a folha segue na tela fechando até a animação terminar, e reabrir logo depois nasce vazia", async () => {
+    simularSaidaAnimada();
+    await abrirNovaCategoria();
+    expect(folha()?.getAttribute("data-state")).toBe("open");
+    await digitarNome("Calçados");
+
+    await tocarEm(botaoCancelar());
+    await tocarEm(botaoPorTexto("Descartar", folha() ?? document));
+    // Antes: a tela desmontava a folha aqui e ela sumia seca.
+    expect(folha()).not.toBeNull();
+    expect(folha()?.getAttribute("data-state")).toBe("closed");
+
+    await act(async () => terminarSaida(folha() as HTMLElement));
+    expect(folha()).toBeNull();
+
+    // Reabrir ANTES de a limpeza vencer: é uma folha nova, sem o nome antigo.
+    await abrirNovaCategoria();
+    expect(
+      (document.getElementById("cat-name") as HTMLInputElement).value,
+    ).toBe("");
   });
 
   it("o X tem pelo menos 44 px de toque e os botões do rodapé têm contorno visível", async () => {

@@ -34,6 +34,7 @@ export function FolhaEditarVitrine({
   aoVoltarAoAutomatico,
   aoEscolherManualmente,
   aoPedirExclusao,
+  aberta: emCena = true,
   travado = false,
 }: {
   readonly secao: SecaoDaHome;
@@ -51,6 +52,8 @@ export function FolhaEditarVitrine({
   readonly aoEscolherManualmente: () => void;
   /** Só existe para vitrine personalizada (as de fábrica não se excluem). */
   readonly aoPedirExclusao?: () => void;
+  /** `false` = saindo: segue montada só até a animação de saída terminar. */
+  readonly aberta?: boolean;
   /** Outra gravação de vitrines corre: os toques ficariam sem efeito. */
   readonly travado?: boolean;
 }) {
@@ -157,6 +160,7 @@ export function FolhaEditarVitrine({
       }
       aoFechar={aoFechar}
       aoRestaurarFoco={aoRestaurarFoco}
+      aberta={emCena}
       rodape={
         <>
           {aoPedirExclusao ? (
