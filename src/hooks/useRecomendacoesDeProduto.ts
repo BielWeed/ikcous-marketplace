@@ -1,3 +1,4 @@
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import {
   PREFIXO_DE_RECOMENDACOES,
   gravarCopiaPorProduto,
@@ -134,6 +135,14 @@ export function useRecomendacoesDeProduto(
     releituraRef.current?.();
   }, []);
 
+  // A busca do produto da tela FALHOU e ainda não houve resposta boa depois.
+  // Sem isto, a seção ficava vazia (e sumida) mesmo depois que a internet
+  // voltava. Ref, e não estado: só o efeito da volta da rede lê, e mudar isto
+  // não deve render nada.
+  const falhouRef = useRef(false);
+  const offline = useOnlineStatus();
+  const estavaOfflineRef = useRef(offline);
+
   useEffect(() => {
     if (!visivel) return;
 
@@ -148,6 +157,9 @@ export function useRecomendacoesDeProduto(
     }
 
     // 2. Fetch fresh data in background
+    // Produto novo (ou seção que ficou visível de novo) começa limpo: uma
+    // falha do produto anterior não autoriza releitura do atual.
+    falhouRef.current = false;
     let isMounted = true;
     // Só a ÚLTIMA busca iniciada pode mexer na tela: a releitura de agora
     // não pode ser sobrescrita pela resposta tardia da anterior.
@@ -171,11 +183,13 @@ export function useRecomendacoesDeProduto(
         // (memória + aparelho). Sem cópia, a lista segue vazia e a seção some
         // como sempre.
         console.error("Failed to load recommendations", err);
+        falhouRef.current = true;
         setCarregando(false);
         setConsultado(true);
         return;
       }
       if (!isMounted || minhaBusca !== ultimaBusca) return;
+      falhouRef.current = false;
       setRecomendacoes(recs);
       // Resposta com a leitura das variações falha é a do momento, não vale
       // como cópia: a próxima visita busca de novo.
@@ -195,6 +209,20 @@ export function useRecomendacoesDeProduto(
       releituraRef.current = null;
     };
   }, [productId, visivel]);
+
+  // A internet VOLTOU (offline -> online) depois de uma falha, com a seção já
+  // pedida: refaz a consulta UMA vez. Zerar `falhouRef` ANTES de reler é o que
+  // impede o laço: se a releitura falhar de novo, ela mesma volta a marcar a
+  // falha, mas só a PRÓXIMA virada offline -> online tenta outra vez. Sucesso
+  // e rede que nunca caiu não passam por aqui (`falhouRef` falso / sem virada).
+  // Vem DEPOIS do efeito da busca para que `releituraRef` já esteja publicada.
+  useEffect(() => {
+    const voltou = estavaOfflineRef.current && !offline;
+    estavaOfflineRef.current = offline;
+    if (!voltou || !visivel || !falhouRef.current) return;
+    falhouRef.current = false;
+    releituraRef.current?.();
+  }, [offline, visivel]);
 
   return { recomendacoes, carregando, consultado, recarregar };
 }
