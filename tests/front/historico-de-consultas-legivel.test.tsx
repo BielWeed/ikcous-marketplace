@@ -163,6 +163,7 @@ describe("HistoricoCotacoesSection — leitura de lojista", () => {
     ];
     await abrirSecao();
 
+    expect(texto()).toContain("Exibindo as 3 consultas mais recentes");
     expect(texto()).toContain("SuperFrete");
     expect(texto()).toContain("Melhor Envio");
     expect(texto()).toContain("Frenet");

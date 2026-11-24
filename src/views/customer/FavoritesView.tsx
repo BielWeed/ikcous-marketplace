@@ -744,7 +744,9 @@ export const FavoritesView = React.memo(function FavoritesView({
       )}
 
       <p role="status" className="sr-only">
-        {total} {total === 1 ? "produto encontrado" : "produtos encontrados"}
+        {total === 0
+          ? "Nenhum favorito com esses filtros."
+          : `${total} ${total === 1 ? "produto encontrado" : "produtos encontrados"}`}
       </p>
       {total === 0 && (
         <div className="px-4 py-10 text-center text-sm">

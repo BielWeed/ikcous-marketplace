@@ -752,7 +752,11 @@ export function FavoritesProvider({
               if (typeof window !== "undefined") {
                 localStorage.removeItem(FAVORITES_KEY);
               }
-              toast.success("Seus favoritos locais foram sincronizados!");
+              toast.success(
+                total === 1
+                  ? "Seu favorito foi sincronizado."
+                  : "Seus favoritos locais foram sincronizados!",
+              );
             } else {
               toast.error(
                 "Não conseguimos sincronizar todos os seus favoritos e o aparelho está sem espaço para guardá-los. Eles continuam neste aparelho: abra o app de novo com a conexão boa para tentar outra vez.",
@@ -769,7 +773,11 @@ export function FavoritesProvider({
               );
             }
           } else {
-            toast.success("Seus favoritos locais foram sincronizados!");
+            toast.success(
+              total === 1
+                ? "Seu favorito foi sincronizado."
+                : "Seus favoritos locais foram sincronizados!",
+            );
           }
 
           // Relê para mesclar o que a drenagem subiu (se subiu algo).
@@ -819,7 +827,11 @@ export function FavoritesProvider({
         sincronizados === total &&
         usuarioAtualIdRef.current === user.id
       ) {
-        toast.success("Seus favoritos pendentes foram sincronizados!");
+        toast.success(
+          total === 1
+            ? "Seu favorito foi sincronizado."
+            : "Seus favoritos pendentes foram sincronizados!",
+        );
       } else if (
         opcoes?.avisarFalha &&
         total > sincronizados &&
@@ -828,7 +840,7 @@ export function FavoritesProvider({
         toast.error(
           sincronizados === 0
             ? "Não conseguimos salvar agora. Tente de novo em instantes."
-            : `${sincronizados} de ${total} favoritos salvos. Tente de novo para salvar o restante.`,
+            : `${sincronizados} dos ${total} favoritos ${sincronizados === 1 ? "foi salvo" : "foram salvos"}. Tente de novo para salvar o restante.`,
         );
       }
     },
