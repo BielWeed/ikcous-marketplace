@@ -104,6 +104,11 @@ const guardar = (c: Centro) => {
   ponte.atual = c;
 };
 const centro = () => ponte.atual as Centro;
+const marcarPedido = (id: string) => {
+  const marcar = centro().markOrderAsRead;
+  if (!marcar) throw new Error("markOrderAsRead ausente no contexto");
+  return marcar(id);
+};
 function Sonda({ aoLer }: { readonly aoLer: (c: Centro) => void }) {
   aoLer(useNotificationCenter());
   return null;
@@ -190,7 +195,7 @@ describe("marcar como lidas — fronteira do lote de 100 ids", () => {
     await montarCom(101);
 
     await act(async () => {
-      await centro().markOrderAsRead("ped-1");
+      await marcarPedido("ped-1");
     });
 
     expect(bancoFalso.tamanhosDosLotes).toEqual([100, 1]);
@@ -201,7 +206,7 @@ describe("marcar como lidas — fronteira do lote de 100 ids", () => {
     await montarCom(100);
 
     await act(async () => {
-      await centro().markOrderAsRead("ped-1");
+      await marcarPedido("ped-1");
     });
 
     expect(bancoFalso.tamanhosDosLotes).toEqual([100]);
@@ -212,7 +217,7 @@ describe("marcar como lidas — fronteira do lote de 100 ids", () => {
     await montarCom(5, [1, 3]);
 
     await act(async () => {
-      await centro().markOrderAsRead("ped-1");
+      await marcarPedido("ped-1");
     });
 
     expect(bancoFalso.idsDosLotes).toEqual([["n0000", "n0002", "n0004"]]);
@@ -237,7 +242,7 @@ describe("marcar como lidas — fronteira do lote de 100 ids", () => {
     await montarCom(3);
 
     await act(async () => {
-      await centro().markOrderAsRead("ped-1");
+      await marcarPedido("ped-1");
     });
 
     expect(bancoFalso.filtrosDosUpdates).toEqual([
@@ -271,7 +276,7 @@ describe("marcar como lidas — fronteira do lote de 100 ids", () => {
     );
 
     await act(async () => {
-      await centro().markOrderAsRead("ped-1");
+      await marcarPedido("ped-1");
     });
 
     expect(bancoFalso.idsDosLotes).toEqual([["n0000", "n0001"]]);
@@ -281,10 +286,7 @@ describe("marcar como lidas — fronteira do lote de 100 ids", () => {
     await montarCom(3);
 
     await act(async () => {
-      await Promise.all([
-        centro().markOrderAsRead("ped-1"),
-        centro().markOrderAsRead("ped-1"),
-      ]);
+      await Promise.all([marcarPedido("ped-1"), marcarPedido("ped-1")]);
     });
 
     expect(bancoFalso.idsDosLotes).toHaveLength(1);
