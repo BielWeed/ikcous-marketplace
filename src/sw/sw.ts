@@ -225,6 +225,35 @@ function htmlUsaSoArquivosDoPrecache(html: string, urls: string[]): boolean {
 }
 
 /**
+ * Uma atualização do app está a caminho: `waiting` (já baixada, esperando
+ * ativação) ou `installing` (sendo baixada agora)? Enquanto estiver, HTML novo
+ * NÃO pode entrar no cache da versão que ainda manda: ele viria com pedaços de
+ * JavaScript que este cache não tem, e a rota guardada abriria quebrada sem
+ * internet. Vale para as três escritas de página: revalidação, primeira
+ * visita e aquecimento (caça 7, 26/10/2026; estendido em 24/11/2026).
+ */
+function haAtualizacaoAChegar(): boolean {
+  return Boolean(sw.registration?.waiting || sw.registration?.installing);
+}
+
+/**
+ * O aquecimento pode guardar esta resposta? Só HTML está sujeito à regra: não
+ * pode haver atualização a caminho, e a página só pode citar arquivos que o
+ * precache DESTA versão tem — a mesma conferência que o `install` faz em `/`
+ * (`guardarPaginaInicialComFicha`), que cobre também o deploy novo que o
+ * navegador ainda não notou. Imagem e demais arquivos seguem como sempre.
+ */
+async function aquecimentoPodeGuardar(res: Response): Promise<boolean> {
+  const tipo = res.headers?.get("content-type") ?? "";
+  if (!tipo.includes("text/html")) return true;
+  const texto = await res.clone().text();
+  return (
+    !haAtualizacaoAChegar() &&
+    htmlUsaSoArquivosDoPrecache(texto, urlsDoPrecache)
+  );
+}
+
+/**
  * A página inicial COM a ficha da loja, no cache novo (revisão da 1.5.33).
  *
  * O precache só traz o `/index.html` CRU (sem ficha), que o fallback de
@@ -625,8 +654,7 @@ sw.addEventListener("fetch", (event: any) => {
                   // ativação (a janela de ChunkLoadError da ressalva). O
                   // `installing` (atualização sendo baixada AGORA) abre a mesma
                   // janela: a guarda olha os dois (caça 7, 26/10/2026).
-                  if (sw.registration.waiting || sw.registration.installing)
-                    return;
+                  if (haAtualizacaoAChegar()) return;
                   try {
                     const copy = response.clone();
                     // O try/catch aqui é SÍNCRONO: ele não pega rejeição de
@@ -654,7 +682,14 @@ sw.addEventListener("fetch", (event: any) => {
           return cached;
         }
         const rede = fetch(event.request).then((response) => {
-          if (response.ok && response.status === 200) {
+          // Primeira visita: com atualização a caminho a cliente recebe o HTML
+          // da rede, mas ele NÃO é gravado no cache da versão velha (a mesma
+          // guarda da revalidação acima).
+          if (
+            response.ok &&
+            response.status === 200 &&
+            !haAtualizacaoAChegar()
+          ) {
             try {
               const copy = response.clone();
               // Mesma razão do .catch da revalidação acima: o try/catch
@@ -891,6 +926,10 @@ sw.addEventListener("message", (event: any) => {
 
       const res = await fetch(url); // ship-safe-ignore
       if (res.ok && res.status === 200) {
+        if (!(await aquecimentoPodeGuardar(res))) {
+          console.warn("[SW] Página aquecida não guardada:", url);
+          return;
+        }
         await targetCache.put(url, res);
         if (isSupabase) {
           cleanOldImageCache(imgCache);
