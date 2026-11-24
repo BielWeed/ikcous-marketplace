@@ -360,4 +360,96 @@ describe("useDonoDaLoja", () => {
       expect(h.from).toHaveBeenCalledTimes(1);
     });
   });
+
+  // 24/11/2026: as seções de chaves de pagamento e de e-mail travam a troca de
+  // quem não é o dono. Para isso precisam distinguir "a loja não tem dono
+  // cadastrado" (tabela vazia: destrava) de "não consegui ler" (erro, tabela
+  // ausente, rede: NÃO destrava por engano). `leituraFalhou` é só esse sinal
+  // aditivo; souODono/donoId/carregando seguem como sempre.
+  describe("leituraFalhou: tabela vazia não é falha de leitura", () => {
+    it("linha de outra pessoa e linha vazia: a leitura NÃO falhou", async () => {
+      responde({ data: { user_id: "outro" }, error: null });
+      await montar();
+      expect(ultimo).toMatchObject({
+        souODono: false,
+        donoId: "outro",
+        leituraFalhou: false,
+      });
+      limparDonoDaLoja();
+      act(() => raiz.unmount());
+      raiz = createRoot(hospedeiro);
+      responde({ data: null, error: null });
+      await montar();
+      expect(ultimo).toMatchObject({
+        donoId: null,
+        carregando: false,
+        leituraFalhou: false,
+      });
+    });
+
+    it.each([
+      ["PGRST205", { code: "PGRST205", message: "Could not find the table" }],
+      ["42P01", { code: "42P01", message: "relation does not exist" }],
+      ["404", { status: 404, message: "Not Found" }],
+      ["42501", { code: "42501", message: "permission denied" }],
+      ["erro de rede (sem código)", { message: "Failed to fetch" }],
+    ])(
+      "erro (%s): leituraFalhou=true e ninguém vira dono",
+      async (_n, erro) => {
+        responde({ data: null, error: erro });
+        await montar();
+        expect(ultimo).toMatchObject({
+          souODono: false,
+          carregando: false,
+          donoId: null,
+          leituraFalhou: true,
+        });
+      },
+    );
+
+    it("a consulta que lança também é falha de leitura", async () => {
+      h.from.mockImplementation(() => {
+        throw new Error("sem cliente");
+      });
+      await montar();
+      expect(ultimo).toMatchObject({ carregando: false, leituraFalhou: true });
+    });
+
+    it("enquanto carrega não há falha (carregando já é o sinal); sem usuário também não", async () => {
+      h.from.mockImplementation(() => ({
+        select: () => ({ maybeSingle: () => new Promise(() => {}) }),
+      }));
+      await montar();
+      expect(ultimo).toMatchObject({ carregando: true, leituraFalhou: false });
+      act(() => raiz.unmount());
+      raiz = createRoot(hospedeiro);
+      limparDonoDaLoja();
+      h.uid = null;
+      await montar();
+      expect(ultimo).toMatchObject({ carregando: false, leituraFalhou: false });
+    });
+
+    it("recusa DEFINITIVA fica guardada COM a falha (não relê, e continua falha); erro de rede não fica guardado", async () => {
+      responde({ data: null, error: { code: "PGRST205", message: "x" } });
+      await montar();
+      expect(ultimo).toMatchObject({ leituraFalhou: true });
+      act(() => raiz.unmount());
+      raiz = createRoot(hospedeiro);
+      await montar();
+      expect(h.from).toHaveBeenCalledTimes(1);
+      expect(ultimo).toMatchObject({ carregando: false, leituraFalhou: true });
+
+      limparDonoDaLoja();
+      act(() => raiz.unmount());
+      raiz = createRoot(hospedeiro);
+      responde({ data: null, error: { message: "Failed to fetch" } });
+      await montar();
+      expect(ultimo).toMatchObject({ leituraFalhou: true });
+      act(() => raiz.unmount());
+      raiz = createRoot(hospedeiro);
+      responde({ data: { user_id: "dono-1" }, error: null });
+      await montar();
+      expect(ultimo).toMatchObject({ souODono: true, leituraFalhou: false });
+    });
+  });
 });

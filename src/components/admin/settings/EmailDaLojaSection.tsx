@@ -1,5 +1,9 @@
 import { useEmailDaLoja } from "@/hooks/useEmailDaLoja";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import {
+  AVISO_SO_O_DONO_TROCA_O_EMAIL,
+  usePodeTrocarCredenciais,
+} from "@/hooks/usePodeTrocarCredenciais";
 import { cn } from "@/lib/utils";
 import {
   AlertCircle,
@@ -88,6 +92,10 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
     testar,
     remover,
   } = useEmailDaLoja();
+  // Só o DONO da loja troca ou remove o e-mail (24/11/2026): é por esse Gmail
+  // que saem o login e a recuperação de senha. Aqui é conforto — o servidor
+  // barra com 403. O e-mail de teste segue aberto a qualquer administrador.
+  const troca = usePodeTrocarCredenciais(AVISO_SO_O_DONO_TROCA_O_EMAIL);
 
   // O que a lojista digitou. `null` = não mexeu: o campo mostra o Gmail salvo.
   const [usuarioDigitado, setUsuarioDigitado] = useState<string | null>(null);
@@ -201,6 +209,7 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
   };
 
   const aoSalvar = async () => {
+    if (troca.travado) return;
     setAviso(null);
     const gmail = validarGmailDaLoja(usuario);
     const chave = normalizarSenhaDeApp(senha);
@@ -243,6 +252,7 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
 
   const aoRemover = async () => {
     setConfirmandoRemocao(false);
+    if (troca.travado) return;
     setAviso(null);
     const resultado = await remover();
     if (resultado.ok) {
@@ -342,6 +352,17 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
         <p className="text-[11px] leading-relaxed">{selo.detalhe}</p>
       </div>
 
+      {troca.aviso && (
+        <p
+          role="status"
+          data-troca-travada=""
+          className="flex items-start gap-1.5 rounded-lg border border-orange-500/30 bg-orange-500/10 p-2.5 text-xs leading-relaxed text-orange-300"
+        >
+          <Lock aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+          <span className="min-w-0">{troca.aviso}</span>
+        </p>
+      )}
+
       {saude && (
         <p
           data-saude=""
@@ -390,13 +411,14 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
             <span>Senha guardada •</span>
             <button
               type="button"
+              disabled={troca.travado}
               onClick={() => {
                 setAviso(null);
                 setTrocandoSenha(true);
                 setVerPassos(true);
                 setEtapa(PASSO_DE_COLAR);
               }}
-              className="min-h-11 font-bold text-sky-300 underline underline-offset-2"
+              className="min-h-11 font-bold text-sky-300 underline underline-offset-2 disabled:cursor-not-allowed disabled:no-underline disabled:opacity-50"
             >
               Trocar
             </button>
@@ -506,7 +528,7 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
                   autoComplete="off"
                   autoCapitalize="none"
                   spellCheck={false}
-                  disabled={emAndamento}
+                  disabled={emAndamento || troca.travado}
                   aria-invalid={erroDoUsuario ? true : undefined}
                   aria-describedby={
                     erroDoUsuario ? "email-loja-usuario-erro" : undefined
@@ -545,7 +567,7 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
                     autoCapitalize="none"
                     autoCorrect="off"
                     spellCheck={false}
-                    disabled={emAndamento}
+                    disabled={emAndamento || troca.travado}
                     aria-invalid={erroDaSenha ? true : undefined}
                     aria-describedby={
                       erroDaSenha
@@ -576,8 +598,9 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
                   <span>Senha guardada •</span>
                   <button
                     type="button"
+                    disabled={troca.travado}
                     onClick={() => setTrocandoSenha(true)}
-                    className="min-h-11 font-bold text-sky-300 underline underline-offset-2"
+                    className="min-h-11 font-bold text-sky-300 underline underline-offset-2 disabled:cursor-not-allowed disabled:no-underline disabled:opacity-50"
                   >
                     trocar
                   </button>
@@ -588,7 +611,7 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    disabled={emAndamento || isOffline}
+                    disabled={emAndamento || isOffline || troca.travado}
                     onClick={aoSalvar}
                     className={CLASSE_BOTAO_DOURADO}
                   >
@@ -687,7 +710,7 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
                 </button>
                 <button
                   type="button"
-                  disabled={emAndamento || isOffline}
+                  disabled={emAndamento || isOffline || troca.travado}
                   onClick={aoRemover}
                   className="ajustes-secundario min-h-11 !text-[color:var(--lit-t-ff9999,#fca5a5)]"
                 >
@@ -698,7 +721,7 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
           ) : (
             <button
               type="button"
-              disabled={emAndamento}
+              disabled={emAndamento || troca.travado}
               onClick={() => setConfirmandoRemocao(true)}
               className={cn(
                 CLASSE_BOTAO_NEUTRO,

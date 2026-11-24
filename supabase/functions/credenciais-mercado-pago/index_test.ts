@@ -203,10 +203,17 @@ const fetchClienteFalso = ((input: any) => {
 }) as any;
 
 globalThis.fetch = fetchAdminFalso;
-const { handler, faltasParaReceber, classificarAmbienteDaConta } = await import(
-    "./index.ts"
-);
+const { handler: handlerSemDonoInjetado, faltasParaReceber, classificarAmbienteDaConta } =
+    await import("./index.ts");
 globalThis.fetch = fetchNativo;
+
+// (24/11/2026) Quem MUDA as chaves é só o DONO da loja (`dono_da_loja`). Os
+// testes antigos falam de OUTRA coisa (cifra, ficha, teste de conexão) e
+// seguem como eram: numa loja SEM dono cadastrado (tabela vazia), onde
+// qualquer admin age. O `handler` daqui já injeta isso; os testes do dono (D1…)
+// usam `handlerSemDonoInjetado` com o `donoAtual` que querem.
+const handler = (req: Request, deps: Record<string, unknown> = {}) =>
+    handlerSemDonoInjetado(req, { donoAtual: async () => null, ...deps });
 
 async function comFetch(
     fetchFalso: any,
@@ -3265,6 +3272,252 @@ for (
         }
     });
 }
+
+// ── Só o DONO da loja troca as chaves (24/11/2026) ─────────────────────────
+// Um administrador NOMEADO que pudesse trocar o Access Token desviaria as
+// vendas da loja para a conta dele. Mudam o destino: `salvar` (e qualquer ação
+// desconhecida, que nasce restrita). Ficam abertas a qualquer admin: `ler`,
+// `testar` (usa a chave JÁ salva), `desligar_pix` (pausar) e `ligar_pix`
+// (retomar, que só reconcilia com o que já está salvo).
+//   D1 nomeado: salvar -> 403, e NADA gravado, na ficha nem no registro, e NADA
+//      enviado ao Mercado Pago; ação desconhecida idem
+//   D2 dono passa; D3 loja sem dono (tabela vazia) passa como antes
+//   D4 leitura do dono falha -> 503 (nunca libera por falha), nada gravado
+//   D5 ler/testar/ligar_pix/desligar_pix abertos ao nomeado, sem nem consultar o dono
+//   D6 sem ser admin segue 401 antes de consultar o dono
+//   D7 a leitura PADRÃO (sem donoAtual injetado) lê dono_da_loja pelo client
+const ID_OUTRO_DONO = "dono-5555-6666";
+const WEBHOOK_DO_INVASOR = "segredo-do-invasor-1234";
+
+function donoFalso(dono: string | null | Error) {
+    const leituras = { n: 0 };
+    const donoAtual = async () => {
+        leituras.n++;
+        if (dono instanceof Error) throw dono;
+        return dono;
+    };
+    return { donoAtual, leituras };
+}
+
+function chamarComDono(cliente: any, corpo: unknown, deps: Record<string, unknown>) {
+    return comFetch(fetchAdminFalso, () =>
+        handlerSemDonoInjetado(requisicao(corpo), { supabase: cliente, ...deps })
+    );
+}
+
+/** Loja que JÁ vende: as três chaves salvas pelo dono e o teste passado. */
+async function lojaJaVendendo(cliente: any) {
+    const mp = buscarMpFalso(200, contaReal("Loja Teste"));
+    const r = await chamarComDono(
+        cliente,
+        {
+            acao: "salvar",
+            public_key: PUBLIC_KEY_FALSA,
+            access_token: TOKEN_FALSO,
+            webhook_secret: WEBHOOK_FALSO,
+        },
+        { donoAtual: async () => ID_ADMIN, buscar: mp.buscar },
+    );
+    assertEquals(r.status, 200);
+    return mp;
+}
+
+const SALVAR_OUTRO_TOKEN = {
+    acao: "salvar",
+    public_key: "APP_USR-22222222-2222-4222-8222-222222222222",
+    access_token: TOKEN_FALSO_2,
+    webhook_secret: WEBHOOK_DO_INVASOR,
+};
+
+Deno.test("credenciais-mercado-pago — D1: administrador NOMEADO não troca as chaves: 403, nada gravado e nada vai ao Mercado Pago", async () => {
+    const desfazerEnv = prepararEnv();
+    try {
+        const { cliente, estado } = supabaseFalso();
+        const mp = await lojaJaVendendo(cliente);
+        const registroAntes = estado.valor;
+        const lojaAntes = JSON.stringify(estado.loja);
+        const upsertsAntes = estado.upserts.length;
+        const updatesAntes = estado.updatesLoja.length;
+        const chamadasAoMpAntes = mp.anotacoes.length;
+
+        for (
+            const corpo of [
+                SALVAR_OUTRO_TOKEN,
+                // só a Public Key, mantendo o token salvo: também muda o destino
+                { acao: "salvar", public_key: SALVAR_OUTRO_TOKEN.public_key },
+                { acao: "apagar_tudo" },
+                {},
+            ]
+        ) {
+            const { donoAtual } = donoFalso(ID_OUTRO_DONO);
+            const resposta = await chamarComDono(cliente, corpo, { donoAtual, buscar: mp.buscar });
+            const texto = await resposta.text();
+            assertEquals(resposta.status, 403, JSON.stringify(corpo));
+            assertEquals(
+                JSON.parse(texto).erro,
+                "Não autorizado: só o dono da loja mexe nas chaves de pagamento.",
+            );
+            assertEquals(texto.includes(TOKEN_FALSO_2), false);
+        }
+        assertEquals(estado.valor, registroAntes);
+        assertEquals(JSON.stringify(estado.loja), lojaAntes);
+        assertEquals(estado.upserts.length, upsertsAntes);
+        assertEquals(estado.updatesLoja.length, updatesAntes);
+        assertEquals(mp.anotacoes.length, chamadasAoMpAntes);
+    } finally {
+        desfazerEnv();
+    }
+});
+
+Deno.test("credenciais-mercado-pago — D2/D3: o DONO troca as chaves, e a loja SEM dono cadastrado (tabela vazia) segue como antes", async () => {
+    const desfazerEnv = prepararEnv();
+    try {
+        for (const [nome, dono] of [["dono", ID_ADMIN], ["sem dono", null]] as const) {
+            const { cliente, estado } = supabaseFalso();
+            const mp = buscarMpFalso(200, contaReal("Loja Teste"));
+            const { donoAtual } = donoFalso(dono);
+            const resposta = await chamarComDono(cliente, SALVAR_OUTRO_TOKEN, { donoAtual, buscar: mp.buscar });
+            assertEquals(resposta.status, 200, nome);
+            assertEquals(estado.upserts.length > 0, true, nome);
+            // O teste de conexão rodou com o token NOVO (comportamento de sempre).
+            assertEquals(mp.anotacoes[0].bearer, `Bearer ${TOKEN_FALSO_2}`, nome);
+        }
+        // uuid: a caixa não importa
+        const { cliente } = supabaseFalso();
+        const mp = buscarMpFalso(200, contaReal("Loja Teste"));
+        const r = await chamarComDono(cliente, SALVAR_OUTRO_TOKEN, {
+            donoAtual: async () => ID_ADMIN.toUpperCase(),
+            buscar: mp.buscar,
+        });
+        assertEquals(r.status, 200);
+    } finally {
+        desfazerEnv();
+    }
+});
+
+Deno.test("credenciais-mercado-pago — D4: a leitura do dono FALHA -> 503 e salvar não grava nada (nunca libera por falha)", async () => {
+    const desfazerEnv = prepararEnv();
+    try {
+        const { cliente, estado } = supabaseFalso();
+        const mp = await lojaJaVendendo(cliente);
+        const registroAntes = estado.valor;
+        const updatesAntes = estado.updatesLoja.length;
+        const chamadasAoMpAntes = mp.anotacoes.length;
+        const { donoAtual, leituras } = donoFalso(
+            new Error("permission denied for table dono_da_loja SEGREDO-DO-BANCO"),
+        );
+        let resposta: Response;
+        const logs: string[] = [];
+        const erroOriginal = console.error;
+        console.error = (...args: unknown[]) => logs.push(args.map(String).join(" "));
+        try {
+            resposta = await chamarComDono(cliente, SALVAR_OUTRO_TOKEN, { donoAtual, buscar: mp.buscar });
+        } finally {
+            console.error = erroOriginal;
+        }
+        const texto = await resposta.text();
+        assertEquals(resposta.status, 503);
+        assertEquals(leituras.n, 1);
+        assertEquals(texto.includes("SEGREDO-DO-BANCO"), false);
+        assertEquals(logs.join("\n").includes("SEGREDO-DO-BANCO"), false);
+        assertEquals(estado.valor, registroAntes);
+        assertEquals(estado.updatesLoja.length, updatesAntes);
+        assertEquals(mp.anotacoes.length, chamadasAoMpAntes);
+    } finally {
+        desfazerEnv();
+    }
+});
+
+Deno.test("credenciais-mercado-pago — D5: ler, testar, pausar e retomar seguem abertos ao NOMEADO, usam só a chave já salva e nem consultam o dono", async () => {
+    const desfazerEnv = prepararEnv();
+    try {
+        const { cliente, estado } = supabaseFalso();
+        await lojaJaVendendo(cliente);
+        // O dono do banco está fora do ar: as ações abertas não podem depender dele.
+        const { donoAtual, leituras } = donoFalso(new Error("fora do ar"));
+        const tokenAntes = JSON.parse(estado.valor!).token_cifrado;
+
+        const mp = buscarMpFalso(200, contaReal("Loja Teste"));
+        const ler = await chamarComDono(cliente, { acao: "ler" }, { donoAtual });
+        assertEquals(ler.status, 200);
+
+        const testar = await chamarComDono(cliente, { acao: "testar" }, { donoAtual, buscar: mp.buscar });
+        assertEquals(testar.status, 200);
+        // Falou com o MP com a chave JÁ salva — ninguém escolheu outra.
+        assertEquals(mp.anotacoes[0].bearer, `Bearer ${TOKEN_FALSO}`);
+
+        const pausar = await chamarComDono(cliente, { acao: "desligar_pix" }, { donoAtual });
+        assertEquals(pausar.status, 200);
+        assertEquals((await pausar.json()).pausado, true);
+        assertEquals(estado.loja.pagamento_online, false);
+
+        const retomar = await chamarComDono(cliente, { acao: "ligar_pix" }, { donoAtual });
+        assertEquals(retomar.status, 200);
+        assertEquals(estado.loja.pagamento_online, true);
+
+        assertEquals(leituras.n, 0);
+        // Nada disso trocou a chave nem a conta.
+        assertEquals(JSON.parse(estado.valor!).token_cifrado, tokenAntes);
+    } finally {
+        desfazerEnv();
+    }
+});
+
+Deno.test("credenciais-mercado-pago — D6: sem ser admin continua 401, ANTES de consultar o dono", async () => {
+    const desfazerEnv = prepararEnv();
+    try {
+        const { cliente, estado } = supabaseFalso();
+        const { donoAtual, leituras } = donoFalso(ID_OUTRO_DONO);
+        const resposta = await comFetch(fetchClienteFalso, () =>
+            handlerSemDonoInjetado(requisicao(SALVAR_OUTRO_TOKEN), { supabase: cliente, donoAtual })
+        );
+        assertEquals(resposta.status, 401);
+        assertEquals(leituras.n, 0);
+        assertEquals(estado.upserts.length, 0);
+    } finally {
+        desfazerEnv();
+    }
+});
+
+Deno.test("credenciais-mercado-pago — D7: a leitura PADRÃO lê dono_da_loja pelo client da function (nomeado 403, dono e tabela vazia passam, erro e forma estranha 503)", async () => {
+    const desfazerEnv = prepararEnv();
+    try {
+        const casos: Array<[string, unknown, number]> = [
+            ["nomeado", { data: [{ user_id: ID_OUTRO_DONO }], error: null }, 403],
+            ["dono", { data: [{ user_id: ID_ADMIN }], error: null }, 200],
+            ["tabela vazia", { data: [], error: null }, 200],
+            ["tabela ausente (migration 1383 não aplicada)", { data: null, error: { message: "relation does not exist", code: "42P01" } }, 503],
+            ["resposta sem lista", { data: null, error: null }, 503],
+            ["a consulta lança", new Error("rede caiu"), 503],
+        ];
+        for (const [nome, resposta, esperado] of casos) {
+            const { cliente, estado } = supabaseFalso();
+            const lidas: string[] = [];
+            const fromOriginal = cliente.from;
+            cliente.from = (tabela: string) =>
+                tabela === "dono_da_loja"
+                    ? {
+                        select: (colunas: string) => {
+                            lidas.push(colunas);
+                            if (resposta instanceof Error) throw resposta;
+                            return Promise.resolve(resposta);
+                        },
+                    }
+                    : fromOriginal(tabela);
+            const mp = buscarMpFalso(200, contaReal("Loja Teste"));
+            const r = await chamarComDono(cliente, SALVAR_OUTRO_TOKEN, { buscar: mp.buscar });
+            assertEquals(r.status, esperado, nome);
+            assertEquals(lidas, ["user_id"], nome);
+            if (esperado !== 200) {
+                assertEquals(estado.upserts.length, 0, nome);
+                assertEquals(estado.updatesLoja.length, 0, nome);
+                assertEquals(mp.anotacoes.length, 0, nome);
+            }
+        }
+    } finally {
+        desfazerEnv();
+    }
+});
 
 Deno.test("credenciais-mercado-pago — CONTROLE: admin nas duas fontes passa a porta e lê", async () => {
     const desfazerEnv = prepararEnv();

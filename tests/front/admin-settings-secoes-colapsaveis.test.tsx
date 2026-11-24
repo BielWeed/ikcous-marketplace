@@ -82,6 +82,17 @@ vi.mock("@/contexts/StoreContext", () => ({
 }));
 
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
+// Só o dono da loja troca as chaves (24/11/2026): este arquivo fala das seções
+// colapsáveis, não do dono, então o admin do teste É o dono (a trava tem
+// arquivo próprio: credenciais-so-o-dono-troca.test.tsx).
+vi.mock("@/hooks/useDonoDaLoja", () => ({
+  useDonoDaLoja: () => ({
+    souODono: true,
+    carregando: false,
+    donoId: "dono-teste",
+    leituraFalhou: false,
+  }),
+}));
 
 vi.mock("@/lib/revisao-do-frete", () => ({
   descartarCacheDeFreteDoNavegador: vi.fn(),

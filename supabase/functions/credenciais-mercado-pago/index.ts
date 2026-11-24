@@ -88,6 +88,13 @@
 //     porta interna aqui — o admin de AGORA (`_shared/admin-atual.ts`, a
 //     mesma do estornar-pagamento): papel 'admin' em profiles E em
 //     app_metadata.
+//   * TROCAR as chaves é só do DONO da loja (24/11/2026, `dono_da_loja`,
+//     `_shared/dono-da-loja.ts`): um administrador NOMEADO que trocasse o
+//     Access Token desviaria as vendas para a conta dele. `salvar` (e ação
+//     desconhecida) exigem o dono — 403 para o nomeado, 503 se a tabela não
+//     puder ser lida (falha nunca libera); loja sem dono cadastrado segue como
+//     antes. `ler`, `testar`, `ligar_pix` (retomar) e `desligar_pix` (pausar)
+//     seguem abertos a qualquer admin: nenhuma troca a conta que recebe.
 //   * O SEGREDO NUNCA VOLTA para o navegador: desta function só sai
 //     MÁSCARA ("••••1234") e o resultado do teste. Na ida, entra cifrado.
 //   * CIFRAÇÃO NO SERVIDOR: AES-256-GCM (WebCrypto) com chave de 32 bytes
@@ -120,6 +127,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { adminAtualDaSessao } from "../_shared/admin-atual.ts";
+import { conferirDono, lerDonoDaLoja } from "../_shared/dono-da-loja.ts";
 import { BASE_URL_PADRAO, fetchComTempo } from "../_shared/mercadopago.ts";
 import {
     chaveDeCifra,
@@ -866,7 +874,29 @@ function juntarAvisos(avisos: string[]): { aviso?: string } {
 export type CredenciaisDeps = {
     supabase?: any;
     buscar?: (url: string, init?: RequestInit) => Promise<Response>;
+    /**
+     * Devolve o uid do DONO da loja (`dono_da_loja`), `null` se a loja não tem
+     * dono cadastrado, ou LANÇA se não deu para ler. Padrão: lê a tabela pelo
+     * client de serviço.
+     */
+    donoAtual?: () => Promise<string | null>;
 };
+
+const MENSAGEM_SEM_CONFERIR_O_DONO =
+    "Não consegui conferir agora quem é o dono da loja, então nada foi alterado. Tente de novo em instantes.";
+
+/**
+ * As únicas ações que um administrador NOMEADO pode fazer. Nenhuma troca a
+ * conta que recebe: `ler` só mostra máscaras; `testar` usa a chave JÁ salva;
+ * `desligar_pix` (pausar) é o lado seguro; `ligar_pix` (retomar) só reconcilia
+ * com o que já está salvo e recusa se faltar chave.
+ */
+const ACOES_ABERTAS_AO_ADMIN = new Set<unknown>([
+    "ler",
+    "testar",
+    "ligar_pix",
+    "desligar_pix",
+]);
 
 export async function handler(
     req: Request,
@@ -913,6 +943,29 @@ export async function handler(
     }
 
     const supabase = deps.supabase ?? createClient(supabaseUrl, serviceRoleKey);
+
+    // Porta do DONO (24/11/2026): quem MUDA as chaves é só o dono da loja —
+    // um administrador nomeado que trocasse o Access Token desviaria as vendas
+    // para a conta dele. A lista é das ações ABERTAS, não das fechadas: ação
+    // nova ou desconhecida nasce restrita. Roda antes de qualquer leitura de
+    // chave, escrita na ficha ou chamada ao Mercado Pago.
+    if (!ACOES_ABERTAS_AO_ADMIN.has(body.acao)) {
+        const permissao = await conferirDono(
+            uidAdmin,
+            deps.donoAtual ?? (() => lerDonoDaLoja(supabase)),
+            "[credenciais-mp]",
+        );
+        if (permissao === "so_o_dono") {
+            return json(
+                { erro: "Não autorizado: só o dono da loja mexe nas chaves de pagamento." },
+                403,
+            );
+        }
+        if (permissao === "indisponivel") {
+            return json({ erro: MENSAGEM_SEM_CONFERIR_O_DONO }, 503);
+        }
+    }
+
     // fetchComTempo (shared/mercadopago.ts) tem assinatura (fetchFn, url,
     // init, tempoMs) — o PRIMEIRO parâmetro é o próprio fetch. Usá-lo cru aqui
     // (peça 27) fazia a URL string ocupar o lugar do fetch e todo `testar`

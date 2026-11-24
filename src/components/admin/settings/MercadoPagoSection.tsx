@@ -1,6 +1,10 @@
 import { SecaoRecolhivel } from "@/components/admin/primitivos/SecaoRecolhivel";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import {
+  AVISO_SO_O_DONO_TROCA_AS_CHAVES,
+  usePodeTrocarCredenciais,
+} from "@/hooks/usePodeTrocarCredenciais";
+import {
   AVISO_DE_DESLIGAR,
   AVISO_DE_PAUSAR,
 } from "@/lib/aviso-transportadora-sem-pagamento";
@@ -369,6 +373,10 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
   readonly transportadoraVende?: boolean;
 }) {
   const isOffline = useOnlineStatus();
+  // Só o DONO da loja troca as chaves (24/11/2026). Aqui é conforto: o servidor
+  // é quem barra (403 ao administrador nomeado). Pausar, retomar e testar a
+  // chave que já está salva seguem abertos a qualquer administrador.
+  const troca = usePodeTrocarCredenciais(AVISO_SO_O_DONO_TROCA_AS_CHAVES);
 
   const [carregando, setCarregando] = useState(true);
   const [erroCarga, setErroCarga] = useState<string | null>(null);
@@ -518,6 +526,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
   }, [dirty, onDirtyMudou]);
 
   const salvar = async () => {
+    if (troca.travado) return;
     if (isOffline) {
       toast.error("Sem conexão com a internet", {
         description: "Você precisa estar online para salvar.",
@@ -1087,6 +1096,16 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
           onAlternar={() => setChavesAberto((antes) => !antes)}
         >
           <div className="space-y-3">
+            {troca.aviso && (
+              <p
+                role="status"
+                data-troca-travada=""
+                className="flex items-start gap-1.5 rounded-lg border border-orange-500/30 bg-orange-500/10 p-2 text-[11px] leading-relaxed text-orange-300"
+              >
+                <Lock aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
+                <span>{troca.aviso}</span>
+              </p>
+            )}
             <div className="space-y-1.5">
               <label
                 htmlFor="mp-public-key"
@@ -1097,7 +1116,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
               <input
                 id="mp-public-key"
                 type="text"
-                disabled={carregando}
+                disabled={carregando || troca.travado}
                 value={publicKey}
                 onChange={(e) => setPublicKey(e.target.value)}
                 placeholder="APP_USR-…"
@@ -1122,7 +1141,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
               <input
                 id="mp-access-token"
                 type="password"
-                disabled={carregando}
+                disabled={carregando || troca.travado}
                 value={accessToken}
                 onChange={(e) => setAccessToken(e.target.value)}
                 placeholder={
@@ -1153,7 +1172,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
               <input
                 id="mp-webhook-secret"
                 type="password"
-                disabled={carregando}
+                disabled={carregando || troca.travado}
                 value={webhookSecret}
                 onChange={(e) => setWebhookSecret(e.target.value)}
                 placeholder={
@@ -1177,7 +1196,13 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
             <div className="flex flex-wrap items-center gap-2 pt-1">
               <button
                 type="button"
-                disabled={salvando || carregando || isOffline || alternandoPix}
+                disabled={
+                  salvando ||
+                  carregando ||
+                  isOffline ||
+                  alternandoPix ||
+                  troca.travado
+                }
                 onClick={salvar}
                 className={`flex min-h-11 items-center gap-2 ${dirty ? "ajustes-primario" : "ajustes-secundario"}`}
               >

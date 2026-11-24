@@ -17,6 +17,10 @@
 //   A6  credencial trocada no meio do teste não deixa resultado velho no registro
 //   A7  validação (só Gmail, senha de app de 16 letras), cofre ausente = 503
 //   A8  `status` conta a verdade: origem, cofre pronto, saúde, sem segredo
+//   A9  (24/11/2026) quem MUDA o e-mail da loja (salvar, remover) é só o DONO
+//       (`dono_da_loja`): administrador nomeado leva 403 e NADA é lido,
+//       gravado nem enviado ao Google; `status` e `testar` seguem abertos; loja
+//       sem dono cadastrado segue como antes; leitura do dono que falha = 503
 import {
   assert,
   assertEquals,
@@ -65,6 +69,11 @@ function cenario(
     banco?: Parameters<typeof bancoFalso>[0];
     ambiente?: Record<string, string>;
     admin?: boolean;
+    /**
+     * Quem é o DONO da loja (`dono_da_loja`): um uid; `null`/omitido = tabela
+     * vazia (loja sem dono cadastrado); um `Error` = a leitura da tabela falha.
+     */
+    dono?: string | null | Error;
     enviar?: (mensagem: any, remetente: any) => Promise<unknown>;
     verificar?: (remetente: any) => Promise<unknown>;
     tempoDoEnvioMs?: number;
@@ -105,9 +114,18 @@ function cenario(
   const enviados: Array<{ mensagem: any; remetente: any }> = [];
   const verificados: any[] = [];
   const ordem: string[] = [];
+  const leiturasDoDono = { n: 0 };
   const deps = {
     supabase: banco,
     adminAtual: async () => (opcoes.admin === false ? null : "uid-admin"),
+    // Padrão dos testes antigos: loja SEM dono cadastrado (tabela vazia), que
+    // mantém o comportamento de antes (qualquer admin). Os testes do dono (A9)
+    // escolhem quem é o dono.
+    donoAtual: async () => {
+      leiturasDoDono.n++;
+      if (opcoes.dono instanceof Error) throw opcoes.dono;
+      return opcoes.dono ?? null;
+    },
     env: env(opcoes.ambiente ?? COFRE),
     agora: () => relogio.agora,
     tempoDoEnvioMs: opcoes.tempoDoEnvioMs,
@@ -123,7 +141,7 @@ function cenario(
       if (opcoes.verificar) await opcoes.verificar(remetente);
     },
   };
-  return { banco, relogio, enviados, verificados, ordem, deps };
+  return { banco, relogio, enviados, verificados, ordem, deps, leiturasDoDono };
 }
 
 async function chamar(c: ReturnType<typeof cenario>, corpo: unknown, opcoes = {}) {
@@ -769,5 +787,185 @@ Deno.test("A3 — passeio completo (salvar, status, testar, remover) com falha n
   }
   for (const gravacao of c.banco.estado.escritas) {
     assertEquals((gravacao.value ?? "").includes(SENHA_NOVA), false);
+  }
+});
+
+// ── A9: só o DONO da loja troca o e-mail da loja (24/11/2026) ───────────────
+// Motivo: o e-mail de login/recuperação (link de troca de senha, link mágico)
+// sai por este Gmail. Um administrador NOMEADO que cadastrasse o Gmail dele
+// receberia esses links e tomaria a conta do dono ou de qualquer cliente.
+
+const UID_DO_DONO = "uid-do-dono";
+const AS_QUE_MUDAM = [
+  ["salvar", SALVAR_BOM],
+  ["remover", { acao: "remover" }],
+] as const;
+
+Deno.test("A9 — administrador NOMEADO (não é o dono): salvar e remover levam 403, e NADA é lido, gravado, verificado nem enviado ao Google", async () => {
+  for (const [nome, corpo] of AS_QUE_MUDAM) {
+    const registro = await registroCifrado();
+    const c = cenario({ dono: UID_DO_DONO, banco: { registro } });
+    const antes = c.banco.estado.valores.get(CHAVE_SETTINGS_EMAIL);
+    const r = await chamar(c, corpo);
+    assertEquals(r.status, 403, nome);
+    assertStringIncludes(r.json.erro, "só o dono da loja mexe no e-mail da loja");
+    assertEquals(c.banco.estado.leituras, [], nome);
+    assertEquals(c.banco.estado.escritas, [], nome);
+    assertEquals(c.verificados, [], nome);
+    assertEquals(c.enviados, [], nome);
+    assertEquals(c.ordem, [], nome);
+    // O cadastro que estava lá continua byte a byte o mesmo.
+    assertEquals(c.banco.estado.valores.get(CHAVE_SETTINGS_EMAIL), antes, nome);
+    assertEquals(r.texto.includes(SENHA_NOVA), false, nome);
+  }
+});
+
+Deno.test("A9 — ação desconhecida de quem não é o dono também é 403 (o lado restritivo: só `status` e `testar` ficam abertos)", async () => {
+  const c = cenario({ dono: UID_DO_DONO });
+  for (const corpo of [{ acao: "apagar_tudo" }, {}, null, { acao: ["status"] }]) {
+    const r = await chamar(c, corpo);
+    assertEquals(r.status, 403, JSON.stringify(corpo));
+  }
+  assertEquals(c.banco.estado.escritas, []);
+});
+
+Deno.test("A9 — o DONO passa: salvar verifica o login e grava; remover apaga (idempotente)", async () => {
+  const c = cenario({ dono: "uid-admin" }); // o admin de agora É o dono
+  const salvo = await chamar(c, SALVAR_BOM);
+  assertEquals(salvo.status, 200);
+  assertEquals(c.verificados.length, 1);
+  assertEquals(registroDoBanco(c).usuario, "nova.loja@gmail.com");
+  c.relogio.agora += 61_000;
+  const removido = await chamar(c, { acao: "remover" });
+  assertEquals(removido.status, 200);
+  assertEquals(registroDoBanco(c), null);
+  assertEquals(c.leiturasDoDono.n, 2);
+});
+
+Deno.test("A9 — o uid do dono se compara sem diferenciar maiúscula de minúscula (uuid)", async () => {
+  const c = cenario({ dono: "UID-ADMIN" });
+  assertEquals((await chamar(c, SALVAR_BOM)).status, 200);
+});
+
+Deno.test("A9 — loja SEM dono cadastrado (tabela vazia): qualquer admin segue como hoje (nenhum nomeado pode existir sem dono)", async () => {
+  for (const [nome, corpo] of AS_QUE_MUDAM) {
+    const c = cenario({ dono: null });
+    const r = await chamar(c, corpo);
+    assertEquals(r.status, 200, nome);
+  }
+});
+
+Deno.test("A9 — a leitura do dono FALHA: salvar e remover são recusados com 503 (nunca liberam por falha), nada é gravado/enviado, e o texto do erro não sai", async () => {
+  for (const [nome, corpo] of AS_QUE_MUDAM) {
+    const c = cenario({ dono: new Error("permission denied for table dono_da_loja SEGREDO-DO-BANCO") });
+    let r: any;
+    const logs = await capturandoLogs(async () => {
+      r = await chamar(c, corpo);
+    });
+    assertEquals(r.status, 503, nome);
+    assertEquals(c.banco.estado.leituras, [], nome);
+    assertEquals(c.banco.estado.escritas, [], nome);
+    assertEquals(c.verificados, [], nome);
+    assertEquals(r.texto.includes("SEGREDO-DO-BANCO"), false, nome);
+    assertEquals(logs.includes("SEGREDO-DO-BANCO"), false, nome);
+  }
+});
+
+Deno.test("A9 — `status` e `testar` seguem abertos ao administrador nomeado, e nem consultam o dono (banco do dono fora do ar não os derruba)", async () => {
+  const registro = await registroCifrado();
+  const c = cenario({ dono: new Error("fora do ar"), banco: { registro } });
+  const status = await chamar(c, { acao: "status" });
+  assertEquals(status.status, 200);
+  assertEquals(status.json.usuario, USUARIO_DO_PAINEL);
+  const testado = await chamar(c, { acao: "testar" });
+  assertEquals(testado.status, 200);
+  assertEquals(testado.json.ok, true);
+  // O e-mail de teste vai SÓ para o Gmail já cadastrado: o nomeado não escolhe destino.
+  assertEquals(c.enviados.length, 1);
+  assertEquals(c.enviados[0].mensagem.para, USUARIO_DO_PAINEL);
+  assertEquals(c.leiturasDoDono.n, 0);
+  // E um nomeado com o dono legível idem.
+  const c2 = cenario({ dono: UID_DO_DONO, banco: { registro } });
+  assertEquals((await chamar(c2, { acao: "status" })).status, 200);
+  assertEquals((await chamar(c2, { acao: "testar" })).status, 200);
+});
+
+Deno.test("A9 — sem ser admin continua 401 ANTES de qualquer leitura do dono", async () => {
+  const c = cenario({ admin: false, dono: UID_DO_DONO });
+  const r = await chamar(c, SALVAR_BOM);
+  assertEquals(r.status, 401);
+  assertEquals(c.leiturasDoDono.n, 0);
+});
+
+// A leitura PADRÃO (sem `donoAtual` injetado): lê `dono_da_loja` pelo client de
+// serviço da própria function. É o que prova a ligação real.
+function comTabelaDoDono(c: ReturnType<typeof cenario>, resposta: unknown) {
+  const lidas: string[] = [];
+  const fromOriginal = c.banco.from.bind(c.banco);
+  c.banco.from = (t: string) =>
+    t === "dono_da_loja"
+      ? {
+        select: (colunas: string) => {
+          lidas.push(colunas);
+          if (resposta instanceof Error) throw resposta;
+          return Promise.resolve(resposta);
+        },
+      }
+      : fromOriginal(t);
+  delete c.deps.donoAtual;
+  return lidas;
+}
+
+Deno.test("A9 — leitura PADRÃO da tabela dono_da_loja: nomeado 403, dono passa, tabela vazia passa, erro/forma estranha = 503", async () => {
+  const casos: Array<[string, unknown, number]> = [
+    ["nomeado", { data: [{ user_id: UID_DO_DONO }], error: null }, 403],
+    ["dono", { data: [{ user_id: "uid-admin" }], error: null }, 200],
+    ["tabela vazia", { data: [], error: null }, 200],
+    ["erro do banco", { data: null, error: { message: "relation does not exist", code: "42P01" } }, 503],
+    ["resposta sem lista", { data: null, error: null }, 503],
+    ["linha sem user_id", { data: [{}], error: null }, 503],
+    ["duas linhas (impossível pela chave, mas fecha)", { data: [{ user_id: "uid-admin" }, { user_id: "x" }], error: null }, 503],
+    ["a consulta lança", new Error("rede caiu"), 503],
+  ];
+  for (const [nome, resposta, esperado] of casos) {
+    const c = cenario();
+    const lidas = comTabelaDoDono(c, resposta);
+    const r = await chamar(c, SALVAR_BOM);
+    assertEquals(r.status, esperado, nome);
+    assertEquals(lidas, ["user_id"], nome);
+    if (esperado !== 200) {
+      assertEquals(c.verificados, [], nome);
+      assertEquals(c.banco.estado.escritas, [], nome);
+    }
+  }
+});
+
+Deno.test("A9 — a porta REAL de admin + a leitura padrão do dono: nomeado de verdade (admin nas duas fontes, mas não o dono) leva 403 e nada vai ao Google", async () => {
+  const anteriores = ["SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEYS", "SUPABASE_SECRET_KEYS"].map(
+    (n) => [n, Deno.env.get(n)] as const,
+  );
+  Deno.env.set("SUPABASE_URL", "https://supa-fake.local");
+  Deno.env.set("SUPABASE_PUBLISHABLE_KEYS", JSON.stringify({ default: "anon-de-teste" }));
+  Deno.env.set("SUPABASE_SECRET_KEYS", JSON.stringify({ default: "service-role-de-teste" }));
+  try {
+    const c = cenario();
+    comTabelaDoDono(c, { data: [{ user_id: "outra-pessoa" }], error: null });
+    delete c.deps.adminAtual;
+    c.deps.fetchImpl = fetchDoSupabase("admin", "admin"); // o uid dele é "uid-1"
+    const r = await chamar(c, SALVAR_BOM);
+    assertEquals(r.status, 403);
+    assertEquals(c.verificados, []);
+    assertEquals(c.banco.estado.escritas, []);
+    // Já o dono (uid-1) passa pela MESMA porta.
+    const d = cenario();
+    comTabelaDoDono(d, { data: [{ user_id: "uid-1" }], error: null });
+    delete d.deps.adminAtual;
+    d.deps.fetchImpl = fetchDoSupabase("admin", "admin");
+    assertEquals((await chamar(d, SALVAR_BOM)).status, 200);
+  } finally {
+    for (const [n, v] of anteriores) {
+      if (v === undefined) Deno.env.delete(n);
+      else Deno.env.set(n, v);
+    }
   }
 });

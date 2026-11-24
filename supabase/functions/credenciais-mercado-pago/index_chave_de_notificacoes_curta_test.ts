@@ -156,6 +156,7 @@ async function lojaComCredenciaisAnteriores() {
             site_id: "MLB",
         }));
     };
+    // O admin deste teste é o dono da loja (só o dono troca as chaves).
     const chamar = (webhookSecret: string) =>
         handler(new Request("http://local/credenciais-mercado-pago", {
             method: "POST",
@@ -169,7 +170,7 @@ async function lojaComCredenciaisAnteriores() {
                 access_token: TOKEN_FALSO,
                 webhook_secret: webhookSecret,
             }),
-        }), { supabase: cliente, buscar });
+        }), { supabase: cliente, buscar, donoAtual: async () => ID_ADMIN });
 
     // Semeia pelo handler real: cifra e ficha válidas, não ciphertext inventado.
     const anterior = await chamar("notificacoes-anteriores-fixture");
