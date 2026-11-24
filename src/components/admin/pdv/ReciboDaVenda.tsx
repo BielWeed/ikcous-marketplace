@@ -177,6 +177,10 @@ export function ReciboDaVenda({
     }
   }, [confirmandoNovaVenda]);
   const divergencia = recibo.divergenciaComATela;
+  // Venda diferente da que estava na tela e ainda não anulada: o total do
+  // comprovante não é o que a cliente vai pagar. WhatsApp enviado não se desfaz
+  // e o papel seria de uma venda que vai ser anulada — nada sai até anular.
+  const bloqueadoPorDivergencia = Boolean(divergencia) && !anulada;
   const whatsapp = whatsappDoCliente(recibo.cliente);
   const linkWhatsapp = linkWhatsappDoClienteDoBalcao(whatsapp);
   // A MESMA decisão do papel (`OrderReceipt` -> `rotuloDaFormaDoPedido`): venda
@@ -189,7 +193,7 @@ export function ReciboDaVenda({
   });
 
   function aoEnviarPorWhatsapp(): void {
-    if (!linkWhatsapp) return;
+    if (!linkWhatsapp || bloqueadoPorDivergencia) return;
     const texto = encodeURIComponent(
       `Aqui está o comprovante da sua compra na ${storeName ?? "loja"}! ` +
         `Pedido #${recibo.numero} — Total R$ ${reais(recibo.total)}. Obrigado pela preferência!`,
@@ -354,9 +358,13 @@ export function ReciboDaVenda({
               type="button"
               variant="outline"
               className="pdv-secondary"
-              disabled={!linkWhatsapp}
+              disabled={!linkWhatsapp || bloqueadoPorDivergencia}
               aria-describedby={
-                !linkWhatsapp ? "whatsapp-recibo-indisponivel" : undefined
+                bloqueadoPorDivergencia
+                  ? "recibo-bloqueado-por-divergencia"
+                  : !linkWhatsapp
+                    ? "whatsapp-recibo-indisponivel"
+                    : undefined
               }
               onClick={aoEnviarPorWhatsapp}
             >
@@ -367,13 +375,27 @@ export function ReciboDaVenda({
               type="button"
               variant="outline"
               className="pdv-secondary"
+              disabled={bloqueadoPorDivergencia}
+              aria-describedby={
+                bloqueadoPorDivergencia
+                  ? "recibo-bloqueado-por-divergencia"
+                  : undefined
+              }
               onClick={() => globalThis.print()}
             >
               <Printer aria-hidden="true" className="pdv-blue size-5" />
               Imprimir
             </Button>
           </div>
-          {!linkWhatsapp && (
+          {bloqueadoPorDivergencia && (
+            <p
+              id="recibo-bloqueado-por-divergencia"
+              className="pdv-muted text-center font-bold"
+            >
+              Anule esta venda antes de enviar ou imprimir.
+            </p>
+          )}
+          {!linkWhatsapp && !bloqueadoPorDivergencia && (
             <p
               id="whatsapp-recibo-indisponivel"
               className="pdv-muted text-center"
@@ -482,9 +504,10 @@ export function ReciboDaVenda({
           Nova venda
         </Button>
       )}
-      {/* Anulada: o papel nem existe na página — Ctrl+P ou o menu do navegador
-          não podem imprimir um comprovante de compra que não vale mais. */}
-      {!anulada && (
+      {/* Anulada, ou com divergência ainda por anular: o papel nem existe na
+          página — Ctrl+P ou o menu do navegador não podem imprimir um
+          comprovante de compra que não vale (mais). */}
+      {!anulada && !bloqueadoPorDivergencia && (
         <OrderReceipt
           order={construirOrderParaImpressao(recibo)}
           storeName={storeName}
