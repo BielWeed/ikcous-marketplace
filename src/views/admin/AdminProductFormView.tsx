@@ -76,6 +76,10 @@ import {
   mesmaCategoria,
 } from "@/lib/gestao-de-categorias";
 import { imagemAbre } from "@/lib/imagem-abre";
+import {
+  LIMITE_DA_DESCRICAO_DO_PRODUTO,
+  LIMITE_DO_NOME_DO_PRODUTO,
+} from "@/lib/limites-do-produto";
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { percentualComUmaCasa } from "@/lib/percentual";
 import { pluralizar } from "@/lib/pluralizar";
@@ -475,7 +479,6 @@ interface AdminProductFormViewProps {
   userId?: string;
 }
 
-const LIMITE_DO_NOME_DO_PRODUTO = 200;
 const ESTOQUE_MAXIMO_DO_PRODUTO = 10000;
 const AJUDA_DO_ESTOQUE_DISPONIVEL =
   "As peças reservadas para pedidos não entram nesse número. Ao conferir a prateleira, não conte essas peças.";
@@ -5865,6 +5868,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 <LocalBufferedTextarea
                   id="product-description"
                   name="product-description"
+                  maxLength={LIMITE_DA_DESCRICAO_DO_PRODUTO}
                   value={formData.description}
                   onFlush={(val) =>
                     setFormData((prev) => ({ ...prev, description: val }))

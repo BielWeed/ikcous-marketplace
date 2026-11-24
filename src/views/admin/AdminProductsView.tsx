@@ -41,6 +41,7 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useProducts } from "@/hooks/useProducts";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
+import { nomeECodigoDaCopia } from "@/lib/copia-do-produto";
 import {
   formatarBRL,
   formatarBRLComSinal,
@@ -1178,12 +1179,16 @@ export const AdminProductsView = memo(function AdminProductsView({
       // A lista é paginada/filtrada: contar cópias visíveis pode repetir o
       // nome e o SKU em outra página, após recarregar ou em outra aba.
       const codigo = gerarUuidV4().toUpperCase();
-      const rotulo = codigo.replaceAll("-", "").slice(0, 12);
       gatilhoDaCopia.current = gatilho;
+      // Nome e código da cópia cabem no teto do formulário e não crescem a
+      // cada duplicação (ver `copia-do-produto.ts`).
       setPlanoDeCopia({
         origem: product,
-        nome: `${product.name} (Cópia ${rotulo})`,
-        sku: `${product.sku ? `${product.sku}-` : ""}COPIA-${codigo}`,
+        ...nomeECodigoDaCopia({
+          nome: product.name,
+          sku: product.sku,
+          codigo,
+        }),
       });
     },
     [isOffline],
