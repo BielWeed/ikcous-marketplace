@@ -35,6 +35,10 @@ Deno.test("lerDonoDaLoja — zero linhas é null (loja sem dono cadastrado), e S
       { data: undefined, error: null },
       { data: {}, error: null },
       { data: "x", error: null },
+      // Não é lista, mas `length` é 0: sem a conferência de `Array.isArray`
+      // passaria por "zero linhas" e LIBERARIA a loja como se não tivesse dono.
+      { data: "", error: null },
+      { data: { length: 0 }, error: null },
       { data: [{}], error: null },
       { data: [{ user_id: "" }], error: null },
       { data: [{ user_id: 7 }], error: null },
