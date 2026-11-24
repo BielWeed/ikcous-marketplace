@@ -983,7 +983,10 @@ export const AdminQAView = memo(function AdminQAView({
               acao={
                 <button
                   type="button"
-                  onClick={() => loadQuestions(page)}
+                  onClick={() => {
+                    void loadQuestions(page);
+                    if (statsUnavailable) void fetchStats();
+                  }}
                   disabled={loading}
                   className={cn(BOTAO_NEUTRO, "self-start")}
                 >
