@@ -1,4 +1,12 @@
 {
+  "1.5.235": {
+    "titulo": "Telas curtas do celular sem rolagem a mais",
+    "novidades": [],
+    "correcoes": [
+      "No celular, as telas “Sincronizando pedido…” e “Pedido não encontrado” (detalhe do pedido) e o carregamento do perfil não rolam mais para baixo sem necessidade."
+    ],
+    "melhorias": []
+  },
   "1.5.234": {
     "titulo": "Tela de entrada sem rolagem a mais e horário de atendimento mais compacto",
     "novidades": [],

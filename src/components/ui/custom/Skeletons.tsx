@@ -2,7 +2,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export function ProfileSkeleton() {
   return (
-    <div className="min-h-screen animate-pulse space-y-10 bg-background px-6 pb-24 pt-12">
+    <div className="min-h-full animate-pulse space-y-10 bg-background px-6 pb-24 pt-12">
       <div className="flex flex-col items-center space-y-6 text-center">
         <div className="relative size-24 rounded-[28px] bg-muted" />
         <div className="flex flex-col items-center space-y-3">
