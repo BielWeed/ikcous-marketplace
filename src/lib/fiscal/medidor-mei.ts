@@ -19,6 +19,8 @@
 import { ehDataIso, paraCentavos } from "@/lib/financeiro";
 import type { CadastroFiscal } from "@/lib/fiscal/cadastro";
 import { parametrosDoAno } from "@/lib/fiscal/parametros-da-lei";
+import { efeitoDoVeredito } from "@/lib/fiscal/textos";
+import type { DataIso } from "@/types/financeiro";
 
 export type FaixaDoMei = "dentro" | "excesso_ate_20" | "excesso_acima_20";
 
@@ -61,27 +63,6 @@ export type MedidorDoMei =
       readonly estado: "sem_conta";
       readonly motivo: MotivoSemContaDoMedidor;
     };
-
-/**
- * O efeito de cada faixa, conforme a LC 123 art. 18-A §7º, III e IV (e §§9º e 10) e a
- * Resolução CGSN 140/2018 art. 115 §2º, II, "a". A lei nova (LC 238/2026) não mexeu
- * nisso. O prazo para avisar é "até o último dia útil do mês seguinte ao do excesso".
- */
-function efeitoDaFaixa(faixa: FaixaDoMei, anoDeAbertura: boolean): string {
-  if (faixa === "dentro") {
-    return "Dentro do limite: nada muda no seu enquadramento como MEI por causa da receita.";
-  }
-  const prazo =
-    "Avise a Receita até o último dia útil do mês seguinte ao do excesso.";
-  if (faixa === "excesso_ate_20") {
-    return anoDeAbertura
-      ? `Passou do limite proporcional em até 20%. Você deixa de ser MEI a partir de 1º de janeiro do ano seguinte. ${prazo}`
-      : `Passou do limite em até 20%. Você deixa de ser MEI a partir de 1º de janeiro do ano seguinte, e a diferença é paga, sem acréscimos, junto com o DAS de janeiro. ${prazo}`;
-  }
-  return anoDeAbertura
-    ? `Passou do limite proporcional em mais de 20%. Você deixa de ser MEI com efeito retroativo ao início da atividade e passa a pagar pelo Simples Nacional normal. ${prazo}`
-    : `Passou do limite em mais de 20%. Você deixa de ser MEI com efeito retroativo a 1º de janeiro do ano do excesso e passa a pagar pelo Simples Nacional normal. ${prazo}`;
-}
 
 /**
  * Mede a receita acumulada do ano contra o teto do MEI. Nunca assume nada que o
@@ -142,7 +123,7 @@ export function medirLimiteDoMei(entrada: EntradaDoMedidorDoMei): MedidorDoMei {
     tetoUsado: tetoEmCentavos / 100,
     tetoProporcional: anoDeAbertura,
     mesesDeAtividade,
-    efeito: efeitoDaFaixa(faixa, anoDeAbertura),
+    efeito: efeitoDoVeredito(faixa, anoDeAbertura),
   };
 }
 
@@ -162,7 +143,13 @@ export type MotivoDeCoberturaParcial =
  */
 export type CoberturaDaReceita =
   | { readonly tipo: "completa" }
-  | { readonly tipo: "parcial"; readonly motivo: MotivoDeCoberturaParcial };
+  | { readonly tipo: "parcial"; readonly motivo: "sem_data_de_inicio" }
+  | {
+      readonly tipo: "parcial";
+      readonly motivo: "comecou_depois_do_inicio";
+      /** A data de `vendeNoAppDesde`: a tela diz "a partir de <mês>". */
+      readonly desde: DataIso;
+    };
 
 export interface EntradaDaCobertura {
   /** O ano-calendário medido (o mesmo que vai a `medirLimiteDoMei`). */
@@ -195,5 +182,9 @@ export function coberturaDaReceitaDoAno(
 
   return vendeNoAppDesde.slice(0, 7) <= inicioDoPeriodo
     ? { tipo: "completa" }
-    : { tipo: "parcial", motivo: "comecou_depois_do_inicio" };
+    : {
+        tipo: "parcial",
+        motivo: "comecou_depois_do_inicio",
+        desde: vendeNoAppDesde,
+      };
 }

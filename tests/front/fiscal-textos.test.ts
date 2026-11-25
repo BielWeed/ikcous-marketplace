@@ -16,8 +16,11 @@ import {
   FRASE_SO_O_DONO_ALTERA,
   ROTULO_TENTAR_DE_NOVO,
   type SituacaoDoDono,
+  TEXTOS_DO_MEDIDOR_DO_MEI,
+  efeitoDoVeredito,
   fraseDaSituacaoDoDono,
   fraseSemEstimativa,
+  nomeDoMesDaData,
   rotuloDaAtividade,
   rotuloDoRegime,
 } from "@/lib/fiscal/textos";
@@ -163,5 +166,107 @@ describe("a trava só o dono: as cinco situações da tabela", () => {
     for (const [situacao, frase] of esperado) {
       expect(fraseDaSituacaoDoDono(situacao), situacao).toBe(frase);
     }
+  });
+});
+
+describe("medidor do MEI: o mês por extenso e o texto de quem começou depois de janeiro", () => {
+  it("cada mês tem o nome certo, em minúscula e com acento", () => {
+    const nomes = Array.from({ length: 12 }, (_, i) =>
+      nomeDoMesDaData(`2026-${String(i + 1).padStart(2, "0")}-01`),
+    );
+    expect(nomes).toEqual([
+      "janeiro",
+      "fevereiro",
+      "março",
+      "abril",
+      "maio",
+      "junho",
+      "julho",
+      "agosto",
+      "setembro",
+      "outubro",
+      "novembro",
+      "dezembro",
+    ]);
+  });
+
+  it("data que não tem mês legível não vira nome", () => {
+    expect(nomeDoMesDaData(null)).toBeNull();
+    expect(nomeDoMesDaData("")).toBeNull();
+    expect(nomeDoMesDaData("lixo")).toBeNull();
+    expect(nomeDoMesDaData("2026-00-01")).toBeNull();
+    expect(nomeDoMesDaData("2026-13-01")).toBeNull();
+  });
+
+  it("o texto diz 'a partir de <mês>' e manda somar o que veio antes", () => {
+    expect(
+      TEXTOS_DO_MEDIDOR_DO_MEI.semVeredito.comecou_depois_do_inicio(
+        "2026-03-01",
+      ),
+    ).toBe(
+      "O IKCOUS só tem as suas vendas a partir de março. Para saber quanto do limite você já usou, some a este número o que você vendeu antes disso neste ano.",
+    );
+  });
+
+  it("sem mês legível, usa a frase genérica (nunca 'a partir de null')", () => {
+    for (const desde of [null, "lixo", "2026-13-01"]) {
+      const t =
+        TEXTOS_DO_MEDIDOR_DO_MEI.semVeredito.comecou_depois_do_inicio(desde);
+      expect(t).toContain(
+        "a partir do mês em que você começou a vender por aqui",
+      );
+      expect(t).not.toContain("null");
+      expect(t).not.toContain("undefined");
+    }
+  });
+});
+
+describe("medidor do MEI, ano completo: o número é um mínimo, o veredito nunca promete", () => {
+  const FAIXAS = ["dentro", "excesso_ate_20", "excesso_acima_20"] as const;
+
+  it("todo efeito e todo título começam com 'Pelo que o IKCOUS registrou,'", () => {
+    const titulos = Object.entries(TEXTOS_DO_MEDIDOR_DO_MEI.titulosDaFaixa);
+    expect(titulos.map(([faixa]) => faixa)).toEqual([...FAIXAS]);
+    for (const [faixa, titulo] of titulos) {
+      expect(titulo, faixa).toMatch(/^Pelo que o IKCOUS registrou, /);
+    }
+    for (const faixa of FAIXAS) {
+      for (const abertura of [false, true]) {
+        expect(
+          efeitoDoVeredito(faixa, abertura),
+          `${faixa} ${abertura}`,
+        ).toMatch(/^Pelo que o IKCOUS registrou, /);
+      }
+    }
+  });
+
+  it("nenhum texto diz que nada muda nem que está tudo certo", () => {
+    const todos = [
+      ...Object.values(TEXTOS_DO_MEDIDOR_DO_MEI.titulosDaFaixa),
+      ...FAIXAS.flatMap((f) => [
+        efeitoDoVeredito(f, false),
+        efeitoDoVeredito(f, true),
+      ]),
+    ].map((t) => t.toLowerCase());
+    for (const t of todos) {
+      expect(t).not.toContain("nada muda");
+      expect(t).not.toContain("tudo certo");
+      expect(t).not.toContain("por causa da receita");
+    }
+  });
+
+  it("dentro do limite manda conferir as vendas feitas por fora", () => {
+    expect(efeitoDoVeredito("dentro", false)).toBe(
+      "Pelo que o IKCOUS registrou, você está dentro do limite do MEI. Confira as vendas feitas por fora do app: elas também contam para o limite.",
+    );
+  });
+
+  it("as consequências das faixas acima do limite continuam as mesmas, só prefixadas", () => {
+    expect(efeitoDoVeredito("excesso_ate_20", false)).toContain(
+      "Você deixa de ser MEI a partir de 1º de janeiro do ano seguinte, e a diferença é paga, sem acréscimos, junto com o DAS de janeiro. Avise a Receita até o último dia útil do mês seguinte ao do excesso.",
+    );
+    expect(efeitoDoVeredito("excesso_acima_20", false)).toContain(
+      "Você deixa de ser MEI com efeito retroativo a 1º de janeiro do ano do excesso e passa a pagar pelo Simples Nacional normal.",
+    );
   });
 });

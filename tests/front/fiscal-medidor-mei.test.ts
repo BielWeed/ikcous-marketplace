@@ -278,10 +278,12 @@ describe("coberturaDaReceitaDoAno: o número do app é o do ano inteiro?", () =>
     expect(cobertura("2026-02-01")).toEqual({
       tipo: "parcial",
       motivo: "comecou_depois_do_inicio",
+      desde: "2026-02-01",
     });
     expect(cobertura("2026-12-01")).toEqual({
       tipo: "parcial",
       motivo: "comecou_depois_do_inicio",
+      desde: "2026-12-01",
     });
   });
 
@@ -292,6 +294,7 @@ describe("coberturaDaReceitaDoAno: o número do app é o do ano inteiro?", () =>
     expect(cobertura("2026-01-01", null, 2025)).toEqual({
       tipo: "parcial",
       motivo: "comecou_depois_do_inicio",
+      desde: "2026-01-01",
     });
   });
 
@@ -302,6 +305,7 @@ describe("coberturaDaReceitaDoAno: o número do app é o do ano inteiro?", () =>
     expect(cobertura("2026-11-01", "2026-10-15")).toEqual({
       tipo: "parcial",
       motivo: "comecou_depois_do_inicio",
+      desde: "2026-11-01",
     });
   });
 
@@ -309,12 +313,21 @@ describe("coberturaDaReceitaDoAno: o número do app é o do ano inteiro?", () =>
     expect(cobertura("2026-03-01", "2025-03-10")).toEqual({
       tipo: "parcial",
       motivo: "comecou_depois_do_inicio",
+      desde: "2026-03-01",
     });
     expect(cobertura("2026-01-01", "2025-03-10")).toEqual({ tipo: "completa" });
   });
 
   it("começou a vender pelo app antes do mês da abertura (dado estranho): não vira parcial", () => {
     expect(cobertura("2026-05-01", "2026-10-15")).toEqual({ tipo: "completa" });
+  });
+
+  it("o motivo 'começou depois' carrega a data de início, para a tela dizer o mês", () => {
+    const c = cobertura("2026-03-01");
+    expect(
+      c.tipo === "parcial" && c.motivo === "comecou_depois_do_inicio",
+    ).toBe(true);
+    expect("desde" in c ? c.desde : null).toBe("2026-03-01");
   });
 
   it("data de início que não é uma data de verdade: parcial, nunca completa por engano", () => {

@@ -107,36 +107,104 @@ export function fraseDaSituacaoDoDono(situacao: SituacaoDoDono): string | null {
   }
 }
 
-// O medidor do limite do MEI (aba Impostos). TODO o texto novo do medidor mora neste
-// objeto, num lugar só e fácil de trocar: o texto final passa pelo sócio.
+// O medidor do limite do MEI (aba Impostos). TODO o texto do medidor mora neste bloco, num
+// lugar só e fácil de trocar. Texto final decidido pelo sócio (dono aprovou o rumo).
 //
-// A receita do medidor vem do `fin_dre`, que só enxerga as vendas feitas pelo app. Dois
-// casos, escolhidos por `coberturaDaReceitaDoAno` (medidor-mei.ts):
-//  - cobertura COMPLETA (o app já vendia desde o começo do período medido): o medidor
-//    conta o que sempre contou, com o aviso fixo embaixo;
-//  - cobertura PARCIAL: o número vem como "vendas pelo IKCOUS no ano" e NENHUMA frase
-//    conclui enquadramento sobre ele. Só passar do teto vira alerta, porque o total real
-//    é igual ou MAIOR que o número do app: aí a conclusão é segura, e é por isso que o
-//    alerta não repete a faixa "até 20%" / "mais de 20%" (o real pode estar numa faixa
-//    acima da que o número do app mostraria).
+// A receita do medidor vem do `fin_dre`, que só enxerga as vendas REGISTRADAS no app. Por
+// isso o número é sempre um MÍNIMO: o que a lojista vendeu sem registrar aqui (Instagram,
+// WhatsApp, feira) também conta para o limite e nunca entra. Dois casos, escolhidos por
+// `coberturaDaReceitaDoAno` (medidor-mei.ts):
+//  - cobertura COMPLETA (o app já registrava desde o começo do período medido): o medidor
+//    mostra as faixas de sempre, mas todo veredito começa com "Pelo que o IKCOUS
+//    registrou," e nunca afirma que "nada muda" ou que está tudo certo;
+//  - cobertura PARCIAL: o número vem rotulado e NENHUMA frase conclui enquadramento sobre
+//    ele (sem percentual, sem barra, sem veredito). Só passar do teto vira alerta, porque
+//    o total real é igual ou MAIOR que o número do app: aí a conclusão é segura, e é por
+//    isso que o alerta não repete a faixa "até 20%" / "mais de 20%".
+// O aviso fixo só aparece nas telas COM número; nas telas sem número (data inválida, ano
+// não conferido, falha ao somar) vale só a instrução daquela tela.
+
+const NOMES_DOS_MESES = [
+  "janeiro",
+  "fevereiro",
+  "março",
+  "abril",
+  "maio",
+  "junho",
+  "julho",
+  "agosto",
+  "setembro",
+  "outubro",
+  "novembro",
+  "dezembro",
+] as const;
+
+/** O mês por extenso de uma data `aaaa-mm-dd` ("2026-03-01" vira "março"); `null` se não for um mês. */
+export function nomeDoMesDaData(data: string | null): string | null {
+  if (data === null) return null;
+  const mes = Number(data.slice(5, 7));
+  if (!Number.isInteger(mes) || mes < 1 || mes > 12) return null;
+  return NOMES_DOS_MESES[mes - 1] ?? null;
+}
+
+const PELO_QUE_O_IKCOUS_REGISTROU = "Pelo que o IKCOUS registrou,";
+
+/** Cada faixa do medidor de ano completo (a mesma do núcleo, `FaixaDoMei`). */
+type FaixaDoVeredito = "dentro" | "excesso_ate_20" | "excesso_acima_20";
+
+/**
+ * O efeito de cada faixa no ano COMPLETO, conforme a LC 123 art. 18-A §7º, III e IV (e §§9º e
+ * 10) e a Resolução CGSN 140/2018 art. 115 §2º, II, "a" (a lei nova, LC 238/2026, não mexeu
+ * nisso). Tudo começa com "Pelo que o IKCOUS registrou,": o número é um mínimo. O prazo para
+ * avisar é "até o último dia útil do mês seguinte ao do excesso".
+ */
+export function efeitoDoVeredito(
+  faixa: FaixaDoVeredito,
+  anoDeAbertura: boolean,
+): string {
+  if (faixa === "dentro") {
+    return `${PELO_QUE_O_IKCOUS_REGISTROU} você está dentro do limite do MEI. Confira as vendas feitas por fora do app: elas também contam para o limite.`;
+  }
+  const prazo =
+    "Avise a Receita até o último dia útil do mês seguinte ao do excesso.";
+  if (faixa === "excesso_ate_20") {
+    return anoDeAbertura
+      ? `${PELO_QUE_O_IKCOUS_REGISTROU} você passou do limite proporcional em até 20%. Você deixa de ser MEI a partir de 1º de janeiro do ano seguinte. ${prazo}`
+      : `${PELO_QUE_O_IKCOUS_REGISTROU} você passou do limite em até 20%. Você deixa de ser MEI a partir de 1º de janeiro do ano seguinte, e a diferença é paga, sem acréscimos, junto com o DAS de janeiro. ${prazo}`;
+  }
+  return anoDeAbertura
+    ? `${PELO_QUE_O_IKCOUS_REGISTROU} você passou do limite proporcional em mais de 20%. Você deixa de ser MEI com efeito retroativo ao início da atividade e passa a pagar pelo Simples Nacional normal. ${prazo}`
+    : `${PELO_QUE_O_IKCOUS_REGISTROU} você passou do limite em mais de 20%. Você deixa de ser MEI com efeito retroativo a 1º de janeiro do ano do excesso e passa a pagar pelo Simples Nacional normal. ${prazo}`;
+}
+
 export const TEXTOS_DO_MEDIDOR_DO_MEI = {
-  /** Embaixo do medidor em TODO estado (completo, parcial e sem conta). */
+  /** Embaixo do medidor, SÓ nas telas com número (ano completo e incompleto). */
   avisoFixo:
-    "Conta só as vendas feitas pelo IKCOUS; vendas por fora do app não entram. Confira o total do ano no seu controle.",
+    "Este número só tem as vendas registradas no IKCOUS. O que você vendeu sem registrar aqui (Instagram, WhatsApp, feira) também conta para o limite do MEI: some por sua conta.",
   /** O rótulo do número quando a cobertura é parcial. */
-  rotuloDoNumeroParcial: "Vendas pelo IKCOUS no ano",
-  subtituloParcial: "Só as vendas feitas pelo IKCOUS contam neste número.",
-  /** Por que não há veredito, um texto por motivo (cobertura parcial, abaixo do teto). */
+  rotuloDoNumeroParcial: "Vendas registradas no IKCOUS neste ano",
+  /** O título de cada faixa no ano COMPLETO. */
+  titulosDaFaixa: {
+    dentro: `${PELO_QUE_O_IKCOUS_REGISTROU} você está dentro do limite`,
+    excesso_ate_20: `${PELO_QUE_O_IKCOUS_REGISTROU} você passou do limite em até 20%`,
+    excesso_acima_20: `${PELO_QUE_O_IKCOUS_REGISTROU} você passou do limite em mais de 20%`,
+  },
+  /** Por que não há veredito (cobertura parcial, abaixo do teto), um texto por motivo. */
   semVeredito: {
     sem_data_de_inicio:
-      "Não dá para concluir o seu enquadramento só com este número: o app não sabe desde quando você vende por ele, e o limite conta o ano inteiro. Informe, no cadastro fiscal, o mês em que você começou a vender pelo IKCOUS.",
-    comecou_depois_do_inicio:
-      "Não dá para concluir o seu enquadramento só com este número: o app só conhece as vendas feitas depois que você começou a vender por ele, e o limite conta o ano inteiro.",
+      "Falta informar, no cadastro fiscal, o mês em que você começou a vender pelo IKCOUS. Sem isso, não dá para mostrar quanto do limite você já usou.",
+    /** `desde`: a data de `vendeNoAppDesde`; sem mês legível, vale a frase genérica. */
+    comecou_depois_do_inicio: (desde: string | null): string =>
+      `O IKCOUS só tem as suas vendas ${
+        nomeDoMesDaData(desde) !== null
+          ? `a partir de ${nomeDoMesDaData(desde)}`
+          : "a partir do mês em que você começou a vender por aqui"
+      }. Para saber quanto do limite você já usou, some a este número o que você vendeu antes disso neste ano.`,
   },
   /** Cobertura parcial e o número do app já acima do teto do ano. */
   acimaDoLimiteComCoberturaParcial: {
-    titulo: "Só as vendas pelo IKCOUS já passam do limite",
+    titulo: "Suas vendas no IKCOUS, sozinhas, já passam do limite",
     texto:
-      "O limite do MEI conta todas as vendas do ano, então o total real é este número ou mais. Fale com o seu contador hoje para conferir o seu enquadramento.",
+      "O limite conta todas as vendas do ano, registradas aqui ou não. Então o seu total é este número ou mais. Fale logo com um contador ou com o Sebrae, que atende MEI de graça: quem passa do limite tem prazo para avisar a Receita.",
   },
 } as const;

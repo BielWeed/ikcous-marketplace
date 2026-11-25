@@ -15,14 +15,17 @@
 //  - "Ocultar valores": dinheiro e percentual viram máscara e a barra some (o
 //    tamanho dela entregaria o percentual). O aviso da faixa continua: quem
 //    passou do limite precisa saber mesmo com os valores escondidos;
-//  - o número vem do `fin_dre`, que só enxerga as vendas feitas pelo app. O aviso fixo
-//    "só contam as vendas pelo IKCOUS" vai embaixo em TODO estado. E quando a
-//    `cobertura` é PARCIAL (o app não vendia desde o começo do período medido), o
-//    número é só "vendas pelo IKCOUS no ano": sem percentual, sem barra, sem a frase
-//    de "dentro do limite" nem o efeito no enquadramento (o `fin_dre` devolve zero
-//    para o que veio antes do app, e a conclusão sairia de um número incompleto). Só
-//    passar do teto mostra alerta, porque o total real é igual ou maior. Os textos
-//    novos moram em `TEXTOS_DO_MEDIDOR_DO_MEI` (src/lib/fiscal/textos.ts).
+//  - o número vem do `fin_dre`, que só enxerga as vendas REGISTRADAS no app: é sempre um
+//    mínimo. O aviso fixo ("o que você vendeu sem registrar aqui também conta") vai
+//    embaixo em toda tela COM número; nas telas sem número (ano não conferido, data
+//    inválida, falha ao somar) vale só a instrução daquela tela. Com o ano COMPLETO, todo
+//    veredito começa com "Pelo que o IKCOUS registrou," e nunca diz que nada muda. E
+//    quando a `cobertura` é PARCIAL (o app não registrava desde o começo do período
+//    medido), o número é só "vendas registradas no IKCOUS neste ano": sem percentual, sem
+//    barra, sem veredito (o `fin_dre` devolve zero para o que veio antes do app, e a
+//    conclusão sairia de um número incompleto). Só passar do teto mostra alerta, porque o
+//    total real é igual ou maior. Todos os textos moram em `TEXTOS_DO_MEDIDOR_DO_MEI`
+//    (src/lib/fiscal/textos.ts).
 
 import {
   CircleCheck,
@@ -83,17 +86,17 @@ const VISUAL_DA_FAIXA: Record<FaixaDoMei, VisualDaFaixa> = {
   dentro: {
     tom: "positivo",
     Icone: CircleCheck,
-    titulo: "Dentro do limite",
+    titulo: TEXTOS_DO_MEDIDOR_DO_MEI.titulosDaFaixa.dentro,
   },
   excesso_ate_20: {
     tom: "atencao",
     Icone: TriangleAlert,
-    titulo: "Passou do limite em até 20%",
+    titulo: TEXTOS_DO_MEDIDOR_DO_MEI.titulosDaFaixa.excesso_ate_20,
   },
   excesso_acima_20: {
     tom: "negativo",
     Icone: OctagonAlert,
-    titulo: "Passou do limite em mais de 20%",
+    titulo: TEXTOS_DO_MEDIDOR_DO_MEI.titulosDaFaixa.excesso_acima_20,
     chamada: "Fale com o seu contador hoje.",
   },
 };
@@ -172,7 +175,6 @@ export function MedidorMei({
             {TEXTO_SEM_CONTA(ano)[medidor.motivo]}
           </p>
         </div>
-        <AvisoDoMedidor />
       </CartaoSecao>
     );
   }
@@ -186,10 +188,7 @@ export function MedidorMei({
     const acimaDoTeto = medidor.faixa !== "dentro";
     const alerta = TEXTOS_DO_MEDIDOR_DO_MEI.acimaDoLimiteComCoberturaParcial;
     return (
-      <CartaoSecao
-        titulo={titulo}
-        subtitulo={TEXTOS_DO_MEDIDOR_DO_MEI.subtituloParcial}
-      >
+      <CartaoSecao titulo={titulo}>
         <div className={cn(CLASSE_CASCA_DO_CARTAO, "flex flex-col gap-4 p-4")}>
           <div className="flex min-w-0 flex-col gap-1">
             <span className={CLASSE_ROTULO_DO_CARTAO}>
@@ -243,7 +242,11 @@ export function MedidorMei({
                 className={cn("mt-0.5 size-5 shrink-0", classeDoTexto("info"))}
               />
               <p className="min-w-0 text-sm leading-relaxed text-zinc-300">
-                {TEXTOS_DO_MEDIDOR_DO_MEI.semVeredito[cobertura.motivo]}
+                {cobertura.motivo === "sem_data_de_inicio"
+                  ? TEXTOS_DO_MEDIDOR_DO_MEI.semVeredito.sem_data_de_inicio
+                  : TEXTOS_DO_MEDIDOR_DO_MEI.semVeredito.comecou_depois_do_inicio(
+                      cobertura.desde,
+                    )}
               </p>
             </div>
           )}
