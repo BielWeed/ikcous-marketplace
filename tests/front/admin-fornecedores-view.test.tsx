@@ -13,6 +13,7 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ErroDosFornecedores } from "@/hooks/useFornecedores";
 import type { DadosDoFornecedor, Fornecedor } from "@/lib/fornecedores";
 
 const criar = vi.fn();
@@ -31,16 +32,28 @@ let estado: {
   erro: string | null;
 } = { fornecedores: [], carregando: false, erro: null };
 
-vi.mock("@/hooks/useFornecedores", () => ({
-  useFornecedores: () => ({
-    ...estado,
-    recarregar,
-    criar,
-    editar,
-    favoritar,
-    excluir,
-  }),
-}));
+// O hook real puxa o Supabase (EnvGuard), então vira dublê inteiro. A tela só
+// mostra a frase que `mensagemDeErroDosFornecedores` devolve: o dublê repete o
+// contrato (a classe de erro do hook passa direto, qualquer outro erro vira a
+// frase genérica) e a tela nunca mostra o texto cru de um `Error` qualquer.
+vi.mock("@/hooks/useFornecedores", () => {
+  class ErroDosFornecedores extends Error {}
+  return {
+    ErroDosFornecedores,
+    mensagemDeErroDosFornecedores: (erro: unknown) =>
+      erro instanceof ErroDosFornecedores
+        ? erro.message
+        : "Não deu certo agora. Tente de novo em instantes.",
+    useFornecedores: () => ({
+      ...estado,
+      recarregar,
+      criar,
+      editar,
+      favoritar,
+      excluir,
+    }),
+  };
+});
 
 // O hook real é um `useSyncExternalStore`: quando a internet cai, a tela é avisada.
 // O dublê faz o mesmo, para provar a queda COM a folha aberta.
@@ -398,11 +411,23 @@ describe("AdminFornecedoresView (E1)", () => {
 
     it("falha ao favoritar avisa (toast) e não finge sucesso", async () => {
       favoritar.mockRejectedValueOnce(
-        new Error("Este fornecedor não existe mais"),
+        new ErroDosFornecedores("Este fornecedor não existe mais"),
       );
       await montar();
       await clicar(botao("Favoritar Brás Moda"));
       expect(toastErro).toHaveBeenCalledWith("Este fornecedor não existe mais");
+    });
+
+    it("um erro cru qualquer nunca vai para o toast: aparece só a frase do hook", async () => {
+      favoritar.mockRejectedValueOnce(
+        new Error('duplicate key value violates unique constraint "x"'),
+      );
+      await montar();
+      await clicar(botao("Favoritar Brás Moda"));
+      expect(toastErro).toHaveBeenCalledTimes(1);
+      expect(toastErro).not.toHaveBeenCalledWith(
+        expect.stringContaining("duplicate key"),
+      );
     });
   });
 
@@ -600,7 +625,9 @@ describe("AdminFornecedoresView (E1)", () => {
 
     it("falha ao excluir avisa com a frase do hook e não some com o cartão por conta própria", async () => {
       excluir.mockRejectedValueOnce(
-        new Error("Só o administrador da loja mexe nos fornecedores."),
+        new ErroDosFornecedores(
+          "Só o administrador da loja mexe nos fornecedores.",
+        ),
       );
       await montar();
       await clicar(botao("Excluir Brás Moda"));

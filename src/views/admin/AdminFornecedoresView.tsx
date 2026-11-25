@@ -25,7 +25,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useFocoAposExcluir } from "@/hooks/useFocoAposExcluir";
-import { useFornecedores } from "@/hooks/useFornecedores";
+import {
+  mensagemDeErroDosFornecedores,
+  useFornecedores,
+} from "@/hooks/useFornecedores";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import {
   type DadosDoFornecedor,
@@ -121,11 +124,7 @@ export const AdminFornecedoresView = memo(function AdminFornecedoresView({
     (f: Fornecedor) => {
       if (offline) return;
       favoritar(f.id, !f.favorito).catch((e: unknown) => {
-        toast.error(
-          e instanceof Error
-            ? e.message
-            : "Não deu certo agora. Tente de novo em instantes.",
-        );
+        toast.error(mensagemDeErroDosFornecedores(e));
       });
     },
     [favoritar, offline],
@@ -150,12 +149,7 @@ export const AdminFornecedoresView = memo(function AdminFornecedoresView({
     setParaExcluir(null);
     excluir(alvo.id).then(
       () => toast.success("Fornecedor excluído."),
-      (e: unknown) =>
-        toast.error(
-          e instanceof Error
-            ? e.message
-            : "Não deu certo agora. Tente de novo em instantes.",
-        ),
+      (e: unknown) => toast.error(mensagemDeErroDosFornecedores(e)),
     );
   };
 
