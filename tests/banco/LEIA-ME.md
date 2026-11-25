@@ -887,6 +887,10 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   `contestacao`, `cancelar-pedido`, `ordem-das-travas-composta`, `reembolso-da-devolucao` e `reemissao-do-reembolso`,
   com os portões delas) a desfazem ANTES, na transação, por
   `reembolso-em-duvida-posterior.cjs` (só se no ar): ela é a mais nova, e o pré-voo de cada rollback mais velho a recusa.
+- **as provas que DESFAZEM a `20261197000000` dentro da transação** (`admin-atual-viva.cjs` e `pagamentos-rpc-viva.cjs`) desfazem
+  ANTES a `20261440000000` (o cadastro fiscal: a função `fiscal_cadastro_salvar` e as 2 políticas de leitura citam
+  `is_admin_atual()`/`rls_admin_atual()`, e o rollback da 97 recusa enquanto qualquer uma ficar), pela entrada `CADASTRO_FISCAL` no FIM de
+  `POSTERIORES_A_97`, definida uma vez em `o-cadastro-fiscal-posterior.cjs` (só se no ar; roda o rollback COMUM, que deixa as tabelas e as linhas).
 - **o sino do pedido de retirada (`o-sino-do-pedido-de-retirada-viva.cjs`, via `rodar-isolado.cjs`)**: a migration
   `20261233000000` (`notifica_cliente_de_mudanca_de_status`, a trigger `tr_pedido_avisa_o_cliente`): o pedido de
   RETIRADA na loja (`customer_data->>'shipping_option_id' = 'store-pickup'`) avisa "Pedido pronto para retirar" e

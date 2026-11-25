@@ -4,8 +4,9 @@
 -- SELECT * FROM public.fiscal_cadastro_log; Depois de apagar, a loja volta ao estado "sem cadastro fiscal" e o historico de
 -- alteracoes nao tem como ser recuperado. As guias lancadas no Financeiro NAO sao afetadas (sao lancamentos normais).
 -- So depois do rollback comum (rollback-manual-20261440000000_a_loja_guarda_o_cadastro_fiscal.sql), numa transacao do caller,
--- com confirmacao explicita:
---   SET app.confirmo_apagar_cadastro_fiscal = 'APAGAR';
+-- com confirmacao explicita (SET LOCAL vale so ate o fim da transacao; um SET sem LOCAL ficaria na sessao inteira e
+-- confirmaria o apagamento de uma chamada futura que ninguem pediu):
+--   SET LOCAL app.confirmo_apagar_cadastro_fiscal = 'APAGAR';
 SET LOCAL lock_timeout = '5s';
 SET LOCAL statement_timeout = '30s';
 

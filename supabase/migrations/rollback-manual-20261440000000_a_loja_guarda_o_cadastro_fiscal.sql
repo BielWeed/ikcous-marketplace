@@ -19,7 +19,7 @@ BEGIN
   -- Recusa estado desconhecido: so aceita o que ESTA migration deixa (ou nada).
   IF EXISTS (SELECT 1 FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname = 'fiscal_cadastro_salvar'
        AND (oid <> COALESCE(to_regprocedure('public.fiscal_cadastro_salvar(jsonb)'), 0)
-            OR md5(replace(prosrc, chr(13), '')) <> '0e76c24e09699b4aba53600bf4061c67')) THEN
+            OR md5(replace(prosrc, chr(13), '')) <> '198c24062f62dd29aae1f96fcaed6603')) THEN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: fiscal_cadastro_salvar desconhecida (sucessora no ar?); nada foi apagado.';
   END IF;
 END $rollback_20261440000000$;

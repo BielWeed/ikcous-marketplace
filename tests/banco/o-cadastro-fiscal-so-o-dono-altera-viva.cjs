@@ -26,16 +26,20 @@
  *   (5) INSERT, UPDATE, DELETE e TRUNCATE diretos negados a todo papel de aplicação, e a sequência do log não é de ninguém;
  *   (6) atributos: SECURITY DEFINER, search_path = public, EXECUTE só para authenticated; RLS ligada e uma política SELECT
  *       por tabela;
- *   (7) validação (22023): regime, atividade e datas fora do contrato, payload que não é objeto; nada fica gravado; os CHECKs
- *       da tabela seguem de pé como defesa em profundidade (23514/23505/23502);
+ *   (7) validação (22023): regime, atividade e datas fora do contrato, payload que não é objeto, e a FAIXA plausível das datas
+ *       (abertura entre 1900-01-01 e hoje em São Paulo; início das vendas não antes de 2020-01-01, não no futuro e não antes do
+ *       mês da abertura; limites exatos aceitos); nada fica gravado; os CHECKs da tabela seguem de pé como defesa em
+ *       profundidade (23514/23505/23502);
  *   (8) concorrência: duas chamadas simultâneas se enfileiram e a trilha encadeia (o "antes" da segunda é o "depois" da
  *       primeira); falha no log desfaz a linha também (uma chamada, uma transação); transação desfeita não deixa nada;
- *   (9) fin_dre intocado (md5 vigente), reaplicar 2x não muda nada (nem as linhas que já estavam lá), rollback comum
+ *   (9) fin_dre intocado (o md5 do corpo é o mesmo antes e depois de aplicar, sem constante), reaplicar 2x não muda nada
+ *       (nem as linhas que já estavam lá), rollback comum
  *       preserva as tabelas e as linhas, destrutivo exige confirmação e o rollback comum antes, pré-voo recusa 11 estados
  *       desconhecidos sem escrever, pós-voo que falha desfaz tudo numa conexão SEM BEGIN (como o aplicador);
- *   (10) CONTROLES: sem a migration (rollback) as sondas reprovam; 9 mutantes (cada guarda tirada, inclusive os 3 do
- *       desenho: sem conferir o dono, sem is_admin_atual, política `true`) reprovam AO MENOS a sonda que cada um declara; e o
- *       mutante sem a trava de tabela reproduz a atualização perdida.
+ *   (10) CONTROLES: sem a migration (rollback) as sondas reprovam; 15 mutantes (cada guarda tirada, inclusive os 3 do
+ *       desenho: sem conferir o dono, sem is_admin_atual, política `true`, e cada regra da faixa das datas) reprovam EXATAMENTE
+ *       as sondas que cada um declara, com a sonda de controle dono_grava verde (o DDL do mutante aplicou); e o mutante sem a
+ *       trava de tabela reproduz a atualização perdida.
  *
  * Toda chamada de teste roda numa transação DESFEITA no fim; as exceções (escrita real) limpam as tabelas fiscais.
  *
@@ -63,9 +67,6 @@ const DESTRUTIVO = fs.readFileSync(
   path.join(DIR, `rollback-manual-destrutivo-${NOME}`),
   "utf8",
 );
-
-// O md5 (sem CR) do fin_dre vigente: o corpo da 20261405900000. Esta migration NÃO o redefine.
-const FIN_DRE_MD5 = "a27c9649621b3ac1502f458576120259";
 
 // Fixtures inventadas (repositório público): nenhum id, nome ou e-mail de pessoa ou loja real.
 const U_DONO = "f1440000-0000-4000-8000-000000000001"; // admin nas duas fontes, cadastrado como dono
@@ -142,6 +143,26 @@ const CAMPOS = (o) => ({
   aberta_em: o.aberta_em ?? null,
   vende_no_app_desde: o.vende_no_app_desde ?? null,
 });
+
+// O "hoje" da faixa das datas, calculado FORA do Postgres (o ICU do Node), para não repetir na prova a conta que a função faz.
+function hojeEmSaoPaulo() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+const somaDias = (iso, n) => {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+// Dia 1 do mês de `iso`, deslocado `meses` meses.
+const dia1 = (iso, meses = 0) => {
+  const [a, m] = iso.split("-").map(Number);
+  return new Date(Date.UTC(a, m - 1 + meses, 1)).toISOString().slice(0, 10);
+};
 
 const SALVAR = (obj) => [
   "SELECT public.fiscal_cadastro_salvar($1::jsonb) AS r",
@@ -886,7 +907,95 @@ PROVAS.push({
 });
 
 PROVAS.push({
-  nome: "(7b) os CHECKs e a chave da tabela seguem de pé sem a função (defesa em profundidade): regime, atividade e dia fora do contrato (23514), segunda linha (23505/23514), nulos (23502)",
+  nome: "(7b) faixa plausível das datas (22023, nada gravado): abertura entre 1900-01-01 e hoje; início das vendas não antes de 2020-01-01, não no futuro e não antes do mês da abertura; os limites exatos passam; 'hoje' é o de São Paulo, não o do servidor",
+  corpo: async (c) => {
+    const hoje = hojeEmSaoPaulo();
+    const amanha = somaDias(hoje, 1);
+    const mes1 = dia1(hoje);
+    const prox1 = dia1(hoje, 1);
+    const ABERTURA = /Data de abertura inválida/;
+    const INICIO = /Mês de início das vendas inválido/;
+    const recusados = [
+      ["abertura um dia antes de 1900", { aberta_em: "1899-12-31" }, ABERTURA],
+      ["abertura no ano 1000", { aberta_em: "1000-01-01" }, ABERTURA],
+      ["abertura amanhã", { aberta_em: amanha }, ABERTURA],
+      ["abertura daqui a um ano", { aberta_em: dia1(hoje, 12) }, ABERTURA],
+      [
+        "vende em dezembro de 2019",
+        { vende_no_app_desde: "2019-12-01" },
+        INICIO,
+      ],
+      ["vende em 2010", { vende_no_app_desde: "2010-01-01" }, INICIO],
+      ["vende no mês que vem", { vende_no_app_desde: prox1 }, INICIO],
+      ["vende daqui a um ano", { vende_no_app_desde: dia1(hoje, 12) }, INICIO],
+      [
+        "vende no mês antes da abertura",
+        { aberta_em: "2024-05-20", vende_no_app_desde: "2024-04-01" },
+        INICIO,
+      ],
+      [
+        "vende anos antes da abertura",
+        { aberta_em: "2023-01-01", vende_no_app_desde: "2020-06-01" },
+        INICIO,
+      ],
+    ];
+    const r = await rodar(
+      c,
+      recusados.map(([, campos]) => P("dono", SALVAR({ ...OK2, ...campos }))),
+    );
+    r.resultados.forEach((x, i) => {
+      const [rotulo, , msg] = recusados[i];
+      assert.equal(x.ok, false, `${rotulo} passou`);
+      assert.equal(x.code, "22023", `${rotulo}: ${x.message}`);
+      assert.match(x.message, msg, rotulo);
+    });
+    assert.deepEqual(r.cadastro, []);
+    assert.deepEqual(r.log, []);
+
+    // Com uma linha já gravada, a data fora da faixa não a altera nem registra nada.
+    const velha = await rodar(
+      c,
+      [P("dono", SALVAR({ ...OK1, aberta_em: amanha }))],
+      { antes: [LINHA_ANTIGA(U_ADM)] },
+    );
+    assert.equal(velha.resultados[0].code, "22023");
+    assert.equal(velha.cadastro[0].atualizado_por, U_ADM);
+    assert.equal(velha.cadastro[0].aberta_em, "2021-03-15");
+    assert.deepEqual(velha.log, []);
+
+    // Os limites exatos passam, cada um uma troca real (mesmo mês da abertura, mês seguinte, hoje, o mês de hoje).
+    const aceitos = [
+      { aberta_em: "1900-01-01" },
+      { aberta_em: hoje },
+      { vende_no_app_desde: "2020-01-01" },
+      { vende_no_app_desde: mes1 },
+      { aberta_em: "2024-05-20", vende_no_app_desde: "2024-05-01" },
+      { aberta_em: "2024-05-31", vende_no_app_desde: "2024-06-01" },
+      { aberta_em: hoje, vende_no_app_desde: mes1 },
+      { aberta_em: "1900-01-01", vende_no_app_desde: "2020-01-01" },
+    ];
+    const bons = await rodar(
+      c,
+      aceitos.map((campos) => P("dono", SALVAR({ ...OK2, ...campos }))),
+    );
+    bons.resultados.forEach((x, i) =>
+      assert.ok(x.ok, `${JSON.stringify(aceitos[i])}: ${x.message}`),
+    );
+    assert.equal(bons.cadastro.length, 1, "uma linha só, sempre");
+    assert.equal(bons.log.length, aceitos.length, "cada troca real é um log");
+    assert.ok(trilhaEncadeia(bons.log));
+    assert.deepEqual(
+      bons.log.at(-1).depois,
+      CAMPOS({ ...OK2, ...aceitos.at(-1) }),
+    );
+
+    // O "hoje" é o de São Paulo qualquer que seja o fuso da sessão: com a sessão em outro fuso, hoje passa e amanhã não.
+    assert.equal(await SONDAS.hoje_e_o_de_sao_paulo(c, []), true);
+  },
+});
+
+PROVAS.push({
+  nome: "(7c) os CHECKs e a chave da tabela seguem de pé sem a função (defesa em profundidade): regime, atividade e dia fora do contrato (23514), segunda linha (23505/23514), nulos (23502)",
   corpo: async (c) => {
     const base = (campos, valores) =>
       `INSERT INTO public.fiscal_cadastro (${campos}) VALUES (${valores})`;
@@ -1130,14 +1239,52 @@ PROVAS.push({
 // (9) fin_dre intocado, reaplicar, rollback, pré-voo, pós-voo
 // ---------------------------------------------------------------------------------------------------------------------
 PROVAS.push({
-  nome: "(9a) fin_dre segue com o md5 vigente (a migration não o redefine) e nenhum objeto existente mudou: a impressão digital só ganha o que é novo",
+  nome: "(9a) a migration não toca o fin_dre (o md5 do corpo é o MESMO antes e depois de aplicá-la, sem constante) e nenhum objeto existente mudou: a impressão digital só ganha o que é novo",
   corpo: async (c) => {
-    const md5 = (
-      await c.query(
-        `SELECT md5(replace(prosrc, chr(13), '')) AS m FROM pg_proc WHERE oid = 'public.fin_dre(date,date)'::regprocedure`,
-      )
-    ).rows[0].m;
-    assert.equal(md5, FIN_DRE_MD5);
+    const md5Dre = async () =>
+      (
+        await c.query(
+          `SELECT md5(replace(prosrc, chr(13), '')) AS m FROM pg_proc WHERE oid = 'public.fin_dre(date,date)'::regprocedure`,
+        )
+      ).rows[0].m;
+    const viva = await md5Dre();
+    // ANTES de aplicar = o banco sem nenhum objeto desta migration (rollback comum + destrutivo); DEPOIS = reaplicada.
+    await c.query("BEGIN");
+    try {
+      await c.query(ROLLBACK);
+      await c.query("SET LOCAL app.confirmo_apagar_cadastro_fiscal = 'APAGAR'");
+      await c.query(DESTRUTIVO);
+      assert.equal(
+        (
+          await c.query(
+            "SELECT to_regclass('public.fiscal_cadastro') IS NULL AS a, to_regprocedure('public.fiscal_cadastro_salvar(jsonb)') IS NULL AS b",
+          )
+        ).rows[0].a,
+        true,
+        "o 'antes' não é o banco sem a migration",
+      );
+      const antes = await md5Dre();
+      await c.query(MIGRATION);
+      const depois = await md5Dre();
+      assert.equal(depois, antes, "aplicar a migration mexeu no fin_dre");
+      assert.equal(depois, viva, "o fin_dre reaplicado difere do vivo");
+      // Controle: a leitura enxerga a mudança de UM comentário no corpo (se a migration redefinisse o fin_dre, o md5 mudaria).
+      const def = (
+        await c.query(
+          "SELECT pg_get_functiondef('public.fin_dre(date,date)'::regprocedure) AS d",
+        )
+      ).rows[0].d;
+      const fim = def.lastIndexOf("$function$");
+      assert.ok(fim > 0, "o corpo do fin_dre não está entre $function$");
+      await c.query(`${def.slice(0, fim)}-- controle\n${def.slice(fim)}`);
+      assert.notEqual(
+        await md5Dre(),
+        antes,
+        "o controle: redefinir o fin_dre tem de mudar o md5",
+      );
+    } finally {
+      await c.query("ROLLBACK");
+    }
     // Estado de rollback (objetos novos fora) vs árvore: a diferença é só o que a migration cria.
     await c.query("BEGIN");
     try {
@@ -1430,6 +1577,17 @@ PROVAS.push({
 // ---------------------------------------------------------------------------------------------------------------------
 // (10) CONTROLES: sondas, o estado SEM a migration e os mutantes
 // ---------------------------------------------------------------------------------------------------------------------
+const FUSO_DE_SP = "SET LOCAL TIME ZONE 'America/Sao_Paulo'";
+// O dono manda o payload e a função tem de recusar com 22023 sem gravar nada.
+async function recusa22023(c, antes, payload) {
+  const r = await rodar(c, [P("dono", SALVAR(payload))], { antes });
+  return (
+    !r.resultados[0].ok &&
+    r.resultados[0].code === "22023" &&
+    r.cadastro.length === 0
+  );
+}
+
 const SONDAS = {
   async dono_grava(c, antes) {
     const r = await rodar(c, [P("dono", SALVAR(OK1))], { antes });
@@ -1516,6 +1674,54 @@ const SONDAS = {
       r.cadastro.length === 0
     );
   },
+  async aberta_antes_de_1900_22023(c, antes) {
+    return recusa22023(c, antes, { ...OK2, aberta_em: "1899-12-31" });
+  },
+  // Estas duas medem o TETO, não o fuso: a sessão fica no fuso de São Paulo para o resultado não depender da hora em que a prova
+  // roda (de noite o dia do servidor, em UTC, já é o de amanhã em São Paulo). O fuso tem a sonda dele, mais abaixo.
+  async aberta_no_futuro_22023(c, antes) {
+    return recusa22023(c, [...antes, FUSO_DE_SP], {
+      ...OK2,
+      aberta_em: somaDias(hojeEmSaoPaulo(), 1),
+    });
+  },
+  async vende_antes_de_2020_22023(c, antes) {
+    return recusa22023(c, antes, { ...OK2, vende_no_app_desde: "2019-12-01" });
+  },
+  async vende_no_futuro_22023(c, antes) {
+    return recusa22023(c, [...antes, FUSO_DE_SP], {
+      ...OK2,
+      vende_no_app_desde: dia1(hojeEmSaoPaulo(), 1),
+    });
+  },
+  async vende_antes_da_abertura_22023(c, antes) {
+    return recusa22023(c, antes, {
+      ...OK2,
+      aberta_em: "2024-05-20",
+      vende_no_app_desde: "2024-04-01",
+    });
+  },
+  // O "hoje" da faixa é o de São Paulo, não o do relógio do servidor: com a sessão em fusos de pontas opostas (+14 h e -11 h,
+  // um dos dois sempre cai em outro DIA que São Paulo) hoje e o mês de hoje passam, amanhã e o mês que vem não.
+  async hoje_e_o_de_sao_paulo(c, antes) {
+    const hoje = hojeEmSaoPaulo();
+    for (const fuso of ["Pacific/Kiritimati", "Pacific/Pago_Pago", "UTC"]) {
+      const r = await rodar(
+        c,
+        [
+          P("dono", SALVAR({ ...OK2, aberta_em: hoje })),
+          P("dono", SALVAR({ ...OK2, aberta_em: somaDias(hoje, 1) })),
+          P("dono", SALVAR({ ...OK2, vende_no_app_desde: dia1(hoje) })),
+          P("dono", SALVAR({ ...OK2, vende_no_app_desde: dia1(hoje, 1) })),
+        ],
+        { antes: [...antes, `SET LOCAL TIME ZONE '${fuso}'`] },
+      );
+      const [a, b, v, w] = r.resultados;
+      if (!a.ok || !v.ok || b.ok || b.code !== "22023") return false;
+      if (w.ok || w.code !== "22023") return false;
+    }
+    return true;
+  },
   async anon_sem_execute(c, antes) {
     const r = await rodar(c, [P("anon", SALVAR(OK1))], { antes });
     return (
@@ -1561,7 +1767,7 @@ const falhas = (s) =>
     .sort();
 
 PROVAS.push({
-  nome: "(10a) as 10 sondas valem no estado da árvore; SEM a migration (rollback) as que dependem dela REPROVAM — cada prova nova falha sem a mudança",
+  nome: "(10a) as 16 sondas valem no estado da árvore; SEM a migration (rollback) as que dependem dela REPROVAM — cada prova nova falha sem a mudança",
   corpo: async (c) => {
     assert.deepEqual(
       falhas(await rodarSondas(c)),
@@ -1585,7 +1791,7 @@ PROVAS.push({
 const MUTANTES = [
   {
     nome: "M1 sem conferir o dono do banco (basta estar logado)",
-    reprova: "admin_nao_dono_recusa",
+    reprovam: ["admin_nao_dono_recusa", "sem_dono_ninguem_grava"],
     sql: () =>
       mutar(
         DDL_SALVAR,
@@ -1595,13 +1801,13 @@ const MUTANTES = [
   },
   {
     nome: "M2 sem is_admin_atual() (o dono rebaixado grava)",
-    reprova: "dono_rebaixado_recusa",
+    reprovam: ["dono_rebaixado_recusa"],
     sql: () =>
       mutar(DDL_SALVAR, "IF NOT public.is_admin_atual() THEN", "IF false THEN"),
   },
   {
     nome: "M3 a política de leitura vira `true` nas duas tabelas (cliente lê)",
-    reprova: "cliente_nao_le",
+    reprovam: ["cliente_nao_le"],
     sql: () =>
       [
         "ALTER POLICY fiscal_cadastro_select_policy ON public.fiscal_cadastro USING (true)",
@@ -1610,7 +1816,7 @@ const MUTANTES = [
   },
   {
     nome: "M4 grava e registra mesmo com os dados iguais (log sujo)",
-    reprova: "repetir_nao_gera_log",
+    reprovam: ["repetir_nao_gera_log"],
     sql: () =>
       mutar(
         DDL_SALVAR,
@@ -1620,7 +1826,7 @@ const MUTANTES = [
   },
   {
     nome: "M5 sem validar o regime na função (só o CHECK da tabela barra, com outro código)",
-    reprova: "regime_invalido_22023",
+    reprovam: ["regime_invalido_22023"],
     sql: () =>
       mutar(
         DDL_SALVAR,
@@ -1630,19 +1836,19 @@ const MUTANTES = [
   },
   {
     nome: "M6 sem validar o dia 1 de vende_no_app_desde na função",
-    reprova: "data_fora_do_check_22023",
+    reprovam: ["data_fora_do_check_22023"],
     sql: () =>
       mutar(DDL_SALVAR, "AND extract(day FROM v_vende) <> 1", "AND false"),
   },
   {
     nome: "M7 anon recebe EXECUTE",
-    reprova: "anon_sem_execute",
+    reprovam: ["anon_sem_execute"],
     sql: () =>
       "GRANT EXECUTE ON FUNCTION public.fiscal_cadastro_salvar(jsonb) TO anon",
   },
   {
     nome: "M8 authenticated ganha escrita direta (GRANT ALL e política FOR ALL)",
-    reprova: "escrita_direta_negada",
+    reprovam: ["escrita_direta_negada", "cliente_nao_le"],
     sql: () =>
       [
         "GRANT ALL ON TABLE public.fiscal_cadastro TO authenticated",
@@ -1651,7 +1857,11 @@ const MUTANTES = [
   },
   {
     nome: "M9 sem conferir o dono E sem is_admin_atual (qualquer login grava)",
-    reprova: "sem_dono_ninguem_grava",
+    reprovam: [
+      "admin_nao_dono_recusa",
+      "dono_rebaixado_recusa",
+      "sem_dono_ninguem_grava",
+    ],
     sql: () =>
       mutar(
         mutar(
@@ -1663,16 +1873,85 @@ const MUTANTES = [
         "IF false THEN",
       ),
   },
+  {
+    nome: "M10 sem o piso de 1900 na abertura",
+    reprovam: ["aberta_antes_de_1900_22023"],
+    sql: () =>
+      mutar(
+        DDL_SALVAR,
+        "IF v_aberta IS NOT NULL AND v_aberta < DATE '1900-01-01' THEN",
+        "IF false THEN",
+      ),
+  },
+  {
+    nome: "M11 sem o teto de hoje na abertura (empresa aberta no futuro)",
+    // A sonda do fuso também usa o teto da abertura (amanhã tem de ser recusado): cai junto.
+    reprovam: ["aberta_no_futuro_22023", "hoje_e_o_de_sao_paulo"],
+    sql: () =>
+      mutar(
+        DDL_SALVAR,
+        "IF v_aberta IS NOT NULL AND v_aberta > v_hoje THEN",
+        "IF false THEN",
+      ),
+  },
+  {
+    nome: "M12 sem o piso de 2020 no início das vendas",
+    reprovam: ["vende_antes_de_2020_22023"],
+    sql: () =>
+      mutar(
+        DDL_SALVAR,
+        "IF v_vende IS NOT NULL AND v_vende < DATE '2020-01-01' THEN",
+        "IF false THEN",
+      ),
+  },
+  {
+    nome: "M13 sem o teto de hoje no início das vendas (mês que ainda não começou)",
+    // A sonda do fuso também usa o teto do início das vendas (o mês que vem tem de ser recusado): cai junto.
+    reprovam: ["vende_no_futuro_22023", "hoje_e_o_de_sao_paulo"],
+    sql: () =>
+      mutar(
+        DDL_SALVAR,
+        "IF v_vende IS NOT NULL AND v_vende > v_hoje THEN",
+        "IF false THEN",
+      ),
+  },
+  {
+    nome: "M14 sem a regra do início das vendas não vir antes do mês da abertura",
+    reprovam: ["vende_antes_da_abertura_22023"],
+    sql: () =>
+      mutar(
+        DDL_SALVAR,
+        "IF v_vende IS NOT NULL AND v_aberta IS NOT NULL AND v_vende < v_aberta - (extract(day FROM v_aberta)::int - 1) THEN",
+        "IF false THEN",
+      ),
+  },
+  {
+    nome: "M15 o 'hoje' vira o relógio do servidor (current_date) em vez de São Paulo",
+    reprovam: ["hoje_e_o_de_sao_paulo"],
+    sql: () =>
+      mutar(
+        DDL_SALVAR,
+        "v_hoje date := (now() AT TIME ZONE 'America/Sao_Paulo')::date;",
+        "v_hoje date := current_date;",
+      ),
+  },
 ];
 
 PROVAS.push({
-  nome: "(10b) 9 mutantes (cada guarda tirada: sem conferir o dono, sem is_admin_atual, política `true`, log sujo, validação, grants) deixam a SUA sonda vermelha",
+  nome: "(10b) 15 mutantes (cada guarda tirada: sem conferir o dono, sem is_admin_atual, política `true`, log sujo, validação, grants, cada regra da faixa das datas e o 'hoje') deixam vermelha EXATAMENTE a sonda que cada um declara (e a de controle dono_grava segue verde: o DDL do mutante aplicou)",
   corpo: async (c) => {
     for (const m of MUTANTES) {
       const sondas = await rodarSondas(c, [m.sql()]);
-      assert.ok(
-        falhas(sondas).includes(m.reprova),
-        `${m.nome}: a sonda ${m.reprova} deveria reprovar, falhas = ${falhas(sondas).join(",") || "(nenhuma)"}`,
+      // Um DDL que falha ao aplicar faria rodarSondas devolver tudo falso: a sonda de controle denuncia isso.
+      assert.equal(
+        sondas.dono_grava,
+        true,
+        `${m.nome}: a sonda de controle dono_grava caiu (o DDL do mutante não aplicou?), falhas = ${falhas(sondas).join(",")}`,
+      );
+      assert.deepEqual(
+        falhas(sondas),
+        [...m.reprovam].sort(),
+        `${m.nome}: só as sondas declaradas (${m.reprovam.join(",")}) deviam reprovar; reprovaram: ${falhas(sondas).join(",") || "(nenhuma)"}`,
       );
     }
   },

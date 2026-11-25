@@ -27,7 +27,9 @@
 --            rebaixado, ou com papeis contraditorios, recusa (42501);
 --         c. valida o payload (22023): objeto JSON; regime em mei/simples/presumido/real/nao_sei; atividade em
 --            comercio/com_servico; aberta_em e vende_no_app_desde ausentes, null ou texto AAAA-MM-DD de data real;
---            vende_no_app_desde so no dia 1. Campo que nao e' do cadastro (cnpj, por exemplo) e' IGNORADO e nunca gravado:
+--            vende_no_app_desde so no dia 1. FAIXA plausivel (22023): aberta_em entre 1900-01-01 e hoje; vende_no_app_desde nao
+--            antes de 2020-01-01, nao num mes que ainda nao comecou e, havendo aberta_em, nao antes do mes da abertura; "hoje" e'
+--            o dia de America/Sao_Paulo, nunca o relogio nem o fuso do servidor. Campo que nao e' do cadastro (cnpj, por exemplo) e' IGNORADO e nunca gravado:
 --            o CNPJ mora em store_config, nao aqui. O payload e' a foto INTEIRA do formulario, nao um remendo: campo opcional
 --            ausente grava vazio;
 --         d. trava a tabela (LOCK ... SHARE ROW EXCLUSIVE: so entre gravadores, a leitura nao espera) para que a trilha
@@ -39,8 +41,8 @@
 --         f. devolve a linha (jsonb).
 --
 -- O QUE FICA IGUAL, DE PROPOSITO: fin_dre, fin_previstos, fin_extrato, fin_lancamento_salvar e fin__movimentos (nenhum corpo e'
--- tocado; o pos-voo confere o md5 vigente do fin_dre), is_admin_atual(), rls_admin_atual(), dono_da_loja, definir_cargo e
--- todas as politicas e grants existentes. Nenhuma estimativa, nenhum valor de lei e nenhum CNPJ moram aqui.
+-- tocado; a prova viva confere que o md5 do corpo do fin_dre e' o mesmo antes e depois de aplicar, sem constante), is_admin_atual(),
+-- rls_admin_atual(), dono_da_loja, definir_cargo e todas as politicas e grants existentes. Nenhuma estimativa, nenhum valor de lei e nenhum CNPJ moram aqui.
 --
 -- CADASTRO DO DONO: esta migration NAO cadastra o dono (decisao do dono do produto, loja por loja; ver
 -- docs/runbooks/definir-o-dono-da-loja.md). Enquanto dono_da_loja estiver vazia, fiscal_cadastro_salvar recusa TODO MUNDO
@@ -54,20 +56,21 @@
 -- que esta migration SUPOE (a 20261197, a 20261383 e a 20261202 no estado vigente) e aceita, para cada objeto proprio,
 -- "ausente" ou "exatamente o desta migration" (colunas das tabelas, corpo da funcao por md5 sem CR, sem sobrecarga);
 -- qualquer outra coisa recusa com B1_BASELINE_DIVERGENT e nada e' escrito. O POS-VOO exige TODO o estado novo (corpo,
--- atributos e ACL da funcao; RLS, privilegios, constraints e politicas das tabelas; sequencia sem grant; o md5 do fin_dre);
+-- atributos e ACL da funcao; RLS, privilegios, constraints (so os NOMES) e politicas das tabelas; sequencia sem grant);
 -- erro aborta a transacao do aplicador e nada fica gravado. Rodar duas vezes deixa o mesmo estado (CREATE TABLE IF NOT
 -- EXISTS, DROP POLICY IF EXISTS + CREATE POLICY, CREATE OR REPLACE FUNCTION, REVOKE/GRANT idempotentes).
 --
 -- ORDEM: depois da 20261197 (is_admin_atual e rls_admin_atual), da 20261202 (a politica de admin atual de fin_lancamentos) e
--- da 20261383 (dono_da_loja). Se uma migration ANTERIOR a esta redefinir fin_dre, a constante de md5 do pos-voo (e da prova)
--- sobe junto. Banco ANTES do front: a aba Impostos chama esta funcao. Desfazer ESTA antes de desfazer a 20261197 ou a 20261383
+-- da 20261383 (dono_da_loja). Esta migration nao le nem redefine o corpo do fin_dre: uma migration anterior que o redefina nao
+-- a afeta (nenhuma constante de md5 do fin_dre, aqui ou na prova). Banco ANTES do front: a aba Impostos chama esta funcao. Desfazer ESTA antes de desfazer a 20261197 ou a 20261383
 -- (a funcao cita dono_da_loja e a politica cita rls_admin_atual()); o rollback comum tira a funcao e as politicas e deixa as
 -- tabelas.
 --
 -- PROVAS: tests/banco/o-cadastro-fiscal-so-o-dono-altera-viva.cjs (rpc-ci, Postgres efemero): tabelas nascem vazias; sem dono
 -- ninguem grava; dono grava e o log ganha uma linha; repetir nao gera log; admin que nao e' dono, dono rebaixado, cliente,
 -- anon, service_role e postgres recusam; leitura (admin le, cliente le vazio, anon negado); escrita direta negada;
--- validacao 22023; concorrencia; fin_dre intocado; reaplicar; rollback comum e destrutivo; pre-voo e pos-voo divergentes;
+-- validacao 22023 (inclusive a faixa das datas, com os limites exatos e o "hoje" de Sao Paulo); concorrencia; fin_dre intocado
+-- (md5 igual antes e depois); reaplicar; rollback comum e destrutivo; pre-voo e pos-voo divergentes;
 -- mutantes (sem conferir o dono, sem is_admin_atual, politica `true`, entre outros).
 --
 -- RISCOS DECLARADOS:
@@ -162,7 +165,7 @@ BEGIN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: fiscal_cadastro_salvar tem sobrecarga em public.';
   END IF;
   IF EXISTS (SELECT 1 FROM pg_proc WHERE oid = to_regprocedure('public.fiscal_cadastro_salvar(jsonb)')
-       AND md5(replace(prosrc, chr(13), '')) <> '0e76c24e09699b4aba53600bf4061c67')
+       AND md5(replace(prosrc, chr(13), '')) <> '198c24062f62dd29aae1f96fcaed6603')
      OR (to_regprocedure('public.fiscal_cadastro_salvar(jsonb)') IS NULL
          AND EXISTS (SELECT 1 FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname = 'fiscal_cadastro_salvar')) THEN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: o corpo vivo de fiscal_cadastro_salvar nao e o desta migration (sucessora no ar?) - nao reaplique por cima.';
@@ -239,6 +242,7 @@ CREATE OR REPLACE FUNCTION public.fiscal_cadastro_salvar(p jsonb)
 AS $function$
 DECLARE
     v_quem uuid := auth.uid();
+    v_hoje date := (now() AT TIME ZONE 'America/Sao_Paulo')::date;
     v_aberta date;
     v_vende date;
     v_antes jsonb;
@@ -297,6 +301,26 @@ BEGIN
     END IF;
     IF v_vende IS NOT NULL AND extract(day FROM v_vende) <> 1 THEN
         RAISE EXCEPTION 'Mês de início das vendas inválido: use sempre o dia 1.' USING ERRCODE = '22023';
+    END IF;
+
+    -- Faixa plausível das datas (22023). "Hoje" é o dia de São Paulo (onde as lojas vivem), nunca o relógio ou o fuso do servidor.
+    --   abertura: entre 1900-01-01 e hoje;
+    --   início das vendas pelo app: não antes de 2020-01-01, não num mês que ainda não começou e, havendo data de abertura,
+    --   não antes do mês da abertura (o dia 1 desse mês vale: abriu e já vendeu no mesmo mês).
+    IF v_aberta IS NOT NULL AND v_aberta < DATE '1900-01-01' THEN
+        RAISE EXCEPTION 'Data de abertura inválida: não pode ser anterior a 1900.' USING ERRCODE = '22023';
+    END IF;
+    IF v_aberta IS NOT NULL AND v_aberta > v_hoje THEN
+        RAISE EXCEPTION 'Data de abertura inválida: não pode ser no futuro.' USING ERRCODE = '22023';
+    END IF;
+    IF v_vende IS NOT NULL AND v_vende < DATE '2020-01-01' THEN
+        RAISE EXCEPTION 'Mês de início das vendas inválido: não pode ser anterior a janeiro de 2020.' USING ERRCODE = '22023';
+    END IF;
+    IF v_vende IS NOT NULL AND v_vende > v_hoje THEN
+        RAISE EXCEPTION 'Mês de início das vendas inválido: esse mês ainda não começou.' USING ERRCODE = '22023';
+    END IF;
+    IF v_vende IS NOT NULL AND v_aberta IS NOT NULL AND v_vende < v_aberta - (extract(day FROM v_aberta)::int - 1) THEN
+        RAISE EXCEPTION 'Mês de início das vendas inválido: não pode ser anterior ao mês em que a empresa foi aberta.' USING ERRCODE = '22023';
     END IF;
 
     v_depois := jsonb_build_object(
@@ -360,7 +384,7 @@ BEGIN
   -- Funcao: corpo, atributos, ACL, sem sobrecarga.
   IF NOT EXISTS (SELECT 1 FROM pg_proc p JOIN pg_language l ON l.oid = p.prolang
       WHERE p.oid = to_regprocedure('public.fiscal_cadastro_salvar(jsonb)')
-        AND md5(replace(p.prosrc, chr(13), '')) = '0e76c24e09699b4aba53600bf4061c67'
+        AND md5(replace(p.prosrc, chr(13), '')) = '198c24062f62dd29aae1f96fcaed6603'
         AND l.lanname = 'plpgsql' AND p.prosecdef AND p.provolatile = 'v' AND NOT p.proisstrict
         AND pg_get_function_result(p.oid) = 'jsonb' AND p.proconfig = ARRAY['search_path=public']::text[])
      OR (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname = 'fiscal_cadastro_salvar') <> 1
@@ -427,12 +451,6 @@ BEGIN
   PERFORM set_config('search_path', v_caminho, true);
   IF (SELECT count(*) FROM pg_policy WHERE polrelid IN (to_regclass('public.fiscal_cadastro'), to_regclass('public.fiscal_cadastro_log'))) <> 2 THEN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: fiscal_cadastro e fiscal_cadastro_log tem de ter exatamente uma politica cada (SELECT).';
-  END IF;
-
-  -- fin_dre: esta migration nao o redefine; o corpo vigente (20261405900000) segue o mesmo.
-  IF NOT EXISTS (SELECT 1 FROM pg_proc p WHERE p.oid = to_regprocedure('public.fin_dre(date,date)')
-       AND md5(replace(p.prosrc, chr(13), '')) = 'a27c9649621b3ac1502f458576120259') THEN
-    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: o corpo vivo de fin_dre nao e o vigente (20261405900000); esta migration nao o toca - confira se uma migration anterior o redefiniu e atualize a constante.';
   END IF;
 END $posflight_20261440000000$;
 
