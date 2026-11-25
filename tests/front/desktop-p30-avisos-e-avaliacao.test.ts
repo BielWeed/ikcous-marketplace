@@ -19,7 +19,7 @@ const css = readFileSync("src/index.css", "utf8");
 //   Total 210 -> 211; nenhuma outra classe antiga mudou.
 // Ordem dos literais dentro de TODOS os className, inclusive cn/condicionais.
 const assinaturaDoCelular =
-  "e3d9b9f354c2b06b339e893a34c16bfe500310dbe9484a5f90395b0101b454bf";
+  "4a37a4371359f1ea76cc3adea65ef4586b6f9f2deffddbc0023295be6a9cab7a";
 const classesOriginais = [
   "fixed inset-x-0 bottom-[var(--folha-acima-da-barra)] top-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm duration-300 animate-in fade-in",
   "relative z-10 max-h-[calc(100dvh-var(--folha-acima-da-barra)-72px)] w-full max-w-md overflow-y-auto rounded-t-[2.5rem] bg-zinc-50 p-6 shadow-2xl duration-300 animate-in slide-in-from-bottom",
