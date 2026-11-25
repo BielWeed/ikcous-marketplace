@@ -1,6 +1,7 @@
 import { type Page, type Request, type Route, expect } from "@playwright/test";
 import {
   PRODUTO_ACESSORIOS,
+  PRODUTO_ROUPAS,
   abrirLoja,
   buscarDocumentoDoPreview,
   enderecosFixtura,
@@ -626,25 +627,79 @@ export async function instalarPagamentoSimulado(
 }
 
 /**
+ * O valor que a TELA de pagamento mostra ao cliente (PIX e cartão): o total do
+ * pedido de `exigirCriacaoDoPedido` — Boné R$ 30 + frete local R$ 10. É o
+ * texto de `formatCurrency` (o app usa a MESMA função nas duas telas).
+ */
+export const TOTAL_DO_BONE_NA_TELA = "R$ 40,00";
+/** Camiseta (R$ 50, tamanho M) + o mesmo frete local de R$ 10. */
+export const TOTAL_DA_CAMISETA_NA_TELA = "R$ 60,00";
+
+/**
+ * O VALOR na tela de pagamento (a seção `titulo`): o cliente confere quanto vai
+ * pagar. Texto INTEIRO do elemento (`exact`): "R$ 140,00" não passa por
+ * "R$ 40,00". Sem esta conferência o app podia mostrar qualquer número, desde
+ * que o pedido e a cobrança saíssem certos.
+ */
+export async function exigirTotalNaTela(
+  page: Page,
+  titulo: string,
+  total: string = TOTAL_DO_BONE_NA_TELA,
+): Promise<void> {
+  await expect(
+    page.getByRole("region", { name: titulo }).getByText(total, {
+      exact: true,
+    }),
+  ).toBeVisible();
+}
+
+/**
  * Do zero até a tela "Finalize o pagamento": abre a loja (boot verificado
- * pelo kit), põe o Boné no carrinho, vai ao checkout, preenche o WhatsApp
- * fictício, escolhe a forma pelo app e toca "Finalizar pedido" UMA vez (ou
- * duas, num clique duplo; ou nenhuma, para o teste disparar o clique à mão).
+ * pelo kit), põe o Boné (ou, com `produto: "camiseta-m"`, a Camiseta no
+ * tamanho M pela folha de opções) no carrinho, vai ao checkout, preenche o
+ * WhatsApp fictício, escolhe a forma pelo app e toca "Finalizar pedido" UMA
+ * vez (ou duas, num clique duplo; ou nenhuma, para o teste disparar o clique
+ * à mão).
  */
 export async function abrirLojaEFinalizar(
   page: Page,
   forma: "pix" | "cartao",
-  opcoes: { cliqueDuplo?: boolean; semClicar?: boolean } = {},
+  opcoes: {
+    cliqueDuplo?: boolean;
+    semClicar?: boolean;
+    produto?: "bone" | "camiseta-m";
+  } = {},
 ): Promise<() => { erros: string[] }> {
   const errosNoFim = await abrirLoja(page);
 
-  const cardDoBone = page
-    .locator("div.group")
-    .filter({
-      has: page.getByRole("button", { name: PRODUTO_ACESSORIOS, exact: true }),
-    })
-    .first();
-  await cardDoBone.getByTestId("product-card-action").click();
+  if (opcoes.produto === "camiseta-m") {
+    // A Camiseta tem variação OBRIGATÓRIA: o card abre a folha de opções, a
+    // cliente escolhe "M", adiciona e fecha a folha (modal) antes de navegar.
+    const cardDaCamiseta = page
+      .locator("div.group")
+      .filter({
+        has: page.getByRole("button", { name: PRODUTO_ROUPAS, exact: true }),
+      })
+      .first();
+    await cardDaCamiseta.getByTestId("product-card-action").click();
+    const folha = page.getByTestId("product-card-options-sheet");
+    await expect(folha).toBeVisible();
+    await folha.getByRole("button", { name: "M", exact: true }).click();
+    await page.getByTestId("product-card-options-add").click();
+    await folha.getByTestId("product-card-options-handle").click();
+    await expect(folha).toBeHidden();
+  } else {
+    const cardDoBone = page
+      .locator("div.group")
+      .filter({
+        has: page.getByRole("button", {
+          name: PRODUTO_ACESSORIOS,
+          exact: true,
+        }),
+      })
+      .first();
+    await cardDoBone.getByTestId("product-card-action").click();
+  }
   await page
     .getByRole("navigation", { name: "Navegação principal" })
     .getByRole("button", { name: /Carrinho/ })

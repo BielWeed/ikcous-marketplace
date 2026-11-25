@@ -4,6 +4,7 @@ import {
   esperarServiceWorkerEmEspera,
 } from "./pwa-esperas";
 import {
+  PRODUTO_ROUPAS,
   URL_DO_SERVIDOR,
   abrirLojaPwa,
   contarBoots,
@@ -20,7 +21,7 @@ import {
  * o canal global de erro engaja a ESCADA — 1º degrau é o ciclo NATURAL do
  * service worker (update() → waiting novo → SKIP_WAITING → controllerchange
  * → reload), e quem cura o mismatch é o SW novo assumindo, nunca o cache
- * vazio. O pendurar do dono (tela "Atualizando o Aplicativo" eterna) é o
+ * vazio. O pendurar do dono (tela "Recuperando o aplicativo" eterna) é o
  * que NÃO pode acontecer.
  *
  * O chunk vítima é um `assets/Admin*.js`: lazy, sob demanda — o boot não o
@@ -128,9 +129,19 @@ test("aba velha com chunk sumido se recupera sozinha pelo ciclo do service worke
     )
     .toBeGreaterThan(1);
 
-  // E o boot de depois do reload é limpo — a tela do dono NÃO fica presa.
+  // E o boot de depois do reload é limpo — a tela do dono NÃO fica presa. O
+  // boot limpo sozinho aceita QUALQUER coisa montada no #root, inclusive a
+  // tela de recuperação do GlobalErrorBoundary: por isso a prova é o CATÁLOGO
+  // na tela e a tela de recuperação ("Recuperando o aplicativo", o texto
+  // ATUAL — o antigo "Atualizando o Aplicativo" não existe mais e a conferência
+  // com ele nunca podia falhar) com contagem ZERO.
   await esperarBootLimpo(page);
-  await expect(page.getByText("Atualizando o Aplicativo")).toHaveCount(0);
+  await expect(
+    page.getByText(PRODUTO_ROUPAS, { exact: false }).first(),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(
+    page.getByRole("heading", { name: "Recuperando o aplicativo" }),
+  ).toHaveCount(0);
 
   // Estado da escada: os registros por versão nasceram após o incidente
   // (1 = ciclo do SW, 2 = purge seletivo). O legado não é gravado nem usado aqui.

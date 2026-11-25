@@ -64,11 +64,14 @@ test("compra: categoria filtra, tela do produto abre e o item chega ao carrinho"
   ).toBeVisible({ timeout: 30_000 });
   // O item está no painel do carrinho (a home oculta no DOM não engana o
   // papel acessível do painel).
+  const painelDoCarrinho = page.getByRole("tabpanel", { name: /Carrinho/ });
   await expect(
-    page
-      .getByRole("tabpanel", { name: /Carrinho/ })
-      .getByRole("heading", { name: PRODUTO_ROUPAS }),
+    painelDoCarrinho.getByRole("heading", { name: PRODUTO_ROUPAS }),
   ).toBeVisible();
+  // A VARIAÇÃO escolhida chegou à linha do carrinho (era só o nome do produto
+  // que se conferia): "Tamanho: M", e nenhum outro tamanho.
+  await expect(painelDoCarrinho).toContainText("Tamanho: M");
+  await expect(painelDoCarrinho).not.toContainText("Tamanho: P");
 
   expect(errosNoFim().erros).toEqual([]);
 });

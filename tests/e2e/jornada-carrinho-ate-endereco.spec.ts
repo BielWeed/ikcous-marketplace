@@ -54,11 +54,13 @@ test("carrinho chega ao passo de endereço sem preencher nada e sem cobrar", asy
   await expect(
     page.getByRole("button", { name: "Finalizar Compra" }),
   ).toBeVisible({ timeout: 30_000 });
+  const painelDoCarrinho = page.getByRole("tabpanel", { name: /Carrinho/ });
   await expect(
-    page
-      .getByRole("tabpanel", { name: /Carrinho/ })
-      .getByRole("heading", { name: PRODUTO_ROUPAS }),
+    painelDoCarrinho.getByRole("heading", { name: PRODUTO_ROUPAS }),
   ).toBeVisible();
+  // A VARIAÇÃO escolhida na folha ("M") chegou à linha do carrinho.
+  await expect(painelDoCarrinho).toContainText("Tamanho: M");
+  await expect(painelDoCarrinho).not.toContainText("Tamanho: P");
 
   // Avança para o checkout e PARA no passo de endereço.
   await page.getByRole("button", { name: "Finalizar Compra" }).click();
@@ -69,8 +71,25 @@ test("carrinho chega ao passo de endereço sem preencher nada e sem cobrar", asy
   // Leitura pura: pagamento online desligado na loja fixture — o passo de
   // pagamento só pode oferecer "Na entrega". Nenhum campo é preenchido,
   // nenhum botão de confirmar/pagar é tocado, e a tela NUNCA vira pedido.
-  await expect(page.getByText("Na entrega").first()).toBeVisible();
-  await expect(page.getByText("Pedido confirmado")).toHaveCount(0);
+  //
+  // O rótulo do GRUPO é o texto inteiro "Na entrega" (`exact`: "Pix na Entrega",
+  // que é uma OPÇÃO, não conta); as opções "no app" NÃO existem (contagem 0, não
+  // "não visível") e o Pix na entrega está lá.
+  await expect(page.getByText("Na entrega", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("radio", { name: /Pix na Entrega/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("radio", { name: "Pagar agora com PIX" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("radio", { name: /Cartão de crédito/ }),
+  ).toHaveCount(0);
+  // A tela de sucesso do pedido diz "Pedido Realizado!" (OrderSuccessView):
+  // ela NUNCA aparece aqui.
+  await expect(
+    page.getByRole("heading", { name: "Pedido Realizado!" }),
+  ).toHaveCount(0);
 
   expect(errosNoFim().erros).toEqual([]);
 });
