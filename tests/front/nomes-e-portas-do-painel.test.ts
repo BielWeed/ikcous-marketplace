@@ -40,12 +40,15 @@ const FILHAS_DE_LISTA = [
   "admin-product-form",
   "admin-coupon-form",
   "admin-user-detail",
+  // 25/11/2026 (Central de Fornecedores, E1): abre pelo botão "Fornecedores" da
+  // barra de Produtos, não por uma porta da aba.
+  "admin-fornecedores",
 ] as const;
 const SEM_ABA = ["admin-pdv", "admin-notifications"] as const;
 
 describe("NOMES_DO_PAINEL", () => {
   it("toda tela admin-* (menos admin-login) tem nome não vazio", () => {
-    expect(telasDoPainel).toHaveLength(26);
+    expect(telasDoPainel).toHaveLength(27);
     for (const tela of telasDoPainel) {
       const nome = nomes.get(tela) ?? "";
       expect(nome, tela).toBeTypeOf("string");
@@ -70,6 +73,7 @@ describe("NOMES_DO_PAINEL", () => {
       "admin-devolucoes": "Devoluções",
       "admin-products": "Produtos",
       "admin-product-form": "Produto",
+      "admin-fornecedores": "Meus fornecedores",
       "admin-coupons": "Cupons",
       "admin-coupon-form": "Cupom",
       "admin-customers": "Clientes",

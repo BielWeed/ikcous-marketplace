@@ -776,6 +776,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261440: a loja guarda o cadastro fiscal e so o dono altera (prova da migration; consultas 180a/180b abaixo).
     "tests/banco/o-cadastro-fiscal-so-o-dono-altera-viva.cjs",
     "tests/banco/o-cadastro-fiscal-portao-viva.cjs",
+    // 20261450: a loja guarda os fornecedores e so o admin da loja mexe (prova da migration, com as consultas 181a/181b executadas).
+    "tests/banco/os-fornecedores-so-o-admin-da-loja-viva.cjs",
     // 20261384: o pedido pago pelo app exige conta (visitante sem conta recusado antes de reservar estoque; logado e pagar na entrega como hoje; retry; concorrencia real; mutantes; rollback; consultas 89a/89b).
     "tests/banco/pedido-pelo-app-exige-conta-viva.cjs",
     "tests/banco/admin-atual-viva.cjs",

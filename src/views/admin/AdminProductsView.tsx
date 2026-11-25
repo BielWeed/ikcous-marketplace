@@ -86,6 +86,7 @@ import {
   Copy,
   DollarSign,
   Edit2,
+  Factory,
   HelpCircle,
   Package,
   Pause,
@@ -1993,14 +1994,44 @@ export const AdminProductsView = memo(function AdminProductsView({
           )}
         </div>
         <AcaoDaBarra ativa={active !== false}>
+          {/* Central de Fornecedores (E1): dois botões lado a lado, como na
+              barra de Clientes. "Fornecedores" é secundário e fica à esquerda;
+              "Novo produto" segue sendo o ÚNICO amarelo da barra, à direita.
+              Sem internet a frase "Novo produto indisponível" não cabe em meia
+              barra: o botão diz "Sem internet" e leva o nome completo no
+              `aria-label` (o texto visível continua dentro do nome, regra de
+              acessibilidade "rótulo no nome") e no `title`. Fornecedores segue
+              ligado sem internet: a tela dele explica a falta de conexão. */}
+          <button
+            type="button"
+            onClick={() => handleLocalNavigate("admin-fornecedores")}
+            className="produto-secundario min-w-0 flex-1"
+          >
+            <Factory
+              aria-hidden="true"
+              className="size-5 shrink-0 max-[340px]:hidden"
+            />
+            <span className="min-w-0">Fornecedores</span>
+          </button>
           <button
             type="button"
             disabled={isOffline}
+            aria-label={
+              isOffline ? "Novo produto indisponível sem internet" : undefined
+            }
+            title={
+              isOffline ? "Novo produto indisponível sem internet" : undefined
+            }
             onClick={() => handleLocalNavigate("admin-product-form")}
-            className="produto-principal admin-barra-principal w-full"
+            className="produto-principal admin-barra-principal min-w-0 flex-1"
           >
-            <Plus aria-hidden="true" className="size-5" />{" "}
-            {isOffline ? "Novo produto indisponível" : "Novo produto"}
+            <Plus
+              aria-hidden="true"
+              className="size-5 shrink-0 max-[340px]:hidden"
+            />
+            <span className="min-w-0">
+              {isOffline ? "Sem internet" : "Novo produto"}
+            </span>
           </button>
         </AcaoDaBarra>
 

@@ -15836,3 +15836,130 @@ Deno.test("180a/180b — registradas no menu do conferir-banco-da-loja, nos dois
     );
   }
 });
+
+// 181a/181b (25/11/2026) — a PROVA DE OBJETOS da 20261450000000 (a loja guarda os fornecedores, e so o admin da loja mexe: a tabela
+// public.fornecedores e a funcao do gatilho que carimba as datas). A 181a e' a consulta do lote (DEPOIS do apply, so catalogo, 9 linhas, NENHUMA
+// linha de fornecedores e' lida); a 181b e' a de ausencia (ANTES, 5 linhas: os objetos novos ausentes e a base que o pre-voo da migration exige:
+// a porta rls_admin_atual() e o gen_random_uuid()). As duas sao de ROL FECHADO. Estes testes medem o texto dos .sql contra a migration DESTA
+// arvore; a decisao de cada consulta num Postgres real fica com a prova viva (tests/banco/os-fornecedores-so-o-admin-da-loja-viva.cjs, rpc-ci.yml).
+const NOME_181A = "181a-conferir-os-fornecedores-aplicado";
+const NOME_181B = "181b-antes-os-fornecedores-ausentes";
+const MIGRACAO_1450 = `${MIGRATIONS_DIR}/20261450000000_a_loja_guarda_os_fornecedores.sql`;
+
+Deno.test("181a/181b — o rol fechado (9 e 5 linhas) bate com os rotulos do SQL, cada consulta tem UM statement, e so le catalogo (nenhuma linha de fornecedores)", async () => {
+  const { contarStatements, ROL_FECHADO_POR_CONSULTA } = require(SCRIPT);
+  const { [NOME_181A]: rol181a, [NOME_181B]: rol181b } =
+    ROL_FECHADO_POR_CONSULTA;
+  assertEquals(rol181a?.length, 9);
+  assertEquals(rol181b?.length, 5);
+  for (const [nome, rol] of [
+    [NOME_181A, rol181a],
+    [NOME_181B, rol181b],
+  ] as Array<[string, string[]]>) {
+    assertEquals(new Set(rol).size, rol.length, `${nome}: rotulo repetido`);
+    const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${nome}.sql`);
+    assertEquals(contarStatements(sql), 1, `${nome}: tem de ser UM statement`);
+    for (const item of rol) assertStringIncludes(sql, `'${item}'`);
+    const rotulos = [...sql.matchAll(/SELECT '([^']+)', '(?:sim|nao)'/g)].map(
+      (m) => m[1],
+    );
+    assertEquals(
+      rotulos.sort(),
+      [...rol].sort(),
+      `${nome}: rotulos do SQL != rol`,
+    );
+    const codigo = sql.replace(/--.*$/gm, "").replace(/'[^']*'/g, "''");
+    assert(
+      !/\b(INSERT|UPDATE|DELETE|ALTER|DROP|CREATE|GRANT|REVOKE|TRUNCATE)\b/.test(
+        codigo,
+      ),
+      `${nome}: so leitura`,
+    );
+    assert(
+      !/\bFROM\s+(public\.)?(fornecedores|profiles|fin_lancamentos)\b/i.test(
+        codigo,
+      ),
+      `${nome}: nao le linha de tabela de dado`,
+    );
+    assert(!/\bauth\.users\b/i.test(codigo), `${nome}: nao le auth.users`);
+  }
+});
+
+Deno.test("181a/181b — todo md5 das consultas e' o que a migration 20261450000000 grava ou exige, e o da funcao e' o do corpo desta arvore", async () => {
+  const { createHash } = await import("node:crypto");
+  const mig = (await Deno.readTextFile(MIGRACAO_1450)).replace(/\r/g, "");
+  const a = (
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_181A}.sql`)
+  ).replace(/\r/g, "");
+  const b = (
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_181B}.sql`)
+  ).replace(/\r/g, "");
+  // O corpo de fornecedores_carimba_atualizado_em: o md5 da 181a e' o do texto entre os dollar-quotes que esta arvore grava, uma vez.
+  const marca =
+    "CREATE OR REPLACE FUNCTION public.fornecedores_carimba_atualizado_em(";
+  const i = mig.indexOf(marca);
+  assert(i >= 0, "fornecedores_carimba_atualizado_em nao esta na migration");
+  const abre = mig.indexOf("AS $$", i) + "AS $$".length;
+  const corpo = mig.slice(abre, mig.indexOf("$$;", abre));
+  const h = createHash("md5").update(corpo).digest("hex");
+  assertEquals(a.split(`'${h}'`).length - 1, 1, `md5 ${h} na 181a`);
+  assertEquals(
+    mig.split(`'${h}'`).length - 1 >= 2,
+    true,
+    "pre-voo e pos-voo da migration citam o mesmo md5",
+  );
+  for (const [nome, sql] of [
+    [NOME_181A, a],
+    [NOME_181B, b],
+  ]) {
+    const hashes = [...sql.matchAll(/'([0-9a-f]{32})'/g)].map((m) => m[1]);
+    assert(hashes.length > 0, `${nome}: sem md5`);
+    for (const x of hashes)
+      assert(mig.includes(`'${x}'`), `${nome}: md5 ${x} nao esta na migration`);
+  }
+});
+
+Deno.test("181a/181b — as guardas que decidem 'sim' estao no texto da 181a (RLS ligada sem FORCE, quatro politicas so do admin atual, privilegios so do authenticated, nada para anon/PUBLIC/service_role, gatilho, funcao sem SECURITY DEFINER e sem EXECUTE)", async () => {
+  const a = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_181A}.sql`);
+  for (const pedaco of [
+    "t.relrowsecurity AND NOT t.relforcerowsecurity",
+    "(SELECT count(*) FROM pg_policy p WHERE p.polrelid = t.oid) = 4",
+    "'( SELECT rls_admin_atual() AS rls_admin_atual)'",
+    "NOT has_table_privilege('authenticated', t.oid, 'TRUNCATE, REFERENCES, TRIGGER')",
+    "NOT has_table_privilege('service_role', t.oid, 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')",
+    "NOT has_any_column_privilege('anon', t.oid, 'SELECT, INSERT, UPDATE, REFERENCES')",
+    "NOT has_any_column_privilege('service_role', t.oid, 'SELECT, INSERT, UPDATE, REFERENCES')",
+    "a.grantee = 0",
+    "NOT f.prosecdef",
+    "f.proconfig = ARRAY['search_path=public']::text[]",
+    "NOT has_function_privilege('authenticated', f.oid, 'EXECUTE')",
+    "'fornecedores_carimba_atualizado_em:23:O:fornecedores_carimba_atualizado_em'",
+  ])
+    assertStringIncludes(a, pedaco, `181a sem a guarda: ${pedaco}`);
+});
+
+Deno.test("181a/181b — registradas no menu do conferir-banco-da-loja, nos dois caminhos do rpc-ci e no portao de rol fechado da release", async () => {
+  const { CONSULTAS_DE_ROL_FECHADO } = await import(
+    new URL("../scripts/frota/publicar-release.mjs", import.meta.url).href
+  );
+  const menu = await Deno.readTextFile(
+    `${RAIZ}/.github/workflows/conferir-banco-da-loja.yml`,
+  );
+  const rpc = await Deno.readTextFile(`${RAIZ}/.github/workflows/rpc-ci.yml`);
+  for (const nome of [NOME_181A, NOME_181B]) {
+    assert(
+      CONSULTAS_DE_ROL_FECHADO.has(nome),
+      `${nome} fora de CONSULTAS_DE_ROL_FECHADO`,
+    );
+    assertStringIncludes(menu, `          - ${nome}\n`);
+    assertEquals(
+      rpc.split(`"scripts/publicacao/consultas/${nome}.sql"`).length - 1,
+      2,
+      `${nome}: nas duas listas de caminhos do rpc-ci`,
+    );
+  }
+  assertStringIncludes(
+    rpc,
+    "node tests/banco/rodar-isolado.cjs tests/banco/os-fornecedores-so-o-admin-da-loja-viva.cjs",
+  );
+});

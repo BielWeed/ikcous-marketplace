@@ -156,6 +156,24 @@ describe("paiDaTelaDoAdmin", () => {
     expect(paiDaTelaDoAdmin("home" as never, null, false)).toBe("profile");
   });
 
+  // 25/11/2026, Central de Fornecedores (E1): "Meus fornecedores" abre pelo botão
+  // da barra de Produtos e o Voltar leva de volta para Produtos, com ou sem
+  // origem (não cai no `default`, que diria "Perfil" e sairia do painel).
+  it("admin-fornecedores volta para Produtos, com ou sem origem", () => {
+    expect(paiDaTelaDoAdmin("admin-fornecedores", null, false)).toBe(
+      "admin-products",
+    );
+    expect(
+      paiDaTelaDoAdmin("admin-fornecedores", "admin-products", false),
+    ).toBe("admin-products");
+    expect(paiDaTelaDoAdmin("admin-fornecedores", "home", false)).toBe(
+      "admin-products",
+    );
+    expect(
+      paiDaTelaDoAdmin("admin-fornecedores", "admin-notifications", false),
+    ).toBe("admin-products");
+  });
+
   // 17/10/2026: "Vender" abre pela barra de baixo, como Início, Pedidos,
   // Produtos, Clientes e Ajustes — é raiz, não sub-tela. O botão do topo diz
   // "Perfil" (print do Gabriel: dizia "Voltar").

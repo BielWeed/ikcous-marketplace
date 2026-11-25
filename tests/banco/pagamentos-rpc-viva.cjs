@@ -108,6 +108,7 @@ const {
   REPETIR_A_DEVOLUCAO,
 } = require("./repetir-a-devolucao-que-falhou-posterior.cjs");
 const { CADASTRO_FISCAL } = require("./o-cadastro-fiscal-posterior.cjs");
+const { FORNECEDORES } = require("./os-fornecedores-posterior.cjs");
 const {
   PRECO_HISTORICO,
 } = require("./o-preco-do-produto-deixa-historico-posterior.cjs");
@@ -1872,6 +1873,10 @@ const POSTERIORES_A_97 = [
   // (citam rls_admin_atual()): sem esta entrada o rollback da 97 recusa (B1_BASELINE_DIVERGENT). O rollback-manual (comum) dela tira
   // a funcao e as politicas e DEIXA as tabelas. Definicao unica em tests/banco/o-cadastro-fiscal-posterior.cjs. No FIM da lista de proposito.
   CADASTRO_FISCAL,
+  // 20261450000000: as quatro politicas dos fornecedores citam rls_admin_atual(): sem esta entrada o rollback da 97 recusa
+  // (B1_BASELINE_DIVERGENT). O rollback-manual (comum) tira o gatilho, a funcao e as politicas e DEIXA a tabela selada com as
+  // linhas. Definicao unica em tests/banco/os-fornecedores-posterior.cjs. No FIM da lista de proposito.
+  FORNECEDORES,
 ];
 
 async function desfazerPosterioresNaTransacao(c) {

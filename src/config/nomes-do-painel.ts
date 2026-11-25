@@ -24,6 +24,7 @@ export const NOMES_DO_PAINEL = {
   "admin-devolucoes": "Devoluções",
   "admin-products": "Produtos",
   "admin-product-form": "Produto",
+  "admin-fornecedores": "Meus fornecedores",
   "admin-coupons": "Cupons",
   "admin-coupon-form": "Cupom",
   "admin-customers": "Clientes",
@@ -59,7 +60,9 @@ export type Aba = (typeof ABAS_DO_PAINEL)[number];
  * Ficam de fora, de propósito:
  *  - a raiz de cada aba (a própria aba é a porta);
  *  - as filhas de lista (`admin-product-form`, `admin-coupon-form`,
- *    `admin-user-detail`): abrem de dentro da lista;
+ *    `admin-user-detail`): abrem de dentro da lista; `admin-fornecedores`
+ *    entra aqui (Central de Fornecedores, 25/11/2026): abre pelo botão
+ *    "Fornecedores" da barra de Produtos, que não é uma porta da aba;
  *  - `admin-pdv` (botão redondo Vender) e `admin-notifications` (sino);
  *  - os APELIDOS (só link antigo).
  *

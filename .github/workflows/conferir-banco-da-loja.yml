@@ -389,6 +389,8 @@ on:
           - 168b-antes-o-crm-ignora-reembolso-integral-base-vigente
           - 180a-conferir-o-cadastro-fiscal-aplicado
           - 180b-antes-o-cadastro-fiscal-ausente
+          - 181a-conferir-os-fornecedores-aplicado
+          - 181b-antes-os-fornecedores-ausentes
           - backups
       projeto:
         description: "Projeto de destino: loja, sandbox, ikcous-publicada (a CAF explicita) ou savy (a loja cliente explicita, mesmas travas): as duas exigem expected_sha; nunca texto livre — achado da rodada 2"

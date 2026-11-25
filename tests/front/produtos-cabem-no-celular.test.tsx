@@ -633,9 +633,14 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
           expect(botao, nome).not.toBeNull();
           expect(botao?.disabled, nome).toBe(true);
         }
-        const novo = [...hospedeiro.querySelectorAll("button")].find((b) =>
-          b.textContent?.includes("Novo produto indisponível"),
+        // Em meia barra a frase longa não cabe: o botão diz "Sem internet" e o
+        // nome completo fica no aria-label (ver produtos-barra-com-fornecedores).
+        const novo = [...hospedeiro.querySelectorAll("button")].find(
+          (b) =>
+            b.getAttribute("aria-label") ===
+            "Novo produto indisponível sem internet",
         );
+        expect(novo?.textContent?.trim()).toBe("Sem internet");
         expect(novo?.disabled).toBe(true);
       },
     );

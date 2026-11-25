@@ -375,6 +375,7 @@ Deno.test("20261350 publicacao: lote unico de apply normal, DEPOIS da 244, vale 
       "167b-conferir-o-cupom-nao-repete-o-codigo-aplicado",
       "168a-conferir-o-crm-ignora-reembolso-integral-aplicado",
       "180a-conferir-o-cadastro-fiscal-aplicado",
+      "181a-conferir-os-fornecedores-aplicado",
     ],
     "os lotes posteriores à 81a são anexados no fim, sem reordenar lotes anteriores",
   );

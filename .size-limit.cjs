@@ -362,7 +362,12 @@ module.exports = [
     // 21/11/2026 (1.5.230): 554 -> 558 kB (avisos de rastreio, estorno, Pix e textos do painel; o painel mediu 554,15 kB no CI, 153 B acima do teto; subo 4 kB, o mesmo passo de sempre). Regra do dono: o teto sobe.
     // 24/11/2026 (1.5.232): 558 -> 562 kB (o build mediu 558,7 kB, 700 B acima do teto, depois das folhas novas do painel e dos avisos de permissao; subo 4 kB, o mesmo passo de sempre). Regra do dono: o teto sobe.
     // 25/11/2026 (Gestao Fiscal, aba Impostos): 562 -> 578 kB (modulo novo inteiro: nucleo de calculo, cadastro, caderno das guias, medidor do MEI e arquivo do contador; o painel mediu 575 kB no build local, 13 kB acima do teto; a aba carrega so quando aberta e nada de src/lib/fiscal entra na vitrine). Regra do dono: o teto sobe.
-    limit: "578 kB",
+    // 25/11/2026 (Central de Fornecedores, etapa E1): 578 -> 586 kB (tela nova inteira do painel: a lista, a folha do
+    // cadastro, o cartao com os atalhos e a leitura/gravacao no banco; o painel mediu 583,53 kB no build local, 5,53 kB
+    // acima do teto, e a base mediu 576,47 kB; a tela carrega so quando aberta, nada dela entra na vitrine). Medido nos
+    // dois lados com o mesmo comando. O teto da vitrine NAO mexeu (704 kB): ela foi de 698,79 para 699,35 kB, os 0,56 kB
+    // do registro da tela nos cinco pontos do roteador. Regra do dono: o teto sobe.
+    limit: "586 kB",
     webpack: false,
   },
   { path: `${output}/assets/*.css`, limit: "100 kB", webpack: false },
