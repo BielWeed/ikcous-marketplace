@@ -72,6 +72,19 @@ test("a página visitada carrega sem rede, servida pelo cache do service worker"
   // portão de ambiente preso — a tela branca do #504 não existe aqui.
   await esperarBootLimpo(page);
   await expect(page.locator("#root > *").first()).toBeVisible();
+  // `#root > *` sozinho aceita QUALQUER tela montada, inclusive as de erro do
+  // GlobalErrorBoundary ("Você está sem internet", "Algo deu errado"), que
+  // também moram no #root. O app inteiro offline é a NAVEGAÇÃO PRINCIPAL da
+  // loja na tela e nenhuma das duas telas de erro (contagem zero).
+  await expect(
+    page.getByRole("navigation", { name: "Navegação principal" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Você está sem internet" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Algo deu errado" }),
+  ).toHaveCount(0);
 
   // E o cache segue de pé para a próxima visita.
   const cachesOffline = await page.evaluate(

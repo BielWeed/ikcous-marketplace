@@ -283,7 +283,11 @@ async function exigirInstalacao(page: Page, versaoDois: string) {
   await expect(
     page.getByRole("status").filter({ hasText: INSTALANDO }),
   ).toHaveCount(0);
-  await expect(page.getByText("Atualizando o Aplicativo")).toHaveCount(0);
+  // Texto ATUAL da tela de recuperação do GlobalErrorBoundary ("Atualizando o
+  // Aplicativo", o de antes, não existe mais e esta conferência nunca falhava).
+  await expect(
+    page.getByRole("heading", { name: "Recuperando o aplicativo" }),
+  ).toHaveCount(0);
 }
 
 test("versão nova espera a troca de tela e a ilha confirma a atualização", async ({

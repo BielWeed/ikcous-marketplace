@@ -195,6 +195,24 @@ for (const { largura, comCupom } of CASOS) {
     expect(pronto.aindaCalculando).toBe(false);
     expect(pronto.temDesconto).toBe(comCupom);
 
+    // OS VALORES da barra, não só a presença das linhas (25/11/2026): Boné
+    // R$ 30 + frete R$ 10 = R$ 40; com o cupom fictício de R$ 5 a barra mostra
+    // o desconto de R$ 5 e o Total FECHA em R$ 35. Um total que ignorasse o
+    // desconto (ou o aplicasse duas vezes) deixaria a altura da barra igual e
+    // este teste verde.
+    // O texto da barra sai sem espaço entre as linhas (cada linha é um bloco
+    // flex): a igualdade é com o texto INTEIRO, linha por linha, na ordem.
+    if (comCupom) {
+      await expect(valores.getByLabel("Desconto de R$ 5,00")).toBeVisible();
+      await expect(valores).toHaveText(
+        "SubtotalR$ 30,00EntregaR$ 10,00Desconto-R$ 5,00TotalR$ 35,00",
+      );
+    } else {
+      await expect(valores).toHaveText(
+        "SubtotalR$ 30,00EntregaR$ 10,00TotalR$ 40,00",
+      );
+    }
+
     expect(cotando.alturaDaBarra).toBeGreaterThan(0);
     // A linha Entrega não quebra (16px) em nenhum dos dois estados.
     expect(pronto.alturaDaLinhaEntrega).toBe(cotando.alturaDaLinhaEntrega);

@@ -6,6 +6,7 @@ import {
   abrirLojaEFinalizar,
   esperarTelaAssentar,
   exigirCriacaoDoPedido,
+  exigirTotalNaTela,
   instalarPagamentoSimulado,
   respostaIndisponivel503,
   respostaPixComQr,
@@ -40,6 +41,10 @@ async function esperarQrDoPix(page: Page) {
   await expect(
     page.getByRole("button", { name: "Copiar código Pix" }),
   ).toBeVisible();
+  // O VALOR que o cliente vai pagar: o total do pedido (Boné + frete), na
+  // seção do PIX — inclusive depois de recarregar a aba (a retomada lê o total
+  // do servidor, não da memória).
+  await exigirTotalNaTela(page, "Pagamento via Pix");
 }
 
 test("PIX: QR e copiar aparecem, e a confirmação vem quando o banco vira pago — uma cobrança só", async ({

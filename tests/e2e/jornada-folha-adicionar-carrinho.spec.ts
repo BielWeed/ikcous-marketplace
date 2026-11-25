@@ -121,6 +121,25 @@ async function exigirVooSoDepoisDaFolha(
     });
 }
 
+/**
+ * A VARIAÇÃO e a QUANTIDADE escolhidas na folha chegaram à LINHA do carrinho
+ * (o badge soma 3, mas só a linha diz DE QUÊ: "Tamanho: P", e não "M"). Abre o
+ * carrinho pela barra de baixo, como a cliente faz.
+ */
+async function exigirLinhaDoCarrinho(page: Page, comToque: boolean) {
+  const botao = page
+    .getByRole("navigation", { name: "Navegação principal" })
+    .getByRole("button", { name: /Carrinho/ });
+  if (comToque) await botao.tap();
+  else await botao.click();
+  const painel = page.getByRole("tabpanel", { name: /Carrinho/ });
+  await expect(
+    painel.getByRole("heading", { name: PRODUTO_ROUPAS }),
+  ).toBeVisible({ timeout: 30_000 });
+  await expect(painel).toContainText("Tamanho: P");
+  await expect(painel).not.toContainText("Tamanho: M");
+}
+
 async function escolherEAdicionar(page: Page) {
   const errosNoFim = await abrirLoja(page);
 
@@ -202,6 +221,8 @@ async function escolherEAdicionar(page: Page) {
   expect(page.url()).not.toContain("product-detail");
   await expect(page.getByText(PRODUTO_ROUPAS).first()).toBeVisible();
 
+  await exigirLinhaDoCarrinho(page, false);
+
   expect(errosNoFim().erros).toEqual([]);
 }
 
@@ -239,6 +260,8 @@ test.describe("toque de dedo real", () => {
     await expect(page.locator("#bottom-nav-cart")).toContainText("3");
     expect(page.url()).not.toContain("product-detail");
     await expect(page.getByText(PRODUTO_ROUPAS).first()).toBeVisible();
+
+    await exigirLinhaDoCarrinho(page, true);
 
     expect(errosNoFim().erros).toEqual([]);
   });
