@@ -2572,9 +2572,14 @@ Deno.test("handler: forma de pagamento desconhecida devolve 400 recuperável, se
 Deno.test("handler: consulta ao Mercado Pago falhando devolve 502, sem confirmar nada com 200", async () => {
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
   const pedido = pedidoBase({ gateway_payment_id: "789" });
-  const supabase = clienteFalso({ pedido, gravado: null });
-  const fetchImpl = async (_url: string, _init?: RequestInit) =>
-    new Response(JSON.stringify({ message: "Payment not found" }), { status: 404 });
+  const registro: { chamadasUpdate: number; valoresUpdate?: Record<string, unknown> } = { chamadasUpdate: 0 };
+  const chamadasRpc: Array<{ nome: string; args: Record<string, unknown> }> = [];
+  const supabase = clienteFalso({ pedido, gravado: null, registro, chamadasRpc });
+  const urlsChamadas: string[] = [];
+  const fetchImpl = async (url: string, _init?: RequestInit) => {
+    urlsChamadas.push(url);
+    return new Response(JSON.stringify({ message: "Payment not found" }), { status: 404 });
+  };
 
   const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
     supabase,
@@ -2582,6 +2587,15 @@ Deno.test("handler: consulta ao Mercado Pago falhando devolve 502, sem confirmar
   });
 
   assertEquals(resposta.status, 502);
+  // O 502 não vem sozinho: a consulta que falhou não pode ter escrito nada no
+  // pedido (nem "pago", nem a vaga) nem chamado RPC nenhuma (confirmar_pagamento,
+  // liberar_cobranca_do_pedido) — um 502 que ainda grava seria o pior dos dois.
+  assertEquals(registro.chamadasUpdate, 0);
+  assertEquals(registro.valoresUpdate, undefined);
+  assertEquals(chamadasRpc.length, 0);
+  // E a consulta aconteceu de fato, UMA vez, no endpoint clássico do id 789.
+  assertEquals(urlsChamadas.length, 1);
+  assertEquals(urlsChamadas[0].includes("/v1/payments/789"), true);
 });
 
 // --- handler: ANOTADO 2 da revisão — três invariantes certas, sem teste ---
@@ -7905,7 +7919,7 @@ Deno.test("log sem dado pessoal: order recuperada SEM id utilizável -> 502 e o 
 });
 
 Deno.test("PIX 409 idempotency — busca devolve order de CARTÃO viva (3DS em action_required): NÃO recupera, 502 (nunca adota cobrança de outro meio)", async () => {
-  const { supabase } = cenarioCartao();
+  const { supabase, registro, chamadasRpc } = cenarioCartao();
   const mp = fetchMP({
     criar: { status: 409, corpo: { errors: [{ code: "idempotency_key_already_used" }] } },
     consultar: {
@@ -7932,10 +7946,19 @@ Deno.test("PIX 409 idempotency — busca devolve order de CARTÃO viva (3DS em a
   );
 
   assertEquals(resposta.status, 502);
+  // "NÃO recupera" tem de ser provado nas três pontas: nada gravado na vaga
+  // (a order do cartão nunca vira o gateway_payment_id do PIX), nenhuma RPC
+  // (nada liberado nem confirmado) e a consulta feita UMA vez, depois de UMA
+  // tentativa de criação (o 409) — sem segunda cobrança, sem cancelar nada.
+  assertEquals(registro.valoresUpdate?.gateway_payment_id, undefined);
+  assertEquals(chamadasRpc.length, 0);
+  assertEquals(mp.criacoes().length, 1);
+  assertEquals(mp.chamadas.filter((c) => c.method !== "POST").length, 1);
+  assertEquals(mp.cancelamentos().length, 0);
 });
 
 Deno.test("PIX 409 idempotency — busca devolve order PIX MORTA (expired): NÃO recupera, 502 (order morta não tem QR a entregar)", async () => {
-  const { supabase } = cenarioCartao();
+  const { supabase, registro, chamadasRpc } = cenarioCartao();
   const mp = fetchMP({
     criar: { status: 409, corpo: { errors: [{ code: "idempotency_key_already_used" }] } },
     consultar: {
@@ -7970,6 +7993,13 @@ Deno.test("PIX 409 idempotency — busca devolve order PIX MORTA (expired): NÃO
   );
 
   assertEquals(resposta.status, 502);
+  // Mesma prova do teste do 3DS: order morta não é adotada (nada na vaga), nada
+  // liberado, uma criação (o 409), uma consulta, nenhum cancelamento.
+  assertEquals(registro.valoresUpdate?.gateway_payment_id, undefined);
+  assertEquals(chamadasRpc.length, 0);
+  assertEquals(mp.criacoes().length, 1);
+  assertEquals(mp.chamadas.filter((c) => c.method !== "POST").length, 1);
+  assertEquals(mp.cancelamentos().length, 0);
 });
 
 // --- Auditoria de 30/09/2026 do cartão (item 1), reescrita na blindagem -----

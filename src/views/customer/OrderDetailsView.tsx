@@ -1208,7 +1208,7 @@ export function OrderDetailsView({
   // ainda, e o convite de login abaixo não pode piscar para quem está logada.
   if (!linkIncompleto && (loading || (authLoading && !user && !order))) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center space-y-4 bg-zinc-50/30">
+      <div className="flex min-h-full flex-col items-center justify-center space-y-4 bg-zinc-50/30">
         <div className="size-12 animate-spin rounded-full border-4 border-zinc-900 border-t-transparent" />
         <p className="text-sm font-semibold text-zinc-500">
           Sincronizando pedido…
@@ -1225,7 +1225,7 @@ export function OrderDetailsView({
     const falhaDeCarregamento = !linkIncompleto && ordersLoadError;
     const semConta = !linkIncompleto && !user && !falhaDeCarregamento;
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-white p-8 text-center">
+      <div className="flex min-h-full flex-col items-center justify-center bg-white p-8 text-center">
         <div className="mb-6 flex size-20 items-center justify-center rounded-[2.5rem] bg-zinc-100">
           <XCircle className="size-10 text-zinc-300" />
         </div>

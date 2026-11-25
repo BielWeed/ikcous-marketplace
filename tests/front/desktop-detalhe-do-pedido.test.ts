@@ -175,6 +175,6 @@ describe("detalhe do pedido no computador — P10", () => {
     // + nome do comprador com `break-words` (18/11/2026): só essa classe entra no literal existente.
     expect(
       createHash("sha256").update(JSON.stringify(classes)).digest("hex"),
-    ).toBe("7d72ef0f8dbf56ac9844e83aa90815b836d5625a20970c521d82c656f5db947a");
+    ).toBe("9bf498a65acb785844627600c04ac49dc1758d21b16964daea8f5be60e342308");
   });
 });

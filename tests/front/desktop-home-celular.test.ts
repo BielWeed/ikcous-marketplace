@@ -31,8 +31,9 @@ const BASE: Record<string, string> = {
     "2690b37164e472b758fcff2bd36cefab24b48d2a5952f4f348a5fb057a053155",
   "components/ui/custom/ProductList.tsx":
     "a548e94b10a5b942d83e6ebdf5613fccbf13e956430ce2ffcffd8b8431708940",
+  // 25/11/2026 (1.5.234): o bloco "Horário de atendimento" do celular ficou compacto, a pedido do dono (ocupava ~200 px); só essa lista mudou.
   "views/customer/HomeView.tsx":
-    "7cb25ed74c0232196b664a3f7d40ef3ab09ce6ef685d680c69c613455ce3e1dc",
+    "3fe49ed4949d9afeb77947e96b1999876486c115b10e5e87985a185c493f518d",
 };
 
 for (const [arquivo, esperado] of Object.entries(BASE)) {
