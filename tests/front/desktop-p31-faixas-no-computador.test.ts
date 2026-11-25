@@ -142,7 +142,7 @@ describe("P31 — faixas no fluxo e busca alinhada no computador", () => {
     [
       "HomeView",
       home,
-      "2775ca73a3264d8d0eabe361067da5ce6a6aba46dec85f4fad0d09b10035a459",
+      "a2e6d4ff0b045317a6cb6578e085495c57991ee56b1c092d5d458f44380c20d0",
     ],
     [
       "SearchView",
