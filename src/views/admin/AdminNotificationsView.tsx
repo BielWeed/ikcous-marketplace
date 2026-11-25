@@ -550,7 +550,12 @@ export const AdminNotificationsView = memo(function AdminNotificationsView({
             onClick={() => {
               const titulo = document.getElementById(novidadesId);
               titulo?.scrollIntoView({ block: "start" });
-              titulo?.focus();
+              // preventScroll: o contêiner rola de forma suave (scroll-smooth)
+              // e um focus() comum, logo depois, interrompe essa rolagem no
+              // meio do caminho (relato do dono, 24/11/2026: "não rola o
+              // suficiente"). O foco só passa ao título; quem rola é a linha
+              // de cima.
+              titulo?.focus({ preventScroll: true });
             }}
             className={`flex min-h-11 w-full items-center gap-3 rounded-[18px] border border-solid border-border bg-muted/30 px-4 py-3 text-left text-base font-semibold text-foreground hover:bg-muted/50 ${FOCO}`}
           >

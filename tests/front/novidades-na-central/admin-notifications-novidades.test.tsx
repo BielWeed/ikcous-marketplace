@@ -334,10 +334,15 @@ describe("Novidades do app na central do lojista", () => {
       configurable: true,
       value: rolagem,
     });
+    // O foco NÃO pode rolar por conta própria: num contêiner com rolagem
+    // suave ele interrompe a rolagem do atalho no meio (24/11/2026).
+    const foco = vi.spyOn(titulo as HTMLElement, "focus");
     act(() => atalho?.click());
     expect(window.location.href).toBe(antes);
     expect(document.activeElement).toBe(titulo);
     expect(rolagem).toHaveBeenCalledTimes(1);
+    expect(rolagem).toHaveBeenCalledWith({ block: "start" });
+    expect(foco).toHaveBeenCalledWith({ preventScroll: true });
     Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
     for (const botao of secao.querySelectorAll("button")) {
       expect(botao.type).toBe("button");

@@ -1220,7 +1220,9 @@ export const ProductCard = memo(function ProductCard({
           (stopPropagation + abertura de produto para cuidar). Estrutura
           compacta (21/10): alça, miniatura inteira, eixos dobráveis e rodapé
           com quantidade/total. Só o grupo de eixos rola; cabeçalho e CTA
-          ficam fixos. A folha e seu véu param acima da barra de navegação.
+          ficam fixos. A folha e seu véu abrem do fundo da tela e COBREM a
+          barra de navegação enquanto abertos (pedido do dono, 24/11/2026;
+          z-[130] do Sheet já fica acima da BottomNav, z-120).
           Foco para dentro, Escape e
           clique fora são do Radix; a DEVOLUÇÃO do foco ao fechar NÃO (sem
           SheetTrigger o Radix não tem para onde devolver) -- é o
@@ -1241,12 +1243,12 @@ export const ProductCard = memo(function ProductCard({
             data-testid="product-card-options-sheet"
             onClick={(e) => e.stopPropagation()}
             showCloseButton={false}
-            className="bottom-[var(--folha-acima-da-barra)] mx-auto max-h-[calc(100dvh-var(--folha-acima-da-barra)-72px)] gap-0 rounded-t-3xl border-t-0 bg-white ease-out motion-reduce:animate-none motion-reduce:transition-none sm:max-w-md"
+            className="mx-auto max-h-[calc(100dvh-72px)] gap-0 rounded-t-3xl border-t-0 bg-white ease-out motion-reduce:animate-none motion-reduce:transition-none sm:max-w-md"
             style={{
               animationDuration: "240ms",
               animationTimingFunction: "ease-out",
             }}
-            overlayClassName="bottom-[var(--folha-acima-da-barra)] motion-reduce:animate-none"
+            overlayClassName="motion-reduce:animate-none"
             onOpenAutoFocus={(evento) => {
               evento.preventDefault();
               focarEscolhaDaFolha(idDaFolha, eixoAberto);

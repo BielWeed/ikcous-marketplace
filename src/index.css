@@ -103,11 +103,12 @@
     --admin-gold: 47 95% 50%;
   }
 
-  /* Só a folha de opções usa estes recuos; sem navegação montada ela
-     volta ao fundo e assume a área segura, sem contá-la duas vezes. */
+  /* --folha-acima-da-barra: só a janela de avaliação do pedido ainda para
+     acima da barra. A folha de opções do card abre do fundo e cobre a
+     barra (24/11/2026), por isso --folha-folga-segura vale sempre a área
+     segura do aparelho. */
   :root:has(nav[aria-label="Navegação principal"]) {
     --folha-acima-da-barra: calc(64px + var(--safe-area-bottom, 0px));
-    --folha-folga-segura: 0px;
   }
 
   @media (min-width: 768px) {
