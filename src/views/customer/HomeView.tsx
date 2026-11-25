@@ -1006,12 +1006,12 @@ export const HomeView = React.memo(function HomeView({
           config (business_hours), nada o exibia. Bloco discreto no fim da
           vitrine, só quando a lojista preencheu. */}
       {config.businessHours?.trim() && (
-        <div className="relative z-10 mt-8 rounded-[2rem] border border-zinc-100 bg-zinc-50/50 p-6 text-center">
-          <p className="flex items-center justify-center gap-2 text-sm font-bold text-zinc-700">
-            <Clock className="size-4 text-admin-gold" />
+        <div className="relative z-10 mx-3 mt-4 flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5 rounded-2xl border border-zinc-100 bg-zinc-50/50 px-4 py-2 text-center sm:mx-4 lg:mx-0">
+          <p className="flex items-center justify-center gap-1.5 text-xs font-bold text-zinc-700">
+            <Clock className="size-3.5 text-admin-gold" />
             Horário de atendimento
           </p>
-          <p className="mt-1 break-words text-sm leading-relaxed text-zinc-500">
+          <p className="min-w-0 break-words text-xs leading-snug text-zinc-500">
             {config.businessHours}
           </p>
         </div>
