@@ -129,6 +129,23 @@ describe("HomeView — o Horário de Funcionamento chega ao cliente", () => {
     expect(paragrafo?.classList.contains("break-words")).toBe(true);
   });
 
+  it("o bloco do horário é compacto e respeita a margem lateral da vitrine", async () => {
+    configAtual = { businessHours: "Seg-Sex: 8h às 19h" };
+    await montar();
+
+    const titulo = [...hospedeiro.querySelectorAll("p")].find((p) =>
+      p.textContent?.includes("Horário de atendimento"),
+    );
+    const bloco = titulo?.parentElement;
+    expect(bloco).toBeDefined();
+    // Relato do dono (25/11): o bloco ocupava ~200 px e encostava nas bordas.
+    expect(bloco?.classList.contains("py-2")).toBe(true);
+    expect(bloco?.classList.contains("flex-wrap")).toBe(true);
+    expect(bloco?.classList.contains("mx-3")).toBe(true);
+    expect(bloco?.classList.contains("p-6")).toBe(false);
+    expect(titulo?.classList.contains("text-xs")).toBe(true);
+  });
+
   it("lojista NÃO preencheu: nenhum bloco de horário vazio na tela", async () => {
     configAtual = { businessHours: "" };
     await montar();

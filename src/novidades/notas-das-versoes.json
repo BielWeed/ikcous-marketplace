@@ -1,4 +1,14 @@
 {
+  "1.5.234": {
+    "titulo": "Tela de entrada sem rolagem a mais e horário de atendimento mais compacto",
+    "novidades": [],
+    "correcoes": [
+      "No celular, a tela de entrar e criar conta não rola mais para baixo sem necessidade: o fundo decorativo deixou de criar uma rolagem extra e o título não fica mais escondido atrás do topo."
+    ],
+    "melhorias": [
+      "Na tela de início, o bloco “Horário de atendimento” ficou bem menor e passou a respeitar a margem lateral da vitrine, em vez de ocupar um espaço grande no fim da página."
+    ]
+  },
   "1.5.233": {
     "titulo": "A janela “Escolher opções” cobre a barra de baixo e o atalho das novidades chega ao fim",
     "novidades": [],
