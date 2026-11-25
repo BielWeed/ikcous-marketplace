@@ -565,6 +565,11 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/caixa-intencao-viva.cjs",
     // 20261260000000: o cartao guarda o motivo da recusa (portao 56a/56b decide certo; so o Postgres efemero).
     "tests/banco/motivo-da-recusa-portao-viva.cjs",
+    // Provas VIVAS das consultas de conferencia 88, 155, 156 e 163 (antes so o TEXTO delas era testado).
+    "tests/banco/so-o-dono-define-cargo-portao-viva.cjs",
+    "tests/banco/chaves-de-frete-so-o-servidor-portao-viva.cjs",
+    "tests/banco/a-observacao-da-inspecao-so-a-loja-ve-portao-viva.cjs",
+    "tests/banco/o-total-comprado-do-cliente-e-o-mesmo-no-crm-portao-viva.cjs",
     // 20261251: lucro por variante e cobertura do custo do estoque.
     "tests/banco/lucro-do-estoque-viva.cjs",
     // 20261250: faturamento do estoque e compatibilidade dos portões ancestrais.
