@@ -318,6 +318,38 @@ describe("mapa das cores soltas do painel", () => {
     ]);
   });
 
+  it("botão travado por aria-disabled: texto cinza vira o tom suave do tema e vence o hover e o foco", () => {
+    const c = lerClasse("aria-disabled:text-zinc-400");
+    const regras = c && regrasDaClasse(c);
+    const seletor = `.aria-disabled\\:text-zinc-400[aria-disabled="true"]${FORA_DO_SIMULADOR}`;
+    expect(regras).toEqual([
+      expect.objectContaining({
+        escopo: "ambos",
+        seletor,
+        declaracao: "color:hsl(var(--admin-text-soft))",
+      }),
+      expect.objectContaining({
+        escopo: "escuro",
+        seletor,
+        declaracao: "color:hsl(var(--admin-text-soft))",
+      }),
+    ]);
+    const ordem = (t: string) => {
+      const x = lerClasse(t);
+      const r = x && regrasDaClasse(x);
+      return Array.isArray(r) ? r[0].ordem : -1;
+    };
+    expect(ordem("hover:text-white")).toBeLessThan(
+      ordem("aria-disabled:text-zinc-400"),
+    );
+    expect(ordem("focus-visible:text-white")).toBeLessThan(
+      ordem("aria-disabled:text-zinc-400"),
+    );
+    expect(ordem("aria-disabled:text-zinc-400")).toBe(
+      ordem("disabled:text-zinc-400"),
+    );
+  });
+
   it("verde/vermelho/laranja de texto: só o Claro ganha tom escuro; o Confortável não muda", () => {
     const c = lerClasse("text-emerald-300");
     const r = c && regrasDaClasse(c);

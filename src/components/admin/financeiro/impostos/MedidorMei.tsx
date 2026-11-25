@@ -46,7 +46,7 @@ import type {
   MotivoSemContaDoMedidor,
 } from "@/lib/fiscal/medidor-mei";
 import { ULTIMO_ANO_CONFERIDO } from "@/lib/fiscal/parametros-da-lei";
-import { TEXTOS_DO_MEDIDOR_DO_MEI } from "@/lib/fiscal/textos";
+import { TEXTOS_DO_MEDIDOR_DO_MEI, mesesPorExtenso } from "@/lib/fiscal/textos";
 import {
   type TomDeEstado,
   classeDoPonto,
@@ -127,10 +127,6 @@ function percentualParaMostrar(percentual: number, faixa: FaixaDoMei): number {
   // (100,004% continua 100,004%). Achado 1 da revisão Opus, 24/11/2026.
   const valor = Math.max(0, Math.round(percentual * 1e9) / 1e9);
   return faixa === "dentro" ? Math.floor(valor) : Math.ceil(valor);
-}
-
-function mesesDeAtividade(meses: number): string {
-  return meses === 1 ? "1 mês" : `${meses} meses`;
 }
 
 const TEXTO_SEM_CONTA = (
@@ -219,7 +215,7 @@ export function MedidorMei({
             {medidor.tetoProporcional ? (
               <p className="text-xs leading-relaxed text-zinc-400">
                 No ano em que a empresa abre, o limite é proporcional:{" "}
-                {mesesDeAtividade(medidor.mesesDeAtividade)} de atividade,
+                {mesesPorExtenso(medidor.mesesDeAtividade)} de atividade,
                 contando o mês da abertura inteiro.
               </p>
             ) : null}
@@ -277,7 +273,7 @@ export function MedidorMei({
             {medidor.tetoProporcional ? (
               <p className="text-xs leading-relaxed text-zinc-400">
                 No ano em que a empresa abre, o limite é proporcional:{" "}
-                {mesesDeAtividade(medidor.mesesDeAtividade)} de atividade,
+                {mesesPorExtenso(medidor.mesesDeAtividade)} de atividade,
                 contando o mês da abertura inteiro.
               </p>
             ) : null}
@@ -369,8 +365,8 @@ export function MedidorMei({
           {medidor.tetoProporcional ? (
             <p className="text-xs leading-relaxed text-zinc-400">
               No ano em que a empresa abre, o limite é proporcional:{" "}
-              {mesesDeAtividade(medidor.mesesDeAtividade)} de atividade,
-              contando o mês da abertura inteiro.
+              {mesesPorExtenso(medidor.mesesDeAtividade)} de atividade, contando
+              o mês da abertura inteiro.
             </p>
           ) : null}
         </div>

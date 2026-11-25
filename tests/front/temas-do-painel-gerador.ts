@@ -534,6 +534,11 @@ export function montarSeletor(
     } else if (v === "aria-pressed") {
       pseudo += '[aria-pressed="true"]';
       ordem = Math.max(ordem, 1);
+    } else if (v === "aria-disabled") {
+      // Botão travado sem `disabled` (o foco não some): vence o hover e o foco, como o
+      // `disabled`, para o texto travado nunca voltar ao tom normal.
+      pseudo += '[aria-disabled="true"]';
+      ordem = Math.max(ordem, ORDEM_DA_VARIANTE.disabled);
     } else if (v === "placeholder") {
       elemento = "::placeholder";
       ordem = Math.max(ordem, 1);

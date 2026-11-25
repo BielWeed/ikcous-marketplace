@@ -294,7 +294,7 @@ describe("EstimativaSimples — série incompleta e recusas do núcleo", () => {
     const texto = textoDe(h);
     expect(texto).toBe(
       "Estimativa do DAS" +
-        "Falta 1 mês de vendas registradas no app para estimar o DAS. Só estimamos quando o app mediu os meses necessários (no mínimo 1 mês de vendas), para não mostrar um número que engana.",
+        "Falta 1 mês de vendas registradas no app para estimar o DAS. A estimativa aparece a partir do segundo mês de vendas no app.",
     );
     expect(texto).not.toContain("R$");
     expect(texto).not.toContain("cerca de");
@@ -318,6 +318,46 @@ describe("EstimativaSimples — série incompleta e recusas do núcleo", () => {
     recomeçar();
     const tres = montar(tela(3));
     expect(textoDe(tres)).toContain("Faltam 3 meses");
+  });
+
+  it("a cauda é a regra do sócio ('a partir do segundo mês') e não se contradiz: nada de 'no mínimo', nada de IKCOUS, no singular e no plural", () => {
+    const CAUDA =
+      "A estimativa aparece a partir do segundo mês de vendas no app.";
+    for (const faltam of [1, 2, 3, 11]) {
+      const h = montar(
+        <SemEstimativa
+          estimativa={{
+            estado: "sem_estimativa",
+            motivo: "faltam_meses",
+            faltam,
+          }}
+        />,
+      );
+      const texto = textoDe(h);
+      const quantos = faltam === 1 ? "Falta 1 mês" : `Faltam ${faltam} meses`;
+      expect(texto, `faltam ${faltam}`).toBe(
+        `Estimativa do DAS${quantos} de vendas registradas no app para estimar o DAS. ${CAUDA}`,
+      );
+      expect(texto, `faltam ${faltam}`).not.toContain("no mínimo");
+      expect(texto, `faltam ${faltam}`).not.toMatch(/IKCOUS/i);
+      recomeçar();
+    }
+  });
+
+  it("o número inválido de 'faltam' também fecha com a mesma cauda", () => {
+    const h = montar(
+      <SemEstimativa
+        estimativa={{
+          estado: "sem_estimativa",
+          motivo: "faltam_meses",
+          faltam: Number.NaN,
+        }}
+      />,
+    );
+    expect(textoDe(h)).toBe(
+      "Estimativa do DAS" +
+        "Ainda faltam meses de vendas registradas no app para estimar o DAS. A estimativa aparece a partir do segundo mês de vendas no app.",
+    );
   });
 
   it("'faltam' que não é um número positivo não vira 'Faltam NaN meses'", () => {

@@ -56,8 +56,11 @@ const FRASE_GENERICA_DE_REGIME =
 const TEXTO_DE_MEI =
   "Quem é MEI paga um valor fixo por mês, por isso não fazemos estimativa. O que ajuda é o medidor do limite de vendas do ano.";
 
+// A regra do sócio (25/11/2026): a estimativa aparece a partir do SEGUNDO mês de vendas no
+// app. Anda junto com `MESES_MINIMOS_MEDIDOS` (estimativa-simples.ts): a cauda não repete o
+// número do mínimo, para nunca contradizer o "Falta N mês(es)" da frente.
 const CAUDA_DE_SERIE =
-  "Só estimamos quando o app mediu os meses necessários (no mínimo 1 mês de vendas), para não mostrar um número que engana.";
+  "A estimativa aparece a partir do segundo mês de vendas no app.";
 
 function textoDeFaltamMeses(faltam: number): string {
   if (!Number.isInteger(faltam) || faltam < 1) {

@@ -28,7 +28,8 @@ mesma pessoa pode ser dona de mais de uma, ou não).
 
 **Cadastrar o dono é passo OBRIGATÓRIO da entrada de toda loja** (parecer do sócio, 25/11/2026).
 Loja nova só está pronta quando o dono está cadastrado **e** a conferência (a consulta 88c, abaixo)
-diz "sim" para ela, e a publicação confere isso **loja por loja**. Na IKCOUS e na Savy, o dono
+diz "sim" para ela. O programador confere isso, na publicação, pela consulta 88c, **loja por
+loja** (passo manual; o portão automático não a roda). Na IKCOUS e na Savy, o dono
 precisa estar cadastrado e conferido **antes** de aplicar a migration `20261440000000` (o
 cadastro fiscal). A frase que a tela mostra para loja sem dono é uma **rede de segurança**, não o
 plano: ela existe para o caso de a conferência falhar, e não para a loja viver assim.
@@ -354,6 +355,7 @@ O cadastro fiscal (aba **Impostos**) depende do mesmo dono: migration
 [`20261440000000_a_loja_guarda_o_cadastro_fiscal.sql`](../../supabase/migrations/20261440000000_a_loja_guarda_o_cadastro_fiscal.sql)
 e consultas `180a` e `180b`. A `180a` e a `180b` só leem o catálogo e **não exigem dono**: elas
 passam mesmo com a loja sem dono, e o portão automático não barra por isso. Isso **não** torna o
-cadastro opcional: cadastrar o dono é passo obrigatório da entrada de toda loja (seção 1), a
-publicação confere loja por loja pela `88c`, e na IKCOUS e na Savy o dono tem de estar
-cadastrado e conferido antes de aplicar a `20261440000000`.
+cadastro opcional: cadastrar o dono é passo obrigatório da entrada de toda loja (seção 1), o
+programador confere isso, na publicação, pela `88c`, loja por loja (passo manual; o portão
+automático não a roda), e na IKCOUS e na Savy o dono tem de estar cadastrado e conferido antes de
+aplicar a `20261440000000`.
