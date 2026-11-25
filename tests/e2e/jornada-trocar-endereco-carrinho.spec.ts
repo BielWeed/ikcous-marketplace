@@ -17,6 +17,7 @@ import {
   instalarLojaFixtura,
   instalarSessaoClienteFixtura,
 } from "./kit-jornadas";
+import { esperarTelaAssentar } from "./pagamento-kit";
 
 // Guarda de rede (kit das jornadas): requisição não prevista derruba o
 // teste, com a lista na mensagem.
@@ -286,14 +287,49 @@ test("UM endereço: Trocar abre a folha por cima dos rodapés, com o endereço e
 
   // Cadastrar a partir da folha leva ao formulário de endereço (a folha
   // fecha antes). Nada é preenchido nem salvo.
+  //
+  // Um Voltar INDEVIDO da folha (o `history.back()` que ela devolve ao fechar
+  // pelo X) chegaria DEPOIS da primeira renderização do formulário e o tiraria
+  // da tela. Em vez de esperar 1 s e torcer, o teste ANOTA, no próprio
+  // navegador, toda chamada a `history.back/go` e todo `popstate` desde antes do
+  // toque; com a tela assentada (por estado, não por relógio) a lista TEM de
+  // estar vazia. A chamada é anotada no instante em que acontece, então um Voltar
+  // indevido não escapa por chegar tarde.
+  await page.evaluate(() => {
+    const registro = { chamadas: [] as string[], popstates: 0 };
+    (window as unknown as { __voltas: typeof registro }).__voltas = registro;
+    const back = window.history.back.bind(window.history);
+    const go = window.history.go.bind(window.history);
+    window.history.back = () => {
+      registro.chamadas.push("back");
+      back();
+    };
+    window.history.go = (delta?: number) => {
+      registro.chamadas.push(`go(${String(delta)})`);
+      go(delta);
+    };
+    window.addEventListener("popstate", () => {
+      registro.popstates += 1;
+    });
+  });
   await folha.getByRole("button", { name: /Cadastrar novo endereço/ }).tap();
   await expect(folha).toBeHidden();
   await expect(page.getByText("Novo Endereço").first()).toBeVisible({
     timeout: 30_000,
   });
   await expect(page).toHaveURL(/address-form/);
-  // Um Voltar indevido da folha pode chegar depois da primeira renderização.
-  await page.waitForTimeout(1_000);
+  await esperarTelaAssentar(page);
+  expect(
+    await page.evaluate(
+      () =>
+        (
+          window as unknown as {
+            __voltas: { chamadas: string[]; popstates: number };
+          }
+        ).__voltas,
+    ),
+    "nenhum Voltar (history.back/go ou popstate) depois do toque em Cadastrar",
+  ).toEqual({ chamadas: [], popstates: 0 });
   await expect(page).toHaveURL(/address-form/);
   await expect(page.getByText("Novo Endereço").first()).toBeVisible();
 

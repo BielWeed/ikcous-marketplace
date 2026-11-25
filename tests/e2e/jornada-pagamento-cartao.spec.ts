@@ -10,6 +10,7 @@ import {
   abrirLojaEFinalizar,
   esperarTelaAssentar,
   exigirCriacaoDoPedido,
+  exigirTotalNaTela,
   instalarPagamentoSimulado,
   respostaCartaoPago,
   respostaCartaoRecusado,
@@ -72,6 +73,8 @@ async function esperarFormularioDoCartao(page: Page) {
     page.getByRole("heading", { name: "Finalize o pagamento" }),
   ).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText("Pagamento com cartão")).toBeVisible();
+  // O VALOR que o cliente vai pagar no cartão: o total do pedido (Boné + frete).
+  await exigirTotalNaTela(page, "Pagamento com cartão");
   await expect(page.getByTestId("cartao-simulado-pagar")).toBeVisible({
     timeout: 30_000,
   });

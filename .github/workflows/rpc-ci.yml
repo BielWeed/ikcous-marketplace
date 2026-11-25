@@ -965,6 +965,54 @@ jobs:
       - name: Prova viva do portao do motivo da recusa do cartao (consultas 56a e 56b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/motivo-da-recusa-portao-viva.cjs
+      # Consultas de conferencia que a publicacao roda em cada loja: antes so o TEXTO delas era
+      # testado; estas provas as EXECUTAM num Postgres efemero (antes/depois da migration e com
+      # um estrago plantado por item). Mesmo esqueleto do portao 56 (conferencia-de-banco-comum).
+      - name: Prova viva do portao do so o dono define cargo (consultas 88a e 88b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/so-o-dono-define-cargo-portao-viva.cjs
+      - name: Prova viva do portao das chaves de frete so do servidor (consultas 163a e 163b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/chaves-de-frete-so-o-servidor-portao-viva.cjs
+      - name: Prova viva do portao da observacao da inspecao (consultas 156a e 156b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-observacao-da-inspecao-so-a-loja-ve-portao-viva.cjs
+      - name: Prova viva do portao do total comprado do cliente (consultas 155a e 155b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-total-comprado-do-cliente-e-o-mesmo-no-crm-portao-viva.cjs
+      # Mais dez consultas de conferencia (mesmo esqueleto): funcoes (e, na 58 e na 151, a tabela e a coluna) que a publicacao
+      # confere pelo corpo (md5) e pelos atributos/ACL. Cada prova planta um estrago por vez e exige que SO o item certo vire
+      # `nao`; o que a consulta nao ve fica escrito no rotulo "ACHADO" de cada prova. A 129b nao tem 129a (o lote nao entrou).
+      - name: Prova viva do portao do balcao que registra so o total conferido (consultas 58a e 58b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-balcao-registra-so-o-total-conferido-portao-viva.cjs
+      - name: Prova viva do portao da base de antes do cancelamento e avanco (consulta 129b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-cancelamento-e-o-avanco-conferem-base-vigente-portao-viva.cjs
+      - name: Prova viva do portao do item que nao veio e pode ser devolvido de novo (consultas 144a e 144b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-item-que-nao-veio-pode-ser-devolvido-de-novo-portao-viva.cjs
+      - name: Prova viva do portao da imagem do banner no computador (consultas 151a e 151b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-banner-tem-imagem-propria-no-computador-portao-viva.cjs
+      - name: Prova viva do portao do Resultado com tarifa, juro e quebra como despesa (consultas 87a e 87b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-resultado-mostra-tarifa-juro-e-quebra-como-despesa-portao-viva.cjs
+      - name: Prova viva do portao da devolucao integral sem perder o centavo do cupom (consultas 157a e 157b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-devolucao-integral-nao-perde-o-centavo-do-cupom-portao-viva.cjs
+      - name: Prova viva do portao do cancelamento da retirada pronta (consultas 158a e 158b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cancelar-retirada-pronta-portao-viva.cjs
+      - name: Prova viva do portao do cancelamento do painel que confere a etapa (consultas 159a e 159b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cancelar-pedido-do-painel-confere-a-etapa-portao-viva.cjs
+      - name: Prova viva do portao do cupom que nao da desconto (consultas 160a e 160b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-cupom-que-nao-da-desconto-portao-viva.cjs
+      - name: Prova viva do portao do relatorio de categorias com item sem produto (consultas 164a e 164b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-relatorio-de-categorias-sem-produto-portao-viva.cjs
       # Receita com custo usa preco efetivo por variante (251): cobertura, zero legitimo,
       # prejuizo, contrato historico, portoes oficiais, rollback e mutantes. CLONE proprio.
       - name: Prova viva do lucro do estoque (migration 20261251)

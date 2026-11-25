@@ -565,6 +565,22 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/caixa-intencao-viva.cjs",
     // 20261260000000: o cartao guarda o motivo da recusa (portao 56a/56b decide certo; so o Postgres efemero).
     "tests/banco/motivo-da-recusa-portao-viva.cjs",
+    // Provas VIVAS das consultas de conferencia 88, 155, 156 e 163 (antes so o TEXTO delas era testado).
+    "tests/banco/so-o-dono-define-cargo-portao-viva.cjs",
+    "tests/banco/chaves-de-frete-so-o-servidor-portao-viva.cjs",
+    "tests/banco/a-observacao-da-inspecao-so-a-loja-ve-portao-viva.cjs",
+    "tests/banco/o-total-comprado-do-cliente-e-o-mesmo-no-crm-portao-viva.cjs",
+    // Provas VIVAS das consultas 58, 87, 129b, 144, 151, 157, 158, 159, 160 e 164 (lote 2; antes so o TEXTO delas era testado).
+    "tests/banco/o-balcao-registra-so-o-total-conferido-portao-viva.cjs",
+    "tests/banco/o-cancelamento-e-o-avanco-conferem-base-vigente-portao-viva.cjs",
+    "tests/banco/o-item-que-nao-veio-pode-ser-devolvido-de-novo-portao-viva.cjs",
+    "tests/banco/o-banner-tem-imagem-propria-no-computador-portao-viva.cjs",
+    "tests/banco/o-resultado-mostra-tarifa-juro-e-quebra-como-despesa-portao-viva.cjs",
+    "tests/banco/a-devolucao-integral-nao-perde-o-centavo-do-cupom-portao-viva.cjs",
+    "tests/banco/cancelar-retirada-pronta-portao-viva.cjs",
+    "tests/banco/cancelar-pedido-do-painel-confere-a-etapa-portao-viva.cjs",
+    "tests/banco/o-cupom-que-nao-da-desconto-portao-viva.cjs",
+    "tests/banco/o-relatorio-de-categorias-sem-produto-portao-viva.cjs",
     // 20261251: lucro por variante e cobertura do custo do estoque.
     "tests/banco/lucro-do-estoque-viva.cjs",
     // 20261250: faturamento do estoque e compatibilidade dos portões ancestrais.
