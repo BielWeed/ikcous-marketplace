@@ -569,13 +569,31 @@ Deno.test("F2e - CONTROLE: papel 'admin' nas duas fontes, com o MESMO JWT, passa
 // ── F3: refund_id inexistente -> 404 ───────────────────────────────────────
 
 Deno.test("F3 - refund_id inexistente responde 404", async () => {
-    const { cliente } = clienteSupaFalso({ linha: null })
+    const { cliente, registro } = clienteSupaFalso({ linha: null })
+    const executor = executorFalso({ tipo: "concluido" })
+    const mp = fetchMpFalso()
     const resposta = await comEnv({}, () =>
         comFetch(fetchAdminFalso, () =>
-            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), { supabase: cliente }),
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), {
+                supabase: cliente,
+                executarEstorno: executor.fn,
+                buscar: mp.buscar,
+            }),
         ),
     )
     assertEquals(resposta.status, 404)
+    // O 404 veio DA LEITURA da linha (uma leitura, que voltou vazia) e parou
+    // ali: nada marcado, nada gravado, nenhuma RPC, o pedido nem foi lido, o
+    // executor de estorno não rodou e o MP não foi tocado.
+    assertEquals(registro.leiturasLinha, 1)
+    assertEquals(registro.marcas.length, 0)
+    assertEquals(registro.finais.length, 0)
+    assertEquals(registro.atualizacoes.length, 0)
+    assertEquals(registro.rpcs.length, 0)
+    assertEquals(registro.autorizacoes.length, 0)
+    assertEquals(registro.leiturasPedido, 0)
+    assertEquals(executor.registro.chamadas.length, 0)
+    assertEquals(mp.registro.chamadas, 0)
 })
 
 Deno.test("F3b - refund_id com formato invalido responde 400 antes de ler o banco", async () => {

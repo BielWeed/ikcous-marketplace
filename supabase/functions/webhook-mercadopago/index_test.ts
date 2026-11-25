@@ -1627,6 +1627,11 @@ Deno.test("RPC devolve erro de banco -> 500, para o MP reenviar", async () => {
   const resposta = await handler(req, { supabase, fetchImpl });
 
   assertEquals(resposta.status, 500);
+  // O 500 tem de vir DA RPC: um 500 de qualquer outra guarda (leitura do
+  // pedido, credencial) passaria no status sozinho. A RPC foi chamada UMA vez,
+  // para este pedido, e o erro dela foi o que segurou o evento na fila do MP.
+  assertEquals(registro.chamadasRpc.length, 1);
+  assertEquals(registro.chamadasRpc[0].args.p_order_id, UUID_PEDIDO);
 });
 
 // --- 'divergente'/'inexistente': dinheiro sem registro (achado BLOQUEANTE

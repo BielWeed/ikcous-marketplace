@@ -16,7 +16,7 @@
  * do cron dizia "pago continua sem push daqui". O pedido c35ce4dd foi
  * fechado por esse caminho.
  */
-import { assert, assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
+import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import { handler as handlerDoWebhook } from "../webhook-mercadopago/index.ts";
 import { handler as handlerDoCron } from "../reconciliar-pagamentos/index.ts";
 
@@ -241,7 +241,6 @@ Deno.test("MATRIZ — a RPC dublê é de fato chamada uma vez por caminho (a mat
     await mudo(() => rodar(supabaseDuble(() => "pago", chamadas)));
     assertEquals(chamadas.filter((n) => n === "confirmar_pagamento").length, 1, nome);
   }
-  assert(true);
 });
 
 // --- a FASE 2: os dois caminhos usam o MESMO módulo, uma vez por pedido -------

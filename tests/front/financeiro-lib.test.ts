@@ -78,13 +78,16 @@ it("receita da DRE usa só as linhas do banco, incluindo receita manual", () => 
   expect(dre.lucroLiquido).toBe(800);
 });
 
+// `bruta` é a receita bruta que o banco informa, escrita À MÃO (canais + R$ 100
+// de receita manual). Antes o esperado era `online + balcao + 100`, a mesma
+// conta que montava a entrada — a asserção só comparava o valor com ele mesmo.
 it.each([
-  { online: 600, balcao: 0 },
-  { online: 0, balcao: 400 },
-  { online: 0, balcao: 0 },
+  { online: 600, balcao: 0, bruta: 700 },
+  { online: 0, balcao: 400, bruta: 500 },
+  { online: 0, balcao: 0, bruta: 100 },
 ])(
   "DRE completa canais zerados ausentes: app=$online, balcão=$balcao",
-  ({ online, balcao }) => {
+  ({ online, balcao, bruta }) => {
     const canais = [
       { grupo: "receita", categoria: "Vendas pelo app", valor: online },
       { grupo: "receita", categoria: "Vendas na loja física", valor: balcao },
@@ -97,7 +100,7 @@ it.each([
     const dre = parseDre({
       receita_online: online,
       receita_balcao: balcao,
-      receita_bruta: online + balcao + 100,
+      receita_bruta: bruta,
       lucro_liquido: 80,
       linhas: [...canais.filter((canal) => canal.valor > 0), manual],
     });
@@ -111,7 +114,13 @@ it.each([
         })),
       ),
     );
-    expect(dre.receitaBruta).toBe(online + balcao + 100);
+    // A DRE fecha: a soma das sublinhas que a pessoa vê (calculada aqui, a
+    // partir das linhas) é a receita bruta do topo, sem canal perdido nem
+    // linha duplicada.
+    expect(sublinhas.reduce((total, linha) => total + linha.valor, 0)).toBe(
+      bruta,
+    );
+    expect(dre.receitaBruta).toBe(bruta);
     expect(dre.lucroLiquido).toBe(80);
   },
 );

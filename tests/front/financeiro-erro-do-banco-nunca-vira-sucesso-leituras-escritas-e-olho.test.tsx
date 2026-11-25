@@ -56,6 +56,7 @@ describe("Financeiro — gravações: erro do banco rejeita, sem erro resolve", 
     () => Promise<unknown>,
     string,
     unknown, // resposta boa do banco
+    unknown, // o que a função DEVOLVE com essa resposta (escrito à mão, não derivado)
   ];
   const gravacoes: Gravacao[] = [
     [
@@ -63,24 +64,28 @@ describe("Financeiro — gravações: erro do banco rejeita, sem erro resolve", 
       () => salvarLancamento({} as Parameters<typeof salvarLancamento>[0]),
       "fin_lancamento_salvar",
       { ids: ["lanc-1"] },
+      ["lanc-1"],
     ],
     [
       "baixarLancamento",
       () => baixarLancamento({ id: "lanc-1", contaId: null }),
       "fin_lancamento_baixar",
       null,
+      undefined,
     ],
     [
       "cancelarLancamento",
       () => cancelarLancamento({ id: "lanc-1", motivo: "engano" }),
       "fin_lancamento_cancelar",
       null,
+      undefined,
     ],
     [
       "abrirCaixa",
       () => abrirCaixa({ valorAbertura: 50, contaId: null }),
       "fin_caixa_abrir",
       null,
+      undefined,
     ],
     [
       "movimentarCaixa",
@@ -95,6 +100,7 @@ describe("Financeiro — gravações: erro do banco rejeita, sem erro resolve", 
         }),
       "fin_caixa_movimentar_com_chave",
       { id: "mov-1", replay: false, status: "ok" },
+      { id: "mov-1", replay: false, status: "ok" },
     ],
     [
       "fecharCaixa",
@@ -106,13 +112,15 @@ describe("Financeiro — gravações: erro do banco rejeita, sem erro resolve", 
         }),
       "fin_caixa_fechar_sessao",
       { id: "sessao-1", esperado: 100, contado: 90, diferenca: -10 },
+      { id: "sessao-1", esperado: 100, contado: 90, diferenca: -10 },
     ],
-    ["salvarConta", () => salvarConta({}), "fin_conta_salvar", null],
+    ["salvarConta", () => salvarConta({}), "fin_conta_salvar", null, undefined],
     [
       "salvarCategoria",
       () => salvarCategoria({} as Parameters<typeof salvarCategoria>[0]),
       "fin_categoria_salvar",
       null,
+      undefined,
     ],
   ];
 
@@ -130,10 +138,10 @@ describe("Financeiro — gravações: erro do banco rejeita, sem erro resolve", 
   );
 
   it.each(gravacoes)(
-    "%s: sem erro resolve",
-    async (_n, gravar, nomeDaRpc, boa) => {
+    "%s: sem erro resolve com o que o banco devolveu (tratado), nunca com outra coisa",
+    async (_n, gravar, nomeDaRpc, boa, esperado) => {
       rpc.mockResolvedValue({ data: boa, error: null });
-      await expect(gravar()).resolves.not.toThrow();
+      await expect(gravar()).resolves.toEqual(esperado);
       expect(rpc.mock.calls[0]?.[0]).toBe(nomeDaRpc);
     },
   );

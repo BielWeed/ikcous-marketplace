@@ -24,7 +24,7 @@ const descontoDoServidorEmCentavos = (
   pct: number,
 ) => Math.floor((subtotalEmCentavos * pct + 50) / 100);
 
-describe("o total da tela fecha com o desconto do cupom de porcentagem arredondado ao centavo", () => {
+describe("aritmética do lado da tela (MODELO do desconto do servidor, não o servidor): arredondarParaCentavos(subtotal - desconto) fecha ao centavo", () => {
   it.each([
     // [subtotal, %, desconto do servidor, total que a ficha tem de fechar]
     [29.95, 10, 3.0, 26.95],
@@ -33,7 +33,7 @@ describe("o total da tela fecha com o desconto do cupom de porcentagem arredonda
     [10.0, 15, 1.5, 8.5],
     [19.99, 5, 1.0, 18.99],
   ])(
-    "R$ %s com %s%% de desconto: o servidor devolve R$ %s e a tela mostra R$ %s",
+    "R$ %s com %s%% de desconto: o MODELO do servidor dá R$ %s e arredondarParaCentavos(subtotal - desconto) dá R$ %s",
     (subtotal, pct, descontoDoServidor, totalEsperado) => {
       expect(
         descontoDoServidorEmCentavos(Math.round(subtotal * 100), pct),
@@ -47,7 +47,7 @@ describe("o total da tela fecha com o desconto do cupom de porcentagem arredonda
     },
   );
 
-  it("o caso da queixa: R$ 29,95 com 10% era 2,995 de desconto (total 26,96 no banco) e agora e 3,00 (total 26,95)", () => {
+  it("o caso da queixa (aritmética pura, sem servidor): R$ 29,95 com 10% era 2,995 de desconto (total 26,96) e com o desconto em centavos inteiros e 3,00 (total 26,95)", () => {
     const antesSemArredondar = (29.95 * 10) / 100; // 2,995 (o que o servidor usava na conta do total)
     const totalDeAntes = arredondarParaCentavos(29.95 - antesSemArredondar);
     expect(totalDeAntes).toBe(26.96);
@@ -55,7 +55,7 @@ describe("o total da tela fecha com o desconto do cupom de porcentagem arredonda
     expect(depois).toBe(26.95);
   });
 
-  it("varredura: de R$ 0,01 a R$ 200,00 com 1% a 100%, a tela e o servidor fecham no mesmo centavo", () => {
+  it("varredura: de R$ 0,01 a R$ 200,00 com 1% a 100%, arredondarParaCentavos e o MODELO do servidor fecham no mesmo centavo", () => {
     let conferidos = 0;
     for (let centavos = 1; centavos <= 20_000; centavos += 7) {
       for (const pct of [1, 5, 10, 15, 20, 33, 50, 99, 100]) {
