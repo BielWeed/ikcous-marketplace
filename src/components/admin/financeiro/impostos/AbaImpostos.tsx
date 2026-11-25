@@ -4,7 +4,7 @@
 // QUEM TEM CONTA (e só eles; nenhum regime é suposto):
 //   sem cadastro            estado vazio "Configure o regime da sua empresa"; NADA de
 //                           estimativa e NENHUMA leitura do `fin_dre`
-//   MEI                     medidor do limite do ano (vendas do ano, as mesmas do Resultado;
+//   MEI                     medidor do limite do ano (vendas do ano menos devoluções, o mesmo número do caderno;
 //                           só conclui enquadramento se o app já vendia desde o começo do
 //                           período medido: a `cobertura` vem do cadastro fiscal). Em
 //                           janeiro, até os valores do ano novo serem conferidos, mostra
@@ -388,7 +388,7 @@ export function AbaImpostos({
       return {
         caderno,
         estimativa,
-        // O número do Resultado (vendas menos devoluções). Sem a série, ou sem o mês
+        // Vendas menos devoluções derivadas (não é a receita líquida do Resultado). Sem a série, ou sem o mês
         // nela, não há linha: nunca "R$ 0,00" no lugar do que não se sabe.
         vendasDoMes: receitas?.get(caderno.mes) ?? null,
         guiasAPagar: guiasAPagarDoMes(lancadas, caderno.mes),
