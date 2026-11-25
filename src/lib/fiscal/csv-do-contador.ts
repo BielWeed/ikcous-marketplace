@@ -73,7 +73,7 @@ const REFERENCIA_MENSAL = /^(\d{4})-(0[1-9]|1[0-2])$/;
 const REFERENCIA_ANUAL = /^\d{4}$/;
 
 /** `AAAA-MM` ou `AAAA` -> primeiro e último dia (inclusivos). Referência torta é erro de quem chamou. */
-function periodoDaReferencia(modo: ModoDoCsv, referencia: string) {
+export function periodoDaReferencia(modo: ModoDoCsv, referencia: string) {
   if (modo === "anual") {
     if (!REFERENCIA_ANUAL.test(referencia)) {
       throw new Error(`referência anual inválida: ${referencia}`);
