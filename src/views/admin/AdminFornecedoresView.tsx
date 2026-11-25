@@ -1,3 +1,7 @@
+// O botão "Novo fornecedor" usa `.produto-principal`, que mora neste CSS. Quem recarrega
+// direto nesta tela (2G/economia de dados: o prefetch é barrado) não passou pela tela de
+// Produtos, então a tela carrega o que precisa. É CSS só do painel (chunk lazy), nunca da vitrine.
+import "@/components/admin/products/catalogo-produtos.css";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import {
   FOCO,
@@ -95,7 +99,16 @@ export const AdminFornecedoresView = memo(function AdminFornecedoresView({
   const salvar = async (dados: DadosDoFornecedor) => {
     if (!folha) return;
     if (folha.tipo === "novo") await criar(folha.id, dados);
-    else await editar(folha.fornecedor.id, dados);
+    else {
+      // A folha guarda a estrela de QUANDO ABRIU. Se o lojista não mexeu nela, a edição não a
+      // manda: assim uma estrela que mudou nesse meio tempo (toque na lista, outro aparelho)
+      // não é desfeita sem aviso por um valor velho.
+      const { favorito, ...semEstrela } = dados;
+      await editar(
+        folha.fornecedor.id,
+        favorito === folha.fornecedor.favorito ? semEstrela : dados,
+      );
+    }
     toast.success(
       folha.tipo === "novo"
         ? "Fornecedor cadastrado."

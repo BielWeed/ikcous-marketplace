@@ -99,6 +99,22 @@ describe("WhatsApp", () => {
     expect(linkDoWhatsapp("5511900000000")).toBe("https://wa.me/5511900000000");
   });
 
+  it("link: zero antigo de operadora/DDD à esquerda é tirado só do LINK (o número salvo não muda)", () => {
+    // "(011) 90000-0000" é guardado como 011900000000 (12 números, aceito pelo banco).
+    const r = validarFornecedor(form({ whatsapp: "(011) 90000-0000" }));
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.dados.whatsapp).toBe("011900000000");
+    expect(linkDoWhatsapp("011900000000")).toBe("https://wa.me/5511900000000");
+    expect(linkDoWhatsapp("01130000000")).toBe("https://wa.me/551130000000");
+    // Sem o zero, nada muda; com país, o 55 continua como está.
+    expect(linkDoWhatsapp("5511900000000")).toBe("https://wa.me/5511900000000");
+  });
+
+  it("link: só zeros, ou pouco número depois de tirar os zeros, não vira atalho", () => {
+    expect(linkDoWhatsapp("0000000000")).toBeNull();
+    expect(linkDoWhatsapp("0123456789")).toBeNull();
+  });
+
   it("link: valor fora do contrato do banco não vira atalho", () => {
     for (const v of [null, "", "abc", "123", "11 90000-0000", "../etc"]) {
       expect(linkDoWhatsapp(v), String(v)).toBeNull();

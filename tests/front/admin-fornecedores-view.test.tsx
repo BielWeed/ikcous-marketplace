@@ -7,6 +7,8 @@
 // validação, edição, exclusão com confirmação, estado vazio, erro e SEM INTERNET.
 //
 // Fixtures inventadas (telefones 5511900000000, domínios .invalid).
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -530,6 +532,22 @@ describe("AdminFornecedoresView (E1)", () => {
     });
   });
 
+  describe("estilo do botão Novo fornecedor", () => {
+    it("a tela carrega o CSS de que o botão depende (.produto-principal mora em catalogo-produtos.css)", () => {
+      // jsdom não aplica CSS; o que se prova é a causa do defeito: quem recarrega direto nesta
+      // tela (2G/economia de dados: o prefetch é barrado) não passa pela tela de Produtos.
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho fixo da tela, montado só com __dirname e literal.
+      const fonte = readFileSync(
+        resolve(__dirname, "../../src/views/admin/AdminFornecedoresView.tsx"),
+        "utf8",
+      );
+      expect(fonte).toContain("produto-principal");
+      expect(fonte).toContain(
+        'import "@/components/admin/products/catalogo-produtos.css";',
+      );
+    });
+  });
+
   describe("editar e excluir", () => {
     it("editar abre a folha já preenchida e grava pelo id do fornecedor", async () => {
       await montar();
@@ -545,8 +563,22 @@ describe("AdminFornecedoresView (E1)", () => {
         expect.objectContaining({
           nome: "Atacado Fixture",
           cidade: "Campinas",
-          favorito: true,
         }),
+      );
+      // A estrela NÃO foi tocada na folha: a edição não a manda (a folha guarda o valor de quando
+      // abriu, que pode já estar velho se a estrela da lista mudou nesse meio tempo).
+      expect(editar.mock.calls[0][1]).not.toHaveProperty("favorito");
+    });
+
+    it("estrela mexida DENTRO da folha é uma escolha do lojista: vai na edição", async () => {
+      await montar();
+      await clicar(botao("Editar Atacado Fixture"));
+      // O COMPLETO abre favorito; o lojista desliga o interruptor da folha.
+      await clicar(campo(/Favorito/));
+      await clicar(botao("Salvar fornecedor"));
+      expect(editar).toHaveBeenCalledWith(
+        "a",
+        expect.objectContaining({ favorito: false }),
       );
     });
 

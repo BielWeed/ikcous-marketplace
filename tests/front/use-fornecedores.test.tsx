@@ -10,11 +10,16 @@
 //      depois de resposta perdida regrava a MESMA linha, nunca duplica;
 //   c. EDITAR/FAVORITAR de linha que sumiu (outro aparelho) NÃO diz "salvo":
 //      PostgREST devolve 200 com zero linhas e o hook transforma isso em erro;
-//   d. EXCLUIR: zero linhas + a linha ainda existe = permissão perdida (erro);
-//      zero linhas + a linha não existe = já tinha sido excluída (sucesso);
+//   d. EXCLUIR com zero linhas NÃO diz "excluído": recarrega a lista do servidor e
+//      avisa que a lista mudou (ler e apagar usam a mesma regra no banco, então
+//      reler a linha não distingue nada: o ramo da releitura não existe mais);
 //   e. erro do banco vira frase em português (permissão, tabela ausente,
 //      campo recusado, rede), sem texto cru nem console.log;
-//   f. toque duplo na estrela não dispara duas gravações.
+//   f. toque duplo na estrela não dispara duas gravações;
+//   g. AÇÕES DIFERENTES no mesmo id esperam uma a outra (favoritar a caminho +
+//      editar/excluir: a segunda roda DEPOIS, com a própria resposta; nunca recebe
+//      a promessa da primeira nem roda em paralelo); a mesma ação continua ignorada
+//      no toque duplo; id diferente nunca espera; falha da primeira não trava a fila.
 import { act, useEffect } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -24,11 +29,15 @@ import { useFornecedores } from "@/hooks/useFornecedores";
 type Resultado = { data: unknown; error: unknown };
 
 const banco = vi.hoisted(() => ({
-  fila: [] as Array<{ data: unknown; error: unknown }>,
+  // Uma entrada pode ser uma promessa solta (adiada): segura aquela chamada até o teste soltar.
+  fila: [] as Array<
+    | { data: unknown; error: unknown }
+    | Promise<{ data: unknown; error: unknown }>
+  >,
   chamadas: [] as Array<{ metodo: string; args: unknown[] }>,
 }));
 
-function proximo(): Resultado {
+function proximo(): Resultado | Promise<Resultado> {
   const r = banco.fila.shift();
   if (!r) throw new Error("o teste não programou a resposta desta chamada");
   return r;
@@ -88,6 +97,18 @@ function linha(id: string, nome: string, favorito = false) {
     favorito,
   };
 }
+
+/** Promessa que o teste solta quando quiser: segura a gravação "a caminho". */
+function adiada() {
+  let resolver!: (r: Resultado) => void;
+  const promessa = new Promise<Resultado>((ok) => {
+    resolver = ok;
+  });
+  return { promessa, resolver };
+}
+
+const chamadasDe = (metodo: string) =>
+  banco.chamadas.filter((c) => c.metodo === metodo);
 
 const DADOS = {
   nome: "Atacado Novo",
@@ -369,6 +390,165 @@ describe("useFornecedores", () => {
     });
   });
 
+  describe("ações diferentes no mesmo fornecedor esperam uma a outra", () => {
+    it("favoritar a caminho + editar: o update da edição SAI (com o WhatsApp novo) e o resultado é o da edição", async () => {
+      banco.fila.push({ data: [linha("1", "Alfa")], error: null });
+      await montar();
+      const estrela = adiada();
+      banco.fila.push(estrela.promessa); // favoritar: a caminho
+      banco.fila.push({
+        data: [{ ...linha("1", "Alfa", true), whatsapp: "5511911112222" }],
+        error: null,
+      }); // editar
+      let favoritando!: Promise<unknown>;
+      let editando!: Promise<{ whatsapp: string | null; favorito: boolean }>;
+      await act(async () => {
+        favoritando = api.favoritar("1", true);
+        editando = api.editar("1", { whatsapp: "5511911112222" });
+        await new Promise((r) => setTimeout(r, 0));
+      });
+      // A edição ESPERA: nada de segunda gravação em paralelo.
+      expect(chamadasDe("update")).toHaveLength(1);
+      await act(async () => {
+        estrela.resolver({ data: [linha("1", "Alfa", true)], error: null });
+        await favoritando;
+      });
+      let resultado!: { whatsapp: string | null; favorito: boolean };
+      await act(async () => {
+        resultado = await editando;
+      });
+      const updates = chamadasDe("update");
+      expect(updates).toHaveLength(2);
+      expect(updates[0].args[0]).toEqual({ favorito: true });
+      expect(updates[1].args[0]).toEqual({ whatsapp: "5511911112222" });
+      // O resultado reportado é o da EDIÇÃO, não o do favoritar.
+      expect(resultado.whatsapp).toBe("5511911112222");
+      expect(api.fornecedores?.[0]).toMatchObject({
+        whatsapp: "5511911112222",
+        favorito: true,
+      });
+    });
+
+    it("favoritar a caminho + excluir: o delete sai de verdade", async () => {
+      banco.fila.push({
+        data: [linha("1", "Alfa"), linha("2", "Beta")],
+        error: null,
+      });
+      await montar();
+      const estrela = adiada();
+      banco.fila.push(estrela.promessa);
+      banco.fila.push({ data: [{ id: "1" }], error: null }); // delete
+      let favoritando!: Promise<unknown>;
+      let excluindo!: Promise<void>;
+      await act(async () => {
+        favoritando = api.favoritar("1", true);
+        excluindo = api.excluir("1");
+        await new Promise((r) => setTimeout(r, 0));
+      });
+      expect(chamadasDe("delete")).toHaveLength(0);
+      await act(async () => {
+        estrela.resolver({ data: [linha("1", "Alfa", true)], error: null });
+        await favoritando;
+        await excluindo;
+      });
+      expect(chamadasDe("delete")).toHaveLength(1);
+      expect(api.fornecedores?.map((f) => f.id)).toEqual(["2"]);
+    });
+
+    it("toque duplo na MESMA ação, mesmo enfileirada atrás de outra: continua UMA chamada só", async () => {
+      banco.fila.push({ data: [linha("1", "Alfa")], error: null });
+      await montar();
+      const estrela = adiada();
+      banco.fila.push(estrela.promessa);
+      banco.fila.push({
+        data: [{ ...linha("1", "Alfa", true), cidade: "Recife" }],
+        error: null,
+      });
+      let tudo!: Promise<unknown>;
+      await act(async () => {
+        tudo = Promise.all([
+          api.favoritar("1", true),
+          api.editar("1", { cidade: "Recife" }),
+          api.editar("1", { cidade: "Recife" }), // 2º toque no Salvar
+          api.favoritar("1", true), // 2º toque na estrela
+        ]);
+        await new Promise((r) => setTimeout(r, 0));
+        estrela.resolver({ data: [linha("1", "Alfa", true)], error: null });
+        await tudo;
+      });
+      expect(chamadasDe("update")).toHaveLength(2);
+    });
+
+    it("outro fornecedor nunca espera: a estrela do 1 a caminho não segura a edição do 2", async () => {
+      banco.fila.push({
+        data: [linha("1", "Alfa"), linha("2", "Beta")],
+        error: null,
+      });
+      await montar();
+      const estrela = adiada();
+      banco.fila.push(estrela.promessa);
+      banco.fila.push({ data: [linha("2", "Beta Novo")], error: null });
+      let favoritando!: Promise<unknown>;
+      await act(async () => {
+        favoritando = api.favoritar("1", true);
+        await api.editar("2", { nome: "Beta Novo" });
+      });
+      expect(chamadasDe("update")).toHaveLength(2);
+      await act(async () => {
+        estrela.resolver({ data: [linha("1", "Alfa", true)], error: null });
+        await favoritando;
+      });
+    });
+
+    it("a primeira ação FALHA: a seguinte roda mesmo assim, com a própria resposta", async () => {
+      banco.fila.push({ data: [linha("1", "Alfa")], error: null });
+      await montar();
+      const estrela = adiada();
+      banco.fila.push(estrela.promessa);
+      banco.fila.push({ data: [linha("1", "Alfa Novo")], error: null });
+      let favoritando!: Promise<unknown>;
+      let editando!: Promise<{ nome: string }>;
+      await act(async () => {
+        favoritando = api.favoritar("1", true);
+        favoritando.catch(() => {}); // a falha é esperada aqui
+        editando = api.editar("1", { nome: "Alfa Novo" });
+        await new Promise((r) => setTimeout(r, 0));
+        estrela.resolver({ data: null, error: { message: "Failed to fetch" } });
+        await expect(favoritando).rejects.toThrow(/Não consegui falar/);
+      });
+      let resultado!: { nome: string };
+      await act(async () => {
+        resultado = await editando;
+      });
+      expect(resultado.nome).toBe("Alfa Novo");
+      expect(chamadasDe("update")).toHaveLength(2);
+    });
+
+    it("estrela que terminou ANTES do Salvar não é desfeita: a edição sem `favorito` não manda a estrela", async () => {
+      banco.fila.push({ data: [linha("1", "Alfa")], error: null });
+      await montar();
+      banco.fila.push({ data: [linha("1", "Alfa", true)], error: null });
+      await act(async () => {
+        await api.favoritar("1", true);
+      });
+      expect(api.fornecedores?.[0].favorito).toBe(true);
+      // A folha abriu com a estrela antiga e o lojista não mexeu nela: a tela manda a edição SEM `favorito`.
+      banco.fila.push({
+        data: [{ ...linha("1", "Alfa", true), cidade: "Recife" }],
+        error: null,
+      });
+      await act(async () => {
+        await api.editar("1", { nome: "Alfa", cidade: "Recife" });
+      });
+      const updates = chamadasDe("update");
+      expect(updates[1].args[0]).not.toHaveProperty("favorito");
+      expect(api.fornecedores?.[0]).toMatchObject({
+        favorito: true,
+        cidade: "Recife",
+      });
+    });
+  });
+
   describe("excluir", () => {
     it("exclui e tira da lista", async () => {
       banco.fila.push({
@@ -383,25 +563,40 @@ describe("useFornecedores", () => {
       expect(api.fornecedores?.map((f) => f.id)).toEqual(["2"]);
     });
 
-    it("zero linhas e a linha NÃO existe mais = já tinha sido excluída: sucesso", async () => {
-      banco.fila.push({ data: [linha("1", "Alfa")], error: null });
-      await montar();
-      banco.fila.push({ data: [], error: null }); // delete devolveu nada
-      banco.fila.push({ data: null, error: null }); // releitura: não existe
-      await act(async () => {
-        await api.excluir("1");
+    it("zero linhas NÃO diz excluído: recarrega a lista do servidor e avisa que a lista mudou", async () => {
+      banco.fila.push({
+        data: [linha("1", "Alfa"), linha("2", "Beta")],
+        error: null,
       });
-      expect(api.fornecedores).toEqual([]);
+      await montar();
+      banco.fila.push({ data: [], error: null }); // delete não apagou nada
+      banco.fila.push({ data: [linha("2", "Beta")], error: null }); // a recarga do servidor
+      await act(async () => {
+        await expect(api.excluir("1")).rejects.toThrow(
+          "A lista mudou e este fornecedor não foi excluído por aqui. Atualizei a lista: confira se ele ainda aparece.",
+        );
+      });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 0));
+      });
+      // Sem releitura da linha (maybeSingle): o banco aplica a mesma regra para ler e apagar.
+      expect(chamadasDe("maybeSingle")).toHaveLength(0);
+      // A lista veio do servidor (duas leituras da lista: a de entrada e a recarga).
+      expect(chamadasDe("range")).toHaveLength(2);
+      expect(api.fornecedores?.map((f) => f.id)).toEqual(["2"]);
     });
 
-    it("zero linhas mas a linha AINDA existe = sem permissão: erro, a linha fica", async () => {
+    it("zero linhas e a linha ainda está no servidor (política barrou): a linha fica na lista recarregada", async () => {
       banco.fila.push({ data: [linha("1", "Alfa")], error: null });
       await montar();
-      banco.fila.push({ data: [], error: null }); // delete não apagou (RLS esconde sem erro)
-      banco.fila.push({ data: { id: "1" }, error: null }); // releitura: ainda está lá
-      await expect(api.excluir("1")).rejects.toThrow(
-        "Só o administrador da loja mexe nos fornecedores. Entre de novo com a conta de administrador.",
-      );
+      banco.fila.push({ data: [], error: null });
+      banco.fila.push({ data: [linha("1", "Alfa")], error: null });
+      await act(async () => {
+        await expect(api.excluir("1")).rejects.toThrow(/não foi excluído/);
+      });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 0));
+      });
       expect(api.fornecedores).toHaveLength(1);
     });
 

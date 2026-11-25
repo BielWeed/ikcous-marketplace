@@ -13,10 +13,13 @@
 //  - EDITAR e FAVORITAR pedem a linha de volta (`select`): o PostgREST responde 200
 //    com ZERO linhas quando a linha sumiu (outro aparelho excluiu) ou quando a
 //    política esconde. Zero linhas NUNCA vira "salvo": vira erro.
-//  - EXCLUIR com zero linhas relê a linha: se ainda existe, a política barrou
-//    (erro de permissão); se não existe, já tinha sido excluída (sucesso).
-//  - Cada id tem uma gravação por vez: o segundo toque enquanto a primeira não
-//    voltou é ignorado (a promessa devolve a mesma da primeira).
+//  - EXCLUIR com zero linhas NÃO diz "excluído": ler e apagar usam a mesma regra
+//    no banco (RLS), então reler a linha não distinguiria "outro aparelho já
+//    excluiu" de "a política escondeu". Vira aviso de lista mudada + recarga.
+//  - Cada fornecedor tem uma gravação por vez, e a trava é por AÇÃO + id: o segundo
+//    toque na MESMA ação enquanto a primeira não voltou é ignorado (devolve a
+//    promessa dela); uma ação DIFERENTE no mesmo id espera a anterior terminar e
+//    roda a sua, com a sua resposta (nunca devolve a da outra).
 //  - Resposta de leitura velha não sobrescreve a nova (contador de geração).
 //  - Nada de dado de fornecedor no console.
 //
@@ -54,6 +57,8 @@ const FRASE_SEM_SERVIDOR =
   "Não consegui falar com o servidor. Confira a internet e tente de novo.";
 const FRASE_NAO_EXISTE_MAIS =
   "Este fornecedor não existe mais (talvez tenha sido excluído em outro aparelho). Atualize a lista.";
+const FRASE_LISTA_MUDOU =
+  "A lista mudou e este fornecedor não foi excluído por aqui. Atualizei a lista: confira se ele ainda aparece.";
 const FRASE_GENERICA = "Não deu certo agora. Tente de novo em instantes.";
 
 /** Erro já em português, pronto para a tela. */
@@ -133,9 +138,13 @@ export interface UseFornecedores {
   readonly erro: string | null;
   readonly recarregar: () => void;
   readonly criar: (id: string, dados: DadosDoFornecedor) => Promise<Fornecedor>;
+  /**
+   * Aceita só os campos que mudaram: o que NÃO vai no objeto não é tocado no banco
+   * (a tela omite `favorito` quando o lojista não mexeu na estrela da folha).
+   */
   readonly editar: (
     id: string,
-    dados: DadosDoFornecedor,
+    dados: Partial<DadosDoFornecedor>,
   ) => Promise<Fornecedor>;
   readonly favoritar: (id: string, favorito: boolean) => Promise<Fornecedor>;
   readonly excluir: (id: string) => Promise<void>;
@@ -147,7 +156,10 @@ export function useFornecedores(ativo: boolean): UseFornecedores {
   const [erro, setErro] = useState<string | null>(null);
   const [tentativa, setTentativa] = useState(0);
   const geracao = useRef(0);
+  // Por "acao:id": a gravação que ainda está a caminho (a mesma ação não repete).
   const emVoo = useRef(new Map<string, Promise<unknown>>());
+  // Por id: o fim da última gravação enfileirada (ação diferente espera por ele).
+  const fila = useRef(new Map<string, Promise<void>>());
 
   useEffect(() => {
     if (!ativo) return;
@@ -202,15 +214,33 @@ export function useFornecedores(ativo: boolean): UseFornecedores {
     );
   }, []);
 
-  /** Uma gravação por id por vez: o segundo toque recebe a promessa da primeira. */
+  /**
+   * Uma gravação por fornecedor por vez, e a chave é AÇÃO + id:
+   *  - a MESMA ação ainda a caminho (toque duplo na estrela ou no Salvar) devolve a
+   *    promessa dela, sem segunda chamada;
+   *  - uma ação DIFERENTE no mesmo id ESPERA a anterior terminar (dando certo ou não) e
+   *    só então roda a sua, com a sua própria resposta. Nunca devolve o resultado da
+   *    outra (seria "salvo" sem ter ido) e nunca roda em paralelo (embaralharia);
+   *  - outro id nunca espera.
+   */
   const umaPorVez = useCallback(
-    <T>(id: string, executar: () => Promise<T>): Promise<T> => {
-      const existente = emVoo.current.get(id);
+    <T>(acao: string, id: string, executar: () => Promise<T>): Promise<T> => {
+      const chave = `${acao}:${id}`;
+      const existente = emVoo.current.get(chave);
       if (existente) return existente as Promise<T>;
-      const p = executar().finally(() => {
-        emVoo.current.delete(id);
-      });
-      emVoo.current.set(id, p);
+      const anterior = fila.current.get(id) ?? Promise.resolve();
+      const p = anterior.then(executar);
+      const minhaVez = p.then(
+        () => undefined,
+        () => undefined,
+      );
+      emVoo.current.set(chave, p);
+      fila.current.set(id, minhaVez);
+      const liberar = () => {
+        if (emVoo.current.get(chave) === p) emVoo.current.delete(chave);
+        if (fila.current.get(id) === minhaVez) fila.current.delete(id);
+      };
+      minhaVez.then(liberar);
       return p;
     },
     [],
@@ -218,7 +248,7 @@ export function useFornecedores(ativo: boolean): UseFornecedores {
 
   const criar = useCallback(
     (id: string, dados: DadosDoFornecedor) =>
-      umaPorVez(id, async () => {
+      umaPorVez("criar", id, async () => {
         try {
           const { data, error } = await gravando(
             supabase
@@ -240,8 +270,12 @@ export function useFornecedores(ativo: boolean): UseFornecedores {
   );
 
   const atualizar = useCallback(
-    (id: string, mudanca: Partial<DadosDoFornecedor>) =>
-      umaPorVez(id, async () => {
+    (
+      acao: "editar" | "favoritar",
+      id: string,
+      mudanca: Partial<DadosDoFornecedor>,
+    ) =>
+      umaPorVez(acao, id, async () => {
         try {
           const { data, error } = await gravando(
             supabase
@@ -264,33 +298,29 @@ export function useFornecedores(ativo: boolean): UseFornecedores {
   );
 
   const editar = useCallback(
-    (id: string, dados: DadosDoFornecedor) => atualizar(id, dados),
+    (id: string, dados: Partial<DadosDoFornecedor>) =>
+      atualizar("editar", id, dados),
     [atualizar],
   );
   const favoritar = useCallback(
-    (id: string, favorito: boolean) => atualizar(id, { favorito }),
+    (id: string, favorito: boolean) => atualizar("favoritar", id, { favorito }),
     [atualizar],
   );
 
   const excluir = useCallback(
     (id: string) =>
-      umaPorVez(id, async () => {
+      umaPorVez("excluir", id, async () => {
         try {
           const apagada = await gravando(
             supabase.from("fornecedores").delete().eq("id", id).select("id"),
           );
           if (apagada.error) throw apagada.error;
           if (!Array.isArray(apagada.data) || apagada.data.length === 0) {
-            // Zero linhas: a política barrou (a linha ainda está lá) ou já tinha sido excluída.
-            const releitura = await gravando(
-              supabase
-                .from("fornecedores")
-                .select("id")
-                .eq("id", id)
-                .maybeSingle(),
-            );
-            if (releitura.error) throw releitura.error;
-            if (releitura.data) throw new ErroDosFornecedores(FRASE_SO_ADMIN);
+            // Zero linhas: outro aparelho já excluiu, ou a política escondeu a linha. Ler e
+            // apagar usam a MESMA regra no banco, então reler não distingue os dois casos.
+            // Não se diz "excluído" (não foi por aqui): a lista é recarregada do servidor.
+            setTentativa((t) => t + 1);
+            throw new ErroDosFornecedores(FRASE_LISTA_MUDOU);
           }
           setFornecedores((atual) => (atual ?? []).filter((f) => f.id !== id));
         } catch (e) {

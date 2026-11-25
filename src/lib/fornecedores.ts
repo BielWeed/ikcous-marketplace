@@ -268,13 +268,20 @@ export function validarFornecedor(
   };
 }
 
-/** `https://wa.me/55...` — sem país (até 11 números) ganha 55; com país fica como está. */
+/**
+ * `https://wa.me/55...` — sem país (até 11 números) ganha 55; com país fica como está.
+ * Zeros à esquerda (o zero antigo de operadora/DDD, "(011) 90000-0000") saem só do LINK;
+ * o número salvo no banco não muda. Só números do Brasil ou já com 55 são suportados.
+ */
 export function linkDoWhatsapp(
   valor: string | null | undefined,
 ): string | null {
   if (typeof valor !== "string" || !SO_NUMEROS_DO_BANCO.test(valor))
     return null;
-  return `https://wa.me/${valor.length <= 11 ? `55${valor}` : valor}`;
+  const nacional = valor.replace(/^0+/, "");
+  // Telefone do Brasil com DDD tem no mínimo 10 números; menos que isso, depois de tirar os zeros, não é número.
+  if (nacional.length < 10) return null;
+  return `https://wa.me/${nacional.length <= 11 ? `55${nacional}` : nacional}`;
 }
 
 /** `https://instagram.com/usuario` — só de usuário que passa na regra do banco. */
