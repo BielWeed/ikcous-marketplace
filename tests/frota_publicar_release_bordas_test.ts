@@ -1339,3 +1339,272 @@ Deno.test("dependenciasReais: ref, nome de function e ramo mal formados são rec
     );
   });
 });
+
+// ====================================================================
+// listarRuns: a JANELA de runs que o portão lê do GitHub
+//
+// A prova de banco ("conferir <consulta> em <loja>") sai de `gh run list`. O
+// GitHub devolve do run MAIS NOVO para o mais antigo e o `--limit` corta o fim:
+// com a janela antiga (100) e 10+ lojas, os runs da prova mais antiga de uma
+// release de 3 a 5 lotes saíam da lista e o portão bloqueava sozinho, "sem
+// run", mesmo com tudo feito (auditoria de escala, 25/11/2026). A janela nova
+// tem de cobrir 60 lojas × 8 lotes × 2 runs = 960 (1000 é o teto do GitHub).
+// ====================================================================
+
+const JSON_DOS_RUNS =
+  "databaseId,displayTitle,headSha,createdAt,updatedAt,conclusion,status";
+const LOJAS_DA_FROTA = 60;
+const LOTES_DA_RELEASE = 4;
+const RUNS_POR_LOTE_E_LOJA = 2; // a prova "a" e a prova "b" do lote
+// Escala-alvo do conserto, escrita à mão de propósito (não vem do script): se
+// alguém baixar a janela de novo, este número não acompanha.
+const RUNS_QUE_A_JANELA_PRECISA_COBRIR = 60 * 8 * 2;
+const TETO_DO_GITHUB = 1000;
+
+/** Dublê do GitHub: guarda os runs do mais novo ao mais antigo e obedece o
+ * `--limit` como o `gh run list` real (devolve só os N primeiros).
+ * `janelaMaxima` simula uma janela menor que a pedida (o comportamento antigo). */
+function githubDeDuble({
+  runsPorWorkflow,
+  janelaMaxima = Number.POSITIVE_INFINITY,
+}) {
+  const chamadas = [];
+  const rodarGh = async (args) => {
+    chamadas.push(args);
+    assertEquals(args.slice(0, 2), ["run", "list"]);
+    const workflow = args[args.indexOf("--workflow") + 1];
+    const limite = Number(args[args.indexOf("--limit") + 1]);
+    return JSON.stringify(
+      (runsPorWorkflow[workflow] ?? []).slice(
+        0,
+        Math.min(limite, janelaMaxima),
+      ),
+    );
+  };
+  return { chamadas, rodarGh };
+}
+
+/** 60 lojas × 4 lotes × 2 provas = 480 runs de conferência, do mais novo ao
+ * mais antigo (lote 4 primeiro, lote 1 por último). A prova ALVO — a "a" do
+ * lote 1 da loja-46 — fica na posição 450 e é o único run com o seu título. */
+function cenarioDaFrotaGrande() {
+  const consultasDoLote = (lote) => [
+    `${lote}a-fixture-aplicado`,
+    `${lote}b-fixture-antes`,
+  ];
+  const lojas = Array.from(
+    { length: LOJAS_DA_FROTA },
+    (_, i) => `loja-${String(i + 1).padStart(2, "0")}`,
+  );
+  const conferir = [];
+  for (let lote = LOTES_DA_RELEASE; lote >= 1; lote--) {
+    for (const loja of lojas) {
+      for (const consulta of consultasDoLote(lote)) {
+        conferir.push({ loja, consulta });
+      }
+    }
+  }
+  assertEquals(
+    conferir.length,
+    LOJAS_DA_FROTA * LOTES_DA_RELEASE * RUNS_POR_LOTE_E_LOJA,
+  );
+  const alvo = { loja: "loja-46", consulta: consultasDoLote(1)[0] };
+  const posicaoDoAlvo = conferir.findIndex(
+    (c) => c.loja === alvo.loja && c.consulta === alvo.consulta,
+  );
+  assertEquals(posicaoDoAlvo, 450, "o cenário perdeu a posição 450");
+  const runsDeConferir = conferir.map((c, i) => ({
+    databaseId: 1000 + i,
+    displayTitle: `conferir ${c.consulta} em ${c.loja}`,
+    headSha: OUTRO,
+    // 30 s entre um run e o seguinte: os 480 cabem em 4 h (validade de 6 h)
+    createdAt: new Date(AGORA - 60_000 - i * 30_000).toISOString(),
+    updatedAt: new Date(AGORA - 30_000 - i * 30_000).toISOString(),
+    conclusion: "success",
+    status: "completed",
+  }));
+  const inicioDoAlvo = Date.parse(runsDeConferir[posicaoDoAlvo].createdAt);
+  // os applies de cada lote e loja são ANTERIORES à prova mais antiga
+  const runsDeAplicar = [];
+  for (let lote = LOTES_DA_RELEASE; lote >= 1; lote--) {
+    for (const loja of lojas) {
+      const n = runsDeAplicar.length;
+      runsDeAplicar.push({
+        databaseId: 5000 + n,
+        displayTitle: `aplicar em ${loja}: 2026119200000${lote}_fixture.sql`,
+        headSha: OUTRO,
+        createdAt: new Date(inicioDoAlvo - 3_600_000 - n * 1000).toISOString(),
+        updatedAt: new Date(inicioDoAlvo - 3_000_000 - n * 1000).toISOString(),
+        conclusion: "success",
+        status: "completed",
+      });
+    }
+  }
+  return {
+    alvo,
+    posicaoDoAlvo,
+    runsPorWorkflow: {
+      "conferir-banco-da-loja.yml": runsDeConferir,
+      "aplicar-migrations.yml": runsDeAplicar,
+    },
+  };
+}
+
+function provarAlvoNaFrotaGrande(reais, alvo) {
+  return evidenciaDaProva({
+    consulta: alvo.consulta,
+    projeto: alvo.loja,
+    projetosNoMesmoBanco: [],
+    ref: LOJA_B,
+    sha: SHA,
+    topo: TOPO,
+    validadeHoras: 6,
+    agora: AGORA,
+    deps: {
+      listarRuns: reais.listarRuns,
+      arvoreIgual: async () => true,
+      logDoRun: async () =>
+        `VEREDITO-CONSULTA consulta=${alvo.consulta} ref=${LOJA_B} sha=${OUTRO} linhas=5 ok_false=0 ok_nao_booleano=0 rol=ok\n`,
+    },
+  });
+}
+
+Deno.test("listarRuns: pede ao gh uma janela que cobre 60 lojas × 8 lotes × 2 runs, no teto do GitHub, e o mesmo --json de antes", async () => {
+  const gh = githubDeDuble({
+    runsPorWorkflow: {
+      "conferir-banco-da-loja.yml": [],
+      "aplicar-migrations.yml": [],
+    },
+  });
+  await comDependenciasReais(async () => {
+    const reais = dependenciasReais({ rodarGh: gh.rodarGh });
+    await reais.listarRuns("conferir-banco-da-loja.yml");
+    await reais.listarRuns("aplicar-migrations.yml");
+  });
+  assertEquals(gh.chamadas.length, 2);
+  for (const [i, workflow] of [
+    "conferir-banco-da-loja.yml",
+    "aplicar-migrations.yml",
+  ].entries()) {
+    const args = gh.chamadas[i];
+    assertEquals(args.slice(0, 4), ["run", "list", "--workflow", workflow]);
+    const limite = Number(args[args.indexOf("--limit") + 1]);
+    assert(
+      limite >= RUNS_QUE_A_JANELA_PRECISA_COBRIR,
+      `janela de ${limite} runs não cobre 60 lojas × 8 lotes × 2 (${RUNS_QUE_A_JANELA_PRECISA_COBRIR})`,
+    );
+    assert(
+      limite <= TETO_DO_GITHUB,
+      `janela de ${limite} passa do teto de ${TETO_DO_GITHUB} do GitHub`,
+    );
+    // o formato da resposta não muda: quem lê os campos continua o mesmo
+    assertEquals(args[args.indexOf("--json") + 1], JSON_DOS_RUNS);
+  }
+});
+
+Deno.test("listarRuns: a lista de cada workflow é lida UMA vez (cache por workflow) e os dois workflows não se misturam", async () => {
+  const gh = githubDeDuble({
+    runsPorWorkflow: {
+      "conferir-banco-da-loja.yml": [{ databaseId: 1 }],
+      "aplicar-migrations.yml": [{ databaseId: 2 }, { databaseId: 3 }],
+    },
+  });
+  await comDependenciasReais(async () => {
+    const reais = dependenciasReais({ rodarGh: gh.rodarGh });
+    assertEquals(
+      (await reais.listarRuns("conferir-banco-da-loja.yml")).length,
+      1,
+    );
+    assertEquals(
+      (await reais.listarRuns("conferir-banco-da-loja.yml")).length,
+      1,
+    );
+    assertEquals((await reais.listarRuns("aplicar-migrations.yml")).length, 2);
+    assertEquals((await reais.listarRuns("aplicar-migrations.yml")).length, 2);
+  });
+  assertEquals(gh.chamadas.length, 2);
+});
+
+Deno.test("prova: 60 lojas × 4 lotes × 2 runs = 480 runs, a prova mais antiga na posição 450 AINDA é achada (POSITIVA)", async () => {
+  const { alvo, posicaoDoAlvo, runsPorWorkflow } = cenarioDaFrotaGrande();
+  assertEquals(posicaoDoAlvo, 450);
+  const gh = githubDeDuble({ runsPorWorkflow });
+  await comDependenciasReais(async () => {
+    const reais = dependenciasReais({ rodarGh: gh.rodarGh });
+    const r = await provarAlvoNaFrotaGrande(reais, alvo);
+    assertEquals(r.estado, "POSITIVA", r.motivo);
+    assertEquals(r.ok, true);
+    assertEquals(
+      r.run.displayTitle,
+      `conferir ${alvo.consulta} em ${alvo.loja}`,
+    );
+  });
+});
+
+Deno.test("prova: o MESMO cenário de 480 runs com a janela antiga de 100 NÃO acha a prova (controle: o cenário discrimina)", async () => {
+  const { alvo, runsPorWorkflow } = cenarioDaFrotaGrande();
+  const gh = githubDeDuble({ runsPorWorkflow, janelaMaxima: 100 });
+  await comDependenciasReais(async () => {
+    const reais = dependenciasReais({ rodarGh: gh.rodarGh });
+    const r = await provarAlvoNaFrotaGrande(reais, alvo);
+    assertEquals(r.estado, "SEM_EVIDENCIA");
+    assertEquals(r.ok, false);
+    assertStringIncludes(
+      r.motivo,
+      `sem run "conferir ${alvo.consulta} em ${alvo.loja}"`,
+    );
+  });
+});
+
+Deno.test("prova: janela grande não afrouxa o portão — run NOVO vermelho da mesma prova, no topo da lista, ainda vence o antigo verde da posição 450", async () => {
+  const { alvo, runsPorWorkflow } = cenarioDaFrotaGrande();
+  const conferir = runsPorWorkflow["conferir-banco-da-loja.yml"];
+  const vermelho = {
+    ...conferir[0],
+    databaseId: 99999,
+    displayTitle: `conferir ${alvo.consulta} em ${alvo.loja}`,
+    createdAt: new Date(AGORA - 1000).toISOString(),
+    conclusion: "failure",
+  };
+  const gh = githubDeDuble({
+    runsPorWorkflow: {
+      ...runsPorWorkflow,
+      "conferir-banco-da-loja.yml": [vermelho, ...conferir],
+    },
+  });
+  await comDependenciasReais(async () => {
+    const reais = dependenciasReais({ rodarGh: gh.rodarGh });
+    const r = await provarAlvoNaFrotaGrande(reais, alvo);
+    assertEquals(r.estado, "SEM_EVIDENCIA");
+    assertStringIncludes(r.motivo, "terminou failure");
+  });
+});
+
+Deno.test("prova: janela grande não afrouxa o portão — apply DEPOIS da prova antiga, no topo da lista de applies, ainda vence a evidência", async () => {
+  const { alvo, runsPorWorkflow } = cenarioDaFrotaGrande();
+  const applyDepois = {
+    databaseId: 88888,
+    displayTitle: `aplicar em ${alvo.loja}: 20261199000000_depois.sql`,
+    headSha: OUTRO,
+    createdAt: new Date(AGORA - 120_000).toISOString(),
+    updatedAt: new Date(AGORA - 60_000).toISOString(),
+    conclusion: "success",
+    status: "completed",
+  };
+  const gh = githubDeDuble({
+    runsPorWorkflow: {
+      ...runsPorWorkflow,
+      "aplicar-migrations.yml": [
+        applyDepois,
+        ...runsPorWorkflow["aplicar-migrations.yml"],
+      ],
+    },
+  });
+  await comDependenciasReais(async () => {
+    const reais = dependenciasReais({ rodarGh: gh.rodarGh });
+    const r = await provarAlvoNaFrotaGrande(reais, alvo);
+    assertEquals(r.estado, "SEM_EVIDENCIA");
+    assertStringIncludes(r.motivo, "evidência vencida");
+    assertStringIncludes(r.motivo, "88888");
+  });
+});

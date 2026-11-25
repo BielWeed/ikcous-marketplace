@@ -1910,12 +1910,33 @@ function lerNoSha(sha, caminho, cache) {
   return conteudo;
 }
 
-export function dependenciasReais() {
+/**
+ * Quantos runs de CADA workflow o portão lê do GitHub (`gh run list --limit`).
+ * A lista vem do run mais novo para o mais antigo e o limite corta o FIM dela:
+ * se a prova mais antiga da release sai da janela, o portão bloqueia sozinho
+ * ("sem run"), mesmo com tudo feito. A conta, por loja e por lote, são 2 runs
+ * de conferência (a prova "a" e a "b"):
+ *   lojas × lotes × 2 = 60 × 8 × 2 = 960
+ * ou seja, uma release de até 8 lotes em 60 lojas cabe (5 lotes usam 600, 60%
+ * da janela; a janela antiga de 100 só dava para 10 lojas × 5 lotes). 1000 é o
+ * TETO que o GitHub entrega por consulta: passar disso não adianta. Se a frota
+ * ou o número de lotes crescer a ponto de 1000 apertar, o próximo passo é
+ * filtrar do lado do GitHub (`--created`), não subir este número.
+ */
+export const RUNS_LIDOS_POR_WORKFLOW = 1000;
+
+/**
+ * `rodarGh(args, opcoes)` existe só para os testes trocarem o `gh` por um
+ * dublê (nunca rede, nunca token); em produção ninguém passa nada e vale o
+ * `gh` real do PATH, exatamente como antes.
+ */
+export function dependenciasReais({ rodarGh } = {}) {
   const politica = lerPolitica();
   const canais = lerCanais();
   const executor = criarExecutorVercel();
   const supabase = comandoNoWindows("supabase");
   const gh = comandoNoWindows("gh");
+  const executarGh = rodarGh ?? ((args, opcoes) => rodar(gh, args, opcoes));
   const git = (args) => rodar("git", ["-C", RAIZ, ...args]);
   const cache = new Map();
   const cacheRuns = new Map();
@@ -1964,13 +1985,13 @@ export function dependenciasReais() {
     },
     listarRuns: async (workflow) => {
       if (!cacheRuns.has(workflow)) {
-        const saida = await rodar(gh, [
+        const saida = await executarGh([
           "run",
           "list",
           "--workflow",
           workflow,
           "--limit",
-          "100",
+          String(RUNS_LIDOS_POR_WORKFLOW),
           "--json",
           "databaseId,displayTitle,headSha,createdAt,updatedAt,conclusion,status",
         ]);
@@ -1979,7 +2000,7 @@ export function dependenciasReais() {
       return cacheRuns.get(workflow);
     },
     logDoRun: (id) =>
-      rodar(gh, ["run", "view", String(Number(id)), "--log"], {
+      executarGh(["run", "view", String(Number(id)), "--log"], {
         timeout: 120000,
       }),
     // SHA do topo do ramo no GitHub (o commit que um `gh workflow run --ref` roda),
