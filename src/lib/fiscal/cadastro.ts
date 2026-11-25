@@ -10,6 +10,7 @@
 // id ou número de loja mora no código.
 
 import { ehDataIso } from "@/lib/financeiro";
+import type { Database } from "@/types/database.types";
 import type { DataIso } from "@/types/financeiro";
 
 export type RegimeFiscal = "mei" | "simples" | "presumido" | "real" | "nao_sei";
@@ -27,20 +28,14 @@ export const ATIVIDADES_FISCAIS: readonly AtividadeFiscal[] = [
   "com_servico",
 ];
 
-// A tabela `fiscal_cadastro` ainda não está em src/types/database.types.ts:
-// tipo local com exatamente as colunas da migration. Quando os tipos do banco
-// chegarem, isto vira `Database["public"]["Tables"]["fiscal_cadastro"]["Row"]`.
-// `id` é a trava de "uma linha só" (boolean sempre true).
-export interface LinhaDoCadastroFiscal {
-  id: boolean;
-  regime: RegimeFiscal;
-  atividade: AtividadeFiscal;
-  aberta_em: string | null;
-  /** Sempre dia 1 (CHECK no banco): o mês em que começou a vender pelo app. */
-  vende_no_app_desde: string | null;
-  atualizado_em: string | null;
-  atualizado_por: string | null;
-}
+// A linha de `fiscal_cadastro` é a do banco (src/types/database.types.ts), não
+// uma cópia: a nulidade e os nomes das colunas vêm da migration. `id` é a trava
+// de "uma linha só" (boolean sempre true); `vende_no_app_desde` é sempre dia 1
+// (CHECK no banco). `regime` e `atividade` são `text` com CHECK no banco, então
+// aqui chegam como `string`: quem estreita para `RegimeFiscal`/`AtividadeFiscal`
+// é `parseCadastroFiscal`, que recusa o que o app não conhece.
+export type LinhaDoCadastroFiscal =
+  Database["public"]["Tables"]["fiscal_cadastro"]["Row"];
 
 /** O cadastro com os nomes do app (mesmo padrão dos `parse*` do Financeiro). */
 export interface CadastroFiscal {

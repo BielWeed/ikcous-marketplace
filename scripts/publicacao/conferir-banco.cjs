@@ -3289,7 +3289,32 @@ const ROL_DA_168 = [
   "get_admin_user_detail: assinatura e atributos conhecidos",
   "get_admin_user_detail: EXECUTE permitido para authenticated e service_role, sem PUBLIC ou anon",
 ];
+// Lote 180 (20261440000000, a loja guarda o cadastro fiscal e so o dono altera: tabelas fiscal_cadastro e fiscal_cadastro_log e a funcao
+// fiscal_cadastro_salvar). A 180a prova o estado novo (9 itens, so catalogo, sem ler linha de tabela alguma). A 180b prova os objetos novos
+// AUSENTES e a base que o pre-voo da migration exige (7 itens). Nenhuma das duas exige dono cadastrado: isso e' a 88c, e nao bloqueia.
+const ROL_DA_180A = [
+  "controle: catalogo publico visivel",
+  "fiscal_cadastro_salvar: uma so, com o corpo da 20261440000000 (md5)",
+  "fiscal_cadastro_salvar: atributos de sempre (SECURITY DEFINER, plpgsql, VOLATILE, search_path fixo em public, jsonb, um argumento p jsonb)",
+  "fiscal_cadastro_salvar: EXECUTE so para authenticated (PUBLIC, anon e service_role nao)",
+  "fiscal_cadastro e fiscal_cadastro_log: tabelas comuns com RLS ligada sem FORCE, uma politica de SELECT (authenticated) cada, so do admin atual",
+  "fiscal_cadastro e fiscal_cadastro_log: so SELECT para authenticated e service_role; nenhuma escrita para ninguem de aplicacao; anon e PUBLIC nada",
+  "fiscal_cadastro e fiscal_cadastro_log: colunas com o tipo e a nulidade da migration (atualizado_em e atualizado_por NOT NULL, id boolean e id bigint identity)",
+  "fiscal_cadastro: no maximo uma linha por banco (chave primaria em id, CHECK id) e os CHECKs de regime, atividade e dia 1 existem",
+  "fiscal_cadastro_log: a sequencia do identity existe e nao tem grant para ninguem alem do dono",
+];
+const ROL_DA_180B = [
+  "controle: catalogo publico visivel",
+  "fiscal_cadastro_salvar: ainda NAO existe",
+  "fiscal_cadastro e fiscal_cadastro_log: ainda NAO existem",
+  "as portas do admin atual existem com o corpo da 20261197000000 (md5), rls_admin_atual() executavel pelo authenticated e nao pelo anon",
+  "dono_da_loja existe com a forma da 20261383000000 (loja boolean, user_id uuid, desde timestamptz, tudo NOT NULL) e RLS ligada",
+  "a politica fin_lancamentos_admin_select_policy existe como a 20261202000000 a deixa (SELECT, so authenticated, rls_admin_atual())",
+  "fin_dre existe com o corpo vigente da 20261405900000 (md5): a migration nao o toca e o pos-voo dela o confere",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "180a-conferir-o-cadastro-fiscal-aplicado": ROL_DA_180A,
+  "180b-antes-o-cadastro-fiscal-ausente": ROL_DA_180B,
   "168a-conferir-o-crm-ignora-reembolso-integral-aplicado": ROL_DA_168,
   "168b-antes-o-crm-ignora-reembolso-integral-base-vigente": ROL_DA_168,
   "167a-antes-o-cupom-nao-repete-o-codigo-base-vigente": ROL_DA_167A,

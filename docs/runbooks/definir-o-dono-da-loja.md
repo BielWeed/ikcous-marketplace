@@ -3,9 +3,10 @@
 Roteiro para cadastrar, conferir e trocar o **dono da loja** no banco de **cada** loja.
 Vale para o dono do produto (parte 1, sem jargão) e para quem aplica (parte 2 em diante).
 
-Sem esse cadastro, a opção **Tornar administrador** do painel não funciona: o dono da loja
-é quem tem o poder de dar e tirar o cargo de administrador, e o banco só reconhece o dono
-depois de alguém cadastrá-lo, **uma vez por loja**.
+Sem esse cadastro, duas coisas do painel não funcionam: a opção **Tornar administrador** e o
+cadastro fiscal da aba **Impostos** do Financeiro. O dono da loja é quem tem o poder de dar e
+tirar o cargo de administrador e de escolher o regime fiscal da empresa, e o banco só reconhece
+o dono depois de alguém cadastrá-lo, **uma vez por loja**.
 
 ## 1. Para o dono do produto (sem jargão)
 
@@ -30,7 +31,12 @@ mesma pessoa pode ser dona de mais de uma, ou não).
 - a opção **Tornar administrador** não aparece no painel;
 - se alguém tentar chamar a função de cargo por fora do painel, o banco recusa
   (erro `42501`, "só o dono da loja define cargos");
-- quem já é administrador **continua administrador**; só ninguém consegue nomear nem remover.
+- quem já é administrador **continua administrador**; só ninguém consegue nomear nem remover;
+- na aba **Impostos** (Financeiro), o cadastro fiscal da empresa (regime e atividade) fica só para
+  leitura, com a frase que explica o caminho, e o banco recusa a gravação por fora do painel
+  (erro `42501`, "só o dono da loja altera o cadastro fiscal"); o caderno das guias e o arquivo
+  para o contador seguem funcionando, porque só leem o que a lojista já lançou. Admin que não é
+  o dono também só lê.
 
 **Como você sabe que ficou pronto.** O programador roda uma conferência (a consulta 88c,
 abaixo) e mostra que **todas** as linhas dela dizem "sim" para aquela loja. Depois, quem
@@ -204,13 +210,15 @@ dela (conta que já existe na loja e já é administradora). Faça uma loja por 
    bloqueio: avise "Tela 5" e siga.
 2. Diga ao programador apenas: "cadastrei o dono na loja X".
 3. Ele roda a consulta 88c daquela loja, que **não usa e-mail nenhum**, e responde se as
-   **9 linhas** estão `sim`. Só então a loja está pronta para a opção **Tornar administrador**.
+   **9 linhas** estão `sim`. Só então a loja está pronta para a opção **Tornar administrador**
+   e para a escolha do regime fiscal na aba **Impostos**.
 
 **Depois do cadastro: recarregar o painel.** Quem estava com o painel da loja aberto antes do
 cadastro precisa **recarregar a página (tecla F5)** ou **fechar a aba (ou o aplicativo)** e abrir
 de novo. **Sair da tela do painel e voltar dentro do aplicativo não adianta**: o painel guarda na
 memória da página a leitura "sem dono" feita antes, e só uma página nova lê o dono cadastrado.
-Até lá, **Tornar administrador** continua sem aparecer, mesmo com o cadastro certo.
+Até lá, **Tornar administrador** continua sem aparecer e a aba **Impostos** continua só para
+leitura, mesmo com o cadastro certo.
 
 ### 3.4 Lendo a consulta 88c
 
@@ -329,3 +337,7 @@ Referências: cabeçalho de
 [`20261383000000_so_o_dono_da_loja_define_cargo.sql`](../../supabase/migrations/20261383000000_so_o_dono_da_loja_define_cargo.sql),
 seção "Domínio do negócio — entidades, dinheiro e papéis" do [`AGENTS.md`](../../AGENTS.md), consultas em
 [`scripts/publicacao/consultas/`](../../scripts/publicacao/consultas/) (`8b`, `88a`, `88b`, `88c-conferir-o-dono-cadastrado`).
+O cadastro fiscal (aba **Impostos**) depende do mesmo dono: migration
+[`20261440000000_a_loja_guarda_o_cadastro_fiscal.sql`](../../supabase/migrations/20261440000000_a_loja_guarda_o_cadastro_fiscal.sql)
+e consultas `180a` e `180b`. A `180b` (antes) não exige dono; loja sem dono não bloqueia a
+publicação, mas entra na lista para o dono do produto cadastrar.

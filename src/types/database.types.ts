@@ -1066,6 +1066,64 @@ export type Database = {
           },
         ];
       };
+      // Escrito à mão (migration 20261440000000), no formato do gerador; não regenerar por cima.
+      // No máximo UMA linha por banco (`id` é a trava boolean sempre true). Só `fiscal_cadastro_salvar` escreve.
+      // `regime` e `atividade` são `text` com CHECK no banco: o gerador não vê o CHECK, então aqui são `string`.
+      fiscal_cadastro: {
+        Row: {
+          aberta_em: string | null;
+          atividade: string;
+          atualizado_em: string;
+          atualizado_por: string;
+          id: boolean;
+          regime: string;
+          vende_no_app_desde: string | null;
+        };
+        Insert: {
+          aberta_em?: string | null;
+          atividade: string;
+          atualizado_em?: string;
+          atualizado_por: string;
+          id?: boolean;
+          regime: string;
+          vende_no_app_desde?: string | null;
+        };
+        Update: {
+          aberta_em?: string | null;
+          atividade?: string;
+          atualizado_em?: string;
+          atualizado_por?: string;
+          id?: boolean;
+          regime?: string;
+          vende_no_app_desde?: string | null;
+        };
+        Relationships: [];
+      };
+      // Escrito à mão (migration 20261440000000). `id` é GENERATED ALWAYS AS IDENTITY: nunca se envia.
+      fiscal_cadastro_log: {
+        Row: {
+          antes: Json | null;
+          depois: Json;
+          id: number;
+          quando: string;
+          quem: string;
+        };
+        Insert: {
+          antes?: Json | null;
+          depois: Json;
+          id?: never;
+          quando?: string;
+          quem: string;
+        };
+        Update: {
+          antes?: Json | null;
+          depois?: Json;
+          id?: never;
+          quando?: string;
+          quem?: string;
+        };
+        Relationships: [];
+      };
       marketplace_ai_state: {
         Row: {
           component_name: string;
@@ -3505,6 +3563,11 @@ export type Database = {
       };
       fin_resumo: {
         Args: { p_fim: string; p_inicio: string };
+        Returns: Json;
+      };
+      // Escrito à mão (migration 20261440000000): só o dono da loja grava; devolve a linha de fiscal_cadastro.
+      fiscal_cadastro_salvar: {
+        Args: { p: Json };
         Returns: Json;
       };
       generate_order_otp_v1: {

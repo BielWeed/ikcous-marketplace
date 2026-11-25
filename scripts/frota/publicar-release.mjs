@@ -746,6 +746,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "167b-conferir-o-cupom-nao-repete-o-codigo-aplicado",
   "168a-conferir-o-crm-ignora-reembolso-integral-aplicado",
   "168b-antes-o-crm-ignora-reembolso-integral-base-vigente",
+  "180a-conferir-o-cadastro-fiscal-aplicado",
+  "180b-antes-o-cadastro-fiscal-ausente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */
