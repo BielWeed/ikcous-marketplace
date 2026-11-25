@@ -452,22 +452,20 @@ describe("metaDeFreteGratisPorValor", () => {
 // mas a PRÉVIA da tela precisa mostrar o que a lojista vai ver antes de
 // salvar, com a MESMA conta da edge (`estrategia-nacional.ts`).
 describe("precoComDescontoNacional — mesma conta em centavos da edge (aplicarEstrategiaNacional)", () => {
-  it("15% de R$ 24,90 = R$ 21,16 (exemplo do plano)", () => {
-    expect(precoComDescontoNacional(24.9, "percentual", 15)).toBeCloseTo(
-      21.16,
-      2,
-    );
+  // Igualdade EXATA (toBe), nunca toBeCloseTo(.., 2): ele aceita meio centavo,
+  // e tirar o `Math.round` deixava 21,165 e 16,9575 passarem. Esperado contado
+  // à mão em centavos inteiros: 2490 − round(373,5)=374 → 2116; 1995 −
+  // round(299,25)=299 → 1696; 4130 − 500 → 3630.
+  it("15% de R$ 24,90 = R$ 21,16 (exemplo do plano; 373,5 centavos sobem para 374)", () => {
+    expect(precoComDescontoNacional(24.9, "percentual", 15)).toBe(21.16);
   });
 
   it("15% de R$ 19,95 = R$ 16,96 (arredondamento do centavo, Math.round(299.25)=299)", () => {
-    expect(precoComDescontoNacional(19.95, "percentual", 15)).toBeCloseTo(
-      16.96,
-      2,
-    );
+    expect(precoComDescontoNacional(19.95, "percentual", 15)).toBe(16.96);
   });
 
   it("fixo de R$ 5 em R$ 41,30 = R$ 36,30", () => {
-    expect(precoComDescontoNacional(41.3, "fixo", 5)).toBeCloseTo(36.3, 2);
+    expect(precoComDescontoNacional(41.3, "fixo", 5)).toBe(36.3);
   });
 
   // `1.15 * 100` dá 114.99999999999999 e `0.29 * 100` dá 28.999999999999996:
