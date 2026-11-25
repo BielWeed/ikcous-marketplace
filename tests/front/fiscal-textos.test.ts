@@ -204,7 +204,7 @@ describe("medidor do MEI: o mês por extenso e o texto de quem começou depois d
         "2026-03-01",
       ),
     ).toBe(
-      "O IKCOUS só tem as suas vendas a partir de março. Para saber quanto do limite você já usou, some a este número o que você vendeu antes disso neste ano.",
+      "O IKCOUS só tem as suas vendas a partir de março. Para saber quanto do limite você já usou, some a este número o que você vendeu antes disso neste ano (se a empresa abriu neste ano, só conta a partir da abertura).",
     );
   });
 
@@ -261,12 +261,54 @@ describe("medidor do MEI, ano completo: o número é um mínimo, o veredito nunc
     );
   });
 
-  it("as consequências das faixas acima do limite continuam as mesmas, só prefixadas", () => {
-    expect(efeitoDoVeredito("excesso_ate_20", false)).toContain(
-      "Você deixa de ser MEI a partir de 1º de janeiro do ano seguinte, e a diferença é paga, sem acréscimos, junto com o DAS de janeiro. Avise a Receita até o último dia útil do mês seguinte ao do excesso.",
+  it("até 20% acima: a consequência branda é CONDICIONAL ao que foi vendido por fora (ano normal)", () => {
+    expect(efeitoDoVeredito("excesso_ate_20", false)).toBe(
+      "Pelo que o IKCOUS registrou, você passou do limite em até 20%. Se, somando o que você vendeu por fora do app, o total ficar até 20% acima do limite, você deixa de ser MEI a partir de 1º de janeiro do ano seguinte, e a diferença é paga, sem acréscimos, junto com o DAS de janeiro. Se passar de 20%, a saída do MEI volta a 1º de janeiro deste ano. Avise a Receita até o último dia útil do mês seguinte ao do excesso.",
     );
+  });
+
+  it("até 20% acima: a consequência branda é CONDICIONAL ao que foi vendido por fora (ano de abertura)", () => {
+    expect(efeitoDoVeredito("excesso_ate_20", true)).toBe(
+      "Pelo que o IKCOUS registrou, você passou do limite proporcional em até 20%. Se, somando o que você vendeu por fora do app, o total ficar até 20% acima do limite proporcional, você deixa de ser MEI a partir de 1º de janeiro do ano seguinte. Se passar de 20%, a saída volta ao início da atividade. Avise a Receita até o último dia útil do mês seguinte ao do excesso.",
+    );
+  });
+
+  it("até 20% acima: nenhuma variante afirma a consequência branda sem a ressalva do que foi vendido por fora", () => {
+    for (const abertura of [false, true]) {
+      const t = efeitoDoVeredito("excesso_ate_20", abertura);
+      const rotulo = `ate_20 abertura=${abertura}`;
+      expect(t, rotulo).toContain("por fora do app");
+      expect(t, rotulo).toContain("Se passar de 20%");
+      // a ressalva vem ANTES da consequência branda, e a faixa pior vem DEPOIS dela
+      const ressalva = t.indexOf("Se, somando o que você vendeu por fora");
+      const brando = t.indexOf("deixa de ser MEI a partir de 1º de janeiro");
+      const pior = t.indexOf("Se passar de 20%");
+      expect(ressalva, rotulo).toBeGreaterThan(0);
+      expect(brando, rotulo).toBeGreaterThan(ressalva);
+      expect(pior, rotulo).toBeGreaterThan(brando);
+      // a frase branda nunca aparece solta, em maiúscula inicial, como afirmação
+      expect(t, rotulo).not.toContain("Você deixa de ser MEI a partir de");
+    }
+  });
+
+  it("acima de 20%: a consequência segue a mesma, só prefixada", () => {
     expect(efeitoDoVeredito("excesso_acima_20", false)).toContain(
       "Você deixa de ser MEI com efeito retroativo a 1º de janeiro do ano do excesso e passa a pagar pelo Simples Nacional normal.",
+    );
+  });
+
+  it("as telas de cobertura completa chamam o limite pelo que ele é: só as vendas registradas no IKCOUS", () => {
+    expect(TEXTOS_DO_MEDIDOR_DO_MEI.completa.subtitulo).toBe(
+      "Quanto do limite as vendas registradas no IKCOUS já usam.",
+    );
+    expect(TEXTOS_DO_MEDIDOR_DO_MEI.completa.rotuloDoPercentual).toBe(
+      "Parte do limite usada pelas vendas registradas no IKCOUS",
+    );
+    expect(TEXTOS_DO_MEDIDOR_DO_MEI.completa.rotuloDasVendas).toBe(
+      "Vendas registradas no IKCOUS",
+    );
+    expect(TEXTOS_DO_MEDIDOR_DO_MEI.chamadaDoExcessoAte20).toBe(
+      "Fale com um contador ou com o Sebrae.",
     );
   });
 });

@@ -440,7 +440,7 @@ describe("B — MEI: o medidor do limite", () => {
     await montar();
     expect(texto()).toContain("12%");
     expect(texto()).not.toContain("13%");
-    expect(texto()).toContain("Vendas do ano: R$ 10.500,00");
+    expect(texto()).toContain("Vendas registradas no IKCOUS: R$ 10.500,00");
   });
 
   it("passou do limite: a faixa de excesso aparece (faixa e texto vêm do núcleo)", async () => {
@@ -689,7 +689,9 @@ describe("E — ano sem valores conferidos (2027)", () => {
       "Temos os valores da lei de 2026; os de 2027 ainda não foram conferidos.",
     );
     expect(texto()).not.toMatch(/\d+% /);
-    expect(texto()).not.toContain("Parte do limite que você já usou");
+    expect(texto()).not.toContain(
+      "Parte do limite usada pelas vendas registradas no IKCOUS",
+    );
   });
 
   it("Simples comércio: sem estimativa, com o aviso de que o ano não foi conferido", async () => {
@@ -775,7 +777,9 @@ describe("F — esqueleto e erro com 'Tentar de novo'", () => {
     expect(texto()).toContain("Não consegui falar com o servidor");
     expect(secao("Limite do MEI em 2026")).toBeNull();
     // sem resposta, nada de percentual
-    expect(texto()).not.toContain("Parte do limite que você já usou");
+    expect(texto()).not.toContain(
+      "Parte do limite usada pelas vendas registradas no IKCOUS",
+    );
 
     rpc.mockImplementation(async (nome: string, args: { p_inicio: string }) =>
       nome === "fin_dre"
@@ -786,7 +790,9 @@ describe("F — esqueleto e erro com 'Tentar de novo'", () => {
       botao("Tentar de novo")?.click();
     });
     await esperar();
-    expect(texto()).toContain("Parte do limite que você já usou");
+    expect(texto()).toContain(
+      "Parte do limite usada pelas vendas registradas no IKCOUS",
+    );
   });
 });
 

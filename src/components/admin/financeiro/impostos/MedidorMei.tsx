@@ -92,6 +92,7 @@ const VISUAL_DA_FAIXA: Record<FaixaDoMei, VisualDaFaixa> = {
     tom: "atencao",
     Icone: TriangleAlert,
     titulo: TEXTOS_DO_MEDIDOR_DO_MEI.titulosDaFaixa.excesso_ate_20,
+    chamada: TEXTOS_DO_MEDIDOR_DO_MEI.chamadaDoExcessoAte20,
   },
   excesso_acima_20: {
     tom: "negativo",
@@ -273,12 +274,12 @@ export function MedidorMei({
   return (
     <CartaoSecao
       titulo={titulo}
-      subtitulo="Quanto das suas vendas do ano já conta para o limite."
+      subtitulo={TEXTOS_DO_MEDIDOR_DO_MEI.completa.subtitulo}
     >
       <div className={cn(CLASSE_CASCA_DO_CARTAO, "flex flex-col gap-4 p-4")}>
         <div className="flex min-w-0 flex-col gap-1">
           <span className={CLASSE_ROTULO_DO_CARTAO}>
-            Parte do limite que você já usou
+            {TEXTOS_DO_MEDIDOR_DO_MEI.completa.rotuloDoPercentual}
           </span>
           <p className="text-3xl font-black tabular-nums leading-none tracking-tight text-white">
             {ocultos ? (
@@ -291,7 +292,8 @@ export function MedidorMei({
             )}
           </p>
           <p className="text-xs leading-relaxed text-zinc-400">
-            Vendas do ano: <Dinheiro valor={vendasDoAno} /> · Limite:{" "}
+            {TEXTOS_DO_MEDIDOR_DO_MEI.completa.rotuloDasVendas}:{" "}
+            <Dinheiro valor={vendasDoAno} /> · Limite:{" "}
             {formatarBRL(medidor.tetoUsado)}
           </p>
           {medidor.tetoProporcional ? (

@@ -168,9 +168,12 @@ export function efeitoDoVeredito(
   const prazo =
     "Avise a Receita até o último dia útil do mês seguinte ao do excesso.";
   if (faixa === "excesso_ate_20") {
+    // O número é um MÍNIMO: quem vendeu mais por fora do app pode estar na faixa pior (acima de
+    // 20%, retroativa). Por isso a consequência branda é CONDICIONAL ao total real, e a faixa
+    // pior vem dita logo depois (revisão Opus, 25/11/2026).
     return anoDeAbertura
-      ? `${PELO_QUE_O_IKCOUS_REGISTROU} você passou do limite proporcional em até 20%. Você deixa de ser MEI a partir de 1º de janeiro do ano seguinte. ${prazo}`
-      : `${PELO_QUE_O_IKCOUS_REGISTROU} você passou do limite em até 20%. Você deixa de ser MEI a partir de 1º de janeiro do ano seguinte, e a diferença é paga, sem acréscimos, junto com o DAS de janeiro. ${prazo}`;
+      ? `${PELO_QUE_O_IKCOUS_REGISTROU} você passou do limite proporcional em até 20%. Se, somando o que você vendeu por fora do app, o total ficar até 20% acima do limite proporcional, você deixa de ser MEI a partir de 1º de janeiro do ano seguinte. Se passar de 20%, a saída volta ao início da atividade. ${prazo}`
+      : `${PELO_QUE_O_IKCOUS_REGISTROU} você passou do limite em até 20%. Se, somando o que você vendeu por fora do app, o total ficar até 20% acima do limite, você deixa de ser MEI a partir de 1º de janeiro do ano seguinte, e a diferença é paga, sem acréscimos, junto com o DAS de janeiro. Se passar de 20%, a saída do MEI volta a 1º de janeiro deste ano. ${prazo}`;
   }
   return anoDeAbertura
     ? `${PELO_QUE_O_IKCOUS_REGISTROU} você passou do limite proporcional em mais de 20%. Você deixa de ser MEI com efeito retroativo ao início da atividade e passa a pagar pelo Simples Nacional normal. ${prazo}`
@@ -199,8 +202,17 @@ export const TEXTOS_DO_MEDIDOR_DO_MEI = {
         nomeDoMesDaData(desde) !== null
           ? `a partir de ${nomeDoMesDaData(desde)}`
           : "a partir do mês em que você começou a vender por aqui"
-      }. Para saber quanto do limite você já usou, some a este número o que você vendeu antes disso neste ano.`,
+      }. Para saber quanto do limite você já usou, some a este número o que você vendeu antes disso neste ano (se a empresa abriu neste ano, só conta a partir da abertura).`,
   },
+  /** Cobertura COMPLETA: o número é só das vendas registradas, e a tela diz isso. */
+  completa: {
+    subtitulo: "Quanto do limite as vendas registradas no IKCOUS já usam.",
+    rotuloDoPercentual:
+      "Parte do limite usada pelas vendas registradas no IKCOUS",
+    rotuloDasVendas: "Vendas registradas no IKCOUS",
+  },
+  /** A faixa "até 20%" também pode ser a pior (o número é um mínimo): manda falar com quem sabe. */
+  chamadaDoExcessoAte20: "Fale com um contador ou com o Sebrae.",
   /** Cobertura parcial e o número do app já acima do teto do ano. */
   acimaDoLimiteComCoberturaParcial: {
     titulo: "Suas vendas no IKCOUS, sozinhas, já passam do limite",

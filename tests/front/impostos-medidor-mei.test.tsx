@@ -159,6 +159,25 @@ describe("MedidorMei — as três faixas", () => {
       expect(textoDe(h)).toContain(medidor.efeito);
     }
     expect(textoDe(h)).not.toContain("Fale com o seu contador hoje");
+    // o número é um mínimo: a faixa branda também manda falar com contador ou Sebrae
+    expect(textoDe(h)).toContain("Fale com um contador ou com o Sebrae.");
+    // a ressalva do que foi vendido por fora aparece na tela, não só no núcleo
+    expect(textoDe(h)).toContain("Se passar de 20%");
+  });
+
+  it("cobertura completa: o subtítulo e os rótulos dizem que o número é só das vendas registradas no IKCOUS", () => {
+    const h = montar(medirReal(40_500), 40_500);
+    expect(textoDe(h)).toContain(
+      "Quanto do limite as vendas registradas no IKCOUS já usam.",
+    );
+    expect(textoDe(h)).toContain(
+      "Parte do limite usada pelas vendas registradas no IKCOUS",
+    );
+    expect(textoDe(h)).not.toContain("Parte do limite que você já usou");
+    expect(textoDe(h)).not.toContain(
+      "Quanto das suas vendas do ano já conta para o limite.",
+    );
+    expect(textoDe(h)).not.toContain("Vendas do ano:");
   });
 
   it("mais de 20% acima: texto, ícone de parada, cor de negativo e o 'fale com o contador'", () => {
@@ -582,7 +601,7 @@ describe("MedidorMei — cobertura parcial: o número sem veredito", () => {
     const h = montar(medirReal(15_000), 15_000);
     expect(tituloDaFaixa(h).textContent).toBe(DENTRO);
     expect(textoDe(h)).toContain("18%");
-    expect(textoDe(h)).toContain("Vendas do ano: R$ 15.000,00");
+    expect(textoDe(h)).toContain("Vendas registradas no IKCOUS: R$ 15.000,00");
     expect(textoDe(h)).not.toContain(
       TEXTOS_DO_MEDIDOR_DO_MEI.rotuloDoNumeroParcial,
     );
