@@ -62,7 +62,7 @@ test("folha de opções: clicar fora SÓ fecha — o fundo não navega", async (
 test.describe("toque de dedo real", () => {
   test.use({ hasTouch: true });
 
-  test("toque na barra visível só fecha a folha; o segundo toque navega", async ({
+  test("toque num atalho do fundo só fecha a folha; o segundo toque navega", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
@@ -72,9 +72,11 @@ test.describe("toque de dedo real", () => {
     await page.getByRole("button", { name: "Escolher opções" }).first().tap();
     const folha = page.locator('[data-slot="sheet-content"]');
     await expect(folha).toBeVisible();
-    // A folha agora para ACIMA da barra e entra deslizando por baixo: enquanto
-    // anima, ela passa por cima do Carrinho e um toque ali cairia DENTRO dela.
-    // O gesto humano que este teste prova vem depois da folha parada.
+    // Desde 24/11/2026 a folha abre do FUNDO e cobre a barra de navegação:
+    // tocar no Carrinho cairia DENTRO da folha. O alvo do gesto passa a ser um
+    // atalho do cabeçalho (Notificações), que fica ACIMA da folha — coberto só
+    // pelo véu, e é nele que o dedo do dono cai ao tocar "fora". A folha entra
+    // deslizando por baixo; o gesto que este teste prova vem depois dela parada.
     let ultimoY = Number.NaN;
     await expect
       .poll(
@@ -87,20 +89,34 @@ test.describe("toque de dedo real", () => {
         { intervals: [150], timeout: 5_000 },
       )
       .toBe(true);
-    const carrinho = page.locator("#bottom-nav-cart");
-    await expect(carrinho).toBeVisible();
-    const alvo = await carrinho.boundingBox();
+    // Por seletor CSS e não por papel: com o diálogo modal aberto o Radix marca
+    // o resto da página como aria-hidden e `getByRole` deixaria de achá-lo.
+    const atalho = page.locator('button[aria-label="Notificações"]');
+    const alvo = await atalho.boundingBox();
     expect(alvo).not.toBeNull();
+    const toqueX = alvo!.x + alvo!.width / 2;
+    const toqueY = alvo!.y + alvo!.height / 2;
+    // O atalho está acima da folha, e o que o dedo encontra ali é o VÉU (não
+    // o botão): sem esta checagem o teste passaria mesmo se o véu sumisse.
+    const alvoDoToque = await page.evaluate(
+      ([x, y]) => {
+        const el = document.elementFromPoint(x, y);
+        return {
+          noVeu: el?.closest('[data-slot="sheet-overlay"]') != null,
+          naFolha: el?.closest('[data-slot="sheet-content"]') != null,
+        };
+      },
+      [toqueX, toqueY],
+    );
+    expect(alvoDoToque).toEqual({ noVeu: true, naFolha: false });
     // Coordenadas reais: com o diálogo modal, a área externa não é alvo
     // acionável do Playwright, mas o gesto físico tem que fechar a camada.
-    await page.touchscreen.tap(
-      alvo!.x + alvo!.width / 2,
-      alvo!.y + alvo!.height / 2,
-    );
+    await page.touchscreen.tap(toqueX, toqueY);
     await expect(folha).toHaveCount(0);
     expect(page.url()).toBe(url);
-    await carrinho.tap();
-    await expect(page).not.toHaveURL(url);
+    // Segundo toque no MESMO atalho, já sem folha: agora navega.
+    await atalho.tap();
+    await expect(page).toHaveURL(/\/notifications$/);
     expect(errosNoFim().erros).toEqual([]);
   });
 

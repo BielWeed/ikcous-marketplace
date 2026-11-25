@@ -129,7 +129,11 @@ async function escolherEAdicionar(page: Page) {
   const folha = page.locator('[data-slot="sheet-content"]');
   await expect(folha).toBeVisible();
 
-  // A navegação continua visível, sem véu; a folha não ocupa sua faixa.
+  // Contrato de 24/11/2026 (pedido do dono): a folha e o véu abrem do FUNDO
+  // da tela e COBREM a barra de navegação enquanto a folha está aberta (antes
+  // ela parava acima da barra). O carrinho continua no DOM e "visível" para o
+  // Playwright (visibilidade não mede oclusão) — o que prova a cobertura é a
+  // geometria e o hit-test abaixo, esperados até a animação de entrada parar.
   await expect(page.locator("#bottom-nav-cart")).toBeVisible();
   await expect
     .poll(() =>
@@ -140,13 +144,40 @@ async function escolherEAdicionar(page: Page) {
         const veu = document
           .querySelector('[data-slot="sheet-overlay"]')!
           .getBoundingClientRect();
-        const barra = document
-          .querySelector('nav[aria-label="Navegação principal"]')!
+        const barraEl = document.querySelector(
+          'nav[aria-label="Navegação principal"]',
+        )!;
+        const barra = barraEl.getBoundingClientRect();
+        const carrinho = document
+          .getElementById("bottom-nav-cart")!
           .getBoundingClientRect();
-        return Math.max(folha.bottom, veu.bottom) - barra.top;
+        const noMeio = (r: DOMRect) =>
+          document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        const naCamada = (el: Element | null) =>
+          el?.closest(
+            '[data-slot="sheet-content"], [data-slot="sheet-overlay"]',
+          ) != null;
+        return {
+          folhaAteOFundo: Math.abs(folha.bottom - window.innerHeight) <= 2,
+          veuAteOFundo: Math.abs(veu.bottom - window.innerHeight) <= 2,
+          folhaCobreABarra:
+            folha.top <= barra.top + 1 && folha.bottom >= barra.bottom - 1,
+          // Hit-test: o que está de fato sobre o centro da barra e do
+          // carrinho é a folha/véu, nunca a própria barra.
+          centroDaBarraNaFolha:
+            noMeio(barra)?.closest('[data-slot="sheet-content"]') != null,
+          carrinhoCobertoPelaCamada:
+            naCamada(noMeio(carrinho)) && !barraEl.contains(noMeio(carrinho)),
+        };
       }),
     )
-    .toBeLessThanOrEqual(0);
+    .toEqual({
+      folhaAteOFundo: true,
+      veuAteOFundo: true,
+      folhaCobreABarra: true,
+      centroDaBarraNaFolha: true,
+      carrinhoCobertoPelaCamada: true,
+    });
 
   // Escolhe a opção "P" (chip da folha).
   await folha.getByRole("button", { name: "P", exact: true }).click();
@@ -194,6 +225,7 @@ test.describe("toque de dedo real", () => {
     const folha = page.locator('[data-slot="sheet-content"]');
     await expect(folha).toBeVisible();
 
+    // O carrinho segue no DOM (a folha o cobre, mas o voo precisa do alvo).
     await expect(page.locator("#bottom-nav-cart")).toBeVisible();
     await folha.getByRole("button", { name: "P", exact: true }).tap();
     const mais = folha.getByRole("button", { name: "Aumentar quantidade" });
