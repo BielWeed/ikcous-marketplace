@@ -236,7 +236,7 @@ describe("Financeiro — casca nova e Visão no desenho aprovado", () => {
   });
 
   describe("abas e período", () => {
-    it("abas só com texto: cinco, sem ícone, sem Avançado, ≥44px e ativa com traço neutro", async () => {
+    it("abas só com texto: seis, sem ícone, sem Avançado, ≥44px e ativa com traço neutro", async () => {
       await montar();
       const lista = hospedeiro.querySelector(
         '[role="tablist"][aria-label="Abas do Financeiro"]',
@@ -248,6 +248,7 @@ describe("Financeiro — casca nova e Visão no desenho aprovado", () => {
         "Extrato",
         "Pagar e receber",
         "Resultado",
+        "Impostos",
       ]);
       for (const aba of abas) {
         expect(aba.querySelector("svg"), aba.textContent ?? "").toBeNull();

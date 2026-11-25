@@ -8,7 +8,8 @@
 //       não; MEI e Simples de só comércio leem um `fin_dre` por mês, na ordem
 //   L3  as guias vêm só da categoria de impostos, sem as canceladas, pela competência
 //       do período (a guia do dia 1 de um mês que o período só atravessa entra) e
-//       com `data_realizacao` (o CSV do contador precisa dela)
+//       com `data_realizacao` (o CSV do contador precisa dela) e com `id`, `descricao`
+//       e `conta_id` (a folha de baixa precisa deles para "Pagar" a guia)
 //   L4  erro vira frase em português (nunca o texto cru do banco)
 //   L5  rede que conecta e não responde estoura em 20 s, em TODAS as leituras
 //   L6  "Tentar de novo" e a subida da `versao` leem de novo
@@ -192,13 +193,16 @@ const guia = (
   extra: Linha = {},
 ): Linha => ({
   categoria_id: categoria,
+  id: `guia-${competencia}-${status}-${valor}`,
+  descricao: `DAS ${competencia.slice(5, 7)}/${competencia.slice(0, 4)}`,
+  conta_id: "conta-inventada",
   status,
   data_competencia: competencia,
   data_vencimento: "2026-12-20",
   data_realizacao: null,
   valor,
-  // colunas que a consulta NÃO pede: a projeção do falso tem de cortá-las
-  descricao: "texto que a aba não lê",
+  // coluna que a consulta NÃO pede: a projeção do falso tem de cortá-la
+  observacao: "texto que a aba não lê",
   ...extra,
 });
 
@@ -426,11 +430,15 @@ describe("guias — só a categoria de impostos, sem canceladas, pela competênc
     expect(lidas.map((l) => l.valor)).toEqual([100, 250, 50]);
     // `data_realizacao` vem (é ela que dá a data do "pago" no arquivo do contador)
     expect(lidas[1]?.data_realizacao).toBe("2026-05-20");
-    // e nada além das colunas pedidas
+    // e as colunas que a folha de baixa pede para "Pagar" a guia (id, descrição e
+    // conta), nada além das pedidas
     expect(Object.keys(lidas[0] ?? {}).sort()).toEqual([
+      "conta_id",
       "data_competencia",
       "data_realizacao",
       "data_vencimento",
+      "descricao",
+      "id",
       "status",
       "valor",
     ]);

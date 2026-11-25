@@ -59,7 +59,7 @@ it("a barra de abas apresenta os cinco destinos só com texto e mantém a seleç
   // Desenho de 22/10/2026: "Contas e categorias" saiu da fila (vira o chip
   // "Contas" do cabeçalho) e "A pagar e receber" virou "Pagar e receber".
   expect(opcoes.map((b) => b.textContent?.replace(/\s+/g, " ").trim())).toEqual(
-    ["Visão", "Caixa", "Extrato", "Pagar e receber", "Resultado"],
+    ["Visão", "Caixa", "Extrato", "Pagar e receber", "Resultado", "Impostos"],
   );
   expect(menu!.classList.contains("hidden")).toBe(false);
   for (const opcao of opcoes) {
@@ -153,7 +153,7 @@ it.each(["carregando", "erro", "vazio"])(
       expect(host.textContent).toContain("Nenhuma conta ainda");
     }
     const abas = [...host.querySelectorAll<HTMLElement>('[role="tab"]')];
-    expect(abas).toHaveLength(5);
+    expect(abas).toHaveLength(6);
     await act(async () =>
       abas[2].dispatchEvent(
         new MouseEvent("mousedown", { bubbles: true, button: 0 }),

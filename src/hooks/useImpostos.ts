@@ -27,6 +27,7 @@ import {
   ehFalhaDeRedeSemCodigo,
   fraseDeGravacaoSemConfirmacao,
   mensagemDeErroFinanceiro,
+  parseExtrato,
 } from "@/lib/financeiro";
 import {
   type LeituraDoCadastroFiscal,
@@ -35,9 +36,19 @@ import {
   quemTemConta,
 } from "@/lib/fiscal/cadastro";
 import type { LancamentoDaGuia } from "@/lib/fiscal/caderno";
+import {
+  type EntradaDoCsvDoContador,
+  type ModoDoCsv,
+  periodoDaReferencia,
+} from "@/lib/fiscal/csv-do-contador";
 import { CATEGORIA_DE_IMPOSTOS_ID } from "@/lib/fiscal/receita-do-mes";
 import { FRASE_SO_O_DONO_ALTERA } from "@/lib/fiscal/textos";
-import { aguardarComPrazo } from "@/lib/prazo-da-requisicao";
+import {
+  PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+  aguardarComPrazo,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
+import { sessaoAindaEhDoDono } from "@/lib/sessao-ainda-e-do-dono";
 import { supabase } from "@/lib/supabase";
 import type { Database, Json } from "@/types/database.types";
 import type { DreFinanceira, IntervaloDeDatas } from "@/types/financeiro";
@@ -147,21 +158,40 @@ export function useLogDoCadastroFiscal(
 }
 
 /**
- * Uma guia lançada: as colunas do caderno MAIS `data_realizacao`, que dá a data do
- * "pago" no arquivo do contador.
+ * Uma guia lançada: as colunas do caderno MAIS `data_realizacao` (a data do "pago" no
+ * arquivo do contador) e as três que a folha de baixa pede para "Pagar" a guia da
+ * tela: `id`, `descricao` e `conta_id`.
  */
 export type GuiaLida = LancamentoDaGuia &
   Pick<
     Database["public"]["Tables"]["fin_lancamentos"]["Row"],
-    "data_realizacao"
+    "id" | "descricao" | "conta_id" | "data_realizacao"
   >;
 
 /**
  * As guias lançadas na categoria de impostos: sem as canceladas, pela COMPETÊNCIA.
  * A competência da guia é o dia 1 do mês das vendas, então o limite de baixo é o
  * dia 1 do mês em que o período começa (como o caderno): um período que começa no
- * dia 15 ainda conta a guia desse mês.
+ * dia 15 ainda conta a guia desse mês. A tela e o arquivo do contador leem por aqui:
+ * as duas veem a mesma guia.
  */
+async function lerGuiasDoPeriodo(
+  periodo: IntervaloDeDatas,
+): Promise<GuiaLida[]> {
+  const { data, error } = await supabase
+    .from("fin_lancamentos")
+    .select(
+      "id, descricao, conta_id, valor, status, data_competencia, data_vencimento, data_realizacao",
+    )
+    .eq("categoria_id", CATEGORIA_DE_IMPOSTOS_ID)
+    .neq("status", "cancelado")
+    .gte("data_competencia", `${periodo.inicio.slice(0, 7)}-01`)
+    .lte("data_competencia", periodo.fim)
+    .order("data_competencia", { ascending: true });
+  if (error) throw falhaDeLeitura(error, "financeiro");
+  return Array.isArray(data) ? data : [];
+}
+
 export function useGuiasDeImpostos(
   periodo: IntervaloDeDatas | null,
   ativo: boolean,
@@ -171,18 +201,7 @@ export function useGuiasDeImpostos(
     ativo && periodo ? `fiscal-guias:${periodo.inicio}:${periodo.fim}` : null,
     async () => {
       if (!periodo) throw new Error("sem período");
-      const { data, error } = await supabase
-        .from("fin_lancamentos")
-        .select(
-          "valor, status, data_competencia, data_vencimento, data_realizacao",
-        )
-        .eq("categoria_id", CATEGORIA_DE_IMPOSTOS_ID)
-        .neq("status", "cancelado")
-        .gte("data_competencia", `${periodo.inicio.slice(0, 7)}-01`)
-        .lte("data_competencia", periodo.fim)
-        .order("data_competencia", { ascending: true });
-      if (error) throw falhaDeLeitura(error, "financeiro");
-      return Array.isArray(data) ? data : [];
+      return lerGuiasDoPeriodo(periodo);
     },
     versao,
   );
@@ -216,6 +235,66 @@ export function useSerieDaReceita(
       : null,
     () => Promise.all(meses.map((mes) => lerDre(mes))),
     versao,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Arquivo para o contador
+// ---------------------------------------------------------------------------
+
+const FRASE_SESSAO_MUDOU =
+  "Sua sessão mudou ou acabou. Entre de novo para exportar o arquivo.";
+
+/**
+ * Lê o que o arquivo do contador precisa do período (`modo` + `referencia`, a mesma
+ * referência do gerador): o extrato (`fin_extrato`, vendas e devoluções) e as guias
+ * lançadas. SÓ lê, e entrega as duas leituras inteiras ou rejeita: arquivo parcial
+ * nunca sai daqui.
+ *
+ * CONFERÊNCIA DE SESSÃO: a tabela de guias é lida sob RLS, e uma sessão que acabou (ou
+ * que trocou de conta no tablet do balcão) devolve lista VAZIA sem erro, que o arquivo
+ * trataria como "esta loja não teve guia". Por isso a conta que abriu a tela
+ * (`contaId`) é conferida ANTES e DEPOIS das leituras, e conta diferente, ausente ou
+ * que não respondeu rejeita. Prazo de 20 s no conjunto (rede que conecta e não
+ * responde não deixa o botão girando para sempre).
+ */
+export async function lerLinhasParaOContador(
+  periodoPedido: { readonly modo: ModoDoCsv; readonly referencia: string },
+  contaId: string | null,
+): Promise<Pick<EntradaDoCsvDoContador, "extrato" | "guias">> {
+  // Referência torta é erro de quem chamou: lança antes de gastar rede.
+  const periodo = periodoDaReferencia(
+    periodoPedido.modo,
+    periodoPedido.referencia,
+  );
+  if (contaId === null) throw new ErroDeLeituraFiscal(FRASE_SESSAO_MUDOU);
+  const dono: string = contaId;
+
+  async function conferirASessao() {
+    if (!(await sessaoAindaEhDoDono(dono))) {
+      throw new ErroDeLeituraFiscal(FRASE_SESSAO_MUDOU);
+    }
+  }
+
+  return aguardarComPrazo(
+    (async () => {
+      await conferirASessao();
+      const [extrato, guias] = await Promise.all([
+        (async () => {
+          const { data, error } = await supabase.rpc("fin_extrato", {
+            p_inicio: periodo.inicio,
+            p_fim: periodo.fim,
+          });
+          if (error) throw falhaDeLeitura(error, "financeiro");
+          return parseExtrato(data);
+        })(),
+        lerGuiasDoPeriodo(periodo),
+      ]);
+      await conferirASessao();
+      return { extrato, guias };
+    })(),
+    PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+    () => erroDeConsultaSemResposta(),
   );
 }
 
