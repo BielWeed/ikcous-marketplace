@@ -1,4 +1,14 @@
 {
+  "1.5.233": {
+    "titulo": "A janela “Escolher opções” cobre a barra de baixo e o atalho das novidades chega ao fim",
+    "novidades": [],
+    "correcoes": [
+      "No painel, em Notificações, o botão das novidades não lidas passa a rolar a lista até o título das novidades, em vez de parar no meio do caminho."
+    ],
+    "melhorias": [
+      "No celular, a janela “Escolher opções” dos cartões de produto agora abre do fundo da tela e cobre a barra de navegação enquanto está aberta, em vez de parar acima dela. Ao fechar, a barra volta como antes."
+    ]
+  },
   "1.5.232": {
     "titulo": "Chaves de pagamento só do dono, janelas que arrastam e telas mais legíveis",
     "novidades": [
