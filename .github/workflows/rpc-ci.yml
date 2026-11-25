@@ -961,6 +961,21 @@ jobs:
       - name: Prova viva do portao do motivo da recusa do cartao (consultas 56a e 56b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/motivo-da-recusa-portao-viva.cjs
+      # Consultas de conferencia que a publicacao roda em cada loja: antes so o TEXTO delas era
+      # testado; estas provas as EXECUTAM num Postgres efemero (antes/depois da migration e com
+      # um estrago plantado por item). Mesmo esqueleto do portao 56 (conferencia-de-banco-comum).
+      - name: Prova viva do portao do so o dono define cargo (consultas 88a e 88b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/so-o-dono-define-cargo-portao-viva.cjs
+      - name: Prova viva do portao das chaves de frete so do servidor (consultas 163a e 163b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/chaves-de-frete-so-o-servidor-portao-viva.cjs
+      - name: Prova viva do portao da observacao da inspecao (consultas 156a e 156b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-observacao-da-inspecao-so-a-loja-ve-portao-viva.cjs
+      - name: Prova viva do portao do total comprado do cliente (consultas 155a e 155b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-total-comprado-do-cliente-e-o-mesmo-no-crm-portao-viva.cjs
       # Receita com custo usa preco efetivo por variante (251): cobertura, zero legitimo,
       # prejuizo, contrato historico, portoes oficiais, rollback e mutantes. CLONE proprio.
       - name: Prova viva do lucro do estoque (migration 20261251)
