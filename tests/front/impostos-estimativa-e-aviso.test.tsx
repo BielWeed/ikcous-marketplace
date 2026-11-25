@@ -266,9 +266,9 @@ describe("EstimativaSimples — nunca é valor devido nem ação", () => {
 });
 
 describe("EstimativaSimples — série incompleta e recusas do núcleo", () => {
-  it("o núcleo real recusa quando o app ainda não mediu 2 meses: 'Faltam 2 meses' e nenhum número", () => {
+  it("o núcleo real recusa quando o app ainda não mediu nenhum mês anterior: 'Falta 1 mês' e nenhum número", () => {
     // O app começou a medir no próprio mês da apuração (0 meses medidos): a estimativa
-    // pede 2 meses de vendas no app.
+    // pede 1 mês de vendas no app.
     const resultado = estimarDasDoSimples({
       cadastro: {
         ...SIMPLES_COMERCIO,
@@ -282,7 +282,7 @@ describe("EstimativaSimples — série incompleta e recusas do núcleo", () => {
     expect(resultado).toEqual({
       estado: "sem_estimativa",
       motivo: "faltam_meses",
-      faltam: 2,
+      faltam: 1,
     });
     const h = montar(
       <EstimativaSimples
@@ -294,7 +294,7 @@ describe("EstimativaSimples — série incompleta e recusas do núcleo", () => {
     const texto = textoDe(h);
     expect(texto).toBe(
       "Estimativa do DAS" +
-        "Faltam 2 meses de vendas registradas no app para estimar o DAS. Só estimamos quando o app mediu os meses necessários (no mínimo 2 meses de vendas), para não mostrar um número que engana.",
+        "Falta 1 mês de vendas registradas no app para estimar o DAS. Só estimamos quando o app mediu os meses necessários (no mínimo 1 mês de vendas), para não mostrar um número que engana.",
     );
     expect(texto).not.toContain("R$");
     expect(texto).not.toContain("cerca de");
@@ -481,6 +481,21 @@ describe("EstimativaSimples — poucos meses de vendas no app (decisão do sóci
     expect(textoDe(nota as HTMLElement)).toBe(AVISO_DO_PARECER);
   });
 
+  it("com a base de 1 mês: rótulo e frase no SINGULAR, e o aviso fixo continua embaixo", () => {
+    const h = montar(parcial(1));
+    const texto = textoDe(h);
+    expect(texto).toContain("cerca de R$ 410");
+    expect(texto).toContain("Estimativa do app (de 1 mês de vendas)");
+    expect(texto).toContain(
+      "Com 1 mês de vendas no app, a faixa foi deduzida pela média. Se a empresa vendia antes por fora, a guia pode vir maior.",
+    );
+    expect(texto).not.toContain("1 meses");
+    expect(texto.indexOf("Com 1 mês de vendas")).toBeLessThan(
+      texto.indexOf(AVISO_DO_PARECER),
+    );
+    expect(texto).toContain(AVISO_DO_PARECER);
+  });
+
   it("com a base de 11 meses: a frase diz 11", () => {
     expect(textoDe(montar(parcial(11)))).toContain(FRASE_DE_POUCOS_MESES(11));
   });
@@ -489,11 +504,19 @@ describe("EstimativaSimples — poucos meses de vendas no app (decisão do sóci
     const texto = textoDe(montar(estimativa(410)));
     expect(texto).not.toContain("deduzida pela média");
     expect(texto).not.toContain("meses de vendas)");
+    expect(texto).not.toContain("mês de vendas)");
     expect(texto).toContain("Estimativa do app");
   });
 
-  it("base parcial que não é um número inteiro de 2 ou mais meses nunca vira número na tela", () => {
-    for (const base of [0, 1, -3, 2.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+  it("base parcial que não é um número inteiro de 1 ou mais meses nunca vira número na tela", () => {
+    for (const base of [
+      0,
+      -3,
+      0.5,
+      2.5,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+    ]) {
       const h = montar(parcial(base));
       const texto = textoDe(h);
       expect(texto, `base ${base}`).not.toContain("cerca de");
@@ -510,6 +533,37 @@ describe("EstimativaSimples — poucos meses de vendas no app (decisão do sóci
     expect(texto).toContain("Valor oculto");
     expect(texto).toContain(FRASE_DE_POUCOS_MESES(3));
     expect(texto).toContain(AVISO_DO_PARECER);
+  });
+
+  it("o núcleo real, com 1 mês medido, chega à tela com o rótulo e a frase no singular", () => {
+    const resultado = estimarDasDoSimples({
+      cadastro: {
+        ...SIMPLES_COMERCIO,
+        abertaEm: null,
+        vendeNoAppDesde: "2026-09-01",
+      },
+      competencia: "2026-10",
+      receitaDoMes: 4_000,
+      receitasMensais: { "2026-09": 4_000 },
+    });
+    // Média 4.000 x 12 = 48.000 (faixa 1, 4%): 4% de 4.000 = 160.
+    expect(resultado).toEqual({
+      estado: "com_estimativa",
+      valor: 160,
+      mesesNaMedia: 1,
+    });
+    const texto = textoDe(
+      montar(
+        <EstimativaSimples
+          estimativa={resultado}
+          competencia="2026-10"
+          receitaDoMes={4_000}
+        />,
+      ),
+    );
+    expect(texto).toContain("cerca de R$ 160");
+    expect(texto).toContain("Estimativa do app (de 1 mês de vendas)");
+    expect(texto).toContain("Com 1 mês de vendas no app, a faixa foi deduzida");
   });
 
   it("o núcleo real, com 2 meses medidos, chega à tela com a frase", () => {

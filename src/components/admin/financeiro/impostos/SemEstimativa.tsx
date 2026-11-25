@@ -57,7 +57,7 @@ const TEXTO_DE_MEI =
   "Quem é MEI paga um valor fixo por mês, por isso não fazemos estimativa. O que ajuda é o medidor do limite de vendas do ano.";
 
 const CAUDA_DE_SERIE =
-  "Só estimamos quando o app mediu os meses necessários (no mínimo 2 meses de vendas), para não mostrar um número que engana.";
+  "Só estimamos quando o app mediu os meses necessários (no mínimo 1 mês de vendas), para não mostrar um número que engana.";
 
 function textoDeFaltamMeses(faltam: number): string {
   if (!Number.isInteger(faltam) || faltam < 1) {

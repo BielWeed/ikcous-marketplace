@@ -325,11 +325,27 @@ describe("a frase da média de poucos meses (decisão do sócio, 25/11/2026)", (
     );
   });
 
-  it("base que não é um inteiro de 2 ou mais não tem frase (nunca 'Com NaN meses', nem 'Com 1 meses')", () => {
-    for (const base of [0, 1, -2, 2.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+  it("com 1 mês a frase vai no SINGULAR (nunca 'Com 1 meses')", () => {
+    expect(fraseDaMediaDePoucosMeses(1)).toBe(
+      "Com 1 mês de vendas no app, a faixa foi deduzida pela média. Se a empresa vendia antes por fora, a guia pode vir maior.",
+    );
+    expect(fraseDaMediaDePoucosMeses(1)).not.toContain("1 meses");
+  });
+
+  it("base que não é um inteiro de 1 ou mais não tem frase (nunca 'Com NaN meses', nem 'Com 0 meses')", () => {
+    for (const base of [
+      0,
+      -1,
+      -2,
+      0.5,
+      2.5,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+    ]) {
       expect(fraseDaMediaDePoucosMeses(base), `base ${base}`).toBeNull();
       expect(baseDaMediaEhValida(base), `base ${base}`).toBe(false);
     }
+    expect(baseDaMediaEhValida(1)).toBe(true);
     expect(baseDaMediaEhValida(2)).toBe(true);
     expect(baseDaMediaEhValida(12)).toBe(true);
   });

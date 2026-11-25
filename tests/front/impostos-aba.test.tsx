@@ -671,7 +671,7 @@ describe("C — Simples de só comércio: a estimativa do último mês fechado",
     expect(texto()).toContain(AVISO_DA_ESTIMATIVA);
   });
 
-  it("com 1 mês medido: falta 1 mês, sem número", async () => {
+  it("com 1 mês medido (começou a vender em setembro): estima com o rótulo e a frase no singular (decisão do sócio, 25/11/2026)", async () => {
     tabelas.set("fiscal_cadastro", {
       linhas: [
         cadastroDoBanco("simples", "comercio", {
@@ -680,15 +680,20 @@ describe("C — Simples de só comércio: a estimativa do último mês fechado",
       ],
     });
     await montar();
+    // Outubro: o app mediu só setembro (R$ 1.000): x 12 = 12.000 (4%): 4% de 1.000 = 40.
+    expect(
+      normal(host.querySelector("[data-estimativa-valor]")?.textContent),
+    ).toBe("cerca de R$ 40");
+    expect(texto()).toContain("Estimativa do app (de 1 mês de vendas)");
     expect(texto()).toContain(
-      "Falta 1 mês de vendas registradas no app para estimar o DAS.",
+      "Com 1 mês de vendas no app, a faixa foi deduzida pela média. Se a empresa vendia antes por fora, a guia pode vir maior.",
     );
-    expect(host.querySelector("[data-estimativa-valor]")).toBeNull();
-    expect(texto()).not.toContain("cerca de");
-    expect(texto()).not.toContain(AVISO_DA_ESTIMATIVA);
+    expect(texto()).not.toContain("1 meses");
+    expect(texto()).not.toContain("Falta 1 mês");
+    expect(texto()).toContain(AVISO_DA_ESTIMATIVA);
   });
 
-  it("com 0 meses medidos (começou a vender em outubro): faltam 2 meses, sem número", async () => {
+  it("com 0 meses medidos (começou a vender em outubro): falta 1 mês, sem número", async () => {
     tabelas.set("fiscal_cadastro", {
       linhas: [
         cadastroDoBanco("simples", "comercio", {
@@ -698,7 +703,7 @@ describe("C — Simples de só comércio: a estimativa do último mês fechado",
     });
     await montar();
     expect(texto()).toContain(
-      "Faltam 2 meses de vendas registradas no app para estimar o DAS.",
+      "Falta 1 mês de vendas registradas no app para estimar o DAS.",
     );
     expect(host.querySelector("[data-estimativa-valor]")).toBeNull();
     expect(texto()).not.toContain("cerca de");

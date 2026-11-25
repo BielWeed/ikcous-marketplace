@@ -15,11 +15,13 @@
 //     geral;
 //   - POUCOS MESES DE VENDAS NO APP (decisão do sócio, 25/11/2026): quando o app mediu só
 //     parte dos meses que a regra pede (a loja começou a usar o app há pouco, e antes disso
-//     vendia por fora), a estimativa sai a partir de 2 meses medidos, com a RBT12 deduzida
-//     pela média desses meses x 12 (a mesma conta da empresa nova). Com 0 ou 1 mês medido
-//     não há estimativa. O resultado carrega `mesesNaMedia`, e a tela diz "com N meses de
-//     vendas no app". Se a loja vendia muito por fora, a faixa deduzida fica baixa e a
-//     estimativa pode ficar ABAIXO da guia: é o lado do erro, e a tela avisa.
+//     vendia por fora), a estimativa sai a partir de 1 mês medido ANTES da competência (ou
+//     seja, a partir do SEGUNDO mês de vendas), com a RBT12 deduzida pela média desses meses
+//     x 12 (a mesma conta da empresa nova). Com 0 meses medidos (a competência é o próprio
+//     mês em que o app começou a vender) não há estimativa. O resultado carrega
+//     `mesesNaMedia`, e a tela diz "de N meses de vendas" ("1 mês", no singular). Se a loja
+//     vendia muito por fora, a faixa deduzida fica baixa e a estimativa pode ficar ABAIXO da
+//     guia: é o lado do erro, e a tela avisa.
 //   - acima do sublimite de R$ 3,6 mi o ICMS sai do DAS e a conta do Anexo I deixa de
 //     valer; acima do teto de R$ 4,8 mi a empresa sai do Simples. Nos dois casos, sem estimativa.
 //
@@ -94,7 +96,7 @@ export type EstimativaDoSimples =
       readonly valor: number;
       /**
        * SÓ quando a RBT12 foi deduzida pela média de poucos meses medidos pelo app (menos
-       * dos que a regra pede): de quantos meses ela saiu (sempre 2 ou mais). Ausente = a
+       * dos que a regra pede): de quantos meses ela saiu (sempre 1 ou mais). Ausente = a
        * conta usou todos os meses que a regra pede.
        */
       readonly mesesNaMedia?: number;
@@ -103,8 +105,8 @@ export type EstimativaDoSimples =
       readonly estado: "sem_estimativa";
       readonly motivo: "faltam_meses";
       /**
-       * Quantos meses de venda medida faltam: para completar os 2 meses que a estimativa
-       * pede (0 ou 1 mês medido), ou os meses que a série não trouxe (buraco).
+       * Quantos meses de venda medida faltam: para completar o 1 mês que a estimativa pede
+       * (0 meses medidos), ou os meses que a série não trouxe (buraco).
        */
       readonly faltam: number;
     }
@@ -121,8 +123,13 @@ const semEstimativa = (
 
 const COMPETENCIA = /^\d{4}-(0[1-9]|1[0-2])$/;
 
-/** Menos que isto de meses medidos e a média não diz nada: sem estimativa (decisão do sócio, 25/11/2026). */
-const MESES_MINIMOS_MEDIDOS = 2;
+/**
+ * Menos que isto de meses medidos ANTES da competência e não há de onde tirar a média: sem
+ * estimativa. 1 mês medido já estima = a estimativa começa no SEGUNDO mês de vendas (decisão
+ * do sócio, 25/11/2026). Anda junto com `MENOS_MESES_DA_MEDIA` (textos.ts), que guarda a base
+ * que a tela aceita descrever, e com o texto de recusa de SemEstimativa.tsx.
+ */
+const MESES_MINIMOS_MEDIDOS = 1;
 
 /** `yyyy-mm` (ou data que comece assim) como número de meses desde o ano 0: dá para subtrair. */
 const indiceDoMes = (texto: string): number =>
@@ -317,7 +324,7 @@ export function estimarDasDoSimples(
         denominador = pedidos;
       }
     } else {
-      // O app mediu só parte: média dos meses medidos x 12, a partir de 2 meses.
+      // O app mediu só parte: média dos meses medidos x 12, a partir de 1 mês medido.
       if (lidos.medidos < MESES_MINIMOS_MEDIDOS) {
         return {
           estado: "sem_estimativa",

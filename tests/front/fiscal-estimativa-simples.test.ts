@@ -487,14 +487,32 @@ describe("estimarDasDoSimples: empresa com menos de 12 meses de atividade (L8, 2
     expect(valorDe(e)).toBe(970);
   });
 
-  it("mês que o app não mediu depois da abertura: faltam meses (nunca média com buraco)", () => {
-    // Empresa aberta em março, mas o app só mede de abril. Para a apuração de maio faltam
-    // março (não medido). O zero que a leitura devolveu para março é ignorado.
+  it("mês anterior ao app, depois da abertura: o zero que a leitura devolveu NÃO entra; estima pelo 1 mês medido (decisão do sócio, 25/11/2026)", () => {
+    // Empresa aberta em março, mas o app só mede de abril. Para a apuração de maio, março é
+    // mês de antes do app (o zero que a leitura devolveu é ignorado, não é "vendeu zero") e o
+    // app mediu 1 mês (abril, R$ 40.000): 40.000 x 12 = 480.000 (faixa 3: 9,5%, deduzir
+    // 13.860), efetiva 31.740 / 480.000 = 6,6125%. Mês de 30.000: 1.983,75 -> 1.980.
+    // Se o zero de março contasse, a média cairia para 20.000 e a DAS seria outra.
     const e = estimar({
       cadastro: { ...NOVA, vendeNoAppDesde: "2026-04-01" },
       competencia: "2026-05",
       receitaDoMes: 30_000,
       receitasMensais: { "2026-03": 0, "2026-04": 40_000 },
+    });
+    expect(e).toEqual({
+      estado: "com_estimativa",
+      valor: 1_980,
+      mesesNaMedia: 1,
+    });
+  });
+
+  it("mês que o app DEVIA ter medido (do início das vendas em diante) e não trouxe: faltam meses (nunca média com buraco)", () => {
+    // O app mede desde março; para maio faltam março (ausente) e abril está lá.
+    const e = estimar({
+      cadastro: NOVA,
+      competencia: "2026-05",
+      receitaDoMes: 30_000,
+      receitasMensais: { "2026-04": 40_000 },
     });
     expect(e).toEqual({
       estado: "sem_estimativa",

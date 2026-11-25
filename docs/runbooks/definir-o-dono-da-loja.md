@@ -26,6 +26,13 @@ não presume, e **nem fica sabendo o e-mail**: quem cadastra é você, por uma r
 (seção 3.3). A escolha é por loja (a
 mesma pessoa pode ser dona de mais de uma, ou não).
 
+**Cadastrar o dono é passo OBRIGATÓRIO da entrada de toda loja** (parecer do sócio, 25/11/2026).
+Loja nova só está pronta quando o dono está cadastrado **e** a conferência (a consulta 88c, abaixo)
+diz "sim" para ela, e a publicação confere isso **loja por loja**. Na IKCOUS e na Savy, o dono
+precisa estar cadastrado e conferido **antes** de aplicar a migration `20261440000000` (o
+cadastro fiscal). A frase que a tela mostra para loja sem dono é uma **rede de segurança**, não o
+plano: ela existe para o caso de a conferência falhar, e não para a loja viver assim.
+
 **O que acontece enquanto não houver dono cadastrado.** Nada quebra, mas nada se move:
 
 - a opção **Tornar administrador** não aparece no painel;
@@ -239,6 +246,8 @@ A 88c só lê e só devolve `sim`/`nao`. Nenhum identificador de pessoa sai nela
 Rode a 88c de novo **sempre que** o dono for trocado, o cargo dele for mexido (inclusive
 direto no painel do Supabase) ou antes de liberar uma release que mexa na tela de cargos.
 Hoje ela é conferência manual do programador: não é portão automático do `publicar-release`.
+Ser manual não a torna opcional: ela é feita **em cada loja**, e loja sem dono cadastrado não
+conta como pronta.
 
 ## 4. Trocar o dono (raro; decisão do dono do produto)
 
@@ -323,6 +332,10 @@ entram na atualização.
 **Quem é o dono de cada uma é decisão do dono do produto**, nunca do agente. Registrar a
 resposta dele junto com a loja, sem e-mail nem identificador neste repositório.
 
+**IKCOUS e Savy: primeiro o dono, depois a migration do cadastro fiscal.** As duas precisam ter
+o dono cadastrado e conferido (88c, as 9 linhas `sim`) **antes** de aplicar a
+`20261440000000`. Loja nova entra neste mesmo roteiro como passo da entrada dela.
+
 ## 6. O que este roteiro não faz
 
 - Não aplica nada sozinho e não guarda e-mail, identificador ou credencial de ninguém. O agente
@@ -339,5 +352,8 @@ seção "Domínio do negócio — entidades, dinheiro e papéis" do [`AGENTS.md`
 [`scripts/publicacao/consultas/`](../../scripts/publicacao/consultas/) (`8b`, `88a`, `88b`, `88c-conferir-o-dono-cadastrado`).
 O cadastro fiscal (aba **Impostos**) depende do mesmo dono: migration
 [`20261440000000_a_loja_guarda_o_cadastro_fiscal.sql`](../../supabase/migrations/20261440000000_a_loja_guarda_o_cadastro_fiscal.sql)
-e consultas `180a` e `180b`. A `180b` (antes) não exige dono; loja sem dono não bloqueia a
-publicação, mas entra na lista para o dono do produto cadastrar.
+e consultas `180a` e `180b`. A `180a` e a `180b` só leem o catálogo e **não exigem dono**: elas
+passam mesmo com a loja sem dono, e o portão automático não barra por isso. Isso **não** torna o
+cadastro opcional: cadastrar o dono é passo obrigatório da entrada de toda loja (seção 1), a
+publicação confere loja por loja pela `88c`, e na IKCOUS e na Savy o dono tem de estar
+cadastrado e conferido antes de aplicar a `20261440000000`.

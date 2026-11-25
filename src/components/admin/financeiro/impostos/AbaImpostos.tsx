@@ -11,7 +11,7 @@
 //                           "2026 fechado" com o limite de 2026 (`qualAnoOMedidorMostra`)
 //   Simples + só comércio   estimativa do DAS do ÚLTIMO MÊS FECHADO (a guia que vem
 //                           aí), pela receita dos 12 meses anteriores; com menos de 12
-//                           meses de vendas no app, a partir de 2 meses, pela média
+//                           meses de vendas no app, a partir de 1 mês, pela média
 //   o resto                 a frase honesta (Simples com serviço, Presumido, Real, "Não sei")
 // O Caderno das guias e o arquivo para o contador funcionam em TODOS os casos: só leem
 // o que a lojista lançou e o extrato.

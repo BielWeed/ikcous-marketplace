@@ -107,22 +107,31 @@ export function fraseDaSituacaoDoDono(situacao: SituacaoDoDono): string | null {
   }
 }
 
-/** A menor base de meses que a estimativa aceita (o núcleo só estima parcial a partir de 2 meses medidos). */
-export const MENOS_MESES_DA_MEDIA = 2;
+/**
+ * A menor base de meses que a estimativa aceita (o núcleo estima parcial a partir de 1 mês
+ * medido, o SEGUNDO mês de vendas). Anda junto com `MESES_MINIMOS_MEDIDOS` de
+ * estimativa-simples.ts: se só um dos dois mudar, a tela mostra "sem estimativa" no lugar do número.
+ */
+export const MENOS_MESES_DA_MEDIA = 1;
 
-/** `true` para um número inteiro de 2 meses ou mais: a única base que a frase sabe descrever. */
+/** `true` para um número inteiro de 1 mês ou mais: a única base que a frase sabe descrever. */
 export function baseDaMediaEhValida(meses: number): boolean {
   return Number.isInteger(meses) && meses >= MENOS_MESES_DA_MEDIA;
+}
+
+/** "1 mês" ou "N meses": o singular certo, para o rótulo e a frase da média. */
+export function mesesPorExtenso(meses: number): string {
+  return meses === 1 ? "1 mês" : `${meses} meses`;
 }
 
 /**
  * A frase que vai embaixo da estimativa do Simples quando a faixa foi deduzida pela média de
  * poucos meses de vendas no app (decisão do sócio, 25/11/2026, item 2). `null` se a base não
- * é um inteiro de 2 ou mais: a tela nunca descreve uma base que não sabe contar.
+ * é um inteiro de 1 ou mais: a tela nunca descreve uma base que não sabe contar.
  */
 export function fraseDaMediaDePoucosMeses(meses: number): string | null {
   if (!baseDaMediaEhValida(meses)) return null;
-  return `Com ${meses} meses de vendas no app, a faixa foi deduzida pela média. Se a empresa vendia antes por fora, a guia pode vir maior.`;
+  return `Com ${mesesPorExtenso(meses)} de vendas no app, a faixa foi deduzida pela média. Se a empresa vendia antes por fora, a guia pode vir maior.`;
 }
 
 // O medidor do limite do MEI (aba Impostos). TODO o texto do medidor mora neste bloco, num

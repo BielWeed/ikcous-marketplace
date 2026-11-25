@@ -14,9 +14,10 @@
 //  - a estimativa NUNCA aparece como ação ("lançar como despesa"): nada aqui grava;
 //  - "Ocultar valores": o valor vira máscara; o aviso continua;
 //  - poucos meses de vendas no app (decisão do sócio, 25/11/2026): quando a faixa saiu da
-//    média de 2 a 11 meses, o rótulo diz de quantos meses e a frase "Com N meses de vendas no
-//    app, a faixa foi deduzida pela média..." vem ANTES do aviso fixo. Base que não é um
-//    inteiro de 2 ou mais nunca vira número: a tela não descreve o que não sabe contar.
+//    média de 1 a 11 meses, o rótulo diz de quantos meses ("de 1 mês", no singular) e a
+//    frase "Com N meses de vendas no app, a faixa foi deduzida pela média..." vem ANTES do
+//    aviso fixo. Base que não é um inteiro de 1 ou mais nunca vira número: a tela não
+//    descreve o que não sabe contar.
 
 import { Calculator } from "lucide-react";
 import type { ReactNode } from "react";
@@ -25,6 +26,7 @@ import type { EstimativaDoSimples } from "@/lib/fiscal/estimativa-simples";
 import {
   baseDaMediaEhValida,
   fraseDaMediaDePoucosMeses,
+  mesesPorExtenso,
 } from "@/lib/fiscal/textos";
 
 import {
@@ -95,7 +97,7 @@ export function EstimativaSimples({
     );
   }
 
-  // O núcleo só devolve base parcial de 2 meses ou mais; qualquer outra coisa é dado torto.
+  // O núcleo só devolve base parcial de 1 mês ou mais; qualquer outra coisa é dado torto.
   const base = estimativa.mesesNaMedia;
   if (base !== undefined && !baseDaMediaEhValida(base)) {
     return (
@@ -146,7 +148,7 @@ export function EstimativaSimples({
         rotulo={
           base === undefined
             ? "Estimativa do app"
-            : `Estimativa do app (de ${base} meses de vendas)`
+            : `Estimativa do app (de ${mesesPorExtenso(base)} de vendas)`
         }
         icone={Calculator}
       >

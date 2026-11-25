@@ -1,7 +1,9 @@
 // Estimativa do DAS do Simples (só comércio) para quem tem MENOS de 12 meses de vendas no
-// app. Decisão do sócio de 25/11/2026 (item 2): a estimativa aparece a partir de 2 meses
-// de vendas medidas, com a faixa deduzida pela MÉDIA desses meses x 12 (a conta que a
-// Receita manda fazer para empresa nova); com 12 meses medidos volta ao cálculo cheio.
+// app. Decisão do sócio de 25/11/2026 (item 2): a estimativa aparece a partir do SEGUNDO mês
+// de vendas, isto é, com 1 mês medido ANTES da competência, com a faixa deduzida pela MÉDIA
+// dos meses medidos x 12 (a conta que a Receita manda fazer para empresa nova); com 12 meses
+// medidos volta ao cálculo cheio. Com 0 meses medidos (a competência é o próprio mês em que o
+// app começou a vender) continua sem estimativa.
 //
 // RISCO: dinheiro na tela. Todo valor esperado foi calculado à mão (comentário em cada
 // caso), com o Anexo I de 2026: faixa 1 até R$ 180 mil (4%), faixa 2 até R$ 360 mil
@@ -77,22 +79,112 @@ const comBase = (valor: number, meses: number): EstimativaDoSimples => ({
 });
 
 describe("poucos meses de vendas no app: onde a estimativa começa", () => {
-  it("0 meses (o app começou a medir NO mês da competência): sem estimativa, faltam 2", () => {
-    expect(estimar("2026-06-01", { receitasMensais: {} })).toEqual(faltam(2));
+  it("0 meses (o app começou a medir NO mês da competência): sem estimativa, falta 1", () => {
+    expect(estimar("2026-06-01", { receitasMensais: {} })).toEqual(faltam(1));
   });
 
-  it("0 meses, mesmo com zeros que a leitura devolveu para antes do app: faltam 2", () => {
+  it("0 meses, mesmo com zeros que a leitura devolveu para antes do app: falta 1", () => {
     expect(
       estimar("2026-06-01", {
         receitasMensais: serie("2025-06", "2026-05", 0),
       }),
-    ).toEqual(faltam(2));
+    ).toEqual(faltam(1));
   });
 
-  it("1 mês: sem estimativa, falta 1 (nunca anualiza um mês só)", () => {
+  it("0 meses, mesmo com valores ALTOS que a leitura devolveu para antes do app: nada disso entra, falta 1", () => {
+    expect(
+      estimar("2026-06-01", {
+        receitasMensais: serie("2025-06", "2026-05", 999_999),
+      }),
+    ).toEqual(faltam(1));
+  });
+
+  it("competência ANTES do início das vendas no app: continua sem comparação com mês anterior ao app", () => {
+    expect(
+      estimar("2026-07-01", {
+        competencia: "2026-06",
+        receitasMensais: serie("2025-06", "2026-05", 10_000),
+      }),
+    ).toEqual({
+      estado: "sem_estimativa",
+      motivo: "mes_antes_das_vendas_no_app",
+    });
+  });
+
+  it("1 mês medido: estima, e diz que a base é 1 mês (R$ 10.000 x 12 = R$ 120.000, 4%, DAS de R$ 400)", () => {
+    // O app começou em maio; competência junho: 1 mês medido (maio). Média 10.000 x 12 =
+    // 120.000 (faixa 1). 4% de 10.000 = 400.
+    expect(
+      estimar("2026-05-01", { receitasMensais: { "2026-05": 10_000 } }),
+    ).toEqual(comBase(400, 1));
+  });
+
+  it("1 mês medido de R$ 40.000: RBT12 R$ 480.000 (faixa 3, 6,6125%), DAS do mês de R$ 10.000 = 661,25 -> 660", () => {
+    // Efetiva = (480.000 x 0,095 - 13.860) / 480.000 = 31.740 / 480.000 = 6,6125%.
     expect(
       estimar("2026-05-01", { receitasMensais: { "2026-05": 40_000 } }),
+    ).toEqual(comBase(660, 1));
+  });
+
+  it("1 mês medido: o mês de antes do app, mesmo com valor enorme, NÃO entra", () => {
+    expect(
+      estimar("2026-05-01", {
+        receitasMensais: { "2026-04": 999_999, "2026-05": 10_000 },
+      }),
+    ).toEqual(comBase(400, 1));
+  });
+
+  it("1 mês medido, a competência é o 2º mês de vendas e o mês atual na série nunca é comparado", () => {
+    // A série traz até o próprio mês da competência (junho) com valor enorme: fora da janela.
+    expect(
+      estimar("2026-05-01", {
+        receitasMensais: { "2026-05": 10_000, "2026-06": 99_999_999 },
+      }),
+    ).toEqual(comBase(400, 1));
+  });
+
+  it("1 mês medido com número torto (NaN): é buraco, faltam meses; nunca estima por cima", () => {
+    expect(
+      estimar("2026-05-01", { receitasMensais: { "2026-05": Number.NaN } }),
     ).toEqual(faltam(1));
+  });
+
+  it("1 mês medido que a série não trouxe: buraco, faltam meses (não é 'vendeu zero')", () => {
+    expect(estimar("2026-05-01", { receitasMensais: {} })).toEqual(faltam(1));
+  });
+
+  it("1 mês medido com devolução maior que a venda (negativo) vale zero: RBT12 zero conta como R$ 1,00 (4%), DAS de R$ 400", () => {
+    expect(
+      estimar("2026-05-01", { receitasMensais: { "2026-05": -5_000 } }),
+    ).toEqual(comBase(400, 1));
+  });
+
+  it("1 mês medido de R$ 15.000 (R$ 180.000 por ano, fronteira inclusiva da faixa 1): 4%, DAS de R$ 15.000 = R$ 600", () => {
+    expect(
+      estimar("2026-05-01", {
+        receitaDoMes: 15_000,
+        receitasMensais: { "2026-05": 15_000 },
+      }),
+    ).toEqual(comBase(600, 1));
+  });
+
+  it("1 mês medido de R$ 300.000 (RBT12 R$ 3,6 mi): ainda abaixo do sublimite; R$ 300.000,01 já passa dele", () => {
+    // Faixa 5: efetiva 11,875%; mês de 300.000 = 35.625 -> 35.630.
+    expect(
+      estimar("2026-05-01", {
+        receitaDoMes: 300_000,
+        receitasMensais: { "2026-05": 300_000 },
+      }),
+    ).toEqual(comBase(35_630, 1));
+    expect(
+      estimar("2026-05-01", { receitasMensais: { "2026-05": 300_000.01 } }),
+    ).toEqual({ estado: "sem_estimativa", motivo: "acima_do_sublimite" });
+  });
+
+  it("1 mês medido de R$ 400.000,01 (RBT12 passa do teto de R$ 4,8 mi): sem estimativa", () => {
+    expect(
+      estimar("2026-05-01", { receitasMensais: { "2026-05": 400_000.01 } }),
+    ).toEqual({ estado: "sem_estimativa", motivo: "acima_do_teto" });
   });
 
   it("2 meses: estima, e diz que a base são 2 meses (R$ 10.000 x 12 = R$ 120.000, 4%, DAS de R$ 400)", () => {
@@ -322,13 +414,27 @@ describe("poucos meses de vendas no app: empresa com menos de 12 meses de ATIVID
     ).toEqual(comBase(970, 2));
   });
 
-  it("6º mês de atividade, app medindo só maio (1 mês): falta 1", () => {
+  it("6º mês de atividade, app medindo só maio (1 mês): estima pela média desse 1 mês, com o rótulo de 1 mês", () => {
+    // Janeiro a abril são meses de antes do app (não entram). Maio 30.000 x 12 = 360.000
+    // (fronteira inclusiva da faixa 2: 7,3%, deduzir 5.940): efetiva 20.340 / 360.000 = 5,65%.
+    // Mês de 20.000: 1.130,00 -> 1.130.
     expect(
       estimarDasDoSimples({
         cadastro: ABERTA_EM_JANEIRO("2026-05-01"),
         competencia: "2026-06",
         receitaDoMes: 20_000,
         receitasMensais: { "2026-05": 30_000 },
+      }),
+    ).toEqual(comBase(1_130, 1));
+  });
+
+  it("6º mês de atividade, app começando NO mês da competência (0 meses medidos): falta 1", () => {
+    expect(
+      estimarDasDoSimples({
+        cadastro: ABERTA_EM_JANEIRO("2026-06-01"),
+        competencia: "2026-06",
+        receitaDoMes: 20_000,
+        receitasMensais: {},
       }),
     ).toEqual(faltam(1));
   });
