@@ -17,7 +17,15 @@ vi.mock("embla-carousel-react", () => ({
 // saiu da tela em 28/09/2026 — não existe mais para dublar.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 const h = vi.hoisted(() => ({
   rpc: vi.fn(),
@@ -217,6 +225,16 @@ describe("Dashboard CRM", () => {
   let raiz: Root;
   const onNavigate = vi.fn();
   const scrollToOriginal = HTMLElement.prototype.scrollTo;
+
+  // O CRM entra no AdminArea por lazyWithPreload: a 1ª carga de cada rodada
+  // compila o CRM inteiro (2 a 4 s medidos em 25/11/2026 com a máquina cheia).
+  // Isso não é comportamento da tela; sem este aquecimento, a compilação cai
+  // dentro dos 3 s do `esperarAte` do 1º teste e ele falha só quando o
+  // computador está ocupado. O vi.resetModules() não desfaz a compilação.
+  beforeAll(async () => {
+    await import("@/components/layouts/AdminArea");
+    await import("@/views/admin/AdminCrmView");
+  }, 60_000);
 
   beforeEach(() => {
     // Relógio fixo só no Date (os setTimeout continuam reais): 12h de
