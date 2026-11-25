@@ -11,7 +11,7 @@
 //   4. reprova entrada de MANTIDAS que sumiu do código (a lista só desce).
 //
 // Regenerar:  GERAR_TEMAS=1 npx vitest run tests/front/temas-do-painel-cobertura.test.ts
-/* eslint-disable security/detect-non-literal-fs-filename, security/detect-object-injection --
+/* eslint-disable security/detect-non-literal-fs-filename --
    varredura da própria árvore do repositório (caminhos vêm do disco, não de entrada de usuário) */
 import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";

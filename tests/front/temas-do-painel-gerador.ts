@@ -15,7 +15,7 @@
 //
 // Quem usa: `temas-do-painel-cobertura.test.ts`. Regenerar o CSS:
 //   GERAR_TEMAS=1 npx vitest run tests/front/temas-do-painel-cobertura.test.ts
-/* eslint-disable security/detect-object-injection, security/detect-unsafe-regex --
+/* eslint-disable security/detect-object-injection --
    tabelas constantes e regex constantes deste arquivo (nenhuma entrada de usuário) */
 
 export type Escopo = "ambos" | "claro" | "confortavel" | "escuro";
