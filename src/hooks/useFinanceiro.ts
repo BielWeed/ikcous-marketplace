@@ -100,7 +100,7 @@ function lerCache<T>(
   return (cache.get(chave) as T | undefined) ?? null;
 }
 
-function useConsultaFinanceira<T>(
+export function useConsultaFinanceira<T>(
   chave: string | null,
   carregar: () => Promise<T>,
   versao: number,
@@ -264,7 +264,9 @@ export function useDreFinanceira(
   );
 }
 
-async function lerDre(intervalo: IntervaloDeDatas): Promise<DreFinanceira> {
+export async function lerDre(
+  intervalo: IntervaloDeDatas,
+): Promise<DreFinanceira> {
   const { data, error } = await supabase.rpc("fin_dre", {
     p_inicio: intervalo.inicio,
     p_fim: intervalo.fim,
