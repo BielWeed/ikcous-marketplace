@@ -1,0 +1,20 @@
+name: diag esm.sh 25-11
+on:
+  push:
+    branches: [claude/diag-esm-25-11]
+permissions:
+  contents: read
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: baixar o modulo como o CI baixa
+        run: |
+          curl -sSL -D headers.txt "https://esm.sh/fast-sha256@1.3.0/deno/fast-sha256.mjs" -o fs.mjs
+          sha256sum fs.mjs
+          wc -c fs.mjs
+          cat headers.txt | grep -iE "^(x-|cf-|etag|date|server)" || true
+          echo "-----BASE64-----"
+          base64 -w0 fs.mjs
+          echo
