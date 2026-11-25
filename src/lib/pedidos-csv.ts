@@ -41,7 +41,7 @@ const ROTULO_DA_ENTREGA: Record<TipoDeEntregaDoPedido, string> = {
   envio: "Envio",
 };
 
-function escaparCampo(valor: string): string {
+export function escaparCampo(valor: string): string {
   // Aspas CSV não impedem fórmulas: texto vindo do cliente precisa continuar texto.
   const seguro =
     /^[\t\r\n]/.test(valor) || /^[\s]*[=+@-]/.test(valor) ? `'${valor}` : valor;
