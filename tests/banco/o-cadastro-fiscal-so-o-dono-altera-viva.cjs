@@ -340,6 +340,11 @@ PROVAS.push({
     await c.query(
       "GRANT USAGE ON SCHEMA extensions TO anon, authenticated, service_role",
     );
+    // O gatilho on_auth_user_created (handle_new_user) criaria o perfil sozinho e o INSERT abaixo
+    // bateria em profiles_pkey; desligado so durante a montagem dos usuarios de teste.
+    await c.query(
+      "ALTER TABLE auth.users DISABLE TRIGGER on_auth_user_created",
+    );
     for (const id of TODOS) {
       await c.query(
         `INSERT INTO auth.users (id, email, raw_app_meta_data) VALUES ($1::uuid, $1::text || '@fiscal.teste', '{}'::jsonb)`,
@@ -353,6 +358,7 @@ PROVAS.push({
          ($4, 'Dono rebaixado', 'customer'), ($5, 'Rebaixado perfil', 'customer'), ($6, 'Rebaixado auth', 'admin')`,
       TODOS,
     );
+    await c.query("ALTER TABLE auth.users ENABLE TRIGGER on_auth_user_created");
     await c.query(
       `UPDATE auth.users SET raw_app_meta_data = raw_app_meta_data || '{"role":"admin"}'::jsonb WHERE id = $1`,
       [U_REB_PERFIL],

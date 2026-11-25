@@ -1,5 +1,5 @@
 -- A LOJA GUARDA O CADASTRO FISCAL, E SO O DONO ALTERA (Gestao Fiscal, fase 1; permissao + dado de cliente; 24/11/2026)
--- RASCUNHO PARA REVISAO OPUS. Nada foi aplicado em banco algum. ADITIVA pelos criterios da carta branca: nao apaga tabela,
+-- REVISADA PELO OPUS (25/11/2026: aprovada, sem achado que bloqueie). Ainda nao aplicada em loja alguma. ADITIVA pelos criterios da carta branca: nao apaga tabela,
 -- coluna nem dado, nao le nem escreve linha de tabela existente (cria 2 tabelas VAZIAS e 1 funcao; nenhum objeto existente
 -- e' redefinido). Mesmo assim cria uma porta de ESCRITA com permissao (SECURITY DEFINER): so aplicar depois da revisao Opus do
 -- SQL e da consulta de estado (180b: objetos ausentes; 88c: o dono ja cadastrado na loja).
