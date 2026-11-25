@@ -1090,7 +1090,8 @@ const AppContent = () => {
   const [navigationDirection, setNavigationDirection] = useState<
     "forward" | "back" | "none"
   >("forward");
-  // Relógios de 150 ms que devolvem a direção para "forward" depois do Voltar.
+  // Relógios do Voltar: o de 150 ms que devolve a direção para "forward" e o
+  // de 350 ms que solta a trava de transição (sem View Transitions).
   // Ficam guardados para serem cancelados ao desmontar: sem isso, o relógio
   // dispara com o app já fechado (nos testes, depois do ambiente desmontado,
   // e derrubava a rodada com "window is not defined").
@@ -2683,10 +2684,14 @@ const AppContent = () => {
                 isTransitioningRef.current = false;
               } else {
                 // Delay reset for Framer Motion fallback to match transition duration (340ms)
-                setTimeout(() => {
+                // Guardado em directionResetTimersRef: só o desmonte o cancela
+                // (a troca de tela reexecuta este efeito e não pode matá-lo).
+                const spacerTimerId = setTimeout(() => {
+                  directionResetTimersRef.current.delete(spacerTimerId);
                   setTransitionSpacerHeight(0);
                   isTransitioningRef.current = false;
                 }, 350);
+                directionResetTimersRef.current.add(spacerTimerId);
               }
             },
           );
