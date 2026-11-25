@@ -1,7 +1,8 @@
 -- 180b-antes-o-cadastro-fiscal-ausente: ANTES da 20261440000000 (ou depois do rollback-manual-destrutivo dela). SO LEITURA, somente catalogo,
--- rol fechado de 7 linhas. Nao le nenhuma linha. O rollback-manual COMUM mantem as duas tabelas (e as linhas): depois dele a linha das tabelas
--- fica "nao" de proposito e so o destrutivo as apaga. As linhas 4 a 7 sao o que o pre-voo e o pos-voo da migration exigem do banco: se uma
+-- rol fechado de 6 linhas. Nao le nenhuma linha. O rollback-manual COMUM mantem as duas tabelas (e as linhas): depois dele a linha das tabelas
+-- fica "nao" de proposito e so o destrutivo as apaga. As linhas 4 a 6 sao o que o pre-voo da migration exige do banco: se uma
 -- vier "nao", o apply recusaria com B1_BASELINE_DIVERGENT e nada seria escrito, entao a loja nao esta na base de antes.
+-- NAO confere o fin_dre: a funcao nova nao o le e a migration nao o confere nem o redefine (nenhuma base anterior a exige).
 WITH itens(item, esperado, vivo) AS (
   SELECT 'controle: catalogo publico visivel', 'sim', CASE WHEN EXISTS (SELECT 1 FROM pg_class WHERE relnamespace = 'public'::regnamespace) THEN 'sim' ELSE 'nao' END
   UNION ALL SELECT 'fiscal_cadastro_salvar: ainda NAO existe', 'sim', CASE WHEN NOT EXISTS (
@@ -23,8 +24,5 @@ WITH itens(item, esperado, vivo) AS (
               AND p.polcmd = 'r' AND p.polpermissive AND p.polwithcheck IS NULL
               AND p.polroles = ARRAY[(SELECT oid FROM pg_roles WHERE rolname = 'authenticated')]::oid[]
               AND replace(pg_get_expr(p.polqual, p.polrelid), 'public.', '') = '( SELECT rls_admin_atual() AS rls_admin_atual)') THEN 'sim' ELSE 'nao' END
-  UNION ALL SELECT 'fin_dre existe com o corpo vigente da 20261405900000 (md5): a migration nao o toca e o pos-voo dela o confere', 'sim', CASE WHEN EXISTS (
-    SELECT 1 FROM pg_proc p WHERE p.oid = to_regprocedure('public.fin_dre(date,date)')
-       AND md5(replace(p.prosrc, chr(13), '')) = 'a27c9649621b3ac1502f458576120259') THEN 'sim' ELSE 'nao' END
 )
 SELECT item, esperado, vivo, COALESCE(vivo = esperado, false) AS ok FROM itens ORDER BY ok, item;

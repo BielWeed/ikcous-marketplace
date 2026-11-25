@@ -1,7 +1,7 @@
 -- 180a-conferir-o-cadastro-fiscal-aplicado: DEPOIS da 20261440000000. SO LEITURA, somente catalogo, rol fechado de 9 linhas.
 -- Nao le nenhuma linha de fiscal_cadastro, fiscal_cadastro_log, dono_da_loja, profiles ou auth.users. NAO exige dono cadastrado: o cadastro do
--- dono e passo manual da loja (consulta 88c, docs/runbooks/definir-o-dono-da-loja.md). NAO confere o corpo de fin_dre: a migration o confere
--- ao aplicar (pos-voo) e uma sucessora legitima dele nao pode reprovar o cadastro fiscal aqui.
+-- dono e passo manual da loja (consulta 88c, docs/runbooks/definir-o-dono-da-loja.md). NAO confere o corpo de fin_dre: a migration nao o le
+-- nem o redefine, e uma sucessora legitima dele nao pode reprovar o cadastro fiscal aqui.
 WITH fn AS (
   SELECT p.oid, md5(replace(p.prosrc, chr(13), '')) AS h, l.lanname, p.prosecdef, p.provolatile, p.proisstrict, p.proconfig,
          pg_get_function_result(p.oid) AS resultado
@@ -23,7 +23,7 @@ WITH fn AS (
   SELECT 'controle: catalogo publico visivel', 'sim', CASE WHEN EXISTS (SELECT 1 FROM pg_class WHERE relnamespace = 'public'::regnamespace) THEN 'sim' ELSE 'nao' END
   UNION ALL SELECT 'fiscal_cadastro_salvar: uma so, com o corpo da 20261440000000 (md5)', 'sim', CASE WHEN
     (SELECT count(*) FROM fn) = 1
-    AND EXISTS (SELECT 1 FROM fn WHERE h = '0e76c24e09699b4aba53600bf4061c67') THEN 'sim' ELSE 'nao' END
+    AND EXISTS (SELECT 1 FROM fn WHERE h = '198c24062f62dd29aae1f96fcaed6603') THEN 'sim' ELSE 'nao' END
   UNION ALL SELECT 'fiscal_cadastro_salvar: atributos de sempre (SECURITY DEFINER, plpgsql, VOLATILE, search_path fixo em public, jsonb, um argumento p jsonb)', 'sim', CASE WHEN COALESCE(
     (SELECT bool_and(f.lanname = 'plpgsql' AND f.prosecdef AND f.provolatile = 'v' AND NOT f.proisstrict AND f.resultado = 'jsonb'
         AND f.proconfig = ARRAY['search_path=public']::text[]
@@ -47,6 +47,8 @@ WITH fn AS (
     (SELECT count(*) = 2 AND bool_and(has_table_privilege('authenticated', t.oid, 'SELECT') AND has_table_privilege('service_role', t.oid, 'SELECT')
         AND NOT has_table_privilege('authenticated', t.oid, 'INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')
         AND NOT has_table_privilege('service_role', t.oid, 'INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')
+        AND NOT has_any_column_privilege('authenticated', t.oid, 'INSERT, UPDATE, REFERENCES')
+        AND NOT has_any_column_privilege('service_role', t.oid, 'INSERT, UPDATE, REFERENCES')
         AND NOT has_any_column_privilege('anon', t.oid, 'SELECT, INSERT, UPDATE, REFERENCES')
         AND NOT EXISTS (SELECT 1 FROM aclexplode(coalesce(t.relacl, acldefault('r', t.relowner))) a WHERE a.grantee = 0))
        FROM tb t), false) THEN 'sim' ELSE 'nao' END

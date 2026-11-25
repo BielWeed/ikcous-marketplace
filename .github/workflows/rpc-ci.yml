@@ -1471,6 +1471,14 @@ jobs:
       - name: Prova viva de so o dono da loja alterar o cadastro fiscal (migration 20261440000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-cadastro-fiscal-so-o-dono-altera-viva.cjs
+      # As consultas 180a/180b (o portao da publicacao dessa migration) EXECUTADAS no Postgres, que os testes de texto nao fazem:
+      # depois da migration a 180a e POSITIVA (9 itens) e a 180b reprova so a ausencia dos objetos; ~40 defeitos plantados (grants
+      # por tabela e por coluna, RLS, politicas, corpo, atributos, EXECUTE, sequencia, colunas, CHECKs) reprovam exatamente o item
+      # certo; antes da migration a 180b e POSITIVA; o fin_dre nao e pre-condicao; a linha que ja existia sobrevive; consulta
+      # mutante fica cega. Papel sem privilegio de tabela, transacao somente leitura. CLONE proprio.
+      - name: Prova viva das consultas 180a/180b do cadastro fiscal (migration 20261440000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-cadastro-fiscal-portao-viva.cjs
       # Migration 20261384000000 (o pedido pago pelo app exige conta e nao prende o estoque de visitante): a
       # create_marketplace_order_v24 recusa 'online' sem sessao (anon) ANTES de ler carrinho, trancar, inserir pedido, baixar
       # estoque ou gastar cupom (ordem provada por sequencia movida por gatilhos); produto simples e com variacao ficam
