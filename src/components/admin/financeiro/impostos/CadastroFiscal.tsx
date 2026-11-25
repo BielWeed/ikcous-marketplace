@@ -23,6 +23,14 @@
 //
 // O cadastro (`consulta`) vem da aba, que já o lê para decidir o que mostrar: o
 // cartão não lê duas vezes e, ao gravar, `consulta.recarregar()` atualiza os dois.
+//
+// CADASTRO VELHO NUNCA ABRE A FOLHA: salvar (ou fechar a folha de uma gravação sem
+// resposta) manda reler, e até a leitura nova chegar a tela ainda tem o cadastro de
+// ANTES. A folha guarda os valores de quando abre; abrir nesse intervalo e salvar só
+// uma data devolveria o regime antigo sem aviso. Então o botão fica travado (com
+// "Atualizando o cadastro…") enquanto a consulta carrega E enquanto `dados` for o
+// mesmo objeto de quando se mandou reler (a leitura nova é sempre outro objeto).
+// Se a releitura falha, segue travado e "Tentar de novo" relê.
 
 import {
   CircleCheck,
@@ -32,9 +40,17 @@ import {
   RefreshCw,
   Store,
 } from "lucide-react";
-import { type ReactNode, useCallback, useId, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from "react";
 
 import { useStore } from "@/contexts/StoreContext";
+import { useAuth } from "@/hooks/useAuth";
 import {
   type EstadoDoDono,
   limparDonoDaLoja,
@@ -89,6 +105,11 @@ export interface CadastroFiscalProps {
 
 const CLASSE_BOTAO_TRAVAVEL =
   "aria-disabled:cursor-not-allowed aria-disabled:text-zinc-400";
+
+const FRASE_ATUALIZANDO = "Atualizando o cadastro…";
+const FRASE_NAO_ATUALIZOU = "Não deu para atualizar o cadastro agora.";
+// Quando não dá para saber quem é o autor: nunca se afirma "Outra pessoa" no escuro.
+const AUTOR_NAO_CONFIRMADO = "Autor não confirmado";
 
 /** As cinco situações da tabela da seção 4, a partir do que `useDonoDaLoja` devolve. */
 function situacaoDoDono(dono: EstadoDoDono): SituacaoDoDono {
@@ -294,13 +315,39 @@ function CartaoDoCadastro({
   aoReler,
 }: CartaoProps) {
   const dono = useDonoDaLoja();
+  // Quem está logado: é daqui que sai o "Você" do histórico, não da leitura do dono.
+  const euId = useAuth()?.user?.id ?? null;
   const { config } = useStore();
   const ids = useId();
   const idDaFrase = `${ids}-frase`;
 
+  const { dados, carregando, erro, recarregar } = consulta;
+
+  // O cadastro que a tela tinha quando se mandou reler (o de ANTES da gravação).
+  // Enquanto `dados` for esse mesmo objeto, a leitura nova ainda não chegou.
+  const [lidoAntes, setLidoAntes] = useState<{
+    readonly dados: typeof dados;
+  } | null>(null);
+  const dadosAgora = useRef(dados);
+  useEffect(() => {
+    dadosAgora.current = dados;
+  });
+  const cadastroVelho = lidoAntes !== null && lidoAntes.dados === dados;
+  const atualizando = carregando || cadastroVelho;
+  const releituraFalhou = cadastroVelho && !carregando && erro !== null;
+
   const situacao = situacaoDoDono(dono);
-  const frase = fraseDaSituacaoDoDono(situacao);
-  const podeAlterar = situacao === "sou_o_dono";
+  const ehDono = situacao === "sou_o_dono";
+  // A frase do dono tem a vez; "atualizando" só aparece para quem PODE alterar.
+  const fraseDoAtualizando = ehDono && atualizando;
+  const frase =
+    fraseDaSituacaoDoDono(situacao) ??
+    (fraseDoAtualizando
+      ? releituraFalhou
+        ? FRASE_NAO_ATUALIZOU
+        : FRASE_ATUALIZANDO
+      : null);
+  const podeAlterar = ehDono && !atualizando;
 
   const [aberta, setAberta] = useState(false);
   const [salvoAgora, setSalvoAgora] = useState(false);
@@ -309,7 +356,6 @@ function CartaoDoCadastro({
   // Relê as últimas alterações depois de uma escrita (a aba também pode subir `versao`).
   const [releituraDoLog, setReleituraDoLog] = useState(0);
 
-  const { dados, carregando, erro, recarregar } = consulta;
   const log = useLogDoCadastroFiscal(
     ativo && dados !== null,
     versao + releituraDoLog,
@@ -328,6 +374,8 @@ function CartaoDoCadastro({
   }
 
   const reler = useCallback(() => {
+    // Marca o cadastro de agora como "de antes": a folha não abre com ele.
+    setLidoAntes({ dados: dadosAgora.current });
     recarregar();
     setReleituraDoLog((n) => n + 1);
   }, [recarregar]);
@@ -347,10 +395,15 @@ function CartaoDoCadastro({
     reler();
   }
 
+  // O dono só é "conhecido" com a leitura terminada, sem falha e com alguém lá.
+  const donoConhecido =
+    !dono.carregando && !dono.leituraFalhou && dono.donoId !== null;
   function quemE(quem: string | null): string {
     if (quem === null) return "Não registrado";
-    if (quem === dono.donoId) return dono.souODono ? "Você" : "O dono da loja";
-    return "Outra pessoa";
+    if (euId !== null && quem === euId) return "Você";
+    if (donoConhecido && quem === dono.donoId) return "O dono da loja";
+    if (donoConhecido && euId !== null) return "Outra pessoa";
+    return AUTOR_NAO_CONFIRMADO;
   }
 
   // O botão e a frase que a trava mostra (ou o botão de reler, na leitura falha).
@@ -380,13 +433,17 @@ function CartaoDoCadastro({
           id={idDaFrase}
           className="flex items-start gap-2 text-sm leading-relaxed text-zinc-300"
         >
-          <Lock aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+          {fraseDoAtualizando ? (
+            <RefreshCw aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+          ) : (
+            <Lock aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+          )}
           {frase}
         </p>
-        {situacao === "leitura_falhou" ? (
+        {situacao === "leitura_falhou" || releituraFalhou ? (
           <button
             type="button"
-            onClick={aoReler}
+            onClick={situacao === "leitura_falhou" ? aoReler : reler}
             className={CLASSE_BOTAO_SECUNDARIO}
           >
             <RefreshCw aria-hidden="true" className="size-4" />

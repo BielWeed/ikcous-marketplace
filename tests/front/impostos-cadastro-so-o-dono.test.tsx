@@ -25,19 +25,23 @@ import type { EstadoDoDono } from "@/hooks/useDonoDaLoja";
 import type { ConsultaFinanceira } from "@/hooks/useFinanceiro";
 import type { LeituraDoCadastroFiscal } from "@/lib/fiscal/cadastro";
 
-const { donoFalso, limparDonoFalso, rpc, logDoBanco, lojaFalsa } = vi.hoisted(
-  () => ({
+const { donoFalso, authFalso, limparDonoFalso, rpc, logDoBanco, lojaFalsa } =
+  vi.hoisted(() => ({
     donoFalso: { atual: {} as EstadoDoDono },
+    // Quem está logado (o id que o histórico usa para dizer "Você").
+    authFalso: { id: null as string | null },
     limparDonoFalso: vi.fn(),
     rpc: vi.fn(),
     logDoBanco: { linhas: [] as unknown[] },
     lojaFalsa: { documento: null as string | null },
-  }),
-);
+  }));
 
 vi.mock("@/hooks/useDonoDaLoja", () => ({
   useDonoDaLoja: () => donoFalso.atual,
   limparDonoDaLoja: limparDonoFalso,
+}));
+vi.mock("@/hooks/useAuth", () => ({
+  useAuth: () => ({ user: authFalso.id ? { id: authFalso.id } : null }),
 }));
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({ config: { storeLegalDocument: lojaFalsa.documento } }),
@@ -178,9 +182,12 @@ async function montar(
   await assentar();
 }
 
-async function renderizarDeNovo(dados: LeituraDoCadastroFiscal | null) {
+async function renderizarDeNovo(
+  dados: LeituraDoCadastroFiscal | null,
+  extra = {},
+) {
   await act(async () => {
-    raiz.render(elemento(dados));
+    raiz.render(elemento(dados, extra));
   });
   await assentar();
 }
@@ -191,6 +198,7 @@ beforeEach(() => {
   limparDonoFalso.mockReset();
   aoIrParaMinhaLoja.mockReset();
   logDoBanco.linhas = [];
+  authFalso.id = EU;
   lojaFalsa.documento = "11222333000181";
 });
 afterEach(() => {
@@ -847,5 +855,258 @@ describe("Cadastro fiscal: a folha", () => {
     for (const id of [ID_REGIME, ID_ATIVIDADE, ID_ABERTA, ID_VENDE]) {
       expect(document.querySelector(`label[for="${id}"]`)).not.toBeNull();
     }
+  });
+});
+
+// ── Depois de salvar: nunca abrir a folha com o cadastro VELHO ─────────────
+//
+// Salvar relê o cadastro. Enquanto a leitura nova não volta, a tela ainda tem o
+// cadastro de antes: abrir a folha nesse intervalo mostraria o regime antigo e, ao
+// salvar só uma data, o regime VOLTARIA ao antigo sem aviso. O botão fica travado
+// até chegar um cadastro lido DEPOIS do salvamento.
+
+const ATUALIZANDO = "Atualizando o cadastro…";
+const NAO_ATUALIZOU = "Não deu para atualizar o cadastro agora.";
+
+/** Um cadastro "lido de novo": outro objeto, como a leitura de verdade devolve. */
+function lidoDeNovo(regime: "mei" | "simples"): LeituraDoCadastroFiscal {
+  return {
+    estado: "com_cadastro",
+    cadastro: {
+      ...(
+        CADASTRO_SIMPLES as Extract<
+          LeituraDoCadastroFiscal,
+          { estado: "com_cadastro" }
+        >
+      ).cadastro,
+      regime,
+    },
+  };
+}
+
+describe("Cadastro fiscal: depois de salvar, a releitura trava o botão", () => {
+  async function salvarComoDonoMudandoParaMei() {
+    rpc.mockResolvedValue({ data: linhaDoBanco, error: null });
+    await montar(CADASTRO_SIMPLES, DONO.souODono);
+    await clicar(botao("Alterar"));
+    await preencher(ID_REGIME, "mei");
+    await clicar(botao("Salvar"));
+    expect(folha()).toBeNull();
+    expect(recarregar).toHaveBeenCalledTimes(1);
+  }
+
+  it("releitura pendente: botão travado SEM frase de dono, clique forçado não abre; ao voltar, a folha abre com o regime NOVO", async () => {
+    await salvarComoDonoMudandoParaMei();
+
+    // A leitura nova ainda não voltou (a tela segue com o cadastro de antes).
+    await renderizarDeNovo(CADASTRO_SIMPLES, { carregando: true });
+    const alterar = botao("Alterar");
+    expect(travado(alterar)).toBe(true);
+    expect(razaoDo(alterar)).toBe(ATUALIZANDO);
+    expect(texto()).not.toContain("Só o dono");
+    expect(texto()).not.toContain("Não deu para confirmar");
+    // Clique forçado (aria-disabled não bloqueia o DOM) e Enter: nada abre.
+    await clicar(alterar);
+    expect(folha()).toBeNull();
+    await act(async () => {
+      alterar.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+      );
+    });
+    expect(folha()).toBeNull();
+
+    // A leitura voltou com o regime novo: destrava e a folha nasce com ele.
+    await renderizarDeNovo(lidoDeNovo("mei"));
+    expect(travado(botao("Alterar"))).toBe(false);
+    expect(texto()).not.toContain(ATUALIZANDO);
+    await clicar(botao("Alterar"));
+    expect(folha()).not.toBeNull();
+    expect(campo(ID_REGIME).value).toBe("mei");
+  });
+
+  it("o intervalo ANTES de a leitura nova começar (carregando ainda falso) também fica travado", async () => {
+    await salvarComoDonoMudandoParaMei();
+    // `recarregar` só vira `carregando` no ciclo seguinte: aqui ele ainda é falso.
+    const alterar = botao("Alterar");
+    expect(travado(alterar)).toBe(true);
+    await clicar(alterar);
+    expect(folha()).toBeNull();
+  });
+
+  it("a releitura falhou: segue travado, avisa e 'Tentar de novo' relê; só destrava com cadastro novo", async () => {
+    await salvarComoDonoMudandoParaMei();
+    await renderizarDeNovo(CADASTRO_SIMPLES, {
+      erro: "Não deu para ler agora.",
+    });
+    const alterar = botao("Alterar");
+    expect(travado(alterar)).toBe(true);
+    expect(razaoDo(alterar)).toBe(NAO_ATUALIZOU);
+    await clicar(alterar);
+    expect(folha()).toBeNull();
+
+    await clicar(botao("Tentar de novo"));
+    expect(recarregar).toHaveBeenCalledTimes(2);
+    await renderizarDeNovo(CADASTRO_SIMPLES, { carregando: true });
+    expect(razaoDo(botao("Alterar"))).toBe(ATUALIZANDO);
+
+    await renderizarDeNovo(lidoDeNovo("mei"));
+    expect(travado(botao("Alterar"))).toBe(false);
+    expect(temBotao("Tentar de novo")).toBe(false);
+  });
+
+  it("sem resposta do servidor: ao fechar a folha o cadastro é relido e o botão fica travado até chegar o novo", async () => {
+    rpc.mockRejectedValue(new TypeError("Failed to fetch"));
+    await montar(CADASTRO_SIMPLES, DONO.souODono);
+    await clicar(botao("Alterar"));
+    await preencher(ID_REGIME, "mei");
+    await clicar(botao("Salvar"));
+    await clicar(
+      document.querySelector<HTMLElement>(
+        '[aria-label="Fechar"]',
+      ) as HTMLElement,
+    );
+    expect(folha()).toBeNull();
+    expect(recarregar).toHaveBeenCalledTimes(1);
+    expect(travado(botao("Alterar"))).toBe(true);
+    await clicar(botao("Alterar"));
+    expect(folha()).toBeNull();
+
+    await renderizarDeNovo(lidoDeNovo("mei"));
+    expect(travado(botao("Alterar"))).toBe(false);
+  });
+
+  it("sem cadastro: depois de configurar, 'Configurar' fica travado até chegar o cadastro lido", async () => {
+    rpc.mockResolvedValue({ data: linhaDoBanco, error: null });
+    await montar(SEM_CADASTRO, DONO.souODono);
+    await clicar(botao("Configurar"));
+    await preencher(ID_REGIME, "nao_sei");
+    await preencher(ID_ATIVIDADE, "comercio");
+    await clicar(botao("Salvar"));
+    expect(folha()).toBeNull();
+
+    const configurar = botao("Configurar");
+    expect(travado(configurar)).toBe(true);
+    expect(razaoDo(configurar)).toBe(ATUALIZANDO);
+    await clicar(configurar);
+    expect(folha()).toBeNull();
+
+    await renderizarDeNovo(lidoDeNovo("mei"));
+    expect(travado(botao("Alterar"))).toBe(false);
+  });
+
+  it("lendo o cadastro por qualquer motivo (sem ter salvado): botão travado enquanto carrega", async () => {
+    await montar(CADASTRO_SIMPLES, DONO.souODono, { carregando: true });
+    const alterar = botao("Alterar");
+    expect(travado(alterar)).toBe(true);
+    expect(razaoDo(alterar)).toBe(ATUALIZANDO);
+    await clicar(alterar);
+    expect(folha()).toBeNull();
+    await renderizarDeNovo(CADASTRO_SIMPLES);
+    expect(travado(botao("Alterar"))).toBe(false);
+  });
+
+  it("a frase do dono não é trocada por 'Atualizando': quem não é o dono continua lendo a regra", async () => {
+    await montar(CADASTRO_SIMPLES, DONO.outroEDono, { carregando: true });
+    expect(razaoDo(botao("Alterar"))).toBe(SO_O_DONO);
+    expect(texto()).not.toContain(ATUALIZANDO);
+  });
+
+  it("folha já aberta não é derrubada por uma releitura que começa por baixo (a aba subiu a versão)", async () => {
+    await montar(CADASTRO_SIMPLES, DONO.souODono);
+    await clicar(botao("Alterar"));
+    await preencher(ID_REGIME, "mei");
+    await renderizarDeNovo(CADASTRO_SIMPLES, { carregando: true });
+    expect(folha()).not.toBeNull();
+    expect(campo(ID_REGIME).value).toBe("mei");
+    expect(travado(botao("Salvar"))).toBe(false);
+  });
+});
+
+// ── Histórico: "Você" vem de quem está logado, não da leitura do dono ──────
+
+const linhaDoHistorico = (quem: string | null) => ({
+  id: 1,
+  quem,
+  quando: "2026-11-20T15:30:00Z",
+  antes: null,
+  depois: {
+    regime: "mei",
+    atividade: "comercio",
+    aberta_em: null,
+    vende_no_app_desde: null,
+  },
+});
+const AUTOR_NAO_CONFIRMADO = "Autor não confirmado";
+
+describe("Cadastro fiscal: quem alterou, no histórico", () => {
+  it("a dona logada se vê como 'Você' mesmo com a leitura do dono FALHADA", async () => {
+    logDoBanco.linhas = [linhaDoHistorico(EU)];
+    await montar(CADASTRO_SIMPLES, DONO.falhou);
+    expect(texto()).toContain("Você");
+    expect(texto()).not.toContain("Outra pessoa");
+    expect(texto()).not.toContain(AUTOR_NAO_CONFIRMADO);
+  });
+
+  it("a dona logada se vê como 'Você' enquanto a leitura do dono ainda carrega", async () => {
+    logDoBanco.linhas = [linhaDoHistorico(EU)];
+    await montar(CADASTRO_SIMPLES, DONO.carregando);
+    expect(texto()).toContain("Você");
+    expect(texto()).not.toContain("Outra pessoa");
+  });
+
+  it("'Você' é pelo id de quem está logado, não pelo dono: loja sem dono não muda isso", async () => {
+    logDoBanco.linhas = [linhaDoHistorico(EU)];
+    await montar(CADASTRO_SIMPLES, DONO.semDono);
+    expect(texto()).toContain("Você");
+  });
+
+  it("quem NÃO está logado como o autor não é 'Você', mesmo que o autor seja o dono lido", async () => {
+    authFalso.id = "uid-de-outra-conta";
+    logDoBanco.linhas = [linhaDoHistorico(EU)];
+    await montar(CADASTRO_SIMPLES, DONO.souODono);
+    expect(texto()).not.toContain("Você");
+  });
+
+  it("autor é o dono atual e não sou eu: 'O dono da loja'", async () => {
+    logDoBanco.linhas = [linhaDoHistorico(OUTRO)];
+    await montar(CADASTRO_SIMPLES, DONO.outroEDono);
+    expect(texto()).toContain("O dono da loja");
+    expect(texto()).not.toContain(AUTOR_NAO_CONFIRMADO);
+  });
+
+  it("autor é outra conta, que não é o dono, e o dono é conhecido: 'Outra pessoa'", async () => {
+    logDoBanco.linhas = [linhaDoHistorico("uid-que-saiu")];
+    await montar(CADASTRO_SIMPLES, DONO.outroEDono);
+    expect(texto()).toContain("Outra pessoa");
+    expect(texto()).not.toContain(AUTOR_NAO_CONFIRMADO);
+  });
+
+  it("dono desconhecido (leitura falhou) e autor diferente de mim: frase neutra, nunca 'Outra pessoa' nem 'O dono'", async () => {
+    logDoBanco.linhas = [linhaDoHistorico(OUTRO)];
+    await montar(CADASTRO_SIMPLES, DONO.falhou);
+    expect(texto()).toContain(AUTOR_NAO_CONFIRMADO);
+    expect(texto()).not.toContain("Outra pessoa");
+    expect(texto()).not.toContain("O dono da loja");
+    expect(texto()).not.toContain(OUTRO);
+  });
+
+  it("dono desconhecido (ainda lendo) e autor diferente de mim: frase neutra", async () => {
+    logDoBanco.linhas = [linhaDoHistorico(OUTRO)];
+    await montar(CADASTRO_SIMPLES, DONO.carregando);
+    expect(texto()).toContain(AUTOR_NAO_CONFIRMADO);
+    expect(texto()).not.toContain("Outra pessoa");
+  });
+
+  it("loja sem dono cadastrado e autor diferente de mim: frase neutra", async () => {
+    logDoBanco.linhas = [linhaDoHistorico(OUTRO)];
+    await montar(CADASTRO_SIMPLES, DONO.semDono);
+    expect(texto()).toContain(AUTOR_NAO_CONFIRMADO);
+    expect(texto()).not.toContain("Outra pessoa");
+  });
+
+  it("autor sem registro continua 'Não registrado'", async () => {
+    logDoBanco.linhas = [linhaDoHistorico(null)];
+    await montar(CADASTRO_SIMPLES, DONO.falhou);
+    expect(texto()).toContain("Não registrado");
   });
 });
