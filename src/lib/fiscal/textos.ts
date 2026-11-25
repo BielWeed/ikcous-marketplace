@@ -106,3 +106,37 @@ export function fraseDaSituacaoDoDono(situacao: SituacaoDoDono): string | null {
       return FRASE_NAO_CONFIRMOU_QUEM_PODE;
   }
 }
+
+// O medidor do limite do MEI (aba Impostos). TODO o texto novo do medidor mora neste
+// objeto, num lugar só e fácil de trocar: o texto final passa pelo sócio.
+//
+// A receita do medidor vem do `fin_dre`, que só enxerga as vendas feitas pelo app. Dois
+// casos, escolhidos por `coberturaDaReceitaDoAno` (medidor-mei.ts):
+//  - cobertura COMPLETA (o app já vendia desde o começo do período medido): o medidor
+//    conta o que sempre contou, com o aviso fixo embaixo;
+//  - cobertura PARCIAL: o número vem como "vendas pelo IKCOUS no ano" e NENHUMA frase
+//    conclui enquadramento sobre ele. Só passar do teto vira alerta, porque o total real
+//    é igual ou MAIOR que o número do app: aí a conclusão é segura, e é por isso que o
+//    alerta não repete a faixa "até 20%" / "mais de 20%" (o real pode estar numa faixa
+//    acima da que o número do app mostraria).
+export const TEXTOS_DO_MEDIDOR_DO_MEI = {
+  /** Embaixo do medidor em TODO estado (completo, parcial e sem conta). */
+  avisoFixo:
+    "Conta só as vendas feitas pelo IKCOUS; vendas por fora do app não entram. Confira o total do ano no seu controle.",
+  /** O rótulo do número quando a cobertura é parcial. */
+  rotuloDoNumeroParcial: "Vendas pelo IKCOUS no ano",
+  subtituloParcial: "Só as vendas feitas pelo IKCOUS contam neste número.",
+  /** Por que não há veredito, um texto por motivo (cobertura parcial, abaixo do teto). */
+  semVeredito: {
+    sem_data_de_inicio:
+      "Não dá para concluir o seu enquadramento só com este número: o app não sabe desde quando você vende por ele, e o limite conta o ano inteiro. Informe, no cadastro fiscal, o mês em que você começou a vender pelo IKCOUS.",
+    comecou_depois_do_inicio:
+      "Não dá para concluir o seu enquadramento só com este número: o app só conhece as vendas feitas depois que você começou a vender por ele, e o limite conta o ano inteiro.",
+  },
+  /** Cobertura parcial e o número do app já acima do teto do ano. */
+  acimaDoLimiteComCoberturaParcial: {
+    titulo: "Só as vendas pelo IKCOUS já passam do limite",
+    texto:
+      "O limite do MEI conta todas as vendas do ano, então o total real é este número ou mais. Fale com o seu contador hoje para conferir o seu enquadramento.",
+  },
+} as const;

@@ -8,6 +8,11 @@
 //      cadastro falha)
 //   B  MEI: o medidor do limite, com a receita do ano líquida de devoluções, lida mês a
 //      mês (de janeiro ao mês atual) do MESMO `fin_dre` do Resultado
+//   B2 MEI: o `fin_dre` só enxerga as vendas feitas pelo app, então o medidor só conclui
+//      enquadramento ("dentro do limite") quando o app já vendia desde o começo do
+//      período medido (1º de janeiro, ou o mês da abertura); senão mostra "vendas pelo
+//      IKCOUS no ano" sem veredito (e o alerta de acima do limite, se o número já passou
+//      do teto). O aviso fixo "só conta as vendas pelo IKCOUS" vem em todos os casos
 //   C  Simples de só comércio: a estimativa do ÚLTIMO MÊS FECHADO (14 meses lidos, o
 //      atual fora), com o aviso fixo
 //   D  Simples com serviço, Presumido, Real e "Não sei": a frase honesta, sem número,
@@ -167,6 +172,11 @@ import { AVISO_DA_ESTIMATIVA } from "@/components/admin/financeiro/impostos/Avis
 import type { AbrirFolha } from "@/components/admin/financeiro/navegacao";
 import { ContextoDoCacheFinanceiro } from "@/hooks/useFinanceiro";
 import { CATEGORIA_DE_IMPOSTOS_ID } from "@/lib/fiscal/receita-do-mes";
+import { TEXTOS_DO_MEDIDOR_DO_MEI } from "@/lib/fiscal/textos";
+
+// O aviso fixo do medidor do MEI, palavra por palavra (o pedido do achado de 24/11).
+const AVISO_DO_MEDIDOR =
+  "Conta só as vendas feitas pelo IKCOUS; vendas por fora do app não entram. Confira o total do ano no seu controle.";
 
 const OUTRA_CATEGORIA = "f2000000-0000-4000-8000-0000000000aa";
 const CONTA = "conta-inventada-1";
@@ -434,6 +444,145 @@ describe("B — MEI: o medidor do limite", () => {
     await montar();
     expect(texto()).toContain("Passou do limite em mais de 20%");
     expect(texto()).toContain("Fale com o seu contador hoje.");
+  });
+
+  it("o aviso fixo do medidor ('só conta as vendas pelo IKCOUS') aparece, e é outro aviso que o da estimativa", async () => {
+    await montar();
+    expect(texto()).toContain(AVISO_DO_MEDIDOR);
+    expect(
+      host.querySelector('[role="note"][aria-label="Aviso sobre o medidor"]'),
+    ).not.toBeNull();
+    expect(texto()).not.toContain(AVISO_DA_ESTIMATIVA);
+  });
+});
+
+// O `fin_dre` só enxerga as vendas feitas pelo app e devolve ZERO para o que veio antes
+// dele. O medidor só conclui enquadramento quando o app já vendia desde o começo do
+// período medido (1º de janeiro, ou o mês da abertura); senão mostra o número rotulado,
+// sem veredito. A data vem do cadastro fiscal (`vende_no_app_desde`).
+describe("B2 — MEI: o número do app só vira veredito se cobre o ano", () => {
+  /** Zera o que o `fin_dre` devolve antes do app (jan a mai) e vende `valor` por mês depois. */
+  function vendasSoDepoisDe(primeiroMes: number, valor: number) {
+    for (let m = 1; m <= 11; m += 1) {
+      receitaDoMes.set(
+        `2026-${String(m).padStart(2, "0")}`,
+        m < primeiroMes ? 0 : valor,
+      );
+    }
+  }
+  const mei = (extra: Linha) =>
+    tabelas.set("fiscal_cadastro", {
+      linhas: [cadastroDoBanco("mei", "comercio", extra)],
+    });
+  const semVeredito = () => {
+    const t = texto().toLowerCase();
+    expect(t).not.toContain("dentro do limite");
+    expect(t).not.toContain("nada muda");
+    expect(host.querySelector("[data-faixa-titulo]")).toBeNull();
+  };
+  const avisoFixoPresente = () => expect(texto()).toContain(AVISO_DO_MEDIDOR);
+
+  it("o caso do defeito: R$ 15 mil pelo app, vendas antes dele fora: NÃO diz 'dentro do limite'", async () => {
+    // O app vende desde junho (6 meses x R$ 2.500 = R$ 15.000); antes disso o
+    // `fin_dre` devolve zero. O real do ano pode ser bem maior (R$ 70 mil por fora).
+    vendasSoDepoisDe(6, 2500);
+    mei({ vende_no_app_desde: "2026-06-01" });
+    await montar();
+    expect(texto()).toContain("Vendas pelo IKCOUS no ano");
+    expect(texto()).toContain("R$ 15.000,00");
+    expect(texto()).not.toMatch(/\d+%/);
+    expect(texto()).toContain(
+      TEXTOS_DO_MEDIDOR_DO_MEI.semVeredito.comecou_depois_do_inicio,
+    );
+    semVeredito();
+    avisoFixoPresente();
+  });
+
+  it("sem a data de início das vendas pelo app: sem veredito, pede a data e traz o aviso", async () => {
+    mei({ vende_no_app_desde: null });
+    await montar();
+    expect(texto()).toContain("Vendas pelo IKCOUS no ano");
+    expect(texto()).toContain(
+      TEXTOS_DO_MEDIDOR_DO_MEI.semVeredito.sem_data_de_inicio,
+    );
+    semVeredito();
+    avisoFixoPresente();
+  });
+
+  it("a borda: começou em 1º de janeiro = cobertura completa (veredito); em fevereiro = parcial (sem veredito)", async () => {
+    mei({ vende_no_app_desde: "2026-01-01" });
+    await montar();
+    expect(texto()).toContain("Dentro do limite");
+    expect(texto()).not.toContain("Vendas pelo IKCOUS no ano");
+    avisoFixoPresente();
+    await act(async () => root.unmount());
+    root = createRoot(host);
+
+    mei({ vende_no_app_desde: "2026-02-01" });
+    await montar();
+    expect(texto()).toContain("Vendas pelo IKCOUS no ano");
+    semVeredito();
+    avisoFixoPresente();
+  });
+
+  it("o ano medido é o de hoje: vendia desde 2025 em 2026 = completa; mas virando 2027 o ano é outro (sem conta, com aviso)", async () => {
+    mei({ vende_no_app_desde: "2025-06-01" });
+    await montar();
+    expect(texto()).toContain("Dentro do limite");
+    await act(async () => root.unmount());
+    root = createRoot(host);
+
+    await montar({ hoje: "2027-03-10" });
+    expect(texto()).toContain("ainda não foram conferidos");
+    expect(texto()).not.toContain("Dentro do limite");
+    avisoFixoPresente();
+  });
+
+  it("passou do teto só com as vendas do app e cobertura parcial: alerta de acima do limite, sem a faixa nem o efeito", async () => {
+    vendasSoDepoisDe(3, 11_000); // 9 meses x R$ 11.000 = R$ 99.000
+    mei({ vende_no_app_desde: "2026-03-01" });
+    await montar();
+    const alerta = host.querySelector('[role="alert"]');
+    expect(alerta?.textContent).toContain(
+      TEXTOS_DO_MEDIDOR_DO_MEI.acimaDoLimiteComCoberturaParcial.titulo,
+    );
+    expect(texto()).toContain("R$ 99.000,00");
+    expect(texto()).not.toContain("Passou do limite em");
+    semVeredito();
+    avisoFixoPresente();
+  });
+
+  it("ano de abertura: abriu em outubro e vende pelo app desde outubro = completa (limite proporcional); desde novembro = parcial", async () => {
+    mei({ aberta_em: "2026-10-15", vende_no_app_desde: "2026-10-01" });
+    await montar();
+    expect(texto()).toContain("Dentro do limite");
+    expect(texto()).toContain("Limite: R$ 20.250,00");
+    await act(async () => root.unmount());
+    root = createRoot(host);
+
+    mei({ aberta_em: "2026-10-15", vende_no_app_desde: "2026-11-01" });
+    await montar();
+    expect(texto()).toContain("Vendas pelo IKCOUS no ano");
+    expect(texto()).toContain("Limite: R$ 20.250,00");
+    semVeredito();
+    avisoFixoPresente();
+  });
+
+  it("empresa aberta em ano anterior: não adianta o início, continua valendo 1º de janeiro", async () => {
+    mei({ aberta_em: "2025-03-10", vende_no_app_desde: "2026-03-01" });
+    await montar();
+    expect(texto()).toContain("Vendas pelo IKCOUS no ano");
+    semVeredito();
+  });
+
+  it("virou o mês e a série foi relida (versão nova): a cobertura acompanha o cadastro lido", async () => {
+    mei({ vende_no_app_desde: "2026-06-01" });
+    await montar();
+    semVeredito();
+    // a lojista informou que vende desde 2025 (cadastro mudou, aba relê)
+    mei({ vende_no_app_desde: "2025-01-01" });
+    await montar({ versao: 1 });
+    expect(texto()).toContain("Dentro do limite");
   });
 });
 

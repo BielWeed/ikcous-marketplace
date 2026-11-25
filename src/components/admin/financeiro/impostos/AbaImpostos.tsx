@@ -4,7 +4,9 @@
 // QUEM TEM CONTA (e só eles; nenhum regime é suposto):
 //   sem cadastro            estado vazio "Configure o regime da sua empresa"; NADA de
 //                           estimativa e NENHUMA leitura do `fin_dre`
-//   MEI                     medidor do limite do ano (vendas do ano, as mesmas do Resultado)
+//   MEI                     medidor do limite do ano (vendas do ano, as mesmas do Resultado;
+//                           só conclui enquadramento se o app já vendia desde o começo do
+//                           período medido: a `cobertura` vem do cadastro fiscal)
 //   Simples + só comércio   estimativa do DAS do ÚLTIMO MÊS FECHADO (a guia que vem
 //                           aí), pela receita dos 12 meses anteriores
 //   o resto                 a frase honesta (Simples com serviço, Presumido, Real, "Não sei")
@@ -47,7 +49,10 @@ import {
   type EstimativaDoSimples,
   estimarDasDoSimples,
 } from "@/lib/fiscal/estimativa-simples";
-import { medirLimiteDoMei } from "@/lib/fiscal/medidor-mei";
+import {
+  coberturaDaReceitaDoAno,
+  medirLimiteDoMei,
+} from "@/lib/fiscal/medidor-mei";
 import { receitaDoMes } from "@/lib/fiscal/receita-do-mes";
 import type {
   DataIso,
@@ -253,6 +258,10 @@ function BlocoDaConta({
           medidor={medirLimiteDoMei({ receitaAcumulada, ano, cadastro })}
           ano={ano}
           receitaAcumulada={receitaAcumulada}
+          // O `fin_dre` só vê as vendas feitas pelo app: sem saber que o app já
+          // vendia desde o começo do período medido, o número é PARCIAL e o
+          // medidor não conclui enquadramento sobre ele.
+          cobertura={coberturaDaReceitaDoAno({ ano, cadastro })}
         />
       </div>
     );

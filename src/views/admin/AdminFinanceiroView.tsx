@@ -14,7 +14,6 @@
 import { CalendarClock, Eye, EyeOff, Plus } from "lucide-react";
 import {
   Suspense,
-  lazy,
   useCallback,
   useEffect,
   useMemo,
@@ -68,6 +67,7 @@ import {
   EsqueletoDeLista,
   ReciboFinanceiro,
 } from "@/components/admin/financeiro/partes";
+import { LimiteDePedaco } from "@/components/ui/custom/LimiteDePedaco";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useAuth } from "@/hooks/useAuth";
@@ -88,10 +88,13 @@ import {
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import type { PeriodoEscolhido } from "@/types/financeiro";
+import { lazyRetentavel } from "@/utils/lazyRetentavel";
 
 // A aba Impostos (núcleo da lei, cálculo, cadastro e arquivo do contador) fica fora
-// do pacote inicial do Financeiro: só é baixada quando a lojista a abre.
-const AbaImpostos = lazy(() =>
+// do pacote inicial do Financeiro: só é baixada quando a lojista a abre. Se o arquivo
+// não baixa (sinal ruim no primeiro toque, versão nova no ar), a falha fica presa na
+// própria aba (`LimiteDePedaco`, com "Tentar de novo") e o resto do Financeiro segue.
+const AbaImpostos = lazyRetentavel(() =>
   import("@/components/admin/financeiro/impostos/AbaImpostos").then(
     (modulo) => ({ default: modulo.AbaImpostos }),
   ),
@@ -829,15 +832,19 @@ export function AdminFinanceiroView({
                 <TabsContent value="impostos">
                   {/* Aba pesada (núcleo da lei, cálculo e arquivo do contador):
                       só é baixada quando a lojista a abre. */}
-                  <Suspense fallback={<EsqueletoDeLista linhas={4} />}>
-                    <AbaImpostos
-                      ativo={ativo && aba === "impostos"}
-                      versao={versao}
-                      hoje={hoje}
-                      abrirFolha={abrirFolha}
-                      aoIrParaMinhaLoja={() => onNavigate("admin-about-store")}
-                    />
-                  </Suspense>
+                  <LimiteDePedaco pedacos={[AbaImpostos]}>
+                    <Suspense fallback={<EsqueletoDeLista linhas={4} />}>
+                      <AbaImpostos
+                        ativo={ativo && aba === "impostos"}
+                        versao={versao}
+                        hoje={hoje}
+                        abrirFolha={abrirFolha}
+                        aoIrParaMinhaLoja={() =>
+                          onNavigate("admin-about-store")
+                        }
+                      />
+                    </Suspense>
+                  </LimiteDePedaco>
                 </TabsContent>
                 <TabsContent value="contas" className="flex flex-col gap-4">
                   {/* A visão não tem mais aba: o chip "Contas" a abre, então

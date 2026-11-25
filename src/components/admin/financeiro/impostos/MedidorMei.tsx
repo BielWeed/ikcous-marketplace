@@ -14,7 +14,15 @@
 //  - ano sem valores conferidos: aviso no lugar do número, nada de R$ nem %;
 //  - "Ocultar valores": dinheiro e percentual viram máscara e a barra some (o
 //    tamanho dela entregaria o percentual). O aviso da faixa continua: quem
-//    passou do limite precisa saber mesmo com os valores escondidos.
+//    passou do limite precisa saber mesmo com os valores escondidos;
+//  - o número vem do `fin_dre`, que só enxerga as vendas feitas pelo app. O aviso fixo
+//    "só contam as vendas pelo IKCOUS" vai embaixo em TODO estado. E quando a
+//    `cobertura` é PARCIAL (o app não vendia desde o começo do período medido), o
+//    número é só "vendas pelo IKCOUS no ano": sem percentual, sem barra, sem a frase
+//    de "dentro do limite" nem o efeito no enquadramento (o `fin_dre` devolve zero
+//    para o que veio antes do app, e a conclusão sairia de um número incompleto). Só
+//    passar do teto mostra alerta, porque o total real é igual ou maior. Os textos
+//    novos moram em `TEXTOS_DO_MEDIDOR_DO_MEI` (src/lib/fiscal/textos.ts).
 
 import {
   CircleCheck,
@@ -26,11 +34,13 @@ import {
 
 import { formatarBRL } from "@/lib/financeiro";
 import type {
+  CoberturaDaReceita,
   FaixaDoMei,
   MedidorDoMei,
   MotivoSemContaDoMedidor,
 } from "@/lib/fiscal/medidor-mei";
 import { ULTIMO_ANO_CONFERIDO } from "@/lib/fiscal/parametros-da-lei";
+import { TEXTOS_DO_MEDIDOR_DO_MEI } from "@/lib/fiscal/textos";
 import {
   type TomDeEstado,
   classeDoPonto,
@@ -54,6 +64,11 @@ export interface MedidorMeiProps {
   readonly ano: number;
   /** Receita bruta do ano até agora, em reais (a mesma que foi ao núcleo). */
   readonly receitaAcumulada: number;
+  /**
+   * Se o número do app é a receita do ano inteiro (`coberturaDaReceitaDoAno`). Sem
+   * valor padrão de propósito: quem esquecer de dizer não recebe veredito por engano.
+   */
+  readonly cobertura: CoberturaDaReceita;
 }
 
 interface VisualDaFaixa {
@@ -115,10 +130,30 @@ const TEXTO_SEM_CONTA = (
   abertura_depois_do_ano: `A data de abertura da empresa, no cadastro fiscal, é depois de ${ano}. Confira a data no cadastro fiscal para ver o medidor.`,
 });
 
+/** O aviso fixo, embaixo do medidor em todo estado (mesmo desenho do aviso da estimativa). */
+function AvisoDoMedidor() {
+  return (
+    <div
+      role="note"
+      aria-label="Aviso sobre o medidor"
+      className="mt-3 flex min-w-0 items-start gap-3 rounded-2xl border border-admin-border bg-admin-bg p-3"
+    >
+      <Info
+        aria-hidden="true"
+        className={cn("mt-0.5 size-4 shrink-0", classeDoTexto("neutro"))}
+      />
+      <p className="min-w-0 text-xs leading-relaxed text-zinc-300">
+        {TEXTOS_DO_MEDIDOR_DO_MEI.avisoFixo}
+      </p>
+    </div>
+  );
+}
+
 export function MedidorMei({
   medidor,
   ano,
   receitaAcumulada,
+  cobertura,
 }: MedidorMeiProps) {
   const ocultos = useValoresEstaoOcultos();
   const titulo = `Limite do MEI em ${ano}`;
@@ -137,6 +172,83 @@ export function MedidorMei({
             {TEXTO_SEM_CONTA(ano)[medidor.motivo]}
           </p>
         </div>
+        <AvisoDoMedidor />
+      </CartaoSecao>
+    );
+  }
+
+  const vendasDoAno = Number.isFinite(receitaAcumulada)
+    ? Math.max(0, receitaAcumulada)
+    : 0;
+
+  if (cobertura.tipo === "parcial") {
+    // Faixa fora de "dentro" = o número do app JÁ passou do teto. Só isso se conclui.
+    const acimaDoTeto = medidor.faixa !== "dentro";
+    const alerta = TEXTOS_DO_MEDIDOR_DO_MEI.acimaDoLimiteComCoberturaParcial;
+    return (
+      <CartaoSecao
+        titulo={titulo}
+        subtitulo={TEXTOS_DO_MEDIDOR_DO_MEI.subtituloParcial}
+      >
+        <div className={cn(CLASSE_CASCA_DO_CARTAO, "flex flex-col gap-4 p-4")}>
+          <div className="flex min-w-0 flex-col gap-1">
+            <span className={CLASSE_ROTULO_DO_CARTAO}>
+              {TEXTOS_DO_MEDIDOR_DO_MEI.rotuloDoNumeroParcial}
+            </span>
+            <p
+              data-vendas-pelo-app=""
+              className="text-3xl font-black tabular-nums leading-none tracking-tight text-white"
+            >
+              <Dinheiro valor={vendasDoAno} />
+            </p>
+            <p className="text-xs leading-relaxed text-zinc-400">
+              Limite: {formatarBRL(medidor.tetoUsado)}
+            </p>
+            {medidor.tetoProporcional ? (
+              <p className="text-xs leading-relaxed text-zinc-400">
+                No ano em que a empresa abre, o limite é proporcional:{" "}
+                {mesesDeAtividade(medidor.mesesDeAtividade)} de atividade,
+                contando o mês da abertura inteiro.
+              </p>
+            ) : null}
+          </div>
+
+          {acimaDoTeto ? (
+            <div role="alert" className="flex min-w-0 items-start gap-3">
+              <OctagonAlert
+                aria-hidden="true"
+                className={cn(
+                  "mt-0.5 size-5 shrink-0",
+                  classeDoTexto("negativo"),
+                )}
+              />
+              <div className="flex min-w-0 flex-col gap-1">
+                <p
+                  className={cn(
+                    "text-sm font-bold leading-snug",
+                    classeDoTexto("negativo"),
+                  )}
+                >
+                  {alerta.titulo}
+                </p>
+                <p className="text-sm leading-relaxed text-zinc-300">
+                  {alerta.texto}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex min-w-0 items-start gap-3">
+              <Info
+                aria-hidden="true"
+                className={cn("mt-0.5 size-5 shrink-0", classeDoTexto("info"))}
+              />
+              <p className="min-w-0 text-sm leading-relaxed text-zinc-300">
+                {TEXTOS_DO_MEDIDOR_DO_MEI.semVeredito[cobertura.motivo]}
+              </p>
+            </div>
+          )}
+        </div>
+        <AvisoDoMedidor />
       </CartaoSecao>
     );
   }
@@ -154,9 +266,6 @@ export function MedidorMei({
     100;
   const posicaoDaMarca =
     (MARCA_DO_LIMITE_EM_PERCENTUAL / FIM_DA_ESCALA_EM_PERCENTUAL) * 100;
-  const vendasDoAno = Number.isFinite(receitaAcumulada)
-    ? Math.max(0, receitaAcumulada)
-    : 0;
 
   return (
     <CartaoSecao
@@ -237,6 +346,7 @@ export function MedidorMei({
           </div>
         </div>
       </div>
+      <AvisoDoMedidor />
     </CartaoSecao>
   );
 }

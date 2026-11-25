@@ -10,7 +10,12 @@
 //  - ano não conferido: aviso no lugar do número (nada de R$ nem %);
 //  - "Ocultar valores": nada do dinheiro nem do percentual aparece, a tela
 //    escondida é IDÊNTICA para duas receitas diferentes (não vaza a ordem de grandeza),
-//    e o aviso da faixa continua visível (quem passou do limite precisa saber).
+//    e o aviso da faixa continua visível (quem passou do limite precisa saber);
+//  - o aviso fixo "só conta as vendas feitas pelo IKCOUS" está em TODO estado;
+//  - cobertura PARCIAL (o app não vendia desde o começo do período medido): o número
+//    vem rotulado "Vendas pelo IKCOUS no ano" e NENHUMA frase conclui enquadramento
+//    ("dentro do limite", "nada muda"); só passar do teto mostra o alerta de acima do
+//    limite, sem a faixa nem o efeito (o total real é igual ou maior).
 // Dados inventados; nenhuma loja específica.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -22,13 +27,24 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 import { MedidorMei } from "@/components/admin/financeiro/impostos/MedidorMei";
 import { ContextoValoresOcultos } from "@/components/admin/financeiro/partes";
 import {
+  type CoberturaDaReceita,
   type MedidorDoMei,
   type MotivoSemContaDoMedidor,
   medirLimiteDoMei,
 } from "@/lib/fiscal/medidor-mei";
+import { TEXTOS_DO_MEDIDOR_DO_MEI } from "@/lib/fiscal/textos";
 import { classeDoTexto } from "@/lib/tons-de-estado";
 
 const ANO = 2026;
+const COMPLETA: CoberturaDaReceita = { tipo: "completa" };
+const PARCIAL_SEM_DATA: CoberturaDaReceita = {
+  tipo: "parcial",
+  motivo: "sem_data_de_inicio",
+};
+const PARCIAL_COMECOU_DEPOIS: CoberturaDaReceita = {
+  tipo: "parcial",
+  motivo: "comecou_depois_do_inicio",
+};
 
 let raiz: Root | null = null;
 let hospedeiro: HTMLDivElement;
@@ -52,7 +68,11 @@ afterEach(() => {
 function montar(
   medidor: MedidorDoMei,
   receitaAcumulada: number,
-  opcoes: { readonly ocultos?: boolean; readonly ano?: number } = {},
+  opcoes: {
+    readonly ocultos?: boolean;
+    readonly ano?: number;
+    readonly cobertura?: CoberturaDaReceita;
+  } = {},
 ): HTMLElement {
   raiz = createRoot(hospedeiro);
   const atual = raiz;
@@ -63,6 +83,7 @@ function montar(
           medidor={medidor}
           ano={opcoes.ano ?? ANO}
           receitaAcumulada={receitaAcumulada}
+          cobertura={opcoes.cobertura ?? COMPLETA}
         />
       </ContextoValoresOcultos.Provider>,
     );
@@ -346,5 +367,195 @@ describe("MedidorMei — acessibilidade e estrutura", () => {
     ).not.toBeNull();
     // Só apresentação: nenhum botão, link ou campo.
     expect(h.querySelector("button, a, input, select, textarea")).toBeNull();
+  });
+});
+
+const AVISO_FIXO =
+  "Conta só as vendas feitas pelo IKCOUS; vendas por fora do app não entram. Confira o total do ano no seu controle.";
+
+const aviso = (h: HTMLElement) =>
+  h.querySelector<HTMLElement>(
+    '[role="note"][aria-label="Aviso sobre o medidor"]',
+  );
+
+/** Desmonta e prepara um hospedeiro limpo, para montar de novo no mesmo teste. */
+function recomecar() {
+  desmontar();
+  hospedeiro = document.createElement("div");
+  document.body.appendChild(hospedeiro);
+}
+
+describe("MedidorMei — o aviso fixo de que só contam as vendas pelo IKCOUS", () => {
+  it("o texto da constante é o do pedido, palavra por palavra", () => {
+    expect(TEXTOS_DO_MEDIDOR_DO_MEI.avisoFixo).toBe(AVISO_FIXO);
+  });
+
+  it("aparece com cobertura completa, em qualquer faixa", () => {
+    for (const receita of [10_000, 90_000, 120_000]) {
+      const h = montar(medirReal(receita), receita);
+      expect(aviso(h)?.textContent).toBe(AVISO_FIXO);
+      recomecar();
+    }
+  });
+
+  it("aparece com cobertura parcial, nos dois motivos", () => {
+    for (const cobertura of [PARCIAL_SEM_DATA, PARCIAL_COMECOU_DEPOIS]) {
+      const h = montar(medirReal(10_000), 10_000, { cobertura });
+      expect(aviso(h)?.textContent).toBe(AVISO_FIXO);
+      recomecar();
+    }
+  });
+
+  it("aparece também sem conta (ano não conferido) e com Ocultar valores ligado", () => {
+    const semConta = montar(medirReal(50_000, 2027), 50_000, { ano: 2027 });
+    expect(aviso(semConta)?.textContent).toBe(AVISO_FIXO);
+    recomecar();
+    const oculto = montar(medirReal(63_000), 63_000, { ocultos: true });
+    expect(aviso(oculto)?.textContent).toBe(AVISO_FIXO);
+  });
+});
+
+describe("MedidorMei — cobertura parcial: o número sem veredito", () => {
+  // O veredito de quem está dentro do limite: título da faixa e o efeito do núcleo.
+  const semVeredito = (h: HTMLElement) => {
+    const t = textoDe(h).toLowerCase();
+    expect(t).not.toContain("dentro do limite");
+    expect(t).not.toContain("nada muda");
+    expect(t).not.toContain("enquadramento como mei");
+    expect(h.querySelector("[data-faixa-titulo]")).toBeNull();
+    expect(h.querySelector("[data-faixa-icone]")).toBeNull();
+  };
+
+  it("R$ 15 mil pelo app: mostra o valor rotulado, sem % e sem barra, e diz que não dá para concluir", () => {
+    const h = montar(medirReal(15_000), 15_000, {
+      cobertura: PARCIAL_COMECOU_DEPOIS,
+    });
+    const texto = textoDe(h);
+    expect(texto).toContain(TEXTOS_DO_MEDIDOR_DO_MEI.rotuloDoNumeroParcial);
+    expect(texto).toContain("Vendas pelo IKCOUS no ano");
+    expect(texto).toContain("R$ 15.000,00");
+    expect(texto).toContain("Limite: R$ 81.000,00");
+    expect(texto).toContain(
+      TEXTOS_DO_MEDIDOR_DO_MEI.semVeredito.comecou_depois_do_inicio,
+    );
+    // o percentual daria a impressão de "já usei 18% do limite": não existe aqui
+    expect(texto).not.toMatch(/\d+%/);
+    expect(h.querySelector("[data-barra-enchimento]")).toBeNull();
+    semVeredito(h);
+  });
+
+  it("sem a data de início: o texto pede o mês no cadastro fiscal e também não conclui", () => {
+    const h = montar(medirReal(15_000), 15_000, {
+      cobertura: PARCIAL_SEM_DATA,
+    });
+    expect(textoDe(h)).toContain(
+      TEXTOS_DO_MEDIDOR_DO_MEI.semVeredito.sem_data_de_inicio,
+    );
+    expect(textoDe(h)).toContain("cadastro fiscal");
+    expect(textoDe(h)).toContain("R$ 15.000,00");
+    semVeredito(h);
+  });
+
+  it("os dois motivos têm texto próprio, e nenhum é vazio", () => {
+    const { sem_data_de_inicio: a, comecou_depois_do_inicio: b } =
+      TEXTOS_DO_MEDIDOR_DO_MEI.semVeredito;
+    expect(a).not.toBe(b);
+    expect(a.trim().length).toBeGreaterThan(20);
+    expect(b.trim().length).toBeGreaterThan(20);
+  });
+
+  it("controle: a MESMA receita com cobertura completa mostra o veredito e o percentual", () => {
+    const h = montar(medirReal(15_000), 15_000);
+    expect(tituloDaFaixa(h).textContent).toBe("Dentro do limite");
+    expect(textoDe(h)).toContain("18%");
+    expect(textoDe(h)).toContain("Vendas do ano: R$ 15.000,00");
+    expect(textoDe(h)).not.toContain(
+      TEXTOS_DO_MEDIDOR_DO_MEI.rotuloDoNumeroParcial,
+    );
+  });
+
+  it("passou do teto só com as vendas do app: o alerta de acima do limite aparece, sem a faixa nem o efeito do núcleo", () => {
+    // R$ 100 mil só pelo app: já passa do teto (e o total real é igual ou maior).
+    const medidor = medirReal(100_000);
+    const h = montar(medidor, 100_000, { cobertura: PARCIAL_COMECOU_DEPOIS });
+    const alerta = h.querySelector<HTMLElement>('[role="alert"]');
+    expect(alerta).not.toBeNull();
+    expect(alerta?.textContent).toContain(
+      TEXTOS_DO_MEDIDOR_DO_MEI.acimaDoLimiteComCoberturaParcial.titulo,
+    );
+    expect(alerta?.textContent).toContain(
+      TEXTOS_DO_MEDIDOR_DO_MEI.acimaDoLimiteComCoberturaParcial.texto,
+    );
+    expect(textoDe(h)).toContain("R$ 100.000,00");
+    // "em mais de 20%" seria uma conta sobre um número que pode estar abaixo do real
+    expect(textoDe(h)).not.toContain("Passou do limite em");
+    if (medidor.estado === "com_conta") {
+      expect(textoDe(h)).not.toContain(medidor.efeito);
+    }
+    expect(aviso(h)?.textContent).toBe(AVISO_FIXO);
+    // e não diz "dentro do limite" nem a explicação de quem está abaixo
+    expect(textoDe(h).toLowerCase()).not.toContain("dentro do limite");
+    expect(textoDe(h)).not.toContain(
+      TEXTOS_DO_MEDIDOR_DO_MEI.semVeredito.comecou_depois_do_inicio,
+    );
+  });
+
+  it("a borda do teto: exatamente R$ 81.000 ainda não é alerta; um centavo a mais é", () => {
+    const noTeto = montar(medirReal(81_000), 81_000, {
+      cobertura: PARCIAL_SEM_DATA,
+    });
+    expect(noTeto.querySelector('[role="alert"]')).toBeNull();
+    semVeredito(noTeto);
+    recomecar();
+    const passou = montar(medirReal(81_000.01), 81_000.01, {
+      cobertura: PARCIAL_SEM_DATA,
+    });
+    expect(passou.querySelector('[role="alert"]')).not.toBeNull();
+  });
+
+  it("controle: com cobertura completa, passar do teto continua sendo a faixa de sempre (não o texto do parcial)", () => {
+    const h = montar(medirReal(100_000), 100_000);
+    expect(tituloDaFaixa(h).textContent).toBe(
+      "Passou do limite em mais de 20%",
+    );
+    expect(textoDe(h)).not.toContain(
+      TEXTOS_DO_MEDIDOR_DO_MEI.acimaDoLimiteComCoberturaParcial.titulo,
+    );
+  });
+
+  it("ano de abertura: o limite proporcional continua explicado no parcial", () => {
+    const medidor = medirLimiteDoMei({
+      receitaAcumulada: 10_000,
+      ano: ANO,
+      cadastro: { abertaEm: "2026-10-15" },
+    });
+    const h = montar(medidor, 10_000, { cobertura: PARCIAL_COMECOU_DEPOIS });
+    expect(textoDe(h)).toContain("3 meses");
+    expect(textoDe(h)).toContain("Limite: R$ 20.250,00");
+  });
+
+  it("com Ocultar valores: o dinheiro some, o aviso fixo e o alerta de acima do limite ficam", () => {
+    const pouco = montar(medirReal(2_000), 2_000, {
+      ocultos: true,
+      cobertura: PARCIAL_SEM_DATA,
+    });
+    const htmlPouco = pouco.innerHTML;
+    expect(textoDe(pouco)).toContain("Valor oculto");
+    expect(textoDe(pouco)).not.toContain("2.000");
+    expect(aviso(pouco)?.textContent).toBe(AVISO_FIXO);
+    recomecar();
+    // outra receita da mesma situação: a tela escondida é idêntica
+    const mais = montar(medirReal(70_000), 70_000, {
+      ocultos: true,
+      cobertura: PARCIAL_SEM_DATA,
+    });
+    expect(mais.innerHTML).toBe(htmlPouco);
+    recomecar();
+    const acima = montar(medirReal(100_000), 100_000, {
+      ocultos: true,
+      cobertura: PARCIAL_SEM_DATA,
+    });
+    expect(acima.querySelector('[role="alert"]')).not.toBeNull();
+    expect(textoDe(acima)).not.toContain("100.000");
   });
 });

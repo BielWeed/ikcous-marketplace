@@ -11,8 +11,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  type CoberturaDaReceita,
   type FaixaDoMei,
   type MedidorDoMei,
+  coberturaDaReceitaDoAno,
   medirLimiteDoMei,
 } from "@/lib/fiscal/medidor-mei";
 
@@ -244,5 +246,81 @@ describe("medirLimiteDoMei: o efeito de passar do limite, em texto simples (L3)"
     );
     expect(new Set(textos).size).toBe(3);
     for (const t of textos) expect(t.trim().length).toBeGreaterThan(20);
+  });
+});
+
+// A receita do medidor vem do `fin_dre`, que só enxerga as vendas feitas pelo app. Ela
+// só é o "total do ano" se o app já vendia desde o começo do período medido: o 1º de
+// janeiro, ou, no ano em que a empresa abre, o mês da abertura. Senão é um número
+// PARCIAL, e a tela não pode concluir enquadramento em cima dele.
+describe("coberturaDaReceitaDoAno: o número do app é o do ano inteiro?", () => {
+  const cobertura = (
+    vendeNoAppDesde: string | null,
+    abertaEm: string | null = null,
+    ano = 2026,
+  ): CoberturaDaReceita =>
+    coberturaDaReceitaDoAno({ ano, cadastro: { vendeNoAppDesde, abertaEm } });
+
+  it("sem a data de início das vendas pelo app: parcial, e diz por quê", () => {
+    expect(cobertura(null)).toEqual({
+      tipo: "parcial",
+      motivo: "sem_data_de_inicio",
+    });
+  });
+
+  it("vendia pelo app desde antes do ano: completa", () => {
+    expect(cobertura("2025-06-01")).toEqual({ tipo: "completa" });
+    expect(cobertura("2020-01-01")).toEqual({ tipo: "completa" });
+  });
+
+  it("a borda: desde janeiro do ano é completa; desde fevereiro já é parcial", () => {
+    expect(cobertura("2026-01-01")).toEqual({ tipo: "completa" });
+    expect(cobertura("2026-02-01")).toEqual({
+      tipo: "parcial",
+      motivo: "comecou_depois_do_inicio",
+    });
+    expect(cobertura("2026-12-01")).toEqual({
+      tipo: "parcial",
+      motivo: "comecou_depois_do_inicio",
+    });
+  });
+
+  it("vale o ano medido, não o de hoje nem o de outro ano", () => {
+    // Vendendo desde jan/2026: em 2027 já vendia antes (completa); em 2025 ainda não
+    // vendia em janeiro (parcial).
+    expect(cobertura("2026-01-01", null, 2027)).toEqual({ tipo: "completa" });
+    expect(cobertura("2026-01-01", null, 2025)).toEqual({
+      tipo: "parcial",
+      motivo: "comecou_depois_do_inicio",
+    });
+  });
+
+  it("ano de abertura: vale o mês da abertura, não 1º de janeiro", () => {
+    // Empresa aberta em 15/10/2026: não existiam vendas antes de outubro.
+    expect(cobertura("2026-10-01", "2026-10-15")).toEqual({ tipo: "completa" });
+    expect(cobertura("2026-10-01", "2026-10-01")).toEqual({ tipo: "completa" });
+    expect(cobertura("2026-11-01", "2026-10-15")).toEqual({
+      tipo: "parcial",
+      motivo: "comecou_depois_do_inicio",
+    });
+  });
+
+  it("abertura em ano anterior não adianta o início: continua valendo 1º de janeiro", () => {
+    expect(cobertura("2026-03-01", "2025-03-10")).toEqual({
+      tipo: "parcial",
+      motivo: "comecou_depois_do_inicio",
+    });
+    expect(cobertura("2026-01-01", "2025-03-10")).toEqual({ tipo: "completa" });
+  });
+
+  it("começou a vender pelo app antes do mês da abertura (dado estranho): não vira parcial", () => {
+    expect(cobertura("2026-05-01", "2026-10-15")).toEqual({ tipo: "completa" });
+  });
+
+  it("data de início que não é uma data de verdade: parcial, nunca completa por engano", () => {
+    expect(cobertura("lixo")).toEqual({
+      tipo: "parcial",
+      motivo: "sem_data_de_inicio",
+    });
   });
 });

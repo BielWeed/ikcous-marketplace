@@ -145,3 +145,55 @@ export function medirLimiteDoMei(entrada: EntradaDoMedidorDoMei): MedidorDoMei {
     efeito: efeitoDaFaixa(faixa, anoDeAbertura),
   };
 }
+
+/**
+ * Por que o número do app pode não ser o do ano inteiro. Estável: a tela e o teste leem
+ * o motivo, não o texto.
+ */
+export type MotivoDeCoberturaParcial =
+  | "sem_data_de_inicio"
+  | "comecou_depois_do_inicio";
+
+/**
+ * O número que vai ao medidor sai do `fin_dre`, que só enxerga as vendas feitas pelo
+ * app. Ele só é a receita do ANO quando o app já vendia desde o começo do período
+ * medido; senão é um número PARCIAL e a tela não pode concluir enquadramento sobre ele
+ * (o `fin_dre` devolve zero para o que veio antes do app, e zero parece "não vendeu").
+ */
+export type CoberturaDaReceita =
+  | { readonly tipo: "completa" }
+  | { readonly tipo: "parcial"; readonly motivo: MotivoDeCoberturaParcial };
+
+export interface EntradaDaCobertura {
+  /** O ano-calendário medido (o mesmo que vai a `medirLimiteDoMei`). */
+  readonly ano: number;
+  readonly cadastro: Pick<CadastroFiscal, "abertaEm" | "vendeNoAppDesde">;
+}
+
+/**
+ * Diz se a receita do app cobre o período medido inteiro. O período começa em 1º de
+ * janeiro, ou, se a empresa abriu naquele ano, no mês da abertura (antes dela não existe
+ * venda a contar). Cobre quando o app já vendia nesse mês ou antes; sem a data de início
+ * das vendas no cadastro, nunca se supõe cobertura. A comparação é por mês: o cadastro
+ * guarda `vendeNoAppDesde` sempre no dia 1.
+ */
+export function coberturaDaReceitaDoAno(
+  entrada: EntradaDaCobertura,
+): CoberturaDaReceita {
+  const { abertaEm, vendeNoAppDesde } = entrada.cadastro;
+  if (vendeNoAppDesde === null || !ehDataIso(vendeNoAppDesde)) {
+    return { tipo: "parcial", motivo: "sem_data_de_inicio" };
+  }
+
+  // O mês em que o período medido começa (`aaaa-mm`): janeiro, ou o da abertura se for
+  // depois (abertura de ano anterior não adianta nada; ISO se compara como texto).
+  let inicioDoPeriodo = `${entrada.ano}-01`;
+  if (abertaEm !== null && ehDataIso(abertaEm)) {
+    const mesDaAbertura = abertaEm.slice(0, 7);
+    if (mesDaAbertura > inicioDoPeriodo) inicioDoPeriodo = mesDaAbertura;
+  }
+
+  return vendeNoAppDesde.slice(0, 7) <= inicioDoPeriodo
+    ? { tipo: "completa" }
+    : { tipo: "parcial", motivo: "comecou_depois_do_inicio" };
+}
