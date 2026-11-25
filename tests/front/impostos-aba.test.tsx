@@ -1584,6 +1584,37 @@ describe("M — janeiro: o medidor do MEI mostra '2026 fechado'", () => {
     expect(linha("2027-01")).toContain("R$ 500,00");
   });
 
+  it("MEI aberto em janeiro de 2027 (10/01), hoje 15/01/2027: NÃO diz '2026 fechado' nem 'depois de 2026'; mostra o aviso de ano não conferido, o mesmo de fevereiro", async () => {
+    tabelas.set("fiscal_cadastro", {
+      linhas: [
+        cadastroDoBanco("mei", "comercio", {
+          aberta_em: "2027-01-10",
+          vende_no_app_desde: "2027-01-10",
+        }),
+      ],
+    });
+    await montar({ hoje: "2027-01-15" });
+    expect(host.querySelector("[data-ano-fechado]")).toBeNull();
+    expect(secao("Limite do MEI em 2027")).not.toBeNull();
+    expect(texto()).toContain(
+      "Temos os valores da lei de 2026; os de 2027 ainda não foram conferidos.",
+    );
+    expect(texto()).not.toContain("depois de 2026");
+    expect(texto()).not.toContain("2026 fechado");
+    expect(texto()).not.toContain("Confira a data no cadastro fiscal");
+  });
+
+  it("MEI aberto em 31/12/2026, hoje 15/01/2027: a empresa existia em 2026, continua '2026 fechado' (limite proporcional de 1 mês)", async () => {
+    tabelas.set("fiscal_cadastro", {
+      linhas: [cadastroDoBanco("mei", "comercio", { aberta_em: "2026-12-31" })],
+    });
+    await montar({ hoje: "2027-01-15" });
+    expect(
+      normal(host.querySelector("[data-ano-fechado]")?.textContent),
+    ).toContain("(limite de 2026)");
+    expect(texto()).not.toContain("depois de 2026");
+  });
+
   it("01/02/2027 (2027 ainda sem conferência): acabou o 'fechado', volta o aviso de ano não conferido", async () => {
     await montar({ hoje: "2027-02-01" });
     expect(host.querySelector("[data-ano-fechado]")).toBeNull();

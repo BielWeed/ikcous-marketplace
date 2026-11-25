@@ -58,8 +58,9 @@ export interface MesParaOCaderno {
    */
   readonly estimativa?: number | null;
   /**
-   * As vendas registradas no app no mês, menos devoluções, em reais: o MESMO número do
-   * Resultado (decisão do sócio, 25/11/2026). É informação do mês, mostrada numa linha
+   * As vendas registradas no app no mês, menos devoluções, em reais: o mesmo número do
+   * medidor do MEI (NÃO é a receita líquida do Resultado, que também soma outras receitas
+   * e tira as deduções lançadas; decisão do sócio, 25/11/2026). É informação do mês, mostrada numa linha
    * discreta, nunca como um quarto valor ao lado da guia. `null`/ausente = a leitura não
    * chegou: não mostra linha (nunca "R$ 0,00" no lugar do que não se sabe).
    */

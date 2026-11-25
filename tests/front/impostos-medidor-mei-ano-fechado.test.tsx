@@ -19,6 +19,7 @@ import { ContextoValoresOcultos } from "@/components/admin/financeiro/partes";
 import {
   type CoberturaDaReceita,
   medirLimiteDoMei,
+  qualAnoOMedidorMostra,
 } from "@/lib/fiscal/medidor-mei";
 import { TEXTOS_DO_MEDIDOR_DO_MEI } from "@/lib/fiscal/textos";
 
@@ -188,9 +189,69 @@ describe("MedidorMei — '2026 fechado'", () => {
     expect(semNbsp(hospedeiro.textContent)).not.toContain("fechado");
   });
 
-  it("ano 'fechado' sem conta (abertura depois do ano): mostra o aviso do núcleo, sem frase de vendas", () => {
-    const h = montarFechado(0, { abertaEm: "2027-01-05" });
-    expect(h.querySelector("[data-ano-fechado]")).toBeNull();
-    expect(semNbsp(h.textContent)).toContain("é depois de 2026");
+  it("MEI aberto em janeiro de 2027 (10/01), hoje 15/01/2027: a aba mede 2027 e mostra 'ano não conferido'; nunca 'depois de 2026' (que empurrava a lojista a gravar uma abertura falsa)", () => {
+    // A mesma composição da aba: o ano vem de `qualAnoOMedidorMostra` COM a data de
+    // abertura, e é esse ano que entra no núcleo e no medidor.
+    const abertaEm = "2027-01-10";
+    const { ano, fechado } = qualAnoOMedidorMostra(
+      "2027-01-15",
+      undefined,
+      abertaEm,
+    );
+    raiz = createRoot(hospedeiro);
+    const atual = raiz;
+    act(() => {
+      atual.render(
+        <ContextoValoresOcultos.Provider value={false}>
+          <MedidorMei
+            medidor={medirLimiteDoMei({
+              receitaAcumulada: 0,
+              ano,
+              cadastro: { abertaEm },
+            })}
+            ano={ano}
+            receitaAcumulada={0}
+            cobertura={COMPLETA}
+            fechado={fechado}
+          />
+        </ContextoValoresOcultos.Provider>,
+      );
+    });
+    const texto = semNbsp(hospedeiro.textContent);
+    expect(hospedeiro.querySelector("[data-ano-fechado]")).toBeNull();
+    expect(texto).toContain("Limite do MEI em 2027");
+    expect(texto).toContain("os de 2027 ainda não foram conferidos");
+    expect(texto).not.toContain("depois de 2026");
+    expect(texto).not.toContain("Confira a data no cadastro fiscal");
+  });
+
+  it("abertura de verdade DEPOIS do ano medido (data futura, 2027, em novembro de 2026): o núcleo recusa com 'é depois de 2026', sem frase de vendas e sem 'fechado' (o aviso certo aqui, porque 2026 é um ano conferido)", () => {
+    const abertaEm = "2027-01-05";
+    const { ano, fechado } = qualAnoOMedidorMostra(
+      "2026-11-25",
+      undefined,
+      abertaEm,
+    );
+    raiz = createRoot(hospedeiro);
+    const atual = raiz;
+    act(() => {
+      atual.render(
+        <ContextoValoresOcultos.Provider value={false}>
+          <MedidorMei
+            medidor={medirLimiteDoMei({
+              receitaAcumulada: 0,
+              ano,
+              cadastro: { abertaEm },
+            })}
+            ano={ano}
+            receitaAcumulada={0}
+            cobertura={COMPLETA}
+            fechado={fechado}
+          />
+        </ContextoValoresOcultos.Provider>,
+      );
+    });
+    expect(hospedeiro.querySelector("[data-ano-fechado]")).toBeNull();
+    expect(semNbsp(hospedeiro.textContent)).toContain("é depois de 2026");
   });
 });

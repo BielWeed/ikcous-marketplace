@@ -17,8 +17,9 @@
 // o que a lojista lançou e o extrato.
 //
 // A LINHA DE VENDAS DO CADERNO (decisão do sócio, 25/11/2026): cada um dos 3 meses mostra
-// "Vendas registradas no app (menos devoluções): R$ X", o MESMO número do Resultado (a
-// receita líquida do `fin_dre`), para TODO regime com cadastro. É informação do mês, nunca
+// "Vendas registradas no app (menos devoluções): R$ X", as vendas do mês menos as
+// devoluções (o mesmo número do medidor do MEI; NÃO é a receita líquida do Resultado, que
+// também soma outras receitas e tira as deduções lançadas), para TODO regime com cadastro. É informação do mês, nunca
 // um valor de guia. Por isso quem tem cadastro lê, no mínimo, os 3 meses do caderno; a
 // série longa do MEI e do Simples já cobre esses meses, e o mês atual (pela metade) entra
 // nela só para essa linha: ele NUNCA ganha estimativa nem entra na comparação com a guia.
@@ -321,7 +322,13 @@ export function AbaImpostos({
   // lê, no mínimo, os 3 meses do caderno (a linha de vendas de cada mês); quem tem conta lê
   // a série que a conta pede, e ela já cobre esses meses (a lista é sempre UM intervalo
   // contínuo, do mais antigo ao mais novo).
-  const anoDoMedidor = useMemo(() => qualAnoOMedidorMostra(hoje), [hoje]);
+  // A data de abertura decide se o "ano fechado" cabe: empresa aberta no ano novo não
+  // tem o que medir no ano que acabou (ver `qualAnoOMedidorMostra`).
+  const abertaEm = cadastro?.abertaEm ?? null;
+  const anoDoMedidor = useMemo(
+    () => qualAnoOMedidorMostra(hoje, undefined, abertaEm),
+    [hoje, abertaEm],
+  );
   const mesesDaSerie = useMemo(() => {
     if (tipoDaConta === null) return [];
     const primeiroDoCaderno = somarMeses(mesAtual, -(MESES_DO_CADERNO - 1));

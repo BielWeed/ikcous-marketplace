@@ -77,16 +77,33 @@ export type MedidorDoMei =
  * "fechado" que dura para sempre. Só devolve `fechado: true` para um ano que TEM valores
  * conferidos: nunca mostra um limite que o código não conhece.
  *
+ * O "ano fechado" só serve a quem JÁ EXISTIA nele: a empresa aberta em janeiro do ano novo
+ * não tem nada a medir no ano que acabou, e o núcleo a recusaria com "a abertura é depois
+ * de 2026", empurrando a lojista a gravar uma data falsa. Nesse caso mede o ano do próprio
+ * dia, e a tela mostra o mesmo aviso honesto de "ano não conferido" de fevereiro. Sem data
+ * de abertura (ou com uma que não é data), nada muda: quem recusa a data torta é o núcleo.
+ *
  * @param anoConferido só para teste: quais anos têm valores conferidos.
+ * @param abertaEm a data de abertura do cadastro fiscal (`aaaa-mm-dd`), se houver.
  */
 export function qualAnoOMedidorMostra(
   hoje: DataIso,
   anoConferido: (ano: number) => boolean = (ano) =>
     parametrosDoAno(ano).conferido,
+  abertaEm: DataIso | null = null,
 ): { readonly ano: number; readonly fechado: boolean } {
   const ano = Number(hoje.slice(0, 4));
   const mes = Number(hoje.slice(5, 7));
-  if (mes === 1 && !anoConferido(ano) && anoConferido(ano - 1)) {
+  const abertaDepoisDoAnoFechado =
+    abertaEm !== null &&
+    ehDataIso(abertaEm) &&
+    Number(abertaEm.slice(0, 4)) > ano - 1;
+  if (
+    mes === 1 &&
+    !anoConferido(ano) &&
+    anoConferido(ano - 1) &&
+    !abertaDepoisDoAnoFechado
+  ) {
     return { ano: ano - 1, fechado: true };
   }
   return { ano, fechado: false };
