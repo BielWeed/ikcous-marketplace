@@ -142,7 +142,8 @@ export type ResultadoDoCadastroFiscal =
  * Valida o formulário e monta o corpo de `fiscal_cadastro_salvar`. Recusa
  * antes de ir ao banco o que o banco recusaria (regime/atividade fora da
  * lista, mês que não é dia 1) e o que ele deixaria passar mas não faz sentido
- * (empresa aberta no futuro). Com qualquer erro NÃO há payload.
+ * (empresa aberta no futuro, começo das vendas no futuro ou antes da abertura).
+ * Com qualquer erro NÃO há payload.
  */
 export function montarPayloadDoCadastro(
   form: FormularioDoCadastroFiscal,
@@ -178,6 +179,14 @@ export function montarPayloadDoCadastro(
     } else if (!vendeTexto.endsWith("-01")) {
       // O banco só guarda o dia 1 (o que vale é o mês).
       erros.vendeNoAppDesde = "Escolha só o mês: a data guardada é o dia 1.";
+    } else if (vendeTexto > `${hoje.slice(0, 7)}-01`) {
+      // O mês de hoje vale (já começou); o seguinte, não.
+      erros.vendeNoAppDesde =
+        "O mês em que começou a vender não pode ser no futuro.";
+    } else if (abertaEm !== null && vendeTexto < `${abertaEm.slice(0, 7)}-01`) {
+      // Só compara com uma abertura válida: a inválida já tem o próprio erro.
+      erros.vendeNoAppDesde =
+        "O mês em que começou a vender não pode ser antes da abertura da empresa.";
     } else {
       vendeNoAppDesde = vendeTexto;
     }

@@ -18,6 +18,7 @@ import { paraCentavos } from "@/lib/financeiro";
 import type {
   CategoriaFinanceira,
   DreFinanceira,
+  GrupoDaDre,
   LinhaDaDre,
 } from "@/types/financeiro";
 
@@ -34,21 +35,35 @@ export interface ReceitaDoMes {
   readonly devolucoes: number;
   /**
    * Linhas da categoria de impostos no mês (previstas e pagas, pela competência, como
-   * o Resultado). `null` = não deu para saber qual é o nome atual da categoria: isso
-   * NÃO é "zero imposto", e quem mostra o número tem de dizer que não sabe.
+   * o Resultado), no grupo em que ela está AGORA. `null` = não deu para saber: a
+   * categoria não foi achada, está sem nome ou foi para `fora_dre` (o `fin_dre` nem
+   * emite a linha dela). Isso NÃO é "zero imposto", e quem mostra o número tem de
+   * dizer que não sabe.
    */
   readonly imposto: number | null;
 }
 
 const deCentavos = (centavos: number): number => centavos / 100;
 
-/** O nome atual da categoria de impostos, achada pelo ID fixo. `null` se não achar ou estiver em branco. */
+/** A categoria de impostos como está AGORA: o nome e o grupo da DRE que a lojista deu a ela. */
+export interface CategoriaDeImpostos {
+  readonly nome: string;
+  readonly grupoDre: GrupoDaDre;
+}
+
+/**
+ * O nome e o grupo atuais da categoria de impostos, achada pelo ID fixo. A lojista pode
+ * trocar os dois (tela "Linha do resultado"), e a DRE devolve a linha no grupo novo.
+ * `null` se não achar ou se o nome estiver em branco.
+ */
 export function nomeDaCategoriaDeImpostos(
-  categorias: readonly Pick<CategoriaFinanceira, "id" | "nome">[],
-): string | null {
+  categorias: readonly Pick<CategoriaFinanceira, "id" | "nome" | "grupoDre">[],
+): CategoriaDeImpostos | null {
   const categoria = categorias.find((c) => c.id === CATEGORIA_DE_IMPOSTOS_ID);
   const nome = categoria?.nome.trim() ?? "";
-  return nome === "" ? null : nome;
+  return categoria === undefined || nome === ""
+    ? null
+    : { nome, grupoDre: categoria.grupoDre };
 }
 
 /**
@@ -63,8 +78,11 @@ export function nomeDaCategoriaDeImpostos(
  *
  * Limite conhecido, que a DRE não deixa resolver: sem estorno, sem custo (`cmv` zero)
  * e sem nenhuma receita manual, a primeira linha manual cai exatamente nessa posição e
- * é indistinguível da derivada. Só acontece se a lojista criar uma categoria de
- * dedução com este mesmo nome.
+ * é indistinguível da derivada. Acontece se a lojista criar uma categoria de dedução
+ * com este mesmo nome, ou RENOMEAR a categoria de sistema "Devoluções e estornos"
+ * (id ...010) para "Estornos e devoluções" e lançar nela. Nos dois casos a homônima
+ * ainda precisa ser a maior dedução do mês, porque as manuais saem do banco da maior
+ * para a menor e só a primeira cai na posição da derivada.
  */
 function linhaDerivadaDeDevolucoes(dre: DreFinanceira): LinhaDaDre | null {
   const linhasDeVenda =
@@ -79,13 +97,13 @@ function linhaDerivadaDeDevolucoes(dre: DreFinanceira): LinhaDaDre | null {
 }
 
 /**
- * @param nomeDoImposto o nome ATUAL da categoria de impostos (a lojista pode renomear),
- *   lido da lista de categorias pelo ID fixo (`nomeDaCategoriaDeImpostos`). Nunca um
- *   texto escrito no código.
+ * @param impostos a categoria de impostos como está AGORA (nome e grupo, que a lojista
+ *   pode trocar), lida da lista de categorias pelo ID fixo (`nomeDaCategoriaDeImpostos`).
+ *   Nunca um texto escrito no código. `null` = não achada.
  */
 export function receitaDoMes(
   dre: DreFinanceira,
-  nomeDoImposto: string | null,
+  impostos: CategoriaDeImpostos | null,
 ): ReceitaDoMes {
   const receita = deCentavos(
     paraCentavos(dre.receitaOnline) + paraCentavos(dre.receitaBalcao),
@@ -94,15 +112,17 @@ export function receitaDoMes(
   const derivada = linhaDerivadaDeDevolucoes(dre);
   const devolucoes = derivada ? deCentavos(paraCentavos(derivada.valor)) : 0;
 
-  const nome = nomeDoImposto?.trim() ?? "";
+  const nome = impostos?.nome.trim() ?? "";
   let imposto: number | null = null;
-  if (nome !== "") {
+  // `fora_dre`: o `fin_dre` filtra essas categorias fora, então "sem linha" não quer
+  // dizer "sem imposto", quer dizer que a DRE não olha para ela.
+  if (impostos !== null && nome !== "" && impostos.grupoDre !== "fora_dre") {
     let centavos = 0;
     for (const l of dre.linhas) {
       // A derivada nunca é imposto, mesmo que a lojista tenha dado à categoria de
       // impostos o nome "Estornos e devoluções".
       if (l === derivada) continue;
-      if (l.grupo === "deducao" && l.categoria.trim() === nome) {
+      if (l.grupo === impostos.grupoDre && l.categoria.trim() === nome) {
         centavos += paraCentavos(l.valor);
       }
     }

@@ -185,7 +185,14 @@ describe("montarPayloadDoCadastro: só monta o corpo se tudo for válido", () =>
     expect(
       camposRecusados({ ...FORMULARIO, abertaEm: "2026-06-16" }),
     ).toStrictEqual(["abertaEm"]);
-    expect(camposRecusados({ ...FORMULARIO, abertaEm: HOJE })).toBeNull();
+    // Aberta hoje: o começo das vendas não pode ser anterior a este mês.
+    expect(
+      camposRecusados({
+        ...FORMULARIO,
+        abertaEm: HOJE,
+        vendeNoAppDesde: "2026-06-01",
+      }),
+    ).toBeNull();
   });
 
   it.each(["10/03/2020", "2020-3-10", "2020-02-30", "abc"])(
@@ -207,6 +214,82 @@ describe("montarPayloadDoCadastro: só monta o corpo se tudo for válido", () =>
     expect(
       camposRecusados({ ...FORMULARIO, vendeNoAppDesde: "2025-03-01" }),
     ).toBeNull();
+  });
+
+  it("vende_no_app_desde no futuro recusa; o mês de hoje e o mês passado valem", () => {
+    // HOJE é 2026-06-15: o mês de junho já começou, julho não.
+    expect(
+      camposRecusados({ ...FORMULARIO, vendeNoAppDesde: "2026-07-01" }),
+    ).toStrictEqual(["vendeNoAppDesde"]);
+    expect(
+      camposRecusados({ ...FORMULARIO, vendeNoAppDesde: "2030-01-01" }),
+    ).toStrictEqual(["vendeNoAppDesde"]);
+    expect(
+      camposRecusados({ ...FORMULARIO, vendeNoAppDesde: "2026-06-01" }),
+    ).toBeNull();
+    expect(
+      camposRecusados({ ...FORMULARIO, vendeNoAppDesde: "2026-05-01" }),
+    ).toBeNull();
+  });
+
+  it("vende_no_app_desde no futuro: a mensagem é em português simples e não manda payload", () => {
+    const r = montarPayloadDoCadastro(
+      { ...FORMULARIO, vendeNoAppDesde: "2026-07-01" },
+      HOJE,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.erros.vendeNoAppDesde).toBe(
+        "O mês em que começou a vender não pode ser no futuro.",
+      );
+    }
+  });
+
+  it("vende_no_app_desde antes do mês de abertura recusa; o próprio mês de abertura vale", () => {
+    // aberta em 2020-03-10: março de 2020 vale (a loja abriu naquele mês), fevereiro não.
+    expect(
+      camposRecusados({ ...FORMULARIO, vendeNoAppDesde: "2020-02-01" }),
+    ).toStrictEqual(["vendeNoAppDesde"]);
+    expect(
+      camposRecusados({ ...FORMULARIO, vendeNoAppDesde: "2020-03-01" }),
+    ).toBeNull();
+    const r = montarPayloadDoCadastro(
+      { ...FORMULARIO, vendeNoAppDesde: "2020-02-01" },
+      HOJE,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.erros.vendeNoAppDesde).toBe(
+        "O mês em que começou a vender não pode ser antes da abertura da empresa.",
+      );
+    }
+  });
+
+  it("sem data de abertura não há contra o que comparar: só valem o dia 1 e o futuro", () => {
+    expect(
+      camposRecusados({
+        ...FORMULARIO,
+        abertaEm: "",
+        vendeNoAppDesde: "1999-01-01",
+      }),
+    ).toBeNull();
+  });
+
+  it("abertura inválida não gera erro de comparação em vendeNoAppDesde: só o erro da própria abertura", () => {
+    expect(
+      camposRecusados({
+        ...FORMULARIO,
+        abertaEm: "2099-01-01",
+        vendeNoAppDesde: "2020-01-01",
+      }),
+    ).toStrictEqual(["abertaEm"]);
+    expect(
+      camposRecusados({
+        ...FORMULARIO,
+        abertaEm: "abc",
+        vendeNoAppDesde: "2020-01-01",
+      }),
+    ).toStrictEqual(["abertaEm"]);
   });
 
   it("vende_no_app_desde em formato inválido recusa", () => {
