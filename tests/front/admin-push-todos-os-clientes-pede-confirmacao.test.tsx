@@ -501,6 +501,13 @@ describe("AdminPushView — enviar para TODOS os clientes pede confirmação", (
     expect(texto).toContain("Novos em 7 dias");
     expect(texto).toContain("3 aparelhos");
     expect(texto).toMatch(/não dá para desfazer/i);
+    // Título e corpo da pergunta nomeiam o grupo e o aviso exatos: o nome do
+    // grupo sozinho já aparece no título, então sem estas duas frases o corpo
+    // podia dizer qualquer coisa (ou "todos") e o teste não via.
+    expect(texto).toContain('Enviar para "Novos em 7 dias"?');
+    expect(texto).toContain(
+      'O aviso "Bem-vinda!" vai agora para o grupo "Novos em 7 dias".',
+    );
     expect(texto).not.toContain("todos os clientes");
     expect(texto).not.toContain(
       "Aviso no sino para as contas que já existem na loja",
