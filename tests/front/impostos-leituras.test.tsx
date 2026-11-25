@@ -4,8 +4,9 @@
 // alterações, guias lançadas e a série mensal do Resultado. O que prova:
 //   L1  loja SEM cadastro (linha ausente, linha ilegível, leitura que falhou, ainda
 //       lendo, aba fechada) NÃO dispara nenhuma leitura de `fin_dre`
-//   L2  regime sem conta (Simples com serviço, Presumido, Real, "não sei") também
-//       não; MEI e Simples de só comércio leem um `fin_dre` por mês, na ordem
+//   L2  regime sem conta (Simples com serviço, Presumido, Real, "não sei") lê só os
+//       meses que a aba pedir (a linha de vendas do caderno, decisão do sócio de
+//       25/11/2026); MEI e Simples de só comércio leem um `fin_dre` por mês, na ordem
 //   L3  as guias vêm só da categoria de impostos, sem as canceladas, pela competência
 //       do período (a guia do dia 1 de um mês que o período só atravessa entra) e
 //       com `data_realizacao` (o CSV do contador precisa dela) e com `id`, `descricao`
@@ -555,7 +556,7 @@ describe("série do Resultado — só quem tem conta dispara a leitura do fin_dr
     ["real", "comercio"],
     ["nao_sei", "comercio"],
   ])(
-    "%s / %s NÃO tem conta: o fin_dre não é lido",
+    "%s / %s NÃO tem conta, mas tem cadastro: lê os meses pedidos (a linha de vendas do caderno), um fin_dre por mês",
     async (regime, atividade) => {
       tabelas.set("fiscal_cadastro", {
         linhas: [linhaDoCadastro(regime, atividade)],
@@ -563,7 +564,7 @@ describe("série do Resultado — só quem tem conta dispara a leitura do fin_dr
       await montar(<SondaDaAba />);
       await avancar(PRAZO * 2);
       expect(aba().dataset.cadastro).toBe("com_cadastro");
-      expect(rpc).not.toHaveBeenCalled();
+      expect(leiturasDoDre()).toHaveLength(MESES.length);
     },
   );
 

@@ -11,9 +11,9 @@
 //  - "Ocultar valores": nada do dinheiro nem do percentual aparece, a tela
 //    escondida é IDÊNTICA para duas receitas diferentes (não vaza a ordem de grandeza),
 //    e o aviso da faixa continua visível (quem passou do limite precisa saber);
-//  - o aviso fixo "só conta as vendas feitas pelo IKCOUS" está em TODO estado;
+//  - o aviso fixo "só conta as vendas feitas pelo app" está em TODO estado;
 //  - cobertura PARCIAL (o app não vendia desde o começo do período medido): o número
-//    vem rotulado "Vendas registradas no IKCOUS neste ano" e NENHUMA frase conclui enquadramento
+//    vem rotulado "Vendas registradas no app neste ano" e NENHUMA frase conclui enquadramento
 //    ("dentro do limite", "nada muda"); só passar do teto mostra o alerta de acima do
 //    limite, sem a faixa nem o efeito (o total real é igual ou maior).
 // Dados inventados; nenhuma loja específica.
@@ -48,10 +48,10 @@ const PARCIAL_COMECOU_DEPOIS: CoberturaDaReceita = {
 };
 
 // Os títulos do ano COMPLETO: o número é um mínimo, então tudo começa com o prefixo.
-const DENTRO = "Pelo que o IKCOUS registrou, você está dentro do limite";
-const ATE_20 = "Pelo que o IKCOUS registrou, você passou do limite em até 20%";
+const DENTRO = "Pelo que o app registrou, você está dentro do limite";
+const ATE_20 = "Pelo que o app registrou, você passou do limite em até 20%";
 const ACIMA_20 =
-  "Pelo que o IKCOUS registrou, você passou do limite em mais de 20%";
+  "Pelo que o app registrou, você passou do limite em mais de 20%";
 
 let raiz: Root | null = null;
 let hospedeiro: HTMLDivElement;
@@ -165,13 +165,13 @@ describe("MedidorMei — as três faixas", () => {
     expect(textoDe(h)).toContain("Se passar de 20%");
   });
 
-  it("cobertura completa: o subtítulo e os rótulos dizem que o número é só das vendas registradas no IKCOUS", () => {
+  it("cobertura completa: o subtítulo e os rótulos dizem que o número é só das vendas registradas no app", () => {
     const h = montar(medirReal(40_500), 40_500);
     expect(textoDe(h)).toContain(
-      "Quanto do limite as vendas registradas no IKCOUS já usam.",
+      "Quanto do limite as vendas registradas no app já usam.",
     );
     expect(textoDe(h)).toContain(
-      "Parte do limite usada pelas vendas registradas no IKCOUS",
+      "Parte do limite usada pelas vendas registradas no app",
     );
     expect(textoDe(h)).not.toContain("Parte do limite que você já usou");
     expect(textoDe(h)).not.toContain(
@@ -395,7 +395,7 @@ describe("MedidorMei — acessibilidade e estrutura", () => {
 });
 
 const AVISO_FIXO =
-  "Este número só tem as vendas registradas no IKCOUS. O que você vendeu sem registrar aqui (Instagram, WhatsApp, feira) também conta para o limite do MEI: some por sua conta.";
+  "Este número só tem as vendas registradas no app. O que você vendeu sem registrar aqui (Instagram, WhatsApp, feira) também conta para o limite do MEI: some por sua conta.";
 
 const aviso = (h: HTMLElement) =>
   h.querySelector<HTMLElement>(
@@ -410,7 +410,7 @@ function recomecar() {
 }
 
 describe("MedidorMei — ano completo: o número é um mínimo, o veredito nunca promete", () => {
-  it("cada faixa mostra o título e o efeito com 'Pelo que o IKCOUS registrou,' e nunca diz que nada muda", () => {
+  it("cada faixa mostra o título e o efeito com 'Pelo que o app registrou,' e nunca diz que nada muda", () => {
     for (const [receita, titulo] of [
       [10_000, DENTRO],
       [90_000, ATE_20],
@@ -420,7 +420,7 @@ describe("MedidorMei — ano completo: o número é um mínimo, o veredito nunca
       const h = montar(medidor, receita);
       expect(tituloDaFaixa(h).textContent).toBe(titulo);
       if (medidor.estado === "com_conta") {
-        expect(medidor.efeito).toMatch(/^Pelo que o IKCOUS registrou, /);
+        expect(medidor.efeito).toMatch(/^Pelo que o app registrou, /);
         expect(textoDe(h)).toContain(medidor.efeito);
       }
       const t = textoDe(h).toLowerCase();
@@ -433,12 +433,12 @@ describe("MedidorMei — ano completo: o número é um mínimo, o veredito nunca
   it("dentro do limite pede para conferir as vendas feitas por fora", () => {
     const h = montar(medirReal(10_000), 10_000);
     expect(textoDe(h)).toContain(
-      "Pelo que o IKCOUS registrou, você está dentro do limite do MEI. Confira as vendas feitas por fora do app: elas também contam para o limite.",
+      "Pelo que o app registrou, você está dentro do limite do MEI. Confira as vendas feitas por fora do app: elas também contam para o limite.",
     );
   });
 });
 
-describe("MedidorMei — o aviso fixo de que só contam as vendas pelo IKCOUS", () => {
+describe("MedidorMei — o aviso fixo de que só contam as vendas pelo app", () => {
   it("o texto da constante é o do pedido, palavra por palavra", () => {
     expect(TEXTOS_DO_MEDIDOR_DO_MEI.avisoFixo).toBe(AVISO_FIXO);
   });
@@ -511,7 +511,7 @@ describe("MedidorMei — cobertura parcial: o número sem veredito", () => {
     });
     const texto = textoDe(h);
     expect(texto).toContain(TEXTOS_DO_MEDIDOR_DO_MEI.rotuloDoNumeroParcial);
-    expect(texto).toContain("Vendas registradas no IKCOUS neste ano");
+    expect(texto).toContain("Vendas registradas no app neste ano");
     expect(texto).toContain("R$ 15.000,00");
     expect(texto).toContain("Limite: R$ 81.000,00");
     expect(texto).toContain(
@@ -553,12 +553,12 @@ describe("MedidorMei — cobertura parcial: o número sem veredito", () => {
       cobertura: PARCIAL_COMECOU_DEPOIS,
     });
     expect(textoDe(h)).toContain(
-      "O IKCOUS só tem as suas vendas a partir de março.",
+      "O app só tem as suas vendas a partir de março.",
     );
     expect(textoDe(h)).toContain(
       "some a este número o que você vendeu antes disso neste ano",
     );
-    // o subtítulo "Só as vendas feitas pelo IKCOUS contam..." foi removido
+    // o subtítulo "Só as vendas feitas pelo app contam..." foi removido
     expect(h.querySelector("h2")?.parentElement?.querySelector("p")).toBeNull();
     expect(textoDe(h)).not.toContain("contam neste número");
     // e outro mês muda a frase
@@ -578,7 +578,7 @@ describe("MedidorMei — cobertura parcial: o número sem veredito", () => {
       cobertura: PARCIAL_SEM_DATA,
     });
     expect(textoDe(h)).toContain(
-      "Falta informar, no cadastro fiscal, o mês em que você começou a vender pelo IKCOUS. Sem isso, não dá para mostrar quanto do limite você já usou.",
+      "Falta informar, no cadastro fiscal, o mês em que você começou a vender pelo app. Sem isso, não dá para mostrar quanto do limite você já usou.",
     );
     expect(textoDe(h)).not.toContain("a partir de");
   });
@@ -589,7 +589,7 @@ describe("MedidorMei — cobertura parcial: o número sem veredito", () => {
     });
     const alerta = h.querySelector<HTMLElement>('[role="alert"]');
     expect(alerta?.textContent).toContain(
-      "Suas vendas no IKCOUS, sozinhas, já passam do limite",
+      "Suas vendas no app, sozinhas, já passam do limite",
     );
     expect(alerta?.textContent).toContain(
       "O limite conta todas as vendas do ano, registradas aqui ou não. Então o seu total é este número ou mais. Fale logo com um contador ou com o Sebrae, que atende MEI de graça: quem passa do limite tem prazo para avisar a Receita.",
@@ -601,7 +601,7 @@ describe("MedidorMei — cobertura parcial: o número sem veredito", () => {
     const h = montar(medirReal(15_000), 15_000);
     expect(tituloDaFaixa(h).textContent).toBe(DENTRO);
     expect(textoDe(h)).toContain("18%");
-    expect(textoDe(h)).toContain("Vendas registradas no IKCOUS: R$ 15.000,00");
+    expect(textoDe(h)).toContain("Vendas registradas no app: R$ 15.000,00");
     expect(textoDe(h)).not.toContain(
       TEXTOS_DO_MEDIDOR_DO_MEI.rotuloDoNumeroParcial,
     );

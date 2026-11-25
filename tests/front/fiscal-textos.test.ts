@@ -17,7 +17,9 @@ import {
   ROTULO_TENTAR_DE_NOVO,
   type SituacaoDoDono,
   TEXTOS_DO_MEDIDOR_DO_MEI,
+  baseDaMediaEhValida,
   efeitoDoVeredito,
+  fraseDaMediaDePoucosMeses,
   fraseDaSituacaoDoDono,
   fraseSemEstimativa,
   nomeDoMesDaData,
@@ -147,7 +149,7 @@ describe("a trava só o dono: as cinco situações da tabela", () => {
       "Só o dono da loja altera o cadastro fiscal.",
     );
     expect(FRASE_SEM_DONO_CADASTRADO).toBe(
-      "Esta loja ainda não tem um dono cadastrado. Peça ao suporte do IKCOUS para cadastrar o dono; depois, recarregue a página.",
+      "Esta loja ainda não tem um dono cadastrado. Peça ao suporte para cadastrar; depois, recarregue a página.",
     );
     expect(FRASE_NAO_CONFIRMOU_QUEM_PODE).toBe(
       "Não deu para confirmar quem pode alterar.",
@@ -204,7 +206,7 @@ describe("medidor do MEI: o mês por extenso e o texto de quem começou depois d
         "2026-03-01",
       ),
     ).toBe(
-      "O IKCOUS só tem as suas vendas a partir de março. Para saber quanto do limite você já usou, some a este número o que você vendeu antes disso neste ano (se a empresa abriu neste ano, só conta a partir da abertura).",
+      "O app só tem as suas vendas a partir de março. Para saber quanto do limite você já usou, some a este número o que você vendeu antes disso neste ano (se a empresa abriu neste ano, só conta a partir da abertura).",
     );
   });
 
@@ -224,18 +226,18 @@ describe("medidor do MEI: o mês por extenso e o texto de quem começou depois d
 describe("medidor do MEI, ano completo: o número é um mínimo, o veredito nunca promete", () => {
   const FAIXAS = ["dentro", "excesso_ate_20", "excesso_acima_20"] as const;
 
-  it("todo efeito e todo título começam com 'Pelo que o IKCOUS registrou,'", () => {
+  it("todo efeito e todo título começam com 'Pelo que o app registrou,'", () => {
     const titulos = Object.entries(TEXTOS_DO_MEDIDOR_DO_MEI.titulosDaFaixa);
     expect(titulos.map(([faixa]) => faixa)).toEqual([...FAIXAS]);
     for (const [faixa, titulo] of titulos) {
-      expect(titulo, faixa).toMatch(/^Pelo que o IKCOUS registrou, /);
+      expect(titulo, faixa).toMatch(/^Pelo que o app registrou, /);
     }
     for (const faixa of FAIXAS) {
       for (const abertura of [false, true]) {
         expect(
           efeitoDoVeredito(faixa, abertura),
           `${faixa} ${abertura}`,
-        ).toMatch(/^Pelo que o IKCOUS registrou, /);
+        ).toMatch(/^Pelo que o app registrou, /);
       }
     }
   });
@@ -257,19 +259,19 @@ describe("medidor do MEI, ano completo: o número é um mínimo, o veredito nunc
 
   it("dentro do limite manda conferir as vendas feitas por fora", () => {
     expect(efeitoDoVeredito("dentro", false)).toBe(
-      "Pelo que o IKCOUS registrou, você está dentro do limite do MEI. Confira as vendas feitas por fora do app: elas também contam para o limite.",
+      "Pelo que o app registrou, você está dentro do limite do MEI. Confira as vendas feitas por fora do app: elas também contam para o limite.",
     );
   });
 
   it("até 20% acima: a consequência branda é CONDICIONAL ao que foi vendido por fora (ano normal)", () => {
     expect(efeitoDoVeredito("excesso_ate_20", false)).toBe(
-      "Pelo que o IKCOUS registrou, você passou do limite em até 20%. Se, somando o que você vendeu por fora do app, o total ficar até 20% acima do limite, você deixa de ser MEI a partir de 1º de janeiro do ano seguinte, e a diferença é paga, sem acréscimos, junto com o DAS de janeiro. Se passar de 20%, a saída do MEI volta a 1º de janeiro deste ano. Avise a Receita até o último dia útil do mês seguinte ao do excesso.",
+      "Pelo que o app registrou, você passou do limite em até 20%. Se, somando o que você vendeu por fora do app, o total ficar até 20% acima do limite, você deixa de ser MEI a partir de 1º de janeiro do ano seguinte, e a diferença é paga, sem acréscimos, junto com o DAS de janeiro. Se passar de 20%, a saída do MEI volta a 1º de janeiro deste ano. Avise a Receita até o último dia útil do mês seguinte ao do excesso.",
     );
   });
 
   it("até 20% acima: a consequência branda é CONDICIONAL ao que foi vendido por fora (ano de abertura)", () => {
     expect(efeitoDoVeredito("excesso_ate_20", true)).toBe(
-      "Pelo que o IKCOUS registrou, você passou do limite proporcional em até 20%. Se, somando o que você vendeu por fora do app, o total ficar até 20% acima do limite proporcional, você deixa de ser MEI a partir de 1º de janeiro do ano seguinte. Se passar de 20%, a saída volta ao início da atividade. Avise a Receita até o último dia útil do mês seguinte ao do excesso.",
+      "Pelo que o app registrou, você passou do limite proporcional em até 20%. Se, somando o que você vendeu por fora do app, o total ficar até 20% acima do limite proporcional, você deixa de ser MEI a partir de 1º de janeiro do ano seguinte. Se passar de 20%, a saída volta ao início da atividade. Avise a Receita até o último dia útil do mês seguinte ao do excesso.",
     );
   });
 
@@ -297,18 +299,62 @@ describe("medidor do MEI, ano completo: o número é um mínimo, o veredito nunc
     );
   });
 
-  it("as telas de cobertura completa chamam o limite pelo que ele é: só as vendas registradas no IKCOUS", () => {
+  it("as telas de cobertura completa chamam o limite pelo que ele é: só as vendas registradas no app", () => {
     expect(TEXTOS_DO_MEDIDOR_DO_MEI.completa.subtitulo).toBe(
-      "Quanto do limite as vendas registradas no IKCOUS já usam.",
+      "Quanto do limite as vendas registradas no app já usam.",
     );
     expect(TEXTOS_DO_MEDIDOR_DO_MEI.completa.rotuloDoPercentual).toBe(
-      "Parte do limite usada pelas vendas registradas no IKCOUS",
+      "Parte do limite usada pelas vendas registradas no app",
     );
     expect(TEXTOS_DO_MEDIDOR_DO_MEI.completa.rotuloDasVendas).toBe(
-      "Vendas registradas no IKCOUS",
+      "Vendas registradas no app",
     );
     expect(TEXTOS_DO_MEDIDOR_DO_MEI.chamadaDoExcessoAte20).toBe(
       "Fale com um contador ou com o Sebrae.",
+    );
+  });
+});
+
+describe("a frase da média de poucos meses (decisão do sócio, 25/11/2026)", () => {
+  it("o texto exato, com o número de meses", () => {
+    expect(fraseDaMediaDePoucosMeses(2)).toBe(
+      "Com 2 meses de vendas no app, a faixa foi deduzida pela média. Se a empresa vendia antes por fora, a guia pode vir maior.",
+    );
+    expect(fraseDaMediaDePoucosMeses(11)).toBe(
+      "Com 11 meses de vendas no app, a faixa foi deduzida pela média. Se a empresa vendia antes por fora, a guia pode vir maior.",
+    );
+  });
+
+  it("base que não é um inteiro de 2 ou mais não tem frase (nunca 'Com NaN meses', nem 'Com 1 meses')", () => {
+    for (const base of [0, 1, -2, 2.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(fraseDaMediaDePoucosMeses(base), `base ${base}`).toBeNull();
+      expect(baseDaMediaEhValida(base), `base ${base}`).toBe(false);
+    }
+    expect(baseDaMediaEhValida(2)).toBe(true);
+    expect(baseDaMediaEhValida(12)).toBe(true);
+  });
+});
+
+describe("a frase do ano fechado do medidor do MEI (decisão do sócio, 25/11/2026)", () => {
+  it("cobertura completa: 'pelo que o app registrou, você vendeu ... de ... (limite de 2026)'", () => {
+    const { antes, depois } = TEXTOS_DO_MEDIDOR_DO_MEI.anoFechado(
+      2026,
+      true,
+      "R$ 81.000,00",
+    );
+    expect(`${antes}R$ 12.000,00${depois}`).toBe(
+      "2026 fechado: pelo que o app registrou, você vendeu R$ 12.000,00 de R$ 81.000,00 (limite de 2026).",
+    );
+  });
+
+  it("cobertura parcial: não diz 'você vendeu'", () => {
+    const { antes, depois } = TEXTOS_DO_MEDIDOR_DO_MEI.anoFechado(
+      2026,
+      false,
+      "R$ 81.000,00",
+    );
+    expect(`${antes}R$ 8.000,00${depois}`).toBe(
+      "2026 fechado: o app registrou R$ 8.000,00 em vendas de 2026. O limite de 2026 era R$ 81.000,00.",
     );
   });
 });

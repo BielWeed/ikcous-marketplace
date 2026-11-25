@@ -58,6 +58,13 @@ export interface MesParaOCaderno {
    */
   readonly estimativa?: number | null;
   /**
+   * As vendas registradas no app no mês, menos devoluções, em reais: o MESMO número do
+   * Resultado (decisão do sócio, 25/11/2026). É informação do mês, mostrada numa linha
+   * discreta, nunca como um quarto valor ao lado da guia. `null`/ausente = a leitura não
+   * chegou: não mostra linha (nunca "R$ 0,00" no lugar do que não se sabe).
+   */
+  readonly vendasDoMes?: number | null;
+  /**
    * As guias do mês que ainda estão a pagar, já no formato da folha de baixa. A aba
    * monta a partir dos lançamentos que leu (o caderno só soma, não guarda o id). Sem
    * isto o mês mostra o valor a pagar, mas não oferece "Pagar".
@@ -157,6 +164,11 @@ function CartaoDoMes({
   const semGuia = caderno.estado === "sem_guia";
   const aPagar = caderno.estado === "a_pagar" || caderno.estado === "vencida";
   const alvos = item.guiasAPagar ?? [];
+  // Número que não é um número de verdade (ou que a leitura não trouxe) não vira "R$ 0,00".
+  const vendasDoMes =
+    typeof item.vendasDoMes === "number" && Number.isFinite(item.vendasDoMes)
+      ? item.vendasDoMes
+      : null;
   // O ano da lei é o do mês das vendas. `null` = competência inválida: sem botão, em
   // vez de abrir o formulário com uma data inventada.
   const inicial = semGuia
@@ -175,6 +187,16 @@ function CartaoDoMes({
         </h3>
         <Selo estado={caderno.estado} />
       </div>
+
+      {vendasDoMes === null ? null : (
+        <p
+          data-vendas-do-mes=""
+          className="text-xs leading-relaxed text-zinc-400"
+        >
+          Vendas registradas no app (menos devoluções):{" "}
+          <Dinheiro valor={vendasDoMes} />
+        </p>
+      )}
 
       {semGuia ? (
         <p className="text-sm leading-relaxed text-zinc-400">

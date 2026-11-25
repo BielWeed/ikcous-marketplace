@@ -74,7 +74,7 @@ import { CadastroFiscal } from "@/components/admin/financeiro/impostos/CadastroF
 
 const SO_O_DONO = "Só o dono da loja altera o cadastro fiscal.";
 const SEM_DONO =
-  "Esta loja ainda não tem um dono cadastrado. Peça ao suporte do IKCOUS para cadastrar o dono; depois, recarregue a página.";
+  "Esta loja ainda não tem um dono cadastrado. Peça ao suporte para cadastrar; depois, recarregue a página.";
 const NAO_CONFIRMOU = "Não deu para confirmar quem pode alterar.";
 
 const HOJE = "2026-11-24";
@@ -563,9 +563,9 @@ describe("Cadastro fiscal: o que o cartão mostra", () => {
 
   it("banco da loja sem o cadastro instalado: a frase do suporte, sem botão de configurar", async () => {
     await montar(null, DONO.souODono, {
-      erro: "O cadastro fiscal ainda não foi instalado no banco desta loja. Fale com o suporte do IKCOUS.",
+      erro: "O cadastro fiscal ainda não foi instalado no banco desta loja. Fale com o suporte.",
     });
-    expect(texto()).toContain("Fale com o suporte do IKCOUS.");
+    expect(texto()).toContain("Fale com o suporte.");
     expect(temBotao("Configurar")).toBe(false);
   });
 

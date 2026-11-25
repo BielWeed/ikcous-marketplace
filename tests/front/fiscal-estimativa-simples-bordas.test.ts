@@ -139,15 +139,19 @@ describe("estimarDasDoSimples: a janela da RBT12 e a virada do ano", () => {
     );
   });
 
-  it("janeiro de 2026 com o app vendendo só desde fevereiro de 2025: janeiro de 2025 não foi medido", () => {
+  it("janeiro de 2026 com o app vendendo só desde fevereiro de 2025: janeiro de 2025 não foi medido, e a estimativa sai da média dos 11 meses medidos", () => {
     expect(
       estimar({
         competencia: "2026-01",
         cadastro: { ...ANTIGA, vendeNoAppDesde: "2025-02-01" },
-        // A leitura devolve zero para o que veio antes do app, e zero não prova nada.
-        receitasMensais: serie("2025-01", "2025-12", 10_000),
+        // A leitura devolve zero para o que veio antes do app, e zero não prova nada:
+        // o janeiro de 2025 (R$ 999.999 aqui) fica de fora da média.
+        receitasMensais: {
+          ...serie("2025-02", "2025-12", 10_000),
+          "2025-01": 999_999,
+        },
       }),
-    ).toEqual(faltam(1));
+    ).toEqual({ estado: "com_estimativa", valor: 400, mesesNaMedia: 11 });
   });
 
   it("dezembro de 2026: o próprio mês e o 13º mês para trás NUNCA entram na RBT12", () => {
@@ -220,7 +224,7 @@ describe("estimarDasDoSimples: empresa com menos de 12 meses (média dos meses a
     ).toEqual(comEstimativa(400));
   });
 
-  it("no 13º mês o app precisa ter medido os 12 meses: vendendo só desde janeiro, falta 1", () => {
+  it("no 13º mês sem os 12 meses medidos: vendendo no app só desde janeiro, estima pela média dos 11 meses medidos", () => {
     expect(
       estimar({
         cadastro: {
@@ -231,7 +235,7 @@ describe("estimarDasDoSimples: empresa com menos de 12 meses (média dos meses a
         competencia: "2026-12",
         receitasMensais: serie("2025-12", "2026-11", 10_000),
       }),
-    ).toEqual(faltam(1));
+    ).toEqual({ estado: "com_estimativa", valor: 400, mesesNaMedia: 11 });
   });
 
   it("abriu em 31/12/2026 e estima dezembro (1º mês): RBT12 = R$ 5.000 x 12 = R$ 60.000 (4%), DAS de 200", () => {

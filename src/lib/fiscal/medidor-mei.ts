@@ -10,7 +10,10 @@
 //     baixo ("ultrapassar" é passar do valor).
 //
 // Ano sem parâmetro conferido não calcula: devolve `sem_conta` e a tela mostra um aviso
-// no lugar do número (nunca o teto de 2026 emprestado a outro ano).
+// no lugar do número (nunca o teto de 2026 emprestado a outro ano). A ÚNICA exceção é a
+// virada do ano (`qualAnoOMedidorMostra`): em janeiro, até os valores do ano novo serem
+// conferidos, o medidor mostra o ano que ACABOU DE FECHAR, com o limite desse ano e o
+// rótulo "fechado" (decisão do sócio, 25/11/2026). Nunca um limite maior que o vigente.
 //
 // Dinheiro entra como `number` em reais; a conta é feita em CENTAVOS inteiros (como o
 // resto do Financeiro), então "um centavo a mais" muda a faixa e a soma de ponto
@@ -63,6 +66,31 @@ export type MedidorDoMei =
       readonly estado: "sem_conta";
       readonly motivo: MotivoSemContaDoMedidor;
     };
+
+/**
+ * Qual ano o medidor do MEI mede no dia `hoje` (`aaaa-mm-dd`, o dia em São Paulo), e se esse
+ * ano já FECHOU. Em janeiro, enquanto os valores do ano novo não foram conferidos e os do
+ * ano anterior foram, mostra o ano anterior inteiro ("2026 fechado") com o limite dele, em
+ * vez de uma tela de "ano não conferido". De 1º de fevereiro em diante (o prazo para
+ * conferir o ano novo) volta a medir o ano do próprio dia, e o núcleo recusa com o aviso de
+ * "ano não conferido" se ninguém conferiu: a falta aparece, não fica escondida atrás de um
+ * "fechado" que dura para sempre. Só devolve `fechado: true` para um ano que TEM valores
+ * conferidos: nunca mostra um limite que o código não conhece.
+ *
+ * @param anoConferido só para teste: quais anos têm valores conferidos.
+ */
+export function qualAnoOMedidorMostra(
+  hoje: DataIso,
+  anoConferido: (ano: number) => boolean = (ano) =>
+    parametrosDoAno(ano).conferido,
+): { readonly ano: number; readonly fechado: boolean } {
+  const ano = Number(hoje.slice(0, 4));
+  const mes = Number(hoje.slice(5, 7));
+  if (mes === 1 && !anoConferido(ano) && anoConferido(ano - 1)) {
+    return { ano: ano - 1, fechado: true };
+  }
+  return { ano, fechado: false };
+}
 
 /**
  * Mede a receita acumulada do ano contra o teto do MEI. Nunca assume nada que o

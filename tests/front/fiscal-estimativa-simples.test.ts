@@ -304,33 +304,36 @@ describe("estimarDasDoSimples: nunca estima com série incompleta (a regra de ou
     });
   });
 
-  it("empresa antiga que só vende no app há 8 meses: faltam 4", () => {
-    // Janela de 2026-06: 2025-06 a 2026-05. O app mede de 2025-10 em diante (8 meses).
+  it("empresa antiga que só vende no app há 8 meses: estima pela média dos 8 meses (decisão do sócio, 25/11/2026)", () => {
+    // Janela de 2026-06: 2025-06 a 2026-05. O app mede de 2025-10 em diante (8 meses de
+    // R$ 30.000): média 30.000 x 12 = 360.000 (faixa 2, 5,65%); mês de R$ 10.000 = 565 -> 570.
     const e = estimar({
       cadastro: { ...ANTIGA, vendeNoAppDesde: "2025-10-01" },
-      receitasMensais: serie("2025-10", "2026-05", 10_000),
+      receitasMensais: serie("2025-10", "2026-05", 30_000),
     });
     expect(e).toEqual({
-      estado: "sem_estimativa",
-      motivo: "faltam_meses",
-      faltam: 4,
+      estado: "com_estimativa",
+      valor: 570,
+      mesesNaMedia: 8,
     });
   });
 
   it("zeros que a leitura devolveu para meses ANTES do app não contam como medidos", () => {
     // O hook leu 12+ meses e o banco devolveu 0 para tudo antes de 2025-10: isso não é
-    // "vendeu zero", é "o app não media". Estimar com isso mostraria um DAS baixo demais.
+    // "vendeu zero", é "o app não media". Se os 4 zeros contassem, a soma (8 x 30.000 =
+    // 240.000 em 12 meses) daria faixa 2 com RBT12 de 240.000 e DAS de 480 (4,825%); a
+    // média dos 8 meses medidos dá RBT12 de 360.000 e DAS de 570.
     const e = estimar({
       cadastro: { ...ANTIGA, vendeNoAppDesde: "2025-10-01" },
       receitasMensais: {
         ...serie("2025-01", "2025-09", 0),
-        ...serie("2025-10", "2026-05", 10_000),
+        ...serie("2025-10", "2026-05", 30_000),
       },
     });
     expect(e).toEqual({
-      estado: "sem_estimativa",
-      motivo: "faltam_meses",
-      faltam: 4,
+      estado: "com_estimativa",
+      valor: 570,
+      mesesNaMedia: 8,
     });
   });
 

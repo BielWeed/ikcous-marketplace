@@ -7,10 +7,12 @@
 // grava lançamento financeiro, e a estimativa de imposto não passa por este arquivo.
 //
 // A REGRA DA SÉRIE DO RESULTADO: o `fin_dre` (um por mês, o mesmo do Resultado)
-// só é lido para quem TEM conta (MEI e Simples de só comércio). Loja sem cadastro,
-// com cadastro ilegível, com a leitura do cadastro falha ou com regime sem conta
-// não paga ~15 leituras por uma série que a tela não vai usar. `quemTemConta` é
-// quem decide; nenhum regime é suposto aqui.
+// só é lido para quem TEM cadastro fiscal. Loja sem cadastro, com cadastro ilegível ou
+// com a leitura do cadastro falha não paga leitura por uma série que a tela não vai
+// usar. Quem tem cadastro lê ao menos os 3 meses do caderno (a linha de vendas de cada
+// mês, decisão do sócio de 25/11/2026); a série LONGA (medidor do MEI, estimativa do
+// Simples) é pedida pela aba só para quem tem conta, e é ela quem decide os meses.
+// Nenhum regime é suposto aqui.
 //
 // A ESCRITA do cadastro (`salvarCadastroFiscal`) chama o RPC que só o dono da loja
 // pode chamar (o banco confere). Ela NUNCA repete sozinha: rede sem resposta
@@ -33,7 +35,6 @@ import {
   type LeituraDoCadastroFiscal,
   type PayloadDoCadastroFiscal,
   parseCadastroFiscal,
-  quemTemConta,
 } from "@/lib/fiscal/cadastro";
 import type { LancamentoDaGuia } from "@/lib/fiscal/caderno";
 import {
@@ -81,7 +82,7 @@ function tabelaAusente(erro: unknown): boolean {
 }
 
 const FRASE_CADASTRO_NAO_INSTALADO =
-  "O cadastro fiscal ainda não foi instalado no banco desta loja. Fale com o suporte do IKCOUS.";
+  "O cadastro fiscal ainda não foi instalado no banco desta loja. Fale com o suporte.";
 const FRASE_FINANCEIRO_NAO_INSTALADO =
   "O Financeiro ainda não foi instalado no banco desta loja.";
 
@@ -207,19 +208,19 @@ export function useGuiasDeImpostos(
   );
 }
 
-/** A loja tem conta (medidor do MEI ou estimativa do Simples)? Só então a série é lida. */
-function temConta(cadastro: LeituraDoCadastroFiscal | null): boolean {
-  return (
-    cadastro?.estado === "com_cadastro" &&
-    quemTemConta(cadastro.cadastro).tipo !== "nenhuma"
-  );
+/** A loja tem cadastro fiscal (qualquer regime)? Só então a série é lida. */
+function temCadastro(cadastro: LeituraDoCadastroFiscal | null): boolean {
+  return cadastro?.estado === "com_cadastro";
 }
 
 /**
- * Uma DRE por mês (`fin_dre`, a MESMA do Resultado), na ordem dos meses. SÓ para
- * quem tem conta: com `cadastro` ausente (ainda lendo ou leitura falha), sem
- * cadastro ou com regime sem conta, não lê nada. Com UM mês também lê (o medidor do
- * MEI começa em janeiro), diferente de `useDreMensal`, que pede dois ou mais.
+ * Uma DRE por mês (`fin_dre`, a MESMA do Resultado), na ordem dos meses. SÓ para quem
+ * tem cadastro fiscal: com `cadastro` ausente (ainda lendo ou leitura falha) ou sem
+ * cadastro, não lê nada. Quem escolhe QUANTOS meses ler é a aba: o medidor do MEI e a
+ * estimativa do Simples pedem uma série longa, e todo regime com cadastro lê os 3 meses do
+ * caderno para a linha "Vendas registradas no app" (decisão do sócio, 25/11/2026). Com UM
+ * mês também lê (o medidor do MEI começa em janeiro), diferente de `useDreMensal`, que pede
+ * dois ou mais.
  */
 export function useSerieDaReceita(
   meses: readonly IntervaloDeDatas[],
@@ -230,7 +231,7 @@ export function useSerieDaReceita(
   const primeiro = meses.at(0);
   const ultimo = meses.at(-1);
   return useConsultaFinanceira(
-    ativo && primeiro && ultimo && temConta(cadastro)
+    ativo && primeiro && ultimo && temCadastro(cadastro)
       ? `fiscal-dre:${primeiro.inicio}:${ultimo.fim}`
       : null,
     () => Promise.all(meses.map((mes) => lerDre(mes))),

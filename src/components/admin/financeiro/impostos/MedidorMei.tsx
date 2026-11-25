@@ -19,13 +19,16 @@
 //    mínimo. O aviso fixo ("o que você vendeu sem registrar aqui também conta") vai
 //    embaixo em toda tela COM número; nas telas sem número (ano não conferido, data
 //    inválida, falha ao somar) vale só a instrução daquela tela. Com o ano COMPLETO, todo
-//    veredito começa com "Pelo que o IKCOUS registrou," e nunca diz que nada muda. E
+//    veredito começa com "Pelo que o app registrou," e nunca diz que nada muda. E
 //    quando a `cobertura` é PARCIAL (o app não registrava desde o começo do período
-//    medido), o número é só "vendas registradas no IKCOUS neste ano": sem percentual, sem
+//    medido), o número é só "vendas registradas no app neste ano": sem percentual, sem
 //    barra, sem veredito (o `fin_dre` devolve zero para o que veio antes do app, e a
 //    conclusão sairia de um número incompleto). Só passar do teto mostra alerta, porque o
 //    total real é igual ou maior. Todos os textos moram em `TEXTOS_DO_MEDIDOR_DO_MEI`
-//    (src/lib/fiscal/textos.ts).
+//    (src/lib/fiscal/textos.ts);
+//  - `fechado` (janeiro, ano novo ainda sem valores conferidos): "2026 fechado: ..." com o
+//    limite de 2026, o aviso fixo embaixo e, se passou do limite, o mesmo alerta da cobertura
+//    parcial. Nunca mostra limite de um ano que não foi conferido.
 
 import {
   CircleCheck,
@@ -72,6 +75,13 @@ export interface MedidorMeiProps {
    * valor padrão de propósito: quem esquecer de dizer não recebe veredito por engano.
    */
   readonly cobertura: CoberturaDaReceita;
+  /**
+   * `true` em janeiro, enquanto os valores do ano novo não foram conferidos: o `ano` é o que
+   * acabou de FECHAR, e o cartão diz "2026 fechado" com o limite dele (decisão do sócio,
+   * 25/11/2026). Sem barra nem faixa: o ano não anda mais, e as frases de veredito falam de
+   * um ano em curso.
+   */
+  readonly fechado?: boolean;
 }
 
 interface VisualDaFaixa {
@@ -158,6 +168,7 @@ export function MedidorMei({
   ano,
   receitaAcumulada,
   cobertura,
+  fechado = false,
 }: MedidorMeiProps) {
   const ocultos = useValoresEstaoOcultos();
   const titulo = `Limite do MEI em ${ano}`;
@@ -183,6 +194,65 @@ export function MedidorMei({
   const vendasDoAno = Number.isFinite(receitaAcumulada)
     ? Math.max(0, receitaAcumulada)
     : 0;
+
+  if (fechado) {
+    // Ano que fechou: só o número que o app registrou e o limite DAQUELE ano. Passar do
+    // limite vira o alerta de sempre (o total real é este número ou mais), sem faixa.
+    const frase = TEXTOS_DO_MEDIDOR_DO_MEI.anoFechado(
+      ano,
+      cobertura.tipo === "completa",
+      formatarBRL(medidor.tetoUsado),
+    );
+    const alerta = TEXTOS_DO_MEDIDOR_DO_MEI.acimaDoLimiteComCoberturaParcial;
+    return (
+      <CartaoSecao titulo={titulo}>
+        <div className={cn(CLASSE_CASCA_DO_CARTAO, "flex flex-col gap-4 p-4")}>
+          <div className="flex min-w-0 flex-col gap-1">
+            <p
+              data-ano-fechado=""
+              className="text-sm font-semibold leading-relaxed text-white"
+            >
+              {frase.antes}
+              <Dinheiro valor={vendasDoAno} />
+              {frase.depois}
+            </p>
+            {medidor.tetoProporcional ? (
+              <p className="text-xs leading-relaxed text-zinc-400">
+                No ano em que a empresa abre, o limite é proporcional:{" "}
+                {mesesDeAtividade(medidor.mesesDeAtividade)} de atividade,
+                contando o mês da abertura inteiro.
+              </p>
+            ) : null}
+          </div>
+          {medidor.faixa === "dentro" ? null : (
+            <div role="alert" className="flex min-w-0 items-start gap-3">
+              <OctagonAlert
+                aria-hidden="true"
+                className={cn(
+                  "mt-0.5 size-5 shrink-0",
+                  classeDoTexto("negativo"),
+                )}
+              />
+              <div className="flex min-w-0 flex-col gap-1">
+                <p
+                  className={cn(
+                    "text-sm font-bold leading-snug",
+                    classeDoTexto("negativo"),
+                  )}
+                >
+                  {alerta.titulo}
+                </p>
+                <p className="text-sm leading-relaxed text-zinc-300">
+                  {alerta.texto}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+        <AvisoDoMedidor />
+      </CartaoSecao>
+    );
+  }
 
   if (cobertura.tipo === "parcial") {
     // Faixa fora de "dentro" = o número do app JÁ passou do teto. Só isso se conclui.

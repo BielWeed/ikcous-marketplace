@@ -1,5 +1,5 @@
 // A folha onde o DONO configura ou altera o cadastro fiscal da loja (regime,
-// atividade, abertura da empresa e mês em que começou a vender pelo IKCOUS).
+// atividade, abertura da empresa e mês em que começou a vender pelo app).
 //
 // Quem barra de verdade é o banco (`fiscal_cadastro_salvar`: só o dono, 42501 para
 // o resto, e tabela `dono_da_loja` vazia recusa todo mundo). Esta folha ESPELHA
@@ -259,7 +259,7 @@ export function CadastroFiscalFolha({
           cadastro ? "Alterar cadastro fiscal" : "Configurar cadastro fiscal"
         }
         icone={Landmark}
-        descricao="Diga o regime e a atividade da sua empresa. É por eles que o IKCOUS sabe se pode mostrar o medidor do MEI ou a estimativa do Simples."
+        descricao="Diga o regime e a atividade da sua empresa. É por eles que o app sabe se pode mostrar o medidor do MEI ou a estimativa do Simples."
         aoFechar={pedirParaFechar}
         fecharBloqueado={enviando}
         rodape={
@@ -369,7 +369,7 @@ export function CadastroFiscalFolha({
           </Campo>
           <Campo
             id={ID_VENDE_DESDE}
-            rotulo="Vende pelo IKCOUS desde (opcional)"
+            rotulo="Vende pelo app desde (opcional)"
             erro={erros.vendeNoAppDesde}
             ajuda="Escolha só o mês e o ano (formato AAAA-MM)."
           >

@@ -255,6 +255,14 @@ const COMPETENCIA = /^(\d{4})-(0[1-9]|1[0-2])$/;
  *
  * Vale para qualquer competência, não só as de 2026: é regra de calendário, e a
  * resolução não mostra mudança agendada para esse artigo.
+ *
+ * PENDENTE PARA A ATUALIZAÇÃO DE JANEIRO DE 2027 (parecer do sócio, 25/11/2026, item 6):
+ * 20 de novembro (Dia da Consciência Negra, feriado nacional desde 2024) ainda NÃO conta
+ * como dia sem expediente aqui; entra junto da conferência dos valores de 2027. Hoje o
+ * erro só vai para o lado seguro (a data sugerida é igual ou ANTERIOR à real, e a lojista
+ * confere e corrige ao lançar a guia). O sócio data o primeiro erro real em novembro de
+ * 2028. É só este lembrete: nenhum comportamento muda por ele, e nenhum aviso novo é
+ * mostrado na tela.
  */
 export function vencimentoDoDas(competencia: string): DataIso | null {
   const partes = COMPETENCIA.exec(competencia);

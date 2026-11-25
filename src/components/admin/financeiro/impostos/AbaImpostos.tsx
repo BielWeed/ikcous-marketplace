@@ -6,12 +6,22 @@
 //                           estimativa e NENHUMA leitura do `fin_dre`
 //   MEI                     medidor do limite do ano (vendas do ano, as mesmas do Resultado;
 //                           só conclui enquadramento se o app já vendia desde o começo do
-//                           período medido: a `cobertura` vem do cadastro fiscal)
+//                           período medido: a `cobertura` vem do cadastro fiscal). Em
+//                           janeiro, até os valores do ano novo serem conferidos, mostra
+//                           "2026 fechado" com o limite de 2026 (`qualAnoOMedidorMostra`)
 //   Simples + só comércio   estimativa do DAS do ÚLTIMO MÊS FECHADO (a guia que vem
-//                           aí), pela receita dos 12 meses anteriores
+//                           aí), pela receita dos 12 meses anteriores; com menos de 12
+//                           meses de vendas no app, a partir de 2 meses, pela média
 //   o resto                 a frase honesta (Simples com serviço, Presumido, Real, "Não sei")
 // O Caderno das guias e o arquivo para o contador funcionam em TODOS os casos: só leem
 // o que a lojista lançou e o extrato.
+//
+// A LINHA DE VENDAS DO CADERNO (decisão do sócio, 25/11/2026): cada um dos 3 meses mostra
+// "Vendas registradas no app (menos devoluções): R$ X", o MESMO número do Resultado (a
+// receita líquida do `fin_dre`), para TODO regime com cadastro. É informação do mês, nunca
+// um valor de guia. Por isso quem tem cadastro lê, no mínimo, os 3 meses do caderno; a
+// série longa do MEI e do Simples já cobre esses meses, e o mês atual (pela metade) entra
+// nela só para essa linha: ele NUNCA ganha estimativa nem entra na comparação com a guia.
 //
 // POR QUE O ÚLTIMO MÊS FECHADO, e não o mês atual: com o mês pela metade a conta mostraria
 // "cerca de R$ 60" no dia 3 e a lojista leria como o imposto do mês. O mês fechado é o
@@ -52,6 +62,7 @@ import {
 import {
   coberturaDaReceitaDoAno,
   medirLimiteDoMei,
+  qualAnoOMedidorMostra,
 } from "@/lib/fiscal/medidor-mei";
 import { receitaDoMes } from "@/lib/fiscal/receita-do-mes";
 import type {
@@ -212,11 +223,14 @@ function guiasAPagarDoMes(
 function BlocoDaConta({
   cadastro,
   mesAtual,
+  anoDoMedidor,
   serie,
   receitas,
 }: {
   readonly cadastro: CadastroFiscalLido;
   readonly mesAtual: string;
+  /** O ano que o medidor do MEI mede e se ele já fechou (`qualAnoOMedidorMostra`). */
+  readonly anoDoMedidor: { readonly ano: number; readonly fechado: boolean };
   readonly serie: ConsultaFinanceira<DreFinanceira[]>;
   readonly receitas: ReadonlyMap<string, number> | null;
 }) {
@@ -245,7 +259,7 @@ function BlocoDaConta({
   ) : null;
 
   if (conta.tipo === "mei") {
-    const ano = Number(mesAtual.slice(0, 4));
+    const { ano, fechado } = anoDoMedidor;
     let centavos = 0;
     for (const [mes, valor] of receitas) {
       if (mes.startsWith(`${ano}-`)) centavos += paraCentavos(valor);
@@ -262,6 +276,7 @@ function BlocoDaConta({
           // vendia desde o começo do período medido, o número é PARCIAL e o
           // medidor não conclui enquadramento sobre ele.
           cobertura={coberturaDaReceitaDoAno({ ano, cadastro })}
+          fechado={fechado}
         />
       </div>
     );
@@ -302,19 +317,33 @@ export function AbaImpostos({
   const conta = cadastro ? quemTemConta(cadastro) : null;
   const tipoDaConta = conta?.tipo ?? null;
 
-  // Que meses da receita ler. Vazio = não lê nada (sem cadastro, ou regime sem conta).
+  // Que meses da receita ler. Vazio = não lê nada (sem cadastro). Todo regime com cadastro
+  // lê, no mínimo, os 3 meses do caderno (a linha de vendas de cada mês); quem tem conta lê
+  // a série que a conta pede, e ela já cobre esses meses (a lista é sempre UM intervalo
+  // contínuo, do mais antigo ao mais novo).
+  const anoDoMedidor = useMemo(() => qualAnoOMedidorMostra(hoje), [hoje]);
   const mesesDaSerie = useMemo(() => {
-    if (tipoDaConta === "mei")
-      return mesesDe(`${mesAtual.slice(0, 4)}-01`, mesAtual);
-    if (tipoDaConta === "simples_comercio") {
-      const primeiroEstimado = somarMeses(mesAtual, -(MESES_DO_CADERNO - 1));
+    if (tipoDaConta === null) return [];
+    const primeiroDoCaderno = somarMeses(mesAtual, -(MESES_DO_CADERNO - 1));
+    if (tipoDaConta === "mei") {
+      // O ano medido inteiro (até hoje, ou até dezembro se ele já fechou) e, se o caderno
+      // sai dele (janeiro e fevereiro), também os meses do caderno.
+      const { ano, fechado } = anoDoMedidor;
+      const janeiro = `${ano}-01`;
+      const fim = fechado ? `${ano}-12` : mesAtual;
       return mesesDe(
-        somarMeses(primeiroEstimado, -MESES_ANTES_DO_MES_ESTIMADO),
-        somarMeses(mesAtual, -1),
+        janeiro < primeiroDoCaderno ? janeiro : primeiroDoCaderno,
+        fim > mesAtual ? fim : mesAtual,
       );
     }
-    return [];
-  }, [tipoDaConta, mesAtual]);
+    if (tipoDaConta === "simples_comercio") {
+      return mesesDe(
+        somarMeses(primeiroDoCaderno, -MESES_ANTES_DO_MES_ESTIMADO),
+        mesAtual,
+      );
+    }
+    return mesesDe(primeiroDoCaderno, mesAtual);
+  }, [tipoDaConta, mesAtual, anoDoMedidor]);
   const serie = useSerieDaReceita(mesesDaSerie, lido, ativo, versao);
   const receitas = useMemo(
     () => receitasLiquidasPorMes(mesesDaSerie, serie.dados),
@@ -334,11 +363,16 @@ export function AbaImpostos({
     const lancadas = guias.dados;
     if (lancadas === null) return null;
     return montarCaderno(lancadas, periodoDoCaderno, hoje).map((caderno) => {
-      // A estimativa só acompanha a guia de quem tem conta. A série do Simples para no
-      // último mês FECHADO, então o mês atual (pela metade) nunca tem estimativa para
-      // comparar com a guia: o núcleo o recusa por falta de receita medida.
+      // A estimativa só acompanha a guia de quem tem conta, e só de mês FECHADO: o mês
+      // atual (pela metade) está na série (para a linha de vendas), mas nunca ganha
+      // estimativa para comparar com a guia de um mês inteiro.
       let estimativa: number | null = null;
-      if (cadastro && tipoDaConta === "simples_comercio" && receitas) {
+      if (
+        cadastro &&
+        tipoDaConta === "simples_comercio" &&
+        receitas &&
+        caderno.mes < mesAtual
+      ) {
         const estimada = estimarOMes(cadastro, caderno.mes, receitas);
         if (estimada.estado === "com_estimativa") {
           estimativa = estimada.valor;
@@ -347,10 +381,21 @@ export function AbaImpostos({
       return {
         caderno,
         estimativa,
+        // O número do Resultado (vendas menos devoluções). Sem a série, ou sem o mês
+        // nela, não há linha: nunca "R$ 0,00" no lugar do que não se sabe.
+        vendasDoMes: receitas?.get(caderno.mes) ?? null,
         guiasAPagar: guiasAPagarDoMes(lancadas, caderno.mes),
       };
     });
-  }, [guias.dados, periodoDoCaderno, hoje, cadastro, tipoDaConta, receitas]);
+  }, [
+    guias.dados,
+    periodoDoCaderno,
+    hoje,
+    mesAtual,
+    cadastro,
+    tipoDaConta,
+    receitas,
+  ]);
 
   const buscarLinhas = useCallback(
     (periodo: Parameters<typeof lerLinhasParaOContador>[0]) =>
@@ -364,6 +409,7 @@ export function AbaImpostos({
         <BlocoDaConta
           cadastro={cadastro}
           mesAtual={mesAtual}
+          anoDoMedidor={anoDoMedidor}
           serie={serie}
           receitas={receitas}
         />

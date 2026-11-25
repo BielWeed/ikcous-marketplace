@@ -183,7 +183,7 @@ function oQueMudou(antes: unknown, depois: unknown): string[] {
   }
   if (ant.vende_no_app_desde !== dep.vende_no_app_desde) {
     linhas.push(
-      `Vende pelo IKCOUS desde: ${mesGuardado(ant.vende_no_app_desde) ?? "não informado"} → ${mesGuardado(dep.vende_no_app_desde) ?? "não informado"}`,
+      `Vende pelo app desde: ${mesGuardado(ant.vende_no_app_desde) ?? "não informado"} → ${mesGuardado(dep.vende_no_app_desde) ?? "não informado"}`,
     );
   }
   return linhas.length > 0 ? linhas : ["Cadastro salvo sem mudança"];
@@ -292,7 +292,7 @@ function DadosDoCadastro({
       <LinhaDoCadastro rotulo="Abertura da empresa">
         {cadastro.abertaEm ? formatarData(cadastro.abertaEm) : "Não informada"}
       </LinhaDoCadastro>
-      <LinhaDoCadastro rotulo="Vende pelo IKCOUS desde">
+      <LinhaDoCadastro rotulo="Vende pelo app desde">
         {cadastro.vendeNoAppDesde
           ? formatarData(cadastro.vendeNoAppDesde).slice(3)
           : "Não informado"}
@@ -495,7 +495,7 @@ function CartaoDoCadastro({
             titulo="Configure o regime da sua empresa"
             texto={
               dados.aviso ??
-              "Sem o regime, o IKCOUS não mostra estimativa nem medidor de imposto, e não chuta nenhum. É só dizer uma vez. O caderno de guias e o arquivo para o contador funcionam do mesmo jeito."
+              "Sem o regime, o app não mostra estimativa nem medidor de imposto, e não chuta nenhum. É só dizer uma vez. O caderno de guias e o arquivo para o contador funcionam do mesmo jeito."
             }
             acao={
               situacao === "sem_dono" || situacao === "leitura_falhou" ? (

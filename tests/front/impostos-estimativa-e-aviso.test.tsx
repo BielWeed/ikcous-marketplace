@@ -38,7 +38,7 @@ import { fraseSemEstimativa } from "@/lib/fiscal/textos";
 // O texto EXATO do parecer do sócio (24/11/2026), copiado à mão: se a tela mudar
 // uma vírgula, este teste cai.
 const AVISO_DO_PARECER =
-  "Isto é uma estimativa feita com as vendas que passaram pelo IKCOUS. Não é o valor da sua guia. Vendas fora do app não entram, e produtos com ICMS-ST ou PIS/Cofins monofásico costumam pagar menos. O valor certo está na guia do Simples (PGDAS-D) ou com o seu contador.";
+  "Isto é uma estimativa feita com as vendas registradas no app. Não é o valor da sua guia. Vendas fora do app não entram, e produtos com ICMS-ST ou PIS/Cofins monofásico costumam pagar menos. O valor certo está na guia do Simples (PGDAS-D) ou com o seu contador.";
 
 type Cadastro = Pick<CadastroFiscal, "regime" | "atividade">;
 const SIMPLES_COMERCIO: Cadastro = {
@@ -266,12 +266,14 @@ describe("EstimativaSimples — nunca é valor devido nem ação", () => {
 });
 
 describe("EstimativaSimples — série incompleta e recusas do núcleo", () => {
-  it("o núcleo real recusa por série incompleta: 'Faltam 12 meses' e nenhum número", () => {
+  it("o núcleo real recusa quando o app ainda não mediu 2 meses: 'Faltam 2 meses' e nenhum número", () => {
+    // O app começou a medir no próprio mês da apuração (0 meses medidos): a estimativa
+    // pede 2 meses de vendas no app.
     const resultado = estimarDasDoSimples({
       cadastro: {
         ...SIMPLES_COMERCIO,
         abertaEm: null,
-        vendeNoAppDesde: "2026-08-01",
+        vendeNoAppDesde: "2026-10-01",
       },
       competencia: "2026-10",
       receitaDoMes: 4_000,
@@ -280,7 +282,7 @@ describe("EstimativaSimples — série incompleta e recusas do núcleo", () => {
     expect(resultado).toEqual({
       estado: "sem_estimativa",
       motivo: "faltam_meses",
-      faltam: 12,
+      faltam: 2,
     });
     const h = montar(
       <EstimativaSimples
@@ -290,7 +292,10 @@ describe("EstimativaSimples — série incompleta e recusas do núcleo", () => {
       />,
     );
     const texto = textoDe(h);
-    expect(texto).toContain("Faltam 12 meses");
+    expect(texto).toBe(
+      "Estimativa do DAS" +
+        "Faltam 2 meses de vendas registradas no app para estimar o DAS. Só estimamos quando o app mediu os meses necessários (no mínimo 2 meses de vendas), para não mostrar um número que engana.",
+    );
     expect(texto).not.toContain("R$");
     expect(texto).not.toContain("cerca de");
     // Sem número, sem aviso da estimativa (não há estimativa para avisar).
@@ -445,6 +450,96 @@ describe("SemEstimativa — regime sem conta: a frase honesta e nenhum número",
     );
     expect(textoDe(h)).not.toContain("Ainda não fazemos estimativa para");
     expect(textoDe(h)).toContain("Faltam 2 meses");
+  });
+});
+
+describe("EstimativaSimples — poucos meses de vendas no app (decisão do sócio, 25/11/2026)", () => {
+  const FRASE_DE_POUCOS_MESES = (n: number) =>
+    `Com ${n} meses de vendas no app, a faixa foi deduzida pela média. Se a empresa vendia antes por fora, a guia pode vir maior.`;
+
+  const parcial = (mesesNaMedia: number, valor = 410) => (
+    <EstimativaSimples
+      estimativa={{ estado: "com_estimativa", valor, mesesNaMedia }}
+      competencia="2026-10"
+      receitaDoMes={4_000}
+    />
+  );
+
+  it("com a base de 2 meses: mostra o número, o rótulo dos meses e a frase exata, ANTES do aviso fixo", () => {
+    const h = montar(parcial(2));
+    const texto = textoDe(h);
+    expect(texto).toContain("cerca de R$ 410");
+    expect(texto).toContain("Estimativa do app (de 2 meses de vendas)");
+    expect(texto).toContain(FRASE_DE_POUCOS_MESES(2));
+    expect(texto.indexOf(FRASE_DE_POUCOS_MESES(2))).toBeLessThan(
+      texto.indexOf(AVISO_DO_PARECER),
+    );
+    // O aviso fixo continua inteiro embaixo.
+    const nota = h.querySelector(
+      '[role="note"][aria-label="Aviso sobre a estimativa"]',
+    );
+    expect(textoDe(nota as HTMLElement)).toBe(AVISO_DO_PARECER);
+  });
+
+  it("com a base de 11 meses: a frase diz 11", () => {
+    expect(textoDe(montar(parcial(11)))).toContain(FRASE_DE_POUCOS_MESES(11));
+  });
+
+  it("estimativa de 12 meses (sem base parcial) não ganha a frase nem o rótulo", () => {
+    const texto = textoDe(montar(estimativa(410)));
+    expect(texto).not.toContain("deduzida pela média");
+    expect(texto).not.toContain("meses de vendas)");
+    expect(texto).toContain("Estimativa do app");
+  });
+
+  it("base parcial que não é um número inteiro de 2 ou mais meses nunca vira número na tela", () => {
+    for (const base of [0, 1, -3, 2.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      const h = montar(parcial(base));
+      const texto = textoDe(h);
+      expect(texto, `base ${base}`).not.toContain("cerca de");
+      expect(texto, `base ${base}`).not.toContain("R$ 410");
+      expect(h.querySelector('[role="note"]'), `base ${base}`).toBeNull();
+      recomeçar();
+    }
+  });
+
+  it("Ocultar valores: o valor some, a frase dos meses e o aviso continuam", () => {
+    const h = montar(parcial(3, 2_340), true);
+    const texto = textoDe(h);
+    expect(texto).not.toContain("2.340");
+    expect(texto).toContain("Valor oculto");
+    expect(texto).toContain(FRASE_DE_POUCOS_MESES(3));
+    expect(texto).toContain(AVISO_DO_PARECER);
+  });
+
+  it("o núcleo real, com 2 meses medidos, chega à tela com a frase", () => {
+    const resultado = estimarDasDoSimples({
+      cadastro: {
+        ...SIMPLES_COMERCIO,
+        abertaEm: null,
+        vendeNoAppDesde: "2026-08-01",
+      },
+      competencia: "2026-10",
+      receitaDoMes: 4_000,
+      receitasMensais: { "2026-08": 4_000, "2026-09": 4_000 },
+    });
+    // Média 4.000 x 12 = 48.000 (faixa 1, 4%): 4% de 4.000 = 160.
+    expect(resultado).toEqual({
+      estado: "com_estimativa",
+      valor: 160,
+      mesesNaMedia: 2,
+    });
+    const texto = textoDe(
+      montar(
+        <EstimativaSimples
+          estimativa={resultado}
+          competencia="2026-10"
+          receitaDoMes={4_000}
+        />,
+      ),
+    );
+    expect(texto).toContain("cerca de R$ 160");
+    expect(texto).toContain(FRASE_DE_POUCOS_MESES(2));
   });
 });
 

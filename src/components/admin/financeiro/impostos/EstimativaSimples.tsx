@@ -12,12 +12,20 @@
 //    de R$ 0"; sem venda no mês: "Sem vendas neste mês";
 //  - sem número (recusa do núcleo, série incompleta): só texto, via SemEstimativa;
 //  - a estimativa NUNCA aparece como ação ("lançar como despesa"): nada aqui grava;
-//  - "Ocultar valores": o valor vira máscara; o aviso continua.
+//  - "Ocultar valores": o valor vira máscara; o aviso continua;
+//  - poucos meses de vendas no app (decisão do sócio, 25/11/2026): quando a faixa saiu da
+//    média de 2 a 11 meses, o rótulo diz de quantos meses e a frase "Com N meses de vendas no
+//    app, a faixa foi deduzida pela média..." vem ANTES do aviso fixo. Base que não é um
+//    inteiro de 2 ou mais nunca vira número: a tela não descreve o que não sabe contar.
 
 import { Calculator } from "lucide-react";
 import type { ReactNode } from "react";
 
 import type { EstimativaDoSimples } from "@/lib/fiscal/estimativa-simples";
+import {
+  baseDaMediaEhValida,
+  fraseDaMediaDePoucosMeses,
+} from "@/lib/fiscal/textos";
 
 import {
   BlocoKpi,
@@ -87,6 +95,16 @@ export function EstimativaSimples({
     );
   }
 
+  // O núcleo só devolve base parcial de 2 meses ou mais; qualquer outra coisa é dado torto.
+  const base = estimativa.mesesNaMedia;
+  if (base !== undefined && !baseDaMediaEhValida(base)) {
+    return (
+      <SemEstimativa
+        estimativa={{ estado: "sem_estimativa", motivo: "receita_invalida" }}
+      />
+    );
+  }
+
   const arredondado = paraDezena(estimativa.valor);
   const mes = rotuloDoMes(competencia);
   const teveVenda = receitaDoMes > 0;
@@ -120,13 +138,28 @@ export function EstimativaSimples({
       titulo="Estimativa do DAS"
       subtitulo={
         mes
-          ? `Sobre as vendas de ${mes} que passaram pelo IKCOUS.`
-          : "Sobre as vendas do mês que passaram pelo IKCOUS."
+          ? `Sobre as vendas de ${mes} registradas no app.`
+          : "Sobre as vendas do mês registradas no app."
       }
     >
-      <BlocoKpi rotulo="Estimativa do app" icone={Calculator}>
+      <BlocoKpi
+        rotulo={
+          base === undefined
+            ? "Estimativa do app"
+            : `Estimativa do app (de ${base} meses de vendas)`
+        }
+        icone={Calculator}
+      >
         <span data-estimativa-valor="">{valor}</span>
       </BlocoKpi>
+      {base === undefined ? null : (
+        <p
+          data-base-da-media=""
+          className="mt-3 text-xs leading-relaxed text-zinc-300"
+        >
+          {fraseDaMediaDePoucosMeses(base)}
+        </p>
+      )}
       <AvisoDaEstimativa />
     </CartaoSecao>
   );

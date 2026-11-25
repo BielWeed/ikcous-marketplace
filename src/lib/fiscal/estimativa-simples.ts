@@ -13,13 +13,22 @@
 //   - empresa com menos de 12 meses de atividade: no 1º mês, RBT12 = receita do mês x 12;
 //     do 2º ao 12º, média da receita dos meses anteriores x 12; do 13º em diante, a regra
 //     geral;
+//   - POUCOS MESES DE VENDAS NO APP (decisão do sócio, 25/11/2026): quando o app mediu só
+//     parte dos meses que a regra pede (a loja começou a usar o app há pouco, e antes disso
+//     vendia por fora), a estimativa sai a partir de 2 meses medidos, com a RBT12 deduzida
+//     pela média desses meses x 12 (a mesma conta da empresa nova). Com 0 ou 1 mês medido
+//     não há estimativa. O resultado carrega `mesesNaMedia`, e a tela diz "com N meses de
+//     vendas no app". Se a loja vendia muito por fora, a faixa deduzida fica baixa e a
+//     estimativa pode ficar ABAIXO da guia: é o lado do erro, e a tela avisa.
 //   - acima do sublimite de R$ 3,6 mi o ICMS sai do DAS e a conta do Anexo I deixa de
 //     valer; acima do teto de R$ 4,8 mi a empresa sai do Simples. Nos dois casos, sem estimativa.
 //
-// A REGRA DE OURO: nunca estimar com série incompleta. O app só mede os meses em que a loja
-// vendeu por ele (`vendeNoAppDesde`). Mês que não está na série, mês anterior ao início das
-// vendas no app e valor que não é número são meses NÃO MEDIDOS, e a leitura que devolve
-// "0" para eles não os transforma em "vendeu zero". Faltou mês: `faltam_meses`.
+// A REGRA DE OURO: nunca estimar com série furada. O app só mede os meses em que a loja
+// vendeu por ele (`vendeNoAppDesde`). Mês anterior ao início das vendas no app é mês NÃO
+// MEDIDO: a leitura que devolve "0" para ele não o transforma em "vendeu zero", e ele nunca
+// entra na conta (nem na soma, nem na contagem de meses). Já mês que o app DEVIA ter medido
+// (do início das vendas em diante) e que não está na série, ou veio com valor que não é
+// número, é buraco: `faltam_meses`, e nunca se estima por cima dele.
 //
 // Ano sem parâmetro conferido (qualquer um além de 2026) não calcula nada.
 //
@@ -83,11 +92,20 @@ export type EstimativaDoSimples =
       readonly estado: "com_estimativa";
       /** Reais, arredondado para a dezena (410), sem centavos. */
       readonly valor: number;
+      /**
+       * SÓ quando a RBT12 foi deduzida pela média de poucos meses medidos pelo app (menos
+       * dos que a regra pede): de quantos meses ela saiu (sempre 2 ou mais). Ausente = a
+       * conta usou todos os meses que a regra pede.
+       */
+      readonly mesesNaMedia?: number;
     }
   | {
       readonly estado: "sem_estimativa";
       readonly motivo: "faltam_meses";
-      /** Quantos meses de venda medida faltam para fechar a conta. */
+      /**
+       * Quantos meses de venda medida faltam: para completar os 2 meses que a estimativa
+       * pede (0 ou 1 mês medido), ou os meses que a série não trouxe (buraco).
+       */
       readonly faltam: number;
     }
   | {
@@ -102,6 +120,9 @@ const semEstimativa = (
 ): EstimativaDoSimples => ({ estado: "sem_estimativa", motivo });
 
 const COMPETENCIA = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/** Menos que isto de meses medidos e a média não diz nada: sem estimativa (decisão do sócio, 25/11/2026). */
+const MESES_MINIMOS_MEDIDOS = 2;
 
 /** `yyyy-mm` (ou data que comece assim) como número de meses desde o ano 0: dá para subtrair. */
 const indiceDoMes = (texto: string): number =>
@@ -178,30 +199,44 @@ function dasDaFaixaEmDezenas(
   return Number(dezenas) * 10;
 }
 
-/** Quantos dos meses `de..ate` (índices, inclusive) o app NÃO mediu, e a soma dos que mediu, em centavos. */
-function lerMesesMedidos(
+interface JanelaLida {
+  /** Meses da janela anteriores ao início das vendas no app: não medidos, fora da conta. */
+  readonly antesDoApp: number;
+  /** Meses medidos (do início das vendas em diante) que a série trouxe com número de verdade. */
+  readonly medidos: number;
+  /** Meses medidos que a série NÃO trouxe, ou trouxe com valor que não é número. */
+  readonly buracos: number;
+  /** Soma dos meses medidos, em centavos (mês negativo vale zero). */
+  readonly somaEmCentavos: number;
+}
+
+/** Lê os meses `de..ate` (índices, inclusive): quais o app mediu, quais faltam e quanto somam. */
+function lerJanela(
   de: number,
   ate: number,
   receitas: ReadonlyMap<string, number>,
   inicioDasVendas: string,
-): { faltam: number; somaEmCentavos: number } {
-  let faltam = 0;
+): JanelaLida {
+  let antesDoApp = 0;
+  let medidos = 0;
+  let buracos = 0;
   let somaEmCentavos = 0;
   for (let i = de; i <= ate; i += 1) {
     const chave = chaveDoMes(i);
+    if (chave < inicioDasVendas) {
+      antesDoApp += 1;
+      continue;
+    }
     const valor = receitas.get(chave);
-    if (
-      chave < inicioDasVendas ||
-      typeof valor !== "number" ||
-      !Number.isFinite(valor)
-    ) {
-      faltam += 1;
+    if (typeof valor !== "number" || !Number.isFinite(valor)) {
+      buracos += 1;
     } else {
       // Mês com devolução maior que a venda vale zero, nunca abate a RBT12.
       somaEmCentavos += Math.max(0, paraCentavos(valor));
+      medidos += 1;
     }
   }
-  return { faltam, somaEmCentavos };
+  return { antesDoApp, medidos, buracos, somaEmCentavos };
 }
 
 export function estimarDasDoSimples(
@@ -250,43 +285,50 @@ export function estimarDasDoSimples(
   // RBT12 como fração numerador/denominador, em centavos.
   let numerador: number;
   let denominador = 1;
-  if (k !== null && k <= simples.mesesDaRbt12) {
-    // L8: empresa com menos de 12 meses de atividade.
-    if (k === 1) {
-      numerador = mesEmCentavos * simples.mesesDaRbt12;
-    } else {
-      const lidos = lerMesesMedidos(
-        mesDaApuracao - (k - 1),
-        mesDaApuracao - 1,
-        receitas,
-        inicioDasVendas,
-      );
-      if (lidos.faltam > 0) {
-        return {
-          estado: "sem_estimativa",
-          motivo: "faltam_meses",
-          faltam: lidos.faltam,
-        };
-      }
-      numerador = lidos.somaEmCentavos * simples.mesesDaRbt12;
-      denominador = k - 1;
-    }
+  // Só preenchido quando a RBT12 saiu da média de poucos meses medidos pelo app.
+  let mesesNaMedia: number | undefined;
+  if (k === 1) {
+    // L8: no 1º mês de atividade, o próprio mês anualizado.
+    numerador = mesEmCentavos * simples.mesesDaRbt12;
   } else {
-    // L7: regra geral, os 12 meses anteriores ao mês, todos medidos.
-    const lidos = lerMesesMedidos(
-      mesDaApuracao - simples.mesesDaRbt12,
+    // Os meses que a regra pede: os 12 anteriores (L7) ou, na empresa com menos de 12
+    // meses de atividade, os anteriores da vida dela (L8; 13º mês em diante é a regra geral).
+    const pedidos =
+      k !== null && k <= simples.mesesDaRbt12 ? k - 1 : simples.mesesDaRbt12;
+    const lidos = lerJanela(
+      mesDaApuracao - pedidos,
       mesDaApuracao - 1,
       receitas,
       inicioDasVendas,
     );
-    if (lidos.faltam > 0) {
+    if (lidos.buracos > 0) {
       return {
         estado: "sem_estimativa",
         motivo: "faltam_meses",
-        faltam: lidos.faltam,
+        faltam: lidos.buracos,
       };
     }
-    numerador = lidos.somaEmCentavos;
+    if (lidos.antesDoApp === 0) {
+      // Todos os meses que a regra pede foram medidos: a conta cheia.
+      if (pedidos === simples.mesesDaRbt12) {
+        numerador = lidos.somaEmCentavos;
+      } else {
+        numerador = lidos.somaEmCentavos * simples.mesesDaRbt12;
+        denominador = pedidos;
+      }
+    } else {
+      // O app mediu só parte: média dos meses medidos x 12, a partir de 2 meses.
+      if (lidos.medidos < MESES_MINIMOS_MEDIDOS) {
+        return {
+          estado: "sem_estimativa",
+          motivo: "faltam_meses",
+          faltam: MESES_MINIMOS_MEDIDOS - lidos.medidos,
+        };
+      }
+      numerador = lidos.somaEmCentavos * simples.mesesDaRbt12;
+      denominador = lidos.medidos;
+      mesesNaMedia = lidos.medidos;
+    }
   }
   if (numerador === 0) {
     // RBT12 zero conta como R$ 1,00 (Resolução CGSN 140/2018, art. 21, parágrafo único).
@@ -304,14 +346,14 @@ export function estimarDasDoSimples(
   // Não acontece (o teto é a última faixa), mas sem faixa nunca se inventa alíquota.
   if (!achada) return semEstimativa("acima_do_teto");
 
-  return {
-    estado: "com_estimativa",
-    valor: dasDaFaixaEmDezenas(
-      mesEmCentavos,
-      numerador,
-      denominador,
-      achada.faixa.aliquota,
-      achada.faixa.deduzir,
-    ),
-  };
+  const valor = dasDaFaixaEmDezenas(
+    mesEmCentavos,
+    numerador,
+    denominador,
+    achada.faixa.aliquota,
+    achada.faixa.deduzir,
+  );
+  return mesesNaMedia === undefined
+    ? { estado: "com_estimativa", valor }
+    : { estado: "com_estimativa", valor, mesesNaMedia };
 }

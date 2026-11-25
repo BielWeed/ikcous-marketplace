@@ -57,14 +57,14 @@ const TEXTO_DE_MEI =
   "Quem é MEI paga um valor fixo por mês, por isso não fazemos estimativa. O que ajuda é o medidor do limite de vendas do ano.";
 
 const CAUDA_DE_SERIE =
-  "Só estimamos quando o IKCOUS mediu todos os meses necessários, para não mostrar um número que engana.";
+  "Só estimamos quando o app mediu os meses necessários (no mínimo 2 meses de vendas), para não mostrar um número que engana.";
 
 function textoDeFaltamMeses(faltam: number): string {
   if (!Number.isInteger(faltam) || faltam < 1) {
-    return `Ainda faltam meses de vendas medidas pelo IKCOUS para estimar o DAS. ${CAUDA_DE_SERIE}`;
+    return `Ainda faltam meses de vendas registradas no app para estimar o DAS. ${CAUDA_DE_SERIE}`;
   }
   const quantos = faltam === 1 ? "Falta 1 mês" : `Faltam ${faltam} meses`;
-  return `${quantos} de vendas medidas pelo IKCOUS para estimar o DAS. ${CAUDA_DE_SERIE}`;
+  return `${quantos} de vendas registradas no app para estimar o DAS. ${CAUDA_DE_SERIE}`;
 }
 
 function textoDaRecusa(estimativa: SemEstimativaDoSimples): string {
@@ -91,13 +91,13 @@ function textoDaRecusa(estimativa: SemEstimativaDoSimples): string {
     case "receita_invalida":
       return "Não deu para calcular a estimativa: não conseguimos somar as vendas deste mês agora. Tente de novo daqui a pouco.";
     case "sem_mes_de_inicio_das_vendas":
-      return "Para estimar, precisamos saber em que mês você começou a vender pelo IKCOUS. Preencha isso no cadastro fiscal.";
+      return "Para estimar, precisamos saber em que mês você começou a vender pelo app. Preencha isso no cadastro fiscal.";
     case "abertura_invalida":
       return "A data de abertura da empresa, no cadastro fiscal, não parece uma data de verdade. Corrija no cadastro fiscal para ver a estimativa.";
     case "competencia_antes_da_abertura":
       return "Este mês é anterior à abertura da empresa, por isso não há estimativa.";
     case "mes_antes_das_vendas_no_app":
-      return "Este mês é anterior ao começo das suas vendas pelo IKCOUS, por isso não há estimativa.";
+      return "Este mês é anterior ao começo das suas vendas pelo app, por isso não há estimativa.";
     case "acima_do_sublimite":
       return "As vendas dos últimos 12 meses passaram do sublimite do Simples Nacional, e a partir dele o ICMS passa a ser cobrado fora do DAS. Esta conta deixa de valer: veja o valor certo com o seu contador.";
     case "acima_do_teto":

@@ -9,9 +9,9 @@
 //   B  MEI: o medidor do limite, com a receita do ano líquida de devoluções, lida mês a
 //      mês (de janeiro ao mês atual) do MESMO `fin_dre` do Resultado
 //   B2 MEI: o `fin_dre` só enxerga as vendas registradas no app, então o número é sempre
-//      um mínimo. O medidor só mostra as faixas ("Pelo que o IKCOUS registrou, ...")
+//      um mínimo. O medidor só mostra as faixas ("Pelo que o app registrou, ...")
 //      quando o app já registrava desde o começo do período medido (1º de janeiro, ou o
-//      mês da abertura); senão mostra "vendas registradas no IKCOUS neste ano" sem
+//      mês da abertura); senão mostra "vendas registradas no app neste ano" sem
 //      veredito (e o alerta de acima do limite, se o número já passou do teto). O aviso
 //      fixo ("o que você vendeu sem registrar aqui também conta") vem em toda tela COM
 //      número e não vem nas telas sem número (ano não conferido)
@@ -30,6 +30,13 @@
 //   J  o arquivo do contador lê o extrato e as guias do período e CONFERE A SESSÃO antes
 //      e depois; falha ou conta diferente = nenhum arquivo
 //   K  aba fechada não lê nada; a `versao` relê tudo e muda o que a tela mostra
+//   L  cada mês do caderno mostra "Vendas registradas no app (menos devoluções): R$ X", o
+//      MESMO número do Resultado, para TODOS os regimes com cadastro (decisão do sócio,
+//      25/11/2026); sem cadastro nada é lido; leitura que falha não vira "R$ 0,00"
+//   M  janeiro de 2027: o medidor do MEI mostra "2026 fechado" com o limite de 2026 (31/12 é
+//      o medidor normal, 01/02 volta ao aviso de ano não conferido)
+//   N  Simples com poucos meses de vendas no app: a estimativa sai a partir de 2 meses, com
+//      a frase dos meses; a comparação com a guia avisa o lado do erro (abaixo)
 //
 // Fixtures inventadas (nenhum dado de loja). O Supabase falso APLICA filtros, ordem e
 // projeção de colunas sobre linhas de verdade.
@@ -178,11 +185,11 @@ import { TEXTOS_DO_MEDIDOR_DO_MEI } from "@/lib/fiscal/textos";
 
 // O aviso fixo do medidor do MEI (só nas telas COM número), palavra por palavra.
 const AVISO_DO_MEDIDOR =
-  "Este número só tem as vendas registradas no IKCOUS. O que você vendeu sem registrar aqui (Instagram, WhatsApp, feira) também conta para o limite do MEI: some por sua conta.";
+  "Este número só tem as vendas registradas no app. O que você vendeu sem registrar aqui (Instagram, WhatsApp, feira) também conta para o limite do MEI: some por sua conta.";
 // Os títulos do ano COMPLETO: o número é um mínimo, então tudo começa com o prefixo.
-const DENTRO = "Pelo que o IKCOUS registrou, você está dentro do limite";
+const DENTRO = "Pelo que o app registrou, você está dentro do limite";
 const ACIMA_20 =
-  "Pelo que o IKCOUS registrou, você passou do limite em mais de 20%";
+  "Pelo que o app registrou, você passou do limite em mais de 20%";
 
 const OUTRA_CATEGORIA = "f2000000-0000-4000-8000-0000000000aa";
 const CONTA = "conta-inventada-1";
@@ -440,7 +447,7 @@ describe("B — MEI: o medidor do limite", () => {
     await montar();
     expect(texto()).toContain("12%");
     expect(texto()).not.toContain("13%");
-    expect(texto()).toContain("Vendas registradas no IKCOUS: R$ 10.500,00");
+    expect(texto()).toContain("Vendas registradas no app: R$ 10.500,00");
   });
 
   it("passou do limite: a faixa de excesso aparece (faixa e texto vêm do núcleo)", async () => {
@@ -452,7 +459,7 @@ describe("B — MEI: o medidor do limite", () => {
     expect(texto()).toContain("Fale com o seu contador hoje.");
   });
 
-  it("o aviso fixo do medidor ('só conta as vendas pelo IKCOUS') aparece, e é outro aviso que o da estimativa", async () => {
+  it("o aviso fixo do medidor ('só conta as vendas pelo app') aparece, e é outro aviso que o da estimativa", async () => {
     await montar();
     expect(texto()).toContain(AVISO_DO_MEDIDOR);
     expect(
@@ -494,7 +501,7 @@ describe("B2 — MEI: o número do app só vira veredito se cobre o ano", () => 
     vendasSoDepoisDe(6, 2500);
     mei({ vende_no_app_desde: "2026-06-01" });
     await montar();
-    expect(texto()).toContain("Vendas registradas no IKCOUS neste ano");
+    expect(texto()).toContain("Vendas registradas no app neste ano");
     expect(texto()).toContain("R$ 15.000,00");
     expect(texto()).not.toMatch(/\d+%/);
     expect(texto()).toContain(
@@ -510,7 +517,7 @@ describe("B2 — MEI: o número do app só vira veredito se cobre o ano", () => 
   it("sem a data de início das vendas pelo app: sem veredito, pede a data e traz o aviso", async () => {
     mei({ vende_no_app_desde: null });
     await montar();
-    expect(texto()).toContain("Vendas registradas no IKCOUS neste ano");
+    expect(texto()).toContain("Vendas registradas no app neste ano");
     expect(texto()).toContain(
       TEXTOS_DO_MEDIDOR_DO_MEI.semVeredito.sem_data_de_inicio,
     );
@@ -522,14 +529,14 @@ describe("B2 — MEI: o número do app só vira veredito se cobre o ano", () => 
     mei({ vende_no_app_desde: "2026-01-01" });
     await montar();
     expect(texto()).toContain(DENTRO);
-    expect(texto()).not.toContain("Vendas registradas no IKCOUS neste ano");
+    expect(texto()).not.toContain("Vendas registradas no app neste ano");
     avisoFixoPresente();
     await act(async () => root.unmount());
     root = createRoot(host);
 
     mei({ vende_no_app_desde: "2026-02-01" });
     await montar();
-    expect(texto()).toContain("Vendas registradas no IKCOUS neste ano");
+    expect(texto()).toContain("Vendas registradas no app neste ano");
     semVeredito();
     avisoFixoPresente();
   });
@@ -575,7 +582,7 @@ describe("B2 — MEI: o número do app só vira veredito se cobre o ano", () => 
 
     mei({ aberta_em: "2026-10-15", vende_no_app_desde: "2026-11-01" });
     await montar();
-    expect(texto()).toContain("Vendas registradas no IKCOUS neste ano");
+    expect(texto()).toContain("Vendas registradas no app neste ano");
     expect(texto()).toContain("Limite: R$ 20.250,00");
     semVeredito();
     avisoFixoPresente();
@@ -584,7 +591,7 @@ describe("B2 — MEI: o número do app só vira veredito se cobre o ano", () => 
   it("empresa aberta em ano anterior: não adianta o início, continua valendo 1º de janeiro", async () => {
     mei({ aberta_em: "2025-03-10", vende_no_app_desde: "2026-03-01" });
     await montar();
-    expect(texto()).toContain("Vendas registradas no IKCOUS neste ano");
+    expect(texto()).toContain("Vendas registradas no app neste ano");
     semVeredito();
   });
 
@@ -606,25 +613,44 @@ describe("C — Simples de só comércio: a estimativa do último mês fechado",
     });
   });
 
-  it("lê 14 meses (set/2025 a out/2026), SEM o mês atual, e mostra 'cerca de R$ 40' com o aviso fixo", async () => {
+  it("lê 15 meses (set/2025 a nov/2026): o mês atual entra SÓ para a linha de vendas do caderno, e a estimativa é a de outubro, o último mês fechado", async () => {
     await montar();
     const lidos = mesesDoDre();
-    expect(lidos).toHaveLength(14);
+    expect(lidos).toHaveLength(15);
     expect(lidos[0]).toBe("2025-09");
-    expect(lidos.at(-1)).toBe("2026-10");
-    expect(lidos).not.toContain("2026-11");
+    expect(lidos.at(-1)).toBe("2026-11");
 
     // R$ 1.000 no mês, RBT12 de R$ 12.000 (1ª faixa, 4%): cerca de R$ 40
     const valor = host.querySelector("[data-estimativa-valor]");
     expect(normal(valor?.textContent)).toBe("cerca de R$ 40");
     expect(texto()).toContain("Estimativa do app");
     expect(texto()).toContain("vendas de outubro de 2026");
+    // 12 meses completos: sem o rótulo nem a frase de "poucos meses"
+    expect(texto()).not.toContain("deduzida pela média");
     // o aviso fixo vem embaixo de TODA estimativa, palavra por palavra
     expect(texto()).toContain(AVISO_DA_ESTIMATIVA);
     expect(texto()).not.toContain("Limite do MEI");
   });
 
-  it("série curta demais (empresa que começou a vender há pouco): diz quantos meses faltam, sem número", async () => {
+  it("o mês atual (pela metade) NUNCA ganha estimativa para comparar com a guia, mesmo agora que a receita dele é lida", async () => {
+    tabelas.set("fin_lancamentos", {
+      linhas: [
+        guia("g-out", "previsto", "2026-10-01", 50),
+        // guia do mês atual: se o mês atual tivesse estimativa, entraria na média
+        guia("g-nov", "previsto", "2026-11-01", 400),
+      ],
+    });
+    await montar();
+    const frase = normal(
+      host.querySelector("[data-comparacao-da-estimativa]")?.textContent,
+    );
+    // só outubro (R$ 40 contra R$ 50 = 20% abaixo): "a última guia", e não "as 2 últimas"
+    expect(frase).toContain(
+      "Na última guia lançada, a estimativa do app ficou 20% abaixo da guia.",
+    );
+  });
+
+  it("empresa que começou a vender há 4 meses: estima pela média dos 4 meses, com o rótulo e a frase dos meses (decisão do sócio, 25/11/2026)", async () => {
     tabelas.set("fiscal_cadastro", {
       linhas: [
         cadastroDoBanco("simples", "comercio", {
@@ -633,10 +659,49 @@ describe("C — Simples de só comércio: a estimativa do último mês fechado",
       ],
     });
     await montar();
-    expect(texto()).toMatch(/Faltam \d+ meses de vendas medidas/);
+    // Outubro: o app mediu jun, jul, ago e set (4 x R$ 1.000): média 1.000 x 12 = 12.000 (4%)
+    expect(
+      normal(host.querySelector("[data-estimativa-valor]")?.textContent),
+    ).toBe("cerca de R$ 40");
+    expect(texto()).toContain("Estimativa do app (de 4 meses de vendas)");
+    expect(texto()).toContain(
+      "Com 4 meses de vendas no app, a faixa foi deduzida pela média. Se a empresa vendia antes por fora, a guia pode vir maior.",
+    );
+    // o aviso fixo continua embaixo
+    expect(texto()).toContain(AVISO_DA_ESTIMATIVA);
+  });
+
+  it("com 1 mês medido: falta 1 mês, sem número", async () => {
+    tabelas.set("fiscal_cadastro", {
+      linhas: [
+        cadastroDoBanco("simples", "comercio", {
+          vende_no_app_desde: "2026-09-01",
+        }),
+      ],
+    });
+    await montar();
+    expect(texto()).toContain(
+      "Falta 1 mês de vendas registradas no app para estimar o DAS.",
+    );
     expect(host.querySelector("[data-estimativa-valor]")).toBeNull();
     expect(texto()).not.toContain("cerca de");
     expect(texto()).not.toContain(AVISO_DA_ESTIMATIVA);
+  });
+
+  it("com 0 meses medidos (começou a vender em outubro): faltam 2 meses, sem número", async () => {
+    tabelas.set("fiscal_cadastro", {
+      linhas: [
+        cadastroDoBanco("simples", "comercio", {
+          vende_no_app_desde: "2026-10-01",
+        }),
+      ],
+    });
+    await montar();
+    expect(texto()).toContain(
+      "Faltam 2 meses de vendas registradas no app para estimar o DAS.",
+    );
+    expect(host.querySelector("[data-estimativa-valor]")).toBeNull();
+    expect(texto()).not.toContain("cerca de");
   });
 
   it("sem a data de início das vendas pelo app: pede o dado, não inventa série", async () => {
@@ -646,7 +711,7 @@ describe("C — Simples de só comércio: a estimativa do último mês fechado",
       ],
     });
     await montar();
-    expect(texto()).toContain("em que mês você começou a vender pelo IKCOUS");
+    expect(texto()).toContain("em que mês você começou a vender pelo app");
     expect(host.querySelector("[data-estimativa-valor]")).toBeNull();
   });
 });
@@ -658,7 +723,7 @@ describe("D — regimes sem conta: frase honesta, caderno e arquivo", () => {
     ["real", "comercio", "Lucro Real"],
     ["nao_sei", "comercio", "Não sei"],
   ])(
-    "%s / %s: 'Ainda não fazemos estimativa', nenhum número, nenhuma leitura de receita",
+    "%s / %s: 'Ainda não fazemos estimativa', nenhum número de imposto, e só os 3 meses do caderno lidos (a linha de vendas)",
     async (regime, atividade) => {
       tabelas.set("fiscal_cadastro", {
         linhas: [cadastroDoBanco(regime, atividade)],
@@ -672,7 +737,7 @@ describe("D — regimes sem conta: frase honesta, caderno e arquivo", () => {
       expect(texto()).not.toContain("cerca de");
       expect(texto()).not.toContain("Limite do MEI");
       expect(texto()).not.toContain(AVISO_DA_ESTIMATIVA);
-      expect(rpcsChamadas()).not.toContain("fin_dre");
+      expect(mesesDoDre()).toEqual(["2026-09", "2026-10", "2026-11"]);
       expect(secao("Caderno das guias")).not.toBeNull();
       expect(secao("Arquivo para o contador")).not.toBeNull();
     },
@@ -690,7 +755,7 @@ describe("E — ano sem valores conferidos (2027)", () => {
     );
     expect(texto()).not.toMatch(/\d+% /);
     expect(texto()).not.toContain(
-      "Parte do limite usada pelas vendas registradas no IKCOUS",
+      "Parte do limite usada pelas vendas registradas no app",
     );
   });
 
@@ -778,7 +843,7 @@ describe("F — esqueleto e erro com 'Tentar de novo'", () => {
     expect(secao("Limite do MEI em 2026")).toBeNull();
     // sem resposta, nada de percentual
     expect(texto()).not.toContain(
-      "Parte do limite usada pelas vendas registradas no IKCOUS",
+      "Parte do limite usada pelas vendas registradas no app",
     );
 
     rpc.mockImplementation(async (nome: string, args: { p_inicio: string }) =>
@@ -791,7 +856,7 @@ describe("F — esqueleto e erro com 'Tentar de novo'", () => {
     });
     await esperar();
     expect(texto()).toContain(
-      "Parte do limite usada pelas vendas registradas no IKCOUS",
+      "Parte do limite usada pelas vendas registradas no app",
     );
   });
 });
@@ -1285,13 +1350,23 @@ describe("K — aba fechada e versão", () => {
     expect(secao("Limite do MEI em 2026")).toBeNull();
     expect(texto()).toContain("Ainda não fazemos estimativa");
 
-    // Quem deixou de ter conta não paga leitura da receita nas releituras seguintes
-    // (na do próprio aviso de mudança a série ainda via o cadastro antigo, uma vez).
-    const depoisDaMudanca = mesesDoDre().length;
-    expect(depoisDaMudanca).toBeLessThanOrEqual(leiturasDoDre * 2);
+    // Quem deixou de ter conta lê só os 3 meses do caderno (a linha de vendas de cada mês),
+    // e cada versão nova relê exatamente esses 3: nunca a série longa do MEI.
+    const antes = mesesDoDre().length;
     await montar({ versao: 2 });
+    expect(mesesDoDre().slice(antes)).toEqual([
+      "2026-09",
+      "2026-10",
+      "2026-11",
+    ]);
+    const depoisDaVersao2 = mesesDoDre().length;
     await montar({ versao: 3 });
-    expect(mesesDoDre()).toHaveLength(depoisDaMudanca);
+    expect(mesesDoDre().slice(depoisDaVersao2)).toEqual([
+      "2026-09",
+      "2026-10",
+      "2026-11",
+    ]);
+    expect(leiturasDoDre).toBeGreaterThan(0);
   });
 
   it("de sem cadastro para MEI: o medidor aparece e a receita passa a ser lida", async () => {
@@ -1306,5 +1381,262 @@ describe("K — aba fechada e versão", () => {
     expect(secao("Limite do MEI em 2026")).not.toBeNull();
     expect(mesesDoDre()).toHaveLength(11);
     expect(texto()).not.toContain("Configure o regime da sua empresa");
+  });
+});
+
+describe("L — vendas registradas no app, em cada mês do caderno", () => {
+  const ROTULO = "Vendas registradas no app (menos devoluções):";
+  const linhaDe = (mes: string) =>
+    normal(
+      host.querySelector(`li[data-mes="${mes}"] [data-vendas-do-mes]`)
+        ?.textContent,
+    );
+
+  beforeEach(() => {
+    receitaDoMes.set("2026-09", 1111);
+    receitaDoMes.set("2026-10", 2222);
+    receitaDoMes.set("2026-11", 3333);
+    // outubro devolveu R$ 222: o número do mês é líquido (o mesmo do Resultado)
+    devolucaoDoMes.set("2026-10", 222);
+  });
+
+  it.each([
+    ["mei", "comercio"],
+    ["simples", "comercio"],
+    ["simples", "com_servico"],
+    ["presumido", "comercio"],
+    ["real", "comercio"],
+    ["nao_sei", "comercio"],
+  ])(
+    "%s / %s: os 3 meses do caderno mostram as vendas líquidas de devoluções",
+    async (regime, atividade) => {
+      tabelas.set("fiscal_cadastro", {
+        linhas: [cadastroDoBanco(regime, atividade)],
+      });
+      await montar();
+      expect(linhaDe("2026-11")).toBe(`${ROTULO} R$ 3.333,00`);
+      expect(linhaDe("2026-10")).toBe(`${ROTULO} R$ 2.000,00`);
+      expect(linhaDe("2026-09")).toBe(`${ROTULO} R$ 1.111,00`);
+    },
+  );
+
+  it("a linha mora fora do quadro de valores da guia: Valor da guia, A pagar e Pago continuam sendo só os três", async () => {
+    tabelas.set("fiscal_cadastro", {
+      linhas: [cadastroDoBanco("presumido", "comercio")],
+    });
+    tabelas.set("fin_lancamentos", {
+      linhas: [guia("g-out", "previsto", "2026-10-01", 50)],
+    });
+    await montar();
+    const cartao = host.querySelector<HTMLElement>('li[data-mes="2026-10"]');
+    const rotulos = [...(cartao?.querySelectorAll("dt") ?? [])].map((dt) =>
+      normal(dt.textContent),
+    );
+    expect(rotulos).toEqual(["Valor da guia", "A pagar", "Pago"]);
+    expect(cartao?.querySelector("dl")?.textContent).not.toContain("Vendas");
+  });
+
+  it.each([
+    ["presumido", "comercio"],
+    ["real", "comercio"],
+    ["nao_sei", "comercio"],
+    ["simples", "com_servico"],
+  ])(
+    "%s / %s (sem estimativa): lê SÓ os 3 meses do caderno, na ordem, e a frase honesta continua",
+    async (regime, atividade) => {
+      tabelas.set("fiscal_cadastro", {
+        linhas: [cadastroDoBanco(regime, atividade)],
+      });
+      await montar();
+      expect(mesesDoDre()).toEqual(["2026-09", "2026-10", "2026-11"]);
+      expect(texto()).toContain("Ainda não fazemos estimativa");
+      expect(host.querySelector("[data-estimativa-valor]")).toBeNull();
+      expect(texto()).not.toContain("cerca de");
+    },
+  );
+
+  it("MEI em novembro: as mesmas 11 leituras de antes (janeiro a novembro), nenhuma a mais", async () => {
+    tabelas.set("fiscal_cadastro", {
+      linhas: [cadastroDoBanco("mei", "comercio")],
+    });
+    await montar();
+    expect(mesesDoDre()).toHaveLength(11);
+  });
+
+  it("loja SEM cadastro: nenhuma linha de vendas e nenhuma leitura de fin_dre", async () => {
+    tabelas.set("fiscal_cadastro", { linhas: [] });
+    await montar();
+    expect(host.querySelector("[data-vendas-do-mes]")).toBeNull();
+    expect(rpcsChamadas()).not.toContain("fin_dre");
+  });
+
+  it("a leitura da receita falha: o caderno segue, sem linha de vendas e sem 'R$ 0,00' no lugar", async () => {
+    tabelas.set("fiscal_cadastro", {
+      linhas: [cadastroDoBanco("presumido", "comercio")],
+    });
+    rpc.mockImplementation(async (nome: string) =>
+      nome === "fin_dre"
+        ? { data: null, error: { code: "42501", message: "permission denied" } }
+        : { data: [], error: null },
+    );
+    await montar();
+    expect(secao("Caderno das guias")).not.toBeNull();
+    expect(host.querySelectorAll("li[data-mes]").length).toBe(3);
+    expect(host.querySelector("[data-vendas-do-mes]")).toBeNull();
+    expect(texto()).not.toContain(ROTULO);
+  });
+
+  it("enquanto a receita não chegou, o caderno aparece sem a linha e a linha entra quando chega", async () => {
+    tabelas.set("fiscal_cadastro", {
+      linhas: [cadastroDoBanco("presumido", "comercio")],
+    });
+    let liberar: () => void = () => undefined;
+    const segura = new Promise<void>((resolve) => {
+      liberar = resolve;
+    });
+    rpc.mockImplementation(
+      async (nome: string, args: { p_inicio: string; p_fim: string }) => {
+        if (nome === "fin_dre") {
+          await segura;
+          return { data: dreFalso(args.p_inicio), error: null };
+        }
+        return { data: [], error: null };
+      },
+    );
+    await montar();
+    expect(secao("Caderno das guias")).not.toBeNull();
+    expect(host.querySelector("[data-vendas-do-mes]")).toBeNull();
+    await act(async () => {
+      liberar();
+    });
+    await esperar();
+    expect(linhaDe("2026-11")).toBe(`${ROTULO} R$ 3.333,00`);
+  });
+});
+
+describe("M — janeiro: o medidor do MEI mostra '2026 fechado'", () => {
+  beforeEach(() => {
+    tabelas.set("fiscal_cadastro", {
+      linhas: [cadastroDoBanco("mei", "comercio")],
+    });
+  });
+
+  it("31/12/2026: o medidor NORMAL de 2026 (sem 'fechado' e sem aviso em dezembro)", async () => {
+    await montar({ hoje: "2026-12-31" });
+    expect(secao("Limite do MEI em 2026")).not.toBeNull();
+    expect(host.querySelector("[data-ano-fechado]")).toBeNull();
+    expect(texto()).not.toContain("fechado");
+    expect(texto()).toContain(DENTRO);
+    // 12 meses x R$ 1.000 = R$ 12.000 de R$ 81.000 = 14,81%: "14%"
+    expect(texto()).toContain("14%");
+    expect(mesesDoDre()).toHaveLength(12);
+  });
+
+  it.each(["2027-01-01", "2027-01-12", "2027-01-31"])(
+    "%s: '2026 fechado', com o ano de 2026 inteiro e o limite de 2026",
+    async (hoje) => {
+      await montar({ hoje });
+      expect(secao("Limite do MEI em 2026")).not.toBeNull();
+      // 12 meses de 2026 x R$ 1.000: o janeiro de 2027 NÃO entra na soma de 2026
+      expect(
+        normal(host.querySelector("[data-ano-fechado]")?.textContent),
+      ).toBe(
+        "2026 fechado: pelo que o app registrou, você vendeu R$ 12.000,00 de R$ 81.000,00 (limite de 2026).",
+      );
+      expect(texto()).not.toContain("ainda não foram conferidos");
+      expect(texto()).not.toMatch(/110\.000/);
+      // o aviso fixo (só as vendas do app contam) continua embaixo
+      expect(texto()).toContain(AVISO_DO_MEDIDOR);
+    },
+  );
+
+  it("em janeiro de 2027 lê janeiro a dezembro de 2026 e os meses do caderno (nov/2026 a jan/2027): 13 leituras, na ordem", async () => {
+    await montar({ hoje: "2027-01-12" });
+    expect(mesesDoDre()).toEqual([
+      "2026-01",
+      "2026-02",
+      "2026-03",
+      "2026-04",
+      "2026-05",
+      "2026-06",
+      "2026-07",
+      "2026-08",
+      "2026-09",
+      "2026-10",
+      "2026-11",
+      "2026-12",
+      "2027-01",
+    ]);
+  });
+
+  it("em janeiro de 2027 o caderno mostra as vendas de nov/2026, dez/2026 e jan/2027", async () => {
+    receitaDoMes.set("2026-11", 300);
+    receitaDoMes.set("2026-12", 400);
+    receitaDoMes.set("2027-01", 500);
+    await montar({ hoje: "2027-01-12" });
+    const linha = (mes: string) =>
+      normal(
+        host.querySelector(`li[data-mes="${mes}"] [data-vendas-do-mes]`)
+          ?.textContent,
+      );
+    expect(linha("2026-11")).toContain("R$ 300,00");
+    expect(linha("2026-12")).toContain("R$ 400,00");
+    expect(linha("2027-01")).toContain("R$ 500,00");
+  });
+
+  it("01/02/2027 (2027 ainda sem conferência): acabou o 'fechado', volta o aviso de ano não conferido", async () => {
+    await montar({ hoje: "2027-02-01" });
+    expect(host.querySelector("[data-ano-fechado]")).toBeNull();
+    expect(texto()).toContain(
+      "Temos os valores da lei de 2026; os de 2027 ainda não foram conferidos.",
+    );
+  });
+
+  it("'2026 fechado' com cobertura parcial (o app começou em março) não diz 'você vendeu'", async () => {
+    tabelas.set("fiscal_cadastro", {
+      linhas: [
+        cadastroDoBanco("mei", "comercio", {
+          vende_no_app_desde: "2026-03-01",
+        }),
+      ],
+    });
+    await montar({ hoje: "2027-01-12" });
+    const frase = normal(host.querySelector("[data-ano-fechado]")?.textContent);
+    expect(frase).toContain("2026 fechado: o app registrou R$");
+    expect(frase).toContain("O limite de 2026 era R$ 81.000,00.");
+    expect(frase).not.toContain("você vendeu");
+  });
+
+  it("Simples comércio em janeiro: nada de 'fechado' (isso é só do MEI) e a estimativa de dezembro segue", async () => {
+    tabelas.set("fiscal_cadastro", {
+      linhas: [cadastroDoBanco("simples", "comercio")],
+    });
+    await montar({ hoje: "2027-01-12" });
+    expect(host.querySelector("[data-ano-fechado]")).toBeNull();
+    expect(texto()).toContain("vendas de dezembro de 2026");
+  });
+});
+
+describe("N — a comparação com a guia avisa o lado do erro quando a estimativa sai de poucos meses", () => {
+  it("a loja vendia por fora antes do app: a estimativa (R$ 40, de 4 meses) fica ABAIXO da guia de R$ 100, e a frase diz 60% abaixo", async () => {
+    tabelas.set("fiscal_cadastro", {
+      linhas: [
+        cadastroDoBanco("simples", "comercio", {
+          vende_no_app_desde: "2026-06-01",
+        }),
+      ],
+    });
+    tabelas.set("fin_lancamentos", {
+      linhas: [guia("g-out", "previsto", "2026-10-01", 100)],
+    });
+    await montar();
+    const caderno = normal(secao("Caderno das guias")?.textContent);
+    expect(caderno).toContain(
+      "Na última guia lançada, a estimativa do app ficou 60% abaixo da guia.",
+    );
+    // a estimativa em si nunca aparece no caderno
+    expect(caderno).not.toContain("cerca de");
+    // e a frase de base parcial está na estimativa, com o aviso do lado do erro
+    expect(texto()).toContain("a guia pode vir maior");
   });
 });
