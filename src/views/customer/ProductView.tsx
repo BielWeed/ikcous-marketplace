@@ -155,6 +155,18 @@ export const ProductView = React.memo(function ProductView({
   const [cartStatus, setCartStatus] = useState<"idle" | "loading" | "success">(
     "idle",
   );
+  // Relógios do botão Adicionar (750 ms "Adicionando" -> "Adicionado", 1500 ms
+  // -> "Adicionar"). Ficam guardados para serem cancelados ao desmontar: sem
+  // isso, o relógio dispara com a tela já fechada (nos testes, depois do
+  // ambiente desmontado, e derrubava a rodada com "window is not defined").
+  const cartStatusTimersRef = useRef(new Set<ReturnType<typeof setTimeout>>());
+  useEffect(() => {
+    const timers = cartStatusTimersRef.current;
+    return () => {
+      for (const id of timers) clearTimeout(id);
+      timers.clear();
+    };
+  }, []);
 
   const [activeTab, setActiveTab] = useState<
     "description" | "reviews" | "questions"
@@ -939,12 +951,16 @@ export const ProductView = React.memo(function ProductView({
       triggerFlyingCartAnimation(e.currentTarget, imgSrc);
     }
 
-    setTimeout(() => {
+    const adicionadoTimerId = setTimeout(() => {
+      cartStatusTimersRef.current.delete(adicionadoTimerId);
       setCartStatus("success");
-      setTimeout(() => {
+      const idleTimerId = setTimeout(() => {
+        cartStatusTimersRef.current.delete(idleTimerId);
         setCartStatus("idle");
       }, 1500);
+      cartStatusTimersRef.current.add(idleTimerId);
     }, 750);
+    cartStatusTimersRef.current.add(adicionadoTimerId);
   };
 
   const urlDoProduto = `${globalThis.location?.origin || "https://ickous-marketplace.vercel.app"}/product-detail?id=${encodeURIComponent(product.id)}`;
