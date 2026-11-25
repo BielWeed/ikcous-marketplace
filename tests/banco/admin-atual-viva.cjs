@@ -77,6 +77,7 @@ const { AS_VISITAS } = require("./as-visitas-da-loja-posterior.cjs");
 const {
   REPETIR_A_DEVOLUCAO,
 } = require("./repetir-a-devolucao-que-falhou-posterior.cjs");
+const { CADASTRO_FISCAL } = require("./o-cadastro-fiscal-posterior.cjs");
 const {
   PRECO_HISTORICO,
 } = require("./o-preco-do-produto-deixa-historico-posterior.cjs");
@@ -432,6 +433,10 @@ const POSTERIORES_A_97 = [
   // 20261399991000: a RPC solicitar_estorno_repetindo usa is_admin_atual(); sem esta entrada o rollback da 97 recusa.
   // Definicao unica em tests/banco/repetir-a-devolucao-que-falhou-posterior.cjs. No FIM da lista de proposito.
   REPETIR_A_DEVOLUCAO,
+  // 20261440000000: a funcao fiscal_cadastro_salvar (chama is_admin_atual()) e as duas politicas de leitura do cadastro fiscal
+  // (citam rls_admin_atual()): sem esta entrada o rollback da 97 recusa (B1_BASELINE_DIVERGENT). O rollback-manual (comum) dela tira
+  // a funcao e as politicas e DEIXA as tabelas. Definicao unica em tests/banco/o-cadastro-fiscal-posterior.cjs. No FIM da lista de proposito.
+  CADASTRO_FISCAL,
 ];
 
 // As RPCs novas da 252 usam is_admin_atual. Seu rollback exige a 99 ainda no ar

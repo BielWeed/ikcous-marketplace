@@ -11,7 +11,7 @@
 //   4. reprova entrada de MANTIDAS que sumiu do código (a lista só desce).
 //
 // Regenerar:  GERAR_TEMAS=1 npx vitest run tests/front/temas-do-painel-cobertura.test.ts
-/* eslint-disable security/detect-non-literal-fs-filename, security/detect-object-injection --
+/* eslint-disable security/detect-non-literal-fs-filename --
    varredura da própria árvore do repositório (caminhos vêm do disco, não de entrada de usuário) */
 import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
@@ -316,6 +316,38 @@ describe("mapa das cores soltas do painel", () => {
         seletor: `.aria-pressed\\:bg-zinc-800[aria-pressed="true"]${FORA_DO_SIMULADOR}`,
       }),
     ]);
+  });
+
+  it("botão travado por aria-disabled: texto cinza vira o tom suave do tema e vence o hover e o foco", () => {
+    const c = lerClasse("aria-disabled:text-zinc-400");
+    const regras = c && regrasDaClasse(c);
+    const seletor = `.aria-disabled\\:text-zinc-400[aria-disabled="true"]${FORA_DO_SIMULADOR}`;
+    expect(regras).toEqual([
+      expect.objectContaining({
+        escopo: "ambos",
+        seletor,
+        declaracao: "color:hsl(var(--admin-text-soft))",
+      }),
+      expect.objectContaining({
+        escopo: "escuro",
+        seletor,
+        declaracao: "color:hsl(var(--admin-text-soft))",
+      }),
+    ]);
+    const ordem = (t: string) => {
+      const x = lerClasse(t);
+      const r = x && regrasDaClasse(x);
+      return Array.isArray(r) ? r[0].ordem : -1;
+    };
+    expect(ordem("hover:text-white")).toBeLessThan(
+      ordem("aria-disabled:text-zinc-400"),
+    );
+    expect(ordem("focus-visible:text-white")).toBeLessThan(
+      ordem("aria-disabled:text-zinc-400"),
+    );
+    expect(ordem("aria-disabled:text-zinc-400")).toBe(
+      ordem("disabled:text-zinc-400"),
+    );
   });
 
   it("verde/vermelho/laranja de texto: só o Claro ganha tom escuro; o Confortável não muda", () => {

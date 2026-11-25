@@ -315,6 +315,8 @@ on:
       - "scripts/publicacao/consultas/167b-conferir-o-cupom-nao-repete-o-codigo-aplicado.sql"
       - "scripts/publicacao/consultas/168a-conferir-o-crm-ignora-reembolso-integral-aplicado.sql"
       - "scripts/publicacao/consultas/168b-antes-o-crm-ignora-reembolso-integral-base-vigente.sql"
+      - "scripts/publicacao/consultas/180a-conferir-o-cadastro-fiscal-aplicado.sql"
+      - "scripts/publicacao/consultas/180b-antes-o-cadastro-fiscal-ausente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -603,6 +605,8 @@ on:
       - "scripts/publicacao/consultas/167b-conferir-o-cupom-nao-repete-o-codigo-aplicado.sql"
       - "scripts/publicacao/consultas/168a-conferir-o-crm-ignora-reembolso-integral-aplicado.sql"
       - "scripts/publicacao/consultas/168b-antes-o-crm-ignora-reembolso-integral-base-vigente.sql"
+      - "scripts/publicacao/consultas/180a-conferir-o-cadastro-fiscal-aplicado.sql"
+      - "scripts/publicacao/consultas/180b-antes-o-cadastro-fiscal-ausente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -1504,6 +1508,25 @@ jobs:
       - name: Prova viva de so o dono da loja definir cargo (migration 20261383000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/definir-cargo-so-o-dono-viva.cjs
+      # Migration 20261440000000 (a loja guarda o cadastro fiscal, e so o dono altera): as tabelas fiscal_cadastro e
+      # fiscal_cadastro_log nascem VAZIAS (sem regime padrao) e so fiscal_cadastro_salvar grava, so para o dono da loja
+      # (dono_da_loja) que seja admin atual. Sem dono ninguem grava (42501, ate o admin atual); dono grava e o log ganha uma
+      # linha com antes/depois; repetir os mesmos dados nao gera log; admin que nao e dono, dono rebaixado, cliente, anon e
+      # service_role recusam; leitura so do admin atual; escrita direta negada; regime/atividade/data fora do contrato = 22023;
+      # duas chamadas simultaneas se enfileiram e a trilha encadeia; fin_dre intocado (md5 vigente); reaplicar 2x, rollback
+      # comum preserva tabelas e linhas, destrutivo apaga, pre-voo e pos-voo divergentes, 9 mutantes (sem conferir o dono, sem
+      # is_admin_atual, politica `true`, entre outros). CLONE proprio.
+      - name: Prova viva de so o dono da loja alterar o cadastro fiscal (migration 20261440000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-cadastro-fiscal-so-o-dono-altera-viva.cjs
+      # As consultas 180a/180b (o portao da publicacao dessa migration) EXECUTADAS no Postgres, que os testes de texto nao fazem:
+      # depois da migration a 180a e POSITIVA (9 itens) e a 180b reprova so a ausencia dos objetos; ~40 defeitos plantados (grants
+      # por tabela e por coluna, RLS, politicas, corpo, atributos, EXECUTE, sequencia, colunas, CHECKs) reprovam exatamente o item
+      # certo; antes da migration a 180b e POSITIVA; o fin_dre nao e pre-condicao; a linha que ja existia sobrevive; consulta
+      # mutante fica cega. Papel sem privilegio de tabela, transacao somente leitura. CLONE proprio.
+      - name: Prova viva das consultas 180a/180b do cadastro fiscal (migration 20261440000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-cadastro-fiscal-portao-viva.cjs
       # Migration 20261384000000 (o pedido pago pelo app exige conta e nao prende o estoque de visitante): a
       # create_marketplace_order_v24 recusa 'online' sem sessao (anon) ANTES de ler carrinho, trancar, inserir pedido, baixar
       # estoque ou gastar cupom (ordem provada por sequencia movida por gatilhos); produto simples e com variacao ficam

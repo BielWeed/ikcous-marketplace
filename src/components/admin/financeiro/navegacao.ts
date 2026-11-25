@@ -19,6 +19,7 @@ export type AbaDoFinanceiro =
   | "previstos"
   | "caixa"
   | "dre"
+  | "impostos"
   | "contas";
 
 /** `saida` = a pagar · `entrada` = a receber (vocabulário de `fin_previstos`). */

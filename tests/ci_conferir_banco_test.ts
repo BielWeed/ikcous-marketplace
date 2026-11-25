@@ -15711,3 +15711,128 @@ Deno.test("117a/117b — registradas no menu do conferir-banco-da-loja, nos dois
     );
   }
 });
+
+// 180a/180b (24/11/2026) — a PROVA DE OBJETOS da 20261440000000 (a loja guarda o cadastro fiscal, e so o dono altera: as tabelas fiscal_cadastro e
+// fiscal_cadastro_log e a funcao fiscal_cadastro_salvar). A 180a e' a consulta do lote (DEPOIS do apply, so catalogo, 9 linhas, NENHUMA linha de
+// fiscal_cadastro, fiscal_cadastro_log, dono_da_loja ou fin_lancamentos e' lida); a 180b e' a de ausencia (ANTES, 6 linhas: os objetos novos ausentes
+// e a base que o pre-voo da migration exige; o fin_dre fica de fora: a funcao nao o le e a migration nao o confere). As duas sao de ROL FECHADO. Estes testes medem o texto dos .sql contra a migration DESTA arvore; a decisao
+// de cada consulta num Postgres real fica com a prova viva (tests/banco/o-cadastro-fiscal-so-o-dono-altera-viva.cjs, rpc-ci.yml).
+const NOME_180A = "180a-conferir-o-cadastro-fiscal-aplicado";
+const NOME_180B = "180b-antes-o-cadastro-fiscal-ausente";
+const MIGRACAO_1440 = `${MIGRATIONS_DIR}/20261440000000_a_loja_guarda_o_cadastro_fiscal.sql`;
+
+Deno.test("180a/180b — o rol fechado (9 e 6 linhas) bate com os rotulos do SQL, cada consulta tem UM statement, e so le catalogo (nenhuma linha das tabelas fiscais, do dono ou de lancamentos)", async () => {
+  const { contarStatements, ROL_FECHADO_POR_CONSULTA } = require(SCRIPT);
+  const { [NOME_180A]: rol180a, [NOME_180B]: rol180b } =
+    ROL_FECHADO_POR_CONSULTA;
+  assertEquals(rol180a?.length, 9);
+  assertEquals(rol180b?.length, 6);
+  for (const [nome, rol] of [
+    [NOME_180A, rol180a],
+    [NOME_180B, rol180b],
+  ] as Array<[string, string[]]>) {
+    assertEquals(new Set(rol).size, rol.length, `${nome}: rotulo repetido`);
+    const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${nome}.sql`);
+    assertEquals(contarStatements(sql), 1, `${nome}: tem de ser UM statement`);
+    // O veredito compara por nome: cada rotulo do rol esta no SQL, com o texto exato, e nenhum rotulo a mais.
+    for (const item of rol) assertStringIncludes(sql, `'${item}'`);
+    const rotulos = [...sql.matchAll(/SELECT '([^']+)', '(?:sim|nao)'/g)].map(
+      (m) => m[1],
+    );
+    assertEquals(
+      rotulos.sort(),
+      [...rol].sort(),
+      `${nome}: rotulos do SQL != rol`,
+    );
+    // So leitura, e de catalogo: nada de INSERT/UPDATE/DELETE/DDL e nenhuma referencia a LINHA das tabelas de dado.
+    const codigo = sql.replace(/--.*$/gm, "").replace(/'[^']*'/g, "''");
+    assert(
+      !/\b(INSERT|UPDATE|DELETE|ALTER|DROP|CREATE|GRANT|REVOKE|TRUNCATE)\b/.test(
+        codigo,
+      ),
+      `${nome}: so leitura`,
+    );
+    assert(
+      !/\bFROM\s+(public\.)?(fiscal_cadastro|fiscal_cadastro_log|dono_da_loja|fin_lancamentos|profiles)\b/i.test(
+        codigo,
+      ),
+      `${nome}: nao le linha de tabela de dado`,
+    );
+    assert(!/\bauth\.users\b/i.test(codigo), `${nome}: nao le auth.users`);
+  }
+});
+
+Deno.test("180a/180b — todo md5 das consultas e' o que a migration 20261440000000 grava ou exige, e o da funcao e' o do corpo desta arvore", async () => {
+  const { createHash } = await import("node:crypto");
+  const mig = (await Deno.readTextFile(MIGRACAO_1440)).replace(/\r/g, "");
+  const a = (
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_180A}.sql`)
+  ).replace(/\r/g, "");
+  const b = (
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_180B}.sql`)
+  ).replace(/\r/g, "");
+  // O corpo de fiscal_cadastro_salvar: o md5 da 180a e' o do texto entre os dollar-quotes que esta arvore grava, uma vez.
+  const marca = "CREATE OR REPLACE FUNCTION public.fiscal_cadastro_salvar(";
+  const i = mig.indexOf(marca);
+  assert(i >= 0, "fiscal_cadastro_salvar nao esta na migration");
+  const abre = mig.indexOf("AS $function$", i) + "AS $function$".length;
+  const corpo = mig.slice(abre, mig.indexOf("$function$;", abre));
+  const h = createHash("md5").update(corpo).digest("hex");
+  assertEquals(a.split(`'${h}'`).length - 1, 1, `md5 ${h} na 180a`);
+  // Nenhum md5 solto: cada um que as consultas citam esta na migration (pre-voo ou pos-voo), entao nenhuma das tres evolui sozinha.
+  for (const [nome, sql] of [
+    [NOME_180A, a],
+    [NOME_180B, b],
+  ]) {
+    const hashes = [...sql.matchAll(/'([0-9a-f]{32})'/g)].map((m) => m[1]);
+    assert(hashes.length > 0, `${nome}: sem md5`);
+    for (const x of hashes)
+      assert(mig.includes(`'${x}'`), `${nome}: md5 ${x} nao esta na migration`);
+  }
+});
+
+Deno.test("180a/180b — as guardas que decidem 'sim' estao no texto da 180a (RLS ligada, escrita direta fechada ate por coluna, EXECUTE so do authenticated, politica so do admin atual) e a 180b nao exige o fin_dre", async () => {
+  const a = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_180A}.sql`);
+  const b = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_180B}.sql`);
+  for (const pedaco of [
+    "t.relrowsecurity AND NOT t.relforcerowsecurity",
+    "(SELECT count(*) FROM pg_policy p WHERE p.polrelid = t.oid) = 1",
+    "p.polcmd = 'r' AND p.polpermissive AND p.polwithcheck IS NULL",
+    "= '( SELECT rls_admin_atual() AS rls_admin_atual)'",
+    "NOT has_table_privilege('authenticated', t.oid, 'INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')",
+    "NOT has_table_privilege('service_role', t.oid, 'INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')",
+    "NOT has_any_column_privilege('authenticated', t.oid, 'INSERT, UPDATE, REFERENCES')",
+    "NOT has_any_column_privilege('service_role', t.oid, 'INSERT, UPDATE, REFERENCES')",
+    "NOT has_any_column_privilege('anon', t.oid, 'SELECT, INSERT, UPDATE, REFERENCES')",
+    "AND NOT has_function_privilege('anon', p.oid, 'EXECUTE')",
+    "AND NOT has_function_privilege('service_role', p.oid, 'EXECUTE')",
+    "AND has_function_privilege('authenticated', p.oid, 'EXECUTE')",
+    "f.proconfig = ARRAY['search_path=public']::text[]",
+    "f.prosecdef",
+  ])
+    assertStringIncludes(a, pedaco, `180a sem a guarda: ${pedaco}`);
+  // A migration nao le nem confere o fin_dre: exigir a assinatura dele aqui travaria a publicacao quando uma sucessora legitima o trocasse.
+  assert(!/fin_dre/.test(b.replace(/--.*$/gm, "")), "180b exige o fin_dre");
+});
+
+Deno.test("180a/180b — registradas no menu do conferir-banco-da-loja, nos dois caminhos do rpc-ci e no portao de rol fechado da release", async () => {
+  const { CONSULTAS_DE_ROL_FECHADO } = await import(
+    new URL("../scripts/frota/publicar-release.mjs", import.meta.url).href
+  );
+  const menu = await Deno.readTextFile(
+    `${RAIZ}/.github/workflows/conferir-banco-da-loja.yml`,
+  );
+  const rpc = await Deno.readTextFile(`${RAIZ}/.github/workflows/rpc-ci.yml`);
+  for (const nome of [NOME_180A, NOME_180B]) {
+    assert(
+      CONSULTAS_DE_ROL_FECHADO.has(nome),
+      `${nome} fora de CONSULTAS_DE_ROL_FECHADO`,
+    );
+    assertStringIncludes(menu, `          - ${nome}\n`);
+    assertEquals(
+      rpc.split(`"scripts/publicacao/consultas/${nome}.sql"`).length - 1,
+      2,
+      `${nome}: nas duas listas de caminhos do rpc-ci`,
+    );
+  }
+});

@@ -1,4 +1,12 @@
 {
+  "1.5.236": {
+    "titulo": "Nova aba Impostos no Financeiro",
+    "novidades": [
+      "No painel, em Financeiro, a nova aba Impostos guarda o cadastro fiscal da empresa (só o dono da loja altera), mostra o caderno das guias do mês com o que foi pago e o que falta, o limite de faturamento do MEI e, no Simples Nacional (comércio), uma estimativa do imposto do último mês fechado. A estimativa usa só as vendas registradas no app e não é o valor da sua guia."
+    ],
+    "correcoes": [],
+    "melhorias": []
+  },
   "1.5.235": {
     "titulo": "Telas curtas do celular sem rolagem a mais",
     "novidades": [],

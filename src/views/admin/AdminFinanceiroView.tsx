@@ -12,7 +12,14 @@
 // celular e o aviso de alterações não salvas ao formulário da vez).
 
 import { CalendarClock, Eye, EyeOff, Plus } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
@@ -57,8 +64,10 @@ import {
   type ConfirmacaoFinanceira,
   ContextoConfirmacaoFinanceira,
   ContextoValoresOcultos,
+  EsqueletoDeLista,
   ReciboFinanceiro,
 } from "@/components/admin/financeiro/partes";
+import { LimiteDePedaco } from "@/components/ui/custom/LimiteDePedaco";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useAuth } from "@/hooks/useAuth";
@@ -79,6 +88,17 @@ import {
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import type { PeriodoEscolhido } from "@/types/financeiro";
+import { lazyRetentavel } from "@/utils/lazyRetentavel";
+
+// A aba Impostos (núcleo da lei, cálculo, cadastro e arquivo do contador) fica fora
+// do pacote inicial do Financeiro: só é baixada quando a lojista a abre. Se o arquivo
+// não baixa (sinal ruim no primeiro toque, versão nova no ar), a falha fica presa na
+// própria aba (`LimiteDePedaco`, com "Tentar de novo") e o resto do Financeiro segue.
+const AbaImpostos = lazyRetentavel(() =>
+  import("@/components/admin/financeiro/impostos/AbaImpostos").then(
+    (modulo) => ({ default: modulo.AbaImpostos }),
+  ),
+);
 
 interface AdminFinanceiroViewProps {
   onNavigate: (view: View, id?: string) => void;
@@ -106,6 +126,7 @@ const ABAS: readonly {
   { valor: "extrato", rotulo: "Extrato" },
   { valor: "previstos", rotulo: "Pagar e receber" },
   { valor: "dre", rotulo: "Resultado" },
+  { valor: "impostos", rotulo: "Impostos" },
 ];
 
 // Contas e Ocultar do cabeçalho: chip de 36px (desenho de 24/10/2026) com
@@ -704,7 +725,9 @@ export function AdminFinanceiroView({
                       ? "Sessão atual"
                       : aba === "previstos"
                         ? "Todos os vencimentos"
-                        : "Cadastros da loja"}
+                        : aba === "impostos"
+                          ? "Seu regime e suas guias"
+                          : "Cadastros da loja"}
                   </p>
                 )}
               </div>
@@ -805,6 +828,23 @@ export function AdminFinanceiroView({
                     rotuloDoPeriodo={rotulo}
                     onNavigate={onNavigate}
                   />
+                </TabsContent>
+                <TabsContent value="impostos">
+                  {/* Aba pesada (núcleo da lei, cálculo e arquivo do contador):
+                      só é baixada quando a lojista a abre. */}
+                  <LimiteDePedaco pedacos={[AbaImpostos]}>
+                    <Suspense fallback={<EsqueletoDeLista linhas={4} />}>
+                      <AbaImpostos
+                        ativo={ativo && aba === "impostos"}
+                        versao={versao}
+                        hoje={hoje}
+                        abrirFolha={abrirFolha}
+                        aoIrParaMinhaLoja={() =>
+                          onNavigate("admin-about-store")
+                        }
+                      />
+                    </Suspense>
+                  </LimiteDePedaco>
                 </TabsContent>
                 <TabsContent value="contas" className="flex flex-col gap-4">
                   {/* A visão não tem mais aba: o chip "Contas" a abre, então

@@ -275,6 +275,14 @@
       "porque": "Nomear e remover administrador (Definir cargo, no painel do dono): precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo confere o chamador contra a tabela dono_da_loja NO BANCO (so o dono; nunca o JWT nem is_admin()), aceita so admin/customer, recusa mexer no dono e registra em cargo_log (migration 20261383000000); o visitante e o service_role nao a executam."
     },
     {
+      "funcao": "public.fiscal_cadastro_salvar(p jsonb)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Gravar o cadastro fiscal da loja (regime e atividade, na aba Impostos): precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo confere o chamador contra a tabela dono_da_loja NO BANCO (so o dono, nunca o JWT) E o admin atual, valida o payload e registra antes/depois em fiscal_cadastro_log (migration 20261440000000); o visitante e o service_role nao a executam."
+    },
+    {
       "funcao": "public.devolucao__fotos_soltas_da_conta(p_uid uuid, p_teto integer)",
       "executa": ["authenticated"],
       "tipo": "leitura",

@@ -3,9 +3,10 @@
 Roteiro para cadastrar, conferir e trocar o **dono da loja** no banco de **cada** loja.
 Vale para o dono do produto (parte 1, sem jargão) e para quem aplica (parte 2 em diante).
 
-Sem esse cadastro, a opção **Tornar administrador** do painel não funciona: o dono da loja
-é quem tem o poder de dar e tirar o cargo de administrador, e o banco só reconhece o dono
-depois de alguém cadastrá-lo, **uma vez por loja**.
+Sem esse cadastro, duas coisas do painel não funcionam: a opção **Tornar administrador** e o
+cadastro fiscal da aba **Impostos** do Financeiro. O dono da loja é quem tem o poder de dar e
+tirar o cargo de administrador e de escolher o regime fiscal da empresa, e o banco só reconhece
+o dono depois de alguém cadastrá-lo, **uma vez por loja**.
 
 ## 1. Para o dono do produto (sem jargão)
 
@@ -25,12 +26,25 @@ não presume, e **nem fica sabendo o e-mail**: quem cadastra é você, por uma r
 (seção 3.3). A escolha é por loja (a
 mesma pessoa pode ser dona de mais de uma, ou não).
 
+**Cadastrar o dono é passo OBRIGATÓRIO da entrada de toda loja** (parecer do sócio, 25/11/2026).
+Loja nova só está pronta quando o dono está cadastrado **e** a conferência (a consulta 88c, abaixo)
+diz "sim" para ela. O programador confere isso, na publicação, pela consulta 88c, **loja por
+loja** (passo manual; o portão automático não a roda). Na IKCOUS e na Savy, o dono
+precisa estar cadastrado e conferido **antes** de aplicar a migration `20261440000000` (o
+cadastro fiscal). A frase que a tela mostra para loja sem dono é uma **rede de segurança**, não o
+plano: ela existe para o caso de a conferência falhar, e não para a loja viver assim.
+
 **O que acontece enquanto não houver dono cadastrado.** Nada quebra, mas nada se move:
 
 - a opção **Tornar administrador** não aparece no painel;
 - se alguém tentar chamar a função de cargo por fora do painel, o banco recusa
   (erro `42501`, "só o dono da loja define cargos");
-- quem já é administrador **continua administrador**; só ninguém consegue nomear nem remover.
+- quem já é administrador **continua administrador**; só ninguém consegue nomear nem remover;
+- na aba **Impostos** (Financeiro), o cadastro fiscal da empresa (regime e atividade) fica só para
+  leitura, com a frase que explica o caminho, e o banco recusa a gravação por fora do painel
+  (erro `42501`, "só o dono da loja altera o cadastro fiscal"); o caderno das guias e o arquivo
+  para o contador seguem funcionando, porque só leem o que a lojista já lançou. Admin que não é
+  o dono também só lê.
 
 **Como você sabe que ficou pronto.** O programador roda uma conferência (a consulta 88c,
 abaixo) e mostra que **todas** as linhas dela dizem "sim" para aquela loja. Depois, quem
@@ -204,13 +218,15 @@ dela (conta que já existe na loja e já é administradora). Faça uma loja por 
    bloqueio: avise "Tela 5" e siga.
 2. Diga ao programador apenas: "cadastrei o dono na loja X".
 3. Ele roda a consulta 88c daquela loja, que **não usa e-mail nenhum**, e responde se as
-   **9 linhas** estão `sim`. Só então a loja está pronta para a opção **Tornar administrador**.
+   **9 linhas** estão `sim`. Só então a loja está pronta para a opção **Tornar administrador**
+   e para a escolha do regime fiscal na aba **Impostos**.
 
 **Depois do cadastro: recarregar o painel.** Quem estava com o painel da loja aberto antes do
 cadastro precisa **recarregar a página (tecla F5)** ou **fechar a aba (ou o aplicativo)** e abrir
 de novo. **Sair da tela do painel e voltar dentro do aplicativo não adianta**: o painel guarda na
 memória da página a leitura "sem dono" feita antes, e só uma página nova lê o dono cadastrado.
-Até lá, **Tornar administrador** continua sem aparecer, mesmo com o cadastro certo.
+Até lá, **Tornar administrador** continua sem aparecer e a aba **Impostos** continua só para
+leitura, mesmo com o cadastro certo.
 
 ### 3.4 Lendo a consulta 88c
 
@@ -231,6 +247,8 @@ A 88c só lê e só devolve `sim`/`nao`. Nenhum identificador de pessoa sai nela
 Rode a 88c de novo **sempre que** o dono for trocado, o cargo dele for mexido (inclusive
 direto no painel do Supabase) ou antes de liberar uma release que mexa na tela de cargos.
 Hoje ela é conferência manual do programador: não é portão automático do `publicar-release`.
+Ser manual não a torna opcional: ela é feita **em cada loja**, e loja sem dono cadastrado não
+conta como pronta.
 
 ## 4. Trocar o dono (raro; decisão do dono do produto)
 
@@ -315,6 +333,10 @@ entram na atualização.
 **Quem é o dono de cada uma é decisão do dono do produto**, nunca do agente. Registrar a
 resposta dele junto com a loja, sem e-mail nem identificador neste repositório.
 
+**IKCOUS e Savy: primeiro o dono, depois a migration do cadastro fiscal.** As duas precisam ter
+o dono cadastrado e conferido (88c, as 9 linhas `sim`) **antes** de aplicar a
+`20261440000000`. Loja nova entra neste mesmo roteiro como passo da entrada dela.
+
 ## 6. O que este roteiro não faz
 
 - Não aplica nada sozinho e não guarda e-mail, identificador ou credencial de ninguém. O agente
@@ -329,3 +351,11 @@ Referências: cabeçalho de
 [`20261383000000_so_o_dono_da_loja_define_cargo.sql`](../../supabase/migrations/20261383000000_so_o_dono_da_loja_define_cargo.sql),
 seção "Domínio do negócio — entidades, dinheiro e papéis" do [`AGENTS.md`](../../AGENTS.md), consultas em
 [`scripts/publicacao/consultas/`](../../scripts/publicacao/consultas/) (`8b`, `88a`, `88b`, `88c-conferir-o-dono-cadastrado`).
+O cadastro fiscal (aba **Impostos**) depende do mesmo dono: migration
+[`20261440000000_a_loja_guarda_o_cadastro_fiscal.sql`](../../supabase/migrations/20261440000000_a_loja_guarda_o_cadastro_fiscal.sql)
+e consultas `180a` e `180b`. A `180a` e a `180b` só leem o catálogo e **não exigem dono**: elas
+passam mesmo com a loja sem dono, e o portão automático não barra por isso. Isso **não** torna o
+cadastro opcional: cadastrar o dono é passo obrigatório da entrada de toda loja (seção 1), o
+programador confere isso, na publicação, pela `88c`, loja por loja (passo manual; o portão
+automático não a roda), e na IKCOUS e na Savy o dono tem de estar cadastrado e conferido antes de
+aplicar a `20261440000000`.

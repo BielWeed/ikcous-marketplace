@@ -176,7 +176,7 @@ describe("Financeiro — o Caixa na frente", () => {
   }
 
   describe("as abas", () => {
-    it("a ordem é Visão, Caixa, Extrato, Pagar e receber, Resultado", async () => {
+    it("a ordem é Visão, Caixa, Extrato, Pagar e receber, Resultado, Impostos", async () => {
       await montar();
       expect(abas().map((a) => normalizar(a.textContent))).toEqual([
         "Visão",
@@ -184,6 +184,7 @@ describe("Financeiro — o Caixa na frente", () => {
         "Extrato",
         "Pagar e receber",
         "Resultado",
+        "Impostos",
       ]);
     });
 

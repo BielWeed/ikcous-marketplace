@@ -1,0 +1,423 @@
+// Medidor do limite do MEI na tela da aba Impostos: "quanto do limite do ano
+// você já usou, e o que acontece se passar".
+//
+// Componente de APRESENTAÇÃO: recebe o resultado de `medirLimiteDoMei`
+// (src/lib/fiscal/medidor-mei.ts) e desenha. Não busca dado, não fala com o
+// banco e não tem botão: quem decide se mostra (só MEI) e de onde vem a receita
+// é a aba, que liga isto depois.
+//
+// Regras que mandam aqui:
+//  - cada faixa tem TEXTO + ÍCONE + cor de significado; a cor nunca é a única pista;
+//  - o percentual escrito nunca contradiz a faixa (a faixa é decidida em
+//    centavos no núcleo; 100,004% aparece como "101%", nunca como "100%", e
+//    99,99% dentro do limite aparece como "99%");
+//  - ano sem valores conferidos: aviso no lugar do número, nada de R$ nem %;
+//  - "Ocultar valores": dinheiro e percentual viram máscara e a barra some (o
+//    tamanho dela entregaria o percentual). O aviso da faixa continua: quem
+//    passou do limite precisa saber mesmo com os valores escondidos;
+//  - o número vem do `fin_dre`, que só enxerga as vendas REGISTRADAS no app: é sempre um
+//    mínimo. O aviso fixo ("o que você vendeu sem registrar aqui também conta") vai
+//    embaixo em toda tela COM número; nas telas sem número (ano não conferido, data
+//    inválida, falha ao somar) vale só a instrução daquela tela. Com o ano COMPLETO, todo
+//    veredito começa com "Pelo que o app registrou," e nunca diz que nada muda. E
+//    quando a `cobertura` é PARCIAL (o app não registrava desde o começo do período
+//    medido), o número é só "vendas registradas no app neste ano": sem percentual, sem
+//    barra, sem veredito (o `fin_dre` devolve zero para o que veio antes do app, e a
+//    conclusão sairia de um número incompleto). Só passar do teto mostra alerta, porque o
+//    total real é igual ou maior. Todos os textos moram em `TEXTOS_DO_MEDIDOR_DO_MEI`
+//    (src/lib/fiscal/textos.ts);
+//  - `fechado` (janeiro, ano novo ainda sem valores conferidos): "2026 fechado: ..." com o
+//    limite de 2026, o aviso fixo embaixo e, se passou do limite, o mesmo alerta da cobertura
+//    parcial. Nunca mostra limite de um ano que não foi conferido.
+
+import {
+  CircleCheck,
+  Info,
+  type LucideIcon,
+  OctagonAlert,
+  TriangleAlert,
+} from "lucide-react";
+
+import { formatarBRL } from "@/lib/financeiro";
+import type {
+  CoberturaDaReceita,
+  FaixaDoMei,
+  MedidorDoMei,
+  MotivoSemContaDoMedidor,
+} from "@/lib/fiscal/medidor-mei";
+import { ULTIMO_ANO_CONFERIDO } from "@/lib/fiscal/parametros-da-lei";
+import { TEXTOS_DO_MEDIDOR_DO_MEI, mesesPorExtenso } from "@/lib/fiscal/textos";
+import {
+  type TomDeEstado,
+  classeDoPonto,
+  classeDoTexto,
+} from "@/lib/tons-de-estado";
+import { cn } from "@/lib/utils";
+
+import {
+  CLASSE_CASCA_DO_CARTAO,
+  CLASSE_ROTULO_DO_CARTAO,
+  CartaoSecao,
+  Dinheiro,
+  useValoresEstaoOcultos,
+} from "../partes";
+import { MASCARA_DO_VALOR } from "../tamanhoDoValor";
+
+export interface MedidorMeiProps {
+  /** O resultado do núcleo (`medirLimiteDoMei`). */
+  readonly medidor: MedidorDoMei;
+  /** O ano medido (o núcleo não o devolve; é preciso para o aviso de ano não conferido). */
+  readonly ano: number;
+  /** Receita bruta do ano até agora, em reais (a mesma que foi ao núcleo). */
+  readonly receitaAcumulada: number;
+  /**
+   * Se o número do app é a receita do ano inteiro (`coberturaDaReceitaDoAno`). Sem
+   * valor padrão de propósito: quem esquecer de dizer não recebe veredito por engano.
+   */
+  readonly cobertura: CoberturaDaReceita;
+  /**
+   * `true` em janeiro, enquanto os valores do ano novo não foram conferidos: o `ano` é o que
+   * acabou de FECHAR, e o cartão diz "2026 fechado" com o limite dele (decisão do sócio,
+   * 25/11/2026). Sem barra nem faixa: o ano não anda mais, e as frases de veredito falam de
+   * um ano em curso.
+   */
+  readonly fechado?: boolean;
+}
+
+interface VisualDaFaixa {
+  readonly tom: TomDeEstado;
+  readonly Icone: LucideIcon;
+  readonly titulo: string;
+  /** Frase de ação que o parecer pede só na faixa mais grave. */
+  readonly chamada?: string;
+}
+
+const VISUAL_DA_FAIXA: Record<FaixaDoMei, VisualDaFaixa> = {
+  dentro: {
+    tom: "positivo",
+    Icone: CircleCheck,
+    titulo: TEXTOS_DO_MEDIDOR_DO_MEI.titulosDaFaixa.dentro,
+  },
+  excesso_ate_20: {
+    tom: "atencao",
+    Icone: TriangleAlert,
+    titulo: TEXTOS_DO_MEDIDOR_DO_MEI.titulosDaFaixa.excesso_ate_20,
+    chamada: TEXTOS_DO_MEDIDOR_DO_MEI.chamadaDoExcessoAte20,
+  },
+  excesso_acima_20: {
+    tom: "negativo",
+    Icone: OctagonAlert,
+    titulo: TEXTOS_DO_MEDIDOR_DO_MEI.titulosDaFaixa.excesso_acima_20,
+    chamada: "Fale com o seu contador hoje.",
+  },
+};
+
+/** A barra vai de 0% a 120% do teto (acima de 120% a lei muda de efeito). */
+const FIM_DA_ESCALA_EM_PERCENTUAL = 120;
+const MARCA_DO_LIMITE_EM_PERCENTUAL = 100;
+
+/**
+ * O percentual inteiro que a tela escreve, SEM contradizer a faixa: dentro do
+ * limite arredonda para baixo (99,99% é "99%", e "100%" só quando é exatamente
+ * 100%); passou do limite arredonda para cima (100,004% é "101%").
+ */
+function percentualParaMostrar(percentual: number, faixa: FaixaDoMei): number {
+  // O núcleo divide em ponto flutuante: 23.490/81.000 chega como 28,999999999999996.
+  // Arredondar a 9 casas absorve esse resíduo sem mexer em frações reais
+  // (100,004% continua 100,004%). Achado 1 da revisão Opus, 24/11/2026.
+  const valor = Math.max(0, Math.round(percentual * 1e9) / 1e9);
+  return faixa === "dentro" ? Math.floor(valor) : Math.ceil(valor);
+}
+
+const TEXTO_SEM_CONTA = (
+  ano: number,
+): Record<MotivoSemContaDoMedidor, string> => ({
+  ano_nao_conferido: `Temos os valores da lei de ${ULTIMO_ANO_CONFERIDO}; os de ${ano} ainda não foram conferidos. Por isso não mostramos quanto do limite você já usou. Veja o limite de ${ano} com o seu contador.`,
+  receita_invalida:
+    "Não deu para somar as vendas do ano agora. Tente de novo daqui a pouco.",
+  abertura_invalida:
+    "A data de abertura da empresa, no cadastro fiscal, não parece uma data de verdade. Corrija no cadastro fiscal para ver o medidor.",
+  abertura_depois_do_ano: `A data de abertura da empresa, no cadastro fiscal, é depois de ${ano}. Confira a data no cadastro fiscal para ver o medidor.`,
+});
+
+/** O aviso fixo, embaixo do medidor em todo estado (mesmo desenho do aviso da estimativa). */
+function AvisoDoMedidor() {
+  return (
+    <div
+      role="note"
+      aria-label="Aviso sobre o medidor"
+      className="mt-3 flex min-w-0 items-start gap-3 rounded-2xl border border-admin-border bg-admin-bg p-3"
+    >
+      <Info
+        aria-hidden="true"
+        className={cn("mt-0.5 size-4 shrink-0", classeDoTexto("neutro"))}
+      />
+      <p className="min-w-0 text-xs leading-relaxed text-zinc-300">
+        {TEXTOS_DO_MEDIDOR_DO_MEI.avisoFixo}
+      </p>
+    </div>
+  );
+}
+
+export function MedidorMei({
+  medidor,
+  ano,
+  receitaAcumulada,
+  cobertura,
+  fechado = false,
+}: MedidorMeiProps) {
+  const ocultos = useValoresEstaoOcultos();
+  const titulo = `Limite do MEI em ${ano}`;
+
+  if (medidor.estado === "sem_conta") {
+    return (
+      <CartaoSecao titulo={titulo}>
+        <div
+          className={cn(CLASSE_CASCA_DO_CARTAO, "flex items-start gap-3 p-4")}
+        >
+          <Info
+            aria-hidden="true"
+            className={cn("mt-0.5 size-5 shrink-0", classeDoTexto("info"))}
+          />
+          <p className="min-w-0 text-sm leading-relaxed text-zinc-300">
+            {TEXTO_SEM_CONTA(ano)[medidor.motivo]}
+          </p>
+        </div>
+      </CartaoSecao>
+    );
+  }
+
+  const vendasDoAno = Number.isFinite(receitaAcumulada)
+    ? Math.max(0, receitaAcumulada)
+    : 0;
+
+  if (fechado) {
+    // Ano que fechou: só o número que o app registrou e o limite DAQUELE ano. Passar do
+    // limite vira o alerta de sempre (o total real é este número ou mais), sem faixa.
+    const frase = TEXTOS_DO_MEDIDOR_DO_MEI.anoFechado(
+      ano,
+      cobertura.tipo === "completa",
+      formatarBRL(medidor.tetoUsado),
+    );
+    const alerta = TEXTOS_DO_MEDIDOR_DO_MEI.acimaDoLimiteComCoberturaParcial;
+    return (
+      <CartaoSecao titulo={titulo}>
+        <div className={cn(CLASSE_CASCA_DO_CARTAO, "flex flex-col gap-4 p-4")}>
+          <div className="flex min-w-0 flex-col gap-1">
+            <p
+              data-ano-fechado=""
+              className="text-sm font-semibold leading-relaxed text-white"
+            >
+              {frase.antes}
+              <Dinheiro valor={vendasDoAno} />
+              {frase.depois}
+            </p>
+            {medidor.tetoProporcional ? (
+              <p className="text-xs leading-relaxed text-zinc-400">
+                No ano em que a empresa abre, o limite é proporcional:{" "}
+                {mesesPorExtenso(medidor.mesesDeAtividade)} de atividade,
+                contando o mês da abertura inteiro.
+              </p>
+            ) : null}
+          </div>
+          {medidor.faixa === "dentro" ? null : (
+            <div role="alert" className="flex min-w-0 items-start gap-3">
+              <OctagonAlert
+                aria-hidden="true"
+                className={cn(
+                  "mt-0.5 size-5 shrink-0",
+                  classeDoTexto("negativo"),
+                )}
+              />
+              <div className="flex min-w-0 flex-col gap-1">
+                <p
+                  className={cn(
+                    "text-sm font-bold leading-snug",
+                    classeDoTexto("negativo"),
+                  )}
+                >
+                  {alerta.titulo}
+                </p>
+                <p className="text-sm leading-relaxed text-zinc-300">
+                  {alerta.texto}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+        <AvisoDoMedidor />
+      </CartaoSecao>
+    );
+  }
+
+  if (cobertura.tipo === "parcial") {
+    // Faixa fora de "dentro" = o número do app JÁ passou do teto. Só isso se conclui.
+    const acimaDoTeto = medidor.faixa !== "dentro";
+    const alerta = TEXTOS_DO_MEDIDOR_DO_MEI.acimaDoLimiteComCoberturaParcial;
+    return (
+      <CartaoSecao titulo={titulo}>
+        <div className={cn(CLASSE_CASCA_DO_CARTAO, "flex flex-col gap-4 p-4")}>
+          <div className="flex min-w-0 flex-col gap-1">
+            <span className={CLASSE_ROTULO_DO_CARTAO}>
+              {TEXTOS_DO_MEDIDOR_DO_MEI.rotuloDoNumeroParcial}
+            </span>
+            <p
+              data-vendas-pelo-app=""
+              className="text-3xl font-black tabular-nums leading-none tracking-tight text-white"
+            >
+              <Dinheiro valor={vendasDoAno} />
+            </p>
+            <p className="text-xs leading-relaxed text-zinc-400">
+              Limite: {formatarBRL(medidor.tetoUsado)}
+            </p>
+            {medidor.tetoProporcional ? (
+              <p className="text-xs leading-relaxed text-zinc-400">
+                No ano em que a empresa abre, o limite é proporcional:{" "}
+                {mesesPorExtenso(medidor.mesesDeAtividade)} de atividade,
+                contando o mês da abertura inteiro.
+              </p>
+            ) : null}
+          </div>
+
+          {acimaDoTeto ? (
+            <div role="alert" className="flex min-w-0 items-start gap-3">
+              <OctagonAlert
+                aria-hidden="true"
+                className={cn(
+                  "mt-0.5 size-5 shrink-0",
+                  classeDoTexto("negativo"),
+                )}
+              />
+              <div className="flex min-w-0 flex-col gap-1">
+                <p
+                  className={cn(
+                    "text-sm font-bold leading-snug",
+                    classeDoTexto("negativo"),
+                  )}
+                >
+                  {alerta.titulo}
+                </p>
+                <p className="text-sm leading-relaxed text-zinc-300">
+                  {alerta.texto}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex min-w-0 items-start gap-3">
+              <Info
+                aria-hidden="true"
+                className={cn("mt-0.5 size-5 shrink-0", classeDoTexto("info"))}
+              />
+              <p className="min-w-0 text-sm leading-relaxed text-zinc-300">
+                {cobertura.motivo === "sem_data_de_inicio"
+                  ? TEXTOS_DO_MEDIDOR_DO_MEI.semVeredito.sem_data_de_inicio
+                  : TEXTOS_DO_MEDIDOR_DO_MEI.semVeredito.comecou_depois_do_inicio(
+                      cobertura.desde,
+                    )}
+              </p>
+            </div>
+          )}
+        </div>
+        <AvisoDoMedidor />
+      </CartaoSecao>
+    );
+  }
+
+  const {
+    tom,
+    Icone,
+    titulo: tituloDaFaixa,
+    chamada,
+  } = VISUAL_DA_FAIXA[medidor.faixa];
+  const percentual = percentualParaMostrar(medidor.percentual, medidor.faixa);
+  const larguraDaBarra =
+    (Math.min(Math.max(0, medidor.percentual), FIM_DA_ESCALA_EM_PERCENTUAL) /
+      FIM_DA_ESCALA_EM_PERCENTUAL) *
+    100;
+  const posicaoDaMarca =
+    (MARCA_DO_LIMITE_EM_PERCENTUAL / FIM_DA_ESCALA_EM_PERCENTUAL) * 100;
+
+  return (
+    <CartaoSecao
+      titulo={titulo}
+      subtitulo={TEXTOS_DO_MEDIDOR_DO_MEI.completa.subtitulo}
+    >
+      <div className={cn(CLASSE_CASCA_DO_CARTAO, "flex flex-col gap-4 p-4")}>
+        <div className="flex min-w-0 flex-col gap-1">
+          <span className={CLASSE_ROTULO_DO_CARTAO}>
+            {TEXTOS_DO_MEDIDOR_DO_MEI.completa.rotuloDoPercentual}
+          </span>
+          <p className="text-3xl font-black tabular-nums leading-none tracking-tight text-white">
+            {ocultos ? (
+              <>
+                <span aria-hidden="true">{MASCARA_DO_VALOR}</span>
+                <span className="sr-only">Valor oculto</span>
+              </>
+            ) : (
+              `${percentual}%`
+            )}
+          </p>
+          <p className="text-xs leading-relaxed text-zinc-400">
+            {TEXTOS_DO_MEDIDOR_DO_MEI.completa.rotuloDasVendas}:{" "}
+            <Dinheiro valor={vendasDoAno} /> · Limite:{" "}
+            {formatarBRL(medidor.tetoUsado)}
+          </p>
+          {medidor.tetoProporcional ? (
+            <p className="text-xs leading-relaxed text-zinc-400">
+              No ano em que a empresa abre, o limite é proporcional:{" "}
+              {mesesPorExtenso(medidor.mesesDeAtividade)} de atividade, contando
+              o mês da abertura inteiro.
+            </p>
+          ) : null}
+        </div>
+
+        {ocultos ? null : (
+          <div aria-hidden="true" className="flex flex-col gap-1.5">
+            <div className="relative h-3 w-full overflow-hidden rounded-full bg-white/10">
+              <div
+                data-barra-enchimento=""
+                className={cn("h-full rounded-full", classeDoPonto(tom))}
+                style={{ width: `${larguraDaBarra}%` }}
+              />
+              <div
+                className="absolute inset-y-0 w-0.5 bg-white"
+                style={{ left: `${posicaoDaMarca}%` }}
+              />
+            </div>
+            <span className="text-[11px] leading-tight text-zinc-400">
+              A marca na barra é o limite (100%).
+            </span>
+          </div>
+        )}
+
+        <div className="flex min-w-0 items-start gap-3">
+          <Icone
+            data-faixa-icone=""
+            aria-hidden="true"
+            className={cn("mt-0.5 size-5 shrink-0", classeDoTexto(tom))}
+          />
+          <div className="flex min-w-0 flex-col gap-1">
+            <p
+              data-faixa-titulo=""
+              className={cn(
+                "text-sm font-bold leading-snug",
+                classeDoTexto(tom),
+              )}
+            >
+              {tituloDaFaixa}
+            </p>
+            <p className="text-sm leading-relaxed text-zinc-300">
+              {medidor.efeito}
+            </p>
+            {chamada ? (
+              <p className="text-sm font-bold leading-relaxed text-white">
+                {chamada}
+              </p>
+            ) : null}
+          </div>
+        </div>
+      </div>
+      <AvisoDoMedidor />
+    </CartaoSecao>
+  );
+}

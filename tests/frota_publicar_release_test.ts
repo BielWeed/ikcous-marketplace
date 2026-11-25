@@ -3353,6 +3353,7 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "166a-conferir-a-lista-do-painel-e-o-rastreio-levam-o-nome-antigo-da-opcao-aplicado",
     "167b-conferir-o-cupom-nao-repete-o-codigo-aplicado",
     "168a-conferir-o-crm-ignora-reembolso-integral-aplicado",
+    "180a-conferir-o-cadastro-fiscal-aplicado",
     // 156a (20261404000000) fica de fora de proposito: a 404 esta em migrationsForaDaRelease
     // e nao tem lote no canais; a consulta segue no menu para quando ela for aplicada a parte.
   ]);

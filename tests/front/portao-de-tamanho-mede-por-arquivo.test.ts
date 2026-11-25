@@ -74,7 +74,7 @@ describe(".size-limit.cjs — o portão mede o que o servidor entrega", () => {
     expect(trechoCss).toContain("webpack: false");
   });
 
-  it("os tetos de JS são os fixados: cliente 704 kB, painel 562 kB", () => {
+  it("os tetos de JS são os fixados: cliente 704 kB, painel 578 kB", () => {
     // cliente 696 -> 700 em 21/11/2026 (1.5.230; o CI mediu 697,13 kB, 1,13 kB acima; regra do dono: o teto sobe).
     // Se algum PR precisar mexer num teto, que seja explícito AQUI: mudar o
     // número quebra este teste de propósito. cliente 652 -> 656 e painel 530 -> 534 em 12/11/2026 (1.5.173; a base ficou sem folga e cada PR novo reprovava; regra do dono: o teto sobe).
@@ -155,7 +155,8 @@ describe(".size-limit.cjs — o portão mede o que o servidor entrega", () => {
     // painel 550 -> 554 em 20/11/2026 (1.5.228; medido 550,27 kB no build local, 274 B acima do teto; regra do dono: o teto sobe);
     // painel 554 -> 558 em 21/11/2026 (1.5.230; medido 554,15 kB no CI, 153 B acima do teto; regra do dono: o teto sobe);
     // painel 558 -> 562 em 24/11/2026 (1.5.232; medido 558,7 kB no build local, 700 B acima do teto; regra do dono: o teto sobe);
-    expect(entrada("painel.map(")).toContain('limit: "562 kB"');
+    // painel 562 -> 578 em 25/11/2026 (Gestão Fiscal, aba Impostos: módulo novo inteiro; o painel mediu 575 kB no build local, 13 kB acima do teto; a aba carrega só quando aberta e nada de src/lib/fiscal entra na vitrine; regra do dono: o teto sobe);
+    expect(entrada("painel.map(")).toContain('limit: "578 kB"');
     expect(configTexto).not.toContain('limit: "800 kB"');
   });
 });
