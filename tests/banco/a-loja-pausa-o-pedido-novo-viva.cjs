@@ -14,7 +14,7 @@
  */
 
 const P = require("./prova-de-objeto-novo.cjs");
-const { assert, prova } = P;
+const { assert, prova, sha256 } = P;
 
 const NOME = "20261600000000_a_loja_pausa_o_pedido_novo.sql";
 const MIGRATION = P.lerMigration(NOME);
@@ -317,6 +317,291 @@ prova(
           `mutante "${nome}" nao ficou vermelho em ${alvo}: ${vermelhas(r).join(",")}`,
         );
       });
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// (3) a marca suspensa_desde: gatilho em assinatura_da_loja, pela PORTA REAL do app de gestao (definir_chave + gravar)
+// ---------------------------------------------------------------------------------------------------------------------------
+const CHAVE = "chave-da-loja-pausa-de-vendas-3f1a9c7e5b2d4f6a8c0e1b3d5f7a9c2e";
+const HASH = sha256(CHAVE);
+/** O corpo da gestao (as 10 chaves + pausa_em). */
+const CARTAO = {
+  plano: "Pro",
+  status: "ativa",
+  ciclo: "mensal",
+  valor_mensal: 250,
+  inicio_em: "2026-11-03",
+  teste_ate: null,
+  proxima_cobranca_em: "2026-12-05",
+  suporte_whatsapp: "5534999999999",
+  gerenciar_url: "https://www.mercadopago.com.br/subscriptions/abc123",
+  atualizado_em: "2026-11-20T10:00:00Z",
+  pausa_em: null,
+};
+const carimbo = (n) => `2026-11-20T10:${String(n).padStart(2, "0")}:00Z`;
+const hojeSP = async () =>
+  (
+    await um(
+      "SELECT ((now() AT TIME ZONE 'America/Sao_Paulo')::date)::text AS d",
+    )
+  ).d;
+/** A porta como o hub a chama (anon, a chave da loja). */
+const gravar = (mudar, simular = false) =>
+  P.tentar(
+    "anon",
+    "SELECT public.assinatura_da_loja_gravar($1::text, $2::jsonb, $3::boolean) AS j",
+    [CHAVE, JSON.stringify({ ...CARTAO, ...mudar }), simular],
+  );
+const gravou = (x) => x.linhas?.[0]?.j?.gravado === true;
+const pausaDeVendas = async () =>
+  (await um(
+    "SELECT vale_pela_assinatura AS vale, ligada_em::text AS ligada, suspensa_desde::text AS desde FROM public.pausa_de_vendas WHERE id = 1",
+  )) || null;
+/** Loja limpa: sem cartao, sem pausa, com a chave definida pela porta do service_role. */
+const montarLoja = async () => {
+  await C().query("DELETE FROM public.assinatura_da_loja");
+  await C().query("DELETE FROM public.assinatura_da_loja_chave");
+  await C().query("DELETE FROM public.pausa_de_vendas");
+  const d = await P.tentar(
+    "service_role",
+    "SELECT public.assinatura_da_loja_definir_chave($1, true)",
+    [HASH],
+  );
+  assert.ok(!d.erro, `definir_chave: ${JSON.stringify(d)}`);
+};
+
+async function marca() {
+  const r = {};
+  const hoje = await hojeSP();
+  // ativa: nao cria linha de pausa
+  const a1 = await gravar({ status: "ativa", atualizado_em: carimbo(1) });
+  r.ativaNaoMarca =
+    (gravou(a1) && (await pausaDeVendas()) === null) || JSON.stringify(a1);
+  // a simulacao de suspensa nao grava nada
+  const s0 = await gravar(
+    { status: "suspensa", atualizado_em: carimbo(2) },
+    true,
+  );
+  r.simulacaoNaoMarca =
+    (!s0.erro && (await pausaDeVendas()) === null) || JSON.stringify(s0);
+  // ativa -> suspensa grava o dia de Sao Paulo, sem ligar a pausa
+  const s1 = await gravar({ status: "suspensa", atualizado_em: carimbo(3) });
+  const p1 = await pausaDeVendas();
+  r.suspensaMarcaHoje =
+    (gravou(s1) && p1?.desde === hoje) || JSON.stringify({ s1, p1, hoje });
+  r.marcaNaoLiga =
+    (p1?.vale === false && p1?.ligada === null) || JSON.stringify(p1);
+  // suspensa -> suspensa (o reenvio das 03:00) MANTEM o dia (o dia antigo e a chave ligada postos por escrita direta do dono)
+  await C().query(
+    "UPDATE public.pausa_de_vendas SET suspensa_desde = DATE '2026-12-01', vale_pela_assinatura = true, ligada_em = '2026-11-30T12:00:00Z' WHERE id = 1",
+  );
+  const s2 = await gravar({ status: "suspensa", atualizado_em: carimbo(4) });
+  const p2 = await pausaDeVendas();
+  r.reenvioMantem =
+    (gravou(s2) && p2?.desde === "2026-12-01") || JSON.stringify({ s2, p2 });
+  r.reenvioNaoMexeNaChave =
+    (p2?.vale === true && p2?.ligada !== null) || JSON.stringify(p2);
+  // gravacao mais velha (ignorada pela porta) nao mexe na marca
+  const v = await gravar({ status: "ativa", atualizado_em: carimbo(1) });
+  r.maisVelhoNaoApaga =
+    (v.linhas?.[0]?.j?.motivo === "mais_velho" &&
+      (await pausaDeVendas())?.desde === "2026-12-01") ||
+    JSON.stringify(v);
+  // suspensa -> ativa APAGA o dia e mantem a chave ligada
+  const a2 = await gravar({ status: "ativa", atualizado_em: carimbo(5) });
+  const p3 = await pausaDeVendas();
+  r.saiApaga =
+    (gravou(a2) && p3?.desde === null && p3?.vale === true) ||
+    JSON.stringify({ a2, p3 });
+  // de novo suspensa: o dia de hoje (recomeca)
+  const s3 = await gravar({ status: "suspensa", atualizado_em: carimbo(6) });
+  r.voltaRecomeca =
+    (gravou(s3) && (await pausaDeVendas())?.desde === hoje) ||
+    JSON.stringify(s3);
+  // atrasada tambem e' "saiu"
+  const a3 = await gravar({ status: "atrasada", atualizado_em: carimbo(7) });
+  r.atrasadaApaga =
+    (gravou(a3) && (await pausaDeVendas())?.desde === null) ||
+    JSON.stringify(a3);
+  // primeira gravacao ja suspensa (sem cartao nem pausa antes): marca hoje
+  await C().query("DELETE FROM public.assinatura_da_loja");
+  await C().query("DELETE FROM public.pausa_de_vendas");
+  const s4 = await gravar({ status: "suspensa", atualizado_em: carimbo(8) });
+  r.primeiraJaSuspensa =
+    (gravou(s4) && (await pausaDeVendas())?.desde === hoje) ||
+    JSON.stringify(s4);
+  return r;
+}
+
+prova(
+  "(3) MARCA: ativa->suspensa grava o dia de Sao Paulo; reenvio mantem; sair (ativa ou atrasada) apaga; simulacao e gravacao mais velha nao mexem; nunca liga a pausa",
+  async () => {
+    await P.emTransacao(async () => {
+      const r = await marca();
+      assert.deepEqual(vermelhas(r), [], JSON.stringify(r));
+    }, montarLoja);
+  },
+);
+
+/** O pg_get_triggerdef com search_path = pg_catalog (nomes sempre qualificados). */
+const definicaoDoGatilho = async (tabela, nome) => {
+  const caminho = (await um("SELECT current_setting('search_path') AS s")).s;
+  await C().query("SELECT set_config('search_path', 'pg_catalog', true)");
+  try {
+    return await um(
+      `SELECT pg_get_triggerdef(t.oid) AS def, t.tgenabled AS ligado FROM pg_trigger t
+        WHERE t.tgrelid = to_regclass($1) AND t.tgname = $2`,
+      [tabela, nome],
+    );
+  } finally {
+    await C().query("SELECT set_config('search_path', $1, true)", [caminho]);
+  }
+};
+
+prova(
+  "(3) MARCA: gatilho AFTER INSERT OR UPDATE OF status, por linha, SECURITY DEFINER com search_path fixo e EXECUTE de ninguem",
+  async () => {
+    await P.emTransacao(async () => {
+      assert.deepEqual(
+        await definicaoDoGatilho(
+          "public.assinatura_da_loja",
+          "tr_assinatura_marca_suspensa_desde",
+        ),
+        {
+          def: "CREATE TRIGGER tr_assinatura_marca_suspensa_desde AFTER INSERT OR UPDATE OF status ON public.assinatura_da_loja FOR EACH ROW EXECUTE FUNCTION public.marcar_suspensa_desde()",
+          ligado: "O",
+        },
+      );
+      const f = await um(
+        "SELECT p.prosecdef AS secdef, p.proconfig AS cfg, p.provolatile AS vol FROM pg_proc p WHERE p.oid = to_regprocedure('public.marcar_suspensa_desde()')",
+      );
+      assert.deepEqual(f, {
+        secdef: true,
+        cfg: ["search_path=public, pg_temp"],
+        vol: "v",
+      });
+      for (const papel of ["anon", "authenticated", "service_role"]) {
+        const x = await um(
+          "SELECT has_function_privilege($1, to_regprocedure('public.marcar_suspensa_desde()'), 'EXECUTE') AS pode",
+          [papel],
+        );
+        assert.equal(x.pode, false, papel);
+      }
+    });
+  },
+);
+
+prova(
+  "(3) MARCA QUE FALHA NUNCA DERRUBA A PORTA: com a marca sabotada a porta grava suspensa e depois ativa (o 'pagou, reabre'); sem o EXCEPTION a mesma sabotagem derruba (controle)",
+  async () => {
+    const original = textoDe(MIGRATION, "marcar_suspensa_desde");
+    const quebrada = trocar(
+      original,
+      "INSERT INTO public.pausa_de_vendas AS p",
+      "INSERT INTO public.pausa_de_vendas_que_nao_existe AS p",
+    );
+    await P.emTransacao(async () => {
+      await C().query(quebrada);
+      const avisos = [];
+      const ouvir = (m) => avisos.push(m.message);
+      C().on("notice", ouvir);
+      try {
+        const s = await gravar({
+          status: "suspensa",
+          atualizado_em: carimbo(3),
+        });
+        assert.ok(gravou(s), JSON.stringify(s));
+        assert.equal(
+          (
+            await um(
+              "SELECT status FROM public.assinatura_da_loja WHERE id = 1",
+            )
+          ).status,
+          "suspensa",
+        );
+        assert.equal(await pausaDeVendas(), null);
+        assert.ok(
+          avisos.some((m) => /marcar_suspensa_desde/.test(m)),
+          `sem WARNING: ${JSON.stringify(avisos)}`,
+        );
+        const a = await gravar({ status: "ativa", atualizado_em: carimbo(4) });
+        assert.ok(gravou(a), JSON.stringify(a));
+      } finally {
+        C().removeListener("notice", ouvir);
+      }
+    }, montarLoja);
+    // controle: sem a guarda a sabotagem derruba a porta (e' a guarda que segura, nao a sorte)
+    await P.emTransacao(async () => {
+      const semGuarda = trocar(
+        trocar(quebrada, "  EXCEPTION WHEN OTHERS THEN\n", "  -- sem guarda\n"),
+        "    RAISE WARNING 'marcar_suspensa_desde",
+        "    -- RAISE WARNING 'marcar_suspensa_desde",
+      );
+      await C().query(semGuarda);
+      const s = await gravar({ status: "suspensa", atualizado_em: carimbo(3) });
+      assert.equal(s.codigo, "42P01", JSON.stringify(s));
+    }, montarLoja);
+  },
+);
+
+/** [nome, trocas [[de, para]...], expectativa que TEM de ficar vermelha] */
+const MUTANTES_MARCA = [
+  [
+    "reenvio regrava o dia",
+    [
+      [
+        "IF TG_OP = 'INSERT' OR OLD.status IS DISTINCT FROM 'suspensa' THEN",
+        "IF true THEN",
+      ],
+    ],
+    "reenvioMantem",
+  ],
+  [
+    "sair nao apaga",
+    [["SET suspensa_desde = NULL", "SET suspensa_desde = suspensa_desde"]],
+    "saiApaga",
+  ],
+  [
+    "dia errado (um antes do de Sao Paulo)",
+    [
+      [
+        "(now() AT TIME ZONE 'America/Sao_Paulo')::date",
+        "(now() AT TIME ZONE 'America/Sao_Paulo')::date - 1",
+      ],
+    ],
+    "suspensaMarcaHoje",
+  ],
+  [
+    "marca liga a pausa",
+    [
+      [
+        "AS p (id, suspensa_desde)",
+        "AS p (id, vale_pela_assinatura, suspensa_desde)",
+      ],
+      ["VALUES (1, (now()", "VALUES (1, true, (now()"],
+    ],
+    "marcaNaoLiga",
+  ],
+];
+prova(
+  "(3) MUTANTES DA MARCA: cada sabotagem fica vermelha na expectativa certa",
+  async () => {
+    const original = textoDe(MIGRATION, "marcar_suspensa_desde");
+    for (const [nome, trocas, alvo] of MUTANTES_MARCA) {
+      const texto = trocas.reduce(
+        (t, [de, para]) => trocar(t, de, para),
+        original,
+      );
+      await P.emTransacao(async () => {
+        await C().query(texto);
+        const r = await marca();
+        assert.ok(
+          vermelhas(r).includes(alvo),
+          `mutante "${nome}" nao ficou vermelho em ${alvo}: ${vermelhas(r).join(",")}`,
+        );
+      }, montarLoja);
     }
   },
 );

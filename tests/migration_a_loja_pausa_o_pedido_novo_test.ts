@@ -151,3 +151,47 @@ Deno.test("20261600: data_da_pausa_de_vendas recebe p_pausa_em, e' SQL IMMUTABLE
     "GRANT na regra pura",
   );
 });
+
+Deno.test("20261600: a marca suspensa_desde e' um gatilho AFTER INSERT OR UPDATE OF status que nunca levanta erro e nunca liga a pausa", () => {
+  const f = funcaoDe(migration, "marcar_suspensa_desde");
+  assertStringIncludes(
+    f,
+    "marcar_suspensa_desde()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path = public, pg_temp\n",
+  );
+  const corpo = semComentario(f.slice(f.indexOf("AS $function$")));
+  // tudo o que escreve fica DENTRO do bloco protegido; a falha vira WARNING
+  const inicioProtegido = corpo.indexOf(
+    "  BEGIN\n    IF NEW.status = 'suspensa' THEN",
+  );
+  const excecao = corpo.indexOf(
+    "  EXCEPTION WHEN OTHERS THEN\n    RAISE WARNING 'marcar_suspensa_desde:",
+  );
+  assert(inicioProtegido >= 0 && excecao > inicioProtegido, "bloco protegido");
+  assert(
+    corpo.indexOf("INSERT INTO") > inicioProtegido &&
+      corpo.indexOf("INSERT INTO") < excecao,
+  );
+  assert(
+    corpo.indexOf("UPDATE public.pausa_de_vendas") > inicioProtegido &&
+      corpo.indexOf("UPDATE public.pausa_de_vendas") < excecao,
+  );
+  assert(!/RAISE EXCEPTION/.test(corpo), "a marca nunca levanta erro");
+  assertStringIncludes(corpo, "(now() AT TIME ZONE 'America/Sao_Paulo')::date");
+  assertStringIncludes(
+    corpo,
+    "IF TG_OP = 'INSERT' OR OLD.status IS DISTINCT FROM 'suspensa' THEN",
+  );
+  assert(
+    !/vale_pela_assinatura|ligada_em/.test(corpo),
+    "a marca mexe na chave que liga a pausa",
+  );
+  assertStringIncludes(corpo, "RETURN NULL;");
+  assertStringIncludes(
+    codigo,
+    "REVOKE ALL ON FUNCTION public.marcar_suspensa_desde() FROM PUBLIC, anon, authenticated, service_role;",
+  );
+  assertStringIncludes(
+    norm(codigo),
+    "CREATE OR REPLACE TRIGGER tr_assinatura_marca_suspensa_desde AFTER INSERT OR UPDATE OF status ON public.assinatura_da_loja FOR EACH ROW EXECUTE FUNCTION public.marcar_suspensa_desde();",
+  );
+});

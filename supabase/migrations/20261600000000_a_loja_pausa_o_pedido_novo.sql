@@ -118,3 +118,40 @@ $function$;
 
 REVOKE ALL ON FUNCTION public.data_da_pausa_de_vendas(date, date, date, date) FROM PUBLIC, anon, authenticated, service_role;
 COMMENT ON FUNCTION public.data_da_pausa_de_vendas(date, date, date, date) IS 'Primeiro dia (Sao Paulo) em que a loja pode ter as vendas pausadas por assinatura: greatest(proxima + 3 ou 10 + 1, suspensa_desde, pausa_em), com sexta a domingo passando para a segunda. NULL = nao pausa (sem proxima, sem suspensa_desde, ou sinal de teste sem pausa_em). Pura; EXECUTE de ninguem de aplicacao.';
+
+-- ===== (3) a marca: o dia (Sao Paulo) em que o cartao da assinatura virou suspensa =====
+
+CREATE OR REPLACE FUNCTION public.marcar_suspensa_desde()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path = public, pg_temp
+AS $function$
+BEGIN
+  -- Grava o dia quando o status ENTRA em suspensa; mantem enquanto segue suspensa (o reenvio das 03:00 nao recomeca a contagem); apaga quando sai.
+  -- So mexe em suspensa_desde: vale_pela_assinatura e ligada_em (a chave que liga a pausa) ficam como estao.
+  -- NUNCA derruba a porta do app de gestao: se a marca falhar, a gravacao do cartao segue (e com ela o "pagou, reabre"); a falha vira WARNING.
+  BEGIN
+    IF NEW.status = 'suspensa' THEN
+      IF TG_OP = 'INSERT' OR OLD.status IS DISTINCT FROM 'suspensa' THEN
+        INSERT INTO public.pausa_de_vendas AS p (id, suspensa_desde)
+        VALUES (1, (now() AT TIME ZONE 'America/Sao_Paulo')::date)
+        ON CONFLICT (id) DO UPDATE SET suspensa_desde = EXCLUDED.suspensa_desde;
+      END IF;
+    ELSE
+      UPDATE public.pausa_de_vendas SET suspensa_desde = NULL WHERE id = 1 AND suspensa_desde IS NOT NULL;
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'marcar_suspensa_desde: a marca do dia da suspensa falhou (% %); o cartao foi gravado sem ela', SQLSTATE, SQLERRM;
+  END;
+  RETURN NULL;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.marcar_suspensa_desde() FROM PUBLIC, anon, authenticated, service_role;
+COMMENT ON FUNCTION public.marcar_suspensa_desde() IS 'Gatilho de assinatura_da_loja: grava pausa_de_vendas.suspensa_desde (dia de Sao Paulo) quando o status entra em suspensa, mantem enquanto segue suspensa e apaga quando sai. Nunca levanta erro (a porta do app de gestao grava mesmo se a marca falhar).';
+
+CREATE OR REPLACE TRIGGER tr_assinatura_marca_suspensa_desde
+  AFTER INSERT OR UPDATE OF status ON public.assinatura_da_loja
+  FOR EACH ROW
+  EXECUTE FUNCTION public.marcar_suspensa_desde();
