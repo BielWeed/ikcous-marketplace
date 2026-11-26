@@ -189,6 +189,24 @@ function contrato(nome, fabricar) {
     }
   });
 
+  Deno.test(`[${nome}] listar: vazio = [], depois só as lojas gravadas (em ordem), sem trava`, async () => {
+    const { cofre, fim } = await fabricar();
+    try {
+      assertEquals(await cofre.listar(), []);
+      await cofre.gravar("zeta-loja", VALOR);
+      await cofre.gravar("alfa-loja", VALOR);
+      const liberar = await cofre.travar("so-travada");
+      const liberarB = await cofre.travar("alfa-loja");
+      assertEquals(await cofre.listar(), ["alfa-loja", "zeta-loja"]);
+      await liberar();
+      await liberarB();
+      await cofre.apagar("zeta-loja");
+      assertEquals(await cofre.listar(), ["alfa-loja"]);
+    } finally {
+      await fim();
+    }
+  });
+
   Deno.test(`[${nome}] CofreTravado é ErroDoCofre`, () => {
     assert(new CofreTravado("x") instanceof ErroDoCofre);
   });
@@ -377,6 +395,47 @@ Deno.test("[dpapi] arquivo adulterado (sem o cabeçalho) é recusado", async () 
     assertEquals(ex.chamadas.length, 0);
   } finally {
     await Deno.remove(pasta, { recursive: true });
+  }
+});
+
+Deno.test("[dpapi] listar: só <slug>.dpapi com slug válido; arquivo estranho, .trava, .tmp e pasta ficam de fora; nada é decifrado", async () => {
+  const pasta = await pastaTemp();
+  try {
+    const ex = executorFalso();
+    const cofre = criarCofreDpapi({ pasta, executar: ex });
+    // conteúdo que nem é do formato do cofre: listar não abre o arquivo
+    await Deno.writeTextFile(join(pasta, "loja-boa.dpapi"), "lixo\n");
+    await Deno.writeTextFile(join(pasta, "outra-boa.dpapi"), "lixo\n");
+    for (const estranho of [
+      "LEIA-ME.txt",
+      "Loja.dpapi",
+      "1loja.dpapi",
+      "a.dpapi",
+      "loja_x.dpapi",
+      "loja-boa.dpapi.a1b2c3.tmp",
+      "loja-boa.trava",
+      ".dpapi",
+      "loja-boa.dpapi.bak",
+    ]) {
+      await Deno.writeTextFile(join(pasta, estranho), "x");
+    }
+    await Deno.mkdir(join(pasta, "uma-pasta.dpapi"));
+    assertEquals(await cofre.listar(), ["loja-boa", "outra-boa"]);
+    assertEquals(ex.chamadas.length, 0, "listar chamou o PowerShell");
+  } finally {
+    await Deno.remove(pasta, { recursive: true });
+  }
+});
+
+Deno.test("[dpapi] listar: pasta do cofre inexistente devolve [] e não cria a pasta", async () => {
+  const raiz = await pastaTemp();
+  try {
+    const pasta = join(raiz, "ainda", "nao-existe");
+    const cofre = criarCofreDpapi({ pasta, executar: executorFalso() });
+    assertEquals(await cofre.listar(), []);
+    assertEquals(await nomesNaPasta(raiz), [], "listar criou a pasta");
+  } finally {
+    await Deno.remove(raiz, { recursive: true });
   }
 });
 
