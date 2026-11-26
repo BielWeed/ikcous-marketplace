@@ -68,8 +68,25 @@ export function useCacheWarmer() {
 
         // Also cache directly from client side as fallback for critical routes
         const cache = await caches.open("warmed-routes");
+        // Plano "primeira visita leve" (T12): cada pedido ao endereço da loja
+        // conta na cota mensal da Vercel, e buscar `/` com `cache: "reload"`
+        // a CADA abertura gastava um pedido só para regravar o que já estava
+        // aqui. Só busca a rota que falta na gaveta. Ela não envelhece entre
+        // versões: o `activate` do SW apaga "warmed-routes" (sw.ts,
+        // `purgarCachesAntigos`), então versão nova busca uma vez de novo.
+        // Falha ao ler a gaveta cai no comportamento antigo (busca).
+        const faltando = (
+          await Promise.all(
+            CRITICAL_URLS.map((url) =>
+              cache
+                .match(url)
+                .then((guardada) => (guardada ? null : url))
+                .catch(() => url),
+            ),
+          )
+        ).filter((url): url is string => url !== null);
         await Promise.all(
-          CRITICAL_URLS.map((url) => {
+          faltando.map((url) => {
             try {
               const parsedUrl = new URL(url, window.location.origin);
               if (parsedUrl.origin !== window.location.origin) {
