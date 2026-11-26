@@ -14990,6 +14990,31 @@ Deno.test("CONTROLE: reserva num endereço + LOJA_TROCADA em outro DEPOIS do pro
   assertStringIncludes(r.relatorio, `vercel rollback ${DPL_ANTERIOR} --yes`);
 });
 
+/**
+ * A ficha que a conferência guarda de um endereço aberto pela reserva: com
+ * `ref`, a página da loja (HTTP 200); com null, a página 503 do banco fora
+ * (sem ref).
+ */
+function fichaNaReserva(ref) {
+  return ref
+    ? {
+        status: 200,
+        caderneta: "reserva",
+        porteiro: "ok",
+        refs: [ref],
+        titulo: "x",
+        publicUrl: "https://x",
+        estavel: true,
+      }
+    : {
+        status: 503,
+        caderneta: "reserva",
+        porteiro: "banco-indisponivel",
+        refs: [],
+        estavel: true,
+      };
+}
+
 Deno.test("cadernetaForaDepoisDoPromote: só reserva e/ou banco, no deployment promovido, com cobertura explicada; senão null", () => {
   const res = (dominio, classes, extra = {}) => ({
     dominio,
@@ -15013,7 +15038,12 @@ Deno.test("cadernetaForaDepoisDoPromote: só reserva e/ou banco, no deployment p
   assertEquals(
     cadernetaForaDepoisDoPromote(
       pos(
-        [res(DOM_SAVY, duplo), res(DOM_SAVY_EXTRA, ["CADERNETA_NA_RESERVA"])],
+        [
+          res(DOM_SAVY, duplo, { ficha: fichaNaReserva(null) }),
+          res(DOM_SAVY_EXTRA, ["CADERNETA_NA_RESERVA"], {
+            ficha: fichaNaReserva(SAVY),
+          }),
+        ],
         [{ ref: SAVY, nome: "Savy" }],
       ),
       DPL,
@@ -15089,4 +15119,160 @@ Deno.test("cadernetaForaDepoisDoPromote: só reserva e/ou banco, no deployment p
     cadernetaForaDepoisDoPromote({ ...pos([]), ok: true }, DPL, lojasAntes),
     null,
   );
+});
+
+// A reserva da caderneta pode abrir a loja ERRADA num endereço: o porteiro
+// responde 200 com `x-ikcous-caderneta: reserva`, mas a página (ref, título,
+// publicUrl) é de OUTRA loja. Isso é isolamento quebrado, e pode ser do front
+// novo: só se aceita o endereço na reserva cuja página é da loja DONA dele no
+// inventário de antes do promote. A tolerância à loja sumida vale só para o
+// endereço com o banco fora (503 sem ref, provado pela sonda direta ao banco).
+
+Deno.test("cadernetaForaDepoisDoPromote: endereço na reserva com página só passa com o ref da loja DONA dele antes do promote; a loja trocada pela reserva é null (FALHOU com rollback)", () => {
+  const reserva = (dominio, ficha, classes = ["CADERNETA_NA_RESERVA"]) => ({
+    dominio,
+    classe: classes[0],
+    achados: classes.map((classe) => ({ classe, motivo: "x" })),
+    deploymentId: DPL,
+    ficha,
+  });
+  const pos = (resultados, lojasNaoSondadas = []) => ({
+    ok: false,
+    resultados,
+    vercel: { ok: true },
+    inventario: { completo: true },
+    cobertura: { lojasNaoSondadas, dominiosNaoSondados: [] },
+  });
+  const lojasAntes = [
+    { ref: SAVY, titulo: "Savy", dominios: [DOM_SAVY, DOM_SAVY_EXTRA] },
+    { ref: CAF, titulo: "IKCOUS", dominios: [DOM_IKCOUS] },
+  ];
+  const savySumiu = [{ ref: SAVY, nome: "Savy" }];
+  // CONTROLE: cada endereço na reserva serve a loja dona dele: sem rollback.
+  assertEquals(
+    cadernetaForaDepoisDoPromote(
+      pos(
+        [
+          reserva(DOM_SAVY, fichaNaReserva(SAVY)),
+          reserva(DOM_SAVY_EXTRA, fichaNaReserva(SAVY)),
+          reserva(DOM_IKCOUS, fichaNaReserva(CAF)),
+        ],
+        [...savySumiu, { ref: CAF, nome: "IKCOUS" }],
+      ),
+      DPL,
+      lojasAntes,
+    ),
+    { naReserva: [DOM_IKCOUS, DOM_SAVY, DOM_SAVY_EXTRA].sort(), bancoFora: [] },
+  );
+  // O caso da revisão: os endereços da Savy servem a IKCOUS pela reserva e a
+  // Savy "sumiu". A cliente da Savy vê o catálogo da IKCOUS: null.
+  assertEquals(
+    cadernetaForaDepoisDoPromote(
+      pos(
+        [
+          reserva(DOM_SAVY, fichaNaReserva(CAF)),
+          reserva(DOM_SAVY_EXTRA, fichaNaReserva(CAF)),
+        ],
+        savySumiu,
+      ),
+      DPL,
+      lojasAntes,
+    ),
+    null,
+  );
+  // Só UM endereço trocado, a loja dona ainda sondada (hit) no outro: null.
+  assertEquals(
+    cadernetaForaDepoisDoPromote(
+      pos([reserva(DOM_SAVY_EXTRA, fichaNaReserva(CAF))]),
+      DPL,
+      lojasAntes,
+    ),
+    null,
+  );
+  // Sem a ficha, ficha sem ref, com dois refs, ou ref fora do formato: null.
+  for (const ficha of [
+    undefined,
+    null,
+    { ...fichaNaReserva(SAVY), refs: [] },
+    { ...fichaNaReserva(SAVY), refs: [SAVY, CAF] },
+    { ...fichaNaReserva(SAVY), refs: undefined },
+  ])
+    assertEquals(
+      cadernetaForaDepoisDoPromote(
+        pos([reserva(DOM_SAVY_EXTRA, ficha)], savySumiu),
+        DPL,
+        lojasAntes,
+      ),
+      null,
+      JSON.stringify(ficha),
+    );
+  // Endereço que não era de NENHUMA loja antes do promote, ou sem lojasAntes: null.
+  assertEquals(
+    cadernetaForaDepoisDoPromote(
+      pos([reserva("nova.example", fichaNaReserva(SAVY))]),
+      DPL,
+      lojasAntes,
+    ),
+    null,
+  );
+  assertEquals(
+    cadernetaForaDepoisDoPromote(
+      pos([reserva(DOM_SAVY_EXTRA, fichaNaReserva(SAVY))]),
+      DPL,
+    ),
+    null,
+  );
+  // CONTROLE do banco fora: 503 sem ref, a loja sumida explicada por ele.
+  assertEquals(
+    cadernetaForaDepoisDoPromote(
+      pos(
+        [
+          reserva(DOM_SAVY, fichaNaReserva(null), [
+            "CADERNETA_NA_RESERVA",
+            "BANCO_INDISPONIVEL",
+          ]),
+          reserva(DOM_SAVY_EXTRA, fichaNaReserva(null), [
+            "CADERNETA_NA_RESERVA",
+            "BANCO_INDISPONIVEL",
+          ]),
+        ],
+        savySumiu,
+      ),
+      DPL,
+      lojasAntes,
+    ),
+    {
+      naReserva: [DOM_SAVY, DOM_SAVY_EXTRA].sort(),
+      bancoFora: [DOM_SAVY, DOM_SAVY_EXTRA].sort(),
+    },
+  );
+});
+
+/** A página da IKCOUS (ref, título, publicUrl dela) aberta pela reserva. */
+const paginaDaIkcousNaReserva = () =>
+  new Response(
+    `<title>IKCOUS</title><script type="application/json" id="ikcous-loja">${JSON.stringify({ schemaVersion: 2, identidade: { publicUrl: `https://${DOM_IKCOUS}` } })}</script><script src="https://${CAF}.supabase.co/x.js"></script>`,
+    {
+      headers: { "x-ikcous-caderneta": "reserva", "x-ikcous-porteiro": "ok" },
+    },
+  );
+
+Deno.test("reserva DEPOIS do promote abrindo a loja ERRADA (os endereços da Savy servem a IKCOUS): FALHOU COM o vercel rollback", async () => {
+  const { d, chamadas, conferencias } = releaseComSondasReais({
+    aliasesAntes: TODOS,
+    aliasesDepois: TODOS,
+    responder: ({ hostname, pathname, depois }) =>
+      depois &&
+      (hostname === DOM_SAVY || hostname === DOM_SAVY_EXTRA) &&
+      pathname === "/"
+        ? paginaDaIkcousNaReserva()
+        : undefined,
+  });
+  const r = await executar(d, true);
+  assertEquals(conferencias[0].ok, true, conferencias[0].relatorio);
+  assertEquals(chamadas.promover, [DPL]);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertStringIncludes(r.relatorio, "**FALHOU.**");
+  assertStringIncludes(r.relatorio, `vercel rollback ${DPL_ANTERIOR} --yes`);
+  assert(!r.relatorio.includes("NÃO é caso de rollback"), r.relatorio);
 });

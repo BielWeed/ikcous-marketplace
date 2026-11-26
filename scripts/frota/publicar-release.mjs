@@ -796,8 +796,11 @@ const CLASSES_SEM_ROLLBACK = new Set([
  * hit), e voltar a frota não conserta a caderneta nem o banco. Mesmas provas
  * de `incertezaDepoisDoPromote`: Vercel lida, inventário completo, cada
  * endereço que reprova aponta para `deploymentId` e só tem estes achados,
- * nenhum endereço sumiu, e loja cadastrada que não apareceu tinha, antes do
- * promote, um endereço agora na reserva ou com o banco fora. Sem NENHUM
+ * nenhum endereço sumiu, endereço na reserva COM página serve a ficha
+ * (`ficha.refs`) exatamente da loja dona dele em `lojasAntes` (sem ficha, sem
+ * dona ou com outro ref = null: a reserva abrindo a loja errada pede o
+ * rollback), e loja cadastrada que não apareceu tinha, antes do promote, um
+ * endereço agora na reserva (com a página dela) ou com o banco fora. Sem NENHUM
  * endereço na reserva é null: só banco é o INCERTO de antes. O banco fora
  * daqui ainda tem de ser provado pela sonda direta (quem chama).
  */
@@ -818,18 +821,37 @@ export function cadernetaForaDepoisDoPromote(
     return null;
   const naReserva = new Set();
   const bancoFora = new Set();
+  const antes = Array.isArray(lojasAntes) ? lojasAntes : [];
   for (const r of pos.resultados) {
     if (CLASSES_SEM_FALHA.has(r?.classe)) continue;
     const achados = Array.isArray(r?.achados) ? r.achados : [];
     if (!achados.length || r.deploymentId !== deploymentId) return null;
     if (!achados.every((a) => CLASSES_SEM_ROLLBACK.has(a?.classe))) return null;
-    if (achados.some((a) => a.classe === "CADERNETA_NA_RESERVA"))
-      naReserva.add(r.dominio);
-    if (achados.some((a) => a.classe === "BANCO_INDISPONIVEL"))
-      bancoFora.add(r.dominio);
+    const reserva = achados.some((a) => a.classe === "CADERNETA_NA_RESERVA");
+    const semBanco = achados.some((a) => a.classe === "BANCO_INDISPONIVEL");
+    // Na reserva COM página (sem o banco fora), a página tem de ser da loja
+    // DONA do endereço antes do promote: a reserva abrindo outra loja é
+    // isolamento quebrado, e pode ser do front novo. Só o 503 do banco fora
+    // não traz ref; esse passa pela sonda direta ao banco (quem chama).
+    if (reserva && !semBanco) {
+      const dona = antes.find(
+        (l) => Array.isArray(l?.dominios) && l.dominios.includes(r.dominio),
+      );
+      const refs = r.ficha?.refs;
+      if (
+        typeof dona?.ref !== "string" ||
+        !Array.isArray(refs) ||
+        refs.length !== 1 ||
+        refs[0] !== dona.ref
+      )
+        return null;
+    }
+    if (reserva) naReserva.add(r.dominio);
+    if (semBanco) bancoFora.add(r.dominio);
   }
   if (!naReserva.size) return null;
-  const antes = Array.isArray(lojasAntes) ? lojasAntes : [];
+  // Loja sumida: um endereço dela está agora na reserva (com a página DELA,
+  // conferida acima) ou com o banco fora (503 sem ref).
   for (const loja of cobertura.lojasNaoSondadas) {
     const dela = antes.find((l) => l?.ref === loja?.ref);
     if (
