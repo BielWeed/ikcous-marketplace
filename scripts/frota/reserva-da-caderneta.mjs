@@ -22,10 +22,21 @@
 // que a store devolve não conta: `canonico`).
 //
 // ENDEREÇO QUE NÃO ENTRA: só sai em silêncio o que é DEFINITIVO (política,
-// preview, adormecida/encerrada provada, `miss`, redirecionamento). Resultado
-// INDETERMINADO (sonda sem resposta, instável, `erro`, `reserva`, 2+ refs)
-// recusa o --gravar com o endereço no motivo (`classificarEndereco`); o
-// --conferir só avisa.
+// preview, adormecida/encerrada provada, `miss`, redirecionamento para loja da
+// frota). Resultado INDETERMINADO (sonda sem resposta, instável, `erro`,
+// `reserva`, 2+ refs, 3xx para outro destino) recusa o --gravar com o
+// endereço no motivo (`classificarEndereco`); o --conferir só avisa.
+//
+// 3xx (ANOTADO da revisão Opus da T8, feito na T10): só é definitivo quando
+// TODA amostra traz Location https, sem porta, para um host que ENTRA nesta
+// mesma reserva (ficha estável 200 hit de um ref no mesmo inventário): a loja
+// para onde o endereço encaminha está coberta. O 308 do porteiro não traz o
+// ref, então "a própria loja" se prova assim, pelo destino. 3xx para outro
+// host, para o login da Vercel (proteção de deployment) ou sem Location =
+// INDETERMINADO, que bloqueia; nunca sai calado. LIMITE CONHECIDO (revisão
+// Opus da T10, só anotado): um alias que encaminha para OUTRA loja da frota
+// conta como definitivo e fica sem entrada na reserva; não vaza dado (com a
+// caderneta fora, ele só deixa de abrir).
 //
 // RECUSA (sem falar com a Vercel): reserva vazia; falta loja obrigatória
 // (todo canal de canais-de-backend.json, menos politica.json
@@ -152,12 +163,41 @@ export function entradaInvalida(host, entrada) {
 const STATUS_DE_REDIRECIONAMENTO = new Set([301, 302, 307, 308]);
 
 /**
+ * Por que o 3xx destas amostras NÃO prova encaminhamento para loja coberta
+ * pela reserva, ou null se prova. `hostsDeLoja` = hosts que entram na reserva
+ * no mesmo inventário. Cada amostra precisa de Location absoluto https, sem
+ * porta, cujo host esteja em `hostsDeLoja`. Nunca devolve o Location inteiro
+ * (a query pode ser longa): só o host.
+ */
+function destinoDoRedirecionamentoRecusado(amostras, hostsDeLoja) {
+  for (const a of amostras) {
+    const location = a?.location;
+    if (typeof location !== "string" || location.length === 0)
+      return `redirecionamento (HTTP ${a?.status ?? "-"}) sem Location`;
+    let u;
+    try {
+      u = new URL(location);
+    } catch {
+      return `redirecionamento (HTTP ${a?.status ?? "-"}) com Location que não é um endereço absoluto`;
+    }
+    if (u.protocol !== "https:" || u.port !== "")
+      return `redirecionamento (HTTP ${a?.status ?? "-"}) para ${u.protocol}//${u.host}: só https, sem porta, conta como loja`;
+    if (!hostsDeLoja.has(u.hostname))
+      return `redirecionamento (HTTP ${a?.status ?? "-"}) para ${u.hostname}, que não é endereço de loja nesta reserva (outro host ou login da Vercel)`;
+  }
+  return null;
+}
+
+/**
  * O que a sonda de UM endereço diz para a reserva:
  *   { tipo: "entra", ref }                — ficha estável 200 hit de UM ref;
  *   { tipo: "definitivo", motivo }        — o endereço não é loja no ar, e
  *     isso é CERTO: declarado na política (enderecosEsperados), alias de
  *     preview, loja adormecida/encerrada provada pelo contrato do porteiro
- *     (`lojaForaDoAr`), `miss` estável (sem-loja) ou redirecionamento estável;
+ *     (`lojaForaDoAr`), `miss` estável (sem-loja) ou redirecionamento estável
+ *     cujo Location (em TODA amostra) é https para um host de
+ *     `contexto.hostsDeLoja` (os que entram na reserva; sem o contexto, nenhum
+ *     3xx é definitivo: falha fechada);
  *   { tipo: "indeterminado", motivo }     — qualquer outra coisa: sem ficha
  *     (a sonda não respondeu), amostras divergentes, `erro`, `reserva`, mais
  *     de um ref, HTTP inesperado.
@@ -165,7 +205,9 @@ const STATUS_DE_REDIRECIONAMENTO = new Set([301, 302, 307, 308]);
  * --gravar: a reserva não pode encolher justamente quando a caderneta (ou a
  * rede) começa a falhar.
  */
-export function classificarEndereco(sonda, politica = {}) {
+export function classificarEndereco(sonda, politica = {}, contexto = {}) {
+  const hostsDeLoja =
+    contexto?.hostsDeLoja instanceof Set ? contexto.hostsDeLoja : new Set();
   const dominio = String(sonda?.dominio ?? "");
   const esperados = new Set(
     (politica?.enderecosEsperados ?? []).map((e) => e?.dominio),
@@ -203,11 +245,18 @@ export function classificarEndereco(sonda, politica = {}) {
     STATUS_DE_REDIRECIONAMENTO.has(ficha.status) &&
     caderneta !== "erro" &&
     caderneta !== "reserva"
-  )
+  ) {
+    const amostras =
+      Array.isArray(sonda.amostras) && sonda.amostras.length
+        ? sonda.amostras
+        : [ficha];
+    const recusa = destinoDoRedirecionamentoRecusado(amostras, hostsDeLoja);
+    if (recusa) return { tipo: "indeterminado", motivo: recusa };
     return {
       tipo: "definitivo",
-      motivo: `redirecionamento (HTTP ${ficha.status})`,
+      motivo: `redirecionamento (HTTP ${ficha.status}) para loja desta reserva`,
     };
+  }
   const refs = Array.isArray(ficha.refs) ? ficha.refs : [];
   if (caderneta === "hit" && refs.length !== 1)
     return {
@@ -220,10 +269,29 @@ export function classificarEndereco(sonda, politica = {}) {
   };
 }
 
+/**
+ * Os hosts do inventário que ENTRAM na reserva (ficha estável 200 hit de um
+ * ref): os únicos destinos de 3xx que contam como definitivo. A decisão de
+ * "entra" não depende do contexto, então não há volta circular.
+ */
+export function hostsDeLojaDoInventario(inventario, politica = {}) {
+  return new Set(
+    (inventario?.sondas ?? [])
+      .filter((s) => classificarEndereco(s, politica).tipo === "entra")
+      .map((s) => s.dominio),
+  );
+}
+
 /** Os endereços do inventário com resultado indeterminado: [{dominio, motivo}]. */
 export function enderecosIndeterminados(inventario, politica = {}) {
+  const contexto = {
+    hostsDeLoja: hostsDeLojaDoInventario(inventario, politica),
+  };
   return (inventario?.sondas ?? [])
-    .map((s) => ({ dominio: s?.dominio, ...classificarEndereco(s, politica) }))
+    .map((s) => ({
+      dominio: s?.dominio,
+      ...classificarEndereco(s, politica, contexto),
+    }))
     .filter((c) => c.tipo === "indeterminado")
     .map(({ dominio, motivo }) => ({ dominio, motivo }))
     .sort((a, b) =>

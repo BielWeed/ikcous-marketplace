@@ -72,14 +72,23 @@ function sonda(dominio, opcoes = {}) {
     refs = [REF_A],
     estavel = true,
     chave = CHAVE_A,
+    location,
+    amostras = [],
   } = opcoes;
   return {
     dominio,
     versao: null,
-    ficha: { status, caderneta, refs, estavel, titulo: "Loja" },
+    ficha: {
+      status,
+      caderneta,
+      refs,
+      estavel,
+      titulo: "Loja",
+      ...(location === undefined ? {} : { location }),
+    },
     chavePublica: chave,
     errosPagina: [],
-    amostras: [],
+    amostras,
   };
 }
 const inventario = (sondas, completo = true) => ({
@@ -783,12 +792,6 @@ Deno.test("definitivo: caderneta miss estável (sem-loja)", () => {
     "definitivo",
   );
 });
-Deno.test("definitivo: redirecionamento estável (308)", () => {
-  assertEquals(
-    tipo(sonda("x.vercel.app", { status: 308, caderneta: null, refs: [] })),
-    "definitivo",
-  );
-});
 Deno.test("definitivo: alias de preview (politica.json aliasesDePreview)", () => {
   assertEquals(
     tipo({ dominio: "loja-git-ramo.vercel.app", ficha: null, amostras: [] }),
@@ -865,4 +868,175 @@ Deno.test("releitura com as chaves em OUTRA ordem (cabeçalho, hosts e entradas)
     canonico({ a: [2, 1] }) !== canonico({ a: [1, 2] }),
     "array mantém a ordem",
   );
+});
+
+// ------------------------------------------------------------------ 3xx: o destino tem de ser loja da frota (ANOTADO da revisão Opus da T8)
+//
+// Antes, qualquer 3xx estável saía da reserva calado como "definitivo". Um 307
+// para o login da Vercel (proteção de deployment ligada por engano) ou para
+// outro host tiraria o endereço da reserva sem ninguém ver. Agora o 3xx só é
+// definitivo quando TODA amostra traz Location https para um host que ENTRA na
+// reserva no mesmo inventário (ficha estável 200 hit de um ref: a loja para a
+// qual o endereço encaminha está coberta). Qualquer outro destino =
+// INDETERMINADO, que recusa o --gravar e bloqueia o passo 4b.
+
+const LOJA_UM = "loja-um.exemplo.test";
+const ALIAS = "loja-um.vercel.app";
+const redirecionando = (location, extra = {}) =>
+  sonda(ALIAS, {
+    status: 308,
+    caderneta: "hit",
+    refs: [],
+    chave: null,
+    location,
+    ...extra,
+  });
+const frotaComAlias = (alias) =>
+  inventario([
+    sonda(LOJA_UM),
+    sonda("loja-dois.exemplo.test", { refs: [REF_B], chave: CHAVE_B }),
+    alias,
+  ]);
+const indeterminadoDoAlias = (alias) =>
+  enderecosIndeterminados(frotaComAlias(alias), politicaBase()).find(
+    (i) => i.dominio === ALIAS,
+  );
+
+Deno.test("3xx definitivo: Location https para um domínio de loja que entra na reserva (o .vercel.app que o porteiro encaminha)", () => {
+  const alias = redirecionando(`https://${LOJA_UM}/?t=1`);
+  assertEquals(indeterminadoDoAlias(alias), undefined);
+  const nova = montarReserva(frotaComAlias(alias), {
+    sha: SHA_1,
+    agora: AGORA,
+  });
+  assertEquals(Object.keys(nova.hosts), ["loja-dois.exemplo.test", LOJA_UM]);
+  for (const status of [301, 302, 307])
+    assertEquals(
+      indeterminadoDoAlias(redirecionando(`https://${LOJA_UM}/`, { status })),
+      undefined,
+      String(status),
+    );
+});
+
+Deno.test("3xx indeterminado: Location para OUTRO host (fora da frota), citando o destino", () => {
+  const i = indeterminadoDoAlias(
+    redirecionando("https://outro-host.exemplo.test/"),
+  );
+  assert(i, "tinha de ser indeterminado");
+  assertStringIncludes(i.motivo, "outro-host.exemplo.test");
+});
+
+Deno.test("3xx indeterminado: 307 para o login da Vercel (proteção de deployment)", () => {
+  const i = indeterminadoDoAlias(
+    redirecionando(
+      `https://vercel.com/login?next=%2Fsso-api%3Furl%3Dhttps%253A%252F%252F${ALIAS}`,
+      { status: 307 },
+    ),
+  );
+  assert(i, "tinha de ser indeterminado");
+  assertStringIncludes(i.motivo, "vercel.com");
+});
+
+Deno.test("3xx indeterminado: sem Location, Location relativo, http, porta ou lixo", () => {
+  for (const location of [
+    null,
+    undefined,
+    "",
+    "/produto/x",
+    `http://${LOJA_UM}/`,
+    `https://${LOJA_UM}:8443/`,
+    `https://${LOJA_UM}./`,
+    "https://",
+    "nao e url",
+  ]) {
+    assert(
+      indeterminadoDoAlias(redirecionando(location)),
+      `Location ${JSON.stringify(location)} tinha de ser indeterminado`,
+    );
+  }
+});
+
+Deno.test("3xx indeterminado: Location para um endereço da frota que NÃO entra (outro redirecionamento, loja instável)", () => {
+  const outroAlias = sonda("loja-um-2.vercel.app", {
+    status: 308,
+    refs: [],
+    chave: null,
+    location: `https://${LOJA_UM}/`,
+  });
+  const inv = inventario([
+    sonda(LOJA_UM),
+    sonda("loja-dois.exemplo.test", { refs: [REF_B], chave: CHAVE_B }),
+    outroAlias,
+    redirecionando("https://loja-um-2.vercel.app/"),
+  ]);
+  assert(
+    enderecosIndeterminados(inv, politicaBase()).some(
+      (i) => i.dominio === ALIAS,
+    ),
+    "encaminhar para outro redirecionamento não prova loja coberta",
+  );
+  const instavel = inventario([
+    sonda(LOJA_UM, { estavel: false }),
+    sonda("loja-dois.exemplo.test", { refs: [REF_B], chave: CHAVE_B }),
+    redirecionando(`https://${LOJA_UM}/`),
+  ]);
+  assert(
+    enderecosIndeterminados(instavel, politicaBase()).some(
+      (i) => i.dominio === ALIAS,
+    ),
+  );
+});
+
+Deno.test("3xx indeterminado: UMA amostra que leva para o login da Vercel basta (as outras levando à loja)", () => {
+  const boa = {
+    status: 308,
+    caderneta: "hit",
+    location: `https://${LOJA_UM}/`,
+  };
+  const login = {
+    status: 307,
+    caderneta: null,
+    location: "https://vercel.com/login",
+  };
+  const i = indeterminadoDoAlias(
+    redirecionando(`https://${LOJA_UM}/`, { amostras: [boa, login, boa] }),
+  );
+  assert(i, "tinha de ser indeterminado");
+  assertStringIncludes(i.motivo, "vercel.com");
+});
+
+Deno.test("3xx sem o contexto do inventário (chamada avulsa) = indeterminado: falha fechada", () => {
+  assertEquals(
+    classificarEndereco(redirecionando(`https://${LOJA_UM}/`), {}).tipo,
+    "indeterminado",
+  );
+});
+
+Deno.test("3xx pela reserva (caderneta reserva) continua indeterminado mesmo levando à loja", () => {
+  assert(
+    indeterminadoDoAlias(
+      redirecionando(`https://${LOJA_UM}/`, { caderneta: "reserva" }),
+    ),
+  );
+});
+
+Deno.test("CLI --gravar: 307 para o login da Vercel recusa a gravação, cita o endereço e não toca a Vercel", async () => {
+  const inv = frotaComAlias(
+    redirecionando("https://vercel.com/login", { status: 307 }),
+  );
+  const { deps, vercel } = depsDoComando({ inv });
+  const r = await executar(["--gravar", "--sha", SHA_1], deps);
+  assertEquals(r.codigo, 1);
+  assertStringIncludes(r.erros.join("\n"), ALIAS);
+  assertEquals(vercel.chamadas.length, 0);
+});
+
+Deno.test("politica.json real: o comentário avisa para preencher globalConfigId só depois do porteiro com T4/T6 no ar", async () => {
+  const politica = JSON.parse(
+    await Deno.readTextFile("scripts/frota/politica.json"),
+  );
+  const c = String(politica._comentario?.reservaDaCaderneta ?? "");
+  assertStringIncludes(c, "globalConfigId");
+  assertStringIncludes(c, "T4/T6");
+  assertStringIncludes(c, "toda release bloqueia");
 });
