@@ -793,7 +793,7 @@ como o cartão de um quarto de hotel: vale enquanto você está hospedado, e o c
 no GitHub, um *environment* (ambiente) chamado `loja-<projeto>`, em que `<projeto>` é o nome da
 loja no `lojas.json` (o campo `projeto`, em minúsculas). O segredo `SUPABASE_ACCESS_TOKEN_<SLUG>`
 da loja fica ali dentro, com esse mesmo nome. **Quem cria a gaveta é a ponte** (a parte da sessão
-que grava o segredo): na primeira vez que uma loja entra numa sessão, a gaveta nasce sozinha;
+que grava o segredo; um workflow que roda para a loja também a cria, vazia): na primeira vez que uma loja entra numa sessão, a gaveta nasce sozinha;
 você não cria nada à mão. Para ver a gaveta no site: **Settings → Environments → loja-<projeto>**.
 Um segredo com esse mesmo nome no nível do **repositório** (Settings → Secrets and variables →
 Actions) é **legado**, do jeito antigo: não é mais onde a loja OAuth procura.
@@ -1012,11 +1012,14 @@ dessas lojas. Os segredos da IKCOUS e da Savy nunca são tocados. Na prática:
   1. Veja quais gavetas existem:
 
      ```powershell
-     gh api "repos/{owner}/{repo}/environments" --jq ".environments[].name"
+     gh api --paginate "repos/{owner}/{repo}/environments" --jq ".environments[].name"
      ```
 
-     **O que aparece:** um nome por linha. Cada `loja-...` é a gaveta de uma loja OAuth. Os
-     outros (hoje, `Preview` e `Production`) não são de loja: não mexa neles.
+     **O que aparece:** um nome por linha (o `--paginate` traz todas as páginas; sem ele, só as 30
+     primeiras). Os `loja-...` de lojas OAuth guardam o segredo delas. Gavetas `loja-...` de lojas
+     que não são OAuth (`loja-ikcous-publicada`, `loja-savy` e as de teste) nascem sozinhas quando um
+     workflow roda para elas e ficam vazias: não mexa. Os outros (hoje, `Preview` e `Production`)
+     não são de loja: não mexa neles.
 
   2. Para cada gaveta `loja-<projeto>` da loja que saiu, veja o que tem dentro (troque
      `<projeto>` pelo nome que apareceu depois de `loja-`):
