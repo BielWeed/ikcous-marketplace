@@ -1340,6 +1340,25 @@ for (const [nome, ajuste, trecho] of [
     "vencida",
   ],
   [
+    // Decisão de 26/11/2026 (fila por banco): apply CANCELADO também vence. A
+    // lista de runs não diz se ele foi cancelado na fila (não gravou) ou no meio
+    // (cada arquivo é UMA requisição com o próprio COMMIT: os anteriores ficam,
+    // e o que estava no ar pode ter comitado no servidor depois do cancelamento).
+    "apply CANCELADO na Savy DEPOIS da 8e (pode ter gravado antes do cancelamento)",
+    {
+      runsAplicar: [
+        {
+          databaseId: 12,
+          displayTitle: "aplicar em savy: x.sql",
+          createdAt: "2026-10-06T19:30:00Z",
+          conclusion: "cancelled",
+          status: "completed",
+        },
+      ],
+    },
+    "vencida",
+  ],
+  [
     "sha do veredicto ≠ commit do run",
     { logs: { 11: log8e(SAVY, SHA) } },
     "sha do veredicto",
