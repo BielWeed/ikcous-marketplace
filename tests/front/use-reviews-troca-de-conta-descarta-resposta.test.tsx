@@ -31,7 +31,8 @@ vi.mock("@/lib/supabase", () => ({
       const builder = {
         select: () => builder,
         eq: () => builder,
-        order: () => rede.resposta,
+        order: () => builder,
+        limit: () => rede.resposta,
       };
       return builder;
     },

@@ -82,6 +82,11 @@ vi.mock("@/lib/supabase", () => ({
         order() {
           return this;
         },
+        // O dublê NÃO aplica o teto da página do produto: devolve todas as
+        // linhas, para os pedaços de 100 ids seguirem exercitados.
+        limit() {
+          return this;
+        },
         maybeSingle() {
           return this;
         },
@@ -174,6 +179,17 @@ it.each([0, 1, 100, 101, 205])(
   async (n) => {
     h.quantidade = n;
     await montar();
+    await act(async () => {
+      await avaliacoes.getReviewsByProduct(`reviews-${n}`);
+    });
+    // A página lê 20 por vez (teto de 26/11/2026): "Ver mais" até a lista
+    // trazer todas, e a última leitura (já com todas) é a medida.
+    while (avaliacoes.resumoDasAvaliacoes?.temMais) {
+      await act(async () => {
+        await avaliacoes.carregarMaisAvaliacoes(`reviews-${n}`);
+      });
+    }
+    h.chamadas = [];
     await act(async () => {
       await avaliacoes.getReviewsByProduct(`reviews-${n}`);
     });

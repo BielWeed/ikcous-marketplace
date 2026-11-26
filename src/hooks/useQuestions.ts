@@ -166,6 +166,11 @@ const contarPerguntas = (soPendentes: boolean) => {
   ) as Promise<{ count: number | null; error: unknown }>;
 };
 
+// Loja grande (26/11/2026): a página do produto mostra as perguntas mais
+// recentes até este teto, nunca o produto inteiro de uma vez (a tela não tem
+// "ver mais" de perguntas; o painel lista todas, em páginas).
+export const PERGUNTAS_POR_LEITURA = 20;
+
 export function useQuestions() {
   const { user, isAdmin, profile } = useAuth();
   const temSessao = !!user;
@@ -246,6 +251,7 @@ export function useQuestions() {
                 .select("*")
                 .eq("product_id", productId)
                 .order("created_at", { ascending: false })
+                .limit(PERGUNTAS_POR_LEITURA)
                 .abortSignal(signal),
             ),
             15000,
@@ -356,6 +362,7 @@ export function useQuestions() {
               .select(selectQuery)
               .eq("product_id", productId)
               .order("created_at", { ascending: false })
+              .limit(PERGUNTAS_POR_LEITURA)
               .abortSignal(signal),
           ),
           15000,
