@@ -16304,7 +16304,7 @@ Deno.test("194a/194b — registradas no menu do conferir-banco-da-loja, nos dois
   );
   assertEquals(
     canais.provasDeObjetos.at(-2).consulta,
-    "192a-conferir-o-admin-copia-e-apaga-as-fotos-aplicado",
-    "anexado logo depois do lote da 20261550",
+    "193a-conferir-o-infinito-nao-entra-no-banco-aplicado",
+    "anexado logo depois do lote da 20261560",
   );
 });

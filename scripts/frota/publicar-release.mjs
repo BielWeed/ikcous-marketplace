@@ -1093,6 +1093,9 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "190b-antes-a-loja-grande-nao-trava-o-balcao-ausente",
   "192a-conferir-o-admin-copia-e-apaga-as-fotos-aplicado",
   "192b-antes-o-admin-copia-e-apaga-as-fotos-ausente",
+  "193a-conferir-o-infinito-nao-entra-no-banco-aplicado",
+  "193b-antes-o-infinito-nao-entra-no-banco-ausente",
+  "193m-medir-infinitos-guardados",
   "194a-conferir-o-endereco-antigo-encaminha-aplicado",
   "194b-antes-o-endereco-antigo-encaminha-ausente",
 ]);

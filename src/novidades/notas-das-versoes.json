@@ -1,4 +1,15 @@
 {
+  "1.5.242": {
+    "titulo": "Teste de pagamento explicado, retirada mais clara e valores mais seguros",
+    "novidades": [],
+    "correcoes": [
+      "Quando a lojista testa a própria loja pagando com a mesma conta do Mercado Pago que recebe, o PIX e o cartão agora explicam por que a cobrança foi recusada e o que fazer: entrar na loja com outro e-mail e pagar com outra conta.",
+      "No pedido de retirada, a ficha mostra o endereço do cadastro como o atual, e o recibo não imprime um endereço que não foi informado no pedido."
+    ],
+    "melhorias": [
+      "A taxa de entrega local, o preço próprio de uma variação e o valor de um cupom não aceitam mais números inválidos."
+    ]
+  },
   "1.5.241": {
     "titulo": "Loja fechada com “Tentar de novo” e mensagens do balcão mais certas",
     "novidades": [],
