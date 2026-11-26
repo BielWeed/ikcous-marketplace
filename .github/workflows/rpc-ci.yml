@@ -1693,6 +1693,18 @@ jobs:
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         timeout-minutes: 3
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-admin-copia-e-apaga-as-fotos-viva.cjs
+      # Migration 20261570000000 (o endereco antigo encaminha para o novo): tabela frota_enderecos_que_encaminham (RLS sem politica,
+      # nada para PUBLIC/anon/authenticated/service_role; gatilho recusa o endereco principal de uma loja; CHECK de host e de motivo;
+      # apagar a loja apaga os enderecos), a porta de leitura resolver_encaminhamento (so o anon; o bloco da chave e o da v2 letra por
+      # letra; devolve o endereco ATUAL, nunca corrente; ativa = false e o proprio host dao zero linhas; so leitura nao grava) e a porta
+      # de troca frota_trocar_dominio (so o dono; 19 recusas sem escrever; as tres escritas numa transacao; a troca invertida volta o
+      # roteamento; falha no meio desfaz tudo; duas conexoes: a segunda espera e e recusada). Reaplicar 2x (LF e CRLF); sem COMMIT
+      # escondido; rollback comum (2x) preserva a tabela; destrutivo exige APAGAR, o comum antes e a caderneta confirmada; pre-voo
+      # recusa sem a 20261490 e com objeto de outra forma. CLONE proprio.
+      - name: Prova viva do endereco antigo que encaminha para o novo (migration 20261570000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        timeout-minutes: 3
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-endereco-antigo-encaminha-viva.cjs
       # Migration 20261384000000 (o pedido pago pelo app exige conta e nao prende o estoque de visitante): a
       # create_marketplace_order_v24 recusa 'online' sem sessao (anon) ANTES de ler carrinho, trancar, inserir pedido, baixar
       # estoque ou gastar cupom (ordem provada por sequencia movida por gatilhos); produto simples e com variacao ficam

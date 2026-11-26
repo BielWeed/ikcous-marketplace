@@ -801,6 +801,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/a-loja-grande-nao-trava-o-balcao-viva.cjs",
     // 20261550: o admin copia e apaga as fotos da loja (politicas SELECT so do admin de agora em products/banners; DELETE RETURNING 1/0; cliente e visitante 0; Public Display convive; reaplicar; rollback; consultas 192a/192b).
     "tests/banco/o-admin-copia-e-apaga-as-fotos-viva.cjs",
+    // 20261570: o endereco antigo encaminha para o novo (tabela fechada, gatilho do principal, porta de leitura com o bloco da chave da v2, porta de troca so do dono com 19 recusas, falha no meio, duas conexoes, rollbacks, pre-voo).
+    "tests/banco/o-endereco-antigo-encaminha-viva.cjs",
     // 20261384: o pedido pago pelo app exige conta (visitante sem conta recusado antes de reservar estoque; logado e pagar na entrega como hoje; retry; concorrencia real; mutantes; rollback; consultas 89a/89b).
     "tests/banco/pedido-pelo-app-exige-conta-viva.cjs",
     "tests/banco/admin-atual-viva.cjs",
