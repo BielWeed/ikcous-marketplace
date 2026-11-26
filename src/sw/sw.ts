@@ -463,6 +463,9 @@ const STATUS_DA_RECUSA_DURADOURA: ReadonlyMap<string, number> = new Map([
  * pane não pode apagar o app offline.
  */
 function ehRecusaDoPorteiro(response: Response): boolean {
+  // Status antes do cabeçalho, como antes do L8: resposta 200 (a imensa
+  // maioria) nem consulta `headers`, então nenhum caminho comum muda.
+  if (response.status !== 503 && response.status !== 410) return false;
   const statusEsperado = STATUS_DA_RECUSA_DURADOURA.get(
     response.headers.get("x-ikcous-porteiro") ?? "",
   );
