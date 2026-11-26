@@ -935,6 +935,56 @@ export function contagemDoTeste(
   return faltam >= 2 ? `Faltam ${faltam} dias` : null;
 }
 
+/**
+ * Só `YYYY-MM-DD` de um dia que existe no calendário: as três colunas são
+ * `date`, então instante, `infinity` ou `2026-02-31` já é sinal torto.
+ */
+function diaRealDoAviso(valor: string | null): string | null {
+  if (!valor || !PADRAO_DIA.test(valor)) return null;
+  return somarDias(valor, 0) === valor ? valor : null;
+}
+
+/**
+ * O teste grátis acabou sem pagamento: a gestão manda `atrasada` com
+ * `teste_ate` = `proxima_cobranca_em` (e, desde 26/11/2026, o `pausa_em`).
+ * Quem só testou não deve nada, então o cartão troca "Atrasada" por "Teste
+ * encerrado" — mas SÓ com o sinal completo e coerente: valor > 0, vencimento
+ * já chegado (dia de São Paulo) e `pausa_em` nulo ou depois do vencimento.
+ * Qualquer sinal torto devolve `null` e o cartão continua o de hoje: na dúvida,
+ * uma dívida de verdade nunca é amaciada. `pagueAte` (véspera da pausa) e
+ * `pausaEm` só vêm enquanto hoje é anterior à pausa.
+ */
+export function avisoDoTesteEncerrado(
+  assinatura: Pick<
+    AssinaturaDaLoja,
+    "status" | "valorMensal" | "proximaCobrancaEm" | "testeAte" | "pausaEm"
+  >,
+  agora: Date = new Date(),
+): {
+  venceuEm: string;
+  valorMensal: number;
+  pagueAte: string | null;
+  pausaEm: string | null;
+} | null {
+  const { status, valorMensal } = assinatura;
+  if (status !== "atrasada") return null;
+  if (valorMensal == null || !Number.isFinite(valorMensal) || valorMensal <= 0)
+    return null;
+  const venceuEm = diaRealDoAviso(assinatura.proximaCobrancaEm);
+  if (!venceuEm || diaRealDoAviso(assinatura.testeAte) !== venceuEm)
+    return null;
+  const hoje = diaEmSaoPaulo(agora);
+  if (venceuEm > hoje) return null;
+  if (assinatura.pausaEm === null) {
+    return { venceuEm, valorMensal, pagueAte: null, pausaEm: null };
+  }
+  const pausaEm = diaRealDoAviso(assinatura.pausaEm);
+  if (!pausaEm || pausaEm <= venceuEm) return null;
+  return hoje < pausaEm
+    ? { venceuEm, valorMensal, pagueAte: somarDias(pausaEm, -1), pausaEm }
+    : { venceuEm, valorMensal, pagueAte: null, pausaEm: null };
+}
+
 // ─── Erro ────────────────────────────────────────────────────────────────
 
 // A fonte única da frase de erro mora em `erro-do-painel.ts`; os hooks do
