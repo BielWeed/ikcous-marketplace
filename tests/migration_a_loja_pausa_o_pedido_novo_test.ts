@@ -1,6 +1,6 @@
 // @ts-nocheck
 /* eslint-disable security/detect-object-injection -- os indices vem de listas fechadas deste arquivo, nunca de entrada de rede. */
-/* eslint-disable security/detect-unsafe-regex, security/detect-non-literal-regexp -- as regexes leem o texto fixo e versionado de uma migration (sem entrada de fora), então não há ReDoS possível; mesma razão dos outros testes migration_*. */
+/* eslint-disable security/detect-unsafe-regex -- as regexes leem o texto fixo e versionado de uma migration (sem entrada de fora), então não há ReDoS possível; mesma razão dos outros testes migration_*. */
 // A LOJA PAUSA O PEDIDO NOVO — leitura do TEXTO da 20261600000000.
 // O COMPORTAMENTO (a recusa do pedido online, a regra das datas, a marca do dia da suspensa, o motivo, a leitura do painel, reaplicar, rollback, pre/pos-voo
 // e os mutantes) e' provado no Postgres efemero por tests/banco/a-loja-pausa-o-pedido-novo-viva.cjs; aqui ficam as ancoras que se leem do arquivo, sem banco:
