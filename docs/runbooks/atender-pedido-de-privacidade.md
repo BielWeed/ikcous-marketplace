@@ -474,6 +474,20 @@ BEGIN
   GET DIAGNOSTICS v_n = ROW_COUNT;
   v_rel := v_rel || format(E'devoluções limpas de texto e fotos: %s\n', v_n);
 
+  -- Livro de registro (20261510): as versões ANTIGAS de pedido e devolução dela, inclusive as que os
+  -- UPDATEs logo acima acabaram de guardar (com o nome e o telefone de antes). Sai tudo em que ela é a
+  -- titular; por isso este passo vem DEPOIS de todo UPDATE em pedido e devolução. Loja que ainda não
+  -- recebeu a migration não tem o livro: o bloco só avisa. FICAM, de propósito, as linhas em que quem
+  -- é o uid dela e o titular é NULL (estoque, cupom: não são dela): até 90 dias, elas ligam esse código
+  -- (sem nome) à compra, como o resto do banco faz com o uid que este roteiro mantém.
+  IF to_regclass('public.livro_de_registro') IS NOT NULL THEN
+    DELETE FROM public.livro_de_registro WHERE titular = v_id;
+    GET DIAGNOSTICS v_n = ROW_COUNT;
+    v_rel := v_rel || format(E'versões antigas guardadas no livro de registro apagadas: %s\n', v_n);
+  ELSE
+    v_rel := v_rel || E'livro de registro: esta loja ainda não tem o livro (nada a apagar)\n';
+  END IF;
+
   -- Login: NUNCA apagar. E-mail sem identidade, cadastro esvaziado, conta bloqueada, sessões encerradas.
   -- Também esvazia o pedido pendente de troca de e-mail/telefone e os códigos em andamento.
   UPDATE auth.users
@@ -772,7 +786,15 @@ O que **fica de propósito**: a linha do pedido de privacidade (a tabela
 `pedidos_de_privacidade`, que guarda o e-mail novo quando o pedido era de
 correção — é o registro legal do que foi pedido); `vor_receipts` (cadeia de
 provas encadeadas por hash: mexer quebraria a prova); o identificador (um código
-sem nome) que continua ligando pedidos ao login bloqueado.
+sem nome) que continua ligando pedidos ao login bloqueado; e, no livro de registro
+(`livro_de_registro`, as versões antigas guardadas por 90 dias), o que não tem a
+cliente como titular: produto, cupom, caixa e configuração da loja (não são dela)
+e a versão antiga de pedido feito **sem conta** (visitante), que sai sozinha em
+até 90 dias. As versões em que ela é a titular o passo 4 já apagou. Também ficam
+as linhas em que ela é quem **fez** a mudança (`quem` = o identificador dela) mas
+o titular é vazio, como a baixa de estoque e o uso do cupom da compra dela: por
+até 90 dias elas ligam o mesmo código sem nome à compra, do mesmo jeito que o
+identificador que este roteiro mantém liga pedidos ao login bloqueado.
 
 ## Passo 7 — Enviar a confirmação e marcar o pedido no painel
 
