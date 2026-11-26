@@ -288,6 +288,13 @@ async function comportamento(c) {
         ["ok", []],
         `sem atalho: chave ${rotulo} não resolve por ${fn}`,
       );
+      // A cada chamada, não depois do laço: um atalho gravado pela chave errada vira, já na chamada seguinte, a porta que a deixa
+      // entrar — conferido só no fim, o defeito aparecia como "resolve" e escondia a causa (a gravação).
+      assert.deepEqual(
+        await atalho(c),
+        ATALHO_VAZIO,
+        `sem atalho: chave ${rotulo} não grava nada (${fn})`,
+      );
     }
   assert.deepEqual(
     await atalho(c),
@@ -1101,7 +1108,8 @@ const MUTANTES = [
         `  ELSE\n    ${CONFERE_BCRYPT}`,
         `  ELSE\n    UPDATE public.frota_segredo fs SET hash_rapido = encode(extensions.digest(p_chave, 'sha256'), 'hex'), hash_rapido_de = v_hash WHERE fs.id = 1;\n    ${CONFERE_BCRYPT}`,
       ),
-    "sem atalho: chave errada, NULL e vazia não gravam nada",
+    // Morre na 1ª chamada (v1, "errada"): ela devolve zero linhas, mas o atalho da chave errada já ficou gravado.
+    "sem atalho: chave errada não grava nada (public.resolver_loja(text, text))",
   ],
   [
     "sem atalho (bcrypt em toda chamada)",
