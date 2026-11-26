@@ -23,8 +23,9 @@ vi.mock("@/lib/supabase", () => ({
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-function pedido(nome: string): Order {
+function pedido(nome: string, sobre: Partial<Order> = {}): Order {
   return {
+    ...sobre,
     id: "ped-nome-1",
     customer: {
       name: nome,
@@ -70,13 +71,16 @@ describe("ficha do pedido: WhatsApp usa o nome do cliente tratado", () => {
     vi.unstubAllGlobals();
   });
 
-  async function mensagemAoTocar(nome: string): Promise<string> {
+  async function mensagemAoTocar(
+    nome: string,
+    sobre: Partial<Order> = {},
+  ): Promise<string> {
     const { OrderDetail } = await import(
       "@/components/admin/orders/OrderDetail"
     );
     await act(async () => {
       raiz.render(
-        <OrderDetail order={pedido(nome)} onStatusChange={vi.fn()} />,
+        <OrderDetail order={pedido(nome, sobre)} onStatusChange={vi.fn()} />,
       );
     });
     expect(hospedeiro.textContent).toContain("(34) 99999-8888");
@@ -99,5 +103,17 @@ describe("ficha do pedido: WhatsApp usa o nome do cliente tratado", () => {
   ])("nome %s", async (_descricao, nome, abertura) => {
     const texto = await mensagemAoTocar(nome);
     expect(texto.startsWith(`${abertura} Entramos em contato`)).toBe(true);
+  });
+
+  // Cliente cadastrada sem nome no perfil compra no balcão: o banco grava
+  // "Venda no balcão" em `customer_name`. O recibo já diz "Cliente"; a
+  // mensagem diz o mesmo que diz para nome vazio, nunca "Olá Venda no balcão!".
+  it("venda de balcão de cliente cadastrada sem nome: abre como nome vazio", async () => {
+    const texto = await mensagemAoTocar("Venda no balcão", {
+      canal: "presencial",
+      userId: "cliente-sem-nome",
+    });
+    expect(texto).toMatch(/^Olá Cliente! Entramos em contato/);
+    expect(texto).not.toContain("Venda no balcão");
   });
 });

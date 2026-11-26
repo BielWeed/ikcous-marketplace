@@ -53,6 +53,7 @@ import {
   linkDeRastreioDeCodigoValido,
   normalizarCodigoDeRastreio,
 } from "@/lib/link-de-rastreio";
+import { nomeDaClienteNoPedido } from "@/lib/nome-da-cliente-no-balcao";
 import { nomeOuReserva } from "@/lib/nome-visivel";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import {
@@ -2743,7 +2744,7 @@ export const OrderDetail = memo(function OrderDetail({
 
   const handleWhatsAppDirect = () => {
     if (!whatsappUrl) return;
-    const message = `Olá ${nomeOuReserva(order.customer?.name, "Cliente")}! Entramos em contato sobre o seu pedido #${numeroDoPedido(order.id)}.`;
+    const message = `Olá ${nomeOuReserva(nomeDaClienteNoPedido(order), "Cliente")}! Entramos em contato sobre o seu pedido #${numeroDoPedido(order.id)}.`;
     abrirWhatsapp(`${whatsappUrl}?text=${encodeURIComponent(message)}`);
   };
 

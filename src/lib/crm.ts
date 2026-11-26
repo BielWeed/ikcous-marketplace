@@ -14,6 +14,7 @@
  * entrada e saída.
  */
 import { paraCentavos } from "@/lib/financeiro";
+import { NOME_DE_VENDA_SEM_CLIENTE } from "@/lib/nome-da-cliente-no-balcao";
 import { semMenosZero } from "@/lib/percentual";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 import type {
@@ -605,7 +606,10 @@ export function classesDoTom(tom: TomDoCrm): ClassesDoTom {
 
 // ─── WhatsApp ────────────────────────────────────────────────────────────
 
+// O literal que o balcão grava para quem não tem nome não é nome de gente: a
+// cliente sem nome no perfil chega aqui com ele, e é saudada como nome vazio.
 function primeiroNome(nome: string | null | undefined): string | null {
+  if (nome?.trim() === NOME_DE_VENDA_SEM_CLIENTE) return null;
   const primeiro = nome?.trim().split(/\s+/)[0];
   return primeiro ? primeiro : null;
 }

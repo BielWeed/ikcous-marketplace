@@ -179,6 +179,21 @@ describe("AdminOrdersView — WhatsApp de status chama a loja pelo nome que a lo
     );
   });
 
+  // Cliente cadastrada sem nome no perfil compra no balcão: o banco grava
+  // "Venda no balcão" em `customer_name`. O recibo já diz "Cliente"; a
+  // mensagem de status diz o mesmo que diz para nome vazio.
+  it("venda de balcão de cliente cadastrada sem nome: abre como nome vazio", async () => {
+    nomeConfigurado = "Loja Teste";
+    const mensagem = await tocarNoWhatsapp({
+      canal: "presencial",
+      userId: "cliente-sem-nome",
+      status: "delivered",
+      customer: { name: "Venda no balcão", whatsapp: "34999999999" },
+    });
+    expect(mensagem).toMatch(/^Olá Cliente!\n\nSeu pedido #-WHATS/);
+    expect(mensagem).not.toContain("Venda no balcão");
+  });
+
   it("loja renomeada: a mensagem usa o nome novo, nunca o do app", async () => {
     nomeConfigurado = "  Doces da Ana  ";
     const mensagem = await tocarNoWhatsapp();
