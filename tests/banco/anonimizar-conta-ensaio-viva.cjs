@@ -417,7 +417,34 @@ async function semear(c) {
     `INSERT INTO public.pedidos_de_privacidade (user_id, tipo) VALUES ($1, 'excluir_conta')`,
     [ALVO],
   );
+  await editarComOLivro(c);
   await semearLogin(c);
+}
+
+// Edicoes da lojista DEPOIS da compra (livro de registro, 20261510): cada UPDATE em pedido e devolucao guarda a versao ANTIGA no
+// livro, com o nome/telefone de antes e a titular = a dona do pedido. Ida e volta (acrescenta um espaco e tira), para o estado final
+// das linhas ser o mesmo de antes e as outras provas nao mudarem: so o livro ganha linhas. Duas edicoes dela (pedido e devolucao,
+// 4 versoes antigas) e uma da vizinha (2 versoes antigas, que a anonimizacao dela NAO pode tocar).
+const EDITADAS_NO_LIVRO = [
+  [
+    "marketplace_orders",
+    "customer_name",
+    "9b1caaaa-0000-4000-8000-000000000001",
+  ],
+  ["devolucoes", "detalhe", "9b1cdddd-0000-4000-8000-000000000001"],
+  ["marketplace_orders", "notes", "9b1caaaa-0000-4000-8000-0000000000aa"],
+];
+async function editarComOLivro(c) {
+  for (const [tabela, coluna, id] of EDITADAS_NO_LIVRO) {
+    await c.query(
+      `UPDATE public.${tabela} SET ${coluna} = ${coluna} || ' ' WHERE id = $1`,
+      [id],
+    );
+    await c.query(
+      `UPDATE public.${tabela} SET ${coluna} = rtrim(${coluna}) WHERE id = $1`,
+      [id],
+    );
+  }
 }
 
 // O que o Supabase guarda do LOGIN dela fora do que o app conhece: pedido pendente
@@ -1417,6 +1444,8 @@ PROVAS.push({
         "public.user_addresses",
         "public.notificacoes",
         "public.reviews",
+        // a versao antiga do pedido e da devolucao dela, guardada pelo livro de registro (20261510)
+        "public.livro_de_registro",
         // o que o Supabase guarda do login fora das tabelas do app
         "auth.audit_log_entries",
         "auth.one_time_tokens",
@@ -1548,6 +1577,11 @@ const MUTANTES = [
     sobra: "auth.mfa_factors",
   },
   {
+    nome: "sem apagar as versoes antigas dela no livro de registro",
+    mutar: (sql) => semOPasso(sql, "DELETE FROM public.livro_de_registro"),
+    sobra: "public.livro_de_registro",
+  },
+  {
     nome: "sem esvaziar a troca de e-mail pendente",
     mutar: (sql) => trocando(sql, "email_change = '',", ""),
     sobra: "auth.users",
@@ -1639,6 +1673,66 @@ PROVAS.push({
         )
       ).n;
       assert.strictEqual(n, 1, "sem zerar o IP, o IP dela tem de continuar lá");
+    });
+  },
+});
+
+PROVAS.push({
+  nome: "(h) livro de registro (20261510): as versoes antigas em que ela e' a titular saem (inclusive as que a propria anonimizacao gera), as da vizinha ficam intactas e o relatorio conta",
+  corpo: async (c) => {
+    await emTransacao(c, async () => {
+      await apagarFotosDoStorage(c);
+      assert.notEqual(
+        (await um(c, "SELECT to_regclass('public.livro_de_registro') AS t")).t,
+        null,
+        "o clone deve estar com o livro de registro (20261510)",
+      );
+      const livro = async (uid) =>
+        um(
+          c,
+          `SELECT count(*)::int AS n, md5(coalesce(string_agg(to_jsonb(l)::text, '|' ORDER BY l.id), '')) AS h
+             FROM public.livro_de_registro l WHERE l.titular = $1`,
+          [uid],
+        );
+      const dela = await livro(ALVO);
+      assert.strictEqual(
+        dela.n,
+        4,
+        "as edicoes da lojista guardaram 4 versoes antigas dela",
+      );
+      const vizinha = await livro(VIZINHA);
+      assert.strictEqual(vizinha.n, 2, "e 2 da vizinha");
+      const avisos = [];
+      const ouvir = (msg) => avisos.push(msg.message);
+      c.on("notice", ouvir);
+      let r;
+      try {
+        r = await tentar(c, anonimizar(ALVO, true));
+      } finally {
+        c.removeListener("notice", ouvir);
+      }
+      assert.ok(r.ok, `valendo falhou: ${r.mensagem}`);
+      assert.strictEqual(
+        (await livro(ALVO)).n,
+        0,
+        "nao sobra versao antiga dela no livro",
+      );
+      assert.deepStrictEqual(
+        await livro(VIZINHA),
+        vizinha,
+        "o livro da vizinha fica intacto",
+      );
+      const linha = avisos
+        .join("\n")
+        .match(
+          /versões antigas guardadas no livro de registro apagadas: (\d+)/,
+        );
+      assert.ok(
+        linha,
+        `o relatorio devia contar o livro; veio: ${avisos.join(" | ")}`,
+      );
+      // As 4 das edicoes + as que os UPDATEs da propria anonimizacao (pedidos e devolucao) acabaram de guardar.
+      assert.ok(Number(linha[1]) > dela.n, `o relatorio contou ${linha[1]}`);
     });
   },
 });
