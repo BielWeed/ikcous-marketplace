@@ -308,7 +308,9 @@ Deno.test("rollback destrutivo: exige a confirmacao escrita E o rollback comum a
 });
 
 Deno.test("183a/183b: rol fechado (9 e 5 linhas) igual aos rotulos do SQL, UM statement, so catalogo (nenhuma linha da caderneta nem do historico), md5 da migration", () => {
+  // eslint-disable-next-line security/detect-object-injection -- A183 e B183 são constantes literais deste teste.
   const rolA = ROL_FECHADO_POR_CONSULTA[A183];
+  // eslint-disable-next-line security/detect-object-injection -- A183 e B183 são constantes literais deste teste.
   const rolB = ROL_FECHADO_POR_CONSULTA[B183];
   assertEquals(rolA?.length, 9);
   assertEquals(rolB?.length, 5);

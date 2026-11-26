@@ -1,6 +1,6 @@
 "use strict";
-/* eslint-disable security/detect-object-injection, security/detect-non-literal-fs-filename --
- * Toda chave indexada vem de constante do próprio teste; os únicos caminhos de arquivo são os
+/* eslint-disable security/detect-object-injection, security/detect-non-literal-fs-filename, security/detect-non-literal-regexp --
+ * Toda chave indexada e todo fragmento de RegExp vêm de constante do próprio teste; os únicos caminhos de arquivo são os
  * das migrations 20261460/20261470, dos rollbacks e das consultas 183a/183b dentro do repositório. */
 /**
  * PROVA VIVA da migration 20261470000000_a_loja_muda_de_estado_so_pela_porta.sql contra o Postgres EFÊMERO com as
