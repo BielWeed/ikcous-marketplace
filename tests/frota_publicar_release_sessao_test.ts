@@ -729,6 +729,125 @@ Deno.test("sessão 2: o fechar tem teto — DELETE que não responde não prende
   );
 });
 
+// --- revisão Opus de 4079c0c41: o relógio não derruba uma rodada e a
+// saída 0 só existe com o GitHub limpo ---
+
+Deno.test("sessão 2 (revisão, a): o relógio vence DURANTE o promover — a rodada termina, o relatório sai, e só depois a sessão fecha e apaga", async () => {
+  const expiraEm = AGORA + 5 * HORA;
+  let soltarPromote = () => {};
+  const promoteEmVoo = new Promise((r) => {
+    soltarPromote = r;
+  });
+  let noPromote = false;
+  const RELATORIO_POS = `conferência pós-promote: LOJA_TROCADA — vercel rollback ${DPL_ANTERIOR} --yes`;
+  await comSessao(
+    {
+      acesso: { expiraEm },
+      respostas: ["promover"],
+      roteiro: [
+        { codigo: 0 },
+        async (_opcoes, _deps) => {
+          noPromote = true;
+          await promoteEmVoo; // o vercel promote e a conferência, lentos
+          return {
+            codigo: 1,
+            relatorio: RELATORIO_POS,
+            bloqueios: [],
+            lojas: [],
+            producaoAnterior: DPL_ANTERIOR,
+          };
+        },
+      ],
+    },
+    async (m) => {
+      const r = m.rodar();
+      await ate(() => noPromote, "o promover começar");
+      // a checagem do início da rodada passou; agora o relógio vence
+      m.relogio.t = expiraEm - AVISO_DE_VENCIMENTO_MS + MIN;
+      m.agendados[0].fn();
+      await esperar(30);
+      assertEquals(
+        m.github.apagados.length,
+        0,
+        "o relógio fechou a sessão no meio do promover",
+      );
+      soltarPromote();
+      assertEquals(await r, 1);
+      const texto = m.texto();
+      const iRelatorio = texto.indexOf(RELATORIO_POS);
+      const iFechando = texto.indexOf("Fechando a sessão");
+      assert(iRelatorio >= 0, "o relatório pós-promote sumiu");
+      assert(iFechando > iRelatorio, "fechou antes de o relatório sair");
+      assertStringIncludes(texto, "o token vence às");
+      // fechou ANTES de ler a próxima linha
+      assertEquals(m.entrada.perguntas.length, 1);
+      assertEquals(m.publicar.chamadas.length, 2);
+      assertFechouLimpo(m);
+    },
+  );
+});
+
+Deno.test("sessão 2 (revisão, b): o relógio vence com o prompt parado — fecha na hora, sem nenhuma entrada nova", async () => {
+  const expiraEm = AGORA + 5 * HORA;
+  await comSessao(
+    { acesso: { expiraEm }, roteiro: [{ codigo: 0 }] },
+    async (m) => {
+      const r = m.rodar();
+      await ate(() => m.entrada.perguntas.length === 1, "o prompt");
+      m.relogio.t = expiraEm - AVISO_DE_VENCIMENTO_MS;
+      m.agendados[0].fn();
+      await ate(
+        () => m.github.apagados.length === 2,
+        "o fechar começar sem esperar o dono",
+        2000,
+      );
+      assertEquals(await r, 0);
+      assertEquals(m.publicar.chamadas.length, 1);
+      assertEquals(m.entrada.perguntas.length, 1);
+      assertFechouLimpo(m);
+    },
+  );
+});
+
+Deno.test("sessão 2 (revisão, c): promover publicou mas o fechar NÃO apagou 1 dos 2 segredos — a saída não é 0", async () => {
+  await comSessao(
+    {
+      respostas: ["promover"],
+      roteiro: [{ codigo: 0 }, { codigo: 0 }],
+      github: { apagarFalha: [NOME_DOIS] },
+    },
+    async (m) => {
+      const codigo = await m.rodar();
+      assert(codigo !== 0, `saiu ${codigo} com segredo no GitHub`);
+      assertEquals(codigo, 1);
+      assertEquals(m.github.noGitHub(), [NOME_DOIS]);
+      assertStringIncludes(m.texto(), `NÃO apagado: ${NOME_DOIS}`);
+      assertStringIncludes(m.texto(), "segredos apagados: 1 de 2");
+    },
+  );
+});
+
+Deno.test("sessão 2 (revisão, c): `sair` depois de um ensaio PRONTO com o fechar estourando o teto — a saída não é 0", async () => {
+  await comSessao(
+    {
+      respostas: ["sair"],
+      roteiro: [{ codigo: 0 }],
+      github: { segurarApagar: true },
+      amb: { tetoDoFecharMs: 40 },
+    },
+    async (m) => {
+      assertEquals(await m.rodar(), 1);
+      assertStringIncludes(m.texto(), "--faxina");
+      m.github.soltar();
+      await ate(
+        () => m.acessoChamadas.liberar.length === 2,
+        "o fechar em segundo plano",
+      );
+      await esperar(20);
+    },
+  );
+});
+
 // ====================================================================
 // 3. mudança 2: o fechar não depende de processo filho
 // ====================================================================

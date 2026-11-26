@@ -80,7 +80,9 @@
  * Uso:
  *   node scripts/frota/publicar-release.mjs --sha <40hex> --deployment <dpl_…> [--promover] [--json <arquivo>]
  * Saída: 0 = pronto (ensaio) ou publicado e conferido; 1 = bloqueado ou
- * conferência pós-promote falhou; 2 = uso errado.
+ * conferência pós-promote falhou; 2 = uso errado. Na --sessao e na --faxina,
+ * 1 também quando o fechar não confirmou que TODOS os segredos das lojas OAuth
+ * saíram do GitHub (SAIDA_SEGREDO_NAO_APAGADO): 0 só com o GitHub limpo.
  */
 
 import { execFile, execFileSync } from "node:child_process";
@@ -3249,6 +3251,11 @@ export const AVISO_DE_VENCIMENTO_MS = 45 * 60 * 1000;
 /** Teto do fechar: a janela fechada dá ~10 s antes de o Windows matar o processo. */
 export const TETO_DO_FECHAR_MS = 8000;
 
+/** A saída quando o fechar não confirmou que todos os segredos saíram (a
+ * mesma da --faxina que deixa sobra): a última rodada 0 vira 1; outro código
+ * diferente de 0 fica como está. */
+export const SAIDA_SEGREDO_NAO_APAGADO = 1;
+
 /** Os sinais que fecham a sessão (no Windows: Ctrl+C, Ctrl+Break, janela fechada). */
 export const SINAIS_DA_SESSAO = ["SIGINT", "SIGBREAK", "SIGHUP"];
 
@@ -3357,8 +3364,11 @@ export async function rodarFaxina({ cadastro, gh, escrever }) {
  * promover que publicou, exceção no ensaio, SIGINT/SIGBREAK/SIGHUP do processo,
  * Ctrl+C e fim da entrada no prompt (rl "SIGINT"/"close": com o readline em
  * modo cru o Ctrl+C não vira sinal do processo), e o token a menos de
- * AVISO_DE_VENCIMENTO_MS de vencer (antes de cada rodada e por um relógio
- * enquanto o prompt espera). O tratador é persistente: o 2º sinal só avisa que
+ * AVISO_DE_VENCIMENTO_MS de vencer (antes de cada rodada e por um relógio:
+ * com o prompt em espera ele fecha na hora; no meio de uma rodada só marca, e
+ * o fechar vem quando a rodada termina, antes de ler a próxima linha — um
+ * `promover` em voo nunca perde o relatório pós-promote). O tratador é
+ * persistente: o 2º sinal só avisa que
  * está apagando. Sinal na abertura interrompe a ponte, que apaga todos os nomes
  * OAuth. `sair` e `promover` só fecham sem run vivo dos workflows que leem o
  * segredo; sinal e vencimento fecham mesmo assim, avisando.
@@ -3368,7 +3378,8 @@ export async function rodarFaxina({ cadastro, gh, escrever }) {
  *   sinais { on, off }, runsEmAndamento, agora?, agendar?, publicar?,
  *   matarTokenNoFechar?, minimoMs?, tetoDoFecharMs?, gravarJson?
  * Devolve o código de saída: o da última rodada (1 se nenhuma terminou; 2 se o
- * ensaio lançou exceção).
+ * ensaio lançou exceção), ou SAIDA_SEGREDO_NAO_APAGADO no lugar de um 0 quando
+ * o fechar não confirmou que todos os segredos saíram do GitHub.
  */
 export async function rodarSessao(opcoes, amb) {
   const { sha, deploymentId } = opcoes;
@@ -3396,6 +3407,10 @@ export async function rodarSessao(opcoes, amb) {
     terminou = ok;
   });
   let pararRelogio = () => {};
+  // O relógio do vencimento só fecha com o prompt em espera; numa rodada ele
+  // marca `vencerAoVoltar` e o laço fecha antes de perguntar de novo.
+  let noPrompt = false;
+  let vencerAoVoltar = false;
 
   function relatarFechamento(r) {
     const nomes = sessao.lojas.map((l) => l.nome);
@@ -3418,7 +3433,11 @@ export async function rodarSessao(opcoes, amb) {
       );
   }
 
-  /** Fecha UMA vez e resolve o fim com `codigo`. Nunca lança. */
+  /**
+   * Fecha UMA vez e resolve o fim com `codigo` — trocado por
+   * SAIDA_SEGREDO_NAO_APAGADO se era 0 e o fechar não confirmou que todos os
+   * segredos saíram (estouro do teto, exceção ou algum NÃO apagado). Nunca lança.
+   */
   async function terminar(codigo, aviso) {
     if (fase !== "aberta") return;
     fase = "fechando";
@@ -3427,15 +3446,21 @@ export async function rodarSessao(opcoes, amb) {
     dizer(
       "Fechando a sessão: tirando os segredos das lojas OAuth do GitHub...",
     );
+    let limpo = false;
     try {
-      relatarFechamento(await comTeto(sessao.fechar(), tetoMs));
+      const r = await comTeto(sessao.fechar(), tetoMs);
+      relatarFechamento(r);
+      limpo =
+        r !== ESTOUROU &&
+        Array.isArray(r?.naoApagados) &&
+        r.naoApagados.length === 0;
     } catch {
       dizer(
         "o fechar falhou: rode AGORA node scripts/frota/publicar-release.mjs --faxina",
       );
     }
     fase = "fechada";
-    terminou(codigo);
+    terminou(!limpo && codigo === 0 ? SAIDA_SEGREDO_NAO_APAGADO : codigo);
   }
 
   const avisoDeVencimento = () =>
@@ -3523,9 +3548,18 @@ export async function rodarSessao(opcoes, amb) {
       }
       promover = false;
       for (;;) {
-        const resposta = String(await entrada.perguntar(PROMPT_DA_SESSAO))
-          .trim()
-          .toLowerCase();
+        if (vencerAoVoltar) {
+          await terminar(ultimo ?? 1, avisoDeVencimento());
+          return;
+        }
+        let linha;
+        noPrompt = true;
+        try {
+          linha = await entrada.perguntar(PROMPT_DA_SESSAO);
+        } finally {
+          noPrompt = false;
+        }
+        const resposta = String(linha).trim().toLowerCase();
         if (fase !== "aberta") return;
         if (resposta === "") break;
         if (resposta === "promover") {
@@ -3574,7 +3608,10 @@ export async function rodarSessao(opcoes, amb) {
       `Sessão aberta. Segredos gravados no GitHub: ${sessao.lojas.map((l) => l.nome).join(", ")}; vale até ${horaLocal(sessao.validaAte)} (fecha sozinha às ${horaLocal(sessao.validaAte - AVISO_DE_VENCIMENTO_MS)}). Cole os comandos gh workflow run em OUTRA janela.`,
     );
     pararRelogio = agendar(
-      () => void terminar(ultimo ?? 1, avisoDeVencimento()),
+      () => {
+        if (noPrompt) void terminar(ultimo ?? 1, avisoDeVencimento());
+        else vencerAoVoltar = true;
+      },
       Math.max(0, sessao.validaAte - AVISO_DE_VENCIMENTO_MS - agora()),
     );
     laco().catch((e) =>
