@@ -30,8 +30,13 @@
 "use strict";
 
 const { sair, lerDatabaseUrlEfemero } = require("./util.cjs");
-
-const PAPEIS_DE_FABRICA = ["anon", "authenticated", "service_role"];
+// Papéis e default privileges de fábrica: a MESMA fonte que o instalador do
+// banco da loja nova (scripts/frota/instalador-banco.mjs) aplica antes da 1ª
+// migration — o CI prova o banco que a loja nova recebe.
+const {
+  PAPEIS_DE_FABRICA,
+  comandosDosPrivilegiosPadrao,
+} = require("./privilegios-padrao.cjs");
 
 // Contrib do image oficial postgres:17 — o conjunto que a fila de migrations
 // REFERENCIA sem nunca criar (o Supabase provisiona de fábrica; medido na
@@ -91,17 +96,11 @@ async function main() {
     // blindagem (20261090*/091*) pressupõem — achado da 1ª rodada de
     // depuração: a guarda da 114 reprova "anon perdeu EXECUTE em v23/v24"
     // porque sem os defaults de fábrica NENHUMA função nasce alcançável.
-    for (const papel of PAPEIS_DE_FABRICA) {
-      // Nomes vêm de lista fixa deste arquivo — nunca entrada externa.
-      await cliente.query(
-        `ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO "${papel}"`,
-      );
-      await cliente.query(
-        `ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO "${papel}"`,
-      );
-      await cliente.query(
-        `ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO "${papel}"`,
-      );
+    // Os comandos moram em privilegios-padrao.cjs (fonte única, 26/11/2026:
+    // projeto Supabase novo nasce SEM esta regra desde 30/05/2026, e o
+    // instalador da loja nova a aplica com o mesmo módulo).
+    for (const comando of comandosDosPrivilegiosPadrao()) {
+      await cliente.query(comando);
     }
     console.log(
       "[provisionar] default privileges de fábrica (public: ALL em tabelas/sequências, EXECUTE em funções → anon/authenticated/service_role).",

@@ -3391,6 +3391,21 @@ const ROL_DA_184B = [
   "frota_lojas e frota_segredo existem com o mesmo dono da resolver_loja e da resolver_loja_com_estado",
   "a 20261460000000 esta aplicada: resolver_loja e resolver_loja_com_estado com os corpos dela (md5)",
 ];
+// 185 (privilegios padrao de public, SO LEITURA, sem migration: o que objeto NOVO de public criado pelo postgres recebe pelo ALTER DEFAULT
+// PRIVILEGES — a regra que projeto Supabase novo nao tem desde 30/05/2026 e que o instalador da loja nova reaplica). 8 linhas; a 8a e so
+// registro (quem recebe EXECUTE em funcao nova). AINDA FORA de ROL_FECHADO_POR_CONSULTA: entrar la exige a MESMA linha em
+// CONSULTAS_DE_ROL_FECHADO de scripts/frota/publicar-release.mjs (tests/ci_conferir_banco_test.ts e frota_publicar_release_test.ts
+// conferem que as duas listas sao iguais). Ate la o workflow roda a 185 e o veredito sai sem ` rol=`.
+const ROL_DA_185 = [
+  "controle: catalogo publico visivel",
+  "tabelas novas de public criadas pelo postgres: anon recebe SELECT, INSERT, UPDATE e DELETE",
+  "tabelas novas de public criadas pelo postgres: authenticated recebe SELECT, INSERT, UPDATE e DELETE",
+  "tabelas novas de public criadas pelo postgres: service_role recebe SELECT, INSERT, UPDATE e DELETE",
+  "sequencias novas de public criadas pelo postgres: anon recebe USAGE e SELECT",
+  "sequencias novas de public criadas pelo postgres: authenticated recebe USAGE e SELECT",
+  "sequencias novas de public criadas pelo postgres: service_role recebe USAGE e SELECT",
+  "funcoes novas de public criadas pelo postgres: quem recebe EXECUTE (so registro, esperado = o que o provisionador do CI define)",
+];
 const ROL_FECHADO_POR_CONSULTA = {
   "184a-conferir-a-caderneta-fecha-para-o-service-role-aplicado": ROL_DA_184A,
   "184b-antes-a-caderneta-fecha-para-o-service-role-ausente": ROL_DA_184B,
@@ -4482,6 +4497,7 @@ module.exports = {
   ROL_DA_51B,
   ROL_DA_52A,
   ROL_DA_52B,
+  ROL_DA_185,
   ROL_FECHADO_POR_CONSULTA,
   estruturaDoRolFechado,
   FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,

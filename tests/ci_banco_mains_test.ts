@@ -32,6 +32,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
@@ -1244,6 +1245,29 @@ Deno.test("provisionar: banco vazio cria os 3 papéis, os default privileges, as
     "Banco efêmero provisionado: papéis, extensões contrib, auth.* de fábrica e pg_cron emulado.",
   );
   assertEquals(r.encerrou, true);
+});
+
+Deno.test("provisionar: os default privileges vêm de privilegios-padrao.cjs, em bloco, logo depois dos papéis e antes do schema extensions (a mesma sequência de antes da extração)", async () => {
+  const r = await rodar({ script: "provisionar-efemero.cjs" });
+  assertEquals(r.code, 0, r.stdout + r.stderr);
+  const { comandosDosPrivilegiosPadrao } = createRequire(import.meta.url)(
+    "../scripts/ci/banco/privilegios-padrao.cjs",
+  );
+  const comandos = comandosDosPrivilegiosPadrao();
+  assertEquals(comandos.length, 9);
+  const i = r.consultas.indexOf(comandos[0]);
+  assert(i > 0, "o 1º comando dos privilégios padrão não foi enviado");
+  assertEquals(r.consultas.slice(i, i + comandos.length), comandos);
+  assertEquals(r.consultas[i - 1], 'CREATE ROLE "service_role" NOLOGIN');
+  assertEquals(
+    r.consultas[i + comandos.length],
+    'CREATE SCHEMA IF NOT EXISTS "extensions"',
+  );
+  assertEquals(
+    r.consultas.filter((q) => q.includes("DEFAULT PRIVILEGES")).length,
+    9,
+    "nenhum ALTER DEFAULT PRIVILEGES a mais nem a menos",
+  );
 });
 
 Deno.test("provisionar: papel que JÁ existe não é recriado; os outros são", async () => {

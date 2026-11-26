@@ -31,8 +31,13 @@
 
 const { Client } = require("pg");
 const { falhar, lerDatabaseUrlEfemera } = require("./efemero.cjs");
-
-const PAPEIS_DE_FABRICA = ["anon", "authenticated", "service_role"];
+// Papéis e default privileges de fábrica: a MESMA fonte do db-ci
+// (provisionar-efemero.cjs) e do instalador do banco da loja nova
+// (scripts/frota/instalador-banco.mjs, que os aplica antes da 1ª migration).
+const {
+  PAPEIS_DE_FABRICA,
+  comandosDosPrivilegiosPadrao,
+} = require("../../scripts/ci/banco/privilegios-padrao.cjs");
 
 const EXTENSOES_CONTRIB = [
   { nome: "unaccent", esquema: "extensions" },
@@ -70,16 +75,8 @@ async function main() {
         await cliente.query(`CREATE ROLE "${papel}" NOLOGIN`);
       }
     }
-    for (const papel of PAPEIS_DE_FABRICA) {
-      await cliente.query(
-        `ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO "${papel}"`,
-      );
-      await cliente.query(
-        `ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO "${papel}"`,
-      );
-      await cliente.query(
-        `ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO "${papel}"`,
-      );
+    for (const comando of comandosDosPrivilegiosPadrao()) {
+      await cliente.query(comando);
     }
     console.log("[provisionar] papéis de fábrica + default privileges OK");
 

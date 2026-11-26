@@ -46,6 +46,7 @@ on:
       - ".github/workflows/db-ci.yml"
       - "scripts/frota/instalador-banco.mjs"
       - "tests/banco/instalador-nova-loja-viva.cjs"
+      - "scripts/publicacao/consultas/185-privilegios-padrao-em-public.sql"
   push:
     branches: [develop, claude/app-major-upgrade-wmc8x2]
     paths:
@@ -54,6 +55,7 @@ on:
       - ".github/workflows/db-ci.yml"
       - "scripts/frota/instalador-banco.mjs"
       - "tests/banco/instalador-nova-loja-viva.cjs"
+      - "scripts/publicacao/consultas/185-privilegios-padrao-em-public.sql"
   workflow_dispatch:
 
 permissions:
