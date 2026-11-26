@@ -94,6 +94,13 @@ pagar. "Dia 0" é o vencimento da mensalidade ou o fim do teste.
 - **Enquanto a "pausa de vendas" não existir no servidor**, a loja adormecida continua aceitando
   pedido de quem já estava com ela aberta ou com o app guardado no aparelho, e perde o painel.
   Por isso, hoje, adormecer exige as quatro consultas zeradas, e isso vale também para encerrar.
+  Desde o PR #1932, a aba que abre ou recarrega a loja descobre que ela fechou: o Service Worker
+  apaga as páginas guardadas e manda as abas recarregarem. A brecha que fica é o **app vivo**: a
+  aba já aberta que só navega por dentro do app não pede página nova, então só recebe o aviso
+  quando outra abertura bate no porteiro, e só recarrega se tiver o receptor
+  (`instalarReceptorDaLojaFechada`, no `main.tsx`). A aba aberta antes da versão com o receptor,
+  ou num navegador sem Service Worker, segue vendendo até alguém recarregar; com pagamento ou
+  envio de pedido em curso, a recarga fica para o próximo momento seguro (`recarregarSeSeguro`).
 
 ## Quando adormecer uma loja de teste que não pagou
 
