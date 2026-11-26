@@ -3470,7 +3470,25 @@ const ROL_DA_187B = [
   "saude_da_loja: ainda NAO existe (nenhuma funcao com esse nome em public)",
   "os papeis anon, authenticated e service_role existem (a base que o pre-voo exige)",
 ];
+// Lote 192 (20261550000000, o admin copia e apaga as fotos da loja: as politicas SELECT "Admin Select Access (products|banners)" em
+// storage.objects, so authenticated e so o admin de agora, rls_admin_atual). A 192a prova as duas politicas exatas e a RLS ligada (4 itens); a
+// 192b prova que as duas ainda NAO existem e a base do pre-voo (rls_admin_atual da 20261197 com EXECUTE so de authenticated; RLS ligada) (5).
+const ROL_DA_192A = [
+  "controle: politicas de storage.objects visiveis a este papel",
+  "Admin Select Access (products): SELECT PERMISSIVE so para authenticated, so no bucket products e so para o admin de agora (rls_admin_atual)",
+  "Admin Select Access (banners): SELECT PERMISSIVE so para authenticated, so no bucket banners e so para o admin de agora (rls_admin_atual)",
+  "storage.objects: RLS ligada (sem ela as politicas nao valem)",
+];
+const ROL_DA_192B = [
+  "controle: politicas de storage.objects visiveis a este papel",
+  "Admin Select Access (products): ainda NAO existe em storage.objects",
+  "Admin Select Access (banners): ainda NAO existe em storage.objects",
+  "rls_admin_atual(): corpo da 20261197000000, SECURITY DEFINER, EXECUTE de authenticated e nao de anon (a base do pre-voo)",
+  "storage.objects: existe com RLS ligada (a base do pre-voo)",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "192a-conferir-o-admin-copia-e-apaga-as-fotos-aplicado": ROL_DA_192A,
+  "192b-antes-o-admin-copia-e-apaga-as-fotos-ausente": ROL_DA_192B,
   "188a-conferir-o-livro-de-registro-aplicado": ROL_DA_188A,
   "188b-antes-o-livro-de-registro-ausente": ROL_DA_188B,
   "187a-conferir-a-saude-da-reconciliacao-aplicado": ROL_DA_187A,
