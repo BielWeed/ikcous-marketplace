@@ -818,6 +818,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "188b-antes-o-livro-de-registro-ausente",
   "191a-conferir-a-loja-nova-nasce-com-a-ficha-aplicado",
   "191b-antes-a-loja-nova-nasce-com-a-ficha-ausente",
+  "192a-conferir-o-admin-copia-e-apaga-as-fotos-aplicado",
+  "192b-antes-o-admin-copia-e-apaga-as-fotos-ausente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */
