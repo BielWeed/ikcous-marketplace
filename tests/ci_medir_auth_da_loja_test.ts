@@ -36,6 +36,7 @@ const RAIZ = fromFileUrl(new URL("..", import.meta.url));
 const WORKFLOW = join(RAIZ, ".github/workflows/medir-auth-da-loja.yml");
 const SCRIPT = join(RAIZ, "scripts/publicacao/medir-auth-da-loja.cjs");
 const CONFERIR_BANCO = join(RAIZ, "scripts/publicacao/conferir-banco.cjs");
+const LOJAS_CJS = join(RAIZ, "scripts/frota/lojas.cjs");
 
 const REF_SAVY = "gnjsrucsmjkajijrakzr";
 const REF_CAF = "cafkrminfnokvgjqtkle";
@@ -89,10 +90,10 @@ async function rodarBash(script: string, env: Record<string, string>) {
 function carregarScript(fonte: string) {
   const dir = Deno.makeTempDirSync({ prefix: "medir-auth-" });
   const arquivo = join(dir, "medir-auth-da-loja.cjs");
-  const ajustada = fonte.replaceAll(
-    '"./conferir-banco.cjs"',
-    JSON.stringify(CONFERIR_BANCO),
-  );
+  const ajustada = fonte
+    .replaceAll('"./conferir-banco.cjs"', JSON.stringify(CONFERIR_BANCO))
+    // o cadastro de lojas (scripts/frota/lojas.json) é lido pelo módulo real
+    .replaceAll('"../frota/lojas.cjs"', JSON.stringify(LOJAS_CJS));
   Deno.writeTextFileSync(arquivo, ajustada);
   try {
     return require(arquivo);
@@ -206,6 +207,9 @@ async function verificarWorkflow(yamlCru: string) {
   // entradas: projeto FECHADO e expected_sha exigido
   const entradas = gatilhos.workflow_dispatch.inputs;
   assertEquals(Object.keys(entradas).sort(), ["expected_sha", "projeto"]);
+  // 25/11/2026: o menu (choice) é GERADO de scripts/frota/lojas.json (bloco
+  // LOJAS-OPCOES-ASSINANTES), o mesmo de antes; o passo "Confere a loja no
+  // cadastro" recusa de novo a não assinante ANTES do segredo.
   assertEquals(entradas.projeto.type, "choice", "projeto é escolha fechada");
   assertEquals(entradas.projeto.options, ["ikcous-publicada", "savy"]);
   assertEquals(entradas.projeto.required, true);
@@ -262,6 +266,52 @@ async function verificarWorkflow(yamlCru: string) {
         "expected_sha completo e igual ao GITHUB_SHA",
       );
     }
+  }
+
+  // o passo do CADASTRO: depois do checkout (precisa do lojas.json), antes do
+  // passo com segredo, sem segredo, e só aceita loja ASSINANTE
+  const iCheckout = passos.findIndex((p) =>
+    String(p.uses ?? "").startsWith("actions/checkout"),
+  );
+  const iCadastro = passos.findIndex((p) =>
+    String(p.name ?? "").startsWith("Confere a loja no cadastro"),
+  );
+  assert(iCadastro > iCheckout, "o cadastro é conferido depois do checkout");
+  assert(iCadastro < passos.length - 1, "e antes do passo do segredo");
+  assertEquals(
+    passos[iCadastro].run,
+    'node scripts/frota/lojas.cjs validar "$PROJETO" --assinante',
+  );
+  assert(
+    !JSON.stringify(passos[iCadastro]).includes("secrets."),
+    "o passo do cadastro não vê segredo",
+  );
+  // alvos que não são loja assinante: recusados ou no 1º passo (formato) ou no
+  // passo do cadastro (as duas travas juntas valem o que a lista fixa valia)
+  for (const projeto of ["loja", "sandbox", "almeida", "", "savy ", "SAVY"]) {
+    const r = await rodarBash(primeiro.run, {
+      PATH: Deno.env.get("PATH") ?? "",
+      PROJETO: projeto,
+      EXPECTED_SHA: SHA,
+      GITHUB_SHA: SHA,
+    });
+    let saiu = r.codigo;
+    if (saiu === 0) {
+      saiu = (
+        await rodarBash(passos[iCadastro].run, {
+          PATH: Deno.env.get("PATH") ?? "",
+          PROJETO: projeto,
+        })
+      ).codigo;
+    }
+    assertEquals(saiu, 1, `projeto "${projeto}" devia ser recusado`);
+  }
+  for (const projeto of ["ikcous-publicada", "savy"]) {
+    const v = await rodarBash(passos[iCadastro].run, {
+      PATH: Deno.env.get("PATH") ?? "",
+      PROJETO: projeto,
+    });
+    assertEquals(v.codigo, 0, `${projeto}: ${v.saida}`);
   }
 
   // checkout sem credencial gravada; node; e o passo final
@@ -921,6 +971,16 @@ Deno.test({
         real,
         /(\n\s+- savy\n)/,
         "$1          - loja\n",
+      ),
+      "sem o passo que confere a loja no cadastro": mutar(
+        real,
+        /\n {6}# A loja existe no cadastro[\s\S]*?(?=\n {6}# Cada alvo enxerga)/,
+        "",
+      ),
+      "cadastro conferido sem exigir loja assinante": mutar(
+        real,
+        / --assinante/,
+        "",
       ),
       "sem expected_sha obrigatório": mutar(
         real,

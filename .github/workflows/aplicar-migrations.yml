@@ -16,8 +16,10 @@ run-name: "aplicar em ${{ inputs.projeto }}: ${{ inputs.migracoes }}"
 # webhook mudando pedido enquanto roda não entram na comparação; o que mudou
 # fora do snapshot aparece como ATIVIDADE CONCORRENTE (informativo).
 #
-# ALVO: loja (default), sandbox, ikcous-publicada ou savy. As duas últimas são as
-# LOJAS EXPLÍCITAS, com as mesmas travas. ikcous-publicada (a CAF): ref fixo
+# ALVO: menu fechado (choice) GERADO de scripts/frota/lojas.json e VALIDADO de novo contra ele ("loja desconhecida"
+# antes de qualquer segredo): hoje loja (default), sandbox, ikcous-publicada ou
+# savy; uma loja assinante nova é uma entrada no cadastro. As assinantes (hoje as
+# duas últimas) são as LOJAS EXPLÍCITAS, com as mesmas travas. ikcous-publicada (a CAF): ref fixo
 # cafkrminfnokvgjqtkle, segredo SUPABASE_ACCESS_TOKEN_IKCOUS. savy (a loja cliente
 # real, 06/10/2026): ref fixo gnjsrucsmjkajijrakzr, segredo SUPABASE_ACCESS_TOKEN_SAVY
 # (o mesmo que publicar-functions.yml já usa para a Savy). Nas duas: expected_sha
@@ -68,17 +70,19 @@ on:
         required: false
         default: ""
       projeto:
-        description: "Projeto de destino: loja, sandbox, ikcous-publicada (a CAF explicita) ou savy (a loja cliente explicita, mesmas travas): as duas exigem expected_sha; nunca um ref de texto livre — achado da revisão de risco do conferir-banco-da-loja, rodada 2"
+        description: "Projeto de destino: o nome EXATO de uma loja de scripts/frota/lojas.json (hoje loja, sandbox, ikcous-publicada ou savy); todas as lojas assinantes exigem expected_sha; nome desconhecido e recusado antes de qualquer segredo — achado da revisão de risco do conferir-banco-da-loja, rodada 2"
         required: false
         type: choice
         default: loja
         options:
+          # LOJAS-OPCOES-INICIO (gerado de scripts/frota/lojas.json por scripts/frota/lojas-nos-workflows.cjs --escrever; nao editar a mao)
           - loja
           - sandbox
           - ikcous-publicada
           - savy
+          # LOJAS-OPCOES-FIM
       expected_sha:
-        description: "So para projeto = ikcous-publicada ou savy: o SHA completo (40 hex) do commit deste run (igual ao GITHUB_SHA); vazio nas outras lojas"
+        description: "So para loja assinante (todas menos loja e sandbox): o SHA completo (40 hex) do commit deste run (igual ao GITHUB_SHA); vazio em loja e sandbox"
         required: false
         default: ""
       permitir_reaplicar:
@@ -109,11 +113,18 @@ jobs:
           PROJETO: ${{ inputs.projeto }}
           EXPECTED_SHA: ${{ inputs.expected_sha }}
         run: |
-          if [ "$PROJETO" = "ikcous-publicada" ] || [ "$PROJETO" = "savy" ]; then
-            if ! [[ "$EXPECTED_SHA" =~ ^[a-fA-F0-9]{40}$ ]] || [ "${EXPECTED_SHA,,}" != "${GITHUB_SHA,,}" ]; then
-              echo "::error::Loja cliente ($PROJETO) exige expected_sha completo e igual ao GITHUB_SHA do run"; exit 1
-            fi
+          if ! [[ "$PROJETO" =~ ^[a-z][a-z0-9-]{1,39}$ ]]; then
+            echo "::error::loja desconhecida (nome fora do formato)"; exit 1
           fi
+          # Só os dois alvos de teste antigos (cadastro: classe legado) dispensam o
+          # expected_sha; qualquer outro nome é loja assinante e o exige.
+          case "$PROJETO" in
+            loja|sandbox) ;;
+            *)
+              if ! [[ "$EXPECTED_SHA" =~ ^[a-fA-F0-9]{40}$ ]] || [ "${EXPECTED_SHA,,}" != "${GITHUB_SHA,,}" ]; then
+                echo "::error::Loja cliente ($PROJETO) exige expected_sha completo e igual ao GITHUB_SHA do run"; exit 1
+              fi ;;
+          esac
 
       - uses: actions/checkout@v7
 
@@ -124,44 +135,57 @@ jobs:
 
       - run: npm ci
 
+      # A loja existe no cadastro (scripts/frota/lojas.json)? Recusa ("loja
+      # desconhecida") ANTES de qualquer passo que veja segredo. Nao le segredo.
+      - name: Confere a loja no cadastro (lojas.json) antes de qualquer segredo
+        env:
+          PROJETO: ${{ inputs.projeto }}
+        run: node scripts/frota/lojas.cjs validar "$PROJETO"
+
       # Cada alvo enxerga SÓ o seu segredo: a expressão `&& … || ''` nunca cai
       # no outro (segredo vazio dá '', não o segredo do vizinho).
       - name: "Prova, apply e verificação"
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ inputs.projeto != 'ikcous-publicada' && inputs.projeto != 'savy' && secrets.SUPABASE_ACCESS_TOKEN || '' }}
+          # LOJAS-SEGREDO-LEGADO-INICIO (gerado de scripts/frota/lojas.json por scripts/frota/lojas-nos-workflows.cjs --escrever; nao editar a mao)
+          SUPABASE_ACCESS_TOKEN: ${{ (inputs.projeto == 'loja' || inputs.projeto == 'sandbox') && secrets.SUPABASE_ACCESS_TOKEN || '' }}
+          # LOJAS-SEGREDO-LEGADO-FIM
+          # LOJAS-SEGREDOS-INICIO (idem)
           SUPABASE_ACCESS_TOKEN_IKCOUS: ${{ inputs.projeto == 'ikcous-publicada' && secrets.SUPABASE_ACCESS_TOKEN_IKCOUS || '' }}
           SUPABASE_ACCESS_TOKEN_SAVY: ${{ inputs.projeto == 'savy' && secrets.SUPABASE_ACCESS_TOKEN_SAVY || '' }}
+          # LOJAS-SEGREDOS-FIM
           MIGRACOES: ${{ inputs.migracoes }}
           PROJETO: ${{ inputs.projeto }}
           PERMITIR_REAPLICAR: ${{ inputs.permitir_reaplicar }}
         run: |
           node -e "
             const fs = require('node:fs');
-            // RESOLVE_REF_INICIO — projeto virou choice loja/sandbox (nunca
-            // mais texto livre no path da URL): achado da revisão de risco
-            // do conferir-banco-da-loja, rodada 2 — 'projeto_ref' cru
-            // habilitava '<ref>/restart#' (POST para outro endpoint) e
-            // 'x/../outroref.../database/query#' (a query indo para OUTRO
-            // projeto), com um token válido para toda a conta.
-            const REFS = { loja: 'cafkrminfnokvgjqtkle', sandbox: 'lofznuxcvezrhxsgjqyg', 'ikcous-publicada': 'cafkrminfnokvgjqtkle', savy: 'gnjsrucsmjkajijrakzr' };
+            // RESOLVE_REF_INICIO — o projeto é uma chave do cadastro
+            // scripts/frota/lojas.json (nunca mais texto livre no path da
+            // URL): achado da revisão de risco do conferir-banco-da-loja,
+            // rodada 2 — 'projeto_ref' cru habilitava '<ref>/restart#' (POST
+            // para outro endpoint) e 'x/../outroref.../database/query#' (a
+            // query indo para OUTRO projeto), com um token válido para toda a
+            // conta. O passo anterior já recusou loja desconhecida; aqui é a
+            // segunda trava, no próprio código que monta a URL.
+            const lojas = require('./scripts/frota/lojas.cjs');
             const projeto = process.env.PROJETO;
-            if (!Object.hasOwn(REFS, projeto)) {
-              console.error('RECUSADO (projeto desconhecido): ' + projeto); process.exit(1);
+            const loja = lojas.lojaDoProjeto(projeto, lojas.carregarLojas());
+            if (!loja) {
+              console.error('RECUSADO (projeto desconhecido): ' + lojas.textoSeguro(projeto)); process.exit(1);
             }
-            const ref = REFS[projeto];
+            const ref = loja.ref;
             if (!/^[a-z]{20}\$/.test(ref)) {
               console.error('RECUSADO (ref inválido): ' + ref); process.exit(1);
             }
             // RESOLVE_REF_FIM
-            // CAF e Savy explícitas: SÓ o segredo próprio de cada uma. Sem ele
-            // PARA — nunca tenta SUPABASE_ACCESS_TOKEN (o de loja/sandbox), o
-            // segredo da outra loja explícita nem outro alvo.
-            const ehCaf = projeto === 'ikcous-publicada';
-            const ehSavy = projeto === 'savy';
-            const SEM_ACESSO_CAF = 'sem acesso legítimo à CAF por SUPABASE_ACCESS_TOKEN_IKCOUS — bloqueio concreto';
-            const SEM_ACESSO_SAVY = 'sem acesso legítimo à Savy por SUPABASE_ACCESS_TOKEN_SAVY — bloqueio concreto';
-            const token = ehCaf ? process.env.SUPABASE_ACCESS_TOKEN_IKCOUS : ehSavy ? process.env.SUPABASE_ACCESS_TOKEN_SAVY : process.env.SUPABASE_ACCESS_TOKEN;
-            if (!token) { console.error(ehCaf ? SEM_ACESSO_CAF : ehSavy ? SEM_ACESSO_SAVY : 'SEM SUPABASE_ACCESS_TOKEN'); process.exit(1); }
+            // Lojas assinantes explícitas (CAF, Savy e as que o cadastro trouxer):
+            // SÓ o segredo próprio de cada uma, pelo nome segredoDoToken do
+            // cadastro. Sem ele PARA — nunca tenta SUPABASE_ACCESS_TOKEN (o de
+            // loja/sandbox), o segredo de outra loja nem outro alvo.
+            const explicita = loja.classe === 'assinante';
+            const SEM_ACESSO = lojas.semAcessoDaLoja(loja);
+            const token = process.env[loja.segredoDoToken];
+            if (!token) { console.error(explicita ? SEM_ACESSO : 'SEM SUPABASE_ACCESS_TOKEN'); process.exit(1); }
 
             async function sql(titulo, query) {
               const r = await fetch(
@@ -181,8 +205,8 @@ jobs:
               const corpo = await r.text();
               // 401/403 na CAF ou na Savy explícitas = PARADA com o bloqueio
               // concreto, sem tentar outro segredo nem outro alvo.
-              if ((ehCaf || ehSavy) && (r.status === 401 || r.status === 403)) {
-                throw new Error(titulo + ' -> HTTP ' + r.status + ': ' + (ehCaf ? SEM_ACESSO_CAF : SEM_ACESSO_SAVY));
+              if (explicita && (r.status === 401 || r.status === 403)) {
+                throw new Error(titulo + ' -> HTTP ' + r.status + ': ' + SEM_ACESSO);
               }
               // Sucesso = 201 (o documentado em v1-run-a-query) ou 200 (tolerado,
               // comportamento de versões anteriores). Qualquer outro status,

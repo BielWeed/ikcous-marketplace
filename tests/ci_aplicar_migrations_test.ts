@@ -37,6 +37,12 @@ import {
 const WORKFLOW = fromFileUrl(
   new URL("../.github/workflows/aplicar-migrations.yml", import.meta.url),
 );
+const RAIZ_DO_REPO = fromFileUrl(new URL("..", import.meta.url));
+const requireDoRepo = createRequire(import.meta.url);
+/** O `require` que o `node -e` do workflow enxerga: relativo à raiz do repo (o
+ * cwd do runner). */
+const requireDoNodeE = (p: string) =>
+  requireDoRepo(p.startsWith(".") ? join(RAIZ_DO_REPO, p) : p);
 
 Deno.test("verificação final do apply: OID tolera assinatura vigente e a da 249, mas não aceita assinatura errada", async () => {
   const dir = new URL("../supabase/migrations/", import.meta.url);
@@ -133,9 +139,10 @@ function avaliarResolucaoDoRef(
     const fn = new Function(
       "process",
       "console",
+      "require",
       `${trecho}\nreturn typeof ref !== "undefined" ? ref : undefined;`,
     );
-    const ref = fn(process, console);
+    const ref = fn(process, console, requireDoNodeE);
     return { ref, saida: linhas.join("\n") };
   } catch {
     return { codigoSaida, saida: linhas.join("\n") };
@@ -163,15 +170,22 @@ Deno.test("aplicar-migrations.yml — input projeto (achado #1, rodada 2)", asyn
     },
   );
 
-  await t.step("`projeto` é choice fechado em loja/sandbox", () => {
-    assertStringIncludes(yaml, "projeto:");
-    assertStringIncludes(yaml, "type: choice");
-    assertStringIncludes(
-      yaml,
-      "options:\n          - loja\n          - sandbox",
-    );
-    assertStringIncludes(yaml, "default: loja");
-  });
+  await t.step(
+    "`projeto` é choice fechado (loja/sandbox primeiro), gerado do cadastro e validado de novo",
+    () => {
+      // 25/11/2026: o menu é GERADO de scripts/frota/lojas.json (bloco
+      // LOJAS-OPCOES); o cadastro é conferido de novo no passo "Confere a loja
+      // no cadastro" ANTES do segredo e no próprio node -e.
+      assertStringIncludes(yaml, "projeto:");
+      assertStringIncludes(yaml, "type: choice");
+      assertStringIncludes(
+        yaml.replace(/^\s*# LOJAS-OPCOES-INICIO.*\r?\n/m, ""),
+        "options:\n          - loja\n          - sandbox",
+      );
+      assertStringIncludes(yaml, "default: loja");
+      assertStringIncludes(yaml, "scripts/frota/lojas.cjs validar");
+    },
+  );
 
   await t.step(
     "loja e sandbox resolvem para os mesmos refs de publicar-functions.yml",
@@ -1035,10 +1049,9 @@ Deno.test({
 
 Deno.test("CAF explícita: o mapeamento de loja e sandbox é byte a byte o de antes, e ikcous-publicada aponta para o ref fixo da CAF", async () => {
   const yaml = await Deno.readTextFile(WORKFLOW);
-  assertStringIncludes(
-    yaml,
-    "const REFS = { loja: 'cafkrminfnokvgjqtkle', sandbox: 'lofznuxcvezrhxsgjqyg', 'ikcous-publicada': 'cafkrminfnokvgjqtkle', savy: 'gnjsrucsmjkajijrakzr' };",
-  );
+  // 25/11/2026: o mapa fixo saiu do YAML (mora em scripts/frota/lojas.json); o
+  // resultado, alvo a alvo, é o MESMO de antes (provado abaixo, rodando o trecho).
+  assert(!yaml.includes("const REFS = {"), "o mapa fixo de refs não volta");
   const trecho = extrairTrechoDeResolucaoDoRef(yaml);
   assertEquals(
     avaliarResolucaoDoRef(trecho, "ikcous-publicada").ref,

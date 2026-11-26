@@ -24,9 +24,13 @@
 # CREDENCIAL: o segredo `SUPABASE_ACCESS_TOKEN` do repositório (GitHub →
 # Settings → Secrets and variables → Actions) é um token pessoal da conta do
 # Supabase (Account → Access Tokens). Ele vale para TODOS os projetos da
-# conta — por isso o destino é uma escolha fechada (ikcous-publicada | savy |
-# sandbox | loja) e o log imprime o ref antes de publicar. Savy usa SOMENTE o segredo
-# separado `SUPABASE_ACCESS_TOKEN_SAVY`, da conta que tem acesso àquele projeto.
+# conta — por isso o destino é uma escolha fechada: o menu de `projeto` (choice) é GERADO do cadastro e o valor precisa
+# ser uma chave de scripts/frota/lojas.json (hoje ikcous-publicada | savy |
+# sandbox | loja; "loja desconhecida" ANTES de qualquer segredo) e o log imprime o
+# ref antes de publicar. Cada loja assinante usa SOMENTE o segredo que o cadastro
+# nomeia em `segredoDoToken` (Savy: `SUPABASE_ACCESS_TOKEN_SAVY`), da conta que tem
+# acesso àquele projeto; as linhas de env são GERADAS do cadastro (blocos
+# LOJAS-SEGREDO-UNICO).
 # Revogar: na mesma página do Supabase.
 #
 # LOJA CLIENTE (ikcous-publicada | savy) = mesma disciplina, de
@@ -72,8 +76,10 @@ on:
         type: string
       projeto:
         description: >-
-          Destino fechado: ikcous-publicada (CAF, a loja principal no ar), savy (GNJ),
-          sandbox (lof...) ou loja (DEK, projeto antigo, sem loja no ar)
+          Destino fechado, o nome EXATO de uma loja de scripts/frota/lojas.json:
+          ikcous-publicada (CAF, a loja principal no ar), savy (GNJ),
+          sandbox (lof...) ou loja (DEK, projeto antigo, sem loja no ar), ou uma
+          loja assinante cadastrada depois; nome desconhecido e recusado
         required: true
         type: choice
         # 03/10/2026: o padrão era `loja` (DEK), que a loja principal deixou de usar —
@@ -82,10 +88,12 @@ on:
         # as oito nomeadas, e expected_sha): esquecer de escolher vira recusa, nunca deploy no lugar errado.
         default: ikcous-publicada
         options:
+          # LOJAS-OPCOES-ASSINANTES-PRIMEIRO-INICIO (gerado de scripts/frota/lojas.json por scripts/frota/lojas-nos-workflows.cjs --escrever; nao editar a mao)
           - ikcous-publicada
           - savy
-          - sandbox
           - loja
+          - sandbox
+          # LOJAS-OPCOES-ASSINANTES-PRIMEIRO-FIM
       expected_sha:
         description: >-
           IKCOUS publicada e Savy: SHA completo do commit aprovado, igual ao SHA deste run
@@ -120,15 +128,15 @@ jobs:
           EXPECTED_SHA: ${{ inputs.expected_sha }}
         run: |
           set -euo pipefail
-          case "$PROJETO" in
-            loja) REF=dekxabvqdsuukijblazl ;;
-            savy) REF=gnjsrucsmjkajijrakzr ;;
-            ikcous-publicada) REF=cafkrminfnokvgjqtkle ;;
-            sandbox) REF=lofznuxcvezrhxsgjqyg ;;
-            *) echo "::error::projeto desconhecido: $PROJETO (use loja, savy, ikcous-publicada ou sandbox)"; exit 1 ;;
-          esac
+          # Loja desconhecida PARA aqui (a mensagem sai do próprio comando, que não
+          # é chamado dentro de $( ), antes de qualquer segredo). Depois disso as
+          # leituras abaixo não podem falhar.
+          node scripts/frota/lojas.cjs validar "$PROJETO"
+          REF="$(node scripts/frota/lojas.cjs ref "$PROJETO" --functions)"
+          SEGREDO="$(node scripts/frota/lojas.cjs campo "$PROJETO" segredoDoToken)"
+          NOMEADAS="$(node scripts/frota/lojas.cjs campo "$PROJETO" functionsNomeadas)"
           CLIENTE=nao
-          case "$PROJETO" in savy|ikcous-publicada) CLIENTE=sim ;; esac
+          if [ "$(node scripts/frota/lojas.cjs campo "$PROJETO" classe)" = "assinante" ]; then CLIENTE=sim; fi
           if [ "$CLIENTE" = "sim" ]; then
             if ! [[ "$EXPECTED_SHA" =~ ^[a-fA-F0-9]{40}$ ]] || [ "${EXPECTED_SHA,,}" != "${GITHUB_SHA,,}" ]; then
               echo "::error::Loja cliente ($PROJETO) exige expected_sha completo e igual ao GITHUB_SHA do run"; exit 1
@@ -159,10 +167,11 @@ jobs:
               case "$n" in
                 criar-pagamento|webhook-mercadopago|reconciliar-pagamentos|estornar-pagamento|credenciais-mercado-pago) ;;
                 send-order-confirmation|calculate-shipping|notify-new-order|send-otp-email|melhor-envio-etiqueta|send-push|credenciais-email|auth-send-email)
-                  case "$PROJETO" in
-                    ikcous-publicada|savy) ;;
-                    *) echo "::error::Loja cliente ($PROJETO) só admite as cinco Functions financeiras (as outras oito nomeadas só sobem na IKCOUS e na Savy)"; exit 1 ;;
-                  esac ;;
+                  # `functionsNomeadas` do cadastro: hoje true só na ikcous-publicada e
+                  # na savy; loja nova nasce com a decisão escrita no lojas.json.
+                  if [ "$NOMEADAS" != "true" ]; then
+                    echo "::error::Loja cliente ($PROJETO) só admite as cinco Functions financeiras (as outras oito nomeadas só sobem na IKCOUS e na Savy)"; exit 1
+                  fi ;;
                 *) echo "::error::Loja cliente ($PROJETO) só admite as cinco Functions financeiras (mais as oito nomeadas: send-order-confirmation, calculate-shipping, notify-new-order, send-otp-email, melhor-envio-etiqueta, send-push, credenciais-email e auth-send-email, só na IKCOUS e na Savy)"; exit 1 ;;
               esac
             fi
@@ -180,11 +189,12 @@ jobs:
           echo "Projeto: $PROJETO ($REF)"
           echo "Functions: $NOMES (modo: $MODO)"
           echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          echo "segredo=$SEGREDO" >> "$GITHUB_OUTPUT"
           echo "nomes=$NOMES" >> "$GITHUB_OUTPUT"
           echo "modo=$MODO" >> "$GITHUB_OUTPUT"
 
       - name: Confere o segredo
-        if: inputs.projeto != 'savy' && inputs.projeto != 'ikcous-publicada'
+        if: inputs.projeto == 'loja' || inputs.projeto == 'sandbox'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
@@ -192,13 +202,19 @@ jobs:
             echo "::error::segredo SUPABASE_ACCESS_TOKEN ausente no repositório (Settings → Secrets and variables → Actions)"; exit 1
           fi
 
-      - name: Confere o segredo Savy
-        if: inputs.projeto == 'savy'
+      # LOJA ASSINANTE (todas, menos a CAF, que tem os passos próprios abaixo): o
+      # token vem da cadeia gerada do cadastro — só a linha da loja pedida fica
+      # preenchida, as outras dão ''.
+      - name: Confere o segredo da loja assinante
+        if: inputs.projeto != 'ikcous-publicada' && inputs.projeto != 'loja' && inputs.projeto != 'sandbox'
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN_SAVY }}
+          # LOJAS-SEGREDO-UNICO-INICIO (gerado de scripts/frota/lojas.json por scripts/frota/lojas-nos-workflows.cjs --escrever; nao editar a mao)
+          SUPABASE_ACCESS_TOKEN: ${{ inputs.projeto == 'ikcous-publicada' && secrets.SUPABASE_ACCESS_TOKEN_IKCOUS || inputs.projeto == 'savy' && secrets.SUPABASE_ACCESS_TOKEN_SAVY || '' }}
+          # LOJAS-SEGREDO-UNICO-FIM
+          SEGREDO: ${{ steps.alvo.outputs.segredo }}
         run: |
           if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
-            echo "::error::segredo SUPABASE_ACCESS_TOKEN_SAVY ausente no repositório"; exit 1
+            echo "::error::segredo $SEGREDO ausente no repositório"; exit 1
           fi
 
       - uses: supabase/setup-cli@689adcfb80d947100a1eab127289b97d1fb07b13 # v3
@@ -206,7 +222,7 @@ jobs:
           version: 3.0.0
 
       - name: Publica, uma function por vez, sempre pelo nome
-        if: inputs.projeto != 'savy' && inputs.projeto != 'ikcous-publicada'
+        if: inputs.projeto == 'loja' || inputs.projeto == 'sandbox'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           REF: ${{ steps.alvo.outputs.ref }}
@@ -219,10 +235,12 @@ jobs:
             echo "::endgroup::"
           done
 
-      - name: Publica Savy, uma function por vez
-        if: inputs.projeto == 'savy'
+      - name: Publica loja assinante, uma function por vez
+        if: inputs.projeto != 'ikcous-publicada' && inputs.projeto != 'loja' && inputs.projeto != 'sandbox'
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN_SAVY }}
+          # LOJAS-SEGREDO-UNICO-INICIO (idem)
+          SUPABASE_ACCESS_TOKEN: ${{ inputs.projeto == 'ikcous-publicada' && secrets.SUPABASE_ACCESS_TOKEN_IKCOUS || inputs.projeto == 'savy' && secrets.SUPABASE_ACCESS_TOKEN_SAVY || '' }}
+          # LOJAS-SEGREDO-UNICO-FIM
           REF: ${{ steps.alvo.outputs.ref }}
           NOMES: ${{ steps.alvo.outputs.nomes }}
         run: |
@@ -234,7 +252,7 @@ jobs:
           done
 
       - name: Lista o que ficou publicado
-        if: inputs.projeto != 'savy' && inputs.projeto != 'ikcous-publicada'
+        if: inputs.projeto == 'loja' || inputs.projeto == 'sandbox'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           REF: ${{ steps.alvo.outputs.ref }}
@@ -248,10 +266,12 @@ jobs:
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
-      - name: Lista o que ficou publicado na Savy
-        if: inputs.projeto == 'savy'
+      - name: Lista o que ficou publicado na loja assinante
+        if: inputs.projeto != 'ikcous-publicada' && inputs.projeto != 'loja' && inputs.projeto != 'sandbox'
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN_SAVY }}
+          # LOJAS-SEGREDO-UNICO-INICIO (idem)
+          SUPABASE_ACCESS_TOKEN: ${{ inputs.projeto == 'ikcous-publicada' && secrets.SUPABASE_ACCESS_TOKEN_IKCOUS || inputs.projeto == 'savy' && secrets.SUPABASE_ACCESS_TOKEN_SAVY || '' }}
+          # LOJAS-SEGREDO-UNICO-FIM
           REF: ${{ steps.alvo.outputs.ref }}
         run: |
           set -euo pipefail

@@ -188,6 +188,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
+const lojasCadastro = require("../frota/lojas.cjs");
 
 const PROJECT_ROOT = path.resolve(__dirname, "..", "..");
 const CONSULTAS_DIR = path.join(
@@ -225,51 +226,48 @@ const FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA = {
   ],
   savy: [FAIXA_LEDGER_DAS_LOJAS_EXPLICITAS],
 };
-
-/** Os únicos dois projetos que este token alcança (mesmos refs de
- * `publicar-functions.yml`). Nunca aceitar um terceiro valor aqui: é isso
- * que fecha a injeção de `projeto_ref` da rodada 2 da revisão. */
-const REFS_POR_PROJETO = {
-  loja: "cafkrminfnokvgjqtkle",
-  sandbox: "lofznuxcvezrhxsgjqyg",
-  // O alvo CAF EXPLÍCITO (04/10/2026): o mesmo ref de `loja`, mas pelo segredo
-  // de NOME `SUPABASE_ACCESS_TOKEN_IKCOUS` (o que publicar-functions.yml já usa
-  // para a CAF) e só com `expected_sha` igual ao do run (conferido no workflow
-  // ANTES de qualquer requisição). `loja` e `sandbox` NÃO mudam de significado.
-  "ikcous-publicada": "cafkrminfnokvgjqtkle",
-  // O alvo SAVY EXPLÍCITO (06/10/2026): a loja cliente real, ref FIXO (nunca
-  // texto livre), pelo segredo de NOME `SUPABASE_ACCESS_TOKEN_SAVY` (o que
-  // publicar-functions.yml já usa para a Savy) e só com `expected_sha` igual ao
-  // do run (conferido no workflow ANTES de qualquer requisição). Mesmas travas
-  // da CAF explícita: só grava ledger na faixa 92-202 (com a 8e toda ok), 401/403 PARA.
-  savy: "gnjsrucsmjkajijrakzr",
+/** A mensagem de recusa do ledger das duas lojas que têm backfill histórico (o
+ * texto de sempre); qualquer outra loja assinante usa a mensagem genérica de
+ * `main`. */
+const MENSAGEM_LEDGER_RECUSADO_POR_LOJA = {
+  "ikcous-publicada":
+    "FALHOU: o ledger não roda para ikcous-publicada (a CAF explícita é só leitura neste script, exceto as faixas 92-202 (pré-checagem da 8e) e 60-66 (pré-checagem da 9a), as duas por rol fechado)",
+  savy: "FALHOU: o ledger não roda para savy (a loja cliente explícita é só leitura neste script, exceto a faixa 92-202, com a pré-checagem da 8e obrigatória)",
 };
 
-/** O alvo que exige o segredo próprio da CAF (e nunca cai em outro). */
-const PROJETO_CAF = "ikcous-publicada";
-const SEM_ACESSO_CAF =
-  "sem acesso legítimo à CAF por SUPABASE_ACCESS_TOKEN_IKCOUS — bloqueio concreto";
-/** O alvo que exige o segredo próprio da Savy (e nunca cai em outro). */
-const PROJETO_SAVY = "savy";
-const SEM_ACESSO_SAVY =
-  "sem acesso legítimo à Savy por SUPABASE_ACCESS_TOKEN_SAVY — bloqueio concreto";
+/** O cadastro de lojas (scripts/frota/lojas.json, validado ao carregar: falha
+ * fechada se estiver torto). Antes (até 25/11/2026) os refs, os nomes de segredo
+ * e as classes das lojas eram escritos à mão aqui e em cada script/workflow; agora
+ * uma loja nova é UMA entrada no JSON. Os valores de hoje são os mesmos: loja,
+ * sandbox, ikcous-publicada (a CAF explícita, segredo SUPABASE_ACCESS_TOKEN_IKCOUS)
+ * e savy (a loja cliente real, segredo SUPABASE_ACCESS_TOKEN_SAVY). */
+const CADASTRO_DE_LOJAS = lojasCadastro.carregarLojas();
+
+/** Os projetos que este token alcança, SÓ os do cadastro (mesmos refs de
+ * `publicar-functions.yml`). Nunca aceitar outro valor aqui: é isso que fecha a
+ * injeção de `projeto_ref` da rodada 2 da revisão. `ikcous-publicada` e `savy`
+ * são as lojas EXPLÍCITAS: segredo de NOME próprio e `expected_sha` igual ao do
+ * run (conferido no workflow ANTES de qualquer requisição); `loja` e `sandbox`
+ * não mudam de significado. */
+const REFS_POR_PROJETO = lojasCadastro.refsPorProjeto(CADASTRO_DE_LOJAS);
 
 /**
- * Resolve "loja"/"sandbox" para o ref de 20 letras minúsculas — nunca
- * aceita texto livre. `Object.hasOwn` recusa `__proto__`/`constructor`/
- * `toString` antes mesmo de indexar o objeto; a regex depois é defesa em
- * profundidade (o formato que o próprio `openapi.json` da Management API
- * declara para `ref`: minLength/maxLength 20, pattern `^[a-z]+$`) — mesmo
- * que `REFS_POR_PROJETO` seja corrompido no futuro, nenhuma URL chega a
- * ser montada com algo fora desse formato.
+ * Resolve o projeto para o ref de 20 letras minúsculas — nunca aceita texto
+ * livre. `Object.hasOwn` recusa `__proto__`/`constructor`/`toString` antes mesmo
+ * de indexar o objeto; a regex depois é defesa em profundidade (o formato que o
+ * próprio `openapi.json` da Management API declara para `ref`: minLength/
+ * maxLength 20, pattern `^[a-z]+$`) — mesmo que o cadastro seja corrompido no
+ * futuro, nenhuma URL chega a ser montada com algo fora desse formato. O 2º
+ * parâmetro existe para teste (cadastro de fixture); em produção é sempre o
+ * cadastro versionado.
  */
-function resolverRef(projeto) {
-  if (!Object.hasOwn(REFS_POR_PROJETO, projeto)) {
+function resolverRef(projeto, refs = REFS_POR_PROJETO) {
+  if (!Object.hasOwn(refs, projeto)) {
     throw new Error(
-      `projeto desconhecido: "${projeto}" (use loja, sandbox, ikcous-publicada ou savy)`,
+      `projeto desconhecido: "${projeto}" (use ${lojasCadastro.listaLegivel(Object.keys(refs))})`,
     );
   }
-  const ref = REFS_POR_PROJETO[projeto];
+  const ref = refs[projeto];
   if (!/^[a-z]{20}$/.test(ref)) {
     throw new Error(`ref resolvido para "${projeto}" é inválido: "${ref}"`);
   }
@@ -4193,31 +4191,27 @@ async function rodarLedger({ ref, token, faixa }) {
 
 async function main() {
   const projeto = process.env.PROJETO || "loja";
-  const ehCaf = projeto === PROJETO_CAF;
-  const ehSavy = projeto === PROJETO_SAVY;
-  // CAF e Savy explícitas: SÓ o segredo próprio de cada uma. Sem ele, PARA —
-  // nunca tenta SUPABASE_ACCESS_TOKEN (o de `loja`/`sandbox`), o segredo da
-  // outra loja explícita nem outro alvo.
-  const token = ehCaf
-    ? process.env.SUPABASE_ACCESS_TOKEN_IKCOUS
-    : ehSavy
-      ? process.env.SUPABASE_ACCESS_TOKEN_SAVY
-      : process.env.SUPABASE_ACCESS_TOKEN;
+  // A loja do cadastro (null se o projeto não existe: aí vale o caminho de
+  // sempre — segredo legado e, adiante, `resolverRef` recusa "projeto desconhecido").
+  const loja = lojasCadastro.lojaDoProjeto(projeto, CADASTRO_DE_LOJAS);
+  // Lojas ASSINANTES explícitas (hoje CAF e Savy; qualquer loja nova do cadastro):
+  // SÓ o segredo próprio de cada uma, pelo NOME que o cadastro dá (`segredoDoToken`).
+  // Sem ele, PARA — nunca tenta SUPABASE_ACCESS_TOKEN (o de `loja`/`sandbox`), o
+  // segredo de outra loja nem outro alvo.
+  const explicita = loja?.classe === "assinante";
+  const semAcesso = explicita ? lojasCadastro.semAcessoDaLoja(loja) : null;
+  const token = explicita
+    ? process.env[loja.segredoDoToken]
+    : process.env.SUPABASE_ACCESS_TOKEN;
   if (!token) {
-    console.error(
-      ehCaf
-        ? SEM_ACESSO_CAF
-        : ehSavy
-          ? SEM_ACESSO_SAVY
-          : "SEM SUPABASE_ACCESS_TOKEN",
-    );
+    console.error(explicita ? semAcesso : "SEM SUPABASE_ACCESS_TOKEN");
     process.exit(1);
     return;
   }
   const ledgerPedido = process.env.LEDGER;
   // MAPA EXPLÍCITO (D4): quais faixas cada loja explícita aceita. Qualquer outro
-  // alvo (`loja`, `sandbox`, lojas de teste) recusa as duas, ANTES de qualquer
-  // requisição. O `if` do job `ledger` do workflow espelha este mapa.
+  // alvo (`loja`, `sandbox`, lojas de teste e lojas novas) recusa as duas, ANTES de
+  // qualquer requisição. O `if` do job `ledger` do workflow espelha este mapa.
   const faixasDoAlvo = Object.hasOwn(
     FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,
     projeto,
@@ -4226,28 +4220,22 @@ async function main() {
     : [];
   const ledgerRecusadoNaLojaExplicita =
     ledgerPedido && !faixasDoAlvo.includes(ledgerPedido);
-  if (ehCaf && ledgerRecusadoNaLojaExplicita) {
+  if (explicita && ledgerRecusadoNaLojaExplicita) {
     // O ledger GRAVA em supabase_migrations.schema_migrations e as faixas dele
-    // (72..83) não são deste lote: a CAF explícita só lê — EXCETO as faixas
-    // 92-202 e 60-66 (backfill), que só gravam depois da pré-checagem (8e / 9a).
+    // (72..83) não são deste lote: a loja explícita só lê — EXCETO os backfills
+    // históricos do mapa acima (a CAF: 92-202 e 60-66; a Savy: 92-202), que só
+    // gravam depois da pré-checagem (8e / 9a). Loja nova: nenhuma faixa.
     console.error(
-      "FALHOU: o ledger não roda para ikcous-publicada (a CAF explícita é só leitura neste script, exceto as faixas 92-202 (pré-checagem da 8e) e 60-66 (pré-checagem da 9a), as duas por rol fechado)",
-    );
-    process.exit(1);
-    return;
-  }
-  if (ehSavy && ledgerRecusadoNaLojaExplicita) {
-    // Idem para a Savy explícita (que NÃO tem a faixa 60-66).
-    console.error(
-      "FALHOU: o ledger não roda para savy (a loja cliente explícita é só leitura neste script, exceto a faixa 92-202, com a pré-checagem da 8e obrigatória)",
+      MENSAGEM_LEDGER_RECUSADO_POR_LOJA[projeto] ??
+        `FALHOU: o ledger não roda para ${projeto} (loja assinante explícita: só leitura neste script; os backfills 92-202 e 60-66 são só das lojas que já os tinham declarados)`,
     );
     process.exit(1);
     return;
   }
   const lojasDaFaixa = Object.entries(FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA)
     .filter(([, faixas]) => faixas.includes(ledgerPedido))
-    .map(([loja]) => loja);
-  if (ledgerPedido && lojasDaFaixa.length > 0 && !ehCaf && !ehSavy) {
+    .map(([nome]) => nome);
+  if (ledgerPedido && lojasDaFaixa.length > 0 && !explicita) {
     // Os backfills 92-202 e 60-66 são das lojas explícitas (segredo próprio +
     // expected_sha): `loja`/`sandbox` não os gravam, nem com a pré-checagem verde.
     console.error(
@@ -4288,10 +4276,8 @@ async function main() {
       console.log(erro.message);
       return;
     }
-    if ((ehCaf || ehSavy) && (erro.status === 401 || erro.status === 403)) {
-      console.error(
-        `FALHOU: ${ehCaf ? SEM_ACESSO_CAF : SEM_ACESSO_SAVY} (HTTP ${erro.status})`,
-      );
+    if (explicita && (erro.status === 401 || erro.status === 403)) {
+      console.error(`FALHOU: ${semAcesso} (HTTP ${erro.status})`);
     } else {
       console.error("FALHOU:", erro.message);
     }

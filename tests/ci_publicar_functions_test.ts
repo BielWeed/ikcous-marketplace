@@ -201,19 +201,51 @@ Deno.test("o workflow de publicação, do jeito que está no arquivo", async (t)
   );
 
   await t.step(
-    "os quatro destinos são fechados: CAF, Savy, sandbox e loja",
-    () => {
-      assertStringIncludes(yaml, `loja) REF=${REF_LOJA} ;;`);
-      assertStringIncludes(yaml, `savy) REF=${REF_SAVY} ;;`);
+    "os destinos são fechados pelo cadastro de lojas (CAF, Savy, sandbox e loja hoje): menu gerado dele e validação de novo",
+    async () => {
+      // 25/11/2026: o ref de cada destino saiu do YAML e mora em
+      // scripts/frota/lojas.json; o menu (choice) é GERADO do mesmo cadastro
+      // (bloco LOJAS-OPCOES-ASSINANTES-PRIMEIRO: as lojas no ar primeiro) e o
+      // passo "Resolve o projeto" recusa de novo o que não está lá ("loja
+      // desconhecida") ANTES de qualquer segredo. Os refs de cada destino são
+      // provados rodando o bloco (abaixo, em "o bloco de validação, rodado de
+      // verdade").
+      assert(!/\n\s+(loja|savy|sandbox)\) REF=/.test(yaml));
+      assert(!yaml.includes("ikcous-publicada) REF="));
+      // (`yaml` aqui já vem sem comentários)
       assertStringIncludes(
         yaml,
-        "ikcous-publicada) REF=cafkrminfnokvgjqtkle ;;",
+        "type: choice\n        default: ikcous-publicada\n        options:\n          - ikcous-publicada\n          - savy\n          - loja\n          - sandbox\n",
       );
-      assertStringIncludes(yaml, `sandbox) REF=${REF_SANDBOX} ;;`);
+      assertStringIncludes(
+        await Deno.readTextFile(WORKFLOW),
+        "# LOJAS-OPCOES-ASSINANTES-PRIMEIRO-INICIO",
+      );
       assertStringIncludes(
         yaml,
-        "options:\n          - ikcous-publicada\n          - savy\n          - sandbox\n          - loja",
+        'node scripts/frota/lojas.cjs validar "$PROJETO"',
       );
+      assertStringIncludes(
+        yaml,
+        'node scripts/frota/lojas.cjs ref "$PROJETO" --functions',
+      );
+      const { refsPorProjeto, carregarLojas, lojaDoProjeto } = await import(
+        "node:module"
+      ).then((m) =>
+        m.createRequire(import.meta.url)(
+          fromFileUrl(new URL("../scripts/frota/lojas.cjs", import.meta.url)),
+        ),
+      );
+      const cad = carregarLojas();
+      assertEquals(lojaDoProjeto("loja", cad).refDasFunctions, REF_LOJA);
+      assertEquals(lojaDoProjeto("savy", cad).refDasFunctions, REF_SAVY);
+      assertEquals(
+        lojaDoProjeto("ikcous-publicada", cad).refDasFunctions,
+        "cafkrminfnokvgjqtkle",
+      );
+      assertEquals(lojaDoProjeto("sandbox", cad).refDasFunctions, REF_SANDBOX);
+      // o ref de BANCO de `loja` é a CAF (os workflows de banco), o das FUNCTIONS é a DEK
+      assertEquals(refsPorProjeto(cad).loja, "cafkrminfnokvgjqtkle");
     },
   );
 
@@ -231,43 +263,59 @@ Deno.test("o workflow de publicação, do jeito que está no arquivo", async (t)
       assert(!yaml.includes("inputs.projeto == 'almeida'"));
       assert(!yaml.includes("SUPABASE_ACCESS_TOKEN_ALMEIDA"));
       assert(!yaml.includes("almeida) REF="));
-      const inicio = yaml.indexOf("name: Publica Savy, uma function por vez");
+      const inicio = yaml.indexOf(
+        "name: Publica loja assinante, uma function por vez",
+      );
       const proximo = yaml.indexOf("\n      - ", inicio + 1);
       const step = yaml.slice(inicio, proximo < 0 ? undefined : proximo);
-      assertStringIncludes(step, "if: inputs.projeto == 'savy'");
+      assertStringIncludes(step, "if: inputs.projeto != 'ikcous-publicada'");
       assert(!step.includes("almeida"));
     },
   );
 
-  await t.step("Savy usa somente o token próprio nas etapas de deploy", () => {
-    const nomes = [
-      "Confere o segredo Savy",
-      "Publica Savy, uma function por vez",
-      "Lista o que ficou publicado na Savy",
-    ];
-    for (const nome of nomes) {
-      const inicio = yaml.indexOf(`name: ${nome}`);
-      assert(inicio >= 0, `step Savy ausente: ${nome}`);
-      const proximo = yaml.indexOf("\n      - ", inicio + 1);
-      const step = yaml.slice(inicio, proximo < 0 ? undefined : proximo);
-      assertStringIncludes(step, "if: inputs.projeto == 'savy'");
-      assertStringIncludes(step, "${{ secrets.SUPABASE_ACCESS_TOKEN_SAVY }}");
-      assert(!step.includes("${{ secrets.SUPABASE_ACCESS_TOKEN }}"));
-    }
-    for (const nome of [
-      "Confere o segredo",
-      "Publica, uma function por vez, sempre pelo nome",
-      "Lista o que ficou publicado",
-    ]) {
-      const inicio = yaml.indexOf(`name: ${nome}\n`);
-      assert(inicio >= 0, `step loja/sandbox ausente: ${nome}`);
-      const proximo = yaml.indexOf("\n      - ", inicio + 1);
-      const step = yaml.slice(inicio, proximo < 0 ? undefined : proximo);
-      assertStringIncludes(step, "if: inputs.projeto != 'savy'");
-      assertStringIncludes(step, "${{ secrets.SUPABASE_ACCESS_TOKEN }}");
-      assert(!step.includes("${{ secrets.SUPABASE_ACCESS_TOKEN_SAVY }}"));
-    }
-  });
+  await t.step(
+    "toda loja assinante (a Savy hoje) usa somente o token próprio nas etapas de deploy; loja e sandbox só o legado",
+    () => {
+      const nomes = [
+        "Confere o segredo da loja assinante",
+        "Publica loja assinante, uma function por vez",
+        "Lista o que ficou publicado na loja assinante",
+      ];
+      const cadeiaDeHoje =
+        "SUPABASE_ACCESS_TOKEN: ${{ inputs.projeto == 'ikcous-publicada' && secrets.SUPABASE_ACCESS_TOKEN_IKCOUS || inputs.projeto == 'savy' && secrets.SUPABASE_ACCESS_TOKEN_SAVY || '' }}";
+      for (const nome of nomes) {
+        const inicio = yaml.indexOf(`name: ${nome}`);
+        assert(inicio >= 0, `step de loja assinante ausente: ${nome}`);
+        const proximo = yaml.indexOf("\n      - ", inicio + 1);
+        const step = yaml.slice(inicio, proximo < 0 ? undefined : proximo);
+        // a loja assinante NUNCA cai no legado, nem a CAF (passos próprios)
+        assertStringIncludes(
+          step,
+          "if: inputs.projeto != 'ikcous-publicada' && inputs.projeto != 'loja' && inputs.projeto != 'sandbox'",
+        );
+        // cada segredo só com a guarda da SUA loja ao lado (cadeia gerada do cadastro)
+        assertStringIncludes(step, cadeiaDeHoje);
+        assert(!step.includes("${{ secrets.SUPABASE_ACCESS_TOKEN }}"));
+      }
+      for (const nome of [
+        "Confere o segredo",
+        "Publica, uma function por vez, sempre pelo nome",
+        "Lista o que ficou publicado",
+      ]) {
+        const inicio = yaml.indexOf(`name: ${nome}\n`);
+        assert(inicio >= 0, `step loja/sandbox ausente: ${nome}`);
+        const proximo = yaml.indexOf("\n      - ", inicio + 1);
+        const step = yaml.slice(inicio, proximo < 0 ? undefined : proximo);
+        // forma POSITIVA: o legado só chega a loja/sandbox
+        assertStringIncludes(
+          step,
+          "if: inputs.projeto == 'loja' || inputs.projeto == 'sandbox'",
+        );
+        assertStringIncludes(step, "${{ secrets.SUPABASE_ACCESS_TOKEN }}");
+        assert(!step.includes("SUPABASE_ACCESS_TOKEN_SAVY"));
+      }
+    },
+  );
 
   await t.step(
     "checkout e trava de SHA precedem todo deploy de loja cliente",
@@ -624,7 +672,7 @@ Deno.test("o bloco de validação, rodado de verdade", async (t) => {
         const step = yaml.slice(inicio, proximo < 0 ? undefined : proximo);
         assertStringIncludes(
           step,
-          "if: inputs.projeto != 'savy' && inputs.projeto != 'ikcous-publicada'",
+          "if: inputs.projeto == 'loja' || inputs.projeto == 'sandbox'",
         );
       }
       const consulta = Deno.readTextFileSync(
@@ -760,7 +808,10 @@ Deno.test("publicar-functions: com `listar` NENHUM passo de deploy (nem a prova 
   // com nome real: exatamente UM deploy por projeto, o de sempre
   const esperado: Record<string, string> = {
     "ikcous-publicada": "Publica IKCOUS publicada, uma function por vez",
-    savy: "Publica Savy, uma function por vez",
+    savy: "Publica loja assinante, uma function por vez",
+    // uma loja assinante nova (só no cadastro) cai no passo da loja assinante,
+    // NUNCA no do legado nem no da CAF
+    "loja-teste-xyz": "Publica loja assinante, uma function por vez",
     sandbox: "Publica, uma function por vez, sempre pelo nome",
     loja: "Publica, uma function por vez, sempre pelo nome",
   };

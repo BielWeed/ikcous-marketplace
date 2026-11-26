@@ -458,18 +458,21 @@ Deno.test("o workflow, do jeito que está no arquivo", async (t) => {
   );
 
   await t.step(
-    "`projeto` é choice fechado loja/sandbox — nunca mais projeto_ref de texto livre (achado #1, rodada 2)",
+    "`projeto` é choice fechado loja/sandbox (gerado de scripts/frota/lojas.json) — nunca mais projeto_ref de texto livre (achado #1, rodada 2)",
     () => {
       assert(
         !yaml.includes("projeto_ref:"),
         "o workflow ainda declara o input projeto_ref (texto livre)",
       );
       assertStringIncludes(yaml, "projeto:");
+      // 25/11/2026: o menu é GERADO do cadastro (bloco LOJAS-OPCOES); o passo
+      // "Confere a loja no cadastro" recusa "loja desconhecida" ANTES de qualquer
+      // segredo, e o ref continua resolvido por `resolverRef` (mesmo cadastro).
       assertStringIncludes(
-        yaml,
-        "options:\n          - loja\n          - sandbox",
+        semComentarios(yaml),
+        "type: choice\n        default: loja\n        options:\n          - loja\n          - sandbox",
       );
-      assertStringIncludes(yaml, "default: loja");
+      assertStringIncludes(yaml, "scripts/frota/lojas.cjs validar");
     },
   );
 

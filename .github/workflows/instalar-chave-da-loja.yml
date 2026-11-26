@@ -28,14 +28,16 @@
 # aparece como *** no log dos passos seguintes. O resumo do run mostra so os 8
 # primeiros caracteres do hash.
 #
-# PROJETO: fechado em "ikcous-publicada" | "savy" (as duas lojas reais; nunca um ref
-# de texto livre, nunca Almeida, Brand Meliz nem Space). O ref e resolvido DENTRO do
-# script (`resolverRef`, o mesmo de conferir-banco-da-loja.yml).
+# PROJETO: menu fechado (choice) GERADO de scripts/frota/lojas.json e VALIDADO de novo contra ele (so lojas
+# assinantes; "loja desconhecida" ANTES de qualquer segredo; nunca Almeida, Brand
+# Meliz nem Space). O ref e resolvido DENTRO do script (`resolverRef`, o mesmo de
+# conferir-banco-da-loja.yml), a partir do mesmo cadastro.
 #
-# CREDENCIAL: nenhuma nova. ikcous-publicada usa SUPABASE_ACCESS_TOKEN_IKCOUS e savy
-# usa SUPABASE_ACCESS_TOKEN_SAVY (os mesmos de publicar-functions.yml). Cada alvo
-# enxerga SO o seu segredo (a expressao `&& ... || ''` nunca cai no vizinho), nunca o
-# legado, e 401/403 PARAM sem tentar outro segredo. O segredo so existe no ULTIMO
+# CREDENCIAL: nenhuma nova. Cada loja usa o segredo que o cadastro nomeia em
+# `segredoDoToken` (ikcous-publicada: SUPABASE_ACCESS_TOKEN_IKCOUS; savy:
+# SUPABASE_ACCESS_TOKEN_SAVY — os mesmos de publicar-functions.yml). Cada alvo
+# enxerga SO o seu segredo (a expressao `&& ... || ''` nunca cai no vizinho; as linhas
+# sao GERADAS do cadastro), nunca o legado, e 401/403 PARAM sem tentar outro segredo. O segredo so existe no ULTIMO
 # passo; os passos de validacao e o checkout nao o veem.
 #
 # GATILHO: so `workflow_dispatch` (nenhum codigo de PR roda aqui com o segredo).
@@ -68,13 +70,15 @@ on:
   workflow_dispatch:
     inputs:
       projeto:
-        description: "Loja real: ikcous-publicada (a CAF explicita) ou savy (a loja cliente explicita); nunca texto livre"
+        description: "Loja real: o nome EXATO de uma loja assinante de scripts/frota/lojas.json (ex.: ikcous-publicada ou savy); loja desconhecida e recusada antes de qualquer segredo"
         required: true
         type: choice
         default: savy
         options:
+          # LOJAS-OPCOES-ASSINANTES-INICIO (gerado de scripts/frota/lojas.json por scripts/frota/lojas-nos-workflows.cjs --escrever; nao editar a mao)
           - ikcous-publicada
           - savy
+          # LOJAS-OPCOES-ASSINANTES-FIM
       hash:
         description: "SO o hash (SHA-256 da chave, 64 hex MINUSCULOS) que o app de gestao mostra; nunca a chave"
         required: true
@@ -113,10 +117,9 @@ jobs:
           EXPECTED_SHA: ${{ inputs.expected_sha }}
         run: |
           set -euo pipefail
-          case "$PROJETO" in
-            ikcous-publicada|savy) ;;
-            *) echo "::error::projeto desconhecido"; exit 1 ;;
-          esac
+          if ! [[ "$PROJETO" =~ ^[a-z][a-z0-9-]{1,39}$ ]]; then
+            echo "::error::loja desconhecida (nome fora do formato)"; exit 1
+          fi
           if ! [[ "$EXPECTED_SHA" =~ ^[a-fA-F0-9]{40}$ ]] || [ "${EXPECTED_SHA,,}" != "${GITHUB_SHA,,}" ]; then
             echo "::error::Loja cliente ($PROJETO) exige expected_sha completo e igual ao GITHUB_SHA do run"; exit 1
           fi
@@ -155,13 +158,22 @@ jobs:
         with:
           node-version: "24"
 
+      # A loja existe no cadastro (scripts/frota/lojas.json) e e ASSINANTE? Recusa
+      # ("loja desconhecida") ANTES do passo que ve segredo. Nao le segredo.
+      - name: Confere a loja no cadastro (lojas.json) antes de qualquer segredo
+        env:
+          PROJETO: ${{ inputs.projeto }}
+        run: node scripts/frota/lojas.cjs validar "$PROJETO" --assinante
+
       # Cada alvo enxerga SO o seu segredo: segredo vazio da '', nunca o do vizinho.
       # E o UNICO passo com segredo; o script PARA sem o do proprio alvo. O hash NAO
       # vem em env: o script o le do arquivo do evento (GITHUB_EVENT_PATH).
       - name: Instala o hash da chave (uma escrita, conferida por leitura)
         env:
+          # LOJAS-SEGREDOS-INICIO (gerado de scripts/frota/lojas.json por scripts/frota/lojas-nos-workflows.cjs --escrever; nao editar a mao)
           SUPABASE_ACCESS_TOKEN_IKCOUS: ${{ inputs.projeto == 'ikcous-publicada' && secrets.SUPABASE_ACCESS_TOKEN_IKCOUS || '' }}
           SUPABASE_ACCESS_TOKEN_SAVY: ${{ inputs.projeto == 'savy' && secrets.SUPABASE_ACCESS_TOKEN_SAVY || '' }}
+          # LOJAS-SEGREDOS-FIM
           PROJETO: ${{ inputs.projeto }}
           SUBSTITUIR: ${{ inputs.substituir }}
         run: node scripts/publicacao/instalar-chave-da-loja.cjs
