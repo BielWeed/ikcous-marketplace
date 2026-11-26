@@ -3170,7 +3170,7 @@ const ROL_DA_150C = [
   "controle: catalogo publico visivel",
   "assinatura_da_loja_definir_chave: uma so, com o corpo da 20261399998000 (md5)",
   "assinatura_da_loja_definir_chave: atributos de sempre (SECURITY DEFINER, plpgsql, VOLATILE, search_path public e pg_temp, retorna void) e EXECUTE so para service_role (anon, authenticated e PUBLIC nada)",
-  "assinatura_da_loja_gravar: uma so, com o corpo da 20261399998000 (md5)",
+  "assinatura_da_loja_gravar: uma so, com o corpo da 20261399998000 ou da sucessora 20261590000000 (md5)",
   "assinatura_da_loja_gravar: atributos de sempre (SECURITY DEFINER, plpgsql, VOLATILE, search_path public e pg_temp, retorna jsonb) e EXECUTE so para anon e authenticated (service_role e PUBLIC nada)",
   "assinatura_da_loja_chave: tabela comum com RLS ligada sem FORCE e nenhuma politica",
   "assinatura_da_loja_chave: nenhum privilegio para anon, authenticated, service_role e PUBLIC (tabela e coluna)",

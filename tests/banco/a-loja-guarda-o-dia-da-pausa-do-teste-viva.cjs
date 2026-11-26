@@ -1023,6 +1023,31 @@ prova(
   },
 );
 
+// ---- A CONFERENCIA ANTIGA aprende a sucessora: a 150c (da 20261399998000) responde "sim" com e sem esta migration -----------------
+const A150C = "150c-conferir-a-loja-recebe-o-plano-por-porta-unica-aplicado";
+prova(
+  "CONSULTA 150c: fecha 8 de 8 com esta migration no ar, depois do rollback comum e depois do destrutivo; um corpo alheio da porta continua reprovando",
+  async () => {
+    await P.emTransacao(async () => {
+      assert.deepEqual(await P.consulta(A150C), [], "com a 20261590000000");
+      await C().query(ROLLBACK_SQL);
+      assert.deepEqual(await P.consulta(A150C), [], "depois do comum");
+      await C().query(DESTRUTIVO_CONFIRMADO);
+      assert.deepEqual(await P.consulta(A150C), [], "depois do destrutivo");
+    });
+    await P.emTransacao(async () => {
+      await C().query(
+        "CREATE OR REPLACE FUNCTION public.assinatura_da_loja_gravar(p_chave text, p_dados jsonb, p_simular boolean DEFAULT false) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $f$ BEGIN RETURN '{}'::jsonb; END; $f$",
+      );
+      const f = await P.consulta(A150C);
+      assert.ok(
+        f.length >= 1 && f.every((x) => /gravar: uma so, com o corpo/.test(x)),
+        JSON.stringify(f),
+      );
+    });
+  },
+);
+
 (async () => {
   await P.conectar();
   try {

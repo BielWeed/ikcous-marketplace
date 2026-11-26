@@ -31,12 +31,18 @@
  *
  * USO: CI_BANCO_EFEMERO=1 DATABASE_URL=postgres://postgres@127.0.0.1:<porta>/postgres \
  *        node tests/banco/rodar-isolado.cjs tests/banco/a-loja-recebe-o-plano-por-porta-unica-viva.cjs
+ *
+ * SUCESSORA: a 20261590000000 (a loja guarda o dia da pausa do teste) troca o corpo desta porta e poe a 14a coluna no cartao. Antes de medir,
+ * este arquivo a desfaz no clone pelos dois rollbacks dela (tests/banco/a-loja-guarda-o-dia-da-pausa-do-teste-posterior.cjs).
  */
 
 const P = require("./prova-de-objeto-novo.cjs");
 const { assert, prova, md5, sha256, emCRLF } = P;
 const { Client } = require("pg");
 const { lerDatabaseUrlEfemera } = require("./efemero.cjs");
+const {
+  desfazerODiaDaPausa,
+} = require("./a-loja-guarda-o-dia-da-pausa-do-teste-posterior.cjs");
 
 const NOME = "20261399998000_a_loja_recebe_o_plano_por_porta_unica.sql";
 const MIGRATION = P.lerMigration(NOME);
@@ -1791,6 +1797,9 @@ prova(
 (async () => {
   await P.conectar();
   try {
+    // A sucessora 20261590000000 sai do clone ANTES de qualquer medida (no-op se ela nao estiver no ar).
+    if (await desfazerODiaDaPausa(P.conexao()))
+      console.log("  (a sucessora 20261590000000 foi desfeita no clone)");
     await P.executar("a-loja-recebe-o-plano-por-porta-unica");
   } finally {
     await P.conexao()

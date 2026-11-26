@@ -462,3 +462,26 @@ Deno.test("20261590: o rollback DESTRUTIVO so apaga a coluna, so com confirmacao
   assertStringIncludes(conf, `'${TREZE}'`);
   assertStringIncludes(destrutivo, "SO COM O DONO");
 });
+
+Deno.test("20261590: o db-apply confere a porta nova pelos marcadores da 20261399998000 e pelo da chave opcional; a 150c aceita os dois corpos", () => {
+  const dbApply = Deno.readTextFileSync(`${RAIZ}/scripts/db-apply.cjs`).replace(
+    /\r/g,
+    "",
+  );
+  const i = dbApply.indexOf(`"${NOME}": [`);
+  assert(i >= 0, "a entrada da 20261590000000 nao esta no db-apply");
+  const entrada = dbApply.slice(i, dbApply.indexOf("\n  ],\n", i));
+  assertStringIncludes(entrada, 'funcao: "assinatura_da_loja_gravar"');
+  for (const marcador of [
+    "WHERE k <> ALL (v_chaves || v_opcionais) ORDER BY k LIMIT 1;",
+    "IF (p_dados -> v_campo) IS NULL OR jsonb_typeof(p_dados -> v_campo) = 'null' THEN",
+    "pausa_em = EXCLUDED.pausa_em,",
+    "WHERE a.atualizado_em <= EXCLUDED.atualizado_em;",
+    "RAISE EXCEPTION 'nao_autorizado' USING ERRCODE = '42501';",
+  ])
+    assertStringIncludes(entrada, marcador);
+  const c150 = Deno.readTextFileSync(
+    `${RAIZ}/scripts/publicacao/consultas/150c-conferir-a-loja-recebe-o-plano-por-porta-unica-aplicado.sql`,
+  ).replace(/\r/g, "");
+  assertStringIncludes(c150, `h IN ('${H_ANTERIOR}', '${H_NOVO}')`);
+});
