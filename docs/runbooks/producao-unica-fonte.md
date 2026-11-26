@@ -1989,13 +1989,21 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
      e rodar o ensaio de novo; ou, so para loja que NAO e a IKCOUS nem a Savy, adormece-la pela
      caderneta (`node scripts/frota/estado-da-loja.mjs --adormecer ...`, decisao do socio; veja
      [estado de vida da loja](estado-de-vida-da-loja.md)).
-   - **Depois do promote**: Saida 3 (**INCERTO**), sem "FALHOU." e sem a ordem de rollback,
-     desde que o resto esteja provado (a Vercel liga o endereco ao deployment promovido, o
-     `version.json` dele e o da release e nao ha outro achado). O front novo esta no ar; restaure
-     o banco e rode a conferencia de novo (o relatorio imprime o comando). Rollback da frota nao
-     traz o banco de volta. Se o painel do Supabase mostrar o projeto no ar (nao pausado) e a
-     loja continuar com o 503 `banco-indisponivel`, a causa pode ser o front novo lendo o banco:
-     ai sim trate como conferencia que falhou (Saida 1) e siga o [rollback](#rollback).
+   - **Depois do promote** o 503 sozinho nao basta: o porteiro e o middleware do MESMO
+     deployment promovido, e um defeito dele (montar a ficha, ler a configuracao da loja)
+     tambem responde `banco-indisponivel`. Por isso o portao pergunta ao banco DIRETO, sem o
+     porteiro: `GET https://<ref>.supabase.co/rest/v1/v_store_config?select=dominio_publico&id=eq.1`
+     com a chave publicavel da ficha de ANTES do promote (so leitura, 5 s, no maximo 1 nova
+     tentativa; a chave nunca sai no relatorio nem no `--json`).
+     - Erro de rede, tempo esgotado ou HTTP 5xx (540 = projeto pausado, 503 inclusive): Saida 3
+       (**INCERTO**), sem "FALHOU." e sem a ordem de rollback, desde que o resto esteja provado
+       (a Vercel liga o endereco ao deployment promovido, o `version.json` dele e o da release
+       e nao ha outro achado). O front novo esta no ar; restaure o banco e rode a conferencia de
+       novo (o relatorio imprime o comando). Rollback da frota nao traz o banco de volta.
+     - O banco respondeu (200 ou 4xx): o banco esta no ar e quem nao monta a loja e o front novo.
+       Saida 1 (**FALHOU**) com o [rollback](#rollback) da frota inteira.
+     - A sonda nao rodou (ficha de antes sem a chave publicavel, endereco que nao era de loja
+       nenhuma antes): Saida 1 (**FALHOU**) com o rollback, como sempre foi.
    - `LOJA_TROCADA` de verdade (pagina com a ficha ou o ref de OUTRA loja, ou ficha que muda
      entre amostras) continua sendo rollback ja, mesmo que outra loja esteja com o banco fora.
 

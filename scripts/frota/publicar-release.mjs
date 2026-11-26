@@ -71,8 +71,10 @@
  * deployment promovido (sem "FALHOU." e sem o rollback: conferir de novo; ver
  * soEnderecosSemResposta). 404, não-JSON, página ou loja sem resposta = 1.
  * Também é 3 quando o que sobra é BANCO DE LOJA FORA DO AR (o porteiro respondeu
- * 503 banco-indisponivel; ver incertezaDepoisDoPromote): o front novo está no ar
- * e voltar a frota não traz o banco de volta. Antes do promote, o banco fora
+ * 503 banco-indisponivel; ver incertezaDepoisDoPromote) E a sonda DIRETA ao banco
+ * daquela loja (sondarBancoDaLoja, sem o porteiro) confirma: rede, 5xx ou 540
+ * (projeto pausado). Banco que responde à sonda = o defeito é do front novo
+ * (FALHOU, rollback); sonda que não roda = FALHOU. Antes do promote, o banco fora
  * BLOQUEIA: a loja não é pulada (voltaria com o front novo sobre o banco velho).
  */
 
@@ -395,6 +397,10 @@ export function lojasDoInventario(inventario, politica) {
   const lojas = new Map();
   const paradas = new Map();
   const bancoFora = [];
+  // ref -> chave publicável que a ficha serve a todo visitante (só para a sonda
+  // direta ao banco depois do promote). Fora de `lojas` de propósito: `lojas`
+  // vai para o relatório e para o --json, e a chave não sai em nenhum dos dois.
+  const chavesPorRef = new Map();
   const problemas = [];
   if (!inventario.vercel?.ok)
     problemas.push(
@@ -440,6 +446,8 @@ export function lojasDoInventario(inventario, politica) {
       });
     const loja = lojas.get(ref);
     loja.dominios.push(sonda.dominio);
+    if (typeof sonda.chavePublica === "string" && !chavesPorRef.has(ref))
+      chavesPorRef.set(ref, sonda.chavePublica);
     if (f.titulo) loja.titulos.add(f.titulo);
     if (sonda.versao?.codeSha) loja.shasServidos.add(sonda.versao.codeSha);
   }
@@ -469,8 +477,134 @@ export function lojasDoInventario(inventario, politica) {
         dominios: p.dominios,
       })),
     bancoFora: bancoFora.sort(),
+    chavesPorRef,
     problemas,
   };
+}
+
+/** HTTP que o gateway do Supabase devolve para projeto PAUSADO (medido em 26/11/2026). */
+export const HTTP_PROJETO_PAUSADO = 540;
+const RE_URL_DO_BANCO = /^https:\/\/[a-z]{20}\.supabase\.co$/;
+
+/**
+ * Pergunta ao banco da loja, DIRETO (sem o porteiro), se ele está no ar: GET
+ * `<supabaseUrl>/rest/v1/v_store_config?select=dominio_publico&id=eq.1` com a
+ * chave publicável (a mesma que a ficha serve a todo visitante; só leitura).
+ * Devolve { estado, detalhe }:
+ *  - "fora": erro de rede/tempo esgotado ou HTTP 5xx — 540 (projeto pausado) e
+ *    503 inclusive — também na nova tentativa (no máximo 1);
+ *  - "no-ar": qualquer outra resposta (200, 4xx): o banco respondeu;
+ *  - "nao-rodou": sem supabaseUrl https://<ref>.supabase.co ou sem chave.
+ * O `detalhe` nunca leva a chave nem a mensagem do erro (só o status ou o tipo).
+ * Chave nova (sb_publishable_...) vai só em apikey; a anon antiga (JWT), também
+ * em Authorization, como em conferir-frota.mjs (lerTituloNoBanco).
+ */
+export async function sondarBancoDaLoja(
+  supabaseUrl,
+  chave,
+  { fetchImpl = fetch, timeoutMs = 5000, novasTentativas = 1 } = {},
+) {
+  if (
+    typeof supabaseUrl !== "string" ||
+    !RE_URL_DO_BANCO.test(supabaseUrl) ||
+    typeof chave !== "string" ||
+    !chave
+  )
+    return {
+      estado: "nao-rodou",
+      detalhe:
+        "sem o endereço do banco ou sem a chave publicável na ficha de antes do promote",
+    };
+  const url = `${supabaseUrl}/rest/v1/v_store_config?select=dominio_publico&id=eq.1`;
+  const headers = { apikey: chave, accept: "application/json" };
+  if (!chave.startsWith("sb_publishable_"))
+    headers.authorization = `Bearer ${chave}`;
+  let ultimo = null;
+  for (let n = 0; n <= Math.min(1, Math.max(0, novasTentativas)); n++) {
+    try {
+      const res = await fetchImpl(url, {
+        method: "GET",
+        cache: "no-store",
+        redirect: "error",
+        headers,
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      await res.text().catch(() => "");
+      if (res.status < 500 || res.status > 599)
+        return { estado: "no-ar", detalhe: `HTTP ${res.status}` };
+      ultimo = {
+        estado: "fora",
+        detalhe:
+          res.status === HTTP_PROJETO_PAUSADO
+            ? `HTTP ${res.status} (projeto pausado)`
+            : `HTTP ${res.status}`,
+      };
+    } catch (e) {
+      ultimo = {
+        estado: "fora",
+        detalhe:
+          e?.name === "TimeoutError" || e?.name === "AbortError"
+            ? "tempo esgotado"
+            : "erro de rede",
+      };
+    }
+  }
+  return ultimo;
+}
+
+/**
+ * Depois do promote, para cada endereço com 503 banco-indisponivel, a sonda
+ * DIRETA ao banco da loja dele (a loja e a chave vêm do inventário de ANTES do
+ * promote; uma sonda por banco). Devolve [{ dominio, loja, ref, estado, detalhe }].
+ * Endereço sem loja conhecida antes, ou sem a dependência, = "nao-rodou".
+ */
+export async function provarBancosFora(
+  bancoFora,
+  lojasAntes,
+  chavesPorRef,
+  sondarBanco,
+) {
+  const porRef = new Map();
+  const provas = [];
+  for (const dominio of bancoFora) {
+    const loja = lojasAntes.find((l) => l.dominios.includes(dominio)) ?? null;
+    if (!loja || typeof sondarBanco !== "function") {
+      provas.push({
+        dominio,
+        loja: loja?.titulo ?? null,
+        ref: loja?.ref ?? null,
+        estado: "nao-rodou",
+        detalhe: loja
+          ? "a sonda do banco não está disponível"
+          : "o endereço não era de nenhuma loja antes do promote",
+      });
+      continue;
+    }
+    if (!porRef.has(loja.ref))
+      porRef.set(
+        loja.ref,
+        Promise.resolve()
+          .then(() =>
+            sondarBanco(
+              `https://${loja.ref}.supabase.co`,
+              chavesPorRef?.get(loja.ref) ?? null,
+            ),
+          )
+          .catch(() => ({
+            estado: "nao-rodou",
+            detalhe: "a sonda do banco falhou ao rodar",
+          })),
+      );
+    const r = await porRef.get(loja.ref);
+    provas.push({
+      dominio,
+      loja: loja.titulo || loja.ref,
+      ref: loja.ref,
+      estado: r?.estado ?? "nao-rodou",
+      detalhe: String(r?.detalhe ?? "sem resposta da sonda"),
+    });
+  }
+  return provas;
 }
 
 /** O bloqueio de UM endereço com o banco da loja fora do ar, antes do promote. */
@@ -2143,6 +2277,7 @@ export async function publicarRelease(opcoes, deps) {
     lojas,
     foraDoAr,
     bancoFora,
+    chavesPorRef,
     problemas: probInv,
   } = lojasDoInventario(inventario, politica);
   const semBackend = new Set(
@@ -2438,10 +2573,25 @@ export async function publicarRelease(opcoes, deps) {
   // Endereço que só não respondeu, ou loja com o BANCO fora do ar, não é prova
   // de release errada: sem "FALHOU." e sem o rollback da frota inteira (que
   // assustava o dono à toa e não traria banco nenhum de volta).
-  const incerteza =
+  // O 503 banco-indisponivel SOZINHO não prova que o banco caiu: o porteiro é o
+  // middleware DESTE deployment, e um defeito dele (montar a ficha, ler a
+  // configuração) dá a mesma resposta. Só vira INCERTO o endereço cujo banco,
+  // perguntado DIRETO, está fora (rede, 5xx, 540 = pausado). Banco que responde
+  // ou sonda que não roda = FALHOU, com o rollback.
+  let incerteza =
     ok || producaoDepois !== deploymentId
       ? null
       : incertezaDepoisDoPromote(pos, deploymentId, lojas);
+  const provasDoBanco = incerteza?.bancoFora.length
+    ? await provarBancosFora(
+        incerteza.bancoFora,
+        lojas,
+        chavesPorRef,
+        deps.sondarBanco,
+      )
+    : [];
+  const bancoNaoProvado = provasDoBanco.filter((p) => p.estado !== "fora");
+  if (bancoNaoProvado.length) incerteza = null;
   const incerto = incerteza !== null;
   const acordou = lojasQueAcordaramNaPublicacao(foraDoAr, pos, inventario, sha);
   linhas.push(
@@ -2478,12 +2628,19 @@ export async function publicarRelease(opcoes, deps) {
       );
     if (bancoForaDepois.length)
       linhas.push(
-        "Se o painel do Supabase mostrar o projeto no ar (não pausado) e a loja continuar respondendo 503 banco-indisponivel, a causa pode ser o front novo lendo o banco: trate como conferência que falhou e siga a Saida 3 em docs/runbooks/producao-unica-fonte.md.",
+        `A sonda direta ao banco (sem o porteiro) confirmou o banco fora: ${resumoDasProvas(provasDoBanco)}. Se depois de restaurado o banco a loja continuar com o 503 banco-indisponivel, rode este portão de novo: com o banco respondendo, ele diz FALHOU e o rollback.`,
       );
   } else if (!ok) {
+    if (bancoNaoProvado.length)
+      linhas.push(
+        "",
+        `O porteiro respondeu 503 banco-indisponivel, mas a sonda direta ao banco (sem o porteiro) não confirmou banco fora: ${resumoDasProvas(bancoNaoProvado)}. ${bancoNaoProvado.some((p) => p.estado === "no-ar") ? "Onde o banco respondeu, ele está no ar e a causa é o front novo (o porteiro deste deployment não consegue montar a loja)." : ""}${bancoNaoProvado.some((p) => p.estado === "nao-rodou") ? " Onde a sonda direta ao banco não rodou, não há prova de que o banco caiu." : ""}`,
+      );
     linhas.push(
       "",
-      "**FALHOU.** Se houver LOJA_TROCADA (isolamento), voltar AGORA a frota inteira:",
+      bancoNaoProvado.some((p) => p.estado === "no-ar")
+        ? "**FALHOU.** O front novo não monta a loja com o banco no ar: voltar AGORA a frota inteira:"
+        : "**FALHOU.** Se houver LOJA_TROCADA (isolamento), voltar AGORA a frota inteira:",
       "```",
       `vercel rollback ${producaoAnterior} --yes --scope ${politica.projetoVercel?.escopo ?? "<slug do time>"}`,
       "```",
@@ -2532,6 +2689,28 @@ export async function publicarRelease(opcoes, deps) {
     lojasForaDoAr: foraDoAr,
     producaoAnterior,
   };
+}
+
+/** "Savy (<ref>) em a, b: HTTP 540 (projeto pausado)", uma por banco sondado; nunca a chave. */
+function resumoDasProvas(provas) {
+  const grupos = new Map();
+  for (const p of provas) {
+    const chave = `${p.ref ?? "-"}|${p.estado}|${p.detalhe}`;
+    if (!grupos.has(chave)) grupos.set(chave, { ...p, dominios: [] });
+    grupos.get(chave).dominios.push(p.dominio);
+  }
+  return [...grupos.values()]
+    .map((g) => {
+      const quem = g.ref ? `${g.loja ?? g.ref} (${g.ref})` : "sem loja";
+      const como =
+        g.estado === "fora"
+          ? `banco fora, ${g.detalhe}`
+          : g.estado === "no-ar"
+            ? `o banco respondeu ${g.detalhe}`
+            : `sonda direta ao banco não rodou: ${g.detalhe}`;
+      return `${quem} em ${g.dominios.sort().join(", ")}: ${como}`;
+    })
+    .join("; ");
 }
 
 /**
@@ -2898,6 +3077,8 @@ export function dependenciasReais({ rodarGh, rodarSupabase } = {}) {
     politica,
     canais,
     fetchImpl: fetch,
+    // Só leitura, chave publicável, 5 s, no máximo 1 nova tentativa.
+    sondarBanco: (supabaseUrl, chave) => sondarBancoDaLoja(supabaseUrl, chave),
     vercelApi: executor,
     inventariar: (p) =>
       inventariar(p, { pedirVercel: true, executorVercel: executor }),
