@@ -8,6 +8,11 @@
 // buscas ao `/index.html` é exata (no `porteiro-dois-hosts.test.ts` os outros
 // testes já aqueceriam A e B antes).
 //
+// Ressalva do revisor (PR #1910): só se guarda o HTML marcado com o id DESTE
+// deploy. O servidor simula o build da Vercel (`deployDoBuild`) e o runtime
+// recebe o mesmo `VERCEL_DEPLOYMENT_ID`; o último teste troca o id do runtime
+// para provar que o HTML de outro deploy nunca fica guardado.
+//
 // Precisa do `dist-test/` (ver README.md desta pasta).
 import { existsSync } from "node:fs";
 import http from "node:http";
@@ -23,6 +28,7 @@ import {
 } from "./servidor.ts";
 
 const COMANDO_DE_BUILD = "IKCOUS_IDENTITY_MODE=fixture npm run build";
+const DEPLOY_DO_ENSAIO = "dpl_EnsaioDoisHosts1";
 
 // O mesmo `pedir` de `porteiro-dois-hosts.test.ts`: `node:http` por IP com o
 // `Host` escrito na requisição (o `fetch` do Node ignora `Host`).
@@ -84,12 +90,22 @@ if (!existsSync(DIST_TEST_DIR)) {
 describe("porteiro guarda o /index.html — duas lojas na mesma instância", () => {
   let servidor: { porta: number; fechar(): Promise<void> };
 
+  let deployAntes: string | undefined;
+
   beforeAll(async () => {
-    servidor = await iniciarServidorDoisHosts();
+    deployAntes = process.env.VERCEL_DEPLOYMENT_ID;
+    process.env.VERCEL_DEPLOYMENT_ID = DEPLOY_DO_ENSAIO;
+    servidor = await iniciarServidorDoisHosts({
+      deployDoBuild: DEPLOY_DO_ENSAIO,
+    });
   });
 
   afterAll(async () => {
     await servidor.fechar();
+    // `= undefined` gravaria a STRING "undefined" no ambiente do Node.
+    if (deployAntes === undefined)
+      Reflect.deleteProperty(process.env, "VERCEL_DEPLOYMENT_ID");
+    else process.env.VERCEL_DEPLOYMENT_ID = deployAntes;
   });
 
   // O `Host` do pedido vai sem porta (`pedir`), então o self-fetch do porteiro
@@ -151,6 +167,21 @@ describe("porteiro guarda o /index.html — duas lojas na mesma instância", () 
       expect(lerDataBlock(r.corpo).host).toBe(HOSTS.C);
     }
     expect(buscasDoIndex(HOSTS.C)).toBe(1);
+  });
+
+  it("instância de OUTRO deploy (id do runtime diferente da marca do HTML): serve a loja, mas busca a cada pedido", async () => {
+    expect(buscasDoIndex(HOSTS.D)).toBe(0);
+    process.env.VERCEL_DEPLOYMENT_ID = "dpl_OutroDeployQualquer";
+    try {
+      for (let i = 0; i < 2; i += 1) {
+        const r = await pedir(servidor.porta, HOSTS.D, "/");
+        expect(r.status).toBe(200);
+        expect(lerDataBlock(r.corpo).host).toBe(HOSTS.D);
+      }
+      expect(buscasDoIndex(HOSTS.D)).toBe(2);
+    } finally {
+      process.env.VERCEL_DEPLOYMENT_ID = DEPLOY_DO_ENSAIO;
+    }
   });
 
   it("/manifest.webmanifest sai com `private, max-age=300`", async () => {

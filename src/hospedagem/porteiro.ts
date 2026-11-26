@@ -36,6 +36,7 @@ import {
 import { ehPaginaContavel } from "./contador";
 import { montarDataBlock } from "./ficha";
 import { buscarIdsDosProdutos, robotsTxt, sitemapXml } from "./mapaDoSite";
+import { deployDoHtml, idDoDeploy } from "./marcaDoDeploy";
 
 // ─── Matcher: só DOCUMENTOS invocam o porteiro ─────────────────────────────
 //
@@ -178,6 +179,10 @@ export interface AmbientePorteiro {
    * adormecida/encerrada. Só vira link se for uma URL `https:` válida;
    * ausente ou qualquer outra coisa = a frase sai sem link. */
   readonly IKCOUS_LINK_ACORDAR?: string;
+  /** Variável de sistema da Vercel (build E runtime): o id deste deploy. O
+   * porteiro só guarda em memória o `/index.html` marcado com ele (ver
+   * `src/hospedagem/marcaDoDeploy.ts`). Ausente = nunca guarda. */
+  readonly VERCEL_DEPLOYMENT_ID?: string;
 }
 
 export interface ConexaoResolvida {
@@ -1956,7 +1961,7 @@ export async function atenderPorteiro(
     estadoCaderneta,
     deps,
     {},
-    { cartaz },
+    { cartaz, deploy: ambiente.VERCEL_DEPLOYMENT_ID },
   );
   // Só conta o que a pessoa de fato recebeu: documento 200 (503 de manutenção
   // do porteiro e `html-indisponivel` ficam de fora), de uma página da loja
@@ -2208,6 +2213,12 @@ async function cartazDaLoja(
 //     entrada, nem quando o arquivo de um deploy é o mesmo para todos. O
 //     `cookie` repassado fica FORA da chave: o arquivo estático não varia por
 //     ele, e o porteiro só roda depois da Deployment Protection da Vercel.
+//   - Só entra o HTML DESTE deploy (ressalva do revisor, PR #1910): a marca
+//     `<meta name="ikcous-deploy">` gravada pelo build tem de ser igual ao
+//     `VERCEL_DEPLOYMENT_ID` do runtime. O self-fetch vai ao domínio público,
+//     que numa troca de domínio ou rollback pode servir o HTML de OUTRO deploy
+//     (com `/assets/` que este não serve); esse HTML sai como antes, só não é
+//     guardado. Sem variável, sem marca ou marca diferente = não guarda.
 //   - Só 200 entra. 404/5xx/rede caindo nunca ficam guardados: o próximo
 //     pedido busca de novo (e o de agora segue a regra de sempre: 503
 //     `html-indisponivel`, ou a exceção da rede).
@@ -2243,6 +2254,7 @@ async function baixarIndexHtml(
     DependenciasPorteiro,
     "fetchImpl" | "agora" | "cacheIndexHtml" | "indexHtmlEmVoo"
   >,
+  deployDoRuntime: string | undefined,
 ): Promise<IndexHtmlBaixado> {
   const endereco = new URL("/index.html", request.url);
   const chave = endereco.href;
@@ -2259,7 +2271,9 @@ async function baixarIndexHtml(
     });
     if (resposta.status !== 200) return { status: resposta.status, html: null };
     const html = await resposta.text();
-    guardarComTeto(deps.cacheIndexHtml, chave, { html, quando: agora });
+    const deste = idDoDeploy(deployDoRuntime);
+    if (deste !== null && deployDoHtml(html) === deste)
+      guardarComTeto(deps.cacheIndexHtml, chave, { html, quando: agora });
     return { status: 200, html };
   })();
   const emAndamento = deps.indexHtmlEmVoo;
@@ -2296,12 +2310,16 @@ export async function documentoDaLoja(
     "fetchImpl" | "cacheCartaz" | "agora" | "cacheIndexHtml" | "indexHtmlEmVoo"
   >,
   extras: Readonly<Record<string, string>> = {},
-  opcoes: { readonly cartaz?: boolean } = {},
+  opcoes: {
+    readonly cartaz?: boolean;
+    /** O `VERCEL_DEPLOYMENT_ID` do runtime: só com ele o HTML é guardado. */
+    readonly deploy?: string;
+  } = {},
 ): Promise<Response> {
   // `opcoes.cartaz` só EXECUTA a decisão de `atenderPorteiro` (o robô de prévia
   // não passa `opcoes`). A leitura corre junto com o documento e nunca rejeita.
   const [indexHtml, cartaz] = await Promise.all([
-    baixarIndexHtml(request, deps),
+    baixarIndexHtml(request, deps, opcoes.deploy),
     opcoes.cartaz === true ? cartazDaLoja(ficha, deps) : Promise.resolve(null),
   ]);
   if (indexHtml.html === null)

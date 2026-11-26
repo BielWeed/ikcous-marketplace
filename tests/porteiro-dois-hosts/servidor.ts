@@ -63,6 +63,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 
 import middleware from "../../middleware.ts";
+import { marcarDeployNoHtml } from "../../src/hospedagem/marcaDoDeploy.ts";
 import {
   SELECT_CONFIGURACAO_PUBLICA,
   ehCaminhoDeDocumento,
@@ -86,6 +87,12 @@ import {
 // --config vitest.porteiro.config.ts` e `node dist-test/servir.mjs` —
 // documentado em `README.md` e no cabeçalho de `servir.ts`).
 export const DIST_TEST_DIR = path.resolve(process.cwd(), "dist-test");
+
+// O id de deploy que o "build" do ensaio grava no `/index.html` (ver
+// `OpcoesServidorDoisHosts.deployDoBuild`). O `dist-test/` do CI nasce SEM a
+// marca (fora da Vercel não há `VERCEL_DEPLOYMENT_ID`); com a opção, o dublê
+// aplica a MESMA função do build (`marcarDeployNoHtml`) ao arquivo do disco.
+let deployDoBuildDeEnsaio: string | undefined;
 
 // ─── Os "bancos de brinquedo" ───────────────────────────────────────────────
 
@@ -461,8 +468,8 @@ async function fetchDeBrinquedo(
   // ainda faz — o manifest é montado inteiramente a partir da ficha).
   if (url.pathname === "/index.html") {
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho fixo dentro de DIST_TEST_DIR (constante do ensaio), nunca entrada externa; a catraca de lint conta warnings globais.
-    const bytes = await readFile(path.join(DIST_TEST_DIR, "index.html"));
-    return new Response(bytes, {
+    const html = await readFile(path.join(DIST_TEST_DIR, "index.html"), "utf8");
+    return new Response(marcarDeployNoHtml(html, deployDoBuildDeEnsaio), {
       status: 200,
       headers: { "content-type": "text/html; charset=utf-8" },
     });
@@ -706,6 +713,10 @@ export interface OpcoesServidorDoisHosts {
    * de verdade — o SERVIDOR REAL agora faz `listen()` uma vez só e lê a
    * porta atribuída em `address()`. */
   readonly porta?: number;
+  /** Simula um build NA VERCEL: o `/index.html` servido ao porteiro leva a
+   * `<meta name="ikcous-deploy">` com este id. Ausente = o `dist-test/` como
+   * está (sem marca, como todo build fora da Vercel). */
+  readonly deployDoBuild?: string;
 }
 
 export async function iniciarServidorDoisHosts(
@@ -717,6 +728,7 @@ export async function iniciarServidorDoisHosts(
   // define essa vida.
   const fetchOriginal = globalThis.fetch;
   globalThis.fetch = fetchDeBrinquedo as typeof fetch;
+  deployDoBuildDeEnsaio = opcoes.deployDoBuild;
 
   const servidor = createServer((req, res) => {
     tratarRequisicao(req, res).catch((erro: unknown) => {
@@ -744,6 +756,7 @@ export async function iniciarServidorDoisHosts(
       new Promise<void>((resolve, reject) =>
         servidor.close((erro) => {
           globalThis.fetch = fetchOriginal;
+          deployDoBuildDeEnsaio = undefined;
           if (erro) reject(erro);
           else resolve();
         }),

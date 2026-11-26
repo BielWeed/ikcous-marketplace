@@ -10,6 +10,11 @@
 // juntam numa busca só. A ficha e o cartaz continuam injetados a CADA pedido,
 // depois do cache: uma loja nunca recebe o HTML (nem a ficha) de outra.
 //
+// Ressalva do revisor (PR #1910): só entra no cache o HTML cuja marca
+// `<meta name="ikcous-deploy">` é a do PRÓPRIO deploy (`VERCEL_DEPLOYMENT_ID`
+// do runtime). HTML de outro deploy (corrida na troca de domínio, rollback) é
+// servido como antes, mas nunca guardado.
+//
 // Tudo com `fetch` dublê — nunca rede de verdade.
 import { describe, expect, it } from "vitest";
 
@@ -30,15 +35,26 @@ const ORIGEM_A = "https://projetoaaaaaaaaaaaaa.supabase.co";
 const ORIGEM_B = "https://projetobbbbbbbbbbbbb.supabase.co";
 const HOST_A = "loja-a.exemplo";
 const HOST_B = "loja-b.exemplo";
+/** O deploy desta "instância" (o `VERCEL_DEPLOYMENT_ID` do runtime). */
+const DEPLOY_DESTE = "dpl_DesteDeploy111";
+const DEPLOY_OUTRO = "dpl_OutroDeploy222";
 
 /** O HTML assado do build, com um marcador por HOST: num deploy real o
  * arquivo é o mesmo para todos os hosts do projeto, mas aqui ele DIFERE de
  * propósito — é o que prova que a chave do cache separa os endereços. */
-function htmlAssado(marcador: string): string {
+function htmlAssado(
+  marcador: string,
+  deploy: string | null = DEPLOY_DESTE,
+): string {
+  const marca =
+    deploy === null
+      ? ""
+      : `<meta name="ikcous-deploy" content="${deploy}">
+`;
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8" />
+${marca}<meta charset="UTF-8" />
 <title>Loja Fixture | Lugar Nenhum</title>
 <meta name="description" content="Produtos e novidades de Loja Fixture" />
 <meta name="theme-color" content="#000000" />
@@ -157,12 +173,26 @@ function criarDuble(): Duble {
   return duble;
 }
 
-function ambiente(origem: string): AmbientePorteiro {
+function ambiente(
+  origem: string,
+  /** `null` = o runtime SEM a variável. */
+  deploy: string | null = DEPLOY_DESTE,
+): AmbientePorteiro {
   return {
     VITE_SUPABASE_URL: origem,
     VITE_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_a",
+    ...(deploy === null ? {} : { VERCEL_DEPLOYMENT_ID: deploy }),
   };
 }
+
+/** O `/index.html` de um deploy escolhido (ou sem marca, `null`). */
+const indexDoDeploy =
+  (deploy: string | null): RespostaDoIndex =>
+  (url) =>
+    new Response(htmlAssado(`CRU DE ${url.host}`, deploy), {
+      status: 200,
+      headers: { "content-type": "text/html; charset=utf-8" },
+    });
 
 function pedido(host: string, caminho = "/"): Request {
   return new Request(`https://${host}${caminho}`);
@@ -463,6 +493,121 @@ describe("T11 — o porteiro guarda o /index.html em memória por 5 min", () => 
     await atenderPorteiro(pedido(HOST_A), ambiente(ORIGEM_A), deps);
     await atenderPorteiro(pedido(HOST_A), ambiente(ORIGEM_A), deps);
     expect(duble.buscasDoIndex).toHaveLength(2);
+  });
+});
+
+describe("T11 — só guarda o HTML que é DESTE deploy (ressalva do PR #1910)", () => {
+  it("HTML de OUTRO deploy é servido, mas não entra no cache: o pedido seguinte busca de novo", async () => {
+    const duble = criarDuble();
+    duble.responderIndex = indexDoDeploy(DEPLOY_OUTRO);
+    const relogio = { t: 0 };
+    const deps = criarDeps(duble, relogio);
+
+    const r1 = await atenderPorteiro(pedido(HOST_A), ambiente(ORIGEM_A), deps);
+    expect(r1.status).toBe(200);
+    const html1 = await r1.text();
+    expect(html1).toContain(`CRU DE ${HOST_A}`);
+    expect(fichaDoHtml(html1).host).toBe(HOST_A);
+    expect(deps.cacheIndexHtml.size).toBe(0);
+
+    relogio.t += 1_000;
+    const r2 = await atenderPorteiro(pedido(HOST_A), ambiente(ORIGEM_A), deps);
+    expect(r2.status).toBe(200);
+    expect(duble.buscasDoIndex).toHaveLength(2);
+    expect(deps.cacheIndexHtml.size).toBe(0);
+    expect(deps.indexHtmlEmVoo.size).toBe(0);
+  });
+
+  it("depois do HTML de outro deploy, o HTML DESTE deploy volta a ser guardado", async () => {
+    const duble = criarDuble();
+    duble.responderIndex = indexDoDeploy(DEPLOY_OUTRO);
+    const deps = criarDeps(duble, { t: 0 });
+    await atenderPorteiro(pedido(HOST_A), ambiente(ORIGEM_A), deps);
+    duble.responderIndex = indexDoDeploy(DEPLOY_DESTE);
+    await atenderPorteiro(pedido(HOST_A), ambiente(ORIGEM_A), deps);
+    await atenderPorteiro(pedido(HOST_A), ambiente(ORIGEM_A), deps);
+    expect(duble.buscasDoIndex).toHaveLength(2);
+    expect(deps.cacheIndexHtml.size).toBe(1);
+  });
+
+  it("marca igual à do runtime entra no cache", async () => {
+    const duble = criarDuble();
+    duble.responderIndex = indexDoDeploy(DEPLOY_DESTE);
+    const deps = criarDeps(duble, { t: 0 });
+    await atenderPorteiro(pedido(HOST_A), ambiente(ORIGEM_A), deps);
+    await atenderPorteiro(pedido(HOST_A), ambiente(ORIGEM_A), deps);
+    expect(duble.buscasDoIndex).toHaveLength(1);
+    expect(deps.cacheIndexHtml.size).toBe(1);
+  });
+
+  it("runtime SEM `VERCEL_DEPLOYMENT_ID`: serve sempre, nunca guarda, nunca quebra", async () => {
+    const duble = criarDuble();
+    const deps = criarDeps(duble, { t: 0 });
+    for (let i = 0; i < 2; i += 1) {
+      const r = await atenderPorteiro(
+        pedido(HOST_A),
+        ambiente(ORIGEM_A, null),
+        deps,
+      );
+      expect(r.status).toBe(200);
+      expect(fichaDoHtml(await r.text()).host).toBe(HOST_A);
+    }
+    expect(duble.buscasDoIndex).toHaveLength(2);
+    expect(deps.cacheIndexHtml.size).toBe(0);
+  });
+
+  it("runtime com `VERCEL_DEPLOYMENT_ID` vazio ou inválido: não guarda", async () => {
+    for (const valor of ["", "   ", 'dpl_"x']) {
+      const duble = criarDuble();
+      duble.responderIndex = indexDoDeploy(valor.trim() === "" ? null : valor);
+      const deps = criarDeps(duble, { t: 0 });
+      await atenderPorteiro(pedido(HOST_A), ambiente(ORIGEM_A, valor), deps);
+      const r = await atenderPorteiro(
+        pedido(HOST_A),
+        ambiente(ORIGEM_A, valor),
+        deps,
+      );
+      expect(r.status, valor).toBe(200);
+      expect(duble.buscasDoIndex, valor).toHaveLength(2);
+      expect(deps.cacheIndexHtml.size, valor).toBe(0);
+    }
+  });
+
+  it("HTML SEM marca (build fora da Vercel): serve sempre, nunca guarda, nunca quebra", async () => {
+    const duble = criarDuble();
+    duble.responderIndex = indexDoDeploy(null);
+    const deps = criarDeps(duble, { t: 0 });
+    for (let i = 0; i < 2; i += 1) {
+      const r = await atenderPorteiro(pedido(HOST_A), ambiente(ORIGEM_A), deps);
+      expect(r.status).toBe(200);
+      expect(await r.text()).toContain(`CRU DE ${HOST_A}`);
+    }
+    expect(duble.buscasDoIndex).toHaveLength(2);
+    expect(deps.cacheIndexHtml.size).toBe(0);
+  });
+
+  it("pedidos simultâneos com HTML de outro deploy ainda se juntam, e nada fica guardado", async () => {
+    const duble = criarDuble();
+    const deps = criarDeps(duble, { t: 0 });
+    await atenderPorteiro(
+      pedido(HOST_A, "/identidade.json"),
+      ambiente(ORIGEM_A),
+      deps,
+    );
+    let soltar: (() => void) | undefined;
+    duble.responderIndex = (url) =>
+      new Promise<Response>((resolve) => {
+        soltar = () => resolve(indexDoDeploy(DEPLOY_OUTRO)(url) as Response);
+      });
+    const emVoo = Array.from({ length: 3 }, () =>
+      atenderPorteiro(pedido(HOST_A), ambiente(ORIGEM_A), deps),
+    );
+    await esperarAte(() => soltar !== undefined);
+    soltar!();
+    for (const r of await Promise.all(emVoo)) expect(r.status).toBe(200);
+    expect(duble.buscasDoIndex).toHaveLength(1);
+    expect(deps.cacheIndexHtml.size).toBe(0);
+    expect(deps.indexHtmlEmVoo.size).toBe(0);
   });
 });
 

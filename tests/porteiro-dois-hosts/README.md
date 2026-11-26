@@ -54,6 +54,12 @@ módulos novo: o cache do porteiro começa vazio, e dá para contar as buscas ao
   outra.
 - Pedidos simultâneos do mesmo host se juntam numa busca só.
 - O manifesto sai com `private, max-age=300`.
+- Só se guarda o HTML DESTE deploy (ressalva do PR #1910). O `dist-test/` do
+  CI nasce sem a marca, porque fora da Vercel não há `VERCEL_DEPLOYMENT_ID`.
+  Por isso o arquivo sobe o servidor com `deployDoBuild`, que aplica ao
+  `index.html` do disco a mesma função do build (`marcarDeployNoHtml`). O
+  runtime recebe o mesmo id. Um teste troca o id do runtime e prova que o HTML
+  de outro deploy é servido, mas buscado a cada pedido.
 
 ## As seis fichas
 

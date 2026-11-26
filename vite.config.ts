@@ -13,6 +13,7 @@ import {
 import { escalasEnxutasDoGrafico } from "./scripts/escalasEnxutasDoGrafico";
 import { graficoEnxuto } from "./scripts/graficoEnxuto";
 import { helpersCompartilhadosDoGrafico } from "./scripts/helpersCompartilhadosDoGrafico";
+import { marcaDoDeployNoHtml } from "./scripts/marcaDoDeployNoHtml";
 import { notasRecentesDasVersoes } from "./scripts/notasRecentesDasVersoes";
 import { portaoDividido } from "./scripts/portaoDividido";
 import { precacheSemPainel } from "./scripts/precacheSemPainel";
@@ -148,6 +149,11 @@ export default defineConfig(async (context): Promise<UserConfig> => {
     },
     plugins: [
       identity.plugin,
+      // Na Vercel, grava o `VERCEL_DEPLOYMENT_ID` numa <meta> do index.html: o
+      // porteiro só guarda em memória o HTML do PRÓPRIO deploy. Fora da Vercel
+      // (local, CI) não há a variável e o HTML sai igual. Ver
+      // src/hospedagem/marcaDoDeploy.ts.
+      marcaDoDeployNoHtml(env),
       // Só as 20 notas de versão mais novas entram no pacote (o aparelho guarda
       // no máximo 20): -44 kB brotli no teto do cliente, medido em 17/11/2026.
       notasRecentesDasVersoes(),
