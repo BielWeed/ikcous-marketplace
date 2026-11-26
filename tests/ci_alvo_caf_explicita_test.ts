@@ -347,13 +347,25 @@ Deno.test({
   ...SEM_SANITIZAR,
   fn: () => {
     const { REFS_POR_PROJETO, resolverRef } = require(SCRIPT);
-    assertEquals(REFS_POR_PROJETO, {
-      loja: REF_CAF,
-      sandbox: "lofznuxcvezrhxsgjqyg",
-      "ikcous-publicada": REF_CAF,
-      // a Savy explícita entrou em 06/10/2026 (tests/ci_alvo_savy_explicita_test.ts)
-      savy: "gnjsrucsmjkajijrakzr",
-    });
+    // 26/11/2026: o mapa inteiro é o do cadastro (loja nova entra por dado, sem
+    // editar este teste); as quatro de sempre seguem fixas, com os refs certos
+    // (a ikcous-publicada e a savy sumirem do mapa reprova aqui).
+    // eslint-disable-next-line security/detect-non-literal-require -- caminho fixo de scripts/frota/lojas.cjs dentro deste repositório.
+    const { refsPorProjeto, carregarLojas } = require(
+      join(RAIZ, "scripts/frota/lojas.cjs"),
+    );
+    assertEquals(REFS_POR_PROJETO, refsPorProjeto(carregarLojas()));
+    const { loja, sandbox, "ikcous-publicada": caf, savy } = REFS_POR_PROJETO;
+    assertEquals(
+      { loja, sandbox, "ikcous-publicada": caf, savy },
+      {
+        loja: REF_CAF,
+        sandbox: "lofznuxcvezrhxsgjqyg",
+        "ikcous-publicada": REF_CAF,
+        // a Savy explícita entrou em 06/10/2026 (tests/ci_alvo_savy_explicita_test.ts)
+        savy: "gnjsrucsmjkajijrakzr",
+      },
+    );
     assertEquals(resolverRef("ikcous-publicada"), REF_CAF);
     for (const ruim of [
       "IKCOUS-PUBLICADA",

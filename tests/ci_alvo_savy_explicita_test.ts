@@ -402,12 +402,24 @@ Deno.test({
   fn: () => {
     // eslint-disable-next-line security/detect-non-literal-require -- SCRIPT é o caminho fixo de scripts/publicacao/conferir-banco.cjs.
     const { REFS_POR_PROJETO, resolverRef } = require(SCRIPT);
-    assertEquals(REFS_POR_PROJETO, {
-      loja: REF_CAF,
-      sandbox: "lofznuxcvezrhxsgjqyg",
-      "ikcous-publicada": REF_CAF,
-      savy: REF_SAVY,
-    });
+    // 26/11/2026: o mapa inteiro é o do cadastro (loja nova entra por dado, sem
+    // editar este teste); as quatro de sempre seguem fixas, com os refs certos
+    // (a savy e a ikcous-publicada sumirem do mapa reprova aqui).
+    // eslint-disable-next-line security/detect-non-literal-require -- caminho fixo de scripts/frota/lojas.cjs dentro deste repositório.
+    const { refsPorProjeto, carregarLojas } = require(
+      join(RAIZ, "scripts/frota/lojas.cjs"),
+    );
+    assertEquals(REFS_POR_PROJETO, refsPorProjeto(carregarLojas()));
+    const { loja, sandbox, "ikcous-publicada": caf, savy } = REFS_POR_PROJETO;
+    assertEquals(
+      { loja, sandbox, "ikcous-publicada": caf, savy },
+      {
+        loja: REF_CAF,
+        sandbox: "lofznuxcvezrhxsgjqyg",
+        "ikcous-publicada": REF_CAF,
+        savy: REF_SAVY,
+      },
+    );
     assertEquals(resolverRef("savy"), REF_SAVY);
     for (const ruim of [
       "SAVY",
@@ -767,12 +779,23 @@ Deno.test("aplicar-migrations.yml: o mapeamento de loja, sandbox e ikcous-public
   const { refsPorProjeto, carregarLojas } = require(
     join(RAIZ, "scripts/frota/lojas.cjs"),
   );
-  assertEquals(refsPorProjeto(carregarLojas()), {
-    loja: "cafkrminfnokvgjqtkle",
-    sandbox: "lofznuxcvezrhxsgjqyg",
-    "ikcous-publicada": "cafkrminfnokvgjqtkle",
-    savy: "gnjsrucsmjkajijrakzr",
-  });
+  // 26/11/2026: o cadastro pode ter mais lojas (loja nova entra por dado); o
+  // mapeamento das quatro de sempre é o fixo de antes, e nenhuma delas some.
+  const {
+    loja,
+    sandbox,
+    "ikcous-publicada": caf,
+    savy,
+  } = refsPorProjeto(carregarLojas());
+  assertEquals(
+    { loja, sandbox, "ikcous-publicada": caf, savy },
+    {
+      loja: "cafkrminfnokvgjqtkle",
+      sandbox: "lofznuxcvezrhxsgjqyg",
+      "ikcous-publicada": "cafkrminfnokvgjqtkle",
+      savy: "gnjsrucsmjkajijrakzr",
+    },
+  );
 });
 
 Deno.test({

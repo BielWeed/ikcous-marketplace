@@ -1,5 +1,6 @@
-import { fromFileUrl } from "https://deno.land/std@0.177.0/path/mod.ts";
 // @ts-nocheck
+import { createRequire } from "node:module";
+import { fromFileUrl } from "https://deno.land/std@0.177.0/path/mod.ts";
 /**
  * O workflow "Publicar edge functions (Supabase)" só publica o que foi pedido,
  * pelo nome, no projeto escolhido — .github/workflows/publicar-functions.yml
@@ -43,6 +44,20 @@ const REF_SAVY = "gnjsrucsmjkajijrakzr";
 const REF_SANDBOX = "lofznuxcvezrhxsgjqyg";
 const AS_CINCO_DA_COBRANCA =
   "criar-pagamento webhook-mercadopago reconciliar-pagamentos estornar-pagamento credenciais-mercado-pago";
+
+// 26/11/2026: o menu e a cadeia de segredos esperados saem do cadastro
+// (scripts/frota/lojas.json; loja nova entra por dado, sem editar este teste);
+// a IKCOUS e a cliente real (Savy) nunca somem deles sem reprovar.
+const { assinantes, carregarLojas } = createRequire(import.meta.url)(
+  fromFileUrl(new URL("../scripts/frota/lojas.cjs", import.meta.url)),
+);
+function assinantesDoCadastro(): { projeto: string; segredoDoToken: string }[] {
+  const lista = assinantes(carregarLojas());
+  const nomes = lista.map((l) => l.projeto);
+  for (const p of ["ikcous-publicada", "savy"])
+    assert(nomes.includes(p), `${p} sumiu das assinantes: ${nomes.join(", ")}`);
+  return lista;
+}
 
 /**
  * O arquivo sem as linhas de comentário: o cabeçalho EXPLICA o que o workflow
@@ -213,9 +228,15 @@ Deno.test("o workflow de publicação, do jeito que está no arquivo", async (t)
       assert(!/\n\s+(loja|savy|sandbox)\) REF=/.test(yaml));
       assert(!yaml.includes("ikcous-publicada) REF="));
       // (`yaml` aqui já vem sem comentários)
+      // assinantes primeiro (na ordem do cadastro), loja e sandbox no fim
+      const opcoes = [
+        ...assinantesDoCadastro().map((l) => l.projeto),
+        "loja",
+        "sandbox",
+      ];
       assertStringIncludes(
         yaml,
-        "type: choice\n        default: ikcous-publicada\n        options:\n          - ikcous-publicada\n          - savy\n          - loja\n          - sandbox\n",
+        `type: choice\n        default: ikcous-publicada\n        options:\n${opcoes.map((o) => `          - ${o}\n`).join("")}`,
       );
       assertStringIncludes(
         await Deno.readTextFile(WORKFLOW),
@@ -281,8 +302,20 @@ Deno.test("o workflow de publicação, do jeito que está no arquivo", async (t)
         "Publica loja assinante, uma function por vez",
         "Lista o que ficou publicado na loja assinante",
       ];
-      const cadeiaDeHoje =
-        "SUPABASE_ACCESS_TOKEN: ${{ inputs.projeto == 'ikcous-publicada' && secrets.SUPABASE_ACCESS_TOKEN_IKCOUS || inputs.projeto == 'savy' && secrets.SUPABASE_ACCESS_TOKEN_SAVY || '' }}";
+      // a cadeia inteira, uma guarda por assinante do cadastro, e nela a IKCOUS
+      // e a Savy, cada uma com o SEU segredo, escritas por extenso
+      const guardas = assinantesDoCadastro()
+        .map(
+          (l) =>
+            `inputs.projeto == '${l.projeto}' && secrets.${l.segredoDoToken} || `,
+        )
+        .join("");
+      const cadeiaDoCadastro = `SUPABASE_ACCESS_TOKEN: \${{ ${guardas}'' }}`;
+      for (const guarda of [
+        "inputs.projeto == 'ikcous-publicada' && secrets.SUPABASE_ACCESS_TOKEN_IKCOUS || ",
+        "inputs.projeto == 'savy' && secrets.SUPABASE_ACCESS_TOKEN_SAVY || ",
+      ])
+        assertStringIncludes(cadeiaDoCadastro, guarda);
       for (const nome of nomes) {
         const inicio = yaml.indexOf(`name: ${nome}`);
         assert(inicio >= 0, `step de loja assinante ausente: ${nome}`);
@@ -294,7 +327,7 @@ Deno.test("o workflow de publicação, do jeito que está no arquivo", async (t)
           "if: inputs.projeto != 'ikcous-publicada' && inputs.projeto != 'loja' && inputs.projeto != 'sandbox'",
         );
         // cada segredo só com a guarda da SUA loja ao lado (cadeia gerada do cadastro)
-        assertStringIncludes(step, cadeiaDeHoje);
+        assertStringIncludes(step, cadeiaDoCadastro);
         assert(!step.includes("${{ secrets.SUPABASE_ACCESS_TOKEN }}"));
       }
       for (const nome of [
@@ -1184,11 +1217,14 @@ Deno.test("publicar-functions: as cinco nomeadas (frete, aviso, OTP, etiqueta, p
         CREDENCIAIS_EMAIL,
         AUTH_SEND_EMAIL,
       ].sort();
-      assertEquals(
-        Object.keys(canais.canais).sort(),
-        [REF_IKCOUS_PUBLICADA, REF_SAVY].sort(),
-        "só IKCOUS e Savy têm canal",
-      );
+      // 26/11/2026: os canais são os do próprio JSON (loja nova entra por
+      // dado); a IKCOUS e a Savy continuam com canal, e todo canal, delas ou
+      // não, com a mesma lista de publicáveis (abaixo)
+      for (const ref of [REF_IKCOUS_PUBLICADA, REF_SAVY])
+        assert(
+          Object.hasOwn(canais.canais, ref),
+          `o canal ${ref} sumiu de canais-de-backend.json`,
+        );
       for (const [ref, canal] of Object.entries(canais.canais)) {
         assertEquals(
           [...canal.functionsPublicaveis].sort(),
@@ -1227,8 +1263,11 @@ Deno.test("publicar-functions: o JSON dos canais e o workflow concordam, functio
   assert(pastas.length >= 10, `pastas achadas: ${pastas.join(",")}`);
 
   const sha = "a".repeat(40);
-  const nomesDosCanais = Object.values(canais.canais).map((c) => c.nome);
-  assertEquals(nomesDosCanais.sort(), ["IKCOUS", "Savy"]);
+  // 26/11/2026: os canais são os do próprio JSON (loja nova entra por dado);
+  // a IKCOUS e a Savy continuam entre eles, cada uma no seu ref
+  const canalDoRef = new Map(Object.entries(canais.canais));
+  assertEquals(canalDoRef.get(REF_IKCOUS_PUBLICADA)?.nome, "IKCOUS");
+  assertEquals(canalDoRef.get(REF_SAVY)?.nome, "Savy");
 
   for (const [ref, canal] of Object.entries(canais.canais)) {
     const publicaveis = new Set(canal.functionsPublicaveis);
