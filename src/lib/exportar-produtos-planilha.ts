@@ -232,7 +232,11 @@ export function linhasDosProdutos(
           p.sku ?? "",
           p.name,
           p.category,
-          !p.isActive ? "Oculto da loja" : p.stock > 0 ? "Em Operação" : "Esgotado",
+          !p.isActive
+            ? "Oculto da loja"
+            : p.stock > 0
+              ? "Em Operação"
+              : "Esgotado",
           preco,
           p.originalPrice ?? "",
           ...(comCustos ? [custo ?? "", lucro, margem] : []),
