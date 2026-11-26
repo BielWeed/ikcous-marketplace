@@ -29,13 +29,15 @@ export interface PlanoDeImagem {
   mime: "image/jpeg" | "image/png" | "image/webp";
 }
 
-/** Em que MIME o canvas grava cada tipo reduzível (AVIF não grava: vira WebP). */
-const MIME_DE_SAIDA = new Map<string, PlanoDeImagem["mime"]>([
-  ["image/jpeg", "image/jpeg"],
-  ["image/png", "image/png"],
-  ["image/webp", "image/webp"],
-  ["image/avif", "image/webp"],
-]);
+/** Em que MIME o canvas grava cada tipo reduzível (AVIF não grava: vira WebP).
+ * Também é a lista do que a pirâmide de cópias aceita (`gerar-piramide.ts`). */
+export const MIME_DE_SAIDA: ReadonlyMap<string, PlanoDeImagem["mime"]> =
+  new Map<string, PlanoDeImagem["mime"]>([
+    ["image/jpeg", "image/jpeg"],
+    ["image/png", "image/png"],
+    ["image/webp", "image/webp"],
+    ["image/avif", "image/webp"],
+  ]);
 
 const ascii = (bytes: Uint8Array, de: number, ate: number) =>
   String.fromCharCode(...bytes.subarray(de, ate));
