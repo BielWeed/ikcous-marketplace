@@ -34,8 +34,10 @@
 --
 -- Recusa, ANTES de tudo, se o banco não é o da caderneta de produção: sem public.frota_lojas/frota_segredo, ou com elas vazias.
 -- As tabelas sozinhas não bastam (a 20261141 e as irmãs vão também ao banco de cada loja do canal, onde nascem e ficam vazias:
--- o segredo e as lojas só são semeados na caderneta de produção). LIMITE: se um dia a caderneta for copiada ou movida para o
--- banco de uma loja, esta trava deixa de separá-los — meça antes. Depois, recusa se: anon, authenticated ou service_role não
+-- o segredo e as lojas só são semeados na caderneta de produção). LIMITE: com a caderneta copiada para o banco de uma loja (o
+-- plano a leva à CAF), esta trava deixa de separá-los. Aqui isso não abre nada: numa loja a ACL já é a "já aplicada" e o
+-- REVOKE não muda nada. Quem DEVOLVE a escrita é o rollback, e por isso ele recusa banco de loja por outra trava, o registro
+-- de migrations de canal (ver o cabeçalho dele). Depois, recusa se: anon, authenticated ou service_role não
 -- existem; a view não existe ou não é view; o dono não é postgres; quem aplica não é o dono (nem membro dele, nem
 -- superusuário) — aí o REVOKE viraria só um aviso e o GRANT do rollback sairia com outro concedente; existe privilégio de
 -- COLUNA na view (o REVOKE de tabela o levaria junto e o rollback não o devolveria); ou a ACL não é, byte a byte, a medida
