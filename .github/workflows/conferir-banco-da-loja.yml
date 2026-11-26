@@ -391,6 +391,8 @@ on:
           - 180b-antes-o-cadastro-fiscal-ausente
           - 181a-conferir-os-fornecedores-aplicado
           - 181b-antes-os-fornecedores-ausentes
+          - 182a-conferir-o-estado-de-vida-da-loja-aplicado
+          - 182b-antes-o-estado-de-vida-da-loja-ausente
           - backups
       projeto:
         description: "Projeto de destino: loja, sandbox, ikcous-publicada (a CAF explicita) ou savy (a loja cliente explicita, mesmas travas): as duas exigem expected_sha; nunca texto livre — achado da rodada 2"

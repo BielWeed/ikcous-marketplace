@@ -319,6 +319,8 @@ on:
       - "scripts/publicacao/consultas/180b-antes-o-cadastro-fiscal-ausente.sql"
       - "scripts/publicacao/consultas/181a-conferir-os-fornecedores-aplicado.sql"
       - "scripts/publicacao/consultas/181b-antes-os-fornecedores-ausentes.sql"
+      - "scripts/publicacao/consultas/182a-conferir-o-estado-de-vida-da-loja-aplicado.sql"
+      - "scripts/publicacao/consultas/182b-antes-o-estado-de-vida-da-loja-ausente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -611,6 +613,8 @@ on:
       - "scripts/publicacao/consultas/180b-antes-o-cadastro-fiscal-ausente.sql"
       - "scripts/publicacao/consultas/181a-conferir-os-fornecedores-aplicado.sql"
       - "scripts/publicacao/consultas/181b-antes-os-fornecedores-ausentes.sql"
+      - "scripts/publicacao/consultas/182a-conferir-o-estado-de-vida-da-loja-aplicado.sql"
+      - "scripts/publicacao/consultas/182b-antes-o-estado-de-vida-da-loja-ausente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -1540,6 +1544,14 @@ jobs:
       - name: Prova viva de so o admin da loja mexer nos fornecedores (migration 20261450000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/os-fornecedores-so-o-admin-da-loja-viva.cjs
+      # Migration 20261460000000 (a loja tem estado de vida: ativa, adormecida, encerrada): frota_lojas ganha estado/estado_desde/estado_sha
+      # (CHECK dos tres estados), a resolver_loja (v1) passa a ignorar loja fora do ar e a resolver_loja_com_estado (v2) diz o estado sem
+      # entregar URL nem chave do banco da loja fora do ar. Chave errada zero linhas; ativa=false zero linhas; ACL so do anon; linhas que ja
+      # existiam continuam resolvendo; reaplicar 2x (LF e CRLF); rollback comum devolve a v1 byte a byte e preserva o dado; destrutivo exige
+      # confirmacao e o comum antes; pre-voo recusa estado divergente sem escrever; consultas 182a/182b EXECUTADAS; mutantes. CLONE proprio.
+      - name: Prova viva do estado de vida da loja na caderneta (migration 20261460000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-tem-estado-de-vida-viva.cjs
       # Migration 20261384000000 (o pedido pago pelo app exige conta e nao prende o estoque de visitante): a
       # create_marketplace_order_v24 recusa 'online' sem sessao (anon) ANTES de ler carrinho, trancar, inserir pedido, baixar
       # estoque ou gastar cupom (ordem provada por sequencia movida por gatilhos); produto simples e com variacao ficam

@@ -750,6 +750,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "180b-antes-o-cadastro-fiscal-ausente",
   "181a-conferir-os-fornecedores-aplicado",
   "181b-antes-os-fornecedores-ausentes",
+  "182a-conferir-o-estado-de-vida-da-loja-aplicado",
+  "182b-antes-o-estado-de-vida-da-loja-ausente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

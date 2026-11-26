@@ -15963,3 +15963,146 @@ Deno.test("181a/181b — registradas no menu do conferir-banco-da-loja, nos dois
     "node tests/banco/rodar-isolado.cjs tests/banco/os-fornecedores-so-o-admin-da-loja-viva.cjs",
   );
 });
+
+// 182a/182b (26/11/2026) — a PROVA DE OBJETOS da 20261460000000 (a loja tem estado de vida: as colunas estado, estado_desde e estado_sha em
+// public.frota_lojas, a resolver_loja com o filtro do estado e a resolver_loja_com_estado nova). A 182a e' a consulta do lote (DEPOIS do apply,
+// so catalogo, 8 linhas, NENHUMA linha da caderneta e' lida); a 182b e' a de ausencia (ANTES, 6 linhas: os objetos novos ausentes e a base que o
+// pre-voo da migration exige). As duas sao de ROL FECHADO. Estes testes medem o texto dos .sql contra a migration DESTA arvore; a decisao de
+// cada consulta num Postgres real fica com a prova viva (tests/banco/a-loja-tem-estado-de-vida-viva.cjs, rpc-ci.yml).
+const NOME_182A = "182a-conferir-o-estado-de-vida-da-loja-aplicado";
+const NOME_182B = "182b-antes-o-estado-de-vida-da-loja-ausente";
+const MIGRACAO_1460 = `${MIGRATIONS_DIR}/20261460000000_a_loja_tem_estado_de_vida.sql`;
+
+Deno.test("182a/182b — o rol fechado (8 e 6 linhas) bate com os rotulos do SQL, cada consulta tem UM statement, e so le catalogo (nenhuma linha da caderneta)", async () => {
+  const { contarStatements, ROL_FECHADO_POR_CONSULTA } = require(SCRIPT);
+  const { [NOME_182A]: rol182a, [NOME_182B]: rol182b } =
+    ROL_FECHADO_POR_CONSULTA;
+  assertEquals(rol182a?.length, 8);
+  assertEquals(rol182b?.length, 6);
+  for (const [nome, rol] of [
+    [NOME_182A, rol182a],
+    [NOME_182B, rol182b],
+  ] as Array<[string, string[]]>) {
+    assertEquals(new Set(rol).size, rol.length, `${nome}: rotulo repetido`);
+    const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${nome}.sql`);
+    assertEquals(contarStatements(sql), 1, `${nome}: tem de ser UM statement`);
+    for (const item of rol) assertStringIncludes(sql, `'${item}'`);
+    const rotulos = [...sql.matchAll(/SELECT '([^']+)', '(?:sim|nao)'/g)].map(
+      (m) => m[1],
+    );
+    assertEquals(
+      rotulos.sort(),
+      [...rol].sort(),
+      `${nome}: rotulos do SQL != rol`,
+    );
+    const codigo = sql.replace(/--.*$/gm, "").replace(/'[^']*'/g, "''");
+    assert(
+      !/\b(INSERT|UPDATE|DELETE|ALTER|DROP|CREATE|GRANT|REVOKE|TRUNCATE)\b/.test(
+        codigo,
+      ),
+      `${nome}: so leitura`,
+    );
+    assert(
+      !/\bFROM\s+(public\.)?(frota_lojas|frota_segredo)\b/i.test(codigo),
+      `${nome}: nao le linha da caderneta`,
+    );
+    assert(
+      !/\bresolver_loja(_com_estado)?\s*\(/.test(codigo),
+      `${nome}: nao chama a porta da caderneta`,
+    );
+  }
+});
+
+Deno.test("182a/182b — todo md5 das consultas e' o que a migration 20261460000000 grava ou exige, e os das duas funcoes sao os dos corpos desta arvore", async () => {
+  const { createHash } = await import("node:crypto");
+  const mig = (await Deno.readTextFile(MIGRACAO_1460)).replace(/\r/g, "");
+  const a = (
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_182A}.sql`)
+  ).replace(/\r/g, "");
+  const b = (
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_182B}.sql`)
+  ).replace(/\r/g, "");
+  const corpoDe = (sql: string, nome: string) => {
+    const i = sql.indexOf(`CREATE OR REPLACE FUNCTION ${nome}(`);
+    assert(i >= 0, `${nome} nao esta no arquivo`);
+    const abre = sql.indexOf("AS $$", i) + "AS $$".length;
+    return sql.slice(abre, sql.indexOf("$$;", abre));
+  };
+  for (const nome of [
+    "public.resolver_loja",
+    "public.resolver_loja_com_estado",
+  ]) {
+    const h = createHash("md5").update(corpoDe(mig, nome)).digest("hex");
+    assertEquals(
+      a.split(`'${h}'`).length - 1,
+      1,
+      `md5 ${h} de ${nome} na 182a`,
+    );
+    assert(
+      mig.split(`'${h}'`).length - 1 >= 2,
+      `pre-voo e pos-voo da migration citam o md5 de ${nome}`,
+    );
+  }
+  // A 182b exige o corpo da 20261141 (o vigente antes): o md5 e' o do arquivo da caderneta.
+  const caderneta = (
+    await Deno.readTextFile(
+      `${MIGRATIONS_DIR}/20261141000000_caderneta_da_frota.sql`,
+    )
+  ).replace(/\r/g, "");
+  const h1141 = createHash("md5")
+    .update(corpoDe(caderneta, "public.resolver_loja"))
+    .digest("hex");
+  assertEquals(b.split(`'${h1141}'`).length - 1, 1, "md5 da 20261141 na 182b");
+  for (const [nome, sql] of [
+    [NOME_182A, a],
+    [NOME_182B, b],
+  ]) {
+    const hashes = [...sql.matchAll(/'([0-9a-f]{32})'/g)].map((m) => m[1]);
+    assert(hashes.length > 0, `${nome}: sem md5`);
+    for (const x of hashes)
+      assert(mig.includes(`'${x}'`), `${nome}: md5 ${x} nao esta na migration`);
+  }
+});
+
+Deno.test("182a/182b — as guardas que decidem 'sim' estao no texto (EXECUTE so do anon nas duas funcoes, search_path vazio, os retornos de 6 e de 7 colunas, CHECK dos tres estados, caderneta fechada)", async () => {
+  const a = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_182A}.sql`);
+  for (const pedaco of [
+    "AND has_function_privilege('anon', p.oid, 'EXECUTE')",
+    "AND NOT has_function_privilege('authenticated', p.oid, 'EXECUTE')",
+    "AND NOT has_function_privilege('service_role', p.oid, 'EXECUTE') AS so_anon",
+    "a.grantee = 0 AND a.privilege_type = 'EXECUTE'",
+    "f.proconfig = ARRAY['search_path=\"\"']::text[]",
+    "'TABLE(id text, nome text, dominio_publico text, project_ref text, supabase_url text, publishable_key text)'",
+    "'TABLE(id text, nome text, dominio_publico text, project_ref text, supabase_url text, publishable_key text, estado text)'",
+    "'CHECK ((estado = ANY (ARRAY[''ativa''::text, ''adormecida''::text, ''encerrada''::text])))'",
+    "NOT has_table_privilege('anon', t.oid, 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')",
+    "NOT EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid = t.oid)",
+  ])
+    assertStringIncludes(a, pedaco, `182a sem a guarda: ${pedaco}`);
+});
+
+Deno.test("182a/182b — registradas no menu do conferir-banco-da-loja, nos dois caminhos do rpc-ci e no portao de rol fechado da release", async () => {
+  const { CONSULTAS_DE_ROL_FECHADO } = await import(
+    new URL("../scripts/frota/publicar-release.mjs", import.meta.url).href
+  );
+  const menu = await Deno.readTextFile(
+    `${RAIZ}/.github/workflows/conferir-banco-da-loja.yml`,
+  );
+  const rpc = await Deno.readTextFile(`${RAIZ}/.github/workflows/rpc-ci.yml`);
+  for (const nome of [NOME_182A, NOME_182B]) {
+    assert(
+      CONSULTAS_DE_ROL_FECHADO.has(nome),
+      `${nome} fora de CONSULTAS_DE_ROL_FECHADO`,
+    );
+    assertStringIncludes(menu, `          - ${nome}\n`);
+    assertEquals(
+      rpc.split(`"scripts/publicacao/consultas/${nome}.sql"`).length - 1,
+      2,
+      `${nome}: nas duas listas de caminhos do rpc-ci`,
+    );
+  }
+  assertStringIncludes(
+    rpc,
+    "node tests/banco/rodar-isolado.cjs tests/banco/a-loja-tem-estado-de-vida-viva.cjs",
+  );
+});

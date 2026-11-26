@@ -3332,7 +3332,30 @@ const ROL_DA_181B = [
   "a porta rls_admin_atual() existe com o corpo da 20261197000000 (md5), executavel pelo authenticated e nao pelo anon",
   "gen_random_uuid() existe (default do id; PostgreSQL 13 ou mais novo)",
 ];
+// Lote 182 (20261460000000, a loja tem estado de vida: as colunas estado, estado_desde e estado_sha em frota_lojas, a resolver_loja com o filtro
+// do estado e a resolver_loja_com_estado nova). A 182a prova o estado novo (8 itens, so catalogo, nenhuma linha da caderneta e lida). A 182b prova os
+// objetos novos AUSENTES e a base que o pre-voo da migration exige (6 itens: a resolver_loja da 20261141 intacta, a forma da caderneta e o pgcrypto).
+const ROL_DA_182A = [
+  "controle: catalogo publico visivel",
+  "resolver_loja: uma so, com o corpo da 20261460000000 (md5)",
+  "resolver_loja: atributos de sempre (plpgsql, SECURITY DEFINER, VOLATILE, search_path vazio, as 6 colunas) e EXECUTE so do anon",
+  "resolver_loja_com_estado: uma so, com o corpo da 20261460000000 (md5)",
+  "resolver_loja_com_estado: as travas da v1 (plpgsql, SECURITY DEFINER, VOLATILE, search_path vazio, o mesmo dono, 7 colunas terminando em estado) e EXECUTE so do anon",
+  "frota_lojas: as colunas estado (text NOT NULL, padrao ativa), estado_desde (timestamptz NOT NULL, padrao now()) e estado_sha (text) com a forma da migration",
+  "frota_lojas: o CHECK frota_lojas_estado_check, validado, aceita so ativa, adormecida e encerrada",
+  "frota_lojas e frota_segredo continuam fechadas (RLS ligada, nenhuma politica, nada para anon, authenticated e PUBLIC)",
+];
+const ROL_DA_182B = [
+  "controle: catalogo publico visivel",
+  "resolver_loja_com_estado: ainda NAO existe",
+  "frota_lojas: as colunas estado, estado_desde e estado_sha e o CHECK frota_lojas_estado_check ainda NAO existem",
+  "resolver_loja: uma so, com o corpo da 20261141000000 (md5), os atributos de sempre e EXECUTE so do anon",
+  "frota_lojas e frota_segredo existem com a forma da 20261141000000 (as 6 colunas de texto e ativa boolean NOT NULL) e o mesmo dono da resolver_loja",
+  "extensions.crypt(text, text) existe (pgcrypto, a porta da chave da frota)",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "182a-conferir-o-estado-de-vida-da-loja-aplicado": ROL_DA_182A,
+  "182b-antes-o-estado-de-vida-da-loja-ausente": ROL_DA_182B,
   "181a-conferir-os-fornecedores-aplicado": ROL_DA_181A,
   "181b-antes-os-fornecedores-ausentes": ROL_DA_181B,
   "180a-conferir-o-cadastro-fiscal-aplicado": ROL_DA_180A,

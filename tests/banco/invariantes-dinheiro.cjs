@@ -10,7 +10,9 @@
  *   (b) CANCELAMENTO DUPLO: cancelar pedido duas vezes não devolve estoque
  *       nem abre estorno em dobro — e a segunda tentativa do dono do pedido
  *       é recusada com exceção.
- *   (c) RESOLVER_LOJA: só resolve host ATIVO da frota, com a chave certa;
+ *   (c) RESOLVER_LOJA: só resolve host ATIVO da frota (e, desde a 20261460, só
+ *       loja em estado ativa; a resolver_loja_com_estado diz o estado sem URL
+ *       nem chave da loja fora do ar), com a chave certa;
  *       comparação de host sem sensibilidade a maiúscula.
  *   (f) LEDGER (Lote A, 20261192000000): o mesmo refund do MP não vira duas
  *       linhas de order_refunds — índice único parcial, corrida real entre
@@ -427,6 +429,48 @@ PROVAS.push({
       ["loja-viva.lojas.teste", "chave-errada-de-propósito"],
     );
     assert.equal(chaveErrada.rows.length, 0, "chave errada não resolve nada");
+
+    // 20261460000000: loja fora do ar (adormecida) com ativa = true. A v1 (a porta do porteiro de hoje) não a
+    // resolve; a v2 diz o estado SEM a URL e a chave do banco dela; a ativa segue igual nas duas.
+    await cliente.query(
+      `INSERT INTO public.frota_lojas (id, nome, dominio_publico, project_ref, supabase_url, publishable_key, ativa, estado)
+       VALUES ('loja-dormindo', 'Loja Dormindo da Prova', 'loja-dormindo.lojas.teste', 'refdormindo', 'https://refdormindo.supabase.co', 'pk_dormindo', true, 'adormecida')
+       ON CONFLICT (id) DO NOTHING`,
+    );
+    const dormindoV1 = await cliente.query(
+      "SELECT * FROM public.resolver_loja($1, $2)",
+      ["loja-dormindo.lojas.teste", CHAVE_FROTA],
+    );
+    assert.equal(dormindoV1.rows.length, 0, "v1: loja adormecida não resolve");
+    const dormindoV2 = await cliente.query(
+      "SELECT * FROM public.resolver_loja_com_estado($1, $2)",
+      ["loja-dormindo.lojas.teste", CHAVE_FROTA],
+    );
+    assert.deepEqual(
+      dormindoV2.rows.map((l) => [
+        l.id,
+        l.project_ref,
+        l.supabase_url,
+        l.publishable_key,
+        l.estado,
+      ]),
+      [["loja-dormindo", "refdormindo", null, null, "adormecida"]],
+      "v2: loja adormecida vem com o estado e sem URL nem chave",
+    );
+    const vivaV2 = await cliente.query(
+      "SELECT * FROM public.resolver_loja_com_estado($1, $2)",
+      ["loja-viva.lojas.teste", CHAVE_FROTA],
+    );
+    assert.deepEqual(
+      vivaV2.rows.map((l) => [l.id, l.supabase_url, l.estado]),
+      [["loja-viva", "https://refviva.supabase.co", "ativa"]],
+      "v2: loja ativa resolve com a URL",
+    );
+    const mortaV2 = await cliente.query(
+      "SELECT * FROM public.resolver_loja_com_estado($1, $2)",
+      ["loja-morta.lojas.teste", CHAVE_FROTA],
+    );
+    assert.equal(mortaV2.rows.length, 0, "v2: ativa = false não resolve");
   },
 });
 
