@@ -9,8 +9,11 @@
 // pela 20260821000100 (INSERT/UPDATE/DELETE) e pela 20261090000000 (TRUNCATE/TRIGGER/MAINTAIN); o dekxab não recebe
 // migrations dos canais e ficou para trás. Os scripts deste lote levam o dekxab ao MESMO estado das lojas.
 //
-// Não é migration (o pré-voo exige a ACL medida no dekxab; nas lojas ele recusaria) e nada aqui roda em banco: o teste
-// lê os arquivos e confere a forma. A prova no banco é o pré-voo e o pós-voo do próprio script, aplicado pela sessão.
+// Não é migration e nada aqui roda em banco: o teste lê os arquivos e confere a forma. A ACL NÃO separa o dekxab das
+// lojas (a "já aplicada" é idêntica à delas); quem separa é a primeira trava dos dois pré-voos: o banco tem de ter a
+// caderneta SEMEADA (frota_lojas e frota_segredo com linha). As tabelas sozinhas não bastam: a 20261141 e as da
+// caderneta também vão ao banco de cada loja, mas lá nascem e ficam vazias. A prova no banco é o pré-voo e o pós-voo
+// do próprio script, aplicado pela sessão.
 import { createRequire } from "node:module";
 import { fromFileUrl } from "https://deno.land/std@0.177.0/path/mod.ts";
 import {
@@ -49,39 +52,43 @@ const semComentarios = (s) => s.replace(/--.*$/gm, "");
 const ANTES =
   "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}";
 /** Letras de privilégio de tabela do PG 17 (aclitem), na ordem em que o Postgres as imprime. */
-const LETRA = {
-  INSERT: "a",
-  SELECT: "r",
-  UPDATE: "w",
-  DELETE: "d",
-  TRUNCATE: "D",
-  REFERENCES: "x",
-  TRIGGER: "t",
-  MAINTAIN: "m",
-};
+const LETRA = new Map([
+  ["INSERT", "a"],
+  ["SELECT", "r"],
+  ["UPDATE", "w"],
+  ["DELETE", "d"],
+  ["TRUNCATE", "D"],
+  ["REFERENCES", "x"],
+  ["TRIGGER", "t"],
+  ["MAINTAIN", "m"],
+]);
 const ORDEM = "arwdDxtm";
+
+// Um comando por pedaço (split em ";") e espaço já normalizado: a regex não precisa de \s+ nem de grupo
+// opcional com quantificador dentro (sem retrocesso explosivo).
+const RE_REVOKE =
+  /\bREVOKE ([A-Z, ]+?) ON (TABLE )?public\.vw_produtos_public FROM ([a-z_, ]+)$/;
+const RE_GRANT =
+  /\bGRANT ([A-Z, ]+?) ON (TABLE )?public\.vw_produtos_public TO ([a-z_, ]+)$/;
 
 /** Lista de privilégios de um GRANT/REVOKE em public.vw_produtos_public, ordenada. */
 function privilegiosDe(sql, verbo) {
-  const re =
-    verbo === "REVOKE"
-      ? /REVOKE\s+([A-Z, ]+?)\s+ON\s+(?:TABLE\s+)?public\.vw_produtos_public\s+FROM\s+([a-z_, ]+);/g
-      : /GRANT\s+([A-Z, ]+?)\s+ON\s+(?:TABLE\s+)?public\.vw_produtos_public\s+TO\s+([a-z_, ]+);/g;
-  return [...semComentarios(sql).matchAll(re)].map((m) => ({
-    privs: m[1]
+  const re = verbo === "REVOKE" ? RE_REVOKE : RE_GRANT;
+  const lista = (s) =>
+    s
       .split(",")
       .map((p) => p.trim())
-      .sort(),
-    papeis: m[2]
-      .split(",")
-      .map((p) => p.trim())
-      .sort(),
-  }));
+      .sort();
+  return semComentarios(sql)
+    .split(";")
+    .map((pedaco) => norm(pedaco).match(re))
+    .filter(Boolean)
+    .map((m) => ({ privs: lista(m[1]), papeis: lista(m[3]) }));
 }
 
 /** A ACL que sobra depois de tirar `privs` de anon e authenticated, mantendo a ordem das entradas (o Postgres atualiza no lugar). */
 function aclSem(acl, privs) {
-  const tirar = new Set(privs.map((p) => LETRA[p]));
+  const tirar = new Set(privs.map((p) => LETRA.get(p)));
   return acl.replace(
     /(anon|authenticated)=([a-zA-Z]+)\//g,
     (_, papel, letras) =>
@@ -209,11 +216,85 @@ Deno.test("pos-voo: recusa se a ACL nao ficou EXATAMENTE a esperada e se anon/au
   assertStringIncludes(aplicar, "NOTIFY pgrst, 'reload schema';");
 });
 
+/** O pedaço do pré-voo (do DO até o comando de escrita, no início da linha). */
+function preVoo(sql, marcaDo, marcaEscrita) {
+  const i = sql.indexOf(marcaDo);
+  const j = sql.indexOf(marcaEscrita);
+  assert(i > 0 && j > i, `pre-voo ${marcaDo} antes de ${marcaEscrita.trim()}`);
+  return semComentarios(sql.slice(i, j));
+}
+const PRE_APLICAR = ["DO $preflight_vitrine_antiga$", "\nREVOKE INSERT"];
+const PRE_ROLLBACK = [
+  "DO $preflight_rollback_vitrine_antiga$",
+  "\nGRANT INSERT",
+];
+const TRAVA_TABELAS =
+  "IF to_regclass('public.frota_lojas') IS NULL OR to_regclass('public.frota_segredo') IS NULL THEN";
+const TRAVA_SEMEADA =
+  "IF NOT EXISTS (SELECT 1 FROM public.frota_segredo) OR NOT EXISTS (SELECT 1 FROM public.frota_lojas) THEN";
+
+Deno.test("pre-voo (aplicar E rollback): ANTES de tudo confere que o banco e' o da caderneta semeada, nao uma loja atual", () => {
+  for (const [nome, sql, marcas] of [
+    ["aplicar", aplicar, PRE_APLICAR],
+    ["rollback", rollback, PRE_ROLLBACK],
+  ]) {
+    const pre = preVoo(sql, ...marcas);
+    const corpo = pre.slice(pre.indexOf("\nBEGIN") + "\nBEGIN".length);
+    // 1a trava: a primeira coisa do corpo, com a primeira recusa do pré-voo.
+    assertEquals(
+      corpo.indexOf("IF "),
+      corpo.indexOf(TRAVA_TABELAS),
+      `${nome}: a trava das tabelas da caderneta e' o primeiro IF`,
+    );
+    assertEquals(
+      corpo.indexOf("RAISE EXCEPTION"),
+      corpo.indexOf(
+        "RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: este banco não é o da caderneta (sem public.frota_lojas/frota_segredo)",
+      ),
+      `${nome}: a primeira recusa e' a do banco errado`,
+    );
+    // 2a trava: as tabelas existem em toda loja (a 20261141 vai a cada canal); só a caderneta de produção tem linha.
+    const iSemeada = corpo.indexOf(TRAVA_SEMEADA);
+    assert(
+      iSemeada > corpo.indexOf(TRAVA_TABELAS),
+      `${nome}: caderneta semeada, depois de saber que as tabelas existem`,
+    );
+    const iSegundoIf = corpo.indexOf("IF ", corpo.indexOf(TRAVA_TABELAS) + 3);
+    assertEquals(
+      iSemeada,
+      iSegundoIf,
+      `${nome}: a caderneta semeada e' o segundo IF`,
+    );
+    assertStringIncludes(
+      corpo.slice(iSemeada),
+      "RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: a caderneta deste banco está vazia",
+    );
+  }
+});
+
 Deno.test("so a view alvo: nenhum outro objeto citado no codigo dos tres scripts (nada de outras views, TRUNCATE geral nem net)", () => {
+  // A caderneta só aparece no pré-voo (a trava do banco certo): fora dele, a view é o único objeto.
+  for (const [nome, sql, marcas] of [
+    ["aplicar", aplicar, PRE_APLICAR],
+    ["rollback", rollback, PRE_ROLLBACK],
+  ]) {
+    const cadernetaNoPre = new Set(
+      [...preVoo(sql, ...marcas).matchAll(/\bpublic\.(frota_[a-z_]+)/g)].map(
+        (m) => m[1],
+      ),
+    );
+    assertEquals(
+      [...cadernetaNoPre].sort(),
+      ["frota_lojas", "frota_segredo"],
+      `${nome}: caderneta citada no pre-voo`,
+    );
+  }
+  const semPreVoo = (sql, [marcaDo, marcaEscrita]) =>
+    sql.slice(0, sql.indexOf(marcaDo)) + sql.slice(sql.indexOf(marcaEscrita));
   for (const [nome, sql] of [
-    ["aplicar", aplicar],
+    ["aplicar", semPreVoo(aplicar, PRE_APLICAR)],
     ["conferir", conferir],
-    ["rollback", rollback],
+    ["rollback", semPreVoo(rollback, PRE_ROLLBACK)],
   ]) {
     const cod = semComentarios(sql);
     const objetos = new Set(

@@ -256,8 +256,11 @@ migrations do projeto):
    Esperado: 5 linhas; a da ACL mostra no `vivo` a ACL medida em 26/11 (`anon=arwdDxtm/postgres`).
 2. **Aplicar, numa transação só:** `begin;` + o conteúdo de
    `scripts/frota/banco-da-caderneta/vitrine-antiga-sem-escrita-anonima.sql` + `commit;`, na mesma
-   chamada. O pré-voo recusa com `B1_BASELINE_DIVERGENT` (e nada é gravado) se a ACL não for a medida
-   nem a já aplicada; o pós-voo recusa com `POSVOO_VITRINE_ANTIGA` se o resultado não for o esperado.
+   chamada. O pré-voo recusa com `B1_BASELINE_DIVERGENT` (e nada é gravado) se o banco não tiver a
+   caderneta semeada (`frota_lojas` e `frota_segredo` com linha: é o que separa o dekxab de uma loja,
+   que tem as tabelas vazias e a mesma ACL da view) ou se a ACL não for a medida nem a já aplicada; o
+   pós-voo recusa com `POSVOO_VITRINE_ANTIGA` se o resultado não for o esperado. O rollback tem a mesma
+   trava do banco certo.
 3. **Depois:** a mesma consulta do passo 1. Esperado: as 5 linhas com `ok = true`.
 
 **Desfazer:** `begin;` + `scripts/frota/banco-da-caderneta/rollback-manual-vitrine-antiga-sem-escrita-anonima.sql`

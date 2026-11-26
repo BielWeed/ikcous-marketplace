@@ -1,7 +1,8 @@
 -- ============================================================================
 -- Banco da caderneta (projeto antigo dekxabvqdsuukijblazl) — a vitrine antiga deixa de aceitar escrita anônima (26/11/2026)
 -- NÃO É MIGRATION: só para o banco onde a caderneta de produção mora (IKCOUS_FROTA_URL, hoje o dekxab), aplicado pela sessão
--- pelo MCP. Nas lojas atuais o pré-voo recusaria (lá a view já está fechada, com outra ACL).
+-- pelo MCP. A ACL NÃO separa este banco das lojas atuais (a "já aplicada" é idêntica à delas): quem recusa uma loja é a
+-- primeira trava do pré-voo, a caderneta semeada (item 4).
 -- ============================================================================
 --
 -- 1. O QUE ESTÁ ABERTO (medido em 26/11/2026, só leitura, no dekxab)
@@ -25,16 +26,20 @@
 --
 -- 3. DADOS EXISTENTES
 --
--- Nenhuma linha é lida, escrita ou apagada: pré-voo e pós-voo leem só o catálogo. Muda só pg_class.relacl da view, nas entradas
--- de anon e authenticated. Aplicar duas vezes deixa o mesmo estado: o pré-voo aceita também a ACL já aplicada, e revogar o já
--- revogado é no-op.
+-- Nenhuma linha é escrita ou apagada, e nenhum conteúdo é lido: o pré-voo só pergunta SE frota_segredo e frota_lojas têm linha
+-- (EXISTS); o resto é catálogo. Muda só pg_class.relacl da view, nas entradas de anon e authenticated. Aplicar duas vezes deixa
+-- o mesmo estado: o pré-voo aceita também a ACL já aplicada, e revogar o já revogado é no-op.
 --
 -- 4. PRÉ-VOO (B1_BASELINE_DIVERGENT, antes de qualquer escrita)
 --
--- Recusa se: anon, authenticated ou service_role não existem; a view não existe ou não é view; o dono não é postgres; quem aplica
--- não é o dono (nem membro dele, nem superusuário) — aí o REVOKE viraria só um aviso e o GRANT do rollback sairia com outro
--- concedente; existe privilégio de COLUNA na view (o REVOKE de tabela o levaria junto e o rollback não o devolveria); ou a ACL
--- não é, byte a byte, a medida (acima) nem a já aplicada. Em qualquer desses casos, meça o banco antes.
+-- Recusa, ANTES de tudo, se o banco não é o da caderneta de produção: sem public.frota_lojas/frota_segredo, ou com elas vazias.
+-- As tabelas sozinhas não bastam (a 20261141 e as irmãs vão também ao banco de cada loja do canal, onde nascem e ficam vazias:
+-- o segredo e as lojas só são semeados na caderneta de produção). LIMITE: se um dia a caderneta for copiada ou movida para o
+-- banco de uma loja, esta trava deixa de separá-los — meça antes. Depois, recusa se: anon, authenticated ou service_role não
+-- existem; a view não existe ou não é view; o dono não é postgres; quem aplica não é o dono (nem membro dele, nem
+-- superusuário) — aí o REVOKE viraria só um aviso e o GRANT do rollback sairia com outro concedente; existe privilégio de
+-- COLUNA na view (o REVOKE de tabela o levaria junto e o rollback não o devolveria); ou a ACL não é, byte a byte, a medida
+-- (acima) nem a já aplicada. Em qualquer desses casos, meça o banco antes.
 --
 -- 5. TRANSAÇÃO
 --
@@ -57,6 +62,15 @@ DECLARE
   v_dono name;
   v_acl text;
 BEGIN
+  -- Antes de tudo: o banco certo. A ACL não separa o dekxab de uma loja atual (a "já aplicada" é a das lojas).
+  IF to_regclass('public.frota_lojas') IS NULL OR to_regclass('public.frota_segredo') IS NULL THEN
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: este banco não é o da caderneta (sem public.frota_lojas/frota_segredo) — script só para o banco da caderneta.';
+  END IF;
+  -- As tabelas existem também nas lojas (a 20261141 vai a cada canal), mas lá ficam vazias: só a caderneta de
+  -- produção tem segredo e lojas. Só se pergunta SE há linha (EXISTS); nenhum conteúdo é lido.
+  IF NOT EXISTS (SELECT 1 FROM public.frota_segredo) OR NOT EXISTS (SELECT 1 FROM public.frota_lojas) THEN
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: a caderneta deste banco está vazia (sem segredo ou sem loja) — não é o banco onde a caderneta de produção mora; script só para ele.';
+  END IF;
   IF to_regrole('anon') IS NULL OR to_regrole('authenticated') IS NULL OR to_regrole('service_role') IS NULL THEN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: os papéis anon, authenticated e service_role têm de existir (banco do Supabase) — meça o banco.';
   END IF;

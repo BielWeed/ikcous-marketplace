@@ -7,9 +7,12 @@
 --   {postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}
 -- (o Postgres atualiza as entradas de anon e authenticated no lugar: a ordem não muda).
 -- COM ELE VOLTA O FURO: qualquer um com a chave pública volta a escrever e apagar produto do app antigo pela view.
--- DADOS: nenhuma linha é lida nem tocada; muda só a ACL da view, nas entradas de anon e authenticated.
+-- DADOS: nenhuma linha é tocada e nenhum conteúdo é lido (o pré-voo só pergunta SE a caderneta tem linha, por EXISTS); muda
+-- só a ACL da view, nas entradas de anon e authenticated.
 --
--- PRÉ-VOO: recusa (B1_BASELINE_DIVERGENT) se a view não existe, quem roda não age como o dono, há privilégio de coluna, ou a ACL
+-- PRÉ-VOO: recusa (B1_BASELINE_DIVERGENT), ANTES de tudo, se o banco não é o da caderneta de produção (sem frota_lojas/
+-- frota_segredo, ou com elas vazias): a ACL que ele aceita é IDÊNTICA à das lojas atuais, e numa loja ele reabriria a escrita
+-- anônima na vitrine dela. Depois, recusa se a view não existe, quem roda não age como o dono, há privilégio de coluna, ou a ACL
 -- não é a que o script deixa nem a medida (já desfeito: rodar de novo é no-op). PÓS-VOO: recusa se a ACL não voltou EXATAMENTE
 -- à medida. Sem BEGIN/COMMIT neste arquivo: pelo execute_sql do MCP, "begin;" antes e "commit;" depois, na mesma chamada.
 -- ============================================================================
@@ -22,6 +25,14 @@ DECLARE
   v_view oid := to_regclass('public.vw_produtos_public');
   v_acl text;
 BEGIN
+  -- Antes de tudo: o banco certo. A ACL que este rollback aceita é IDÊNTICA à das lojas atuais; rodado numa loja por
+  -- engano, ele devolveria a escrita anônima na vitrine dela. Quem separa é a caderneta semeada (ver o script).
+  IF to_regclass('public.frota_lojas') IS NULL OR to_regclass('public.frota_segredo') IS NULL THEN
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: este banco não é o da caderneta (sem public.frota_lojas/frota_segredo) — script só para o banco da caderneta.';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.frota_segredo) OR NOT EXISTS (SELECT 1 FROM public.frota_lojas) THEN
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: a caderneta deste banco está vazia (sem segredo ou sem loja) — não é o banco onde a caderneta de produção mora; script só para ele.';
+  END IF;
   IF v_view IS NULL OR (SELECT c.relkind FROM pg_class c WHERE c.oid = v_view) IS DISTINCT FROM 'v'
      OR (SELECT pg_get_userbyid(c.relowner) FROM pg_class c WHERE c.oid = v_view) IS DISTINCT FROM 'postgres' THEN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.vw_produtos_public não existe, não é view ou não é do postgres — nada a reverter aqui; meça o banco.';
