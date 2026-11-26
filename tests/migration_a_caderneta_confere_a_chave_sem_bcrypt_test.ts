@@ -391,7 +391,13 @@ Deno.test("lote de UMA migration em provasDeObjetos (186a depois, 186b antes), a
       !("soNosRefs" in lotes[0]),
   );
   assertStringIncludes(lotes[0]._comentario, "IKCOUS_FROTA_URL");
-  assertEquals(canais.provasDeObjetos.at(-1).consulta, A186, "anexado no fim");
+  // Anexado no fim quando entrou: logo depois do lote da 20261480 (os lotes posteriores, como o da 20261530, vem depois dele).
+  const i186 = canais.provasDeObjetos.findIndex((l) => l.consulta === A186);
+  assertEquals(
+    canais.provasDeObjetos[i186 - 1]?.consulta,
+    "184a-conferir-a-caderneta-fecha-para-o-service-role-aplicado",
+    "anexado logo depois do lote da 20261480",
+  );
   const { CONSULTAS_DE_ROL_FECHADO } = await import(
     new URL("../scripts/frota/publicar-release.mjs", import.meta.url).href
   );

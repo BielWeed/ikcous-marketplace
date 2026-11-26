@@ -329,6 +329,8 @@ on:
       - "scripts/publicacao/consultas/184b-antes-a-caderneta-fecha-para-o-service-role-ausente.sql"
       - "scripts/publicacao/consultas/186a-conferir-a-caderneta-confere-a-chave-sem-bcrypt-aplicado.sql"
       - "scripts/publicacao/consultas/186b-antes-a-caderneta-confere-a-chave-sem-bcrypt-ausente.sql"
+      - "scripts/publicacao/consultas/190a-conferir-a-loja-grande-nao-trava-o-balcao-aplicado.sql"
+      - "scripts/publicacao/consultas/190b-antes-a-loja-grande-nao-trava-o-balcao-ausente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -631,6 +633,8 @@ on:
       - "scripts/publicacao/consultas/184b-antes-a-caderneta-fecha-para-o-service-role-ausente.sql"
       - "scripts/publicacao/consultas/186a-conferir-a-caderneta-confere-a-chave-sem-bcrypt-aplicado.sql"
       - "scripts/publicacao/consultas/186b-antes-a-caderneta-confere-a-chave-sem-bcrypt-ausente.sql"
+      - "scripts/publicacao/consultas/190a-conferir-a-loja-grande-nao-trava-o-balcao-aplicado.sql"
+      - "scripts/publicacao/consultas/190b-antes-a-loja-grande-nao-trava-o-balcao-ausente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -1595,6 +1599,16 @@ jobs:
       - name: Prova viva da caderneta que confere a chave sem bcrypt por chamada (migration 20261490000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-caderneta-confere-a-chave-sem-bcrypt-viva.cjs
+      # Migration 20261530000000 (a loja grande nao trava o balcao nem os avisos): a porta leve buscar_clientes_do_balcao (so o
+      # authenticated, guardas is_admin + is_admin_atual, o filtro da get_admin_customers_paged letra por letra, sem ler pedido) e os
+      # indices de produtos (data_cadastro DESC, id) e do historico (new_status, created_at DESC). Diferencial contra a porta antiga no
+      # MESMO banco (ids, ordem, campos e total, inclusive perfil sem auth.users, termo NULL/vazio, created_at NULL); zero leitura de
+      # marketplace_orders (controle: a antiga le); guardas e teto; EXPLAIN com e sem o indice; tempos IMPRESSOS (porta nova x antiga com
+      # 20 mil perfis e 50 mil pedidos; pagina 1 e 50 da vitrine com 10 mil produtos), sem reprovar por tempo; mutantes; reaplicar 2x
+      # (LF e CRLF); rollback nao muda dado; pre-voo recusa nome ocupado; lock_timeout com outra conexao; consultas 190a/190b. CLONE proprio.
+      - name: Prova viva da loja grande que nao trava o balcao nem os avisos (migration 20261530000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-grande-nao-trava-o-balcao-viva.cjs
       # Migration 20261384000000 (o pedido pago pelo app exige conta e nao prende o estoque de visitante): a
       # create_marketplace_order_v24 recusa 'online' sem sessao (anon) ANTES de ler carrinho, trancar, inserir pedido, baixar
       # estoque ou gastar cupom (ordem provada por sequencia movida por gatilhos); produto simples e com variacao ficam

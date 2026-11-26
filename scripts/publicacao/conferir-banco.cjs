@@ -3425,7 +3425,29 @@ const ROL_DA_186B = [
   "a 20261470000000 e a 20261480000000 estao aplicadas: a porta frota_mudar_estado existe e o service_role nao alcanca frota_lojas nem frota_segredo",
   "extensions.crypt(text, text) e extensions.digest(text, text) existem (pgcrypto no schema extensions)",
 ];
+// Lote 190 (20261530000000, a loja grande nao trava o balcao nem os avisos: a porta leve buscar_clientes_do_balcao, sem ler pedidos, e os
+// indices de produtos (data_cadastro DESC, id) e do historico do pedido (new_status, created_at DESC)). A 190a prova o estado novo (6 itens,
+// so catalogo: a porta com o corpo desta migration e o EXECUTE so do authenticated, os 2 indices validos com a definicao exata e a
+// get_admin_customers_paged intacta). A 190b prova o estado de antes (5 itens: porta e indices ausentes, a base que o pre-voo exige e a
+// porta antiga com o corpo da 20261412000000, de onde o filtro foi copiado).
+const ROL_DA_190A = [
+  "controle: catalogo publico visivel",
+  "buscar_clientes_do_balcao: uma so, com o corpo da 20261530000000 (md5), plpgsql, SECURITY DEFINER, STABLE, search_path public, extensions, (p_search text, p_limite integer) devolvendo jsonb",
+  "buscar_clientes_do_balcao: EXECUTE so do authenticated (nada para PUBLIC, anon e service_role)",
+  "idx_produtos_data_cadastro_id: indice valido em produtos (data_cadastro DESC, id)",
+  "idx_order_history_status_criado: indice valido em marketplace_order_history (new_status, created_at DESC)",
+  "get_admin_customers_paged: intacta (uma so, corpo da 20261412000000 (md5), SECURITY DEFINER, EXECUTE do authenticated e do service_role, nada para PUBLIC e anon)",
+];
+const ROL_DA_190B = [
+  "controle: catalogo publico visivel",
+  "buscar_clientes_do_balcao ainda NAO existe (nenhuma sobrecarga)",
+  "idx_produtos_data_cadastro_id e idx_order_history_status_criado ainda NAO existem (nenhuma relacao com esses nomes em public)",
+  "a base que o pre-voo exige: produtos, marketplace_order_history, profiles, user_addresses e auth.users com as colunas lidas, is_admin(), is_admin_atual() e extensions.unaccent(text)",
+  "get_admin_customers_paged: uma so, com o corpo da 20261412000000 (md5), de onde o filtro da porta nova foi copiado",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "190a-conferir-a-loja-grande-nao-trava-o-balcao-aplicado": ROL_DA_190A,
+  "190b-antes-a-loja-grande-nao-trava-o-balcao-ausente": ROL_DA_190B,
   "186a-conferir-a-caderneta-confere-a-chave-sem-bcrypt-aplicado": ROL_DA_186A,
   "186b-antes-a-caderneta-confere-a-chave-sem-bcrypt-ausente": ROL_DA_186B,
   "184a-conferir-a-caderneta-fecha-para-o-service-role-aplicado": ROL_DA_184A,

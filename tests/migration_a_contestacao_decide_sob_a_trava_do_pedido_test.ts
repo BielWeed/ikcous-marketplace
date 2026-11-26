@@ -786,6 +786,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/a-caderneta-fecha-para-o-service-role-viva.cjs",
     // 20261490: a caderneta confere a chave sem bcrypt por chamada (atalho sha256 do hash atual, zero bcrypt com chave errada, troca de chave, so leitura, duas conexoes, rollback byte a byte, mutantes, consultas 186a/186b).
     "tests/banco/a-caderneta-confere-a-chave-sem-bcrypt-viva.cjs",
+    // 20261530: a loja grande nao trava o balcao nem os avisos (porta leve sem ler pedido, diferencial contra a antiga, guardas, indices com EXPLAIN e tempos impressos, mutantes, rollback, consultas 190a/190b).
+    "tests/banco/a-loja-grande-nao-trava-o-balcao-viva.cjs",
     // 20261384: o pedido pago pelo app exige conta (visitante sem conta recusado antes de reservar estoque; logado e pagar na entrega como hoje; retry; concorrencia real; mutantes; rollback; consultas 89a/89b).
     "tests/banco/pedido-pelo-app-exige-conta-viva.cjs",
     "tests/banco/admin-atual-viva.cjs",
