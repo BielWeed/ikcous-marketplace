@@ -16,7 +16,16 @@
  *  - nenhum valor do cofre (canário) nem a frase aparece em saída ou erro;
  *  - argv com qualquer coisa fora das flags conhecidas é recusado antes de
  *    pedir frase, sem ecoar o argumento;
- *  - a leitura sem eco recusa stdin que não é terminal e não ecoa a frase.
+ *  - a leitura sem eco recusa stdin que não é terminal e não ecoa a frase;
+ *  - conflito no --importar: a mensagem diz que o cofre do PC costuma ser o
+ *    MAIS NOVO e manda NÃO substituir (o refresh OAuth muda a cada renovação;
+ *    o de um backup velho está morto). Com --substituir, as chaves em conflito
+ *    são listadas, a palavra SUBSTITUIR é pedida no terminal e, antes de
+ *    sobrescrever, o cofre ATUAL vira uma cópia cifrada ao lado do arquivo
+ *    importado; sem confirmação ou sem cópia, nada é gravado;
+ *  - main sem cofres injetados recusa neste processo de teste (sentinela
+ *    IKCOUS_TESTE_SEM_COFRE_REAL): esquecer a injeção falha alto, nunca abre
+ *    o cofre real.
  *
  * Os valores são FALSOS, inventados aqui; os cofres são os de MEMÓRIA e os
  * arquivos vão para pastas temporárias. Cada cifrar/decifrar roda o scrypt de
@@ -36,6 +45,11 @@ import {
   main,
 } from "../scripts/frota/backup-do-cofre.mjs";
 import { criarCofreMemoria } from "../scripts/frota/cofre-local.mjs";
+import { decifrar } from "../scripts/frota/pacote-do-cofre.mjs";
+
+// Sentinela: neste processo, main sem deps.cofres recusa em vez de abrir os
+// cofres DPAPI de verdade (ANOTADO 3 da revisão).
+Deno.env.set("IKCOUS_TESTE_SEM_COFRE_REAL", "1");
 
 const RAIZ = fromFileUrl(new URL("..", import.meta.url));
 const FRASE = "frase FALSA do backup, com ação ✓";
@@ -76,10 +90,12 @@ async function conteudo(cofres) {
 }
 
 /** Dependências falsas: as frases saem de uma fila; saída e erros anotados. */
-function deps(cofres, frases, extra = {}) {
+function deps(cofres, frases, extra = {}, confirmacoes = []) {
   const fila = [...frases];
+  const filaConfirma = [...confirmacoes];
   const linhas = [];
   const perguntas = [];
+  const confirmas = [];
   return {
     cofres,
     lerFrase: async (pergunta) => {
@@ -87,6 +103,14 @@ function deps(cofres, frases, extra = {}) {
       if (fila.length === 0) throw new Error("frase pedida a mais");
       return fila.shift();
     },
+    lerConfirmacao: async (pergunta) => {
+      confirmas.push(pergunta);
+      if (filaConfirma.length === 0) {
+        throw new Error("confirmação pedida a mais");
+      }
+      return filaConfirma.shift();
+    },
+    confirmas,
     saida: {
       log: (l) => linhas.push(`OUT ${l}`),
       erro: (l) => linhas.push(`ERR ${l}`),
@@ -257,7 +281,136 @@ Deno.test("releitura que não bate (disco devolveu outra coisa): erro e nada no 
   }
 });
 
-Deno.test("importar com conflito sem --substituir: recusa e não grava nada; com --substituir grava", async () => {
+/** Arquivos "cofre-antes-de-importar-*" na pasta. */
+async function copiasEm(pasta) {
+  const r = [];
+  for await (const e of Deno.readDir(pasta)) {
+    if (e.name.startsWith("cofre-antes-de-importar-")) r.push(e.name);
+  }
+  return r;
+}
+
+/** Backup de ACESSO+BANCO na pasta e um cofre-alvo com banco/loja-um
+ * DIFERENTE (o conflito) e nada mais. */
+async function cenarioDeConflito(pasta) {
+  const destino = join(pasta, "backup.ikcous");
+  assertEquals(
+    (await exportar(await cofresCom(ACESSO, BANCO), destino)).codigo,
+    0,
+  );
+  const alvo = await cofresCom({}, { "loja-um": "senha-NOVA-do-PC-FALSA" });
+  return { destino, alvo };
+}
+
+const ANTES = { acesso: {}, banco: { "loja-um": "senha-NOVA-do-PC-FALSA" } };
+
+Deno.test("importar com conflito sem --substituir: recusa, não grava nada e manda NÃO substituir", async () => {
+  const pasta = await pastaTemp();
+  try {
+    const { destino, alvo } = await cenarioDeConflito(pasta);
+    const im = deps(alvo, [FRASE]);
+    assertEquals(await main(["--importar", destino], im), 1);
+    const t = texto(im);
+    assert(/banco\/loja-um/.test(t), t);
+    assert(
+      /mais novo/i.test(t),
+      `não diz que o cofre do PC é o mais novo: ${t}`,
+    );
+    const naoSubstitua = t.search(/NÃO substitua/);
+    assert(naoSubstitua >= 0, `não recomenda NÃO substituir: ${t}`);
+    // --substituir nunca é a primeira saída: se aparece, é depois do aviso
+    const sub = t.indexOf("--substituir");
+    assert(
+      sub === -1 || sub > naoSubstitua,
+      `--substituir antes do aviso: ${t}`,
+    );
+    assertEquals(im.confirmas.length, 0);
+    assertEquals(await conteudo(alvo), ANTES);
+    assertEquals(await copiasEm(pasta), []);
+  } finally {
+    await Deno.remove(pasta, { recursive: true });
+  }
+});
+
+Deno.test("--substituir com conflito e SEM a confirmação SUBSTITUIR: nada gravado, nem cópia", async () => {
+  const pasta = await pastaTemp();
+  try {
+    const { destino, alvo } = await cenarioDeConflito(pasta);
+    for (const resposta of ["", "sim", "substituir", "SUBSTITUI"]) {
+      const im = deps(alvo, [FRASE], {}, [resposta]);
+      assertEquals(
+        await main(["--importar", destino, "--substituir"], im),
+        1,
+        resposta,
+      );
+      assertEquals(im.confirmas.length, 1, "não pediu a confirmação");
+      // as chaves em conflito listadas (tipo e loja), nunca o valor
+      assert(/banco\/loja-um/.test(texto(im)), texto(im));
+      assert(!texto(im).includes("FALSA"), "valor na tela");
+      assertEquals(await conteudo(alvo), ANTES);
+      assertEquals(await copiasEm(pasta), []);
+    }
+    // confirmação que falha (terminal fechou, não é TTY): também nada
+    const quebra = deps(alvo, [FRASE], {
+      lerConfirmacao: async () => {
+        throw new ErroDoBackup("não é terminal");
+      },
+    });
+    assertEquals(
+      await main(["--importar", destino, "--substituir"], quebra),
+      1,
+    );
+    assertEquals(await conteudo(alvo), ANTES);
+    assertEquals(await copiasEm(pasta), []);
+  } finally {
+    await Deno.remove(pasta, { recursive: true });
+  }
+});
+
+Deno.test("--substituir com confirmação: cópia do cofre ANTIGO ao lado do arquivo, decifra para o antigo; depois grava", async () => {
+  const pasta = await pastaTemp();
+  try {
+    const { destino, alvo } = await cenarioDeConflito(pasta);
+    const im = deps(alvo, [FRASE], {}, ["SUBSTITUIR"]);
+    assertEquals(
+      await main(["--importar", destino, "--substituir"], im),
+      0,
+      texto(im),
+    );
+    assertEquals(await conteudo(alvo), { acesso: ACESSO, banco: BANCO });
+    const copias = await copiasEm(pasta);
+    assertEquals(copias.length, 1, texto(im));
+    assert(/^cofre-antes-de-importar-.+\.ikcofre$/.test(copias[0]), copias[0]);
+    const caminho = join(pasta, copias[0]);
+    assert(texto(im).includes(caminho), `não disse o caminho: ${texto(im)}`);
+    assertEquals(await decifrar(FRASE, await Deno.readFile(caminho)), {
+      "banco/loja-um": "senha-NOVA-do-PC-FALSA",
+    });
+  } finally {
+    await Deno.remove(pasta, { recursive: true });
+  }
+});
+
+Deno.test("--substituir: se a cópia do cofre atual não grava, nada é sobrescrito", async () => {
+  const pasta = await pastaTemp();
+  try {
+    const { destino, alvo } = await cenarioDeConflito(pasta);
+    // o arquivo importado mora numa árvore git: a cópia ao lado é recusada
+    const git = join(pasta, "repo");
+    await Deno.mkdir(join(git, ".git"), { recursive: true });
+    const dentro = join(git, "backup.ikcous");
+    await Deno.copyFile(destino, dentro);
+    const im = deps(alvo, [FRASE], {}, ["SUBSTITUIR"]);
+    assertEquals(await main(["--importar", dentro, "--substituir"], im), 1);
+    assert(/cópia/.test(texto(im)), texto(im));
+    assertEquals(await conteudo(alvo), ANTES);
+    assertEquals(await copiasEm(git), []);
+  } finally {
+    await Deno.remove(pasta, { recursive: true });
+  }
+});
+
+Deno.test("--substituir sem conflito: não pede confirmação nem faz cópia", async () => {
   const pasta = await pastaTemp();
   try {
     const destino = join(pasta, "backup.ikcous");
@@ -265,24 +418,38 @@ Deno.test("importar com conflito sem --substituir: recusa e não grava nada; com
       (await exportar(await cofresCom(ACESSO, BANCO), destino)).codigo,
       0,
     );
-    // loja-um já no cofre do banco com OUTRA senha; o resto falta
-    const alvo = await cofresCom({}, { "loja-um": "outra-senha-FALSA" });
+    const alvo = await cofresCom({}, BANCO);
     const im = deps(alvo, [FRASE]);
-    assertEquals(await main(["--importar", destino], im), 1);
-    assert(/loja-um/.test(texto(im)) && /--substituir/.test(texto(im)));
-    assertEquals(await conteudo(alvo), {
-      acesso: {},
-      banco: { "loja-um": "outra-senha-FALSA" },
-    });
-
-    const sub = deps(alvo, [FRASE]);
     assertEquals(
-      await main(["--importar", destino, "--substituir"], sub),
+      await main(["--importar", destino, "--substituir"], im),
       0,
-      texto(sub),
+      texto(im),
     );
+    assertEquals(im.confirmas.length, 0);
+    assertEquals(await copiasEm(pasta), []);
     assertEquals(await conteudo(alvo), { acesso: ACESSO, banco: BANCO });
   } finally {
+    await Deno.remove(pasta, { recursive: true });
+  }
+});
+
+Deno.test("main sem cofres injetados recusa no processo de teste (sentinela), sem abrir cofre nenhum", async () => {
+  const pasta = await pastaTemp();
+  // se a sentinela sumir, o cofre "real" cai nesta pasta temporária vazia,
+  // nunca no do PC (e o teste falha pela mensagem)
+  const antes = Deno.env.get("LOCALAPPDATA");
+  Deno.env.set("LOCALAPPDATA", pasta);
+  try {
+    const d = deps(undefined, [FRASE, FRASE]);
+    d.cofres = undefined; // a injeção "esquecida"
+    const destino = join(pasta, "backup.ikcous");
+    assertEquals(await main(["--exportar", destino], d), 1);
+    assert(/IKCOUS_TESTE_SEM_COFRE_REAL/.test(texto(d)), texto(d));
+    assertEquals(d.perguntas.length, 0);
+    assert(!(await existe(destino)));
+  } finally {
+    if (antes === undefined) Deno.env.delete("LOCALAPPDATA");
+    else Deno.env.set("LOCALAPPDATA", antes);
     await Deno.remove(pasta, { recursive: true });
   }
 });
@@ -466,6 +633,29 @@ Deno.test("lerFraseSemEco: lê em modo cru, apaga com backspace, não ecoa e res
   assertEquals(entrada.modoCru, [true, false]);
   assert(!eco.escrito.join("").includes("FALSA"), "ecoou a frase");
   assert(eco.escrito.join("").includes("Frase: "));
+});
+
+Deno.test("lerFraseSemEco com mostrar (a confirmação): ecoa o que é digitado e o apagar", async () => {
+  const eco = ecoFalso();
+  const entrada = terminalFalso(["SUBSTITUIRX", "\b", "\r"]);
+  const lida = await lerFraseSemEco("Digite SUBSTITUIR: ", {
+    entrada,
+    eco,
+    mostrar: true,
+  });
+  assertEquals(lida, "SUBSTITUIR");
+  assert(eco.escrito.join("").includes("SUBSTITUIRX\b \b"), "não ecoou");
+  assertEquals(entrada.modoCru, [true, false]);
+  // e continua recusando o que não é terminal
+  await assertRejects(
+    () =>
+      lerFraseSemEco("x", {
+        entrada: terminalFalso(["SUBSTITUIR\r"], { tty: false }),
+        eco,
+        mostrar: true,
+      }),
+    ErroDoBackup,
+  );
 });
 
 Deno.test("lerFraseSemEco: Ctrl+C cancela e restaura o terminal", async () => {

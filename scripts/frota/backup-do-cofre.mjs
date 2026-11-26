@@ -31,6 +31,17 @@
  * conflito sem --substituir, nada é gravado. Depois relê cada entrada gravada.
  * Repetir o comando é seguro: o que já foi gravado aparece como igual.
  *
+ * CONFLITO: o cofre do PC costuma ser o MAIS NOVO. O refresh OAuth muda a cada
+ * renovação (acesso-oauth.mjs) e o de um backup velho já está morto; trocar
+ * derruba o acesso da loja até a lojista autorizar de novo (o mesmo vale para
+ * a senha do banco). Por isso a recusa recomenda NÃO substituir. Com
+ * --substituir, o comando lista as chaves em conflito (tipo/loja, nunca o
+ * valor), pede a palavra SUBSTITUIR no terminal (a mesma leitura, que recusa
+ * o que não é terminal) e, ANTES de sobrescrever, grava o cofre ATUAL inteiro,
+ * cifrado com a mesma frase, ao lado do arquivo importado
+ * (cofre-antes-de-importar-<data-hora>.ikcofre, conferido por releitura como
+ * no --exportar). Sem a palavra, ou sem essa cópia, nada é gravado.
+ *
  * A FRASE: só pelo terminal, sem eco (lerFraseSemEco, modo cru do TTY), nunca
  * de argv nem de variável de ambiente. Stdin que não é terminal (pipe, ou o
  * Git Bash/mintty sem pseudo-console) é recusado: frase com eco, nunca. Frase
@@ -44,6 +55,10 @@
  * SEGREDOS: nenhum valor do cofre e nem a frase vão para stdout, stderr, erro
  * ou log. As mensagens são só as nossas, as do pacote (genéricas) e as do
  * cofre (sem valor); qualquer outro erro vira "erro inesperado".
+ *
+ * TESTE: com IKCOUS_TESTE_SEM_COFRE_REAL definida (o teste define), main sem
+ * deps.cofres RECUSA em vez de abrir os cofres DPAPI: esquecer a injeção num
+ * teste falha alto e nunca toca o cofre do PC.
  *
  * Saída: 0 OK, 1 recusado ou falhou, 2 uso errado. Testado por
  * tests/frota_backup_do_cofre_test.ts.
@@ -59,7 +74,7 @@ import {
   ErroDoCofre,
   criarCofreDpapi,
   exigirPastaSegura,
-  pastaPadraoDoCofre,
+  pastaPadraoDoCofreDoBanco,
 } from "./cofre-local.mjs";
 import { ErroDoPacote, cifrar, decifrar } from "./pacote-do-cofre.mjs";
 
@@ -72,6 +87,12 @@ const TETO_VALOR = 64 * 1024;
 
 export const MENSAGEM_ESPACO_NAS_PONTAS =
   "a frase tem espaço no começo ou no fim; digite de novo sem ele";
+
+const PALAVRA_DE_CONFIRMACAO = "SUBSTITUIR";
+const SENTINELA_DE_TESTE = "IKCOUS_TESTE_SEM_COFRE_REAL";
+
+const AVISO_COFRE_MAIS_NOVO =
+  "O cofre deste PC costuma ser o MAIS NOVO: o acesso OAuth muda a cada renovação e a senha do banco pode ter sido trocada; o do backup pode estar vencido, e trocar derruba o acesso da loja até a lojista autorizar de novo.";
 
 const USO = [
   "Uso:",
@@ -158,19 +179,21 @@ function ehControle(ch) {
  * Lê uma linha do terminal SEM ECO (modo cru): nada do que é digitado aparece
  * na tela. Backspace apaga; Enter termina; Ctrl+C ou Ctrl+D cancela. Tecla de
  * controle (seta, tab, Esc) recusa a frase inteira. Stdin que não é terminal
- * é recusado: a frase nunca é lida com eco.
+ * é recusado: a frase nunca é lida com eco. Com mostrar (só para a palavra de
+ * confirmação, que não é segredo), o digitado aparece; a regra do terminal é
+ * a mesma.
  * @param {string} pergunta
- * @param {{ entrada?: any, eco?: { write: (t: string) => unknown } }} [o]
+ * @param {{ entrada?: any, eco?: { write: (t: string) => unknown }, mostrar?: boolean }} [o]
  * @returns {Promise<string>}
  */
 export function lerFraseSemEco(
   pergunta,
-  { entrada = process.stdin, eco = process.stderr } = {},
+  { entrada = process.stdin, eco = process.stderr, mostrar = false } = {},
 ) {
   if (!entrada?.isTTY || typeof entrada.setRawMode !== "function") {
     return Promise.reject(
       new ErroDoBackup(
-        "a frase só é lida de um terminal, sem eco, e esta entrada não é um terminal. Rode no Windows PowerShell; no Git Bash, rode com: winpty node scripts/frota/backup-do-cofre.mjs ...",
+        "a frase e a confirmação só são lidas de um terminal, e esta entrada não é um terminal. Rode no Windows PowerShell; no Git Bash, rode com: winpty node scripts/frota/backup-do-cofre.mjs ...",
       ),
     );
   }
@@ -215,11 +238,12 @@ export function lerFraseSemEco(
           return;
         }
         if (ch === "\b" || ch === "\u007f") {
-          letras.pop();
+          if (letras.pop() !== undefined && mostrar) eco.write("\b \b");
         } else if (ehControle(ch)) {
           controle = true;
         } else {
           letras.push(ch);
+          if (mostrar) eco.write(ch);
         }
       }
     };
@@ -242,13 +266,36 @@ function exigirSemEspacoNasPontas(frase) {
 
 // ----------------------------------------------------------------- cofres --
 
-function cofresReais() {
+function cofresReais(env = process.env) {
+  if (env.IKCOUS_TESTE_SEM_COFRE_REAL !== undefined) {
+    throw new ErroDoBackup(
+      `${SENTINELA_DE_TESTE} definida (processo de teste): o cofre real não é aberto; injete deps.cofres.`,
+    );
+  }
   return {
     acesso: criarCofreDpapi(),
-    banco: criarCofreDpapi({
-      pasta: path.join(path.dirname(pastaPadraoDoCofre()), "banco"),
-    }),
+    banco: criarCofreDpapi({ pasta: pastaPadraoDoCofreDoBanco() }),
   };
+}
+
+/** O cofre inteiro (os dois) como mapa do pacote: { "acesso/<slug>": texto }. */
+async function lerCofreInteiro(cofres) {
+  const pares = [];
+  for (const [nome, cofre] of [
+    ["acesso", cofres.acesso],
+    ["banco", cofres.banco],
+  ]) {
+    for (const slug of await cofre.listar()) {
+      const valor = await cofre.ler(slug);
+      if (typeof valor !== "string" || valor === "") {
+        throw new ErroDoBackup(
+          `a loja ${slug} saiu do cofre (${nome}) durante a leitura; nada foi gravado. Repita o comando.`,
+        );
+      }
+      pares.push([`${nome}/${slug}`, valor]);
+    }
+  }
+  return Object.fromEntries(pares);
 }
 
 /** "acesso/<slug>" -> { cofre, slug } ou null se fora do formato. */
@@ -289,46 +336,13 @@ function exigirDestino(destino, substituir) {
   }
 }
 
-async function exportar({ caminho, substituir }, d) {
-  exigirDestino(caminho, substituir);
-  const cofres = d.cofres ?? cofresReais();
-  const chaves = [];
-  for (const [nome, cofre] of [
-    ["acesso", cofres.acesso],
-    ["banco", cofres.banco],
-  ]) {
-    for (const slug of await cofre.listar()) {
-      chaves.push({ nome, cofre, slug });
-    }
-  }
-  if (chaves.length === 0) {
-    throw new ErroDoBackup("o cofre está vazio; não há o que exportar.");
-  }
-
-  const frase = exigirSemEspacoNasPontas(
-    await d.lerFrase("Frase do backup (não aparece ao digitar): "),
-  );
-  const repetida = await d.lerFrase("Repita a frase: ");
-  if (
-    typeof repetida !== "string" ||
-    repetida.normalize("NFC") !== frase.normalize("NFC")
-  ) {
-    throw new ErroDoBackup("as duas frases não batem; nada foi gravado.");
-  }
-
-  const pares = [];
-  for (const { nome, cofre, slug } of chaves) {
-    const valor = await cofre.ler(slug);
-    if (typeof valor !== "string" || valor === "") {
-      throw new ErroDoBackup(
-        `a loja ${slug} saiu do cofre (${nome}) durante a leitura; nada foi gravado. Repita o comando.`,
-      );
-    }
-    pares.push([`${nome}/${slug}`, valor]);
-  }
-  const mapa = Object.fromEntries(pares);
+/**
+ * Grava o pacote num temporário ao lado de `caminho`, RELÊ o temporário do
+ * disco, decifra e só se bater com `mapa` o renomeia para `caminho`. Qualquer
+ * falha apaga o temporário e deixa `caminho` como estava.
+ */
+async function gravarPacoteConferido(caminho, frase, mapa, substituir, d) {
   const bytes = await cifrar(frase, mapa);
-
   const temporario = `${caminho}.${randomBytes(6).toString("hex")}.tmp`;
   try {
     const h = await open(temporario, "wx", 0o600);
@@ -341,7 +355,7 @@ async function exportar({ caminho, substituir }, d) {
   } catch {
     await unlink(temporario).catch(() => {});
     throw new ErroDoBackup(
-      "não consegui gravar o arquivo do backup; o destino ficou como estava.",
+      "não consegui gravar o arquivo; o destino ficou como estava.",
     );
   }
   try {
@@ -366,16 +380,42 @@ async function exportar({ caminho, substituir }, d) {
       await rename(temporario, caminho);
     } catch {
       throw new ErroDoBackup(
-        "não consegui pôr o backup no destino; o destino ficou como estava.",
+        "não consegui pôr o arquivo no destino; o destino ficou como estava.",
       );
     }
   } catch (e) {
     await unlink(temporario).catch(() => {});
     throw e;
   }
+}
 
+async function exportar({ caminho, substituir }, d) {
+  exigirDestino(caminho, substituir);
+  const cofres = d.cofres ?? cofresReais();
+  const vazio =
+    (await cofres.acesso.listar()).length === 0 &&
+    (await cofres.banco.listar()).length === 0;
+  if (vazio) {
+    throw new ErroDoBackup("o cofre está vazio; não há o que exportar.");
+  }
+
+  const frase = exigirSemEspacoNasPontas(
+    await d.lerFrase("Frase do backup (não aparece ao digitar): "),
+  );
+  const repetida = await d.lerFrase("Repita a frase: ");
+  if (
+    typeof repetida !== "string" ||
+    repetida.normalize("NFC") !== frase.normalize("NFC")
+  ) {
+    throw new ErroDoBackup("as duas frases não batem; nada foi gravado.");
+  }
+
+  const mapa = await lerCofreInteiro(cofres);
+  await gravarPacoteConferido(caminho, frase, mapa, substituir, d);
+
+  const chaves = Object.keys(mapa).map(separarChave);
   const lojas = new Set(chaves.map((c) => c.slug)).size;
-  const deCada = (nome) => chaves.filter((c) => c.nome === nome).length;
+  const deCada = (nome) => chaves.filter((c) => c.cofre === nome).length;
   d.saida.log(
     `OK: backup gravado em ${caminho} e conferido por releitura: ${chaves.length} itens de ${lojas} loja(s) (${deCada("acesso")} de acesso OAuth, ${deCada("banco")} senha(s) do banco). Guarde a frase: sem ela o arquivo não abre.`,
   );
@@ -383,10 +423,44 @@ async function exportar({ caminho, substituir }, d) {
 
 // --------------------------------------------------------------- importar --
 
+const descricao = (cofre) =>
+  cofre === "acesso" ? "acesso OAuth" : "senha do banco";
+
+/** 2026-11-26_14-05-33 (hora local), para o nome da cópia. */
+function carimbo(agora) {
+  const p = (n) => String(n).padStart(2, "0");
+  return `${agora.getFullYear()}-${p(agora.getMonth() + 1)}-${p(agora.getDate())}_${p(agora.getHours())}-${p(agora.getMinutes())}-${p(agora.getSeconds())}`;
+}
+
+/** Antes de sobrescrever: o cofre ATUAL inteiro, com a mesma frase, ao lado do
+ * arquivo importado. Falhou = nada é sobrescrito. Devolve o caminho. */
+async function copiarCofreAtual(arquivo, frase, cofres, d) {
+  const copia = path.join(
+    path.dirname(arquivo),
+    `cofre-antes-de-importar-${carimbo(new Date())}.ikcofre`,
+  );
+  try {
+    exigirDestino(copia, false);
+    await gravarPacoteConferido(
+      copia,
+      frase,
+      await lerCofreInteiro(cofres),
+      false,
+      d,
+    );
+  } catch (e) {
+    throw new ErroDoBackup(
+      `não consegui fazer a cópia do cofre atual antes de substituir (${mensagemSegura(e)}); nada foi sobrescrito.`,
+    );
+  }
+  return copia;
+}
+
 async function importar({ caminho, substituir }, d) {
+  const arquivo = path.resolve(caminho);
   let bytes;
   try {
-    bytes = await d.lerArquivo(path.resolve(caminho));
+    bytes = await d.lerArquivo(arquivo);
   } catch {
     throw new ErroDoBackup("não consegui ler o arquivo do backup indicado.");
   }
@@ -422,9 +496,34 @@ async function importar({ caminho, substituir }, d) {
       else if (atual === e.valor) iguais.push(e);
       else conflitos.push(e);
     }
+    const lista = conflitos
+      .map((e) => `${e.chave} (${descricao(e.cofre)} da loja ${e.slug})`)
+      .join(", ");
     if (conflitos.length > 0 && !substituir) {
       throw new ErroDoBackup(
-        `já existe no cofre, com outro conteúdo: ${conflitos.map((e) => e.chave).join(", ")}. Nada foi gravado. Para trocar pelo do backup, repita com --substituir.`,
+        `o cofre deste PC já tem OUTRO conteúdo para: ${lista}. Nada foi gravado. ${AVISO_COFRE_MAIS_NOVO} Recomendação: NÃO substitua. Só se este PC foi trocado e o cofre atual NÃO funciona, repita com --substituir (ele pede confirmação e guarda antes uma cópia do cofre atual).`,
+      );
+    }
+    let copia = null;
+    if (conflitos.length > 0) {
+      d.saida.log(
+        `ATENÇÃO: o backup vai SUBSTITUIR no cofre deste PC: ${lista}.`,
+      );
+      d.saida.log(AVISO_COFRE_MAIS_NOVO);
+      const resposta = await d.lerConfirmacao(
+        `Para substituir mesmo assim, digite ${PALAVRA_DE_CONFIRMACAO} e Enter (qualquer outra coisa cancela): `,
+      );
+      if (
+        typeof resposta !== "string" ||
+        resposta.trim() !== PALAVRA_DE_CONFIRMACAO
+      ) {
+        throw new ErroDoBackup(
+          "substituição não confirmada; nada foi gravado.",
+        );
+      }
+      copia = await copiarCofreAtual(arquivo, frase, cofres, d);
+      d.saida.log(
+        `cópia do cofre atual (antes de importar) gravada e conferida em ${copia}; ela abre com a mesma frase.`,
       );
     }
     const gravar = [...novas, ...conflitos];
@@ -434,7 +533,7 @@ async function importar({ caminho, substituir }, d) {
         await cofres[e.cofre].gravar(e.slug, e.valor);
       } catch (erro) {
         throw new ErroDoBackup(
-          `não consegui gravar ${e.chave} (${mensagemSegura(erro)}); ${feitas} de ${gravar.length} já gravadas. Repetir o comando é seguro: o que já foi gravado aparece como igual.`,
+          `não consegui gravar ${e.chave} (${mensagemSegura(erro)}); ${feitas} de ${gravar.length} já gravadas. Repetir o comando é seguro: o que já foi gravado aparece como igual.${copia ? ` O cofre de antes está em ${copia}.` : ""}`,
         );
       }
       feitas++;
@@ -461,6 +560,7 @@ async function importar({ caminho, substituir }, d) {
  * @param {{
  *   cofres?: { acesso: any, banco: any },
  *   lerFrase?: (pergunta: string) => Promise<string>,
+ *   lerConfirmacao?: (pergunta: string) => Promise<string>,
  *   lerArquivo?: (caminho: string) => Promise<Uint8Array>,
  *   saida?: { log: (l: string) => void, erro: (l: string) => void },
  * }} [deps]  o teste injeta cofres de memória e a leitura da frase
@@ -469,6 +569,8 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
   const d = {
     cofres: deps.cofres,
     lerFrase: deps.lerFrase ?? ((p) => lerFraseSemEco(p)),
+    lerConfirmacao:
+      deps.lerConfirmacao ?? ((p) => lerFraseSemEco(p, { mostrar: true })),
     lerArquivo: deps.lerArquivo ?? ((c) => readFile(c)),
     saida: deps.saida ?? {
       log: (l) => console.log(l),
