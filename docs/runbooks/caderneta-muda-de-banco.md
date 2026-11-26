@@ -30,15 +30,20 @@ falsa no histórico). Prova viva dos três: `tests/banco/a-caderneta-muda-de-ban
 1. `execute_sql` no `dekxabvqdsuukijblazl` com o conteúdo de `caderneta-impressao-digital.sql`. Guardar a saída.
 2. O mesmo no `cafkrminfnokvgjqtkle`. Esperado no banco da IKCOUS: `frota_lojas.linhas`, `frota_segredo.linhas` e
    `frota_estado_historico.linhas` e `frota_enderecos_que_encaminham.linhas` = `0`, e as seis linhas `ledger.*` =
-   `registrada`. **A 20261570 tem de estar nos DOIS bancos** (no antigo também): sem a tabela dos endereços, a digital e
-   o gerador falham com `relation "public.frota_enderecos_que_encaminham" does not exist` — aplicar a 20261570 lá antes.
-3. Nos dois: os blocos `funcao.*.corpo` iguais, e `tabela.*.forma` iguais.
+   `registrada`. **A 20261570 só é exigida no banco da IKCOUS** (o destino). No banco antigo ela **não** precisa ser
+   aplicada: sem a tabela dos endereços lá, a digital e o gerador rodam assim mesmo e tratam a tabela ausente como **zero
+   endereços** (não há endereço a esquecer).
+3. Nos dois: os blocos `funcao.*.corpo` iguais, e `tabela.*.forma` iguais — **exceto** os da 20261570 quando o banco
+   antigo não a tem: lá eles saem `ausente` (`tabela.frota_enderecos_que_encaminham.forma` e `.acl`, e `.corpo`,
+   `.atributos` e `.acl` de `funcao.frota_enderecos_que_encaminham_nao_e_principal`, `funcao.resolver_encaminhamento` e
+   `funcao.frota_trocar_dominio`). Já `frota_enderecos_que_encaminham.linhas` (`0`) e `.conteudo` saem iguais nos dois.
 4. O JS de produção ainda carrega o banco antigo? (sem credencial)
    `curl.exe -s https://<loja>/ | Select-String "dekxab"` e o mesmo nos arquivos `assets/*.js` que a página carrega.
 5. `vercel env ls production` (só os NOMES): as três `IKCOUS_FROTA_*` existem.
 
 **Para aqui (não segue) se:** o banco da IKCOUS já tem linha na caderneta; falta alguma das seis versões no ledger
-dele (aplicar pelo canal antes, fora da semana da BF); ou algum `funcao.*.corpo` do banco antigo difere do da IKCOUS.
+dele (aplicar pelo canal antes, fora da semana da BF); ou algum `funcao.*.corpo` do banco antigo difere do da IKCOUS
+(fora os `ausente` da 20261570 listados no passo 3).
 
 ## 2. A virada (01/12 ou depois)
 
@@ -52,7 +57,9 @@ dele (aplicar pelo canal antes, fora da semana da BF); ou algum `funcao.*.corpo`
 5. **Conferir:** a impressão digital nos dois bancos. Esperado: **tudo igual**, menos:
    - `frota_segredo.hash_rapido_nulo`: `nao` no antigo, `sim` na IKCOUS (a cópia não leva o atalho de propósito);
    - `ledger.*`: no antigo pode estar `ausente` (as migrations da caderneta foram aplicadas à mão lá). É informativo;
-     quem prova que os objetos são os mesmos são os blocos `tabela.*` e `funcao.*`.
+     quem prova que os objetos são os mesmos são os blocos `tabela.*` e `funcao.*`;
+   - se o antigo não tem a 20261570: os 11 blocos dela listados no passo 1.3 (`ausente` no antigo). Os endereços em si
+     (`frota_enderecos_que_encaminham.linhas` = `0` e `.conteudo`) têm de sair **iguais**.
 
    **Qualquer outra diferença = PARAR.** Nada foi trocado ainda; nenhuma loja lê o banco da IKCOUS.
 6. **Trocar e publicar:** na Vercel (produção), `IKCOUS_FROTA_URL` = `https://cafkrminfnokvgjqtkle.supabase.co` e

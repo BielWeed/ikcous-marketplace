@@ -30,12 +30,25 @@
 -- O QUE ELE NÃO FAZ: não escreve nada (roda em transação READ ONLY), não chama resolver_loja nem resolver_loja_com_estado (elas
 -- gravam o atalho; resolver_encaminhamento também), não devolve dado de loja nem endereço que encaminha (só contagens e md5).
 --
--- EXIGE as tabelas das migrations 20261141 a 20261570: sem frota_estado_historico (a 20261470) ou sem
--- frota_enderecos_que_encaminham (a 20261570) a consulta falha com "relation does not exist" — o que já é a resposta (o banco
--- não está pronto para a virada: aplique a migration que falta nele antes). Prova viva:
--- tests/banco/a-caderneta-muda-de-banco-viva.cjs (rpc-ci.yml).
+-- EXIGE as tabelas das migrations 20261141 a 20261470: sem frota_estado_historico (a 20261470) a consulta falha com "relation
+-- does not exist" — o que já é a resposta (o banco não está pronto para a virada). A 20261570 NÃO é exigida (o banco antigo da
+-- caderneta pode não tê-la): sem frota_enderecos_que_encaminham, tabela ausente = zero endereços DE PROPÓSITO —
+-- frota_enderecos_que_encaminham.linhas = 0 e .conteudo = md5 vazio, os mesmos de um destino com a tabela vazia; o que a
+-- 20261570 cria (tabela.frota_enderecos_que_encaminham.* e funcao.* das 3 funções dela) sai "ausente", e essa é a diferença
+-- esperada entre um banco sem ela e um com ela. Prova viva: tests/banco/a-caderneta-muda-de-banco-viva.cjs (rpc-ci.yml).
 -- ============================================================================
 WITH
+-- A tabela dos endereços é a ÚNICA que a origem pode não ter: o banco antigo da caderneta não recebe migration pelo canal, e
+-- a 20261570 não precisa ir até lá. Tabela ausente = zero endereços (não há endereço a esquecer). A leitura é dinâmica: um
+-- FROM direto falharia ao PLANEJAR ("relation does not exist"), mesmo sem linha; o query_to_xml só roda quando a tabela existe
+-- (to_regclass), e o XMLTABLE devolve o texto do to_jsonb de cada linha byte a byte (o XML escapa e o XMLTABLE desfaz).
+enderecos_da_origem AS (
+  SELECT x.j::jsonb AS j
+    FROM XMLTABLE('/table/row' PASSING
+           CASE WHEN to_regclass('public.frota_enderecos_que_encaminham') IS NULL THEN '<table/>'::xml
+                ELSE query_to_xml('SELECT to_jsonb(fe)::text AS j FROM public.frota_enderecos_que_encaminham fe', false, false, '') END
+           COLUMNS j text PATH 'j') x
+),
 linhas AS (
   SELECT 'frota_lojas'::text AS tabela, fl.id::text AS chave, to_jsonb(fl) AS j FROM public.frota_lojas fl
   UNION ALL
@@ -43,7 +56,7 @@ linhas AS (
   UNION ALL
   SELECT 'frota_segredo', fs.id::text, to_jsonb(fs) - 'hash' - 'hash_rapido' - 'hash_rapido_de' FROM public.frota_segredo fs
   UNION ALL
-  SELECT 'frota_enderecos_que_encaminham', fe.host, to_jsonb(fe) FROM public.frota_enderecos_que_encaminham fe
+  SELECT 'frota_enderecos_que_encaminham', e.j ->> 'host', e.j FROM enderecos_da_origem e
 ),
 normalizadas AS (
   SELECT l.tabela, l.chave,

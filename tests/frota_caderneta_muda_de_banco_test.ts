@@ -210,6 +210,57 @@ Deno.test("gerador: os enderecos que encaminham viajam inteiros, depois das loja
   );
 });
 
+// A origem (o banco antigo da caderneta) pode não ter a 20261570: tabela ausente = zero endereços. A tabela dos endereços só se
+// lê pela CTE dinâmica (um FROM direto falha ao planejar, mesmo sem linha); o destino continua exigindo a tabela e as portas.
+const LEITURA_DINAMICA = norm(`enderecos_da_origem AS (
+  SELECT x.j::jsonb AS j
+    FROM XMLTABLE('/table/row' PASSING
+           CASE WHEN to_regclass('public.frota_enderecos_que_encaminham') IS NULL THEN '<table/>'::xml
+                ELSE query_to_xml('SELECT to_jsonb(fe)::text AS j FROM public.frota_enderecos_que_encaminham fe', false, false, '') END
+           COLUMNS j text PATH 'j') x
+)`);
+Deno.test("origem sem a 20261570: gerador e digital leem os enderecos SO pela leitura dinamica (tabela ausente = zero enderecos)", () => {
+  for (const arq of [DIGITAL, GERADOR]) {
+    const sql = LER(arq);
+    const s = semComentarios(sql);
+    assertStringIncludes(s, LEITURA_DINAMICA, `${arq}: a leitura dinamica`);
+    assertStringIncludes(
+      s,
+      "SELECT 'frota_enderecos_que_encaminham', e.j ->> 'host', e.j FROM enderecos_da_origem e",
+      `${arq}: as linhas dos enderecos vem da leitura dinamica`,
+    );
+    // Fora da leitura dinamica (e do molde que roda no destino), nenhuma referencia direta a tabela dos enderecos.
+    const origem = sql
+      .replace(/\$m\$[\s\S]*?\$m\$/g, " ")
+      .replace(/--.*$/gm, " ")
+      .replace(/'[^']*'/g, "''");
+    assertEquals(
+      origem.match(/public\.frota_enderecos_que_encaminham\b/g),
+      null,
+      `${arq}: a origem nao cita a tabela dos enderecos fora de literal`,
+    );
+  }
+  const sql = LER(GERADOR);
+  assertStringIncludes(
+    semComentarios(sql),
+    "(SELECT count(*) FROM enderecos_da_origem) AS n_enderecos",
+  );
+  assertStringIncludes(
+    semComentarios(sql),
+    "to_regclass('public.frota_enderecos_que_encaminham') IS NOT NULL AS tem_enderecos",
+  );
+  // No destino: a forma dos enderecos so deixa de ser comparada quando a ORIGEM nao tinha a tabela.
+  const m = molde(sql);
+  assertStringIncludes(
+    m,
+    "CONTINUE WHEN v_tabela = 'frota_enderecos_que_encaminham' AND NOT v_origem_tem_enderecos;",
+  );
+  assertStringIncludes(
+    sql,
+    "|| '  v_origem_tem_enderecos boolean := ' || m.tem_enderecos || E';\\n'",
+  );
+});
+
 Deno.test("gerador: o pre-voo do destino recusa origem vazia, forma diferente, portas fora da 20261490 e destino com linha; o pos-voo confere", async () => {
   const m = molde(LER(GERADOR));
   const ini = m.indexOf("DO $preflight_copiar_caderneta$");

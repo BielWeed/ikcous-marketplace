@@ -23,8 +23,10 @@
 --   3. ajusta a sequência do histórico ao último id entregue na origem (a próxima linha no destino nasce depois dele);
 --   4. desliga a variável da porta e confere (POSVOO_COPIAR_CADERNETA): contagens, md5 do hash, atalho vazio, sequência.
 --
--- EXIGE a 20261570000000 também na ORIGEM: sem frota_enderecos_que_encaminham lá, este SELECT falha com "relation does not
--- exist" antes de gerar qualquer texto (aplique a 20261570 na origem antes; a cópia nunca sai sem os endereços por esquecimento).
+-- A 20261570000000 é exigida SÓ no DESTINO (a tabela dos endereços, o gatilho dela e as duas portas: COPIA_DESTINO_SEM_CADERNETA,
+-- COPIA_PORTAS_DIVERGENTES, COPIA_GATILHO_AUSENTE). Na ORIGEM, sem frota_enderecos_que_encaminham, tabela ausente = zero
+-- endereços: o texto não grava endereço, o pós-voo confere 0 no destino e a forma da tabela dos endereços não é comparada (não
+-- há forma na origem nem linha para gravar). Com a tabela na origem, tudo como antes: forma comparada e linhas copiadas.
 --
 -- DADO SENSÍVEL: o texto gerado carrega o hash bcrypt da IKCOUS_FROTA_CHAVE (irreversível; a chave em si nunca passa). Ele só
 -- transita pela saída do MCP: não colar em conversa, bastão, arquivo nem commit.
@@ -36,6 +38,17 @@
 -- Sem BEGIN/COMMIT aqui nem no texto gerado. Prova viva: tests/banco/a-caderneta-muda-de-banco-viva.cjs (rpc-ci.yml).
 -- ============================================================================
 WITH
+-- A tabela dos endereços é a ÚNICA que a origem pode não ter: o banco antigo da caderneta não recebe migration pelo canal, e
+-- a 20261570 não precisa ir até lá. Tabela ausente = zero endereços (não há endereço a esquecer). A leitura é dinâmica: um
+-- FROM direto falharia ao PLANEJAR ("relation does not exist"), mesmo sem linha; o query_to_xml só roda quando a tabela existe
+-- (to_regclass), e o XMLTABLE devolve o texto do to_jsonb de cada linha byte a byte (o XML escapa e o XMLTABLE desfaz).
+enderecos_da_origem AS (
+  SELECT x.j::jsonb AS j
+    FROM XMLTABLE('/table/row' PASSING
+           CASE WHEN to_regclass('public.frota_enderecos_que_encaminham') IS NULL THEN '<table/>'::xml
+                ELSE query_to_xml('SELECT to_jsonb(fe)::text AS j FROM public.frota_enderecos_que_encaminham fe', false, false, '') END
+           COLUMNS j text PATH 'j') x
+),
 colunas AS (
   SELECT v.tabela, array_agg(a.attname::text ORDER BY a.attnum) AS nomes
     FROM (VALUES ('frota_lojas'), ('frota_segredo'), ('frota_estado_historico'), ('frota_enderecos_que_encaminham')) v(tabela)
@@ -50,7 +63,7 @@ linhas AS (
   UNION ALL
   SELECT 'frota_estado_historico', lpad(h.id::text, 20, '0'), to_jsonb(h) FROM public.frota_estado_historico h
   UNION ALL
-  SELECT 'frota_enderecos_que_encaminham', fe.host, to_jsonb(fe) FROM public.frota_enderecos_que_encaminham fe
+  SELECT 'frota_enderecos_que_encaminham', e.j ->> 'host', e.j FROM enderecos_da_origem e
 ),
 tuplas AS (
   SELECT l.tabela, l.chave,
@@ -80,7 +93,8 @@ medidas AS (
   SELECT (SELECT count(*) FROM public.frota_lojas) AS n_lojas,
          (SELECT count(*) FROM public.frota_segredo) AS n_segredo,
          (SELECT count(*) FROM public.frota_estado_historico) AS n_historico,
-         (SELECT count(*) FROM public.frota_enderecos_que_encaminham) AS n_enderecos,
+         (SELECT count(*) FROM enderecos_da_origem) AS n_enderecos,
+         to_regclass('public.frota_enderecos_que_encaminham') IS NOT NULL AS tem_enderecos,
          (SELECT md5(fs.hash) FROM public.frota_segredo fs WHERE fs.id = 1) AS md5_hash,
          -- O último id entregue: o maior entre o maior id copiado e o que a sequência já deu (id queimado por transação desfeita).
          GREATEST((SELECT COALESCE(max(h.id), 0) FROM public.frota_estado_historico h),
@@ -111,6 +125,7 @@ $m$
   || '  v_forma_segredo text := ' || quote_nullable(f_segredo.forma) || E';\n'
   || '  v_forma_historico text := ' || quote_nullable(f_historico.forma) || E';\n'
   || '  v_forma_enderecos text := ' || quote_nullable(f_enderecos.forma) || E';\n'
+  || '  v_origem_tem_enderecos boolean := ' || m.tem_enderecos || E';\n'
   || $m$  v_tabela text;
   v_esperada text;
 BEGIN
@@ -132,6 +147,9 @@ BEGIN
     SELECT x.t, x.f FROM (VALUES ('frota_lojas', v_forma_lojas), ('frota_segredo', v_forma_segredo), ('frota_estado_historico', v_forma_historico),
                                  ('frota_enderecos_que_encaminham', v_forma_enderecos)) x(t, f)
   LOOP
+    -- A origem sem a 20261570 (tabela ausente = zero endereços): não há forma para comparar nem linha para gravar. A tabela, o
+    -- gatilho e as portas da 20261570 no destino continuam exigidos (acima e abaixo).
+    CONTINUE WHEN v_tabela = 'frota_enderecos_que_encaminham' AND NOT v_origem_tem_enderecos;
     IF (SELECT string_agg(a.attname || ':' || format_type(a.atttypid, a.atttypmod) || ':' || a.attnotnull::text || ':'
                           || a.attidentity::text || ':' || COALESCE(pg_get_expr(d.adbin, d.adrelid), '-'),
                           ',' ORDER BY a.attname COLLATE "C")

@@ -24,10 +24,11 @@
  *      destino); rodar duas vezes recusa sem gravar; a próxima linha de histórico do destino nasce depois do último id da origem.
  *      Recusa sem gravar: destino com linha em cada uma das quatro tabelas, sem os corpos da 20261490, sem as colunas do atalho,
  *      sem o gatilho, gatilho desligado, sem a tabela dos endereços (COPIA_DESTINO_SEM_CADERNETA), sem as portas da 20261570,
- *      com a tabela dos endereços em outra forma ou com o gatilho dela desligado, origem vazia; e a origem sem a 20261570 faz o
- *      gerador e a digital falharem na própria origem. Mutantes do gerador (sem a variável da porta, copiando o atalho, sem
- *      ajustar a sequência, sem a trava do destino vazio, sem copiar os endereços, endereços antes das lojas) caem cada um na
- *      guarda certa.
+ *      com a tabela dos endereços em outra forma ou com o gatilho dela desligado, origem vazia. A origem SEM a 20261570 (o banco
+ *      antigo): tabela ausente = zero endereços — o gerador e a digital rodam nela, a cópia entra no destino (que tem a
+ *      20261570) sem endereço, e a digital difere só no atalho e nos objetos da 20261570. Mutantes do gerador (sem a variável
+ *      da porta, copiando o atalho, sem ajustar a sequência, sem a trava do destino vazio, sem copiar os endereços, endereços
+ *      antes das lojas) caem cada um na guarda certa.
  *   T3/T4 (rollback-manual-20261141000000, rollback-manual-destrutivo-20261460000000 e -20261470000000): com a caderneta
  *      semeada, recusam (CADERNETA_SEMEADA) e nada some, mesmo com o APAGAR de cada arquivo e com a confirmação escrita
  *      errada; com ikcous.apagar_caderneta = 'sim', apagam; com qualquer UMA das três tabelas com linha, recusam nomeando-a;
@@ -181,12 +182,18 @@ const COLUNAS_HISTORICO = Object.keys(HISTORICO[0]);
 const SEQUENCIA_DA_ORIGEM = 15;
 // Os endereços que encaminham (20261570): o quem e o criado_em NÃO são os padrões (session_user, now()) — a cópia que deixasse o
 // destino preencher sozinho daria outra digital.
-const endereco = (host, loja_id, motivo, criado_em) => ({
+const endereco = (
   host,
   loja_id,
   motivo,
   criado_em,
-  quem: "sessao-da-prova-do-endereco",
+  quem = "sessao-da-prova-do-endereco",
+) => ({
+  host,
+  loja_id,
+  motivo,
+  criado_em,
+  quem,
 });
 const ENDERECOS = [
   endereco(
@@ -212,6 +219,9 @@ const ENDERECOS = [
     "cmb-desligada",
     "antigo",
     "2026-11-24T09:00:00+00:00",
+    // Os caracteres que o XML escapa (& < > " '), acento e quebra de linha: a origem lê os endereços por query_to_xml (a
+    // tabela pode não existir lá), e o texto tem de chegar ao destino igual.
+    "sessão & <prova> \"da\" 'virada'\nlinha 2 ]]>",
   ),
 ];
 const COLUNAS_ENDERECO = Object.keys(ENDERECOS[0]);
@@ -824,8 +834,31 @@ async function recusas(origem, destino) {
     );
     assert.equal(await linhasDaCaderneta(destino), 0);
   });
-  // A origem sem a 20261570 (a tabela dos endereços não existe lá): o gerador e a digital falham NA ORIGEM, antes de haver texto
-  // para o destino — a cópia nunca sai sem os endereços por esquecimento.
+  return RECUSAS.length + 2;
+}
+
+// Os blocos que a digital de uma origem SEM a 20261570 (o banco antigo da caderneta) tem como "ausente" e o destino (com a
+// 20261570) não: a tabela dos endereços (forma e ACL) e as três funções dela. As linhas e o conteúdo dos endereços NÃO estão
+// aqui: tabela ausente = zero endereços, e um destino com a tabela vazia dá a mesma contagem e o mesmo md5.
+const SO_DA_1570 = [
+  "funcao.frota_enderecos_que_encaminham_nao_e_principal.acl",
+  "funcao.frota_enderecos_que_encaminham_nao_e_principal.atributos",
+  "funcao.frota_enderecos_que_encaminham_nao_e_principal.corpo",
+  "funcao.frota_trocar_dominio.acl",
+  "funcao.frota_trocar_dominio.atributos",
+  "funcao.frota_trocar_dominio.corpo",
+  "funcao.resolver_encaminhamento.acl",
+  "funcao.resolver_encaminhamento.atributos",
+  "funcao.resolver_encaminhamento.corpo",
+  "tabela.frota_enderecos_que_encaminham.acl",
+  "tabela.frota_enderecos_que_encaminham.forma",
+];
+/**
+ * A origem SEM a 20261570 (o banco antigo da caderneta, que não recebe migration pelo canal): o gerador e a digital rodam nela
+ * (só leitura), a cópia entra no destino COM a 20261570 e sem nenhum endereço, e a digital dos endereços bate (0 linhas, mesmo
+ * md5). O destino continua exigindo a tabela e as portas da 20261570 (as recusas acima).
+ */
+async function origemSem1570(origem, destino) {
   await desfeita(origem, async () => {
     for (const s of [
       ROLLBACK_1570,
@@ -834,19 +867,61 @@ async function recusas(origem, destino) {
       DESTRUTIVO_1570,
     ])
       await origem.query(s);
-    for (const [rotulo, sql] of [
-      ["o gerador", GERADOR],
-      ["a digital", DIGITAL],
-    ]) {
-      const e = await tentar(origem, () => origem.query(sql));
-      assert.match(
-        e?.message ?? "(rodou)",
-        /relation "public\.frota_enderecos_que_encaminham" does not exist/,
-        `${rotulo} na origem sem a 20261570 falha`,
+    assert.equal(
+      await sim(
+        origem,
+        "SELECT to_regclass('public.frota_enderecos_que_encaminham') IS NULL AS sim",
+      ),
+      true,
+      "controle: a origem não tem a tabela dos endereços",
+    );
+    assert.equal(
+      await linhasDaCaderneta(origem),
+      LOJAS.length + 1 + HISTORICO.length,
+      "controle: as outras três tabelas da origem têm a caderneta",
+    );
+    // Só leitura, num SAVEPOINT desfeito (a transação de fora é a que tirou a 20261570).
+    const soLeitura = (fn) =>
+      noSavepoint(origem, async () => {
+        await origem.query("SET TRANSACTION READ ONLY");
+        return fn();
+      });
+    const script = await soLeitura(
+      async () => (await origem.query(GERADOR)).rows[0].script,
+    );
+    const a = await soLeitura(() => digital(origem));
+    for (const bloco of SO_DA_1570)
+      assert.equal(a.get(bloco), "ausente", `na origem: ${bloco}`);
+    assert.equal(a.get("frota_enderecos_que_encaminham.linhas"), "0");
+    assert.equal(a.get("frota_enderecos_que_encaminham.conteudo"), md5(""));
+    await desfeita(destino, async () => {
+      await destino.query(script);
+      const b = await digital(destino);
+      assert.deepEqual(
+        diferentes(a, b),
+        ["frota_segredo.hash_rapido_nulo", ...SO_DA_1570].sort(),
+        "a cópia é igual à origem, exceto o atalho e os objetos da 20261570 (que a origem não tem)",
       );
-    }
+      assert.equal(
+        (
+          await destino.query(
+            "SELECT count(*)::int AS n FROM public.frota_enderecos_que_encaminham",
+          )
+        ).rows[0].n,
+        0,
+        "nenhum endereço chega ao destino",
+      );
+      assert.equal(
+        (
+          await destino.query(
+            "SELECT count(*)::int AS n FROM public.frota_lojas",
+          )
+        ).rows[0].n,
+        LOJAS.length,
+        "as lojas chegam",
+      );
+    });
   });
-  return RECUSAS.length + 3;
 }
 
 /** Cada mutante do GERADOR tem de cair na guarda certa. */
@@ -871,6 +946,15 @@ const MUTANTES = [
       "'1, false'",
     ],
     /POSVOO_COPIAR_CADERNETA: a sequência/,
+  ],
+  [
+    // Tabela ausente = zero endereços só vale quando a tabela NÃO existe: com ela na origem, as linhas têm de ser lidas.
+    "a leitura dos endereços da origem sempre vazia: a digital do destino difere da origem",
+    [
+      "CASE WHEN to_regclass('public.frota_enderecos_que_encaminham') IS NULL THEN",
+      "CASE WHEN true THEN",
+    ],
+    /a cópia é igual à origem, exceto o atalho/,
   ],
   [
     "sem copiar os endereços que encaminham: o pós-voo recusa",
@@ -1129,6 +1213,10 @@ async function main() {
     const nRecusas = await provar(
       "T2: recusas sem gravar (destino com linha, sem 20261490, sem atalho, sem gatilho, origem vazia)",
       () => recusas(origem, destino),
+    );
+    await provar(
+      "T2: origem sem a 20261570 (tabela ausente = zero endereços): gerador e digital rodam nela, a cópia entra sem endereço",
+      () => origemSem1570(origem, destino),
     );
     const mortos = await provar("T2: mutantes do gerador", () =>
       mutantes(origem, destino),
