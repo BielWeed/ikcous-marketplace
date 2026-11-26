@@ -613,22 +613,26 @@ export function lojaForaDoAr(sonda) {
  * O banco da loja deste endereço está fora do ar, dito pelo PORTEIRO em TODAS as
  * amostras de "/": HTTP 503, x-ikcous-porteiro = banco-indisponivel,
  * x-ikcous-caderneta = hit (a caderneta conhece a loja; o que caiu foi o banco
- * DELA), sem x-ikcous-estado nem x-ikcous-ref e sem ref Supabase no HTML.
- * Qualquer outra combinação (503 da Vercel sem o marcador, caderneta erro =
- * a caderneta é que caiu, amostras que discordam) devolve false.
+ * DELA) ou reserva (a caderneta TAMBÉM caiu e a reserva deu a conexão: as duas
+ * classes valem), sem x-ikcous-estado nem x-ikcous-ref e sem ref Supabase no
+ * HTML. Amostras que diferem SÓ entre hit e reserva são a mesma loja
+ * (`soACadernetaOscila`). Qualquer outra combinação (503 da Vercel sem o
+ * marcador, caderneta erro = a caderneta é que caiu sem reserva, amostras que
+ * discordam) devolve false.
  */
 export function bancoIndisponivel(sonda) {
   const ficha = sonda?.ficha;
-  if (!ficha || ficha.estavel === false) return false;
+  if (!ficha) return false;
   const amostras =
     Array.isArray(sonda.amostras) && sonda.amostras.length
       ? sonda.amostras
       : [ficha];
+  if (ficha.estavel === false && !soACadernetaOscila(amostras)) return false;
   return amostras.every(
     (a) =>
       a.status === 503 &&
       a.porteiro === PORTEIRO_BANCO_INDISPONIVEL &&
-      a.caderneta === "hit" &&
+      (a.caderneta === "hit" || a.caderneta === CADERNETA_RESERVA) &&
       (a.estado ?? null) === null &&
       (a.refPorteiro ?? null) === null &&
       Array.isArray(a.refs) &&
@@ -1122,7 +1126,9 @@ export function classificar(alvo, sonda, ctx) {
     } else if (!alvo.esperado && bancoIndisponivel(sonda)) {
       add(
         "BANCO_INDISPONIVEL",
-        `o banco da loja deste endereço está fora do ar (HTTP 503, x-ikcous-porteiro: ${PORTEIRO_BANCO_INDISPONIVEL}, caderneta hit): a caderneta conhece a loja, mas o banco Supabase dela não respondeu (projeto pausado ou incidente)`,
+        naReserva
+          ? `o banco da loja deste endereço está fora do ar (HTTP 503, x-ikcous-porteiro: ${PORTEIRO_BANCO_INDISPONIVEL}, caderneta reserva): a reserva da caderneta deu a conexão da loja, mas o banco Supabase dela não respondeu (projeto pausado ou incidente)`
+          : `o banco da loja deste endereço está fora do ar (HTTP 503, x-ikcous-porteiro: ${PORTEIRO_BANCO_INDISPONIVEL}, caderneta hit): a caderneta conhece a loja, mas o banco Supabase dela não respondeu (projeto pausado ou incidente)`,
       );
     } else if (!alvo.esperado) {
       // Na reserva a página é de loja: confere-se como hit (refs, título,
