@@ -12,7 +12,8 @@
  *  1. Sem --aplicar: o comando mostra o diff e o SQL e NÃO escreve nada (os
  *     bytes de todos os arquivos da árvore ficam iguais).
  *  2. Com --aplicar: a loja entra em lojas.json (assinante, segredo
- *     SUPABASE_ACCESS_TOKEN_<SLUG>, functionsNomeadas true), em
+ *     SUPABASE_ACCESS_TOKEN_<SLUG>, functionsNomeadas true, acesso "oauth":
+ *     a loja nova só tem acesso OAuth), em
  *     canais-de-backend.json (o mesmo canal das assinantes) e nos 8 workflows
  *     (pelo GERADOR), e o resultado passa nas guardas que já existem:
  *     validarCadastro, lerCanais, a concordância dos dois cadastros e o
@@ -26,6 +27,10 @@
  *     fora de sincronia.
  *  6. O SQL da caderneta (frota_lojas) só é GERADO, com ON CONFLICT (id) DO NOTHING.
  *  7. CRLF é preservado.
+ *  8. A marca OAuth (plano do portão OAuth, T2): só a loja nova a ganha; as
+ *     que já existem continuam sem o campo (lidas pelo CLI), uma loja
+ *     cadastrada antes da marca é recusada (este comando não altera loja
+ *     existente), e a mensagem final não manda criar o segredo à mão.
  */
 import { createRequire } from "node:module";
 import { parse } from "https://deno.land/std@0.177.0/encoding/yaml.ts";
@@ -35,6 +40,7 @@ import {
   assertEquals,
   assertStringIncludes,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
+import { lojaPedida } from "../scripts/frota/cadastro-da-loja.mjs";
 import { lerCanais } from "../scripts/frota/publicar-release.mjs";
 
 const require = createRequire(import.meta.url);
@@ -214,10 +220,17 @@ Deno.test("com --aplicar: a loja entra em lojas.json, canais e nos 8 workflows, 
       apelido: NOME_NOVO,
       segredoDoToken: SEGREDO_NOVO,
       functionsNomeadas: true,
+      acesso: "oauth",
     });
 
     const { cad, canais } = await passaNasGuardas(raiz);
     assertEquals(lojasMod.lojaDoProjeto(NOVA, cad).refDasFunctions, REF_NOVA);
+    assertEquals(lojasMod.lojaDoProjeto(NOVA, cad).acesso, "oauth");
+    // as que já existiam seguem pelo CLI: o padrão, sem o campo no arquivo
+    for (const p of ["loja", "sandbox", "ikcous-publicada", "savy"]) {
+      assertEquals(lojasMod.lojaDoProjeto(p, cad).acesso, "cli", p);
+      assert(!Object.hasOwn(bruto.lojas[p], "acesso"), `${p} ganhou acesso`);
+    }
     const savy = canais.canais[REF_SAVY];
     assertEquals(Object.keys(canais.canais).at(-1), REF_NOVA);
     assertEquals(canais.canais[REF_NOVA], {
@@ -444,7 +457,9 @@ Deno.test("recusa slug repetido com outro ref, ref que já é de outra loja e a 
         espera: "não altera",
       },
       {
-        // a IKCOUS: lojas.json igual (apelido CAF), mas o canal se chama IKCOUS
+        // a IKCOUS com o ref e o apelido dela (CAF): a entrada pedida difere
+        // (segredo tirado do slug, e a marca oauth que a dela não tem), então
+        // recusa já no lojas.json, sem dar a marca a uma loja que já existe
         args: [
           "--loja",
           "ikcous-publicada",
@@ -453,7 +468,7 @@ Deno.test("recusa slug repetido com outro ref, ref que já é de outra loja e a 
           "--nome",
           "CAF",
         ],
-        espera: "não altera",
+        espera: "campos diferentes",
       },
     ];
     for (const c of casos) {
@@ -490,6 +505,30 @@ Deno.test("recusa a loja já cadastrada com outro ref também depois de um cadas
       const r = await cadastrar(raiz, [...args, "--aplicar"]);
       assertEquals(r.codigo, 1, `${args.join(" ")}: ${r.saida}`);
       assertEquals(fotografia(raiz), depois, args.join(" "));
+    }
+  });
+});
+
+Deno.test("recusa o canal da loja já cadastrada com outro conteúdo (este comando não altera canal existente)", async () => {
+  await noArvoreOriginal(async (raiz) => {
+    assertEquals(
+      (await cadastrar(raiz, [...ARGS_NOVA, "--aplicar"])).codigo,
+      0,
+    );
+    const rel = "scripts/frota/canais-de-backend.json";
+    const texto = ler(raiz, rel);
+    const torto = texto.replace(
+      `"nome": "${NOME_NOVO}"`,
+      '"nome": "Outro canal"',
+    );
+    assert(torto !== texto, "fixture: o nome do canal novo não foi achado");
+    Deno.writeTextFileSync(join(raiz, rel), torto);
+    const antes = fotografia(raiz);
+    for (const extra of [[], ["--aplicar"]]) {
+      const r = await cadastrar(raiz, [...ARGS_NOVA, ...extra]);
+      assertEquals(r.codigo, 1, r.saida);
+      assertStringIncludes(r.saida, "não altera canal existente");
+      assertEquals(fotografia(raiz), antes);
     }
   });
 });
@@ -633,5 +672,67 @@ Deno.test("CRLF é preservado nos dois cadastros e nos workflows", async () => {
     }
     const lf = ler(raiz, "scripts/frota/politica.json");
     assert(!lf.includes("\r"), "arquivo LF ganhou CR");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 8. A marca OAuth (plano do portão OAuth, T2)
+// ---------------------------------------------------------------------------
+Deno.test("lojaPedida: a entrada da loja nova nasce com acesso oauth, depois dos campos de sempre", () => {
+  const { entrada } = lojaPedida({
+    loja: NOVA,
+    projeto: REF_NOVA,
+    nome: NOME_NOVO,
+  });
+  // a ORDEM conta: a ficha do nova-loja compara o JSON texto a texto
+  assertEquals(
+    JSON.stringify(entrada),
+    JSON.stringify({
+      ref: REF_NOVA,
+      classe: "assinante",
+      apelido: NOME_NOVO,
+      segredoDoToken: SEGREDO_NOVO,
+      functionsNomeadas: true,
+      acesso: "oauth",
+    }),
+  );
+});
+
+Deno.test("a mensagem final não manda criar o segredo: ele só existe durante a sessão de publicação", async () => {
+  await noArvoreOriginal(async (raiz) => {
+    for (const extra of [[], ["--aplicar"], ["--aplicar"]]) {
+      const r = await cadastrar(raiz, [...ARGS_NOVA, ...extra]);
+      assertEquals(r.codigo, 0, r.saida);
+      assertStringIncludes(
+        r.saida,
+        `o segredo ${SEGREDO_NOVO} só existe durante a sessão de publicação; não crie à mão`,
+      );
+      assert(!r.saida.includes("o dono cria"), r.saida);
+      assert(!r.saida.includes("cria no GitHub"), r.saida);
+    }
+  });
+});
+
+Deno.test("loja cadastrada ANTES da marca (sem acesso) é recusada, sem escrever: este comando não dá a marca a loja existente", async () => {
+  await noArvoreOriginal(async (raiz) => {
+    assertEquals(
+      (await cadastrar(raiz, [...ARGS_NOVA, "--aplicar"])).codigo,
+      0,
+    );
+    // o arquivo como o cadastro de antes da marca o deixaria
+    const rel = "scripts/frota/lojas.json";
+    const texto = ler(raiz, rel);
+    const semMarca = texto.replace(/,\r?\n\s*"acesso": "oauth"/, "");
+    assert(semMarca !== texto, "fixture: a marca não foi achada");
+    assert(!semMarca.includes('"acesso"'), "fixture: sobrou marca");
+    Deno.writeTextFileSync(join(raiz, rel), semMarca);
+    const antes = fotografia(raiz);
+    for (const extra of [[], ["--aplicar"]]) {
+      const r = await cadastrar(raiz, [...ARGS_NOVA, ...extra]);
+      assertEquals(r.codigo, 1, r.saida);
+      assertStringIncludes(r.saida, "campos diferentes");
+      assertStringIncludes(r.saida, "não altera loja existente");
+      assertEquals(fotografia(raiz), antes);
+    }
   });
 });

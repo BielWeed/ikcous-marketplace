@@ -5,7 +5,9 @@
  * repositório que listam as lojas (plano nova-loja, B5, 26/11/2026):
  *
  *   1. scripts/frota/lojas.json — a entrada da loja (classe assinante, segredo
- *      SUPABASE_ACCESS_TOKEN_<SLUG>, functionsNomeadas true: decisão S2 do L4b);
+ *      SUPABASE_ACCESS_TOKEN_<SLUG>, functionsNomeadas true: decisão S2 do L4b;
+ *      acesso "oauth": toda loja nova entra pelo nova-loja e só tem acesso
+ *      OAuth, então o portão a lê pelo cofre, nunca pelo CLI do dono);
  *   2. .github/workflows/*.yml — os blocos LOJAS-SEGREDO*, LOJAS-OPCOES* e
  *      LOJAS-GRUPO-DO-BANCO, regravados pelo GERADOR
  *      (scripts/frota/lojas-nos-workflows.cjs), nunca à mão;
@@ -45,8 +47,11 @@
  *   - uso errado (saída 2, nada gravado): argumento desconhecido, repetido ou
  *     sem valor; slug, ref, nome, domínio ou chave fora do formato.
  *
- * O QUE ELE NÃO FAZ: criar o segredo no GitHub (é do dono, com o NOME
- * impresso), abrir PR, falar com rede ou banco.
+ * O QUE ELE NÃO FAZ: criar o segredo no GitHub (loja OAuth: o segredo
+ * SUPABASE_ACCESS_TOKEN_<SLUG> só existe durante a sessão de publicação, que o
+ * grava e o apaga; ninguém o cria à mão), dar a marca acesso "oauth" a uma
+ * loja que já existe (o pedido diferente da entrada é recusado), abrir PR,
+ * falar com rede ou banco.
  */
 import fs from "node:fs";
 import { createRequire } from "node:module";
@@ -54,7 +59,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const require = createRequire(import.meta.url);
-const { RE_PROJETO, RE_REF, validarCadastro, lojaDoProjeto } =
+const { ACESSO_OAUTH, RE_PROJETO, RE_REF, validarCadastro, lojaDoProjeto } =
   require("./lojas.cjs");
 const {
   sincronizar,
@@ -160,6 +165,9 @@ export function lojaPedida({ loja, projeto, nome, dominio, chavePublica }) {
     apelido: nome,
     segredoDoToken: segredoDaLoja(loja),
     functionsNomeadas: true,
+    // a ORDEM é a de cadastroGerado (nova-loja.mjs): a ficha compara o JSON
+    // da entrada texto a texto
+    acesso: ACESSO_OAUTH,
   };
   try {
     validarCadastro({ lojas: { [loja]: entrada } });
@@ -651,7 +659,7 @@ export function executar(argv, raiz = RAIZ) {
   saida.push(...textoDoSql(pedido));
   saida.push(
     "",
-    `Depois: o dono cria no GitHub o segredo com o NOME ${pedido.entrada.segredoDoToken} (o valor nunca passa por aqui); PR com revisão Opus (mexe em credencial e no portão de publicação).`,
+    `Depois: o segredo ${pedido.entrada.segredoDoToken} só existe durante a sessão de publicação; não crie à mão (a loja é OAuth: a sessão o grava e o apaga). PR com revisão Opus (mexe em credencial e no portão de publicação).`,
   );
   return { codigo: 0, saida, erros: [] };
 }

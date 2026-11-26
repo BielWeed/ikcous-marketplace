@@ -133,6 +133,7 @@ import {
 
 const require = createRequire(import.meta.url);
 const {
+  ACESSO_OAUTH,
   CAMINHO_LOJAS,
   RE_PROJETO,
   RE_REF,
@@ -1039,6 +1040,9 @@ function cadastroGerado({ slug, ref, apelido, publicavel, lojasBrutas }) {
     apelido,
     segredoDoToken: segredo,
     functionsNomeadas: true,
+    // a loja aberta aqui só tem acesso OAuth; a ORDEM é a de lojaPedida
+    // (cadastro-da-loja.mjs), porque a comparação abaixo é texto a texto
+    acesso: ACESSO_OAUTH,
   };
   const bruto = lojasBrutas;
   const jaTem =
