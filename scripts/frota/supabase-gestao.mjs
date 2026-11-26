@@ -18,7 +18,11 @@
 //    Do corpo de erro sai no máximo o SQLSTATE (5 caracteres [0-9A-Z]);
 //  - prazo estourado, rede que cai no meio, ou 2xx que não dá para ler viram
 //    ESTADO_DESCONHECIDO: o pedido PODE ter sido aplicado. Quem chama confere o
-//    estado real (ledger, listagem) antes de repetir — nunca supõe que não foi.
+//    estado real (ledger, listagem) antes de repetir — nunca supõe que não foi;
+//  - PATCH de config/auth só com as chaves de CHAVES_DO_CONFIG_AUTH, cada uma
+//    do tipo certo; qualquer outra é recusada ANTES da rede;
+//  - deploy de function só por implantarFuncao (multipart montado aqui, slug e
+//    caminhos de arquivo conferidos, verify_jwt obrigatório, só 201 é sucesso).
 //
 // Sem dependências (Node 20+ ou Deno com node:*). Nenhum segredo é lido aqui:
 // o token chega de quem chama (texto ou função que devolve o token atual).
@@ -31,8 +35,30 @@ export const API_GESTAO = "https://api.supabase.com";
 export const ESTADO_DESCONHECIDO = "ESTADO_DESCONHECIDO";
 const PRAZO_PADRAO_MS = 30_000;
 
+/**
+ * As ÚNICAS chaves que o PATCH de /config/auth pode levar, com o tipo de cada
+ * uma (plano nova-loja, A4, 26/11/2026): os endereços e o limite de e-mail do
+ * login (as CAMPOS_URLS de scripts/publicacao/login-da-loja-regras.cjs) e o
+ * Send Email Hook (as CAMPOS_HOOK de scripts/publicacao/ativar-email-do-login.cjs).
+ * Tipos da spec `UpdateAuthConfigBody` (https://api.supabase.com/api/v1-json),
+ * sem o `null` que ela aceita: aqui ninguém apaga site_url nem o hook. Qualquer
+ * outra chave (smtp_*, mailer_*, external_*, hook_* de outro gancho) é recusada
+ * ANTES da rede.
+ */
+export const CHAVES_DO_CONFIG_AUTH = Object.freeze({
+  site_url: "texto",
+  uri_allow_list: "texto",
+  rate_limit_email_sent: "inteiro-positivo",
+  hook_send_email_enabled: "booleano",
+  hook_send_email_uri: "texto",
+  hook_send_email_secrets: "texto",
+});
+
 /** Os ÚNICOS caminhos que este cliente sabe chamar. Peça nova do L4b que
- * precisar de outro caminho acrescenta um modelo aqui (revisão Opus). */
+ * precisar de outro caminho acrescenta um modelo aqui (revisão Opus).
+ * `corpoPermitido`: o corpo só pode ter estas chaves, deste tipo.
+ * `multipart`: o corpo é montado só por `implantarFuncao` (pedir() recusa).
+ * `consulta`: os únicos parâmetros de query que o modelo aceita. */
 export const MODELOS = Object.freeze({
   organizacoes: Object.freeze({
     caminho: "/v1/organizations",
@@ -62,7 +88,99 @@ export const MODELOS = Object.freeze({
     caminho: "/v1/projects/{ref}/api-keys",
     metodos: Object.freeze(["GET"]),
   }),
+  // v1-list-all-functions (edge_functions:read).
+  funcoes: Object.freeze({
+    caminho: "/v1/projects/{ref}/functions",
+    metodos: Object.freeze(["GET"]),
+  }),
+  // v1-deploy-a-function (edge_functions:write): multipart/form-data com o
+  // campo `metadata` (JSON) e um campo `file` por arquivo, nome = caminho
+  // relativo; `?slug=`. Cria a function se não existir. Só por implantarFuncao.
+  implantarFuncao: Object.freeze({
+    caminho: "/v1/projects/{ref}/functions/deploy",
+    metodos: Object.freeze(["POST"]),
+    multipart: true,
+    consulta: Object.freeze(["slug"]),
+  }),
+  // v1-get-auth-service-config (auth:read) e v1-update-auth-service-config
+  // (auth:write). O GET devolve também smtp_pass e o hash do hook: quem chama
+  // não imprime o corpo.
+  configAuth: Object.freeze({
+    caminho: "/v1/projects/{ref}/config/auth",
+    metodos: Object.freeze(["GET", "PATCH"]),
+    corpoPermitido: CHAVES_DO_CONFIG_AUTH,
+  }),
 });
+
+/** Slug de function, pelo padrão da spec do deploy (^[A-Za-z][A-Za-z0-9_-]*$). */
+const RE_SLUG = /^[A-Za-z][A-Za-z0-9_-]{0,127}$/;
+/** Chaves de metadata do deploy (FunctionDeployBody.metadata, spec oficial). */
+const CHAVES_DA_METADATA = new Set([
+  "entrypoint_path",
+  "import_map_path",
+  "static_patterns",
+  "verify_jwt",
+  "name",
+]);
+
+function pedidoInvalido(mensagem) {
+  return new ErroDaGestao(`Gestão Supabase: ${mensagem}`, {
+    codigo: "PEDIDO_INVALIDO",
+  });
+}
+
+/** Objeto literal: protótipo Object ou null, e nenhuma chave símbolo. */
+function objetoSimples(v) {
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return false;
+  const proto = Object.getPrototypeOf(v);
+  return proto === Object.prototype || proto === null;
+}
+
+function tipoConfere(tipo, valor) {
+  if (tipo === "texto") return typeof valor === "string";
+  if (tipo === "booleano") return typeof valor === "boolean";
+  if (tipo === "inteiro-positivo")
+    return Number.isSafeInteger(valor) && valor >= 1;
+  return false;
+}
+
+/**
+ * Corpo de um modelo com `corpoPermitido`: devolve uma CÓPIA só com as chaves
+ * da lista, cada uma do tipo certo. Recusa (sem ecoar chave nem valor) objeto
+ * vazio, não-literal, com chave de fora — inclusive símbolo ou não enumerável,
+ * o que barra um `toJSON` escondido —, ou valor de outro tipo.
+ */
+function corpoDaListaBranca(permitido, corpo) {
+  if (!objetoSimples(corpo))
+    throw pedidoInvalido("corpo tem de ser um objeto.");
+  const chaves = Reflect.ownKeys(corpo);
+  if (chaves.length === 0) throw pedidoInvalido("corpo vazio.");
+  const tipos = new Map(Object.entries(permitido));
+  const conferidas = [];
+  for (const k of chaves) {
+    if (typeof k !== "string" || !tipos.has(k)) {
+      throw pedidoInvalido(
+        "corpo com chave fora da lista branca deste modelo (não impressa).",
+      );
+    }
+    // getter não tem `value` (undefined): cai no tipo e é recusado também
+    const d = Object.getOwnPropertyDescriptor(corpo, k);
+    if (!d?.enumerable || !tipoConfere(tipos.get(k), d.value)) {
+      throw pedidoInvalido(
+        "corpo com valor de tipo inesperado numa chave da lista branca (não impresso).",
+      );
+    }
+    conferidas.push([k, d.value]);
+  }
+  return Object.fromEntries(conferidas);
+}
+
+/** Caminho relativo seguro de arquivo do deploy ("supabase/functions/x/index.ts"). */
+function caminhoDeArquivoSeguro(c) {
+  if (typeof c !== "string" || c.length === 0 || c.length > 512) return false;
+  if (!/^[A-Za-z0-9._\-/]+$/.test(c)) return false;
+  return c.split("/").every((seg) => seg !== "" && seg !== "." && seg !== "..");
+}
 const MAPA_MODELOS = new Map(Object.entries(MODELOS));
 
 export class ErroDaGestao extends Error {
@@ -172,14 +290,46 @@ export function criarClienteGestao({
     return t;
   }
 
-  /** Monta e manda o pedido; devolve { status, corpo } de um 2xx. */
-  async function executar(modelo, { ref, metodo = "GET", corpo } = {}) {
+  /**
+   * Monta e manda o pedido; devolve { status, corpo } de um 2xx.
+   * `multipart` (o FormData já montado) e `consulta` só chegam de
+   * implantarFuncao, nunca de pedir().
+   */
+  async function executar(
+    modelo,
+    { ref, metodo = "GET", corpo, consulta } = {},
+    { multipart } = {},
+  ) {
     const m = typeof modelo === "string" ? MAPA_MODELOS.get(modelo) : undefined;
     if (!m) {
       throw new ErroDaGestao(
         "Gestão Supabase: modelo de caminho desconhecido (só os de MODELOS).",
         { codigo: "PEDIDO_INVALIDO" },
       );
+    }
+    if (m.multipart === true) {
+      if (!(multipart instanceof FormData) || corpo !== undefined) {
+        throw pedidoInvalido(
+          `${m.caminho} só se chama por implantarFuncao (corpo multipart).`,
+        );
+      }
+    } else if (multipart !== undefined) {
+      throw pedidoInvalido(`${m.caminho} não leva corpo multipart.`);
+    }
+    if (consulta !== undefined) {
+      const aceitas = m.consulta ?? [];
+      if (
+        !objetoSimples(consulta) ||
+        !Reflect.ownKeys(consulta).every(
+          (k) =>
+            typeof k === "string" &&
+            aceitas.includes(k) &&
+            typeof Object.getOwnPropertyDescriptor(consulta, k)?.value ===
+              "string",
+        )
+      ) {
+        throw pedidoInvalido(`${m.caminho} não aceita esta query.`);
+      }
     }
     if (!m.metodos.includes(metodo)) {
       throw new ErroDaGestao(
@@ -204,21 +354,32 @@ export function criarClienteGestao({
         codigo: "PEDIDO_INVALIDO",
       });
     }
+    // Lista branca do corpo: vale para todo método que não seja GET (PATCH do
+    // config/auth); o que sai na rede é a CÓPIA conferida, nunca o objeto cru.
+    const corpoFinal =
+      m.corpoPermitido && metodo !== "GET"
+        ? corpoDaListaBranca(m.corpoPermitido, corpo)
+        : corpo;
     const caminho = pedeRef ? m.caminho.replace("{ref}", ref) : m.caminho;
     const onde = `${metodo} ${caminho}`;
+    const query =
+      consulta === undefined ? "" : `?${new URLSearchParams(consulta)}`;
     const cabecalhos = {
       authorization: `Bearer ${await tokenAtual()}`,
       accept: "application/json",
     };
     const init = { method: metodo, headers: cabecalhos, redirect: "manual" };
-    if (corpo !== undefined) {
+    if (multipart !== undefined) {
+      // sem content-type: o fetch o põe com o boundary do FormData
+      init.body = multipart;
+    } else if (corpoFinal !== undefined) {
       cabecalhos["content-type"] = "application/json";
-      init.body = JSON.stringify(corpo);
+      init.body = JSON.stringify(corpoFinal);
     }
 
     const { status, texto } = await buscarComPrazo(
       fetchFn,
-      `${API_GESTAO}${caminho}`,
+      `${API_GESTAO}${caminho}${query}`,
       init,
       prazoMs,
       onde,
@@ -285,6 +446,131 @@ export function criarClienteGestao({
         );
       }
       throw desconhecido(onde, `HTTP ${status} sem a lista de linhas`);
+    },
+
+    /**
+     * Publica (ou cria) UMA function: POST /functions/deploy?slug=<slug>,
+     * multipart com `metadata` (JSON) e um `file` por arquivo — a mesma forma
+     * do `supabase functions deploy --use-api` (supabase/cli,
+     * pkg/function/deploy.go, writeForm). `verify_jwt` é OBRIGATÓRIO e
+     * booleano: sem ele o servidor mantém o valor antigo ou o padrão, e uma
+     * function com o verify_jwt errado quebra (OTP, webhook). O
+     * `entrypoint_path` (e o `import_map_path`, se houver) tem de ser um dos
+     * arquivos enviados. Sucesso = HTTP 201 com o mesmo slug no corpo; outro
+     * 2xx vira ESTADO_DESCONHECIDO (a publicação PODE ter acontecido).
+     * Nenhuma mensagem de erro carrega o conteúdo dos arquivos.
+     *
+     * @param {string} ref
+     * @param {{
+     *   slug: string,
+     *   metadata: { entrypoint_path: string, verify_jwt: boolean,
+     *     import_map_path?: string, static_patterns?: string[], name?: string },
+     *   arquivos: { caminho: string, conteudo: string | Uint8Array }[],
+     * }} pedido
+     */
+    async implantarFuncao(ref, { slug, metadata, arquivos } = {}) {
+      if (!(typeof slug === "string" && RE_SLUG.test(slug))) {
+        throw pedidoInvalido(
+          "slug de function inválido (esperado ^[A-Za-z][A-Za-z0-9_-]*$).",
+        );
+      }
+      if (!objetoSimples(metadata)) {
+        throw pedidoInvalido("metadata do deploy tem de ser um objeto.");
+      }
+      for (const k of Reflect.ownKeys(metadata)) {
+        if (typeof k !== "string" || !CHAVES_DA_METADATA.has(k)) {
+          throw pedidoInvalido("metadata do deploy com chave fora da spec.");
+        }
+      }
+      const {
+        entrypoint_path: entrada,
+        import_map_path: mapa,
+        static_patterns: estaticos,
+        verify_jwt: verifyJwt,
+        name,
+      } = metadata;
+      if (typeof verifyJwt !== "boolean") {
+        throw pedidoInvalido("metadata.verify_jwt obrigatório e booleano.");
+      }
+      if (name !== undefined && typeof name !== "string") {
+        throw pedidoInvalido("metadata.name tem de ser texto.");
+      }
+      if (
+        estaticos !== undefined &&
+        !(
+          Array.isArray(estaticos) &&
+          estaticos.every((p) => typeof p === "string")
+        )
+      ) {
+        throw pedidoInvalido(
+          "metadata.static_patterns tem de ser lista de texto.",
+        );
+      }
+      if (!Array.isArray(arquivos) || arquivos.length === 0) {
+        throw pedidoInvalido("deploy sem arquivos.");
+      }
+      const caminhos = new Set();
+      for (const a of arquivos) {
+        if (!objetoSimples(a) || !caminhoDeArquivoSeguro(a.caminho)) {
+          throw pedidoInvalido(
+            "arquivo do deploy com caminho inválido (relativo, com /, sem . nem ..).",
+          );
+        }
+        if (caminhos.has(a.caminho)) {
+          throw pedidoInvalido("arquivo do deploy repetido.");
+        }
+        if (
+          !(typeof a.conteudo === "string" || a.conteudo instanceof Uint8Array)
+        ) {
+          throw pedidoInvalido(
+            "conteúdo de arquivo do deploy tem de ser texto ou bytes.",
+          );
+        }
+        caminhos.add(a.caminho);
+      }
+      if (!(typeof entrada === "string" && caminhos.has(entrada))) {
+        throw pedidoInvalido(
+          "metadata.entrypoint_path tem de ser um dos arquivos enviados.",
+        );
+      }
+      if (mapa !== undefined && typeof mapa !== "string") {
+        throw pedidoInvalido("metadata.import_map_path tem de ser texto.");
+      }
+      if (mapa !== undefined && mapa !== "" && !caminhos.has(mapa)) {
+        throw pedidoInvalido(
+          "metadata.import_map_path tem de ser um dos arquivos enviados.",
+        );
+      }
+
+      // Cópia com os valores JÁ conferidos (nunca o objeto de quem chama).
+      const meta = {
+        entrypoint_path: entrada,
+        verify_jwt: verifyJwt,
+        ...(name !== undefined ? { name } : {}),
+        ...(mapa !== undefined ? { import_map_path: mapa } : {}),
+        ...(estaticos !== undefined ? { static_patterns: [...estaticos] } : {}),
+      };
+      const form = new FormData();
+      form.append("metadata", JSON.stringify(meta));
+      for (const a of arquivos) {
+        form.append("file", new Blob([a.conteudo]), a.caminho);
+      }
+      const onde = "POST /v1/projects/{ref}/functions/deploy";
+      const { status, corpo } = await executar(
+        "implantarFuncao",
+        { ref, metodo: "POST", consulta: { slug } },
+        { multipart: form },
+      );
+      if (status !== 201) {
+        throw new ErroDaGestao(
+          `Gestão Supabase: ${onde} respondeu HTTP ${status} (só 201 é sucesso). A publicação PODE ter acontecido (ESTADO_DESCONHECIDO): confira a lista de functions antes de repetir.`,
+          { codigo: ESTADO_DESCONHECIDO, status },
+        );
+      }
+      if (!objetoSimples(corpo) || corpo.slug !== slug) {
+        throw desconhecido(onde, `HTTP ${status} sem o slug pedido no corpo`);
+      }
+      return corpo;
     },
   };
 }

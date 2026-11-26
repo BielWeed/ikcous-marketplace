@@ -125,11 +125,13 @@ export const PASSOS_DO_GUIA: readonly PassoDoGuia[] = [
 /**
  * Endereço que o Mercado Pago precisa conhecer para gerar a "Assinatura
  * secreta" das notificações: é a edge `webhook-mercadopago` do projeto da
- * loja (criar-pagamento já manda esse mesmo endereço em cada order, como
- * `notification_url`). Função pura: recebe a URL base do Supabase (a ficha
- * da loja ou o ambiente de build, ver `lerSupabaseUrl`) e devolve null quando
- * ela não existe ou não parece uma origem — o prompt então pede o endereço ao
- * lojista em vez de inventar um.
+ * loja. A criar-pagamento NÃO manda este endereço no pedido: a Orders API não
+ * aceita `notification_url` por order (o teste "NÃO leva notification_url" em
+ * criar-pagamento/index_test.ts trava isso), então ele só chega ao MP quando a
+ * lojista o cadastra em Webhooks, no painel do MP. Função pura: recebe a URL
+ * base do Supabase (a ficha da loja ou o ambiente de build, ver
+ * `lerSupabaseUrl`) e devolve null quando ela não existe ou não parece uma
+ * origem — o prompt então pede o endereço ao lojista em vez de inventar um.
  */
 export function urlDeNotificacoesDoWebhook(
   supabaseUrl: string | null | undefined,
