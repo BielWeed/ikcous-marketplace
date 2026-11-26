@@ -37,6 +37,8 @@ on:
     paths:
       - "supabase/migrations/**"
       - "tests/banco/**"
+      # tests/banco/provisionar.cjs aplica os default privileges deste modulo (fonte unica, 26/11/2026).
+      - "scripts/ci/banco/privilegios-padrao.cjs"
       - "tests/banco/gerar-tipos-efemeros.cjs"
       - "tests/ci_tipos_efemeros_test.ts"
       - "supabase/functions/send-order-whatsapp/**"
@@ -338,6 +340,8 @@ on:
     paths:
       - "supabase/migrations/**"
       - "tests/banco/**"
+      # tests/banco/provisionar.cjs aplica os default privileges deste modulo (fonte unica, 26/11/2026).
+      - "scripts/ci/banco/privilegios-padrao.cjs"
       - "tests/banco/gerar-tipos-efemeros.cjs"
       - "tests/ci_tipos_efemeros_test.ts"
       - "supabase/functions/send-order-whatsapp/**"

@@ -13,7 +13,9 @@
  *          NENHUMA migration — o "projeto Supabase novo" da bancada;
  *   a      cópia do molde: instalação do zero, sem interrupção (a referência);
  *   b      cópia do molde: interrompida, falhada e retomada até o fim;
- *   c      cópia do molde com UMA tabela em public: tem de ser recusado.
+ *   c      cópia do molde com UMA tabela em public: tem de ser recusado;
+ *   d      cópia do molde SEM os privilégios padrão de public (o projeto
+ *          Supabase novo desde 30/05/2026: revogados aqui, comando a comando).
  *
  * O cliente desta prova imita a Management API: UMA conexão nova por
  * requisição (nada de estado de sessão entre arquivos), o texto inteiro numa
@@ -37,8 +39,13 @@
  *              registrada com corpo que mexe numa função dá 23505 e a função
  *              fica como estava; o CONTROLE com ON CONFLICT DO NOTHING mostra a
  *              regressão (a taxa volta a 0,10).
- *  DE NOVO     a: a segunda rodada é "loja já instalada" (recusa sem chamada) e
- *              o DDL do ledger rodado de novo não muda nada.
+ *  DE NOVO     a: a segunda rodada é JA_INSTALADA (sucesso, só leituras, nada
+ *              gravado) e o DDL do ledger rodado de novo não muda nada.
+ *  SEM A REGRA d: a consulta 185 mede tabelas/sequências SEM acesso; o DDL
+ *              sabotado (sem os privilégios) é pego pela conferência ANTES da
+ *              1ª migration (FALHOU, ledger vazio); a rodada seguinte aplica
+ *              os privilégios e a fila inteira, e o d fica com a MESMA
+ *              impressão digital do a e a 185 toda ok.
  *  SEM MARCA   a (bloqueante 2): ledger cheio SEM a marca (como as lojas de
  *              hoje) e ledger prefixo sem marca (loja atrasada) → recusados.
  *  RECUSA      c: banco com tabela e sem ledger → recusado sem NENHUMA chamada;
@@ -66,12 +73,23 @@ const {
 } = require("../../scripts/ci/banco/util.cjs");
 
 const RAIZ = path.resolve(__dirname, "..", "..");
+const {
+  comandosDosPrivilegiosPadrao,
+} = require("../../scripts/ci/banco/privilegios-padrao.cjs");
+const CONSULTA_185 = path.join(
+  RAIZ,
+  "scripts",
+  "publicacao",
+  "consultas",
+  "185-privilegios-padrao-em-public.sql",
+);
 const PREFIXO = "inst_nova_loja_";
 const MOLDE = `${PREFIXO}molde`;
 const A = `${PREFIXO}a`;
 const B = `${PREFIXO}b`;
 const C = `${PREFIXO}c`;
-const TODOS = [A, B, C, MOLDE];
+const D = `${PREFIXO}d`;
+const TODOS = [A, B, C, D, MOLDE];
 const MARCA_DO_LEDGER =
   "\nINSERT INTO supabase_migrations.schema_migrations (version, name) VALUES (";
 
@@ -104,7 +122,10 @@ const timeout = () =>
  * rodada) devolve { antes } (falha sem enviar), { depois } (envia, comita e
  * perde a resposta) ou { trocar } (envia outro texto); `sabotarMarca()` faz o
  * mesmo com a requisição que marca a instalação concluída. */
-function clienteDaApi(banco, { registro = [], sabotar, sabotarMarca } = {}) {
+function clienteDaApi(
+  banco,
+  { registro = [], sabotar, sabotarMarca, sabotarDdl } = {},
+) {
   let envelopes = 0;
   return {
     registro,
@@ -116,6 +137,8 @@ function clienteDaApi(banco, { registro = [], sabotar, sabotarMarca } = {}) {
         s = sabotar?.(envelopes, sql);
       } else if (sql === inst.SQL_CONCLUIR) {
         s = sabotarMarca?.();
+      } else if (sql === inst.ddlDoLedger()) {
+        s = sabotarDdl?.(sql);
       }
       if (s?.antes) throw s.antes;
       const pg = new Client({ connectionString: urlDo(banco) });
@@ -199,6 +222,13 @@ WITH itens(x) AS (
 )
 SELECT count(*)::int AS itens, md5(string_agg(x, E'\\n' ORDER BY x)) AS digital FROM itens;`;
 
+/** A consulta 185 (só leitura, rol fechado) como o workflow a roda. */
+async function consulta185(banco) {
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- CONSULTA_185 é um caminho fixo deste repositório.
+  const sql = require("node:fs").readFileSync(CONSULTA_185, "utf8");
+  return comBanco(banco, async (c) => (await c.query(sql)).rows);
+}
+
 async function impressao(banco) {
   return comBanco(banco, async (c) => {
     const r = await c.query(IMPRESSAO_DIGITAL);
@@ -244,12 +274,22 @@ async function montarBancos() {
   if (prov.status !== 0)
     falhar("FALHOU", "provisionar-efemero.cjs no molde saiu != 0");
   await comAdmin(async (adm) => {
-    for (const b of [A, B, C]) {
+    for (const b of [A, B, C, D]) {
       await adm.query(`CREATE DATABASE "${b}" TEMPLATE "${MOLDE}"`);
       // O search_path de fábrica do papel postgres no Supabase (o db-ci o
       // aplica antes de cada arquivo; aqui vale para toda conexão nova).
       await adm.query(
         `ALTER DATABASE "${b}" SET search_path = "$user", public, extensions`,
+      );
+    }
+  });
+  // d = o projeto Supabase novo: os MESMOS 9 comandos, ao contrário.
+  await comBanco(D, async (c) => {
+    for (const cmd of comandosDosPrivilegiosPadrao()) {
+      await c.query(
+        cmd
+          .replace(" GRANT ", " REVOKE ")
+          .replace(/ TO (\"[a-z_]+\")$/, " FROM $1"),
       );
     }
   });
@@ -309,6 +349,15 @@ prova(
     );
     assert.equal(cli.registro.at(-1), inst.SQL_CONCLUIR, "marca por último");
     assert.equal(await marca(A), "concluida");
+    const priv = await inst.lerPrivilegiosPadrao(clienteDaApi(A));
+    assert.equal(priv.faltando, "", "privilégios padrão conferidos no a");
+    const r185 = await consulta185(A);
+    assert.equal(r185.length, 8, "rol de 8 linhas");
+    assert.deepEqual(
+      r185.filter((l) => l.ok !== true),
+      [],
+      "a 185 toda ok numa loja com a regra antiga",
+    );
     estado.digitalA = await impressao(A);
     console.log(
       `    ${l.length} versões no ledger; impressão digital: ${estado.digitalA.itens} itens, ${estado.digitalA.digital}`,
@@ -424,19 +473,25 @@ prova(
     const cli = clienteDaApi(B);
     const r = await inst.instalar(cli, plano, { aplicar: true });
     assert.equal(r.estado, "NADA_A_FAZER", r.mensagem);
+    assert.equal(r.aviso, undefined, "os privilégios estavam no lugar");
     assert.deepEqual(
       cli.registro.filter(
         (s) =>
           s !== inst.SQL_ESTADO &&
           s !== inst.SQL_LEDGER &&
-          s !== inst.SQL_MARCA,
+          s !== inst.SQL_MARCA &&
+          s !== inst.SQL_PRIVILEGIOS,
       ),
-      [inst.SQL_CONCLUIR],
-      "a única escrita é a marca",
+      [inst.ddlDoLedger(), inst.SQL_CONCLUIR],
+      "as escritas são o DDL idempotente e a marca",
     );
     assert.equal(await marca(B), "concluida");
     assert.deepEqual(await impressao(B), estado.digitalA);
-    assert.equal((await planejarEm(B)).acao, "recusar", "agora está instalada");
+    assert.equal(
+      (await planejarEm(B)).acao,
+      "ja_instalada",
+      "agora está instalada e completa",
+    );
   },
 );
 
@@ -482,15 +537,25 @@ prova(
 );
 
 prova(
-  "DE NOVO: a segunda rodada é 'loja já instalada' (recusa sem chamada) e o DDL do ledger é idempotente",
+  "DE NOVO: a segunda rodada é JA_INSTALADA (sucesso, só leituras) e o DDL do ledger é idempotente",
   async () => {
     const plano = await planejarEm(A);
-    assert.equal(plano.acao, "recusar", plano.motivo);
-    assert.match(plano.motivo, /loja já instalada/);
+    assert.equal(plano.acao, "ja_instalada", plano.motivo);
     const cli = clienteDaApi(A);
     const r = await inst.instalar(cli, plano, { aplicar: true });
-    assert.equal(r.estado, "RECUSADO");
-    assert.deepEqual(cli.registro, []);
+    assert.equal(r.estado, "JA_INSTALADA", r.mensagem);
+    const leituras = new Set([
+      inst.SQL_ESTADO,
+      inst.SQL_LEDGER,
+      inst.SQL_MARCA,
+      inst.SQL_PRIVILEGIOS,
+    ]);
+    assert.ok(cli.registro.length > 0);
+    assert.deepEqual(
+      cli.registro.filter((s) => !leituras.has(s)),
+      [],
+      "nenhuma escrita",
+    );
     await clienteDaApi(A).consultar(inst.ddlDoLedger());
     await clienteDaApi(A).consultar(inst.ddlDoLedger());
     assert.equal((await ledger(A)).length, repo.length);
@@ -525,6 +590,60 @@ prova(
     assert.equal(r.estado, "RECUSADO");
     assert.deepEqual(cli.registro, []);
     assert.equal((await ledger(A)).length, repo.length - 3);
+  },
+);
+
+prova(
+  "SEM A REGRA: projeto novo sem os privilégios padrão — a 185 mede, o DDL sabotado é pego antes da 1ª migration, e a rodada certa deixa o d IGUAL ao a",
+  async () => {
+    const antes = await consulta185(D);
+    assert.equal(antes.length, 8, "rol de 8 linhas");
+    // (o controle diz "nao" aqui só porque o public do d ainda está vazio)
+    const nao = antes
+      .filter((l) => l.ok === false && !l.item.startsWith("controle:"))
+      .map((l) => l.item)
+      .sort();
+    assert.equal(nao.length, 7, `7 linhas sem acesso: ${nao.join(" | ")}`);
+    assert.ok(nao.every((i) => /^(tabelas|sequencias|funcoes) /.test(i)));
+    assert.match(
+      (await inst.lerPrivilegiosPadrao(clienteDaApi(D))).faltando,
+      /tabelas:anon/,
+    );
+    // CONTROLE: o DDL SEM os 9 comandos (o instalador de antes) é pego pela
+    // conferência: FALHOU, nenhuma migration enviada, ledger vazio.
+    const plano1 = await planejarEm(D);
+    assert.equal(plano1.acao, "instalar", plano1.motivo);
+    const sab = clienteDaApi(D, {
+      sabotarDdl: (sql) => ({
+        trocar: sql
+          .split("\n")
+          .filter((l) => !l.startsWith("ALTER DEFAULT PRIVILEGES"))
+          .join("\n"),
+      }),
+    });
+    const r1 = await inst.instalar(sab, plano1, { aplicar: true });
+    assert.equal(r1.estado, "FALHOU", r1.mensagem);
+    assert.equal(r1.fase, "privilégios padrão");
+    assert.equal(sab.registro.filter(ehEnvelope).length, 0);
+    assert.equal((await ledger(D)).length, 0);
+    // A rodada certa: do zero de novo (ledger vazio, marca em curso).
+    const plano2 = await planejarEm(D);
+    assert.equal(plano2.acao, "instalar", plano2.motivo);
+    assert.equal(plano2.jaNoLedger, 0);
+    const r2 = await inst.instalar(clienteDaApi(D), plano2, { aplicar: true });
+    assert.equal(r2.estado, "OK", r2.mensagem);
+    assert.equal((await ledger(D)).length, repo.length);
+    assert.equal(await marca(D), "concluida");
+    assert.deepEqual(
+      (await consulta185(D)).filter((l) => l.ok !== true),
+      [],
+      "a 185 toda ok depois do instalador",
+    );
+    assert.deepEqual(
+      await impressao(D),
+      estado.digitalA,
+      "impressão digital do d = do a (permissões inclusive)",
+    );
   },
 );
 
