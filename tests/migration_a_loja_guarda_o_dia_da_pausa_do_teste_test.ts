@@ -555,3 +555,40 @@ Deno.test("195a/195b (rol fechado de 6 e 4), canais-de-backend, menu do conferir
   assertStringIncludes(lote._comentario, "aditiva");
   assertStringIncludes(lote._comentario, "exige a 20261399998000");
 });
+
+Deno.test("20261590: o contrato esta escrito - o porque da porta cita a chave opcional e o runbook diz ausente = NULL, o sinal, o recuo, a ordem e os dois rollbacks", () => {
+  const lista = JSON.parse(
+    Deno.readTextFileSync(
+      `${RAIZ}/tests/banco/portas-do-visitante-permitidas.json`,
+    ),
+  );
+  const porta = lista.funcoes.find(
+    (f: { funcao: string }) =>
+      f.funcao ===
+      "public.assinatura_da_loja_gravar(p_chave text, p_dados jsonb, p_simular boolean)",
+  );
+  assert(porta, "a porta saiu da lista");
+  assertEquals(porta.executa, ["anon", "authenticated"]);
+  assertStringIncludes(porta.porque, "10 campos + pausa_em opcional");
+  const runbook = Deno.readTextFileSync(
+    `${RAIZ}/docs/runbooks/assinatura-da-loja.md`,
+  ).replace(/\r/g, "");
+  const i = runbook.indexOf(
+    "## A 11ª chave opcional `pausa_em` (migration 20261590000000)",
+  );
+  assert(i >= 0, "a secao da chave opcional nao esta no runbook");
+  const secao = runbook.slice(i, runbook.indexOf("\n## ", i + 5));
+  for (const trecho of [
+    "ausente",
+    "NULL",
+    "`teste_ate` igual a `proxima_cobranca_em`",
+    "`atrasada`",
+    "`campo: pausa_em`",
+    "reenvia",
+    "Ordem de publicação",
+    "rollback-manual-20261590000000",
+    "rollback-manual-destrutivo-20261590000000",
+    "app.confirmo_apagar_pausa_em",
+  ])
+    assertStringIncludes(norm(secao), trecho);
+});
