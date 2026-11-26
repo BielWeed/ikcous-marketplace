@@ -32,7 +32,10 @@ import {
   HOSTS,
   IDENTIDADES_ESPERADAS,
   ORIGEM_B,
+  ORIGEM_DORMINDO,
+  REF_DORMINDO,
   iniciarServidorDoisHosts,
+  pedidosAoDuble,
 } from "./servidor.ts";
 
 const COMANDO_DE_BUILD = "IKCOUS_IDENTITY_MODE=fixture npm run build";
@@ -287,5 +290,42 @@ describe("porteiro-dois-hosts — prova ponta a ponta (T6, ADENDO D)", () => {
     expect(corpo).not.toContain(IDENTIDADES_ESPERADAS[HOSTS.B]!.storeName);
     expect(corpo).not.toContain(ORIGEM_B);
     expect(corpo).not.toContain("sb_publishable_loja_b");
+  });
+
+  // L8 (26/11/2026, tarefa 2.5): loja ADORMECIDA pela caderneta, através do
+  // `middleware()` real num build único. A página é a própria (503,
+  // retry-after 3600, nome da loja, sem script) em TODO caminho de documento,
+  // e o ÚNICO pedido de rede é a RPC nova da caderneta — nunca o banco da loja
+  // (que nem existe neste ensaio: um pedido a ele lançaria).
+  it("loja-dormindo.localhost (caderneta: adormecida) -> página própria 503, sem nenhum pedido ao banco da loja", async () => {
+    const antes = pedidosAoDuble.length;
+    for (const caminho of [
+      "/",
+      "/identidade.json",
+      "/manifest.webmanifest",
+      "/sitemap.xml",
+    ]) {
+      const resp = await pedir(servidor.porta, HOSTS.DORMINDO, caminho);
+      expect(resp.status, caminho).toBe(503);
+      expect(resp.headers["x-ikcous-porteiro"], caminho).toBe("adormecida");
+      expect(resp.headers["x-ikcous-caderneta"], caminho).toBe("hit");
+      expect(resp.headers["x-ikcous-estado"], caminho).toBe("adormecida");
+      expect(resp.headers["x-ikcous-ref"], caminho).toBe(REF_DORMINDO);
+      expect(resp.headers["retry-after"], caminho).toBe("3600");
+      expect(resp.headers["cache-control"], caminho).toBe("no-store");
+      expect(
+        resp.headers["x-ikcous-caderneta-versao"],
+        caminho,
+      ).toBeUndefined();
+      const corpo = resp.corpo.toString("utf-8");
+      expect(corpo).toContain("Loja Dormindo está fechada no momento.");
+      expect(corpo).not.toContain("<script");
+    }
+    const novos = pedidosAoDuble.slice(antes);
+    expect(novos.length).toBeGreaterThan(0);
+    expect(novos.some((p) => p.startsWith(ORIGEM_DORMINDO))).toBe(false);
+    expect(
+      novos.every((p) => p.endsWith("/rest/v1/rpc/resolver_loja_com_estado")),
+    ).toBe(true);
   });
 });

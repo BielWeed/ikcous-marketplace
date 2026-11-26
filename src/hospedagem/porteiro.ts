@@ -172,6 +172,10 @@ export interface AmbientePorteiro {
    * deploy de codigo -- so a variavel e um redeploy. Qualquer outro valor (ou
    * ausente) deixa ligado. */
   readonly IKCOUS_CARTAZ_DESLIGADO?: string;
+  /** L8: o endereço do "Fale com a IKCOUS para reabrir" das páginas de loja
+   * adormecida/encerrada. Só vira link se for uma URL `https:` válida;
+   * ausente ou qualquer outra coisa = a frase sai sem link. */
+  readonly IKCOUS_LINK_ACORDAR?: string;
 }
 
 export interface ConexaoResolvida {
@@ -201,17 +205,49 @@ export interface ConexaoResolvida {
  */
 export type EstadoCaderneta = "hit" | "miss" | "erro" | "ausente";
 
+/** L8 (estado de vida da loja): os dois estados em que a caderneta CONHECE a
+ * loja mas ela não abre — `adormecida` (parou de pagar; volta quando acordar)
+ * e `encerrada` (saiu da frota). Nos dois a caderneta NÃO devolve URL nem
+ * chave do banco da loja, e o porteiro nunca o procura. */
+export type EstadoForaDoAr = "adormecida" | "encerrada";
+
+/** O que a página de loja fora do ar precisa — e nada mais: o nome (vem da
+ * caderneta, é escapado na página) e o `project_ref` (diagnóstico, em
+ * cabeçalho; já validado com 20 letras/dígitos minúsculos). */
+export interface LojaForaDoAr {
+  readonly estado: EstadoForaDoAr;
+  readonly nome: string;
+  readonly ref: string;
+}
+
+/** `1` = esta resolução veio da RESERVA `resolver_loja` (a função nova
+ * `resolver_loja_com_estado` ainda não existe no banco da caderneta). Vira o
+ * cabeçalho `x-ikcous-caderneta-versao: 1`. Ausente = a função nova respondeu. */
+export type VersaoCaderneta = 1;
+
 export interface ResolucaoConexao {
   readonly conexao: ConexaoResolvida | null;
   readonly caderneta: EstadoCaderneta;
+  /** Presente só quando a caderneta disse que a loja está adormecida ou
+   * encerrada (`conexao` é `null` nesse caso — quem não conhecer este campo
+   * cai no `sem-loja`, que também é falha fechada). */
+  readonly foraDoAr?: LojaForaDoAr;
+  readonly versaoCaderneta?: VersaoCaderneta;
 }
 
 /** O que a caderneta central devolveu para este host. `miss` e `erro` não
- * carregam conexão — não há nada para "quase confiar". */
+ * carregam conexão — não há nada para "quase confiar". `fora-do-ar` (L8)
+ * também não: só o que a página própria precisa. `versao: 1` marca o que veio
+ * da reserva (função antiga), que nunca sabe de estado. */
 export type ResultadoCaderneta =
-  | { readonly tipo: "hit"; readonly conexao: ConexaoResolvida }
-  | { readonly tipo: "miss" }
-  | { readonly tipo: "erro" };
+  | {
+      readonly tipo: "hit";
+      readonly conexao: ConexaoResolvida;
+      readonly versao?: VersaoCaderneta;
+    }
+  | ({ readonly tipo: "fora-do-ar" } & LojaForaDoAr)
+  | { readonly tipo: "miss"; readonly versao?: VersaoCaderneta }
+  | { readonly tipo: "erro"; readonly versao?: VersaoCaderneta };
 
 /**
  * Injeta a chamada real à RPC `resolver_loja` (T5) — nunca fetch direto
@@ -251,10 +287,12 @@ export type ResolverLojaNaCaderneta = (
  */
 export class FalhaRpcCaderneta extends Error {
   readonly caderneta = "erro" as const;
-  constructor() {
+  readonly versaoCaderneta: VersaoCaderneta | undefined;
+  constructor(versaoCaderneta?: VersaoCaderneta) {
     super(
       "PORTEIRO_CADERNETA: falha da RPC resolver_loja (HTTP não-2xx, rede ou resposta malformada)",
     );
+    this.versaoCaderneta = versaoCaderneta;
   }
 }
 
@@ -329,13 +367,32 @@ export async function resolverConexao(
   }
 
   const resultado = await caderneta(host, frotaUrl, frotaApikey, frotaChave);
-  if (resultado.tipo === "miss") return { conexao: null, caderneta: "miss" };
+  // L8: a caderneta CONHECE a loja e diz que ela está fora do ar. É uma
+  // decisão (como `miss`), nunca uma conexão: `conexao` fica `null` e o
+  // porteiro não procura o banco da loja. `caderneta: "hit"` porque a
+  // caderneta respondeu a loja de verdade.
+  if (resultado.tipo === "fora-do-ar")
+    return {
+      conexao: null,
+      caderneta: "hit",
+      foraDoAr: {
+        estado: resultado.estado,
+        nome: resultado.nome,
+        ref: resultado.ref,
+      },
+    };
+  // A marca só entra quando existe (os testes antigos comparam o objeto
+  // inteiro; a função nova nunca a põe).
+  const versao =
+    resultado.versao === undefined ? {} : { versaoCaderneta: resultado.versao };
+  if (resultado.tipo === "miss")
+    return { conexao: null, caderneta: "miss", ...versao };
   // (c) falha DE VERDADE da RPC — lança, nunca devolve: ver
   // `FalhaRpcCaderneta` e o comentário desta função.
-  if (resultado.tipo === "erro") throw new FalhaRpcCaderneta();
+  if (resultado.tipo === "erro") throw new FalhaRpcCaderneta(resultado.versao);
   if (!chaveEhPublica(resultado.conexao.publishableKey))
-    return { conexao: null, caderneta: "erro" };
-  return { conexao: resultado.conexao, caderneta: "hit" };
+    return { conexao: null, caderneta: "erro", ...versao };
+  return { conexao: resultado.conexao, caderneta: "hit", ...versao };
 }
 
 function chaveEhPublica(chave: string): boolean {
@@ -500,11 +557,17 @@ export function injetarFichaNoHtml(html: string, ficha: FichaDaLoja): string {
 
 // ─── respostaManutencao ─────────────────────────────────────────────────────
 
+/** Todo valor que o porteiro escreve em `x-ikcous-porteiro` numa RECUSA. Os
+ * dois de L8 (`adormecida`, `encerrada`) têm página própria
+ * (`respostaForaDoAr`), nunca a de manutenção — por isso `respostaManutencao`
+ * só aceita os outros quatro. O service worker lê este cabeçalho
+ * (`src/sw/sw.ts`, `ehRecusaDoPorteiro`) e o teste dele cobre TODOS. */
 export type MotivoManutencao =
   | "sem-loja"
   | "discorda"
   | "banco-indisponivel"
-  | "html-indisponivel";
+  | "html-indisponivel"
+  | EstadoForaDoAr;
 
 /**
  * Falha fechada: divergiu, faltou ou não deu para ler → 503, nunca uma
@@ -514,7 +577,7 @@ export type MotivoManutencao =
  * nunca ficar silencioso mesmo quando a resposta final é um 503.
  */
 export function respostaManutencao(
-  motivo: MotivoManutencao,
+  motivo: Exclude<MotivoManutencao, EstadoForaDoAr>,
   caderneta: EstadoCaderneta,
 ): Response {
   // Mesmo padrão de public/offline.html: ajuste ao celular, recarga sozinha a
@@ -532,6 +595,90 @@ export function respostaManutencao(
       "x-ikcous-porteiro": motivo,
       "x-ikcous-caderneta": caderneta,
     },
+  });
+}
+
+// ─── respostaForaDoAr (L8: loja adormecida ou encerrada) ───────────────────
+//
+// SUPOSIÇÕES DE ESTADO, ditas em voz alta:
+//   - Só chega aqui o que a CADERNETA disse (`resolver_loja_com_estado`): ela
+//     conhece a loja e devolveu estado `adormecida`/`encerrada`, sem URL nem
+//     chave. Nenhum pedido ao banco da loja acontece antes nem depois desta
+//     página — não há conexão para usar.
+//   - O texto fala com a CLIENTE da loja (decisão do sócio D2). O único dado
+//     da loja é o NOME, que vem da caderneta (escrito pela IKCOUS, não pela
+//     lojista) e é escapado mesmo assim. Sem logo, sem cor, sem script.
+//   - Sem estado próprio: pura, idempotente. O que se guarda por 60 s é a
+//     DECISÃO (`obterFichaValidada`), nunca esta resposta.
+
+/** Só `https:` vira link. `javascript:`, `data:`, `http:` e o que nem é URL
+ * ficam de fora: a frase sai sem `<a>`. */
+function linkParaAcordar(bruto: string | undefined): string | null {
+  const valor = cleanEnvVar(bruto ?? "");
+  if (valor === "") return null;
+  try {
+    const url = new URL(valor);
+    return url.protocol === "https:" ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A página da loja ADORMECIDA (503 + `retry-after: 3600`: volta quando a
+ * conta acertar) ou ENCERRADA (410: não volta; o Google pode tirar do
+ * índice). `cache-control: no-store` nas duas — a loja que acorda não pode
+ * ficar presa num cache. `x-ikcous-estado`/`x-ikcous-ref` são diagnóstico
+ * (o ref já foi validado: 20 letras/dígitos minúsculos).
+ */
+export function respostaForaDoAr(
+  loja: LojaForaDoAr,
+  caderneta: EstadoCaderneta,
+  linkAcordarBruto: string | undefined,
+): Response {
+  const nome = loja.nome.trim() === "" ? "Esta loja" : loja.nome.trim();
+  const frase =
+    loja.estado === "adormecida"
+      ? `${nome} está fechada no momento.`
+      : `${nome} não está mais no ar.`;
+  const link = linkParaAcordar(linkAcordarBruto);
+  const chamada = "Fale com a IKCOUS para reabrir";
+  const linhaDaDona = `${escapeHtml("É a dona desta loja?")} ${
+    link === null
+      ? escapeHtml(chamada)
+      : `<a href="${escapeHtml(link)}">${escapeHtml(chamada)}</a>`
+  }`;
+  // Mesmo molde visual da página de manutenção (sem marca de ninguém), sem
+  // recarga automática: a loja não volta em instantes.
+  const corpo = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${escapeHtml(frase)}</title><style>body{margin:0;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px;box-sizing:border-box;text-align:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;background:#fafafa;color:#18181b}p{margin:0;max-width:320px;font-size:16px;line-height:1.5}small{max-width:320px;font-size:13px;line-height:1.5;color:#52525b}a{color:#18181b;font-weight:700}</style></head><body><p>${escapeHtml(frase)}</p><small>${linhaDaDona}</small></body></html>`;
+  return new Response(corpo, {
+    status: loja.estado === "adormecida" ? 503 : 410,
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+      ...(loja.estado === "adormecida" ? { "retry-after": "3600" } : {}),
+      "x-ikcous-porteiro": loja.estado,
+      "x-ikcous-caderneta": caderneta,
+      "x-ikcous-estado": loja.estado,
+      "x-ikcous-ref": loja.ref,
+    },
+  });
+}
+
+/** Acrescenta `x-ikcous-caderneta-versao: 1` quando a resolução veio da
+ * reserva (função antiga). Sem versão, devolve a MESMA resposta, intacta —
+ * a loja ativa pela função nova sai byte a byte como antes de L8. */
+export function marcarVersaoDaCaderneta(
+  resposta: Response,
+  versao: VersaoCaderneta | undefined,
+): Response {
+  if (versao === undefined) return resposta;
+  const cabecalhos = new Headers(resposta.headers);
+  cabecalhos.set("x-ikcous-caderneta-versao", String(versao));
+  return new Response(resposta.body, {
+    status: resposta.status,
+    statusText: resposta.statusText,
+    headers: cabecalhos,
   });
 }
 
@@ -809,6 +956,8 @@ export interface EntradaCachePorteiro {
    * já que recalcular a caderneta a cada resposta cacheada anularia o
    * propósito do cache. */
   readonly caderneta: EstadoCaderneta;
+  /** Mesma ideia, para `x-ikcous-caderneta-versao` (L8). */
+  readonly versaoCaderneta?: VersaoCaderneta;
 }
 
 /** 60 s de cache fresco (não repete a consulta); serve o último bom por até
@@ -816,6 +965,16 @@ export interface EntradaCachePorteiro {
  * da caderneta, loja nova espera" (parecer, item 7). */
 export const CACHE_FRESCO_MS = 60_000;
 export const CACHE_STALE_MAX_MS = 3_600_000;
+
+/** L8, 2.3: a DECISÃO "esta loja está fora do ar", guardada por host, por
+ * 60 s — sem stale-if-error (passado o prazo, a caderneta é perguntada de
+ * novo; se ela falhar, o porteiro responde `banco-indisponivel`, nunca a
+ * vitrine velha). A loja ativa nunca escreve aqui. */
+export interface EntradaCacheForaDoAr {
+  readonly loja: LojaForaDoAr;
+  readonly quando: number;
+}
+export const CACHE_FORA_DO_AR_MS = 60_000;
 
 /** O sitemap lê o catálogo inteiro da loja (uma consulta por 1000 produtos):
  * 10 min frescos entre robôs, e o último bom por até 1h se o banco cair —
@@ -856,6 +1015,9 @@ export interface DependenciasPorteiro {
    * passada aqui para cada chamada (é o que torna a função testável sem
    * estado global escondido). */
   readonly cache: Map<string, EntradaCachePorteiro>;
+  /** L8: decisões "loja fora do ar", 60 s por host (`Map` de módulo de
+   * `middleware.ts`). Opcional: sem ele, cada pedido pergunta à caderneta. */
+  readonly cacheForaDoAr?: Map<string, EntradaCacheForaDoAr>;
   /** Cache dos ids do sitemap, também um `Map` de módulo de `middleware.ts`.
    * Opcional: sem ele (teste, chamada avulsa) cada pedido lê o banco. */
   readonly cacheMapa?: Map<string, EntradaCacheMapa>;
@@ -872,11 +1034,29 @@ export interface DependenciasPorteiro {
 }
 
 class DecisaoPorteiro extends Error {
-  readonly motivo: MotivoManutencao;
+  readonly motivo: Exclude<MotivoManutencao, EstadoForaDoAr>;
   readonly caderneta: EstadoCaderneta;
-  constructor(motivo: MotivoManutencao, caderneta: EstadoCaderneta) {
+  readonly versaoCaderneta: VersaoCaderneta | undefined;
+  constructor(
+    motivo: Exclude<MotivoManutencao, EstadoForaDoAr>,
+    caderneta: EstadoCaderneta,
+    versaoCaderneta?: VersaoCaderneta,
+  ) {
     super(motivo);
     this.motivo = motivo;
+    this.caderneta = caderneta;
+    this.versaoCaderneta = versaoCaderneta;
+  }
+}
+
+/** L8: a caderneta disse "adormecida"/"encerrada". Decisão (não falha): vira
+ * a página própria e é guardada por 60 s em `obterFichaValidada`. */
+class DecisaoForaDoAr extends Error {
+  readonly loja: LojaForaDoAr;
+  readonly caderneta: EstadoCaderneta;
+  constructor(loja: LojaForaDoAr, caderneta: EstadoCaderneta) {
+    super(loja.estado);
+    this.loja = loja;
     this.caderneta = caderneta;
   }
 }
@@ -894,10 +1074,16 @@ class DecisaoPorteiro extends Error {
 class DecisaoEncaminhamento extends Error {
   readonly destino: string;
   readonly caderneta: EstadoCaderneta;
-  constructor(destino: string, caderneta: EstadoCaderneta) {
+  readonly versaoCaderneta: VersaoCaderneta | undefined;
+  constructor(
+    destino: string,
+    caderneta: EstadoCaderneta,
+    versaoCaderneta?: VersaoCaderneta,
+  ) {
     super("encaminha");
     this.destino = destino;
     this.caderneta = caderneta;
+    this.versaoCaderneta = versaoCaderneta;
   }
 }
 
@@ -908,15 +1094,22 @@ class DecisaoEncaminhamento extends Error {
  * aconteceu com a caderneta antes da falha de identidade/domínio. */
 class FalhaResolucaoPorteiro extends Error {
   readonly caderneta: EstadoCaderneta;
-  constructor(caderneta: EstadoCaderneta, causa: unknown) {
+  readonly versaoCaderneta: VersaoCaderneta | undefined;
+  constructor(
+    caderneta: EstadoCaderneta,
+    causa: unknown,
+    versaoCaderneta?: VersaoCaderneta,
+  ) {
     super("PORTEIRO_FALHA_RESOLUCAO", { cause: causa });
     this.caderneta = caderneta;
+    this.versaoCaderneta = versaoCaderneta;
   }
 }
 
 interface FichaResolvida {
   readonly ficha: FichaDaLoja;
   readonly caderneta: EstadoCaderneta;
+  readonly versaoCaderneta?: VersaoCaderneta;
 }
 
 async function resolverFichaViaRede(
@@ -935,6 +1128,7 @@ async function resolverFichaViaRede(
   // `DecisaoEncaminhamento`, nem `FalhaRpcCaderneta`) — mesmo default do
   // fallback que já existia em `obterFichaValidada`.
   let caderneta: EstadoCaderneta = "ausente";
+  let versao: VersaoCaderneta | undefined;
   try {
     const resolucao = await resolverConexao(
       host,
@@ -942,7 +1136,12 @@ async function resolverFichaViaRede(
       deps.resolverNaCaderneta,
     );
     caderneta = resolucao.caderneta;
-    if (!resolucao.conexao) throw new DecisaoPorteiro("sem-loja", caderneta);
+    versao = resolucao.versaoCaderneta;
+    // L8: ANTES de qualquer leitura do banco da loja (não há conexão).
+    if (resolucao.foraDoAr)
+      throw new DecisaoForaDoAr(resolucao.foraDoAr, caderneta);
+    if (!resolucao.conexao)
+      throw new DecisaoPorteiro("sem-loja", caderneta, versao);
     const conexao = resolucao.conexao;
     const lerIdentidade = deps.lerIdentidade ?? readPublicStoreIdentity;
     const [identity, configuracaoPublica] = await Promise.all([
@@ -975,9 +1174,9 @@ async function resolverFichaViaRede(
       // primeiro na função) — o cast documenta essa invariante sem
       // duplicar a checagem aqui.
       const destino = `https://${dominioPublico as string}${url.pathname}${url.search}`;
-      throw new DecisaoEncaminhamento(destino, caderneta);
+      throw new DecisaoEncaminhamento(destino, caderneta, versao);
     }
-    if (decisao !== "ok") throw new DecisaoPorteiro(decisao, caderneta);
+    if (decisao !== "ok") throw new DecisaoPorteiro(decisao, caderneta, versao);
     // `publicUrl` preserva protocolo e porta do pedido atendido (rodada B,
     // item 4) — nunca `https://${host}` fixo, porque a prova ponta a ponta
     // (T6) roda em `http://loja-a.localhost:<porto>`.
@@ -988,11 +1187,14 @@ async function resolverFichaViaRede(
       conexao,
       configuracao,
     });
-    return { ficha, caderneta };
+    return versao === undefined
+      ? { ficha, caderneta }
+      : { ficha, caderneta, versaoCaderneta: versao };
   } catch (erro) {
     if (
       erro instanceof DecisaoPorteiro ||
-      erro instanceof DecisaoEncaminhamento
+      erro instanceof DecisaoEncaminhamento ||
+      erro instanceof DecisaoForaDoAr
     )
       throw erro;
     // A RPC da caderneta falhou DE VERDADE (ADENDO B.1) — o rótulo vem do
@@ -1000,8 +1202,12 @@ async function resolverFichaViaRede(
     // escopo externo, porque `resolverConexao` pode ter lançado ANTES de
     // atribuí-la.
     if (erro instanceof FalhaRpcCaderneta)
-      throw new FalhaResolucaoPorteiro(erro.caderneta, erro);
-    throw new FalhaResolucaoPorteiro(caderneta, erro);
+      throw new FalhaResolucaoPorteiro(
+        erro.caderneta,
+        erro,
+        erro.versaoCaderneta,
+      );
+    throw new FalhaResolucaoPorteiro(caderneta, erro, versao);
   }
 }
 
@@ -1078,6 +1284,8 @@ export type ResultadoObterFicha =
       readonly tipo: "ok";
       readonly ficha: FichaDaLoja;
       readonly caderneta: EstadoCaderneta;
+      /** L8: quem monta a resposta final aplica `marcarVersaoDaCaderneta`. */
+      readonly versaoCaderneta?: VersaoCaderneta;
     }
   | { readonly tipo: "manutencao"; readonly resposta: Response };
 
@@ -1106,12 +1314,36 @@ export async function obterFichaValidada(
     },
   });
 
+  // A marca de versão só entra quando existe: a loja ativa pela função nova
+  // devolve EXATAMENTE os mesmos objetos de antes de L8.
+  const comVersao = (versao: VersaoCaderneta | undefined) =>
+    versao === undefined ? {} : { versaoCaderneta: versao };
+
   const doCache = deps.cache.get(host);
   if (doCache && agora - doCache.quando < CACHE_FRESCO_MS) {
     return {
       tipo: "ok",
       ficha: comPublicUrlAtual(doCache.ficha),
       caderneta: doCache.caderneta,
+      ...comVersao(doCache.versaoCaderneta),
+    };
+  }
+  // L8, 2.3: loja fora do ar decidida há menos de 60 s -> a mesma página,
+  // sem perguntar de novo à caderneta. Nunca coexiste com uma ficha FRESCA
+  // do mesmo host: a ficha só nasce de uma resolução, e enquanto esta
+  // decisão está fresca não há resolução para este host.
+  const foraDoArGuardada = deps.cacheForaDoAr?.get(host);
+  if (
+    foraDoArGuardada &&
+    agora - foraDoArGuardada.quando < CACHE_FORA_DO_AR_MS
+  ) {
+    return {
+      tipo: "manutencao",
+      resposta: respostaForaDoAr(
+        foraDoArGuardada.loja,
+        "hit",
+        ambiente.IKCOUS_LINK_ACORDAR,
+      ),
     };
   }
   try {
@@ -1120,13 +1352,32 @@ export async function obterFichaValidada(
       ficha: resolvida.ficha,
       quando: agora,
       caderneta: resolvida.caderneta,
+      ...comVersao(resolvida.versaoCaderneta),
     });
+    deps.cacheForaDoAr?.delete(host);
     return {
       tipo: "ok",
       ficha: comPublicUrlAtual(resolvida.ficha),
       caderneta: resolvida.caderneta,
+      ...comVersao(resolvida.versaoCaderneta),
     };
   } catch (erro) {
+    // L8: loja adormecida/encerrada. A ficha ANTIGA deste host (de quando a
+    // loja estava ativa) sai do cache AGORA: sem isso, uma falha da caderneta
+    // daqui a pouco cairia no stale-if-error abaixo e serviria a vitrine
+    // velha, com a conexão do banco de uma loja que não está mais no ar.
+    if (erro instanceof DecisaoForaDoAr) {
+      deps.cache.delete(host);
+      deps.cacheForaDoAr?.set(host, { loja: erro.loja, quando: agora });
+      return {
+        tipo: "manutencao",
+        resposta: respostaForaDoAr(
+          erro.loja,
+          erro.caderneta,
+          ambiente.IKCOUS_LINK_ACORDAR,
+        ),
+      };
+    }
     // Escolha registrada no relatório da tarefa (brief
     // `20260911-brief-aliases-vercel-encaminham.md`, item 4): o 308 de
     // encaminhamento reaproveita o MESMO canal (`tipo: "manutencao"` com
@@ -1139,30 +1390,42 @@ export async function obterFichaValidada(
     if (erro instanceof DecisaoEncaminhamento)
       return {
         tipo: "manutencao",
-        resposta: respostaEncaminhamento(erro.destino, erro.caderneta),
+        resposta: marcarVersaoDaCaderneta(
+          respostaEncaminhamento(erro.destino, erro.caderneta),
+          erro.versaoCaderneta,
+        ),
       };
     if (erro instanceof DecisaoPorteiro)
       return {
         tipo: "manutencao",
-        resposta: respostaManutencao(erro.motivo, erro.caderneta),
+        resposta: marcarVersaoDaCaderneta(
+          respostaManutencao(erro.motivo, erro.caderneta),
+          erro.versaoCaderneta,
+        ),
       };
     // Falha de rede/schema (não é uma DECISÃO): stale-if-error por até 1h.
     // O `x-ikcous-caderneta` reflete o que ESTA tentativa (a que falhou)
     // já sabia sobre a caderneta antes de falhar — informação mais atual
     // do que a caderneta que produziu a ficha em cache, ainda que a ficha
-    // servida seja a antiga.
+    // servida seja a antiga. A marca de versão segue a mesma regra.
     const cadernetaDaFalha =
       erro instanceof FalhaResolucaoPorteiro ? erro.caderneta : "ausente";
+    const versaoDaFalha =
+      erro instanceof FalhaResolucaoPorteiro ? erro.versaoCaderneta : undefined;
     if (doCache && agora - doCache.quando < CACHE_STALE_MAX_MS) {
       return {
         tipo: "ok",
         ficha: comPublicUrlAtual(doCache.ficha),
         caderneta: cadernetaDaFalha,
+        ...comVersao(versaoDaFalha),
       };
     }
     return {
       tipo: "manutencao",
-      resposta: respostaManutencao("banco-indisponivel", cadernetaDaFalha),
+      resposta: marcarVersaoDaCaderneta(
+        respostaManutencao("banco-indisponivel", cadernetaDaFalha),
+        versaoDaFalha,
+      ),
     };
   }
 }
@@ -1184,24 +1447,32 @@ export async function atenderPorteiro(
   const resultado = await obterFichaValidada(request, ambiente, deps);
   if (resultado.tipo === "manutencao") return resultado.resposta;
   const { ficha, caderneta: estadoCaderneta } = resultado;
+  // L8: `x-ikcous-caderneta-versao: 1` em toda resposta montada a partir de
+  // uma resolução pela reserva; sem a marca, a resposta sai intacta.
+  const marcar = (resposta: Response): Response =>
+    marcarVersaoDaCaderneta(resposta, resultado.versaoCaderneta);
 
   const url = new URL(request.url);
   if (url.pathname === CAMINHO_IDENTIDADE_JSON) {
-    return new Response(JSON.stringify(ficha), {
-      headers: {
-        "content-type": "application/json; charset=utf-8",
-        "cache-control": "no-store",
-        "x-ikcous-porteiro": "ok",
-        "x-ikcous-caderneta": estadoCaderneta,
-      },
-    });
+    return marcar(
+      new Response(JSON.stringify(ficha), {
+        headers: {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "no-store",
+          "x-ikcous-porteiro": "ok",
+          "x-ikcous-caderneta": estadoCaderneta,
+        },
+      }),
+    );
   }
   if (url.pathname === "/manifest.webmanifest")
-    return atenderManifest(ficha, estadoCaderneta);
+    return marcar(atenderManifest(ficha, estadoCaderneta));
   if (url.pathname === "/robots.txt")
-    return atenderRobots(request, ficha, estadoCaderneta);
+    return marcar(atenderRobots(request, ficha, estadoCaderneta));
   if (url.pathname === "/sitemap.xml")
-    return atenderMapaDoSite(request, ficha, estadoCaderneta, deps);
+    return marcar(
+      await atenderMapaDoSite(request, ficha, estadoCaderneta, deps),
+    );
 
   // A DECISÃO de pôr o cartaz mora AQUI (não em `documentoDaLoja`, que o robô
   // de prévia também usa): só GET, só navegador abrindo a vitrine pela 1ª vez
@@ -1237,7 +1508,7 @@ export async function atenderPorteiro(
       console.error("[Porteiro] contador: falha inesperada:", erro);
     }
   }
-  return resposta;
+  return marcar(resposta);
 }
 
 // ─── robots.txt e sitemap.xml POR LOJA (multiloja-frota-3) ─────────────────

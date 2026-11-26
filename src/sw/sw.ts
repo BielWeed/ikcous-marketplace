@@ -437,32 +437,36 @@ async function respostaTemFichaDaLoja(resposta: any): Promise<boolean> {
 }
 
 /**
- * Só recusas DURADOURAS do porteiro apagam a página guardada: `sem-loja`
- * e `discorda`. `banco-indisponivel` e `html-indisponivel` são falhas
- * passageiras: preservamos o app, como o porteiro preserva a última ficha
- * boa quando o banco falha. Apagar a raiz também tiraria o fallback offline.
- * O SW não importa o porteiro; o teste cobre todos os `MotivoManutencao`
- * com respostas REAIS dele. `sem-ficha-no-cache` é do próprio SW e nunca
- * chega da rede.
+ * Só recusas DURADOURAS do porteiro apagam a página guardada: `sem-loja`,
+ * `discorda` e, desde L8 (26/11/2026), `adormecida` (503) e `encerrada`
+ * (410) — a loja fora do ar não pode continuar aparecendo pela vitrine
+ * guardada de quando estava aberta. `banco-indisponivel` e
+ * `html-indisponivel` são falhas passageiras: preservamos o app, como o
+ * porteiro preserva a última ficha boa quando o banco falha. Apagar a raiz
+ * também tiraria o fallback offline. Cada motivo vale SÓ com o status da
+ * página que o porteiro manda com ele. O SW não importa o porteiro; o teste
+ * cobre todos os `MotivoManutencao` com respostas REAIS dele.
+ * `sem-ficha-no-cache` é do próprio SW e nunca chega da rede.
  */
-const MOTIVOS_DO_503_DO_PORTEIRO: ReadonlySet<string> = new Set([
-  "sem-loja",
-  "discorda",
+const STATUS_DA_RECUSA_DURADOURA: ReadonlyMap<string, number> = new Map([
+  ["sem-loja", 503],
+  ["discorda", 503],
+  ["adormecida", 503],
+  ["encerrada", 410],
 ]);
 
 /**
  * A resposta de REDE é uma recusa DURADOURA do porteiro?
- * O marcador é o par 503 + `x-ikcous-porteiro: <motivo duradouro>`.
- * Falhas passageiras, 502/504 da hospedagem, 500 e 503 sem o cabeçalho
- * preservam a página guardada: uma pane não pode apagar o app offline.
+ * O marcador é o par status + `x-ikcous-porteiro: <motivo duradouro>`.
+ * Falhas passageiras, 502/504 da hospedagem, 500, 503/410 sem o cabeçalho e
+ * par trocado (ex.: 503 com `encerrada`) preservam a página guardada: uma
+ * pane não pode apagar o app offline.
  */
 function ehRecusaDoPorteiro(response: Response): boolean {
-  return (
-    response.status === 503 &&
-    MOTIVOS_DO_503_DO_PORTEIRO.has(
-      response.headers.get("x-ikcous-porteiro") ?? "",
-    )
+  const statusEsperado = STATUS_DA_RECUSA_DURADOURA.get(
+    response.headers.get("x-ikcous-porteiro") ?? "",
   );
+  return statusEsperado !== undefined && response.status === statusEsperado;
 }
 
 /** Página curta de "em manutenção" — mesma decisão de falha fechada do
