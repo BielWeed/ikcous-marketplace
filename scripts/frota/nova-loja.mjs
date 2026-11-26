@@ -154,6 +154,7 @@ import {
 } from "./functions-da-loja.mjs";
 import {
   arquivosDoRepo,
+  clienteComRitmo,
   instalar,
   lerEstado,
   lerPrivilegiosPadrao,
@@ -1021,7 +1022,11 @@ async function passoBanco(pedido, d) {
     });
     return r;
   }
-  const cliente = clienteDoInstalador(gestao, pre.ref);
+  // O ritmo da Management API (120 pedidos/min por projeto; ver
+  // INTERVALO_MINIMO_MS no instalador) vale para TODA consulta deste passo,
+  // as leituras de antes e de depois inclusive, no relógio do passo.
+  const ritmo = { agora: d.agora, esperar: d.dormir };
+  const cliente = clienteComRitmo(clienteDoInstalador(gestao, pre.ref), ritmo);
   const arquivos = d.arquivos();
   let antes;
   try {
@@ -1038,7 +1043,7 @@ async function passoBanco(pedido, d) {
     return r;
   }
   const plano = planejarInstalacao(antes, arquivos);
-  const r = await instalar(cliente, plano, { aplicar: true });
+  const r = await instalar(cliente, plano, { aplicar: true, ritmo });
   const aplicadas = Array.isArray(r.aplicados) ? r.aplicados.length : 0;
   let veredito;
   let mensagem = r.mensagem;

@@ -1048,6 +1048,46 @@ Deno.test("banco: instala uma migration por chamada e só diz SIM com a fila int
   assertEquals(envelopes2.length, 2);
 });
 
+Deno.test("banco: 290 migrations contra o limite da Management API (120/min por projeto) terminam SIM, sem 429; o ritmo corre no relógio do passo", async () => {
+  const amb = await ambiente();
+  await conectar(amb);
+  await executarPasso(pedido("criar-projeto"), amb.deps);
+  amb.deps.arquivos = () =>
+    Array.from({ length: 290 }, (_v, i) => ({
+      arquivo: `20260101${String(i).padStart(6, "0")}_m${i}.sql`,
+      corpo: "SELECT 1;",
+    }));
+  // o gateway: mais de 120 database/query em 60 s (janela DESLIZANTE, mais
+  // dura que a do servidor) = 429, no relógio falso do ambiente
+  const envios = [];
+  let recusas = 0;
+  amb.api.falharSe = (metodo, caminho) => {
+    if (metodo !== "POST" || !caminho.endsWith("/database/query")) return;
+    const t = amb.relogio.agora();
+    envios.push(t);
+    if (envios.filter((x) => x > t - 60_000).length > 120) {
+      recusas += 1;
+      return 429;
+    }
+  };
+  const sonecasAntes = amb.relogio.sonecas.length;
+  const r = await executarPasso(pedido("banco"), amb.deps);
+  assertEquals(r.veredito, "SIM", r.mensagem);
+  assertEquals(recusas, 0, "nenhum pedido passou do limite");
+  assert(envios.length > 290, `${envios.length} pedidos ao database/query`);
+  const pico = Math.max(
+    ...envios.map((t) => envios.filter((x) => x >= t && x < t + 60_000).length),
+  );
+  assert(pico <= 101, `no máximo ~100 por minuto (pico ${pico})`);
+  // o ritmo usa o d.dormir do passo (falso aqui): nada esperou de verdade
+  const sonecas = amb.relogio.sonecas.slice(sonecasAntes);
+  assert(sonecas.length >= 290, `${sonecas.length} esperas`);
+  assert(
+    sonecas.every((ms) => ms > 0 && ms <= 600),
+    JSON.stringify(sonecas.slice(0, 10)),
+  );
+});
+
 Deno.test("banco: erro do Postgres numa migration = NÃO, e a seguinte não é enviada", async () => {
   const banco = bancoFalso();
   const responder = banco.responder;
@@ -3012,6 +3052,9 @@ Deno.test("trocar-dono fase 1: dona cadastrada e candidata admin confirmada = li
   const amb = await ateATroca();
   const n = amb.api.chamadas.length;
   amb.entradas.push(EMAIL_NOVA);
+  // a hora do pedido: o passo banco de ateATroca já andou o relógio falso
+  // (o ritmo da Management API dorme entre as consultas)
+  const pedidoEm = amb.relogio.agora();
   const r = await executarPasso(pedido("trocar-dono"), amb.deps);
   assertEquals(r.veredito, "SIM", r.mensagem);
   assertEquals(amb.entradas.length, 0, "não leu o e-mail pela entrada");
@@ -3042,7 +3085,7 @@ Deno.test("trocar-dono fase 1: dona cadastrada e candidata admin confirmada = li
   assertStringIncludes(texto, "30 min");
   assertStringIncludes(
     texto,
-    new Date(AGORA + 30 * 60_000).toISOString(),
+    new Date(pedidoEm + 30 * 60_000).toISOString(),
     "o fim do prazo",
   );
 });

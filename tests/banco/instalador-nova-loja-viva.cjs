@@ -669,10 +669,21 @@ prova(
 
 async function main() {
   URL_BASE = lerDatabaseUrlEfemera();
-  inst = await import(
+  const modulo = await import(
     pathToFileURL(path.join(RAIZ, "scripts", "frota", "instalador-banco.mjs"))
       .href
   );
+  // O ritmo da Management API (600 ms entre pedidos) não vale aqui: o banco é
+  // um Postgres local, sem limite de pedidos. Com ele, cada instalação
+  // completa dormiria ~3 min no db-ci. A prova do ritmo é a do teste Deno.
+  inst = {
+    ...modulo,
+    instalar: (cliente, plano, opcoes) =>
+      modulo.instalar(cliente, plano, {
+        ...(opcoes ?? {}),
+        ritmo: { intervaloMs: 0 },
+      }),
+  };
   repo = filaDaBancada();
   const t0 = Date.now();
   await montarBancos();
