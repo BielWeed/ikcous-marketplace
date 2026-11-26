@@ -788,6 +788,11 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/a-caderneta-confere-a-chave-sem-bcrypt-viva.cjs",
     // 20261500: a loja registra a saude da reconciliacao (porta so do service_role, leitura publica sem contagem de pagamento, contador, concorrencia, mutantes, rollback, consultas 187a/187b).
     "tests/banco/a-loja-registra-a-saude-da-reconciliacao-viva.cjs",
+    // 20261510: o livro de registro guarda a versao antiga (17 tabelas, nunca no caminho da compra, limpeza, rollbacks, 13 mutantes),
+    // o portao 188a/188b/188m com defeitos plantados e o roteiro de desfazer executado em ENSAIO e confirmado.
+    "tests/banco/o-livro-de-registro-viva.cjs",
+    "tests/banco/o-livro-de-registro-portao-viva.cjs",
+    "tests/banco/o-livro-de-registro-desfazer-ensaio-viva.cjs",
     // 20261530: a loja grande nao trava o balcao nem os avisos (porta leve sem ler pedido, diferencial contra a antiga, guardas, indices com EXPLAIN e tempos impressos, mutantes, rollback, consultas 190a/190b).
     "tests/banco/a-loja-grande-nao-trava-o-balcao-viva.cjs",
     // 20261384: o pedido pago pelo app exige conta (visitante sem conta recusado antes de reservar estoque; logado e pagar na entrega como hoje; retry; concorrencia real; mutantes; rollback; consultas 89a/89b).

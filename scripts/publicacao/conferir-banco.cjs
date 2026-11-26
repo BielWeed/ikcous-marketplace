@@ -3391,6 +3391,31 @@ const ROL_DA_184B = [
   "frota_lojas e frota_segredo existem com o mesmo dono da resolver_loja e da resolver_loja_com_estado",
   "a 20261460000000 esta aplicada: resolver_loja e resolver_loja_com_estado com os corpos dela (md5)",
 ];
+// Lote 188 (20261510000000, o livro de registro guarda a versao antiga: as tabelas livro_de_registro, _chave e _falhas, as funcoes
+// livro_de_registro_anotar e livro_de_registro_limpar, os 34 gatilhos por comando nas 17 tabelas de dinheiro e o job diario da limpeza).
+// A 188a prova o estado novo (10 itens, so catalogo e o agendador sem o comando; nenhuma linha do livro nem das 17 e lida; NAO exige a chave
+// ligada). A 188b prova os objetos novos AUSENTES e a base que o pre-voo da migration exige (7 itens). A 188m (medicao do volume) e' rol aberto.
+const ROL_DA_188A = [
+  "controle: catalogo publico visivel",
+  "livro_de_registro_anotar: uma so, com o corpo da 20261510000000 (md5)",
+  "livro_de_registro_anotar: plpgsql, trigger, SECURITY DEFINER, search_path pg_catalog e pg_temp, lock_timeout 200ms, e EXECUTE para ninguem de aplicacao",
+  "livro_de_registro_limpar: uma so, com o corpo da 20261510000000 (md5)",
+  "livro_de_registro_limpar: plpgsql, jsonb, SECURITY DEFINER, search_path pg_catalog e pg_temp, statement_timeout 60s, e EXECUTE para ninguem de aplicacao",
+  "livro_de_registro, livro_de_registro_chave e livro_de_registro_falhas: tabelas comuns, RLS ligada, nenhuma politica, fora do realtime, nada para PUBLIC, anon, authenticated e service_role (tabela e colunas)",
+  "livro_de_registro_id_seq: a sequencia do id existe e nada para PUBLIC, anon, authenticated e service_role",
+  "as 3 tabelas do livro: colunas com o tipo e a nulidade da migration (livro, chave e falhas)",
+  "as 17 tabelas: os 34 gatilhos do livro (alteracao e exclusao) por comando, habilitados, com as transicoes e o argumento do titular, e nenhum outro gatilho usando livro_de_registro_anotar",
+  "o job limpar-livro-de-registro: agendado as 06:17 UTC todo dia e ativo",
+];
+const ROL_DA_188B = [
+  "controle: catalogo publico visivel",
+  "livro_de_registro_anotar e livro_de_registro_limpar: ainda NAO existem",
+  "livro_de_registro, livro_de_registro_chave e livro_de_registro_falhas: as tabelas ainda NAO existem",
+  "nenhum gatilho tr_livro_alteracao ou tr_livro_exclusao em tabela nenhuma, e o job limpar-livro-de-registro NAO agendado",
+  "as 17 tabelas existem, comuns, cada uma com chave primaria de UMA coluna chamada id",
+  "as colunas do titular existem como uuid (marketplace_orders.user_id, devolucoes.user_id e order_id ou devolucao_id nas 4 filhas)",
+  "Postgres 14 ou mais novo, cron.schedule(text, text, text), cron.job e auth.uid() existem",
+];
 // 185 (privilegios padrao de public, SO LEITURA, sem migration: o que objeto NOVO de public criado pelo postgres recebe pelo ALTER DEFAULT
 // PRIVILEGES — a regra que projeto Supabase novo nao tem desde 30/05/2026 e que o instalador da loja nova reaplica). 8 linhas; a 8a e so
 // registro (quem recebe EXECUTE em funcao nova). AINDA FORA de ROL_FECHADO_POR_CONSULTA: entrar la exige a MESMA linha em
@@ -3466,6 +3491,8 @@ const ROL_DA_187B = [
   "os papeis anon, authenticated e service_role existem (a base que o pre-voo exige)",
 ];
 const ROL_FECHADO_POR_CONSULTA = {
+  "188a-conferir-o-livro-de-registro-aplicado": ROL_DA_188A,
+  "188b-antes-o-livro-de-registro-ausente": ROL_DA_188B,
   "190a-conferir-a-loja-grande-nao-trava-o-balcao-aplicado": ROL_DA_190A,
   "190b-antes-a-loja-grande-nao-trava-o-balcao-ausente": ROL_DA_190B,
   "187a-conferir-a-saude-da-reconciliacao-aplicado": ROL_DA_187A,
@@ -4563,6 +4590,8 @@ module.exports = {
   ROL_DA_52A,
   ROL_DA_52B,
   ROL_DA_185,
+  ROL_DA_188A,
+  ROL_DA_188B,
   ROL_FECHADO_POR_CONSULTA,
   estruturaDoRolFechado,
   FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,

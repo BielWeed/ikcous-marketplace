@@ -1,4 +1,17 @@
 {
+  "1.5.238": {
+    "titulo": "Fotos mais leves, produto do link mais rápido e avisos mais claros",
+    "novidades": [],
+    "correcoes": [
+      "No painel, em Notificações, os pedidos esperando você não somem mais em silêncio quando são muitos: a tela mostra os mais antigos e avisa que há mais, para você ver o resto em Pedidos.",
+      "Quem abre um produto por link (anúncio, Instagram) vê o produto sem esperar o catálogo inteiro carregar.",
+      "Quando a loja não consegue mandar e-mail, quem tenta criar conta, reenviar a confirmação ou recuperar a senha passa a ler que a loja não está conseguindo enviar e-mails e que deve avisar a loja, em vez de um “tente novamente” sem fim."
+    ],
+    "melhorias": [
+      "Nas lojas sem redução automática de imagem, as fotos novas de produto e de banner enviadas pelo painel ganham versões menores, e a vitrine mostra a do tamanho certo, mais leve no celular. As fotos que já estavam cadastradas continuam como estão.",
+      "No painel, trocar as chaves para outra conta do Mercado Pago fica bloqueado enquanto houver pedido aguardando pagamento na conta atual, para nenhum pagamento se perder de vista. Nada é salvo e o aviso explica quanto tempo esperar."
+    ]
+  },
   "1.5.237": {
     "titulo": "Nova tela Meus fornecedores",
     "novidades": [

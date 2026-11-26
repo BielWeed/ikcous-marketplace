@@ -406,6 +406,9 @@ on:
           - 186b-antes-a-caderneta-confere-a-chave-sem-bcrypt-ausente
           - 187a-conferir-a-saude-da-reconciliacao-aplicado
           - 187b-antes-a-saude-da-reconciliacao-ausente
+          - 188a-conferir-o-livro-de-registro-aplicado
+          - 188b-antes-o-livro-de-registro-ausente
+          - 188m-medir-o-volume-para-o-livro-de-registro
           - 190a-conferir-a-loja-grande-nao-trava-o-balcao-aplicado
           - 190b-antes-a-loja-grande-nao-trava-o-balcao-ausente
           - backups

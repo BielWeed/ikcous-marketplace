@@ -46,6 +46,8 @@ on:
       - ".github/workflows/aplicar-migrations.yml"
       # O ensaio da anonimizacao le o SQL direto deste roteiro: mudar o roteiro dispara a prova.
       - "docs/runbooks/atender-pedido-de-privacidade.md"
+      # O ensaio do livro de registro le o SQL direto deste roteiro: mudar o roteiro dispara a prova.
+      - "docs/runbooks/desfazer-pelo-livro-de-registro.md"
       # A prova viva do lote 60-66 (abaixo) roda estes três: mudar a consulta
       # 9a, o INSERT do backfill ou o script que os executa dispara a prova.
       - "scripts/publicacao/conferir-banco.cjs"
@@ -331,6 +333,9 @@ on:
       - "scripts/publicacao/consultas/186b-antes-a-caderneta-confere-a-chave-sem-bcrypt-ausente.sql"
       - "scripts/publicacao/consultas/187a-conferir-a-saude-da-reconciliacao-aplicado.sql"
       - "scripts/publicacao/consultas/187b-antes-a-saude-da-reconciliacao-ausente.sql"
+      - "scripts/publicacao/consultas/188a-conferir-o-livro-de-registro-aplicado.sql"
+      - "scripts/publicacao/consultas/188b-antes-o-livro-de-registro-ausente.sql"
+      - "scripts/publicacao/consultas/188m-medir-o-volume-para-o-livro-de-registro.sql"
       - "scripts/publicacao/consultas/190a-conferir-a-loja-grande-nao-trava-o-balcao-aplicado.sql"
       - "scripts/publicacao/consultas/190b-antes-a-loja-grande-nao-trava-o-balcao-ausente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
@@ -354,6 +359,7 @@ on:
       - ".github/workflows/rpc-ci.yml"
       - ".github/workflows/aplicar-migrations.yml"
       - "docs/runbooks/atender-pedido-de-privacidade.md"
+      - "docs/runbooks/desfazer-pelo-livro-de-registro.md"
       - "scripts/publicacao/conferir-banco.cjs"
       - "scripts/publicacao/consultas/9a-conferir-60-a-66-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-60-66.sql"
@@ -637,6 +643,9 @@ on:
       - "scripts/publicacao/consultas/186b-antes-a-caderneta-confere-a-chave-sem-bcrypt-ausente.sql"
       - "scripts/publicacao/consultas/187a-conferir-a-saude-da-reconciliacao-aplicado.sql"
       - "scripts/publicacao/consultas/187b-antes-a-saude-da-reconciliacao-ausente.sql"
+      - "scripts/publicacao/consultas/188a-conferir-o-livro-de-registro-aplicado.sql"
+      - "scripts/publicacao/consultas/188b-antes-o-livro-de-registro-ausente.sql"
+      - "scripts/publicacao/consultas/188m-medir-o-volume-para-o-livro-de-registro.sql"
       - "scripts/publicacao/consultas/190a-conferir-a-loja-grande-nao-trava-o-balcao-aplicado.sql"
       - "scripts/publicacao/consultas/190b-antes-a-loja-grande-nao-trava-o-balcao-ausente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
@@ -1612,6 +1621,28 @@ jobs:
       - name: Prova viva da saude da reconciliacao (migration 20261500000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-registra-a-saude-da-reconciliacao-viva.cjs
+      # Migration 20261510000000 (o livro de registro guarda a versao antiga): antes de UPDATE/DELETE em 17 tabelas de dinheiro o banco
+      # guarda a versao antiga (so a coluna que mudou; a linha inteira no DELETE), por gatilho POR COMANDO que nunca derruba a gravacao.
+      # Acesso fechado para anon/authenticated/service_role; as 17 tabelas com titular; cascatas; v24 anota estoque e cupom e nao o
+      # pedido novo; confirmar_pagamento e o webhook repetido; livro quebrado ou travado por outra conexao e a compra nasce em < 1 s;
+      # limpeza de 90 dias, teto, disjuntor e job; aplicar 2x (LF e CRLF), pre-voo, NOWAIT com escrita aberta, rollbacks; 13 mutantes.
+      # CLONE proprio.
+      - name: Prova viva do livro de registro (migration 20261510000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        timeout-minutes: 3
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-livro-de-registro-viva.cjs
+      # 20261510000000: as consultas 188a/188b/188m EXECUTADAS por um papel sem privilegio nas 17 tabelas, com defeitos plantados (cada
+      # um reprova so o item certo), papel cego do cron, e a 181a positiva com os gatilhos do livro em fornecedores. CLONE proprio.
+      - name: Prova viva do portao do livro de registro (consultas 188a/188b/188m)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        timeout-minutes: 3
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-livro-de-registro-portao-viva.cjs
+      # 20261510000000: o roteiro docs/runbooks/desfazer-pelo-livro-de-registro.md EXECUTADO bloco a bloco (achar, restaurar a linha
+      # apagada, valor no instante, desfazer a transacao) em ENSAIO e confirmado, contra um estragador real. CLONE proprio.
+      - name: Prova viva do roteiro de desfazer pelo livro (migration 20261510000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        timeout-minutes: 3
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-livro-de-registro-desfazer-ensaio-viva.cjs
       # Migration 20261530000000 (a loja grande nao trava o balcao nem os avisos): a porta leve buscar_clientes_do_balcao (so o
       # authenticated, guardas is_admin + is_admin_atual, o filtro da get_admin_customers_paged letra por letra, sem ler pedido) e os
       # indices de produtos (data_cadastro DESC, id) e do historico (new_status, created_at DESC). Diferencial contra a porta antiga no

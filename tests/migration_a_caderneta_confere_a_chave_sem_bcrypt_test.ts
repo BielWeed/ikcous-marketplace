@@ -391,7 +391,7 @@ Deno.test("lote de UMA migration em provasDeObjetos (186a depois, 186b antes), a
       !("soNosRefs" in lotes[0]),
   );
   assertStringIncludes(lotes[0]._comentario, "IKCOUS_FROTA_URL");
-  // Anexado no fim quando entrou: logo depois do lote da 20261480 (os lotes posteriores, como os da 20261500 e da 20261530, vêm depois dele).
+  // Anexado no fim quando entrou: logo depois do lote da 20261480 (os lotes posteriores, como os da 20261500, da 20261510 e da 20261530, vêm depois dele).
   const i186 = canais.provasDeObjetos.findIndex((l) => l.consulta === A186);
   assertEquals(
     canais.provasDeObjetos[i186 - 1]?.consulta,

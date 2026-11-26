@@ -38,9 +38,16 @@ describe("o painel e o leitor do balcão fora do precache do service worker", ()
 
   it("o filtro do painel está ligado ao injectManifest (manifestTransforms)", () => {
     // Sem esta linha o painel volta ao precache e nenhum erro aparece no build.
+    // A marca do núcleo (scripts/precacheNucleo.ts) vem DEPOIS: marca o que
+    // sobrou, nunca devolve ao manifesto o que o filtro tirou.
     expect(texto).toMatch(
-      /injectManifest:\s*\{[\s\S]*?manifestTransforms:\s*\[\s*semPainel\.tirarOPainel\s*\]/,
+      /injectManifest:\s*\{[\s\S]*?manifestTransforms:\s*\[\s*semPainel\.tirarOPainel,\s*nucleo\.marcarONucleo\s*\]/,
     );
+  });
+
+  it("o plugin que marca o núcleo entra no build junto do filtro do painel", () => {
+    expect(texto).toMatch(/semPainel\.plugin,[\s\S]{0,200}?nucleo\.plugin/);
+    expect(texto).toMatch(/const nucleo = precacheNucleo\(\{ root \}\)/);
   });
 
   it("o plugin que classifica o painel entra no build junto do portão de tamanho", () => {

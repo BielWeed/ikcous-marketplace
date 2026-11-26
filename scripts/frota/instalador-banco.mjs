@@ -139,7 +139,7 @@ const LOJA_JA_INSTALADA =
   "loja já instalada; migration nova vai pelo aplicar-migrations.yml";
 
 const RECEITA_DE_RESET =
-  "Este instalador NUNCA instala por cima. Se o projeto é mesmo da loja nova e não tem dado de ninguém, a receita de reset medida no ensaio de 25/11 (ENSAIO-INSTALACAO-DO-ZERO.md, seção 2.1) é: apagar as 11 políticas das migrations em storage.objects, os 4 buckets em storage.buckets (banners, branding, devolucoes, products) e as 3 tarefas em cron.job (devolver-cupons-de-pedidos-mortos, expirar-pedidos-vencidos, reconciliar-pagamentos), e então DROP SCHEMA public CASCADE + recriar o public com as permissões padrão. Apagar só o public NÃO basta (82 migrations falham depois). É decisão do dono, com o SQL na frente dele.";
+  "Este instalador NUNCA instala por cima. Se o projeto é mesmo da loja nova e não tem dado de ninguém, a receita de reset medida no ensaio de 25/11 (ENSAIO-INSTALACAO-DO-ZERO.md, seção 2.1) é: apagar as 11 políticas das migrations em storage.objects, os 4 buckets em storage.buckets (banners, branding, devolucoes, products) e as 4 tarefas em cron.job (devolver-cupons-de-pedidos-mortos, expirar-pedidos-vencidos, reconciliar-pagamentos e, desde a 20261510000000, limpar-livro-de-registro), e então DROP SCHEMA public CASCADE + recriar o public com as permissões padrão. Apagar só o public NÃO basta (82 migrations falham depois). É decisão do dono, com o SQL na frente dele.";
 
 // ─── T6: o plano ────────────────────────────────────────────────────────────
 
