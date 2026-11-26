@@ -1992,6 +1992,82 @@ Deno.test("definir-dono: NUNCA na savy nem na ikcous-publicada — pelo slug (se
   }
 });
 
+Deno.test("definir-dono: NUNCA nos alvos legados (loja, sandbox e toda chave `legado` do lojas.json) — mesmo com estado local apontando um projeto que não é de loja que vende", async () => {
+  // um projeto qualquer, fora dos refs fixos da IKCOUS e da Savy
+  const REF_QUALQUER = "refdeumprojetoaaaaaa";
+  const comEstado = async (slug, lojasBrutas) => {
+    const amb = await ambiente();
+    await conectar(amb);
+    const e = JSON.parse(await lerArquivoDeEstado(amb.pasta));
+    e.slug = slug;
+    e.passos["criar-projeto"] = {
+      veredito: "SIM",
+      ref: REF_QUALQUER,
+      org: ORG,
+    };
+    e.passos.banco = { veredito: "SIM" };
+    await amb.deps.estado.gravar(slug, e);
+    amb.deps.lojasBrutas = () => structuredClone(lojasBrutas);
+    return amb;
+  };
+  const legados = (extra) => ({
+    lojas: {
+      ...structuredClone(LOJAS_BRUTAS.lojas),
+      ...extra,
+    },
+  });
+  const legado = (ref) => ({
+    ref,
+    classe: "legado",
+    apelido: "Legado",
+    segredoDoToken: "SUPABASE_ACCESS_TOKEN",
+  });
+  // pelo nome fixo: com o lojas.json real (as duas chaves legadas lá) e com um
+  // lojas.json sem elas (adulterado não tira a proteção)
+  for (const slug of ["loja", "sandbox"]) {
+    for (const lojas of [
+      legados({ [slug]: legado("refdoalvolegadoaaaaa") }),
+      structuredClone(LOJAS_BRUTAS),
+    ]) {
+      const amb = await comEstado(slug, lojas);
+      const n = amb.api.chamadas.length;
+      for (const aplicar of [true, false]) {
+        const r = await executarPasso(
+          { passo: "definir-dono", slug, aplicar },
+          amb.deps,
+        );
+        assertEquals(r.veredito, "NÃO", r.mensagem);
+        assertStringIncludes(r.mensagem, "nunca");
+        assertStringIncludes(r.mensagem, "legado");
+      }
+      assertEquals(amb.api.chamadas.length, n, `falou com o alvo ${slug}`);
+      assertEquals(escritasDoDono(amb), 0);
+    }
+  }
+  // qualquer outra chave `classe: legado` do lojas.json, pelo cadastro
+  const amb = await comEstado(
+    "legado-novo",
+    legados({ "legado-novo": legado(REF_QUALQUER) }),
+  );
+  const n = amb.api.chamadas.length;
+  for (const aplicar of [true, false]) {
+    const r = await executarPasso(
+      { passo: "definir-dono", slug: "legado-novo", aplicar },
+      amb.deps,
+    );
+    assertEquals(r.veredito, "NÃO", r.mensagem);
+    assertStringIncludes(r.mensagem, "nunca");
+  }
+  assertEquals(amb.api.chamadas.length, n, "falou com o alvo legado");
+  // a loja nova já cadastrada (B5) no lojas.json real como assinante segue
+  // recebendo o definir-dono: a recusa é pela classe legado, não por ser chave
+  const nova = await ateADona();
+  nova.deps.lojasBrutas = () => structuredClone(LOJAS_COM_A_NOVA);
+  const r = await executarPasso(pedido("definir-dono"), nova.deps);
+  assertEquals(r.veredito, "SIM", r.mensagem);
+  assertEquals(escritasDoDono(nova), 1);
+});
+
 Deno.test("definir-dono: só em loja aberta pelo nova-loja (sem estado local = NÃO sem rede); lojas.json ilegível = INCERTO sem rede", async () => {
   const amb = await ambiente();
   const r = await executarPasso(pedido("definir-dono"), amb.deps);
@@ -2120,6 +2196,41 @@ Deno.test("conferir: reconciliação DEGRADADA = NÃO mostrando rodadas_degradad
   assertStringIncludes(rec.detalhe, "rodadas_degradadas_seguidas");
   assertStringIncludes(rec.detalhe, "4");
   assertEquals(r.veredito, "NÃO");
+});
+
+Deno.test("conferir: item admin — a dona cadastrada (admin nas duas fontes) que nomeou outras admins NÃO reprova a loja; sem dono, só com exatamente 1 admin", async () => {
+  const amb = await ateConferir();
+  const banco = amb.api.banco;
+  const admin = async () => {
+    const r = await executarPasso(pedido("conferir"), amb.deps);
+    return r.itens.find((i) => i.item === "admin");
+  };
+  // depois da abertura, a dona nomeou mais duas administradoras
+  banco.outrasAdmins = 2;
+  let a = await admin();
+  assertEquals(a.veredito, "SIM", a.detalhe);
+  assertStringIncludes(a.detalhe, "dono");
+  // sem dono cadastrado, 2+ admins continua reprovando (antes do definir-dono)
+  banco.dono = null;
+  a = await admin();
+  assertEquals(a.veredito, "NÃO", a.detalhe);
+  // dono cadastrado que não é mais admin, com outras admins: reprova
+  banco.dono = "ex";
+  a = await admin();
+  assertEquals(a.veredito, "NÃO", a.detalhe);
+  // a leitura do dono cai com 2+ admins: não dá para dizer SIM nem NÃO
+  banco.dono = "alvo";
+  const responder = banco.responder;
+  banco.responder = (sql) => {
+    if (sql === SQL_DONO) throw Object.assign(new Error("caiu"), { http: 503 });
+    return responder(sql);
+  };
+  a = await admin();
+  assertEquals(a.veredito, "INCERTO", a.detalhe);
+  // exatamente 1 admin (nas duas fontes) segue SIM mesmo com a leitura do dono caída
+  banco.outrasAdmins = 0;
+  a = await admin();
+  assertEquals(a.veredito, "SIM", a.detalhe);
 });
 
 Deno.test("conferir: dono que não é mais admin = NÃO no item definir-dono", async () => {

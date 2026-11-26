@@ -179,6 +179,13 @@ const REFS_PROTEGIDOS = Object.freeze([
   "cafkrminfnokvgjqtkle", // ikcous-publicada (e o legado "loja")
   "gnjsrucsmjkajijrakzr", // savy
 ]);
+/** Os alvos legados de teste (`classe: legado` em lojas.json) nunca são loja
+ * aberta pelo nova-loja: o definir-dono os recusa pelo nome, por esta lista
+ * fixa (um lojas.json adulterado não tira a proteção) e por toda chave
+ * `legado` do lojas.json. */
+export const LOJAS_LEGADAS = Object.freeze(["loja", "sandbox"]);
+const recusaDoLegado = (nome) =>
+  `a loja ${textoSeguro(nome, 40)} é um alvo legado de teste (classe legado em lojas.json): o definir-dono nunca roda nele, só em loja aberta pelo nova-loja. Nada foi feito.`;
 export const SIM = "SIM";
 export const NAO = "NÃO";
 export const INCERTO = "INCERTO";
@@ -1765,6 +1772,7 @@ function porQueEProtegida(d, slug, ref) {
   const recusa = (qual) =>
     `${qual}: o definir-dono nunca roda nas lojas que já vendem (IKCOUS e Savy); o dono delas é cadastrado pelo dono do produto (docs/runbooks/definir-o-dono-da-loja.md). Nada foi feito.`;
   if (LOJAS_PROTEGIDAS.includes(slug)) return recusa(`a loja ${slug}`);
+  if (LOJAS_LEGADAS.includes(slug)) return recusaDoLegado(slug);
   if (REFS_PROTEGIDOS.includes(ref))
     return recusa(`o projeto ${ref} é de uma loja que já vende`);
   let lojas;
@@ -1785,6 +1793,12 @@ function porQueEProtegida(d, slug, ref) {
       { codigo: ESTADO_DESCONHECIDO },
     );
   }
+  // o próprio nome cadastrado como alvo legado (a entrada dele é pulada abaixo)
+  if (
+    Object.hasOwn(lojas, slug) &&
+    Reflect.get(lojas, slug)?.classe === "legado"
+  )
+    return recusaDoLegado(slug);
   // toda loja que já está no cadastro com OUTRO nome é loja que já existia
   for (const [nome, l] of Object.entries(lojas)) {
     if (nome === slug) continue;
@@ -2185,7 +2199,23 @@ async function conferirNaLoja(pedido, d, ref, org, item) {
     item("login", INCERTO, `não consegui conferir o login: ${porque(erro)}`);
   }
 
-  // admin: exatamente 1, com admin nas duas fontes do cargo
+  // o dono (critério da 88c), lido UMA vez para os itens admin e definir-dono
+  let dono;
+  try {
+    dono = { lido: await lerDono(leitura, ref) };
+  } catch (erro) {
+    dono = { erro };
+  }
+  // true/false; null = não deu para ler (nunca vira SIM)
+  const donoEAdmin = () => {
+    if (dono.lido?.tabela === false) return false;
+    const l = dono.lido?.tabela === true ? linhaDoDono(dono.lido.linhas) : null;
+    return l === null ? null : l.donos === 1 && l.dono_admin;
+  };
+
+  // admin: o dono cadastrado é admin nas duas fontes do cargo (depois do
+  // definir-dono, a dona pode ter nomeado outras), ou, sem isso, exatamente
+  // 1 admin com admin nas duas fontes (antes do definir-dono)
   try {
     const r = await leitura.consultarBanco(ref, SQL_ADMINS);
     const l = Array.isArray(r) && r.length === 1 ? r[0] : null;
@@ -2200,6 +2230,18 @@ async function conferirNaLoja(pedido, d, ref, org, item) {
         "admin",
         SIM,
         "1 administradora, com admin nas duas fontes do cargo.",
+      );
+    } else if (l.admins > 1 && donoEAdmin() === true) {
+      item(
+        "admin",
+        SIM,
+        `o dono cadastrado é admin nas duas fontes do cargo (critério da 88c); a loja tem ${l.admins} administradoras (${l.nas_duas} nas duas), nomeadas depois da abertura.`,
+      );
+    } else if (l.admins > 1 && donoEAdmin() === null) {
+      item(
+        "admin",
+        INCERTO,
+        `achei ${l.admins} administradoras e não consegui ler se o dono cadastrado é uma delas: ${dono.erro ? porque(dono.erro) : "a leitura do dono voltou fora do formato."}`,
       );
     } else if (l.admins === 0) {
       item(
@@ -2223,8 +2265,14 @@ async function conferirNaLoja(pedido, d, ref, org, item) {
   }
 
   // definir-dono: o critério da 88c (1 dono, em auth.users, admin nas duas)
-  try {
-    const lido = await lerDono(leitura, ref);
+  if (dono.erro) {
+    item(
+      "definir-dono",
+      INCERTO,
+      `não consegui ler o dono: ${porque(dono.erro)}`,
+    );
+  } else {
+    const { lido } = dono;
     if (lido.tabela === false) {
       item("definir-dono", NAO, SEM_A_TABELA_DO_DONO);
     } else {
@@ -2249,8 +2297,6 @@ async function conferirNaLoja(pedido, d, ref, org, item) {
         );
       else item("definir-dono", NAO, decidirDono(lido.linhas).mensagem);
     }
-  } catch (erro) {
-    item("definir-dono", INCERTO, `não consegui ler o dono: ${porque(erro)}`);
   }
 }
 
@@ -2479,6 +2525,11 @@ export async function executarPasso(pedido, deps = {}) {
         NAO,
         `a loja ${pedido.slug}: o definir-dono nunca roda nas lojas que já vendem (IKCOUS e Savy); o dono delas é cadastrado pelo dono do produto (docs/runbooks/definir-o-dono-da-loja.md). Nada foi feito.`,
       );
+    } else if (
+      passo === "definir-dono" &&
+      LOJAS_LEGADAS.includes(pedido.slug)
+    ) {
+      r = resultado(NAO, recusaDoLegado(pedido.slug));
     } else if (passo === "abrir" && slugQueNaoCabe(pedido.slug)) {
       r = resultado(NAO, slugQueNaoCabe(pedido.slug));
     }
