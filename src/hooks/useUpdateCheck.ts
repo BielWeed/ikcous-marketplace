@@ -168,8 +168,29 @@ export function useUpdateCheck() {
   useEffect(() => {
     if (!registration) return;
 
+    // Cada rodada são 2 pedidos à CDN (/version.json + o sw.js do
+    // registration.update()). A cada 3 min, um painel aberto 8 h/dia gastava
+    // ~9.600 pedidos/mês (medido em 26/11/2026) — com 60 lojas, mais da metade
+    // do limite mensal do plano Hobby da Vercel só com painéis abertos. Esta
+    // checagem periódica é o caminho PRINCIPAL para descobrir versão nova: o
+    // canal ao vivo (useRealtimeUpdate, `deploy-ping`) não tem emissor hoje.
+    // 20 min é a troca consciente: custo de CDN contra até 20 min de atraso
+    // para um painel aberto perceber a versão nova; a volta à aba confere na
+    // hora. As constantes moram DENTRO do efeito de propósito: os testes
+    // executam este bloco lido do fonte, sem o resto do módulo.
+    const INTERVALO_DA_CHECAGEM_MS = 20 * 60 * 1000;
+    // Troca rápida de aba não repete a checagem (vale para o intervalo também).
+    const PISO_ENTRE_CHECAGENS_MS = 60 * 1000;
+    let ultimaChecagemEm = Number.NEGATIVE_INFINITY;
+
     const checkUpdateNow = async () => {
       if (document.visibilityState === "hidden") return;
+      const agora = Date.now();
+      const idade = agora - ultimaChecagemEm;
+      // Relógio que andou para trás (idade negativa) não prova checagem
+      // recente: confere, senão o piso pularia tudo por horas.
+      if (idade >= 0 && idade < PISO_ENTRE_CHECAGENS_MS) return;
+      ultimaChecagemEm = agora;
       console.log("[PWA] Checking for updates...");
       const ver = await fetchServerVersion();
       if (ver && ver !== SAFE_APP_VERSION) {
@@ -183,7 +204,7 @@ export function useUpdateCheck() {
       });
     };
 
-    const intervalId = setInterval(checkUpdateNow, 3 * 60 * 1000);
+    const intervalId = setInterval(checkUpdateNow, INTERVALO_DA_CHECAGEM_MS);
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
