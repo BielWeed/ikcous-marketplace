@@ -99,21 +99,33 @@ está `cancelled` nem `delivered`. Isso pega o pedido pago ainda não entregue o
 pendente (`pending` com `payment_status = 'aguardando'`; a reserva vencida vira `cancelled` sozinha
 pelo `expirar_pedidos_vencidos`).
 
-Rode também esta, no mesmo banco, para a devolução de dinheiro que ainda corre (um pedido
-cancelado com estorno em andamento não aparece na consulta de cima, e a lojista precisa do painel
-para acompanhar o estorno):
+Rode também estas duas, no mesmo banco. A consulta de cima não vê o que a loja ainda deve à
+cliente depois que o pedido fecha, e a loja adormecida tira o painel da lojista:
 
 ```sql
-select status, count(*) as estornos, min(created_at) as mais_antigo
-  from public.order_refunds
- where status in ('solicitado', 'em_processamento')
+-- dinheiro recebido em pedido cancelado que ainda não virou "estornado"
+-- (estorno pedido, em andamento, que falhou ou recusado: olha o resultado, não a etapa)
+select payment_status, count(*) as pedidos, min(created_at) as mais_antigo
+  from public.marketplace_orders
+ where status = 'cancelled'
+   and payment_status in ('pago', 'pago_apos_expirar', 'recebido_na_entrega')
+ group by payment_status
+ order by payment_status;
+```
+
+```sql
+-- devolução que a cliente abriu e ainda não terminou (prazo legal correndo)
+select status, count(*) as devolucoes, min(created_at) as mais_antiga
+  from public.devolucoes
+ where status in ('solicitada', 'aprovada', 'em_transito', 'recebida')
  group by status
  order by status;
 ```
 
-- **Nenhuma linha nas duas:** pode adormecer.
+- **Nenhuma linha nas três:** pode adormecer.
 - **Alguma linha em qualquer uma:** **não adormeça.** Adie até o pedido fechar (entregue, retirado
-  ou cancelado) e o estorno terminar, e rode as consultas de novo antes de tentar outra vez.
+  ou cancelado), o dinheiro voltar à cliente e a devolução terminar, e rode as três de novo antes
+  de tentar outra vez.
 
 ## Pôr uma loja para dormir
 
