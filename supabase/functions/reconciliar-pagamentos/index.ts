@@ -510,6 +510,9 @@ type DepsDaReconciliacao = {
   // Teto de espera do passo do aviso de cancelamento (opção da chamada, como
   // `tetoDoPushMs`): o teste o encurta; em produção vale `TETO_DO_PASSO_MS`.
   tetoDosCancelamentosMs?: number;
+  // Teto de espera pela gravação do batimento (o teste o encurta); em produção
+  // vale `TETO_DO_PUSH_MS`: um banco lento não pode prender a resposta da rodada.
+  tetoDoBatimentoMs?: number;
   // Teto de espera pelo e-mail ao cliente (o teste o encurta); em produção
   // vale `TETO_DO_EMAIL_MS`: o SMTP lento não pode prender a fila nem os estornos.
   tetoDoEmailMs?: number;
@@ -534,28 +537,41 @@ function resumirEtapa(processados: number, falhas: number, erro?: string): Resum
  * objeto da resposta: degradado SE E SÓ SE alguma etapa falhou.
  *
  * NUNCA muda a resposta: nenhum retorno, e toda falha (porta ausente antes da
- * migration, banco fora, erro síncrono) vai só ao log, e só com o NOME do erro —
- * a mensagem e o detalhe do PostgREST podem carregar texto do banco.
+ * migration, banco fora, erro síncrono, prazo de `tetoMs` estourado) vai só ao
+ * log, e só com o NOME e o CÓDIGO do erro (ex.: PGRST202, 42501) — a mensagem e
+ * o detalhe do PostgREST podem carregar texto do banco.
  */
 async function registrarSaudeDaRodada(
   supabase: ReturnType<typeof createClient>,
   etapas: Record<string, ResumoDaEtapa>,
   degradado: boolean,
+  tetoMs: number,
 ): Promise<void> {
   const etapasComFalha = Object.entries(etapas)
     .filter(([, etapa]) => !etapa.ok)
     .map(([nome]) => nome);
   try {
-    const { error } = await supabase.rpc("saude_da_reconciliacao_registrar", {
-      p_degradado: degradado,
-      p_etapas_com_falha: etapasComFalha,
-    });
-    if (error) throw error;
+    // Promise.resolve().then: o builder do PostgREST é só "thenable" (o teto
+    // precisa de uma Promise de verdade) e um erro síncrono vira rejeição.
+    const resultado = await comTempoLimite(
+      Promise.resolve().then(() =>
+        supabase.rpc("saude_da_reconciliacao_registrar", {
+          p_degradado: degradado,
+          p_etapas_com_falha: etapasComFalha,
+        })
+      ),
+      tetoMs,
+    );
+    if (resultado === undefined) {
+      throw Object.assign(new Error("prazo"), { name: "PrazoEsgotado" });
+    }
+    if (resultado.error) throw resultado.error;
   } catch (erro) {
-    const nome = typeof (erro as { name?: unknown } | null)?.name === "string"
-      ? (erro as { name: string }).name
-      : "erro_sem_nome";
-    console.error("reconciliar-pagamentos: saude_da_reconciliacao_registrar falhou (não fatal)", nome);
+    const e = erro as { name?: unknown; code?: unknown } | null;
+    const nome = typeof e?.name === "string" ? e.name : "erro_sem_nome";
+    // Só um código com cara de código (SQLSTATE / PGRSTnnn): nada de texto livre no log.
+    const codigo = typeof e?.code === "string" && /^[A-Za-z0-9_]{1,16}$/.test(e.code) ? e.code : "sem_codigo";
+    console.error("reconciliar-pagamentos: saude_da_reconciliacao_registrar falhou (não fatal)", nome, codigo);
   }
 }
 
@@ -1733,7 +1749,7 @@ async function handler(req: Request, deps: DepsDaReconciliacao = {}): Promise<Re
   // Batimento: a 200 saudável, a 200 degradada e a 500 gravam; as saídas cedo
   // (503 sem segredo, 401) NÃO, de propósito — o batimento envelhece e quem
   // confere de fora vê a reconciliação parada. Não muda status nem corpo.
-  await registrarSaudeDaRodada(supabase, etapas, degradado);
+  await registrarSaudeDaRodada(supabase, etapas, degradado, deps.tetoDoBatimentoMs ?? TETO_DO_PUSH_MS);
   return json(
     {
       ok: !erroDaFilaDePagamentos,

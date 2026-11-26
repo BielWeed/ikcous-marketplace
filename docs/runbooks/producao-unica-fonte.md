@@ -2040,9 +2040,10 @@ O cadastro de UMA vez, na entrada do cliente:
    (`POST <url da loja>/rest/v1/rpc/saude_da_loja`, corpo `{}`). `idade_rodada_s` nulo = a
    reconciliacao nunca registrou uma rodada (Vault vazio, segredo divergente ou function fora do ar):
    o passo 4 NAO terminou. Numero alto = parou de rodar. `degradado: true` vem com
-   `etapas_com_falha` (qual etapa) e `rodadas_degradadas_seguidas` (ha quantas rodadas). E a mesma
-   leitura que o vigia do app de gestao faz sozinho, de 10 em 10 minutos; nenhuma contagem de
-   pagamento sai por ela.
+   `rodadas_degradadas_seguidas` (ha quantas rodadas). QUAL etapa falhou a leitura publica nao diz,
+   de proposito: veja nos logs da function ou, como dono do banco no SQL Editor,
+   `SELECT etapas_com_falha FROM public.saude_da_reconciliacao;`. E a mesma leitura que o vigia do
+   app de gestao faz sozinho, de 10 em 10 minutos; nenhuma contagem de pagamento sai por ela.
 5. **Chave de cifra das credenciais:** instale `MP_CHAVES_ENCRYPTION_KEY` (32 bytes em base64) nas
    functions da loja ANTES de cadastrar credenciais de pagamento ou do Gmail. Sem ela o cadastro
    fica `indisponivel` (falha fechada: ninguem cobra). Nunca substitua uma chave que ja cifrou

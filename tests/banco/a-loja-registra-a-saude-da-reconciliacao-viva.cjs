@@ -21,7 +21,7 @@
  *   (e) duas conexões reais: a segunda rodada espera a linha da primeira e o contador soma 2 (nenhuma rodada se perde);
  *   (f) transação: sem COMMIT escondido; DDL aberta na tabela faz a reaplicação desistir no lock_timeout de 5 s;
  *   (g) consultas 187a/187b EXECUTADAS no catálogo real (como authenticated), com defeitos plantados;
- *   (h) MUTANTES (GRANT da porta ao anon, contador sem zerar, ultima_saudavel_em andando na rodada ruim): o comportamento cai pelo motivo
+ *   (h) MUTANTES (GRANT da porta ao anon, contador sem zerar, ultima_saudavel_em andando na rodada ruim, leitura pública com as etapas): o comportamento cai pelo motivo
  *       certo, e o pós-voo de cada um recusa sozinho.
  *
  * USO: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-registra-a-saude-da-reconciliacao-viva.cjs
@@ -57,9 +57,10 @@ const SQL_REGISTRAR =
 const SQL_SAUDE = "SELECT public.saude_da_loja() AS s";
 const CONFIRMAR_APAGAR =
   "SET LOCAL app.confirmo_apagar_saude_da_reconciliacao = 'APAGAR'";
+// As 7 chaves da leitura PUBLICA. etapas_com_falha fica de fora de proposito (revisao de 26/11): dizer qual etapa
+// falha (estorno, contestacao) contaria a qualquer um que a loja tem problema de dinheiro.
 const CHAVES = [
   "degradado",
-  "etapas_com_falha",
   "idade_rodada_s",
   "idade_saudavel_s",
   "medidor",
@@ -210,10 +211,14 @@ async function comportamento(c) {
         `${papel} não faz ${rotulo} direto na tabela`,
       );
 
-  // Tabela vazia: tudo nulo, menos o medidor; as 8 chaves e nenhuma outra.
+  // Tabela vazia: tudo nulo, menos o medidor; as 7 chaves e nenhuma outra.
   await c.query(`DELETE FROM ${TAB}`);
   const vazia = (await como(c, "anon", SQL_SAUDE)).linhas[0].s;
-  assert.deepEqual(Object.keys(vazia).sort(), CHAVES, "as 8 chaves da saúde");
+  assert.deepEqual(
+    Object.keys(vazia).sort(),
+    CHAVES,
+    "as 7 chaves da saúde (sem etapas_com_falha)",
+  );
   assert.deepEqual(
     vazia,
     Object.fromEntries(CHAVES.map((k) => [k, k === "medidor" ? 1 : null])),
@@ -281,14 +286,17 @@ async function comportamento(c) {
      VALUES (1, now() - interval '1234.6 seconds', now() - interval '99999 seconds', true, '{contestacoes}', 7)`,
   );
   const lida = (await como(c, "anon", SQL_SAUDE)).linhas[0].s;
-  assert.deepEqual(Object.keys(lida).sort(), CHAVES);
+  assert.deepEqual(
+    Object.keys(lida).sort(),
+    CHAVES,
+    "a leitura pública não expõe as etapas com falha, mesmo com a linha degradada",
+  );
   assert.deepEqual(
     {
       medidor: lida.medidor,
       idade_rodada_s: lida.idade_rodada_s,
       idade_saudavel_s: lida.idade_saudavel_s,
       degradado: lida.degradado,
-      etapas_com_falha: lida.etapas_com_falha,
       rodadas_degradadas_seguidas: lida.rodadas_degradadas_seguidas,
     },
     {
@@ -296,7 +304,6 @@ async function comportamento(c) {
       idade_rodada_s: 1234,
       idade_saudavel_s: 99999,
       degradado: true,
-      etapas_com_falha: ["contestacoes"],
       rodadas_degradadas_seguidas: 7,
     },
     "a saúde lida pelo anon",
@@ -832,6 +839,16 @@ const MUTANTES = [
         "ultima_saudavel_em = EXCLUDED.ultima_rodada_em,",
       ),
     "rodada ruim não mexe em ultima_saudavel_em",
+  ],
+  [
+    "leitura pública devolvendo as etapas com falha",
+    (s) =>
+      trocar(
+        s,
+        "    'degradado', v.degradado,\n",
+        "    'degradado', v.degradado,\n    'etapas_com_falha', to_jsonb(v.etapas_com_falha),\n",
+      ),
+    "as 7 chaves da saúde",
   ],
 ];
 async function mutantes(c) {

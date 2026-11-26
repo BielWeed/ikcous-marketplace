@@ -299,7 +299,7 @@ da autenticação (inclusive a que responde `500` ou `200` com `degradado: true`
 | campo | o que diz |
 | --- | --- |
 | `idade_rodada_s` | segundos desde a última rodada, contados pelo relógio do banco da loja. **Nulo** = nunca registrou (Vault vazio, segredo divergente — o `401` não grava —, function fora do ar). **Acima de 900** (15 min, com o cron de 10 min) = a reconciliação parou |
-| `degradado` / `etapas_com_falha` | a última rodada terminou com alguma etapa falhando, e quais (`pagamentos`, `cancelamentos`, `estornos`, `contestacoes`) |
+| `degradado` | a última rodada terminou com alguma etapa falhando. **Quais** etapas a leitura pública não diz, de propósito (contaria a qualquer um que a loja tem estorno ou contestação com problema): veja os logs da function ou a coluna `etapas_com_falha` da tabela, como dono do banco no SQL Editor |
 | `rodadas_degradadas_seguidas` | há quantas rodadas seguidas está degradada (volta a 0 na primeira rodada boa) |
 | `ultima_saudavel_em` / `idade_saudavel_s` | a última rodada sem falha nenhuma |
 

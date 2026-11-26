@@ -50,7 +50,7 @@ WITH tab AS (
        FROM fn f WHERE f.proname = 'saude_da_reconciliacao_registrar'), false) THEN 'sim' ELSE 'nao' END
   UNION ALL SELECT 'saude_da_loja: uma so, com o corpo desta migration (md5), plpgsql, SECURITY DEFINER, STABLE, search_path fixo, sem argumento, devolve jsonb', 'sim', CASE WHEN
     (SELECT count(*) FROM fn WHERE proname = 'saude_da_loja') = 1
-    AND EXISTS (SELECT 1 FROM fn f WHERE f.proname = 'saude_da_loja' AND f.h = 'c06bfddb10d28733f7a93e30783fbd91'
+    AND EXISTS (SELECT 1 FROM fn f WHERE f.proname = 'saude_da_loja' AND f.h = '511a9587f5d94666b8639e89a0128624'
                   AND f.lanname = 'plpgsql' AND f.prosecdef AND f.provolatile = 's' AND NOT f.proretset AND NOT f.proisstrict
                   AND f.proconfig = ARRAY['search_path=public, pg_temp']::text[]
                   AND f.argumentos = '' AND f.retorno = 'jsonb') THEN 'sim' ELSE 'nao' END

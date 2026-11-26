@@ -12,14 +12,15 @@
  *   (b) rodada degradada com HTTP 200: grava degradado = true com a etapa que falhou;
  *   (c) rodada que responde 500 (fila de pagamentos ilegível): grava também (degradada, com "pagamentos");
  *   (d) a porta devolve erro: status e corpo IGUAIS aos da rodada em que ela grava; o log leva só o NOME
- *       do erro (nunca a mensagem nem o detalhe);
+ *       e o CÓDIGO do erro (PGRST202, 42501; nunca a mensagem, o detalhe nem um "código" de texto livre);
  *   (e) a porta lança (síncrona ou rejeitada): idem;
+ *   (g) a porta nunca responde: a rodada não espera além do teto e responde igual (log: PrazoEsgotado);
  *   (f) 503 (sem RECONCILIACAO_SECRET) e 401 (segredo errado) NÃO gravam — de propósito: o batimento
  *       envelhece e o vigia acusa.
  *
  * O banco é um dublê NEUTRO (qualquer leitura não roteirizada devolve vazio, sem erro). Dados inventados.
  */
-import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.177.0/testing/asserts.ts";
+import { assert, assertEquals, assertStringIncludes } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import { handler } from "./index.ts";
 
 const SEGREDO = "segredo-ficticio-batimento-da-reconciliacao";
@@ -118,7 +119,7 @@ function requisicao(segredo = SEGREDO) {
   });
 }
 
-async function rodar(b: ReturnType<typeof banco>, segredo = SEGREDO) {
+async function rodar(b: ReturnType<typeof banco>, segredo = SEGREDO, tetoDoBatimentoMs?: number) {
   const reais = { log: console.log, warn: console.warn, error: console.error };
   const logs: string[] = [];
   // Um Error passado inteiro ao console imprime a mensagem e o stack: o capturador também, senão
@@ -144,6 +145,7 @@ async function rodar(b: ReturnType<typeof banco>, segredo = SEGREDO) {
       enviarAvisoAtrasado: () => Promise.resolve(),
       enviarPushContado: () => Promise.resolve(1),
       vendedorId: "123456",
+      ...(tetoDoBatimentoMs === undefined ? {} : { tetoDoBatimentoMs }),
     });
     return { status: resposta.status, corpo: await resposta.json(), logs };
   } finally {
@@ -194,38 +196,60 @@ Deno.test("(c) fila de pagamentos ilegível (500): grava também, degradada, com
   assertEquals(gravacoes(b).map((g) => g.args), [{ p_degradado: true, p_etapas_com_falha: ["pagamentos"] }]);
 });
 
-// ── (d) e (e) a porta falha: nada muda na resposta, o log leva só o nome ──
+// ── (d) e (e) a porta falha: nada muda na resposta, o log leva só o nome e o código ──
 
-for (
-  const [rotulo, porta] of [
-    [
-      "devolve { error } (função ausente, PGRST202)",
-      () =>
-        Promise.resolve({
-          data: null,
-          error: Object.assign(new Error(MENSAGEM_SECRETA), {
-            name: "PostgrestError",
-            code: "PGRST202",
-            details: MENSAGEM_SECRETA,
-            hint: MENSAGEM_SECRETA,
-          }),
+const CASOS_DA_PORTA = [
+  {
+    rotulo: "devolve { error } (função ausente, PGRST202)",
+    porta: () =>
+      Promise.resolve({
+        data: null,
+        error: Object.assign(new Error(MENSAGEM_SECRETA), {
+          name: "PostgrestError",
+          code: "PGRST202",
+          details: MENSAGEM_SECRETA,
+          hint: MENSAGEM_SECRETA,
         }),
-    ],
-    ["rejeita a promessa", () => Promise.reject(new TypeError(MENSAGEM_SECRETA))],
-    [
-      "lança de forma síncrona",
-      () => {
-        throw new RangeError(MENSAGEM_SECRETA);
-      },
-    ],
-  ] as const
-) {
+      }),
+    nome: "PostgrestError",
+    codigo: "PGRST202",
+  },
+  {
+    rotulo: "devolve { error } de permissão (42501)",
+    porta: () => Promise.resolve({ data: null, error: { name: "PostgrestError", code: "42501", message: MENSAGEM_SECRETA } }),
+    nome: "PostgrestError",
+    codigo: "42501",
+  },
+  {
+    // Um "código" que é texto livre não vai ao log: só o que tem cara de código.
+    rotulo: "devolve { error } com code de texto livre",
+    porta: () => Promise.resolve({ data: null, error: { name: "PostgrestError", code: MENSAGEM_SECRETA, message: "x" } }),
+    nome: "PostgrestError",
+    codigo: "sem_codigo",
+  },
+  {
+    rotulo: "rejeita a promessa",
+    porta: () => Promise.reject(new TypeError(MENSAGEM_SECRETA)),
+    nome: "TypeError",
+    codigo: "sem_codigo",
+  },
+  {
+    rotulo: "lança de forma síncrona",
+    porta: () => {
+      throw new RangeError(MENSAGEM_SECRETA);
+    },
+    nome: "RangeError",
+    codigo: "sem_codigo",
+  },
+];
+
+for (const { rotulo, porta, nome, codigo } of CASOS_DA_PORTA) {
   for (const [cenario, opcoes] of [
     ["saudável", {}],
     ["degradada", { falharEstornos: true }],
     ["500", { falharFila: true }],
   ] as const) {
-    Deno.test(`(d/e) a porta ${rotulo}, rodada ${cenario}: status e corpo IGUAIS aos da rodada que grava; log só com o nome do erro`, async () => {
+    Deno.test(`(d/e) a porta ${rotulo}, rodada ${cenario}: status e corpo IGUAIS aos da rodada que grava; log só com o nome e o código do erro`, async () => {
       const referencia = await rodar(banco(opcoes));
       const b = banco({ ...opcoes, porta });
       const r = await rodar(b);
@@ -236,10 +260,33 @@ for (
       const linhas = r.logs.filter((l) => l.includes("saude_da_reconciliacao_registrar"));
       assertEquals(linhas.length, 1, `um aviso no log: ${JSON.stringify(r.logs)}`);
       assertEquals(r.logs.some((l) => l.includes(MENSAGEM_SECRETA)), false, "a mensagem do erro não vai ao log");
-      const nome = rotulo.startsWith("devolve") ? "PostgrestError" : rotulo.startsWith("rejeita") ? "TypeError" : "RangeError";
-      assertStringIncludes(linhas[0], nome);
+      assertStringIncludes(linhas[0], ` ${nome} ${codigo}`);
     });
   }
+}
+
+// ── (g) a porta nunca responde: a rodada não espera além do teto ─────────
+
+for (const [cenario, opcoes] of [
+  ["saudável", {}],
+  ["degradada", { falharEstornos: true }],
+  ["500", { falharFila: true }],
+] as const) {
+  Deno.test(`(g) a porta nunca responde, rodada ${cenario}: a resposta sai IGUAL e dentro do teto; o log diz PrazoEsgotado`, async () => {
+    const referencia = await rodar(banco(opcoes));
+    const b = banco({ ...opcoes, porta: () => new Promise(() => {}) });
+    const inicio = Date.now();
+    const r = await rodar(b, SEGREDO, 50);
+    const ms = Date.now() - inicio;
+
+    assert(ms < 2000, `a rodada esperou ${ms} ms pela porta`);
+    assertEquals(r.status, referencia.status);
+    assertEquals(r.corpo, referencia.corpo);
+    assertEquals(gravacoes(b).length, 1);
+    const linhas = r.logs.filter((l) => l.includes("saude_da_reconciliacao_registrar"));
+    assertEquals(linhas.length, 1, `um aviso no log: ${JSON.stringify(r.logs)}`);
+    assertStringIncludes(linhas[0], " PrazoEsgotado sem_codigo");
+  });
 }
 
 // ── (f) saídas cedo não gravam ──────────────────────────────────────────

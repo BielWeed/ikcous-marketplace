@@ -22,7 +22,7 @@ BEGIN
   FOR v_f IN
     SELECT * FROM (VALUES
       ('saude_da_reconciliacao_registrar', 'public.saude_da_reconciliacao_registrar(boolean, text[])', '06c25460eb479a7a98fc1abd4f384dfd'),
-      ('saude_da_loja', 'public.saude_da_loja()', 'c06bfddb10d28733f7a93e30783fbd91')
+      ('saude_da_loja', 'public.saude_da_loja()', '511a9587f5d94666b8639e89a0128624')
     ) AS t(nome, assinatura, hash)
   LOOP
     IF (SELECT count(*) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = v_f.nome) > 1 THEN

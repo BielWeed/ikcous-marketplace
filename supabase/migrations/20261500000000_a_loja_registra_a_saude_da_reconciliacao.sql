@@ -24,9 +24,10 @@
 --       para now(); na RUIM o contador SOMA 1 (a partir do valor da linha travada: duas rodadas simultaneas somam 2, nunca 1) e ultima_saudavel_em fica onde estava.
 --   (3) public.saude_da_loja() RETURNS jsonb, STABLE: a LEITURA de quem confere. EXECUTE de anon e authenticated (o app de gestao chama com a chave PUBLICA da loja por
 --       POST /rest/v1/rpc/saude_da_loja); service_role e PUBLIC nao. Devolve {medidor: 1, ultima_rodada_em, idade_rodada_s, ultima_saudavel_em, idade_saudavel_s,
---       degradado, etapas_com_falha, rodadas_degradadas_seguidas} — tudo nulo (menos medidor) se a reconciliacao nunca registrou. As idades sao calculadas NO BANCO da
+--       degradado, rodadas_degradadas_seguidas} — tudo nulo (menos medidor) se a reconciliacao nunca registrou. As idades sao calculadas NO BANCO da
 --       loja (segundos inteiros, now() da transacao): o relogio de quem pergunta nao entra. NENHUMA contagem de pagamento, pedido, valor ou cliente sai daqui: o que
---       se expoe ao publico e' so "a reconciliacao roda?" e o nome das etapas que falharam.
+--       se expoe ao publico e' so "a reconciliacao roda, e esta degradada?". QUAIS etapas falharam (etapas_com_falha) NAO sai pela leitura publica
+--       (revisao de 26/11: estorno ou contestacao com problema e' informacao da loja, nao do publico); fica na tabela, para o dono e para os logs.
 --
 -- DADOS EXISTENTES: nenhuma linha de tabela alguma e' lida, reescrita ou apagada pelo apply. A tabela nasce VAZIA; a primeira rodada da reconciliacao DEPOIS do deploy da
 -- edge cria a linha. Ate la saude_da_loja() responde tudo nulo (= "nunca registrou"), que e' o mesmo alarme de reconciliacao parada — de proposito.
@@ -51,7 +52,7 @@
 -- TIPOS: src/types/database.types.ts ganha a tabela e as duas funcoes.
 -- FICHA DE VERIFICACAO: consultas 187b (antes) e 187a (depois); prova viva tests/banco/a-loja-registra-a-saude-da-reconciliacao-viva.cjs (rpc-ci). Os md5 dos corpos:
 --   saude_da_reconciliacao_registrar(boolean, text[]) = '06c25460eb479a7a98fc1abd4f384dfd'
---   saude_da_loja()                                   = 'c06bfddb10d28733f7a93e30783fbd91'
+--   saude_da_loja()                                   = '511a9587f5d94666b8639e89a0128624'
 
 SET LOCAL lock_timeout = '5s';
 SET LOCAL statement_timeout = '30s';
@@ -83,7 +84,7 @@ BEGIN
   FOR v_f IN
     SELECT * FROM (VALUES
       ('saude_da_reconciliacao_registrar', 'public.saude_da_reconciliacao_registrar(boolean, text[])', '06c25460eb479a7a98fc1abd4f384dfd'),
-      ('saude_da_loja', 'public.saude_da_loja()', 'c06bfddb10d28733f7a93e30783fbd91')
+      ('saude_da_loja', 'public.saude_da_loja()', '511a9587f5d94666b8639e89a0128624')
     ) AS t(nome, assinatura, hash)
   LOOP
     IF (SELECT count(*) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = v_f.nome) > 1 THEN
@@ -181,6 +182,8 @@ DECLARE
   v public.saude_da_reconciliacao%ROWTYPE;
 BEGIN
   -- Sem linha: v fica toda nula e a resposta diz "nunca registrou" (o mesmo alarme de reconciliacao parada).
+  -- A coluna das etapas com falha fica FORA de proposito: a leitura e publica, e dizer qual etapa falha (estorno, contestacao) contaria a qualquer um
+  -- que a loja tem problema de dinheiro. Quem precisa do detalhe olha a tabela como dono ou os logs da function.
   SELECT * INTO v FROM public.saude_da_reconciliacao s WHERE s.id = 1;
   RETURN jsonb_build_object(
     'medidor', 1,
@@ -189,14 +192,13 @@ BEGIN
     'ultima_saudavel_em', v.ultima_saudavel_em,
     'idade_saudavel_s', floor(extract(epoch FROM (now() - v.ultima_saudavel_em)))::bigint,
     'degradado', v.degradado,
-    'etapas_com_falha', to_jsonb(v.etapas_com_falha),
     'rodadas_degradadas_seguidas', v.rodadas_degradadas_seguidas);
 END;
 $function$;
 
 REVOKE ALL ON FUNCTION public.saude_da_loja() FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.saude_da_loja() TO anon, authenticated;
-COMMENT ON FUNCTION public.saude_da_loja() IS 'Saude da reconciliacao de pagamentos desta loja, para quem confere de fora com a chave publica: quando foi a ultima rodada e a ultima saudavel (com a idade em segundos calculada aqui), se degradou, quais etapas falharam e ha quantas rodadas seguidas. Nenhuma contagem de pagamento. Tudo nulo (menos medidor) = nunca registrou.';
+COMMENT ON FUNCTION public.saude_da_loja() IS 'Saude da reconciliacao de pagamentos desta loja, para quem confere de fora com a chave publica: quando foi a ultima rodada e a ultima saudavel (com a idade em segundos calculada aqui), se degradou e ha quantas rodadas seguidas. Nunca QUAIS etapas falharam nem contagem de pagamento. Tudo nulo (menos medidor) = nunca registrou.';
 
 -- ===== pos-voo =====
 
@@ -251,7 +253,7 @@ BEGIN
     SELECT * FROM (VALUES
       ('saude_da_reconciliacao_registrar', 'public.saude_da_reconciliacao_registrar(boolean, text[])', '06c25460eb479a7a98fc1abd4f384dfd',
        'p_degradado boolean, p_etapas_com_falha text[]', 'void', 'v', true, false, false),
-      ('saude_da_loja', 'public.saude_da_loja()', 'c06bfddb10d28733f7a93e30783fbd91',
+      ('saude_da_loja', 'public.saude_da_loja()', '511a9587f5d94666b8639e89a0128624',
        '', 'jsonb', 's', false, true, true)
     ) AS t(nome, assinatura, hash, argumentos, retorno, volatilidade, service_role_executa, anon_executa, authenticated_executa)
   LOOP

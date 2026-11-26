@@ -189,7 +189,7 @@ Deno.test("registrar: SECURITY DEFINER, VOLATILE, search_path fixo; EXECUTE SO d
   for (const e of ETAPAS) assertStringIncludes(b, `'${e}'`);
 });
 
-Deno.test("saude_da_loja: SECURITY DEFINER, STABLE, search_path fixo; EXECUTE de anon e authenticated; so le a tabela da saude e devolve as 8 chaves, NENHUMA contagem de pagamento", () => {
+Deno.test("saude_da_loja: SECURITY DEFINER, STABLE, search_path fixo; EXECUTE de anon e authenticated; so le a tabela da saude e devolve as 7 chaves, sem as etapas com falha e NENHUMA contagem de pagamento", () => {
   const c = codigo(migration);
   const assinatura = `${SAUDE}()`;
   assertStringIncludes(
@@ -227,9 +227,14 @@ Deno.test("saude_da_loja: SECURITY DEFINER, STABLE, search_path fixo; EXECUTE de
     "ultima_saudavel_em",
     "idade_saudavel_s",
     "degradado",
-    "etapas_com_falha",
     "rodadas_degradadas_seguidas",
   ]);
+  // Privacidade (revisao de 26/11): a leitura e' PUBLICA (anon); dizer QUAL etapa falha (estorno, contestacao)
+  // contaria a qualquer um que a loja tem problema de dinheiro. A coluna fica na tabela e na porta; aqui, nunca.
+  assert(
+    !/etapas_com_falha/.test(b),
+    "a leitura publica nao expoe as etapas com falha",
+  );
   // A idade e' calculada NO BANCO da loja (o relogio de quem pergunta nao entra).
   assertStringIncludes(
     norm(b),
