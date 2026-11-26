@@ -1123,7 +1123,12 @@ describe("I — a estimativa fica fora do caderno e nunca vira lançamento", () 
 describe("J — arquivo para o contador: lê o período e confere a sessão", () => {
   let arquivos: Blob[];
 
+  // O seletor de ano lista o ano atual e os 5 anteriores pelo relógio de verdade
+  // (a aba monta o arquivo sem `agora`); estes testes escolhem 2026. Só o Date
+  // fica falso, no mesmo dia de HOJE: temporizadores e o waitFor seguem reais.
   beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(`${HOJE}T12:00:00-03:00`));
     arquivos = [];
     URL.createObjectURL = vi.fn((blob: Blob) => {
       arquivos.push(blob);
@@ -1162,6 +1167,10 @@ describe("J — arquivo para o contador: lê o período e confere a sessão", ()
       }
       return { data: null, error: { code: "PGRST202" } };
     });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   async function escolher(rotulo: string, valor: string) {

@@ -2192,7 +2192,9 @@ Deno.test("R6 - linha atualizada há 30s NÃO é tocada (janela de 2 minutos evi
     >,
   };
   const pedido = pedidoFrescoPara();
-  const trintaSegundosAtras = new Date(AGORA_MS - 30 * 1000).toISOString();
+  // Date.now() de AGORA, não o AGORA_MS do carregamento: a função mede a janela
+  // com o relógio real, e num runner lento o AGORA_MS já pode estar 90 s velho.
+  const trintaSegundosAtras = new Date(Date.now() - 30 * 1000).toISOString();
   const supabase = clienteFalso({
     candidatos: [],
     registro,

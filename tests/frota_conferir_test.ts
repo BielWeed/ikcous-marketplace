@@ -1234,15 +1234,24 @@ Deno.test("conferirFrota: endereço que não responde = INALCANCAVEL; version.js
   const mundo = mundoBase();
   mundo["ickous-marketplace.vercel.app"].falha = "derruba";
   mundo["savycollection.vercel.app"].versaoHttp = 500;
+  const esperas = [];
   const r = await conferirFrota(POLITICA, {
     sha: SHA,
     fetchImpl: fetchFalso(mundo),
+    // as pausas da nova tentativa, anotadas em vez de dormidas
+    esperar: async (ms) => {
+      esperas.push(ms);
+    },
   });
   const por = Object.fromEntries(
     r.resultados.map((x) => [x.dominio, x.classe]),
   );
   assertEquals(por["ickous-marketplace.vercel.app"], "INALCANCAVEL");
   assertEquals(por["savycollection.vercel.app"], "INALCANCAVEL");
+  // só depois de 2 novas tentativas (2 s e 5 s) em cada pedido que tropeçou
+  assert(
+    esperas.length > 0 && esperas.every((ms) => ms === 2000 || ms === 5000),
+  );
 });
 
 Deno.test("conferirFrota: loja mostrando a ficha de OUTRA (ref+título de outra loja) é LOJA_TROCADA nos dois", async () => {
@@ -2095,15 +2104,39 @@ Deno.test({
 });
 
 Deno.test({
-  name: "script: endereço que não responde -> INALCANCAVEL, exit 1",
+  // No processo (main), contra o MESMO stub HTTP: um subprocesso dormiria de
+  // verdade as pausas da nova tentativa (2 s + 5 s); aqui `esperar` é falso.
+  name: "main contra o stub HTTP: endereço que não responde -> INALCANCAVEL, exit 1, sem dormir as pausas",
   ...SEM_SANITIZAR,
   async fn() {
     const mundo = mundoBase();
     mundo["savycollection.vercel.app"].falha = "trava";
-    const r = await rodar(["--sha", SHA], mundo);
-    assertEquals(r.codigo, 1);
-    assertStringIncludes(r.saida, "INALCANCAVEL");
-    assertStringIncludes(r.saida, "timeout");
+    const stub = subirStub(mundo);
+    const esperas = [];
+    const logs = [];
+    const antes = console.log;
+    console.log = (...a) => logs.push(a.join(" "));
+    let codigo;
+    try {
+      codigo = await main(
+        ["--sha", SHA],
+        {
+          FROTA_URL_MODELO: `${stub.base}/{dominio}`,
+          FROTA_TIMEOUT_MS: "800",
+          GITHUB_STEP_SUMMARY: "",
+        },
+        { esperar: async (ms) => void esperas.push(ms) },
+      );
+    } finally {
+      console.log = antes;
+      await stub.parar();
+    }
+    const saida = logs.join("\n");
+    assertEquals(codigo, 1);
+    assertStringIncludes(saida, "INALCANCAVEL");
+    assertStringIncludes(saida, "timeout");
+    // as pausas foram pedidas (houve nova tentativa), mas não dormidas
+    assert(esperas.includes(2000) && esperas.includes(5000), `${esperas}`);
   },
 });
 
@@ -2958,4 +2991,200 @@ Deno.test("T10b canônico: ficha na reserva também tem o publicUrl conferido; c
   });
   const a = r.resultados.find((x) => x.dominio === TRIO[0]);
   assertEquals(a.classe, "OK", JSON.stringify(a.achados));
+});
+
+// ------------------------------------------------------------------ banco da loja fora do ar
+// O porteiro conhece a loja (caderneta hit), mas o banco Supabase DELA não
+// respondeu (projeto pausado ou incidente) e não há ficha guardada: ele responde
+// 503 com `x-ikcous-porteiro: banco-indisponivel` e um HTML sem marca nem ref
+// (src/hospedagem/porteiro.ts, respostaManutencao). Antes, isso virava
+// LOJA_TROCADA + ESTADO_INESPERADO + CANONICO_INVALIDO, e o relatório nunca
+// dizia que o problema era o banco. Agora é UMA classe própria, que só nasce do
+// trio exato (503 + o marcador + caderneta hit), sem cabeçalho de estado de vida.
+
+/** A página que `respostaManutencao("banco-indisponivel", "hit")` serve. */
+const paginaBancoFora = (extra = {}) => ({
+  status: 503,
+  caderneta: "hit",
+  porteiro: "banco-indisponivel",
+  estado: null,
+  refPorteiro: null,
+  titulo: "Loja em manutenção",
+  refs: [],
+  publicUrl: null,
+  ...extra,
+});
+
+Deno.test("banco fora: 503 + x-ikcous-porteiro banco-indisponivel + caderneta hit = BANCO_INDISPONIVEL, e SÓ ele (nem LOJA_TROCADA, nem ESTADO_INESPERADO, nem CANONICO_INVALIDO)", () => {
+  const s = sonda(LOJA.dominio, { pagina: paginaBancoFora() });
+  const ctx = montarContexto([s], { sha: SHA }).ctx;
+  const r = classificar(LOJA, s, ctx);
+  assertEquals(r.classe, "BANCO_INDISPONIVEL", JSON.stringify(r.achados));
+  assertEquals(
+    r.achados.map((a) => a.classe),
+    ["BANCO_INDISPONIVEL"],
+    JSON.stringify(r.achados),
+  );
+  assertStringIncludes(r.achados[0].motivo, "banco");
+  assertStringIncludes(r.achados[0].motivo, "banco-indisponivel");
+});
+
+Deno.test("banco fora: sem o trio exato NÃO é BANCO_INDISPONIVEL (o 503 da Vercel, o 503 de outro motivo, a caderneta fora, o 500, o 200)", () => {
+  const casos = {
+    "503 da Vercel, sem o marcador": { porteiro: null },
+    "503 sem-loja": { porteiro: "sem-loja" },
+    "503 html-indisponivel": { porteiro: "html-indisponivel" },
+    "marcador com outro texto": { porteiro: "Banco-Indisponivel" },
+    "caderneta erro (a caderneta é que caiu)": { caderneta: "erro" },
+    "caderneta ausente": { caderneta: "ausente" },
+    "sem x-ikcous-caderneta": { caderneta: null },
+    "status 500": { status: 500 },
+    "status 502": { status: 502 },
+    "status 200": { status: 200 },
+    "com x-ikcous-estado": { estado: "adormecida" },
+    "com x-ikcous-ref": { refPorteiro: "z".repeat(20) },
+    "com ref Supabase no HTML": { refs: [REF.savy] },
+  };
+  for (const [nome, extra] of Object.entries(casos)) {
+    const r = classificar(
+      LOJA,
+      sonda(LOJA.dominio, { pagina: paginaBancoFora(extra) }),
+      CTX,
+    );
+    assert(
+      !r.achados.some((a) => a.classe === "BANCO_INDISPONIVEL"),
+      `${nome}: ${JSON.stringify(r.achados)}`,
+    );
+    assert(r.classe !== "OK", nome);
+  }
+});
+
+Deno.test("banco fora: amostras que discordam (uma 503 banco-indisponivel, outra 200 com a loja) NUNCA viram BANCO_INDISPONIVEL", () => {
+  const r = classificar(
+    LOJA,
+    sonda(LOJA.dominio, {
+      amostras: [
+        paginaBancoFora(),
+        {
+          status: 200,
+          caderneta: "hit",
+          porteiro: "ok",
+          titulo: "Savy",
+          refs: [REF.savy],
+        },
+        paginaBancoFora(),
+      ],
+    }),
+    CTX,
+  );
+  assert(
+    !r.achados.some((a) => a.classe === "BANCO_INDISPONIVEL"),
+    JSON.stringify(r.achados),
+  );
+  assertEquals(r.classe, "LOJA_TROCADA");
+});
+
+Deno.test("banco fora: endereço declarado na política (manutenção/redirecionamento) não vira BANCO_INDISPONIVEL", () => {
+  const r = classificar(
+    { dominio: "x.example", esperado: "manutencao" },
+    sonda("x.example", { pagina: paginaBancoFora() }),
+    CTX,
+  );
+  assert(
+    !r.achados.some((a) => a.classe === "BANCO_INDISPONIVEL"),
+    JSON.stringify(r.achados),
+  );
+});
+
+Deno.test("banco fora: versão velha no mesmo endereço continua aparecendo (ENDERECO_ANTIGO, mais grave)", () => {
+  const r = classificar(
+    LOJA,
+    sonda(LOJA.dominio, {
+      pagina: paginaBancoFora(),
+      versao: { codeSha: SHA_VELHO },
+    }),
+    CTX,
+  );
+  assertEquals(r.classe, "ENDERECO_ANTIGO");
+  assert(r.achados.some((a) => a.classe === "BANCO_INDISPONIVEL"));
+});
+
+Deno.test("banco fora: GRAVIDADE tem BANCO_INDISPONIVEL abaixo do isolamento, e o COMO_RECUPERAR manda restaurar o banco, nunca voltar a frota", () => {
+  const i = (c) => GRAVIDADE.indexOf(c);
+  assert(i("BANCO_INDISPONIVEL") > 0, "BANCO_INDISPONIVEL fora da GRAVIDADE");
+  assert(i("BANCO_INDISPONIVEL") > i("LOJA_TROCADA"));
+  assert(i("BANCO_INDISPONIVEL") > i("SUSPEITA_ISOLAMENTO"));
+  assert(i("BANCO_INDISPONIVEL") < i("OK"));
+  const texto = COMO_RECUPERAR.BANCO_INDISPONIVEL;
+  assert(typeof texto === "string" && texto, "sem COMO_RECUPERAR");
+  assertStringIncludes(texto, "Restore project");
+  assertStringIncludes(texto, "acordar-projeto.mjs");
+  assertStringIncludes(texto, "estado-da-loja.mjs --adormecer");
+  assert(!texto.includes("vercel rollback"), texto);
+});
+
+Deno.test("banco fora: verificarCanonico não cobra publicUrl da página de banco fora do ar", () => {
+  const s = sonda(LOJA.dominio, { pagina: paginaBancoFora() });
+  assertEquals(verificarCanonico([s]).achados, {});
+});
+
+Deno.test("banco fora: problemasAntesDoPromote BLOQUEIA o endereço com BANCO_INDISPONIVEL (a loja não é pulada)", () => {
+  const p = problemasAntesDoPromote(
+    {
+      resultados: [
+        {
+          dominio: LOJA.dominio,
+          classe: "BANCO_INDISPONIVEL",
+          achados: [
+            { classe: "BANCO_INDISPONIVEL", motivo: "banco fora do ar" },
+          ],
+          versao: { codeSha: SHA_VELHO },
+        },
+      ],
+    },
+    SHA,
+  );
+  assertEquals(p.length, 1, JSON.stringify(p));
+  assertStringIncludes(p[0], `${LOJA.dominio}: BANCO_INDISPONIVEL`);
+});
+
+Deno.test("banco fora: conferirFrota reprova, diz em português que o banco caiu e não chama a loja de 'não sondada' nem de LOJA_TROCADA", async () => {
+  const mundo = mundoBase();
+  mundo["savycollection.vercel.app"] = {
+    ...mundo["savycollection.vercel.app"],
+    tipo: "foraDoAr",
+    status: 503,
+    porteiro: "banco-indisponivel",
+    estado: null,
+    refPorteiro: null,
+  };
+  const r = await conferirFrota(POLITICA, {
+    sha: SHA,
+    fetchImpl: fetchFalso(mundo),
+    lojasObrigatorias: [
+      { ref: REF.ikcous, nome: "IKCOUS" },
+      { ref: REF.savy, nome: "Savy" },
+    ],
+  });
+  assertEquals(r.ok, false, r.relatorio);
+  const savy = r.resultados.find(
+    (x) => x.dominio === "savycollection.vercel.app",
+  );
+  assertEquals(savy.classe, "BANCO_INDISPONIVEL", JSON.stringify(savy.achados));
+  assertEquals(
+    savy.achados.map((a) => a.classe),
+    ["BANCO_INDISPONIVEL"],
+  );
+  assert(!r.relatorio.includes("LOJA_TROCADA"), r.relatorio);
+  assert(!r.relatorio.includes("CANONICO_INVALIDO"), r.relatorio);
+  assert(!r.relatorio.includes("não foi sondada"), r.relatorio);
+  assert(!r.relatorio.includes("vercel rollback"), r.relatorio);
+  assertStringIncludes(r.relatorio, "banco");
+  assertStringIncludes(r.relatorio, "Savy");
+  assertStringIncludes(r.relatorio, "Restore project");
+  // A loja que não apareceu continua na cobertura estruturada (quem publica decide).
+  assertEquals(
+    r.cobertura.lojasNaoSondadas.map((l) => l.ref),
+    [REF.savy],
+  );
 });

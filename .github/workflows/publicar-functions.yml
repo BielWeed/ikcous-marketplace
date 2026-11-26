@@ -221,6 +221,53 @@ jobs:
         with:
           version: 3.0.0
 
+      # O que está no ar ANTES do deploy, registrado no resumo do run, em TODA
+      # loja (26/11/2026; antes só a IKCOUS tinha, e nas outras o dono media à
+      # mão — docs/runbooks/producao-unica-fonte.md): o desfazer compara com a
+      # versão/updated_at de cada function neste instante. Cada passo usa o
+      # MESMO token do deploy daquela loja. Se a lista falha, o passo falha e o
+      # deploy (que vem depois, sem `always()`) não roda: sem registro, não há
+      # desfazer. O run é o mesmo nos três passos ANTES (o teste exige).
+      - name: Lista o que está no ar ANTES em loja ou sandbox
+        if: inputs.projeto == 'loja' || inputs.projeto == 'sandbox'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ steps.alvo.outputs.ref }}
+        run: |
+          set -euo pipefail
+          if ! LISTA="$(supabase functions list --project-ref "$REF")"; then
+            echo "::error::não deu para listar o que está no ar em $REF ANTES do deploy; sem esse registro não há desfazer, então nada foi publicado nesta loja"
+            exit 1
+          fi
+          {
+            echo "## No ar ANTES em \`$REF\`"
+            echo
+            echo '```'
+            printf '%s\n' "$LISTA"
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Lista o que está no ar ANTES na loja assinante
+        if: inputs.projeto != 'ikcous-publicada' && inputs.projeto != 'loja' && inputs.projeto != 'sandbox'
+        env:
+          # LOJAS-SEGREDO-UNICO-INICIO (idem)
+          SUPABASE_ACCESS_TOKEN: ${{ inputs.projeto == 'ikcous-publicada' && secrets.SUPABASE_ACCESS_TOKEN_IKCOUS || inputs.projeto == 'savy' && secrets.SUPABASE_ACCESS_TOKEN_SAVY || '' }}
+          # LOJAS-SEGREDO-UNICO-FIM
+          REF: ${{ steps.alvo.outputs.ref }}
+        run: |
+          set -euo pipefail
+          if ! LISTA="$(supabase functions list --project-ref "$REF")"; then
+            echo "::error::não deu para listar o que está no ar em $REF ANTES do deploy; sem esse registro não há desfazer, então nada foi publicado nesta loja"
+            exit 1
+          fi
+          {
+            echo "## No ar ANTES em \`$REF\`"
+            echo
+            echo '```'
+            printf '%s\n' "$LISTA"
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: Publica, uma function por vez, sempre pelo nome
         if: inputs.projeto == 'loja' || inputs.projeto == 'sandbox'
         env:
@@ -296,7 +343,8 @@ jobs:
       # O que está no ar ANTES do deploy, registrado no próprio run: o desfazer
       # das edges é redeploy do SHA anterior, e a versão/updated_at de cada
       # function no instante anterior ao deploy tem de ficar à mão. Roda
-      # também no modo "listar" (que só faz isto).
+      # também no modo "listar" (que só faz isto). Mesmo run dos ANTES das
+      # outras lojas (lá em cima): lista falhou, nada é publicado.
       - name: Lista o que está no ar ANTES
         if: inputs.projeto == 'ikcous-publicada'
         env:
@@ -304,11 +352,15 @@ jobs:
           REF: ${{ steps.alvo.outputs.ref }}
         run: |
           set -euo pipefail
+          if ! LISTA="$(supabase functions list --project-ref "$REF")"; then
+            echo "::error::não deu para listar o que está no ar em $REF ANTES do deploy; sem esse registro não há desfazer, então nada foi publicado nesta loja"
+            exit 1
+          fi
           {
             echo "## No ar ANTES em \`$REF\`"
             echo
             echo '```'
-            supabase functions list --project-ref "$REF"
+            printf '%s\n' "$LISTA"
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
