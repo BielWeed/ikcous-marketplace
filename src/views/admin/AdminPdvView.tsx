@@ -447,14 +447,15 @@ export function AdminPdvView({
     // ficava em "Buscando…" para sempre. É uma LEITURA: desistir de esperar é
     // seguro e a resposta tardia é descartada. Estourou = cai no erro de busca
     // que a tela já mostra, e repetir o mesmo termo refaz a consulta.
+    // A porta LEVE do balcão (migration 20261530000000): o mesmo filtro e a
+    // mesma ordem (mais novo primeiro) da lista de Clientes, sem ler pedido
+    // nenhum. Sem atalho para a `get_admin_customers_paged` se ela faltar: o
+    // banco de cada loja recebe a migration ANTES deste front.
     const { data, error } = await aguardarComPrazo(
       Promise.resolve(
-        supabase.rpc("get_admin_customers_paged", {
+        supabase.rpc("buscar_clientes_do_balcao", {
           p_search: prepararTextoDeBuscaDoPainel(termo),
-          p_sort_field: "created_at",
-          p_sort_direction: "desc",
-          p_page: 0,
-          p_page_size: 8,
+          p_limite: 8,
         }),
       ),
       PRAZO_DA_CONSULTA_DO_PAINEL_MS,

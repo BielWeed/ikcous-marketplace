@@ -50,6 +50,7 @@ import {
   resumoEmJson,
   verifyJwtDoConfig,
   versoesAplicadas,
+  workflowSoGanhouLojas,
 } from "../scripts/frota/publicar-release.mjs";
 
 const SHA = "a1580759629ae0568f76923a0daff6287a21f780";
@@ -1501,6 +1502,29 @@ Deno.test("function AUSENTE e inalterada que o canal NÃO publica: não bloqueia
   assert(
     !r.relatorio.includes("mudaram na release"),
     "a falta inalterada não pode ser descrita como mudança da release",
+  );
+});
+
+Deno.test("sem bloqueio, o título do bloco das functions que faltam só promete comando quando há um", async () => {
+  const titulo =
+    "Functions que faltam em loja (NÃO bloqueiam esta release: a release não as mudou).";
+  // canal que publica: há comando, e o título o anuncia
+  const comCmd = deps();
+  tirarDoAr(comCmd.estado, SAVY, "webhook-mercadopago");
+  const r1 = await executar(comCmd.d);
+  assertEquals(r1.codigo, 0, r1.relatorio);
+  assertStringIncludes(r1.relatorio, `${titulo} Para publicá-las:`);
+  // canal que não publica: o bloco só tem a linha "# … sem comando", e o título não promete o que não existe
+  const semCmd = deps();
+  tirarDoAr(semCmd.estado, SAVY, "calculate-shipping");
+  const r2 = await executar(semCmd.d);
+  assertEquals(r2.codigo, 0, r2.relatorio);
+  assertEquals(comandosGh(r2.relatorio), []);
+  assertStringIncludes(r2.relatorio, titulo);
+  assert(!r2.relatorio.includes("Para publicá-las"), r2.relatorio);
+  assertStringIncludes(
+    r2.relatorio,
+    `${titulo} Nenhuma tem comando de publicar daqui; o motivo:`,
   );
 });
 
@@ -3559,6 +3583,7 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "187a-conferir-a-saude-da-reconciliacao-aplicado",
     "188a-conferir-o-livro-de-registro-aplicado",
     "191a-conferir-a-loja-nova-nasce-com-a-ficha-aplicado",
+    "190a-conferir-a-loja-grande-nao-trava-o-balcao-aplicado",
     "192a-conferir-o-admin-copia-e-apaga-as-fotos-aplicado",
     // 156a (20261404000000) fica de fora de proposito: a 404 esta em migrationsForaDaRelease
     // e nao tem lote no canais; a consulta segue no menu para quando ela for aplicada a parte.
@@ -13491,4 +13516,296 @@ Deno.test("comandoDeConferirLogin: projeto do canal, SHA de 40 hex e ramo entre 
   );
   assertEquals(comandoDeConferirLogin(canal, { ramo: "r", topo: null }), null);
   assertEquals(comandoDeConferirLogin(canal, { ramo: "r", topo: "abc" }), null);
+});
+
+// ====================================================================
+// C6 (caça da frota de 300, 26/11/2026): cadastrar loja nova NÃO invalida a
+// prova de banco das lojas que já existiam.
+//
+// A prova só vale se o workflow de conferência do commit do run for o do topo
+// do ramo. O gerador (scripts/frota/lojas-nos-workflows.cjs --escrever) regrava
+// os blocos LOJAS-* desse workflow a cada loja cadastrada, e a comparação
+// inteira derrubava a prova das N lojas por causa de uma. Agora a diferença é
+// aceita SÓ quando ela é exatamente o que o gerador escreve para um cadastro
+// que apenas GANHOU lojas (as que já existiam, idênticas). Qualquer outra
+// mudança — linha fora dos blocos, texto à mão dentro deles, loja removida ou
+// alterada — continua invalidando.
+// ====================================================================
+
+const { sincronizar } = requireCjs("../scripts/frota/lojas-nos-workflows.cjs");
+const { validarCadastro } = requireCjs("../scripts/frota/lojas.cjs");
+const CAMINHO_WF = ".github/workflows/conferir-banco-da-loja.yml";
+const CAMINHO_LOJAS = "scripts/frota/lojas.json";
+// O workflow e o cadastro reais deste checkout (tests/frota_lojas_test.ts
+// garante que estão em sincronia): o cenário é o arquivo de verdade.
+const WF_REAL = Deno.readTextFileSync(CAMINHO_WF);
+const LOJAS_REAL = Deno.readTextFileSync(CAMINHO_LOJAS);
+
+/** O cadastro real com `mudar(lojas)` aplicado, como TEXTO de lojas.json. */
+function cadastroCom(mudar) {
+  const bruto = JSON.parse(LOJAS_REAL);
+  mudar(bruto.lojas);
+  return JSON.stringify(bruto, null, 2);
+}
+const lojaNova = (apelido, ref, segredo) => ({
+  ref,
+  classe: "assinante",
+  apelido,
+  segredoDoToken: segredo,
+  functionsNomeadas: false,
+});
+/** O que `lojas-nos-workflows.cjs --escrever` grava para este cadastro. */
+const gerado = (wf, lojasTexto) =>
+  sincronizar(wf, validarCadastro(JSON.parse(lojasTexto)));
+
+const LOJAS_COM_UMA_NOVA = cadastroCom((l) => {
+  l["loja-nova"] = lojaNova(
+    "Nova",
+    "n".repeat(20),
+    "SUPABASE_ACCESS_TOKEN_NOVA",
+  );
+});
+const WF_COM_UMA_NOVA = gerado(WF_REAL, LOJAS_COM_UMA_NOVA);
+
+const DO_RUN = { ymlDoRun: WF_REAL, lojasDoRun: LOJAS_REAL };
+
+Deno.test("C6 controle: o gerador de fato muda o workflow ao cadastrar uma loja (senão o teste não prova nada)", () => {
+  assert(WF_COM_UMA_NOVA !== WF_REAL);
+  assertStringIncludes(WF_COM_UMA_NOVA, "- loja-nova");
+  assertStringIncludes(WF_COM_UMA_NOVA, "SUPABASE_ACCESS_TOKEN_NOVA");
+  // o workflow real já é o que o gerador escreve para o cadastro real
+  assertEquals(gerado(WF_REAL, LOJAS_REAL), WF_REAL);
+});
+
+Deno.test("C6: workflow igual, a não ser por UMA loja a mais nos blocos gerados — a prova continua valendo", () => {
+  const r = workflowSoGanhouLojas({
+    ...DO_RUN,
+    ymlDoTopo: WF_COM_UMA_NOVA,
+    lojasDoTopo: LOJAS_COM_UMA_NOVA,
+  });
+  assertEquals(r, { ok: true, motivo: null });
+});
+
+Deno.test("C6: workflow e cadastro idênticos — vale", () => {
+  assertEquals(
+    workflowSoGanhouLojas({
+      ...DO_RUN,
+      ymlDoTopo: WF_REAL,
+      lojasDoTopo: LOJAS_REAL,
+    }).ok,
+    true,
+  );
+});
+
+Deno.test("C6: várias lojas novas de uma vez — vale", () => {
+  const lojas = cadastroCom((l) => {
+    l["loja-nova"] = lojaNova(
+      "Nova",
+      "n".repeat(20),
+      "SUPABASE_ACCESS_TOKEN_NOVA",
+    );
+    l["outra-nova"] = lojaNova(
+      "Outra",
+      "o".repeat(20),
+      "SUPABASE_ACCESS_TOKEN_OUTRA",
+    );
+  });
+  assertEquals(
+    workflowSoGanhouLojas({
+      ...DO_RUN,
+      ymlDoTopo: gerado(WF_REAL, lojas),
+      lojasDoTopo: lojas,
+    }).ok,
+    true,
+  );
+});
+
+Deno.test("C6: QUALQUER outra linha do workflow mudada invalida — com ou sem loja nova junto", () => {
+  const alvo = "run: node scripts/publicacao/conferir-banco.cjs";
+  assertStringIncludes(WF_REAL, alvo);
+  const mexido = (wf) => wf.replace(alvo, "run: node scripts/outro.cjs");
+  for (const [ymlDoTopo, lojasDoTopo] of [
+    [mexido(WF_REAL), LOJAS_REAL],
+    [mexido(WF_COM_UMA_NOVA), LOJAS_COM_UMA_NOVA],
+    // uma linha a mais, fora dos blocos, logo depois de um marcador FIM
+    [
+      WF_COM_UMA_NOVA.replace(
+        "# LOJAS-OPCOES-FIM",
+        "# LOJAS-OPCOES-FIM\n          - loja-de-fora-do-bloco",
+      ),
+      LOJAS_COM_UMA_NOVA,
+    ],
+  ]) {
+    const r = workflowSoGanhouLojas({ ...DO_RUN, ymlDoTopo, lojasDoTopo });
+    assertEquals(r.ok, false);
+    assertStringIncludes(r.motivo, "fora dos blocos gerados");
+  }
+});
+
+Deno.test("C6: loja REMOVIDA do cadastro invalida, mesmo com o workflow regerado certinho", () => {
+  const lojas = cadastroCom((l) => {
+    l.savy = undefined; // some do JSON (stringify omite undefined)
+  });
+  const r = workflowSoGanhouLojas({
+    ...DO_RUN,
+    ymlDoTopo: gerado(WF_REAL, lojas),
+    lojasDoTopo: lojas,
+  });
+  assertEquals(r.ok, false);
+  assertStringIncludes(r.motivo, "savy");
+  assertStringIncludes(r.motivo, "removida");
+});
+
+Deno.test("C6: loja que já existia ALTERADA (segredo trocado) invalida", () => {
+  const lojas = cadastroCom((l) => {
+    l.savy.segredoDoToken = "SUPABASE_ACCESS_TOKEN_SAVY_NOVO";
+  });
+  const r = workflowSoGanhouLojas({
+    ...DO_RUN,
+    ymlDoTopo: gerado(WF_REAL, lojas),
+    lojasDoTopo: lojas,
+  });
+  assertEquals(r.ok, false);
+  assertStringIncludes(r.motivo, "savy");
+  assertStringIncludes(r.motivo, "alterada");
+});
+
+Deno.test("C6: texto à mão DENTRO de um bloco gerado (no topo ou no run) invalida", () => {
+  const intruso = (wf) =>
+    wf.replace(
+      "# LOJAS-SEGREDOS-FIM",
+      "VAZA: ${{ secrets.MERCADO_PAGO }}\n          # LOJAS-SEGREDOS-FIM",
+    );
+  // no topo: some sozinho ao regerar com o cadastro do run — tem de ser pego
+  const topo = workflowSoGanhouLojas({
+    ...DO_RUN,
+    ymlDoTopo: intruso(WF_COM_UMA_NOVA),
+    lojasDoTopo: LOJAS_COM_UMA_NOVA,
+  });
+  assertEquals(topo.ok, false);
+  assertStringIncludes(topo.motivo, "não é o que o gerador escreve");
+  // um nome que não é de loja no menu
+  const menu = workflowSoGanhouLojas({
+    ...DO_RUN,
+    ymlDoTopo: WF_COM_UMA_NOVA.replace(
+      "- loja-nova",
+      "- loja-nova\n          - qualquer coisa",
+    ),
+    lojasDoTopo: LOJAS_COM_UMA_NOVA,
+  });
+  assertEquals(menu.ok, false);
+  assertStringIncludes(menu.motivo, "não é o que o gerador escreve");
+  // no run
+  const run = workflowSoGanhouLojas({
+    ymlDoRun: intruso(WF_REAL),
+    lojasDoRun: LOJAS_REAL,
+    ymlDoTopo: WF_COM_UMA_NOVA,
+    lojasDoTopo: LOJAS_COM_UMA_NOVA,
+  });
+  assertEquals(run.ok, false);
+});
+
+Deno.test("C6: arquivo ausente, cadastro ilegível ou inválido nos dois lados: falha fechada, nunca lança", () => {
+  const base = {
+    ...DO_RUN,
+    ymlDoTopo: WF_COM_UMA_NOVA,
+    lojasDoTopo: LOJAS_COM_UMA_NOVA,
+  };
+  for (const troca of [
+    { ymlDoRun: null },
+    { ymlDoTopo: null },
+    { lojasDoRun: null },
+    { lojasDoTopo: null },
+    { lojasDoTopo: "{ não é json" },
+    { lojasDoRun: '{"lojas": {}}' },
+    // bloco sem o marcador FIM: o gerador recusa
+    { ymlDoTopo: WF_COM_UMA_NOVA.replace("# LOJAS-OPCOES-FIM", "# fim") },
+  ]) {
+    const r = workflowSoGanhouLojas({ ...base, ...troca });
+    assertEquals(r.ok, false, JSON.stringify(Object.keys(troca)));
+    assert(typeof r.motivo === "string" && r.motivo.length > 0);
+  }
+});
+
+/** A evidência de uma 8e verde e fresca da Savy cujo run é de OUTRO commit; os
+ * arquivos daquele commit e os do TOPO vêm de `arvore`, e `arvoreIgual`
+ * responde como o git: igual só quando nenhum dos caminhos pedidos difere. */
+async function evidenciaComWorkflows({ arvore, semLeitor = false }) {
+  const difere = (c) =>
+    (arvore[OUTRO]?.[c] ?? null) !== (arvore[TOPO]?.[c] ?? null);
+  return await evidenciaDaProva({
+    consulta: PROVA,
+    projeto: "savy",
+    ref: SAVY,
+    sha: SHA,
+    topo: TOPO,
+    validadeHoras: 48,
+    agora: AGORA,
+    deps: {
+      listarRuns: async (wf: string) =>
+        wf === "conferir-banco-da-loja.yml"
+          ? [runConferir(77, PROVA, "savy")]
+          : [],
+      logDoRun: async () => log8e(SAVY, OUTRO),
+      // migrations e consulta iguais ao SHA; ferramenta e workflow pelo conteúdo
+      arvoreIgual: async (_a, b, caminhos) =>
+        b !== TOPO || !caminhos.some(difere),
+      ...(semLeitor
+        ? {}
+        : { lerArquivoNoSha: (sha, c) => arvore[sha]?.[c] ?? null }),
+    },
+  });
+}
+
+const arvoreDosWorkflows = (ymlTopo, lojasTopo) => ({
+  [OUTRO]: { [CAMINHO_WF]: WF_REAL, [CAMINHO_LOJAS]: LOJAS_REAL },
+  [TOPO]: { [CAMINHO_WF]: ymlTopo, [CAMINHO_LOJAS]: lojasTopo },
+});
+
+Deno.test("C6 no portão: o topo ganhou uma loja depois da prova da Savy — a prova da Savy continua POSITIVA", async () => {
+  const r = await evidenciaComWorkflows({
+    arvore: arvoreDosWorkflows(WF_COM_UMA_NOVA, LOJAS_COM_UMA_NOVA),
+  });
+  assertEquals(r.estado, "POSITIVA", r.motivo);
+});
+
+Deno.test("C6 no portão: outra linha do workflow mudada no topo — SEM_EVIDENCIA, como antes", async () => {
+  const alvo = "timeout-minutes: 10";
+  assertStringIncludes(WF_COM_UMA_NOVA, alvo);
+  const r = await evidenciaComWorkflows({
+    arvore: arvoreDosWorkflows(
+      WF_COM_UMA_NOVA.replace(alvo, "timeout-minutes: 11"),
+      LOJAS_COM_UMA_NOVA,
+    ),
+  });
+  assertEquals(r.estado, "SEM_EVIDENCIA");
+  assertStringIncludes(r.motivo, "ferramenta de conferência");
+});
+
+Deno.test("C6 no portão: loja removida no topo — SEM_EVIDENCIA", async () => {
+  const lojas = cadastroCom((l) => {
+    l.sandbox = undefined; // some do JSON (stringify omite undefined)
+  });
+  const r = await evidenciaComWorkflows({
+    arvore: arvoreDosWorkflows(gerado(WF_REAL, lojas), lojas),
+  });
+  assertEquals(r.estado, "SEM_EVIDENCIA");
+  assertStringIncludes(r.motivo, "removida");
+});
+
+Deno.test("C6 no portão: conferir-banco.cjs diferente invalida mesmo com o workflow só ganhando loja", async () => {
+  const arvore = arvoreDosWorkflows(WF_COM_UMA_NOVA, LOJAS_COM_UMA_NOVA);
+  arvore[OUTRO]["scripts/publicacao/conferir-banco.cjs"] = "a";
+  arvore[TOPO]["scripts/publicacao/conferir-banco.cjs"] = "b";
+  const r = await evidenciaComWorkflows({ arvore });
+  assertEquals(r.estado, "SEM_EVIDENCIA");
+  assertStringIncludes(r.motivo, "ferramenta de conferência");
+});
+
+Deno.test("C6 no portão: dependências sem o leitor de arquivo e workflow diferente — SEM_EVIDENCIA, sem lançar", async () => {
+  const r = await evidenciaComWorkflows({
+    arvore: arvoreDosWorkflows(WF_COM_UMA_NOVA, LOJAS_COM_UMA_NOVA),
+    semLeitor: true,
+  });
+  assertEquals(r.estado, "SEM_EVIDENCIA");
 });

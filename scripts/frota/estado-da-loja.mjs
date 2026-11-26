@@ -25,6 +25,7 @@
  *     contrato de conferir-frota.mjs, todos iguais);
  *   - --acordar: a prontidão DAQUELA loja contra a release atual (a mesma régua do publicar-release.mjs), com a base = a release em que
  *     ela dormiu. Faltando migration, prova de objetos ou function, NÃO imprime a chamada: imprime os comandos de conserto só dela.
+ *     Function que falta na loja e que a release NÃO mudou não impede o acordar: a chamada sai, e o comando de publicá-la vai no AVISO.
  * A instrução impressa vale 30 minutos (p_valido_ate); a porta recusa a vencida e a que vale mais de 1 hora.
  *
  * --depois-de-acordar (OBRIGATÓRIO depois de rodar a instrução de acordar): a porta não sabe qual release está no ar (p_sha é só
@@ -500,7 +501,23 @@ async function conferirProntidao(
       topo: ctx.topo,
     });
     const naoProntas = pront.funcoes.filter((f) => f.estado === "NAO_PRONTA");
-    if (pront.problemas.length === 0 && naoProntas.length === 0) return true;
+    if (pront.problemas.length === 0 && naoProntas.length === 0) {
+      // Function que FALTA na loja e que a release não mudou (DERIVA_ANTIGA com `ausente`): não impede o acordar, mas sem este aviso
+      // ela nunca ganhava comando (o conserto só saía para loja NÃO pronta). Vai para o stderr, nunca para a saída: o stdout continua
+      // sendo a UMA instrução que se roda pelo MCP. Os comandos são os de comandosDeConserto (só impressos, com as mesmas travas de
+      // banco pronto, topo lido e canal que publica); quando nenhuma linha é comando, o texto não promete um.
+      const ausentes = pront.funcoes
+        .filter((f) => f.estado === "DERIVA_ANTIGA" && f.ausente === true)
+        .map((f) => f.nome);
+      if (ausentes.length) {
+        const cmds = comandosDeConserto(loja, pront, canal, ctx.ctxConserto);
+        erros.push(
+          `AVISO: a loja ${a.loja} (${a.ref}) não tem as functions ${ausentes.join(", ")} publicadas. A release não as mudou, então elas não impedem o acordar. ${cmds.some((l) => l.startsWith("gh ")) ? "Para publicá-las (só impresso, nada foi executado; linha com # não é comando):" : "Nenhuma tem comando de publicar daqui; o motivo:"}`,
+          ...cmds,
+        );
+      }
+      return true;
+    }
     erros.push(
       jaNoAr
         ? `NÃO PRONTA: a loja ${a.loja} (${a.ref}) JÁ está no ar servindo a ${a.sha}, e o banco dela (conferido desde a ${a.base}) não está pronto para essa release. O caminho é consertar o banco (os comandos abaixo, um passo por vez, rodando este comando de novo até sair OK) ou pôr a loja para dormir de novo com o --adormecer acima.`

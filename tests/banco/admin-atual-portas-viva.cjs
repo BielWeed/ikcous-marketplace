@@ -762,6 +762,7 @@ const ABRE_CAIXA = { quem: "admin", sql: ["SELECT public.fin_caixa_abrir(0)"] };
 // `sql`/`params`: a chamada do painel. `marca`: texto que SÓ aparece se a RPC
 // devolveu o dado do cliente da fixture. `vazio`: a recusa desta é devolver
 // '[]' (não exceção). `dono`: RPC "dono OU admin" (o dono passa).
+// `assinatura`: só para porta que NÃO é uma das 42 da 99 (as delas vêm do preflight).
 // `negService`/`negPostgres`: a recusa que service_role/postgres JÁ recebiam
 // antes desta migration (ausente = passam, como antes).
 const CASOS = [
@@ -789,6 +790,21 @@ const CASOS = [
     sql: "SELECT * FROM public.get_admin_customers_paged('', 'created_at', 'desc', 0, 100) x",
     neg: NEG_PRIV,
     marca: MARCA_PERFIL,
+  },
+  // 20261530000000: a porta leve do balcao copia as guardas da get_admin_customers_paged letra por letra (inclusive a da 99, que o
+  // CONTROLE tira). Nao e uma das 42 da 99: a assinatura vem aqui. EXECUTE so do authenticated: o service_role e recusado pelo
+  // proprio Postgres (sem EXECUTE), nao pela guarda.
+  {
+    nome: "buscar_clientes_do_balcao",
+    assinatura: "public.buscar_clientes_do_balcao(text,integer)",
+    sql: "SELECT * FROM public.buscar_clientes_do_balcao($1, 8) x",
+    params: [MARCA_PERFIL],
+    neg: NEG_PRIV,
+    marca: MARCA_PERFIL,
+    negService: {
+      code: "42501",
+      mensagem: /^permission denied for function buscar_clientes_do_balcao$/,
+    },
   },
   {
     nome: "crm_clientes",
@@ -1133,7 +1149,10 @@ for (const caso of CASOS) {
       }
 
       // CONTROLE: o corpo vivo sem a guarda deixa os dois rebaixados passarem.
-      const vivo = await catalogoComAssinatura(c, assinaturaDe(caso.nome));
+      const vivo = await catalogoComAssinatura(
+        c,
+        caso.assinatura || assinaturaDe(caso.nome),
+      );
       const tambem = [];
       for (const n of caso.controleTambem || [])
         tambem.push(await catalogoComAssinatura(c, assinaturaDe(n)));

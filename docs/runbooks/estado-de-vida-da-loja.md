@@ -185,6 +185,11 @@ com a mesma régua do `publicar-release.mjs`: migrations no ledger, prova de obj
 migration nova desde a release em que ela dormiu (`--base`) e functions iguais às da release.
 
 - **Pronta:** imprime a instrução. Rode pelo MCP.
+- **Pronta, mas sem uma function que a release não mudou:** a falta não impede o acordar (a mesma
+  régua do `publicar-release.mjs`), então a instrução sai. Junto, um `AVISO` (na saída de erro, nunca
+  misturado à instrução) traz o comando de publicá-la (`gh workflow run publicar-functions.yml ...`),
+  ou uma linha com `#` dizendo por que não há comando (canal que não publica aquela function, topo
+  do ramo não lido ou com functions diferentes da release). Nada é executado: rode-o você.
 - **Não pronta:** NÃO imprime a instrução. Imprime o motivo e os comandos de conserto **só daquela
   loja** (`gh workflow run ...`), um passo por vez. Rode o primeiro, espere terminar
   (`gh run watch <id>`) e rode o `--acordar` de novo. Repita até sair a instrução.
