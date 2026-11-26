@@ -109,6 +109,11 @@ const NOME_DA_FONTE = new Map(
 // "atualizar": repetir a leitura nao traz o que ficou de fora.
 const TEXTO_DE_LISTA_CORTADA = new Map<TipoDeAviso, string>([
   [
+    // A lista traz os pedidos mais antigos (os que mais urgem); o resto esta em Pedidos.
+    "pedido",
+    "Há mais pedidos esperando você do que cabem nesta tela: aqui estão os mais antigos. Veja o resto em Pedidos.",
+  ],
+  [
     "estoque",
     "Há mais produtos acabando do que cabem nesta tela. Para ver o resto, abra o cartão de estoque baixo no Início.",
   ],
