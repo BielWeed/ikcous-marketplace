@@ -91,6 +91,7 @@ import {
   falhaDePushSemConfirmacao,
   motivoDaFalhaEmPortugues,
 } from "@/lib/motivo-da-falha-de-push";
+import { nomeDaClienteNoPedido } from "@/lib/nome-da-cliente-no-balcao";
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { CAMPO_DO_CARIMBO_DO_AVISO } from "@/lib/ordem-do-aviso-do-pedido";
@@ -2112,7 +2113,9 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       // banco, em inglês, dentro da mensagem que a lojista manda para a
       // cliente. O nome é o do app da cliente, não o do painel.
       const message = mensagemDoStatusNoWhatsapp({
-        nomeDoCliente: order.customer?.name,
+        // Venda de balcão gravada com o literal de "sem nome": o mesmo nome
+        // que o recibo mostra, nunca "Olá Venda no balcão!".
+        nomeDoCliente: nomeDaClienteNoPedido(order),
         numeroDoPedido: numeroDoPedido(order.id),
         rotuloDoStatus: rotuloDoStatusParaACliente(
           order.status,
