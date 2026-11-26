@@ -1,6 +1,7 @@
 import { EstadoComPonto } from "@/components/admin/primitivos/EstadoComPonto";
 import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import {
+  contagemDoTeste,
   formatarData,
   formatarMoeda,
   infoDoStatusDaAssinatura,
@@ -120,6 +121,9 @@ export function CartaoDaAssinatura({
     assinatura.status === "atrasada" ||
     assinatura.status === "suspensa" ||
     assinatura.status === "pendente";
+  // Em teste o preço não é destaque: vira a linha pequena "Depois, ...".
+  const emTeste = assinatura.status === "teste";
+  const contagem = emTeste ? contagemDoTeste(assinatura.testeAte) : null;
 
   return (
     <section
@@ -132,7 +136,7 @@ export function CartaoDaAssinatura({
       <p className="min-w-0 break-words text-xl font-bold text-white [overflow-wrap:anywhere]">
         {assinatura.plano ?? "Plano sem nome"}
       </p>
-      {assinatura.valorMensal != null ? (
+      {assinatura.valorMensal != null && !emTeste ? (
         <p className={`text-2xl ${VALOR_INICIO}`}>
           {formatarMoeda(assinatura.valorMensal)}
           <span className="font-medium">{rotuloDoCiclo(assinatura.ciclo)}</span>
@@ -151,6 +155,14 @@ export function CartaoDaAssinatura({
           </div>
         ))}
       </dl>
+      {contagem ? (
+        <p className="text-sm font-medium text-white">{contagem}</p>
+      ) : null}
+      {emTeste && assinatura.valorMensal != null ? (
+        <p className="text-sm leading-relaxed text-zinc-400">
+          Depois, {formatarMoeda(assinatura.valorMensal)} por mês
+        </p>
+      ) : null}
       {precisaRegularizar ? (
         <p
           className={cn(

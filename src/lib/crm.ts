@@ -877,14 +877,57 @@ export function linhasDeDatasDaAssinatura(
   }
   const linhas = [
     principal,
-    assinatura.testeAte
-      ? { rotulo: "Teste até", data: assinatura.testeAte }
-      : null,
+    assinatura.testeAte ? linhaDoTeste(status, assinatura.testeAte) : null,
     assinatura.inicioEm
       ? { rotulo: "Cliente desde", data: assinatura.inicioEm }
       : null,
   ];
   return linhas.filter((linha) => linha !== null);
+}
+
+/** `YYYY-MM-DD` ou instante ISO → o dia em São Paulo; `null` se ilegível. */
+function diaDaDataDaAssinatura(valor: string): string | null {
+  if (PADRAO_DIA.test(valor)) return valor;
+  const instante = new Date(valor);
+  return Number.isNaN(instante.getTime()) ? null : diaEmSaoPaulo(instante);
+}
+
+/**
+ * `teste_ate` é o dia em que vence a 1ª mensalidade, não o último dia de graça:
+ * em teste o cartão mostra "Grátis até" com o dia ANTERIOR. Data ilegível fica
+ * como veio (o formatador mostra "—"); fora do teste nada muda.
+ */
+function linhaDoTeste(
+  status: StatusDaAssinatura | null,
+  testeAte: string,
+): { rotulo: string; data: string } {
+  if (status !== "teste") return { rotulo: "Teste até", data: testeAte };
+  const dia = diaDaDataDaAssinatura(testeAte);
+  return { rotulo: "Grátis até", data: dia ? somarDias(dia, -1) : testeAte };
+}
+
+/**
+ * A contagem do teste grátis, no calendário de São Paulo: "Faltam N dias" até o
+ * último dia grátis (`teste_ate` − 1, contando hoje), "Hoje é o último dia
+ * grátis" nele e "Sua primeira mensalidade vence hoje" no próprio `teste_ate`.
+ * Sem data, data ilegível ou `teste_ate` já passado: `null` (nada se inventa).
+ */
+export function contagemDoTeste(
+  testeAte: string | null,
+  agora: Date = new Date(),
+): string | null {
+  if (!testeAte) return null;
+  const vencimento = diaDaDataDaAssinatura(testeAte);
+  if (!vencimento) return null;
+  const hoje = diaEmSaoPaulo(agora);
+  if (hoje === vencimento) return "Sua primeira mensalidade vence hoje";
+  const ultimoGratis = somarDias(vencimento, -1);
+  const [a1, m1, d1] = hoje.split("-").map(Number);
+  const [a2, m2, d2] = ultimoGratis.split("-").map(Number);
+  const faltam =
+    (Date.UTC(a2, m2 - 1, d2) - Date.UTC(a1, m1 - 1, d1)) / 86_400_000 + 1;
+  if (faltam === 1) return "Hoje é o último dia grátis";
+  return faltam >= 2 ? `Faltam ${faltam} dias` : null;
 }
 
 // ─── Erro ────────────────────────────────────────────────────────────────
