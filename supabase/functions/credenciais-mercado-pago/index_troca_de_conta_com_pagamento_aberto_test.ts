@@ -23,6 +23,7 @@ const TOKEN_PF = "APP_USR-token-fixture-pessoa-fisica";
 const TOKEN_PF_RENOVADO = "APP_USR-token-fixture-pessoa-fisica-renovado";
 const TOKEN_PJ = "APP_USR-token-fixture-empresa";
 const TOKEN_RECUSADO = "APP_USR-token-fixture-recusado";
+const TOKEN_PF_TESTE = "TEST-token-fixture-pessoa-fisica-sandbox";
 const CHAVE_CIFRA_TESTE = btoa(
     String.fromCharCode(...Array.from({ length: 32 }, (_, i) => (i * 5 + 9) % 256)),
 );
@@ -31,6 +32,8 @@ const CONTAS = new Map<string, { id: number; nickname: string }>([
     [TOKEN_PF, { id: 111111, nickname: "LOJAPF" }],
     [TOKEN_PF_RENOVADO, { id: 111111, nickname: "LOJAPF" }],
     [TOKEN_PJ, { id: 222222, nickname: "LOJAPJ" }],
+    // Credencial de TESTE (prefixo TEST-) da MESMA conta: mesmo id, outro ambiente.
+    [TOKEN_PF_TESTE, { id: 111111, nickname: "LOJAPF" }],
 ]);
 
 function respostaJson(corpo: unknown, status = 200): Response {
@@ -177,14 +180,25 @@ const PEDIDOS_AGUARDANDO = [
 async function lojaVendendoNaContaPf() {
     const { cliente, estado } = supabaseFalso();
     const tokensConsultados: string[] = [];
+    // Tokens que o MP passa a RECUSAR (revogados/expirados -> 401) e tokens
+    // cuja consulta cai na REDE (sem resposta) — mudam no meio de cada caso.
+    const revogados = new Set<string>();
+    const semRede = new Set<string>();
     const buscar = (url: string, init?: RequestInit): Promise<Response> => {
         assertEquals(url, "https://api.mercadopago.com/users/me");
         const token = String(new Headers(init?.headers).get("Authorization")).replace(/^Bearer /, "");
         tokensConsultados.push(token);
-        const conta = CONTAS.get(token);
+        if (semRede.has(token)) return Promise.reject(new TypeError("fixture: rede caiu"));
+        const conta = revogados.has(token) ? undefined : CONTAS.get(token);
         if (!conta) return Promise.resolve(respostaJson({ message: "invalid_token" }, 401));
         return Promise.resolve(respostaJson({ ...conta, tags: ["normal"], site_id: "MLB" }));
     };
+    const testar = () =>
+        handler(new Request("http://local/credenciais-mercado-pago", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: "Bearer jwt-fixture" },
+            body: JSON.stringify({ acao: "testar" }),
+        }), { supabase: cliente, buscar, donoAtual: async () => ID_ADMIN });
     const salvar = (accessToken: string) =>
         handler(new Request("http://local/credenciais-mercado-pago", {
             method: "POST",
@@ -212,8 +226,11 @@ async function lojaVendendoNaContaPf() {
     estado.updatesLoja.length = 0;
     return {
         salvar,
+        testar,
         estado,
         tokensConsultados,
+        revogados,
+        semRede,
         registroAnterior: estado.valor,
         fichaAnterior: { ...estado.loja },
     };
@@ -237,10 +254,23 @@ function nadaGravado(
     assertEquals(estado.loja, fichaAnterior);
 }
 
+/** Estraga o token cifrado do registro: o cofre não consegue mais decifrá-lo. */
+function comTokenIlegivel(estado: { valor: string | null }) {
+    const registro = JSON.parse(String(estado.valor));
+    registro.token_cifrado = btoa("lixo-que-nao-decifra-fixture");
+    estado.valor = JSON.stringify(registro);
+}
+
+// Sem "cancele": a fila inclui de propósito o pedido aguardando E cancelado
+// (o PIX dele ainda pode ser pago), então cancelar não destrava a troca.
+const ESPERE =
+    "Espere esses pagamentos terminarem e troque depois: o PIX sai da conferência quando vence e é conferido (cerca de 1 hora), e um cartão em análise pode levar alguns dias. Nada foi salvo.";
 const RECUSA_CONTA_DIFERENTE =
-    "Há 2 pedido(s) aguardando pagamento na conta atual do Mercado Pago, e as chaves novas são de outra conta. Se trocar agora, esses pagamentos não seriam mais conferidos pelo app. Espere eles terminarem (em geral leva até 1 hora) ou cancele os pedidos, e troque depois. Nada foi salvo.";
+    `Há 2 pedido(s) aguardando pagamento na conta atual do Mercado Pago, e as chaves novas são de outra conta. Se trocar agora, esses pagamentos não seriam mais conferidos pelo app. ${ESPERE}`;
 const RECUSA_CONTA_INCERTA =
-    "Há 2 pedido(s) aguardando pagamento na conta atual do Mercado Pago, e não consegui confirmar se as chaves novas são da mesma conta. Se trocar agora, esses pagamentos podem não ser mais conferidos pelo app. Espere eles terminarem (em geral leva até 1 hora) ou cancele os pedidos, e troque depois. Nada foi salvo.";
+    `Há 2 pedido(s) aguardando pagamento na conta atual do Mercado Pago, e não consegui confirmar se as chaves novas são da mesma conta. Se trocar agora, esses pagamentos podem não ser mais conferidos pelo app. ${ESPERE}`;
+const RECUSA_AMBIENTE_DIFERENTE =
+    `Há 2 pedido(s) aguardando pagamento na conta atual do Mercado Pago, e as chaves novas são de outro ambiente (teste e produção não se misturam). Se trocar agora, esses pagamentos não seriam mais conferidos pelo app. ${ESPERE}`;
 
 Deno.test("troca de conta do Mercado Pago com pagamento em aberto", async (t) => {
     const desfazerEnv = prepararEnv();
@@ -336,6 +366,116 @@ Deno.test("troca de conta do Mercado Pago com pagamento em aberto", async (t) =>
             nadaGravado(estado, registroAnterior, fichaAnterior);
             assertEquals(resposta.status, 503);
             assert(String(corpo.erro).includes("nada foi alterado"));
+        });
+
+        // ── Revisão Opus de 26/11/2026 ────────────────────────────────────
+
+        await t.step("a recusa NUNCA manda cancelar (pedido cancelado continua na fila)", async () => {
+            const { salvar, estado } = await lojaVendendoNaContaPf();
+            estado.fila = { data: PEDIDOS_AGUARDANDO, error: null };
+
+            const corpo = await (await salvar(TOKEN_PJ)).json();
+            assert(!/cancel/i.test(String(corpo.erro)), `recado manda cancelar: ${corpo.erro}`);
+        });
+
+        // Token antigo MORTO (o MP o recusa com 401): ninguém mais concilia com
+        // ele — nem a reconciliação, que usa o mesmo token —, então a fila não
+        // esvazia sozinha por 24 h (PIX) a 14 dias (cartão). Recusar só prenderia
+        // a loja; a chave nova é a única que volta a conciliar alguma coisa.
+        await t.step("registro antigo + token antigo 401 + MESMA conta + fila -> troca", async () => {
+            const { salvar, estado, revogados } = await lojaVendendoNaContaPf();
+            comoRegistroLegado(estado);
+            revogados.add(TOKEN_PF);
+            estado.fila = { data: PEDIDOS_AGUARDANDO, error: null };
+
+            const resposta = await salvar(TOKEN_PF_RENOVADO);
+            assertEquals(resposta.status, 200);
+            assertEquals(estado.upserts.length, 1);
+        });
+
+        await t.step("registro antigo + token antigo 401 + conta DIFERENTE + fila -> troca", async () => {
+            const { salvar, estado, revogados } = await lojaVendendoNaContaPf();
+            comoRegistroLegado(estado);
+            revogados.add(TOKEN_PF);
+            estado.fila = { data: PEDIDOS_AGUARDANDO, error: null };
+
+            const resposta = await salvar(TOKEN_PJ);
+            assertEquals(resposta.status, 200);
+            assertEquals(estado.upserts.length, 1);
+            assertEquals(JSON.parse(String(estado.valor)).ultimo_teste.conta_id, "222222");
+        });
+
+        await t.step("id gravado DIFERENTE + token antigo 401 + fila -> troca (o token antigo é que está morto)", async () => {
+            const { salvar, estado, revogados } = await lojaVendendoNaContaPf();
+            revogados.add(TOKEN_PF);
+            estado.fila = { data: PEDIDOS_AGUARDANDO, error: null };
+
+            const resposta = await salvar(TOKEN_PJ);
+            assertEquals(resposta.status, 200);
+        });
+
+        await t.step("token antigo SEM RESPOSTA (rede) + conta diferente + fila -> 409, nada gravado", async () => {
+            const { salvar, estado, semRede } = await lojaVendendoNaContaPf();
+            comoRegistroLegado(estado);
+            const registroLegado = estado.valor;
+            semRede.add(TOKEN_PF);
+            estado.fila = { data: PEDIDOS_AGUARDANDO, error: null };
+
+            const resposta = await salvar(TOKEN_PJ);
+            const corpo = await resposta.json();
+            nadaGravado(estado, registroLegado, { pagamento_online: true, mp_public_key: PUBLIC_KEY_FALSA });
+            assertEquals(resposta.status, 409);
+            assertEquals(corpo, { erro: RECUSA_CONTA_INCERTA });
+        });
+
+        await t.step("token salvo que o cofre não decifra + fila -> troca (mesma regra do 401)", async () => {
+            const { salvar, estado } = await lojaVendendoNaContaPf();
+            comTokenIlegivel(estado);
+            estado.fila = { data: PEDIDOS_AGUARDANDO, error: null };
+
+            const resposta = await salvar(TOKEN_PJ);
+            assertEquals(resposta.status, 200);
+            assertEquals(estado.upserts.length, 1);
+        });
+
+        await t.step("testar que FALHA preserva o id da conta já gravado", async () => {
+            const { testar, estado, revogados } = await lojaVendendoNaContaPf();
+            revogados.add(TOKEN_PF);
+
+            const resposta = await testar();
+            assertEquals(resposta.status, 200);
+            const teste = JSON.parse(String(estado.valor)).ultimo_teste;
+            assertEquals(teste.conectado, false);
+            assertEquals(teste.conta_id, "111111");
+        });
+
+        await t.step("salvar com token NOVO que falha NÃO herda o id da conta antiga", async () => {
+            const { salvar, estado } = await lojaVendendoNaContaPf();
+
+            const resposta = await salvar(TOKEN_RECUSADO);
+            assertEquals(resposta.status, 200);
+            const teste = JSON.parse(String(estado.valor)).ultimo_teste;
+            assertEquals(teste.conectado, false);
+            assertEquals(teste.conta_id, null);
+        });
+
+        await t.step("MESMO id em OUTRO ambiente (chave TEST-) + fila -> 409, nada gravado", async () => {
+            const { salvar, estado, registroAnterior, fichaAnterior } = await lojaVendendoNaContaPf();
+            estado.fila = { data: PEDIDOS_AGUARDANDO, error: null };
+
+            const resposta = await salvar(TOKEN_PF_TESTE);
+            const corpo = await resposta.json();
+            nadaGravado(estado, registroAnterior, fichaAnterior);
+            assertEquals(resposta.status, 409);
+            assertEquals(corpo, { erro: RECUSA_AMBIENTE_DIFERENTE });
+        });
+
+        await t.step("MESMO id em OUTRO ambiente + fila VAZIA -> troca", async () => {
+            const { salvar, estado } = await lojaVendendoNaContaPf();
+
+            const resposta = await salvar(TOKEN_PF_TESTE);
+            assertEquals(resposta.status, 200);
+            assertEquals(estado.consultasDaFila, 1);
         });
     } finally {
         globalThis.fetch = fetchAnterior;
