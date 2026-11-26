@@ -432,10 +432,15 @@ PROVAS.push({
 
     // 20261460000000: loja fora do ar (adormecida) com ativa = true. A v1 (a porta do porteiro de hoje) não a
     // resolve; a v2 diz o estado SEM a URL e a chave do banco dela; a ativa segue igual nas duas.
+    // 20261470000000: o gatilho de frota_lojas só deixa gravar estado pela porta; a semente liga a variável dela SÓ nesta
+    // transação (BEGIN ... COMMIT num comando só: sem transação o set_config local não chegaria ao INSERT).
     await cliente.query(
-      `INSERT INTO public.frota_lojas (id, nome, dominio_publico, project_ref, supabase_url, publishable_key, ativa, estado)
-       VALUES ('loja-dormindo', 'Loja Dormindo da Prova', 'loja-dormindo.lojas.teste', 'refdormindo', 'https://refdormindo.supabase.co', 'pk_dormindo', true, 'adormecida')
-       ON CONFLICT (id) DO NOTHING`,
+      `BEGIN;
+       SELECT set_config('ikcous.frota_estado_pela_porta', 'sim', true);
+       INSERT INTO public.frota_lojas (id, nome, dominio_publico, project_ref, supabase_url, publishable_key, ativa, estado, estado_sha)
+       VALUES ('loja-dormindo', 'Loja Dormindo da Prova', 'loja-dormindo.lojas.teste', 'refdormindo', 'https://refdormindo.supabase.co', 'pk_dormindo', true, 'adormecida', '${"0".repeat(40)}')
+       ON CONFLICT (id) DO NOTHING;
+       COMMIT;`,
     );
     const dormindoV1 = await cliente.query(
       "SELECT * FROM public.resolver_loja($1, $2)",

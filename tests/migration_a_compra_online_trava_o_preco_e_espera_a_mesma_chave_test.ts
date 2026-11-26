@@ -377,6 +377,7 @@ Deno.test("20261350 publicacao: lote unico de apply normal, DEPOIS da 244, vale 
       "180a-conferir-o-cadastro-fiscal-aplicado",
       "181a-conferir-os-fornecedores-aplicado",
       "182a-conferir-o-estado-de-vida-da-loja-aplicado",
+      "183a-conferir-a-loja-muda-de-estado-so-pela-porta-aplicado",
     ],
     "os lotes posteriores à 81a são anexados no fim, sem reordenar lotes anteriores",
   );

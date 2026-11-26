@@ -803,6 +803,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "181b-antes-os-fornecedores-ausentes",
   "182a-conferir-o-estado-de-vida-da-loja-aplicado",
   "182b-antes-o-estado-de-vida-da-loja-ausente",
+  "183a-conferir-a-loja-muda-de-estado-so-pela-porta-aplicado",
+  "183b-antes-a-loja-muda-de-estado-so-pela-porta-ausente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */
@@ -1336,7 +1338,7 @@ function comRetentativaNasLeituras(deps) {
 
 // ------------------------------------------------------------------ etapa 3: por loja
 
-async function prontidaoDaLoja(loja, canal, ctx) {
+export async function prontidaoDaLoja(loja, canal, ctx) {
   const {
     sha,
     deps,
@@ -1644,6 +1646,100 @@ export function comandosDeConserto(loja, pront, canal, ctx) {
   return cmds;
 }
 
+/**
+ * O que a prontidão de QUALQUER loja precisa saber da release `sha`, lido uma
+ * vez: as migrations exigidas (fora as de politica.migrationsForaDaRelease), as
+ * functions publicáveis do SHA, o verify_jwt do config.toml, o nome completo de
+ * cada migration por versão e o topo de `canais.ramoDaRelease` (o commit que os
+ * workflows de conserto vão rodar), com as duas comparações de árvore que
+ * decidem se os comandos de conserto podem sair. Extraído de `publicarRelease`
+ * (L8, Lote 4) para o `scripts/frota/estado-da-loja.mjs` conferir UMA loja que
+ * acorda contra a release atual com a MESMA régua do portão. Mesma ordem de
+ * leituras de antes. `problemas`: o topo não lido (o chamador o trata como
+ * bloqueio); qualquer outra falha de leitura sobe como exceção.
+ */
+export async function contextoDaRelease({ sha, politica, canais, deps }) {
+  const problemas = [];
+  const requeridas = migrationsDaRelease(
+    await deps.listarMigrationsNoSha(sha),
+    politica,
+  );
+  const funcoesDoSha = (await deps.listarFuncoesNoSha(sha)).filter(
+    (n) =>
+      RE_FUNCAO.test(n) &&
+      n !== "_shared" &&
+      !(canais.funcoesNaoPublicadas ?? []).includes(n),
+  );
+  const verifyJwt = verifyJwtDoConfig(
+    deps.lerArquivoNoSha(sha, "supabase/config.toml"),
+  );
+  const nomesPorVersao = new Map();
+  for (const nome of await deps.listarMigrationsNoSha(sha)) {
+    const m = RE_MIGRATION.exec(nome);
+    if (m && !nomesPorVersao.has(m[1])) nomesPorVersao.set(m[1], nome);
+  }
+  // O topo do ramo é o commit que os workflows vão rodar (expected_sha). Os
+  // comandos só saem se ele tiver as MESMAS migrations, consultas e functions
+  // da release — senão o run aplicaria/publicaria outra coisa.
+  const ramo = canais.ramoDaRelease;
+  let topo = null;
+  try {
+    const t = String(await deps.topoDoRamo(ramo)).trim();
+    if (!RE_SHA.test(t))
+      throw new Error(`resposta inválida "${t.slice(0, 50)}"`);
+    topo = t;
+  } catch (e) {
+    problemas.push({
+      alvo: `ramo ${ramo}`,
+      motivo: `topo de origin/${ramo} não lido (${e.message}): sem comandos de conserto`,
+    });
+  }
+  const consultasDosLotes = [
+    ...new Set(
+      (canais.provasDeObjetos ?? [])
+        .flatMap((p) => [
+          p.consulta,
+          p.ausenciaConfirmadaPor,
+          ...(p.conferenciasAntesDoApply ?? []),
+        ])
+        .filter(Boolean),
+    ),
+  ];
+  const topoBancoIgual = topo
+    ? await deps.arvoreIgual(topo, sha, [
+        "supabase/migrations",
+        ...consultasDosLotes.map(
+          (c) => `scripts/publicacao/consultas/${c}.sql`,
+        ),
+      ])
+    : false;
+  const topoFunctionsIgual = topo
+    ? await deps.arvoreIgual(topo, sha, [
+        "supabase/functions",
+        "supabase/config.toml",
+      ])
+    : false;
+  const ctxConserto = {
+    ramo,
+    topo,
+    topoBancoIgual,
+    topoFunctionsIgual,
+    nomesPorVersao,
+  };
+  return {
+    requeridas,
+    funcoesDoSha,
+    verifyJwt,
+    nomesPorVersao,
+    ramo,
+    topo,
+    topoBancoIgual,
+    topoFunctionsIgual,
+    ctxConserto,
+    problemas,
+  };
+}
+
 // ------------------------------------------------------------------ orquestração
 
 export async function publicarRelease(opcoes, deps) {
@@ -1784,72 +1880,18 @@ export async function publicarRelease(opcoes, deps) {
   linhas.push("");
 
   // 3. prontidão
-  const requeridas = migrationsDaRelease(
-    await deps.listarMigrationsNoSha(sha),
-    politica,
-  );
-  const funcoesDoSha = (await deps.listarFuncoesNoSha(sha)).filter(
-    (n) =>
-      RE_FUNCAO.test(n) &&
-      n !== "_shared" &&
-      !(canais.funcoesNaoPublicadas ?? []).includes(n),
-  );
-  const verifyJwt = verifyJwtDoConfig(
-    deps.lerArquivoNoSha(sha, "supabase/config.toml"),
-  );
-  const nomesPorVersao = new Map();
-  for (const nome of await deps.listarMigrationsNoSha(sha)) {
-    const m = RE_MIGRATION.exec(nome);
-    if (m && !nomesPorVersao.has(m[1])) nomesPorVersao.set(m[1], nome);
-  }
-  // O topo do ramo é o commit que os workflows vão rodar (expected_sha). Os
-  // comandos só saem se ele tiver as MESMAS migrations, consultas e functions
-  // da release — senão o run aplicaria/publicaria outra coisa.
-  const ramo = canais.ramoDaRelease;
-  let topo = null;
-  try {
-    const t = String(await deps.topoDoRamo(ramo)).trim();
-    if (!RE_SHA.test(t))
-      throw new Error(`resposta inválida "${t.slice(0, 50)}"`);
-    topo = t;
-  } catch (e) {
-    bloqueios.push({
-      alvo: `ramo ${ramo}`,
-      motivo: `topo de origin/${ramo} não lido (${e.message}): sem comandos de conserto`,
-    });
-  }
-  const consultasDosLotes = [
-    ...new Set(
-      (canais.provasDeObjetos ?? [])
-        .flatMap((p) => [
-          p.consulta,
-          p.ausenciaConfirmadaPor,
-          ...(p.conferenciasAntesDoApply ?? []),
-        ])
-        .filter(Boolean),
-    ),
-  ];
-  const topoBancoIgual = topo
-    ? await deps.arvoreIgual(topo, sha, [
-        "supabase/migrations",
-        ...consultasDosLotes.map(
-          (c) => `scripts/publicacao/consultas/${c}.sql`,
-        ),
-      ])
-    : false;
-  const topoFunctionsIgual = topo
-    ? await deps.arvoreIgual(topo, sha, [
-        "supabase/functions",
-        "supabase/config.toml",
-      ])
-    : false;
-  const ctxConserto = {
+  const {
+    requeridas,
+    funcoesDoSha,
+    verifyJwt,
     ramo,
     topo,
     topoBancoIgual,
     topoFunctionsIgual,
-    nomesPorVersao,
-  };
+    ctxConserto,
+    problemas: problemasDoContexto,
+  } = await contextoDaRelease({ sha, politica, canais, deps });
+  bloqueios.push(...problemasDoContexto);
   const sobreOTopo = topo
     ? ` (migrations/consultas ${topoBancoIgual ? "iguais" : "DIFERENTES"} e functions ${topoFunctionsIgual ? "iguais" : "DIFERENTES"} às da release)`
     : "";

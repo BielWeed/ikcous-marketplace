@@ -51,6 +51,29 @@ const ROLLBACK = ler(`rollback-manual-${NOME}`);
 const DESTRUTIVO = ler(`rollback-manual-destrutivo-${NOME}`);
 const CADERNETA = ler("20261141000000_caderneta_da_frota.sql");
 const CONSULTAS = path.join(__dirname, "../../scripts/publicacao/consultas");
+// A 20261470000000 (a loja muda de estado so pela porta) SUCEDE esta: o gatilho dela recusa gravar estado, estado_desde ou estado_sha
+// fora da porta e depende das colunas desta. Toda prova daqui que grava estado a mao liga a variavel da porta (so na transacao dela), e
+// toda que desfaz as colunas desta desfaz a 20261470 ANTES, na propria transacao (a mais nova antes). Nunca se afrouxa o pre-voo de
+// nenhuma das duas.
+const NOME_1470 = "20261470000000_a_loja_muda_de_estado_so_pela_porta.sql";
+const ROLLBACK_1470 = ler(`rollback-manual-${NOME_1470}`);
+const DESTRUTIVO_1470 = ler(`rollback-manual-destrutivo-${NOME_1470}`);
+const LIGAR_A_PORTA =
+  "SELECT set_config('ikcous.frota_estado_pela_porta', 'sim', true)";
+/** Desfaz a 20261470 (comum + destrutivo confirmado) DENTRO da transação do chamador, se ela estiver no banco. */
+async function desfazerAPosterior(c) {
+  const no_ar = (
+    await c.query(
+      "SELECT to_regprocedure('public.frota_mudar_estado(text, text, text, text, text, text, text, text, timestamptz)') IS NOT NULL OR to_regclass('public.frota_estado_historico') IS NOT NULL AS x",
+    )
+  ).rows[0].x;
+  if (!no_ar) return;
+  await c.query(ROLLBACK_1470);
+  await c.query(
+    "SET LOCAL app.confirmo_apagar_historico_do_estado_da_loja = 'APAGAR'",
+  );
+  await c.query(DESTRUTIVO_1470);
+}
 const A182 = "182a-conferir-o-estado-de-vida-da-loja-aplicado";
 const B182 = "182b-antes-o-estado-de-vida-da-loja-ausente";
 
@@ -137,6 +160,8 @@ async function desfeita(c, fn) {
   }
 }
 async function semente(c) {
+  // A 20261470 so deixa gravar estado pela porta: as lojas fora do ar desta prova nascem com a variavel dela ligada (so nesta transacao).
+  await c.query(LIGAR_A_PORTA);
   await c.query(
     "INSERT INTO public.frota_segredo (id, hash) VALUES (1, extensions.crypt($1, extensions.gen_salt('bf', 4))) ON CONFLICT (id) DO UPDATE SET hash = EXCLUDED.hash",
     [CHAVE],
@@ -219,6 +244,7 @@ const md5Vivo = async (c, fn) =>
   ).rows[0]?.h ?? null;
 /** Volta a caderneta à base de antes (a da 20261141) DENTRO da transação do chamador: rollback comum + destrutivo confirmado. */
 async function voltarAoAntes(c) {
+  await desfazerAPosterior(c);
   await c.query(ROLLBACK);
   await c.query("SET LOCAL app.confirmo_apagar_estado_de_vida = 'APAGAR'");
   await c.query(DESTRUTIVO);
@@ -520,6 +546,7 @@ async function rollbacks(c) {
     );
     assert.equal(await temColunaEstado(c), 3, "a recusa não apagou nada");
     await c.query(ROLLBACK);
+    await desfazerAPosterior(c);
     await c.query(DESTRUTIVO);
     assert.equal(
       await temColunaEstado(c),
@@ -880,6 +907,7 @@ async function portao(c) {
     ]);
     assert.notDeepEqual(await consulta(c, A182), []);
     // depois do destrutivo: a 182b é POSITIVA
+    await desfazerAPosterior(c);
     await c.query("SET LOCAL app.confirmo_apagar_estado_de_vida = 'APAGAR'");
     await c.query(DESTRUTIVO);
     assert.deepEqual(
