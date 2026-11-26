@@ -1,8 +1,12 @@
 "use strict";
 // Definicao unica da 20261600000000 (a loja pausa o pedido novo) para as provas que desfazem as migrations POSTERIORES antes de medir uma
-// anterior. Hoje: as provas da 20261590000000 (a coluna assinatura_da_loja.pausa_em) e da 20261399998000 (a porta do cartao). O destrutivo da
-// 1590 recusa apagar pausa_em enquanto alguma funcao cita a coluna (PAUSA_EM_USO), e a 1600 le pausa_em (data_da_pausa_de_vendas e o motivo):
-// sem desfazer esta antes, aquelas provas ficam vermelhas por um estado que nao e' delas.
+// anterior:
+//   - PAUSA_DE_VENDAS ({ nome, noAr }): a entrada no FIM de POSTERIORES_A_97 (admin-atual-viva.cjs e pagamentos-rpc-viva.cjs). O gatilho
+//     a_loja_aceita_pedido_novo e a leitura situacao_das_vendas_da_loja chamam is_admin_atual(): sem esta entrada o rollback da 97 recusa
+//     (B1_BASELINE_DIVERGENT). O rollback-manual (comum) dela tira os 2 gatilhos e as 5 funcoes e DEIXA a tabela pausa_de_vendas.
+//   - desfazerAPausaDeVendas(c): para as provas da 20261590000000 (a coluna assinatura_da_loja.pausa_em) e da 20261399998000 (a porta do
+//     cartao). O destrutivo da 1590 recusa apagar pausa_em enquanto alguma funcao cita a coluna (PAUSA_EM_USO), e a 1600 le pausa_em: sem
+//     desfazer esta antes, aquelas provas ficam vermelhas por um estado que nao e' delas.
 //
 // Roda o rollback COMUM desta (tira gatilhos e funcoes; a tabela pausa_de_vendas fica, vazia no clone) numa transacao so. O rollback tem
 // pre-voo proprio e recusa estado desconhecido: isto nao afrouxa nada. So no Postgres EFEMERO (quem chama ja passou pela trava de
@@ -35,4 +39,6 @@ async function desfazerAPausaDeVendas(c) {
   return true;
 }
 
-module.exports = { desfazerAPausaDeVendas, A_PAUSA_DE_VENDAS: NOME };
+const PAUSA_DE_VENDAS = Object.freeze({ nome: NOME, noAr: NO_AR });
+
+module.exports = { desfazerAPausaDeVendas, PAUSA_DE_VENDAS };
