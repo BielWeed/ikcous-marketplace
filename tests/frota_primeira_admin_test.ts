@@ -148,7 +148,7 @@ Deno.test("SIM: com --aplicar, diagnóstico só-leitura e UMA transação de esc
   // 2ª: a escrita, na ordem do roteiro manual (passo 8, Tela P2)
   assertEquals(f.chamadas[1].corpo.read_only, false);
   const s = topo(f.chamadas[1].corpo.query);
-  assertEquals(s[0], "BEGIN");
+  assertEquals(s[0], "BEGIN ISOLATION LEVEL READ COMMITTED");
   assertEquals(s[1], "SET LOCAL ROLE postgres");
   assertEquals(s[2], "SET LOCAL lock_timeout = '10s'");
   assertMatch(s[3], /^SET LOCAL ikcous\.primeira_admin_email = '/);

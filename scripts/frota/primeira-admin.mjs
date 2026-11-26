@@ -5,7 +5,10 @@ import { createRequire } from "node:module";
  * do passo 8 de docs/runbooks/producao-unica-fonte.md (SQL Editor à mão).
  *
  * USO (o e-mail entra SÓ pelo stdin, uma linha):
- *   "<e-mail>" | node scripts/frota/primeira-admin.mjs --projeto <ref> --loja <slug> [--aplicar]
+ *   Read-Host "e-mail da administradora" | node scripts/frota/primeira-admin.mjs --projeto <ref> --loja <slug> [--aplicar]
+ *   (Read-Host, nunca o e-mail digitado na linha de comando: a linha vai para o histórico do PowerShell.)
+ *   BEGIN ISOLATION LEVEL READ COMMITTED: a guarda de 0 admins depende do snapshot novo DEPOIS da trava
+ *   (revisão Opus 26/11); um projeto com default_transaction_isolation=repeatable read deixaria duas rodadas passarem.
  *   --projeto  ref do projeto Supabase da loja (20 letras minúsculas).
  *   --loja     nome da loja no cofre local (é a chave do refresh OAuth da
  *              lojista em scripts/frota/acesso-oauth.mjs).
@@ -52,7 +55,7 @@ const require = createRequire(import.meta.url);
 const { RE_PROJETO, RE_REF } = require("./lojas.cjs");
 
 const USO =
-  'uso: "<e-mail>" | node scripts/frota/primeira-admin.mjs --projeto <ref> --loja <slug> [--aplicar]  (o e-mail entra SÓ pelo stdin)';
+  'uso: Read-Host "e-mail" | node scripts/frota/primeira-admin.mjs --projeto <ref> --loja <slug> [--aplicar]  (o e-mail entra SÓ pelo stdin)';
 
 export class ErroDaPrimeiraAdmin extends Error {
   constructor(mensagem) {
@@ -206,7 +209,7 @@ const RECUSAS = Object.freeze({
  * se ela comitou, e a última instrução, depois do COMMIT, só o lê. */
 export function sqlDaPromocao(email) {
   const lit = literalDoEmail(email);
-  return `BEGIN;
+  return `BEGIN ISOLATION LEVEL READ COMMITTED;
 SET LOCAL ROLE postgres;
 SET LOCAL lock_timeout = '10s';
 SET LOCAL ikcous.primeira_admin_email = ${lit};
