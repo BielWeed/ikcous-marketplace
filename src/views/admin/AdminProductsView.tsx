@@ -2603,13 +2603,15 @@ export const AdminProductsView = memo(function AdminProductsView({
  * mesmo produto. "Esgotado" é a palavra que o resto do sistema usa
  * (ProductCard.tsx, PremiumOffers.tsx, PhoneSimulator.tsx) — reaproveitada
  * aqui em vez de inventar um sinônimo. Precedência: inativo vence tudo
- * ("Offline", mesmo com estoque), depois esgotado, depois em operação.
+ * ("Oculto da loja", mesmo com estoque), depois esgotado, depois em operação.
+ * Inativo NÃO se escreve "Offline": é a palavra desta tela para "sem
+ * internet", e produto desativado é o que a cliente não vê na vitrine.
  */
 function statusDoProdutoNoPainel(product: {
   isActive: boolean;
   stock: number;
-}): "Offline" | "Esgotado" | "Em Operação" {
-  if (!product.isActive) return "Offline";
+}): "Oculto da loja" | "Esgotado" | "Em Operação" {
+  if (!product.isActive) return "Oculto da loja";
   if (product.stock <= 0) return "Esgotado";
   return "Em Operação";
 }
@@ -2912,7 +2914,7 @@ const AdminProductCard = memo(function AdminProductCard({
   const editar = () => onNavigate("admin-product-form", product.id);
   const estado = statusDoProdutoNoPainel(product);
   const classeDoEstado =
-    estado === "Offline"
+    estado === "Oculto da loja"
       ? classeDoTexto("neutro")
       : estado === "Esgotado"
         ? classeDoTexto("negativo")
@@ -2966,7 +2968,7 @@ const AdminProductCard = memo(function AdminProductCard({
   // "Estoque baixo" é UMA regra só no front (a mesma do sino e do aviso de
   // reposição): o mínimo do produto, ou o limiar padrão quando não tem. Produto
   // pausado fica de fora, como no Início e nos Avisos: alarme sobre uma decisão
-  // que a lojista já tomou. Ele fica "Offline", com cor neutra.
+  // que a lojista já tomou. Ele fica "Oculto da loja", com cor neutra.
   const estoqueBaixo =
     product.isActive &&
     precisaDeReposicao(product.stock, product.estoqueMinimo ?? null);
@@ -3351,7 +3353,7 @@ const AdminProductCard = memo(function AdminProductCard({
                 classeDoEstado,
               )}
             >
-              {estado === "Offline" ? (
+              {estado === "Oculto da loja" ? (
                 <Pause aria-hidden="true" className="size-3.5 shrink-0" />
               ) : estado === "Esgotado" || estoqueBaixo ? (
                 <AlertTriangle

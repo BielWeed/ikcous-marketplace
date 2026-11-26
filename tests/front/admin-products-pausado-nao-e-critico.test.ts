@@ -3,7 +3,7 @@
 // Produto PAUSADO nao e' estoque baixo: o Inicio e os Avisos nao o contam
 // (alarme falso sobre uma decisao que o lojista ja tomou), entao a lista de
 // Produtos tambem nao pode marcar "Critico" nele. Cor e etiqueta ficam neutras
-// ("Offline"), nos dois modos de cartao. Produto ATIVO segue igual.
+// ("Oculto da loja"), nos dois modos de cartao. Produto ATIVO segue igual.
 //
 // Mesmo padrao de estoque-baixo-um-limiar.test.ts: monta AdminProductsView de
 // verdade, sem @testing-library; `.ts` de proposito, os mocks usam createElement.
@@ -203,11 +203,11 @@ describe.each(["compact", "detailed"] as const)(
       );
     }
 
-    it("pausado com estoque baixo: fica 'Offline', sem selo 'Crítico', sem cor de alerta e sem 'mín.'", async () => {
+    it("pausado com estoque baixo: fica 'Oculto da loja', sem selo 'Crítico', sem cor de alerta e sem 'mín.'", async () => {
       montarProduto({ isActive: false, stock: 2, estoqueMinimo: null });
       await montar();
 
-      expect(rotulos()).toContain("Offline");
+      expect(rotulos()).toContain("Oculto da loja");
       expect(rotulos()).not.toContain("Crítico");
       expect(numeroDoEstoque().className).not.toContain(
         classeDoTexto("atencao"),
@@ -219,7 +219,7 @@ describe.each(["compact", "detailed"] as const)(
       montarProduto({ isActive: false, stock: 0, estoqueMinimo: null });
       await montar();
 
-      expect(rotulos()).toContain("Offline");
+      expect(rotulos()).toContain("Oculto da loja");
       expect(rotulos()).not.toContain("Crítico");
       expect(numeroDoEstoque().className).not.toContain(
         classeDoTexto("negativo"),

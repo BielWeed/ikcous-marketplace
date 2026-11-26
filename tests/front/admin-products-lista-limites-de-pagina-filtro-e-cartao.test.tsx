@@ -15,7 +15,7 @@ import { VISAO_ESTOQUE_BAIXO } from "@/utils/produtos-sem-custo";
 //   (d) o texto do estado vazio com busca E categoria junta as duas com " e ";
 //   (e) offline: pausar e excluir pelo menu recusam com aviso e não chamam o
 //       servidor (a guarda do handler, que o botão desabilitado não cobre);
-//   (f) cartão: ativo "Pausar X" / pausado "Ativar X"; "Offline" vence
+//   (f) cartão: ativo "Pausar X" / pausado "Ativar X"; "Oculto da loja" vence
 //       "Esgotado"; singular/plural de variação; "mín." do estoque baixo
 //       (o do produto ou o padrão 5); preço em reais com milhar; o modo
 //       detalhado guardado no aparelho e um valor inválido que volta ao compacto.
@@ -614,7 +614,7 @@ describe("AdminProductsView — limites da lista de produtos", () => {
       ).toBeNull();
     });
 
-    it("pausado sem estoque é 'Offline' (nunca 'Esgotado'); ativo sem estoque é 'Esgotado'", async () => {
+    it("pausado sem estoque é 'Oculto da loja' (nunca 'Esgotado'); ativo sem estoque é 'Esgotado'", async () => {
       h.carregar.mockImplementation(async () => {
         h.produtos = [
           produto(1, { name: "Pausado zerado", isActive: false, stock: 0 }),
@@ -627,10 +627,10 @@ describe("AdminProductsView — limites da lista de produtos", () => {
       const textos = [
         ...hospedeiro.querySelectorAll("[data-produto-nome]"),
       ].map((n) => n.closest(".produto-cartao")?.textContent ?? "");
-      expect(textos[0]).toContain("Offline");
+      expect(textos[0]).toContain("Oculto da loja");
       expect(textos[0]).not.toContain("Esgotado");
       expect(textos[1]).toContain("Esgotado");
-      expect(textos[1]).not.toContain("Offline");
+      expect(textos[1]).not.toContain("Oculto da loja");
     });
 
     it("variações no singular e no plural", async () => {

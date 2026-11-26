@@ -364,6 +364,13 @@ export interface EntradaDosSeisPassos {
    * ausente = falta cadastrar (o texto de antes).
    */
   readonly produtoSemEstoque?: boolean;
+  /**
+   * Há produto cadastrado, mas NENHUM ativo: quantos estão ocultos (a loja de
+   * teste nasce com produtos desativados para a lojista conferir o preço). O
+   * passo "produto" manda ativar em vez de cadastrar. Ausente ou 0 = falta
+   * cadastrar (o texto de antes).
+   */
+  readonly produtosOcultos?: number;
 }
 
 function textoPreenchido(texto: string | null | undefined): boolean {
@@ -404,6 +411,11 @@ export function entradaDosSeisPassos(
       !fatos.produtosCarregando &&
       produtos.some((produto) => produto.isActive) &&
       !produtos.some(vendeAgora),
+    // Cadastrados, mas todos desativados: o que falta é ATIVAR, não cadastrar.
+    produtosOcultos:
+      fatos.produtosCarregando || produtos.some((produto) => produto.isActive)
+        ? 0
+        : produtos.filter((produto) => !produto.isActive).length,
     // `estados.entrega` é o fato que quem chama entregou (`estadoDaEntrega`);
     // aqui só se descobre, com a MESMA função do aviso, QUAL é a pendência.
     entregaAlcanceCurto:
@@ -449,7 +461,9 @@ export function seisPassosDaLojaPronta(
     entregaAlcanceCurto = false,
     entregaPrefixo = null,
     produtoSemEstoque = false,
+    produtosOcultos = 0,
   } = entrada;
+  const umOculto = produtosOcultos === 1;
   return [
     {
       chave: "marca",
@@ -510,10 +524,16 @@ export function seisPassosDaLojaPronta(
       rotuloFeito: "Pelo menos 1 produto ativo à venda",
       rotuloPendente: produtoSemEstoque
         ? "Repor o estoque de um produto"
-        : "Cadastrar um produto ativo",
+        : produtosOcultos > 0
+          ? `Conferir e ativar ${umOculto ? "o produto oculto" : "os produtos ocultos"}`
+          : "Cadastrar um produto ativo",
       ...(produtoSemEstoque && {
         explicacaoPendente: "Seus produtos ativos estão sem estoque",
       }),
+      ...(!produtoSemEstoque &&
+        produtosOcultos > 0 && {
+          explicacaoPendente: `Você tem ${produtosOcultos} ${umOculto ? "produto oculto" : "produtos ocultos"}. Confira o preço e toque em Ativar.`,
+        }),
       estado: estados.produto,
       destino: "admin-products",
     },

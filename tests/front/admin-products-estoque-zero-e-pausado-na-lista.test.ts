@@ -7,7 +7,7 @@
 //  (1) Estoque ZERO de produto ativo é vermelho ("negativo"), nunca o âmbar
 //      de "acabando". Zerou é outra coisa que "está baixo": o número tem de
 //      sair vermelho, mesmo com o produto também contando como "baixo".
-//  (2) Produto PAUSADO (Offline) não alerta: sem selo "Crítico" mesmo com
+//  (2) Produto PAUSADO (Oculto da loja) não alerta: sem selo "Crítico" mesmo com
 //      estoque abaixo do mínimo, e o número fica sem cor de alarme — alarme
 //      sobre uma decisão que a lojista já tomou.
 //  (3) O "mín." mostrado é o do produto; mínimo ZERO aparece como 0, não
@@ -258,22 +258,22 @@ describe.each(["compact", "detailed"] as const)(
       },
     );
 
-    it("PAUSADO com estoque abaixo do mínimo: Offline, sem selo Crítico e sem cor de alarme", async () => {
+    it("PAUSADO com estoque abaixo do mínimo: Oculto da loja, sem selo Crítico e sem cor de alarme", async () => {
       montarProduto({ isActive: false, stock: 2, estoqueMinimo: 10 });
       await montar();
 
-      expect(rotulosDeStatus()).toContain("Offline");
+      expect(rotulosDeStatus()).toContain("Oculto da loja");
       expect(temSeloCritico()).toBe(false);
       const classe = numeroDoEstoque().className;
       expect(classe).not.toContain(AMBAR);
       expect(classe).not.toContain(VERMELHO);
     });
 
-    it("PAUSADO com estoque 0: Offline, sem selo Crítico e número sem vermelho", async () => {
+    it("PAUSADO com estoque 0: Oculto da loja, sem selo Crítico e número sem vermelho", async () => {
       montarProduto({ isActive: false, stock: 0, estoqueMinimo: null });
       await montar();
 
-      expect(rotulosDeStatus()).toContain("Offline");
+      expect(rotulosDeStatus()).toContain("Oculto da loja");
       expect(rotulosDeStatus()).not.toContain("Esgotado");
       expect(temSeloCritico()).toBe(false);
       expect(numeroDoEstoque().className).not.toContain(VERMELHO);
