@@ -780,6 +780,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/os-fornecedores-so-o-admin-da-loja-viva.cjs",
     // 20261460: a loja tem estado de vida (ativa, adormecida, encerrada) na caderneta da frota (v1 com o filtro, v2 sem URL nem chave fora do ar, rollback byte a byte, mutantes, consultas 182a/182b).
     "tests/banco/a-loja-tem-estado-de-vida-viva.cjs",
+    // 20261470: a loja muda de estado so pela porta, com rastro (canal de volta, estado_sha preservado fora do ar, mutantes, rollback, consultas 183a/183b).
+    "tests/banco/a-loja-muda-de-estado-so-pela-porta-viva.cjs",
     // 20261384: o pedido pago pelo app exige conta (visitante sem conta recusado antes de reservar estoque; logado e pagar na entrega como hoje; retry; concorrencia real; mutantes; rollback; consultas 89a/89b).
     "tests/banco/pedido-pelo-app-exige-conta-viva.cjs",
     "tests/banco/admin-atual-viva.cjs",
