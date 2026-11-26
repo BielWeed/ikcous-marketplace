@@ -35,20 +35,25 @@ autorização.
 | 5 | Agente | `criar-projeto`: cria o projeto da loja na conta dela | comando pronto |
 | 6 | Agente | `banco`: instala o banco inteiro | comando pronto |
 | 7 | Agente | `ficha`: confere a ficha da loja e gera o texto do cadastro | comando pronto |
-| 8 | Agente | segredos da loja | **ainda não automático** |
-| 9 | Agente | cadastro na frota (`lojas.json`, canais, caderneta) | **em construção** |
-| 10 | Agente | publicar as functions | **ainda não automático** (script avulso) |
+| 8 | Agente | segredos da loja | **ainda não automático**: espere o C2 |
+| 9 | Agente | cadastro na frota (`lojas.json`, canais, caderneta) | **em construção**: espere o B5/C2 |
+| 10 | Agente | publicar as functions | **ainda não automático** (script avulso; depende do passo 9) |
 | 11 | Agente | login da loja (endereços e gancho de e-mail desligado) | **ainda não automático** (script avulso) |
-| 12 | Agente | domínio, marca e chave do plano | **ainda não automático** (roteiro manual) |
+| 12 | Agente | domínio, marca e chave do plano | **ainda não automático**: espere o C2 |
 | 13 | Lojista | **Tela 3, parte A**: se cadastra NA LOJA com o mesmo e-mail | — |
 | 14 | Dono | `primeira-admin`: ela vira administradora | script pronto |
-| 15 | Agente | `definir-dono`: ela vira a dona da loja | **em construção** |
+| 15 | Agente | `definir-dono`: ela vira a dona da loja | **em construção**: espere o C3 |
 | 16 | Lojista | **Tela 3, parte B**: liga o Gmail e o Mercado Pago no painel | — |
 | 17 | Agente | ligar o gancho de e-mail e subir o limite de e-mails | **lacuna conhecida** |
-| 18 | Agente | `conferir`: a loja está pronta para vender? | **em construção** |
+| 18 | Agente | `conferir`: a loja está pronta para vender? | **em construção**: espere o C3 |
 
 **Hoje (26/11/2026) o caminho só anda sozinho até o passo 7.** Do 8 em diante, cada passo diz o
-que existe e o que falta.
+que existe e o que falta. Os roteiros manuais das lojas antigas **não servem** para a loja nova:
+eles usam token fixo no repositório, chave de serviço ou o painel do projeto, e a IKCOUS não tem
+nada disso na conta da lojista (ver [Lacunas conhecidas](#lacunas-conhecidas-26112026)).
+
+**Antes da 1ª loja REAL:** o passo `trocar-dono` tem de existir (decisão do sócio). Até lá, só
+loja de teste.
 
 ## Regras que valem em todos os passos
 
@@ -56,8 +61,15 @@ que existe e o que falta.
   a senha do banco e o e-mail da lojista se digitam **só no terminal do dono**, quando o comando
   pede. Nenhum comando aceita esses valores como argumento, porque a linha de comando fica no
   histórico do PowerShell. Neste documento, todo valor que é segredo aparece como `<cole-aqui>`.
+- **Nunca mande print do terminal.** Quando o comando pede o client secret, o código ou o e-mail, o
+  que você cola **fica visível na tela** (o comando não esconde). Um print levaria o segredo junto.
+  Se precisar mostrar um erro, copie só a linha da mensagem.
 - **Sem `--aplicar`, nada acontece de verdade.** O comando só lê e diz o que faria. Esse é o
   **ensaio**. Rode sempre o ensaio antes, e depois o mesmo comando com `--aplicar`.
+- **No ENSAIO, o veredito não é SIM.** Sem `--aplicar`, INCERTO (no `nova-loja.mjs`) ou NÃO (no
+  `functions-da-loja.mjs`, no `login-da-loja-nova.mjs` e no `primeira-admin.mjs`) é o esperado. O
+  que vale no ensaio é a frase que começa com `ENSAIO` (ou o plano que o script imprime): ela diz o
+  que o comando faria. A regra abaixo vale para a rodada com `--aplicar`.
 - **Todo passo termina com SIM, NÃO ou INCERTO.**
   - **SIM**: deu certo e foi conferido. Siga para o próximo passo.
   - **NÃO**: não fez, ou recusou de propósito. A mensagem diz o motivo. Não insista sem ler.
@@ -67,14 +79,40 @@ que existe e o que falta.
 - **O número que o comando devolve** fica em `$LASTEXITCODE`. No `nova-loja.mjs` e no
   `primeira-admin.mjs`: `0` = SIM, `1` = NÃO, `2` = INCERTO. Nos scripts avulsos
   `functions-da-loja.mjs` e `login-da-loja-nova.mjs` é diferente: `0` = SIM, `1` = NÃO,
-  `2` = uso errado, `3` = INCERTO.
-- **PowerShell 5.1**: nada de `&&`. Um comando por vez, sempre na **raiz do repositório**. O
-  checkout tem de ser o da release aprovada, porque o passo `banco` instala as migrations que
-  estão na pasta onde ele roda.
+  `2` = uso errado, `3` = INCERTO. Exceção: se o `login-da-loja-nova.mjs` quebrar com um erro
+  inesperado (a mensagem é `erro inesperado (detalhes não impressos)`), ele sai com `1`, não com
+  `3`. Trate como INCERTO: rode de novo sem `--aplicar`.
+- **Troque os marcadores pelo valor, sem os sinais `<` e `>`.** Onde está `<slug>`, escreva por
+  exemplo `minhaloja`; onde está `<ref>`, as 20 letras do projeto. No PowerShell 5.1, colar o
+  marcador como está (`<slug>`) dá erro, porque `<` é um símbolo do próprio PowerShell.
+- **PowerShell 5.1**: nada de `&&`. Um comando por vez.
 - **O apelido da loja (`<slug>`)** usa minúsculas, dígitos e hífen. Começa com letra, tem **até 24
   caracteres** e **não termina em hífen**. O comando aceita até 40, mas o cadastro na frota só
   aceita até 24 (o nome do segredo `SUPABASE_ACCESS_TOKEN_<SLUG>` tem esse teto). Escolha uma
   vez e não troque: é a chave do cofre, do estado e do cadastro.
+
+### Abrir o terminal no lugar certo
+
+1. No Windows, abra o menu Iniciar, digite **Windows PowerShell** e clique nele. É o PowerShell
+   azul, versão 5.1; o "PowerShell 7" (preto) não é o que este roteiro usa.
+   - **O que aparece:** uma janela com uma linha que termina em `>`.
+2. Vá até a pasta do repositório. Deixe o caminho entre aspas duplas, para um espaço no nome da
+   pasta não quebrar o comando:
+
+   ```powershell
+   Set-Location "<pasta do repositório ikcous-marketplace no seu PC>"
+   ```
+
+   - **Como saber que deu certo:** `Test-Path scripts/frota/nova-loja.mjs` responde `True`.
+   - **Se responder `False`:** a pasta está errada, ou o código ainda não tem o comando. Pare e me
+     chame.
+3. **O checkout tem de ser o da release aprovada.** "Checkout" é a versão do código que está
+   aberta nessa pasta agora. "Release aprovada" é o commit que passou no CI e na revisão e está
+   publicado (o topo da branch `claude/app-major-upgrade-wmc8x2` no GitHub). Isso importa porque o
+   passo `banco` instala as migrations **que estão na pasta**, e o `functions-da-loja.mjs` publica
+   o código da pasta: versão errada = loja montada com código errado. **Quem confere isso é o
+   agente**, antes de você rodar qualquer passo. Se ele não disse "pode rodar nesta pasta", não
+   rode.
 
 ### Onde o comando guarda as coisas (no PC do dono, fora do repositório)
 
@@ -183,7 +221,8 @@ copiar o endereço inteiro da barra do navegador.
 
 **Por que não criar projeto:** cada pessoa só pode ter **2 projetos grátis ativos**, somando todas
 as organizações em que é dona ou administradora. Projeto pausado não conta. Se você já tem 2,
-pause um antes, ou use a conta de outra pessoa (sempre a da dona da loja).
+pause um antes, ou crie outra conta no Supabase, com outro e-mail, que também tem de ser um
+e-mail da dona da loja.
 
 **A conta da IKCOUS nunca vira membro da sua organização.** Se alguém pedir para você convidar a
 IKCOUS como membro, não convide: isso gastaria o limite de projetos da IKCOUS e não é o caminho.
@@ -232,9 +271,9 @@ IKCOUS como membro, não convide: isso gastaria o limite de projetos da IKCOUS e
    passo da própria tela: um Gmail só da loja, verificação em duas etapas, senha de app, colar,
    **Salvar** e **Enviar e-mail de teste**. O e-mail de teste aparece em **Enviados** (o Gmail
    não mostra na Caixa de Entrada o e-mail que a conta manda para ela mesma).
-3. **Mercado Pago:** Painel > **Ajustes** > **Pagamentos** > **Mercado Pago**. Siga o guia da
-   tela: as chaves do seu Mercado Pago, o endereço dos avisos e a senha dos avisos, **Salvar** e
-   **Testar conexão**.
+3. **Mercado Pago:** Painel > **Ajustes** > **Pagamentos** > **Mercado Pago** > **Avançado: chaves
+   do Mercado Pago** > **Suas chaves**. Siga o guia da tela: as chaves do seu Mercado Pago, o
+   endereço dos avisos e a senha dos avisos, **Salvar** e **Testar conexão**.
 4. Avise a IKCOUS que terminou.
 
 **Como saber que deu certo:** o e-mail de teste aparece em Enviados, e o teste do Mercado Pago diz
@@ -247,8 +286,9 @@ está disponível" é do nosso lado, não do seu. Mande um print para a IKCOUS.
 
 ## Parte 2 — Os passos do agente, comando por comando
 
-Tudo na **raiz do repositório**, numa janela de Windows PowerShell 5.1. Antes de cada passo, rode
-o ensaio (sem `--aplicar`) e leia o que ele diria.
+Tudo na pasta do repositório, numa janela de Windows PowerShell 5.1 aberta como em
+[Abrir o terminal no lugar certo](#abrir-o-terminal-no-lugar-certo), no checkout da release
+aprovada. Antes de cada passo, rode o ensaio (sem `--aplicar`) e leia o que ele diria.
 
 ### Passo 1 — `abrir` (no terminal do dono)
 
@@ -329,7 +369,8 @@ node scripts/frota/nova-loja.mjs criar-projeto --loja <slug> --org <org da lojis
     autorização cobre. Se for a da lojista, rode de novo com esse nome. Se não for, peça uma
     autorização nova (passos 1 e 2).
   - `a conta da lojista já tem 2 projetos grátis ATIVOS`: a lojista pausa ou apaga um projeto
-    dela, ou usa outra conta (sempre a da dona). Depois, rode de novo.
+    dela, ou cria outra conta no Supabase, com outro e-mail, que também tem de ser um e-mail da
+    dona. Com conta nova, a autorização também é nova (passos 1 e 2). Depois, rode de novo.
   - `HTTP 402`: fatura atrasada na organização dela. Ela confere Billing no painel do Supabase.
   - `INIT_FAILED`, `REMOVED` e outros estados sem volta: o comando **não** apaga nem recria
     sozinho. O que fazer com o projeto é decisão do dono, com a lojista olhando o painel dela.
@@ -370,7 +411,9 @@ node scripts/frota/nova-loja.mjs banco --loja <slug> --aplicar
     rodar de novo.
   - `RECUSADO: ... loja já instalada`: o banco já tem ledger sem a marca de instalação em curso.
     Esse instalador não mexe em loja que já existe. Pare.
-  - `FALHOU ao conferir os privilégios padrão`: a mensagem traz o que conferir. Não improvise.
+  - `FALHOU ao conferir os privilégios padrão ... rodar de novo é seguro`: nenhuma migration foi
+    enviada, a conferência é só leitura e o ajuste é idempotente (repetir não muda nada). Rode o
+    mesmo comando de novo. Se repetir, leve a mensagem ao programador.
 - **INCERTO:**
   - `ESTADO DESCONHECIDO ... a resposta não veio`: a migration pode ter entrado ou não. **Rode o
     mesmo comando de novo**: ele relê o ledger e continua do ponto certo, sem repetir o que entrou.
@@ -497,16 +540,18 @@ perdeu nunca vira pedido pago.
 
 ### Passo 9 — Cadastro na frota — em construção
 
-O script `cadastro-da-loja.mjs` **ainda não existe** (tarefa B5). Enquanto isso, o cadastro é o do
-roteiro manual, passos 1 a 3 da seção "Loja assinante nova" de
-[producao-unica-fonte.md](producao-unica-fonte.md):
-- a entrada em `scripts/frota/lojas.json` (a que o passo `ficha` gerou), seguida de
-  `node scripts/frota/lojas-nos-workflows.cjs --escrever`;
-- a linha em `scripts/frota/canais-de-backend.json`;
-- a linha da caderneta da frota (o SQL que o passo `ficha` gerou), rodada pela sessão no banco
-  onde a caderneta mora.
+O script `cadastro-da-loja.mjs` **ainda não existe** (tarefa B5; o passo entra no comando no C2).
+**Não dá para usar numa loja nova o roteiro manual** (passos 1 a 3 da seção "Loja assinante nova"
+de [producao-unica-fonte.md](producao-unica-fonte.md)). Ele foi escrito para loja com **token fixo
+no repositório**:
+- o passo 2 de lá manda o dono gravar o segredo `SUPABASE_ACCESS_TOKEN_<LOJA>` no repositório e
+  termina com uma conferência pelo `conferir-banco-da-loja.yml`, que usa esse segredo;
+- a entrada de `lojas.json` aponta `segredoDoToken` para esse nome, e o
+  `lojas-nos-workflows.cjs --escrever` liga os workflows a ele.
 
-Mexe em credencial e em workflow: revisão Opus obrigatória.
+A loja nova não tem token fixo: só a autorização OAuth da lojista, no cofre do PC do dono. Então
+o segredo ficaria vazio e os workflows da loja não funcionariam. **Espere o B5/C2.** Guarde o SQL
+da caderneta e a entrada de `lojas.json` que o passo `ficha` imprimiu; o cadastro vai usá-los.
 
 ### Passo 10 — Publicar as functions — ainda não automático (script avulso)
 
@@ -518,7 +563,8 @@ com o `verify_jwt` do `supabase/config.toml`, e confere cada uma antes da próxi
 está no ar igual. Usa o token da lojista direto do cofre.
 
 **Antes de rodar:**
-- o passo 9 (a loja tem de estar em `lojas.json` e em `canais-de-backend.json`);
+- o passo 9 (a loja tem de estar em `lojas.json` e em `canais-de-backend.json`). Como o passo 9
+  espera o B5/C2, **na prática este passo também espera**;
 - o checkout tem de estar **exatamente** no topo de `origin/claude/app-major-upgrade-wmc8x2`, o
   commit aprovado. Fora dele, o script diz NÃO antes de qualquer pedido.
 
@@ -536,11 +582,14 @@ node scripts/frota/functions-da-loja.mjs --projeto <ref> --canal <slug> --aplica
 - **INCERTO (3):** uma publicação pode ter acontecido sem confirmação. Rode o ensaio para ler o
   estado e depois rode de novo: o que já subiu igual é pulado.
 
-**Depois que deu SIM:** a loja passa a ser "existente". Acrescente o `<slug>` à lista
-`functionsSoPeloWorkflow` de `scripts/frota/canais-de-backend.json`. A regra está no comentário
-`_comentarioFunctionsSoPeloWorkflow` desse arquivo: loja nova não entra na lista no cadastro, mas
-entra **depois** que as functions dela subiram. Daí em diante, as functions dela só sobem pelo
-`publicar-functions.yml`, e o script de loja nova passa a recusá-la.
+**Depois que deu SIM: a loja NÃO entra em `functionsSoPeloWorkflow`.** O comentário dessa lista
+em `scripts/frota/canais-de-backend.json` diz que a loja nova entra nela depois que as functions
+sobem, e que daí em diante elas só sobem pelo `publicar-functions.yml`. Numa loja só-OAuth isso
+quebraria a loja: o workflow só usa segredos fixos do repositório (`publicar-functions.yml`, linhas
+136 e 211-213) e não alcança a loja. Ao mesmo tempo, o `functions-da-loja.mjs` passaria a recusá-la.
+As functions de dinheiro ficariam velhas, sem conserto. **Até existir uma release de functions e
+migrations para loja só-OAuth, a loja fica fora dessa lista** (ver
+[Lacunas conhecidas](#lacunas-conhecidas-26112026)).
 
 ### Passo 11 — Login da loja — ainda não automático (script avulso)
 
@@ -575,12 +624,19 @@ inclusive a confirmação da conta da lojista.
 
 ### Passo 12 — Domínio, marca e chave do plano — ainda não automático
 
-Siga o roteiro manual em [producao-unica-fonte.md](producao-unica-fonte.md), seção "Loja assinante
-nova":
-- **passo 6:** a chave do plano, pelo app de gestão e pelo `instalar-chave-da-loja.yml`, e o
-  domínio da ficha (`dominio_publico`);
-- **passo 6A:** a marca da loja (nome, cores, logo e imagens). Sem ela, a vitrine mostra "Esta loja
-  está em manutenção" e a lojista não consegue se cadastrar (Tela 3, parte A).
+**Não dá para usar numa loja nova o roteiro manual** dos passos 6 e 6A da seção "Loja assinante
+nova" de [producao-unica-fonte.md](producao-unica-fonte.md). Cada pedaço dele pede um acesso que a
+IKCOUS não tem na conta da lojista:
+- **chave do plano:** vai pelo `instalar-chave-da-loja.yml`, que usa o segredo fixo
+  `SUPABASE_ACCESS_TOKEN_<LOJA>` do repositório (`instalar-chave-da-loja.yml`, linhas 174-175). A
+  loja nova não tem esse segredo;
+- **domínio da ficha (`dominio_publico`):** o roteiro manda gravar pelo SQL Editor do projeto da
+  loja. O projeto é da lojista, e a IKCOUS não entra no painel dela;
+- **marca (passo 6A):** o `scripts/identidade-bootstrap.mjs` exige a chave de serviço da loja
+  (`SUPABASE_SERVICE_ROLE_KEY`, linha 471), que a IKCOUS não tem.
+
+**Espere o C2** (passos `marca` e `chave-do-plano` no comando). Sem a marca, a vitrine mostra "Esta
+loja está em manutenção" e a lojista não consegue se cadastrar (Tela 3, parte A).
 
 ### Passo 15 — `definir-dono` — em construção
 
@@ -591,8 +647,9 @@ nova":
   escolhe ninguém;
 - ele só roda em loja aberta pelo `nova-loja.mjs`.
 
-**Enquanto não existe:** siga a seção 3.3 de [definir-o-dono-da-loja.md](definir-o-dono-da-loja.md)
-(receita de telas para o dono, que não passa o e-mail ao agente). Sem dono cadastrado, qualquer
+**Enquanto não existe, não há caminho numa loja nova. Espere o C3.** A receita da seção 3.3 de
+[definir-o-dono-da-loja.md](definir-o-dono-da-loja.md) é feita no SQL Editor do projeto da loja, e
+o projeto é da lojista: a IKCOUS não entra no painel dela. Sem dono cadastrado, qualquer
 administradora troca as chaves do Mercado Pago e do Gmail, e ninguém consegue dar o cargo de
 administrador.
 
@@ -611,13 +668,17 @@ login sai pelo e-mail padrão do Supabase (2 por hora, só para o time do projet
 
 ### Passo 18 — `conferir` — em construção
 
-Vai responder SIM, NÃO ou INCERTO para "a loja pode vender?". Enquanto não existe, confira à mão:
-- **reconciliação:** `saude_da_loja()` com `idade_rodada_s` menor que 900, em até 15 minutos depois
-  dos segredos (passo 4 da seção "Loja assinante nova" de
-  [producao-unica-fonte.md](producao-unica-fonte.md));
-- **dono:** a consulta 88c com todas as linhas "sim" ([definir-o-dono-da-loja.md](definir-o-dono-da-loja.md),
-  seção 3.4);
-- **login:** `login-da-loja-nova.mjs` sem `--aplicar` dando SIM.
+Vai responder SIM, NÃO ou INCERTO para "a loja pode vender?". **Enquanto não existe, a
+conferência à mão não fecha numa loja nova. Espere o C3.** As conferências que os outros roteiros
+usam pedem acessos que a IKCOUS não tem na conta da lojista:
+- **reconciliação:** o passo 4 da seção "Loja assinante nova" de
+  [producao-unica-fonte.md](producao-unica-fonte.md) lê `saude_da_loja()` pelo SQL Editor do
+  projeto, que é da lojista. Além disso, a leitura só faz sentido depois dos segredos (passo 8, que
+  espera o C2);
+- **dono:** a consulta 88c ([definir-o-dono-da-loja.md](definir-o-dono-da-loja.md), seção 3.4) roda
+  pelo SQL Editor ou pelos workflows da frota, que usam o segredo fixo da loja;
+- **login:** `login-da-loja-nova.mjs` sem `--aplicar` é o único que já funciona (usa o cofre). Ele
+  sozinho não diz que a loja pode vender.
 
 O ensaio de ponta a ponta (C5) inclui um PIX real de R$ 1.
 
@@ -670,9 +731,11 @@ Rode `login-da-loja-nova.mjs --aplicar` **de novo**. Hoje o `ativar` não alcan�
 
 ### Depois das functions, a loja vira "existente"
 
-Quando o `functions-da-loja.mjs` der SIM, ponha o `<slug>` em `functionsSoPeloWorkflow`
-(`scripts/frota/canais-de-backend.json`), conforme o comentário do próprio arquivo. Daí em
-diante as functions dela só sobem pelo workflow de publicação.
+O comentário de `functionsSoPeloWorkflow` (`scripts/frota/canais-de-backend.json`) manda pôr a
+loja na lista depois que as functions sobem. **Numa loja só-OAuth, não ponha.** O
+`publicar-functions.yml` só usa segredos fixos do repositório (linhas 136 e 211-213) e não alcança
+a loja, e o `functions-da-loja.mjs` passaria a recusá-la. As functions de dinheiro ficariam
+velhas, sem conserto. Detalhes no [passo 10](#passo-10--publicar-as-functions--ainda-não-automático-script-avulso).
 
 ### A instalação do banco bate no limite de pedidos por minuto
 
@@ -680,6 +743,9 @@ O `banco` faz **mais de 276 pedidos** (um por migration, mais as leituras). O Su
 cerca de **120 por minuto**. Quando passa, ele responde 429 (pedidos demais), e o comando trata
 isso como INCERTO, porque não sabe se a última migration entrou. **Espere um minuto e rode o mesmo
 comando de novo:** ele relê o ledger e retoma de onde parou. Pode precisar de algumas rodadas.
+
+Se o 429 vier logo na primeira leitura, a do status do projeto, o veredito é **NÃO** com `HTTP 429`
+na mensagem: nada foi enviado ao banco. O remédio é o mesmo: espere um minuto e rode de novo.
 
 ### Projeto novo leva até uns 5 minutos para ficar pronto
 
@@ -701,7 +767,7 @@ Colou o código e deu INCERTO? Não cole o mesmo código de novo. Gere um link n
 | `criar-projeto` | O comando **nunca apaga projeto**. Apagar ou pausar é feito pela lojista, no painel dela, e é decisão do dono. |
 | `banco` | **Não tem desfazer.** 115 das migrations não se repetem, e não existe "desinstalar". Numa loja sem venda, o caminho é apagar o projeto e começar de novo (decisão do dono). |
 | `ficha` | Não tem o que desfazer: só lê e imprime. |
-| `segredos` | O script nunca substitui. Se ele avisar que gravou só metade, o próprio relatório diz quais segredos apagar no painel da loja para rodar de novo. |
+| `segredos` | Não se aplica hoje: o passo 8 espera o C2. O script nunca substitui. Se gravar só metade, o relatório dele manda apagar os segredos no painel do projeto (Edge Functions > Secrets), e esse painel é da lojista: a IKCOUS não entra nele. O C2 tem de trazer esse conserto por outro caminho. |
 | `functions` | Sem comando de desfazer. Numa loja sem venda, uma function errada se corrige publicando de novo (`--aplicar --substituir`). |
 | `login` | Sem comando de desfazer. O gancho nasce desligado, então nada deixa de funcionar. |
 | `primeira-admin` | **Não tem desfazer pelo script.** Se a pessoa errada virou administradora, pare e leve ao dono. |
@@ -709,11 +775,41 @@ Colou o código e deu INCERTO? Não cole o mesmo código de novo. Gere um link n
 
 ## Lacunas conhecidas (26/11/2026)
 
+**Condição antes da 1ª loja REAL (decisão do sócio):** o passo `trocar-dono` tem de existir. Sem
+ele, um dono errado numa loja nova não tem conserto do lado da IKCOUS. Isso não é só uma lacuna:
+nenhuma loja de lojista de verdade abre antes dele.
+
+**Passos que não dá para usar numa loja nova** (a loja só tem a autorização OAuth da lojista, no
+cofre do PC do dono; a IKCOUS não tem token fixo no repositório, nem chave de serviço, nem entrada
+no painel do projeto dela):
+
+- **segredos (passo 8):** `scripts/frota/segredos-da-loja.mjs` pede `SUPABASE_ACCESS_TOKEN` quando
+  roda sozinho, e o token da lojista não sai do cofre. O conserto de "metade gravada" é no painel
+  do projeto, que é da lojista. Espere o C2.
+- **cadastro (passo 9):** `cadastro-da-loja.mjs` não existe. O roteiro manual
+  (`producao-unica-fonte.md`, "Loja assinante nova", passos 1 a 3) pede o segredo fixo
+  `SUPABASE_ACCESS_TOKEN_<LOJA>` no repositório e confere pelo `conferir-banco-da-loja.yml`, que usa
+  esse segredo. Espere o B5/C2.
+- **functions (passo 10):** depende do cadastro. Espere o B5/C2.
+- **domínio, marca e chave do plano (passo 12):** a chave do plano vai pelo
+  `instalar-chave-da-loja.yml` (segredo fixo, linhas 174-175); o domínio, pelo SQL Editor do projeto;
+  a marca, pelo `scripts/identidade-bootstrap.mjs`, que exige a chave de serviço da loja (linha
+  471). Espere o C2.
+- **definir-dono (passo 15):** não existe; a receita manual (seção 3.3 de `definir-o-dono-da-loja.md`)
+  é no SQL Editor do projeto. Espere o C3.
+- **conferir (passo 18):** não existe; a reconciliação se lê pelo SQL Editor do projeto e a consulta
+  88c, pelo SQL Editor ou pelos workflows com segredo fixo. Espere o C3.
+
+**Release para loja só-OAuth ainda não existe.** A release de functions e de migrations para loja
+só-OAuth ainda não existe: o `publicar-functions.yml` só usa segredos fixos do repositório
+(linhas 136 e 211-213), e o mesmo vale para os outros workflows da frota. **Até lá a loja NÃO entra
+em `functionsSoPeloWorkflow`** (`scripts/frota/canais-de-backend.json`), mesmo que o comentário
+dessa lista diga o contrário. Se entrasse, o `functions-da-loja.mjs` passaria a recusá-la e as
+functions de dinheiro ficariam velhas, sem conserto.
+
+**Outras lacunas:**
+
 - `segredos`, `functions`, `login`, `marca` e `chave-do-plano` ainda não estão no `nova-loja.mjs`.
-  O `segredos-da-loja.mjs` não tem como receber o token da lojista quando roda sozinho.
-- `cadastro-da-loja.mjs` ainda não existe.
-- `definir-dono` e `conferir` ainda não existem.
-- `trocar-dono` não existe: um dono errado numa loja nova não tem conserto do lado da IKCOUS.
 - `ativar-email-do-login.yml` não alcança loja nova, porque só aceita lojas com token fixo no
   repositório.
 - Não há comando para revogar a autorização da lojista (a peça `revogar` existe em
