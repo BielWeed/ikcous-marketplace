@@ -526,6 +526,39 @@ function resumirEtapa(processados: number, falhas: number, erro?: string): Resum
   return { ok: falhas === 0, processados, falhas };
 }
 
+/**
+ * BATIMENTO (migration 20261500000000, 26/11/2026): grava a saúde desta rodada
+ * pela porta `saude_da_reconciliacao_registrar` (só service_role), para quem
+ * confere de fora (`saude_da_loja()`, chave pública) ver a IDADE da última
+ * rodada — nula ou alta = a reconciliação parou. Derivado de `etapas`, o MESMO
+ * objeto da resposta: degradado SE E SÓ SE alguma etapa falhou.
+ *
+ * NUNCA muda a resposta: nenhum retorno, e toda falha (porta ausente antes da
+ * migration, banco fora, erro síncrono) vai só ao log, e só com o NOME do erro —
+ * a mensagem e o detalhe do PostgREST podem carregar texto do banco.
+ */
+async function registrarSaudeDaRodada(
+  supabase: ReturnType<typeof createClient>,
+  etapas: Record<string, ResumoDaEtapa>,
+  degradado: boolean,
+): Promise<void> {
+  const etapasComFalha = Object.entries(etapas)
+    .filter(([, etapa]) => !etapa.ok)
+    .map(([nome]) => nome);
+  try {
+    const { error } = await supabase.rpc("saude_da_reconciliacao_registrar", {
+      p_degradado: degradado,
+      p_etapas_com_falha: etapasComFalha,
+    });
+    if (error) throw error;
+  } catch (erro) {
+    const nome = typeof (erro as { name?: unknown } | null)?.name === "string"
+      ? (erro as { name: string }).name
+      : "erro_sem_nome";
+    console.error("reconciliar-pagamentos: saude_da_reconciliacao_registrar falhou (não fatal)", nome);
+  }
+}
+
 async function reconciliarFilaDePagamentos(
   supabase: ReturnType<typeof createClient>,
   mpToken: string | null,
@@ -1697,6 +1730,10 @@ async function handler(req: Request, deps: DepsDaReconciliacao = {}): Promise<Re
   // Fila ilegível, etapa não executada ou trabalho adiado não é fila vazia.
   const filaVazia = !degradado && Object.values(etapas).every((etapa) => etapa.processados === 0) &&
     pagamentos.adiadosPorTempo === 0 && estornosAdiadosPorTempo === 0;
+  // Batimento: a 200 saudável, a 200 degradada e a 500 gravam; as saídas cedo
+  // (503 sem segredo, 401) NÃO, de propósito — o batimento envelhece e quem
+  // confere de fora vê a reconciliação parada. Não muda status nem corpo.
+  await registrarSaudeDaRodada(supabase, etapas, degradado);
   return json(
     {
       ok: !erroDaFilaDePagamentos,
