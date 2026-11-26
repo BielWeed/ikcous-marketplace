@@ -954,6 +954,8 @@ Deno.test("lerTituloNoBanco: 1 GET anônimo em v_store_config com a chave public
     assertEquals(
       await lerTituloNoBanco(ref, chave, {
         fetchImpl: espia({ [REF.savy]: banco }),
+        // 500 e rede caída são refeitos: as pausas não dormem aqui
+        esperar: async () => {},
       }),
       null,
       nome,
@@ -1155,6 +1157,8 @@ Deno.test("conferirFrota --vercel que falha: inventário PARCIAL, 'NÃO CONFERID
     pedirVercel: true,
     executorVercel: exec,
     fetchImpl: fetchFalso(mundoBase()),
+    // a Vercel que lança é refeita: as pausas não dormem aqui
+    esperar: async () => {},
   });
   assertEquals(
     r.resultados.every((x) => x.classe === "OK"),
@@ -1407,6 +1411,8 @@ Deno.test("conferirFrota: duas Bella Modas sem leitura confirmada do banco (falh
     const r = await conferirFrota(POLITICA, {
       sha: SHA,
       fetchImpl: fetchFalso(mundo, { bancos }),
+      // o banco que tropeça é relido: as pausas não dormem aqui
+      esperar: async () => {},
     });
     assertEquals(r.ok, false, nome);
     assertEquals(
