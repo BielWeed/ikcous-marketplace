@@ -278,7 +278,15 @@ reabrir). O histórico guarda as duas linhas. Nunca apague linha do histórico.
 
 ## O banco da caderneta: a vitrine antiga sem escrita anônima
 
-O banco onde a caderneta mora hoje é o projeto antigo `dekxabvqdsuukijblazl`. Ele não recebe as
+O banco da caderneta é o de `IKCOUS_FROTA_URL`. Até a virada descrita em
+[a caderneta muda de banco](caderneta-muda-de-banco.md), é o projeto antigo `dekxabvqdsuukijblazl`; depois
+dela, é o banco da IKCOUS (`cafkrminfnokvgjqtkle`), que recebe as migrations pelo canal como qualquer loja, e
+todo comando desta página (`estado-da-loja.mjs` incluído) roda lá. Esta seção vale **só para o
+`dekxabvqdsuukijblazl`**: depois da virada o script abaixo fica aposentado (o pré-voo dele reconhece "o banco
+da caderneta" pela caderneta semeada, e o banco da IKCOUS também passa a tê-la; lá a ACL já é a das lojas e o
+REVOKE não muda nada, mas não há motivo para rodá-lo).
+
+O projeto antigo não recebe as
 migrations dos canais, e a view `public.vw_produtos_public` dele ficou aberta para escrita com a chave
 pública (nas lojas, a 20260821000100 e a 20261090000000 já a fecharam). O conserto é um script à
 parte, **não** migration, em `scripts/frota/banco-da-caderneta/`. Pelo MCP, **só** com `execute_sql`
@@ -311,6 +319,10 @@ dele, a consulta do passo 1 volta a mostrar o retrato de antes.
    histórico; confirmação `APAGAR`) e, só depois do comum da 20261470, o
    `rollback-manual-destrutivo-20261460000000_...` (tira as colunas; o Postgres recusa enquanto o
    gatilho existir).
+5. No banco onde a caderneta de produção mora, os destrutivos e o `rollback-manual-20261141000000` recusam
+   com `CADERNETA_SEMEADA` (e não apagam nada) enquanto houver linha na caderneta, mesmo com o `APAGAR`; só
+   com o dono e `SET LOCAL ikcous.apagar_caderneta = 'sim';` na mesma transação
+   ([a caderneta muda de banco](caderneta-muda-de-banco.md)).
 
 Veja também: [produção — fonte única](producao-unica-fonte.md) ·
 [modo manutenção da loja](modo-manutencao-da-loja.md) ·

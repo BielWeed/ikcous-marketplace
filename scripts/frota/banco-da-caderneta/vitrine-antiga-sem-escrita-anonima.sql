@@ -3,6 +3,9 @@
 -- NÃO É MIGRATION: só para o banco onde a caderneta de produção mora (IKCOUS_FROTA_URL, hoje o dekxab), aplicado pela sessão
 -- pelo MCP. A ACL NÃO separa este banco das lojas atuais (a "já aplicada" é idêntica à delas): quem recusa uma loja é a
 -- primeira trava do pré-voo, a caderneta semeada (item 4).
+-- APOSENTADO DEPOIS DA VIRADA (docs/runbooks/caderneta-muda-de-banco.md): vale SÓ para o dekxabvqdsuukijblazl. Depois que a
+-- caderneta for copiada para o banco da IKCOUS, a trava "caderneta semeada" passa a aceitar também aquele banco; lá a ACL da view
+-- já é a das lojas e o REVOKE não muda nada, mas não há motivo para rodá-lo. Não rodar fora do dekxab.
 -- ============================================================================
 --
 -- 1. O QUE ESTÁ ABERTO (medido em 26/11/2026, só leitura, no dekxab)
