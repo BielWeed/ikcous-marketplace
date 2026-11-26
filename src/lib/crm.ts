@@ -845,6 +845,12 @@ export function formatarData(valor: string | null | undefined): string {
   return `${dia}/${mes}/${ano}`;
 }
 
+/** `YYYY-MM-DD` → "03/12", sem passar por fuso (o dia já é o do calendário). */
+export function formatarDiaEMes(dia: string): string {
+  const [, mes, data] = dia.split("-");
+  return `${data}/${mes}`;
+}
+
 /**
  * As datas do cartão "Sua assinatura", na ordem em que aparecem.
  * - `atrasada`: a data enviada é a da mensalidade mais antiga em aberto, então
