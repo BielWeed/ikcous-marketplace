@@ -23,6 +23,11 @@
  *       nova que não é admin nas duas fontes; e-mail não confirmado; a conferência da 88c sabotada DEPOIS do DELETE e
  *       do INSERT) volta com o SEU SQLSTATE e deixa as quatro tabelas tocadas BYTE A BYTE como estavam (cada linha com
  *       o xmin: nem a mesma linha regravada passa); a leitura (sqlDaTroca + decidirTroca) prevê o mesmo código;
+ *   (1b) IKT06 (decisão do sócio de 26/11 ~15h, a coluna `bloqueada` da leitura e a guarda do DO): a conta NOVA banida
+ *       (banned_until no futuro) ou apagada (deleted_at) no Auth recusa IKT06 sem gravar nada; a conta que JÁ é a dona,
+ *       banida, também recusa IKT06 (a guarda vem antes do ja_era_dona); a DONA DE HOJE banida ou apagada não impede a
+ *       troca para uma conta nova sem bloqueio; e-mail com duas contas, as duas banidas, é IKT04 (IKT04 vem antes do
+ *       IKT06); banned_until no PASSADO não bloqueia (troca);
  *   (2) `trocada` e depois `ja_era_dona` (o segundo sem escrita nenhuma, xmin igual), a 88c verde antes e depois dos
  *       dois; a nova manda (definir_cargo) e a antiga não manda mais; e-mail em maiúsculas e e-mail com aspa, `$$`,
  *       `$trocar_dono$` e ponto e vírgula chegam inteiros ao banco;
@@ -39,8 +44,9 @@
  *       a transação abortada (25P02, doc 53.2.2.1: a consulta simples para no primeiro erro e o COMMIT do texto não roda)
  *       e ela recusa todo comando até um ROLLBACK, mas NÃO segura trava (o aborto já as soltou: uma troca de outra
  *       conexão roda enquanto ela está abortada); depois do ROLLBACK a conexão volta a servir;
- *   (6) CONTROLES: com o texto do script todas as sondas valem; 11 mutantes textuais do SQL (cada guarda tirada, as
- *       travas, o FOR SHARE, o lower, o SET LOCAL ROLE) reprovam AO MENOS a sonda que cada um declara.
+ *   (6) CONTROLES: com o texto do script todas as sondas valem; 15 mutantes textuais do SQL (cada guarda tirada, as
+ *       travas, o FOR SHARE, o lower, o SET LOCAL ROLE, a guarda IKT06 tirada, antes da do IKT04, com o ban vencido
+ *       contando e olhando também a dona de hoje) reprovam AO MENOS a sonda que cada um declara.
  *
  * LIMITE DECLARADO: no postgres:17 do CI o papel postgres É superusuário; no Supabase não é (é dono das tabelas de
  * public). Esta prova mostra que a sessão de fora não escreve nada sem o SET LOCAL ROLE e que, com ele, o texto faz o
@@ -94,6 +100,14 @@ const SO_PERFIL = ["customer", "admin"];
 const SO_LOGIN = ["admin", "customer"];
 
 const EMAIL = (id) => `${id}@troca.teste`;
+
+/** O bloqueio no Auth de cada fixture: [banned_until, deleted_at] (expressões SQL fixas deste arquivo). */
+const BLOQUEIOS = {
+  nenhum: ["NULL", "NULL"],
+  banida: ["now() + interval '1 day'", "NULL"],
+  apagada: ["NULL", "now()"],
+  ban_vencido: ["now() - interval '1 day'", "NULL"],
+};
 // Aspa, `$$`, a etiqueta do dollar-quote do DO e ponto e vírgula: tem de chegar INTEIRO ao banco, como um literal só.
 const EMAIL_ESTRANHO = "o'brien$$x$trocar_dono$;--@troca.teste";
 
@@ -112,10 +126,10 @@ let SIM_;
 let NAO_;
 
 /**
- * Deixa o banco (commitado) no estado pedido: todo mundo customer nas duas fontes, com e-mail confirmado e o e-mail
- * padrão, menos o que `papeis`, `semConfirmar` e `emails` dizem; dono_da_loja e cargo_log vazios, menos o `dono` (e o
- * `outroDono`, que só cabe com a chave da tabela relaxada). Como o postgres (a automação de confiança): as travas de
- * cargo leem o GUC role, que na sessão de login direto vale none.
+ * Deixa o banco (commitado) no estado pedido: todo mundo customer nas duas fontes, com e-mail confirmado, o e-mail
+ * padrão e sem bloqueio no Auth, menos o que `papeis`, `semConfirmar`, `emails` e `bloqueio` dizem; dono_da_loja e
+ * cargo_log vazios, menos o `dono` (e o `outroDono`, que só cabe com a chave da tabela relaxada). Como o postgres (a
+ * automação de confiança): as travas de cargo leem o GUC role, que na sessão de login direto vale none.
  */
 async function preparar(
   c,
@@ -125,6 +139,7 @@ async function preparar(
     emails = {},
     dono = null,
     outroDono = null,
+    bloqueio = {},
   },
 ) {
   await c.query("BEGIN");
@@ -139,11 +154,14 @@ async function preparar(
         id,
         p,
       ]);
+      const [ban, apagada] = BLOQUEIOS[bloqueio[id] ?? "nenhum"];
       await c.query(
         `UPDATE auth.users
             SET raw_app_meta_data = raw_app_meta_data || jsonb_build_object('role', $2::text),
                 email_confirmed_at = CASE WHEN $3::boolean THEN NULL ELSE now() END,
-                email = $4
+                email = $4,
+                banned_until = ${ban},
+                deleted_at = ${apagada}
           WHERE id = $1`,
         [id, a, semConfirmar.includes(id), emails[id] ?? EMAIL(id)],
       );
@@ -166,9 +184,17 @@ async function preparar(
   const f = await foto(c);
   for (const l of f.papeis) {
     const [a, p] = papeis[l.id] ?? ["customer", "customer"];
+    const b = bloqueio[l.id] ?? "nenhum";
     assert.deepEqual(
-      [l.a, l.p, l.conf, l.email],
-      [a, p, !semConfirmar.includes(l.id), emails[l.id] ?? EMAIL(l.id)],
+      [l.a, l.p, l.conf, l.email, l.ban, l.del],
+      [
+        a,
+        p,
+        !semConfirmar.includes(l.id),
+        emails[l.id] ?? EMAIL(l.id),
+        b === "banida" || b === "ban_vencido",
+        b === "apagada",
+      ],
       `a fixture ${l.id} não ficou como pedido`,
     );
   }
@@ -178,7 +204,10 @@ async function preparar(
   );
 }
 
-/** O estado legível: as linhas do dono, o papel (nas duas fontes), a confirmação e o e-mail de cada fixture, o log. */
+/**
+ * O estado legível: as linhas do dono, o papel (nas duas fontes), a confirmação, o e-mail e o bloqueio no Auth de cada
+ * fixture, o log.
+ */
 async function foto(c) {
   const donos = (
     await c.query("SELECT user_id::text AS u FROM public.dono_da_loja")
@@ -186,7 +215,8 @@ async function foto(c) {
   const papeis = (
     await c.query(
       `SELECT u.id::text AS id, u.raw_app_meta_data ->> 'role' AS a, p.role AS p,
-              u.email_confirmed_at IS NOT NULL AS conf, u.email
+              u.email_confirmed_at IS NOT NULL AS conf, u.email,
+              u.banned_until IS NOT NULL AS ban, u.deleted_at IS NOT NULL AS del
          FROM auth.users u JOIN public.profiles p ON p.id = u.id
         WHERE u.id = ANY ($1::uuid[]) ORDER BY u.id`,
       [TODOS],
@@ -587,8 +617,63 @@ const SONDAS_DE_RECUSA = {
   }),
 };
 
+// IKT06 (decisão do sócio, 26/11 ~15h): só a conta do E-MAIL é olhada, logo depois do IKT04 e antes do ja_era_dona.
+const SONDAS_DO_BLOQUEIO = {
+  nova_banida_IKT06: sondaDe({
+    estado: { ...BASE, bloqueio: { [U_NOVA]: "banida" } },
+    email: EMAIL(U_NOVA),
+    recusa: "IKT06",
+    frase: /a conta nova esta banida ou apagada/,
+  }),
+  nova_apagada_IKT06: sondaDe({
+    estado: { ...BASE, bloqueio: { [U_NOVA]: "apagada" } },
+    email: EMAIL(U_NOVA),
+    recusa: "IKT06",
+    frase: /a conta nova esta banida ou apagada/,
+  }),
+  // A conta que já é a dona (admin nas duas fontes: sem o ban seria ja_era_dona), banida: IKT06, nada gravado.
+  ja_era_dona_banida_IKT06: sondaDe({
+    estado: { ...BASE, bloqueio: { [U_DONA]: "banida" } },
+    email: EMAIL(U_DONA),
+    recusa: "IKT06",
+    frase: /a conta nova esta banida ou apagada/,
+  }),
+  // A dona de HOJE bloqueada não impede: a troca para uma conta nova sem bloqueio é aceita.
+  dona_atual_banida_troca: sondaDe({
+    estado: { ...BASE, bloqueio: { [U_DONA]: "banida" } },
+    email: EMAIL(U_NOVA),
+    espera: TROCADA,
+    dona: U_NOVA,
+  }),
+  dona_atual_apagada_troca: sondaDe({
+    estado: { ...BASE, bloqueio: { [U_DONA]: "apagada" } },
+    email: EMAIL(U_NOVA),
+    espera: TROCADA,
+    dona: U_NOVA,
+  }),
+  // Duas contas com o e-mail, AS DUAS banidas: dispara IKT04 e IKT06; vale o IKT04 (vem antes).
+  duas_contas_banidas_IKT04: sondaDe({
+    estado: {
+      ...BASE,
+      emails: { [U_GEMEA]: EMAIL(U_NOVA).toUpperCase() },
+      bloqueio: { [U_NOVA]: "banida", [U_GEMEA]: "banida" },
+    },
+    email: EMAIL(U_NOVA),
+    recusa: "IKT04",
+    frase: /nenhuma ou mais de uma conta/,
+  }),
+  // banned_until no PASSADO: o ban venceu, a conta não está bloqueada.
+  ban_vencido_troca: sondaDe({
+    estado: { ...BASE, bloqueio: { [U_NOVA]: "ban_vencido" } },
+    email: EMAIL(U_NOVA),
+    espera: TROCADA,
+    dona: U_NOVA,
+  }),
+};
+
 const SONDAS = {
   ...SONDAS_DE_RECUSA,
+  ...SONDAS_DO_BLOQUEIO,
   troca_grava: sondaDe({
     estado: BASE,
     email: EMAIL(U_NOVA),
@@ -647,6 +732,14 @@ function mutar(sql, de, para) {
 }
 /** O gerador de um mutante: o SQL do script para o e-mail, com UM trecho trocado. */
 const mutante = (de, para) => (email) => mutar(sqlTrocarDono(email), de, para);
+
+// Os trechos do DO que os mutantes do IKT06 trocam: o texto exato de sqlTrocarDono (o mutar confere que cada um aparece
+// UMA vez, então se o script mudar o mutante quebra alto em vez de virar mutante nulo).
+const GUARDA_IKT06 =
+  "IF EXISTS (SELECT 1 FROM auth.users u\n              WHERE u.id = v_id AND (u.banned_until > now() OR u.deleted_at IS NOT NULL)) THEN";
+const BLOCO_IKT04 =
+  "  IF v_contas <> 1 THEN\n    RAISE EXCEPTION 'trocar-dono: nenhuma ou mais de uma conta com o e-mail' USING ERRCODE = 'IKT04';\n  END IF;\n";
+const BLOCO_IKT06 = `  SELECT u.id INTO v_id FROM auth.users u WHERE lower(u.email) = v_email;\n  ${GUARDA_IKT06}\n    RAISE EXCEPTION 'trocar-dono: a conta nova esta banida ou apagada' USING ERRCODE = 'IKT06';\n  END IF;\n`;
 
 const MUTANTES = [
   {
@@ -715,6 +808,32 @@ const MUTANTES = [
     nome: "M11 sem o FOR SHARE da linha da nova (o rebaixamento em curso passa por baixo da troca)",
     reprova: "cargo_antes_IKT02",
     gerar: mutante("\n     FOR SHARE OF p;", ";"),
+  },
+  {
+    nome: "M12 sem a guarda IKT06 (a conta nova banida ou apagada no Auth viraria dona)",
+    reprova: "nova_banida_IKT06",
+    gerar: mutante(GUARDA_IKT06, "IF false THEN"),
+  },
+  {
+    nome: "M13 a guarda IKT06 antes da do IKT04 (duas contas banidas dariam IKT06)",
+    reprova: "duas_contas_banidas_IKT04",
+    gerar: mutante(BLOCO_IKT04 + BLOCO_IKT06, BLOCO_IKT06 + BLOCO_IKT04),
+  },
+  {
+    nome: "M14 o ban VENCIDO contando como bloqueio (banned_until IS NOT NULL no lugar de > now())",
+    reprova: "ban_vencido_troca",
+    gerar: mutante(
+      "u.banned_until > now() OR u.deleted_at",
+      "u.banned_until IS NOT NULL OR u.deleted_at",
+    ),
+  },
+  {
+    nome: "M15 a guarda IKT06 olhando também a dona de hoje (a dona bloqueada impediria a troca)",
+    reprova: "dona_atual_banida_troca",
+    gerar: mutante(
+      "WHERE u.id = v_id AND (u.banned_until",
+      "WHERE (u.id = v_id OR u.id IN (SELECT d.user_id FROM public.dono_da_loja d)) AND (u.banned_until",
+    ),
   },
 ];
 
@@ -860,9 +979,13 @@ PROVAS.push({
         nullif(current_setting('request.jwt.claim.role', true), ''),
         (nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role')
       )::text $$`);
-    // A coluna da plataforma que o SQL lê (o auth.users emulado do provisionar não a tem).
+    // As colunas da plataforma que o SQL lê (o auth.users emulado do provisionar não as tem): a confirmação do e-mail e
+    // o bloqueio no Auth (IKT06: banned_until no futuro ou deleted_at preenchido).
     await c.query(
-      "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS email_confirmed_at timestamptz",
+      `ALTER TABLE auth.users
+         ADD COLUMN IF NOT EXISTS email_confirmed_at timestamptz,
+         ADD COLUMN IF NOT EXISTS banned_until timestamptz,
+         ADD COLUMN IF NOT EXISTS deleted_at timestamptz`,
     );
     for (const id of TODOS) {
       await c.query(
@@ -920,6 +1043,21 @@ PROVAS.push({
               (SELECT count(*)::int FROM pg_trigger WHERE tgname = 'prova_troca_sabota') AS gatilho`,
     );
     assert.deepEqual(forma.rows[0], { chave: 1, gatilho: 0 });
+  },
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// (1b) IKT06: a conta bloqueada no Auth (decisão do sócio de 26/11 ~15h)
+// ---------------------------------------------------------------------------------------------------------------------
+PROVAS.push({
+  nome: "(1b) IKT06: a conta nova banida ou apagada no Auth recusa IKT06 sem gravar nada; a que já é a dona, banida, também (antes do ja_era_dona); a dona de hoje banida ou apagada não impede a troca; duas contas banidas com o e-mail = IKT04 (vem antes); ban vencido troca; a leitura prevê cada um",
+  corpo: async (c) => {
+    const s = await rodarSondas(c, sqlTrocarDono, SONDAS_DO_BLOQUEIO);
+    // a sonda reprovada roda de novo, agora lançando: a mensagem dela vai para o log
+    for (const nome of falhas(s)) {
+      await SONDAS_DO_BLOQUEIO[nome](c, sqlTrocarDono);
+    }
+    assert.deepEqual(falhas(s), [], `sondas reprovadas: ${falhas(s)}`);
   },
 });
 
@@ -1110,7 +1248,7 @@ PROVAS.push({
 // (6) os controles: cada guarda tirada reprova a sua sonda
 // ---------------------------------------------------------------------------------------------------------------------
 PROVAS.push({
-  nome: `(6) ${MUTANTES.length} mutantes textuais do SQL (sem SET LOCAL ROLE, sem cada guarda, sem as travas, sem o FOR SHARE, sem o lower) reprovam AO MENOS a sonda que declaram`,
+  nome: `(6) ${MUTANTES.length} mutantes textuais do SQL (sem SET LOCAL ROLE, sem cada guarda, sem as travas, sem o FOR SHARE, sem o lower, sem o IKT06, o IKT06 antes do IKT04, o ban vencido contando, a dona de hoje olhada) reprovam AO MENOS a sonda que declaram`,
   corpo: async (c) => {
     for (const m of MUTANTES) {
       const s = await rodarSondas(c, m.gerar);
