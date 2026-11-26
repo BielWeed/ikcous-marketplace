@@ -13,9 +13,11 @@ import {
   migrarFilaLegada,
   separarItensVencidos,
 } from "@/lib/fila-offline-por-usuario";
+import { gravarFotoComPiramide } from "@/lib/gravar-foto-com-piramide";
 import { arquivoJpegSemExif } from "@/lib/jpeg-sem-exif";
 import { mapProductFromDB } from "@/lib/mappers";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
+import type { GerarPiramide } from "@/lib/piramide-da-foto-nomes";
 import {
   MENSAGEM_PRODUTO_DUPLICAR_SEM_RESPOSTA,
   MENSAGEM_PRODUTO_EDICAO_SEM_RESPOSTA,
@@ -99,6 +101,13 @@ export async function copiarImagemParaDuplicacao(url: string): Promise<string> {
   } finally {
     desmarcar();
   }
+}
+
+/** Opções do envio de foto. Sem elas, o envio é exatamente o de antes. */
+export interface OpcoesDoEnvioDeFoto {
+  /** Gerador das 3 cópias reduzidas (`gerar-piramide.ts`): só o painel o
+   * entrega -- este hook também é usado pela vitrine e não o importa. */
+  readonly piramide?: GerarPiramide;
 }
 
 async function callRpcWithRetry<T>(
@@ -2763,49 +2772,51 @@ export function useProducts({
     [updateProduct],
   );
 
-  const uploadProductImages = useCallback(async (files: File[]) => {
-    const desmarcar = marcarOperacaoSensivel("upload-de-imagem-do-produto");
-    try {
-      const urls: string[] = [];
+  const uploadProductImages = useCallback(
+    async (files: File[], opcoes?: OpcoesDoEnvioDeFoto) => {
+      const desmarcar = marcarOperacaoSensivel("upload-de-imagem-do-produto");
+      try {
+        const urls: string[] = [];
 
-      for (const file of files) {
-        try {
-          // Laudo 0109 (C2): o arquivo cru do celular (foto de 12 MP = vários
-          // MB) ia inteiro ao bucket e era servido a quem escapar do pipeline
-          // de render. Redimensiona ANTES do upload — e `redimensionarImagem`
-          // é fail-open: na falha volta o próprio arquivo, o upload segue.
-          const pronto = await arquivoJpegSemExif(
-            await redimensionarImagem(file),
-          );
-          const fileExt = pronto.name.split(".").pop();
-          const fileName = `${gerarUuidV4()}.${fileExt}`;
-          const filePath = `${fileName}`;
-
-          const { error: uploadError } = await supabase.storage
-            .from("products")
-            .upload(filePath, pronto, {
-              cacheControl: "31536000",
-              upsert: false,
+        for (const file of files) {
+          try {
+            // Laudo 0109 (C2): o arquivo cru do celular (foto de 12 MP = vários
+            // MB) ia inteiro ao bucket e era servido a quem escapar do pipeline
+            // de render. Redimensiona ANTES do upload — e `redimensionarImagem`
+            // é fail-open: na falha volta o próprio arquivo, o upload segue.
+            const pronto = await arquivoJpegSemExif(
+              await redimensionarImagem(file),
+            );
+            const fileExt = pronto.name.split(".").pop() ?? "";
+            // Com `opcoes.piramide` (só o painel a entrega), as 3 cópias
+            // reduzidas sobem antes e a original ganha nome marcado; sem ela,
+            // ou em qualquer falha das cópias, `<uuid>.<ext>` como sempre.
+            const filePath = await gravarFotoComPiramide({
+              bucket: supabase.storage.from("products"),
+              base: gerarUuidV4(),
+              ext: fileExt,
+              foto: pronto,
+              piramide: opcoes?.piramide,
             });
 
-          if (uploadError) throw uploadError;
+            const {
+              data: { publicUrl },
+            } = supabase.storage.from("products").getPublicUrl(filePath);
 
-          const {
-            data: { publicUrl },
-          } = supabase.storage.from("products").getPublicUrl(filePath);
-
-          urls.push(publicUrl);
-        } catch (err) {
-          console.error("Error uploading file:", err);
-          toast.error(`Erro ao enviar imagem ${file.name}`);
+            urls.push(publicUrl);
+          } catch (err) {
+            console.error("Error uploading file:", err);
+            toast.error(`Erro ao enviar imagem ${file.name}`);
+          }
         }
-      }
 
-      return urls;
-    } finally {
-      desmarcar();
-    }
-  }, []);
+        return urls;
+      } finally {
+        desmarcar();
+      }
+    },
+    [],
+  );
 
   // Recommendations Logic - Server Side RPC
   const fetchRecommendations = useCallback(
