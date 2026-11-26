@@ -1,5 +1,5 @@
 // @ts-nocheck
-/* eslint-disable security/detect-object-injection, security/detect-non-literal-require -- teste: as chaves vêm do cadastro (real ou de fixture) e de constantes deste arquivo; os require são de arquivos fixos do repositório. */
+/* eslint-disable security/detect-object-injection, security/detect-non-literal-require, security/detect-unsafe-regex -- teste: as chaves vêm do cadastro (real ou de fixture) e de constantes deste arquivo; os require são de arquivos fixos do repositório; as regex têm âncoras e rodam sobre arquivos fixos do repositório. */
 /**
  * O TOKEN DE CADA LOJA OAUTH MORA NA GAVETA DA LOJA (26/11/2026).
  *
