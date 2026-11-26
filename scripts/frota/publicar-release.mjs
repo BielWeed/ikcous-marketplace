@@ -1827,6 +1827,29 @@ export function comLeituraOAuth(deps, { mapa, tokenDe }) {
   };
 }
 
+/**
+ * O roteamento da loja OAuth para quem lê prontidão: as lojas OAuth do
+ * cadastro (lojasOAuth) e `deps` com a leitura delas trocada pelo leitor
+ * (comLeituraOAuth, com o memo de `deps.tokenOAuth`). O portão
+ * (publicarRelease) e o `estado-da-loja.mjs --acordar` usam ESTA função: as
+ * duas réguas leem a loja OAuth do mesmo jeito, nunca pelo CLI.
+ * @returns {{ deps: object, mapa: Map<string, { slug: string, segredo: string, incoerente: string|null }>,
+ *   bloqueios: { alvo: string, motivo: string }[] }}
+ */
+export function comRoteamentoOAuth(deps, canais) {
+  const { mapa, bloqueios } = lojasOAuth(deps.cadastro, canais);
+  return {
+    mapa,
+    bloqueios,
+    deps: comLeituraOAuth(deps, {
+      mapa,
+      tokenDe: memoDeToken(deps.tokenOAuth, () =>
+        deps.agora ? deps.agora() : Date.now(),
+      ),
+    }),
+  };
+}
+
 // ------------------------------------------------------------------ etapa 3: por loja
 
 export async function prontidaoDaLoja(loja, canal, ctx) {
@@ -2429,7 +2452,7 @@ export async function publicarRelease(opcoes, deps) {
   bloqueios.push(...problemasDoContexto);
   // Loja OAuth: lida pela API com o token do cofre, nunca pelo CLI; o
   // cadastro incoerente bloqueia pelo nome aqui.
-  const oauth = lojasOAuth(deps.cadastro, canais);
+  const oauth = comRoteamentoOAuth(deps, canais);
   bloqueios.push(...oauth.bloqueios);
   const sobreOTopo = topo
     ? ` (migrations/consultas ${topoBancoIgual ? "iguais" : "DIFERENTES"} e functions ${topoFunctionsIgual ? "iguais" : "DIFERENTES"} às da release)`
@@ -2448,14 +2471,7 @@ export async function publicarRelease(opcoes, deps) {
   //  (2) o relatório, os bloqueios e os comandos de conserto são montados
   //      depois, UMA loja por vez, na ordem do inventário.
   // Uma exceção em qualquer loja derruba o portão (fail-closed), como antes.
-  const depsDaProntidao = comRetentativaNasLeituras(
-    comLeituraOAuth(deps, {
-      mapa: oauth.mapa,
-      tokenDe: memoDeToken(deps.tokenOAuth, () =>
-        deps.agora ? deps.agora() : Date.now(),
-      ),
-    }),
-  );
+  const depsDaProntidao = comRetentativaNasLeituras(oauth.deps);
   const limiteDeLojas = Math.min(
     PRONTIDAO_LOJAS_EM_PARALELO,
     Number.isInteger(Number(deps.lojasEmParalelo)) &&

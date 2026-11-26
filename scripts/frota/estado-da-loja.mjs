@@ -26,6 +26,9 @@
  *   - --acordar: a prontidão DAQUELA loja contra a release atual (a mesma régua do publicar-release.mjs), com a base = a release em que
  *     ela dormiu. Faltando migration, prova de objetos ou function, NÃO imprime a chamada: imprime os comandos de conserto só dela.
  *     Function que falta na loja e que a release NÃO mudou não impede o acordar: a chamada sai, e o comando de publicá-la vai no AVISO.
+ *     Loja OAuth (`acesso: "oauth"` no lojas.json) é lida pela API com o token do cofre local, pelo MESMO roteamento do portão
+ *     (comRoteamentoOAuth; como no ensaio, pode renovar o acesso dela e gravar o refresh novo no cofre); sem token, ela fica "não lida" e
+ *     não acorda (o erro diz o que fazer); nunca é lida pelo CLI.
  * A instrução impressa vale 30 minutos (p_valido_ate); a porta recusa a vencida e a que vale mais de 1 hora.
  *
  * --depois-de-acordar (OBRIGATÓRIO depois de rodar a instrução de acordar): a porta não sabe qual release está no ar (p_sha é só
@@ -45,6 +48,8 @@ import {
   validarVersao,
 } from "./conferir-frota.mjs";
 import {
+  AVISO_DA_SESSAO_OAUTH,
+  comRoteamentoOAuth,
   comandosDeConserto,
   contextoDaRelease,
   dependenciasReais,
@@ -477,7 +482,11 @@ async function conferirProntidao(
     return false;
   }
   try {
-    const d = deps.depsDaRelease();
+    // Loja OAuth (`acesso: "oauth"` no lojas.json): ledger, lista e código das functions pelo leitor OAuth, com o token do cofre — o
+    // MESMO roteamento do portão (comRoteamentoOAuth), nunca pelo CLI. Sem token, ela fica "não lida" e não acorda. Loja CLI: as
+    // mesmas dependências de antes. O incoerente de OUTRA loja do cadastro não é desta prontidão; o desta loja bloqueia na leitura.
+    const rota = comRoteamentoOAuth(deps.depsDaRelease(), canais);
+    const d = rota.deps;
     const ctx = await contextoDaRelease({
       sha: a.sha,
       politica: deps.politica,
@@ -489,6 +498,13 @@ async function conferirProntidao(
       titulo: `${canal.nome ?? a.loja} [${a.loja}]`,
       dominios: [],
       shasServidos: [a.base],
+    };
+    // Os comandos de conserto da loja OAuth só funcionam dentro da sessão de publicação (o segredo dela só existe no GitHub ali).
+    const consertoDe = (loja, pront) => {
+      const c = comandosDeConserto(loja, pront, canal, ctx.ctxConserto);
+      return c.length && rota.mapa.has(a.ref)
+        ? [AVISO_DA_SESSAO_OAUTH, ...c]
+        : c;
     };
     const pront = await prontidaoDaLoja(loja, canal, {
       sha: a.sha,
@@ -510,7 +526,7 @@ async function conferirProntidao(
         .filter((f) => f.estado === "DERIVA_ANTIGA" && f.ausente === true)
         .map((f) => f.nome);
       if (ausentes.length) {
-        const cmds = comandosDeConserto(loja, pront, canal, ctx.ctxConserto);
+        const cmds = consertoDe(loja, pront);
         erros.push(
           `AVISO: a loja ${a.loja} (${a.ref}) não tem as functions ${ausentes.join(", ")} publicadas. A release não as mudou, então elas não impedem o acordar. ${cmds.some((l) => l.startsWith("gh ")) ? "Para publicá-las (só impresso, nada foi executado; linha com # não é comando):" : "Nenhuma tem comando de publicar daqui; o motivo:"}`,
           ...cmds,
@@ -526,7 +542,7 @@ async function conferirProntidao(
       ...naoProntas.map((f) => `- function ${f.nome}: ${f.motivo}`),
       ...ctx.problemas.map((p) => `- ${p.alvo}: ${p.motivo}`),
     );
-    saida.push(...comandosDeConserto(loja, pront, canal, ctx.ctxConserto));
+    saida.push(...consertoDe(loja, pront));
     return false;
   } catch (e) {
     erros.push(
