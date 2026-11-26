@@ -21,6 +21,7 @@
 // @testing-library. Diferença necessária: aqui o painel precisa estar
 // ONLINE (useOnlineStatus -> true), porque o handleSubmit recusa salvar
 // offline antes de chegar no hook.
+import { gerarPiramide } from "@/lib/gerar-piramide";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -215,7 +216,9 @@ describe("AdminBannersView — salvar que falha não deixa upload órfão no buc
       await esperarMicrotarefas();
     });
 
-    expect(uploadBannerImage).toHaveBeenCalledWith(arquivo);
+    expect(uploadBannerImage).toHaveBeenCalledWith(arquivo, {
+      piramide: gerarPiramide,
+    });
   }
 
   it("salvar com rejeição definitiva não marca como salvo: fechar apaga o upload órfão", async () => {

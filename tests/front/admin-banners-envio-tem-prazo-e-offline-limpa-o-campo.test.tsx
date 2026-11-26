@@ -10,6 +10,7 @@
 //  3. Sem internet, o campo de arquivo guardava a escolha: ao voltar a conexão,
 //     escolher a MESMA foto não disparava nada. O campo é esvaziado antes de
 //     qualquer retorno antecipado.
+import { gerarPiramide } from "@/lib/gerar-piramide";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -301,7 +302,9 @@ describe("AdminBannersView — envio da imagem: prazo, foto ilegível e campo li
     await act(async () => escolherMesmoArquivo());
 
     expect(uploadBannerImage).toHaveBeenCalledTimes(1);
-    expect(uploadBannerImage).toHaveBeenCalledWith(arquivo);
+    expect(uploadBannerImage).toHaveBeenCalledWith(arquivo, {
+      piramide: gerarPiramide,
+    });
   });
 
   it("o envio que nunca responde estoura em 90 s: avisa 'Demorou demais', libera o campo e apaga o arquivo que chegar depois", async () => {

@@ -64,6 +64,7 @@ import {
 import { mensagemDeErroDeSessaoDoPainel } from "@/lib/erro-de-sessao-do-painel";
 import { chaveDoUsuario } from "@/lib/fila-offline-por-usuario";
 import { soFotosReais } from "@/lib/foto-do-produto";
+import { gerarPiramide } from "@/lib/gerar-piramide";
 import {
   AVISO_DE_LINK_RECUSADO,
   avisoDoLinkDigitado,
@@ -1253,7 +1254,8 @@ export const AdminBannersView = memo(function AdminBannersView({
     const fim = marcarOperacaoSensivel("upload-de-banner");
     try {
       const url = await comPrazo(
-        uploadBannerImage(file),
+        // Com as 3 cópias reduzidas (miniaturas da loja grátis).
+        uploadBannerImage(file, { piramide: gerarPiramide }),
         PRAZO_DO_ENVIO_MS,
         undefined,
         apagarEnvioTardio,
@@ -2174,7 +2176,8 @@ export const AdminBannersView = memo(function AdminBannersView({
     const fim = marcarOperacaoSensivel("upload-de-banner");
     try {
       const url = await comPrazo(
-        uploadBannerImage(file),
+        // Com as 3 cópias reduzidas (miniaturas da loja grátis).
+        uploadBannerImage(file, { piramide: gerarPiramide }),
         PRAZO_DO_ENVIO_MS,
         undefined,
         apagarEnvioTardio,

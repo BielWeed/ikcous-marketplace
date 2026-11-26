@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { gerarPiramide } from "@/lib/gerar-piramide";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -372,7 +373,9 @@ describe("uploads de banner limpam a imagem substituída e o seletor", () => {
         );
         await act(async () => escolherMesmoArquivo());
         expect(uploadBannerImage).toHaveBeenCalledTimes(2);
-        expect(uploadBannerImage).toHaveBeenLastCalledWith(arquivo);
+        expect(uploadBannerImage).toHaveBeenLastCalledWith(arquivo, {
+          piramide: gerarPiramide,
+        });
         expect(campo.value).toBe("");
         expect(imagem()).toBe("https://loja.test/reenvio.webp");
       },

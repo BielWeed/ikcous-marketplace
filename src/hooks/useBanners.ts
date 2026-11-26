@@ -13,6 +13,10 @@ import {
 } from "@/lib/banners-da-vitrine";
 import { DataVault } from "@/lib/dataVault";
 import { mensagemDeErroDeSessaoDoPainel } from "@/lib/erro-de-sessao-do-painel";
+import {
+  type OpcoesDoEnvioDeFoto,
+  gravarFotoComPiramide,
+} from "@/lib/gravar-foto-com-piramide";
 import { imagemAbre } from "@/lib/imagem-abre";
 import {
   imagemDoBannerEmUso,
@@ -20,6 +24,7 @@ import {
   imagensDoBanner,
 } from "@/lib/imagens-do-banner";
 import { arquivoJpegSemExif } from "@/lib/jpeg-sem-exif";
+import { marcaDe, nomesDasCopias } from "@/lib/piramide-da-foto-nomes";
 import {
   aguardarComPrazo,
   ehConsultaSemResposta,
@@ -246,7 +251,16 @@ export function useBanners(adminMode = false) {
       const url = new URL(imageUrl);
       const fileName = url.pathname.split("/").pop();
       if (fileName) {
-        await supabase.storage.from("banners").remove([fileName]);
+        // Banner MARCADO: as 3 cópias reduzidas moram ao lado e saem junto
+        // (nunca fica cópia órfã, nem endereço marcado sem cópia). A guarda
+        // "outro banner ainda usa esta imagem" é de quem chama, pela URL
+        // inteira -- e as cópias são função dela. Na dúvida, só o arquivo.
+        const copias =
+          marcaDe(imageUrl) &&
+          url.pathname.startsWith("/storage/v1/object/public/banners/")
+            ? (nomesDasCopias(fileName) ?? [])
+            : [];
+        await supabase.storage.from("banners").remove([fileName, ...copias]);
       }
     } catch (err) {
       console.warn(
@@ -449,7 +463,10 @@ export function useBanners(adminMode = false) {
     [banners, adminMode, agoraNaTela, computador],
   );
 
-  const uploadBannerImage = async (file: File): Promise<string> => {
+  const uploadBannerImage = async (
+    file: File,
+    opcoes?: OpcoesDoEnvioDeFoto,
+  ): Promise<string> => {
     if (!isAdmin) {
       throw new Error(
         "Acesso negado: Apenas administradores podem fazer upload de imagens de banners.",
@@ -470,18 +487,17 @@ export function useBanners(adminMode = false) {
         throw ilegivel;
       }
       const pronto = await arquivoJpegSemExif(redimensionada);
-      const fileExt = pronto.name.split(".").pop();
-      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
-      const filePath = `${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from("banners")
-        .upload(filePath, pronto, {
-          cacheControl: "31536000",
-          upsert: false,
-        });
-
-      if (uploadError) throw uploadError;
+      const fileExt = pronto.name.split(".").pop() ?? "";
+      // Com `opcoes.piramide` (só o painel a entrega), as 3 cópias reduzidas
+      // sobem antes e a original ganha nome marcado; sem ela, ou em qualquer
+      // falha das cópias, `<epoch>-<aleatório>.<ext>` como sempre.
+      const filePath = await gravarFotoComPiramide({
+        bucket: supabase.storage.from("banners"),
+        base: `${Date.now()}-${Math.random().toString(36).substring(2)}`,
+        ext: fileExt,
+        foto: pronto,
+        piramide: opcoes?.piramide,
+      });
 
       const { data } = supabase.storage.from("banners").getPublicUrl(filePath);
 

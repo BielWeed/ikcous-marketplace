@@ -21,6 +21,15 @@ import {
   nomesDasCopias,
 } from "./piramide-da-foto-nomes";
 
+/** Opções do envio de foto (produto e banner). Sem elas, o envio é
+ * exatamente o de antes. */
+export interface OpcoesDoEnvioDeFoto {
+  /** Gerador das 3 cópias reduzidas (`gerar-piramide.ts`): só o painel o
+   * entrega -- os hooks de envio também são usados pela vitrine e não o
+   * importam. */
+  readonly piramide?: GerarPiramide;
+}
+
 /** O pedaço do bucket do Storage que o envio usa. */
 export interface BucketDoEnvio {
   upload(

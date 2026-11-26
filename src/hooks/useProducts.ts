@@ -13,11 +13,13 @@ import {
   migrarFilaLegada,
   separarItensVencidos,
 } from "@/lib/fila-offline-por-usuario";
-import { gravarFotoComPiramide } from "@/lib/gravar-foto-com-piramide";
+import {
+  type OpcoesDoEnvioDeFoto,
+  gravarFotoComPiramide,
+} from "@/lib/gravar-foto-com-piramide";
 import { arquivoJpegSemExif } from "@/lib/jpeg-sem-exif";
 import { mapProductFromDB } from "@/lib/mappers";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
-import type { GerarPiramide } from "@/lib/piramide-da-foto-nomes";
 import {
   MENSAGEM_PRODUTO_DUPLICAR_SEM_RESPOSTA,
   MENSAGEM_PRODUTO_EDICAO_SEM_RESPOSTA,
@@ -101,13 +103,6 @@ export async function copiarImagemParaDuplicacao(url: string): Promise<string> {
   } finally {
     desmarcar();
   }
-}
-
-/** Opções do envio de foto. Sem elas, o envio é exatamente o de antes. */
-export interface OpcoesDoEnvioDeFoto {
-  /** Gerador das 3 cópias reduzidas (`gerar-piramide.ts`): só o painel o
-   * entrega -- este hook também é usado pela vitrine e não o importa. */
-  readonly piramide?: GerarPiramide;
 }
 
 async function callRpcWithRetry<T>(
