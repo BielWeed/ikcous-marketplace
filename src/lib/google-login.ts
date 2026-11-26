@@ -56,6 +56,13 @@ export function mensagemComDicaGoogle(mensagem: string): string {
     : mensagem;
 }
 
+/** Cadastro sem e-mail da loja: mesma regra de cima, só cita o botão que está na tela. */
+export function mensagemComCadastroPeloGoogle(mensagem: string): string {
+  return googleConfirmado && !navegadorInternoDaMeta()
+    ? `${mensagem} Enquanto isso, você pode criar a conta pelo botão Continuar com Google.`
+    : mensagem;
+}
+
 const CHAVE_RETORNO = "ikcous_google_retorno_v1";
 const VALIDADE_MS = 30 * 60 * 1000;
 

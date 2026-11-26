@@ -34,8 +34,17 @@ import {
   enderecoTrazErroDeLink,
 } from "@/lib/erro-no-endereco-do-link";
 import {
+  MENSAGEM_CADASTRO_LOJA_SEM_ENVIO,
+  MENSAGEM_LIMITE_DE_EMAIL_DA_LOJA,
+  MENSAGEM_RECUPERACAO_LOJA_SEM_ENVIO,
+  MENSAGEM_REENVIO_LOJA_SEM_ENVIO,
+  falhaDeEnvioDeEmail,
+  semEnderecoDeEmail,
+} from "@/lib/falha-de-envio-de-email";
+import {
   esquecerDestinoGoogle,
   guardarDestinoGoogle,
+  mensagemComCadastroPeloGoogle,
   mensagemComDicaGoogle,
   retomarDestinoGoogle,
 } from "@/lib/google-login";
@@ -1409,7 +1418,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // inexistente — nenhum dos três reabre enumeração. O que não bate em
         // nenhum caso conhecido (validação de parâmetro, provedor
         // desabilitado, rede) fica genérico: melhor honesto do que presumido.
-        console.error("[Auth] Erro ao cadastrar:", error.message);
+        console.error(
+          "[Auth] Erro ao cadastrar:",
+          semEnderecoDeEmail(error.message),
+        );
+        const falhaDeEnvio = falhaDeEnvioDeEmail(error);
         let message = "Não foi possível concluir o cadastro. Tente novamente.";
         if (
           error.code === "email_exists" ||
@@ -1434,6 +1447,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           // revela se há conta. `validation_failed` fica de fora de
           // propósito — é um 400 amplo que cobre outros parâmetros.
           message = "Confira o e-mail: ele parece ter um erro de digitação.";
+        } else if (falhaDeEnvio === "loja_sem_envio") {
+          // A loja não manda o e-mail de confirmação (ver
+          // `@/lib/falha-de-envio-de-email`): repetir não conserta. O Google
+          // não depende do e-mail da loja e o botão está nesta tela.
+          message = mensagemComCadastroPeloGoogle(
+            MENSAGEM_CADASTRO_LOJA_SEM_ENVIO,
+          );
+        } else if (falhaDeEnvio === "limite_da_loja") {
+          // Limite do projeto inteiro: pode ser a 1ª tentativa da cliente.
+          message = MENSAGEM_LIMITE_DE_EMAIL_DA_LOJA;
         } else if (error.status === 429) {
           message = "Muitas tentativas. Tente novamente em alguns minutos.";
         }
@@ -1710,11 +1733,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // O limite de envio (429/`over_email_send_rate_limit`, doc oficial)
         // é a única causa aqui com um sinal estável para distinguir — o
         // resto (rede, provedor) cai no genérico de reenvio.
-        console.error("[Auth] Erro ao reenviar e-mail:", error.message);
+        // A loja sem envio e o limite do projeto inteiro (ver
+        // `@/lib/falha-de-envio-de-email`) vêm antes: não são culpa da cliente.
+        console.error(
+          "[Auth] Erro ao reenviar e-mail:",
+          semEnderecoDeEmail(error.message),
+        );
+        const falhaDeEnvio = falhaDeEnvioDeEmail(error);
         const message =
-          error.status === 429 || error.code === "over_email_send_rate_limit"
-            ? "Muitas tentativas. Aguarde alguns minutos antes de pedir um novo e-mail. Se você já pediu um, use o e-mail mais recente."
-            : "Não foi possível reenviar o e-mail agora. Tente novamente em instantes.";
+          falhaDeEnvio === "loja_sem_envio"
+            ? MENSAGEM_REENVIO_LOJA_SEM_ENVIO
+            : falhaDeEnvio === "limite_da_loja"
+              ? MENSAGEM_LIMITE_DE_EMAIL_DA_LOJA
+              : error.status === 429 ||
+                  error.code === "over_email_send_rate_limit"
+                ? "Muitas tentativas. Aguarde alguns minutos antes de pedir um novo e-mail. Se você já pediu um, use o e-mail mais recente."
+                : "Não foi possível reenviar o e-mail agora. Tente novamente em instantes.";
         toast.error(message);
         return false;
       }
@@ -1785,11 +1819,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           // you can only request this after N seconds") na TELA reabria a
           // mesma enumeração que a RPC revogada causava. A mensagem para o
           // chamador é sempre genérica; o detalhe vai só para o console.
-          console.error("[Auth] resetPasswordForEmail error:", error.message);
+          //
+          // Exceção: a LOJA sem envio de e-mail e o limite do projeto inteiro
+          // (ver `@/lib/falha-de-envio-de-email`) ganham frase própria — a
+          // causa não é a pessoa, e o texto não diz nada sobre a conta.
+          console.error(
+            "[Auth] resetPasswordForEmail error:",
+            semEnderecoDeEmail(error.message),
+          );
+          const falhaDeEnvio = falhaDeEnvioDeEmail(error);
           return {
             success: false,
             status: "error",
-            message: MENSAGEM_LINK_DE_RECUPERACAO_NAO_ENVIADO,
+            message:
+              falhaDeEnvio === "loja_sem_envio"
+                ? MENSAGEM_RECUPERACAO_LOJA_SEM_ENVIO
+                : falhaDeEnvio === "limite_da_loja"
+                  ? MENSAGEM_LIMITE_DE_EMAIL_DA_LOJA
+                  : MENSAGEM_LINK_DE_RECUPERACAO_NAO_ENVIADO,
           };
         }
 
