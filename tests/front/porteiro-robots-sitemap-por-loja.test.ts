@@ -154,7 +154,7 @@ function criarFetchDeLojas(
   return (async (input, init) => {
     const url = requestUrl(input);
     chamadas.push(`${url.origin}${url.pathname}`);
-    if (url.pathname === "/rest/v1/rpc/resolver_loja") {
+    if (url.pathname === "/rest/v1/rpc/resolver_loja_com_estado") {
       const corpo = JSON.parse(String(init?.body ?? "{}")) as {
         p_host?: string;
       };
@@ -165,6 +165,7 @@ function criarFetchDeLojas(
               {
                 supabase_url: loja.origem,
                 publishable_key: `sb_publishable_${new URL(loja.origem).hostname.split(".")[0]}`,
+                estado: "ativa",
               },
             ]
           : [],
@@ -536,11 +537,12 @@ describe("host que não é loja confirmada: mesma resposta do documento, nunca o
     // da Savy só é dona de `savy-mapa.exemplo`.
     const fetchTroca = (async (input, init) => {
       const url = requestUrl(input);
-      if (url.pathname === "/rest/v1/rpc/resolver_loja")
+      if (url.pathname === "/rest/v1/rpc/resolver_loja_com_estado")
         return json([
           {
             supabase_url: lojas[1].origem,
             publishable_key: "sb_publishable_savy",
+            estado: "ativa",
           },
         ]);
       return criarFetchDeLojas(lojas)(input, init);
@@ -568,11 +570,12 @@ describe("host que não é loja confirmada: mesma resposta do documento, nunca o
       // loja, mas o `dominio_publico` dela é outro -> "encaminha".
       const fetchAlias = (async (input, init) => {
         const url = requestUrl(input);
-        if (url.pathname === "/rest/v1/rpc/resolver_loja")
+        if (url.pathname === "/rest/v1/rpc/resolver_loja_com_estado")
           return json([
             {
               supabase_url: loja.origem,
               publishable_key: "sb_publishable_alias",
+              estado: "ativa",
             },
           ]);
         return criarFetchDeLojas([loja])(input, init);

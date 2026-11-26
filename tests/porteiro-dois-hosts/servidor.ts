@@ -177,7 +177,20 @@ export const HOSTS = {
   BANNER_QUEBRADO: "loja-banner-quebrado.localhost",
   /** Cartaz: a leitura dos banners NUNCA responde (so o prazo do porteiro corta). */
   BANNER_TRAVADO: "loja-banner-travado.localhost",
+  /** L8: a caderneta (caminho a) diz que esta loja está ADORMECIDA — sem URL
+   * nem chave. O banco dela (`ORIGEM_DORMINDO`) NÃO existe neste ensaio: um
+   * pedido a ele lançaria, e `pedidosAoDuble` provaria que houve. */
+  DORMINDO: "loja-dormindo.localhost",
 } as const;
+
+/** L8: o `project_ref` da loja adormecida e o endereço do banco que ela TERIA
+ * (nunca mapeado em `BANCOS_POR_ORIGEM`). */
+export const REF_DORMINDO = "y".repeat(20);
+export const ORIGEM_DORMINDO = `https://${REF_DORMINDO}.supabase.co`;
+
+/** Todo endereço que o dublê de `fetch` recebeu, em ordem — é o que prova
+ * "a loja fora do ar não faz pedido ao banco dela". Só cresce. */
+export const pedidosAoDuble: string[] = [];
 
 /** O que o banco de brinquedo responde a `GET /rest/v1/banners`. */
 export type ComportamentoDosBanners =
@@ -394,7 +407,11 @@ function aplicarAmbientePorHost(hostname: string): void {
       BANCOS_POR_ORIGEM[ORIGEM_B]!.chavePublica;
     return;
   }
-  if (hostname === HOSTS.C || hostname === HOSTS.TROCADA) {
+  if (
+    hostname === HOSTS.C ||
+    hostname === HOSTS.TROCADA ||
+    hostname === HOSTS.DORMINDO
+  ) {
     process.env.IKCOUS_FROTA_URL = FROTA_URL;
     process.env.IKCOUS_FROTA_APIKEY = FROTA_APIKEY;
     process.env.IKCOUS_FROTA_CHAVE = FROTA_CHAVE;
@@ -435,6 +452,7 @@ async function fetchDeBrinquedo(
   const url = new URL(
     entrada instanceof Request ? entrada.url : String(entrada),
   );
+  pedidosAoDuble.push(url.toString());
 
   // Self-fetch do HTML assado (o único self-fetch que `atenderPorteiro`
   // ainda faz — o manifest é montado inteiramente a partir da ficha).
@@ -449,13 +467,36 @@ async function fetchDeBrinquedo(
 
   // A RPC da caderneta central (`resolverNaCaderneta`, exportada por
   // `middleware.ts`, chama `fetch` de verdade — este dublê responde por ela).
-  if (url.pathname === "/rest/v1/rpc/resolver_loja") {
+  // L8: a função NOVA (`resolver_loja_com_estado`, 7 colunas) é a que o
+  // porteiro pergunta primeiro; a ANTIGA (`resolver_loja`) segue aqui como a
+  // reserva que ela é — e, como no banco de verdade, só conhece loja ativa.
+  const comEstado = url.pathname === "/rest/v1/rpc/resolver_loja_com_estado";
+  if (comEstado || url.pathname === "/rest/v1/rpc/resolver_loja") {
     const corpo = await lerCorpoDoInit(init);
     const { p_host, p_chave } = corpo
       ? (JSON.parse(corpo) as { p_host?: unknown; p_chave?: unknown })
       : {};
     if (p_chave !== FROTA_CHAVE || typeof p_host !== "string") {
       return new Response("[]", {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    if (p_host === HOSTS.DORMINDO) {
+      const linhas = comEstado
+        ? [
+            {
+              id: "loja-dormindo",
+              nome: "Loja Dormindo",
+              dominio_publico: HOSTS.DORMINDO,
+              project_ref: REF_DORMINDO,
+              supabase_url: null,
+              publishable_key: null,
+              estado: "adormecida",
+            },
+          ]
+        : [];
+      return new Response(JSON.stringify(linhas), {
         status: 200,
         headers: { "content-type": "application/json" },
       });
@@ -477,6 +518,7 @@ async function fetchDeBrinquedo(
       project_ref: new URL(origemMapeada).hostname.split(".")[0],
       supabase_url: origemMapeada,
       publishable_key: banco.chavePublica,
+      ...(comEstado ? { estado: "ativa" } : {}),
     };
     return new Response(JSON.stringify([linha]), {
       status: 200,

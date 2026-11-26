@@ -6,6 +6,7 @@ import type { CanalDeEntrada } from "./src/hospedagem/contador";
 import type {
   AmbientePorteiro,
   EntradaCacheCartaz,
+  EntradaCacheForaDoAr,
   EntradaCacheMapa,
   EntradaCachePorteiro,
   ResolverLojaNaCaderneta,
@@ -13,6 +14,7 @@ import type {
 import {
   atenderPorteiro,
   documentoDaLoja,
+  marcarVersaoDaCaderneta,
   obterFichaValidada,
   respostaManutencao,
 } from "./src/hospedagem/porteiro";
@@ -85,6 +87,10 @@ export const config = {
 // (`src/hospedagem/porteiro.ts`, `CACHE_FRESCO_MS`/`CACHE_STALE_MAX_MS`).
 const cachePorteiro = new Map<string, EntradaCachePorteiro>();
 
+// L8: a decisão "loja adormecida/encerrada" por host, 60 s (sem stale): ver
+// `CACHE_FORA_DO_AR_MS` no porteiro. A loja ativa nunca escreve aqui.
+const cacheForaDoAr = new Map<string, EntradaCacheForaDoAr>();
+
 // Ids públicos do sitemap por loja (10 min frescos, 1h de stale-if-error,
 // chave = `host|supabaseUrl` da ficha): ver `CACHE_MAPA_FRESCO_MS` no porteiro.
 const cacheMapaDoSite = new Map<string, EntradaCacheMapa>();
@@ -151,6 +157,110 @@ function criarGravadorDeEntrada(
 // qualquer outra falha de rede, sempre caindo em `"erro"` (nunca lança).
 const PRAZO_CADERNETA_MS = 5_000;
 
+// L8 (26/11/2026): a pergunta é feita PRIMEIRO à `resolver_loja_com_estado`
+// (as 6 colunas da v1 + `estado`; URL e chave NULL quando a loja não está
+// `ativa`). A função antiga é RESERVA ESTREITA, só para o intervalo em que o
+// banco da caderneta ainda não recebeu a migration nova: SÓ um 404 cujo corpo
+// é `{ code: "PGRST202" }` (o PostgREST não achou a função) repete a MESMA
+// pergunta em `resolver_loja`, e o resultado leva `versao: 1` (vira o
+// cabeçalho `x-ikcous-caderneta-versao: 1`). Qualquer outra falha — 500,
+// 401, 404 sem esse código, corpo que não é JSON, rede — é `erro`, como
+// sempre foi: cair na reserva por um 500 esconderia uma caderneta doente e
+// trocaria o estado de vida pela regra antiga sem ninguém decidir isso.
+// O prazo de 5 s vale para as DUAS chamadas juntas (mesmo `AbortController`).
+const RPC_COM_ESTADO = "resolver_loja_com_estado";
+const RPC_ANTIGA = "resolver_loja";
+// O mesmo formato que a identidade da loja aceita (`parseStoreIdentity`):
+// o `project_ref` vai num cabeçalho da página de loja fora do ar.
+const REF_DO_PROJETO = /^[a-z0-9]{20}$/;
+
+type LinhaDaCaderneta = Record<string, unknown>;
+
+/** Zero linhas = `miss`; exatamente UMA linha-objeto segue; o resto é erro. */
+function umaLinhaDaCaderneta(
+  linhas: unknown,
+): LinhaDaCaderneta | "miss" | "erro" {
+  if (!Array.isArray(linhas)) return "erro";
+  if (linhas.length === 0) return "miss";
+  if (linhas.length !== 1) return "erro";
+  const linha: unknown = linhas[0];
+  if (linha === null || typeof linha !== "object" || Array.isArray(linha))
+    return "erro";
+  return linha as LinhaDaCaderneta;
+}
+
+function conexaoDaLinha(linha: LinhaDaCaderneta) {
+  if (
+    typeof linha.supabase_url !== "string" ||
+    typeof linha.publishable_key !== "string"
+  )
+    return null;
+  return {
+    supabaseUrl: linha.supabase_url,
+    publishableKey: linha.publishable_key,
+    origem: "caderneta" as const,
+  };
+}
+
+/** A resposta da função NOVA: o `estado` decide; estado que não seja um dos
+ * três (ou ausente) é `erro` — nunca "assume ativa". */
+function lerRespostaComEstado(
+  linhas: unknown,
+): Awaited<ReturnType<ResolverLojaNaCaderneta>> {
+  const linha = umaLinhaDaCaderneta(linhas);
+  if (linha === "miss" || linha === "erro") return { tipo: linha };
+  if (linha.estado === "ativa") {
+    const conexao = conexaoDaLinha(linha);
+    return conexao === null ? { tipo: "erro" } : { tipo: "hit", conexao };
+  }
+  if (linha.estado === "adormecida" || linha.estado === "encerrada") {
+    // URL e chave são ignoradas de propósito (vêm NULL): a loja fora do ar
+    // nunca tem o banco procurado.
+    if (
+      typeof linha.project_ref !== "string" ||
+      !REF_DO_PROJETO.test(linha.project_ref) ||
+      typeof linha.nome !== "string"
+    )
+      return { tipo: "erro" };
+    return {
+      tipo: "fora-do-ar",
+      estado: linha.estado,
+      ref: linha.project_ref,
+      nome: linha.nome,
+    };
+  }
+  return { tipo: "erro" };
+}
+
+/** A resposta da função ANTIGA (reserva): exatamente a leitura de antes de
+ * L8 — ela só conhece loja ativa. */
+function lerRespostaAntiga(
+  linhas: unknown,
+): Awaited<ReturnType<ResolverLojaNaCaderneta>> {
+  const linha = umaLinhaDaCaderneta(linhas);
+  if (linha === "miss" || linha === "erro") return { tipo: linha, versao: 1 };
+  const conexao = conexaoDaLinha(linha);
+  return conexao === null
+    ? { tipo: "erro", versao: 1 }
+    : { tipo: "hit", conexao, versao: 1 };
+}
+
+/** O único sinal que abre a reserva: 404 + `{ code: "PGRST202" }`. */
+async function funcaoNovaAusente(resposta: Response): Promise<boolean> {
+  if (resposta.status !== 404) return false;
+  try {
+    const corpo: unknown = await resposta.json();
+    return (
+      corpo !== null &&
+      typeof corpo === "object" &&
+      !Array.isArray(corpo) &&
+      (corpo as { code?: unknown }).code === "PGRST202"
+    );
+  } catch {
+    return false;
+  }
+}
+
 export const resolverNaCaderneta: ResolverLojaNaCaderneta = async (
   host,
   frotaUrl,
@@ -159,8 +269,8 @@ export const resolverNaCaderneta: ResolverLojaNaCaderneta = async (
 ) => {
   const controller = new AbortController();
   const temporizador = setTimeout(() => controller.abort(), PRAZO_CADERNETA_MS);
-  try {
-    const resposta = await fetch(`${frotaUrl}/rest/v1/rpc/resolver_loja`, {
+  const perguntar = (funcao: string) =>
+    fetch(`${frotaUrl}/rest/v1/rpc/${funcao}`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -172,30 +282,17 @@ export const resolverNaCaderneta: ResolverLojaNaCaderneta = async (
       redirect: "error",
       credentials: "omit",
     });
-    if (!resposta.ok) return { tipo: "erro" };
-    const linhas: unknown = await resposta.json();
-    if (!Array.isArray(linhas)) return { tipo: "erro" };
-    if (linhas.length === 0) return { tipo: "miss" };
-    if (linhas.length !== 1) return { tipo: "erro" };
-    const linha = linhas[0] as {
-      supabase_url?: unknown;
-      publishable_key?: unknown;
-    };
-    if (
-      typeof linha.supabase_url !== "string" ||
-      typeof linha.publishable_key !== "string"
-    )
-      return { tipo: "erro" };
-    return {
-      tipo: "hit",
-      conexao: {
-        supabaseUrl: linha.supabase_url,
-        publishableKey: linha.publishable_key,
-        origem: "caderneta",
-      },
-    };
+  let pelaReserva = false;
+  try {
+    const resposta = await perguntar(RPC_COM_ESTADO);
+    if (resposta.ok) return lerRespostaComEstado(await resposta.json());
+    if (!(await funcaoNovaAusente(resposta))) return { tipo: "erro" };
+    pelaReserva = true;
+    const antiga = await perguntar(RPC_ANTIGA);
+    if (!antiga.ok) return { tipo: "erro", versao: 1 };
+    return lerRespostaAntiga(await antiga.json());
   } catch {
-    return { tipo: "erro" };
+    return pelaReserva ? { tipo: "erro", versao: 1 } : { tipo: "erro" };
   } finally {
     clearTimeout(temporizador);
   }
@@ -273,7 +370,12 @@ export default async function middleware(
     const resultado = await obterFichaValidada(
       request,
       process.env as AmbientePorteiro,
-      { fetchImpl: fetch, resolverNaCaderneta, cache: cachePorteiro },
+      {
+        fetchImpl: fetch,
+        resolverNaCaderneta,
+        cache: cachePorteiro,
+        cacheForaDoAr,
+      },
     );
     // Ficha ausente (sem-loja/discorda/banco-indisponivel) -> a MESMA 503
     // de manutenção do documento. Nunca passthrough para o HTML assado
@@ -283,6 +385,9 @@ export default async function middleware(
     // encontrado", mais abaixo, segue a mesma regra: `semProduto`.)
     if (resultado.tipo === "manutencao") return resultado.resposta;
     const { ficha, caderneta: estadoCaderneta } = resultado;
+    // L8: resolução pela reserva (função antiga) -> `x-ikcous-caderneta-versao`.
+    const marcar = (resposta: Response): Response =>
+      marcarVersaoDaCaderneta(resposta, resultado.versaoCaderneta);
     // Contador de visitas, pelo MESMO classificador do documento. O robô do
     // WhatsApp (sem Sec-Fetch) conta como `previa`; o navegador embutido segue
     // pelo documento normal abaixo. Loja em manutenção não conta.
@@ -471,14 +576,16 @@ export default async function middleware(
 </body>
 </html>`;
 
-            return new Response(html, {
-              headers: {
-                "content-type": "text/html; charset=utf-8",
-                vary: VARY_DA_PREVIA,
-                "x-ikcous-og": "produto",
-                "x-ikcous-caderneta": estadoCaderneta,
-              },
-            });
+            return marcar(
+              new Response(html, {
+                headers: {
+                  "content-type": "text/html; charset=utf-8",
+                  vary: VARY_DA_PREVIA,
+                  "x-ikcous-og": "produto",
+                  "x-ikcous-caderneta": estadoCaderneta,
+                },
+              }),
+            );
           }
         }
       } catch (error) {
@@ -489,7 +596,7 @@ export default async function middleware(
     // É robô, é /product-detail, mas a consulta não devolveu produto
     // (fetch falhou, resposta não-ok — ex.: a Causa 2 acima — ou lista
     // vazia). Regressão do defeito original: isto NÃO pode virar "produto".
-    return semProduto();
+    return marcar(await semProduto());
   }
 
   // Todo o resto (não é robô no caminho de produto) é um DOCUMENTO — o
@@ -501,6 +608,7 @@ export default async function middleware(
     fetchImpl: fetch,
     resolverNaCaderneta,
     cache: cachePorteiro,
+    cacheForaDoAr,
     cacheMapa: cacheMapaDoSite,
     cacheCartaz: cacheCartazDaLoja,
     // Pessoa abrindo a loja (ou previa de link) -> uma entrada no banco DESTA

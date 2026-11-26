@@ -1,5 +1,6 @@
 import {
   type MotivoManutencao,
+  respostaForaDoAr,
   respostaManutencao,
 } from "@/hospedagem/porteiro";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -37,11 +38,26 @@ type Listener = (event: unknown) => void;
 const ORIGEM = "https://loja.exemplo.com";
 const ROTA = `${ORIGEM}/produtos`;
 const VITRINE_ANTIGA = "<html>vitrine antiga</html>";
+// L8 (26/11/2026): `adormecida` (503) e `encerrada` (410) também são recusas
+// DURADOURAS — a página própria da loja fora do ar não pode ficar escondida
+// atrás da vitrine guardada de quando a loja estava aberta.
 const COMPORTAMENTO: Record<MotivoManutencao, boolean> = {
   "sem-loja": true,
   discorda: true,
   "banco-indisponivel": false,
   "html-indisponivel": false,
+  adormecida: true,
+  encerrada: true,
+};
+
+/** O que a PRÓXIMA abertura mostra quando a recusa é duradoura. */
+const RECUSA_ESPERADA: Partial<
+  Record<MotivoManutencao, { status: number; texto: string }>
+> = {
+  "sem-loja": { status: 503, texto: "manutenção" },
+  discorda: { status: 503, texto: "manutenção" },
+  adormecida: { status: 503, texto: "Loja Bela está fechada no momento." },
+  encerrada: { status: 410, texto: "Loja Bela não está mais no ar." },
 };
 
 const chave = (alvo: Request | string) =>
@@ -52,6 +68,12 @@ const chave = (alvo: Request | string) =>
  * mudar o marcador, este teste quebra em vez de o SW ficar cego em silêncio.
  */
 function respostaDoPorteiro(motivo: MotivoManutencao): Response {
+  if (motivo === "adormecida" || motivo === "encerrada")
+    return respostaForaDoAr(
+      { estado: motivo, nome: "Loja Bela", ref: "abcdefghijklmnopqrst" },
+      "hit",
+      undefined,
+    );
   return respostaManutencao(motivo, "ausente");
 }
 
@@ -150,11 +172,13 @@ describe("sw.ts — 503 do porteiro nao fica escondido atras da pagina guardada"
       const segunda = await abrir(listeners);
       if (deveApagar) {
         // Nada guardado: a recusa duradoura passa como veio na próxima visita.
+        const esperada = RECUSA_ESPERADA[motivo as MotivoManutencao];
+        if (!esperada) throw new Error(`motivo sem recusa esperada: ${motivo}`);
         expect(apagar).toHaveBeenCalledTimes(1);
         expect(chave(apagar.mock.calls[0][0])).toBe(ROTA);
-        expect(segunda.status).toBe(503);
+        expect(segunda.status).toBe(esperada.status);
         expect(segunda.headers.get("x-ikcous-porteiro")).toBe(motivo);
-        expect(await segunda.text()).toContain("manutenção");
+        expect(await segunda.text()).toContain(esperada.texto);
       } else {
         // Falha passageira: preserva o app guardado também na próxima visita.
         expect(apagar).not.toHaveBeenCalled();
@@ -190,6 +214,19 @@ describe("sw.ts — 503 do porteiro nao fica escondido atras da pagina guardada"
       503,
       { "x-ikcous-porteiro": "sem-ficha-no-cache" },
     ],
+    // L8: o marcador vale só com o status CERTO de cada página.
+    ["410 sem o marcador do porteiro", 410, {}],
+    [
+      "410 com marcador adormecida (par trocado)",
+      410,
+      { "x-ikcous-porteiro": "adormecida" },
+    ],
+    [
+      "503 com marcador encerrada (par trocado)",
+      503,
+      { "x-ikcous-porteiro": "encerrada" },
+    ],
+    ["410 com marcador sem-loja", 410, { "x-ikcous-porteiro": "sem-loja" }],
   ])("%s: NAO apaga a pagina guardada", async (_nome, status, cabecalhos) => {
     const { listeners, guardadas, apagar } = montar(
       async () =>

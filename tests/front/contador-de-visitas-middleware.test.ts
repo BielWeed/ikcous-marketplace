@@ -112,7 +112,7 @@ function criarFetchDeLojas(
           headers: { "content-type": "text/html" },
         },
       );
-    if (url.pathname === "/rest/v1/rpc/resolver_loja") {
+    if (url.pathname === "/rest/v1/rpc/resolver_loja_com_estado") {
       const corpo = JSON.parse(String(init?.body ?? "{}")) as {
         p_host?: string;
       };
@@ -123,6 +123,7 @@ function criarFetchDeLojas(
               {
                 supabase_url: loja.origem,
                 publishable_key: `sb_publishable_${new URL(loja.origem).hostname.split(".")[0]}`,
+                estado: "ativa",
               },
             ]
           : [],

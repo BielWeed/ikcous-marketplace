@@ -190,7 +190,7 @@ function criarFetchDeLojas(
         headers: { "content-type": "text/html" },
       });
     }
-    if (url.pathname === "/rest/v1/rpc/resolver_loja") {
+    if (url.pathname === "/rest/v1/rpc/resolver_loja_com_estado") {
       const corpo = JSON.parse(String(init?.body ?? "{}")) as {
         p_host?: string;
       };
@@ -201,6 +201,7 @@ function criarFetchDeLojas(
               {
                 supabase_url: loja.origem,
                 publishable_key: `sb_publishable_${new URL(loja.origem).hostname.split(".")[0]}`,
+                estado: "ativa",
               },
             ]
           : [],
@@ -262,10 +263,14 @@ describe("middleware — o ramo de robô nunca pula decidirConcordancia (achado 
     };
     const fetchDuble: typeof fetch = (async (input, init) => {
       const url = requestUrl(input);
-      if (url.pathname === "/rest/v1/rpc/resolver_loja") {
+      if (url.pathname === "/rest/v1/rpc/resolver_loja_com_estado") {
         return new Response(
           JSON.stringify([
-            { supabase_url: origemB, publishable_key: "sb_publishable_b" },
+            {
+              supabase_url: origemB,
+              publishable_key: "sb_publishable_b",
+              estado: "ativa",
+            },
           ]),
           { status: 200, headers: { "content-type": "application/json" } },
         );
@@ -328,10 +333,14 @@ describe("middleware — o ramo de robô nunca pula decidirConcordancia (achado 
     const origemB = "https://projetobbbbbbbbbbbbb.supabase.co";
     const fetchDuble: typeof fetch = (async (input) => {
       const url = requestUrl(input);
-      if (url.pathname === "/rest/v1/rpc/resolver_loja") {
+      if (url.pathname === "/rest/v1/rpc/resolver_loja_com_estado") {
         return new Response(
           JSON.stringify([
-            { supabase_url: origemB, publishable_key: "sb_publishable_b" },
+            {
+              supabase_url: origemB,
+              publishable_key: "sb_publishable_b",
+              estado: "ativa",
+            },
           ]),
           { status: 200, headers: { "content-type": "application/json" } },
         );
@@ -402,7 +411,7 @@ describe("middleware — o ramo de robô nunca pula decidirConcordancia (achado 
     // identidade/configuração — por isso o dublê abaixo só mapeia a RPC.
     const fetchDuble: typeof fetch = (async (input) => {
       const url = requestUrl(input);
-      if (url.pathname === "/rest/v1/rpc/resolver_loja") {
+      if (url.pathname === "/rest/v1/rpc/resolver_loja_com_estado") {
         return new Response(JSON.stringify([]), {
           status: 200,
           headers: { "content-type": "application/json" },

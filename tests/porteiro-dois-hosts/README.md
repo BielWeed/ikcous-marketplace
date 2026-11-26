@@ -52,6 +52,7 @@ npx vitest run --config vitest.porteiro.config.ts tests/porteiro-dois-hosts/cart
 | `loja-d.localhost` (só na forma `loja-d.localhost.`, ponto final de FQDN) | (b) ambiente do próprio projeto | Host DEDICADO (rodada D, achado 1): nenhum outro teste toca `loja-d.localhost`, então o cache do porteiro começa vazio para ele — só assim o teste discrimina se `servidor.ts` normalizou o host com a MESMA regra do produto (`normalizarHost`) antes de escolher o `process.env` |
 | `loja-trocada.localhost` | (a) caderneta dublada, hit — de PROPÓSITO ERRADO | Negativo central: a caderneta devolve o banco de B para este host; `decidirConcordancia` recusa (503 `discorda`), e o corpo não carrega nenhum byte da ficha de B |
 | `loja-desconhecida.localhost` | nenhum dos dois tem banco | Negativo: 503 `sem-loja` |
+| `loja-dormindo.localhost` | (a) caderneta dublada (`resolver_loja_com_estado`), estado `adormecida` | L8: página própria 503 (`retry-after: 3600`, nome da loja, sem script) em todo caminho de documento; o único pedido de rede é a RPC nova da caderneta — nenhum ao banco da loja (`pedidosAoDuble`) |
 
 ## Outro ensaio da mesma pasta: o precache não leva o painel
 
