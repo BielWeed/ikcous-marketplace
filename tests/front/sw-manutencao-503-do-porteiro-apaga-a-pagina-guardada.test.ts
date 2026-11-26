@@ -79,8 +79,17 @@ function respostaDoPorteiro(motivo: MotivoManutencao): Response {
 
 function montar(rede: () => Promise<Response>) {
   const listeners = new Map<string, Listener[]>();
+  // Página de verdade (HTML) e um Cache Storage que lista o que guarda: a loja
+  // fora do ar apaga TODA página guardada, achando-as por `keys()` e pelo
+  // tipo (`sw-loja-fechada-apaga-todas-as-paginas-e-avisa-as-abas`).
   const guardadas = new Map<string, Response>([
-    [ROTA, new Response(VITRINE_ANTIGA, { status: 200 })],
+    [
+      ROTA,
+      new Response(VITRINE_ANTIGA, {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      }),
+    ],
   ]);
   const selfFalso = {
     location: { origin: ORIGEM },
@@ -88,7 +97,10 @@ function montar(rede: () => Promise<Response>) {
     addEventListener(tipo: string, fn: Listener) {
       listeners.set(tipo, [...(listeners.get(tipo) ?? []), fn]);
     },
-    clients: { claim: vi.fn().mockResolvedValue(undefined) },
+    clients: {
+      claim: vi.fn().mockResolvedValue(undefined),
+      matchAll: vi.fn().mockResolvedValue([]),
+    },
     registration: { waiting: null, installing: null },
     skipWaiting: vi.fn(),
   };
@@ -105,13 +117,13 @@ function montar(rede: () => Promise<Response>) {
     addAll: vi.fn().mockResolvedValue(undefined),
     put,
     match: casar,
-    keys: vi.fn().mockResolvedValue([]),
+    keys: vi.fn(async () => [...guardadas.keys()].map((u) => new Request(u))),
     delete: apagar,
   };
   const cachesFalso = {
     match: casar,
     open: vi.fn().mockResolvedValue(cacheFalso),
-    keys: vi.fn().mockResolvedValue([]),
+    keys: vi.fn().mockResolvedValue(["app-cache-fallback"]),
     delete: vi.fn().mockResolvedValue(true),
   };
   vi.stubGlobal("self", selfFalso);
@@ -139,7 +151,9 @@ async function abrir(listeners: Map<string, Listener[]>, url = ROTA) {
     waitUntil: (p: Promise<unknown>) => esperas.push(p),
   });
   const resposta = (await respondWith.mock.calls[0][0]) as Response;
-  expect(esperas).toHaveLength(1);
+  // A revalidação (ou a rede, sem página guardada) corre em `waitUntil`. A
+  // loja fora do ar pendura mais uma espera (a limpeza das páginas).
+  expect(esperas.length).toBeGreaterThanOrEqual(1);
   await Promise.all(esperas);
   // O put/delete são encadeados em promessas soltas: deixa a fila esvaziar.
   await new Promise((resolve) => setTimeout(resolve, 0));

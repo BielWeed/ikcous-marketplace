@@ -17,6 +17,7 @@ import {
   TIPO_PURGAR_ARQUIVOS_PRIVADOS,
   ehArquivoPublicoDoStorage,
 } from "../lib/arquivo-publico-do-storage";
+import { TIPO_LOJA_FECHADA } from "../lib/aviso-da-loja-fechada";
 import {
   avisoMaisNovoQue,
   carimboDoAviso,
@@ -582,6 +583,75 @@ function ehRecusaDoPorteiro(response: Response): boolean {
   return statusEsperado !== undefined && response.status === statusEsperado;
 }
 
+/**
+ * A recusa é a da loja FORA DO AR (`adormecida`/`encerrada`, caça de
+ * 26/11/2026)? Aí apagar só a rota não basta: as outras páginas guardadas
+ * abriam a vitrine inteira e a cliente pagava o PIX direto no banco da loja,
+ * num pedido que ninguém atende. Mesmo par status + marcador da recusa.
+ */
+function ehLojaForaDoAr(response: Response): boolean {
+  if (!ehRecusaDoPorteiro(response)) return false;
+  const motivo = response.headers.get("x-ikcous-porteiro");
+  return motivo === "adormecida" || motivo === "encerrada";
+}
+
+/**
+ * Apaga de TODOS os caches toda página guardada (resposta HTML): as rotas
+ * visitadas, a `/` com ficha, a casca `/index.html` do precache e as de
+ * versões anteriores. Fica a "sem internet" (`/offline.html`), que não abre a
+ * loja. Assets, ícones, fotos e a ficha ficam. Idempotente. Devolve `false`
+ * se algo falhou — e aí ninguém é avisado (`fecharALojaGuardada`).
+ */
+async function apagarTodasAsPaginasGuardadas(): Promise<boolean> {
+  try {
+    for (const nome of await caches.keys()) {
+      const cache = await caches.open(nome);
+      for (const chave of await cache.keys()) {
+        if (new URL(chave.url).pathname === "/offline.html") continue;
+        const guardada = await cache.match(chave);
+        const tipo = guardada?.headers?.get("content-type") ?? "";
+        if (tipo.toLowerCase().includes("text/html")) await cache.delete(chave);
+      }
+    }
+    return true;
+  } catch (e) {
+    console.warn("[SW] Falha ao apagar as páginas da loja fechada:", e);
+    return false;
+  }
+}
+
+/**
+ * A loja está fora do ar: apaga as páginas guardadas e, SÓ se deu certo, avisa
+ * as abas para recarregar (`receptor-da-loja-fechada.ts`) — com página ainda
+ * guardada, a recarga voltaria à vitrine e viraria laço. Avisa também a aba
+ * que não é controlada por este SW (abriu antes dele) e a que está abrindo
+ * agora: `clients.get(resultingClientId)` espera ela ficar pronta, senão a
+ * resposta da rede podia chegar antes de ela existir. Nunca rejeita.
+ */
+async function fecharALojaGuardada(event: any): Promise<void> {
+  if (!(await apagarTodasAsPaginasGuardadas())) return;
+  try {
+    const abas: any[] = await sw.clients.matchAll({
+      type: "window",
+      includeUncontrolled: true,
+    });
+    if (event.resultingClientId && typeof sw.clients.get === "function") {
+      const daNavegacao = await sw.clients.get(event.resultingClientId);
+      if (daNavegacao && !abas.some((aba) => aba.id === daNavegacao.id))
+        abas.push(daNavegacao);
+    }
+    for (const aba of abas) {
+      try {
+        aba.postMessage({ tipo: TIPO_LOJA_FECHADA });
+      } catch {
+        // Uma aba que fechou no meio não impede o aviso às outras.
+      }
+    }
+  } catch (e) {
+    console.warn("[SW] Falha ao avisar as abas da loja fechada:", e);
+  }
+}
+
 /** Página curta de "em manutenção" — mesma decisão de falha fechada do
  * porteiro (T3), reproduzida aqui porque o SW não pode importar código de
  * outra tarefa: nenhum byte de marca ou conexão sai quando não há ficha. */
@@ -833,6 +903,9 @@ sw.addEventListener("fetch", (event: any) => {
           event.waitUntil(
             fetch(event.request)
               .then((response) => {
+                // Loja fora do ar: some TODA página guardada e as abas
+                // recarregam (a de agora inclusive) — só a rota não basta.
+                if (ehLojaForaDoAr(response)) return fecharALojaGuardada(event);
                 // O porteiro recusou por motivo duradouro: a página
                 // guardada é de ANTES e esconderia a tela de manutenção até
                 // o cache sumir. Apaga só esta rota, para a próxima abertura
@@ -881,6 +954,18 @@ sw.addEventListener("fetch", (event: any) => {
           return cached;
         }
         const rede = fetch(event.request).then((response) => {
+          // Rota sem página guardada e loja fora do ar: a página fechada passa
+          // como veio, e as OUTRAS rotas guardadas também saem. O try: um
+          // `waitUntil` recusado não pode trocar a página fechada pela de
+          // "sem internet" (o `.catch` abaixo trata a rede que falhou).
+          if (ehLojaForaDoAr(response)) {
+            const fechando = fecharALojaGuardada(event);
+            try {
+              event.waitUntil(fechando);
+            } catch {
+              // A limpeza segue mesmo sem prolongar a vida do SW.
+            }
+          }
           // Primeira visita: com atualização a caminho a cliente recebe o HTML
           // da rede, mas ele NÃO é gravado no cache da versão velha (a mesma
           // guarda da revalidação acima).
