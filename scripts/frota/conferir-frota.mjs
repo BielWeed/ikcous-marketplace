@@ -559,14 +559,56 @@ const norm = (s) =>
     .trim()
     .toLowerCase();
 
-// Fichas comparáveis entre endereços: estáveis, caderneta hit, UM ref e título.
+/** Valor de x-ikcous-caderneta quando o porteiro abriu pela reserva (T3). */
+const CADERNETA_RESERVA = "reserva";
+
+/**
+ * As amostras divergem SÓ na caderneta, entre hit e reserva (uma instância
+ * ainda com a ficha, outra já aberta pela reserva)? Então é a MESMA loja e a
+ * divergência é a caderneta caindo, não ficha trocada. Qualquer outro campo
+ * da comparação de estabilidade (`chaveDaAmostra`: HTTP, título, refs,
+ * publicUrl) diferente, ou outra caderneta (erro, miss), continua divergente.
+ */
+function soACadernetaOscila(amostras) {
+  if (amostras.length === 0) return false;
+  const semCaderneta = (a) =>
+    JSON.stringify([a.status, a.titulo, a.refs, a.publicUrl]);
+  const primeira = semCaderneta(amostras[0]);
+  return amostras.every(
+    (a) =>
+      (a.caderneta === "hit" || a.caderneta === CADERNETA_RESERVA) &&
+      semCaderneta(a) === primeira,
+  );
+}
+
+const amostrasDe = (sonda) =>
+  Array.isArray(sonda?.amostras) && sonda.amostras.length
+    ? sonda.amostras
+    : sonda?.ficha
+      ? [sonda.ficha]
+      : [];
+
+/**
+ * A ficha serve uma página de loja que entra nas conferências ENTRE
+ * endereços (isolamento cruzado e canônico)? Caderneta hit OU reserva, e
+ * estável OU divergindo só na caderneta (`soACadernetaOscila`). A reserva não
+ * pode tirar o endereço dessas conferências: senão um LOJA_TROCADA entre
+ * endereços some atrás de CADERNETA_NA_RESERVA (revisão Opus da T10).
+ */
+function fichaDeLojaConferivel(sonda) {
+  const f = sonda?.ficha;
+  if (!f) return false;
+  if (f.caderneta !== "hit" && f.caderneta !== CADERNETA_RESERVA) return false;
+  return f.estavel === true || soACadernetaOscila(amostrasDe(sonda));
+}
+
+// Fichas comparáveis entre endereços: conferíveis (hit ou reserva), UM ref e título.
 function fichasComparaveis(sondas, ignorar) {
   return sondas
     .filter(
       (s) =>
         !ignorar.has(s.dominio) &&
-        s.ficha?.estavel &&
-        s.ficha.caderneta === "hit" &&
+        fichaDeLojaConferivel(s) &&
         s.ficha.refs.length === 1 &&
         s.ficha.titulo,
     )
@@ -762,7 +804,8 @@ export async function lerTitulosNoBanco(
 
 /**
  * O endereço CANÔNICO de cada loja é o publicUrl da ficha (dominio_publico do
- * cadastro frota_lojas). Para cada loja com caderneta hit:
+ * cadastro frota_lojas). Para cada loja com caderneta hit (ou reserva:
+ * `fichaDeLojaConferivel`):
  *  - a ficha tem de trazer publicUrl https, sem caminho, query nem credencial;
  *  - o host dele tem de ser um endereço do inventário que responde 200 hit
  *    (senão o cliente cai num endereço que não serve a loja);
@@ -779,8 +822,7 @@ export function verificarCanonico(sondas, ignorar = new Set()) {
   const canonicos = new Set();
   for (const s of sondas) {
     const f = s.ficha;
-    if (ignorar.has(s.dominio) || !f?.estavel || f.caderneta !== "hit")
-      continue;
+    if (ignorar.has(s.dominio) || !fichaDeLojaConferivel(s)) continue;
     // Página de loja fora do ar (válida ou não) não serve loja, então não tem
     // canônico a provar: quem a reprova, se for o caso, é `classificar`.
     if (alegaForaDoAr(f)) continue;
@@ -813,7 +855,13 @@ export function verificarCanonico(sondas, ignorar = new Set()) {
         s.dominio,
         `publicUrl aponta para ${u.host}, que não é endereço do inventário`,
       );
-    } else if (!df || df.status !== 200 || df.caderneta !== "hit") {
+    } else if (
+      !df ||
+      df.status !== 200 ||
+      (df.caderneta !== "hit" && df.caderneta !== CADERNETA_RESERVA)
+    ) {
+      // Canônico aberto pela reserva serve a loja: vale aqui; a reserva em si
+      // já reprova o PRÓPRIO endereço dele (CADERNETA_NA_RESERVA).
       add(
         s.dominio,
         `publicUrl aponta para ${u.host}, que não responde 200 hit (HTTP ${df?.status ?? "-"}, caderneta ${df?.caderneta ?? "-"})`,
@@ -899,28 +947,6 @@ export function montarContexto(
 
 // ---------------------------------------------------------------- classificação
 
-/** Valor de x-ikcous-caderneta quando o porteiro abriu pela reserva (T3). */
-const CADERNETA_RESERVA = "reserva";
-
-/**
- * As amostras divergem SÓ na caderneta, entre hit e reserva (uma instância
- * ainda com a ficha, outra já aberta pela reserva)? Então é a MESMA loja e a
- * divergência é a caderneta caindo, não ficha trocada. Qualquer outro campo
- * da comparação de estabilidade (`chaveDaAmostra`: HTTP, título, refs,
- * publicUrl) diferente, ou outra caderneta (erro, miss), continua divergente.
- */
-function soACadernetaOscila(amostras) {
-  if (amostras.length === 0) return false;
-  const semCaderneta = (a) =>
-    JSON.stringify([a.status, a.titulo, a.refs, a.publicUrl]);
-  const primeira = semCaderneta(amostras[0]);
-  return amostras.every(
-    (a) =>
-      (a.caderneta === "hit" || a.caderneta === CADERNETA_RESERVA) &&
-      semCaderneta(a) === primeira,
-  );
-}
-
 /**
  * Classifica UM endereço. Devolve { classe, achados: [{classe, motivo}] } —
  * `classe` é a mais grave dos achados (precedência = ordem de GRAVIDADE).
@@ -933,12 +959,7 @@ export function classificar(alvo, sonda, ctx) {
   const achados = [];
   const add = (classe, motivo) => achados.push({ classe, motivo });
   const { ficha, versao } = sonda;
-  const amostrasDaPagina =
-    Array.isArray(sonda.amostras) && sonda.amostras.length
-      ? sonda.amostras
-      : ficha
-        ? [ficha]
-        : [];
+  const amostrasDaPagina = amostrasDe(sonda);
   const naReserva = amostrasDaPagina.filter(
     (a) => a.caderneta === CADERNETA_RESERVA,
   ).length;

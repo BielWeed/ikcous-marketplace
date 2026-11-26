@@ -33,7 +33,10 @@
 // para onde o endereço encaminha está coberta. O 308 do porteiro não traz o
 // ref, então "a própria loja" se prova assim, pelo destino. 3xx para outro
 // host, para o login da Vercel (proteção de deployment) ou sem Location =
-// INDETERMINADO, que bloqueia; nunca sai calado.
+// INDETERMINADO, que bloqueia; nunca sai calado. LIMITE CONHECIDO (revisão
+// Opus da T10, só anotado): um alias que encaminha para OUTRA loja da frota
+// conta como definitivo e fica sem entrada na reserva; não vaza dado (com a
+// caderneta fora, ele só deixa de abrir).
 //
 // RECUSA (sem falar com a Vercel): reserva vazia; falta loja obrigatória
 // (todo canal de canais-de-backend.json, menos politica.json

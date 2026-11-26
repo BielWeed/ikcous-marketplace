@@ -2873,3 +2873,89 @@ Deno.test("T10 conferirFrota: instâncias divergentes (uma hit, outra na reserva
     JSON.stringify(savy.achados),
   );
 });
+
+// ------------------------------------------------------------------ T10 (revisão Opus): a reserva NÃO tira o endereço da conferência ENTRE endereços
+//
+// Amostras hit + reserva ficam `estavel=false` (a caderneta está na chave da
+// amostra). Se a conferência entre endereços (mesmo ref com outro título,
+// canônico) só aceitasse ficha estável hit, o endereço sumiria dela e o
+// LOJA_TROCADA que manda o rollback viraria só CADERNETA_NA_RESERVA.
+
+const REF_X = "xqxqxqxqxqxqxqxqxqxq";
+const TRIO = ["a.loja-x.example", "b.loja-x.example", "c.loja-x.example"];
+
+function mundoDoTrio(c = {}) {
+  const mundo = mundoBase();
+  const base = mundo["savycollection.vercel.app"];
+  mundo[TRIO[0]] = { ...base, ref: REF_X, titulo: "Loja A" };
+  mundo[TRIO[1]] = { ...base, ref: REF_X, titulo: "Loja A" };
+  mundo[TRIO[2]] = { ...base, ref: REF_X, titulo: "Loja ZZ", ...c };
+  return mundo;
+}
+async function classeDoC(c) {
+  const r = await conferirFrota(POLITICA, {
+    sha: SHA,
+    fetchImpl: fetchFalso(mundoDoTrio(c)),
+    enderecosExtras: TRIO,
+  });
+  return r.resultados.find((x) => x.dominio === TRIO[2]);
+}
+
+Deno.test("T10b controle: só hit, c.com com o mesmo ref e outro título = LOJA_TROCADA", async () => {
+  const c = await classeDoC({});
+  assertEquals(c.classe, "LOJA_TROCADA", JSON.stringify(c.achados));
+});
+
+Deno.test("T10b (1) amostras misturadas hit + reserva em c.com com outro título continua LOJA_TROCADA", async () => {
+  const c = await classeDoC({ cadernetaAlterna: "reserva" });
+  assertEquals(c.classe, "LOJA_TROCADA", JSON.stringify(c.achados));
+  assert(
+    c.achados.some((a) => a.classe === "CADERNETA_NA_RESERVA"),
+    JSON.stringify(c.achados),
+  );
+});
+
+Deno.test("T10b (2) ficha toda na reserva com título divergente de outro endereço do mesmo ref = LOJA_TROCADA", async () => {
+  const c = await classeDoC({ caderneta: "reserva" });
+  assertEquals(c.classe, "LOJA_TROCADA", JSON.stringify(c.achados));
+});
+
+Deno.test("T10b (3) legítimo: tudo igual e a caderneta oscilando (ou toda na reserva) = só CADERNETA_NA_RESERVA", async () => {
+  for (const extra of [
+    { cadernetaAlterna: "reserva" },
+    { caderneta: "reserva" },
+  ]) {
+    const c = await classeDoC({ titulo: "Loja A", ...extra });
+    assertEquals(
+      c.classe,
+      "CADERNETA_NA_RESERVA",
+      `${JSON.stringify(extra)} ${JSON.stringify(c.achados)}`,
+    );
+    assert(
+      !c.achados.some((a) => a.classe === "LOJA_TROCADA"),
+      JSON.stringify(c.achados),
+    );
+  }
+});
+
+Deno.test("T10b canônico: ficha na reserva também tem o publicUrl conferido; canônico servido pela reserva vale", async () => {
+  const fora = await classeDoC({
+    titulo: "Loja A",
+    caderneta: "reserva",
+    publicUrl: "https://nao-inventariado.example",
+  });
+  assert(
+    fora.achados.some((a) => a.classe === "CANONICO_INVALIDO"),
+    JSON.stringify(fora.achados),
+  );
+  const mundo = mundoDoTrio({ titulo: "Loja A" });
+  mundo[TRIO[0]].publicUrl = `https://${TRIO[2]}`;
+  mundo[TRIO[2]].caderneta = "reserva";
+  const r = await conferirFrota(POLITICA, {
+    sha: SHA,
+    fetchImpl: fetchFalso(mundo),
+    enderecosExtras: TRIO,
+  });
+  const a = r.resultados.find((x) => x.dominio === TRIO[0]);
+  assertEquals(a.classe, "OK", JSON.stringify(a.achados));
+});
