@@ -139,14 +139,13 @@ describe("ficha do lojista — retirada sem endereço de casa", () => {
   const linkDoMaps = () =>
     hospedeiro.querySelector('a[title="Ver no Google Maps"]');
 
-  it("visitante em retirada sem rua/bairro/cidade: diz que não informou endereço e mostra o CEP, sem Copiar nem Maps", async () => {
+  it("visitante em retirada sem rua/bairro/cidade: diz só que a cliente retira na loja e mostra o CEP, sem Copiar nem Maps", async () => {
     await montar(
       await mapear({ ...DADOS_DO_VISITANTE, pickup_address: ENDERECO_DA_LOJA }),
     );
     const texto = hospedeiro.textContent ?? "";
-    expect(texto).toContain(
-      "Cliente retira na loja — não informou endereço de casa",
-    );
+    expect(texto).toContain("Cliente retira na loja.");
+    expect(texto).not.toContain("não informou");
     expect(texto).toContain("CEP: 38500-000");
     expect(texto).not.toContain("Endereço do cliente");
     expect(botaoCopiar()).toBeUndefined();
@@ -166,7 +165,7 @@ describe("ficha do lojista — retirada sem endereço de casa", () => {
       }),
     );
     const texto = hospedeiro.textContent ?? "";
-    expect(texto).toContain("não informou endereço de casa");
+    expect(texto).toContain("Cliente retira na loja.");
     expect(texto).not.toContain("CEP:");
     expect(botaoCopiar()).toBeUndefined();
     expect(linkDoMaps()).toBeNull();
@@ -180,7 +179,7 @@ describe("ficha do lojista — retirada sem endereço de casa", () => {
         pickup_address: ENDERECO_DA_LOJA,
       }),
     );
-    expect(hospedeiro.textContent).toContain("não informou endereço de casa");
+    expect(hospedeiro.textContent).toContain("Cliente retira na loja.");
     expect(botaoCopiar()).toBeUndefined();
   });
 
@@ -201,7 +200,7 @@ describe("ficha do lojista — retirada sem endereço de casa", () => {
     const texto = hospedeiro.textContent ?? "";
     expect(texto).toContain("Endereço do cliente");
     expect(texto).toContain("Rua da Cliente");
-    expect(texto).not.toContain("não informou endereço de casa");
+    expect(texto).not.toContain("Cliente retira na loja.");
     expect(botaoCopiar()).toBeDefined();
     expect(linkDoMaps()).not.toBeNull();
   });
@@ -215,9 +214,7 @@ describe("ficha do lojista — retirada sem endereço de casa", () => {
       }),
     );
     expect(hospedeiro.textContent).toContain("Endereço do cliente");
-    expect(hospedeiro.textContent).not.toContain(
-      "não informou endereço de casa",
-    );
+    expect(hospedeiro.textContent).not.toContain("Cliente retira na loja.");
     expect(botaoCopiar()).toBeDefined();
   });
 
@@ -236,7 +233,7 @@ describe("ficha do lojista — retirada sem endereço de casa", () => {
     );
     const texto = hospedeiro.textContent ?? "";
     expect(texto).toContain("Endereço de entrega");
-    expect(texto).not.toContain("não informou endereço de casa");
+    expect(texto).not.toContain("Cliente retira na loja.");
     expect(botaoCopiar()).toBeDefined();
     expect(linkDoMaps()).not.toBeNull();
   });
