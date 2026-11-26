@@ -1,0 +1,69 @@
+/*
+ * Lista de escolha do painel: as cores próprias de cada tema.
+ *
+ * O ouro do Escuro NÃO é o --admin-gold dele (que é amarelo, #FACC15): o mockup
+ * aprovado pede o mesmo ouro do Confortável. Claro e Confortável já têm o ouro
+ * certo no --admin-gold (#8A5A00 e #D9A441). Os seletores são os MESMOS de
+ * src/components/layouts/temas-do-painel.css, que não é tocado
+ * (tests/front/lista-de-escolha-temas.test.ts confere).
+ *
+ * As classes abaixo carregam a cor por variável, fora do mapa gerado de
+ * temas-do-painel-cores.css: classe solta como `text-white` seria trocada lá.
+ */
+
+:where(html.admin-mode:not([data-admin-tema])) {
+  --lista-ouro: 39.1 66.7% 55.3%;
+  --lista-escolhida-opacidade: 0.12;
+}
+
+html.admin-mode[data-admin-tema="claro"] {
+  --lista-ouro: var(--admin-gold);
+  --lista-escolhida-opacidade: 0.1;
+}
+
+html.admin-mode[data-admin-tema="confortavel"] {
+  --lista-ouro: var(--admin-gold);
+  --lista-escolhida-opacidade: 0.14;
+}
+
+.lista-de-escolha-texto {
+  color: hsl(var(--admin-text, 240 10% 96.1%));
+}
+
+.lista-de-escolha-ouro {
+  color: hsl(var(--lista-ouro, 39.1 66.7% 55.3%));
+}
+
+/* Campo aberto: borda dourada com um halo fino, como no mockup. */
+.lista-de-escolha-aberta {
+  border-color: hsl(var(--lista-ouro, 39.1 66.7% 55.3%));
+  box-shadow: 0 0 0 4px
+    hsl(
+      var(--lista-ouro, 39.1 66.7% 55.3%) /
+      var(--lista-escolhida-opacidade, 0.12)
+    );
+}
+
+.lista-de-escolha-escolhida {
+  background-color: hsl(
+    var(--lista-ouro, 39.1 66.7% 55.3%) /
+    var(--lista-escolhida-opacidade, 0.12)
+  );
+}
+
+/* Foco de teclado: anel ouro de 2px (campo, Fechar, busca). */
+.lista-de-escolha-anel:focus-visible {
+  outline: 2px solid hsl(var(--lista-ouro, 39.1 66.7% 55.3%));
+  outline-offset: 2px;
+}
+
+/* A opção que o teclado está apontando (aria-activedescendant). */
+.lista-de-escolha-ativa {
+  box-shadow: inset 0 0 0 2px hsl(var(--lista-ouro, 39.1 66.7% 55.3%));
+}
+
+.lista-de-escolha-trecho {
+  background-color: transparent;
+  color: hsl(var(--lista-ouro, 39.1 66.7% 55.3%));
+  font-weight: 700;
+}

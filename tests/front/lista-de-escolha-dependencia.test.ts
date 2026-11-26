@@ -19,9 +19,9 @@ type Lock = {
   >;
 };
 
-const pacote = JSON.parse(
-  readFileSync(resolve("package.json"), "utf8"),
-) as { readonly dependencies: Record<string, string> };
+const pacote = JSON.parse(readFileSync(resolve("package.json"), "utf8")) as {
+  readonly dependencies: Record<string, string>;
+};
 const lock = JSON.parse(
   readFileSync(resolve("package-lock.json"), "utf8"),
 ) as Lock;
@@ -56,6 +56,12 @@ describe("lista de escolha — dependência do popover", () => {
       ];
     expect(doPopover).toBeDefined();
     expect(doPopover).toBe(doDialog);
+  });
+
+  it("e a mesma cópia do focus-scope: a trava de foco da folha pausa enquanto a lista está aberta", () => {
+    expect(copias("@radix-ui/react-focus-scope")).toEqual([
+      "node_modules/@radix-ui/react-focus-scope",
+    ]);
   });
 
   it("uma cópia só do react-popper (a mesma do dropdown-menu)", () => {
