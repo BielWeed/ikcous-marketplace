@@ -1608,3 +1608,139 @@ Deno.test("prova: janela grande não afrouxa o portão — apply DEPOIS da prova
     assertStringIncludes(r.motivo, "88888");
   });
 });
+
+// ====================================================================
+// C8 (caça da frota de 300, 26/11/2026): as pastas temporárias do portão
+// (frota-ledger-<ref>-*, frota-fn-<nome>-*) são apagadas ao fim de cada
+// leitura, no sucesso E no erro. Nada é lido delas depois: migrationList
+// devolve a saída do CLI e baixarFuncao devolve o conteúdo já lido em memória.
+// Com 300 lojas eram ~4.200 pastas por ensaio no disco C, nunca apagadas.
+// ====================================================================
+
+const existe = (p) => {
+  try {
+    Deno.statSync(p);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/** Dublê do CLI do Supabase: anota a pasta de trabalho, só responde DEPOIS de
+ * uma volta do relógio (como o execFile real) e confere que a pasta AINDA
+ * existe nesse momento — apagar antes de o comando terminar também é defeito.
+ * `falharEm` = o 1º argumento do comando que deve falhar ("link", "migration",
+ * "functions"). */
+function supabaseDeDuble({ falharEm = null, arquivos = {} } = {}) {
+  const pastas = [];
+  const rodarSupabase = async (args, opcoes = {}) => {
+    const dir = args[args.indexOf("--workdir") + 1];
+    pastas.push(dir);
+    assertEquals(opcoes.cwd, dir, "o comando roda dentro da pasta temporária");
+    await new Promise((r) => setTimeout(r, 5));
+    assert(existe(dir), `a pasta ${dir} sumiu antes de o comando terminar`);
+    if (args[0] === falharEm) throw new Error(`supabase ${args[0]} falhou`);
+    if (args[0] === "migration") return '{"migrations": []}';
+    if (args[0] === "functions") {
+      for (const [rel, conteudo] of Object.entries(arquivos)) {
+        const alvo = `${dir}/supabase/functions/${rel}`;
+        Deno.mkdirSync(alvo.slice(0, alvo.lastIndexOf("/")), {
+          recursive: true,
+        });
+        Deno.writeTextFileSync(alvo, conteudo);
+      }
+    }
+    return "";
+  };
+  return { pastas, rodarSupabase };
+}
+
+Deno.test("C8 migrationList: no sucesso a saída do CLI volta e a pasta frota-ledger-* é apagada", async () => {
+  const cli = supabaseDeDuble();
+  await comDependenciasReais(async () => {
+    const reais = dependenciasReais({ rodarSupabase: cli.rodarSupabase });
+    assertEquals(await reais.migrationList(LOJA_A), '{"migrations": []}');
+  });
+  assertEquals(cli.pastas.length, 2); // link + migration list, na MESMA pasta
+  assertEquals(new Set(cli.pastas).size, 1);
+  assertStringIncludes(cli.pastas[0], `frota-ledger-${LOJA_A}-`);
+  assertEquals(existe(cli.pastas[0]), false, "a pasta ficou no disco");
+});
+
+for (const falharEm of ["link", "migration"]) {
+  Deno.test(`C8 migrationList: com o \`supabase ${falharEm}\` falhando, o erro sobe e a pasta é apagada mesmo assim`, async () => {
+    const cli = supabaseDeDuble({ falharEm });
+    await comDependenciasReais(async () => {
+      const reais = dependenciasReais({ rodarSupabase: cli.rodarSupabase });
+      await assertRejects(
+        () => reais.migrationList(LOJA_A),
+        Error,
+        `supabase ${falharEm} falhou`,
+      );
+    });
+    assert(cli.pastas.length >= 1);
+    assertEquals(existe(cli.pastas[0]), false, "a pasta ficou no disco");
+  });
+}
+
+Deno.test("C8 baixarFuncao: no sucesso o conteúdo já lido volta inteiro e a pasta frota-fn-* é apagada", async () => {
+  const cli = supabaseDeDuble({
+    arquivos: {
+      "criar-pagamento/index.ts": "export const a = 1;\n",
+      "_shared/util.ts": "export const b = 2;\n",
+    },
+  });
+  await comDependenciasReais(async () => {
+    const reais = dependenciasReais({ rodarSupabase: cli.rodarSupabase });
+    const arquivos = await reais.baixarFuncao(LOJA_A, "criar-pagamento");
+    assertEquals(
+      arquivos.sort((x, y) => x.caminho.localeCompare(y.caminho)),
+      [
+        {
+          caminho: "supabase/functions/_shared/util.ts",
+          conteudo: "export const b = 2;\n",
+        },
+        {
+          caminho: "supabase/functions/criar-pagamento/index.ts",
+          conteudo: "export const a = 1;\n",
+        },
+      ],
+    );
+  });
+  assertEquals(cli.pastas.length, 1);
+  assertStringIncludes(cli.pastas[0], "frota-fn-criar-pagamento-");
+  assertEquals(existe(cli.pastas[0]), false, "a pasta ficou no disco");
+});
+
+Deno.test("C8 baixarFuncao: download vazio devolve [] e a pasta é apagada", async () => {
+  const cli = supabaseDeDuble();
+  await comDependenciasReais(async () => {
+    const reais = dependenciasReais({ rodarSupabase: cli.rodarSupabase });
+    assertEquals(await reais.baixarFuncao(LOJA_A, "criar-pagamento"), []);
+  });
+  assertEquals(existe(cli.pastas[0]), false, "a pasta ficou no disco");
+});
+
+Deno.test("C8 baixarFuncao: com o download falhando, o erro sobe e a pasta é apagada mesmo assim", async () => {
+  const cli = supabaseDeDuble({ falharEm: "functions" });
+  await comDependenciasReais(async () => {
+    const reais = dependenciasReais({ rodarSupabase: cli.rodarSupabase });
+    await assertRejects(
+      () => reais.baixarFuncao(LOJA_A, "criar-pagamento"),
+      Error,
+      "supabase functions falhou",
+    );
+  });
+  assertEquals(cli.pastas.length, 1);
+  assertEquals(existe(cli.pastas[0]), false, "a pasta ficou no disco");
+});
+
+Deno.test("C8: ref ou nome inválido é recusado ANTES de criar pasta ou chamar o CLI", async () => {
+  const cli = supabaseDeDuble();
+  await comDependenciasReais(async () => {
+    const reais = dependenciasReais({ rodarSupabase: cli.rodarSupabase });
+    await assertRejects(() => reais.migrationList("../x"), Error);
+    await assertRejects(() => reais.baixarFuncao(LOJA_A, "../x"), Error);
+  });
+  assertEquals(cli.pastas, []);
+});
