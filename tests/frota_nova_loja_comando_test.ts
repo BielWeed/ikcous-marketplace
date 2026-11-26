@@ -28,7 +28,7 @@
  * Nenhuma chamada de rede real: todo fetch aqui é falso; os cofres são os de
  * memória; o estado vai para uma pasta temporária.
  */
-import { createHmac } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { open } from "node:fs/promises";
 import { fromFileUrl, join } from "https://deno.land/std@0.177.0/path/mod.ts";
 import {
@@ -51,14 +51,20 @@ import {
   MARCA_DA_FICHA,
   PASSOS,
   PRAZO_ATIVO_MS,
+  PRAZO_DA_TROCA_MS,
   SQL_ADMINS,
   SQL_DEFINIR_DONO,
   SQL_DONO,
   SQL_DONO_EXISTE,
   SQL_FICHA,
   criarEstadoEmArquivo,
+  decidirTroca,
   executarPasso,
   lerArgumentos,
+  mascararEmail,
+  resultadoDaTroca,
+  sqlDaTroca,
+  sqlTrocarDono,
   vereditoGeral,
 } from "../scripts/frota/nova-loja.mjs";
 import {
@@ -218,6 +224,10 @@ function bancoFalso({
   // a admin é admin só em UMA das duas fontes do cargo
   fontesDiscordam = false,
   promocaoCai = false,
+  // a admin única está banida ou apagada no Supabase (IKT06)
+  bloqueada = false,
+  // só a transação vê o bloqueio (aconteceu depois da leitura)
+  bloqueadaNaEscrita = false,
 } = {}) {
   const b = {
     alvo,
@@ -232,6 +242,8 @@ function bancoFalso({
     confirmada,
     fontesDiscordam,
     promocaoCai,
+    bloqueada,
+    bloqueadaNaEscrita,
     falharEstadoNa: null,
     leiturasDoEstado: 0,
     tabelas: 0,
@@ -356,6 +368,7 @@ function bancoFalso({
           confirmada: nasDuas > 0 && b.confirmada,
           donos: b.dono === null ? 0 : 1,
           dono_admin: donoAdmin,
+          bloqueada: nasDuas > 0 && b.bloqueada,
         };
       };
       if (sql === SQL_DONO_EXISTE) return [{ tabela: b.donoTabela }];
@@ -391,6 +404,7 @@ function bancoFalso({
         if (l.admins === 0) throw recusa("IKD03");
         if (l.admins > 1) throw recusa("IKD04");
         if (l.nas_duas !== 1) throw recusa("IKD05");
+        if (b.bloqueada || b.bloqueadaNaEscrita) throw recusa("IKT06");
         if (!l.confirmada) throw recusa("IKD06");
         b.dono = "alvo";
         return resultado("gravada", 1);
@@ -599,8 +613,12 @@ function cofreEspiao(linha, { falharGravacao = false } = {}) {
   const base = criarCofreMemoria();
   const c = {
     gravacoes: 0,
+    apagamentos: 0,
     ler: (slug) => base.ler(slug),
-    apagar: (slug) => base.apagar(slug),
+    apagar: (slug) => {
+      c.apagamentos += 1;
+      return base.apagar(slug);
+    },
     travar: (slug) => base.travar(slug),
     async gravar(slug, valor) {
       c.gravacoes += 1;
@@ -640,6 +658,8 @@ async function ambiente(o = {}) {
     fetch: api.fetch,
     cofre: o.cofre ?? cofreEspiao(linha, o.cofreOpcoes),
     cofreDoBanco: o.cofreDoBanco ?? cofreEspiao([]),
+    // o e-mail da nova dona entre a fase 1 e a fase 2 do trocar-dono
+    cofreDaTroca: o.cofreDaTroca ?? cofreEspiao([]),
     estado: o.estado ?? criarEstadoEmArquivo({ pasta }),
     lerEntrada: async () => {
       const v = entradas.shift();
@@ -695,6 +715,7 @@ const PASSOS_COM_ENSAIO = [
   "login",
   "primeira-admin",
   "definir-dono",
+  "trocar-dono",
   "conferir",
 ];
 
@@ -709,6 +730,7 @@ Deno.test("sem --aplicar: nenhum passo faz POST/PATCH/DELETE, grava cofre ou cri
   assertEquals(amb.api.chamadas.length, 0);
   assertEquals(amb.deps.cofre.gravacoes, 0);
   assertEquals(amb.deps.cofreDoBanco.gravacoes, 0);
+  assertEquals(amb.deps.cofreDaTroca.gravacoes, 0);
   const arquivos = [...Deno.readDirSync(amb.pasta)].map((e) => e.name);
   assertEquals(arquivos, []);
 });
@@ -1204,7 +1226,37 @@ Deno.test("argumentos: forma da chamada e o código NUNCA por argumento", () => 
     lerArgumentos(["receber", "--loja", SLUG, "--codigo", CODIGO]),
   );
   assert(!e2.message.includes(CODIGO));
-  assertThrows(() => lerArgumentos(["trocar-dono", "--loja", SLUG]));
+  // passo desconhecido (o trocar-dono deixou de ser exemplo: existe desde a T2)
+  assertThrows(() => lerArgumentos(["apagar-loja", "--loja", SLUG]));
+  assertEquals(
+    lerArgumentos(["trocar-dono", "--loja", SLUG, "--aplicar"]).passo,
+    "trocar-dono",
+  );
+  // o e-mail da nova dona nunca por argumento
+  const e3 = assertThrows(() =>
+    lerArgumentos(["trocar-dono", "--loja", SLUG, "--aplicar", EMAIL]),
+  );
+  assert(!e3.message.includes(EMAIL));
+  // --receber: a fase do código (T3), só no trocar-dono, sem valor
+  const rec = lerArgumentos([
+    "trocar-dono",
+    "--loja",
+    SLUG,
+    "--aplicar",
+    "--receber",
+  ]);
+  assertEquals(rec.receber, true);
+  assertEquals(
+    lerArgumentos(["trocar-dono", "--loja", SLUG]).receber,
+    undefined,
+  );
+  const e4 = assertThrows(() =>
+    lerArgumentos(["receber", "--loja", SLUG, "--receber"]),
+  );
+  assertStringIncludes(e4.message, "trocar-dono");
+  assertThrows(() =>
+    lerArgumentos(["trocar-dono", "--loja", SLUG, "--receber", CODIGO]),
+  );
   assertThrows(() => lerArgumentos(["banco", "--loja", "Loja Errada"]));
   assertThrows(() => lerArgumentos(["banco"]));
 });
@@ -1865,8 +1917,60 @@ Deno.test("definir-dono: dono DIFERENTE da admin única = NÃO, não troca, e di
   const r = await executarPasso(pedido("definir-dono"), amb.deps);
   assertEquals(r.veredito, "NÃO");
   assertStringIncludes(r.mensagem, "pedido da dona");
+  // o passo trocar-dono existe desde a T2/T3: a mensagem aponta para ele
+  assertStringIncludes(r.mensagem, "trocar-dono --aplicar");
+  assert(!r.mensagem.includes("ainda não existe"), r.mensagem);
   assertEquals(escritasDoDono(amb), 0);
   assertEquals(amb.api.banco.dono, "ex");
+});
+
+Deno.test("definir-dono: IKT06 — a admin única banida ou apagada no Supabase não vira dona (guarda na transação, depois de IKD05 e antes de IKD06)", async () => {
+  const ordem = [
+    "USING ERRCODE = 'IKD05'",
+    "u.id = v_id AND (u.banned_until > now() OR u.deleted_at IS NOT NULL)",
+    "USING ERRCODE = 'IKT06'",
+    "USING ERRCODE = 'IKD06'",
+    "INSERT INTO public.dono_da_loja",
+  ];
+  let antes = -1;
+  for (const t of ordem) {
+    const i = SQL_DEFINIR_DONO.indexOf(t, antes + 1);
+    assert(i > antes, `fora de ordem ou ausente: ${t}`);
+    antes = i;
+  }
+  const RECUSA =
+    "conta bloqueada ou apagada no Supabase: desbloqueie ou escolha outra pessoa";
+  // a LEITURA já vê o bloqueio: NÃO sem mandar a transação
+  const amb = await ateADona({
+    apiOpcoes: { banco: bancoFalso({ bloqueada: true }) },
+  });
+  const r = await executarPasso(pedido("definir-dono"), amb.deps);
+  assertEquals(r.veredito, "NÃO", r.mensagem);
+  assertStringIncludes(r.mensagem, RECUSA);
+  assertEquals(escritasDoDono(amb), 0, "mandou a transação");
+  assertEquals(amb.api.banco.dono, null);
+  assertStringIncludes(SQL_DONO, "AS bloqueada");
+  assertStringIncludes(SQL_DONO, "u.banned_until > now()");
+  assertStringIncludes(SQL_DONO, "u.deleted_at IS NOT NULL");
+  // bloqueada entre a leitura e a escrita: a transação recusa (IKT06)
+  const corrida = await ateADona({
+    apiOpcoes: { banco: bancoFalso({ bloqueadaNaEscrita: true }) },
+  });
+  const r2 = await executarPasso(pedido("definir-dono"), corrida.deps);
+  assertEquals(r2.veredito, "NÃO", r2.mensagem);
+  assertStringIncludes(r2.mensagem, RECUSA);
+  assertStringIncludes(r2.mensagem, "IKT06");
+  assertEquals(escritasDoDono(corrida), 1);
+  assertEquals(corrida.api.banco.dono, null);
+});
+
+Deno.test("conferir: a coluna `bloqueada` da leitura do dono NÃO muda a saída do conferir", async () => {
+  const amb = await ateConferir();
+  const antes = await executarPasso(pedido("conferir"), amb.deps);
+  amb.api.banco.bloqueada = true;
+  const depois = await executarPasso(pedido("conferir"), amb.deps);
+  assertEquals(depois.veredito, antes.veredito);
+  assertEquals(depois.itens, antes.itens);
 });
 
 Deno.test("definir-dono: dono que não é mais admin (loja sem admin) = NÃO, nada gravado", async () => {
@@ -2248,6 +2352,7 @@ Deno.test("conferir: item admin — a dona admin nas duas fontes + outra admin s
           confirmada: true,
           donos: 1,
           dono_admin: true,
+          bloqueada: false,
         },
       ];
     }
@@ -2296,4 +2401,1120 @@ Deno.test("conferir: leitura que cai é INCERTO no item (nunca SIM); sem projeto
   assertEquals(r2.veredito, "NÃO");
   assertEquals(porItem(r2).projeto, "NÃO");
   assertEquals(crua.api.chamadas.length, m);
+});
+
+// ─── trocar-dono (T1 do plano de fechar a loja nova): o SQL e a regra ──────
+
+/** A linha de sqlDaTroca de uma troca possível: 1 dono, 1 conta com o
+ * e-mail, admin nas duas fontes, confirmada, e não é a dona de hoje. */
+const linhaDaTroca = (o = {}) => [
+  {
+    donos: 1,
+    contas: 1,
+    confirmada: true,
+    nova_admin: true,
+    e_a_dona: false,
+    bloqueada: false,
+    ...o,
+  },
+];
+
+Deno.test("trocar-dono: decidirTroca — nova admin nas duas fontes, confirmada e diferente da dona = SIM com escrita", () => {
+  const d = decidirTroca(linhaDaTroca());
+  assertEquals(d.veredito, "SIM", d.mensagem);
+  assertEquals(d.gravar, true);
+});
+
+Deno.test("trocar-dono: decidirTroca — e-mail da dona de hoje (admin nas duas fontes) = SIM SEM escrita", () => {
+  for (const confirmada of [true, false]) {
+    const d = decidirTroca(linhaDaTroca({ e_a_dona: true, confirmada }));
+    assertEquals(d.veredito, "SIM", d.mensagem);
+    assertEquals(d.gravar, false, "regravaria a mesma dona");
+    assertStringIncludes(d.mensagem, "nada foi gravado");
+  }
+});
+
+Deno.test("trocar-dono: decidirTroca — cada recusa é NÃO, sem escrita, com o código IKT e motivo legível", () => {
+  const casos = [
+    ["sem dono atual", { donos: 0 }, "IKT01"],
+    ["nova não é admin nas duas fontes", { nova_admin: false }, "IKT02"],
+    [
+      "é a dona, mas ela não é mais admin nas duas fontes",
+      { e_a_dona: true, nova_admin: false },
+      "IKT02",
+    ],
+    ["e-mail não confirmado", { confirmada: false }, "IKT03"],
+    // a ordem do DO: IKT02 (admin nas duas) vem ANTES de IKT03 (confirmada)
+    [
+      "nova nem admin nem confirmada",
+      { nova_admin: false, confirmada: false },
+      "IKT02",
+    ],
+    [
+      "0 contas com o e-mail",
+      { contas: 0, confirmada: false, nova_admin: false },
+      "IKT04",
+    ],
+    ["2 contas com o e-mail", { contas: 2 }, "IKT04"],
+    ["2 donos (fora do desenho: falha a 88c)", { donos: 2 }, "IKT05"],
+    // IKT06 (decisão do sócio 26/11): banida ou apagada no Supabase, logo
+    // depois de IKT04 — vale também para "já era a dona"
+    ["nova banida ou apagada", { bloqueada: true }, "IKT06"],
+    [
+      "já é a dona, mas a conta está bloqueada",
+      { e_a_dona: true, bloqueada: true },
+      "IKT06",
+    ],
+    [
+      "bloqueada E não admin: IKT06 vem antes de IKT02",
+      { bloqueada: true, nova_admin: false, confirmada: false },
+      "IKT06",
+    ],
+    [
+      "2 contas, uma bloqueada: IKT04 vem antes de IKT06",
+      { contas: 2, bloqueada: true },
+      "IKT04",
+    ],
+  ];
+  for (const [nome, o, codigo] of casos) {
+    const d = decidirTroca(linhaDaTroca(o));
+    assertEquals(d.veredito, "NÃO", `${nome}: ${d.mensagem}`);
+    assertEquals(d.gravar, false, nome);
+    assertEquals(d.codigo, codigo, nome);
+    assertStringIncludes(d.mensagem, "Nada foi gravado", nome);
+    assert(d.mensagem.length > 40, `${nome}: motivo curto demais`);
+  }
+});
+
+Deno.test("trocar-dono: decidirTroca — leitura fora do formato = INCERTO, nunca SIM nem escrita", () => {
+  const [ok] = linhaDaTroca();
+  const semColuna = Object.fromEntries(
+    Object.entries(ok).filter(([k]) => k !== "e_a_dona"),
+  );
+  const foras = [
+    null,
+    undefined,
+    [],
+    {},
+    "SIM",
+    [null],
+    [ok, ok],
+    [semColuna],
+    [{ ...ok, extra: 1 }],
+    [{ ...ok, donos: "1" }],
+    [{ ...ok, contas: -1 }],
+    [{ ...ok, contas: 1.5 }],
+    [{ ...ok, nova_admin: "true" }],
+    [{ ...ok, e_a_dona: null }],
+    [{ ...ok, confirmada: 1 }],
+    [{ ...ok, bloqueada: "false" }],
+    [Object.fromEntries(Object.entries(ok).filter(([k]) => k !== "bloqueada"))],
+  ];
+  for (const l of foras) {
+    const d = decidirTroca(l);
+    assertEquals(d.veredito, "INCERTO", JSON.stringify(l));
+    assertEquals(d.gravar, false);
+  }
+});
+
+/** Os literais '...' de um SQL (aspa dobrada = aspa dentro): [início, fim, valor]. */
+function literaisDoSql(sql) {
+  const lits = [];
+  for (let i = 0; i < sql.length; i++) {
+    if (sql.charAt(i) !== "'") continue;
+    let j = i + 1;
+    for (;;) {
+      if (j >= sql.length) throw new Error("literal sem fim");
+      if (sql.charAt(j) === "'" && sql.charAt(j + 1) === "'") j += 2;
+      else if (sql.charAt(j) === "'") break;
+      else j++;
+    }
+    lits.push([i, j + 1, sql.slice(i + 1, j).replaceAll("''", "'")]);
+    i = j;
+  }
+  return lits;
+}
+
+const EMAILS_HOSTIS = [
+  "o'brien@exemplo.test",
+  "a''b'@exemplo.test",
+  "x$$y@exemplo.test",
+  "x$trocar_dono$y@exemplo.test",
+  "a';DELETE;--@exemplo.test",
+  "a;b@exemplo.test",
+];
+
+Deno.test("trocar-dono: e-mail com aspa, $$, $trocar_dono$ ou ponto e vírgula fica DENTRO de um literal só; o resto do SQL é fixo", () => {
+  const BENIGNO = "lojista.falsa@exemplo.test";
+  for (const gerar of [sqlTrocarDono, sqlDaTroca]) {
+    const base = gerar(BENIGNO);
+    const litBase = `'${BENIGNO}'`;
+    assertEquals(base.split(litBase).length, 2, "o e-mail entra uma vez só");
+    for (const email of EMAILS_HOSTIS) {
+      const sql = gerar(email);
+      const lit = `'${email.replaceAll("'", "''")}'`;
+      assertEquals(sql.split(lit).length, 2, `${gerar.name}: ${email}`);
+      // fora do literal, o SQL é exatamente o do e-mail benigno
+      assertEquals(
+        sql.replace(lit, "<L>"),
+        base.replace(litBase, "<L>"),
+        `${gerar.name}: ${email} mudou o SQL fora do literal`,
+      );
+      // e o literal que o leitor de SQL acha é o e-mail inteiro
+      const meu = literaisDoSql(sql).filter(([, , v]) => v === email);
+      assertEquals(meu.length, 1, `${gerar.name}: ${email}`);
+      if (gerar === sqlTrocarDono) {
+        // fora do DO (dollar-quote): na instrução SET LOCAL
+        assert(meu[0][0] < sql.indexOf("DO $trocar_dono$"));
+        assertStringIncludes(
+          sql,
+          `SET LOCAL ikcous.trocar_dono_email = ${lit};\nDO $trocar_dono$`,
+        );
+      }
+    }
+  }
+});
+
+Deno.test("trocar-dono: barra invertida, espaço, quebra de linha ou texto sem @ é recusado antes de virar SQL (sem ecoar)", () => {
+  for (const gerar of [sqlTrocarDono, sqlDaTroca]) {
+    for (const ruim of [
+      "a\\'@exemplo.test",
+      "a\\@exemplo.test",
+      "a b@exemplo.test",
+      "a@exemplo.test\n';COMMIT;--",
+      "sem-arroba",
+      "",
+      "a@b@exemplo.test",
+      `${"a".repeat(250)}@x.test`,
+      null,
+    ]) {
+      const e = assertThrows(() => gerar(ruim));
+      if (typeof ruim === "string" && ruim !== "")
+        assert(!e.message.includes(ruim), "ecoou a entrada");
+    }
+  }
+});
+
+Deno.test("trocar-dono: a transação — BEGIN, papel, travas, LOCK, guardas na ordem, DELETE+INSERT, 88c, COMMIT; uma escrita só", () => {
+  const sql = sqlTrocarDono("lojista.falsa@exemplo.test");
+  const ordem = [
+    "BEGIN ISOLATION LEVEL READ COMMITTED;",
+    "SET LOCAL ROLE postgres;",
+    "SET LOCAL lock_timeout = '10s';",
+    "SET LOCAL ikcous.trocar_dono_email = ",
+    "DO $trocar_dono$",
+    "lower(current_setting('ikcous.trocar_dono_email'))",
+    "PERFORM pg_advisory_xact_lock(hashtext('ikcous.primeira_admin'));",
+    "PERFORM pg_advisory_xact_lock(hashtext('ikcous.definir_dono'));",
+    "LOCK TABLE public.dono_da_loja IN SHARE ROW EXCLUSIVE MODE;",
+    "USING ERRCODE = 'IKT01'",
+    "trocar-dono: mais de um dono",
+    "USING ERRCODE = 'IKT04'",
+    "USING ERRCODE = 'IKT06'",
+    "WHERE d.user_id = v_id",
+    "'ja_era_dona'",
+    "RETURN;",
+    "FOR SHARE OF p;",
+    "USING ERRCODE = 'IKT02'",
+    "USING ERRCODE = 'IKT03'",
+    "DELETE FROM public.dono_da_loja;",
+    "INSERT INTO public.dono_da_loja (user_id) VALUES (v_id);",
+    "trocar-dono: conferencia da 88c falhou",
+    "'trocada'",
+    "$trocar_dono$;",
+    "COMMIT;",
+    "SELECT current_setting('ikcous.trocar_dono_resultado', true) AS resultado;",
+  ];
+  let antes = -1;
+  for (const t of ordem) {
+    const i = sql.indexOf(t, antes + 1);
+    assert(i > antes, `fora de ordem ou ausente: ${t}`);
+    antes = i;
+  }
+  for (const [t, n] of [
+    ["BEGIN ISOLATION", 1],
+    ["COMMIT;", 1],
+    ["DELETE FROM", 1],
+    ["INSERT INTO", 1],
+    ["ROLLBACK", 0],
+    ["UPDATE ", 0],
+  ])
+    assertEquals(sql.split(t).length - 1, n, t);
+  for (const c of ["IKT01", "IKT02", "IKT03", "IKT04", "IKT05", "IKT06"])
+    assertStringIncludes(sql, `ERRCODE = '${c}'`);
+  // IKT06: só a conta NOVA (v_id) é olhada; a dona de hoje bloqueada não
+  // impede a troca (nenhuma guarda de bloqueio olha dono_da_loja)
+  const ikt06 = sql.slice(
+    sql.indexOf("USING ERRCODE = 'IKT04'"),
+    sql.indexOf("USING ERRCODE = 'IKT06'"),
+  );
+  const guarda = ikt06.slice(ikt06.lastIndexOf("IF EXISTS"));
+  assertStringIncludes(guarda, "u.id = v_id");
+  assertStringIncludes(guarda, "u.banned_until > now()");
+  assertStringIncludes(guarda, "u.deleted_at IS NOT NULL");
+  assert(!guarda.includes("dono_da_loja"), "a guarda olha a dona de hoje");
+  assertEquals(sql.split("banned_until").length - 1, 1);
+  assertEquals(sql.split("deleted_at").length - 1, 1);
+  // a nova dona: a linha travada exige admin nas DUAS fontes do cargo
+  const fim = sql.indexOf("FOR SHARE OF p;");
+  const nova = sql.slice(sql.lastIndexOf(";", fim) + 1, fim);
+  assertStringIncludes(nova, "u.id = v_id");
+  assertStringIncludes(nova, "p.role = 'admin'");
+  assertStringIncludes(nova, "u.raw_app_meta_data ->> 'role' = 'admin'");
+  // a 88c depois do INSERT: 1 linha apagada, 1 inserida, 1 dono, admin nas duas
+  const c88 = sql.slice(
+    sql.indexOf("INSERT INTO public.dono_da_loja"),
+    sql.indexOf("trocar-dono: conferencia da 88c falhou"),
+  );
+  for (const t of [
+    "v_apagadas <> 1",
+    "v_linhas <> 1",
+    "(SELECT count(*) FROM public.dono_da_loja) <> 1",
+    "JOIN auth.users u ON u.id = d.user_id",
+    "p.role = 'admin'",
+    "u.raw_app_meta_data ->> 'role' = 'admin'",
+  ])
+    assertStringIncludes(c88, t);
+});
+
+Deno.test("trocar-dono: a leitura é UMA instrução SELECT, sem escrita, nova_admin pelas duas fontes", () => {
+  const sql = sqlDaTroca("lojista.falsa@exemplo.test");
+  assert(sql.startsWith("WITH "));
+  assertEquals(sql.split(";").length, 2, "mais de uma instrução");
+  for (const t of ["INSERT", "DELETE", "UPDATE", "BEGIN", "COMMIT", "SET "])
+    assert(!sql.includes(t), t);
+  for (const t of [
+    "AS donos",
+    "AS contas",
+    "AS confirmada",
+    "AS nova_admin",
+    "AS e_a_dona",
+    "AS bloqueada",
+    "p.role = 'admin'",
+    "u.raw_app_meta_data ->> 'role' = 'admin'",
+    "lower(u.email)",
+  ])
+    assertStringIncludes(sql, t);
+  // bloqueada vem das contas do E-MAIL (a nova), nunca da dona de hoje
+  const contas = sql.slice(
+    sql.indexOf("contas AS"),
+    sql.indexOf("nas_duas AS"),
+  );
+  assertStringIncludes(contas, "u.banned_until > now()");
+  assertStringIncludes(contas, "u.deleted_at IS NOT NULL");
+  assertEquals(sql.split("banned_until").length - 1, 1);
+  assertStringIncludes(sql, "bool_or(c.bloqueada) FROM contas c");
+});
+
+Deno.test("trocar-dono: resultadoDaTroca só aceita o formato exato do GUC (trocada / ja_era_dona); o resto é null", () => {
+  const r = (o) => [{ resultado: JSON.stringify(o) }];
+  assertEquals(
+    resultadoDaTroca(r({ acao: "trocada", donos: 1, apagadas: 1, linhas: 1 })),
+    "trocada",
+  );
+  assertEquals(
+    resultadoDaTroca(
+      r({ acao: "ja_era_dona", donos: 1, apagadas: 0, linhas: 0 }),
+    ),
+    "ja_era_dona",
+  );
+  for (const fora of [
+    r({ acao: "trocada", donos: 1, apagadas: 0, linhas: 1 }),
+    r({ acao: "trocada", donos: 2, apagadas: 1, linhas: 1 }),
+    r({ acao: "ja_era_dona", donos: 1, apagadas: 0, linhas: 1 }),
+    r({ acao: "gravada", donos: 1, apagadas: 1, linhas: 1 }),
+    r({ acao: "trocada", donos: 1, apagadas: 1, linhas: 1, id: "x" }),
+    [{ resultado: "" }],
+    [{ resultado: null }],
+    [{ resultado: "{" }],
+    [{ resultado: "{}", outra: 1 }],
+    [],
+    null,
+  ])
+    assertEquals(resultadoDaTroca(fora), null, JSON.stringify(fora));
+});
+
+// ─── trocar-dono, fase 1 (T2): o link novo da dona e o pedido pendente ──────
+
+const EMAIL_NOVA = "nova.dona.falsa@exemplo.test";
+const PROXIMO_DA_TROCA = `node scripts/frota/nova-loja.mjs trocar-dono --loja ${SLUG} --aplicar --receber`;
+const URL_AUTORIZAR = "https://api.supabase.com/v1/oauth/authorize?";
+
+/** Responde a leitura sqlDaTroca(email) com a linha que o teste escolhe e
+ * conta as leituras; qualquer SQL de ESCRITA da troca derruba o teste. */
+function comATroca(amb, { email = EMAIL_NOVA, linha = linhaDaTroca } = {}) {
+  const banco = amb.api.banco;
+  const responder = banco.responder;
+  banco.leiturasDaTroca = 0;
+  banco.responder = (sql) => {
+    if (sql === sqlDaTroca(email)) {
+      banco.leiturasDaTroca += 1;
+      if (banco.leituraDaTrocaCai)
+        throw Object.assign(new Error(`caiu perto de '${email}'`), {
+          sqlstate: "XX000",
+        });
+      return linha();
+    }
+    if (sql.includes("trocar_dono"))
+      throw new Error("a fase 1 mandou a ESCRITA da troca");
+    return responder(sql);
+  };
+  return amb;
+}
+
+/** A loja com a dona cadastrada (definir-dono SIM) e a leitura da troca. */
+async function ateATroca(o = {}) {
+  const amb = await ateADona(o);
+  const r = await executarPasso(pedido("definir-dono"), amb.deps);
+  assertEquals(r.veredito, "SIM", r.mensagem);
+  return comATroca(amb, o.troca);
+}
+
+async function registroDoCofre(amb) {
+  return JSON.parse(await amb.deps.cofre.ler(SLUG));
+}
+
+/** O último link de autorização impresso, já como URL. */
+function ultimoLink(amb) {
+  const linhas = amb.saida.flatMap((s) => s.split("\n"));
+  const l = linhas.filter((x) => x.includes(URL_AUTORIZAR)).at(-1);
+  assert(l, "nenhum link impresso");
+  return new URL(l.trim());
+}
+
+const s256 = (v) =>
+  createHash("sha256")
+    .update(v)
+    .digest("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+
+Deno.test("trocar-dono fase 1: dona cadastrada e candidata admin confirmada = link novo (PKCE) amarrado ao pedido pendente, próximo comando, e NADA escrito no banco", async () => {
+  const amb = await ateATroca();
+  const n = amb.api.chamadas.length;
+  amb.entradas.push(EMAIL_NOVA);
+  const r = await executarPasso(pedido("trocar-dono"), amb.deps);
+  assertEquals(r.veredito, "SIM", r.mensagem);
+  assertEquals(amb.entradas.length, 0, "não leu o e-mail pela entrada");
+  assertEquals(amb.api.banco.leiturasDaTroca, 1);
+  // só leitura no banco; a dona de hoje segue a mesma
+  const novas = amb.api.chamadas.slice(n);
+  for (const c of novas.filter((c) => c.caminho.endsWith("/database/query")))
+    assertEquals(c.somenteLeitura, true, "consulta sem read_only");
+  assertEquals(amb.api.banco.dono, "alvo");
+  // o link: o app guardado, S256, e o state e o desafio do pedido no cofre
+  const reg = await registroDoCofre(amb);
+  const u = ultimoLink(amb);
+  assertEquals(u.searchParams.get("client_id"), CLIENT_ID);
+  assertEquals(u.searchParams.get("redirect_uri"), REDIRECT);
+  assertEquals(u.searchParams.get("code_challenge_method"), "S256");
+  assertEquals(u.searchParams.get("state"), reg.pendente.state);
+  assertEquals(
+    u.searchParams.get("code_challenge"),
+    s256(reg.pendente.verificador),
+  );
+  // o refresh da loja continua no cofre (o pedido não desconecta a loja)
+  assertEquals(reg.refresh, amb.api.refreshValido);
+  const c = await executarPasso(pedido("conferir"), amb.deps);
+  assertEquals(Reflect.get(porItem(c), "definir-dono"), "SIM", c.mensagem);
+  // o próximo comando e o prazo de 30 min
+  const texto = amb.saida.join("\n");
+  assertStringIncludes(texto, PROXIMO_DA_TROCA);
+  assertStringIncludes(texto, "30 min");
+  assertStringIncludes(
+    texto,
+    new Date(AGORA + 30 * 60_000).toISOString(),
+    "o fim do prazo",
+  );
+});
+
+Deno.test("trocar-dono fase 1: o pedido pendente tem hora (cofre e estado) e não tem segredo", async () => {
+  const amb = await ateATroca();
+  amb.relogio.t += 5_000;
+  const hora = amb.relogio.t;
+  amb.entradas.push(EMAIL_NOVA);
+  const r = await executarPasso(pedido("trocar-dono"), amb.deps);
+  assertEquals(r.veredito, "SIM", r.mensagem);
+  // no cofre: só o que o PKCE exige, com a hora
+  const { pendente } = await registroDoCofre(amb);
+  assertEquals(Object.keys(pendente).sort(), [
+    "criadoEm",
+    "state",
+    "verificador",
+  ]);
+  assertEquals(pendente.criadoEm, hora);
+  const proibidos = [
+    ACCESS,
+    CODIGO,
+    CLIENT_SECRET,
+    REFRESH_1,
+    amb.api.refreshValido,
+    "refresh-FALSO",
+    EMAIL,
+    EMAIL_NOVA,
+  ];
+  const doPendente = JSON.stringify(pendente);
+  for (const p of proibidos)
+    assert(!doPendente.includes(p), `pendente vazou ${p.slice(0, 12)}…`);
+  // no estado: a hora do pedido, nenhum segredo, nem o state/verificador
+  const texto = await lerArquivoDeEstado(amb.pasta);
+  const e = JSON.parse(texto);
+  assertEquals(Object.keys(e.passos["trocar-dono"]).sort(), ["em", "pedidoEm"]);
+  assertEquals(e.passos["trocar-dono"].pedidoEm, new Date(hora).toISOString());
+  for (const p of [...proibidos, pendente.state, pendente.verificador])
+    assert(!texto.includes(p), `estado vazou ${p.slice(0, 12)}…`);
+  // o link não leva o verificador nem o client_secret
+  const link = ultimoLink(amb).href;
+  assert(!link.includes(pendente.verificador));
+  assert(!link.includes(CLIENT_SECRET));
+});
+
+Deno.test("trocar-dono fase 1: cada chamada gera code_challenge, state e verificador NOVOS (o link anterior deixa de valer)", async () => {
+  const amb = await ateATroca();
+  const vistos = [];
+  for (let i = 0; i < 3; i++) {
+    amb.relogio.t += 60_000;
+    amb.entradas.push(EMAIL_NOVA);
+    const r = await executarPasso(pedido("trocar-dono"), amb.deps);
+    assertEquals(r.veredito, "SIM", r.mensagem);
+    const u = ultimoLink(amb);
+    const { pendente } = await registroDoCofre(amb);
+    assertEquals(
+      u.searchParams.get("code_challenge"),
+      s256(pendente.verificador),
+    );
+    assertEquals(pendente.criadoEm, amb.relogio.t);
+    vistos.push([
+      u.searchParams.get("code_challenge"),
+      u.searchParams.get("state"),
+      pendente.verificador,
+    ]);
+  }
+  for (let k = 0; k < 3; k++)
+    assertEquals(new Set(vistos.map((v) => v.at(k))).size, 3, `coluna ${k}`);
+});
+
+Deno.test("trocar-dono fase 1: NUNCA na IKCOUS, na Savy nem nos alvos legados — pelo nome (sem rede, trava, estado nem entrada) e pelo ref", async () => {
+  for (const slug of ["savy", "ikcous-publicada", "loja", "sandbox"]) {
+    const amb = await ambiente();
+    amb.entradas.push(EMAIL_NOVA);
+    for (const aplicar of [true, false]) {
+      const r = await executarPasso(
+        { passo: "trocar-dono", slug, aplicar },
+        amb.deps,
+      );
+      assertEquals(r.veredito, "NÃO", `${slug}: ${r.mensagem}`);
+      assertStringIncludes(r.mensagem, "nunca");
+      assertStringIncludes(r.mensagem, "trocar-dono");
+    }
+    assertEquals(amb.api.chamadas.length, 0, `falou com ${slug}`);
+    assertEquals([...Deno.readDirSync(amb.pasta)].length, 0);
+    assertEquals(amb.entradas.length, 1, `${slug}: pediu o e-mail`);
+  }
+  // outro nome, mas o estado aponta o projeto da Savy ou da IKCOUS
+  for (const ref of [REF_SAVY, REF_IKCOUS]) {
+    const amb = await ambiente();
+    await conectar(amb);
+    const e = JSON.parse(await lerArquivoDeEstado(amb.pasta));
+    e.passos["criar-projeto"] = { veredito: "SIM", ref, org: ORG };
+    e.passos.banco = { veredito: "SIM" };
+    await amb.deps.estado.gravar(SLUG, e);
+    const n = amb.api.chamadas.length;
+    amb.entradas.push(EMAIL_NOVA);
+    const r = await executarPasso(pedido("trocar-dono"), amb.deps);
+    assertEquals(r.veredito, "NÃO", r.mensagem);
+    assertStringIncludes(r.mensagem, "nunca");
+    assertEquals(amb.api.chamadas.length, n, "falou com a loja protegida");
+    assertEquals((await registroDoCofre(amb)).pendente, undefined);
+  }
+  // uma chave `classe: legado` qualquer do lojas.json
+  const amb = await ambiente();
+  await conectar(amb);
+  const e = JSON.parse(await lerArquivoDeEstado(amb.pasta));
+  e.slug = "legado-novo";
+  e.passos["criar-projeto"] = {
+    veredito: "SIM",
+    ref: "refdeumprojetoaaaaaa",
+    org: ORG,
+  };
+  e.passos.banco = { veredito: "SIM" };
+  await amb.deps.estado.gravar("legado-novo", e);
+  amb.deps.lojasBrutas = () => ({
+    lojas: {
+      ...structuredClone(LOJAS_BRUTAS.lojas),
+      "legado-novo": {
+        ref: "refdeumprojetoaaaaaa",
+        classe: "legado",
+        apelido: "Legado",
+        segredoDoToken: "SUPABASE_ACCESS_TOKEN",
+      },
+    },
+  });
+  const n = amb.api.chamadas.length;
+  const r = await executarPasso(
+    { passo: "trocar-dono", slug: "legado-novo", aplicar: true },
+    amb.deps,
+  );
+  assertEquals(r.veredito, "NÃO", r.mensagem);
+  assertStringIncludes(r.mensagem, "legado");
+  assertEquals(amb.api.chamadas.length, n);
+});
+
+Deno.test("trocar-dono fase 1: loja SEM dona = NÃO (IKT01) pela leitura, e nenhum pedido pendente gravado nem link impresso", async () => {
+  // a primeira-admin feita, o definir-dono não: dono_da_loja vazia
+  const amb = comATroca(await ateADona(), {
+    linha: () => linhaDaTroca({ donos: 0 }),
+  });
+  const antes = await lerArquivoDeEstado(amb.pasta);
+  const s = amb.saida.length;
+  amb.entradas.push(EMAIL_NOVA);
+  const r = await executarPasso(pedido("trocar-dono"), amb.deps);
+  assertEquals(r.veredito, "NÃO", r.mensagem);
+  assertStringIncludes(r.mensagem, "não tem dona");
+  assertStringIncludes(r.mensagem, "definir-dono");
+  assertEquals(amb.api.banco.leiturasDaTroca, 1, "não leu pelo OAuth");
+  assertEquals((await registroDoCofre(amb)).pendente, undefined);
+  assertEquals(await lerArquivoDeEstado(amb.pasta), antes);
+  assert(
+    !amb.saida.slice(s).join("\n").includes(URL_AUTORIZAR),
+    "imprimiu link",
+  );
+});
+
+Deno.test("trocar-dono fase 1: candidata que não é admin, e-mail já da dona, leitura que cai ou e-mail sem forma = sem pedido nem link", async () => {
+  const casos = [
+    [() => linhaDaTroca({ nova_admin: false }), "NÃO", "administradora"],
+    [() => linhaDaTroca({ confirmada: false }), "NÃO", "confirmou"],
+    [() => linhaDaTroca({ contas: 0 }), "NÃO", "exatamente uma conta"],
+    [() => linhaDaTroca({ e_a_dona: true }), "SIM", "já é o da dona"],
+    [() => [{ donos: 1 }], "INCERTO", "fora do formato"],
+  ];
+  for (const [linha, veredito, texto] of casos) {
+    const amb = await ateATroca({ troca: { linha } });
+    const s = amb.saida.length;
+    amb.entradas.push(EMAIL_NOVA);
+    const r = await executarPasso(pedido("trocar-dono"), amb.deps);
+    assertEquals(r.veredito, veredito, r.mensagem);
+    assertStringIncludes(r.mensagem, texto);
+    assertEquals((await registroDoCofre(amb)).pendente, undefined);
+    assert(!amb.saida.slice(s).join("\n").includes(URL_AUTORIZAR));
+    assert(!(await lerArquivoDeEstado(amb.pasta)).includes('"trocar-dono"'));
+  }
+  const cai = await ateATroca();
+  cai.api.banco.leituraDaTrocaCai = true;
+  cai.entradas.push(EMAIL_NOVA);
+  const r = await executarPasso(pedido("trocar-dono"), cai.deps);
+  assertEquals(r.veredito, "INCERTO", r.mensagem);
+  assertEquals((await registroDoCofre(cai)).pendente, undefined);
+  // e-mail sem forma: recusado antes de qualquer leitura do banco
+  const ruim = await ateATroca();
+  const n = ruim.api.chamadas.length;
+  ruim.entradas.push("sem-arroba");
+  const r2 = await executarPasso(pedido("trocar-dono"), ruim.deps);
+  assertEquals(r2.veredito, "NÃO", r2.mensagem);
+  assert(!r2.mensagem.includes("sem-arroba"), "ecoou a entrada");
+  assertEquals(ruim.api.chamadas.length, n);
+});
+
+Deno.test("trocar-dono fase 1: o e-mail da candidata não aparece na saída, na mensagem, no estado nem no cofre (sucesso, recusa e leitura que cai)", async () => {
+  const MAIUSCULO = "Nova.Dona.Falsa@Exemplo.TEST";
+  const procurar = async (amb, r) => {
+    const tudo = [
+      amb.saida.join("\n"),
+      r.mensagem,
+      await lerArquivoDeEstado(amb.pasta),
+      await amb.deps.cofre.ler(SLUG),
+    ]
+      .join("\n")
+      .toLowerCase();
+    assert(!tudo.includes(EMAIL_NOVA), "o e-mail vazou");
+  };
+  // sucesso (o e-mail digitado em maiúsculas chega ao banco como veio)
+  const ok = await ateATroca({ troca: { email: MAIUSCULO } });
+  ok.entradas.push(`  ${MAIUSCULO}  `);
+  const r1 = await executarPasso(pedido("trocar-dono"), ok.deps);
+  assertEquals(r1.veredito, "SIM", r1.mensagem);
+  assertEquals(ok.api.banco.leiturasDaTroca, 1);
+  await procurar(ok, r1);
+  // recusa
+  const nao = await ateATroca({
+    troca: { linha: () => linhaDaTroca({ nova_admin: false }) },
+  });
+  nao.entradas.push(EMAIL_NOVA);
+  const r2 = await executarPasso(pedido("trocar-dono"), nao.deps);
+  assertEquals(r2.veredito, "NÃO", r2.mensagem);
+  await procurar(nao, r2);
+  // a leitura cai com o e-mail na mensagem de erro do banco
+  const cai = await ateATroca();
+  cai.api.banco.leituraDaTrocaCai = true;
+  cai.entradas.push(EMAIL_NOVA);
+  const r3 = await executarPasso(pedido("trocar-dono"), cai.deps);
+  assertEquals(r3.veredito, "INCERTO", r3.mensagem);
+  await procurar(cai, r3);
+});
+
+Deno.test("trocar-dono fase 1: sem --aplicar é ENSAIO — nem o e-mail é pedido, 0 chamadas, nada no cofre", async () => {
+  const amb = await ateATroca();
+  const n = amb.api.chamadas.length;
+  const g = amb.deps.cofre.gravacoes;
+  const r = await executarPasso(
+    pedido("trocar-dono", { aplicar: false }),
+    amb.deps,
+  );
+  assertStringIncludes(r.mensagem, "ENSAIO");
+  assert(r.veredito !== "SIM");
+  assertEquals(amb.api.chamadas.length, n);
+  assertEquals(amb.deps.cofre.gravacoes, g);
+  assertEquals(amb.entradas.length, 0);
+});
+
+// ─── trocar-dono, fase 2 (T3): o código da dona e a troca ───────────────────
+
+const OUTRO_EMAIL = "outra.pessoa.falsa@exemplo.test";
+const MASCARADO = "no•••@exemplo.test";
+const RECUSA_IKT06 =
+  "conta bloqueada ou apagada no Supabase: desbloqueie ou escolha outra pessoa";
+
+/** O banco da troca COM estado, para EMAIL_NOVA: a leitura (sqlDaTroca) e a
+ * escrita (sqlTrocarDono) seguem as guardas do SQL de verdade, na mesma
+ * ordem. Qualquer SQL da troca com OUTRO e-mail derruba o teste. A nova já é
+ * admin (nomeada pela dona: outrasAdmins = 1). */
+function comATrocaViva(amb, o = {}) {
+  const banco = amb.api.banco;
+  const responder = banco.responder;
+  const t = {
+    contas: 1,
+    nova_admin: true,
+    confirmada: true,
+    bloqueada: false,
+    eANova: false,
+    escritas: 0,
+    leituras: 0,
+    escritaCai: false,
+    releituraDiverge: false,
+    ...o,
+  };
+  banco.outrasAdmins = 1;
+  banco.troca = t;
+  const linha = () => ({
+    donos: 1,
+    contas: t.contas,
+    confirmada: t.confirmada,
+    nova_admin: t.nova_admin,
+    e_a_dona: t.eANova,
+    bloqueada: t.bloqueada,
+  });
+  banco.responder = (sql) => {
+    if (sql === sqlDaTroca(EMAIL_NOVA)) {
+      t.leituras += 1;
+      if (t.releituraDiverge && t.escritas > 0)
+        return [{ ...linha(), e_a_dona: false }];
+      return [linha()];
+    }
+    if (sql === sqlTrocarDono(EMAIL_NOVA)) {
+      t.escritas += 1;
+      if (t.escritaCai)
+        throw Object.assign(new Error("gateway"), { http: 504 });
+      const recusa = (sqlstate) =>
+        Object.assign(new Error("recusa"), { sqlstate });
+      const r = (acao, n) => [
+        {
+          resultado: JSON.stringify({
+            acao,
+            donos: 1,
+            apagadas: n,
+            linhas: n,
+          }),
+        },
+      ];
+      if (t.contas !== 1) throw recusa("IKT04");
+      if (t.bloqueada) throw recusa("IKT06");
+      if (t.eANova) {
+        if (!t.nova_admin) throw recusa("IKT02");
+        return r("ja_era_dona", 0);
+      }
+      if (!t.nova_admin) throw recusa("IKT02");
+      if (!t.confirmada) throw recusa("IKT03");
+      t.eANova = true;
+      banco.dono = "outra";
+      return r("trocada", 1);
+    }
+    if (sql.includes("trocar_dono") || sql.startsWith("WITH alvo AS"))
+      throw new Error("SQL da troca com outro e-mail");
+    return responder(sql);
+  };
+  return amb;
+}
+
+/** Fase 1 feita (pedido no cofre e no estado) e 1 min depois, a dona autorizou. */
+async function pedidoDeTroca(o = {}) {
+  const amb = await ateADona(o);
+  const d = await executarPasso(pedido("definir-dono"), amb.deps);
+  assertEquals(d.veredito, "SIM", d.mensagem);
+  comATrocaViva(amb, o.troca);
+  amb.entradas.push(EMAIL_NOVA);
+  const r = await executarPasso(pedido("trocar-dono"), amb.deps);
+  assertEquals(r.veredito, "SIM", r.mensagem);
+  amb.relogio.t += 60_000;
+  return amb;
+}
+
+const receberATroca = (amb) =>
+  executarPasso(pedido("trocar-dono", { receber: true }), amb.deps);
+
+const tokenPosts = (amb) => amb.api.posts("/v1/oauth/token").length;
+
+async function entradaDaTroca(amb) {
+  const t = await amb.deps.cofreDaTroca.ler(SLUG);
+  return t === null ? null : JSON.parse(t);
+}
+
+Deno.test("trocar-dono fase 1: depois de decidirTroca aprovar, o e-mail vai para uma entrada PRÓPRIA do cofre da troca, amarrada ao pedido (pedidoEm e criadoEm); o link mostra o e-mail mascarado", async () => {
+  const amb = await pedidoDeTroca();
+  const e = await entradaDaTroca(amb);
+  assertEquals(Object.keys(e).sort(), [
+    "criadoEm",
+    "email",
+    "pedidoEm",
+    "versao",
+  ]);
+  assertEquals(e.email, EMAIL_NOVA);
+  const { pendente } = await registroDoCofre(amb);
+  assertEquals(e.criadoEm, pendente.criadoEm);
+  const estado = JSON.parse(await lerArquivoDeEstado(amb.pasta));
+  assertEquals(
+    new Date(e.pedidoEm).toISOString(),
+    estado.passos["trocar-dono"].pedidoEm,
+  );
+  // o registro do abrir (cofre da loja) não ganhou o e-mail
+  assert(!(await amb.deps.cofre.ler(SLUG)).includes(EMAIL_NOVA));
+  // o texto do link: 2 letras + ••• + @domínio, nunca o e-mail inteiro
+  const texto = amb.saida.join("\n");
+  assertStringIncludes(texto, MASCARADO);
+  assert(!texto.toLowerCase().includes(EMAIL_NOVA));
+  assertEquals(mascararEmail(EMAIL_NOVA), MASCARADO);
+  assertEquals(mascararEmail("ab@x.test"), "a•••@x.test");
+  assertEquals(mascararEmail("a@x.test"), "•••@x.test");
+  // recusada pela leitura: nenhuma entrada nova
+  const nao = await ateATroca({
+    troca: { linha: () => linhaDaTroca({ bloqueada: true }) },
+  });
+  nao.entradas.push(EMAIL_NOVA);
+  const r = await executarPasso(pedido("trocar-dono"), nao.deps);
+  assertEquals(r.veredito, "NÃO", r.mensagem);
+  assertStringIncludes(r.mensagem, RECUSA_IKT06);
+  assertEquals(nao.deps.cofreDaTroca.gravacoes, 0);
+});
+
+Deno.test("trocar-dono fase 2: o e-mail sai do COFRE (a entrada só dá o código), o token novo alcança o projeto ANTES do refresh ir para o cofre, a troca roda pelo pg-meta, relê e dá SIM; o conferir pós-troca passa no item admin", async () => {
+  const amb = await pedidoDeTroca();
+  const refreshAntes = (await registroDoCofre(amb)).refresh;
+  assert(refreshAntes !== REFRESH_1);
+  const inicio = amb.linha.length;
+  // se o passo pedisse o e-mail pela entrada, receberia OUTRO_EMAIL
+  amb.entradas.push(CODIGO, OUTRO_EMAIL);
+  const r = await receberATroca(amb);
+  assertEquals(r.veredito, "SIM", r.mensagem);
+  assertEquals(amb.entradas, [OUTRO_EMAIL], "leu da entrada mais que o código");
+  const t = amb.api.banco.troca;
+  assertEquals(t.escritas, 1);
+  assertEquals(t.leituras, 2, "a fase 1 e a releitura");
+  assertEquals(amb.api.banco.dono, "outra");
+  // o refresh do código substituiu o antigo; o pendente foi usado
+  const reg = await registroDoCofre(amb);
+  assertEquals(reg.refresh, REFRESH_1);
+  assertEquals(reg.pendente, undefined);
+  // a ordem: código → GET do projeto → refresh no cofre → a transação
+  const l = amb.linha.slice(inicio);
+  const i = (pred) => l.findIndex(pred);
+  const token = i((x) => x === "fetch POST /v1/oauth/token");
+  const projeto = i((x) => x === `fetch GET /v1/projects/${REF}`);
+  const cofre = i((x) => x.startsWith("cofre.gravar") && x.includes(REFRESH_1));
+  const sql = i((x) => x === `fetch POST /v1/projects/${REF}/database/query`);
+  assert(token >= 0 && token < projeto, l.join("\n"));
+  assert(projeto < cofre, "o refresh foi ao cofre antes de conferir o projeto");
+  assert(cofre < sql, l.join("\n"));
+  // a entrada do e-mail foi apagada; o estado não tem mais o pedido
+  assertEquals(await entradaDaTroca(amb), null);
+  const estado = JSON.parse(await lerArquivoDeEstado(amb.pasta));
+  assertEquals(Object.keys(estado.passos["trocar-dono"]).sort(), [
+    "em",
+    "veredito",
+  ]);
+  assertEquals(estado.passos["trocar-dono"].veredito, "SIM");
+  // repetir sem pedido novo: NÃO, sem usar código
+  amb.entradas.splice(0);
+  amb.entradas.push(CODIGO);
+  const n = tokenPosts(amb);
+  const r2 = await receberATroca(amb);
+  assertEquals(r2.veredito, "NÃO", r2.mensagem);
+  assertEquals(tokenPosts(amb), n);
+  // o conferir pós-troca: a nova é a dona, a antiga segue admin (2 nas duas)
+  const c = await executarPasso(pedido("conferir"), amb.deps);
+  const v = porItem(c);
+  assertEquals(v.admin, "SIM", JSON.stringify(c.itens));
+  assertEquals(Reflect.get(v, "definir-dono"), "SIM");
+  const admin = c.itens.find((x) => x.item === "admin");
+  assertStringIncludes(admin.detalhe, "2 administradoras");
+});
+
+Deno.test("trocar-dono fase 2: sem pedido, sem a entrada no cofre, entrada de outro pedido ou fora do prazo = NÃO sem usar o código nem escrever no banco", async () => {
+  // a fase 1 nunca rodou
+  const sem = await ateADona();
+  await executarPasso(pedido("definir-dono"), sem.deps);
+  comATrocaViva(sem);
+  sem.entradas.push(CODIGO);
+  let r = await receberATroca(sem);
+  assertEquals(r.veredito, "NÃO", r.mensagem);
+  assertStringIncludes(r.mensagem, "trocar-dono --aplicar");
+  assertEquals(sem.entradas.length, 1, "pediu o código sem pedido");
+  // a entrada do e-mail sumiu do cofre
+  const sumiu = await pedidoDeTroca();
+  await sumiu.deps.cofreDaTroca.apagar(SLUG);
+  sumiu.entradas.push(CODIGO);
+  let n = tokenPosts(sumiu);
+  r = await receberATroca(sumiu);
+  assertEquals(r.veredito, "NÃO", r.mensagem);
+  assertEquals(tokenPosts(sumiu), n);
+  assertEquals(sumiu.entradas.length, 1);
+  assertEquals(sumiu.api.banco.troca.escritas, 0);
+  // a entrada é de OUTRO pedido (hora diferente da do estado)
+  const outra = await pedidoDeTroca();
+  const e = await entradaDaTroca(outra);
+  await outra.deps.cofreDaTroca.gravar(
+    SLUG,
+    JSON.stringify({ ...e, pedidoEm: e.pedidoEm - 1 }),
+  );
+  outra.entradas.push(CODIGO);
+  n = tokenPosts(outra);
+  r = await receberATroca(outra);
+  assertEquals(r.veredito, "NÃO", r.mensagem);
+  assertEquals(tokenPosts(outra), n);
+  assertEquals(await entradaDaTroca(outra), null, "não apagou a entrada");
+  // passou o prazo de 30 min (contado do pedidoEm)
+  const tarde = await pedidoDeTroca();
+  tarde.relogio.t += PRAZO_DA_TROCA_MS - 60_000 + 1;
+  tarde.entradas.push(CODIGO);
+  n = tokenPosts(tarde);
+  r = await receberATroca(tarde);
+  assertEquals(r.veredito, "NÃO", r.mensagem);
+  assertStringIncludes(r.mensagem, "30 min");
+  assertEquals(tokenPosts(tarde), n);
+  assertEquals(tarde.api.banco.troca.escritas, 0);
+  assertEquals(await entradaDaTroca(tarde), null, "prazo vencido: não apagou");
+  assertEquals(tarde.api.banco.dono, "alvo");
+});
+
+Deno.test("trocar-dono fase 2 (T3-a): um abrir DEPOIS da fase 1 troca o pedido pendente e o código dele é recusado — sem trocar o código, sem escrever no banco, refresh intacto", async () => {
+  const amb = await pedidoDeTroca();
+  // alguém roda abrir de novo (mesmo app): pendente novo, criadoEm posterior
+  amb.relogio.t += 30_000;
+  amb.entradas.push(CLIENT_SECRET);
+  const a = await executarPasso(pedido("abrir"), amb.deps);
+  assertEquals(a.veredito, "SIM", a.mensagem);
+  const antes = await amb.deps.cofre.ler(SLUG);
+  amb.relogio.t += 30_000;
+  amb.entradas.push(CODIGO);
+  const n = tokenPosts(amb);
+  const r = await receberATroca(amb);
+  assertEquals(r.veredito, "NÃO", r.mensagem);
+  assertStringIncludes(r.mensagem, "não é o desta troca");
+  assertEquals(tokenPosts(amb), n, "trocou o código do abrir");
+  assertEquals(await amb.deps.cofre.ler(SLUG), antes, "mexeu no cofre");
+  assertEquals(amb.api.banco.troca.escritas, 0);
+  assertEquals(amb.api.banco.dono, "alvo");
+  assertEquals(await entradaDaTroca(amb), null);
+});
+
+Deno.test("trocar-dono fase 2 (T3-c): token novo que NÃO alcança o projeto da loja = NÃO, o refresh antigo fica no cofre e nada vai ao banco", async () => {
+  for (const status of [403, 404]) {
+    const amb = await pedidoDeTroca();
+    const antes = await registroDoCofre(amb);
+    amb.api.falharSe = (metodo, caminho) =>
+      metodo === "GET" && caminho === `/v1/projects/${REF}`
+        ? status
+        : undefined;
+    amb.entradas.push(CODIGO);
+    const r = await receberATroca(amb);
+    assertEquals(r.veredito, "NÃO", `${status}: ${r.mensagem}`);
+    assertStringIncludes(r.mensagem, "não alcança o projeto");
+    assertStringIncludes(r.mensagem, "NÃO foi trocada");
+    // depois de o código virar token, não dá para prometer a autorização antiga
+    assert(!r.mensagem.includes("o de antes"), r.mensagem);
+    assertStringIncludes(r.mensagem, "Pode ser que a autorização antiga");
+    const depois = await registroDoCofre(amb);
+    assertEquals(depois.refresh, antes.refresh, "sobrescreveu o refresh");
+    assertEquals(amb.api.banco.troca.escritas, 0);
+    assertEquals(amb.api.banco.dono, "alvo");
+    assertEquals(await entradaDaTroca(amb), null);
+  }
+});
+
+Deno.test("trocar-dono fase 2: código que o Supabase recusa = NÃO, refresh da loja intacto, e a mensagem NÃO manda rodar abrir", async () => {
+  const amb = await pedidoDeTroca();
+  const antes = await registroDoCofre(amb);
+  amb.entradas.push("codigo-ERRADO-0123456789");
+  const r = await receberATroca(amb);
+  assertEquals(r.veredito, "NÃO", r.mensagem);
+  assertStringIncludes(r.mensagem, "trocar-dono --loja");
+  assertStringIncludes(
+    r.mensagem,
+    "Pode ser que a autorização antiga da loja tenha deixado de valer",
+  );
+  assertStringIncludes(r.mensagem, "nova-loja abrir/receber");
+  assert(!r.mensagem.includes("a de antes"), r.mensagem);
+  assertEquals((await registroDoCofre(amb)).refresh, antes.refresh);
+  assertEquals(amb.api.banco.troca.escritas, 0);
+  assertEquals(await entradaDaTroca(amb), null);
+});
+
+Deno.test("trocar-dono fase 2: IKT06 de dentro da transação (a nova bloqueada depois da fase 1, ou já era a dona e está bloqueada) = NÃO, nada gravado, entrada apagada", async () => {
+  // bloqueada entre a fase 1 e o código
+  const amb = await pedidoDeTroca();
+  amb.api.banco.troca.bloqueada = true;
+  amb.entradas.push(CODIGO);
+  let r = await receberATroca(amb);
+  assertEquals(r.veredito, "NÃO", r.mensagem);
+  assertStringIncludes(r.mensagem, RECUSA_IKT06);
+  assertStringIncludes(r.mensagem, "IKT06");
+  assertEquals(amb.api.banco.dono, "alvo");
+  assertEquals(await entradaDaTroca(amb), null, "recusa: não apagou");
+  // já era a dona (fora do desenho entre as fases) e está bloqueada
+  const ja = await pedidoDeTroca();
+  ja.api.banco.troca.eANova = true;
+  ja.api.banco.troca.bloqueada = true;
+  ja.entradas.push(CODIGO);
+  r = await receberATroca(ja);
+  assertEquals(r.veredito, "NÃO", r.mensagem);
+  assertStringIncludes(r.mensagem, RECUSA_IKT06);
+  // já era a dona, sem bloqueio: SIM sem gravar
+  const igual = await pedidoDeTroca();
+  igual.api.banco.troca.eANova = true;
+  igual.entradas.push(CODIGO);
+  r = await receberATroca(igual);
+  assertEquals(r.veredito, "SIM", r.mensagem);
+  assertStringIncludes(r.mensagem, "nada foi gravado");
+});
+
+Deno.test("trocar-dono fase 2: releitura divergente ou escrita sem resposta = INCERTO (nunca SIM); a entrada do e-mail é apagada", async () => {
+  const diverge = await pedidoDeTroca({ troca: { releituraDiverge: true } });
+  diverge.entradas.push(CODIGO);
+  let r = await receberATroca(diverge);
+  assertEquals(r.veredito, "INCERTO", r.mensagem);
+  assertStringIncludes(r.mensagem, "conferir");
+  assertEquals(await entradaDaTroca(diverge), null);
+  const cai = await pedidoDeTroca({ troca: { escritaCai: true } });
+  cai.entradas.push(CODIGO);
+  r = await receberATroca(cai);
+  assertEquals(r.veredito, "INCERTO", r.mensagem);
+  assertEquals(await entradaDaTroca(cai), null);
+  const estado = JSON.parse(await lerArquivoDeEstado(cai.pasta));
+  assertEquals(estado.passos["trocar-dono"].veredito, "INCERTO");
+});
+
+Deno.test("trocar-dono fase 2: o e-mail inteiro nunca aparece na saída, na mensagem, no estado nem no cofre da loja (sucesso, recusa e erro com o e-mail)", async () => {
+  const procurar = async (amb, r) => {
+    const tudo = [
+      amb.saida.join("\n"),
+      r.mensagem,
+      await lerArquivoDeEstado(amb.pasta),
+      await amb.deps.cofre.ler(SLUG),
+    ]
+      .join("\n")
+      .toLowerCase();
+    assert(!tudo.includes(EMAIL_NOVA), "o e-mail vazou");
+  };
+  const ok = await pedidoDeTroca();
+  ok.entradas.push(CODIGO);
+  const r1 = await receberATroca(ok);
+  assertEquals(r1.veredito, "SIM", r1.mensagem);
+  assertStringIncludes(r1.mensagem, MASCARADO);
+  await procurar(ok, r1);
+  const nao = await pedidoDeTroca();
+  nao.api.banco.troca.confirmada = false;
+  nao.entradas.push(CODIGO);
+  const r2 = await receberATroca(nao);
+  assertEquals(r2.veredito, "NÃO", r2.mensagem);
+  await procurar(nao, r2);
+  // o banco devolve um erro que ecoa o e-mail
+  const eco = await pedidoDeTroca();
+  const responder = eco.api.banco.responder;
+  eco.api.banco.responder = (sql) => {
+    if (sql === sqlTrocarDono(EMAIL_NOVA))
+      throw Object.assign(new Error(`falhou perto de '${EMAIL_NOVA}'`), {
+        sqlstate: "XX000",
+      });
+    return responder(sql);
+  };
+  eco.entradas.push(CODIGO);
+  const r3 = await receberATroca(eco);
+  assertEquals(r3.veredito, "NÃO", r3.mensagem);
+  await procurar(eco, r3);
+});
+
+Deno.test("trocar-dono fase 2: sem --aplicar é ENSAIO — nem o código é pedido, 0 chamadas, cofres intactos", async () => {
+  const amb = await pedidoDeTroca();
+  const n = amb.api.chamadas.length;
+  const g = amb.deps.cofre.gravacoes;
+  const entrada = await amb.deps.cofreDaTroca.ler(SLUG);
+  const apagou = amb.deps.cofreDaTroca.apagamentos;
+  const r = await executarPasso(
+    pedido("trocar-dono", { aplicar: false, receber: true }),
+    amb.deps,
+  );
+  assertStringIncludes(r.mensagem, "ENSAIO");
+  assertStringIncludes(r.mensagem, "código");
+  assert(r.veredito !== "SIM");
+  assertEquals(amb.api.chamadas.length, n);
+  assertEquals(amb.deps.cofre.gravacoes, g);
+  assertEquals(await amb.deps.cofreDaTroca.ler(SLUG), entrada);
+  assertEquals(amb.deps.cofreDaTroca.apagamentos, apagou);
+  assertEquals(amb.entradas.length, 0);
+});
+
+Deno.test("trocar-dono: o e-mail de um pedido VENCIDO (ou ilegível) sai do cofre da troca no começo de qualquer passo com --aplicar da loja, conferir incluído; dentro do prazo fica", async () => {
+  // dentro do prazo, outro passo da loja não apaga
+  const amb = await pedidoDeTroca();
+  let c = await executarPasso(pedido("conferir"), amb.deps);
+  assert(c.veredito !== undefined);
+  assert((await entradaDaTroca(amb)) !== null, "apagou dentro do prazo");
+  // venceu: o conferir (só leitura no banco) apaga o e-mail do PC
+  amb.relogio.t += PRAZO_DA_TROCA_MS;
+  c = await executarPasso(pedido("conferir"), amb.deps);
+  assertEquals(await entradaDaTroca(amb), null, "o conferir não limpou");
+  // venceu: qualquer outro passo com --aplicar também limpa
+  const outro = await pedidoDeTroca();
+  outro.relogio.t += PRAZO_DA_TROCA_MS;
+  const d = await executarPasso(pedido("definir-dono"), outro.deps);
+  assert(d.veredito !== undefined);
+  assertEquals(await entradaDaTroca(outro), null, "o definir-dono não limpou");
+  // ilegível: sai também, mesmo dentro do prazo
+  const ruim = await pedidoDeTroca();
+  await ruim.deps.cofreDaTroca.gravar(SLUG, "{nao e json");
+  await executarPasso(pedido("conferir"), ruim.deps);
+  assertEquals(await ruim.deps.cofreDaTroca.ler(SLUG), null);
+  // sem --aplicar (ensaio) nada é apagado
+  const ensaio = await pedidoDeTroca();
+  ensaio.relogio.t += PRAZO_DA_TROCA_MS;
+  const n = ensaio.deps.cofreDaTroca.apagamentos;
+  await executarPasso(pedido("conferir", { aplicar: false }), ensaio.deps);
+  assertEquals(ensaio.deps.cofreDaTroca.apagamentos, n);
+});
+
+Deno.test("receber comum com troca de dona aberta e no prazo = NÃO sem pedir o código (manda usar trocar-dono --receber); depois do prazo volta a valer", async () => {
+  const amb = await pedidoDeTroca();
+  const antes = await amb.deps.cofre.ler(SLUG);
+  amb.entradas.push(CODIGO);
+  const n = tokenPosts(amb);
+  const r = await executarPasso(pedido("receber"), amb.deps);
+  assertEquals(r.veredito, "NÃO", r.mensagem);
+  assertStringIncludes(r.mensagem, PROXIMO_DA_TROCA);
+  assertEquals(amb.entradas.length, 1, "pediu o código");
+  assertEquals(tokenPosts(amb), n, "trocou o código da troca");
+  assertEquals(await amb.deps.cofre.ler(SLUG), antes, "mexeu no cofre");
+  // vencido o pedido, o receber comum funciona como sempre
+  amb.relogio.t += PRAZO_DA_TROCA_MS;
+  const r2 = await executarPasso(pedido("receber"), amb.deps);
+  assertEquals(r2.veredito, "SIM", r2.mensagem);
 });
