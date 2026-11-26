@@ -844,6 +844,60 @@ export function idempotencyKeyJaUsado(corpoDoErro: unknown): boolean {
 }
 
 /**
+ * Pagar a si mesma (26/11/2026): a lojista nova testa a loja comprando dela
+ * mesma, logada com o MESMO e-mail da conta do Mercado Pago que recebe — e o
+ * MP não deixa a mesma conta pagar e receber. Sem isto ela lia "Não foi
+ * possível gerar a cobrança." e concluía que o app não funciona.
+ *
+ * A Orders API não documenta um código próprio para isso (a tabela de erros
+ * dela não cita pagador = recebedor). Os sinais aceitos são TEXTO do erro,
+ * lido em todos os formatos que o MP usa (`message` de topo, `errors[]
+ * .message`/`details[]`, `cause[].description`), sem diferenciar caixa:
+ *   - "Invalid users involved" — a doc de erros da integração VTEX do MP diz
+ *     que sai quando se tenta pagar com o mesmo usuário que cobra. ATENÇÃO: a
+ *     doc dos erros de token do cartão (145) e a referência de POST
+ *     /v1/payments (2034) usam a MESMA frase para usuário de teste misturado
+ *     com usuário real — o sinal é ambíguo, aceito por pedido do plano.
+ *   - uma MESMA frase citando "collector" junto de "payer" ou "customer" —
+ *     formato não confirmado em doc oficial; "Collector not allowed to
+ *     operate" (160), sem pagador, fica de fora.
+ * NÃO entra `cause[].code` 2062: a referência oficial de POST /v1/payments o
+ * documenta como "Invalid card token" — reconhecê-lo diria "mesma conta" a
+ * quem só tem um token de cartão vencido.
+ *
+ * Só 4xx que recusa a requisição: 401/403 são da credencial da loja
+ * (`respostaCredencialRecusada`), 408/409/423 são ambíguos (a cobrança pode
+ * existir) e 5xx/rede/2xx nunca chegam aqui — nesses, a resposta de hoje vale
+ * mais que a frase. Só devolve sim/não: o texto do MP (que pode ecoar e-mail
+ * do pagador) não vai para log nem para a resposta.
+ */
+export const MENSAGEM_PAGAR_A_SI_MESMA =
+  "O Mercado Pago não deixa a mesma conta pagar e receber. Para testar, entre na loja com outro e-mail e pague com outra conta.";
+
+const STATUS_FORA_DO_PAGAR_A_SI_MESMA = new Set([401, 403, 408, 409, 423]);
+
+function frasePagarASiMesma(frase: string): boolean {
+  const f = frase.toLowerCase();
+  if (f.includes("invalid users involved")) return true;
+  return f.includes("collector") && (f.includes("payer") || f.includes("customer"));
+}
+
+export function recusaPorPagarASiMesma(status: number, corpoDoErro: unknown): boolean {
+  if (!Number.isInteger(status) || status < 400 || status > 499) return false;
+  if (STATUS_FORA_DO_PAGAR_A_SI_MESMA.has(status)) return false;
+  if (!corpoDoErro || typeof corpoDoErro !== "object" || Array.isArray(corpoDoErro)) return false;
+  const corpo = corpoDoErro as Record<string, unknown>;
+  const frases: unknown[] = [
+    corpo.message,
+    ...listaDeErros(corpo.errors).flatMap(frasesDoErroDoMp),
+    ...listaDeErros(corpo.cause).map((causa) =>
+      causa && typeof causa === "object" ? (causa as Record<string, unknown>).description : undefined
+    ),
+  ];
+  return frases.some((frase) => typeof frase === "string" && frasePagarASiMesma(frase));
+}
+
+/**
  * Prefixo do SENTINELA que `criar-pagamento` grava na vaga (`gateway_
  * payment_id`) quando o MP responde 409 `idempotency_key_already_used`
  * (`idempotencyKeyJaUsado`, acima) — a cobrança da tentativa ANTERIOR pode

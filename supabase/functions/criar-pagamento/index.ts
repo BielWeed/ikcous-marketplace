@@ -132,6 +132,7 @@ import {
   limiteInferiorDoSentinela,
   mapearStatus,
   mapearStatusOrder,
+  MENSAGEM_PAGAR_A_SI_MESMA,
   metodoDeCartaoValido,
   minutosDaExpiracaoPix,
   montarCorpoCartaoOrders,
@@ -145,6 +146,7 @@ import {
   orderEhDeCartao,
   parcelasDaOrder,
   parcelasValidas,
+  recusaPorPagarASiMesma,
   resolverSentinela,
   sentinelaDaChave,
   tipoDeCartaoValido,
@@ -2887,6 +2889,14 @@ async function handler(
     return json({ error: MENSAGEM_CREDENCIAL_RECUSADA, terminal: true }, 503);
   };
 
+  // Pagar a si mesma (26/11/2026): a lojista testando a loja com o MESMO
+  // e-mail da conta do MP que recebe. Só a FRASE muda — status, ausência de
+  // `terminal` e o que cada chamador faz antes (soltar a reserva do cartão)
+  // são os da recusa de sempre. O sinal mora em `recusaPorPagarASiMesma`
+  // (`_shared/mercadopago.ts`), que só aceita 4xx que recusou a requisição.
+  // Vale igual para PIX e cartão.
+  const respostaPagarASiMesma = () => json({ error: MENSAGEM_PAGAR_A_SI_MESMA }, 502);
+
   // BLOQUEIO 1 da revisão (CHECKOUT-070): a detecção de ambiente pelo
   // PREFIXO do MP_ACCESS_TOKEN ("TEST-") era NÃO-DISCRIMINANTE — medido
   // contra o painel do MP que a aplicação criada escolhendo "API de
@@ -3018,7 +3028,10 @@ async function handler(
           fetchImpl: deps.fetchImpl,
         });
       }
-      if (!r.ok) return json({ error: r.erro }, 502);
+      if (!r.ok) {
+        if (recusaPorPagarASiMesma(r.status, r.corpoDoErro)) return respostaPagarASiMesma();
+        return json({ error: r.erro }, 502);
+      }
     }
 
     const extraido = extrairQrCode(r.order);
@@ -3571,6 +3584,7 @@ async function handler(
         // BLINDAGEM (02/10/2026): com a reserva antes do POST, "vaga livre"
         // virou "sentinela desta chamada" — é ele que sai aqui.
         await soltarReservaDestaChamada();
+        if (recusaPorPagarASiMesma(r.status, r.corpoDoErro)) return respostaPagarASiMesma();
         return json({ error: r.erro }, 502);
       }
       // Achado R6-P5 (7ª revisão de risco, 26/09/2026): REDE (status 0),
@@ -3614,6 +3628,7 @@ async function handler(
       // REQUISIÇÃO inteira — nada criado. Sem soltar a reserva, o pedido
       // ficaria preso em "cartão em análise" sem cobrança nenhuma.
       await soltarReservaDestaChamada();
+      if (recusaPorPagarASiMesma(r.status, r.corpoDoErro)) return respostaPagarASiMesma();
       return json({ error: r.erro }, 502);
     }
 

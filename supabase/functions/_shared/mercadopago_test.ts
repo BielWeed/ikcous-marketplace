@@ -30,6 +30,7 @@ import {
   idEhClassico,
   limiteInferiorDoSentinela,
   MAPA_STATUS_ORDER,
+  MENSAGEM_PAGAR_A_SI_MESMA,
   mapearStatus,
   mapearStatusOrder,
   MARGEM_LIBERAR_APOS_LIMITE_MS,
@@ -48,6 +49,7 @@ import {
   orderEhDeCartao,
   parcelasDaOrder,
   recusaLiberaAVaga,
+  recusaPorPagarASiMesma,
   resolverSentinela,
   TEMPO_LIMITE_MS,
   tipoDoPagamentoDaOrder,
@@ -3206,4 +3208,67 @@ Deno.test("R9 - consultarPagamento 2xx SEM id com o pagador no corpo: o log diz 
   semDadoPessoalR9(log, cru);
   assertStringIncludes(log, "mercadopago: resposta 2xx sem id");
   assertStringIncludes(log, "200");
+});
+
+// ── Pagar a si mesma (26/11/2026) ────────────────────────────────────────────
+// A lojista testa a loja comprando dela mesma, com o MESMO e-mail da conta do
+// MP que recebe, e o MP recusa. Os sinais aceitos são texto do erro; o código
+// 2062 da Payments API NÃO entra (a referência oficial o documenta como
+// "Invalid card token" — reconhecê-lo diria "mesma conta" a quem só tem um
+// token vencido).
+
+Deno.test("pagar a si mesma: a frase que volta ao app é a combinada, em português simples", () => {
+  assertEquals(
+    MENSAGEM_PAGAR_A_SI_MESMA,
+    "O Mercado Pago não deixa a mesma conta pagar e receber. Para testar, entre na loja com outro e-mail e pague com outra conta.",
+  );
+});
+
+for (
+  const [rotulo, corpo] of [
+    ["Orders: errors[].message 'Invalid users involved'", { errors: [{ code: "invalid_users", message: "Invalid users involved" }] }],
+    ["Orders: errors[].details com 'invalid users involved' em minúsculas", { errors: [{ code: "bad_request", details: ["invalid users involved"] }] }],
+    ["Payments: message de topo 'Invalid users involved.'", { message: "Invalid users involved.", error: "bad_request", status: 400, cause: [{ code: 2034 }] }],
+    ["Payments: cause[].description com collector + customer", { message: "bad request", cause: [{ code: 2062, description: "customer can't be equal to the collector" }] }],
+    ["message de topo com COLLECTOR + PAYER em caixa alta", { message: "PAYER AND COLLECTOR CANNOT BE THE SAME USER" }],
+    ["Orders: errors[].details com payer + collector", { errors: [{ code: "property_value", details: ["The payer and the collector must be different users"] }] }],
+  ] as const
+) {
+  Deno.test(`pagar a si mesma: reconhece ${rotulo}`, () => {
+    for (const status of [400, 402, 404, 422]) {
+      assertEquals(recusaPorPagarASiMesma(status, corpo), true, `status ${status}`);
+    }
+  });
+}
+
+for (
+  const [rotulo, corpo] of [
+    // A referência oficial de POST /v1/payments: 2062 = "Invalid card token".
+    ["2062 'Invalid card token' (Payments)", { message: "Invalid card token", cause: [{ code: 2062, description: "Invalid card token" }] }],
+    ["invalid_card_token (Orders)", { errors: [{ code: "invalid_card_token", message: "invalid card token" }] }],
+    ["'Collector not allowed to operate' (sem payer/customer)", { message: "Collector not allowed to operate" }],
+    ["payer.email recusado (sem collector)", { errors: [{ code: "property_value", message: "The domain provided in payer.email is not allowed" }] }],
+    ["collector_id como CHAVE, não como frase", { message: "invalid access token", collector_id: "conta-1", payer: { email: "a@b.c" } }],
+    ["'collector' e 'payer' em frases DIFERENTES", { errors: [{ code: "x", details: ["collector inválido", "payer.email ausente"] }] }],
+  ] as const
+) {
+  Deno.test(`pagar a si mesma: NÃO reconhece ${rotulo}`, () => {
+    assertEquals(recusaPorPagarASiMesma(400, corpo), false);
+  });
+}
+
+Deno.test("pagar a si mesma: status de credencial, ambíguo, 5xx, rede e 2xx ficam como hoje, mesmo com o sinal no corpo", () => {
+  const corpo = { errors: [{ code: "invalid_users", message: "Invalid users involved" }] };
+  for (const status of [0, 200, 201, 401, 403, 408, 409, 423, 429.5, 500, 502, 503]) {
+    assertEquals(recusaPorPagarASiMesma(status, corpo), false, `status ${status}`);
+  }
+});
+
+Deno.test("pagar a si mesma: corpo ausente, não-objeto ou lista não reconhece e não lança", () => {
+  for (const corpo of [undefined, null, "Invalid users involved", 2062, [], [{ message: "Invalid users involved" }]]) {
+    assertEquals(recusaPorPagarASiMesma(400, corpo), false, String(corpo));
+  }
+  // Campos com tipo errado são ignorados, nunca lançam.
+  assertEquals(recusaPorPagarASiMesma(400, { errors: "x", cause: 3, message: 7 }), false);
+  assertEquals(recusaPorPagarASiMesma(400, { errors: [null, 3, { details: [null, 5] }], cause: [null, "x"] }), false);
 });

@@ -47,8 +47,11 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 // O aviso diz a verdade sobre o teste: ligar vale para a loja inteira, o jeito
 // de conferir com a chave de produção é uma compra pequena com cartão REAL, e
 // cartão de teste só passa com a chave de teste (com a de produção é recusado).
+// Pagar a si mesma (26/11/2026): a compra de conferência NÃO pode sair da
+// mesma conta que recebe — o Mercado Pago recusa, e a lojista concluía que o
+// app não funciona. O aviso manda outro e-mail na loja e outra conta pagando.
 const TESTE_ANTES =
-  "Ao ligar, o cartão já aparece para todos os clientes. Para conferir, faça uma compra de valor baixo com um cartão seu e devolva o valor depois, no Mercado Pago. Cartão de teste só funciona com a chave de teste; com a chave de produção ele é recusado.";
+  "Ao ligar, o cartão já aparece para todos os clientes. Para conferir, faça uma compra de valor baixo e devolva o valor depois, no Mercado Pago. Atenção: o Mercado Pago não deixa a mesma conta pagar e receber. Por isso, entre na loja com outro e-mail (não o da sua conta do Mercado Pago) e pague com outra conta, por exemplo a de alguém da sua família. Cartão de teste só funciona com a chave de teste; com a chave de produção ele é recusado.";
 
 describe("Formas de pagamento — Cartão pelo app", () => {
   let raiz: Root;
@@ -138,6 +141,11 @@ describe("Formas de pagamento — Cartão pelo app", () => {
     expect(debito().getAttribute("data-state")).toBe("unchecked");
     expect(seletorDeParcelas()).toBeUndefined();
     expect(hospedeiro.textContent).toContain(TESTE_ANTES);
+    // Pagar a si mesma: nunca mais "com um cartão seu" sem o aviso da conta.
+    expect(hospedeiro.textContent).not.toContain("com um cartão seu");
+    expect(hospedeiro.textContent).toContain(
+      "o Mercado Pago não deixa a mesma conta pagar e receber",
+    );
     // Não manda mais fazer "pedido de teste antes de ligar": o interruptor liga
     // para a loja inteira e o cartão de teste é recusado com chave de produção.
     expect(hospedeiro.textContent).not.toContain("Antes de ligar");
