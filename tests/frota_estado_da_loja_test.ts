@@ -601,6 +601,130 @@ Deno.test("reabrir encerrada: só com REABRIR <id> exato; sem ele o comando acor
   assertStringIncludes(certo.saida[0], `p_base => '${SHA_A}'`);
 });
 
+// ---------------------------------------------------------------- depois de acordar (a corrida com a publicação)
+// 10:00 a instrução de acordar sai para a release A (pronta); 10:10 a frota publica a B com migration nova; 10:20 alguém roda a
+// instrução das 10:00: a porta aceita (ela não sabe qual release está no ar) e a loja volta servindo a B com o banco pronto só para a A.
+
+const DEPOIS = [
+  "--depois-de-acordar",
+  "--loja",
+  LOJA,
+  "--ref",
+  REF,
+  "--sha",
+  SHA_A,
+  "--base",
+  SHA_A,
+];
+
+Deno.test("acordar: a mensagem da instrução manda rodar o --depois-de-acordar com os argumentos exatos, como passo obrigatório", async () => {
+  const { d } = deps();
+  const r = await executar(ACORDAR, d);
+  assertEquals(r.codigo, 0, r.erros.join("\n"));
+  const msg = r.erros.find((l) => l.startsWith("Instrução válida até"));
+  assert(msg, r.erros.join("\n"));
+  assertStringIncludes(msg, "OBRIGATÓRIO");
+  assertStringIncludes(
+    msg,
+    `node scripts/frota/estado-da-loja.mjs --depois-de-acordar --loja ${LOJA} --ref ${REF} --sha ${SHA_B} --base ${SHA_A}`,
+  );
+  // adormecer não acorda nada: sem o passo pós-acordar
+  const ad = await executar(ADORMECER, deps().d);
+  assert(!ad.erros.join("\n").includes("--depois-de-acordar"));
+});
+
+Deno.test("depois de acordar, release igual à da instrução: OK (0), a prontidão da impressão vale e nada mais é lido", async () => {
+  const { d, lidas } = deps({ producao: SHA_A });
+  const r = await executar(DEPOIS, d);
+  assertEquals(r.codigo, 0, r.erros.join("\n"));
+  assertEquals(r.saida, []);
+  assertStringIncludes(r.erros.join("\n"), "OK");
+  assertEquals(lidas, { producao: 1, release: 0 });
+});
+
+Deno.test("depois de acordar, a release MUDOU e a loja está pronta para a nova: OK (0) com aviso; prontidão lida contra a release ATUAL", async () => {
+  const { d, lidas, chamadas } = deps({ producao: SHA_B });
+  const r = await executar(DEPOIS, d);
+  assertEquals(r.codigo, 0, r.erros.join("\n"));
+  assert(!temPorta(r), r.saida.join("\n"));
+  const erros = r.erros.join("\n");
+  assertStringIncludes(erros, "AVISO");
+  assertStringIncludes(erros, SHA_B);
+  assertEquals(lidas, { producao: 1, release: 1 });
+  assertEquals(chamadas.migrationList, [REF]);
+  assert(
+    chamadas.listarMigrationsNoSha.includes(SHA_B),
+    "a prontidão é para a release que está no ar agora",
+  );
+});
+
+Deno.test("O CASO QUE DÓI: depois de acordar a release mudou (B trouxe migration nova) e o banco não tem: CRÍTICO, saída 1, conserto DELA e o adormecer de volta", async () => {
+  const { d } = deps({
+    producao: SHA_B,
+    release: { ledger: [M1], evidencia: false },
+  });
+  const r = await executar(DEPOIS, d);
+  assertEquals(r.codigo, 1);
+  assert(!temPorta(r), r.saida.join("\n"));
+  const erros = r.erros.join("\n");
+  assertStringIncludes(erros, "CRÍTICO");
+  assertStringIncludes(erros, "no ar");
+  assertStringIncludes(erros, M2);
+  assertStringIncludes(
+    erros,
+    `node scripts/frota/estado-da-loja.mjs --adormecer --loja ${LOJA} --ref ${REF} --sha ${SHA_B}`,
+  );
+  const cmds = r.saida.filter((l) => l.startsWith("gh "));
+  assert(cmds.length >= 1, r.saida.join("\n"));
+  for (const c of cmds) assertStringIncludes(c, '-f "projeto=loja-teste"');
+  // A loja JÁ está no ar: nada do texto do --acordar ("não acorda", "nada foi impresso").
+  assertStringIncludes(erros, "JÁ está no ar");
+  assert(!erros.includes("Nada foi impresso"), erros);
+  assert(!erros.includes("não acorda"), erros);
+});
+
+Deno.test("depois de acordar, prontidão ilegível (ledger ou árvore da release) com a release mudada: falha (1), nunca OK, com o texto de quem JÁ está no ar", async () => {
+  for (const release of [
+    { falhaNoLedger: new Error("ECONNRESET") },
+    { falhaNasMigrations: new Error("git falhou") },
+  ]) {
+    const { d } = deps({ producao: SHA_B, release });
+    const r = await executar(DEPOIS, d);
+    const nome = JSON.stringify(Object.keys(release));
+    assertEquals(r.codigo, 1, nome);
+    const erros = r.erros.join("\n");
+    assertStringIncludes(erros, "CRÍTICO");
+    assert(!/^OK/m.test(erros), erros);
+    assertStringIncludes(erros, "JÁ está no ar");
+    assert(!erros.includes("sem ela a loja não acorda"), erros);
+    assert(!erros.includes("Nada foi impresso"), erros);
+  }
+});
+
+Deno.test("depois de acordar, produção ilegível: falha (1), nunca OK, e a prontidão nem começa", async () => {
+  const { d, lidas } = deps({ producao: new TypeError("fetch failed") });
+  const r = await executar(DEPOIS, d);
+  assertEquals(r.codigo, 1);
+  assertEquals(r.saida, []);
+  const erros = r.erros.join("\n");
+  assertStringIncludes(erros, "fetch failed");
+  assertStringIncludes(erros, "CRÍTICO");
+  assertEquals(lidas.release, 0);
+});
+
+Deno.test("depois de acordar: uso errado (sem --base, sem --sha, com --motivo) sai 2 sem ler a rede", async () => {
+  for (const argv of [
+    DEPOIS.slice(0, -2),
+    DEPOIS.filter((_, i) => i !== 5 && i !== 6),
+    [...DEPOIS, "--motivo", MOTIVO],
+  ]) {
+    const { d, lidas } = deps();
+    const r = await executar(argv, d);
+    assertEquals(r.codigo, 2, argv.join(" "));
+    assertEquals(lidas, { producao: 0, release: 0 });
+  }
+});
+
 // ---------------------------------------------------------------- peças
 
 Deno.test("literal: dobra a aspa simples, null vira null e caractere nulo é recusado", () => {

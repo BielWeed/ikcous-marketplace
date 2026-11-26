@@ -42,6 +42,7 @@ import {
   lerCanais,
   lerVeredicto,
   lojasDoInventario,
+  lojasQueAcordaramNaPublicacao,
   migrationsDaRelease,
   problemasAntesDoPromote,
   publicarRelease,
@@ -1947,6 +1948,7 @@ function releaseComSondasReais({
   aliasesDepois,
   falha = false,
   foraDoAr = new Map(),
+  lojasExtras = [],
 }) {
   const { d, chamadas } = deps();
   const conferencias = [];
@@ -1967,6 +1969,7 @@ function releaseComSondasReais({
     [DOM_IKCOUS, { ref: CAF, titulo: "IKCOUS", canonico: DOM_IKCOUS }],
     [DOM_SAVY, { ref: SAVY, titulo: "Savy", canonico: DOM_SAVY }],
     [DOM_SAVY_EXTRA, { ref: SAVY, titulo: "Savy", canonico: DOM_SAVY }],
+    ...lojasExtras,
   ]);
   const opcoesDeSonda = {
     pedirVercel: true,
@@ -1992,7 +1995,8 @@ function releaseComSondasReais({
       // Página própria do porteiro (L8): loja adormecida/encerrada, sem banco.
       const parada = foraDoAr.get(hostname);
       if (parada) {
-        if (pathname === "/version.json") return new Response(versao());
+        if (pathname === "/version.json")
+          return new Response(versao(parada.shaServido ?? SHA));
         return new Response("<title>Loja fechada</title><p>fechada</p>", {
           status: parada.status,
           headers: {
@@ -12766,26 +12770,44 @@ function releaseComLojaParada({
   nuncaDormem = [{ ref: CAF }, { ref: SAVY }],
   semListaNuncaDormem = false,
   aliasesDepois = null,
+  acordaDepoisDoPromote = false,
+  shaAntesDoPromote = SHA,
 } = {}) {
   // A loja NOVA (e o endereço dela) só existe quando é ela que está parada.
   const comNova = dominio === DOM_DORMINDO;
   const aliases = comNova
     ? [DOM_IKCOUS, DOM_SAVY, DOM_DORMINDO]
     : [DOM_IKCOUS, DOM_SAVY];
+  const parados = new Map([
+    [
+      dominio,
+      {
+        status: estado === "encerrada" ? 410 : 503,
+        headers: cabecalhosForaDoAr(estado, ref),
+        // A release que o front servia no endereço dela antes do promote.
+        shaServido: shaAntesDoPromote,
+      },
+    ],
+  ]);
   const montado = releaseComSondasReais({
     aliasesAntes: aliases,
     aliasesDepois: aliasesDepois ?? aliases,
-    foraDoAr: new Map([
-      [
-        dominio,
-        {
-          status: estado === "encerrada" ? 410 : 503,
-          headers: cabecalhosForaDoAr(estado, ref),
-        },
-      ],
-    ]),
+    foraDoAr: parados,
+    // A mesma loja, ativa: só responde assim quando sai de `parados`.
+    lojasExtras: [
+      [dominio, { ref, titulo: "Loja Dormindo", canonico: dominio }],
+    ],
   });
   const { d } = montado;
+  // A corrida: alguém roda uma instrução de acordar ENQUANTO a publicação roda;
+  // a sondagem depois do promote já vê a loja ativa.
+  if (acordaDepoisDoPromote) {
+    const promover = d.promover;
+    d.promover = async (id) => {
+      await promover(id);
+      parados.delete(dominio);
+    };
+  }
   // A política do harness não tem a lista; só entra quando o cenário pede.
   if (!semListaNuncaDormem)
     d.politica = { ...d.politica, lojasQueNuncaDormem: nuncaDormem };
@@ -13018,6 +13040,171 @@ Deno.test("L8 pós-promote: o endereço da loja parada que some depois do promot
     r.relatorio,
     `${DOM_DORMINDO}: endereço de loja sondado antes do promote, mas não depois`,
   );
+});
+
+Deno.test("L8 pós-promote: loja que estava adormecida no inventário e ACORDOU durante a publicação reprova, com prioridade alta e o --depois-de-acordar pronto", async () => {
+  // Antes do promote o front servia a release anterior (BASE): é a do --sha
+  // de uma instrução de acordar impressa antes da publicação.
+  const { d, chamadas, conferencias } = releaseComLojaParada({
+    acordaDepoisDoPromote: true,
+    shaAntesDoPromote: BASE,
+  });
+  const r = await executar(d, true);
+  assertEquals(chamadas.promover, [DPL]);
+  // A conferência da frota depois do promote sozinha NÃO vê o problema: a loja
+  // acordada responde OK. (A de antes reprova só por ENDERECO_ANTIGO, que o
+  // portão aceita: o endereço servia a BASE.)
+  assertEquals(conferencias.length, 2);
+  assertEquals(conferencias[1].ok, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  const bloqueio = r.bloqueios.find((b) => b.alvo.includes(NOVA));
+  assert(bloqueio, JSON.stringify(r.bloqueios));
+  assertStringIncludes(bloqueio.motivo, "acordou durante a publicação");
+  assertStringIncludes(r.relatorio, "PRIORIDADE ALTA");
+  assertStringIncludes(r.relatorio, DOM_DORMINDO);
+  assertStringIncludes(
+    r.relatorio,
+    "node scripts/frota/estado-da-loja.mjs --depois-de-acordar --loja",
+  );
+  assertStringIncludes(
+    r.relatorio,
+    `--ref ${NOVA} --sha ${BASE} --base ${BASE}`,
+  );
+  // Não é caso de rollback da frota: a saída é conferir/consertar a loja.
+  assert(!r.relatorio.includes("vercel rollback"), r.relatorio);
+});
+
+Deno.test("L8 pós-promote, 2ª rodada do --promover: o inventário JÁ servia a release; o comando NÃO sugere --sha da própria release (diria OK sem conferir), sai o marcador", async () => {
+  // A 1ª rodada promoveu a release e a conferência falhou; a instrução de
+  // acordar foi impressa para a anterior e rodada entre o inventário e o
+  // promote da 2ª rodada. O version.json da loja já servia a release.
+  const { d, chamadas } = releaseComLojaParada({
+    acordaDepoisDoPromote: true,
+    shaAntesDoPromote: SHA,
+  });
+  const r = await executar(d, true);
+  assertEquals(chamadas.promover, [DPL]);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertStringIncludes(
+    r.relatorio,
+    `--ref ${NOVA} --sha <--sha da instrução de acordar> --base <--base da instrução de acordar>`,
+  );
+  assert(!r.relatorio.includes(`--sha ${SHA}`), r.relatorio);
+});
+
+Deno.test("L8 pós-promote: loja que CONTINUA fora do ar depois do promote não gera nada novo", async () => {
+  const { d } = releaseComLojaParada();
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 0, r.relatorio);
+  assertEquals(r.bloqueios, []);
+  assert(!r.relatorio.includes("acordou durante a publicação"), r.relatorio);
+  assert(!r.relatorio.includes("PRIORIDADE ALTA"), r.relatorio);
+});
+
+Deno.test("L8 pós-promote: com loja fora do ar no inventário e a conferência depois SEM resultados legíveis, reprova (nunca OK no escuro)", async () => {
+  const { d } = releaseComLojaParada();
+  const conferir = d.conferirFrota;
+  d.conferirFrota = async (p, sha, inv, op) => {
+    const r = await conferir(p, sha, inv, op);
+    return inv ? r : { ...r, resultados: undefined };
+  };
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assert(
+    r.bloqueios.some((b) => b.motivo.includes("fora do ar")),
+    JSON.stringify(r.bloqueios),
+  );
+});
+
+Deno.test("L8 lojasQueAcordaramNaPublicacao: --sha da instrução = release servida ANTES do promote; ativa só pela ficha da própria loja; sha ambíguo fica para preencher", () => {
+  const parada = {
+    ref: NOVA,
+    estado: "adormecida",
+    dominios: ["a.example", "b.example"],
+  };
+  const inventario = (shaA, shaB) => ({
+    sondas: [
+      sondaForaDoAr("a.example", NOVA, "adormecida", shaA),
+      sondaForaDoAr("b.example", NOVA, "adormecida", shaB),
+    ],
+  });
+  const ativa = (dominio, ref = NOVA) => ({
+    dominio,
+    esperado: null,
+    foraDoAr: null,
+    ficha: sonda(dominio, ref, "Loja").ficha,
+  });
+  const continuaParada = {
+    dominio: "a.example",
+    esperado: null,
+    foraDoAr: { ref: NOVA, estado: "adormecida" },
+    ficha: sondaForaDoAr("a.example", NOVA, "adormecida").ficha,
+  };
+  // nenhuma loja fora do ar: nem olha os resultados
+  assertEquals(
+    lojasQueAcordaramNaPublicacao([], {}, inventario(BASE, BASE), SHA),
+    {
+      lojas: [],
+      erro: null,
+    },
+  );
+  // continua fora do ar, ou outro ref ativo no endereço: nada
+  assertEquals(
+    lojasQueAcordaramNaPublicacao(
+      [parada],
+      { resultados: [continuaParada, ativa("b.example", SAVY)] },
+      inventario(BASE, BASE),
+      SHA,
+    ).lojas,
+    [],
+  );
+  // acordou em um dos endereços: o sha de antes do promote vai para --sha/--base
+  assertEquals(
+    lojasQueAcordaramNaPublicacao(
+      [parada],
+      { resultados: [continuaParada, ativa("b.example")] },
+      inventario(BASE, BASE),
+      SHA,
+    ).lojas,
+    [
+      {
+        ref: NOVA,
+        estado: "adormecida",
+        dominios: ["b.example"],
+        shaAntes: BASE,
+      },
+    ],
+  );
+  // os endereços dela serviam releases diferentes antes: não chuta
+  assertEquals(
+    lojasQueAcordaramNaPublicacao(
+      [parada],
+      { resultados: [ativa("a.example")] },
+      inventario(BASE, OUTRO),
+      SHA,
+    ).lojas[0].shaAntes,
+    null,
+  );
+  // antes do promote já servia a PRÓPRIA release (2ª rodada do --promover):
+  // --sha = release faria o --depois-de-acordar dizer OK sem conferir. Ambíguo.
+  assertEquals(
+    lojasQueAcordaramNaPublicacao(
+      [parada],
+      { resultados: [ativa("a.example")] },
+      inventario(SHA, SHA),
+      SHA,
+    ).lojas[0].shaAntes,
+    null,
+  );
+  // resultados ilegíveis com loja fora do ar: erro, nunca "nenhuma acordou"
+  const semResultados = lojasQueAcordaramNaPublicacao(
+    [parada],
+    { ok: true },
+    inventario(BASE, BASE),
+    SHA,
+  );
+  assertEquals(semResultados.lojas, []);
+  assertStringIncludes(semResultados.erro, NOVA);
 });
 
 Deno.test("L8 problemasAntesDoPromote: ADORMECIDA e ENCERRADA passam; ESTADO_INESPERADO junto delas bloqueia", () => {

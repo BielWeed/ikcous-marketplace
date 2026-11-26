@@ -13,6 +13,7 @@
  *   node scripts/frota/estado-da-loja.mjs --adormecer --loja <id> --ref <ref> --sha <40hex> --motivo "por <nome>: <texto>"
  *   node scripts/frota/estado-da-loja.mjs --acordar --loja <id> --ref <ref> --base <40hex> --sha <40hex> --motivo "por <nome>: <texto>" [--confirmar "REABRIR <id>"]
  *   node scripts/frota/estado-da-loja.mjs --encerrar --loja <id> --ref <ref> --sha <40hex> --motivo "por <nome>: <texto>" --confirmar "ENCERRAR <id>" [--de ativa|adormecida]
+ *   node scripts/frota/estado-da-loja.mjs --depois-de-acordar --loja <id> --ref <ref> --sha <o --sha da instrução> --base <a --base da instrução>
  *
  * O que cada um confere ANTES de imprimir:
  *   - todos: politica.json lojasQueNuncaDormem existe, não é vazia e só tem refs de 20 letras (sem ela nada sai, nem o --ver);
@@ -25,7 +26,13 @@
  *   - --acordar: a prontidão DAQUELA loja contra a release atual (a mesma régua do publicar-release.mjs), com a base = a release em que
  *     ela dormiu. Faltando migration, prova de objetos ou function, NÃO imprime a chamada: imprime os comandos de conserto só dela.
  * A instrução impressa vale 30 minutos (p_valido_ate); a porta recusa a vencida e a que vale mais de 1 hora.
- * Saída: 0 = instrução impressa; 1 = recusado ou loja não pronta (inclui falha de rede); 2 = uso errado.
+ *
+ * --depois-de-acordar (OBRIGATÓRIO depois de rodar a instrução de acordar): a porta não sabe qual release está no ar (p_sha é só
+ * gravado), então uma instrução impressa para a release A e rodada depois que a frota publicou a B acorda a loja servindo a B com o
+ * banco pronto só para a A. Este passo lê a release em produção AGORA: igual ao --sha da instrução, a prontidão conferida na
+ * impressão vale; diferente, roda a prontidão da loja para a release atual a partir da --base. Não imprime SQL.
+ * Saída: 0 = instrução impressa (no --depois-de-acordar: loja pronta para o que está no ar); 1 = recusado ou loja não pronta
+ * (inclui falha de rede); 2 = uso errado.
  * Roteiro: docs/runbooks/estado-de-vida-da-loja.md.
  */
 
@@ -56,7 +63,13 @@ const RE_MOTIVO = /^[\p{L}\p{N} .,:;()/-]{3,200}$/u;
 const RE_AUTOR = /^[Pp]or \p{L}[\p{L}\p{N} .-]{0,39}\p{L}: \S.{2,}$/u;
 /** Quanto tempo a instrução impressa vale (a porta recusa acima de 60). */
 export const VALIDADE_MINUTOS = 30;
-const ACOES = new Set(["--ver", "--adormecer", "--acordar", "--encerrar"]);
+const ACOES = new Set([
+  "--ver",
+  "--adormecer",
+  "--acordar",
+  "--encerrar",
+  "--depois-de-acordar",
+]);
 const OPCOES = new Set([
   "--loja",
   "--ref",
@@ -78,6 +91,7 @@ const FORMA = {
     exige: ["loja", "ref", "sha", "motivo", "confirmar"],
     aceita: ["de"],
   },
+  "depois-de-acordar": { exige: ["loja", "ref", "sha", "base"], aceita: [] },
 };
 
 class UsoErrado extends Error {}
@@ -91,7 +105,7 @@ export function lerArgumentos(argv) {
     if (ACOES.has(x)) {
       if (acao)
         throw new UsoErrado(
-          "uma ação só (--ver, --adormecer, --acordar ou --encerrar)",
+          "uma ação só (--ver, --adormecer, --acordar, --encerrar ou --depois-de-acordar)",
         );
       acao = x.slice(2);
     } else if (OPCOES.has(x)) {
@@ -105,7 +119,7 @@ export function lerArgumentos(argv) {
   }
   if (!acao)
     throw new UsoErrado(
-      "falta a ação (--ver, --adormecer, --acordar ou --encerrar)",
+      "falta a ação (--ver, --adormecer, --acordar, --encerrar ou --depois-de-acordar)",
     );
   const forma = FORMA[acao];
   for (const k of forma.exige)
@@ -287,6 +301,7 @@ export async function executar(argv, deps) {
     return recusa(
       `o ref ${a.ref} é de uma loja que nunca dorme (politica.json lojasQueNuncaDormem): IKCOUS e Savy ficam sempre ativas`,
     );
+  if (a.acao === "depois-de-acordar") return depoisDeAcordar(a, deps);
   // Nunca pôr para dormir (nem encerrar) uma loja que o --acordar recusaria por falta de canal: ela ficaria fora do ar mesmo pagando.
   const semVolta = semCaminhoDeVolta(a, deps);
   if (semVolta) {
@@ -349,10 +364,74 @@ export async function executar(argv, deps) {
       validoAte,
     }),
   );
+  const posAcordar =
+    a.acao === "acordar"
+      ? ` OBRIGATÓRIO logo depois de rodar: ${comandoDepoisDeAcordar(a)} (se a release em produção mudou desde agora, ele confere o banco da loja para a nova; saída 1 = a loja está no ar com o banco atrasado).`
+      : "";
   erros.push(
-    `Instrução válida até ${validoAte}: rode pelo MCP no banco onde a caderneta de produção mora. Depois, em 60 s, confira o endereço da loja (docs/runbooks/estado-de-vida-da-loja.md).`,
+    `Instrução válida até ${validoAte}: rode pelo MCP no banco onde a caderneta de produção mora. Depois, em 60 s, confira o endereço da loja (docs/runbooks/estado-de-vida-da-loja.md).${posAcordar}`,
   );
   return { codigo: 0, saida, erros };
+}
+
+/** O passo pós-acordar com os argumentos exatos da instrução (os valores já passaram pelos formatos de lerArgumentos). */
+export function comandoDepoisDeAcordar({ loja, ref, sha, base }) {
+  return `node scripts/frota/estado-da-loja.mjs --depois-de-acordar --loja ${loja} --ref ${ref} --sha ${sha} --base ${base}`;
+}
+
+/**
+ * --depois-de-acordar: a release em produção AGORA contra a da instrução (--sha). Igual: a prontidão conferida na impressão vale.
+ * Diferente: a prontidão da loja para a release atual, a partir da --base (a mesma conferirProntidao do --acordar). Toda leitura que
+ * falha é falha (saída 1), nunca "OK": a loja já está no ar.
+ */
+async function depoisDeAcordar(a, deps) {
+  const saida = [];
+  const erros = [];
+  const critico = (texto, oQueFazer, shaNoAr) =>
+    `CRÍTICO: a loja ${a.loja} (${a.ref}) está no ar e ${texto}. Clientes podem estar vendo a loja quebrada AGORA. ${oQueFazer}; se não resolver logo, ponha a loja para dormir de novo: node scripts/frota/estado-da-loja.mjs --adormecer --loja ${a.loja} --ref ${a.ref} --sha ${shaNoAr} --motivo "por <seu nome>: banco atrasado depois de acordar"`;
+  let emProducao;
+  try {
+    emProducao = await deps.lerReleaseEmProducao(deps.politica);
+  } catch (e) {
+    erros.push(
+      critico(
+        `não deu para ler a release em produção (${e.message}): não há como provar que o banco dela está pronto para o que está no ar`,
+        "Rode este comando de novo em 1 minuto, até sair OK",
+        "<codeSha no ar>",
+      ),
+    );
+    return { codigo: 1, saida, erros };
+  }
+  if (emProducao === a.sha) {
+    erros.push(
+      `OK: a produção ainda serve ${a.sha}, a release da instrução de acordar: a prontidão conferida quando a instrução foi impressa vale.`,
+    );
+    return { codigo: 0, saida, erros };
+  }
+  const daProntidao = [];
+  const pronta = await conferirProntidao(
+    { ...a, sha: emProducao },
+    deps,
+    daProntidao,
+    saida,
+    { jaNoAr: true },
+  );
+  if (pronta) {
+    erros.push(
+      ...daProntidao,
+      `AVISO: a release em produção mudou de ${a.sha} (a da instrução de acordar) para ${emProducao}, e o banco da loja ${a.loja} (${a.ref}) está pronto para a ${emProducao}. OK.`,
+    );
+    return { codigo: 0, saida, erros };
+  }
+  erros.push(
+    critico(
+      `serve a release ${emProducao}, mas o banco dela só foi conferido para a ${a.sha} (a da instrução de acordar) e NÃO está provado pronto para a ${emProducao}`,
+      "Faça o conserto abaixo (um passo por vez) e rode este comando de novo até sair OK",
+      emProducao,
+    ),
+    ...daProntidao,
+  );
+  return { codigo: 1, saida, erros };
 }
 
 /** A loja só tem front (politica.json lojasSemBackendGerenciado): sem prontidão de banco, como no publicar-release. */
@@ -372,8 +451,17 @@ export function semCaminhoDeVolta(a, deps) {
   return `RECUSADO: a loja ${a.loja} (${a.ref}) não tem canal de backend em scripts/frota/canais-de-backend.json: sem canal não há como conferir nem consertar o banco dela, e uma loja que não se acorda não se põe para dormir nem se encerra (cadastre o canal antes)`;
 }
 
-/** --acordar: a loja só volta se estiver pronta para a release atual, com base = a release em que dormiu. */
-async function conferirProntidao(a, deps, erros, saida) {
+/**
+ * --acordar: a loja só volta se estiver pronta para a release atual, com base = a release em que dormiu. `jaNoAr` (--depois-de-acordar):
+ * a mesma régua, com o texto de quem já está no ar (o caminho é consertar o banco ou adormecê-la, não "acordar de novo").
+ */
+async function conferirProntidao(
+  a,
+  deps,
+  erros,
+  saida,
+  { jaNoAr = false } = {},
+) {
   const canais = deps.canais;
   if (soFront(a, deps)) {
     erros.push(
@@ -414,7 +502,9 @@ async function conferirProntidao(a, deps, erros, saida) {
     const naoProntas = pront.funcoes.filter((f) => f.estado === "NAO_PRONTA");
     if (pront.problemas.length === 0 && naoProntas.length === 0) return true;
     erros.push(
-      `NÃO PRONTA: a loja ${a.loja} (${a.ref}) dormiu na release ${a.base} e não está pronta para a ${a.sha}. Nada foi impresso para o banco da caderneta; primeiro o conserto abaixo (um passo por vez), depois rode este comando de novo.`,
+      jaNoAr
+        ? `NÃO PRONTA: a loja ${a.loja} (${a.ref}) JÁ está no ar servindo a ${a.sha}, e o banco dela (conferido desde a ${a.base}) não está pronto para essa release. O caminho é consertar o banco (os comandos abaixo, um passo por vez, rodando este comando de novo até sair OK) ou pôr a loja para dormir de novo com o --adormecer acima.`
+        : `NÃO PRONTA: a loja ${a.loja} (${a.ref}) dormiu na release ${a.base} e não está pronta para a ${a.sha}. Nada foi impresso para o banco da caderneta; primeiro o conserto abaixo (um passo por vez), depois rode este comando de novo.`,
       ...pront.problemas.map((p) => `- ${p}`),
       ...naoProntas.map((f) => `- function ${f.nome}: ${f.motivo}`),
       ...ctx.problemas.map((p) => `- ${p.alvo}: ${p.motivo}`),
@@ -423,7 +513,9 @@ async function conferirProntidao(a, deps, erros, saida) {
     return false;
   } catch (e) {
     erros.push(
-      `RECUSADO: a prontidão da loja ${a.loja} não foi lida (${e?.message ?? e}): sem ela a loja não acorda`,
+      jaNoAr
+        ? `FALHOU: a prontidão da loja ${a.loja} não foi lida (${e?.message ?? e}): a loja JÁ está no ar e nada prova que o banco dela está pronto; rode este comando de novo ou ponha a loja para dormir com o --adormecer acima`
+        : `RECUSADO: a prontidão da loja ${a.loja} não foi lida (${e?.message ?? e}): sem ela a loja não acorda`,
     );
     return false;
   }
@@ -435,6 +527,7 @@ const USO = [
   '  node scripts/frota/estado-da-loja.mjs --adormecer --loja <id> --ref <ref> --sha <40hex> --motivo "por <nome>: <texto>"',
   '  node scripts/frota/estado-da-loja.mjs --acordar --loja <id> --ref <ref> --base <40hex> --sha <40hex> --motivo "por <nome>: <texto>" [--confirmar "REABRIR <id>"]',
   '  node scripts/frota/estado-da-loja.mjs --encerrar --loja <id> --ref <ref> --sha <40hex> --motivo "por <nome>: <texto>" --confirmar "ENCERRAR <id>" [--de ativa|adormecida]',
+  "  node scripts/frota/estado-da-loja.mjs --depois-de-acordar --loja <id> --ref <ref> --sha <o --sha da instrução> --base <a --base da instrução>",
 ].join("\n");
 
 /** As dependências reais: política e canais do disco, version.json pela rede, prontidão pelos CLIs (só se --acordar pedir). */

@@ -1945,6 +1945,13 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
    SHA (versao, isolamento e canonico de TODOS os enderecos, e a producao oficial = o deployment
    promovido). Saida 0 = publicado e conferido.
 
+   Saida 1 com a secao "PRIORIDADE ALTA — loja que acordou durante a publicação" (texto exato do relatorio) NAO pede
+   rollback da frota: uma loja que estava fora do ar acordou no meio da publicacao e nao passou
+   pela prontidao desta release. Rode, para cada loja listada, o
+   `node scripts/frota/estado-da-loja.mjs --depois-de-acordar ...` que o relatorio imprime (veja
+   [estado de vida da loja](estado-de-vida-da-loja.md)). Rollback so se o relatorio tambem
+   mostrar falha da conferencia da frota (por exemplo LOJA_TROCADA).
+
    O comando `--promover` impresso pelo ensaio vem sem `--json`: acrescente `--json <arquivo>`
    antes de rodar a primeira promocao. Preserve o PRIMEIRO JSON e use OUTRO nome de arquivo
    em cada repeticao para nao sobrescreve-lo.
