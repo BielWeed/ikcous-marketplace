@@ -19,6 +19,10 @@
  *  SIMULAR       mostra pausa_em em "mudaria" e "atual" sem gravar (xmin/ctid iguais); o corpo da gestao velha igual ao guardado nao inventa mudanca.
  *  RECUO         a porta VELHA (o corpo da 20261399998000) recusa o corpo da gestao nova com code 22023, message 'campo_nao_permitido' e DETAIL
  *                'campo: pausa_em', sem gravar nada; o MESMO corpo sem pausa_em grava. E' o contrato que o app de gestao usa para reenviar.
+ *  MIGRATION     reaplicar (2x, CRLF) = mesmo estado (OID, ACL, corpo) com o cartao, o dia e a chave intactos; o rollback COMUM devolve a porta da 20261399998000
+ *                (md5 565f82...) e MANTEM a coluna com os dias; o DESTRUTIVO exige confirmacao, o comum antes e nenhuma funcao citando pausa_em, e so apaga a
+ *                coluna; depois dele a 20261399998000 volta a ser reaplicavel; retrato do resto igual; pre-voo recusa SEM escrever; pos-voo recusa cada
+ *                estrago; falha no meio numa conexao SEM BEGIN nao deixa nada; lock_timeout de 5 s.
  *  MUTANTES      pausa_em obrigatoria, ausente que nao apaga, data solta, pausa_em validada antes de autenticar, pausa_em fora do laco das datas (so o cast),
  *                lista branca sem a opcional, simulacao sem pausa_em: cada um FICA VERMELHO na expectativa certa.
  *
@@ -28,9 +32,15 @@
 
 const P = require("./prova-de-objeto-novo.cjs");
 const { assert, prova, md5, sha256 } = P;
+const { Client } = require("pg");
+const { lerDatabaseUrlEfemera } = require("./efemero.cjs");
 
 const NOME = "20261590000000_a_loja_guarda_o_dia_da_pausa_do_teste.sql";
 const MIGRATION = P.lerMigration(NOME);
+const ROLLBACK_SQL = P.lerMigration(`rollback-manual-${NOME}`);
+const DESTRUTIVO_SQL = P.lerMigration(`rollback-manual-destrutivo-${NOME}`);
+/** O destrutivo como o dono o roda: com a confirmacao na MESMA transacao. */
+const DESTRUTIVO_CONFIRMADO = `SET LOCAL app.confirmo_apagar_pausa_em = 'APAGAR';\n${DESTRUTIVO_SQL}`;
 const ANTERIOR = P.lerMigration(
   "20261399998000_a_loja_recebe_o_plano_por_porta_unica.sql",
 );
@@ -510,6 +520,508 @@ for (const [nome, sabotar, esperado] of MUTANTES) {
     },
   );
 }
+
+// ---- A MIGRATION: reaplicar, rollback comum e destrutivo, retrato, pre-voo, pos-voo, atomicidade, trava ---------------------------------------------
+const nova = async () => {
+  const c = new Client({ connectionString: lerDatabaseUrlEfemera() });
+  await c.connect();
+  return c;
+};
+const estado = async (c = C()) => {
+  const q = async (sql) => (await c.query(sql)).rows;
+  return {
+    porta: await q(
+      `SELECT p.oid::text AS oid, md5(replace(p.prosrc, chr(13), '')) AS md5, p.prosecdef, p.provolatile, p.proconfig::text AS cfg,
+              p.proacl::text AS acl, pg_get_userbyid(p.proowner) AS dono, pg_get_function_arguments(p.oid) AS args,
+              obj_description(p.oid, 'pg_proc') AS comentario
+         FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'assinatura_da_loja_gravar' ORDER BY 1`,
+    ),
+    colunas: await q(
+      `SELECT a.attname, format_type(a.atttypid, a.atttypmod) AS tipo, a.attnotnull, pg_get_expr(d.adbin, d.adrelid) AS padrao,
+              col_description(a.attrelid, a.attnum) AS comentario
+         FROM pg_attribute a LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+        WHERE a.attrelid = 'public.assinatura_da_loja'::regclass AND a.attnum > 0 AND NOT a.attisdropped ORDER BY a.attname`,
+    ),
+    tabela: await q(
+      "SELECT relacl::text AS acl, relrowsecurity AS rls FROM pg_class WHERE oid = 'public.assinatura_da_loja'::regclass",
+    ),
+  };
+};
+const hPorta = async (c = C()) =>
+  (
+    await c.query(
+      `SELECT md5(replace(prosrc, chr(13), '')) AS h FROM pg_proc WHERE oid = to_regprocedure('${GRAVAR}')`,
+    )
+  ).rows[0]?.h ?? null;
+const temColuna = async (c = C()) =>
+  (
+    await c.query(
+      "SELECT count(*)::int AS n FROM pg_attribute WHERE attrelid = 'public.assinatura_da_loja'::regclass AND attname = 'pausa_em' AND NOT attisdropped",
+    )
+  ).rows[0].n === 1;
+const cartaoCru = async () =>
+  JSON.stringify(
+    (
+      await C().query(
+        "SELECT to_jsonb(a) - 'pausa_em' AS l FROM public.assinatura_da_loja a ORDER BY id",
+      )
+    ).rows,
+  );
+const chaveGuardada = async () =>
+  (await C().query("SELECT chave_hash FROM public.assinatura_da_loja_chave"))
+    .rows;
+/** O cartao como ja estava numa loja: com recursos, observacao e um dia guardado. */
+const semearCartao = async () => {
+  await limpar();
+  await C().query(
+    `INSERT INTO public.assinatura_da_loja (id, plano, status, ciclo, valor_mensal, teste_ate, proxima_cobranca_em, pausa_em, recursos, observacao, atualizado_em)
+     VALUES (1, 'Pro', 'atrasada', 'mensal', 250, '2026-12-03', '2026-12-03', '2026-12-07', ARRAY['x'], 'nota', '2026-11-20T10:00:00Z')`,
+  );
+};
+/** Colunas de TODAS as tabelas de public (menos a coluna nova): a migration nao pode mexer em mais nada. */
+const colunasDePublic = async () =>
+  (
+    await C().query(
+      `SELECT c.relname || '.' || a.attname || ':' || format_type(a.atttypid, a.atttypmod) || ':' || a.attnotnull AS x
+         FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid
+        WHERE c.relnamespace = 'public'::regnamespace AND c.relkind IN ('r', 'v', 'm', 'p') AND a.attnum > 0 AND NOT a.attisdropped
+          AND NOT (c.relname = 'assinatura_da_loja' AND a.attname = 'pausa_em')
+        ORDER BY 1`,
+    )
+  ).rows.map((r) => r.x);
+
+prova(
+  "MIGRATION: reaplicar (2x) e em CRLF deixa o MESMO estado (OID, corpo, ACL, coluna); o cartao, o dia guardado e a chave ficam como estavam",
+  async () => {
+    await P.emTransacao(async () => {
+      await semearCartao();
+      const antes = await estado();
+      const cartaoAntes = await cartaoCru();
+      await C().query(MIGRATION);
+      await C().query(P.emCRLF(MIGRATION));
+      assert.deepEqual(await estado(), antes);
+      assert.equal(await cartaoCru(), cartaoAntes);
+      assert.equal(await pausa(), "2026-12-07");
+      assert.deepEqual(await chaveGuardada(), [{ chave_hash: HASH }]);
+      assert.equal(
+        gravou(await gravar(CHAVE, com(NOVA, { atualizado_em: carimbo(50) }))),
+        true,
+        "a chave guardada deixou de abrir a porta",
+      );
+    });
+  },
+);
+
+prova(
+  "ROLLBACK COMUM: a porta volta a da 20261399998000 (md5 565f82..., ACL, comentario) e MANTEM a coluna com o dia; repetir e reaplicar e' seguro",
+  async () => {
+    await P.emTransacao(async () => {
+      await semearCartao();
+      const cartaoAntes = await cartaoCru();
+      const oidAntes = (await estado()).porta[0].oid;
+      await C().query(ROLLBACK_SQL);
+      const e = await estado();
+      assert.equal(e.porta.length, 1);
+      assert.equal(e.porta[0].md5, H_VELHO);
+      assert.equal(e.porta[0].oid, oidAntes, "CREATE OR REPLACE guarda o OID");
+      assert.equal(e.porta[0].cfg, '{"search_path=public, pg_temp"}');
+      assert.equal(e.porta[0].prosecdef, true);
+      assert.match(
+        e.porta[0].comentario,
+        /^Porta unica do app de gestao: grava o cartao da assinatura \(10 campos, lista branca;/,
+      );
+      assert.equal(await temColuna(), true, "o comum apagou a coluna");
+      assert.equal(
+        await pausa(),
+        "2026-12-07",
+        "o comum perdeu o dia guardado",
+      );
+      assert.equal(await cartaoCru(), cartaoAntes);
+      assert.deepEqual(await chaveGuardada(), [{ chave_hash: HASH }]);
+      // a porta velha: recusa a gestao nova (o recuo) e grava a velha sem tocar o dia
+      const x = await gravar(CHAVE, com(NOVA, { atualizado_em: carimbo(51) }));
+      assert.equal(x.detalhe, "campo: pausa_em");
+      assert.equal(
+        gravou(await gravar(CHAVE, com(VELHA, { atualizado_em: carimbo(52) }))),
+        true,
+      );
+      assert.equal(await pausa(), "2026-12-07", "a porta velha tocou a coluna");
+      const depois = await estado();
+      await C().query(ROLLBACK_SQL); // no-op
+      assert.deepEqual(await estado(), depois);
+      await C().query(MIGRATION);
+      assert.equal(await hPorta(), H_NOVO);
+      assert.equal(await pausa(), "2026-12-07");
+    });
+  },
+);
+
+prova(
+  "ROLLBACK COMUM: recusa (B1) porta com corpo desconhecido, sobrecarga e pausa_em de outro tipo, sem mudar nada",
+  async () => {
+    const casos = [
+      [
+        "porta com corpo desconhecido",
+        "CREATE OR REPLACE FUNCTION public.assinatura_da_loja_gravar(p_chave text, p_dados jsonb, p_simular boolean DEFAULT false) RETURNS jsonb LANGUAGE sql AS $$ SELECT '{}'::jsonb $$",
+        /nao e o da 20261590000000 nem o da 20261399998000/,
+      ],
+      [
+        "sobrecarga da porta",
+        "CREATE FUNCTION public.assinatura_da_loja_gravar(p_x text) RETURNS void LANGUAGE sql AS $$ SELECT $$",
+        /ausente ou com sobrecarga/,
+      ],
+      [
+        "pausa_em de outro tipo",
+        "ALTER TABLE public.assinatura_da_loja ALTER COLUMN pausa_em TYPE text",
+        /nao tem a forma de 13 nem a de 14 colunas/,
+      ],
+    ];
+    for (const [nome, sql, padrao] of casos) {
+      await P.emTransacao(async () => {
+        await C().query(sql);
+        const antes = await estado();
+        const r = await P.recusa(ROLLBACK_SQL, padrao);
+        assert.match(r.erro, /B1_BASELINE_DIVERGENT/, nome);
+        assert.deepEqual(await estado(), antes, `${nome}: deixou rastro`);
+      });
+    }
+  },
+);
+
+prova(
+  "ROLLBACK DESTRUTIVO: exige confirmacao, o comum antes e nenhuma funcao citando pausa_em; depois so a coluna some, o cartao e a chave ficam, e a 20261399998000 volta a ser reaplicavel",
+  async () => {
+    await P.emTransacao(async () => {
+      await semearCartao();
+      await P.recusa(DESTRUTIVO_SQL, /PAUSA_SO_COM_O_DONO/);
+      await P.recusa(DESTRUTIVO_CONFIRMADO, /PAUSA_ROLLBACK_COMUM_PRIMEIRO/);
+      assert.equal(await temColuna(), true);
+      await C().query(ROLLBACK_SQL);
+      // uma funcao de outro lote que le a coluna: recusa (o plpgsql e o sql nao registram dependencia de coluna no corpo)
+      await C().query(
+        "CREATE FUNCTION public.le_o_dia_da_pausa_de_prova() RETURNS date LANGUAGE sql STABLE AS $$ SELECT pausa_em FROM public.assinatura_da_loja WHERE id = 1 $$",
+      );
+      await P.recusa(
+        DESTRUTIVO_CONFIRMADO,
+        /PAUSA_EM_USO: .*le_o_dia_da_pausa_de_prova/,
+      );
+      assert.equal(await temColuna(), true, "recusou mas apagou");
+      await C().query("DROP FUNCTION public.le_o_dia_da_pausa_de_prova()");
+      const cartaoAntes = await cartaoCru();
+      await C().query(DESTRUTIVO_CONFIRMADO);
+      assert.equal(await temColuna(), false);
+      assert.equal(
+        await cartaoCru(),
+        cartaoAntes,
+        "o destrutivo mexeu no resto do cartao",
+      );
+      assert.deepEqual(await chaveGuardada(), [{ chave_hash: HASH }]);
+      assert.equal(await hPorta(), H_VELHO);
+      await C().query(DESTRUTIVO_CONFIRMADO); // de novo: no-op
+      assert.equal(await temColuna(), false);
+      // a 20261399998000 volta a ser reaplicavel (o pre-voo dela exige as 13 colunas) e a porta velha grava
+      await C().query(ANTERIOR);
+      assert.equal(await hPorta(), H_VELHO);
+      assert.equal(
+        gravou(await gravar(CHAVE, com(VELHA, { atualizado_em: carimbo(53) }))),
+        true,
+      );
+      // e a migration volta: a coluna renasce vazia, o resto do cartao fica
+      await C().query(MIGRATION);
+      assert.equal(await hPorta(), H_NOVO);
+      assert.equal(await pausa(), null);
+    });
+  },
+);
+
+prova(
+  "RETRATO: fora a coluna e a porta, NADA muda - funcoes (OID, corpo, ACL), ACL das tabelas, politicas, gatilhos, restricoes e colunas iguais com, sem e reaplicada",
+  async () => {
+    await P.emTransacao(async () => {
+      const alvo = { funcoes: ["assinatura_da_loja_gravar"] };
+      const comMig = { r: await P.retrato(alvo), c: await colunasDePublic() };
+      await C().query(ROLLBACK_SQL);
+      await C().query(DESTRUTIVO_CONFIRMADO);
+      const semMig = { r: await P.retrato(alvo), c: await colunasDePublic() };
+      await C().query(MIGRATION);
+      const depois = { r: await P.retrato(alvo), c: await colunasDePublic() };
+      assert.deepEqual(semMig, comMig, "a migration mudou algo que ja existia");
+      assert.deepEqual(depois, comMig, "reaplicar mudou algo que ja existia");
+    });
+  },
+);
+
+prova(
+  "PRE-VOO: recusa SEM escrever (porta estranha, ausente ou sobrecarregada, pausa_em de outro tipo ou NOT NULL, cartao torto, definir_chave estranha, tabela da chave ausente)",
+  async () => {
+    const voltar = async () => {
+      await C().query(ROLLBACK_SQL);
+      await C().query(DESTRUTIVO_CONFIRMADO);
+    };
+    const casos = [
+      [
+        "corpo desconhecido da porta",
+        async () => {
+          await voltar();
+          await C().query(
+            "CREATE OR REPLACE FUNCTION public.assinatura_da_loja_gravar(p_chave text, p_dados jsonb, p_simular boolean DEFAULT false) RETURNS jsonb LANGUAGE sql AS $$ SELECT '{}'::jsonb $$",
+          );
+        },
+        /assinatura_da_loja_gravar\(text, jsonb, boolean\) tem corpo desconhecido/,
+      ],
+      [
+        "porta ausente",
+        async () => {
+          await voltar();
+          await C().query(`DROP FUNCTION ${GRAVAR}`);
+        },
+        /nao existe \(ausente ou com outra assinatura\)/,
+      ],
+      [
+        "sobrecarga da porta",
+        async () => {
+          await C().query(
+            "CREATE FUNCTION public.assinatura_da_loja_gravar(p_x text) RETURNS void LANGUAGE sql AS $$ SELECT $$",
+          );
+        },
+        /tem sobrecarga em public/,
+      ],
+      [
+        "pausa_em de outro tipo",
+        async () => {
+          await voltar();
+          await C().query(
+            "ALTER TABLE public.assinatura_da_loja ADD COLUMN pausa_em text",
+          );
+        },
+        /nao tem a forma da 20261177000000 nem a desta migration/,
+      ],
+      [
+        "pausa_em NOT NULL",
+        async () => {
+          await C().query("DELETE FROM public.assinatura_da_loja");
+          await C().query(
+            "ALTER TABLE public.assinatura_da_loja ALTER COLUMN pausa_em SET NOT NULL",
+          );
+        },
+        /nao tem a forma da 20261177000000 nem a desta migration/,
+      ],
+      [
+        "cartao com coluna a mais",
+        async () => {
+          await C().query(
+            "ALTER TABLE public.assinatura_da_loja ADD COLUMN extra text",
+          );
+        },
+        /nao tem a forma da 20261177000000 nem a desta migration/,
+      ],
+      [
+        "definir_chave com corpo desconhecido",
+        async () => {
+          await C().query(
+            "CREATE OR REPLACE FUNCTION public.assinatura_da_loja_definir_chave(p_hash text, p_substituir boolean DEFAULT false) RETURNS void LANGUAGE sql AS $$ SELECT $$",
+          );
+        },
+        /assinatura_da_loja_definir_chave\(text, boolean\) tem corpo desconhecido/,
+      ],
+      [
+        "tabela da chave ausente",
+        async () => {
+          await C().query("DROP TABLE public.assinatura_da_loja_chave");
+        },
+        /assinatura_da_loja_chave ausente ou com outra forma/,
+      ],
+    ];
+    for (const [nome, montar, padrao] of casos) {
+      await P.emTransacao(async () => {
+        await montar();
+        const antes = await estado();
+        const r = await P.recusa(MIGRATION, padrao);
+        assert.match(r.erro, /B1_BASELINE_DIVERGENT/, nome);
+        assert.deepEqual(
+          await estado(),
+          antes,
+          `${nome}: o pre-voo recusou mas deixou rastro`,
+        );
+      });
+    }
+  },
+);
+
+prova(
+  "POS-VOO: passa no estado da migration e recusa cada estrago (coluna, padrao, ACL, PUBLIC, corpo, atributos, sobrecarga, definir_chave e leitor)",
+  async () => {
+    const bloco = P.blocoDe(MIGRATION, "conferencia_20261590000000");
+    await P.emTransacao(async () => {
+      assert.equal(
+        await P.aplicar(bloco),
+        null,
+        "o pos-voo devia passar no estado da migration",
+      );
+    });
+    const estragos = [
+      [
+        "padrao na coluna",
+        "ALTER TABLE public.assinatura_da_loja ALTER COLUMN pausa_em SET DEFAULT current_date",
+      ],
+      [
+        "coluna NOT NULL",
+        "DELETE FROM public.assinatura_da_loja; ALTER TABLE public.assinatura_da_loja ALTER COLUMN pausa_em SET NOT NULL",
+      ],
+      [
+        "coluna de outro tipo",
+        "ALTER TABLE public.assinatura_da_loja ALTER COLUMN pausa_em TYPE timestamptz",
+      ],
+      [
+        "coluna a mais",
+        "ALTER TABLE public.assinatura_da_loja ADD COLUMN extra text",
+      ],
+      [
+        "a porta ao service_role",
+        `GRANT EXECUTE ON FUNCTION ${GRAVAR} TO service_role`,
+      ],
+      ["a porta a PUBLIC", `GRANT EXECUTE ON FUNCTION ${GRAVAR} TO PUBLIC`],
+      ["a porta sem o anon", `REVOKE EXECUTE ON FUNCTION ${GRAVAR} FROM anon`],
+      [
+        "a porta sem o authenticated",
+        `REVOKE EXECUTE ON FUNCTION ${GRAVAR} FROM authenticated`,
+      ],
+      [
+        "corpo da porta trocado",
+        "CREATE OR REPLACE FUNCTION public.assinatura_da_loja_gravar(p_chave text, p_dados jsonb, p_simular boolean DEFAULT false) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $f$ BEGIN RETURN '{}'::jsonb; END; $f$",
+      ],
+      [
+        "search_path da porta",
+        `ALTER FUNCTION ${GRAVAR} SET search_path = public`,
+      ],
+      [
+        "porta como SECURITY INVOKER",
+        `ALTER FUNCTION ${GRAVAR} SECURITY INVOKER`,
+      ],
+      ["porta STABLE", `ALTER FUNCTION ${GRAVAR} STABLE`],
+      [
+        "sobrecarga da porta",
+        "CREATE FUNCTION public.assinatura_da_loja_gravar(p_x text) RETURNS void LANGUAGE sql AS $f$ SELECT $f$",
+      ],
+      [
+        "definir_chave trocada",
+        "CREATE OR REPLACE FUNCTION public.assinatura_da_loja_definir_chave(p_hash text, p_substituir boolean DEFAULT false) RETURNS void LANGUAGE sql AS $f$ SELECT $f$",
+      ],
+      [
+        "leitor trocado",
+        "CREATE OR REPLACE FUNCTION public.assinatura_da_loja_ler() RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path TO 'public' AS $f$ BEGIN RETURN NULL; END; $f$",
+      ],
+    ];
+    for (const [nome, sql] of estragos) {
+      await P.emTransacao(async () => {
+        await C().query(sql);
+        const r = await P.recusa(bloco, /B2_POSVOO_DIVERGENTE/);
+        assert.ok(r, nome);
+      });
+    }
+  },
+);
+
+prova(
+  "ATOMICIDADE: pos-voo que falha numa conexao SEM BEGIN desfaz o arquivo inteiro (nem a coluna, nem a porta nova ficam)",
+  async () => {
+    const dono = await nova();
+    try {
+      await dono.query("BEGIN");
+      await dono.query(ROLLBACK_SQL);
+      await dono.query(DESTRUTIVO_CONFIRMADO);
+      await dono.query("COMMIT"); // estado "antes", de verdade
+      assert.equal(await temColuna(dono), false);
+      const sabotada = MIGRATION.replace(
+        `IS DISTINCT FROM '${H_NOVO}' THEN`,
+        `IS DISTINCT FROM '${"0".repeat(32)}' THEN`,
+      );
+      assert.notEqual(sabotada, MIGRATION);
+      let erro;
+      try {
+        await dono.query(sabotada);
+      } catch (e) {
+        erro = e;
+      }
+      assert.ok(erro, "o arquivo sabotado devia falhar no pos-voo");
+      assert.match(erro.message, /B2_POSVOO_DIVERGENTE/);
+      assert.equal(
+        await temColuna(dono),
+        false,
+        "a falha no fim deixou a coluna",
+      );
+      assert.equal(
+        await hPorta(dono),
+        H_VELHO,
+        "a falha no fim deixou a porta nova",
+      );
+    } finally {
+      await dono.query("ROLLBACK").catch(() => {});
+      await dono.query("BEGIN");
+      await dono.query(MIGRATION);
+      await dono.query("COMMIT");
+      await dono.end();
+    }
+    const ok = await nova();
+    try {
+      assert.equal(
+        await hPorta(ok),
+        H_NOVO,
+        "a migration nao foi restaurada no clone",
+      );
+      assert.equal(await temColuna(ok), true);
+    } finally {
+      await ok.end();
+    }
+  },
+);
+
+prova(
+  "TRAVA: uma leitura em voo do cartao faz a migration FALHAR LIMPA no lock_timeout de 5 s (55P03) sem mudar nada, e depois aplica",
+  async () => {
+    const c2 = await nova();
+    const c1 = await nova();
+    try {
+      await c2.query("BEGIN");
+      await c2.query("SELECT count(*) FROM public.assinatura_da_loja"); // segura ACCESS SHARE
+      await c1.query("BEGIN");
+      const antes = await estado(c1);
+      const t0 = Date.now();
+      let erro;
+      try {
+        await c1.query(MIGRATION);
+      } catch (e) {
+        erro = e;
+      }
+      const espera = Date.now() - t0;
+      await c1.query("ROLLBACK");
+      assert.ok(
+        erro,
+        "a migration devia falhar no lock_timeout, nao travar nem passar",
+      );
+      assert.equal(
+        erro.code,
+        "55P03",
+        `esperava lock_not_available, veio ${erro.code}: ${erro.message}`,
+      );
+      assert.ok(
+        espera >= 4000 && espera < 15000,
+        `esperou ${espera} ms (esperado ~5 s)`,
+      );
+      assert.deepEqual(await estado(c1), antes);
+      await c2.query("ROLLBACK");
+      await c1.query("BEGIN");
+      await c1.query(MIGRATION);
+      assert.equal(await hPorta(c1), H_NOVO);
+      await c1.query("ROLLBACK");
+    } finally {
+      await c2.query("ROLLBACK").catch(() => {});
+      await c1.query("ROLLBACK").catch(() => {});
+      await c2.end().catch(() => {});
+      await c1.end().catch(() => {});
+    }
+  },
+);
 
 (async () => {
   await P.conectar();

@@ -1,5 +1,4 @@
 // @ts-nocheck
-/* eslint-disable security/detect-object-injection -- os indices vem de listas fechadas deste arquivo, nunca de entrada de rede. */
 /* eslint-disable security/detect-unsafe-regex, security/detect-non-literal-regexp -- as regexes leem o texto fixo e versionado de uma migration (sem entrada de fora), então não há ReDoS possível; mesma razão dos outros testes migration_*. */
 // A LOJA GUARDA O DIA DA PAUSA DO TESTE — leitura do TEXTO da 20261590000000 (sucessora da porta da 20261399998000).
 // O COMPORTAMENTO (gestao velha de 10 chaves, gestao nova de 11, ausente apaga, a data torta recusada, a simulacao, o erro exato da porta velha,
@@ -21,6 +20,7 @@ import {
 
 const require = createRequire(import.meta.url);
 const {
+  avaliarFase0,
   detectarTransacaoExplicita,
   removerRuido,
 } = require("../scripts/db-prove-rollback.cjs");
@@ -36,6 +36,8 @@ const lerMig = (arq: string) =>
   );
 const migration = lerMig(NOME);
 const anterior = lerMig(ANTERIOR);
+const rollback = lerMig(`rollback-manual-${NOME}`);
+const destrutivo = lerMig(`rollback-manual-destrutivo-${NOME}`);
 
 const md5 = (s: string) => createHash("md5").update(s).digest("hex");
 const norm = (s: string) => s.replace(/\s+/g, " ").trim();
@@ -359,4 +361,104 @@ Deno.test("20261590: os tipos do app conhecem a coluna (Row anulavel; Insert e U
     parte("Update"),
     "          pausa_em?: string | null;\n",
   );
+});
+
+Deno.test("20261590: o par passa a Fase 0 do db-prove-rollback e nenhum dos dois rollbacks abre transacao propria", () => {
+  const r = avaliarFase0({
+    sqlMigration: migration,
+    sqlRollback: rollback,
+    temRollback: true,
+  });
+  assertEquals(r.recusado, false, `motivos: ${(r.motivos || []).join("; ")}`);
+  for (const [rotulo, sql] of [
+    ["rollback", rollback],
+    ["destrutivo", destrutivo],
+  ]) {
+    const t = detectarTransacaoExplicita(removerRuido(sql));
+    assertEquals(t.achados, [], `${rotulo}: ${t.achados.join("/")}`);
+    assert(!sql.includes("\r"), `${rotulo}: LF`);
+    assertStringIncludes(sql, "SET LOCAL lock_timeout = '5s';");
+  }
+});
+
+Deno.test("20261590: o rollback COMUM devolve a porta da 20261399998000 BYTE A BYTE (texto, ACL e comentario) e MANTEM a coluna", () => {
+  // o CREATE OR REPLACE inteiro (cabecalho + corpo) e' o da anterior, letra por letra
+  const texto = (sql: string) => {
+    const i = sql.indexOf(
+      "CREATE OR REPLACE FUNCTION public.assinatura_da_loja_gravar(",
+    );
+    const a = sql.indexOf("AS $function$", i);
+    return sql.slice(i, sql.indexOf("$function$;", a) + "$function$;".length);
+  };
+  assertEquals(texto(rollback), texto(anterior));
+  assertEquals(md5(corpoDe(rollback, "assinatura_da_loja_gravar")), H_ANTERIOR);
+  for (const linha of [
+    "REVOKE ALL ON FUNCTION public.assinatura_da_loja_gravar(text, jsonb, boolean) FROM PUBLIC, anon, authenticated, service_role;",
+    "GRANT EXECUTE ON FUNCTION public.assinatura_da_loja_gravar(text, jsonb, boolean) TO anon, authenticated;",
+  ])
+    assertEquals(contar(rollback, linha), 1, linha);
+  const comentario = (sql: string) =>
+    /COMMENT ON FUNCTION public\.assinatura_da_loja_gravar\(text, jsonb, boolean\) IS '[^']*';/.exec(
+      sql,
+    )?.[0];
+  assertEquals(comentario(rollback), comentario(anterior));
+  // so a porta: nada apagado (a coluna e os dias guardados ficam), nada escrito
+  const cod = soComandos(rollback);
+  assert(
+    !/\bDROP\b|\bALTER\b|\bDELETE\b|\bTRUNCATE\b|\bUPDATE\b|\bINSERT\b/i.test(
+      cod,
+    ),
+  );
+  assertEquals(
+    [...rollback.matchAll(/CREATE OR REPLACE FUNCTION public\.(\w+)\(/g)].map(
+      (m) => m[1],
+    ),
+    ["assinatura_da_loja_gravar"],
+  );
+  const pre = blocoDo(rollback, "preflight_rollback_20261590000000");
+  assertStringIncludes(pre, "B1_BASELINE_DIVERGENT");
+  assertEquals(contar(pre, `'${H_NOVO}'`), 1);
+  assertEquals(contar(pre, `'${H_ANTERIOR}'`), 1);
+  assert(
+    rollback.indexOf(pre) < rollback.indexOf("CREATE OR REPLACE FUNCTION"),
+  );
+  const conf = blocoDo(rollback, "conferencia_rollback_20261590000000");
+  assertEquals(contar(conf, `'${H_ANTERIOR}'`), 1);
+  assertEquals(contar(conf, `'${H_NOVO}'`), 0);
+  assertStringIncludes(rollback, "MANTEM");
+  assertStringIncludes(
+    rollback.trimEnd().split("\n").pop() ?? "",
+    "NOTIFY pgrst, 'reload schema';",
+  );
+});
+
+Deno.test("20261590: o rollback DESTRUTIVO so apaga a coluna, so com confirmacao, so depois do comum e so se nenhuma funcao ainda le pausa_em", () => {
+  const cod = soComandos(destrutivo);
+  const drops = [...cod.matchAll(/ALTER\s+TABLE[^;]*;|DROP[^;]*;/gi)].map((m) =>
+    norm(m[0]),
+  );
+  assertEquals(drops, [
+    "ALTER TABLE public.assinatura_da_loja DROP COLUMN IF EXISTS pausa_em;",
+  ]);
+  assert(!/CASCADE/i.test(semComentario(destrutivo)), "sem CASCADE");
+  assert(!/CREATE|GRANT|REVOKE|DELETE|UPDATE|INSERT|TRUNCATE/i.test(cod));
+  const pre = blocoDo(destrutivo, "destrutivo_20261590000000");
+  assert(
+    destrutivo.indexOf(pre) <
+      destrutivo.indexOf("ALTER TABLE public.assinatura_da_loja DROP COLUMN"),
+  );
+  assertStringIncludes(
+    pre,
+    "current_setting('app.confirmo_apagar_pausa_em', true)",
+  );
+  assertStringIncludes(pre, "'APAGAR'");
+  // a porta tem de ter voltado a da 20261399998000 (o comum antes)
+  assertEquals(contar(pre, `'${H_ANTERIOR}'`), 1);
+  assertStringIncludes(pre, "PAUSA_ROLLBACK_COMUM_PRIMEIRO");
+  // nenhuma funcao (de qualquer lote) pode continuar lendo a coluna
+  assertStringIncludes(pre, "prosrc");
+  assertStringIncludes(pre, "pausa_em");
+  const conf = blocoDo(destrutivo, "conferencia_destrutivo_20261590000000");
+  assertStringIncludes(conf, `'${TREZE}'`);
+  assertStringIncludes(destrutivo, "SO COM O DONO");
 });
