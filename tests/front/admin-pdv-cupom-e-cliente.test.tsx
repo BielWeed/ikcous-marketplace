@@ -208,7 +208,7 @@ describe("AdminPdvView — CupomDaVenda e ClienteDaVenda (C3.2)", () => {
       if (nome === "buscar_por_codigo_barras") {
         return { data: respostaDoCodigo(params.p_codigo), error: null };
       }
-      if (nome === "get_admin_customers_paged") {
+      if (nome === "buscar_clientes_do_balcao") {
         const termo = (params.p_search as string).toLowerCase();
         if (termo.includes("silva")) {
           // Nome comum: o banco acha 143, a página 0 traz só as 8 mais novas.

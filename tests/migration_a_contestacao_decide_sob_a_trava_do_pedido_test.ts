@@ -797,6 +797,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/o-livro-de-registro-desfazer-ensaio-viva.cjs",
     // 20261540: a loja nova nasce com a ficha (linha id = 1 e a marca no catalogo; porteiro, identidade e pix acham a ficha; linha de antes intacta; reaplicar; rollback so da marca; pre-voo; consultas 191a/191b).
     "tests/banco/a-loja-nova-nasce-com-a-ficha-viva.cjs",
+    // 20261530: a loja grande nao trava o balcao nem os avisos (porta leve sem ler pedido, diferencial contra a antiga, guardas, indices com EXPLAIN e tempos impressos, mutantes, rollback, consultas 190a/190b).
+    "tests/banco/a-loja-grande-nao-trava-o-balcao-viva.cjs",
     // 20261550: o admin copia e apaga as fotos da loja (politicas SELECT so do admin de agora em products/banners; DELETE RETURNING 1/0; cliente e visitante 0; Public Display convive; reaplicar; rollback; consultas 192a/192b).
     "tests/banco/o-admin-copia-e-apaga-as-fotos-viva.cjs",
     // 20261384: o pedido pago pelo app exige conta (visitante sem conta recusado antes de reservar estoque; logado e pagar na entrega como hoje; retry; concorrencia real; mutantes; rollback; consultas 89a/89b).

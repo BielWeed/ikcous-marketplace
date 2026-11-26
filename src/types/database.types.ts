@@ -3502,6 +3502,10 @@ export type Database = {
         };
         Returns: string;
       };
+      buscar_clientes_do_balcao: {
+        Args: { p_limite: number; p_search: string };
+        Returns: Json;
+      };
       buscar_por_codigo_barras: {
         Args: { p_codigo: string };
         Returns: Json;
