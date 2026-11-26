@@ -525,14 +525,22 @@ describe("CheckoutView -- relê os endereços ao voltar ao app", () => {
     expect(createOrder).toHaveBeenCalledTimes(1);
   });
 
-  it("retirada com conta não relê o endereço antes de criar o pedido", async () => {
+  // A retirada relê só para saber se o endereço escolhido ainda existe
+  // (checkout-retirada-endereco-apagado-em-outro-aparelho.test.tsx); nada é
+  // entregue nele, então a releitura sem resposta NÃO trava o pedido.
+  it("retirada com conta: a releitura que falha não trava o pedido", async () => {
     opcaoDeFrete = RETIRADA;
     await prepararEntrega();
     banco.falharLeitura = true;
+    const { toast } = await import("sonner");
+    vi.mocked(toast.error).mockClear();
 
     await finalizar();
 
-    expect(banco.leituras).toBe(1);
+    expect(banco.leituras).toBe(2);
+    expect(toast.error).not.toHaveBeenCalledWith(
+      AVISO_DE_ENDERECO_NAO_CONFIRMADO,
+    );
     expect(createOrder).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ shippingOptionId: "store-pickup" }),
       { comPagamentoOnline: false },
